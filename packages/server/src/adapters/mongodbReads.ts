@@ -18,6 +18,7 @@ import {
   createMongoBundleWhere,
   createMongoChannelWhere,
   createMongoApiKeyWhere,
+  createMongoEventWhere,
   createMongoPatchWhere,
   createMongoReleaseCatalogWhere,
   createMongoReleaseWhere,
@@ -71,6 +72,32 @@ const findMongoRows = async (
       if (needsInMemoryOrder) {
         const rows = await collections.bundlePatches
           .find(createMongoPatchWhere(input.where), {
+            projection: WITHOUT_MONGO_ID,
+            ...mongoSessionOptions(session),
+          })
+          .toArray();
+        return sortRowsByOrder(rows, rawOrderBy).slice(
+          input.offset,
+          input.offset + input.limit,
+        );
+      }
+      const sort = createMongoSort(input);
+      return sort === undefined
+        ? cursor.toArray()
+        : cursor.sort(sort).toArray();
+    }
+    case "bundle_events": {
+      const cursor = collections.bundleEvents
+        .find(createMongoEventWhere(input.where), {
+          projection: WITHOUT_MONGO_ID,
+          ...mongoSessionOptions(session),
+        })
+        .skip(input.offset)
+        .limit(input.limit);
+      if (rawOrderBy === undefined) return cursor.toArray();
+      if (needsInMemoryOrder) {
+        const rows = await collections.bundleEvents
+          .find(createMongoEventWhere(input.where), {
             projection: WITHOUT_MONGO_ID,
             ...mongoSessionOptions(session),
           })

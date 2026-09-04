@@ -31,6 +31,19 @@ const hasValidReleaseInvariants = (
   );
 };
 
+const hasValidBundleEventInvariants = (
+  data: Readonly<Record<string, unknown>>,
+): boolean =>
+  ((data.type === "UPDATE_APPLIED" ||
+    data.type === "RECOVERED" ||
+    data.type === "RELEASE_ADOPTED") &&
+    typeof data.from_bundle_id === "string" &&
+    (data.update_strategy === "fingerprint" ||
+      data.update_strategy === "appVersion")) ||
+  (data.type === "UNCHANGED" &&
+    data.from_bundle_id === null &&
+    data.update_strategy === null);
+
 export const validateCreateData = (
   model: DatabaseModel,
   data: unknown,
@@ -63,6 +76,9 @@ export const validateCreateData = (
       (data.strategy === "FINGERPRINT" &&
         typeof data.fingerprint_hash !== "string"))
   ) {
+    throw new DatabasePluginInputError("invalid-data");
+  }
+  if (model === "bundle_events" && !hasValidBundleEventInvariants(data)) {
     throw new DatabasePluginInputError("invalid-data");
   }
 };
@@ -119,6 +135,15 @@ export const validateResult = (
       "fingerprint_hash",
     ].every((field) => Object.hasOwn(row, field)) &&
     !hasValidReleaseInvariants(row)
+  ) {
+    throw new DatabasePluginInputError("invalid-result");
+  }
+  if (
+    model === "bundle_events" &&
+    ["type", "from_bundle_id", "update_strategy"].every((field) =>
+      Object.hasOwn(row, field),
+    ) &&
+    !hasValidBundleEventInvariants(row)
   ) {
     throw new DatabasePluginInputError("invalid-result");
   }

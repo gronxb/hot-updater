@@ -3,69 +3,87 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { InstallationMatchesCard } from "./InstallationMatchesCard";
 
-const row = {
-  id: "00000000-0000-7000-8000-000000000001",
-  installId: "install-alpha",
-  userId: "user-alpha",
-  username: null,
-  lastKnownBundleId: "00000000-0000-7000-8000-000000000002",
-  latestStatus: "UNCHANGED" as const,
-  type: "UNCHANGED" as const,
-  toBundleId: "00000000-0000-7000-8000-000000000002",
-  platform: "ios" as const,
-  appVersion: "1.4.2",
-  channel: "production",
-  cohort: "stable",
-  receivedAtMs: Date.UTC(2026, 6, 18),
+const results = {
+  data: [
+    {
+      installId: "install-a",
+      userId: "user-a",
+      username: null,
+      lastKnownBundleId: "bundle-a",
+      latestStatus: "UNCHANGED" as const,
+      platform: "ios" as const,
+      appVersion: "1.0.0",
+      channel: "production",
+      cohort: "default",
+      receivedAtMs: Date.UTC(2026, 6, 18),
+    },
+  ],
+  pagination: { total: 1, limit: 20, offset: 0 },
 };
 
 describe("InstallationMatchesCard", () => {
   afterEach(cleanup);
 
-  it("selects a result and exposes cursor pagination state", () => {
+  it("closes the mobile chooser and restores its trigger after selecting a match", () => {
     const onSelect = vi.fn();
-    const onNext = vi.fn();
     render(
       <InstallationMatchesCard
         error={null}
-        onNext={onNext}
-        onPrevious={vi.fn()}
+        limit={20}
+        offset={0}
+        onOffsetChange={vi.fn()}
         onSelect={onSelect}
-        pageNumber={1}
-        results={{
-          data: [row],
-          hasNext: true,
-          nextCursor: "next",
-          total: null,
-        }}
-        selectedInstallId={undefined}
+        results={results}
+        selectedInstallId=""
       />,
     );
+    const trigger = screen.getByRole("button", {
+      name: "Show matching installations",
+    });
+    expect(trigger.getAttribute("aria-expanded")).toBe("false");
+    fireEvent.click(trigger);
+    expect(trigger.getAttribute("aria-expanded")).toBe("true");
+
     fireEvent.click(
-      screen.getByRole("button", {
-        name: /user-alpha, install id install-alpha/i,
-      }),
+      screen.getByRole("button", { name: "user-a, install ID install-a" }),
     );
-    expect(onSelect).toHaveBeenCalledWith("install-alpha");
-    fireEvent.click(screen.getByRole("button", { name: /next/i }));
-    expect(onNext).toHaveBeenCalledOnce();
+    expect(onSelect).toHaveBeenCalledWith("install-a");
+    expect(trigger.getAttribute("aria-expanded")).toBe("false");
+    expect(document.activeElement).toBe(trigger);
   });
 
-  it("renders an actionable empty state", () => {
-    render(
-      <InstallationMatchesCard
-        error={null}
-        onNext={vi.fn()}
-        onPrevious={vi.fn()}
-        onSelect={vi.fn()}
-        pageNumber={1}
-        results={{ data: [], hasNext: false, nextCursor: null, total: 0 }}
-        selectedInstallId={undefined}
-      />,
-    );
+  it("keeps empty and error states outside the collapsed chooser", () => {
+    const props = {
+      error: null,
+      limit: 20,
+      offset: 0,
+      onOffsetChange: vi.fn(),
+      onSelect: vi.fn(),
+      results: {
+        ...results,
+        data: [],
+        pagination: { ...results.pagination, total: 0 },
+      },
+      selectedInstallId: "",
+    };
+    const { rerender } = render(<InstallationMatchesCard {...props} />);
+    expect(
+      screen.queryByRole("button", { name: "Show matching installations" }),
+    ).toBeNull();
     expect(screen.getByText("No matches")).toBeDefined();
     expect(
       screen.getByRole("link", { name: "Edit search" }).getAttribute("href"),
     ).toBe("#installation-history-search");
+
+    rerender(
+      <InstallationMatchesCard
+        {...props}
+        error={new Error("Connection lost")}
+      />,
+    );
+    expect(
+      screen.queryByRole("button", { name: "Show matching installations" }),
+    ).toBeNull();
+    expect(screen.getByRole("alert")).toBeDefined();
   });
 });

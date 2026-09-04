@@ -34,18 +34,6 @@ const replaceMap = <T>(target: Map<string, T>, source: Map<string, T>) => {
   for (const [key, value] of source) target.set(key, value);
 };
 
-const insightsUnavailable = () =>
-  ({
-    state: "failed",
-    versions: {
-      schemaVersion: null,
-      storageVersion: null,
-      projectionGeneration: null,
-      sourceGeneration: null,
-    },
-    error: { code: "storage-not-ready" },
-  }) as const;
-
 export const createMemoryDatabasePlugin = (): DatabasePlugin => {
   const bundles = new Map<string, BundleRow>();
   const patches = new Map<string, BundlePatchRow>();
@@ -84,6 +72,7 @@ export const createMemoryDatabasePlugin = (): DatabasePlugin => {
     }
     const nextBundles = new Map(bundles);
     const nextPatches = new Map(patches);
+    const nextEvents = new Map(events);
     const nextReleases = new Map(releases);
     const nextReleaseCatalogs = new Map(releaseCatalogs);
     const nextChannels = new Map(channels);
@@ -198,6 +187,9 @@ export const createMemoryDatabasePlugin = (): DatabasePlugin => {
             }
           }
           break;
+        case "insights":
+          nextEvents.set(change.row.id, structuredClone(change.row));
+          break;
         case "apiKeys":
           if (change.operation === "insert") {
             const existing = [...nextApiKeys.values()].find(
@@ -224,6 +216,7 @@ export const createMemoryDatabasePlugin = (): DatabasePlugin => {
     }
     replaceMap(bundles, nextBundles);
     replaceMap(patches, nextPatches);
+    replaceMap(events, nextEvents);
     replaceMap(releases, nextReleases);
     replaceMap(releaseCatalogs, nextReleaseCatalogs);
     replaceMap(channels, nextChannels);
@@ -371,18 +364,24 @@ export const createMemoryDatabasePlugin = (): DatabasePlugin => {
         async append(row) {
           events.set(row.id, structuredClone(row));
         },
-        async runMaintenanceStep() {},
-        async pageEvents() {
-          return insightsUnavailable();
-        },
-        async pageInstallations() {
-          return insightsUnavailable();
-        },
-        async getReport() {
-          return insightsUnavailable();
-        },
-        async pageReport() {
-          return insightsUnavailable();
+        async scan(input) {
+          return structuredClone(
+            [...events.values()]
+              .filter(
+                (row) =>
+                  row.received_at_ms < input.beforeReceivedAtMs &&
+                  (input.after === undefined ||
+                    row.received_at_ms > input.after.receivedAtMs ||
+                    (row.received_at_ms === input.after.receivedAtMs &&
+                      row.id > input.after.id)),
+              )
+              .sort(
+                (left, right) =>
+                  left.received_at_ms - right.received_at_ms ||
+                  left.id.localeCompare(right.id),
+              )
+              .slice(0, input.limit),
+          );
         },
       },
       apiKeys: {

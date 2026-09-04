@@ -1,6 +1,5 @@
 import { DatabasePluginInputError } from "@hot-updater/plugin-core";
 import type {
-  DatabaseModel,
   DatabasePluginImplementation,
   TransactionDatabasePluginImplementation,
 } from "@hot-updater/plugin-core/internal";
@@ -82,7 +81,6 @@ const executeInsert = async (
 const toOrderBy = (
   table: DrizzleTable,
   input: {
-    model: DatabaseModel;
     orderBy?: readonly {
       field: string;
       direction: "asc" | "desc";
@@ -93,14 +91,13 @@ const toOrderBy = (
   const clauses = input.orderBy;
   return clauses?.flatMap((clause) => {
     const column = getDrizzleColumn(table, clause.field);
-    const valueOrder = clause.direction === "asc" ? asc(column) : desc(column);
     const nulls =
       clause.nulls ?? (clause.direction === "asc" ? "last" : "first");
     return [
       nulls === "first"
         ? sql`${column} is null desc`
         : sql`${column} is null asc`,
-      valueOrder,
+      clause.direction === "asc" ? asc(column) : desc(column),
     ];
   });
 };
@@ -112,6 +109,7 @@ export const createDrizzleCrud = (
   Pick<DatabasePluginImplementation, "deleteChannel" | "insertChannel"> => {
   const bundles = getDrizzleTable(db, "bundles");
   const patches = getDrizzleTable(db, "bundle_patches");
+  const events = getDrizzleTable(db, "bundle_events");
   const releases = getDrizzleTable(db, "releases");
   const releaseCatalogs = getDrizzleTable(db, "release_catalogs");
   const channels = getDrizzleTable(db, "channels");
@@ -167,6 +165,9 @@ export const createDrizzleCrud = (
           return input.data;
         case "bundle_patches":
           await executeInsert(db, provider, patches, input.data, undefined);
+          return input.data;
+        case "bundle_events":
+          await executeInsert(db, provider, events, input.data, undefined);
           return input.data;
         case "releases":
           await executeInsert(
@@ -366,6 +367,13 @@ export const createDrizzleCrud = (
           });
           return rows.map(fromStoredBundleRow);
         }
+        case "bundle_events":
+          return db.query.bundle_events.findMany({
+            where: buildDrizzleWhere(provider, events, input.where),
+            orderBy: toOrderBy(events, input),
+            limit: input.limit,
+            offset: input.offset,
+          });
         case "api_keys":
           return db.query.api_keys.findMany({
             where: buildDrizzleWhere(provider, apiKeys, input.where),

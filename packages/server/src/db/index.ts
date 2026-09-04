@@ -3,26 +3,11 @@ import {
   type RuntimeHotUpdaterAPI,
 } from "../createHotUpdaterCore";
 import { generateSchemaFromHotUpdaterSchema } from "./schemaGenerators";
-import {
-  type Migrator,
-  type SchemaGenerator,
-  type SchemaProvisioner,
-} from "./types";
+import { type Migrator, type SchemaGenerator } from "./types";
 
 export * from "./createBundleDiff";
-export {
-  createMongoInsightsPreparation,
-  MongoInsightsPreparationConflictError,
-} from "./mongoInsightsPreparation";
-export {
-  createMongoInsightsSource,
-  MongoInsightsSourceConflictError,
-} from "./mongoInsightsSource";
-export type { Migrator, SchemaGenerator, SchemaProvisioner } from "./types";
-export {
-  HotUpdaterInsightsSchemaProvisioningRequiredError,
-  HotUpdaterSchemaMigrationRequiredError,
-} from "./schemaReadiness";
+export type { Migrator, SchemaGenerator } from "./types";
+export { HotUpdaterSchemaMigrationRequiredError } from "./schemaReadiness";
 export { HOT_UPDATER_SERVER_VERSION } from "../version";
 
 export type HotUpdaterDBTarget = {
@@ -44,13 +29,6 @@ const getDBMetadata = (hotUpdater: HotUpdaterDBTarget) => {
 export function createMigrator(hotUpdater: HotUpdaterDBTarget): Migrator {
   const { adapterCapabilities, core } = getDBMetadata(hotUpdater);
   return (adapterCapabilities.createMigrator ?? core.createMigrator)();
-}
-
-export function createInsightsSchemaProvisioner(
-  hotUpdater: HotUpdaterDBTarget,
-): SchemaProvisioner | undefined {
-  const { adapterCapabilities } = getDBMetadata(hotUpdater);
-  return adapterCapabilities.createInsightsSchemaProvisioner?.();
 }
 
 export function generateSchema(

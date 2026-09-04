@@ -19,7 +19,7 @@ import {
   transformTemplate,
 } from "@hot-updater/cli-tools";
 import { provisionApiKey } from "@hot-updater/server";
-import { isEqual, merge, uniqWith } from "es-toolkit";
+import { isEqual, merge, sortBy, uniqWith } from "es-toolkit";
 import { ExecaError, execa } from "execa";
 import {
   applicationDefault,
@@ -255,8 +255,7 @@ function normalizeIndex(index: FirebaseIndex) {
   return {
     collectionGroup: index.collectionGroup,
     queryScope: index.queryScope,
-    // Composite index field order determines which queries it supports.
-    fields: index.fields,
+    fields: sortBy(index.fields, ["fieldPath", "order"]),
   };
 }
 

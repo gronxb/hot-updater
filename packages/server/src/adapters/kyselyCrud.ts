@@ -1,12 +1,12 @@
 import {
   DatabasePluginInputError,
+  type BundleEventRow,
   type BundlePatchRow,
   type ChannelRow,
   type ApiKeyRow,
   type ReleaseCatalogRow,
 } from "@hot-updater/plugin-core";
 import type {
-  DatabaseModel,
   DatabasePluginImplementation,
   DatabaseWhere,
   TransactionDatabasePluginImplementation,
@@ -54,7 +54,6 @@ const whereClause = (
 const orderClause = (
   input:
     | {
-        readonly model: DatabaseModel;
         readonly orderBy?: readonly {
           readonly direction: "asc" | "desc";
           readonly field: string;
@@ -68,14 +67,14 @@ const orderClause = (
   return sql` order by ${sql.join(
     clauses.map((clause) => {
       const field = sql.ref(clause.field);
-      const valueOrder =
-        clause.direction === "asc" ? sql`${field} asc` : sql`${field} desc`;
       const nulls =
         clause.nulls ?? (clause.direction === "asc" ? "last" : "first");
       const nullOrder =
         nulls === "first"
           ? sql`${field} is null desc`
           : sql`${field} is null asc`;
+      const valueOrder =
+        clause.direction === "asc" ? sql`${field} asc` : sql`${field} desc`;
       return sql`${nullOrder}, ${valueOrder}`;
     }),
     sql`, `,
@@ -295,6 +294,9 @@ export const createKyselyCrud = (
           input.data.base_bundle_id,
         );
         await insertRow(executor, "bundle_patches", input.data, provider);
+        return input.data;
+      case "bundle_events":
+        await insertRow(executor, "bundle_events", input.data, provider);
         return input.data;
       case "releases":
         await insertRow(
@@ -538,6 +540,14 @@ export const createKyselyCrud = (
         const order = orderClause(input);
         const result = await sql<BundlePatchRow>`select * from ${sql.table(
           "bundle_patches",
+        )}${where}${order}${pagination}`.execute(executor);
+        return [...result.rows];
+      }
+      case "bundle_events": {
+        const where = whereClause(buildKyselyWhere(provider, input.where));
+        const order = orderClause(input);
+        const result = await sql<BundleEventRow>`select * from ${sql.table(
+          "bundle_events",
         )}${where}${order}${pagination}`.execute(executor);
         return [...result.rows];
       }

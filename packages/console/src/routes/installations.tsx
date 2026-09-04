@@ -3,16 +3,11 @@ import {
   useElementScrollRestoration,
 } from "@tanstack/react-router";
 import { ArrowLeft } from "lucide-react";
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 
 import { EventHistoryCard } from "@/components/features/insights/EventHistoryCard";
+import { useInsightsCapability } from "@/components/features/insights/InsightsCapabilityContext";
 import { InsightsPageHeader } from "@/components/features/insights/InsightsPageHeader";
-import {
-  InsightsExpiredState,
-  InsightsFailedState,
-  InsightsPreparingState,
-  InsightsStaleNotice,
-} from "@/components/features/insights/InsightsReadState";
 import { InstallationHistoryCard } from "@/components/features/insights/InstallationHistoryCard";
 import { InstallationMatchesCard } from "@/components/features/insights/InstallationMatchesCard";
 import {
@@ -22,18 +17,15 @@ import {
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import {
-  useInsightsEventsQuery,
-  useInsightsInstallationsQuery,
-} from "@/lib/insights-api";
-import { popInsightsCursor, pushInsightsCursor } from "@/lib/insights-cursor";
+  type InstallationSearchRow,
+  useEventHistoryQuery,
+  useInstallationHistoryQuery,
+  useInstallationSearchQuery,
+} from "@/lib/api";
 import {
-  getExactInsightsTotal,
-  toInsightsEventRow,
-  toInsightsInstallationViewRow,
-  type InsightsEventRow,
-  type InsightsInstallationViewRow,
-  type InsightsViewPage,
-} from "@/lib/insights-view";
+  ensureInsightsRouteAccess,
+  isInsightsQueryEnabled,
+} from "@/lib/insights-api";
 
 import {
   getInsightsScrollRestorationKey,
@@ -42,214 +34,134 @@ import {
 
 const SEARCH_LIMIT = 20;
 const HISTORY_LIMIT = 50;
-const freshBefore = () => Date.now() + 1;
 
 export const Route = createFileRoute("/installations")({
+  beforeLoad: ({ context }) => ensureInsightsRouteAccess(context.queryClient),
   component: InstallationsPage,
   validateSearch: validateInstallationsSearch,
 });
 
 function InstallationsPage() {
+  const capability = useInsightsCapability();
+  const insightsQueriesEnabled = isInsightsQueryEnabled(capability);
   const search = Route.useSearch();
   const navigate = Route.useNavigate();
   const [draftQuery, setDraftQuery] = useState(search.query ?? "");
-  const [initialEventsBefore] = useState(freshBefore);
-  const [initialHistoryBefore] = useState(freshBefore);
-  const query = search.query?.trim() ?? "";
-  const hasSearchQuery = query.length > 0;
-  const hasSelection = search.installId !== undefined;
-  const hasLookup = hasSearchQuery || hasSelection;
-  const eventsBefore = search.eventsBefore ?? initialEventsBefore;
-  const historyBefore = search.historyBefore ?? initialHistoryBefore;
-
-  const updateSearch = (next: Partial<typeof search>, replace = false) => {
-    void navigate({
-      to: "/installations",
-      search: { ...search, ...next },
-      replace,
-    });
-  };
 
   useEffect(() => {
     setDraftQuery(search.query ?? "");
   }, [search.query]);
 
-  useEffect(() => {
-    if (search.eventsBefore === undefined) {
-      updateSearch({ eventsBefore }, true);
-    }
-  }, [eventsBefore, search.eventsBefore]);
-
-  useEffect(() => {
-    if (hasSelection && search.historyBefore === undefined) {
-      updateSearch({ historyBefore }, true);
-    }
-  }, [hasSelection, historyBefore, search.historyBefore]);
-
-  const events = useInsightsEventsQuery(
+  const query = search.query?.trim() ?? "";
+  const {
+    data: results,
+    error: searchError,
+    isLoading: isSearchLoading,
+  } = useInstallationSearchQuery(
     {
-      beforeReceivedAtMs: eventsBefore,
-      cursor: search.eventsCursor,
-      limit: HISTORY_LIMIT,
-      selector: { kind: "all" },
-    },
-    !hasLookup,
-  );
-  const eventsRead = events.data;
-  const eventsPage: InsightsViewPage<InsightsEventRow> | undefined =
-    eventsRead?.state === "ready"
-      ? {
-          data: eventsRead.data.data.map(toInsightsEventRow),
-          hasNext: eventsRead.data.hasNext,
-          nextCursor: eventsRead.data.nextCursor,
-          total: getExactInsightsTotal(
-            eventsRead.data.total,
-            eventsRead.versions.sourceGeneration,
-          ),
-        }
-      : undefined;
-  const eventsReadState =
-    eventsRead?.state === "preparing" ? (
-      <InsightsPreparingState label="Preparing event history" />
-    ) : eventsRead?.state === "failed" ? (
-      <InsightsFailedState failure={eventsRead.error} />
-    ) : undefined;
-
-  const matches = useInsightsInstallationsQuery(
-    {
-      kind: "contains",
-      limit: SEARCH_LIMIT,
       query,
-      ...(search.searchCursor === undefined
-        ? {}
-        : { cursor: search.searchCursor }),
-      ...(search.searchPublicationId === undefined
-        ? {}
-        : { publicationId: search.searchPublicationId }),
+      limit: SEARCH_LIMIT,
+      offset: search.searchOffset,
     },
-    hasSearchQuery,
+    insightsQueriesEnabled,
   );
-  const matchesRead = matches.data;
-  const matchesData =
-    matchesRead?.state === "ready" || matchesRead?.state === "stale"
-      ? matchesRead.data
-      : undefined;
-  const matchesPage: InsightsViewPage<InsightsInstallationViewRow> | undefined =
-    matchesData
-      ? {
-          data: matchesData.data.map(toInsightsInstallationViewRow),
-          hasNext: matchesData.hasNext,
-          nextCursor: matchesData.nextCursor,
-          total: getExactInsightsTotal(
-            matchesData.total,
-            matchesRead?.state === "ready" || matchesRead?.state === "stale"
-              ? matchesRead.versions.sourceGeneration
-              : null,
-          ),
-        }
-      : undefined;
-  const matchesPublication =
-    matchesData?.consistency.cutoff.kind === "publication"
-      ? matchesData.consistency.cutoff.publication
-      : undefined;
+  const selectedInstallId = search.installId ?? "";
+  const firstMatchingInstallId = results?.data[0]?.installId;
 
   useEffect(() => {
-    const firstInstallId = matchesPage?.data[0]?.installId;
-    if (!hasSearchQuery || hasSelection || firstInstallId === undefined) return;
-    updateSearch(
-      {
-        installId: firstInstallId,
-        historyBack: undefined,
-        historyBefore: freshBefore(),
-        historyCursor: undefined,
+    if (!query || selectedInstallId || !firstMatchingInstallId) return;
+    void navigate({
+      to: "/installations",
+      search: {
+        query: search.query,
+        installId: firstMatchingInstallId,
+        searchOffset: search.searchOffset,
+        historyOffset: 0,
+        eventsOffset: search.eventsOffset,
       },
-      true,
-    );
-  }, [hasSearchQuery, hasSelection, matchesPage?.data]);
+      replace: true,
+    });
+  }, [
+    firstMatchingInstallId,
+    navigate,
+    query,
+    search.eventsOffset,
+    search.query,
+    search.searchOffset,
+    selectedInstallId,
+  ]);
 
-  const selectedInstallation = useInsightsInstallationsQuery(
+  const {
+    data: history,
+    error: historyError,
+    isLoading: isHistoryLoading,
+    refetch: refreshHistory,
+  } = useInstallationHistoryQuery(
     {
-      kind: "installationId",
-      installId: search.installId ?? "",
-      limit: 1,
-    },
-    hasSelection,
-  );
-  const selectedRead = selectedInstallation.data;
-  const selectedRow =
-    selectedRead?.state === "ready" ? selectedRead.data.data[0] : undefined;
-  const selectedInstallationState =
-    selectedRead?.state === "preparing" ? (
-      <InsightsPreparingState label="Preparing installation details" />
-    ) : selectedRead?.state === "failed" ? (
-      <InsightsFailedState failure={selectedRead.error} />
-    ) : undefined;
-
-  const history = useInsightsEventsQuery(
-    {
-      beforeReceivedAtMs: historyBefore,
-      cursor: search.historyCursor,
+      installId: selectedInstallId,
       limit: HISTORY_LIMIT,
-      selector: {
-        kind: "installationId",
-        installId: search.installId ?? "",
-      },
+      offset: search.historyOffset,
     },
-    hasSelection,
+    insightsQueriesEnabled,
   );
-  const historyRead = history.data;
-  const historyPage: InsightsViewPage<InsightsEventRow> | undefined =
-    historyRead?.state === "ready"
-      ? {
-          data: historyRead.data.data.map(toInsightsEventRow),
-          hasNext: historyRead.data.hasNext,
-          nextCursor: historyRead.data.nextCursor,
-          total: getExactInsightsTotal(
-            historyRead.data.total,
-            historyRead.versions.sourceGeneration,
-          ),
-        }
-      : undefined;
-  const historyReadState =
-    historyRead?.state === "preparing" ? (
-      <InsightsPreparingState label="Preparing installation history" />
-    ) : historyRead?.state === "failed" ? (
-      <InsightsFailedState failure={historyRead.error} />
-    ) : (
-      selectedInstallationState
-    );
-  const selectedEvent = selectedRow
-    ? toInsightsInstallationViewRow(selectedRow)
-    : (matchesPage?.data.find(
-        ({ installId }) => installId === search.installId,
-      ) ?? historyPage?.data[0]);
+  const selectedInstallation = useMemo(
+    () =>
+      results?.data.find(
+        (event: InstallationSearchRow) => event.installId === selectedInstallId,
+      ) ?? null,
+    [results?.data, selectedInstallId],
+  );
+  const selectedEvent = selectedInstallation ?? history?.data[0];
 
-  const scrollRestorationId = hasLookup
-    ? `installation-history-${search.historyCursor ?? "first"}`
-    : `all-events-${search.eventsCursor ?? "first"}`;
+  const updateSearch = (
+    nextSearch: {
+      query?: string;
+      installId?: string;
+      searchOffset?: number;
+      historyOffset?: number;
+      eventsOffset?: number;
+    },
+    replace = false,
+  ) => {
+    void navigate({
+      to: "/installations",
+      search: {
+        query: nextSearch.query,
+        installId: nextSearch.installId,
+        searchOffset: nextSearch.searchOffset ?? 0,
+        historyOffset: nextSearch.historyOffset ?? 0,
+        eventsOffset:
+          nextSearch.query || nextSearch.installId
+            ? (nextSearch.eventsOffset ?? search.eventsOffset)
+            : undefined,
+      },
+      replace,
+    });
+  };
+
+  const hasQuery = query.length > 0 || selectedInstallId.length > 0;
+  const eventsOffset = hasQuery
+    ? (search.eventsOffset ?? 0)
+    : search.historyOffset;
+  const scrollRestorationId = `${hasQuery ? "installation-history" : "all-events"}-${search.historyOffset}`;
   const scrollRef = useRef<HTMLDivElement>(null);
   const scrollEntry = useElementScrollRestoration({
     id: scrollRestorationId,
     getKey: getInsightsScrollRestorationKey,
   });
+  const events = useEventHistoryQuery(
+    { limit: HISTORY_LIMIT, offset: search.historyOffset },
+    insightsQueriesEnabled && !hasQuery,
+  );
   useLayoutEffect(() => {
-    if (!hasLookup && !events.isLoading && scrollRef.current) {
+    if (!hasQuery && !events.isLoading && scrollRef.current) {
       scrollRef.current.scrollTop = scrollEntry?.scrollY ?? 0;
     }
-  }, [events.isLoading, hasLookup, scrollEntry?.scrollY, scrollRestorationId]);
+  }, [hasQuery, events.isLoading, scrollEntry?.scrollY, scrollRestorationId]);
 
   const clearLookup = () => {
     setDraftQuery("");
-    updateSearch({
-      historyBack: undefined,
-      historyBefore: undefined,
-      historyCursor: undefined,
-      installId: undefined,
-      query: undefined,
-      searchBack: undefined,
-      searchCursor: undefined,
-      searchPublicationId: undefined,
-    });
+    updateSearch({ historyOffset: eventsOffset });
   };
   const installationLookup = (
     <InstallationSearchPanel
@@ -257,45 +169,17 @@ function InstallationsPage() {
       onClear={clearLookup}
       onDraftQueryChange={setDraftQuery}
       onSubmit={() => {
-        const nextQuery = draftQuery.trim();
-        if (!nextQuery) {
-          clearLookup();
-          return;
-        }
         updateSearch({
-          historyBack: undefined,
-          historyBefore: undefined,
-          historyCursor: undefined,
-          installId: undefined,
-          query: nextQuery,
-          searchBack: undefined,
-          searchCursor: undefined,
-          searchPublicationId: undefined,
+          query: draftQuery.trim(),
+          eventsOffset,
         });
       }}
     />
   );
 
-  const matchesState =
-    matchesRead?.state === "preparing" ? (
-      <InsightsPreparingState label="Preparing installation matches" />
-    ) : matchesRead?.state === "failed" ? (
-      <InsightsFailedState failure={matchesRead.error} />
-    ) : matchesRead?.state === "expired" ? (
-      <InsightsExpiredState
-        onRestart={() =>
-          updateSearch({
-            searchBack: undefined,
-            searchCursor: undefined,
-            searchPublicationId: undefined,
-          })
-        }
-      />
-    ) : undefined;
-
   return (
     <div className="flex h-svh min-h-0 flex-col">
-      <InsightsPageHeader view="events" />
+      <InsightsPageHeader view="events" eventsOffset={eventsOffset} />
       <div
         key={scrollRestorationId}
         ref={scrollRef}
@@ -304,7 +188,7 @@ function InstallationsPage() {
         className="min-h-0 min-w-0 flex-1 overflow-y-auto bg-muted/5 p-3 sm:p-6"
       >
         <div className="mx-auto flex w-full max-w-7xl flex-col gap-4 sm:gap-6">
-          {hasLookup ? (
+          {hasQuery ? (
             <Card className="shadow-sm">
               <CardContent className="flex flex-col gap-3 p-4 sm:p-6">
                 <Button
@@ -319,133 +203,66 @@ function InstallationsPage() {
               </CardContent>
             </Card>
           ) : null}
-          {!hasLookup ? (
+          {!hasQuery ? (
             <EventHistoryCard
               error={events.error}
-              eventsLocation={{
-                eventsBack: search.eventsBack,
-                eventsBefore,
-                eventsCursor: search.eventsCursor,
-              }}
-              history={eventsPage}
-              isFetching={events.isFetching}
+              history={events.data}
               isLoading={events.isLoading}
-              onNext={() => {
-                if (!eventsPage?.nextCursor) return;
-                updateSearch({
-                  eventsBack: pushInsightsCursor(
-                    search.eventsBack,
-                    search.eventsCursor,
-                  ),
-                  eventsCursor: eventsPage.nextCursor,
-                });
-              }}
-              onPrevious={() => {
-                const previous = popInsightsCursor(search.eventsBack);
-                updateSearch({
-                  eventsBack: previous.stack,
-                  eventsCursor: previous.cursor,
-                });
-              }}
-              onRefresh={() =>
-                updateSearch({
-                  eventsBack: undefined,
-                  eventsBefore: freshBefore(),
-                  eventsCursor: undefined,
-                })
+              limit={HISTORY_LIMIT}
+              offset={search.historyOffset}
+              onOffsetChange={(historyOffset) =>
+                updateSearch({ historyOffset })
               }
-              pageNumber={(search.eventsBack?.length ?? 0) + 1}
-              readState={eventsReadState}
+              onRefresh={() => void events.refetch()}
+              isFetching={events.isFetching}
             >
               {installationLookup}
             </EventHistoryCard>
-          ) : matches.isLoading && hasSearchQuery ? (
+          ) : isSearchLoading ? (
             <InstallationResultsSkeleton />
           ) : (
-            <>
-              {matchesRead?.state === "stale" && matchesPublication ? (
-                <InsightsStaleNotice asOfMs={matchesPublication.asOfMs} />
-              ) : null}
-              <div
-                className={`grid min-h-0 min-w-0 items-stretch gap-4 sm:gap-6 ${hasSearchQuery ? "lg:min-h-96 lg:grid-cols-[minmax(18rem,20rem)_minmax(0,1fr)]" : "lg:grid-cols-1"}`}
-              >
-                {hasSearchQuery ? (
-                  matchesState ? (
-                    <div>{matchesState}</div>
-                  ) : (
-                    <InstallationMatchesCard
-                      error={matches.error}
-                      onNext={() => {
-                        if (!matchesPage?.nextCursor) return;
-                        updateSearch({
-                          installId: undefined,
-                          searchBack: pushInsightsCursor(
-                            search.searchBack,
-                            search.searchCursor,
-                          ),
-                          searchCursor: matchesPage.nextCursor,
-                          searchPublicationId: matchesPublication?.id,
-                        });
-                      }}
-                      onPrevious={() => {
-                        const previous = popInsightsCursor(search.searchBack);
-                        updateSearch({
-                          installId: undefined,
-                          searchBack: previous.stack,
-                          searchCursor: previous.cursor,
-                        });
-                      }}
-                      onSelect={(installId) =>
-                        updateSearch({
-                          historyBack: undefined,
-                          historyBefore: freshBefore(),
-                          historyCursor: undefined,
-                          installId,
-                        })
-                      }
-                      pageNumber={(search.searchBack?.length ?? 0) + 1}
-                      results={matchesPage}
-                      selectedInstallId={search.installId}
-                    />
-                  )
-                ) : null}
-                <InstallationHistoryCard
-                  onRefresh={() =>
-                    updateSearch({
-                      historyBack: undefined,
-                      historyBefore: freshBefore(),
-                      historyCursor: undefined,
-                    })
-                  }
-                  error={history.error}
-                  history={historyPage}
-                  isLoading={
-                    history.isLoading || selectedInstallation.isLoading
-                  }
-                  onNext={() => {
-                    if (!historyPage?.nextCursor) return;
-                    updateSearch({
-                      historyBack: pushInsightsCursor(
-                        search.historyBack,
-                        search.historyCursor,
-                      ),
-                      historyCursor: historyPage.nextCursor,
-                    });
-                  }}
-                  onPrevious={() => {
-                    const previous = popInsightsCursor(search.historyBack);
-                    updateSearch({
-                      historyBack: previous.stack,
-                      historyCursor: previous.cursor,
-                    });
-                  }}
-                  pageNumber={(search.historyBack?.length ?? 0) + 1}
-                  readState={historyReadState}
-                  selectedEvent={selectedEvent}
-                  selectedInstallId={search.installId}
-                />
-              </div>
-            </>
+            <div className="grid min-h-0 min-w-0 items-stretch gap-4 sm:gap-6 lg:min-h-96 lg:grid-cols-[minmax(18rem,20rem)_minmax(0,1fr)]">
+              <InstallationMatchesCard
+                error={searchError}
+                limit={SEARCH_LIMIT}
+                offset={search.searchOffset}
+                results={results}
+                selectedInstallId={selectedInstallId}
+                onOffsetChange={(searchOffset) =>
+                  updateSearch({
+                    query: search.query,
+                    installId: undefined,
+                    searchOffset,
+                    historyOffset: 0,
+                  })
+                }
+                onSelect={(installId) =>
+                  updateSearch({
+                    query: search.query,
+                    installId,
+                    searchOffset: search.searchOffset,
+                  })
+                }
+              />
+              <InstallationHistoryCard
+                onRefresh={() => void refreshHistory()}
+                error={historyError}
+                history={history}
+                isLoading={isHistoryLoading}
+                limit={HISTORY_LIMIT}
+                offset={search.historyOffset}
+                selectedEvent={selectedEvent}
+                selectedInstallId={selectedInstallId}
+                onOffsetChange={(historyOffset) =>
+                  updateSearch({
+                    query: search.query,
+                    installId: selectedInstallId,
+                    searchOffset: search.searchOffset,
+                    historyOffset,
+                  })
+                }
+              />
+            </div>
           )}
         </div>
       </div>

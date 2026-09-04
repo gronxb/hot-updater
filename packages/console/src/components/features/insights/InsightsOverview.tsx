@@ -1,7 +1,4 @@
-import type {
-  InsightsActiveWindow,
-  InsightsSeriesRow,
-} from "@hot-updater/plugin-core";
+import type { ActiveInstallationOverview } from "@hot-updater/server";
 import type { ReactNode } from "react";
 
 import {
@@ -12,9 +9,11 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
+import type { InsightsOverview as CatalogOverview } from "@/lib/insights-overview";
 import { cn } from "@/lib/utils";
 
 import { ActivityChart } from "./ActivityChart";
+import { BundleSelector } from "./BundleSelector";
 import { EventTimestamp, useInsightsTimeFormat } from "./EventDetails";
 import { InsightsErrorAlert } from "./InsightsErrorAlert";
 import { UpdateOutcomes, type UpdateOutcomeState } from "./UpdateOutcomes";
@@ -24,18 +23,15 @@ type InsightsOverviewProps =
   | { readonly status: "error"; readonly error: Error }
   | {
       readonly status: "success";
-      readonly active: {
-        readonly activeInstallations: number;
-        readonly asOfMs: number;
-        readonly reportedBundles: number | null;
-        readonly series: readonly InsightsSeriesRow[];
-        readonly window: InsightsActiveWindow;
-      };
-      readonly bundleSelector: ReactNode;
-      readonly configuredPercentage: number | null;
-      readonly latestBundleInstallations: number;
+      readonly active: ActiveInstallationOverview;
+      readonly bundleId: string;
+      readonly bundles: readonly {
+        readonly bundleId: string;
+        readonly description: string;
+      }[];
+      readonly catalog: CatalogOverview;
+      readonly onBundleChange: (bundleId: string) => void;
       readonly outcomes: UpdateOutcomeState;
-      readonly trackedInstallations: number;
     };
 
 const activityWindowCopy = {
@@ -114,15 +110,18 @@ export function InsightsOverview(props: InsightsOverviewProps) {
     );
   }
 
-  const {
-    active,
-    bundleSelector,
-    configuredPercentage,
-    latestBundleInstallations,
-    outcomes,
-    trackedInstallations,
-  } = props;
+  const { active, bundleId, bundles, catalog, onBundleChange, outcomes } =
+    props;
   const activityCopy = activityWindowCopy[active.window];
+  const selectedBundleId =
+    outcomes.status === "idle" ? null : outcomes.bundleId;
+  const latestBundleInstallations =
+    active.bundles.find(({ bundleId }) => bundleId === selectedBundleId)
+      ?.installations ?? 0;
+  const configuredPercentage =
+    catalog.configuredRollouts.find(
+      ({ bundleId }) => bundleId === selectedBundleId,
+    )?.configuredPercentage ?? null;
 
   return (
     <div className="flex min-w-0 flex-col gap-4 sm:gap-6">
@@ -146,16 +145,16 @@ export function InsightsOverview(props: InsightsOverviewProps) {
             <dl className="grid w-full grid-cols-[auto_minmax(0,1fr)] gap-x-6 px-4 py-3 sm:px-6">
               <div className="flex flex-col gap-1">
                 <dt className="text-xs text-muted-foreground">
-                  Tracked bundles
+                  Reported bundles
                 </dt>
                 <dd className="text-lg font-semibold tabular-nums">
-                  {active.reportedBundles === null
-                    ? "—"
-                    : active.reportedBundles.toLocaleString()}
+                  {active.bundles.length.toLocaleString()}
                 </dd>
               </div>
               <div className="flex min-w-0 flex-col gap-1">
-                <dt className="text-xs text-muted-foreground">As of</dt>
+                <dt className="text-xs text-muted-foreground">
+                  As of ({dateTimeFormat.resolvedOptions().timeZone})
+                </dt>
                 <dd className="text-xs font-medium tabular-nums">
                   <EventTimestamp
                     touch
@@ -171,10 +170,16 @@ export function InsightsOverview(props: InsightsOverviewProps) {
 
       <section aria-labelledby="bundle-detail-heading">
         <UpdateOutcomes
-          bundleSelector={bundleSelector}
+          bundleSelector={
+            <BundleSelector
+              bundleId={bundleId}
+              bundles={bundles}
+              onBundleChange={onBundleChange}
+            />
+          }
           configuredPercentage={configuredPercentage}
           latestBundleInstallations={latestBundleInstallations}
-          reportingInstallations={trackedInstallations}
+          reportingInstallations={active.activeInstallations}
           state={outcomes}
           window={active.window}
         />

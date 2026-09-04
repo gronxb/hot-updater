@@ -6,10 +6,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   queryKeys,
+  useBundleEventInsightsQuery,
+  useBundleEventSummaryQuery,
   useCreateChannelMutation,
   useDeleteChannelMutation,
   useDeleteBundleMutation,
   useDeleteBundlesMutation,
+  useEventHistoryQuery,
   useReleasesQuery,
   useUpdateReleaseMutation,
 } from "./api";
@@ -18,6 +21,9 @@ import {
   deleteChannel as deleteChannelApi,
   deleteBundle as deleteBundleApi,
   deleteBundles as deleteBundlesApi,
+  getBundleEventSummary as getBundleEventSummaryApi,
+  getBundleEventInsights as getBundleEventInsightsApi,
+  getEventHistory as getEventHistoryApi,
   getReleases as getReleasesApi,
   updateRelease as updateReleaseApi,
 } from "./api-rpc";
@@ -32,10 +38,13 @@ vi.mock("./api-rpc", () => ({
   getBundle: vi.fn(),
   getBundleChildCounts: vi.fn(),
   getBundleChildren: vi.fn(),
+  getBundleEventSummary: vi.fn(),
+  getBundleEventInsights: vi.fn(),
   getBundles: vi.fn(),
   getChannels: vi.fn(),
   getConfig: vi.fn(),
   getConfigLoaded: vi.fn(),
+  getEventHistory: vi.fn(),
   getRelease: vi.fn(),
   getReleaseCatalogDiagnostics: vi.fn(),
   getReleases: vi.fn(),
@@ -172,6 +181,78 @@ it("refreshes the active release table before a successful update resolves", asy
     unmount();
     queryClient.clear();
   }
+});
+
+describe("protected bundle-event queries", () => {
+  it("loads unfiltered events only when Insights access is enabled", async () => {
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    const wrapper = ({ children }: PropsWithChildren) => (
+      <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+    );
+    vi.mocked(getEventHistoryApi).mockResolvedValue({
+      data: [],
+      pagination: { total: 0, limit: 50, offset: 0 },
+    });
+    const { rerender } = renderHook(
+      ({ enabled }) => useEventHistoryQuery({ limit: 50, offset: 0 }, enabled),
+      { wrapper, initialProps: { enabled: false } },
+    );
+    await Promise.resolve();
+    expect(getEventHistoryApi).not.toHaveBeenCalled();
+
+    rerender({ enabled: true });
+    await waitFor(() =>
+      expect(getEventHistoryApi).toHaveBeenCalledWith({
+        data: { limit: 50, offset: 0 },
+      }),
+    );
+    queryClient.clear();
+  });
+
+  it("does not request a bundle-event summary when explicitly disabled", async () => {
+    // Given
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    const wrapper = ({ children }: PropsWithChildren) => (
+      <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+    );
+
+    // When
+    renderHook(() => useBundleEventSummaryQuery(bundle.id, false), { wrapper });
+    await Promise.resolve();
+
+    // Then
+    expect(getBundleEventSummaryApi).not.toHaveBeenCalled();
+    queryClient.clear();
+  });
+
+  it("does not request bundle-event insights when explicitly disabled", async () => {
+    // Given
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    const wrapper = ({ children }: PropsWithChildren) => (
+      <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+    );
+
+    // When
+    renderHook(
+      () =>
+        useBundleEventInsightsQuery(
+          { bundleId: bundle.id, window: "30d" },
+          false,
+        ),
+      { wrapper },
+    );
+    await Promise.resolve();
+
+    // Then
+    expect(getBundleEventInsightsApi).not.toHaveBeenCalled();
+    queryClient.clear();
+  });
 });
 
 describe("channel mutations", () => {

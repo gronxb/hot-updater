@@ -20,10 +20,6 @@ declare module "node:sqlite" {
     constructor(location: string);
     close(): void;
     exec(sql: string): void;
-    function(
-      name: string,
-      callback: (...parameters: SqliteValue[]) => SqliteValue,
-    ): void;
     prepare(sql: string): StatementSync;
   }
 }

@@ -9,9 +9,9 @@ import { useEffect, useState } from "react";
 
 import { HashValueDisplay } from "@/components/HashValueDisplay";
 import { Badge } from "@/components/ui/badge";
-import type { InsightsEventRow } from "@/lib/insights-view";
+import type { EventHistoryResult } from "@/lib/api";
 
-type EventHistoryRow = InsightsEventRow;
+type EventHistoryRow = EventHistoryResult["data"][number];
 
 const eventTypes = {
   UPDATE_APPLIED: { label: "Bundle applied", variant: "success", icon: Check },
@@ -35,7 +35,6 @@ export function useInsightsTimeFormat() {
   }, []);
   return new Intl.DateTimeFormat("en", {
     timeZone,
-    timeZoneName: "shortOffset",
     year: "numeric",
     month: "2-digit",
     day: "2-digit",
@@ -44,19 +43,6 @@ export function useInsightsTimeFormat() {
     second: "2-digit",
     hourCycle: "h23",
   });
-}
-
-export function formatInsightsTimestamp(
-  value: number,
-  formatter: Intl.DateTimeFormat,
-) {
-  const parts = Object.fromEntries(
-    formatter
-      .formatToParts(new Date(value))
-      .map(({ type, value }) => [type, value]),
-  );
-  const offset = parts.timeZoneName === "GMT" ? "GMT+0" : parts.timeZoneName;
-  return `${parts.year}/${parts.month}/${parts.day} ${parts.hour}:${parts.minute}:${parts.second} ${offset}`;
 }
 
 export function EventTimestamp({
@@ -69,7 +55,10 @@ export function EventTimestamp({
   readonly touch?: boolean;
 }) {
   const date = new Date(value);
-  const localTime = formatInsightsTimestamp(value, formatter);
+  const parts = Object.fromEntries(
+    formatter.formatToParts(date).map(({ type, value }) => [type, value]),
+  );
+  const localTime = `${parts.year}/${parts.month}/${parts.day} ${parts.hour}:${parts.minute}:${parts.second}`;
   return (
     <details className="group/time">
       <summary

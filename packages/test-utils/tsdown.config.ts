@@ -17,12 +17,4 @@ export default defineConfig([
     dts: true,
     failOnWarn: true,
   },
-  {
-    entry: { "insights-oracle": "src/insightsModelOracle.ts" },
-    format: ["esm"],
-    outDir: "dist",
-    clean: false,
-    dts: true,
-    failOnWarn: true,
-  },
 ]);

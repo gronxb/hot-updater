@@ -47,37 +47,20 @@ const hasDelegateMethods = (value: unknown): value is PrismaDelegate =>
 const modelDelegates = {
   bundles: "bundles",
   bundle_patches: "bundle_patches",
+  bundle_events: "bundle_events",
   channels: "channels",
   api_keys: "api_keys",
   releases: "releases",
   release_catalogs: "release_catalogs",
 } as const satisfies Record<DatabaseModel, string>;
 
-export const prismaBundleEventFields = [
-  "id",
-  "type",
-  "install_id",
-  "user_id",
-  "username",
-  "from_bundle_id",
-  "from_release_id",
-  "to_release_id",
-  "to_bundle_id",
-  "platform",
-  "app_version",
-  "channel",
-  "cohort",
-  "update_strategy",
-  "fingerprint_hash",
-  "sdk_version",
-  "received_at_ms",
-] as const satisfies readonly (keyof BundleEventRow)[];
-
-const getNamedPrismaDelegate = (
+export const getPrismaDelegate = (
   client: object,
-  model: string,
+  model: DatabaseModel,
 ): PrismaDelegate => {
-  const delegate = Object.entries(client).find(([key]) => key === model)?.[1];
+  const delegate = Object.entries(client).find(
+    ([key]) => key === modelDelegates[model],
+  )?.[1];
   if (delegate === undefined)
     throw new PrismaAdapterError(`missing model delegate "${model}"`);
   if (!hasDelegateMethods(delegate)) {
@@ -85,16 +68,6 @@ const getNamedPrismaDelegate = (
   }
   return delegate;
 };
-
-export const getPrismaDelegate = (
-  client: object,
-  model: DatabaseModel,
-): PrismaDelegate => {
-  return getNamedPrismaDelegate(client, modelDelegates[model]);
-};
-
-export const getPrismaBundleEventDelegate = (client: object): PrismaDelegate =>
-  getNamedPrismaDelegate(client, "bundle_events");
 
 const readString = (row: Record<string, unknown>, field: string): string => {
   const value = row[field];

@@ -1,614 +1,84 @@
 {
   "indexes": [
     {
-      "collectionGroup": "hot_updater_v2_insights_events",
+      "collectionGroup": "hot_updater_v1_bundles",
       "queryScope": "COLLECTION",
       "fields": [
-        {
-          "fieldPath": "_insights_page_shard",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "received_at_ms",
-          "order": "DESCENDING"
-        },
-        {
-          "fieldPath": "id",
-          "order": "DESCENDING"
-        }
-      ]
-    },
-    {
-      "collectionGroup": "hot_updater_v2_insights_events",
-      "queryScope": "COLLECTION",
-      "fields": [
-        {
-          "fieldPath": "_insights_install_key",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "type",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "_insights_page_shard",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "received_at_ms",
-          "order": "DESCENDING"
-        },
-        {
-          "fieldPath": "id",
-          "order": "DESCENDING"
-        }
-      ]
-    },
-    {
-      "collectionGroup": "hot_updater_v2_insights_events",
-      "queryScope": "COLLECTION",
-      "fields": [
-        {
-          "fieldPath": "type",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "_insights_to_bundle_key",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "_insights_page_shard",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "received_at_ms",
-          "order": "DESCENDING"
-        },
-        {
-          "fieldPath": "id",
-          "order": "DESCENDING"
-        }
-      ]
-    },
-    {
-      "collectionGroup": "hot_updater_v2_insights_events",
-      "queryScope": "COLLECTION",
-      "fields": [
-        {
-          "fieldPath": "type",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "_insights_from_bundle_key",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "_insights_page_shard",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "received_at_ms",
-          "order": "DESCENDING"
-        },
-        {
-          "fieldPath": "id",
-          "order": "DESCENDING"
-        }
-      ]
-    },
-    {
-      "collectionGroup": "hot_updater_v2_insights_events",
-      "queryScope": "COLLECTION",
-      "fields": [
-        {
-          "fieldPath": "_insights_source_shard",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "_insights_source_seq",
-          "order": "ASCENDING"
-        }
-      ]
-    },
-    {
-      "collectionGroup": "hot_updater_v2_insights_installation_versions",
-      "queryScope": "COLLECTION",
-      "fields": [
-        { "fieldPath": "recordKind", "order": "ASCENDING" },
-        { "fieldPath": "installKey", "order": "ASCENDING" },
-        { "fieldPath": "sourceId", "order": "ASCENDING" },
-        { "fieldPath": "sourceSequence", "order": "DESCENDING" }
-      ]
-    },
-    {
-      "collectionGroup": "hot_updater_v2_insights_work",
-      "queryScope": "COLLECTION",
-      "fields": [
-        { "fieldPath": "jobId", "order": "ASCENDING" },
-        { "fieldPath": "recordKind", "order": "ASCENDING" },
-        { "fieldPath": "orderKey", "order": "ASCENDING" }
-      ]
-    },
-    {
-      "collectionGroup": "hot_updater_v2_insights_work",
-      "queryScope": "COLLECTION",
-      "fields": [
-        { "fieldPath": "jobId", "order": "ASCENDING" },
-        { "fieldPath": "recordKind", "order": "ASCENDING" },
-        { "fieldPath": "total", "order": "DESCENDING" },
-        { "fieldPath": "label0", "order": "ASCENDING" },
-        { "fieldPath": "label1", "order": "ASCENDING" },
-        { "fieldPath": "label2", "order": "ASCENDING" },
-        { "fieldPath": "orderKey", "order": "ASCENDING" }
-      ]
-    },
-    {
-      "collectionGroup": "hot_updater_v2_insights_work",
-      "queryScope": "COLLECTION",
-      "fields": [
-        { "fieldPath": "jobId", "order": "ASCENDING" },
-        { "fieldPath": "recordKind", "order": "ASCENDING" },
-        { "fieldPath": "sortSection", "order": "ASCENDING" },
-        { "fieldPath": "sort0", "order": "ASCENDING" },
-        { "fieldPath": "sort1", "order": "ASCENDING" },
-        { "fieldPath": "sort2", "order": "ASCENDING" },
-        { "fieldPath": "sort3", "order": "ASCENDING" },
-        { "fieldPath": "sort4", "order": "ASCENDING" },
-        { "fieldPath": "aggregateKey", "order": "ASCENDING" }
-      ]
-    },
-    {
-      "collectionGroup": "hot_updater_v2_insights_report_rows",
-      "queryScope": "COLLECTION",
-      "fields": [
-        { "fieldPath": "publicationId", "order": "ASCENDING" },
-        { "fieldPath": "sectionKey", "order": "ASCENDING" },
-        { "fieldPath": "ordinal", "order": "ASCENDING" }
-      ]
-    },
-    {
-      "collectionGroup": "hot_updater_v2_insights_report_rows",
-      "queryScope": "COLLECTION",
-      "fields": [
-        { "fieldPath": "publicationId", "order": "ASCENDING" },
-        { "fieldPath": "sectionKey", "order": "ASCENDING" },
-        { "fieldPath": "bundleKey", "order": "ASCENDING" },
-        { "fieldPath": "bundleOrdinal", "order": "ASCENDING" }
+        { "fieldPath": "channel", "order": "ASCENDING" },
+        { "fieldPath": "enabled", "order": "ASCENDING" },
+        { "fieldPath": "platform", "order": "ASCENDING" },
+        { "fieldPath": "id", "order": "ASCENDING" }
       ]
     },
     {
       "collectionGroup": "hot_updater_v1_bundles",
       "queryScope": "COLLECTION",
       "fields": [
-        {
-          "fieldPath": "channel",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "enabled",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "platform",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "id",
-          "order": "ASCENDING"
-        }
+        { "fieldPath": "channel", "order": "ASCENDING" },
+        { "fieldPath": "enabled", "order": "ASCENDING" },
+        { "fieldPath": "platform", "order": "ASCENDING" },
+        { "fieldPath": "target_app_version", "order": "ASCENDING" },
+        { "fieldPath": "id", "order": "ASCENDING" }
       ]
     },
     {
       "collectionGroup": "hot_updater_v1_bundles",
       "queryScope": "COLLECTION",
       "fields": [
-        {
-          "fieldPath": "channel",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "enabled",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "platform",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "target_app_version",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "id",
-          "order": "ASCENDING"
-        }
+        { "fieldPath": "channel", "order": "ASCENDING" },
+        { "fieldPath": "platform", "order": "ASCENDING" },
+        { "fieldPath": "enabled", "order": "ASCENDING" },
+        { "fieldPath": "target_app_version", "order": "ASCENDING" },
+        { "fieldPath": "id", "order": "DESCENDING" }
       ]
     },
     {
       "collectionGroup": "hot_updater_v1_bundles",
       "queryScope": "COLLECTION",
       "fields": [
-        {
-          "fieldPath": "channel",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "platform",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "enabled",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "target_app_version",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "id",
-          "order": "DESCENDING"
-        }
+        { "fieldPath": "channel", "order": "ASCENDING" },
+        { "fieldPath": "platform", "order": "ASCENDING" },
+        { "fieldPath": "id", "order": "DESCENDING" }
       ]
     },
     {
       "collectionGroup": "hot_updater_v1_bundles",
       "queryScope": "COLLECTION",
       "fields": [
-        {
-          "fieldPath": "channel",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "platform",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "id",
-          "order": "DESCENDING"
-        }
+        { "fieldPath": "channel", "order": "ASCENDING" },
+        { "fieldPath": "id", "order": "DESCENDING" }
       ]
     },
     {
       "collectionGroup": "hot_updater_v1_bundles",
       "queryScope": "COLLECTION",
       "fields": [
-        {
-          "fieldPath": "channel",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "id",
-          "order": "DESCENDING"
-        }
+        { "fieldPath": "platform", "order": "ASCENDING" },
+        { "fieldPath": "id", "order": "DESCENDING" }
       ]
     },
     {
       "collectionGroup": "hot_updater_v1_bundles",
       "queryScope": "COLLECTION",
       "fields": [
-        {
-          "fieldPath": "platform",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "id",
-          "order": "DESCENDING"
-        }
+        { "fieldPath": "channel", "order": "ASCENDING" },
+        { "fieldPath": "enabled", "order": "ASCENDING" },
+        { "fieldPath": "platform", "order": "ASCENDING" },
+        { "fieldPath": "fingerprint_hash", "order": "ASCENDING" },
+        { "fieldPath": "id", "order": "ASCENDING" }
       ]
     },
     {
       "collectionGroup": "hot_updater_v1_bundles",
       "queryScope": "COLLECTION",
       "fields": [
-        {
-          "fieldPath": "channel",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "enabled",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "platform",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "fingerprint_hash",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "id",
-          "order": "ASCENDING"
-        }
-      ]
-    },
-    {
-      "collectionGroup": "hot_updater_v1_bundles",
-      "queryScope": "COLLECTION",
-      "fields": [
-        {
-          "fieldPath": "channel",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "enabled",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "fingerprint_hash",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "platform",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "id",
-          "order": "DESCENDING"
-        }
+        { "fieldPath": "channel", "order": "ASCENDING" },
+        { "fieldPath": "enabled", "order": "ASCENDING" },
+        { "fieldPath": "fingerprint_hash", "order": "ASCENDING" },
+        { "fieldPath": "platform", "order": "ASCENDING" },
+        { "fieldPath": "id", "order": "DESCENDING" }
       ]
     }
   ],
-  "fieldOverrides": [
-    {
-      "collectionGroup": "hot_updater_v2_insights_events",
-      "fieldPath": "id",
-      "indexes": []
-    },
-    {
-      "collectionGroup": "hot_updater_v2_insights_events",
-      "fieldPath": "type",
-      "indexes": []
-    },
-    {
-      "collectionGroup": "hot_updater_v2_insights_events",
-      "fieldPath": "install_id",
-      "indexes": []
-    },
-    {
-      "collectionGroup": "hot_updater_v2_insights_events",
-      "fieldPath": "user_id",
-      "indexes": []
-    },
-    {
-      "collectionGroup": "hot_updater_v2_insights_events",
-      "fieldPath": "username",
-      "indexes": []
-    },
-    {
-      "collectionGroup": "hot_updater_v2_insights_events",
-      "fieldPath": "from_bundle_id",
-      "indexes": []
-    },
-    {
-      "collectionGroup": "hot_updater_v2_insights_events",
-      "fieldPath": "from_release_id",
-      "indexes": []
-    },
-    {
-      "collectionGroup": "hot_updater_v2_insights_events",
-      "fieldPath": "to_bundle_id",
-      "indexes": []
-    },
-    {
-      "collectionGroup": "hot_updater_v2_insights_events",
-      "fieldPath": "to_release_id",
-      "indexes": []
-    },
-    {
-      "collectionGroup": "hot_updater_v2_insights_events",
-      "fieldPath": "platform",
-      "indexes": []
-    },
-    {
-      "collectionGroup": "hot_updater_v2_insights_events",
-      "fieldPath": "app_version",
-      "indexes": []
-    },
-    {
-      "collectionGroup": "hot_updater_v2_insights_events",
-      "fieldPath": "channel",
-      "indexes": []
-    },
-    {
-      "collectionGroup": "hot_updater_v2_insights_events",
-      "fieldPath": "cohort",
-      "indexes": []
-    },
-    {
-      "collectionGroup": "hot_updater_v2_insights_events",
-      "fieldPath": "update_strategy",
-      "indexes": []
-    },
-    {
-      "collectionGroup": "hot_updater_v2_insights_events",
-      "fieldPath": "fingerprint_hash",
-      "indexes": []
-    },
-    {
-      "collectionGroup": "hot_updater_v2_insights_events",
-      "fieldPath": "sdk_version",
-      "indexes": []
-    },
-    {
-      "collectionGroup": "hot_updater_v2_insights_events",
-      "fieldPath": "received_at_ms",
-      "indexes": []
-    },
-    {
-      "collectionGroup": "hot_updater_v2_insights_events",
-      "fieldPath": "_insights_layout_version",
-      "indexes": []
-    },
-    {
-      "collectionGroup": "hot_updater_v2_insights_events",
-      "fieldPath": "_insights_page_shard",
-      "indexes": []
-    },
-    {
-      "collectionGroup": "hot_updater_v2_insights_events",
-      "fieldPath": "_insights_source_shard",
-      "indexes": []
-    },
-    {
-      "collectionGroup": "hot_updater_v2_insights_events",
-      "fieldPath": "_insights_source_seq",
-      "indexes": []
-    },
-    {
-      "collectionGroup": "hot_updater_v2_insights_events",
-      "fieldPath": "_insights_install_key",
-      "indexes": []
-    },
-    {
-      "collectionGroup": "hot_updater_v2_insights_events",
-      "fieldPath": "_insights_to_bundle_key",
-      "indexes": []
-    },
-    {
-      "collectionGroup": "hot_updater_v2_insights_events",
-      "fieldPath": "_insights_from_bundle_key",
-      "indexes": []
-    },
-    {
-      "collectionGroup": "hot_updater_v2_insights_source_clocks",
-      "fieldPath": "sequence",
-      "indexes": []
-    },
-    {
-      "collectionGroup": "hot_updater_v2_insights_source_clocks",
-      "fieldPath": "shard",
-      "indexes": []
-    },
-    {
-      "collectionGroup": "hot_updater_v2_insights_work",
-      "fieldPath": "row",
-      "indexes": []
-    },
-    {
-      "collectionGroup": "hot_updater_v2_insights_work",
-      "fieldPath": "bucketCounts",
-      "indexes": []
-    },
-    {
-      "collectionGroup": "hot_updater_v2_insights_work",
-      "fieldPath": "total",
-      "indexes": []
-    },
-    {
-      "collectionGroup": "hot_updater_v2_insights_work",
-      "fieldPath": "label0",
-      "indexes": []
-    },
-    {
-      "collectionGroup": "hot_updater_v2_insights_work",
-      "fieldPath": "label1",
-      "indexes": []
-    },
-    {
-      "collectionGroup": "hot_updater_v2_insights_work",
-      "fieldPath": "label2",
-      "indexes": []
-    },
-    {
-      "collectionGroup": "hot_updater_v2_insights_work",
-      "fieldPath": "sortSection",
-      "indexes": []
-    },
-    {
-      "collectionGroup": "hot_updater_v2_insights_work",
-      "fieldPath": "sort0",
-      "indexes": []
-    },
-    {
-      "collectionGroup": "hot_updater_v2_insights_work",
-      "fieldPath": "sort1",
-      "indexes": []
-    },
-    {
-      "collectionGroup": "hot_updater_v2_insights_work",
-      "fieldPath": "sort2",
-      "indexes": []
-    },
-    {
-      "collectionGroup": "hot_updater_v2_insights_work",
-      "fieldPath": "sort3",
-      "indexes": []
-    },
-    {
-      "collectionGroup": "hot_updater_v2_insights_work",
-      "fieldPath": "sort4",
-      "indexes": []
-    },
-    {
-      "collectionGroup": "hot_updater_v2_insights_report_rows",
-      "fieldPath": "row",
-      "indexes": []
-    },
-    {
-      "collectionGroup": "hot_updater_v2_insights_report_rows",
-      "fieldPath": "ordinal",
-      "indexes": []
-    },
-    {
-      "collectionGroup": "hot_updater_v2_insights_report_rows",
-      "fieldPath": "bundleOrdinal",
-      "indexes": []
-    },
-    {
-      "collectionGroup": "hot_updater_v2_insights_jobs",
-      "fieldPath": "asOfMs",
-      "indexes": []
-    },
-    {
-      "collectionGroup": "hot_updater_v2_insights_jobs",
-      "fieldPath": "upperSequences",
-      "indexes": []
-    },
-    {
-      "collectionGroup": "hot_updater_v2_insights_installations",
-      "fieldPath": "received_at_ms",
-      "indexes": []
-    },
-    {
-      "collectionGroup": "hot_updater_v2_insights_installations",
-      "fieldPath": "_insights_first_source_id",
-      "indexes": []
-    },
-    {
-      "collectionGroup": "hot_updater_v2_insights_installations",
-      "fieldPath": "_insights_first_source_seq",
-      "indexes": []
-    },
-    {
-      "collectionGroup": "hot_updater_v2_insights_installations",
-      "fieldPath": "_insights_source_ids",
-      "indexes": []
-    },
-    {
-      "collectionGroup": "hot_updater_v2_insights_installation_versions",
-      "fieldPath": "sourceSequence",
-      "indexes": []
-    },
-    {
-      "collectionGroup": "hot_updater_v2_insights_installation_versions",
-      "fieldPath": "row",
-      "indexes": []
-    },
-    {
-      "collectionGroup": "hot_updater_v2_insights_publications",
-      "fieldPath": "asOfMs",
-      "indexes": []
-    },
-    {
-      "collectionGroup": "hot_updater_v2_insights_publications",
-      "fieldPath": "completedAtMs",
-      "indexes": []
-    },
-    {
-      "collectionGroup": "hot_updater_v2_insights_report_counts",
-      "fieldPath": "sequence",
-      "indexes": []
-    }
-  ]
+  "fieldOverrides": []
 }

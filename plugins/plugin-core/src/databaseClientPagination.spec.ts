@@ -8,24 +8,7 @@ import {
 import { createDatabaseClient } from "./databaseClient";
 import { loadBundleRows } from "./databaseClientReads";
 import { createMemoryDatabasePlugin } from "./databasePluginMemory.testFixtures";
-import type { BundleRow, InsightsModel } from "./types";
-
-const unusedInsights = {
-  append: async () => {},
-  runMaintenanceStep: async () => {},
-  pageEvents: async () => {
-    throw new Error("not implemented");
-  },
-  pageInstallations: async () => {
-    throw new Error("not implemented");
-  },
-  getReport: async () => {
-    throw new Error("not implemented");
-  },
-  pageReport: async () => {
-    throw new Error("not implemented");
-  },
-} satisfies InsightsModel;
+import type { BundleRow } from "./types";
 
 const createBundle = (id: string): Bundle => ({
   id,
@@ -41,7 +24,6 @@ describe("database client pagination", () => {
     const row = bundlesRow(createBundle("001"));
     const findMany = vi.fn(async () => [row]);
     const adapter = createDatabasePluginAdapter("finite-id-memory", {
-      insights: unusedInsights,
       create: async () => row,
       update: async () => row,
       delete: async () => {},
@@ -113,7 +95,6 @@ describe("database client pagination", () => {
     const plugin = createDatabasePlugin({
       name,
       ...createDatabasePluginAdapter(name, {
-        insights: unusedInsights,
         create: async () => {
           throw new Error("not implemented");
         },
@@ -164,7 +145,6 @@ describe("database client pagination", () => {
     const plugin = createDatabasePlugin({
       name,
       ...createDatabasePluginAdapter(name, {
-        insights: unusedInsights,
         create: async () => {
           throw new Error("not implemented");
         },

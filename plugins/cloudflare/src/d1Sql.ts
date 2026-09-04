@@ -9,57 +9,6 @@ export type D1Query = {
   readonly params: readonly string[];
 };
 
-export const normalizeD1SchemaSql = (value: string): string => {
-  let saved = "";
-  let quote: "'" | '"' | "`" | "]" | null = null;
-  for (let index = 0; index < value.length; index += 1) {
-    const character = value[index]!;
-    if (quote === "'") {
-      saved += character;
-      if (character === "'") {
-        if (value[index + 1] === "'") {
-          saved += value[index + 1];
-          index += 1;
-        } else {
-          quote = null;
-        }
-      }
-      continue;
-    }
-    if (quote !== null) {
-      saved += character.toLowerCase();
-      const closing = quote === "]" ? "]" : quote;
-      if (character === closing) {
-        if (quote !== "]" && value[index + 1] === closing) {
-          saved += value[index + 1]!.toLowerCase();
-          index += 1;
-        } else {
-          quote = null;
-        }
-      }
-      continue;
-    }
-    if (/\s/.test(character)) continue;
-    if (character === "'") {
-      quote = character;
-      saved += character;
-      continue;
-    }
-    if (character === '"' || character === "`") {
-      quote = character;
-      saved += character;
-      continue;
-    }
-    if (character === "[") {
-      quote = "]";
-      saved += character;
-      continue;
-    }
-    saved += character.toLowerCase();
-  }
-  return saved;
-};
-
 type D1Predicate = {
   readonly field: string;
   readonly operator?: DatabaseWhereOperator;

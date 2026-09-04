@@ -1,6 +1,9 @@
 import { expect, it } from "vitest";
 
-import { createBundlePatchRowFixture } from "../../../packages/test-utils/src/databaseTestFixtures";
+import {
+  createBundleEventRowFixture,
+  createBundlePatchRowFixture,
+} from "../../../packages/test-utils/src/databaseTestFixtures";
 import { parseD1Row } from "./d1Rows";
 
 const bundleD1Row = {
@@ -73,3 +76,36 @@ it.each(["null", "[]", "1", '"metadata"'])(
     );
   },
 );
+
+it("preserves explicit null Release ids on an Insights row", () => {
+  expect(
+    parseD1Row("bundle_events", createBundleEventRowFixture("1", 1)),
+  ).toMatchObject({ from_release_id: null, to_release_id: null });
+});
+
+it.each(["from_release_id", "to_release_id"])(
+  "rejects an omitted Insights field: %s",
+  (field) => {
+    const row: Record<string, unknown> = {
+      ...createBundleEventRowFixture("1", 1),
+    };
+    delete row[field];
+
+    expect(() => parseD1Row("bundle_events", row)).toThrow(
+      "D1 returned an invalid bundle_events row",
+    );
+  },
+);
+
+it.each([
+  { from_bundle_id: null },
+  { to_bundle_id: null },
+  { type: "UNCHANGED", from_bundle_id: "bundle-old", update_strategy: null },
+])("rejects an invalid Insights direction shape", (overrides) => {
+  expect(() =>
+    parseD1Row("bundle_events", {
+      ...createBundleEventRowFixture("1", 1),
+      ...overrides,
+    }),
+  ).toThrow("D1 returned an invalid bundle_events row");
+});

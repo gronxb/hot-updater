@@ -144,10 +144,7 @@ setupDatabasePluginTestSuite({
     database = drizzle(client, { schema });
   },
   createPlugin: (): DatabaseAdapterWithCapabilities =>
-    drizzleAdapter({
-      db: getDatabase(),
-      provider: "postgresql",
-    }),
+    drizzleAdapter({ db: getDatabase(), provider: "postgresql" }),
   reset: async () => {
     await getClient().exec(DATABASE_PLUGIN_TEST_RESET_SQL);
   },
@@ -201,10 +198,7 @@ describe("drizzleAdapter schema requirements", () => {
     const getDB = vi.fn(() => {
       throw new DrizzleTestStateError();
     });
-    const plugin = drizzleAdapter({
-      db: getDB,
-      provider: "postgresql",
-    });
+    const plugin = drizzleAdapter({ db: getDB, provider: "postgresql" });
 
     expect(() => plugin.models.channels.list({})).toThrow(
       "[hot-updater] Drizzle adapter requires schema when db is lazy.",

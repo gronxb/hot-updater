@@ -20,7 +20,6 @@ import { PutParameterCommand, SSMClient } from "@aws-sdk/client-ssm";
 import {
   BatchWriteCommand,
   DynamoDBDocumentClient,
-  QueryCommand,
   ScanCommand,
 } from "@aws-sdk/lib-dynamodb";
 import { transformEnv } from "@hot-updater/cli-tools";
@@ -46,7 +45,6 @@ import {
 } from "../../../packages/test-utils/src/runtimeProcess";
 import { cloudFrontDownloadUrl } from "../src/cloudFrontDownloadUrl";
 import { DYNAMODB_UPDATE_INDEX_NAME, dynamoDB } from "../src/dynamoDB";
-import { DYNAMODB_INSIGHTS_V2_PREFIX } from "../src/dynamoDBInsightsV2";
 import { s3Storage } from "../src/s3Storage";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -625,34 +623,15 @@ describe.sequential("aws lambda runtime acceptance", () => {
       error: "Not found",
     });
 
-    const sourceRows = (
-      await Promise.all(
-        Array.from({ length: 32 }, (_, sourceShard) =>
-          dynamodbClient.send(
-            new QueryCommand({
-              TableName: DYNAMODB_TABLE_NAME,
-              ConsistentRead: true,
-              KeyConditionExpression: "#pk = :pk AND #sk > :clock",
-              ExpressionAttributeNames: { "#pk": "pk", "#sk": "sk" },
-              ExpressionAttributeValues: {
-                ":pk": `${DYNAMODB_INSIGHTS_V2_PREFIX}#source#${sourceShard
-                  .toString()
-                  .padStart(2, "0")}`,
-                ":clock": "!clock",
-              },
-              Limit: 1,
-            }),
-          ),
-        ),
-      )
-    ).flatMap(({ Items }) => Items ?? []);
-    expect(sourceRows).toEqual([
+    await expect(
+      database.models.insights.scan({
+        beforeReceivedAtMs: Date.now() + 1_000,
+        limit: 10,
+      }),
+    ).resolves.toEqual([
       expect.objectContaining({
-        item_type: "source-event",
-        row: expect.objectContaining({
-          install_id: "aws-runtime-installation",
-          type: "UNCHANGED",
-        }),
+        install_id: "aws-runtime-installation",
+        type: "UNCHANGED",
       }),
     ]);
   });

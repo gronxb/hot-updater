@@ -96,15 +96,19 @@ structure only.
   chart calculation details accessible without adding a visible paragraph to
   every section.
 
-## 4. Availability and Data States
+## 4. Capability and Data States
 
-- Bundles and Insights are available with every supported database plugin.
+- Bundles is always available.
+- Insights navigation, protected route content, protected queries, and
+  per-bundle activity are absent until `supportsInsights` is confirmed true.
   Installation history remains a drill-down route under the single Insights
   navigation state.
-- Protected routes show a neutral, layout-stable shell while their first query
-  resolves. Query failures show a compact diagnostic state without replacing
-  the route structure.
+- An unresolved protected route shows only a neutral, layout-stable shell
+  loading state. Unsupported routes redirect to Bundles without mounting or
+  flashing protected content. Capability discovery errors show a compact
+  diagnostic state and a Bundles escape path, with no protected query.
 - Data surfaces define loading, empty, success, and genuine error states.
+  Unsupported capability is absence, not an error or empty-state card.
 - Insights language is direct and evidentiary: use Active installations,
   Latest bundle share, Newly applied, Recovered away, Configured rollout, and
   Last known bundle. Daily, Weekly, and Monthly active installations mean
@@ -179,18 +183,20 @@ success. Capability-unavailable primitives do not render.
   recorded event type, newest first, with no reporting-period or bundle filter.
   The title, total count, refresh action, and compact installation lookup sit
   inside the list header. The lookup is not an event filter. Pagination respects
-  opaque provider cursors and reads at most one bounded page at a time. There is
-  no total-record ceiling. Each installation links to its history; returning
-  restores the source event page and scroll position.
+  the existing Insights scan limit. Queries fail above the limit; this is not a
+  storage limit, and installation lookup does not bypass it. Show this
+  constraint when it causes a query error, not as a permanent banner. Each
+  installation links to its history; returning restores the source event page
+  and scroll position.
   Wide table columns follow time, event, user ID / install ID, app, and bundle.
   Narrow event rows lead with status and time, then identity, app, and bundle;
   this preserves each event's context without hiding columns offscreen. Times
-  use YYYY/MM/DD HH:mm:ss followed by the browser's numeric GMT offset, with
-  expandable exact UTC values. User IDs lead; shortened install and bundle IDs
-  reveal and copy their full values. UNCHANGED is presented as Activity
-  reported, a neutral activity observation on the current bundle.
-  Applied/adopted events use the semantic success color; recovery uses warning.
-  Text and icons remain present so color is never the only distinction.
+  use YYYY/MM/DD HH:mm:ss in the browser's named time zone, with expandable
+  exact UTC values. User IDs lead; shortened install and bundle IDs reveal and
+  copy their full values. UNCHANGED is presented as Activity reported, a neutral activity
+  observation on the current bundle. Applied/adopted events use the semantic
+  success color; recovery uses warning. Text and icons remain present so color
+  is never the only distinction.
 - **Installation history:** the Events lookup accepts a user ID or install
   ID and routes to the installation history drill-down. A user ID may match
   multiple installations; below `lg`, a labeled count and disclosure keep

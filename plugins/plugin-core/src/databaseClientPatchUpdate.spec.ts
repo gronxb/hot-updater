@@ -15,23 +15,6 @@ import { createMemoryDatabasePlugin } from "./databasePluginMemory.testFixtures"
 import { bundleToRow } from "./databaseRows";
 import type { DatabasePluginImplementation } from "./types/internal";
 
-const unusedInsights = {
-  append: async () => {},
-  runMaintenanceStep: async () => {},
-  pageEvents: async () => {
-    throw new Error("not implemented");
-  },
-  pageInstallations: async () => {
-    throw new Error("not implemented");
-  },
-  getReport: async () => {
-    throw new Error("not implemented");
-  },
-  pageReport: async () => {
-    throw new Error("not implemented");
-  },
-} satisfies DatabasePluginImplementation["insights"];
-
 const channelRow = { id: "channel-production", name: "production" } as const;
 
 const createBundle = (id: string): Bundle => ({
@@ -50,7 +33,6 @@ const createNativePlugin = (
   return createDatabasePlugin({
     name,
     ...createDatabasePluginAdapter(name, {
-      insights: unusedInsights,
       create: async (input) => input.data,
       update: async () => null,
       delete: async () => undefined,
@@ -92,7 +74,6 @@ describe("database client patch updates", () => {
     const plugin = createDatabasePlugin({
       name,
       ...createDatabasePluginAdapter(name, {
-        insights: unusedInsights,
         create,
         update: async () => null,
         delete: async () => undefined,
@@ -135,7 +116,6 @@ describe("database client patch updates", () => {
     const plugin = createDatabasePlugin({
       name,
       ...createDatabasePluginAdapter(name, {
-        insights: unusedInsights,
         create: async (input) => input.data,
         update: async () => {
           scalarUpdateCount += 1;

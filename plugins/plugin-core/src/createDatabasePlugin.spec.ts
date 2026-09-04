@@ -7,7 +7,6 @@ import {
   DatabasePluginInputError,
 } from "./createDatabasePlugin";
 import type {
-  BundleEventRow,
   DatabaseChange,
   DatabaseCommit,
   DatabasePluginImplementation,
@@ -21,14 +20,6 @@ const unimplemented = async (): Promise<never> => {
 };
 
 const createMethods = (): DatabasePluginImplementation => ({
-  insights: {
-    append: unimplemented,
-    runMaintenanceStep: unimplemented,
-    pageEvents: unimplemented,
-    pageInstallations: unimplemented,
-    getReport: unimplemented,
-    pageReport: unimplemented,
-  },
   create: unimplemented,
   update: unimplemented,
   delete: unimplemented,
@@ -106,26 +97,6 @@ const releaseRow = {
   updated_at_ms: 0,
 };
 
-const eventRow: BundleEventRow = {
-  id: "00000000-0000-7000-8000-000000000001",
-  type: "UPDATE_APPLIED",
-  install_id: "install-1",
-  user_id: null,
-  username: null,
-  from_bundle_id: "bundle-old",
-  from_release_id: null,
-  to_bundle_id: "bundle-new",
-  to_release_id: null,
-  platform: "ios",
-  app_version: "1.0.0",
-  channel: "production",
-  cohort: "0",
-  update_strategy: "appVersion",
-  fingerprint_hash: null,
-  sdk_version: null,
-  received_at_ms: 1,
-};
-
 describe("createDatabasePlugin", () => {
   it("exposes only models, commit, and lifecycle", () => {
     const plugin = createTestPlugin("memory", createMethods());
@@ -136,11 +107,6 @@ describe("createDatabasePlugin", () => {
     expect(plugin.models.channels.insert).toBeTypeOf("function");
     expect(plugin.models.channels.delete).toBeTypeOf("function");
     expect(plugin.models.insights.append).toBeTypeOf("function");
-    expect(plugin.models.insights.runMaintenanceStep).toBeTypeOf("function");
-    expect(plugin.models.insights.pageEvents).toBeTypeOf("function");
-    expect(plugin.models.insights.pageInstallations).toBeTypeOf("function");
-    expect(plugin.models.insights.getReport).toBeTypeOf("function");
-    expect(plugin.models.insights.pageReport).toBeTypeOf("function");
     expect(plugin.models.apiKeys.findByHash).toBeTypeOf("function");
     expect(plugin.commit).toBeTypeOf("function");
     expect(Object.keys(plugin).sort()).toEqual(["commit", "models", "name"]);
@@ -148,162 +114,6 @@ describe("createDatabasePlugin", () => {
     expect(Reflect.has(plugin, "bundles")).toBe(false);
     expect(Reflect.has(plugin, "getChannels")).toBe(false);
     expect(Reflect.has(plugin, "transaction")).toBe(false);
-  });
-
-  it("validates the complete event contract before the append hook", async () => {
-    const append = vi.fn(async () => {});
-    const plugin = createTestPlugin("memory", {
-      ...createMethods(),
-      insights: { ...createMethods().insights, append },
-    });
-    const invalidRows = [
-      { ...eventRow, id: "event-1" },
-      { id: eventRow.id },
-      {
-        ...eventRow,
-        extension: Array.from({ length: 21 }, () => "a".repeat(1000)),
-      },
-    ];
-
-    for (const row of invalidRows) {
-      await expect(
-        plugin.models.insights.append(row as BundleEventRow),
-      ).rejects.toMatchObject({ code: "invalid-data" });
-    }
-    expect(append).not.toHaveBeenCalled();
-
-    const eventWithExtension = { ...eventRow, provider_extension: "retained" };
-    await expect(
-      plugin.models.insights.append(eventWithExtension),
-    ).resolves.toBeUndefined();
-    expect(append).toHaveBeenCalledOnce();
-    expect(append).toHaveBeenCalledWith(eventWithExtension);
-  });
-
-  it("validates maintenance bounds before advancing a provider job", async () => {
-    const runMaintenanceStep = vi.fn(async () => {});
-    const plugin = createTestPlugin("memory", {
-      ...createMethods(),
-      insights: { ...createMethods().insights, runMaintenanceStep },
-    });
-
-    for (const input of [
-      { jobId: "", maxItems: 1, maxRequests: 1 },
-      { jobId: "job-1", maxItems: 0, maxRequests: 1 },
-      { jobId: "job-1", maxItems: 1, maxRequests: 4097 },
-    ]) {
-      await expect(
-        plugin.models.insights.runMaintenanceStep(input),
-      ).rejects.toMatchObject({ code: "invalid-query" });
-    }
-    expect(runMaintenanceStep).not.toHaveBeenCalled();
-
-    const input = { jobId: "job-1", maxItems: 256, maxRequests: 512 };
-    await expect(
-      plugin.models.insights.runMaintenanceStep(input),
-    ).resolves.toBeUndefined();
-    expect(runMaintenanceStep).toHaveBeenCalledExactlyOnceWith(input);
-  });
-
-  it("canonicalizes and validates every Insights read at the adapter boundary", async () => {
-    const failed = {
-      state: "failed" as const,
-      versions: {
-        schemaVersion: null,
-        storageVersion: null,
-        projectionGeneration: null,
-        sourceGeneration: null,
-      },
-      error: { code: "storage-not-ready" as const },
-    };
-    const pageEvents = vi.fn(async () => failed);
-    const pageInstallations = vi.fn(async () => failed);
-    const getReport = vi.fn(async () => failed);
-    const pageReport = vi.fn(async () => failed);
-    const plugin = createTestPlugin("memory", {
-      ...createMethods(),
-      insights: {
-        append: unimplemented,
-        runMaintenanceStep: unimplemented,
-        pageEvents,
-        pageInstallations,
-        getReport,
-        pageReport,
-      },
-    });
-
-    await expect(
-      plugin.models.insights.pageEvents({
-        selector: { kind: "all" },
-        beforeReceivedAtMs: 10,
-        limit: 1,
-      }),
-    ).resolves.toEqual(failed);
-    await expect(
-      plugin.models.insights.pageInstallations({
-        kind: "installationId",
-        installId: "install-1",
-        limit: 1,
-      }),
-    ).resolves.toEqual(failed);
-    await expect(
-      plugin.models.insights.getReport({
-        query: {
-          kind: "bundleSummaries",
-          bundleIds: ["bundle-b", "bundle-a", "bundle-b"],
-          window: "30d",
-        },
-      }),
-    ).resolves.toEqual(failed);
-    await expect(
-      plugin.models.insights.pageReport({
-        publicationId: "publication-1",
-        section: "bundleDistribution",
-        limit: 1,
-      }),
-    ).resolves.toEqual(failed);
-
-    expect(pageEvents).toHaveBeenCalledOnce();
-    expect(pageInstallations).toHaveBeenCalledOnce();
-    expect(getReport).toHaveBeenCalledWith({
-      query: {
-        kind: "bundleSummaries",
-        bundleIds: ["bundle-a", "bundle-b"],
-        window: "30d",
-      },
-    });
-    expect(pageReport).toHaveBeenCalledOnce();
-
-    await expect(
-      plugin.models.insights.pageEvents({
-        selector: { kind: "all" },
-        beforeReceivedAtMs: 10,
-        limit: 0,
-      }),
-    ).rejects.toMatchObject({ code: "invalid-query" });
-    expect(pageEvents).toHaveBeenCalledOnce();
-  });
-
-  it("rejects an illegal Insights result state from the provider", async () => {
-    const invalidPageEvents = (async () => ({
-      state: "expired" as const,
-      publicationId: "old",
-    })) as unknown as DatabasePluginImplementation["insights"]["pageEvents"];
-    const plugin = createTestPlugin("memory", {
-      ...createMethods(),
-      insights: {
-        ...createMethods().insights,
-        pageEvents: invalidPageEvents,
-      },
-    });
-
-    await expect(
-      plugin.models.insights.pageEvents({
-        selector: { kind: "all" },
-        beforeReceivedAtMs: 10,
-        limit: 1,
-      }),
-    ).rejects.toMatchObject({ code: "invalid-result" });
   });
 
   it("maps the domain bundle query to the low-level adapter", async () => {

@@ -15,7 +15,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import type { InsightsEventRow, InsightsViewPage } from "@/lib/insights-view";
+import type { EventHistoryResult } from "@/lib/api";
 
 import {
   EventBundleTransition,
@@ -25,21 +25,15 @@ import {
 } from "./EventDetails";
 import { EventHistoryList } from "./EventHistoryList";
 import { InsightsErrorAlert } from "./InsightsErrorAlert";
-import { InsightsPagination } from "./InsightsPagination";
-
-type EventsLocationState = {
-  readonly eventsBack?: readonly string[];
-  readonly eventsBefore: number;
-  readonly eventsCursor?: string;
-};
+import { InstallationPagination } from "./InstallationPagination";
 
 function EventIdentity({
   event,
-  eventsLocation,
+  offset,
   touch = false,
 }: {
-  readonly event: InsightsEventRow;
-  readonly eventsLocation: EventsLocationState;
+  readonly event: EventHistoryResult["data"][number];
+  readonly offset: number;
   readonly touch?: boolean;
 }) {
   return (
@@ -60,9 +54,11 @@ function EventIdentity({
         })}
         to="/installations"
         search={{
-          ...eventsLocation,
-          query: event.installId || undefined,
+          query: event.installId,
           installId: event.installId,
+          searchOffset: 0,
+          historyOffset: 0,
+          eventsOffset: offset,
         }}
         aria-label={`View history for ${event.userId ?? event.username ?? "anonymous installation"} (${event.installId})`}
       >
@@ -85,45 +81,43 @@ function EventIdentity({
 export function EventHistoryCard({
   children,
   error,
-  eventsLocation,
   history,
   isFetching,
   isLoading,
-  onNext,
-  onPrevious,
+  limit,
+  offset,
+  onOffsetChange,
   onRefresh,
-  pageNumber,
-  readState,
 }: {
   readonly children?: ReactNode;
   readonly error: Error | null;
-  readonly eventsLocation: EventsLocationState;
-  readonly history: InsightsViewPage<InsightsEventRow> | undefined;
+  readonly history: EventHistoryResult | undefined;
   readonly isFetching: boolean;
   readonly isLoading: boolean;
-  readonly onNext: () => void;
-  readonly onPrevious: () => void;
+  readonly limit: number;
+  readonly offset: number;
+  readonly onOffsetChange: (offset: number) => void;
   readonly onRefresh: () => void;
-  readonly pageNumber: number;
-  readonly readState?: ReactNode;
 }) {
   const dateTimeFormat = useInsightsTimeFormat();
-  const hasPrevious = pageNumber > 1;
+  const timeZone = dateTimeFormat.resolvedOptions().timeZone;
 
   return (
     <Card className="@container min-w-0 shadow-sm" aria-busy={isFetching}>
       <CardHeader className="gap-4 p-4 sm:p-6">
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <CardTitle>
-            <h2 className="flex items-center gap-2">
-              All events
-              {history?.total !== null && history?.total !== undefined ? (
-                <Badge variant="secondary" className="tabular-nums">
-                  {history.total.toLocaleString()}
-                </Badge>
-              ) : null}
-            </h2>
-          </CardTitle>
+          <div className="flex flex-col gap-2">
+            <CardTitle>
+              <h2 className="flex items-center gap-2">
+                All events
+                {history && !error ? (
+                  <Badge variant="secondary" className="tabular-nums">
+                    {history.pagination.total.toLocaleString()}
+                  </Badge>
+                ) : null}
+              </h2>
+            </CardTitle>
+          </div>
           <Button
             className="h-11 lg:h-8"
             disabled={isFetching}
@@ -148,8 +142,6 @@ export function EventHistoryCard({
             <Skeleton className="h-12 w-full" />
             <Skeleton className="h-12 w-full" />
           </div>
-        ) : readState ? (
-          <div className="px-4 pb-4 sm:px-6 sm:pb-6">{readState}</div>
         ) : error ? (
           <div className="px-6 pb-6">
             <InsightsErrorAlert
@@ -157,98 +149,90 @@ export function EventHistoryCard({
               fallbackTitle="Event history unavailable"
             />
           </div>
-        ) : history ? (
+        ) : history && history.data.length > 0 ? (
           <>
-            {history.data.length > 0 ? (
-              <>
-                <div className="@[58rem]:hidden">
-                  <EventHistoryList
-                    events={history.data}
-                    formatter={dateTimeFormat}
-                    renderIdentity={(event) => (
-                      <EventIdentity
-                        event={event}
-                        eventsLocation={eventsLocation}
-                        touch
-                      />
-                    )}
-                  />
-                </div>
-                <div className="hidden @[58rem]:block">
-                  <Table className="min-w-4xl table-fixed">
-                    <TableHeader>
-                      <TableRow className="[&>th]:px-4 sm:[&>th]:px-6">
-                        <TableHead className="w-64">Time</TableHead>
-                        <TableHead className="w-48">Event</TableHead>
-                        <TableHead className="w-48">
-                          User / installation
-                        </TableHead>
-                        <TableHead className="w-32">App</TableHead>
-                        <TableHead className="w-52">Bundle</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {history.data.map((event) => (
-                        <TableRow
-                          key={event.id}
-                          className="[&>td]:px-4 [&>td]:py-4 [&>td]:align-top sm:[&>td]:px-6"
-                        >
-                          <TableCell className="whitespace-normal text-xs tabular-nums">
-                            <EventTimestamp
-                              value={event.receivedAtMs}
-                              formatter={dateTimeFormat}
-                            />
-                          </TableCell>
-                          <TableCell>
-                            <EventTypeBadge type={event.type} />
-                          </TableCell>
-                          <TableCell>
-                            <EventIdentity
-                              event={event}
-                              eventsLocation={eventsLocation}
-                            />
-                          </TableCell>
-                          <TableCell className="whitespace-normal text-xs">
-                            <div className="flex flex-col gap-2">
-                              <span>
-                                {event.platform === "ios" ? "iOS" : "Android"}{" "}
-                                {event.appVersion}
-                              </span>
-                              <span className="text-muted-foreground">
-                                {event.channel}
-                              </span>
-                            </div>
-                          </TableCell>
-                          <TableCell className="whitespace-normal text-xs">
-                            <EventBundleTransition event={event} />
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                </div>
-              </>
-            ) : (
-              <div className="px-6 pb-6 text-sm text-muted-foreground">
-                {hasPrevious || history.hasNext
-                  ? "No events on this page"
-                  : "No events recorded yet"}
-              </div>
-            )}
-            {history.data.length > 0 || hasPrevious || history.hasNext ? (
-              <InsightsPagination
-                hasNext={history.hasNext}
-                hasPrevious={hasPrevious}
-                label="All events"
-                onNext={onNext}
-                onPrevious={onPrevious}
-                pageLength={history.data.length}
-                pageNumber={pageNumber}
-                total={history.total}
+            <div className="@[58rem]:hidden">
+              <EventHistoryList
+                events={history.data}
+                formatter={dateTimeFormat}
+                renderIdentity={(event) => (
+                  <EventIdentity event={event} offset={offset} touch />
+                )}
               />
-            ) : null}
+            </div>
+            <div className="hidden @[58rem]:block">
+              <Table className="min-w-4xl table-fixed">
+                <TableHeader>
+                  <TableRow className="[&>th]:px-4 sm:[&>th]:px-6">
+                    <TableHead className="w-52">Time ({timeZone})</TableHead>
+                    <TableHead className="w-48">Event</TableHead>
+                    <TableHead className="w-48">User ID / install ID</TableHead>
+                    <TableHead className="w-32">App</TableHead>
+                    <TableHead className="w-52">Bundle</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {history.data.map((event) => (
+                    <TableRow
+                      key={event.id}
+                      className="[&>td]:px-4 [&>td]:py-4 [&>td]:align-top sm:[&>td]:px-6"
+                    >
+                      <TableCell className="whitespace-normal text-xs tabular-nums">
+                        <EventTimestamp
+                          value={event.receivedAtMs}
+                          formatter={dateTimeFormat}
+                        />
+                      </TableCell>
+                      <TableCell>
+                        <EventTypeBadge type={event.type} />
+                      </TableCell>
+                      <TableCell>
+                        <EventIdentity event={event} offset={offset} />
+                      </TableCell>
+                      <TableCell className="whitespace-normal text-xs">
+                        <div className="flex flex-col gap-2">
+                          <span>
+                            {event.platform === "ios" ? "iOS" : "Android"}{" "}
+                            {event.appVersion}
+                          </span>
+                          <span className="text-muted-foreground">
+                            {event.channel}
+                          </span>
+                        </div>
+                      </TableCell>
+                      <TableCell className="whitespace-normal text-xs">
+                        <EventBundleTransition event={event} />
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+            <InstallationPagination
+              label="All events"
+              limit={limit}
+              offset={offset}
+              pageLength={history.data.length}
+              total={history.pagination.total}
+              onOffsetChange={onOffsetChange}
+            />
           </>
-        ) : null}
+        ) : (
+          <div className="flex flex-col gap-2 px-6 pb-6 text-sm">
+            <p>
+              {offset > 0 ? "No events on this page" : "No events recorded yet"}
+            </p>
+            {offset > 0 ? (
+              <Button
+                className="h-11 self-start lg:h-8"
+                onClick={() => onOffsetChange(0)}
+                variant="outline"
+              >
+                Go to first page
+              </Button>
+            ) : null}
+          </div>
+        )}
       </CardContent>
     </Card>
   );

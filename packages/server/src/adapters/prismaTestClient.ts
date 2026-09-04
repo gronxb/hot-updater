@@ -30,7 +30,6 @@ type Tables = {
 type Hooks = {
   beforeNextBundleUpdateMany: ((tables: Tables) => void) | undefined;
   failNextBundleDelete: boolean;
-  insightsGeneration: number;
   transactionOptions: ({ readonly isolationLevel?: string } | undefined)[];
 };
 
@@ -303,8 +302,6 @@ const createDelegate = (tables: Tables, model: keyof Tables, hooks: Hooks) => ({
   },
 });
 
-const insightsDatabaseNamespace = "00000000-0000-4000-8000-000000000001";
-
 const createClient = (tables: Tables, hooks: Hooks) => ({
   bundle_events: createDelegate(tables, "bundle_events", hooks),
   bundle_patches: createDelegate(tables, "bundle_patches", hooks),
@@ -313,25 +310,6 @@ const createClient = (tables: Tables, hooks: Hooks) => ({
   api_keys: createDelegate(tables, "api_keys", hooks),
   releases: createDelegate(tables, "releases", hooks),
   release_catalogs: createDelegate(tables, "release_catalogs", hooks),
-  $executeRawUnsafe: async () => 1,
-  $queryRawUnsafe: async <TResult>(query: string): Promise<TResult> => {
-    if (query.includes("select state.layout_version")) {
-      return [
-        {
-          layout_version: 4,
-          ready: true,
-          failed_reason: null,
-          source_id: insightsDatabaseNamespace,
-          generation: hooks.insightsGeneration,
-        },
-      ] as TResult;
-    }
-    if (query.includes("returning generation")) {
-      hooks.insightsGeneration += 1;
-      return [{ generation: hooks.insightsGeneration }] as TResult;
-    }
-    return [] as TResult;
-  },
 });
 
 export const createPrismaTestHarness = () => {
@@ -347,7 +325,6 @@ export const createPrismaTestHarness = () => {
   const hooks: Hooks = {
     beforeNextBundleUpdateMany: undefined,
     failNextBundleDelete: false,
-    insightsGeneration: 0,
     transactionOptions: [],
   };
   let transactionQueue = Promise.resolve();
@@ -402,12 +379,10 @@ export const createPrismaTestHarness = () => {
       hooks.failNextBundleDelete = true;
     },
     getTransactionOptions: () => structuredClone(hooks.transactionOptions),
-    getBundleEvents: () => structuredClone(tables.bundle_events),
     reset: (): void => {
       hooks.failNextBundleDelete = false;
       hooks.beforeNextBundleUpdateMany = undefined;
       hooks.transactionOptions.length = 0;
-      hooks.insightsGeneration = 0;
       transactionQueue = Promise.resolve();
       tables.bundle_patches = [];
       tables.bundles = [];

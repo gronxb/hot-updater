@@ -12,7 +12,7 @@ import {
   waitForServer,
 } from "@hot-updater/test-utils/node";
 import { execa } from "execa";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe } from "vitest";
 
 // Get the directory of this test file
 const __filename = fileURLToPath(import.meta.url);
@@ -84,45 +84,6 @@ describe("Hot Updater Handler Integration Tests (Hono + MongoDB)", () => {
       cwd: projectRoot,
     });
   }, 60000);
-
-  it("serves Insights immediately after the CLI migration", async () => {
-    const ingestion = await hotUpdater.handlers.client(
-      new Request("http://localhost/events", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          appVersion: "1.0.0",
-          channel: "production",
-          cohort: "default",
-          fingerprintHash: null,
-          fromBundleId: null,
-          fromReleaseId: null,
-          installId: "cli-provisioned-mongodb-install",
-          platform: "ios",
-          sdkVersion: "2.0.0",
-          toBundleId: "00000000-0000-7000-8000-000000000001",
-          toReleaseId: null,
-          type: "UNCHANGED",
-          updateStrategy: null,
-        }),
-      }),
-    );
-    expect(ingestion.status).toBe(204);
-
-    let overview: unknown;
-    for (let attempt = 0; attempt < 32; attempt++) {
-      const response = await hotUpdater.handlers.admin(
-        new Request("http://localhost/installations/overview"),
-      );
-      expect(response.status).toBe(200);
-      overview = await response.json();
-      if (Reflect.get(overview as object, "state") !== "preparing") break;
-    }
-    expect(overview).toMatchObject({
-      state: "ready",
-      data: { summary: { trackedInstallations: 1 } },
-    });
-  });
 
   setupBundleMethodsTestSuite({
     getBundleById: (id: string) => hotUpdater.getBundleById(id),

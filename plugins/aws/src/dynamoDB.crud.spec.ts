@@ -16,7 +16,6 @@ import {
   toDynamoDBBundleItem,
   toDynamoDBPatchItem,
 } from "./dynamoDB";
-import { createDynamoDBInsightsModel } from "./dynamoDBInsightsV2Jobs";
 
 const dynamodb = mockClient(DynamoDBDocumentClient);
 const bundleId = "00000000-0000-0000-0000-000000000001";
@@ -51,14 +50,9 @@ const createCrud = () => {
       region: "us-east-1",
     }),
   );
-  const store = { client, tableName: "hot-updater-metadata" };
   return createDynamoDBCrud(
-    store,
+    { client, tableName: "hot-updater-metadata" },
     "hot-updater-update-index",
-    createDynamoDBInsightsModel({
-      ...store,
-      insightsDatabaseNamespace: "00000000-0000-4000-8000-000000000001",
-    }),
   );
 };
 

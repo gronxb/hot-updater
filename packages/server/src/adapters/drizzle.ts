@@ -1,11 +1,6 @@
-import {
-  createDatabasePlugin,
-  type InsightsInstallationPageInput,
-  type InsightsModel,
-} from "@hot-updater/plugin-core";
+import { createDatabasePlugin } from "@hot-updater/plugin-core";
 import {
   createDatabasePluginAdapter,
-  OFFICIAL_INSIGHTS_DATABASE_NAMESPACE,
   type DatabasePluginImplementation,
   type TransactionDatabasePluginImplementation,
 } from "@hot-updater/plugin-core/internal";
@@ -22,7 +17,6 @@ import type {
 } from "../db/types";
 import { createDrizzleCrud } from "./drizzleCrud";
 import { createLazyDB } from "./drizzleLazyDB";
-import { createDrizzleInsightsQueries } from "./sqlInsights/drizzle";
 
 export type DrizzleProvider = Exclude<
   ORMProvider,
@@ -41,15 +35,9 @@ const createImplementation = (
 ): DatabasePluginImplementation => {
   const db = createLazyDB(config);
   const crud = createDrizzleCrud(db, config.provider);
-  const insights = createDrizzleInsightsQueries(
-    db,
-    config.provider,
-    OFFICIAL_INSIGHTS_DATABASE_NAMESPACE,
-  );
   const transaction = db.transaction?.bind(db);
   return {
     ...crud,
-    insights,
     deleteChannel: (input) => {
       if (transaction === undefined) {
         throw new Error(
@@ -129,15 +117,7 @@ export const drizzleAdapter = (
       },
       insights: {
         append: (row) => getAdapter().models.insights.append(row),
-        runMaintenanceStep: (input) =>
-          getAdapter().models.insights.runMaintenanceStep(input),
-        pageEvents: (input) => getAdapter().models.insights.pageEvents(input),
-        pageInstallations: ((input: InsightsInstallationPageInput) =>
-          getAdapter().models.insights.pageInstallations(
-            input,
-          )) as InsightsModel["pageInstallations"],
-        getReport: (input) => getAdapter().models.insights.getReport(input),
-        pageReport: (input) => getAdapter().models.insights.pageReport(input),
+        scan: (input) => getAdapter().models.insights.scan(input),
       },
       apiKeys: {
         create: (row) => getAdapter().models.apiKeys.create(row),

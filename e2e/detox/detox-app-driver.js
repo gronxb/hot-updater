@@ -35,7 +35,6 @@ const ACTION_RESULT_TEXT_FIELDS = {
 class DetoxAppDriver {
   constructor(client, initialValues = {}) {
     this.controlClient = client;
-    this.insightsBundleIds = new Set();
     this.stageValues = { ...initialValues };
   }
 
@@ -171,10 +170,21 @@ class DetoxAppDriver {
   }
 
   async verifyConsoleInsights(sinceMs) {
+    const bundleIds = [
+      ...new Set(
+        Object.values(this.stageValues).filter(
+          (value) =>
+            typeof value === "string" &&
+            /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+              value,
+            ),
+        ),
+      ),
+    ];
     const evidence = await this.controlClient.postJson(
       "verify Console Insights",
       "/e2e/verify-console-insights",
-      { bundleIds: [...this.insightsBundleIds], sinceMs },
+      { bundleIds, sinceMs },
     );
     console.log(`[detox-console-insights] ${JSON.stringify(evidence)}`);
     return evidence;
@@ -215,14 +225,6 @@ class DetoxAppDriver {
   }
 
   saveControlResult(options, result) {
-    if (
-      typeof result.bundleId === "string" &&
-      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
-        result.bundleId,
-      )
-    ) {
-      this.insightsBundleIds.add(result.bundleId);
-    }
     for (const [key, value] of Object.entries(result)) {
       this.stageValues[key] = value;
     }

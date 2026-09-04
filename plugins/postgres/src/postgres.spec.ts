@@ -14,8 +14,6 @@ import { describe, expect, it } from "vitest";
 
 import { postgres } from "./postgres";
 
-const insightsDatabaseNamespace = "00000000-0000-4000-8000-000000000001";
-
 class PostgresTestStateError extends Error {
   readonly name = "PostgresTestStateError";
 }
@@ -38,20 +36,8 @@ setupDatabasePluginTestSuite({
       "utf8",
     );
     await client.exec(schema);
-    await client.exec(
-      await fs.readFile("plugins/postgres/sql/insights-source-v1.sql", "utf8"),
-    );
-    await client.exec(`insert into private_hot_updater_insights_source_state
-      (id,version,source_id,initialized,ready,failed,revision) values
-      (1,1,'${insightsDatabaseNamespace}'::uuid,false,false,false,1)`);
-    await client.exec(
-      await fs.readFile("plugins/postgres/sql/insights-live-v1.sql", "utf8"),
-    );
   },
-  createPlugin: () =>
-    postgres({
-      dialect: new PGliteDialect(getClient()),
-    }),
+  createPlugin: () => postgres({ dialect: new PGliteDialect(getClient()) }),
   reset: async () => {
     await getClient().exec(
       "DELETE FROM bundle_events; DELETE FROM api_keys; DELETE FROM bundle_patches; DELETE FROM release_catalogs; DELETE FROM releases; DELETE FROM bundles; DELETE FROM channels;",
@@ -70,20 +56,9 @@ const createPostgresTestPlugin = async () => {
     "utf8",
   );
   await database.exec(schema);
-  await database.exec(
-    await fs.readFile("plugins/postgres/sql/insights-source-v1.sql", "utf8"),
-  );
-  await database.exec(`insert into private_hot_updater_insights_source_state
-    (id,version,source_id,initialized,ready,failed,revision) values
-    (1,1,'${insightsDatabaseNamespace}'::uuid,false,false,false,1)`);
-  await database.exec(
-    await fs.readFile("plugins/postgres/sql/insights-live-v1.sql", "utf8"),
-  );
   return {
     database,
-    plugin: postgres({
-      dialect: new PGliteDialect(database),
-    }),
+    plugin: postgres({ dialect: new PGliteDialect(database) }),
   };
 };
 

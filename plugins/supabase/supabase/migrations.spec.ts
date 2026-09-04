@@ -24,46 +24,11 @@ const readMigrations = async () => {
 };
 
 describe("Supabase v1 schema", () => {
-  it("ships the initial schema and additive native Insights migration", async () => {
+  it("ships a single 1.0.0 CREATE migration", async () => {
     const migrations = await readMigrations();
     expect(migrations.map(({ file }) => file)).toEqual([
       "20260818000000_hot-updater_1.0.0.sql",
-      "20260901030000_hot-updater_insights-scale.sql",
     ]);
-
-    const insightsSql = migrations[1]!.sql;
-    const prepareStart = insightsSql.indexOf(
-      "CREATE FUNCTION public.hot_updater_v1_insights_prepare(",
-    );
-    const reportStart = insightsSql.indexOf(
-      "CREATE FUNCTION public.hot_updater_v1_insights_report(",
-    );
-    const reportEnd = insightsSql.indexOf(
-      "REVOKE ALL ON FUNCTION public.hot_updater_v1_insights_report(",
-      reportStart,
-    );
-    expect(insightsSql).not.toMatch(/\bOFFSET\b/i);
-    expect(insightsSql).toContain("AND alias.id <= v_job.alias_upper_id");
-    expect(insightsSql).toContain(
-      "hot_updater_v1_insights_search_jobs_lookup_idx",
-    );
-    expect(insightsSql).toContain(
-      "hot_updater_v1_insights_publications_lookup_idx",
-    );
-    expect(
-      insightsSql.indexOf(
-        "hot_updater_v1_insights_canonical_json(\n        to_jsonb(v_event)",
-        prepareStart,
-      ),
-    ).toBeLessThan(
-      insightsSql.indexOf(
-        "WHERE source.id = 1 AND source.version = 2 AND source.poison IS NULL\n    FOR UPDATE",
-        prepareStart,
-      ),
-    );
-    expect(insightsSql.slice(reportStart, reportEnd)).not.toContain(
-      "FOR SHARE",
-    );
   });
 
   it("creates namespaced tables, RLS, and functions", async () => {

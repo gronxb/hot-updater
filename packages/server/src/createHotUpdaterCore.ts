@@ -1,6 +1,5 @@
 import {
   assertStorageOperations,
-  type InsightsModel,
   type StoragePlugin,
 } from "@hot-updater/plugin-core";
 
@@ -11,10 +10,7 @@ import {
 } from "./apiKeys";
 import type { ApiKeyManagementAPI } from "./apiKeys";
 import { createDatabasePluginCore } from "./db/databasePluginCore";
-import {
-  createInsightsSchemaReadinessChecker,
-  createSchemaReadinessChecker,
-} from "./db/schemaReadiness";
+import { createSchemaReadinessChecker } from "./db/schemaReadiness";
 import {
   type DatabaseAdapterCapabilities,
   type DatabaseAPI,
@@ -22,7 +18,8 @@ import {
   isDatabasePlugin,
 } from "./db/types";
 import { createHotUpdaterHandlers, type HotUpdaterHandlers } from "./handler";
-import { createValidatedInsightsModel } from "./insights/provider";
+import { createInsightsProvider } from "./insights/bounded/provider";
+import type { InsightsProvider } from "./insights/types";
 import { createStorageAccess } from "./storageAccess";
 
 export type RuntimeHotUpdaterAPI = DatabaseAPI & {
@@ -33,7 +30,7 @@ export type RuntimeHotUpdaterAPI = DatabaseAPI & {
    * always mounted; React Native clients report lifecycle events by default
    * and can opt out with `HotUpdater.init({ insights: false })`.
    */
-  readonly insights: InsightsModel;
+  readonly insights: InsightsProvider;
   /**
    * In-process API key lifecycle operations for trusted server tooling.
    * Creation returns the plaintext once; list and revoke expose only metadata.
@@ -166,22 +163,21 @@ export function createHotUpdaterCore(
     adapterName,
     adapterCapabilities.createMigrator,
   );
-  const assertInsightsSchemaReady = createInsightsSchemaReadinessChecker(
-    adapterName,
-    adapterCapabilities.createInsightsSchemaProvisioner,
-  );
   const core = createDatabasePluginCore(plugin, resolveFileUrl, {
     beforeOperation: assertSchemaReady,
     readStorageText,
   });
   const clientAccess = normalizeClientAccess(options.clientAccess);
-  const insights = createValidatedInsightsModel(
-    plugin.models.insights,
-    async () => {
+  const insights = createInsightsProvider({
+    async append(row) {
       await assertSchemaReady();
-      await assertInsightsSchemaReady();
+      return plugin.models.insights.append(row);
     },
-  );
+    async scan(input) {
+      await assertSchemaReady();
+      return plugin.models.insights.scan(input);
+    },
+  });
   const apiKeys = createApiKeyManagement({
     apiKeys: plugin.models.apiKeys,
     beforeOperation: assertSchemaReady,

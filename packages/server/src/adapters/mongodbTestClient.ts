@@ -1,6 +1,6 @@
 import type { BundlePatchRow, BundleRow } from "@hot-updater/plugin-core";
 import type { ClientSession } from "mongodb";
-import { BSON, Long, MongoClient } from "mongodb";
+import { MongoClient } from "mongodb";
 
 import {
   matchesMongoTestFilter,
@@ -16,18 +16,12 @@ type Tables = {
   api_keys: MongoTestRow[];
   releases: MongoTestRow[];
   release_catalogs: MongoTestRow[];
-  private_hot_updater_insights_source: MongoTestRow[];
-  private_hot_updater_insights_source_clocks: MongoTestRow[];
-  private_hot_updater_insights_source_events: MongoTestRow[];
-  private_hot_updater_insights_projection: MongoTestRow[];
 };
 
 type FindOptions = { readonly projection?: unknown };
-type UpdateInput = {
-  readonly $set?: Readonly<Record<string, unknown>>;
-  readonly $setOnInsert?: MongoTestRow;
-  readonly $inc?: Readonly<Record<string, number | Long>>;
-};
+type UpdateInput =
+  | { readonly $set: Readonly<Record<string, unknown>> }
+  | { readonly $setOnInsert: MongoTestRow };
 type MongoTestHooks = {
   beforeBundlePatchInsert?: () => Promise<void>;
   failNextBundleTombstone: boolean;
@@ -37,18 +31,6 @@ type MongoTestHooks = {
 class MongoTestConstraintError extends Error {
   readonly name = "MongoTestConstraintError";
 }
-
-const clone = <T>(value: T): T =>
-  BSON.deserialize(BSON.serialize({ value }), { promoteLongs: false })
-    .value as T;
-
-const increment = (current: unknown, value: number | Long): number | Long => {
-  if (Long.isLong(current))
-    return current.add(Long.isLong(value) ? value : Long.fromNumber(value));
-  if (typeof current === "number")
-    return current + (Long.isLong(value) ? value.toNumber() : value);
-  throw new MongoTestConstraintError("$inc requires a numeric field");
-};
 
 class MongoTestCursor {
   private offset = 0;
@@ -81,7 +63,7 @@ class MongoTestCursor {
 
   async toArray(): Promise<MongoTestRow[]> {
     const rows = sortMongoTestRows(this.rows, this.sortSpecification);
-    return clone(
+    return structuredClone(
       rows
         .slice(this.offset, this.offset + this.maximum)
         .map((row) => projectMongoTestRow(row, this.projection)),
@@ -94,7 +76,7 @@ const projectMongoTestRow = (
   projection: unknown,
 ): MongoTestRow => {
   if (typeof projection !== "object" || projection === null) return row;
-  const projected = clone(row);
+  const projected = structuredClone(row);
   for (const field of Object.keys(projected)) {
     if (Reflect.get(projection, field) === 0) {
       Reflect.deleteProperty(projected, field);
@@ -146,7 +128,7 @@ const createCollection = (
     );
     return row === undefined
       ? null
-      : clone(projectMongoTestRow(row, options?.projection));
+      : structuredClone(projectMongoTestRow(row, options?.projection));
   },
   findOneAndUpdate: async (
     filter: unknown,
@@ -158,31 +140,20 @@ const createCollection = (
     );
     const current = tables[model][index];
     if (current === undefined) return null;
-    const increments = Object.fromEntries(
-      Object.entries(update.$inc ?? {}).map(([field, value]) => [
-        field,
-        increment(Reflect.get(current, field), value),
-      ]),
-    );
-    const updated = {
-      ...current,
-      ...update.$set,
-      ...increments,
-    } as MongoTestRow;
+    if (!("$set" in update)) {
+      throw new MongoTestConstraintError("findOneAndUpdate requires $set");
+    }
+    const updated = { ...current, ...update.$set } as MongoTestRow;
     tables[model][index] = updated;
-    return clone(updated);
+    return structuredClone(updated);
   },
   insertOne: async (row: MongoTestRow): Promise<void> => {
     hooks.operationCount += 1;
     if (model === "bundle_patches") await hooks.beforeBundlePatchInsert?.();
-    const key = "_id" in row ? row._id : "id" in row ? row.id : row.scope_key;
+    const key = "id" in row ? row.id : row.scope_key;
     if (
       tables[model].some((candidate) =>
-        "_id" in candidate
-          ? candidate._id === key
-          : "id" in candidate
-            ? candidate.id === key
-            : candidate.scope_key === key,
+        "id" in candidate ? candidate.id === key : candidate.scope_key === key,
       )
     ) {
       throw new MongoTestConstraintError("duplicate id");
@@ -205,11 +176,11 @@ const createCollection = (
     ) {
       throw new MongoTestConstraintError("duplicate hash");
     }
-    tables[model].push(clone(row));
+    tables[model].push(structuredClone(row));
   },
   updateMany: async (filter: unknown, update: UpdateInput): Promise<void> => {
     hooks.operationCount += 1;
-    const values = update.$set ?? {};
+    const values = "$set" in update ? update.$set : {};
     tables[model] = tables[model].map((row) =>
       matchesMongoTestFilter(row, filter)
         ? ({ ...row, ...values } as MongoTestRow)
@@ -230,19 +201,15 @@ const createCollection = (
       matchesMongoTestFilter(row, filter),
     );
     if (index >= 0) {
-      tables[model][index] = {
-        ...tables[model][index],
-        ...update.$set,
-        ...Object.fromEntries(
-          Object.entries(update.$inc ?? {}).map(([field, value]) => [
-            field,
-            increment(Reflect.get(tables[model][index], field), value),
-          ]),
-        ),
-      } as MongoTestRow;
+      if ("$set" in update) {
+        tables[model][index] = {
+          ...tables[model][index],
+          ...update.$set,
+        } as MongoTestRow;
+      }
       return { matchedCount: 1, upsertedCount: 0 };
     }
-    if (options?.upsert === true && update.$setOnInsert) {
+    if (options?.upsert === true && "$setOnInsert" in update) {
       const key =
         "id" in update.$setOnInsert
           ? update.$setOnInsert.id
@@ -254,7 +221,7 @@ const createCollection = (
       ) {
         throw new MongoTestConstraintError("duplicate id");
       }
-      tables[model].push(clone(update.$setOnInsert));
+      tables[model].push(structuredClone(update.$setOnInsert));
       return { matchedCount: 0, upsertedCount: 1 };
     }
     return { matchedCount: 0, upsertedCount: 0 };
@@ -278,30 +245,6 @@ const createDatabase = (tables: Tables, hooks: MongoTestHooks) => ({
         return createCollection(tables, "releases", hooks);
       case "release_catalogs":
         return createCollection(tables, "release_catalogs", hooks);
-      case "private_hot_updater_insights_source":
-        return createCollection(
-          tables,
-          "private_hot_updater_insights_source",
-          hooks,
-        );
-      case "private_hot_updater_insights_source_clocks":
-        return createCollection(
-          tables,
-          "private_hot_updater_insights_source_clocks",
-          hooks,
-        );
-      case "private_hot_updater_insights_source_events":
-        return createCollection(
-          tables,
-          "private_hot_updater_insights_source_events",
-          hooks,
-        );
-      case "private_hot_updater_insights_projection":
-        return createCollection(
-          tables,
-          "private_hot_updater_insights_projection",
-          hooks,
-        );
       default:
         throw new MongoTestConstraintError(`unknown collection: ${name}`);
     }
@@ -309,31 +252,6 @@ const createDatabase = (tables: Tables, hooks: MongoTestHooks) => ({
 });
 
 export const createMongoTestHarness = () => {
-  const sourceId = "00000000-0000-4000-8000-000000000001";
-  const preparedSource = () => ({
-    state: [
-      {
-        _id: "source",
-        version: 1,
-        revision: 0,
-        phase: "ready",
-        sourceId,
-        eventCollectionUuid: "test-events",
-        stateCollectionUuid: "test-state",
-        clockCollectionUuid: "test-clocks",
-        ledgerCollectionUuid: "test-ledger",
-        upperId: null,
-        afterId: null,
-        processed: 0,
-      } as unknown as MongoTestRow,
-    ],
-    clocks: Array.from(
-      { length: 16 },
-      (_, shard) =>
-        ({ _id: shard, sourceId, value: Long.ZERO }) as unknown as MongoTestRow,
-    ),
-  });
-  const prepared = preparedSource();
   const tables: Tables = {
     bundle_patches: [],
     bundles: [],
@@ -342,10 +260,6 @@ export const createMongoTestHarness = () => {
     api_keys: [],
     releases: [],
     release_catalogs: [],
-    private_hot_updater_insights_source: prepared.state,
-    private_hot_updater_insights_source_clocks: prepared.clocks,
-    private_hot_updater_insights_source_events: [],
-    private_hot_updater_insights_projection: [],
   };
   const hooks: MongoTestHooks = {
     failNextBundleTombstone: false,
@@ -370,7 +284,7 @@ export const createMongoTestHarness = () => {
           });
           await previous;
           try {
-            const staged = clone(tables);
+            const staged = structuredClone(tables);
             activeTables = staged;
             const result = await transaction();
             tables.bundle_patches = staged.bundle_patches;
@@ -380,14 +294,6 @@ export const createMongoTestHarness = () => {
             tables.api_keys = staged.api_keys;
             tables.releases = staged.releases;
             tables.release_catalogs = staged.release_catalogs;
-            tables.private_hot_updater_insights_source =
-              staged.private_hot_updater_insights_source;
-            tables.private_hot_updater_insights_source_clocks =
-              staged.private_hot_updater_insights_source_clocks;
-            tables.private_hot_updater_insights_source_events =
-              staged.private_hot_updater_insights_source_events;
-            tables.private_hot_updater_insights_projection =
-              staged.private_hot_updater_insights_projection;
             return result;
           } finally {
             activeTables = tables;
@@ -412,11 +318,6 @@ export const createMongoTestHarness = () => {
       tables.api_keys = [];
       tables.releases = [];
       tables.release_catalogs = [];
-      const resetSource = preparedSource();
-      tables.private_hot_updater_insights_source = resetSource.state;
-      tables.private_hot_updater_insights_source_clocks = resetSource.clocks;
-      tables.private_hot_updater_insights_source_events = [];
-      tables.private_hot_updater_insights_projection = [];
     },
     getOperationCount: (): number => hooks.operationCount,
     setBeforeBundlePatchInsert: (

@@ -62,6 +62,7 @@ Run MongoDB as a replica set or sharded cluster and set `transactions: true`.
 v1 Release and Release Catalog changes must commit atomically. With transactions
 disabled, commits with revision expectations or multiple changes are rejected,
 so a standalone MongoDB server cannot support the normal v1 deployment workflow.
+
 ## Schema Generation
 
 Run the database migration to create the MongoDB collection and indexes.
@@ -71,13 +72,7 @@ npx hot-updater db migrate src/hotUpdater.ts
 ```
 
 This command targets `src/hotUpdater.ts` and creates all Hot Updater
-collections and indexes required by the active database schema. It migrates the
-core schema first, then provisions the native Insights source and projections
-with bounded, resumable steps.
-
-Stop and drain all Hot Updater event writers before running this command. Start
-only servers using the new schema after it completes. Existing event history is
-backfilled in place; the migration does not discard or rewrite those events.
+collections and indexes required by the active database schema.
 
 ## CLI Configuration
 

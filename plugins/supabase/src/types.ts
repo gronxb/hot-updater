@@ -24,6 +24,8 @@ export type SupabaseBundlePatchRow = {
   [TField in keyof BundlePatchRow]: BundlePatchRow[TField];
 };
 
+export type SupabaseBundleEventRow = BundleEventRow;
+
 export type SupabaseApiKeyRow = {
   [TField in keyof ApiKeyRow]: ApiKeyRow[TField];
 };
@@ -53,6 +55,7 @@ export type Database = {
       [SUPABASE_V1_TABLE_NAMES.bundles]: Table<SupabaseBundleRow>;
       [SUPABASE_V1_TABLE_NAMES.bundlePatches]: Table<SupabaseBundlePatchRow>;
       [SUPABASE_V1_TABLE_NAMES.channels]: Table<SupabaseChannelRow>;
+      [SUPABASE_V1_TABLE_NAMES.bundleEvents]: Table<SupabaseBundleEventRow>;
       [SUPABASE_V1_TABLE_NAMES.apiKeys]: Table<SupabaseApiKeyRow>;
       [SUPABASE_V1_TABLE_NAMES.releaseCatalogs]: Table<SupabaseReleaseCatalogRow>;
       [SUPABASE_V1_TABLE_NAMES.releases]: Table<SupabaseReleaseRow>;
@@ -70,114 +73,6 @@ export type Database = {
           p_id: string;
         };
         Returns: ChannelDeleteResult;
-      };
-      [SUPABASE_V1_FUNCTION_NAMES.insightsPrepare]: {
-        Args: {
-          p_database_namespace: string;
-          p_max_items: number;
-          p_batch: readonly Record<string, unknown>[];
-          p_batch_bytes: number;
-        };
-        Returns: Record<string, unknown>;
-      };
-      [SUPABASE_V1_FUNCTION_NAMES.insightsPrepareRead]: {
-        Args: { p_database_namespace: string; p_max_items: number };
-        Returns: Record<string, unknown>;
-      };
-      [SUPABASE_V1_FUNCTION_NAMES.insightsAppend]: {
-        Args: {
-          p_database_namespace: string;
-          p_event: BundleEventRow;
-          p_event_bytes: number;
-          p_install_key: string;
-          p_cohort_order: string;
-          p_aliases: readonly {
-            kind: "installationId" | "userId" | "username";
-            original: string;
-            normalized: string;
-          }[];
-        };
-        Returns: undefined;
-      };
-      [SUPABASE_V1_FUNCTION_NAMES.insightsEventPage]: {
-        Args: {
-          p_database_namespace: string;
-          p_scope: "all" | "installation" | "bundle";
-          p_scope_id: string | null;
-          p_before_received_at_ms: number;
-          p_since_received_at_ms: number;
-          p_limit: number;
-          p_cursor_received_at_ms: number | null;
-          p_cursor_id: string | null;
-        };
-        Returns: {
-          rows: BundleEventRow[];
-          hasMore: boolean;
-          sourceGeneration: string;
-        };
-      };
-      [SUPABASE_V1_FUNCTION_NAMES.insightsInstallationPage]: {
-        Args: {
-          p_database_namespace: string;
-          p_selector: Record<string, unknown>;
-          p_limit: number;
-          p_after_key: string | null;
-          p_after_ordinal: string | null;
-          p_publication_id: string | null;
-          p_min_as_of_ms: number | null;
-          p_now_ms: number;
-        };
-        Returns: Record<string, unknown>;
-      };
-      [SUPABASE_V1_FUNCTION_NAMES.insightsSearchStep]: {
-        Args: {
-          p_database_namespace: string;
-          p_job_id: string;
-          p_max_items: number;
-          p_max_bytes: number;
-        };
-        Returns: Record<string, unknown>;
-      };
-      [SUPABASE_V1_FUNCTION_NAMES.insightsReport]: {
-        Args: {
-          p_database_namespace: string;
-          p_query: Record<string, unknown>;
-          p_min_as_of_ms: number | null;
-          p_now_ms: number;
-        };
-        Returns: Record<string, unknown>;
-      };
-      [SUPABASE_V1_FUNCTION_NAMES.insightsReportStep]: {
-        Args: {
-          p_database_namespace: string;
-          p_job_id: string;
-          p_max_items: number;
-          p_max_bytes: number;
-        };
-        Returns: Record<string, unknown>;
-      };
-      [SUPABASE_V1_FUNCTION_NAMES.insightsReportPage]: {
-        Args: {
-          p_database_namespace: string;
-          p_publication_id: string;
-          p_section: Record<string, unknown>;
-          p_limit: number;
-          p_after: unknown;
-        };
-        Returns: Record<string, unknown>;
-      };
-      [SUPABASE_V1_FUNCTION_NAMES.insightsPrune]: {
-        Args: {
-          p_database_namespace: string;
-          p_before_ms: number;
-          p_max_items: number;
-          p_max_bytes: number;
-        };
-        Returns: Record<string, unknown>;
-      };
-      [SUPABASE_V1_FUNCTION_NAMES.insightsJobNext]: {
-        Args: { p_database_namespace: string };
-        Returns: Record<string, unknown>;
       };
     };
   };

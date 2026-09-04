@@ -16,10 +16,7 @@ setupDatabasePluginTestSuite({
   name: "mongoAdapter v2",
   migrate: () => undefined,
   createPlugin: () =>
-    mongoAdapter({
-      client: harness.client,
-      transactions: true,
-    }),
+    mongoAdapter({ client: harness.client, transactions: true }),
   reset: () => harness.reset(),
   dispose: () => harness.close(),
 });
@@ -45,8 +42,16 @@ describe("mongoAdapter capabilities", () => {
     await expect(
       plugin.commit({
         changes: [
-          { model: "bundles", operation: "insert", row: owner },
-          { model: "bundlePatches", operation: "insert", row: patch },
+          {
+            model: "bundles",
+            operation: "insert",
+            row: owner,
+          },
+          {
+            model: "bundlePatches",
+            operation: "insert",
+            row: patch,
+          },
         ],
       }),
     ).rejects.toMatchObject({ name: "DatabaseAtomicCommitUnsupportedError" });
@@ -55,10 +60,7 @@ describe("mongoAdapter capabilities", () => {
   it("recovers a tombstoned bundle when an aggregate delete is retried", async () => {
     harness.reset();
     const client = createDatabaseClient(
-      mongoAdapter({
-        client: harness.client,
-        transactions: true,
-      }),
+      mongoAdapter({ client: harness.client }),
     );
     const bundle = {
       id: "bundle-retry",

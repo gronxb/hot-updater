@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 
-import type { InsightsEventRow } from "@/lib/insights-view";
+import type { EventHistoryResult } from "@/lib/api";
 
 import {
   EventBundleTransition,
@@ -8,7 +8,9 @@ import {
   EventTypeBadge,
 } from "./EventDetails";
 
-export function EventHistoryList<T extends InsightsEventRow>({
+export function EventHistoryList<
+  T extends Omit<EventHistoryResult["data"][number], "installId">,
+>({
   events,
   formatter,
   renderIdentity,
@@ -20,7 +22,7 @@ export function EventHistoryList<T extends InsightsEventRow>({
   return (
     <>
       <p className="px-4 pb-2 text-xs text-muted-foreground sm:px-6">
-        Time in your browser zone
+        Time ({formatter.resolvedOptions().timeZone})
       </p>
       <ol aria-label="Events" className="divide-y border-y">
         {events.map((event) => (

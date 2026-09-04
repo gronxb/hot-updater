@@ -1,17 +1,10 @@
 import { expect, it } from "vitest";
 
-import {
-  createD1Implementation,
-  type D1Executor,
-  type D1Statement,
-} from "./d1Implementation";
-
-const createImplementation = (executor: D1Executor) =>
-  createD1Implementation(executor, "00000000-0000-4000-8000-000000000001");
+import { createD1Implementation, type D1Statement } from "./d1Implementation";
 
 it("guards every write and reports the missing change index", async () => {
   let recorded: readonly D1Statement[] = [];
-  const implementation = createImplementation({
+  const implementation = createD1Implementation({
     query: () => Promise.reject(new Error("unexpected standalone query")),
     async batch(statements) {
       recorded = statements;
@@ -58,13 +51,13 @@ it("guards every write and reports the missing change index", async () => {
   }
 });
 
-it("reconciles an atomic commit when its in-batch Release guard fails", async () => {
+it("aborts an atomic commit when a Release expectation changes after preflight", async () => {
   let queryCount = 0;
-  const implementation = createImplementation({
+  const implementation = createD1Implementation({
     async query(sql) {
       expect(sql).toContain("SELECT revision FROM releases");
       queryCount += 1;
-      return [{ actual_version: 2 }];
+      return [{ revision: queryCount }];
     },
     async batch(statements) {
       expect(statements[0]?.sql).toContain(
@@ -100,12 +93,11 @@ it("reconciles an atomic commit when its in-batch Release guard fails", async ()
       reason: "version_conflict",
     },
   });
-  expect(queryCount).toBe(1);
 });
 
 it("maps idempotent Channel inserts to the normalized table", async () => {
   let recorded: readonly D1Statement[] = [];
-  const implementation = createImplementation({
+  const implementation = createD1Implementation({
     query: () => Promise.reject(new Error("unexpected standalone query")),
     async batch(statements) {
       recorded = statements;
@@ -131,97 +123,9 @@ it("maps idempotent Channel inserts to the normalized table", async () => {
   expect(recorded[0]?.sql).toContain("ON CONFLICT(name) DO NOTHING");
 });
 
-it("rejects a 51-statement commit before calling D1 batch", async () => {
-  const batchSizes: number[] = [];
-  const implementation = createImplementation({
-    query: () => Promise.reject(new Error("unexpected standalone query")),
-    async batch(statements) {
-      batchSizes.push(statements.length);
-      return statements.map(() => []);
-    },
-  });
-  const commit = (count: number) =>
-    implementation.commit?.({
-      changes: Array.from({ length: count }, (_, index) => ({
-        model: "channels" as const,
-        operation: "insert" as const,
-        row: { id: `channel-${index}`, name: `channel-${index}` },
-        onConflict: "ignore" as const,
-      })),
-    });
-
-  await expect(commit(49)).resolves.toEqual({ committed: true });
-  await expect(commit(50)).resolves.toEqual({ committed: true });
-  await expect(commit(51)).rejects.toThrow();
-  expect(batchSizes).toEqual([49, 50]);
-});
-
-it("reserves the 50th query for one-shot expectation reconciliation", async () => {
-  let invocationQueries = 0;
-  const implementation = createImplementation({
-    async query() {
-      invocationQueries += 1;
-      return [{ actual_version: 2 }];
-    },
-    async batch(statements) {
-      invocationQueries += statements.length;
-      throw new Error("D1_ERROR: malformed JSON");
-    },
-  });
-  const commit = (count: number) =>
-    implementation.commit?.({
-      changes: Array.from({ length: count }, (_, index) => ({
-        model: "channels" as const,
-        operation: "insert" as const,
-        row: { id: `channel-${index}`, name: `channel-${index}` },
-        onConflict: "ignore" as const,
-      })),
-      expectations: [{ id: "release-1", model: "releases", revision: 1 }],
-    });
-
-  await expect(commit(48)).resolves.toMatchObject({
-    committed: false,
-    conflict: { actualVersion: 2, reason: "version_conflict" },
-  });
-  expect(invocationQueries).toBe(50);
-  await expect(commit(49)).rejects.toThrow();
-  expect(invocationQueries).toBe(50);
-});
-
-it("packs many commit expectations into one bound JSON parameter", async () => {
-  let statements: readonly D1Statement[] = [];
-  const implementation = createImplementation({
-    query: () => Promise.reject(new Error("unexpected reconciliation")),
-    async batch(input) {
-      statements = input;
-      return input.map((_, index) => (index === 0 ? [{}] : []));
-    },
-  });
-  await expect(
-    implementation.commit?.({
-      changes: [
-        {
-          model: "channels",
-          operation: "insert",
-          row: { id: "channel", name: "channel" },
-          onConflict: "ignore",
-        },
-      ],
-      expectations: Array.from({ length: 101 }, (_, index) => ({
-        id: `release-${index}`,
-        model: "releases" as const,
-        revision: null,
-      })),
-    }),
-  ).resolves.toEqual({ committed: true });
-  expect(statements).toHaveLength(2);
-  expect(statements.every(({ params }) => params.length <= 5)).toBe(true);
-  expect(statements[0]?.params).toHaveLength(1);
-});
-
 it("persists required archive and patch byte sizes", async () => {
   let recorded: readonly D1Statement[] = [];
-  const implementation = createImplementation({
+  const implementation = createD1Implementation({
     query: () => Promise.reject(new Error("unexpected standalone query")),
     async batch(statements) {
       recorded = statements;
@@ -270,7 +174,7 @@ it("persists required archive and patch byte sizes", async () => {
 });
 
 it("returns the canonical Channel row after a concurrent name conflict", async () => {
-  const implementation = createImplementation({
+  const implementation = createD1Implementation({
     query: () => Promise.reject(new Error("unexpected standalone query")),
     async batch(statements) {
       expect(statements[0]?.sql).toContain("ON CONFLICT(name) DO NOTHING");
@@ -298,7 +202,7 @@ it("deletes an empty Channel and distinguishes missing and referenced rows", asy
     [[], [], []],
     [[{ id: "active" }], [{ id: "release" }], []],
   ];
-  const implementation = createImplementation({
+  const implementation = createD1Implementation({
     query: () => Promise.reject(new Error("unexpected standalone query")),
     async batch(statements) {
       expect(statements[2]?.sql).toContain(
@@ -321,7 +225,7 @@ it("deletes an empty Channel and distinguishes missing and referenced rows", asy
 
 it("guards a generic Channel delete and reports a referenced conflict", async () => {
   let recorded: readonly D1Statement[] = [];
-  const implementation = createImplementation({
+  const implementation = createD1Implementation({
     query: () => Promise.reject(new Error("unexpected standalone query")),
     async batch(statements) {
       recorded = statements;

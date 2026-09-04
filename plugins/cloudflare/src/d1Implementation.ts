@@ -1,16 +1,15 @@
-import {
-  DatabasePluginInputError,
-  type BundlePatchRow,
-  type BundleRow,
-  type ChannelInsertInput,
-  type ChannelInsertResult,
-  type ChannelRow,
-  type ChannelDeleteInput,
-  type ChannelDeleteResult,
-  type DatabaseChange,
-  type DatabaseCommit,
-  type DatabaseCommitExpectation,
-  type DatabaseCommitResult,
+import type {
+  BundlePatchRow,
+  BundleRow,
+  ChannelInsertInput,
+  ChannelInsertResult,
+  ChannelRow,
+  ChannelDeleteInput,
+  ChannelDeleteResult,
+  DatabaseChange,
+  DatabaseCommit,
+  DatabaseCommitExpectation,
+  DatabaseCommitResult,
 } from "@hot-updater/plugin-core";
 import type {
   CreateDatabaseImplementationInput,
@@ -20,7 +19,6 @@ import type {
   UpdateDatabaseImplementationInput,
 } from "@hot-updater/plugin-core/internal";
 
-import { createD1InsightsModel } from "./d1InsightsModel";
 import { countD1Rows, d1TableNames, findManyD1Rows } from "./d1Query";
 import { parseD1Row } from "./d1Rows";
 import { buildD1Where, d1Placeholders, encodeD1Values } from "./d1Sql";
@@ -43,72 +41,37 @@ type D1Guard = {
 };
 
 const EXPECTATION_CONFLICT_MARKER = "HOT_UPDATER_COMMIT_EXPECTATION_CONFLICT";
-const MAX_D1_BATCH_STATEMENTS = 50;
 
 const expectationGuard = (
   expectations: readonly DatabaseCommitExpectation[],
-): D1Guard => ({
-  sql:
-    expectations.length === 0
-      ? "1"
-      : `NOT EXISTS (
-        SELECT 1 FROM json_each(?) AS expectation
-        WHERE
-          (json_extract(expectation.value, '$.model') = 'releases' AND (
-            (json_type(expectation.value, '$.expectedVersion') = 'null'
-              AND EXISTS (
-                SELECT 1 FROM releases
-                WHERE id = json_extract(expectation.value, '$.key')
-              ))
-            OR
-            (json_type(expectation.value, '$.expectedVersion') <> 'null'
-              AND NOT EXISTS (
-                SELECT 1 FROM releases
-                WHERE id = json_extract(expectation.value, '$.key')
-                  AND revision = json_extract(
-                    expectation.value, '$.expectedVersion'
-                  )
-              ))
-          ))
-          OR
-          (json_extract(expectation.value, '$.model') = 'releaseCatalogs' AND (
-            (json_type(expectation.value, '$.expectedVersion') = 'null'
-              AND EXISTS (
-                SELECT 1 FROM release_catalogs
-                WHERE scope_key = json_extract(expectation.value, '$.key')
-              ))
-            OR
-            (json_type(expectation.value, '$.expectedVersion') <> 'null'
-              AND NOT EXISTS (
-                SELECT 1 FROM release_catalogs
-                WHERE scope_key = json_extract(expectation.value, '$.key')
-                  AND generation = json_extract(
-                    expectation.value, '$.expectedVersion'
-                  )
-              ))
-          ))
-      )`,
-  params:
-    expectations.length === 0
-      ? []
-      : encodeD1Values([
-          expectations.map((expectation) => ({
-            model: expectation.model,
-            key:
-              expectation.model === "releases"
-                ? expectation.id
-                : expectation.scopeKey,
-            expectedVersion:
-              expectation.model === "releases"
-                ? expectation.revision
-                : expectation.generation,
-          })),
-        ]),
-});
+): D1Guard => {
+  const clauses: string[] = [];
+  const params: string[] = [];
+  for (const expectation of expectations) {
+    const isRelease = expectation.model === "releases";
+    const table = isRelease ? "releases" : "release_catalogs";
+    const keyField = isRelease ? "id" : "scope_key";
+    const versionField = isRelease ? "revision" : "generation";
+    const key = isRelease ? expectation.id : expectation.scopeKey;
+    const version = isRelease ? expectation.revision : expectation.generation;
+    if (version === null) {
+      clauses.push(
+        `NOT EXISTS (SELECT 1 FROM ${table} WHERE ${keyField} = json_extract(?, '$'))`,
+      );
+      params.push(...encodeD1Values([key]));
+    } else {
+      clauses.push(
+        `EXISTS (SELECT 1 FROM ${table} WHERE ${keyField} = json_extract(?, '$') AND ${versionField} = json_extract(?, '$'))`,
+      );
+      params.push(...encodeD1Values([key, version]));
+    }
+  }
+  return { sql: clauses.join(" AND ") || "1", params };
+};
 
 const readVersion = (
   row: unknown,
-  field: "actual_version" | "generation" | "revision",
+  field: "generation" | "revision",
 ): number | null => {
   if (typeof row !== "object" || row === null) return null;
   const value = Reflect.get(row, field);
@@ -119,39 +82,20 @@ const expectationConflict = async (
   executor: D1Executor,
   expectations: readonly DatabaseCommitExpectation[],
 ): Promise<DatabaseCommitResult | null> => {
-  if (expectations.length === 0) return null;
-  const rows = await executor.query(
-    `SELECT
-      CASE json_extract(value, '$.model')
-        WHEN 'releases' THEN (
-          SELECT revision FROM releases
-          WHERE id = json_extract(value, '$.key') LIMIT 1
-        )
-        WHEN 'releaseCatalogs' THEN (
-          SELECT generation FROM release_catalogs
-          WHERE scope_key = json_extract(value, '$.key') LIMIT 1
-        )
-      END AS actual_version
-    FROM json_each(?) ORDER BY CAST(key AS INTEGER)`,
-    encodeD1Values([
-      expectations.map((expectation) => ({
-        model: expectation.model,
-        key:
-          expectation.model === "releases"
-            ? expectation.id
-            : expectation.scopeKey,
-      })),
-    ]),
-  );
-  if (rows.length !== expectations.length) {
-    throw new DatabasePluginInputError("invalid-result");
-  }
-  for (const [index, expectation] of expectations.entries()) {
-    const expectedVersion =
-      expectation.model === "releases"
-        ? expectation.revision
-        : expectation.generation;
-    const actualVersion = readVersion(rows[index], "actual_version");
+  for (const expectation of expectations) {
+    const isRelease = expectation.model === "releases";
+    const table = isRelease ? "releases" : "release_catalogs";
+    const keyField = isRelease ? "id" : "scope_key";
+    const versionField = isRelease ? "revision" : "generation";
+    const key = isRelease ? expectation.id : expectation.scopeKey;
+    const expectedVersion = isRelease
+      ? expectation.revision
+      : expectation.generation;
+    const rows = await executor.query(
+      `SELECT ${versionField} FROM ${table} WHERE ${keyField} = json_extract(?, '$') LIMIT 1`,
+      encodeD1Values([key]),
+    );
+    const actualVersion = readVersion(rows[0], versionField);
     if (actualVersion !== expectedVersion) {
       return {
         committed: false,
@@ -159,10 +103,7 @@ const expectationConflict = async (
           actualVersion,
           changeIndex: -1,
           expectedVersion,
-          key:
-            expectation.model === "releases"
-              ? expectation.id
-              : expectation.scopeKey,
+          key,
           model: expectation.model,
           reason: "version_conflict",
         },
@@ -249,6 +190,7 @@ const insertQuery = (
       columns = ["id", "name"];
       values = channelValues(input.data);
       break;
+    case "bundle_events":
     case "api_keys":
     case "release_catalogs":
     case "releases":
@@ -497,6 +439,8 @@ const changeQuery = (change: DatabaseChange, guard: D1Guard): D1Statement => {
               ...guard.params,
             ],
           };
+    case "insights":
+      return insertQuery({ model: "bundle_events", data: change.row }, guard);
     case "apiKeys":
       return change.operation === "insert"
         ? insertQuery(
@@ -519,9 +463,7 @@ const changeQuery = (change: DatabaseChange, guard: D1Guard): D1Statement => {
   }
 };
 
-const createCommitPlan = async (
-  input: DatabaseCommit,
-): Promise<D1CommitPlan> => {
+const createCommitPlan = (input: DatabaseCommit): D1CommitPlan => {
   const checks: D1Check[] = [];
   const statements: D1Statement[] = [];
   const expectations = input.expectations ?? [];
@@ -621,13 +563,6 @@ const createCommitPlan = async (
   };
 
   statements.push(...input.changes.map((change) => changeQuery(change, guard)));
-  const reservedReconciliation = expectations.length > 0 ? 1 : 0;
-  if (
-    statements.length + reservedReconciliation > MAX_D1_BATCH_STATEMENTS ||
-    statements.some(({ params }) => params.length > 100)
-  ) {
-    throw new DatabasePluginInputError("invalid-query");
-  }
   return { checks, statements };
 };
 
@@ -702,9 +637,7 @@ const deleteChannel = async (
 
 export const createD1Implementation = (
   executor: D1Executor,
-  databaseNamespace: string,
 ): DatabasePluginImplementation => ({
-  insights: createD1InsightsModel(executor, databaseNamespace),
   async create(input) {
     const query = insertQuery(input);
     const rows = await executor.query(query.sql, query.params);
@@ -715,6 +648,8 @@ export const createD1Implementation = (
         return parseD1Row("bundle_patches", rows[0]);
       case "channels":
         return parseD1Row("channels", rows[0]);
+      case "bundle_events":
+        return parseD1Row("bundle_events", rows[0]);
       case "api_keys":
         return parseD1Row("api_keys", rows[0]);
       case "releases":
@@ -771,7 +706,9 @@ export const createD1Implementation = (
   async commit(input) {
     if (input.changes.length === 0) return { committed: true };
     const expectations = input.expectations ?? [];
-    const plan = await createCommitPlan(input);
+    const conflict = await expectationConflict(executor, expectations);
+    if (conflict !== null) return conflict;
+    const plan = createCommitPlan(input);
     try {
       return resultForPlan(plan, await executor.batch(plan.statements));
     } catch (error) {

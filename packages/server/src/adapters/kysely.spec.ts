@@ -15,9 +15,6 @@ import {
   DATABASE_PLUGIN_TEST_SCHEMA_SQL,
 } from "./databasePluginTestDatabase";
 import { kyselyAdapter } from "./kysely";
-import { migrateKyselyInsights } from "./sqlInsights/kysely";
-
-const insightsDatabaseNamespace = "00000000-0000-4000-8000-000000000001";
 
 class KyselyTestStateError extends Error {
   readonly name = "KyselyTestStateError";
@@ -42,17 +39,9 @@ setupDatabasePluginTestSuite({
     client = new PGlite();
     database = new Kysely<object>({ dialect: new PGliteDialect(client) });
     await client.exec(DATABASE_PLUGIN_TEST_SCHEMA_SQL);
-    await migrateKyselyInsights(
-      database,
-      "postgresql",
-      insightsDatabaseNamespace,
-    );
   },
   createPlugin: (): DatabaseAdapterWithCapabilities =>
-    kyselyAdapter({
-      db: getDatabase(),
-      provider: "postgresql",
-    }),
+    kyselyAdapter({ db: getDatabase(), provider: "postgresql" }),
   reset: async () => {
     await getClient().exec(DATABASE_PLUGIN_TEST_RESET_SQL);
   },
@@ -76,10 +65,7 @@ describe("kyselyAdapter SQLite JSON storage", () => {
         "metadata text not null",
       ),
     );
-    const plugin = kyselyAdapter({
-      db: sqliteDatabase,
-      provider: "sqlite",
-    });
+    const plugin = kyselyAdapter({ db: sqliteDatabase, provider: "sqlite" });
     const row = {
       ...createBundleRowFixture("901"),
       metadata: { app_version: "1.0.0" },

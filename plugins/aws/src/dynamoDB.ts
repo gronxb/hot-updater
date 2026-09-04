@@ -15,6 +15,7 @@ import {
   type TransactWriteCommandInput,
 } from "@aws-sdk/lib-dynamodb";
 import {
+  type BundleEventRow,
   type BundlePatchRow,
   type BundleRow,
   type InsightsModel,
@@ -34,7 +35,6 @@ import {
 } from "@hot-updater/plugin-core";
 import {
   createDatabasePluginAdapter,
-  OFFICIAL_INSIGHTS_DATABASE_NAMESPACE,
   type DatabaseDistinctOn,
   type DatabaseImplementationResult,
   type DatabaseModel,
@@ -45,7 +45,6 @@ import {
 } from "@hot-updater/plugin-core/internal";
 
 import { invalidateCloudFront } from "./cloudFrontInvalidation";
-import { createDynamoDBInsightsModel } from "./dynamoDBInsightsV2Jobs";
 
 export const DYNAMODB_MAX_METADATA_ITEM_BYTES = 8 * 1_024;
 export const DYNAMODB_MAX_CATALOG_ITEM_BYTES = 400 * 1_024;
@@ -1629,9 +1628,7 @@ const exactDynamoDBField = (
 export const createDynamoDBCrud = (
   store: DynamoDBStore,
   updateIndexName: string,
-  insights: InsightsModel,
 ): DatabasePluginImplementation => ({
-  insights,
   async create(input): Promise<DatabaseImplementationResult> {
     switch (input.model) {
       case "bundles":
@@ -2361,6 +2358,7 @@ const compileAndCommitDynamoDBChanges = async (
   const originalApiKeys = new Map<string, VersionedApiKey>();
   const apiKeys = new Map<string, VersionedApiKey>();
   const apiKeyHashes = new Map<string, string>();
+  const insights = new Map<string, BundleEventRow>();
 
   const rememberApiKey = (value: VersionedApiKey | null): void => {
     if (value === null || apiKeys.has(value.row.id)) return;
@@ -2547,6 +2545,16 @@ const compileAndCommitDynamoDBChanges = async (
           }
         }
         break;
+      case "insights": {
+        const key = insightsSortKey(change.row);
+        if (insights.has(key)) {
+          throw new DynamoDBCommitStateError(
+            `Insights event "${change.row.id}" is duplicated`,
+          );
+        }
+        insights.set(key, change.row);
+        break;
+      }
       case "apiKeys":
         if (change.operation === "insert") {
           rememberApiKey(await loadApiKeyByHash(store, change.row.hash));
@@ -2578,8 +2586,6 @@ const compileAndCommitDynamoDBChanges = async (
           });
         }
         break;
-      default:
-        throw new DynamoDBCommitStateError("Unsupported DynamoDB commit model");
     }
   }
 
@@ -2866,6 +2872,22 @@ const compileAndCommitDynamoDBChanges = async (
   });
   if (counter !== undefined) actions.push(counter);
 
+  for (const [key, row] of insights) {
+    actions.push({
+      Put: {
+        TableName: store.tableName,
+        Item: boundedDynamoDBMetadataItem({
+          pk: DYNAMODB_INSIGHTS_PARTITION,
+          sk: key,
+          version: 1,
+          row,
+        }),
+        ConditionExpression: "attribute_not_exists(#pk)",
+        ExpressionAttributeNames: { "#pk": "pk" },
+      },
+    });
+  }
+
   for (const [id, current] of apiKeys) {
     const original = originalApiKeys.get(id);
     if (original !== undefined && rowsEqual(original.row, current.row)) {
@@ -2928,8 +2950,36 @@ const createDynamoDBCommit =
       return compileAndCommitDynamoDBChanges(store, input);
     }
   };
+export const DYNAMODB_INSIGHTS_PARTITION = "bundle_events";
 export const DYNAMODB_API_KEY_PARTITION = "api_keys";
 export const DYNAMODB_API_KEY_HASH_PARTITION = "_hot-updater#api-key-hashes";
+
+const hasValidBundleEventShape = (value: object): boolean => {
+  const type = field(value, "type");
+  const fromBundleId = field(value, "from_bundle_id");
+  const updateStrategy = field(value, "update_strategy");
+  return (
+    ((type === "UPDATE_APPLIED" ||
+      type === "RECOVERED" ||
+      type === "RELEASE_ADOPTED") &&
+      typeof fromBundleId === "string" &&
+      (updateStrategy === "fingerprint" || updateStrategy === "appVersion")) ||
+    (type === "UNCHANGED" && fromBundleId === null && updateStrategy === null)
+  );
+};
+
+const isBundleEventRow = (value: unknown): value is BundleEventRow =>
+  typeof value === "object" &&
+  value !== null &&
+  typeof field(value, "id") === "string" &&
+  typeof field(value, "install_id") === "string" &&
+  isNullableString(field(value, "from_release_id")) &&
+  isNullableString(field(value, "to_release_id")) &&
+  typeof field(value, "to_bundle_id") === "string" &&
+  (field(value, "platform") === "ios" ||
+    field(value, "platform") === "android") &&
+  typeof field(value, "received_at_ms") === "number" &&
+  hasValidBundleEventShape(value);
 
 const isApiKeyRow = (value: unknown): value is ApiKeyRow =>
   typeof value === "object" &&
@@ -2958,6 +3008,81 @@ const parseOfficialRowItem = <TRow>(
   }
   return { row: value.row, version: value.version };
 };
+
+const timestampSortKey = (timestampMs: number): string =>
+  Math.trunc(timestampMs).toString().padStart(16, "0");
+
+const insightsSortKey = (
+  row: Pick<BundleEventRow, "id" | "received_at_ms">,
+): string => `${timestampSortKey(row.received_at_ms)}#${row.id}`;
+
+export const createDynamoDBInsightsTable = (
+  store: DynamoDBStore,
+): InsightsModel => ({
+  async append(row) {
+    await store.client.send(
+      new PutCommand({
+        TableName: store.tableName,
+        Item: boundedDynamoDBMetadataItem({
+          pk: DYNAMODB_INSIGHTS_PARTITION,
+          sk: insightsSortKey(row),
+          version: 1,
+          row,
+        }),
+        ConditionExpression: "attribute_not_exists(#pk)",
+        ExpressionAttributeNames: { "#pk": "pk" },
+      }),
+    );
+  },
+  async scan(input) {
+    if (input.limit <= 0) return [];
+    if (
+      input.after !== undefined &&
+      input.after.receivedAtMs >= input.beforeReceivedAtMs
+    ) {
+      return [];
+    }
+    const rows: BundleEventRow[] = [];
+    const afterKey =
+      input.after === undefined
+        ? undefined
+        : `${timestampSortKey(input.after.receivedAtMs)}#${input.after.id}`;
+    let exclusiveStartKey: Record<string, unknown> | undefined;
+    do {
+      const page = await store.client.send(
+        new QueryCommand({
+          TableName: store.tableName,
+          ExclusiveStartKey: exclusiveStartKey,
+          KeyConditionExpression:
+            afterKey === undefined
+              ? "#pk = :pk AND #sk < :before"
+              : "#pk = :pk AND #sk BETWEEN :after AND :before",
+          ExpressionAttributeNames: { "#pk": "pk", "#sk": "sk" },
+          ExpressionAttributeValues: {
+            ":before": `${timestampSortKey(input.beforeReceivedAtMs)}#`,
+            ":pk": DYNAMODB_INSIGHTS_PARTITION,
+            ...(afterKey === undefined ? {} : { ":after": afterKey }),
+          },
+          Limit: input.limit - rows.length + (afterKey === undefined ? 0 : 1),
+          ScanIndexForward: true,
+        }),
+      );
+      for (const item of page.Items ?? []) {
+        if (item.sk === afterKey) continue;
+        rows.push(
+          parseOfficialRowItem(
+            item,
+            DYNAMODB_INSIGHTS_PARTITION,
+            isBundleEventRow,
+          ).row,
+        );
+        if (rows.length === input.limit) return rows;
+      }
+      exclusiveStartKey = page.LastEvaluatedKey;
+    } while (exclusiveStartKey !== undefined);
+    return rows;
+  },
+});
 
 const apiKeyItem = (
   row: ApiKeyRow,
@@ -3123,11 +3248,7 @@ export const dynamoDB = (config: DynamoDBConfig) => {
       })
     : null;
   const store = { client, tableName };
-  const insights = createDynamoDBInsightsModel({
-    ...store,
-    insightsDatabaseNamespace: OFFICIAL_INSIGHTS_DATABASE_NAMESPACE,
-  });
-  const crud = createDynamoDBCrud(store, DYNAMODB_UPDATE_INDEX_NAME, insights);
+  const crud = createDynamoDBCrud(store, DYNAMODB_UPDATE_INDEX_NAME);
   const invalidateUpdateRoutes = async () => {
     if (!cloudFront || !cloudfrontDistributionId) return;
     try {
@@ -3163,6 +3284,7 @@ export const dynamoDB = (config: DynamoDBConfig) => {
         store,
         DYNAMODB_UPDATE_INDEX_NAME,
       ),
+      insights: createDynamoDBInsightsTable(store),
       apiKeys: createDynamoDBApiKeyTable(store),
     },
     async commit(input) {

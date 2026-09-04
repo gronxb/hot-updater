@@ -12,27 +12,6 @@ import type {
   DatabaseBundleQueryOrder,
   DatabaseBundleQueryWhere,
 } from "./index";
-import type {
-  InsightsInstallationPage,
-  InsightsInstallationPageInput,
-  InsightsInitialPublishedInstallationPage,
-  InsightsInitialPublishedInstallationPageInput,
-  InsightsLiveInstallationPage,
-  InsightsLiveInstallationPageInput,
-  InsightsMaintenanceStepInput,
-  InsightsPageEventsInput,
-  InsightsPageEventsResult,
-  InsightsPinnedInstallationPage,
-  InsightsPinnedInstallationPageInput,
-  InsightsPublishedInstallationContinuation,
-  InsightsPublishedInstallationContinuationInput,
-  InsightsPublishedInstallationPage,
-  InsightsPublishedInstallationPageInput,
-  InsightsReportInput,
-  InsightsReportPage,
-  InsightsReportPageInput,
-  InsightsReportResult,
-} from "./insightsQueries";
 
 export interface BundleModelQuery {
   readonly where?: DatabaseBundleQueryWhere;
@@ -81,31 +60,20 @@ export interface ReleaseCatalogModel {
   }): Promise<readonly ReleaseCatalogRow[]>;
 }
 
+export interface InsightsScanCursor {
+  readonly receivedAtMs: number;
+  readonly id: string;
+}
+
+export interface InsightsScanInput {
+  readonly beforeReceivedAtMs: number;
+  readonly after?: InsightsScanCursor;
+  readonly limit: number;
+}
+
 export interface InsightsModel {
   append(row: BundleEventRow): Promise<void>;
-  /** Advances at most one bounded durable preparation step. */
-  runMaintenanceStep(input: InsightsMaintenanceStepInput): Promise<void>;
-  pageEvents(input: InsightsPageEventsInput): Promise<InsightsPageEventsResult>;
-  pageInstallations(
-    input: InsightsLiveInstallationPageInput,
-  ): Promise<InsightsLiveInstallationPage>;
-  pageInstallations(
-    input: InsightsInitialPublishedInstallationPageInput,
-  ): Promise<InsightsInitialPublishedInstallationPage>;
-  pageInstallations(
-    input: InsightsPinnedInstallationPageInput,
-  ): Promise<InsightsPinnedInstallationPage>;
-  pageInstallations(
-    input: InsightsPublishedInstallationContinuationInput,
-  ): Promise<InsightsPublishedInstallationContinuation>;
-  pageInstallations(
-    input: InsightsPublishedInstallationPageInput,
-  ): Promise<InsightsPublishedInstallationPage>;
-  pageInstallations(
-    input: InsightsInstallationPageInput,
-  ): Promise<InsightsInstallationPage>;
-  getReport(input: InsightsReportInput): Promise<InsightsReportResult>;
-  pageReport(input: InsightsReportPageInput): Promise<InsightsReportPage>;
+  scan(input: InsightsScanInput): Promise<readonly BundleEventRow[]>;
 }
 
 export interface ApiKeyModel {
@@ -203,6 +171,11 @@ export type DatabaseChange =
       readonly model: "channels";
       readonly operation: "delete";
       readonly where: { readonly id: string };
+    }
+  | {
+      readonly model: "insights";
+      readonly operation: "insert";
+      readonly row: BundleEventRow;
     }
   | {
       readonly model: "apiKeys";

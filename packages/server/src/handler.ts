@@ -1,5 +1,3 @@
-import type { InsightsModel } from "@hot-updater/plugin-core";
-
 import { createBundleRouteHandlers } from "./handlerBundleRoutes";
 import { HandlerBadRequestError } from "./handlerErrors";
 import { createReleaseCatalogRouteHandlers } from "./handlerReleaseCatalogRoutes";
@@ -16,6 +14,7 @@ import {
   registerInsightsAdminRoutes,
   registerInsightsClientRoutes,
 } from "./insights/routes";
+import type { InsightsProvider } from "./insights/types";
 import { addRoute, createRouter, findRoute } from "./internalRouter";
 
 export type {
@@ -143,7 +142,7 @@ export function createHandlers(api: HandlerAPI): HotUpdaterHandlers {
 
 export function createHotUpdaterHandlers(
   api: HandlerAPI,
-  insights?: InsightsModel,
+  insights?: InsightsProvider,
   apiKeyAuth?: {
     readonly authenticate: (request: Request) => Promise<boolean>;
     readonly headerName: string;

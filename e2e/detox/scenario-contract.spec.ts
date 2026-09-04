@@ -1,11 +1,10 @@
 import { execFileSync } from "node:child_process";
 import fs from "node:fs/promises";
-import { createRequire } from "node:module";
 import path from "node:path";
 import { Script } from "node:vm";
 
 import { transformFileSync, transformSync } from "@babel/core";
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 
 import type { JsonObject } from "./control-client.ts";
 import { PAX_LONG_ASSET_MANIFEST_PATH } from "./pax-long-path-fixture.ts";
@@ -913,47 +912,6 @@ describe("Detox scenario contract", () => {
       "new DetoxAppDriver(controlClient, bootstrapResult)",
     );
     expect(detoxRuntimeSource).toContain("constructor(client, initialValues");
-  });
-
-  it("sends only bundle identities returned by trusted control fields to Insights", async () => {
-    const bundleA = "00000000-0000-7000-8000-000000000001";
-    const builtInBundleId = "7000-8000-000000000000";
-    const releaseA = "00000000-0000-7000-8000-000000000002";
-    const postJson = vi.fn(async () => ({}));
-    const runtimeRequire = createRequire(import.meta.url);
-    const { DetoxAppDriver: RuntimeDetoxAppDriver } = runtimeRequire(
-      detoxScenarioRuntimePath,
-    ) as {
-      readonly DetoxAppDriver: new (client: {
-        readonly postJson: typeof postJson;
-      }) => {
-        readonly saveControlResult: (
-          options: Readonly<Record<string, unknown>>,
-          result: Readonly<Record<string, unknown>>,
-        ) => void;
-        readonly verifyConsoleInsights: (sinceMs: number) => Promise<unknown>;
-      };
-    };
-    const driver = new RuntimeDetoxAppDriver({ postJson });
-
-    driver.saveControlResult(
-      {
-        saveResultAs: "bundleA",
-        saveResultFieldsAs: { releaseId: "releaseA" },
-      },
-      { bundleId: bundleA, releaseId: releaseA },
-    );
-    driver.saveControlResult(
-      { saveResultAs: "builtInBundleId" },
-      { builtInBundleId },
-    );
-    await driver.verifyConsoleInsights(123);
-
-    expect(postJson).toHaveBeenCalledWith(
-      "verify Console Insights",
-      "/e2e/verify-console-insights",
-      { bundleIds: [bundleA], sinceMs: 123 },
-    );
   });
 
   it("uses the checked-in native built-in marker for bootstrap assertions", async () => {

@@ -1,3 +1,10 @@
+export class InsightsScanLimitExceededError extends Error {
+  constructor(readonly limit: number) {
+    super(`Insights event scan exceeded ${limit} rows.`);
+    this.name = "InsightsScanLimitExceededError";
+  }
+}
+
 export class InsightsBadRequestError extends Error {
   readonly name = "InsightsBadRequestError";
 }

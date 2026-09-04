@@ -292,9 +292,7 @@ exec node "${path.join(firebaseFunctionsPackagePath, "lib/bin/firebase-functions
       storageBucket,
     };
 
-    database = firebaseDatabase({
-      ...adminOptions,
-    });
+    database = firebaseDatabase({ ...adminOptions });
     await registerApiKey({
       apiKey: API_KEY,
       apiKeys: database.models.apiKeys,

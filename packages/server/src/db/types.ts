@@ -57,10 +57,6 @@ export interface MigrationResult {
   getSQL?: () => string;
 }
 
-export interface SchemaProvisioner {
-  plan: () => Promise<MigrationResult>;
-}
-
 export interface Migrator {
   getVersion: () => Promise<string | undefined>;
   getNameVariants: () => Promise<unknown>;
@@ -87,7 +83,6 @@ export interface DatabaseAdapterCapabilities {
   adapterName?: string;
   provider?: ORMProvider;
   createMigrator?: () => Migrator;
-  createInsightsSchemaProvisioner?: () => SchemaProvisioner;
   generateSchema?: SchemaGenerator;
 }
 
@@ -133,14 +128,8 @@ export function isDatabasePlugin(plugin: unknown): plugin is DatabasePlugin {
     plugin.models.insights !== null &&
     "append" in plugin.models.insights &&
     typeof plugin.models.insights.append === "function" &&
-    "pageEvents" in plugin.models.insights &&
-    typeof plugin.models.insights.pageEvents === "function" &&
-    "pageInstallations" in plugin.models.insights &&
-    typeof plugin.models.insights.pageInstallations === "function" &&
-    "getReport" in plugin.models.insights &&
-    typeof plugin.models.insights.getReport === "function" &&
-    "pageReport" in plugin.models.insights &&
-    typeof plugin.models.insights.pageReport === "function" &&
+    "scan" in plugin.models.insights &&
+    typeof plugin.models.insights.scan === "function" &&
     "apiKeys" in plugin.models &&
     typeof plugin.models.apiKeys === "object" &&
     plugin.models.apiKeys !== null &&

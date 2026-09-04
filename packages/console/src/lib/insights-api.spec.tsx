@@ -1,84 +1,217 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { renderHook, waitFor } from "@testing-library/react";
+import { renderHook } from "@testing-library/react";
 import type { PropsWithChildren } from "react";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import {
-  insightsQueryKeys,
-  useInsightsEventsQuery,
-  useInsightsInstallationsQuery,
-  useInsightsReportQuery,
+  type InsightsCapabilityState,
+  ensureInsightsRouteAccess,
+  getActiveInstallationQueryOptions,
+  getInsightsCapabilityState,
+  getInsightsCapabilitiesQueryOptions,
+  getInsightsOverviewQueryOptions,
+  getProtectedInsightsRouteDecision,
+  isInsightsQueryEnabled,
+  useActiveInstallationQuery,
+  useInsightsOverviewQuery,
 } from "./insights-api";
 import {
-  getInsightsReportRpc,
-  pageInsightsEventsRpc,
-  pageInsightsInstallationsRpc,
+  getActiveInstallationOverviewRpc,
+  getInsightsCapabilitiesRpc,
+  getInsightsOverviewRpc,
 } from "./insights-rpc";
 
 vi.mock("./insights-rpc", () => ({
-  getInsightsReportRpc: vi.fn(),
-  pageInsightsEventsRpc: vi.fn(),
-  pageInsightsInstallationsRpc: vi.fn(),
-  pageInsightsReportRpc: vi.fn(),
+  getActiveInstallationOverviewRpc: vi.fn(),
+  getInsightsCapabilitiesRpc: vi.fn(),
+  getInsightsOverviewRpc: vi.fn(),
 }));
 
-describe("Insights query hooks", () => {
-  let client: QueryClient;
-  let wrapper: ({ children }: PropsWithChildren) => React.ReactNode;
+describe("insights capability gating", () => {
+  it.each([
+    {
+      name: "unresolved",
+      input: { status: "pending" as const },
+      state: "unresolved",
+      decision: "loading",
+      enabled: false,
+    },
+    {
+      name: "unsupported",
+      input: {
+        status: "success" as const,
+        data: { capabilities: { insights: false as const } },
+      },
+      state: "unsupported",
+      decision: "redirect",
+      enabled: false,
+    },
+    {
+      name: "supported",
+      input: {
+        status: "success" as const,
+        data: {
+          capabilities: {
+            insights: true as const,
+            mode: "bounded" as const,
+            maxMatchingRows: 50_000,
+          },
+        },
+      },
+      state: "supported",
+      decision: "allow",
+      enabled: true,
+    },
+    {
+      name: "error",
+      input: { status: "error" as const, error: new Error("offline") },
+      state: "error",
+      decision: "error",
+      enabled: false,
+    },
+  ])(
+    "keeps protected queries disabled for the $name state unless supported",
+    ({ input, state, decision, enabled }) => {
+      // Given / When
+      const capability = getInsightsCapabilityState(input);
 
-  beforeEach(() => {
-    vi.clearAllMocks();
-    client = new QueryClient({
+      // Then
+      expect(capability.status).toBe(state);
+      expect(getProtectedInsightsRouteDecision(capability)).toBe(decision);
+      expect(isInsightsQueryEnabled(capability)).toBe(enabled);
+    },
+  );
+});
+
+describe("insights route access", () => {
+  it("allows navigation when the shared capability query reports support", async () => {
+    vi.mocked(getInsightsCapabilitiesRpc).mockResolvedValueOnce({
+      capabilities: {
+        insights: true,
+        mode: "bounded",
+        maxMatchingRows: 50_000,
+      },
+    });
+    const queryClient = new QueryClient({
       defaultOptions: { queries: { retry: false } },
     });
-    wrapper = ({ children }) => (
-      <QueryClientProvider client={client}>{children}</QueryClientProvider>
-    );
+
+    await expect(
+      ensureInsightsRouteAccess(queryClient),
+    ).resolves.toBeUndefined();
+    expect(
+      queryClient.getQueryData(getInsightsCapabilitiesQueryOptions().queryKey),
+    ).toEqual({
+      capabilities: {
+        insights: true,
+        mode: "bounded",
+        maxMatchingRows: 50_000,
+      },
+    });
   });
 
-  afterEach(() => client.clear());
+  it("redirects navigation when the shared capability query reports no support", async () => {
+    vi.mocked(getInsightsCapabilitiesRpc).mockResolvedValueOnce({
+      capabilities: { insights: false },
+    });
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
 
-  it("keys an unfiltered event page by its immutable cutoff and cursor", async () => {
-    const input = {
-      selector: { kind: "all" as const },
-      beforeReceivedAtMs: 100,
-      limit: 50,
-      cursor: "next-page",
-    };
-    vi.mocked(pageInsightsEventsRpc).mockResolvedValue({
-      state: "preparing",
-    } as never);
-    renderHook(() => useInsightsEventsQuery(input), { wrapper });
-    await waitFor(() =>
-      expect(pageInsightsEventsRpc).toHaveBeenCalledWith({ data: input }),
+    await expect(ensureInsightsRouteAccess(queryClient)).rejects.toMatchObject({
+      options: { to: "/" },
+    });
+  });
+});
+
+describe("insights overview query", () => {
+  it.each<InsightsCapabilityState>([
+    { status: "unresolved" },
+    { status: "unsupported" },
+    { status: "error", error: new Error("offline") },
+  ])("does not execute while capability is $status", async (capability) => {
+    // Given
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    const wrapper = ({ children }: PropsWithChildren) => (
+      <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
     );
-    expect(insightsQueryKeys.events(input)).toEqual([
+
+    // When
+    renderHook(() => useInsightsOverviewQuery(capability), { wrapper });
+    await Promise.resolve();
+
+    // Then
+    expect(getInsightsOverviewRpc).not.toHaveBeenCalled();
+    queryClient.clear();
+  });
+
+  it("refreshes externally written overview data after a finite interval", () => {
+    // Given / When
+    const options = getInsightsOverviewQueryOptions({
+      status: "supported",
+      mode: "bounded",
+      maxMatchingRows: 50_000,
+    });
+
+    // Then
+    expect(options.staleTime).toBe(30_000);
+    expect(options.refetchOnWindowFocus).toBe(true);
+  });
+
+  it("separates active responses by window and normalized exact user ID", () => {
+    const supported = {
+      status: "supported",
+      mode: "bounded",
+      maxMatchingRows: 50_000,
+    } as const;
+    const first = getActiveInstallationQueryOptions(supported, {
+      window: "7d",
+      userId: "  Alias/B  ",
+    });
+    const second = getActiveInstallationQueryOptions(supported, {
+      window: "24h",
+      userId: "Alias/B",
+    });
+
+    expect(first.queryKey).toEqual([
       "insights",
-      "events",
-      input,
+      "active-installations",
+      "7d",
+      "Alias/B",
     ]);
+    expect(second.queryKey).not.toEqual(first.queryKey);
+    expect(first.enabled).toBe(true);
+    expect(
+      getActiveInstallationQueryOptions(
+        { status: "unsupported" },
+        { window: "7d", userId: "Alias/B" },
+      ).enabled,
+    ).toBe(false);
   });
+});
 
-  it("does not issue installation reads while the search is disabled", async () => {
+describe("active installation query", () => {
+  it.each<InsightsCapabilityState>([
+    { status: "unresolved" },
+    { status: "unsupported" },
+    { status: "error", error: new Error("offline") },
+  ])("does not execute while capability is $status", async (capability) => {
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    const wrapper = ({ children }: PropsWithChildren) => (
+      <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+    );
+
     renderHook(
-      () => useInsightsInstallationsQuery({ kind: "all", limit: 20 }, false),
+      () => useActiveInstallationQuery(capability, { window: "30d" }),
       { wrapper },
     );
     await Promise.resolve();
-    expect(pageInsightsInstallationsRpc).not.toHaveBeenCalled();
-  });
 
-  it("passes exact report inputs without converting them to offset queries", async () => {
-    const input = {
-      query: { kind: "activeOverview" as const, window: "30d" as const },
-      minAsOfMs: 123,
-    };
-    vi.mocked(getInsightsReportRpc).mockResolvedValue({
-      state: "preparing",
-    } as never);
-    renderHook(() => useInsightsReportQuery(input), { wrapper });
-    await waitFor(() =>
-      expect(getInsightsReportRpc).toHaveBeenCalledWith({ data: input }),
-    );
+    expect(getActiveInstallationOverviewRpc).not.toHaveBeenCalled();
+    queryClient.clear();
   });
 });

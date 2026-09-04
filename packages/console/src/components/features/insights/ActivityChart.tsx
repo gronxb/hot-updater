@@ -1,7 +1,7 @@
 import type {
-  InsightsActiveWindow,
-  InsightsSeriesRow,
-} from "@hot-updater/plugin-core";
+  ActiveInstallationOverview,
+  ActiveInstallationWindow,
+} from "@hot-updater/server";
 import { Link } from "@tanstack/react-router";
 import { Area, AreaChart, CartesianGrid, XAxis, YAxis } from "recharts";
 
@@ -13,7 +13,7 @@ import {
   ChartTooltipContent,
 } from "@/components/ui/chart";
 
-type ActivitySeries = readonly InsightsSeriesRow[];
+type ActivitySeries = ActiveInstallationOverview["series"];
 
 const dayFormatter = new Intl.DateTimeFormat("en", {
   day: "numeric",
@@ -29,7 +29,7 @@ const hourFormatter = new Intl.DateTimeFormat("en", {
 
 const formatBucket = (
   bucketStartMs: number,
-  window: InsightsActiveWindow,
+  window: ActiveInstallationWindow,
 ): string =>
   (window === "24h" ? hourFormatter : dayFormatter).format(
     new Date(bucketStartMs),
@@ -47,7 +47,7 @@ export function ActivityChart({
   window,
 }: {
   readonly series: ActivitySeries;
-  readonly window: InsightsActiveWindow;
+  readonly window: ActiveInstallationWindow;
 }) {
   const chartData = series.map((point) => ({
     bucketStartMs: point.bucketStartMs,

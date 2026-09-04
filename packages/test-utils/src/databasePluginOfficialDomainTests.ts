@@ -201,18 +201,39 @@ export const registerDatabasePluginOfficialDomainTests = (
       });
     });
 
-    it("accepts canonical Insights events through append", async () => {
+    it("appends and scans insights events in stable cursor order", async () => {
       const plugin = state.getPlugin();
       const first = createBundleEventRowFixture("701", 100);
       const second = createBundleEventRowFixture("702", 100);
       const third = createBundleEventRowFixture("703", 200);
+      await plugin.models.insights.append(third);
+      await plugin.models.insights.append(second);
+      await plugin.models.insights.append(first);
+
       await expect(
-        Promise.all([
-          plugin.models.insights.append(third),
-          plugin.models.insights.append(second),
-          plugin.models.insights.append(first),
-        ]),
-      ).resolves.toEqual([undefined, undefined, undefined]);
+        plugin.models.insights.scan({ beforeReceivedAtMs: 201, limit: 1 }),
+      ).resolves.toEqual([first]);
+      await expect(
+        plugin.models.insights.scan({
+          after: { receivedAtMs: first.received_at_ms, id: first.id },
+          beforeReceivedAtMs: 201,
+          limit: 1,
+        }),
+      ).resolves.toEqual([second]);
+      await expect(
+        plugin.models.insights.scan({
+          after: { receivedAtMs: first.received_at_ms, id: first.id },
+          beforeReceivedAtMs: 201,
+          limit: 10,
+        }),
+      ).resolves.toEqual([second, third]);
+      await expect(
+        plugin.models.insights.scan({
+          after: { receivedAtMs: second.received_at_ms, id: second.id },
+          beforeReceivedAtMs: 200,
+          limit: 10,
+        }),
+      ).resolves.toEqual([]);
     });
 
     it("creates, lists, resolves, and revokes API keys", async () => {

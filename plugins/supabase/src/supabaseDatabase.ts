@@ -14,7 +14,6 @@ import type {
 import {
   createDatabasePluginAdapter,
   DatabaseRowReferencedError,
-  OFFICIAL_INSIGHTS_DATABASE_NAMESPACE,
 } from "@hot-updater/plugin-core/internal";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 
@@ -27,11 +26,6 @@ import {
   SUPABASE_V1_FUNCTION_NAMES,
   SUPABASE_V1_TABLE_NAMES,
 } from "./supabaseInfrastructureNames";
-import {
-  createSupabaseInsights,
-  createSupabaseInsightsMaintenance,
-  readSupabaseInsightsDatabaseNamespace,
-} from "./supabaseInsights";
 import { SupabaseMissingDataError, throwSupabaseError } from "./supabaseResult";
 import type { Database } from "./types";
 
@@ -44,10 +38,8 @@ const isForeignKeyViolation = (error: unknown): boolean =>
 
 const createSupabaseImplementation = (
   supabase: SupabaseClient<Database>,
-  databaseNamespace: string,
 ): DatabasePluginImplementation => {
   const implementation: DatabasePluginImplementation = {
-    insights: createSupabaseInsights(supabase, databaseNamespace),
     async create(input: CreateDatabaseImplementationInput) {
       switch (input.model) {
         case "bundles": {
@@ -94,6 +86,18 @@ const createSupabaseImplementation = (
           throwSupabaseError("create channels", error);
           if (data === null) {
             throw new SupabaseMissingDataError("create channels");
+          }
+          return data;
+        }
+        case "bundle_events": {
+          const { data, error } = await supabase
+            .from(SUPABASE_V1_TABLE_NAMES.bundleEvents)
+            .insert(input.data)
+            .select("*")
+            .single();
+          throwSupabaseError("create bundle_events", error);
+          if (data === null) {
+            throw new SupabaseMissingDataError("create bundle_events");
           }
           return data;
         }
@@ -332,6 +336,21 @@ const createSupabaseImplementation = (
           throwSupabaseError("findMany bundles", error);
           return data ?? [];
         }
+        case "bundle_events": {
+          let query = supabase
+            .from(SUPABASE_V1_TABLE_NAMES.bundleEvents)
+            .select("*");
+          if (filter !== undefined) query = query.or(filter);
+          for (const clause of orderBy) {
+            query = query.order(clause.field, {
+              ascending: clause.direction === "asc",
+              ...(clause.nulls ? { nullsFirst: clause.nulls === "first" } : {}),
+            });
+          }
+          const { data, error } = await query.range(input.offset, rangeEnd);
+          throwSupabaseError("findMany bundle_events", error);
+          return data ?? [];
+        }
         case "api_keys": {
           let query = supabase
             .from(SUPABASE_V1_TABLE_NAMES.apiKeys)
@@ -470,36 +489,17 @@ const createSupabaseImplementation = (
 };
 
 export const supabaseDatabase = (config: SupabaseDatabaseConfig) => {
-  const databaseNamespace = readSupabaseInsightsDatabaseNamespace(
-    OFFICIAL_INSIGHTS_DATABASE_NAMESPACE,
-  );
   const supabase = createClient<Database>(
     config.supabaseUrl,
     resolveSupabaseServiceRoleKey(config),
   );
   const adapter = createDatabasePluginAdapter(
     "supabaseDatabase",
-    createSupabaseImplementation(supabase, databaseNamespace),
+    createSupabaseImplementation(supabase),
   );
   return createDatabasePlugin({
     name: "supabaseDatabase",
     models: adapter.models,
     commit: adapter.commit,
   });
-};
-
-/**
- * Creates the provider-local bounded worker used by an external scheduler.
- * `runScheduledStep` discovers one durable source/search/report job, so callers
- * do not need to persist a job ID between invocations.
- */
-export const supabaseInsightsMaintenance = (config: SupabaseDatabaseConfig) => {
-  const databaseNamespace = readSupabaseInsightsDatabaseNamespace(
-    OFFICIAL_INSIGHTS_DATABASE_NAMESPACE,
-  );
-  const supabase = createClient<Database>(
-    config.supabaseUrl,
-    resolveSupabaseServiceRoleKey(config),
-  );
-  return createSupabaseInsightsMaintenance(supabase, databaseNamespace);
 };

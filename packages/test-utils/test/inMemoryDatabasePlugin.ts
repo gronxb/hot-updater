@@ -1,6 +1,5 @@
 import {
   createDatabasePlugin,
-  type BundleEventRow,
   type DatabasePlugin,
 } from "@hot-updater/plugin-core";
 import {
@@ -21,7 +20,7 @@ type Table<TModel extends DatabaseModel> = {
 
 type Tables = {
   [TModel in DatabaseModel]: Table<TModel>;
-} & { insightsEvents: BundleEventRow[] };
+};
 
 class MemoryConstraintError extends Error {
   constructor(message: string) {
@@ -36,8 +35,8 @@ const createTables = (): Tables => ({
   releases: { rows: [] },
   release_catalogs: { rows: [] },
   channels: { rows: [] },
+  bundle_events: { rows: [] },
   api_keys: { rows: [] },
-  insightsEvents: [],
 });
 
 const assertReferences = (
@@ -67,6 +66,7 @@ const assertReferences = (
       }
       return;
     case "channels":
+    case "bundle_events":
     case "api_keys":
       return;
     case "bundle_patches":
@@ -120,6 +120,11 @@ const createCrudImplementation = (
         if (tables.bundle_patches.rows.some(({ id }) => id === input.data.id))
           break;
         tables.bundle_patches.rows.push(structuredClone(input.data));
+        return input.data;
+      case "bundle_events":
+        if (tables.bundle_events.rows.some(({ id }) => id === input.data.id))
+          break;
+        tables.bundle_events.rows.push(structuredClone(input.data));
         return input.data;
       case "releases":
         if (tables.releases.rows.some(({ id }) => id === input.data.id)) break;
@@ -332,6 +337,15 @@ const createCrudImplementation = (
           input.offset,
           input.limit,
         );
+      case "bundle_events":
+        return queryRows(
+          tables.bundle_events.rows,
+          input.where,
+          input.orderBy,
+          input.distinctOn,
+          input.offset,
+          input.limit,
+        );
       case "channels":
         return queryRows(
           tables.channels.rows,
@@ -385,42 +399,8 @@ const createImplementation = (tables: Tables): DatabasePluginImplementation => {
     return result;
   };
 
-  const insightsUnavailable = () =>
-    ({
-      state: "failed",
-      versions: {
-        schemaVersion: null,
-        storageVersion: null,
-        projectionGeneration: null,
-        sourceGeneration: null,
-      },
-      error: { code: "storage-not-ready" },
-    }) as const;
-
   return {
     ...createCrudImplementation(tables),
-    insights: {
-      append: (row: BundleEventRow) =>
-        withMutationLock(() => {
-          if (tables.insightsEvents.some(({ id }) => id === row.id)) {
-            throw new MemoryConstraintError("Duplicate Insights event id");
-          }
-          tables.insightsEvents.push(structuredClone(row));
-        }),
-      async runMaintenanceStep() {},
-      async pageEvents() {
-        return insightsUnavailable();
-      },
-      async pageInstallations() {
-        return insightsUnavailable();
-      },
-      async getReport() {
-        return insightsUnavailable();
-      },
-      async pageReport() {
-        return insightsUnavailable();
-      },
-    },
     insertChannel: ({ row }) =>
       withMutationLock(() => {
         const existing = tables.channels.rows.find(
@@ -458,6 +438,7 @@ const createImplementation = (tables: Tables): DatabasePluginImplementation => {
         tables.releases.rows = transactionTables.releases.rows;
         tables.release_catalogs.rows = transactionTables.release_catalogs.rows;
         tables.channels.rows = transactionTables.channels.rows;
+        tables.bundle_events.rows = transactionTables.bundle_events.rows;
         tables.api_keys.rows = transactionTables.api_keys.rows;
         return result;
       }),
@@ -488,7 +469,7 @@ export const createInMemoryDatabaseHarness = () => {
       tables.releases.rows = [];
       tables.release_catalogs.rows = [];
       tables.channels.rows = [];
-      tables.insightsEvents = [];
+      tables.bundle_events.rows = [];
       tables.api_keys.rows = [];
     },
   };

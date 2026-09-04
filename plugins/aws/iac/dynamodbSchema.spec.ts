@@ -29,15 +29,22 @@ const tableWithAttributes = (
 ) => ({
   AttributeDefinitions: attributes,
   BillingModeSummary: { BillingMode: "PAY_PER_REQUEST" },
+  OnDemandThroughput: {
+    MaxReadRequestUnits: 4_000,
+    MaxWriteRequestUnits: 100,
+  },
   GlobalSecondaryIndexes: [
     {
       IndexName: DYNAMODB_UPDATE_INDEX_NAME,
-      IndexStatus: "ACTIVE",
       KeySchema: [
         { AttributeName: "gsi1pk", KeyType: "HASH" },
         { AttributeName: "gsi1sk", KeyType: "RANGE" },
       ],
       Projection: { ProjectionType: "ALL" },
+      OnDemandThroughput: {
+        MaxReadRequestUnits: 4_000,
+        MaxWriteRequestUnits: 100,
+      },
     },
   ],
   KeySchema: [

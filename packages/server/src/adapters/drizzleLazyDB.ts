@@ -1,10 +1,10 @@
 import type {
+  BundleEventRow,
   BundlePatchRow,
   ChannelRow,
   ApiKeyRow,
   ReleaseCatalogRow,
 } from "@hot-updater/plugin-core";
-import type { SQL } from "drizzle-orm";
 
 import type { StoredBundleRow, StoredReleaseRow } from "./databasePluginUtils";
 import type { DrizzleConfig } from "./drizzle";
@@ -40,6 +40,7 @@ export type DrizzleDB = {
     readonly bundles: DrizzleQuery<StoredBundleRow>;
     readonly channels: DrizzleQuery<ChannelRow>;
     readonly bundle_patches: DrizzleQuery<BundlePatchRow>;
+    readonly bundle_events: DrizzleQuery<BundleEventRow>;
     readonly api_keys: DrizzleQuery<ApiKeyRow>;
     readonly releases: DrizzleQuery<StoredReleaseRow>;
     readonly release_catalogs: DrizzleQuery<ReleaseCatalogRow>;
@@ -50,13 +51,6 @@ export type DrizzleDB = {
     };
   };
   readonly transaction?: <TResult>(
-    operation: (transaction: DrizzleDB) => Promise<TResult>,
-  ) => Promise<TResult>;
-  readonly insightsQuery?: (
-    query: SQL,
-  ) => Promise<readonly Record<string, unknown>[]>;
-  readonly insightsMutation?: (query: SQL) => Promise<void>;
-  readonly insightsTransaction?: <TResult>(
     operation: (transaction: DrizzleDB) => Promise<TResult>,
   ) => Promise<TResult>;
 };
@@ -87,6 +81,7 @@ const isDrizzleDB = (value: unknown): value is DrizzleDB => {
   const query = value["query"];
   if (
     !isRecord(query) ||
+    !isDrizzleQuery(query["bundle_events"]) ||
     !isDrizzleQuery(query["bundle_patches"]) ||
     !isDrizzleQuery(query["bundles"]) ||
     !isDrizzleQuery(query["channels"]) ||
@@ -117,93 +112,6 @@ const asDB = (db: unknown): DrizzleDB => {
     );
   }
   return db;
-};
-
-const queryRows = (value: unknown): readonly Record<string, unknown>[] => {
-  const rows =
-    isRecord(value) && Array.isArray(value["rows"])
-      ? value["rows"]
-      : Array.isArray(value) && Array.isArray(value[0])
-        ? value[0]
-        : value;
-  if (
-    !Array.isArray(rows) ||
-    rows.some((row) => !isRecord(row) || Array.isArray(row))
-  ) {
-    throw new InvalidDrizzleDatabaseError(
-      "Drizzle Insights query returned an invalid result.",
-    );
-  }
-  return rows;
-};
-
-const executeQuery = async (
-  db: DrizzleDB,
-  query: SQL,
-): Promise<readonly Record<string, unknown>[]> => {
-  if (db.insightsQuery !== undefined) return db.insightsQuery(query);
-  const value: unknown = db;
-  if (!isRecord(value)) {
-    throw new InvalidDrizzleDatabaseError("Invalid Drizzle database.");
-  }
-  if (hasFunction(value, "all")) {
-    return queryRows(
-      await (value["all"] as (query: SQL) => Promise<unknown>)(query),
-    );
-  }
-  if (hasFunction(value, "execute")) {
-    return queryRows(
-      await (value["execute"] as (query: SQL) => Promise<unknown>)(query),
-    );
-  }
-  throw new InvalidDrizzleDatabaseError(
-    "Drizzle Insights requires raw query execution support.",
-  );
-};
-
-const executeMutation = async (db: DrizzleDB, query: SQL): Promise<void> => {
-  if (db.insightsMutation !== undefined) return db.insightsMutation(query);
-  const value: unknown = db;
-  if (!isRecord(value)) {
-    throw new InvalidDrizzleDatabaseError("Invalid Drizzle database.");
-  }
-  if (hasFunction(value, "run")) {
-    await (value["run"] as (query: SQL) => Promise<unknown>)(query);
-    return;
-  }
-  if (hasFunction(value, "execute")) {
-    await (value["execute"] as (query: SQL) => Promise<unknown>)(query);
-    return;
-  }
-  throw new InvalidDrizzleDatabaseError(
-    "Drizzle Insights requires raw mutation execution support.",
-  );
-};
-
-export const queryDrizzleInsights = <TRow extends Record<string, unknown>>(
-  db: DrizzleDB,
-  query: SQL,
-): Promise<readonly TRow[]> =>
-  executeQuery(db, query) as Promise<readonly TRow[]>;
-
-export const mutateDrizzleInsights = (
-  db: DrizzleDB,
-  query: SQL,
-): Promise<void> => executeMutation(db, query);
-
-export const transactDrizzleInsights = <TResult>(
-  db: DrizzleDB,
-  operation: (transaction: DrizzleDB) => Promise<TResult>,
-): Promise<TResult> => {
-  if (db.insightsTransaction !== undefined) {
-    return db.insightsTransaction(operation);
-  }
-  if (db.transaction === undefined) {
-    throw new InvalidDrizzleDatabaseError(
-      "Drizzle Insights requires transaction support.",
-    );
-  }
-  return db.transaction(operation);
 };
 
 const isDBFactory = (
@@ -279,6 +187,12 @@ export const createLazyDB = (config: DrizzleConfig): DrizzleDB => {
       }),
     }),
     query: {
+      bundle_events: {
+        findFirst: async (args) =>
+          (await getDB()).query.bundle_events.findFirst(args),
+        findMany: async (args) =>
+          (await getDB()).query.bundle_events.findMany(args),
+      },
       bundle_patches: {
         findFirst: async (args) =>
           (await getDB()).query.bundle_patches.findFirst(args),
@@ -324,19 +238,6 @@ export const createLazyDB = (config: DrizzleConfig): DrizzleDB => {
         }),
       }),
     }),
-    insightsQuery: async (query) => executeQuery(await getDB(), query),
-    insightsMutation: async (query) => executeMutation(await getDB(), query),
-    insightsTransaction: async <TResult>(
-      operation: (transaction: DrizzleDB) => Promise<TResult>,
-    ): Promise<TResult> => {
-      const db = await getDB();
-      if (db.transaction === undefined) {
-        throw new InvalidDrizzleDatabaseError(
-          "The resolved Drizzle database does not support transactions.",
-        );
-      }
-      return db.transaction(operation);
-    },
     ...(config.transaction === true
       ? {
           transaction: async <TResult>(

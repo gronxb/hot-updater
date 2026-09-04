@@ -65,6 +65,14 @@ export type DatabaseModelCapabilities = {
     readonly findOne: true;
     readonly findMany: true;
   };
+  readonly bundle_events: {
+    readonly create: true;
+    readonly update: false;
+    readonly delete: false;
+    readonly count: false;
+    readonly findOne: false;
+    readonly findMany: true;
+  };
   readonly api_keys: {
     readonly create: true;
     readonly update: true;
@@ -289,8 +297,6 @@ export interface TransactionDatabasePluginImplementation {
 }
 
 export interface DatabasePluginImplementation {
-  /** Insights is append-only and never joins a mixed-model commit. */
-  readonly insights: import("./databasePlugin").InsightsModel;
   create(
     input: CreateDatabaseImplementationInput,
   ): Promise<DatabaseImplementationResult>;

@@ -1,6 +1,7 @@
 import type {
   BundlePatchRow,
   BundleRow,
+  BundleEventRow,
   ChannelRow,
   ApiKeyRow,
   ReleaseCatalogRow,
@@ -143,6 +144,50 @@ const channelRow = (row: Record<string, unknown>): ChannelRow => ({
   name: stringValue(row, "name", "channels"),
 });
 
+const eventRow = (row: Record<string, unknown>): BundleEventRow => {
+  const type = stringValue(row, "type", "bundle_events");
+  const platform = stringValue(row, "platform", "bundle_events");
+  const fromBundleId = nullableString(row, "from_bundle_id", "bundle_events");
+  const updateStrategy = nullableString(
+    row,
+    "update_strategy",
+    "bundle_events",
+  );
+  if (
+    (platform !== "ios" && platform !== "android") ||
+    !(
+      ((type === "UPDATE_APPLIED" ||
+        type === "RECOVERED" ||
+        type === "RELEASE_ADOPTED") &&
+        typeof fromBundleId === "string" &&
+        (updateStrategy === "fingerprint" ||
+          updateStrategy === "appVersion")) ||
+      (type === "UNCHANGED" && fromBundleId === null && updateStrategy === null)
+    )
+  ) {
+    throw new InvalidD1RowError("bundle_events");
+  }
+  return {
+    id: stringValue(row, "id", "bundle_events"),
+    type,
+    install_id: stringValue(row, "install_id", "bundle_events"),
+    user_id: nullableString(row, "user_id", "bundle_events"),
+    username: nullableString(row, "username", "bundle_events"),
+    from_release_id: nullableString(row, "from_release_id", "bundle_events"),
+    from_bundle_id: fromBundleId,
+    to_release_id: nullableString(row, "to_release_id", "bundle_events"),
+    to_bundle_id: stringValue(row, "to_bundle_id", "bundle_events"),
+    platform,
+    app_version: stringValue(row, "app_version", "bundle_events"),
+    channel: stringValue(row, "channel", "bundle_events"),
+    cohort: stringValue(row, "cohort", "bundle_events"),
+    update_strategy: updateStrategy,
+    fingerprint_hash: nullableString(row, "fingerprint_hash", "bundle_events"),
+    sdk_version: nullableString(row, "sdk_version", "bundle_events"),
+    received_at_ms: numberValue(row, "received_at_ms", "bundle_events"),
+  } as BundleEventRow;
+};
+
 const apiKeyRow = (row: Record<string, unknown>): ApiKeyRow => {
   const role = stringValue(row, "role", "api_keys");
   if (role !== "client") throw new InvalidD1RowError("api_keys");
@@ -243,6 +288,10 @@ export function parseD1Row(
   model: "bundle_patches",
   value: unknown,
 ): BundlePatchRow;
+export function parseD1Row(
+  model: "bundle_events",
+  value: unknown,
+): BundleEventRow;
 export function parseD1Row(model: "api_keys", value: unknown): ApiKeyRow;
 export function parseD1Row(model: "releases", value: unknown): ReleaseRow;
 export function parseD1Row(
@@ -265,6 +314,8 @@ export function parseD1Row(
       return patchRow(value);
     case "channels":
       return channelRow(value);
+    case "bundle_events":
+      return eventRow(value);
     case "api_keys":
       return apiKeyRow(value);
     case "releases":

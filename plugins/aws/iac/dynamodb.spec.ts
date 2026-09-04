@@ -5,7 +5,6 @@ const mocks = vi.hoisted(() => ({
   createTable: vi.fn(),
   describeContinuousBackups: vi.fn(),
   describeTable: vi.fn(),
-  updateTable: vi.fn(),
   updateContinuousBackups: vi.fn(),
   waitUntilTableExists: vi.fn(),
 }));
@@ -16,7 +15,6 @@ vi.mock("@aws-sdk/client-dynamodb", () => ({
       createTable: mocks.createTable,
       describeContinuousBackups: mocks.describeContinuousBackups,
       describeTable: mocks.describeTable,
-      updateTable: mocks.updateTable,
       updateContinuousBackups: mocks.updateContinuousBackups,
     };
   }),
@@ -27,10 +25,13 @@ import { DYNAMODB_UPDATE_INDEX_NAME } from "../src/dynamoDB";
 import { DynamoDBManager } from "./dynamodb";
 
 const compatibleTable = {
-  TableStatus: "ACTIVE",
   TableArn:
     "arn:aws:dynamodb:ap-northeast-2:123456789012:table/hot-updater-metadata",
   BillingModeSummary: { BillingMode: "PAY_PER_REQUEST" },
+  OnDemandThroughput: {
+    MaxReadRequestUnits: 4_000,
+    MaxWriteRequestUnits: 100,
+  },
   AttributeDefinitions: [
     { AttributeName: "pk", AttributeType: "S" },
     { AttributeName: "sk", AttributeType: "S" },
@@ -40,12 +41,15 @@ const compatibleTable = {
   GlobalSecondaryIndexes: [
     {
       IndexName: DYNAMODB_UPDATE_INDEX_NAME,
-      IndexStatus: "ACTIVE",
       KeySchema: [
         { AttributeName: "gsi1pk", KeyType: "HASH" },
         { AttributeName: "gsi1sk", KeyType: "RANGE" },
       ],
       Projection: { ProjectionType: "ALL" },
+      OnDemandThroughput: {
+        MaxReadRequestUnits: 4_000,
+        MaxWriteRequestUnits: 100,
+      },
     },
   ],
   KeySchema: [
@@ -65,14 +69,13 @@ describe("DynamoDBManager", () => {
       },
     });
     mocks.updateContinuousBackups.mockResolvedValue({});
-    mocks.updateTable.mockResolvedValue({});
   });
 
   it("creates an on-demand metadata table with the update index", async () => {
     // Given
-    mocks.describeTable
-      .mockRejectedValueOnce({ name: "ResourceNotFoundException" })
-      .mockResolvedValue({ Table: compatibleTable });
+    mocks.describeTable.mockRejectedValue({
+      name: "ResourceNotFoundException",
+    });
     mocks.createTable.mockResolvedValue({
       TableDescription: compatibleTable,
     });
@@ -91,15 +94,14 @@ describe("DynamoDBManager", () => {
         BillingMode: "PAY_PER_REQUEST",
         DeletionProtectionEnabled: true,
         TableName: "hot-updater-metadata",
+        OnDemandThroughput: {
+          MaxReadRequestUnits: 4_000,
+          MaxWriteRequestUnits: 100,
+        },
         GlobalSecondaryIndexes: [
           expect.objectContaining({ IndexName: DYNAMODB_UPDATE_INDEX_NAME }),
         ],
       }),
-    );
-    const createInput = mocks.createTable.mock.calls[0]?.[0];
-    expect(createInput).not.toHaveProperty("OnDemandThroughput");
-    expect(createInput.GlobalSecondaryIndexes[0]).not.toHaveProperty(
-      "OnDemandThroughput",
     );
     expect(mocks.updateContinuousBackups).toHaveBeenCalledWith({
       PointInTimeRecoverySpecification: {
@@ -132,6 +134,10 @@ describe("DynamoDBManager", () => {
     mocks.describeTable.mockResolvedValue({
       Table: {
         BillingModeSummary: { BillingMode: "PAY_PER_REQUEST" },
+        OnDemandThroughput: {
+          MaxReadRequestUnits: 4_000,
+          MaxWriteRequestUnits: 100,
+        },
         KeySchema: [{ AttributeName: "id", KeyType: "HASH" }],
       },
     });
@@ -149,113 +155,6 @@ describe("DynamoDBManager", () => {
       tableName: "existing-table",
     });
     expect(mocks.createTable).not.toHaveBeenCalled();
-  });
-
-  it.each([
-    {
-      AttributeDefinitions: [
-        ...compatibleTable.AttributeDefinitions,
-        { AttributeName: "orphan", AttributeType: "S" },
-      ],
-    },
-    {
-      GlobalSecondaryIndexes: [
-        ...compatibleTable.GlobalSecondaryIndexes,
-        {
-          ...compatibleTable.GlobalSecondaryIndexes[0],
-          IndexName: "orphan-index",
-        },
-      ],
-    },
-  ])("rejects extra managed key or index schema", async (extra) => {
-    mocks.describeTable.mockResolvedValue({
-      Table: { ...compatibleTable, ...extra },
-    });
-    const manager = new DynamoDBManager("ap-northeast-2", {
-      accessKeyId: "test-access-key",
-      secretAccessKey: "test-secret-key",
-    });
-
-    await expect(manager.ensureTable("existing-table")).rejects.toMatchObject({
-      name: "DynamoDBTableSchemaError",
-      tableName: "existing-table",
-    });
-    expect(mocks.createTable).not.toHaveBeenCalled();
-  });
-
-  it("removes existing table and index on-demand throughput ceilings", async () => {
-    mocks.describeTable
-      .mockResolvedValueOnce({
-        Table: {
-          ...compatibleTable,
-          OnDemandThroughput: { MaxWriteRequestUnits: 100 },
-          GlobalSecondaryIndexes: [
-            {
-              ...compatibleTable.GlobalSecondaryIndexes[0],
-              OnDemandThroughput: { MaxReadRequestUnits: 4_000 },
-            },
-          ],
-        },
-      })
-      .mockResolvedValue({
-        Table: {
-          ...compatibleTable,
-        },
-      });
-    const manager = new DynamoDBManager("ap-northeast-2", {
-      accessKeyId: "test-access-key",
-      secretAccessKey: "test-secret-key",
-    });
-
-    await manager.ensureTable("capped-table");
-
-    expect(mocks.updateTable).toHaveBeenCalledWith({
-      TableName: "capped-table",
-      OnDemandThroughput: {
-        MaxReadRequestUnits: -1,
-        MaxWriteRequestUnits: -1,
-      },
-      GlobalSecondaryIndexUpdates: [
-        {
-          Update: {
-            IndexName: DYNAMODB_UPDATE_INDEX_NAME,
-            OnDemandThroughput: {
-              MaxReadRequestUnits: -1,
-              MaxWriteRequestUnits: -1,
-            },
-          },
-        },
-      ],
-    });
-    expect(mocks.waitUntilTableExists).toHaveBeenCalledOnce();
-    expect(mocks.describeTable).toHaveBeenCalledTimes(2);
-  });
-
-  it("waits for both the table and update index to become active", async () => {
-    mocks.describeTable
-      .mockResolvedValueOnce({
-        Table: {
-          ...compatibleTable,
-          TableStatus: "UPDATING",
-          GlobalSecondaryIndexes: [
-            {
-              ...compatibleTable.GlobalSecondaryIndexes[0],
-              IndexStatus: "CREATING",
-            },
-          ],
-        },
-      })
-      .mockResolvedValueOnce({ Table: compatibleTable });
-    const manager = new DynamoDBManager("ap-northeast-2", {
-      accessKeyId: "test-access-key",
-      secretAccessKey: "test-secret-key",
-    });
-
-    await manager.ensureTable("updating-table");
-
-    expect(mocks.waitUntilTableExists).toHaveBeenCalledOnce();
-    expect(mocks.describeTable).toHaveBeenCalledTimes(2);
-    expect(mocks.updateTable).not.toHaveBeenCalled();
   });
 
   it("reports the next action when table access is denied", async () => {

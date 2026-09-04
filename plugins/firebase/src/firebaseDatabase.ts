@@ -1,7 +1,6 @@
 import { createDatabasePlugin } from "@hot-updater/plugin-core";
 import {
   createDatabasePluginAdapter,
-  OFFICIAL_INSIGHTS_DATABASE_NAMESPACE,
   type DatabasePluginImplementation,
   type TransactionDatabasePluginImplementation,
 } from "@hot-updater/plugin-core/internal";
@@ -37,12 +36,6 @@ import {
   FirebaseDatabaseConstraintError,
 } from "./firebaseDatabaseState";
 import { FIREBASE_V1_COLLECTION_NAMES } from "./firebaseInfrastructureNames";
-import {
-  assertFirebaseInsightsDatabaseNamespace,
-  createFirebaseInsightsCollections,
-  createFirebaseInsightsQueries,
-} from "./firebaseInsights";
-import { appendFirebaseInsightsEvent } from "./firebaseInsightsMaintenance";
 
 type FirebaseMutation<TResult> = (
   database: TransactionDatabasePluginImplementation,
@@ -63,22 +56,10 @@ const exactId = (
 export type FirebaseDatabaseConfig = AppOptions;
 
 export const firebaseDatabase = (config: FirebaseDatabaseConfig) => {
-  const insightsDatabaseNamespace = assertFirebaseInsightsDatabaseNamespace(
-    OFFICIAL_INSIGHTS_DATABASE_NAMESPACE,
-  );
-  const implementation = (() => {
+  const implementation: DatabasePluginImplementation = (() => {
     const app = getApps().length ? getApp() : initializeApp(config);
     const db = getFirestore(app);
     const collections = createFirebaseDatabaseCollections(db);
-    const insightsCollections = createFirebaseInsightsCollections(
-      db,
-      insightsDatabaseNamespace,
-    );
-    const insights = createFirebaseInsightsQueries(
-      insightsCollections,
-      insightsDatabaseNamespace,
-      (row) => appendFirebaseInsightsEvent(db, insightsCollections, row),
-    );
     let migration: Promise<void> | undefined;
 
     const ensureMigrated = (): Promise<void> => {
@@ -119,8 +100,7 @@ export const firebaseDatabase = (config: FirebaseDatabaseConfig) => {
       return operation(createFirebaseDatabaseState(snapshot));
     };
 
-    const implementation: DatabasePluginImplementation = {
-      insights,
+    return {
       create: (input) => mutate((database) => database.create(input)),
       update: (input) => mutate((database) => database.update(input)),
       delete: (input) => mutate((database) => database.delete(input)),
@@ -264,16 +244,14 @@ export const firebaseDatabase = (config: FirebaseDatabaseConfig) => {
       },
       transaction: (callback) => mutate(callback),
     };
-    return implementation;
   })();
   const adapter = createDatabasePluginAdapter(
     "firebaseDatabase",
     implementation,
   );
-  const plugin = createDatabasePlugin({
+  return createDatabasePlugin({
     name: "firebaseDatabase",
     models: adapter.models,
     commit: adapter.commit,
   });
-  return plugin;
 };

@@ -4,17 +4,17 @@ import {
 } from "@hot-updater/core";
 import type {
   CompiledReleaseCatalog,
-  InsightsBundleSummary,
   ReleaseCatalogModel,
   ReleaseRow,
 } from "@hot-updater/plugin-core";
+import type { BundleEventSummary } from "@hot-updater/server";
 
 export type ReleaseReachabilityRow = ReleaseRow & {
   readonly currentlyUnreachable: boolean;
 };
 
 export type ReleaseListRow = ReleaseReachabilityRow & {
-  readonly activity30d: InsightsBundleSummary | null;
+  readonly activity30d: BundleEventSummary | null;
 };
 
 const NON_TARGETED_COHORT = "release-catalog-non-targeted-cohort";

@@ -1,6 +1,5 @@
 export {
   supabaseDatabase,
-  supabaseInsightsMaintenance,
   type SupabaseDatabaseConfig,
 } from "./supabaseDatabase";
 export {

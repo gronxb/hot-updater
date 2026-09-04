@@ -49,7 +49,6 @@ export const mockDatabase = (config: MockDatabaseConfig) => {
     ): Promise<TResult> => mutate(operation);
 
     return {
-      insights: data.insights.model,
       create: (input) => mutate(() => state.create(input)),
       update: (input) => mutate(() => state.update(input)),
       delete: (input) => mutate(() => state.delete(input)),

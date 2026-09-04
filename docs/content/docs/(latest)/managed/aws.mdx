@@ -226,10 +226,9 @@ at 4,000 reads and 100 writes per second for both the table and update index.
 The cap is a cost guardrail and can throttle bursts; protect production
 distributions with AWS WAF rate-based rules and configure AWS Budgets for a
 monthly spending threshold. The AWS adapter does not impose an Insights
-retention period. Insights reads use bounded cursor pages and durable provider
-projections, so `all` reports are not limited by the number of retained events.
-The 24-hour, 7-day, and 30-day reports apply their query windows independently
-of storage retention.
+retention period. The bounded Insights provider still rejects `all` reports
+above 50,000 events, while 24-hour, 7-day, and 30-day queries apply their query
+window independently of storage retention.
 
 Bundle metadata has no fixed bundle, patch, or patch-relationship count limit.
 Each serialized metadata item is limited to 8 KiB. The database maintains counters

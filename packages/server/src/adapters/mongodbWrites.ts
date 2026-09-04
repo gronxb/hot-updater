@@ -110,6 +110,12 @@ export const createMongoWrites = (
           throw error;
         }
         return input.data;
+      case "bundle_events":
+        await collections.bundleEvents.insertOne(
+          input.data,
+          mongoSessionOptions(session),
+        );
+        return input.data;
       case "releases":
         await collections.releases.insertOne(
           input.data,

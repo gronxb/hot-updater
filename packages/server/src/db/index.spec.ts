@@ -599,10 +599,7 @@ describe("server/db hotUpdater (PGlite + Kysely)", async () => {
         }),
       } as unknown as MongoClient;
       const mongoHotUpdater = createHotUpdater({
-        database: mongoAdapter({
-          client,
-          transactions: true,
-        }),
+        database: mongoAdapter({ client }),
       });
       const result = await createMigrator(mongoHotUpdater).migrateToLatest({
         mode: "from-schema",
@@ -746,10 +743,7 @@ describe("server/db hotUpdater (PGlite + Kysely)", async () => {
         }),
       } as unknown as MongoClient;
       const mongoHotUpdater = createHotUpdater({
-        database: mongoAdapter({
-          client,
-          transactions: true,
-        }),
+        database: mongoAdapter({ client }),
       });
 
       await expect(mongoHotUpdater.getBundles({ limit: 10 })).rejects.toThrow(
@@ -813,12 +807,8 @@ describe("server/db hotUpdater (PGlite + Kysely)", async () => {
             channels,
           }),
       );
-      const $executeRawUnsafe = vi.fn(async () => 0);
-      const $queryRawUnsafe = vi.fn(async () => []);
       const adapter = prismaAdapter({
         prisma: {
-          $executeRawUnsafe,
-          $queryRawUnsafe,
           $transaction,
           bundle_patches: rootPatches,
           bundles: rootBundles,
@@ -972,10 +962,7 @@ describe("server/db hotUpdater (PGlite + Kysely)", async () => {
             name === "bundle_patches" ? patches : bundles,
         }),
       } as unknown as MongoClient;
-      const adapter = mongoAdapter({
-        client,
-        transactions: true,
-      });
+      const adapter = mongoAdapter({ client });
 
       expect(Reflect.has(adapter, "transaction")).toBe(false);
     });
@@ -1008,10 +995,7 @@ describe("server/db hotUpdater (PGlite + Kysely)", async () => {
           operation(session),
       );
       Object.defineProperty(client, "withSession", { value: withSession });
-      const adapter = mongoAdapter({
-        client,
-        transactions: true,
-      });
+      const adapter = mongoAdapter({ client, transactions: true });
 
       await adapter.commit({
         changes: [

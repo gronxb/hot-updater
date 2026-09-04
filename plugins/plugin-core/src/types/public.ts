@@ -5,6 +5,8 @@ export type {
 } from "./databaseOperations";
 export type {
   InsightsModel,
+  InsightsScanCursor,
+  InsightsScanInput,
   BundleModel,
   BundleModelQuery,
   BundlePatchModel,
@@ -39,4 +41,3 @@ export type {
   ReleaseCatalogRow,
   ReleaseRow,
 } from "./databaseRows";
-export type * from "./insightsQueries";

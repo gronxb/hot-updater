@@ -1,4 +1,5 @@
 import type {
+  BundleEventRow,
   BundlePatchRow,
   BundleRow,
   ChannelRow,
@@ -7,12 +8,6 @@ import type {
   ReleaseRow,
 } from "@hot-updater/plugin-core";
 import type { ClientSession, Collection, MongoClient } from "mongodb";
-
-import {
-  createMongoInsightsSourceCollections,
-  type MongoBundleEventDocument,
-  type MongoInsightsSourceCollections,
-} from "./mongodbInsightsSource";
 
 export class MongoAdapterConstraintError extends Error {
   readonly name = "MongoAdapterConstraintError";
@@ -38,10 +33,10 @@ export const activeBundleFilter = (where: object) => ({
   $and: [where, { [DELETION_TOKEN_FIELD]: { $exists: false } }],
 });
 
-export type MongoCollections = MongoInsightsSourceCollections & {
+export type MongoCollections = {
   readonly bundles: Collection<MongoBundleDocument>;
   readonly bundlePatches: Collection<BundlePatchRow>;
-  readonly bundleEvents: Collection<MongoBundleEventDocument>;
+  readonly bundleEvents: Collection<BundleEventRow>;
   readonly channels: Collection<ChannelRow>;
   readonly apiKeys: Collection<ApiKeyRow>;
   readonly releases: Collection<ReleaseRow>;
@@ -53,9 +48,9 @@ export const createMongoCollections = (
 ): MongoCollections => {
   const database = client.db();
   return {
-    ...createMongoInsightsSourceCollections(client),
     bundles: database.collection<MongoBundleDocument>("bundles"),
     bundlePatches: database.collection<BundlePatchRow>("bundle_patches"),
+    bundleEvents: database.collection<BundleEventRow>("bundle_events"),
     channels: database.collection<ChannelRow>("channels"),
     apiKeys: database.collection<ApiKeyRow>("api_keys"),
     releases: database.collection<ReleaseRow>("releases"),

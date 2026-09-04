@@ -8,7 +8,6 @@ const mocks = vi.hoisted(() => ({
   existingEnv: {} as Record<string, string>,
   events: [] as string[],
   existingProject: false,
-  existingIndexes: [] as object[],
   functionsListError: undefined as Error | undefined,
   functionsDir: "",
   assertFunction: vi.fn(),
@@ -55,14 +54,6 @@ vi.mock("execa", async () => {
   return {
     ...actual,
     execa: vi.fn(async (command: string, args: readonly string[] = []) => {
-      if (command === "npx" && args.includes("firestore:indexes")) {
-        return {
-          stdout: JSON.stringify({
-            indexes: mocks.existingIndexes,
-            fieldOverrides: [],
-          }),
-        };
-      }
       if (command === "npx" && args.includes("functions:list")) {
         if (mocks.functionsListError) throw mocks.functionsListError;
         return {
@@ -203,7 +194,6 @@ describe("Firebase project creation", () => {
     mocks.existingEnv = {};
     mocks.events.length = 0;
     mocks.existingProject = false;
-    mocks.existingIndexes = [];
     mocks.functionsListError = undefined;
     mocks.serviceEnableError = undefined;
     mocks.assertFunction.mockResolvedValue(undefined);
@@ -240,37 +230,6 @@ describe("Firebase project creation", () => {
       "persist",
       "cleanup",
     ]);
-  });
-
-  it("preserves composite field order and deduplicates exact deployed indexes", async () => {
-    mocks.existingProject = true;
-    const required = {
-      collectionGroup: "hot_updater_v1_bundle_events",
-      queryScope: "COLLECTION",
-      fields: [
-        { fieldPath: "received_at_ms", order: "DESCENDING" },
-        { fieldPath: "id", order: "DESCENDING" },
-      ],
-    };
-    const reversed = { ...required, fields: [...required.fields].reverse() };
-    mocks.existingIndexes = [reversed, structuredClone(required)];
-    const indexPath = path.join(mocks.tmpDir, "firestore.indexes.json");
-    await fs.writeFile(
-      indexPath,
-      JSON.stringify({ indexes: [required], fieldOverrides: [] }),
-    );
-
-    await runInit({ build: "bare" });
-
-    expect(JSON.parse(await fs.readFile(indexPath, "utf8"))).toEqual({
-      indexes: [reversed, required],
-      fieldOverrides: [],
-    });
-    expect(execa).toHaveBeenCalledWith(
-      "npx",
-      ["firebase", "deploy", "--only", "firestore"],
-      expect.objectContaining({ cwd: mocks.tmpDir }),
-    );
   });
 
   it("keeps application credentials out of interactive CLI authentication", async () => {

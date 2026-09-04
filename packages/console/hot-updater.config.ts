@@ -18,7 +18,6 @@ import {
   extractTimestampFromUUIDv7,
   releaseRowToRelease,
   type BundleEventRow,
-  type InsightsReportQuery,
   type ReleaseCatalogRow,
   type ReleaseRow,
 } from "@hot-updater/plugin-core";
@@ -1011,7 +1010,7 @@ const bundleEvents: readonly BundleEventRow[] = [
       index,
     ): BundleEventRow => {
       const baseEvent = {
-        id: `019f635e-1${String(index).padStart(3, "0")}-7000-8000-00000000${installSuffix}`,
+        id: `019f635e-1${String(index).padStart(3, "0")}-7000-8000-000000000${installSuffix}`,
         install_id: `019f635d-${installSuffix}-7000-8000-00000000${installSuffix}`,
         user_id: userId,
         username: userId,
@@ -1044,66 +1043,7 @@ const bundleEvents: readonly BundleEventRow[] = [
 ];
 
 for (const row of bundleEvents) {
-  await databaseData.insights.model.append(row);
-}
-
-const completeDemoInsightsJob = async (jobId: string) => {
-  const result = await databaseData.insights.runJobStep(jobId, {
-    maxItems: 100,
-    maxRequests: 1,
-  });
-  if (result.state !== "complete") {
-    throw new Error(`Demo Insights job did not complete: ${jobId}`);
-  }
-};
-
-const reportWindows = ["24h", "7d", "30d"] as const;
-const reportBundleIds = new Set(
-  bundleEvents.flatMap((event) =>
-    [event.from_bundle_id, event.to_bundle_id].filter(
-      (bundleId): bundleId is string => bundleId !== null,
-    ),
-  ),
-);
-const demoReportQueries: InsightsReportQuery[] = [
-  { kind: "installationOverview" },
-  ...reportWindows.map(
-    (window): InsightsReportQuery => ({ kind: "activeOverview", window }),
-  ),
-  ...reportWindows.flatMap((window) =>
-    [...reportBundleIds].map(
-      (bundleId): InsightsReportQuery => ({
-        kind: "bundleDetail",
-        bundleId,
-        window,
-      }),
-    ),
-  ),
-];
-for (const query of demoReportQueries) {
-  const result = await databaseData.insights.model.getReport({ query });
-  if (result.state === "preparing") {
-    await completeDemoInsightsJob(result.job.id);
-  }
-}
-
-const demoInstallationQueries = new Set([
-  "demo",
-  ...bundleEvents.flatMap((event) =>
-    [event.install_id, event.user_id, event.username].filter(
-      (value): value is string => value !== null,
-    ),
-  ),
-]);
-for (const query of demoInstallationQueries) {
-  const result = await databaseData.insights.model.pageInstallations({
-    kind: "contains",
-    limit: 20,
-    query,
-  });
-  if (result.state === "preparing") {
-    await completeDemoInsightsJob(result.job.id);
-  }
+  databaseData.bundleEvents.set(row.id, row);
 }
 
 const database = mockDatabase({

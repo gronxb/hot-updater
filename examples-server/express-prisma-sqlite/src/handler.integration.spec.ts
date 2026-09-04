@@ -26,13 +26,6 @@ describe("Hot Updater Handler Integration Tests (Express)", () => {
   let baseUrl: string;
   let testDbPath: string;
   let hotUpdater: HotUpdaterAPI;
-  let provisioningEvidence: {
-    readonly afterStatus: number;
-    readonly beforeStatus: number;
-    readonly coreReadBefore: boolean;
-    readonly missingCoreExitCode: number | undefined;
-    readonly missingCoreOutput: string;
-  };
   const port = 13581;
 
   beforeAll(async () => {
@@ -95,68 +88,11 @@ describe("Hot Updater Handler Integration Tests (Express)", () => {
       env: { TEST_DB_PATH: testDbPath, DATABASE_URL: `file:${testDbPath}` },
     });
 
-    const missingCore = await execa(
-      "node",
-      [hotUpdaterCli, "db", "migrate", "src/db.ts", "--yes"],
-      {
-        cwd: projectRoot,
-        env: { TEST_DB_PATH: testDbPath, DATABASE_URL: `file:${testDbPath}` },
-        reject: false,
-      },
-    );
-
     // Apply schema to database using prisma db push
     await execa("npx", ["prisma", "db", "push", "--skip-generate"], {
       cwd: projectRoot,
       env: { TEST_DB_PATH: testDbPath, DATABASE_URL: `file:${testDbPath}` },
     });
-
-    const db = await import("./db.js");
-    hotUpdater = db.hotUpdater;
-    const readinessRequest = () =>
-      new Request("http://localhost/events", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          appVersion: "1.0.0",
-          channel: "production",
-          cohort: "default",
-          fingerprintHash: null,
-          fromBundleId: null,
-          fromReleaseId: null,
-          installId: "prisma-readiness-retry",
-          platform: "ios",
-          sdkVersion: "2.0.0",
-          toBundleId: "00000000-0000-7000-8000-000000000002",
-          toReleaseId: null,
-          type: "UNCHANGED",
-          updateStrategy: null,
-        }),
-      });
-    const beforeProvisioning =
-      await hotUpdater.handlers.client(readinessRequest());
-    const coreReadBefore = await hotUpdater.getBundles({ limit: 1 }).then(
-      () => true,
-      () => false,
-    );
-
-    await execa(
-      "node",
-      [hotUpdaterCli, "db", "migrate", "src/db.ts", "--yes"],
-      {
-        cwd: projectRoot,
-        env: { TEST_DB_PATH: testDbPath, DATABASE_URL: `file:${testDbPath}` },
-      },
-    );
-    const afterProvisioning =
-      await hotUpdater.handlers.client(readinessRequest());
-    provisioningEvidence = {
-      afterStatus: afterProvisioning.status,
-      beforeStatus: beforeProvisioning.status,
-      coreReadBefore,
-      missingCoreExitCode: missingCore.exitCode,
-      missingCoreOutput: `${missingCore.stdout}\n${missingCore.stderr}`,
-    };
 
     serverProcess = spawnServerProcess({
       serverCommand: ["npx", "tsx", "src/index.ts"],
@@ -166,6 +102,9 @@ describe("Hot Updater Handler Integration Tests (Express)", () => {
     });
 
     await waitForServer(baseUrl, 180); // 180 attempts * 200ms = 36 seconds
+
+    const db = await import("./db.js");
+    hotUpdater = db.hotUpdater;
   }, 60000);
 
   afterAll(async () => {
@@ -188,18 +127,6 @@ describe("Hot Updater Handler Integration Tests (Express)", () => {
     expect(response.status).toBe(200);
   });
 
-  it("fails only Insights closed until its schema is provisioned", () => {
-    expect(provisioningEvidence).toMatchObject({
-      afterStatus: 204,
-      beforeStatus: 503,
-      coreReadBefore: true,
-      missingCoreExitCode: 1,
-    });
-    expect(provisioningEvidence.missingCoreOutput).toContain(
-      "Prisma core schema is not ready",
-    );
-  });
-
   it.each([
     ["missing", undefined],
     ["incorrect", "Bearer incorrect-token"],
@@ -220,75 +147,6 @@ describe("Hot Updater Handler Integration Tests (Express)", () => {
 
     expect(response.status).toBe(200);
     expect(response.headers.get("cache-control")).toBe("private, no-store");
-  });
-
-  it("records the first Insights event after the supported database setup", async () => {
-    const installId = "fresh-prisma-installation";
-    const ingestion = await fetch(`${baseUrl}/hot-updater/events`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        appVersion: "1.0.0",
-        channel: "production",
-        cohort: "default",
-        fingerprintHash: null,
-        fromBundleId: null,
-        fromReleaseId: null,
-        installId,
-        platform: "ios",
-        sdkVersion: "2.0.0",
-        toBundleId: "00000000-0000-7000-8000-000000000001",
-        toReleaseId: null,
-        type: "UNCHANGED",
-        updateStrategy: null,
-      }),
-    });
-
-    expect(ingestion.status).toBe(204);
-
-    const history = await fetch(
-      `${baseUrl}/hot-updater/admin/events?limit=10`,
-      {
-        headers: {
-          Authorization: `Bearer ${TEST_ADMIN_AUTH_TOKEN}`,
-        },
-      },
-    );
-
-    expect(history.status).toBe(200);
-    const body = await history.json();
-    expect(body).toMatchObject({ state: "ready" });
-    const events = (body as { data: { data: readonly unknown[] } }).data.data;
-    expect(events).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          install_id: installId,
-          type: "UNCHANGED",
-        }),
-      ]),
-    );
-  });
-
-  it("serves concurrent Console Insights reads on SQLite", async () => {
-    const authorization = `Bearer ${TEST_ADMIN_AUTH_TOKEN}`;
-    const paths = [
-      "/events?limit=10",
-      "/installations/overview",
-      "/installations/active?window=24h",
-      "/installations?kind=installationId&installId=prisma-readiness-retry&limit=1",
-      "/installations?kind=contains&query=prisma-readiness&limit=10",
-    ];
-    const responses = await Promise.all(
-      paths.map((path) =>
-        fetch(`${baseUrl}/hot-updater/admin${path}`, {
-          headers: { Authorization: authorization },
-        }),
-      ),
-    );
-
-    expect(responses.map((response) => response.status)).toEqual(
-      Array(paths.length).fill(200),
-    );
   });
 
   it("should preserve User model and add hot-updater models in schema.prisma", async () => {

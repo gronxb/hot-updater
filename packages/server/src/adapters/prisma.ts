@@ -4,7 +4,6 @@ import {
 } from "@hot-updater/plugin-core";
 import {
   createDatabasePluginAdapter,
-  OFFICIAL_INSIGHTS_DATABASE_NAMESPACE,
   type DatabaseImplementationResult,
   type DatabasePluginImplementation,
   type FindManyDatabaseImplementationInput,
@@ -18,11 +17,9 @@ import {
 import { generatePrismaSchema } from "../db/schemaGenerators";
 import type {
   DatabaseAdapterWithCapabilities,
-  MigrationResult,
   ORMProvider,
   ORMSQLProvider,
   SchemaGenerator,
-  SchemaProvisioner,
 } from "../db/types";
 import {
   isChannelDeleteReferencedError,
@@ -32,7 +29,7 @@ import { hasNullOrderOverrides, sortRowsByOrder } from "./databasePluginUtils";
 import { createPrismaOrderBy, createPrismaWhere } from "./prismaQuery";
 import {
   getPrismaDelegate,
-  prismaBundleEventFields,
+  parsePrismaBundleEventRow,
   parsePrismaBundleRow,
   parsePrismaChannelRow,
   parsePrismaApiKeyRow,
@@ -42,17 +39,6 @@ import {
   parsePrismaRows,
   PrismaAdapterError,
 } from "./prismaRows";
-import {
-  assertPrismaInsightsClient,
-  PrismaInsightsConfigurationError,
-  type PrismaInsightsClient,
-} from "./sqlInsights/prisma/client";
-import { preparePrismaInsights } from "./sqlInsights/prisma/maintenance";
-import { createPrismaInsightsModel } from "./sqlInsights/prisma/model";
-import {
-  inspectPrismaInsightsLayout,
-  PRISMA_INSIGHTS_LAYOUT_VERSION,
-} from "./sqlInsights/prisma/schema";
 
 type PrismaRelationMode = "prisma" | "foreign-keys";
 
@@ -109,80 +95,6 @@ const runPrismaTransaction = <TResult>(
   })();
 };
 
-const isRecord = (value: unknown): value is Record<string, unknown> =>
-  typeof value === "object" && value !== null;
-
-const isMissingPrismaCoreSchemaError = (error: unknown): boolean => {
-  if (!isRecord(error) || typeof error["code"] !== "string") return false;
-  if (error["code"] === "P2021" || error["code"] === "P2022") return true;
-  if (error["code"] !== "P2010" || !isRecord(error["meta"])) return false;
-  const providerCode = String(error["meta"]["code"]);
-  if (["42P01", "42703", "1146", "1054", "208", "207"].includes(providerCode))
-    return true;
-  return (
-    providerCode === "1" &&
-    typeof error["meta"]["message"] === "string" &&
-    /no such (?:table|column)/i.test(error["meta"]["message"])
-  );
-};
-
-const assertPrismaInsightsCoreSchema = async (
-  client: PrismaInsightsClient,
-): Promise<void> => {
-  try {
-    await client.$queryRawUnsafe(
-      `select ${prismaBundleEventFields.join(",")} from bundle_events where 1=0`,
-    );
-  } catch (error) {
-    if (!isMissingPrismaCoreSchemaError(error)) throw error;
-    throw new PrismaInsightsConfigurationError(
-      "Prisma core schema is not ready; run `prisma migrate deploy` or `prisma db push` before `hot-updater db migrate`",
-    );
-  }
-};
-
-export const createPrismaInsightsSchemaProvisioner = (
-  client: PrismaInsightsClient,
-  provider: ORMSQLProvider,
-  databaseNamespace: string,
-): SchemaProvisioner => ({
-  async plan(): Promise<MigrationResult> {
-    await assertPrismaInsightsCoreSchema(client);
-    if (
-      (await inspectPrismaInsightsLayout(client, provider, databaseNamespace))
-        .state === "ready"
-    ) {
-      return { operations: [], execute: async () => {} };
-    }
-    return {
-      operations: [
-        {
-          type: "custom",
-          description: `Install Prisma Insights storage layout revision ${PRISMA_INSIGHTS_LAYOUT_VERSION}`,
-        },
-      ],
-      async execute() {
-        await preparePrismaInsights(client, provider, databaseNamespace, {
-          writersDrained: true,
-        });
-        if (
-          (
-            await inspectPrismaInsightsLayout(
-              client,
-              provider,
-              databaseNamespace,
-            )
-          ).state !== "ready"
-        ) {
-          throw new PrismaAdapterError(
-            "Prisma Insights schema provisioning did not complete",
-          );
-        }
-      },
-    };
-  },
-});
-
 const assertPrismaProvider = (provider: ORMProvider): void => {
   if (provider === "mongodb") {
     throw new PrismaAdapterError(
@@ -221,6 +133,8 @@ const findMany = async (
       return parsePrismaRows(rows, parsePrismaBundleRow);
     case "bundle_patches":
       return parsePrismaRows(rows, parsePrismaPatchRow);
+    case "bundle_events":
+      return parsePrismaRows(rows, parsePrismaBundleEventRow);
     case "channels":
       return parsePrismaRows(rows, parsePrismaChannelRow);
     case "api_keys":
@@ -318,6 +232,8 @@ const createCrudImplementation = (
         return parsePrismaBundleRow(row);
       case "bundle_patches":
         return parsePrismaPatchRow(row);
+      case "bundle_events":
+        return parsePrismaBundleEventRow(row);
       case "channels":
         return parsePrismaChannelRow(row);
       case "api_keys":
@@ -436,16 +352,10 @@ const createPrismaImplementation = (
   client: object,
   relationMode: PrismaRelationMode,
   provider: ORMSQLProvider,
-  insightsDatabaseNamespace: string,
 ): DatabasePluginImplementation => {
   const crud = createCrudImplementation(client, provider, relationMode);
   const implementation: DatabasePluginImplementation = {
     ...crud,
-    insights: createPrismaInsightsModel(
-      client,
-      provider,
-      insightsDatabaseNamespace,
-    ),
     deleteChannel: (input) => {
       if (!hasCallbackTransaction(client)) {
         throw new PrismaAdapterError(
@@ -478,6 +388,11 @@ const createPrismaImplementation = (
       );
     },
   };
+  if (relationMode === "prisma" && !hasCallbackTransaction(client)) {
+    throw new PrismaAdapterError(
+      'relation mode "prisma" requires callback transactions',
+    );
+  }
   if (!hasCallbackTransaction(client)) return implementation;
   if (relationMode === "prisma") {
     implementation.create = (input) =>
@@ -519,23 +434,12 @@ export const prismaAdapter = (
   config: PrismaConfig,
 ): DatabaseAdapterWithCapabilities => {
   assertPrismaProvider(config.provider);
-  if (
-    config.relationMode === "prisma" &&
-    !hasCallbackTransaction(config.prisma)
-  ) {
-    throw new PrismaAdapterError(
-      'relation mode "prisma" requires callback transactions',
-    );
-  }
-  const client = config.prisma;
-  assertPrismaInsightsClient(client);
   const adapter = createDatabasePluginAdapter(
     "prisma",
     createPrismaImplementation(
-      client,
+      config.prisma,
       config.relationMode ?? "foreign-keys",
       config.provider,
-      OFFICIAL_INSIGHTS_DATABASE_NAMESPACE,
     ),
   );
   return Object.assign(
@@ -546,12 +450,6 @@ export const prismaAdapter = (
     }),
     {
       adapterName: "prisma",
-      createInsightsSchemaProvisioner: () =>
-        createPrismaInsightsSchemaProvisioner(
-          client,
-          config.provider,
-          OFFICIAL_INSIGHTS_DATABASE_NAMESPACE,
-        ),
       provider: config.provider,
       generateSchema: ((version) => ({
         code: generatePrismaSchema(

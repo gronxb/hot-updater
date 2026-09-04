@@ -1,44 +1,14 @@
-import { createUUIDv7, type BundleEventRow } from "@hot-updater/plugin-core";
-import {
-  assertInsightsEventContract,
-  assertWellFormedInsightsString,
-  INSIGHTS_INGEST_BODY_MAX_BYTES,
-  INSIGHTS_STRING_MAX_CODE_UNITS,
-} from "@hot-updater/plugin-core/internal";
-
+import type {
+  CreateBundleEventRequest,
+  CreateBundleEventRequestBase,
+} from "./domain";
 import {
   InsightsBadRequestError,
   InsightsPayloadTooLargeError,
 } from "./errors";
 
-type CreateBundleEventRequestBase = {
-  readonly installId: string;
-  readonly toBundleId: string;
-  readonly userId?: string;
-  readonly username?: string;
-  readonly platform: "ios" | "android";
-  readonly appVersion: string;
-  readonly channel: string;
-  readonly cohort: string;
-  readonly fingerprintHash: string | null;
-  readonly sdkVersion?: string | null;
-  readonly fromReleaseId: string | null;
-  readonly toReleaseId: string | null;
-};
-
-type CreateBundleEventRequest =
-  | (CreateBundleEventRequestBase & {
-      readonly type: "UPDATE_APPLIED" | "RECOVERED" | "RELEASE_ADOPTED";
-      readonly fromBundleId: string;
-      readonly updateStrategy: "fingerprint" | "appVersion";
-    })
-  | (CreateBundleEventRequestBase & {
-      readonly type: "UNCHANGED";
-      readonly fromBundleId: null;
-      readonly updateStrategy: null;
-    });
-
-const EVENT_BODY_MAX_BYTES = INSIGHTS_INGEST_BODY_MAX_BYTES;
+const MAX_EVENT_STRING_LENGTH = 1_024;
+export const EVENT_BODY_MAX_BYTES = 16 * 1_024;
 
 const eventKeys = new Set([
   "type",
@@ -65,19 +35,13 @@ function isRecord(value: unknown): value is Readonly<Record<string, unknown>> {
 function requireStringField(
   payload: Readonly<Record<string, unknown>>,
   key: string,
-  options: { readonly allowEmpty?: boolean } = {},
 ): string {
   const value = payload[key];
   if (
     typeof value !== "string" ||
-    (!options.allowEmpty && value.length === 0) ||
-    value.length > INSIGHTS_STRING_MAX_CODE_UNITS
+    value.length === 0 ||
+    value.length > MAX_EVENT_STRING_LENGTH
   ) {
-    throw new InsightsBadRequestError(`Invalid event field: ${key}`);
-  }
-  try {
-    assertWellFormedInsightsString(value);
-  } catch {
     throw new InsightsBadRequestError(`Invalid event field: ${key}`);
   }
   return value;
@@ -103,7 +67,7 @@ async function readBoundedText(request: Request): Promise<string> {
   }
   if (request.body === null) return "";
   const reader = request.body.getReader();
-  const decoder = new TextDecoder("utf-8", { fatal: true });
+  const decoder = new TextDecoder();
   let byteLength = 0;
   let text = "";
   while (true) {
@@ -114,24 +78,9 @@ async function readBoundedText(request: Request): Promise<string> {
       await reader.cancel();
       throw new InsightsPayloadTooLargeError(EVENT_BODY_MAX_BYTES);
     }
-    try {
-      text += decoder.decode(result.value, { stream: true });
-    } catch (error) {
-      await reader.cancel();
-      if (error instanceof TypeError) {
-        throw new InsightsBadRequestError("Invalid event payload");
-      }
-      throw error;
-    }
+    text += decoder.decode(result.value, { stream: true });
   }
-  try {
-    return text + decoder.decode();
-  } catch (error) {
-    if (error instanceof TypeError) {
-      throw new InsightsBadRequestError("Invalid event payload");
-    }
-    throw error;
-  }
+  return text + decoder.decode();
 }
 
 async function parseJson(request: Request): Promise<unknown> {
@@ -158,7 +107,7 @@ function requireEvent(payload: unknown): CreateBundleEventRequest {
     throw new InsightsBadRequestError("Invalid event field: platform");
   }
   const base: CreateBundleEventRequestBase = {
-    installId: requireStringField(payload, "installId", { allowEmpty: true }),
+    installId: requireStringField(payload, "installId"),
     toBundleId: requireStringField(payload, "toBundleId"),
     ...(payload.userId === undefined
       ? {}
@@ -216,41 +165,4 @@ export async function parseBundleEventRequest(
 ): Promise<CreateBundleEventRequest> {
   const payload = await parseJson(request);
   return requireEvent(payload);
-}
-
-export function createBundleEventRow(
-  input: CreateBundleEventRequest,
-): BundleEventRow {
-  const base = {
-    id: createUUIDv7(),
-    install_id: input.installId,
-    user_id: input.userId ?? null,
-    username: input.username ?? null,
-    from_release_id: input.fromReleaseId,
-    to_release_id: input.toReleaseId,
-    to_bundle_id: input.toBundleId,
-    platform: input.platform,
-    app_version: input.appVersion,
-    channel: input.channel,
-    cohort: input.cohort,
-    fingerprint_hash: input.fingerprintHash,
-    sdk_version: input.sdkVersion ?? null,
-    received_at_ms: Date.now(),
-  };
-  const row: BundleEventRow =
-    input.type === "UNCHANGED"
-      ? {
-          ...base,
-          type: input.type,
-          from_bundle_id: null,
-          update_strategy: null,
-        }
-      : {
-          ...base,
-          type: input.type,
-          from_bundle_id: input.fromBundleId,
-          update_strategy: input.updateStrategy,
-        };
-  assertInsightsEventContract(row);
-  return row;
 }

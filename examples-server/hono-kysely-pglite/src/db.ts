@@ -11,6 +11,7 @@ import { Kysely, sql } from "kysely";
 import { PGliteDialect } from "kysely-pglite-dialect";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
+
 // Load .env.hotupdater
 config({ path: path.join(__dirname, ".env.hotupdater") });
 

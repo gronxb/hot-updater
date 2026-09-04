@@ -1,4 +1,4 @@
-import type { InsightsActiveWindow } from "@hot-updater/plugin-core";
+import type { ActiveInstallationWindow } from "@hot-updater/server";
 
 import { Field, FieldLabel } from "@/components/ui/field";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
@@ -13,8 +13,8 @@ export function InsightsControls({
   onWindowChange,
   window,
 }: {
-  readonly onWindowChange: (window: InsightsActiveWindow) => void;
-  readonly window: InsightsActiveWindow;
+  readonly onWindowChange: (window: ActiveInstallationWindow) => void;
+  readonly window: ActiveInstallationWindow;
 }) {
   return (
     <section aria-label="Insights controls" className="flex">
@@ -25,7 +25,7 @@ export function InsightsControls({
           className="w-full sm:w-fit"
           onValueChange={(value) => {
             if (value[0]) {
-              onWindowChange(value[0] as InsightsActiveWindow);
+              onWindowChange(value[0] as ActiveInstallationWindow);
             }
           }}
           spacing={0}

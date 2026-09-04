@@ -10,6 +10,7 @@ import { Kysely, MysqlDialect, sql } from "kysely";
 import { createPool } from "mysql2";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
+
 // Load .env.hotupdater
 config({ path: path.join(__dirname, ".env.hotupdater") });
 

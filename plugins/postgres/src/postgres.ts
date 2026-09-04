@@ -7,12 +7,10 @@ import type {
   DeleteDatabaseImplementationInput,
   FindOneDatabaseImplementationInput,
   UpdateDatabaseImplementationInput,
-  TransactionDatabasePluginImplementation,
 } from "@hot-updater/plugin-core/internal";
 import {
   createDatabasePluginAdapter,
   DatabaseRowReferencedError,
-  OFFICIAL_INSIGHTS_DATABASE_NAMESPACE,
 } from "@hot-updater/plugin-core/internal";
 import {
   Kysely,
@@ -23,7 +21,6 @@ import {
 } from "kysely";
 import pg, { type PoolConfig } from "pg";
 
-import { createPostgresInsightsQueries } from "./postgresInsightsQueries";
 import { countPostgresRows, findManyPostgresRows } from "./postgresQuery";
 import type { Database } from "./types";
 
@@ -140,10 +137,9 @@ const buildWhere = (
   return expression;
 };
 
-const createPostgresCrudImplementation = (
+const createPostgresImplementation = (
   db: Kysely<Database>,
-): TransactionDatabasePluginImplementation &
-  Pick<DatabasePluginImplementation, "deleteChannel" | "insertChannel"> => ({
+): DatabasePluginImplementation => ({
   async create(input: CreateDatabaseImplementationInput) {
     switch (input.model) {
       case "bundles":
@@ -155,6 +151,12 @@ const createPostgresCrudImplementation = (
       case "bundle_patches":
         return db
           .insertInto("bundle_patches")
+          .values(input.data)
+          .returningAll()
+          .executeTakeFirstOrThrow();
+      case "bundle_events":
+        return db
+          .insertInto("bundle_events")
           .values(input.data)
           .returningAll()
           .executeTakeFirstOrThrow();
@@ -337,38 +339,26 @@ const createPostgresCrudImplementation = (
       throw error;
     }
   },
-});
-
-const createPostgresImplementation = (
-  db: Kysely<Database>,
-  databaseNamespace: string,
-): DatabasePluginImplementation => ({
-  ...createPostgresCrudImplementation(db),
-  insights: createPostgresInsightsQueries(db, databaseNamespace),
   transaction: (callback) =>
     db
       .transaction()
       .execute((transaction) =>
-        callback(createPostgresCrudImplementation(transaction)),
+        callback(createPostgresImplementation(transaction)),
       ),
   dispose: () => db.destroy(),
 });
 
 export const postgres = (config: PostgresConfig) => {
   const { dialect, ...poolConfig } = config;
-  const db =
+  const implementation =
     dialect !== undefined
-      ? new Kysely<Database>({ dialect })
+      ? createPostgresImplementation(new Kysely<Database>({ dialect }))
       : (() => {
           const pool = new Pool(poolConfig);
-          return new Kysely<Database>({
-            dialect: new PostgresDialect({ pool }),
-          });
+          return createPostgresImplementation(
+            new Kysely<Database>({ dialect: new PostgresDialect({ pool }) }),
+          );
         })();
-  const implementation = createPostgresImplementation(
-    db,
-    OFFICIAL_INSIGHTS_DATABASE_NAMESPACE,
-  );
   const adapter = createDatabasePluginAdapter("postgres", implementation);
   return createDatabasePlugin({
     name: "postgres",

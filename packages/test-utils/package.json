@@ -13,10 +13,6 @@
       "types": "./dist/index.d.mts",
       "import": "./dist/index.mjs"
     },
-    "./insights-oracle": {
-      "types": "./dist/insights-oracle.d.mts",
-      "import": "./dist/insights-oracle.mjs"
-    },
     "./node": {
       "import": {
         "types": "./dist/node.d.mts",

@@ -6,36 +6,36 @@ import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import type {
-  InsightsInstallationViewRow,
-  InsightsViewPage,
-} from "@/lib/insights-view";
+  InstallationSearchResult,
+  InstallationSearchRow,
+} from "@/lib/api";
 import { cn } from "@/lib/utils";
 
 import { InsightsErrorAlert } from "./InsightsErrorAlert";
-import { InsightsPagination } from "./InsightsPagination";
+import { InstallationPagination } from "./InstallationPagination";
 
-const getLastKnownBundleId = (event: InsightsInstallationViewRow) =>
+const getLastKnownBundleId = (event: InstallationSearchRow) =>
   event.lastKnownBundleId;
 
-const getUserLabel = (event: InsightsInstallationViewRow) =>
+const getUserLabel = (event: InstallationSearchRow) =>
   event.userId ?? event.username ?? "—";
 
 export function InstallationMatchesCard({
   error,
-  onNext,
-  onPrevious,
+  limit,
+  offset,
+  onOffsetChange,
   onSelect,
-  pageNumber,
   results,
   selectedInstallId,
 }: {
   readonly error: unknown;
-  readonly onNext: () => void;
-  readonly onPrevious: () => void;
+  readonly limit: number;
+  readonly offset: number;
+  readonly onOffsetChange: (offset: number) => void;
   readonly onSelect: (installId: string) => void;
-  readonly pageNumber: number;
-  readonly results: InsightsViewPage<InsightsInstallationViewRow> | undefined;
-  readonly selectedInstallId: string | undefined;
+  readonly results: InstallationSearchResult | undefined;
+  readonly selectedInstallId: string;
 }) {
   const [expanded, setExpanded] = useState(false);
   const contentId = useId();
@@ -52,11 +52,9 @@ export function InstallationMatchesCard({
             </CardTitle>
           </div>
           <div className="flex shrink-0 items-center gap-2">
-            {results?.total !== null &&
-            results?.total !== undefined &&
-            !error ? (
+            {results && !error ? (
               <Badge variant="secondary" className="tabular-nums">
-                {results.total.toLocaleString()}
+                {results.pagination.total.toLocaleString()}
               </Badge>
             ) : null}
             {canCollapse ? (
@@ -168,17 +166,14 @@ export function InstallationMatchesCard({
             </a>
           </div>
         )}
-        {results &&
-        (results.data.length > 0 || pageNumber > 1 || results.hasNext) ? (
-          <InsightsPagination
-            hasNext={results.hasNext}
-            hasPrevious={pageNumber > 1}
+        {results && results.pagination.total > 0 ? (
+          <InstallationPagination
             label="Installation results"
-            onNext={onNext}
-            onPrevious={onPrevious}
+            limit={limit}
+            offset={offset}
             pageLength={results.data.length}
-            pageNumber={pageNumber}
-            total={results.total}
+            total={results.pagination.total}
+            onOffsetChange={onOffsetChange}
           />
         ) : null}
       </CardContent>

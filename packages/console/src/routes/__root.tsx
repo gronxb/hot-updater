@@ -9,6 +9,7 @@ import { useEffect, useState } from "react";
 
 import { AppSidebar } from "@/components/AppSidebar";
 import { ConsoleAccessPage } from "@/components/ConsoleAccessPage";
+import { InsightsCapabilityProvider } from "@/components/features/insights/InsightsCapabilityContext";
 import { NotFoundPage } from "@/components/NotFoundPage";
 import { ThemeProvider } from "@/components/ThemeProvider";
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
@@ -18,6 +19,10 @@ import {
   getConsoleAccessRpc,
   getConsoleAuthProvidersRpc,
 } from "@/lib/auth-rpc";
+import {
+  getInsightsCapabilityState,
+  useInsightsCapabilitiesQuery,
+} from "@/lib/insights-api";
 
 import appCss from "../styles.css?url";
 
@@ -144,6 +149,9 @@ function RootLayout() {
 }
 
 function AuthorizedConsole() {
+  const capabilityQuery = useInsightsCapabilitiesQuery();
+  const capability = getInsightsCapabilityState(capabilityQuery);
+
   useEffect(() => {
     if (
       import.meta.env.DEV &&
@@ -154,11 +162,13 @@ function AuthorizedConsole() {
     }
   }, []);
   return (
-    <SidebarProvider>
-      <AppSidebar />
-      <SidebarInset className="min-h-0 min-w-0 overflow-hidden">
-        <Outlet />
-      </SidebarInset>
-    </SidebarProvider>
+    <InsightsCapabilityProvider value={capability}>
+      <SidebarProvider>
+        <AppSidebar />
+        <SidebarInset className="min-h-0 min-w-0 overflow-hidden">
+          <Outlet />
+        </SidebarInset>
+      </SidebarProvider>
+    </InsightsCapabilityProvider>
   );
 }

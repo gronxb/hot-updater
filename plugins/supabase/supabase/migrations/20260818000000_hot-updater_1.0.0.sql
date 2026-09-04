@@ -163,6 +163,12 @@ CREATE INDEX hot_updater_v1_bundle_patches_base_bundle_id_idx
   ON public.hot_updater_v1_bundle_patches(base_bundle_id);
 CREATE INDEX hot_updater_v1_bundle_events_received_at_idx
   ON public.hot_updater_v1_bundle_events(received_at_ms, id);
+CREATE INDEX hot_updater_v1_bundle_events_install_idx
+  ON public.hot_updater_v1_bundle_events(install_id, received_at_ms, id);
+CREATE INDEX hot_updater_v1_bundle_events_user_id_idx
+  ON public.hot_updater_v1_bundle_events(user_id, received_at_ms, id);
+CREATE INDEX hot_updater_v1_bundle_events_username_idx
+  ON public.hot_updater_v1_bundle_events(username, received_at_ms, id);
 CREATE INDEX hot_updater_v1_bundle_events_to_bundle_idx
   ON public.hot_updater_v1_bundle_events(type, to_bundle_id, received_at_ms, id);
 CREATE INDEX hot_updater_v1_bundle_events_from_bundle_idx
@@ -206,6 +212,7 @@ DECLARE
   v_release public.hot_updater_v1_releases;
   v_catalog public.hot_updater_v1_release_catalogs;
   v_channel public.hot_updater_v1_channels;
+  v_event public.hot_updater_v1_bundle_events;
   v_api_key public.hot_updater_v1_api_keys;
 BEGIN
   IF pg_catalog.jsonb_typeof(p_commit) IS DISTINCT FROM 'object'
@@ -451,6 +458,29 @@ BEGIN
             byte_size = EXCLUDED.byte_size,
             is_tombstone = EXCLUDED.is_tombstone,
             updated_at_ms = EXCLUDED.updated_at_ms;
+
+        WHEN 'insights' THEN
+          IF v_change->>'operation' <> 'insert' THEN
+            RAISE EXCEPTION 'Unsupported insights change'
+              USING ERRCODE = '22023';
+          END IF;
+          v_event := pg_catalog.jsonb_populate_record(
+            NULL::public.hot_updater_v1_bundle_events,
+            v_change->'row'
+          );
+          INSERT INTO public.hot_updater_v1_bundle_events (
+            id, type, install_id, user_id, username, from_release_id,
+            from_bundle_id, to_release_id, to_bundle_id, platform,
+            app_version, channel, cohort, update_strategy, fingerprint_hash,
+            sdk_version, received_at_ms
+          ) VALUES (
+            v_event.id, v_event.type, v_event.install_id, v_event.user_id,
+            v_event.username, v_event.from_release_id, v_event.from_bundle_id,
+            v_event.to_release_id, v_event.to_bundle_id, v_event.platform,
+            v_event.app_version, v_event.channel, v_event.cohort,
+            v_event.update_strategy, v_event.fingerprint_hash,
+            v_event.sdk_version, v_event.received_at_ms
+          );
 
         WHEN 'apiKeys' THEN
           CASE v_change->>'operation'

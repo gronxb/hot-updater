@@ -157,10 +157,7 @@ const compileSeedCatalogs = async (
 
 export const createDatabasePluginHarness = () => {
   const data = createMockDatabaseData();
-  const basePlugin = mockDatabase({
-    data,
-    latency: { min: 0, max: 0 },
-  });
+  const basePlugin = mockDatabase({ data, latency: { min: 0, max: 0 } });
   const read = vi.fn(async (): Promise<void> => {});
   const commit = vi.fn((input) => basePlugin.commit(input));
   const dispose = vi.fn(async (): Promise<void> => {});
@@ -259,6 +256,7 @@ export const createDatabasePluginHarness = () => {
     reset: (): void => {
       data.bundles.clear();
       data.bundlePatches.clear();
+      data.bundleEvents.clear();
       data.channels.clear();
       data.apiKeys.clear();
       data.releaseCatalogs.clear();

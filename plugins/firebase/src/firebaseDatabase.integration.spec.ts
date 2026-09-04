@@ -2,18 +2,17 @@ import {
   createDatabaseClient,
   type DatabasePlugin,
 } from "@hot-updater/plugin-core";
-import { OFFICIAL_INSIGHTS_DATABASE_NAMESPACE } from "@hot-updater/plugin-core/internal";
-import { Query } from "firebase-admin/firestore";
+import {
+  setupDatabaseClientTestSuite,
+  setupDatabasePluginTestSuite,
+} from "@hot-updater/test-utils";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { createBundleEventRowFixture } from "../../../packages/test-utils/src/databaseTestFixtures";
 import { createFirestoreMock } from "../test-utils/createFirestoreMock";
-import { firebaseInsightsDatabase } from "./db";
 import { firebaseDatabase } from "./firebaseDatabase";
 import { firebaseChannelDocumentId } from "./firebaseDatabasePersistence";
 
 const PROJECT_ID = "firebase-database-test";
-const INSIGHTS_DATABASE_NAMESPACE = OFFICIAL_INSIGHTS_DATABASE_NAMESPACE;
 
 const {
   bundlePatchesCollection,
@@ -22,8 +21,6 @@ const {
   clearCollections,
   legacyBundlesCollection,
   legacySettingsCollection,
-  bundleEventsCollection,
-  insightsV2,
   settingsCollection,
 } = createFirestoreMock(PROJECT_ID);
 
@@ -39,6 +36,23 @@ const findAllBundles = (plugin: DatabasePlugin) =>
     offset: 0,
     orderBy: { field: "id", direction: "asc" },
   });
+
+setupDatabasePluginTestSuite({
+  name: "firebase fixed-model database plugin",
+  createPlugin,
+  migrate: () => undefined,
+  reset: clearCollections,
+  dispose: () => undefined,
+});
+
+setupDatabaseClientTestSuite({
+  name: "firebase database aggregate client",
+  createPlugin,
+  createClient: createDatabaseClient,
+  migrate: () => undefined,
+  reset: clearCollections,
+  dispose: () => undefined,
+});
 
 const storedBundleRow = (id: string) => ({
   id,
@@ -167,89 +181,6 @@ describe("firebase bounded reads", () => {
     await expect(
       createPlugin().models.bundles.findById(documentKey),
     ).rejects.toThrow("bundles.id.document-key");
-  });
-});
-
-describe("firebase append-only Insights boundary", () => {
-  beforeEach(clearCollections);
-
-  it("publishes the complete v2 model without a legacy writer or scan", async () => {
-    const first = createBundleEventRowFixture("919001", 100);
-    const second = createBundleEventRowFixture("919002", 200);
-    const maintenance = firebaseInsightsDatabase({
-      projectId: PROJECT_ID,
-      storageBucket: `${PROJECT_ID}.appspot.com`,
-      insightsDatabaseNamespace: INSIGHTS_DATABASE_NAMESPACE,
-    });
-    await expect(
-      maintenance.prepareStep({
-        writersDrained: true,
-        indexesReady: true,
-        maxItems: 1,
-        maxRequests: 4,
-      }),
-    ).resolves.toEqual({ state: "ready", processed: 0 });
-    const plugin = createPlugin();
-
-    expect(plugin.models.insights).toMatchObject({
-      append: expect.any(Function),
-      pageEvents: expect.any(Function),
-      pageInstallations: expect.any(Function),
-      getReport: expect.any(Function),
-      pageReport: expect.any(Function),
-    });
-    expect(plugin.models.insights).not.toHaveProperty("scan");
-    await plugin.models.insights.append(second);
-    await plugin.models.insights.append(first);
-
-    await expect(
-      plugin.models.insights.pageEvents({
-        selector: { kind: "all" },
-        beforeReceivedAtMs: Number.MAX_SAFE_INTEGER,
-        limit: 10,
-      }),
-    ).resolves.toMatchObject({
-      state: "ready",
-      data: { data: [second, first] },
-    });
-    await expect(
-      plugin.models.insights.pageInstallations({ kind: "all", limit: 10 }),
-    ).resolves.toMatchObject({ state: "ready" });
-    expect((await bundleEventsCollection.get()).empty).toBe(true);
-    expect((await insightsV2.events.get()).size).toBe(2);
-    expect((await insightsV2.sourceClocks.get()).size).toBe(65);
-    expect(
-      (await settingsCollection.doc("database_adapter_version").get()).data(),
-    ).toBeUndefined();
-  });
-
-  it("fails closed before event queries when the stored namespace differs", async () => {
-    await firebaseInsightsDatabase({
-      projectId: PROJECT_ID,
-      insightsDatabaseNamespace: "10000000-0000-4000-8000-000000000004",
-    }).prepareStep({
-      writersDrained: true,
-      indexesReady: true,
-      maxItems: 1,
-      maxRequests: 4,
-    });
-    const mismatch = firebaseDatabase({
-      projectId: PROJECT_ID,
-    });
-    const dataReads = vi.spyOn(Query.prototype, "get");
-
-    await expect(
-      mismatch.models.insights.pageEvents({
-        selector: { kind: "all" },
-        beforeReceivedAtMs: Number.MAX_SAFE_INTEGER,
-        limit: 10,
-      }),
-    ).resolves.toMatchObject({
-      state: "failed",
-      error: { code: "storage-corruption" },
-    });
-    expect(dataReads).not.toHaveBeenCalled();
-    dataReads.mockRestore();
   });
 });
 
