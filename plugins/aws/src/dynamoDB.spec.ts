@@ -553,6 +553,9 @@ describe("dynamoDB CloudFront lifecycle", () => {
 
     const queries = documentClient.commandCalls(QueryCommand);
     expect(queries).toHaveLength(2);
+    expect(queries[0]?.args[0].input.ExpressionAttributeNames).toEqual({
+      "#pk": "pk",
+    });
     expect(queries[1]?.args[0].input).toMatchObject({
       ExclusiveStartKey: lastEvaluatedKey,
       Limit: 2,

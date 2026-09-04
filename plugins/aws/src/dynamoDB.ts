@@ -3357,7 +3357,10 @@ export const createDynamoDBInsightsTable = (
             input.afterInstallId === undefined
               ? "#pk = :pk"
               : "#pk = :pk AND #sk > :after",
-          ExpressionAttributeNames: { "#pk": "pk", "#sk": "sk" },
+          ExpressionAttributeNames: {
+            "#pk": "pk",
+            ...(input.afterInstallId === undefined ? {} : { "#sk": "sk" }),
+          },
           ExpressionAttributeValues: {
             ":pk": partition,
             ...(input.afterInstallId === undefined
