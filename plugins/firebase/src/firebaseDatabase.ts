@@ -1,4 +1,7 @@
-import { createDatabasePlugin } from "@hot-updater/plugin-core";
+import {
+  compareInsightsText,
+  createDatabasePlugin,
+} from "@hot-updater/plugin-core";
 import {
   createDatabasePluginAdapter,
   type DatabasePluginImplementation,
@@ -10,11 +13,18 @@ import {
   initializeApp,
   type AppOptions,
 } from "firebase-admin/app";
-import { getFirestore } from "firebase-admin/firestore";
+import {
+  getFirestore,
+  type DocumentData,
+  type Query,
+  type WhereFilterOp,
+} from "firebase-admin/firestore";
 
 import {
+  parseFirebaseBundleEventRow,
   parseFirebaseBundleRow,
   parseFirebaseChannelRow,
+  parseFirebaseInsightsInstallationRow,
   parseFirebaseApiKeyRow,
   parseFirebasePatchRow,
 } from "./firebaseDatabaseParser";
@@ -22,6 +32,7 @@ import {
   createFirebaseDatabaseCollections,
   firebaseChannelDocumentId,
   firebaseChannelIdDocumentId,
+  firebaseInstallationDocumentId,
   loadFirebaseChannels,
   loadFirebaseDatabaseSnapshot,
   loadFirebaseTransactionSnapshot,
@@ -29,7 +40,10 @@ import {
   persistFirebaseDatabaseSnapshot,
   requireFirebaseDocumentKey,
 } from "./firebaseDatabasePersistence";
-import { queryFirebaseDatabaseRows } from "./firebaseDatabaseQuery";
+import {
+  matchesFirebaseDatabaseWhere,
+  queryFirebaseDatabaseRows,
+} from "./firebaseDatabaseQuery";
 import {
   cloneFirebaseDatabaseSnapshot,
   createFirebaseDatabaseState,
@@ -51,6 +65,63 @@ const exactId = (
     typeof condition.value === "string"
     ? condition.value
     : undefined;
+};
+
+const exactInstallId = (
+  input:
+    | Parameters<DatabasePluginImplementation["findOne"]>[0]
+    | Parameters<DatabasePluginImplementation["update"]>[0],
+): string | undefined => {
+  const condition = input.where?.find(
+    ({ field, operator }) =>
+      field === "install_id" && (operator === undefined || operator === "eq"),
+  );
+  return typeof condition?.value === "string" ? condition.value : undefined;
+};
+
+const firestoreOperator = (
+  operator: string | undefined,
+): WhereFilterOp | undefined => {
+  switch (operator ?? "eq") {
+    case "eq":
+      return "==";
+    case "ne":
+      return "!=";
+    case "gt":
+      return ">";
+    case "gte":
+      return ">=";
+    case "lt":
+      return "<";
+    case "lte":
+      return "<=";
+    case "in":
+      return "in";
+    case "not_in":
+      return "not-in";
+    default:
+      return undefined;
+  }
+};
+
+const applyFirebaseWhere = (
+  initial: Query<DocumentData>,
+  where: readonly {
+    readonly connector?: "AND" | "OR";
+    readonly field: string;
+    readonly operator?: string;
+    readonly value: unknown;
+  }[],
+): Query<DocumentData> => {
+  let query = initial;
+  for (const condition of where) {
+    const operator = firestoreOperator(condition.operator);
+    if (condition.connector === "OR" || operator === undefined) {
+      throw new FirebaseDatabaseConstraintError("query.unsupported");
+    }
+    query = query.where(condition.field, operator, condition.value);
+  }
+  return query;
 };
 
 export type FirebaseDatabaseConfig = AppOptions;
@@ -101,11 +172,161 @@ export const firebaseDatabase = (config: FirebaseDatabaseConfig) => {
     };
 
     return {
-      create: (input) => mutate((database) => database.create(input)),
-      update: (input) => mutate((database) => database.update(input)),
+      recordInsights: async ({ event, installation }) => {
+        await ensureMigrated();
+        await db.runTransaction(async (transaction) => {
+          const eventReference = collections.bundleEvents.doc(event.id);
+          const installationReference = collections.bundleInstallations.doc(
+            firebaseInstallationDocumentId(installation.install_id),
+          );
+          const [storedEvent, storedInstallation] = await transaction.getAll(
+            eventReference,
+            installationReference,
+          );
+          if (storedEvent.exists) return;
+          const current = storedInstallation.exists
+            ? requireFirebaseDocumentKey(
+                "bundle_installations",
+                storedInstallation.id,
+                parseFirebaseInsightsInstallationRow(
+                  storedInstallation.data(),
+                  `bundle_installations/${storedInstallation.id}`,
+                ),
+              )
+            : null;
+          transaction.create(eventReference, event);
+          if (
+            current === null ||
+            installation.received_at_ms > current.received_at_ms ||
+            (installation.received_at_ms === current.received_at_ms &&
+              compareInsightsText(installation.id, current.id) > 0)
+          ) {
+            transaction.set(installationReference, installation);
+          }
+        });
+      },
+      create: async (input) => {
+        if (
+          input.model !== "bundle_events" &&
+          input.model !== "bundle_installations"
+        ) {
+          return mutate((database) => database.create(input));
+        }
+        await ensureMigrated();
+        return db.runTransaction(async (transaction) => {
+          const collection =
+            input.model === "bundle_events"
+              ? collections.bundleEvents
+              : collections.bundleInstallations;
+          const documentId =
+            input.model === "bundle_events"
+              ? input.data.id
+              : firebaseInstallationDocumentId(input.data.install_id);
+          const reference = collection.doc(documentId);
+          const document = await transaction.get(reference);
+          if (document.exists) {
+            const row =
+              input.model === "bundle_events"
+                ? requireFirebaseDocumentKey(
+                    "bundle_events",
+                    document.id,
+                    parseFirebaseBundleEventRow(
+                      document.data(),
+                      `bundle_events/${document.id}`,
+                    ),
+                  )
+                : requireFirebaseDocumentKey(
+                    "bundle_installations",
+                    document.id,
+                    parseFirebaseInsightsInstallationRow(
+                      document.data(),
+                      `bundle_installations/${document.id}`,
+                    ),
+                  );
+            if (input.onConflict === "ignore") return row;
+            throw new FirebaseDatabaseConstraintError(
+              `${input.model}.id.unique`,
+            );
+          }
+          transaction.create(reference, input.data);
+          return input.data;
+        });
+      },
+      update: async (input) => {
+        if (input.model !== "bundle_installations") {
+          return mutate((database) => database.update(input));
+        }
+        const installId = exactInstallId(input);
+        if (installId === undefined) {
+          return mutate((database) => database.update(input));
+        }
+        await ensureMigrated();
+        return db.runTransaction(async (transaction) => {
+          const reference = collections.bundleInstallations.doc(
+            firebaseInstallationDocumentId(installId),
+          );
+          const document = await transaction.get(reference);
+          if (!document.exists) return null;
+          const current = requireFirebaseDocumentKey(
+            "bundle_installations",
+            document.id,
+            parseFirebaseInsightsInstallationRow(
+              document.data(),
+              `bundle_installations/${document.id}`,
+            ),
+          );
+          if (
+            !matchesFirebaseDatabaseWhere<"bundle_installations">(
+              current,
+              input.where,
+            )
+          ) {
+            return null;
+          }
+          const updated = { ...current, ...input.update };
+          transaction.set(reference, updated, { merge: true });
+          return updated;
+        });
+      },
       delete: (input) => mutate((database) => database.delete(input)),
-      count: (input) => read((database) => database.count(input)),
+      count: async (input) => {
+        if (
+          input.model !== "bundle_installations" &&
+          input.model !== "bundle_events"
+        ) {
+          return read((database) => database.count(input));
+        }
+        await ensureMigrated();
+        const query = applyFirebaseWhere(
+          input.model === "bundle_events"
+            ? collections.bundleEvents
+            : collections.bundleInstallations,
+          input.where ?? [],
+        );
+        const result = await query.count().get();
+        return result.data().count;
+      },
       findOne: async (input) => {
+        if (input.model === "bundle_installations") {
+          const installId = exactInstallId(input);
+          if (installId === undefined) {
+            return read((database) => database.findOne(input));
+          }
+          await ensureMigrated();
+          const document = await collections.bundleInstallations
+            .doc(firebaseInstallationDocumentId(installId))
+            .get();
+          return document.exists
+            ? requireFirebaseDocumentKey(
+                "bundle_installations",
+                document.id,
+                parseFirebaseInsightsInstallationRow(
+                  document.data(),
+                  `bundle_installations/${document.id}`,
+                ),
+              )
+            : null;
+        }
         const id = exactId(input);
         if (id === undefined) {
           return read((database) => database.findOne(input));
@@ -156,14 +377,54 @@ export const firebaseDatabase = (config: FirebaseDatabaseConfig) => {
         }
       },
       findMany: async (input) => {
-        if (input.model !== "channels") {
-          return read((database) => database.findMany(input));
+        if (
+          input.model === "bundle_events" ||
+          input.model === "bundle_installations"
+        ) {
+          await ensureMigrated();
+          const collection =
+            input.model === "bundle_events"
+              ? collections.bundleEvents
+              : collections.bundleInstallations;
+          let query = applyFirebaseWhere(collection, input.where ?? []);
+          for (const order of input.orderBy ?? []) {
+            if (order.nulls !== undefined) {
+              throw new FirebaseDatabaseConstraintError("query.unsupported");
+            }
+            query = query.orderBy(order.field, order.direction);
+          }
+          const snapshot = await query
+            .offset(input.offset)
+            .limit(input.limit)
+            .get();
+          return snapshot.docs.map((document) =>
+            input.model === "bundle_events"
+              ? requireFirebaseDocumentKey(
+                  "bundle_events",
+                  document.id,
+                  parseFirebaseBundleEventRow(
+                    document.data(),
+                    `bundle_events/${document.id}`,
+                  ),
+                )
+              : requireFirebaseDocumentKey(
+                  "bundle_installations",
+                  document.id,
+                  parseFirebaseInsightsInstallationRow(
+                    document.data(),
+                    `bundle_installations/${document.id}`,
+                  ),
+                ),
+          );
         }
-        await ensureMigrated();
-        return queryFirebaseDatabaseRows(
-          await loadFirebaseChannels(collections),
-          input,
-        );
+        if (input.model === "channels") {
+          await ensureMigrated();
+          return queryFirebaseDatabaseRows(
+            await loadFirebaseChannels(collections),
+            input,
+          );
+        }
+        return read((database) => database.findMany(input));
       },
       insertChannel: async (input) => {
         await ensureMigrated();

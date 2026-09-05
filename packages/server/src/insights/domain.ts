@@ -15,17 +15,7 @@ export type CreateBundleEventRequestBase = {
 
 export type CreateBundleEventRequest =
   | (CreateBundleEventRequestBase & {
-      readonly type: "UPDATE_APPLIED";
-      readonly fromBundleId: string;
-      readonly updateStrategy: "fingerprint" | "appVersion";
-    })
-  | (CreateBundleEventRequestBase & {
-      readonly type: "RECOVERED";
-      readonly fromBundleId: string;
-      readonly updateStrategy: "fingerprint" | "appVersion";
-    })
-  | (CreateBundleEventRequestBase & {
-      readonly type: "RELEASE_ADOPTED";
+      readonly type: "UPDATE_APPLIED" | "RECOVERED" | "RELEASE_ADOPTED";
       readonly fromBundleId: string;
       readonly updateStrategy: "fingerprint" | "appVersion";
     })
@@ -35,39 +25,17 @@ export type CreateBundleEventRequest =
       readonly updateStrategy: null;
     });
 
-export type BundleEventSummary = {
-  readonly installed: number;
-  readonly recovered: number;
-};
-
-export type BundleEventSummaryByBundle = BundleEventSummary & {
-  readonly bundleId: string;
-};
-
-export type BundleEventInsightsWindow = "24h" | "7d" | "30d" | "all";
 export type ActiveInstallationWindow = "24h" | "7d" | "30d";
 
-export type InstallationSearchRow = {
+export type EventHistoryRow = {
+  readonly id: string;
   readonly installId: string;
-  readonly username: string | null;
-  readonly userId: string | null;
-  readonly lastKnownBundleId: string;
-  readonly latestStatus:
+  readonly type:
     | "UPDATE_APPLIED"
     | "RECOVERED"
     | "RELEASE_ADOPTED"
     | "UNCHANGED";
-  readonly platform: "ios" | "android";
-  readonly appVersion: string;
-  readonly channel: string;
-  readonly cohort: string;
-  readonly receivedAtMs: number;
-};
-
-export type InstallationHistoryRow = {
-  readonly id: string;
-  readonly type: "UPDATE_APPLIED" | "RECOVERED";
-  readonly fromBundleId: string;
+  readonly fromBundleId: string | null;
   readonly toBundleId: string;
   readonly username: string | null;
   readonly userId: string | null;
@@ -78,71 +46,58 @@ export type InstallationHistoryRow = {
   readonly receivedAtMs: number;
 };
 
-export type OffsetPaginationResult<TData> = {
-  readonly data: readonly TData[];
-  readonly pagination: {
-    readonly total: number;
-    readonly limit: number;
-    readonly offset: number;
-  };
+export type InstallationHistoryRow = EventHistoryRow & {
+  readonly type: "UPDATE_APPLIED" | "RECOVERED";
+  readonly fromBundleId: string;
 };
 
-export type EventHistoryRow = Omit<
-  InstallationHistoryRow,
-  "type" | "fromBundleId"
-> & {
+export type InstallationRow = {
   readonly installId: string;
-  readonly type: InstallationSearchRow["latestStatus"];
-  readonly fromBundleId: string | null;
-};
-
-export type InsightsSeriesPoint = {
-  readonly bucketStartMs: number;
-  readonly value: number;
-};
-
-export type InsightsCohortPoint = {
+  readonly username: string | null;
+  readonly userId: string | null;
+  readonly lastKnownBundleId: string;
+  readonly latestStatus: EventHistoryRow["type"];
+  readonly platform: "ios" | "android";
+  readonly appVersion: string;
+  readonly channel: string;
   readonly cohort: string;
-  readonly value: number;
+  readonly receivedAtMs: number;
 };
 
-export type BundleEventInsightsResult = {
-  readonly summary: BundleEventSummary;
-  readonly series: {
-    readonly installed: readonly InsightsSeriesPoint[];
-    readonly recovered: readonly InsightsSeriesPoint[];
-  };
-  readonly cohorts: {
-    readonly installed: readonly InsightsCohortPoint[];
-    readonly recovered: readonly InsightsCohortPoint[];
-  };
-  readonly recentEvents: OffsetPaginationResult<InstallationHistoryRow>;
+export type CursorPage<T> = {
+  readonly data: readonly T[];
+  readonly nextCursor: string | null;
 };
 
-export type BundleEventOverview = {
-  readonly trackedInstallations: number;
-  readonly bundles: readonly {
-    readonly bundleId: string;
-    readonly installations: number;
-  }[];
+export type EventCursorPage<T extends EventHistoryRow> = CursorPage<T> & {
+  readonly beforeReceivedAtMs: number;
 };
 
-export type ActiveInstallationOverview = {
-  readonly asOfMs: number;
+export type InsightsScope = {
+  readonly platform: "ios" | "android";
+  readonly channel: string;
+};
+
+export type InsightsBundleSelection = InsightsScope & {
+  readonly bundleId: string;
+  readonly outcome: "applied" | "recovered" | "adopted";
+};
+
+export type InsightsCountMeasurement = {
+  readonly count: number;
+  readonly measuredAtMs: number;
+};
+
+export type ReportingOverview = InsightsScope & {
   readonly window: ActiveInstallationWindow;
-  readonly activeInstallations: number;
-  readonly series: readonly InsightsSeriesPoint[];
-  readonly bundleSeries: readonly {
+  readonly sinceMs: number;
+  readonly beforeReceivedAtMs: number;
+  readonly reportingInstallations: InsightsCountMeasurement;
+  readonly bundle?: {
     readonly bundleId: string;
-    readonly series: readonly InsightsSeriesPoint[];
-  }[];
-  readonly bundles: readonly {
-    readonly bundleId: string;
-    readonly installations: number;
-  }[];
-};
-
-export type ActiveInstallationInput = {
-  readonly window: ActiveInstallationWindow;
-  readonly userId?: string;
+    readonly reportingInstallations: InsightsCountMeasurement;
+    readonly appliedReports: InsightsCountMeasurement;
+    readonly recoveredReports: InsightsCountMeasurement;
+    readonly adoptedReports: InsightsCountMeasurement;
+  };
 };

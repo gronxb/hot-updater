@@ -12,6 +12,7 @@ import {
   inferLegacyCoreSchemaVersion,
   isCurrentSchemaVersion,
 } from "./fixedMigratorShared";
+import { getInsightsV101Sql } from "./schema/insightsMigration";
 import { createTableSql } from "./schema/sql";
 import {
   createSqlCreateOperations,
@@ -93,6 +94,32 @@ export const createKyselyMigrator = ({
     const { coreVersion, legacyCoreVersion } = await getSchemaVersions();
     if (isCurrentSchemaVersion(coreVersion)) {
       return getEmptyMigrationResult();
+    }
+    if (coreVersion === "1.0.0") {
+      const existingIndexes =
+        provider === "mysql"
+          ? await sql<{
+              readonly index_name: string;
+            }>`select distinct index_name from information_schema.statistics where table_schema = database() and table_name in ('bundle_events', 'bundle_installations')`.execute(
+              db,
+            )
+          : { rows: [] };
+      const statements = [
+        ...getInsightsV101Sql(
+          provider,
+          new Set(existingIndexes.rows.map((row) => row.index_name)),
+        ),
+        getSettingsInsertSql(provider),
+      ];
+      return {
+        operations: statements.map((statement) => ({
+          type: "custom",
+          sql: statement,
+        })),
+        getSQL: () =>
+          statements.map((statement) => `${statement};`).join("\n\n"),
+        execute: () => executeMigrationStatements({ db, provider, statements }),
+      };
     }
     assertCurrentOrEmptySchemaVersion(coreVersion ?? legacyCoreVersion);
 

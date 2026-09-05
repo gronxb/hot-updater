@@ -950,7 +950,9 @@ describe("Detox scenario contract", () => {
     // Then: every launch goes through launchArgs instead of relying on @env.
     expect(detoxRuntimeSource).toContain("function runtimeLaunchArgs()");
     expect(detoxRuntimeSource).toContain("HOT_UPDATER_E2E_RUNTIME_CONFIG_URL");
-    expect(detoxRuntimeSource).toContain("launchArgs: runtimeLaunchArgs()");
+    expect(detoxRuntimeSource).toContain(
+      "launchArgs: { ...runtimeLaunchArgs(), ...options.launchArgs }",
+    );
     expect(detoxRuntimeSource).not.toContain(
       "device.launchApp({ newInstance: true })",
     );

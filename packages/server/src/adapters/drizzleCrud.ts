@@ -1,9 +1,12 @@
-import { DatabasePluginInputError } from "@hot-updater/plugin-core";
+import {
+  DatabasePluginInputError,
+  type InsightsRecordInput,
+} from "@hot-updater/plugin-core";
 import type {
   DatabasePluginImplementation,
   TransactionDatabasePluginImplementation,
 } from "@hot-updater/plugin-core/internal";
-import { asc, desc, eq, sql, type SQLWrapper } from "drizzle-orm";
+import { and, asc, desc, eq, lt, or, sql, type SQLWrapper } from "drizzle-orm";
 
 import {
   isChannelDeleteReferencedError,
@@ -78,9 +81,98 @@ const executeInsert = async (
   await ignored.execute();
 };
 
+export const recordDrizzleInsights = (
+  db: DrizzleDB,
+  provider: DrizzleProvider,
+  input: InsightsRecordInput,
+): void | Promise<void> => {
+  if (db.resultKind !== "sync")
+    return recordAsyncDrizzleInsights(db, provider, input);
+  const events = getDrizzleTable(db, "bundle_events");
+  const installations = getDrizzleTable(db, "bundle_installations");
+  const eventInsert = db
+    .insert(events)
+    .values(input.event)
+    .onConflictDoNothing?.()
+    .returning?.({ id: getDrizzleColumn(events, "id") });
+  const installationInsert = db
+    .insert(installations)
+    .values(input.installation)
+    .onConflictDoNothing?.();
+  const installationUpdate = db
+    .update(installations)
+    .set(input.installation)
+    .where(newerInstallationWhere(installations, input.installation));
+  if (
+    eventInsert?.all === undefined ||
+    installationInsert?.run === undefined ||
+    installationUpdate.run === undefined
+  )
+    throw new DrizzleAdapterInvariantError();
+  if (eventInsert.all().length === 0) return;
+  installationInsert.run();
+  installationUpdate.run();
+};
+
+const newerInstallationWhere = (
+  installations: DrizzleTable,
+  installation: InsightsRecordInput["installation"],
+) => {
+  const receivedAt = getDrizzleColumn(installations, "received_at_ms");
+  return and(
+    eq(getDrizzleColumn(installations, "install_id"), installation.install_id),
+    or(
+      lt(receivedAt, installation.received_at_ms),
+      and(
+        eq(receivedAt, installation.received_at_ms),
+        lt(getDrizzleColumn(installations, "id"), installation.id),
+      ),
+    ),
+  );
+};
+
+const recordAsyncDrizzleInsights = async (
+  db: DrizzleDB,
+  provider: DrizzleProvider,
+  { event, installation }: InsightsRecordInput,
+): Promise<void> => {
+  const events = getDrizzleTable(db, "bundle_events");
+  const installations = getDrizzleTable(db, "bundle_installations");
+  if (provider === "mysql") {
+    const existing = await db.query.bundle_events.findFirst({
+      where: eq(getDrizzleColumn(events, "id"), event.id),
+    });
+    if (existing !== undefined) return;
+    await db.insert(events).values(event).execute();
+    const insertInstallation = db
+      .insert(installations)
+      .values(installation)
+      .onDuplicateKeyUpdate?.({ set: { install_id: installation.install_id } });
+    if (insertInstallation === undefined)
+      throw new DrizzleAdapterInvariantError();
+    await insertInstallation.execute();
+  } else {
+    const insert = db.insert(events).values(event).onConflictDoNothing?.();
+    const returning = insert?.returning?.({
+      id: getDrizzleColumn(events, "id"),
+    });
+    if (returning === undefined) throw new DrizzleAdapterInvariantError();
+    const rows = await returning.execute();
+    if (!Array.isArray(rows)) throw new DrizzleAdapterInvariantError();
+    if (rows.length === 0) return;
+    await executeInsert(db, provider, installations, installation, "ignore");
+  }
+  await db
+    .update(installations)
+    .set(installation)
+    .where(newerInstallationWhere(installations, installation))
+    .execute();
+};
+
 const toOrderBy = (
   table: DrizzleTable,
   input: {
+    model?: string;
     orderBy?: readonly {
       field: string;
       direction: "asc" | "desc";
@@ -91,6 +183,12 @@ const toOrderBy = (
   const clauses = input.orderBy;
   return clauses?.flatMap((clause) => {
     const column = getDrizzleColumn(table, clause.field);
+    if (
+      input.model === "bundle_events" ||
+      input.model === "bundle_installations"
+    ) {
+      return [clause.direction === "asc" ? asc(column) : desc(column)];
+    }
     const nulls =
       clause.nulls ?? (clause.direction === "asc" ? "last" : "first");
     return [
@@ -110,6 +208,7 @@ export const createDrizzleCrud = (
   const bundles = getDrizzleTable(db, "bundles");
   const patches = getDrizzleTable(db, "bundle_patches");
   const events = getDrizzleTable(db, "bundle_events");
+  const installations = getDrizzleTable(db, "bundle_installations");
   const releases = getDrizzleTable(db, "releases");
   const releaseCatalogs = getDrizzleTable(db, "release_catalogs");
   const channels = getDrizzleTable(db, "channels");
@@ -169,6 +268,15 @@ export const createDrizzleCrud = (
         case "bundle_events":
           await executeInsert(db, provider, events, input.data, undefined);
           return input.data;
+        case "bundle_installations":
+          await executeInsert(
+            db,
+            provider,
+            installations,
+            input.data,
+            input.onConflict,
+          );
+          return input.data;
         case "releases":
           await executeInsert(
             db,
@@ -208,6 +316,27 @@ export const createDrizzleCrud = (
       }
     },
     async update(input) {
+      if (input.model === "bundle_installations") {
+        const installId = input.where.find(
+          (item) =>
+            item.field === "install_id" &&
+            (item.operator === undefined || item.operator === "eq") &&
+            typeof item.value === "string",
+        )?.value;
+        if (typeof installId !== "string") {
+          throw new DrizzleAdapterInvariantError();
+        }
+        const where = buildDrizzleWhere(provider, installations, input.where);
+        if (where === undefined) throw new DrizzleAdapterInvariantError();
+        await db.update(installations).set(input.update).where(where).execute();
+        const row = await db.query.bundle_installations.findFirst({
+          where: eq(getDrizzleColumn(installations, "install_id"), installId),
+        });
+        return row?.id === input.update.id &&
+          row.received_at_ms === input.update.received_at_ms
+          ? row
+          : null;
+      }
       const selector = input.where[0];
       if (selector === undefined || typeof selector.value !== "string") {
         throw new DrizzleAdapterInvariantError();
@@ -296,6 +425,11 @@ export const createDrizzleCrud = (
         throw new DatabasePluginInputError("invalid-operation");
       }
       switch (input.model) {
+        case "bundle_events":
+          return db.$count(
+            events,
+            buildDrizzleWhere(provider, events, input.where),
+          );
         case "bundles":
           return db.$count(
             bundles,
@@ -310,6 +444,11 @@ export const createDrizzleCrud = (
           return db.$count(
             releases,
             buildDrizzleWhere(provider, releases, input.where),
+          );
+        case "bundle_installations":
+          return db.$count(
+            installations,
+            buildDrizzleWhere(provider, installations, input.where),
           );
       }
     },
@@ -351,6 +490,12 @@ export const createDrizzleCrud = (
           });
           return row === undefined ? null : fromStoredReleaseCatalogRow(row);
         }
+        case "bundle_installations":
+          return (
+            (await db.query.bundle_installations.findFirst({
+              where: buildDrizzleWhere(provider, installations, input.where),
+            })) ?? null
+          );
       }
     },
     async findMany(input) {
@@ -371,6 +516,13 @@ export const createDrizzleCrud = (
           return db.query.bundle_events.findMany({
             where: buildDrizzleWhere(provider, events, input.where),
             orderBy: toOrderBy(events, input),
+            limit: input.limit,
+            offset: input.offset,
+          });
+        case "bundle_installations":
+          return db.query.bundle_installations.findMany({
+            where: buildDrizzleWhere(provider, installations, input.where),
+            orderBy: toOrderBy(installations, input),
             limit: input.limit,
             offset: input.offset,
           });

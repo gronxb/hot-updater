@@ -11,10 +11,12 @@ import {
   MongoAdapterConstraintError,
   mongoSessionOptions,
   WITHOUT_INTERNAL_FIELDS,
+  WITHOUT_MONGO_ID,
 } from "./mongodbCollections";
 import {
   createMongoBundleWhere,
   createMongoChannelWhere,
+  createMongoInstallationWhere,
   createMongoApiKeyWhere,
   createMongoPatchWhere,
   createMongoReleaseCatalogWhere,
@@ -116,6 +118,20 @@ export const createMongoWrites = (
           mongoSessionOptions(session),
         );
         return input.data;
+      case "bundle_installations":
+        if (input.onConflict === "ignore") {
+          await collections.bundleInstallations.updateOne(
+            { install_id: input.data.install_id },
+            { $setOnInsert: input.data },
+            { upsert: true, ...mongoSessionOptions(session) },
+          );
+          return input.data;
+        }
+        await collections.bundleInstallations.insertOne(
+          input.data,
+          mongoSessionOptions(session),
+        );
+        return input.data;
       case "releases":
         await collections.releases.insertOne(
           input.data,
@@ -159,6 +175,17 @@ export const createMongoWrites = (
     }
   },
   update: async (input) => {
+    if (input.model === "bundle_installations") {
+      return collections.bundleInstallations.findOneAndUpdate(
+        createMongoInstallationWhere(input.where),
+        { $set: input.update },
+        {
+          projection: WITHOUT_MONGO_ID,
+          returnDocument: "after",
+          ...mongoSessionOptions(session),
+        },
+      );
+    }
     if (input.model === "api_keys") {
       return collections.apiKeys.findOneAndUpdate(
         createMongoApiKeyWhere(input.where),

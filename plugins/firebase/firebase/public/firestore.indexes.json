@@ -1,6 +1,50 @@
 {
   "indexes": [
     {
+      "collectionGroup": "hot_updater_v1_bundle_events",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "received_at_ms", "order": "DESCENDING" },
+        { "fieldPath": "id", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "hot_updater_v1_bundle_events",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "received_at_ms", "order": "ASCENDING" },
+        { "fieldPath": "id", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "hot_updater_v1_bundle_events",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "install_id", "order": "ASCENDING" },
+        { "fieldPath": "type", "order": "ASCENDING" },
+        { "fieldPath": "received_at_ms", "order": "DESCENDING" },
+        { "fieldPath": "id", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "hot_updater_v1_bundle_events",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "install_id", "order": "ASCENDING" },
+        { "fieldPath": "type", "order": "ASCENDING" },
+        { "fieldPath": "received_at_ms", "order": "ASCENDING" },
+        { "fieldPath": "id", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "hot_updater_v1_insights_installations",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "user_id", "order": "ASCENDING" },
+        { "fieldPath": "install_id", "order": "ASCENDING" }
+      ]
+    },
+    {
       "collectionGroup": "hot_updater_v1_bundles",
       "queryScope": "COLLECTION",
       "fields": [
@@ -77,6 +121,73 @@
         { "fieldPath": "fingerprint_hash", "order": "ASCENDING" },
         { "fieldPath": "platform", "order": "ASCENDING" },
         { "fieldPath": "id", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "hot_updater_v1_bundle_events",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "type", "order": "ASCENDING" },
+        { "fieldPath": "platform", "order": "ASCENDING" },
+        { "fieldPath": "channel", "order": "ASCENDING" },
+        { "fieldPath": "from_bundle_id", "order": "ASCENDING" },
+        { "fieldPath": "received_at_ms", "order": "ASCENDING" },
+        { "fieldPath": "id", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "hot_updater_v1_bundle_events",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "type", "order": "ASCENDING" },
+        { "fieldPath": "platform", "order": "ASCENDING" },
+        { "fieldPath": "channel", "order": "ASCENDING" },
+        { "fieldPath": "from_bundle_id", "order": "ASCENDING" },
+        { "fieldPath": "received_at_ms", "order": "DESCENDING" },
+        { "fieldPath": "id", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "hot_updater_v1_bundle_events",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "type", "order": "ASCENDING" },
+        { "fieldPath": "platform", "order": "ASCENDING" },
+        { "fieldPath": "channel", "order": "ASCENDING" },
+        { "fieldPath": "to_bundle_id", "order": "ASCENDING" },
+        { "fieldPath": "received_at_ms", "order": "ASCENDING" },
+        { "fieldPath": "id", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "hot_updater_v1_bundle_events",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "type", "order": "ASCENDING" },
+        { "fieldPath": "platform", "order": "ASCENDING" },
+        { "fieldPath": "channel", "order": "ASCENDING" },
+        { "fieldPath": "to_bundle_id", "order": "ASCENDING" },
+        { "fieldPath": "received_at_ms", "order": "DESCENDING" },
+        { "fieldPath": "id", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "hot_updater_v1_insights_installations",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "platform", "order": "ASCENDING" },
+        { "fieldPath": "channel", "order": "ASCENDING" },
+        { "fieldPath": "received_at_ms", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "hot_updater_v1_insights_installations",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "platform", "order": "ASCENDING" },
+        { "fieldPath": "channel", "order": "ASCENDING" },
+        { "fieldPath": "to_bundle_id", "order": "ASCENDING" },
+        { "fieldPath": "received_at_ms", "order": "ASCENDING" }
       ]
     }
   ],

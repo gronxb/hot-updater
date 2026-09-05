@@ -12,6 +12,7 @@ describe("Firebase infrastructure generation", () => {
     [{ adapterVersion: 3, hasData: false }, "incompatible"],
     [{ adapterVersion: undefined, hasData: true }, "incompatible"],
     [{ adapterVersion: 4, hasData: true }, "v1"],
+    [{ adapterVersion: 5, hasData: true }, "v1"],
   ] as const)("classifies %j as %s", (input, expected) => {
     expect(resolveFirebaseInfrastructureState(input)).toBe(expected);
   });

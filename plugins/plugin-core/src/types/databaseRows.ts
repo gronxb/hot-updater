@@ -112,6 +112,21 @@ export type BundleEventRow =
       readonly update_strategy: null;
     });
 
+export type InsightsInstallationRow = Pick<
+  BundleEventRow,
+  | "id"
+  | "install_id"
+  | "user_id"
+  | "username"
+  | "to_bundle_id"
+  | "type"
+  | "platform"
+  | "app_version"
+  | "channel"
+  | "cohort"
+  | "received_at_ms"
+>;
+
 export interface ApiKeyRow {
   readonly id: string;
   readonly hash: string;
@@ -129,6 +144,7 @@ export interface DatabaseModelMap {
   readonly release_catalogs: ReleaseCatalogRow;
   readonly channels: ChannelRow;
   readonly bundle_events: BundleEventRow;
+  readonly bundle_installations: InsightsInstallationRow;
   readonly api_keys: ApiKeyRow;
 }
 

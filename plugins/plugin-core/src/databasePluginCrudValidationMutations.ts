@@ -5,6 +5,7 @@ import {
   validateField,
 } from "./databasePluginCrudValidationFields";
 import { validateResult } from "./databasePluginCrudValidationRows";
+import { databaseFields } from "./types/databaseFields";
 import type {
   DatabaseSelect,
   TransactionDatabasePluginImplementation,
@@ -18,9 +19,51 @@ export const validateMutationWhere = (where: readonly unknown[]): void => {
 };
 
 export const validateUpdateWhere = (
-  model: "bundles" | "releases" | "release_catalogs" | "api_keys",
+  model:
+    | "bundles"
+    | "releases"
+    | "release_catalogs"
+    | "bundle_installations"
+    | "api_keys",
   where: readonly unknown[],
 ): void => {
+  if (model === "bundle_installations") {
+    const [install, receivedAt, id] = where;
+    const exactInstall =
+      isRecord(install) &&
+      install.field === "install_id" &&
+      (install.operator === undefined || install.operator === "eq") &&
+      typeof install.value === "string" &&
+      install.connector === undefined &&
+      install.mode === undefined;
+    const receivedBefore =
+      isRecord(receivedAt) &&
+      receivedAt.field === "received_at_ms" &&
+      (receivedAt.operator === "lt" || receivedAt.operator === "eq") &&
+      typeof receivedAt.value === "number" &&
+      Number.isSafeInteger(receivedAt.value) &&
+      receivedAt.value >= 0 &&
+      receivedAt.connector === undefined &&
+      receivedAt.mode === undefined;
+    const idBefore =
+      isRecord(id) &&
+      id.field === "id" &&
+      id.operator === "lt" &&
+      typeof id.value === "string" &&
+      id.connector === undefined &&
+      id.mode === undefined;
+    if (
+      !exactInstall ||
+      !receivedBefore ||
+      !(
+        (where.length === 2 && receivedAt.operator === "lt") ||
+        (where.length === 3 && receivedAt.operator === "eq" && idBefore)
+      )
+    ) {
+      throw new DatabasePluginInputError("invalid-update-selector");
+    }
+    return;
+  }
   const selector = where[0];
   const primaryField = model === "release_catalogs" ? "scope_key" : "id";
   if (
@@ -33,6 +76,27 @@ export const validateUpdateWhere = (
     selector.mode !== undefined
   ) {
     throw new DatabasePluginInputError("invalid-update-selector");
+  }
+};
+
+export const validateInsightsInstallationUpdateData = (
+  update: unknown,
+): void => {
+  if (!isRecord(update)) throw new DatabasePluginInputError("invalid-data");
+  const fields = databaseFields.bundle_installations.filter(
+    (field) => field !== "install_id",
+  );
+  if (
+    Reflect.ownKeys(update).length !== fields.length ||
+    fields.some((field) => !Object.hasOwn(update, field))
+  ) {
+    throw new DatabasePluginInputError("invalid-data");
+  }
+  for (const field of fields) {
+    const validator = modelValidators.bundle_installations[field];
+    if (!validator?.(Reflect.get(update, field))) {
+      throw new DatabasePluginInputError("invalid-data");
+    }
   }
 };
 

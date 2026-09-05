@@ -30,6 +30,7 @@ describe("database client pagination", () => {
       count: async () => 1,
       findOne: async () => row,
       findMany,
+      recordInsights: async () => undefined,
       insertChannel: async (input) => ({ row: input.row, inserted: true }),
       deleteChannel: async () => ({ deleted: false, reason: "not_found" }),
     });
@@ -114,6 +115,7 @@ describe("database client pagination", () => {
               : [];
           return rows.slice(input.offset, input.offset + input.limit);
         },
+        recordInsights: async () => undefined,
         insertChannel: async (input) => ({ row: input.row, inserted: true }),
         deleteChannel: async () => ({ deleted: false, reason: "not_found" }),
       }),
@@ -178,6 +180,7 @@ describe("database client pagination", () => {
           }
           return page;
         },
+        recordInsights: async () => undefined,
         insertChannel: async (input) => ({ row: input.row, inserted: true }),
         deleteChannel: async () => ({ deleted: false, reason: "not_found" }),
       }),

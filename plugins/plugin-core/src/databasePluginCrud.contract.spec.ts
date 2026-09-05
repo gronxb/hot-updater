@@ -16,6 +16,7 @@ const createMethods = () => ({
   count: unimplemented,
   findOne: unimplemented,
   findMany: unimplemented,
+  recordInsights: unimplemented,
   insertChannel: unimplemented,
   deleteChannel: unimplemented,
 });
@@ -67,6 +68,20 @@ const bundleEventRow = {
   fingerprint_hash: null,
   sdk_version: null,
   received_at_ms: 1,
+};
+
+const bundleInstallationRow = {
+  id: bundleEventRow.id,
+  install_id: bundleEventRow.install_id,
+  user_id: bundleEventRow.user_id,
+  username: bundleEventRow.username,
+  to_bundle_id: bundleEventRow.to_bundle_id,
+  type: bundleEventRow.type,
+  platform: bundleEventRow.platform,
+  app_version: bundleEventRow.app_version,
+  channel: bundleEventRow.channel,
+  cohort: bundleEventRow.cohort,
+  received_at_ms: bundleEventRow.received_at_ms,
 };
 
 const invoke = (
@@ -268,6 +283,87 @@ describe("database plugin CRUD runtime contract", () => {
 
       await expect(result).rejects.toMatchObject({ code: "invalid-data" });
       expect(create).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each([
+    ["bundle_events", "install_id", ""],
+    ["bundle_events", "install_id", "i".repeat(256)],
+    ["bundle_events", "user_id", ""],
+    ["bundle_events", "user_id", "u".repeat(256)],
+    ["bundle_installations", "install_id", ""],
+    ["bundle_installations", "install_id", "i".repeat(256)],
+    ["bundle_installations", "user_id", ""],
+    ["bundle_installations", "user_id", "u".repeat(256)],
+  ] as const)(
+    "rejects invalid Insights identity %s.%s",
+    async (model, field, value) => {
+      const create = vi.fn(async ({ data }) => data);
+      const plugin = createValidatedCrud({
+        name: "insights-identity-contract",
+        plugin: () => ({ ...createMethods(), create }),
+      });
+      const row =
+        model === "bundle_events" ? bundleEventRow : bundleInstallationRow;
+
+      const result = invoke(plugin, "create", {
+        model,
+        data: { ...row, [field]: value },
+      });
+
+      await expect(result).rejects.toMatchObject({ code: "invalid-data" });
+      expect(create).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each(["bundle_events", "bundle_installations"] as const)(
+    "accepts 255-character Insights identities for %s",
+    async (model) => {
+      const create = vi.fn(async ({ data }) => data);
+      const plugin = createValidatedCrud({
+        name: "insights-identity-contract",
+        plugin: () => ({ ...createMethods(), create }),
+      });
+      const row =
+        model === "bundle_events" ? bundleEventRow : bundleInstallationRow;
+      const data = {
+        ...row,
+        install_id: "i".repeat(255),
+        user_id: "u".repeat(255),
+      };
+
+      await expect(invoke(plugin, "create", { model, data })).resolves.toEqual(
+        data,
+      );
+      expect(create).toHaveBeenCalledOnce();
+    },
+  );
+
+  it.each(["", "u".repeat(256)])(
+    "rejects an invalid current user identity on installation update",
+    async (userId) => {
+      const update = vi.fn(async () => bundleInstallationRow);
+      const plugin = createValidatedCrud({
+        name: "insights-identity-contract",
+        plugin: () => ({ ...createMethods(), update }),
+      });
+      const { install_id: _installId, ...validUpdate } = bundleInstallationRow;
+
+      const result = invoke(plugin, "update", {
+        model: "bundle_installations",
+        where: [
+          {
+            field: "install_id",
+            operator: "eq",
+            value: bundleInstallationRow.install_id,
+          },
+          { field: "received_at_ms", operator: "lt", value: 2 },
+        ],
+        update: { ...validUpdate, user_id: userId },
+      });
+
+      await expect(result).rejects.toMatchObject({ code: "invalid-data" });
+      expect(update).not.toHaveBeenCalled();
     },
   );
 

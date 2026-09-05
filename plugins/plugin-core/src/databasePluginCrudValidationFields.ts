@@ -30,6 +30,13 @@ export const isChannelText = (value: unknown): value is string => {
   return true;
 };
 
+const isInsightsIdentityText = (value: unknown): value is string =>
+  typeof value === "string" && value.length > 0 && value.length <= 255;
+
+const isNullableInsightsIdentityText = (
+  value: unknown,
+): value is string | null => value === null || isInsightsIdentityText(value);
+
 export const modelValidators: ValidatorMap = {
   bundles: {
     id: (value) => typeof value === "string",
@@ -132,8 +139,8 @@ export const modelValidators: ValidatorMap = {
       value === "RECOVERED" ||
       value === "RELEASE_ADOPTED" ||
       value === "UNCHANGED",
-    install_id: (value) => typeof value === "string",
-    user_id: (value) => value === null || typeof value === "string",
+    install_id: isInsightsIdentityText,
+    user_id: isNullableInsightsIdentityText,
     username: (value) => value === null || typeof value === "string",
     from_bundle_id: (value) => value === null || typeof value === "string",
     from_release_id: (value) => value === null || typeof value === "string",
@@ -147,6 +154,24 @@ export const modelValidators: ValidatorMap = {
       value === null || value === "fingerprint" || value === "appVersion",
     fingerprint_hash: (value) => value === null || typeof value === "string",
     sdk_version: (value) => value === null || typeof value === "string",
+    received_at_ms: (value) =>
+      typeof value === "number" && Number.isSafeInteger(value) && value >= 0,
+  },
+  bundle_installations: {
+    id: (value) => typeof value === "string",
+    install_id: isInsightsIdentityText,
+    user_id: isNullableInsightsIdentityText,
+    username: (value) => value === null || typeof value === "string",
+    to_bundle_id: (value) => typeof value === "string",
+    type: (value) =>
+      value === "UPDATE_APPLIED" ||
+      value === "RECOVERED" ||
+      value === "RELEASE_ADOPTED" ||
+      value === "UNCHANGED",
+    platform: (value) => value === "ios" || value === "android",
+    app_version: (value) => typeof value === "string",
+    channel: (value) => typeof value === "string",
+    cohort: (value) => typeof value === "string",
     received_at_ms: (value) =>
       typeof value === "number" && Number.isSafeInteger(value) && value >= 0,
   },
@@ -306,6 +331,19 @@ export const sortableFields: Record<DatabaseModel, ReadonlySet<string>> = {
     "update_strategy",
     "fingerprint_hash",
     "sdk_version",
+    "received_at_ms",
+  ]),
+  bundle_installations: new Set([
+    "id",
+    "install_id",
+    "user_id",
+    "username",
+    "to_bundle_id",
+    "type",
+    "platform",
+    "app_version",
+    "channel",
+    "cohort",
     "received_at_ms",
   ]),
   api_keys: new Set([

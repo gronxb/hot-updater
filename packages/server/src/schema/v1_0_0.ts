@@ -370,9 +370,9 @@ export const bundleEventsV100 = table(
   "bundle_events",
   {
     id: idColumn("id", "uuid"),
-    type: stringColumn("type"),
-    install_id: stringColumn("install_id"),
-    user_id: stringColumn("user_id").nullable(),
+    type: column("type", varchar(32)),
+    install_id: column("install_id", varchar(255)),
+    user_id: column("user_id", varchar(255)).nullable(),
     username: stringColumn("username").nullable(),
     from_release_id: uuid("from_release_id").nullable(),
     from_bundle_id: uuid("from_bundle_id").nullable(),
@@ -392,32 +392,7 @@ export const bundleEventsV100 = table(
       index("bundle_events_received_at_idx", ["received_at_ms", "id"]),
       index("bundle_events_install_idx", [
         "install_id",
-        "received_at_ms",
-        "id",
-      ]),
-      index("bundle_events_user_id_idx", ["user_id", "received_at_ms", "id"]),
-      index("bundle_events_username_idx", ["username", "received_at_ms", "id"]),
-      index("bundle_events_to_bundle_idx", [
         "type",
-        "to_bundle_id",
-        "received_at_ms",
-        "id",
-      ]),
-      index("bundle_events_from_bundle_idx", [
-        "type",
-        "from_bundle_id",
-        "received_at_ms",
-        "id",
-      ]),
-      index("bundle_events_to_release_idx", [
-        "type",
-        "to_release_id",
-        "received_at_ms",
-        "id",
-      ]),
-      index("bundle_events_from_release_idx", [
-        "type",
-        "from_release_id",
         "received_at_ms",
         "id",
       ]),
@@ -449,6 +424,47 @@ export const bundleEventsV100 = table(
   },
 );
 
+export const bundleInstallationsV100 = table(
+  "bundle_installations",
+  {
+    install_id: idColumn("install_id", varchar(255)),
+    id: uuid("id"),
+    user_id: column("user_id", varchar(255)).nullable(),
+    username: stringColumn("username").nullable(),
+    to_bundle_id: uuid("to_bundle_id"),
+    type: column("type", varchar(32)),
+    platform: stringColumn("platform"),
+    app_version: stringColumn("app_version"),
+    channel: stringColumn("channel"),
+    cohort: stringColumn("cohort"),
+    received_at_ms: float("received_at_ms"),
+  },
+  {
+    indexes: [
+      index("bundle_installations_user_id_idx", ["user_id", "install_id"]),
+      index("bundle_installations_received_at_idx", ["received_at_ms"]),
+    ],
+    checks: [
+      check({
+        name: "bundle_installations_type_check",
+        expression:
+          "type in ('UPDATE_APPLIED', 'RECOVERED', 'RELEASE_ADOPTED', 'UNCHANGED')",
+        sqliteInline: true,
+      }),
+      check({
+        name: "bundle_installations_platform_check",
+        expression: "platform in ('ios', 'android')",
+        sqliteInline: true,
+      }),
+      check({
+        name: "bundle_installations_received_at_check",
+        expression: "received_at_ms >= 0",
+        sqliteInline: true,
+      }),
+    ],
+  },
+);
+
 export const v1_0_0 = schema({
   version: "1.0.0",
   settingsTable: HOT_UPDATER_SETTINGS_TABLE,
@@ -459,6 +475,7 @@ export const v1_0_0 = schema({
     releasesV100,
     releaseCatalogsV100,
     bundleEventsV100,
+    bundleInstallationsV100,
     apiKeysV100,
     createSettingsTable("1.0.0"),
   ],

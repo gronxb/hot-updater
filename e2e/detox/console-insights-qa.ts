@@ -1,25 +1,51 @@
+import type {
+  InsightsBundleSelection,
+  InsightsScope,
+  ReportingOverview,
+} from "../../packages/server/src/insights/domain.ts";
+
 type InsightsEvent = {
-  readonly fromBundleId: string;
+  readonly channel: string;
+  readonly fromBundleId: string | null;
   readonly id: string;
+  readonly installId: string;
+  readonly platform: "ios" | "android";
   readonly receivedAtMs: number;
   readonly toBundleId: string;
-  readonly type: "RECOVERED" | "UPDATE_APPLIED";
+  readonly type:
+    | "RECOVERED"
+    | "RELEASE_ADOPTED"
+    | "UNCHANGED"
+    | "UPDATE_APPLIED";
 };
 
-type ObservedInsightsEventBase = {
+type Installation = {
+  readonly channel: string;
+  readonly installId: string;
+  readonly lastKnownBundleId: string;
+  readonly platform: "ios" | "android";
+  readonly userId: string | null;
+};
+
+type CursorPage<T> = {
+  readonly data: readonly T[];
+  readonly nextCursor: string | null;
+};
+
+type EventCursorPage = CursorPage<InsightsEvent> & {
+  readonly beforeReceivedAtMs: number;
+};
+
+export type ObservedInsightsEvent = {
+  readonly channel: string;
+  readonly fromBundleId: string | null;
   readonly installId: string;
   readonly observedAtMs: number;
+  readonly platform: "ios" | "android";
   readonly toBundleId: string;
+  readonly type: InsightsEvent["type"];
+  readonly userId: string;
 };
-
-export type ObservedInsightsEvent = ObservedInsightsEventBase &
-  (
-    | {
-        readonly fromBundleId: string;
-        readonly type: "RECOVERED" | "UPDATE_APPLIED";
-      }
-    | { readonly fromBundleId: null; readonly type: "UNCHANGED" }
-  );
 
 export const readObservedInsightsEvent = (
   value: unknown,
@@ -29,72 +55,62 @@ export const readObservedInsightsEvent = (
   const event = value as Record<string, unknown>;
   if (
     typeof event.installId !== "string" ||
+    typeof event.channel !== "string" ||
+    (event.platform !== "ios" && event.platform !== "android") ||
     typeof event.toBundleId !== "string" ||
+    typeof event.userId !== "string" ||
     (event.type !== "RECOVERED" &&
+      event.type !== "RELEASE_ADOPTED" &&
       event.type !== "UNCHANGED" &&
       event.type !== "UPDATE_APPLIED")
   ) {
     return null;
   }
-  const base = {
+  if (event.type === "UNCHANGED" && event.fromBundleId !== null) return null;
+  if (event.type !== "UNCHANGED" && typeof event.fromBundleId !== "string") {
+    return null;
+  }
+  return {
+    channel: event.channel,
+    fromBundleId: event.fromBundleId as string | null,
     installId: event.installId,
     observedAtMs,
+    platform: event.platform,
     toBundleId: event.toBundleId,
+    type: event.type,
+    userId: event.userId,
   };
-  if (event.type === "UNCHANGED") {
-    return event.fromBundleId === null
-      ? { ...base, fromBundleId: null, type: event.type }
-      : null;
-  }
-  return typeof event.fromBundleId === "string"
-    ? { ...base, fromBundleId: event.fromBundleId, type: event.type }
-    : null;
 };
 
-type OffsetResult<T> = {
-  readonly data: readonly T[];
-  readonly pagination: {
-    readonly limit: number;
-    readonly offset: number;
-    readonly total: number;
-  };
+type PageInput = {
+  readonly beforeReceivedAtMs?: number;
+  readonly sinceMs?: number;
+  readonly cursor?: string;
+  readonly limit?: number;
 };
 
 export type ConsoleInsightsQaClient = {
-  readonly getActiveOverview: () => Promise<{
-    readonly activeInstallations: number;
-    readonly bundles: readonly {
-      readonly bundleId: string;
-      readonly installations: number;
-    }[];
-  }>;
-  readonly getBundleInsights: (bundleId: string) => Promise<{
-    readonly recentEvents: OffsetResult<InsightsEvent>;
-    readonly summary: {
-      readonly installed: number;
-      readonly recovered: number;
-    };
-  }>;
-  readonly getCapabilities: () => Promise<{ readonly insights: boolean }>;
-  readonly getHistory: (
-    installId: string,
-  ) => Promise<OffsetResult<InsightsEvent>>;
-  readonly getOverview: () => Promise<{
-    readonly trackedInstallations: number;
-  }>;
-  readonly getSummary: (bundleId: string) => Promise<{
-    readonly installed: number;
-    readonly recovered: number;
-  }>;
-  readonly searchInstallations: (
-    query: string,
-  ) => Promise<OffsetResult<{ readonly installId: string }>>;
+  readonly getReportingOverview: (
+    input: InsightsScope & {
+      readonly window: "24h";
+      readonly bundleId?: string;
+    },
+  ) => Promise<ReportingOverview>;
+  readonly getInstallation: (input: {
+    readonly installId: string;
+  }) => Promise<Installation | null>;
+  readonly listEvents: (
+    input?: PageInput & { readonly bundle?: InsightsBundleSelection },
+  ) => Promise<EventCursorPage>;
+  readonly listInstallationEvents: (
+    input: PageInput & { readonly installId: string },
+  ) => Promise<EventCursorPage>;
+  readonly pageInstallationsByCurrentUserId: (
+    input: Pick<PageInput, "cursor" | "limit"> & { readonly userId: string },
+  ) => Promise<CursorPage<Installation>>;
 };
 
-type ConsoleInsightsQaErrorCode =
-  | "event-not-found"
-  | "inconsistent-data"
-  | "unsupported";
+type ConsoleInsightsQaErrorCode = "event-not-found" | "inconsistent-data";
 
 export class ConsoleInsightsQaError extends Error {
   readonly name = "ConsoleInsightsQaError";
@@ -106,138 +122,219 @@ export class ConsoleInsightsQaError extends Error {
   }
 }
 
+const PAGE_LIMIT = 50;
+
+const sameEvent = (
+  event: InsightsEvent,
+  observed: ObservedInsightsEvent,
+): boolean =>
+  event.installId === observed.installId &&
+  event.platform === observed.platform &&
+  event.channel === observed.channel &&
+  event.type === observed.type &&
+  event.fromBundleId === observed.fromBundleId &&
+  event.toBundleId === observed.toBundleId;
+
+const readCursorPagesUntil = async <T>(
+  readPage: (cursor?: string) => Promise<CursorPage<T>>,
+  matches: (row: T) => boolean,
+  shouldStop: (rows: readonly T[]) => boolean = () => false,
+): Promise<T | undefined> => {
+  let cursor: string | undefined;
+  const seenCursors = new Set<string>();
+  while (true) {
+    const page = await readPage(cursor);
+    const found = page.data.find(matches);
+    if (found !== undefined) return found;
+    if (page.nextCursor === null || shouldStop(page.data)) return undefined;
+    if (seenCursors.has(page.nextCursor)) {
+      throw new ConsoleInsightsQaError(
+        "inconsistent-data",
+        "Console Insights returned a repeated cursor.",
+      );
+    }
+    seenCursors.add(page.nextCursor);
+    cursor = page.nextCursor;
+  }
+};
+
 export const verifyConsoleInsights = async (
   client: ConsoleInsightsQaClient,
-  bundleIds: readonly string[],
   options: {
     readonly observedEvents?: readonly ObservedInsightsEvent[];
     readonly sinceMs?: number;
   } = {},
 ) => {
-  const capabilities = await client.getCapabilities();
-  if (!capabilities.insights) {
-    throw new ConsoleInsightsQaError(
-      "unsupported",
-      "The configured database does not support Console Insights.",
-    );
-  }
-
-  let selected:
-    | {
-        readonly bundleId: string;
-        readonly event: InsightsEvent;
-        readonly observed: ObservedInsightsEvent;
-      }
-    | undefined;
-  const observedEvents = (options.observedEvents ?? []).filter(
-    (event) =>
-      options.sinceMs === undefined || event.observedAtMs >= options.sinceMs,
-  );
-  const observedTransitions = observedEvents.filter(
-    (event) => event.type !== "UNCHANGED",
-  );
-  const insightsBundleIds = new Set(bundleIds);
-  for (const event of observedTransitions) {
-    insightsBundleIds.add(
-      event.type === "RECOVERED" ? event.fromBundleId : event.toBundleId,
-    );
-  }
-
-  for (const bundleId of insightsBundleIds) {
-    const insights = await client.getBundleInsights(bundleId);
-    const candidate = insights.recentEvents.data
-      .filter(
-        (entry) =>
-          options.sinceMs === undefined ||
-          entry.receivedAtMs >= options.sinceMs,
-      )
-      .map((event) => ({
-        event,
-        observed: observedTransitions
-          .filter(
-            (observed) =>
-              observed.type === event.type &&
-              observed.fromBundleId === event.fromBundleId &&
-              observed.toBundleId === event.toBundleId,
-          )
-          .sort((left, right) => right.observedAtMs - left.observedAtMs)[0],
-      }))
-      .filter(
-        (
-          entry,
-        ): entry is {
-          readonly event: InsightsEvent;
-          readonly observed: ObservedInsightsEvent;
-        } => entry.observed !== undefined,
-      )
-      .sort(
-        (left, right) => right.event.receivedAtMs - left.event.receivedAtMs,
-      )[0];
-    if (
-      candidate &&
-      (!selected || candidate.event.receivedAtMs > selected.event.receivedAtMs)
-    ) {
-      selected = { bundleId, ...candidate };
-    }
-  }
-
-  if (!selected) {
-    const unchanged = observedEvents
-      .filter((event) => event.type === "UNCHANGED")
-      .sort((left, right) => right.observedAtMs - left.observedAtMs)[0];
-    if (unchanged && observedTransitions.length === 0) {
-      const active = await client.getActiveOverview();
-      const activeBundle = active.bundles.find(
-        (bundle) => bundle.bundleId === unchanged.toBundleId,
-      );
-      if (active.activeInstallations > 0 && activeBundle?.installations) {
-        return {
-          activeInstallations: active.activeInstallations,
-          bundleId: unchanged.toBundleId,
-          installId: unchanged.installId,
-          mode: "active" as const,
-        };
-      }
-    }
+  const observedEvents = (options.observedEvents ?? [])
+    .filter(
+      (event) =>
+        options.sinceMs === undefined || event.observedAtMs >= options.sinceMs,
+    )
+    .toSorted((left, right) => right.observedAtMs - left.observedAtMs);
+  if (observedEvents.length === 0) {
     throw new ConsoleInsightsQaError(
       "event-not-found",
-      "No current E2E bundle event was returned by Console Insights.",
+      "The app did not report a current E2E Insights event.",
     );
   }
 
-  const { bundleId, event, observed } = selected;
-  const [summary, overview, active, installations, history] = await Promise.all(
-    [
-      client.getSummary(bundleId),
-      client.getOverview(),
-      client.getActiveOverview(),
-      client.searchInstallations(observed.installId),
-      client.getHistory(observed.installId),
-    ],
+  let matchedObserved: ObservedInsightsEvent | undefined;
+  const event = await readCursorPagesUntil(
+    (cursor) => client.listEvents({ cursor, limit: PAGE_LIMIT }),
+    (row) => {
+      matchedObserved = observedEvents.find(
+        (observed) =>
+          row.receivedAtMs >= (options.sinceMs ?? 0) &&
+          sameEvent(row, observed),
+      );
+      return matchedObserved !== undefined;
+    },
+    (rows) =>
+      options.sinceMs !== undefined &&
+      rows.some((row) => row.receivedAtMs < options.sinceMs!),
   );
-  const installationFound = installations.data.some(
-    (entry) => entry.installId === observed.installId,
-  );
-  const eventFound = history.data.some((entry) => entry.id === event.id);
-  const summaryCount = summary.installed + summary.recovered;
+  if (!event || !matchedObserved) {
+    throw new ConsoleInsightsQaError(
+      "event-not-found",
+      "No current E2E event was returned by the filter-free Insights history.",
+    );
+  }
+
+  const observed = matchedObserved;
+  const [installation, userInstallation] = await Promise.all([
+    client.getInstallation({ installId: observed.installId }),
+    readCursorPagesUntil(
+      (cursor) =>
+        client.pageInstallationsByCurrentUserId({
+          cursor,
+          limit: PAGE_LIMIT,
+          userId: observed.userId,
+        }),
+      (row) => row.installId === observed.installId,
+    ),
+  ]);
+  const movement =
+    event.type !== "UPDATE_APPLIED" && event.type !== "RECOVERED"
+      ? undefined
+      : await readCursorPagesUntil(
+          (cursor) =>
+            client.listInstallationEvents({
+              cursor,
+              installId: observed.installId,
+              limit: PAGE_LIMIT,
+            }),
+          (row) => row.id === event.id,
+          (rows) =>
+            options.sinceMs !== undefined &&
+            rows.some((row) => row.receivedAtMs < options.sinceMs!),
+        );
+
   if (
-    summaryCount < 1 ||
-    overview.trackedInstallations < 1 ||
-    active.activeInstallations < 1 ||
-    !installationFound ||
-    !eventFound
+    installation?.installId !== observed.installId ||
+    installation.userId !== observed.userId ||
+    userInstallation === undefined ||
+    ((event.type === "UPDATE_APPLIED" || event.type === "RECOVERED") &&
+      movement === undefined)
   ) {
     throw new ConsoleInsightsQaError(
       "inconsistent-data",
-      "Console Insights queries disagree about the current E2E event.",
+      "Console Insights disagrees about the current event and installation.",
     );
   }
 
+  const overview = await client.getReportingOverview({
+    bundleId: installation.lastKnownBundleId,
+    channel: installation.channel,
+    platform: installation.platform,
+    window: "24h",
+  });
+  if (
+    !(overview.reportingInstallations.count >= 1) ||
+    overview.bundle?.bundleId !== installation.lastKnownBundleId ||
+    !(overview.bundle.reportingInstallations.count >= 1)
+  ) {
+    throw new ConsoleInsightsQaError(
+      "inconsistent-data",
+      "Console Insights omitted the current installation from reporting counts.",
+    );
+  }
+
+  const overviews = new Map([
+    [
+      JSON.stringify([
+        installation.platform,
+        installation.channel,
+        installation.lastKnownBundleId,
+      ]),
+      overview,
+    ],
+  ]);
+  const outcomeEvidence = [];
+  for (const observedOutcome of observedEvents) {
+    if (observedOutcome.type === "UNCHANGED") continue;
+    const bundleId =
+      observedOutcome.type === "RECOVERED"
+        ? observedOutcome.fromBundleId!
+        : observedOutcome.toBundleId;
+    const outcome =
+      observedOutcome.type === "RECOVERED"
+        ? "recovered"
+        : observedOutcome.type === "RELEASE_ADOPTED"
+          ? "adopted"
+          : "applied";
+    const bundle: InsightsBundleSelection = {
+      bundleId,
+      channel: observedOutcome.channel,
+      outcome,
+      platform: observedOutcome.platform,
+    };
+    const key = JSON.stringify([bundle.platform, bundle.channel, bundleId]);
+    let selected = overviews.get(key);
+    if (selected === undefined) {
+      selected = await client.getReportingOverview({
+        bundleId,
+        channel: bundle.channel,
+        platform: bundle.platform,
+        window: "24h",
+      });
+      overviews.set(key, selected);
+    }
+    const count = selected.bundle?.[`${outcome}Reports`].count;
+    if (selected.bundle?.bundleId !== bundleId || !count || count < 1) {
+      throw new ConsoleInsightsQaError(
+        "inconsistent-data",
+        `Console Insights omitted the ${outcome} report for bundle ${bundleId}.`,
+      );
+    }
+    const report = await readCursorPagesUntil(
+      (cursor) =>
+        client.listEvents({
+          beforeReceivedAtMs: selected.beforeReceivedAtMs,
+          bundle,
+          cursor,
+          limit: PAGE_LIMIT,
+          sinceMs: selected.sinceMs,
+        }),
+      (row) =>
+        row.receivedAtMs >= (options.sinceMs ?? 0) &&
+        sameEvent(row, observedOutcome),
+    );
+    if (!report) {
+      throw new ConsoleInsightsQaError(
+        "inconsistent-data",
+        `Console Insights ${outcome} drill-down omitted its observed report.`,
+      );
+    }
+    outcomeEvidence.push({ bundleId, count, eventId: report.id, outcome });
+  }
+
   return {
-    activeInstallations: active.activeInstallations,
-    bundleId,
+    reportingInstallations: overview.reportingInstallations.count,
+    selectedBundleInstallations: overview.bundle.reportingInstallations.count,
+    outcomes: outcomeEvidence,
     eventId: event.id,
+    eventType: event.type,
     installId: observed.installId,
-    trackedInstallations: overview.trackedInstallations,
+    userId: observed.userId,
   };
 };

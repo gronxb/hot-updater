@@ -2,40 +2,39 @@ import { Check, ChevronDown } from "lucide-react";
 import { useId, useRef, useState } from "react";
 
 import { shortenIdentifier } from "@/components/HashValueDisplay";
-import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import type {
-  InstallationSearchResult,
-  InstallationSearchRow,
-} from "@/lib/api";
+  InsightsInstallationViewRow,
+  InsightsViewPage,
+} from "@/lib/insights-view";
 import { cn } from "@/lib/utils";
 
 import { InsightsErrorAlert } from "./InsightsErrorAlert";
-import { InstallationPagination } from "./InstallationPagination";
+import { InsightsPagination } from "./InsightsPagination";
 
-const getLastKnownBundleId = (event: InstallationSearchRow) =>
+const getLastKnownBundleId = (event: InsightsInstallationViewRow) =>
   event.lastKnownBundleId;
 
-const getUserLabel = (event: InstallationSearchRow) =>
+const getUserLabel = (event: InsightsInstallationViewRow) =>
   event.userId ?? event.username ?? "—";
 
 export function InstallationMatchesCard({
   error,
-  limit,
-  offset,
-  onOffsetChange,
+  onNext,
+  onPrevious,
   onSelect,
+  pageNumber,
   results,
   selectedInstallId,
 }: {
   readonly error: unknown;
-  readonly limit: number;
-  readonly offset: number;
-  readonly onOffsetChange: (offset: number) => void;
+  readonly onNext: () => void;
+  readonly onPrevious: () => void;
   readonly onSelect: (installId: string) => void;
-  readonly results: InstallationSearchResult | undefined;
-  readonly selectedInstallId: string;
+  readonly pageNumber: number;
+  readonly results: InsightsViewPage<InsightsInstallationViewRow> | undefined;
+  readonly selectedInstallId: string | undefined;
 }) {
   const [expanded, setExpanded] = useState(false);
   const contentId = useId();
@@ -52,11 +51,6 @@ export function InstallationMatchesCard({
             </CardTitle>
           </div>
           <div className="flex shrink-0 items-center gap-2">
-            {results && !error ? (
-              <Badge variant="secondary" className="tabular-nums">
-                {results.pagination.total.toLocaleString()}
-              </Badge>
-            ) : null}
             {canCollapse ? (
               <Button
                 aria-controls={contentId}
@@ -166,14 +160,16 @@ export function InstallationMatchesCard({
             </a>
           </div>
         )}
-        {results && results.pagination.total > 0 ? (
-          <InstallationPagination
+        {results &&
+        (results.data.length > 0 || pageNumber > 1 || results.nextCursor) ? (
+          <InsightsPagination
+            hasPrevious={pageNumber > 1}
             label="Installation results"
-            limit={limit}
-            offset={offset}
+            nextCursor={results.nextCursor}
+            onNext={onNext}
+            onPrevious={onPrevious}
             pageLength={results.data.length}
-            total={results.pagination.total}
-            onOffsetChange={onOffsetChange}
+            pageNumber={pageNumber}
           />
         ) : null}
       </CardContent>

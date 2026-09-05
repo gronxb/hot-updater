@@ -1,4 +1,5 @@
-import type { DatabasePlugin } from "@hot-updater/plugin-core";
+import { toInsightsInstallationRow } from "@hot-updater/plugin-core";
+import type { BundleEventRow, DatabasePlugin } from "@hot-updater/plugin-core";
 import { describe, expect, it } from "vitest";
 
 import type { DatabasePluginTestState } from "./databasePluginTestRunner";
@@ -9,8 +10,25 @@ import {
   createApiKeyRowFixture,
   createReleaseRowFixture,
 } from "./databaseTestFixtures";
+import { expectInsightsIndex } from "./expectInsightsIndex";
 
 type OfficialDomainTestState = DatabasePluginTestState<DatabasePlugin>;
+
+const createMovementEvent = (
+  suffix: string,
+  receivedAtMs: number,
+  type: "UPDATE_APPLIED" | "RECOVERED" | "RELEASE_ADOPTED",
+  installId: string,
+): BundleEventRow => {
+  const row = createBundleEventRowFixture(suffix, receivedAtMs);
+  return {
+    ...row,
+    type,
+    install_id: installId,
+    from_bundle_id: row.to_bundle_id,
+    update_strategy: "appVersion",
+  };
+};
 
 export const registerDatabasePluginOfficialDomainTests = (
   state: OfficialDomainTestState,
@@ -201,39 +219,250 @@ export const registerDatabasePluginOfficialDomainTests = (
       });
     });
 
-    it("appends and scans insights events in stable cursor order", async () => {
+    it("pages insights events newest first with a stable cursor", async () => {
       const plugin = state.getPlugin();
       const first = createBundleEventRowFixture("701", 100);
       const second = createBundleEventRowFixture("702", 100);
       const third = createBundleEventRowFixture("703", 200);
-      await plugin.models.insights.append(third);
-      await plugin.models.insights.append(second);
-      await plugin.models.insights.append(first);
+      await plugin.models.insights.record({
+        event: third,
+        installation: toInsightsInstallationRow(third),
+      });
+      await plugin.models.insights.record({
+        event: second,
+        installation: toInsightsInstallationRow(second),
+      });
+      await plugin.models.insights.record({
+        event: first,
+        installation: toInsightsInstallationRow(first),
+      });
+
+      await expectInsightsIndex(
+        () =>
+          plugin.models.insights.listEvents({
+            filter: { kind: "all" },
+            beforeReceivedAtMs: 201,
+            limit: 2,
+          }),
+        [third, second],
+      );
+      await expectInsightsIndex(
+        () =>
+          plugin.models.insights.listEvents({
+            filter: { kind: "all" },
+            after: { receivedAtMs: second.received_at_ms, id: second.id },
+            beforeReceivedAtMs: 201,
+            limit: 2,
+          }),
+        [first],
+      );
+      await expectInsightsIndex(
+        () =>
+          plugin.models.insights.listEvents({
+            filter: { kind: "all" },
+            beforeReceivedAtMs: 200,
+            limit: 10,
+          }),
+        [second, first],
+      );
+    });
+
+    it("filters installation movements before applying the page limit", async () => {
+      const plugin = state.getPlugin();
+      const adopted = createMovementEvent(
+        "711",
+        300,
+        "RELEASE_ADOPTED",
+        "install-target",
+      );
+      const unrelated = createMovementEvent(
+        "712",
+        250,
+        "UPDATE_APPLIED",
+        "install-other",
+      );
+      const applied = createMovementEvent(
+        "713",
+        200,
+        "UPDATE_APPLIED",
+        "install-target",
+      );
+      const recovered = createMovementEvent(
+        "714",
+        100,
+        "RECOVERED",
+        "install-target",
+      );
+      for (const row of [adopted, unrelated, applied, recovered]) {
+        await plugin.models.insights.record({
+          event: row,
+          installation: toInsightsInstallationRow(row),
+        });
+      }
+
+      await expectInsightsIndex(
+        () =>
+          plugin.models.insights.listEvents({
+            filter: {
+              kind: "installationMovement",
+              installId: "install-target",
+            },
+            beforeReceivedAtMs: 301,
+            limit: 1,
+          }),
+        [applied],
+      );
+      await expectInsightsIndex(
+        () =>
+          plugin.models.insights.listEvents({
+            filter: {
+              kind: "installationMovement",
+              installId: "install-target",
+            },
+            after: {
+              receivedAtMs: applied.received_at_ms,
+              id: applied.id,
+            },
+            beforeReceivedAtMs: 301,
+            limit: 1,
+          }),
+        [recovered],
+      );
+    });
+
+    it("keeps the newest installation state and indexes its current user", async () => {
+      const plugin = state.getPlugin();
+      const previous = {
+        ...createBundleEventRowFixture("721", 100),
+        install_id: "install-a",
+        user_id: "user-previous",
+        username: "Previous",
+      };
+      const current = {
+        ...createBundleEventRowFixture("722", 200),
+        install_id: "install-a",
+        user_id: "user-current",
+        username: "Current",
+      };
+      const secondInstallation = {
+        ...createBundleEventRowFixture("723", 150),
+        install_id: "install-b",
+        user_id: "user-current",
+        username: "Current",
+      };
+      await plugin.models.insights.record({
+        event: previous,
+        installation: toInsightsInstallationRow(previous),
+      });
+      await plugin.models.insights.record({
+        event: current,
+        installation: toInsightsInstallationRow(current),
+      });
+      await plugin.models.insights.record({
+        event: secondInstallation,
+        installation: toInsightsInstallationRow(secondInstallation),
+      });
 
       await expect(
-        plugin.models.insights.scan({ beforeReceivedAtMs: 201, limit: 1 }),
-      ).resolves.toEqual([first]);
+        plugin.models.insights.findInstallations({ installId: "install-a" }),
+      ).resolves.toEqual([toInsightsInstallationRow(current)]);
       await expect(
-        plugin.models.insights.scan({
-          after: { receivedAtMs: first.received_at_ms, id: first.id },
-          beforeReceivedAtMs: 201,
-          limit: 1,
-        }),
-      ).resolves.toEqual([second]);
-      await expect(
-        plugin.models.insights.scan({
-          after: { receivedAtMs: first.received_at_ms, id: first.id },
-          beforeReceivedAtMs: 201,
-          limit: 10,
-        }),
-      ).resolves.toEqual([second, third]);
-      await expect(
-        plugin.models.insights.scan({
-          after: { receivedAtMs: second.received_at_ms, id: second.id },
-          beforeReceivedAtMs: 200,
+        plugin.models.insights.findInstallations({
+          userId: "user-previous",
           limit: 10,
         }),
       ).resolves.toEqual([]);
+      await expectInsightsIndex(
+        () =>
+          plugin.models.insights.findInstallations({
+            userId: "user-current",
+            limit: 1,
+          }),
+        [toInsightsInstallationRow(current)],
+      );
+      await expectInsightsIndex(
+        () =>
+          plugin.models.insights.findInstallations({
+            userId: "user-current",
+            afterInstallId: "install-a",
+            limit: 10,
+          }),
+        [toInsightsInstallationRow(secondInstallation)],
+      );
+    });
+
+    it("does not let late events regress the current installation state", async () => {
+      const plugin = state.getPlugin();
+      const current = {
+        ...createBundleEventRowFixture("732", 200),
+        install_id: "install-late",
+      };
+      const olderTimestamp = {
+        ...createBundleEventRowFixture("733", 100),
+        install_id: "install-late",
+      };
+      const smallerIdAtSameTimestamp = {
+        ...createBundleEventRowFixture("731", 200),
+        install_id: "install-late",
+      };
+      await plugin.models.insights.record({
+        event: current,
+        installation: toInsightsInstallationRow(current),
+      });
+      await plugin.models.insights.record({
+        event: olderTimestamp,
+        installation: toInsightsInstallationRow(olderTimestamp),
+      });
+      await plugin.models.insights.record({
+        event: smallerIdAtSameTimestamp,
+        installation: toInsightsInstallationRow(smallerIdAtSameTimestamp),
+      });
+
+      await expect(
+        plugin.models.insights.findInstallations({ installId: "install-late" }),
+      ).resolves.toEqual([toInsightsInstallationRow(current)]);
+    });
+
+    it("counts current active installations instead of raw event rows", async () => {
+      const plugin = state.getPlugin();
+      const repeated = [
+        {
+          ...createBundleEventRowFixture("741", 100),
+          install_id: "install-active-a",
+        },
+        {
+          ...createBundleEventRowFixture("742", 200),
+          install_id: "install-active-a",
+        },
+        {
+          ...createBundleEventRowFixture("743", 300),
+          install_id: "install-active-a",
+        },
+      ];
+      const inactive = {
+        ...createBundleEventRowFixture("744", 99),
+        install_id: "install-inactive",
+      };
+      const active = {
+        ...createBundleEventRowFixture("745", 100),
+        install_id: "install-active-b",
+      };
+      for (const row of [...repeated, inactive, active]) {
+        await plugin.models.insights.record({
+          event: row,
+          installation: toInsightsInstallationRow(row),
+        });
+      }
+
+      await expectInsightsIndex(
+        () =>
+          plugin.models.insights.countInstallations({
+            platform: "ios",
+            channel: "production",
+            sinceMs: 100,
+          }),
+        2,
+      );
     });
 
     it("creates, lists, resolves, and revokes API keys", async () => {

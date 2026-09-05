@@ -318,7 +318,7 @@ describe("server/db hotUpdater (PGlite + Kysely)", async () => {
       const code = generateSchema(prismaSchemaHotUpdater, "latest").code;
 
       expect(code).toContain('metadata Json @default("{}")');
-      expect(code).toContain('value String @default("1.0.0")');
+      expect(code).toContain('value String @default("1.0.1")');
       expect(code).toContain("model channels {");
       expect(code).toContain("id String @db.VarChar(255) @id");
       expect(code).toContain("name String @db.VarChar(255)");
@@ -400,7 +400,7 @@ describe("server/db hotUpdater (PGlite + Kysely)", async () => {
         'id: varchar("id", { length: 255 }).primaryKey().notNull()',
       );
       expect(generatedCode).toContain(
-        'version: varchar("version", { length: 255 }).notNull().default("1.0.0")',
+        'version: varchar("version", { length: 255 }).notNull().default("1.0.1")',
       );
       expect(generatedCode).toContain(
         'uniqueIndex("channels_name_key").on(table.name)',
@@ -415,9 +415,10 @@ describe("server/db hotUpdater (PGlite + Kysely)", async () => {
   });
 
   describe("migrator enhancements", () => {
-    it("registers only schema 1.0.0", () => {
+    it("registers the original schema and additive Insights revision", () => {
       expect(hotUpdaterSchemaVersions.map((schema) => schema.version)).toEqual([
         "1.0.0",
+        "1.0.1",
       ]);
     });
 
@@ -837,6 +838,9 @@ describe("server/db hotUpdater (PGlite + Kysely)", async () => {
         bundle_events: {
           id: "event_id",
         },
+        bundle_installations: {
+          install_id: "install_id",
+        },
         bundle_patches: {
           bundle_id: "bundle_id",
           id: "patch_id",
@@ -875,6 +879,10 @@ describe("server/db hotUpdater (PGlite + Kysely)", async () => {
         insert,
         query: {
           bundle_events: {
+            findFirst: vi.fn(),
+            findMany: vi.fn(),
+          },
+          bundle_installations: {
             findFirst: vi.fn(),
             findMany: vi.fn(),
           },

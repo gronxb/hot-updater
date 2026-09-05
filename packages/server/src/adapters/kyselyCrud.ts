@@ -4,6 +4,8 @@ import {
   type BundlePatchRow,
   type ChannelRow,
   type ApiKeyRow,
+  type InsightsInstallationRow,
+  type InsightsRecordInput,
   type ReleaseCatalogRow,
 } from "@hot-updater/plugin-core";
 import type {
@@ -54,6 +56,7 @@ const whereClause = (
 const orderClause = (
   input:
     | {
+        readonly model?: string;
         readonly orderBy?: readonly {
           readonly direction: "asc" | "desc";
           readonly field: string;
@@ -67,6 +70,14 @@ const orderClause = (
   return sql` order by ${sql.join(
     clauses.map((clause) => {
       const field = sql.ref(clause.field);
+      if (
+        input?.model === "bundle_events" ||
+        input?.model === "bundle_installations"
+      ) {
+        return clause.direction === "asc"
+          ? sql`${field} asc`
+          : sql`${field} desc`;
+      }
       const nulls =
         clause.nulls ?? (clause.direction === "asc" ? "last" : "first");
       const nullOrder =
@@ -108,6 +119,46 @@ const insertRow = async (
               executor,
             );
   return Number(result.numAffectedRows ?? 0) > 0;
+};
+
+export const recordKyselyInsights = async (
+  executor: QueryExecutorProvider,
+  provider: Exclude<ORMSQLProvider, "mssql">,
+  { event, installation }: InsightsRecordInput,
+): Promise<void> => {
+  const insert = (table: string, row: object) => {
+    const entries = Object.entries(row);
+    return sql`insert into ${sql.table(table)} (${sql.join(entries.map(([field]) => sql.ref(field)))}) values (${sql.join(entries.map(([, value]) => value))})`;
+  };
+  if (provider === "mysql") {
+    const existing = await sql<{
+      id: string;
+    }>`select id from bundle_events where id = ${event.id} for update`.execute(
+      executor,
+    );
+    if (existing.rows.length > 0) return;
+    await insert("bundle_events", event).execute(executor);
+    await sql`${insert("bundle_installations", installation)} on duplicate key update install_id = ${installation.install_id}`.execute(
+      executor,
+    );
+  } else {
+    const result =
+      await sql`${insert("bundle_events", event)} on conflict (id) do nothing returning id`.execute(
+        executor,
+      );
+    if (result.rows.length === 0) return;
+    await sql`${insert("bundle_installations", installation)} on conflict (install_id) do nothing`.execute(
+      executor,
+    );
+  }
+  const assignments = Object.entries(installation).map(
+    ([field, value]) => sql`${sql.ref(field)} = ${value}`,
+  );
+  await sql`update ${sql.table("bundle_installations")} set ${sql.join(assignments)}
+    where ${sql.ref("install_id")} = ${installation.install_id}
+    and (${sql.ref("received_at_ms")} < ${installation.received_at_ms}
+      or (${sql.ref("received_at_ms")} = ${installation.received_at_ms}
+        and ${sql.ref("id")} < ${installation.id}))`.execute(executor);
 };
 
 const updateBundle = async (
@@ -298,6 +349,15 @@ export const createKyselyCrud = (
       case "bundle_events":
         await insertRow(executor, "bundle_events", input.data, provider);
         return input.data;
+      case "bundle_installations":
+        await insertRow(
+          executor,
+          "bundle_installations",
+          input.data,
+          provider,
+          input.onConflict,
+        );
+        return input.data;
       case "releases":
         await insertRow(
           executor,
@@ -330,6 +390,38 @@ export const createKyselyCrud = (
     }
   },
   async update(input) {
+    if (input.model === "bundle_installations") {
+      const installId = input.where.find(
+        (item) =>
+          item.field === "install_id" &&
+          (item.operator === undefined || item.operator === "eq") &&
+          typeof item.value === "string",
+      )?.value;
+      if (typeof installId !== "string") {
+        throw new KyselyAdapterInvariantError(
+          "bundle_installations.update.selector",
+        );
+      }
+      const assignments = Object.entries(input.update)
+        .filter(([, value]) => value !== undefined)
+        .map(([field, value]) => sql`${sql.ref(field)} = ${value}`);
+      const where = buildKyselyWhere(provider, input.where);
+      let updated = false;
+      if (assignments.length > 0 && where !== undefined) {
+        const result = await sql`update ${sql.table(
+          "bundle_installations",
+        )} set ${sql.join(assignments)} where ${where}`.execute(executor);
+        updated = Number(result.numAffectedRows ?? 0) > 0;
+      }
+      if (!updated) return null;
+      const result =
+        await sql<InsightsInstallationRow>`select * from ${sql.table(
+          "bundle_installations",
+        )} where ${sql.ref("install_id")} = ${installId} limit 1`.execute(
+          executor,
+        );
+      return result.rows[0] ?? null;
+    }
     const selector = input.where[0];
     if (selector === undefined || typeof selector.value !== "string") {
       throw new KyselyAdapterInvariantError(`${input.model}.update.selector`);
@@ -452,6 +544,12 @@ export const createKyselyCrud = (
       throw new DatabasePluginInputError("invalid-operation");
     }
     switch (input.model) {
+      case "bundle_events":
+        return countRows(
+          executor,
+          "bundle_events",
+          buildKyselyWhere(provider, input.where),
+        );
       case "bundles":
         return countRows(
           executor,
@@ -468,6 +566,12 @@ export const createKyselyCrud = (
         return countRows(
           executor,
           "releases",
+          buildKyselyWhere(provider, input.where),
+        );
+      case "bundle_installations":
+        return countRows(
+          executor,
+          "bundle_installations",
           buildKyselyWhere(provider, input.where),
         );
     }
@@ -519,6 +623,14 @@ export const createKyselyCrud = (
         const row = result.rows[0];
         return row === undefined ? null : fromStoredReleaseCatalogRow(row);
       }
+      case "bundle_installations": {
+        const where = whereClause(buildKyselyWhere(provider, input.where));
+        const result =
+          await sql<InsightsInstallationRow>`select * from ${sql.table(
+            "bundle_installations",
+          )}${where} limit 1`.execute(executor);
+        return result.rows[0] ?? null;
+      }
     }
   },
   async findMany(input) {
@@ -549,6 +661,15 @@ export const createKyselyCrud = (
         const result = await sql<BundleEventRow>`select * from ${sql.table(
           "bundle_events",
         )}${where}${order}${pagination}`.execute(executor);
+        return [...result.rows];
+      }
+      case "bundle_installations": {
+        const where = whereClause(buildKyselyWhere(provider, input.where));
+        const order = orderClause(input);
+        const result =
+          await sql<InsightsInstallationRow>`select * from ${sql.table(
+            "bundle_installations",
+          )}${where}${order}${pagination}`.execute(executor);
         return [...result.rows];
       }
       case "api_keys": {

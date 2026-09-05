@@ -6,6 +6,9 @@ import { p } from "@hot-updater/cli-tools";
 
 import {
   DYNAMODB_INSIGHTS_PARTITION,
+  DYNAMODB_INSIGHTS_INSTALLATIONS_PARTITION,
+  DYNAMODB_INSIGHTS_EVENT_IDS_PARTITION,
+  DYNAMODB_INSIGHTS_BUNDLE_PREFIX,
   DYNAMODB_CHANNEL_NAME_PARTITION,
   DYNAMODB_CHANNEL_PARTITION,
   DYNAMODB_API_KEY_HASH_PARTITION,
@@ -77,7 +80,7 @@ export class IAMManager {
               "dynamodb:UpdateItem",
             ],
             Condition: {
-              "ForAllValues:StringEquals": {
+              "ForAllValues:StringLike": {
                 "dynamodb:LeadingKeys": [
                   "_hot-updater",
                   "bundles",
@@ -85,6 +88,10 @@ export class IAMManager {
                   DYNAMODB_CHANNEL_PARTITION,
                   DYNAMODB_CHANNEL_NAME_PARTITION,
                   DYNAMODB_INSIGHTS_PARTITION,
+                  DYNAMODB_INSIGHTS_INSTALLATIONS_PARTITION,
+                  DYNAMODB_INSIGHTS_EVENT_IDS_PARTITION,
+                  `${DYNAMODB_INSIGHTS_BUNDLE_PREFIX}*`,
+                  "_hot-updater#insights-user#*",
                   DYNAMODB_API_KEY_PARTITION,
                   DYNAMODB_API_KEY_HASH_PARTITION,
                 ],

@@ -64,10 +64,6 @@ vi.mock("@tanstack/react-router", () => ({
   ),
 }));
 
-vi.mock("@/components/features/bundles/BundleInsightsSummary", () => ({
-  BundleInsightsSummary: () => <div>Activity · 30 days</div>,
-}));
-
 vi.mock("@/components/ui/sheet", () => ({
   Sheet: ({ children, open }: { children: ReactNode; open: boolean }) =>
     open ? <div>{children}</div> : null,
@@ -184,7 +180,7 @@ describe("ReleaseEditorSheet", () => {
     expect(screen.queryByRole("alertdialog")).toBeNull();
   });
 
-  it("keeps Insights, editing, and readable metadata in one familiar detail flow", () => {
+  it("keeps editing and readable metadata in one familiar detail flow", () => {
     const { container } = render(
       <ReleaseEditorSheet
         channels={[{ id: "channel-1", name: "production" }]}
@@ -203,7 +199,6 @@ describe("ReleaseEditorSheet", () => {
     expect(
       screen.getByRole("button", { name: "Download bundle" }),
     ).toBeDefined();
-    expect(screen.getByText("Activity · 30 days")).toBeDefined();
     expect(screen.getByText("Metadata")).toBeDefined();
     expect(
       screen.getByRole("heading", { name: "Delivery settings" }),
@@ -224,9 +219,6 @@ describe("ReleaseEditorSheet", () => {
     expect(
       screen.queryByText("Manage delivery settings and actions"),
     ).toBeNull();
-    expect(container.textContent!.indexOf("Activity · 30 days")).toBeLessThan(
-      container.textContent!.indexOf("Delivery settings"),
-    );
     expect(container.textContent!.indexOf("Delivery settings")).toBeLessThan(
       container.textContent!.indexOf("Message"),
     );

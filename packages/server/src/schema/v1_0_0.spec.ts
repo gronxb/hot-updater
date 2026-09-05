@@ -7,6 +7,7 @@ import {
 } from "../db/schemaGenerators";
 import {
   bundleEventsV100,
+  bundleInstallationsV100,
   bundlePatchesV100,
   bundlesV100,
   releaseCatalogsV100,
@@ -57,7 +58,7 @@ describe("v1.0.0 Release Catalog schema", () => {
     const patchSize = bundlePatchesV100.columns.find(
       ({ ormName }) => ormName === "byte_size",
     );
-    const sql = createTableSql("postgresql").join("\n");
+    const sql = createTableSql("postgresql", "foreign-keys", v1_0_0).join("\n");
     const prisma = generatePrismaSchema("postgresql", v1_0_0);
     const drizzle = generateDrizzleSchema("postgresql", v1_0_0);
 
@@ -96,6 +97,63 @@ describe("v1.0.0 Release Catalog schema", () => {
     ).toBeUndefined();
   });
 
+  it("stores one current row per installation with the required lookup indexes", () => {
+    expect(
+      bundleInstallationsV100.columns.find(
+        ({ ormName }) => ormName === "install_id",
+      )?.primaryKey,
+    ).toBe(true);
+    expect(bundleInstallationsV100.indexes).toEqual([
+      {
+        columns: ["user_id", "install_id"],
+        name: "bundle_installations_user_id_idx",
+      },
+      {
+        columns: ["received_at_ms"],
+        name: "bundle_installations_received_at_idx",
+      },
+    ]);
+
+    const sql = createTableSql("postgresql", "foreign-keys", v1_0_0).join("\n");
+    const prisma = generatePrismaSchema("postgresql", v1_0_0);
+    const drizzle = generateDrizzleSchema("postgresql", v1_0_0);
+    expect(sql).toContain("create table bundle_installations");
+    expect(sql).toContain("install_id varchar(255) primary key not null");
+    expect(sql).toContain(
+      "create index bundle_installations_user_id_idx on bundle_installations(user_id, install_id)",
+    );
+    expect(sql).toContain(
+      "create index bundle_installations_received_at_idx on bundle_installations(received_at_ms)",
+    );
+    expect(prisma).toContain("model bundle_installations {");
+    expect(prisma).toContain("install_id String @db.VarChar(255) @id");
+    expect(drizzle).toContain("export const bundle_installations = pgTable(");
+    expect(drizzle).toContain(
+      'index("bundle_installations_user_id_idx").on(table.user_id, table.install_id)',
+    );
+  });
+
+  it("keeps identity indexes valid on MySQL and MSSQL", () => {
+    const mysql = createTableSql("mysql", "foreign-keys", v1_0_0).join("\n");
+    const mssql = createTableSql("mssql", "foreign-keys", v1_0_0).join("\n");
+
+    expect(mysql).toContain("install_id varchar(255) not null");
+    expect(mysql).toContain("user_id varchar(255)");
+    expect(mssql).toContain("install_id nvarchar(255) not null");
+    expect(mssql).toContain("user_id nvarchar(255)");
+
+    for (const sql of [mysql, mssql]) {
+      expect(sql).toContain(
+        "create index bundle_events_install_idx on bundle_events(install_id, type, received_at_ms, id)",
+      );
+      expect(sql).toContain(
+        "create index bundle_installations_user_id_idx on bundle_installations(user_id, install_id)",
+      );
+    }
+    expect(mssql).not.toContain("install_id nvarchar(max)");
+    expect(mssql).not.toContain("user_id nvarchar(max)");
+  });
+
   it("generates nullable source and artifact relations with the intended deletion rules", () => {
     const prisma = generatePrismaSchema("postgresql", v1_0_0);
     const drizzle = generateDrizzleSchema("postgresql", v1_0_0);
@@ -111,7 +169,7 @@ describe("v1.0.0 Release Catalog schema", () => {
   });
 
   it("creates both projection tables and their constraints from empty", () => {
-    const sql = createTableSql("postgresql").join("\n");
+    const sql = createTableSql("postgresql", "foreign-keys", v1_0_0).join("\n");
 
     expect(sql).toContain("create table releases");
     expect(sql).toContain("create table release_catalogs");
@@ -124,7 +182,7 @@ describe("v1.0.0 Release Catalog schema", () => {
   });
 
   it("uses byte-bounded MySQL catalog keys", () => {
-    const sql = createTableSql("mysql").join("\n");
+    const sql = createTableSql("mysql", "foreign-keys", v1_0_0).join("\n");
 
     expect(sql).toContain(
       "scope_key varchar(2048) character set ascii collate ascii_bin",

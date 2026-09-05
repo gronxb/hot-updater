@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto";
+
 import { CloudFrontClient } from "@aws-sdk/client-cloudfront";
 import {
   DynamoDBClient,
@@ -18,7 +20,12 @@ import {
   type BundleEventRow,
   type BundlePatchRow,
   type BundleRow,
+  type InsightsInstallationRow,
   type InsightsModel,
+  type InsightsRecordInput,
+  type InsightsBundleEventFilter,
+  type InsightsListEventsInput,
+  isInsightsMovementEvent,
   type ChannelDeleteInput,
   type ChannelDeleteResult,
   type ChannelInsertInput,
@@ -1629,6 +1636,7 @@ export const createDynamoDBCrud = (
   store: DynamoDBStore,
   updateIndexName: string,
 ): DatabasePluginImplementation => ({
+  recordInsights: (input) => recordDynamoDBInsightsEvent(store, input),
   async create(input): Promise<DatabaseImplementationResult> {
     switch (input.model) {
       case "bundles":
@@ -2358,7 +2366,6 @@ const compileAndCommitDynamoDBChanges = async (
   const originalApiKeys = new Map<string, VersionedApiKey>();
   const apiKeys = new Map<string, VersionedApiKey>();
   const apiKeyHashes = new Map<string, string>();
-  const insights = new Map<string, BundleEventRow>();
 
   const rememberApiKey = (value: VersionedApiKey | null): void => {
     if (value === null || apiKeys.has(value.row.id)) return;
@@ -2545,16 +2552,6 @@ const compileAndCommitDynamoDBChanges = async (
           }
         }
         break;
-      case "insights": {
-        const key = insightsSortKey(change.row);
-        if (insights.has(key)) {
-          throw new DynamoDBCommitStateError(
-            `Insights event "${change.row.id}" is duplicated`,
-          );
-        }
-        insights.set(key, change.row);
-        break;
-      }
       case "apiKeys":
         if (change.operation === "insert") {
           rememberApiKey(await loadApiKeyByHash(store, change.row.hash));
@@ -2872,22 +2869,6 @@ const compileAndCommitDynamoDBChanges = async (
   });
   if (counter !== undefined) actions.push(counter);
 
-  for (const [key, row] of insights) {
-    actions.push({
-      Put: {
-        TableName: store.tableName,
-        Item: boundedDynamoDBMetadataItem({
-          pk: DYNAMODB_INSIGHTS_PARTITION,
-          sk: key,
-          version: 1,
-          row,
-        }),
-        ConditionExpression: "attribute_not_exists(#pk)",
-        ExpressionAttributeNames: { "#pk": "pk" },
-      },
-    });
-  }
-
   for (const [id, current] of apiKeys) {
     const original = originalApiKeys.get(id);
     if (original !== undefined && rowsEqual(original.row, current.row)) {
@@ -2951,8 +2932,17 @@ const createDynamoDBCommit =
     }
   };
 export const DYNAMODB_INSIGHTS_PARTITION = "bundle_events";
+export const DYNAMODB_INSIGHTS_INSTALLATIONS_PARTITION =
+  "_hot-updater#insights-installations";
+export const DYNAMODB_INSIGHTS_EVENT_IDS_PARTITION =
+  "_hot-updater#insights-event-ids";
+export const DYNAMODB_INSIGHTS_BUNDLE_PREFIX = "_hot-updater#insights-bundle#";
 export const DYNAMODB_API_KEY_PARTITION = "api_keys";
 export const DYNAMODB_API_KEY_HASH_PARTITION = "_hot-updater#api-key-hashes";
+
+const DYNAMODB_INSIGHTS_MOVEMENT_PREFIX = "_hot-updater#insights-movement#";
+const DYNAMODB_INSIGHTS_USER_PREFIX = "_hot-updater#insights-user#";
+const DYNAMODB_INSIGHTS_RECORD_ATTEMPTS = 3;
 
 const hasValidBundleEventShape = (value: object): boolean => {
   const type = field(value, "type");
@@ -2980,6 +2970,27 @@ const isBundleEventRow = (value: unknown): value is BundleEventRow =>
     field(value, "platform") === "android") &&
   typeof field(value, "received_at_ms") === "number" &&
   hasValidBundleEventShape(value);
+
+const isInsightsInstallationRow = (
+  value: unknown,
+): value is InsightsInstallationRow =>
+  typeof value === "object" &&
+  value !== null &&
+  typeof field(value, "id") === "string" &&
+  typeof field(value, "install_id") === "string" &&
+  isNullableString(field(value, "user_id")) &&
+  isNullableString(field(value, "username")) &&
+  typeof field(value, "to_bundle_id") === "string" &&
+  (field(value, "type") === "UPDATE_APPLIED" ||
+    field(value, "type") === "RECOVERED" ||
+    field(value, "type") === "RELEASE_ADOPTED" ||
+    field(value, "type") === "UNCHANGED") &&
+  (field(value, "platform") === "ios" ||
+    field(value, "platform") === "android") &&
+  typeof field(value, "app_version") === "string" &&
+  typeof field(value, "channel") === "string" &&
+  typeof field(value, "cohort") === "string" &&
+  typeof field(value, "received_at_ms") === "number";
 
 const isApiKeyRow = (value: unknown): value is ApiKeyRow =>
   typeof value === "object" &&
@@ -3016,71 +3027,554 @@ const insightsSortKey = (
   row: Pick<BundleEventRow, "id" | "received_at_ms">,
 ): string => `${timestampSortKey(row.received_at_ms)}#${row.id}`;
 
+const insightsMovementPartition = (installId: string): string =>
+  `${DYNAMODB_INSIGHTS_MOVEMENT_PREFIX}${installId}`;
+
+const insightsUserPartition = (userId: string): string =>
+  `${DYNAMODB_INSIGHTS_USER_PREFIX}${userId}`;
+
+const insightsBundlePartition = (filter: InsightsBundleEventFilter): string => {
+  const scope = JSON.stringify([
+    filter.platform,
+    filter.channel,
+    filter.type,
+    filter.type === "RECOVERED" ? filter.fromBundleId : filter.toBundleId,
+  ]);
+  // Accepted Unicode fields can exceed DynamoDB's 2 KiB partition-key limit.
+  return `${DYNAMODB_INSIGHTS_BUNDLE_PREFIX}${createHash("sha256").update(scope, "utf8").digest("hex")}`;
+};
+
+const toInsightsBundleItem = (
+  row: BundleEventRow,
+): Record<string, unknown> | null =>
+  row.type === "UNCHANGED"
+    ? null
+    : boundedDynamoDBMetadataItem({
+        pk: insightsBundlePartition({
+          platform: row.platform,
+          channel: row.channel,
+          ...(row.type === "RECOVERED"
+            ? { type: row.type, fromBundleId: row.from_bundle_id }
+            : { type: row.type, toBundleId: row.to_bundle_id }),
+        }),
+        sk: insightsSortKey(row),
+        version: 1,
+        row,
+      });
+
+const toInsightsEventItem = (row: BundleEventRow): Record<string, unknown> => {
+  const orderKey = insightsSortKey(row);
+  return boundedDynamoDBMetadataItem({
+    pk: DYNAMODB_INSIGHTS_PARTITION,
+    sk: orderKey,
+    version: 1,
+    row,
+    ...(isInsightsMovementEvent(row)
+      ? {
+          gsi1pk: insightsMovementPartition(row.install_id),
+          gsi1sk: orderKey,
+        }
+      : {}),
+  });
+};
+
+type DynamoDBInsightsInstallationItem = {
+  readonly pk: string;
+  readonly sk: string;
+  readonly order_key: string;
+  readonly version: 1;
+  readonly row: InsightsInstallationRow;
+};
+
+const toInsightsInstallationItem = (
+  row: InsightsInstallationRow,
+): DynamoDBInsightsInstallationItem =>
+  boundedDynamoDBMetadataItem({
+    pk: DYNAMODB_INSIGHTS_INSTALLATIONS_PARTITION,
+    sk: row.install_id,
+    order_key: insightsSortKey(row),
+    version: 1,
+    row,
+  });
+
+const toInsightsUserItem = (
+  row: InsightsInstallationRow & { readonly user_id: string },
+): DynamoDBInsightsInstallationItem =>
+  boundedDynamoDBMetadataItem({
+    pk: insightsUserPartition(row.user_id),
+    sk: row.install_id,
+    order_key: insightsSortKey(row),
+    version: 1,
+    row,
+  });
+
+const parseInsightsInstallationItem = (
+  value: Record<string, unknown>,
+  partition: string,
+): DynamoDBInsightsInstallationItem => {
+  const row = value.row;
+  if (
+    value.pk !== partition ||
+    typeof value.sk !== "string" ||
+    typeof value.order_key !== "string" ||
+    value.version !== 1 ||
+    !isInsightsInstallationRow(row) ||
+    value.sk !== row.install_id ||
+    value.order_key !== insightsSortKey(row)
+  ) {
+    throw new DynamoDBStoredItemError();
+  }
+  return value as DynamoDBInsightsInstallationItem;
+};
+
+const loadInsightsInstallationItem = async (
+  store: DynamoDBStore,
+  installId: string,
+): Promise<DynamoDBInsightsInstallationItem | null> => {
+  const { Item } = await store.client.send(
+    new GetCommand({
+      TableName: store.tableName,
+      Key: {
+        pk: DYNAMODB_INSIGHTS_INSTALLATIONS_PARTITION,
+        sk: installId,
+      },
+      ConsistentRead: true,
+    }),
+  );
+  return Item === undefined
+    ? null
+    : parseInsightsInstallationItem(
+        Item,
+        DYNAMODB_INSIGHTS_INSTALLATIONS_PARTITION,
+      );
+};
+
+const advancesInsightsInstallation = (
+  row: Pick<InsightsInstallationRow, "id" | "received_at_ms">,
+  current: Pick<InsightsInstallationRow, "id" | "received_at_ms">,
+): boolean =>
+  row.received_at_ms > current.received_at_ms ||
+  (row.received_at_ms === current.received_at_ms && row.id > current.id);
+
+const INSIGHTS_SCHEMA_KEY = { pk: "_hot-updater", sk: "insights-contract-v1" };
+const insightsReadiness = new WeakMap<DynamoDBStore, Promise<void>>();
+
+const markDynamoDBInsightsReady = async (
+  store: DynamoDBStore,
+): Promise<void> => {
+  await store.client.send(
+    new PutCommand({
+      TableName: store.tableName,
+      Item: { ...INSIGHTS_SCHEMA_KEY, version: 1 },
+    }),
+  );
+};
+
+const ensureDynamoDBInsightsReady = (store: DynamoDBStore): Promise<void> => {
+  const pending = insightsReadiness.get(store);
+  if (pending) return pending;
+  const ready = (async () => {
+    const { Item } = await store.client.send(
+      new GetCommand({
+        TableName: store.tableName,
+        Key: INSIGHTS_SCHEMA_KEY,
+        ConsistentRead: true,
+      }),
+    );
+    if (Item?.version === 1) return;
+    const existing = await store.client.send(
+      new QueryCommand({
+        TableName: store.tableName,
+        ConsistentRead: true,
+        KeyConditionExpression: "#pk = :pk",
+        ExpressionAttributeNames: { "#pk": "pk" },
+        ExpressionAttributeValues: { ":pk": DYNAMODB_INSIGHTS_PARTITION },
+        Limit: 1,
+        Select: "COUNT",
+      }),
+    );
+    if ((existing.Count ?? 0) > 0 || existing.LastEvaluatedKey !== undefined) {
+      throw new Error(
+        "DynamoDB Insights indexes require migration. Pause ingestion and run migrateDynamoDBInsights(config) from @hot-updater/aws before resuming.",
+      );
+    }
+    await markDynamoDBInsightsReady(store);
+  })();
+  insightsReadiness.set(store, ready);
+  void ready.catch(() => insightsReadiness.delete(store));
+  return ready;
+};
+
+/**
+ * Adds event-ID and raw bundle query indexes to existing Insights reports.
+ * Pause legacy ingestion first. Safe to retry after failure; no rows are reset.
+ * Scans only the event partition once, with bounded native pages.
+ */
+export const migrateDynamoDBInsights = async (
+  config: DynamoDBClientConfig & { readonly tableName: string },
+): Promise<void> => {
+  const { tableName, ...clientConfig } = config;
+  const client = DynamoDBDocumentClient.from(new DynamoDBClient(clientConfig));
+  const store = { client, tableName };
+  try {
+    const { Item } = await client.send(
+      new GetCommand({
+        TableName: tableName,
+        Key: INSIGHTS_SCHEMA_KEY,
+        ConsistentRead: true,
+      }),
+    );
+    if (Item?.version === 1) return;
+    let exclusiveStartKey: Record<string, unknown> | undefined;
+    do {
+      const page = await client.send(
+        new QueryCommand({
+          TableName: tableName,
+          ConsistentRead: true,
+          KeyConditionExpression: "#pk = :pk",
+          ExpressionAttributeNames: { "#pk": "pk" },
+          ExpressionAttributeValues: { ":pk": DYNAMODB_INSIGHTS_PARTITION },
+          ExclusiveStartKey: exclusiveStartKey,
+          Limit: 101,
+          ScanIndexForward: true,
+        }),
+      );
+      for (const item of page.Items ?? []) {
+        const { row } = parseOfficialRowItem(
+          item,
+          DYNAMODB_INSIGHTS_PARTITION,
+          isBundleEventRow,
+        );
+        const identityKey = {
+          pk: DYNAMODB_INSIGHTS_EVENT_IDS_PARTITION,
+          sk: row.id,
+        };
+        const { Item: identity } = await client.send(
+          new GetCommand({
+            TableName: tableName,
+            Key: identityKey,
+            ConsistentRead: true,
+          }),
+        );
+        if (identity !== undefined) {
+          if (identity.order_key !== insightsSortKey(row)) {
+            throw new Error(
+              "Existing DynamoDB Insights events reuse an event ID; resolve the conflicting reports before migrating.",
+            );
+          }
+          continue;
+        }
+        const bundle = toInsightsBundleItem(row);
+        await commitDynamoDBTransaction(store, [
+          {
+            Put: {
+              TableName: tableName,
+              Item: { ...identityKey, order_key: insightsSortKey(row) },
+              ConditionExpression: "attribute_not_exists(#pk)",
+              ExpressionAttributeNames: { "#pk": "pk" },
+            },
+          },
+          ...(bundle === null
+            ? []
+            : [{ Put: { TableName: tableName, Item: bundle } }]),
+        ]);
+      }
+      exclusiveStartKey = page.LastEvaluatedKey;
+    } while (exclusiveStartKey !== undefined);
+    await markDynamoDBInsightsReady(store);
+  } finally {
+    client.destroy();
+  }
+};
+
+const recordDynamoDBInsightsEvent = async (
+  store: DynamoDBStore,
+  { event: row, installation: next }: InsightsRecordInput,
+): Promise<void> => {
+  await ensureDynamoDBInsightsReady(store);
+  const eventItem = toInsightsEventItem(row);
+  const bundleItem = toInsightsBundleItem(row);
+  const identityKey = { pk: DYNAMODB_INSIGHTS_EVENT_IDS_PARTITION, sk: row.id };
+
+  for (
+    let attempt = 0;
+    attempt < DYNAMODB_INSIGHTS_RECORD_ATTEMPTS;
+    attempt++
+  ) {
+    const { Item: accepted } = await store.client.send(
+      new GetCommand({
+        TableName: store.tableName,
+        Key: identityKey,
+        ConsistentRead: true,
+      }),
+    );
+    if (accepted !== undefined) return;
+    const current = await loadInsightsInstallationItem(store, row.install_id);
+    const actions: DynamoDBTransactItem[] = [
+      {
+        Put: {
+          TableName: store.tableName,
+          Item: { ...identityKey, order_key: insightsSortKey(row) },
+          ConditionExpression: "attribute_not_exists(#pk)",
+          ExpressionAttributeNames: { "#pk": "pk" },
+        },
+      },
+      { Put: { TableName: store.tableName, Item: eventItem } },
+      ...(bundleItem === null
+        ? []
+        : [{ Put: { TableName: store.tableName, Item: bundleItem } }]),
+    ];
+    if (current === null || advancesInsightsInstallation(next, current.row)) {
+      actions.push({
+        Put: {
+          TableName: store.tableName,
+          Item: toInsightsInstallationItem(next),
+          ConditionExpression:
+            current === null
+              ? "attribute_not_exists(#pk)"
+              : "#orderKey = :currentOrderKey",
+          ExpressionAttributeNames:
+            current === null ? { "#pk": "pk" } : { "#orderKey": "order_key" },
+          ...(current === null
+            ? {}
+            : {
+                ExpressionAttributeValues: {
+                  ":currentOrderKey": current.order_key,
+                },
+              }),
+        },
+      });
+      if (
+        current !== null &&
+        current.row.user_id !== null &&
+        current.row.user_id !== next.user_id
+      ) {
+        actions.push({
+          Delete: {
+            TableName: store.tableName,
+            Key: {
+              pk: insightsUserPartition(current.row.user_id),
+              sk: current.row.install_id,
+            },
+          },
+        });
+      }
+      if (next.user_id !== null) {
+        actions.push({
+          Put: {
+            TableName: store.tableName,
+            Item: toInsightsUserItem({ ...next, user_id: next.user_id }),
+          },
+        });
+      }
+    }
+    try {
+      await commitDynamoDBTransaction(store, actions);
+      return;
+    } catch (error) {
+      if (!isDynamoDBTransactionConflict(error)) throw error;
+      // A concurrent duplicate or an ambiguous successful transaction is a no-op.
+      const { Item } = await store.client.send(
+        new GetCommand({
+          TableName: store.tableName,
+          Key: identityKey,
+          ConsistentRead: true,
+        }),
+      );
+      if (Item !== undefined) return;
+      if (attempt === DYNAMODB_INSIGHTS_RECORD_ATTEMPTS - 1) throw error;
+    }
+  }
+};
+
+const insightsEventRange = (input: InsightsListEventsInput) => {
+  const upperExclusive = input.after
+    ? `${timestampSortKey(input.after.receivedAtMs)}#${input.after.id}`
+    : `${timestampSortKey(input.beforeReceivedAtMs)}#`;
+  // Event keys have a fixed-length ASCII UUID suffix. This is the inclusive
+  // predecessor bound; BETWEEN can then apply both time bounds before Limit.
+  const upper = `${upperExclusive.slice(0, -1)}${String.fromCharCode(
+    upperExclusive.charCodeAt(upperExclusive.length - 1) - 1,
+  )}~`;
+  const movement = input.filter.kind === "installationMovement";
+  const partition = movement
+    ? insightsMovementPartition(input.filter.installId)
+    : input.filter.kind === "bundle"
+      ? insightsBundlePartition(input.filter)
+      : DYNAMODB_INSIGHTS_PARTITION;
+  return {
+    partition,
+    query: {
+      ...(movement
+        ? { IndexName: DYNAMODB_UPDATE_INDEX_NAME }
+        : { ConsistentRead: true }),
+      KeyConditionExpression:
+        "#partition = :partition AND #order BETWEEN :since AND :upper",
+      ExpressionAttributeNames: {
+        "#partition": movement ? "gsi1pk" : "pk",
+        "#order": movement ? "gsi1sk" : "sk",
+      },
+      ExpressionAttributeValues: {
+        ":partition": partition,
+        ":since": `${timestampSortKey(input.sinceMs ?? 0)}#`,
+        ":upper": upper,
+      },
+    },
+  };
+};
+
 export const createDynamoDBInsightsTable = (
   store: DynamoDBStore,
 ): InsightsModel => ({
-  async append(row) {
-    await store.client.send(
-      new PutCommand({
-        TableName: store.tableName,
-        Item: boundedDynamoDBMetadataItem({
-          pk: DYNAMODB_INSIGHTS_PARTITION,
-          sk: insightsSortKey(row),
-          version: 1,
-          row,
-        }),
-        ConditionExpression: "attribute_not_exists(#pk)",
-        ExpressionAttributeNames: { "#pk": "pk" },
-      }),
-    );
-  },
-  async scan(input) {
-    if (input.limit <= 0) return [];
-    if (
-      input.after !== undefined &&
-      input.after.receivedAtMs >= input.beforeReceivedAtMs
-    ) {
-      return [];
-    }
+  record: (input) => recordDynamoDBInsightsEvent(store, input),
+  async listEvents(input) {
+    if ((input.sinceMs ?? 0) === input.beforeReceivedAtMs) return [];
+    if (input.filter.kind === "bundle")
+      await ensureDynamoDBInsightsReady(store);
+    const range = insightsEventRange(input);
     const rows: BundleEventRow[] = [];
-    const afterKey =
-      input.after === undefined
-        ? undefined
-        : `${timestampSortKey(input.after.receivedAtMs)}#${input.after.id}`;
     let exclusiveStartKey: Record<string, unknown> | undefined;
     do {
       const page = await store.client.send(
         new QueryCommand({
           TableName: store.tableName,
+          ...range.query,
+          ExclusiveStartKey: exclusiveStartKey,
+          Limit: input.limit - rows.length,
+          ScanIndexForward: false,
+        }),
+      );
+      rows.push(
+        ...(page.Items ?? [])
+          .slice(0, input.limit - rows.length)
+          .map(
+            (item) =>
+              parseOfficialRowItem(
+                item,
+                input.filter.kind === "bundle"
+                  ? range.partition
+                  : DYNAMODB_INSIGHTS_PARTITION,
+                isBundleEventRow,
+              ).row,
+          ),
+      );
+      exclusiveStartKey = page.LastEvaluatedKey;
+    } while (rows.length < input.limit && exclusiveStartKey !== undefined);
+    return rows;
+  },
+  async findInstallations(input) {
+    if ("installId" in input) {
+      const stored = await loadInsightsInstallationItem(store, input.installId);
+      return stored === null ? [] : [stored.row];
+    }
+    const partition = insightsUserPartition(input.userId);
+    const rows: InsightsInstallationRow[] = [];
+    let exclusiveStartKey: Record<string, unknown> | undefined;
+    do {
+      const page = await store.client.send(
+        new QueryCommand({
+          TableName: store.tableName,
+          ConsistentRead: true,
           ExclusiveStartKey: exclusiveStartKey,
           KeyConditionExpression:
-            afterKey === undefined
-              ? "#pk = :pk AND #sk < :before"
-              : "#pk = :pk AND #sk BETWEEN :after AND :before",
-          ExpressionAttributeNames: { "#pk": "pk", "#sk": "sk" },
-          ExpressionAttributeValues: {
-            ":before": `${timestampSortKey(input.beforeReceivedAtMs)}#`,
-            ":pk": DYNAMODB_INSIGHTS_PARTITION,
-            ...(afterKey === undefined ? {} : { ":after": afterKey }),
+            input.afterInstallId === undefined
+              ? "#pk = :pk"
+              : "#pk = :pk AND #sk > :after",
+          ExpressionAttributeNames: {
+            "#pk": "pk",
+            ...(input.afterInstallId === undefined ? {} : { "#sk": "sk" }),
           },
-          Limit: input.limit - rows.length + (afterKey === undefined ? 0 : 1),
+          ExpressionAttributeValues: {
+            ":pk": partition,
+            ...(input.afterInstallId === undefined
+              ? {}
+              : { ":after": input.afterInstallId }),
+          },
+          Limit: input.limit - rows.length,
           ScanIndexForward: true,
         }),
       );
-      for (const item of page.Items ?? []) {
-        if (item.sk === afterKey) continue;
-        rows.push(
-          parseOfficialRowItem(
-            item,
-            DYNAMODB_INSIGHTS_PARTITION,
-            isBundleEventRow,
-          ).row,
+      for (const item of (page.Items ?? []).slice(
+        0,
+        input.limit - rows.length,
+      )) {
+        const stored = parseInsightsInstallationItem(item, partition);
+        const current = await loadInsightsInstallationItem(
+          store,
+          stored.row.install_id,
         );
-        if (rows.length === input.limit) return rows;
+        if (current?.row.user_id === input.userId) rows.push(current.row);
       }
       exclusiveStartKey = page.LastEvaluatedKey;
-    } while (exclusiveStartKey !== undefined);
+    } while (rows.length < input.limit && exclusiveStartKey !== undefined);
     return rows;
+  },
+  async countInstallations(input) {
+    let count = 0;
+    let exclusiveStartKey: Record<string, unknown> | undefined;
+    do {
+      // Canonical rows have immutable install-ID keys. A last-seen update cannot
+      // move an already counted installation past the cursor and count it twice.
+      const page = await store.client.send(
+        new QueryCommand({
+          TableName: store.tableName,
+          ConsistentRead: true,
+          ExclusiveStartKey: exclusiveStartKey,
+          KeyConditionExpression: "#pk = :pk",
+          FilterExpression:
+            "#row.#platform = :platform AND #row.#channel = :channel AND #row.#received >= :since" +
+            (input.bundleId === undefined ? "" : " AND #row.#bundle = :bundle"),
+          ExpressionAttributeNames: {
+            "#pk": "pk",
+            "#row": "row",
+            "#platform": "platform",
+            "#channel": "channel",
+            "#received": "received_at_ms",
+            ...(input.bundleId === undefined
+              ? {}
+              : { "#bundle": "to_bundle_id" }),
+          },
+          ExpressionAttributeValues: {
+            ":pk": DYNAMODB_INSIGHTS_INSTALLATIONS_PARTITION,
+            ":platform": input.platform,
+            ":channel": input.channel,
+            ":since": input.sinceMs,
+            ...(input.bundleId === undefined
+              ? {}
+              : { ":bundle": input.bundleId }),
+          },
+          Select: "COUNT",
+          ScanIndexForward: true,
+        }),
+      );
+      count += page.Count ?? 0;
+      exclusiveStartKey = page.LastEvaluatedKey;
+    } while (exclusiveStartKey !== undefined);
+    return count;
+  },
+  async countEvents(input) {
+    if (input.sinceMs === input.beforeReceivedAtMs) return 0;
+    await ensureDynamoDBInsightsReady(store);
+    const { query } = insightsEventRange({
+      ...input,
+      filter: { kind: "bundle", ...input.filter },
+      limit: 1,
+    });
+    let count = 0;
+    let exclusiveStartKey: Record<string, unknown> | undefined;
+    do {
+      const page = await store.client.send(
+        new QueryCommand({
+          TableName: store.tableName,
+          ...query,
+          ExclusiveStartKey: exclusiveStartKey,
+          Select: "COUNT",
+        }),
+      );
+      count += page.Count ?? 0;
+      exclusiveStartKey = page.LastEvaluatedKey;
+    } while (exclusiveStartKey !== undefined);
+    return count;
   },
 });
 

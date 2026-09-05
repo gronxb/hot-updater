@@ -11,7 +11,12 @@ import {
   validateResult,
 } from "./databasePluginCrudValidationRows";
 import { createTransactionDatabasePlugin } from "./databasePluginTransaction";
+import {
+  compareInsightsText,
+  createValidatedInsightsModel,
+} from "./insightsContract";
 import type {
+  BundleEventRow,
   BundlePatchRow,
   BundleRow,
   ChannelInsertInput,
@@ -27,6 +32,9 @@ import type {
   DatabasePluginCrud,
   DatabasePluginImplementation,
   DatabaseWhere,
+  InsightsBundleEventFilter,
+  InsightsEventFilter,
+  InsightsListEventsInput,
   ReleaseCatalogRow,
   ReleaseRow,
 } from "./types/internal";
@@ -40,6 +48,73 @@ const PAGE_SIZE = 100;
 
 const compareChannelRows = (left: ChannelRow, right: ChannelRow): number =>
   left.name < right.name ? -1 : left.name > right.name ? 1 : 0;
+
+const toInsightsBundleWhere = (
+  filter: InsightsBundleEventFilter,
+): readonly DatabaseWhere<"bundle_events">[] => [
+  { field: "platform", value: filter.platform },
+  { field: "channel", value: filter.channel },
+  { field: "type", value: filter.type },
+  filter.type === "RECOVERED"
+    ? { field: "from_bundle_id", value: filter.fromBundleId }
+    : { field: "to_bundle_id", value: filter.toBundleId },
+];
+
+const toInsightsEventRanges = (
+  filter: InsightsEventFilter,
+): readonly (readonly DatabaseWhere<"bundle_events">[])[] => {
+  if (filter.kind === "all") return [[]];
+  if (filter.kind === "bundle") return [toInsightsBundleWhere(filter)];
+  return (["UPDATE_APPLIED", "RECOVERED"] as const).map((type) => [
+    { field: "install_id", value: filter.installId },
+    { field: "type", value: type },
+  ]);
+};
+
+const listInsightsEventRange = async (
+  crud: DatabasePluginCrud,
+  input: InsightsListEventsInput,
+  filterWhere: readonly DatabaseWhere<"bundle_events">[],
+): Promise<readonly BundleEventRow[]> => {
+  const where: readonly DatabaseWhere<"bundle_events">[] = [
+    ...filterWhere,
+    { field: "received_at_ms", operator: "gte", value: input.sinceMs ?? 0 },
+  ];
+  // Disjoint indexed ranges preserve the tuple cursor without offsets.
+  const sameTimestamp =
+    input.after === undefined
+      ? []
+      : await crud.findMany({
+          model: "bundle_events",
+          where: [
+            ...where,
+            { field: "received_at_ms", value: input.after.receivedAtMs },
+            { field: "id", operator: "lt", value: input.after.id },
+          ],
+          orderBy: [{ field: "id", direction: "desc" }],
+          limit: input.limit,
+          offset: 0,
+        });
+  if (sameTimestamp.length === input.limit) return sameTimestamp;
+  const older = await crud.findMany({
+    model: "bundle_events",
+    where: [
+      ...where,
+      {
+        field: "received_at_ms",
+        operator: "lt",
+        value: input.after?.receivedAtMs ?? input.beforeReceivedAtMs,
+      },
+    ],
+    orderBy: [
+      { field: "received_at_ms", direction: "desc" },
+      { field: "id", direction: "desc" },
+    ],
+    limit: input.limit - sameTimestamp.length,
+    offset: 0,
+  });
+  return [...sameTimestamp, ...older];
+};
 
 export class DatabaseAtomicCommitUnsupportedError extends Error {
   readonly name = "DatabaseAtomicCommitUnsupportedError";
@@ -264,9 +339,6 @@ const applyChange = async (
           return;
         }
       }
-    case "insights":
-      await database.create({ model: "bundle_events", data: change.row });
-      return;
     case "apiKeys":
       switch (change.operation) {
         case "insert":
@@ -479,15 +551,6 @@ const validateDatabaseChange = (change: unknown): void => {
         default:
           throw new DatabasePluginInputError("invalid-operation");
       }
-    case "insights":
-      if (
-        change.operation !== "insert" ||
-        !hasOnlyKeys(change, ["model", "operation", "row"])
-      ) {
-        throw new DatabasePluginInputError("invalid-operation");
-      }
-      validateCreateData("bundle_events", change.row);
-      return;
     case "apiKeys":
       switch (change.operation) {
         case "insert":
@@ -856,62 +919,91 @@ export const createDatabasePluginAdapter = (
         },
       },
       insights: {
-        async append(row) {
-          await crud.create({ model: "bundle_events", data: row });
+        record: (input) => implementation.recordInsights(input),
+        async listEvents(input) {
+          const ranges = await Promise.all(
+            toInsightsEventRanges(input.filter).map((where) =>
+              listInsightsEventRange(crud, input, where),
+            ),
+          );
+          if (ranges.length === 1) return ranges[0]!;
+          // A fixed type per query preserves the movement index's time order.
+          // Merge at most two bounded pages, never the installation history.
+          return ranges
+            .flat()
+            .sort(
+              (left, right) =>
+                right.received_at_ms - left.received_at_ms ||
+                compareInsightsText(right.id, left.id),
+            )
+            .slice(0, input.limit);
         },
-        async scan(input) {
-          if (
-            input.limit <= 0 ||
-            (input.after !== undefined &&
-              input.after.receivedAtMs >= input.beforeReceivedAtMs)
-          )
-            return [];
-
-          // Split the cursor into disjoint ranges so every adapter can apply
-          // it in the database without nested OR predicates or offset scans.
-          const sameTimestamp =
-            input.after === undefined
-              ? []
-              : await crud.findMany({
-                  model: "bundle_events",
-                  where: [
+        async findInstallations(input) {
+          if ("installId" in input) {
+            const row = await crud.findOne({
+              model: "bundle_installations",
+              where: [{ field: "install_id", value: input.installId }],
+            });
+            return row === null ? [] : [row];
+          }
+          return crud.findMany({
+            model: "bundle_installations",
+            where: [
+              { field: "user_id", value: input.userId },
+              ...(input.afterInstallId === undefined
+                ? []
+                : [
                     {
-                      field: "received_at_ms",
-                      value: input.after.receivedAtMs,
+                      field: "install_id" as const,
+                      operator: "gt" as const,
+                      value: input.afterInstallId,
                     },
-                    { field: "id", operator: "gt", value: input.after.id },
-                  ],
-                  orderBy: [{ field: "id", direction: "asc" }],
-                  limit: input.limit,
-                  offset: 0,
-                });
-          if (sameTimestamp.length === input.limit) return sameTimestamp;
-          const later = await crud.findMany({
+                  ]),
+            ],
+            orderBy: [{ field: "install_id", direction: "asc" }],
+            limit: input.limit,
+            offset: 0,
+          });
+        },
+        countInstallations(input) {
+          return crud.count({
+            model: "bundle_installations",
+            where: [
+              { field: "platform", value: input.platform },
+              { field: "channel", value: input.channel },
+              {
+                field: "received_at_ms",
+                operator: "gte",
+                value: input.sinceMs,
+              },
+              ...(input.bundleId === undefined
+                ? []
+                : [
+                    {
+                      field: "to_bundle_id" as const,
+                      value: input.bundleId,
+                    },
+                  ]),
+            ],
+          });
+        },
+        countEvents(input) {
+          return crud.count({
             model: "bundle_events",
             where: [
+              ...toInsightsBundleWhere(input.filter),
+              {
+                field: "received_at_ms",
+                operator: "gte",
+                value: input.sinceMs,
+              },
               {
                 field: "received_at_ms",
                 operator: "lt",
                 value: input.beforeReceivedAtMs,
               },
-              ...(input.after === undefined
-                ? []
-                : [
-                    {
-                      field: "received_at_ms" as const,
-                      operator: "gt" as const,
-                      value: input.after.receivedAtMs,
-                    },
-                  ]),
             ],
-            orderBy: [
-              { field: "received_at_ms", direction: "asc" },
-              { field: "id", direction: "asc" },
-            ],
-            limit: input.limit - sameTimestamp.length,
-            offset: 0,
           });
-          return [...sameTimestamp, ...later];
         },
       },
       apiKeys: {
@@ -956,4 +1048,10 @@ export const createDatabasePluginAdapter = (
 
 export const createDatabasePlugin = (
   options: CreateDatabasePluginOptions,
-): DatabasePlugin => ({ ...options });
+): DatabasePlugin => ({
+  ...options,
+  models: {
+    ...options.models,
+    insights: createValidatedInsightsModel(options.models.insights),
+  },
+});

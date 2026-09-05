@@ -4,6 +4,7 @@ import type {
   BundlePatchRow,
   BundleRow,
   ChannelRow,
+  InsightsInstallationRow,
   ReleaseCatalogRow,
   ReleaseRow,
 } from "@hot-updater/plugin-core";
@@ -121,18 +122,37 @@ const predicate = (where: AnyDatabaseWhere): Document => {
 
 const createMongoWhereDocument = (
   where: readonly AnyDatabaseWhere[] | undefined,
+  toPredicate: (condition: AnyDatabaseWhere) => Document = predicate,
 ): Document => {
   const items = Array.isArray(where) ? where : [];
   const first = items[0];
   if (first === undefined) return {};
 
-  let result = predicate(first);
+  let result = toPredicate(first);
   for (const item of items.slice(1)) {
     result = {
-      [item.connector === "OR" ? "$or" : "$and"]: [result, predicate(item)],
+      [item.connector === "OR" ? "$or" : "$and"]: [result, toPredicate(item)],
     };
   }
   return result;
+};
+
+// Fixed Insights predicates use native fields so equality/range indexes apply.
+const insightsPredicate = (where: AnyDatabaseWhere): Document => {
+  if ("mode" in where && where.mode === "insensitive") return predicate(where);
+  switch (where.operator) {
+    case undefined:
+    case "eq":
+      return { [where.field]: { $eq: where.value } };
+    case "gt":
+    case "gte":
+    case "lt":
+    case "lte":
+    case "in":
+      return { [where.field]: { [`$${where.operator}`]: where.value } };
+    default:
+      return predicate(where);
+  }
 };
 
 export function createMongoBundleWhere(
@@ -159,7 +179,16 @@ export function createMongoEventWhere(
 export function createMongoEventWhere(
   where: readonly DatabaseWhere<"bundle_events">[] | undefined,
 ): Document {
-  return createMongoWhereDocument(where);
+  return createMongoWhereDocument(where, insightsPredicate);
+}
+
+export function createMongoInstallationWhere(
+  where: readonly DatabaseWhere<"bundle_installations">[] | undefined,
+): Filter<InsightsInstallationRow>;
+export function createMongoInstallationWhere(
+  where: readonly DatabaseWhere<"bundle_installations">[] | undefined,
+): Document {
+  return createMongoWhereDocument(where, insightsPredicate);
 }
 
 export function createMongoApiKeyWhere(

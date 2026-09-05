@@ -87,6 +87,20 @@ create table bundle_events (
   received_at_ms double precision not null
 );
 
+create table bundle_installations (
+  install_id text primary key not null,
+  id uuid not null,
+  user_id text,
+  username text,
+  to_bundle_id uuid not null,
+  type text not null,
+  platform text not null,
+  app_version text not null,
+  channel text not null,
+  cohort text not null,
+  received_at_ms double precision not null
+);
+
 create table api_keys (
   id varchar(255) primary key not null,
   hash text not null,
@@ -112,13 +126,9 @@ create index releases_fingerprint_hash_idx on releases(fingerprint_hash);
 create index releases_enabled_idx on releases(enabled);
 create index release_catalogs_channel_idx on release_catalogs(channel_id);
 create index bundle_events_received_at_idx on bundle_events(received_at_ms, id);
-create index bundle_events_install_idx on bundle_events(install_id, received_at_ms, id);
-create index bundle_events_user_id_idx on bundle_events(user_id, received_at_ms, id);
-create index bundle_events_username_idx on bundle_events(username, received_at_ms, id);
-create index bundle_events_to_bundle_idx on bundle_events(type, to_bundle_id, received_at_ms, id);
-create index bundle_events_from_bundle_idx on bundle_events(type, from_bundle_id, received_at_ms, id);
-create index bundle_events_to_release_idx on bundle_events(type, to_release_id, received_at_ms, id);
-create index bundle_events_from_release_idx on bundle_events(type, from_release_id, received_at_ms, id);
+create index bundle_events_install_idx on bundle_events(install_id, type, received_at_ms, id);
+create index bundle_installations_user_id_idx on bundle_installations(user_id, install_id);
+create index bundle_installations_received_at_idx on bundle_installations(received_at_ms);
 create unique index api_keys_hash_key on api_keys(hash);
 create index api_keys_created_at_idx on api_keys(created_at_ms, id);
 
@@ -154,6 +164,12 @@ alter table bundle_events add constraint bundle_events_shape_check
   check (((type in ('UPDATE_APPLIED', 'RECOVERED', 'RELEASE_ADOPTED')) and from_bundle_id is not null and update_strategy is not null and update_strategy in ('fingerprint', 'appVersion')) or (type = 'UNCHANGED' and from_bundle_id is null and update_strategy is null));
 alter table bundle_events add constraint bundle_events_received_at_check
   check (received_at_ms >= 0);
+alter table bundle_installations add constraint bundle_installations_type_check
+  check (type in ('UPDATE_APPLIED', 'RECOVERED', 'RELEASE_ADOPTED', 'UNCHANGED'));
+alter table bundle_installations add constraint bundle_installations_platform_check
+  check (platform in ('ios', 'android'));
+alter table bundle_installations add constraint bundle_installations_received_at_check
+  check (received_at_ms >= 0);
 alter table api_keys add constraint api_keys_role_check
   check (role = 'client');
 alter table api_keys add constraint api_keys_created_at_check
@@ -177,3 +193,19 @@ alter table release_catalogs add constraint release_catalogs_channel_id_fk
 insert into private_hot_updater_settings (key, value)
 values ('schema.core', '1.0.0')
 on conflict (key) do update set value = excluded.value;
+
+-- HotUpdater.insights-1.0.1
+-- Preserve existing reports while adding the fixed Insights query paths.
+ALTER TABLE bundle_events ALTER COLUMN install_id TYPE text COLLATE "C";
+ALTER TABLE bundle_events ALTER COLUMN user_id TYPE text COLLATE "C";
+ALTER TABLE bundle_events ALTER COLUMN platform TYPE text COLLATE "C";
+ALTER TABLE bundle_events ALTER COLUMN channel TYPE text COLLATE "C";
+ALTER TABLE bundle_installations ALTER COLUMN install_id TYPE text COLLATE "C";
+ALTER TABLE bundle_installations ALTER COLUMN user_id TYPE text COLLATE "C";
+ALTER TABLE bundle_installations ALTER COLUMN platform TYPE text COLLATE "C";
+ALTER TABLE bundle_installations ALTER COLUMN channel TYPE text COLLATE "C";
+CREATE INDEX IF NOT EXISTS bundle_events_from_bundle_idx ON bundle_events(type, platform, channel, from_bundle_id, received_at_ms, id);
+CREATE INDEX IF NOT EXISTS bundle_events_to_bundle_idx ON bundle_events(type, platform, channel, to_bundle_id, received_at_ms, id);
+CREATE INDEX IF NOT EXISTS bundle_installations_scope_idx ON bundle_installations(platform, channel, received_at_ms);
+CREATE INDEX IF NOT EXISTS bundle_installations_bundle_idx ON bundle_installations(platform, channel, to_bundle_id, received_at_ms);
+INSERT INTO private_hot_updater_settings(key, value) VALUES ('schema.core', '1.0.1') ON CONFLICT (key) DO UPDATE SET value = excluded.value;

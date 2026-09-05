@@ -1,5 +1,6 @@
 import type {
   BundleEventRow,
+  InsightsInstallationRow,
   BundlePatchRow,
   BundleRow,
   ChannelRow,
@@ -37,6 +38,7 @@ export type MongoCollections = {
   readonly bundles: Collection<MongoBundleDocument>;
   readonly bundlePatches: Collection<BundlePatchRow>;
   readonly bundleEvents: Collection<BundleEventRow>;
+  readonly bundleInstallations: Collection<InsightsInstallationRow>;
   readonly channels: Collection<ChannelRow>;
   readonly apiKeys: Collection<ApiKeyRow>;
   readonly releases: Collection<ReleaseRow>;
@@ -51,6 +53,9 @@ export const createMongoCollections = (
     bundles: database.collection<MongoBundleDocument>("bundles"),
     bundlePatches: database.collection<BundlePatchRow>("bundle_patches"),
     bundleEvents: database.collection<BundleEventRow>("bundle_events"),
+    bundleInstallations: database.collection<InsightsInstallationRow>(
+      "bundle_installations",
+    ),
     channels: database.collection<ChannelRow>("channels"),
     apiKeys: database.collection<ApiKeyRow>("api_keys"),
     releases: database.collection<ReleaseRow>("releases"),

@@ -1,7 +1,8 @@
 import fs from "node:fs/promises";
 import path from "node:path";
+import { Script } from "node:vm";
 
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import type { JsonObject } from "./control-client.ts";
 import { getDetoxScenarioDefinition } from "./scenarios.ts";
@@ -66,6 +67,92 @@ async function recoveryStages(): Promise<readonly string[]> {
 }
 
 describe("Detox recovery foreground handling", () => {
+  it.each([
+    { platform: "ios", stage: "launch crash bundle", synchronization: 0 },
+    {
+      platform: "ios",
+      stage: "launch stable bundle",
+      synchronization: undefined,
+    },
+    {
+      platform: "android",
+      stage: "launch crash bundle",
+      synchronization: undefined,
+    },
+  ])(
+    "sets launch synchronization before $platform $stage",
+    async ({ platform, stage, synchronization }) => {
+      const [pageSource, driverSource] = await Promise.all([
+        fs.readFile(detoxPagePath, "utf8"),
+        fs.readFile(detoxScenarioRuntimePath, "utf8"),
+      ]);
+      const calls: string[] = [];
+      const device = {
+        launchApp: vi.fn(async () => {
+          calls.push("launch");
+        }),
+      };
+      const controlClient = {
+        postJson: vi.fn(async () => {
+          calls.push("prepare");
+          return {};
+        }),
+      };
+      const pageModule = { exports: {} };
+      new Script(pageSource).runInNewContext({
+        module: pageModule,
+        process: {
+          env: {
+            HOT_UPDATER_E2E_PLATFORM: platform,
+            HOT_UPDATER_E2E_RUNTIME_CONFIG_URL:
+              "http://localhost:3107/e2e/runtime-config",
+            HOT_UPDATER_E2E_APP_BASE_URL: "http://localhost:3007/hot-updater",
+          },
+        },
+        require: (name: string) => (name === "detox" ? { device } : {}),
+      });
+      const driver = new Script(
+        `${driverSource}\nnew module.exports.DetoxAppDriver(controlClient);`,
+      ).runInNewContext({
+        module: { exports: {} },
+        controlClient,
+        require: (name: string) =>
+          name === "detox" ? { device } : pageModule.exports,
+      }) as { launch: (stage: string) => Promise<void> };
+
+      await driver.launch(stage);
+
+      expect(calls).toEqual(["prepare", "launch"]);
+      expect(controlClient.postJson).toHaveBeenCalledWith(
+        `${stage}: prepare launch`,
+        "/e2e/prepare-app-launch",
+        {},
+      );
+      expect(device.launchApp).toHaveBeenCalledWith({
+        newInstance: true,
+        launchArgs: {
+          HOT_UPDATER_E2E_RUNTIME_CONFIG_URL:
+            "http://localhost:3107/e2e/runtime-config",
+          HOT_UPDATER_APP_BASE_URL: "http://localhost:3007/hot-updater",
+          ...(synchronization === undefined
+            ? {}
+            : { detoxEnableSynchronization: synchronization }),
+        },
+      });
+      if (synchronization === 0) {
+        await driver.launch("launch stable bundle");
+        expect(device.launchApp).toHaveBeenLastCalledWith({
+          newInstance: true,
+          launchArgs: {
+            HOT_UPDATER_E2E_RUNTIME_CONFIG_URL:
+              "http://localhost:3107/e2e/runtime-config",
+            HOT_UPDATER_APP_BASE_URL: "http://localhost:3007/hot-updater",
+          },
+        });
+      }
+    },
+  );
+
   it("uses native recovery evidence before reading recovered app UI", async () => {
     // Given: Android crash recovery relaunches the app outside Detox and the
     // launch status UI can be a transient platform-specific value.

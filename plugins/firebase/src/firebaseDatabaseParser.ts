@@ -3,6 +3,7 @@ import {
   type BundlePatchRow,
   type BundleRow,
   type BundleEventRow,
+  type InsightsInstallationRow,
   type ChannelRow,
   type ApiKeyRow,
   type ReleaseCatalogRow,
@@ -146,6 +147,35 @@ export const parseFirebaseBundleEventRow = (
     sdk_version: nullableString(property(input, "sdk_version"), source),
     received_at_ms: number(property(input, "received_at_ms"), source),
   } as BundleEventRow;
+};
+
+export const parseFirebaseInsightsInstallationRow = (
+  value: unknown,
+  source: string,
+): InsightsInstallationRow => {
+  const input = record(value, source);
+  const type = string(property(input, "type"), source);
+  if (
+    type !== "UPDATE_APPLIED" &&
+    type !== "RECOVERED" &&
+    type !== "RELEASE_ADOPTED" &&
+    type !== "UNCHANGED"
+  ) {
+    throw new FirebaseDatabaseDataError(source);
+  }
+  return {
+    id: string(property(input, "id"), source),
+    type,
+    install_id: string(property(input, "install_id"), source),
+    user_id: nullableString(property(input, "user_id"), source),
+    username: nullableString(property(input, "username"), source),
+    to_bundle_id: string(property(input, "to_bundle_id"), source),
+    platform: platform(property(input, "platform"), source),
+    app_version: string(property(input, "app_version"), source),
+    channel: string(property(input, "channel"), source),
+    cohort: string(property(input, "cohort"), source),
+    received_at_ms: number(property(input, "received_at_ms"), source),
+  };
 };
 
 export const parseFirebaseApiKeyRow = (

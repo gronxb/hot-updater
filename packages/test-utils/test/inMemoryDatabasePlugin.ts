@@ -36,6 +36,7 @@ const createTables = (): Tables => ({
   release_catalogs: { rows: [] },
   channels: { rows: [] },
   bundle_events: { rows: [] },
+  bundle_installations: { rows: [] },
   api_keys: { rows: [] },
 });
 
@@ -67,6 +68,7 @@ const assertReferences = (
       return;
     case "channels":
     case "bundle_events":
+    case "bundle_installations":
     case "api_keys":
       return;
     case "bundle_patches":
@@ -126,6 +128,17 @@ const createCrudImplementation = (
           break;
         tables.bundle_events.rows.push(structuredClone(input.data));
         return input.data;
+      case "bundle_installations": {
+        const existing = tables.bundle_installations.rows.find(
+          ({ install_id }) => install_id === input.data.install_id,
+        );
+        if (existing !== undefined && input.onConflict === "ignore") {
+          return existing;
+        }
+        if (existing !== undefined) break;
+        tables.bundle_installations.rows.push(structuredClone(input.data));
+        return input.data;
+      }
       case "releases":
         if (tables.releases.rows.some(({ id }) => id === input.data.id)) break;
         tables.releases.rows.push(structuredClone(input.data));
@@ -184,6 +197,16 @@ const createCrudImplementation = (
       if (current === undefined) return null;
       const updated = { ...current, ...input.update };
       tables.release_catalogs.rows[index] = updated;
+      return structuredClone(updated);
+    }
+    if (input.model === "bundle_installations") {
+      const index = tables.bundle_installations.rows.findIndex((row) =>
+        matchesAll(row, input.where),
+      );
+      const current = tables.bundle_installations.rows[index];
+      if (current === undefined) return null;
+      const updated = { ...current, ...input.update };
+      tables.bundle_installations.rows[index] = updated;
       return structuredClone(updated);
     }
     const index = tables.bundles.rows.findIndex((row) =>
@@ -252,6 +275,13 @@ const createCrudImplementation = (
   },
   count: async (input) => {
     switch (input.model) {
+      case "bundle_events":
+        return distinctCount(
+          tables.bundle_events.rows.filter((row) =>
+            matchesAll(row, input.where),
+          ),
+          input.distinct,
+        );
       case "bundles": {
         const rows = tables.bundles.rows.filter((row) =>
           matchesAll(row, input.where),
@@ -272,6 +302,15 @@ const createCrudImplementation = (
       }
       case "releases": {
         const rows = tables.releases.rows.filter((row) =>
+          matchesAll(row, input.where),
+        );
+        return distinctCount(
+          rows,
+          input.distinct as readonly string[] | undefined,
+        );
+      }
+      case "bundle_installations": {
+        const rows = tables.bundle_installations.rows.filter((row) =>
           matchesAll(row, input.where),
         );
         return distinctCount(
@@ -315,6 +354,12 @@ const createCrudImplementation = (
             matchesAll(row, input.where),
           ) ?? null
         );
+      case "bundle_installations":
+        return (
+          tables.bundle_installations.rows.find((row) =>
+            matchesAll(row, input.where),
+          ) ?? null
+        );
     }
   },
   findMany: async (input) => {
@@ -340,6 +385,15 @@ const createCrudImplementation = (
       case "bundle_events":
         return queryRows(
           tables.bundle_events.rows,
+          input.where,
+          input.orderBy,
+          input.distinctOn,
+          input.offset,
+          input.limit,
+        );
+      case "bundle_installations":
+        return queryRows(
+          tables.bundle_installations.rows,
           input.where,
           input.orderBy,
           input.distinctOn,
@@ -401,6 +455,25 @@ const createImplementation = (tables: Tables): DatabasePluginImplementation => {
 
   return {
     ...createCrudImplementation(tables),
+    recordInsights: ({ event, installation }) =>
+      withMutationLock(() => {
+        if (tables.bundle_events.rows.some(({ id }) => id === event.id)) return;
+        const index = tables.bundle_installations.rows.findIndex(
+          ({ install_id }) => install_id === installation.install_id,
+        );
+        const current = tables.bundle_installations.rows[index];
+        tables.bundle_events.rows.push(structuredClone(event));
+        if (current === undefined) {
+          tables.bundle_installations.rows.push(structuredClone(installation));
+        } else if (
+          installation.received_at_ms > current.received_at_ms ||
+          (installation.received_at_ms === current.received_at_ms &&
+            installation.id > current.id)
+        ) {
+          tables.bundle_installations.rows[index] =
+            structuredClone(installation);
+        }
+      }),
     insertChannel: ({ row }) =>
       withMutationLock(() => {
         const existing = tables.channels.rows.find(
@@ -439,6 +512,8 @@ const createImplementation = (tables: Tables): DatabasePluginImplementation => {
         tables.release_catalogs.rows = transactionTables.release_catalogs.rows;
         tables.channels.rows = transactionTables.channels.rows;
         tables.bundle_events.rows = transactionTables.bundle_events.rows;
+        tables.bundle_installations.rows =
+          transactionTables.bundle_installations.rows;
         tables.api_keys.rows = transactionTables.api_keys.rows;
         return result;
       }),
@@ -470,6 +545,7 @@ export const createInMemoryDatabaseHarness = () => {
       tables.release_catalogs.rows = [];
       tables.channels.rows = [];
       tables.bundle_events.rows = [];
+      tables.bundle_installations.rows = [];
       tables.api_keys.rows = [];
     },
   };

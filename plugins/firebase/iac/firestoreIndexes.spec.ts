@@ -6,7 +6,7 @@ import { describe, expect, it } from "vitest";
 import { FIREBASE_V1_COLLECTION_NAMES } from "../src/firebaseInfrastructureNames";
 
 describe("firebase firestore index template", () => {
-  it("includes ascending indexes for update-check fast paths", async () => {
+  it("includes indexes for update checks and bounded insights reads", async () => {
     const indexFilePath = path.resolve(
       __dirname,
       "../firebase/public/firestore.indexes.json",
@@ -21,6 +21,81 @@ describe("firebase firestore index template", () => {
         queryScope: string;
       }>;
     };
+
+    expect(indexFile.indexes).toContainEqual({
+      collectionGroup: FIREBASE_V1_COLLECTION_NAMES.bundleEvents,
+      fields: [
+        { fieldPath: "received_at_ms", order: "DESCENDING" },
+        { fieldPath: "id", order: "DESCENDING" },
+      ],
+      queryScope: "COLLECTION",
+    });
+
+    expect(indexFile.indexes).toContainEqual({
+      collectionGroup: FIREBASE_V1_COLLECTION_NAMES.bundleEvents,
+      fields: [
+        { fieldPath: "received_at_ms", order: "ASCENDING" },
+        { fieldPath: "id", order: "DESCENDING" },
+      ],
+      queryScope: "COLLECTION",
+    });
+
+    expect(indexFile.indexes).toContainEqual({
+      collectionGroup: FIREBASE_V1_COLLECTION_NAMES.bundleEvents,
+      fields: [
+        { fieldPath: "install_id", order: "ASCENDING" },
+        { fieldPath: "type", order: "ASCENDING" },
+        { fieldPath: "received_at_ms", order: "DESCENDING" },
+        { fieldPath: "id", order: "DESCENDING" },
+      ],
+      queryScope: "COLLECTION",
+    });
+
+    expect(indexFile.indexes).toContainEqual({
+      collectionGroup: FIREBASE_V1_COLLECTION_NAMES.bundleEvents,
+      fields: [
+        { fieldPath: "install_id", order: "ASCENDING" },
+        { fieldPath: "type", order: "ASCENDING" },
+        { fieldPath: "received_at_ms", order: "ASCENDING" },
+        { fieldPath: "id", order: "DESCENDING" },
+      ],
+      queryScope: "COLLECTION",
+    });
+
+    expect(indexFile.indexes).toContainEqual({
+      collectionGroup: FIREBASE_V1_COLLECTION_NAMES.bundleInstallations,
+      fields: [
+        { fieldPath: "user_id", order: "ASCENDING" },
+        { fieldPath: "install_id", order: "ASCENDING" },
+      ],
+      queryScope: "COLLECTION",
+    });
+
+    for (const field of ["from_bundle_id", "to_bundle_id"]) {
+      for (const order of ["ASCENDING", "DESCENDING"]) {
+        expect(indexFile.indexes).toContainEqual({
+          collectionGroup: FIREBASE_V1_COLLECTION_NAMES.bundleEvents,
+          fields: [
+            { fieldPath: "type", order: "ASCENDING" },
+            { fieldPath: "platform", order: "ASCENDING" },
+            { fieldPath: "channel", order: "ASCENDING" },
+            { fieldPath: field, order: "ASCENDING" },
+            { fieldPath: "received_at_ms", order },
+            { fieldPath: "id", order: "DESCENDING" },
+          ],
+          queryScope: "COLLECTION",
+        });
+      }
+    }
+    for (const extra of [[], ["to_bundle_id"]]) {
+      expect(indexFile.indexes).toContainEqual({
+        collectionGroup: FIREBASE_V1_COLLECTION_NAMES.bundleInstallations,
+        fields: ["platform", "channel", ...extra, "received_at_ms"].map(
+          (fieldPath) => ({ fieldPath, order: "ASCENDING" }),
+        ),
+        queryScope: "COLLECTION",
+      });
+    }
 
     expect(indexFile.indexes).toContainEqual({
       collectionGroup: FIREBASE_V1_COLLECTION_NAMES.bundles,

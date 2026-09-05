@@ -1387,16 +1387,16 @@ function readInsightsModel(database: BundleRepository): InsightsModel | null {
       : undefined;
   return typeof insights === "object" &&
     insights !== null &&
-    typeof Reflect.get(insights, "append") === "function" &&
-    typeof Reflect.get(insights, "scan") === "function"
+    typeof Reflect.get(insights, "record") === "function" &&
+    typeof Reflect.get(insights, "listEvents") === "function" &&
+    typeof Reflect.get(insights, "findInstallations") === "function" &&
+    typeof Reflect.get(insights, "countInstallations") === "function" &&
+    typeof Reflect.get(insights, "countEvents") === "function"
     ? (insights as InsightsModel)
     : null;
 }
 
-async function verifyConfiguredConsoleInsights(args: {
-  bundleIds: readonly string[];
-  sinceMs: number;
-}) {
+async function verifyConfiguredConsoleInsights(args: { sinceMs: number }) {
   return withConfiguredDatabase(async (database) => {
     const insights = readInsightsModel(database);
     const client = insights
@@ -1407,17 +1407,13 @@ async function verifyConfiguredConsoleInsights(args: {
         });
     for (let attempt = 1; attempt <= 30; attempt += 1) {
       try {
-        const evidence = await verifyConsoleInsights(client, args.bundleIds, {
+        const evidence = await verifyConsoleInsights(client, {
           observedEvents: fixtureSession.observedInsightsEvents,
           sinceMs: args.sinceMs,
         });
         return { skipped: false, ...evidence };
       } catch (error) {
-        if (
-          !(error instanceof ConsoleInsightsQaError) ||
-          error.code === "unsupported" ||
-          attempt === 30
-        ) {
+        if (!(error instanceof ConsoleInsightsQaError) || attempt === 30) {
           throw error;
         }
         await sleep(1_000);
@@ -7101,9 +7097,6 @@ export async function handleCleanup() {
   return cleanup();
 }
 
-export async function handleVerifyConsoleInsights(args: {
-  bundleIds: readonly string[];
-  sinceMs: number;
-}) {
+export async function handleVerifyConsoleInsights(args: { sinceMs: number }) {
   return verifyConfiguredConsoleInsights(args);
 }

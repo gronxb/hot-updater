@@ -1,10 +1,17 @@
-import { createDatabasePlugin } from "@hot-updater/plugin-core";
+import {
+  compareInsightsText,
+  createDatabasePlugin,
+} from "@hot-updater/plugin-core";
 import {
   createDatabasePluginAdapter,
   type DatabasePluginImplementation,
   type TransactionDatabasePluginImplementation,
 } from "@hot-updater/plugin-core/internal";
-import type { ClientSession, MongoClient } from "mongodb";
+import {
+  MongoServerError,
+  type ClientSession,
+  type MongoClient,
+} from "mongodb";
 
 import { createMongoMigrator } from "../db/fixedMigrator";
 import type { DatabaseAdapterWithCapabilities } from "../db/types";
@@ -14,6 +21,7 @@ import { createMongoWrites } from "./mongodbWrites";
 
 export interface MongoDBConfig {
   readonly client: MongoClient;
+  /** Enables atomic catalog commits. Insights always requires MongoDB 5+ on a replica set or sharded cluster. */
   readonly transactions?: boolean;
 }
 
@@ -23,6 +31,62 @@ const createMongoImplementation = (
 ): DatabasePluginImplementation => {
   const collections = createMongoCollections(client);
   return {
+    recordInsights: async (input) => {
+      const record = () =>
+        client.withSession((recordSession) =>
+          recordSession.withTransaction(
+            async () => {
+              const records = createMongoCollections(client);
+              const options = {
+                session: recordSession,
+                collation: { locale: "simple" },
+              };
+              const inserted = await records.bundleEvents.updateOne(
+                { id: input.event.id },
+                { $setOnInsert: input.event },
+                { ...options, upsert: true },
+              );
+              if (inserted.upsertedCount === 0) return;
+              const current = await records.bundleInstallations.findOne(
+                { install_id: input.installation.install_id },
+                options,
+              );
+              if (current === null) {
+                await records.bundleInstallations.insertOne(
+                  { ...input.installation },
+                  {
+                    session: recordSession,
+                  },
+                );
+              } else if (
+                input.installation.received_at_ms > current.received_at_ms ||
+                (input.installation.received_at_ms === current.received_at_ms &&
+                  compareInsightsText(input.installation.id, current.id) > 0)
+              ) {
+                await records.bundleInstallations.updateOne(
+                  { install_id: input.installation.install_id },
+                  { $set: input.installation },
+                  options,
+                );
+              }
+            },
+            {
+              readConcern: { level: "snapshot" },
+              readPreference: "primary",
+              writeConcern: { w: "majority" },
+            },
+          ),
+        );
+      try {
+        await record();
+      } catch (error) {
+        if (!(error instanceof MongoServerError) || error.code !== 11000)
+          throw error;
+        // A concurrent insert won a canonical key. Read that committed winner
+        // in a new transaction; some MongoDB versions do not retry E11000.
+        await record();
+      }
+    },
     ...createMongoWrites(collections, session),
     ...createMongoReads(collections, session),
   };

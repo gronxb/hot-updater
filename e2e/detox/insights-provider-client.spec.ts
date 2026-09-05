@@ -21,71 +21,74 @@ describe("Detox Insights provider client", () => {
     expect(result.status).toBe(0);
   });
 
-  it("maps Console Insights queries to the official provider domain", async () => {
+  it("maps QA reads to the lean provider contract", async () => {
     const provider = {
-      mode: "bounded",
-      maxMatchingRows: 10_000,
       appendBundleEvent: vi.fn(),
-      getActiveInstallationOverview: vi.fn(async () => ({
-        activeInstallations: 0,
-        bundles: [],
+      getReportingOverview: vi.fn(async () => ({
+        channel: "production",
+        platform: "ios" as const,
+        beforeReceivedAtMs: 1,
+        sinceMs: 0,
+        reportingInstallations: { count: 0, measuredAtMs: 1 },
+        window: "24h" as const,
       })),
-      getBundleEventInsights: vi.fn(async () => ({
-        recentEvents: {
-          data: [],
-          pagination: { limit: 50, offset: 0, total: 0 },
-        },
-        summary: { installed: 0, recovered: 0 },
-      })),
-      getBundleEventOverview: vi.fn(async () => ({
-        bundles: [],
-        trackedInstallations: 0,
-      })),
-      getBundleEventSummary: vi.fn(async () => ({
-        installed: 0,
-        recovered: 0,
-      })),
-      getInstallationHistory: vi.fn(async () => ({
+      getInstallation: vi.fn(async () => null),
+      listEvents: vi.fn(async () => ({
+        beforeReceivedAtMs: 10,
         data: [],
-        pagination: { limit: 50, offset: 0, total: 0 },
+        nextCursor: null,
       })),
-      searchInstallations: vi.fn(async () => ({
+      listInstallationEvents: vi.fn(async () => ({
+        beforeReceivedAtMs: 10,
         data: [],
-        pagination: { limit: 50, offset: 0, total: 0 },
+        nextCursor: null,
+      })),
+      pageInstallationsByCurrentUserId: vi.fn(async () => ({
+        data: [],
+        nextCursor: null,
       })),
     } satisfies InsightsProvider;
     const client = createConsoleInsightsProviderClient(provider);
 
-    await client.getActiveOverview();
-    await client.getBundleInsights("bundle-id");
-    await client.getHistory("install-id");
-    await client.getOverview();
-    await client.getSummary("bundle-id");
-    await client.searchInstallations("device-alias");
-
-    await expect(client.getCapabilities()).resolves.toEqual({
-      insights: true,
-    });
-    expect(provider.getActiveInstallationOverview).toHaveBeenCalledWith({
+    await client.getReportingOverview({
+      channel: "production",
+      platform: "ios",
       window: "24h",
     });
-    expect(provider.getBundleEventInsights).toHaveBeenCalledWith(
-      "bundle-id",
-      "30d",
-      50,
-      0,
-    );
-    expect(provider.getInstallationHistory).toHaveBeenCalledWith(
-      "install-id",
-      50,
-      0,
-    );
-    expect(provider.getBundleEventOverview).toHaveBeenCalledOnce();
-    expect(provider.getBundleEventSummary).toHaveBeenCalledWith("bundle-id");
-    expect(provider.searchInstallations).toHaveBeenCalledWith(
-      "device-alias",
-      50,
-      0,
-    );
+    await client.getInstallation({ installId: "install-id" });
+    await client.listEvents({ cursor: "event-cursor", limit: 25 });
+    await client.listInstallationEvents({
+      cursor: "movement-cursor",
+      installId: "install-id",
+      limit: 25,
+    });
+    await client.pageInstallationsByCurrentUserId({
+      cursor: "user-cursor",
+      limit: 25,
+      userId: "user-id",
+    });
+
+    expect(provider.getReportingOverview).toHaveBeenCalledWith({
+      channel: "production",
+      platform: "ios",
+      window: "24h",
+    });
+    expect(provider.getInstallation).toHaveBeenCalledWith({
+      installId: "install-id",
+    });
+    expect(provider.listEvents).toHaveBeenCalledWith({
+      cursor: "event-cursor",
+      limit: 25,
+    });
+    expect(provider.listInstallationEvents).toHaveBeenCalledWith({
+      cursor: "movement-cursor",
+      installId: "install-id",
+      limit: 25,
+    });
+    expect(provider.pageInstallationsByCurrentUserId).toHaveBeenCalledWith({
+      cursor: "user-cursor",
+      limit: 25,
+      userId: "user-id",
+    });
   });
 });

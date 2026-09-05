@@ -1,10 +1,10 @@
-import { blob, foreignKey, index, integer, real, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core"
+import { blob, customType, foreignKey, index, integer, real, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core"
 
 import { relations } from "drizzle-orm"
 
 export const channels = sqliteTable("channels", {
-  id: text("id", { length: 255 }).primaryKey().notNull(),
-  name: text("name", { length: 255 }).notNull()
+  id: customType<{ data: string }>({ dataType: () => "text collate binary" })("id").primaryKey().notNull(),
+  name: customType<{ data: string }>({ dataType: () => "text collate binary" })("name").notNull()
 }, (table) => [
   uniqueIndex("channels_name_key").on(table.name)
 ])
@@ -83,8 +83,8 @@ export const bundle_patchesRelations = relations(bundle_patches, ({ one }) => ({
 export const releases = sqliteTable("releases", {
   id: text("id").primaryKey().notNull(),
   revision: integer("revision").notNull(),
-  scope_key: text("scope_key", { length: 2048 }).notNull(),
-  channel_id: text("channel_id", { length: 255 }).notNull(),
+  scope_key: customType<{ data: string }>({ dataType: () => "text collate binary" })("scope_key").notNull(),
+  channel_id: customType<{ data: string }>({ dataType: () => "text collate binary" })("channel_id").notNull(),
   platform: text("platform").notNull(),
   kind: text("kind").notNull(),
   bundle_id: text("bundle_id"),
@@ -145,11 +145,11 @@ export const releasesRelations = relations(releases, ({ one, many }) => ({
 }))
 
 export const release_catalogs = sqliteTable("release_catalogs", {
-  scope_key: text("scope_key", { length: 2048 }).primaryKey().notNull(),
+  scope_key: customType<{ data: string }>({ dataType: () => "text collate binary" })("scope_key").primaryKey().notNull(),
   catalog_id: text("catalog_id", { length: 255 }).notNull(),
   strategy: text("strategy").notNull(),
-  channel_id: text("channel_id", { length: 255 }).notNull(),
-  channel_key: text("channel_key", { length: 1400 }).notNull(),
+  channel_id: customType<{ data: string }>({ dataType: () => "text collate binary" })("channel_id").notNull(),
+  channel_key: customType<{ data: string }>({ dataType: () => "text collate binary" })("channel_key").notNull(),
   platform: text("platform").notNull(),
   fingerprint_hash: text("fingerprint_hash"),
   generation: real("generation").notNull(),
@@ -177,9 +177,9 @@ export const release_catalogsRelations = relations(release_catalogs, ({ one }) =
 
 export const bundle_events = sqliteTable("bundle_events", {
   id: text("id").primaryKey().notNull(),
-  type: text("type").notNull(),
-  install_id: text("install_id").notNull(),
-  user_id: text("user_id"),
+  type: text("type", { length: 32 }).notNull(),
+  install_id: text("install_id", { length: 255 }).notNull(),
+  user_id: text("user_id", { length: 255 }),
   username: text("username"),
   from_release_id: text("from_release_id"),
   from_bundle_id: text("from_bundle_id"),
@@ -195,13 +195,28 @@ export const bundle_events = sqliteTable("bundle_events", {
   received_at_ms: real("received_at_ms").notNull()
 }, (table) => [
   index("bundle_events_received_at_idx").on(table.received_at_ms, table.id),
-  index("bundle_events_install_idx").on(table.install_id, table.received_at_ms, table.id),
-  index("bundle_events_user_id_idx").on(table.user_id, table.received_at_ms, table.id),
-  index("bundle_events_username_idx").on(table.username, table.received_at_ms, table.id),
-  index("bundle_events_to_bundle_idx").on(table.type, table.to_bundle_id, table.received_at_ms, table.id),
-  index("bundle_events_from_bundle_idx").on(table.type, table.from_bundle_id, table.received_at_ms, table.id),
-  index("bundle_events_to_release_idx").on(table.type, table.to_release_id, table.received_at_ms, table.id),
-  index("bundle_events_from_release_idx").on(table.type, table.from_release_id, table.received_at_ms, table.id)
+  index("bundle_events_install_idx").on(table.install_id, table.type, table.received_at_ms, table.id),
+  index("bundle_events_from_bundle_idx").on(table.type, table.platform, table.channel, table.from_bundle_id, table.received_at_ms, table.id),
+  index("bundle_events_to_bundle_idx").on(table.type, table.platform, table.channel, table.to_bundle_id, table.received_at_ms, table.id)
+])
+
+export const bundle_installations = sqliteTable("bundle_installations", {
+  install_id: text("install_id", { length: 255 }).primaryKey().notNull(),
+  id: text("id").notNull(),
+  user_id: text("user_id", { length: 255 }),
+  username: text("username"),
+  to_bundle_id: text("to_bundle_id").notNull(),
+  type: text("type", { length: 32 }).notNull(),
+  platform: text("platform").notNull(),
+  app_version: text("app_version").notNull(),
+  channel: text("channel").notNull(),
+  cohort: text("cohort").notNull(),
+  received_at_ms: real("received_at_ms").notNull()
+}, (table) => [
+  index("bundle_installations_user_id_idx").on(table.user_id, table.install_id),
+  index("bundle_installations_received_at_idx").on(table.received_at_ms),
+  index("bundle_installations_scope_idx").on(table.platform, table.channel, table.received_at_ms),
+  index("bundle_installations_bundle_idx").on(table.platform, table.channel, table.to_bundle_id, table.received_at_ms)
 ])
 
 export const api_keys = sqliteTable("api_keys", {
@@ -219,5 +234,5 @@ export const api_keys = sqliteTable("api_keys", {
 
 export const private_hot_updater_settings = sqliteTable("private_hot_updater_settings", {
   id: text("id", { length: 255 }).primaryKey().notNull(),
-  version: text("version", { length: 255 }).notNull().default("1.0.0")
+  version: text("version", { length: 255 }).notNull().default("1.0.1")
 })
