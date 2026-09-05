@@ -62,8 +62,9 @@ export const countPostgresRows = async (
       const query = rows.select(({ fn }) => fn.countAll<string>().as("count"));
       return Number((await query.executeTakeFirstOrThrow()).count);
     }
+    case "bundle_events":
     case "bundle_installations": {
-      let rows = db.selectFrom("bundle_installations");
+      let rows = db.selectFrom(input.model);
       if (where !== undefined) rows = rows.where(where);
       const query = rows.select(({ fn }) => fn.countAll<string>().as("count"));
       return Number((await query.executeTakeFirstOrThrow()).count);

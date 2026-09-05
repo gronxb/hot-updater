@@ -1004,6 +1004,15 @@ const bundleEvents: readonly BundleEventRow[] = [
         17,
         13,
       ],
+      [
+        "0008",
+        "RELEASE_ADOPTED",
+        "demo-zeta",
+        iosProdCorePatchB.id,
+        iosProdCorePatchB.id,
+        18,
+        9,
+      ],
     ] as const
   ).map(
     (
@@ -1011,7 +1020,7 @@ const bundleEvents: readonly BundleEventRow[] = [
       index,
     ): BundleEventRow => {
       const baseEvent = {
-        id: `019f635e-1${String(index).padStart(3, "0")}-7000-8000-000000000${installSuffix}`,
+        id: `019f635e-1${String(index).padStart(3, "0")}-7000-8000-00000000${installSuffix}`,
         install_id: `019f635d-${installSuffix}-7000-8000-00000000${installSuffix}`,
         user_id: userId,
         username: userId,
@@ -1043,7 +1052,13 @@ const bundleEvents: readonly BundleEventRow[] = [
   ),
 ];
 
-for (const row of bundleEvents) {
+// Keep the demo reporting windows useful regardless of the calendar date.
+const receiptOffsetMs = Date.now() - Date.UTC(2026, 6, 18, 10) - 60_000;
+for (const event of bundleEvents) {
+  const row = {
+    ...event,
+    received_at_ms: event.received_at_ms + receiptOffsetMs,
+  };
   databaseData.bundleEvents.set(row.id, row);
   const current = databaseData.bundleInstallations.get(row.install_id);
   if (

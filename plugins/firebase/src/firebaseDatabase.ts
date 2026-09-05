@@ -1,4 +1,7 @@
-import { createDatabasePlugin } from "@hot-updater/plugin-core";
+import {
+  compareInsightsText,
+  createDatabasePlugin,
+} from "@hot-updater/plugin-core";
 import {
   createDatabasePluginAdapter,
   type DatabasePluginImplementation,
@@ -29,6 +32,7 @@ import {
   createFirebaseDatabaseCollections,
   firebaseChannelDocumentId,
   firebaseChannelIdDocumentId,
+  firebaseInstallationDocumentId,
   loadFirebaseChannels,
   loadFirebaseDatabaseSnapshot,
   loadFirebaseTransactionSnapshot,
@@ -168,6 +172,39 @@ export const firebaseDatabase = (config: FirebaseDatabaseConfig) => {
     };
 
     return {
+      recordInsights: async ({ event, installation }) => {
+        await ensureMigrated();
+        await db.runTransaction(async (transaction) => {
+          const eventReference = collections.bundleEvents.doc(event.id);
+          const installationReference = collections.bundleInstallations.doc(
+            firebaseInstallationDocumentId(installation.install_id),
+          );
+          const [storedEvent, storedInstallation] = await transaction.getAll(
+            eventReference,
+            installationReference,
+          );
+          if (storedEvent.exists) return;
+          const current = storedInstallation.exists
+            ? requireFirebaseDocumentKey(
+                "bundle_installations",
+                storedInstallation.id,
+                parseFirebaseInsightsInstallationRow(
+                  storedInstallation.data(),
+                  `bundle_installations/${storedInstallation.id}`,
+                ),
+              )
+            : null;
+          transaction.create(eventReference, event);
+          if (
+            current === null ||
+            installation.received_at_ms > current.received_at_ms ||
+            (installation.received_at_ms === current.received_at_ms &&
+              compareInsightsText(installation.id, current.id) > 0)
+          ) {
+            transaction.set(installationReference, installation);
+          }
+        });
+      },
       create: async (input) => {
         if (
           input.model !== "bundle_events" &&
@@ -184,7 +221,7 @@ export const firebaseDatabase = (config: FirebaseDatabaseConfig) => {
           const documentId =
             input.model === "bundle_events"
               ? input.data.id
-              : input.data.install_id;
+              : firebaseInstallationDocumentId(input.data.install_id);
           const reference = collection.doc(documentId);
           const document = await transaction.get(reference);
           if (document.exists) {
@@ -225,7 +262,9 @@ export const firebaseDatabase = (config: FirebaseDatabaseConfig) => {
         }
         await ensureMigrated();
         return db.runTransaction(async (transaction) => {
-          const reference = collections.bundleInstallations.doc(installId);
+          const reference = collections.bundleInstallations.doc(
+            firebaseInstallationDocumentId(installId),
+          );
           const document = await transaction.get(reference);
           if (!document.exists) return null;
           const current = requireFirebaseDocumentKey(
@@ -251,12 +290,17 @@ export const firebaseDatabase = (config: FirebaseDatabaseConfig) => {
       },
       delete: (input) => mutate((database) => database.delete(input)),
       count: async (input) => {
-        if (input.model !== "bundle_installations") {
+        if (
+          input.model !== "bundle_installations" &&
+          input.model !== "bundle_events"
+        ) {
           return read((database) => database.count(input));
         }
         await ensureMigrated();
         const query = applyFirebaseWhere(
-          collections.bundleInstallations,
+          input.model === "bundle_events"
+            ? collections.bundleEvents
+            : collections.bundleInstallations,
           input.where ?? [],
         );
         const result = await query.count().get();
@@ -270,7 +314,7 @@ export const firebaseDatabase = (config: FirebaseDatabaseConfig) => {
           }
           await ensureMigrated();
           const document = await collections.bundleInstallations
-            .doc(installId)
+            .doc(firebaseInstallationDocumentId(installId))
             .get();
           return document.exists
             ? requireFirebaseDocumentKey(

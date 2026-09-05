@@ -205,3 +205,8 @@ CREATE INDEX bundle_installations_user_id_idx ON bundle_installations(user_id, i
 CREATE INDEX bundle_installations_received_at_idx ON bundle_installations(received_at_ms);
 CREATE UNIQUE INDEX api_keys_hash_key ON api_keys(hash);
 CREATE INDEX api_keys_created_at_idx ON api_keys(created_at_ms, id);
+
+CREATE INDEX IF NOT EXISTS bundle_events_from_bundle_idx ON bundle_events(type, platform, channel, from_bundle_id, received_at_ms, id);
+CREATE INDEX IF NOT EXISTS bundle_events_to_bundle_idx ON bundle_events(type, platform, channel, to_bundle_id, received_at_ms, id);
+CREATE INDEX IF NOT EXISTS bundle_installations_scope_idx ON bundle_installations(platform, channel, received_at_ms);
+CREATE INDEX IF NOT EXISTS bundle_installations_bundle_idx ON bundle_installations(platform, channel, to_bundle_id, received_at_ms);

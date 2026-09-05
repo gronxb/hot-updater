@@ -91,6 +91,7 @@ export function EventHistoryCard({
   onPrevious,
   onRefresh,
   pageNumber,
+  title = "All events",
 }: {
   readonly children?: ReactNode;
   readonly error: Error | null;
@@ -102,6 +103,7 @@ export function EventHistoryCard({
   readonly onPrevious: () => void;
   readonly onRefresh: () => void;
   readonly pageNumber: number;
+  readonly title?: string;
 }) {
   const dateTimeFormat = useInsightsTimeFormat();
   const hasPrevious = pageNumber > 1;
@@ -111,7 +113,7 @@ export function EventHistoryCard({
       <CardHeader className="gap-4 p-4 sm:p-6">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <CardTitle>
-            <h2>All events</h2>
+            <h2>{title}</h2>
           </CardTitle>
           <Button
             className="h-11 lg:h-8"
@@ -219,13 +221,15 @@ export function EventHistoryCard({
               <div className="px-6 pb-6 text-sm text-muted-foreground">
                 {hasPrevious || history.nextCursor
                   ? "No events on this page"
-                  : "No events recorded yet"}
+                  : title === "All events"
+                    ? "No events recorded yet"
+                    : "No matching reports in this period"}
               </div>
             )}
             {history.data.length > 0 || hasPrevious || history.nextCursor ? (
               <InsightsPagination
                 hasPrevious={hasPrevious}
-                label="All events"
+                label={title}
                 nextCursor={history.nextCursor}
                 onNext={onNext}
                 onPrevious={onPrevious}

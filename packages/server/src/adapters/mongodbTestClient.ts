@@ -26,6 +26,7 @@ type UpdateInput =
 type MongoTestHooks = {
   beforeBundlePatchInsert?: () => Promise<void>;
   failNextBundleTombstone: boolean;
+  failNextInstallationWrite: boolean;
   operationCount: number;
 };
 
@@ -150,6 +151,10 @@ const createCollection = (
   },
   insertOne: async (row: MongoTestRow): Promise<void> => {
     hooks.operationCount += 1;
+    if (model === "bundle_installations" && hooks.failNextInstallationWrite) {
+      hooks.failNextInstallationWrite = false;
+      throw new MongoTestConstraintError("injected installation write failure");
+    }
     if (model === "bundle_patches") await hooks.beforeBundlePatchInsert?.();
     const key =
       model === "bundle_installations" && "install_id" in row
@@ -207,6 +212,10 @@ const createCollection = (
     options?: { readonly upsert?: boolean },
   ): Promise<{ matchedCount: number; upsertedCount: number }> => {
     hooks.operationCount += 1;
+    if (model === "bundle_installations" && hooks.failNextInstallationWrite) {
+      hooks.failNextInstallationWrite = false;
+      throw new MongoTestConstraintError("injected installation write failure");
+    }
     const index = tables[model].findIndex((row) =>
       matchesMongoTestFilter(row, filter),
     );
@@ -282,6 +291,7 @@ export const createMongoTestHarness = () => {
   };
   const hooks: MongoTestHooks = {
     failNextBundleTombstone: false,
+    failNextInstallationWrite: false,
     operationCount: 0,
   };
   let activeTables = tables;
@@ -329,6 +339,7 @@ export const createMongoTestHarness = () => {
     close: () => client.close(),
     reset: (): void => {
       hooks.failNextBundleTombstone = false;
+      hooks.failNextInstallationWrite = false;
       hooks.operationCount = 0;
       transactionQueue = Promise.resolve();
       tables.bundle_patches = [];
@@ -348,6 +359,9 @@ export const createMongoTestHarness = () => {
     },
     failNextBundleTombstone: (): void => {
       hooks.failNextBundleTombstone = true;
+    },
+    failNextInstallationWrite: (): void => {
+      hooks.failNextInstallationWrite = true;
     },
     setBundleField: (id: string, field: string, value: unknown): void => {
       const row = tables.bundles.find(

@@ -73,8 +73,31 @@ export type EventCursorPage<T extends EventHistoryRow> = CursorPage<T> & {
   readonly beforeReceivedAtMs: number;
 };
 
-export type ActiveInstallationOverview = {
-  readonly activeInstallations: number;
-  readonly asOfMs: number;
+export type InsightsScope = {
+  readonly platform: "ios" | "android";
+  readonly channel: string;
+};
+
+export type InsightsBundleSelection = InsightsScope & {
+  readonly bundleId: string;
+  readonly outcome: "applied" | "recovered" | "adopted";
+};
+
+export type InsightsCountMeasurement = {
+  readonly count: number;
+  readonly measuredAtMs: number;
+};
+
+export type ReportingOverview = InsightsScope & {
   readonly window: ActiveInstallationWindow;
+  readonly sinceMs: number;
+  readonly beforeReceivedAtMs: number;
+  readonly reportingInstallations: InsightsCountMeasurement;
+  readonly bundle?: {
+    readonly bundleId: string;
+    readonly reportingInstallations: InsightsCountMeasurement;
+    readonly appliedReports: InsightsCountMeasurement;
+    readonly recoveredReports: InsightsCountMeasurement;
+    readonly adoptedReports: InsightsCountMeasurement;
+  };
 };

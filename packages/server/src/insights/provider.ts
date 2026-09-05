@@ -1,13 +1,20 @@
-import type {
-  BundleEventRow,
-  InsightsEventCursor,
-  InsightsEventSelector,
-  InsightsInstallationRow,
-  InsightsModel,
+import {
+  compareInsightsText,
+  isInsightsMovementEvent,
+  isUUIDv7,
+  toInsightsInstallationRow,
+  type InsightsBundleEventFilter,
+  type BundleEventRow,
+  type InsightsEventCursor,
+  type InsightsEventFilter,
+  type InsightsInstallationRow,
+  type InsightsModel,
 } from "@hot-updater/plugin-core";
 
 import type {
   ActiveInstallationWindow,
+  InsightsBundleSelection,
+  InsightsScope,
   EventHistoryRow,
   InstallationHistoryRow,
   InstallationRow,
@@ -36,9 +43,10 @@ const WINDOW_MS: Record<ActiveInstallationWindow, number> = {
 type EventCursorPayload = {
   readonly after: InsightsEventCursor;
   readonly beforeReceivedAtMs: number;
+  readonly sinceMs: number;
   readonly kind: "events";
-  readonly selector: InsightsEventSelector;
-  readonly version: 1;
+  readonly filter: InsightsEventFilter;
+  readonly version: 2;
 };
 
 type UserInstallationCursorPayload = {
@@ -59,7 +67,10 @@ const requireString = (
   if (
     typeof value !== "string" ||
     value.length === 0 ||
-    value.length > maximumLength
+    value.length > maximumLength ||
+    new TextDecoder("utf-8", { ignoreBOM: true }).decode(
+      new TextEncoder().encode(value),
+    ) !== value
   ) {
     throw new InsightsBadRequestError(`Invalid ${label}.`);
   }
@@ -121,52 +132,82 @@ const decodeCursor = (value: string): unknown => {
   }
 };
 
-const sameSelector = (
-  left: InsightsEventSelector,
-  right: InsightsEventSelector,
-): boolean =>
-  left.kind === right.kind &&
-  (left.kind === "all" ||
-    (right.kind === "installationMovement" &&
-      left.installId === right.installId));
+const readScope = (input: InsightsScope): InsightsScope => {
+  if (input.platform !== "ios" && input.platform !== "android") {
+    throw new InsightsBadRequestError("Invalid Insights platform.");
+  }
+  return {
+    platform: input.platform,
+    channel: requireString(input.channel, "channel", MAX_EVENT_ID_LENGTH),
+  };
+};
+
+// Counts and drill-downs share the exact same raw predicate.
+const bundleFilter = (
+  input: InsightsBundleSelection,
+): InsightsBundleEventFilter => {
+  const scope = readScope(input);
+  const bundleId = requireString(
+    input.bundleId,
+    "bundle ID",
+    MAX_EVENT_ID_LENGTH,
+  );
+  switch (input.outcome) {
+    case "applied":
+      return { ...scope, type: "UPDATE_APPLIED", toBundleId: bundleId };
+    case "recovered":
+      return { ...scope, type: "RECOVERED", fromBundleId: bundleId };
+    case "adopted":
+      return { ...scope, type: "RELEASE_ADOPTED", toBundleId: bundleId };
+    default:
+      throw new InsightsBadRequestError("Invalid Insights outcome.");
+  }
+};
+
+const sameFilter = (left: unknown, right: InsightsEventFilter): boolean => {
+  if (!isRecord(left) || left.kind !== right.kind) return false;
+  switch (right.kind) {
+    case "all":
+      return true;
+    case "installationMovement":
+      return left.installId === right.installId;
+    case "bundle":
+      return (
+        left.platform === right.platform &&
+        left.channel === right.channel &&
+        left.type === right.type &&
+        (right.type === "RECOVERED"
+          ? left.fromBundleId === right.fromBundleId
+          : left.toBundleId === right.toBundleId)
+      );
+  }
+};
 
 const readEventCursor = (
   value: string,
-  selector: InsightsEventSelector,
+  filter: InsightsEventFilter,
 ): EventCursorPayload => {
   const cursor = decodeCursor(value);
   if (
     !isRecord(cursor) ||
-    cursor.version !== 1 ||
+    cursor.version !== 2 ||
     cursor.kind !== "events" ||
-    !isRecord(cursor.selector) ||
+    !isRecord(cursor.filter) ||
     !isRecord(cursor.after)
   ) {
     throw new InsightsBadRequestError("Invalid Insights cursor.");
   }
-  const cursorSelector: InsightsEventSelector =
-    cursor.selector.kind === "all"
-      ? { kind: "all" }
-      : cursor.selector.kind === "installationMovement"
-        ? {
-            kind: "installationMovement",
-            installId: requireString(
-              cursor.selector.installId,
-              "install ID",
-              MAX_IDENTITY_LENGTH,
-            ),
-          }
-        : (() => {
-            throw new InsightsBadRequestError("Invalid Insights cursor.");
-          })();
-  if (!sameSelector(cursorSelector, selector)) {
+  if (!sameFilter(cursor.filter, filter)) {
     throw new InsightsBadRequestError(
       "Insights cursor does not match the requested events.",
     );
   }
+  if (typeof cursor.after.id !== "string" || !isUUIDv7(cursor.after.id)) {
+    throw new InsightsBadRequestError("Invalid Insights event cursor ID.");
+  }
   return {
     after: {
-      id: requireString(cursor.after.id, "event cursor", MAX_EVENT_ID_LENGTH),
+      id: cursor.after.id,
       receivedAtMs: requireTimestamp(cursor.after.receivedAtMs, "event cursor"),
     },
     beforeReceivedAtMs: requireTimestamp(
@@ -174,8 +215,9 @@ const readEventCursor = (
       "event cutoff",
     ),
     kind: "events",
-    selector: cursorSelector,
-    version: 1,
+    sinceMs: requireTimestamp(cursor.sinceMs, "event start"),
+    filter,
+    version: 2,
   };
 };
 
@@ -211,14 +253,15 @@ const compareEventNewest = (
   right: Pick<BundleEventRow, "id" | "received_at_ms">,
 ): number =>
   right.received_at_ms - left.received_at_ms ||
-  (right.id < left.id ? -1 : right.id > left.id ? 1 : 0);
+  compareInsightsText(right.id, left.id);
 
 const isAfterEventCursor = (
   row: BundleEventRow,
   after: InsightsEventCursor,
 ): boolean =>
   row.received_at_ms < after.receivedAtMs ||
-  (row.received_at_ms === after.receivedAtMs && row.id < after.id);
+  (row.received_at_ms === after.receivedAtMs &&
+    compareInsightsText(row.id, after.id) < 0);
 
 const assertEventRows = (
   rows: readonly BundleEventRow[],
@@ -226,7 +269,8 @@ const assertEventRows = (
     readonly after?: InsightsEventCursor;
     readonly beforeReceivedAtMs: number;
     readonly limit: number;
-    readonly selector: InsightsEventSelector;
+    readonly filter: InsightsEventFilter;
+    readonly sinceMs: number;
   },
 ): void => {
   if (rows.length > input.limit) {
@@ -238,13 +282,22 @@ const assertEventRows = (
     if (
       !row ||
       typeof row.id !== "string" ||
+      !isUUIDv7(row.id) ||
       !Number.isSafeInteger(row.received_at_ms) ||
       row.received_at_ms >= input.beforeReceivedAtMs ||
+      row.received_at_ms < input.sinceMs ||
       (previous !== undefined && compareEventNewest(previous, row) >= 0) ||
       (input.after !== undefined && !isAfterEventCursor(row, input.after)) ||
-      (input.selector.kind === "installationMovement" &&
-        (row.install_id !== input.selector.installId ||
-          (row.type !== "UPDATE_APPLIED" && row.type !== "RECOVERED")))
+      (input.filter.kind === "installationMovement" &&
+        (row.install_id !== input.filter.installId ||
+          !isInsightsMovementEvent(row))) ||
+      (input.filter.kind === "bundle" &&
+        (row.platform !== input.filter.platform ||
+          row.channel !== input.filter.channel ||
+          row.type !== input.filter.type ||
+          (input.filter.type === "RECOVERED"
+            ? row.from_bundle_id !== input.filter.fromBundleId
+            : row.to_bundle_id !== input.filter.toBundleId)))
     ) {
       throw new Error("Insights database returned invalid event rows.");
     }
@@ -282,14 +335,14 @@ const toInstallationRow = (row: InsightsInstallationRow): InstallationRow => ({
 const pageEventRows = async <T extends EventHistoryRow>(
   model: InsightsModel,
   input: InsightsEventPageInput,
-  selector: InsightsEventSelector,
+  filter: InsightsEventFilter,
   map: (row: BundleEventRow) => T,
 ) => {
   const limit = readLimit(input.limit);
   const cursor =
     input.cursor === undefined
       ? undefined
-      : readEventCursor(input.cursor, selector);
+      : readEventCursor(input.cursor, filter);
   const beforeReceivedAtMs =
     cursor?.beforeReceivedAtMs ??
     (input.beforeReceivedAtMs === undefined
@@ -304,13 +357,30 @@ const pageEventRows = async <T extends EventHistoryRow>(
       "Insights cursor does not match the requested event cutoff.",
     );
   }
+  const sinceMs =
+    cursor?.sinceMs ??
+    (input.sinceMs === undefined
+      ? 0
+      : requireTimestamp(input.sinceMs, "event start"));
+  if (
+    sinceMs > beforeReceivedAtMs ||
+    (input.sinceMs !== undefined && input.sinceMs !== sinceMs) ||
+    (cursor !== undefined &&
+      (cursor.after.receivedAtMs < sinceMs ||
+        cursor.after.receivedAtMs >= beforeReceivedAtMs))
+  ) {
+    throw new InsightsBadRequestError(
+      "Insights cursor or range does not match the requested event start.",
+    );
+  }
   const databaseInput = {
-    selector,
+    filter,
+    sinceMs,
     beforeReceivedAtMs,
     ...(cursor === undefined ? {} : { after: cursor.after }),
     limit: limit + 1,
   };
-  const rows = await model.pageEvents(databaseInput);
+  const rows = await model.listEvents(databaseInput);
   assertEventRows(rows, databaseInput);
   const pageRows = rows.slice(0, limit);
   const last = pageRows.at(-1);
@@ -323,8 +393,9 @@ const pageEventRows = async <T extends EventHistoryRow>(
             after: { id: last.id, receivedAtMs: last.received_at_ms },
             beforeReceivedAtMs,
             kind: "events",
-            selector,
-            version: 1,
+            filter,
+            sinceMs,
+            version: 2,
           })
         : null,
   };
@@ -348,8 +419,9 @@ const assertInstallationRows = (
       !row ||
       row.user_id !== input.userId ||
       (input.afterInstallId !== undefined &&
-        row.install_id <= input.afterInstallId) ||
-      (previous !== undefined && previous.install_id >= row.install_id)
+        compareInsightsText(row.install_id, input.afterInstallId) <= 0) ||
+      (previous !== undefined &&
+        compareInsightsText(previous.install_id, row.install_id) >= 0)
     ) {
       throw new Error("Insights database returned invalid installation rows.");
     }
@@ -361,12 +433,25 @@ export const createInsightsProvider = (
 ): InsightsProvider =>
   Object.freeze({
     async appendBundleEvent(input) {
-      await model.append(createBundleEventRow(input));
+      const event = createBundleEventRow(input);
+      await model.record({
+        event,
+        installation: toInsightsInstallationRow(event),
+      });
     },
-    pageEvents(input) {
-      return pageEventRows(model, input, { kind: "all" }, toEventHistoryRow);
+    listEvents(input) {
+      const filter: InsightsEventFilter =
+        input.bundle === undefined
+          ? { kind: "all" }
+          : { kind: "bundle", ...bundleFilter(input.bundle) };
+      return pageEventRows(model, input, filter, toEventHistoryRow);
     },
-    async pageInstallationEvents(input: InsightsInstallationEventPageInput) {
+    async listInstallationEvents(input: InsightsInstallationEventPageInput) {
+      if ("bundle" in input && input.bundle !== undefined) {
+        throw new InsightsBadRequestError(
+          "Installation movement queries cannot include a bundle filter.",
+        );
+      }
       const installId = requireString(
         input.installId,
         "install ID",
@@ -379,14 +464,20 @@ export const createInsightsProvider = (
         (row) => toEventHistoryRow(row) as InstallationHistoryRow,
       );
     },
-    async getInstallation(installId) {
+    async getInstallation({ installId }) {
       const normalizedInstallId = requireString(
         installId,
         "install ID",
         MAX_IDENTITY_LENGTH,
       );
-      const row = await model.getInstallation(normalizedInstallId);
-      if (row !== null && row.install_id !== normalizedInstallId) {
+      const rows = await model.findInstallations({
+        installId: normalizedInstallId,
+      });
+      const row = rows[0] ?? null;
+      if (
+        rows.length > 1 ||
+        (row !== null && row.install_id !== normalizedInstallId)
+      ) {
         throw new Error("Insights database returned an invalid installation.");
       }
       return row === null ? null : toInstallationRow(row);
@@ -411,7 +502,7 @@ export const createInsightsProvider = (
           : { afterInstallId: cursor.afterInstallId }),
         limit: limit + 1,
       };
-      const rows = await model.pageInstallationsByCurrentUserId(databaseInput);
+      const rows = await model.findInstallations(databaseInput);
       assertInstallationRows(rows, databaseInput);
       const pageRows = rows.slice(0, limit);
       const last = pageRows.at(-1);
@@ -428,24 +519,73 @@ export const createInsightsProvider = (
             : null,
       };
     },
-    async getActiveInstallationOverview({ window }) {
-      if (!(window in WINDOW_MS)) {
+    async getReportingOverview(input) {
+      const scope = readScope(input);
+      const { window } = input;
+      if (!Object.hasOwn(WINDOW_MS, window)) {
         throw new InsightsBadRequestError(
-          "Invalid active installation window.",
+          "Invalid reporting installation window.",
         );
       }
-      const asOfMs = Date.now();
-      const activeInstallations = await model.countActiveInstallations({
-        sinceMs: asOfMs - WINDOW_MS[window],
-      });
-      if (
-        !Number.isSafeInteger(activeInstallations) ||
-        activeInstallations < 0
-      ) {
-        throw new Error(
-          "Insights database returned an invalid active installation count.",
-        );
+      const beforeReceivedAtMs = Date.now();
+      const sinceMs = Math.max(0, beforeReceivedAtMs - WINDOW_MS[window]);
+      const measure = async (count: Promise<number>) => {
+        const value = await count;
+        if (!Number.isSafeInteger(value) || value < 0) {
+          throw new Error("Insights database returned an invalid count.");
+        }
+        return { count: value, measuredAtMs: Date.now() };
+      };
+      const bundleId =
+        input.bundleId === undefined
+          ? undefined
+          : requireString(input.bundleId, "bundle ID", MAX_EVENT_ID_LENGTH);
+      const reporting = measure(
+        model.countInstallations({ ...scope, sinceMs }),
+      );
+      if (bundleId === undefined) {
+        return {
+          ...scope,
+          window,
+          sinceMs,
+          beforeReceivedAtMs,
+          reportingInstallations: await reporting,
+        };
       }
-      return { activeInstallations, asOfMs, window };
+      const countOutcome = (outcome: InsightsBundleSelection["outcome"]) =>
+        measure(
+          model.countEvents({
+            filter: bundleFilter({ ...scope, bundleId, outcome }),
+            sinceMs,
+            beforeReceivedAtMs,
+          }),
+        );
+      const [
+        reportingInstallations,
+        bundleInstallations,
+        appliedReports,
+        recoveredReports,
+        adoptedReports,
+      ] = await Promise.all([
+        reporting,
+        measure(model.countInstallations({ ...scope, sinceMs, bundleId })),
+        countOutcome("applied"),
+        countOutcome("recovered"),
+        countOutcome("adopted"),
+      ]);
+      return {
+        ...scope,
+        window,
+        sinceMs,
+        beforeReceivedAtMs,
+        reportingInstallations,
+        bundle: {
+          bundleId,
+          reportingInstallations: bundleInstallations,
+          appliedReports,
+          recoveredReports,
+          adoptedReports,
+        },
+      };
     },
   });

@@ -1,7 +1,10 @@
 import { getApps, initializeApp } from "firebase-admin/app";
 import { getFirestore } from "firebase-admin/firestore";
 
-import { FIREBASE_V1_COLLECTION_NAMES } from "../src/firebaseInfrastructureNames";
+import {
+  FIREBASE_LEGACY_INSTALLATIONS_COLLECTION,
+  FIREBASE_V1_COLLECTION_NAMES,
+} from "../src/firebaseInfrastructureNames";
 
 export function createFirestoreMock(projectId: string) {
   const app = getApps()[0] ?? initializeApp({ projectId });
@@ -17,6 +20,9 @@ export function createFirestoreMock(projectId: string) {
   );
   const bundleInstallationsCollection = firestore.collection(
     FIREBASE_V1_COLLECTION_NAMES.bundleInstallations,
+  );
+  const legacyInstallationsCollection = firestore.collection(
+    FIREBASE_LEGACY_INSTALLATIONS_COLLECTION,
   );
   const channelsCollection = firestore.collection(
     FIREBASE_V1_COLLECTION_NAMES.channels,
@@ -44,6 +50,7 @@ export function createFirestoreMock(projectId: string) {
       bundlePatchesCollection,
       bundleEventsCollection,
       bundleInstallationsCollection,
+      legacyInstallationsCollection,
       channelsCollection,
       apiKeysCollection,
       releasesCollection,
@@ -68,6 +75,7 @@ export function createFirestoreMock(projectId: string) {
     bundlePatchesCollection,
     bundleEventsCollection,
     bundleInstallationsCollection,
+    legacyInstallationsCollection,
     channelsCollection,
     apiKeysCollection,
     releasesCollection,

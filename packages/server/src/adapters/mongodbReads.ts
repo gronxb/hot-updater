@@ -92,6 +92,8 @@ const findMongoRows = async (
         .find(createMongoEventWhere(input.where), {
           projection: WITHOUT_MONGO_ID,
           ...mongoSessionOptions(session),
+          collation: { locale: "simple" },
+          readPreference: "primary",
         })
         .skip(input.offset)
         .limit(input.limit);
@@ -101,6 +103,8 @@ const findMongoRows = async (
           .find(createMongoEventWhere(input.where), {
             projection: WITHOUT_MONGO_ID,
             ...mongoSessionOptions(session),
+            collation: { locale: "simple" },
+            readPreference: "primary",
           })
           .toArray();
         return sortRowsByOrder(rows, rawOrderBy).slice(
@@ -118,6 +122,8 @@ const findMongoRows = async (
         .find(createMongoInstallationWhere(input.where), {
           projection: WITHOUT_MONGO_ID,
           ...mongoSessionOptions(session),
+          collation: { locale: "simple" },
+          readPreference: "primary",
         })
         .skip(input.offset)
         .limit(input.limit);
@@ -127,6 +133,8 @@ const findMongoRows = async (
           .find(createMongoInstallationWhere(input.where), {
             projection: WITHOUT_MONGO_ID,
             ...mongoSessionOptions(session),
+            collation: { locale: "simple" },
+            readPreference: "primary",
           })
           .toArray();
         return sortRowsByOrder(rows, rawOrderBy).slice(
@@ -278,7 +286,26 @@ export const createMongoReads = (
       case "bundle_installations":
         return collections.bundleInstallations.countDocuments(
           createMongoInstallationWhere(input.where),
-          mongoSessionOptions(session),
+          {
+            ...mongoSessionOptions(session),
+            collation: { locale: "simple" },
+            readPreference: "primary",
+            ...(session === undefined
+              ? { readConcern: { level: "snapshot" } }
+              : {}),
+          },
+        );
+      case "bundle_events":
+        return collections.bundleEvents.countDocuments(
+          createMongoEventWhere(input.where),
+          {
+            ...mongoSessionOptions(session),
+            collation: { locale: "simple" },
+            readPreference: "primary",
+            ...(session === undefined
+              ? { readConcern: { level: "snapshot" } }
+              : {}),
+          },
         );
     }
   },
@@ -338,6 +365,8 @@ export const createMongoReads = (
           {
             projection: WITHOUT_MONGO_ID,
             ...mongoSessionOptions(session),
+            collation: { locale: "simple" },
+            readPreference: "primary",
           },
         );
     }

@@ -126,17 +126,16 @@ export function isDatabasePlugin(plugin: unknown): plugin is DatabasePlugin {
     "insights" in plugin.models &&
     typeof plugin.models.insights === "object" &&
     plugin.models.insights !== null &&
-    "append" in plugin.models.insights &&
-    typeof plugin.models.insights.append === "function" &&
-    "pageEvents" in plugin.models.insights &&
-    typeof plugin.models.insights.pageEvents === "function" &&
-    "getInstallation" in plugin.models.insights &&
-    typeof plugin.models.insights.getInstallation === "function" &&
-    "pageInstallationsByCurrentUserId" in plugin.models.insights &&
-    typeof plugin.models.insights.pageInstallationsByCurrentUserId ===
-      "function" &&
-    "countActiveInstallations" in plugin.models.insights &&
-    typeof plugin.models.insights.countActiveInstallations === "function" &&
+    "record" in plugin.models.insights &&
+    typeof plugin.models.insights.record === "function" &&
+    "listEvents" in plugin.models.insights &&
+    typeof plugin.models.insights.listEvents === "function" &&
+    "findInstallations" in plugin.models.insights &&
+    typeof plugin.models.insights.findInstallations === "function" &&
+    "countEvents" in plugin.models.insights &&
+    typeof plugin.models.insights.countEvents === "function" &&
+    "countInstallations" in plugin.models.insights &&
+    typeof plugin.models.insights.countInstallations === "function" &&
     "apiKeys" in plugin.models &&
     typeof plugin.models.apiKeys === "object" &&
     plugin.models.apiKeys !== null &&

@@ -1,3 +1,4 @@
+import { toInsightsInstallationRow } from "@hot-updater/plugin-core";
 import { beforeEach, expect, it, vi } from "vitest";
 
 import { d1Database } from "./d1Database";
@@ -27,7 +28,7 @@ const bundleD1Row = {
 } as const;
 
 const eventD1Row = {
-  id: "event-1",
+  id: "00000000-0000-7000-8000-000000000001",
   type: "UPDATE_APPLIED",
   install_id: "install-1",
   user_id: "user-1",
@@ -197,30 +198,28 @@ it("sends parameterized commits through the D1 batch body", async () => {
   expect(state.batches[0]?.[1]?.params.length).toBeGreaterThan(0);
 });
 
-it("stores an event and advances its current installation through generic CRUD", async () => {
-  state.results.push(eventD1Row);
+it("stores the event and current installation in one parameterized atomic batch", async () => {
   const plugin = d1Database({
     accountId: "account",
     cloudflareApiToken: "token",
     databaseId: "database",
   });
-
-  await expect(plugin.models.insights.append(eventD1Row)).resolves.toBe(
-    undefined,
+  await expect(
+    plugin.models.insights.record({
+      event: eventD1Row,
+      installation: toInsightsInstallationRow(eventD1Row),
+    }),
+  ).resolves.toBeUndefined();
+  expect(state.queries).toHaveLength(0);
+  expect(state.batches).toHaveLength(1);
+  expect(state.batches[0]).toHaveLength(2);
+  expect(state.batches[0]?.[0]?.sql).toContain(
+    "WHERE NOT EXISTS (SELECT 1 FROM bundle_events",
   );
-
-  expect(state.queries).toHaveLength(3);
-  expect(state.queries[0]?.sql).toContain("INSERT INTO bundle_events");
-  expect(state.queries[1]?.sql).toContain("INSERT INTO bundle_installations");
-  expect(state.queries[1]?.sql).toContain(
-    "ON CONFLICT(install_id) DO UPDATE SET install_id = excluded.install_id",
-  );
-  expect(state.queries[2]?.sql).toContain("UPDATE bundle_installations SET");
-  expect(state.queries[2]?.sql).toContain("received_at_ms <");
+  expect(state.batches[0]?.[1]?.sql).toContain("ON CONFLICT(id) DO NOTHING");
 });
 
-it("reads a bounded installation movement page in descending event order", async () => {
-  state.results.push(eventD1Row);
+it("queries each movement type through a bounded descending range", async () => {
   const plugin = d1Database({
     accountId: "account",
     cloudflareApiToken: "token",
@@ -228,28 +227,29 @@ it("reads a bounded installation movement page in descending event order", async
   });
 
   await expect(
-    plugin.models.insights.pageEvents({
-      selector: {
+    plugin.models.insights.listEvents({
+      filter: {
         kind: "installationMovement",
         installId: eventD1Row.install_id,
       },
       beforeReceivedAtMs: 200,
       limit: 101,
     }),
-  ).resolves.toEqual([eventD1Row]);
+  ).resolves.toEqual([]);
 
-  expect(state.queries).toHaveLength(1);
-  expect(state.queries[0]?.sql).toContain("SELECT * FROM bundle_events");
-  expect(state.queries[0]?.sql).toContain(
-    "type IN (SELECT value FROM json_each(?))",
+  expect(state.queries).toHaveLength(2);
+  for (const query of state.queries) {
+    expect(query.sql).toContain("SELECT * FROM bundle_events");
+    expect(query.sql).toContain("type = json_extract(?, '$')");
+    expect(query.sql).toContain("ORDER BY received_at_ms DESC, id DESC");
+    expect(query.params).toContain("101");
+  }
+  expect(state.queries.flatMap(({ params }) => params)).toEqual(
+    expect.arrayContaining([
+      JSON.stringify("UPDATE_APPLIED"),
+      JSON.stringify("RECOVERED"),
+    ]),
   );
-  expect(state.queries[0]?.sql).toContain(
-    "ORDER BY received_at_ms DESC, id DESC",
-  );
-  expect(state.queries[0]?.params).toContain(
-    JSON.stringify(["UPDATE_APPLIED", "RECOVERED"]),
-  );
-  expect(state.queries[0]?.params).toContain("101");
 });
 
 it("counts active installations without reading event history", async () => {
@@ -261,7 +261,11 @@ it("counts active installations without reading event history", async () => {
   });
 
   await expect(
-    plugin.models.insights.countActiveInstallations({ sinceMs: 100 }),
+    plugin.models.insights.countInstallations({
+      platform: "ios",
+      channel: "production",
+      sinceMs: 100,
+    }),
   ).resolves.toBe(2);
 
   expect(state.queries).toHaveLength(1);

@@ -3,6 +3,7 @@ import type {
   ChannelRow,
   ReleaseRow,
 } from "@hot-updater/plugin-core";
+import { toInsightsInstallationRow } from "@hot-updater/plugin-core";
 import { setupDatabasePluginTestSuite } from "@hot-updater/test-utils";
 import { env } from "cloudflare:test";
 import {
@@ -16,6 +17,7 @@ import {
   vi,
 } from "vitest";
 
+import { createBundleEventRowFixture } from "../../../../packages/test-utils/src/databaseTestFixtures";
 import { d1Database } from "../../src/d1Database";
 import { d1Database as d1RuntimeDatabase } from "../../src/worker";
 
@@ -207,6 +209,86 @@ describe.each([
     await expect(
       plugin.models.channels.delete({ id: channel.id }),
     ).resolves.toEqual({ deleted: false, reason: "not_found" });
+  });
+
+  it("rolls back the snapshot when the later event insert fails, then safely retries", async () => {
+    const plugin = createPlugin();
+    const event = createBundleEventRowFixture("9101", 100);
+    const input = { event, installation: toInsightsInstallationRow(event) };
+    await env.DB.prepare(`
+      CREATE TRIGGER fail_insights_event BEFORE INSERT ON bundle_events
+      BEGIN SELECT RAISE(ABORT, 'injected event failure'); END;
+    `).run();
+    try {
+      await expect(plugin.models.insights.record(input)).rejects.toThrow(
+        "injected event failure",
+      );
+      expect(
+        (await env.DB.prepare("SELECT * FROM bundle_events").all()).results,
+      ).toEqual([]);
+      expect(
+        (await env.DB.prepare("SELECT * FROM bundle_installations").all())
+          .results,
+      ).toEqual([]);
+    } finally {
+      await env.DB.prepare("DROP TRIGGER fail_insights_event").run();
+    }
+    await plugin.models.insights.record(input);
+    await plugin.models.insights.record(input);
+    await expect(
+      plugin.models.insights.findInstallations({ installId: event.install_id }),
+    ).resolves.toEqual([input.installation]);
+    expect(
+      (await env.DB.prepare("SELECT id FROM bundle_events").all()).results,
+    ).toEqual([{ id: event.id }]);
+  });
+
+  it("serializes concurrent snapshots and ignores a duplicate carrying a newer timestamp", async () => {
+    const plugin = createPlugin();
+    const first = {
+      ...createBundleEventRowFixture("9201", 100),
+      user_id: "former-user",
+    };
+    const latest = {
+      ...first,
+      id: createBundleEventRowFixture("9203", 100).id,
+      user_id: null,
+    };
+    const stale = { ...first, id: createBundleEventRowFixture("9202", 100).id };
+    await Promise.all(
+      [latest, first, stale].map((event) =>
+        plugin.models.insights.record({
+          event,
+          installation: toInsightsInstallationRow(event),
+        }),
+      ),
+    );
+    const reusedId = { ...first, received_at_ms: 200 };
+    await plugin.models.insights.record({
+      event: reusedId,
+      installation: toInsightsInstallationRow(reusedId),
+    });
+    await expect(
+      plugin.models.insights.findInstallations({ installId: first.install_id }),
+    ).resolves.toEqual([toInsightsInstallationRow(latest)]);
+    await expect(
+      plugin.models.insights.findInstallations({
+        userId: "former-user",
+        limit: 10,
+      }),
+    ).resolves.toEqual([]);
+    await expect(
+      plugin.models.insights.countEvents({
+        filter: {
+          type: "UPDATE_APPLIED",
+          platform: "ios",
+          channel: "production",
+          toBundleId: first.to_bundle_id,
+        },
+        sinceMs: 100,
+        beforeReceivedAtMs: 101,
+      }),
+    ).resolves.toBe(3);
   });
 
   it("rejects direct and committed deletion while a Release references the channel", async () => {

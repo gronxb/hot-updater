@@ -217,7 +217,7 @@ fill performs one exact DynamoDB catalog read; a warm CloudFront hit skips both
 Lambda@Edge and DynamoDB. Each authenticated Insights event invokes
 Lambda@Edge and writes the immutable event plus the installation's latest-report
 pointer in one DynamoDB transaction. Server-side Insights queries read cursor
-pages or the compact latest-report index; they do not materialize the raw event
+pages or canonical latest-report rows; they do not materialize the raw event
 log.
 Review the [DynamoDB pricing model](https://aws.amazon.com/dynamodb/pricing/) and
 [Lambda@Edge pricing](https://aws.amazon.com/lambda/pricing/).
@@ -230,8 +230,13 @@ distributions with AWS WAF rate-based rules and configure AWS Budgets for a
 monthly spending threshold. The AWS adapter does not impose an Insights
 retention period or a 50,000-event application limit. Event history is
 keyset-paginated. The 24-hour, 7-day, and 30-day reporting-installation count
-reads the matching portion of the compact latest-report index in DynamoDB pages,
-so its read cost grows with active installations instead of stored events.
+traverses canonical latest-report rows in stable installation-ID order, then
+applies platform, channel, freshness, and optional bundle filters. This avoids
+double-counting a row whose report time advances. Its read cost grows with all
+stored installations, including inactive rows; it never scans event history.
+Selected-bundle outcome counts use paged native counts over the matching
+raw type, scope, bundle, and time index range. Managed preparation backfills
+existing event index keys before the new query contract becomes ready.
 
 Bundle metadata has no fixed bundle, patch, or patch-relationship count limit.
 Each serialized metadata item is limited to 8 KiB. The database maintains counters

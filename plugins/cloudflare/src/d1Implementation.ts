@@ -35,6 +35,13 @@ export interface D1Statement {
   readonly params: readonly string[];
 }
 
+export class D1ExecutionError extends Error {
+  readonly name = "D1ExecutionError";
+  constructor() {
+    super("D1 did not successfully execute every requested statement");
+  }
+}
+
 type D1Guard = {
   readonly sql: string;
   readonly params: readonly string[];
@@ -637,6 +644,33 @@ const deleteChannel = async (
 export const createD1Implementation = (
   executor: D1Executor,
 ): DatabasePluginImplementation => ({
+  async recordInsights({ event, installation }) {
+    const columns = Object.keys(installation);
+    const eventInsert = insertQuery({ model: "bundle_events", data: event });
+    // D1 executes the whole batch as one serial transaction. The snapshot
+    // guard runs before the event insert so a duplicate cannot mutate it.
+    await executor.batch([
+      {
+        sql: `INSERT INTO bundle_installations (${columns.join(", ")})
+          SELECT ${d1Placeholders(columns.length)}
+          WHERE NOT EXISTS (SELECT 1 FROM bundle_events WHERE id = json_extract(?, '$'))
+          ON CONFLICT(install_id) DO UPDATE SET ${columns
+            .filter((column) => column !== "install_id")
+            .map((column) => `${column} = excluded.${column}`)
+            .join(", ")}
+          WHERE (excluded.received_at_ms, excluded.id) >
+            (bundle_installations.received_at_ms, bundle_installations.id)`,
+        params: encodeD1Values([...Object.values(installation), event.id]),
+      },
+      {
+        ...eventInsert,
+        sql: eventInsert.sql.replace(
+          " RETURNING *",
+          " ON CONFLICT(id) DO NOTHING",
+        ),
+      },
+    ]);
+  },
   async create(input) {
     const query = insertQuery(input);
     const rows = await executor.query(query.sql, query.params);

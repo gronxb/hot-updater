@@ -7,7 +7,7 @@ icon: FileCheck
 ## Status
 
 This is the normative database-provider contract for Hot Updater schema
-`1.0.0`. It replaces the #1141 contract that stored rollout policy on Bundle
+`1.0.1`. It replaces the #1141 contract that stored rollout policy on Bundle
 rows and exposed an optional provider decision query.
 
 The change is intentionally breaking. Removed members are not retained as
@@ -172,7 +172,10 @@ Channels use opaque IDs and exact case-sensitive names. Concurrent
 An empty Channel remains visible. Its reference check and explicit deletion
 are atomic against Releases.
 
-Insights append and stable cursor scan remain provider-owned persistence.
+Insights uses `record`, `listEvents`, `findInstallations`, `countInstallations`,
+and `countEvents`. Core prepares reports and product views; providers own
+atomic event/latest-state storage and fixed native queries. See the
+[Insights contract](./custom-database#insights) for ordering and count semantics.
 Transition rows carry directional Release identity alongside Bundle identity.
 Old nullable Release IDs remain valid and are never inferred from Bundle ID.
 
@@ -264,27 +267,30 @@ Required provider mappings:
 | MongoDB               | deterministic majority reads                          | short write transaction with predicates             |
 | Drizzle/Kysely/Prisma | adapter's ordered canonical query                     | adapter's real transaction and affected-row checks  |
 
-## Schema 1.0.0 bootstrap
+## Schema 1.0.1 bootstrap and upgrade
 
-`hot-updater db migrate` and `hot-updater db generate` create schema `1.0.0`
-on an empty database and no-op when `schema.core` is already `1.0.0`. Any
-other marker is rejected. There is no v0 Bundle-policy backfill.
+`hot-updater db migrate` creates schema `1.0.1` on empty storage, upgrades
+complete `1.0.0` storage additively, and no-ops at `1.0.1`. The upgrade preserves
+events and latest installation rows while adding Insights indexes and exact
+identity collations. Advance `schema.core` only after success. Regenerate ORM
+artifacts with `hot-updater db generate` and apply emitted companion collation
+SQL for Prisma PostgreSQL/MySQL.
 
-1. Create Channel, Bundle, patch, Release, catalog, Insights, and API key
-   storage with the official indexes and references.
-2. Record `schema.core = 1.0.0`.
-3. Deploy Releases from source artifacts after the empty schema exists.
+1. On empty storage, create the seven models with their indexes and references.
+2. On complete `1.0.0`, apply the supported Insights upgrade without resetting data.
+3. Record `schema.core = 1.0.1` after creation or successful upgrade.
 
-Managed provider init also requires newly scaffolded v1 resources. AWS,
-Cloudflare, Firebase, and Supabase fail before mutating detected v0
-infrastructure.
+There is no populated v0 Bundle-policy backfill. Managed initialization rejects
+v0 infrastructure before mutating it. The earlier unreleased `1.0.0` shape
+without required archive/patch sizes is also outside this additive Insights
+upgrade: preserve a backup and reconcile missing artifact metadata explicitly.
+A complete `1.0.0` database must not be recreated for this upgrade.
 
-The initial `1.0.0` definition changed on the unreleased `next`/RC line to add
-the required archive and patch size fields. A database created from an earlier
-pre-release `1.0.0` definition has the same schema marker, so migrate would
-no-op without adding the fields. Recreate that database from the current empty
-`1.0.0` schema; there is no incremental migration or backfill for this
-pre-release change.
+DynamoDB and Firebase use their documented provider migration entry points for
+existing Insights index keys and canonical installation IDs. Stop old ingestion
+writers while upgrading, and deploy required indexes before starting the new
+runtime. Provider prerequisites and query costs are documented in the
+[custom provider guide](./custom-database#insights).
 
 ## Runtime route boundary
 
@@ -334,6 +340,7 @@ The contract is complete only when:
   envelope;
 - catalog GETs perform one exact read and no Release/Bundle scan;
 - empty-scope generations persist as tombstones;
-- schema bootstrap creates 1.0.0 on empty storage and rejects v0 markers;
+- schema bootstrap creates 1.0.1, upgrades complete 1.0.0 without data loss,
+  and rejects unsupported v0 markers;
 - public conformance, provider integration, v0 generation guards, managed
   runtime, and standalone verification suites pass.

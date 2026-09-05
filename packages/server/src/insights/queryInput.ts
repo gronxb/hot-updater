@@ -1,4 +1,8 @@
-import type { ActiveInstallationWindow } from "./domain";
+import type {
+  ActiveInstallationWindow,
+  InsightsBundleSelection,
+  InsightsScope,
+} from "./domain";
 import { InsightsBadRequestError } from "./errors";
 import type {
   InsightsEventPageInput,
@@ -38,38 +42,67 @@ const readCursor = (url: URL): string | undefined => {
   return cursor;
 };
 
-const readId = (url: URL, key: string): string => {
+const readId = (
+  url: URL,
+  key: string,
+  maximumLength = MAX_IDENTITY_LENGTH,
+): string => {
   const value = readSingle(url, key);
   if (
     value === undefined ||
     value.length === 0 ||
-    value.length > MAX_IDENTITY_LENGTH
+    value.length > maximumLength
   ) {
     throw new InsightsBadRequestError(`Invalid '${key}' query parameter.`);
   }
   return value;
 };
 
+const readTimestamp = (url: URL, key: string): number | undefined => {
+  const raw = readSingle(url, key);
+  if (raw === undefined) return undefined;
+  const value = Number(raw);
+  if (!raw.length || !Number.isSafeInteger(value) || value < 0) {
+    throw new InsightsBadRequestError(`Invalid '${key}' query parameter.`);
+  }
+  return value;
+};
+
+const readScope = (url: URL): InsightsScope => {
+  const platform = readSingle(url, "platform");
+  if (platform !== "ios" && platform !== "android") {
+    throw new InsightsBadRequestError("Invalid 'platform' query parameter.");
+  }
+  return { platform, channel: readId(url, "channel", 1_024) };
+};
+
 export const parseEventPageInput = (
   request: Request,
 ): InsightsEventPageInput => {
   const url = new URL(request.url);
-  const before = readSingle(url, "beforeReceivedAtMs");
-  const cursor = readCursor(url);
-  const limit = readPageLimit(url);
-  let beforeReceivedAtMs: number | undefined;
-  if (before !== undefined) {
-    beforeReceivedAtMs = Number(before);
-    if (!Number.isSafeInteger(beforeReceivedAtMs) || beforeReceivedAtMs < 0) {
-      throw new InsightsBadRequestError(
-        "Invalid 'beforeReceivedAtMs' query parameter.",
-      );
+  const bundleFields = ["bundleId", "outcome", "platform", "channel"];
+  let bundle: InsightsBundleSelection | undefined;
+  if (bundleFields.some((key) => url.searchParams.has(key))) {
+    const outcome = readSingle(url, "outcome");
+    if (
+      outcome !== "applied" &&
+      outcome !== "recovered" &&
+      outcome !== "adopted"
+    ) {
+      throw new InsightsBadRequestError("Invalid 'outcome' query parameter.");
     }
+    bundle = {
+      ...readScope(url),
+      bundleId: readId(url, "bundleId", 1_024),
+      outcome,
+    };
   }
   return {
-    ...(beforeReceivedAtMs === undefined ? {} : { beforeReceivedAtMs }),
-    ...(cursor === undefined ? {} : { cursor }),
-    ...(limit === undefined ? {} : { limit }),
+    beforeReceivedAtMs: readTimestamp(url, "beforeReceivedAtMs"),
+    sinceMs: readTimestamp(url, "sinceMs"),
+    cursor: readCursor(url),
+    limit: readPageLimit(url),
+    ...(bundle === undefined ? {} : { bundle }),
   };
 };
 
@@ -86,13 +119,23 @@ export const parseUserInstallationPageInput = (
   };
 };
 
-export const parseActiveInstallationInput = (
+export const parseReportingOverviewInput = (
   request: Request,
-): { readonly window: ActiveInstallationWindow } => {
+): InsightsScope & {
+  readonly window: ActiveInstallationWindow;
+  readonly bundleId?: string;
+} => {
   const url = new URL(request.url);
   const window = readSingle(url, "window") ?? "30d";
   if (window !== "24h" && window !== "7d" && window !== "30d") {
     throw new InsightsBadRequestError("Invalid 'window' query parameter.");
   }
-  return { window };
+  const bundleId = readSingle(url, "bundleId");
+  return {
+    ...readScope(url),
+    window,
+    ...(bundleId === undefined
+      ? {}
+      : { bundleId: readId(url, "bundleId", 1_024) }),
+  };
 };

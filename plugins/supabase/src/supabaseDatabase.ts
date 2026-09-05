@@ -7,6 +7,7 @@ import type {
   CreateDatabaseImplementationInput,
   DatabasePluginImplementation,
   DeleteDatabaseImplementationInput,
+  DatabaseImplementationResult,
   FindManyDatabaseImplementationInput,
   FindOneDatabaseImplementationInput,
   UpdateDatabaseImplementationInput,
@@ -40,6 +41,13 @@ const createSupabaseImplementation = (
   supabase: SupabaseClient<Database>,
 ): DatabasePluginImplementation => {
   const implementation: DatabasePluginImplementation = {
+    async recordInsights({ event, installation }) {
+      const { error } = await supabase.rpc(
+        SUPABASE_V1_FUNCTION_NAMES.recordInsights,
+        { p_event: event, p_installation: installation },
+      );
+      throwSupabaseError("record insights", error);
+    },
     async create(input: CreateDatabaseImplementationInput) {
       switch (input.model) {
         case "bundles": {
@@ -261,14 +269,21 @@ const createSupabaseImplementation = (
           throwSupabaseError("count bundles", error);
           return count ?? 0;
         }
+        case "bundle_events":
         case "bundle_installations": {
           let query = supabase
-            .from(SUPABASE_V1_TABLE_NAMES.bundleInstallations)
+            .from(
+              input.model === "bundle_events"
+                ? SUPABASE_V1_TABLE_NAMES.bundleEvents
+                : SUPABASE_V1_TABLE_NAMES.bundleInstallations,
+            )
             .select("*", { count: "exact", head: true });
           if (filter !== undefined) query = query.or(filter);
           const { count, error } = await query;
-          throwSupabaseError("count bundle_installations", error);
-          return count ?? 0;
+          throwSupabaseError(`count ${input.model}`, error);
+          if (count === null)
+            throw new SupabaseMissingDataError(`count ${input.model}`);
+          return count;
         }
         case "bundle_patches": {
           let query = supabase
@@ -382,35 +397,39 @@ const createSupabaseImplementation = (
           throwSupabaseError("findMany bundles", error);
           return data ?? [];
         }
-        case "bundle_events": {
-          let query = supabase
-            .from(SUPABASE_V1_TABLE_NAMES.bundleEvents)
-            .select("*");
-          if (filter !== undefined) query = query.or(filter);
-          for (const clause of orderBy) {
-            query = query.order(clause.field, {
-              ascending: clause.direction === "asc",
-              ...(clause.nulls ? { nullsFirst: clause.nulls === "first" } : {}),
-            });
-          }
-          const { data, error } = await query.range(input.offset, rangeEnd);
-          throwSupabaseError("findMany bundle_events", error);
-          return data ?? [];
-        }
+        case "bundle_events":
         case "bundle_installations": {
-          let query = supabase
-            .from(SUPABASE_V1_TABLE_NAMES.bundleInstallations)
-            .select("*");
-          if (filter !== undefined) query = query.or(filter);
-          for (const clause of orderBy) {
-            query = query.order(clause.field, {
-              ascending: clause.direction === "asc",
-              ...(clause.nulls ? { nullsFirst: clause.nulls === "first" } : {}),
-            });
+          const rows: DatabaseImplementationResult[] = [];
+          // PostgREST's max_rows can shorten a successful response. Only a
+          // successful empty query proves that a short prefix is exhausted.
+          while (rows.length < input.limit) {
+            let query = supabase
+              .from(
+                input.model === "bundle_events"
+                  ? SUPABASE_V1_TABLE_NAMES.bundleEvents
+                  : SUPABASE_V1_TABLE_NAMES.bundleInstallations,
+              )
+              .select("*");
+            if (filter !== undefined) query = query.or(filter);
+            for (const clause of orderBy) {
+              query = query.order(clause.field, {
+                ascending: clause.direction === "asc",
+                ...(clause.nulls
+                  ? { nullsFirst: clause.nulls === "first" }
+                  : {}),
+              });
+            }
+            const { data, error } = await query.range(
+              input.offset + rows.length,
+              rangeEnd,
+            );
+            throwSupabaseError(`findMany ${input.model}`, error);
+            if (data === null)
+              throw new SupabaseMissingDataError(`findMany ${input.model}`);
+            if (data.length === 0) break;
+            rows.push(...data);
           }
-          const { data, error } = await query.range(input.offset, rangeEnd);
-          throwSupabaseError("findMany bundle_installations", error);
-          return data ?? [];
+          return rows;
         }
         case "api_keys": {
           let query = supabase

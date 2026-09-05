@@ -53,34 +53,34 @@ export const createConsoleInsightsHttpClient = ({
   };
 
   return {
-    getActiveOverview: () =>
+    getReportingOverview: (input) =>
       requestJson<
-        Awaited<ReturnType<ConsoleInsightsQaClient["getActiveOverview"]>>
-      >("/installations/active?window=24h"),
-    getInstallation: (installId) =>
+        Awaited<ReturnType<ConsoleInsightsQaClient["getReportingOverview"]>>
+      >(withQuery("/overview", input)),
+    getInstallation: ({ installId }) =>
       requestJson<
         Awaited<ReturnType<ConsoleInsightsQaClient["getInstallation"]>>
       >(`/installations/${encodeURIComponent(installId)}`),
-    pageEvents: (input = {}) =>
-      requestJson<Awaited<ReturnType<ConsoleInsightsQaClient["pageEvents"]>>>(
-        withQuery("/events", input),
+    listEvents: ({ bundle, ...input } = {}) =>
+      requestJson<Awaited<ReturnType<ConsoleInsightsQaClient["listEvents"]>>>(
+        withQuery("/events", { ...input, ...bundle }),
       ),
-    pageInstallationEvents: (installId, input = {}) =>
+    listInstallationEvents: ({ installId, ...input }) =>
       requestJson<
-        Awaited<ReturnType<ConsoleInsightsQaClient["pageInstallationEvents"]>>
+        Awaited<ReturnType<ConsoleInsightsQaClient["listInstallationEvents"]>>
       >(
         withQuery(
           `/installations/${encodeURIComponent(installId)}/events`,
           input,
         ),
       ),
-    pageInstallationsByCurrentUserId: (userId, input = {}) =>
+    pageInstallationsByCurrentUserId: (input) =>
       requestJson<
         Awaited<
           ReturnType<
             ConsoleInsightsQaClient["pageInstallationsByCurrentUserId"]
           >
         >
-      >(withQuery("/installations", { userId, ...input })),
+      >(withQuery("/installations", input)),
   };
 };

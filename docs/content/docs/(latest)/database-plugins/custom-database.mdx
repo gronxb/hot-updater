@@ -51,7 +51,7 @@ The fixed domains are:
   artifact Bundle or the embedded app.
 - `release_catalogs`: deterministic, rebuildable projections keyed by scope.
 - `channels`: persistent deployment-channel identity.
-- `bundle_events`: Release- and Bundle-aware Insights transitions.
+- `insights`: immutable Bundle reports and latest installation state.
 - `api_keys`: hashed API key records.
 
 `private_hot_updater_settings` remains the schema-version marker managed by
@@ -156,16 +156,94 @@ the JSON payload. Only an atomic commit may write `releaseCatalogs`.
 Never delete the last catalog for a scope. Removing the last eligible Release
 writes a tombstone catalog with a higher generation.
 
-### Channels, Insights, and API keys
+### Channels and API keys
 
 Channel names are exact and case-sensitive. Concurrent insert returns the
 canonical stored row. Empty Channels persist until explicit deletion, and the
-reference check plus deletion must be atomic.
+reference check plus deletion must be atomic. API key creation is idempotent
+by hash; revocation updates only `revoked_at_ms`.
 
-Insights scans return rows in ascending `(received_at_ms, id)` order, start
-strictly after the optional cursor, and exclude rows at or after the requested
-upper bound. API key creation is idempotent by hash; revocation updates only
-`revoked_at_ms`.
+### Insights
+
+Implement `InsightsModel` with these five exported input types. Every call takes
+an object; custom providers do not implement the bundled internal CRUD adapter.
+
+```ts
+interface InsightsModel {
+  record(input: InsightsRecordInput): Promise<void>;
+  listEvents(
+    input: InsightsListEventsInput,
+  ): Promise<readonly BundleEventRow[]>;
+  findInstallations(
+    input: InsightsFindInstallationsInput,
+  ): Promise<readonly InsightsInstallationRow[]>;
+  countInstallations(input: InsightsCountInstallationsInput): Promise<number>;
+  countEvents(input: InsightsCountEventsInput): Promise<number>;
+}
+```
+
+`record({ event, installation })` receives a prepared immutable report and its
+full latest-state candidate. Atomically insert the event and replace the
+installation row only if `(received_at_ms, id)` advances. The first event ID
+wins: a duplicate must not overwrite the event or update state again. Retrying
+an identical prepared input after an ambiguous commit is safe. An older event
+still enters history without restoring an old user or bundle. A winning
+`user_id: null` clears the old association. Sequential best-effort writes are
+insufficient; native transaction prerequisites belong in provider documentation.
+
+`listEvents({ filter, sinceMs?, beforeReceivedAtMs, after?, limit })` returns
+newest-first `(received_at_ms, id)` order in the half-open interval
+`[sinceMs ?? 0, beforeReceivedAtMs)`. `after: { receivedAtMs, id }` is an
+exclusive key: return strictly smaller tuples. The fixed filter is one of:
+
+```ts
+{ kind: "all" }
+{ kind: "installationMovement", installId }
+{ kind: "bundle", platform, channel, type: "RECOVERED", fromBundleId }
+{ kind: "bundle", platform, channel,
+  type: "UPDATE_APPLIED" | "RELEASE_ADOPTED", toBundleId }
+```
+
+Installation movement means `UPDATE_APPLIED` or `RECOVERED`. Apply filters
+before the limit using indexed cursor ranges; do not load global history or
+walk preceding pages. Limits are integers from 1 to 101; core uses lookahead
+to return at most 100. A short or empty native page with a continuation token
+is not exhaustion: continue until the result prefix is full or exhausted.
+
+`findInstallations({ installId })` returns an empty or one-row array from
+canonical latest state. `findInstallations({ userId, afterInstallId?, limit })`
+returns current matches in ascending UTF-8 byte order of installation ID, with
+an exclusive cursor and the same 1–101 limit. Mixing the forms is invalid.
+IDs are exact and case-sensitive, with no Unicode normalization. If a secondary
+user index lags, recheck candidates against canonical state and continue past
+stale candidates. New associations may temporarily be absent; historical users
+and usernames are not matches.
+
+`countInstallations({ platform, channel, sinceMs, bundleId? })` counts latest
+rows in that scope with `received_at_ms >= sinceMs`, optionally requiring
+`to_bundle_id = bundleId`. Each installation contributes at most once. Use a
+native aggregate or stable installation-ID traversal; paging a mutable
+last-seen index can double-count moving rows. Never derive it from event history.
+
+`countEvents({ filter, sinceMs, beforeReceivedAtMs })` counts a fixed raw bundle
+filter in the same receipt interval as `listEvents`. The filter has platform,
+channel, type, and `fromBundleId` for `RECOVERED` or `toBundleId` for
+`UPDATE_APPLIED`/`RELEASE_ADOPTED`; it has no `kind`. Recovery B → A therefore
+counts against B while latest state names A. Counts concern reports, not
+unique attempts or installations. Count all native pages or propagate failure.
+
+Core owns report preparation, validation, windows, cursors, movement semantics,
+and product labels. Providers own atomic storage, native queries, indexes, and
+scalar counts. Do not implement summary objects, group-by, top-N distributions,
+chart buckets, or independently maintained outcome tables. Separate live counts
+are not a common snapshot and must not imply an exact percentage. Document
+query costs: a scalar can require traversing many records, and no operation may
+silently return a 50,000-row partial result. Empty/zero means a successful empty
+query; native errors must propagate.
+
+The public constructor validates queries and returned rows, but cannot prove
+atomicity or index usage. Run the public conformance suite plus native rollback,
+concurrency, continuation, migration, and query-plan tests for your backend.
 
 ## Atomic commit and optimistic CAS
 
@@ -221,15 +299,20 @@ source `changeIndex`. All other validation, constraint, and provider failures
 reject. A provider without an atomic conditional primitive must reject before
 its first write; there is no Release-now/catalog-later fallback.
 
-## Implement the 1.0.0 schema
+## Implement the 1.0.1 schema
 
-v1 does not upgrade a populated v0 database. Create empty 1.0.0 storage and
-redeploy Releases from source artifacts.
+Fresh storage uses schema `1.0.1`. Existing complete `1.0.0` storage upgrades
+additively: preserve events and latest installation rows, add the bundle-outcome
+and latest-scope indexes, and apply exact identity collations. Advance the
+schema marker only after the upgrade succeeds. Stop older ingestion writers
+while applying the upgrade.
 
-If you already created schema `1.0.0` from an earlier unreleased `next` or RC
-build, recreate it as well. The schema marker did not change when the required
-archive and patch size fields were added, so there is no incremental migration
-or backfill for that pre-release database.
+The `1.0.0` → `1.0.1` upgrade assumes the complete `1.0.0` shape, including
+required archive and patch byte sizes. Older pre-release schemas missing those
+fields and populated v0 databases are separate migration cases; this Insights
+upgrade does not infer missing artifact metadata. Keep a backup and reconcile
+those schemas explicitly before applying it. Do not reset a complete `1.0.0`
+database to upgrade Insights.
 
 1. Remove `queries`, `getUpdateInfo`, provider decision SQL/RPCs, and any
    desired-state cache owned by the provider.
@@ -240,8 +323,9 @@ or backfill for that pre-release database.
    scope reads.
 5. Extend the atomic commit with Release revision and catalog generation
    expectations.
-6. Record `schema.core = 1.0.0` only on an empty database. Reject any other
-   source schema instead of backfilling it.
+6. Implement atomic Insights recording and the fixed queries above. Record
+   `schema.core = 1.0.1` after fresh creation or a successful supported upgrade;
+   reject unsupported source versions without deleting their data.
 7. Run the public conformance and integration suites against the real backend.
 
 Provider-specific consistency requirements:
@@ -328,7 +412,9 @@ setupDatabaseClientTestSuite({
 
 The suites verify exact model semantics, strong Release paging, catalog point
 reads, Release/catalog CAS conflicts, all-model rollback, Channel safety,
-Insights ordering, and the absence of a public `queries` surface.
+Insights duplicate/identity/count/filter semantics, ordering, and the absence
+of a public `queries` surface. Supplement these with native rollback, concurrent
+transaction, index-continuation, migration, and query-plan evidence.
 
 ## Configure Hot Updater
 
@@ -361,3 +447,11 @@ A Standalone management repository exposes Bundle, patch, Release, catalog,
 and Channel models through the canonical server routes. It is not a complete
 database plugin because the server owns Insights, API keys, compilation,
 and the actual atomic transaction.
+
+## SQL Server limitation
+
+The Prisma SQL Server adapter retains its other models, but its five Insights
+methods reject before database I/O. SQL Server's padded string equality can
+merge IDs that differ by trailing spaces; its default Unicode/UUID ordering
+also differs from this contract. There is no silent fallback to weaker identity
+or pagination semantics. Use a supported Insights provider for these views.

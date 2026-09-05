@@ -1,6 +1,8 @@
 import {
   createDatabasePlugin,
   DatabasePluginInputError,
+  type InsightsRecordInput,
+  type InsightsModel,
 } from "@hot-updater/plugin-core";
 import {
   createDatabasePluginAdapter,
@@ -70,6 +72,7 @@ const runPrismaTransaction = <TResult>(
   client: PrismaTransactionClient,
   isolationLevel: "default" | "serializable",
   callback: (client: object) => Promise<TResult>,
+  retryUniqueConflict = false,
 ): Promise<TResult> => {
   const execute = () =>
     isolationLevel === "serializable"
@@ -87,7 +90,8 @@ const runPrismaTransaction = <TResult>(
           typeof error !== "object" ||
           error === null ||
           !("code" in error) ||
-          error.code !== "P2034"
+          (error.code !== "P2034" &&
+            !(retryUniqueConflict && error.code === "P2002"))
         ) {
           throw error;
         }
@@ -395,6 +399,48 @@ const createPrismaImplementation = (
   const crud = createCrudImplementation(client, provider, relationMode);
   const implementation: DatabasePluginImplementation = {
     ...crud,
+    recordInsights: (input: InsightsRecordInput) => {
+      if (!hasCallbackTransaction(client)) {
+        throw new PrismaAdapterError(
+          "Insights recording requires callback transactions",
+        );
+      }
+      return runPrismaTransaction(
+        client,
+        "serializable",
+        async (transactionClient) => {
+          const events = getPrismaDelegate(transactionClient, "bundle_events");
+          if (
+            (await events.findFirst({ where: { id: input.event.id } })) !== null
+          )
+            return;
+          await events.create({ data: input.event });
+          const installations = getPrismaDelegate(
+            transactionClient,
+            "bundle_installations",
+          );
+          const existing = await installations.findFirst({
+            where: { install_id: input.installation.install_id },
+          });
+          if (existing === null) {
+            await installations.create({ data: input.installation });
+            return;
+          }
+          const current = parsePrismaInsightsInstallationRow(existing);
+          if (
+            current.received_at_ms > input.installation.received_at_ms ||
+            (current.received_at_ms === input.installation.received_at_ms &&
+              current.id >= input.installation.id)
+          )
+            return;
+          await installations.update({
+            where: { install_id: input.installation.install_id },
+            data: input.installation,
+          });
+        },
+        true,
+      );
+    },
     deleteChannel: (input) => {
       if (!hasCallbackTransaction(client)) {
         throw new PrismaAdapterError(
@@ -481,10 +527,25 @@ export const prismaAdapter = (
       config.provider,
     ),
   );
+  const unsupportedMssqlInsights = async (): Promise<never> => {
+    throw new PrismaAdapterError(
+      "SQL Server Insights is unsupported: string keys pad trailing spaces and do not provide the required exact UTF-8 identity ordering",
+    );
+  };
+  const insights: InsightsModel =
+    config.provider === "mssql"
+      ? {
+          record: unsupportedMssqlInsights,
+          listEvents: unsupportedMssqlInsights,
+          findInstallations: unsupportedMssqlInsights,
+          countInstallations: unsupportedMssqlInsights,
+          countEvents: unsupportedMssqlInsights,
+        }
+      : adapter.models.insights;
   return Object.assign(
     createDatabasePlugin({
       name: "prisma",
-      models: adapter.models,
+      models: { ...adapter.models, insights },
       commit: adapter.commit,
     }),
     {

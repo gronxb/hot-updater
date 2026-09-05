@@ -294,6 +294,10 @@ export const createMockDatabaseState = (
   },
   async count(input): Promise<number> {
     switch (input.model) {
+      case "bundle_events":
+        return [...data.bundleEvents.values()].filter((row) =>
+          matchesMockDatabaseWhere<"bundle_events">(row, input.where),
+        ).length;
       case "bundles":
         return distinctCount(
           [...data.bundles.values()].filter((row) =>

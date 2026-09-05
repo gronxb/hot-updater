@@ -8,6 +8,7 @@ import type {
   ReleaseCatalogRow,
   ReleaseRow,
 } from "@hot-updater/plugin-core";
+import { compareInsightsText } from "@hot-updater/plugin-core";
 
 type Row =
   | BundleEventRow
@@ -63,7 +64,7 @@ const compare = (left: unknown, right: unknown): number => {
     return left - right;
   }
   if (typeof left === "string" && typeof right === "string") {
-    return left.localeCompare(right);
+    return compareInsightsText(left, right);
   }
   return 0;
 };

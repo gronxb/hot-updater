@@ -30,7 +30,7 @@ describe("isDatabasePlugin", () => {
       ...plugin,
       models: {
         ...plugin.models,
-        insights: { ...plugin.models.insights, pageEvents: null },
+        insights: { ...plugin.models.insights, listEvents: null },
       },
     };
     const malformedChannels = {

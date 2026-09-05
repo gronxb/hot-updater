@@ -30,7 +30,7 @@ describe("Insights event details", () => {
     expect(screen.getByText("2026-07-18 00:00:00.000 UTC")).toBeDefined();
   });
 
-  it("uses the three product labels for event meaning", () => {
+  it("uses distinct product labels for event meaning", () => {
     const view = render(<EventTypeBadge type="UPDATE_APPLIED" />);
     expect(screen.getByText("Bundle applied")).toBeDefined();
     expect(screen.getByText("Bundle applied").className).toContain(
@@ -38,7 +38,7 @@ describe("Insights event details", () => {
     );
 
     view.rerender(<EventTypeBadge type="RELEASE_ADOPTED" />);
-    expect(screen.getByText("Bundle applied")).toBeDefined();
+    expect(screen.getByText("Release adopted")).toBeDefined();
 
     view.rerender(<EventTypeBadge type="RECOVERED" />);
     expect(screen.getByText("Recovered")).toBeDefined();

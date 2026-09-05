@@ -1387,12 +1387,11 @@ function readInsightsModel(database: BundleRepository): InsightsModel | null {
       : undefined;
   return typeof insights === "object" &&
     insights !== null &&
-    typeof Reflect.get(insights, "append") === "function" &&
-    typeof Reflect.get(insights, "pageEvents") === "function" &&
-    typeof Reflect.get(insights, "getInstallation") === "function" &&
-    typeof Reflect.get(insights, "pageInstallationsByCurrentUserId") ===
-      "function" &&
-    typeof Reflect.get(insights, "countActiveInstallations") === "function"
+    typeof Reflect.get(insights, "record") === "function" &&
+    typeof Reflect.get(insights, "listEvents") === "function" &&
+    typeof Reflect.get(insights, "findInstallations") === "function" &&
+    typeof Reflect.get(insights, "countInstallations") === "function" &&
+    typeof Reflect.get(insights, "countEvents") === "function"
     ? (insights as InsightsModel)
     : null;
 }

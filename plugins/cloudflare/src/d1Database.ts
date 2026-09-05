@@ -2,7 +2,11 @@ import { createDatabasePlugin } from "@hot-updater/plugin-core";
 import { createDatabasePluginAdapter } from "@hot-updater/plugin-core/internal";
 import Cloudflare from "cloudflare";
 
-import { createD1Implementation, type D1Statement } from "./d1Implementation";
+import {
+  createD1Implementation,
+  D1ExecutionError,
+  type D1Statement,
+} from "./d1Implementation";
 
 export interface D1DatabaseConfig {
   readonly databaseId: string;
@@ -41,9 +45,11 @@ export const d1Database = (config: D1DatabaseConfig) => {
     const results: unknown[][] = [];
     for await (const resultPage of page.iterPages()) {
       for (const result of resultPage.result) {
+        if (result.success === false) throw new D1ExecutionError();
         results.push(result.results ?? []);
       }
     }
+    if (results.length !== statements.length) throw new D1ExecutionError();
     return results;
   };
 

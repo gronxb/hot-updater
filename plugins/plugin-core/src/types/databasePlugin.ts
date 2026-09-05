@@ -66,38 +66,89 @@ export interface InsightsEventCursor {
   readonly id: string;
 }
 
-export type InsightsEventSelector =
+export interface InsightsScope {
+  readonly platform: "ios" | "android";
+  readonly channel: string;
+}
+
+/** Raw event predicates; recovery is attributed to the source bundle. */
+export type InsightsBundleEventFilter = InsightsScope &
+  (
+    | { readonly type: "RECOVERED"; readonly fromBundleId: string }
+    | {
+        readonly type: "UPDATE_APPLIED" | "RELEASE_ADOPTED";
+        readonly toBundleId: string;
+      }
+  );
+
+export type InsightsEventFilter =
   | { readonly kind: "all" }
   | {
       readonly kind: "installationMovement";
       readonly installId: string;
-    };
+    }
+  | ({ readonly kind: "bundle" } & InsightsBundleEventFilter);
 
-export interface InsightsPageEventsInput {
-  readonly selector: InsightsEventSelector;
+export interface InsightsRecordInput {
+  readonly event: BundleEventRow;
+  readonly installation: InsightsInstallationRow;
+}
+
+export interface InsightsListEventsInput {
+  readonly filter: InsightsEventFilter;
+  readonly sinceMs?: number;
   readonly beforeReceivedAtMs: number;
   readonly after?: InsightsEventCursor;
   readonly limit: number;
 }
 
-export interface InsightsPageInstallationsByCurrentUserIdInput {
-  readonly userId: string;
-  readonly afterInstallId?: string;
-  readonly limit: number;
+export type InsightsFindInstallationsInput =
+  | { readonly installId: string }
+  | {
+      readonly userId: string;
+      readonly afterInstallId?: string;
+      readonly limit: number;
+    };
+
+export interface InsightsCountInstallationsInput extends InsightsScope {
+  readonly sinceMs: number;
+  readonly bundleId?: string;
+}
+
+export interface InsightsCountEventsInput {
+  readonly filter: InsightsBundleEventFilter;
+  readonly sinceMs: number;
+  readonly beforeReceivedAtMs: number;
 }
 
 export interface InsightsModel {
-  append(row: BundleEventRow): Promise<void>;
-  pageEvents(
-    input: InsightsPageEventsInput,
+  /**
+   * Atomically persist the immutable event and advance its installation only
+   * for a greater (received_at_ms, id). Duplicate event IDs are complete no-ops.
+   * Retry the identical prepared input after an ambiguous commit outcome.
+   */
+  record(input: InsightsRecordInput): Promise<void>;
+  /**
+   * Descending (received_at_ms, id), in [sinceMs ?? 0, beforeReceivedAtMs).
+   * Apply filters and the exclusive cursor before limit (1..101). Return the
+   * complete matching prefix; native continuation pages must not truncate it.
+   */
+  listEvents(
+    input: InsightsListEventsInput,
   ): Promise<readonly BundleEventRow[]>;
-  getInstallation(installId: string): Promise<InsightsInstallationRow | null>;
-  pageInstallationsByCurrentUserId(
-    input: InsightsPageInstallationsByCurrentUserIdInput,
+  /**
+   * Exact installation lookup returns zero or one canonical row. User lookup
+   * returns current membership ordered by UTF-8 installation ID, exclusive
+   * afterInstallId and limit 1..101. Check lagging index candidates against
+   * canonical state; newly indexed associations may temporarily be absent.
+   */
+  findInstallations(
+    input: InsightsFindInstallationsInput,
   ): Promise<readonly InsightsInstallationRow[]>;
-  countActiveInstallations(input: {
-    readonly sinceMs: number;
-  }): Promise<number>;
+  /** Count latest rows in scope with received_at_ms >= sinceMs, once each. */
+  countInstallations(input: InsightsCountInstallationsInput): Promise<number>;
+  /** Count accepted reports in [sinceMs, beforeReceivedAtMs), across all pages. */
+  countEvents(input: InsightsCountEventsInput): Promise<number>;
 }
 
 export interface ApiKeyModel {

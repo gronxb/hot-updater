@@ -50,8 +50,11 @@ const InsightsPage = Route.options.component;
 if (!InsightsPage) throw new Error("Insights route component is required");
 
 const active = {
-  activeInstallations: 42,
-  asOfMs: Date.UTC(2026, 6, 18),
+  platform: "ios",
+  channel: "production",
+  sinceMs: 0,
+  beforeReceivedAtMs: 100,
+  reportingInstallations: { count: 42, measuredAtMs: Date.UTC(2026, 6, 18) },
   window: "30d" as const,
 };
 
@@ -72,9 +75,14 @@ describe("InsightsPage", () => {
   it("loads only the reporting-installation headline for the selected window", () => {
     render(<InsightsPage />);
 
-    expect(mocks.reporting).toHaveBeenCalledWith("30d");
+    expect(mocks.reporting).toHaveBeenCalledWith({
+      platform: "ios",
+      channel: "production",
+      window: "30d",
+    });
     expect(mocks.overview).toHaveBeenLastCalledWith({
       active,
+      onOutcomeSelect: expect.any(Function),
       status: "success",
     });
     expect(
@@ -83,7 +91,11 @@ describe("InsightsPage", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Select 7 days" }));
 
-    expect(mocks.reporting).toHaveBeenLastCalledWith("7d");
+    expect(mocks.reporting).toHaveBeenLastCalledWith({
+      platform: "ios",
+      channel: "production",
+      window: "7d",
+    });
     expect(mocks.controls).toHaveBeenLastCalledWith(
       expect.objectContaining({ window: "7d" }),
     );

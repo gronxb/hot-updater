@@ -66,6 +66,13 @@ export type Database = {
     };
     Views: { [_ in never]: never };
     Functions: {
+      [SUPABASE_V1_FUNCTION_NAMES.recordInsights]: {
+        Args: {
+          p_event: BundleEventRow;
+          p_installation: InsightsInstallationRow;
+        };
+        Returns: undefined;
+      };
       [SUPABASE_V1_FUNCTION_NAMES.commit]: {
         Args: {
           p_commit: DatabaseCommit;

@@ -1,10 +1,11 @@
 import { createDatabasePlugin } from "@hot-updater/plugin-core";
 import { createDatabasePluginAdapter } from "@hot-updater/plugin-core/internal";
 
-import { createD1Implementation } from "../d1Implementation";
+import { createD1Implementation, D1ExecutionError } from "../d1Implementation";
 
 type D1Result = {
   readonly results?: readonly unknown[];
+  readonly success?: boolean;
 };
 
 type D1BoundStatement = {
@@ -31,6 +32,7 @@ export const d1Database = (database: D1Like) => {
         .prepare(sql)
         .bind(...params)
         .all();
+      if (result.success === false) throw new D1ExecutionError();
       return result.results ?? [];
     },
     async batch(statements) {
@@ -39,6 +41,12 @@ export const d1Database = (database: D1Like) => {
           database.prepare(sql).bind(...params),
         ),
       );
+      if (
+        results.length !== statements.length ||
+        results.some(({ success }) => success === false)
+      ) {
+        throw new D1ExecutionError();
+      }
       return results.map(({ results }) => results ?? []);
     },
   });

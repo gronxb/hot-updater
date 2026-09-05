@@ -26,7 +26,10 @@ import {
 } from "./firebaseDatabaseParser";
 import type { FirebaseDatabaseSnapshot } from "./firebaseDatabaseState";
 import { FirebaseDatabaseConstraintError } from "./firebaseDatabaseState";
-import { FIREBASE_V1_COLLECTION_NAMES } from "./firebaseInfrastructureNames";
+import {
+  FIREBASE_LEGACY_INSTALLATIONS_COLLECTION,
+  FIREBASE_V1_COLLECTION_NAMES,
+} from "./firebaseInfrastructureNames";
 
 export interface FirebaseDatabaseCollections {
   readonly bundles: CollectionReference<DocumentData>;
@@ -45,6 +48,16 @@ export class FirebaseDatabaseAdapterVersionError extends Error {
 
   constructor(readonly version: unknown) {
     super(`Unsupported Firebase database adapter version: ${String(version)}`);
+  }
+}
+
+export class FirebaseInsightsMigrationRequiredError extends Error {
+  readonly name = "FirebaseInsightsMigrationRequiredError";
+
+  constructor() {
+    super(
+      "Firebase Insights storage needs migration. Stop old ingestion and run migrateFirebaseInsights(config) from @hot-updater/firebase before starting the updated server.",
+    );
   }
 }
 
@@ -89,6 +102,9 @@ export const firebaseChannelDocumentId = (name: string): string =>
 export const firebaseChannelIdDocumentId = (id: string): string =>
   `channel_id_${Buffer.from(id, "utf8").toString("base64url")}`;
 
+export const firebaseInstallationDocumentId = (id: string): string =>
+  `install_${Buffer.from(id, "utf8").toString("base64url")}`;
+
 type ParsedDocumentRow<TRow extends FixedRow> = {
   readonly document: { readonly id: string };
   readonly row: TRow;
@@ -101,7 +117,9 @@ export const requireFirebaseDocumentKey = <TRow extends FixedRow>(
 ): TRow => {
   const key =
     model === "bundle_installations"
-      ? (row as InsightsInstallationRow).install_id
+      ? firebaseInstallationDocumentId(
+          (row as InsightsInstallationRow).install_id,
+        )
       : "id" in row
         ? row.id
         : row.scope_key;
@@ -394,13 +412,23 @@ export const persistFirebaseDatabaseSnapshot = ({
 };
 
 export const migrateFirebaseDatabase = async (
-  _db: Firestore,
+  db: Firestore,
   collections: FirebaseDatabaseCollections,
 ): Promise<void> => {
   const versionDocument = collections.settings.doc("database_adapter_version");
   const version = await versionDocument.get();
   const adapterVersion = version.data()?.version;
+  if (adapterVersion === 5) {
+    return;
+  }
+  const legacyInstallations = db.collection(
+    FIREBASE_LEGACY_INSTALLATIONS_COLLECTION,
+  );
   if (adapterVersion === 4) {
+    if (!(await legacyInstallations.limit(1).get()).empty) {
+      throw new FirebaseInsightsMigrationRequiredError();
+    }
+    await versionDocument.update({ version: 5 });
     return;
   }
   if (version.exists) {
@@ -414,16 +442,18 @@ export const migrateFirebaseDatabase = async (
     collections.releases.limit(1).get(),
     collections.releaseCatalogs.limit(1).get(),
     collections.bundleInstallations.limit(1).get(),
+    collections.bundleEvents.limit(1).get(),
+    legacyInstallations.limit(1).get(),
   ]);
   if (existingCollections.some((snapshot) => !snapshot.empty)) {
     throw new FirebaseDatabaseAdapterVersionError("v0");
   }
 
   try {
-    await versionDocument.create({ version: 4 });
+    await versionDocument.create({ version: 5 });
   } catch (error) {
     const current = await versionDocument.get();
-    if (current.data()?.version !== 4) {
+    if (current.data()?.version !== 5) {
       throw error;
     }
   }

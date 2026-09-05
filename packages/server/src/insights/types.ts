@@ -1,5 +1,7 @@
 import type {
-  ActiveInstallationOverview,
+  ReportingOverview,
+  InsightsBundleSelection,
+  InsightsScope,
   ActiveInstallationWindow,
   CreateBundleEventRequest,
   CursorPage,
@@ -11,11 +13,16 @@ import type {
 
 export type InsightsEventPageInput = {
   readonly beforeReceivedAtMs?: number;
+  readonly sinceMs?: number;
+  readonly bundle?: InsightsBundleSelection;
   readonly cursor?: string;
   readonly limit?: number;
 };
 
-export type InsightsInstallationEventPageInput = InsightsEventPageInput & {
+export type InsightsInstallationEventPageInput = Omit<
+  InsightsEventPageInput,
+  "bundle"
+> & {
   readonly installId: string;
 };
 
@@ -27,17 +34,22 @@ export type InsightsUserInstallationPageInput = {
 
 export type InsightsProvider = {
   appendBundleEvent(input: CreateBundleEventRequest): Promise<void>;
-  pageEvents(
+  listEvents(
     input: InsightsEventPageInput,
   ): Promise<EventCursorPage<EventHistoryRow>>;
-  pageInstallationEvents(
+  listInstallationEvents(
     input: InsightsInstallationEventPageInput,
   ): Promise<EventCursorPage<InstallationHistoryRow>>;
-  getInstallation(installId: string): Promise<InstallationRow | null>;
+  getInstallation(input: {
+    readonly installId: string;
+  }): Promise<InstallationRow | null>;
   pageInstallationsByCurrentUserId(
     input: InsightsUserInstallationPageInput,
   ): Promise<CursorPage<InstallationRow>>;
-  getActiveInstallationOverview(input: {
-    readonly window: ActiveInstallationWindow;
-  }): Promise<ActiveInstallationOverview>;
+  getReportingOverview(
+    input: InsightsScope & {
+      readonly window: ActiveInstallationWindow;
+      readonly bundleId?: string;
+    },
+  ): Promise<ReportingOverview>;
 };

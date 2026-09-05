@@ -10,9 +10,10 @@ declare module "vitest" {
   }
 }
 
-it("ships a single D1 1.0.0 CREATE migration", () => {
+it("ships the initial schema and additive Insights migration", () => {
   expect(inject("d1Migrations").map(({ name }) => name)).toEqual([
     "0001_hot-updater_1.0.0.sql",
+    "0002_hot-updater_1.0.1.sql",
   ]);
 });
 
@@ -113,6 +114,18 @@ it("creates the current schema with required artifact sizes", async () => {
     ).first(),
   ).resolves.toEqual({ install_id: "install-1", received_at_ms: 100 });
 
+  await env.DB.prepare(inject("d1Migrations")[1]!.sql).run();
+  await expect(
+    env.DB.prepare(
+      "SELECT install_id, received_at_ms FROM bundle_installations",
+    ).first(),
+  ).resolves.toEqual({ install_id: "install-1", received_at_ms: 100 });
+  await expect(
+    env.DB.prepare(
+      "SELECT value FROM private_hot_updater_settings WHERE key = 'schema.core'",
+    ).first<string>("value"),
+  ).resolves.toBe("1.0.1");
+
   const installationIndexes = await env.DB.prepare(`
     SELECT name FROM sqlite_master
     WHERE type = 'index' AND tbl_name = 'bundle_installations'
@@ -122,6 +135,8 @@ it("creates the current schema with required artifact sizes", async () => {
     expect.arrayContaining([
       "bundle_installations_received_at_idx",
       "bundle_installations_user_id_idx",
+      "bundle_installations_scope_idx",
+      "bundle_installations_bundle_idx",
     ]),
   );
 
@@ -134,6 +149,26 @@ it("creates the current schema with required artifact sizes", async () => {
     "received_at_ms",
     "id",
   ]);
+
+  for (const [direction, type] of [
+    ["from", "RECOVERED"],
+    ["to", "UPDATE_APPLIED"],
+  ]) {
+    const plan = await env.DB.prepare(`
+      EXPLAIN QUERY PLAN SELECT * FROM bundle_events
+      WHERE type = ? AND platform = 'ios' AND channel = 'production'
+        AND ${direction}_bundle_id = ? AND received_at_ms >= 100 AND received_at_ms < 200
+      ORDER BY received_at_ms DESC, id DESC LIMIT 101
+    `)
+      .bind(type, "00000000-0000-0000-0000-000000000001")
+      .all<{ detail: string }>();
+    expect(plan.results.map(({ detail }) => detail).join("\n")).toContain(
+      `bundle_events_${direction}_bundle_idx`,
+    );
+    expect(plan.results.map(({ detail }) => detail).join("\n")).not.toContain(
+      "TEMP B-TREE",
+    );
+  }
 
   for (const size of [-1, Number.MAX_SAFE_INTEGER + 1, null]) {
     await expect(

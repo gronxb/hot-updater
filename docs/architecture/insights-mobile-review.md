@@ -1,4 +1,33 @@
-# Lean Insights responsive review — 2026-09-04
+# Insights responsive review — 2026-09-05
+
+The accepted storage contract's Console views were exercised in the local
+fixture with a real browser at 1280 × 900 and 375 × 844. At both widths the
+document matched the viewport, and the captured browser console had no errors.
+
+For iOS / production / 7d and selected bundle
+`01972020-1aa1-7445-8b8c-111111111111`, the fixture showed 8 reporting
+installations, 3 naming the selected bundle, 7 applied reports, 2 recovered-from
+reports, and 1 adopted report. The recovery drill-down contained two B → A
+reports; adoption contained one B → B report. Switching to Android showed zero.
+Exact `demo-alpha` lookup showed its current B state and one bundle movement.
+The counters are independent measurements and are not presented as percentages.
+
+| View                | Desktop                                                                 | Mobile                                                                |
+| ------------------- | ----------------------------------------------------------------------- | --------------------------------------------------------------------- |
+| Scoped overview     | [1280px](../public/docs/console/insights-contract-overview-desktop.png) | [375px](../public/docs/console/insights-contract-overview-mobile.png) |
+| Recovery drill-down | [1280px](../public/docs/console/insights-contract-recovery-desktop.png) | [375px](../public/docs/console/insights-contract-recovery-mobile.png) |
+
+The screenshots are native viewport captures, without review overlays. Component
+and HTTP tests separately cover state transitions, counts, raw predicates,
+Unicode identity, receipt boundaries, and cursor errors. This review concerns
+the updated controls; the older review below records the earlier UI only.
+
+## Historical review — 2026-09-04
+
+Historical review of the earlier UI. The accepted 2026-09-05 contract adds
+explicit platform/channel scope, selected-bundle counts, and outcome drill-down.
+The measurements and screenshots below are evidence for the earlier commit;
+they do not certify the updated controls.
 
 This review covers the final Lean Insights scope: reporting-installation counts,
 filter-free event history, exact user or installation lookup, and per-installation

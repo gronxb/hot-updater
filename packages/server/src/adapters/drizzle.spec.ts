@@ -1,4 +1,5 @@
 import { PGlite } from "@electric-sql/pglite";
+import { toInsightsInstallationRow } from "@hot-updater/plugin-core";
 import {
   boolean,
   doublePrecision,
@@ -11,6 +12,7 @@ import {
 import { drizzle } from "drizzle-orm/pglite";
 import { describe, expect, it, vi } from "vitest";
 
+import { createBundleEventRowFixture } from "../../../test-utils/src/databaseTestFixtures";
 import { setupDatabasePluginTestSuite } from "../../../test-utils/src/setupDatabasePluginTestSuite";
 import type { DatabaseAdapterWithCapabilities } from "../db/types";
 import {
@@ -170,6 +172,87 @@ setupDatabasePluginTestSuite({
 });
 
 describe("drizzleAdapter schema requirements", () => {
+  it("keeps Bun SQLite event and snapshot writes inside its synchronous transaction", async () => {
+    const { stdout } = await promisify(execFile)(
+      new URL("../../../../node_modules/.bin/bun", import.meta.url).pathname,
+      [
+        "-e",
+        `
+        import { Database } from "bun:sqlite";
+        import { drizzle } from "drizzle-orm/bun-sqlite";
+        import { toInsightsInstallationRow } from "@hot-updater/plugin-core";
+        import { drizzleAdapter } from "./src/adapters/drizzle.ts";
+        import { createTableSql } from "./src/db/schema/sql.ts";
+        import { createBundleEventRowFixture } from "../test-utils/src/databaseTestFixtures.ts";
+        import * as schema from "../../examples-server/elysia-drizzle-libsql/hot-updater-schema.ts";
+        const db = new Database(":memory:");
+        db.exec(createTableSql("sqlite").join(";"));
+        db.exec("create trigger reject_snapshot before insert on bundle_installations begin select raise(abort, 'injected snapshot failure'); end;");
+        const plugin = drizzleAdapter({ db: drizzle(db, { schema }), provider: "sqlite" });
+        const event = createBundleEventRowFixture("708", 100);
+        const input = { event, installation: toInsightsInstallationRow(event) };
+        let rejected = false;
+        try { await plugin.models.insights.record(input); } catch { rejected = true; }
+        if (!rejected || db.query("select count(*) as total from bundle_events").get().total !== 0) throw new Error("transaction failed to roll back");
+        db.exec("drop trigger reject_snapshot");
+        await plugin.models.insights.record(input);
+        await plugin.models.insights.record(input);
+        if (db.query("select count(*) as total from bundle_events").get().total !== 1 || db.query("select count(*) as total from bundle_installations").get().total !== 1) throw new Error("retry did not commit exactly one report");
+        db.close();
+        console.log("atomic retry verified");
+      `,
+      ],
+      { cwd: new URL("../..", import.meta.url).pathname },
+    );
+    expect(stdout).toContain("atomic retry verified");
+  });
+  it("rolls back the event when the installation write fails and permits retry", async () => {
+    const db = new PGlite();
+    await db.exec(DATABASE_PLUGIN_TEST_SCHEMA_SQL);
+    await db.exec(
+      "alter table bundle_installations add constraint reject_snapshot check (install_id <> 'install-701')",
+    );
+    const plugin = drizzleAdapter({
+      db: drizzle(db, { schema }),
+      provider: "postgresql",
+    });
+    const event = createBundleEventRowFixture("701", 100);
+    const input = { event, installation: toInsightsInstallationRow(event) };
+    try {
+      await expect(plugin.models.insights.record(input)).rejects.toThrow();
+      expect((await db.query("select id from bundle_events")).rows).toEqual([]);
+      await db.exec(
+        "alter table bundle_installations drop constraint reject_snapshot",
+      );
+      await plugin.models.insights.record(input);
+      await expect(
+        plugin.models.insights.findInstallations({
+          installId: event.install_id,
+        }),
+      ).resolves.toEqual([input.installation]);
+    } finally {
+      await db.close();
+    }
+  });
+
+  it("requires transaction support before recording on a lazy database", async () => {
+    const getDB = vi.fn(() => {
+      throw new DrizzleTestStateError();
+    });
+    const plugin = drizzleAdapter({
+      db: getDB,
+      provider: "postgresql",
+      schema,
+    });
+    const event = createBundleEventRowFixture("702", 100);
+    await expect(
+      plugin.models.insights.record({
+        event,
+        installation: toInsightsInstallationRow(event),
+      }),
+    ).rejects.toThrow("transaction support");
+    expect(getDB).not.toHaveBeenCalled();
+  });
   it("does not resolve a lazy database while generating a schema", () => {
     const getDB = vi.fn(() => {
       throw new DrizzleTestStateError();
@@ -249,3 +332,5 @@ describe("drizzleAdapter schema requirements", () => {
     );
   });
 });
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";

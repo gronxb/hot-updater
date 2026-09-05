@@ -58,7 +58,7 @@ describe("v1.0.0 Release Catalog schema", () => {
     const patchSize = bundlePatchesV100.columns.find(
       ({ ormName }) => ormName === "byte_size",
     );
-    const sql = createTableSql("postgresql").join("\n");
+    const sql = createTableSql("postgresql", "foreign-keys", v1_0_0).join("\n");
     const prisma = generatePrismaSchema("postgresql", v1_0_0);
     const drizzle = generateDrizzleSchema("postgresql", v1_0_0);
 
@@ -114,7 +114,7 @@ describe("v1.0.0 Release Catalog schema", () => {
       },
     ]);
 
-    const sql = createTableSql("postgresql").join("\n");
+    const sql = createTableSql("postgresql", "foreign-keys", v1_0_0).join("\n");
     const prisma = generatePrismaSchema("postgresql", v1_0_0);
     const drizzle = generateDrizzleSchema("postgresql", v1_0_0);
     expect(sql).toContain("create table bundle_installations");
@@ -134,8 +134,8 @@ describe("v1.0.0 Release Catalog schema", () => {
   });
 
   it("keeps identity indexes valid on MySQL and MSSQL", () => {
-    const mysql = createTableSql("mysql").join("\n");
-    const mssql = createTableSql("mssql").join("\n");
+    const mysql = createTableSql("mysql", "foreign-keys", v1_0_0).join("\n");
+    const mssql = createTableSql("mssql", "foreign-keys", v1_0_0).join("\n");
 
     expect(mysql).toContain("install_id varchar(255) not null");
     expect(mysql).toContain("user_id varchar(255)");
@@ -169,7 +169,7 @@ describe("v1.0.0 Release Catalog schema", () => {
   });
 
   it("creates both projection tables and their constraints from empty", () => {
-    const sql = createTableSql("postgresql").join("\n");
+    const sql = createTableSql("postgresql", "foreign-keys", v1_0_0).join("\n");
 
     expect(sql).toContain("create table releases");
     expect(sql).toContain("create table release_catalogs");
@@ -182,7 +182,7 @@ describe("v1.0.0 Release Catalog schema", () => {
   });
 
   it("uses byte-bounded MySQL catalog keys", () => {
-    const sql = createTableSql("mysql").join("\n");
+    const sql = createTableSql("mysql", "foreign-keys", v1_0_0).join("\n");
 
     expect(sql).toContain(
       "scope_key varchar(2048) character set ascii collate ascii_bin",

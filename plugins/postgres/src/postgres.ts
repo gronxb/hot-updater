@@ -140,6 +140,29 @@ const buildWhere = (
 const createPostgresImplementation = (
   db: Kysely<Database>,
 ): DatabasePluginImplementation => ({
+  async recordInsights({ event, installation }) {
+    const eventColumns = Object.keys(event);
+    const installationColumns = Object.keys(installation);
+    await sql`
+      WITH accepted_event AS (
+        INSERT INTO bundle_events (${sql.join(eventColumns.map(sql.ref))})
+        VALUES (${sql.join(Object.values(event))})
+        ON CONFLICT (id) DO NOTHING RETURNING id
+      )
+      INSERT INTO bundle_installations (${sql.join(installationColumns.map(sql.ref))})
+      SELECT ${sql.join(Object.values(installation))} FROM accepted_event
+      ON CONFLICT (install_id) DO UPDATE SET ${sql.join(
+        installationColumns
+          .filter((column) => column !== "install_id")
+          .map(
+            (column) =>
+              sql`${sql.ref(column)} = ${sql.ref(`excluded.${column}`)}`,
+          ),
+      )}
+      WHERE (excluded.received_at_ms, excluded.id) >
+        (bundle_installations.received_at_ms, bundle_installations.id)
+    `.execute(db);
+  },
   async create(input: CreateDatabaseImplementationInput) {
     switch (input.model) {
       case "bundles":

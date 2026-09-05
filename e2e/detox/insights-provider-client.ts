@@ -4,12 +4,10 @@ import type { ConsoleInsightsQaClient } from "./console-insights-qa.ts";
 export const createConsoleInsightsProviderClient = (
   provider: InsightsProvider,
 ): ConsoleInsightsQaClient => ({
-  getActiveOverview: () =>
-    provider.getActiveInstallationOverview({ window: "24h" }),
-  getInstallation: (installId) => provider.getInstallation(installId),
-  pageEvents: (input = {}) => provider.pageEvents(input),
-  pageInstallationEvents: (installId, input = {}) =>
-    provider.pageInstallationEvents({ ...input, installId }),
-  pageInstallationsByCurrentUserId: (userId, input = {}) =>
-    provider.pageInstallationsByCurrentUserId({ ...input, userId }),
+  getReportingOverview: (input) => provider.getReportingOverview(input),
+  getInstallation: (input) => provider.getInstallation(input),
+  listEvents: (input = {}) => provider.listEvents(input),
+  listInstallationEvents: (input) => provider.listInstallationEvents(input),
+  pageInstallationsByCurrentUserId: (input) =>
+    provider.pageInstallationsByCurrentUserId(input),
 });

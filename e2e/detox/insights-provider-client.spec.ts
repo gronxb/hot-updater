@@ -24,18 +24,21 @@ describe("Detox Insights provider client", () => {
   it("maps QA reads to the lean provider contract", async () => {
     const provider = {
       appendBundleEvent: vi.fn(),
-      getActiveInstallationOverview: vi.fn(async () => ({
-        activeInstallations: 0,
-        asOfMs: 1,
+      getReportingOverview: vi.fn(async () => ({
+        channel: "production",
+        platform: "ios" as const,
+        beforeReceivedAtMs: 1,
+        sinceMs: 0,
+        reportingInstallations: { count: 0, measuredAtMs: 1 },
         window: "24h" as const,
       })),
       getInstallation: vi.fn(async () => null),
-      pageEvents: vi.fn(async () => ({
+      listEvents: vi.fn(async () => ({
         beforeReceivedAtMs: 10,
         data: [],
         nextCursor: null,
       })),
-      pageInstallationEvents: vi.fn(async () => ({
+      listInstallationEvents: vi.fn(async () => ({
         beforeReceivedAtMs: 10,
         data: [],
         nextCursor: null,
@@ -47,27 +50,37 @@ describe("Detox Insights provider client", () => {
     } satisfies InsightsProvider;
     const client = createConsoleInsightsProviderClient(provider);
 
-    await client.getActiveOverview();
-    await client.getInstallation("install-id");
-    await client.pageEvents({ cursor: "event-cursor", limit: 25 });
-    await client.pageInstallationEvents("install-id", {
-      cursor: "movement-cursor",
-      limit: 25,
-    });
-    await client.pageInstallationsByCurrentUserId("user-id", {
-      cursor: "user-cursor",
-      limit: 25,
-    });
-
-    expect(provider.getActiveInstallationOverview).toHaveBeenCalledWith({
+    await client.getReportingOverview({
+      channel: "production",
+      platform: "ios",
       window: "24h",
     });
-    expect(provider.getInstallation).toHaveBeenCalledWith("install-id");
-    expect(provider.pageEvents).toHaveBeenCalledWith({
+    await client.getInstallation({ installId: "install-id" });
+    await client.listEvents({ cursor: "event-cursor", limit: 25 });
+    await client.listInstallationEvents({
+      cursor: "movement-cursor",
+      installId: "install-id",
+      limit: 25,
+    });
+    await client.pageInstallationsByCurrentUserId({
+      cursor: "user-cursor",
+      limit: 25,
+      userId: "user-id",
+    });
+
+    expect(provider.getReportingOverview).toHaveBeenCalledWith({
+      channel: "production",
+      platform: "ios",
+      window: "24h",
+    });
+    expect(provider.getInstallation).toHaveBeenCalledWith({
+      installId: "install-id",
+    });
+    expect(provider.listEvents).toHaveBeenCalledWith({
       cursor: "event-cursor",
       limit: 25,
     });
-    expect(provider.pageInstallationEvents).toHaveBeenCalledWith({
+    expect(provider.listInstallationEvents).toHaveBeenCalledWith({
       cursor: "movement-cursor",
       installId: "install-id",
       limit: 25,

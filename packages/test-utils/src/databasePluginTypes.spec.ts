@@ -68,7 +68,11 @@ describe("database plugin operation matrix", () => {
 
   it("allows count across all readable models while preserving bundle aliases", () => {
     expectTypeOf<CountDatabaseModel>().toEqualTypeOf<
-      "bundles" | "bundle_patches" | "releases" | "bundle_installations"
+      | "bundles"
+      | "bundle_patches"
+      | "releases"
+      | "bundle_events"
+      | "bundle_installations"
     >();
     expectTypeOf<
       UpdateBundleDatabaseInput["model"]

@@ -1,4 +1,8 @@
 import { createDatabasePlugin } from "./createDatabasePlugin";
+import {
+  compareInsightsText,
+  matchesInsightsEventFilter,
+} from "./insightsContract";
 import type {
   BundleEventRow,
   BundlePatchRow,
@@ -34,20 +38,6 @@ const replaceMap = <T>(target: Map<string, T>, source: Map<string, T>) => {
   target.clear();
   for (const [key, value] of source) target.set(key, value);
 };
-
-const toInstallationRow = (row: BundleEventRow): InsightsInstallationRow => ({
-  id: row.id,
-  install_id: row.install_id,
-  user_id: row.user_id,
-  username: row.username,
-  to_bundle_id: row.to_bundle_id,
-  type: row.type,
-  platform: row.platform,
-  app_version: row.app_version,
-  channel: row.channel,
-  cohort: row.cohort,
-  received_at_ms: row.received_at_ms,
-});
 
 const isNewerInstallationRow = (
   candidate: InsightsInstallationRow,
@@ -381,9 +371,9 @@ export const createMemoryDatabasePlugin = (): DatabasePlugin => {
         },
       },
       insights: {
-        async append(row) {
-          events.set(row.id, structuredClone(row));
-          const installation = toInstallationRow(row);
+        async record({ event, installation }) {
+          if (events.has(event.id)) return;
+          events.set(event.id, structuredClone(event));
           if (
             isNewerInstallationRow(
               installation,
@@ -396,50 +386,66 @@ export const createMemoryDatabasePlugin = (): DatabasePlugin => {
             );
           }
         },
-        async pageEvents(input) {
+        async listEvents(input) {
           return structuredClone(
             [...events.values()]
               .filter(
                 (row) =>
+                  row.received_at_ms >= (input.sinceMs ?? 0) &&
                   row.received_at_ms < input.beforeReceivedAtMs &&
                   (input.after === undefined ||
                     row.received_at_ms < input.after.receivedAtMs ||
                     (row.received_at_ms === input.after.receivedAtMs &&
                       row.id < input.after.id)) &&
-                  (input.selector.kind === "all" ||
-                    (row.install_id === input.selector.installId &&
-                      (row.type === "UPDATE_APPLIED" ||
-                        row.type === "RECOVERED"))),
+                  matchesInsightsEventFilter(row, input.filter),
               )
               .sort(
                 (left, right) =>
                   right.received_at_ms - left.received_at_ms ||
-                  right.id.localeCompare(left.id),
+                  compareInsightsText(right.id, left.id),
               )
               .slice(0, input.limit),
           );
         },
-        async getInstallation(installId) {
-          return structuredClone(installations.get(installId) ?? null);
-        },
-        async pageInstallationsByCurrentUserId(input) {
+        async findInstallations(input) {
+          if ("installId" in input) {
+            const row = installations.get(input.installId);
+            return row === undefined ? [] : [structuredClone(row)];
+          }
           return structuredClone(
             [...installations.values()]
               .filter(
                 (row) =>
                   row.user_id === input.userId &&
                   (input.afterInstallId === undefined ||
-                    row.install_id > input.afterInstallId),
+                    compareInsightsText(row.install_id, input.afterInstallId) >
+                      0),
               )
               .sort((left, right) =>
-                left.install_id.localeCompare(right.install_id),
+                compareInsightsText(left.install_id, right.install_id),
               )
               .slice(0, input.limit),
           );
         },
-        async countActiveInstallations({ sinceMs }) {
+        async countInstallations(input) {
           return [...installations.values()].filter(
-            (row) => row.received_at_ms >= sinceMs,
+            (row) =>
+              row.platform === input.platform &&
+              row.channel === input.channel &&
+              row.received_at_ms >= input.sinceMs &&
+              (input.bundleId === undefined ||
+                row.to_bundle_id === input.bundleId),
+          ).length;
+        },
+        async countEvents(input) {
+          return [...events.values()].filter(
+            (row) =>
+              row.received_at_ms >= input.sinceMs &&
+              row.received_at_ms < input.beforeReceivedAtMs &&
+              matchesInsightsEventFilter(row, {
+                kind: "bundle",
+                ...input.filter,
+              }),
           ).length;
         },
       },

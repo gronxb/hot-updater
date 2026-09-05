@@ -11,7 +11,7 @@ const eventTypes = {
   UPDATE_APPLIED: { label: "Bundle applied", variant: "success", icon: Check },
   RECOVERED: { label: "Recovered", variant: "warning", icon: RotateCcw },
   RELEASE_ADOPTED: {
-    label: "Bundle applied",
+    label: "Release adopted",
     variant: "success",
     icon: Check,
   },
@@ -101,7 +101,7 @@ export function EventTypeBadge({
         type === "UNCHANGED"
           ? "App activity reported on the current bundle without a bundle transition."
           : type === "RELEASE_ADOPTED"
-            ? "The app started reporting this bundle after a release changed."
+            ? "A different release was adopted without changing the bundle."
             : undefined
       }
     >

@@ -6,11 +6,11 @@ import { describe, expect, it, vi } from "vitest";
 import { createRuntimeHotUpdater } from "./runtime.server";
 
 const insights = {
-  append: vi.fn(async () => undefined),
-  countActiveInstallations: vi.fn(async () => 0),
-  getInstallation: vi.fn(async () => null),
-  pageEvents: vi.fn(async () => []),
-  pageInstallationsByCurrentUserId: vi.fn(async () => []),
+  record: vi.fn(async () => undefined),
+  countInstallations: vi.fn(async () => 0),
+  countEvents: vi.fn(async () => 0),
+  listEvents: vi.fn(async () => []),
+  findInstallations: vi.fn(async () => []),
 };
 
 describe("createRuntimeHotUpdater", () => {
@@ -19,7 +19,7 @@ describe("createRuntimeHotUpdater", () => {
       models: { insights },
     } as unknown as DatabasePlugin;
 
-    expect(createRuntimeHotUpdater({ database }).pageEvents).toBeTypeOf(
+    expect(createRuntimeHotUpdater({ database }).listEvents).toBeTypeOf(
       "function",
     );
   });

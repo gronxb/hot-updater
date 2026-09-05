@@ -170,25 +170,25 @@ export function createHotUpdaterCore(
   });
   const clientAccess = normalizeClientAccess(options.clientAccess);
   const insightsModel: InsightsModel = {
-    async append(row) {
+    async record(input) {
       await assertSchemaReady();
-      return plugin.models.insights.append(row);
+      return plugin.models.insights.record(input);
     },
-    async countActiveInstallations(input) {
+    async listEvents(input) {
       await assertSchemaReady();
-      return plugin.models.insights.countActiveInstallations(input);
+      return plugin.models.insights.listEvents(input);
     },
-    async getInstallation(installId) {
+    async findInstallations(input) {
       await assertSchemaReady();
-      return plugin.models.insights.getInstallation(installId);
+      return plugin.models.insights.findInstallations(input);
     },
-    async pageEvents(input) {
+    async countInstallations(input) {
       await assertSchemaReady();
-      return plugin.models.insights.pageEvents(input);
+      return plugin.models.insights.countInstallations(input);
     },
-    async pageInstallationsByCurrentUserId(input) {
+    async countEvents(input) {
       await assertSchemaReady();
-      return plugin.models.insights.pageInstallationsByCurrentUserId(input);
+      return plugin.models.insights.countEvents(input);
     },
   };
   const insights = createInsightsProvider(insightsModel);

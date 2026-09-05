@@ -275,6 +275,13 @@ const createCrudImplementation = (
   },
   count: async (input) => {
     switch (input.model) {
+      case "bundle_events":
+        return distinctCount(
+          tables.bundle_events.rows.filter((row) =>
+            matchesAll(row, input.where),
+          ),
+          input.distinct,
+        );
       case "bundles": {
         const rows = tables.bundles.rows.filter((row) =>
           matchesAll(row, input.where),
@@ -448,6 +455,25 @@ const createImplementation = (tables: Tables): DatabasePluginImplementation => {
 
   return {
     ...createCrudImplementation(tables),
+    recordInsights: ({ event, installation }) =>
+      withMutationLock(() => {
+        if (tables.bundle_events.rows.some(({ id }) => id === event.id)) return;
+        const index = tables.bundle_installations.rows.findIndex(
+          ({ install_id }) => install_id === installation.install_id,
+        );
+        const current = tables.bundle_installations.rows[index];
+        tables.bundle_events.rows.push(structuredClone(event));
+        if (current === undefined) {
+          tables.bundle_installations.rows.push(structuredClone(installation));
+        } else if (
+          installation.received_at_ms > current.received_at_ms ||
+          (installation.received_at_ms === current.received_at_ms &&
+            installation.id > current.id)
+        ) {
+          tables.bundle_installations.rows[index] =
+            structuredClone(installation);
+        }
+      }),
     insertChannel: ({ row }) =>
       withMutationLock(() => {
         const existing = tables.channels.rows.find(

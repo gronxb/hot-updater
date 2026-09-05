@@ -71,6 +71,32 @@ describe("firebase firestore index template", () => {
       queryScope: "COLLECTION",
     });
 
+    for (const field of ["from_bundle_id", "to_bundle_id"]) {
+      for (const order of ["ASCENDING", "DESCENDING"]) {
+        expect(indexFile.indexes).toContainEqual({
+          collectionGroup: FIREBASE_V1_COLLECTION_NAMES.bundleEvents,
+          fields: [
+            { fieldPath: "type", order: "ASCENDING" },
+            { fieldPath: "platform", order: "ASCENDING" },
+            { fieldPath: "channel", order: "ASCENDING" },
+            { fieldPath: field, order: "ASCENDING" },
+            { fieldPath: "received_at_ms", order },
+            { fieldPath: "id", order: "DESCENDING" },
+          ],
+          queryScope: "COLLECTION",
+        });
+      }
+    }
+    for (const extra of [[], ["to_bundle_id"]]) {
+      expect(indexFile.indexes).toContainEqual({
+        collectionGroup: FIREBASE_V1_COLLECTION_NAMES.bundleInstallations,
+        fields: ["platform", "channel", ...extra, "received_at_ms"].map(
+          (fieldPath) => ({ fieldPath, order: "ASCENDING" }),
+        ),
+        queryScope: "COLLECTION",
+      });
+    }
+
     expect(indexFile.indexes).toContainEqual({
       collectionGroup: FIREBASE_V1_COLLECTION_NAMES.bundles,
       fields: [

@@ -5,7 +5,7 @@ import {
 } from "./errors";
 import { parseBundleEventRequest } from "./eventInput";
 import {
-  parseActiveInstallationInput,
+  parseReportingOverviewInput,
   parseEventPageInput,
   parseUserInstallationPageInput,
 } from "./queryInput";
@@ -25,7 +25,11 @@ const requireParam = (
   if (value === undefined || value.length === 0) {
     throw new InsightsBadRequestError(`Missing route parameter: ${key}`);
   }
-  return value;
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    throw new InsightsBadRequestError(`Invalid route parameter: ${key}`);
+  }
 };
 
 const run = async (operation: () => Promise<Response>): Promise<Response> => {
@@ -53,26 +57,24 @@ export const createInsightsRouteHandlers = (
       await provider.appendBundleEvent(await parseBundleEventRequest(request));
       return new Response(null, { status: 204 });
     }),
-  getActiveInstallationOverview: (_params, request) =>
+  getReportingOverview: (_params, request) =>
     query(() =>
-      provider.getActiveInstallationOverview(
-        parseActiveInstallationInput(request),
-      ),
+      provider.getReportingOverview(parseReportingOverviewInput(request)),
     ),
   getInstallation: (params) =>
     run(async () => {
-      const installation = await provider.getInstallation(
-        requireParam(params, "installId"),
-      );
+      const installation = await provider.getInstallation({
+        installId: requireParam(params, "installId"),
+      });
       return installation === null
         ? json({ error: "Installation not found" }, 404)
         : json(installation, 200);
     }),
-  pageEvents: (_params, request) =>
-    query(() => provider.pageEvents(parseEventPageInput(request))),
-  pageInstallationEvents: (params, request) =>
+  listEvents: (_params, request) =>
+    query(() => provider.listEvents(parseEventPageInput(request))),
+  listInstallationEvents: (params, request) =>
     query(() =>
-      provider.pageInstallationEvents({
+      provider.listInstallationEvents({
         ...parseEventPageInput(request),
         installId: requireParam(params, "installId"),
       }),
@@ -94,9 +96,9 @@ export const registerInsightsClientRoutes = (
 export const registerInsightsAdminRoutes = (
   add: (method: string, path: string, handler: string) => void,
 ): void => {
-  add("GET", "/events", "pageEvents");
-  add("GET", "/installations/active", "getActiveInstallationOverview");
+  add("GET", "/events", "listEvents");
+  add("GET", "/overview", "getReportingOverview");
   add("GET", "/installations", "pageInstallationsByCurrentUserId");
-  add("GET", "/installations/:installId/events", "pageInstallationEvents");
+  add("GET", "/installations/:installId/events", "listInstallationEvents");
   add("GET", "/installations/:installId", "getInstallation");
 };

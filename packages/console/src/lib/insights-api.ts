@@ -1,27 +1,26 @@
+import type { InsightsEventPageInput } from "@hot-updater/server";
 import { useQuery } from "@tanstack/react-query";
 
 import {
   findInsightsInstallationsRpc,
   getInsightsInstallationRpc,
   getReportingInstallationsRpc,
-  pageInsightsEventsRpc,
-  pageInsightsInstallationEventsRpc,
+  listInsightsEventsRpc,
+  listInsightsInstallationEventsRpc,
   type InsightsWindow,
+  type InsightsOverviewInput,
   type ReportingInstallations,
 } from "./insights-rpc";
 
-export type { InsightsWindow, ReportingInstallations };
+export type { InsightsWindow, InsightsOverviewInput, ReportingInstallations };
 
 const STALE_TIME_MS = 30_000;
 
 const queryKeys = {
-  reportingInstallations: (window: InsightsWindow) =>
-    ["insights", "reporting-installations", window] as const,
-  events: (input: {
-    readonly beforeReceivedAtMs: number;
-    readonly cursor?: string;
-    readonly limit: number;
-  }) => ["insights", "events", input] as const,
+  reportingInstallations: (input: InsightsOverviewInput) =>
+    ["insights", "reporting-installations", input] as const,
+  events: (input: InsightsEventPageInput) =>
+    ["insights", "events", input] as const,
   installations: (input: {
     readonly cursor?: string;
     readonly identity: string;
@@ -37,25 +36,21 @@ const queryKeys = {
   }) => ["insights", "installation-events", input] as const,
 };
 
-export const useReportingInstallationsQuery = (window: InsightsWindow) =>
+export const useReportingInstallationsQuery = (input: InsightsOverviewInput) =>
   useQuery({
-    queryKey: queryKeys.reportingInstallations(window),
-    queryFn: () => getReportingInstallationsRpc({ data: { window } }),
+    queryKey: queryKeys.reportingInstallations(input),
+    queryFn: () => getReportingInstallationsRpc({ data: input }),
     refetchOnWindowFocus: true,
     staleTime: STALE_TIME_MS,
   });
 
 export const useInsightsEventsQuery = (
-  input: {
-    readonly beforeReceivedAtMs: number;
-    readonly cursor?: string;
-    readonly limit: number;
-  },
+  input: InsightsEventPageInput,
   enabled: boolean,
 ) =>
   useQuery({
     queryKey: queryKeys.events(input),
-    queryFn: () => pageInsightsEventsRpc({ data: input }),
+    queryFn: () => listInsightsEventsRpc({ data: input }),
     enabled,
     refetchOnWindowFocus: true,
     staleTime: STALE_TIME_MS,
@@ -98,7 +93,7 @@ export const useInsightsInstallationEventsQuery = (
 ) =>
   useQuery({
     queryKey: queryKeys.installationEvents(input),
-    queryFn: () => pageInsightsInstallationEventsRpc({ data: input }),
+    queryFn: () => listInsightsInstallationEventsRpc({ data: input }),
     enabled: enabled && input.installId.length > 0,
     refetchOnWindowFocus: true,
     staleTime: STALE_TIME_MS,

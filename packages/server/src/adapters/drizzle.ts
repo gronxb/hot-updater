@@ -15,8 +15,9 @@ import type {
   ORMProvider,
   SchemaGenerator,
 } from "../db/types";
-import { createDrizzleCrud } from "./drizzleCrud";
+import { createDrizzleCrud, recordDrizzleInsights } from "./drizzleCrud";
 import { createLazyDB } from "./drizzleLazyDB";
+import { runInsightsTransaction } from "./insightsTransaction";
 
 export type DrizzleProvider = Exclude<
   ORMProvider,
@@ -38,6 +39,18 @@ const createImplementation = (
   const transaction = db.transaction?.bind(db);
   return {
     ...crud,
+    recordInsights: (input) => {
+      if (transaction === undefined) {
+        throw new Error(
+          "Drizzle Insights recording requires transaction support.",
+        );
+      }
+      return runInsightsTransaction(() =>
+        transaction((transactionDatabase) =>
+          recordDrizzleInsights(transactionDatabase, config.provider, input),
+        ),
+      );
+    },
     deleteChannel: (input) => {
       if (transaction === undefined) {
         throw new Error(
@@ -116,14 +129,13 @@ export const drizzleAdapter = (
         delete: (input) => getAdapter().models.channels.delete(input),
       },
       insights: {
-        append: (row) => getAdapter().models.insights.append(row),
-        pageEvents: (input) => getAdapter().models.insights.pageEvents(input),
-        getInstallation: (installId) =>
-          getAdapter().models.insights.getInstallation(installId),
-        pageInstallationsByCurrentUserId: (input) =>
-          getAdapter().models.insights.pageInstallationsByCurrentUserId(input),
-        countActiveInstallations: (input) =>
-          getAdapter().models.insights.countActiveInstallations(input),
+        record: (input) => getAdapter().models.insights.record(input),
+        listEvents: (input) => getAdapter().models.insights.listEvents(input),
+        findInstallations: (input) =>
+          getAdapter().models.insights.findInstallations(input),
+        countInstallations: (input) =>
+          getAdapter().models.insights.countInstallations(input),
+        countEvents: (input) => getAdapter().models.insights.countEvents(input),
       },
       apiKeys: {
         create: (row) => getAdapter().models.apiKeys.create(row),

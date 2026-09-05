@@ -23,6 +23,8 @@ describe("UUIDv7", () => {
     "00000000-0000-4000-8000-000000000001",
     "00000000-0000-7000-0000-000000000001",
     "00000000-0000-7000-8000-00000000000A",
+    "00000000-0000-7000-8000-000000000001\n",
+    "00000000-0000-7000-8000-000000000001\r",
   ])("rejects non-canonical Release ID %s", (value) => {
     expect(isUUIDv7(value)).toBe(false);
     expect(() => extractTimestampFromUUIDv7(value)).toThrow(

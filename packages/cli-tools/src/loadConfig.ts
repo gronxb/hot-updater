@@ -71,19 +71,19 @@ const missingDatabase = createDatabasePlugin({
       },
     },
     insights: {
-      append: async () => {
+      record: async () => {
         throw new Error("database plugin is required");
       },
-      pageEvents: async () => {
+      listEvents: async () => {
         throw new Error("database plugin is required");
       },
-      getInstallation: async () => {
+      findInstallations: async () => {
         throw new Error("database plugin is required");
       },
-      pageInstallationsByCurrentUserId: async () => {
+      countInstallations: async () => {
         throw new Error("database plugin is required");
       },
-      countActiveInstallations: async () => {
+      countEvents: async () => {
         throw new Error("database plugin is required");
       },
     },

@@ -30,7 +30,7 @@ const compare = (left: unknown, right: unknown): number => {
     return left - right;
   }
   if (typeof left === "string" && typeof right === "string") {
-    return left.localeCompare(right);
+    return Buffer.compare(Buffer.from(left), Buffer.from(right));
   }
   return 0;
 };
@@ -102,6 +102,7 @@ const resolveExpression = (row: MongoTestRow, expression: unknown): unknown => {
 
 const matchesField = (current: unknown, condition: unknown): boolean => {
   if (!isRecord(condition)) return Object.is(current, condition);
+  if ("$eq" in condition) return Object.is(current, condition["$eq"]);
   if (typeof condition["$exists"] === "boolean") {
     return condition["$exists"] ? current !== undefined : current === undefined;
   }

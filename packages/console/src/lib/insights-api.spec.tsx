@@ -47,22 +47,30 @@ describe("lean Insights queries", () => {
       defaultOptions: { queries: { retry: false } },
     });
     vi.mocked(getReportingInstallationsRpc).mockResolvedValue({
-      activeInstallations: 17,
-      asOfMs: 100,
+      platform: "ios",
+      channel: "production",
+      sinceMs: 0,
+      beforeReceivedAtMs: 100,
+      reportingInstallations: { count: 17, measuredAtMs: 100 },
       window: "7d",
     });
 
-    const { result } = renderHook(() => useReportingInstallationsQuery("7d"), {
+    const input = {
+      platform: "ios",
+      channel: "production",
+      window: "7d",
+    } as const;
+    const { result } = renderHook(() => useReportingInstallationsQuery(input), {
       wrapper: createWrapper(queryClient),
     });
 
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
     expect(getReportingInstallationsRpc).toHaveBeenCalledWith({
-      data: { window: "7d" },
+      data: input,
     });
     expect(
-      queryClient.getQueryData(["insights", "reporting-installations", "7d"]),
-    ).toMatchObject({ activeInstallations: 17 });
+      queryClient.getQueryData(["insights", "reporting-installations", input]),
+    ).toMatchObject({ reportingInstallations: { count: 17 } });
     queryClient.clear();
   });
 });

@@ -16,6 +16,7 @@ const createMethods = () => ({
   count: unimplemented,
   findOne: unimplemented,
   findMany: unimplemented,
+  recordInsights: unimplemented,
   insertChannel: unimplemented,
   deleteChannel: unimplemented,
 });

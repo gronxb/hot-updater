@@ -1,5 +1,8 @@
 import type {
-  ActiveInstallationOverview,
+  ReportingOverview,
+  InsightsScope,
+  InsightsEventPageInput,
+  InsightsInstallationEventPageInput,
   ActiveInstallationWindow,
   InsightsProvider,
 } from "@hot-updater/server";
@@ -11,17 +14,15 @@ import type {
 } from "./insights-view";
 
 export type InsightsWindow = ActiveInstallationWindow;
-export type ReportingInstallations = ActiveInstallationOverview;
-
-type EventsPageInput = {
-  readonly beforeReceivedAtMs: number;
-  readonly cursor?: string;
-  readonly limit: number;
+export type ReportingInstallations = ReportingOverview;
+export type InsightsOverviewInput = InsightsScope & {
+  readonly window: InsightsWindow;
+  readonly bundleId?: string;
 };
 
-type InstallationEventsPageInput = EventsPageInput & {
-  readonly installId: string;
-};
+type EventsPageInput = InsightsEventPageInput;
+
+type InstallationEventsPageInput = InsightsInstallationEventPageInput;
 
 type InstallationsPageInput = {
   readonly cursor?: string;
@@ -35,7 +36,7 @@ const runtime = async (): Promise<InsightsProvider> => {
   return hotUpdater;
 };
 
-const readWindow = (input: { readonly window: InsightsWindow }) => input;
+const readOverview = (input: InsightsOverviewInput) => input;
 const readEventsPage = (input: EventsPageInput) => input;
 const readInstallationEventsPage = (input: InstallationEventsPageInput) =>
   input;
@@ -43,26 +44,22 @@ const readInstallationPage = (input: InstallationsPageInput) => input;
 const readInstallId = (input: { readonly installId: string }) => input;
 
 export const getReportingInstallationsRpc = createServerFn({ method: "GET" })
-  .validator(readWindow)
-  .handler(async ({ data }) =>
-    (await runtime()).getActiveInstallationOverview(data),
-  );
+  .validator(readOverview)
+  .handler(async ({ data }) => (await runtime()).getReportingOverview(data));
 
-export const pageInsightsEventsRpc = createServerFn({ method: "GET" })
+export const listInsightsEventsRpc = createServerFn({ method: "GET" })
   .validator(readEventsPage)
-  .handler(async ({ data }) => (await runtime()).pageEvents(data));
+  .handler(async ({ data }) => (await runtime()).listEvents(data));
 
-export const pageInsightsInstallationEventsRpc = createServerFn({
+export const listInsightsInstallationEventsRpc = createServerFn({
   method: "GET",
 })
   .validator(readInstallationEventsPage)
-  .handler(async ({ data }) => (await runtime()).pageInstallationEvents(data));
+  .handler(async ({ data }) => (await runtime()).listInstallationEvents(data));
 
 export const getInsightsInstallationRpc = createServerFn({ method: "GET" })
   .validator(readInstallId)
-  .handler(async ({ data }) =>
-    (await runtime()).getInstallation(data.installId),
-  );
+  .handler(async ({ data }) => (await runtime()).getInstallation(data));
 
 export const findInsightsInstallationsRpc = createServerFn({ method: "GET" })
   .validator(readInstallationPage)
@@ -70,7 +67,7 @@ export const findInsightsInstallationsRpc = createServerFn({ method: "GET" })
     const insights = await runtime();
     const install = data.cursor
       ? null
-      : await insights.getInstallation(data.identity);
+      : await insights.getInstallation({ installId: data.identity });
     const matches = await insights.pageInstallationsByCurrentUserId({
       cursor: data.cursor,
       limit: Math.max(1, data.limit - (install === null ? 0 : 1)),

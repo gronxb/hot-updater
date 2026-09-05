@@ -86,7 +86,10 @@ const supabaseMock = vi.hoisted(() => {
     if (typeof left === "number" && typeof right === "number") {
       return left - right;
     }
-    return String(left).localeCompare(String(right));
+    return Buffer.compare(
+      Buffer.from(String(left)),
+      Buffer.from(String(right)),
+    );
   };
 
   const matchesPredicate = (row: Row, expression: string): boolean => {
@@ -433,6 +436,29 @@ const supabaseMock = vi.hoisted(() => {
       },
       rpc: async (name: string, args?: Record<string, unknown>) => {
         const bundles = [...rows.bundles.values()];
+        if (name === "hot_updater_v1_record_insights") {
+          const event = args?.p_event as Row;
+          const installation = args?.p_installation as Row;
+          if (!rows.bundle_events.has(String(event.id))) {
+            rows.bundle_events.set(String(event.id), event);
+            const current = rows.bundle_installations.get(
+              String(installation.install_id),
+            );
+            if (
+              current === undefined ||
+              Number(installation.received_at_ms) >
+                Number(current.received_at_ms) ||
+              (installation.received_at_ms === current.received_at_ms &&
+                String(installation.id) > String(current.id))
+            ) {
+              rows.bundle_installations.set(
+                String(installation.install_id),
+                installation,
+              );
+            }
+          }
+          return { data: null, error: null };
+        }
         if (name === "hot_updater_v1_delete_channel") {
           const id = String(args?.p_id);
           if (!rows.channels.has(id)) {

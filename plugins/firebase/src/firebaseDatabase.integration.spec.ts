@@ -1,5 +1,7 @@
 import {
   createDatabaseClient,
+  compareInsightsText,
+  toInsightsInstallationRow,
   type BundleEventRow,
   type DatabasePlugin,
 } from "@hot-updater/plugin-core";
@@ -7,16 +9,22 @@ import {
   setupDatabaseClientTestSuite,
   setupDatabasePluginTestSuite,
 } from "@hot-updater/test-utils";
+import { Transaction } from "firebase-admin/firestore";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { createBundleEventRowFixture } from "../../../packages/test-utils/src/databaseTestFixtures";
 import { createFirestoreMock } from "../test-utils/createFirestoreMock";
 import { firebaseDatabase } from "./firebaseDatabase";
-import { firebaseChannelDocumentId } from "./firebaseDatabasePersistence";
+import {
+  firebaseChannelDocumentId,
+  firebaseInstallationDocumentId,
+} from "./firebaseDatabasePersistence";
+import { migrateFirebaseInsights } from "./firebaseInsightsMigration";
 
 const PROJECT_ID = "firebase-database-test";
 
 const {
+  firestore,
   bundleEventsCollection,
   bundleInstallationsCollection,
   bundlePatchesCollection,
@@ -24,6 +32,7 @@ const {
   channelsCollection,
   clearCollections,
   legacyBundlesCollection,
+  legacyInstallationsCollection,
   legacySettingsCollection,
   settingsCollection,
 } = createFirestoreMock(PROJECT_ID);
@@ -104,7 +113,7 @@ describe("firebase fixed-model document updates", () => {
 describe("firebase infrastructure generation", () => {
   beforeEach(clearCollections);
 
-  it.each([1, 2, 3, 5])(
+  it.each([1, 2, 3, 6])(
     "rejects adapter version %s before reading database collections",
     async (version) => {
       const marker = { version, existing_option: "preserve-me" };
@@ -145,14 +154,84 @@ describe("firebase infrastructure generation", () => {
     ).toEqual({ version: 3 });
     expect(
       (await settingsCollection.doc("database_adapter_version").get()).data(),
-    ).toEqual({ version: 4 });
+    ).toEqual({ version: 5 });
   });
 
   it("initializes an empty database as the v1 adapter", async () => {
     await expect(findAllBundles(createPlugin())).resolves.toEqual([]);
     expect(
       (await settingsCollection.doc("database_adapter_version").get()).data(),
-    ).toEqual({ version: 4 });
+    ).toEqual({ version: 5 });
+  });
+
+  it("requires an explicit resumable migration for populated legacy installation keys", async () => {
+    await settingsCollection
+      .doc("database_adapter_version")
+      .set({ version: 4 });
+    const ids = [
+      "a",
+      "install_YQ",
+      ...Array.from(
+        { length: 199 },
+        (_, index) => `legacy-${index.toString().padStart(3, "0")}`,
+      ),
+    ];
+    const batch = firestore.batch();
+    for (const [index, install_id] of ids.entries()) {
+      const event = {
+        ...createBundleEventRowFixture(String(1000 + index), 100),
+        install_id,
+        user_id: "migrated-user",
+      };
+      batch.set(
+        legacyInstallationsCollection.doc(install_id),
+        toInsightsInstallationRow(event),
+      );
+    }
+    batch.set(legacyInstallationsCollection.doc("zz-malformed"), {
+      install_id: "zz-malformed",
+    });
+    await batch.commit();
+    await expect(
+      createPlugin().models.insights.findInstallations({ installId: "a" }),
+    ).rejects.toThrow("migrateFirebaseInsights(config)");
+    const config = { projectId: PROJECT_ID };
+    await expect(migrateFirebaseInsights(config)).rejects.toThrow(
+      "zz-malformed",
+    );
+    expect((await bundleInstallationsCollection.get()).size).toBe(200);
+    expect(
+      (await settingsCollection.doc("database_adapter_version").get()).data()
+        ?.version,
+    ).toBe(4);
+    const repaired = {
+      ...createBundleEventRowFixture("1201", 100),
+      install_id: "zz-malformed",
+      user_id: "migrated-user",
+    };
+    await legacyInstallationsCollection
+      .doc(repaired.install_id)
+      .set(toInsightsInstallationRow(repaired));
+    await migrateFirebaseInsights(config);
+    await migrateFirebaseInsights(config);
+    expect(
+      (await settingsCollection.doc("database_adapter_version").get()).data()
+        ?.version,
+    ).toBe(5);
+    expect((await legacyInstallationsCollection.get()).size).toBe(202);
+    expect((await bundleInstallationsCollection.get()).size).toBe(202);
+    for (const installId of ["a", "install_YQ"]) {
+      await expect(
+        createPlugin().models.insights.findInstallations({ installId }),
+      ).resolves.toEqual([expect.objectContaining({ install_id: installId })]);
+      expect(
+        (
+          await bundleInstallationsCollection
+            .doc(firebaseInstallationDocumentId(installId))
+            .get()
+        ).exists,
+      ).toBe(true);
+    }
   });
 });
 
@@ -191,6 +270,159 @@ describe("firebase bounded reads", () => {
 describe("firebase insights storage", () => {
   beforeEach(clearCollections);
 
+  it("keeps arbitrary exact installation IDs separate and pages in UTF-8 order", async () => {
+    const insights = createPlugin().models.insights;
+    const ids = ["a/b", ".", "..", "__reserved__", "A", "a", "\uE000", "😀"];
+    for (const [index, install_id] of ids.entries()) {
+      const event = {
+        ...createBundleEventRowFixture(String(980 + index), 100),
+        install_id,
+        user_id: "unicode-user",
+      };
+      await insights.record({
+        event,
+        installation: toInsightsInstallationRow(event),
+      });
+      await expect(
+        insights.findInstallations({ installId: install_id }),
+      ).resolves.toEqual([toInsightsInstallationRow(event)]);
+    }
+    const actual: string[] = [];
+    for (;;) {
+      const page = await insights.findInstallations({
+        userId: "unicode-user",
+        afterInstallId: actual.at(-1),
+        limit: 2,
+      });
+      actual.push(...page.map((row) => row.install_id));
+      if (page.length < 2) break;
+    }
+    expect(actual).toEqual(ids.toSorted(compareInsightsText));
+  });
+
+  it("rolls back an event when its installation write fails and retries safely", async () => {
+    const insights = createPlugin().models.insights;
+    const event = createBundleEventRowFixture("941", 100);
+    const input = { event, installation: toInsightsInstallationRow(event) };
+    const write = vi
+      .spyOn(Transaction.prototype, "set")
+      .mockImplementationOnce(() => {
+        throw new Error("injected installation write failure");
+      });
+    try {
+      await expect(insights.record(input)).rejects.toThrow(
+        "injected installation write failure",
+      );
+    } finally {
+      write.mockRestore();
+    }
+    expect((await bundleEventsCollection.doc(event.id).get()).exists).toBe(
+      false,
+    );
+    await expect(
+      insights.findInstallations({ installId: event.install_id }),
+    ).resolves.toEqual([]);
+    await insights.record(input);
+    await insights.record(input);
+    expect((await bundleEventsCollection.get()).size).toBe(1);
+    await expect(
+      insights.findInstallations({ installId: event.install_id }),
+    ).resolves.toEqual([input.installation]);
+  });
+
+  it("serializes concurrent reports, clears current user, and never loads other models", async () => {
+    const insights = createPlugin().models.insights;
+    await insights.findInstallations({ installId: "initialize-schema" });
+    await bundlesCollection.doc("unrelated-malformed").set({ invalid: true });
+    const events = ["950", "953", "951", "952"].map((suffix) => ({
+      ...createBundleEventRowFixture(suffix, 200),
+      install_id: "concurrent-installation",
+      user_id: suffix === "953" ? null : "previous-user",
+    }));
+    await Promise.all(
+      events.map((event) =>
+        insights.record({
+          event,
+          installation: toInsightsInstallationRow(event),
+        }),
+      ),
+    );
+    const winner = events[1]!;
+    await expect(
+      insights.findInstallations({ installId: winner.install_id }),
+    ).resolves.toEqual([toInsightsInstallationRow(winner)]);
+    await expect(
+      insights.findInstallations({ userId: "previous-user", limit: 10 }),
+    ).resolves.toEqual([]);
+    expect((await bundleEventsCollection.get()).size).toBe(4);
+    await expect(
+      insights.countInstallations({
+        platform: "ios",
+        channel: "production",
+        sinceMs: 100,
+      }),
+    ).resolves.toBe(1);
+  });
+
+  it("counts recovery against its source with the same scope and time boundaries as its list", async () => {
+    const insights = createPlugin().models.insights;
+    const first = createBundleEventRowFixture("960", 100);
+    const bundleId = first.to_bundle_id;
+    const recovered: BundleEventRow = {
+      ...createBundleEventRowFixture("961", 200),
+      type: "RECOVERED",
+      update_strategy: "appVersion",
+      install_id: first.install_id,
+      from_bundle_id: bundleId,
+      to_bundle_id: first.from_bundle_id!,
+    };
+    const excluded = {
+      ...recovered,
+      id: createBundleEventRowFixture("962", 300).id,
+      received_at_ms: 300,
+    };
+    for (const event of [
+      first,
+      recovered,
+      excluded,
+      {
+        ...recovered,
+        id: createBundleEventRowFixture("963", 200).id,
+        channel: "other",
+      },
+    ]) {
+      await insights.record({
+        event,
+        installation: toInsightsInstallationRow(event),
+      });
+    }
+    const filter = {
+      type: "RECOVERED" as const,
+      platform: "ios" as const,
+      channel: "production",
+      fromBundleId: bundleId,
+    };
+    await expect(
+      insights.countEvents({ filter, sinceMs: 200, beforeReceivedAtMs: 300 }),
+    ).resolves.toBe(1);
+    await expect(
+      insights.listEvents({
+        filter: { kind: "bundle", ...filter },
+        sinceMs: 200,
+        beforeReceivedAtMs: 300,
+        limit: 10,
+      }),
+    ).resolves.toEqual([recovered]);
+    await expect(
+      insights.countInstallations({
+        platform: "ios",
+        channel: "production",
+        sinceMs: 100,
+        bundleId,
+      }),
+    ).resolves.toBe(0);
+  });
+
   it("keeps the latest installation by received time and event id", async () => {
     const insights = createPlugin().models.insights;
     const latest = {
@@ -209,17 +441,28 @@ describe("firebase insights storage", () => {
       user_id: latest.user_id,
     };
 
-    await insights.append(latest);
-    await insights.append(older);
-    await insights.append(tieWinner);
+    await insights.record({
+      event: latest,
+      installation: toInsightsInstallationRow(latest),
+    });
+    await insights.record({
+      event: older,
+      installation: toInsightsInstallationRow(older),
+    });
+    await insights.record({
+      event: tieWinner,
+      installation: toInsightsInstallationRow(tieWinner),
+    });
 
-    await expect(insights.getInstallation(latest.install_id)).resolves.toEqual(
+    await expect(
+      insights.findInstallations({ installId: latest.install_id }),
+    ).resolves.toEqual([
       expect.objectContaining({
         id: tieWinner.id,
         install_id: latest.install_id,
         received_at_ms: 200,
       }),
-    );
+    ]);
     expect((await bundleInstallationsCollection.get()).size).toBe(1);
     expect((await bundleEventsCollection.get()).size).toBe(3);
   });
@@ -242,24 +485,33 @@ describe("firebase insights storage", () => {
       from_bundle_id: null,
       update_strategy: null,
     };
-    await insights.append(applied);
-    await insights.append(recovered);
-    await insights.append(unchanged);
+    await insights.record({
+      event: applied,
+      installation: toInsightsInstallationRow(applied),
+    });
+    await insights.record({
+      event: recovered,
+      installation: toInsightsInstallationRow(recovered),
+    });
+    await insights.record({
+      event: unchanged,
+      installation: toInsightsInstallationRow(unchanged),
+    });
     await bundleEventsCollection.doc("malformed-old-event").set({
       id: "malformed-old-event",
       received_at_ms: 1,
     });
 
     await expect(
-      insights.pageEvents({
-        selector: { kind: "all" },
+      insights.listEvents({
+        filter: { kind: "all" },
         beforeReceivedAtMs: 1_000,
         limit: 1,
       }),
     ).resolves.toEqual([unchanged]);
     await expect(
-      insights.pageEvents({
-        selector: {
+      insights.listEvents({
+        filter: {
           kind: "installationMovement",
           installId: applied.install_id,
         },
@@ -286,12 +538,21 @@ describe("firebase insights storage", () => {
       install_id: "installation-c",
       user_id: "other-user",
     };
-    await insights.append(first);
-    await insights.append(second);
-    await insights.append(inactive);
+    await insights.record({
+      event: first,
+      installation: toInsightsInstallationRow(first),
+    });
+    await insights.record({
+      event: second,
+      installation: toInsightsInstallationRow(second),
+    });
+    await insights.record({
+      event: inactive,
+      installation: toInsightsInstallationRow(inactive),
+    });
 
     await expect(
-      insights.pageInstallationsByCurrentUserId({
+      insights.findInstallations({
         userId: "shared-user",
         limit: 1,
       }),
@@ -299,7 +560,7 @@ describe("firebase insights storage", () => {
       expect.objectContaining({ install_id: first.install_id }),
     ]);
     await expect(
-      insights.pageInstallationsByCurrentUserId({
+      insights.findInstallations({
         userId: "shared-user",
         afterInstallId: first.install_id,
         limit: 10,
@@ -308,7 +569,11 @@ describe("firebase insights storage", () => {
       expect.objectContaining({ install_id: second.install_id }),
     ]);
     await expect(
-      insights.countActiveInstallations({ sinceMs: 100 }),
+      insights.countInstallations({
+        platform: "ios",
+        channel: "production",
+        sinceMs: 100,
+      }),
     ).resolves.toBe(2);
   });
 });

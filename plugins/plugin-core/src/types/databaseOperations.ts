@@ -70,7 +70,7 @@ export type DatabaseModelCapabilities = {
     readonly create: true;
     readonly update: false;
     readonly delete: false;
-    readonly count: false;
+    readonly count: true;
     readonly findOne: false;
     readonly findMany: true;
   };
@@ -311,6 +311,10 @@ export interface TransactionDatabasePluginImplementation {
 }
 
 export interface DatabasePluginImplementation {
+  /** Native atomic event insert and monotonic installation update. */
+  recordInsights(
+    input: import("./databasePlugin").InsightsRecordInput,
+  ): Promise<void>;
   create(
     input: CreateDatabaseImplementationInput,
   ): Promise<DatabaseImplementationResult>;

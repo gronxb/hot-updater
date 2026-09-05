@@ -56,7 +56,9 @@ describe("findInsightsInstallationsRpc", () => {
       data: { identity: "install-1", limit: 20 },
     });
 
-    expect(mocks.getInstallation).toHaveBeenCalledWith("install-1");
+    expect(mocks.getInstallation).toHaveBeenCalledWith({
+      installId: "install-1",
+    });
     expect(mocks.pageInstallations).toHaveBeenCalledWith({
       cursor: undefined,
       limit: 19,

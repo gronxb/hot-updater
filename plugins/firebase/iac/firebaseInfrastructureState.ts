@@ -26,7 +26,7 @@ export const resolveFirebaseInfrastructureState = ({
   readonly adapterVersion: unknown;
   readonly hasData: boolean;
 }): FirebaseInfrastructureState => {
-  if (adapterVersion === 4) return "v1";
+  if (adapterVersion === 4 || adapterVersion === 5) return "v1";
   if (adapterVersion !== undefined || hasData) return "incompatible";
   return "fresh";
 };

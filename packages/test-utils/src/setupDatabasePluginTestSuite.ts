@@ -2,6 +2,7 @@ import type { DatabasePlugin } from "@hot-updater/plugin-core";
 
 import { registerDatabasePluginBundleTests } from "./databasePluginBundleTests";
 import { registerDatabasePluginCapabilityTests } from "./databasePluginCapabilityTests";
+import { registerDatabasePluginInsightsTests } from "./databasePluginInsightsTests";
 import { registerDatabasePluginOfficialDomainTests } from "./databasePluginOfficialDomainTests";
 import { registerDatabasePluginQueryTests } from "./databasePluginQueryTests";
 import { registerDatabasePluginRelationTests } from "./databasePluginRelationTests";
@@ -22,5 +23,6 @@ export const setupDatabasePluginTestSuite = (
     registerDatabasePluginReleaseCatalogTests(state);
     registerDatabasePluginCapabilityTests(state);
     registerDatabasePluginOfficialDomainTests(state);
+    registerDatabasePluginInsightsTests(state);
   });
 };

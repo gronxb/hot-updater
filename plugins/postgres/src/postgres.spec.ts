@@ -192,6 +192,169 @@ describe("PostgreSQL artifact byte-size constraints", () => {
 });
 
 describe("PostgreSQL Insights projection", () => {
+  it("counts beyond 50,000 reports and uses the bundle range index for a bounded drill-down", async () => {
+    const { database, plugin } = await createPostgresTestPlugin();
+    const bundleId = "00000000-0000-7000-8000-000000001002";
+    try {
+      await database.exec(`
+        INSERT INTO bundle_events (
+          id, type, install_id, from_bundle_id, to_bundle_id, platform,
+          app_version, channel, cohort, update_strategy, received_at_ms
+        )
+        SELECT ('00000000-0000-7000-8000-' || lpad(n::text, 12, '0'))::uuid,
+          'UPDATE_APPLIED', 'install-scale',
+          '00000000-0000-7000-8000-000000001001'::uuid,
+          '${bundleId}'::uuid, 'ios', '1.0.0', 'production', '0', 'appVersion', n
+        FROM generate_series(1, 50001) AS n;
+        ANALYZE bundle_events;
+      `);
+      const filter = {
+        type: "UPDATE_APPLIED",
+        platform: "ios",
+        channel: "production",
+        toBundleId: bundleId,
+      } as const;
+      await expect(
+        plugin.models.insights.countEvents({
+          filter,
+          sinceMs: 0,
+          beforeReceivedAtMs: 50002,
+        }),
+      ).resolves.toBe(50001);
+      const rows = await plugin.models.insights.listEvents({
+        filter: { kind: "bundle", ...filter },
+        sinceMs: 50000,
+        beforeReceivedAtMs: 50002,
+        limit: 101,
+      });
+      expect(rows.map((row) => row.received_at_ms)).toEqual([50001, 50000]);
+      const sparseEvent = {
+        ...insightsEventFixture({
+          id: "00000000-0000-7000-8000-000000050002",
+          installId: "sparse-installation",
+          receivedAtMs: 25000,
+          userId: "sparse-user",
+        }),
+        to_bundle_id: "00000000-0000-7000-8000-000000001003",
+      };
+      await plugin.models.insights.record({
+        event: sparseEvent,
+        installation: installationFixture(sparseEvent),
+      });
+      await database.exec("ANALYZE bundle_events");
+      const plan = await database.query(`
+        EXPLAIN (FORMAT JSON) SELECT * FROM bundle_events
+        WHERE type = 'UPDATE_APPLIED' AND platform = 'ios' AND channel = 'production'
+          AND to_bundle_id = '${sparseEvent.to_bundle_id}' AND received_at_ms >= 0 AND received_at_ms < 50002
+        ORDER BY received_at_ms DESC, id DESC LIMIT 101
+      `);
+      expect(JSON.stringify(plan.rows)).toContain(
+        "bundle_events_to_bundle_idx",
+      );
+    } finally {
+      await plugin.dispose?.();
+    }
+  });
+
+  it("rolls back the event when snapshot storage fails and permits retry", async () => {
+    const { database, plugin } = await createPostgresTestPlugin();
+    const event = insightsEventFixture({
+      id: "00000000-0000-7000-8000-000000002101",
+      installId: "install-atomic",
+      receivedAtMs: 100,
+      userId: "user-before-failure",
+    });
+    const input = { event, installation: installationFixture(event) };
+    try {
+      await database.exec(`
+        CREATE FUNCTION fail_insights_snapshot() RETURNS trigger LANGUAGE plpgsql AS $$
+        BEGIN RAISE EXCEPTION 'injected snapshot failure'; END; $$;
+        CREATE TRIGGER fail_insights_snapshot BEFORE INSERT ON bundle_installations
+        FOR EACH ROW EXECUTE FUNCTION fail_insights_snapshot();
+      `);
+      await expect(plugin.models.insights.record(input)).rejects.toThrow(
+        "injected snapshot failure",
+      );
+      expect(
+        (await database.query("SELECT * FROM bundle_events")).rows,
+      ).toEqual([]);
+      expect(
+        (await database.query("SELECT * FROM bundle_installations")).rows,
+      ).toEqual([]);
+      await database.exec(
+        "DROP TRIGGER fail_insights_snapshot ON bundle_installations",
+      );
+      await plugin.models.insights.record(input);
+      await plugin.models.insights.record(input);
+      expect(
+        (await database.query("SELECT id FROM bundle_events")).rows,
+      ).toEqual([{ id: event.id }]);
+      await expect(
+        plugin.models.insights.findInstallations({
+          installId: event.install_id,
+        }),
+      ).resolves.toEqual([input.installation]);
+    } finally {
+      await plugin.dispose?.();
+    }
+  });
+
+  it("concurrent reports keep the greatest key and duplicate IDs cannot restore a user", async () => {
+    const { plugin } = await createPostgresTestPlugin();
+    const first = insightsEventFixture({
+      id: "00000000-0000-7000-8000-000000002201",
+      installId: "install-race",
+      receivedAtMs: 100,
+      userId: "former-user",
+    });
+    const latest = {
+      ...first,
+      id: "00000000-0000-7000-8000-000000002203",
+      user_id: null,
+    };
+    const stale = { ...first, id: "00000000-0000-7000-8000-000000002202" };
+    try {
+      await Promise.all(
+        [latest, first, stale].map((event) =>
+          plugin.models.insights.record({
+            event,
+            installation: installationFixture(event),
+          }),
+        ),
+      );
+      const reusedId = { ...first, received_at_ms: 200 };
+      await plugin.models.insights.record({
+        event: reusedId,
+        installation: installationFixture(reusedId),
+      });
+      await expect(
+        plugin.models.insights.findInstallations({
+          installId: first.install_id,
+        }),
+      ).resolves.toEqual([installationFixture(latest)]);
+      await expect(
+        plugin.models.insights.findInstallations({
+          userId: "former-user",
+          limit: 10,
+        }),
+      ).resolves.toEqual([]);
+      await expect(
+        plugin.models.insights.countEvents({
+          filter: {
+            type: "UPDATE_APPLIED",
+            platform: "ios",
+            channel: "production",
+            toBundleId: first.to_bundle_id,
+          },
+          sinceMs: 100,
+          beforeReceivedAtMs: 101,
+        }),
+      ).resolves.toBe(3);
+    } finally {
+      await plugin.dispose?.();
+    }
+  });
+
   it("keeps the latest installation row and counts active installations", async () => {
     const { plugin } = await createPostgresTestPlugin();
     const userId = "current-user";
@@ -221,16 +384,28 @@ describe("PostgreSQL Insights projection", () => {
     });
 
     try {
-      await plugin.models.insights.append(first);
-      await plugin.models.insights.append(latestAtSameTime);
-      await plugin.models.insights.append(staleAtSameTime);
-      await plugin.models.insights.append(secondInstallation);
+      await plugin.models.insights.record({
+        event: first,
+        installation: installationFixture(first),
+      });
+      await plugin.models.insights.record({
+        event: latestAtSameTime,
+        installation: installationFixture(latestAtSameTime),
+      });
+      await plugin.models.insights.record({
+        event: staleAtSameTime,
+        installation: installationFixture(staleAtSameTime),
+      });
+      await plugin.models.insights.record({
+        event: secondInstallation,
+        installation: installationFixture(secondInstallation),
+      });
 
       await expect(
-        plugin.models.insights.getInstallation("install-a"),
-      ).resolves.toEqual(installationFixture(latestAtSameTime));
+        plugin.models.insights.findInstallations({ installId: "install-a" }),
+      ).resolves.toEqual([installationFixture(latestAtSameTime)]);
       await expect(
-        plugin.models.insights.pageInstallationsByCurrentUserId({
+        plugin.models.insights.findInstallations({
           userId,
           limit: 10,
         }),
@@ -239,7 +414,11 @@ describe("PostgreSQL Insights projection", () => {
         installationFixture(secondInstallation),
       ]);
       await expect(
-        plugin.models.insights.countActiveInstallations({ sinceMs: 101 }),
+        plugin.models.insights.countInstallations({
+          platform: "ios",
+          channel: "production",
+          sinceMs: 101,
+        }),
       ).resolves.toBe(1);
     } finally {
       await plugin.dispose?.();

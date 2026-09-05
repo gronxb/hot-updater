@@ -1,4 +1,10 @@
-import { cleanup, render, screen, within } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  within,
+} from "@testing-library/react";
 import type { ReactNode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -19,10 +25,17 @@ describe("InsightsOverview", () => {
     render(
       <InsightsOverview
         active={{
-          activeInstallations: 12_345,
-          asOfMs: Date.UTC(2026, 6, 18, 1, 2, 3),
+          platform: "ios",
+          channel: "production",
+          sinceMs: 0,
+          beforeReceivedAtMs: 100,
+          reportingInstallations: {
+            count: 12_345,
+            measuredAtMs: Date.UTC(2026, 6, 18, 1, 2, 3),
+          },
           window: "30d",
         }}
+        onOutcomeSelect={vi.fn()}
         status="success"
       />,
     );
@@ -37,6 +50,48 @@ describe("InsightsOverview", () => {
       screen.getByRole("link", { name: /view events/i }).getAttribute("href"),
     ).toBe("/installations");
     expect(screen.queryByText(/bundle|applied|recovered/i)).toBeNull();
+  });
+
+  it("keeps installation counts independent and opens the exact recovery report range", () => {
+    const onOutcomeSelect = vi.fn();
+    const measure = (count: number) => ({ count, measuredAtMs: 1_000 });
+    render(
+      <InsightsOverview
+        status="success"
+        onOutcomeSelect={onOutcomeSelect}
+        active={{
+          platform: "ios",
+          channel: "beta",
+          window: "7d",
+          sinceMs: 100,
+          beforeReceivedAtMs: 1_000,
+          reportingInstallations: measure(1),
+          bundle: {
+            bundleId: "bundle-B",
+            reportingInstallations: measure(2),
+            appliedReports: measure(5),
+            recoveredReports: measure(3),
+            adoptedReports: measure(0),
+          },
+        }}
+      />,
+    );
+    expect(screen.getByText("Selected bundle installations")).toBeDefined();
+    expect(screen.getByText("2")).toBeDefined();
+    expect(screen.queryByText(/%/)).toBeNull();
+    fireEvent.click(
+      screen.getByRole("button", { name: "View recovered reports" }),
+    );
+    expect(onOutcomeSelect).toHaveBeenCalledWith({
+      bundle: {
+        platform: "ios",
+        channel: "beta",
+        bundleId: "bundle-B",
+        outcome: "recovered",
+      },
+      sinceMs: 100,
+      beforeReceivedAtMs: 1_000,
+    });
   });
 
   it("renders loading and useful error states", () => {

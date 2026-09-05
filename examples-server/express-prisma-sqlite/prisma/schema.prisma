@@ -124,6 +124,8 @@ model bundle_events {
   received_at_ms Float
   @@index([received_at_ms, id], map: "bundle_events_received_at_idx")
   @@index([install_id, type, received_at_ms, id], map: "bundle_events_install_idx")
+  @@index([type, platform, channel, from_bundle_id, received_at_ms, id], map: "bundle_events_from_bundle_idx")
+  @@index([type, platform, channel, to_bundle_id, received_at_ms, id], map: "bundle_events_to_bundle_idx")
 }
 model bundle_installations {
   install_id String @id
@@ -139,6 +141,8 @@ model bundle_installations {
   received_at_ms Float
   @@index([user_id, install_id], map: "bundle_installations_user_id_idx")
   @@index([received_at_ms], map: "bundle_installations_received_at_idx")
+  @@index([platform, channel, received_at_ms], map: "bundle_installations_scope_idx")
+  @@index([platform, channel, to_bundle_id, received_at_ms], map: "bundle_installations_bundle_idx")
 }
 model api_keys {
   id String @id
@@ -153,6 +157,6 @@ model api_keys {
 }
 model private_hot_updater_settings {
   key String @id
-  value String @default("1.0.0")
+  value String @default("1.0.1")
 }
 // --- END HOT-UPDATER MODELS ---

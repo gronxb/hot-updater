@@ -51,6 +51,7 @@ const createFixture = (expectedUpdates: number) => {
       count: async () => 1,
       findOne: async (input) => (input.model === "bundles" ? { ...row } : null),
       findMany: async () => [],
+      recordInsights: async () => undefined,
       insertChannel: async (input) => ({
         row: input.row,
         inserted: true,

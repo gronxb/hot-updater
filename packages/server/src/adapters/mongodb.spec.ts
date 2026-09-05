@@ -1,9 +1,13 @@
-import { createDatabaseClient } from "@hot-updater/plugin-core";
+import {
+  createDatabaseClient,
+  toInsightsInstallationRow,
+} from "@hot-updater/plugin-core";
 import { describe, expect, it } from "vitest";
 
 import {
   createBundlePatchRowFixture,
   createBundleRowFixture,
+  createBundleEventRowFixture,
 } from "../../../test-utils/src/databaseTestFixtures";
 import { setupDatabasePluginTestSuite } from "../../../test-utils/src/setupDatabasePluginTestSuite";
 import { mongoAdapter } from "./mongodb";
@@ -22,6 +26,70 @@ setupDatabasePluginTestSuite({
 });
 
 describe("mongoAdapter capabilities", () => {
+  it("records Insights atomically even without legacy catalog transactions enabled", async () => {
+    harness.reset();
+    const insights = mongoAdapter({ client: harness.client }).models.insights;
+    const event = createBundleEventRowFixture("981", 100);
+    const input = { event, installation: toInsightsInstallationRow(event) };
+    harness.failNextInstallationWrite();
+    await expect(insights.record(input)).rejects.toThrow(
+      "injected installation write failure",
+    );
+    await expect(
+      insights.listEvents({
+        filter: { kind: "all" },
+        beforeReceivedAtMs: 200,
+        limit: 10,
+      }),
+    ).resolves.toEqual([]);
+    await expect(
+      insights.findInstallations({ installId: event.install_id }),
+    ).resolves.toEqual([]);
+    await insights.record(input);
+    await insights.record(input);
+    await expect(
+      insights.listEvents({
+        filter: { kind: "all" },
+        beforeReceivedAtMs: 200,
+        limit: 10,
+      }),
+    ).resolves.toEqual([event]);
+    await expect(
+      insights.findInstallations({ installId: event.install_id }),
+    ).resolves.toEqual([input.installation]);
+  });
+
+  it("preserves all concurrent events while advancing one installation and clearing its user", async () => {
+    harness.reset();
+    const insights = mongoAdapter({ client: harness.client }).models.insights;
+    const events = ["990", "993", "991", "992"].map((suffix) => ({
+      ...createBundleEventRowFixture(suffix, 100),
+      install_id: "concurrent-installation",
+      user_id: suffix === "993" ? null : "previous-user",
+    }));
+    await Promise.all(
+      events.map((event) =>
+        insights.record({
+          event,
+          installation: toInsightsInstallationRow(event),
+        }),
+      ),
+    );
+    await expect(
+      insights.findInstallations({ installId: "concurrent-installation" }),
+    ).resolves.toEqual([toInsightsInstallationRow(events[1]!)]);
+    await expect(
+      insights.findInstallations({ userId: "previous-user", limit: 10 }),
+    ).resolves.toEqual([]);
+    await expect(
+      insights.listEvents({
+        filter: { kind: "all" },
+        beforeReceivedAtMs: 200,
+        limit: 10,
+      }),
+    ).resolves.toHaveLength(4);
+  });
+
   it("returns an adapter without an unsafe atomic-batch fallback", () => {
     const plugin = mongoAdapter({ client: harness.client });
     expect(plugin.name).toBe("mongodb");

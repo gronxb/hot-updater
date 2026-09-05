@@ -43,7 +43,10 @@ function requireStringField(
   if (
     typeof value !== "string" ||
     value.length === 0 ||
-    value.length > MAX_EVENT_STRING_LENGTH
+    value.length > MAX_EVENT_STRING_LENGTH ||
+    new TextDecoder("utf-8", { ignoreBOM: true }).decode(
+      new TextEncoder().encode(value),
+    ) !== value
   ) {
     throw new InsightsBadRequestError(`Invalid event field: ${key}`);
   }
@@ -184,6 +187,7 @@ export async function parseBundleEventRequest(
 export function createBundleEventRow(
   input: CreateBundleEventRequest,
 ): BundleEventRow {
+  input = requireEvent(input);
   const base = {
     app_version: input.appVersion,
     channel: input.channel,

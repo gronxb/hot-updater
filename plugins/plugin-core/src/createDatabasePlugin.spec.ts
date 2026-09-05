@@ -26,6 +26,7 @@ const createMethods = (): DatabasePluginImplementation => ({
   count: unimplemented,
   findOne: unimplemented,
   findMany: unimplemented,
+  recordInsights: unimplemented,
   insertChannel: unimplemented,
   deleteChannel: unimplemented,
 });
@@ -106,15 +107,18 @@ describe("createDatabasePlugin", () => {
     expect(plugin.models.bundlePatches.findByBundleIds).toBeTypeOf("function");
     expect(plugin.models.channels.insert).toBeTypeOf("function");
     expect(plugin.models.channels.delete).toBeTypeOf("function");
-    expect(plugin.models.insights.append).toBeTypeOf("function");
-    expect(plugin.models.insights.pageEvents).toBeTypeOf("function");
-    expect(plugin.models.insights.getInstallation).toBeTypeOf("function");
-    expect(plugin.models.insights.pageInstallationsByCurrentUserId).toBeTypeOf(
-      "function",
-    );
-    expect(plugin.models.insights.countActiveInstallations).toBeTypeOf(
-      "function",
-    );
+    expect(plugin.models.insights.record).toBeTypeOf("function");
+    expect(plugin.models.insights.listEvents).toBeTypeOf("function");
+    expect(plugin.models.insights.findInstallations).toBeTypeOf("function");
+    expect(plugin.models.insights.countEvents).toBeTypeOf("function");
+    expect(plugin.models.insights.countInstallations).toBeTypeOf("function");
+    expect(Object.keys(plugin.models.insights).sort()).toEqual([
+      "countEvents",
+      "countInstallations",
+      "findInstallations",
+      "listEvents",
+      "record",
+    ]);
     expect(plugin.models.apiKeys.findByHash).toBeTypeOf("function");
     expect(plugin.commit).toBeTypeOf("function");
     expect(Object.keys(plugin).sort()).toEqual(["commit", "models", "name"]);

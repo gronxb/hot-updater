@@ -1,5 +1,7 @@
+import { toInsightsInstallationRow } from "@hot-updater/plugin-core";
 import { describe, expect, expectTypeOf, it } from "vitest";
 
+import { createBundleEventRowFixture } from "../../../test-utils/src/databaseTestFixtures";
 import { setupDatabasePluginTestSuite } from "../../../test-utils/src/setupDatabasePluginTestSuite";
 import { prismaAdapter, type PrismaConfig } from "./prisma";
 import { createPrismaTestHarness } from "./prismaTestClient";
@@ -34,6 +36,101 @@ const productionChannel = {
 } as const;
 
 describe("prismaAdapter capabilities", () => {
+  it("rejects every SQL Server Insights operation before touching the database", async () => {
+    const plugin = prismaAdapter({ prisma: {}, provider: "mssql" });
+    expect(plugin.generateSchema?.("latest").code).not.toContain(
+      "bundle_events_to_bundle_idx",
+    );
+    expect(plugin.generateSchema?.("latest").code).toContain(
+      "releases_scope_order_idx",
+    );
+    const event = createBundleEventRowFixture("707", 100);
+    const filter = {
+      platform: "ios" as const,
+      channel: "production",
+      type: "UPDATE_APPLIED" as const,
+      toBundleId: event.to_bundle_id,
+    };
+    const calls = [
+      plugin.models.insights.record({
+        event,
+        installation: toInsightsInstallationRow(event),
+      }),
+      plugin.models.insights.listEvents({
+        filter: { kind: "all" },
+        beforeReceivedAtMs: 101,
+        limit: 10,
+      }),
+      plugin.models.insights.findInstallations({ installId: event.install_id }),
+      plugin.models.insights.countInstallations({
+        platform: "ios",
+        channel: "production",
+        sinceMs: 0,
+      }),
+      plugin.models.insights.countEvents({
+        filter,
+        sinceMs: 0,
+        beforeReceivedAtMs: 101,
+      }),
+    ];
+    for (const call of calls)
+      await expect(call).rejects.toThrow("SQL Server Insights is unsupported");
+  });
+  it("requires callback transactions before recording Insights", async () => {
+    const { $transaction: _transaction, ...client } = harness.client;
+    const plugin = prismaAdapter({ prisma: client, provider: "postgresql" });
+    const event = createBundleEventRowFixture("704", 100);
+    await expect(
+      plugin.models.insights.record({
+        event,
+        installation: toInsightsInstallationRow(event),
+      }),
+    ).rejects.toThrow("Insights recording requires callback transactions");
+  });
+
+  it("rolls back event insertion on an installation write failure", async () => {
+    const isolated = createPrismaTestHarness();
+    const event = createBundleEventRowFixture("705", 100);
+    const input = { event, installation: toInsightsInstallationRow(event) };
+    const client = {
+      ...isolated.client,
+      $transaction: <TResult>(
+        callback: (transaction: object) => Promise<TResult>,
+      ) =>
+        isolated.client.$transaction((transaction) =>
+          callback({
+            ...transaction,
+            bundle_installations: {
+              ...Reflect.get(transaction, "bundle_installations"),
+              create: async () => {
+                throw new Error("injected snapshot failure");
+              },
+            },
+          }),
+        ),
+    };
+    const plugin = prismaAdapter({ prisma: client, provider: "postgresql" });
+    await expect(plugin.models.insights.record(input)).rejects.toThrow(
+      "injected snapshot failure",
+    );
+    const working = prismaAdapter({
+      prisma: isolated.client,
+      provider: "postgresql",
+    });
+    await expect(
+      working.models.insights.listEvents({
+        filter: { kind: "all" },
+        beforeReceivedAtMs: 101,
+        limit: 10,
+      }),
+    ).resolves.toEqual([]);
+    await working.models.insights.record(input);
+    await expect(
+      working.models.insights.findInstallations({
+        installId: event.install_id,
+      }),
+    ).resolves.toEqual([input.installation]);
+  });
   it("excludes MongoDB from the public configuration", () => {
     expectTypeOf<"mongodb">().not.toMatchTypeOf<PrismaConfig["provider"]>();
   });

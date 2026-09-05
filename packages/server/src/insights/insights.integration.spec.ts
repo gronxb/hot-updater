@@ -40,7 +40,7 @@ describe("createHotUpdater Insights", () => {
     vi.setSystemTime(new Date("2026-08-12T00:00:00.000Z"));
     const receivedAtMs = Date.now();
     const database = createInMemoryDatabasePlugin();
-    const append = vi.spyOn(database.models.insights, "append");
+    const append = vi.spyOn(database.models.insights, "record");
     const hotUpdater = createHotUpdater({
       database,
       clientAccess: { type: "public" },
@@ -58,16 +58,20 @@ describe("createHotUpdater Insights", () => {
       new Request("https://example.com/installations?userId=user-1"),
     );
     const active = await hotUpdater.handlers.admin(
-      new Request("https://example.com/installations/active?window=24h"),
+      new Request(
+        "https://example.com/overview?platform=ios&channel=production&window=24h",
+      ),
     );
 
     expect(ingestion.status).toBe(204);
     expect(append).toHaveBeenCalledWith(
       expect.objectContaining({
-        install_id: "install-1",
-        sdk_version: "2.0.0",
-        to_bundle_id: "bundle-1",
-        type: "UNCHANGED",
+        event: expect.objectContaining({
+          install_id: "install-1",
+          sdk_version: "2.0.0",
+          to_bundle_id: "bundle-1",
+          type: "UNCHANGED",
+        }),
       }),
     );
     expect(events.status).toBe(200);
@@ -97,10 +101,120 @@ describe("createHotUpdater Insights", () => {
     });
     expect(active.status).toBe(200);
     await expect(active.json()).resolves.toEqual({
-      activeInstallations: 1,
-      asOfMs: Date.now(),
+      platform: "ios",
+      channel: "production",
+      sinceMs: Date.now() - 24 * 60 * 60 * 1_000,
+      beforeReceivedAtMs: Date.now(),
+      reportingInstallations: { count: 1, measuredAtMs: Date.now() },
       window: "24h",
     });
+  });
+
+  it("serves scoped bundle counts and the same half-open recovery drill-down", async () => {
+    vi.useFakeTimers();
+    const hotUpdater = createHotUpdater({
+      database: createInMemoryDatabasePlugin(),
+      clientAccess: { type: "public" },
+    });
+    const report = async (
+      receivedAtMs: number,
+      overrides: Record<string, unknown>,
+    ) => {
+      vi.setSystemTime(receivedAtMs);
+      const response = await hotUpdater.handlers.client(
+        eventRequest({ ...event, ...overrides }),
+      );
+      expect(response.status).toBe(204);
+    };
+    await report(100, {
+      type: "UPDATE_APPLIED",
+      fromBundleId: "A",
+      toBundleId: "B",
+      updateStrategy: "appVersion",
+    });
+    await report(200, {
+      type: "RECOVERED",
+      fromBundleId: "B",
+      toBundleId: "A",
+      updateStrategy: "appVersion",
+    });
+    await report(300, {
+      installId: "install-2",
+      type: "RELEASE_ADOPTED",
+      fromBundleId: "B",
+      toBundleId: "B",
+      updateStrategy: "appVersion",
+    });
+    await report(400, {
+      installId: "install-3",
+      platform: "android",
+      toBundleId: "B",
+    });
+    vi.setSystemTime(500);
+    const overview = await hotUpdater.handlers.admin(
+      new Request(
+        "https://example.com/overview?platform=ios&channel=production&window=24h&bundleId=B",
+      ),
+    );
+    expect(overview.status).toBe(200);
+    await expect(overview.json()).resolves.toMatchObject({
+      sinceMs: 0,
+      beforeReceivedAtMs: 500,
+      reportingInstallations: { count: 2 },
+      bundle: {
+        bundleId: "B",
+        reportingInstallations: { count: 1 },
+        appliedReports: { count: 1 },
+        recoveredReports: { count: 1 },
+        adoptedReports: { count: 1 },
+      },
+    });
+    const drilldown = await hotUpdater.handlers.admin(
+      new Request(
+        "https://example.com/events?platform=ios&channel=production&bundleId=B&outcome=recovered&sinceMs=200&beforeReceivedAtMs=300",
+      ),
+    );
+    await expect(drilldown.json()).resolves.toMatchObject({
+      data: [
+        {
+          type: "RECOVERED",
+          fromBundleId: "B",
+          toBundleId: "A",
+          receivedAtMs: 200,
+        },
+      ],
+      nextCursor: null,
+    });
+    const outside = await hotUpdater.handlers.admin(
+      new Request(
+        "https://example.com/events?platform=ios&channel=production&bundleId=B&outcome=recovered&sinceMs=0&beforeReceivedAtMs=200",
+      ),
+    );
+    await expect(outside.json()).resolves.toMatchObject({
+      data: [],
+      nextCursor: null,
+    });
+  });
+
+  it.each([
+    "/overview?window=24h",
+    "/overview?platform=ios&channel=production&platform=android",
+    "/events?bundleId=B",
+    "/events?platform=ios&channel=production&bundleId=B&outcome=UNCHANGED",
+    "/events?sinceMs=20&beforeReceivedAtMs=10",
+    "/installations/install-1/events?platform=ios&channel=production&bundleId=B&outcome=applied",
+  ])("rejects ambiguous or invalid Insights query %s", async (path) => {
+    const hotUpdater = createHotUpdater({
+      database: createInMemoryDatabasePlugin(),
+      clientAccess: { type: "public" },
+    });
+    expect(
+      (
+        await hotUpdater.handlers.admin(
+          new Request(`https://example.com${path}`),
+        )
+      ).status,
+    ).toBe(400);
   });
 
   it("checks the official schema before Insights reads and writes", async () => {
@@ -115,7 +229,7 @@ describe("createHotUpdater Insights", () => {
     });
 
     expect((await hotUpdater.handlers.client(eventRequest())).status).toBe(204);
-    await hotUpdater.insights.pageEvents({});
+    await hotUpdater.insights.listEvents({});
 
     expect(createMigrator).toHaveBeenCalledOnce();
   });
@@ -173,6 +287,58 @@ describe("createHotUpdater Insights", () => {
       await expect(response.json()).resolves.toEqual({
         error: `Invalid event field: ${field}`,
       });
+    },
+  );
+
+  it("preserves a leading Unicode BOM in exact installation and current-user IDs", async () => {
+    const hotUpdater = createHotUpdater({
+      database: createInMemoryDatabasePlugin(),
+      clientAccess: { type: "public" },
+    });
+    const installId = "\uFEFFinstall";
+    const userId = "\uFEFFuser";
+    expect(
+      (
+        await hotUpdater.handlers.client(
+          eventRequest({ ...event, installId, userId }),
+        )
+      ).status,
+    ).toBe(204);
+    const installation = await hotUpdater.handlers.admin(
+      new Request(
+        `https://example.com/installations/${encodeURIComponent(installId)}`,
+      ),
+    );
+    expect(installation.status).toBe(200);
+    await expect(installation.json()).resolves.toMatchObject({
+      installId,
+      userId,
+    });
+    const matches = await hotUpdater.handlers.admin(
+      new Request(
+        `https://example.com/installations?userId=${encodeURIComponent(userId)}`,
+      ),
+    );
+    expect(matches.status).toBe(200);
+    await expect(matches.json()).resolves.toMatchObject({
+      data: [{ installId, userId }],
+    });
+  });
+
+  it.each(["\uD800", "\uDC00"])(
+    "rejects an unmatched surrogate identity %j",
+    async (installId) => {
+      const hotUpdater = createHotUpdater({
+        database: createInMemoryDatabasePlugin(),
+        clientAccess: { type: "public" },
+      });
+      expect(
+        (
+          await hotUpdater.handlers.client(
+            eventRequest({ ...event, installId }),
+          )
+        ).status,
+      ).toBe(400);
     },
   );
 

@@ -280,6 +280,13 @@ export const createFirebaseDatabaseState = (
           ),
           input.distinct as readonly string[] | undefined,
         );
+      case "bundle_events":
+        return distinctCount(
+          [...snapshot.bundleEvents.values()].filter((row) =>
+            matchesFirebaseDatabaseWhere<"bundle_events">(row, input.where),
+          ),
+          input.distinct as readonly string[] | undefined,
+        );
     }
   },
   async findOne(input): Promise<DatabaseImplementationResult | null> {
