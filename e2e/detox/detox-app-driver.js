@@ -95,7 +95,13 @@ class DetoxAppDriver {
           await launchApp({ newInstance: false });
           return;
         }
-        await launchApp({ newInstance: true });
+        await launchApp({
+          newInstance: true,
+          // Native recovery restarts JS; the scenario verifies its native report.
+          ...(isCrashLaunch && !isAndroidRun()
+            ? { launchArgs: { detoxEnableSynchronization: 0 } }
+            : {}),
+        });
       } catch (error) {
         if (!isCrashLaunch && options.allowDisconnect !== true) throw error;
       }
