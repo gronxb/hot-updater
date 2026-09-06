@@ -37,6 +37,19 @@ const COMPRESSION_FORMATS: Record<CompressionFormat, CompressionFormatInfo> = {
 };
 
 /**
+ * Finds the compression format matching a filename extension
+ * @param filename The filename to match
+ * @returns Compression format information, or undefined when nothing matches
+ */
+function findCompressionFormat(
+  filename: string,
+): CompressionFormatInfo | undefined {
+  return Object.values(COMPRESSION_FORMATS).find((info) =>
+    filename.endsWith(info.fileExtension),
+  );
+}
+
+/**
  * Detects compression format from filename
  * @param filename The filename to detect format from
  * @returns Compression format information
@@ -44,22 +57,17 @@ const COMPRESSION_FORMATS: Record<CompressionFormat, CompressionFormatInfo> = {
 export function detectCompressionFormat(
   filename: string,
 ): CompressionFormatInfo {
-  for (const info of Object.values(COMPRESSION_FORMATS)) {
-    if (filename.endsWith(info.fileExtension)) {
-      return info;
-    }
-  }
   // Default to zip if no match
-  return COMPRESSION_FORMATS.zip;
+  return findCompressionFormat(filename) ?? COMPRESSION_FORMATS.zip;
 }
 
 /**
  * Gets MIME type for a filename
  * @param filename The filename to get MIME type for
- * @returns MIME type string
+ * @returns MIME type string, or undefined when the filename is not an archive
  */
 export function getCompressionMimeType(filename: string): string | undefined {
-  return detectCompressionFormat(filename).mimeType;
+  return findCompressionFormat(filename)?.mimeType;
 }
 
 /**
