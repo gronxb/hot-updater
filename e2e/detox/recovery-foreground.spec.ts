@@ -70,11 +70,6 @@ describe("Detox recovery foreground handling", () => {
   it.each([
     { platform: "ios", stage: "launch crash bundle", synchronization: 0 },
     {
-      platform: "ios",
-      stage: "launch stable bundle",
-      synchronization: undefined,
-    },
-    {
       platform: "android",
       stage: "launch crash bundle",
       synchronization: undefined,

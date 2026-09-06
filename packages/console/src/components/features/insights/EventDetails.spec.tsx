@@ -38,7 +38,7 @@ describe("Insights event details", () => {
     );
 
     view.rerender(<EventTypeBadge type="RELEASE_ADOPTED" />);
-    expect(screen.getByText("Release adopted")).toBeDefined();
+    expect(screen.getByText("Bundle adopted")).toBeDefined();
 
     view.rerender(<EventTypeBadge type="RECOVERED" />);
     expect(screen.getByText("Recovered")).toBeDefined();

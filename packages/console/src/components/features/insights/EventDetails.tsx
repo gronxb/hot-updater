@@ -1,4 +1,10 @@
-import { Activity, Check, ChevronDown, RotateCcw } from "lucide-react";
+import {
+  Activity,
+  Check,
+  ChevronDown,
+  PackageCheck,
+  RotateCcw,
+} from "lucide-react";
 import { useEffect, useState } from "react";
 
 import { HashValueDisplay } from "@/components/HashValueDisplay";
@@ -11,9 +17,9 @@ const eventTypes = {
   UPDATE_APPLIED: { label: "Bundle applied", variant: "success", icon: Check },
   RECOVERED: { label: "Recovered", variant: "warning", icon: RotateCcw },
   RELEASE_ADOPTED: {
-    label: "Release adopted",
+    label: "Bundle adopted",
     variant: "success",
-    icon: Check,
+    icon: PackageCheck,
   },
   UNCHANGED: {
     label: "Activity reported",

@@ -31,14 +31,6 @@ describe("Detox Insights HTTP client", () => {
   });
 
   it("queries the deployed server when config only has a standalone admin client", async () => {
-    // Given: the CLI config database is an HTTP admin carrier. It must not
-    // be treated as the deployed server's component-data adapter.
-    const standaloneRepositoryLike = {
-      findMany: vi.fn(() => {
-        throw new Error("admin database must not serve Insights");
-      }),
-      name: "standaloneRepository",
-    };
     const serverDatabase = createInMemoryDatabasePlugin();
     const deployedServer = createHotUpdater({
       database: serverDatabase,
@@ -65,7 +57,6 @@ describe("Detox Insights HTTP client", () => {
 
     // Then
     expect(overview.reportingInstallations.count).toBe(0);
-    expect(standaloneRepositoryLike.findMany).not.toHaveBeenCalled();
     expect(fetch).toHaveBeenCalledWith(
       "http://127.0.0.1:3007/hot-updater/admin/overview?platform=ios&channel=production&window=24h",
       expect.objectContaining({

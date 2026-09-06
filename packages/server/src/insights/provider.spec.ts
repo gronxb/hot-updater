@@ -157,7 +157,6 @@ describe("createInsightsProvider", () => {
     ).rejects.toBeInstanceOf(InsightsBadRequestError);
     expect(fixture.findInstallations).not.toHaveBeenCalled();
     expect(fixture.listEvents).not.toHaveBeenCalled();
-    expect(fixture.findInstallations).not.toHaveBeenCalled();
   });
 
   it("requests only movement events for one installation", async () => {

@@ -301,13 +301,13 @@ describe("dynamoDB CloudFront lifecycle", () => {
     await plugin.dispose?.();
   });
 
-  it("keeps event reads bounded after a cursor beyond 50,000 rows", async () => {
-    const row = insightsEvent(50_000);
+  it("uses an exclusive key range after an event cursor without scanning", async () => {
+    const row = insightsEvent(500);
     documentClient.on(QueryCommand).resolves({
       Items: [
         {
           pk: "bundle_events",
-          sk: "0000000000050000#event",
+          sk: "0000000000000500#event",
           version: 1,
           row,
         },
@@ -321,10 +321,10 @@ describe("dynamoDB CloudFront lifecycle", () => {
     await expect(
       plugin.models.insights.listEvents({
         filter: { kind: "all" },
-        beforeReceivedAtMs: 60_000,
+        beforeReceivedAtMs: 600,
         after: {
-          receivedAtMs: 50_001,
-          id: insightsEvent(50_001).id,
+          receivedAtMs: 501,
+          id: insightsEvent(501).id,
         },
         limit: 101,
       }),
@@ -338,7 +338,7 @@ describe("dynamoDB CloudFront lifecycle", () => {
     });
     expect(query?.ExpressionAttributeValues).toMatchObject({
       ":partition": "bundle_events",
-      ":upper": `0000000000050001#${insightsEvent(50_001).id.slice(0, -1)}0~`,
+      ":upper": `0000000000000501#${insightsEvent(501).id.slice(0, -1)}0~`,
     });
     expect(documentClient.commandCalls(ScanCommand)).toHaveLength(0);
 

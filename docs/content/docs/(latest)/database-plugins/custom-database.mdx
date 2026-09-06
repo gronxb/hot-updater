@@ -300,8 +300,8 @@ its first write; there is no Release-now/catalog-later fallback.
 
 ## Implement the 1.0.0 schema
 
-The initial `1.0.0` schema includes bundle-outcome and latest-scope indexes,
-exact identity collations, and atomic Insights recording. Initialization creates
+The initial `1.0.0` schema includes the required Insights storage and indexes,
+exact identity collations, and atomic recording. Initialization creates
 the complete schema on empty storage and no-ops for an initialized `1.0.0`
 database. Unsupported populated storage is rejected without deleting its data.
 
