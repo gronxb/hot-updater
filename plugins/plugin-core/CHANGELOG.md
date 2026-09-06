@@ -1,5 +1,13 @@
 # @hot-updater/plugin-core
 
+## 0.36.9
+
+### Patch Changes
+
+- ee20ef2: Strip leading and trailing slashes from the storage `basePath` in `createStorageKeyBuilder` so a value like `/releases/` no longer produces object keys with an empty path segment.
+  - @hot-updater/core@0.36.9
+  - @hot-updater/js@0.36.9
+
 ## 0.36.8
 
 ### Patch Changes
