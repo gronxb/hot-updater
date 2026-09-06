@@ -87,6 +87,8 @@ describe("Detox E2E harness contract", () => {
       "e2e/detox/control-server/crash-recovery-wait.ts",
       "e2e/detox/control-server/deploy-lock-contract.spec.ts",
       "e2e/detox/control-server/fair-file-lock.ts",
+      "e2e/detox/control-server/fixture-release-reset.spec.ts",
+      "e2e/detox/control-server/fixture-release-reset.ts",
       "e2e/detox/control-server/index.ts",
       "e2e/detox/control-server/patch-storage-path.spec.ts",
       "e2e/detox/control-server/patch-storage-path.ts",

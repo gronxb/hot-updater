@@ -26,7 +26,6 @@ import {
   createDatabaseClient,
   createUUIDv7After,
   commitReleaseCatalogMutation,
-  deleteRelease,
   type BundleRow,
   type ReleaseCatalogRow,
   type ReleaseRow,
@@ -61,6 +60,10 @@ import {
   acquireFairFileLock,
   resolveDeployLockCapacity,
 } from "./fair-file-lock.ts";
+import {
+  getFixtureResetChannels as resolveFixtureResetChannels,
+  resetFixtureReleases,
+} from "./fixture-release-reset.ts";
 import { inferPatchAssetPathFromStorageUri } from "./patch-storage-path.ts";
 import { resetProviderAfterReady } from "./provider-reset-retry.ts";
 import { buildReleaseCatalogUrl } from "./release-catalog-url.ts";
@@ -166,11 +169,6 @@ type PatchReleaseRequest = {
   targetCohorts?: string[] | null;
 };
 
-type BundleListEntry = {
-  id: string;
-  platform?: Platform;
-};
-
 type LaunchReportAssertion = {
   fromBundleId?: string;
   fromReleaseId?: string;
@@ -263,7 +261,6 @@ const DEPLOY_MAX_OLD_SPACE_SIZE_ENV_KEY =
 const DEPLOY_PROCESS_LOCK_DIR_ENV_KEY = "HOT_UPDATER_E2E_DEPLOY_LOCK_DIR";
 const DEFAULT_DEPLOY_MAX_OLD_SPACE_SIZE_MB = 8192;
 const NODE_MAX_OLD_SPACE_SIZE_PATTERN = /^--max-old-space-size(?:=|$)/;
-const E2E_REMOTE_RESET_LOGICAL_CHANNELS = ["production", "beta"] as const;
 const NIL_UUID = "00000000-0000-0000-0000-000000000000";
 const LARGE_ARCHIVE_ASSET_RELATIVE_PATH =
   "src/test/_fixture-archive-300mb-random.bmp";
@@ -321,18 +318,6 @@ const MULTI_ASSET_BMP_ROW_SIZE = Math.ceil((MULTI_ASSET_BMP_WIDTH * 3) / 4) * 4;
 const MULTI_ASSET_BMP_SIZE_BYTES =
   MULTI_ASSET_BMP_HEADER_SIZE +
   MULTI_ASSET_BMP_ROW_SIZE * MULTI_ASSET_BMP_HEIGHT;
-const REMOTE_BUNDLE_DELETE_ATTEMPTS = Number(
-  process.env.HOT_UPDATER_E2E_REMOTE_BUNDLE_DELETE_ATTEMPTS || 3,
-);
-const REMOTE_BUNDLE_DELETE_RETRY_DELAY_MS = Number(
-  process.env.HOT_UPDATER_E2E_REMOTE_BUNDLE_DELETE_RETRY_DELAY_MS || 5000,
-);
-const REMOTE_BUNDLE_CLEAR_VERIFY_ATTEMPTS = Number(
-  process.env.HOT_UPDATER_E2E_REMOTE_BUNDLE_CLEAR_VERIFY_ATTEMPTS || 20,
-);
-const REMOTE_BUNDLE_CLEAR_VERIFY_DELAY_MS = Number(
-  process.env.HOT_UPDATER_E2E_REMOTE_BUNDLE_CLEAR_VERIFY_DELAY_MS || 500,
-);
 const PROVIDER_READY_WAIT_ATTEMPTS = Number(
   process.env.HOT_UPDATER_E2E_PROVIDER_READY_WAIT_ATTEMPTS || 120,
 );
@@ -360,8 +345,6 @@ const AUTO_PATCH_METADATA_WAIT_ATTEMPTS = Number(
 const AUTO_PATCH_METADATA_WAIT_DELAY_MS = Number(
   process.env.HOT_UPDATER_E2E_AUTO_PATCH_METADATA_WAIT_DELAY_MS || 500,
 );
-const DELETE_VERIFY_STILL_EXISTS_PATTERN =
-  /Verification failed: .+ still exists?\b/i;
 const E2E_POLL_INTERVAL_MS = Number(
   process.env.HOT_UPDATER_E2E_POLL_INTERVAL_MS || 250,
 );
@@ -516,11 +499,7 @@ function getFixtureChannel(channel: string) {
 }
 
 function getFixtureResetChannels() {
-  return channelNamespace
-    ? E2E_REMOTE_RESET_LOGICAL_CHANNELS.map((channel) =>
-        getFixtureChannel(channel),
-      )
-    : null;
+  return resolveFixtureResetChannels(channelNamespace);
 }
 
 const jobs = new Map<string, JobState>();
@@ -740,23 +719,6 @@ function extractDeployReleaseId(output: string) {
   );
 
   return match?.[1] ?? null;
-}
-
-async function readTextIfExists(filePath: string) {
-  try {
-    return await fsPromises.readFile(filePath, "utf8");
-  } catch (error) {
-    if (
-      error &&
-      typeof error === "object" &&
-      "code" in error &&
-      error.code === "ENOENT"
-    ) {
-      return "";
-    }
-
-    throw error;
-  }
 }
 
 function bareBuildCacheRoot() {
@@ -1334,25 +1296,6 @@ async function waitForFile(filePath: string, attempts = 360) {
   throw new Error(`Timed out waiting for ${filePath}`);
 }
 
-async function runHotUpdaterCliLogged(args: string[], logName: string) {
-  const logPath = path.join(fixtureSession.resultsDir, logName);
-  logDetoxFixture("hot-updater cli start", {
-    command: `node ${[HOT_UPDATER_CLI_PATH, ...args].join(" ")}`,
-    controlBaseUrl: getControllerReachableAppBaseUrl(),
-    logPath: path.relative(REPO_DIR, logPath),
-  });
-
-  await runLoggedCommand("node", [HOT_UPDATER_CLI_PATH, ...args], {
-    cwd: fixtureSession.exampleDir,
-    env: getHotUpdaterControlEnv(),
-    logPath,
-  });
-
-  logDetoxFixture("hot-updater cli done", {
-    command: args.join(" "),
-  });
-}
-
 async function withConfiguredDatabase<T>(
   callback: (database: BundleRepository) => Promise<T>,
 ): Promise<T> {
@@ -1421,36 +1364,6 @@ async function verifyConfiguredConsoleInsights(args: { sinceMs: number }) {
     }
     throw new Error("Console Insights verification exhausted its retries.");
   });
-}
-
-async function fetchProviderBundlesPage(args: {
-  limit: number;
-  offset: number;
-}) {
-  const bundles = await withConfiguredDatabase((database) =>
-    createDatabaseClient(database).getBundles({
-      where: { platform: fixtureSession.platform },
-      limit: args.limit,
-      offset: args.offset,
-    }),
-  );
-
-  logDetoxFixture("provider file list", {
-    count: bundles.data.length,
-    limit: args.limit,
-    platform: fixtureSession.platform,
-    total: bundles.pagination.total,
-  });
-
-  return bundles;
-}
-
-async function isBundleVisible(bundleId: string) {
-  const bundles = await fetchProviderBundlesPage({
-    limit: 100,
-    offset: 0,
-  });
-  return bundles.data.some((bundle) => bundle.id === bundleId);
 }
 
 async function fetchProviderBundleById(bundleId: string) {
@@ -1646,170 +1559,24 @@ async function resolveAutoPatchBundleDiff(
   );
 }
 
-async function deleteProviderBundle(bundleId: string) {
-  let lastError: unknown = null;
-
-  for (
-    let attempt = 1;
-    attempt <= REMOTE_BUNDLE_DELETE_ATTEMPTS;
-    attempt += 1
-  ) {
-    const logName =
-      attempt === 1
-        ? `bundle-delete-${bundleId}.log`
-        : `bundle-delete-${bundleId}.attempt-${attempt}.log`;
-
-    try {
-      await runHotUpdaterCliLogged(
-        ["bundle", "artifact", "delete", bundleId, "-y"],
-        logName,
-      );
-      return;
-    } catch (error) {
-      lastError = error;
-      const logContents = await readTextIfExists(
-        path.join(fixtureSession.resultsDir, logName),
-      );
-      if (!DELETE_VERIFY_STILL_EXISTS_PATTERN.test(logContents)) {
-        throw error;
-      }
-
-      const stillVisible = await isBundleVisible(bundleId);
-      if (!stillVisible) {
-        logDetoxFixture(
-          "artifact delete verified after CLI retryable failure",
-          {
-            attempt,
-            bundleId,
-            platform: fixtureSession.platform,
-          },
-        );
-        return;
-      }
-
-      if (attempt < REMOTE_BUNDLE_DELETE_ATTEMPTS) {
-        logDetoxFixture("artifact delete verification still pending", {
-          attempt,
-          bundleId,
-          platform: fixtureSession.platform,
-          retryDelayMs: REMOTE_BUNDLE_DELETE_RETRY_DELAY_MS,
-        });
-        await sleep(REMOTE_BUNDLE_DELETE_RETRY_DELAY_MS);
-      }
-    }
-  }
-
-  throw lastError;
-}
-
-async function clearProviderReleases(
-  resetChannels: readonly string[] | null = getFixtureResetChannels(),
-) {
-  const clearedReleaseIds: string[] = [];
-  await withConfiguredDatabase(async (database) => {
-    const channels = await database.models.channels.list({});
-    const channelIds = channels.channels
-      .filter(
-        (channel) =>
-          resetChannels === null || resetChannels.includes(channel.name),
-      )
-      .map((channel) => channel.id);
-    for (const channelId of channelIds) {
-      for (;;) {
-        const releases = await database.models.releases.findMany({
-          channelId,
-          limit: 1_000,
-          platform: fixtureSession.platform,
-        });
-        for (const release of releases) {
-          if (release.enabled) {
-            await updateReleasePolicy({
-              database,
-              patch: { enabled: false },
-              releaseId: release.id,
-            });
-          }
-          await deleteRelease({ database, releaseId: release.id });
-          clearedReleaseIds.push(release.id);
-        }
-        if (releases.length < 1_000) break;
-      }
-    }
-  });
-  logDetoxFixture("remote Releases reset", {
-    channels: resetChannels,
-    clearedCount: clearedReleaseIds.length,
-    clearedReleaseIds,
-    platform: fixtureSession.platform,
-  });
-}
-
-async function clearProviderBundles() {
-  // Bundle listing is global for a platform, so every referencing Release must
-  // be removed before the global Bundle cleanup can be retried safely.
-  await clearProviderReleases(null);
-  const clearedBundleIds: string[] = [];
-  const clearedIds = new Set<string>();
-
-  while (true) {
-    const nextBatch = (
-      await fetchProviderBundlesPage({ limit: 100, offset: 0 })
-    ).data.filter((bundle) => !clearedIds.has(bundle.id));
-
-    if (nextBatch.length === 0) {
-      break;
-    }
-
-    for (const bundle of nextBatch) {
-      await deleteProviderBundle(bundle.id);
-      clearedIds.add(bundle.id);
-      clearedBundleIds.push(bundle.id);
-    }
-  }
-
-  let remainingActiveBundle: BundleListEntry | undefined;
-  for (
-    let attempt = 1;
-    attempt <= REMOTE_BUNDLE_CLEAR_VERIFY_ATTEMPTS;
-    attempt += 1
-  ) {
-    remainingActiveBundle = (
-      await fetchProviderBundlesPage({ limit: 1, offset: 0 })
-    ).data[0];
-    if (!remainingActiveBundle) {
-      break;
-    }
-
-    if (attempt >= REMOTE_BUNDLE_CLEAR_VERIFY_ATTEMPTS) {
-      break;
-    }
-
-    logDetoxFixture("remote-bundles reset verification pending", {
-      attempt,
-      bundleId: remainingActiveBundle.id,
+async function clearProviderReleases() {
+  const result = await withConfiguredDatabase((database) =>
+    resetFixtureReleases({
+      database,
+      namespace: channelNamespace,
       platform: fixtureSession.platform,
-      retryDelayMs: REMOTE_BUNDLE_CLEAR_VERIFY_DELAY_MS,
-    });
-
-    await deleteProviderBundle(remainingActiveBundle.id);
-    await sleep(REMOTE_BUNDLE_CLEAR_VERIFY_DELAY_MS);
-  }
-
-  if (remainingActiveBundle) {
-    throw new Error(
-      `Failed to clear remote Bundle artifacts for platform ${fixtureSession.platform}; Bundle ${remainingActiveBundle.id} is still visible after reset`,
-    );
-  }
-
-  logDetoxFixture("remote-bundles reset", {
-    clearedBundleIds,
-    clearedCount: clearedBundleIds.length,
+    }),
+  );
+  logDetoxFixture("remote Releases reset", {
+    channels: result.channels,
+    clearedCount: result.clearedReleaseIds.length,
+    clearedReleaseIds: result.clearedReleaseIds,
     platform: fixtureSession.platform,
   });
 }
 
-async function clearProviderBundlesAfterReadiness() {
-  await resetProviderAfterReady(clearProviderBundles, {
+async function clearProviderReleasesAfterReadiness() {
+  await resetProviderAfterReady(clearProviderReleases, {
     onRetry: ({ attempt, error, retryDelayMs }) => {
       logDetoxFixture("provider reset connection retry", {
         attempt,
@@ -3048,7 +2815,7 @@ function getLocalProviderReadinessUrls() {
     }
 
     urls.push(baseUrl);
-    for (const channel of getFixtureResetChannels() ?? []) {
+    for (const channel of getFixtureResetChannels()) {
       const url = new URL(baseUrl);
       url.searchParams.set("channel", channel);
       urls.push(url.toString());
@@ -5214,7 +4981,7 @@ async function bootstrap() {
   });
 
   await waitForLocalProviderReady();
-  await clearProviderBundlesAfterReadiness();
+  await clearProviderReleasesAfterReadiness();
   await restoreFile(
     fixtureSession.largeArchiveAssetBackupPath,
     fixtureSession.largeArchiveAssetPath,
@@ -6568,9 +6335,9 @@ async function resetRemoteBundles() {
     replayGeneration: null,
     reset: true,
   });
-  await clearProviderBundlesAfterReadiness();
+  await clearProviderReleasesAfterReadiness();
 
-  logDetoxFixture("remote bundles reset on demand", {
+  logDetoxFixture("remote Releases reset on demand", {
     platform: fixtureSession.platform,
   });
 
