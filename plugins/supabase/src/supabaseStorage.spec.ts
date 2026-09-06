@@ -256,6 +256,40 @@ describe("supabaseStorage", () => {
     await fs.rm(tmpDir, { force: true, recursive: true });
   });
 
+  it("strips surrounding slashes from basePath when building upload keys", async () => {
+    const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "hu-supabase-"));
+    const uploadPath = path.join(tmpDir, "bundle.zip");
+    await fs.writeFile(uploadPath, "bundle");
+    bucket.upload.mockResolvedValueOnce({
+      data: { fullPath: "updates/releases/bundles/bundle.zip" },
+      error: null,
+    });
+    bucket.createSignedUrl.mockResolvedValueOnce({
+      data: { signedUrl: "https://example.supabase.co/signed-url" },
+      error: null,
+    });
+
+    const storage = supabaseStorage({
+      basePath: "/releases/",
+      bucketName: "updates",
+      supabaseAnonKey: "anon-key",
+      supabaseUrl: "https://example.supabase.co",
+    })();
+
+    await storage.profiles.node.upload("bundles", uploadPath);
+
+    expect(bucket.upload).toHaveBeenCalledWith(
+      "releases/bundles/bundle.zip",
+      expect.any(Buffer),
+      expect.objectContaining({
+        cacheControl: "max-age=31536000",
+        contentType: "application/zip",
+      }),
+    );
+
+    await fs.rm(tmpDir, { force: true, recursive: true });
+  });
+
   it("surfaces thrown signed URL generation errors", async () => {
     bucket.createSignedUrls.mockRejectedValueOnce(
       new Error("Failed to generate download URL: Object not found"),
