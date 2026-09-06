@@ -1,5 +1,13 @@
 # @hot-updater/plugin-core
 
+## 0.36.10
+
+### Patch Changes
+
+- 4efa3ef: Upload non-archive files with `application/octet-stream` instead of `application/zip`. `getContentType` fell through to the compression format table for any name `mime` did not resolve, and that table defaults to zip, so brotli bundle assets (`.br`), extensionless content addressed assets, and `.bsdiff` patches were all labeled `application/zip` on S3, R2, Firebase, and Supabase.
+  - @hot-updater/core@0.36.10
+  - @hot-updater/js@0.36.10
+
 ## 0.36.9
 
 ### Patch Changes

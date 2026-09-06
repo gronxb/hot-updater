@@ -1,5 +1,12 @@
 # @hot-updater/console
 
+## 0.36.10
+
+### Patch Changes
+
+- @hot-updater/server@0.36.10
+- @hot-updater/bsdiff@0.36.10
+
 ## 0.36.9
 
 ### Patch Changes
