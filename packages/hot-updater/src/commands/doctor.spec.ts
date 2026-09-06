@@ -18,7 +18,20 @@ import {
 vi.mock("@hot-updater/cli-tools", () => ({
   getCwd: vi.fn(() => "/mock/cwd"),
   loadConfig: vi.fn(),
-  p: {},
+  p: {
+    intro: vi.fn(),
+    outro: vi.fn(),
+    cancel: vi.fn(),
+    isCancel: vi.fn(() => false),
+    text: vi.fn(),
+    log: {
+      success: vi.fn(),
+      error: vi.fn(),
+      warn: vi.fn(),
+      info: vi.fn(),
+      message: vi.fn(),
+    },
+  },
   readPackageUp: vi.fn(),
 }));
 
@@ -269,6 +282,38 @@ describe("doctor", () => {
       JSON.stringify({ success: true }, null, 2),
     );
     expect(mockLoadConfig).not.toHaveBeenCalled();
+    logSpy.mockRestore();
+  });
+
+  it("exits non-zero when the default output reports a doctor error", async () => {
+    mockReadPackageUp.mockResolvedValue(null);
+    const exitSpy = vi.spyOn(process, "exit").mockImplementation(((
+      code?: number,
+    ) => {
+      throw new Error(`process.exit:${code}`);
+    }) as never);
+
+    await handleDoctor({ serverBaseUrl: "https://example.com/api" }).catch(
+      () => {},
+    );
+
+    expect(exitSpy).toHaveBeenCalledWith(1);
+    exitSpy.mockRestore();
+  });
+
+  it("exits non-zero when the JSON output reports a doctor error", async () => {
+    mockReadPackageUp.mockResolvedValue(null);
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+    const exitSpy = vi.spyOn(process, "exit").mockImplementation(((
+      code?: number,
+    ) => {
+      throw new Error(`process.exit:${code}`);
+    }) as never);
+
+    await handleDoctor({ json: true }).catch(() => {});
+
+    expect(exitSpy).toHaveBeenCalledWith(1);
+    exitSpy.mockRestore();
     logSpy.mockRestore();
   });
 
