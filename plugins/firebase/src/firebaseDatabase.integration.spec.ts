@@ -15,16 +15,11 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createBundleEventRowFixture } from "../../../packages/test-utils/src/databaseTestFixtures";
 import { createFirestoreMock } from "../test-utils/createFirestoreMock";
 import { firebaseDatabase } from "./firebaseDatabase";
-import {
-  firebaseChannelDocumentId,
-  firebaseInstallationDocumentId,
-} from "./firebaseDatabasePersistence";
-import { migrateFirebaseInsights } from "./firebaseInsightsMigration";
+import { firebaseChannelDocumentId } from "./firebaseDatabasePersistence";
 
 const PROJECT_ID = "firebase-database-test";
 
 const {
-  firestore,
   bundleEventsCollection,
   bundleInstallationsCollection,
   bundlePatchesCollection,
@@ -32,7 +27,6 @@ const {
   channelsCollection,
   clearCollections,
   legacyBundlesCollection,
-  legacyInstallationsCollection,
   legacySettingsCollection,
   settingsCollection,
 } = createFirestoreMock(PROJECT_ID);
@@ -113,7 +107,7 @@ describe("firebase fixed-model document updates", () => {
 describe("firebase infrastructure generation", () => {
   beforeEach(clearCollections);
 
-  it.each([1, 2, 3, 6])(
+  it.each([1, 2, 3, 5])(
     "rejects adapter version %s before reading database collections",
     async (version) => {
       const marker = { version, existing_option: "preserve-me" };
@@ -154,84 +148,14 @@ describe("firebase infrastructure generation", () => {
     ).toEqual({ version: 3 });
     expect(
       (await settingsCollection.doc("database_adapter_version").get()).data(),
-    ).toEqual({ version: 5 });
+    ).toEqual({ version: 4 });
   });
 
   it("initializes an empty database as the v1 adapter", async () => {
     await expect(findAllBundles(createPlugin())).resolves.toEqual([]);
     expect(
       (await settingsCollection.doc("database_adapter_version").get()).data(),
-    ).toEqual({ version: 5 });
-  });
-
-  it("requires an explicit resumable migration for populated legacy installation keys", async () => {
-    await settingsCollection
-      .doc("database_adapter_version")
-      .set({ version: 4 });
-    const ids = [
-      "a",
-      "install_YQ",
-      ...Array.from(
-        { length: 199 },
-        (_, index) => `legacy-${index.toString().padStart(3, "0")}`,
-      ),
-    ];
-    const batch = firestore.batch();
-    for (const [index, install_id] of ids.entries()) {
-      const event = {
-        ...createBundleEventRowFixture(String(1000 + index), 100),
-        install_id,
-        user_id: "migrated-user",
-      };
-      batch.set(
-        legacyInstallationsCollection.doc(install_id),
-        toInsightsInstallationRow(event),
-      );
-    }
-    batch.set(legacyInstallationsCollection.doc("zz-malformed"), {
-      install_id: "zz-malformed",
-    });
-    await batch.commit();
-    await expect(
-      createPlugin().models.insights.findInstallations({ installId: "a" }),
-    ).rejects.toThrow("migrateFirebaseInsights(config)");
-    const config = { projectId: PROJECT_ID };
-    await expect(migrateFirebaseInsights(config)).rejects.toThrow(
-      "zz-malformed",
-    );
-    expect((await bundleInstallationsCollection.get()).size).toBe(200);
-    expect(
-      (await settingsCollection.doc("database_adapter_version").get()).data()
-        ?.version,
-    ).toBe(4);
-    const repaired = {
-      ...createBundleEventRowFixture("1201", 100),
-      install_id: "zz-malformed",
-      user_id: "migrated-user",
-    };
-    await legacyInstallationsCollection
-      .doc(repaired.install_id)
-      .set(toInsightsInstallationRow(repaired));
-    await migrateFirebaseInsights(config);
-    await migrateFirebaseInsights(config);
-    expect(
-      (await settingsCollection.doc("database_adapter_version").get()).data()
-        ?.version,
-    ).toBe(5);
-    expect((await legacyInstallationsCollection.get()).size).toBe(202);
-    expect((await bundleInstallationsCollection.get()).size).toBe(202);
-    for (const installId of ["a", "install_YQ"]) {
-      await expect(
-        createPlugin().models.insights.findInstallations({ installId }),
-      ).resolves.toEqual([expect.objectContaining({ install_id: installId })]);
-      expect(
-        (
-          await bundleInstallationsCollection
-            .doc(firebaseInstallationDocumentId(installId))
-            .get()
-        ).exists,
-      ).toBe(true);
-    }
+    ).toEqual({ version: 4 });
   });
 });
 
@@ -272,7 +196,17 @@ describe("firebase insights storage", () => {
 
   it("keeps arbitrary exact installation IDs separate and pages in UTF-8 order", async () => {
     const insights = createPlugin().models.insights;
-    const ids = ["a/b", ".", "..", "__reserved__", "A", "a", "\uE000", "😀"];
+    const ids = [
+      "a/b",
+      ".",
+      "..",
+      "__reserved__",
+      "A",
+      "a",
+      "install_YQ",
+      "\uE000",
+      "😀",
+    ];
     for (const [index, install_id] of ids.entries()) {
       const event = {
         ...createBundleEventRowFixture(String(980 + index), 100),

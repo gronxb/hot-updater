@@ -18,7 +18,7 @@ import type { ApiKeyModel } from "@hot-updater/plugin-core";
 import { provisionApiKey } from "@hot-updater/server";
 import { execa } from "execa";
 
-import { dynamoDB, migrateDynamoDBInsights } from "../src/dynamoDB";
+import { dynamoDB } from "../src/dynamoDB";
 import { resolveAwsAuth } from "./awsAuth";
 import { getAwsV1SsmParameterName } from "./awsInfrastructureNames";
 import {
@@ -63,7 +63,6 @@ export const prepareDynamoDBDeployment = async (input: {
 }): Promise<void> => {
   const dynamodbManager = new DynamoDBManager(input.region, input.credentials);
   await dynamodbManager.ensureTable(input.tableName);
-  await migrateDynamoDBInsights(input);
 };
 
 export const prepareDynamoDBApiKey = async (input: {

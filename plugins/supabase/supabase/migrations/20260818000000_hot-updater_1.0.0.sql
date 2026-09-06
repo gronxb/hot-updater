@@ -101,16 +101,16 @@ CREATE TABLE public.hot_updater_v1_release_catalogs (
 CREATE TABLE public.hot_updater_v1_bundle_events (
   id uuid PRIMARY KEY NOT NULL,
   type text NOT NULL,
-  install_id text NOT NULL,
-  user_id text,
+  install_id text COLLATE "C" NOT NULL,
+  user_id text COLLATE "C",
   username text,
   from_release_id uuid,
   from_bundle_id uuid,
   to_release_id uuid,
   to_bundle_id uuid NOT NULL,
-  platform text NOT NULL,
+  platform text COLLATE "C" NOT NULL,
   app_version text NOT NULL,
-  channel text NOT NULL,
+  channel text COLLATE "C" NOT NULL,
   cohort text NOT NULL,
   update_strategy text,
   fingerprint_hash text,
@@ -135,17 +135,17 @@ CREATE TABLE public.hot_updater_v1_bundle_events (
 );
 
 CREATE TABLE public.hot_updater_v1_bundle_installations (
-  install_id text PRIMARY KEY NOT NULL,
+  install_id text COLLATE "C" PRIMARY KEY NOT NULL,
   id uuid NOT NULL,
-  user_id text,
+  user_id text COLLATE "C",
   username text,
   to_bundle_id uuid NOT NULL,
   type text NOT NULL CHECK (
     type IN ('UPDATE_APPLIED', 'RECOVERED', 'RELEASE_ADOPTED', 'UNCHANGED')
   ),
-  platform text NOT NULL CHECK (platform IN ('ios', 'android')),
+  platform text COLLATE "C" NOT NULL CHECK (platform IN ('ios', 'android')),
   app_version text NOT NULL,
-  channel text NOT NULL,
+  channel text COLLATE "C" NOT NULL,
   cohort text NOT NULL,
   received_at_ms double precision NOT NULL CHECK (received_at_ms >= 0)
 );
@@ -185,6 +185,14 @@ CREATE INDEX hot_updater_v1_bundle_installations_user_id_idx
   ON public.hot_updater_v1_bundle_installations(user_id, install_id);
 CREATE INDEX hot_updater_v1_bundle_installations_received_at_idx
   ON public.hot_updater_v1_bundle_installations(received_at_ms);
+CREATE INDEX hot_updater_v1_bundle_events_from_bundle_idx
+  ON public.hot_updater_v1_bundle_events(type, platform, channel, from_bundle_id, received_at_ms, id);
+CREATE INDEX hot_updater_v1_bundle_events_to_bundle_idx
+  ON public.hot_updater_v1_bundle_events(type, platform, channel, to_bundle_id, received_at_ms, id);
+CREATE INDEX hot_updater_v1_bundle_installations_scope_idx
+  ON public.hot_updater_v1_bundle_installations(platform, channel, received_at_ms);
+CREATE INDEX hot_updater_v1_bundle_installations_bundle_idx
+  ON public.hot_updater_v1_bundle_installations(platform, channel, to_bundle_id, received_at_ms);
 CREATE UNIQUE INDEX hot_updater_v1_api_keys_hash_key
   ON public.hot_updater_v1_api_keys(hash);
 CREATE INDEX hot_updater_v1_api_keys_created_at_idx
@@ -563,6 +571,47 @@ $$;
 REVOKE EXECUTE ON FUNCTION public.hot_updater_v1_delete_channel(text)
   FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.hot_updater_v1_delete_channel(text)
+  TO service_role;
+
+-- The event insert gates the snapshot replacement in the same SQL statement.
+CREATE FUNCTION public.hot_updater_v1_record_insights(p_event jsonb, p_installation jsonb)
+RETURNS void
+LANGUAGE sql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+  WITH accepted_event AS (
+    INSERT INTO public.hot_updater_v1_bundle_events
+    SELECT * FROM pg_catalog.jsonb_populate_record(
+      NULL::public.hot_updater_v1_bundle_events, p_event
+    )
+    ON CONFLICT (id) DO NOTHING RETURNING id
+  )
+  INSERT INTO public.hot_updater_v1_bundle_installations
+  SELECT candidate.*
+  FROM pg_catalog.jsonb_populate_record(
+    NULL::public.hot_updater_v1_bundle_installations, p_installation
+  ) AS candidate
+  CROSS JOIN accepted_event
+  ON CONFLICT (install_id) DO UPDATE SET
+    id = excluded.id,
+    user_id = excluded.user_id,
+    username = excluded.username,
+    to_bundle_id = excluded.to_bundle_id,
+    type = excluded.type,
+    platform = excluded.platform,
+    app_version = excluded.app_version,
+    channel = excluded.channel,
+    cohort = excluded.cohort,
+    received_at_ms = excluded.received_at_ms
+  WHERE (excluded.received_at_ms, excluded.id) >
+    (hot_updater_v1_bundle_installations.received_at_ms,
+      hot_updater_v1_bundle_installations.id);
+$$;
+
+REVOKE EXECUTE ON FUNCTION public.hot_updater_v1_record_insights(jsonb, jsonb)
+  FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.hot_updater_v1_record_insights(jsonb, jsonb)
   TO service_role;
 
 NOTIFY pgrst, 'reload schema';

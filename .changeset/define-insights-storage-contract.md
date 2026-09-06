@@ -26,10 +26,10 @@ from B to A belongs to B's recovery count while latest state names A. Counts
 remain independent live measurements, without a 50,000-event cap or a claimed
 exact share or success rate.
 
-Apply the additive provider1.0.1 SQL/index migrations before deployment.
-DynamoDB exposes `migrateDynamoDBInsights` and managed preparation invokes it;
-Firebase exposes `migrateFirebaseInsights` to preserve existing latest state
-under encoded document IDs and schema marker5. MongoDB Insights always requires
+Include all Insights indexes and native writers in the initial `1.0.0` schema.
+DynamoDB writes outcome keys and event-ID markers with each new report;
+Firebase uses canonical encoded installation document IDs from initialization.
+There is no separate Insights upgrade or backfill. MongoDB Insights requires
 native transactions on a replica set or sharded cluster. Regenerate standalone
 ORM schemas and apply emitted Prisma collation SQL where required.
 

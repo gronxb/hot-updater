@@ -26,10 +26,7 @@ import {
 } from "./firebaseDatabaseParser";
 import type { FirebaseDatabaseSnapshot } from "./firebaseDatabaseState";
 import { FirebaseDatabaseConstraintError } from "./firebaseDatabaseState";
-import {
-  FIREBASE_LEGACY_INSTALLATIONS_COLLECTION,
-  FIREBASE_V1_COLLECTION_NAMES,
-} from "./firebaseInfrastructureNames";
+import { FIREBASE_V1_COLLECTION_NAMES } from "./firebaseInfrastructureNames";
 
 export interface FirebaseDatabaseCollections {
   readonly bundles: CollectionReference<DocumentData>;
@@ -48,16 +45,6 @@ export class FirebaseDatabaseAdapterVersionError extends Error {
 
   constructor(readonly version: unknown) {
     super(`Unsupported Firebase database adapter version: ${String(version)}`);
-  }
-}
-
-export class FirebaseInsightsMigrationRequiredError extends Error {
-  readonly name = "FirebaseInsightsMigrationRequiredError";
-
-  constructor() {
-    super(
-      "Firebase Insights storage needs migration. Stop old ingestion and run migrateFirebaseInsights(config) from @hot-updater/firebase before starting the updated server.",
-    );
   }
 }
 
@@ -412,23 +399,12 @@ export const persistFirebaseDatabaseSnapshot = ({
 };
 
 export const migrateFirebaseDatabase = async (
-  db: Firestore,
   collections: FirebaseDatabaseCollections,
 ): Promise<void> => {
   const versionDocument = collections.settings.doc("database_adapter_version");
   const version = await versionDocument.get();
   const adapterVersion = version.data()?.version;
-  if (adapterVersion === 5) {
-    return;
-  }
-  const legacyInstallations = db.collection(
-    FIREBASE_LEGACY_INSTALLATIONS_COLLECTION,
-  );
   if (adapterVersion === 4) {
-    if (!(await legacyInstallations.limit(1).get()).empty) {
-      throw new FirebaseInsightsMigrationRequiredError();
-    }
-    await versionDocument.update({ version: 5 });
     return;
   }
   if (version.exists) {
@@ -443,17 +419,16 @@ export const migrateFirebaseDatabase = async (
     collections.releaseCatalogs.limit(1).get(),
     collections.bundleInstallations.limit(1).get(),
     collections.bundleEvents.limit(1).get(),
-    legacyInstallations.limit(1).get(),
   ]);
   if (existingCollections.some((snapshot) => !snapshot.empty)) {
     throw new FirebaseDatabaseAdapterVersionError("v0");
   }
 
   try {
-    await versionDocument.create({ version: 5 });
+    await versionDocument.create({ version: 4 });
   } catch (error) {
     const current = await versionDocument.get();
-    if (current.data()?.version !== 5) {
+    if (current.data()?.version !== 4) {
       throw error;
     }
   }

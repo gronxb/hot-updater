@@ -286,9 +286,9 @@ Retained costs and limitations:
   is insufficient. MongoDB transaction prerequisites and each provider's real
   batch/RPC path must be checked before claiming compatibility.
 - Bundle event queries need from/type/scope/time and to/type/scope/time access
-  paths. Reusing existing raw fields avoids new attribution semantics, but
-  building indexes or populating DynamoDB index-key attributes on old rows may
-  still require a migration. Migrations preserve existing data; no data reset is part of this contract.
+  paths. The initial `1.0.0` schema includes these indexes, and DynamoDB writes
+  the index-key attributes with each new report. This unreleased contract has
+  no separate Insights upgrade or old-row backfill.
 - The existing movement-only access path can stay. Do not expand it to every
   installation event/filter combination just to make the API more generic.
 - Secondary-index reads may lag. A fixed receipt cutoff is not a commit

@@ -10,10 +10,9 @@ declare module "vitest" {
   }
 }
 
-it("ships the initial schema and additive Insights migration", () => {
+it("ships a single 1.0.0 initialization migration", () => {
   expect(inject("d1Migrations").map(({ name }) => name)).toEqual([
     "0001_hot-updater_1.0.0.sql",
-    "0002_hot-updater_1.0.1.sql",
   ]);
 });
 
@@ -113,18 +112,6 @@ it("creates the current schema with required artifact sizes", async () => {
       "SELECT install_id, received_at_ms FROM bundle_installations",
     ).first(),
   ).resolves.toEqual({ install_id: "install-1", received_at_ms: 100 });
-
-  await env.DB.prepare(inject("d1Migrations")[1]!.sql).run();
-  await expect(
-    env.DB.prepare(
-      "SELECT install_id, received_at_ms FROM bundle_installations",
-    ).first(),
-  ).resolves.toEqual({ install_id: "install-1", received_at_ms: 100 });
-  await expect(
-    env.DB.prepare(
-      "SELECT value FROM private_hot_updater_settings WHERE key = 'schema.core'",
-    ).first<string>("value"),
-  ).resolves.toBe("1.0.1");
 
   const installationIndexes = await env.DB.prepare(`
     SELECT name FROM sqlite_master

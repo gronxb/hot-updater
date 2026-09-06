@@ -4,17 +4,10 @@ import { hotUpdaterCreateTableOperations } from "./sql";
 
 export const createMongoMigrationOperations = (
   settingsOperation?: MigrationOperation,
-  insightsOnly = false,
 ): MigrationOperation[] => [
-  ...(insightsOnly ? [] : hotUpdaterCreateTableOperations),
+  ...hotUpdaterCreateTableOperations,
   ...hotUpdaterSchema.tables
-    .filter(
-      (table) =>
-        !table.internal &&
-        (!insightsOnly ||
-          table.ormName === "bundle_events" ||
-          table.ormName === "bundle_installations"),
-    )
+    .filter((table) => !table.internal)
     .map((table): MigrationOperation => {
       const primaryKey = table.columns.find((column) => column.primaryKey);
       if (!primaryKey) {
@@ -27,33 +20,21 @@ export const createMongoMigrationOperations = (
         type: "custom",
       };
     }),
-  ...hotUpdaterSchema.tables
-    .filter(
-      (table) =>
-        !insightsOnly ||
-        table.ormName === "bundle_events" ||
-        table.ormName === "bundle_installations",
-    )
-    .flatMap((table) =>
-      (table.indexes ?? [])
-        .filter((index) => schemaIndexAppliesToProvider(index, "mongodb"))
-        .map(
-          (index): MigrationOperation => ({
-            description: `Create ${index.unique ? "unique " : ""}MongoDB index: ${index.name} on ${table.ormName}(${index.columns.join(
-              ", ",
-            )})`,
-            type: "custom",
-          }),
-        ),
-    ),
-  ...(insightsOnly
-    ? []
-    : [
-        {
-          description:
-            "Enforce final MongoDB Bundle, Release, and catalog schemas",
-          type: "custom" as const,
-        },
-      ]),
+  ...hotUpdaterSchema.tables.flatMap((table) =>
+    (table.indexes ?? [])
+      .filter((index) => schemaIndexAppliesToProvider(index, "mongodb"))
+      .map(
+        (index): MigrationOperation => ({
+          description: `Create ${index.unique ? "unique " : ""}MongoDB index: ${index.name} on ${table.ormName}(${index.columns.join(
+            ", ",
+          )})`,
+          type: "custom",
+        }),
+      ),
+  ),
+  {
+    description: "Enforce final MongoDB Bundle, Release, and catalog schemas",
+    type: "custom",
+  },
   ...(settingsOperation ? [settingsOperation] : []),
 ];

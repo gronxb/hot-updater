@@ -103,27 +103,41 @@ describe("v1.0.0 Release Catalog schema", () => {
         ({ ormName }) => ormName === "install_id",
       )?.primaryKey,
     ).toBe(true);
-    expect(bundleInstallationsV100.indexes).toEqual([
-      {
-        columns: ["user_id", "install_id"],
-        name: "bundle_installations_user_id_idx",
-      },
-      {
-        columns: ["received_at_ms"],
-        name: "bundle_installations_received_at_idx",
-      },
-    ]);
+    expect(bundleInstallationsV100.indexes).toEqual(
+      expect.arrayContaining([
+        {
+          columns: ["user_id", "install_id"],
+          name: "bundle_installations_user_id_idx",
+        },
+        {
+          columns: ["received_at_ms"],
+          name: "bundle_installations_received_at_idx",
+        },
+      ]),
+    );
 
     const sql = createTableSql("postgresql", "foreign-keys", v1_0_0).join("\n");
     const prisma = generatePrismaSchema("postgresql", v1_0_0);
     const drizzle = generateDrizzleSchema("postgresql", v1_0_0);
     expect(sql).toContain("create table bundle_installations");
-    expect(sql).toContain("install_id varchar(255) primary key not null");
+    expect(sql).toContain(
+      'install_id varchar(255) collate "C" primary key not null',
+    );
     expect(sql).toContain(
       "create index bundle_installations_user_id_idx on bundle_installations(user_id, install_id)",
     );
     expect(sql).toContain(
       "create index bundle_installations_received_at_idx on bundle_installations(received_at_ms)",
+    );
+    expect(sql).toContain(
+      "create index bundle_installations_bundle_idx on bundle_installations(platform, channel, to_bundle_id, received_at_ms)",
+    );
+    expect(sql).toContain(
+      "create index bundle_events_from_bundle_idx on bundle_events(type, platform, channel, from_bundle_id, received_at_ms, id)",
+    );
+    expect(prisma).toContain("initial Prisma SQL migration");
+    expect(prisma).toContain(
+      'alter table bundle_installations alter column install_id type varchar(255) collate "C"',
     );
     expect(prisma).toContain("model bundle_installations {");
     expect(prisma).toContain("install_id String @db.VarChar(255) @id");
@@ -137,7 +151,9 @@ describe("v1.0.0 Release Catalog schema", () => {
     const mysql = createTableSql("mysql", "foreign-keys", v1_0_0).join("\n");
     const mssql = createTableSql("mssql", "foreign-keys", v1_0_0).join("\n");
 
-    expect(mysql).toContain("install_id varchar(255) not null");
+    expect(mysql).toContain(
+      "install_id varchar(255) character set utf8mb4 collate utf8mb4_0900_bin not null",
+    );
     expect(mysql).toContain("user_id varchar(255)");
     expect(mssql).toContain("install_id nvarchar(255) not null");
     expect(mssql).toContain("user_id nvarchar(255)");

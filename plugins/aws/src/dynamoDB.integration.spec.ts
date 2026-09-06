@@ -13,7 +13,6 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
 import {
   createDynamoDBInsightsTable,
-  DYNAMODB_INSIGHTS_INSTALLATIONS_PARTITION,
   DYNAMODB_INSIGHTS_EVENT_IDS_PARTITION,
 } from "./dynamoDB";
 import { DynamoDBIntegrationFixture } from "./dynamoDB.integration-fixture";
@@ -542,29 +541,13 @@ describe("DynamoDB Insights", () => {
     }
   });
 
-  it("backfills legacy events without changing canonical state and is safe to repeat", async () => {
-    const event = insightsEvent(71, { installId: "legacy", receivedAtMs: 100 });
-    const installation = toInsightsInstallationRow(event);
-    const orderKey = `0000000000000100#${event.id}`;
-    await fixture.client.send(
-      new PutCommand({
-        TableName: fixture.tableName,
-        Item: { pk: "bundle_events", sk: orderKey, version: 1, row: event },
-      }),
-    );
-    await fixture.client.send(
-      new PutCommand({
-        TableName: fixture.tableName,
-        Item: {
-          pk: DYNAMODB_INSIGHTS_INSTALLATIONS_PARTITION,
-          sk: event.install_id,
-          version: 1,
-          order_key: orderKey,
-          row: installation,
-        },
-      }),
-    );
+  it("queries initial storage and indexes the first report without a separate initialization step", async () => {
     const insights = createPlugin().models.insights;
+    const event = insightsEvent(71, {
+      installId: "initial",
+      receivedAtMs: 100,
+    });
+    const installation = toInsightsInstallationRow(event);
     const query = {
       filter: {
         platform: "ios" as const,
@@ -575,20 +558,16 @@ describe("DynamoDB Insights", () => {
       sinceMs: 0,
       beforeReceivedAtMs: 200,
     };
-    await expect(insights.countEvents(query)).rejects.toThrow(
-      "migrateDynamoDBInsights",
-    );
-    await fixture.migrateInsights();
-    await fixture.migrateInsights();
-    await expect(insights.countEvents(query)).resolves.toBe(1);
+    await expect(insights.countEvents(query)).resolves.toBe(0);
     await insights.record({ event, installation });
+    await expect(insights.countEvents(query)).resolves.toBe(1);
     await expect(
       insights.findInstallations({ installId: event.install_id }),
     ).resolves.toEqual([installation]);
     await expect(
       insights.listEvents({
-        filter: { kind: "all" },
-        beforeReceivedAtMs: 200,
+        ...query,
+        filter: { kind: "bundle", ...query.filter },
         limit: 10,
       }),
     ).resolves.toEqual([event]);

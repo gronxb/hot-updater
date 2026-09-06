@@ -234,5 +234,5 @@ export const api_keys = sqliteTable("api_keys", {
 
 export const private_hot_updater_settings = sqliteTable("private_hot_updater_settings", {
   id: text("id", { length: 255 }).primaryKey().notNull(),
-  version: text("version", { length: 255 }).notNull().default("1.0.1")
+  version: text("version", { length: 255 }).notNull().default("1.0.0")
 })

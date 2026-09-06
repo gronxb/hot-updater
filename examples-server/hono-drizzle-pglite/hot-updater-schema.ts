@@ -234,5 +234,5 @@ export const api_keys = pgTable("api_keys", {
 
 export const private_hot_updater_settings = pgTable("private_hot_updater_settings", {
   id: varchar("id", { length: 255 }).primaryKey().notNull(),
-  version: varchar("version", { length: 255 }).notNull().default("1.0.1")
+  version: varchar("version", { length: 255 }).notNull().default("1.0.0")
 })

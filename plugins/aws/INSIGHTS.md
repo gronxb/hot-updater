@@ -26,40 +26,14 @@ pages are consistent reads; the whole count is a live traversal, not a frozen
 snapshot. Bundle event counts consume every native `COUNT` page of the selected
 bundle/time range. Separate count calls do not share a snapshot.
 
-## Upgrading existing Insights data
+## Initial 1.0.0 schema
 
-Pause ingestion before upgrading old writers or running this migration. Keep it
-paused until the migration succeeds and every writer runs the new version. Old
-writers cannot maintain the new query indexes. Do not delete or reset data.
+The initial table uses `pk`/`sk` and the `hot-updater-update-index` GSI. Managed
+AWS initialization provisions that schema. Standalone deployments use the same
+schema. All Insights access paths are available immediately: the first `record`
+creates the event-ID and bundle query entries in the same transaction as its
+canonical report and installation state.
 
-Managed AWS initialization runs `migrateDynamoDBInsights` after ensuring the table.
-For an existing standalone DynamoDB table, run the same exported migration using
-the AWS credential chain and the region/table name of the deployment:
-
-```sh
-AWS_REGION=ap-northeast-2 HOT_UPDATER_DYNAMODB_TABLE=your-table node --input-type=module <<'JS'
-import { migrateDynamoDBInsights } from '@hot-updater/aws';
-await migrateDynamoDBInsights({
-  region: process.env.AWS_REGION,
-  tableName: process.env.HOT_UPDATER_DYNAMODB_TABLE,
-});
-JS
-```
-
-Supply `endpoint` in the configuration for a standalone local DynamoDB service.
-Explicit `credentials` are also accepted. The operation needs `GetItem`, `Query`,
-`PutItem`, and transaction write permissions for the table's Insights partitions.
-Updated managed IAM policy includes these partitions; custom policies must do so.
-
-Migration traverses the existing event partition with bounded pages and adds
-only ID and bundle query entries. It preserves the canonical event and latest
-installation rows. Each event's entries commit together. If it fails, rerun the
-same command: accepted entries are skipped and completion is marked only after
-the full traversal. Conflicting historical reuse of an event ID stops migration
-with an error instead of picking a winner or deleting a report.
-
-An empty event partition initializes its readiness marker with bounded metadata
-queries. A populated legacy partition without the completed marker rejects new
-records and bundle list/count operations with the migration instruction, so
-missing index entries cannot silently appear as zero reports. Global history
-and canonical installation queries remain readable during preparation.
+The managed IAM policy includes the Insights partitions. Custom policies must
+permit `GetItem`, `Query`, and transaction writes for those partitions and
+`Query` for the movement GSI.

@@ -299,20 +299,14 @@ source `changeIndex`. All other validation, constraint, and provider failures
 reject. A provider without an atomic conditional primitive must reject before
 its first write; there is no Release-now/catalog-later fallback.
 
-## Implement the 1.0.1 schema
+## Implement the 1.0.0 schema
 
-Fresh storage uses schema `1.0.1`. Existing complete `1.0.0` storage upgrades
-additively: preserve events and latest installation rows, add the bundle-outcome
-and latest-scope indexes, and apply exact identity collations. Advance the
-schema marker only after the upgrade succeeds. Stop older ingestion writers
-while applying the upgrade.
-
-The `1.0.0` → `1.0.1` upgrade assumes the complete `1.0.0` shape, including
-required archive and patch byte sizes. Older pre-release schemas missing those
-fields and populated v0 databases are separate migration cases; this Insights
-upgrade does not infer missing artifact metadata. Keep a backup and reconcile
-those schemas explicitly before applying it. Do not reset a complete `1.0.0`
-database to upgrade Insights.
+The initial `1.0.0` schema includes bundle-outcome and latest-scope indexes,
+exact identity collations, and atomic Insights recording. This contract has
+not shipped: there is no separate Insights schema version or upgrade path.
+Initialization creates the complete schema on empty storage and no-ops for an
+initialized `1.0.0` database. Unsupported populated storage is rejected without
+deleting its data.
 
 1. Remove `queries`, `getUpdateInfo`, provider decision SQL/RPCs, and any
    desired-state cache owned by the provider.
@@ -324,7 +318,7 @@ database to upgrade Insights.
 5. Extend the atomic commit with Release revision and catalog generation
    expectations.
 6. Implement atomic Insights recording and the fixed queries above. Record
-   `schema.core = 1.0.1` after fresh creation or a successful supported upgrade;
+   `schema.core = 1.0.0` after successful initialization;
    reject unsupported source versions without deleting their data.
 7. Run the public conformance and integration suites against the real backend.
 

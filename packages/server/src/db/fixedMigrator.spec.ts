@@ -9,10 +9,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { createBundleEventRowFixture } from "../../../test-utils/src/databaseTestFixtures";
 import { createInMemoryDatabasePlugin } from "../../../test-utils/test/inMemoryDatabasePlugin";
 import { kyselyAdapter } from "../adapters/kysely";
-import { v1_0_0 } from "../schema/v1_0_0";
 import { createDatabasePluginCore } from "./databasePluginCore";
 import { createKyselyMigrator } from "./fixedMigrator";
-import { createIndexSql, createTableStatement } from "./schema/sql";
 import { createSchemaReadinessChecker } from "./schemaReadiness";
 
 interface SettingsDatabase {
@@ -59,41 +57,32 @@ describe("Kysely migrator", () => {
     await Promise.all(databases.splice(0).map((db) => db.close()));
   });
 
-  it("upgrades 1.0.0 Insights access paths without losing accepted reports", async () => {
+  it("creates the final Insights access paths in the initial schema", async () => {
     const database = new PGlite();
     databases.push(database);
     const kysely = new Kysely<SettingsDatabase>({
       dialect: new PGliteDialect(database),
     });
     kyselyInstances.push(kysely);
-    await database.exec(
-      v1_0_0.tables
-        .flatMap((table) => [
-          createTableStatement(table, "postgresql"),
-          ...(table.indexes ?? []).map((index) =>
-            createIndexSql(table, index, "postgresql"),
-          ),
-        ])
-        .join(";\n"),
-    );
-    await database.exec(
-      "insert into private_hot_updater_settings (key, value) values ('schema.core', '1.0.0')",
-    );
+    const migrator = createKyselyMigrator({
+      db: kysely,
+      provider: "postgresql",
+    });
+    await expect(migrator.next()).resolves.toEqual({ version: "1.0.0" });
+    await expect(migrator.previous()).resolves.toBeUndefined();
+    const migration = await migrator.migrateToLatest();
+    await migration.execute();
+    await expect(migrator.getVersion()).resolves.toBe("1.0.0");
     const plugin = kyselyAdapter({ db: kysely, provider: "postgresql" });
     const event = createBundleEventRowFixture("706", 100);
     const input = { event, installation: toInsightsInstallationRow(event) };
     await plugin.models.insights.record(input);
 
-    const migrator = createKyselyMigrator({
-      db: kysely,
-      provider: "postgresql",
-    });
-    const migration = await migrator.migrateToLatest();
-    expect(migration.getSQL?.()).not.toMatch(
-      /drop table|delete from|create table/i,
-    );
-    await migration.execute();
-    await expect(migrator.getVersion()).resolves.toBe("1.0.1");
+    const repeated = await migrator.migrateToLatest();
+    expect(repeated.operations).toEqual([]);
+    expect(repeated.getSQL?.()).toBe("");
+    await repeated.execute();
+    await expect(migrator.next()).resolves.toBeUndefined();
     await expect(
       plugin.models.insights.findInstallations({ installId: event.install_id }),
     ).resolves.toEqual([input.installation]);
@@ -130,7 +119,7 @@ describe("Kysely migrator", () => {
     );
   });
 
-  it("creates schema 1.0.1 from an empty database", async () => {
+  it("creates schema 1.0.0 from an empty database", async () => {
     const database = new PGlite();
     databases.push(database);
     const kysely = new Kysely<SettingsDatabase>({
@@ -150,7 +139,7 @@ describe("Kysely migrator", () => {
     expect(result.operations.length).toBeGreaterThan(0);
     await result.execute();
 
-    await expect(migrator.getVersion()).resolves.toBe("1.0.1");
+    await expect(migrator.getVersion()).resolves.toBe("1.0.0");
     const tables = await database.query<{ tablename: string }>(`
       select tablename from pg_tables
       where schemaname = 'public'
@@ -170,7 +159,7 @@ describe("Kysely migrator", () => {
     );
   });
 
-  it("is a no-op when schema.core is already 1.0.1", async () => {
+  it("is a no-op when schema.core is already 1.0.0", async () => {
     const database = new PGlite();
     databases.push(database);
     const kysely = new Kysely<SettingsDatabase>({
@@ -193,7 +182,7 @@ describe("Kysely migrator", () => {
     expect(result.getSQL?.()).toBe("");
   });
 
-  it("ignores a leftover version marker when schema.core is 1.0.1", async () => {
+  it("ignores a leftover version marker when schema.core is 1.0.0", async () => {
     const database = new PGlite();
     databases.push(database);
     const kysely = new Kysely<SettingsDatabase>({
@@ -216,7 +205,7 @@ describe("Kysely migrator", () => {
       on conflict (key) do update set value = excluded.value
     `);
 
-    await expect(migrator.getVersion()).resolves.toBe("1.0.1");
+    await expect(migrator.getVersion()).resolves.toBe("1.0.0");
     await expect(
       migrator.migrateToLatest({ mode: "from-schema" }),
     ).resolves.toMatchObject({ operations: [] });

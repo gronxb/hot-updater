@@ -192,6 +192,25 @@ describe("PostgreSQL artifact byte-size constraints", () => {
 });
 
 describe("PostgreSQL Insights projection", () => {
+  it("initializes schema 1.0.0 from a single SQL file", async () => {
+    const files = await fs.readdir(path.resolve("plugins/postgres/sql"));
+    expect(files.filter((file) => file.endsWith(".sql"))).toEqual([
+      "bundles.sql",
+    ]);
+    const { database, plugin } = await createPostgresTestPlugin();
+    try {
+      expect(
+        (
+          await database.query(
+            "SELECT value FROM private_hot_updater_settings WHERE key = 'schema.core'",
+          )
+        ).rows,
+      ).toEqual([{ value: "1.0.0" }]);
+    } finally {
+      await plugin.dispose?.();
+    }
+  });
+
   it("counts beyond 50,000 reports and uses the bundle range index for a bounded drill-down", async () => {
     const { database, plugin } = await createPostgresTestPlugin();
     const bundleId = "00000000-0000-7000-8000-000000001002";

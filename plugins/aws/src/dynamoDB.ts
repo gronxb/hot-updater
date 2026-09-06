@@ -3156,142 +3156,10 @@ const advancesInsightsInstallation = (
   row.received_at_ms > current.received_at_ms ||
   (row.received_at_ms === current.received_at_ms && row.id > current.id);
 
-const INSIGHTS_SCHEMA_KEY = { pk: "_hot-updater", sk: "insights-contract-v1" };
-const insightsReadiness = new WeakMap<DynamoDBStore, Promise<void>>();
-
-const markDynamoDBInsightsReady = async (
-  store: DynamoDBStore,
-): Promise<void> => {
-  await store.client.send(
-    new PutCommand({
-      TableName: store.tableName,
-      Item: { ...INSIGHTS_SCHEMA_KEY, version: 1 },
-    }),
-  );
-};
-
-const ensureDynamoDBInsightsReady = (store: DynamoDBStore): Promise<void> => {
-  const pending = insightsReadiness.get(store);
-  if (pending) return pending;
-  const ready = (async () => {
-    const { Item } = await store.client.send(
-      new GetCommand({
-        TableName: store.tableName,
-        Key: INSIGHTS_SCHEMA_KEY,
-        ConsistentRead: true,
-      }),
-    );
-    if (Item?.version === 1) return;
-    const existing = await store.client.send(
-      new QueryCommand({
-        TableName: store.tableName,
-        ConsistentRead: true,
-        KeyConditionExpression: "#pk = :pk",
-        ExpressionAttributeNames: { "#pk": "pk" },
-        ExpressionAttributeValues: { ":pk": DYNAMODB_INSIGHTS_PARTITION },
-        Limit: 1,
-        Select: "COUNT",
-      }),
-    );
-    if ((existing.Count ?? 0) > 0 || existing.LastEvaluatedKey !== undefined) {
-      throw new Error(
-        "DynamoDB Insights indexes require migration. Pause ingestion and run migrateDynamoDBInsights(config) from @hot-updater/aws before resuming.",
-      );
-    }
-    await markDynamoDBInsightsReady(store);
-  })();
-  insightsReadiness.set(store, ready);
-  void ready.catch(() => insightsReadiness.delete(store));
-  return ready;
-};
-
-/**
- * Adds event-ID and raw bundle query indexes to existing Insights reports.
- * Pause legacy ingestion first. Safe to retry after failure; no rows are reset.
- * Scans only the event partition once, with bounded native pages.
- */
-export const migrateDynamoDBInsights = async (
-  config: DynamoDBClientConfig & { readonly tableName: string },
-): Promise<void> => {
-  const { tableName, ...clientConfig } = config;
-  const client = DynamoDBDocumentClient.from(new DynamoDBClient(clientConfig));
-  const store = { client, tableName };
-  try {
-    const { Item } = await client.send(
-      new GetCommand({
-        TableName: tableName,
-        Key: INSIGHTS_SCHEMA_KEY,
-        ConsistentRead: true,
-      }),
-    );
-    if (Item?.version === 1) return;
-    let exclusiveStartKey: Record<string, unknown> | undefined;
-    do {
-      const page = await client.send(
-        new QueryCommand({
-          TableName: tableName,
-          ConsistentRead: true,
-          KeyConditionExpression: "#pk = :pk",
-          ExpressionAttributeNames: { "#pk": "pk" },
-          ExpressionAttributeValues: { ":pk": DYNAMODB_INSIGHTS_PARTITION },
-          ExclusiveStartKey: exclusiveStartKey,
-          Limit: 101,
-          ScanIndexForward: true,
-        }),
-      );
-      for (const item of page.Items ?? []) {
-        const { row } = parseOfficialRowItem(
-          item,
-          DYNAMODB_INSIGHTS_PARTITION,
-          isBundleEventRow,
-        );
-        const identityKey = {
-          pk: DYNAMODB_INSIGHTS_EVENT_IDS_PARTITION,
-          sk: row.id,
-        };
-        const { Item: identity } = await client.send(
-          new GetCommand({
-            TableName: tableName,
-            Key: identityKey,
-            ConsistentRead: true,
-          }),
-        );
-        if (identity !== undefined) {
-          if (identity.order_key !== insightsSortKey(row)) {
-            throw new Error(
-              "Existing DynamoDB Insights events reuse an event ID; resolve the conflicting reports before migrating.",
-            );
-          }
-          continue;
-        }
-        const bundle = toInsightsBundleItem(row);
-        await commitDynamoDBTransaction(store, [
-          {
-            Put: {
-              TableName: tableName,
-              Item: { ...identityKey, order_key: insightsSortKey(row) },
-              ConditionExpression: "attribute_not_exists(#pk)",
-              ExpressionAttributeNames: { "#pk": "pk" },
-            },
-          },
-          ...(bundle === null
-            ? []
-            : [{ Put: { TableName: tableName, Item: bundle } }]),
-        ]);
-      }
-      exclusiveStartKey = page.LastEvaluatedKey;
-    } while (exclusiveStartKey !== undefined);
-    await markDynamoDBInsightsReady(store);
-  } finally {
-    client.destroy();
-  }
-};
-
 const recordDynamoDBInsightsEvent = async (
   store: DynamoDBStore,
   { event: row, installation: next }: InsightsRecordInput,
 ): Promise<void> => {
-  await ensureDynamoDBInsightsReady(store);
   const eventItem = toInsightsEventItem(row);
   const bundleItem = toInsightsBundleItem(row);
   const identityKey = { pk: DYNAMODB_INSIGHTS_EVENT_IDS_PARTITION, sk: row.id };
@@ -3429,8 +3297,6 @@ export const createDynamoDBInsightsTable = (
   record: (input) => recordDynamoDBInsightsEvent(store, input),
   async listEvents(input) {
     if ((input.sinceMs ?? 0) === input.beforeReceivedAtMs) return [];
-    if (input.filter.kind === "bundle")
-      await ensureDynamoDBInsightsReady(store);
     const range = insightsEventRange(input);
     const rows: BundleEventRow[] = [];
     let exclusiveStartKey: Record<string, unknown> | undefined;
@@ -3554,7 +3420,6 @@ export const createDynamoDBInsightsTable = (
   },
   async countEvents(input) {
     if (input.sinceMs === input.beforeReceivedAtMs) return 0;
-    await ensureDynamoDBInsightsReady(store);
     const { query } = insightsEventRange({
       ...input,
       filter: { kind: "bundle", ...input.filter },

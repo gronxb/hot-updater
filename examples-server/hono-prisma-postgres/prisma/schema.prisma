@@ -150,6 +150,6 @@ model api_keys {
 }
 model private_hot_updater_settings {
   key String @db.VarChar(255) @id
-  value String @default("1.0.1")
+  value String @default("1.0.0")
 }
 // --- END HOT-UPDATER MODELS ---

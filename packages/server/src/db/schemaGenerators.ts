@@ -7,7 +7,7 @@ import {
   type HotUpdaterTableSchema,
   type HotUpdaterVersionedSchema,
 } from "../schema/types";
-import { getInsightsCollationSql } from "./schema/insightsMigration";
+import { getInsightsCollationSql } from "./schema/insightsCollation";
 import {
   getHotUpdaterSchemaVersion,
   hotUpdaterSchema,
@@ -157,15 +157,13 @@ export const generatePrismaSchema = (
   provider: ORMProvider,
   schema: HotUpdaterVersionedSchema = hotUpdaterSchema,
 ) => {
-  const collationSql =
-    schema.version === "1.0.1" && getSQLProvider(provider)
-      ? getInsightsCollationSql(getSQLProvider(provider)!)
-      : [];
+  const sqlProvider = getSQLProvider(provider);
+  const collationSql = sqlProvider ? getInsightsCollationSql(sqlProvider) : [];
   const header =
     collationSql.length === 0
       ? ""
       : [
-          "// Apply these statements in the generated Prisma SQL migration to preserve exact Insights identities and cursors:",
+          "// Apply these statements in the initial Prisma SQL migration to preserve exact Insights identities and cursors:",
           ...collationSql.map((statement) => `// ${statement};`),
           "",
         ].join("\n");

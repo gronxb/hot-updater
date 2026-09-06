@@ -29,10 +29,9 @@ describe("versioned schema DSL", () => {
     }
   });
 
-  it("keeps schema 1.0.0 and the additive Insights revision", () => {
+  it("registers only the initial schema 1.0.0", () => {
     expect(hotUpdaterSchemaVersions.map((item) => item.version)).toEqual([
       "1.0.0",
-      "1.0.1",
     ]);
   });
 });

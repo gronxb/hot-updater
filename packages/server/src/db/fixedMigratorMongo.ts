@@ -303,10 +303,7 @@ export const createMongoMigrator = (client: MongoClient): Migrator => {
         operations: [createSettingsKeyIndexOperation()],
       };
     }
-    const insightsOnly = coreVersion === "1.0.0";
-    if (!insightsOnly) {
-      assertCurrentOrEmptySchemaVersion(coreVersion ?? legacyCoreVersion);
-    }
+    assertCurrentOrEmptySchemaVersion(coreVersion ?? legacyCoreVersion);
     const settingsOperation =
       options.updateSettings === false
         ? undefined
@@ -318,7 +315,7 @@ export const createMongoMigrator = (client: MongoClient): Migrator => {
     return {
       operations: [
         createSettingsKeyIndexOperation(),
-        ...createMongoMigrationOperations(settingsOperation, insightsOnly),
+        ...createMongoMigrationOperations(settingsOperation),
       ],
       execute: async () => {
         const db = client.db();
@@ -326,7 +323,6 @@ export const createMongoMigrator = (client: MongoClient): Migrator => {
           updateSettings: options.updateSettings !== false,
           backend: {
             ensureCollections: async () => {
-              if (insightsOnly) return;
               for (const table of hotUpdaterSchema.tables) {
                 if (table.internal) continue;
                 await db
@@ -341,7 +337,6 @@ export const createMongoMigrator = (client: MongoClient): Migrator => {
                 const isInsights =
                   table.ormName === "bundle_events" ||
                   table.ormName === "bundle_installations";
-                if (insightsOnly && !isInsights) continue;
                 const collection = db.collection(table.ormName);
                 const collation = isInsights ? { locale: "simple" } : undefined;
                 const primaryKey = table.columns.find(
@@ -353,21 +348,6 @@ export const createMongoMigrator = (client: MongoClient): Migrator => {
                   );
                 }
                 const idIndexName = `${table.ormName}_${primaryKey.ormName}_idx`;
-                const existingIndexes = await collection
-                  .listIndexes()
-                  .toArray();
-                const existingIdIndex = existingIndexes.find(
-                  ({ name }) => name === idIndexName,
-                );
-                if (
-                  existingIdIndex &&
-                  (existingIdIndex.unique !== true ||
-                    (isInsights &&
-                      existingIdIndex.collation?.locale !== undefined &&
-                      existingIdIndex.collation.locale !== "simple"))
-                ) {
-                  await collection.dropIndex(idIndexName);
-                }
                 await collection.createIndex(
                   { [primaryKey.ormName]: 1 },
                   {
@@ -379,16 +359,6 @@ export const createMongoMigrator = (client: MongoClient): Migrator => {
                 for (const index of (table.indexes ?? []).filter((item) =>
                   schemaIndexAppliesToProvider(item, "mongodb"),
                 )) {
-                  const existingIndex = existingIndexes.find(
-                    ({ name }) => name === index.name,
-                  );
-                  if (
-                    isInsights &&
-                    existingIndex?.collation?.locale !== undefined &&
-                    existingIndex.collation.locale !== "simple"
-                  ) {
-                    await collection.dropIndex(index.name);
-                  }
                   await collection.createIndex(
                     Object.fromEntries(
                       index.columns.map((column) => [column, 1]),
@@ -403,7 +373,6 @@ export const createMongoMigrator = (client: MongoClient): Migrator => {
               }
             },
             enforceSchema: async () => {
-              if (insightsOnly) return;
               for (const [collection, validator] of [
                 ["bundles", mongoBundleValidator],
                 ["bundle_patches", mongoPatchValidator],

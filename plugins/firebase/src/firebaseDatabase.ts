@@ -134,7 +134,7 @@ export const firebaseDatabase = (config: FirebaseDatabaseConfig) => {
     let migration: Promise<void> | undefined;
 
     const ensureMigrated = (): Promise<void> => {
-      migration ??= migrateFirebaseDatabase(db, collections).catch((error) => {
+      migration ??= migrateFirebaseDatabase(collections).catch((error) => {
         migration = undefined;
         throw error;
       });

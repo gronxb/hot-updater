@@ -86,23 +86,23 @@ time advances. Its cost grows with stored installation rows, including rows
 outside the selected window. Other providers use native aggregate queries;
 returning one scalar does not imply constant work or latency.
 
-## Storage upgrades
+## Initial storage setup
 
-The new contract requires atomic native storage and bundle-outcome access paths.
-Preserve existing data and stop older writers while applying an upgrade.
+The unreleased schema has one version, `1.0.0`, which includes atomic native
+storage and all Insights access paths from the first initialization. There is
+no separate Insights upgrade or history backfill.
 
-- PostgreSQL, Supabase, and D1 add version 1.0.1 migrations for indexes and the
-  relevant native writer. Supabase installs the service-role record RPC.
-- Standalone SQL tooling upgrades 1.0.0 to 1.0.1 without resetting reports.
-  Regenerate ORM schema artifacts. Prisma PostgreSQL/MySQL require the emitted
+- PostgreSQL, Supabase, and D1 initialize their indexes and native writer in
+  the `1.0.0` schema. Supabase installs the service-role record RPC there.
+- Standalone SQL tooling initializes `1.0.0` on empty storage and leaves an
+  initialized `1.0.0` database unchanged. Generate ORM schema artifacts before
+  deployment. Prisma PostgreSQL/MySQL require the emitted
   companion collation SQL because Prisma's schema DSL cannot express it.
-- DynamoDB reuses its existing index and backfills outcome keys plus event-ID
-  markers. Managed preparation runs the migration; standalone operators call
-  `migrateDynamoDBInsights(config)`. See [AWS Insights](../../plugins/aws/INSIGHTS.md).
-- Firebase upgrades the schema marker to 5 and copies latest rows to canonical
-  encoded installation document IDs via `migrateFirebaseInsights(config)`.
-  Existing rows remain intact; populated older deployments fail readiness with
-  migration instructions instead of starting a history copy in a request.
+- DynamoDB uses its initial table and existing index. New reports atomically
+  include outcome keys and event-ID markers.
+  See [AWS Insights](../../plugins/aws/INSIGHTS.md).
+- Firebase stores latest rows under canonical encoded installation document
+  IDs from initialization, with no legacy collection copy.
 - MongoDB records through a native transaction even when optional generic
   transactions are disabled. MongoDB 5 or later on a replica set or sharded cluster is required; counts
   use snapshot read concern to avoid duplicate traversal of mutable index keys.

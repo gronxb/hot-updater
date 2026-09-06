@@ -3,12 +3,6 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   ensureTable: vi.fn(),
-  migrateInsights: vi.fn(),
-}));
-
-vi.mock("../src/dynamoDB", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("../src/dynamoDB")>()),
-  migrateDynamoDBInsights: mocks.migrateInsights,
 }));
 
 vi.mock("./dynamodb", () => ({
@@ -74,7 +68,6 @@ describe("AWS DynamoDB deployment preparation", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.ensureTable.mockResolvedValue(undefined);
-    mocks.migrateInsights.mockResolvedValue(undefined);
   });
 
   it("ensures the official-domain table before deployment", async () => {
@@ -85,10 +78,5 @@ describe("AWS DynamoDB deployment preparation", () => {
     });
 
     expect(mocks.ensureTable).toHaveBeenCalledWith("hot-updater-metadata");
-    expect(mocks.migrateInsights).toHaveBeenCalledWith({
-      credentials,
-      region: "ap-northeast-2",
-      tableName: "hot-updater-metadata",
-    });
   });
 });

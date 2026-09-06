@@ -29,7 +29,6 @@ import {
   DYNAMODB_INSIGHTS_INSTALLATIONS_PARTITION,
   DYNAMODB_UPDATE_INDEX_NAME,
   dynamoDB,
-  migrateDynamoDBInsights,
 } from "./dynamoDB";
 
 const cloudFront = mockClient(CloudFrontClient);
@@ -604,11 +603,6 @@ describe("dynamoDB CloudFront lifecycle", () => {
     };
     documentClient
       .on(GetCommand, {
-        Key: { pk: "_hot-updater", sk: "insights-contract-v1" },
-      })
-      .resolves({ Item: { version: 1 } });
-    documentClient
-      .on(GetCommand, {
         Key: {
           pk: DYNAMODB_INSIGHTS_INSTALLATIONS_PARTITION,
           sk: previous.install_id,
@@ -724,7 +718,6 @@ describe("dynamoDB CloudFront lifecycle", () => {
   });
 
   it("continues native bundle COUNT pages and shares the list range", async () => {
-    documentClient.on(GetCommand).resolves({ Item: { version: 1 } });
     const filter = {
       platform: "ios" as const,
       channel: "production",
@@ -789,7 +782,6 @@ describe("dynamoDB CloudFront lifecycle", () => {
   });
 
   it("fails a multi-page bundle count instead of returning the earlier partial count", async () => {
-    documentClient.on(GetCommand).resolves({ Item: { version: 1 } });
     documentClient
       .on(QueryCommand)
       .resolvesOnce({
@@ -816,47 +808,28 @@ describe("dynamoDB CloudFront lifecycle", () => {
     await plugin.dispose?.();
   });
 
-  it("resumes migration after failure without publishing a partial readiness marker", async () => {
-    const config = { region: "us-east-1", tableName: "hot-updater-metadata" };
-    const first = insightsEvent(1);
-    const second = insightsEvent(2);
-    const orderKey = (row: BundleEventRow) =>
-      `${String(row.received_at_ms).padStart(16, "0")}#${row.id}`;
-    documentClient.on(QueryCommand).resolves({
-      Items: [first, second].map((row) => ({
-        pk: "bundle_events",
-        sk: orderKey(row),
-        version: 1,
-        row,
-      })),
+  it("records on the initial table without preparing schema metadata", async () => {
+    const plugin = dynamoDB({
+      region: "us-east-1",
+      tableName: "hot-updater-metadata",
     });
-    documentClient
-      .on(TransactWriteCommand)
-      .resolvesOnce({})
-      .rejectsOnce(new Error("migration write failed"));
-    await expect(migrateDynamoDBInsights(config)).rejects.toThrow(
-      "migration write failed",
-    );
+    const event = insightsEvent(1);
+    await plugin.models.insights.record({
+      event,
+      installation: toInsightsInstallationRow(event),
+    });
+
+    expect(
+      documentClient
+        .commandCalls(GetCommand)
+        .map(({ args }) => args[0].input.Key),
+    ).toEqual([
+      { pk: DYNAMODB_INSIGHTS_EVENT_IDS_PARTITION, sk: event.id },
+      { pk: DYNAMODB_INSIGHTS_INSTALLATIONS_PARTITION, sk: event.install_id },
+    ]);
+    expect(documentClient.commandCalls(QueryCommand)).toHaveLength(0);
     expect(documentClient.commandCalls(PutCommand)).toHaveLength(0);
-    documentClient
-      .on(GetCommand, {
-        Key: { pk: DYNAMODB_INSIGHTS_EVENT_IDS_PARTITION, sk: first.id },
-      })
-      .resolves({ Item: { order_key: orderKey(first) } });
-    documentClient.on(TransactWriteCommand).resolves({});
-    await migrateDynamoDBInsights(config);
-    const transactions = documentClient.commandCalls(TransactWriteCommand);
-    expect(transactions).toHaveLength(3);
-    expect(transactions[2]?.args[0].input.TransactItems).toHaveLength(2);
-    expect(
-      transactions[2]?.args[0].input.TransactItems?.[0]?.Put?.Item,
-    ).toMatchObject({
-      pk: DYNAMODB_INSIGHTS_EVENT_IDS_PARTITION,
-      sk: second.id,
-    });
-    expect(documentClient.commandCalls(PutCommand)).toHaveLength(1);
-    expect(
-      documentClient.commandCalls(PutCommand)[0]?.args[0].input.Item,
-    ).toEqual({ pk: "_hot-updater", sk: "insights-contract-v1", version: 1 });
+    expect(documentClient.commandCalls(TransactWriteCommand)).toHaveLength(1);
+    await plugin.dispose?.();
   });
 });

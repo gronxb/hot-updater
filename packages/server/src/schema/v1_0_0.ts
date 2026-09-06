@@ -366,21 +366,37 @@ export const releaseCatalogsV100 = table(
   },
 );
 
+const insightsTextCollations = {
+  postgresql: '"C"',
+  mysql: "utf8mb4_0900_bin",
+} as const;
+const insightsProviders = [
+  "postgresql",
+  "mysql",
+  "sqlite",
+  "cockroachdb",
+  "mongodb",
+] as const;
+
 export const bundleEventsV100 = table(
   "bundle_events",
   {
     id: idColumn("id", "uuid"),
     type: column("type", varchar(32)),
-    install_id: column("install_id", varchar(255)),
-    user_id: column("user_id", varchar(255)).nullable(),
+    install_id: column("install_id", varchar(255)).collate(
+      insightsTextCollations,
+    ),
+    user_id: column("user_id", varchar(255))
+      .collate(insightsTextCollations)
+      .nullable(),
     username: stringColumn("username").nullable(),
     from_release_id: uuid("from_release_id").nullable(),
     from_bundle_id: uuid("from_bundle_id").nullable(),
     to_release_id: uuid("to_release_id").nullable(),
     to_bundle_id: uuid("to_bundle_id"),
-    platform: stringColumn("platform"),
+    platform: stringColumn("platform").collate(insightsTextCollations),
     app_version: stringColumn("app_version"),
-    channel: stringColumn("channel"),
+    channel: stringColumn("channel").collate(insightsTextCollations),
     cohort: stringColumn("cohort"),
     update_strategy: stringColumn("update_strategy").nullable(),
     fingerprint_hash: stringColumn("fingerprint_hash").nullable(),
@@ -396,6 +412,23 @@ export const bundleEventsV100 = table(
         "received_at_ms",
         "id",
       ]),
+      index(
+        "bundle_events_from_bundle_idx",
+        [
+          "type",
+          "platform",
+          "channel",
+          "from_bundle_id",
+          "received_at_ms",
+          "id",
+        ],
+        insightsProviders,
+      ),
+      index(
+        "bundle_events_to_bundle_idx",
+        ["type", "platform", "channel", "to_bundle_id", "received_at_ms", "id"],
+        insightsProviders,
+      ),
     ],
     checks: [
       check({
@@ -427,15 +460,19 @@ export const bundleEventsV100 = table(
 export const bundleInstallationsV100 = table(
   "bundle_installations",
   {
-    install_id: idColumn("install_id", varchar(255)),
+    install_id: idColumn("install_id", varchar(255)).collate(
+      insightsTextCollations,
+    ),
     id: uuid("id"),
-    user_id: column("user_id", varchar(255)).nullable(),
+    user_id: column("user_id", varchar(255))
+      .collate(insightsTextCollations)
+      .nullable(),
     username: stringColumn("username").nullable(),
     to_bundle_id: uuid("to_bundle_id"),
     type: column("type", varchar(32)),
-    platform: stringColumn("platform"),
+    platform: stringColumn("platform").collate(insightsTextCollations),
     app_version: stringColumn("app_version"),
-    channel: stringColumn("channel"),
+    channel: stringColumn("channel").collate(insightsTextCollations),
     cohort: stringColumn("cohort"),
     received_at_ms: float("received_at_ms"),
   },
@@ -443,6 +480,16 @@ export const bundleInstallationsV100 = table(
     indexes: [
       index("bundle_installations_user_id_idx", ["user_id", "install_id"]),
       index("bundle_installations_received_at_idx", ["received_at_ms"]),
+      index(
+        "bundle_installations_scope_idx",
+        ["platform", "channel", "received_at_ms"],
+        insightsProviders,
+      ),
+      index(
+        "bundle_installations_bundle_idx",
+        ["platform", "channel", "to_bundle_id", "received_at_ms"],
+        insightsProviders,
+      ),
     ],
     checks: [
       check({
