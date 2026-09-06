@@ -1,5 +1,4 @@
 ---
-"@hot-updater/core": patch
 "@hot-updater/plugin-core": minor
 "@hot-updater/server": minor
 "@hot-updater/console": minor
@@ -14,25 +13,23 @@
 ---
 
 Define the required Insights persistence contract as `record`, `listEvents`,
-object-based `findInstallations`, `countInstallations`, and `countEvents`, with
-no aliases for the previous API. Core owns report preparation, filters,
-windows, cursors, and summaries; providers implement atomic report/latest-state
-storage, fixed indexed queries, and scalar counts. Duplicate event IDs are
-first-write-wins and never update installation state again.
+object-based `findInstallations`, `countInstallations`, and `countEvents`. Core
+owns report preparation, filters, windows, cursors, and summaries; providers
+implement atomic report/latest-state storage, fixed indexed queries, and scalar
+counts. Duplicate event IDs are first-write-wins and never update installation
+state again.
 
 Add scoped recent-reporting counts and selected-bundle applied, recovered-from,
 and adopted report counts with matching event drill-down in Console. Recovery
 from B to A belongs to B's recovery count while latest state names A. Counts
-remain independent live measurements, without a 50,000-event cap or a claimed
-exact share or success rate.
+remain independent live measurements and do not claim an exact share or success
+rate.
 
 Include all Insights indexes and native writers in the initial `1.0.0` schema.
-DynamoDB writes outcome keys and event-ID markers with each new report;
-Firebase uses canonical encoded installation document IDs from initialization.
-There is no separate Insights upgrade or backfill. MongoDB Insights requires
-native transactions on a replica set or sharded cluster. Regenerate standalone
-ORM schemas and apply emitted Prisma collation SQL where required.
+MongoDB Insights requires native transactions on a replica set or sharded
+cluster. Regenerate standalone ORM schemas and apply emitted Prisma collation
+SQL where required.
 
 Prisma SQL Server Insights explicitly rejects before database I/O because its
 string identity/order semantics do not meet this contract; other models remain
-available. MongoDB counts require version5+ snapshot reads.
+available. MongoDB counts require version 5+ snapshot reads.

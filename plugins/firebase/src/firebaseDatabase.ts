@@ -297,12 +297,15 @@ export const firebaseDatabase = (config: FirebaseDatabaseConfig) => {
           return read((database) => database.count(input));
         }
         await ensureMigrated();
-        const query = applyFirebaseWhere(
+        let query = applyFirebaseWhere(
           input.model === "bundle_events"
             ? collections.bundleEvents
             : collections.bundleInstallations,
           input.where ?? [],
         );
+        if (input.model === "bundle_events") {
+          query = query.orderBy("received_at_ms", "desc").orderBy("id", "desc");
+        }
         const result = await query.count().get();
         return result.data().count;
       },

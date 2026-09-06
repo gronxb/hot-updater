@@ -208,20 +208,9 @@ describe("public Insights validation", () => {
 });
 
 describe("Insights CRUD adapter", () => {
-  it("pages sparse movements beyond 50,000 reports using bounded per-type index ranges", async () => {
+  it("merges movement pages from bounded per-type index ranges", async () => {
     const withId = (id: number) =>
       `00000000-0000-7000-8000-${String(id).padStart(12, "0")}`;
-    const lifecycle: BundleEventRow[] = Array.from(
-      { length: 50_100 },
-      (_, index) => ({
-        ...event,
-        id: withId(index),
-        received_at_ms: 1_000 + index,
-        type: "UNCHANGED",
-        from_bundle_id: null,
-        update_strategy: null,
-      }),
-    );
     const movements: BundleEventRow[] = (
       [
         [60_001, 200, "UPDATE_APPLIED"],
@@ -237,11 +226,7 @@ describe("Insights CRUD adapter", () => {
       received_at_ms,
       type,
     }));
-    const all = [
-      ...lifecycle,
-      ...movements,
-      { ...movements[0]!, install_id: "other" },
-    ];
+    const all = [...movements, { ...movements[0]!, install_id: "other" }];
     const limit = 2;
     let transferredRows = 0;
     const findMany = vi.fn<DatabasePluginImplementation["findMany"]>(
@@ -375,5 +360,50 @@ describe("Insights CRUD adapter", () => {
       ],
     });
     expect(findMany.mock.calls[0]![0]).toMatchObject(count.mock.calls[0]![0]);
+  });
+
+  it("does not repeat the lower time bound in the equal-timestamp cursor range", async () => {
+    const findMany = vi.fn<DatabasePluginImplementation["findMany"]>(
+      async () => [],
+    );
+    const plugin = createDatabasePlugin({
+      name: "adapter",
+      ...createDatabasePluginAdapter("adapter", {
+        findMany,
+        recordInsights: async () => undefined,
+        count: async () => 0,
+        create: async (input) => input.data,
+        update: async () => null,
+        delete: async () => undefined,
+        findOne: async () => null,
+        insertChannel: async ({ row }) => ({ row, inserted: true }),
+        deleteChannel: async () => ({ deleted: false, reason: "not_found" }),
+      }),
+    });
+
+    await plugin.models.insights.listEvents({
+      filter: { kind: "all" },
+      sinceMs: 50,
+      beforeReceivedAtMs: 200,
+      after: { receivedAtMs: 100, id: event.id },
+      limit: 10,
+    });
+
+    expect(findMany.mock.calls[0]![0]).toEqual({
+      model: "bundle_events",
+      where: [
+        { field: "received_at_ms", value: 100 },
+        { field: "id", operator: "lt", value: event.id },
+      ],
+      orderBy: [{ field: "id", direction: "desc" }],
+      limit: 10,
+      offset: 0,
+    });
+    expect(findMany.mock.calls[1]![0]).toMatchObject({
+      where: expect.arrayContaining([
+        { field: "received_at_ms", operator: "gte", value: 50 },
+        { field: "received_at_ms", operator: "lt", value: 100 },
+      ]),
+    });
   });
 });

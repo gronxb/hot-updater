@@ -227,16 +227,10 @@ Insights query or management routes. Managed tables cap on-demand throughput
 at 4,000 reads and 100 writes per second for both the table and update index.
 The cap is a cost guardrail and can throttle bursts; protect production
 distributions with AWS WAF rate-based rules and configure AWS Budgets for a
-monthly spending threshold. The AWS adapter does not impose an Insights
-retention period or a 50,000-event application limit. Event history is
-keyset-paginated. The 24-hour, 7-day, and 30-day reporting-installation count
-traverses canonical latest-report rows in stable installation-ID order, then
-applies platform, channel, freshness, and optional bundle filters. This avoids
-double-counting a row whose report time advances. Its read cost grows with all
-stored installations, including inactive rows; it never scans event history.
-Selected-bundle outcome counts use paged native counts over the matching
-raw type, scope, bundle, and time index range. Managed preparation backfills
-existing event index keys before the new query contract becomes ready.
+monthly spending threshold. The AWS adapter does not delete Insights data
+automatically. Event history is keyset-paginated. Reporting-installation counts
+read all canonical installation rows, including inactive rows; bundle-outcome
+counts consume the matching indexed range.
 
 Bundle metadata has no fixed bundle, patch, or patch-relationship count limit.
 Each serialized metadata item is limited to 8 KiB. The database maintains counters

@@ -237,13 +237,12 @@ and product labels. Providers own atomic storage, native queries, indexes, and
 scalar counts. Do not implement summary objects, group-by, top-N distributions,
 chart buckets, or independently maintained outcome tables. Separate live counts
 are not a common snapshot and must not imply an exact percentage. Document
-query costs: a scalar can require traversing many records, and no operation may
-silently return a 50,000-row partial result. Empty/zero means a successful empty
-query; native errors must propagate.
+query costs. Do not return partial results; propagate native errors.
 
 The public constructor validates queries and returned rows, but cannot prove
 atomicity or index usage. Run the public conformance suite plus native rollback,
-concurrency, continuation, migration, and query-plan tests for your backend.
+concurrency, continuation, schema-bootstrap, and query-plan tests for your
+backend.
 
 ## Atomic commit and optimistic CAS
 
@@ -302,11 +301,9 @@ its first write; there is no Release-now/catalog-later fallback.
 ## Implement the 1.0.0 schema
 
 The initial `1.0.0` schema includes bundle-outcome and latest-scope indexes,
-exact identity collations, and atomic Insights recording. This contract has
-not shipped: there is no separate Insights schema version or upgrade path.
-Initialization creates the complete schema on empty storage and no-ops for an
-initialized `1.0.0` database. Unsupported populated storage is rejected without
-deleting its data.
+exact identity collations, and atomic Insights recording. Initialization creates
+the complete schema on empty storage and no-ops for an initialized `1.0.0`
+database. Unsupported populated storage is rejected without deleting its data.
 
 1. Remove `queries`, `getUpdateInfo`, provider decision SQL/RPCs, and any
    desired-state cache owned by the provider.

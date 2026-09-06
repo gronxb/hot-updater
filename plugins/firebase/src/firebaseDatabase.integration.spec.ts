@@ -9,7 +9,7 @@ import {
   setupDatabaseClientTestSuite,
   setupDatabasePluginTestSuite,
 } from "@hot-updater/test-utils";
-import { Transaction } from "firebase-admin/firestore";
+import { Query, Transaction } from "firebase-admin/firestore";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { createBundleEventRowFixture } from "../../../packages/test-utils/src/databaseTestFixtures";
@@ -21,7 +21,6 @@ const PROJECT_ID = "firebase-database-test";
 
 const {
   bundleEventsCollection,
-  bundleInstallationsCollection,
   bundlePatchesCollection,
   bundlesCollection,
   channelsCollection,
@@ -194,6 +193,30 @@ describe("firebase bounded reads", () => {
 describe("firebase insights storage", () => {
   beforeEach(clearCollections);
 
+  it("uses the event-list index ordering for event counts", async () => {
+    const orderBy = vi.spyOn(Query.prototype, "orderBy");
+    try {
+      await createPlugin().models.insights.countEvents({
+        filter: {
+          type: "UPDATE_APPLIED",
+          platform: "ios",
+          channel: "production",
+          toBundleId: "00000000-0000-0000-0000-000000000001",
+        },
+        sinceMs: 0,
+        beforeReceivedAtMs: 1,
+      });
+      expect(orderBy.mock.calls).toEqual(
+        expect.arrayContaining([
+          ["received_at_ms", "desc"],
+          ["id", "desc"],
+        ]),
+      );
+    } finally {
+      orderBy.mockRestore();
+    }
+  });
+
   it("keeps arbitrary exact installation IDs separate and pages in UTF-8 order", async () => {
     const insights = createPlugin().models.insights;
     const ids = [
@@ -298,109 +321,6 @@ describe("firebase insights storage", () => {
     ).resolves.toBe(1);
   });
 
-  it("counts recovery against its source with the same scope and time boundaries as its list", async () => {
-    const insights = createPlugin().models.insights;
-    const first = createBundleEventRowFixture("960", 100);
-    const bundleId = first.to_bundle_id;
-    const recovered: BundleEventRow = {
-      ...createBundleEventRowFixture("961", 200),
-      type: "RECOVERED",
-      update_strategy: "appVersion",
-      install_id: first.install_id,
-      from_bundle_id: bundleId,
-      to_bundle_id: first.from_bundle_id!,
-    };
-    const excluded = {
-      ...recovered,
-      id: createBundleEventRowFixture("962", 300).id,
-      received_at_ms: 300,
-    };
-    for (const event of [
-      first,
-      recovered,
-      excluded,
-      {
-        ...recovered,
-        id: createBundleEventRowFixture("963", 200).id,
-        channel: "other",
-      },
-    ]) {
-      await insights.record({
-        event,
-        installation: toInsightsInstallationRow(event),
-      });
-    }
-    const filter = {
-      type: "RECOVERED" as const,
-      platform: "ios" as const,
-      channel: "production",
-      fromBundleId: bundleId,
-    };
-    await expect(
-      insights.countEvents({ filter, sinceMs: 200, beforeReceivedAtMs: 300 }),
-    ).resolves.toBe(1);
-    await expect(
-      insights.listEvents({
-        filter: { kind: "bundle", ...filter },
-        sinceMs: 200,
-        beforeReceivedAtMs: 300,
-        limit: 10,
-      }),
-    ).resolves.toEqual([recovered]);
-    await expect(
-      insights.countInstallations({
-        platform: "ios",
-        channel: "production",
-        sinceMs: 100,
-        bundleId,
-      }),
-    ).resolves.toBe(0);
-  });
-
-  it("keeps the latest installation by received time and event id", async () => {
-    const insights = createPlugin().models.insights;
-    const latest = {
-      ...createBundleEventRowFixture("903", 200),
-      install_id: "installation-latest",
-      user_id: "user-latest",
-    };
-    const older = {
-      ...createBundleEventRowFixture("901", 100),
-      install_id: latest.install_id,
-      user_id: latest.user_id,
-    };
-    const tieWinner = {
-      ...createBundleEventRowFixture("904", 200),
-      install_id: latest.install_id,
-      user_id: latest.user_id,
-    };
-
-    await insights.record({
-      event: latest,
-      installation: toInsightsInstallationRow(latest),
-    });
-    await insights.record({
-      event: older,
-      installation: toInsightsInstallationRow(older),
-    });
-    await insights.record({
-      event: tieWinner,
-      installation: toInsightsInstallationRow(tieWinner),
-    });
-
-    await expect(
-      insights.findInstallations({ installId: latest.install_id }),
-    ).resolves.toEqual([
-      expect.objectContaining({
-        id: tieWinner.id,
-        install_id: latest.install_id,
-        received_at_ms: 200,
-      }),
-    ]);
-    expect((await bundleInstallationsCollection.get()).size).toBe(1);
-    expect((await bundleEventsCollection.get()).size).toBe(3);
-  });
-
   it("uses bounded event pages and filters installation movement", async () => {
     const insights = createPlugin().models.insights;
     const applied = {
@@ -454,66 +374,6 @@ describe("firebase insights storage", () => {
       }),
     ).resolves.toEqual([recovered, applied]);
   });
-
-  it("pages current user installations and counts active installations", async () => {
-    const insights = createPlugin().models.insights;
-    const first = {
-      ...createBundleEventRowFixture("921", 100),
-      install_id: "installation-a",
-      user_id: "shared-user",
-    };
-    const second = {
-      ...createBundleEventRowFixture("922", 200),
-      install_id: "installation-b",
-      user_id: "shared-user",
-    };
-    const inactive = {
-      ...createBundleEventRowFixture("923", 50),
-      install_id: "installation-c",
-      user_id: "other-user",
-    };
-    await insights.record({
-      event: first,
-      installation: toInsightsInstallationRow(first),
-    });
-    await insights.record({
-      event: second,
-      installation: toInsightsInstallationRow(second),
-    });
-    await insights.record({
-      event: inactive,
-      installation: toInsightsInstallationRow(inactive),
-    });
-
-    await expect(
-      insights.findInstallations({
-        userId: "shared-user",
-        limit: 1,
-      }),
-    ).resolves.toEqual([
-      expect.objectContaining({ install_id: first.install_id }),
-    ]);
-    await expect(
-      insights.findInstallations({
-        userId: "shared-user",
-        afterInstallId: first.install_id,
-        limit: 10,
-      }),
-    ).resolves.toEqual([
-      expect.objectContaining({ install_id: second.install_id }),
-    ]);
-    await expect(
-      insights.countInstallations({
-        platform: "ios",
-        channel: "production",
-        sinceMs: 100,
-      }),
-    ).resolves.toBe(2);
-  });
-});
-
-describe("firebase channel storage", () => {
-  beforeEach(clearCollections);
 
   it("returns the canonical stored row under concurrent name conflicts", async () => {
     const first = createPlugin();

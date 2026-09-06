@@ -87,7 +87,7 @@ const listInsightsEventRange = async (
       : await crud.findMany({
           model: "bundle_events",
           where: [
-            ...where,
+            ...filterWhere,
             { field: "received_at_ms", value: input.after.receivedAtMs },
             { field: "id", operator: "lt", value: input.after.id },
           ],

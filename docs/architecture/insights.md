@@ -30,11 +30,12 @@ Custom database authors implement five operations, all with object inputs:
 | `countInstallations({ platform, channel, sinceMs, bundleId })`          | Count recent latest rows, optionally naming one bundle                        |
 | `countEvents({ filter, sinceMs, beforeReceivedAtMs })`                  | Count accepted reports matching one raw bundle/type/scope filter              |
 
-The [accepted contract](./insights-contract-proposal.md) specifies ordering,
-atomicity, idempotency, visibility, pagination, and test requirements. Public
-types and boundary validation come from `@hot-updater/plugin-core`. The internal
-CRUD adapter is an implementation aid for bundled providers, not an additional
-interface that custom providers must implement.
+The [custom database guide](../content/docs/%28latest%29/database-plugins/custom-database.mdx#insights)
+specifies ordering, atomicity, idempotency, visibility, pagination, and test
+requirements. Public types and boundary validation come from
+`@hot-updater/plugin-core`. The internal CRUD adapter is an implementation aid
+for bundled providers, not an additional interface that custom providers must
+implement.
 
 Core creates the report ID, receipt time, and full installation candidate. It
 owns movement semantics, scope/window selection, opaque cursors, and UI labels.
@@ -72,13 +73,9 @@ The UI displays them independently and does not clamp them into a ratio.
 Event pages sort descending by `(received_at_ms, id)`, apply filters before a
 limit of at most 101, and use an exclusive keyset cursor. Receipt intervals are
 `[sinceMs, beforeReceivedAtMs)`. Native continuation pages must be exhausted
-before returning a short result. There is no 50,000-event cap or raw-history
-aggregation in core. The bundled SQL/Firestore adapter reads the two movement
-types through separate ordered ranges: two queries on the first page and at
-most four for a cursor page, then merges at most twice the requested limit.
-Native provider page caps can require continuation within each bounded range.
-The Console keeps previous cursors in session memory;
-only the current cursor and filter bounds appear in its URL.
+before returning a short result. Core does not aggregate raw history. The
+Console keeps previous cursors in session memory; only the current cursor and
+filter bounds appear in its URL.
 
 Latest-state counts never read event history. DynamoDB traverses canonical
 installation IDs so an installation cannot be counted twice when its last-report
@@ -88,24 +85,12 @@ returning one scalar does not imply constant work or latency.
 
 ## Initial storage setup
 
-The unreleased schema has one version, `1.0.0`, which includes atomic native
-storage and all Insights access paths from the first initialization. There is
-no separate Insights upgrade or history backfill.
-
-- PostgreSQL, Supabase, and D1 initialize their indexes and native writer in
-  the `1.0.0` schema. Supabase installs the service-role record RPC there.
-- Standalone SQL tooling initializes `1.0.0` on empty storage and leaves an
-  initialized `1.0.0` database unchanged. Generate ORM schema artifacts before
-  deployment. Prisma PostgreSQL/MySQL require the emitted
-  companion collation SQL because Prisma's schema DSL cannot express it.
-- DynamoDB uses its initial table and existing index. New reports atomically
-  include outcome keys and event-ID markers.
-  See [AWS Insights](../../plugins/aws/INSIGHTS.md).
-- Firebase stores latest rows under canonical encoded installation document
-  IDs from initialization, with no legacy collection copy.
-- MongoDB records through a native transaction even when optional generic
-  transactions are disabled. MongoDB 5 or later on a replica set or sharded cluster is required; counts
-  use snapshot read concern to avoid duplicate traversal of mutable index keys.
+Schema `1.0.0` includes atomic storage and every Insights access path from the
+first initialization. Standalone SQL tooling initializes empty storage and
+leaves an initialized `1.0.0` database unchanged. Generate ORM schema artifacts
+before deployment. Prisma PostgreSQL/MySQL require the emitted companion
+collation SQL. MongoDB requires version 5 or later on a replica set or sharded
+cluster for native transactions and snapshot counts.
 
 Secondary indexes may lag. Exact installation reads use canonical state;
 current-user queries validate index candidates against that state so an old

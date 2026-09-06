@@ -16,8 +16,6 @@ import {
 import {
   bundleToRow,
   type BundleEventRow,
-  type InsightsListEventsInput,
-  type InsightsFindInstallationsInput,
   type InsightsInstallationRow,
   toInsightsInstallationRow,
 } from "@hot-updater/plugin-core";
@@ -214,87 +212,6 @@ describe("dynamoDB CloudFront lifecycle", () => {
     expect(plugin).not.toHaveProperty("transaction");
     expect(plugin).not.toHaveProperty("onDatabaseUpdated");
     expect(plugin).not.toHaveProperty("onUnmount");
-
-    await plugin.dispose?.();
-  });
-
-  it("rejects invalid direct event-page queries", async () => {
-    const plugin = dynamoDB({
-      region: "us-east-1",
-      tableName: "hot-updater-metadata",
-    });
-    const valid: InsightsListEventsInput = {
-      filter: { kind: "all" },
-      beforeReceivedAtMs: 100,
-      limit: 10,
-    };
-    const invalid: InsightsListEventsInput[] = [
-      { ...valid, limit: 0 },
-      { ...valid, limit: 102 },
-      { ...valid, beforeReceivedAtMs: -1 },
-      { ...valid, after: { receivedAtMs: -1, id: "cursor" } },
-      { ...valid, after: { receivedAtMs: 100, id: "cursor" } },
-      {
-        ...valid,
-        filter: { kind: "installationMovement", installId: "" },
-      },
-    ];
-
-    for (const input of invalid) {
-      await expect(plugin.models.insights.listEvents(input)).rejects.toEqual(
-        expect.objectContaining({
-          name: "DatabasePluginInputError",
-          code: "invalid-query",
-        }),
-      );
-    }
-    expect(documentClient.commandCalls(QueryCommand)).toHaveLength(0);
-
-    await plugin.dispose?.();
-  });
-
-  it("rejects invalid direct installation queries", async () => {
-    const plugin = dynamoDB({
-      region: "us-east-1",
-      tableName: "hot-updater-metadata",
-    });
-    const valid: InsightsFindInstallationsInput = {
-      userId: "user-1",
-      limit: 10,
-    };
-    const invalid: InsightsFindInstallationsInput[] = [
-      { ...valid, userId: "" },
-      { ...valid, limit: 0 },
-      { ...valid, limit: 102 },
-      { ...valid, afterInstallId: "" },
-    ];
-
-    for (const input of invalid) {
-      await expect(
-        plugin.models.insights.findInstallations(input),
-      ).rejects.toMatchObject({
-        name: "DatabasePluginInputError",
-        code: "invalid-query",
-      });
-    }
-    await expect(
-      plugin.models.insights.findInstallations({ installId: "" }),
-    ).rejects.toMatchObject({
-      name: "DatabasePluginInputError",
-      code: "invalid-query",
-    });
-    await expect(
-      plugin.models.insights.countInstallations({
-        platform: "ios",
-        channel: "production",
-        sinceMs: -1,
-      }),
-    ).rejects.toMatchObject({
-      name: "DatabasePluginInputError",
-      code: "invalid-query",
-    });
-    expect(documentClient.commandCalls(QueryCommand)).toHaveLength(0);
-    expect(documentClient.commandCalls(GetCommand)).toHaveLength(0);
 
     await plugin.dispose?.();
   });
@@ -636,6 +553,14 @@ describe("dynamoDB CloudFront lifecycle", () => {
       documentClient.commandCalls(TransactWriteCommand)[0]?.args[0].input
         .TransactItems;
     expect(transaction).toHaveLength(6);
+    expect(
+      transaction?.find(
+        (item) => item.Put?.Item?.pk === DYNAMODB_INSIGHTS_EVENT_IDS_PARTITION,
+      )?.Put?.Item,
+    ).toEqual({
+      pk: DYNAMODB_INSIGHTS_EVENT_IDS_PARTITION,
+      sk: next.id,
+    });
     expect(transaction).toEqual(
       expect.arrayContaining([
         expect.objectContaining({

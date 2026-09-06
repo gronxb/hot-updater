@@ -270,24 +270,18 @@ Required provider mappings:
 ## Schema 1.0.0 bootstrap
 
 `hot-updater db migrate` creates the complete schema `1.0.0` on empty storage
-and no-ops at `1.0.0`. The initial schema includes Insights indexes, atomic
-recording, and exact identity collations. There is no separate Insights upgrade
-or backfill. Record `schema.core` only after successful initialization. Generate ORM
-artifacts with `hot-updater db generate` and apply emitted companion collation
-SQL for Prisma PostgreSQL/MySQL.
+and no-ops at `1.0.0`. Record `schema.core` only after successful
+initialization. Generate ORM artifacts with `hot-updater db generate` and apply
+emitted companion collation SQL for Prisma PostgreSQL/MySQL.
 
 1. On empty storage, create the seven models with their indexes and references.
 2. Record `schema.core = 1.0.0` after successful creation.
 3. Leave initialized `1.0.0` storage unchanged on subsequent calls.
 
 There is no populated v0 Bundle-policy backfill. Managed initialization rejects
-v0 infrastructure before mutating it. Intermediate development schemas are not
-supported upgrade sources; initialization does not infer missing metadata or
-rewrite existing reports.
+v0 infrastructure before mutating it.
 
-DynamoDB writes Insights index keys with new reports. Firebase uses canonical
-installation IDs from initialization. Deploy required indexes before starting
-the runtime. Provider prerequisites and query costs are documented in the
+Insights requirements are documented in the
 [custom provider guide](./custom-database#insights).
 
 ## Runtime route boundary

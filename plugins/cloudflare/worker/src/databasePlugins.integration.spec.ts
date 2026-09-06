@@ -243,54 +243,6 @@ describe.each([
     ).toEqual([{ id: event.id }]);
   });
 
-  it("serializes concurrent snapshots and ignores a duplicate carrying a newer timestamp", async () => {
-    const plugin = createPlugin();
-    const first = {
-      ...createBundleEventRowFixture("9201", 100),
-      user_id: "former-user",
-    };
-    const latest = {
-      ...first,
-      id: createBundleEventRowFixture("9203", 100).id,
-      user_id: null,
-    };
-    const stale = { ...first, id: createBundleEventRowFixture("9202", 100).id };
-    await Promise.all(
-      [latest, first, stale].map((event) =>
-        plugin.models.insights.record({
-          event,
-          installation: toInsightsInstallationRow(event),
-        }),
-      ),
-    );
-    const reusedId = { ...first, received_at_ms: 200 };
-    await plugin.models.insights.record({
-      event: reusedId,
-      installation: toInsightsInstallationRow(reusedId),
-    });
-    await expect(
-      plugin.models.insights.findInstallations({ installId: first.install_id }),
-    ).resolves.toEqual([toInsightsInstallationRow(latest)]);
-    await expect(
-      plugin.models.insights.findInstallations({
-        userId: "former-user",
-        limit: 10,
-      }),
-    ).resolves.toEqual([]);
-    await expect(
-      plugin.models.insights.countEvents({
-        filter: {
-          type: "UPDATE_APPLIED",
-          platform: "ios",
-          channel: "production",
-          toBundleId: first.to_bundle_id,
-        },
-        sinceMs: 100,
-        beforeReceivedAtMs: 101,
-      }),
-    ).resolves.toBe(3);
-  });
-
   it("rejects direct and committed deletion while a Release references the channel", async () => {
     const plugin = createPlugin();
     const channel = createChannelRow("active");

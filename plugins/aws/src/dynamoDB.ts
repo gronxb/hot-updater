@@ -102,8 +102,6 @@ export type DynamoDBBundleItem = {
   readonly version: number;
   readonly relation_count: number;
   readonly owned_patch_count: number;
-  readonly gsi1pk: string;
-  readonly gsi1sk: string;
   readonly row: BundleRow;
 };
 
@@ -286,9 +284,6 @@ export const parseDynamoDBItem = (
   if (pk === "release_catalogs" && isReleaseCatalogRow(row)) {
     return { pk, sk, version, row };
   }
-  if (typeof gsi1pk !== "string" || typeof gsi1sk !== "string") {
-    throw new DynamoDBStoredItemError();
-  }
   if (pk === "bundles" && isBundleRow(row)) {
     if (
       typeof relationCount !== "number" ||
@@ -302,20 +297,19 @@ export const parseDynamoDBItem = (
       version,
       relation_count: relationCount,
       owned_patch_count: ownedPatchCount,
-      gsi1pk,
-      gsi1sk,
       row,
     };
   }
-  if (pk === "bundle_patches" && isPatchRow(row)) {
+  if (
+    pk === "bundle_patches" &&
+    typeof gsi1pk === "string" &&
+    typeof gsi1sk === "string" &&
+    isPatchRow(row)
+  ) {
     return { pk, sk, version, gsi1pk, gsi1sk, row };
   }
   throw new DynamoDBStoredItemError();
 };
-
-export const bundlePlatformPartition = (
-  row: Pick<BundleRow, "platform">,
-): string => `bundle#${row.platform}`;
 
 export const patchOwnerPartition = (bundleId: string): string =>
   `patch-owner#${bundleId}`;
@@ -334,8 +328,6 @@ export const toDynamoDBBundleItem = (
   version,
   relation_count: relationCount,
   owned_patch_count: ownedPatchCount,
-  gsi1pk: bundlePlatformPartition(row),
-  gsi1sk: row.id,
   row,
 });
 
@@ -3182,7 +3174,7 @@ const recordDynamoDBInsightsEvent = async (
       {
         Put: {
           TableName: store.tableName,
-          Item: { ...identityKey, order_key: insightsSortKey(row) },
+          Item: identityKey,
           ConditionExpression: "attribute_not_exists(#pk)",
           ExpressionAttributeNames: { "#pk": "pk" },
         },
