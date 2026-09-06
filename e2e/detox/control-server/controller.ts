@@ -56,10 +56,7 @@ import {
   waitForCrashRecoveryState,
 } from "./crash-recovery-wait.ts";
 import type { CrashRecoveryArtifactNames } from "./crash-recovery-wait.ts";
-import {
-  acquireFairFileLock,
-  resolveDeployLockCapacity,
-} from "./fair-file-lock.ts";
+import { acquireFairFileLock, DEPLOY_LOCK_CAPACITY } from "./fair-file-lock.ts";
 import {
   getFixtureResetChannels as resolveFixtureResetChannels,
   resetFixtureReleases,
@@ -5244,7 +5241,7 @@ async function deployFixtureBundle(
   });
   const cacheEnv = bareBuildCacheEnv({ bundleProfile, request });
   const deployProcessLock = await acquireFairFileLock({
-    capacity: resolveDeployLockCapacity(),
+    capacity: DEPLOY_LOCK_CAPACITY,
     lockRoot: deployProcessLockRoot(),
     onAbandoned: ({ ageMs, lockPath, owner, reason }) => {
       logDetoxFixture(

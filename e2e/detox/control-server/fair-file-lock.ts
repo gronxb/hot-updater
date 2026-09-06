@@ -1,5 +1,4 @@
 import { randomUUID } from "node:crypto";
-import { readFileSync } from "node:fs";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
@@ -38,33 +37,8 @@ export type FairFileLock = {
   readonly release: () => Promise<void>;
 };
 
-export const resolveDeployLockCapacity = (
-  env: NodeJS.ProcessEnv = process.env,
-): number => {
-  if (env.HOT_UPDATER_DYNAMODB_TABLE_NAME?.trim()) {
-    return 2;
-  }
-
-  const envTargetPath = env.HOT_UPDATER_E2E_ENV_TARGET_PATH;
-  if (!envTargetPath) {
-    return 1;
-  }
-
-  try {
-    const assignment = readFileSync(envTargetPath, "utf8")
-      .split(/\r?\n/)
-      .find((line) =>
-        /^\s*(?:export\s+)?HOT_UPDATER_DYNAMODB_TABLE_NAME\s*=/.test(line),
-      );
-    const tableName = assignment?.slice(assignment.indexOf("=") + 1).trim();
-    return tableName && tableName !== '""' && tableName !== "''" ? 2 : 1;
-  } catch (error) {
-    if (error instanceof Error && "code" in error && error.code === "ENOENT") {
-      return 1;
-    }
-    throw error;
-  }
-};
+// Catalog writes are atomic; bound concurrent builds across all fixture shards.
+export const DEPLOY_LOCK_CAPACITY = 2;
 
 const defaultStaleMs = 45 * 60 * 1000;
 const defaultWaitIntervalMs = 500;
