@@ -1,5 +1,19 @@
 # hot-updater
 
+## 0.36.10
+
+### Patch Changes
+
+- 46d8bf2: Exit with code 1 when `hot-updater doctor` fails with an error such as a missing `package.json` or an uninstalled CLI. The default output previously printed "Doctor check failed." and exited 0, so CI treated a failed doctor run as a pass, while `--json` already exited 1 for the same result.
+- Updated dependencies [4efa3ef]
+  - @hot-updater/plugin-core@0.36.10
+  - @hot-updater/android-helper@0.36.10
+  - @hot-updater/apple-helper@0.36.10
+  - @hot-updater/cli-tools@0.36.10
+  - @hot-updater/console@0.36.10
+  - @hot-updater/server@0.36.10
+  - @hot-updater/core@0.36.10
+
 ## 0.36.9
 
 ### Patch Changes
