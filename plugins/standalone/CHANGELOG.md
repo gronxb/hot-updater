@@ -1,5 +1,13 @@
 # @hot-updater/standalone
 
+## 0.36.9
+
+### Patch Changes
+
+- Updated dependencies [ee20ef2]
+  - @hot-updater/plugin-core@0.36.9
+  - @hot-updater/core@0.36.9
+
 ## 0.36.8
 
 ### Patch Changes
