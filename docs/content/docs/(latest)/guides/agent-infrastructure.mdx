@@ -1,0 +1,135 @@
+---
+title: "Agent Infrastructure"
+description: "Let AI agents apply versioned infrastructure templates and resume setup or upgrades using their available provider tools."
+icon: Bot
+---
+
+## Ask your agent
+
+Ask your coding agent to configure a provider or upgrade an existing deployment:
+
+```text
+Use hot-updater agent infra setup to configure and deploy this app on Cloudflare.
+Use hot-updater agent infra upgrade to update our existing Supabase server.
+```
+
+The agent reads the instructions, inspects your project, and asks for missing
+choices or access. It applies the generated files through available provider
+MCP tools, CLIs, APIs, or a browser, then verifies each step.
+
+The commands generate local files. They do not authenticate, install packages,
+create cloud resources, or deploy anything themselves. Existing
+`hot-updater init` remains available for interactive setup.
+
+For standalone server template extraction, use
+[`hot-updater infra scaffold`](/docs/guides/infrastructure-templates). Agent
+commands reuse that extractor and add instructions, app configuration and a
+deployment record. Their server runtime files are identical.
+
+## Generate templates
+
+Without options, either command prints instructions for the agent to gather
+the provider and build selections:
+
+```bash
+npx hot-updater agent infra setup
+npx hot-updater agent infra upgrade
+```
+
+Provide both selections to generate deployment files:
+
+```bash
+npx hot-updater agent infra setup --provider cloudflare --build expo
+npx hot-updater agent infra setup --provider supabase --build bare
+npx hot-updater agent infra setup --provider aws --build rock
+npx hot-updater agent infra setup --provider firebase --build bare
+```
+
+All four providers support `bare`, `rock`, and `expo`. The output prints absolute
+paths to the templates, instructions, manifest, and deployment record.
+
+| Option | Purpose |
+| --- | --- |
+| `--provider <provider>` | `cloudflare`, `supabase`, `aws`, or `firebase` |
+| `--build <plugin>` | `bare`, `rock`, or `expo` |
+| `--output <directory>` | Choose an unused scaffold destination |
+| `--json` | Return bootstrap instructions or scaffold paths as JSON |
+
+The default directory is
+`hot-updater-infra/<provider>/<operation>-<build>-<cli-version>`.
+Repeating a command preserves an existing compatible scaffold, including agent
+edits. A different provider, build, operation, or version requires another
+directory. Missing files in an existing scaffold are reported for repair.
+
+## Apply the generated files
+
+Each scaffold includes `COMMON.md`, provider-specific `SETUP.md` and
+`UPGRADE.md`, and `UPGRADE-NOTES.md`. The agent reads the applicable instructions
+before using the files.
+
+| Provider | Deployment artifacts |
+| --- | --- |
+| Cloudflare | Bundled Worker, Wrangler bindings, D1 migrations |
+| Supabase | Prepared Edge Function, Deno imports and vendored files, SQL migrations |
+| AWS | Lambda bundle and dependencies, CloudFront specifications, DynamoDB/IAM/SSM references |
+| Firebase | Built Functions project, dependencies, Firebase config, Firestore indexes |
+
+The `app/` directory contains local configuration templates and a client API-key
+helper. `env.example` lists local provider settings. The agent merges these into
+your app's existing configuration and prepares credentials for future CLI deploys.
+Connecting an MCP server does not automatically provide credentials to the CLI.
+
+`manifest.json` records concrete target package versions and original file
+hashes. `deployment.json` starts with empty resource IDs and verification results.
+The agent fills it with actual IDs and verified outcomes. Generating a manifest
+does not mean the target server version has been deployed.
+
+Keep real credentials and key files private. The supplied key helper persists
+the client key before registration and reuses it after an interrupted request.
+Use only the client API key in the app's `x-api-key` header.
+
+## Resume a failed step
+
+Ask the agent to read the existing scaffold and deployment record. It queries
+actual remote state before retrying, including when a request timed out after
+the provider may have completed it.
+
+For example, if Worker deployment fails after D1 and R2 creation, the agent
+verifies those resources and retries deployment with the same IDs. It preserves
+migration history, secrets, and existing objects.
+
+## Upgrade an existing server
+
+Use a CLI release that contains the desired server template:
+
+```bash
+npx hot-updater agent infra upgrade --provider cloudflare --build expo
+```
+
+This generates a separate upgrade directory. The agent compares its target
+manifest with the previous deployment, live `/version`, migration history, and
+your customized files. It applies relevant upgrade entries in order, preserving
+resources, secrets, endpoints, and unrelated settings.
+
+`doctor` points to this command when infrastructure changes are required. Its
+version requirements and the generated upgrade notes share one registry. An
+upgrade instruction includes compatibility, provider steps, and verification.
+
+The first entry covers [v0 to v1](/docs/guides/upgrade-to-v1). That transition
+requires parallel database namespaces/endpoints and a new native build.
+Supabase and Firebase can reuse the project with separate v1 namespaces and
+functions. Cloudflare needs a separate D1 and Worker; AWS needs separate v1
+database and server identities. Preserve v0 resources while old binaries use them.
+
+## Verify completion
+
+The agent checks the public server generation/version and authenticated client
+requests, then runs:
+
+```bash
+npx hot-updater doctor --json --server-base-url https://updates.example.com
+```
+
+Server deployment, JS/native integration, and an OTA test in a native release
+build are separate results. The agent should report which checks passed and
+which work remains.

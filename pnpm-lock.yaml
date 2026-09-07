@@ -1717,6 +1717,9 @@ importers:
       commander:
         specifier: ^14.0.0
         version: 14.0.3
+      dotenv:
+        specifier: 16.6.1
+        version: 16.6.1
       es-toolkit:
         specifier: ^1.32.0
         version: 1.47.0

@@ -44,6 +44,11 @@ Upgrade all `hot-updater` and `@hot-updater/*` packages together, then run:
 npx hot-updater init
 ```
 
+For an AI-led transition, use `npx hot-updater agent infra upgrade`. It
+provides the v0-to-v1 requirements and can generate provider templates for the
+agent to apply. See [Agent Infrastructure](/docs/guides/agent-infrastructure).
+The same generation boundary applies to both workflows.
+
 Use a separate v1 database namespace and endpoint. Firebase and Supabase can
 reuse the existing project: v1 uses `hot_updater_v1_*` collections or tables and
 a separate `hot-updater-v1` function. Their init checks the v1 namespace rather
@@ -99,7 +104,7 @@ npx hot-updater doctor --server-base-url https://updates.example.com
 
 A v1 endpoint reports `infrastructureGeneration: 1` from `/version`. If the
 marker is missing, doctor reports that in-place upgrade is blocked and directs
-you back to init with new resources.
+you to agent infrastructure setup or interactive init with separate v1 resources.
 
 ### 5. Publish a new native build
 

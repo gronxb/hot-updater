@@ -15,6 +15,18 @@ import { Accordion, Accordions } from "fumadocs-ui/components/accordion";
   muted
 />
 
+## Infrastructure templates and agent setup
+
+Extract server files for your own deployment tooling with
+`hot-updater infra scaffold --provider cloudflare`. See
+[Infrastructure Templates](/docs/guides/infrastructure-templates).
+
+Ask your agent to use `hot-updater agent infra setup --provider cloudflare
+--build <bare|rock|expo>`. The command generates local deployment templates
+and instructions; the agent applies them using available provider tools.
+Use `hot-updater agent infra upgrade` for existing deployments. See
+[Agent Infrastructure](/docs/guides/agent-infrastructure).
+
 ## Prerequisites
 
 Before you begin, make sure the following are ready:

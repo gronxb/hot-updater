@@ -241,6 +241,24 @@ describe("infrastructure version helpers", () => {
     ).toBe("https://example.com/api/check-update/version");
   });
 
+  it("directs an outdated generation 1 server to versioned agent upgrade instructions", async () => {
+    const status = await checkInfrastructureStatus({
+      serverBaseUrl: "https://updates.example.com",
+      fetchImpl: vi
+        .fn<typeof fetch>()
+        .mockResolvedValue(
+          Response.json({ infrastructureGeneration: 1, version: "1.0.0" }),
+        ),
+      requiredTarget: { version: "1.1.0", note: "Test upgrade requirement" },
+    });
+
+    expect(status.needsUpdate).toBe(true);
+    expect(createInfrastructureRemediation(status)).toMatchObject({
+      fixability: "blocked",
+      commands: expect.arrayContaining(["hot-updater agent infra upgrade"]),
+    });
+  });
+
   it("requires generation 1 for v1 packages", () => {
     expect(isV1InfrastructureRequired("0.38.0")).toBe(false);
     expect(isV1InfrastructureRequired("1.0.0")).toBe(true);
@@ -267,7 +285,7 @@ describe("infrastructure version helpers", () => {
     expect(createInfrastructureRemediation(status)).toEqual({
       fixability: "blocked",
       reason: expect.stringContaining("cannot be upgraded in place"),
-      commands: ["hot-updater init"],
+      commands: ["hot-updater agent infra setup", "hot-updater init"],
     });
   });
 
@@ -742,7 +760,7 @@ describe("doctor", () => {
           updateReason: "Existing infrastructure does not declare generation 1",
           remediation: {
             fixability: "blocked",
-            commands: ["hot-updater init"],
+            commands: ["hot-updater agent infra setup", "hot-updater init"],
           },
         },
       },
@@ -778,7 +796,7 @@ describe("doctor", () => {
             "v1 infrastructure marker not found at the existing endpoint",
           remediation: {
             fixability: "blocked",
-            commands: ["hot-updater init"],
+            commands: ["hot-updater agent infra setup", "hot-updater init"],
           },
         },
       },

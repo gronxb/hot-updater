@@ -11,6 +11,8 @@
     "console",
     "storage-cleanup",
     "ai-agents",
+    "infrastructure-templates",
+    "agent-infrastructure",
     "simulator-test",
     "channel-management",
     "runtime-channel-switch",

@@ -133,8 +133,15 @@ How to fix it depends on how you run Hot Updater:
 - **Self-hosted server using `createHotUpdater`**: update all Hot Updater
   packages together, including `@hot-updater/server`, then redeploy your server.
 - **Managed providers (`aws`, `cloudflare`, `supabase`, `firebase`)**: run
-  `npx hot-updater init` again and redeploy the generated provider
-  infrastructure.
+  `npx hot-updater agent infra upgrade` for versioned instructions and
+  templates your agent can apply. See
+  [Agent Infrastructure](/docs/guides/agent-infrastructure). Interactive
+  `npx hot-updater init` remains available for terminal-led deployment.
+
+The upgrade notes include the required migration order, provider-specific
+changes, compatibility boundaries, and verification. Generation 0 requires
+parallel v1 resources and a new native build; doctor does not suggest an
+in-place conversion.
 
 ## Options
 

@@ -37,6 +37,23 @@
 - Avoid emojis, long notes, and verbose fallback explanations in command output unless the text is required to prevent a destructive or irreversible action.
 - `deploy`, `console`, and `init` are currently excluded from this CLI output migration unless explicitly requested.
 
+## Infrastructure Upgrade Requirements
+
+- Doctor requirements and agent upgrade instructions share
+  `packages/hot-updater/src/commands/infrastructureUpdates.ts`. Add a complete
+  entry there when a release requires infrastructure changes; do not add a
+  separate doctor version threshold.
+- Each entry must include compatibility, ordered migration/deployment steps,
+  instructions for all four managed providers (explicitly state when no schema
+  migration is needed), and verification. Preserve earlier entries so agents
+  can upgrade across multiple versions.
+- Reuse the provider runtime, migrations, and config builders in packaged agent
+  scaffolds. Public `infra scaffold` and agent commands must share the server
+  extractor and produce identical server artifacts. Update provider
+  `agent/SETUP.md` and `agent/UPGRADE.md` when their
+  deployment prerequisites change. Validate packaged scaffolds and upgrade notes
+  with `pnpm -w test` after `pnpm -w build`.
+
 ## Testing Guidelines
 
 - Framework: Vitest. Place tests near code or in `__tests__`. Use `*.spec.ts`.

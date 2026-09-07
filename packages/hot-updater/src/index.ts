@@ -19,6 +19,7 @@ import {
   platformCommandOption,
   portCommandOption,
 } from "@/commandOptions";
+import { handleAgentInfra } from "@/commands/agent/infra";
 import { handleAppVersion } from "@/commands/appVersion";
 import { buildAndroidNative, buildIosNative } from "@/commands/buildNative";
 import { getConsolePort, openConsole } from "@/commands/console";
@@ -27,6 +28,7 @@ import {
   deploy,
   normalizeRolloutPercentage,
 } from "@/commands/deploy";
+import { handleInfraScaffold } from "@/commands/infra/scaffold";
 import { init } from "@/commands/init";
 import { initHelp } from "@/commands/initHelp";
 import { INIT_PROVIDER_NAMES } from "@/commands/initProviders";
@@ -112,6 +114,57 @@ program
   .name("hot-updater")
   .description(banner(version))
   .version(version as string);
+
+const infraCommand = program
+  .command("infra")
+  .description("Infrastructure templates");
+infraCommand
+  .command("scaffold")
+  .description("Extract server templates for deployment with provider tools")
+  .addOption(
+    new Option("--provider <provider>", "infrastructure provider")
+      .choices(INIT_PROVIDER_NAMES)
+      .makeOptionMandatory(),
+  )
+  .option(
+    "--output <directory>",
+    "scaffold destination; preserves existing files",
+  )
+  .option("--json", "output scaffold paths as JSON")
+  .action((options) => handleInfraScaffold("scaffold", options));
+
+const agentCommand = program
+  .command("agent")
+  .description("Instructions and scaffolds for AI agents");
+const agentInfraCommand = agentCommand
+  .command("infra")
+  .description("Prepare infrastructure templates for agents to apply");
+
+for (const operation of ["setup", "upgrade"] as const) {
+  agentInfraCommand
+    .command(operation)
+    .description(
+      `Generate infrastructure ${operation} templates and agent instructions`,
+    )
+    .addOption(
+      new Option("--provider <provider>", "infrastructure provider").choices(
+        INIT_PROVIDER_NAMES,
+      ),
+    )
+    .addOption(
+      new Option("--build <plugin>", "app build plugin").choices([
+        "bare",
+        "rock",
+        "expo",
+      ]),
+    )
+    .option(
+      "--output <directory>",
+      "scaffold destination; preserves existing files",
+    )
+    .option("--json", "output instructions or scaffold paths as JSON")
+    .action((options) => handleAgentInfra(operation, options));
+}
 
 program
   .command("init")
@@ -764,7 +817,12 @@ if (process.env["EXPERIMENTAL"]) {
     });
 }
 
-program.hook("preAction", () => {
+program.hook("preAction", (_command, actionCommand) => {
+  if (
+    actionCommand.parent === agentInfraCommand ||
+    actionCommand.parent === infraCommand
+  )
+    return;
   ensureNoConflicts();
 });
 

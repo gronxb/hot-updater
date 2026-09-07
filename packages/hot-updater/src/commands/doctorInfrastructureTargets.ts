@@ -1,5 +1,7 @@
 import { coerce, isLess, isLessOrEqual, normalize } from "verkit";
 
+import { INFRASTRUCTURE_UPDATES } from "./infrastructureUpdates";
+
 export interface UpdateTarget {
   readonly version: string;
   readonly note: string;
@@ -7,12 +9,7 @@ export interface UpdateTarget {
 
 export type RequiredUpdateTarget = UpdateTarget;
 
-export const UPDATE_TARGETS = [
-  {
-    version: "1.0.0",
-    note: "Release Catalog infrastructure generation",
-  },
-] as const satisfies readonly [UpdateTarget, ...UpdateTarget[]];
+export const UPDATE_TARGETS = INFRASTRUCTURE_UPDATES;
 
 const getTargetAt = ({
   index,

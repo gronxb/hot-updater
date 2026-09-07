@@ -1,0 +1,72 @@
+---
+title: "Infrastructure Templates"
+description: "Extract versioned server deployment templates for your own provider tooling."
+icon: Server
+---
+
+`hot-updater infra scaffold` extracts the server deployment files shipped with
+the CLI. Use it directly in your terminal or scripts, then fill and deploy the
+files with your provider tools.
+
+```bash
+npx hot-updater infra scaffold --provider cloudflare
+npx hot-updater infra scaffold --provider supabase
+npx hot-updater infra scaffold --provider aws
+npx hot-updater infra scaffold --provider firebase
+```
+
+Only `--provider` is required. No React Native app, build plugin, credentials,
+provider package installation or AI agent is needed to extract the files. The
+command does not authenticate, create resources or deploy.
+
+## Output
+
+The default output is `hot-updater-infra/<provider>/scaffold-<cli-version>`.
+Choose a custom directory or get paths as JSON:
+
+```bash
+npx hot-updater infra scaffold --provider cloudflare --output ./server --json
+```
+
+| Provider | Server files |
+| --- | --- |
+| [Cloudflare](/docs/managed/cloudflare) | Bundled Worker, Wrangler configuration and D1 migrations |
+| [Supabase](/docs/managed/supabase) | Edge Function, complete Deno imports/vendor files, SQL migrations and project configuration |
+| [AWS](/docs/managed/aws) | Lambda bundle and pinned dependencies, CloudFront specifications and DynamoDB/IAM/SSM reference source |
+| [Firebase](/docs/managed/firebase) | Built Functions project, pinned dependencies, Firebase configuration and Firestore indexes |
+
+`manifest.json` records the provider, target CLI/provider/server versions,
+infrastructure generation, resource inputs and original file hashes.
+`UPGRADE-NOTES.md` contains the versioned infrastructure requirements also used
+by doctor. Runtime dependency manifests live in each deployment project.
+
+Repeating the command preserves compatible output, including manual edits.
+An incompatible or incomplete directory produces an error without replacing
+files. Use a fresh output directory to compare a newer template with an existing
+deployment.
+
+## Apply the files
+
+1. Select or create provider resources using your own tools and record their
+   actual identifiers. Follow the linked provider guide for account and service
+   prerequisites.
+2. Read `UPGRADE-NOTES.md` before changing an existing deployment. Replace all
+   `__HOT_UPDATER_*__` and `%%BUCKET_NAME%%` placeholders with verified values,
+   preserving string/SQL escaping. Inspect and apply pending schema/index changes.
+3. Install the supplied deployment project's dependencies where applicable and
+   deploy with your provider tooling. AWS `reference/` files document the current
+   infrastructure specifications; they are not standalone executable scripts.
+   Preserve resource identities, secrets, custom settings and migration history.
+4. Verify the real endpoint's `/version`, authenticated client requests and
+   stored artifact access. App configuration and client-key provisioning remain
+   separate work; extraction alone does not configure a mobile app.
+
+For v0 to v1, preserve the old endpoint and use a separate v1 namespace/endpoint
+with a new native build. See [Upgrading to v1](/docs/guides/upgrade-to-v1).
+
+## Agent setup and upgrades
+
+[`hot-updater agent infra setup` and `upgrade`](/docs/guides/agent-infrastructure)
+reuse this extractor. They add provider instructions, app config templates for
+the selected build plugin, a client-key helper and a deployment record for
+resuming work. The server deployment files are shared across all three commands.
