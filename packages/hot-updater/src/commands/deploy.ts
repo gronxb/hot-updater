@@ -747,6 +747,7 @@ const deployPlatform = async ({
   // Validate signing configuration and the native key pinned by the app.
   const signingValidation = await validateSigningConfig(config, {
     expectedPublicKey: signingSession?.publicKey,
+    platform,
     ...(getNativeSigningPublicKey === undefined
       ? {}
       : { nativePublicKey: nativeSigningPublicKey?.publicKey ?? null }),
