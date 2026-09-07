@@ -169,6 +169,28 @@ describe("validateSigningConfig", () => {
     });
   });
 
+  it("validates only the selected platform during an Expo deploy", async () => {
+    const publicKey = createPublicKey();
+    parser.android.exists.mockResolvedValue(false);
+    parser.ios.get.mockResolvedValue({
+      paths: ["Info.plist"],
+      value: publicKey,
+    });
+
+    const result = await validateSigningConfig(createConfig(), {
+      expectedPublicKey: publicKey,
+      nativePublicKey: null,
+      platform: "ios",
+    });
+
+    expect(result.isValid).toBe(true);
+    expect(result.issues).toEqual([]);
+    expect(result.nativePublicKeys).toEqual({
+      android: { exists: false, paths: [] },
+      ios: { exists: true, paths: ["Info.plist"] },
+    });
+  });
+
   it("rejects signed Expo CNG builds without a trust anchor", async () => {
     parser.android.exists.mockResolvedValue(false);
     parser.ios.exists.mockResolvedValue(false);

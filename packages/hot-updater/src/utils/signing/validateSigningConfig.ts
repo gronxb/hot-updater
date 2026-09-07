@@ -1,6 +1,7 @@
 import crypto from "node:crypto";
 
 import type { ConfigResponse } from "@hot-updater/cli-tools";
+import type { Platform } from "@hot-updater/plugin-core";
 
 import { AndroidConfigParser } from "../configParser/androidParser";
 import { IosConfigParser } from "../configParser/iosParser";
@@ -58,6 +59,7 @@ export async function validateSigningConfig(
   options: {
     readonly expectedPublicKey?: string;
     readonly nativePublicKey?: string | null;
+    readonly platform?: Platform;
   } = {},
 ): Promise<SigningValidationResult> {
   const signingEnabled = config.signing !== undefined;
@@ -92,6 +94,10 @@ export async function validateSigningConfig(
   }
 
   const issues: SigningConfigIssue[] = [];
+  const validatesIos =
+    options.platform === undefined || options.platform === "ios";
+  const validatesAndroid =
+    options.platform === undefined || options.platform === "android";
 
   const publicKeysMatch = (nativePublicKey: string) => {
     if (!options.expectedPublicKey) {
@@ -111,7 +117,11 @@ export async function validateSigningConfig(
 
   if (signingEnabled) {
     // Signing enabled - check for missing public keys
-    if (!iosResult.value && (iosExists || usesExternalNativeConfig)) {
+    if (
+      validatesIos &&
+      !iosResult.value &&
+      (iosExists || usesExternalNativeConfig)
+    ) {
       issues.push({
         type: "error",
         platform: "ios",
@@ -124,7 +134,11 @@ export async function validateSigningConfig(
           : "Run `npx hot-updater keys export-public` to add the public key, then rebuild your iOS app.",
       });
     }
-    if (!androidResult.value && (androidExists || usesExternalNativeConfig)) {
+    if (
+      validatesAndroid &&
+      !androidResult.value &&
+      (androidExists || usesExternalNativeConfig)
+    ) {
       issues.push({
         type: "error",
         platform: "android",
@@ -139,6 +153,7 @@ export async function validateSigningConfig(
     }
     if (
       iosResult.value &&
+      validatesIos &&
       (iosExists || usesExternalNativeConfig) &&
       !publicKeysMatch(iosResult.value)
     ) {
@@ -154,6 +169,7 @@ export async function validateSigningConfig(
     }
     if (
       androidResult.value &&
+      validatesAndroid &&
       (androidExists || usesExternalNativeConfig) &&
       !publicKeysMatch(androidResult.value)
     ) {

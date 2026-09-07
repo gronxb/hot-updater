@@ -1286,6 +1286,7 @@ describe("deploy rollout wiring", () => {
     expect(signFileHash).toHaveBeenCalledWith(TRANSFER_FILE_HASH);
     expect(validateSigningConfig).toHaveBeenCalledWith(expect.anything(), {
       expectedPublicKey: "public-key",
+      platform: "ios",
     });
     expect(mockCli.p.spinner).not.toHaveBeenCalled();
     expect(mockCli.p.note).toHaveBeenCalledWith("LLVM\nHermes", "Build Output");
@@ -1342,6 +1343,7 @@ describe("deploy rollout wiring", () => {
     expect(validateSigningConfig).toHaveBeenCalledWith(expect.anything(), {
       expectedPublicKey: "provider-public-key",
       nativePublicKey: "expo-public-key",
+      platform: "ios",
     });
   });
 
