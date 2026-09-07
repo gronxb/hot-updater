@@ -1,5 +1,11 @@
 # @hot-updater/console
 
+## 1.0.0-rc.3
+
+### Patch Changes
+
+- 1067058: Show deployment adoption crossovers and recovery-rate spikes in Insights, with shared ID and interval selection, rollout markers, and links to delivery settings.
+
 ## 1.0.0-rc.2
 
 ### Minor Changes
