@@ -1,3 +1,4 @@
+import { CheckIcon } from "lucide-react";
 import { useState } from "react";
 
 import { Button } from "@/components/ui/button";
@@ -46,13 +47,22 @@ export function InsightsControls({
                 if (value[0] === "ios" || value[0] === "android")
                   setPlatform(value[0]);
               }}
-              spacing={0}
-              variant="outline"
+              variant="contrast"
             >
               <ToggleGroupItem className="h-11 lg:h-8" value="ios">
+                <CheckIcon
+                  aria-hidden="true"
+                  className="invisible group-aria-pressed/toggle:visible"
+                  data-icon="inline-start"
+                />
                 iOS
               </ToggleGroupItem>
               <ToggleGroupItem className="h-11 lg:h-8" value="android">
+                <CheckIcon
+                  aria-hidden="true"
+                  className="invisible group-aria-pressed/toggle:visible"
+                  data-icon="inline-start"
+                />
                 Android
               </ToggleGroupItem>
             </ToggleGroup>
@@ -85,10 +95,9 @@ export function InsightsControls({
           onValueChange={(value) => {
             if (value[0]) onWindowChange(value[0] as InsightsWindow);
           }}
-          spacing={0}
           size="lg"
           value={[window]}
-          variant="outline"
+          variant="contrast"
         >
           {windows.map((item) => (
             <ToggleGroupItem
@@ -97,6 +106,11 @@ export function InsightsControls({
               key={item.value}
               value={item.value}
             >
+              <CheckIcon
+                aria-hidden="true"
+                className="invisible group-aria-pressed/toggle:visible"
+                data-icon="inline-start"
+              />
               {item.shortLabel}
             </ToggleGroupItem>
           ))}

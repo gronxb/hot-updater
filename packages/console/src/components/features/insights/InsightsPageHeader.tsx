@@ -1,8 +1,9 @@
 import { Link } from "@tanstack/react-router";
-import { ChartNoAxesCombined } from "lucide-react";
+import { ChartNoAxesCombined, ListIcon } from "lucide-react";
 
 import { buttonVariants } from "@/components/ui/button";
 import { SidebarTrigger } from "@/components/ui/sidebar";
+import { cn } from "@/lib/utils";
 
 export function InsightsPageHeader({
   view,
@@ -19,28 +20,33 @@ export function InsightsPageHeader({
         />
         <h1 className="text-sm font-medium">Insights</h1>
       </div>
-      <nav aria-label="Insights views" className="ml-auto flex gap-1">
+      <nav aria-label="Insights views" className="ml-auto flex gap-2">
         <Link
           aria-current={view === "overview" ? "page" : undefined}
-          className={buttonVariants({
-            className: "h-11 px-3 lg:h-8 lg:px-2.5",
-            size: "lg",
-            variant: view === "overview" ? "secondary" : "ghost",
-          })}
+          className={cn(
+            buttonVariants({
+              className: "h-11 px-3 lg:h-8 lg:px-2.5",
+              size: "lg",
+              variant: view === "overview" ? "contrast" : "outline",
+            }),
+          )}
           to="/insights"
         >
           Overview
         </Link>
         <Link
           aria-current={view === "events" ? "page" : undefined}
-          className={buttonVariants({
-            className: "h-11 px-3 lg:h-8 lg:px-2.5",
-            size: "lg",
-            variant: view === "events" ? "secondary" : "ghost",
-          })}
+          className={cn(
+            buttonVariants({
+              className: "h-11 px-3 lg:h-8 lg:px-2.5",
+              size: "lg",
+              variant: view === "events" ? "contrast" : "outline",
+            }),
+          )}
           to="/installations"
         >
-          Events
+          <ListIcon aria-hidden="true" data-icon="inline-start" />
+          All events
         </Link>
       </nav>
     </header>

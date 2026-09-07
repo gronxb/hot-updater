@@ -1,12 +1,19 @@
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
-import { ArrowUpRight, RotateCw, TriangleAlert } from "lucide-react";
+import {
+  ArrowUpRight,
+  CheckIcon,
+  ListIcon,
+  RotateCw,
+  TriangleAlert,
+} from "lucide-react";
 import { useState } from "react";
 import { CartesianGrid, Line, LineChart, XAxis, YAxis } from "recharts";
 
 import { Button, buttonVariants } from "@/components/ui/button";
 import {
   Card,
+  CardAction,
   CardContent,
   CardFooter,
   CardHeader,
@@ -21,6 +28,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import type { RecoveryInput, RecoveryReport } from "@/lib/insights-recovery";
 import { getRecoveryReportRpc } from "@/lib/insights-recovery-rpc";
+import { cn } from "@/lib/utils";
 
 import { InsightsErrorAlert } from "./InsightsErrorAlert";
 
@@ -103,13 +111,22 @@ export function ActivityChart({ report }: { readonly report: RecoveryReport }) {
             if (values[0] === "active" || values[0] === "rollback")
               setMetric(values[0]);
           }}
-          spacing={0}
-          variant="outline"
+          variant="contrast"
         >
           <ToggleGroupItem className="h-11 lg:h-8" value="active">
+            <CheckIcon
+              aria-hidden="true"
+              className="invisible group-aria-pressed/toggle:visible"
+              data-icon="inline-start"
+            />
             Active
           </ToggleGroupItem>
           <ToggleGroupItem className="h-11 lg:h-8" value="rollback">
+            <CheckIcon
+              aria-hidden="true"
+              className="invisible group-aria-pressed/toggle:visible"
+              data-icon="inline-start"
+            />
             Rollback
           </ToggleGroupItem>
         </ToggleGroup>
@@ -331,8 +348,12 @@ export function InsightsOverview({ input }: { readonly input: RecoveryInput }) {
     staleTime: 30_000,
   });
   return (
-    <Card className="min-w-0 overflow-hidden shadow-sm">
-      <CardHeader className="flex-row items-center justify-between gap-4 px-4 pt-4 pb-2 sm:px-6 sm:pt-6">
+    <Card
+      aria-label="Bundle activity"
+      className="min-w-0 overflow-hidden shadow-sm"
+      role="region"
+    >
+      <CardHeader className="flex-row flex-wrap items-center justify-between gap-4 px-4 pt-4 pb-2 sm:px-6 sm:pt-6">
         <CardTitle className="text-sm font-medium">
           Bundle activity ·{" "}
           {input.window === "30d"
@@ -341,15 +362,30 @@ export function InsightsOverview({ input }: { readonly input: RecoveryInput }) {
               ? "7 days"
               : "24 hours"}
         </CardTitle>
-        <Button
-          aria-label="Refresh bundle activity"
-          variant="ghost"
-          size="icon-sm"
-          disabled={query.isFetching}
-          onClick={() => void query.refetch()}
-        >
-          <RotateCw aria-hidden="true" />
-        </Button>
+        <CardAction className="flex items-center gap-2 self-center">
+          <Link
+            className={cn(
+              buttonVariants({
+                className: "h-11 lg:h-8",
+                size: "lg",
+                variant: "outline",
+              }),
+            )}
+            to="/installations"
+          >
+            <ListIcon aria-hidden="true" data-icon="inline-start" />
+            All events
+          </Link>
+          <Button
+            aria-label="Refresh bundle activity"
+            variant="ghost"
+            size="icon-sm"
+            disabled={query.isFetching}
+            onClick={() => void query.refetch()}
+          >
+            <RotateCw aria-hidden="true" />
+          </Button>
+        </CardAction>
       </CardHeader>
       <CardContent className="flex flex-col gap-4 px-4 pb-4 sm:px-6 sm:pb-6">
         {query.isPending ? (

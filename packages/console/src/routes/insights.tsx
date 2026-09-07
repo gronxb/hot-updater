@@ -14,7 +14,7 @@ export const Route = createFileRoute("/insights")({
 });
 
 function InsightsPage() {
-  const [window, setWindow] = useState<InsightsWindow>("30d");
+  const [window, setWindow] = useState<InsightsWindow>("24h");
   const [scope, setScope] = useState<Omit<InsightsOverviewInput, "window">>({
     platform: "ios",
     channel: "production",

@@ -21,10 +21,16 @@ vi.mock("@tanstack/react-router", () => ({
   Link: ({
     children,
     search,
+    to,
   }: {
     children: ReactNode;
-    search: { releaseId: string };
-  }) => <a href={`/?releaseId=${search.releaseId}`}>{children}</a>,
+    search?: { releaseId: string };
+    to: string;
+  }) => (
+    <a href={search?.releaseId ? `/?releaseId=${search.releaseId}` : to}>
+      {children}
+    </a>
+  ),
 }));
 vi.mock("recharts", async (importOriginal) => ({
   ...(await importOriginal<typeof import("recharts")>()),
@@ -124,6 +130,11 @@ describe("bundle trends", () => {
     mocks.query.mockReturnValue({ isPending: true, refetch });
     const view = render(<InsightsOverview input={input} />);
     expect(screen.getByLabelText("Loading bundle activity")).toBeDefined();
+    expect(
+      within(screen.getByRole("region", { name: "Bundle activity" }))
+        .getByRole("link", { name: "All events" })
+        .getAttribute("href"),
+    ).toBe("/installations");
     mocks.query.mockReturnValue({ error: new Error("Offline"), refetch });
     view.rerender(<InsightsOverview input={input} />);
     expect(screen.getByText("Bundle activity unavailable")).toBeDefined();

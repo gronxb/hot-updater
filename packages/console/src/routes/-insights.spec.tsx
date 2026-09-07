@@ -12,7 +12,7 @@ vi.mock("@/components/features/insights/InsightsOverview", () => ({
   },
 }));
 vi.mock("@/components/features/insights/InsightsPageHeader", () => ({
-  InsightsPageHeader: () => <a href="/installations">Events</a>,
+  InsightsPageHeader: () => <a href="/installations">All events</a>,
 }));
 
 import { Route } from "./insights";
@@ -24,10 +24,10 @@ afterEach(() => {
 });
 
 describe("Insights overview", () => {
-  it("defaults to all IDs over 30 days and changes only the period or platform/channel scope", () => {
+  it("defaults to all IDs over 24 hours and changes only the period or platform/channel scope", () => {
     render(<InsightsPage />);
     expect(mocks.activity).toHaveBeenLastCalledWith({
-      input: { platform: "ios", channel: "production", window: "30d" },
+      input: { platform: "ios", channel: "production", window: "24h" },
     });
     expect(screen.queryByLabelText("Bundle ID (optional)")).toBeNull();
     expect(screen.getAllByText("Bundle activity")).toHaveLength(1);
@@ -44,7 +44,7 @@ describe("Insights overview", () => {
       input: { platform: "android", channel: "beta", window: "7d" },
     });
     expect(
-      screen.getByRole("link", { name: "Events" }).getAttribute("href"),
+      screen.getByRole("link", { name: "All events" }).getAttribute("href"),
     ).toBe("/installations");
   });
 });
