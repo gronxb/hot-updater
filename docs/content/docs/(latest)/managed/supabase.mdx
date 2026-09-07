@@ -201,14 +201,11 @@ The generated Supabase migrations enable Row Level Security on Hot Updater
 tables and keep direct table/function access limited to the service role used by
 the CLI and deployed Edge Function.
 
-### Upgrade and rollback
+### Resource names and storage
 
-Managed Supabase keeps v0 and v1 infrastructure isolated inside the same
-project. V1 tables, indexes, settings, and RPC functions use the fixed
+Managed tables, indexes, settings, and RPC functions use the fixed
 `hot_updater_v1_*` namespace, and the managed Edge Function defaults to
-`hot-updater-v1`. Existing v0 tables and functions are not read or modified by
-v1 init, so installed v0 binaries can continue using them while a new native
-build moves to the v1 endpoint.
+`hot-updater-v1`.
 
 The same Storage bucket can be reused because each bundle has its own object
 key. Init does not change an existing bucket between public and private; doing

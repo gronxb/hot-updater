@@ -56,6 +56,14 @@ than rejecting a project merely because it contains v0 data. Cloudflare needs
 a separate D1 database; init rejects a v0 D1 database or an existing v0 endpoint
 instead of upgrading it.
 
+For AWS, create separate v1 DynamoDB, Lambda and CloudFront resources. If an
+env file contains a v0 Lambda name or distribution ID, change
+`HOT_UPDATER_AWS_LAMBDA_NAME` to a fresh v1 name, remove
+`HOT_UPDATER_CLOUDFRONT_DISTRIBUTION_ID`, and choose **Create New CloudFront
+Distribution**. Init checks the selected endpoint before changing resources and
+rejects a v0 Lambda or distribution. Keep the existing v0 resources available
+for installed binaries.
+
 Storage buckets do not have to be new, but preserve the access policies and
 objects still needed by v0. Do not prune shared storage using only the v1
 database while v0 binaries still need those artifacts.

@@ -6,9 +6,9 @@ icon: Cog
 
 ## The Bundle model
 
-Hot Updater keeps the v0 public model: a deployment creates a Bundle with one
-ID. The deployment result, Console, `HotUpdater.getBundleId()`, and every
-`hot-updater bundle` command use that same ID.
+A deployment creates a Bundle with one ID. The deployment result, Console,
+`HotUpdater.getBundleId()`, and every `hot-updater bundle` command use that
+same ID.
 
 A Bundle's delivery settings include its channel, platform, compatibility
 target, enabled state, rollout, target cohorts, force-update value, and message.
@@ -29,8 +29,8 @@ deploy → ID → bundle show/update/enable/disable/delete/promote
 Storage and Database are configured using plugins in `hot-updater.config.ts`.
 The Server is initialized and deployed with `hot-updater init`.
 
-Internally, v1 can reuse one immutable artifact across multiple public Bundle
-IDs. This avoids copying uploaded bytes during promotion and lets policy changes
+Internally, Hot Updater can reuse one immutable artifact across multiple public
+Bundle IDs. This avoids copying uploaded bytes during promotion and lets policy changes
 recompile the delivery catalog without rebuilding the archive. The internal
 artifact identity is shown only as **Artifact ID** in Advanced diagnostics and
 artifact commands.

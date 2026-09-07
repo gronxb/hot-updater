@@ -115,12 +115,6 @@ resources, secrets, endpoints, and unrelated settings.
 version requirements and the generated upgrade notes share one registry. An
 upgrade instruction includes compatibility, provider steps, and verification.
 
-The first entry covers [v0 to v1](/docs/guides/upgrade-to-v1). That transition
-requires parallel database namespaces/endpoints and a new native build.
-Supabase and Firebase can reuse the project with separate v1 namespaces and
-functions. Cloudflare needs a separate D1 and Worker; AWS needs separate v1
-database and server identities. Preserve v0 resources while old binaries use them.
-
 ## Verify completion
 
 The agent checks the public server generation/version and authenticated client

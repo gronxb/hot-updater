@@ -211,21 +211,17 @@ export default defineConfig({
 });
 ```
 
-### Upgrade and rollback
+### Resource names
 
-Managed Firebase keeps v0 and v1 infrastructure isolated inside the same
-project. V1 Firestore collections use the fixed `hot_updater_v1_*` namespace,
-and the managed Function is named `hot-updater-v1`. Existing v0 collections
-and the `hot-updater` Function are not read or modified by v1 init, so installed
-v0 binaries can continue using them while a new native build moves to the v1
-endpoint. Both generations can use the project's canonical Storage bucket;
-bundle object keys remain independent.
+Managed Firestore collections use the fixed `hot_updater_v1_*` namespace,
+and the managed Function is named `hot-updater-v1`. Bundles use the project's
+canonical Storage bucket with independent object keys.
 
 ### Release catalog cache
 
 Firebase uses the direct `hot-updater-v1` Function URL in `origin-only` mode.
 Init prints the deployed URL and does not deploy Firebase Hosting, because the
-default Hosting site may already belong to the app or its v0 update endpoint.
+default Hosting site may already belong to the app or another service.
 Catalog checks still use the precompiled Release Catalog and the runtime's
 short in-process cache, but every device request invokes the Function.
 

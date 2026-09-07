@@ -54,6 +54,12 @@
   deployment prerequisites change. Validate packaged scaffolds and upgrade notes
   with `pnpm -w test` after `pnpm -w build`.
 
+## Documentation
+
+- Latest-version documentation describes current behavior. Keep v0/v1
+  comparisons and transition instructions in `guides/upgrade-to-v1.mdx`.
+  Preserve literal resource names, API paths, and protocol identifiers.
+
 ## Testing Guidelines
 
 - Framework: Vitest. Place tests near code or in `__tests__`. Use `*.spec.ts`.

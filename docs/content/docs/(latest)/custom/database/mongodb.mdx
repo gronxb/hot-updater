@@ -59,9 +59,9 @@ export const hotUpdater = createHotUpdater({
 ```
 
 Run MongoDB as a replica set or sharded cluster and set `transactions: true`.
-v1 Release and Release Catalog changes must commit atomically. With transactions
+Release and Release Catalog changes must commit atomically. With transactions
 disabled, commits with revision expectations or multiple changes are rejected,
-so a standalone MongoDB server cannot support the normal v1 deployment workflow.
+so a standalone MongoDB server cannot support the normal deployment workflow.
 
 ## Schema Generation
 

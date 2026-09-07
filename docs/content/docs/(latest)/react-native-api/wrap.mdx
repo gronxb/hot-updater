@@ -121,15 +121,15 @@ export default App;
 
 | Option             | Type                                        | Required | Description                                                 |
 | ------------------ | ------------------------------------------- | -------- | ----------------------------------------------------------- |
-| `baseURL`          | `string \| () => string \| Promise<string>` | Yes      | Your v1 client handler URL                                  |
+| `baseURL`          | `string \| () => string \| Promise<string>` | Yes      | Your client handler URL                                     |
 | `insights`         | `boolean`                                   | No       | Send app-ready and Bundle adoption events (default: true)   |
 | `requestHeaders`   | `Record<string, string>`                    | No       | Custom HTTP headers for update requests                     |
 | `requestTimeout`   | `number`                                    | No       | Request timeout in milliseconds (default: 5000)             |
 | `onNotifyAppReady` | `(result) => void`                          | No       | Callback invoked after native app-ready state is read       |
 
 `baseURL` is the only React Native transport configuration. It may resolve at
-runtime, but every resolved URL must expose the v1 HTTP protocol. Hot Updater
-expands handler-relative artifact paths against this URL.
+runtime, but every resolved URL must expose the Hot Updater HTTP protocol.
+Hot Updater expands handler-relative artifact paths against this URL.
 
 ### Automatic Mode Options
 
@@ -357,8 +357,8 @@ resolves the selected artifact:
 ## Custom Backends
 
 For advanced use cases where you need full control over network operations,
-such as GraphQL, RPC, or custom authentication, expose the v1 HTTP protocol
-through an adapter or proxy and point `baseURL` at that endpoint. The adapter
+such as GraphQL, RPC, or custom authentication, expose the Hot Updater HTTP
+protocol through an adapter or proxy and point `baseURL` at that endpoint. The adapter
 may use any upstream protocol internally, but the React Native client always
 uses the standard Release Catalog, artifact, Insights-event, and `/version`
 routes. This keeps catalog selection and native transition guards on one

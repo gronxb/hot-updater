@@ -69,7 +69,7 @@ Every Bundle row has a required `archive_byte_size`, and every Bundle-patch row
 has a required `byte_size`. Both values are immutable non-negative
 integers no larger than `Number.MAX_SAFE_INTEGER`. Provider CRUD hydration must
 reject a missing, fractional, negative, or out-of-range value instead of
-constructing a partial v1 Bundle.
+constructing a partial Bundle.
 
 `BundlePatchModel.findByBundleIds` returns all patch rows owned by the requested
 Bundle IDs. It returns immediately for an empty owner list.
@@ -251,8 +251,8 @@ or compiling a large history.
 The compiler keeps a bounded 11-artifact frontier for newer update and crash
 selection, plus the complete compatible enabled Release spine needed to find
 the predecessor of any active Release. Rollback candidates ignore rollout and
-target cohorts, matching the v0 selector. This rollback spine is intentionally
-linear in compatible enabled history. It is never silently truncated; if the
+target cohorts. This rollback spine is intentionally linear in compatible
+enabled history. It is never silently truncated; if the
 canonical catalog exceeds 256 KiB, the Release mutation fails before the atomic
 commit and the previous Release/catalog state remains unchanged.
 
@@ -278,8 +278,7 @@ emitted companion collation SQL for Prisma PostgreSQL/MySQL.
 2. Record `schema.core = 1.0.0` after successful creation.
 3. Leave initialized `1.0.0` storage unchanged on subsequent calls.
 
-There is no populated v0 Bundle-policy backfill. Managed initialization rejects
-v0 infrastructure before mutating it.
+Managed initialization rejects incompatible infrastructure before mutating it.
 
 Insights requirements are documented in the
 [custom provider guide](./custom-database#insights).
@@ -305,13 +304,9 @@ unchanged; applications and server configuration do not supply it. Backups must
 include Catalog rows: rebuilding a missing row from existing Releases would lose
 its identity and generation history, so that operation requires restoring the row.
 Custom GraphQL, RPC, or other transports must sit behind an HTTP adapter or
-proxy that exposes these v1 routes. Successful shared responses must keep a
+proxy that exposes these routes. Successful shared responses must keep a
 stable cache partition; responses affected by arbitrary request context must
 remain `private, no-store`.
-
-The v0 app-version and fingerprint update-check routes are not exposed. Old
-native binaries must continue using a separate v0 endpoint during a parallel
-cutover.
 
 ## Standalone boundary
 
@@ -333,6 +328,6 @@ The contract is complete only when:
 - catalog GETs perform one exact read and no Release/Bundle scan;
 - empty-scope generations persist as tombstones;
 - schema bootstrap creates the complete 1.0.0 schema, leaves initialized 1.0.0
-  storage unchanged, and rejects unsupported v0 markers;
-- public conformance, provider integration, v0 generation guards, managed
-  runtime, and standalone verification suites pass.
+  storage unchanged, and rejects unsupported schema markers;
+- public conformance, provider integration, infrastructure compatibility guards,
+  managed runtime, and standalone verification suites pass.

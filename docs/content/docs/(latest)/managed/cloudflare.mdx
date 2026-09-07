@@ -201,14 +201,10 @@ The persisted
 `HOT_UPDATER_CLOUDFLARE_R2_PRIVATE` value replays the privacy choice on later
 init runs.
 
-### Upgrade and rollback
+### Schema validation
 
-Managed Cloudflare does not upgrade a v0 D1 database in place. Init checks for
-the v1 Release Catalog schema before applying migrations or deploying the
-Worker. When it detects v0 Bundle policy, it stops without changing D1. Create
-a new D1 database, R2 bucket, and Worker for v1, then ship the new endpoint in a
-new native build. Keep the v0 Worker and database available for installed v0
-binaries that still need OTA service.
+Init checks the Release Catalog schema before applying migrations or deploying
+the Worker. It stops without changing D1 when the existing schema is incompatible.
 
 ### Release catalog cache
 
