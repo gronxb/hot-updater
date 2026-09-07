@@ -1,5 +1,14 @@
 # @hot-updater/console
 
+## 1.0.0-rc.5
+
+### Patch Changes
+
+- 5c8972c: Display observed Active points in the compact bundle chart even when reports exist in only one time interval.
+- c3f7896: Default Insights to hourly activity over 24 hours and make selected platform, reporting period, and activity filters clear in both themes. Make All events navigation visible and show 20 reports per page. Keep Bundles summaries and Bundle Detail on 30 days.
+
+  Show a 30-day reporting device count above the graph using the existing installation count query.
+
 ## 1.0.0-rc.4
 
 ### Patch Changes

@@ -1,5 +1,45 @@
 # hot-updater
 
+## 1.0.0-rc.7
+
+### Minor Changes
+
+- ed17bef: Add `hot-updater infra scaffold --provider <provider>` for standalone server
+  template extraction without an agent or app build selection. Reuse its extractor
+  in `hot-updater agent infra setup` and `hot-updater agent infra upgrade` to
+  generate versioned deployment templates and agent instructions for Cloudflare,
+  Supabase, AWS, and Firebase. Scaffolds preserve existing edits and provide
+  provider-specific verification, resume guidance, and private reusable API-key
+  provisioning. Agents apply the files through their available provider tools.
+
+  Connect doctor remediation to the agent commands and require a complete
+  version-named Markdown release file for every infrastructure requirement.
+  Retain historical files and provide an ordered index so agents can read the
+  complete upgrade path, including intermediate releases. Include the
+  v0-to-v1 coexistence and native-build transition as the initial upgrade record.
+  Share existing provider config builders with the packaged scaffolds.
+
+  Include provider environment guides explaining each variable's purpose,
+  conditions and secure source. Guide agents to discover the app and existing
+  resources, create missing infrastructure, and ask only for unresolved choices
+  or access, without requesting secrets in chat.
+
+  Accept the bundled server prerelease in doctor when running the matching
+  prerelease CLI, while retaining generation checks and stable release requirements.
+  Check helper runtime prerequisites before provisioning, apply Cloudflare config
+  before migrations, and include Firebase download-signing permissions and reusable
+  application-default credentials in the onboarding instructions.
+
+### Patch Changes
+
+- Updated dependencies [ed17bef]
+- Updated dependencies [5c8972c]
+- Updated dependencies [c3f7896]
+  - @hot-updater/cloudflare@1.0.0-rc.4
+  - @hot-updater/supabase@1.0.0-rc.3
+  - @hot-updater/firebase@1.0.0-rc.3
+  - @hot-updater/console@1.0.0-rc.5
+
 ## 1.0.0-rc.6
 
 ### Patch Changes
