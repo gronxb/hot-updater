@@ -3,19 +3,14 @@ import { createRequire } from "node:module";
 import path from "path";
 
 import {
-  type BuildType,
-  ConfigBuilder,
   confirmInitInputPersistence,
   copyDirToTmp,
-  createHotUpdaterConfigScaffoldFromBuilder,
   getHotUpdaterInitInputEnv,
   getInitProviderEnvVars,
   getInitProviderTextPromptValues,
   link,
   makeEnv,
-  type HotUpdaterConfigScaffold,
   MissingInitInputsError,
-  type ProviderConfig,
   p,
   readHotUpdaterInitEnv,
   type RunInitOptions,
@@ -29,6 +24,7 @@ import { delay } from "es-toolkit";
 import { ExecaError, execa } from "execa";
 
 import { supabaseDatabase } from "../src/supabaseDatabase";
+import { getConfigScaffold } from "./configTemplate";
 import {
   initProvider as SUPABASE_INIT_PROVIDER,
   isSupabaseFunctionName,
@@ -76,31 +72,6 @@ const STATIC_IMPORT_SPECIFIER_PATTERN =
   /^\s*(?:import|export)\s+(?:type\s+)?(?:[^"'`]+?\s+from\s+)?["']([^"']+)["'];?/gm;
 const DYNAMIC_IMPORT_SPECIFIER_PATTERN =
   /\bimport\s*\(\s*["']([^"']+)["']\s*\)/g;
-
-const getConfigScaffold = (build: BuildType): HotUpdaterConfigScaffold => {
-  const storageConfig: ProviderConfig = {
-    imports: [{ pkg: "@hot-updater/supabase", named: ["supabaseStorage"] }],
-    configString: `supabaseStorage({
-    supabaseUrl: process.env.HOT_UPDATER_SUPABASE_URL!,
-    supabaseServiceRoleKey: process.env.HOT_UPDATER_SUPABASE_SERVICE_ROLE_KEY!,
-    bucketName: process.env.HOT_UPDATER_SUPABASE_BUCKET_NAME!,
-  })`,
-  };
-  const databaseConfig: ProviderConfig = {
-    imports: [{ pkg: "@hot-updater/supabase", named: ["supabaseDatabase"] }],
-    configString: `supabaseDatabase({
-    supabaseUrl: process.env.HOT_UPDATER_SUPABASE_URL!,
-    supabaseServiceRoleKey: process.env.HOT_UPDATER_SUPABASE_SERVICE_ROLE_KEY!,
-  })`,
-  };
-
-  return createHotUpdaterConfigScaffoldFromBuilder(
-    new ConfigBuilder()
-      .setBuildType(build)
-      .setStorage(storageConfig)
-      .setDatabase(databaseConfig),
-  );
-};
 
 export const getLegacySupabaseConfigReference = (configText: string) => {
   if (configText.includes("HOT_UPDATER_SUPABASE_ANON_KEY")) {

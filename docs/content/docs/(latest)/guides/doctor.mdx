@@ -5,6 +5,8 @@ icon: Stethoscope
 version: "v0.30.0"
 ---
 
+import { Tabs, Tab } from "fumadocs-ui/components/tabs";
+
 ## Overview
 
 Use `hot-updater doctor` to check the parts that must agree for OTA updates to
@@ -76,12 +78,15 @@ Use `fixability` as the automation boundary:
 | ---------- | -------------------------------------------------------------------------------------------------- |
 | `auto`     | The agent may inspect and edit local project files, then rerun doctor.                             |
 | `command`  | The agent may run the listed local command, then rerun doctor.                                     |
-| `blocked`  | The issue needs credentials, environment variables, server access, or a human deployment decision. |
+| `blocked`  | The repair requires external context/access beyond doctor’s local fixes. |
 
 Native wiring, fingerprint creation, and native public key export/removal are
 intended to be iterated locally by an agent. Infrastructure failures are marked
 as blocked because applying migrations or redeploying a server usually depends
-on provider credentials and environment-specific access.
+on provider credentials and environment-specific access. During a requested
+setup or upgrade, an agent with that access should follow the generated
+infrastructure instructions and verify the result. Pause only for a missing
+prerequisite, uncertain remote state, or a new consequential decision.
 
 Bundle index repair is only available when the active database adapter exposes
 diagnostics hooks. Adapters without those hooks report `not-applicable`.
@@ -128,13 +133,52 @@ If your server is outdated, `doctor` prints:
 Infrastructure update required. Deploy server infrastructure version x.x.x or newer.
 ```
 
-How to fix it depends on how you run Hot Updater:
+For managed providers (`aws`, `cloudflare`, `supabase`, `firebase`), choose your
+upgrade workflow:
 
-- **Self-hosted server using `createHotUpdater`**: update all Hot Updater
-  packages together, including `@hot-updater/server`, then redeploy your server.
-- **Managed providers (`aws`, `cloudflare`, `supabase`, `firebase`)**: run
-  `npx hot-updater init` again and redeploy the generated provider
-  infrastructure.
+<Tabs items={["AI agent", "Terminal"]}>
+  <Tab value="AI agent">
+
+With the [Hot Updater skill](/docs/guides/ai-agents) attached, ask your agent:
+
+```text
+$hot-updater Upgrade the server infrastructure at https://updates.example.com and verify it with doctor.
+```
+
+The agent identifies the provider and existing resources, generates templates
+with `hot-updater agent infra upgrade`, and reads the relevant versioned upgrade
+files before applying changes. If it needs access, authenticate through the
+provider or a local credential file; keep secret values out of the conversation.
+See [Agent Infrastructure](/docs/guides/agent-infrastructure#upgrade-an-existing-server).
+
+  </Tab>
+  <Tab value="Terminal">
+
+Update the Hot Updater packages together to the desired release. Extract that
+release's templates for your provider, for example:
+
+```package-install
+npx hot-updater infra scaffold --provider cloudflare
+```
+
+Read the returned `upgrades/README.md` and relevant version files, including
+intermediate releases, for compatibility and migration order. Apply the required
+steps, then use interactive init to deploy to the compatible existing resources:
+
+```package-install
+npx hot-updater init
+npx hot-updater doctor --server-base-url https://updates.example.com
+```
+
+Use the actual server URL for verification. Preserve existing data, keys and
+customizations, and follow any resource separation required by the upgrade files.
+
+  </Tab>
+</Tabs>
+
+For a **self-hosted server using `createHotUpdater`**, update all Hot Updater
+packages together, including `@hot-updater/server`, apply the relevant migrations,
+then redeploy your server and verify it with doctor.
 
 ## Options
 

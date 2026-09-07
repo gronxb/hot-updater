@@ -40,6 +40,7 @@ export interface InfrastructureRemediation {
 }
 
 const INFRASTRUCTURE_RECOVERY_COMMANDS = [
+  "hot-updater agent infra upgrade",
   "hot-updater init",
   "hot-updater db migrate",
   "hot-updater db generate",
@@ -82,14 +83,14 @@ export const createInfrastructureRemediation = ({
     return {
       fixability: "blocked",
       reason:
-        "Hot Updater v0 infrastructure cannot be upgraded in place. Run init with new provider resources and ship the new endpoint in a new native build. Existing resources are left unchanged.",
-      commands: ["hot-updater init"],
+        "Hot Updater v0 infrastructure cannot be upgraded in place. Generate a parallel v1 setup with hot-updater agent infra setup, or use init interactively, and ship the new endpoint in a new native build.",
+      commands: ["hot-updater agent infra setup", "hot-updater init"],
     };
   }
   return {
     fixability: "blocked",
     reason:
-      "Server infrastructure changes usually need provider credentials, environment variables, and redeploy access.",
+      "Generate versioned upgrade instructions with hot-updater agent infra upgrade. Applying them needs provider access; use init for interactive managed setup or db commands for custom servers.",
     commands: [...INFRASTRUCTURE_RECOVERY_COMMANDS],
   };
 };
@@ -106,8 +107,9 @@ export async function checkInfrastructureStatus({
   const versionEndpoint = resolveVersionEndpoint(serverBaseUrl);
   const baseUrl = serverBaseUrl.trim();
   const catalogMode = getCatalogMode(baseUrl);
-  const requiredVersion = requiredTarget.version;
-  const requiresV1 = isV1InfrastructureRequired(requiredVersion);
+  const requiredVersion =
+    requiredTarget.minimumPrereleaseVersion ?? requiredTarget.version;
+  const requiresV1 = isV1InfrastructureRequired(requiredTarget.version);
 
   try {
     const response = await fetchImpl(versionEndpoint, {
@@ -184,9 +186,6 @@ export async function checkInfrastructureStatus({
 
     const needsUpdate = isInfrastructureUpdateRequired({
       serverVersion: data.version,
-      ...(data.infrastructureGeneration === 1
-        ? { infrastructureGeneration: 1 }
-        : {}),
       requiredVersion,
     });
 

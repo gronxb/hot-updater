@@ -97,7 +97,7 @@ are preserved.
 
 Use `updateInfo.updateBundle()` to resolve the artifact and pass its verification
 hash to the native updater. The `fileUrl` and `fileHash` fields returned by
-`checkForUpdate()` are `null` in v1 and must not be copied into a direct call.
+`checkForUpdate()` are `null` and must not be copied into a direct call.
 A plain SHA256 hash checks integrity but does not authenticate the publisher;
 a `sig:` value also verifies publisher authenticity with the configured public key.
 

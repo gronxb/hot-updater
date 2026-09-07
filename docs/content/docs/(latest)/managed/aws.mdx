@@ -7,15 +7,15 @@ icon: aws
 import { Tabs, Tab } from "fumadocs-ui/components/tabs";
 import { Accordion, Accordions } from "fumadocs-ui/components/accordion";
 
-<video src={"/docs/get-started/init-aws.mov"} controls autoPlay loop muted />
-
 ## Prerequisites
 
-Before you begin, make sure the following are ready:
+Your deployment needs the resources and access below. When using an AI agent,
+it can prepare missing resources through its available provider tools.
 
-- **Node.js**: Version 20.19 or later is required; Node 22 is recommended.
+- **Node.js**: The CLI requires 20.19+. Agent setup uses a client-key helper that
+  requires Node 22.18+ or Node 24+; prepare it before provisioning resources.
 - **AWS Account**: Sign up at [AWS](https://aws.amazon.com) if you don't have one.
-- **AWS CLI**: Install the AWS CLI and sign in or configure a profile.
+- **AWS CLI (terminal setup)**: Install the AWS CLI and sign in or configure a profile.
 
 ## Required AWS Permissions
 
@@ -63,7 +63,8 @@ AccessDenied: User: arn:aws:sts::***:assumed-role/***/*** is not authorized to p
 
 ## Step 1: Install Required Packages
 
-Run the following command to install dependencies:
+Your agent can install these dependencies as part of setup. For the terminal
+workflow, run:
 
 ```package-install
 npm install hot-updater --save-dev
@@ -72,7 +73,28 @@ npm install @hot-updater/react-native
 
 ## Step 2: Configure AWS
 
-Run the initialization script to start the interactive setup process. Use the following command with your preferred package manager:
+Choose how to set up AWS:
+
+<Tabs items={["AI agent", "Terminal"]}>
+  <Tab value="AI agent">
+
+Install the [Hot Updater skill](/docs/guides/ai-agents), then ask your coding agent:
+
+```text
+$hot-updater Set up infrastructure on AWS for this project.
+```
+
+The agent inspects your app, discovers existing configuration and resources,
+and asks only for missing choices or access. It uses `hot-updater agent infra setup`
+to generate the deployment templates, then applies and verifies them with available
+provider tools. If authentication is needed, sign in through the provider or save
+credentials in a local ignored file; do not paste secrets into the conversation.
+See [Agent Infrastructure](/docs/guides/agent-infrastructure) for setup and resume.
+
+  </Tab>
+  <Tab value="Terminal">
+
+Run the interactive initializer from your app directory:
 
 ```package-install
 npx hot-updater init
@@ -92,12 +114,18 @@ npx hot-updater init
 8. **Provision API Key**: Create the first client API key or reuse the saved key
 9. **Create IAM Role**: Create or reuse a resource-scoped role for this Lambda installation
 10. **Deploy Lambda Function**: Deploy the Lambda@Edge function to handle updates
-11. **Create/Update CloudFront Distribution**: Create a new distribution by default, or update the exact distribution saved by a previous v1 init
+11. **Create/Update CloudFront Distribution**: Create a new distribution by default, or update the exact distribution saved by a previous init
 
   </Accordion>
 </Accordions>
 
-Once setup is complete, `.env.hotupdater` may include the following values.
+<video src={"/docs/get-started/init-aws.mov"} controls autoPlay loop muted />
+
+  </Tab>
+</Tabs>
+
+After setup, review the local configuration. Interactive init writes the settings
+below to `.env.hotupdater`; an agent merges the needed settings into your project.
 Resource selections and the authentication mode are persisted for deterministic
 reruns. AWS credentials are included only for account/access-key mode and only
 when you consent to storing them.
@@ -252,8 +280,7 @@ change deletion protection on an operator-owned reused table.
 New distributions use `PriceClass_All` to preserve worldwide OTA latency. The
 Release-catalog behavior honors the server's five-second shared TTL. Catalog
 authentication failures, missing rows, and server errors are private and are
-not cached. Cache identity uses only the API key and content encoding;
-the removed v0 SDK-version header is not forwarded.
+not cached. Cache identity uses only the API key and content encoding.
 
 If regional reach matters less than transfer price, change the distribution price
 class in AWS after init; later init runs preserve that setting. Init invalidates
@@ -263,20 +290,15 @@ CloudFront provides the first 1,000 invalidation paths per account each month
 at no extra charge; see [invalidation pricing](https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/PayingForInvalidation.html).
 
 Rerunning init preserves unrelated CloudFront origins/cache behaviors and S3
-bucket-policy statements. Lambda roles and signing keys are isolated by the v1
+bucket-policy statements. Lambda roles and signing keys are isolated by the
 Lambda name and grant access only to the selected bucket, SSM parameter,
 DynamoDB table, and update index. Init provisions these resources through AWS
 APIs rather than a CloudFormation stack, so deletion and rollback remain
 operator-managed.
 
-Init does not upgrade a v0 CloudFront endpoint in place. It checks the selected
-distribution's `/version` response before writing env files or changing AWS
-resources. The S3 bucket may be shared, but use the v1 DynamoDB and Lambda
-defaults and create a new CloudFront distribution. If an env file contains a
-v0 Lambda name or distribution ID, change `HOT_UPDATER_AWS_LAMBDA_NAME` to a
-fresh v1 name, remove `HOT_UPDATER_CLOUDFRONT_DISTRIBUTION_ID`, and choose
-**Create New CloudFront Distribution**. Explicitly selecting a v0 Lambda or
-distribution remains blocked, and existing v0 resources are never mutated.
+Init checks the selected distribution's `/version` response before writing env
+files or changing AWS resources. Incompatible infrastructure is rejected before
+any mutation.
 
 Without `basePath`, a storage plugin treats the whole bucket as owned by its
 configured database. Do not run `hot-updater storage prune --yes` while the
@@ -653,6 +675,25 @@ HotUpdater.bundleURL() // [!code ++]
   `HotUpdater.bundleURL(bundle: xcframeworkBundle)` in Swift or `[HotUpdater
   bundleURLWithBundle:xcframeworkBundle]` in Objective-C.
 </Callout>
+
+## Upgrade infrastructure
+
+With the [Hot Updater skill](/docs/guides/ai-agents) attached, ask your agent:
+
+```text
+$hot-updater Upgrade this project's existing AWS server infrastructure.
+```
+
+The agent discovers the existing deployment, uses `hot-updater agent infra upgrade`,
+and reads the applicable version files before changing resources. It applies pending
+changes and verifies the server with doctor. See
+[Upgrade an existing server](/docs/guides/agent-infrastructure#upgrade-an-existing-server)
+for the workflow or [Doctor](/docs/guides/doctor#update-outdated-infrastructure)
+for terminal instructions.
+
+For server templates to apply with your own deployment tooling, use
+`hot-updater infra scaffold --provider aws`. See
+[Infrastructure Templates](/docs/guides/infrastructure-templates).
 
 ## Verifying the Setup
 

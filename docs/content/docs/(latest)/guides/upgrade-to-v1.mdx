@@ -4,6 +4,8 @@ description: "Create v1 infrastructure alongside v0, then move new native builds
 icon: BetweenHorizontalStart
 ---
 
+import { Tabs, Tab } from "fumadocs-ui/components/tabs";
+
 Hot Updater v1 is a new infrastructure generation. It separates immutable
 Bundle artifacts from mutable Release policy and serves compiled Release
 Catalogs. The v0 update-check protocol and database layout are not compatible
@@ -38,11 +40,35 @@ old resources: installed v0 binaries may still call that endpoint.
 
 ### 2. Scaffold v1 alongside v0
 
+Choose how to prepare the transition:
+
+<Tabs items={["AI agent", "Terminal"]}>
+  <Tab value="AI agent">
+
+With the [Hot Updater skill](/docs/guides/ai-agents) attached, ask your agent:
+
+```text
+$hot-updater Migrate this project's Cloudflare infrastructure from v0 to v1 while keeping the old endpoint available.
+```
+
+The agent uses `hot-updater agent infra upgrade`, reads the v0-to-v1 release
+instructions, and prepares separate resources where required. It upgrades the
+matching packages and verifies both endpoints before reporting the remaining
+native-build work. See [Agent Infrastructure](/docs/guides/agent-infrastructure).
+
+  </Tab>
+  <Tab value="Terminal">
+
 Upgrade all `hot-updater` and `@hot-updater/*` packages together, then run:
 
 ```bash
 npx hot-updater init
 ```
+
+  </Tab>
+</Tabs>
+
+The same generation boundary applies to both workflows.
 
 Use a separate v1 database namespace and endpoint. Firebase and Supabase can
 reuse the existing project: v1 uses `hot_updater_v1_*` collections or tables and
@@ -50,6 +76,14 @@ a separate `hot-updater-v1` function. Their init checks the v1 namespace rather
 than rejecting a project merely because it contains v0 data. Cloudflare needs
 a separate D1 database; init rejects a v0 D1 database or an existing v0 endpoint
 instead of upgrading it.
+
+For AWS, create separate v1 DynamoDB, Lambda and CloudFront resources. If an
+env file contains a v0 Lambda name or distribution ID, change
+`HOT_UPDATER_AWS_LAMBDA_NAME` to a fresh v1 name, remove
+`HOT_UPDATER_CLOUDFRONT_DISTRIBUTION_ID`, and choose **Create New CloudFront
+Distribution**. Init checks the selected endpoint before changing resources and
+rejects a v0 Lambda or distribution. Keep the existing v0 resources available
+for installed binaries.
 
 Storage buckets do not have to be new, but preserve the access policies and
 objects still needed by v0. Do not prune shared storage using only the v1
@@ -99,7 +133,7 @@ npx hot-updater doctor --server-base-url https://updates.example.com
 
 A v1 endpoint reports `infrastructureGeneration: 1` from `/version`. If the
 marker is missing, doctor reports that in-place upgrade is blocked and directs
-you back to init with new resources.
+you to agent infrastructure setup or interactive init with separate v1 resources.
 
 ### 5. Publish a new native build
 

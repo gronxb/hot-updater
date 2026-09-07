@@ -71,7 +71,7 @@ admin API. The standalone repository does not currently proxy Insights or API
 key models, so those Console views require a direct database
 plugin.
 
-Use the same Bundle commands as v0 for automation and CI scripts:
+Use Bundle commands for automation and CI scripts:
 
 ```package-install
 npx hot-updater bundle list --platform ios
@@ -84,7 +84,7 @@ npx hot-updater bundle update <id> --target-cohorts qa,dogfood -y
 ```
 
 Add `--json` to `bundle list`, `bundle show`, or `bundle update` when
-another tool needs raw internal row data. Its field names follow the v1 database
+another tool needs raw internal row data. Its field names follow the database
 schema rather than the human-readable Bundle terminology.
 
 ### Advanced artifact diagnostics

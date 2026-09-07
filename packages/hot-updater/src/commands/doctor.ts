@@ -18,6 +18,7 @@ import {
   satisfies,
 } from "verkit";
 
+import { packageJsonData } from "../packageJson";
 import { ui } from "../utils/cli-ui";
 import { AndroidConfigParser } from "../utils/configParser/androidParser";
 import { IosConfigParser } from "../utils/configParser/iosParser";
@@ -725,7 +726,7 @@ export async function doctor(
     };
 
     if (serverBaseUrl) {
-      const requiredTarget = getRequiredUpdateTarget(hotUpdaterVersion);
+      const requiredTarget = getRequiredUpdateTarget(packageJsonData.version);
       details.infrastructure = await checkInfrastructureStatus({
         serverBaseUrl,
         fetchImpl,

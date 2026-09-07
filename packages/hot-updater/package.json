@@ -50,7 +50,7 @@
     "access": "public"
   },
   "scripts": {
-    "build": "tsdown",
+    "build": "tsdown && node --experimental-strip-types scripts/build-infra-templates.mjs",
     "test:type": "tsc --noEmit"
   },
   "dependencies": {
@@ -80,6 +80,7 @@
     "@types/node": "catalog:",
     "@types/plist": "^3.0.5",
     "commander": "^14.0.0",
+    "dotenv": "16.6.1",
     "es-toolkit": "^1.32.0",
     "execa": "catalog:tools",
     "fast-glob": "3.3.3",

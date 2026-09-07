@@ -456,7 +456,7 @@ Git, EAS build inputs, artifacts, caches, and logs. Commit the public file and
 reference it from the Expo app plugin when using Expo.
 
 Newly generated keys inside the project add only the private-key path to
-`.gitignore`. If v0 previously added `keys/`, replace that whole-directory rule
+`.gitignore`. If `.gitignore` contains `keys/`, replace that whole-directory rule
 with rules that include only the public file before committing it:
 
 ```txt title=".gitignore"

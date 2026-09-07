@@ -4,8 +4,10 @@ import os from "os";
 import path from "path";
 
 import { getCwd, loadConfig, readPackageUp } from "@hot-updater/cli-tools";
+import { HOT_UPDATER_SERVER_VERSION } from "@hot-updater/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { packageJsonData } from "../packageJson";
 import { createDatabasePluginHarness } from "./databasePlugin.testFixtures";
 import {
   areVersionsCompatible,
@@ -19,6 +21,9 @@ import {
   isV1InfrastructureRequired,
   resolveVersionEndpoint,
 } from "./doctor";
+import { getRequiredUpdateTarget } from "./doctorInfrastructureTargets";
+
+vi.mock("../packageJson", () => ({ packageJsonData: { version: "1.0.0" } }));
 
 vi.mock("@hot-updater/cli-tools", async (importOriginal) => ({
   getBundleSigningPublicKey: (
@@ -232,6 +237,71 @@ describe("infrastructure version helpers", () => {
     ).toBe(true);
   });
 
+  it.each([
+    ["1.0.0-rc.2", false],
+    ["1.0.0-rc.1", true],
+    ["1.0.0", false],
+  ])(
+    "checks server %s against the runtime shipped by the RC",
+    async (serverVersion, needsUpdate) => {
+      const requiredTarget = getRequiredUpdateTarget(
+        "1.0.0-rc.4",
+        "1.0.0-rc.2",
+      );
+      expect(requiredTarget.version).toBe("1.0.0");
+      const status = await checkInfrastructureStatus({
+        serverBaseUrl: "https://updates.example.com",
+        requiredTarget,
+        fetchImpl: vi.fn<typeof fetch>().mockResolvedValue(
+          Response.json({
+            infrastructureGeneration: 1,
+            version: serverVersion,
+          }),
+        ),
+      });
+      expect(status).toMatchObject({
+        requiredVersion: "1.0.0-rc.2",
+        needsUpdate,
+      });
+      expect(status.upgradeBlocked).toBeUndefined();
+    },
+  );
+
+  it("does not relax a stable CLI's requirement for an RC server", async () => {
+    const requiredTarget = getRequiredUpdateTarget("1.0.0", "1.0.0-rc.2");
+    const status = await checkInfrastructureStatus({
+      serverBaseUrl: "https://updates.example.com",
+      requiredTarget,
+      fetchImpl: vi
+        .fn<typeof fetch>()
+        .mockResolvedValue(
+          Response.json({ infrastructureGeneration: 1, version: "1.0.0-rc.2" }),
+        ),
+    });
+    expect(status).toMatchObject({
+      requiredVersion: "1.0.0",
+      needsUpdate: true,
+    });
+  });
+
+  it("does not relax the baseline for a different server core version", () => {
+    expect(
+      getRequiredUpdateTarget("1.0.0-rc.4", "0.99.0-rc.2"),
+    ).not.toHaveProperty("minimumPrereleaseVersion");
+  });
+
+  it("still blocks a missing generation marker on the bundled RC runtime", async () => {
+    const status = await checkInfrastructureStatus({
+      serverBaseUrl: "https://updates.example.com",
+      requiredTarget: getRequiredUpdateTarget("1.0.0-rc.4", "1.0.0-rc.2"),
+      fetchImpl: vi
+        .fn<typeof fetch>()
+        .mockResolvedValue(Response.json({ version: "1.0.0-rc.2" })),
+    });
+    expect(status.upgradeBlocked).toBe(true);
+    expect(status.needsUpdate).toBeUndefined();
+  });
+
   it("resolves the version endpoint from the server base URL", () => {
     expect(resolveVersionEndpoint("https://example.com/api/check-update")).toBe(
       "https://example.com/api/check-update/version",
@@ -239,6 +309,24 @@ describe("infrastructure version helpers", () => {
     expect(
       resolveVersionEndpoint("https://example.com/api/check-update/"),
     ).toBe("https://example.com/api/check-update/version");
+  });
+
+  it("directs an outdated generation 1 server to versioned agent upgrade instructions", async () => {
+    const status = await checkInfrastructureStatus({
+      serverBaseUrl: "https://updates.example.com",
+      fetchImpl: vi
+        .fn<typeof fetch>()
+        .mockResolvedValue(
+          Response.json({ infrastructureGeneration: 1, version: "1.0.0" }),
+        ),
+      requiredTarget: { version: "1.1.0", note: "Test upgrade requirement" },
+    });
+
+    expect(status.needsUpdate).toBe(true);
+    expect(createInfrastructureRemediation(status)).toMatchObject({
+      fixability: "blocked",
+      commands: expect.arrayContaining(["hot-updater agent infra upgrade"]),
+    });
   });
 
   it("requires generation 1 for v1 packages", () => {
@@ -267,7 +355,7 @@ describe("infrastructure version helpers", () => {
     expect(createInfrastructureRemediation(status)).toEqual({
       fixability: "blocked",
       reason: expect.stringContaining("cannot be upgraded in place"),
-      commands: ["hot-updater init"],
+      commands: ["hot-updater agent infra setup", "hot-updater init"],
     });
   });
 
@@ -299,6 +387,7 @@ describe("doctor", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    packageJsonData.version = "1.0.0";
     mockGetCwd.mockReturnValue("/mock/cwd");
     mockLoadConfig.mockResolvedValue(createConfig());
   });
@@ -630,6 +719,30 @@ describe("doctor", () => {
     });
   });
 
+  it.each(["1.0.0-rc.4", "^1.0.0-rc.4", "~1.0.0-rc.4"])(
+    "uses the executing CLI runtime rather than the %s dependency declaration",
+    async (declaredVersion) => {
+      packageJsonData.version = "1.0.0-rc.4";
+      mockReadPackageUp.mockResolvedValue({
+        packageJson: { devDependencies: { "hot-updater": declaredVersion } },
+        path: "/mock/cwd/package.json",
+      });
+      const result = await doctor({
+        serverBaseUrl: "https://updates.example.com",
+        fetch: vi.fn<typeof fetch>().mockResolvedValue(
+          Response.json({
+            infrastructureGeneration: 1,
+            version: HOT_UPDATER_SERVER_VERSION,
+          }),
+        ),
+      });
+      expect(result).toMatchObject({
+        success: true,
+        details: { infrastructure: { needsUpdate: false } },
+      });
+    },
+  );
+
   it("should pass when the endpoint declares infrastructure generation 1", async () => {
     mockReadPackageUp.mockResolvedValue({
       packageJson: {
@@ -742,7 +855,7 @@ describe("doctor", () => {
           updateReason: "Existing infrastructure does not declare generation 1",
           remediation: {
             fixability: "blocked",
-            commands: ["hot-updater init"],
+            commands: ["hot-updater agent infra setup", "hot-updater init"],
           },
         },
       },
@@ -778,7 +891,7 @@ describe("doctor", () => {
             "v1 infrastructure marker not found at the existing endpoint",
           remediation: {
             fixability: "blocked",
-            commands: ["hot-updater init"],
+            commands: ["hot-updater agent infra setup", "hot-updater init"],
           },
         },
       },

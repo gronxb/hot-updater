@@ -37,6 +37,46 @@
 - Avoid emojis, long notes, and verbose fallback explanations in command output unless the text is required to prevent a destructive or irreversible action.
 - `deploy`, `console`, and `init` are currently excluded from this CLI output migration unless explicitly requested.
 
+## Infrastructure Upgrade Requirements
+
+- Doctor requirements and agent upgrade instructions share
+  `packages/hot-updater/src/commands/infrastructureUpdates.ts`. When a release
+  requires infrastructure changes, register its version/note and add
+  `packages/hot-updater/infrastructure-upgrades/<version>.md`.
+- Each version file must have Compatibility, Steps, Cloudflare, Supabase, AWS,
+  Firebase, and Verification sections. State when a provider needs no schema
+  migration. Build validation rejects missing files, missing sections, or files
+  without a corresponding doctor requirement. Append a new file for each release;
+  do not overwrite an older file to describe a newer release. Preserve history
+  so agents can read the entire upgrade path before applying changes.
+- Reuse the provider runtime, migrations, and config builders in packaged agent
+  scaffolds. Public `infra scaffold` and agent commands must share the server
+  extractor and produce identical server artifacts. Update provider
+  `agent/SETUP.md` when setup prerequisites change, and record upgrade changes in
+  the new version file. Validate packaged scaffolds and versioned upgrade files
+  with `pnpm -w test` after `pnpm -w build`.
+
+## Documentation
+
+- Latest-version documentation describes current behavior. Keep v0/v1
+  comparisons and transition instructions in `guides/upgrade-to-v1.mdx`.
+  Preserve literal resource names, API paths, and protocol identifiers.
+
+## Agent Infrastructure Onboarding
+
+- The agent discovers the target app, build/config and existing provider state
+  before asking questions. It creates missing projects, instances and resources,
+  applies the scaffold and verifies setup within the user's request. Do not
+  require users to pre-create resources or provide discoverable IDs/settings.
+- Ask only for unresolved targets, missing access/login, billing activation or
+  a consequential choice that cannot be inferred. Never ask for token values,
+  passwords, private keys or credential JSON in chat. Use provider login or private
+  local/provider credential storage and verify access without exposing values.
+- Keep every generated environment variable documented in the provider's
+  `agent/ENVIRONMENT.md`, including its purpose, required/conditional status and
+  source. Distinguish local plugin credentials, interactive-init inputs and server
+  settings. Optional fields are not prerequisites for agent setup.
+
 ## Testing Guidelines
 
 - Framework: Vitest. Place tests near code or in `__tests__`. Use `*.spec.ts`.

@@ -7,27 +7,22 @@ icon: firebase
 import { Tabs, Tab } from "fumadocs-ui/components/tabs";
 import { Accordion, Accordions } from "fumadocs-ui/components/accordion";
 
-<video
-  src={"/docs/get-started/init-firebase.mov"}
-  controls
-  autoPlay
-  loop
-  muted
-/>
-
 ## Prerequisites
 
-Before you begin, make sure the following are ready:
+Your deployment needs the resources and access below. When using an AI agent,
+it can prepare missing resources through its available provider tools.
 
-- **Node.js**: Version 20.19 or later is required; Node 22 is recommended.
+- **Node.js**: The CLI requires 20.19+. Agent setup uses a client-key helper that
+  requires Node 22.18+ or Node 24+; prepare it before provisioning resources.
 - **Firebase Project**: Create a new project at [Firebase](https://firebase.google.com) if you don’t have one.
-- **Google Cloud CLI**: Install `gcloud` and authenticate the account that owns the Firebase project.
+- **Google Cloud CLI (terminal setup)**: Install `gcloud` and authenticate the account that owns the Firebase project.
 - **Firebase Storage**: Enable Storage so the project has its canonical default `.firebasestorage.app` or `.appspot.com` bucket.
 - **Firestore**: Create a new firestore database at [Firebase](https://firebase.google.com) if you don’t have one.
 
 ## Step 1: Install Required Packages
 
-Run the following command to install dependencies:
+Your agent can install these dependencies as part of setup. For the terminal
+workflow, run:
 
 ```package-install
 npm install hot-updater --save-dev
@@ -36,7 +31,28 @@ npm install @hot-updater/react-native
 
 ## Step 2: Configure Firebase
 
-Run the initialization script to start the interactive setup process. Use the following command with your preferred package manager:
+Choose how to set up Firebase:
+
+<Tabs items={["AI agent", "Terminal"]}>
+  <Tab value="AI agent">
+
+Install the [Hot Updater skill](/docs/guides/ai-agents), then ask your coding agent:
+
+```text
+$hot-updater Set up infrastructure on Firebase for this project.
+```
+
+The agent inspects your app, discovers existing configuration and resources,
+and asks only for missing choices or access. It uses `hot-updater agent infra setup`
+to generate the deployment templates, then applies and verifies them with available
+provider tools. If authentication is needed, sign in through the provider or save
+credentials in a local ignored file; do not paste secrets into the conversation.
+See [Agent Infrastructure](/docs/guides/agent-infrastructure) for setup and resume.
+
+  </Tab>
+  <Tab value="Terminal">
+
+Run the interactive initializer from your app directory:
 
 ```package-install
 npx hot-updater init
@@ -60,8 +76,20 @@ During the setup, you will be prompted to:
   </Accordion>
 </Accordions>
 
-Once setup is complete, `.env.hotupdater` may include the following values. The
-project, region, and canonical bucket are persisted for deterministic reruns.
+<video
+  src={"/docs/get-started/init-firebase.mov"}
+  controls
+  autoPlay
+  loop
+  muted
+/>
+
+  </Tab>
+</Tabs>
+
+After setup, review the local configuration. Interactive init writes the settings
+below to `.env.hotupdater`; an agent merges the needed settings into your project.
+The project, region, and canonical bucket are persisted for deterministic reruns.
 The service-account path is included only when configured and approved for
 persistence.
 
@@ -70,8 +98,8 @@ HOT_UPDATER_FIREBASE_PROJECT_ID=your-project-id
 HOT_UPDATER_FIREBASE_REGION=your-functions-region
 HOT_UPDATER_FIREBASE_STORAGE_BUCKET=your-bucket-name
 HOT_UPDATER_API_KEY=your-api-key
-# Project Settings > Service Accounts > New Private Key > Download JSON
-GOOGLE_APPLICATION_CREDENTIALS=your-credentials.json
+# Optional: only if using a private credential file instead of existing ADC
+# GOOGLE_APPLICATION_CREDENTIALS=/private/path/your-credentials.json
 ```
 
 Managed init reuses `HOT_UPDATER_API_KEY` when supplied or creates an API key,
@@ -114,7 +142,7 @@ import { useEffect } from "react";
 import { Text, View } from "react-native";
 
 HotUpdater.init({
-  baseURL: "<function URL printed by hot-updater init>", // [!code ++]
+  baseURL: "<verified Firebase Function URL>", // [!code ++]
   requestHeaders: {
     "x-api-key": "<HOT_UPDATER_API_KEY from .env.hotupdater>", // [!code ++]
   },
@@ -153,18 +181,20 @@ export default App;
 During the initialization process, the following file is automatically generated:
 
 - `hot-updater.config.ts`: This file contains the configuration settings for integrating Firebase with your project.
-- `.env.hotupdater`: **IMPORTANT**:
-  Make sure to set the `GOOGLE_APPLICATION_CREDENTIALS` environment variable to the path of your downloaded Firebase credentials JSON file.
-  This is critical for Firebase authentication to work properly.
-  For more details, see: https://firebase.google.com/docs/admin/setup?hl=en#initialize_the_sdk_in_non-google_environments
+- `.env.hotupdater`: Provider settings and optional credential-file path. Reuse
+  working application-default credentials first. Set `GOOGLE_APPLICATION_CREDENTIALS`
+  only when a private local credential file is needed; downloading a new key is
+  not required when ADC already works. A Firebase CLI login alone does not
+  necessarily authenticate the local Admin SDK. See
+  [Firebase Admin setup](https://firebase.google.com/docs/admin/setup#initialize_the_sdk_in_non-google_environments).
 
 ```bash title=".env.hotupdater"
 HOT_UPDATER_FIREBASE_PROJECT_ID=your-project-id
 HOT_UPDATER_FIREBASE_REGION=your-functions-region
 HOT_UPDATER_FIREBASE_STORAGE_BUCKET=your-bucket-name
 HOT_UPDATER_API_KEY=your-api-key
-# Project Settings > Service Accounts > New Private Key > Download JSON
-GOOGLE_APPLICATION_CREDENTIALS=your-credentials.json
+# Optional: only if using a private credential file instead of existing ADC
+# GOOGLE_APPLICATION_CREDENTIALS=/private/path/your-credentials.json
 ```
 
 ```ts title="hot-updater.config.ts"
@@ -177,9 +207,9 @@ import { config } from "dotenv";
 config({ path: ".env.hotupdater" });
 
 // https://firebase.google.com/docs/admin/setup?hl=en#initialize_the_sdk_in_non-google_environments
-// Check your .env.hotupdater file and add the credentials
-// Set the GOOGLE_APPLICATION_CREDENTIALS environment variable to your credentials file path
-// Example: GOOGLE_APPLICATION_CREDENTIALS=./firebase-adminsdk-credentials.json
+// Reuse working application-default credentials (ADC).
+// Only when a credential file is needed, set its private local path in .env.hotupdater:
+// GOOGLE_APPLICATION_CREDENTIALS=./firebase-adminsdk-credentials.json
 const credential = applicationDefault();
 
 export default defineConfig({
@@ -199,21 +229,17 @@ export default defineConfig({
 });
 ```
 
-### Upgrade and rollback
+### Resource names
 
-Managed Firebase keeps v0 and v1 infrastructure isolated inside the same
-project. V1 Firestore collections use the fixed `hot_updater_v1_*` namespace,
-and the managed Function is named `hot-updater-v1`. Existing v0 collections
-and the `hot-updater` Function are not read or modified by v1 init, so installed
-v0 binaries can continue using them while a new native build moves to the v1
-endpoint. Both generations can use the project's canonical Storage bucket;
-bundle object keys remain independent.
+Managed Firestore collections use the fixed `hot_updater_v1_*` namespace,
+and the managed Function is named `hot-updater-v1`. Bundles use the project's
+canonical Storage bucket with independent object keys.
 
 ### Release catalog cache
 
 Firebase uses the direct `hot-updater-v1` Function URL in `origin-only` mode.
 Init prints the deployed URL and does not deploy Firebase Hosting, because the
-default Hosting site may already belong to the app or its v0 update endpoint.
+default Hosting site may already belong to the app or another service.
 Catalog checks still use the precompiled Release Catalog and the runtime's
 short in-process cache, but every device request invokes the Function.
 
@@ -520,6 +546,25 @@ HotUpdater.bundleURL() // [!code ++]
   `HotUpdater.bundleURL(bundle: xcframeworkBundle)` in Swift or `[HotUpdater
   bundleURLWithBundle:xcframeworkBundle]` in Objective-C.
 </Callout>
+
+## Upgrade infrastructure
+
+With the [Hot Updater skill](/docs/guides/ai-agents) attached, ask your agent:
+
+```text
+$hot-updater Upgrade this project's existing Firebase server infrastructure.
+```
+
+The agent discovers the existing deployment, uses `hot-updater agent infra upgrade`,
+and reads the applicable version files before changing resources. It applies pending
+changes and verifies the server with doctor. See
+[Upgrade an existing server](/docs/guides/agent-infrastructure#upgrade-an-existing-server)
+for the workflow or [Doctor](/docs/guides/doctor#update-outdated-infrastructure)
+for terminal instructions.
+
+For server templates to apply with your own deployment tooling, use
+`hot-updater infra scaffold --provider firebase`. See
+[Infrastructure Templates](/docs/guides/infrastructure-templates).
 
 ## Verifying the Setup
 

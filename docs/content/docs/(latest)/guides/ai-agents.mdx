@@ -1,6 +1,6 @@
 ---
 title: "AI Agent Guide"
-description: "Use the Hot Updater skill with AI coding agents and ask for OTA operations in natural language."
+description: "Use the Hot Updater skill with AI coding agents for infrastructure setup, upgrades, and OTA operations."
 icon: Bot
 ---
 
@@ -20,9 +20,25 @@ npx skills add hot-updater/skills
 
 ## Ask With `$hot-updater`
 
-After attaching the skill, ask your agent in natural language:
+After attaching the skill, ask your agent to set up infrastructure:
 
-```txt
+```text
+$hot-updater Set up infrastructure on Cloudflare for this project.
+```
+
+For an existing server:
+
+```text
+$hot-updater Upgrade this project's existing Cloudflare server infrastructure.
+```
+
+The agent uses `hot-updater agent infra upgrade`, reads all relevant versioned
+upgrade files, applies pending changes, and runs doctor against the deployed
+server. See [Upgrade an existing server](/docs/guides/agent-infrastructure#upgrade-an-existing-server).
+
+You can also ask for OTA operations and diagnostics:
+
+```text
 $hot-updater deploy using the current app version
 $hot-updater deploy the current iOS app version to production
 $hot-updater list iOS Bundles on the production channel
@@ -32,28 +48,46 @@ $hot-updater run doctor with server URL https://updates.example.com
 $hot-updater fix local doctor issues that do not require server credentials
 ```
 
-The skill gives the agent enough CLI context to translate those requests into
-safe `npx hot-updater ...` flows.
+The skill uses the project's installed CLI help to discover supported commands.
+For infrastructure work, the agent asks for missing project details or access,
+generates setup or upgrade templates, and applies them using available provider
+tools. It verifies each step and resumes unfinished work
+after inspecting remote state. The installed CLI must support the agent commands;
+attaching the skill does not add commands to an older CLI.
+
+The agent creates missing projects and infrastructure when its tools and access
+allow it. It asks only for unresolved choices or access. Authenticate through the
+provider or save credentials directly in a local ignored file; never paste
+tokens, passwords or private keys into the conversation. The generated
+`ENVIRONMENT.md` explains which settings are required and where to obtain them.
 
 ## Safety Rules
 
-- The agent should not run `npx hot-updater init` for you. `init` is
-  interactive and asks for project-specific provider and build choices, so run
-  it directly in your terminal.
+- For agent-led infrastructure setup or upgrades, ask the agent to use
+  `npx hot-updater agent infra setup` or `npx hot-updater agent infra upgrade`.
+  These commands generate instructions and deployment templates for the agent
+  to apply using its available provider tools. See
+  [Agent Infrastructure](/docs/guides/agent-infrastructure).
+- For interactive setup in your terminal, use `npx hot-updater init`. The
+  [setup guide](/docs/get-started/basic-usage#step-2-initialize-your-provider)
+  shows both workflows in separate tabs.
 - The agent should ask for the update server URL before running a
   server/infrastructure doctor check unless you already provided it or it is
   obvious from local configuration.
 - When iterating on doctor failures, the agent should prefer
   `npx hot-updater doctor --json`. It should repair issues marked
   `fixability: "auto"`, run listed commands for `fixability: "command"`, and
-  stop on `fixability: "blocked"`.
-- The agent should not edit provider credentials unless you explicitly ask it
-  to. Credentials are commonly stored in `.env.hotupdater`, but projects may
-  use a different environment-loading setup.
-- Server infrastructure failures are usually blocked because migrations and
-  redeploys need provider environment variables or deployment access. The agent
-  should summarize those blockers instead of attempting to mutate server state.
-- If a deploy fails, the agent should not keep trying fixes or mutate project
+  inspect the prerequisite for `fixability: "blocked"`. During an authorized
+  infrastructure setup or upgrade, it should follow the generated instructions
+  when provider access is available. Pause only the step with a real unresolved
+  prerequisite; the label does not require repeating an existing authorization.
+- The agent should edit provider credentials only as part of a requested setup
+  or credential change. Credentials are commonly stored in `.env.hotupdater`,
+  but projects may use a different environment-loading setup.
+- Server infrastructure failures remain blocked until the agent has the
+  required provider access and authorization. It can generate upgrade
+  instructions locally, then apply them when that access is available.
+- If an OTA deploy fails, the agent should not keep trying fixes or mutate project
   setup automatically. It should summarize the failed command, the likely
   cause, and the next checks for you to decide.
 - For state-changing operations such as deploy, bundle enable/disable, or

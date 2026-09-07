@@ -12,7 +12,8 @@ Before configuring the build plugin, you need to set up a provider to handle upd
 
 ### Step 1: Install hot-updater
 
-First, install the hot-updater package:
+An AI agent can install the required packages as part of the next step. For
+terminal setup, install the hot-updater package:
 
 ```package-install
 npm install hot-updater --save-dev
@@ -20,7 +21,35 @@ npm install hot-updater --save-dev
 
 ### Step 2: Initialize Your Provider
 
-Run the initialization command to set up your provider interactively:
+Choose how to set up your provider:
+
+<Tabs items={["AI agent", "Terminal"]}>
+  <Tab value="AI agent">
+
+Install the [Hot Updater skill](/docs/guides/ai-agents) in your coding agent:
+
+```sh
+npx skills add hot-updater/skills
+```
+
+Then ask it to set up your provider, for example:
+
+```text
+$hot-updater Set up infrastructure on Cloudflare for this project.
+```
+
+The agent asks for missing choices or access, generates templates with
+`hot-updater agent infra setup`, and applies them using available provider tools.
+It verifies each step and resumes unfinished work after checking remote state.
+It creates missing projects and resources itself when the available tools and
+access permit it. If login is required, authenticate with the provider or a local
+credential file; do not paste tokens or passwords into the conversation.
+See [Agent Infrastructure](/docs/guides/agent-infrastructure) for the workflow.
+
+  </Tab>
+  <Tab value="Terminal">
+
+Run the interactive initializer from your app directory:
 
 ```package-install
 npx hot-updater init
@@ -37,9 +66,12 @@ This interactive CLI will guide you through:
 
 3. **Provider Configuration**: Follow provider-specific prompts for authentication and resource setup.
 
+  </Tab>
+</Tabs>
+
 ### Step 3: Generated Configuration
 
-After initialization, two files will be generated:
+After setup, review the generated or merged local configuration:
 
 **`.env.hotupdater`** - Contains provider credentials and configuration:
 
@@ -117,7 +149,7 @@ export default HotUpdater.wrap({
   baseURL: "https://your-update-server-url", // [!code ++]
   updateStrategy: "appVersion", // or "fingerprint" // [!code ++]
   requestHeaders: {
-    "x-api-key": "<HOT_UPDATER_API_KEY from init>", // Required for managed providers
+    "x-api-key": "<HOT_UPDATER_API_KEY from .env.hotupdater>", // Required for managed providers
   },
   fallbackComponent: ({ progress, status }) => (
     <View
@@ -144,8 +176,8 @@ export default HotUpdater.wrap({
 ```
 
 <Callout type="info">
-  The update server URL will be provided after running `npx hot-updater init`.
-  Check your terminal output or provider console for the correct URL. Managed
+  Setup provides the update server URL. Check the agent's verified deployment
+  record, terminal output, or provider console for the correct URL. Managed
   providers require the client API key saved as `HOT_UPDATER_API_KEY` in
   `.env.hotupdater`; supply it through your app's build-time configuration.
   That file is not automatically loaded into the app. Never use a provider,

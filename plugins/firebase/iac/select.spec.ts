@@ -78,7 +78,7 @@ describe("setEnv", () => {
     expect(vi.mocked(writeHotUpdaterConfig)).toHaveBeenCalledOnce();
     const scaffold = vi.mocked(writeHotUpdaterConfig).mock.calls[0]?.[0];
     expect(scaffold?.text).toContain(
-      "// Check your .env.hotupdater file and add the credentials",
+      "// Reuse working application-default credentials (ADC).",
     );
   });
 });

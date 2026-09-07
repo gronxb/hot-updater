@@ -13,8 +13,9 @@ npm install @hot-updater/aws --save-dev
 
 ## Create the table
 
-For AWS installations created by `npx hot-updater init`, DynamoDB is selected
-by default and this table is created or validated automatically.
+The [managed AWS setup](/docs/managed/aws#step-2-configure-aws) supports an AI
+agent or the interactive CLI. Both workflows create or validate the DynamoDB
+table before configuring the app.
 
 For custom installations, create one on-demand table manually with the
 overloaded index used for patch relations and installation movement history:

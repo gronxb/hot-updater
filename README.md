@@ -26,19 +26,36 @@
   ## AI Skills
 
   Attach the Hot Updater agent skill so AI coding agents can use concise CLI
-  context for deploys, bundle management, rollbacks, and verification:
+  context for infrastructure setup, upgrades, deploys, and verification:
   [`skills/hot-updater/SKILL.md`](https://github.com/hot-updater/skills/blob/main/skills/hot-updater/SKILL.md)
 
   ```sh
   npx skills add hot-updater/skills
   ```
 
-  Then ask your agent with prompts like
-  `$hot-updater deploy using the current app version` or
-  `$hot-updater roll back the most recently deployed bundle`.
+  Then ask your agent:
+
+  ```text
+  $hot-updater Set up infrastructure on Cloudflare for this project.
+  ```
+
+  The agent asks for missing information, generates deployment templates, and
+  applies them using available provider tools. It verifies each step and can
+  resume from a failed step. You can also ask it to deploy an update or roll back
+  a bundle.
+
+  To upgrade an existing server:
+
+  ```text
+  $hot-updater Upgrade this project's existing Cloudflare server infrastructure.
+  ```
+
+  The agent reads the versioned upgrade instructions, including intermediate
+  releases, applies the required changes, and verifies the server with doctor.
 
   See the [AI Agent Guide](https://hot-updater.dev/docs/guides/ai-agents) for
-  the full workflow.
+  the full workflow, or use [interactive setup](https://hot-updater.dev/docs/get-started/basic-usage#step-2-initialize-your-provider)
+  with `npx hot-updater init` in your terminal.
 
   ## Key Features
 
