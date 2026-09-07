@@ -8,6 +8,7 @@ import {
 import { InsightsControls } from "@/components/features/insights/InsightsControls";
 import { InsightsOverview } from "@/components/features/insights/InsightsOverview";
 import { InsightsPageHeader } from "@/components/features/insights/InsightsPageHeader";
+import { InsightsRolloutCard } from "@/components/features/insights/InsightsRolloutCard";
 import { Button } from "@/components/ui/button";
 import {
   type InsightsWindow,
@@ -47,6 +48,7 @@ function InsightsPage() {
             }}
             window={window}
           />
+          <InsightsRolloutCard input={{ ...scope, window }} />
           <Button
             className="h-11 self-end lg:h-8"
             variant="outline"

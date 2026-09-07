@@ -17,6 +17,7 @@ import { normalizeRange } from "verkit";
 import { BundleIdDisplay } from "@/components/BundleIdDisplay";
 import { BundleMetadata } from "@/components/features/bundles/BundleMetadata";
 import { RolloutCohortsDialog } from "@/components/features/bundles/RolloutCohortsDialog";
+import { InsightsRolloutCard } from "@/components/features/insights/InsightsRolloutCard";
 import { PlatformIcon } from "@/components/PlatformIcon";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import {
@@ -584,6 +585,18 @@ export function ReleaseEditorSheet({
                       : "Save changes"}
                   </Button>
                 </section>
+
+                {channelName ? (
+                  <InsightsRolloutCard
+                    inSheet
+                    input={{
+                      platform: release.platform,
+                      channel: channelName,
+                      releaseId: release.id,
+                      window: "7d",
+                    }}
+                  />
+                ) : null}
 
                 <Separator className="my-2" />
 

@@ -16,6 +16,14 @@ import { ReleaseEditorSheet } from "./ReleaseEditorSheet";
 const preflight = vi.fn();
 const promote = vi.fn();
 const update = vi.fn();
+const recovery = vi.fn();
+
+vi.mock("@/components/features/insights/InsightsRolloutCard", () => ({
+  InsightsRolloutCard: (props: unknown) => {
+    recovery(props);
+    return <div>Recovery rate</div>;
+  },
+}));
 
 const release = {
   bundle_id: "bundle-1",
@@ -189,6 +197,16 @@ describe("ReleaseEditorSheet", () => {
         releaseId={release.id}
       />,
     );
+
+    expect(recovery).toHaveBeenLastCalledWith({
+      inSheet: true,
+      input: {
+        platform: "ios",
+        channel: "production",
+        releaseId: "release-1",
+        window: "7d",
+      },
+    });
 
     expect(
       screen.getByRole("heading", { name: "Bundle Detail" }),
