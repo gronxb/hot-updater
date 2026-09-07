@@ -13,7 +13,9 @@ Supabase, AWS, and Firebase. Scaffolds preserve existing edits and provide
 provider-specific verification, resume guidance, and private reusable API-key
 provisioning. Agents apply the files through their available provider tools.
 
-Connect doctor remediation to the agent commands and require complete upgrade
-instructions alongside every infrastructure version requirement. Include the
+Connect doctor remediation to the agent commands and require a complete
+version-named Markdown release file for every infrastructure requirement.
+Retain historical files and provide an ordered index so agents can read the
+complete upgrade path, including intermediate releases. Include the
 v0-to-v1 coexistence and native-build transition as the initial upgrade record.
 Share existing provider config builders with the packaged scaffolds.

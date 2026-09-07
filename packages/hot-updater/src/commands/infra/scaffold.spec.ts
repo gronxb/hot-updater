@@ -42,7 +42,13 @@ describe("public infrastructure scaffolding", () => {
       const files = await readdir(scaffold.output);
       for (const file of ["app", "COMMON.md", "deployment.json", "env.example"])
         expect(files).not.toContain(file);
-      expect(await readFile(scaffold.upgradeNotes, "utf8")).toContain("1.0.0");
+      expect(await readFile(scaffold.upgradeGuide, "utf8")).toContain(
+        "./1.0.0.md",
+      );
+      expect(scaffold.upgradeFiles[0]).toMatchObject({ version: "1.0.0" });
+      expect(await readFile(scaffold.upgradeFiles[0].path, "utf8")).toContain(
+        "# 1.0.0",
+      );
       for (const operation of ["setup", "upgrade"]) {
         const agentResult = run(
           "agent",

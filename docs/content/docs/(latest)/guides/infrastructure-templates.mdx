@@ -37,8 +37,9 @@ npx hot-updater infra scaffold --provider cloudflare --output ./server --json
 
 `manifest.json` records the provider, target CLI/provider/server versions,
 infrastructure generation, resource inputs and original file hashes.
-`UPGRADE-NOTES.md` contains the versioned infrastructure requirements also used
-by doctor. Runtime dependency manifests live in each deployment project.
+`upgrades/<version>.md` records each required infrastructure release, and
+`upgrades/README.md` lists the files in the order also used by doctor.
+Runtime dependency manifests live in each deployment project.
 
 Repeating the command preserves compatible output, including manual edits.
 An incompatible or incomplete directory produces an error without replacing
@@ -50,7 +51,10 @@ deployment.
 1. Select or create provider resources using your own tools and record their
    actual identifiers. Follow the linked provider guide for account and service
    prerequisites.
-2. Read `UPGRADE-NOTES.md` before changing an existing deployment. Replace all
+2. Read `upgrades/README.md` and all relevant version files before changing an
+   existing deployment. Include the installed generation's baseline for context
+   and each subsequent requirement through the target; do not skip intermediate
+   releases. Replace all
    `__HOT_UPDATER_*__` and `%%BUCKET_NAME%%` placeholders with verified values,
    preserving string/SQL escaping. Inspect and apply pending schema/index changes.
 3. Install the supplied deployment project's dependencies where applicable and

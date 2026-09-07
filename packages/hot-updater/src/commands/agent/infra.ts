@@ -19,7 +19,7 @@ export const infraBootstrap = (operation: AgentInfraOperation) =>
     "The server templates use the same extractor as hot-updater infra scaffold. Agent commands add instructions, app config and a deployment record.",
     "Read the returned instructions, COMMON.md, manifest.json and deployment.json. Fill the supplied templates and apply/verify one remote step at a time. Record actual resource IDs and query remote state before retrying a failed or unknown operation.",
     operation === "upgrade"
-      ? "Read UPGRADE-NOTES.md for every transition between the deployed and target versions. Preserve resource IDs, data, secrets and customizations. v0-to-v1 requires a parallel namespace/endpoint and a new native app build; Supabase/Firebase can reuse their projects."
+      ? "Read upgrades/README.md and all relevant upgrades/<version>.md files in ascending order before applying changes. Include the installed generation's baseline as context and every later requirement through the target. Preserve resource IDs, data, secrets and customizations."
       : "Discover actual tool capabilities and ask for missing access. Scaffolding does not deploy resources or install packages. Continue with the provider guide to complete deployment and verification.",
   ].join("\n");
 

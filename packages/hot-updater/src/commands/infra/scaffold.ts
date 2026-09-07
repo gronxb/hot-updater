@@ -49,7 +49,7 @@ interface InfraManifest extends Omit<InfraTemplate, "packages"> {
   files: Record<string, string>;
 }
 
-const AGENT_FILES = ["app", "COMMON.md", "SETUP.md", "UPGRADE.md"];
+const AGENT_FILES = ["app", "COMMON.md", "SETUP.md"];
 
 const listFiles = async (root: string, relative = ""): Promise<string[]> => {
   const files: string[] = [];
@@ -100,12 +100,19 @@ export async function scaffoldInfra(
     build,
     output,
     instructions: forAgent
-      ? path.join(output, `${operation.toUpperCase()}.md`)
+      ? path.join(
+          output,
+          operation === "upgrade" ? "upgrades/README.md" : "SETUP.md",
+        )
       : undefined,
     commonInstructions: forAgent ? path.join(output, "COMMON.md") : undefined,
     manifest: path.join(output, "manifest.json"),
     deployment: forAgent ? path.join(output, "deployment.json") : undefined,
-    upgradeNotes: path.join(output, "UPGRADE-NOTES.md"),
+    upgradeGuide: path.join(output, "upgrades/README.md"),
+    upgradeFiles: template.upgradeRequirements.map((version) => ({
+      version,
+      path: path.join(output, "upgrades", `${version}.md`),
+    })),
     serverVersion: template.serverVersion,
   });
 
@@ -320,9 +327,7 @@ export async function handleInfraScaffold(
             ...(result.deployment
               ? [ui.kv("State", ui.path(result.deployment))]
               : []),
-            ...(result.upgradeNotes
-              ? [ui.kv("Upgrades", ui.path(result.upgradeNotes))]
-              : []),
+            ui.kv("Upgrades", ui.path(result.upgradeGuide)),
             operation === "scaffold"
               ? "Fill the template inputs and deploy with your provider tools."
               : "Read the instructions, apply the templates with provider tools, and verify each step.",

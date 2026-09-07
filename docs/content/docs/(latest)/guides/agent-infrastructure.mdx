@@ -6,7 +6,13 @@ icon: Bot
 
 ## Ask your agent
 
-Ask your coding agent to configure a provider or upgrade an existing deployment:
+With the [Hot Updater skill](/docs/guides/ai-agents) attached, ask your coding agent:
+
+```text
+$hot-updater Set up infrastructure on Cloudflare for this project.
+```
+
+You can also name the command directly when requesting setup or an upgrade:
 
 ```text
 Use hot-updater agent infra setup to configure and deploy this app on Cloudflare.
@@ -63,9 +69,11 @@ directory. Missing files in an existing scaffold are reported for repair.
 
 ## Apply the generated files
 
-Each scaffold includes `COMMON.md`, provider-specific `SETUP.md` and
-`UPGRADE.md`, and `UPGRADE-NOTES.md`. The agent reads the applicable instructions
-before using the files.
+Each scaffold includes `COMMON.md`, provider-specific `SETUP.md`, and an
+`upgrades/` directory. Each release has its own `<version>.md` file containing
+compatibility, common changes, provider instructions and verification.
+`upgrades/README.md` lists those files in version order and explains how to read
+the complete upgrade path.
 
 | Provider | Deployment artifacts |
 | --- | --- |
@@ -111,9 +119,18 @@ manifest with the previous deployment, live `/version`, migration history, and
 your customized files. It applies relevant upgrade entries in order, preserving
 resources, secrets, endpoints, and unrelated settings.
 
+Before making changes, the agent reads the installed generation's baseline as
+context and every subsequent version file through the target requirement.
+Reading only the newest file can miss prerequisites from a skipped release.
+Previously applied steps provide context; the agent verifies actual state
+before deciding which steps still need to run. The JSON output includes
+`upgradeGuide` and an ordered `upgradeFiles` array of versions and absolute paths.
+
 `doctor` points to this command when infrastructure changes are required. Its
-version requirements and the generated upgrade notes share one registry. An
-upgrade instruction includes compatibility, provider steps, and verification.
+version requirements and the upgrade-file index share one registry. Every
+requirement must have a complete version-named file; packaging fails if a file
+or required provider section is missing. Existing files are preserved so future
+releases retain the context needed for upgrades across multiple versions.
 
 ## Verify completion
 

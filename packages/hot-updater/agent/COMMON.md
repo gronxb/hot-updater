@@ -9,7 +9,7 @@ operation-specific instructions and manifest.json before making changes.
   existing Hot Updater config, and any prior deployment.json. Ask only for
   choices that are not already known: provider account/project, region, resource
   names, and whether to create or reuse resources.
-- If v0 is detected, read the first entry in UPGRADE-NOTES.md before selecting
+- If v0 is detected, read upgrades/1.0.0.md before selecting
   resources. Parallel v1 setup has provider-specific project reuse rules.
 - Discover the connected MCP tools and their actual permissions. Use available
   provider MCP, CLI, or API capabilities for each step. A browser can complete
@@ -82,10 +82,14 @@ operation-specific instructions and manifest.json before making changes.
 
 ## Upgrade
 
-Read UPGRADE-NOTES.md in addition to UPGRADE.md. Inspect the live server version,
-generation, schema/migration history, previous manifest, and local customizations.
-Apply all relevant version entries in order, not just the newest entry. Inspect
-compatibility notes even when an entry's version equals the installed version.
+Read upgrades/README.md and the versioned files listed there. Inspect the live
+server version, generation, migration history, previous manifest and customizations.
+Read the installed generation's baseline for context and all later requirement
+files through the target in ascending order before applying changes. Include
+baseline context for prerelease builds. Do not read only the newest file or
+skip intermediate releases. Previously applied steps provide context; verify
+actual state instead of replaying them. Use the common sections and the selected
+provider's section in each file to plan and apply the complete transition.
 If the deployed version is newer than this scaffold, obtain a suitable CLI
 version; do not downgrade it. Unknown generation/schema is a blocker to adoption.
 Generation 0 requires separate generation 1 resources and a new native build.
@@ -94,4 +98,5 @@ Never assume a generic redeploy is sufficient for an undocumented migration.
 Use the fresh upgrade directory as a comparison source. Preserve the original
 deployment record and existing customized files. Reuse verified resource IDs and
 secret references in the new deployment record. Record exactly which migrations
-and code changes were applied and verified; leave incomplete steps incomplete.
+and code changes were applied and verified, including their version filenames;
+leave incomplete steps incomplete.

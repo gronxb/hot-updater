@@ -1,6 +1,6 @@
 # PRD: Infrastructure scaffolding and agent setup/upgrades
 
-Status: implemented and locally verified.
+Status: implemented and validated; PR targets `next`.
 Base: `next`, commit `47caf8a45`.
 Working branch: `codex/agent-setup-upgrade`.
 
@@ -23,8 +23,8 @@ forgotten before release.
 
 ## Outcome
 
-A user says “Use hot-updater agent infra setup to configure and deploy this
-project.” The agent reads the command's instructions, inspects local and remote
+A user says “$hot-updater Set up infrastructure on Cloudflare for this project.”
+The agent reads the command's instructions, inspects local and remote
 context, asks only for missing choices/access, generates a provider scaffold,
 applies it using available tools, and verifies the result. It can resume after a
 failure without recreating successful resources.
@@ -50,9 +50,10 @@ changes. The first recorded infrastructure transition is v0 to v1.
 | Existing init | Remains available for interactive setup and env replay |
 | Template source | Share existing provider runtime, migrations and config builders |
 | Upgrade target | The concrete versions packaged with the invoked CLI, recorded in its manifest |
-| Upgrade requirements | One typed registry feeds both doctor requirements and generated upgrade notes |
+| Upgrade requirements | A requirement registry maps to preserved `<version>.md` release files; doctor and the generated ordered index use that same registry |
 | Initial transition | Explicit v0-to-v1 coexistence/cutover instructions, not an in-place conversion |
 | Delivery | Implementation, documentation, changeset, verification and a PR against `next` |
+| Skill entry point | Update `hot-updater/skills` on `main` to route natural-language setup/upgrades to the installed CLI's supported commands and versioned instructions |
 
 The proposed names `agent init`, `agent setup`, and `infra setup` were replaced
 by the nested `agent infra` commands to make both the AI audience and the target
@@ -68,7 +69,7 @@ hot-updater infra scaffold --provider supabase --output ./server --json
 ```
 
 Require only a provider. Extract server deployment artifacts, resource input
-names, original file hashes, target versions and UPGRADE-NOTES.md. Do not require
+names, original file hashes, target versions and the `upgrades/` release files. Do not require
 or evaluate an app config, ask for a build plugin, or include agent workflow,
 app configuration or deployment state files. Use the default directory
 `hot-updater-infra/<provider>/scaffold-<cli-version>` and the same output
@@ -192,10 +193,11 @@ a scaffold.
 
 ## Versioned upgrades and doctor
 
-`infrastructureUpdates.ts` is the single source of required infrastructure
-versions and upgrade instructions. Each entry requires:
+`infrastructureUpdates.ts` registers required infrastructure versions and short
+doctor notes. Each version must have a corresponding authored Markdown file at
+`packages/hot-updater/infrastructure-upgrades/<version>.md` containing:
 
-- Target version and short reason for doctor.
+- The version as its filename and first heading.
 - Compatibility boundaries.
 - Ordered common migration/deployment steps.
 - Explicit instructions for all four providers, including when no schema
@@ -207,11 +209,18 @@ Doctor derives its requirement from this registry and points agents to
 in-place-upgrade block and can point to the setup command for parallel resources.
 Generating instructions is local; applying them still requires provider access.
 
-The build packages the same entries in UPGRADE-NOTES.md. Type checks require every
-provider to be addressed. Tests validate nonempty ordered entries, coverage and
-packaged notes. Maintainer instructions document this as part of introducing any
-new doctor infrastructure requirement. Existing entries remain available so
-agents can apply all relevant transitions across skipped versions.
+The build copies each release file verbatim to `upgrades/<version>.md` and
+generates `upgrades/README.md` with links in semantic version order. There is no
+single mutable upgrade document replacing release history. Add a new file for
+each required release; retain historical files. Agents read the applicable
+baseline and every subsequent release through the target before applying changes,
+using already applied releases as context without blindly replaying steps.
+
+Build validation rejects missing/unregistered files, mismatched version headings,
+unordered requirements, and missing compatibility, steps, provider or verification
+sections. Tests cover skipped releases and ensure packaged files match their
+authored source. CLI JSON returns the index path and every version file's absolute
+path. Maintainer instructions make this part of adding any new doctor requirement.
 
 ### First entry: v0 to v1
 
@@ -272,11 +281,15 @@ Validated on 2026-09-07 against the base commit above:
 - `pnpm -w build`: passed for 26 projects, including documentation and link checks.
 - `pnpm -w test:type`: passed for 34 projects.
 - `pnpm -w lint`: passed with no warnings or errors.
-- `pnpm -w test`: 2,622 tests passed across 286 files.
+- `pnpm -w test`: 2,632 tests passed across 287 files.
 - Extracted the `pnpm pack` archive outside the repository, linked only declared
   CLI production dependencies, and confirmed provider packages were not
   resolvable from the extracted CLI. Verified standalone extraction for four
   providers and setup/upgrade/resume for all 12 provider/build combinations.
-  Server file hashes matched across the public and agent commands.
+  Server file hashes matched across the public and agent commands. Ordered JSON
+  upgrade paths resolve to verbatim copies of the authored version files.
+- `hot-updater/skills`: skill format validation and Markdown reference checks
+  passed. The infrastructure workflow uses live CLI capability discovery and
+  reads the packaged version files instead of duplicating migration instructions.
 - No live cloud provisioning, infrastructure deployment, or native OTA run was
   performed. Those require the target account and app environment.

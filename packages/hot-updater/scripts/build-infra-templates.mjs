@@ -10,6 +10,10 @@ import {
 } from "@hot-updater/cli-tools";
 import { HOT_UPDATER_INFRASTRUCTURE_GENERATION } from "@hot-updater/server";
 
+import {
+  readInfrastructureUpgradeFiles,
+  renderInfrastructureUpgradeIndex,
+} from "../src/commands/infra/upgradeFiles.ts";
 import { INFRASTRUCTURE_UPDATES } from "../src/commands/infrastructureUpdates.ts";
 
 const packageRoot = fileURLToPath(new URL("..", import.meta.url));
@@ -17,6 +21,10 @@ const repoRoot = path.resolve(packageRoot, "../..");
 const outputRoot = path.join(packageRoot, "dist/infra-templates");
 const providers = ["cloudflare", "supabase", "aws", "firebase"];
 const builds = ["bare", "rock", "expo"];
+const upgradeFiles = await readInfrastructureUpgradeFiles(
+  path.join(packageRoot, "infrastructure-upgrades"),
+  INFRASTRUCTURE_UPDATES,
+);
 const json = async (file) => JSON.parse(await readFile(file, "utf8"));
 const save = async (file, value) => {
   await mkdir(path.dirname(file), { recursive: true });
@@ -299,31 +307,12 @@ for (const provider of providers) {
     });
   }
 
-  const notes = [
-    "# Infrastructure upgrade requirements",
-    "",
-    "Apply entries newer than the verified deployed version, in order. Inspect compatibility before any mutation. Unknown versions require investigation; do not assume the latest entry alone covers an upgrade.",
-    "",
-  ];
-  for (const update of INFRASTRUCTURE_UPDATES) {
-    notes.push(
-      `## ${update.version}: ${update.note}`,
-      "",
-      update.compatibility,
-      "",
-      ...update.steps.map((step) => `- ${step}`),
-      "",
-      `### ${provider}`,
-      "",
-      ...update.providers[provider].map((step) => `- ${step}`),
-      "",
-      "### Verify",
-      "",
-      ...update.verification.map((step) => `- ${step}`),
-      "",
-    );
-  }
-  await save(path.join(output, "UPGRADE-NOTES.md"), notes.join("\n"));
+  for (const upgrade of upgradeFiles)
+    await save(path.join(output, "upgrades", upgrade.file), upgrade.content);
+  await save(
+    path.join(output, "upgrades/README.md"),
+    renderInfrastructureUpgradeIndex(upgradeFiles),
+  );
   const appPackages = {
     ...versions,
     dotenv: resolvePackageVersion("dotenv", { searchFrom: packageRoot }),

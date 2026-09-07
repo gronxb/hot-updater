@@ -104,11 +104,24 @@ describe("published agent infrastructure commands", () => {
           deployedServerVersion: null,
           verifiedSteps: [],
         });
-        const notes = await readFile(result.data.upgradeNotes, "utf8");
-        for (const entry of INFRASTRUCTURE_UPDATES) {
-          expect(notes).toContain(`## ${entry.version}: ${entry.note}`);
-          for (const step of entry.providers[provider])
-            expect(notes).toContain(step);
+        const guide = await readFile(result.data.upgradeGuide, "utf8");
+        expect(
+          result.data.upgradeFiles.map(
+            ({ version }: { version: string }) => version,
+          ),
+        ).toEqual(INFRASTRUCTURE_UPDATES.map(({ version }) => version));
+        for (const file of result.data.upgradeFiles) {
+          expect(guide).toContain(`./${file.version}.md`);
+          expect(await readFile(file.path, "utf8")).toBe(
+            await readFile(
+              path.resolve(
+                import.meta.dirname,
+                "../../../infrastructure-upgrades",
+                `${file.version}.md`,
+              ),
+              "utf8",
+            ),
+          );
         }
       }
     },
@@ -152,7 +165,7 @@ describe("published agent infrastructure commands", () => {
     expect(await json(upgrade.data.manifest)).toMatchObject({
       operation: "upgrade",
     });
-    expect(upgrade.data.instructions).toMatch(/UPGRADE\.md$/);
+    expect(upgrade.data.instructions).toMatch(/upgrades\/README\.md$/);
   });
 
   it("rejects occupied, mismatched and incomplete outputs without overwriting them", async () => {

@@ -1,6 +1,6 @@
 ---
 title: "AI Agent Guide"
-description: "Use the Hot Updater skill with AI coding agents and ask for OTA operations in natural language."
+description: "Use the Hot Updater skill with AI coding agents for infrastructure setup, upgrades, and OTA operations."
 icon: Bot
 ---
 
@@ -23,6 +23,7 @@ npx skills add hot-updater/skills
 After attaching the skill, ask your agent in natural language:
 
 ```txt
+$hot-updater Set up infrastructure on Cloudflare for this project.
 $hot-updater deploy using the current app version
 $hot-updater deploy the current iOS app version to production
 $hot-updater list iOS Bundles on the production channel
@@ -32,8 +33,12 @@ $hot-updater run doctor with server URL https://updates.example.com
 $hot-updater fix local doctor issues that do not require server credentials
 ```
 
-The skill gives the agent enough CLI context to translate those requests into
-safe `npx hot-updater ...` flows.
+The skill uses the project's installed CLI help to discover supported commands.
+For infrastructure setup, the agent asks for missing project details or access,
+generates templates with `hot-updater agent infra setup`, and applies them using
+available provider tools. It verifies each step and resumes unfinished work
+after inspecting remote state. The installed CLI must support the agent commands;
+attaching the skill does not add commands to an older CLI.
 
 ## Safety Rules
 

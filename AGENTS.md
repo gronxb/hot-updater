@@ -40,18 +40,20 @@
 ## Infrastructure Upgrade Requirements
 
 - Doctor requirements and agent upgrade instructions share
-  `packages/hot-updater/src/commands/infrastructureUpdates.ts`. Add a complete
-  entry there when a release requires infrastructure changes; do not add a
-  separate doctor version threshold.
-- Each entry must include compatibility, ordered migration/deployment steps,
-  instructions for all four managed providers (explicitly state when no schema
-  migration is needed), and verification. Preserve earlier entries so agents
-  can upgrade across multiple versions.
+  `packages/hot-updater/src/commands/infrastructureUpdates.ts`. When a release
+  requires infrastructure changes, register its version/note and add
+  `packages/hot-updater/infrastructure-upgrades/<version>.md`.
+- Each version file must have Compatibility, Steps, Cloudflare, Supabase, AWS,
+  Firebase, and Verification sections. State when a provider needs no schema
+  migration. Build validation rejects missing files, missing sections, or files
+  without a corresponding doctor requirement. Append a new file for each release;
+  do not overwrite an older file to describe a newer release. Preserve history
+  so agents can read the entire upgrade path before applying changes.
 - Reuse the provider runtime, migrations, and config builders in packaged agent
   scaffolds. Public `infra scaffold` and agent commands must share the server
   extractor and produce identical server artifacts. Update provider
-  `agent/SETUP.md` and `agent/UPGRADE.md` when their
-  deployment prerequisites change. Validate packaged scaffolds and upgrade notes
+  `agent/SETUP.md` when setup prerequisites change, and record upgrade changes in
+  the new version file. Validate packaged scaffolds and versioned upgrade files
   with `pnpm -w test` after `pnpm -w build`.
 
 ## Documentation
