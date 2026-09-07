@@ -1,5 +1,11 @@
 # hot-updater
 
+## 1.0.0-rc.5
+
+### Patch Changes
+
+- 47caf8a: Validate signing only for the selected deploy platform.
+
 ## 1.0.0-rc.4
 
 ### Patch Changes
