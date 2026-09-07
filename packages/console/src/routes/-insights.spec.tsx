@@ -6,6 +6,14 @@ const mocks = vi.hoisted(() => ({
   controls: vi.fn(),
   overview: vi.fn(),
   reporting: vi.fn(),
+  recovery: vi.fn(),
+}));
+
+vi.mock("@/components/features/insights/InsightsRolloutCard", () => ({
+  InsightsRolloutCard: (props: unknown) => {
+    mocks.recovery(props);
+    return <div>Recovery rate</div>;
+  },
 }));
 
 vi.mock("@tanstack/react-router", () => ({
@@ -72,7 +80,7 @@ describe("InsightsPage", () => {
     vi.clearAllMocks();
   });
 
-  it("loads only the reporting-installation headline for the selected window", () => {
+  it("loads reporting installations and the recovery trend for the selected window", () => {
     render(<InsightsPage />);
 
     expect(mocks.reporting).toHaveBeenCalledWith({
@@ -95,6 +103,9 @@ describe("InsightsPage", () => {
       platform: "ios",
       channel: "production",
       window: "7d",
+    });
+    expect(mocks.recovery).toHaveBeenLastCalledWith({
+      input: { platform: "ios", channel: "production", window: "7d" },
     });
     expect(mocks.controls).toHaveBeenLastCalledWith(
       expect.objectContaining({ window: "7d" }),
