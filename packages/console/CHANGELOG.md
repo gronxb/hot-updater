@@ -1,5 +1,11 @@
 # @hot-updater/console
 
+## 1.0.0-rc.4
+
+### Patch Changes
+
+- 8afd7a8: Restore compact bundle activity summaries and compare all observed bundle IDs over 30 days with Active and Rollback trends.
+
 ## 1.0.0-rc.3
 
 ### Patch Changes
