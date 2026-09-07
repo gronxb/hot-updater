@@ -172,7 +172,10 @@ Channels use opaque IDs and exact case-sensitive names. Concurrent
 An empty Channel remains visible. Its reference check and explicit deletion
 are atomic against Releases.
 
-Insights append and stable cursor scan remain provider-owned persistence.
+Insights uses `record`, `listEvents`, `findInstallations`, `countInstallations`,
+and `countEvents`. Core prepares reports and product views; providers own
+atomic event/latest-state storage and fixed native queries. See the
+[Insights contract](./custom-database#insights) for ordering and count semantics.
 Transition rows carry directional Release identity alongside Bundle identity.
 Old nullable Release IDs remain valid and are never inferred from Bundle ID.
 
@@ -266,25 +269,20 @@ Required provider mappings:
 
 ## Schema 1.0.0 bootstrap
 
-`hot-updater db migrate` and `hot-updater db generate` create schema `1.0.0`
-on an empty database and no-op when `schema.core` is already `1.0.0`. Any
-other marker is rejected. There is no v0 Bundle-policy backfill.
+`hot-updater db migrate` creates the complete schema `1.0.0` on empty storage
+and no-ops at `1.0.0`. Record `schema.core` only after successful
+initialization. Generate ORM artifacts with `hot-updater db generate` and apply
+emitted companion collation SQL for Prisma PostgreSQL/MySQL.
 
-1. Create Channel, Bundle, patch, Release, catalog, Insights, and API key
-   storage with the official indexes and references.
-2. Record `schema.core = 1.0.0`.
-3. Deploy Releases from source artifacts after the empty schema exists.
+1. On empty storage, create the seven models with their indexes and references.
+2. Record `schema.core = 1.0.0` after successful creation.
+3. Leave initialized `1.0.0` storage unchanged on subsequent calls.
 
-Managed provider init also requires newly scaffolded v1 resources. AWS,
-Cloudflare, Firebase, and Supabase fail before mutating detected v0
-infrastructure.
+There is no populated v0 Bundle-policy backfill. Managed initialization rejects
+v0 infrastructure before mutating it.
 
-The initial `1.0.0` definition changed on the unreleased `next`/RC line to add
-the required archive and patch size fields. A database created from an earlier
-pre-release `1.0.0` definition has the same schema marker, so migrate would
-no-op without adding the fields. Recreate that database from the current empty
-`1.0.0` schema; there is no incremental migration or backfill for this
-pre-release change.
+Insights requirements are documented in the
+[custom provider guide](./custom-database#insights).
 
 ## Runtime route boundary
 
@@ -334,6 +332,7 @@ The contract is complete only when:
   envelope;
 - catalog GETs perform one exact read and no Release/Bundle scan;
 - empty-scope generations persist as tombstones;
-- schema bootstrap creates 1.0.0 on empty storage and rejects v0 markers;
+- schema bootstrap creates the complete 1.0.0 schema, leaves initialized 1.0.0
+  storage unchanged, and rejects unsupported v0 markers;
 - public conformance, provider integration, v0 generation guards, managed
   runtime, and standalone verification suites pass.

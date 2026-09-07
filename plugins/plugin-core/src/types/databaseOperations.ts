@@ -12,6 +12,7 @@ import type {
   ApiKeyRow,
   DatabaseModel,
   DatabaseRow,
+  InsightsInstallationRow,
   ReleaseCatalogRow,
   ReleaseRow,
 } from "./databaseRows";
@@ -69,8 +70,16 @@ export type DatabaseModelCapabilities = {
     readonly create: true;
     readonly update: false;
     readonly delete: false;
-    readonly count: false;
+    readonly count: true;
     readonly findOne: false;
+    readonly findMany: true;
+  };
+  readonly bundle_installations: {
+    readonly create: true;
+    readonly update: true;
+    readonly delete: false;
+    readonly count: true;
+    readonly findOne: true;
     readonly findMany: true;
   };
   readonly api_keys: {
@@ -113,7 +122,7 @@ export type CreateDatabaseInput<
   TModel extends CreateDatabaseModel,
   TSelect extends DatabaseSelect<TModel> | undefined = undefined,
 > = CreateDatabaseInputBase<TModel, TSelect> &
-  (TModel extends "channels" | "api_keys"
+  (TModel extends "channels" | "api_keys" | "bundle_installations"
     ? { readonly onConflict?: "ignore" }
     : { readonly onConflict?: never });
 
@@ -139,11 +148,16 @@ export type ReleaseCatalogRowUpdate = Omit<ReleaseCatalogRow, "scope_key">;
 
 export type BundleRowUpdate = BundleRowUpdateFields;
 export type ApiKeyRowUpdate = Pick<ApiKeyRow, "revoked_at_ms">;
+export type InsightsInstallationRowUpdate = Omit<
+  InsightsInstallationRow,
+  "install_id"
+>;
 
 export type DatabaseRowUpdate<TModel extends UpdateDatabaseModel> = {
   readonly bundles: BundleRowUpdate;
   readonly releases: ReleaseRowUpdate;
   readonly release_catalogs: ReleaseCatalogRowUpdate;
+  readonly bundle_installations: InsightsInstallationRowUpdate;
   readonly api_keys: ApiKeyRowUpdate;
 }[TModel];
 
@@ -297,6 +311,10 @@ export interface TransactionDatabasePluginImplementation {
 }
 
 export interface DatabasePluginImplementation {
+  /** Native atomic event insert and monotonic installation update. */
+  recordInsights(
+    input: import("./databasePlugin").InsightsRecordInput,
+  ): Promise<void>;
   create(
     input: CreateDatabaseImplementationInput,
   ): Promise<DatabaseImplementationResult>;

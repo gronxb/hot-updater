@@ -1,4 +1,8 @@
 import { createDatabasePlugin } from "./createDatabasePlugin";
+import {
+  compareInsightsText,
+  matchesInsightsEventFilter,
+} from "./insightsContract";
 import type {
   BundleEventRow,
   BundlePatchRow,
@@ -8,6 +12,7 @@ import type {
   DatabaseBundleQueryWhere,
   DatabaseCommit,
   DatabasePlugin,
+  InsightsInstallationRow,
   ReleaseCatalogRow,
   ReleaseRow,
 } from "./types";
@@ -34,10 +39,20 @@ const replaceMap = <T>(target: Map<string, T>, source: Map<string, T>) => {
   for (const [key, value] of source) target.set(key, value);
 };
 
+const isNewerInstallationRow = (
+  candidate: InsightsInstallationRow,
+  current: InsightsInstallationRow | undefined,
+): boolean =>
+  current === undefined ||
+  candidate.received_at_ms > current.received_at_ms ||
+  (candidate.received_at_ms === current.received_at_ms &&
+    candidate.id > current.id);
+
 export const createMemoryDatabasePlugin = (): DatabasePlugin => {
   const bundles = new Map<string, BundleRow>();
   const patches = new Map<string, BundlePatchRow>();
   const events = new Map<string, BundleEventRow>();
+  const installations = new Map<string, InsightsInstallationRow>();
   const releases = new Map<string, ReleaseRow>();
   const releaseCatalogs = new Map<string, ReleaseCatalogRow>();
   const channels = new Map<string, ChannelRow>();
@@ -72,7 +87,6 @@ export const createMemoryDatabasePlugin = (): DatabasePlugin => {
     }
     const nextBundles = new Map(bundles);
     const nextPatches = new Map(patches);
-    const nextEvents = new Map(events);
     const nextReleases = new Map(releases);
     const nextReleaseCatalogs = new Map(releaseCatalogs);
     const nextChannels = new Map(channels);
@@ -187,9 +201,6 @@ export const createMemoryDatabasePlugin = (): DatabasePlugin => {
             }
           }
           break;
-        case "insights":
-          nextEvents.set(change.row.id, structuredClone(change.row));
-          break;
         case "apiKeys":
           if (change.operation === "insert") {
             const existing = [...nextApiKeys.values()].find(
@@ -216,7 +227,6 @@ export const createMemoryDatabasePlugin = (): DatabasePlugin => {
     }
     replaceMap(bundles, nextBundles);
     replaceMap(patches, nextPatches);
-    replaceMap(events, nextEvents);
     replaceMap(releases, nextReleases);
     replaceMap(releaseCatalogs, nextReleaseCatalogs);
     replaceMap(channels, nextChannels);
@@ -361,27 +371,82 @@ export const createMemoryDatabasePlugin = (): DatabasePlugin => {
         },
       },
       insights: {
-        async append(row) {
-          events.set(row.id, structuredClone(row));
+        async record({ event, installation }) {
+          if (events.has(event.id)) return;
+          events.set(event.id, structuredClone(event));
+          if (
+            isNewerInstallationRow(
+              installation,
+              installations.get(installation.install_id),
+            )
+          ) {
+            installations.set(
+              installation.install_id,
+              structuredClone(installation),
+            );
+          }
         },
-        async scan(input) {
+        async listEvents(input) {
           return structuredClone(
             [...events.values()]
               .filter(
                 (row) =>
+                  row.received_at_ms >= (input.sinceMs ?? 0) &&
                   row.received_at_ms < input.beforeReceivedAtMs &&
                   (input.after === undefined ||
-                    row.received_at_ms > input.after.receivedAtMs ||
+                    row.received_at_ms < input.after.receivedAtMs ||
                     (row.received_at_ms === input.after.receivedAtMs &&
-                      row.id > input.after.id)),
+                      row.id < input.after.id)) &&
+                  matchesInsightsEventFilter(row, input.filter),
               )
               .sort(
                 (left, right) =>
-                  left.received_at_ms - right.received_at_ms ||
-                  left.id.localeCompare(right.id),
+                  right.received_at_ms - left.received_at_ms ||
+                  compareInsightsText(right.id, left.id),
               )
               .slice(0, input.limit),
           );
+        },
+        async findInstallations(input) {
+          if ("installId" in input) {
+            const row = installations.get(input.installId);
+            return row === undefined ? [] : [structuredClone(row)];
+          }
+          return structuredClone(
+            [...installations.values()]
+              .filter(
+                (row) =>
+                  row.user_id === input.userId &&
+                  (input.afterInstallId === undefined ||
+                    compareInsightsText(row.install_id, input.afterInstallId) >
+                      0),
+              )
+              .sort((left, right) =>
+                compareInsightsText(left.install_id, right.install_id),
+              )
+              .slice(0, input.limit),
+          );
+        },
+        async countInstallations(input) {
+          return [...installations.values()].filter(
+            (row) =>
+              row.platform === input.platform &&
+              row.channel === input.channel &&
+              row.received_at_ms >= input.sinceMs &&
+              (input.bundleId === undefined ||
+                row.to_bundle_id === input.bundleId),
+          ).length;
+        },
+        async countEvents(input) {
+          return [...events.values()].filter(
+            (row) =>
+              row.received_at_ms >= input.sinceMs &&
+              row.received_at_ms < input.beforeReceivedAtMs &&
+              matchesInsightsEventFilter(row, {
+                kind: "bundle",
+                ...input.filter,
+              }),
+          ).length;
         },
       },
       apiKeys: {

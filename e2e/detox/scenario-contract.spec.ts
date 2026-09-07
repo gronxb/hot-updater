@@ -483,28 +483,6 @@ describe("Detox scenario contract", () => {
     expect(detoxRuntimeSource).toContain("verifyConsoleInsights");
   });
 
-  it("clears Releases across all channels before deleting global Bundles", async () => {
-    // Given: a failed E2E job can leave a Release in an older channel that
-    // still references a Bundle returned by the platform-global Bundle list.
-    const controllerSource = await fs.readFile(
-      detoxControlServerControllerPath,
-      "utf8",
-    );
-    const clearBundlesBody = controllerSource.slice(
-      controllerSource.indexOf("async function clearProviderBundles()"),
-      controllerSource.indexOf(
-        "async function clearProviderBundlesAfterReadiness()",
-      ),
-    );
-
-    // When: the next scenario resets provider state.
-    // Then: it clears Releases without a channel filter before Bundle delete.
-    expect(clearBundlesBody).toContain("await clearProviderReleases(null)");
-    expect(
-      clearBundlesBody.indexOf("clearProviderReleases(null)"),
-    ).toBeLessThan(clearBundlesBody.indexOf("deleteProviderBundle(bundle.id)"));
-  });
-
   it("does not launch the app before provider bundles are deployed", async () => {
     // Given: the control server resets remote bundles and local app state
     // before any provider-backed update-check URL can be requested.
@@ -711,13 +689,13 @@ describe("Detox scenario contract", () => {
     const helpers = [
       source.slice(
         source.indexOf("function stripAnsi("),
-        source.indexOf("async function readTextIfExists("),
+        source.indexOf("function bareBuildCacheRoot("),
       ),
       source.slice(
-        source.indexOf("async function fetchProviderBundlesPage("),
+        source.indexOf("async function fetchProviderBundleById("),
         source.indexOf("async function fetchProviderReleaseById("),
       ),
-      "({ extractDeployReleaseId, resolveDeployedRelease, fetchProviderBundleById, fetchProviderBundlesPage, isBundleVisible })",
+      "({ extractDeployReleaseId, resolveDeployedRelease, fetchProviderBundleById })",
     ].join("\n");
     const transformed = transformSync(helpers, {
       babelrc: false,
@@ -758,42 +736,21 @@ describe("Detox scenario contract", () => {
     });
     await deleteRelease({ database: harness.plugin, releaseId: id });
     expect(await harness.releases()).toEqual([]);
-    const files = await controller.fetchProviderBundlesPage({
+    const files = await createDatabaseClient(harness.plugin).getBundles({
+      where: { platform: "ios" },
       limit: 100,
-      offset: 0,
     });
     expect(
       files.data.map((bundle: { id: string }) => bundle.id).sort(),
     ).toEqual([base.id, file.id]);
-    await expect(controller.isBundleVisible(file.id)).resolves.toBe(true);
+    await expect(
+      controller.fetchProviderBundleById(file.id),
+    ).resolves.toMatchObject(file);
     await createDatabaseClient(harness.plugin).deleteBundleById(file.id);
-    await expect(controller.isBundleVisible(file.id)).resolves.toBe(false);
+    await expect(controller.fetchProviderBundleById(file.id)).rejects.toThrow(
+      "bundle not found",
+    );
   });
-
-  it.each([
-    [
-      "Verification failed: 1 artifact record(s) still exist (artifact IDs: file-1).",
-      true,
-    ],
-    ["Verification failed: bundle file-1 still exists.", true],
-    ["Cannot delete artifacts referenced by bundles.", false],
-  ])(
-    "recognizes retryable file deletion verification: %s",
-    async (output, retryable) => {
-      const source = await fs.readFile(
-        detoxControlServerControllerPath,
-        "utf8",
-      );
-      const declaration = source.slice(
-        source.indexOf("const DELETE_VERIFY_STILL_EXISTS_PATTERN ="),
-        source.indexOf("const E2E_POLL_INTERVAL_MS ="),
-      );
-      const pattern = new Script(
-        `${declaration}\nDELETE_VERIFY_STILL_EXISTS_PATTERN;`,
-      ).runInNewContext();
-      expect(pattern.test(output)).toBe(retryable);
-    },
-  );
 
   it.each([
     ["running-file", "staged-update"],
@@ -950,7 +907,9 @@ describe("Detox scenario contract", () => {
     // Then: every launch goes through launchArgs instead of relying on @env.
     expect(detoxRuntimeSource).toContain("function runtimeLaunchArgs()");
     expect(detoxRuntimeSource).toContain("HOT_UPDATER_E2E_RUNTIME_CONFIG_URL");
-    expect(detoxRuntimeSource).toContain("launchArgs: runtimeLaunchArgs()");
+    expect(detoxRuntimeSource).toContain(
+      "launchArgs: { ...runtimeLaunchArgs(), ...options.launchArgs }",
+    );
     expect(detoxRuntimeSource).not.toContain(
       "device.launchApp({ newInstance: true })",
     );

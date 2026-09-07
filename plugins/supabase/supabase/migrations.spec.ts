@@ -2,7 +2,10 @@ import fs from "node:fs/promises";
 import path from "node:path";
 
 import { PGlite } from "@electric-sql/pglite";
+import { toInsightsInstallationRow } from "@hot-updater/plugin-core";
 import { describe, expect, it } from "vitest";
+
+import { createBundleEventRowFixture } from "../../../packages/test-utils/src/databaseTestFixtures";
 
 const migrationPath = path.resolve(
   "plugins/supabase/supabase/migrations/20260818000000_hot-updater_1.0.0.sql",
@@ -24,7 +27,107 @@ const readMigrations = async () => {
 };
 
 describe("Supabase v1 schema", () => {
-  it("ships a single 1.0.0 CREATE migration", async () => {
+  it("initializes 1.0.0 and atomically records retries through the service-role RPC", async () => {
+    const database = new PGlite();
+    const event = createBundleEventRowFixture("9301", 100);
+    const installation = toInsightsInstallationRow(event);
+    try {
+      await database.exec(
+        "CREATE ROLE anon; CREATE ROLE authenticated; CREATE ROLE service_role;",
+      );
+      const [initial] = await readMigrations();
+      await database.exec(initial!.sql);
+      expect(
+        (
+          await database.query(
+            "SELECT value FROM public.hot_updater_v1_private_settings WHERE key = 'schema.core'",
+          )
+        ).rows,
+      ).toEqual([{ value: "1.0.0" }]);
+      const record = (row: typeof event) =>
+        database.query(
+          "SELECT public.hot_updater_v1_record_insights($1::jsonb, $2::jsonb)",
+          [JSON.stringify(row), JSON.stringify(toInsightsInstallationRow(row))],
+        );
+      await record(event);
+      const reusedId = {
+        ...event,
+        user_id: "duplicate-user",
+        received_at_ms: 200,
+      };
+      await record(reusedId);
+      expect(
+        (
+          await database.query(
+            "SELECT * FROM public.hot_updater_v1_bundle_installations",
+          )
+        ).rows,
+      ).toEqual([installation]);
+      const next = {
+        ...event,
+        id: createBundleEventRowFixture("9302", 200).id,
+        received_at_ms: 200,
+      };
+      await database.exec(`
+        CREATE FUNCTION fail_insights_snapshot() RETURNS trigger LANGUAGE plpgsql AS $$
+        BEGIN RAISE EXCEPTION 'injected snapshot failure'; END; $$;
+        CREATE TRIGGER fail_insights_snapshot BEFORE INSERT ON public.hot_updater_v1_bundle_installations
+        FOR EACH ROW EXECUTE FUNCTION fail_insights_snapshot();
+      `);
+      await expect(record(next)).rejects.toThrow("injected snapshot failure");
+      expect(
+        (
+          await database.query(
+            "SELECT id FROM public.hot_updater_v1_bundle_events",
+          )
+        ).rows,
+      ).toEqual([{ id: event.id }]);
+      expect(
+        (
+          await database.query(
+            "SELECT * FROM public.hot_updater_v1_bundle_installations",
+          )
+        ).rows,
+      ).toEqual([installation]);
+      await database.exec(
+        "DROP TRIGGER fail_insights_snapshot ON public.hot_updater_v1_bundle_installations",
+      );
+      await record(next);
+      await record(next);
+      expect(
+        (
+          await database.query(
+            "SELECT * FROM public.hot_updater_v1_bundle_installations",
+          )
+        ).rows,
+      ).toEqual([toInsightsInstallationRow(next)]);
+      expect(
+        (
+          await database.query(
+            "SELECT COUNT(*)::integer AS count FROM public.hot_updater_v1_bundle_events",
+          )
+        ).rows,
+      ).toEqual([{ count: 2 }]);
+      expect(
+        (
+          await database.query(
+            "SELECT has_function_privilege('anon', 'public.hot_updater_v1_record_insights(jsonb,jsonb)', 'EXECUTE') AS allowed",
+          )
+        ).rows,
+      ).toEqual([{ allowed: false }]);
+      expect(
+        (
+          await database.query(
+            "SELECT has_function_privilege('service_role', 'public.hot_updater_v1_record_insights(jsonb,jsonb)', 'EXECUTE') AS allowed",
+          )
+        ).rows,
+      ).toEqual([{ allowed: true }]);
+    } finally {
+      await database.close();
+    }
+  });
+
+  it("ships a single 1.0.0 initialization migration", async () => {
     const migrations = await readMigrations();
     expect(migrations.map(({ file }) => file)).toEqual([
       "20260818000000_hot-updater_1.0.0.sql",
@@ -41,6 +144,33 @@ describe("Supabase v1 schema", () => {
       "CREATE TABLE public.hot_updater_v1_release_catalogs",
     );
     expect(sql).toContain("CREATE TABLE public.hot_updater_v1_bundle_events");
+    expect(sql).toContain(
+      "CREATE TABLE public.hot_updater_v1_bundle_installations",
+    );
+    expect(sql).toContain(
+      "hot_updater_v1_bundle_installations(user_id, install_id)",
+    );
+    expect(sql).toContain(
+      "hot_updater_v1_bundle_installations(received_at_ms)",
+    );
+    expect(sql).toContain(
+      "hot_updater_v1_bundle_events(install_id, type, received_at_ms, id)",
+    );
+    expect(sql).toContain(
+      "hot_updater_v1_bundle_events(type, platform, channel, from_bundle_id, received_at_ms, id)",
+    );
+    expect(sql).toContain(
+      "hot_updater_v1_bundle_events(type, platform, channel, to_bundle_id, received_at_ms, id)",
+    );
+    expect(sql).toContain(
+      "hot_updater_v1_bundle_installations(platform, channel, received_at_ms)",
+    );
+    expect(sql).toContain(
+      "hot_updater_v1_bundle_installations(platform, channel, to_bundle_id, received_at_ms)",
+    );
+    expect(sql).toContain(
+      "CREATE FUNCTION public.hot_updater_v1_record_insights(p_event jsonb, p_installation jsonb)",
+    );
     expect(sql).toContain("CREATE TABLE public.hot_updater_v1_api_keys");
     expect(sql).toContain(
       "ALTER TABLE public.hot_updater_v1_bundles ENABLE ROW LEVEL SECURITY",
@@ -62,6 +192,8 @@ describe("Supabase v1 schema", () => {
     expect(sql).toContain("NOTIFY pgrst, 'reload schema'");
     expect(sql).not.toContain("get_update_info");
     expect(sql).not.toContain("ALTER TABLE public.bundles ADD COLUMN");
+    expect(sql).not.toContain("WHEN 'insights'");
+    expect(sql).not.toContain("v_event public.hot_updater_v1_bundle_events");
   });
 
   it("applies beside a v0 schema without modifying v0 data", async () => {
@@ -94,6 +226,7 @@ describe("Supabase v1 schema", () => {
         expect.arrayContaining([
           "hot_updater_v1_bundles",
           "hot_updater_v1_bundle_events",
+          "hot_updater_v1_bundle_installations",
           "hot_updater_v1_bundle_patches",
           "hot_updater_v1_channels",
           "hot_updater_v1_api_keys",

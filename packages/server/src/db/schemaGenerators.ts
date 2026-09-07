@@ -7,11 +7,13 @@ import {
   type HotUpdaterTableSchema,
   type HotUpdaterVersionedSchema,
 } from "../schema/types";
+import { getInsightsCollationSql } from "./schema/insightsCollation";
 import {
   getHotUpdaterSchemaVersion,
   hotUpdaterSchema,
   schemaIndexAppliesToProvider,
 } from "./schema/registry";
+import { getSqlType } from "./schema/sql";
 import type { ORMProvider, ORMSQLProvider, SchemaGenerator } from "./types";
 import { getSQLProvider } from "./types";
 
@@ -154,19 +156,33 @@ const prismaIndexes = (
 export const generatePrismaSchema = (
   provider: ORMProvider,
   schema: HotUpdaterVersionedSchema = hotUpdaterSchema,
-) =>
-  schema.tables
-    .map((table) => {
-      const lines = [
-        ...table.columns.map((column) => prismaField(column, provider)),
-        ...prismaRelationFields(table, schema),
-        ...prismaIndexes(table, provider),
-      ];
-      return `model ${table.ormName} {\n${lines
-        .map((line) => `  ${line}`)
-        .join("\n")}\n}`;
-    })
-    .join("\n\n");
+) => {
+  const sqlProvider = getSQLProvider(provider);
+  const collationSql = sqlProvider ? getInsightsCollationSql(sqlProvider) : [];
+  const header =
+    collationSql.length === 0
+      ? ""
+      : [
+          "// Apply these statements in the initial Prisma SQL migration to preserve exact Insights identities and cursors:",
+          ...collationSql.map((statement) => `// ${statement};`),
+          "",
+        ].join("\n");
+  return (
+    header +
+    schema.tables
+      .map((table) => {
+        const lines = [
+          ...table.columns.map((column) => prismaField(column, provider)),
+          ...prismaRelationFields(table, schema),
+          ...prismaIndexes(table, provider),
+        ];
+        return `model ${table.ormName} {\n${lines
+          .map((line) => `  ${line}`)
+          .join("\n")}\n}`;
+      })
+      .join("\n\n")
+  );
+};
 
 const drizzleImportSource = (provider: ORMSQLProvider) =>
   provider === "sqlite"
@@ -186,6 +202,18 @@ const drizzleColumnFn = (
   column: HotUpdaterColumnSchema,
   provider: ORMSQLProvider,
 ): { code: string; imports: readonly string[] } => {
+  const collation = column.providerCollations?.[provider];
+  if (collation !== undefined) {
+    const charset =
+      provider === "mysql"
+        ? ` character set ${collation === "ascii_bin" ? "ascii" : "utf8mb4"}`
+        : "";
+    const dataType = `${getSqlType(column.type, provider)}${charset} collate ${collation}`;
+    return {
+      code: `customType<{ data: string }>({ dataType: () => ${literal(dataType)} })(${literal(column.ormName)})`,
+      imports: ["customType"],
+    };
+  }
   if (provider === "sqlite") {
     if (column.type === "bool") {
       return {

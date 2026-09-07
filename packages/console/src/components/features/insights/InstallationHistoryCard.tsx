@@ -1,7 +1,6 @@
 import { RefreshCw } from "lucide-react";
 
 import { HashValueDisplay } from "@/components/HashValueDisplay";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
@@ -15,10 +14,10 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import type {
-  InstallationHistoryResult,
-  InstallationHistoryRow,
-  InstallationSearchRow,
-} from "@/lib/api";
+  InsightsEventRow,
+  InsightsInstallationViewRow,
+  InsightsViewPage,
+} from "@/lib/insights-view";
 
 import {
   EventBundleTransition,
@@ -28,7 +27,7 @@ import {
 } from "./EventDetails";
 import { EventHistoryList } from "./EventHistoryList";
 import { InsightsErrorAlert } from "./InsightsErrorAlert";
-import { InstallationPagination } from "./InstallationPagination";
+import { InsightsPagination } from "./InsightsPagination";
 
 const getUserLabel = (event: {
   readonly username: string | null;
@@ -36,7 +35,7 @@ const getUserLabel = (event: {
 }) => event.userId ?? event.username ?? "—";
 
 const getLastKnownBundleId = (
-  event: InstallationHistoryRow | InstallationSearchRow,
+  event: InsightsEventRow | InsightsInstallationViewRow,
 ) =>
   "lastKnownBundleId" in event
     ? event.lastKnownBundleId
@@ -46,25 +45,25 @@ export function InstallationHistoryCard({
   error,
   history,
   isLoading,
-  limit,
-  offset,
-  onOffsetChange,
+  onNext,
+  onPrevious,
   onRefresh,
+  pageNumber,
   selectedEvent,
   selectedInstallId,
 }: {
   readonly error: unknown;
-  readonly history: InstallationHistoryResult | undefined;
+  readonly history: InsightsViewPage<InsightsEventRow> | undefined;
   readonly isLoading: boolean;
-  readonly limit: number;
-  readonly offset: number;
   readonly onRefresh?: () => void;
-  readonly onOffsetChange: (offset: number) => void;
+  readonly onNext: () => void;
+  readonly onPrevious: () => void;
+  readonly pageNumber: number;
   readonly selectedEvent:
-    | InstallationHistoryRow
-    | InstallationSearchRow
+    | InsightsEventRow
+    | InsightsInstallationViewRow
     | undefined;
-  readonly selectedInstallId: string;
+  readonly selectedInstallId: string | undefined;
 }) {
   const dateTimeFormat = useInsightsTimeFormat();
   const lastKnownBundleId = selectedEvent
@@ -77,19 +76,14 @@ export function InstallationHistoryCard({
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex min-w-0 flex-col gap-1.5">
             <CardTitle className="text-sm font-medium">
-              <h2 className="flex flex-wrap items-center gap-2">
-                {selectedInstallId
+              <h2>
+                {selectedInstallId !== undefined
                   ? "Installation history"
                   : "Select an installation"}
-                {history && !error ? (
-                  <Badge variant="secondary" className="tabular-nums">
-                    {history.pagination.total.toLocaleString()}
-                  </Badge>
-                ) : null}
               </h2>
             </CardTitle>
           </div>
-          {onRefresh && selectedInstallId ? (
+          {onRefresh && selectedInstallId !== undefined ? (
             <Button
               className="h-11 lg:h-8"
               size="lg"
@@ -104,7 +98,7 @@ export function InstallationHistoryCard({
         </div>
       </CardHeader>
       <CardContent className="min-h-0 p-0">
-        {selectedInstallId && selectedEvent ? (
+        {selectedInstallId !== undefined && selectedEvent ? (
           <>
             <section
               aria-labelledby="latest-installation-state"
@@ -149,7 +143,7 @@ export function InstallationHistoryCard({
             <Separator />
           </>
         ) : null}
-        {selectedInstallId ? (
+        {selectedInstallId !== undefined ? (
           isLoading ? (
             <div
               className="flex flex-col gap-3 p-6"
@@ -179,9 +173,7 @@ export function InstallationHistoryCard({
                 <Table className="min-w-3xl table-fixed">
                   <TableHeader>
                     <TableRow className="[&>th]:px-4 sm:[&>th]:px-6">
-                      <TableHead className="w-52">
-                        Time ({dateTimeFormat.resolvedOptions().timeZone})
-                      </TableHead>
+                      <TableHead className="w-64">Time</TableHead>
                       <TableHead className="w-48">Event</TableHead>
                       <TableHead className="w-32">App</TableHead>
                       <TableHead className="w-52">Bundle</TableHead>
@@ -221,19 +213,35 @@ export function InstallationHistoryCard({
                   </TableBody>
                 </Table>
               </div>
-              <InstallationPagination
+              <InsightsPagination
+                hasPrevious={pageNumber > 1}
                 label="Installation history"
-                limit={limit}
-                offset={offset}
+                nextCursor={history.nextCursor}
+                onNext={onNext}
+                onPrevious={onPrevious}
                 pageLength={history.data.length}
-                total={history.pagination.total}
-                onOffsetChange={onOffsetChange}
+                pageNumber={pageNumber}
               />
             </>
           ) : (
-            <div className="p-6 text-sm text-muted-foreground">
-              No bundle changes recorded yet.
-            </div>
+            <>
+              <div className="p-6 text-sm text-muted-foreground">
+                {pageNumber > 1 || history?.nextCursor
+                  ? "No bundle changes on this page."
+                  : "No bundle changes recorded yet."}
+              </div>
+              {history && (pageNumber > 1 || history.nextCursor) ? (
+                <InsightsPagination
+                  hasPrevious={pageNumber > 1}
+                  label="Installation history"
+                  nextCursor={history.nextCursor}
+                  onNext={onNext}
+                  onPrevious={onPrevious}
+                  pageLength={0}
+                  pageNumber={pageNumber}
+                />
+              ) : null}
+            </>
           )
         ) : null}
       </CardContent>

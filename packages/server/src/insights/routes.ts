@@ -2,14 +2,12 @@ import type { RouteHandler } from "../handlerTypes";
 import {
   InsightsBadRequestError,
   InsightsPayloadTooLargeError,
-  InsightsScanLimitExceededError,
 } from "./errors";
 import { parseBundleEventRequest } from "./eventInput";
 import {
-  parseActiveInstallationInput,
-  parseInsightsQuery,
-  parsePagination,
-  parseSearchInput,
+  parseReportingOverviewInput,
+  parseEventPageInput,
+  parseUserInstallationPageInput,
 } from "./queryInput";
 import type { InsightsProvider } from "./types";
 
@@ -27,7 +25,11 @@ const requireParam = (
   if (value === undefined || value.length === 0) {
     throw new InsightsBadRequestError(`Missing route parameter: ${key}`);
   }
-  return value;
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    throw new InsightsBadRequestError(`Invalid route parameter: ${key}`);
+  }
 };
 
 const run = async (operation: () => Promise<Response>): Promise<Response> => {
@@ -39,17 +41,6 @@ const run = async (operation: () => Promise<Response>): Promise<Response> => {
     }
     if (error instanceof InsightsPayloadTooLargeError) {
       return json({ error: error.message }, 413);
-    }
-    if (error instanceof InsightsScanLimitExceededError) {
-      return json(
-        {
-          error: {
-            code: "INSIGHTS_SCAN_LIMIT_EXCEEDED",
-            limit: error.limit,
-          },
-        },
-        503,
-      );
     }
     throw error;
   }
@@ -66,43 +57,34 @@ export const createInsightsRouteHandlers = (
       await provider.appendBundleEvent(await parseBundleEventRequest(request));
       return new Response(null, { status: 204 });
     }),
-  getBundleEventSummary: (params) =>
-    query(() => provider.getBundleEventSummary(requireParam(params, "id"))),
-  getBundleEventInsights: (params, request) =>
-    query(() => {
-      const input = parseInsightsQuery(request);
-      return provider.getBundleEventInsights(
-        requireParam(params, "id"),
-        input.window,
-        input.limit,
-        input.offset,
-      );
-    }),
-  getBundleEventOverview: () => query(() => provider.getBundleEventOverview()),
-  getActiveInstallationOverview: (_params, request) =>
+  getReportingOverview: (_params, request) =>
     query(() =>
-      provider.getActiveInstallationOverview(
-        parseActiveInstallationInput(request),
+      provider.getReportingOverview(parseReportingOverviewInput(request)),
+    ),
+  getInstallation: (params) =>
+    run(async () => {
+      const installation = await provider.getInstallation({
+        installId: requireParam(params, "installId"),
+      });
+      return installation === null
+        ? json({ error: "Installation not found" }, 404)
+        : json(installation, 200);
+    }),
+  listEvents: (_params, request) =>
+    query(() => provider.listEvents(parseEventPageInput(request))),
+  listInstallationEvents: (params, request) =>
+    query(() =>
+      provider.listInstallationEvents({
+        ...parseEventPageInput(request),
+        installId: requireParam(params, "installId"),
+      }),
+    ),
+  pageInstallationsByCurrentUserId: (_params, request) =>
+    query(() =>
+      provider.pageInstallationsByCurrentUserId(
+        parseUserInstallationPageInput(request),
       ),
     ),
-  searchInstallations: (_params, request) =>
-    query(() => {
-      const input = parseSearchInput(request);
-      return provider.searchInstallations(
-        input.query,
-        input.limit,
-        input.offset,
-      );
-    }),
-  getInstallationHistory: (params, request) =>
-    query(() => {
-      const input = parsePagination(request);
-      return provider.getInstallationHistory(
-        requireParam(params, "installId"),
-        input.limit,
-        input.offset,
-      );
-    }),
 });
 
 export const registerInsightsClientRoutes = (
@@ -114,10 +96,9 @@ export const registerInsightsClientRoutes = (
 export const registerInsightsAdminRoutes = (
   add: (method: string, path: string, handler: string) => void,
 ): void => {
-  add("GET", "/bundles/:id/events/summary", "getBundleEventSummary");
-  add("GET", "/bundles/:id/events/insights", "getBundleEventInsights");
-  add("GET", "/installations/overview", "getBundleEventOverview");
-  add("GET", "/installations/active", "getActiveInstallationOverview");
-  add("GET", "/installations", "searchInstallations");
-  add("GET", "/installations/:installId/events", "getInstallationHistory");
+  add("GET", "/events", "listEvents");
+  add("GET", "/overview", "getReportingOverview");
+  add("GET", "/installations", "pageInstallationsByCurrentUserId");
+  add("GET", "/installations/:installId/events", "listInstallationEvents");
+  add("GET", "/installations/:installId", "getInstallation");
 };

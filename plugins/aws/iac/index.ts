@@ -62,7 +62,7 @@ export const prepareDynamoDBDeployment = async (input: {
   readonly tableName: string;
 }): Promise<void> => {
   const dynamodbManager = new DynamoDBManager(input.region, input.credentials);
-  return dynamodbManager.ensureTable(input.tableName);
+  await dynamodbManager.ensureTable(input.tableName);
 };
 
 export const prepareDynamoDBApiKey = async (input: {

@@ -17,7 +17,7 @@ For AWS installations created by `npx hot-updater init`, DynamoDB is selected
 by default and this table is created or validated automatically.
 
 For custom installations, create one on-demand table manually with the
-overloaded index used for update checks and patch relations:
+overloaded index used for patch relations and installation movement history:
 
 ```bash
 aws dynamodb create-table \
@@ -170,10 +170,9 @@ const hotUpdater = createHotUpdater({
 
 The Lambda or server role needs `Query` access to the update index,
 `BatchGetItem`/`GetItem` access to Bundle, patch, and API key partitions,
-and `PutItem`/`Query` access to the Insights event partition. CLI and Console
-writers need the transaction and write permissions required to manage Bundle
-metadata and API keys. The AWS adapter does not impose an Insights
-retention period.
+and `GetItem`/`Query`/`TransactWriteItems` access to Insights partitions. CLI
+and Console writers need the transaction and write permissions required to
+manage Bundle metadata and API keys.
 
 The provider does not impose a total bundle, patch, or patch-relationship count
 limit. Each serialized metadata item is limited to 8 KiB, and counters and

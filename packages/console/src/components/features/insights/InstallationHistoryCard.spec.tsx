@@ -1,132 +1,63 @@
-import {
-  cleanup,
-  fireEvent,
-  render,
-  screen,
-  within,
-} from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import type { InsightsEventRow } from "@/lib/insights-view";
+
 import { InstallationHistoryCard } from "./InstallationHistoryCard";
+
+const event: InsightsEventRow = {
+  appVersion: "1.2.3",
+  channel: "production",
+  cohort: "1",
+  fromBundleId: "bundle-old",
+  id: "event-1",
+  installId: "install-1",
+  platform: "ios",
+  receivedAtMs: Date.UTC(2026, 6, 18),
+  toBundleId: "bundle-new",
+  type: "UPDATE_APPLIED",
+  userId: "user-1",
+  username: null,
+};
 
 describe("InstallationHistoryCard", () => {
   afterEach(cleanup);
 
-  it("shows the app version reported with each history event", () => {
-    // Given
-    const history = {
-      data: [
-        {
-          id: "event-a",
-          type: "UPDATE_APPLIED" as const,
-          fromBundleId: "bundle-a",
-          toBundleId: "bundle-b",
-          username: null,
-          userId: "user-a",
-          platform: "ios" as const,
-          appVersion: "2.4.1",
-          channel: "production",
-          cohort: "cohort-a",
-          receivedAtMs: Date.UTC(2026, 6, 18),
-        },
-      ],
-      pagination: { total: 1, limit: 25, offset: 0 },
-    };
-
-    // When
+  it("shows latest identity and paged movement history", () => {
+    const onNext = vi.fn();
     render(
       <InstallationHistoryCard
         error={null}
-        history={history}
+        history={{ data: [event], nextCursor: "next" }}
         isLoading={false}
-        limit={25}
-        offset={0}
-        onOffsetChange={vi.fn()}
-        selectedEvent={history.data[0]}
-        selectedInstallId="install-a"
+        onNext={onNext}
+        onPrevious={vi.fn()}
+        pageNumber={1}
+        selectedEvent={event}
+        selectedInstallId="install-1"
       />,
     );
 
-    // Then
-    const table = screen.getByRole("table");
-    expect(
-      within(table).getByRole("columnheader", { name: "App" }),
-    ).toBeDefined();
-    expect(within(table).getByText("iOS 2.4.1")).toBeDefined();
+    expect(screen.getByText("user-1")).toBeDefined();
+    expect(screen.getAllByText("Bundle applied").length).toBeGreaterThan(0);
+    fireEvent.click(screen.getByRole("button", { name: "Next" }));
+    expect(onNext).toHaveBeenCalledOnce();
   });
-  it("keeps the latest reported identity visible when no bundle changes exist", () => {
-    const refresh = vi.fn();
+
+  it("explains an installation with no bundle movement", () => {
     render(
       <InstallationHistoryCard
         error={null}
-        history={{ data: [], pagination: { total: 0, limit: 50, offset: 0 } }}
+        history={{ data: [], nextCursor: null }}
         isLoading={false}
-        limit={50}
-        offset={0}
-        onOffsetChange={vi.fn()}
-        onRefresh={refresh}
-        selectedInstallId="install-activity-only"
-        selectedEvent={{
-          installId: "install-activity-only",
-          userId: "user-a",
-          username: null,
-          lastKnownBundleId: "bundle-a",
-          latestStatus: "UNCHANGED",
-          platform: "ios",
-          appVersion: "1.0.0",
-          channel: "production",
-          cohort: "default",
-          receivedAtMs: Date.UTC(2026, 6, 18),
-        }}
+        onNext={vi.fn()}
+        onPrevious={vi.fn()}
+        pageNumber={1}
+        selectedEvent={undefined}
+        selectedInstallId="install-1"
       />,
     );
-    expect(
-      screen.getByRole("heading", { name: "Latest reported state" }),
-    ).toBeDefined();
-    expect(screen.getByText("user-a")).toBeDefined();
-    expect(
-      screen.getByRole("button", { name: "Copy full value: bundle-a" }),
-    ).toBeDefined();
-    expect(screen.getByText(/No bundle changes recorded yet/)).toBeDefined();
-    fireEvent.click(screen.getByRole("button", { name: "Refresh" }));
-    expect(refresh).toHaveBeenCalledOnce();
-  });
 
-  it("keeps refresh disabled while loading and offers a retry after a failure", () => {
-    const refresh = vi.fn();
-    const props = {
-      error: null,
-      history: undefined,
-      isLoading: true,
-      limit: 50,
-      offset: 0,
-      onOffsetChange: vi.fn(),
-      onRefresh: refresh,
-      selectedInstallId: "install-a",
-      selectedEvent: undefined,
-    };
-    const { rerender } = render(<InstallationHistoryCard {...props} />);
-
-    expect(
-      screen.getByRole("status", { name: "Loading installation history" }),
-    ).toBeDefined();
-    expect(
-      screen.getByRole<HTMLButtonElement>("button", { name: "Refresh" })
-        .disabled,
-    ).toBe(true);
-
-    rerender(
-      <InstallationHistoryCard
-        {...props}
-        error={new Error("Connection lost")}
-        isLoading={false}
-      />,
-    );
-    expect(screen.queryByRole("status")).toBeNull();
-    expect(screen.getByRole("alert").textContent).toContain(
-      "Refresh to try again",
-    );
-    fireEvent.click(screen.getByRole("button", { name: "Refresh" }));
-    expect(refresh).toHaveBeenCalledOnce();
+    expect(screen.getByText("No bundle changes recorded yet.")).toBeDefined();
   });
 });

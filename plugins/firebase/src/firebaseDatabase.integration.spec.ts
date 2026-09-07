@@ -1,13 +1,18 @@
 import {
   createDatabaseClient,
+  compareInsightsText,
+  toInsightsInstallationRow,
+  type BundleEventRow,
   type DatabasePlugin,
 } from "@hot-updater/plugin-core";
 import {
   setupDatabaseClientTestSuite,
   setupDatabasePluginTestSuite,
 } from "@hot-updater/test-utils";
+import { Query, Transaction } from "firebase-admin/firestore";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import { createBundleEventRowFixture } from "../../../packages/test-utils/src/databaseTestFixtures";
 import { createFirestoreMock } from "../test-utils/createFirestoreMock";
 import { firebaseDatabase } from "./firebaseDatabase";
 import { firebaseChannelDocumentId } from "./firebaseDatabasePersistence";
@@ -15,6 +20,7 @@ import { firebaseChannelDocumentId } from "./firebaseDatabasePersistence";
 const PROJECT_ID = "firebase-database-test";
 
 const {
+  bundleEventsCollection,
   bundlePatchesCollection,
   bundlesCollection,
   channelsCollection,
@@ -184,8 +190,190 @@ describe("firebase bounded reads", () => {
   });
 });
 
-describe("firebase channel storage", () => {
+describe("firebase insights storage", () => {
   beforeEach(clearCollections);
+
+  it("uses the event-list index ordering for event counts", async () => {
+    const orderBy = vi.spyOn(Query.prototype, "orderBy");
+    try {
+      await createPlugin().models.insights.countEvents({
+        filter: {
+          type: "UPDATE_APPLIED",
+          platform: "ios",
+          channel: "production",
+          toBundleId: "00000000-0000-0000-0000-000000000001",
+        },
+        sinceMs: 0,
+        beforeReceivedAtMs: 1,
+      });
+      expect(orderBy.mock.calls).toEqual(
+        expect.arrayContaining([
+          ["received_at_ms", "desc"],
+          ["id", "desc"],
+        ]),
+      );
+    } finally {
+      orderBy.mockRestore();
+    }
+  });
+
+  it("keeps arbitrary exact installation IDs separate and pages in UTF-8 order", async () => {
+    const insights = createPlugin().models.insights;
+    const ids = [
+      "a/b",
+      ".",
+      "..",
+      "__reserved__",
+      "A",
+      "a",
+      "install_YQ",
+      "\uE000",
+      "😀",
+    ];
+    for (const [index, install_id] of ids.entries()) {
+      const event = {
+        ...createBundleEventRowFixture(String(980 + index), 100),
+        install_id,
+        user_id: "unicode-user",
+      };
+      await insights.record({
+        event,
+        installation: toInsightsInstallationRow(event),
+      });
+      await expect(
+        insights.findInstallations({ installId: install_id }),
+      ).resolves.toEqual([toInsightsInstallationRow(event)]);
+    }
+    const actual: string[] = [];
+    for (;;) {
+      const page = await insights.findInstallations({
+        userId: "unicode-user",
+        afterInstallId: actual.at(-1),
+        limit: 2,
+      });
+      actual.push(...page.map((row) => row.install_id));
+      if (page.length < 2) break;
+    }
+    expect(actual).toEqual(ids.toSorted(compareInsightsText));
+  });
+
+  it("rolls back an event when its installation write fails and retries safely", async () => {
+    const insights = createPlugin().models.insights;
+    const event = createBundleEventRowFixture("941", 100);
+    const input = { event, installation: toInsightsInstallationRow(event) };
+    const write = vi
+      .spyOn(Transaction.prototype, "set")
+      .mockImplementationOnce(() => {
+        throw new Error("injected installation write failure");
+      });
+    try {
+      await expect(insights.record(input)).rejects.toThrow(
+        "injected installation write failure",
+      );
+    } finally {
+      write.mockRestore();
+    }
+    expect((await bundleEventsCollection.doc(event.id).get()).exists).toBe(
+      false,
+    );
+    await expect(
+      insights.findInstallations({ installId: event.install_id }),
+    ).resolves.toEqual([]);
+    await insights.record(input);
+    await insights.record(input);
+    expect((await bundleEventsCollection.get()).size).toBe(1);
+    await expect(
+      insights.findInstallations({ installId: event.install_id }),
+    ).resolves.toEqual([input.installation]);
+  });
+
+  it("serializes concurrent reports, clears current user, and never loads other models", async () => {
+    const insights = createPlugin().models.insights;
+    await insights.findInstallations({ installId: "initialize-schema" });
+    await bundlesCollection.doc("unrelated-malformed").set({ invalid: true });
+    const events = ["950", "953", "951", "952"].map((suffix) => ({
+      ...createBundleEventRowFixture(suffix, 200),
+      install_id: "concurrent-installation",
+      user_id: suffix === "953" ? null : "previous-user",
+    }));
+    await Promise.all(
+      events.map((event) =>
+        insights.record({
+          event,
+          installation: toInsightsInstallationRow(event),
+        }),
+      ),
+    );
+    const winner = events[1]!;
+    await expect(
+      insights.findInstallations({ installId: winner.install_id }),
+    ).resolves.toEqual([toInsightsInstallationRow(winner)]);
+    await expect(
+      insights.findInstallations({ userId: "previous-user", limit: 10 }),
+    ).resolves.toEqual([]);
+    expect((await bundleEventsCollection.get()).size).toBe(4);
+    await expect(
+      insights.countInstallations({
+        platform: "ios",
+        channel: "production",
+        sinceMs: 100,
+      }),
+    ).resolves.toBe(1);
+  });
+
+  it("uses bounded event pages and filters installation movement", async () => {
+    const insights = createPlugin().models.insights;
+    const applied = {
+      ...createBundleEventRowFixture("911", 200),
+      install_id: "installation-page",
+    };
+    const recovered = {
+      ...createBundleEventRowFixture("912", 200),
+      type: "RECOVERED" as const,
+      install_id: applied.install_id,
+    } as BundleEventRow;
+    const unchanged = {
+      ...createBundleEventRowFixture("913", 300),
+      type: "UNCHANGED" as const,
+      install_id: applied.install_id,
+      from_bundle_id: null,
+      update_strategy: null,
+    };
+    await insights.record({
+      event: applied,
+      installation: toInsightsInstallationRow(applied),
+    });
+    await insights.record({
+      event: recovered,
+      installation: toInsightsInstallationRow(recovered),
+    });
+    await insights.record({
+      event: unchanged,
+      installation: toInsightsInstallationRow(unchanged),
+    });
+    await bundleEventsCollection.doc("malformed-old-event").set({
+      id: "malformed-old-event",
+      received_at_ms: 1,
+    });
+
+    await expect(
+      insights.listEvents({
+        filter: { kind: "all" },
+        beforeReceivedAtMs: 1_000,
+        limit: 1,
+      }),
+    ).resolves.toEqual([unchanged]);
+    await expect(
+      insights.listEvents({
+        filter: {
+          kind: "installationMovement",
+          installId: applied.install_id,
+        },
+        beforeReceivedAtMs: 1_000,
+        limit: 10,
+      }),
+    ).resolves.toEqual([recovered, applied]);
+  });
 
   it("returns the canonical stored row under concurrent name conflicts", async () => {
     const first = createPlugin();

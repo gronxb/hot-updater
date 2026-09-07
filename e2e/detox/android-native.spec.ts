@@ -126,7 +126,7 @@ describe("Detox Android native setup", () => {
 
     // When: Detox builds the release app used by provider verification.
     const requiredBuildMarkers = [
-      "assembleRelease assembleAndroidTest",
+      ":app:assembleRelease :app:assembleReleaseAndroidTest",
       "-DtestBuildType=release",
       "-PHOT_UPDATER_E2E_DEBUGGABLE=true",
     ];
@@ -143,7 +143,7 @@ describe("Detox Android native setup", () => {
 
     // When: Detox builds the Android app and test APK.
     const requiredAbiMarkers = [
-      "assembleRelease assembleAndroidTest",
+      ":app:assembleRelease :app:assembleReleaseAndroidTest",
       'process.env.HOT_UPDATER_E2E_ANDROID_ARCHITECTURES || "arm64-v8a,x86_64"',
       "-PreactNativeArchitectures=${androidArchitectures}",
     ];

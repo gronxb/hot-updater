@@ -42,6 +42,7 @@ describe("database plugin operation matrix", () => {
       | "release_catalogs"
       | "channels"
       | "bundle_events"
+      | "bundle_installations"
       | "api_keys"
     >();
     expectTypeOf<CreateDatabaseModel>().toEqualTypeOf<DatabaseModel>();
@@ -60,13 +61,18 @@ describe("database plugin operation matrix", () => {
       | "releases"
       | "release_catalogs"
       | "channels"
+      | "bundle_installations"
       | "api_keys"
     >();
   });
 
   it("allows count across all readable models while preserving bundle aliases", () => {
     expectTypeOf<CountDatabaseModel>().toEqualTypeOf<
-      "bundles" | "bundle_patches" | "releases"
+      | "bundles"
+      | "bundle_patches"
+      | "releases"
+      | "bundle_events"
+      | "bundle_installations"
     >();
     expectTypeOf<
       UpdateBundleDatabaseInput["model"]

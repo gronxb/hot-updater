@@ -22,13 +22,6 @@ vi.mock("@tanstack/react-router", () => ({
 vi.mock("@/components/AppSidebar", () => ({
   AppSidebar: () => null,
 }));
-vi.mock("@/components/features/insights/InsightsCapabilityContext", () => ({
-  InsightsCapabilityProvider: ({
-    children,
-  }: {
-    readonly children: React.ReactNode;
-  }) => children,
-}));
 vi.mock("@/components/ui/sidebar", () => ({
   SidebarInset: ({
     children,
@@ -39,10 +32,6 @@ vi.mock("@/components/ui/sidebar", () => ({
   }) => <main className={className}>{children}</main>,
   SidebarProvider: ({ children }: { readonly children: React.ReactNode }) =>
     children,
-}));
-vi.mock("@/lib/insights-api", () => ({
-  getInsightsCapabilityState: () => ({ status: "unsupported" }),
-  useInsightsCapabilitiesQuery: () => ({ status: "success" }),
 }));
 vi.mock("@/lib/auth-rpc", () => ({
   getConsoleAccessRpc: vi.fn(),

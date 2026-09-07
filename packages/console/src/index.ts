@@ -1,4 +1,4 @@
-import type { ConfigInput } from "@hot-updater/plugin-core";
+import type { ConfigInput, DatabasePlugin } from "@hot-updater/plugin-core";
 
 export type ConsoleAuthProvider = "google" | "github";
 
@@ -25,7 +25,12 @@ export type ConsoleSigningConfig = Readonly<{
 }>;
 
 export type HotUpdaterConsoleConfig = Readonly<
-  Pick<ConfigInput, "console" | "database" | "signing" | "storage">
+  Omit<
+    Pick<ConfigInput, "console" | "database" | "signing" | "storage">,
+    "database"
+  > & {
+    database: DatabasePlugin;
+  }
 >;
 
 export type ResolvedHotUpdaterConsoleConfig = Readonly<

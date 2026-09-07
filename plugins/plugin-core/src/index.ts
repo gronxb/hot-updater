@@ -17,6 +17,11 @@ export { isDatabaseMetadataObject } from "./databaseJsonValue";
 export * from "./databaseRows";
 export * from "./filterCompatibleAppVersions";
 export * from "./generateMinBundleId";
+export {
+  compareInsightsText,
+  isInsightsMovementEvent,
+  toInsightsInstallationRow,
+} from "./insightsContract";
 export * from "./parseStorageUri";
 export * from "./paginateBundles";
 export * from "./queryBundles";

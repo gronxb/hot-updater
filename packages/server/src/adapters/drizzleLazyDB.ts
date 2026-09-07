@@ -3,6 +3,7 @@ import type {
   BundlePatchRow,
   ChannelRow,
   ApiKeyRow,
+  InsightsInstallationRow,
   ReleaseCatalogRow,
 } from "@hot-updater/plugin-core";
 
@@ -13,10 +14,14 @@ export type DrizzleTable = Record<string, unknown>;
 
 type DrizzleMutation = {
   readonly execute: () => Promise<unknown>;
+  readonly all?: () => unknown[];
+  readonly run?: () => unknown;
 };
 
 export type DrizzleInsertMutation = DrizzleMutation & {
-  readonly onConflictDoNothing?: () => DrizzleMutation;
+  readonly onDuplicateKeyUpdate?: (config: { set: object }) => DrizzleMutation;
+  readonly onConflictDoNothing?: () => DrizzleInsertMutation;
+  readonly returning?: (fields: Record<string, unknown>) => DrizzleMutation;
 };
 
 type DrizzleInsertBuilder = {
@@ -30,6 +35,7 @@ type DrizzleQuery<TRow> = {
 };
 
 export type DrizzleDB = {
+  readonly resultKind?: "sync" | "async";
   readonly _: { readonly fullSchema: Record<string, DrizzleTable> };
   readonly $count: (table: DrizzleTable, where?: unknown) => Promise<number>;
   readonly delete: (table: DrizzleTable) => {
@@ -41,6 +47,7 @@ export type DrizzleDB = {
     readonly channels: DrizzleQuery<ChannelRow>;
     readonly bundle_patches: DrizzleQuery<BundlePatchRow>;
     readonly bundle_events: DrizzleQuery<BundleEventRow>;
+    readonly bundle_installations: DrizzleQuery<InsightsInstallationRow>;
     readonly api_keys: DrizzleQuery<ApiKeyRow>;
     readonly releases: DrizzleQuery<StoredReleaseRow>;
     readonly release_catalogs: DrizzleQuery<ReleaseCatalogRow>;
@@ -51,7 +58,7 @@ export type DrizzleDB = {
     };
   };
   readonly transaction?: <TResult>(
-    operation: (transaction: DrizzleDB) => Promise<TResult>,
+    operation: (transaction: DrizzleDB) => TResult | Promise<TResult>,
   ) => Promise<TResult>;
 };
 
@@ -82,6 +89,7 @@ const isDrizzleDB = (value: unknown): value is DrizzleDB => {
   if (
     !isRecord(query) ||
     !isDrizzleQuery(query["bundle_events"]) ||
+    !isDrizzleQuery(query["bundle_installations"]) ||
     !isDrizzleQuery(query["bundle_patches"]) ||
     !isDrizzleQuery(query["bundles"]) ||
     !isDrizzleQuery(query["channels"]) ||
@@ -193,6 +201,12 @@ export const createLazyDB = (config: DrizzleConfig): DrizzleDB => {
         findMany: async (args) =>
           (await getDB()).query.bundle_events.findMany(args),
       },
+      bundle_installations: {
+        findFirst: async (args) =>
+          (await getDB()).query.bundle_installations.findFirst(args),
+        findMany: async (args) =>
+          (await getDB()).query.bundle_installations.findMany(args),
+      },
       bundle_patches: {
         findFirst: async (args) =>
           (await getDB()).query.bundle_patches.findFirst(args),
@@ -241,7 +255,7 @@ export const createLazyDB = (config: DrizzleConfig): DrizzleDB => {
     ...(config.transaction === true
       ? {
           transaction: async <TResult>(
-            operation: (transaction: DrizzleDB) => Promise<TResult>,
+            operation: (transaction: DrizzleDB) => TResult | Promise<TResult>,
           ): Promise<TResult> => {
             const db = await getDB();
             if (db.transaction === undefined) {

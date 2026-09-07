@@ -1,5 +1,6 @@
 import {
   assertStorageOperations,
+  type InsightsModel,
   type StoragePlugin,
 } from "@hot-updater/plugin-core";
 
@@ -18,7 +19,7 @@ import {
   isDatabasePlugin,
 } from "./db/types";
 import { createHotUpdaterHandlers, type HotUpdaterHandlers } from "./handler";
-import { createInsightsProvider } from "./insights/bounded/provider";
+import { createInsightsProvider } from "./insights/provider";
 import type { InsightsProvider } from "./insights/types";
 import { createStorageAccess } from "./storageAccess";
 
@@ -168,16 +169,29 @@ export function createHotUpdaterCore(
     readStorageText,
   });
   const clientAccess = normalizeClientAccess(options.clientAccess);
-  const insights = createInsightsProvider({
-    async append(row) {
+  const insightsModel: InsightsModel = {
+    async record(input) {
       await assertSchemaReady();
-      return plugin.models.insights.append(row);
+      return plugin.models.insights.record(input);
     },
-    async scan(input) {
+    async listEvents(input) {
       await assertSchemaReady();
-      return plugin.models.insights.scan(input);
+      return plugin.models.insights.listEvents(input);
     },
-  });
+    async findInstallations(input) {
+      await assertSchemaReady();
+      return plugin.models.insights.findInstallations(input);
+    },
+    async countInstallations(input) {
+      await assertSchemaReady();
+      return plugin.models.insights.countInstallations(input);
+    },
+    async countEvents(input) {
+      await assertSchemaReady();
+      return plugin.models.insights.countEvents(input);
+    },
+  };
+  const insights = createInsightsProvider(insightsModel);
   const apiKeys = createApiKeyManagement({
     apiKeys: plugin.models.apiKeys,
     beforeOperation: assertSchemaReady,

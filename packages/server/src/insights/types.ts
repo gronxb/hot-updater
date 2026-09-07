@@ -1,49 +1,55 @@
 import type {
-  ActiveInstallationInput,
-  ActiveInstallationOverview,
-  BundleEventInsightsResult,
-  BundleEventInsightsWindow,
-  BundleEventOverview,
-  BundleEventSummary,
-  BundleEventSummaryByBundle,
+  ReportingOverview,
+  InsightsBundleSelection,
+  InsightsScope,
+  ActiveInstallationWindow,
   CreateBundleEventRequest,
+  CursorPage,
+  EventCursorPage,
   EventHistoryRow,
   InstallationHistoryRow,
-  InstallationSearchRow,
-  OffsetPaginationResult,
+  InstallationRow,
 } from "./domain";
 
+export type InsightsEventPageInput = {
+  readonly beforeReceivedAtMs?: number;
+  readonly sinceMs?: number;
+  readonly bundle?: InsightsBundleSelection;
+  readonly cursor?: string;
+  readonly limit?: number;
+};
+
+export type InsightsInstallationEventPageInput = Omit<
+  InsightsEventPageInput,
+  "bundle"
+> & {
+  readonly installId: string;
+};
+
+export type InsightsUserInstallationPageInput = {
+  readonly userId: string;
+  readonly cursor?: string;
+  readonly limit?: number;
+};
+
 export type InsightsProvider = {
-  readonly mode: "bounded";
-  readonly maxMatchingRows: number;
   appendBundleEvent(input: CreateBundleEventRequest): Promise<void>;
-  getBundleEventSummary(bundleId: string): Promise<BundleEventSummary>;
-  getBundleEventSummaries(
-    bundleIds: readonly string[],
-    window: BundleEventInsightsWindow,
-  ): Promise<readonly BundleEventSummaryByBundle[]>;
-  getBundleEventInsights(
-    bundleId: string,
-    window: BundleEventInsightsWindow,
-    limit: number,
-    offset: number,
-  ): Promise<BundleEventInsightsResult>;
-  getBundleEventOverview(): Promise<BundleEventOverview>;
-  getActiveInstallationOverview(
-    input: ActiveInstallationInput,
-  ): Promise<ActiveInstallationOverview>;
-  searchInstallations(
-    query: string,
-    limit: number,
-    offset: number,
-  ): Promise<OffsetPaginationResult<InstallationSearchRow>>;
-  getInstallationHistory(
-    installId: string,
-    limit: number,
-    offset: number,
-  ): Promise<OffsetPaginationResult<InstallationHistoryRow>>;
-  getEventHistory(
-    limit: number,
-    offset: number,
-  ): Promise<OffsetPaginationResult<EventHistoryRow>>;
+  listEvents(
+    input: InsightsEventPageInput,
+  ): Promise<EventCursorPage<EventHistoryRow>>;
+  listInstallationEvents(
+    input: InsightsInstallationEventPageInput,
+  ): Promise<EventCursorPage<InstallationHistoryRow>>;
+  getInstallation(input: {
+    readonly installId: string;
+  }): Promise<InstallationRow | null>;
+  pageInstallationsByCurrentUserId(
+    input: InsightsUserInstallationPageInput,
+  ): Promise<CursorPage<InstallationRow>>;
+  getReportingOverview(
+    input: InsightsScope & {
+      readonly window: ActiveInstallationWindow;
+      readonly bundleId?: string;
+    },
+  ): Promise<ReportingOverview>;
 };

@@ -1,5 +1,5 @@
 import { HotUpdater, useHotUpdaterStore } from "@hot-updater/react-native";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Alert } from "react-native";
 import BootSplash from "react-native-bootsplash";
 import { useSnapshot } from "valtio";
@@ -118,9 +118,9 @@ export const useE2eRuntimeModel = (scenarioMarker: string): E2eRuntimeModel => {
     };
   }, []);
 
-  const refresh = async () => {
+  const refresh = useCallback(async () => {
     setRuntimeSnapshot(await refreshRuntimeSnapshot());
-  };
+  }, []);
   const { applyCapturedUpdate, captureCurrentChannelUpdate } =
     useCapturedUpdateActions({ refresh, setUpdateActionResult });
 

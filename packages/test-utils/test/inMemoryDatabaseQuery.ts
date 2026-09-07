@@ -1,3 +1,4 @@
+import { compareInsightsText } from "@hot-updater/plugin-core";
 import type {
   DatabaseDistinctOn,
   DatabaseModel,
@@ -6,7 +7,11 @@ import type {
   DatabaseWhere,
 } from "@hot-updater/plugin-core/internal";
 
-const compareOrdered = (left: unknown, right: unknown): number => {
+const compareOrdered = (
+  left: unknown,
+  right: unknown,
+  byteOrder = false,
+): number => {
   if (typeof left === "number" && typeof right === "number") {
     return left - right;
   }
@@ -17,7 +22,9 @@ const compareOrdered = (left: unknown, right: unknown): number => {
     return 1;
   }
   if (typeof left === "string" && typeof right === "string") {
-    return left.localeCompare(right);
+    return byteOrder
+      ? compareInsightsText(left, right)
+      : left.localeCompare(right);
   }
   return 0;
 };
@@ -55,16 +62,24 @@ const matchesWhere = <TModel extends DatabaseModel>(
     }
     case "gt":
       if (current === null || current === undefined) return false;
-      return compareOrdered(current, where.value) > 0;
+      return (
+        compareOrdered(current, where.value, where.field === "install_id") > 0
+      );
     case "gte":
       if (current === null || current === undefined) return false;
-      return compareOrdered(current, where.value) >= 0;
+      return (
+        compareOrdered(current, where.value, where.field === "install_id") >= 0
+      );
     case "lt":
       if (current === null || current === undefined) return false;
-      return compareOrdered(current, where.value) < 0;
+      return (
+        compareOrdered(current, where.value, where.field === "install_id") < 0
+      );
     case "lte":
       if (current === null || current === undefined) return false;
-      return compareOrdered(current, where.value) <= 0;
+      return (
+        compareOrdered(current, where.value, where.field === "install_id") <= 0
+      );
     case "in":
       return where.value.some((value) => Object.is(current, value));
     case "not_in":
@@ -130,7 +145,11 @@ const compareRows = <TModel extends DatabaseModel>(
       const order = leftValue == null ? -1 : 1;
       return nulls === "first" ? order : -order;
     }
-    const order = compareOrdered(leftValue, rightValue);
+    const order = compareOrdered(
+      leftValue,
+      rightValue,
+      clause.field === "install_id",
+    );
     if (order !== 0) {
       return clause.direction === "asc" ? order : -order;
     }

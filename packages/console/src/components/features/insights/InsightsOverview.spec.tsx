@@ -1,234 +1,110 @@
-import type { ActiveInstallationOverview } from "@hot-updater/server";
-import { cleanup, render, screen, within } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  within,
+} from "@testing-library/react";
+import type { ReactNode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-
-import type { InsightsOverview as CatalogOverview } from "@/lib/insights-overview";
 
 import { InsightsOverview } from "./InsightsOverview";
 
 vi.mock("@tanstack/react-router", () => ({
-  Link: ({ children, to }: { children: React.ReactNode; to: string }) => (
-    <a href={to}>{children}</a>
+  Link: ({ children, to, ...props }: { children: ReactNode; to: string }) => (
+    <a href={to} {...props}>
+      {children}
+    </a>
   ),
 }));
-
-vi.mock("./ActivityChart", () => ({
-  ActivityChart: ({ series }: { series: readonly unknown[] }) => (
-    <div data-testid="activity-chart" data-points={series.length} />
-  ),
-}));
-
-const active: ActiveInstallationOverview = {
-  asOfMs: Date.UTC(2026, 6, 18),
-  window: "7d",
-  activeInstallations: 4,
-  series: [
-    { bucketStartMs: Date.UTC(2026, 6, 16), value: 2 },
-    { bucketStartMs: Date.UTC(2026, 6, 17), value: 0 },
-  ],
-  bundleSeries: [
-    {
-      bundleId: "bundle-a",
-      series: [
-        { bucketStartMs: Date.UTC(2026, 6, 16), value: 2 },
-        { bucketStartMs: Date.UTC(2026, 6, 17), value: 0 },
-      ],
-    },
-    {
-      bundleId: "deleted-bundle",
-      series: [
-        { bucketStartMs: Date.UTC(2026, 6, 16), value: 0 },
-        { bucketStartMs: Date.UTC(2026, 6, 17), value: 1 },
-      ],
-    },
-  ],
-  bundles: [
-    { bundleId: "bundle-a", installations: 3 },
-    { bundleId: "deleted-bundle", installations: 1 },
-  ],
-};
-
-const catalog: CatalogOverview = {
-  trackedInstallations: 5,
-  mostCommonLatestReportedBundle: null,
-  latestReportedBundles: [],
-  configuredRollouts: [
-    {
-      releaseId: "release-a",
-      bundleId: "bundle-a",
-      configuredPercentage: 25,
-      trackedInstallations: 3,
-      bundle: {
-        platform: "ios",
-        channel: "production",
-        targetAppVersion: "1.0.0",
-        fingerprintHash: null,
-      },
-    },
-  ],
-};
-
-const outcomeInsights = {
-  summary: { installed: 8, recovered: 2 },
-  series: {
-    installed: [{ bucketStartMs: Date.UTC(2026, 6, 17), value: 8 }],
-    recovered: [{ bucketStartMs: Date.UTC(2026, 6, 17), value: 2 }],
-  },
-  cohorts: { installed: [], recovered: [] },
-  recentEvents: {
-    data: [],
-    pagination: { total: 0, limit: 1, offset: 0 },
-  },
-};
 
 describe("InsightsOverview", () => {
   afterEach(cleanup);
 
-  it("renders the required active insights sections and exact values", () => {
-    render(
-      <InsightsOverview
-        active={active}
-        bundleId="bundle-a"
-        bundles={[
-          { bundleId: "bundle-a", description: "iOS · production · 1.0.0" },
-          { bundleId: "deleted-bundle", description: "Metadata unavailable" },
-        ]}
-        catalog={catalog}
-        onBundleChange={vi.fn()}
-        outcomes={{
-          status: "success",
-          bundleId: "bundle-a",
-          data: outcomeInsights,
-        }}
-        status="success"
-      />,
-    );
-
-    for (const heading of [
-      "Weekly active installations",
-      "Selected bundle activity",
-    ]) {
-      expect(
-        screen.getByRole("heading", { level: 2, name: heading }),
-      ).toBeDefined();
-    }
-    const activityOverview = screen.getByRole("region", {
-      name: "Installation activity",
-    });
-    expect(within(activityOverview).getByText("4")).toBeDefined();
-    expect(
-      within(activityOverview).getByText("Reported bundles"),
-    ).toBeDefined();
-    expect(within(activityOverview).getByText("2")).toBeDefined();
-    expect(within(activityOverview).queryByText("Reporting window")).toBeNull();
-    expect(activityOverview.textContent).toContain(
-      "reported activity or an update in the last 7 days",
-    );
-    expect(
-      within(activityOverview).getByTestId("activity-chart"),
-    ).toBeDefined();
-    expect(screen.getAllByText("Newly applied").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("Recovered away").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("8", { exact: false }).length).toBeGreaterThan(
-      0,
-    );
-    expect(screen.getAllByText("2").length).toBeGreaterThan(0);
-    expect(
-      screen.getByText("Configured rollout").nextElementSibling?.textContent,
-    ).toBe("25%");
-    expect(
-      screen.getByTestId("activity-chart").getAttribute("data-points"),
-    ).toBe("2");
-
-    const bundleActivityHeading = screen.getByRole("heading", {
-      level: 2,
-      name: "Selected bundle activity",
-    });
-    const bundleSelector = screen.getByRole("combobox", {
-      name: "Artifact to inspect",
-    });
-    expect(bundleSelector.closest('[data-slot="card"]')).toBe(
-      bundleActivityHeading.closest('[data-slot="card"]'),
-    );
-  });
-
-  it("distinguishes loading, empty, and error states", () => {
-    const { rerender } = render(<InsightsOverview status="loading" />);
-    expect(screen.getByLabelText("Loading reporting insights")).toBeDefined();
-    for (const label of [
-      "Loading installation activity",
-      "Loading bundle detail",
-    ]) {
-      expect(screen.getByLabelText(label)).toBeDefined();
-    }
-
-    rerender(
-      <InsightsOverview
-        active={{
-          ...active,
-          activeInstallations: 0,
-          bundles: [],
-          bundleSeries: [],
-        }}
-        bundleId=""
-        bundles={[]}
-        catalog={catalog}
-        onBundleChange={vi.fn()}
-        outcomes={{ status: "idle" }}
-        status="success"
-      />,
-    );
-    expect(screen.getByTestId("activity-chart")).toBeDefined();
-
-    rerender(
-      <InsightsOverview
-        error={new Error("Active request failed")}
-        status="error"
-      />,
-    );
-    expect(screen.getByRole("alert").textContent).toContain(
-      "Refresh to try again",
-    );
-  });
-
-  it("renders narrowing guidance when the bounded Insights scan is exceeded", () => {
-    render(
-      <InsightsOverview
-        error={new Error("Bundle event scan exceeded 50000 rows.")}
-        status="error"
-      />,
-    );
-
-    expect(screen.getByRole("alert").textContent).toContain(
-      "Insights report limit reached",
-    );
-    expect(screen.getByRole("alert").textContent).toContain("50,000 events");
-  });
-
-  it("names the 30-day metric as monthly active installations", () => {
+  it("shows one actionable reporting metric without analytic detail", () => {
     render(
       <InsightsOverview
         active={{
-          ...active,
+          platform: "ios",
+          channel: "production",
+          sinceMs: 0,
+          beforeReceivedAtMs: 100,
+          reportingInstallations: {
+            count: 12_345,
+            measuredAtMs: Date.UTC(2026, 6, 18, 1, 2, 3),
+          },
           window: "30d",
-          activeInstallations: 1,
-          bundles: [{ bundleId: "bundle-a", installations: 1 }],
         }}
-        bundleId="bundle-a"
-        bundles={[
-          { bundleId: "bundle-a", description: "iOS · production · 1.0.0" },
-        ]}
-        catalog={catalog}
-        onBundleChange={vi.fn()}
-        outcomes={{ status: "idle" }}
+        onOutcomeSelect={vi.fn()}
         status="success"
       />,
     );
 
+    const metric = screen.getByRole("region", {
+      name: "Reporting installations",
+    });
+    expect(within(metric).getByText("12,345")).toBeDefined();
+    expect(metric.textContent).toContain("the last 30 days");
+    expect(within(metric).getByText("Measured at")).toBeDefined();
     expect(
-      within(
-        screen.getByRole("region", { name: "Installation activity" }),
-      ).getByRole("heading", { name: "Monthly active installations" }),
+      screen.getByRole("link", { name: /view events/i }).getAttribute("href"),
+    ).toBe("/installations");
+    expect(screen.queryByText(/bundle|applied|recovered/i)).toBeNull();
+  });
+
+  it("keeps installation counts independent and opens the exact recovery report range", () => {
+    const onOutcomeSelect = vi.fn();
+    const measure = (count: number) => ({ count, measuredAtMs: 1_000 });
+    render(
+      <InsightsOverview
+        status="success"
+        onOutcomeSelect={onOutcomeSelect}
+        active={{
+          platform: "ios",
+          channel: "beta",
+          window: "7d",
+          sinceMs: 100,
+          beforeReceivedAtMs: 1_000,
+          reportingInstallations: measure(1),
+          bundle: {
+            bundleId: "bundle-B",
+            reportingInstallations: measure(2),
+            appliedReports: measure(5),
+            recoveredReports: measure(3),
+            adoptedReports: measure(0),
+          },
+        }}
+      />,
+    );
+    expect(screen.getByText("Selected bundle installations")).toBeDefined();
+    expect(screen.getByText("2")).toBeDefined();
+    expect(screen.queryByText(/%/)).toBeNull();
+    fireEvent.click(
+      screen.getByRole("button", { name: "View recovered reports" }),
+    );
+    expect(onOutcomeSelect).toHaveBeenCalledWith({
+      bundle: {
+        platform: "ios",
+        channel: "beta",
+        bundleId: "bundle-B",
+        outcome: "recovered",
+      },
+      sinceMs: 100,
+      beforeReceivedAtMs: 1_000,
+    });
+  });
+
+  it("renders loading and useful error states", () => {
+    const view = render(<InsightsOverview status="loading" />);
+    expect(
+      screen.getByLabelText("Loading reporting installations"),
     ).toBeDefined();
+
+    view.rerender(
+      <InsightsOverview status="error" error={new Error("Database offline")} />,
+    );
+    expect(screen.getByRole("alert").textContent).toContain(
+      "Reporting installations unavailable",
+    );
   });
 });

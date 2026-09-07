@@ -258,7 +258,7 @@ const databaseBinding = {
 const database = runtime.d1Database(databaseBinding);
 if ("createWorkerSigningHandler" in runtime) throw new Error("unexpected Worker signing handler");
 if (database.name !== "d1Database") throw new Error("invalid d1Database name");
-if (typeof database.models.insights.append !== "function") throw new Error("missing insights model");
+if (typeof database.models.insights.record !== "function") throw new Error("missing insights model");
 if (typeof database.models.apiKeys.create !== "function") throw new Error("missing apiKeys model");
 if (typeof database.models.channels.list !== "function") throw new Error("missing channels model");
 if ("d1WorkerDatabase" in runtime) throw new Error("unexpected d1WorkerDatabase");

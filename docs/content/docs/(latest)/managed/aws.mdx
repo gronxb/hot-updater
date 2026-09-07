@@ -215,8 +215,10 @@ dedicated CloudFront behavior whose cache key contains the canonical path,
 Authorization, cookies, query strings, and installation state. A cold origin
 fill performs one exact DynamoDB catalog read; a warm CloudFront hit skips both
 Lambda@Edge and DynamoDB. Each authenticated Insights event invokes
-Lambda@Edge and appends one event row; server-side Insights queries read event
-pages from DynamoDB.
+Lambda@Edge and writes the immutable event plus the installation's latest-report
+pointer in one DynamoDB transaction. Server-side Insights queries read cursor
+pages or canonical latest-report rows; they do not materialize the raw event
+log.
 Review the [DynamoDB pricing model](https://aws.amazon.com/dynamodb/pricing/) and
 [Lambda@Edge pricing](https://aws.amazon.com/lambda/pricing/).
 
@@ -225,10 +227,10 @@ Insights query or management routes. Managed tables cap on-demand throughput
 at 4,000 reads and 100 writes per second for both the table and update index.
 The cap is a cost guardrail and can throttle bursts; protect production
 distributions with AWS WAF rate-based rules and configure AWS Budgets for a
-monthly spending threshold. The AWS adapter does not impose an Insights
-retention period. The bounded Insights provider still rejects `all` reports
-above 50,000 events, while 24-hour, 7-day, and 30-day queries apply their query
-window independently of storage retention.
+monthly spending threshold. The AWS adapter does not delete Insights data
+automatically. Event history is keyset-paginated. Reporting-installation counts
+read all canonical installation rows, including inactive rows; bundle-outcome
+counts consume the matching indexed range.
 
 Bundle metadata has no fixed bundle, patch, or patch-relationship count limit.
 Each serialized metadata item is limited to 8 KiB. The database maintains counters

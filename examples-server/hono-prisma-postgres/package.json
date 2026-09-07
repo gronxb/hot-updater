@@ -9,7 +9,7 @@
     "test": "vitest run",
     "test:type": "prisma generate && tsc --noEmit",
     "db:generate": "npx hot-updater db generate src/db.ts --yes",
-    "db:push": "npx prisma db push",
+    "db:push": "npx prisma db push && npx prisma db execute --file prisma/insights-collation.sql --schema prisma/schema.prisma",
     "docker:up": "docker-compose up -d",
     "docker:down": "docker-compose down"
   },

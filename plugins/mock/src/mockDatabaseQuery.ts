@@ -1,3 +1,4 @@
+import { compareInsightsText } from "@hot-updater/plugin-core";
 import type {
   DatabaseDistinctOn,
   DatabaseModel,
@@ -10,7 +11,7 @@ const compare = (left: unknown, right: unknown): number => {
   if (typeof left === "number" && typeof right === "number") {
     return left - right;
   }
-  return String(left).localeCompare(String(right));
+  return compareInsightsText(String(left), String(right));
 };
 
 const normalizeStringComparison = (

@@ -5,6 +5,7 @@ import {
   type HotUpdaterColumnType,
   type HotUpdaterForeignKeySchema,
   type HotUpdaterTableSchema,
+  type HotUpdaterVersionedSchema,
 } from "../../schema/types";
 import type {
   MigrationOperation,
@@ -209,9 +210,10 @@ export const createTableStatement = (
 export const createForeignKeySqlStatements = (
   provider: ORMSQLProvider,
   relationMode: RelationMode = "foreign-keys",
+  schema: HotUpdaterVersionedSchema = hotUpdaterSchema,
 ): readonly string[] => {
   if (relationMode !== "foreign-keys" || provider === "sqlite") return [];
-  return hotUpdaterSchema.tables.flatMap((table) =>
+  return schema.tables.flatMap((table) =>
     (table.foreignKeys ?? []).map((foreignKey) =>
       createForeignKeySql(table, foreignKey, provider),
     ),
@@ -221,21 +223,22 @@ export const createForeignKeySqlStatements = (
 export const createTableSql = (
   provider: ORMSQLProvider,
   relationMode: RelationMode = "foreign-keys",
+  schema: HotUpdaterVersionedSchema = hotUpdaterSchema,
 ): readonly string[] => [
-  ...hotUpdaterSchema.tables.map((table) =>
+  ...schema.tables.map((table) =>
     createTableStatement(table, provider, relationMode),
   ),
-  ...hotUpdaterSchema.tables.flatMap((table) =>
+  ...schema.tables.flatMap((table) =>
     (table.indexes ?? [])
       .filter((index) => schemaIndexAppliesToProvider(index, provider))
       .map((index) => createIndexSql(table, index, provider)),
   ),
   ...(provider === "sqlite"
     ? []
-    : hotUpdaterSchema.tables.flatMap((table) =>
+    : schema.tables.flatMap((table) =>
         (table.checks ?? []).map((check) =>
           createCheckSql(table, check, provider),
         ),
       )),
-  ...createForeignKeySqlStatements(provider, relationMode),
+  ...createForeignKeySqlStatements(provider, relationMode, schema),
 ];

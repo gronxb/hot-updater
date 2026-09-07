@@ -9,6 +9,7 @@ const supabaseMock = vi.hoisted(() => {
   type Row = Record<string, unknown>;
   type TableName =
     | "bundle_events"
+    | "bundle_installations"
     | "bundle_patches"
     | "bundles"
     | "channels"
@@ -24,6 +25,7 @@ const supabaseMock = vi.hoisted(() => {
   const physicalTableNames: Record<string, TableName> = {
     hot_updater_v1_api_keys: "api_keys",
     hot_updater_v1_bundle_events: "bundle_events",
+    hot_updater_v1_bundle_installations: "bundle_installations",
     hot_updater_v1_bundle_patches: "bundle_patches",
     hot_updater_v1_bundles: "bundles",
     hot_updater_v1_channels: "channels",
@@ -33,6 +35,7 @@ const supabaseMock = vi.hoisted(() => {
 
   const rows: Record<TableName, Map<string, Row>> = {
     bundle_events: new Map(),
+    bundle_installations: new Map(),
     bundle_patches: new Map(),
     bundles: new Map(),
     channels: new Map(),
@@ -42,6 +45,7 @@ const supabaseMock = vi.hoisted(() => {
   };
   const tableReadCounts: Record<TableName, number> = {
     bundle_events: 0,
+    bundle_installations: 0,
     bundle_patches: 0,
     bundles: 0,
     channels: 0,
@@ -82,7 +86,10 @@ const supabaseMock = vi.hoisted(() => {
     if (typeof left === "number" && typeof right === "number") {
       return left - right;
     }
-    return String(left).localeCompare(String(right));
+    return Buffer.compare(
+      Buffer.from(String(left)),
+      Buffer.from(String(right)),
+    );
   };
 
   const matchesPredicate = (row: Row, expression: string): boolean => {
@@ -357,7 +364,11 @@ const supabaseMock = vi.hoisted(() => {
         };
       }
       const id = String(
-        this.table === "release_catalogs" ? payload.scope_key : payload.id,
+        this.table === "release_catalogs"
+          ? payload.scope_key
+          : this.table === "bundle_installations"
+            ? payload.install_id
+            : payload.id,
       );
       const conflictField = this.upsertOptions?.onConflict;
       const uniqueField =
@@ -425,6 +436,29 @@ const supabaseMock = vi.hoisted(() => {
       },
       rpc: async (name: string, args?: Record<string, unknown>) => {
         const bundles = [...rows.bundles.values()];
+        if (name === "hot_updater_v1_record_insights") {
+          const event = args?.p_event as Row;
+          const installation = args?.p_installation as Row;
+          if (!rows.bundle_events.has(String(event.id))) {
+            rows.bundle_events.set(String(event.id), event);
+            const current = rows.bundle_installations.get(
+              String(installation.install_id),
+            );
+            if (
+              current === undefined ||
+              Number(installation.received_at_ms) >
+                Number(current.received_at_ms) ||
+              (installation.received_at_ms === current.received_at_ms &&
+                String(installation.id) > String(current.id))
+            ) {
+              rows.bundle_installations.set(
+                String(installation.install_id),
+                installation,
+              );
+            }
+          }
+          return { data: null, error: null };
+        }
         if (name === "hot_updater_v1_delete_channel") {
           const id = String(args?.p_id);
           if (!rows.channels.has(id)) {
@@ -451,7 +485,6 @@ const supabaseMock = vi.hoisted(() => {
         }
         if (name === "hot_updater_v1_commit") {
           const staged = {
-            bundle_events: new Map(rows.bundle_events),
             bundle_patches: new Map(rows.bundle_patches),
             bundles: new Map(rows.bundles),
             channels: new Map(rows.channels),
@@ -656,14 +689,6 @@ const supabaseMock = vi.hoisted(() => {
               staged.bundle_patches.set(String(patch.id), patch);
               continue;
             }
-            if (model === "insights" && operation === "insert") {
-              const event = change.row as Row;
-              if (staged.bundle_events.has(String(event.id))) {
-                return { data: null, error: { message: "duplicate id" } };
-              }
-              staged.bundle_events.set(String(event.id), event);
-              continue;
-            }
             if (model === "apiKeys") {
               const key = change.row as Row | undefined;
               if (operation === "insert" && key !== undefined) {
@@ -690,7 +715,6 @@ const supabaseMock = vi.hoisted(() => {
               }
             }
           }
-          rows.bundle_events = staged.bundle_events;
           rows.bundles = staged.bundles;
           rows.bundle_patches = staged.bundle_patches;
           rows.channels = staged.channels;
@@ -731,6 +755,7 @@ const supabaseMock = vi.hoisted(() => {
     getTableReadCount: (table: TableName) => tableReadCounts[table],
     resetMockClient: () => {
       rows.bundle_events.clear();
+      rows.bundle_installations.clear();
       rows.bundle_patches.clear();
       rows.bundles.clear();
       rows.channels.clear();

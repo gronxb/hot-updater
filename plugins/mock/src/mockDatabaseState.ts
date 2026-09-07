@@ -4,6 +4,7 @@ import type {
   BundleEventRow,
   ApiKeyRow,
   ChannelRow,
+  InsightsInstallationRow,
   ReleaseCatalogRow,
   ReleaseRow,
 } from "@hot-updater/plugin-core";
@@ -21,6 +22,7 @@ export interface MockDatabaseData {
   readonly bundles: Map<string, BundleRow>;
   readonly bundlePatches: Map<string, BundlePatchRow>;
   readonly bundleEvents: Map<string, BundleEventRow>;
+  readonly bundleInstallations: Map<string, InsightsInstallationRow>;
   readonly channels: Map<string, ChannelRow>;
   readonly apiKeys: Map<string, ApiKeyRow>;
   readonly releaseCatalogs: Map<string, ReleaseCatalogRow>;
@@ -39,6 +41,7 @@ export const createMockDatabaseData = (): MockDatabaseData => ({
   bundles: new Map(),
   bundlePatches: new Map(),
   bundleEvents: new Map(),
+  bundleInstallations: new Map(),
   channels: new Map(),
   apiKeys: new Map(),
   releaseCatalogs: new Map(),
@@ -51,6 +54,7 @@ export const cloneMockDatabaseData = (
   bundles: new Map(data.bundles),
   bundlePatches: new Map(data.bundlePatches),
   bundleEvents: new Map(data.bundleEvents),
+  bundleInstallations: new Map(data.bundleInstallations),
   channels: new Map(data.channels),
   apiKeys: new Map(data.apiKeys),
   releaseCatalogs: new Map(data.releaseCatalogs),
@@ -64,6 +68,7 @@ export const replaceMockDatabaseData = (
   target.bundles.clear();
   target.bundlePatches.clear();
   target.bundleEvents.clear();
+  target.bundleInstallations.clear();
   target.channels.clear();
   target.apiKeys.clear();
   target.releaseCatalogs.clear();
@@ -74,6 +79,9 @@ export const replaceMockDatabaseData = (
   }
   for (const [id, row] of source.bundleEvents) {
     target.bundleEvents.set(id, row);
+  }
+  for (const [installId, row] of source.bundleInstallations) {
+    target.bundleInstallations.set(installId, row);
   }
   for (const [id, row] of source.channels) {
     target.channels.set(id, row);
@@ -137,6 +145,17 @@ export const createMockDatabaseState = (
         requireUnique(data.bundleEvents, input.data.id, input.model);
         data.bundleEvents.set(input.data.id, input.data);
         return input.data;
+      case "bundle_installations": {
+        const existing = data.bundleInstallations.get(input.data.install_id);
+        if (existing && input.onConflict === "ignore") return existing;
+        if (existing) {
+          throw new MockDatabaseConstraintError(
+            "bundle_installations.install_id.unique",
+          );
+        }
+        data.bundleInstallations.set(input.data.install_id, input.data);
+        return input.data;
+      }
       case "releases":
         requireUnique(data.releases, input.data.id, input.model);
         if (!data.channels.has(input.data.channel_id)) {
@@ -189,6 +208,15 @@ export const createMockDatabaseState = (
     }
   },
   async update(input): Promise<DatabaseImplementationResult | null> {
+    if (input.model === "bundle_installations") {
+      const current = [...data.bundleInstallations.values()].find((row) =>
+        matchesMockDatabaseWhere<"bundle_installations">(row, input.where),
+      );
+      if (!current) return null;
+      const updated = { ...current, ...input.update };
+      data.bundleInstallations.set(current.install_id, updated);
+      return updated;
+    }
     if (input.model === "api_keys") {
       const current = [...data.apiKeys.values()].find((row) =>
         matchesMockDatabaseWhere<"api_keys">(row, input.where),
@@ -266,6 +294,10 @@ export const createMockDatabaseState = (
   },
   async count(input): Promise<number> {
     switch (input.model) {
+      case "bundle_events":
+        return [...data.bundleEvents.values()].filter((row) =>
+          matchesMockDatabaseWhere<"bundle_events">(row, input.where),
+        ).length;
       case "bundles":
         return distinctCount(
           [...data.bundles.values()].filter((row) =>
@@ -284,6 +316,13 @@ export const createMockDatabaseState = (
         return distinctCount(
           [...data.releases.values()].filter((row) =>
             matchesMockDatabaseWhere<"releases">(row, input.where),
+          ),
+          input.distinct as readonly string[] | undefined,
+        );
+      case "bundle_installations":
+        return distinctCount(
+          [...data.bundleInstallations.values()].filter((row) =>
+            matchesMockDatabaseWhere<"bundle_installations">(row, input.where),
           ),
           input.distinct as readonly string[] | undefined,
         );
@@ -327,6 +366,12 @@ export const createMockDatabaseState = (
             matchesMockDatabaseWhere<"release_catalogs">(row, input.where),
           ) ?? null
         );
+      case "bundle_installations":
+        return (
+          [...data.bundleInstallations.values()].find((row) =>
+            matchesMockDatabaseWhere<"bundle_installations">(row, input.where),
+          ) ?? null
+        );
     }
   },
   async findMany(input): Promise<readonly DatabaseImplementationResult[]> {
@@ -338,6 +383,11 @@ export const createMockDatabaseState = (
       case "bundle_events":
         return queryMockDatabaseRows<"bundle_events">(
           [...data.bundleEvents.values()],
+          input,
+        );
+      case "bundle_installations":
+        return queryMockDatabaseRows<"bundle_installations">(
+          [...data.bundleInstallations.values()],
           input,
         );
       case "channels":

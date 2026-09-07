@@ -4,6 +4,7 @@ import type {
   BundleRow,
   ChannelRow,
   ApiKeyRow,
+  InsightsInstallationRow,
   ReleaseCatalogRow,
   ReleaseRow,
 } from "@hot-updater/plugin-core";
@@ -19,7 +20,9 @@ export type PrismaDelegate = {
   readonly findFirst: (args?: PrismaQuery) => Promise<unknown>;
   readonly findMany: (args?: PrismaQuery) => Promise<readonly unknown[]>;
   readonly update: (args: PrismaQuery) => Promise<unknown>;
-  readonly updateMany?: (args: PrismaQuery) => Promise<unknown>;
+  readonly updateMany?: (
+    args: PrismaQuery,
+  ) => Promise<{ readonly count: number }>;
   readonly upsert: (args: PrismaQuery) => Promise<unknown>;
 };
 
@@ -48,6 +51,7 @@ const modelDelegates = {
   bundles: "bundles",
   bundle_patches: "bundle_patches",
   bundle_events: "bundle_events",
+  bundle_installations: "bundle_installations",
   channels: "channels",
   api_keys: "api_keys",
   releases: "releases",
@@ -194,6 +198,38 @@ export const parsePrismaBundleEventRow = (value: unknown): BundleEventRow => {
     sdk_version: readNullableString(value, "sdk_version"),
     received_at_ms: readNumber(value, "received_at_ms"),
   } as BundleEventRow;
+};
+
+export const parsePrismaInsightsInstallationRow = (
+  value: unknown,
+): InsightsInstallationRow => {
+  if (!isRecord(value)) {
+    throw new PrismaAdapterError("invalid installation row");
+  }
+  const platform = readString(value, "platform");
+  const type = readString(value, "type");
+  if (
+    (platform !== "ios" && platform !== "android") ||
+    (type !== "UPDATE_APPLIED" &&
+      type !== "RECOVERED" &&
+      type !== "RELEASE_ADOPTED" &&
+      type !== "UNCHANGED")
+  ) {
+    throw new PrismaAdapterError("invalid installation fields");
+  }
+  return {
+    install_id: readString(value, "install_id"),
+    id: readString(value, "id"),
+    user_id: readNullableString(value, "user_id"),
+    username: readNullableString(value, "username"),
+    to_bundle_id: readString(value, "to_bundle_id"),
+    type,
+    platform,
+    app_version: readString(value, "app_version"),
+    channel: readString(value, "channel"),
+    cohort: readString(value, "cohort"),
+    received_at_ms: readNumber(value, "received_at_ms"),
+  };
 };
 
 export const parsePrismaApiKeyRow = (value: unknown): ApiKeyRow => {

@@ -8,6 +8,7 @@ import {
 import {
   parseFirebaseBundleEventRow,
   parseFirebaseBundleRow,
+  parseFirebaseInsightsInstallationRow,
   parseFirebasePatchRow,
 } from "./firebaseDatabaseParser";
 
@@ -110,6 +111,41 @@ describe("parseFirebaseBundleEventRow", () => {
       parseFirebaseBundleEventRow(
         { ...createBundleEventRowFixture("1", 1), ...overrides },
         "bundle_events/event-1",
+      ),
+    ).toThrow("Invalid Firebase database data");
+  });
+});
+
+describe("parseFirebaseInsightsInstallationRow", () => {
+  const event = createBundleEventRowFixture("installation", 100);
+  const installation = {
+    id: event.id,
+    type: event.type,
+    install_id: event.install_id,
+    user_id: event.user_id,
+    username: event.username,
+    to_bundle_id: event.to_bundle_id,
+    platform: event.platform,
+    app_version: event.app_version,
+    channel: event.channel,
+    cohort: event.cohort,
+    received_at_ms: event.received_at_ms,
+  };
+
+  it("parses the latest installation projection", () => {
+    expect(
+      parseFirebaseInsightsInstallationRow(
+        installation,
+        `bundle_installations/${event.install_id}`,
+      ),
+    ).toEqual(installation);
+  });
+
+  it("rejects an unknown latest event type", () => {
+    expect(() =>
+      parseFirebaseInsightsInstallationRow(
+        { ...installation, type: "UNKNOWN" },
+        `bundle_installations/${event.install_id}`,
       ),
     ).toThrow("Invalid Firebase database data");
   });

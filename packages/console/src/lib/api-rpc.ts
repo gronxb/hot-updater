@@ -13,16 +13,8 @@ import {
 import { createServerFn } from "@tanstack/react-start";
 
 import { DEFAULT_PAGE_LIMIT } from "./constants";
-import {
-  parseBundleEventInsightsInput,
-  parseBundleEventSummaryInput,
-  parseEventHistoryInput,
-  parseInstallationHistoryInput,
-  parseSearchInstallationsInput,
-} from "./insights-input";
 import { withPublicBundleMutationErrors } from "./public-bundle-error";
 import { listReleases } from "./server/listReleases";
-import { getReleaseActivity30d } from "./server/releaseActivity";
 import { addReleaseReachability } from "./server/releaseReachability";
 
 type GetBundlesInput = {
@@ -80,7 +72,7 @@ export const getReleases = createServerFn({ method: "GET" })
   .inputValidator((input: GetReleasesInput | undefined) => input)
   .handler(async ({ data }) => {
     const { prepareConfig } = await import("./server/config.server");
-    const { config, hotUpdater } = await prepareConfig();
+    const { config } = await prepareConfig();
     const result = await listReleases(config.database.models.releases, {
       ...(data?.afterReleaseId === undefined
         ? {}
@@ -98,22 +90,13 @@ export const getReleases = createServerFn({ method: "GET" })
         : { targetAppVersion: data.targetAppVersion }),
       limit: data?.limit ?? DEFAULT_PAGE_LIMIT,
     });
-    const [releases, activityByBundleId] = await Promise.all([
-      addReleaseReachability(
-        config.database.models.releaseCatalogs,
-        result.data,
-      ),
-      getReleaseActivity30d(hotUpdater, result.data),
-    ]);
+    const releases = await addReleaseReachability(
+      config.database.models.releaseCatalogs,
+      result.data,
+    );
     return {
       ...result,
-      data: releases.map((release) => ({
-        ...release,
-        activity30d:
-          release.bundle_id === null
-            ? null
-            : (activityByBundleId.get(release.bundle_id) ?? null),
-      })),
+      data: releases,
     };
   });
 
@@ -323,80 +306,6 @@ export const getBundle = createServerFn({ method: "GET" })
       return bundle ?? null;
     } catch (error) {
       console.error("Error during bundle retrieval:", error);
-      throw error;
-    }
-  });
-
-export const getBundleEventSummary = createServerFn({ method: "GET" })
-  .inputValidator(parseBundleEventSummaryInput)
-  .handler(async ({ data }) => {
-    try {
-      const { prepareConfig } = await import("./server/config.server");
-      const { getBundleEventSummary: getBundleEventSummaryWithRuntime } =
-        await import("./server/runtime.server");
-      const { hotUpdater } = await prepareConfig();
-
-      return await getBundleEventSummaryWithRuntime(hotUpdater, data);
-    } catch (error) {
-      console.error("Error during bundle event summary retrieval:", error);
-      throw error;
-    }
-  });
-
-export const getBundleEventInsights = createServerFn({ method: "GET" })
-  .inputValidator(parseBundleEventInsightsInput)
-  .handler(async ({ data }) => {
-    try {
-      const { prepareConfig } = await import("./server/config.server");
-      const { getBundleEventInsights: getBundleEventInsightsWithRuntime } =
-        await import("./server/runtime.server");
-      const { hotUpdater } = await prepareConfig();
-
-      return await getBundleEventInsightsWithRuntime(hotUpdater, data);
-    } catch (error) {
-      console.error("Error during bundle event insights retrieval:", error);
-      throw error;
-    }
-  });
-
-export const searchInstallations = createServerFn({ method: "GET" })
-  .inputValidator(parseSearchInstallationsInput)
-  .handler(async ({ data }) => {
-    try {
-      const { prepareConfig } = await import("./server/config.server");
-      const { searchInstallations: searchInstallationsWithRuntime } =
-        await import("./server/runtime.server");
-      const { hotUpdater } = await prepareConfig();
-
-      return await searchInstallationsWithRuntime(hotUpdater, data);
-    } catch (error) {
-      console.error("Error during installation search:", error);
-      throw error;
-    }
-  });
-
-export const getEventHistory = createServerFn({ method: "GET" })
-  .inputValidator(parseEventHistoryInput)
-  .handler(async ({ data }) => {
-    const { prepareConfig } = await import("./server/config.server");
-    const { getEventHistory: getEventHistoryWithRuntime } =
-      await import("./server/runtime.server");
-    const { hotUpdater } = await prepareConfig();
-    return getEventHistoryWithRuntime(hotUpdater, data);
-  });
-
-export const getInstallationHistory = createServerFn({ method: "GET" })
-  .inputValidator(parseInstallationHistoryInput)
-  .handler(async ({ data }) => {
-    try {
-      const { prepareConfig } = await import("./server/config.server");
-      const { getInstallationHistory: getInstallationHistoryWithRuntime } =
-        await import("./server/runtime.server");
-      const { hotUpdater } = await prepareConfig();
-
-      return await getInstallationHistoryWithRuntime(hotUpdater, data);
-    } catch (error) {
-      console.error("Error during installation history retrieval:", error);
       throw error;
     }
   });

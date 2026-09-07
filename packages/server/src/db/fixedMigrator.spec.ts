@@ -1,11 +1,14 @@
 import { DatabaseSync, type SqliteValue } from "node:sqlite";
 
 import { PGlite } from "@electric-sql/pglite";
+import { toInsightsInstallationRow } from "@hot-updater/plugin-core";
 import { Kysely, SqliteDialect } from "kysely";
 import { PGliteDialect } from "kysely-pglite-dialect";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import { createBundleEventRowFixture } from "../../../test-utils/src/databaseTestFixtures";
 import { createInMemoryDatabasePlugin } from "../../../test-utils/test/inMemoryDatabasePlugin";
+import { kyselyAdapter } from "../adapters/kysely";
 import { createDatabasePluginCore } from "./databasePluginCore";
 import { createKyselyMigrator } from "./fixedMigrator";
 import { createSchemaReadinessChecker } from "./schemaReadiness";
@@ -52,6 +55,68 @@ describe("Kysely migrator", () => {
   afterEach(async () => {
     await Promise.all(kyselyInstances.splice(0).map((db) => db.destroy()));
     await Promise.all(databases.splice(0).map((db) => db.close()));
+  });
+
+  it("creates the final Insights access paths in the initial schema", async () => {
+    const database = new PGlite();
+    databases.push(database);
+    const kysely = new Kysely<SettingsDatabase>({
+      dialect: new PGliteDialect(database),
+    });
+    kyselyInstances.push(kysely);
+    const migrator = createKyselyMigrator({
+      db: kysely,
+      provider: "postgresql",
+    });
+    await expect(migrator.next()).resolves.toEqual({ version: "1.0.0" });
+    await expect(migrator.previous()).resolves.toBeUndefined();
+    const migration = await migrator.migrateToLatest();
+    await migration.execute();
+    await expect(migrator.getVersion()).resolves.toBe("1.0.0");
+    const plugin = kyselyAdapter({ db: kysely, provider: "postgresql" });
+    const event = createBundleEventRowFixture("706", 100);
+    const input = { event, installation: toInsightsInstallationRow(event) };
+    await plugin.models.insights.record(input);
+
+    const repeated = await migrator.migrateToLatest();
+    expect(repeated.operations).toEqual([]);
+    expect(repeated.getSQL?.()).toBe("");
+    await repeated.execute();
+    await expect(migrator.next()).resolves.toBeUndefined();
+    await expect(
+      plugin.models.insights.findInstallations({ installId: event.install_id }),
+    ).resolves.toEqual([input.installation]);
+    await expect(
+      plugin.models.insights.countEvents({
+        filter: {
+          platform: "ios",
+          channel: "production",
+          type: "UPDATE_APPLIED",
+          toBundleId: event.to_bundle_id,
+        },
+        sinceMs: 0,
+        beforeReceivedAtMs: 101,
+      }),
+    ).resolves.toBe(1);
+    const indexes = await database.query<{ indexname: string }>(
+      "select indexname from pg_indexes where tablename in ('bundle_events', 'bundle_installations')",
+    );
+    expect(indexes.rows.map(({ indexname }) => indexname)).toEqual(
+      expect.arrayContaining([
+        "bundle_events_from_bundle_idx",
+        "bundle_events_to_bundle_idx",
+        "bundle_installations_scope_idx",
+        "bundle_installations_bundle_idx",
+      ]),
+    );
+    await database.exec("set enable_seqscan = off");
+    const plan = await database.query<{ "QUERY PLAN": string }>(
+      "explain select * from bundle_events where type = 'UPDATE_APPLIED' and platform = 'ios' and channel = 'production' and to_bundle_id = $1 and received_at_ms < 101 order by received_at_ms desc, id desc limit 10",
+      [event.to_bundle_id],
+    );
+    expect(plan.rows.map((row) => row["QUERY PLAN"]).join("\n")).toContain(
+      "bundle_events_to_bundle_idx",
+    );
   });
 
   it("creates schema 1.0.0 from an empty database", async () => {

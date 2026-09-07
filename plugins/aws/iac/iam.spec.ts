@@ -90,7 +90,7 @@ describe("IAMManager DynamoDB access", () => {
           "dynamodb:UpdateItem",
         ],
         Condition: {
-          "ForAllValues:StringEquals": {
+          "ForAllValues:StringLike": {
             "dynamodb:LeadingKeys": [
               "_hot-updater",
               "bundles",
@@ -98,6 +98,10 @@ describe("IAMManager DynamoDB access", () => {
               "channels",
               "_hot-updater#channel-names",
               "bundle_events",
+              "_hot-updater#insights-installations",
+              "_hot-updater#insights-event-ids",
+              "_hot-updater#insights-bundle#*",
+              "_hot-updater#insights-user#*",
               "api_keys",
               "_hot-updater#api-key-hashes",
             ],

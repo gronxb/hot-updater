@@ -1,12 +1,62 @@
-import { createDatabaseClient } from "@hot-updater/plugin-core";
+import {
+  GetCommand,
+  PutCommand,
+  type TransactWriteCommandInput,
+} from "@aws-sdk/lib-dynamodb";
+import {
+  type BundleEventRow,
+  createDatabaseClient,
+  toInsightsInstallationRow,
+} from "@hot-updater/plugin-core";
 import { setupDatabasePluginTestSuite } from "@hot-updater/test-utils";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
+import {
+  createDynamoDBInsightsTable,
+  DYNAMODB_INSIGHTS_EVENT_IDS_PARTITION,
+} from "./dynamoDB";
 import { DynamoDBIntegrationFixture } from "./dynamoDB.integration-fixture";
 
 const fixture = new DynamoDBIntegrationFixture();
 const createPlugin = () => fixture.createPlugin();
 const clearTable = () => fixture.reset();
+
+const insightsEvent = (
+  index: number,
+  input: {
+    readonly installId: string;
+    readonly receivedAtMs: number;
+    readonly type?: BundleEventRow["type"];
+    readonly userId?: string | null;
+  },
+): BundleEventRow => {
+  const type = input.type ?? "UPDATE_APPLIED";
+  const base = {
+    id: `00000000-0000-7000-8000-${String(index).padStart(12, "0")}`,
+    type,
+    install_id: input.installId,
+    user_id: input.userId ?? null,
+    username: null,
+    from_release_id: null,
+    to_release_id: null,
+    to_bundle_id: "00000000-0000-0000-0000-000000000002",
+    platform: "ios" as const,
+    app_version: "1.0.0",
+    channel: "production",
+    cohort: "0",
+    fingerprint_hash: null,
+    sdk_version: null,
+    received_at_ms: input.receivedAtMs,
+  };
+  return type === "UNCHANGED"
+    ? { ...base, type, from_bundle_id: null, update_strategy: null }
+    : {
+        ...base,
+        type,
+        from_bundle_id: "00000000-0000-0000-0000-000000000001",
+        update_strategy: "appVersion",
+      };
+};
 
 beforeAll(() => fixture.start(), 120_000);
 afterAll(() => fixture.stop());
@@ -70,5 +120,278 @@ describe("DynamoDB aggregate mutations", () => {
         },
       ],
     });
+  });
+});
+
+describe("DynamoDB Insights", () => {
+  beforeEach(clearTable);
+
+  it("rolls back both canonical records when a native transaction condition fails", async () => {
+    const insights = createDynamoDBInsightsTable({
+      client: fixture.client,
+      tableName: fixture.tableName,
+    });
+    const event = insightsEvent(31, { installId: "atomic", receivedAtMs: 100 });
+    const input = { event, installation: toInsightsInstallationRow(event) };
+    const name = "reject-insights-transaction";
+    fixture.client.middlewareStack.add(
+      (next, context) => async (args) => {
+        if (context.commandName === "TransactWriteItemsCommand") {
+          const command = args.input as TransactWriteCommandInput;
+          command.TransactItems = [
+            ...(command.TransactItems ?? []),
+            {
+              ConditionCheck: {
+                TableName: fixture.tableName,
+                Key: { pk: "missing", sk: "guard" },
+                ConditionExpression: "attribute_exists(pk)",
+              },
+            },
+          ];
+        }
+        return next(args);
+      },
+      { name, step: "initialize" },
+    );
+    try {
+      await expect(insights.record(input)).rejects.toMatchObject({
+        name: "TransactionCanceledException",
+      });
+    } finally {
+      fixture.client.middlewareStack.remove(name);
+    }
+    await expect(
+      insights.listEvents({
+        filter: { kind: "all" },
+        beforeReceivedAtMs: 200,
+        limit: 10,
+      }),
+    ).resolves.toEqual([]);
+    await expect(
+      insights.findInstallations({ installId: event.install_id }),
+    ).resolves.toEqual([]);
+    const marker = await fixture.client.send(
+      new GetCommand({
+        TableName: fixture.tableName,
+        Key: { pk: DYNAMODB_INSIGHTS_EVENT_IDS_PARTITION, sk: event.id },
+        ConsistentRead: true,
+      }),
+    );
+    expect(marker.Item).toBeUndefined();
+    await insights.record(input);
+    await expect(
+      insights.findInstallations({ installId: event.install_id }),
+    ).resolves.toEqual([input.installation]);
+  });
+
+  it("treats retry after an ambiguous committed write as an event-ID no-op", async () => {
+    const insights = createDynamoDBInsightsTable({
+      client: fixture.client,
+      tableName: fixture.tableName,
+    });
+    const event = insightsEvent(41, {
+      installId: "retry",
+      receivedAtMs: 100,
+      userId: "original",
+    });
+    const input = { event, installation: toInsightsInstallationRow(event) };
+    const name = "lose-transaction-response";
+    fixture.client.middlewareStack.add(
+      (next, context) => async (args) => {
+        const result = await next(args);
+        if (context.commandName === "TransactWriteItemsCommand")
+          throw new Error("response lost after commit");
+        return result;
+      },
+      { name, step: "deserialize" },
+    );
+    try {
+      await expect(insights.record(input)).rejects.toThrow(
+        "response lost after commit",
+      );
+    } finally {
+      fixture.client.middlewareStack.remove(name);
+    }
+    await insights.record(input);
+    const reused = {
+      ...event,
+      install_id: "other-install",
+      received_at_ms: 500,
+      user_id: "changed",
+    };
+    await insights.record({
+      event: reused,
+      installation: toInsightsInstallationRow(reused),
+    });
+    await expect(
+      insights.listEvents({
+        filter: { kind: "all" },
+        beforeReceivedAtMs: 1_000,
+        limit: 10,
+      }),
+    ).resolves.toEqual([event]);
+    await expect(
+      insights.findInstallations({ installId: event.install_id }),
+    ).resolves.toEqual([input.installation]);
+    await expect(
+      insights.findInstallations({ installId: reused.install_id }),
+    ).resolves.toEqual([]);
+  });
+
+  it("skips stale user entries and fills the requested result prefix", async () => {
+    const insights = createPlugin().models.insights;
+    const previous = insightsEvent(51, {
+      installId: "a",
+      receivedAtMs: 100,
+      userId: "old",
+    });
+    const current = insightsEvent(52, {
+      installId: "a",
+      receivedAtMs: 200,
+      userId: "new",
+    });
+    const valid = insightsEvent(53, {
+      installId: "b",
+      receivedAtMs: 100,
+      userId: "old",
+    });
+    for (const event of [previous, current, valid])
+      await insights.record({
+        event,
+        installation: toInsightsInstallationRow(event),
+      });
+    await fixture.client.send(
+      new PutCommand({
+        TableName: fixture.tableName,
+        Item: {
+          pk: "_hot-updater#insights-user#old",
+          sk: "a",
+          order_key: `0000000000000100#${previous.id}`,
+          version: 1,
+          row: toInsightsInstallationRow(previous),
+        },
+      }),
+    );
+    await expect(
+      insights.findInstallations({ userId: "old", limit: 1 }),
+    ).resolves.toEqual([toInsightsInstallationRow(valid)]);
+  });
+
+  it("does not count an installation again when its receipt time advances between native pages", async () => {
+    const writer = createPlugin().models.insights;
+    const first = insightsEvent(61, { installId: "a", receivedAtMs: 100 });
+    const second = insightsEvent(62, { installId: "b", receivedAtMs: 100 });
+    for (const event of [first, second])
+      await writer.record({
+        event,
+        installation: toInsightsInstallationRow(event),
+      });
+    const insights = createDynamoDBInsightsTable({
+      client: fixture.client,
+      tableName: fixture.tableName,
+    });
+    const name = "one-installation-per-count-page";
+    fixture.client.middlewareStack.add(
+      (next, context) => async (args) => {
+        if (context.commandName === "QueryCommand")
+          Reflect.set(args.input, "Limit", 1);
+        return next(args);
+      },
+      { name, step: "initialize" },
+    );
+    const pause = fixture.pauseNextQuery();
+    try {
+      const count = insights.countInstallations({
+        platform: "ios",
+        channel: "production",
+        sinceMs: 0,
+      });
+      await pause.observed;
+      const newer = {
+        ...first,
+        id: insightsEvent(63, { installId: "a", receivedAtMs: 300 }).id,
+        received_at_ms: 300,
+      };
+      await writer.record({
+        event: newer,
+        installation: toInsightsInstallationRow(newer),
+      });
+      pause.release();
+      await expect(count).resolves.toBe(2);
+    } finally {
+      pause.release();
+      pause.remove();
+      fixture.client.middlewareStack.remove(name);
+    }
+  });
+
+  it("queries initial storage and indexes the first report without a separate initialization step", async () => {
+    const insights = createPlugin().models.insights;
+    const event = insightsEvent(71, {
+      installId: "initial",
+      receivedAtMs: 100,
+    });
+    const installation = toInsightsInstallationRow(event);
+    const query = {
+      filter: {
+        platform: "ios" as const,
+        channel: "production",
+        type: "UPDATE_APPLIED" as const,
+        toBundleId: event.to_bundle_id,
+      },
+      sinceMs: 0,
+      beforeReceivedAtMs: 200,
+    };
+    await expect(insights.countEvents(query)).resolves.toBe(0);
+    await insights.record({ event, installation });
+    await expect(insights.countEvents(query)).resolves.toBe(1);
+    await expect(
+      insights.findInstallations({ installId: event.install_id }),
+    ).resolves.toEqual([installation]);
+    await expect(
+      insights.listEvents({
+        ...query,
+        filter: { kind: "bundle", ...query.filter },
+        limit: 10,
+      }),
+    ).resolves.toEqual([event]);
+  });
+
+  it("records and queries an accepted Unicode channel exceeding the native partition-key size", async () => {
+    const insights = createPlugin().models.insights;
+    const channel = "가".repeat(700);
+    const event = {
+      ...insightsEvent(91, { installId: "unicode-channel", receivedAtMs: 100 }),
+      channel,
+    };
+    expect(new TextEncoder().encode(channel).byteLength).toBeGreaterThan(2_048);
+    await insights.record({
+      event,
+      installation: toInsightsInstallationRow(event),
+    });
+    const filter = {
+      platform: "ios" as const,
+      channel,
+      type: "UPDATE_APPLIED" as const,
+      toBundleId: event.to_bundle_id,
+    };
+    const range = { sinceMs: 0, beforeReceivedAtMs: 200 };
+    await expect(insights.countEvents({ filter, ...range })).resolves.toBe(1);
+    await expect(
+      insights.listEvents({
+        filter: { kind: "bundle", ...filter },
+        ...range,
+        limit: 10,
+      }),
+    ).resolves.toEqual([event]);
+    await expect(
+      insights.findInstallations({ installId: event.install_id }),
+    ).resolves.toEqual([toInsightsInstallationRow(event)]);
+    await expect(
+      insights.countEvents({
+        filter: { ...filter, channel: `${channel}나` },
+        ...range,
+      }),
+    ).resolves.toBe(0);
   });
 });

@@ -242,11 +242,11 @@ describe("Hot Updater Handler Integration Tests (Hono + DynamoDB)", () => {
       body: JSON.stringify(event),
     });
     const clientQuery = await fetch(
-      `${baseUrl}/hot-updater/admin/installations/overview`,
+      `${baseUrl}/hot-updater/admin/overview?platform=ios&channel=production&window=24h`,
       { headers: { "x-api-key": rawApiKey } },
     );
     const adminQuery = await fetch(
-      `${baseUrl}/hot-updater/admin/installations/overview`,
+      `${baseUrl}/hot-updater/admin/overview?platform=ios&channel=production&window=24h`,
       {
         headers: {
           Authorization: `Bearer ${TEST_ADMIN_AUTH_TOKEN}`,

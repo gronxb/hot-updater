@@ -55,6 +55,22 @@ export const mockDatabase = (config: MockDatabaseConfig) => {
       count: (input) => read(() => state.count(input)),
       findOne: (input) => read(() => state.findOne(input)),
       findMany: (input) => read(() => state.findMany(input)),
+      recordInsights: ({ event, installation }) =>
+        mutate(async () => {
+          if (data.bundleEvents.has(event.id)) return;
+          const current = data.bundleInstallations.get(event.install_id);
+          const isNewer =
+            !current ||
+            event.received_at_ms > current.received_at_ms ||
+            (event.received_at_ms === current.received_at_ms &&
+              event.id > current.id);
+          data.bundleEvents.set(event.id, { ...event });
+          if (isNewer) {
+            data.bundleInstallations.set(event.install_id, {
+              ...installation,
+            });
+          }
+        }),
       insertChannel: (input) =>
         mutate(async () => {
           const existing = [...data.channels.values()].find(

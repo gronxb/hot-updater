@@ -3,39 +3,63 @@ import { describe, expect, it } from "vitest";
 import { validateInstallationsSearch } from "./-installations-search";
 
 describe("validateInstallationsSearch", () => {
-  it("accepts non-negative integer pagination offsets", () => {
+  it("preserves opaque cursors and stable event cutoffs", () => {
     expect(
       validateInstallationsSearch({
-        query: "ada",
+        eventsBefore: 100,
+        eventsCursor: "events-2",
+        historyBefore: 200,
+        historyCursor: "history-2",
         installId: "install-1",
-        searchOffset: 20,
-        historyOffset: 50,
-        eventsOffset: 100,
+        query: "user-1",
+        searchCursor: "search-2",
       }),
     ).toEqual({
-      query: "ada",
+      eventsBefore: 100,
+      eventsCursor: "events-2",
+      historyBefore: 200,
+      historyCursor: "history-2",
       installId: "install-1",
-      searchOffset: 20,
-      historyOffset: 50,
-      eventsOffset: 100,
+      query: "user-1",
+      searchCursor: "search-2",
     });
   });
 
-  it.each([-1, 1.5, "20", Number.POSITIVE_INFINITY])(
-    "resets invalid pagination offset %j",
-    (offset) => {
-      expect(
-        validateInstallationsSearch({
-          searchOffset: offset,
-          historyOffset: offset,
-          eventsOffset: offset,
-        }),
-      ).toEqual({
-        query: undefined,
-        installId: undefined,
-        searchOffset: 0,
-        historyOffset: 0,
-      });
-    },
-  );
+  it("drops malformed pagination state instead of forwarding it", () => {
+    expect(
+      validateInstallationsSearch({
+        eventsBefore: -1,
+        eventsCursor: "",
+        historyBefore: 1.5,
+        historyCursor: 2,
+        searchCursor: false,
+      }),
+    ).toEqual({
+      eventsBefore: undefined,
+      eventsCursor: undefined,
+      historyBefore: undefined,
+      historyCursor: undefined,
+      installId: undefined,
+      query: undefined,
+      searchCursor: undefined,
+    });
+  });
+
+  it("does not serialize previous cursor stacks into the URL", () => {
+    expect(
+      validateInstallationsSearch({
+        eventsBack: ["event-1", "event-2"],
+        historyBack: ["history-1"],
+        searchBack: ["search-1"],
+      }),
+    ).toEqual({
+      eventsBefore: undefined,
+      eventsCursor: undefined,
+      historyBefore: undefined,
+      historyCursor: undefined,
+      installId: undefined,
+      query: undefined,
+      searchCursor: undefined,
+    });
+  });
 });

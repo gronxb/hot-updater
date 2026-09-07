@@ -140,6 +140,29 @@ const buildWhere = (
 const createPostgresImplementation = (
   db: Kysely<Database>,
 ): DatabasePluginImplementation => ({
+  async recordInsights({ event, installation }) {
+    const eventColumns = Object.keys(event);
+    const installationColumns = Object.keys(installation);
+    await sql`
+      WITH accepted_event AS (
+        INSERT INTO bundle_events (${sql.join(eventColumns.map(sql.ref))})
+        VALUES (${sql.join(Object.values(event))})
+        ON CONFLICT (id) DO NOTHING RETURNING id
+      )
+      INSERT INTO bundle_installations (${sql.join(installationColumns.map(sql.ref))})
+      SELECT ${sql.join(Object.values(installation))} FROM accepted_event
+      ON CONFLICT (install_id) DO UPDATE SET ${sql.join(
+        installationColumns
+          .filter((column) => column !== "install_id")
+          .map(
+            (column) =>
+              sql`${sql.ref(column)} = ${sql.ref(`excluded.${column}`)}`,
+          ),
+      )}
+      WHERE (excluded.received_at_ms, excluded.id) >
+        (bundle_installations.received_at_ms, bundle_installations.id)
+    `.execute(db);
+  },
   async create(input: CreateDatabaseImplementationInput) {
     switch (input.model) {
       case "bundles":
@@ -160,6 +183,26 @@ const createPostgresImplementation = (
           .values(input.data)
           .returningAll()
           .executeTakeFirstOrThrow();
+      case "bundle_installations": {
+        const query = db.insertInto("bundle_installations").values(input.data);
+        const row = await (
+          input.onConflict === "ignore"
+            ? query.onConflict((conflict) =>
+                conflict.column("install_id").doNothing(),
+              )
+            : query
+        )
+          .returningAll()
+          .executeTakeFirst();
+        return (
+          row ??
+          (await db
+            .selectFrom("bundle_installations")
+            .selectAll()
+            .where("install_id", "=", input.data.install_id)
+            .executeTakeFirstOrThrow())
+        );
+      }
       case "releases":
         return db
           .insertInto("releases")
@@ -227,6 +270,11 @@ const createPostgresImplementation = (
     }
     if (input.model === "release_catalogs") {
       let query = db.updateTable("release_catalogs").set(input.update);
+      if (where !== undefined) query = query.where(where);
+      return (await query.returningAll().executeTakeFirst()) ?? null;
+    }
+    if (input.model === "bundle_installations") {
+      let query = db.updateTable("bundle_installations").set(input.update);
       if (where !== undefined) query = query.where(where);
       return (await query.returningAll().executeTakeFirst()) ?? null;
     }
@@ -301,6 +349,11 @@ const createPostgresImplementation = (
       }
       case "release_catalogs": {
         let query = db.selectFrom("release_catalogs").selectAll();
+        if (where !== undefined) query = query.where(where);
+        return (await query.executeTakeFirst()) ?? null;
+      }
+      case "bundle_installations": {
+        let query = db.selectFrom("bundle_installations").selectAll();
         if (where !== undefined) query = query.where(where);
         return (await query.executeTakeFirst()) ?? null;
       }

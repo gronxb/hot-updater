@@ -334,7 +334,11 @@ export const createMongoMigrator = (client: MongoClient): Migrator => {
               await ensureSettingsKeyIndex();
               for (const table of hotUpdaterSchema.tables) {
                 if (table.internal) continue;
+                const isInsights =
+                  table.ormName === "bundle_events" ||
+                  table.ormName === "bundle_installations";
                 const collection = db.collection(table.ormName);
+                const collation = isInsights ? { locale: "simple" } : undefined;
                 const primaryKey = table.columns.find(
                   (column) => column.primaryKey,
                 );
@@ -344,18 +348,13 @@ export const createMongoMigrator = (client: MongoClient): Migrator => {
                   );
                 }
                 const idIndexName = `${table.ormName}_${primaryKey.ormName}_idx`;
-                const existingIndexes = await collection
-                  .listIndexes()
-                  .toArray();
-                const existingIdIndex = existingIndexes.find(
-                  ({ name }) => name === idIndexName,
-                );
-                if (existingIdIndex && existingIdIndex.unique !== true) {
-                  await collection.dropIndex(idIndexName);
-                }
                 await collection.createIndex(
                   { [primaryKey.ormName]: 1 },
-                  { name: idIndexName, unique: true },
+                  {
+                    name: idIndexName,
+                    unique: true,
+                    ...(collation ? { collation } : {}),
+                  },
                 );
                 for (const index of (table.indexes ?? []).filter((item) =>
                   schemaIndexAppliesToProvider(item, "mongodb"),
@@ -367,6 +366,7 @@ export const createMongoMigrator = (client: MongoClient): Migrator => {
                     {
                       name: index.name,
                       ...(index.unique ? { unique: true } : {}),
+                      ...(collation ? { collation } : {}),
                     },
                   );
                 }

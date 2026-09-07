@@ -1,3 +1,4 @@
+import { toInsightsInstallationRow } from "@hot-updater/plugin-core";
 import { beforeEach, expect, it, vi } from "vitest";
 
 import { d1Database } from "./d1Database";
@@ -24,6 +25,26 @@ const bundleD1Row = {
   manifest_storage_uri: null,
   manifest_file_hash: null,
   asset_base_storage_uri: null,
+} as const;
+
+const eventD1Row = {
+  id: "00000000-0000-7000-8000-000000000001",
+  type: "UPDATE_APPLIED",
+  install_id: "install-1",
+  user_id: "user-1",
+  username: "Demo User",
+  from_release_id: null,
+  from_bundle_id: "bundle-previous",
+  to_release_id: null,
+  to_bundle_id: "bundle-current",
+  platform: "ios",
+  app_version: "1.0.0",
+  channel: "production",
+  cohort: "cohort-1",
+  update_strategy: "appVersion",
+  fingerprint_hash: null,
+  sdk_version: "1.0.0",
+  received_at_ms: 100,
 } as const;
 
 vi.mock("cloudflare", () => ({
@@ -175,4 +196,82 @@ it("sends parameterized commits through the D1 batch body", async () => {
   expect(state.batches[0]).toHaveLength(2);
   expect(state.batches[0]?.[0]?.params.length).toBeGreaterThan(0);
   expect(state.batches[0]?.[1]?.params.length).toBeGreaterThan(0);
+});
+
+it("stores the event and current installation in one parameterized atomic batch", async () => {
+  const plugin = d1Database({
+    accountId: "account",
+    cloudflareApiToken: "token",
+    databaseId: "database",
+  });
+  await expect(
+    plugin.models.insights.record({
+      event: eventD1Row,
+      installation: toInsightsInstallationRow(eventD1Row),
+    }),
+  ).resolves.toBeUndefined();
+  expect(state.queries).toHaveLength(0);
+  expect(state.batches).toHaveLength(1);
+  expect(state.batches[0]).toHaveLength(2);
+  expect(state.batches[0]?.[0]?.sql).toContain(
+    "WHERE NOT EXISTS (SELECT 1 FROM bundle_events",
+  );
+  expect(state.batches[0]?.[1]?.sql).toContain("ON CONFLICT(id) DO NOTHING");
+});
+
+it("queries each movement type through a bounded descending range", async () => {
+  const plugin = d1Database({
+    accountId: "account",
+    cloudflareApiToken: "token",
+    databaseId: "database",
+  });
+
+  await expect(
+    plugin.models.insights.listEvents({
+      filter: {
+        kind: "installationMovement",
+        installId: eventD1Row.install_id,
+      },
+      beforeReceivedAtMs: 200,
+      limit: 101,
+    }),
+  ).resolves.toEqual([]);
+
+  expect(state.queries).toHaveLength(2);
+  for (const query of state.queries) {
+    expect(query.sql).toContain("SELECT * FROM bundle_events");
+    expect(query.sql).toContain("type = json_extract(?, '$')");
+    expect(query.sql).toContain("ORDER BY received_at_ms DESC, id DESC");
+    expect(query.params).toContain("101");
+  }
+  expect(state.queries.flatMap(({ params }) => params)).toEqual(
+    expect.arrayContaining([
+      JSON.stringify("UPDATE_APPLIED"),
+      JSON.stringify("RECOVERED"),
+    ]),
+  );
+});
+
+it("counts active installations without reading event history", async () => {
+  state.results.push({ count: 2 });
+  const plugin = d1Database({
+    accountId: "account",
+    cloudflareApiToken: "token",
+    databaseId: "database",
+  });
+
+  await expect(
+    plugin.models.insights.countInstallations({
+      platform: "ios",
+      channel: "production",
+      sinceMs: 100,
+    }),
+  ).resolves.toBe(2);
+
+  expect(state.queries).toHaveLength(1);
+  expect(state.queries[0]?.sql).toContain(
+    "SELECT COUNT(*) AS count FROM bundle_installations",
+  );
+  expect(state.queries[0]?.sql).toContain("received_at_ms >=");
+  expect(state.queries[0]?.sql).not.toContain("bundle_events");
 });

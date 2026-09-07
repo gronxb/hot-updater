@@ -1,10 +1,12 @@
 import { PGlite } from "@electric-sql/pglite";
+import { toInsightsInstallationRow } from "@hot-updater/plugin-core";
 import { Kysely } from "kysely";
 import { PGliteDialect } from "kysely-pglite-dialect";
 import { describe, expect, it } from "vitest";
 
 import {
   createBundlePatchRowFixture,
+  createBundleEventRowFixture,
   createBundleRowFixture,
   createChannelRowFixture,
 } from "../../../test-utils/src/databaseTestFixtures";
@@ -54,6 +56,33 @@ setupDatabasePluginTestSuite({
 });
 
 describe("kyselyAdapter SQLite JSON storage", () => {
+  it("rolls back the event when the installation write fails and permits retry", async () => {
+    const db = new PGlite();
+    const kysely = new Kysely<object>({ dialect: new PGliteDialect(db) });
+    await db.exec(DATABASE_PLUGIN_TEST_SCHEMA_SQL);
+    await db.exec(
+      "alter table bundle_installations add constraint reject_snapshot check (install_id <> 'install-703')",
+    );
+    const plugin = kyselyAdapter({ db: kysely, provider: "postgresql" });
+    const event = createBundleEventRowFixture("703", 100);
+    const input = { event, installation: toInsightsInstallationRow(event) };
+    try {
+      await expect(plugin.models.insights.record(input)).rejects.toThrow();
+      expect((await db.query("select id from bundle_events")).rows).toEqual([]);
+      await db.exec(
+        "alter table bundle_installations drop constraint reject_snapshot",
+      );
+      await plugin.models.insights.record(input);
+      await expect(
+        plugin.models.insights.findInstallations({
+          installId: event.install_id,
+        }),
+      ).resolves.toEqual([input.installation]);
+    } finally {
+      await kysely.destroy();
+      await db.close();
+    }
+  });
   it("round-trips JSON values through text columns", async () => {
     const sqliteClient = new PGlite();
     const sqliteDatabase = new Kysely<object>({

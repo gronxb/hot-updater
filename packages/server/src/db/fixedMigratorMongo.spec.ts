@@ -2,6 +2,7 @@ import { MongoClient } from "mongodb";
 import { describe, expect, it, vi } from "vitest";
 
 import { createInMemoryDatabasePlugin } from "../../../test-utils/test/inMemoryDatabasePlugin";
+import { HOT_UPDATER_SCHEMA_VERSION } from "../schema/types";
 import { createDatabasePluginCore } from "./databasePluginCore";
 import { createMongoMigrator } from "./fixedMigrator";
 import { createSchemaReadinessChecker } from "./schemaReadiness";
@@ -29,7 +30,7 @@ function createSettingsMongoClient(
 }
 
 describe("MongoDB migration", () => {
-  it("creates schema 1.0.0 from an empty database", async () => {
+  it("creates the current schema from an empty database", async () => {
     const settings = new Map<string, unknown>();
     const settingsCollection = {
       find: ({ key }: { readonly key: string }) => ({
@@ -50,7 +51,7 @@ describe("MongoDB migration", () => {
     const modelCollection = {
       find: () => ({ toArray: async () => [] }),
       listIndexes: () => ({ toArray: async () => [] }),
-      createIndex: async () => "created",
+      createIndex: vi.fn(async () => "created"),
     };
     const command = vi.fn(
       async (_input: Record<string, unknown>): Promise<void> => undefined,
@@ -76,7 +77,47 @@ describe("MongoDB migration", () => {
       { key: 1 },
       { unique: true },
     );
-    expect(settings.get("schema.core")).toBe("1.0.0");
+    expect(settings.get("schema.core")).toBe(HOT_UPDATER_SCHEMA_VERSION);
+    expect(modelCollection.createIndex).toHaveBeenCalledWith(
+      { install_id: 1 },
+      {
+        name: "bundle_installations_install_id_idx",
+        unique: true,
+        collation: { locale: "simple" },
+      },
+    );
+    expect(modelCollection.createIndex).toHaveBeenCalledWith(
+      {
+        type: 1,
+        platform: 1,
+        channel: 1,
+        from_bundle_id: 1,
+        received_at_ms: 1,
+        id: 1,
+      },
+      {
+        name: "bundle_events_from_bundle_idx",
+        collation: { locale: "simple" },
+      },
+    );
+    expect(modelCollection.createIndex).toHaveBeenCalledWith(
+      {
+        type: 1,
+        platform: 1,
+        channel: 1,
+        to_bundle_id: 1,
+        received_at_ms: 1,
+        id: 1,
+      },
+      { name: "bundle_events_to_bundle_idx", collation: { locale: "simple" } },
+    );
+    expect(modelCollection.createIndex).toHaveBeenCalledWith(
+      { platform: 1, channel: 1, to_bundle_id: 1, received_at_ms: 1 },
+      {
+        name: "bundle_installations_bundle_idx",
+        collation: { locale: "simple" },
+      },
+    );
     const commands = command.mock.calls.map(([input]) => input);
     expect(commands.find(({ collMod }) => collMod === "bundles")).toMatchObject(
       {
@@ -138,24 +179,30 @@ describe("MongoDB migration", () => {
     });
   });
 
-  it("is a no-op when schema.core is already 1.0.0", async () => {
-    const client = createSettingsMongoClient({ "schema.core": "1.0.0" });
+  it("is a no-op when schema.core is current", async () => {
+    const client = createSettingsMongoClient({
+      "schema.core": HOT_UPDATER_SCHEMA_VERSION,
+    });
     const migrator = createMongoMigrator(client);
 
-    await expect(migrator.getVersion()).resolves.toBe("1.0.0");
+    await expect(migrator.getVersion()).resolves.toBe(
+      HOT_UPDATER_SCHEMA_VERSION,
+    );
     await expect(
       migrator.migrateToLatest({ mode: "from-schema" }),
     ).resolves.toMatchObject({ operations: [] });
   });
 
-  it("ignores a leftover version marker when schema.core is 1.0.0", async () => {
+  it("ignores a leftover version marker when schema.core is current", async () => {
     const client = createSettingsMongoClient({
-      "schema.core": "1.0.0",
+      "schema.core": HOT_UPDATER_SCHEMA_VERSION,
       version: "0.36.0",
     });
     const migrator = createMongoMigrator(client);
 
-    await expect(migrator.getVersion()).resolves.toBe("1.0.0");
+    await expect(migrator.getVersion()).resolves.toBe(
+      HOT_UPDATER_SCHEMA_VERSION,
+    );
     await expect(
       migrator.migrateToLatest({ mode: "from-schema" }),
     ).resolves.toMatchObject({ operations: [] });

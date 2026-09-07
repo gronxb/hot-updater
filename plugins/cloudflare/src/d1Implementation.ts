@@ -35,6 +35,13 @@ export interface D1Statement {
   readonly params: readonly string[];
 }
 
+export class D1ExecutionError extends Error {
+  readonly name = "D1ExecutionError";
+  constructor() {
+    super("D1 did not successfully execute every requested statement");
+  }
+}
+
 type D1Guard = {
   readonly sql: string;
   readonly params: readonly string[];
@@ -191,6 +198,7 @@ const insertQuery = (
       values = channelValues(input.data);
       break;
     case "bundle_events":
+    case "bundle_installations":
     case "api_keys":
     case "release_catalogs":
     case "releases":
@@ -210,7 +218,7 @@ const insertQuery = (
           ? conflictMode === "ignore"
             ? " ON CONFLICT(hash) DO NOTHING"
             : " ON CONFLICT(hash) DO UPDATE SET hash = excluded.hash"
-          : "";
+          : " ON CONFLICT(install_id) DO UPDATE SET install_id = excluded.install_id";
 
   return {
     sql: `INSERT INTO ${d1TableNames[input.model]} (${columns.join(", ")}) ${
@@ -439,8 +447,6 @@ const changeQuery = (change: DatabaseChange, guard: D1Guard): D1Statement => {
               ...guard.params,
             ],
           };
-    case "insights":
-      return insertQuery({ model: "bundle_events", data: change.row }, guard);
     case "apiKeys":
       return change.operation === "insert"
         ? insertQuery(
@@ -638,6 +644,33 @@ const deleteChannel = async (
 export const createD1Implementation = (
   executor: D1Executor,
 ): DatabasePluginImplementation => ({
+  async recordInsights({ event, installation }) {
+    const columns = Object.keys(installation);
+    const eventInsert = insertQuery({ model: "bundle_events", data: event });
+    // D1 executes the whole batch as one serial transaction. The snapshot
+    // guard runs before the event insert so a duplicate cannot mutate it.
+    await executor.batch([
+      {
+        sql: `INSERT INTO bundle_installations (${columns.join(", ")})
+          SELECT ${d1Placeholders(columns.length)}
+          WHERE NOT EXISTS (SELECT 1 FROM bundle_events WHERE id = json_extract(?, '$'))
+          ON CONFLICT(install_id) DO UPDATE SET ${columns
+            .filter((column) => column !== "install_id")
+            .map((column) => `${column} = excluded.${column}`)
+            .join(", ")}
+          WHERE (excluded.received_at_ms, excluded.id) >
+            (bundle_installations.received_at_ms, bundle_installations.id)`,
+        params: encodeD1Values([...Object.values(installation), event.id]),
+      },
+      {
+        ...eventInsert,
+        sql: eventInsert.sql.replace(
+          " RETURNING *",
+          " ON CONFLICT(id) DO NOTHING",
+        ),
+      },
+    ]);
+  },
   async create(input) {
     const query = insertQuery(input);
     const rows = await executor.query(query.sql, query.params);
@@ -650,6 +683,8 @@ export const createD1Implementation = (
         return parseD1Row("channels", rows[0]);
       case "bundle_events":
         return parseD1Row("bundle_events", rows[0]);
+      case "bundle_installations":
+        return parseD1Row("bundle_installations", rows[0]);
       case "api_keys":
         return parseD1Row("api_keys", rows[0]);
       case "releases":
@@ -671,6 +706,8 @@ export const createD1Implementation = (
         return parseD1Row("releases", rows[0]);
       case "release_catalogs":
         return parseD1Row("release_catalogs", rows[0]);
+      case "bundle_installations":
+        return parseD1Row("bundle_installations", rows[0]);
     }
   },
   async delete(input) {
@@ -698,6 +735,8 @@ export const createD1Implementation = (
         return parseD1Row("releases", rows[0]);
       case "release_catalogs":
         return parseD1Row("release_catalogs", rows[0]);
+      case "bundle_installations":
+        return parseD1Row("bundle_installations", rows[0]);
     }
   },
   findMany: (input) => findManyD1Rows(executor, input),

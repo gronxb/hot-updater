@@ -1,4 +1,5 @@
-import type { DatabasePlugin } from "@hot-updater/plugin-core";
+import { toInsightsInstallationRow } from "@hot-updater/plugin-core";
+import type { BundleEventRow, DatabasePlugin } from "@hot-updater/plugin-core";
 import { describe, expect, it } from "vitest";
 
 import type { DatabasePluginTestState } from "./databasePluginTestRunner";
@@ -9,8 +10,25 @@ import {
   createApiKeyRowFixture,
   createReleaseRowFixture,
 } from "./databaseTestFixtures";
+import { expectInsightsIndex } from "./expectInsightsIndex";
 
 type OfficialDomainTestState = DatabasePluginTestState<DatabasePlugin>;
+
+const createMovementEvent = (
+  suffix: string,
+  receivedAtMs: number,
+  type: "UPDATE_APPLIED" | "RECOVERED" | "RELEASE_ADOPTED",
+  installId: string,
+): BundleEventRow => {
+  const row = createBundleEventRowFixture(suffix, receivedAtMs);
+  return {
+    ...row,
+    type,
+    install_id: installId,
+    from_bundle_id: row.to_bundle_id,
+    update_strategy: "appVersion",
+  };
+};
 
 export const registerDatabasePluginOfficialDomainTests = (
   state: OfficialDomainTestState,
@@ -201,39 +219,115 @@ export const registerDatabasePluginOfficialDomainTests = (
       });
     });
 
-    it("appends and scans insights events in stable cursor order", async () => {
+    it("pages insights events newest first with a stable cursor", async () => {
       const plugin = state.getPlugin();
       const first = createBundleEventRowFixture("701", 100);
       const second = createBundleEventRowFixture("702", 100);
       const third = createBundleEventRowFixture("703", 200);
-      await plugin.models.insights.append(third);
-      await plugin.models.insights.append(second);
-      await plugin.models.insights.append(first);
+      await plugin.models.insights.record({
+        event: third,
+        installation: toInsightsInstallationRow(third),
+      });
+      await plugin.models.insights.record({
+        event: second,
+        installation: toInsightsInstallationRow(second),
+      });
+      await plugin.models.insights.record({
+        event: first,
+        installation: toInsightsInstallationRow(first),
+      });
 
-      await expect(
-        plugin.models.insights.scan({ beforeReceivedAtMs: 201, limit: 1 }),
-      ).resolves.toEqual([first]);
-      await expect(
-        plugin.models.insights.scan({
-          after: { receivedAtMs: first.received_at_ms, id: first.id },
-          beforeReceivedAtMs: 201,
-          limit: 1,
-        }),
-      ).resolves.toEqual([second]);
-      await expect(
-        plugin.models.insights.scan({
-          after: { receivedAtMs: first.received_at_ms, id: first.id },
-          beforeReceivedAtMs: 201,
-          limit: 10,
-        }),
-      ).resolves.toEqual([second, third]);
-      await expect(
-        plugin.models.insights.scan({
-          after: { receivedAtMs: second.received_at_ms, id: second.id },
-          beforeReceivedAtMs: 200,
-          limit: 10,
-        }),
-      ).resolves.toEqual([]);
+      await expectInsightsIndex(
+        () =>
+          plugin.models.insights.listEvents({
+            filter: { kind: "all" },
+            beforeReceivedAtMs: 201,
+            limit: 2,
+          }),
+        [third, second],
+      );
+      await expectInsightsIndex(
+        () =>
+          plugin.models.insights.listEvents({
+            filter: { kind: "all" },
+            after: { receivedAtMs: second.received_at_ms, id: second.id },
+            beforeReceivedAtMs: 201,
+            limit: 2,
+          }),
+        [first],
+      );
+      await expectInsightsIndex(
+        () =>
+          plugin.models.insights.listEvents({
+            filter: { kind: "all" },
+            beforeReceivedAtMs: 200,
+            limit: 10,
+          }),
+        [second, first],
+      );
+    });
+
+    it("filters installation movements before applying the page limit", async () => {
+      const plugin = state.getPlugin();
+      const adopted = createMovementEvent(
+        "711",
+        300,
+        "RELEASE_ADOPTED",
+        "install-target",
+      );
+      const unrelated = createMovementEvent(
+        "712",
+        250,
+        "UPDATE_APPLIED",
+        "install-other",
+      );
+      const applied = createMovementEvent(
+        "713",
+        200,
+        "UPDATE_APPLIED",
+        "install-target",
+      );
+      const recovered = createMovementEvent(
+        "714",
+        100,
+        "RECOVERED",
+        "install-target",
+      );
+      for (const row of [adopted, unrelated, applied, recovered]) {
+        await plugin.models.insights.record({
+          event: row,
+          installation: toInsightsInstallationRow(row),
+        });
+      }
+
+      await expectInsightsIndex(
+        () =>
+          plugin.models.insights.listEvents({
+            filter: {
+              kind: "installationMovement",
+              installId: "install-target",
+            },
+            beforeReceivedAtMs: 301,
+            limit: 1,
+          }),
+        [applied],
+      );
+      await expectInsightsIndex(
+        () =>
+          plugin.models.insights.listEvents({
+            filter: {
+              kind: "installationMovement",
+              installId: "install-target",
+            },
+            after: {
+              receivedAtMs: applied.received_at_ms,
+              id: applied.id,
+            },
+            beforeReceivedAtMs: 301,
+            limit: 1,
+          }),
+        [recovered],
+      );
     });
 
     it("creates, lists, resolves, and revokes API keys", async () => {

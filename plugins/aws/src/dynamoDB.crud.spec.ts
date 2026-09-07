@@ -73,7 +73,14 @@ describe("DynamoDB CRUD access patterns", () => {
   });
 
   it("defaults a legacy stored bundle's missing archive byte size", () => {
-    const legacyItem = structuredClone(toDynamoDBBundleItem(bundleRow));
+    const currentItem = toDynamoDBBundleItem(bundleRow);
+    expect(currentItem).not.toHaveProperty("gsi1pk");
+    expect(currentItem).not.toHaveProperty("gsi1sk");
+    const legacyItem = structuredClone({
+      ...currentItem,
+      gsi1pk: "bundle#ios",
+      gsi1sk: bundleRow.id,
+    });
     Reflect.deleteProperty(legacyItem.row, "archive_byte_size");
 
     expect(parseDynamoDBItem(legacyItem)).toMatchObject({

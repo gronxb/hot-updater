@@ -158,6 +158,22 @@ describe("Hot Updater Handler Integration Tests (Hono + Prisma + PostgreSQL)", (
       cwd: projectRoot,
       env: { DATABASE_URL: testDatabaseUrl },
     });
+    await execa(
+      "npx",
+      [
+        "prisma",
+        "db",
+        "execute",
+        "--file",
+        "prisma/insights-collation.sql",
+        "--schema",
+        "prisma/schema.prisma",
+      ],
+      {
+        cwd: projectRoot,
+        env: { DATABASE_URL: testDatabaseUrl },
+      },
+    );
 
     serverProcess = spawnServerProcess({
       serverCommand: ["npx", "tsx", "src/index.ts"],

@@ -4,9 +4,9 @@ export type {
   HotUpdaterHandler,
   HotUpdaterHandlers,
 } from "./handler";
-export { createInsightsProvider } from "./insights/bounded/provider";
+export { createInsightsProvider } from "./insights/provider";
 export type * from "./insights/domain";
-export type { InsightsProvider } from "./insights/types";
+export type * from "./insights/types";
 export {
   API_KEY_HEADER_NAME,
   createApiKey,

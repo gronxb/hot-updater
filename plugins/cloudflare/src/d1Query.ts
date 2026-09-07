@@ -14,6 +14,7 @@ export const d1TableNames = {
   bundle_patches: "bundle_patches",
   channels: "channels",
   bundle_events: "bundle_events",
+  bundle_installations: "bundle_installations",
   api_keys: "api_keys",
   release_catalogs: "release_catalogs",
   releases: "releases",
@@ -79,6 +80,8 @@ export const findManyD1Rows = async (
       return rows.map((row) => parseD1Row("channels", row));
     case "bundle_events":
       return rows.map((row) => parseD1Row("bundle_events", row));
+    case "bundle_installations":
+      return rows.map((row) => parseD1Row("bundle_installations", row));
     case "api_keys":
       return rows.map((row) => parseD1Row("api_keys", row));
     case "releases":

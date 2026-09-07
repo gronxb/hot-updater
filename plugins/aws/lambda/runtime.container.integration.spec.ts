@@ -624,7 +624,8 @@ describe.sequential("aws lambda runtime acceptance", () => {
     });
 
     await expect(
-      database.models.insights.scan({
+      database.models.insights.listEvents({
+        filter: { kind: "all" },
         beforeReceivedAtMs: Date.now() + 1_000,
         limit: 10,
       }),

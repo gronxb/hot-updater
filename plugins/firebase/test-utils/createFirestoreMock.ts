@@ -15,6 +15,9 @@ export function createFirestoreMock(projectId: string) {
   const bundleEventsCollection = firestore.collection(
     FIREBASE_V1_COLLECTION_NAMES.bundleEvents,
   );
+  const bundleInstallationsCollection = firestore.collection(
+    FIREBASE_V1_COLLECTION_NAMES.bundleInstallations,
+  );
   const channelsCollection = firestore.collection(
     FIREBASE_V1_COLLECTION_NAMES.channels,
   );
@@ -40,6 +43,7 @@ export function createFirestoreMock(projectId: string) {
       bundlesCollection,
       bundlePatchesCollection,
       bundleEventsCollection,
+      bundleInstallationsCollection,
       channelsCollection,
       apiKeysCollection,
       releasesCollection,
@@ -63,6 +67,7 @@ export function createFirestoreMock(projectId: string) {
     bundlesCollection,
     bundlePatchesCollection,
     bundleEventsCollection,
+    bundleInstallationsCollection,
     channelsCollection,
     apiKeysCollection,
     releasesCollection,

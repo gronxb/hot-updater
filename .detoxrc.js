@@ -38,7 +38,7 @@ module.exports = {
         process.env.HOT_UPDATER_E2E_ANDROID_TEST_BINARY_PATH ||
         "examples/v0.85.0/android/app/build/outputs/apk/androidTest/release/app-release-androidTest.apk",
       build:
-        `cd examples/v0.85.0/android && ./gradlew assembleRelease assembleAndroidTest -DtestBuildType=release -PreactNativeArchitectures=${androidArchitectures} -PHOT_UPDATER_E2E_DEBUGGABLE=true -PMIN_BUNDLE_ID=00000000-0000-7000-8000-000000000000`,
+        `cd examples/v0.85.0/android && ./gradlew --no-daemon :app:assembleRelease :app:assembleReleaseAndroidTest -Pkotlin.compiler.execution.strategy=in-process -DtestBuildType=release -PreactNativeArchitectures=${androidArchitectures} -PHOT_UPDATER_E2E_DEBUGGABLE=true -PMIN_BUNDLE_ID=00000000-0000-7000-8000-000000000000`,
     },
   },
   devices: {

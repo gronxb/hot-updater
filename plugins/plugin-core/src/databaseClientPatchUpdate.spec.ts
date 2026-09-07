@@ -33,6 +33,7 @@ const createNativePlugin = (
   return createDatabasePlugin({
     name,
     ...createDatabasePluginAdapter(name, {
+      recordInsights: async () => undefined,
       create: async (input) => input.data,
       update: async () => null,
       delete: async () => undefined,
@@ -80,6 +81,7 @@ describe("database client patch updates", () => {
         count: async () => 0,
         findOne: async () => null,
         findMany: async () => [],
+        recordInsights: async () => undefined,
         insertChannel: async () => ({ row: channelRow, inserted: false }),
         deleteChannel: async () => ({ deleted: false, reason: "not_found" }),
       }),
@@ -127,6 +129,7 @@ describe("database client patch updates", () => {
         count: async () => 1,
         findOne: async (input) => (input.model === "bundles" ? row : null),
         findMany: async () => [],
+        recordInsights: async () => undefined,
         insertChannel: async () => ({ row: channelRow, inserted: false }),
         deleteChannel: async () => ({ deleted: false, reason: "not_found" }),
       }),
