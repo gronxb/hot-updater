@@ -293,6 +293,25 @@ remote execution. No replacement of existing interactive init. No automatic
 in-place v0 conversion, downgrade, infrastructure deletion, or rollout to app
 users. No claim that a future undocumented migration is automatically safe.
 
+## Onboarding review resolutions
+
+Adversarial review covered first-time discovery, each provider's setup sequence,
+and credentials, retries and upgrade safety. The resulting changes:
+
+- Prepare the client-key helper's Node runtime before creating remote resources,
+  and discover CLI capabilities before choosing a prerelease or preview package.
+- Configure Cloudflare bindings and install worker dependencies before migrations.
+- Verify Firebase runtime download-signing access and reuse working local ADC;
+  a credential JSON file is conditional, not a mandatory onboarding question.
+- Verify authentication with the same catalog route's anonymous 401 and authorized
+  200 or documented empty-catalog 404. Public /version alone does not prove it.
+- Continue an authorized infrastructure repair when provider access is available,
+  even when doctor labels it blocked; pause only for actual unresolved prerequisites.
+- Accept the executing prerelease CLI's bundled server runtime while preserving
+  stable infrastructure baselines and generation boundaries.
+- Connect JS initialization/update checks when app integration is in scope; keep
+  server verification, app integration and native OTA validation distinct.
+
 ## Validation
 
 Validated on 2026-09-07 against the base commit above:
@@ -300,7 +319,7 @@ Validated on 2026-09-07 against the base commit above:
 - `pnpm -w build`: passed for 26 projects, including documentation and link checks.
 - `pnpm -w test:type`: passed for 34 projects.
 - `pnpm -w lint`: passed with no warnings or errors.
-- `pnpm -w test`: 2,632 tests passed across 287 files.
+- `pnpm -w test`: 2,641 tests passed across 287 files.
 - Setup and upgrade docs use AI agent/Terminal tabs. Verified the built HTML for
   all seven tabbed guides and checked documentation links. Every emitted agent
   environment variable has a purpose/conditions/source entry in its provider guide.
@@ -313,5 +332,7 @@ Validated on 2026-09-07 against the base commit above:
 - `hot-updater/skills`: skill format validation and Markdown reference checks
   passed. The infrastructure workflow uses live CLI capability discovery and
   reads the packaged version files instead of duplicating migration instructions.
+- The three onboarding reviewers rechecked the accepted fixes and found no
+  remaining documentation blockers within their review scopes.
 - No live cloud provisioning, infrastructure deployment, or native OTA run was
   performed. Those require the target account and app environment.

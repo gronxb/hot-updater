@@ -1,4 +1,5 @@
-import { coerce, isLess, isLessOrEqual, normalize } from "verkit";
+import { HOT_UPDATER_SERVER_VERSION } from "@hot-updater/server";
+import { coerce, isLess, isLessOrEqual, isPrerelease, normalize } from "verkit";
 
 import { INFRASTRUCTURE_UPDATES } from "./infrastructureUpdates";
 
@@ -7,7 +8,9 @@ export interface UpdateTarget {
   readonly note: string;
 }
 
-export type RequiredUpdateTarget = UpdateTarget;
+export interface RequiredUpdateTarget extends UpdateTarget {
+  readonly minimumPrereleaseVersion?: string;
+}
 
 export const UPDATE_TARGETS = INFRASTRUCTURE_UPDATES;
 
@@ -84,8 +87,9 @@ export function getRequiredServerVersion(
 
 export function getRequiredUpdateTarget(
   hotUpdaterVersion: string = getLatestKnownTargetVersion(),
+  bundledServerVersion: string = HOT_UPDATER_SERVER_VERSION,
 ): RequiredUpdateTarget {
-  return (
+  const target =
     getRequiredTarget({
       hotUpdaterVersion,
       targets: UPDATE_TARGETS,
@@ -94,8 +98,20 @@ export function getRequiredUpdateTarget(
       index: -1,
       label: "UPDATE_TARGETS",
       targets: UPDATE_TARGETS,
-    })
-  );
+    });
+  const serverCore = coerce(bundledServerVersion);
+  // A prerelease CLI must accept the runtime it ships for this generation.
+  // Keep the stable baseline for upgrade history and generation validation.
+  if (
+    isPrerelease(hotUpdaterVersion) &&
+    isPrerelease(bundledServerVersion) &&
+    serverCore &&
+    `${serverCore.major}.${serverCore.minor}.${serverCore.patch}` ===
+      target.version
+  ) {
+    return { ...target, minimumPrereleaseVersion: bundledServerVersion };
+  }
+  return target;
 }
 
 export function isInfrastructureUpdateRequired({

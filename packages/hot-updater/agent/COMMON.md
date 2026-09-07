@@ -5,6 +5,11 @@ operation-specific instructions and manifest.json before making changes.
 
 ## Establish the target
 
+- Before remote changes, check local tooling. The CLI needs Node 20.19+, but
+  app/provision-api-key.mjs imports TypeScript and needs Node 22.18+ or Node 24+.
+  Arrange that runtime for the helper before provisioning resources; it can run
+  separately from the app's Node version. Check the app's package-manager setup.
+
 - Inspect the workspace to locate the target React Native app, package manager,
   build plugin, existing Hot Updater config and any prior deployment.json. Use
   those findings and authenticated provider discovery before asking questions.
@@ -79,15 +84,30 @@ requested setup. Never request payment details in chat.
 3. After the schema is ready, use app/api-key.config.ts and
    app/provision-api-key.mjs to register a client key. Run the script from the
    directory whose .env.hotupdater contains the target provider settings, using
-   Node 22.18+ or Node 24+. Install the manifest's key-tool dependencies where
-   these files can resolve them. The script saves api-key.local before the remote
-   request and reuses it on retry; keep that file private. If an existing deployment
+   Node 22.18+ or Node 24+. Install the manifest.json packages where
+   these files can resolve them (the default scaffold is nested in the app).
+   From the app directory, run `node <scaffold-path>/app/provision-api-key.mjs`.
+   The script saves api-key.local before the remote request and reuses it on retry; keep that file private. If an existing deployment
    has HOT_UPDATER_API_KEY, provide that value in the environment or .env.hotupdater
    to reuse it. A revoked or mismatched key needs investigation, not silent rotation.
 4. Copy the saved client key to the app's intended build-time configuration and
    local HOT_UPDATER_API_KEY setting without printing it. Client requests use
    x-api-key. Never substitute a provider API token, service-role key, or admin
    credential. Keep the key across setup retries and server upgrades.
+
+## App integration
+
+When the requested setup includes app integration, connect the verified base URL
+and saved client key to the existing HotUpdater.init or HotUpdater.wrap call.
+Preserve the project's update strategy and update UX. If integration is missing,
+follow the matching version's [Basic Usage](https://hot-updater.dev/docs/get-started/basic-usage#step-4-wrap-your-application)
+and [native setup](https://hot-updater.dev/docs/get-started/basic-usage#native-code-setup)
+to add initialization, x-api-key headers, and an actual update-check entry point
+using the project's conventions. Inspect the final JS code as well as native
+wiring; doctor does not verify JS initialization or that checkForUpdate is called.
+For infrastructure-only requests, report these app integration steps as remaining
+work rather than claiming the app is ready. A native release OTA check is a
+separate validation result.
 
 ## Verify completion
 
@@ -96,8 +116,24 @@ requested setup. Never request payment details in chat.
   after this succeeds. Allow for provider propagation and inspect logs on failure.
 - Run hot-updater doctor --json --server-base-url <base-url> from the app project.
   A missing config or skipped server check is not infrastructure verification.
-  Verify an authenticated client request; test access to an existing artifact
-  when one exists. Do not deploy an OTA update merely to mark setup complete.
+  `fixability: "blocked"` means doctor cannot apply the external repair itself.
+  Continue the authorized setup/upgrade with provider access and these instructions;
+  pause only for an actual unresolved prerequisite or unsafe/unknown remote state.
+- Verify client authentication with the same catalog URL twice, first without a
+  key (expect 401), then with the saved client key in x-api-key. Load the key from
+  the private local environment inside the probe process; do not interpolate it
+  into command arguments or print headers. Use
+  `/release-catalogs/app-version/<ios|android>/<channelKey>/<appVersion>` or
+  `/release-catalogs/fingerprint/<ios|android>/<channelKey>/<fingerprintHash>`
+  with the app's actual strategy/platform/version or fingerprint. channelKey is
+  the UTF-8 channel encoded as base64url without padding; production is
+  cHJvZHVjdGlvbg. Expect 200 with a Release Catalog when published, or 404 with
+  JSON {"error":"Not found"} and Cache-Control: private, no-store for an empty
+  catalog. Count that 404 only after the identical unauthenticated URL returned
+  401 and the route/parameters are verified; an arbitrary 404 is not success.
+  /version is public and cannot prove API-key authentication. Test resolution and
+  download of an existing artifact when one exists. Do not deploy an OTA update
+  merely to mark setup complete.
 - Report created/reused resources, files to apply, verification performed, and
   any remaining blocker. JS/native integration and a release-build OTA check are
   separate from server deployment. For Expo, configure @hot-updater/expo and

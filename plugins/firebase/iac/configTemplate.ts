@@ -32,9 +32,9 @@ export const getConfigScaffold = (
       strategy: "preserve-existing",
       code: `
 // https://firebase.google.com/docs/admin/setup?hl=en#initialize_the_sdk_in_non-google_environments
-// Check your .env.hotupdater file and add the credentials
-// Set the GOOGLE_APPLICATION_CREDENTIALS environment variable to your credentials file path
-// Example: GOOGLE_APPLICATION_CREDENTIALS=./firebase-adminsdk-credentials.json
+// Reuse working application-default credentials (ADC).
+// Only when a credential file is needed, set its private local path in .env.hotupdater:
+// GOOGLE_APPLICATION_CREDENTIALS=./firebase-adminsdk-credentials.json
 const credential = applicationDefault();`.trim(),
     },
   ];

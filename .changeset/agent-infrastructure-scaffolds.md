@@ -24,3 +24,9 @@ Include provider environment guides explaining each variable's purpose,
 conditions and secure source. Guide agents to discover the app and existing
 resources, create missing infrastructure, and ask only for unresolved choices
 or access, without requesting secrets in chat.
+
+Accept the bundled server prerelease in doctor when running the matching
+prerelease CLI, while retaining generation checks and stable release requirements.
+Check helper runtime prerequisites before provisioning, apply Cloudflare config
+before migrations, and include Firebase download-signing permissions and reusable
+application-default credentials in the onboarding instructions.

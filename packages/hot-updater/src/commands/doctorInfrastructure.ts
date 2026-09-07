@@ -107,8 +107,9 @@ export async function checkInfrastructureStatus({
   const versionEndpoint = resolveVersionEndpoint(serverBaseUrl);
   const baseUrl = serverBaseUrl.trim();
   const catalogMode = getCatalogMode(baseUrl);
-  const requiredVersion = requiredTarget.version;
-  const requiresV1 = isV1InfrastructureRequired(requiredVersion);
+  const requiredVersion =
+    requiredTarget.minimumPrereleaseVersion ?? requiredTarget.version;
+  const requiresV1 = isV1InfrastructureRequired(requiredTarget.version);
 
   try {
     const response = await fetchImpl(versionEndpoint, {
@@ -185,9 +186,6 @@ export async function checkInfrastructureStatus({
 
     const needsUpdate = isInfrastructureUpdateRequired({
       serverVersion: data.version,
-      ...(data.infrastructureGeneration === 1
-        ? { infrastructureGeneration: 1 }
-        : {}),
       requiredVersion,
     });
 

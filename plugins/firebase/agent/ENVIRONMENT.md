@@ -22,7 +22,10 @@ provide credentials to the local Admin SDK.
 
 The deployed Function uses its runtime application-default identity. It needs
 Firestore/Storage permissions and the actual default bucket in Firebase app
-options. Do not upload the local service-account credential file as an app asset
+options. Download URL signing also requires the IAM Service Account Credentials
+API and iam.serviceAccounts.signBlob for the runtime identity on its signing
+account; follow SETUP.md's Download signing step. Local ADC access does not prove
+that the deployed identity has signing access. Do not upload the local service-account credential file as an app asset
 or substitute it for the runtime identity.
 
 The region is a deployment-template input. Preserve an existing optional

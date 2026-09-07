@@ -12,7 +12,8 @@ import { Accordion, Accordions } from "fumadocs-ui/components/accordion";
 Your deployment needs the resources and access below. When using an AI agent,
 it can prepare missing resources through its available provider tools.
 
-- **Node.js**: Version 20.19 or later is required; Node 22 is recommended.
+- **Node.js**: The CLI requires 20.19+. Agent setup uses a client-key helper that
+  requires Node 22.18+ or Node 24+; prepare it before provisioning resources.
 - **Firebase Project**: Create a new project at [Firebase](https://firebase.google.com) if you don’t have one.
 - **Google Cloud CLI (terminal setup)**: Install `gcloud` and authenticate the account that owns the Firebase project.
 - **Firebase Storage**: Enable Storage so the project has its canonical default `.firebasestorage.app` or `.appspot.com` bucket.
@@ -97,8 +98,8 @@ HOT_UPDATER_FIREBASE_PROJECT_ID=your-project-id
 HOT_UPDATER_FIREBASE_REGION=your-functions-region
 HOT_UPDATER_FIREBASE_STORAGE_BUCKET=your-bucket-name
 HOT_UPDATER_API_KEY=your-api-key
-# Project Settings > Service Accounts > New Private Key > Download JSON
-GOOGLE_APPLICATION_CREDENTIALS=your-credentials.json
+# Optional: only if using a private credential file instead of existing ADC
+# GOOGLE_APPLICATION_CREDENTIALS=/private/path/your-credentials.json
 ```
 
 Managed init reuses `HOT_UPDATER_API_KEY` when supplied or creates an API key,
@@ -180,18 +181,20 @@ export default App;
 During the initialization process, the following file is automatically generated:
 
 - `hot-updater.config.ts`: This file contains the configuration settings for integrating Firebase with your project.
-- `.env.hotupdater`: **IMPORTANT**:
-  Make sure to set the `GOOGLE_APPLICATION_CREDENTIALS` environment variable to the path of your downloaded Firebase credentials JSON file.
-  This is critical for Firebase authentication to work properly.
-  For more details, see: https://firebase.google.com/docs/admin/setup?hl=en#initialize_the_sdk_in_non-google_environments
+- `.env.hotupdater`: Provider settings and optional credential-file path. Reuse
+  working application-default credentials first. Set `GOOGLE_APPLICATION_CREDENTIALS`
+  only when a private local credential file is needed; downloading a new key is
+  not required when ADC already works. A Firebase CLI login alone does not
+  necessarily authenticate the local Admin SDK. See
+  [Firebase Admin setup](https://firebase.google.com/docs/admin/setup#initialize_the_sdk_in_non-google_environments).
 
 ```bash title=".env.hotupdater"
 HOT_UPDATER_FIREBASE_PROJECT_ID=your-project-id
 HOT_UPDATER_FIREBASE_REGION=your-functions-region
 HOT_UPDATER_FIREBASE_STORAGE_BUCKET=your-bucket-name
 HOT_UPDATER_API_KEY=your-api-key
-# Project Settings > Service Accounts > New Private Key > Download JSON
-GOOGLE_APPLICATION_CREDENTIALS=your-credentials.json
+# Optional: only if using a private credential file instead of existing ADC
+# GOOGLE_APPLICATION_CREDENTIALS=/private/path/your-credentials.json
 ```
 
 ```ts title="hot-updater.config.ts"
@@ -204,9 +207,9 @@ import { config } from "dotenv";
 config({ path: ".env.hotupdater" });
 
 // https://firebase.google.com/docs/admin/setup?hl=en#initialize_the_sdk_in_non-google_environments
-// Check your .env.hotupdater file and add the credentials
-// Set the GOOGLE_APPLICATION_CREDENTIALS environment variable to your credentials file path
-// Example: GOOGLE_APPLICATION_CREDENTIALS=./firebase-adminsdk-credentials.json
+// Reuse working application-default credentials (ADC).
+// Only when a credential file is needed, set its private local path in .env.hotupdater:
+// GOOGLE_APPLICATION_CREDENTIALS=./firebase-adminsdk-credentials.json
 const credential = applicationDefault();
 
 export default defineConfig({

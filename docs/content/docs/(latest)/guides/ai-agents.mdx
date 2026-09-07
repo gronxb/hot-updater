@@ -77,7 +77,10 @@ tokens, passwords or private keys into the conversation. The generated
 - When iterating on doctor failures, the agent should prefer
   `npx hot-updater doctor --json`. It should repair issues marked
   `fixability: "auto"`, run listed commands for `fixability: "command"`, and
-  stop on `fixability: "blocked"`.
+  inspect the prerequisite for `fixability: "blocked"`. During an authorized
+  infrastructure setup or upgrade, it should follow the generated instructions
+  when provider access is available. Pause only the step with a real unresolved
+  prerequisite; the label does not require repeating an existing authorization.
 - The agent should edit provider credentials only as part of a requested setup
   or credential change. Credentials are commonly stored in `.env.hotupdater`,
   but projects may use a different environment-loading setup.

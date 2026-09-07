@@ -12,7 +12,8 @@ import { Accordion, Accordions } from "fumadocs-ui/components/accordion";
 Your deployment needs the resources and access below. When using an AI agent,
 it can prepare missing resources through its available provider tools.
 
-- **Node.js**: Version 20.19 or later is required; Node 22 is recommended.
+- **Node.js**: The CLI requires 20.19+. Agent setup uses a client-key helper that
+  requires Node 22.18+ or Node 24+; prepare it before provisioning resources.
 - **Cloudflare Account**: Sign up at [Cloudflare](https://cloudflare.com) if you don't have one.
 - **Cloudflare D1 API Token**: Create an API Token at https://dash.cloudflare.com/{your-account-id}/api-tokens with **D1 Edit** permission.
 

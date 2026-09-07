@@ -33,6 +33,24 @@ The commands generate local files. The agent handles authentication, package
 installation, resource creation and deployment using those files. Existing
 `hot-updater init` remains available for interactive setup.
 
+## Before provisioning
+
+The CLI requires Node 20.19+. The generated client-key helper imports TypeScript
+and requires Node 22.18+ or Node 24+. Have the agent check this before creating
+remote resources; the helper can use a separate runtime from your app.
+
+The installed CLI must advertise `agent infra setup` and `agent infra upgrade`.
+The skill does not add commands to older versions. If the features are available
+only in a prerelease, explicitly select that release channel, for example:
+
+```text
+$hot-updater Use the rc release channel and set up infrastructure on Cloudflare for this project.
+```
+
+The agent installs a compatible local CLI and checks its help before continuing.
+`hot-updater@rc` selects the published RC; it does not include unreleased changes.
+For unreleased testing, provide the matching preview package or local build.
+
 ## What the setup command produces
 
 With no provider/build selections, `hot-updater agent infra setup` prints a guide
@@ -187,8 +205,11 @@ releases retain the context needed for upgrades across multiple versions.
 
 ## Verify completion
 
-The agent checks the public server generation/version and authenticated client
-requests, then runs:
+The agent follows `COMMON.md` to check the public server generation/version and
+test the same Release Catalog URL without a key (401) and with the saved key
+(200, or the documented empty-catalog 404). `/version` is public, so it cannot
+verify authentication. Keys are loaded privately inside the probe process and
+never printed or placed in command arguments. The agent then runs:
 
 ```bash
 npx hot-updater doctor --json --server-base-url https://updates.example.com

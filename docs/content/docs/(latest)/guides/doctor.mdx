@@ -78,12 +78,15 @@ Use `fixability` as the automation boundary:
 | ---------- | -------------------------------------------------------------------------------------------------- |
 | `auto`     | The agent may inspect and edit local project files, then rerun doctor.                             |
 | `command`  | The agent may run the listed local command, then rerun doctor.                                     |
-| `blocked`  | The issue needs credentials, environment variables, server access, or a human deployment decision. |
+| `blocked`  | The repair requires external context/access beyond doctor’s local fixes. |
 
 Native wiring, fingerprint creation, and native public key export/removal are
 intended to be iterated locally by an agent. Infrastructure failures are marked
 as blocked because applying migrations or redeploying a server usually depends
-on provider credentials and environment-specific access.
+on provider credentials and environment-specific access. During a requested
+setup or upgrade, an agent with that access should follow the generated
+infrastructure instructions and verify the result. Pause only for a missing
+prerequisite, uncertain remote state, or a new consequential decision.
 
 Bundle index repair is only available when the active database adapter exposes
 diagnostics hooks. Adapters without those hooks report `not-applicable`.
