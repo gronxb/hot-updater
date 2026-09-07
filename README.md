@@ -36,18 +36,19 @@
   Then ask your agent:
 
   ```text
-  $hot-updater Set up infrastructure on Cloudflare for this project.
+  $hot-updater Set up infrastructure for this project.
   ```
 
-  The agent asks for missing information, generates deployment templates, and
-  applies them using available provider tools. It verifies each step and can
+  The agent inspects your project and asks which provider to use if it cannot
+  determine one from existing configuration. It generates deployment templates
+  and applies them using available provider tools. It verifies each step and can
   resume from a failed step. You can also ask it to deploy an update or roll back
   a bundle.
 
   To upgrade an existing server:
 
   ```text
-  $hot-updater Upgrade this project's existing Cloudflare server infrastructure.
+  $hot-updater Upgrade this project's existing server infrastructure.
   ```
 
   The agent reads the versioned upgrade instructions, including intermediate
