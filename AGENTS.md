@@ -62,6 +62,21 @@
   comparisons and transition instructions in `guides/upgrade-to-v1.mdx`.
   Preserve literal resource names, API paths, and protocol identifiers.
 
+## Agent Infrastructure Onboarding
+
+- The agent discovers the target app, build/config and existing provider state
+  before asking questions. It creates missing projects, instances and resources,
+  applies the scaffold and verifies setup within the user's request. Do not
+  require users to pre-create resources or provide discoverable IDs/settings.
+- Ask only for unresolved targets, missing access/login, billing activation or
+  a consequential choice that cannot be inferred. Never ask for token values,
+  passwords, private keys or credential JSON in chat. Use provider login or private
+  local/provider credential storage and verify access without exposing values.
+- Keep every generated environment variable documented in the provider's
+  `agent/ENVIRONMENT.md`, including its purpose, required/conditional status and
+  source. Distinguish local plugin credentials, interactive-init inputs and server
+  settings. Optional fields are not prerequisites for agent setup.
+
 ## Testing Guidelines
 
 - Framework: Vitest. Place tests near code or in `__tests__`. Use `*.spec.ts`.

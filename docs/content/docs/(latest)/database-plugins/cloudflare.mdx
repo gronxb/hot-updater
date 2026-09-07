@@ -13,16 +13,12 @@ npm install @hot-updater/cloudflare @hot-updater/aws --save-dev
 
 ## Setup
 
-The easiest way to set up your backend is using the init command:
-
-```package-install
-npx hot-updater init
-```
-
-This interactive command will guide you through the setup process. For details on what the init command does, see the [Cloudflare](/docs/managed/cloudflare) documentation.
+Set up the backend with an [AI agent or the interactive
+CLI](/docs/managed/cloudflare#step-2-configure-cloudflare), then use the
+configuration below.
 
 The settings below connect to an initialized database; they do not create
-its schema. Complete `hot-updater init` first, or apply the SQL migrations in
+its schema. Complete provider setup first, or apply the SQL migrations in
 the installed `@hot-updater/cloudflare` package's `worker/migrations`
 directory in order after verifying schema compatibility.
 

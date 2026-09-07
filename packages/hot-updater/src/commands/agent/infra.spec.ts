@@ -99,6 +99,30 @@ describe("published agent infrastructure commands", () => {
         );
         expect(config).toContain(`@hot-updater/${build}`);
         expect(config).toContain(`@hot-updater/${provider}`);
+        const environment = await readFile(result.data.environment, "utf8");
+        const example = await readFile(
+          path.join(result.data.output, "env.example"),
+          "utf8",
+        );
+        const variables = [...example.matchAll(/^([A-Z_0-9]+)=$/gm)].map(
+          ([, key]) => key!,
+        );
+        for (const [, key] of config.matchAll(/process\.env\.([A-Z_0-9]+)/g))
+          expect(variables).toContain(key);
+        expect(variables).toContain("HOT_UPDATER_API_KEY");
+        for (const key of variables) {
+          const row = environment
+            .split("\n")
+            .find((line) => line.startsWith(`| \`${key}\` |`));
+          expect(
+            row,
+            `${key} needs purpose/conditions and a source`,
+          ).toBeTruthy();
+          const cells = row!.split("|").slice(1, -1);
+          expect(cells).toHaveLength(3);
+          expect(cells.every((cell) => cell.trim().length > 0)).toBe(true);
+          expect(example).toMatch(new RegExp(`# [^\\n]+\\n${key}=`, "m"));
+        }
         expect(await json(result.data.deployment)).toMatchObject({
           provider,
           deployedServerVersion: null,

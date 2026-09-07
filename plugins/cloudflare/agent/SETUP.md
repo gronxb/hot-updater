@@ -6,7 +6,7 @@ deploy the worker/ project. Inspect the actual tools before choosing a route.
 
 1. **Account and resources.** Confirm the Cloudflare account and region/location
    preferences. Query existing D1 databases, R2 buckets and Worker names. Create
-   only missing, explicitly selected resources and record their IDs. Before
+   missing resources needed for the requested setup and record their IDs. Before
    adopting an existing Hot Updater Worker, check /version and generation 1.
    Inspect the D1 schema before applying SQL; legacy tables require new resources.
 2. **Schema.** Replace %%BUCKET_NAME%% in worker/migrations with the selected

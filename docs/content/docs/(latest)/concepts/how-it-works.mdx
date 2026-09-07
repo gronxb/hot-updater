@@ -27,7 +27,8 @@ deploy → ID → bundle show/update/enable/disable/delete/promote
   app-version or fingerprint scope.
 
 Storage and Database are configured using plugins in `hot-updater.config.ts`.
-The Server is initialized and deployed with `hot-updater init`.
+Set up the Server through an [AI agent or the interactive
+CLI](/docs/get-started/basic-usage#step-2-initialize-your-provider).
 
 Internally, Hot Updater can reuse one immutable artifact across multiple public
 Bundle IDs. This avoids copying uploaded bytes during promotion and lets policy changes

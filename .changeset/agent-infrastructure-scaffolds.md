@@ -19,3 +19,8 @@ Retain historical files and provide an ordered index so agents can read the
 complete upgrade path, including intermediate releases. Include the
 v0-to-v1 coexistence and native-build transition as the initial upgrade record.
 Share existing provider config builders with the packaged scaffolds.
+
+Include provider environment guides explaining each variable's purpose,
+conditions and secure source. Guide agents to discover the app and existing
+resources, create missing infrastructure, and ask only for unresolved choices
+or access, without requesting secrets in chat.

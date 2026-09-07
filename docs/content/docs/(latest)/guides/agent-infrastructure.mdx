@@ -23,9 +23,33 @@ The agent reads the instructions, inspects your project, and asks for missing
 choices or access. It applies the generated files through available provider
 MCP tools, CLIs, APIs, or a browser, then verifies each step.
 
-The commands generate local files. They do not authenticate, install packages,
-create cloud resources, or deploy anything themselves. Existing
+It locates the app and build setup in your workspace, discovers existing provider
+resources, and creates the missing projects, instances, databases or services
+needed for setup. You do not need to collect resource IDs or pre-create every
+resource. The agent asks only when a target is ambiguous or a step needs your
+login, access, billing activation or another decision it cannot resolve.
+
+The commands generate local files. The agent handles authentication, package
+installation, resource creation and deployment using those files. Existing
 `hot-updater init` remains available for interactive setup.
+
+## What the setup command produces
+
+With no provider/build selections, `hot-updater agent infra setup` prints a guide
+for the agent to discover the project and gather only missing choices. With both
+selections, it writes the scaffold and returns its absolute paths:
+
+| Output | Purpose |
+| --- | --- |
+| Provider deployment files | Server runtime, migrations, bindings, indexes and deployment configuration |
+| `app/` | App configuration templates and a client-key provisioning helper |
+| `env.example` and `ENVIRONMENT.md` | Variable names, purposes, required or conditional status, and where to obtain values |
+| `COMMON.md` and `SETUP.md` | Project discovery, secure access, provider setup, verification and retry instructions |
+| `manifest.json` and `deployment.json` | Target versions/file hashes and a record for verified resources and completed steps |
+| `upgrades/` | Preserved release instructions for future upgrades |
+
+The command does not execute the generated deployment plan. The agent continues
+from these files until setup is verified or a specific external blocker remains.
 
 For standalone server template extraction, use
 [`hot-updater infra scaffold`](/docs/guides/infrastructure-templates). Agent
@@ -83,9 +107,17 @@ the complete upgrade path.
 | Firebase | Built Functions project, dependencies, Firebase config, Firestore indexes |
 
 The `app/` directory contains local configuration templates and a client API-key
-helper. `env.example` lists local provider settings. The agent merges these into
+helper. `env.example` lists local provider settings; `ENVIRONMENT.md` explains
+each variable's purpose, when it is needed and where to obtain it. The JSON
+`environment` field points to that guide. The agent merges applicable settings into
 your app's existing configuration and prepares credentials for future CLI deploys.
 Connecting an MCP server does not automatically provide credentials to the CLI.
+
+Optional creation or authentication fields are not a form you must fill out.
+For example, an existing Supabase project needs no new-project name or region,
+and the AWS scaffold can use an existing profile or role without creating access
+keys. The agent discovers resource values and configures only the credentials
+required by the chosen tools and local CLI.
 
 `manifest.json` records concrete target package versions and original file
 hashes. `deployment.json` starts with empty resource IDs and verification results.
@@ -95,6 +127,14 @@ does not mean the target server version has been deployed.
 Keep real credentials and key files private. The supplied key helper persists
 the client key before registration and reuses it after an interrupted request.
 Use only the client API key in the app's `x-api-key` header.
+
+### Provide access securely
+
+Do not paste tokens, passwords, private keys or credential JSON into the agent
+conversation. Sign in through the provider's login flow or save required secrets
+directly in a local ignored environment file or provider secret store. Tell the
+agent when authentication is complete; it verifies access without printing values.
+The agent can generate and store new keys privately when setup requires them.
 
 ## Resume a failed step
 
@@ -108,7 +148,20 @@ migration history, secrets, and existing objects.
 
 ## Upgrade an existing server
 
-Use a CLI release that contains the desired server template:
+With the skill attached, ask your agent:
+
+```text
+$hot-updater Upgrade this project's existing Cloudflare server infrastructure.
+```
+
+If doctor has identified the server, you can include its URL:
+
+```text
+$hot-updater Upgrade the server infrastructure at https://updates.example.com and verify it with doctor.
+```
+
+The agent uses a CLI release that contains the desired server template and runs
+the upgrade command with your project's provider and build selections, for example:
 
 ```bash
 npx hot-updater agent infra upgrade --provider cloudflare --build expo

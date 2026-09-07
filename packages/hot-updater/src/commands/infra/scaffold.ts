@@ -49,7 +49,17 @@ interface InfraManifest extends Omit<InfraTemplate, "packages"> {
   files: Record<string, string>;
 }
 
-const AGENT_FILES = ["app", "COMMON.md", "SETUP.md"];
+const AGENT_FILES = ["app", "COMMON.md", "SETUP.md", "ENVIRONMENT.md"];
+
+const EXTRA_INPUT_HELP: Record<string, string> = {
+  HOT_UPDATER_SUPABASE_URL: "Selected project's API URL; see ENVIRONMENT.md",
+  HOT_UPDATER_SUPABASE_SERVICE_ROLE_KEY:
+    "Local server-side service-role or secret key; never put it in chat or the app",
+  HOT_UPDATER_FIREBASE_STORAGE_BUCKET:
+    "Provider-reported default Storage bucket name; do not guess its suffix",
+  HOT_UPDATER_API_KEY:
+    "Client x-api-key; reuse the existing key or provision it after schema setup",
+};
 
 const listFiles = async (root: string, relative = ""): Promise<string[]> => {
   const files: string[] = [];
@@ -108,6 +118,7 @@ export async function scaffoldInfra(
     commonInstructions: forAgent ? path.join(output, "COMMON.md") : undefined,
     manifest: path.join(output, "manifest.json"),
     deployment: forAgent ? path.join(output, "deployment.json") : undefined,
+    environment: forAgent ? path.join(output, "ENVIRONMENT.md") : undefined,
     upgradeGuide: path.join(output, "upgrades/README.md"),
     upgradeFiles: template.upgradeRequirements.map((version) => ({
       version,
@@ -236,10 +247,17 @@ export async function scaffoldInfra(
       const envExample = [...keys]
         .map((key) => {
           const input = inputs.find(({ envKey }) => envKey === key);
-          return `${input ? `# ${input.help}\n` : ""}${key}=\n`;
+          const help = input?.help ?? EXTRA_INPUT_HELP[key];
+          if (!help)
+            throw new Error(`Missing environment guidance for ${key}.`);
+          return `# ${help}\n${key}=\n`;
         })
         .join("\n");
-      await writeFile(path.join(staging, "env.example"), envExample);
+      await writeFile(
+        path.join(staging, "env.example"),
+        "# Read ENVIRONMENT.md for purpose, required/optional conditions, and secure sources.\n# Set only applicable values in your ignored local environment file.\n# Do not paste credentials into chat or copy unused empty credential fields.\n\n" +
+          envExample,
+      );
     }
     const files = Object.fromEntries(
       await Promise.all(
@@ -326,6 +344,9 @@ export async function handleInfraScaffold(
               : []),
             ...(result.deployment
               ? [ui.kv("State", ui.path(result.deployment))]
+              : []),
+            ...(result.environment
+              ? [ui.kv("Environment", ui.path(result.environment))]
               : []),
             ui.kv("Upgrades", ui.path(result.upgradeGuide)),
             operation === "scaffold"

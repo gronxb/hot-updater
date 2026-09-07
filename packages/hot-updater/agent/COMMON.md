@@ -5,10 +5,15 @@ operation-specific instructions and manifest.json before making changes.
 
 ## Establish the target
 
-- Inspect the target React Native app, package manager, selected build plugin,
-  existing Hot Updater config, and any prior deployment.json. Ask only for
-  choices that are not already known: provider account/project, region, resource
-  names, and whether to create or reuse resources.
+- Inspect the workspace to locate the target React Native app, package manager,
+  build plugin, existing Hot Updater config and any prior deployment.json. Use
+  those findings and authenticated provider discovery before asking questions.
+  If multiple apps/accounts/projects remain plausible, ask only for that choice.
+- Complete the requested setup: create missing provider projects, instances and
+  resources using available authorized tools, apply the scaffold, and verify the
+  result. Derive routine names from the app and reuse established region/settings.
+  Do not ask the user to pre-create resources or supply IDs you can obtain.
+  Check ownership and naming conflicts before adopting or creating resources.
 - If v0 is detected, read upgrades/1.0.0.md before selecting
   resources. Parallel v1 setup has provider-specific project reuse rules.
 - Discover the connected MCP tools and their actual permissions. Use available
@@ -19,6 +24,26 @@ operation-specific instructions and manifest.json before making changes.
 - Identify the exact account/project and existing resource IDs before changing
   remote state. Use the user's existing authorization. Request missing access
   or a new consequential decision when necessary; do not repeat answered questions.
+
+## Credentials and user input
+
+Read ENVIRONMENT.md for every variable's purpose, required/conditional status,
+and source. env.example includes optional interactive-init inputs as well as local
+plugin settings; do not ask the user to fill every field. Discover non-secret
+values from the app and provider, and retain existing working credentials.
+
+Never request token values, passwords, private keys or credential JSON in chat,
+tool arguments or browser URLs. Prefer the provider's login flow and available
+role/session credentials. If user input is needed, ask them to authenticate or
+save the needed secret directly into a local ignored file or provider secret
+store, then report only completion. Do not echo values or read entire credential
+files into tool output. Verify credential presence and access through redacted
+checks. Persist newly generated keys privately before remote registration.
+
+Pause only the dependent step for missing login, access, billing activation or
+an unresolved consequential choice. Continue independent authorized preparation.
+Do not ask for confirmation again for resource creation already covered by the
+requested setup. Never request payment details in chat.
 
 ## Apply and resume
 
@@ -47,8 +72,8 @@ operation-specific instructions and manifest.json before making changes.
    as development dependencies, using its package manager. Preserve unrelated
    dependencies. An MCP connection alone does not configure hot-updater deploy.
 2. Use app/hot-updater.config.ts as the merge source for the app's existing
-   config. Keep custom settings and the existing update strategy. env.example
-   lists required local provider credentials/settings; fill a local ignored
+   config. Keep custom settings and the existing update strategy. Read
+   ENVIRONMENT.md and fill only the applicable env.example settings in a local ignored
    .env.hotupdater. Credential values must not enter logs, manifests, instructions,
    browser URLs, or app bundles. Verify secret files are ignored and not tracked.
 3. After the schema is ready, use app/api-key.config.ts and

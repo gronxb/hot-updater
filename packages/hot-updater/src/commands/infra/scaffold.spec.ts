@@ -40,7 +40,13 @@ describe("public infrastructure scaffolding", () => {
       expect(scaffold.deployment).toBeUndefined();
       expect(scaffold.instructions).toBeUndefined();
       const files = await readdir(scaffold.output);
-      for (const file of ["app", "COMMON.md", "deployment.json", "env.example"])
+      for (const file of [
+        "app",
+        "COMMON.md",
+        "ENVIRONMENT.md",
+        "deployment.json",
+        "env.example",
+      ])
         expect(files).not.toContain(file);
       expect(await readFile(scaffold.upgradeGuide, "utf8")).toContain(
         "./1.0.0.md",

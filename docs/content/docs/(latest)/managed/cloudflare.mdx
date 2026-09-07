@@ -7,29 +7,10 @@ icon: cloudflare
 import { Tabs, Tab } from "fumadocs-ui/components/tabs";
 import { Accordion, Accordions } from "fumadocs-ui/components/accordion";
 
-<video
-  src={"/docs/get-started/init-cloudflare.mp4"}
-  controls
-  autoPlay
-  loop
-  muted
-/>
-
-## Infrastructure templates and agent setup
-
-Extract server files for your own deployment tooling with
-`hot-updater infra scaffold --provider cloudflare`. See
-[Infrastructure Templates](/docs/guides/infrastructure-templates).
-
-Ask your agent to use `hot-updater agent infra setup --provider cloudflare
---build <bare|rock|expo>`. The command generates local deployment templates
-and instructions; the agent applies them using available provider tools.
-Use `hot-updater agent infra upgrade` for existing deployments. See
-[Agent Infrastructure](/docs/guides/agent-infrastructure).
-
 ## Prerequisites
 
-Before you begin, make sure the following are ready:
+Your deployment needs the resources and access below. When using an AI agent,
+it can prepare missing resources through its available provider tools.
 
 - **Node.js**: Version 20.19 or later is required; Node 22 is recommended.
 - **Cloudflare Account**: Sign up at [Cloudflare](https://cloudflare.com) if you don't have one.
@@ -37,7 +18,8 @@ Before you begin, make sure the following are ready:
 
 ## Step 1: Install Required Packages
 
-Run the following command to install dependencies:
+Your agent can install these dependencies as part of setup. For the terminal
+workflow, run:
 
 ```package-install
 npm install hot-updater --save-dev
@@ -46,7 +28,28 @@ npm install @hot-updater/react-native
 
 ## Step 2: Configure Cloudflare
 
-Run the initialization script to start the interactive setup process. Use the following command with your preferred package manager:
+Choose how to set up Cloudflare:
+
+<Tabs items={["AI agent", "Terminal"]}>
+  <Tab value="AI agent">
+
+Install the [Hot Updater skill](/docs/guides/ai-agents), then ask your coding agent:
+
+```text
+$hot-updater Set up infrastructure on Cloudflare for this project.
+```
+
+The agent inspects your app, discovers existing configuration and resources,
+and asks only for missing choices or access. It uses `hot-updater agent infra setup`
+to generate the deployment templates, then applies and verifies them with available
+provider tools. If authentication is needed, sign in through the provider or save
+credentials in a local ignored file; do not paste secrets into the conversation.
+See [Agent Infrastructure](/docs/guides/agent-infrastructure) for setup and resume.
+
+  </Tab>
+  <Tab value="Terminal">
+
+Run the interactive initializer from your app directory:
 
 ```package-install
 npx hot-updater init
@@ -73,7 +76,19 @@ During the setup, you will be prompted to:
   </Accordion>
 </Accordions>
 
-Once setup is complete, `.env.hotupdater` may include the following values.
+<video
+  src={"/docs/get-started/init-cloudflare.mp4"}
+  controls
+  autoPlay
+  loop
+  muted
+/>
+
+  </Tab>
+</Tabs>
+
+After setup, review the local configuration. Interactive init writes the settings
+below to `.env.hotupdater`; an agent merges the needed settings into your project.
 Resource names, IDs, and R2 privacy are persisted for deterministic reruns. API
 and R2 credentials are persisted only when you consent.
 
@@ -526,6 +541,25 @@ HotUpdater.bundleURL() // [!code ++]
   `HotUpdater.bundleURL(bundle: xcframeworkBundle)` in Swift or `[HotUpdater
   bundleURLWithBundle:xcframeworkBundle]` in Objective-C.
 </Callout>
+
+## Upgrade infrastructure
+
+With the [Hot Updater skill](/docs/guides/ai-agents) attached, ask your agent:
+
+```text
+$hot-updater Upgrade this project's existing Cloudflare server infrastructure.
+```
+
+The agent discovers the existing deployment, uses `hot-updater agent infra upgrade`,
+and reads the applicable version files before changing resources. It applies pending
+changes and verifies the server with doctor. See
+[Upgrade an existing server](/docs/guides/agent-infrastructure#upgrade-an-existing-server)
+for the workflow or [Doctor](/docs/guides/doctor#update-outdated-infrastructure)
+for terminal instructions.
+
+For server templates to apply with your own deployment tooling, use
+`hot-updater infra scaffold --provider cloudflare`. See
+[Infrastructure Templates](/docs/guides/infrastructure-templates).
 
 ## Verifying the Setup
 

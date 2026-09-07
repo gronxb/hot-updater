@@ -173,6 +173,25 @@ existing default Hosting site during setup or upgrades.
 
 ## Agent execution and resume contract
 
+The agent discovers the app, workspace, build plugin and existing configuration
+before asking for input. It queries provider state and creates any missing
+projects, instances and resources needed for the authorized setup. Routine names
+and existing settings are derived from that context. Users are not required to
+pre-create resources or collect values the agent can obtain itself.
+
+Questions are reserved for ambiguous targets, missing access/login, billing
+activation and consequential decisions that cannot be resolved from context.
+Never request secrets in chat. Use provider login, existing role/session access,
+or direct user entry into an ignored local file/provider secret store, then
+verify access without exposing values. Continue independent preparation when
+a dependent step needs user involvement.
+
+Each scaffold includes provider-owned ENVIRONMENT.md and env.example. Document
+every variable's purpose, required/conditional status and source, distinguishing
+local plugins, interactive-init choices and runtime settings. Return the guide
+path as `environment` in JSON. Optional fields must not become an onboarding
+questionnaire. Tests check every emitted variable against the guide and config.
+
 Each step specifies prerequisites, the desired mutation, verification, and retry
 behavior. The agent discovers actual connected capabilities rather than assuming
 fixed MCP tool names. A project-scoped or read-only connection may lack creation
@@ -282,6 +301,9 @@ Validated on 2026-09-07 against the base commit above:
 - `pnpm -w test:type`: passed for 34 projects.
 - `pnpm -w lint`: passed with no warnings or errors.
 - `pnpm -w test`: 2,632 tests passed across 287 files.
+- Setup and upgrade docs use AI agent/Terminal tabs. Verified the built HTML for
+  all seven tabbed guides and checked documentation links. Every emitted agent
+  environment variable has a purpose/conditions/source entry in its provider guide.
 - Extracted the `pnpm pack` archive outside the repository, linked only declared
   CLI production dependencies, and confirmed provider packages were not
   resolvable from the extracted CLI. Verified standalone extraction for four
