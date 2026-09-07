@@ -9,8 +9,9 @@ export type RecoveryInput = {
 
 export type RecoveryPoint = {
   readonly startMs: number;
+  readonly active: number | null;
+  readonly recoveredInstallations: number;
   readonly adopted: number;
-  readonly adoptionShare: number | null;
   readonly recovered: number;
   readonly rate: number | null;
   readonly spike: boolean;
@@ -19,6 +20,8 @@ export type RecoveryPoint = {
 export type RecoverySeries = {
   readonly releaseId: string;
   readonly firstAdoptedAtMs: number | null;
+  readonly activeInstallations: number;
+  readonly recoveredInstallations: number;
   readonly points: readonly RecoveryPoint[];
 };
 
@@ -27,6 +30,7 @@ export type RecoveryReport = {
   readonly beforeReceivedAtMs: number;
   readonly intervalMs: number;
   readonly truncated: boolean;
+  readonly unattributedInstallations: number;
   readonly series: readonly RecoverySeries[];
 };
 

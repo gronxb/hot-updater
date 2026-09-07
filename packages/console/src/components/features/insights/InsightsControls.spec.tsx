@@ -39,15 +39,11 @@ describe("InsightsControls", () => {
     fireEvent.change(screen.getByLabelText("Channel"), {
       target: { value: "beta" },
     });
-    fireEvent.change(screen.getByLabelText("Bundle ID (optional)"), {
-      target: { value: "bundle-B" },
-    });
     expect(onScopeChange).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole("button", { name: "Apply filters" }));
     expect(onScopeChange).toHaveBeenCalledWith({
       platform: "android",
       channel: "beta",
-      bundleId: "bundle-B",
     });
   });
 });
