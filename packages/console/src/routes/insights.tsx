@@ -4,6 +4,7 @@ import { useState } from "react";
 import { InsightsControls } from "@/components/features/insights/InsightsControls";
 import { InsightsOverview } from "@/components/features/insights/InsightsOverview";
 import { InsightsPageHeader } from "@/components/features/insights/InsightsPageHeader";
+import { ReportingDevicesSummary } from "@/components/features/insights/ReportingDevicesSummary";
 import {
   type InsightsWindow,
   type InsightsOverviewInput,
@@ -35,6 +36,7 @@ function InsightsPage() {
             }}
             window={window}
           />
+          <ReportingDevicesSummary scope={scope} />
           <InsightsOverview input={{ ...scope, window }} />
         </div>
       </div>

@@ -1,7 +1,7 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-const mocks = vi.hoisted(() => ({ activity: vi.fn() }));
+const mocks = vi.hoisted(() => ({ activity: vi.fn(), reporting: vi.fn() }));
 vi.mock("@tanstack/react-router", () => ({
   createFileRoute: () => (options: unknown) => ({ options }),
 }));
@@ -13,6 +13,12 @@ vi.mock("@/components/features/insights/InsightsOverview", () => ({
 }));
 vi.mock("@/components/features/insights/InsightsPageHeader", () => ({
   InsightsPageHeader: () => <a href="/installations">All events</a>,
+}));
+vi.mock("@/components/features/insights/ReportingDevicesSummary", () => ({
+  ReportingDevicesSummary: ({ scope }: { scope: unknown }) => {
+    mocks.reporting(scope);
+    return <div>Reporting devices · 30d</div>;
+  },
 }));
 
 import { Route } from "./insights";
@@ -35,6 +41,10 @@ describe("Insights overview", () => {
     expect(mocks.activity).toHaveBeenLastCalledWith({
       input: { platform: "ios", channel: "production", window: "7d" },
     });
+    expect(mocks.reporting).toHaveBeenLastCalledWith({
+      platform: "ios",
+      channel: "production",
+    });
     fireEvent.click(screen.getByRole("button", { name: "Android" }));
     fireEvent.change(screen.getByLabelText("Channel"), {
       target: { value: "beta" },
@@ -42,6 +52,10 @@ describe("Insights overview", () => {
     fireEvent.click(screen.getByRole("button", { name: "Apply filters" }));
     expect(mocks.activity).toHaveBeenLastCalledWith({
       input: { platform: "android", channel: "beta", window: "7d" },
+    });
+    expect(mocks.reporting).toHaveBeenLastCalledWith({
+      platform: "android",
+      channel: "beta",
     });
     expect(
       screen.getByRole("link", { name: "All events" }).getAttribute("href"),
