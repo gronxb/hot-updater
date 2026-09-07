@@ -27,14 +27,13 @@ export function InsightsControls({
 }) {
   const [platform, setPlatform] = useState(scope.platform);
   const [channel, setChannel] = useState(scope.channel);
-  const [bundleId, setBundleId] = useState(scope.bundleId ?? "");
 
   return (
     <section aria-label="Insights controls" className="flex flex-col gap-4">
       <form
         onSubmit={(event) => {
           event.preventDefault();
-          onScopeChange({ platform, channel, bundleId: bundleId || undefined });
+          onScopeChange({ platform, channel });
         }}
       >
         <FieldGroup className="items-end sm:flex-row">
@@ -66,19 +65,6 @@ export function InsightsControls({
               value={channel}
               onChange={(event) => setChannel(event.target.value)}
               required
-              maxLength={1024}
-            />
-          </Field>
-          <Field>
-            <FieldLabel htmlFor="insights-bundle">
-              Bundle ID (optional)
-            </FieldLabel>
-            <Input
-              className="h-11 lg:h-8"
-              id="insights-bundle"
-              placeholder="Select a bundle by ID"
-              value={bundleId}
-              onChange={(event) => setBundleId(event.target.value)}
               maxLength={1024}
             />
           </Field>

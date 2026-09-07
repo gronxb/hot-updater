@@ -15,9 +15,9 @@ import { toast } from "sonner";
 import { normalizeRange } from "verkit";
 
 import { BundleIdDisplay } from "@/components/BundleIdDisplay";
+import { BundleInsightsSummary } from "@/components/features/bundles/BundleInsightsSummary";
 import { BundleMetadata } from "@/components/features/bundles/BundleMetadata";
 import { RolloutCohortsDialog } from "@/components/features/bundles/RolloutCohortsDialog";
-import { InsightsRolloutCard } from "@/components/features/insights/InsightsRolloutCard";
 import { PlatformIcon } from "@/components/PlatformIcon";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import {
@@ -409,6 +409,15 @@ export function ReleaseEditorSheet({
 
             {release && draft ? (
               <div className="flex flex-col gap-6 px-4 pb-4 sm:px-6 sm:pb-6">
+                {channelName ? (
+                  <BundleInsightsSummary
+                    input={{
+                      platform: release.platform,
+                      channel: channelName,
+                      releaseId: release.id,
+                    }}
+                  />
+                ) : null}
                 <section
                   aria-labelledby="delivery-settings-heading"
                   className="flex flex-col gap-4"
@@ -585,18 +594,6 @@ export function ReleaseEditorSheet({
                       : "Save changes"}
                   </Button>
                 </section>
-
-                {channelName ? (
-                  <InsightsRolloutCard
-                    inSheet
-                    input={{
-                      platform: release.platform,
-                      channel: channelName,
-                      releaseId: release.id,
-                      window: "7d",
-                    }}
-                  />
-                ) : null}
 
                 <Separator className="my-2" />
 

@@ -18,10 +18,10 @@ const promote = vi.fn();
 const update = vi.fn();
 const recovery = vi.fn();
 
-vi.mock("@/components/features/insights/InsightsRolloutCard", () => ({
-  InsightsRolloutCard: (props: unknown) => {
+vi.mock("@/components/features/bundles/BundleInsightsSummary", () => ({
+  BundleInsightsSummary: (props: unknown) => {
     recovery(props);
-    return <div>Recovery rate</div>;
+    return <div>Activity · 30 days</div>;
   },
 }));
 
@@ -198,13 +198,18 @@ describe("ReleaseEditorSheet", () => {
       />,
     );
 
+    expect(screen.queryByText("Rollout activity")).toBeNull();
+    expect(
+      screen
+        .getByText("Activity · 30 days")
+        .compareDocumentPosition(screen.getByText("Delivery settings")) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
     expect(recovery).toHaveBeenLastCalledWith({
-      inSheet: true,
       input: {
         platform: "ios",
         channel: "production",
         releaseId: "release-1",
-        window: "7d",
       },
     });
 

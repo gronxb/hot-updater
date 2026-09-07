@@ -11,8 +11,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   isMobile: vi.fn(() => false),
+  activity: vi.fn(),
   navigate: vi.fn(),
   search: vi.fn(),
+}));
+
+vi.mock("@/lib/bundle-activity", () => ({
+  useBundleActivityQuery: mocks.activity,
 }));
 
 vi.mock("@tanstack/react-router", () => ({
@@ -127,7 +132,44 @@ const BundlesPage = (Route as unknown as { readonly component: ComponentType })
   .component;
 
 describe("BundlesPage", () => {
+  it.each([false, true])(
+    "restores activity counts on desktop and mobile (%s)",
+    (mobile) => {
+      mocks.isMobile.mockReturnValue(mobile);
+      render(<BundlesPage />);
+      const summary = screen.getByRole("group", {
+        name: "Bundle activity over 30 days",
+      });
+      expect(within(summary).getByText("42")).toBeDefined();
+      expect(within(summary).getByText("3")).toBeDefined();
+      expect(mocks.activity).toHaveBeenCalledWith([
+        {
+          platform: "ios",
+          channel: "e2e-job-20260812132427-qy22fi-android-s2-production",
+          releaseId: "release-1",
+        },
+      ]);
+    },
+  );
+  it("keeps bundle management usable when activity is unavailable", () => {
+    mocks.activity.mockReturnValue({ error: new Error("Offline") });
+    render(<BundlesPage />);
+    expect(
+      screen.getByLabelText("30-day bundle activity unavailable"),
+    ).toBeDefined();
+    expect(
+      screen.getByRole("button", { name: "Open details for ID release-1" }),
+    ).toBeDefined();
+  });
   beforeEach(() => {
+    mocks.activity.mockReturnValue({
+      data: {
+        "release-1": {
+          series: [{ activeInstallations: 42, recoveredInstallations: 3 }],
+          truncated: false,
+        },
+      },
+    });
     releases = [release];
     mocks.isMobile.mockReturnValue(false);
     mocks.search.mockReturnValue({});

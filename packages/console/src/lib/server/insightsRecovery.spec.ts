@@ -3,6 +3,7 @@
 import type { BundleEventRow, InsightsModel } from "@hot-updater/plugin-core";
 import { describe, expect, it, vi } from "vitest";
 
+import { getBundleActivity } from "./bundleActivity";
 import { getRecoveryReport } from "./insightsRecovery";
 
 const HOUR = 3_600_000;
@@ -14,8 +15,8 @@ const input = {
 } as const;
 let sequence = 0;
 const event = (
-  type: "RELEASE_ADOPTED" | "RECOVERED" | "UPDATE_APPLIED",
-  time: number,
+  type: BundleEventRow["type"],
+  hour: number,
   releaseId = "release-a",
   overrides: Partial<BundleEventRow> = {},
 ): BundleEventRow =>
@@ -23,10 +24,10 @@ const event = (
     id: String(++sequence).padStart(10, "0"),
     install_id: `install-${sequence}`,
     type,
-    received_at_ms: time,
+    received_at_ms: hour * HOUR,
     from_bundle_id: "same-file",
     to_bundle_id: "same-file",
-    from_release_id: type === "RECOVERED" ? releaseId : "previous-release",
+    from_release_id: type === "RECOVERED" ? releaseId : null,
     to_release_id: type === "RECOVERED" ? "stable-release" : releaseId,
     platform: "ios",
     channel: "production",
@@ -43,17 +44,15 @@ const reports = (
   adopted: number,
   recovered: number,
   hour: number,
-  releaseId = "release-a",
+  id = "release-a",
 ) => [
-  ...Array.from({ length: adopted }, (_, i) =>
-    event("RELEASE_ADOPTED", hour * HOUR + i, releaseId),
-  ),
-  ...Array.from({ length: recovered }, (_, i) =>
-    event("RECOVERED", hour * HOUR + 1_000 + i, releaseId),
+  ...Array.from({ length: adopted }, () => event("UPDATE_APPLIED", hour, id)),
+  ...Array.from({ length: recovered }, () =>
+    event("RECOVERED", hour + 0.001, id),
   ),
 ];
 function modelFor(events: BundleEventRow[]): InsightsModel {
-  const ordered = events.sort(
+  const ordered = [...events].sort(
     (a, b) => b.received_at_ms - a.received_at_ms || b.id.localeCompare(a.id),
   );
   return {
@@ -73,138 +72,224 @@ function modelFor(events: BundleEventRow[]): InsightsModel {
     ),
   } as unknown as InsightsModel;
 }
+const seriesFor = (
+  report: Awaited<ReturnType<typeof getRecoveryReport>>,
+  id = "release-a",
+) => report.series.find((s) => s.releaseId === id)!;
+const pointAt = (
+  report: Awaited<ReturnType<typeof getRecoveryReport>>,
+  hour: number,
+  id = "release-a",
+) => seriesFor(report, id).points.find((p) => p.startMs === hour * HOUR)!;
 
-describe("recovery rollout series", () => {
-  it("attributes recovery to the source ID and keeps promotions of the same file separate", async () => {
+describe("observed bundle activity", () => {
+  it("charts all 30-day IDs and transfers installations between same-file promotions, producing a crossover", async () => {
+    const events = [
+      ...Array.from({ length: 10 }, (_, i) =>
+        event("UPDATE_APPLIED", 25, "old-id", { install_id: `device-${i}` }),
+      ),
+      ...Array.from({ length: 5 }, (_, i) =>
+        event("RELEASE_ADOPTED", 26, "new-id", {
+          install_id: `device-${i}`,
+          from_release_id: "old-id",
+        }),
+      ),
+      ...Array.from({ length: 4 }, (_, i) =>
+        event("RELEASE_ADOPTED", 27, "new-id", {
+          install_id: `device-${i + 5}`,
+          from_release_id: "old-id",
+        }),
+      ),
+      event("UNCHANGED", 27.5, "new-id", { install_id: "device-0" }),
+      event("UNCHANGED", 2, "early-id", { install_id: "early-device" }),
+    ];
+    const report = await getRecoveryReport(
+      modelFor(events),
+      { ...input, window: "30d" },
+      31 * 24 * HOUR,
+    );
+    // Reports before the rolling 30-day boundary (hour 24) are excluded.
+    expect(report.series.map((s) => s.releaseId)).toEqual(["old-id", "new-id"]);
+    const hourly = await getRecoveryReport(modelFor(events), input, now);
+    expect(
+      [25, 26, 27].map((hour) => pointAt(hourly, hour, "old-id").active),
+    ).toEqual([10, 5, 1]);
+    expect(
+      [25, 26, 27].map((hour) => pointAt(hourly, hour, "new-id").active),
+    ).toEqual([0, 5, 9]);
+    expect(pointAt(hourly, 24, "new-id").active).toBeNull();
+    expect(pointAt(hourly, 28, "old-id").active).toBe(1);
+    const detail = await getRecoveryReport(
+      modelFor(events),
+      { ...input, releaseId: "new-id" },
+      now,
+    );
+    expect(detail.series).toHaveLength(1);
+    expect(seriesFor(detail, "new-id").activeInstallations).toBe(9);
+  });
+
+  it("retains IDs on unchanged reports only for the same observed file and excludes unknown IDs", async () => {
     const report = await getRecoveryReport(
       modelFor([
-        ...reports(100, 0, 25),
-        ...reports(7, 3, 26),
-        ...reports(20, 0, 26, "release-b"),
-        event("UPDATE_APPLIED", 26 * HOUR),
-        event("RECOVERED", 26 * HOUR, "release-a", { platform: "android" }),
-        event("RECOVERED", 26 * HOUR, "release-a", { channel: "staging" }),
-        event("RECOVERED", 26 * HOUR, "release-a", { from_release_id: null }),
-        event("RECOVERED", now),
-        event("RECOVERED", 24 * HOUR - 1),
+        event("UPDATE_APPLIED", 25, "release-a", { install_id: "one" }),
+        event("UNCHANGED", 26, "release-a", {
+          install_id: "one",
+          to_release_id: null,
+        }),
+        event("UNCHANGED", 26, "legacy", {
+          install_id: "two",
+          to_release_id: null,
+        }),
+        event("UNCHANGED", 27, "release-a", {
+          install_id: "one",
+          to_bundle_id: "different-file",
+          to_release_id: null,
+        }),
+        event("UNCHANGED", 28, "only-unchanged-id"),
       ]),
       input,
       now,
     );
-    expect(report.series.map((s) => s.releaseId)).toEqual([
-      "release-a",
-      "release-b",
+    expect(pointAt(report, 26).active).toBe(1);
+    expect(pointAt(report, 27).active).toBe(0);
+    expect(report.unattributedInstallations).toBe(2);
+    expect(seriesFor(report, "only-unchanged-id").activeInstallations).toBe(1);
+    expect(report.series.some((s) => s.releaseId === "legacy")).toBe(false);
+  });
+
+  it("removes a device that reports a different channel or platform", async () => {
+    const report = await getRecoveryReport(
+      modelFor([
+        event("UPDATE_APPLIED", 25, "release-a", { install_id: "one" }),
+        event("UNCHANGED", 26, "release-a", {
+          install_id: "one",
+          channel: "staging",
+        }),
+        event("UPDATE_APPLIED", 25, "release-a", { install_id: "two" }),
+        event("UNCHANGED", 27, "release-a", {
+          install_id: "two",
+          platform: "android",
+        }),
+      ]),
+      input,
+      now,
+    );
+    expect([25, 26, 27].map((hour) => pointAt(report, hour).active)).toEqual([
+      2, 1, 0,
     ]);
-    expect(report.series[0].firstAdoptedAtMs).toBe(25 * HOUR);
+  });
+
+  it("attributes rollbacks to the source ID and counts unique installations per interval and window", async () => {
+    const report = await getRecoveryReport(
+      modelFor([
+        event("UPDATE_APPLIED", 25, "release-a", { install_id: "one" }),
+        event("RECOVERED", 26, "release-a", { install_id: "one" }),
+        event("RECOVERED", 26.5, "release-a", { install_id: "one" }),
+        event("RECOVERED", 27, "release-a", { install_id: "one" }),
+      ]),
+      input,
+      now,
+    );
+    expect(pointAt(report, 26)).toMatchObject({
+      active: 0,
+      recovered: 2,
+      recoveredInstallations: 1,
+    });
+    expect(seriesFor(report).recoveredInstallations).toBe(1);
+    expect(seriesFor(report, "stable-release").activeInstallations).toBe(1);
+    expect(seriesFor(report, "stable-release").recoveredInstallations).toBe(0);
+  });
+
+  it("uses the agreed sample, rate and increase across gaps for both apply and adoption reports", async () => {
+    const report = await getRecoveryReport(
+      modelFor([
+        ...reports(7, 2, 25),
+        ...reports(97, 3, 26),
+        ...reports(7, 3, 28),
+        ...reports(7, 3, 29),
+        ...reports(5, 5, 30),
+        event("RELEASE_ADOPTED", 28, "other-id"),
+      ]),
+      input,
+      now,
+    );
     expect(
-      report.series[0].points.find((p) => p.startMs === 26 * HOUR),
-    ).toEqual({
-      startMs: 26 * HOUR,
+      seriesFor(report)
+        .points.filter((p) => p.spike)
+        .map((p) => p.startMs),
+    ).toEqual([28 * HOUR, 30 * HOUR]);
+    expect(pointAt(report, 27).rate).toBeNull();
+    expect(pointAt(report, 28)).toMatchObject({
       adopted: 7,
-      adoptionShare: (7 / 27) * 100,
       recovered: 3,
       rate: 30,
-      spike: true,
     });
-    expect(
-      report.series[1].points.find((p) => p.startMs === 26 * HOUR)?.rate,
-    ).toBe(0);
-    expect(report.series[0].points[0].rate).toBeNull();
-  });
-
-  it("filters the sheet by its exact ID and marks first-interval rollout failures", async () => {
-    const report = await getRecoveryReport(
-      modelFor([...reports(7, 3, 25), ...reports(1, 30, 25, "release-b")]),
-      { ...input, releaseId: "release-a" },
-      now,
-    );
-    expect(report.series).toHaveLength(1);
-    expect(report.series[0].releaseId).toBe("release-a");
-    expect(
-      report.series[0].points.find((p) => p.startMs === 25 * HOUR)?.spike,
-    ).toBe(true);
-  });
-
-  it("requires the agreed sample, rate and increase, and compares across gaps", async () => {
-    const report = await getRecoveryReport(
-      modelFor([
-        ...reports(7, 2, 25), // under ten reports and three recoveries
-        ...reports(97, 3, 26), // below ten percent
-        ...reports(7, 3, 28), // 27 percentage point rise across an empty interval
-        ...reports(7, 3, 29), // high but flat
-        ...reports(5, 5, 30), // another spike
-      ]),
+    const first = await getRecoveryReport(
+      modelFor(reports(7, 3, 25)),
       input,
       now,
     );
-    expect(
-      report.series[0].points.filter((p) => p.spike).map((p) => p.startMs),
-    ).toEqual([28 * HOUR, 30 * HOUR]);
-    expect(
-      report.series[0].points.find((p) => p.startMs === 27 * HOUR)?.rate,
-    ).toBeNull();
-  });
-
-  it("shows recovery reports without claiming a rollout spike when no adoption was observed", async () => {
-    const report = await getRecoveryReport(
+    expect(pointAt(first, 25).spike).toBe(true);
+    const recoveryOnly = await getRecoveryReport(
       modelFor(reports(0, 10, 25)),
       input,
       now,
     );
-    expect(report.series[0].firstAdoptedAtMs).toBeNull();
-    expect(
-      report.series[0].points.find((p) => p.startMs === 25 * HOUR),
-    ).toMatchObject({ rate: 100, spike: false });
+    expect(pointAt(recoveryOnly, 25).spike).toBe(false);
   });
 
-  it("pages through timestamp ties without dropping or double-counting reports", async () => {
-    const model = modelFor([
-      ...reports(198, 3, 25),
-      ...Array.from({ length: 105 }, () => event("RELEASE_ADOPTED", 25 * HOUR)),
-    ]);
-    const report = await getRecoveryReport(model, input, now);
-    expect(model.listEvents).toHaveBeenCalledTimes(4);
-    expect(report.truncated).toBe(false);
-    expect(
-      report.series[0].points.find((p) => p.startMs === 25 * HOUR),
-    ).toMatchObject({ adopted: 303, recovered: 3, rate: (3 / 306) * 100 });
-  });
-
-  it("does not call recoveries before the first adoption a rollout spike", async () => {
+  it("does not flag recoveries before the first successful application", async () => {
     const report = await getRecoveryReport(
-      modelFor([
-        ...Array.from({ length: 3 }, () => event("RECOVERED", 25 * HOUR)),
-        ...Array.from({ length: 7 }, () =>
-          event("RELEASE_ADOPTED", 25 * HOUR + 1_000),
-        ),
-      ]),
+      modelFor([...reports(0, 3, 25), ...reports(7, 0, 25.5)]),
       input,
       now,
     );
-    expect(
-      report.series[0].points.find((p) => p.startMs === 25 * HOUR),
-    ).toMatchObject({ rate: 30, spike: false });
+    expect(pointAt(report, 25)).toMatchObject({ rate: 30, spike: false });
   });
 
-  it("omits the incomplete boundary interval at the 50,000-row cap", async () => {
+  it("reads timestamp ties once and batches visible bundles without one scan per row", async () => {
+    const model = modelFor([
+      ...reports(198, 3, 25),
+      ...Array.from({ length: 105 }, () =>
+        event("RELEASE_ADOPTED", 25, "other-id"),
+      ),
+    ]);
+    const batch = await getBundleActivity(
+      model,
+      [
+        { platform: "ios", channel: "production", releaseId: "release-a" },
+        { platform: "ios", channel: "production", releaseId: "other-id" },
+        { platform: "android", channel: "production", releaseId: "android-id" },
+      ],
+      now,
+    );
+    expect(model.listEvents).toHaveBeenCalledTimes(4);
+    expect(batch["release-a"].series[0]).toMatchObject({
+      activeInstallations: 198,
+      recoveredInstallations: 3,
+    });
+    expect(batch["other-id"].series[0].activeInstallations).toBe(105);
+    expect(batch["android-id"].series).toEqual([]);
+  });
+
+  it("omits the partially scanned boundary interval at 50,000 rows and suppresses unsupported spikes", async () => {
     const model = modelFor([
       ...reports(7, 3, 47),
-      ...Array.from({ length: 49_991 }, () => event("RECOVERED", 46 * HOUR)),
+      ...Array.from({ length: 49_991 }, () => event("RECOVERED", 46)),
     ]);
     const report = await getRecoveryReport(model, input, now);
     expect(model.listEvents).toHaveBeenCalledTimes(500);
     expect(report.truncated).toBe(true);
     expect(report.sinceMs).toBe(47 * HOUR);
-    expect(report.series[0].points).toEqual([
-      {
-        startMs: 47 * HOUR,
-        adopted: 7,
-        adoptionShare: 100,
-        recovered: 3,
-        rate: 30,
-        spike: false,
-      },
-    ]);
+    expect(seriesFor(report).points).toHaveLength(1);
+    expect(pointAt(report, 47)).toMatchObject({
+      active: 7,
+      adopted: 7,
+      recovered: 3,
+      recoveredInstallations: 3,
+      rate: 30,
+      spike: false,
+    });
   });
 
   it("validates scope before reading events", async () => {
@@ -213,39 +298,5 @@ describe("recovery rollout series", () => {
       getRecoveryReport(model, { ...input, channel: "" }, now),
     ).rejects.toThrow("Choose a platform");
     expect(model.listEvents).not.toHaveBeenCalled();
-  });
-
-  it("shows the adoption crossover of two IDs sharing a file and keeps the same denominator in the sheet", async () => {
-    const events = [
-      ...reports(90, 0, 25, "old-id"),
-      ...reports(10, 0, 25, "new-id"),
-      ...reports(50, 0, 26, "old-id"),
-      ...reports(50, 0, 26, "new-id"),
-      ...reports(10, 0, 27, "old-id"),
-      ...reports(90, 10, 27, "new-id"),
-      event("RELEASE_ADOPTED", 27 * HOUR, "other-platform", {
-        platform: "android",
-      }),
-      event("RELEASE_ADOPTED", 27 * HOUR, "legacy", { to_release_id: null }),
-    ];
-    const report = await getRecoveryReport(modelFor(events), input, now);
-    const shares = (id: string) =>
-      report.series
-        .find((s) => s.releaseId === id)
-        ?.points.filter((p) => p.adoptionShare !== null)
-        .map((p) => p.adoptionShare);
-    expect(shares("old-id")).toEqual([90, 50, 10]);
-    expect(shares("new-id")).toEqual([10, 50, 90]);
-    const sheet = await getRecoveryReport(
-      modelFor(events),
-      { ...input, releaseId: "new-id" },
-      now,
-    );
-    expect(sheet.series).toHaveLength(1);
-    expect(
-      sheet.series[0].points
-        .filter((p) => p.adoptionShare !== null)
-        .map((p) => p.adoptionShare),
-    ).toEqual([10, 50, 90]);
   });
 });

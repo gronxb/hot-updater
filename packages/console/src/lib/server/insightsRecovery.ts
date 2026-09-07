@@ -1,17 +1,12 @@
-import type {
-  InsightsEventCursor,
-  InsightsModel,
-} from "@hot-updater/plugin-core";
+import type { InsightsModel } from "@hot-updater/plugin-core";
 
 import {
   readRecoveryInput,
-  recoveryWindows,
   type RecoveryInput,
   type RecoveryReport,
   type RecoverySeries,
 } from "../insights-recovery";
-
-const MAX_SCAN_ROWS = 50_000;
+import { readInsightsHistory, type InsightsHistory } from "./insightsHistory";
 
 export async function getRecoveryReport(
   model: InsightsModel,
@@ -19,139 +14,173 @@ export async function getRecoveryReport(
   beforeReceivedAtMs = Date.now(),
 ): Promise<RecoveryReport> {
   readRecoveryInput(input);
-  const { durationMs, intervalMs } = recoveryWindows[input.window];
-  const sinceMs = Math.max(0, beforeReceivedAtMs - durationMs);
+  return buildRecoveryReport(
+    await readInsightsHistory(model, input.window, beforeReceivedAtMs),
+    input,
+  );
+}
+
+export function buildRecoveryReport(
+  history: InsightsHistory,
+  input: RecoveryInput,
+): RecoveryReport {
+  const { events, sinceMs, beforeReceivedAtMs, intervalMs, truncated } =
+    history;
   const bucketStart = (time: number) =>
     Math.floor(time / intervalMs) * intervalMs;
   const releases = new Map<
     string,
     {
       firstAdoptedAtMs: number | null;
+      recovered: Set<string>;
       buckets: Map<
         number,
-        { adopted: number; recovered: number; lastRecoveredAtMs: number }
+        {
+          adopted: number;
+          recovered: number;
+          installations: Set<string>;
+          lastRecoveredAtMs: number;
+        }
       >;
     }
   >();
-  const adoptionTotals = new Map<number, number>();
-  let after: InsightsEventCursor | undefined;
-  let scanned = 0;
-  let truncated = false;
-  let completeSinceMs = sinceMs;
-
-  while (scanned < MAX_SCAN_ROWS) {
-    // Keep the existing bounded scan; native adapters own cursor pagination.
-    const limit = Math.min(100, MAX_SCAN_ROWS - scanned);
-    const rows = await model.listEvents({
-      filter: { kind: "all" },
-      sinceMs,
-      beforeReceivedAtMs,
-      after,
-      limit: limit + 1,
-    });
-    const page = rows.slice(0, limit);
-    for (const row of page) {
-      if (row.platform !== input.platform || row.channel !== input.channel)
-        continue;
-      if (row.type !== "RECOVERED" && row.type !== "RELEASE_ADOPTED") continue;
+  const ensureRelease = (id: string) => {
+    let release = releases.get(id);
+    if (!release) {
+      release = {
+        firstAdoptedAtMs: null,
+        recovered: new Set(),
+        buckets: new Map(),
+      };
+      releases.set(id, release);
+    }
+    return release;
+  };
+  const latest = new Map<
+    string,
+    { releaseId: string | null; bundleId: string; inScope: boolean }
+  >();
+  const active = new Map<string, number>();
+  const snapshots = new Map<number, Map<string, number> | null>();
+  let unattributedInstallations = 0;
+  let observed = false;
+  let eventIndex = 0;
+  for (
+    let startMs = bucketStart(sinceMs);
+    startMs < beforeReceivedAtMs;
+    startMs += intervalMs
+  ) {
+    while (
+      eventIndex < events.length &&
+      events[eventIndex].received_at_ms < startMs + intervalMs
+    ) {
+      const row = events[eventIndex++];
+      const inScope =
+        row.platform === input.platform && row.channel === input.channel;
+      const previous = latest.get(row.install_id);
+      // Older SDKs omit the ID on UNCHANGED. Only retain an observed ID for the same file and scope.
       const releaseId =
+        row.to_release_id ??
+        (row.type === "UNCHANGED" &&
+        previous?.bundleId === row.to_bundle_id &&
+        previous.inScope === inScope
+          ? previous.releaseId
+          : null);
+      if (previous?.inScope) {
+        if (previous.releaseId)
+          active.set(
+            previous.releaseId,
+            (active.get(previous.releaseId) ?? 0) - 1,
+          );
+        else unattributedInstallations -= 1;
+      }
+      latest.set(row.install_id, {
+        releaseId,
+        bundleId: row.to_bundle_id,
+        inScope,
+      });
+      if (!inScope) continue;
+      observed = true;
+      if (releaseId) {
+        ensureRelease(releaseId);
+        active.set(releaseId, (active.get(releaseId) ?? 0) + 1);
+      } else unattributedInstallations += 1;
+      if (row.from_release_id) ensureRelease(row.from_release_id);
+      const outcomeId =
         row.type === "RECOVERED" ? row.from_release_id : row.to_release_id;
-      // Legacy reports without an ID cannot be attributed to a deployment.
-      if (!releaseId) continue;
-      const startMs = bucketStart(row.received_at_ms);
-      if (row.type === "RELEASE_ADOPTED") {
-        adoptionTotals.set(startMs, (adoptionTotals.get(startMs) ?? 0) + 1);
-      }
-      if (input.releaseId && releaseId !== input.releaseId) continue;
-      let release = releases.get(releaseId);
-      if (!release) {
-        release = { firstAdoptedAtMs: null, buckets: new Map() };
-        releases.set(releaseId, release);
-      }
+      if (
+        !outcomeId ||
+        (row.type !== "RECOVERED" &&
+          row.type !== "RELEASE_ADOPTED" &&
+          row.type !== "UPDATE_APPLIED")
+      )
+        continue;
+      const release = ensureRelease(outcomeId);
       const bucket = release.buckets.get(startMs) ?? {
         adopted: 0,
         recovered: 0,
+        installations: new Set<string>(),
         lastRecoveredAtMs: -1,
       };
       if (row.type === "RECOVERED") {
         bucket.recovered += 1;
-        bucket.lastRecoveredAtMs = Math.max(
-          bucket.lastRecoveredAtMs,
-          row.received_at_ms,
-        );
+        bucket.installations.add(row.install_id);
+        bucket.lastRecoveredAtMs = row.received_at_ms;
+        release.recovered.add(row.install_id);
       } else {
         bucket.adopted += 1;
-        release.firstAdoptedAtMs = Math.min(
-          release.firstAdoptedAtMs ?? Infinity,
-          row.received_at_ms,
-        );
+        release.firstAdoptedAtMs ??= row.received_at_ms;
       }
       release.buckets.set(startMs, bucket);
     }
-    scanned += page.length;
-    const last = page.at(-1);
-    if (!last || rows.length <= limit) break;
-    after = { id: last.id, receivedAtMs: last.received_at_ms };
-    if (scanned === MAX_SCAN_ROWS) {
-      truncated = true;
-      // The boundary bucket may contain an incomplete denominator. Omit it.
-      completeSinceMs = bucketStart(last.received_at_ms) + intervalMs;
-    }
+    // Before the first report there is no observed installation state to chart.
+    snapshots.set(startMs, observed ? new Map(active) : null);
   }
-
   const series: RecoverySeries[] = [];
   for (const [releaseId, release] of releases) {
-    const firstAdoptedAtMs =
-      release.firstAdoptedAtMs !== null &&
-      release.firstAdoptedAtMs >= completeSinceMs
-        ? release.firstAdoptedAtMs
-        : null;
-    const points = [];
+    if (input.releaseId && input.releaseId !== releaseId) continue;
     let previousRate: number | null = null;
-    for (
-      let startMs = bucketStart(completeSinceMs);
-      startMs < beforeReceivedAtMs;
-      startMs += intervalMs
-    ) {
-      const {
-        adopted = 0,
-        recovered = 0,
-        lastRecoveredAtMs = -1,
-      } = release.buckets.get(startMs) ?? {};
+    const points = Array.from(snapshots, ([startMs, snapshot]) => {
+      const bucket = release.buckets.get(startMs);
+      const adopted = bucket?.adopted ?? 0;
+      const recovered = bucket?.recovered ?? 0;
       const total = adopted + recovered;
-      const totalAdopted = adoptionTotals.get(startMs) ?? 0;
-      const adoptionShare =
-        totalAdopted === 0 ? null : (adopted / totalAdopted) * 100;
       const rate = total === 0 ? null : (recovered / total) * 100;
-      const afterAdoption =
-        firstAdoptedAtMs !== null && lastRecoveredAtMs >= firstAdoptedAtMs;
       const spike =
-        afterAdoption &&
+        release.firstAdoptedAtMs !== null &&
+        (bucket?.lastRecoveredAtMs ?? -1) >= release.firstAdoptedAtMs &&
         (!truncated || previousRate !== null) &&
         rate !== null &&
         total >= 10 &&
         recovered >= 3 &&
         rate >= 10 &&
         rate - (previousRate ?? 0) >= 10;
-      points.push({ startMs, adopted, adoptionShare, recovered, rate, spike });
       if (rate !== null) previousRate = rate;
-    }
-    if (points.some(({ rate }) => rate !== null))
-      series.push({ releaseId, firstAdoptedAtMs, points });
+      return {
+        startMs,
+        active: snapshot ? (snapshot.get(releaseId) ?? 0) : null,
+        recoveredInstallations: bucket?.installations.size ?? 0,
+        adopted,
+        recovered,
+        rate,
+        spike,
+      };
+    });
+    series.push({
+      releaseId,
+      firstAdoptedAtMs: release.firstAdoptedAtMs,
+      activeInstallations: active.get(releaseId) ?? 0,
+      recoveredInstallations: release.recovered.size,
+      points,
+    });
   }
-  // Surface the most recent rollback signal first, then the newest ID.
-  series.sort((a, b) => {
-    const latestSpike = (s: RecoverySeries) =>
-      [...s.points].reverse().find((p) => p.spike)?.startMs ?? -1;
-    return (
-      latestSpike(b) - latestSpike(a) || b.releaseId.localeCompare(a.releaseId)
-    );
-  });
+  series.sort((a, b) => b.releaseId.localeCompare(a.releaseId));
   return {
-    sinceMs: completeSinceMs,
+    sinceMs,
     beforeReceivedAtMs,
     intervalMs,
     truncated,
+    unattributedInstallations,
     series,
   };
 }

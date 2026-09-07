@@ -19,6 +19,7 @@ import { BundleIdDisplay } from "@/components/BundleIdDisplay";
 import { ChannelBadge } from "@/components/ChannelBadge";
 import { EnabledStatusIcon } from "@/components/EnabledStatusIcon";
 import { BundleChildrenPanel } from "@/components/features/bundles/BundleChildrenPanel";
+import { BundleMovementSummary } from "@/components/features/bundles/BundleInsightsSummary";
 import { ChannelManagementDialog } from "@/components/features/channels/ChannelManagementDialog";
 import { ReleaseEditorSheet } from "@/components/features/releases/ReleaseEditorSheet";
 import { ReleaseStateBadge } from "@/components/features/releases/ReleaseStateBadge";
@@ -55,6 +56,7 @@ import {
   useChannelsQuery,
   useReleasesQuery,
 } from "@/lib/api";
+import { useBundleActivityQuery } from "@/lib/bundle-activity";
 import type { ReleaseListRow } from "@/lib/server/releaseReachability";
 import { cn } from "@/lib/utils";
 
@@ -395,6 +397,16 @@ function BundlesPage() {
   const patchCountsQuery = useBundleChildCountsQuery(bundleIds);
   const patchCountsByBundleId = patchCountsQuery.data ?? {};
   const pagination = releasesQuery.data?.pagination;
+  const activityQuery = useBundleActivityQuery(
+    releases.flatMap((release) => {
+      const channel = channels.find(
+        (item) => item.id === release.channel_id,
+      )?.name;
+      return channel
+        ? [{ releaseId: release.id, platform: release.platform, channel }]
+        : [];
+    }),
+  );
   const channelNames = new Map(
     channels.map((channel) => [channel.id, channel.name]),
   );
@@ -556,6 +568,17 @@ function BundlesPage() {
                                     : "—"}
                               </dd>
                             </div>
+                            <div className="col-span-2 rounded-md bg-muted/40 p-3">
+                              <dt className="mb-2 text-muted-foreground">
+                                Activity · 30d
+                              </dt>
+                              <dd>
+                                <BundleMovementSummary
+                                  report={activityQuery.data?.[release.id]}
+                                  loading={activityQuery.isFetching}
+                                />
+                              </dd>
+                            </div>
                             <div className="col-span-2 flex flex-wrap items-center gap-2 rounded-md bg-muted/40 p-3">
                               <ReleaseStateBadge release={release} />
                               {release.should_force_update ? (
@@ -618,6 +641,7 @@ function BundlesPage() {
                     <TableHead>Enabled</TableHead>
                     <TableHead>Force update</TableHead>
                     <TableHead>Rollout</TableHead>
+                    <TableHead>Activity · 30d</TableHead>
                     <TableHead>Message</TableHead>
                     <TableHead>Created</TableHead>
                   </TableRow>
@@ -626,7 +650,7 @@ function BundlesPage() {
                   {releasesQuery.isPending
                     ? Array.from({ length: 7 }, (_, index) => (
                         <TableRow key={index}>
-                          <TableCell colSpan={10}>
+                          <TableCell colSpan={11}>
                             <Skeleton className="h-8 w-full" />
                           </TableCell>
                         </TableRow>
@@ -783,6 +807,12 @@ function BundlesPage() {
                                   percentage={release.rollout_cohort_count / 10}
                                 />
                               </TableCell>
+                              <TableCell>
+                                <BundleMovementSummary
+                                  report={activityQuery.data?.[release.id]}
+                                  loading={activityQuery.isFetching}
+                                />
+                              </TableCell>
                               <TableCell
                                 className="text-sm text-muted-foreground"
                                 title={release.message ?? undefined}
@@ -804,7 +834,7 @@ function BundlesPage() {
                               <TableRow className="hover:bg-transparent">
                                 <TableCell
                                   className="border-t-0 p-0"
-                                  colSpan={10}
+                                  colSpan={11}
                                 >
                                   <ReleaseBundleChildrenPanel
                                     onDetailClick={openChildBundle}
@@ -821,7 +851,7 @@ function BundlesPage() {
                     <TableRow>
                       <TableCell
                         className="h-40 text-center text-muted-foreground"
-                        colSpan={10}
+                        colSpan={11}
                       >
                         {search.bundleId ||
                         search.channelId ||

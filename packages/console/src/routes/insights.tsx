@@ -1,19 +1,12 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useState } from "react";
 
-import {
-  InsightsBundleReports,
-  type InsightsReportSelection,
-} from "@/components/features/insights/InsightsBundleReports";
 import { InsightsControls } from "@/components/features/insights/InsightsControls";
 import { InsightsOverview } from "@/components/features/insights/InsightsOverview";
 import { InsightsPageHeader } from "@/components/features/insights/InsightsPageHeader";
-import { InsightsRolloutCard } from "@/components/features/insights/InsightsRolloutCard";
-import { Button } from "@/components/ui/button";
 import {
   type InsightsWindow,
   type InsightsOverviewInput,
-  useReportingInstallationsQuery,
 } from "@/lib/insights-api";
 
 export const Route = createFileRoute("/insights")({
@@ -26,10 +19,6 @@ function InsightsPage() {
     platform: "ios",
     channel: "production",
   });
-  const [selection, setSelection] = useState<InsightsReportSelection | null>(
-    null,
-  );
-  const active = useReportingInstallationsQuery({ ...scope, window });
 
   return (
     <div className="flex h-svh min-h-0 flex-col">
@@ -40,45 +29,13 @@ function InsightsPage() {
             scope={scope}
             onScopeChange={(next) => {
               setScope(next);
-              setSelection(null);
             }}
             onWindowChange={(next) => {
               setWindow(next);
-              setSelection(null);
             }}
             window={window}
           />
-          <InsightsRolloutCard input={{ ...scope, window }} />
-          <Button
-            className="h-11 self-end lg:h-8"
-            variant="outline"
-            disabled={active.isFetching}
-            onClick={() => {
-              setSelection(null);
-              void active.refetch();
-            }}
-          >
-            Refresh overview
-          </Button>
-          {active.isLoading ? (
-            <InsightsOverview status="loading" />
-          ) : active.error ? (
-            <InsightsOverview status="error" error={active.error} />
-          ) : active.data ? (
-            <InsightsOverview
-              status="success"
-              active={active.data}
-              onOutcomeSelect={setSelection}
-            />
-          ) : (
-            <InsightsOverview status="loading" />
-          )}
-          {selection ? (
-            <InsightsBundleReports
-              key={JSON.stringify(selection)}
-              selection={selection}
-            />
-          ) : null}
+          <InsightsOverview input={{ ...scope, window }} />
         </div>
       </div>
     </div>
