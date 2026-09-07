@@ -72,6 +72,7 @@ export function BundleActivityChart({
           />
           <Area
             dataKey="active"
+            dot={{ r: 2 }}
             fill="var(--color-active)"
             fillOpacity={0.12}
             isAnimationActive={false}
