@@ -1,5 +1,12 @@
 # hot-updater
 
+## 1.0.0-rc.6
+
+### Patch Changes
+
+- Updated dependencies [8afd7a8]
+  - @hot-updater/console@1.0.0-rc.4
+
 ## 1.0.0-rc.5
 
 ### Patch Changes
