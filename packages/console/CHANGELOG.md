@@ -1,5 +1,52 @@
 # @hot-updater/console
 
+## 1.0.0-rc.2
+
+### Minor Changes
+
+- e6d9ae7: Add Overview / Events navigation in Insights to browse event history without
+  an installation search or bundle filter. Include all event types in newest-first
+  order with cursor pagination, refresh, and links to installation history that
+  preserve the source page and scroll position. Use readable local timestamps,
+  copyable short identifiers, semantic event labels, and responsive mobile cards.
+- 51300d4: Define the required Insights persistence contract as `record`, `listEvents`,
+  object-based `findInstallations`, `countInstallations`, and `countEvents`. Core
+  owns report preparation, filters, windows, cursors, and summaries; providers
+  implement atomic report/latest-state storage, fixed indexed queries, and scalar
+  counts. Duplicate event IDs are first-write-wins and never update installation
+  state again.
+
+  Add scoped recent-reporting counts and selected-bundle applied, recovered-from,
+  and adopted report counts with matching event drill-down in Console. Recovery
+  from B to A belongs to B's recovery count while latest state names A. Counts
+  remain independent live measurements and do not claim an exact share or success
+  rate.
+
+  Include all Insights indexes and native writers in the initial `1.0.0` schema.
+  MongoDB Insights requires native transactions on a replica set or sharded
+  cluster. Regenerate standalone ORM schemas and apply emitted Prisma collation
+  SQL where required.
+
+  Prisma SQL Server Insights explicitly rejects before database I/O because its
+  string identity/order semantics do not meet this contract; other models remain
+  available. MongoDB counts require version 5+ snapshot reads.
+
+### Patch Changes
+
+- 483483e: Close the bundle editor after saving changes and refreshing the release table,
+  while preserving the open editor and draft when saving fails.
+- a837c71: Upgrade verkit to 0.4.0 while preserving canonical app-version strings and
+  Doctor's package-version compatibility checks with the new parsed SemVer
+  return values. Upgrade the workspace build tool tsdown to 0.22.14.
+- f48521a: Align the console ID, `HotUpdater.getBundleId()`, update-check results, completion callbacks, and `bundle list/show` with the selected update identity so promotions sharing an artifact remain distinguishable. The getter can reflect a staged update before reload. Remove the prerelease `getReleaseId()` getter, keep artifact and crash identities unchanged, and move Artifact IDs into Advanced diagnostics. `bundle list --json` returns the internal rows, and `bundle show` accepts the console ID. Use `HotUpdater.getManifest().bundleId` for BugSnag sourcemap matching.
+- Updated dependencies [e6d9ae7]
+- Updated dependencies [51300d4]
+- Updated dependencies [590ca70]
+- Updated dependencies [a837c71]
+  - @hot-updater/server@1.0.0-rc.2
+  - @hot-updater/plugin-core@1.0.0-rc.2
+  - @hot-updater/cli-tools@1.0.0-rc.2
+
 ## 1.0.0-rc.1
 
 ### Minor Changes
