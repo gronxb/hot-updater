@@ -23,13 +23,16 @@ npx skills add hot-updater/skills
 After attaching the skill, ask your agent to set up infrastructure:
 
 ```text
-$hot-updater Set up infrastructure on Cloudflare for this project.
+$hot-updater Set up infrastructure for this project.
 ```
+
+You can leave the provider unspecified. The agent checks your project's existing
+configuration and asks you to choose a provider if it cannot determine one.
 
 For an existing server:
 
 ```text
-$hot-updater Upgrade this project's existing Cloudflare server infrastructure.
+$hot-updater Upgrade this project's existing server infrastructure.
 ```
 
 The agent uses `hot-updater agent infra upgrade`, reads all relevant versioned

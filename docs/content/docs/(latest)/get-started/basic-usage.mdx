@@ -32,13 +32,15 @@ Install the [Hot Updater skill](/docs/guides/ai-agents) in your coding agent:
 npx skills add hot-updater/skills
 ```
 
-Then ask it to set up your provider, for example:
+Then ask it to set up infrastructure for your project:
 
 ```text
-$hot-updater Set up infrastructure on Cloudflare for this project.
+$hot-updater Set up infrastructure for this project.
 ```
 
-The agent asks for missing choices or access, generates templates with
+You can leave the provider unspecified. The agent checks your project's existing
+configuration and asks which provider to use if it cannot determine one. It asks
+for any other missing choices or access, generates templates with
 `hot-updater agent infra setup`, and applies them using available provider tools.
 It verifies each step and resumes unfinished work after checking remote state.
 It creates missing projects and resources itself when the available tools and

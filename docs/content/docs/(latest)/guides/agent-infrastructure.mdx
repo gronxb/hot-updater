@@ -9,19 +9,21 @@ icon: Bot
 With the [Hot Updater skill](/docs/guides/ai-agents) attached, ask your coding agent:
 
 ```text
-$hot-updater Set up infrastructure on Cloudflare for this project.
+$hot-updater Set up infrastructure for this project.
 ```
 
 You can also name the command directly when requesting setup or an upgrade:
 
 ```text
-Use hot-updater agent infra setup to configure and deploy this app on Cloudflare.
-Use hot-updater agent infra upgrade to update our existing Supabase server.
+Use hot-updater agent infra setup to set up this project's infrastructure.
+Use hot-updater agent infra upgrade to upgrade this project's existing server.
 ```
 
-The agent reads the instructions, inspects your project, and asks for missing
-choices or access. It applies the generated files through available provider
-MCP tools, CLIs, APIs, or a browser, then verifies each step.
+You can leave the provider unspecified. The agent reads the instructions and
+inspects your project's existing configuration. If it cannot determine the
+provider, it asks you to choose one, along with any other missing choices or access.
+It applies the generated files through available provider MCP tools, CLIs, APIs,
+or a browser, then verifies each step.
 
 It locates the app and build setup in your workspace, discovers existing provider
 resources, and creates the missing projects, instances, databases or services
@@ -44,7 +46,7 @@ The skill does not add commands to older versions. If the features are available
 only in a prerelease, explicitly select that release channel, for example:
 
 ```text
-$hot-updater Use the rc release channel and set up infrastructure on Cloudflare for this project.
+$hot-updater Use the rc release channel and set up infrastructure for this project.
 ```
 
 The agent installs a compatible local CLI and checks its help before continuing.
@@ -169,7 +171,7 @@ migration history, secrets, and existing objects.
 With the skill attached, ask your agent:
 
 ```text
-$hot-updater Upgrade this project's existing Cloudflare server infrastructure.
+$hot-updater Upgrade this project's existing server infrastructure.
 ```
 
 If doctor has identified the server, you can include its URL:

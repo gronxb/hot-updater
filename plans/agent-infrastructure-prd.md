@@ -23,9 +23,10 @@ forgotten before release.
 
 ## Outcome
 
-A user says “$hot-updater Set up infrastructure on Cloudflare for this project.”
+A user says “$hot-updater Set up infrastructure for this project.”
 The agent reads the command's instructions, inspects local and remote
-context, asks only for missing choices/access, generates a provider scaffold,
+context, asks for a provider when none is established and any other missing
+choices/access, generates a provider scaffold,
 applies it using available tools, and verifies the result. It can resume after a
 failure without recreating successful resources.
 
