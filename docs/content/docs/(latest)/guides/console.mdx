@@ -107,11 +107,22 @@ The Bundles list shows compact **Active** and **Rollback** counts over the last
 30 days. Bundle Detail keeps these counts and a small activity graph above
 Delivery settings.
 
-Insights opens a 30-day chart with every bundle ID observed in the selected
-platform and channel. **Active** follows each installation’s last reported ID
+Insights opens a 24-hour chart with hourly intervals, so recent activity remains
+visible. Select **7d** or **30d** to compare a longer period. The chart includes
+every bundle ID observed in the selected platform and channel.
+
+**Reporting devices · 30d** counts each installation whose latest report belongs
+to the selected platform and channel within the last 30 days, including reports
+without a known bundle ID. It stays on 30 days when the chart period changes.
+This is a device count, not a monthly active user count.
+
+**Active** follows each installation’s last reported ID
 within that period, so moving to a new bundle reduces the old bundle’s count.
 Select **Rollback** to compare installations recovered from each bundle per
 interval. Highlighting an ID keeps the other lines visible.
+
+Open **All events** on the activity card to browse reports from newest to oldest,
+20 per page.
 
 These counts reflect received reports, not the full installed population.
 Reports without a known bundle ID are excluded from the per-ID chart. History

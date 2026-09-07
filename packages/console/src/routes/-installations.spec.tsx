@@ -121,11 +121,11 @@ describe("InstallationsPage", () => {
     vi.clearAllMocks();
   });
 
-  it("opens on filter-free events and advances with an opaque cursor", () => {
+  it("opens on 20 filter-free events and advances with an opaque cursor", () => {
     render(<InstallationsPage />);
 
     expect(mocks.events).toHaveBeenCalledWith(
-      { beforeReceivedAtMs: 100, cursor: undefined, limit: 50 },
+      { beforeReceivedAtMs: 100, cursor: undefined, limit: 20 },
       true,
     );
     expect(screen.getByRole("heading", { name: "All events" })).toBeDefined();

@@ -88,7 +88,7 @@ function InstallationsPage() {
     {
       beforeReceivedAtMs: eventsBefore,
       cursor: search.eventsCursor,
-      limit: EVENT_LIMIT,
+      limit: 20,
     },
     !hasLookup,
   );
