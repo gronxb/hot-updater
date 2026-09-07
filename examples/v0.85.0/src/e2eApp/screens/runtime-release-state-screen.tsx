@@ -1,21 +1,26 @@
 import { useFocusEffect } from "@react-navigation/native";
-import React, { useCallback, useRef } from "react";
+import React, { useCallback, useState } from "react";
 
 import { ValueText } from "../components";
 import { useE2eRuntimeModelContext } from "../runtime-model-context";
 
 export const RuntimeReleaseStateScreen = () => {
   const model = useE2eRuntimeModelContext();
-  const didRefresh = useRef(false);
+  const [isReady, setIsReady] = useState(false);
   useFocusEffect(
     useCallback(() => {
-      if (!didRefresh.current) {
-        didRefresh.current = true;
-        void model.refreshRuntimeSnapshot();
-      }
+      let isActive = true;
+      setIsReady(false);
+      void model.refreshRuntimeSnapshot().then(() => {
+        if (isActive) setIsReady(true);
+      });
+      return () => {
+        isActive = false;
+      };
     }, [model.refreshRuntimeSnapshot]),
   );
   const snapshot = model.runtimeSnapshot;
+  if (!isReady) return null;
   return (
     <ValueText
       testID="runtime-release-state"
