@@ -120,6 +120,8 @@ describe("AppSidebar navigation", () => {
         .hasAttribute("disabled"),
     ).toBe(true);
     expect(fetchMock).toHaveBeenCalledWith("/api/auth/sign-out", {
+      body: "{}",
+      headers: { "content-type": "application/json" },
       method: "POST",
     });
     finish(new Response(null, { status: 503 }));

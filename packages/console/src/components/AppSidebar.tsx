@@ -45,7 +45,11 @@ export function AppSidebar({ canSignOut = false }: { canSignOut?: boolean }) {
   const signOut = async () => {
     setSigningOut(true);
     try {
-      const response = await fetch("/api/auth/sign-out", { method: "POST" });
+      const response = await fetch("/api/auth/sign-out", {
+        body: "{}",
+        headers: { "content-type": "application/json" },
+        method: "POST",
+      });
       if (!response.ok) throw new Error("Sign-out failed. Please try again.");
       window.location.reload();
     } catch {
