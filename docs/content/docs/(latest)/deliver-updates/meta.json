@@ -8,7 +8,6 @@
     "../guides/runtime-channel-switch",
     "../guides/rollout-cohorts",
     "../guides/update-strategies",
-    "../guides/custom-update",
     "../guides/bundle-diffing",
     "../guides/compression",
     "../guides/native-build"

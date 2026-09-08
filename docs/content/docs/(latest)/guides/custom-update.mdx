@@ -1,15 +1,19 @@
 ---
-title: "Custom Update"
+title: "Control update timing"
 description: "Build a custom Hot Updater client flow with init, checkForUpdate, updateBundle, and reload."
 icon: Settings2
 ---
 
 ## Overview
 
-Hot Updater can manage updates automatically with `HotUpdater.wrap`, but you can
-also build the client flow yourself. A custom flow is useful when you want to
-check only after login, gate updates by app state, coordinate with navigation
-state, or let another runtime own the root component.
+Use `HotUpdater.init` to configure Hot Updater, then let your app decide when to
+check, download and restart. This is the default flow in the onboarding guides.
+You can check after login, gate updates by app state, coordinate with navigation
+or expose a "Check for updates" action without wrapping the root component.
+
+The [app setup example](/docs/get-started/app-setup) is enough to
+[verify your first OTA](/docs/guides/simulator-test). Use this guide when you
+want to customize that working flow's triggers, progress UI and error handling.
 
 The custom flow has four parts:
 
@@ -21,7 +25,9 @@ The custom flow has four parts:
 
 ## Initialize
 
-Use `HotUpdater.init` when you do not want to wrap the root component.
+Call `HotUpdater.init` once when your runtime considers the app ready. The
+[app setup example](/docs/get-started/app-setup) connects initialization to a
+working check/download/restart UI; the sections below explain each decision.
 
 ```tsx
 import { HotUpdater } from "@hot-updater/react-native";
@@ -105,10 +111,12 @@ For non-force updates, you can download in the background and reload later.
 
 ```tsx
 if (updateInfo && !updateInfo.shouldForceUpdate) {
-  await updateInfo.updateBundle();
+  const downloaded = await updateInfo.updateBundle();
 
   // Later, after navigation is idle or the user accepts a prompt:
-  await HotUpdater.reload();
+  if (downloaded) {
+    await HotUpdater.reload();
+  }
 }
 ```
 
@@ -288,8 +296,10 @@ const updateInfo = await HotUpdater.checkForUpdate({
 });
 
 if (updateInfo) {
-  await updateInfo.updateBundle();
-  await HotUpdater.reload();
+  const downloaded = await updateInfo.updateBundle();
+  if (downloaded) {
+    await HotUpdater.reload();
+  }
 }
 ```
 
@@ -352,8 +362,11 @@ async function runUpdateFlow() {
 
 ## Related
 
+If you want automatic startup checks with a root-component wrapper, use
+[`HotUpdater.wrap`](/docs/react-native-api/wrap) instead of this flow. Configure
+one of `init` or `wrap` in the app.
+
 - [`HotUpdater.init()`](/docs/react-native-api/init)
-- [`HotUpdater.wrap()`](/docs/react-native-api/wrap)
 - [`HotUpdater.checkForUpdate()`](/docs/react-native-api/checkForUpdate)
 - [`HotUpdater.reload()`](/docs/react-native-api/reload)
 - [`HotUpdater.addListener()`](/docs/react-native-api/addListener)

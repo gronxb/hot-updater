@@ -50,6 +50,12 @@ Runtime imports are regular dependencies. Build/deploy/config-only packages are
 development dependencies. A package used by both belongs in regular dependencies.
 Install the SDK, CLI and selected build/provider packages before init/scaffold.
 
+Prefer `HotUpdater.init` with `checkForUpdate`, the returned `updateBundle`
+helper and deliberate reload timing in onboarding and general examples. `init`
+does not check or apply an update by itself. Keep `wrap` as the optional
+automatic startup flow and retain its focused API reference. Preserve separate
+managed/custom hosting and build/storage/database/integration plugin groups.
+
 - Show complete imports for runnable examples. Label partial configuration
   snippets; retain existing storage/database settings when changing one option.
 - Use environment-variable names or placeholders for credentials. The app may

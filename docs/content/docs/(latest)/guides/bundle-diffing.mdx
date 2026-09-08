@@ -195,6 +195,26 @@ Patch generation is an optimization, not a requirement for delivery.
 
 ## How it works
 
+### Create a patch for existing artifacts
+
+Deploy creates patches automatically. To add one for artifacts that already
+exist, obtain their **Artifact IDs** from Console Advanced diagnostics or the
+`bundle_id` field in `bundle show <public-id> --json`, then run:
+
+```bash
+npx hot-updater patch -p ios --artifact-id <target-artifact-id> --base-artifact-id <base-artifact-id>
+```
+
+Use the artifacts' platform (`ios` or `android`) and add `-c <channel>` if that
+channel selects a different CLI configuration. The target is the newer artifact;
+the base is the artifact installed on devices
+that should use the patch. Public Bundle IDs from deploy or promote are delivery
+policy IDs and must not be used as Artifact IDs. The patch is recorded in the
+target artifact's `patches` relation; the normal archive remains available.
+Both artifacts must have readable manifests with a changed Hermes bundle at
+the same manifest path. Missing, unchanged or mismatched Hermes inputs cannot
+produce a patch; ordinary assets use file reuse or full-file downloads.
+
 ### During deploy
 
 Hot Updater prepares both the normal delivery path and the diffing data:

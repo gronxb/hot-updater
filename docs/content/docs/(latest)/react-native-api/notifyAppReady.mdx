@@ -1,0 +1,107 @@
+---
+title: "notifyAppReady"
+description: "Read the native launch outcome and handle applied or recovered Bundle transitions."
+icon: ClipboardCheck
+---
+
+## Observe the launch outcome
+
+Use `onNotifyAppReady` in your chosen configuration API to observe the native
+launch result. Both [`init`](/docs/react-native-api/init) and
+[`wrap`](/docs/react-native-api/wrap) wait until native launch verification has
+finished before invoking this callback.
+
+For a manual update flow, configure `init` when your app is ready:
+
+```tsx
+import { HotUpdater } from "@hot-updater/react-native";
+
+HotUpdater.init({
+  baseURL: "<your-update-server-url>",
+  requestHeaders: {
+    "x-api-key": "<client-api-key>",
+  },
+  onNotifyAppReady: (result) => {
+    switch (result.status) {
+      case "UNCHANGED":
+        console.log("No applied or recovered transition to report");
+        break;
+      case "UPDATE_APPLIED":
+        console.log("Applied:", result.fromBundleId, result.toBundleId);
+        break;
+      case "RECOVERED":
+        console.log("Recovered:", result.fromBundleId, result.toBundleId);
+        break;
+    }
+  },
+});
+```
+
+For the automatic update flow, put the same callback in `HotUpdater.wrap`.
+Use one configuration API per app. You do not need a separate
+`notifyAppReady()` call to enable lifecycle handling or Insights.
+
+## Return value
+
+`HotUpdater.notifyAppReady()` is a synchronous read of the native launch report
+for the current process. It returns the same public result type used by
+`onNotifyAppReady`:
+
+```ts
+type NotifyAppReadyResult =
+  | { status: "UNCHANGED" }
+  | {
+      status: "UPDATE_APPLIED";
+      fromBundleId: string;
+      toBundleId: string;
+      fromReleaseId?: string;
+      toReleaseId?: string;
+    }
+  | {
+      status: "RECOVERED";
+      fromBundleId: string;
+      toBundleId: string;
+      fromReleaseId?: string;
+      toReleaseId?: string;
+    };
+
+notifyAppReady(): NotifyAppReadyResult
+```
+
+The package exports `NotifyAppReadyResult` for your own callback types.
+
+| Field or status | Meaning |
+| --- | --- |
+| `UNCHANGED` | No qualifying applied or recovered OTA transition is available. This variant has no transition IDs. |
+| `UPDATE_APPLIED` | A pending OTA transition became active. |
+| `RECOVERED` | Native crash recovery restored another Bundle. |
+| `fromBundleId` | The previous artifact identity; for recovery, the failed artifact. |
+| `toBundleId` | The artifact identity now in use, including the native build's identifier for a built-in Bundle. |
+| `fromReleaseId`, `toReleaseId` | Optional Release selection IDs. A built-in or retained local Bundle can have no associated Release. |
+
+Bundle fields identify artifacts. Use the optional Release fields when
+correlating a transition with the public update ID in the Console. See
+[`getActiveUpdateState`](/docs/react-native-api/getActiveUpdateState) for the
+selection and artifact distinction.
+
+## Read directly for diagnostics
+
+```tsx
+const result = HotUpdater.notifyAppReady();
+
+if (result.status === "RECOVERED") {
+  console.log("Failed artifact:", result.fromBundleId);
+  console.log("Recovered to:", result.toBundleId);
+}
+```
+
+A direct call reads local state. It does not complete launch verification,
+reload the app, or send an Insights event. Before native verification finishes,
+a direct read can return `UNCHANGED`; use `onNotifyAppReady` for the completed
+launch result.
+
+The callback reports native state even with `insights: false`. It is not an
+acknowledgment that the server received a report. See
+[Insights verification](/docs/guides/insights#verify-reporting) to confirm
+server receipt, and [automatic rollback](/docs/concepts/automatic-rollback)
+for recovery behavior.

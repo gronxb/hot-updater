@@ -34,6 +34,8 @@ Install hot-updater, @hot-updater/react-native and the required build/provider p
 before generating infrastructure. Record the installed versions and keep the lockfile.
 Use agent infra setup and its generated instructions to provision and verify the server.
 Connect the app's base URL and client API key, including both native and OTA build environments.
+Prefer HotUpdater.init with a custom checkForUpdate -> updateInfo.updateBundle -> deliberate reload flow.
+Initialize when the app is ready, handle callback errors, and verify download success before reloading.
 Configure native bundle loading, compatibility and a dedicated test channel; preserve existing signing.
 Build and launch a native Release app, publish a visible JavaScript and asset change to its exact scope,
 and verify the changes after applying the OTA. Check the deployment ID, rollback and received Insights.
@@ -55,13 +57,16 @@ The agent checks the installed CLI's help before invoking commands.
 | --- | --- |
 | Inspect and install | App workspace, build system, provider and resolved package versions |
 | Provision infrastructure | Actual resource identifiers, deployed base URL, server version and authenticated client request |
-| Connect the app | Native loading, client key supplied to app builds, matching strategy/channel and signing key when enabled |
+| Connect the app | Init at app readiness, explicit check/download/reload flow, native loading, client key, matching strategy/channel and signing key when enabled |
 | Test OTA | Release app launch, visible JavaScript and asset changes after application, matching deployment ID and rollback result |
 | Observe and hand off | Received Insights when enabled; remaining store/native release steps and any specific blockers |
 
 [Connect your app](/docs/get-started/app-setup) is the canonical integration
-procedure. [Test an OTA update](/docs/guides/simulator-test) defines the device
-checks. A generated scaffold, a successful doctor check or an uploaded bundle
+procedure. Prefer its custom `init` flow so check timing and reload behavior
+fit the app. `init` alone does not download updates; preserve an existing
+intentional wrapper flow or use `wrap` only when its automatic behavior is
+wanted. Do not combine both initialization APIs.
+[Test an OTA update](/docs/guides/simulator-test) defines the device checks. A generated scaffold, a successful doctor check or an uploaded bundle
 alone does not prove that a device applied an OTA update.
 
 If the agent cannot build or interact with the native app, it should complete

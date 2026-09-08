@@ -16,8 +16,14 @@ Infrastructure, Deliver updates, Operate, Security, Concepts, and Reference.
 completion or repeated instructions. Moving every file also breaks existing
 release links and agent citations.
 
-**Decision:** Use metadata groups to organize existing URLs. Rewrite entry
-pages, split distinct tasks and merge duplicate instructions into named owners.
+**Decision:** Put onboarding first, with delivery, operation, security and
+concept workflows nearby. Keep Self Hosting (Managed), Self Hosting (Custom),
+Build Plugins, Storage Plugins, Database Plugins and Integration Plugins as
+independent top-level groups: their boundaries remain useful when users need
+configuration or implementation details. The initial umbrella Infrastructure
+and Reference folders were removed so these concerns stay directly visible.
+Use metadata to organize existing URLs. Rewrite entry pages, split distinct
+tasks and merge duplicate instructions into named owners.
 Keep `/docs/get-started/introduction`, the release-linked agent and upgrade URLs,
 and existing symbol URLs. Do not create parallel agent/manual reference trees.
 
@@ -37,6 +43,12 @@ the existing simulator-test URL, retitled Test an OTA update. Agent Setup owns
 an end-to-end request and a separate result for server, native launch and OTA.
 The first OTA test requires a visible change in the same installed release
 binary, not merely an upload or selected update ID.
+
+`init + checkForUpdate` is the default onboarding and general-example flow.
+The app explicitly owns check timing, download completion and restart consent;
+`wrap` remains an optional automatic startup integration with its own reference.
+The custom update guide is discoverable in Start here and owns the detailed
+workflow instead of duplicating a full tutorial on every API page.
 
 **Evidence checked:** The existing guide has 619 lines; provider recipes repeat
 Android/iOS blocks. `packages/react-native/src/index.ts` exposes a selected
@@ -135,9 +147,10 @@ Historical documents are not current onboarding, and optional integrations do
 not block the main path.
 
 **Decision:** Preserve v0 and historical release/architecture content. Keep
-transition instructions in the existing v1 upgrade guide. Defer additional Expo
-DOM and standalone-storage splits; their focused anchored sections remain
-available. Update only maintainer guidance directly needed to sustain the new
+transition instructions in the existing v1 upgrade guide. Defer the optional
+Expo DOM split; its anchored section remains available. The later concern review
+justified extracting standalone storage into its own plugin family (section 10).
+Update only maintainer guidance directly needed to sustain the new
 navigation and validation contract. No runtime API or infrastructure changes.
 
 ## 9. Challenge the implemented paths before acceptance
@@ -157,6 +170,46 @@ the implementation:
 
 These fixes preserve the accepted page ownership and version scope. Final
 verification evidence is recorded in the [PRD](prd.md#delivered-result-and-verification).
+
+## 10. Preserve concerns while making onboarding actionable
+
+Two independent reviewers challenged the implemented navigation: one checked
+the actual Fumadocs/Markdown ownership tree, and one checked provider, server
+and plugin responsibilities against the content. Both accepted independent
+root groups for the six concerns below and rejected adding Infrastructure or
+Reference wrapper folders that hide them behind another expansion.
+
+| Concern | Owns | Does not duplicate |
+| --- | --- | --- |
+| Self Hosting (Managed) | Provision supported provider resources, deploy packaged infrastructure, produce app connection inputs | Storage/database option contracts and shared native app wiring |
+| Self Hosting (Custom) | Assemble a server with database adapters, framework handlers, authentication and hosting | Author a new storage/database plugin |
+| Build Plugins | Bundler/build-system configuration and native config-plugin options | Provider provisioning or update scheduling |
+| Storage Plugins | Object transport, URI ownership, runtime bindings and download URL configuration | Release policy or database schema |
+| Database Plugins | Official models, queries, atomic commits, schema and repository transport | Native app setup or object transfer |
+| Integration Plugins | External observability integrations and source-map processing | Core client initialization or provider infrastructure |
+
+The reviewers requested these concrete changes before acceptance:
+
+- **Choose before installing.** Move Choose infrastructure before Install
+  packages and make the same prerequisite explicit in manual setup.
+- **Give storage its own owner.** Extract `standaloneStorage` from the database
+  repository page into Storage Plugins. Keep the original remote-storage anchor
+  as a compatibility link. A cross-link alone would leave the full contract in
+  the wrong concern.
+- **State all plugin responsibilities.** Add Integration to the plugin-system
+  overview and describe database use during both deployment and server runtime.
+- **Keep the preferred flow consistent.** Remove the wrap reference's claim
+  to be the standard approach. App setup owns one working init/check/download/
+  restart example; Control update timing owns optional deeper customization.
+  Put the first OTA check immediately after app setup in navigation.
+- **Remove inactive menu owners.** Retire the unreferenced latest Guides and
+  Policy metadata so authors cannot accidentally edit inactive navigation.
+
+Rejected alternatives: merging provider recipes with storage/database contracts
+(breaks mixed-provider lookup), restoring umbrella folders (hides the requested
+concerns), requiring the long custom-flow guide before the first OTA (adds an
+unnecessary onboarding step), and removing wrap support (it remains a valid
+automatic integration).
 
 ## Remaining limits
 

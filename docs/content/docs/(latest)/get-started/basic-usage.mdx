@@ -19,7 +19,8 @@ workspace directory.
 
 ### Step 1: Install hot-updater
 
-Follow [Install packages](/docs/get-started/installation) to install the
+First [choose infrastructure](/docs/get-started/choose-provider), then follow
+[Install packages](/docs/get-started/installation) to install the
 `@hot-updater/react-native` SDK, `hot-updater` CLI, your selected build
 plugin and provider package. Complete all four package choices before init.
 
@@ -31,8 +32,7 @@ Run the interactive initializer after installation:
 npx hot-updater init
 ```
 
-Select your app's build system and provider. [Choose infrastructure](/docs/get-started/choose-provider)
-compares the available paths. The provider guide explains access,
+Select the app build system and provider you prepared. The provider guide explains access,
 resources, deployment and the exact update server URL:
 
 - [Cloudflare](/docs/managed/cloudflare)
@@ -64,11 +64,18 @@ Re-running `init` with another provider preserves unrelated config, prior
 provider variables and existing infrastructure. Keep old resources until
 installed binaries no longer depend on them.
 
-### Step 4: Wrap Your Application
+<a id="step-4-wrap-your-application" />
 
-Continue to [Connect your app](/docs/get-started/app-setup). It configures the
-client URL/key, app and OTA build variables, build plugin, native loading,
-compatibility and test channel.
+### Step 4: Initialize Your Application
+
+Follow [Connect your app](/docs/get-started/app-setup#configure-the-update-client)
+for the complete `HotUpdater.init()` flow: initialize when the app is ready,
+call `checkForUpdate()`, await the selected update's `updateBundle()`, then
+reload at a deliberate point. Initialization alone does not check for updates.
+
+That page also configures the client URL/key, native and OTA build variables,
+build plugin, native loading, compatibility and test channel. The automatic
+wrapper remains an [optional alternative](/docs/get-started/app-setup#optional-automatic-wrapper).
 
 ## Build Configuration
 

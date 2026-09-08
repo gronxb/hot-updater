@@ -293,7 +293,8 @@ GET /artifacts/:targetBundleId/from/:currentBundleId
 ```
 
 Catalog URLs contain no installation state. Successful catalog responses are
-short-lived shared-cacheable and vary by content encoding and `x-api-key`.
+short-lived shared-cacheable and vary by content encoding and the configured
+API key header (`x-api-key` by default, or `clientAccess.headerName`).
 Authentication errors, missing/incomplete catalogs, and server errors are
 `private, no-store`. Artifact resolution remains Bundle-keyed and private.
 

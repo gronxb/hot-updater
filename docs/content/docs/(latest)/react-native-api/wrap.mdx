@@ -26,7 +26,9 @@ current session must remain uninterrupted.
 
 ### Automatic Updates
 
-Use this for apps that want automatic OTA updates. This is the standard approach with full update management.
+Use this optional integration when you want automatic startup checks and
+wrapper-managed staging/reload. For app-controlled check and apply timing,
+follow the [`init` custom flow](/docs/guides/custom-update).
 
 ```tsx
 import { HotUpdater } from "@hot-updater/react-native";
@@ -76,11 +78,16 @@ For checks triggered by your own app lifecycle, use
 | `insights`         | `boolean`                                   | No       | Send app-ready and Bundle adoption events (default: true)   |
 | `requestHeaders`   | `Record<string, string>`                    | No       | Custom HTTP headers for update requests                     |
 | `requestTimeout`   | `number`                                    | No       | Request timeout in milliseconds (default: 5000)             |
-| `onNotifyAppReady` | `(result) => void`                          | No       | Callback invoked after native app-ready state is read       |
+| `onNotifyAppReady` | `(result: NotifyAppReadyResult) => void`    | No       | Callback invoked after native launch verification finishes  |
 
 `baseURL` is the only React Native transport configuration. It may resolve at
 runtime, but every resolved URL must expose the Hot Updater HTTP protocol.
 Hot Updater expands handler-relative artifact paths against this URL.
+
+See [`NotifyAppReadyResult`](/docs/react-native-api/notifyAppReady#return-value)
+for the `UNCHANGED`, `UPDATE_APPLIED`, and `RECOVERED` result shapes and a
+callback example. A callback result describes local native state; it does not
+confirm Insights delivery to the server.
 
 ### Automatic Mode Options
 

@@ -5,8 +5,8 @@
   "pages": [
     "index",
     "---Configure---",
-    "wrap",
     "init",
+    "wrap",
     "---Update---",
     "checkForUpdate",
     "updateBundle",
@@ -26,6 +26,7 @@
     "---Diagnose---",
     "getAppVersion",
     "getBundleId",
+    "notifyAppReady",
     "getActiveUpdateState",
     "getInstallId",
     "setUser",

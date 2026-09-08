@@ -63,6 +63,40 @@ exact-delete operations. When the same plugin is passed to a self-hosted
 the signed download location required by the server while `get` reads the
 stored object.
 
+### Cloudflare Worker bindings
+
+Inside a Worker, import `r2Storage` from `@hot-updater/cloudflare/worker` and
+capture the native R2 binding when constructing the plugin:
+
+```typescript
+import { d1Database, r2Storage } from "@hot-updater/cloudflare/worker";
+import { createHotUpdater } from "@hot-updater/server";
+import { env } from "cloudflare:workers";
+
+export const hotUpdater = createHotUpdater({
+  database: d1Database(env.DB),
+  clientAccess: { type: "api-key" },
+  storage: [
+    r2Storage({
+      bucket: env.BUCKET,
+      bucketName: env.BUCKET_NAME,
+      downloadUrlSigningKey: env.STORAGE_DOWNLOAD_URL_SIGNING_KEY,
+    }),
+  ],
+});
+```
+
+Configure `DB` and `BUCKET` as D1 and R2 bindings, set `BUCKET_NAME` to the
+actual bound bucket name, and store `STORAGE_DOWNLOAD_URL_SIGNING_KEY` as a
+Worker secret. The Worker uses its R2 binding for object access; S3-compatible
+access keys belong to the CLI configuration above. Use the same bucket and
+optional `basePath` in both configurations.
+
+Mount `hotUpdater.handlers.client` through your
+[server framework](/docs/custom/overview#server-frameworks). It serves the
+signed storage-download URLs as well as the update protocol. Bindings are
+already captured by the plugins; invoke a handler with only the `Request`.
+
 ## Protocol
 
 `r2://bucket/encoded/key`

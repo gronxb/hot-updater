@@ -188,6 +188,6 @@ Unfiltered totals use the transactionally maintained metadata counter. Batch
 reads retry unprocessed keys with bounded exponential backoff.
 
 DynamoDB permits at most 100 actions in one transaction. Every
-`commit({ mutations })` envelope is planned and submitted as one transaction,
+`commit({ changes, expectations })` envelope is planned and submitted as one transaction,
 including relation counters and cascade deletions; a commit that exceeds the
 service limit is rejected before it can be partially applied.

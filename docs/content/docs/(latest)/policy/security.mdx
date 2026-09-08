@@ -34,16 +34,18 @@ admin credentials in separate configuration:
 
 ```tsx
 import { HotUpdater } from "@hot-updater/react-native";
-import App from "./App";
 
-export default HotUpdater.wrap({
+HotUpdater.init({
   baseURL: "<your-update-server-url>",
-  updateStrategy: "appVersion",
   requestHeaders: {
     "x-api-key": "<client-api-key>",
   },
-})(App);
+});
 ```
+
+Call `init` once when your app is ready. It configures access and lifecycle
+reporting; follow [custom update flows](/docs/guides/custom-update) to check,
+download, and apply updates.
 
 Managed providers require a client key. A custom server can deliberately choose
 public client access; follow its [access policy setup](/docs/custom/api-key-authentication).

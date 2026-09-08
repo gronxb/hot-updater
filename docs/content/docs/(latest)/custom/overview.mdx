@@ -17,12 +17,17 @@ backend, use the matching integration below and keep its established tooling.
 
 ## Architecture
 
-| Part | Runs in | Responsibility |
-| --- | --- | --- |
-| `hot-updater.config.ts` | React Native project or deploy job | Build bundles, upload artifacts and send management requests through `standaloneRepository`. |
-| `createHotUpdater` | Server project | Compile Release Catalogs and serve client and admin handlers using a direct database provider. |
-| Database adapter | Server project | Persist canonical rows, prepare the schema and commit changes atomically. |
-| Storage plugin | Deploy job and server | Upload artifacts and resolve their stored locations for downloads. |
+| Part                    | Runs in                            | Responsibility                                                                                 |
+| ----------------------- | ---------------------------------- | ---------------------------------------------------------------------------------------------- |
+| `hot-updater.config.ts` | React Native project or deploy job | Build bundles, upload artifacts and send management requests through `standaloneRepository`.   |
+| `createHotUpdater`      | Server project                     | Compile Release Catalogs and serve client and admin handlers using a direct database provider. |
+| Database adapter        | Server project                     | Persist canonical rows, prepare the schema and commit changes atomically.                      |
+| Storage plugin          | Deploy job and server              | Upload artifacts and resolve their stored locations for downloads.                             |
+
+Pass database and storage plugin objects directly to `createHotUpdater` and
+`defineConfig`. Provider factories such as `dynamoDB(options)` return those
+objects. Capture SDK clients, bindings and credentials when constructing each
+plugin; handlers take only a Web `Request`.
 
 The mobile app uses the client base URL and a client API key. The CLI connects
 to the separately protected admin base URL. The admin token and provider
@@ -33,11 +38,11 @@ credentials stay in server and deploy environments.
 Choose the adapter that matches your existing database tooling. Prepare its
 schema before creating the first API key or serving requests.
 
-| Adapter | Schema preparation |
-| --- | --- |
-| [Kysely](/docs/custom/database/kysely) | Generate SQL for review, then use `hot-updater db migrate`. |
-| [Drizzle](/docs/custom/database/drizzle) | Generate the Drizzle schema and apply it with Drizzle Kit. |
-| [Prisma](/docs/custom/database/prisma) | Generate/merge the Prisma models, regenerate the client and apply the schema with Prisma. |
+| Adapter                                  | Schema preparation                                                                                           |
+| ---------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
+| [Kysely](/docs/custom/database/kysely)   | Generate SQL for review, then use `hot-updater db migrate`.                                                  |
+| [Drizzle](/docs/custom/database/drizzle) | Generate the Drizzle schema and apply it with Drizzle Kit.                                                   |
+| [Prisma](/docs/custom/database/prisma)   | Generate/merge the Prisma models, regenerate the client and apply the schema with Prisma.                    |
 | [MongoDB](/docs/custom/database/mongodb) | Use a replica set or sharded cluster with transactions enabled; apply indexes with `hot-updater db migrate`. |
 
 For database tooling outside an ORM, use [SQL schema export](/docs/custom/database/sql-export).
@@ -50,16 +55,21 @@ Mount `handlers.admin` behind your framework's authentication, then mount
 or [Elysia](/docs/custom/frameworks/elysia). Each recipe shows its framework's
 middleware and mount ordering.
 
+Handlers match paths relative to their mount. For example, mounting the client
+handler at `/hot-updater` exposes `/hot-updater/version`; configure the app's
+`baseURL` as `https://example.com/hot-updater`. The framework owns the external
+prefix, including for signed storage-download URLs resolved against `baseURL`.
+
 ## Runtime policy
 
 Every `createHotUpdater` configuration sets `clientAccess`. Use
 `{ type: "api-key" }` to require a client key for Release Catalogs, artifact
 resolution and Insights ingestion, or explicitly choose `{ type: "public" }`.
 
-| Handler | Routes and access |
-| --- | --- |
+| Handler           | Routes and access                                                                                                                                                              |
+| ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `handlers.client` | Public `/version`; Release Catalogs, artifacts and `POST /events` follow `clientAccess`; signed storage-download routes are available when the storage provider supports them. |
-| `handlers.admin` | Bundle, Release, catalog, Channel, database-commit and Insights-query routes. Your framework authenticates every request before mounting this handler. |
+| `handlers.admin`  | Bundle, Release, catalog, Channel, database-commit and Insights-query routes. Your framework authenticates every request before mounting this handler.                         |
 
 Insights is built in. React Native clients report lifecycle events by default
 and can opt out with `HotUpdater.init({ insights: false })`. Client API keys do

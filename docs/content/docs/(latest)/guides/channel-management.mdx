@@ -15,6 +15,13 @@ The default channel is the release channel embedded in your native app at build 
 - This channel decides where the app checks for updates by default.
 - Changing the default channel requires rebuilding the native app.
 
+Channel names are exact and case-sensitive: `production` and `Production` are
+different channels. The server stores each channel as a persistent row with an
+opaque ID; use its name in app configuration and deployment commands. Setting
+the native default does not create or delete server channel rows. Custom-server
+integrations manage those rows through the
+[admin handler](/docs/custom/overview#runtime-policy).
+
 <Callout type="info">
   Need to temporarily move a device to another channel without rebuilding? See
   [Runtime Channel Switch](/docs/guides/runtime-channel-switch).
@@ -191,7 +198,15 @@ out of the app.
 import { HotUpdater } from "@hot-updater/react-native";
 import { Text, View } from "react-native";
 
-function App() {
+// Call once from your app's ready/bootstrap path.
+HotUpdater.init({
+  baseURL: "<your-update-server-url>",
+  requestHeaders: {
+    "x-api-key": "<your-client-api-key>",
+  },
+});
+
+export default function App() {
   const channel = HotUpdater.getChannel();
 
   return (
@@ -201,14 +216,12 @@ function App() {
   );
 }
 
-export default HotUpdater.wrap({
-  baseURL: "<your-update-server-url>",
-  updateStrategy: "appVersion", // or "fingerprint"
-  requestHeaders: {
-    "x-api-key": "<your-client-api-key>",
-  },
-})(App);
 ```
+
+`init` configures the client without checking for updates. Call
+`HotUpdater.checkForUpdate({ updateStrategy: "appVersion" })` when your app is
+ready, then download and apply through the
+[custom update flow](/docs/guides/custom-update).
 
 ## Key Rules
 

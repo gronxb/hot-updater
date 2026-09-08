@@ -52,8 +52,9 @@ The fixed domains are:
 - `bundles`: immutable artifact metadata.
 - `bundle_patches`: patch artifacts owned by Bundles.
 - `releases`: mutable rollout and compatibility policy that references an
-  artifact Bundle or the embedded app.
-- `release_catalogs`: deterministic, rebuildable projections keyed by scope.
+  artifact Bundle.
+- `release_catalogs`: deterministic projections with persistent identity and
+  generation history, keyed by scope.
 - `channels`: persistent deployment-channel identity.
 - `insights`: immutable Bundle reports and latest installation state.
 - `api_keys`: hashed API key records.
@@ -159,6 +160,11 @@ the JSON payload. Only an atomic commit may write `releaseCatalogs`.
 
 Never delete the last catalog for a scope. Removing the last eligible Release
 writes a tombstone catalog with a higher generation.
+
+Back up Catalog rows together with Releases. Rebuild preserves an existing
+Catalog's identity and generation history; it cannot recover that history from
+Release rows alone. Restore a missing Catalog row from backup before rebuilding
+or deploying to its scope.
 
 ### Channels and API keys
 
@@ -372,9 +378,10 @@ configured client or runtime binding.
 
 The database contract is independent of HTTP caching. If a custom deployment
 places a shared cache in front of the server, its catalog cache key must include
-the host, canonical path, `x-api-key`, and supported content encoding. It must
-not include installation state. Invalid-key and error responses remain
-`private, no-store`.
+the host, canonical path, supported content encoding, and the configured API
+key header (`x-api-key` by default). When using `clientAccess.headerName`,
+partition on that header instead. It must not include installation state.
+Invalid-key and error responses remain `private, no-store`.
 
 If custom authentication varies on any other header, map that identity to one
 stable, documented catalog cache partition and include it in the cache key.

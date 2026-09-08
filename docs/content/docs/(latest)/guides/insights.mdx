@@ -13,33 +13,34 @@ rollout.
 
 ## Configure reporting
 
-[`HotUpdater.wrap`](/docs/react-native-api/wrap) and
-[`HotUpdater.init`](/docs/react-native-api/init) enable Insights by default.
+[`HotUpdater.init`](/docs/react-native-api/init) enables Insights by default.
+The optional automatic [`wrap`](/docs/react-native-api/wrap) flow uses the same
+reporting default.
 Configure the client handler URL and the client API key from your infrastructure
-setup. The automatic flow reports after the app-ready state is available:
+setup. Reporting runs after the app-ready state is available:
 
 ```tsx
 import { HotUpdater } from "@hot-updater/react-native";
-import App from "./App";
 
-export default HotUpdater.wrap({
+HotUpdater.init({
   baseURL: "<your-update-server-url>",
-  updateStrategy: "appVersion",
   requestHeaders: {
     "x-api-key": "<client-api-key>",
   },
   onNotifyAppReady: (result) => {
     console.log("App-ready state:", result.status);
   },
-})(App);
+});
 ```
 
-For a manual update flow, use `init` with the same transport and reporting
-options when your app is ready. Use one configuration API per app. If your
-custom server intentionally uses `clientAccess: { type: "public" }`, omit the
+Call `init` once when your app is ready. It configures reporting without
+starting an update check; use [custom update flows](/docs/guides/custom-update)
+to check, download, and apply updates at your chosen time. Use one configuration
+API per app. If your custom server intentionally uses
+`clientAccess: { type: "public" }`, omit the
 client-key header. See [API key authentication](/docs/custom/api-key-authentication).
 
-Set `insights: false` in your `wrap` or `init` options to disable client reporting.
+Set `insights: false` in your `init` or `wrap` options to disable client reporting.
 Native app-ready handling and crash recovery still run, and server Insights
 routes remain available. This setting does not delete reports already stored.
 

@@ -8,14 +8,19 @@ historical release/architecture records.
 
 ## Content ownership
 
-The sidebar follows reader tasks: **Start here**, **Infrastructure**,
-**Deliver updates**, **Operate**, **Security**, **Concepts**, and **Reference**.
-Existing source directories and URLs remain stable; a sidebar group need not
-be the physical directory containing its pages.
+The sidebar starts with onboarding and custom update flows, followed by the
+independent **Self Hosting (Managed)** and **Self Hosting (Custom)** groups.
+Delivery, operation, security and concepts have their own groups. **React Native
+API**, **Build Plugins**, **Storage Plugins**, **Database Plugins** and
+**Integration Plugins** remain directly visible, independently searchable
+references. Existing URLs stay stable; a sidebar group need not be the physical
+directory containing its pages.
 
 - Start here routes readers to agent or manual setup. Installation owns package
   selection; App Setup owns shared runtime/native integration; Test an OTA
   update owns release-build verification. Provider recipes link to those tasks.
+- Use `init + checkForUpdate` as the default app flow; the app controls download
+  and restart timing. `wrap` remains the optional automatic startup integration.
 - Infrastructure recipes own provider-specific resources, configuration and
   verified endpoint/client-key outputs. Custom CLI setup owns the connection
   task; plugin references own configuration and transport contracts.
@@ -28,6 +33,8 @@ be the physical directory containing its pages.
 The [PRD](../plans/docs-v1-onboarding/prd.md),
 [86-page audit](../plans/docs-v1-onboarding/page-inventory.md), and
 [decision record](../plans/docs-v1-onboarding/decisions.md) explain the structure.
+The [v1 change coverage](../plans/docs-v1-onboarding/breaking-changes-coverage.md)
+maps the release's contract changes to current guides and migration instructions.
 
 ## Navigation and links
 

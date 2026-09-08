@@ -11,12 +11,14 @@ app integration and first OTA, start with [app integration](/docs/get-started/ap
 
 ## Configure the app
 
-Choose one configuration API for your app:
+Start with `init` to control check timing and update UI in your app. `wrap` is
+an optional alternative for an automatic startup flow. Use one configuration
+API per app:
 
 | API | Use it to |
 | --- | --- |
-| [`wrap`](/docs/react-native-api/wrap) | Check automatically at startup, stage standard updates, and reload force updates by default. |
-| [`init`](/docs/react-native-api/init) | Configure a manual flow and lifecycle reporting without starting an update check. |
+| [`init`](/docs/react-native-api/init) | Configure a custom flow and lifecycle reporting without starting an update check. |
+| [`wrap`](/docs/react-native-api/wrap) | Optionally check automatically at startup, stage standard updates, and reload force updates by default. |
 
 Both enable Insights reporting by default. See [Insights](/docs/guides/insights)
 for reporting, optional user identity, and opting out.
@@ -62,6 +64,7 @@ and [rollout and cohorts](/docs/guides/rollout-cohorts).
 | --- | --- |
 | [`getAppVersion`](/docs/react-native-api/getAppVersion) | Read the native app version. |
 | [`getBundleId`](/docs/react-native-api/getBundleId) | Read the selected update ID shown in the Console. |
+| [`notifyAppReady`](/docs/react-native-api/notifyAppReady) | Read the native launch outcome and applied or recovered transition IDs. |
 | [`getActiveUpdateState`](/docs/react-native-api/getActiveUpdateState) | Inspect active and stable selections, artifact IDs, and pending verification. |
 | [`getInstallId`](/docs/react-native-api/getInstallId) | Identify an installation in Insights or a support report. |
 | [`setUser`](/docs/react-native-api/setUser) | Associate optional user identity with future Insights reports. |

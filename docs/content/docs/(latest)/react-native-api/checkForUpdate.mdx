@@ -7,8 +7,9 @@ icon: Search
 ## Usage
 
 Use `checkForUpdate` to verify if an update bundle is available. The function
-reuses the update source configured in `HotUpdater.wrap()` or
-`HotUpdater.init()`.
+reuses the update source configured in [`HotUpdater.init`](/docs/react-native-api/init).
+Call it when your app is ready to check, then use the returned helper to
+download and stage the selected update.
 
 ```tsx
 import { HotUpdater } from "@hot-updater/react-native";
@@ -56,15 +57,19 @@ async function checkForAppUpdate() {
 }
 ```
 
-## Important: HotUpdater.wrap or HotUpdater.init Required
+<span id="important-hotupdaterwrap-or-hotupdaterinit-required" />
 
-When using `checkForUpdate`, configure Hot Updater first with
-`HotUpdater.wrap()` or `HotUpdater.init()`. This is required for proper crash
-detection and rollback functionality.
+## Initialize before checking
 
-Without `wrap` or `init`, calling `checkForUpdate` throws an error with
-configuration instructions. For a full manual integration, see
-[custom update flows](/docs/guides/custom-update).
+Configure `HotUpdater.init()` once before calling `checkForUpdate`. This
+connects lifecycle reporting and update requests to your server without
+starting a check. See [custom update flows](/docs/guides/custom-update) for a
+complete integration.
+
+The optional [`HotUpdater.wrap`](/docs/react-native-api/wrap) flow also
+configures the client and performs its own automatic startup check. Choose
+one configuration API. Calling `checkForUpdate` before either API throws an
+error with configuration instructions.
 
 ## Parameters
 
@@ -78,7 +83,7 @@ The `checkForUpdate` function accepts the following parameters:
 | `requestTimeout` | `number`                          | ❌       | Request timeout in milliseconds (default: 5000).            |
 | `onError`        | `(error: Error) => void`          | ❌       | Called when a check fails, including failures that return `null`. |
 
-The update source is always from `HotUpdater.wrap()` or `HotUpdater.init()`; it
+The update source is always from `HotUpdater.init()` or `HotUpdater.wrap()`; it
 cannot be overridden in `checkForUpdate`.
 
 A requested channel switch is persisted only after the returned update applies

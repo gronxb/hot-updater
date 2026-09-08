@@ -256,7 +256,7 @@ use bounded exponential backoff. Unfiltered totals use the transactionally
 maintained metadata counter. Broad filtered scans paginate through all matching
 metadata and may be throttled by the managed table's throughput cost guardrail.
 DynamoDB's 100-action transaction service limit applies to the complete
-`commit({ mutations })` envelope, including cascade deletions.
+`commit({ changes, expectations })` envelope, including cascade deletions.
 
 New tables enable deletion protection. Init validates the billing mode,
 throughput caps, string key types, and index layout before reusing an existing

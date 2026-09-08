@@ -55,6 +55,22 @@ your `app.json` file as shown below:
 }
 ```
 
+The app config plugin accepts these options:
+
+| Option | Purpose |
+| --- | --- |
+| `channel` | Native update channel. Defaults to `production`. |
+| `publicKeyPath` | Optional path to the signing public key, relative to the Expo project root. Required when bundle signing is enabled. |
+
+For signed updates, add `publicKeyPath: "./keys/public-key.pem"` to this app
+plugin's options. It requires an RSA SPKI PEM public key of at least 2048 bits.
+Prebuild reads only this public file, embeds it in both native apps, and
+includes it in their fingerprints. It does not need the private key or KMS
+credentials. Configure the signer separately in `hot-updater.config.ts`.
+
+See [Expo and EAS signing setup](/docs/guides/bundle-signing#expo-and-eas-build)
+for exporting the public file and releasing the matching native app.
+
 Run prebuild to apply the changes:
 
 ```package-install

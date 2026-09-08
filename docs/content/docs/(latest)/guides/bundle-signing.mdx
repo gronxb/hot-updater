@@ -58,8 +58,20 @@ explicit opt-in:
    `publicKeyPath` in the `@hot-updater/expo` app plugin and run prebuild.
 5. Release the native app, then begin signed OTA deployments.
 
-All official signers require RSA keys of at least 2048 bits. Prefer 3072 or
-4096 bits for newly provisioned keys.
+Local signing derives its public identity from the private key. Signing
+plugins resolve it with `getPublicKey()` and produce signatures with `sign()`.
+Local, AWS KMS, Google Cloud KMS, and remote signing configs do not accept
+`publicKeyPath`; that option belongs to the Expo app config plugin.
+
+All signers require RSA keys of at least 2048 bits and SPKI PEM public keys
+(`BEGIN PUBLIC KEY`). Prefer 3072 or 4096 bits for newly provisioned keys.
+Deploy verifies every returned signature before upload and rejects a missing,
+invalid, or mismatched native trust anchor.
+
+This validation checks the current project's native files or evaluated Expo
+configuration. It cannot inspect already installed binaries. A successful
+deploy check does not replace releasing the native app with the matching public
+key before targeting it with signed updates.
 
 ## Local Private Key
 
@@ -89,7 +101,20 @@ contract, a compatible service implementation, and signing request behavior.
 
 ## Expo and EAS Build
 
-Expo owns the native trust anchor through its app config plugin:
+Expo owns the native trust anchor through its app config plugin. If the public
+key file is not already present, export it from the signer configured in
+`hot-updater.config.ts`:
+
+```bash
+npx hot-updater keys export-public --output ./keys/public-key.pem
+```
+
+This works with local PEM, KMS, and remote signers. It writes a new SPKI PEM
+file without changing native files. The output path must not exist; `--yes`
+does not overwrite an existing file. For a key rotation, export to a new path
+and follow [Key Rotation](#key-rotation) before switching the app's trust anchor.
+
+Reference the public file in the Expo app config:
 
 ```json title="app.json"
 {
@@ -121,9 +146,9 @@ plugin never reads `hot-updater.config.ts` signing credentials, private keys,
 or KMS providers.
 
 The deploy and doctor commands resolve the evaluated Expo config and compare
-this trust anchor with the signing provider's `getPublicKey()` result. Missing
-or mismatched keys fail closed, including in CNG projects without checked-in
-`ios` or `android` directories.
+this trust anchor with the signing provider's `getPublicKey()` result. Missing,
+invalid, or mismatched keys fail closed, including in CNG projects without
+checked-in `ios` or `android` directories.
 
 Do not upload a private key with EAS Secrets, add it to `eas.json`, or use
 `.easignore` to send `keys/private-key.pem` to the build worker. Ensure the

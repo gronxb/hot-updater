@@ -6,9 +6,11 @@
     "introduction",
     "../guides/ai-agents",
     "basic-usage",
+    "choose-provider",
     "installation",
     "app-setup",
     "../guides/simulator-test",
+    "../guides/custom-update",
     "../guides/upgrade-to-v1"
   ]
 }

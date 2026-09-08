@@ -14,7 +14,10 @@ update; a successful server deployment or bundle upload is only one step.
 
 ## Checklist
 
-Complete [Connect your app](/docs/get-started/app-setup) first. Record:
+Complete the [custom init flow](/docs/get-started/app-setup#configure-the-update-client)
+first. It initializes at app readiness and exposes **Check for updates** and
+**Restart to apply** actions. Keep those actions in the test build, or use the
+equivalent check/download/reload actions in your app. Record:
 
 - Your deployed base URL and working client authentication.
 - The target platform, native app version or fingerprint, and test channel.
@@ -206,28 +209,39 @@ Confirm it is enabled and matches the app's platform, channel, compatibility
 and cohort. The default numeric rollout is 100%. Do not use rollout 0 as a
 successful delivery test unless you explicitly target the tester's cohort.
 
-With `HotUpdater.wrap()` using normal update behavior:
+Use the actions from [Connect your app](/docs/get-started/app-setup#configure-the-update-client):
 
-1. Close and reopen the installed app so it checks the server.
-2. Let the update finish downloading. Use
-   [`isUpdateDownloaded()`](/docs/react-native-api/isUpdateDownloaded) or the
-   [update store](/docs/react-native-api/useHotUpdaterStore) to observe completion.
-3. Restart the app again, or call `HotUpdater.reload()` after download, to apply it.
-4. Confirm **both the new label and changed image** are visible.
-5. Read [`HotUpdater.getBundleId()`](/docs/react-native-api/getBundleId) after
+1. Open the installed app and wait until initialization reports native readiness.
+2. Choose **Check for updates**. This calls `HotUpdater.checkForUpdate()` with
+   the matching strategy and captures callback errors.
+3. Wait for **Update ready**. The flow must await `updateInfo.updateBundle()`
+   returning `true`; a selected update or a started download is insufficient.
+4. Choose **Restart to apply**, which calls `HotUpdater.reload()` after download.
+5. Confirm **both the new label and changed image** are visible.
+6. Read [`HotUpdater.getBundleId()`](/docs/react-native-api/getBundleId) after
    applying the update and match it to the deployment ID.
 
-The selected ID can advance when an update is staged, before its JavaScript is
-running. An ID match alone is insufficient: retain the visible change and
-post-reload observation as evidence. A custom update flow must likewise await
-a successful `updateInfo.updateBundle()` before reloading.
+`HotUpdater.init()` alone does not perform step 2. The selected ID can advance
+when an update is staged, before its JavaScript is running. An ID match alone
+is insufficient: retain the visible change and post-reload observation as
+evidence. Use the [update store](/docs/react-native-api/useHotUpdaterStore) if
+you want to display download progress.
+
+For an existing app using the optional `HotUpdater.wrap()` flow, launch it to
+trigger the automatic check, wait for download completion, then restart to apply
+a normal update. Do not add `init` to that wrapper configuration.
 
 ### For Emergency Deployment
 
 To test force-update behavior on the same isolated channel, make another visible
-change and add `--force-update` to the scoped command. The default wrapper
-reloads after download. An app configured with `reloadOnForceUpdate: false` or a
-custom update flow controls its own reload timing.
+change and add `--force-update` to the scoped command. The custom flow receives
+`shouldForceUpdate: true` and still controls reload timing. The onboarding
+example shows **Required update ready** and waits for **Restart to apply**.
+If your app implements immediate application for required updates, verify that
+it reloads only after `updateInfo.updateBundle()` succeeds.
+
+The optional wrapper reloads automatically for force updates unless configured
+with `reloadOnForceUpdate: false`.
 
 Use [Deploy](/docs/guides/deploy) for production deployment options after the
 normal flow has passed.
@@ -241,8 +255,9 @@ npx hot-updater bundle show <id>
 npx hot-updater bundle disable <id>
 ```
 
-Read the preview and confirm the intended test scope. Open the same app, let it
-check for updates, and complete the selected transition and reload. Verify that
+Read the preview and confirm the intended test scope. Open the same app and
+choose **Check for updates** again. Await the returned `updateInfo.updateBundle()`
+transition, then choose **Restart to apply**. Verify that
 it shows the previous compatible enabled update, or the embedded baseline when
 none remains. Record the observed result; compatibility and cohorts affect
 which fallback is selected.
@@ -278,6 +293,7 @@ scope with OTA updates.
 | --- | --- |
 | App still uses Metro | Install and launch a native Release build |
 | Authentication fails | App build contains the registered client key and correct base URL; `.env.hotupdater` is not app configuration |
+| No update check occurs | Init configures readiness only; trigger your explicit `checkForUpdate()` action |
 | No update selected | Enabled state, platform, channel, version/fingerprint and tester cohort all match |
 | New ID but old screen | The update may be staged; wait for download and reload |
 | Update disappears after startup | Inspect [crash history](/docs/react-native-api/getCrashHistory) and startup errors |

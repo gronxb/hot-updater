@@ -92,6 +92,32 @@ Add `--json` to `bundle list`, `bundle show`, or `bundle update` when
 another tool needs raw internal row data. Its field names follow the database
 schema rather than the human-readable Bundle terminology.
 
+### Preview and protect automated changes
+
+Before changing delivery policy, read the public Bundle's current `revision`
+with `bundle show <id> --json`. Preview the same policy change without writing:
+
+```bash
+npx hot-updater bundle show <id> --json
+npx hot-updater bundle preflight <id> --rollout-cohort-count 500 --expected-revision <revision> --json
+```
+
+Preflight compiles the proposed Catalog and checks its limits. It does not
+reserve the revision or save the change. After reviewing the result, apply the
+same options with the revision you read:
+
+```bash
+npx hot-updater bundle update <id> --rollout-cohort-count 500 --expected-revision <revision> --yes --json
+```
+
+`update`, `enable`, `disable`, and `delete` accept `--expected-revision`. If
+another operator changes that Bundle first, the stale mutation fails. Re-read
+the Bundle and review its policy before retrying; do not remove the revision
+check just to make a retry succeed.
+
+For existing Catalog projection problems, use the separate
+[Catalog inspection and repair commands](/docs/guides/doctor#check-release-catalogs).
+
 ### Advanced artifact diagnostics
 
 Artifact operations use the **Artifact ID** from Advanced diagnostics. They are
@@ -127,9 +153,10 @@ confirming.
 ## Force Update
 
 Setting a bundle's `shouldForceUpdate` value to `true` marks it for immediate
-application when selected. [`HotUpdater.wrap`](/docs/react-native-api/wrap)
-reloads after staging it by default; `reloadOnForceUpdate: false` defers that
-reload. Manual flows decide when to call `HotUpdater.reload()` themselves.
+application when selected. In the [custom update flow](/docs/guides/custom-update),
+check `shouldForceUpdate` and call `HotUpdater.reload()` after a successful
+download. The optional [`HotUpdater.wrap`](/docs/react-native-api/wrap) flow
+reloads after staging by default; `reloadOnForceUpdate: false` defers it.
 
 <img src={"/docs/console/force_update.png"} />
 

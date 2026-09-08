@@ -12,8 +12,8 @@ selects only objects that are no longer referenced.
 
 It can remove:
 
-- Orphaned bundle objects in both the legacy `<artifact-id>/...` layout and the
-  current `bundles/<artifact-id>/...` layout.
+- Orphaned bundle objects under recognized artifact paths:
+  `<artifact-id>/...` and `bundles/<artifact-id>/...`.
 - Patch objects that are no longer referenced, including orphaned patches under
   a target Bundle that is still live.
 - Unreferenced content-addressed assets under `assets/sha256/...`.
@@ -22,9 +22,8 @@ Live bundle objects, referenced patches and assets, recently modified objects,
 objects without a modification timestamp, and unknown files are protected.
 
 <Callout type="info">
-  Pruning is not a retention policy. Upgrading Hot Updater fixes new S3
-  management scans without deleting live bundle records. Delete records you no
-  longer need before pruning their objects.
+  Pruning does not delete live bundle records. Delete records you no longer
+  need before pruning their unreferenced objects.
 </Callout>
 
 ## Remove bundles, then artifact records

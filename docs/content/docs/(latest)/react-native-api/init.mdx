@@ -83,12 +83,17 @@ if (didUpdate && updateInfo.shouldForceUpdate) {
 | `insights`         | `boolean`                                   | No       | Send app-ready and Bundle adoption events (default: true)        |
 | `requestHeaders`   | `Record<string, string>`                    | No       | Shared headers used by update checks and app-ready notifications |
 | `requestTimeout`   | `number`                                    | No       | Request timeout in milliseconds (default: 5000)                  |
-| `onNotifyAppReady` | `(result) => void`                          | No       | Callback invoked after native app-ready state is read            |
+| `onNotifyAppReady` | `(result: NotifyAppReadyResult) => void`    | No       | Callback invoked after native launch verification finishes       |
 | `onError`          | `(error) => void`                           | No       | Default error handler for initialization and update checks       |
 
 `baseURL` is the only React Native transport configuration. A GraphQL, RPC,
 or other custom backend must expose the Hot Updater HTTP protocol through an
 adapter or proxy and use that endpoint as `baseURL`.
+
+See [`NotifyAppReadyResult`](/docs/react-native-api/notifyAppReady#return-value)
+for the `UNCHANGED`, `UPDATE_APPLIED`, and `RECOVERED` result shapes and a
+callback example. A callback result describes local native state; it does not
+confirm Insights delivery to the server.
 
 `HotUpdater.checkForUpdate({ onError })` overrides the `onError` handler from
 `HotUpdater.init` for that specific update check.

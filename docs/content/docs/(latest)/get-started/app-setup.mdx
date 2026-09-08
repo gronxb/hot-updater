@@ -21,33 +21,118 @@ for the migration steps.
 
 ## Configure the update client
 
-Wrap your root component to check on launch, download selected updates and
-confirm successful startup for automatic crash recovery:
+Use `HotUpdater.init()` and a custom update flow so your app chooses when to
+check, download and restart. Initialization configures the client and starts
+native launch verification; it does **not** check for or download an update.
+
+This complete example initializes after the root screen mounts. It enables an
+explicit check after native readiness, downloads the selected update, then
+waits for the user to choose **Restart to apply**:
 
 ```tsx title="App.tsx"
 import { HotUpdater } from "@hot-updater/react-native";
-import { Text, View } from "react-native";
+import { useEffect, useRef, useState } from "react";
+import { Button, Text, View } from "react-native";
 
-function App() {
+export default function App() {
+  const initialized = useRef(false);
+  const [canCheck, setCanCheck] = useState(false);
+  const [canReload, setCanReload] = useState(false);
+  const [status, setStatus] = useState("Starting");
+
+  useEffect(() => {
+    if (initialized.current) return;
+    initialized.current = true;
+    HotUpdater.init({
+      baseURL: "https://your-update-server-url",
+      requestHeaders: {
+        "x-api-key": "<your-registered-client-api-key>",
+      },
+      onNotifyAppReady: () => {
+        setStatus("Ready to check");
+        setCanCheck(true);
+      },
+      onError: () => setStatus("Startup verification failed"),
+    });
+  }, []);
+
+  async function checkForUpdates() {
+    if (!canCheck || canReload) return;
+    setCanCheck(false);
+    setStatus("Checking");
+    try {
+      let checkError: Error | undefined;
+      const updateInfo = await HotUpdater.checkForUpdate({
+        updateStrategy: "appVersion",
+        onError: (error) => {
+          checkError = error;
+        },
+      });
+      if (checkError) throw checkError;
+      if (!updateInfo) {
+        setStatus("No update selected");
+        return;
+      }
+      setStatus("Downloading");
+      const downloaded = await updateInfo.updateBundle();
+      if (!downloaded) throw new Error("Download failed");
+      setCanReload(true);
+      setStatus(
+        updateInfo.shouldForceUpdate ? "Required update ready" : "Update ready",
+      );
+    } catch {
+      setStatus("Update failed. Try again.");
+    } finally {
+      setCanCheck(true);
+    }
+  }
+
   return (
     <View>
       <Text>OTA baseline</Text>
+      <Text>{status}</Text>
+      <Button
+        title="Check for updates"
+        disabled={!canCheck || canReload}
+        onPress={() => void checkForUpdates()}
+      />
+      {canReload && (
+        <Button
+          title="Restart to apply"
+          onPress={() => {
+            void HotUpdater.reload().catch(() => {
+              setStatus("Restart failed. Try again.");
+            });
+          }}
+        />
+      )}
     </View>
   );
 }
-
-export default HotUpdater.wrap({
-  baseURL: "https://your-update-server-url",
-  updateStrategy: "appVersion",
-  requestHeaders: {
-    "x-api-key": "<your-registered-client-api-key>",
-  },
-})(App);
 ```
+
+Call `init` once at your app's readiness boundary. If startup includes essential
+bootstrap work, move initialization after that work succeeds. `init` returns
+`void`; its [`onNotifyAppReady`](/docs/react-native-api/notifyAppReady) callback
+reports the asynchronous native result. Export the root component directly and
+do not combine `init` with `wrap`.
+
+The example keeps checks behind a button. You can use the same sequence after
+login, when returning to foreground or from your own update screen. Capture
+`checkForUpdate`'s `onError`: a failed check can return `null`, so a `try/catch`
+alone cannot distinguish every failure from “no update selected.” Always await
+a successful `updateInfo.updateBundle()` before enabling restart.
+
+Your custom flow controls reload timing, including for `shouldForceUpdate`.
+This example labels required updates and waits for explicit restart. If your
+product requires immediate application, use that flag to select an appropriate
+reload point after the download succeeds. See
+[Control update timing](/docs/guides/custom-update) for progress and lifecycle
+patterns.
 
 Replace the URL and client-key placeholders using your verified provider setup.
 Keep any provider base path; the SDK appends the catalog and artifact routes.
-Use the same `updateStrategy` in the app and `hot-updater.config.ts`.
+Use the same `updateStrategy` in `checkForUpdate` and `hot-updater.config.ts`.
 `appVersion` is the default; choose
 [fingerprint](/docs/guides/update-strategies/fingerprint) when you want to track
 native compatibility inputs.
@@ -79,14 +164,20 @@ A missing URL or key must not silently disable initialization.
 
 ### Reporting and custom update timing
 
-[Insights](/docs/guides/insights) is enabled by default for `HotUpdater.wrap()`
-and `HotUpdater.init()`. Set `insights: false` in the same configuration to opt
-out. Confirm received reports after your first OTA test.
+[Insights](/docs/guides/insights) is enabled by default for `HotUpdater.init()`.
+Set `insights: false` in its configuration to opt out. Native readiness and
+received server reports are separate checks; confirm both after your first OTA.
 
-For checks after login or an explicit update button, follow
-[Control update timing](/docs/guides/custom-update) and initialize with
-`HotUpdater.init()` when your app is ready. Use the
-[wrapper reference](/docs/react-native-api/wrap) for a progress UI and callbacks.
+Use the [update store](/docs/react-native-api/useHotUpdaterStore) to render
+progress within your own UI. Your update flow can defer reload until navigation
+is idle or the user has saved their work.
+
+### Optional automatic wrapper
+
+[`HotUpdater.wrap()`](/docs/react-native-api/wrap) remains supported when you
+want its automatic launch check and update behavior. Use that wrapper instead
+of the `init` flow above, preserving the same URL, client key and strategy.
+Do not initialize with both APIs.
 
 ## Build Configuration
 

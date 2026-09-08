@@ -74,24 +74,27 @@ architecture/release records. Keep v0-to-v1 transition instructions in
 ## Delivered result and verification
 
 The [page inventory](page-inventory.md) records all 86 baseline pages and their
-accepted dispositions. Twelve extracted or missing task/reference pages bring
-latest to 98 pages. Seven task groups replace the previous category-first
-navigation. Existing public page URLs remain available. The
+accepted dispositions. Fourteen extracted or missing task/reference pages bring
+latest to 100 pages. Onboarding and custom update flows lead the navigation,
+while managed/custom hosting and four plugin families retain independent
+groups. Existing public page URLs remain available. The
 [decision record](decisions.md) includes objections, rejected merges and findings
-from cross-review of the implemented journeys.
+from cross-review of the implemented journeys. The
+[breaking-change coverage matrix](breaking-changes-coverage.md) maps every
+release-contract area to its current documentation and migration instructions.
 
 Verified on September 9, 2026:
 
 | Gate | Result |
 | --- | --- |
-| Page ownership and links | All 98 latest pages appear exactly once in navigation and the LLM index; internal route, fragment and asset checks pass |
-| Live production routes | All 98 HTML and 98 Markdown page URLs return successfully; canonical API index and its compatibility alias return identical Markdown |
-| Markdown fidelity | All 997 fenced code blocks and 793 link destinations survive serialization across the 174 latest and archived source pages |
+| Page ownership and links | All 100 latest pages appear exactly once in navigation and the LLM index; internal route, fragment and asset checks pass |
+| Live production routes | All 100 HTML and 100 Markdown page URLs return successfully; canonical API index and its compatibility alias return identical Markdown |
+| Markdown fidelity | All 1,010 fenced code blocks and 853 link destinations survive serialization across the 176 latest and archived source pages |
 | Docs regressions | `pnpm --dir docs test:docs`: 2 files, 5 tests pass |
 | Production build | `pnpm -w build` and final `pnpm --dir docs build` pass; no dead links |
 | Static checks | `pnpm --dir docs test:type`, `pnpm -w lint` and `git diff --check` pass |
 | Repository tests | `pnpm -w test`: 290 files, 2,680 tests pass |
-| Executable documentation | Manual client-access probe checked against six mocked HTTP outcomes; documented database conformance command runs 48 passing tests |
+| Executable documentation | Manual client-access probe checked against six mocked HTTP outcomes; init onboarding sample passes six flow scenarios; six SDK examples pass strict typechecking; database conformance (48 tests) and standalone storage (13 tests) pass |
 | Rendered navigation | Desktop Start here and agent path inspected; version selector opens the archived v0 navigation |
 | Scope | No v0 content, historical release/architecture content or runtime package changes |
 

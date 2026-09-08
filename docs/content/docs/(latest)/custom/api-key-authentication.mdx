@@ -30,8 +30,9 @@ export const hotUpdater = createHotUpdater({
 });
 ```
 
-The `api-key` policy requires `x-api-key` for update-check routes and
-`POST /events`. `/version` stays public. API keys do not grant access to
+The `api-key` policy requires `x-api-key` for Release Catalog reads, artifact
+resolution and `POST /events`. `/version` stays public, and signed storage
+downloads use their download URL signature. API keys do not grant access to
 Insights queries, admin routes, or API key management.
 
 To use a different header, set it explicitly and send the same header from the
