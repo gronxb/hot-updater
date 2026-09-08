@@ -1,5 +1,12 @@
 # @hot-updater/console
 
+## 1.0.0-rc.8
+
+### Patch Changes
+
+- 6108b6d: Align the App usage and Distribution card heights in the Insights desktop layout and keep the distribution action at the bottom.
+- f9686ed: Expose sign out in the sidebar for authenticated hosted consoles.
+
 ## 1.0.0-rc.7
 
 ### Patch Changes
