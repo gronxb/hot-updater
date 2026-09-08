@@ -9,6 +9,7 @@
     "bundle-diffing",
     "rollout-cohorts",
     "console",
+    "console-deployment",
     "storage-cleanup",
     "ai-agents",
     "infrastructure-templates",

@@ -1,0 +1,305 @@
+---
+title: "Console deployment"
+description: "Clone and deploy an authenticated Hot Updater Console to Cloudflare Workers using your existing backend."
+icon: Cloud
+---
+
+Deploy the same console available through `hot-updater console` as an independent
+HTTPS application. The hosted console reads and manages your existing backend;
+the OTA server and mobile app keep their existing URLs.
+
+This guide uses Cloudflare Workers with D1 and R2 bindings. The template pins
+published npm RC packages and keeps the UI inside `@hot-updater/console`.
+
+## 1. Clone and install
+
+Use Node.js 22 or later and the pnpm version declared in `package.json`.
+
+```bash
+git clone https://github.com/hot-updater/console.git my-app-console
+cd my-app-console
+corepack enable
+pnpm install --frozen-lockfile
+pnpm exec wrangler login
+pnpm exec wrangler whoami
+```
+
+You need an existing Hot Updater backend and access to its Cloudflare account.
+Keep your deployment configuration in a private fork or private infrastructure
+repository. The CLI login authenticates deployment tooling; console users sign
+in separately through Google or GitHub.
+
+## 2. Connect the existing database and bucket
+
+Find the resources in your OTA Worker's Wrangler configuration, your mobile
+project's provider settings, or the Cloudflare dashboard. You can also list them:
+
+```bash
+pnpm exec wrangler d1 list
+pnpm exec wrangler r2 bucket list
+```
+
+Edit `wrangler.jsonc`:
+
+| Field | Value |
+| --- | --- |
+| `name` | A new console Worker name, separate from the OTA Worker |
+| `account_id` | The account containing the existing resources, when needed |
+| `vars.BETTER_AUTH_URL` | The console's exact public HTTPS origin, without a path |
+| `vars.BUCKET_NAME` | Your existing bundle bucket name |
+| `d1_databases[0].database_name` and `database_id` | Your existing Hot Updater D1 database |
+| `r2_buckets[0].bucket_name` | The same bucket as `BUCKET_NAME` |
+
+The default URL is `https://<worker-name>.<account-subdomain>.workers.dev`.
+Choose the origin before configuring OAuth. A custom domain also works; use
+that origin consistently in Wrangler and OAuth callbacks.
+
+The checked-in `hot-updater.config.ts` uses the worker entry point:
+
+```ts
+import { d1Database, r2Storage } from "@hot-updater/cloudflare/worker";
+import { defineConsoleConfig } from "@hot-updater/console";
+
+type CloudflareRequest = Request & {
+  runtime?: { cloudflare?: { env?: Env } };
+};
+
+export default defineConsoleConfig((request) => {
+  const env = (request as CloudflareRequest).runtime?.cloudflare?.env;
+  if (!env) throw new Error("Cloudflare bindings are unavailable.");
+
+  return {
+    console: { gitUrl: "https://github.com/your-org/your-mobile-app" },
+    database: d1Database(env.DB),
+    storage: r2Storage({
+      bucket: env.BUCKET,
+      bucketName: env.BUCKET_NAME,
+      downloadUrlSigningKey: env.STORAGE_DOWNLOAD_URL_SIGNING_KEY,
+    }),
+  };
+});
+```
+
+Generate `Env` from your Wrangler configuration with `pnpm cf:typegen` after
+changing bindings. Do not copy the entire mobile `hot-updater.config.ts`:
+Expo/native build plugins, fingerprint settings, and signing private keys stay
+in the mobile project. D1 and R2 bindings replace Cloudflare API tokens and S3
+credentials inside the hosted Worker.
+
+Do not create a new D1 database or run schema migrations for this console.
+It must connect to the backend already used by the app. Backend upgrades remain
+part of the Hot Updater infrastructure upgrade workflow.
+
+## 3. Configure sign-in
+
+Create a GitHub OAuth App or Google OAuth client for this console. Set its
+homepage to the public console origin and register the matching callback:
+
+```text
+https://<console-origin>/api/auth/callback/github
+https://<console-origin>/api/auth/callback/google
+```
+
+For GitHub, the template requests `user:email` to check verified email addresses;
+it does not request repository access. For Google, configure a Web application
+client and include permitted test users if the OAuth application is in testing.
+Only one complete provider pair is needed.
+
+The default `secrets.required` list in `wrangler.jsonc` includes GitHub's pair.
+If using Google instead, replace those two entries with `GOOGLE_CLIENT_ID` and
+`GOOGLE_CLIENT_SECRET`; list both pairs to enable both. Wrangler only loads
+listed secret names from local `.dev.vars` files.
+
+| Variable | Required | Source and purpose |
+| --- | --- | --- |
+| `BETTER_AUTH_URL` | Yes | Exact public origin; set in Wrangler `vars` |
+| `BETTER_AUTH_SECRET` | Yes | Generate a random secret of at least 32 characters; encrypts OAuth state and sessions |
+| `HOT_UPDATER_CONSOLE_ALLOWED_EMAILS` | Yes | Comma-separated, full verified addresses permitted to manage this app |
+| `STORAGE_DOWNLOAD_URL_SIGNING_KEY` | Yes | Generate a separate random secret for the storage plugin's download URL capability |
+| `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET` | One provider pair | GitHub OAuth App settings |
+| `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | One provider pair | Google OAuth client settings |
+
+Generate each random secret separately with `openssl rand -base64 32`. The
+storage secret belongs to the console; it is not the mobile bundle-signing
+private key. Domain-only allowlists and wildcard addresses are rejected.
+
+Use a private local file named `.secrets.production.json` for the initial deploy.
+It is ignored by Git. Fill in real values privately; never paste secrets into a
+commit, issue, PR, or shell command argument.
+
+```json
+{
+  "BETTER_AUTH_SECRET": "REPLACE_WITH_RANDOM_SECRET",
+  "HOT_UPDATER_CONSOLE_ALLOWED_EMAILS": "owner@example.com",
+  "STORAGE_DOWNLOAD_URL_SIGNING_KEY": "REPLACE_WITH_ANOTHER_RANDOM_SECRET",
+  "GITHUB_CLIENT_ID": "REPLACE_WITH_CLIENT_ID",
+  "GITHUB_CLIENT_SECRET": "REPLACE_WITH_CLIENT_SECRET"
+}
+```
+
+Restrict file permissions with `chmod 600 .secrets.production.json`. Configure
+Google's pair instead if using Google. These are server runtime values, so none
+of their names should have a `VITE_` prefix.
+
+## 4. Build and deploy
+
+```bash
+pnpm test
+pnpm test:type
+pnpm build:cloudflare
+pnpm exec wrangler deploy --dry-run
+pnpm test:cloudflare
+pnpm exec wrangler deploy --secrets-file .secrets.production.json
+```
+
+The last command uploads code and secrets together. Inspect the reported Worker
+name, D1 database, and bucket before confirming any CLI prompt.
+
+Nitro generates `.output/server/wrangler.json` and
+`.wrangler/deploy/config.json`. Wrangler automatically uses that generated
+configuration, which includes the server modules and static assets. Edit the
+root `wrangler.jsonc` and rebuild; do not edit generated configuration or pass
+the root file to deployment with `--config`. The root file is build input.
+
+The Worker smoke check starts the built artifact with test-only authentication
+settings and local resources. It catches runtime failures that a successful
+build or dry run cannot detect, and checks that anonymous reads, writes, and
+downloads are denied.
+
+Keep `preview_urls: false` so version preview addresses are not published with
+an origin that differs from the OAuth configuration. The standard `workers.dev`
+address remains enabled. Use `pnpm exec wrangler tail` to inspect runtime errors.
+
+The default configuration enables Workers logs and samples traces. Follow your
+account's observability retention and sampling requirements.
+
+## 5. Verify the deployed console
+
+1. Open the HTTPS URL in a private browser window. The console should ask you
+   to sign in and must not display bundle or Insights data.
+2. Sign in with an allowlisted, verified address. Confirm Bundles and Insights
+   match the app's local console with the same filters and reporting period.
+3. Open Distribution, select an app version, and follow a bundle to its detail.
+   Check events pagination and download an existing bundle from its detail.
+4. Reload a nested URL, then check the layout at a mobile viewport.
+5. Sign out and confirm protected pages and downloads require authentication
+   again. An unapproved or unverified account must be denied.
+
+For an unauthenticated download check, use the **Artifact ID** from Advanced
+diagnostics in Bundle Detail, not the normal Bundle ID:
+
+```bash
+curl -i 'https://<console-origin>/api/bundles/<artifact-id>/download'
+```
+
+Expect `401`. Authentication must run before the database lookup, including for
+unknown IDs. Do not toggle a production rollout just to test hosting; use a
+separate test channel if you need to verify a management mutation.
+
+## Local Worker preview
+
+```bash
+cp .dev.vars.example .dev.vars
+pnpm build:cloudflare
+pnpm preview:cloudflare
+```
+
+Fill `.dev.vars` with a local OAuth client's credentials, random secrets, and
+`BETTER_AUTH_URL=http://localhost:3000`. Register the corresponding localhost
+callback on that OAuth client. The file stays local and is not automatically
+uploaded by deployment.
+
+Wrangler uses local D1 and R2 by default. An empty local database does not mean
+production data was lost. Avoid enabling remote bindings unless you intend to
+operate on the real backend. `pnpm dev` runs Vite on Node and needs a
+Node-compatible provider configuration instead of native Worker bindings.
+
+## Updates and rollback
+
+Review the package changes, update the RCs, and keep the resulting lockfile:
+
+```bash
+pnpm add --save-exact @hot-updater/console@rc @hot-updater/cloudflare@rc
+pnpm test
+pnpm test:type
+pnpm build:cloudflare
+pnpm exec wrangler deploy --dry-run
+pnpm test:cloudflare
+pnpm exec wrangler deploy
+```
+
+The deployment preserves existing Worker secrets. To change one, use the
+interactive `pnpm exec wrangler secret put NAME`, or upload a protected secrets
+file with the next deployment. Removing an email from the allowlist takes
+effect on the next protected request; rotating `BETTER_AUTH_SECRET` invalidates
+sessions.
+
+Record the Worker version ID printed after deployment. If the console release
+is faulty, inspect and roll back the Worker:
+
+```bash
+pnpm exec wrangler deployments list
+pnpm exec wrangler rollback <previous-version-id>
+```
+
+A Worker rollback restores code/configuration, not D1 rows or R2 objects. It
+does not undo bundle-management actions performed through the console.
+
+## Node deployment
+
+The same host can deploy to Node when `hot-updater.config.ts` uses
+Node-compatible providers. For example, install the matching Supabase RC and
+replace the default Cloudflare configuration:
+
+```bash
+pnpm add --save-exact @hot-updater/supabase@rc
+```
+
+```ts
+import { defineConsoleConfig } from "@hot-updater/console";
+import { supabaseDatabase, supabaseStorage } from "@hot-updater/supabase";
+
+export default defineConsoleConfig(() => ({
+  database: supabaseDatabase({
+    supabaseUrl: process.env.HOT_UPDATER_SUPABASE_URL!,
+    supabaseServiceRoleKey: process.env.HOT_UPDATER_SUPABASE_SERVICE_ROLE_KEY!,
+  }),
+  storage: supabaseStorage({
+    supabaseUrl: process.env.HOT_UPDATER_SUPABASE_URL!,
+    supabaseServiceRoleKey: process.env.HOT_UPDATER_SUPABASE_SERVICE_ROLE_KEY!,
+    bucketName: process.env.HOT_UPDATER_SUPABASE_BUCKET_NAME!,
+  }),
+}));
+```
+
+Set those server-side provider variables and the same authentication settings
+in the host's private environment store. For local development, copy
+`.env.example` to `.env` and use `pnpm dev`. For production:
+
+```bash
+pnpm build:node
+pnpm start
+```
+
+The entry point is `.output/server/index.mjs`; set `PORT` or `NITRO_PORT` as your
+host requires and put HTTPS in front of the application. Do not copy `.env` or
+mobile private keys into public assets.
+
+## Troubleshooting
+
+| Symptom | Check |
+| --- | --- |
+| Sign-in fails before OAuth opens | Complete provider pair, strong session secret, nonempty exact email allowlist |
+| OAuth callback is rejected | Provider callback, `BETTER_AUTH_URL`, and the browser origin must match |
+| A signed-in user sees Forbidden | The provider must return a verified address present in the allowlist |
+| Cloudflare bindings are unavailable | Build with the Cloudflare preset and run the generated Worker through Wrangler |
+| Insights is empty or queries fail | Bind the existing database in the correct account; local preview has separate data |
+| Bundle download reports a bucket mismatch | `BUCKET_NAME`, the R2 binding, and the stored bundle URI must refer to the same bucket |
+| Deployment has stale bindings | Update root Wrangler config, rebuild, and inspect the generated deployment before uploading |
+
+## References
+
+- [Nitro on Cloudflare](https://nitro.build/deploy/providers/cloudflare)
+- [Cloudflare Worker secrets](https://developers.cloudflare.com/workers/configuration/secrets/)
+- [Cloudflare binding types](https://developers.cloudflare.com/workers/languages/typescript/#generate-types)
+- [Cloudflare Worker rollback](https://developers.cloudflare.com/workers/versions-and-deployments/rollbacks/)

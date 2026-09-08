@@ -1,6 +1,6 @@
 ---
 title: "Console"
-description: "Opens a localhost server based on plugins configured in `hot-updater.config.ts`. For security reasons, only localhost server is supported at the moment."
+description: "Manage bundles and Insights locally, or deploy an authenticated console for your team."
 icon: Terminal
 ---
 
@@ -12,6 +12,11 @@ icon: Terminal
 - Quick access to git history for updates
 
 <video src={"/docs/console/console.mp4"} controls autoPlay loop muted />
+
+`hot-updater console` runs on localhost. For a persistent HTTPS console that
+works without a developer's computer, clone the standalone host and follow
+[Console deployment](/docs/guides/console-deployment). Both use the same
+`@hot-updater/console` package and your existing database and storage.
 
 ## Configuration (Optional)
 
