@@ -1,0 +1,64 @@
+{
+  "runId": "2026-09-08T14:47:22.538Z",
+  "measuredStart": "2026-09-08T14:47:26.995Z",
+  "measuredEnd": "2026-09-08T14:49:07.127Z",
+  "aborted": false,
+  "requestsPerSecondPerWorker": 10,
+  "maxConcurrencyPerWorker": 5,
+  "node": "v24.15.0",
+  "endpoints": {
+    "v0": {
+      "version": "0.35.2",
+      "appVersion": "1.4.0"
+    },
+    "v1": {
+      "version": "1.0.0-rc.3",
+      "appVersion": "1.5.0"
+    }
+  },
+  "summary": {
+    "v0": {
+      "requests": 1000,
+      "failures": 0,
+      "meanMs": 234.07637112500012,
+      "p50Ms": 228.3994169999969,
+      "p95Ms": 283.1568750000006,
+      "p99Ms": 340.2046249999985,
+      "minMs": 173.96245900000213,
+      "maxMs": 475.7096670000028,
+      "cache": {
+        "absent": 1000
+      },
+      "bytes": {
+        "4": 1000
+      },
+      "colos": {
+        "HKG": 671,
+        "NRT": 328,
+        "KIX": 1
+      }
+    },
+    "v1": {
+      "requests": 1000,
+      "failures": 0,
+      "meanMs": 52.663798626000045,
+      "p50Ms": 45.36754199999268,
+      "p95Ms": 69.97341700000015,
+      "p99Ms": 249.01570799999172,
+      "minMs": 40.915625000001455,
+      "maxMs": 375.6363330000022,
+      "cache": {
+        "HIT": 969,
+        "REVALIDATED": 31
+      },
+      "bytes": {
+        "785": 1000
+      },
+      "colos": {
+        "KIX": 978,
+        "HKG": 15,
+        "NRT": 7
+      }
+    }
+  }
+}

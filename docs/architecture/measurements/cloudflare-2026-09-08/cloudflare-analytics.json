@@ -1,0 +1,202 @@
+{
+  "collectedAt": "2026-09-08T14:51:30.569Z",
+  "since": "2026-09-08T14:47:26.000Z",
+  "until": "2026-09-08T14:49:08.000Z",
+  "note": "Cloudflare adaptive estimates for the entire deployment/database during this window; not filtered to benchmark requests. Excludes edge cache HITs from Worker execution metrics. Query sums are not request counts.",
+  "workersInvocationsAdaptive": [
+    {
+      "avg": {
+        "sampleInterval": 2.125
+      },
+      "dimensions": {
+        "cacheStatus": "unknown",
+        "coloCode": "NRT",
+        "status": "success",
+        "deployment": "v1"
+      },
+      "quantiles": {
+        "cpuTimeP50": 3084,
+        "cpuTimeP95": 5251,
+        "wallTimeP50": 98522,
+        "wallTimeP95": 105759
+      },
+      "sum": {
+        "cpuTimeUs": 110128,
+        "errors": 0,
+        "requests": 34,
+        "subrequests": 0,
+        "wallTime": 3357114
+      }
+    },
+    {
+      "avg": {
+        "sampleInterval": 1
+      },
+      "dimensions": {
+        "cacheStatus": "unknown",
+        "coloCode": "WAW",
+        "status": "success",
+        "deployment": "v0"
+      },
+      "quantiles": {
+        "cpuTimeP50": 20509,
+        "cpuTimeP95": 20509,
+        "wallTimeP50": 1076494,
+        "wallTimeP95": 1076494
+      },
+      "sum": {
+        "cpuTimeUs": 20509,
+        "errors": 0,
+        "requests": 1,
+        "subrequests": 0,
+        "wallTime": 1076494
+      }
+    },
+    {
+      "avg": {
+        "sampleInterval": 1.203422053231939
+      },
+      "dimensions": {
+        "cacheStatus": "unknown",
+        "coloCode": "HKG",
+        "status": "success",
+        "deployment": "v0"
+      },
+      "quantiles": {
+        "cpuTimeP50": 2336,
+        "cpuTimeP95": 3578,
+        "wallTimeP50": 215358,
+        "wallTimeP95": 233570
+      },
+      "sum": {
+        "cpuTimeUs": 1598187,
+        "errors": 0,
+        "requests": 633,
+        "subrequests": 0,
+        "wallTime": 121473677
+      }
+    },
+    {
+      "avg": {
+        "sampleInterval": 1
+      },
+      "dimensions": {
+        "cacheStatus": "unknown",
+        "coloCode": "LAX",
+        "status": "success",
+        "deployment": "v0"
+      },
+      "quantiles": {
+        "cpuTimeP50": 20760,
+        "cpuTimeP95": 20760,
+        "wallTimeP50": 3403185,
+        "wallTimeP95": 3403185
+      },
+      "sum": {
+        "cpuTimeUs": 20760,
+        "errors": 0,
+        "requests": 1,
+        "subrequests": 0,
+        "wallTime": 3403185
+      }
+    },
+    {
+      "avg": {
+        "sampleInterval": 2.125
+      },
+      "dimensions": {
+        "cacheStatus": "unknown",
+        "coloCode": "HKG",
+        "status": "success",
+        "deployment": "v1"
+      },
+      "quantiles": {
+        "cpuTimeP50": 2417,
+        "cpuTimeP95": 2806,
+        "wallTimeP50": 98420,
+        "wallTimeP95": 103444
+      },
+      "sum": {
+        "cpuTimeUs": 37527,
+        "errors": 0,
+        "requests": 17,
+        "subrequests": 0,
+        "wallTime": 1675873
+      }
+    },
+    {
+      "avg": {
+        "sampleInterval": 1.650943396226415
+      },
+      "dimensions": {
+        "cacheStatus": "unknown",
+        "coloCode": "NRT",
+        "status": "success",
+        "deployment": "v0"
+      },
+      "quantiles": {
+        "cpuTimeP50": 2219,
+        "cpuTimeP95": 3500,
+        "wallTimeP50": 135668,
+        "wallTimeP95": 148905
+      },
+      "sum": {
+        "cpuTimeUs": 856895,
+        "errors": 0,
+        "requests": 350,
+        "subrequests": 0,
+        "wallTime": 51594703
+      }
+    },
+    {
+      "avg": {
+        "sampleInterval": 1
+      },
+      "dimensions": {
+        "cacheStatus": "unknown",
+        "coloCode": "KIX",
+        "status": "success",
+        "deployment": "v0"
+      },
+      "quantiles": {
+        "cpuTimeP50": 13813,
+        "cpuTimeP95": 13813,
+        "wallTimeP50": 173786,
+        "wallTimeP95": 173786
+      },
+      "sum": {
+        "cpuTimeUs": 13813,
+        "errors": 0,
+        "requests": 1,
+        "subrequests": 0,
+        "wallTime": 173786
+      }
+    }
+  ],
+  "d1AnalyticsAdaptiveGroups": [
+    {
+      "count": 61,
+      "sum": {
+        "readQueries": 61,
+        "rowsRead": 61,
+        "rowsWritten": 0,
+        "writeQueries": 0
+      },
+      "dimensions": {
+        "deployment": "v1"
+      }
+    },
+    {
+      "count": 2878,
+      "sum": {
+        "readQueries": 2878,
+        "rowsRead": 266514,
+        "rowsWritten": 0,
+        "writeQueries": 0
+      },
+      "dimensions": {
+        "deployment": "v0"
+      }
+    }
+  ]
+}

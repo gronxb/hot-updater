@@ -70,6 +70,27 @@ rollout recompiles the Catalog without rewriting the artifact. Disabling a
 Release moves affected devices to the previous compatible enabled Release—or
 back to the built-in Bundle.
 
+## A live Cloudflare measurement
+
+On September 8, 2026, we sent **1,000 update checks to each of two existing
+Cloudflare deployments**, at 10 requests per second per deployment. In the
+v1 run, **p95 update-check response time decreased by 75.3%, from 283.2 ms
+to 70.0 ms**. Also, **969 checks (96.9%) were served from Workers Cache
+without running the Worker**. Both deployments completed all checks without
+errors.
+
+| Response time | v0 (`0.35.2`) | v1 (`1.0.0-rc.3`) |
+| --- | ---: | ---: |
+| Median (p50) | 228.4 ms | 45.4 ms |
+| p95 | 283.2 ms | 70.0 ms |
+
+These are observations from that workload, not a guarantee of overall
+server-load or cost reduction. The deployments had different datasets and
+edge routing; the test covered checks from already-updated installations
+and excluded artifact delivery and Insights reporting. Read the
+[measurement conditions and raw results](https://github.com/gronxb/hot-updater/blob/next/docs/architecture/cloudflare-update-check-measurement-2026-09-08.md)
+before applying the numbers to another deployment.
+
 ## Insights closes the loop
 
 Moving installation-specific selection to the device makes the read path
