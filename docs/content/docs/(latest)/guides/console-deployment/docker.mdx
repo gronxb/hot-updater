@@ -1,0 +1,135 @@
+---
+title: "Docker"
+description: "Build and run the Nitro console as a standalone Node container."
+---
+
+Complete the [basic setup](/docs/guides/console-deployment) first: connect your existing backend,
+configure OAuth, and choose who can sign in. This guide runs Nitro's standalone
+Node server in Docker, on a server or a container platform of your choice.
+
+## 1. Configure the backend
+
+Use the Node-compatible plugins for Cloudflare, AWS, Firebase, or Supabase.
+For D1/R2, follow [Cloudflare from Node](/docs/guides/console-deployment#cloudflare-backend-from-node);
+Worker bindings and the `/worker` entry point are not available inside Docker.
+Install the selected plugins and commit the updated lockfile before building.
+
+The repository includes a multi-stage `Dockerfile`. Its build stage installs
+from the frozen lockfile and runs `pnpm build:node`. The runtime stage copies
+the complete `.output` directory, including server dependencies and public
+assets, and starts Node as the unprivileged `node` user:
+
+```dockerfile
+FROM node:22-bookworm-slim AS build
+WORKDIR /app
+RUN corepack enable
+
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+RUN pnpm install --frozen-lockfile
+COPY . .
+RUN pnpm build:node
+
+FROM node:22-bookworm-slim AS runtime
+WORKDIR /app
+ENV NODE_ENV=production HOST=0.0.0.0 PORT=3000
+COPY --from=build --chown=node:node /app/.output ./.output
+USER node
+EXPOSE 3000
+CMD ["node", ".output/server/index.mjs"]
+```
+
+The included `.dockerignore` only permits the package manifests and console
+configuration files into the build context. It also includes `.gitignore` so
+Tailwind excludes generated files consistently during the client and server
+builds. If your configuration imports additional local modules, add those
+specific paths to its allowlist. Keep credential files out of the image;
+supply them when the container starts.
+
+## 2. Build the image
+
+From the configured repository root:
+
+```bash
+docker build -t hot-updater-console:local .
+```
+
+This build needs no OAuth or backend secrets. Read those settings inside the
+`defineConsoleConfig` callback so they are resolved at runtime.
+
+For a remote container service, tag and push the image to a registry that the
+service can access. Build for the destination architecture: for example,
+`docker build --platform linux/amd64 -t hot-updater-console:local .` produces
+an amd64 image when building on an Apple Silicon machine. Cloud Run requires
+[linux/amd64](https://docs.cloud.google.com/run/docs/container-contract);
+match the task architecture when using ECS.
+
+## 3. Supply runtime settings
+
+For a standalone Docker host, prepare a private environment file:
+
+```bash
+cp .env.example .env.production
+chmod 600 .env.production
+```
+
+Edit `.env.production` with the values from [authentication setup](/docs/guides/console-deployment#3-configure-authentication):
+`BETTER_AUTH_URL`, `BETTER_AUTH_SECRET`, `HOT_UPDATER_CONSOLE_ALLOWED_EMAILS`,
+and at least one complete GitHub or Google OAuth pair. Add the environment
+variables read by your backend configuration. Use `KEY=value` entries without
+shell expansion or wrapping quotes; Docker passes these values to the process.
+The repository ignores `.env.production`.
+
+Set `BETTER_AUTH_URL` to the public HTTPS origin and register the matching
+`/api/auth/callback/github` or `/api/auth/callback/google` OAuth callback.
+For local sign-in testing, use `http://localhost:3000` and a matching local
+OAuth callback instead.
+
+On a managed container service, configure these values in its runtime secret
+settings instead of uploading the environment file. Local AWS profiles and
+Google credential files are not copied into the container. Use an attached
+service identity where supported, or provide server credentials at runtime.
+If your Firebase configuration uses a credential JSON file, mount it read-only,
+make it readable by the container's `node` user, and set
+`GOOGLE_APPLICATION_CREDENTIALS` to its path inside the container.
+
+## 4. Run the console
+
+For Docker on a server with a host-level HTTPS reverse proxy:
+
+```bash
+docker run -d \
+  --name hot-updater-console \
+  --restart unless-stopped \
+  --env-file .env.production \
+  -p 127.0.0.1:3000:3000 \
+  hot-updater-console:local
+
+docker logs --tail 100 hot-updater-console
+```
+
+Open `http://localhost:3000` for a local check. For production, route the public
+HTTPS origin through your reverse proxy to `127.0.0.1:3000`, preserving the
+original host and scheme. The example only publishes the port on the host's
+loopback interface. A proxy in another container should reach the console
+through a shared Docker network instead.
+
+The image listens on `0.0.0.0:3000` inside the container. Container platforms
+can override `PORT` with their required listening port. No local mobile app,
+CLI process, or writable bundle volume is needed: the console uses the
+configured backend's database and storage.
+
+## 5. Verify and update
+
+Run the [remote verification checklist](/docs/guides/console-deployment#5-verify-the-deployed-console)
+on the final HTTPS origin, including allowed sign-in, denied anonymous access,
+and a real bundle download. A successful image build or sign-in page alone
+does not verify backend credentials.
+
+For updates, build a new image from the updated lockfile, give it a versioned
+tag, and recreate the container with the same runtime settings. Keep the
+previous image tag for rollback. Replacing the console image does not revert
+changes already made to backend data.
+
+See [Nitro's Node deployment guide](https://nitro.build/deploy/runtimes/node),
+[Docker's multi-stage build guide](https://docs.docker.com/build/building/multi-stage/),
+and [Docker's container run reference](https://docs.docker.com/engine/containers/run/).

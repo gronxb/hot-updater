@@ -20,7 +20,40 @@ Start with the common setup on this page, then choose your host:
 - [Cloudflare Workers](/docs/guides/console-deployment/cloudflare): connect existing D1/R2 resources with native bindings.
 - [Vercel](/docs/guides/console-deployment/vercel): deploy Nitro server functions and static assets.
 - [Netlify](/docs/guides/console-deployment/netlify): deploy Nitro functions with the generated routing configuration.
+- [Docker](/docs/guides/console-deployment/docker): build and run the standalone Node server in a container.
 - [Node server and containers](#node-server-and-containers): run the standalone server output.
+
+## Recommended hosts by managed provider
+
+**Vercel, Netlify, and Docker/Node can connect to all four managed backends.**
+There is no one-to-one mapping between a backend and a console host. Choose a
+host your team already operates, then configure the backend's server plugin
+and credentials for that runtime.
+
+| Existing managed backend | Vercel / Netlify / Docker with Node | Cloudflare Workers |
+| --- | --- | --- |
+| Cloudflare D1 + R2 | `@hot-updater/cloudflare`: D1 REST API token and R2 S3-compatible credentials. See [Cloudflare from Node](#cloudflare-backend-from-node). | Recommended when using native D1/R2 bindings through `@hot-updater/cloudflare/worker`; [deployment guide](/docs/guides/console-deployment/cloudflare). |
+| AWS DynamoDB + S3 | `@hot-updater/aws`: AWS SDK credentials with access to the existing table and bucket. | No complete console/backend verification is provided; use Node as the default. |
+| Firebase Firestore + Storage | `@hot-updater/firebase`: Firebase Admin SDK with server credentials. | Use Node for the current Firebase Admin integration. |
+| Supabase Database + Storage | `@hot-updater/supabase`: project URL and service-role key over HTTPS. | [Workers can connect to Supabase](https://developers.cloudflare.com/workers/databases/third-party-integrations/supabase/), but this console/backend combination still needs verification. |
+
+For a managed Node deployment, start with [Vercel](/docs/guides/console-deployment/vercel) or
+[Netlify](/docs/guides/console-deployment/netlify). Choose [Docker](/docs/guides/console-deployment/docker) when you want to run the
+same Node output on your own server or container platform. For a Cloudflare
+backend, Workers avoids separate D1 API and R2 S3 credentials by using bindings.
+
+If you prefer to keep compute and backend credentials within the same cloud,
+[Node on ECS/Fargate](#aws-backend-on-ecs) can use an AWS task role, and
+[Node on Cloud Run](#firebase-backend-on-cloud-run) can use a Google service
+account. These are additional options, not requirements for those backends.
+Prefer a region near the backend.
+
+This matrix describes plugin/runtime compatibility, not completed remote QA
+for every combination. The template CI checks hosting output and authentication;
+Modex remote dogfood covers Workers with D1/R2. Verify backend access and real
+artifact downloads on your chosen host. Downloads pass through the console,
+so the host's response-size and execution limits also matter; see the
+[Vercel guide](/docs/guides/console-deployment/vercel).
 
 ## 1. Clone and install
 
@@ -83,6 +116,43 @@ Do not copy the entire mobile config. Build plugins, fingerprints, and mobile
 bundle-signing private keys stay in the mobile project. Connect existing
 resources; creating a console does not require a new database, bucket, or schema
 migration.
+
+### Cloudflare backend from Node
+
+To host a Cloudflare backend on Vercel, Netlify, or Docker, use the package's
+root entry point. It queries D1 through the Cloudflare API and R2 through its
+S3-compatible API; no Worker bindings are required.
+
+```bash
+pnpm add --save-exact @hot-updater/cloudflare@rc
+```
+
+```ts
+import { defineConsoleConfig } from "@hot-updater/console";
+import { d1Database, r2Storage } from "@hot-updater/cloudflare";
+
+export default defineConsoleConfig(() => ({
+  database: d1Database({
+    accountId: process.env.HOT_UPDATER_CLOUDFLARE_ACCOUNT_ID!,
+    databaseId: process.env.HOT_UPDATER_CLOUDFLARE_D1_DATABASE_ID!,
+    cloudflareApiToken: process.env.HOT_UPDATER_CLOUDFLARE_API_TOKEN!,
+  }),
+  storage: r2Storage({
+    accountId: process.env.HOT_UPDATER_CLOUDFLARE_ACCOUNT_ID!,
+    bucketName: process.env.HOT_UPDATER_CLOUDFLARE_R2_BUCKET_NAME!,
+    credentials: {
+      accessKeyId: process.env.HOT_UPDATER_CLOUDFLARE_R2_ACCESS_KEY_ID!,
+      secretAccessKey: process.env.HOT_UPDATER_CLOUDFLARE_R2_SECRET_ACCESS_KEY!,
+    },
+  }),
+}));
+```
+
+Set all six variables in the console host's private runtime environment.
+Reuse the existing account, database ID, and bucket name. Supply a D1 API token
+with access to that database and R2 S3 credentials with access to the bucket.
+These are server credentials; the console's GitHub/Google OAuth settings are
+configured separately in step 3.
 
 ## 3. Configure authentication
 
@@ -167,6 +237,47 @@ the same process: build with Node and pnpm, copy `.output` into a Node runtime
 image, inject secrets at runtime, and start the entry point. Never bake `.env`
 or credentials into the image. See [Nitro's Node deployment
 reference](https://nitro.build/deploy/runtimes/node).
+
+### AWS backend on ECS
+
+For a console that stays in AWS, deploy the Node output as an ECS service on
+Fargate. Use `dynamoDB` and `s3Storage` from `@hot-updater/aws` with the
+existing table, bucket, and region. Build with `pnpm build:node`, ship the
+complete `.output` directory in a Node container, and start
+`node .output/server/index.mjs` behind your service's HTTPS endpoint.
+
+Give the console's [task IAM role](https://docs.aws.amazon.com/AmazonECS/latest/developerguide/task-iam-roles.html)
+access to those backend resources. The AWS SDK can obtain temporary credentials
+from that role; a developer's local AWS profile is not available in the
+container. Inject the step 3 authentication variables using the service's
+runtime configuration and [Secrets Manager references](https://docs.aws.amazon.com/AmazonECS/latest/developerguide/secrets-envvar-secrets-manager.html).
+Use a separate console service; keep the existing OTA Lambda@Edge and
+CloudFront configuration.
+
+ECS adds container and service configuration. If your team already hosts Node
+applications elsewhere, deploying there with suitable AWS credentials is also
+a reasonable choice.
+
+### Firebase backend on Cloud Run
+
+Deploy the same Node output as a Cloud Run service in the existing Firebase
+project. Install `@hot-updater/firebase` and its declared Firebase peer
+dependencies, and configure `firebaseDatabase` and `firebaseStorage` for
+the existing project and bucket.
+
+Use a service account with the required Firestore and Storage permissions.
+[Firebase recommends Application Default Credentials](https://firebase.google.com/docs/admin/setup#initialize_the_sdk)
+in Google environments, including Cloud Run, so `applicationDefault()` can
+use the service identity without copying a developer's credential file.
+Supply OAuth and allowlist values through the service's runtime environment
+and [Secret Manager integration](https://docs.cloud.google.com/run/docs/configuring/services/secrets).
+
+Build with `pnpm build:node`, include the complete `.output` in the
+container, and run `node .output/server/index.mjs`. Set `HOST=0.0.0.0`
+and let Nitro use the `PORT` provided by Cloud Run, as required by its
+[container contract](https://docs.cloud.google.com/run/docs/container-contract).
+Use the public console origin for the OAuth callbacks in step 3. A static
+Firebase Hosting upload alone does not run this Node server.
 
 ## 5. Verify the deployed console
 

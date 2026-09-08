@@ -6,6 +6,7 @@
     "index",
     "cloudflare",
     "vercel",
-    "netlify"
+    "netlify",
+    "docker"
   ]
 }

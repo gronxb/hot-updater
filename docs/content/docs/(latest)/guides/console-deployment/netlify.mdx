@@ -10,6 +10,11 @@ a Cloudflare host.
 
 ## 1. Configure the backend and authentication
 
+All four managed backends can use this Node runtime. For a Cloudflare backend,
+use the [D1 API and R2 S3 configuration](/docs/guides/console-deployment#cloudflare-backend-from-node)
+instead of Worker bindings. See the [compatibility table](/docs/guides/console-deployment#recommended-hosts-by-managed-provider)
+for the other providers.
+
 Set up `hot-updater.config.ts` with the selected backend plugins and retain the
 resulting lockfile in your private deployment repository. Choose the production
 console domain and register the GitHub or Google callback on that exact origin.
