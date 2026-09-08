@@ -24,6 +24,7 @@ describe("InsightsControls", () => {
     const onScopeChange = vi.fn();
     render(
       <InsightsControls
+        appVersions={["1.0.0", "2.0.0"]}
         scope={{ platform: "ios", channel: "production" }}
         onScopeChange={onScopeChange}
       />,
@@ -58,6 +59,7 @@ describe("InsightsControls", () => {
     mocks.channels.mockReturnValue({ isError: true, refetch });
     render(
       <InsightsControls
+        appVersions={["1.0.0", "2.0.0"]}
         scope={{ platform: "ios", channel: "production" }}
         onScopeChange={vi.fn()}
       />,

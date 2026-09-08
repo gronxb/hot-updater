@@ -14,6 +14,7 @@ import { Route as InstallationsRouteImport } from './routes/installations'
 import { Route as InsightsRouteImport } from './routes/insights'
 import { Route as ApiKeysRouteImport } from './routes/api-keys'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as InsightsDistributionRouteImport } from './routes/insights_.distribution'
 import { Route as ApiAuthSplatRouteImport } from './routes/api/auth/$'
 import { Route as ApiBundlesBundleIdDownloadRouteImport } from './routes/api/bundles/$bundleId/download'
 
@@ -42,6 +43,11 @@ const IndexRoute = IndexRouteImport.update({
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const InsightsDistributionRoute = InsightsDistributionRouteImport.update({
+  id: '/insights_/distribution',
+  path: '/insights/distribution',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiAuthSplatRoute = ApiAuthSplatRouteImport.update({
   id: '/api/auth/$',
   path: '/api/auth/$',
@@ -60,6 +66,7 @@ export interface FileRoutesByFullPath {
   '/insights': typeof InsightsRoute
   '/installations': typeof InstallationsRoute
   '/signing': typeof SigningRoute
+  '/insights/distribution': typeof InsightsDistributionRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/api/bundles/$bundleId/download': typeof ApiBundlesBundleIdDownloadRoute
 }
@@ -69,6 +76,7 @@ export interface FileRoutesByTo {
   '/insights': typeof InsightsRoute
   '/installations': typeof InstallationsRoute
   '/signing': typeof SigningRoute
+  '/insights/distribution': typeof InsightsDistributionRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/api/bundles/$bundleId/download': typeof ApiBundlesBundleIdDownloadRoute
 }
@@ -79,6 +87,7 @@ export interface FileRoutesById {
   '/insights': typeof InsightsRoute
   '/installations': typeof InstallationsRoute
   '/signing': typeof SigningRoute
+  '/insights_/distribution': typeof InsightsDistributionRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/api/bundles/$bundleId/download': typeof ApiBundlesBundleIdDownloadRoute
 }
@@ -90,6 +99,7 @@ export interface FileRouteTypes {
     | '/insights'
     | '/installations'
     | '/signing'
+    | '/insights/distribution'
     | '/api/auth/$'
     | '/api/bundles/$bundleId/download'
   fileRoutesByTo: FileRoutesByTo
@@ -99,6 +109,7 @@ export interface FileRouteTypes {
     | '/insights'
     | '/installations'
     | '/signing'
+    | '/insights/distribution'
     | '/api/auth/$'
     | '/api/bundles/$bundleId/download'
   id:
@@ -108,6 +119,7 @@ export interface FileRouteTypes {
     | '/insights'
     | '/installations'
     | '/signing'
+    | '/insights_/distribution'
     | '/api/auth/$'
     | '/api/bundles/$bundleId/download'
   fileRoutesById: FileRoutesById
@@ -118,6 +130,7 @@ export interface RootRouteChildren {
   InsightsRoute: typeof InsightsRoute
   InstallationsRoute: typeof InstallationsRoute
   SigningRoute: typeof SigningRoute
+  InsightsDistributionRoute: typeof InsightsDistributionRoute
   ApiAuthSplatRoute: typeof ApiAuthSplatRoute
   ApiBundlesBundleIdDownloadRoute: typeof ApiBundlesBundleIdDownloadRoute
 }
@@ -159,6 +172,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/insights_/distribution': {
+      id: '/insights_/distribution'
+      path: '/insights/distribution'
+      fullPath: '/insights/distribution'
+      preLoaderRoute: typeof InsightsDistributionRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/auth/$': {
       id: '/api/auth/$'
       path: '/api/auth/$'
@@ -182,6 +202,7 @@ const rootRouteChildren: RootRouteChildren = {
   InsightsRoute: InsightsRoute,
   InstallationsRoute: InstallationsRoute,
   SigningRoute: SigningRoute,
+  InsightsDistributionRoute: InsightsDistributionRoute,
   ApiAuthSplatRoute: ApiAuthSplatRoute,
   ApiBundlesBundleIdDownloadRoute: ApiBundlesBundleIdDownloadRoute,
 }

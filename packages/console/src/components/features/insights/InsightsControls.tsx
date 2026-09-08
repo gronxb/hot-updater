@@ -1,5 +1,6 @@
 import { useState } from "react";
 
+import { PlatformIcon } from "@/components/PlatformIcon";
 import { Button } from "@/components/ui/button";
 import {
   Combobox,
@@ -19,19 +20,23 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useChannelsQuery } from "@/lib/api";
-import type { InsightsOverviewInput } from "@/lib/insights-api";
+import type { AppUsageScope } from "@/lib/insights-usage";
 
 export function InsightsControls({
   onScopeChange,
   scope,
+  appVersions,
 }: {
-  readonly onScopeChange: (
-    scope: Omit<InsightsOverviewInput, "window">,
-  ) => void;
-  readonly scope: Omit<InsightsOverviewInput, "window">;
+  readonly onScopeChange: (scope: AppUsageScope) => void;
+  readonly scope: AppUsageScope;
+  readonly appVersions: readonly string[];
 }) {
   const [platform, setPlatform] = useState(scope.platform);
   const [channel, setChannel] = useState(scope.channel);
+  const [appVersion, setAppVersion] = useState(scope.appVersion ?? "");
+  const versions = [
+    ...new Set([...appVersions, ...(appVersion ? [appVersion] : [])]),
+  ];
   const channelsQuery = useChannelsQuery();
   const channels = channelsQuery.data?.map((item) => item.name) ?? [];
 
@@ -40,34 +45,55 @@ export function InsightsControls({
       aria-label="Insights controls"
       onSubmit={(event) => {
         event.preventDefault();
-        onScopeChange({ platform, channel });
+        onScopeChange({
+          platform,
+          channel,
+          ...(appVersion ? { appVersion } : {}),
+        });
       }}
     >
-      <FieldGroup className="grid grid-cols-[1fr_2fr] items-end gap-4 sm:flex-row sm:flex">
-        <Field className="sm:w-36">
+      <FieldGroup className="grid grid-cols-2 items-end gap-4 lg:grid-cols-[9rem_minmax(0,1fr)_minmax(0,1fr)_auto]">
+        <Field>
           <FieldLabel htmlFor="insights-platform">Platform</FieldLabel>
           <Select
-            items={{ ios: "iOS", android: "Android" }}
+            items={{ all: "All platforms", ios: "iOS", android: "Android" }}
             value={platform}
             onValueChange={(value) => {
-              if (value === "ios" || value === "android") setPlatform(value);
+              if (value === "all" || value === "ios" || value === "android")
+                setPlatform(value);
             }}
           >
             <SelectTrigger
               id="insights-platform"
               className="min-h-11 w-full sm:min-h-9"
             >
-              <SelectValue />
+              <SelectValue>
+                {platform !== "all" ? (
+                  <PlatformIcon platform={platform} className="size-3.5" />
+                ) : null}
+                {platform === "all"
+                  ? "All platforms"
+                  : platform === "ios"
+                    ? "iOS"
+                    : "Android"}
+              </SelectValue>
             </SelectTrigger>
             <SelectContent>
               <SelectGroup>
-                <SelectItem value="ios">iOS</SelectItem>
-                <SelectItem value="android">Android</SelectItem>
+                <SelectItem value="all">All platforms</SelectItem>
+                <SelectItem value="ios">
+                  <PlatformIcon platform="ios" className="size-3.5" />
+                  iOS
+                </SelectItem>
+                <SelectItem value="android">
+                  <PlatformIcon platform="android" className="size-3.5" />
+                  Android
+                </SelectItem>
               </SelectGroup>
             </SelectContent>
           </Select>
         </Field>
-        <Field className="min-w-0 sm:max-w-xs">
+        <Field className="min-w-0">
           <FieldLabel htmlFor="insights-channel">Channel</FieldLabel>
           <Combobox
             items={channels}
@@ -115,8 +141,39 @@ export function InsightsControls({
             </ComboboxContent>
           </Combobox>
         </Field>
+        <Field className="min-w-0">
+          <FieldLabel htmlFor="insights-app-version">App version</FieldLabel>
+          <Select
+            items={Object.fromEntries([
+              ["all", "All versions"],
+              ...versions.map((version) => [`version:${version}`, version]),
+            ])}
+            value={appVersion ? `version:${appVersion}` : "all"}
+            onValueChange={(value) => {
+              if (value !== null)
+                setAppVersion(value === "all" ? "" : value.slice(8));
+            }}
+          >
+            <SelectTrigger
+              id="insights-app-version"
+              className="min-h-11 w-full sm:min-h-9"
+            >
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectGroup>
+                <SelectItem value="all">All versions</SelectItem>
+                {versions.map((version) => (
+                  <SelectItem key={version} value={`version:${version}`}>
+                    {version}
+                  </SelectItem>
+                ))}
+              </SelectGroup>
+            </SelectContent>
+          </Select>
+        </Field>
         <Button
-          className="col-span-2 h-11 sm:h-9 sm:w-auto"
+          className="h-11 sm:h-9"
           size="lg"
           type="submit"
           variant="outline"

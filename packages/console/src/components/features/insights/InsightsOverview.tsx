@@ -1,4 +1,3 @@
-import { useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { ArrowUpRight, ListIcon, RotateCw, TriangleAlert } from "lucide-react";
 import { useState } from "react";
@@ -17,13 +16,14 @@ import {
   ChartTooltip,
   ChartTooltipContent,
 } from "@/components/ui/chart";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import type { RecoveryInput, RecoveryReport } from "@/lib/insights-recovery";
-import { getRecoveryReportRpc } from "@/lib/insights-recovery-rpc";
 import { cn } from "@/lib/utils";
 
 import { InsightsErrorAlert } from "./InsightsErrorAlert";
+import { InsightsPeriodSelector } from "./InsightsPeriodSelector";
 
 const dates = new Intl.DateTimeFormat("en", {
   month: "short",
@@ -104,7 +104,7 @@ export function ActivityChart({ report }: { readonly report: RecoveryReport }) {
           Rollback
         </TabsTrigger>
       </TabsList>
-      <TabsContent value={metric} className="flex flex-col gap-6">
+      <TabsContent value={metric} className="flex flex-col gap-4">
         <div className="flex items-baseline gap-3">
           <p className="text-4xl font-semibold tracking-tight tabular-nums">
             {total.toLocaleString()}
@@ -141,6 +141,7 @@ export function ActivityChart({ report }: { readonly report: RecoveryReport }) {
                 >
                   <CartesianGrid vertical={false} />
                   <XAxis
+                    tick={{ fill: "var(--muted-foreground)" }}
                     axisLine={false}
                     dataKey="startMs"
                     minTickGap={40}
@@ -148,6 +149,7 @@ export function ActivityChart({ report }: { readonly report: RecoveryReport }) {
                     tickLine={false}
                   />
                   <YAxis
+                    tick={{ fill: "var(--muted-foreground)" }}
                     allowDecimals={false}
                     axisLine={false}
                     tickLine={false}
@@ -184,62 +186,71 @@ export function ActivityChart({ report }: { readonly report: RecoveryReport }) {
                 </LineChart>
               </ChartContainer>
             </div>
-            <div
+            <ScrollArea
               aria-label="Reported bundles"
-              className="grid max-h-48 grid-cols-1 gap-1 overflow-y-auto xl:grid-cols-2"
+              className="min-w-0 [&_[data-slot=scroll-area-viewport]]:max-h-48"
             >
-              {report.series.map((series, index) => (
-                <button
-                  type="button"
-                  key={series.releaseId}
-                  aria-label={`Highlight bundle ${series.releaseId}`}
-                  aria-pressed={selectedId === series.releaseId}
-                  title={series.releaseId}
-                  onClick={() =>
-                    setSelectedId(
-                      selectedId === series.releaseId ? null : series.releaseId,
-                    )
-                  }
-                  className="flex min-w-0 items-center gap-2 rounded-md px-2 py-2 text-left text-xs hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring aria-pressed:bg-muted"
-                >
-                  <svg
-                    aria-hidden="true"
-                    width="20"
-                    height="8"
-                    className="shrink-0"
+              <div
+                className={cn(
+                  "grid grid-cols-1 gap-1 pr-3",
+                  report.series.length > 1 && "xl:grid-cols-2",
+                )}
+              >
+                {report.series.map((series, index) => (
+                  <button
+                    type="button"
+                    key={series.releaseId}
+                    aria-label={`Highlight bundle ${series.releaseId}`}
+                    aria-pressed={selectedId === series.releaseId}
+                    title={series.releaseId}
+                    onClick={() =>
+                      setSelectedId(
+                        selectedId === series.releaseId
+                          ? null
+                          : series.releaseId,
+                      )
+                    }
+                    className="flex min-w-0 items-center gap-2 rounded-md px-2 py-2 text-left text-xs hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring aria-pressed:bg-muted"
                   >
-                    <line
-                      x1="0"
-                      x2="20"
-                      y1="4"
-                      y2="4"
-                      stroke={colors[index % colors.length]}
-                      strokeWidth="2"
-                      strokeDasharray={
-                        dashes[
-                          Math.floor(index / colors.length) % dashes.length
-                        ]
-                      }
-                    />
-                  </svg>
-                  <span className="min-w-0 truncate font-mono">
-                    {series.releaseId}
-                  </span>
-                  {series.points.some((point) => point.spike) ? (
-                    <TriangleAlert
-                      aria-label="Rollback spike"
-                      className="size-3 shrink-0"
-                    />
-                  ) : null}
-                  <span className="ml-auto tabular-nums">
-                    {(metric === "active"
-                      ? series.activeInstallations
-                      : series.recoveredInstallations
-                    ).toLocaleString()}
-                  </span>
-                </button>
-              ))}
-            </div>
+                    <svg
+                      aria-hidden="true"
+                      width="20"
+                      height="8"
+                      className="shrink-0"
+                    >
+                      <line
+                        x1="0"
+                        x2="20"
+                        y1="4"
+                        y2="4"
+                        stroke={colors[index % colors.length]}
+                        strokeWidth="2"
+                        strokeDasharray={
+                          dashes[
+                            Math.floor(index / colors.length) % dashes.length
+                          ]
+                        }
+                      />
+                    </svg>
+                    <span className="min-w-0 truncate font-mono">
+                      {series.releaseId}
+                    </span>
+                    {series.points.some((point) => point.spike) ? (
+                      <TriangleAlert
+                        aria-label="Rollback spike"
+                        className="size-3 shrink-0"
+                      />
+                    ) : null}
+                    <span className="ml-auto tabular-nums">
+                      {(metric === "active"
+                        ? series.activeInstallations
+                        : series.recoveredInstallations
+                      ).toLocaleString()}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            </ScrollArea>
             {selected ? (
               <div className="flex flex-wrap items-center justify-between gap-3 border-t pt-3">
                 <div className="min-w-0 flex-1">
@@ -333,128 +344,100 @@ export function ActivityChart({ report }: { readonly report: RecoveryReport }) {
 export function InsightsOverview({
   input,
   onWindowChange,
+  query,
+  onRefresh,
 }: {
   readonly input: RecoveryInput;
+  readonly query: {
+    readonly data: RecoveryReport | undefined;
+    readonly error: Error | null;
+    readonly isPending: boolean;
+    readonly isFetching: boolean;
+  };
+  readonly onRefresh: () => void;
   readonly onWindowChange: (window: RecoveryInput["window"]) => void;
 }) {
-  const query = useQuery({
-    queryKey: ["rollout-activity", input],
-    queryFn: () => getRecoveryReportRpc({ data: input }),
-    staleTime: 30_000,
-  });
   return (
-    <Tabs
-      value={input.window}
-      onValueChange={(value) => {
-        if (value === "24h" || value === "7d" || value === "30d")
-          onWindowChange(value);
-      }}
+    <Card
+      aria-label="Bundle activity"
+      className="min-w-0 overflow-hidden shadow-sm"
+      role="region"
     >
-      <Card
-        aria-label="Bundle activity"
-        className="min-w-0 overflow-hidden shadow-sm"
-        role="region"
-      >
-        <CardHeader className="flex-row flex-wrap items-center justify-between gap-4 p-6 sm:p-8">
-          <CardTitle>Bundle activity</CardTitle>
-          <div className="flex w-full items-center justify-between gap-4 sm:w-auto">
-            <TabsList
-              aria-label="Reporting period"
-              className="min-h-11 sm:min-h-9"
-            >
-              <TabsTrigger
-                className="min-w-12 px-3"
-                aria-label="24 hours"
-                value="24h"
-              >
-                24h
-              </TabsTrigger>
-              <TabsTrigger
-                className="min-w-12 px-3"
-                aria-label="7 days"
-                value="7d"
-              >
-                7d
-              </TabsTrigger>
-              <TabsTrigger
-                className="min-w-12 px-3"
-                aria-label="30 days"
-                value="30d"
-              >
-                30d
-              </TabsTrigger>
-            </TabsList>
-            <Button
-              aria-label="Refresh bundle activity"
-              className="size-11 sm:size-9"
-              variant="ghost"
-              size="icon-lg"
-              disabled={query.isFetching}
-              onClick={() => void query.refetch()}
-            >
-              <RotateCw aria-hidden="true" />
-            </Button>
-          </div>
-        </CardHeader>
-        <TabsContent value={input.window}>
-          <CardContent className="px-6 pb-6 sm:px-8 sm:pb-8">
-            {query.isPending ? (
-              <Skeleton
-                aria-label="Loading bundle activity"
-                className="h-80 w-full"
-              />
-            ) : query.error ? (
-              <InsightsErrorAlert
-                error={query.error}
-                fallbackTitle="Bundle activity unavailable"
-              />
-            ) : query.data ? (
-              <ActivityChart key={JSON.stringify(input)} report={query.data} />
-            ) : null}
-          </CardContent>
-        </TabsContent>
-        <CardFooter className="flex-wrap items-center justify-between gap-4 border-t px-6 py-5 sm:px-8">
-          <div className="flex min-w-0 basis-64 flex-1 flex-col gap-2 text-xs text-muted-foreground">
-            {query.data && !query.error ? (
-              <>
-                <p>
-                  Active follows each installation’s last reported ID in this
-                  period. Rollbacks count recovered installations per interval.
-                </p>
-                {query.data.unattributedInstallations > 0 ? (
-                  <p>
-                    {query.data.unattributedInstallations.toLocaleString()}{" "}
-                    reporting installations have no observed bundle ID and are
-                    excluded.
-                  </p>
-                ) : null}
-                {query.data.truncated ? (
-                  <p>
-                    Partial history — only reports since{" "}
-                    {times.format(query.data.sinceMs)} UTC are included. Choose
-                    a shorter period to see more complete counts.
-                  </p>
-                ) : null}
-              </>
-            ) : (
-              <p>Browse individual reports in the event log.</p>
-            )}
-          </div>
-          <Link
-            className={cn(
-              buttonVariants({
-                className: "h-11 px-4 sm:h-9",
-                size: "lg",
-                variant: "outline",
-              }),
-            )}
-            to="/installations"
+      <CardHeader className="flex-row flex-wrap items-center justify-between gap-4 p-6">
+        <CardTitle>Bundle activity</CardTitle>
+        <div className="flex w-full items-center justify-between gap-4 sm:w-auto">
+          <InsightsPeriodSelector
+            window={input.window}
+            onWindowChange={onWindowChange}
+          />
+          <Button
+            aria-label="Refresh bundle activity"
+            className="size-11 sm:size-9"
+            variant="ghost"
+            size="icon-lg"
+            disabled={query.isFetching}
+            onClick={onRefresh}
           >
-            <ListIcon aria-hidden="true" data-icon="inline-start" />
-            All events
-          </Link>
-        </CardFooter>
-      </Card>
-    </Tabs>
+            <RotateCw aria-hidden="true" />
+          </Button>
+        </div>
+      </CardHeader>
+      <CardContent className="px-6 pb-6">
+        {query.isPending ? (
+          <Skeleton
+            aria-label="Loading bundle activity"
+            className="h-80 w-full"
+          />
+        ) : query.error ? (
+          <InsightsErrorAlert
+            error={query.error}
+            fallbackTitle="Bundle activity unavailable"
+          />
+        ) : query.data ? (
+          <ActivityChart key={JSON.stringify(input)} report={query.data} />
+        ) : null}
+      </CardContent>
+      <CardFooter className="flex-wrap items-center justify-between gap-4 border-t px-6 py-5">
+        <div className="flex min-w-0 basis-64 flex-1 flex-col gap-2 text-xs text-muted-foreground">
+          {query.data && !query.error ? (
+            <>
+              <p>
+                Active follows each installation’s last reported ID in this
+                period. Rollbacks count recovered installations per interval.
+              </p>
+              {query.data.unattributedInstallations > 0 ? (
+                <p>
+                  {query.data.unattributedInstallations.toLocaleString()}{" "}
+                  reporting installations have no observed bundle ID and are
+                  excluded.
+                </p>
+              ) : null}
+              {query.data.truncated ? (
+                <p>
+                  Partial history — only reports since{" "}
+                  {times.format(query.data.sinceMs)} UTC are included. Choose a
+                  shorter period to see more complete counts.
+                </p>
+              ) : null}
+            </>
+          ) : (
+            <p>Browse individual reports in the event log.</p>
+          )}
+        </div>
+        <Link
+          className={cn(
+            buttonVariants({
+              className: "h-11 px-4 sm:h-9",
+              size: "lg",
+              variant: "outline",
+            }),
+          )}
+          to="/installations"
+        >
+          <ListIcon aria-hidden="true" data-icon="inline-start" />
+          All events
+        </Link>
+      </CardFooter>
+    </Card>
   );
 }
