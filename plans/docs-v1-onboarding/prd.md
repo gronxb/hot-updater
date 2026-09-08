@@ -96,8 +96,8 @@ Verified on September 9, 2026:
 
 The docs typecheck excludes historical `architecture/measurements` scripts,
 which are standalone measurement artifacts rather than site sources. Their
-contents remain unchanged. The empty changeset records a documentation-only
-change without bumping a published package.
+contents remain unchanged. This documentation-only change does not bump a
+published package.
 
 ![Start here with task-oriented navigation](screenshots/start-here.png)
 
