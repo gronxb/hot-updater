@@ -1,4 +1,10 @@
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@/components/ui/button", () => ({
@@ -15,6 +21,45 @@ afterEach(() => {
 });
 
 describe("ConsoleAccessPage", () => {
+  it("sends JSON when signing a forbidden identity out of a strict auth handler", async () => {
+    const reload = vi.fn();
+    vi.stubGlobal(
+      "window",
+      new Proxy(window, {
+        get: (target, key) =>
+          key === "location" ? { reload } : Reflect.get(target, key),
+      }),
+    );
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (_url, init: RequestInit) => {
+        const request = new Request(
+          "https://console.example/api/auth/sign-out",
+          init,
+        );
+        const acceptsRequest =
+          request.method === "POST" &&
+          request.headers.get("content-type") === "application/json" &&
+          (await request.text()) === "{}";
+        return new Response(null, { status: acceptsRequest ? 200 : 415 });
+      }),
+    );
+    render(
+      <ConsoleAccessPage
+        access={{
+          status: "forbidden",
+          principal: { email: "viewer@example.com" },
+        }}
+        providers={["github"]}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Sign out" }));
+
+    await waitFor(() => expect(reload).toHaveBeenCalledOnce());
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+
   it("explains why an authenticated email was rejected", () => {
     render(
       <ConsoleAccessPage

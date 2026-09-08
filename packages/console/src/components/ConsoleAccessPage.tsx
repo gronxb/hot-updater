@@ -48,7 +48,11 @@ export function ConsoleAccessPage({
     setSigningOut(true);
     setError(null);
     try {
-      const response = await fetch("/api/auth/sign-out", { method: "POST" });
+      const response = await fetch("/api/auth/sign-out", {
+        body: "{}",
+        headers: { "content-type": "application/json" },
+        method: "POST",
+      });
       if (!response.ok) {
         throw new Error("Sign-out failed.");
       }
