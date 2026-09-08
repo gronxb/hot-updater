@@ -8,6 +8,7 @@ import type { AndroidNativeRunOptions } from "@hot-updater/android-helper";
 import type { IosNativeRunOptions } from "@hot-updater/apple-helper";
 import { banner, p } from "@hot-updater/cli-tools";
 import type { NativeBuildOptions } from "@hot-updater/plugin-core";
+import isPortReachable from "is-port-reachable";
 import { normalizeRange } from "verkit";
 
 import {
@@ -663,6 +664,11 @@ program
     printBanner();
 
     const port = await getConsolePort();
+
+    if (await isPortReachable(port, { host: "127.0.0.1" })) {
+      p.log.error(`Port ${port} is already in use.`);
+      process.exit(1);
+    }
 
     await openConsole(port);
   });
