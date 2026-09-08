@@ -37,13 +37,13 @@ guide; do not duplicate its page inventory here.
 ## Examples and package selection
 
 Use a full npm command in a `package-install` fence for installation. The site
-provides package-manager alternatives. For current v1 RC documentation, use each
-required Hot Updater package's own `@rc` tag; RC numbers differ between packages.
+provides package-manager alternatives. Latest documentation targets stable
+releases: use package names without prerelease tags in installation commands.
 The complete package list belongs in `get-started/installation.mdx`.
 
 ```package-install
-npm install @hot-updater/react-native@rc
-npm install hot-updater@rc @hot-updater/bare@rc --save-dev
+npm install @hot-updater/react-native
+npm install hot-updater @hot-updater/bare --save-dev
 ```
 
 Runtime imports are regular dependencies. Build/deploy/config-only packages are

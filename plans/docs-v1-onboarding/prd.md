@@ -34,8 +34,9 @@ architecture/release records. Keep v0-to-v1 transition instructions in
 ## Requirements
 
 1. Put a clear v1 entry and agent/manual paths before concepts and references.
-2. Make release selection explicit and consistent with the published npm `rc`
-   tags. Installing a skill alone must not imply a compatible CLI is installed.
+2. Write latest documentation for stable v1 releases, using untagged package
+   installation commands. Installing a skill alone must not imply a compatible
+   CLI is installed.
 3. Split pages by independently executable tasks; merge duplicated workflow
    explanations into one owner. Do not split just to meet a line-count target.
 4. Define setup outputs and distinguish scaffold generation, deployed-server
@@ -85,7 +86,7 @@ Verified on September 9, 2026:
 | --- | --- |
 | Page ownership and links | All 98 latest pages appear exactly once in navigation and the LLM index; internal route, fragment and asset checks pass |
 | Live production routes | All 98 HTML and 98 Markdown page URLs return successfully; canonical API index and its compatibility alias return identical Markdown |
-| Markdown fidelity | All 997 fenced code blocks and 794 link destinations survive serialization across the 174 latest and archived source pages |
+| Markdown fidelity | All 997 fenced code blocks and 793 link destinations survive serialization across the 174 latest and archived source pages |
 | Docs regressions | `pnpm --dir docs test:docs`: 2 files, 5 tests pass |
 | Production build | `pnpm -w build` and final `pnpm --dir docs build` pass; no dead links |
 | Static checks | `pnpm --dir docs test:type`, `pnpm -w lint` and `git diff --check` pass |

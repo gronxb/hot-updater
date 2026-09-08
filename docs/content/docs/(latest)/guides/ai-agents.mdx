@@ -28,10 +28,10 @@ supply access to your provider account.
 Ask for the complete setup and test:
 
 ```text
-$hot-updater Set up this project with the published v1 rc packages and verify its first OTA update.
+$hot-updater Set up this project with Hot Updater v1 and verify its first OTA update.
 Inspect the app root, build system, installed packages and existing provider resources first.
-Install hot-updater@rc, @hot-updater/react-native@rc and the required build/provider packages at @rc
-before generating infrastructure. Record each resolved version; RC numbers can differ.
+Install hot-updater, @hot-updater/react-native and the required build/provider packages
+before generating infrastructure. Record the installed versions and keep the lockfile.
 Use agent infra setup and its generated instructions to provision and verify the server.
 Connect the app's base URL and client API key, including both native and OTA build environments.
 Configure native bundle loading, compatibility and a dedicated test channel; preserve existing signing.
@@ -92,7 +92,7 @@ available setup work and identify the exact remaining device check.
 For an existing v1 server, ask:
 
 ```text
-$hot-updater Upgrade this project's existing server infrastructure using the published rc channel.
+$hot-updater Upgrade this project's existing server infrastructure to the latest stable v1 release.
 Read all applicable versioned upgrade instructions, preserve existing resources and customizations,
 and verify the deployed endpoint and authenticated client access afterward.
 ```

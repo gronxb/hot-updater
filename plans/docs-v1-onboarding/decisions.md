@@ -43,22 +43,26 @@ Android/iOS blocks. `packages/react-native/src/index.ts` exposes a selected
 `getBundleId` that may change before reload. The existing agent server probe
 explicitly excludes artifact download and native verification.
 
-## 3. Preinstall each required package from its own RC tag
+## 3. Target stable releases in latest documentation
 
-**Proposal:** Change the CLI install to `hot-updater@rc`.
+**Proposal:** Pin install examples to each package's release-candidate tag
+because the audit began during the v1 prerelease.
 
-**Objection:** The CLI's missing-package installer derives plugin versions from
-the CLI version, while the SDK, build plugins and providers have independent RC
-numbers. Changing only the CLI leaves first-run installation unreliable.
+**Objection:** Latest documentation must remain useful after the stable release.
+A temporary prerelease channel would persist in copied commands and agent
+prompts, requiring another sweep before every release transition.
 
-**Decision:** Install the SDK, CLI, chosen build and provider packages from each
-package's own npm `rc` tag before init/scaffold. Record resolved versions and
-keep the lockfile. Teach doctor compatibility in terms of release/channel,
-not identical package versions. No runtime installer change in this PR.
+**Decision:** Use untagged package names throughout latest installation examples,
+agent prompts and migration instructions. Write for the stable v1 release and
+keep the RC release as audit context only. The maintainer clarified this policy
+after reviewing the first PR. Preinstall the SDK, CLI and chosen build/provider
+packages, record installed versions and keep the lockfile. The skill still does
+not install or upgrade the CLI by itself.
 
-**Evidence checked:** `packages/hot-updater/src/utils/ensureInstallPackages.ts`,
-`packages/cli-tools/src/ensureInstallPackages.ts`, package manifests, and
-`areVersionsCompatible` in `packages/hot-updater/src/commands/doctor.ts`.
+**Evidence checked:** The initializer's package installer, package manifests and
+`areVersionsCompatible` in `packages/hot-updater/src/commands/doctor.ts` informed
+the installation prerequisites. A transient registry tag does not define the
+long-term documentation policy. No runtime installer change in this PR.
 
 ## 4. Retain provider and method references
 

@@ -74,12 +74,11 @@ Native project before running init or an agent scaffold. Install the CLI, React
 Native SDK, and the build plugin that matches your app, then install this provider:
 
 ```package-install
-npm install @hot-updater/aws@rc --save-dev
+npm install @hot-updater/aws --save-dev
 ```
 
-Each package has its own `rc` version. Use its `@rc` tag; do not copy the CLI's
-exact version onto every package. An agent can perform these steps after
-inspecting the app's package manager and build configuration.
+An agent can perform these steps after inspecting the app's package manager
+and build configuration.
 
 ## Step 2: Configure AWS
 

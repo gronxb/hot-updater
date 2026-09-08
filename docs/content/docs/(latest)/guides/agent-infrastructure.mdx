@@ -25,14 +25,11 @@ and requires Node 22.18+ or Node 24+. Have the agent check this before creating
 remote resources; the helper can use a separate runtime from your app.
 
 Before either command, follow [Install packages](/docs/get-started/installation)
-to install `hot-updater@rc`, `@hot-updater/react-native@rc` and the selected
-build/provider packages at `@rc`. RC numbers are independent; record the resolved
-versions instead of assigning the CLI version to every package.
+to install `hot-updater`, `@hot-updater/react-native` and the selected
+build/provider packages. Record the installed versions and keep the lockfile.
 
 The installed CLI must advertise `agent infra setup` and `agent infra upgrade`.
-The skill does not add commands to older versions. `hot-updater@rc` selects the
-published prerelease; it does not include unreleased changes. For unreleased
-testing, use a matching preview package set or local build.
+The skill does not add commands to older versions.
 
 ## What the setup command produces
 

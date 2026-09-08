@@ -41,7 +41,7 @@ npx skills add hot-updater/skills
 Then ask your coding agent:
 
 ```text
-$hot-updater Migrate this project from Hot Updater v0 to v1 using the published rc channel.
+$hot-updater Migrate this project from Hot Updater v0 to v1 using the latest stable v1 release.
 Inspect the app and existing provider first. Keep v0 endpoints and data available
 for installed apps, and provision separate v1 infrastructure. Update the SDK,
 build and provider packages, app URL and client authentication, existing signing
@@ -55,12 +55,10 @@ You can name your provider if you already know it; you do not need to collect
 resource IDs first. Authenticate through provider login or private credential
 storage when needed. Do not paste tokens or private keys into the conversation.
 
-The source branch is `next`; the npm prerelease tag is `rc`. The agent installs
-`hot-updater@rc` and the required `@hot-updater/*@rc` packages in the app's
-workspace and records their resolved versions. RC numbers differ between
-packages, so do not copy the CLI's version number onto every package. Install
-the SDK and required plugins before generating infrastructure templates. The
-[installation guide](/docs/get-started/installation) lists the package choices.
+The agent installs `hot-updater` and the required `@hot-updater/*` packages
+in the app's workspace, records their installed versions and keeps the lockfile.
+Install the SDK and required plugins before generating infrastructure templates.
+The [installation guide](/docs/get-started/installation) lists the package choices.
 
 The installed CLI must support `hot-updater agent infra upgrade`. The agent
 reads the generated upgrade instructions, applies the provider templates, and

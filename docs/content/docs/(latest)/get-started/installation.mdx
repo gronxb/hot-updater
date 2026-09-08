@@ -1,6 +1,6 @@
 ---
 title: "Install packages"
-description: "Install a compatible v1 RC CLI, SDK, build plugin and provider package before setup."
+description: "Install the v1 CLI, SDK, build plugin and provider package before setup."
 icon: Download
 ---
 
@@ -8,10 +8,9 @@ import { Tabs, Tab } from "fumadocs-ui/components/tabs";
 
 ## Use compatible v1 packages
 
-The v1 documentation follows the `next` source branch. Published v1 packages use
-the npm **`rc`** tag. Install each required Hot Updater package with `@rc`; RC
-numbers differ between packages, so do not assign the CLI's exact version to
-every package. Commit the resulting lockfile to reproduce the resolved graph.
+These pages target the latest stable v1 release. Install the CLI, SDK and
+required plugins using the commands below. Commit the resulting lockfile to
+reproduce the installed versions.
 
 <Callout type="warn">
   For an existing v0 installation, start with
@@ -38,13 +37,13 @@ then perform the installation below with the project's package manager.
 Install the runtime SDK as an app dependency:
 
 ```package-install
-npm install @hot-updater/react-native@rc
+npm install @hot-updater/react-native
 ```
 
 Install the deployment CLI and environment loader as development dependencies:
 
 ```package-install
-npm install hot-updater@rc dotenv --save-dev
+npm install hot-updater dotenv --save-dev
 ```
 
 ## Install your build plugin
@@ -55,21 +54,21 @@ Choose the app's build system:
   <Tab value="Bare (React Native CLI)">
 
 ```package-install
-npm install @hot-updater/bare@rc --save-dev
+npm install @hot-updater/bare --save-dev
 ```
 
   </Tab>
   <Tab value="Rock">
 
 ```package-install
-npm install @hot-updater/rock@rc --save-dev
+npm install @hot-updater/rock --save-dev
 ```
 
   </Tab>
   <Tab value="Expo">
 
 ```package-install
-npm install @hot-updater/expo@rc --save-dev
+npm install @hot-updater/expo --save-dev
 ```
 
 Keep `@hot-updater/react-native` as the runtime SDK. `@hot-updater/expo` supplies
@@ -87,40 +86,40 @@ For a managed provider, install the package for your selected infrastructure:
   <Tab value="Cloudflare">
 
 ```package-install
-npm install @hot-updater/cloudflare@rc --save-dev
+npm install @hot-updater/cloudflare --save-dev
 ```
 
   </Tab>
   <Tab value="Supabase">
 
 ```package-install
-npm install @hot-updater/supabase@rc --save-dev
+npm install @hot-updater/supabase --save-dev
 ```
 
   </Tab>
   <Tab value="AWS">
 
 ```package-install
-npm install @hot-updater/aws@rc --save-dev
+npm install @hot-updater/aws --save-dev
 ```
 
   </Tab>
   <Tab value="Firebase">
 
 ```package-install
-npm install @hot-updater/firebase@rc --save-dev
+npm install @hot-updater/firebase --save-dev
 ```
 
   </Tab>
 </Tabs>
 
 For a [custom server](/docs/custom/quick-start), follow its database/storage
-package choices and install required `@hot-updater/*` packages with `@rc` too.
+package choices and install the required `@hot-updater/*` packages.
 Server dependencies belong in the server workspace when it is separate.
 
 Complete the SDK, CLI, build and provider installations **before** running
-`init` or generating infrastructure. This avoids the initializer trying to
-resolve missing packages using the CLI's exact RC number.
+`init` or generating infrastructure so setup uses the packages selected for
+your app and provider.
 
 ## Check the installed CLI
 
@@ -133,8 +132,7 @@ npx --no-install hot-updater agent infra setup --help
 ```
 
 The help must expose the commands used by your chosen workflow. Installing the
-agent skill does not add commands to an older CLI. The `rc` tag contains the
-published prerelease; it does not include every unreleased commit on `next`.
+agent skill does not add commands to an older CLI.
 
 Continue with [agent setup](/docs/guides/ai-agents) or
 [manual setup](/docs/get-started/basic-usage#step-2-initialize-your-provider).
