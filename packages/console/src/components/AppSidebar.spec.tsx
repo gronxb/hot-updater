@@ -81,7 +81,7 @@ describe("AppSidebar navigation", () => {
     expect(screen.queryByRole("link", { name: /installations/i })).toBeNull();
   });
 
-  it.each(["/insights", "/installations"])(
+  it.each(["/insights", "/insights/distribution", "/installations"])(
     "marks Insights active on %s",
     (route) => {
       pathname = route;

@@ -32,7 +32,9 @@ export function AppSidebar() {
 
   const isBundlesActive = currentPath === "/";
   const isInsightsActive =
-    currentPath === "/insights" || currentPath === "/installations";
+    currentPath === "/insights" ||
+    currentPath === "/insights/distribution" ||
+    currentPath === "/installations";
   const isApiKeysActive = currentPath === "/api-keys";
   const isSigningActive = currentPath === "/signing";
 
