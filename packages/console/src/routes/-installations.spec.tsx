@@ -32,6 +32,7 @@ vi.mock("@tanstack/react-router", () => ({
     readonly to: string;
   }) => <a href={to}>{children}</a>,
   useElementScrollRestoration: () => undefined,
+  useLocation: () => undefined,
 }));
 
 vi.mock("@/components/ui/sidebar", () => ({
@@ -146,6 +147,7 @@ describe("InstallationsPage", () => {
         eventsBefore: 100,
         eventsCursor: "next-events",
       },
+      state: expect.any(Function),
       to: "/installations",
     });
   });
@@ -180,6 +182,7 @@ describe("InstallationsPage", () => {
           installId: "install-1",
           query: "user-1",
         }),
+        state: expect.any(Function),
         to: "/installations",
       }),
     );
@@ -239,6 +242,7 @@ describe("InstallationsPage", () => {
         installId: "install-1",
         query: "user-1",
       },
+      state: expect.any(Function),
       to: "/installations",
     });
   });
