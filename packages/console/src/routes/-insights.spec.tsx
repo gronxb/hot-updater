@@ -1,7 +1,18 @@
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+} from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({ activity: vi.fn(), reporting: vi.fn() }));
+vi.mock("@/lib/api", () => ({
+  useChannelsQuery: () => ({
+    data: [{ name: "production" }, { name: "beta" }],
+  }),
+}));
 vi.mock("@tanstack/react-router", () => ({
   createFileRoute: () => (options: unknown) => ({ options }),
 }));
@@ -25,7 +36,7 @@ vi.mock("@/components/features/insights/InsightsPageHeader", () => ({
 vi.mock("@/components/features/insights/ReportingDevicesSummary", () => ({
   ReportingDevicesSummary: ({ scope }: { scope: unknown }) => {
     mocks.reporting(scope);
-    return <div>Reporting devices · 30d</div>;
+    return <div>MAU · 30d</div>;
   },
 }));
 
@@ -55,10 +66,19 @@ describe("Insights overview", () => {
     });
     fireEvent.click(screen.getByRole("combobox", { name: "Platform" }));
     const android = await screen.findByRole("option", { name: "Android" });
-    fireEvent.pointerDown(android);
-    fireEvent.click(android);
-    fireEvent.change(screen.getByLabelText("Channel"), {
+    await act(async () => {
+      fireEvent.pointerDown(android);
+      fireEvent.click(android);
+    });
+    act(() => screen.getByLabelText("Channel").focus());
+    fireEvent.input(screen.getByLabelText("Channel"), {
+      inputType: "insertText",
       target: { value: "beta" },
+    });
+    const beta = await screen.findByRole("option", { name: "beta" });
+    await act(async () => {
+      fireEvent.pointerDown(beta);
+      fireEvent.click(beta);
     });
     fireEvent.click(screen.getByRole("button", { name: "Apply filters" }));
     expect(mocks.activity).toHaveBeenLastCalledWith({

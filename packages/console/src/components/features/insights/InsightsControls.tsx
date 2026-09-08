@@ -1,8 +1,15 @@
 import { useState } from "react";
 
 import { Button } from "@/components/ui/button";
+import {
+  Combobox,
+  ComboboxContent,
+  ComboboxEmpty,
+  ComboboxInput,
+  ComboboxItem,
+  ComboboxList,
+} from "@/components/ui/combobox";
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
-import { Input } from "@/components/ui/input";
 import {
   Select,
   SelectContent,
@@ -11,6 +18,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { useChannelsQuery } from "@/lib/api";
 import type { InsightsOverviewInput } from "@/lib/insights-api";
 
 export function InsightsControls({
@@ -24,6 +32,8 @@ export function InsightsControls({
 }) {
   const [platform, setPlatform] = useState(scope.platform);
   const [channel, setChannel] = useState(scope.channel);
+  const channelsQuery = useChannelsQuery();
+  const channels = channelsQuery.data?.map((item) => item.name) ?? [];
 
   return (
     <form
@@ -59,14 +69,51 @@ export function InsightsControls({
         </Field>
         <Field className="min-w-0 sm:max-w-xs">
           <FieldLabel htmlFor="insights-channel">Channel</FieldLabel>
-          <Input
-            className="h-11 sm:h-9"
-            id="insights-channel"
+          <Combobox
+            items={channels}
             value={channel}
-            onChange={(event) => setChannel(event.target.value)}
-            required
-            maxLength={1024}
-          />
+            onValueChange={(value) => {
+              if (value !== null) setChannel(value);
+            }}
+          >
+            <ComboboxInput
+              className="h-11 w-full sm:h-9 [&_input]:h-full"
+              id="insights-channel"
+              placeholder="Search channels"
+              maxLength={1024}
+            />
+            <ComboboxContent>
+              <ComboboxEmpty>
+                {channelsQuery.isPending ? (
+                  "Loading channels…"
+                ) : channelsQuery.isError ? (
+                  <div className="flex flex-col items-center gap-2 p-2">
+                    Couldn't load channels.
+                    <Button
+                      onClick={() => void channelsQuery.refetch()}
+                      size="sm"
+                      variant="outline"
+                    >
+                      Retry channels
+                    </Button>
+                  </div>
+                ) : (
+                  "No channels found."
+                )}
+              </ComboboxEmpty>
+              <ComboboxList>
+                {(item: string) => (
+                  <ComboboxItem
+                    className="min-h-11 pr-8 sm:min-h-8"
+                    key={item}
+                    value={item}
+                  >
+                    <span className="truncate">{item}</span>
+                  </ComboboxItem>
+                )}
+              </ComboboxList>
+            </ComboboxContent>
+          </Combobox>
         </Field>
         <Button
           className="col-span-2 h-11 sm:h-9 sm:w-auto"
