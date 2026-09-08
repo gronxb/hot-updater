@@ -1,6 +1,14 @@
 {
-  "title": "Get Started",
-  "description": "Quick start guide for Hot Updater",
+  "title": "Start here",
+  "description": "Set up v1 with an agent or manually, then verify an OTA update.",
   "icon": "Rocket",
-  "pages": ["introduction", "basic-usage"]
+  "pages": [
+    "introduction",
+    "../guides/ai-agents",
+    "basic-usage",
+    "installation",
+    "app-setup",
+    "../guides/simulator-test",
+    "../guides/upgrade-to-v1"
+  ]
 }

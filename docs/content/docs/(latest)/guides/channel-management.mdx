@@ -183,6 +183,10 @@ channel.
 
 ### Example Usage
 
+Keep the `baseURL` and client key from [App setup](/docs/get-started/app-setup).
+Managed providers require this client key; provider and admin credentials stay
+out of the app.
+
 ```tsx
 import { HotUpdater } from "@hot-updater/react-native";
 import { Text, View } from "react-native";
@@ -200,6 +204,9 @@ function App() {
 export default HotUpdater.wrap({
   baseURL: "<your-update-server-url>",
   updateStrategy: "appVersion", // or "fingerprint"
+  requestHeaders: {
+    "x-api-key": "<your-client-api-key>",
+  },
 })(App);
 ```
 

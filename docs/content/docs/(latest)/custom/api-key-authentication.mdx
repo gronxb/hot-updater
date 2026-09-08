@@ -1,5 +1,5 @@
 ---
-title: "API key authentication"
+title: "API keys"
 description: Protect OTA reads and Insights writes with the built-in API key domain.
 icon: KeyRound
 ---
@@ -50,11 +50,12 @@ header.
 
 ## Bootstrap a self-hosted client
 
-After configuring `createHotUpdater` with the `api-key` policy, apply its schema
-and create an API key from the same direct configuration:
+After configuring `createHotUpdater` with the `api-key` policy, apply the
+[chosen adapter's schema](/docs/custom/overview#database-adapters).
+Kysely and MongoDB use `hot-updater db migrate`; Drizzle and Prisma use their
+own schema tools. Then create a key from the same direct server configuration:
 
 ```bash
-npx hot-updater db migrate src/hotUpdater.ts
 npx hot-updater api-key create src/hotUpdater.ts --name "Mobile app"
 ```
 

@@ -8,8 +8,11 @@ icon: firebase
 ## Installation
 
 ```package-install
-npm install @hot-updater/firebase firebase-admin --save-dev
+npm install @hot-updater/firebase@rc firebase-admin dotenv --save-dev
 ```
+
+For a deployed server, install these packages as runtime dependencies instead
+of development dependencies.
 
 ## Setup
 
@@ -30,11 +33,15 @@ interface FirebaseDatabaseConfig {
 
 ## Environment Variables
 
-Set up your Firebase credentials:
+Use an existing application-default identity when available. Set
+`GOOGLE_APPLICATION_CREDENTIALS` only when you need a private credential file;
+keep the file outside the app bundle and exclude local environment files from
+Git. A Firebase CLI login alone does not necessarily authenticate the local
+Admin SDK.
 
 ```bash title=".env.hotupdater"
-# Project Settings > Service Accounts > New Private Key > Download JSON
-GOOGLE_APPLICATION_CREDENTIALS=/path/to/your-service-account-key.json
+# Optional: a private credential file when existing ADC is unavailable
+# GOOGLE_APPLICATION_CREDENTIALS=/private/path/to/your-service-account-key.json
 FIREBASE_PROJECT_ID=your-project-id
 ```
 
@@ -43,12 +50,12 @@ FIREBASE_PROJECT_ID=your-project-id
 ```typescript
 import { firebaseDatabase } from '@hot-updater/firebase';
 import { applicationDefault } from 'firebase-admin/app';
+import { config } from 'dotenv';
 import { defineConfig } from 'hot-updater';
 
-// https://firebase.google.com/docs/admin/setup?hl=en#initialize_the_sdk_in_non-google_environments
-// Check your .env.hotupdater file and add the credentials
-// Set the GOOGLE_APPLICATION_CREDENTIALS environment variable to your credentials file path
-// Example: GOOGLE_APPLICATION_CREDENTIALS=./firebase-adminsdk-credentials.json
+config({ path: '.env.hotupdater' });
+
+// Reuse the environment's application-default credentials.
 const credential = applicationDefault();
 
 export default defineConfig({
@@ -67,8 +74,10 @@ Combined storage and database:
 ```typescript
 import { firebaseStorage, firebaseDatabase } from '@hot-updater/firebase';
 import { applicationDefault } from 'firebase-admin/app';
+import { config } from 'dotenv';
 import { defineConfig } from 'hot-updater';
 
+config({ path: '.env.hotupdater' });
 const credential = applicationDefault();
 
 export default defineConfig({

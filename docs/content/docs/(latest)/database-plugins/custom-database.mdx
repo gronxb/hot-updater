@@ -7,14 +7,18 @@ icon: Hammer
 ## Installation
 
 ```package-install
-npm install @hot-updater/plugin-core
+npm install @hot-updater/plugin-core@rc
 ```
 
-Install the public conformance suites in the project that tests your provider:
+Install your test runner in the provider project:
 
 ```package-install
-npm install @hot-updater/test-utils vitest --save-dev
+npm install vitest --save-dev
 ```
+
+The conformance helpers below belong to the Hot Updater repository workspace;
+`@hot-updater/test-utils` is a private workspace package, not an npm dependency
+for external provider projects.
 
 ## Contract
 
@@ -240,7 +244,7 @@ are not a common snapshot and must not imply an exact percentage. Document
 query costs. Do not return partial results; propagate native errors.
 
 The public constructor validates queries and returned rows, but cannot prove
-atomicity or index usage. Run the public conformance suite plus native rollback,
+atomicity or index usage. Run the repository conformance suite plus native rollback,
 concurrency, continuation, schema-bootstrap, and query-plan tests for your
 backend.
 
@@ -317,7 +321,7 @@ database. Unsupported populated storage is rejected without deleting its data.
 6. Implement atomic Insights recording and the fixed queries above. Record
    `schema.core = 1.0.0` after successful initialization;
    reject unsupported source versions without deleting their data.
-7. Run the public conformance and integration suites against the real backend.
+7. Run conformance and integration tests against the real backend.
 
 Provider-specific consistency requirements:
 
@@ -379,7 +383,18 @@ partition contract.
 
 ## Test the provider
 
-```ts title="myDatabase.spec.ts"
+For an external provider project, implement tests against the
+[database contract](/docs/database-plugins/release-catalog-contract), using the
+[repository conformance helpers](https://github.com/gronxb/hot-updater/tree/next/packages/test-utils/src)
+as reference for the scenarios and expected results.
+
+The following helper API is for provider packages developed inside a Hot Updater
+checkout. Declare `"@hot-updater/test-utils": "workspace:*"` in that provider's
+`devDependencies`, install the workspace dependencies and build the workspace
+packages before running it. Supply the provider-specific database creation,
+migration and reset functions used in this excerpt:
+
+```ts title="myDatabase.spec.ts (repository workspace excerpt)"
 import { createDatabaseClient } from "@hot-updater/plugin-core";
 import {
   setupDatabaseClientTestSuite,
@@ -399,6 +414,14 @@ setupDatabaseClientTestSuite({
   ...lifecycle,
   createClient: createDatabaseClient,
 });
+```
+
+For a complete executable workspace example, see the
+[mock provider tests](https://github.com/gronxb/hot-updater/blob/next/plugins/mock/src/test/mockDatabase.spec.ts).
+From a prepared repository checkout, run:
+
+```bash
+pnpm -w test plugins/mock/src/test/mockDatabase.spec.ts
 ```
 
 The suites verify exact model semantics, strong Release paging, catalog point

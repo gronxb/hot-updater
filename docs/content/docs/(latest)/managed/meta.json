@@ -1,6 +1,11 @@
 {
-  "title": "Self Hosting (Managed)",
-  "description": "Managed cloud providers",
+  "title": "Provider setup",
+  "description": "Set up a supported provider in your cloud account.",
   "icon": "Cloud",
-  "pages": ["supabase", "cloudflare", "aws", "firebase"]
+  "pages": [
+    "supabase",
+    "cloudflare",
+    "aws",
+    "firebase"
+  ]
 }

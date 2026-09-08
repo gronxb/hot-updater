@@ -56,6 +56,10 @@ Examples:
 
 Configure your React Native app:
 
+Keep the `baseURL` and client key from [App setup](/docs/get-started/app-setup).
+Managed providers require this client key; provider and admin credentials stay
+out of the app.
+
 ```tsx title="App.tsx"
 import { HotUpdater } from "@hot-updater/react-native";
 import { View, Text } from "react-native";
@@ -71,6 +75,9 @@ function App() {
 export default HotUpdater.wrap({
   baseURL: "https://your-update-server.com", // [!code ++]
   updateStrategy: "appVersion", // [!code ++]
+  requestHeaders: {
+    "x-api-key": "<your-client-api-key>",
+  },
 })(App);
 ```
 
@@ -86,7 +93,10 @@ base64url-encoded channel name.
 
 ## Testing the Endpoint
 
-Test your update endpoint using curl:
+The following unauthenticated request returns **401** on managed providers.
+That confirms the access boundary; it does not verify a usable catalog. For an
+authenticated check, use the [client-access check](/docs/guides/simulator-test#verify-client-access)
+with the saved client key, then [test OTA delivery](/docs/guides/simulator-test).
 
 ```bash
 curl "https://your-update-endpoint.com/release-catalogs/app-version/ios/cHJvZHVjdGlvbg/1.0.0"

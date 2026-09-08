@@ -129,6 +129,10 @@ npx hot-updater fingerprint create
 
 Configure your React Native app:
 
+Keep the `baseURL` and client key from [App setup](/docs/get-started/app-setup).
+Managed providers require this client key; provider and admin credentials stay
+out of the app.
+
 ```tsx title="App.tsx"
 import { HotUpdater } from "@hot-updater/react-native";
 import { View, Text } from "react-native";
@@ -144,6 +148,9 @@ function App() {
 export default HotUpdater.wrap({
   baseURL: "https://your-update-server.com", // [!code ++]
   updateStrategy: "fingerprint", // [!code ++]
+  requestHeaders: {
+    "x-api-key": "<your-client-api-key>",
+  },
 })(App);
 ```
 
@@ -234,7 +241,10 @@ metadata.
 
 ### Testing the Endpoint
 
-Test your update endpoint with curl:
+The following unauthenticated request returns **401** on managed providers.
+Use the [client-access check](/docs/guides/simulator-test#verify-client-access)
+with the saved client key to verify the catalog, then
+[test OTA delivery](/docs/guides/simulator-test).
 
 ```bash
 curl "https://your-update-endpoint.com/release-catalogs/fingerprint/ios/cHJvZHVjdGlvbg/11142b9062165fa48665f5efa095dd94e9e45eb0"

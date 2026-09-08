@@ -1,0 +1,71 @@
+---
+title: Choose infrastructure
+description: Choose a provider preset or connect Hot Updater to your existing backend.
+icon: Server
+---
+
+## Choose your infrastructure
+
+Choose where your OTA metadata, bundles, and update server will run. Start with
+an account your team already operates. An agent can inspect the app and existing
+resources before asking for an unresolved provider or deployment target.
+
+Hot Updater's **provider presets** provision resources in your cloud account.
+You own those resources. A **custom server** lets you compose the database,
+storage, framework and hosting in an existing backend.
+
+## Choose a path
+
+| Path | Resources | Use it when | Catalog delivery |
+| --- | --- | --- | --- |
+| [Cloudflare](/docs/managed/cloudflare) | D1, R2, Worker | You want the supplied Worker deployment or already use Cloudflare. | Shared cache in front of Worker execution. |
+| [Supabase](/docs/managed/supabase) | Postgres, Storage, Edge Function | You want the supplied Supabase deployment or already operate a Supabase project. | Direct Edge Function URL; each check invokes the Function. |
+| [Firebase](/docs/managed/firebase) | Firestore, Storage, Function | You want the supplied Firebase deployment or already operate a Firebase project. | Direct Function URL; each check invokes the Function. |
+| [AWS](/docs/managed/aws) | DynamoDB, S3, Lambda@Edge, CloudFront | You want the supplied AWS deployment and use AWS accounts and IAM. | CloudFront shared catalog cache. |
+| [Custom server](/docs/custom/overview) | Your database, storage and host | You need to use your own ORM, server framework or deployment process. | Depends on your hosting and cache configuration. |
+
+All paths use the same Release Catalog protocol. Shared cache behavior differs
+by provider; a successful origin-only deployment does not imply a shared CDN
+cache hit. Each provider guide documents its resource, access and operating
+requirements.
+
+## Set up a provider preset
+
+1. [Install v1 packages](/docs/get-started/installation), including your app's
+   build plugin and the chosen provider package. Each package uses its own
+   `@rc` tag.
+2. Open the provider guide above and choose **AI agent** or **Terminal**.
+   An agent discovers or creates resources; interactive init walks you through
+   the provider's supported choices.
+3. Record the verified client base URL and the location of the client API key.
+   Continue with [Set up your app](/docs/get-started/app-setup).
+4. [Test an OTA update](/docs/guides/simulator-test) in a release build and verify
+   the changed code runs after restart.
+
+For an agent-assisted setup, install the
+[Hot Updater skill](/docs/guides/ai-agents) and ask it to inspect the project,
+prepare the chosen provider, wire the app, and complete that verification.
+Account login, missing access, billing activation and unresolved deployment
+choices may need your input. Resource IDs and settings that the agent can
+inspect are part of setup work.
+
+## Use an existing backend
+
+Follow the [custom-server quick start](/docs/custom/quick-start) for one complete
+Hono, SQLite and R2 example, or use the
+[custom-server overview](/docs/custom/overview) to select the adapter, framework
+and host that fit your stack.
+
+A custom server requires schema setup, an explicit client access policy and
+protected admin routes. Its CLI connection uses `standaloneRepository`; the
+server itself uses a direct database provider. Storage and database can be
+selected independently through the [plugin system](/docs/concepts/plugin-system).
+
+## Add operations after the first update
+
+The Console is a separate operator interface. After the app successfully
+receives an update, use the [Console guide](/docs/guides/console) for local
+management or [host the Console](/docs/guides/console-deployment) with the same
+provider resources. For a signed deployment, configure
+[bundle signing](/docs/guides/bundle-signing) before building the native app
+that will verify those signatures.

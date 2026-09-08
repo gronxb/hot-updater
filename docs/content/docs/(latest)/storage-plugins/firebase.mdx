@@ -7,14 +7,17 @@ icon: firebase
 ## Installation
 
 ```package-install
-npm install @hot-updater/firebase firebase-admin dotenv --save-dev
+npm install @hot-updater/firebase@rc firebase-admin dotenv --save-dev
 ```
+
+For a deployed server, install these packages as runtime dependencies instead
+of development dependencies.
 
 ## Setup
 
-Set up the backend with an [AI agent or the interactive
-CLI](/docs/managed/firebase#step-2-configure-firebase), then use the
-configuration below.
+For a complete provider deployment, follow the [Firebase setup](/docs/managed/firebase#step-2-configure-firebase).
+For an existing bucket or a custom server, use the storage configuration below;
+you do not need to provision the provider's database and server to use this plugin.
 
 ## Configuration
 
@@ -33,11 +36,15 @@ interface FirebaseStorageConfig {
 
 ## Environment Variables
 
-Set up your Firebase credentials:
+Use an existing application-default identity when available. Set
+`GOOGLE_APPLICATION_CREDENTIALS` only when you need a private credential file;
+keep the file outside the app bundle and exclude local environment files from
+Git. A Firebase CLI login alone does not necessarily authenticate the local
+Admin SDK.
 
 ```bash title=".env.hotupdater"
-# Project Settings > Service Accounts > New Private Key > Download JSON
-GOOGLE_APPLICATION_CREDENTIALS=/path/to/your-service-account-key.json
+# Optional: a private credential file when existing ADC is unavailable
+# GOOGLE_APPLICATION_CREDENTIALS=/private/path/to/your-service-account-key.json
 FIREBASE_PROJECT_ID=your-project-id
 FIREBASE_STORAGE_BUCKET=your-bucket-name
 ```
@@ -52,9 +59,7 @@ import { defineConfig } from "hot-updater";
 
 config({ path: ".env.hotupdater" });
 
-// https://firebase.google.com/docs/admin/setup?hl=en#initialize_the_sdk_in_non-google_environments
-// Set GOOGLE_APPLICATION_CREDENTIALS in .env.hotupdater to your credentials file.
-// Example: GOOGLE_APPLICATION_CREDENTIALS=./firebase-adminsdk-credentials.json
+// Reuse the environment's application-default credentials.
 const credential = applicationDefault();
 
 export default defineConfig({

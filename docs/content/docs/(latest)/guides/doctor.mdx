@@ -1,5 +1,5 @@
 ---
-title: "Doctor"
+title: "Diagnose setup and updates"
 description: "Check Hot Updater package versions, native setup, and server infrastructure."
 icon: Stethoscope
 version: "v0.30.0"
@@ -16,8 +16,10 @@ work:
 - React Native native files are connected to Hot Updater
 - Your deployed infrastructure server is not outdated
 
-Run it after upgrading Hot Updater, or when OTA updates behave differently after
-a package update.
+Run it during setup, after upgrading Hot Updater, or when OTA updates behave
+differently after a package update. It validates local configuration and server
+version; complete [Test an OTA update](/docs/guides/simulator-test) to verify
+actual device delivery and client authentication.
 
 ```package-install
 npx hot-updater doctor
@@ -106,24 +108,19 @@ npx hot-updater doctor --server-base-url https://updates.example.com
 https://updates.example.com/version
 ```
 
-Example success output:
-
-```txt
-Checking the health of Hot Updater.
-hot-updater CLI version: x.x.x
-Server version endpoint: https://updates.example.com/version
-Server version: x.x.x
-Required infrastructure version: x.x.x
-✅ Server infrastructure is up to date.
-✅ All Hot Updater checks passed!
-Doctor check complete.
-```
+A passing version check confirms the server meets the installed CLI's
+infrastructure requirement. It does not verify a client key, artifact download
+or native update application. Use the provider's authenticated verification or
+[agent server probe](/docs/guides/agent-infrastructure#verify-completion), then
+complete the [OTA test](/docs/guides/simulator-test).
 
 ## Update Package Versions
 
-If `doctor` reports version mismatches, update every Hot Updater package in
-`package.json` to the same compatible version, then run your package manager
-install command.
+If `doctor` reports version mismatches, install a compatible release channel
+for the CLI, SDK and required plugins. For the published v1 prerelease, follow
+[Install packages](/docs/get-started/installation) and select each package with
+`@rc`. Package RC numbers differ; do not copy the CLI's exact version onto every
+package. Keep the lockfile and rerun doctor after installation.
 
 ## Update Outdated Infrastructure
 
@@ -134,7 +131,8 @@ Infrastructure update required. Deploy server infrastructure version x.x.x or ne
 ```
 
 For managed providers (`aws`, `cloudflare`, `supabase`, `firebase`), choose your
-upgrade workflow:
+upgrade workflow. If the app/server is still on v0, follow
+[Move from v0 to v1](/docs/guides/upgrade-to-v1) before applying templates.
 
 <Tabs items={["AI agent", "Terminal"]}>
   <Tab value="AI agent">
@@ -154,7 +152,7 @@ See [Agent Infrastructure](/docs/guides/agent-infrastructure#upgrade-an-existing
   </Tab>
   <Tab value="Terminal">
 
-Update the Hot Updater packages together to the desired release. Extract that
+Install the compatible package set for the desired release first. Extract that
 release's templates for your provider, for example:
 
 ```package-install

@@ -1,0 +1,508 @@
+---
+title: "Connect your app"
+description: "Configure the authenticated update client, build plugin and native bundle loading before testing an OTA update."
+icon: Smartphone
+---
+
+import { Tabs, Tab } from "fumadocs-ui/components/tabs";
+
+## Before connecting
+
+Use this page after [agent setup](/docs/guides/ai-agents),
+[manual setup](/docs/get-started/basic-usage), or connecting an existing server.
+Both setup paths use the same app integration and
+[OTA verification](/docs/guides/simulator-test).
+
+Before editing, have the [required packages](/docs/get-started/installation)
+installed, a deployed update server **base URL**, and its registered **client API
+key** when authentication is enabled. Managed providers require this key.
+Existing v0 apps must follow [Move from v0 to v1](/docs/guides/upgrade-to-v1)
+for the migration steps.
+
+## Configure the update client
+
+Wrap your root component to check on launch, download selected updates and
+confirm successful startup for automatic crash recovery:
+
+```tsx title="App.tsx"
+import { HotUpdater } from "@hot-updater/react-native";
+import { Text, View } from "react-native";
+
+function App() {
+  return (
+    <View>
+      <Text>OTA baseline</Text>
+    </View>
+  );
+}
+
+export default HotUpdater.wrap({
+  baseURL: "https://your-update-server-url",
+  updateStrategy: "appVersion",
+  requestHeaders: {
+    "x-api-key": "<your-registered-client-api-key>",
+  },
+})(App);
+```
+
+Replace the URL and client-key placeholders using your verified provider setup.
+Keep any provider base path; the SDK appends the catalog and artifact routes.
+Use the same `updateStrategy` in the app and `hot-updater.config.ts`.
+`appVersion` is the default; choose
+[fingerprint](/docs/guides/update-strategies/fingerprint) when you want to track
+native compatibility inputs.
+
+The client key is intended for the app. Provider tokens, service-role keys,
+admin bearer tokens and signing private keys stay in the deployment environment
+or server. Never substitute one of those credentials for the client key.
+
+### Supply values to native and OTA builds
+
+`.env.hotupdater` configures local CLI/provider access; it is **not automatically
+loaded into your app**. Connect the server URL and client key to your project's
+app build configuration, and verify that both native builds and OTA bundle
+builds receive them, including CI or EAS.
+
+For Expo, public app variables can supply the two fields:
+
+```tsx
+baseURL: process.env.EXPO_PUBLIC_HOT_UPDATER_BASE_URL!,
+requestHeaders: {
+  "x-api-key": process.env.EXPO_PUBLIC_HOT_UPDATER_API_KEY!,
+},
+```
+
+For bare React Native and Rock, use the project's existing build-time
+configuration mechanism. Validate required values in the native and OTA build
+pipelines; the TypeScript `!` operator alone does not check them at runtime.
+A missing URL or key must not silently disable initialization.
+
+### Reporting and custom update timing
+
+[Insights](/docs/guides/insights) is enabled by default for `HotUpdater.wrap()`
+and `HotUpdater.init()`. Set `insights: false` in the same configuration to opt
+out. Confirm received reports after your first OTA test.
+
+For checks after login or an explicit update button, follow
+[Control update timing](/docs/guides/custom-update) and initialize with
+`HotUpdater.init()` when your app is ready. Use the
+[wrapper reference](/docs/react-native-api/wrap) for a progress UI and callbacks.
+
+## Build Configuration
+
+Setup configures bundling through the `build` field in `hot-updater.config.ts`.
+Keep the selected build plugin alongside your existing storage and database settings.
+
+<Tabs items={['Bare (React Native CLI)', 'Rock', 'Expo']}>
+  <Tab value="Bare (React Native CLI)">
+
+Use the Bare build plugin for standard React Native CLI projects:
+
+```ts title="hot-updater.config.ts"
+import { bare } from "@hot-updater/bare";
+import { defineConfig } from "hot-updater";
+
+export default defineConfig({
+  build: bare({
+    enableHermes: true,
+  }),
+  // ... storage and database
+});
+```
+
+No additional Babel plugin setup is required.
+
+  </Tab>
+  <Tab value="Rock">
+
+Use the Rock build plugin for Rock projects:
+
+```ts title="hot-updater.config.ts"
+import { rock } from "@hot-updater/rock";
+import { defineConfig } from "hot-updater";
+
+export default defineConfig({
+  build: rock(),
+  // ... storage and database
+});
+```
+
+No additional Babel plugin setup is required.
+
+  </Tab>
+  <Tab value="Expo">
+
+Use the Expo build plugin in `hot-updater.config.ts`:
+
+```ts title="hot-updater.config.ts"
+import { expo } from "@hot-updater/expo";
+import { defineConfig } from "hot-updater";
+
+export default defineConfig({
+  build: expo(),
+  // ... storage and database
+});
+```
+
+Then add the config plugin to your `app.json`:
+
+```json title="app.json"
+{
+  "expo": {
+    "plugins": [
+      [
+        "@hot-updater/expo",
+        {
+          "channel": "ota-test"
+        }
+      ]
+    ]
+  }
+}
+```
+
+Run prebuild to apply the native changes:
+
+```package-install
+npx expo prebuild
+```
+
+<Callout>
+  For Expo projects, the config plugin automatically generates the native code
+  configuration described in the next section.
+</Callout>
+
+<Callout type="info">
+  If you use Expo DOM components (`use dom`), see [Expo DOM Components (`use
+  dom`)](/docs/build-plugins/expo#expo-dom-components-use-dom) for the
+  additional Babel plugin setup.
+</Callout>
+
+  </Tab>
+</Tabs>
+
+## Native Code Setup
+
+Apply the marked Hot Updater changes to your existing native files. Preserve
+your app's package/module names, registered packages and React Native bootstrap
+code. Use the variant matching your project; do not replace the entire native
+file with a sample application's boilerplate.
+
+<Callout type="info">
+  If you're using Expo with the plugin configured above, this step is handled
+  automatically during prebuild.
+</Callout>
+
+### Android
+
+<Tabs items={['Kotlin (RN 0.82+)', 'Kotlin', 'Java']}>
+  <Tab value="Kotlin (RN 0.82+)">
+
+For React Native 0.82 and above, modify your `MainApplication.kt`:
+
+```kt title="android/app/src/main/java/com/<your-app-name>/MainApplication.kt"
+package com.hotupdaterexample
+
+import android.app.Application
+import com.facebook.react.PackageList
+import com.facebook.react.ReactApplication
+import com.facebook.react.ReactHost
+import com.facebook.react.ReactNativeApplicationEntryPoint.loadReactNative
+import com.facebook.react.defaults.DefaultReactHost.getDefaultReactHost
+import com.hotupdater.HotUpdater
+
+class MainApplication : Application(), ReactApplication {
+
+  override val reactHost: ReactHost by lazy {
+    getDefaultReactHost(
+      context = applicationContext,
+      packageList =
+        PackageList(this).packages.apply {
+          // Packages that cannot be autolinked yet can be added manually here, for example:
+          // add(MyReactNativePackage())
+        },
+      jsBundleFilePath = if (BuildConfig.DEBUG) { // [!code ++]
+        null // [!code ++]
+      } else { // [!code ++]
+        HotUpdater.getJSBundleFile(applicationContext) // [!code ++]
+      }, // [!code ++]
+    )
+  }
+
+  override fun onCreate() {
+    super.onCreate()
+    loadReactNative(this)
+  }
+}
+```
+
+  </Tab>
+  <Tab value="Kotlin">
+
+For React Native versions below 0.82, modify your `MainApplication.kt`:
+
+```kt title="android/app/src/main/java/com/<your-app-name>/MainApplication.kt"
+package com.hotupdaterexample
+
+import android.app.Application
+import com.facebook.react.PackageList
+import com.facebook.react.ReactApplication
+import com.facebook.react.ReactHost
+import com.facebook.react.ReactNativeHost
+import com.facebook.react.ReactPackage
+import com.facebook.react.defaults.DefaultNewArchitectureEntryPoint.load
+import com.facebook.react.defaults.DefaultReactHost.getDefaultReactHost
+import com.facebook.react.defaults.DefaultReactNativeHost
+import com.facebook.react.soloader.OpenSourceMergedSoMapping
+import com.facebook.soloader.SoLoader
+import com.hotupdater.HotUpdater // [!code ++]
+
+class MainApplication : Application(), ReactApplication {
+
+  override val reactNativeHost: ReactNativeHost =
+      object : DefaultReactNativeHost(this) {
+        override fun getPackages(): List<ReactPackage> =
+            PackageList(this).packages.apply {
+              // Packages that cannot be autolinked yet can be added manually here, for example:
+              // add(MyReactNativePackage())
+            }
+
+        override fun getJSMainModuleName(): String = "index"
+
+        override fun getUseDeveloperSupport(): Boolean = BuildConfig.DEBUG
+
+        override val isNewArchEnabled: Boolean = BuildConfig.IS_NEW_ARCHITECTURE_ENABLED
+        override val isHermesEnabled: Boolean = BuildConfig.IS_HERMES_ENABLED
+
+        override fun getJSBundleFile(): String? {  // [!code ++]
+          return if (BuildConfig.DEBUG) {  // [!code ++]
+            null  // [!code ++]
+          } else {  // [!code ++]
+            HotUpdater.getJSBundleFile(applicationContext)  // [!code ++]
+          }  // [!code ++]
+        }  // [!code ++]
+      }
+
+  override val reactHost: ReactHost
+    get() = getDefaultReactHost(applicationContext, reactNativeHost)
+
+  override fun onCreate() {
+    super.onCreate()
+    SoLoader.init(this, OpenSourceMergedSoMapping)
+    if (BuildConfig.IS_NEW_ARCHITECTURE_ENABLED) {
+      // If you opted-in for the New Architecture, we load the native entry point for this app.
+      load()
+    }
+  }
+}
+```
+
+  </Tab>
+  <Tab value="Java">
+
+For Java-based projects, modify your `MainApplication.java`:
+
+```java title="android/app/src/main/java/com/<your-app-name>/MainApplication.java"
+package com.hotupdaterexample;
+
+import android.app.Application;
+import com.facebook.react.PackageList;
+import com.facebook.react.ReactApplication;
+import com.facebook.react.ReactNativeHost;
+import com.facebook.react.ReactPackage;
+import com.facebook.react.defaults.DefaultNewArchitectureEntryPoint;
+import com.facebook.react.defaults.DefaultReactNativeHost;
+import com.facebook.soloader.SoLoader;
+import java.util.List;
+import com.hotupdater.HotUpdater;  // [!code ++]
+
+public class MainApplication extends Application implements ReactApplication {
+
+  private final ReactNativeHost mReactNativeHost =
+      new DefaultReactNativeHost(this) {
+        @Override
+        public boolean getUseDeveloperSupport() {
+          return BuildConfig.DEBUG;
+        }
+
+        @Override
+        protected List<ReactPackage> getPackages() {
+          @SuppressWarnings("UnnecessaryLocalVariable")
+          List<ReactPackage> packages = new PackageList(this).getPackages();
+          // Packages that cannot be autolinked yet can be added manually here, for example:
+          return packages;
+        }
+
+        @Override
+        protected String getJSMainModuleName() {
+          return "index";
+        }
+
+        @Override // [!code ++]
+        protected String getJSBundleFile() {  // [!code ++]
+            return BuildConfig.DEBUG  // [!code ++]
+                ? null  // [!code ++]
+                : HotUpdater.Companion.getJSBundleFile(this.getApplication().getApplicationContext());  // [!code ++]
+        }  // [!code ++]
+
+        @Override
+        protected boolean isNewArchEnabled() {
+          return BuildConfig.IS_NEW_ARCHITECTURE_ENABLED;
+        }
+
+        @Override
+        protected Boolean isHermesEnabled() {
+          return BuildConfig.IS_HERMES_ENABLED;
+        }
+      };
+
+  @Override
+  public ReactNativeHost getReactNativeHost() {
+    return mReactNativeHost;
+  }
+
+  @Override
+  public void onCreate() {
+    super.onCreate();
+    SoLoader.init(this, /* native exopackage */ false);
+
+    if (BuildConfig.IS_NEW_ARCHITECTURE_ENABLED) {
+      // If you opted-in for the New Architecture, we load the native entry point for this app.
+      DefaultNewArchitectureEntryPoint.load();
+    }
+    ReactNativeFlipper.initializeFlipper(this, getReactNativeHost().getReactInstanceManager());
+  }
+}
+```
+
+  </Tab>
+</Tabs>
+
+### iOS
+
+<Tabs items={['Swift', 'Objective-C']}>
+  <Tab value="Swift">
+
+For Swift projects, modify your `AppDelegate.swift`:
+
+```swift title="ios/<your-app-name>/AppDelegate.swift"
+import UIKit
+import React
+import React_RCTAppDelegate
+import ReactAppDependencyProvider
+import HotUpdater // [!code ++]
+
+@main
+class AppDelegate: RCTAppDelegate {
+  override func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey : Any]? = nil) -> Bool {
+    self.moduleName = "HotUpdaterExample"
+    self.dependencyProvider = RCTAppDependencyProvider()
+
+    // You can add your custom initial props in the dictionary below.
+    // They will be passed down to the ViewController used by React Native.
+    self.initialProps = [:]
+
+    return super.application(application, didFinishLaunchingWithOptions: launchOptions)
+  }
+
+  override func sourceURL(for bridge: RCTBridge) -> URL? {
+    self.bundleURL()
+  }
+
+  override func bundleURL() -> URL? {
+#if DEBUG
+    RCTBundleURLProvider.sharedSettings().jsBundleURL(forBundleRoot: "index")
+#else
+    Bundle.main.url(forResource: "main", withExtension: "jsbundle") // [!code --]
+    HotUpdater.bundleURL() // [!code ++]
+#endif
+  }
+}
+```
+
+  </Tab>
+  <Tab value="Objective-C">
+
+For Objective-C projects, modify your `AppDelegate.mm`:
+
+```objc title="ios/<your-app-name>/AppDelegate.mm"
+#import "AppDelegate.h"
+#import <HotUpdater/HotUpdater.h> // [!code ++]
+#import <React/RCTBundleURLProvider.h>
+
+@implementation AppDelegate
+
+- (BOOL)application:(UIApplication *)application didFinishLaunchingWithOptions:(NSDictionary *)launchOptions
+{
+  self.moduleName = @"HotUpdaterExample";
+  // You can add your custom initial props in the dictionary below.
+  // They will be passed down to the ViewController used by React Native.
+  self.initialProps = @{};
+
+  return [super application:application didFinishLaunchingWithOptions:launchOptions];
+}
+
+- (NSURL *)sourceURLForBridge:(RCTBridge *)bridge
+{
+  return [self bundleURL];
+}
+
+- (NSURL *)bundleURL
+{
+#if DEBUG
+  return [[RCTBundleURLProvider sharedSettings] jsBundleURLForBundleRoot:@"index"];
+#else
+  return [[NSBundle mainBundle] URLForResource:@"main" withExtension:@"jsbundle"]; // [!code --]
+  return [HotUpdater bundleURL]; // [!code ++]
+#endif
+}
+
+@end
+```
+
+  </Tab>
+</Tabs>
+
+<Callout type="info">
+  For brownfield apps where the JS bundle is embedded in an XCFramework, you can
+  pass a custom `Bundle` instance to lookup the JavaScript bundle resource:
+  `HotUpdater.bundleURL(bundle: xcframeworkBundle)` in Swift or `[HotUpdater
+  bundleURLWithBundle:xcframeworkBundle]` in Objective-C.
+</Callout>
+
+## Choose the native test channel
+
+Use a dedicated channel such as `ota-test` for the first release-build test.
+The Expo config above already selects it. For bare React Native or Rock, after
+the native files exist, run:
+
+```package-install
+npx hot-updater channel set ota-test
+```
+
+Changing the embedded default channel requires a new native build. See
+[Default Channel Setup](/docs/guides/channel-management) for custom native paths.
+Before a store release, choose the channel that binary should use and rebuild.
+
+## Prepare signing and compatibility
+
+If this app uses [bundle signing](/docs/guides/bundle-signing), embed the matching
+public key before building. Signing is opt-in; server provisioning alone does
+not enable it. Preserve an existing signer and its public key.
+
+For `appVersion`, record the native app version that the OTA will target. For
+`fingerprint`, generate and embed the fingerprint before the native build using
+the [fingerprint workflow](/docs/guides/update-strategies/fingerprint).
+
+## Verify the integration
+
+Run local and server diagnostics from the app directory:
+
+```package-install
+npx hot-updater doctor --json --server-base-url https://your-update-server-url
+```
+
+Resolve reported setup issues, then continue to
+[Test an OTA update](/docs/guides/simulator-test). That test builds the native app
+in Release mode and proves that a changed screen and asset reach the device.
+Doctor checks configuration and server version; it does not prove OTA delivery.

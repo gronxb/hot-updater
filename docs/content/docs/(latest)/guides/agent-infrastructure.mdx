@@ -1,39 +1,22 @@
 ---
-title: "Agent Infrastructure"
+title: "Agent infrastructure reference"
 description: "Let AI agents apply versioned infrastructure templates and resume setup or upgrades using their available provider tools."
 icon: Bot
 ---
 
 ## Ask your agent
 
-With the [Hot Updater skill](/docs/guides/ai-agents) attached, ask your coding agent:
+For a new app, start with [Set up with an agent](/docs/guides/ai-agents). It
+covers installation, provider discovery, native integration and the first
+verified OTA. This page documents the infrastructure commands, generated files,
+resume behavior and server verification used during that workflow.
 
-```text
-$hot-updater Set up infrastructure for this project.
-```
+`hot-updater agent infra setup` and `upgrade` generate local files. The agent
+applies those files through available provider tools, creates missing resources
+when authorized and verifies their actual state. The commands themselves do not
+authenticate or execute the deployment plan.
 
-You can also name the command directly when requesting setup or an upgrade:
-
-```text
-Use hot-updater agent infra setup to set up this project's infrastructure.
-Use hot-updater agent infra upgrade to upgrade this project's existing server.
-```
-
-You can leave the provider unspecified. The agent reads the instructions and
-inspects your project's existing configuration. If it cannot determine the
-provider, it asks you to choose one, along with any other missing choices or access.
-It applies the generated files through available provider MCP tools, CLIs, APIs,
-or a browser, then verifies each step.
-
-It locates the app and build setup in your workspace, discovers existing provider
-resources, and creates the missing projects, instances, databases or services
-needed for setup. You do not need to collect resource IDs or pre-create every
-resource. The agent asks only when a target is ambiguous or a step needs your
-login, access, billing activation or another decision it cannot resolve.
-
-The commands generate local files. The agent handles authentication, package
-installation, resource creation and deployment using those files. Existing
-`hot-updater init` remains available for interactive setup.
+For terminal setup, use [Set up manually](/docs/get-started/basic-usage).
 
 ## Before provisioning
 
@@ -41,17 +24,15 @@ The CLI requires Node 20.19+. The generated client-key helper imports TypeScript
 and requires Node 22.18+ or Node 24+. Have the agent check this before creating
 remote resources; the helper can use a separate runtime from your app.
 
+Before either command, follow [Install packages](/docs/get-started/installation)
+to install `hot-updater@rc`, `@hot-updater/react-native@rc` and the selected
+build/provider packages at `@rc`. RC numbers are independent; record the resolved
+versions instead of assigning the CLI version to every package.
+
 The installed CLI must advertise `agent infra setup` and `agent infra upgrade`.
-The skill does not add commands to older versions. If the features are available
-only in a prerelease, explicitly select that release channel, for example:
-
-```text
-$hot-updater Use the rc release channel and set up infrastructure for this project.
-```
-
-The agent installs a compatible local CLI and checks its help before continuing.
-`hot-updater@rc` selects the published RC; it does not include unreleased changes.
-For unreleased testing, provide the matching preview package or local build.
+The skill does not add commands to older versions. `hot-updater@rc` selects the
+published prerelease; it does not include unreleased changes. For unreleased
+testing, use a matching preview package set or local build.
 
 ## What the setup command produces
 
@@ -240,6 +221,8 @@ artifact when available and runs:
 npx hot-updater doctor --json --server-base-url https://updates.example.com
 ```
 
-Server deployment, JS/native integration, and an OTA test in a native release
-build are separate results. The agent should report which checks passed and
-which work remains.
+Server deployment, JS/native integration, and an OTA test in a native Release
+build are separate results. Continue with [Connect your app](/docs/get-started/app-setup)
+and [Test an OTA update](/docs/guides/simulator-test). The agent reports which
+checks passed and which work remains; a scaffold, manifest or healthy server
+version alone does not prove app delivery.

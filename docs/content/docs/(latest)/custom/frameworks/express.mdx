@@ -99,47 +99,31 @@ export default defineConfig({
 
 ## Handler Boundaries
 
-The handlers own these complete route groups. Optional groups exist only when
-their feature or storage provider is configured:
+Insights ingestion and query capabilities are built in. Client reporting is on
+by default and can be disabled in the mobile SDK. The client API key protects
+catalog reads, artifact resolution and Insights ingestion; it does not
+protect or authorize the admin handler.
 
-| Handler | External route group                      | Purpose                                          |
-| ------- | ----------------------------------------- | ------------------------------------------------ |
-| Client  | `GET /hot-updater/version`                | Server diagnostics                               |
-| Client  | `GET /hot-updater/release-catalogs/*`     | App-version and fingerprint catalogs             |
-| Client  | `GET /hot-updater/artifacts/*`            | Artifact resolution                              |
-| Client  | `GET /hot-updater/storage/*`              | Optional proxied storage download                |
-| Client  | `POST /hot-updater/events`                | Optional Insights ingestion                     |
-| Admin   | `/hot-updater/admin/bundles/*`            | Bundle management and optional Insights queries |
-| Admin   | `/hot-updater/admin/releases/*`           | Release management and preflight                 |
-| Admin   | `/hot-updater/admin/release-catalogs/*`   | Catalog rows and rebuilds                        |
-| Admin   | `/hot-updater/admin/channels/*`           | Channel management                               |
-| Admin   | `POST /hot-updater/admin/database/commit` | Atomic database commit                           |
-| Admin   | `GET /hot-updater/admin/installations/*`  | Optional Insights queries                       |
+See the [shared handler boundary](/docs/custom/overview#runtime-policy) for route
+groups and the [repository server contract](/docs/database-plugins/standalone#server-contract)
+for exact management requests. Keep the framework-specific authentication and
+mount ordering shown above.
 
-Admin route groups exist only where `handlers.admin` is explicitly mounted.
-See the [Standalone Repository server contract](/docs/database-plugins/standalone#server-contract)
-for the exact admin request and response shapes.
+Before connecting the app, verify that `/hot-updater/version` responds and an
+admin request without the expected token is rejected. Then use
+[CLI configuration](/docs/custom/cli-configuration#verify-the-connection) to
+verify authenticated management access.
 
 ## React Native Setup
 
-For `clientAccess: { type: "api-key" }`, first [create a client API key](/docs/custom/quick-start#bootstrap-the-schema-and-api-key)
-and send it as `x-api-key`. Omit this header only when the server explicitly
-uses `clientAccess: { type: "public" }`; never use the admin token in the app.
+[Create a client API key](/docs/custom/api-key-authentication#bootstrap-a-self-hosted-client)
+against the prepared database, then follow [Set up your app](/docs/get-started/app-setup).
+Use the client root as `baseURL` and send the key through `x-api-key`. Never
+put the admin token in the app.
 
-```typescript title="App.tsx"
-import { HotUpdater } from '@hot-updater/react-native';
-
-export default HotUpdater.wrap({
-  baseURL: 'http://localhost:3000/hot-updater', // [!code ++]
-  requestHeaders: {
-    'x-api-key': '<API key printed by api-key create>',
-  },
-  updateStrategy: 'appVersion', // or "fingerprint" // [!code ++]
-  fallbackComponent: ({ progress, status }) => (
-    // ... Custom loading UI
-  ),
-  onError: error => {
-    // ... Error handling
-  },
-})(App);
-```
+For local connectivity checks, `localhost` reaches the host from the iOS
+Simulator on the same Mac and `10.0.2.2` does so from the Android Emulator.
+Before a release-build OTA test, expose the server through a reachable HTTPS
+endpoint and use it in the app; changing the host address does not enable
+cleartext HTTP. Complete [Test an OTA update](/docs/guides/simulator-test)
+against that HTTPS endpoint.

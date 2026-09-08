@@ -1,0 +1,168 @@
+---
+title: "Insights"
+description: "Configure app reporting, verify update adoption, and diagnose a reporting installation."
+icon: ChartNoAxesCombined
+---
+
+## Monitor app activity
+
+Insights shows activity received from app installations: the last reported
+update, successful applications, and recoveries. Use it after
+[verifying your first OTA](/docs/guides/simulator-test) and while operating a
+rollout.
+
+## Configure reporting
+
+[`HotUpdater.wrap`](/docs/react-native-api/wrap) and
+[`HotUpdater.init`](/docs/react-native-api/init) enable Insights by default.
+Configure the client handler URL and the client API key from your infrastructure
+setup. The automatic flow reports after the app-ready state is available:
+
+```tsx
+import { HotUpdater } from "@hot-updater/react-native";
+import App from "./App";
+
+export default HotUpdater.wrap({
+  baseURL: "<your-update-server-url>",
+  updateStrategy: "appVersion",
+  requestHeaders: {
+    "x-api-key": "<client-api-key>",
+  },
+  onNotifyAppReady: (result) => {
+    console.log("App-ready state:", result.status);
+  },
+})(App);
+```
+
+For a manual update flow, use `init` with the same transport and reporting
+options when your app is ready. Use one configuration API per app. If your
+custom server intentionally uses `clientAccess: { type: "public" }`, omit the
+client-key header. See [API key authentication](/docs/custom/api-key-authentication).
+
+Set `insights: false` in your `wrap` or `init` options to disable client reporting.
+Native app-ready handling and crash recovery still run, and server Insights
+routes remain available. This setting does not delete reports already stored.
+
+The client reports these outcomes:
+
+| Outcome | Meaning |
+| --- | --- |
+| `UNCHANGED` | The app reported without an applied or recovered transition. This also reports a successful same-artifact Release adoption. |
+| `UPDATE_APPLIED` | Native app-ready state reports that an OTA transition became active. |
+| `RECOVERED` | Native app-ready state reports recovery from a failed update. |
+
+Automatic startup reporting is attempted once per JavaScript runtime. Reporting
+is best effort: a network failure produces a warning and does not block app
+startup or trigger rollback. `onNotifyAppReady` receives local native state;
+it is not confirmation that the server received an event.
+
+## Identify an installation
+
+Read [`HotUpdater.getInstallId()`](/docs/react-native-api/getInstallId) in a
+support log or debug screen. This stable local ID identifies one installation;
+it is independent of the signed-in user.
+
+Optionally attach your application's user ID and display name with
+[`HotUpdater.setUser()`](/docs/react-native-api/setUser):
+
+```tsx
+HotUpdater.setUser({ userId: "user-123", username: "Alex" });
+
+// On logout, clear the identity attached to future reports.
+HotUpdater.setUser(null);
+```
+
+These calls illustrate separate login and logout actions. `setUser` persists
+local identity for future reports; it does not send an event immediately. Set
+identity before startup reporting if the first report must include it. Each
+call replaces both fields, so omitting a field clears its previous value.
+
+In **Insights → All events**, search by **User ID or installation ID**, then
+select an installation to inspect its latest report and apply/recovery history.
+The username supplies display context. Multiple installations associated with
+one user remain separate records.
+
+Reports include installation ID, platform, app version, channel, cohort,
+fingerprint when present, and Bundle/Release transition identifiers. They also
+include the user ID and username you configured. Keep these optional fields
+consistent with your app's data policy and protect server access as described
+in [Security](/docs/policy/security).
+
+## Verify reporting
+
+1. Launch a native build configured with the v1 SDK, reachable client handler,
+   and valid client key. Copy its `getInstallId()` value.
+2. Open the Console's **Insights → All events** and find that installation.
+   Confirm the report's app version, channel, and platform. An `UNCHANGED`
+   report is enough to verify startup reporting before the first OTA.
+3. Deploy and apply a test update using the
+   [OTA verification workflow](/docs/guides/simulator-test). Confirm the changed
+   UI after the runtime restarts, then inspect its `UPDATE_APPLIED` event and
+   reported update ID.
+
+[`getBundleId()`](/docs/react-native-api/getBundleId) and
+[`getActiveUpdateState()`](/docs/react-native-api/getActiveUpdateState) can
+reflect a staged selection before its code is running. A selected ID alone is
+not an applied-update check. Combine the running app's visible change with the
+app-ready outcome and the server's received report.
+
+If an expected report is absent, check that reporting is enabled, the app
+reached readiness, and the handler URL and client header match the deployed
+server. Inspect app logs for Insights warnings. Server availability and
+filters affect what the Console can show; a missing report does not prove
+that the update failed.
+
+## Read the Console
+
+Use [the local or deployed Console](/docs/guides/console). Insights views need a
+direct database plugin; `standaloneRepository` does not currently proxy the
+Insights models.
+
+The Bundles list shows compact **Active** and **Rollback** counts over the last
+30 days. Bundle Detail keeps these counts and a small activity graph above
+Delivery settings.
+
+Insights opens with **All platforms** and a 24-hour period. Select **7d** or
+**30d** in App usage to update its metric, chart, and distributions. Bundle
+activity has its own independent period selector. Search and select a channel, optionally select a platform and app
+version, then choose **Apply filters**.
+
+App usage shows one metric for the selected period: **DAU** for the last 24
+hours, **WAU** for the last 7 days, or **MAU** for the last 30 days. Each counts
+unique app installations with at least one matching activity report in that
+rolling window. Multiple installations belonging to the same person count
+separately. All event types count, including **No change**, as do reports
+without a known bundle ID. Hover over, focus, or tap the metric's info icon to
+see its definition.
+
+The usage chart counts unique reporting installations in each interval: hourly
+for 24h, every six hours for 7d, and daily for 30d. The period total deduplicates
+installations across intervals, so it is not the sum of the chart points.
+Distributions count each installation once, using its latest matching report's
+app version and platform within the selected period.
+
+Select an app version in **Distribution**, or choose **View distribution**, to
+see its bundle IDs, platforms, active installation counts, and share within each
+app version. The detail view keeps the overview's reporting scope, supports
+20 rows per page, and links each known ID to its bundle details. **Unknown bundle**
+accounts for installations whose reported file has no observed deployment ID.
+Period and filter selections survive navigation back to the overview.
+
+![App usage and bundle trends with sample data](/docs/console/insights-overview.png)
+
+![Bundle distribution by app version with sample data](/docs/console/insights-distribution.png)
+
+The bundle chart includes every bundle ID observed with the selected filters.
+**Active** follows each installation’s last reported ID
+within that period, so moving to a new bundle reduces the old bundle’s count.
+Select **Rollback** to compare installations recovered from each bundle per
+interval. Highlighting an ID keeps the other lines visible.
+
+Open **All events** on the activity card to browse reports from newest to oldest,
+20 per page.
+
+These counts reflect received reports, not the full installed population.
+Reports without a known bundle ID are excluded from the per-ID chart. History
+reads are capped at 50,000 events for each reporting period. Partial
+history is labeled in the UI; the active-user total is shown as a lower bound
+with **≥**, and unavailable usage intervals are shown as gaps.

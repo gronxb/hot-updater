@@ -1,141 +1,43 @@
 ---
 title: "getCrashHistory"
-description: Returns a list of artifact IDs that previously caused crashes.
+description: "Read the artifact IDs rejected after a crash and automatic rollback."
 icon: AlertTriangle
 ---
 
 ## Usage
 
-Use `getCrashHistory()` to retrieve the list of bundles that crashed and triggered automatic rollback.
+Use `HotUpdater.getCrashHistory()` in a support log or debug screen to inspect
+artifacts that crashed and triggered automatic rollback.
 
 ```tsx
 import { HotUpdater } from "@hot-updater/react-native";
 
-function App() {
-  const checkCrashes = () => {
-    const crashedBundles = HotUpdater.getCrashHistory();
-
-    if (crashedBundles.length > 0) {
-      console.log("Crashed bundles:", crashedBundles);
-    } else {
-      console.log("No crashed bundles");
-    }
-  };
-
-  return (
-    <View>
-      <Button title="Check Crash History" onPress={checkCrashes} />
-    </View>
-  );
-}
-
-export default HotUpdater.wrap({
-  baseURL: "<your-update-server-url>",
-  updateStrategy: "appVersion",
-})(App);
+const crashedArtifacts = HotUpdater.getCrashHistory();
+console.log("Rejected artifact IDs:", crashedArtifacts);
 ```
 
 ## Return Value
 
-Returns an array of artifact ID strings. Each ID represents a bundle that failed to
-load and triggered rollback. These diagnostic values match the console's
-Advanced **Artifact ID**, not the update ID from `HotUpdater.getBundleId()`.
-
-```typescript
+```ts
 getCrashHistory(): string[]
 ```
 
-**Example return value:**
-```typescript
-[
-  "01234567-89ab-cdef-0123-456789abcdef",
-  "12345678-9abc-def0-1234-56789abcdef0"
-]
-```
+Each value matches the Console's Advanced **Artifact ID**. It is not the update
+ID returned by [`getBundleId()`](/docs/react-native-api/getBundleId). An empty
+array means the device has no recorded crashed artifacts.
 
-An empty array means no bundles have crashed.
+The getter is synchronous and reads local history without making a network
+request. Recorded artifacts are rejected if the device attempts to install
+them again. [`clearCrashHistory()`](/docs/react-native-api/clearCrashHistory)
+clears that rejection history for a controlled retry.
 
-## Use Cases
-
-### Monitor Deployment Health
-
-Check crash history after deployments to ensure bundles are working correctly.
-
-```tsx
-import { HotUpdater } from "@hot-updater/react-native";
-import { useEffect } from "react";
-
-function App() {
-  useEffect(() => {
-    const crashes = HotUpdater.getCrashHistory();
-
-    if (crashes.length > 0) {
-      console.warn(`${crashes.length} bundle(s) have crashed`);
-    }
-  }, []);
-
-  return <YourApp />;
-}
-```
-
-### Send to Monitoring Service
-
-Track crash frequency and artifact IDs in your analytics platform.
-
-```tsx
-import { HotUpdater } from "@hot-updater/react-native";
-import { useEffect } from "react";
-import * as Sentry from "@sentry/react-native";
-
-function App() {
-  useEffect(() => {
-    const crashes = HotUpdater.getCrashHistory();
-
-    if (crashes.length > 0) {
-      // Send to monitoring service
-      Sentry.captureMessage("Bundle crashes detected", {
-        level: "warning",
-        extra: {
-          crashedBundles: crashes,
-          count: crashes.length,
-        },
-      });
-    }
-  }, []);
-
-  return <YourApp />;
-}
-```
-
-## Example: Logging Crashes
-
-Create a utility function to log crash history with timestamps.
-
-```tsx
-import { HotUpdater } from "@hot-updater/react-native";
-
-function logCrashHistory() {
-  const crashes = HotUpdater.getCrashHistory();
-
-  if (crashes.length === 0) {
-    console.log("No crashed bundles");
-    return;
-  }
-
-  console.log("=== Crash History ===");
-  let i = 1;
-  for (const bundleId of crashes) {
-    console.log(`${i}. Artifact ID: ${bundleId}`);
-    i++;
-  }
-  console.log(`Total crashes: ${crashes.length}`);
-}
-
-// Call on app start or from debug panel
-logCrashHistory();
-```
+Crash detection and app-ready reporting are configured through either
+[`wrap`](/docs/react-native-api/wrap) or [`init`](/docs/react-native-api/init).
+Use one of them, and see [automatic rollback](/docs/concepts/automatic-rollback)
+for the recovery lifecycle.
 
 ## Related APIs
 
-- [`clearCrashHistory()`](/docs/react-native-api/clearCrashHistory) - Clear the crash history to allow retrying bundles
-- [`wrap()`](/docs/react-native-api/wrap) - Required for automatic crash detection and rollback
+- [`clearCrashHistory`](/docs/react-native-api/clearCrashHistory)
+- [`getActiveUpdateState`](/docs/react-native-api/getActiveUpdateState)
+- [Insights](/docs/guides/insights) for reports received across installations

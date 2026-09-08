@@ -1,0 +1,101 @@
+---
+title: "Remote Signing"
+description: "Connect a signing service using the Hot Updater signing protocol"
+icon: Shield
+---
+
+## Signing Protocol
+
+Hot Updater signs the 32 decoded bytes of each SHA-256 file hash using
+RSA PKCS#1 v1.5 with SHA-256. The AWS KMS provider therefore uses:
+
+- `MessageType: RAW`
+- `SigningAlgorithm: RSASSA_PKCS1_V1_5_SHA_256`
+- the decoded file-hash bytes as `Message`
+
+Do not substitute `DIGEST` or an RSA-PSS algorithm. Existing iOS and Android
+verifiers expect the exact protocol above.
+
+Google Cloud KMS preserves the same signature semantics by submitting
+`SHA-256(message)` to its digest API.
+
+## Configure a Remote Signer
+
+`remoteSigning` uses the authenticated `/_hot-updater/signing` protocol.
+Requests and responses pin the protocol version, RSA-SHA256 algorithm, and
+SHA-256 fingerprint of the SPKI public key. The client rejects redirects and
+locally verifies every returned signature.
+
+Use `remoteSigning` for a compatible signing service that is not represented by
+an official provider plugin. The endpoint URL is normalized to the managed
+signing path, and the dedicated token defaults to
+`HOT_UPDATER_SIGNING_TOKEN`.
+
+Use a separate signing key and token for each app and environment. Possession
+of a remote signing token grants an online signing oracle for arbitrary
+32-byte content-hash messages. The signature authenticates only artifact
+content; app, environment, platform, channel, targeting, release context, and
+rollback policy are not included in the signed message. Enforce those controls
+in the protected deployment workflow and do not share a signer across trust
+boundaries.
+
+```ts title="hot-updater.config.ts"
+import { defineConfig } from "hot-updater";
+import { remoteSigning } from "hot-updater/signing";
+
+export default defineConfig({
+  // ...other config
+  signing: remoteSigning({
+    endpoint: "https://signer.example.com",
+  }),
+});
+```
+
+## Implement the Signing Service
+
+A custom service can mount the matching Web API handler from the root
+`@hot-updater/plugin-core` entrypoint. Keep key access inside the `sign`
+callback and return `404` for unrelated routes:
+
+```ts title="signing-service.ts"
+import { createBundleSigningHandler } from "@hot-updater/plugin-core";
+
+interface Env {
+  HOT_UPDATER_SIGNING_PUBLIC_KEY: string;
+  HOT_UPDATER_SIGNING_TOKEN: string;
+  signWithKmsOrHsm(message: Uint8Array): Promise<Uint8Array>;
+}
+
+export const handleRequest = async (request: Request, env: Env) =>
+  (await createBundleSigningHandler({
+    request,
+    publicKey: env.HOT_UPDATER_SIGNING_PUBLIC_KEY,
+    token: env.HOT_UPDATER_SIGNING_TOKEN,
+    sign: (message) => env.signWithKmsOrHsm(message),
+  })) ?? new Response("Not found", { status: 404 });
+```
+
+`signWithKmsOrHsm` is your service's implementation, not a built-in binding. It
+must return the raw signature bytes for the RSA-SHA256 message contract above.
+The handler authenticates both metadata and signing requests, accepts only the
+versioned 32-byte signing contract, and verifies the returned signature before
+responding. Key isolation, authorization, rate limits, and audit logging remain
+the responsibility of the service and its `sign` implementation.
+
+## Remote Call Behavior
+
+Within a deploy signing session, Hot Updater makes one signing call per
+distinct hash and memoizes repeated hashes, including those shared by multiple
+artifact references. Each signer instance also resolves and caches its public
+key with a separate request. SDK retries can add network requests. Account for
+KMS latency, request quotas, availability, and cost. Provider errors fail the
+deployment; Hot Updater does not fall back to an unsigned bundle.
+
+## Embed the Public Key and Release the App
+
+Follow the shared steps for [Expo and EAS Build](/docs/guides/bundle-signing#expo-and-eas-build)
+or [React Native CLI](/docs/guides/bundle-signing#manual-public-key-configuration).
+Build and release the native app before deploying its first signed OTA bundle.
+
+When replacing an existing key, follow [Key Rotation](/docs/guides/bundle-signing#key-rotation)
+before changing the signer used for installed apps.

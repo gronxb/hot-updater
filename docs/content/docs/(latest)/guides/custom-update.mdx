@@ -37,22 +37,11 @@ HotUpdater.init({
 });
 ```
 
-<Callout>
-`HotUpdater.init` has the same initialization effect as manual `wrap`, without
-creating an unnecessary React HOC.
-
-```tsx
-HotUpdater.init({
-  baseURL: "<your-update-server-url>",
-});
-
-export default App;
-```
-
-This configures Hot Updater and notifies the update server that the current app
-launch is ready.
-
-</Callout>
+`HotUpdater.init` initializes the native launch lifecycle without checking for
+updates. Export your root component directly and keep `HotUpdater.wrap` out of
+this flow. [Insights reporting](/docs/guides/insights) is enabled by default;
+set `insights: false` to opt out. Keep your existing client-key configuration
+from [App setup](/docs/get-started/app-setup).
 
 ## Check on Your Schedule
 
@@ -353,12 +342,13 @@ async function runUpdateFlow() {
 ## Checklist
 
 - Call `HotUpdater.init` before update APIs.
-- Keep `notifyAppReady` wired through `baseURL`.
+- Configure `baseURL` and client headers; `init` handles the launch lifecycle.
 - Choose the check timing based on your app state, not module import order.
 - Download with `updateInfo.updateBundle()` unless you need direct control.
 - Use `useHotUpdaterStore` or `addListener` to show update progress.
 - Use `reload()` immediately only for force updates or explicit user consent.
 - Add error reporting around the full flow.
+- Verify the flow in an [installed release build](/docs/guides/simulator-test).
 
 ## Related
 

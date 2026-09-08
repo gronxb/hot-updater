@@ -7,14 +7,14 @@ icon: cloudflare
 ## Installation
 
 ```package-install
-npm install @hot-updater/cloudflare
+npm install @hot-updater/cloudflare@rc
 ```
 
 ## Setup
 
-Set up the backend with an [AI agent or the interactive
-CLI](/docs/managed/cloudflare#step-2-configure-cloudflare), then use the
-configuration below.
+For a complete provider deployment, follow the [Cloudflare setup](/docs/managed/cloudflare#step-2-configure-cloudflare).
+For an existing bucket or a custom server, use the storage configuration below;
+you do not need to provision the provider's database and server to use this plugin.
 
 Create R2 S3-compatible credentials from the Cloudflare R2 API token page or
 follow the [Cloudflare R2 API token guide](https://developers.cloudflare.com/r2/api/tokens/).
@@ -34,8 +34,7 @@ interface R2S3StorageConfig {
 }
 ```
 
-`r2Storage` requires S3-compatible credentials. The Wrangler object-storage
-fallback is removed.
+`r2Storage` requires S3-compatible credentials for its Node.js/CLI transport.
 
 ## Usage
 

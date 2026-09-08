@@ -13,7 +13,10 @@ const getPageSlugs = (request: Request) => {
 };
 
 export async function GET(request: Request) {
-  const page = source.getPage(getPageSlugs(request));
+  const slugs = getPageSlugs(request);
+  const page =
+    source.getPage(slugs) ??
+    (slugs.at(-1) === "index" ? source.getPage(slugs.slice(0, -1)) : undefined);
 
   if (!page) {
     return new Response("Not Found", { status: 404 });
@@ -27,11 +30,18 @@ export async function GET(request: Request) {
 }
 
 export async function getConfig() {
-  const pages = source.getPages().map((page) => {
+  const pages = source.getPages().flatMap((page) => {
     const slugs = page.slugs.length > 0 ? page.slugs : ["index"];
     const last = slugs.at(-1)!;
 
-    return [...slugs.slice(0, -1), `${last}.md`];
+    const canonical = [...slugs.slice(0, -1), `${last}.md`];
+    const filename = page.path
+      .replace(/\.mdx?$/, ".md")
+      .split("/")
+      .filter((segment) => !/^\(.+\)$/.test(segment));
+    return canonical.join("/") === filename.join("/")
+      ? [canonical]
+      : [canonical, filename];
   });
 
   return {

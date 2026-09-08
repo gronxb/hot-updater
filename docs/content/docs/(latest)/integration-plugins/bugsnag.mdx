@@ -13,7 +13,7 @@ import { Tabs, Tab } from 'fumadocs-ui/components/tabs';
 - Install the plugin:
 
 ```package-install
-npm install @hot-updater/bugsnag-plugin @bugsnag/cli --save-dev
+npm install @hot-updater/bugsnag-plugin@rc @bugsnag/cli --save-dev
 ```
 
 ## Step 1: Wrap Your Build Plugin
@@ -119,3 +119,11 @@ Now, every time you deploy, sourcemaps will be automatically uploaded to BugSnag
 ```package-install
 npx hot-updater deploy -i
 ```
+
+## Verify symbolication
+
+Install a release build, deploy a small JavaScript change with sourcemaps
+enabled, and trigger a controlled test error from the updated code. In your
+monitoring dashboard, confirm the stack points to the original source file
+and line in that update. A successful upload alone does not prove the app and
+uploaded map use the same identity.

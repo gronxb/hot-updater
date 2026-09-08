@@ -37,8 +37,8 @@ Depending on timing, the result can be a soft exception, blank screen, or full a
 
 ### `processRestart` (default)
 
-- Android only
-- Restarts the app cold and starts again from the splash screen
+- Android: restarts the process; iOS: normal React Native reload
+- On Android, restarts the app cold and starts again from the splash screen
 - Best default for standalone Android apps
 
 ```tsx
@@ -47,7 +47,7 @@ HotUpdater.setReloadBehavior("processRestart");
 
 ### `reload`
 
-- Android only
+- Android and iOS
 - Uses the normal in-process React Native reload
 - Reloads the current React Native screen/runtime instead of restarting the whole app
 

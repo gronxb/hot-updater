@@ -16,6 +16,9 @@ import { HotUpdater } from "@hot-updater/react-native";
 
 HotUpdater.init({
   baseURL: "<your-update-server-url>",
+  requestHeaders: {
+    "x-api-key": "<client-api-key>",
+  },
 });
 
 async function stageAppUpdate() {
@@ -23,9 +26,6 @@ async function stageAppUpdate() {
     let checkError: Error | null = null;
     const updateInfo = await HotUpdater.checkForUpdate({
       updateStrategy: "appVersion", // or "fingerprint"
-      requestHeaders: {
-        "x-api-key": "<your-api-key>",
-      },
       onError: (error) => {
         checkError = error;
       },
@@ -68,7 +68,7 @@ The `updateBundle` function accepts the following parameters:
 | ---------- | ------------------------ | -------- | ------------------------------------------------- |
 | `bundleId` | `string`                 | ✅       | Unique identifier of the update bundle.           |
 | `fileUrl`  | `string \| null`         | ✅       | Bundle archive URL, or `null` to reset to the built-in bundle. |
-| `fileHash` | `string \| null`         | ✅       | SHA256 hash, `sig:<base64_signature>`, or `null`. |
+| `fileHash` | `string \| null`         | ✅       | SHA256 hash or `sig:<base64_signature>` for downloads; `null` for a built-in reset. |
 | `status`   | `"UPDATE" \| "ROLLBACK"` | ✅       | Update transition to apply.                       |
 
 Passing `fileUrl: null` resets to the built-in bundle; it does not roll back to
@@ -79,9 +79,12 @@ are preserved.
 ### Behavior
 
 - Downloads the specified bundle when `fileUrl` is not `null`.
-- When `fileHash` is a hexadecimal hash, verifies the downloaded file's SHA256
-  hash. A `sig:` value verifies its RSA-SHA256 signature with the configured
-  public key. A failed verification aborts the update and deletes the download.
+- A download with a missing or empty `fileHash` is rejected.
+- Without a configured signing public key, verifies a hexadecimal SHA256 hash
+  and rejects signed artifacts. With a configured public key, requires a `sig:`
+  RSA-SHA256 signature and rejects unsigned artifacts. A failed verification
+  aborts the update and deletes the download. See
+  [bundle signing](/docs/guides/bundle-signing) for key configuration.
 - A `null` URL resets the native bundle selection to the built-in bundle and
   runs downloaded-bundle cleanup. The nullable properties must still be present
   in the object.

@@ -1,104 +1,284 @@
 ---
-title: "Simulate Test"
-description: "Since hot-updater does not work in dev environment, you need to test it in Release mode as shown below."
+title: "Test an OTA update"
+description: "Verify a native Release app receives a JavaScript and asset change, then check rollback and reporting."
 icon: TestTube
 ---
 
 import { Tabs, Tab } from "fumadocs-ui/components/tabs";
 
+## Verify delivery on a native app
+
+This is the completion check for both [agent](/docs/guides/ai-agents) and
+[manual](/docs/get-started/basic-usage) setup. It proves the app applies an OTA
+update; a successful server deployment or bundle upload is only one step.
+
 ## Checklist
 
-- Make sure `hot-updater.config.ts` is properly configured.
-- Make sure `HotUpdater.wrap` is properly implemented.
+Complete [Connect your app](/docs/get-started/app-setup) first. Record:
+
+- Your deployed base URL and working client authentication.
+- The target platform, native app version or fingerprint, and test channel.
+- The SDK's effective channel from `HotUpdater.getChannel()` and cohort from
+  `HotUpdater.getCohort()`.
+- A visible baseline label and image in the app that you can change for this test.
+
+Use a dedicated channel such as `ota-test`. If it already contains compatible
+enabled updates, choose an unused channel for a predictable embedded baseline. Set it
+[before the native build](/docs/get-started/app-setup#choose-the-native-test-channel).
+The commands below use iOS and native app version `1.0.0`; replace them with the
+actual recorded platform and version. Test each supported platform separately.
+A named cohort needs an explicit [target cohort](/docs/guides/rollout-cohorts),
+even when numeric rollout is 100%.
+
+Run [Doctor](/docs/guides/doctor) with the real server URL and resolve setup
+issues. Then [verify client access](#verify-client-access) using the shared
+read-only check below; `/version` alone does not test the client key.
+
+## Verify client access
+
+For a managed provider or an API-key-protected custom server, run this read-only
+check from the app directory. Before running it, save your registered **client**
+key as `HOT_UPDATER_API_KEY` in that directory's private `.env.hotupdater` file,
+including when custom-server setup already stored it in your app's build-time
+configuration. Keep the file ignored; do not paste the key into the command or
+conversation. Custom servers using another client-key header should update
+`keyHeader` to match their configuration.
+
+Replace `baseURL`, `platform`, `channel` and `target` with your recorded values.
+Keep the full provider base path. For fingerprint, set `strategy` to
+`"fingerprint"` and `target` to the native build's fingerprint hash.
+
+```bash
+node --env-file=.env.hotupdater --input-type=module <<'JS'
+const baseURL = "https://your-update-server-url";
+const platform = "ios";
+const channel = "ota-test";
+const strategy = "app-version";
+const target = "1.0.0";
+const keyHeader = "x-api-key";
+
+try {
+  const key = process.env.HOT_UPDATER_API_KEY;
+  if (!key) throw new Error("Missing client key");
+  const channelKey = Buffer.from(channel).toString("base64url");
+  const url = new URL(baseURL);
+  url.pathname = `${url.pathname.replace(/\/+$/, "")}/release-catalogs/${strategy}/${platform}/${channelKey}/${encodeURIComponent(target)}`;
+  const options = { redirect: "error", signal: AbortSignal.timeout(10000) };
+  const anonymous = await fetch(url, options);
+  await anonymous.body?.cancel();
+  const authenticated = await fetch(url, {
+    ...options,
+    headers: { [keyHeader]: key },
+  });
+  const body = await authenticated.json();
+  const contentType = authenticated.headers.get("content-type") ?? "";
+  const cache = (authenticated.headers.get("cache-control") ?? "")
+    .toLowerCase().split(",").map((value) => value.trim());
+  const scopeKey = `v1:${strategy}:${platform}:${channelKey}${strategy === "fingerprint" ? `:${target}` : ""}`;
+  const available = authenticated.status === 200 &&
+    contentType.startsWith("application/vnd.hot-updater.release-catalog+json; version=1") &&
+    body?.schemaVersion === 1 && body.scopeKey === scopeKey &&
+    Array.isArray(body.releases);
+  const empty = authenticated.status === 404 &&
+    contentType.startsWith("application/json") &&
+    body?.error === "Not found" && Object.keys(body).length === 1 &&
+    cache.includes("private") && cache.includes("no-store");
+  if (anonymous.status !== 401 || (!available && !empty)) {
+    throw new Error("Unexpected catalog response");
+  }
+  console.log({
+    anonymous: anonymous.status,
+    authenticated: authenticated.status,
+    catalog: empty ? "empty" : "available",
+  });
+} catch {
+  console.error("Client-access check failed. Check the URL, client key, scope and server logs.");
+  process.exitCode = 1;
+}
+JS
+```
+
+A passing result is anonymous **401** and authenticated **200** with a catalog,
+or the specific private, non-cacheable **404** before a catalog exists. A
+plain missing-route 404 does not pass. The check reports no key or response body.
+It verifies basic access and scope; the native OTA test below still validates
+artifact download and application.
+
+An agent with a generated scaffold can use its
+[server probe](/docs/guides/agent-infrastructure#verify-completion), which also
+checks the manifest's target version and the full catalog structure. For an
+intentionally public custom server, skip the key-protection check and verify
+public catalog/artifact access through the native OTA test.
 
 ## Step 1: Simulator Release Mode
 
-Run your app in Release mode to test hot-updater (it doesn't work in dev mode).
+Use a simulator, emulator or physical device. Build and launch the native app
+in Release mode; select the device through your project's usual build tooling.
+A development session serving
+JavaScript from Metro does not exercise OTA bundle loading.
 
-<Tabs items={['Bare (React Native CLI)', 'Rock', 'Expo']}>
+<Tabs items={["Bare (React Native CLI)", "Rock", "Expo"]}>
   <Tab value="Bare (React Native CLI)">
-    **iOS:**
-    ```sh
-    cd ios && pod install && cd ..
-    npx react-native run-ios --mode Release
-    ```
 
-    **Android:**
-    ```sh
-    npx react-native run-android --mode Release
-    ```
+For iOS, install the native dependencies using the project's CocoaPods setup,
+then build:
+
+```sh
+cd ios
+pod install
+cd ..
+npx react-native run-ios --mode Release
+```
+
+For Android:
+
+```sh
+npx react-native run-android --mode Release
+```
 
   </Tab>
   <Tab value="Rock">
-    **iOS:**
-    ```sh
-    npx rock run:ios --configuration Release
-    ```
 
-    **Android:**
-    ```sh
-    npx rock run:android --variant Release
-    ```
+For iOS:
+
+```sh
+npx rock run:ios --configuration Release
+```
+
+For Android:
+
+```sh
+npx rock run:android --variant Release
+```
 
   </Tab>
   <Tab value="Expo">
-    **iOS:**
-    ```sh
-    npx expo run:ios --configuration Release
-    ```
 
-    **Android:**
-    ```sh
-    npx expo run:android --variant release
-    ```
+For iOS:
+
+```sh
+npx expo run:ios --configuration Release
+```
+
+For Android:
+
+```sh
+npx expo run:android --variant release
+```
 
   </Tab>
 </Tabs>
 
+If the app uses custom schemes or flavors, use its equivalent Release command.
+Confirm that the installed app shows the baseline label and image. Keep this
+same native installation for the OTA steps; rebuilding it after editing
+JavaScript would not test OTA delivery.
+
 ## Step 2: Deploy
 
-Deploy with interactive mode and force update flag enabled in hot-updater deploy mode.
-
-When [HotUpdater.wrap](/docs/react-native-api/wrap) is set up, updates will be applied when you restart the app.
-
-You can check the update progress status using [useHotUpdaterStore](/docs/react-native-api/useHotUpdaterStore).
-
-<video src={"/docs/deploy/deploy.mov"} controls autoPlay loop muted />
+Change the visible label, for example from `OTA baseline` to `OTA verified`,
+and change the displayed image asset. Keep the native dependencies, native
+version and fingerprint inputs unchanged.
 
 ### For Normal Deployment
 
-This is the standard deployment mode. After an update is created, users need to restart their app after downloading the bundle for the update to take effect.
+For `appVersion`, publish to the recorded scope:
 
 ```package-install
-npx hot-updater deploy -i
+npx hot-updater deploy -p ios -c ota-test -t 1.0.0 -m "First OTA verification"
 ```
+
+For a configured fingerprint project, omit `-t`; deploy uses the fingerprint
+that matches your installed native build:
+
+```package-install
+npx hot-updater deploy -p ios -c ota-test -m "First OTA verification"
+```
+
+Record the public **ID** from the successful deployment. Inspect it before
+checking the device:
+
+```package-install
+npx hot-updater bundle show <id>
+```
+
+Confirm it is enabled and matches the app's platform, channel, compatibility
+and cohort. The default numeric rollout is 100%. Do not use rollout 0 as a
+successful delivery test unless you explicitly target the tester's cohort.
+
+With `HotUpdater.wrap()` using normal update behavior:
+
+1. Close and reopen the installed app so it checks the server.
+2. Let the update finish downloading. Use
+   [`isUpdateDownloaded()`](/docs/react-native-api/isUpdateDownloaded) or the
+   [update store](/docs/react-native-api/useHotUpdaterStore) to observe completion.
+3. Restart the app again, or call `HotUpdater.reload()` after download, to apply it.
+4. Confirm **both the new label and changed image** are visible.
+5. Read [`HotUpdater.getBundleId()`](/docs/react-native-api/getBundleId) after
+   applying the update and match it to the deployment ID.
+
+The selected ID can advance when an update is staged, before its JavaScript is
+running. An ID match alone is insufficient: retain the visible change and
+post-reload observation as evidence. A custom update flow must likewise await
+a successful `updateInfo.updateBundle()` before reloading.
 
 ### For Emergency Deployment
 
-This is the emergency deployment mode. After an update is created, the bundle will automatically reload and apply the update as soon as users download it.
+To test force-update behavior on the same isolated channel, make another visible
+change and add `--force-update` to the scoped command. The default wrapper
+reloads after download. An app configured with `reloadOnForceUpdate: false` or a
+custom update flow controls its own reload timing.
 
-```package-install
-npx hot-updater deploy -i --force-update
-```
+Use [Deploy](/docs/guides/deploy) for production deployment options after the
+normal flow has passed.
 
 ## Step 3: Disable a Bundle
 
-<video src={"/docs/console/console.mp4"} controls autoPlay loop muted />
-
-Open the Bundle in the Console and set its `enabled` policy to `false`. An
-affected installation moves to a previous compatible enabled Bundle or to its
-built-in Bundle when no compatible Bundle remains.
+Inspect and disable the exact test ID:
 
 ```package-install
-npx hot-updater console
-```
-
-The same operational action is available from the CLI when you already know
-the ID shown in the console or deployment output:
-
-```package-install
+npx hot-updater bundle show <id>
 npx hot-updater bundle disable <id>
 ```
 
-This policy rollback is different from automatic startup-crash recovery, which
-continues to track failed artifact IDs on the device.
+Read the preview and confirm the intended test scope. Open the same app, let it
+check for updates, and complete the selected transition and reload. Verify that
+it shows the previous compatible enabled update, or the embedded baseline when
+none remains. Record the observed result; compatibility and cohorts affect
+which fallback is selected.
+
+You can perform the same action in the [Console](/docs/guides/console).
+Disabling is an operational policy rollback. Native
+[automatic crash rollback](/docs/concepts/automatic-rollback) is a separate
+startup recovery mechanism and records Artifact IDs.
+
+## Verify reporting and record the result
+
+[Insights](/docs/guides/insights#verify-reporting) is enabled by default. When
+reporting is enabled, check that the Console received the expected application
+and rollback activity for your channel. A local readiness callback alone does
+not prove that a report reached the server.
+
+| Check | Required evidence |
+| --- | --- |
+| Server | Expected version and successful authenticated catalog access |
+| Native launch | Release app displays the embedded baseline on the recorded scope |
+| OTA application | Changed JavaScript and asset visible after applying, with the matching deployment ID |
+| Operational rollback | Disabling the exact test ID restores the expected visible fallback |
+| Insights | Matching received reports, or an explicit configured opt-out |
+
+A startup-failure recovery drill or diff-download measurement can follow on the
+dedicated test channel. For a store release, choose the intended production
+channel, build and distribute that native binary, then target its compatibility
+scope with OTA updates.
+
+## If the update does not appear
+
+| Symptom | Check |
+| --- | --- |
+| App still uses Metro | Install and launch a native Release build |
+| Authentication fails | App build contains the registered client key and correct base URL; `.env.hotupdater` is not app configuration |
+| No update selected | Enabled state, platform, channel, version/fingerprint and tester cohort all match |
+| New ID but old screen | The update may be staged; wait for download and reload |
+| Update disappears after startup | Inspect [crash history](/docs/react-native-api/getCrashHistory) and startup errors |
+| Empty Insights | Follow [reporting verification](/docs/guides/insights#verify-reporting) and confirm the backend supports Insights |

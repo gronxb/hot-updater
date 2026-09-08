@@ -7,7 +7,7 @@ icon: react
 ## Installation
 
 ```package-install
-npm install @hot-updater/bare --save-dev
+npm install @hot-updater/bare@rc --save-dev
 ```
 
 ## Configuration
@@ -42,5 +42,5 @@ export default defineConfig({
 
 - Runs the project's configured bundler through the React Native CLI `bundle` command
 - Automatic Hermes bytecode compilation when enabled
-- Minification handled by Hermes (disabled when Hermes is enabled)
+- Disables the bundler's minification when Hermes compilation is enabled
 - Supports custom entry files and output directories

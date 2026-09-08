@@ -54,64 +54,15 @@ export default HotUpdater.wrap({
 
 Automatic app-ready transition and Bundle adoption Insights are enabled by
 default. Set `insights: false` to send no Insights events. The server routes
-remain available either way.
+remain available either way. See [Insights](/docs/guides/insights) for reporting
+and optional user identity.
 
 ### Manual Updates
 
-Use [`HotUpdater.init`](/docs/react-native-api/init) for manual update flows.
-Initialize once with `HotUpdater.init`, export your root component directly,
-then call `checkForUpdate` or `updateBundle` when needed.
-
-```tsx
-import { HotUpdater } from "@hot-updater/react-native";
-
-HotUpdater.init({
-  baseURL: "<your-update-server-url>",
-});
-```
-
-Then use `checkForUpdate` or `updateBundle` manually when needed:
-
-```tsx
-import { HotUpdater } from "@hot-updater/react-native";
-import { useEffect } from "react";
-
-function App() {
-  useEffect(() => {
-    const checkUpdate = async () => {
-      const updateInfo = await HotUpdater.checkForUpdate({
-        updateStrategy: "appVersion", // Required: specify update strategy
-        requestHeaders: {
-          "x-api-key": "<your-api-key>",
-        },
-      });
-
-      if (!updateInfo) {
-        console.log("No update found");
-        return;
-      }
-
-      await updateInfo.updateBundle();
-      if (updateInfo.shouldForceUpdate) {
-        await HotUpdater.reload();
-      }
-    };
-
-    checkUpdate();
-  }, []);
-
-  // ... your app
-}
-
-HotUpdater.init({
-  baseURL: "<your-update-server-url>",
-  requestHeaders: {
-    "x-api-key": "<your-api-key>",
-  },
-});
-
-export default App;
-```
+For checks triggered by your own app lifecycle, use
+[`HotUpdater.init`](/docs/react-native-api/init) and follow the
+[custom update flow](/docs/guides/custom-update). Choose one configuration API;
+`wrap` always performs its automatic startup check.
 
 ## Configuration Reference
 
@@ -121,7 +72,7 @@ export default App;
 
 | Option             | Type                                        | Required | Description                                                 |
 | ------------------ | ------------------------------------------- | -------- | ----------------------------------------------------------- |
-| `baseURL`          | `string \| () => string \| Promise<string>` | Yes      | Your client handler URL                                     |
+| `baseURL`          | `string \| (() => string \| Promise<string>)` | Yes      | Your client handler URL                                     |
 | `insights`         | `boolean`                                   | No       | Send app-ready and Bundle adoption events (default: true)   |
 | `requestHeaders`   | `Record<string, string>`                    | No       | Custom HTTP headers for update requests                     |
 | `requestTimeout`   | `number`                                    | No       | Request timeout in milliseconds (default: 5000)             |
@@ -160,6 +111,12 @@ Without a `fallbackComponent`, the bundle downloads without blocking the screen.
 - `progress`: Download progress (0-1, e.g., for a progress bar)
 - `status`: Update state (`CHECK_FOR_UPDATE` or `UPDATING`)
 - `message`: Message from the server, or `null`
+- `artifactType`: `"archive"`, `"diff"`, or `null` before progress starts
+- `downloadedBytes` and `totalBytes`: Archive byte counts, when available
+- `details`: Per-file diff progress, or `null`
+
+The progress fields have the same shape as
+[`useHotUpdaterStore`](/docs/react-native-api/useHotUpdaterStore).
 
 **Example:**
 
@@ -345,24 +302,15 @@ export default HotUpdater.wrap({
 
 ## How It Works
 
-The client fetches a shared Release Catalog, evaluates it on the device, and
-resolves the selected artifact:
-
-- App version catalog: `GET {baseURL}/release-catalogs/app-version/:platform/:channelKey/:appVersion`
-- Fingerprint catalog: `GET {baseURL}/release-catalogs/fingerprint/:platform/:channelKey/:fingerprintHash`
-- Artifact resolution: `GET {baseURL}/artifacts/:targetBundleId/from/:currentBundleId`
-
-`:channelKey` is the base64url-encoded channel name.
+The client reads a shared Release Catalog, selects a transition on the device,
+and resolves the artifact when staging is needed. See
+[how updates work](/docs/concepts/how-it-works) for the full lifecycle.
 
 ## Custom Backends
 
-For advanced use cases where you need full control over network operations,
-such as GraphQL, RPC, or custom authentication, expose the Hot Updater HTTP
-protocol through an adapter or proxy and point `baseURL` at that endpoint. The adapter
-may use any upstream protocol internally, but the React Native client always
-uses the standard Release Catalog, artifact, Insights-event, and `/version`
-routes. This keeps catalog selection and native transition guards on one
-transport contract.
+Point `baseURL` at a server exposing the standard Hot Updater HTTP protocol.
+A GraphQL or RPC backend needs an HTTP adapter or proxy for these routes;
+see the [Release Catalog contract](/docs/database-plugins/release-catalog-contract).
 
 ## Flag Behavior
 

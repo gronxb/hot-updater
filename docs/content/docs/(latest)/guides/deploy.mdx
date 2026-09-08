@@ -4,6 +4,8 @@ description: "Deploy an update to one platform or both platforms sequentially."
 icon: Upload
 ---
 
+## Publish an update
+
 <video src={"/docs/deploy/deploy.mov"} controls autoPlay loop muted />
 
 Deploy builds and uploads the update files for each platform and publishes its
@@ -12,11 +14,15 @@ the console, and [`HotUpdater.getBundleId()`](/docs/react-native-api/getBundleId
 
 ## Checklist
 
-1. Ensure `hot-updater.config.ts` is properly configured.
-2. Wrap your components using `HotUpdater.wrap`.
-3. Include the native code.
+1. Complete [manual setup](/docs/get-started/basic-usage) or
+   [agent setup](/docs/guides/ai-agents), including the server and client key.
+2. Connect the app with `HotUpdater.wrap`, or use `HotUpdater.init` for a
+   [custom update flow](/docs/guides/custom-update), and apply the
+   [native integration](/docs/get-started/app-setup).
+3. Install a release build with the intended channel and compatibility target.
 
-If you haven't completed these steps, refer to the [Supabase Provider](/docs/managed/supabase) guide.
+For your first deployment, follow [Test an OTA update](/docs/guides/simulator-test)
+to verify delivery in a test channel before using the commands below.
 
 ## Options
 

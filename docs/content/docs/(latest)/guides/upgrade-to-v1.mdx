@@ -4,6 +4,8 @@ description: "Use an AI agent to migrate your app and infrastructure to v1 while
 icon: BetweenHorizontalStart
 ---
 
+## Plan the migration
+
 Hot Updater v1 is a new infrastructure generation. It separates immutable
 Bundle artifacts from mutable Release policy and serves compiled Release
 Catalogs. The v0 update-check protocol and database layout are not compatible
@@ -57,7 +59,8 @@ The source branch is `next`; the npm prerelease tag is `rc`. The agent installs
 `hot-updater@rc` and the required `@hot-updater/*@rc` packages in the app's
 workspace and records their resolved versions. RC numbers differ between
 packages, so do not copy the CLI's version number onto every package. Install
-the SDK and required plugins before generating infrastructure templates.
+the SDK and required plugins before generating infrastructure templates. The
+[installation guide](/docs/get-started/installation) lists the package choices.
 
 The installed CLI must support `hot-updater agent infra upgrade`. The agent
 reads the generated upgrade instructions, applies the provider templates, and

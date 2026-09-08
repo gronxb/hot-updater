@@ -22,15 +22,15 @@ async function syncUpdate() {
 
   if (!updateInfo) return;
 
-  await updateInfo.updateBundle();
+  const didUpdate = await updateInfo.updateBundle();
 
-  if (updateInfo.shouldForceUpdate) {
+  if (didUpdate && updateInfo.shouldForceUpdate) {
     await HotUpdater.reload();  // [!code hl]
   }
 }
 ```
 
-This is the most common manual usage pattern: 
+Configure [`init`](/docs/react-native-api/init) before using this manual flow.
 
 ## Reload behavior
 
@@ -39,7 +39,7 @@ By default, `HotUpdater.reload()` uses `processRestart`.
 - Android: cold process restart
 - iOS: behaves like normal React Native reload
 
-Use [`HotUpdater.setReloadBehavior("reload")`](/docs/react-native-api/setReloadBehavior) only if you explicitly want the old in-process React Native reload path.
+Use [`HotUpdater.setReloadBehavior("reload")`](/docs/react-native-api/setReloadBehavior) only if you explicitly want the in-process React Native reload path.
 
 ## Related APIs
 

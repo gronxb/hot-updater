@@ -14,7 +14,7 @@ import { Tabs, Tab } from 'fumadocs-ui/components/tabs';
 - Install the plugin:
 
 ```package-install
-npm install @hot-updater/datadog-plugin @datadog/datadog-ci --save-dev
+npm install @hot-updater/datadog-plugin@rc @datadog/datadog-ci --save-dev
 ```
 
 ## Step 1: Wrap Your Build Plugin
@@ -103,10 +103,22 @@ export default defineConfig({
 When `withDatadog()` wraps your build plugin, all generated sourcemaps are uploaded to Datadog automatically during the `hot-updater deploy` process.
 </Callout>
 
-## Step 3: Deploy
+## Step 2: Deploy
 
 Now, every time you deploy, sourcemaps will be automatically uploaded to Datadog.
 
 ```package-install
 npx hot-updater deploy -i
 ```
+
+## Verify symbolication
+
+Install a release build, deploy a small JavaScript change with sourcemaps
+enabled, and trigger a controlled test error from the updated code. In your
+monitoring dashboard, confirm the stack points to the original source file
+and line in that update. A successful upload alone does not prove the app and
+uploaded map use the same identity.
+
+Match the runtime SDK's service, release version and build number to the values
+passed to `withDatadog`. Configure that SDK through your existing Datadog app
+integration before performing the test.

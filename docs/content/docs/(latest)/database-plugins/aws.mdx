@@ -8,7 +8,7 @@ icon: aws
 ## Installation
 
 ```package-install
-npm install @hot-updater/aws --save-dev
+npm install @hot-updater/aws@rc --save-dev
 ```
 
 ## Create the table
@@ -123,11 +123,12 @@ export default defineConfig({
 
 ## Complete Example
 
-Combined storage and database:
+This example combines storage and database with your existing build plugin:
 
 ```typescript
 import { dynamoDB, s3Storage } from "@hot-updater/aws";
 import { defineConfig } from "hot-updater";
+import { build } from "./build";
 
 const credentials = {
   accessKeyId: process.env.AWS_ACCESS_KEY_ID,
@@ -135,6 +136,8 @@ const credentials = {
 };
 
 export default defineConfig({
+  build,
+  updateStrategy: "appVersion",
   storage: s3Storage({
     region: "us-east-1",
     credentials,

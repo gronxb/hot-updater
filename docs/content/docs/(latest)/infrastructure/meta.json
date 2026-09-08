@@ -1,0 +1,12 @@
+{
+  "title": "Infrastructure",
+  "description": "Choose, set up, and maintain your update backend.",
+  "icon": "Server",
+  "pages": [
+    "../get-started/choose-provider",
+    "../managed",
+    "../custom",
+    "../guides/agent-infrastructure",
+    "../guides/infrastructure-templates"
+  ]
+}

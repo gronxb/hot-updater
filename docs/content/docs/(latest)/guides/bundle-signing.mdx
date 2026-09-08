@@ -20,12 +20,12 @@ baseline when the deploy environment protects that key. When your threat model
 requires stronger custody, prefer a remote signing service where the private
 key is non-exportable and the deploy process submits only a message to sign.
 
-| Signer           | Use case            | Custody                                           |
-| ---------------- | ------------------- | ------------------------------------------------- |
-| Local PEM        | Standard baseline   | Exportable key managed by your deploy environment |
-| AWS KMS          | Hardened production | Non-exportable AWS KMS key                        |
-| Google Cloud KMS | Hardened production | Non-exportable Google Cloud KMS key               |
-| Remote endpoint  | Service-dependent   | Defined by the compatible signing service         |
+| Signer                                                    | Use case            | Custody                                           |
+| --------------------------------------------------------- | ------------------- | ------------------------------------------------- |
+| [Local PEM](/docs/guides/signing/local)                   | Standard baseline   | Exportable key managed by your deploy environment |
+| [AWS KMS](/docs/guides/signing/aws-kms)                   | Hardened production | Non-exportable AWS KMS key                        |
+| [Google Cloud KMS](/docs/guides/signing/google-cloud-kms) | Hardened production | Non-exportable Google Cloud KMS key               |
+| [Remote endpoint](/docs/guides/signing/remote)            | Service-dependent   | Defined by the compatible signing service         |
 
 Local PEM signing is the normal industry baseline used by systems such as Expo
 and CodePush when the deploy environment protects the private key. KMS signing
@@ -39,7 +39,7 @@ than a signing service; use its OIDC token with a compatible KMS signer.
 ## Choose and Roll Out a Signer
 
 Signing is independent of storage and database selection. Start with the
-[built-in local config](#local-private-key) when exportable-key custody fits
+[built-in local config](/docs/guides/signing/local) when exportable-key custody fits
 your threat model. Cloudflare and Supabase users can also call AWS KMS or
 Google Cloud KMS directly from the protected deploy job; no Worker or Edge
 Function proxy is required. Use `remoteSigning` when you intentionally operate
@@ -61,329 +61,31 @@ explicit opt-in:
 All official signers require RSA keys of at least 2048 bits. Prefer 3072 or
 4096 bits for newly provisioned keys.
 
+## Local Private Key
+
+Use [Local PEM Signing](/docs/guides/signing/local) to generate a key pair,
+configure local signing, and deploy from a protected CI job.
+
 ## Hardened: AWS KMS
 
-[AWS KMS asymmetric keys](https://docs.aws.amazon.com/kms/latest/developerguide/symmetric-asymmetric.html)
-perform signing without returning the private key. Create an RSA key with
-`SIGN_VERIFY` usage, export its public key, and give the deploy identity only
-the permissions it needs to use that key.
+<a id="1-create-the-signing-key" />
+<a id="2-keep-the-public-key-with-the-project" />
+<a id="3-configure-the-provider" />
+<a id="4-embed-the-public-key-and-release-the-app" />
+<a id="5-deploy-with-github-actions-oidc" />
 
-### 1. Create the signing key
-
-The following example creates a 4096-bit RSA key and writes its public key as
-SPKI PEM. The public key is not secret.
-
-```bash
-mkdir -p keys
-
-KEY_ARN=$(aws kms create-key \
-  --key-spec RSA_4096 \
-  --key-usage SIGN_VERIFY \
-  --description "Hot Updater bundle signing" \
-  --query KeyMetadata.Arn \
-  --output text)
-
-aws kms get-public-key \
-  --key-id "$KEY_ARN" \
-  --query PublicKey \
-  --output text \
-  | openssl base64 -d -A \
-  | openssl pkey -pubin -inform DER -out keys/public-key.pem
-```
-
-Save the immutable key ARN in deployment configuration. Do not use an alias
-that can silently move to another key: its public key would no longer match
-the key embedded in existing apps.
-
-### 2. Keep the public key with the project
-
-Keep local private material ignored and include only the public file:
-
-```txt title=".gitignore"
-keys/*
-!keys/public-key.pem
-```
-
-Commit `keys/public-key.pem`. Expo and native builds need this public file, and
-there is no security benefit in hiding it. Replace an existing `keys/` rule
-with the rules above: an exception for a file inside an ignored directory is
-not sufficient on its own.
-
-### 3. Configure the provider
-
-Install the optional AWS KMS SDK in the project that runs the deploy command:
-
-```bash
-npm install '@aws-sdk/client-kms@^3.1066.0' --save-dev
-```
-
-```ts title="hot-updater.config.ts"
-import { defineConfig } from "hot-updater";
-import { awsKmsSigning } from "hot-updater/signing";
-
-export default defineConfig({
-  // ...other config
-  signing: awsKmsSigning({
-    // A key ARN is an identifier, not a secret. Pin the exact key.
-    keyId:
-      "arn:aws:kms:ap-northeast-2:123456789012:key/00000000-0000-0000-0000-000000000000",
-    region: "ap-northeast-2",
-  }),
-});
-```
-
-`awsKmsSigning` uses the AWS SDK default credential chain. Prefer a short-lived
-workload identity instead of putting long-lived credentials in
-`hot-updater.config.ts`. An explicit HTTPS `endpoint` is available for private
-KMS endpoints; HTTP is accepted only for loopback testing.
-
-Hot Updater verifies every provider signature against the public key returned
-by KMS before upload. It also compares that signer identity with the public key
-configured in the native app.
-
-### 4. Embed the public key and release the app
-
-For React Native CLI projects, write the public key to the native projects:
-
-```bash
-npx hot-updater keys export-public
-```
-
-For Expo projects, configure the checked-in public key in app config, then run
-prebuild. The Expo config plugin does not load the signing provider and does
-not need AWS credentials or private key material.
-
-```json title="app.json"
-{
-  "expo": {
-    "plugins": [
-      [
-        "@hot-updater/expo",
-        { "publicKeyPath": "./keys/public-key.pem" }
-      ]
-    ]
-  }
-}
-```
-
-```bash
-npx expo prebuild
-```
-
-Then build and release the native app before the first signed OTA deployment.
-
-### 5. Deploy with GitHub Actions OIDC
-
-Use [GitHub Actions OIDC](https://docs.github.com/en/actions/how-tos/secure-your-work/security-harden-deployments/oidc-in-aws)
-to exchange the workflow identity for short-lived AWS credentials. Restrict
-the IAM trust policy to the expected repository and protected branch, tag, or
-GitHub environment.
-
-For signing, the deploy role needs access only to the pinned key. Add storage
-and database permissions separately for the providers used by your project.
-
-```json title="IAM policy"
-{
-  "Version": "2012-10-17",
-  "Statement": [
-    {
-      "Effect": "Allow",
-      "Action": "kms:GetPublicKey",
-      "Resource": "arn:aws:kms:ap-northeast-2:123456789012:key/00000000-0000-0000-0000-000000000000"
-    },
-    {
-      "Effect": "Allow",
-      "Action": "kms:Sign",
-      "Resource": "arn:aws:kms:ap-northeast-2:123456789012:key/00000000-0000-0000-0000-000000000000",
-      "Condition": {
-        "StringEquals": {
-          "kms:MessageType": "RAW",
-          "kms:SigningAlgorithm": "RSASSA_PKCS1_V1_5_SHA_256"
-        }
-      }
-    }
-  ]
-}
-```
-
-```yaml title=".github/workflows/deploy.yml"
-on:
-  workflow_dispatch:
-
-permissions:
-  contents: read
-  id-token: write
-
-jobs:
-  deploy:
-    runs-on: ubuntu-latest
-    environment: production
-    steps:
-      - name: Check out the reviewed source
-        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
-
-      - name: Set up Node.js
-        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
-        with:
-          cache: npm
-          node-version: 22
-
-      - name: Install the locked dependency graph
-        run: npm ci
-
-      - name: Authenticate to AWS
-        uses: aws-actions/configure-aws-credentials@e6de054238d6b7531b4efff3b6587d9aade6a06c # v6
-        with:
-          role-to-assume: arn:aws:iam::123456789012:role/hot-updater-deploy
-          aws-region: ap-northeast-2
-
-      - name: Deploy signed bundle
-        run: npx --no-install hot-updater deploy -p ios
-```
-
-Use environment protection rules and required reviewers for the signing job.
-The example pins actions to the commits behind their v6 releases; review and
-update those pins deliberately when upgrading.
-
-KMS prevents private-key extraction, but it cannot decide whether code is safe.
-Any dependency or script running with `kms:Sign` can request signatures. Treat
-the build and deploy dependency graph as part of the trusted signing boundary,
-and run the signing workflow only from reviewed protected refs. Avoid granting
-signing credentials to pull-request workflows, especially
-`pull_request_target` jobs that execute untrusted code.
-
-## Signing Protocol and Remote Calls
-
-Hot Updater signs the 32 decoded bytes of each SHA-256 file hash using
-RSA PKCS#1 v1.5 with SHA-256. The AWS KMS provider therefore uses:
-
-- `MessageType: RAW`
-- `SigningAlgorithm: RSASSA_PKCS1_V1_5_SHA_256`
-- the decoded file-hash bytes as `Message`
-
-Do not substitute `DIGEST` or an RSA-PSS algorithm. Existing iOS and Android
-verifiers expect the exact protocol above.
-
-Google Cloud KMS preserves the same signature semantics by submitting
-`SHA-256(message)` to its digest API.
-
-`remoteSigning` uses the authenticated `/_hot-updater/signing` protocol.
-Requests and responses pin the protocol version, RSA-SHA256 algorithm, and
-SHA-256 fingerprint of the SPKI public key. The client rejects redirects and
-locally verifies every returned signature.
-
-Use `remoteSigning` for a compatible signing service that is not represented by
-an official provider plugin. The endpoint URL is normalized to the managed
-signing path, and the dedicated token defaults to
-`HOT_UPDATER_SIGNING_TOKEN`.
-
-Use a separate signing key and token for each app and environment. Possession
-of a remote signing token grants an online signing oracle for arbitrary
-32-byte content-hash messages. The signature authenticates only artifact
-content; app, environment, platform, channel, targeting, release context, and
-rollback policy are not included in the signed message. Enforce those controls
-in the protected deployment workflow and do not share a signer across trust
-boundaries.
-
-```ts title="hot-updater.config.ts"
-import { defineConfig } from "hot-updater";
-import { remoteSigning } from "hot-updater/signing";
-
-export default defineConfig({
-  // ...other config
-  signing: remoteSigning({
-    endpoint: "https://signer.example.com",
-  }),
-});
-```
-
-A custom service can mount the matching Web API handler from the root
-`@hot-updater/plugin-core` entrypoint. Keep key access inside the `sign`
-callback and return `404` for unrelated routes:
-
-```ts title="signing-service.ts"
-import { createBundleSigningHandler } from "@hot-updater/plugin-core";
-
-interface Env {
-  HOT_UPDATER_SIGNING_PUBLIC_KEY: string;
-  HOT_UPDATER_SIGNING_TOKEN: string;
-  signWithKmsOrHsm(message: Uint8Array): Promise<Uint8Array>;
-}
-
-export const handleRequest = async (request: Request, env: Env) =>
-  (await createBundleSigningHandler({
-    request,
-    publicKey: env.HOT_UPDATER_SIGNING_PUBLIC_KEY,
-    token: env.HOT_UPDATER_SIGNING_TOKEN,
-    sign: (message) => env.signWithKmsOrHsm(message),
-  })) ?? new Response("Not found", { status: 404 });
-```
-
-`signWithKmsOrHsm` is your service's implementation, not a built-in binding. It
-must return the raw signature bytes for the RSA-SHA256 message contract above.
-The handler authenticates both metadata and signing requests, accepts only the
-versioned 32-byte signing contract, and verifies the returned signature before
-responding. Key isolation, authorization, rate limits, and audit logging remain
-the responsibility of the service and its `sign` implementation.
-
-Within a deploy signing session, Hot Updater makes one signing call per
-distinct hash and memoizes repeated hashes, including those shared by multiple
-artifact references. Each signer instance also resolves and caches its public
-key with a separate request. SDK retries can add network requests. Account for
-KMS latency, request quotas, availability, and cost. Provider errors fail the
-deployment; Hot Updater does not fall back to an unsigned bundle.
+Use [AWS KMS Signing](/docs/guides/signing/aws-kms) to create a signing key,
+configure its IAM permissions, and deploy with GitHub Actions OIDC.
 
 ## Hardened: Google Cloud KMS
 
-Google Cloud projects, including Firebase projects, can use Cloud KMS without
-exporting the private key. Pin a full CryptoKeyVersion resource name; a moving
-alias would stop matching the public key embedded in installed apps.
+Use [Google Cloud KMS Signing](/docs/guides/signing/google-cloud-kms) to create
+and pin a key version, configure credentials, and export its public key.
 
-Create an asymmetric signing key version using an RSA PKCS#1 SHA-256 algorithm,
-then export only that version's public key:
+## Signing Protocol and Remote Calls
 
-```bash
-mkdir -p keys
-
-gcloud kms keyrings create hot-updater --location=global
-gcloud kms keys create bundle-signing \
-  --location=global \
-  --keyring=hot-updater \
-  --purpose=asymmetric-signing \
-  --default-algorithm=rsa-sign-pkcs1-4096-sha256
-gcloud kms keys versions get-public-key 1 \
-  --location=global \
-  --keyring=hot-updater \
-  --key=bundle-signing \
-  --output-file=keys/public-key.pem
-```
-
-```bash
-npm install '@google-cloud/kms@^6.0.0' --save-dev
-```
-
-`@google-cloud/kms` 6 requires Node.js 22 or later. This requirement applies
-only to deploy environments that use `googleCloudKmsSigning`; the other signing
-options retain Hot Updater's Node.js 20.19 baseline.
-
-```ts title="hot-updater.config.ts"
-import { defineConfig } from "hot-updater";
-import { googleCloudKmsSigning } from "hot-updater/signing";
-
-export default defineConfig({
-  // ...other config
-  signing: googleCloudKmsSigning({
-    keyVersion:
-      "projects/PROJECT/locations/LOCATION/keyRings/RING/cryptoKeys/KEY/cryptoKeyVersions/1",
-  }),
-});
-```
-
-The provider uses Application Default Credentials. Locally, authenticate ADC;
-in Google Cloud, use an attached service account; in GitHub Actions, use
-Workload Identity Federation. Grant the key-level
-`roles/cloudkms.signerVerifier` role, or a custom role limited to signing and
-reading the public key. Only RSA PKCS#1 SHA-256 key versions are accepted.
+Use [Remote Signing](/docs/guides/signing/remote) for the RSA-SHA256 message
+contract, a compatible service implementation, and signing request behavior.
 
 ## Expo and EAS Build
 
@@ -405,6 +107,12 @@ Expo owns the native trust anchor through its app config plugin:
 }
 ```
 
+Run prebuild after configuring the public key:
+
+```bash
+npx expo prebuild
+```
+
 `publicKeyPath` is relative to the Expo project root. During prebuild, the
 plugin validates the RSA SPKI key and embeds it in the iOS and Android native
 configuration. The file is also included automatically in both native
@@ -421,114 +129,18 @@ Do not upload a private key with EAS Secrets, add it to `eas.json`, or use
 `.easignore` to send `keys/private-key.pem` to the build worker. Ensure the
 public key file is included in the build input.
 
-## Local Private Key
-
-Use the built-in local config when you accept responsibility for an exportable
-private key. Enable signing and provide the private key path:
-
-```ts title="hot-updater.config.ts"
-import { defineConfig } from "hot-updater";
-
-export default defineConfig({
-  signing: {
-    enabled: true,
-    privateKeyPath: "./keys/private-key.pem",
-  },
-  // ...other config
-});
-```
-
-Omit `signing` or set `signing: { enabled: false }` to disable signing. A local
-config must set `enabled: true`; other shapes are rejected. Local signing
-derives its public identity only from `privateKeyPath`.
-
-Generate a local pair only when you accept responsibility for backing up and
-protecting the exportable private key:
-
-```bash
-npx hot-updater keys generate --output ./keys --key-size 4096
-```
-
-The command creates `private-key.pem` with owner-only permissions and
-`public-key.pem`. It refuses to overwrite either existing file; use a fresh
-output directory for an intentional rotation. Keep the private file out of
-Git, EAS build inputs, artifacts, caches, and logs. Commit the public file and
-reference it from the Expo app plugin when using Expo.
-
-Newly generated keys inside the project add only the private-key path to
-`.gitignore`. If `.gitignore` contains `keys/`, replace that whole-directory rule
-with rules that include only the public file before committing it:
-
-```txt title=".gitignore"
-keys/*
-!keys/public-key.pem
-```
-
-For EAS uploads, copy your existing `.gitignore` rules into `.easignore`, then
-append these rules to include only the public key ([EAS ignore-file
-documentation](https://docs.expo.dev/build-reference/easignore/)):
-
-```txt title=".easignore"
-# Keep your existing ignore rules above
-!/keys/
-/keys/*
-!/keys/public-key.pem
-```
-
-Existing ignore rules are not rewritten automatically.
-
-For CI, use a protected secret manager and materialize the private file
-only outside the workspace for the duration of the trusted signing job. A PEM
-retrieved from a secret manager is still available to that process and is less
-isolated than a KMS or HSM-backed remote signer.
-
-If local PEM custody is required in GitHub Actions, store it as a secret in a
-protected GitHub Environment with required reviewers. Write the secret beneath
-`runner.temp`, keep the checked-in public key path explicit, and remove the
-temporary file even when deployment fails. Avoid a broadly available
-repository or organization secret for production signing authority.
-
-```yaml title=".github/workflows/deploy.yml"
-on:
-  workflow_dispatch:
-
-jobs:
-  deploy:
-    runs-on: ubuntu-latest
-    environment: production
-    permissions:
-      contents: read
-    env:
-      HOT_UPDATER_SIGNING_PRIVATE_KEY_PATH: ${{ runner.temp }}/hot-updater-signing/private-key.pem
-    steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
-      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
-        with:
-          node-version: 22
-
-      - run: npm ci
-
-      - name: Materialize the signing key
-        env:
-          HOT_UPDATER_SIGNING_PRIVATE_KEY: ${{ secrets.HOT_UPDATER_SIGNING_PRIVATE_KEY }}
-        run: |
-          install -m 700 -d "$(dirname "$HOT_UPDATER_SIGNING_PRIVATE_KEY_PATH")"
-          printf '%s' "$HOT_UPDATER_SIGNING_PRIVATE_KEY" > "$HOT_UPDATER_SIGNING_PRIVATE_KEY_PATH"
-          chmod 600 "$HOT_UPDATER_SIGNING_PRIVATE_KEY_PATH"
-
-      - run: npx --no-install hot-updater deploy -p ios
-
-      - name: Remove the signing key
-        if: always()
-        run: rm -f "$HOT_UPDATER_SIGNING_PRIVATE_KEY_PATH"
-```
-
-Prefer GitHub OIDC with a KMS signer when available because the workflow then
-receives short-lived signing authorization instead of exportable key material.
+Build and release the native app before deploying its first signed OTA bundle.
 
 ## Manual Public Key Configuration
 
-`npx hot-updater keys export-public` writes the public key to:
+For React Native CLI projects, export the configured signer's public key into
+the native projects:
+
+```bash
+npx hot-updater keys export-public
+```
+
+The command writes the public key to:
 
 - iOS: `Info.plist` → `HOT_UPDATER_PUBLIC_KEY`
 - Android: application metadata in `AndroidManifest.xml` →
@@ -576,6 +188,8 @@ Or add the public key manually.
     android:name="com.hotupdater.PUBLIC_KEY"
     android:value="-----BEGIN PUBLIC KEY-----\nMIIBIjANBgkq...your-key...\n-----END PUBLIC KEY-----" />
 ```
+
+Build and release the native app before deploying its first signed OTA bundle.
 
 Remove embedded public keys with:
 

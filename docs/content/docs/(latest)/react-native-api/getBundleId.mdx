@@ -39,3 +39,8 @@ running. Call `HotUpdater.reload()` to start a staged update.
 
 Promoting the same files to another channel creates a new ID. Changing delivery
 settings does not require uploading the files again.
+
+For the selected artifact ID and native verification state, use
+[`getActiveUpdateState()`](/docs/react-native-api/getActiveUpdateState).
+[`getCrashHistory()`](/docs/react-native-api/getCrashHistory) returns artifact
+IDs, which differ from the Console update ID.

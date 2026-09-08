@@ -1,0 +1,59 @@
+---
+title: "setUser"
+description: "Persist optional user identity for future Insights reports, or clear it on logout."
+icon: UserRound
+---
+
+## Usage
+
+Use `HotUpdater.setUser()` after restoring your app's signed-in user or when the
+user changes. The next Insights report includes the stored identity.
+
+```tsx
+import { HotUpdater } from "@hot-updater/react-native";
+
+HotUpdater.setUser({
+  userId: "user-123",
+  username: "Alex",
+});
+
+// Clear both fields when the user signs out.
+HotUpdater.setUser(null);
+```
+
+## Parameters
+
+```ts
+type SetUserParams = {
+  userId?: string | number | null;
+  username?: string | null;
+};
+
+setUser(params: SetUserParams | null): void
+```
+
+| Value | Behavior |
+| --- | --- |
+| `userId` | Stores a user identifier; numbers are converted to strings. |
+| `username` | Stores an optional display name. |
+| Omitted or `null` field | Clears that field's previous value. |
+| `null` argument | Clears both fields. |
+
+Native storage trims surrounding whitespace and treats empty values as cleared.
+Each call replaces both fields; it does not merge with the previous identity.
+
+The method is synchronous and only writes local identity. It does not send a
+report immediately, change the installation ID, or enable Insights when
+`insights: false` is configured. If identity must be attached to the startup
+report, set it before initializing the manual flow or mounting the wrapped app.
+
+The Console can search by user ID or installation ID. The username provides
+display context. Choose identifiers appropriate for your application's data
+policy; the fields you set are sent to your update server with enabled
+[Insights reports](/docs/guides/insights).
+
+## Related
+
+- [`getInstallId`](/docs/react-native-api/getInstallId)
+- [Insights](/docs/guides/insights)
+- [Security](/docs/policy/security)

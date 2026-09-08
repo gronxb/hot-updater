@@ -1,226 +1,102 @@
 ---
-title: "Overview"
-description: Build a custom backend server for Hot Updater database with any framework and ORM.
+title: Custom server overview
+description: Connect Hot Updater to your existing database, server framework and hosting.
 icon: Server
 version: "v0.22.0"
 ---
 
-## Installation
+## Choose a custom server
 
-Install the server and storage packages in the deployed server project. Install
-the CLI packages in the React Native project that runs Hot Updater commands.
+Use a custom server when you need to own the backend code or integrate with an
+existing ORM, framework or deployment process. If a supplied cloud deployment
+fits your project, [choose a provider preset](/docs/get-started/choose-provider).
 
-```package-install
-npm install @hot-updater/server @hot-updater/aws
-```
-
-```package-install
-npm install --save-dev @hot-updater/bare @hot-updater/aws @hot-updater/standalone hot-updater dotenv
-```
+For one complete path, follow the [Hono, SQLite and R2 quick start](/docs/custom/quick-start).
+You do not need to evaluate every adapter before starting. For an existing
+backend, use the matching integration below and keep its established tooling.
 
 ## Architecture
 
-Self-hosted mode lets you control the database layer while using existing cloud storage plugins.
+| Part | Runs in | Responsibility |
+| --- | --- | --- |
+| `hot-updater.config.ts` | React Native project or deploy job | Build bundles, upload artifacts and send management requests through `standaloneRepository`. |
+| `createHotUpdater` | Server project | Compile Release Catalogs and serve client and admin handlers using a direct database provider. |
+| Database adapter | Server project | Persist canonical rows, prepare the schema and commit changes atomically. |
+| Storage plugin | Deploy job and server | Upload artifacts and resolve their stored locations for downloads. |
 
-**How it works:**
+The mobile app uses the client base URL and a client API key. The CLI connects
+to the separately protected admin base URL. The admin token and provider
+credentials stay in server and deploy environments.
 
-- **CLI**: Uses `standaloneRepository` in hot-updater.config.ts to send requests to your server
-- **Server**: Handles database operations with `@hot-updater/server`
-- **Storage**: Uses existing plugins (AWS S3, Supabase, Cloudflare R2, Firebase)
+## Database adapters
 
-This approach gives you full control over metadata while leveraging reliable cloud storage.
+Choose the adapter that matches your existing database tooling. Prepare its
+schema before creating the first API key or serving requests.
 
-## CLI Configuration
+| Adapter | Schema preparation |
+| --- | --- |
+| [Kysely](/docs/custom/database/kysely) | Generate SQL for review, then use `hot-updater db migrate`. |
+| [Drizzle](/docs/custom/database/drizzle) | Generate the Drizzle schema and apply it with Drizzle Kit. |
+| [Prisma](/docs/custom/database/prisma) | Generate/merge the Prisma models, regenerate the client and apply the schema with Prisma. |
+| [MongoDB](/docs/custom/database/mongodb) | Use a replica set or sharded cluster with transactions enabled; apply indexes with `hot-updater db migrate`. |
 
-Configure your Hot Updater CLI to use the self-hosted database.
+For database tooling outside an ORM, use [SQL schema export](/docs/custom/database/sql-export).
 
-In the React Native project, create `.env.hotupdater` with the server's `R2_*`
-storage values and `HOT_UPDATER_ADMIN_TOKEN`, and add it to `.gitignore`.
+## Server frameworks
 
-```typescript title="hot-updater.config.ts"
-import { bare } from "@hot-updater/bare";
-import { s3Storage } from "@hot-updater/aws";
-import { standaloneRepository } from "@hot-updater/standalone";
-import { defineConfig } from "hot-updater";
-import { config } from "dotenv";
-
-config({ path: ".env.hotupdater" });
-
-const adminToken = process.env.HOT_UPDATER_ADMIN_TOKEN;
-if (!adminToken) {
-  throw new Error("HOT_UPDATER_ADMIN_TOKEN is required");
-}
-
-export default defineConfig({
-  build: bare({ enableHermes: true }),
-  storage: s3Storage({
-    region: "auto",
-    endpoint: process.env.R2_ENDPOINT,
-    credentials: {
-      accessKeyId: process.env.R2_ACCESS_KEY_ID!,
-      secretAccessKey: process.env.R2_SECRET_ACCESS_KEY!,
-    },
-    bucketName: process.env.R2_BUCKET_NAME!,
-  }),
-  database: standaloneRepository({
-    baseUrl: "http://localhost:3000/hot-updater/admin",
-    commonHeaders: {
-      Authorization: `Bearer ${adminToken}`,
-    },
-  }),
-  updateStrategy: "appVersion",
-});
-```
-
-## Storage Plugins
-
-The server `storage` field accepts an array of flat storage objects. `get`
-returns a Web `Response`, while `getDownloadUrl` returns either an absolute
-HTTP(S) URL or a signed path relative to the Hot Updater server. The server
-resolves a relative path against the incoming update-check request before
-sending it to the client. How a provider produces or handles that value remains
-inside its implementation.
-
-Stored locations use the hierarchical
-`protocol://bucket/encoded/slash/key` form. Providers use the shared
-`createStorageUri` and `parseStorageUri` helpers so special characters
-round-trip without flattening the key hierarchy.
-
-1. When you run `npx hot-updater deploy` from your `hot-updater.config.ts`, the bundle is uploaded and a `storageUri` is saved to the database
-2. When the API returns bundle information, the matching storage plugin turns the stored URI into an HTTP(S) URL
-3. When diffing data is available, the server reads it directly from storage so the client can reuse unchanged files
-4. React Native clients download the update files using the returned URLs
-
-The CLI `storage` field uses the same flat contract for upload, exact deletion,
-and reads. Edge providers such as Cloudflare Workers may use a separate runtime
-subpath with the same public plugin name.
-
-### Multiple Storage Plugins
-
-`storage` is an array, allowing you to configure multiple storage providers simultaneously. Each plugin handles its specific storage URI protocol.
-
-**Use cases:**
-
-- Bundles stored across different storage providers
-- Migrating between storage providers (old and new bundles coexist)
-- Multi-region deployments with different storage backends
-
-**Example with multiple plugins:**
-
-```typescript title="src/hotUpdater.ts"
-export const hotUpdater = createHotUpdater({
-  database: kyselyAdapter({ db, provider: "sqlite" }),
-  clientAccess: { type: "api-key" },
-  storage: [
-    s3Storage({
-      /* AWS S3 config with download URL support */
-    }),
-    supabaseStorage({
-      /* Supabase config */
-    }),
-    myCustomStorage({
-      /* My Custom Storage */
-    }),
-  ],
-});
-```
-
-The server automatically uses the correct plugin to decode each `storageUri`
-based on its protocol.
-
-Configure at most one storage plugin per URI scheme. A matching registered
-plugin owns reads, URL generation, and exact deletion even for `http` or
-`https`. Only when no plugin owns an HTTP(S) URI does Hot Updater use the direct
-URL; an unowned non-HTTP scheme is unsupported.
+Mount `handlers.admin` behind your framework's authentication, then mount
+`handlers.client` at the client root. Follow the recipe for
+[Hono](/docs/custom/frameworks/hono), [Express](/docs/custom/frameworks/express)
+or [Elysia](/docs/custom/frameworks/elysia). Each recipe shows its framework's
+middleware and mount ordering.
 
 ## Runtime policy
 
-`createHotUpdater` always exposes Insights ingestion and query capabilities.
-React Native clients send lifecycle events by default and can opt out with
-`HotUpdater.init({ insights: false })`.
+Every `createHotUpdater` configuration sets `clientAccess`. Use
+`{ type: "api-key" }` to require a client key for Release Catalogs, artifact
+resolution and Insights ingestion, or explicitly choose `{ type: "public" }`.
 
-Every server must explicitly set `clientAccess`. Use `{ type: "api-key" }` to
-require authentication for update checks and Insights ingestion through
-`database.models.apiKeys`, or `{ type: "public" }` to keep those
-client routes public.
+| Handler | Routes and access |
+| --- | --- |
+| `handlers.client` | Public `/version`; Release Catalogs, artifacts and `POST /events` follow `clientAccess`; signed storage-download routes are available when the storage provider supports them. |
+| `handlers.admin` | Bundle, Release, catalog, Channel, database-commit and Insights-query routes. Your framework authenticates every request before mounting this handler. |
 
-Release Catalog, artifact, storage-download, and `/version` routes are always
-available on `handlers.client`. Bundle, Release, Release Catalog row, Channel,
-database-commit, and Insights-query routes live exclusively on
-`handlers.admin`. Expose that handler only through an authenticated framework
-mount.
+Insights is built in. React Native clients report lifecycle events by default
+and can opt out with `HotUpdater.init({ insights: false })`. Client API keys do
+not grant admin or Insights-query access. See [API keys](/docs/custom/api-key-authentication)
+for bootstrap and rotation, and the
+[repository server contract](/docs/database-plugins/standalone#server-contract)
+for the HTTP operations used by the CLI.
 
-```typescript title="src/hotUpdater.ts"
-export const hotUpdater = createHotUpdater({
-  database: kyselyAdapter({ db, provider: "sqlite" }),
-  clientAccess: { type: "api-key" },
-  storage: [
-    s3Storage({
-      /* storage config */
-    }),
-  ],
-});
-```
+## Storage plugins
 
-Insights ingestion is available on `handlers.client` and queries are
-available on `handlers.admin`. The server does not authenticate admin queries
-itself; the framework middleware protecting the admin mount owns that decision.
+Use a storage plugin in the CLI and the matching runtime implementation in the
+server's `storage` array. The URI scheme and bucket/key configuration must agree.
+For example, an `s3Storage` deploy configuration needs an `s3Storage` server entry;
+using R2 infrastructure alone does not make `s3://` and `r2://` interchangeable.
 
-<Callout type="warn">
-**Recommendation: Match Your CLI Configuration**
+A server may retain multiple storage providers when old and new bundles coexist,
+but register at most one plugin per URI scheme. Stored URIs use
+`protocol://bucket/encoded/slash/key`. The matching plugin owns reads, download
+URLs and exact deletion; an unowned HTTP(S) URI can be used directly.
 
-For most use cases, use only the storage plugin that matches your CLI's `hot-updater.config.ts`.
+Use [S3](/docs/storage-plugins/aws), [R2](/docs/storage-plugins/cloudflare),
+[Supabase Storage](/docs/storage-plugins/supabase) or
+[Firebase Storage](/docs/storage-plugins/firebase). Custom implementations follow
+the [storage contract](/docs/storage-plugins/custom-storage). Install packages
+used by the deployed server as runtime dependencies.
 
-**CLI (hot-updater.config.ts):**
+## CLI configuration
 
-```typescript
-storage: s3Storage({ ... })
-```
+After the server and schema are ready, [connect the React Native project's CLI](/docs/custom/cli-configuration).
+Configure the exact admin mount URL, its authentication headers and the same
+storage location used by the server.
 
-**Server (src/hotUpdater.ts):**
+## Deploy and verify
 
-```typescript
-storage: [s3Storage({ ... })]
-```
-
-This ensures consistency and simplifies configuration. Only use multiple plugins when you need to support bundles from different storage providers.
-
-</Callout>
-
-**Available official plugins:**
-
-- [s3Storage](/docs/storage-plugins/aws) - AWS S3 and Cloudflare R2
-- [supabaseStorage](/docs/storage-plugins/supabase) - Supabase Storage
-- [firebaseStorage](/docs/storage-plugins/firebase) - Firebase Cloud Storage
-
-## Database Adapters
-
-Start by setting up your database adapter. Choose the ORM that fits your project:
-
-- [Drizzle](/docs/custom/database/drizzle) - TypeScript ORM with SQL-like syntax
-- [Prisma](/docs/custom/database/prisma) - Next-generation ORM with intuitive data modeling
-- [Kysely](/docs/custom/database/kysely) - Type-safe SQL query builder
-- [MongoDB](/docs/custom/database/mongodb) - Native MongoDB driver
-
-Generate and apply the adapter's schema before serving requests. The exact
-workflow differs by adapter: Kysely and MongoDB use `hot-updater db migrate`,
-Drizzle uses the generated schema with Drizzle Kit, and Prisma merges its models
-into `prisma/schema.prisma` before `prisma db push` applies them.
-
-## Server Frameworks
-
-After configuring your database, choose the framework that fits your stack:
-
-- [Hono](/docs/custom/frameworks/hono) - Lightweight Web Standard framework
-- [Express](/docs/custom/frameworks/express) - Popular Node.js framework
-- [Elysia](/docs/custom/frameworks/elysia) - Modern Bun-first framework
-
-## Key Features
-
-- **Framework Agnostic**: Use Hono, Express, Elysia, or any Web Standard framework
-- **ORM choice**: Drizzle, Prisma, Kysely, or native MongoDB driver
-- **Database control**: PostgreSQL, SQLite, or MongoDB on your infrastructure
-- **Cloud storage**: Leverage existing AWS S3, Cloudflare R2, Supabase, or Firebase storage
-- **Type safety**: Full TypeScript support across all adapters
-- **Operational control**: Add framework-specific authentication, lifecycle,
-  and error handling for your deployment environment
+Use your existing hosting process or follow the
+[Docker](/docs/custom/hosting/docker) or [Vercel](/docs/custom/hosting/vercel)
+recipe. Verify that `/version` responds and unauthenticated admin requests are
+rejected, then [set up the mobile app](/docs/get-started/app-setup) with the
+verified client URL and key. Finish by [testing an OTA update](/docs/guides/simulator-test)
+in a release build.

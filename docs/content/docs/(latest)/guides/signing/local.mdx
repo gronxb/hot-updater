@@ -1,0 +1,130 @@
+---
+title: "Local PEM Signing"
+description: "Generate a local key pair and configure signed OTA deployments"
+icon: Shield
+---
+
+## Set Up Local Signing
+
+[Review the signing rollout](/docs/guides/bundle-signing#choose-and-roll-out-a-signer)
+before adding a signer to an existing Hot Updater project.
+
+Use the built-in local config when you accept responsibility for an exportable
+private key. Enable signing and provide the private key path:
+
+```ts title="hot-updater.config.ts"
+import { defineConfig } from "hot-updater";
+
+export default defineConfig({
+  signing: {
+    enabled: true,
+    privateKeyPath:
+      process.env.HOT_UPDATER_SIGNING_PRIVATE_KEY_PATH ?? "./keys/private-key.pem",
+  },
+  // ...other config
+});
+```
+
+Omit `signing` or set `signing: { enabled: false }` to disable signing. A local
+config must set `enabled: true`; other shapes are rejected. Local signing
+derives its public identity only from `privateKeyPath`.
+
+Generate a local pair only when you accept responsibility for backing up and
+protecting the exportable private key:
+
+```bash
+npx hot-updater keys generate --output ./keys --key-size 4096
+```
+
+The command creates `private-key.pem` with owner-only permissions and
+`public-key.pem`. It refuses to overwrite either existing file; use a fresh
+output directory for an intentional rotation. Keep the private file out of
+Git, EAS build inputs, artifacts, caches, and logs. Commit the public file and
+reference it from the Expo app plugin when using Expo.
+
+## Keep the Public Key with the Project
+
+Newly generated keys inside the project add only the private-key path to
+`.gitignore`. If `.gitignore` contains `keys/`, replace that whole-directory rule
+with rules that include only the public file before committing it:
+
+```txt title=".gitignore"
+keys/*
+!keys/public-key.pem
+```
+
+For EAS uploads, copy your existing `.gitignore` rules into `.easignore`, then
+append these rules to include only the public key ([EAS ignore-file
+documentation](https://docs.expo.dev/build-reference/easignore/)):
+
+```txt title=".easignore"
+# Keep your existing ignore rules above
+!/keys/
+/keys/*
+!/keys/public-key.pem
+```
+
+Existing ignore rules are not rewritten automatically.
+
+## Embed the Public Key and Release the App
+
+Follow the shared steps for [Expo and EAS Build](/docs/guides/bundle-signing#expo-and-eas-build)
+or [React Native CLI](/docs/guides/bundle-signing#manual-public-key-configuration).
+Build and release the native app before deploying its first signed OTA bundle.
+
+When replacing an existing key, follow [Key Rotation](/docs/guides/bundle-signing#key-rotation)
+before changing the signer used for installed apps.
+
+## Deploy from CI
+
+For CI, use a protected secret manager and materialize the private file
+only outside the workspace for the duration of the trusted signing job. A PEM
+retrieved from a secret manager is still available to that process and is less
+isolated than a KMS or HSM-backed remote signer.
+
+If local PEM custody is required in GitHub Actions, store it as a secret in a
+protected GitHub Environment with required reviewers. Write the secret beneath
+`runner.temp`, keep the checked-in public key path explicit, and remove the
+temporary file even when deployment fails. Avoid a broadly available
+repository or organization secret for production signing authority.
+
+The config above reads `HOT_UPDATER_SIGNING_PRIVATE_KEY_PATH` so this job can
+use its temporary private-key file.
+
+```yaml title=".github/workflows/deploy.yml"
+on:
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: production
+    permissions:
+      contents: read
+    env:
+      HOT_UPDATER_SIGNING_PRIVATE_KEY_PATH: ${{ runner.temp }}/hot-updater-signing/private-key.pem
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: 22
+
+      - run: npm ci
+
+      - name: Materialize the signing key
+        env:
+          HOT_UPDATER_SIGNING_PRIVATE_KEY: ${{ secrets.HOT_UPDATER_SIGNING_PRIVATE_KEY }}
+        run: |
+          install -m 700 -d "$(dirname "$HOT_UPDATER_SIGNING_PRIVATE_KEY_PATH")"
+          printf '%s' "$HOT_UPDATER_SIGNING_PRIVATE_KEY" > "$HOT_UPDATER_SIGNING_PRIVATE_KEY_PATH"
+          chmod 600 "$HOT_UPDATER_SIGNING_PRIVATE_KEY_PATH"
+
+      - run: npx --no-install hot-updater deploy -p ios
+
+      - name: Remove the signing key
+        if: always()
+        run: rm -f "$HOT_UPDATER_SIGNING_PRIVATE_KEY_PATH"
+```
+
+Prefer GitHub OIDC with a KMS signer when available because the workflow then
+receives short-lived signing authorization instead of exportable key material.

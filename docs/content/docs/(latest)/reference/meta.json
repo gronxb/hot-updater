@@ -1,0 +1,12 @@
+{
+  "title": "Reference",
+  "description": "Look up client APIs and plugin configuration.",
+  "icon": "BookText",
+  "pages": [
+    "../react-native-api",
+    "../build-plugins",
+    "../storage-plugins",
+    "../database-plugins",
+    "../integration-plugins"
+  ]
+}

@@ -15,18 +15,10 @@ Do not use `HotUpdater.init` and `HotUpdater.wrap` in the same app. Hot Updater
 reports mixed usage with `console.error`. Use `init + checkForUpdate` for a
 custom or manual update flow.
 
-For a self-hosted server created with
-`clientAccess: { type: "api-key" }`, apply the database schema and create an API
-key before configuring the app:
-
-```bash
-npx hot-updater db migrate src/hotUpdater.ts
-npx hot-updater api-key create src/hotUpdater.ts --name "Mobile app"
-```
-
-The command displays the plaintext API key once. Store it in your existing
-React Native build-time configuration without committing it to source, then
-pass that exact value in the default `x-api-key` header:
+Use the client handler URL and client API key produced by your infrastructure
+setup. For a custom server, follow
+[API key authentication](/docs/custom/api-key-authentication) to configure the
+client access policy and create a key.
 
 ```tsx
 import { HotUpdater } from "@hot-updater/react-native";
@@ -50,7 +42,8 @@ API key using `x-api-key` as shown above.
 
 Automatic app-ready transition and Bundle adoption Insights are enabled by
 default. Set `insights: false` to send no Insights events. The server routes
-remain available either way.
+remain available either way. See [Insights](/docs/guides/insights) for report
+contents, optional user identity, and verification.
 
 `baseURL` can also be resolved at runtime. The function may return a string or
 a promise, and Hot Updater calls it before each update check.
@@ -75,9 +68,9 @@ if (!updateInfo) {
   return;
 }
 
-await updateInfo.updateBundle();
+const didUpdate = await updateInfo.updateBundle();
 
-if (updateInfo.shouldForceUpdate) {
+if (didUpdate && updateInfo.shouldForceUpdate) {
   await HotUpdater.reload();
 }
 ```
@@ -86,7 +79,7 @@ if (updateInfo.shouldForceUpdate) {
 
 | Option             | Type                                        | Required | Description                                                      |
 | ------------------ | ------------------------------------------- | -------- | ---------------------------------------------------------------- |
-| `baseURL`          | `string \| () => string \| Promise<string>` | Yes      | Your client handler URL or runtime URL function                  |
+| `baseURL`          | `string \| (() => string \| Promise<string>)` | Yes      | Your client handler URL or runtime URL function                  |
 | `insights`         | `boolean`                                   | No       | Send app-ready and Bundle adoption events (default: true)        |
 | `requestHeaders`   | `Record<string, string>`                    | No       | Shared headers used by update checks and app-ready notifications |
 | `requestTimeout`   | `number`                                    | No       | Request timeout in milliseconds (default: 5000)                  |

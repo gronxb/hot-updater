@@ -1,0 +1,140 @@
+---
+title: "Install packages"
+description: "Install a compatible v1 RC CLI, SDK, build plugin and provider package before setup."
+icon: Download
+---
+
+import { Tabs, Tab } from "fumadocs-ui/components/tabs";
+
+## Use compatible v1 packages
+
+The v1 documentation follows the `next` source branch. Published v1 packages use
+the npm **`rc`** tag. Install each required Hot Updater package with `@rc`; RC
+numbers differ between packages, so do not assign the CLI's exact version to
+every package. Commit the resulting lockfile to reproduce the resolved graph.
+
+<Callout type="warn">
+  For an existing v0 installation, start with
+  [Move from v0 to v1](/docs/guides/upgrade-to-v1) before installing or changing
+  infrastructure.
+</Callout>
+
+## Prerequisites
+
+- An existing React Native app using the React Native CLI, Rock or Expo.
+- Run package commands in the app's workspace directory, using its package
+  manager and lockfile.
+- The CLI requires Node.js 20.19+. For generated infrastructure/client-key
+  helpers, use Node.js 22.18+ or Node.js 24+; a separate helper runtime can coexist
+  with your app toolchain.
+- To complete a device test, have the iOS or Android native toolchain installed.
+  OTA testing needs a native Release build with Hot Updater's native module.
+
+An agent should inspect the app, installed packages and existing provider first,
+then perform the installation below with the project's package manager.
+
+## Install the CLI and SDK
+
+Install the runtime SDK as an app dependency:
+
+```package-install
+npm install @hot-updater/react-native@rc
+```
+
+Install the deployment CLI and environment loader as development dependencies:
+
+```package-install
+npm install hot-updater@rc dotenv --save-dev
+```
+
+## Install your build plugin
+
+Choose the app's build system:
+
+<Tabs items={["Bare (React Native CLI)", "Rock", "Expo"]}>
+  <Tab value="Bare (React Native CLI)">
+
+```package-install
+npm install @hot-updater/bare@rc --save-dev
+```
+
+  </Tab>
+  <Tab value="Rock">
+
+```package-install
+npm install @hot-updater/rock@rc --save-dev
+```
+
+  </Tab>
+  <Tab value="Expo">
+
+```package-install
+npm install @hot-updater/expo@rc --save-dev
+```
+
+Keep `@hot-updater/react-native` as the runtime SDK. `@hot-updater/expo` supplies
+the build and native config plugins; configure it during
+[app setup](/docs/get-started/app-setup#build-configuration).
+
+  </Tab>
+</Tabs>
+
+## Install your provider package
+
+For a managed provider, install the package for your selected infrastructure:
+
+<Tabs items={["Cloudflare", "Supabase", "AWS", "Firebase"]}>
+  <Tab value="Cloudflare">
+
+```package-install
+npm install @hot-updater/cloudflare@rc --save-dev
+```
+
+  </Tab>
+  <Tab value="Supabase">
+
+```package-install
+npm install @hot-updater/supabase@rc --save-dev
+```
+
+  </Tab>
+  <Tab value="AWS">
+
+```package-install
+npm install @hot-updater/aws@rc --save-dev
+```
+
+  </Tab>
+  <Tab value="Firebase">
+
+```package-install
+npm install @hot-updater/firebase@rc --save-dev
+```
+
+  </Tab>
+</Tabs>
+
+For a [custom server](/docs/custom/quick-start), follow its database/storage
+package choices and install required `@hot-updater/*` packages with `@rc` too.
+Server dependencies belong in the server workspace when it is separate.
+
+Complete the SDK, CLI, build and provider installations **before** running
+`init` or generating infrastructure. This avoids the initializer trying to
+resolve missing packages using the CLI's exact RC number.
+
+## Check the installed CLI
+
+Use the local CLI from the app directory:
+
+```bash
+npx --no-install hot-updater --version
+npx --no-install hot-updater init --help
+npx --no-install hot-updater agent infra setup --help
+```
+
+The help must expose the commands used by your chosen workflow. Installing the
+agent skill does not add commands to an older CLI. The `rc` tag contains the
+published prerelease; it does not include every unreleased commit on `next`.
+
+Continue with [agent setup](/docs/guides/ai-agents) or
+[manual setup](/docs/get-started/basic-usage#step-2-initialize-your-provider).
