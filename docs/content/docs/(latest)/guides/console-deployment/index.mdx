@@ -1,308 +1,157 @@
 ---
 title: "Basics"
-description: "Configure the backend, authentication, and Nitro deployment target."
+description: "Connect your backend, set up sign-in, and choose a console host."
 ---
 
-Deploy the Hot Updater console as a standalone HTTPS application using Nitro.
-The same console package can run on a Node server, container, or a hosting
-provider supported by Nitro. A running `hot-updater console` process and a
-mobile source checkout are not required after deployment.
+import { Step, Steps } from "fumadocs-ui/components/steps";
+import { Accordion, Accordions } from "fumadocs-ui/components/accordion";
 
-There are two independent choices: **where the console runs** (Nitro preset)
-and **which existing backend it manages** (Hot Updater database and storage
-plugins). Changing the console host does not migrate the backend or change the
-OTA endpoint used by the mobile app. The provider guides below build on these shared steps.
+Host the console with [Nitro](https://nitro.build/deploy) and connect it to your existing Hot Updater backend.
 
-## Deployment guides
+You need Node.js 22+, backend credentials, and a GitHub or Google OAuth application.
 
-Start with the common setup on this page, then choose your host:
+<Steps>
+<Step>
 
-- [Cloudflare Workers](/docs/guides/console-deployment/cloudflare): connect existing D1/R2 resources with native bindings.
-- [Vercel](/docs/guides/console-deployment/vercel): deploy Nitro server functions and static assets.
-- [Netlify](/docs/guides/console-deployment/netlify): deploy Nitro functions with the generated routing configuration.
-- [Docker](/docs/guides/console-deployment/docker): build and run the standalone Node server in a container.
-- [Node server and containers](#node-server-and-containers): run the standalone server output.
-
-## Recommended hosts by managed provider
-
-**Vercel, Netlify, and Docker/Node can connect to all four managed backends.**
-There is no one-to-one mapping between a backend and a console host. Choose a
-host your team already operates, then configure the backend's server plugin
-and credentials for that runtime.
-
-| Existing managed backend | Vercel / Netlify / Docker with Node | Cloudflare Workers |
-| --- | --- | --- |
-| Cloudflare D1 + R2 | `@hot-updater/cloudflare`: D1 REST API token and R2 S3-compatible credentials. See [Cloudflare from Node](#cloudflare-backend-from-node). | Recommended when using native D1/R2 bindings through `@hot-updater/cloudflare/worker`; [deployment guide](/docs/guides/console-deployment/cloudflare). |
-| AWS DynamoDB + S3 | `@hot-updater/aws`: AWS SDK credentials with access to the existing table and bucket. | No complete console/backend verification is provided; use Node as the default. |
-| Firebase Firestore + Storage | `@hot-updater/firebase`: Firebase Admin SDK with server credentials. | Use Node for the current Firebase Admin integration. |
-| Supabase Database + Storage | `@hot-updater/supabase`: project URL and service-role key over HTTPS. | [Workers can connect to Supabase](https://developers.cloudflare.com/workers/databases/third-party-integrations/supabase/), but this console/backend combination still needs verification. |
-
-For a managed Node deployment, start with [Vercel](/docs/guides/console-deployment/vercel) or
-[Netlify](/docs/guides/console-deployment/netlify). Choose [Docker](/docs/guides/console-deployment/docker) when you want to run the
-same Node output on your own server or container platform. For a Cloudflare
-backend, Workers avoids separate D1 API and R2 S3 credentials by using bindings.
-
-If you prefer to keep compute and backend credentials within the same cloud,
-[Node on ECS/Fargate](#aws-backend-on-ecs) can use an AWS task role, and
-[Node on Cloud Run](#firebase-backend-on-cloud-run) can use a Google service
-account. These are additional options, not requirements for those backends.
-Prefer a region near the backend.
-
-This matrix describes plugin/runtime compatibility, not completed remote QA
-for every combination. The template CI checks hosting output and authentication;
-Modex remote dogfood covers Workers with D1/R2. Verify backend access and real
-artifact downloads on your chosen host. Downloads pass through the console,
-so the host's response-size and execution limits also matter; see the
-[Vercel guide](/docs/guides/console-deployment/vercel).
-
-## 1. Clone and install
-
-Use Node.js 22 or later and the pnpm version declared in `package.json`.
-Keep your deployment configuration in a private fork or infrastructure repo.
+## Clone the console
 
 ```bash
 git clone https://github.com/hot-updater/console.git my-app-console
 cd my-app-console
-corepack enable
-pnpm install --frozen-lockfile
 ```
 
-The template uses published npm RC packages. Its default
-`hot-updater.config.ts` deliberately requires you to connect your backend; it
-does not select an infrastructure provider for you.
+Install dependencies with the package manager used by your deployment repository.
 
-## 2. Connect your existing backend
-
-Replace `hot-updater.config.ts` with `defineConsoleConfig` and the database and
-storage plugins for your existing Hot Updater backend. Select plugin entry
-points compatible with the console's runtime. For example, a Node-compatible
-Supabase configuration is:
-
-```bash
-pnpm add --save-exact @hot-updater/supabase@rc
+```package-install
+npm install
 ```
 
-```ts
+Keep your deployment configuration in a private repository and commit its lockfile.
+
+</Step>
+<Step>
+
+## Add your plugins
+
+Replace `hot-updater.config.ts` with your database and storage plugins:
+
+```ts title="hot-updater.config.ts"
 import { defineConsoleConfig } from "@hot-updater/console";
-import { supabaseDatabase, supabaseStorage } from "@hot-updater/supabase";
+// Import your database and storage plugins here.
 
 export default defineConsoleConfig(() => ({
-  database: supabaseDatabase({
-    supabaseUrl: process.env.HOT_UPDATER_SUPABASE_URL!,
-    supabaseServiceRoleKey: process.env.HOT_UPDATER_SUPABASE_SERVICE_ROLE_KEY!,
-  }),
-  storage: supabaseStorage({
-    supabaseUrl: process.env.HOT_UPDATER_SUPABASE_URL!,
-    supabaseServiceRoleKey: process.env.HOT_UPDATER_SUPABASE_SERVICE_ROLE_KEY!,
-    bucketName: process.env.HOT_UPDATER_SUPABASE_BUCKET_NAME!,
-  }),
+  // Add your configured database plugin:
+  // database: yourDatabasePlugin({ ... }),
+
+  // Add your configured storage plugin:
+  // storage: yourStoragePlugin({ ... }),
 }));
 ```
 
-Set the provider variables in the host's private **runtime** environment store.
-This example requires `HOT_UPDATER_SUPABASE_URL`,
-`HOT_UPDATER_SUPABASE_SERVICE_ROLE_KEY`, and
-`HOT_UPDATER_SUPABASE_BUCKET_NAME`, taken from the existing backend. Other
-providers use their own plugin settings; you do not need to move to Supabase
-to host the console on Node. For D1/R2 native bindings, follow the [Cloudflare guide](/docs/guides/console-deployment/cloudflare).
+Replace the commented lines before building. Reuse the existing database and bucket; leave mobile build plugins and signing private keys in the app project.
 
-Hosting portability does not make every provider SDK compatible with every
-runtime. A Node SDK may require a Node preset; native Worker bindings require
-Cloudflare. Confirm both the Nitro preset and provider entry points before
-deploying. The template's Cloudflare package is a development dependency for
-its optional example and CI, not the default runtime configuration.
+Install your chosen [database plugin](/docs/concepts/plugin-system#database-plugin) and [storage plugin](/docs/concepts/plugin-system#storage-plugin). Read credentials from runtime environment variables inside the callback.
 
-Do not copy the entire mobile config. Build plugins, fingerprints, and mobile
-bundle-signing private keys stay in the mobile project. Connect existing
-resources; creating a console does not require a new database, bucket, or schema
-migration.
+</Step>
+<Step>
 
-### Cloudflare backend from Node
+## Set up sign-in
 
-To host a Cloudflare backend on Vercel, Netlify, or Docker, use the package's
-root entry point. It queries D1 through the Cloudflare API and R2 through its
-S3-compatible API; no Worker bindings are required.
+GitHub and Google sign-in are included. Fill in the environment variables below to use either provider without changing the authentication code. For other authentication systems, [customize the cloned code](#custom-authentication).
 
-```bash
-pnpm add --save-exact @hot-updater/cloudflare@rc
-```
+Choose your public HTTPS URL, then register its OAuth callback:
 
-```ts
-import { defineConsoleConfig } from "@hot-updater/console";
-import { d1Database, r2Storage } from "@hot-updater/cloudflare";
+| Provider | Callback |
+| --- | --- |
+| GitHub | `https://<console-host>/api/auth/callback/github` |
+| Google | `https://<console-host>/api/auth/callback/google` |
 
-export default defineConsoleConfig(() => ({
-  database: d1Database({
-    accountId: process.env.HOT_UPDATER_CLOUDFLARE_ACCOUNT_ID!,
-    databaseId: process.env.HOT_UPDATER_CLOUDFLARE_D1_DATABASE_ID!,
-    cloudflareApiToken: process.env.HOT_UPDATER_CLOUDFLARE_API_TOKEN!,
-  }),
-  storage: r2Storage({
-    accountId: process.env.HOT_UPDATER_CLOUDFLARE_ACCOUNT_ID!,
-    bucketName: process.env.HOT_UPDATER_CLOUDFLARE_R2_BUCKET_NAME!,
-    credentials: {
-      accessKeyId: process.env.HOT_UPDATER_CLOUDFLARE_R2_ACCESS_KEY_ID!,
-      secretAccessKey: process.env.HOT_UPDATER_CLOUDFLARE_R2_SECRET_ACCESS_KEY!,
-    },
-  }),
-}));
-```
+Add these values to your host's **runtime** environment:
 
-Set all six variables in the console host's private runtime environment.
-Reuse the existing account, database ID, and bucket name. Supply a D1 API token
-with access to that database and R2 S3 credentials with access to the bucket.
-These are server credentials; the console's GitHub/Google OAuth settings are
-configured separately in step 3.
+| Variable | Value |
+| --- | --- |
+| `BETTER_AUTH_URL` | Your HTTPS origin, without a path |
+| `BETTER_AUTH_SECRET` | A random secret of at least 32 characters |
+| `HOT_UPDATER_CONSOLE_ALLOWED_EMAILS` | Comma-separated full, verified email addresses |
+| `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET` | Your GitHub OAuth credentials, if using GitHub |
+| `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | Your Google OAuth credentials, if using Google |
 
-## 3. Configure authentication
-
-Choose the console's canonical HTTPS origin, then create a GitHub OAuth App or
-Google OAuth client with that origin as its homepage and the matching callback:
-
-```text
-https://<console-host>/api/auth/callback/github
-https://<console-host>/api/auth/callback/google
-```
-
-GitHub login requests `user:email` to check verified addresses, without repository
-access. For Google, permit your test users when the OAuth client is in testing.
-Configure at least one complete provider pair in the host's private runtime
-environment store:
-
-| Variable                                   | Required | Purpose                                                                    |
-| ------------------------------------------ | -------- | -------------------------------------------------------------------------- |
-| `BETTER_AUTH_URL`                          | Yes      | Exact public HTTPS origin, without a path                                  |
-| `BETTER_AUTH_SECRET`                       | Yes      | Random secret of at least 32 characters; encrypts OAuth state and sessions |
-| `HOT_UPDATER_CONSOLE_ALLOWED_EMAILS`       | Yes      | Comma-separated exact verified addresses permitted to manage the backend   |
-| `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET` | One pair | GitHub OAuth App credentials                                               |
-| `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | One pair | Google OAuth client credentials                                            |
-
-Generate a session secret with `openssl rand -base64 32`. Do not use `VITE_`
-prefixes: authentication and backend credentials belong only on the server.
-The included adapter uses encrypted cookie sessions, so there is no separate
-authentication database. Access checks precede provider initialization, reads,
-writes, and downloads. Removing an address blocks its next protected request;
-rotating the session secret invalidates sessions.
-
-For local Node development, copy `.env.example` to `.env`, add the selected
-provider variables, and use `pnpm dev`. Use a localhost OAuth callback and
-`BETTER_AUTH_URL=http://localhost:3000`. Production hosting must inject runtime
-variables explicitly; the built Node server does not automatically load `.env`.
-
-## 4. Select a Nitro deployment target
-
-Nitro produces a deployment artifact for the selected infrastructure. Its
-[deployment guide](https://nitro.build/deploy) describes preset selection and
-provider detection. This repository builds through Vite's console plugin, so
-set `NITRO_PRESET` on **`pnpm build`**, rather than replacing the build with a
-standalone `nitro build` command.
-
-| Console host                                                          | Build command                      | Deployment artifact and next step                                                                 |
-| --------------------------------------------------------------------- | ---------------------------------- | ------------------------------------------------------------------------------------------------- |
-| [Node server / container](https://nitro.build/deploy/runtimes/node)   | `pnpm build:node`                  | Ship the complete `.output` directory; run `node .output/server/index.mjs`                        |
-| [Vercel](/docs/guides/console-deployment/vercel)                 | `NITRO_PRESET=vercel pnpm build`   | Generated `.vercel/output`; use Vercel's Git build/deploy integration                             |
-| [Netlify](/docs/guides/console-deployment/netlify)               | `NITRO_PRESET=netlify pnpm build`  | Generated Netlify functions and assets; use Netlify's Git integration and generated configuration |
-| [Cloudflare Workers](/docs/guides/console-deployment/cloudflare) | `pnpm build:cloudflare`            | Generated Worker/assets configuration; follow the Cloudflare guide                              |
-| Other Nitro hosts                                                     | `NITRO_PRESET=<preset> pnpm build` | Follow that host's guide in the [Nitro provider catalog](https://nitro.build/deploy)              |
-
-Without an explicit preset or provider detection, Nitro defaults to a Node
-server. On Vercel or Netlify, import your configured repository, set install to
-`pnpm install --frozen-lockfile`, build to the corresponding command above, and
-supply the server runtime variables from steps 2–3. Follow the linked Nitro
-provider guide for the generated output and platform deployment settings.
-Do not override its server output with a static Vite `dist` deployment.
-
-The console needs a server for OAuth, data queries, and mutations. Static-only
-hosting cannot run it. The lockfile pins Nitro with the console package; newer
-Nitro documentation may describe behavior unavailable in that version. Retain
-the lockfile and verify the generated artifact after upgrades. CI builds Node,
-Vercel, Netlify, and Cloudflare, and runs actual Node/Worker runtime smoke checks.
-Those checks do not claim that every provider has been deployed remotely.
-
-### Node server and containers
+Configure at least one complete OAuth pair and your backend's environment variables. Generate the session secret with:
 
 ```bash
-pnpm test
-pnpm test:type
-pnpm build:node
-pnpm test:node
-# Supply production runtime variables through your host, then:
-node .output/server/index.mjs
+openssl rand -base64 32
 ```
 
-Deploy the **entire** `.output` directory, including its public assets and server
-dependencies. Set `PORT` / `NITRO_PORT` and `HOST` / `NITRO_HOST` as required.
-Terminate HTTPS at your hosting platform or reverse proxy. A container follows
-the same process: build with Node and pnpm, copy `.output` into a Node runtime
-image, inject secrets at runtime, and start the entry point. Never bake `.env`
-or credentials into the image. See [Nitro's Node deployment
-reference](https://nitro.build/deploy/runtimes/node).
+Keep secrets server-side; never prefix them with `VITE_`. Google OAuth clients in testing must also allow your test users.
 
-### AWS backend on ECS
+</Step>
+<Step>
 
-For a console that stays in AWS, deploy the Node output as an ECS service on
-Fargate. Use `dynamoDB` and `s3Storage` from `@hot-updater/aws` with the
-existing table, bucket, and region. Build with `pnpm build:node`, ship the
-complete `.output` directory in a Node container, and start
-`node .output/server/index.mjs` behind your service's HTTPS endpoint.
+## Choose a host
 
-Give the console's [task IAM role](https://docs.aws.amazon.com/AmazonECS/latest/developerguide/task-iam-roles.html)
-access to those backend resources. The AWS SDK can obtain temporary credentials
-from that role; a developer's local AWS profile is not available in the
-container. Inject the step 3 authentication variables using the service's
-runtime configuration and [Secrets Manager references](https://docs.aws.amazon.com/AmazonECS/latest/developerguide/secrets-envvar-secrets-manager.html).
-Use a separate console service; keep the existing OTA Lambda@Edge and
-CloudFront configuration.
+Follow one deployment guide:
 
-ECS adds container and service configuration. If your team already hosts Node
-applications elsewhere, deploying there with suitable AWS credentials is also
-a reasonable choice.
+| Host | Runtime |
+| --- | --- |
+| [Docker](/docs/guides/console-deployment/docker) | Standalone Node container |
+| [Vercel](/docs/guides/console-deployment/vercel) | Node server functions |
+| [Netlify](/docs/guides/console-deployment/netlify) | Node server functions |
+| [Cloudflare](/docs/guides/console-deployment/cloudflare) | Worker with native D1/R2 bindings |
 
-### Firebase backend on Cloud Run
+Hosting and backend providers can differ. Vercel, Netlify, and Docker/Node can connect to all four managed backends:
 
-Deploy the same Node output as a Cloud Run service in the existing Firebase
-project. Install `@hot-updater/firebase` and its declared Firebase peer
-dependencies, and configure `firebaseDatabase` and `firebaseStorage` for
-the existing project and bucket.
+| Backend | Node hosts | Cloudflare Workers |
+| --- | --- | --- |
+| Cloudflare | [D1 API](/docs/database-plugins/cloudflare) + [R2 S3 credentials](/docs/storage-plugins/cloudflare) | Native bindings |
+| AWS | AWS SDK credentials | Console integration unverified |
+| Firebase | Firebase Admin credentials | Use Node |
+| Supabase | Project URL + service-role key | SDK compatible; console integration unverified |
 
-Use a service account with the required Firestore and Storage permissions.
-[Firebase recommends Application Default Credentials](https://firebase.google.com/docs/admin/setup#initialize_the_sdk)
-in Google environments, including Cloud Run, so `applicationDefault()` can
-use the service identity without copying a developer's credential file.
-Supply OAuth and allowlist values through the service's runtime environment
-and [Secret Manager integration](https://docs.cloud.google.com/run/docs/configuring/services/secrets).
+For another host, select its preset from [Nitro's deployment catalog](https://nitro.build/deploy). The console needs a server runtime.
 
-Build with `pnpm build:node`, include the complete `.output` in the
-container, and run `node .output/server/index.mjs`. Set `HOST=0.0.0.0`
-and let Nitro use the `PORT` provided by Cloud Run, as required by its
-[container contract](https://docs.cloud.google.com/run/docs/container-contract).
-Use the public console origin for the OAuth callbacks in step 3. A static
-Firebase Hosting upload alone does not run this Node server.
+</Step>
+<Step>
 
-## 5. Verify the deployed console
+## Verify the deployment
 
-1. Open the HTTPS origin in a private browser. Expect sign-in with no management
-   data; anonymous reads, writes, and downloads must be denied.
-2. Sign in with an allowlisted verified address. Compare Bundles and Insights
-   against the local console using the same platform, channel, and period.
-3. Open Distribution and an app version, follow a bundle to its detail, check
-   events pagination, and download an existing artifact.
-4. Reload a nested URL and check a mobile viewport. Ensure the browser has no
-   failed server requests or missing static assets.
-5. Sign out and verify access is removed. Unapproved and unverified identities
-   must be denied.
+1. Open the HTTPS URL: sign-in should appear before any management data.
+2. Sign in with an allowlisted account: check Bundles and Insights.
+3. Download a bundle, then sign out: management data should no longer be accessible.
 
-An anonymous request to `/api/bundles/<artifact-id>/download` must return `401`,
-even for an unknown ID. Use the Artifact ID in Bundle Detail's Advanced
-diagnostics for a real download. Do not alter a production rollout to test
-hosting; use a dedicated test channel for mutation QA.
+</Step>
+</Steps>
 
-## Updates and recovery
+## Custom authentication
 
-Update the console RC and the backend plugins you use, retain the lockfile,
-and rerun the selected build and runtime checks. Promote the new artifact with
-your host's deployment workflow. Keep the previous artifact/version available
-for a host-level rollback. Reverting console code does not undo database or
-storage changes made through the UI and does not roll back the mobile OTA
-server. Check the Hot Updater infrastructure upgrade requirements separately
-when changing backend versions.
+You can edit or replace `console.auth.ts` in your clone to use your own authentication and access rules. It implements `ConsoleAuthAdapter`:
+
+| Method | Responsibility |
+| --- | --- |
+| `handle(request)` | Handle sign-in, callbacks, and sign-out |
+| `getAccess(request)` | Validate the session and decide who can access the console |
+| `getProviders(request)` | Select the built-in sign-in buttons |
+
+The packaged sign-in screen supports GitHub and Google. A new provider button or login form also needs changes to the UI and provider types in `@hot-updater/console`; adding environment variables alone does not add a new login method.
+
+<Accordions>
+<Accordion title="Local preview">
+
+Copy `.env.example` to `.env`, fill in OAuth and backend values, and use `BETTER_AUTH_URL=http://localhost:3000` with a matching callback.
+
+```package-install
+npm run dev
+```
+
+Use Node-compatible plugins. For native bindings, use the [Worker preview](/docs/guides/console-deployment/cloudflare#local-preview).
+
+</Accordion>
+<Accordion title="Sign-in troubleshooting">
+
+| Symptom | Check |
+| --- | --- |
+| Sign-in fails | Both OAuth values, session secret, and email allowlist are set at runtime |
+| Callback rejected | Browser origin, `BETTER_AUTH_URL`, and OAuth callback match |
+| Forbidden after sign-in | The provider returns a verified email in the allowlist |
+
+</Accordion>
+</Accordions>
