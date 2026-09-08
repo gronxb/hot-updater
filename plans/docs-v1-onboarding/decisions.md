@@ -211,6 +211,41 @@ concerns), requiring the long custom-flow guide before the first OTA (adds an
 unnecessary onboarding step), and removing wrap support (it remains a valid
 automatic integration).
 
+## 11. Shorten the agent entry without losing the execution contract
+
+**Proposal:** Replace the landing's package/init commands with skill installation
+and one agent request; shorten the detailed agent prompt to two sentences.
+
+**Challenge:** Skill installation alone does not install a compatible CLI. The
+upstream workflow covers discovery, infrastructure and package setup, but does
+not independently select `init`, a test channel or a rollback drill. An
+infrastructure-only request also does not authorize publishing a test OTA.
+
+**Decision:** Label Terminal and Your agent separately. The landing request
+explicitly includes installation, setup and an OTA test, and its Get Started
+link opens the agent guide. The guide retains `HotUpdater.init`, a custom flow,
+a native Release build, a test channel and rollback in two sentences. Its
+evidence table and canonical integration/verification links own the details.
+Keep discovery and provider execution in the skill and generated instructions.
+
+An independent reviewer checked the
+[upstream skill contract](https://github.com/hot-updater/skills/tree/938db2c637df2421718edbc847d550ecaec8d294/skills/hot-updater)
+and matched it to the packaged infrastructure instructions. List-only skill
+discovery succeeded without installing into the user's project. The current
+npm stable CLI is still v0 at verification time; the page requires a compatible
+v1 CLI rather than silently selecting a prerelease channel.
+
+**Terminal challenge:** Bare line feeds retain xterm's current column, fixed
+viewport-based columns exceed the actual card width, and the resize effect
+recreates the terminal. Together these clipped the final deployment ID.
+
+**Decision:** Use explicit carriage-return/newline handling, size columns from
+the container and loaded font, and preserve one terminal through resizing.
+Show the actual deploy context/task labels and a complete public update ID in
+a compact demo. Put the ID on a separate line so resizing preserves it. Cancel
+animation work when the component unmounts. Omit the decorative banner and
+redundant upload percentage; keep the deployment result visible.
+
 ## Remaining limits
 
 - Content/source review and route checks do not prove actual OTA delivery for

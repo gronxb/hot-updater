@@ -16,7 +16,8 @@ still needs a clear version, an ordered path, and observable completion criteria
 ## Scope
 
 Reorganize and improve v1 content in `docs/content/docs/(latest)` and the site
-navigation and Markdown delivery needed to read it. Audit all 86 existing pages
+navigation and Markdown delivery needed to read it. Include a concise agent
+entry on the landing page and a readable deploy demonstration. Audit all 86 existing pages
 and record a specific disposition for each. Preserve v0 content and historical
 architecture/release records. Keep v0-to-v1 transition instructions in
 `guides/upgrade-to-v1.mdx`. This is a documentation change, not a runtime change.
@@ -49,6 +50,8 @@ architecture/release records. Keep v0-to-v1 transition instructions in
    canonical URLs, readable Markdown and latest-only default discovery.
 8. Record competing proposals, concrete objections, accepted decisions and
    rejected ideas before treating the architecture as settled.
+9. Keep landing setup to a skill installation command and a short agent request.
+   Link to the complete guide, and keep the deploy demo readable when resized.
 
 ## Acceptance gates
 
@@ -96,6 +99,8 @@ Verified on September 9, 2026:
 | Repository tests | `pnpm -w test`: 290 files, 2,680 tests pass |
 | Executable documentation | Manual client-access probe checked against six mocked HTTP outcomes; init onboarding sample passes six flow scenarios; six SDK examples pass strict typechecking; database conformance (48 tests) and standalone storage (13 tests) pass |
 | Rendered navigation | Desktop Start here and agent path inspected; version selector opens the archived v0 navigation |
+| Landing entry and terminal | Skill discovery command succeeds; Get Started opens the agent guide; desktop and 320/375/1280px iframe viewports fit without horizontal overflow; resizing reuses the terminal |
+| Deploy demonstration | Actual xterm parser passes at 36/38/42/46/58/70 columns, during/after resizing and on cancellation; complete update ID and final prompt remain visible in 16 rows |
 | Scope | No v0 content, historical release/architecture content or runtime package changes |
 
 The docs typecheck excludes historical `architecture/measurements` scripts,
@@ -105,9 +110,17 @@ published package.
 
 ![Start here with task-oriented navigation](screenshots/start-here.png)
 
-Cloud provisioning, a device OTA run and mobile-viewport visual checks were not
-performed. The first two are user-facing verification procedures described by
-this change, not outcomes claimed by these local checks.
+![Agent onboarding and compact deployment demonstration](screenshots/landing-agent.png)
+
+[320px landing viewport](screenshots/landing-agent-320.png) verifies the complete
+deployment ID after the terminal is resized from a wider viewport.
+
+Cloud provisioning and a device OTA run were not performed. They are user-facing
+verification procedures described by this change, not outcomes claimed by these
+local checks. Skill discovery was verified with `skills@latest` 1.5.25 in a
+temporary project using `add --list`, without installing a skill. The npm
+stable CLI was still 0.36.11 at verification time; v1 agent setup requires a
+compatible v1 release and does not silently switch to a prerelease channel.
 
 ## Non-goals
 

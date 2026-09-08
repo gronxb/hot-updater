@@ -17,29 +17,20 @@ Install the [Hot Updater skill](https://github.com/hot-updater/skills/blob/main/
 from the app's project directory:
 
 ```sh
-npx skills add hot-updater/skills
+npx skills@latest add hot-updater/skills
 ```
 
-The skill gives the agent the workflow. It does not install a newer CLI or
-supply access to your provider account.
+The skill gives the agent the workflow. Setup requires a compatible v1 CLI and
+access to your provider account. The request below authorizes package installation;
+the agent verifies the CLI's version and commands before provisioning.
 
 ## Ask With `$hot-updater`
 
 Ask for the complete setup and test:
 
 ```text
-$hot-updater Set up this project with Hot Updater v1 and verify its first OTA update.
-Inspect the app root, build system, installed packages and existing provider resources first.
-Install hot-updater, @hot-updater/react-native and the required build/provider packages
-before generating infrastructure. Record the installed versions and keep the lockfile.
-Use agent infra setup and its generated instructions to provision and verify the server.
-Connect the app's base URL and client API key, including both native and OTA build environments.
-Prefer HotUpdater.init with a custom checkForUpdate -> updateInfo.updateBundle -> deliberate reload flow.
-Initialize when the app is ready, handle callback errors, and verify download success before reloading.
-Configure native bundle loading, compatibility and a dedicated test channel; preserve existing signing.
-Build and launch a native Release app, publish a visible JavaScript and asset change to its exact scope,
-and verify the changes after applying the OTA. Check the deployment ID, rollback and received Insights.
-Report server verification, native launch, OTA application and remaining native release work separately.
+$hot-updater Install Hot Updater v1 and set up this app, including its infrastructure.
+Use HotUpdater.init with a custom flow; verify OTA and rollback in a native Release build on a test channel.
 ```
 
 The agent can leave the provider choice until after discovery. It reuses suitable
@@ -49,7 +40,9 @@ when its tools and access permit it. If a choice remains unresolved, use
 
 The shared [installation contract](/docs/get-started/installation) includes the
 CLI, SDK, selected build/provider packages and helper runtime prerequisites.
-The agent checks the installed CLI's help before invoking commands.
+The skill and generated [infrastructure instructions](/docs/guides/agent-infrastructure)
+carry the discovery, provisioning and verification steps; the prompt only needs
+to specify the desired app behavior and outcome.
 
 ## What the agent should complete
 
@@ -79,27 +72,17 @@ available setup work and identify the exact remaining device check.
   JSON into the conversation. The agent verifies access without printing values.
 - The app receives only its client API key. Provider, service-role, admin and
   signing credentials remain in the CLI/server or protected deployment job.
-- The agent asks only for unresolved targets, missing login/access, billing
-  activation or consequential choices it cannot infer. Existing authorization
-  does not need to be repeated for every generated checklist step.
-- For infrastructure, the agent generates files with `agent infra setup` or
-  `agent infra upgrade`, then applies them through its available provider tools.
-  [Agent Infrastructure](/docs/guides/agent-infrastructure) documents the output,
-  versioned instructions and resume record.
-- Before retrying a failed remote action, inspect actual remote state. Keep
-  existing resource identities, secrets and migration history.
-- Before a state-changing OTA operation, identify the public Bundle ID,
-  platform, channel and affected compatibility/rollout scope. Verify the
-  result afterward; do not silently broaden a failed deployment's scope.
+- Expect questions only for unresolved targets, missing login/access, billing
+  activation or consequential choices the agent cannot infer.
+- Use a dedicated test channel for the first OTA. Review the platform, channel
+  and compatibility scope before changing a production release.
 
 ## Upgrade existing infrastructure
 
 For an existing v1 server, ask:
 
 ```text
-$hot-updater Upgrade this project's existing server infrastructure to the latest stable v1 release.
-Read all applicable versioned upgrade instructions, preserve existing resources and customizations,
-and verify the deployed endpoint and authenticated client access afterward.
+$hot-updater Upgrade this project's existing server to the latest stable v1, preserving resources and verifying authenticated client access.
 ```
 
 The agent follows
