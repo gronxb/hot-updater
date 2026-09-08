@@ -1,0 +1,71 @@
+---
+title: "Netlify"
+description: "Deploy the console with Nitro functions on Netlify."
+---
+
+Complete the [basic setup](/docs/guides/console-deployment) first. The console runs as Nitro functions
+on Netlify and connects to the app's existing backend. Use database and storage
+plugins compatible with this Node runtime; native Cloudflare bindings require
+a Cloudflare host.
+
+## 1. Configure the backend and authentication
+
+Set up `hot-updater.config.ts` with the selected backend plugins and retain the
+resulting lockfile in your private deployment repository. Choose the production
+console domain and register the GitHub or Google callback on that exact origin.
+Use the same origin as `BETTER_AUTH_URL`.
+
+## 2. Import the repository
+
+Import your repository into Netlify. Use the console checkout as the base
+directory and configure:
+
+| Setting | Value |
+| --- | --- |
+| Install | pnpm with the committed lockfile and `packageManager` version |
+| Build command | `NITRO_PRESET=netlify pnpm build` |
+| Publish directory | `dist` |
+| Server functions | Generated under `.netlify/functions-internal` |
+
+The pinned Nitro preset generates both the public assets in `dist` and internal
+server functions, including routing and headers. Keep these together through
+Netlify's build integration. Uploading only `dist` to a static host cannot run
+the console. You do not need to write a separate catch-all function or redirect.
+
+In Netlify's private environment settings, add `BETTER_AUTH_URL`,
+`BETTER_AUTH_SECRET`, `HOT_UPDATER_CONSOLE_ALLOWED_EMAILS`, a complete OAuth pair,
+and the backend plugin variables from Basics. Ensure the variables are
+available to **Functions** at runtime, not only to the build. Do not use `VITE_`
+prefixes for secrets. Configure production and deploy-preview contexts
+separately; preview domains need matching OAuth callbacks and trusted origins
+if you want sign-in there.
+
+## 3. Build and deploy
+
+Check the generated output locally:
+
+```bash
+pnpm test
+pnpm test:type
+NITRO_PRESET=netlify pnpm build
+```
+
+Commit your deployment configuration and deploy using Netlify's Git integration.
+The default console configuration intentionally requires a backend; successful
+compilation alone does not prove that authenticated database queries will work.
+
+## 4. Verify and update
+
+Run the [remote verification checklist](/docs/guides/console-deployment#5-verify-the-deployed-console)
+on your production URL. Check function logs for backend connectivity and OAuth
+errors, and verify bundle downloads against your function limits. Reload a
+nested Insights or bundle-detail URL to confirm generated routing is active.
+
+Use the same Git workflow for updates. Restore a previous Netlify deployment
+when the console code needs rollback; database/storage changes are separate.
+The template CI builds this preset, while Modex remote dogfood runs on
+Cloudflare. Verify your own Netlify deployment before relying on it.
+
+See [Nitro's official Netlify deployment guide](https://nitro.build/deploy/providers/netlify)
+for current integration details. Recheck generated paths when updating the
+console's pinned Nitro version.
