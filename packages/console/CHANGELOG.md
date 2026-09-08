@@ -1,5 +1,20 @@
 # @hot-updater/console
 
+## 1.0.0-rc.6
+
+### Patch Changes
+
+- 663d8e9: Refine Insights with a compact platform and channel toolbar, standard shadcn period tabs, and underlined Active/Rollback tabs. Give the activity chart more space and move All events into its footer. Correct card header alignment and remove the custom high-contrast button styles.
+
+  Show three event outcomes with visible descriptions: Update applied, No change, and Rolled back. Treat release adoption that reuses the same files as No change, and show its current files once instead of an unchanged From/To pair.
+
+  Use a 24-hour, hourly activity chart in Bundle Detail while preserving the 30-day activity summaries in the Bundles list.
+
+- Updated dependencies [663d8e9]
+  - @hot-updater/server@1.0.0-rc.3
+  - @hot-updater/plugin-core@1.0.0-rc.3
+  - @hot-updater/cli-tools@1.0.0-rc.3
+
 ## 1.0.0-rc.5
 
 ### Patch Changes
