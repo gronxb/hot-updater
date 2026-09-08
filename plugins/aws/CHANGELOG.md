@@ -1,5 +1,11 @@
 # @hot-updater/aws
 
+## 1.0.0-rc.4
+
+### Patch Changes
+
+- 2cb3cf0: Make agent infrastructure onboarding resumable through provider checklists with explicit prerequisites, verification evidence and pending-operation records. Package a read-only server verification helper, align database/key/deployment ordering with init, and export AWS DynamoDB/IAM request templates from the same builders used by interactive setup.
+
 ## 1.0.0-rc.3
 
 ### Patch Changes
