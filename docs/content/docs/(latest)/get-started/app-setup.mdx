@@ -11,7 +11,7 @@ import { Tabs, Tab } from "fumadocs-ui/components/tabs";
 Use this page after [agent setup](/docs/guides/ai-agents),
 [manual setup](/docs/get-started/basic-usage), or connecting an existing server.
 Both setup paths use the same app integration and
-[OTA verification](/docs/guides/simulator-test).
+[OTA verification](/docs/get-started/test-ota).
 
 Before editing, have the [required packages](/docs/get-started/installation)
 installed, a deployed update server **base URL**, and its registered **client API
@@ -91,6 +91,7 @@ export default function App() {
     <View>
       <Text>OTA baseline</Text>
       <Text>{status}</Text>
+      <Text>Update ID: {HotUpdater.getBundleId()}</Text>
       <Button
         title="Check for updates"
         disabled={!canCheck || canReload}
@@ -594,6 +595,6 @@ npx hot-updater doctor --json --server-base-url https://your-update-server-url
 ```
 
 Resolve reported setup issues, then continue to
-[Test an OTA update](/docs/guides/simulator-test). That test builds the native app
+[Test an OTA update](/docs/get-started/test-ota). That test builds the native app
 in Release mode and proves that a changed screen and asset reach the device.
 Doctor checks configuration and server version; it does not prove OTA delivery.

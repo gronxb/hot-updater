@@ -253,20 +253,11 @@ metadata.
 
 💡 Most projects don't need this - the defaults work perfectly.
 
-### Testing the Endpoint
+### Test a fingerprint update
 
-The following unauthenticated request returns **401** on managed providers.
-Use the [client-access check](/docs/guides/simulator-test#verify-client-access)
-with the saved client key to verify the catalog, then
-[test OTA delivery](/docs/guides/simulator-test).
+Follow [Test an OTA update](/docs/get-started/test-ota) with a Release build.
+Keep the native inputs and fingerprint unchanged while editing JavaScript or
+assets. Deploy without `-t`; the SDK and CLI use the matching fingerprint to
+select the update.
 
-```bash
-curl "https://your-update-endpoint.com/release-catalogs/fingerprint/ios/cHJvZHVjdGlvbg/11142b9062165fa48665f5efa095dd94e9e45eb0"
-```
-
-Parameters:
-
-- `:platform` - `ios` or `android`
-- `:channelKey` - Canonical base64url encoding of the channel name (for example,
-  `production` becomes `cHJvZHVjdGlvbg`)
-- `:fingerprintHash` - Current fingerprint hash
+If the check fails, use [client-access diagnostics](/docs/guides/doctor#check-client-access).

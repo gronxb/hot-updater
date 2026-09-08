@@ -192,13 +192,14 @@ key to that app population.
 
 ### 5. Verify infrastructure and build the native app
 
-The agent runs `hot-updater doctor --json --server-base-url <v1-base-url>` from
-the app directory and the scaffold's `app/verify-server.mjs` helper, or the
-[shared client-access check](/docs/guides/simulator-test#verify-client-access)
-when using custom infrastructure. The new
-`/version` response must report `infrastructureGeneration: 1` and the expected
-server version. Verify an authenticated catalog request as well: a public
-`/version` response alone does not prove the app's client key works.
+Run `hot-updater doctor --server-base-url <v1-base-url>` from the app directory.
+The new `/version` response must report `infrastructureGeneration: 1` and the
+expected server version. An agent using generated infrastructure also runs its
+[server probe](/docs/guides/agent-infrastructure#verify-completion) for
+authenticated endpoint checks. Use `--json` for the agent's Doctor output.
+
+The native OTA test in the next step verifies the app's client access and
+delivery. A passing public `/version` check alone does not establish either.
 
 After updating app configuration, the agent refreshes Expo native projects with
 `npx expo prebuild`, or bare iOS dependencies with `pod install` from `ios/`.

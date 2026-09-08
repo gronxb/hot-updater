@@ -105,20 +105,11 @@ It evaluates the catalog locally, then resolves the selected artifact through
 `/artifacts/:targetBundleId/from/:currentBundleId`. `:channelKey` is the
 base64url-encoded channel name.
 
-## Testing the Endpoint
+## Test an app-version update
 
-The following unauthenticated request returns **401** on managed providers.
-That confirms the access boundary; it does not verify a usable catalog. For an
-authenticated check, use the [client-access check](/docs/guides/simulator-test#verify-client-access)
-with the saved client key, then [test OTA delivery](/docs/guides/simulator-test).
+Follow [Test an OTA update](/docs/get-started/test-ota) with a Release build.
+Use that build's native app version as the deployment target, then check,
+download and restart through your app's update flow. The SDK constructs the
+catalog request and sends the client headers configured in `HotUpdater.init`.
 
-```bash
-curl "https://your-update-endpoint.com/release-catalogs/app-version/ios/cHJvZHVjdGlvbg/1.0.0"
-```
-
-Parameters:
-
-- `:platform` - `ios` or `android`
-- `:channelKey` - Canonical base64url encoding of the channel name (for example,
-  `production` becomes `cHJvZHVjdGlvbg`)
-- `:appVersion` - Current app version (e.g., `1.0.0`)
+If the check fails, use [client-access diagnostics](/docs/guides/doctor#check-client-access).

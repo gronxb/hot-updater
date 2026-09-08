@@ -9,7 +9,7 @@
     "choose-provider",
     "installation",
     "app-setup",
-    "../guides/simulator-test",
+    "test-ota",
     "../guides/custom-update",
     "../guides/upgrade-to-v1"
   ]

@@ -12,7 +12,7 @@ You can check after login, gate updates by app state, coordinate with navigation
 or expose a "Check for updates" action without wrapping the root component.
 
 The [app setup example](/docs/get-started/app-setup) is enough to
-[verify your first OTA](/docs/guides/simulator-test). Use this guide when you
+[verify your first OTA](/docs/get-started/test-ota). Use this guide when you
 want to customize that working flow's triggers, progress UI and error handling.
 
 The custom flow has four parts:
@@ -358,7 +358,7 @@ async function runUpdateFlow() {
 - Use `useHotUpdaterStore` or `addListener` to show update progress.
 - Use `reload()` immediately only for force updates or explicit user consent.
 - Add error reporting around the full flow.
-- Verify the flow in an [installed release build](/docs/guides/simulator-test).
+- Verify the flow in an [installed release build](/docs/get-started/test-ota).
 
 ## Related
 

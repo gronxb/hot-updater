@@ -22,8 +22,10 @@ Build Plugins, Storage Plugins, Database Plugins and Integration Plugins as
 independent top-level groups: their boundaries remain useful when users need
 configuration or implementation details. The initial umbrella Infrastructure
 and Reference folders were removed so these concerns stay directly visible.
-Use metadata to organize existing URLs. Rewrite entry pages, split distinct
-tasks and merge duplicate instructions into named owners.
+Use metadata to organize the concerns. Rewrite entry pages, split distinct
+tasks and merge duplicate instructions into named owners. Use task-oriented
+canonical URLs when renaming improves the journey; pre-release compatibility
+is not a constraint (see section 12).
 Keep `/docs/get-started/introduction`, the release-linked agent and upgrade URLs,
 and existing symbol URLs. Do not create parallel agent/manual reference trees.
 
@@ -39,7 +41,7 @@ cannot be replaced with a generic "see basic usage" link.
 **Decision:** Basic Usage remains the ordered manual hub. Installation owns the
 package/channel contract; App Setup owns runtime/native integration. Provider
 pages produce concrete server/config/key outputs and hand off to App Setup and
-the existing simulator-test URL, retitled Test an OTA update. Agent Setup owns
+`get-started/test-ota`, titled Test an OTA update. Agent Setup owns
 an end-to-end request and a separate result for server, native launch and OTA.
 The first OTA test requires a visible change in the same installed release
 binary, not merely an upload or selected update ID.
@@ -161,7 +163,7 @@ the implementation:
 
 | Challenge | Accepted correction |
 | --- | --- |
-| A manual user does not have the agent scaffold's server-probe file | Add a self-contained client-access probe to the shared OTA test guide. Check anonymous rejection and valid authenticated responses without printing the key; verify six mocked outcomes. |
+| A manual user does not have the agent scaffold's server-probe file | Verify delivery through the actual native app's check/download/restart flow. The initial inline protocol probe was removed after reader review; it imposed server implementation details on onboarding (section 12). |
 | Local HTTP custom-server success does not establish a usable native release endpoint | Require reachable HTTPS before the native/OTA handoff, including the Docker hosting path. |
 | The Fumadocs search stringifier removes headings and link destinations | Use the Markdown-specific stringifier and verify all corpus code blocks and link destinations survive. |
 | A public directory can accidentally bypass page/fragment validation | Only allow an existing public file to satisfy the asset check; check document routes and anchors otherwise. |
@@ -245,6 +247,38 @@ Show the actual deploy context/task labels and a complete public update ID in
 a compact demo. Put the ID on a separate line so resizing preserves it. Cancel
 animation work when the component unmounts. Omit the decorative banner and
 redundant upload percentage; keep the deployment result visible.
+
+## 12. Make the first OTA walkthrough readable without protocol knowledge
+
+**Reader finding:** The first OTA guide required a long JavaScript heredoc to
+encode Catalog URLs and validate MIME types, scope keys and cache directives
+before the reader reached a native build. It also mixed normal delivery,
+force-update behavior, two initialization styles and operational diagnostics.
+
+**Challenge:** Removing that script must not turn a passing `/version` response
+or a staged update ID into a claim of successful app delivery. A fresh test
+channel may have no Catalog before the first deployment, so a pre-deploy check
+is not a useful onboarding gate.
+
+**Decision:** Use one four-step walkthrough: install a Release baseline,
+publish a visible JavaScript/asset change, check/download/restart in that same
+app, then disable the exact test update and observe rollback. Keep the app
+sample's error handling, post-restart ID and visible-change evidence. Use short
+commands and show only the selected build tool and compatibility strategy.
+Required updates, crash recovery and reporting detail remain with their owning
+guides. Client-access troubleshooting belongs in Doctor; the generated agent
+probe continues to own the independent server/protection-boundary checks.
+
+Rename the page to `get-started/test-ota` and update all latest inbound links.
+The maintainer explicitly prefers the final pre-release structure over URL
+compatibility, so do not add an old-page alias or retain the removed probe's
+anchor. Remove the strategy guides' encoded curl examples and update upgrade
+and catalog-repair handoffs to use the actual app flow.
+
+An independent reviewer checked the SDK's callback-error behavior, fresh-channel
+404 behavior and the separate responsibilities of Doctor, Catalog preflight,
+the agent probe and native OTA application. This changes the required reader
+workflow without changing any runtime API or server protocol.
 
 ## Remaining limits
 

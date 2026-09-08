@@ -42,8 +42,9 @@ architecture/release records. Keep v0-to-v1 transition instructions in
    explanations into one owner. Do not split just to meet a line-count target.
 4. Define setup outputs and distinguish scaffold generation, deployed-server
    checks, native integration and verified OTA delivery.
-5. Make all retained pages reachable. Preserve useful public URLs and old deep
-   links, or provide explicit compatibility navigation when content moves.
+5. Make all pages reachable through canonical task-oriented URLs. Update inbound
+   links when content moves; pre-release URL compatibility must not constrain
+   the final structure.
 6. Keep provider setup, provider configuration and low-level contracts separate
    when they answer different questions. Offer a provider decision entry.
 7. Keep machine-readable discovery aligned with human navigation, with correct
@@ -80,7 +81,8 @@ The [page inventory](page-inventory.md) records all 86 baseline pages and their
 accepted dispositions. Fourteen extracted or missing task/reference pages bring
 latest to 100 pages. Onboarding and custom update flows lead the navigation,
 while managed/custom hosting and four plugin families retain independent
-groups. Existing public page URLs remain available. The
+groups. The first OTA walkthrough now lives at `get-started/test-ota`, with all
+latest links updated and no alias for its previous simulator-only URL. The
 [decision record](decisions.md) includes objections, rejected merges and findings
 from cross-review of the implemented journeys. The
 [breaking-change coverage matrix](breaking-changes-coverage.md) maps every
@@ -92,12 +94,13 @@ Verified on September 9, 2026:
 | --- | --- |
 | Page ownership and links | All 100 latest pages appear exactly once in navigation and the LLM index; internal route, fragment and asset checks pass |
 | Live production routes | All 100 HTML and 100 Markdown page URLs return successfully; canonical API index and its compatibility alias return identical Markdown |
-| Markdown fidelity | All 1,010 fenced code blocks and 853 link destinations survive serialization across the 176 latest and archived source pages |
+| First OTA canonical URL | `get-started/test-ota` appears once in navigation and the LLM index; old latest simulator-test HTML/Markdown return 404; archived v0 remains available |
+| Markdown fidelity | All 1,007 fenced code blocks and 851 link destinations survive serialization across the 176 latest and archived source pages |
 | Docs regressions | `pnpm --dir docs test:docs`: 2 files, 5 tests pass |
 | Production build | `pnpm -w build` and final `pnpm --dir docs build` pass; no dead links |
 | Static checks | `pnpm --dir docs test:type`, `pnpm -w lint` and `git diff --check` pass |
 | Repository tests | `pnpm -w test`: 290 files, 2,680 tests pass |
-| Executable documentation | Manual client-access probe checked against six mocked HTTP outcomes; init onboarding sample passes six flow scenarios; six SDK examples pass strict typechecking; database conformance (48 tests) and standalone storage (13 tests) pass |
+| Executable documentation | Init onboarding sample passes six flow scenarios; six SDK examples pass strict typechecking; database conformance (48 tests) and standalone storage (13 tests) pass. The first OTA walkthrough uses the verified sample's actions and short CLI commands, with no independent protocol script. |
 | Rendered navigation | Desktop Start here and agent path inspected; version selector opens the archived v0 navigation |
 | Landing entry and terminal | Skill discovery command succeeds; Get Started opens the agent guide; desktop and 320/375/1280px iframe viewports fit without horizontal overflow; resizing reuses the terminal |
 | Deploy demonstration | Actual xterm parser passes at 36/38/42/46/58/70 columns, during/after resizing and on cancellation; complete update ID and final prompt remain visible in 16 rows |
@@ -114,6 +117,8 @@ published package.
 
 [320px landing viewport](screenshots/landing-agent-320.png) verifies the complete
 deployment ID after the terminal is resized from a wider viewport.
+
+![First OTA: short deployment command and observable app actions](screenshots/test-ota.png)
 
 Cloud provisioning and a device OTA run were not performed. They are user-facing
 verification procedures described by this change, not outcomes claimed by these
