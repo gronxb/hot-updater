@@ -62,10 +62,10 @@ selections, it writes the scaffold and returns its absolute paths:
 | Output | Purpose |
 | --- | --- |
 | Provider deployment files | Server runtime, migrations, bindings, indexes and deployment configuration |
-| `app/` | App configuration templates and a client-key provisioning helper |
+| `app/` | App configuration templates, client-key provisioning and server verification helpers |
 | `env.example` and `ENVIRONMENT.md` | Variable names, purposes, required or conditional status, and where to obtain values |
 | `COMMON.md` and `SETUP.md` | Project discovery, secure access, provider setup, verification and retry instructions |
-| `manifest.json` and `deployment.json` | Target versions/file hashes and a record for verified resources and completed steps |
+| `manifest.json` and `deployment.json` | Target versions/file hashes and a record for pending actions and verified outcomes |
 | `upgrades/` | Preserved release instructions for future upgrades |
 
 The command does not execute the generated deployment plan. The agent continues
@@ -113,6 +113,13 @@ directory. Missing files in an existing scaffold are reported for repair.
 
 ## Apply the generated files
 
+`SETUP.md` is an ordered checklist. Each step lists its inputs or prerequisites,
+the action and working directory, what to verify, and how to retry. The agent
+verifies a prerequisite before starting its dependent step. Database preparation
+and client-key registration follow the provider's `init` sequence, including
+Firebase's adapter initialization before Function deployment. A checked box alone
+is not evidence of a successful deployment.
+
 Each scaffold includes `COMMON.md`, provider-specific `SETUP.md`, and an
 `upgrades/` directory. Each release has its own `<version>.md` file containing
 compatibility, common changes, provider instructions and verification.
@@ -123,7 +130,7 @@ the complete upgrade path.
 | --- | --- |
 | Cloudflare | Bundled Worker, Wrangler bindings, D1 migrations |
 | Supabase | Prepared Edge Function, Deno imports and vendored files, SQL migrations |
-| AWS | Lambda bundle and dependencies, CloudFront specifications, DynamoDB/IAM/SSM references |
+| AWS | Lambda bundle and dependencies, CloudFront specifications, DynamoDB/IAM JSON inputs and SSM references |
 | Firebase | Built Functions project, dependencies, Firebase config, Firestore indexes |
 
 The `app/` directory contains local configuration templates and a client API-key
@@ -141,7 +148,10 @@ required by the chosen tools and local CLI.
 
 `manifest.json` records concrete target package versions and original file
 hashes. `deployment.json` starts with empty resource IDs and verification results.
-The agent fills it with actual IDs and verified outcomes. Generating a manifest
+Before each remote mutation, the agent saves `pendingStep` with a stable target
+locator and records a request ID when available. After observing the result, it
+saves actual resource IDs and dated verification evidence in `verifiedSteps`.
+This record is maintained by the agent; the CLI does not execute or enforce it. Generating a manifest
 does not mean the target server version has been deployed.
 
 Keep real credentials and key files private. The supplied key helper persists
@@ -159,8 +169,9 @@ The agent can generate and store new keys privately when setup requires them.
 ## Resume a failed step
 
 Ask the agent to read the existing scaffold and deployment record. It queries
-actual remote state before retrying, including when a request timed out after
-the provider may have completed it.
+actual remote state using the recorded target or request ID before retrying,
+including when a request timed out after the provider may have completed it.
+The agent resolves that pending action before starting another remote mutation.
 
 For example, if Worker deployment fails after D1 and R2 creation, the agent
 verifies those resources and retries deployment with the same IDs. It preserves
@@ -190,7 +201,9 @@ npx hot-updater agent infra upgrade --provider cloudflare --build expo
 This generates a separate upgrade directory. The agent compares its target
 manifest with the previous deployment, live `/version`, migration history, and
 your customized files. It applies relevant upgrade entries in order, preserving
-resources, secrets, endpoints, and unrelated settings.
+resources, secrets, endpoints, and unrelated settings. It re-verifies against the
+new manifest instead of copying old checkmarks into the upgrade record, and ties
+each upgrade step's evidence to its release filename.
 
 Before making changes, the agent reads the installed generation's baseline as
 context and every subsequent version file through the target requirement.
@@ -207,11 +220,21 @@ releases retain the context needed for upgrades across multiple versions.
 
 ## Verify completion
 
-The agent follows `COMMON.md` to check the public server generation/version and
-test the same Release Catalog URL without a key (401) and with the saved key
-(200, or the documented empty-catalog 404). `/version` is public, so it cannot
-verify authentication. Keys are loaded privately inside the probe process and
-never printed or placed in command arguments. The agent then runs:
+The agent follows `COMMON.md` and runs the supplied read-only probe from the app
+directory, using its actual endpoint, platform, channel and update target:
+
+```bash
+node <scaffold-path>/app/verify-server.mjs --base-url https://updates.example.com --platform ios --channel production --app-version 1.0.0
+```
+
+For fingerprint updates, use `--fingerprint <fingerprint>` instead of
+`--app-version`. The probe checks the public server generation/version against
+the manifest and the same Release Catalog URL without a key (401) and with the
+saved key (valid 200, or the documented empty-catalog 404). It returns sanitized
+JSON and a nonzero exit code on failure. It loads keys from private local storage;
+keys are never command arguments or printed output. The probe does not test
+artifact downloads or native integration. The agent separately checks an existing
+artifact when available and runs:
 
 ```bash
 npx hot-updater doctor --json --server-base-url https://updates.example.com

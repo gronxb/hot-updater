@@ -300,6 +300,7 @@ export async function scaffoldInfra(
             resources: template.requiredInputs,
             baseUrl: null,
             deployedServerVersion: null,
+            pendingStep: null,
             verifiedSteps: [],
           },
           null,

@@ -93,6 +93,7 @@ describe("published agent infrastructure commands", () => {
           const content = await readFile(path.join(result.data.output, file));
           expect(createHash("sha256").update(content).digest("hex")).toBe(hash);
         }
+        expect(manifest.files["app/verify-server.mjs"]).toBeTruthy();
         const config = await readFile(
           path.join(result.data.output, "app/hot-updater.config.ts"),
           "utf8",
@@ -126,6 +127,7 @@ describe("published agent infrastructure commands", () => {
         expect(await json(result.data.deployment)).toMatchObject({
           provider,
           deployedServerVersion: null,
+          pendingStep: null,
           verifiedSteps: [],
         });
         const guide = await readFile(result.data.upgradeGuide, "utf8");
@@ -161,17 +163,29 @@ describe("published agent infrastructure commands", () => {
     ).data;
     const config = path.join(first.output, "worker/wrangler.json");
     await writeFile(config, '{"name":"my-existing-worker"}\n');
-    await writeFile(
-      first.deployment,
-      '{"resources":{"d1DatabaseId":"already-created"}}\n',
-    );
+    const state = {
+      resources: { d1DatabaseId: "already-created" },
+      pendingStep: {
+        id: "cf.worker",
+        action: "deploy",
+        target: { accountId: "selected-account", workerName: "my-worker" },
+        requestId: "request-with-unknown-outcome",
+      },
+      verifiedSteps: [
+        {
+          id: "cf.database",
+          target: { d1DatabaseId: "already-created" },
+          observation: { exists: true },
+          checkedAt: "2026-09-08T00:00:00Z",
+        },
+      ],
+    };
+    await writeFile(first.deployment, JSON.stringify(state));
     const retry = run("setup", "--provider", "cloudflare", "--build", "expo");
     expect(retry.status).toBe(0);
     expect(retry.data.status).toBe("existing");
     expect(await json(config)).toEqual({ name: "my-existing-worker" });
-    expect(await json(first.deployment)).toEqual({
-      resources: { d1DatabaseId: "already-created" },
-    });
+    expect(await json(first.deployment)).toEqual(state);
   });
 
   it("generates upgrade inputs separately from the original installation", async () => {
@@ -340,6 +354,59 @@ describe("deployment artifacts", () => {
       expect(result.stdout.trim()).toBe("true");
     },
   );
+
+  it("renders AWS request documents with the same resource scope as init", async () => {
+    const aws = await import(
+      pathToFileURL(
+        path.resolve(
+          import.meta.dirname,
+          "../../../../../plugins/aws/dist/iac/index.mjs",
+        ),
+      ).href
+    );
+    const values: Record<string, string> = {
+      ACCOUNT_ID: "123456789012",
+      DYNAMODB_REGION: "ap-northeast-2",
+      DYNAMODB_TABLE_NAME: "my-metadata",
+      S3_BUCKET_NAME: "my-storage",
+      SSM_REGION: "ap-northeast-2",
+      SSM_PARAMETER_PATH: "hot-updater/v1/my-edge/keypair",
+    };
+    const documents = {
+      "dynamodb/create-table.json":
+        aws.buildDynamoDBCreateTableInput("my-metadata"),
+      "dynamodb/enable-pitr.json": aws.buildDynamoDBBackupInput("my-metadata"),
+      "iam/trust-policy.json": aws.LAMBDA_EDGE_TRUST_POLICY,
+      "iam/dynamodb-policy.json": aws.buildDynamoDBPolicy(
+        "ap-northeast-2",
+        "123456789012",
+        "my-metadata",
+      ),
+      "iam/s3-policy.json": aws.buildS3Policy("my-storage"),
+      "iam/ssm-policy.json": aws.buildSsmPolicy(
+        "ap-northeast-2",
+        "123456789012",
+        "/hot-updater/v1/my-edge/keypair",
+      ),
+    };
+    for (const [file, expected] of Object.entries(documents)) {
+      const source = await readFile(
+        path.join(templatesRoot, "aws", file),
+        "utf8",
+      );
+      const rendered = source.replace(
+        /__HOT_UPDATER_(\w+)__/g,
+        (_, name: string) => {
+          expect(
+            values[name],
+            `undocumented request input: ${name}`,
+          ).toBeDefined();
+          return values[name]!;
+        },
+      );
+      expect(JSON.parse(rendered), file).toEqual(expected);
+    }
+  });
 
   it("ships the Cloudflare bundled entry and required bindings", async () => {
     const root = path.join(templatesRoot, "cloudflare/worker");

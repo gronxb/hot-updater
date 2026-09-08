@@ -337,3 +337,50 @@ Validated on 2026-09-07 against the base commit above:
   remaining documentation blockers within their review scopes.
 - No live cloud provisioning, infrastructure deployment, or native OTA run was
   performed. Those require the target account and app environment.
+
+
+## Checklist follow-up
+
+Target: `next`, branch `codex/agent-infra-checklists`.
+
+Reduce the decisions an executing model must reconstruct without adding a remote
+workflow engine. Provider steps have stable IDs, inputs/prerequisites, actions,
+observed completion conditions and retry instructions. Keep provider ordering
+aligned with init, including database and key preparation before server deployment.
+AWS request/policy JSON is generated from the same pure builders used by init.
+
+Before each remote mutation, the agent writes pendingStep with a stable target
+locator; a timeout cannot erase that target or permit another speculative create.
+Verified evidence records actual state, target and time. New upgrades re-verify
+against their own manifest and include release filenames in step IDs.
+
+A packaged read-only verifier checks target version/generation and the same
+catalog's anonymous/authenticated responses using private local keys. It emits
+sanitized JSON and fails on incompatible, unauthorized, malformed or misrouted
+responses. Artifact signing, local CLI configuration and requested app/native
+integration remain separate completion checks. These are verifiable execution
+contracts, not a claim of measured success rates for smaller models.
+
+Acceptance: preserve pending and verified records on scaffold retries; rendered
+AWS requests match init with real resource values (including slash-prefixed SSM
+names); local HTTP scenarios exercise successful and failing server verification;
+all shared server artifacts remain identical across public/setup/upgrade outputs.
+Re-review first-time execution, provider parity and uncertain-result recovery,
+then run repository checks and open a follow-up PR against next.
+
+
+Follow-up review resolved SSM ARN placeholder escaping, reused DynamoDB deletion
+protection, Firebase CLI installation, setup/upgrade action routing and the limits
+of doctor versus local storage access. The server probe's valid/invalid catalog
+fixtures are also checked against the actual native parser. The three reviewers
+agreed that their first-time/provider/safety blockers were resolved.
+
+Local follow-up validation on base `f86935859`: build passed for 26 projects,
+types for 34 projects, lint passed, and 2,672 unit tests passed in 288 files.
+The probe has 23 local HTTP/client-parser scenarios. Packed CLI verification
+passed outside the repository for four public providers and all 12 agent
+provider/build combinations, including setup/upgrade/resume and shared artifact
+hashes, without provider packages installed in the extracted CLI.
+Companion skill instructions
+were validated and updated on main (`938db2c`). No live cloud or native OTA setup
+was performed, and no smaller-model success rate was measured.
