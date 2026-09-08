@@ -1,5 +1,15 @@
 # @hot-updater/supabase
 
+## 0.36.11
+
+### Patch Changes
+
+- 4bef4e1: Fix Supabase init skipping database migrations in npm/Yarn workspaces by explicitly passing the staged migration directory to db push.
+  - @hot-updater/cli-tools@0.36.11
+  - @hot-updater/core@0.36.11
+  - @hot-updater/server@0.36.11
+  - @hot-updater/plugin-core@0.36.11
+
 ## 0.36.10
 
 ### Patch Changes
