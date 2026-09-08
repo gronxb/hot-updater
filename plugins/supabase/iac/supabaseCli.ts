@@ -150,7 +150,22 @@ export const pushDB = async (
         cwd: workdir,
         env: getSupabaseCommandEnv(accessToken, dbPassword),
       },
-    );
+    ).catch((error: unknown) => {
+      // A fresh project has no migration history table until its first db push.
+      if (
+        error instanceof ExecaError &&
+        [error.stderr, error.stdout].some(
+          (output) =>
+            typeof output === "string" &&
+            /relation \\?"supabase_migrations\.schema_migrations\\?" does not exist/.test(
+              output,
+            ),
+        )
+      ) {
+        return;
+      }
+      throw error;
+    });
     const dbPush = await execa(
       "npx",
       [
