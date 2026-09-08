@@ -1,10 +1,8 @@
 ---
 title: "Move from v0 to v1"
-description: "Create v1 infrastructure alongside v0, then move new native builds to it."
+description: "Use an AI agent to migrate your app and infrastructure to v1 while keeping v0 apps working."
 icon: BetweenHorizontalStart
 ---
-
-import { Tabs, Tab } from "fumadocs-ui/components/tabs";
 
 Hot Updater v1 is a new infrastructure generation. It separates immutable
 Bundle artifacts from mutable Release policy and serves compiled Release
@@ -24,66 +22,73 @@ with this model.
 | v0 native app → v0 infrastructure     | Yes       | Keep the old endpoint running while those binaries need OTA updates. |
 | v0 native app → v1 infrastructure     | No        | v1 does not expose the v0 app-version or fingerprint routes.         |
 | v1 native app → v0 infrastructure     | No        | Release Catalog and artifact routes are required.                    |
-| v1 init → v0 database layout or endpoint | No      | Use a separate v1 database namespace and endpoint.                    |
+| v1 setup → v0 database layout or endpoint | No     | Use a separate v1 database namespace and endpoint.                    |
 | v1 native app → new v1 infrastructure | Yes       | This is the supported target.                                        |
 
 Do not deliver v1 `@hot-updater/react-native` JavaScript to a v0 native binary
 by OTA. Receipt and rollback behavior requires the v1 native module.
 
-## Cutover procedure
+## Ask your agent to migrate
+
+Install the [Hot Updater skill](/docs/guides/ai-agents) from your project:
+
+```sh
+npx skills add hot-updater/skills
+```
+
+Then ask your coding agent:
+
+```text
+$hot-updater Migrate this project from Hot Updater v0 to v1 using the published rc channel.
+Inspect the app and existing provider first. Keep v0 endpoints and data available
+for installed apps, and provision separate v1 infrastructure. Update the SDK,
+build and provider packages, app URL and client authentication, existing signing
+setup, and native/OTA build environment variables. Prepare a new native build
+and verify OTA delivery, rollback, and Insights in a dedicated test channel.
+Report the verified results and any remaining native release steps.
+```
+
+The agent discovers the app root, build system, provider and existing resources.
+You can name your provider if you already know it; you do not need to collect
+resource IDs first. Authenticate through provider login or private credential
+storage when needed. Do not paste tokens or private keys into the conversation.
+
+The source branch is `next`; the npm prerelease tag is `rc`. The agent installs
+`hot-updater@rc` and the required `@hot-updater/*@rc` packages in the app's
+workspace and records their resolved versions. RC numbers differ between
+packages, so do not copy the CLI's version number onto every package. Install
+the SDK and required plugins before generating infrastructure templates.
+
+The installed CLI must support `hot-updater agent infra upgrade`. The agent
+reads the generated upgrade instructions, applies the provider templates, and
+merges the app configuration. Template generation alone does not deploy the
+server or finish the migration. See [Agent Infrastructure](/docs/guides/agent-infrastructure)
+for runtime requirements and the full workflow.
+
+## Review the migration
+
+Have the agent complete these steps and include their results in its report.
 
 ### 1. Preserve v0
 
 Record the v0 public endpoint, provider resource identifiers, configuration,
-and credentials. Back up its metadata database. Do not delete or repurpose the
-old resources: installed v0 binaries may still call that endpoint.
+and credential locations. Back up its metadata database. Keep the old resources
+serving installed v0 binaries throughout adoption.
 
-### 2. Scaffold v1 alongside v0
+### 2. Provision v1 alongside v0
 
-Choose how to prepare the transition:
-
-<Tabs items={["AI agent", "Terminal"]}>
-  <Tab value="AI agent">
-
-With the [Hot Updater skill](/docs/guides/ai-agents) attached, ask your agent:
-
-```text
-$hot-updater Migrate this project's Cloudflare infrastructure from v0 to v1 while keeping the old endpoint available.
-```
-
-The agent uses `hot-updater agent infra upgrade`, reads the v0-to-v1 release
-instructions, and prepares separate resources where required. It upgrades the
-matching packages and verifies both endpoints before reporting the remaining
-native-build work. See [Agent Infrastructure](/docs/guides/agent-infrastructure).
-
-  </Tab>
-  <Tab value="Terminal">
-
-Upgrade all `hot-updater` and `@hot-updater/*` packages together, then run:
-
-```bash
-npx hot-updater init
-```
-
-  </Tab>
-</Tabs>
-
-The same generation boundary applies to both workflows.
+The agent uses `hot-updater agent infra upgrade`, reads the applicable versioned
+upgrade files, and creates the required v1 resources with your provider tools.
 
 Use a separate v1 database namespace and endpoint. Firebase and Supabase can
 reuse the existing project: v1 uses `hot_updater_v1_*` collections or tables and
-a separate `hot-updater-v1` function. Their init checks the v1 namespace rather
-than rejecting a project merely because it contains v0 data. Cloudflare needs
-a separate D1 database; init rejects a v0 D1 database or an existing v0 endpoint
-instead of upgrading it.
+a separate `hot-updater-v1` function. Cloudflare needs a separate D1 database
+and Worker. Keep each provider's v0 resources intact.
 
-For AWS, create separate v1 DynamoDB, Lambda and CloudFront resources. If an
-env file contains a v0 Lambda name or distribution ID, change
-`HOT_UPDATER_AWS_LAMBDA_NAME` to a fresh v1 name, remove
-`HOT_UPDATER_CLOUDFRONT_DISTRIBUTION_ID`, and choose **Create New CloudFront
-Distribution**. Init checks the selected endpoint before changing resources and
-rejects a v0 Lambda or distribution. Keep the existing v0 resources available
-for installed binaries.
+For AWS, create separate v1 DynamoDB, Lambda and CloudFront resources. Preserve
+the old Lambda name and distribution ID in the v0 deployment configuration.
+The v1 configuration must use the new `HOT_UPDATER_AWS_LAMBDA_NAME` and
+`HOT_UPDATER_CLOUDFRONT_DISTRIBUTION_ID` after provisioning.
 
 Storage buckets do not have to be new, but preserve the access policies and
 objects still needed by v0. Do not prune shared storage using only the v1
@@ -92,7 +97,134 @@ database while v0 binaries still need those artifacts.
 The v1 scaffold starts with an empty Bundle history. Redeploy the Bundles you
 want to serve from their source artifacts; v0 policy is not backfilled.
 
-### 3. Keep using the Bundle CLI
+### 3. Update the app URL, client key and build environment
+
+Update the app's `HotUpdater.init()` or `HotUpdater.wrap()` configuration to use
+the v1 server base URL. For example, replace a v0 URL ending in
+`/api/check-update` with the new v1 base URL. The SDK appends the Release Catalog
+and artifact routes itself. Preserve any base path required by your provider
+or custom server.
+
+Managed providers require the client API key in `requestHeaders["x-api-key"]`.
+The agent registers or reuses that key in the new v1 infrastructure and connects
+it to the app's build-time configuration. Only the client key belongs in the
+app; Cloudflare, R2 and other provider credentials remain on the deployment
+machine or server.
+
+For an Expo app using public environment variables, the resulting setup can
+look like this:
+
+```tsx
+import { HotUpdater } from "@hot-updater/react-native";
+
+HotUpdater.init({
+  baseURL: process.env.EXPO_PUBLIC_HOT_UPDATER_BASE_URL!,
+  requestHeaders: {
+    "x-api-key": process.env.EXPO_PUBLIC_HOT_UPDATER_API_KEY!,
+  },
+  insights: true,
+});
+```
+
+Have the agent verify that both values reach native builds **and OTA bundle
+builds**, including CI/EAS environments. Writing `HOT_UPDATER_API_KEY` to
+`.env.hotupdater` alone does not configure the app runtime. Check the project's
+environment-loading path and fail the build when required values are missing.
+An app that skips initialization when its URL is absent can appear healthy
+while OTA and Insights are inactive.
+
+See the [Cloudflare guide](/docs/managed/cloudflare) for a managed-provider
+example, or [API Key Authentication](/docs/custom/api-key-authentication) for
+a custom server.
+
+### 4. Update Expo configuration and preserve bundle signing
+
+For Expo, replace the old `@hot-updater/react-native` entry in
+`app.json` or `app.config.ts` **plugins** with `@hot-updater/expo`. Keep
+`@hot-updater/react-native` installed as the runtime SDK. Preserve the app's
+channel and other unrelated plugin options.
+
+If the app already uses bundle signing, keep its existing signer and export
+the matching public key. A signed Expo app's plugin entry looks like this:
+
+```json title="app.json"
+{
+  "expo": {
+    "plugins": [
+      [
+        "@hot-updater/expo",
+        {
+          "channel": "production",
+          "publicKeyPath": "./keys/public-key.pem"
+        }
+      ]
+    ]
+  }
+}
+```
+
+For an app without bundle signing, omit `publicKeyPath`. For a signed app,
+include `keys/public-key.pem` in source control and native build inputs while
+keeping private keys ignored. If `keys/` is ignored, replace that rule with
+`keys/*` and `!keys/public-key.pem` so the public file can be included.
+
+The Expo plugin reads `publicKeyPath` explicitly. Enabling signing in
+`hot-updater.config.ts` alone does not embed the public key. For bare React
+Native, have the agent export the public key to the native projects with
+`hot-updater keys export-public`. Verify that the native key matches the
+deployment signer before building. See [Bundle Signing](/docs/guides/bundle-signing).
+
+### 5. Verify infrastructure and build the native app
+
+The agent runs `hot-updater doctor --json --server-base-url <v1-base-url>` from
+the app directory and the scaffold's `app/verify-server.mjs` helper. The new
+`/version` response must report `infrastructureGeneration: 1` and the expected
+server version. Verify an authenticated catalog request as well: a public
+`/version` response alone does not prove the app's client key works.
+
+After updating app configuration, the agent refreshes Expo native projects with
+`npx expo prebuild`, or bare iOS dependencies with `pod install` from `ios/`.
+Build a release binary containing the v1 native SDK, endpoint, client key and
+the matching signing public key when signing is enabled.
+
+### 6. Verify OTA on the new native build
+
+Use a dedicated test channel and a release build whose channel and app-version
+or fingerprint target match the test updates. Have the agent record:
+
+- The old endpoint still serves a retained v0 binary.
+- The new native build starts from its embedded bundle and applies a baseline
+  v1 OTA update after restart.
+- A second update changes JavaScript and an asset; both appear after restart.
+  If bundle diffing is enabled, verify a partial update from the baseline.
+- Disabling the test update restores the expected baseline on the next update
+  check and reload; record the affected update IDs.
+- A controlled startup failure in the test channel recovers to a working bundle.
+- Insights reports the expected application and recovery outcomes when enabled.
+
+Keep server deployment, native launch, OTA application and store release as
+separate verification results. A successful upload with rollout 0 does not
+prove that a device downloaded or applied the update.
+
+### 7. Release the new native app
+
+Ship the verified v1 native build before targeting it with production v1 OTA
+updates. Update CI to use the v1 provider configuration, app build variables,
+signer and compatibility target. Keep a separate v0 deployment configuration
+for any OTA releases still needed by installed v0 binaries.
+
+A store-delivered native upgrade can preserve the app's local sandbox even
+though its server generation is fresh. The v1 native SDK migrates
+Bundle-ID-only metadata, reads retained local `BUNDLE_ID` artifacts, and keeps
+the existing cohort identity. Verify an upgrade from a retained v0 installation
+without clearing app data. This on-device bridge does not migrate the v0 server
+database or remote storage.
+
+The endpoints remain parallel during adoption: existing v0 binaries use the v0
+endpoint, and new v1 binaries use the v1 endpoint. There is no server-side
+compatibility bridge between them.
+
+## Update deployment automation
 
 The public CLI keeps the v0 Bundle workflow. The ID printed by deploy is the
 same ID shown in the Console and returned by `HotUpdater.getBundleId()`:
@@ -122,52 +254,6 @@ Promotion reuses uploaded bytes and never copies Storage objects. The target
 bundle is enabled with a 100% numeric rollout, no target cohorts, and a new
 rollout seed. Review those settings before confirming, especially when the
 source bundle had a partial or QA-only rollout.
-
-### 4. Verify the v1 endpoint
-
-Run doctor against the generated public base URL:
-
-```bash
-npx hot-updater doctor --server-base-url https://updates.example.com
-```
-
-A v1 endpoint reports `infrastructureGeneration: 1` from `/version`. If the
-marker is missing, doctor reports that in-place upgrade is blocked and directs
-you to agent infrastructure setup or interactive init with separate v1 resources.
-
-### 5. Publish a new native build
-
-Refresh the native project before building. v1 requires its complete native
-source set and does not support a stale v0 CocoaPods project.
-
-For Expo projects, run:
-
-```bash
-npx expo prebuild
-```
-
-For bare React Native iOS projects, run:
-
-```bash
-cd ios && pod install && cd ..
-```
-
-Build and release the app with the v1 native SDK and the new v1 endpoint. Test
-catalog fetch, artifact resolution, install, restart, and rollback before
-making the release broadly available.
-
-A store-delivered native upgrade can preserve the app's local sandbox even
-though its server generation is fresh. The v1 native SDK therefore migrates
-Bundle-ID-only metadata, reads retained local `BUNDLE_ID` artifacts, and keeps
-the existing cohort identity. This on-device bridge does not read or migrate
-the v0 server database or remote storage.
-
-The endpoints remain parallel during adoption:
-
-- Existing v0 binaries continue using the v0 endpoint.
-- New v1 binaries use the v1 endpoint.
-
-There is no server-side compatibility bridge between them.
 
 ## Rollback
 
