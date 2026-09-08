@@ -1,5 +1,11 @@
 # @hot-updater/console
 
+## 1.0.0-rc.9
+
+### Patch Changes
+
+- 3385448: Send JSON sign-out requests so hosted authentication handlers accept logout from the sidebar and access-denied screen.
+
 ## 1.0.0-rc.8
 
 ### Patch Changes
