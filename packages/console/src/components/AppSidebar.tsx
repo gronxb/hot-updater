@@ -24,10 +24,13 @@ import {
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
+  useSidebar,
 } from "@/components/ui/sidebar";
 import { useApiKeyCapabilityQuery } from "@/lib/api-keys-api";
 
 export function AppSidebar({ canSignOut = false }: { canSignOut?: boolean }) {
+  const { setOpenMobile } = useSidebar();
+  const closeMobileSidebar = () => setOpenMobile(false);
   const [signingOut, setSigningOut] = useState(false);
   const apiKeyCapability = useApiKeyCapabilityQuery();
   const { theme, setTheme } = useTheme();
@@ -63,6 +66,7 @@ export function AppSidebar({ canSignOut = false }: { canSignOut?: boolean }) {
       <SidebarHeader className="h-12 justify-center">
         <Link
           to="/"
+          onClick={closeMobileSidebar}
           search={{
             afterReleaseId: undefined,
             beforeReleaseId: undefined,
@@ -99,6 +103,7 @@ export function AppSidebar({ canSignOut = false }: { canSignOut?: boolean }) {
                   render={
                     <Link
                       to="/"
+                      onClick={closeMobileSidebar}
                       search={{
                         afterReleaseId: undefined,
                         beforeReleaseId: undefined,
@@ -121,7 +126,7 @@ export function AppSidebar({ canSignOut = false }: { canSignOut?: boolean }) {
               <SidebarMenuItem>
                 <SidebarMenuButton
                   isActive={isInsightsActive}
-                  render={<Link to="/insights" />}
+                  render={<Link to="/insights" onClick={closeMobileSidebar} />}
                   tooltip="Insights"
                 >
                   <ChartNoAxesCombined />
@@ -132,7 +137,9 @@ export function AppSidebar({ canSignOut = false }: { canSignOut?: boolean }) {
                 <SidebarMenuItem>
                   <SidebarMenuButton
                     isActive={isApiKeysActive}
-                    render={<Link to="/api-keys" />}
+                    render={
+                      <Link to="/api-keys" onClick={closeMobileSidebar} />
+                    }
                     tooltip="API keys"
                   >
                     <KeyRound />
@@ -143,7 +150,7 @@ export function AppSidebar({ canSignOut = false }: { canSignOut?: boolean }) {
               <SidebarMenuItem>
                 <SidebarMenuButton
                   isActive={isSigningActive}
-                  render={<Link to="/signing" />}
+                  render={<Link to="/signing" onClick={closeMobileSidebar} />}
                   tooltip="Bundle signing"
                 >
                   <ShieldCheck />

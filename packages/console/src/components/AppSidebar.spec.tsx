@@ -14,6 +14,7 @@ import { AppSidebar } from "./AppSidebar";
 
 let pathname = "/";
 let apiKeysSupported = false;
+const setOpenMobile = vi.fn();
 
 vi.mock("sonner", () => ({ toast: { error: vi.fn() } }));
 
@@ -66,6 +67,7 @@ vi.mock("@/components/ui/sidebar", () => {
       </button>
     );
   return {
+    useSidebar: () => ({ setOpenMobile }),
     Sidebar: Wrapper,
     SidebarContent: Wrapper,
     SidebarFooter: Wrapper,
@@ -86,6 +88,19 @@ describe("AppSidebar navigation", () => {
     vi.clearAllMocks();
     pathname = "/";
     apiKeysSupported = false;
+  });
+
+  it.each([
+    /hot updater/i,
+    /bundles/i,
+    /insights/i,
+    /api keys/i,
+    /bundle signing/i,
+  ])("closes the mobile sidebar when selecting %s", (name) => {
+    apiKeysSupported = true;
+    render(<AppSidebar />);
+    fireEvent.click(screen.getByRole("link", { name }));
+    expect(setOpenMobile).toHaveBeenCalledWith(false);
   });
 
   it("always exposes the canonical Insights destination", () => {
