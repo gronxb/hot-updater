@@ -117,13 +117,13 @@ CREATE TABLE public.hot_updater_v1_bundle_events (
   sdk_version text,
   received_at_ms double precision NOT NULL,
   CONSTRAINT hot_updater_v1_bundle_events_type_check CHECK (
-    type IN ('UPDATE_APPLIED', 'RECOVERED', 'RELEASE_ADOPTED', 'UNCHANGED')
+    type IN ('UPDATE_APPLIED', 'RECOVERED', 'UNCHANGED')
   ),
   CONSTRAINT hot_updater_v1_bundle_events_platform_check CHECK (
     platform IN ('ios', 'android')
   ),
   CONSTRAINT hot_updater_v1_bundle_events_shape_check CHECK (
-    (type IN ('UPDATE_APPLIED', 'RECOVERED', 'RELEASE_ADOPTED')
+    (type IN ('UPDATE_APPLIED', 'RECOVERED')
       AND from_bundle_id IS NOT NULL
       AND update_strategy IS NOT NULL
       AND update_strategy IN ('fingerprint', 'appVersion'))
@@ -141,7 +141,7 @@ CREATE TABLE public.hot_updater_v1_bundle_installations (
   username text,
   to_bundle_id uuid NOT NULL,
   type text NOT NULL CHECK (
-    type IN ('UPDATE_APPLIED', 'RECOVERED', 'RELEASE_ADOPTED', 'UNCHANGED')
+    type IN ('UPDATE_APPLIED', 'RECOVERED', 'UNCHANGED')
   ),
   platform text COLLATE "C" NOT NULL CHECK (platform IN ('ios', 'android')),
   app_version text NOT NULL,

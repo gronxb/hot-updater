@@ -20,6 +20,7 @@ const formatDate = (ms: number) =>
   new Intl.DateTimeFormat("en", {
     month: "short",
     day: "numeric",
+    hour: "numeric",
     timeZone: "UTC",
   }).format(ms);
 
@@ -31,13 +32,13 @@ export function BundleActivityChart({
   if (!series)
     return (
       <p className="flex h-16 items-center justify-center border-t text-xs text-muted-foreground sm:h-20">
-        No reports in 30 days. Check again after the app reports activity.
+        No reports in 24 hours. Check again after the app reports activity.
       </p>
     );
   return (
     <div className="border-t pt-3">
       <ChartContainer
-        aria-label="Bundle activity over 30 days, UTC"
+        aria-label="Bundle activity over 24 hours, UTC"
         className="h-32 w-full aspect-auto sm:h-40"
         config={config}
       >

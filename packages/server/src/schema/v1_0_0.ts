@@ -433,8 +433,7 @@ export const bundleEventsV100 = table(
     checks: [
       check({
         name: "bundle_events_type_check",
-        expression:
-          "type in ('UPDATE_APPLIED', 'RECOVERED', 'RELEASE_ADOPTED', 'UNCHANGED')",
+        expression: "type in ('UPDATE_APPLIED', 'RECOVERED', 'UNCHANGED')",
         sqliteInline: true,
       }),
       check({
@@ -445,7 +444,7 @@ export const bundleEventsV100 = table(
       check({
         name: "bundle_events_shape_check",
         expression:
-          "((type in ('UPDATE_APPLIED', 'RECOVERED', 'RELEASE_ADOPTED')) and from_bundle_id is not null and update_strategy is not null and update_strategy in ('fingerprint', 'appVersion')) or (type = 'UNCHANGED' and from_bundle_id is null and update_strategy is null)",
+          "((type in ('UPDATE_APPLIED', 'RECOVERED')) and from_bundle_id is not null and update_strategy is not null and update_strategy in ('fingerprint', 'appVersion')) or (type = 'UNCHANGED' and from_bundle_id is null and update_strategy is null)",
         sqliteInline: true,
       }),
       check({
@@ -494,8 +493,7 @@ export const bundleInstallationsV100 = table(
     checks: [
       check({
         name: "bundle_installations_type_check",
-        expression:
-          "type in ('UPDATE_APPLIED', 'RECOVERED', 'RELEASE_ADOPTED', 'UNCHANGED')",
+        expression: "type in ('UPDATE_APPLIED', 'RECOVERED', 'UNCHANGED')",
         sqliteInline: true,
       }),
       check({

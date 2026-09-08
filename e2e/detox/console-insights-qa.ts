@@ -12,11 +12,7 @@ type InsightsEvent = {
   readonly platform: "ios" | "android";
   readonly receivedAtMs: number;
   readonly toBundleId: string;
-  readonly type:
-    | "RECOVERED"
-    | "RELEASE_ADOPTED"
-    | "UNCHANGED"
-    | "UPDATE_APPLIED";
+  readonly type: "RECOVERED" | "UNCHANGED" | "UPDATE_APPLIED";
 };
 
 type Installation = {
@@ -60,7 +56,6 @@ export const readObservedInsightsEvent = (
     typeof event.toBundleId !== "string" ||
     typeof event.userId !== "string" ||
     (event.type !== "RECOVERED" &&
-      event.type !== "RELEASE_ADOPTED" &&
       event.type !== "UNCHANGED" &&
       event.type !== "UPDATE_APPLIED")
   ) {
@@ -271,7 +266,6 @@ export const verifyConsoleInsights = async (
   ]);
   const outcomeEvidence = [];
   for (const observedOutcome of observedEvents) {
-    if (observedOutcome.type === "UNCHANGED") continue;
     const bundleId =
       observedOutcome.type === "RECOVERED"
         ? observedOutcome.fromBundleId!
@@ -279,8 +273,8 @@ export const verifyConsoleInsights = async (
     const outcome =
       observedOutcome.type === "RECOVERED"
         ? "recovered"
-        : observedOutcome.type === "RELEASE_ADOPTED"
-          ? "adopted"
+        : observedOutcome.type === "UNCHANGED"
+          ? "unchanged"
           : "applied";
     const bundle: InsightsBundleSelection = {
       bundleId,

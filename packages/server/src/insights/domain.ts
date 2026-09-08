@@ -15,7 +15,7 @@ export type CreateBundleEventRequestBase = {
 
 export type CreateBundleEventRequest =
   | (CreateBundleEventRequestBase & {
-      readonly type: "UPDATE_APPLIED" | "RECOVERED" | "RELEASE_ADOPTED";
+      readonly type: "UPDATE_APPLIED" | "RECOVERED";
       readonly fromBundleId: string;
       readonly updateStrategy: "fingerprint" | "appVersion";
     })
@@ -30,11 +30,7 @@ export type ActiveInstallationWindow = "24h" | "7d" | "30d";
 export type EventHistoryRow = {
   readonly id: string;
   readonly installId: string;
-  readonly type:
-    | "UPDATE_APPLIED"
-    | "RECOVERED"
-    | "RELEASE_ADOPTED"
-    | "UNCHANGED";
+  readonly type: "UPDATE_APPLIED" | "RECOVERED" | "UNCHANGED";
   readonly fromBundleId: string | null;
   readonly toBundleId: string;
   readonly username: string | null;
@@ -80,7 +76,7 @@ export type InsightsScope = {
 
 export type InsightsBundleSelection = InsightsScope & {
   readonly bundleId: string;
-  readonly outcome: "applied" | "recovered" | "adopted";
+  readonly outcome: "applied" | "recovered" | "unchanged";
 };
 
 export type InsightsCountMeasurement = {
@@ -98,6 +94,6 @@ export type ReportingOverview = InsightsScope & {
     readonly reportingInstallations: InsightsCountMeasurement;
     readonly appliedReports: InsightsCountMeasurement;
     readonly recoveredReports: InsightsCountMeasurement;
-    readonly adoptedReports: InsightsCountMeasurement;
+    readonly unchangedReports: InsightsCountMeasurement;
   };
 };

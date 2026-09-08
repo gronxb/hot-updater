@@ -6,9 +6,17 @@ vi.mock("@tanstack/react-router", () => ({
   createFileRoute: () => (options: unknown) => ({ options }),
 }));
 vi.mock("@/components/features/insights/InsightsOverview", () => ({
-  InsightsOverview: (props: unknown) => {
-    mocks.activity(props);
-    return <div>Bundle activity</div>;
+  InsightsOverview: (props: {
+    input: unknown;
+    onWindowChange: (window: string) => void;
+  }) => {
+    mocks.activity({ input: props.input });
+    return (
+      <div>
+        Bundle activity
+        <button onClick={() => props.onWindowChange("7d")}>7 days</button>
+      </div>
+    );
   },
 }));
 vi.mock("@/components/features/insights/InsightsPageHeader", () => ({
@@ -30,7 +38,7 @@ afterEach(() => {
 });
 
 describe("Insights overview", () => {
-  it("defaults to all IDs over 24 hours and changes only the period or platform/channel scope", () => {
+  it("defaults to all IDs over 24 hours and changes only the period or platform/channel scope", async () => {
     render(<InsightsPage />);
     expect(mocks.activity).toHaveBeenLastCalledWith({
       input: { platform: "ios", channel: "production", window: "24h" },
@@ -45,7 +53,10 @@ describe("Insights overview", () => {
       platform: "ios",
       channel: "production",
     });
-    fireEvent.click(screen.getByRole("button", { name: "Android" }));
+    fireEvent.click(screen.getByRole("combobox", { name: "Platform" }));
+    const android = await screen.findByRole("option", { name: "Android" });
+    fireEvent.pointerDown(android);
+    fireEvent.click(android);
     fireEvent.change(screen.getByLabelText("Channel"), {
       target: { value: "beta" },
     });

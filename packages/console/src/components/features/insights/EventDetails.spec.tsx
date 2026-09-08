@@ -1,7 +1,11 @@
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 
-import { EventTimestamp, EventTypeBadge } from "./EventDetails";
+import {
+  EventBundleTransition,
+  EventTimestamp,
+  EventTypeDetails,
+} from "./EventDetails";
 
 describe("Insights event details", () => {
   afterEach(cleanup);
@@ -30,24 +34,46 @@ describe("Insights event details", () => {
     expect(screen.getByText("2026-07-18 00:00:00.000 UTC")).toBeDefined();
   });
 
+  it("shows no change without implying a file transition", () => {
+    const type = "UNCHANGED";
+    render(
+      <>
+        <EventTypeDetails type={type} />
+        <EventBundleTransition
+          event={{
+            type,
+            fromBundleId: null,
+            toBundleId: "same-file",
+          }}
+        />
+      </>,
+    );
+    expect(screen.getByText("No change")).toBeDefined();
+    expect(
+      screen.getByText("The app continues using the same bundle files."),
+    ).toBeDefined();
+    expect(screen.getByText("Current")).toBeDefined();
+    expect(screen.queryByText("From")).toBeNull();
+    expect(screen.queryByText("To")).toBeNull();
+    expect(screen.queryByTitle(type)).toBeNull();
+  });
+
   it("uses distinct product labels for event meaning", () => {
-    const view = render(<EventTypeBadge type="UPDATE_APPLIED" />);
-    expect(screen.getByText("Bundle applied")).toBeDefined();
-    expect(screen.getByText("Bundle applied").className).toContain(
+    const view = render(<EventTypeDetails type="UPDATE_APPLIED" />);
+    expect(screen.getByText("Update applied")).toBeDefined();
+    expect(screen.getByText("Update applied").className).toContain(
       "text-success",
     );
 
-    view.rerender(<EventTypeBadge type="RELEASE_ADOPTED" />);
-    expect(screen.getByText("Bundle adopted")).toBeDefined();
+    view.rerender(<EventTypeDetails type="RECOVERED" />);
+    expect(screen.getByText("Rolled back")).toBeDefined();
+    expect(screen.getByText("Rolled back").className).toContain("text-warning");
 
-    view.rerender(<EventTypeBadge type="RECOVERED" />);
-    expect(screen.getByText("Recovered")).toBeDefined();
-    expect(screen.getByText("Recovered").className).toContain("text-warning");
-
-    view.rerender(<EventTypeBadge type="UNCHANGED" />);
-    expect(screen.getByText("Activity reported")).toBeDefined();
-    expect(screen.getByText("Activity reported").className).toContain(
-      "bg-secondary",
-    );
+    view.rerender(<EventTypeDetails type="UNCHANGED" />);
+    expect(screen.getByText("No change")).toBeDefined();
+    expect(
+      screen.getByText("The app continues using the same bundle files."),
+    ).toBeDefined();
+    expect(screen.getByText("No change").className).toContain("bg-secondary");
   });
 });

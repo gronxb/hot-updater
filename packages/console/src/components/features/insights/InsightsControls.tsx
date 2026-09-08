@@ -1,121 +1,82 @@
-import { CheckIcon } from "lucide-react";
 import { useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
-import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
-import type { InsightsOverviewInput, InsightsWindow } from "@/lib/insights-api";
-
-const windows = [
-  { value: "24h", label: "24 hours", shortLabel: "24h" },
-  { value: "7d", label: "7 days", shortLabel: "7d" },
-  { value: "30d", label: "30 days", shortLabel: "30d" },
-] as const;
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import type { InsightsOverviewInput } from "@/lib/insights-api";
 
 export function InsightsControls({
-  onWindowChange,
   onScopeChange,
   scope,
-  window,
 }: {
-  readonly onWindowChange: (window: InsightsWindow) => void;
   readonly onScopeChange: (
     scope: Omit<InsightsOverviewInput, "window">,
   ) => void;
   readonly scope: Omit<InsightsOverviewInput, "window">;
-  readonly window: InsightsWindow;
 }) {
   const [platform, setPlatform] = useState(scope.platform);
   const [channel, setChannel] = useState(scope.channel);
 
   return (
-    <section aria-label="Insights controls" className="flex flex-col gap-4">
-      <form
-        onSubmit={(event) => {
-          event.preventDefault();
-          onScopeChange({ platform, channel });
-        }}
-      >
-        <FieldGroup className="items-end sm:flex-row">
-          <Field className="w-full sm:w-auto">
-            <FieldLabel>Platform</FieldLabel>
-            <ToggleGroup
-              aria-label="Platform"
-              value={[platform]}
-              onValueChange={(value) => {
-                if (value[0] === "ios" || value[0] === "android")
-                  setPlatform(value[0]);
-              }}
-              variant="contrast"
-            >
-              <ToggleGroupItem className="h-11 lg:h-8" value="ios">
-                <CheckIcon
-                  aria-hidden="true"
-                  className="invisible group-aria-pressed/toggle:visible"
-                  data-icon="inline-start"
-                />
-                iOS
-              </ToggleGroupItem>
-              <ToggleGroupItem className="h-11 lg:h-8" value="android">
-                <CheckIcon
-                  aria-hidden="true"
-                  className="invisible group-aria-pressed/toggle:visible"
-                  data-icon="inline-start"
-                />
-                Android
-              </ToggleGroupItem>
-            </ToggleGroup>
-          </Field>
-          <Field>
-            <FieldLabel htmlFor="insights-channel">Channel</FieldLabel>
-            <Input
-              className="h-11 lg:h-8"
-              id="insights-channel"
-              value={channel}
-              onChange={(event) => setChannel(event.target.value)}
-              required
-              maxLength={1024}
-            />
-          </Field>
-          <Button
-            className="h-11 w-full sm:w-auto lg:h-8"
-            type="submit"
-            variant="outline"
+    <form
+      aria-label="Insights controls"
+      onSubmit={(event) => {
+        event.preventDefault();
+        onScopeChange({ platform, channel });
+      }}
+    >
+      <FieldGroup className="grid grid-cols-[1fr_2fr] items-end gap-4 sm:flex-row sm:flex">
+        <Field className="sm:w-36">
+          <FieldLabel htmlFor="insights-platform">Platform</FieldLabel>
+          <Select
+            items={{ ios: "iOS", android: "Android" }}
+            value={platform}
+            onValueChange={(value) => {
+              if (value === "ios" || value === "android") setPlatform(value);
+            }}
           >
-            Apply filters
-          </Button>
-        </FieldGroup>
-      </form>
-      <Field orientation="horizontal" className="w-full">
-        <FieldLabel className="sr-only">Reporting period</FieldLabel>
-        <ToggleGroup
-          aria-label="Reporting period"
-          className="w-full sm:w-fit"
-          onValueChange={(value) => {
-            if (value[0]) onWindowChange(value[0] as InsightsWindow);
-          }}
-          size="lg"
-          value={[window]}
-          variant="contrast"
-        >
-          {windows.map((item) => (
-            <ToggleGroupItem
-              aria-label={item.label}
-              className="h-11 flex-1 px-4 sm:flex-none lg:h-8 lg:px-2.5"
-              key={item.value}
-              value={item.value}
+            <SelectTrigger
+              id="insights-platform"
+              className="min-h-11 w-full sm:min-h-9"
             >
-              <CheckIcon
-                aria-hidden="true"
-                className="invisible group-aria-pressed/toggle:visible"
-                data-icon="inline-start"
-              />
-              {item.shortLabel}
-            </ToggleGroupItem>
-          ))}
-        </ToggleGroup>
-      </Field>
-    </section>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectGroup>
+                <SelectItem value="ios">iOS</SelectItem>
+                <SelectItem value="android">Android</SelectItem>
+              </SelectGroup>
+            </SelectContent>
+          </Select>
+        </Field>
+        <Field className="min-w-0 sm:max-w-xs">
+          <FieldLabel htmlFor="insights-channel">Channel</FieldLabel>
+          <Input
+            className="h-11 sm:h-9"
+            id="insights-channel"
+            value={channel}
+            onChange={(event) => setChannel(event.target.value)}
+            required
+            maxLength={1024}
+          />
+        </Field>
+        <Button
+          className="col-span-2 h-11 sm:h-9 sm:w-auto"
+          size="lg"
+          type="submit"
+          variant="outline"
+        >
+          Apply filters
+        </Button>
+      </FieldGroup>
+    </form>
   );
 }

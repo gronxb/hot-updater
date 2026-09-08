@@ -25,7 +25,7 @@ const event = (
     install_id: `install-${sequence}`,
     type,
     received_at_ms: hour * HOUR,
-    from_bundle_id: "same-file",
+    from_bundle_id: type === "UNCHANGED" ? null : "same-file",
     to_bundle_id: "same-file",
     from_release_id: type === "RECOVERED" ? releaseId : null,
     to_release_id: type === "RECOVERED" ? "stable-release" : releaseId,
@@ -37,16 +37,16 @@ const event = (
     cohort: "default",
     fingerprint_hash: null,
     sdk_version: null,
-    update_strategy: "appVersion",
+    update_strategy: type === "UNCHANGED" ? null : "appVersion",
     ...overrides,
   }) as BundleEventRow;
 const reports = (
-  adopted: number,
+  applied: number,
   recovered: number,
   hour: number,
   id = "release-a",
 ) => [
-  ...Array.from({ length: adopted }, () => event("UPDATE_APPLIED", hour, id)),
+  ...Array.from({ length: applied }, () => event("UPDATE_APPLIED", hour, id)),
   ...Array.from({ length: recovered }, () =>
     event("RECOVERED", hour + 0.001, id),
   ),
@@ -89,13 +89,13 @@ describe("observed bundle activity", () => {
         event("UPDATE_APPLIED", 25, "old-id", { install_id: `device-${i}` }),
       ),
       ...Array.from({ length: 5 }, (_, i) =>
-        event("RELEASE_ADOPTED", 26, "new-id", {
+        event("UNCHANGED", 26, "new-id", {
           install_id: `device-${i}`,
           from_release_id: "old-id",
         }),
       ),
       ...Array.from({ length: 4 }, (_, i) =>
-        event("RELEASE_ADOPTED", 27, "new-id", {
+        event("UNCHANGED", 27, "new-id", {
           install_id: `device-${i + 5}`,
           from_release_id: "old-id",
         }),
@@ -117,6 +117,9 @@ describe("observed bundle activity", () => {
     expect(
       [25, 26, 27].map((hour) => pointAt(hourly, hour, "new-id").active),
     ).toEqual([0, 5, 9]);
+    // Same-file selection reports move Active counts without counting a new update.
+    expect(pointAt(hourly, 26, "new-id").applied).toBe(0);
+    expect(seriesFor(hourly, "new-id").firstAppliedAtMs).toBeNull();
     expect(pointAt(hourly, 24, "new-id").active).toBeNull();
     expect(pointAt(hourly, 28, "old-id").active).toBe(1);
     const detail = await getRecoveryReport(
@@ -208,7 +211,7 @@ describe("observed bundle activity", () => {
         ...reports(7, 3, 28),
         ...reports(7, 3, 29),
         ...reports(5, 5, 30),
-        event("RELEASE_ADOPTED", 28, "other-id"),
+        event("UNCHANGED", 28, "other-id"),
       ]),
       input,
       now,
@@ -220,7 +223,7 @@ describe("observed bundle activity", () => {
     ).toEqual([28 * HOUR, 30 * HOUR]);
     expect(pointAt(report, 27).rate).toBeNull();
     expect(pointAt(report, 28)).toMatchObject({
-      adopted: 7,
+      applied: 7,
       recovered: 3,
       rate: 30,
     });
@@ -250,9 +253,7 @@ describe("observed bundle activity", () => {
   it("reads timestamp ties once and batches visible bundles without one scan per row", async () => {
     const model = modelFor([
       ...reports(198, 3, 25),
-      ...Array.from({ length: 105 }, () =>
-        event("RELEASE_ADOPTED", 25, "other-id"),
-      ),
+      ...Array.from({ length: 105 }, () => event("UNCHANGED", 25, "other-id")),
     ]);
     const batch = await getBundleActivity(
       model,
@@ -284,7 +285,7 @@ describe("observed bundle activity", () => {
     expect(seriesFor(report).points).toHaveLength(1);
     expect(pointAt(report, 47)).toMatchObject({
       active: 7,
-      adopted: 7,
+      applied: 7,
       recovered: 3,
       recoveredInstallations: 3,
       rate: 30,

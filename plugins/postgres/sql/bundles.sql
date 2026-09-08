@@ -161,15 +161,15 @@ alter table release_catalogs add constraint release_catalogs_generation_check
 alter table release_catalogs add constraint release_catalogs_byte_size_check
   check (byte_size >= 0 and byte_size <= 262144);
 alter table bundle_events add constraint bundle_events_type_check
-  check (type in ('UPDATE_APPLIED', 'RECOVERED', 'RELEASE_ADOPTED', 'UNCHANGED'));
+  check (type in ('UPDATE_APPLIED', 'RECOVERED', 'UNCHANGED'));
 alter table bundle_events add constraint bundle_events_platform_check
   check (platform in ('ios', 'android'));
 alter table bundle_events add constraint bundle_events_shape_check
-  check (((type in ('UPDATE_APPLIED', 'RECOVERED', 'RELEASE_ADOPTED')) and from_bundle_id is not null and update_strategy is not null and update_strategy in ('fingerprint', 'appVersion')) or (type = 'UNCHANGED' and from_bundle_id is null and update_strategy is null));
+  check (((type in ('UPDATE_APPLIED', 'RECOVERED')) and from_bundle_id is not null and update_strategy is not null and update_strategy in ('fingerprint', 'appVersion')) or (type = 'UNCHANGED' and from_bundle_id is null and update_strategy is null));
 alter table bundle_events add constraint bundle_events_received_at_check
   check (received_at_ms >= 0);
 alter table bundle_installations add constraint bundle_installations_type_check
-  check (type in ('UPDATE_APPLIED', 'RECOVERED', 'RELEASE_ADOPTED', 'UNCHANGED'));
+  check (type in ('UPDATE_APPLIED', 'RECOVERED', 'UNCHANGED'));
 alter table bundle_installations add constraint bundle_installations_platform_check
   check (platform in ('ios', 'android'));
 alter table bundle_installations add constraint bundle_installations_received_at_check

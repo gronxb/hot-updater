@@ -128,7 +128,7 @@ const resetProgress = () => {
   });
 };
 
-const notifyReleaseAdoption = async (input: {
+const notifyUnchangedSelection = async (input: {
   readonly active: PersistedSelectionReceipt | null;
   readonly desired: PersistedSelectionReceipt;
   readonly appVersion: string;
@@ -138,7 +138,6 @@ const notifyReleaseAdoption = async (input: {
   readonly session: HotUpdaterHttpSession;
   readonly requestHeaders?: Record<string, string>;
   readonly requestTimeout?: number;
-  readonly updateStrategy: "appVersion" | "fingerprint";
 }): Promise<void> => {
   const { userId, username } = getPersistedUserIdentity();
   try {
@@ -147,7 +146,7 @@ const notifyReleaseAdoption = async (input: {
       channel: input.desired.channel,
       cohort: input.cohort,
       fingerprintHash: input.fingerprintHash,
-      fromBundleId: input.desired.bundleId,
+      fromBundleId: null,
       fromReleaseId: input.active?.releaseId ?? null,
       installId: getInstallId(),
       platform: input.platform,
@@ -155,13 +154,13 @@ const notifyReleaseAdoption = async (input: {
       requestTimeout: input.requestTimeout,
       toBundleId: input.desired.bundleId,
       toReleaseId: input.desired.releaseId,
-      type: "RELEASE_ADOPTED",
-      updateStrategy: input.updateStrategy,
+      type: "UNCHANGED",
+      updateStrategy: null,
       ...(userId === undefined ? {} : { userId }),
       ...(username === undefined ? {} : { username }),
     });
   } catch (error) {
-    console.warn("[HotUpdater] Release adoption insights failed:", error);
+    console.warn("[HotUpdater] Unchanged selection insights failed:", error);
   }
 };
 
@@ -341,7 +340,7 @@ async function checkForReleaseCatalogUpdate(input: {
         selection: receipt,
       });
       if (committed && transitionKind === "ADOPT_RELEASE" && options.insights) {
-        await notifyReleaseAdoption({
+        await notifyUnchangedSelection({
           active,
           appVersion: input.currentAppVersion,
           cohort: input.cohort,
@@ -351,7 +350,6 @@ async function checkForReleaseCatalogUpdate(input: {
           requestHeaders: options.requestHeaders,
           requestTimeout: options.requestTimeout,
           session,
-          updateStrategy: options.updateStrategy,
         });
       }
       return committed;

@@ -131,14 +131,14 @@ CREATE TABLE bundle_events (
   sdk_version TEXT,
   received_at_ms REAL NOT NULL,
   CONSTRAINT bundle_events_type_check CHECK (
-    type IN ('UPDATE_APPLIED', 'RECOVERED', 'RELEASE_ADOPTED', 'UNCHANGED')
+    type IN ('UPDATE_APPLIED', 'RECOVERED', 'UNCHANGED')
   ),
   CONSTRAINT bundle_events_platform_check CHECK (
     platform IN ('ios', 'android')
   ),
   CONSTRAINT bundle_events_shape_check CHECK (
     (
-      type IN ('UPDATE_APPLIED', 'RECOVERED', 'RELEASE_ADOPTED')
+      type IN ('UPDATE_APPLIED', 'RECOVERED')
       AND from_bundle_id IS NOT NULL
       AND update_strategy IS NOT NULL
       AND update_strategy IN ('fingerprint', 'appVersion')
@@ -164,7 +164,7 @@ CREATE TABLE bundle_installations (
   cohort TEXT NOT NULL,
   received_at_ms REAL NOT NULL,
   CONSTRAINT bundle_installations_type_check CHECK (
-    type IN ('UPDATE_APPLIED', 'RECOVERED', 'RELEASE_ADOPTED', 'UNCHANGED')
+    type IN ('UPDATE_APPLIED', 'RECOVERED', 'UNCHANGED')
   ),
   CONSTRAINT bundle_installations_platform_check CHECK (
     platform IN ('ios', 'android')

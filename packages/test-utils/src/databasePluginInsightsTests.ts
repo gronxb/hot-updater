@@ -146,12 +146,12 @@ export const registerDatabasePluginInsightsTests = (
         to_bundle_id: bundleA,
         update_strategy: "appVersion",
       };
-      const adopted: BundleEventRow = {
+      const unchanged: BundleEventRow = {
         ...createBundleEventRowFixture("932", 130),
-        type: "RELEASE_ADOPTED",
-        from_bundle_id: bundleB,
+        type: "UNCHANGED",
+        from_bundle_id: null,
         to_bundle_id: bundleB,
-        update_strategy: "appVersion",
+        update_strategy: null,
       };
       const excluded = [
         {
@@ -186,8 +186,22 @@ export const registerDatabasePluginInsightsTests = (
           to_bundle_id: bundleB,
         },
       ];
-      for (const row of [applied, recovered, adopted, ...excluded])
+      for (const row of [applied, recovered, unchanged, ...excluded])
         await record(plugin, row);
+      await expect(async () =>
+        record(plugin, {
+          ...applied,
+          type: "RELEASE_ADOPTED",
+        } as unknown as BundleEventRow),
+      ).rejects.toThrow();
+      await expect(async () =>
+        record(plugin, {
+          ...applied,
+          type: "UNCHANGED",
+          from_bundle_id: bundleB,
+          update_strategy: "appVersion",
+        } as unknown as BundleEventRow),
+      ).rejects.toThrow();
       await expect(
         plugin.models.insights.findInstallations({ installId: "target" }),
       ).resolves.toEqual([toInsightsInstallationRow(recovered)]);
@@ -214,10 +228,10 @@ export const registerDatabasePluginInsightsTests = (
           {
             platform: "ios",
             channel: "production",
-            type: "RELEASE_ADOPTED",
+            type: "UNCHANGED",
             toBundleId: bundleB,
           },
-          adopted,
+          unchanged,
         ],
       ];
       for (const [filter, expected] of cases) {

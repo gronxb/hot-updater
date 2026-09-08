@@ -2941,9 +2941,7 @@ const hasValidBundleEventShape = (value: object): boolean => {
   const fromBundleId = field(value, "from_bundle_id");
   const updateStrategy = field(value, "update_strategy");
   return (
-    ((type === "UPDATE_APPLIED" ||
-      type === "RECOVERED" ||
-      type === "RELEASE_ADOPTED") &&
+    ((type === "UPDATE_APPLIED" || type === "RECOVERED") &&
       typeof fromBundleId === "string" &&
       (updateStrategy === "fingerprint" || updateStrategy === "appVersion")) ||
     (type === "UNCHANGED" && fromBundleId === null && updateStrategy === null)
@@ -2975,7 +2973,6 @@ const isInsightsInstallationRow = (
   typeof field(value, "to_bundle_id") === "string" &&
   (field(value, "type") === "UPDATE_APPLIED" ||
     field(value, "type") === "RECOVERED" ||
-    field(value, "type") === "RELEASE_ADOPTED" ||
     field(value, "type") === "UNCHANGED") &&
   (field(value, "platform") === "ios" ||
     field(value, "platform") === "android") &&
@@ -3036,23 +3033,19 @@ const insightsBundlePartition = (filter: InsightsBundleEventFilter): string => {
   return `${DYNAMODB_INSIGHTS_BUNDLE_PREFIX}${createHash("sha256").update(scope, "utf8").digest("hex")}`;
 };
 
-const toInsightsBundleItem = (
-  row: BundleEventRow,
-): Record<string, unknown> | null =>
-  row.type === "UNCHANGED"
-    ? null
-    : boundedDynamoDBMetadataItem({
-        pk: insightsBundlePartition({
-          platform: row.platform,
-          channel: row.channel,
-          ...(row.type === "RECOVERED"
-            ? { type: row.type, fromBundleId: row.from_bundle_id }
-            : { type: row.type, toBundleId: row.to_bundle_id }),
-        }),
-        sk: insightsSortKey(row),
-        version: 1,
-        row,
-      });
+const toInsightsBundleItem = (row: BundleEventRow): Record<string, unknown> =>
+  boundedDynamoDBMetadataItem({
+    pk: insightsBundlePartition({
+      platform: row.platform,
+      channel: row.channel,
+      ...(row.type === "RECOVERED"
+        ? { type: row.type, fromBundleId: row.from_bundle_id }
+        : { type: row.type, toBundleId: row.to_bundle_id }),
+    }),
+    sk: insightsSortKey(row),
+    version: 1,
+    row,
+  });
 
 const toInsightsEventItem = (row: BundleEventRow): Record<string, unknown> => {
   const orderKey = insightsSortKey(row);
@@ -3180,9 +3173,7 @@ const recordDynamoDBInsightsEvent = async (
         },
       },
       { Put: { TableName: store.tableName, Item: eventItem } },
-      ...(bundleItem === null
-        ? []
-        : [{ Put: { TableName: store.tableName, Item: bundleItem } }]),
+      { Put: { TableName: store.tableName, Item: bundleItem } },
     ];
     if (current === null || advancesInsightsInstallation(next, current.row)) {
       actions.push({

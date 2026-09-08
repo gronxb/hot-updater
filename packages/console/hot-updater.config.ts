@@ -1006,7 +1006,7 @@ const bundleEvents: readonly BundleEventRow[] = [
       ],
       [
         "0008",
-        "RELEASE_ADOPTED",
+        "UNCHANGED",
         "demo-zeta",
         iosProdCorePatchB.id,
         iosProdCorePatchB.id,

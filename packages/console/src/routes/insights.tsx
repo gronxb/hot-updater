@@ -24,20 +24,19 @@ function InsightsPage() {
   return (
     <div className="flex h-svh min-h-0 flex-col">
       <InsightsPageHeader view="overview" />
-      <div className="min-h-0 min-w-0 flex-1 overflow-y-auto bg-muted/5 p-3 sm:p-6">
-        <div className="mx-auto flex w-full max-w-4xl flex-col gap-4 sm:gap-6">
+      <div className="min-h-0 min-w-0 flex-1 overflow-y-auto bg-muted/5 px-4 py-6 sm:p-8">
+        <div className="mx-auto flex w-full max-w-4xl flex-col gap-6 sm:gap-8">
           <InsightsControls
             scope={scope}
             onScopeChange={(next) => {
               setScope(next);
             }}
-            onWindowChange={(next) => {
-              setWindow(next);
-            }}
-            window={window}
           />
           <ReportingDevicesSummary scope={scope} />
-          <InsightsOverview input={{ ...scope, window }} />
+          <InsightsOverview
+            input={{ ...scope, window }}
+            onWindowChange={setWindow}
+          />
         </div>
       </div>
     </div>

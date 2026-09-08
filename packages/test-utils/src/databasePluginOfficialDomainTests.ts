@@ -17,7 +17,7 @@ type OfficialDomainTestState = DatabasePluginTestState<DatabasePlugin>;
 const createMovementEvent = (
   suffix: string,
   receivedAtMs: number,
-  type: "UPDATE_APPLIED" | "RECOVERED" | "RELEASE_ADOPTED",
+  type: "UPDATE_APPLIED" | "RECOVERED",
   installId: string,
 ): BundleEventRow => {
   const row = createBundleEventRowFixture(suffix, receivedAtMs);
@@ -269,12 +269,13 @@ export const registerDatabasePluginOfficialDomainTests = (
 
     it("filters installation movements before applying the page limit", async () => {
       const plugin = state.getPlugin();
-      const adopted = createMovementEvent(
-        "711",
-        300,
-        "RELEASE_ADOPTED",
-        "install-target",
-      );
+      const unchanged: BundleEventRow = {
+        ...createBundleEventRowFixture("711", 300),
+        type: "UNCHANGED",
+        install_id: "install-target",
+        from_bundle_id: null,
+        update_strategy: null,
+      };
       const unrelated = createMovementEvent(
         "712",
         250,
@@ -293,7 +294,7 @@ export const registerDatabasePluginOfficialDomainTests = (
         "RECOVERED",
         "install-target",
       );
-      for (const row of [adopted, unrelated, applied, recovered]) {
+      for (const row of [unchanged, unrelated, applied, recovered]) {
         await plugin.models.insights.record({
           event: row,
           installation: toInsightsInstallationRow(row),

@@ -22,7 +22,7 @@ import type {
 import {
   EventBundleTransition,
   EventTimestamp,
-  EventTypeBadge,
+  EventTypeDetails,
   useInsightsTimeFormat,
 } from "./EventDetails";
 import { EventHistoryList } from "./EventHistoryList";
@@ -192,7 +192,7 @@ export function InstallationHistoryCard({
                           />
                         </TableCell>
                         <TableCell>
-                          <EventTypeBadge type={event.type} />
+                          <EventTypeDetails type={event.type} />
                         </TableCell>
                         <TableCell className="whitespace-normal text-xs">
                           <div className="flex flex-col gap-2">

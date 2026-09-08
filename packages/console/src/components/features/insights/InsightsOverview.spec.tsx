@@ -46,14 +46,14 @@ const report: RecoveryReport = {
   unattributedInstallations: 0,
   series: ["new-id", "old-id"].map((releaseId, index) => ({
     releaseId,
-    firstAdoptedAtMs: 0,
+    firstAppliedAtMs: 0,
     activeInstallations: index === 0 ? 90 : 10,
     recoveredInstallations: index === 0 ? 3 : 0,
     points: [10, 50, 90].map((active, i) => ({
       startMs: i * DAY,
       active: index === 0 ? active : 100 - active,
       recoveredInstallations: index === 0 && i === 2 ? 3 : 0,
-      adopted: 7,
+      applied: 7,
       recovered: index === 0 && i === 2 ? 3 : 0,
       rate: index === 0 && i === 2 ? 30 : 0,
       spike: index === 0 && i === 2,
@@ -80,7 +80,7 @@ describe("bundle trends", () => {
     expect(
       screen.getByRole("link", { name: "Review bundle" }).getAttribute("href"),
     ).toBe("/?releaseId=new-id");
-    fireEvent.click(screen.getByRole("button", { name: "Rollback" }));
+    fireEvent.click(screen.getByRole("tab", { name: "Rollback" }));
     expect(
       screen.getByLabelText("Rollback trend for all reported bundle IDs"),
     ).toBeDefined();
@@ -127,16 +127,28 @@ describe("bundle trends", () => {
       window: "30d",
     } as const;
     const refetch = vi.fn();
+    const onWindowChange = vi.fn();
     mocks.query.mockReturnValue({ isPending: true, refetch });
-    const view = render(<InsightsOverview input={input} />);
+    const view = render(
+      <InsightsOverview input={input} onWindowChange={onWindowChange} />,
+    );
     expect(screen.getByLabelText("Loading bundle activity")).toBeDefined();
+    expect(
+      screen
+        .getByRole("tab", { name: "30 days" })
+        .getAttribute("aria-selected"),
+    ).toBe("true");
+    fireEvent.click(screen.getByRole("tab", { name: "7 days" }));
+    expect(onWindowChange).toHaveBeenCalledWith("7d");
     expect(
       within(screen.getByRole("region", { name: "Bundle activity" }))
         .getByRole("link", { name: "All events" })
         .getAttribute("href"),
     ).toBe("/installations");
     mocks.query.mockReturnValue({ error: new Error("Offline"), refetch });
-    view.rerender(<InsightsOverview input={input} />);
+    view.rerender(
+      <InsightsOverview input={input} onWindowChange={onWindowChange} />,
+    );
     expect(screen.getByText("Bundle activity unavailable")).toBeDefined();
     fireEvent.click(
       screen.getByRole("button", { name: "Refresh bundle activity" }),
@@ -151,7 +163,9 @@ describe("bundle trends", () => {
       },
       refetch,
     });
-    view.rerender(<InsightsOverview input={input} />);
+    view.rerender(
+      <InsightsOverview input={input} onWindowChange={onWindowChange} />,
+    );
     expect(screen.getByText(/No bundle reports in this period/)).toBeDefined();
     expect(screen.getByText(/Partial history/)).toBeDefined();
     expect(

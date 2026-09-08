@@ -19,7 +19,7 @@ import type { InsightsEventRow, InsightsViewPage } from "@/lib/insights-view";
 import {
   EventBundleTransition,
   EventTimestamp,
-  EventTypeBadge,
+  EventTypeDetails,
   useInsightsTimeFormat,
 } from "./EventDetails";
 import { EventHistoryList } from "./EventHistoryList";
@@ -189,7 +189,7 @@ export function EventHistoryCard({
                             />
                           </TableCell>
                           <TableCell>
-                            <EventTypeBadge type={event.type} />
+                            <EventTypeDetails type={event.type} />
                           </TableCell>
                           <TableCell>
                             <EventIdentity

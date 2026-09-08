@@ -102,7 +102,7 @@ export type BundleEventRowBase = {
 
 export type BundleEventRow =
   | (BundleEventRowBase & {
-      readonly type: "UPDATE_APPLIED" | "RECOVERED" | "RELEASE_ADOPTED";
+      readonly type: "UPDATE_APPLIED" | "RECOVERED";
       readonly from_bundle_id: string;
       readonly update_strategy: "fingerprint" | "appVersion";
     })
