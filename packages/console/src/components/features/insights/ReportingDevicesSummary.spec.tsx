@@ -12,7 +12,7 @@ afterEach(() => {
   vi.clearAllMocks();
 });
 
-it("counts reporting devices over 30 days in the applied platform and channel", () => {
+it("counts monthly active users by installation in the applied platform and channel", () => {
   mocks.reporting.mockReturnValue({
     data: { reportingInstallations: { count: 3 } },
   });
@@ -44,14 +44,14 @@ it("distinguishes loading and a failed count from a measured zero and permits re
   const refetch = vi.fn();
   mocks.reporting.mockReturnValue({ isPending: true });
   const view = render(<ReportingDevicesSummary scope={scope} />);
-  expect(screen.getByLabelText("Loading reporting devices")).toBeDefined();
+  expect(screen.getByLabelText("Loading monthly active users")).toBeDefined();
   expect(screen.queryByText("0", { exact: true })).toBeNull();
   mocks.reporting.mockReturnValue({ error: new Error("Offline"), refetch });
   view.rerender(<ReportingDevicesSummary scope={scope} />);
   expect(screen.getByText("Unavailable")).toBeDefined();
   expect(screen.queryByText("0", { exact: true })).toBeNull();
   fireEvent.click(
-    screen.getByRole("button", { name: "Retry reporting device count" }),
+    screen.getByRole("button", { name: "Retry monthly active user count" }),
   );
   expect(refetch).toHaveBeenCalledOnce();
   mocks.reporting.mockReturnValue({
@@ -60,4 +60,22 @@ it("distinguishes loading and a failed count from a measured zero and permits re
   view.rerender(<ReportingDevicesSummary scope={scope} />);
   expect(screen.getByText("0", { exact: true })).toBeDefined();
   expect(screen.queryByText("Unavailable")).toBeNull();
+});
+
+it("discloses the MAU definition on tap and dismisses it with Escape", async () => {
+  mocks.reporting.mockReturnValue({
+    data: { reportingInstallations: { count: 3 } },
+  });
+  render(
+    <ReportingDevicesSummary
+      scope={{ platform: "ios", channel: "production" }}
+    />,
+  );
+  expect(screen.queryByRole("tooltip")).toBeNull();
+  fireEvent.click(screen.getByRole("button", { name: "How MAU is counted" }));
+  expect((await screen.findByRole("tooltip")).textContent).toContain(
+    "Unique app installations",
+  );
+  fireEvent.keyDown(document.body, { key: "Escape" });
+  expect(screen.queryByRole("tooltip")).toBeNull();
 });
