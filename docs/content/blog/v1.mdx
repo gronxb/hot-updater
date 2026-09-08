@@ -16,10 +16,11 @@ server combined the current Bundle, rollout cohort, platform, channel, and
 compatibility target, then asked the configured database provider what that
 installation should receive. It worked, but the answer was difficult to share.
 
-Hot Updater 1.0 moves that decision to the moment Release policy changes. The
-result is compiled into a **Release Catalog** that can be cached and shared.
-The device applies its local state after receiving the Catalog, and built-in
-Insights reports what happened after the app is ready.
+Hot Updater 1.0 uses a hybrid model. When Release policy changes, the server
+compiles the relevant update candidates and delivery policies into a
+**Release Catalog** that can be cached and shared. Each device selects an
+update using its local state, and built-in Insights reports what happened
+after the app is ready.
 
 ## What changed in 1.0
 
@@ -33,48 +34,6 @@ Insights reports what happened after the app is ready.
 Together, these changes remove installation-specific selection from the
 server's hot path without giving up installation-specific behavior on the
 device.
-
-## From 20,000 candidates to a cached Catalog
-
-The repository includes a local synthetic benchmark for the server-side work
-performed during an update check. The pre-Catalog baseline runs the generic
-database selector over 20,000 matching Bundle rows. The 1.0 fixture serves an
-empty, already compiled Catalog from a warm in-process cache. This intentionally
-compares the old selector's work with the minimum warm-serving overhead, not
-two equal payloads.
-
-|                               | Pre-Catalog selector | 1.0 warm Catalog |
-| ----------------------------- | -------------------: | ---------------: |
-| Database adapter reads        |                  203 |                0 |
-| Mean benchmark operation time |            981.25 ms |        0.0209 ms |
-
-The warmed 1.0 fixture used **99.9979% less operation time in this harness**.
-This is a measurement of application work removed from the request path, not
-an end-to-end device latency result or a production cloud-bill estimate.
-Network latency, provider latency, cache locations, TTL, and traffic shape
-still depend on the deployment. The command, environment, and baseline commit
-are recorded in the
-[checked-in verification evidence](https://github.com/gronxb/hot-updater/blob/c8e24cdec1ddfd184a866df30a82f1c05b525ef5/docs/architecture/release-catalog-verification.md).
-
-A separate integration test measures cold-request concurrency. One hundred
-simultaneous requests for the same uncached Catalog produce **one exact
-Catalog-row read**; the other 99 requests join the same in-flight load. Once
-that Catalog is cached, a warm request and an ETag revalidation add no database
-read. This coalescing is scoped to one process and one canonical Catalog key,
-not a promise that requests across every region share one global read.
-
-The durable change is the scaling model:
-
-```text
-before 1.0: origin decisions grow with update checks
-after 1.0:  origin reads grow with Catalog cache fills across scopes and locations
-```
-
-On managed AWS, Cloudflare, and Firebase deployments, a shared cache can serve
-warm checks without running the decision origin. Supabase remains origin-only,
-so every check still invokes its Edge Function, but the function serves a
-compiled Catalog instead of running the old per-installation Postgres
-selector.
 
 ## Compile policy once, share the result
 
