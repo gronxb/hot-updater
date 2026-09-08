@@ -68,13 +68,15 @@ Choose your public HTTPS URL, then register its OAuth callback:
 
 Add these values to your host's **runtime** environment:
 
-| Variable | Value |
-| --- | --- |
-| `BETTER_AUTH_URL` | Your HTTPS origin, without a path |
-| `BETTER_AUTH_SECRET` | A random secret of at least 32 characters |
-| `HOT_UPDATER_CONSOLE_ALLOWED_EMAILS` | Comma-separated full, verified email addresses |
-| `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET` | Your GitHub OAuth credentials, if using GitHub |
-| `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | Your Google OAuth credentials, if using Google |
+| Variable | Value | Example |
+| --- | --- | --- |
+| `BETTER_AUTH_URL` | Your HTTPS origin, without a path | `https://console.example.com` |
+| `BETTER_AUTH_SECRET` | A random secret of at least 32 characters | Output of `openssl rand -base64 32` |
+| `HOT_UPDATER_CONSOLE_ALLOWED_EMAILS` | Full, verified email addresses, separated by commas | `alice@example.com,bob@example.com` |
+| `GITHUB_CLIENT_ID` | Client ID from your GitHub OAuth app | `Ov23liExample12345678` |
+| `GITHUB_CLIENT_SECRET` | Client secret from the same GitHub app | `<your-github-client-secret>` |
+| `GOOGLE_CLIENT_ID` | Client ID from your Google OAuth client | `123456789012-example.apps.googleusercontent.com` |
+| `GOOGLE_CLIENT_SECRET` | Client secret from the same Google client | `<your-google-client-secret>` |
 
 Configure at least one complete OAuth pair and your backend's environment variables. Generate the session secret with:
 
@@ -98,14 +100,10 @@ Follow one deployment guide:
 | [Netlify](/docs/guides/console-deployment/netlify) | Node server functions |
 | [Cloudflare](/docs/guides/console-deployment/cloudflare) | Worker with native D1/R2 bindings |
 
-Hosting and backend providers can differ. Vercel, Netlify, and Docker/Node can connect to all four managed backends:
+Your console can run on a different provider from your Hot Updater backend. For example, you can deploy the console to **Vercel** while keeping your database and bundles on **Cloudflare**.
 
-| Backend | Node hosts | Cloudflare Workers |
-| --- | --- | --- |
-| Cloudflare | [D1 API](/docs/database-plugins/cloudflare) + [R2 S3 credentials](/docs/storage-plugins/cloudflare) | Native bindings |
-| AWS | AWS SDK credentials | Console integration unverified |
-| Firebase | Firebase Admin credentials | Use Node |
-| Supabase | Project URL + service-role key | SDK compatible; console integration unverified |
+- **Vercel, Netlify, or Docker:** use these with any managed backend—Cloudflare, AWS, Firebase, or Supabase.
+- **Cloudflare Workers:** follow the Cloudflare guide when your backend also uses Cloudflare. For the other backends, choose one of the hosts above.
 
 For another host, select its preset from [Nitro's deployment catalog](https://nitro.build/deploy). The console needs a server runtime.
 
