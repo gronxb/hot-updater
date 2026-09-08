@@ -9,6 +9,13 @@ import * as React from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   Tooltip,
@@ -220,44 +227,30 @@ function Sidebar({
   }
 
   if (isMobile) {
-    if (!openMobile) {
-      return null;
-    }
-
     return (
-      <div
-        data-sidebar="sidebar"
-        data-slot="sidebar"
-        data-mobile="true"
-        className="fixed inset-0 z-50 md:hidden"
-        {...props}
-      >
-        <button
-          type="button"
-          aria-label="Close sidebar"
-          className="absolute inset-0 bg-sidebar/55 supports-backdrop-filter:backdrop-blur-sm"
-          onClick={() => setOpenMobile(false)}
-        />
-        <dialog
-          open
-          aria-modal="true"
-          aria-label="Sidebar"
-          className={cn(
-            "bg-sidebar text-sidebar-foreground absolute inset-y-0 z-10 flex w-(--sidebar-width) flex-col shadow-lg",
-            side === "left" ? "left-0" : "right-0",
-          )}
+      <Sheet open={openMobile} onOpenChange={setOpenMobile}>
+        <SheetContent
+          data-sidebar="sidebar"
+          data-slot="sidebar"
+          data-mobile="true"
+          className="bg-sidebar text-sidebar-foreground w-(--sidebar-width) max-w-[calc(100vw-2rem)] p-0"
           style={
             {
               "--sidebar-width": SIDEBAR_WIDTH_MOBILE,
             } as React.CSSProperties
           }
+          side={side}
+          {...props}
         >
-          <div className="pointer-events-none absolute inset-x-0 top-full h-32 bg-sidebar" />
-          <div className="flex h-full w-full flex-col overflow-y-auto bg-sidebar">
+          <SheetHeader className="sr-only">
+            <SheetTitle>Sidebar</SheetTitle>
+            <SheetDescription>Console navigation.</SheetDescription>
+          </SheetHeader>
+          <div className="flex size-full min-h-0 flex-col pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)]">
             {children}
           </div>
-        </dialog>
-      </div>
+        </SheetContent>
+      </Sheet>
     );
   }
 
