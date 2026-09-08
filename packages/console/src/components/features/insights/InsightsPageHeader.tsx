@@ -3,12 +3,15 @@ import { ChartNoAxesCombined, ListIcon } from "lucide-react";
 
 import { buttonVariants } from "@/components/ui/button";
 import { SidebarTrigger } from "@/components/ui/sidebar";
+import type { InsightsSearch } from "@/lib/insights-search";
 import { cn } from "@/lib/utils";
 
 export function InsightsPageHeader({
   view,
+  overviewSearch,
 }: {
-  readonly view: "overview" | "events";
+  readonly view: "overview" | "events" | "distribution";
+  readonly overviewSearch?: InsightsSearch;
 }) {
   return (
     <header className="sticky top-0 z-10 flex shrink-0 flex-wrap items-center gap-3 border-b bg-background px-3 py-3 sm:bg-card/70 sm:px-4 sm:backdrop-blur-sm">
@@ -30,6 +33,7 @@ export function InsightsPageHeader({
               variant: view === "overview" ? "secondary" : "ghost",
             }),
           )}
+          search={overviewSearch}
           to="/insights"
         >
           Overview

@@ -12,11 +12,6 @@ import type { RecoveryReport } from "@/lib/insights-recovery";
 
 import { InsightsOverview, ActivityChart } from "./InsightsOverview";
 
-const mocks = vi.hoisted(() => ({ query: vi.fn() }));
-vi.mock("@tanstack/react-query", () => ({ useQuery: mocks.query }));
-vi.mock("@/lib/insights-recovery-rpc", () => ({
-  getRecoveryReportRpc: vi.fn(),
-}));
 vi.mock("@tanstack/react-router", () => ({
   Link: ({
     children,
@@ -128,9 +123,19 @@ describe("bundle trends", () => {
     } as const;
     const refetch = vi.fn();
     const onWindowChange = vi.fn();
-    mocks.query.mockReturnValue({ isPending: true, refetch });
+    let query = {
+      data: undefined as RecoveryReport | undefined,
+      error: null as Error | null,
+      isPending: true,
+      isFetching: false,
+    };
     const view = render(
-      <InsightsOverview input={input} onWindowChange={onWindowChange} />,
+      <InsightsOverview
+        input={input}
+        onWindowChange={onWindowChange}
+        query={query}
+        onRefresh={refetch}
+      />,
     );
     expect(screen.getByLabelText("Loading bundle activity")).toBeDefined();
     expect(
@@ -145,26 +150,37 @@ describe("bundle trends", () => {
         .getByRole("link", { name: "All events" })
         .getAttribute("href"),
     ).toBe("/installations");
-    mocks.query.mockReturnValue({ error: new Error("Offline"), refetch });
+    query = { ...query, isPending: false, error: new Error("Offline") };
     view.rerender(
-      <InsightsOverview input={input} onWindowChange={onWindowChange} />,
+      <InsightsOverview
+        input={input}
+        onWindowChange={onWindowChange}
+        query={query}
+        onRefresh={refetch}
+      />,
     );
     expect(screen.getByText("Bundle activity unavailable")).toBeDefined();
     fireEvent.click(
       screen.getByRole("button", { name: "Refresh bundle activity" }),
     );
     expect(refetch).toHaveBeenCalledOnce();
-    mocks.query.mockReturnValue({
+    query = {
+      ...query,
+      error: null,
       data: {
         ...report,
         series: [],
         truncated: true,
         unattributedInstallations: 4,
       },
-      refetch,
-    });
+    };
     view.rerender(
-      <InsightsOverview input={input} onWindowChange={onWindowChange} />,
+      <InsightsOverview
+        input={input}
+        onWindowChange={onWindowChange}
+        query={query}
+        onRefresh={refetch}
+      />,
     );
     expect(screen.getByText(/No bundle reports in this period/)).toBeDefined();
     expect(screen.getByText(/Partial history/)).toBeDefined();

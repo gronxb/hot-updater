@@ -1,94 +1,48 @@
-import { InfoIcon } from "lucide-react";
-import { useId, useState } from "react";
-
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
-import {
-  useReportingInstallationsQuery,
-  type InsightsOverviewInput,
-} from "@/lib/insights-api";
+import type { InsightsWindow } from "@/lib/insights-api";
+import { usageMetrics } from "@/lib/insights-usage";
+
+import { InsightsInfo } from "./InsightsInfo";
 
 export function ReportingDevicesSummary({
-  scope,
+  window,
+  count,
+  isPending,
+  partial,
 }: {
-  readonly scope: Omit<InsightsOverviewInput, "window" | "bundleId">;
+  readonly window: InsightsWindow;
+  readonly count: number | undefined;
+  readonly isPending: boolean;
+  readonly partial: boolean;
 }) {
-  const query = useReportingInstallationsQuery({ ...scope, window: "30d" });
-  const infoId = useId();
-  const [infoOpen, setInfoOpen] = useState(false);
+  const metric = usageMetrics[window];
   return (
-    <Card
-      aria-label="Monthly active users over 30 days"
-      className="flex items-center justify-between"
+    <div
+      aria-label={`${metric.label} over ${metric.period}`}
       role="region"
+      className="flex items-center gap-3"
     >
-      <CardHeader className="min-w-0 gap-2 p-6 sm:px-8">
-        <CardTitle className="flex items-center gap-1 text-sm font-medium">
-          <span className="whitespace-nowrap">MAU · 30d</span>
-          <Tooltip
-            open={infoOpen}
-            onOpenChange={setInfoOpen}
-            triggerId={infoId}
-          >
-            <TooltipTrigger
-              id={infoId}
-              aria-describedby={infoOpen ? `${infoId}-description` : undefined}
-              closeOnClick={false}
-              onClick={() => setInfoOpen((open) => !open)}
-              render={
-                <Button
-                  aria-label="How MAU is counted"
-                  className="size-11 sm:size-7"
-                  size="icon"
-                  variant="ghost"
-                />
-              }
-            >
-              <InfoIcon />
-            </TooltipTrigger>
-            <TooltipContent
-              className="max-w-64"
-              id={`${infoId}-description`}
-              role="tooltip"
-              side="bottom"
-            >
-              Unique app installations that reported activity in the last 30
-              days, including no-change reports. Filtered by platform and
-              channel.
-            </TooltipContent>
-          </Tooltip>
-        </CardTitle>
-      </CardHeader>
-      <CardContent className="shrink-0 p-6 sm:px-8">
-        {query.isPending ? (
-          <Skeleton
-            aria-label="Loading monthly active users"
-            className="h-9 w-12"
-          />
-        ) : query.error ? (
-          <div className="flex flex-col items-end gap-2">
-            <span className="text-xs text-muted-foreground">Unavailable</span>
-            <Button
-              aria-label="Retry monthly active user count"
-              onClick={() => void query.refetch()}
-              size="sm"
-              variant="outline"
-            >
-              Retry
-            </Button>
-          </div>
-        ) : (
-          <p className="text-4xl font-semibold tabular-nums">
-            {query.data?.reportingInstallations.count.toLocaleString() ?? "—"}
-          </p>
-        )}
-      </CardContent>
-    </Card>
+      {isPending ? (
+        <Skeleton aria-label="Loading active users" className="h-9 w-12" />
+      ) : (
+        <p className="text-4xl font-semibold tracking-tight tabular-nums">
+          {count === undefined
+            ? "—"
+            : `${partial ? "≥" : ""}${count.toLocaleString()}`}
+        </p>
+      )}
+      <div className="flex items-center gap-1 text-sm text-muted-foreground">
+        <span>{metric.label}</span>
+        <InsightsInfo label={`How ${metric.label} is counted`}>
+          Unique app installations that reported activity in the last{" "}
+          {metric.period}, including no-change reports. Filtered by platform,
+          channel, and app version. The chart counts unique reporting
+          installations per {metric.interval}.
+          {partial
+            ? " Only part of the history is available; the total is a lower bound."
+            : ""}
+        </InsightsInfo>
+      </div>
+    </div>
   );
 }

@@ -1,8 +1,9 @@
 import type { InsightsWindow } from "./insights-rpc";
 
 export type RecoveryInput = {
-  readonly platform: "ios" | "android";
+  readonly platform: "all" | "ios" | "android";
   readonly channel: string;
+  readonly appVersion?: string;
   readonly window: InsightsWindow;
   readonly releaseId?: string;
 };
@@ -43,11 +44,17 @@ export const recoveryWindows = {
 export function readRecoveryInput(input: RecoveryInput): RecoveryInput {
   if (
     !input ||
-    (input.platform !== "ios" && input.platform !== "android") ||
+    (input.platform !== "all" &&
+      input.platform !== "ios" &&
+      input.platform !== "android") ||
     typeof input.channel !== "string" ||
     !input.channel.trim() ||
     input.channel.length > 1_024 ||
     !Object.hasOwn(recoveryWindows, input.window) ||
+    (input.appVersion !== undefined &&
+      (typeof input.appVersion !== "string" ||
+        !input.appVersion.trim() ||
+        input.appVersion.length > 1_024)) ||
     (input.releaseId !== undefined &&
       (typeof input.releaseId !== "string" ||
         !input.releaseId.trim() ||

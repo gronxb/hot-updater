@@ -76,7 +76,10 @@ export function buildRecoveryReport(
     ) {
       const row = events[eventIndex++];
       const inScope =
-        row.platform === input.platform && row.channel === input.channel;
+        (input.platform === "all" || row.platform === input.platform) &&
+        row.channel === input.channel &&
+        (input.appVersion === undefined ||
+          row.app_version === input.appVersion);
       const previous = latest.get(row.install_id);
       // Lifecycle reports can omit the ID on UNCHANGED. Only retain an observed ID for the same file and scope.
       const releaseId =

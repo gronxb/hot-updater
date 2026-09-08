@@ -107,22 +107,37 @@ The Bundles list shows compact **Active** and **Rollback** counts over the last
 30 days. Bundle Detail keeps these counts and a small activity graph above
 Delivery settings.
 
-Insights opens a 24-hour chart with hourly intervals, so recent activity remains
-visible. Select **7d** or **30d** to compare a longer period. The chart includes
-every bundle ID observed in the selected platform and channel.
+Insights opens with **All platforms** and a 24-hour period. Select **7d** or
+**30d** in App usage to update its metric, chart, and distributions. Bundle
+activity has its own independent period selector. Search and select a channel, optionally select a platform and app
+version, then choose **Apply filters**.
 
-Search and select a channel from the channel combobox, then choose **Apply
-filters** to update the chart and MAU count.
+App usage shows one metric for the selected period: **DAU** for the last 24
+hours, **WAU** for the last 7 days, or **MAU** for the last 30 days. Each counts
+unique app installations with at least one matching activity report in that
+rolling window. Multiple installations belonging to the same person count
+separately. All event types count, including **No change**, as do reports
+without a known bundle ID. Hover over, focus, or tap the metric's info icon to
+see its definition.
 
-**MAU · 30d** (monthly active users) counts unique app installations that reported
-activity in the last 30 days. A user is identified by installation ID; multiple
-installations belonging to the same person count separately. Each installation's
-latest report must belong to the selected platform and channel. All event types
-count, including **No change**, as do reports without a known bundle ID. The
-metric uses a rolling 30-day window and stays on 30 days when the chart period
-changes.
-Hover over, focus, or tap the info icon beside **MAU · 30d** to see its definition.
+The usage chart counts unique reporting installations in each interval: hourly
+for 24h, every six hours for 7d, and daily for 30d. The period total deduplicates
+installations across intervals, so it is not the sum of the chart points.
+Distributions count each installation once, using its latest matching report's
+app version and platform within the selected period.
 
+Select an app version in **Distribution**, or choose **View distribution**, to
+see its bundle IDs, platforms, active installation counts, and share within each
+app version. The detail view keeps the overview's reporting scope, supports
+20 rows per page, and links each known ID to its bundle details. **Unknown bundle**
+accounts for installations whose reported file has no observed deployment ID.
+Period and filter selections survive navigation back to the overview.
+
+![App usage and bundle trends with sample data](/docs/console/insights-overview.png)
+
+![Bundle distribution by app version with sample data](/docs/console/insights-distribution.png)
+
+The bundle chart includes every bundle ID observed with the selected filters.
 **Active** follows each installation’s last reported ID
 within that period, so moving to a new bundle reduces the old bundle’s count.
 Select **Rollback** to compare installations recovered from each bundle per
@@ -133,7 +148,9 @@ Open **All events** on the activity card to browse reports from newest to oldest
 
 These counts reflect received reports, not the full installed population.
 Reports without a known bundle ID are excluded from the per-ID chart. History
-reads are capped at 50,000 events; partial history is labeled in the UI.
+reads are capped at 50,000 events for each reporting period. Partial
+history is labeled in the UI; the active-user total is shown as a lower bound
+with **≥**, and unavailable usage intervals are shown as gaps.
 
 ## Rollback
 
