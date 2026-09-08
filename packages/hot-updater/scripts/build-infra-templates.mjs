@@ -122,6 +122,11 @@ for (const provider of providers) {
     path.join(output, "app/provision-api-key.mjs"),
   );
 
+  await cp(
+    path.join(packageRoot, "agent/verify-server.mjs"),
+    path.join(output, "app/verify-server.mjs"),
+  );
+
   const providerVersion = versions[`@hot-updater/${provider}`];
   const requirements = {};
   if (provider === "cloudflare") {
@@ -241,6 +246,41 @@ for (const provider of providers) {
       OriginRequestPolicyConfig:
         cloudfront.HOT_UPDATER_ORIGIN_REQUEST_POLICY_CONFIG,
     });
+    const awsInputs = await moduleAt(path.join(root, "dist/iac/index.mjs"));
+    await save(
+      path.join(output, "dynamodb/create-table.json"),
+      awsInputs.buildDynamoDBCreateTableInput(
+        placeholder("DYNAMODB_TABLE_NAME"),
+      ),
+    );
+    await save(
+      path.join(output, "dynamodb/enable-pitr.json"),
+      awsInputs.buildDynamoDBBackupInput(placeholder("DYNAMODB_TABLE_NAME")),
+    );
+    await save(
+      path.join(output, "iam/trust-policy.json"),
+      awsInputs.LAMBDA_EDGE_TRUST_POLICY,
+    );
+    await save(
+      path.join(output, "iam/dynamodb-policy.json"),
+      awsInputs.buildDynamoDBPolicy(
+        placeholder("DYNAMODB_REGION"),
+        placeholder("ACCOUNT_ID"),
+        placeholder("DYNAMODB_TABLE_NAME"),
+      ),
+    );
+    await save(
+      path.join(output, "iam/s3-policy.json"),
+      awsInputs.buildS3Policy(placeholder("S3_BUCKET_NAME")),
+    );
+    await save(
+      path.join(output, "iam/ssm-policy.json"),
+      awsInputs.buildSsmPolicy(
+        placeholder("SSM_REGION"),
+        placeholder("ACCOUNT_ID"),
+        placeholder("SSM_PARAMETER_PATH"),
+      ),
+    );
     // Keep the authoritative table, IAM and signing specifications available
     // alongside the deployment payload; these are reference code, not runners.
     for (const file of ["dynamodb.ts", "iam.ts", "ssm.ts"]) {
@@ -264,12 +304,20 @@ for (const provider of providers) {
       ),
     );
     Object.assign(requirements, {
+      accountId: null,
       region: null,
       bucketName: null,
       tableName: null,
       lambdaName: null,
+      roleName: null,
       roleArn: null,
+      qualifiedLambdaArn: null,
+      oacId: null,
+      cachePolicyId: null,
+      catalogCachePolicyId: null,
+      originRequestPolicyId: null,
       distributionId: null,
+      distributionCallerReference: null,
       publicKeyId: null,
       keyGroupId: null,
       ssmParameterName: null,

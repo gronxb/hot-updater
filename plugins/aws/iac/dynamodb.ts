@@ -1,5 +1,7 @@
 import {
   type AttributeDefinition,
+  type CreateTableInput,
+  type UpdateContinuousBackupsInput,
   DynamoDB,
   type KeySchemaElement,
   type TableDescription,
@@ -102,6 +104,37 @@ const isResourceNotFound = (error: unknown): boolean =>
   error !== null &&
   Reflect.get(error, "name") === "ResourceNotFoundException";
 
+export const buildDynamoDBCreateTableInput = (tableName: string) =>
+  ({
+    AttributeDefinitions: [
+      { AttributeName: "pk", AttributeType: "S" },
+      { AttributeName: "sk", AttributeType: "S" },
+      { AttributeName: "gsi1pk", AttributeType: "S" },
+      { AttributeName: "gsi1sk", AttributeType: "S" },
+    ],
+    BillingMode: "PAY_PER_REQUEST",
+    DeletionProtectionEnabled: true,
+    GlobalSecondaryIndexes: [
+      {
+        IndexName: DYNAMODB_UPDATE_INDEX_NAME,
+        KeySchema: [...updateIndexKeySchema],
+        Projection: { ProjectionType: "ALL" },
+        OnDemandThroughput: onDemandThroughput,
+      },
+    ],
+    KeySchema: [...primaryKeySchema],
+    OnDemandThroughput: onDemandThroughput,
+    TableName: tableName,
+  }) satisfies CreateTableInput;
+
+export const buildDynamoDBBackupInput = (tableName: string) =>
+  ({
+    PointInTimeRecoverySpecification: {
+      PointInTimeRecoveryEnabled: true,
+    },
+    TableName: tableName,
+  }) satisfies UpdateContinuousBackupsInput;
+
 export class DynamoDBManager {
   private readonly client: DynamoDB;
 
@@ -136,27 +169,7 @@ export class DynamoDBManager {
       if (!isResourceNotFound(error)) throw error;
     }
 
-    await this.client.createTable({
-      AttributeDefinitions: [
-        { AttributeName: "pk", AttributeType: "S" },
-        { AttributeName: "sk", AttributeType: "S" },
-        { AttributeName: "gsi1pk", AttributeType: "S" },
-        { AttributeName: "gsi1sk", AttributeType: "S" },
-      ],
-      BillingMode: "PAY_PER_REQUEST",
-      DeletionProtectionEnabled: true,
-      GlobalSecondaryIndexes: [
-        {
-          IndexName: DYNAMODB_UPDATE_INDEX_NAME,
-          KeySchema: [...updateIndexKeySchema],
-          Projection: { ProjectionType: "ALL" },
-          OnDemandThroughput: onDemandThroughput,
-        },
-      ],
-      KeySchema: [...primaryKeySchema],
-      OnDemandThroughput: onDemandThroughput,
-      TableName: tableName,
-    });
+    await this.client.createTable(buildDynamoDBCreateTableInput(tableName));
     await waitUntilTableExists(
       { client: this.client, maxWaitTime: 120 },
       { TableName: tableName },
@@ -173,11 +186,8 @@ export class DynamoDBManager {
     ) {
       return;
     }
-    await this.client.updateContinuousBackups({
-      PointInTimeRecoverySpecification: {
-        PointInTimeRecoveryEnabled: true,
-      },
-      TableName: tableName,
-    });
+    await this.client.updateContinuousBackups(
+      buildDynamoDBBackupInput(tableName),
+    );
   }
 }

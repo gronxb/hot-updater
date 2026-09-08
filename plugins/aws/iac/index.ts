@@ -454,3 +454,15 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
   );
   p.log.success("Done! 🎉");
 };
+
+// Shared request templates for the infrastructure scaffold.
+export {
+  buildDynamoDBCreateTableInput,
+  buildDynamoDBBackupInput,
+} from "./dynamodb";
+export {
+  buildDynamoDBPolicy,
+  buildS3Policy,
+  buildSsmPolicy,
+  LAMBDA_EDGE_TRUST_POLICY,
+} from "./iam";

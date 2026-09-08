@@ -16,6 +16,104 @@ import {
   DYNAMODB_UPDATE_INDEX_NAME,
 } from "../src/dynamoDB";
 
+export const buildDynamoDBPolicy = (
+  region: string,
+  accountId: string,
+  tableName: string,
+) => {
+  const tableArn = `arn:aws:dynamodb:${region}:${accountId}:table/${tableName}`;
+  return {
+    Version: "2012-10-17",
+    Statement: [
+      {
+        Action: ["dynamodb:Query"],
+        Effect: "Allow",
+        Resource: [`${tableArn}/index/${DYNAMODB_UPDATE_INDEX_NAME}`],
+      },
+      {
+        Action: [
+          "dynamodb:BatchGetItem",
+          "dynamodb:DeleteItem",
+          "dynamodb:GetItem",
+          "dynamodb:PutItem",
+          "dynamodb:Query",
+          "dynamodb:TransactWriteItems",
+          "dynamodb:UpdateItem",
+        ],
+        Condition: {
+          "ForAllValues:StringLike": {
+            "dynamodb:LeadingKeys": [
+              "_hot-updater",
+              "bundles",
+              "bundle_patches",
+              DYNAMODB_CHANNEL_PARTITION,
+              DYNAMODB_CHANNEL_NAME_PARTITION,
+              DYNAMODB_INSIGHTS_PARTITION,
+              DYNAMODB_INSIGHTS_INSTALLATIONS_PARTITION,
+              DYNAMODB_INSIGHTS_EVENT_IDS_PARTITION,
+              `${DYNAMODB_INSIGHTS_BUNDLE_PREFIX}*`,
+              "_hot-updater#insights-user#*",
+              DYNAMODB_API_KEY_PARTITION,
+              DYNAMODB_API_KEY_HASH_PARTITION,
+            ],
+          },
+        },
+        Effect: "Allow",
+        Resource: [tableArn],
+      },
+    ],
+  };
+};
+
+export const buildS3Policy = (bucketName: string) => {
+  return {
+    Version: "2012-10-17",
+    Statement: [
+      {
+        Action: ["s3:ListBucket"],
+        Effect: "Allow",
+        Resource: [`arn:aws:s3:::${bucketName}`],
+      },
+      {
+        Action: ["s3:GetObject"],
+        Effect: "Allow",
+        Resource: [`arn:aws:s3:::${bucketName}/*`],
+      },
+    ],
+  };
+};
+
+export const buildSsmPolicy = (
+  region: string,
+  accountId: string,
+  parameterName: string,
+) => {
+  const parameterPath = parameterName.replace(/^\/+/, "");
+  return {
+    Version: "2012-10-17",
+    Statement: [
+      {
+        Effect: "Allow",
+        Action: ["ssm:GetParameter"],
+        Resource: `arn:aws:ssm:${region}:${accountId}:parameter/${parameterPath}`,
+      },
+    ],
+  };
+};
+
+export const LAMBDA_EDGE_TRUST_POLICY = {
+  Version: "2012-10-17",
+  Statement: [
+    {
+      Effect: "Allow",
+      Principal: {
+        Service: ["lambda.amazonaws.com", "edgelambda.amazonaws.com"],
+      },
+      Action: "sts:AssumeRole",
+    },
+  ],
+};
+
 export class IAMManager {
   private region: string;
   private credentials: { accessKeyId: string; secretAccessKey: string };
@@ -59,49 +157,10 @@ export class IAMManager {
     accountId: string,
     tableName: string,
   ): Promise<void> {
-    const tableArn = `arn:aws:dynamodb:${this.region}:${accountId}:table/${tableName}`;
     await iamClient.putRolePolicy({
-      PolicyDocument: JSON.stringify({
-        Version: "2012-10-17",
-        Statement: [
-          {
-            Action: ["dynamodb:Query"],
-            Effect: "Allow",
-            Resource: [`${tableArn}/index/${DYNAMODB_UPDATE_INDEX_NAME}`],
-          },
-          {
-            Action: [
-              "dynamodb:BatchGetItem",
-              "dynamodb:DeleteItem",
-              "dynamodb:GetItem",
-              "dynamodb:PutItem",
-              "dynamodb:Query",
-              "dynamodb:TransactWriteItems",
-              "dynamodb:UpdateItem",
-            ],
-            Condition: {
-              "ForAllValues:StringLike": {
-                "dynamodb:LeadingKeys": [
-                  "_hot-updater",
-                  "bundles",
-                  "bundle_patches",
-                  DYNAMODB_CHANNEL_PARTITION,
-                  DYNAMODB_CHANNEL_NAME_PARTITION,
-                  DYNAMODB_INSIGHTS_PARTITION,
-                  DYNAMODB_INSIGHTS_INSTALLATIONS_PARTITION,
-                  DYNAMODB_INSIGHTS_EVENT_IDS_PARTITION,
-                  `${DYNAMODB_INSIGHTS_BUNDLE_PREFIX}*`,
-                  "_hot-updater#insights-user#*",
-                  DYNAMODB_API_KEY_PARTITION,
-                  DYNAMODB_API_KEY_HASH_PARTITION,
-                ],
-              },
-            },
-            Effect: "Allow",
-            Resource: [tableArn],
-          },
-        ],
-      }),
+      PolicyDocument: JSON.stringify(
+        buildDynamoDBPolicy(this.region, accountId, tableName),
+      ),
       PolicyName: "HotUpdaterDynamoDBReadAccess",
       RoleName: roleName,
     });
@@ -113,21 +172,7 @@ export class IAMManager {
     bucketName: string,
   ): Promise<void> {
     await iamClient.putRolePolicy({
-      PolicyDocument: JSON.stringify({
-        Version: "2012-10-17",
-        Statement: [
-          {
-            Action: ["s3:ListBucket"],
-            Effect: "Allow",
-            Resource: [`arn:aws:s3:::${bucketName}`],
-          },
-          {
-            Action: ["s3:GetObject"],
-            Effect: "Allow",
-            Resource: [`arn:aws:s3:::${bucketName}/*`],
-          },
-        ],
-      }),
+      PolicyDocument: JSON.stringify(buildS3Policy(bucketName)),
       PolicyName: "HotUpdaterS3ReadAccess",
       RoleName: roleName,
     });
@@ -139,18 +184,10 @@ export class IAMManager {
     accountId: string,
     parameterName: string,
   ): Promise<void> {
-    const parameterPath = parameterName.replace(/^\/+/, "");
     await iamClient.putRolePolicy({
-      PolicyDocument: JSON.stringify({
-        Version: "2012-10-17",
-        Statement: [
-          {
-            Effect: "Allow",
-            Action: ["ssm:GetParameter"],
-            Resource: `arn:aws:ssm:${this.region}:${accountId}:parameter/${parameterPath}`,
-          },
-        ],
-      }),
+      PolicyDocument: JSON.stringify(
+        buildSsmPolicy(this.region, accountId, parameterName),
+      ),
       PolicyName: "HotUpdaterSSMAccess",
       RoleName: roleName,
     });
@@ -178,18 +215,7 @@ export class IAMManager {
       throw new Error("Failed to get AWS account ID");
     }
 
-    const assumeRolePolicyDocument = JSON.stringify({
-      Version: "2012-10-17",
-      Statement: [
-        {
-          Effect: "Allow",
-          Principal: {
-            Service: ["lambda.amazonaws.com", "edgelambda.amazonaws.com"],
-          },
-          Action: "sts:AssumeRole",
-        },
-      ],
-    });
+    const assumeRolePolicyDocument = JSON.stringify(LAMBDA_EDGE_TRUST_POLICY);
     const installationId = createHash("sha256")
       .update(options.lambdaName)
       .digest("hex")

@@ -32,7 +32,7 @@ npx hot-updater infra scaffold --provider cloudflare --output ./server --json
 | --- | --- |
 | [Cloudflare](/docs/managed/cloudflare) | Bundled Worker, Wrangler configuration and D1 migrations |
 | [Supabase](/docs/managed/supabase) | Edge Function, complete Deno imports/vendor files, SQL migrations and project configuration |
-| [AWS](/docs/managed/aws) | Lambda bundle and pinned dependencies, CloudFront specifications and DynamoDB/IAM/SSM reference source |
+| [AWS](/docs/managed/aws) | Lambda bundle and pinned dependencies, CloudFront specifications, DynamoDB/IAM JSON inputs and SSM reference source |
 | [Firebase](/docs/managed/firebase) | Built Functions project, pinned dependencies, Firebase configuration and Firestore indexes |
 
 `manifest.json` records the provider, target CLI/provider/server versions,
@@ -60,6 +60,12 @@ deployment.
 3. Install the supplied deployment project's dependencies where applicable and
    deploy with your provider tooling. AWS `reference/` files document the current
    infrastructure specifications; they are not standalone executable scripts.
+   For AWS, `dynamodb/*.json` are full CLI requests (`--cli-input-json`), while
+   `iam/*.json` are policy documents (`--policy-document` or
+   `--assume-role-policy-document`). `cloudfront/distribution.json` is a
+   DistributionConfig (`--distribution-config`); the cache/origin-policy JSON
+   files are full requests. The IAM SSM path placeholder excludes the leading
+   slash; the Lambda SSM name includes it.
    Preserve resource identities, secrets, custom settings and migration history.
 4. Verify the real endpoint's `/version`, authenticated client requests and
    stored artifact access. App configuration and client-key provisioning remain
@@ -69,5 +75,5 @@ deployment.
 
 [`hot-updater agent infra setup` and `upgrade`](/docs/guides/agent-infrastructure)
 reuse this extractor. They add provider instructions, app config templates for
-the selected build plugin, a client-key helper and a deployment record for
+the selected build plugin, client-key and server verification helpers, and a deployment record for
 resuming work. The server deployment files are shared across all three commands.
