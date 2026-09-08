@@ -1,12 +1,21 @@
-import { cleanup, render, screen } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import type { ReactNode } from "react";
 import * as React from "react";
+import { toast } from "sonner";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { AppSidebar } from "./AppSidebar";
 
 let pathname = "/";
 let apiKeysSupported = false;
+
+vi.mock("sonner", () => ({ toast: { error: vi.fn() } }));
 
 vi.mock("@tanstack/react-router", () => ({
   Link: ({ children, to, ...props }: { children: ReactNode; to: string }) => (
@@ -35,10 +44,13 @@ vi.mock("@/components/ui/sidebar", () => {
     children,
     isActive,
     render,
+    ...props
   }: {
     children?: ReactNode;
     isActive?: boolean;
     render?: ReactNode;
+    disabled?: boolean;
+    onClick?: () => void;
   }) =>
     React.isValidElement(render) ? (
       React.cloneElement(
@@ -49,7 +61,9 @@ vi.mock("@/components/ui/sidebar", () => {
         { children, "data-active": isActive ? "true" : "false" },
       )
     ) : (
-      <div data-active={isActive ? "true" : "false"}>{children}</div>
+      <button data-active={isActive ? "true" : "false"} {...props}>
+        {children}
+      </button>
     );
   return {
     Sidebar: Wrapper,
@@ -68,6 +82,8 @@ vi.mock("@/components/ui/sidebar", () => {
 describe("AppSidebar navigation", () => {
   afterEach(() => {
     cleanup();
+    vi.unstubAllGlobals();
+    vi.clearAllMocks();
     pathname = "/";
     apiKeysSupported = false;
   });
@@ -79,6 +95,43 @@ describe("AppSidebar navigation", () => {
       screen.getByRole("link", { name: /insights/i }).getAttribute("href"),
     ).toBe("/insights");
     expect(screen.queryByRole("link", { name: /installations/i })).toBeNull();
+  });
+
+  it("hides sign out in the local console", () => {
+    render(<AppSidebar />);
+    expect(screen.queryByRole("button", { name: "Sign out" })).toBeNull();
+  });
+
+  it("disables sign out while pending and lets the user retry a failed request", async () => {
+    let finish!: (response: Response) => void;
+    const fetchMock = vi.fn(
+      () =>
+        new Promise<Response>((resolve) => {
+          finish = resolve;
+        }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    render(<AppSidebar canSignOut />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Sign out" }));
+    expect(
+      screen
+        .getByRole("button", { name: "Signing out…" })
+        .hasAttribute("disabled"),
+    ).toBe(true);
+    expect(fetchMock).toHaveBeenCalledWith("/api/auth/sign-out", {
+      method: "POST",
+    });
+    finish(new Response(null, { status: 503 }));
+
+    await waitFor(() =>
+      expect(toast.error).toHaveBeenCalledWith(
+        "Sign-out failed. Please try again.",
+      ),
+    );
+    expect(
+      screen.getByRole("button", { name: "Sign out" }).hasAttribute("disabled"),
+    ).toBe(false);
   });
 
   it.each(["/insights", "/insights/distribution", "/installations"])(
