@@ -314,6 +314,33 @@ updates waiting for download completion, and a rejected reload. Eight example
 units pass strict TypeScript checking against built SDK and React Native types,
 including both Expo environment configurations. No runtime API change is needed.
 
+## 14. Show the edit while keeping copied code usable
+
+**Reader request:** Apply Fumadocs added/removed line notation throughout the
+latest snippets wherever it helps readers identify what they need to change.
+
+**Challenge:** Coloring every line of a complete example hides its important
+parts. JSON and XML need valid language-specific comments. The installed
+Fumadocs copy button also includes removed diff lines unless they carry its
+copy-ignore class, which can produce duplicate properties or two native loaders.
+
+**Decision:** Review all 514 blocks across 100 latest pages. Highlight inserted
+imports/options/hooks within surrounding context and mark removals only for
+actual replacements. Keep commands, generated output, complete modules and
+API/type references plain. Add file titles where they identify the edit target.
+Use JSONC and XML comments; keep ignore-pattern annotations on separate lines.
+
+Reuse the default Fumadocs transformers and mark removed lines with
+`nd-copy-ignore` after diff rendering. This keeps red lines visible while its
+built-in copy button copies the applied code. Markdown retains both sides and
+notation so agents can understand the edit. No custom copy component is needed.
+
+Independent concern reviews and a separate app/SDK cross-review accepted the
+final scopes and range boundaries. All 120 annotated blocks render the expected
+618 additions and 13 removals without leaking notation. Five renderer regression
+scenarios and actual browser copies verify the resulting code. The
+[page-by-page snippet inventory](code-snippet-audit.md) records all decisions.
+
 ## Remaining limits
 
 - Content/source review and route checks do not prove actual OTA delivery for

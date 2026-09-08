@@ -120,18 +120,20 @@ machine or server.
 For an Expo app using public environment variables, the resulting setup can
 look like this:
 
-```tsx
+```tsx title="App.tsx"
 import { HotUpdater } from "@hot-updater/react-native";
 
 const baseURL = process.env.EXPO_PUBLIC_HOT_UPDATER_BASE_URL;
-const clientApiKey = process.env.EXPO_PUBLIC_HOT_UPDATER_API_KEY;
+const clientApiKey = process.env.EXPO_PUBLIC_HOT_UPDATER_API_KEY; // [!code ++]
 
+// [!code ++:3]
 if (!baseURL || !clientApiKey) {
   throw new Error("Missing Hot Updater URL or client API key");
 }
 
 HotUpdater.init({
   baseURL,
+  // [!code ++:3]
   requestHeaders: {
     "x-api-key": clientApiKey,
   },
@@ -163,15 +165,16 @@ unsupported keys require a replacement through the
 [native-first rotation procedure](/docs/guides/bundle-signing#key-rotation).
 A signed Expo app's plugin entry looks like this:
 
-```json title="app.json"
+```jsonc title="app.json"
 {
   "expo": {
     "plugins": [
       [
-        "@hot-updater/expo",
+        "@hot-updater/react-native", // [!code --]
+        "@hot-updater/expo", // [!code ++]
         {
           "channel": "production",
-          "publicKeyPath": "./keys/public-key.pem"
+          "publicKeyPath": "./keys/public-key.pem" // [!code ++]
         }
       ]
     ]

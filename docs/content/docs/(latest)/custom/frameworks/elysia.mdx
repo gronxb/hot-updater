@@ -32,7 +32,7 @@ Mounting `handlers.admin` opts the server into the admin API;
 `handlers.client` never serves those routes. This example requires a nonempty
 token and scopes the authentication hook to an admin sub-app:
 
-```typescript
+```typescript title="src/index.ts"
 import { Elysia } from "elysia";
 import { bearer } from "@elysiajs/bearer"; // [!code ++]
 import { hotUpdater } from "./hotUpdater"; // [!code ++]
@@ -42,11 +42,10 @@ if (!adminToken) {
   throw new Error("HOT_UPDATER_ADMIN_TOKEN is required");
 }
 
-const adminApp = new Elysia()
+const adminApp = new Elysia() // [!code ++]
   .use(bearer()) // [!code ++]
-  .onBeforeHandle(({ bearer }) => {
-    if (bearer !== adminToken) {
-      // [!code ++]
+  .onBeforeHandle(({ bearer }) => { // [!code ++]
+    if (bearer !== adminToken) { // [!code ++]
       return new Response("Unauthorized", { status: 401 }); // [!code ++]
     } // [!code ++]
   }) // [!code ++]
@@ -67,7 +66,7 @@ HOT_UPDATER_ADMIN_TOKEN=your-secret-auth-token
 Configure the CLI to include the auth token when deploying bundles:
 
 ```typescript title="hot-updater.config.ts (excerpt)"
-import { standaloneRepository } from "@hot-updater/standalone";
+import { standaloneRepository } from "@hot-updater/standalone"; // [!code ++]
 import { defineConfig } from "hot-updater";
 
 const adminToken = process.env.HOT_UPDATER_ADMIN_TOKEN;
@@ -77,12 +76,12 @@ if (!adminToken) {
 
 export default defineConfig({
   // ...
-  database: standaloneRepository({
-    baseUrl: "http://localhost:3000/hot-updater/admin",
-    commonHeaders: {
-      Authorization: `Bearer ${adminToken}`,
-    },
-  }),
+  database: standaloneRepository({ // [!code ++]
+    baseUrl: "http://localhost:3000/hot-updater/admin", // [!code ++]
+    commonHeaders: { // [!code ++]
+      Authorization: `Bearer ${adminToken}`, // [!code ++]
+    }, // [!code ++]
+  }), // [!code ++]
 });
 ```
 

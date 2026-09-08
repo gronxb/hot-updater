@@ -28,7 +28,7 @@ npm install @hot-updater/standalone --save-dev
 Configure your CLI to connect to your self-hosted server:
 
 ```typescript title="hot-updater.config.ts (excerpt)"
-import { standaloneRepository } from "@hot-updater/standalone";
+import { standaloneRepository } from "@hot-updater/standalone"; // [!code ++]
 import { defineConfig } from "hot-updater";
 
 const adminToken = process.env.HOT_UPDATER_ADMIN_TOKEN;
@@ -37,14 +37,14 @@ if (!adminToken) {
 }
 
 export default defineConfig({
-  build: /* your build plugin */,
-  storage: /* your storage plugin */,
-  database: standaloneRepository({
-    baseUrl: "http://localhost:3000/hot-updater/admin",
-    commonHeaders: {
-      Authorization: `Bearer ${adminToken}`,
-    },
-  }),
+  build, // Your existing build plugin
+  storage, // Your existing storage plugin
+  database: standaloneRepository({ // [!code ++]
+    baseUrl: "http://localhost:3000/hot-updater/admin", // [!code ++]
+    commonHeaders: { // [!code ++]
+      Authorization: `Bearer ${adminToken}`, // [!code ++]
+    }, // [!code ++]
+  }), // [!code ++]
   updateStrategy: "appVersion",
 });
 ```
@@ -89,7 +89,7 @@ interface Routes {
 
 ### Secure Example
 
-```typescript
+```typescript title="hot-updater.config.ts"
 const adminToken = process.env.HOT_UPDATER_ADMIN_TOKEN;
 if (!adminToken) {
   throw new Error("HOT_UPDATER_ADMIN_TOKEN is required");
@@ -97,9 +97,9 @@ if (!adminToken) {
 
 database: standaloneRepository({
   baseUrl: "http://localhost:3000/hot-updater/admin",
-  commonHeaders: {
-    Authorization: `Bearer ${adminToken}`,
-  },
+  commonHeaders: { // [!code ++]
+    Authorization: `Bearer ${adminToken}`, // [!code ++]
+  }, // [!code ++]
 });
 ```
 
@@ -109,18 +109,18 @@ the server setup.
 
 ### Alternate Authentication
 
-```typescript
+```typescript title="hot-updater.config.ts"
 database: standaloneRepository({
   baseUrl: process.env.HOT_UPDATER_ADMIN_URL!,
   commonHeaders: {
-    "X-Internal-Service-Key": process.env.INTERNAL_SERVICE_KEY!,
+    "X-Internal-Service-Key": process.env.INTERNAL_SERVICE_KEY!, // [!code ++]
   },
 });
 ```
 
 ### With Custom Routes
 
-```typescript
+```typescript title="hot-updater.config.ts"
 const adminToken = process.env.HOT_UPDATER_ADMIN_TOKEN;
 if (!adminToken) {
   throw new Error("HOT_UPDATER_ADMIN_TOKEN is required");
@@ -131,25 +131,25 @@ database: standaloneRepository({
   commonHeaders: {
     Authorization: `Bearer ${adminToken}`,
   },
-  routes: {
-    create: () => ({
-      path: "/v1/bundles",
-      headers: { "X-Custom-Header": "value" },
-    }),
-    update: (bundleId) => ({
-      path: `/v1/bundles/${bundleId}`,
-      headers: { "X-Custom-Header": "value" },
-    }),
-    list: () => ({
-      path: "/v1/bundles",
-    }),
-    retrieve: (bundleId) => ({
-      path: `/v1/bundles/${bundleId}`,
-    }),
-    delete: (bundleId) => ({
-      path: `/v1/bundles/${bundleId}`,
-    }),
-  },
+  routes: { // [!code ++]
+    create: () => ({ // [!code ++]
+      path: "/v1/bundles", // [!code ++]
+      headers: { "X-Custom-Header": "value" }, // [!code ++]
+    }), // [!code ++]
+    update: (bundleId) => ({ // [!code ++]
+      path: `/v1/bundles/${bundleId}`, // [!code ++]
+      headers: { "X-Custom-Header": "value" }, // [!code ++]
+    }), // [!code ++]
+    list: () => ({ // [!code ++]
+      path: "/v1/bundles", // [!code ++]
+    }), // [!code ++]
+    retrieve: (bundleId) => ({ // [!code ++]
+      path: `/v1/bundles/${bundleId}`, // [!code ++]
+    }), // [!code ++]
+    delete: (bundleId) => ({ // [!code ++]
+      path: `/v1/bundles/${bundleId}`, // [!code ++]
+    }), // [!code ++]
+  }, // [!code ++]
 });
 ```
 

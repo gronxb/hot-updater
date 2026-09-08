@@ -105,19 +105,19 @@ a deployment or E2E flow must wait for CloudFront propagation; it defaults to
 
 ## Usage
 
-```typescript
-import { dynamoDB } from "@hot-updater/aws";
+```typescript title="hot-updater.config.ts"
+import { dynamoDB } from "@hot-updater/aws"; // [!code ++]
 import { defineConfig } from "hot-updater";
 
 export default defineConfig({
-  database: dynamoDB({
-    tableName: "hot-updater",
-    region: "us-east-1",
-    credentials: {
-      accessKeyId: process.env.AWS_ACCESS_KEY_ID,
-      secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
-    },
-  }),
+  database: dynamoDB({ // [!code ++]
+    tableName: "hot-updater", // [!code ++]
+    region: "us-east-1", // [!code ++]
+    credentials: { // [!code ++]
+      accessKeyId: process.env.AWS_ACCESS_KEY_ID, // [!code ++]
+      secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY, // [!code ++]
+    }, // [!code ++]
+  }), // [!code ++]
 });
 ```
 
@@ -155,19 +155,19 @@ export default defineConfig({
 
 Use `dynamoDB` with `createHotUpdater` for self-hosted servers:
 
-```typescript
-import { dynamoDB } from "@hot-updater/aws";
+```typescript title="src/hotUpdater.ts"
+import { dynamoDB } from "@hot-updater/aws"; // [!code ++]
 import { createHotUpdater } from "@hot-updater/server";
 
 const hotUpdater = createHotUpdater({
-  database: dynamoDB({
-    tableName: process.env.AWS_DYNAMODB_TABLE_NAME!,
-    region: process.env.AWS_REGION!,
-    credentials: {
-      accessKeyId: process.env.AWS_ACCESS_KEY_ID!,
-      secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY!,
-    },
-  }),
+  database: dynamoDB({ // [!code ++]
+    tableName: process.env.AWS_DYNAMODB_TABLE_NAME!, // [!code ++]
+    region: process.env.AWS_REGION!, // [!code ++]
+    credentials: { // [!code ++]
+      accessKeyId: process.env.AWS_ACCESS_KEY_ID!, // [!code ++]
+      secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY!, // [!code ++]
+    }, // [!code ++]
+  }), // [!code ++]
   clientAccess: { type: "api-key" },
 });
 ```

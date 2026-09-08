@@ -32,7 +32,7 @@ This example has one button: **Check and apply update**. Tapping it checks for
 an update, downloads it, then restarts the app after a successful download.
 
 ```tsx title="App.tsx"
-import { HotUpdater } from "@hot-updater/react-native";
+import { HotUpdater } from "@hot-updater/react-native"; // [!code ++]
 import { useState } from "react";
 import { Alert, Button, Text, View } from "react-native";
 
@@ -41,7 +41,7 @@ function reportUpdateError(error: unknown) {
   Alert.alert("Update failed", "Please try again.");
 }
 
-HotUpdater.init({
+HotUpdater.init({ // [!code ++:7]
   baseURL: "https://your-update-server-url",
   requestHeaders: {
     "x-api-key": "<your-registered-client-api-key>",
@@ -178,11 +178,11 @@ Keep the selected build plugin alongside your existing storage and database sett
 Use the Bare build plugin for standard React Native CLI projects:
 
 ```ts title="hot-updater.config.ts"
-import { bare } from "@hot-updater/bare";
+import { bare } from "@hot-updater/bare"; // [!code ++]
 import { defineConfig } from "hot-updater";
 
 export default defineConfig({
-  build: bare({
+  build: bare({ // [!code ++:3]
     enableHermes: true,
   }),
   // ... storage and database
@@ -197,11 +197,11 @@ No additional Babel plugin setup is required.
 Use the Rock build plugin for Rock projects:
 
 ```ts title="hot-updater.config.ts"
-import { rock } from "@hot-updater/rock";
+import { rock } from "@hot-updater/rock"; // [!code ++]
 import { defineConfig } from "hot-updater";
 
 export default defineConfig({
-  build: rock(),
+  build: rock(), // [!code ++]
   // ... storage and database
 });
 ```
@@ -214,22 +214,22 @@ No additional Babel plugin setup is required.
 Use the Expo build plugin in `hot-updater.config.ts`:
 
 ```ts title="hot-updater.config.ts"
-import { expo } from "@hot-updater/expo";
+import { expo } from "@hot-updater/expo"; // [!code ++]
 import { defineConfig } from "hot-updater";
 
 export default defineConfig({
-  build: expo(),
+  build: expo(), // [!code ++]
   // ... storage and database
 });
 ```
 
 Then add the config plugin to your `app.json`:
 
-```json title="app.json"
+```jsonc title="app.json"
 {
   "expo": {
     "plugins": [
-      [
+      [ // [!code ++:6]
         "@hot-updater/expo",
         {
           "channel": "ota-test"
@@ -288,7 +288,7 @@ import com.facebook.react.ReactApplication
 import com.facebook.react.ReactHost
 import com.facebook.react.ReactNativeApplicationEntryPoint.loadReactNative
 import com.facebook.react.defaults.DefaultReactHost.getDefaultReactHost
-import com.hotupdater.HotUpdater
+import com.hotupdater.HotUpdater // [!code ++]
 
 class MainApplication : Application(), ReactApplication {
 

@@ -22,7 +22,7 @@ HotUpdater.init({
   requestHeaders: {
     "x-api-key": "<client-api-key>",
   },
-  onNotifyAppReady: (result) => {
+  onNotifyAppReady: (result) => { // [!code ++:13]
     switch (result.status) {
       case "UNCHANGED":
         console.log("No applied or recovered transition to report");

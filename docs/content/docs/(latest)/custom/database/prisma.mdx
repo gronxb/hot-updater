@@ -52,12 +52,12 @@ Create the Hot Updater instance:
 
 ```typescript title="src/hotUpdater.ts"
 import { createHotUpdater } from "@hot-updater/server";
-import { prismaAdapter } from "@hot-updater/server/adapters/prisma";
+import { prismaAdapter } from "@hot-updater/server/adapters/prisma"; // [!code ++]
 import { s3Storage } from "@hot-updater/aws";
 import { prisma } from "./prisma";
 
 export const hotUpdater = createHotUpdater({
-  database: prismaAdapter({ prisma, provider: "sqlite" }),
+  database: prismaAdapter({ prisma, provider: "sqlite" }), // [!code ++]
   clientAccess: { type: "api-key" },
   storage: [
     s3Storage({

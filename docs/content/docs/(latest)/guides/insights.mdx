@@ -19,7 +19,7 @@ reporting default.
 Configure the client handler URL and the client API key from your infrastructure
 setup. Reporting runs after the app-ready state is available:
 
-```tsx
+```tsx title="App.tsx"
 import { HotUpdater } from "@hot-updater/react-native";
 
 HotUpdater.init({
@@ -27,6 +27,7 @@ HotUpdater.init({
   requestHeaders: {
     "x-api-key": "<client-api-key>",
   },
+  // [!code ++:3]
   onNotifyAppReady: (result) => {
     console.log("App-ready state:", result.status);
   },

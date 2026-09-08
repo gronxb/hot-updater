@@ -33,9 +33,9 @@ Mounting `handlers.admin` opts the server into the admin API;
 `handlers.client` never serves those routes. This example requires a nonempty
 token, parses JSON, and uses Express mount-local middleware:
 
-```typescript
+```typescript title="src/index.ts"
 import express from "express";
-import { toNodeHandler } from "@hot-updater/server/node";
+import { toNodeHandler } from "@hot-updater/server/node"; // [!code ++]
 import { hotUpdater } from "./hotUpdater"; // [!code ++]
 
 const adminToken = process.env.HOT_UPDATER_ADMIN_TOKEN;
@@ -45,13 +45,10 @@ if (!adminToken) {
 
 const app = express();
 
-app.use(
-  // [!code ++]
+app.use( // [!code ++]
   "/hot-updater/admin", // [!code ++]
-  (req, res, next) => {
-    // [!code ++]
-    if (req.get("Authorization") !== `Bearer ${adminToken}`) {
-      // [!code ++]
+  (req, res, next) => { // [!code ++]
+    if (req.get("Authorization") !== `Bearer ${adminToken}`) { // [!code ++]
       return res.status(401).json({ error: "Unauthorized" }); // [!code ++]
     } // [!code ++]
     next(); // [!code ++]
@@ -59,8 +56,7 @@ app.use(
   express.json({ limit: "1mb" }), // [!code ++]
   toNodeHandler(hotUpdater.handlers.admin), // [!code ++]
 ); // [!code ++]
-app.use(
-  // [!code ++]
+app.use( // [!code ++]
   "/hot-updater", // [!code ++]
   express.json({ limit: "1mb" }), // [!code ++]
   toNodeHandler(hotUpdater.handlers.client), // [!code ++]
@@ -78,7 +74,7 @@ HOT_UPDATER_ADMIN_TOKEN=your-secret-auth-token
 Configure the CLI to include the auth token when deploying bundles:
 
 ```typescript title="hot-updater.config.ts (excerpt)"
-import { standaloneRepository } from "@hot-updater/standalone";
+import { standaloneRepository } from "@hot-updater/standalone"; // [!code ++]
 import { defineConfig } from "hot-updater";
 
 const adminToken = process.env.HOT_UPDATER_ADMIN_TOKEN;
@@ -88,12 +84,12 @@ if (!adminToken) {
 
 export default defineConfig({
   // ...
-  database: standaloneRepository({
-    baseUrl: "http://localhost:3000/hot-updater/admin",
-    commonHeaders: {
-      Authorization: `Bearer ${adminToken}`,
-    },
-  }),
+  database: standaloneRepository({ // [!code ++]
+    baseUrl: "http://localhost:3000/hot-updater/admin", // [!code ++]
+    commonHeaders: { // [!code ++]
+      Authorization: `Bearer ${adminToken}`, // [!code ++]
+    }, // [!code ++]
+  }), // [!code ++]
 });
 ```
 

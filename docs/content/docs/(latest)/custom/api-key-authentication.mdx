@@ -21,12 +21,12 @@ required.
 are accessed. The credential selected by its `api-key` policy is always called
 an API key.
 
-```ts
+```ts title="src/hotUpdater.ts"
 import { createHotUpdater } from "@hot-updater/server";
 
 export const hotUpdater = createHotUpdater({
   database,
-  clientAccess: { type: "api-key" },
+  clientAccess: { type: "api-key" }, // [!code ++]
 });
 ```
 
@@ -38,10 +38,10 @@ Insights queries, admin routes, or API key management.
 To use a different header, set it explicitly and send the same header from the
 client:
 
-```ts
+```ts title="src/hotUpdater.ts"
 clientAccess: {
   type: "api-key",
-  headerName: "x-hot-updater-key",
+  headerName: "x-hot-updater-key", // [!code ++]
 }
 ```
 
@@ -67,14 +67,14 @@ React Native app automatically. Persistence receives only the key's SHA-256 hash
 and non-secret metadata, including its prefix, name, creation time, and revocation
 time.
 
-```ts
+```ts title="App.tsx"
 import { HotUpdater } from "@hot-updater/react-native";
 
 HotUpdater.init({
   baseURL: "https://example.com/hot-updater",
-  requestHeaders: {
-    "x-api-key": "<API key printed by api-key create>",
-  },
+  requestHeaders: { // [!code ++]
+    "x-api-key": "<API key printed by api-key create>", // [!code ++]
+  }, // [!code ++]
 });
 ```
 

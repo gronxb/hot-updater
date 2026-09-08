@@ -32,7 +32,7 @@ The handlers are separate by construction. Mounting `handlers.admin` opts the
 server into the admin API; `handlers.client` never serves those routes. This
 example requires a nonempty token before mounting the admin handler:
 
-```typescript
+```typescript title="src/index.ts"
 import { Hono } from "hono";
 import { bearerAuth } from "hono/bearer-auth"; // [!code ++]
 import { hotUpdater } from "./hotUpdater"; // [!code ++]
@@ -44,7 +44,7 @@ if (!adminToken) {
   throw new Error("HOT_UPDATER_ADMIN_TOKEN is required");
 }
 
-app.use(
+app.use( // [!code ++]
   "/hot-updater/admin/*", // [!code ++]
   bearerAuth({ token: adminToken }), // [!code ++]
 ); // [!code ++]
@@ -68,7 +68,7 @@ HOT_UPDATER_ADMIN_TOKEN=your-secret-auth-token
 Configure the CLI to include the auth token when deploying bundles:
 
 ```typescript title="hot-updater.config.ts (excerpt)"
-import { standaloneRepository } from "@hot-updater/standalone";
+import { standaloneRepository } from "@hot-updater/standalone"; // [!code ++]
 import { defineConfig } from "hot-updater";
 
 const adminToken = process.env.HOT_UPDATER_ADMIN_TOKEN;
@@ -78,12 +78,12 @@ if (!adminToken) {
 
 export default defineConfig({
   // ...
-  database: standaloneRepository({
-    baseUrl: "http://localhost:3000/hot-updater/admin",
-    commonHeaders: {
-      Authorization: `Bearer ${adminToken}`,
-    },
-  }),
+  database: standaloneRepository({ // [!code ++]
+    baseUrl: "http://localhost:3000/hot-updater/admin", // [!code ++]
+    commonHeaders: { // [!code ++]
+      Authorization: `Bearer ${adminToken}`, // [!code ++]
+    }, // [!code ++]
+  }), // [!code ++]
 });
 ```
 

@@ -16,6 +16,7 @@ private key. Enable signing and provide the private key path:
 import { defineConfig } from "hot-updater";
 
 export default defineConfig({
+  // [!code ++:5]
   signing: {
     enabled: true,
     privateKeyPath:
@@ -49,6 +50,9 @@ Newly generated keys inside the project add only the private-key path to
 with rules that include only the public file before committing it:
 
 ```txt title=".gitignore"
+# [!code --]
+keys/
+# [!code ++:2]
 keys/*
 !keys/public-key.pem
 ```
@@ -59,6 +63,7 @@ documentation](https://docs.expo.dev/build-reference/easignore/)):
 
 ```txt title=".easignore"
 # Keep your existing ignore rules above
+# [!code ++:3]
 !/keys/
 /keys/*
 !/keys/public-key.pem

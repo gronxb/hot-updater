@@ -19,14 +19,15 @@ Choose Fingerprint for automatic safety. Choose App Version for manual control.
 
 ## Setup
 
-App Version is the default strategy. Fingerprint is opt-in, so select it
-explicitly:
+App Version is the default strategy. If you explicitly configured it, replace
+that setting with `fingerprint`:
 
 ```typescript title="hot-updater.config.ts"
 import { defineConfig } from "hot-updater";
 
 export default defineConfig({
-  updateStrategy: "fingerprint",
+  updateStrategy: "appVersion", // [!code --]
+  updateStrategy: "fingerprint", // [!code ++]
 });
 ```
 
@@ -39,6 +40,7 @@ import { defineConfig } from "hot-updater";
 
 export default defineConfig({
   updateStrategy: "fingerprint",
+  // [!code ++:4]
   fingerprint: {
     extraSources: ["config/native-config.json", "scripts/post-build.sh"],
     debug: true,
@@ -47,7 +49,8 @@ export default defineConfig({
 ```
 
 An array is shared: every entry is hashed into both the iOS and the Android
-fingerprint. When the native inputs differ per platform, use the object form so
+fingerprint. When the native inputs differ per platform, replace `extraSources`
+with the object form so
 that an iOS-only change does not move the Android fingerprint (and vice versa):
 
 ```typescript title="hot-updater.config.ts"
@@ -56,6 +59,8 @@ import { defineConfig } from "hot-updater";
 export default defineConfig({
   updateStrategy: "fingerprint",
   fingerprint: {
+    extraSources: ["config/native-config.json", "scripts/post-build.sh"], // [!code --]
+    // [!code ++:4]
     extraSources: {
       ios: ["ios/.env"],
       android: ["android/local.properties"],
@@ -84,7 +89,7 @@ This creates a `fingerprint.json` file and embeds the hash in your native files:
 
 Example `fingerprint.json`:
 
-```json
+```json title="fingerprint.json"
 {
   "ios": {
     "hash": "11142b9062165fa48665f5efa095dd94e9e45eb0"
@@ -127,8 +132,8 @@ npx hot-updater fingerprint create
 
 ## Client Setup
 
-Initialize Hot Updater at module scope, then choose when to check. Import this
-module from your app entry point:
+Change the app's existing `checkForUpdate` strategy to `fingerprint` too. The
+module below keeps initialization at module scope and shows the matching check:
 
 Keep the `baseURL` and client key from [App setup](/docs/get-started/app-setup).
 Managed providers require this client key; provider and admin credentials stay
@@ -148,7 +153,8 @@ HotUpdater.init({
 export async function checkForAppUpdate() {
   try {
     const updateInfo = await HotUpdater.checkForUpdate({
-      updateStrategy: "fingerprint",
+      updateStrategy: "appVersion", // [!code --]
+      updateStrategy: "fingerprint", // [!code ++]
     });
 
     if (!updateInfo) return;
@@ -231,6 +237,7 @@ import { defineConfig } from "hot-updater";
 
 export default defineConfig({
   updateStrategy: "fingerprint",
+  // [!code ++:15]
   platform: {
     ios: {
       infoPlistPaths: [

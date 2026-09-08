@@ -48,12 +48,12 @@ Create the Hot Updater instance:
 
 ```typescript title="src/hotUpdater.ts"
 import { createHotUpdater } from "@hot-updater/server";
-import { mongoAdapter } from "@hot-updater/server/adapters/mongodb";
+import { mongoAdapter } from "@hot-updater/server/adapters/mongodb"; // [!code ++]
 import { s3Storage } from "@hot-updater/aws";
 import { client } from "./mongodb";
 
 export const hotUpdater = createHotUpdater({
-  database: mongoAdapter({ client, transactions: true }),
+  database: mongoAdapter({ client, transactions: true }), // [!code ++]
   clientAccess: { type: "api-key" },
   storage: [
     s3Storage({

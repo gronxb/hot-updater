@@ -41,10 +41,11 @@ boundaries.
 
 ```ts title="hot-updater.config.ts"
 import { defineConfig } from "hot-updater";
-import { remoteSigning } from "hot-updater/signing";
+import { remoteSigning } from "hot-updater/signing"; // [!code ++]
 
 export default defineConfig({
   // ...other config
+  // [!code ++:3]
   signing: remoteSigning({
     endpoint: "https://signer.example.com",
   }),

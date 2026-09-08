@@ -30,17 +30,17 @@ interface SupabaseStorageConfig {
 
 ## Usage
 
-```typescript
-import { supabaseStorage } from "@hot-updater/supabase";
+```typescript title="hot-updater.config.ts"
+import { supabaseStorage } from "@hot-updater/supabase"; // [!code ++]
 import { defineConfig } from "hot-updater";
 
 export default defineConfig({
-  storage: supabaseStorage({
-    supabaseUrl: process.env.SUPABASE_URL,
-    supabaseServiceRoleKey: process.env.SUPABASE_SERVICE_ROLE_KEY,
-    bucketName: "hot-updater-bundles",
-    basePath: "bundles", // Optional
-  }),
+  storage: supabaseStorage({ // [!code ++]
+    supabaseUrl: process.env.SUPABASE_URL, // [!code ++]
+    supabaseServiceRoleKey: process.env.SUPABASE_SERVICE_ROLE_KEY, // [!code ++]
+    bucketName: "hot-updater-bundles", // [!code ++]
+    basePath: "bundles", // Optional // [!code ++]
+  }), // [!code ++]
   // ... other config
 });
 ```

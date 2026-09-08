@@ -43,15 +43,16 @@ integrations manage those rows through the
 
     <Tabs items={["iOS", "Android"]}>
       <Tab value="iOS">
-      ```tsx title="ios/HotUpdaterExample/Info.plist"
-      <key>HOT_UPDATER_CHANNEL</key> // [!code ++]
-      <string>your_set_channel</string> // [!code ++]
+      ```xml title="ios/HotUpdaterExample/Info.plist"
+      <key>HOT_UPDATER_CHANNEL</key> <!-- [!code ++] -->
+      <string>your_set_channel</string> <!-- [!code ++] -->
       ```
       </Tab>
 
       <Tab value="Android">
       ```xml title="android/app/src/main/AndroidManifest.xml"
       <application android:name=".MainApplication">
+          <!-- [!code ++:3] -->
           <meta-data
               android:name="com.hotupdater.CHANNEL"
               android:value="your_set_channel" />
@@ -64,14 +65,14 @@ integrations manage those rows through the
     For Expo, add the channel to the plugin configuration in your `app.json`
     file.
 
-    ```json title="app.json"
+    ```jsonc title="app.json"
     {
       "expo": {
         "plugins": [
           [
             "@hot-updater/expo",
             {
-              "channel": "<your-channel-name>"
+              "channel": "<your-channel-name>" // [!code ++]
             }
           ]
         ]
@@ -102,6 +103,7 @@ import { defineConfig } from "hot-updater";
 
 export default defineConfig({
   // ... other configurations
+  // [!code ++:15]
   platform: {
     ios: {
       infoPlistPaths: [
@@ -194,7 +196,7 @@ Keep the `baseURL` and client key from [App setup](/docs/get-started/app-setup).
 Managed providers require this client key; provider and admin credentials stay
 out of the app.
 
-```tsx
+```tsx title="App.tsx"
 import { HotUpdater } from "@hot-updater/react-native";
 import { Text, View } from "react-native";
 

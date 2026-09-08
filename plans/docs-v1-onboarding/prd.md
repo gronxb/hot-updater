@@ -87,6 +87,8 @@ latest links updated and no alias for its previous simulator-only URL. The
 from cross-review of the implemented journeys. The
 [breaking-change coverage matrix](breaking-changes-coverage.md) maps every
 release-contract area to its current documentation and migration instructions.
+The [code snippet audit](code-snippet-audit.md) records every latest page and its
+fenced code blocks, including decisions to highlight changes or retain plain examples.
 
 Verified on September 9, 2026:
 
@@ -96,11 +98,12 @@ Verified on September 9, 2026:
 | Live production routes | All 100 HTML and 100 Markdown page URLs return successfully; canonical API index and its compatibility alias return identical Markdown |
 | First OTA canonical URL | `get-started/test-ota` appears once in navigation and the LLM index; old latest simulator-test HTML/Markdown return 404; archived v0 remains available |
 | Markdown fidelity | All 1,001 fenced code blocks and 849 link destinations survive serialization across the 176 latest and archived source pages |
-| Docs regressions | `pnpm --dir docs test:docs`: 2 files, 5 tests pass |
+| Docs regressions | `pnpm --dir docs test:docs`: 3 files, 10 tests pass |
 | Production build | `pnpm -w build` and final `pnpm --dir docs build` pass; no dead links |
 | Static checks | `pnpm --dir docs test:type`, `pnpm -w lint` and `git diff --check` pass |
 | Repository tests | `pnpm -w test`: 290 files, 2,680 tests pass |
 | Executable documentation | Top-level init onboarding sample passes seven flow scenarios; eight SDK example units pass strict typechecking; database conformance (48 tests) and standalone storage (13 tests) pass. The first OTA walkthrough uses the verified sample's actions and short CLI commands, with no independent protocol script. |
+| Code snippet readability | All 514 latest snippets reviewed; 120 blocks improved. All 120 annotated blocks pass actual Fumadocs range/render/copy checks; native Swift and Expo JSON copying verified in the browser |
 | Rendered navigation | Desktop Start here and agent path inspected; version selector opens the archived v0 navigation |
 | Landing entry and terminal | Skill discovery command succeeds; Get Started opens the agent guide; desktop and 320/375/1280px iframe viewports fit without horizontal overflow; resizing reuses the terminal |
 | Deploy demonstration | Actual xterm parser passes at 36/38/42/46/58/70 columns, during/after resizing and on cancellation; complete update ID and final prompt remain visible in 16 rows |

@@ -47,12 +47,12 @@ Create the Hot Updater instance:
 
 ```typescript title="src/hotUpdater.ts"
 import { createHotUpdater } from "@hot-updater/server";
-import { kyselyAdapter } from "@hot-updater/server/adapters/kysely";
+import { kyselyAdapter } from "@hot-updater/server/adapters/kysely"; // [!code ++]
 import { s3Storage } from "@hot-updater/aws";
 import { db } from "./kysely";
 
 export const hotUpdater = createHotUpdater({
-  database: kyselyAdapter({ db, provider: "sqlite" }),
+  database: kyselyAdapter({ db, provider: "sqlite" }), // [!code ++]
   clientAccess: { type: "api-key" },
   storage: [
     s3Storage({

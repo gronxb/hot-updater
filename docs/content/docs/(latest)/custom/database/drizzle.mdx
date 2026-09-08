@@ -33,10 +33,10 @@ Create a database connection file:
 ```typescript title="src/drizzle.ts"
 import { drizzle } from "drizzle-orm/better-sqlite3";
 import Database from "better-sqlite3";
-import * as schema from "../hot-updater-schema";
+import * as schema from "../hot-updater-schema"; // [!code ++]
 
 const sqlite = new Database("./data/database.db");
-export const db = drizzle(sqlite, { schema });
+export const db = drizzle(sqlite, { schema }); // [!code ++]
 ```
 
 ## Hot Updater Configuration
@@ -45,12 +45,12 @@ Create the Hot Updater instance:
 
 ```typescript title="src/hotUpdater.ts"
 import { createHotUpdater } from "@hot-updater/server";
-import { drizzleAdapter } from "@hot-updater/server/adapters/drizzle";
+import { drizzleAdapter } from "@hot-updater/server/adapters/drizzle"; // [!code ++]
 import { s3Storage } from "@hot-updater/aws";
 import { db } from "./drizzle";
 
 export const hotUpdater = createHotUpdater({
-  database: drizzleAdapter({ db, provider: "sqlite" }),
+  database: drizzleAdapter({ db, provider: "sqlite" }), // [!code ++]
   clientAccess: { type: "api-key" },
   storage: [
     s3Storage({
@@ -85,7 +85,7 @@ Point Drizzle Kit at the generated file and the same SQLite database:
 import { defineConfig } from "drizzle-kit";
 
 export default defineConfig({
-  schema: "./hot-updater-schema.ts",
+  schema: "./hot-updater-schema.ts", // [!code ++]
   out: "./drizzle",
   dialect: "sqlite",
   dbCredentials: {

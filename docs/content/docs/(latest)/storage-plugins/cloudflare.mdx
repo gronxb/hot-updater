@@ -38,19 +38,19 @@ interface R2S3StorageConfig {
 
 ## Usage
 
-```typescript
-import { r2Storage } from "@hot-updater/cloudflare";
+```typescript title="hot-updater.config.ts"
+import { r2Storage } from "@hot-updater/cloudflare"; // [!code ++]
 import { defineConfig } from "hot-updater";
 
 export default defineConfig({
-  storage: r2Storage({
-    accountId: process.env.CLOUDFLARE_ACCOUNT_ID,
-    bucketName: "my-r2-bucket",
-    credentials: {
-      accessKeyId: process.env.R2_ACCESS_KEY_ID,
-      secretAccessKey: process.env.R2_SECRET_ACCESS_KEY,
-    },
-  }),
+  storage: r2Storage({ // [!code ++]
+    accountId: process.env.CLOUDFLARE_ACCOUNT_ID, // [!code ++]
+    bucketName: "my-r2-bucket", // [!code ++]
+    credentials: { // [!code ++]
+      accessKeyId: process.env.R2_ACCESS_KEY_ID, // [!code ++]
+      secretAccessKey: process.env.R2_SECRET_ACCESS_KEY, // [!code ++]
+    }, // [!code ++]
+  }), // [!code ++]
   // ... other config
 });
 ```
@@ -68,8 +68,8 @@ stored object.
 Inside a Worker, import `r2Storage` from `@hot-updater/cloudflare/worker` and
 capture the native R2 binding when constructing the plugin:
 
-```typescript
-import { d1Database, r2Storage } from "@hot-updater/cloudflare/worker";
+```typescript title="src/hotUpdater.ts"
+import { d1Database, r2Storage } from "@hot-updater/cloudflare/worker"; // [!code ++]
 import { createHotUpdater } from "@hot-updater/server";
 import { env } from "cloudflare:workers";
 
@@ -78,9 +78,9 @@ export const hotUpdater = createHotUpdater({
   clientAccess: { type: "api-key" },
   storage: [
     r2Storage({
-      bucket: env.BUCKET,
-      bucketName: env.BUCKET_NAME,
-      downloadUrlSigningKey: env.STORAGE_DOWNLOAD_URL_SIGNING_KEY,
+      bucket: env.BUCKET, // [!code ++]
+      bucketName: env.BUCKET_NAME, // [!code ++]
+      downloadUrlSigningKey: env.STORAGE_DOWNLOAD_URL_SIGNING_KEY, // [!code ++]
     }),
   ],
 });

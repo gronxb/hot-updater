@@ -31,7 +31,7 @@ wrapper-managed staging/reload. For app-controlled check and apply timing,
 follow the [`init` custom flow](/docs/guides/custom-update).
 
 ```tsx
-import { HotUpdater } from "@hot-updater/react-native";
+import { HotUpdater } from "@hot-updater/react-native"; // [!code ++]
 import { View, Text } from "react-native";
 
 function App() {
@@ -42,8 +42,8 @@ function App() {
   );
 }
 
-export default HotUpdater.wrap({
-  // [!code hl:9]
+export default App; // [!code --]
+export default HotUpdater.wrap({ // [!code ++:9]
   baseURL: "<your-update-server-url>",
   updateStrategy: "appVersion", // or "fingerprint"
   insights: true,
@@ -140,10 +140,9 @@ function App() {
 }
 
 export default HotUpdater.wrap({
-  // [!code hl:32]
   baseURL: "<your-update-server-url>",
   updateStrategy: "appVersion", // or "fingerprint"
-  fallbackComponent: ({ progress, status, message }) => (
+  fallbackComponent: ({ progress, status, message }) => ( // [!code ++:28]
     <View
       style={{
         flex: 1,
@@ -209,7 +208,7 @@ export default HotUpdater.wrap({
   requestHeaders: {
     "x-api-key": "<your-api-key>",
   },
-  reloadOnForceUpdate: true, // Automatically reload the app on force updates // [!code hl]
+  reloadOnForceUpdate: true, // Automatically reload the app on force updates // [!code ++]
 })(App);
 ```
 
@@ -234,7 +233,8 @@ export default HotUpdater.wrap({
   requestHeaders: {
     "x-api-key": "<your-api-key>",
   },
-  reloadOnForceUpdate: false, // Keep the current session running // [!code hl]
+  reloadOnForceUpdate: true, // [!code --]
+  reloadOnForceUpdate: false, // Keep the current session running // [!code ++]
 })(App);
 ```
 
@@ -275,12 +275,12 @@ export default HotUpdater.wrap({
   requestHeaders: {
     "x-api-key": "<your-api-key>",
   },
-  onUpdateProcessCompleted: ({ status, shouldForceUpdate, id, message }) => {
+  onUpdateProcessCompleted: ({ status, shouldForceUpdate, id, message }) => { // [!code ++:3]
     console.log("Bundle updated:", status, shouldForceUpdate, id, message);
   },
 
   // If you need to show the progress while downloading the new bundle, you can use the `onProgress` option.
-  onProgress: (progress) => {
+  onProgress: (progress) => { // [!code ++:3]
     console.log("Bundle downloading progress:", progress);
   },
 })(App);
@@ -299,8 +299,7 @@ import { Alert } from "react-native";
 export default HotUpdater.wrap({
   baseURL: "<your-update-server-url>",
   updateStrategy: "appVersion",
-  onError: (error) => {
-    // [!code hl:5]
+  onError: (error) => { // [!code ++:4]
     // Handle other errors
     console.error("Update error:", error);
   },

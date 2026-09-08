@@ -118,12 +118,12 @@ import { hotUpdater } from "./hotUpdater"; // [!code ++]
 
 const app = new Hono();
 
-const adminToken = process.env.HOT_UPDATER_ADMIN_TOKEN; // [!code ++]
+const adminToken = process.env.HOT_UPDATER_ADMIN_TOKEN;
 if (!adminToken) {
-  throw new Error("HOT_UPDATER_ADMIN_TOKEN is required"); // [!code ++]
-} // [!code ++]
+  throw new Error("HOT_UPDATER_ADMIN_TOKEN is required");
+}
 
-app.use(
+app.use( // [!code ++]
   "/hot-updater/admin/*", // [!code ++]
   bearerAuth({ token: adminToken }), // [!code ++]
 ); // [!code ++]

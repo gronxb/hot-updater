@@ -46,6 +46,9 @@ the key embedded in existing apps.
 Keep local private material ignored and include only the public file:
 
 ```txt title=".gitignore"
+# [!code --]
+keys/
+# [!code ++:2]
 keys/*
 !keys/public-key.pem
 ```
@@ -65,10 +68,11 @@ npm install '@aws-sdk/client-kms@^3.1066.0' --save-dev
 
 ```ts title="hot-updater.config.ts"
 import { defineConfig } from "hot-updater";
-import { awsKmsSigning } from "hot-updater/signing";
+import { awsKmsSigning } from "hot-updater/signing"; // [!code ++]
 
 export default defineConfig({
   // ...other config
+  // [!code ++:6]
   signing: awsKmsSigning({
     // A key ARN is an identifier, not a secret. Pin the exact key.
     keyId:

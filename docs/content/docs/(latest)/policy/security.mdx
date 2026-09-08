@@ -32,11 +32,12 @@ for publisher verification.
 Use the client key produced by your infrastructure setup. Keep provider and
 admin credentials in separate configuration:
 
-```tsx
+```tsx title="App.tsx"
 import { HotUpdater } from "@hot-updater/react-native";
 
 HotUpdater.init({
   baseURL: "<your-update-server-url>",
+  // [!code ++:3]
   requestHeaders: {
     "x-api-key": "<client-api-key>",
   },

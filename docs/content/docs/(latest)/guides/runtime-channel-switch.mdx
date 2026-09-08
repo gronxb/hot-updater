@@ -50,13 +50,13 @@ This keeps the full lifecycle explicit:
 
 ## Opt Into Another Channel
 
-```tsx
+```tsx title="updates.ts"
 import { HotUpdater } from "@hot-updater/react-native";
 
 async function enableBetaChannel() {
   const updateInfo = await HotUpdater.checkForUpdate({
     updateStrategy: "appVersion",
-    channel: "beta",
+    channel: "beta", // [!code ++]
   });
 
   if (!updateInfo) {

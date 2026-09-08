@@ -445,7 +445,7 @@ Use the same provider in the CLI and self-hosted server:
 import { defineConfig } from "hot-updater";
 
 export default defineConfig({
-  database: myDatabase({ db }),
+  database: myDatabase({ db }), // [!code ++]
   // build: ...
   // storage: ...
 });
@@ -453,7 +453,7 @@ export default defineConfig({
 
 ```ts title="server.ts"
 export const hotUpdater = createHotUpdater({
-  database: myDatabase({ db }),
+  database: myDatabase({ db }), // [!code ++]
   clientAccess: { type: "api-key" },
   storage,
 });

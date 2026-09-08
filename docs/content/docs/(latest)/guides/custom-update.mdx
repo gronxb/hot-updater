@@ -75,7 +75,7 @@ To let users finish their work first, replace the automatic reload with your
 app's restart prompt. Show the prompt only after `update.updateBundle()` returns
 `true`. Its confirmation button can call this handler in the same module:
 
-```ts
+```ts title="updates.ts"
 async function restartToApply() {
   try {
     await HotUpdater.reload();

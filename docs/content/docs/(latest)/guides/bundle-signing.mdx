@@ -116,7 +116,7 @@ and follow [Key Rotation](#key-rotation) before switching the app's trust anchor
 
 Reference the public file in the Expo app config:
 
-```json title="app.json"
+```jsonc title="app.json"
 {
   "expo": {
     "plugins": [
@@ -124,7 +124,7 @@ Reference the public file in the Expo app config:
         "@hot-updater/expo",
         {
           "channel": "production",
-          "publicKeyPath": "./keys/public-key.pem"
+          "publicKeyPath": "./keys/public-key.pem" // [!code ++]
         }
       ]
     ]
@@ -183,6 +183,7 @@ For custom native paths, configure `platform`:
 import { defineConfig } from "hot-updater";
 
 export default defineConfig({
+  // [!code ++:11]
   platform: {
     android: {
       androidManifestPaths: [
@@ -201,14 +202,16 @@ Or add the public key manually.
 
 **iOS** (`Info.plist`):
 
-```xml
+```xml title="ios/<your-app>/Info.plist"
+<!-- [!code ++:2] -->
 <key>HOT_UPDATER_PUBLIC_KEY</key>
 <string>-----BEGIN PUBLIC KEY-----\nMIIB...your-key...\n-----END PUBLIC KEY-----</string>
 ```
 
 **Android** (`AndroidManifest.xml`, inside `<application>`):
 
-```xml
+```xml title="android/app/src/main/AndroidManifest.xml"
+<!-- [!code ++:3] -->
 <meta-data
     android:name="com.hotupdater.PUBLIC_KEY"
     android:value="-----BEGIN PUBLIC KEY-----\nMIIBIjANBgkq...your-key...\n-----END PUBLIC KEY-----" />

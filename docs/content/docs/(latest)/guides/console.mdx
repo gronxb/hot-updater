@@ -35,9 +35,9 @@ Configure both the `storage` and `database` plugins.
 import { defineConfig } from "hot-updater";
 
 export default defineConfig({
-  console: { // [!code hl]
-    port: 3000, // [!code hl]
-  }, // [!code hl]
+  console: { // [!code ++]
+    port: 3000, // [!code ++]
+  }, // [!code ++]
   build: ...,
   storage: ...,
   database: ...,
@@ -183,7 +183,7 @@ import { defineConfig } from "hot-updater";
 
 export default defineConfig({
   console: {
-    gitUrl: "<your-repo>", // e.g. https://github.com/gronxb/hot-updater // [!code hl]
+    gitUrl: "<your-repo>", // e.g. https://github.com/gronxb/hot-updater // [!code ++]
   },
 });
 ```

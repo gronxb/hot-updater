@@ -56,13 +56,13 @@ Create the database connection file with Drizzle's transaction-capable
 ```typescript title="src/drizzle.ts"
 import { drizzle } from "drizzle-orm/node-postgres";
 import { Pool } from "pg";
-import * as schema from "../hot-updater-schema";
+import * as schema from "../hot-updater-schema"; // [!code ++]
 
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL!,
 });
 
-export const db = drizzle({ client: pool, schema });
+export const db = drizzle({ client: pool, schema }); // [!code ++]
 ```
 
 ## Hot Updater Configuration
@@ -99,8 +99,8 @@ Create Vercel serverless function with Hono.
 
 ```typescript title="src/index.ts"
 import { Hono } from "hono";
-import { bearerAuth } from "hono/bearer-auth";
-import { hotUpdater } from "./hotUpdater";
+import { bearerAuth } from "hono/bearer-auth"; // [!code ++]
+import { hotUpdater } from "./hotUpdater"; // [!code ++]
 
 const adminToken = process.env.HOT_UPDATER_ADMIN_TOKEN;
 if (!adminToken) {
@@ -109,9 +109,9 @@ if (!adminToken) {
 
 const app = new Hono();
 
-app.use("/hot-updater/admin/*", bearerAuth({ token: adminToken }));
-app.mount("/hot-updater/admin", hotUpdater.handlers.admin);
-app.mount("/hot-updater", hotUpdater.handlers.client);
+app.use("/hot-updater/admin/*", bearerAuth({ token: adminToken })); // [!code ++]
+app.mount("/hot-updater/admin", hotUpdater.handlers.admin); // [!code ++]
+app.mount("/hot-updater", hotUpdater.handlers.client); // [!code ++]
 
 export default app;
 ```
@@ -144,7 +144,7 @@ import { defineConfig } from "drizzle-kit";
 config({ path: ".env.local" });
 
 export default defineConfig({
-  schema: "./hot-updater-schema.ts",
+  schema: "./hot-updater-schema.ts", // [!code ++]
   out: "./drizzle",
   dialect: "postgresql",
   dbCredentials: {

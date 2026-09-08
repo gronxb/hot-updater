@@ -34,19 +34,19 @@ interface D1DatabaseConfig {
 
 ## Usage
 
-```typescript
-import { d1Database } from "@hot-updater/cloudflare";
+```typescript title="hot-updater.config.ts"
+import { d1Database } from "@hot-updater/cloudflare"; // [!code ++]
 import { defineConfig } from "hot-updater";
 import { build } from "./build";
 import { storage } from "./storage";
 
 export default defineConfig({
   build,
-  database: d1Database({
-    databaseId: process.env.D1_DATABASE_ID!,
-    accountId: process.env.CLOUDFLARE_ACCOUNT_ID!,
-    cloudflareApiToken: process.env.CLOUDFLARE_API_TOKEN!,
-  }),
+  database: d1Database({ // [!code ++]
+    databaseId: process.env.D1_DATABASE_ID!, // [!code ++]
+    accountId: process.env.CLOUDFLARE_ACCOUNT_ID!, // [!code ++]
+    cloudflareApiToken: process.env.CLOUDFLARE_API_TOKEN!, // [!code ++]
+  }), // [!code ++]
   storage,
   updateStrategy: "appVersion",
 });
@@ -59,13 +59,13 @@ the Cloudflare API. Inside a Cloudflare Worker, import the same provider name
 from the `/worker` subpath and pass the native D1 binding at the
 `createHotUpdater` boundary:
 
-```typescript
-import { d1Database } from "@hot-updater/cloudflare/worker";
+```typescript title="src/hotUpdater.ts"
+import { d1Database } from "@hot-updater/cloudflare/worker"; // [!code ++]
 import { createHotUpdater } from "@hot-updater/server";
 import { env } from "cloudflare:workers";
 
 export const hotUpdater = createHotUpdater({
-  database: d1Database(env.DB),
+  database: d1Database(env.DB), // [!code ++]
   clientAccess: { type: "api-key" },
   // ... other options
 });

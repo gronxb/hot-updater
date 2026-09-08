@@ -51,8 +51,8 @@ FIREBASE_STORAGE_BUCKET=your-bucket-name
 
 ## Usage
 
-```typescript
-import { firebaseStorage } from "@hot-updater/firebase";
+```typescript title="hot-updater.config.ts"
+import { firebaseStorage } from "@hot-updater/firebase"; // [!code ++]
 import { config } from "dotenv";
 import { applicationDefault } from "firebase-admin/app";
 import { defineConfig } from "hot-updater";
@@ -63,11 +63,11 @@ config({ path: ".env.hotupdater" });
 const credential = applicationDefault();
 
 export default defineConfig({
-  storage: firebaseStorage({
-    projectId: process.env.FIREBASE_PROJECT_ID,
-    storageBucket: process.env.FIREBASE_STORAGE_BUCKET,
-    credential,
-  }),
+  storage: firebaseStorage({ // [!code ++]
+    projectId: process.env.FIREBASE_PROJECT_ID, // [!code ++]
+    storageBucket: process.env.FIREBASE_STORAGE_BUCKET, // [!code ++]
+    credential, // [!code ++]
+  }), // [!code ++]
   // ... other config
 });
 ```

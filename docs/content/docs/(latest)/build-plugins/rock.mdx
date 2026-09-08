@@ -23,16 +23,16 @@ interface RockPluginConfig {
 
 ## Usage
 
-```typescript
-import { rock } from '@hot-updater/rock';
+```typescript title="hot-updater.config.ts"
+import { rock } from '@hot-updater/rock'; // [!code ++]
 import { defineConfig } from 'hot-updater';
 
 export default defineConfig({
-  build: rock({
-    hermes: true,
-    entryFile: 'index.js',
-    sourcemap: false
-  }),
+  build: rock({ // [!code ++]
+    hermes: true, // [!code ++]
+    entryFile: 'index.js', // [!code ++]
+    sourcemap: false // [!code ++]
+  }), // [!code ++]
   // ... other config
 });
 ```

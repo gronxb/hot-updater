@@ -46,10 +46,11 @@ options retain Hot Updater's Node.js 20.19 baseline.
 
 ```ts title="hot-updater.config.ts"
 import { defineConfig } from "hot-updater";
-import { googleCloudKmsSigning } from "hot-updater/signing";
+import { googleCloudKmsSigning } from "hot-updater/signing"; // [!code ++]
 
 export default defineConfig({
   // ...other config
+  // [!code ++:4]
   signing: googleCloudKmsSigning({
     keyVersion:
       "projects/PROJECT/locations/LOCATION/keyRings/RING/cryptoKeys/KEY/cryptoKeyVersions/1",
