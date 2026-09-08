@@ -2,11 +2,14 @@ import { Link, useRouterState } from "@tanstack/react-router";
 import {
   ChartNoAxesCombined,
   KeyRound,
+  LogOut,
   Moon,
   Package,
   ShieldCheck,
   Sun,
 } from "lucide-react";
+import { useState } from "react";
+import { toast } from "sonner";
 
 import { HotUpdaterLogo } from "@/components/HotUpdaterLogo";
 import { useTheme } from "@/components/ThemeProvider";
@@ -24,7 +27,8 @@ import {
 } from "@/components/ui/sidebar";
 import { useApiKeyCapabilityQuery } from "@/lib/api-keys-api";
 
-export function AppSidebar() {
+export function AppSidebar({ canSignOut = false }: { canSignOut?: boolean }) {
+  const [signingOut, setSigningOut] = useState(false);
   const apiKeyCapability = useApiKeyCapabilityQuery();
   const { theme, setTheme } = useTheme();
   const routerState = useRouterState();
@@ -37,6 +41,18 @@ export function AppSidebar() {
     currentPath === "/installations";
   const isApiKeysActive = currentPath === "/api-keys";
   const isSigningActive = currentPath === "/signing";
+
+  const signOut = async () => {
+    setSigningOut(true);
+    try {
+      const response = await fetch("/api/auth/sign-out", { method: "POST" });
+      if (!response.ok) throw new Error("Sign-out failed. Please try again.");
+      window.location.reload();
+    } catch {
+      setSigningOut(false);
+      toast.error("Sign-out failed. Please try again.");
+    }
+  };
 
   return (
     <Sidebar collapsible="icon">
@@ -137,6 +153,18 @@ export function AppSidebar() {
 
       <SidebarFooter>
         <SidebarMenu>
+          {canSignOut ? (
+            <SidebarMenuItem>
+              <SidebarMenuButton
+                disabled={signingOut}
+                onClick={() => void signOut()}
+                tooltip="Sign out"
+              >
+                <LogOut />
+                <span>{signingOut ? "Signing out…" : "Sign out"}</span>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+          ) : null}
           <SidebarMenuItem>
             <SidebarMenuButton
               onClick={() => setTheme(theme === "dark" ? "light" : "dark")}

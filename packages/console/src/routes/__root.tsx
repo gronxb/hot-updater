@@ -140,10 +140,10 @@ function RootLayout() {
     return <ConsoleAccessPage access={access} providers={providers} />;
   }
 
-  return <AuthorizedConsole />;
+  return <AuthorizedConsole canSignOut={providers.length > 0} />;
 }
 
-function AuthorizedConsole() {
+function AuthorizedConsole({ canSignOut }: { canSignOut: boolean }) {
   useEffect(() => {
     if (
       import.meta.env.DEV &&
@@ -155,7 +155,7 @@ function AuthorizedConsole() {
   }, []);
   return (
     <SidebarProvider>
-      <AppSidebar />
+      <AppSidebar canSignOut={canSignOut} />
       <SidebarInset className="min-h-0 min-w-0 overflow-hidden">
         <Outlet />
       </SidebarInset>
