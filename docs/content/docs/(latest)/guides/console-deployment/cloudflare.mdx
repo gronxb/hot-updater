@@ -1,0 +1,145 @@
+---
+title: "Cloudflare"
+description: "Deploy the console on Workers using your existing D1 database and R2 bucket."
+---
+
+import { Step, Steps } from "fumadocs-ui/components/steps";
+import { Accordion, Accordions } from "fumadocs-ui/components/accordion";
+
+Complete [Basics](/docs/guides/console-deployment) first. This guide uses native D1/R2 bindings.
+
+<Steps>
+<Step>
+
+## Copy the Worker example
+
+```bash
+cp examples/cloudflare/hot-updater.config.ts.example hot-updater.config.ts
+cp examples/cloudflare/wrangler.jsonc wrangler.jsonc
+```
+
+The template already includes the Cloudflare plugin and Wrangler.
+
+```package-install
+npx wrangler login
+npx wrangler whoami
+```
+
+</Step>
+<Step>
+
+## Connect your resources
+
+Edit the root `wrangler.jsonc` using your existing OTA backend's values:
+
+| Field | Set to |
+| --- | --- |
+| `name` | A new console Worker name |
+| `account_id` | Your Cloudflare account ID |
+| `vars.BETTER_AUTH_URL` | Your public console HTTPS origin |
+| `vars.BUCKET_NAME` | Your existing R2 bucket name |
+| `d1_databases[0]` | Your existing D1 database name and ID |
+| `r2_buckets[0].bucket_name` | The same R2 bucket name |
+
+The default origin is `https://<worker-name>.<account-subdomain>.workers.dev`. Register its [OAuth callback](/docs/guides/console-deployment#set-up-sign-in), or use your custom domain consistently.
+
+To find resource names and IDs:
+
+```package-install
+npx wrangler d1 list
+npx wrangler r2 bucket list
+```
+
+Reuse the existing resources; no new database or console-specific migration is needed.
+
+</Step>
+<Step>
+
+## Add secrets
+
+Create the ignored `.secrets.production.json`:
+
+```json title=".secrets.production.json"
+{
+  "BETTER_AUTH_SECRET": "REPLACE_WITH_RANDOM_SECRET",
+  "HOT_UPDATER_CONSOLE_ALLOWED_EMAILS": "owner@example.com",
+  "STORAGE_DOWNLOAD_URL_SIGNING_KEY": "REPLACE_WITH_ANOTHER_RANDOM_SECRET",
+  "GITHUB_CLIENT_ID": "REPLACE_WITH_CLIENT_ID",
+  "GITHUB_CLIENT_SECRET": "REPLACE_WITH_CLIENT_SECRET"
+}
+```
+
+Fill the values from [sign-in setup](/docs/guides/console-deployment#set-up-sign-in). Generate a separate storage secret with `openssl rand -base64 32`.
+
+```bash
+chmod 600 .secrets.production.json
+```
+
+For Google, replace the GitHub pair in this file **and** `wrangler.jsonc` → `secrets.required`.
+
+</Step>
+<Step>
+
+## Build and deploy
+
+```package-install
+npm run cf:typegen
+npm run test:type
+npm run build:cloudflare
+npx wrangler deploy --dry-run
+npm run test:cloudflare
+npx wrangler deploy --secrets-file .secrets.production.json
+```
+
+Wrangler reports the deployed URL. Open it and follow [Verify the deployment](/docs/guides/console-deployment#verify-the-deployment).
+
+Edit only the root Wrangler config, then rebuild. Deployment uses Nitro's generated config automatically; do not pass the root file with `--config`.
+
+</Step>
+</Steps>
+
+## Local preview
+
+Copy the example and fill in local OAuth credentials, secrets, and `BETTER_AUTH_URL=http://localhost:3000`:
+
+```bash
+cp examples/cloudflare/.dev.vars.example .dev.vars
+```
+
+```package-install
+npm run build:cloudflare
+npm run preview:cloudflare
+```
+
+Register the localhost OAuth callback. Preview uses local D1/R2 data by default.
+
+<Accordions>
+<Accordion title="Update or roll back">
+
+Rebuild and deploy with the same commands. Omit `--secrets-file` to keep existing secrets. For a secret change, run `wrangler secret put NAME` through your package manager.
+
+```package-install
+npx wrangler deployments list
+npx wrangler rollback <previous-version-id>
+```
+
+Rollback restores Worker code/configuration, not D1 or R2 data.
+
+</Accordion>
+<Accordion title="Troubleshooting">
+
+| Symptom | Check |
+| --- | --- |
+| Bindings unavailable | Build and run the Worker preset, not Vite's Node server |
+| Empty Insights | Correct D1 binding; local preview uses separate data |
+| Bucket mismatch | `BUCKET_NAME`, the R2 binding, and stored bundle URI use the same bucket |
+| Stale bindings | Edit root config, rebuild, and deploy the generated output |
+
+```package-install
+npx wrangler tail
+```
+
+</Accordion>
+</Accordions>
+
+See [Nitro on Cloudflare](https://nitro.build/deploy/providers/cloudflare) and [Worker secrets](https://developers.cloudflare.com/workers/configuration/secrets/).

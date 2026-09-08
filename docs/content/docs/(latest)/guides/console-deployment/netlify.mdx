@@ -1,0 +1,62 @@
+---
+title: "Netlify"
+description: "Deploy the Nitro console with Netlify Node functions."
+---
+
+import { Step, Steps } from "fumadocs-ui/components/steps";
+import { Accordion, Accordions } from "fumadocs-ui/components/accordion";
+
+Complete [Basics](/docs/guides/console-deployment) with Node-compatible plugins first.
+
+<Steps>
+<Step>
+
+## Import your repository
+
+Import your private console repository into Netlify. Set the console checkout as the base directory and keep the detected package manager.
+
+</Step>
+<Step>
+
+## Set the build
+
+Use this build command:
+
+```package-install
+npm run build
+```
+
+Set `NITRO_PRESET=netlify` for Builds and the publish directory to `dist`. Nitro generates the server functions in `.netlify/functions-internal`; deploy through Netlify's Git integration so both outputs are included.
+
+</Step>
+<Step>
+
+## Set runtime variables
+
+Choose the production domain. Add the [authentication variables](/docs/guides/console-deployment#set-up-sign-in) and your backend credentials with the **Functions** scope.
+
+Set `BETTER_AUTH_URL` to the HTTPS origin and register the matching OAuth callback. Build-only variables are not available to the running functions.
+
+</Step>
+<Step>
+
+## Deploy and check
+
+Deploy the site, open its production URL, and follow [Verify the deployment](/docs/guides/console-deployment#verify-the-deployment).
+
+Reload a nested Insights URL and download a real bundle to check routing and function limits.
+
+</Step>
+</Steps>
+
+<Accordions>
+<Accordion title="Preview deployments and updates">
+
+Configure production and deploy-preview variables separately. Each sign-in origin needs a matching OAuth callback.
+
+Push updates through the same Git workflow. Restore a previous Netlify deployment to roll back console code; this does not restore backend data.
+
+</Accordion>
+</Accordions>
+
+See [Nitro on Netlify](https://nitro.build/deploy/providers/netlify) and [Netlify function variables](https://docs.netlify.com/build/functions/environment-variables/).

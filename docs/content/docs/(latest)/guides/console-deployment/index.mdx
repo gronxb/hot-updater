@@ -1,0 +1,155 @@
+---
+title: "Basics"
+description: "Connect your backend, set up sign-in, and choose a console host."
+---
+
+import { Step, Steps } from "fumadocs-ui/components/steps";
+import { Accordion, Accordions } from "fumadocs-ui/components/accordion";
+
+Host the console with [Nitro](https://nitro.build/deploy) and connect it to your existing Hot Updater backend.
+
+You need Node.js 22+ (npm 11+ if using npm), backend credentials, and a GitHub or Google OAuth application.
+
+<Steps>
+<Step>
+
+## Clone the console
+
+```bash
+git clone https://github.com/hot-updater/console.git my-app-console
+cd my-app-console
+```
+
+Install dependencies with the package manager used by your deployment repository.
+
+```package-install
+npm install
+```
+
+Keep your deployment configuration in a private repository and commit its lockfile.
+
+</Step>
+<Step>
+
+## Add your plugins
+
+Start with an [AWS, Firebase, Supabase, or Cloudflare example](https://github.com/hot-updater/console/tree/main/examples), or configure your own database and storage plugins:
+
+```ts title="hot-updater.config.ts"
+import { defineConsoleConfig } from "@hot-updater/console";
+// Import your database and storage plugins here.
+
+export default defineConsoleConfig(() => ({
+  // Add your configured database plugin:
+  // database: yourDatabasePlugin({ ... }),
+
+  // Add your configured storage plugin:
+  // storage: yourStoragePlugin({ ... }),
+}));
+```
+
+Replace the commented lines before building. Reuse the existing database and bucket; leave mobile build plugins and signing private keys in the app project.
+
+Install your chosen [database plugin](/docs/concepts/plugin-system#database-plugin) and [storage plugin](/docs/concepts/plugin-system#storage-plugin). Read credentials from runtime environment variables inside the callback.
+
+</Step>
+<Step>
+
+## Set up sign-in
+
+GitHub and Google sign-in are included. Fill in the environment variables below to use either provider without changing the authentication code. For other authentication systems, [customize the cloned code](#custom-authentication).
+
+Choose your public HTTPS URL, then register its OAuth callback:
+
+| Provider | Callback |
+| --- | --- |
+| GitHub | `https://<console-host>/api/auth/callback/github` |
+| Google | `https://<console-host>/api/auth/callback/google` |
+
+Add these values to your host's **runtime** environment:
+
+| Variable | Value | Example |
+| --- | --- | --- |
+| `BETTER_AUTH_URL` | Your HTTPS origin, without a path | `https://console.example.com` |
+| `BETTER_AUTH_SECRET` | A random secret of at least 32 characters | Output of `openssl rand -base64 32` |
+| `HOT_UPDATER_CONSOLE_ALLOWED_EMAILS` | Full, verified email addresses, separated by commas | `alice@example.com,bob@example.com` |
+| `GITHUB_CLIENT_ID` | Client ID from your GitHub OAuth app | `Ov23liExample12345678` |
+| `GITHUB_CLIENT_SECRET` | Client secret from the same GitHub app | `<your-github-client-secret>` |
+| `GOOGLE_CLIENT_ID` | Client ID from your Google OAuth client | `123456789012-example.apps.googleusercontent.com` |
+| `GOOGLE_CLIENT_SECRET` | Client secret from the same Google client | `<your-google-client-secret>` |
+
+Configure at least one complete OAuth pair and your backend's environment variables. Generate the session secret with:
+
+```bash
+openssl rand -base64 32
+```
+
+Keep secrets server-side; never prefix them with `VITE_`. Google OAuth clients in testing must also allow your test users.
+
+</Step>
+<Step>
+
+## Choose a host
+
+Follow one deployment guide:
+
+| Host | Runtime |
+| --- | --- |
+| [Docker](/docs/guides/console-deployment/docker) | Standalone Node container |
+| [Vercel](/docs/guides/console-deployment/vercel) | Node server functions |
+| [Netlify](/docs/guides/console-deployment/netlify) | Node server functions |
+| [Cloudflare](/docs/guides/console-deployment/cloudflare) | Worker with native D1/R2 bindings |
+
+Your console can run on a different provider from your Hot Updater backend. For example, you can deploy the console to **Vercel** while keeping your database and bundles on **Cloudflare**.
+
+- **Vercel, Netlify, or Docker:** use these with any managed backend—Cloudflare, AWS, Firebase, or Supabase.
+- **Cloudflare Workers:** follow the Cloudflare guide when your backend also uses Cloudflare. For the other backends, choose one of the hosts above.
+
+For another host, select its preset from [Nitro's deployment catalog](https://nitro.build/deploy). The console needs a server runtime.
+
+</Step>
+<Step>
+
+## Verify the deployment
+
+1. Open the HTTPS URL: sign-in should appear before any management data.
+2. Sign in with an allowlisted account: check Bundles and Insights.
+3. Download a bundle, then sign out: management data should no longer be accessible.
+
+</Step>
+</Steps>
+
+## Custom authentication
+
+You can edit or replace `console.auth.ts` in your clone to use your own authentication and access rules. It implements `ConsoleAuthAdapter`:
+
+| Method | Responsibility |
+| --- | --- |
+| `handle(request)` | Handle sign-in, callbacks, and sign-out |
+| `getAccess(request)` | Validate the session and decide who can access the console |
+| `getProviders(request)` | Select the built-in sign-in buttons |
+
+The packaged sign-in screen supports GitHub and Google. A new provider button or login form also needs changes to the UI and provider types in `@hot-updater/console`; adding environment variables alone does not add a new login method.
+
+<Accordions>
+<Accordion title="Local preview">
+
+Copy `.env.example` to `.env`, fill in OAuth and backend values, and use `BETTER_AUTH_URL=http://localhost:3000` with a matching callback.
+
+```package-install
+npm run dev
+```
+
+Use Node-compatible plugins. For native bindings, use the [Worker preview](/docs/guides/console-deployment/cloudflare#local-preview).
+
+</Accordion>
+<Accordion title="Sign-in troubleshooting">
+
+| Symptom | Check |
+| --- | --- |
+| Sign-in fails | Both OAuth values, session secret, and email allowlist are set at runtime |
+| Callback rejected | Browser origin, `BETTER_AUTH_URL`, and OAuth callback match |
+| Forbidden after sign-in | The provider returns a verified email in the allowlist |
+
+</Accordion>
+</Accordions>

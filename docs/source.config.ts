@@ -39,6 +39,12 @@ const convert = (cmd: string, pm: string): string => {
 
     if (pm === "npm") return line;
 
+    if (/^\s*npm install\s*$/.test(line)) {
+      return line.replace("npm install", `${pm} install`);
+    }
+
+    line = line.replace(/\bnpm run\b/, `${pm} run`);
+
     if (pm === "pnpm") {
       // npx -> pnpm (drop -y/--yes)
       line = line.replace(/^(\s*)npx\s+(?:-y\s+|--yes\s+)?/i, "$1pnpm ");
