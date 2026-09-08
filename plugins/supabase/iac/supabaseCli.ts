@@ -137,7 +137,15 @@ export const pushDB = async (
   try {
     const dbPush = await execa(
       "npx",
-      ["supabase", "db", "push", "--include-all", "--yes"],
+      [
+        "supabase",
+        "db",
+        "push",
+        "--include-all",
+        "--yes",
+        "--workdir",
+        workdir,
+      ],
       {
         cwd: workdir,
         env: getSupabaseCommandEnv(accessToken, dbPassword),

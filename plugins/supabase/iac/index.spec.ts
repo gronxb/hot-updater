@@ -608,11 +608,82 @@ describe("Supabase CLI authentication", () => {
 
     expect(mockExeca).toHaveBeenCalledWith(
       "npx",
-      ["supabase", "db", "push", "--include-all", "--yes"],
+      [
+        "supabase",
+        "db",
+        "push",
+        "--include-all",
+        "--yes",
+        "--workdir",
+        "/tmp/hot-updater-supabase-push",
+      ],
       expect.objectContaining({
         env: undefined,
       }),
     );
+  });
+});
+
+describe("Supabase migration workdir", () => {
+  it("finds staged migrations when npx runs from the workspace root", async () => {
+    const root = await fs.realpath(
+      await fs.mkdtemp(
+        path.join(os.tmpdir(), "hot-updater-supabase-workspace-"),
+      ),
+    );
+    const appDir = path.join(root, "apps", "mobile");
+    const workdir = path.join(appDir, ".hot-updater");
+    const migration = "supabase/migrations/20250103114225_init.sql";
+    const probePath = path.join(root, "probe.cjs");
+    const { execa } = await vi.importActual<typeof import("execa")>("execa");
+
+    try {
+      await fs.mkdir(path.dirname(path.join(workdir, migration)), {
+        recursive: true,
+      });
+      await fs.writeFile(
+        path.join(root, "package.json"),
+        JSON.stringify({ private: true, workspaces: ["apps/*"] }),
+      );
+      await fs.writeFile(
+        path.join(appDir, "package.json"),
+        JSON.stringify({ name: "mobile", private: true }),
+      );
+      await fs.copyFile(
+        path.resolve("plugins/supabase", migration),
+        path.join(workdir, migration),
+      );
+      await fs.writeFile(
+        probePath,
+        `
+const fs = require("node:fs");
+const path = require("node:path");
+const workdirIndex = process.argv.indexOf("--workdir");
+const workdir = workdirIndex < 0 ? process.cwd() : process.argv[workdirIndex + 1];
+console.log(JSON.stringify({
+  cwd: process.cwd(),
+  migrationExists: fs.existsSync(path.join(workdir, ${JSON.stringify(migration)})),
+}));
+`,
+      );
+      // Run real npx workspace resolution, replacing only the Supabase binary.
+      mockExeca.mockImplementationOnce((_command, args, options) =>
+        execa(
+          "npx",
+          ["--no-install", "--", process.execPath, probePath, ...args.slice(1)],
+          { ...options, stdin: "ignore", stdout: "pipe", stderr: "pipe" },
+        ),
+      );
+
+      const output = await pushDB(workdir, {});
+
+      expect(JSON.parse(output!)).toEqual({
+        cwd: appDir,
+        migrationExists: true,
+      });
+    } finally {
+      await fs.rm(root, { recursive: true, force: true });
+    }
   });
 });
 
@@ -638,7 +709,15 @@ describe("Supabase database password failures", () => {
     // Then
     expect(mockExeca).toHaveBeenCalledWith(
       "npx",
-      ["supabase", "db", "push", "--include-all", "--yes"],
+      [
+        "supabase",
+        "db",
+        "push",
+        "--include-all",
+        "--yes",
+        "--workdir",
+        "/tmp/hot-updater-supabase-push",
+      ],
       expect.anything(),
     );
   });
@@ -759,7 +838,15 @@ describe("Supabase database password failures", () => {
     expect(output).not.toContain("--password");
     expect(mockExeca).toHaveBeenCalledWith(
       "npx",
-      ["supabase", "db", "push", "--include-all", "--yes"],
+      [
+        "supabase",
+        "db",
+        "push",
+        "--include-all",
+        "--yes",
+        "--workdir",
+        "/tmp/hot-updater-supabase-push",
+      ],
       expect.objectContaining({
         env: {
           SUPABASE_ACCESS_TOKEN: "test-access-token",
