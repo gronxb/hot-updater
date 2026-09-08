@@ -1,5 +1,12 @@
 # @hot-updater/console
 
+## 1.0.0-rc.7
+
+### Patch Changes
+
+- 24653fd: Add app usage trends and app-version/platform distributions to Insights. Share platform, channel, and app-version filters across usage and bundle activity, with independent reporting periods and a single DAU, WAU, or MAU metric for the App usage period. Add distribution drill-downs with per-version bundle usage, 20-row pagination, and preserved filter context. Reuse the existing reporting events and database plugin contract.
+- 8a331bf: Label the Insights 30-day reporting installation count as MAU, with its installation-based definition available from an info tooltip on hover, keyboard focus, or tap. Replace the channel text field with a searchable shadcn combobox. Keep the existing platform/channel scope and rolling 30-day calculation.
+
 ## 1.0.0-rc.6
 
 ### Patch Changes

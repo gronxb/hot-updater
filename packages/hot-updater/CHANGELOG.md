@@ -1,5 +1,17 @@
 # hot-updater
 
+## 1.0.0-rc.9
+
+### Patch Changes
+
+- 2cb3cf0: Make agent infrastructure onboarding resumable through provider checklists with explicit prerequisites, verification evidence and pending-operation records. Package a read-only server verification helper, align database/key/deployment ordering with init, and export AWS DynamoDB/IAM request templates from the same builders used by interactive setup.
+- 610054e: Report the configured console port when it is already in use and exit before starting another server.
+- Updated dependencies [24653fd]
+- Updated dependencies [8a331bf]
+- Updated dependencies [2cb3cf0]
+  - @hot-updater/console@1.0.0-rc.7
+  - @hot-updater/aws@1.0.0-rc.4
+
 ## 1.0.0-rc.8
 
 ### Patch Changes
