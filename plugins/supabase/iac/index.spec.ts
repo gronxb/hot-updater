@@ -631,7 +631,7 @@ describe("Supabase migration workdir", () => {
         path.join(os.tmpdir(), "hot-updater-supabase-workspace-"),
       ),
     );
-    const appDir = path.join(root, "apps", "mobile");
+    const appDir = path.join(root, "apps", "모바일 app");
     const workdir = path.join(appDir, ".hot-updater");
     const migration = "supabase/migrations/20250103114225_init.sql";
     const probePath = path.join(root, "probe.cjs");
@@ -670,7 +670,7 @@ console.log(JSON.stringify({
       mockExeca.mockImplementationOnce((_command, args, options) =>
         execa(
           "npx",
-          ["--no-install", "--", process.execPath, probePath, ...args.slice(1)],
+          ["--no-install", "--", "node", probePath, ...args.slice(1)],
           { ...options, stdin: "ignore", stdout: "pipe", stderr: "pipe" },
         ),
       );
