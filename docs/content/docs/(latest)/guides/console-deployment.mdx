@@ -1,0 +1,370 @@
+---
+title: "Console deployment"
+description: "Clone and deploy an authenticated Hot Updater Console with Nitro on your infrastructure."
+icon: Cloud
+---
+
+Deploy the Hot Updater console as a standalone HTTPS application using Nitro.
+The same console package can run on a Node server, container, or a hosting
+provider supported by Nitro. A running `hot-updater console` process and a
+mobile source checkout are not required after deployment.
+
+There are two independent choices: **where the console runs** (Nitro preset)
+and **which existing backend it manages** (Hot Updater database and storage
+plugins). Changing the console host does not migrate the backend or change the
+OTA endpoint used by the mobile app. Cloudflare is one deployment example;
+Modex uses it for dogfood because its existing backend uses D1 and R2.
+
+## 1. Clone and install
+
+Use Node.js 22 or later and the pnpm version declared in `package.json`.
+Keep your deployment configuration in a private fork or infrastructure repo.
+
+```bash
+git clone https://github.com/hot-updater/console.git my-app-console
+cd my-app-console
+corepack enable
+pnpm install --frozen-lockfile
+```
+
+The template uses published npm RC packages. Its default
+`hot-updater.config.ts` deliberately requires you to connect your backend; it
+does not select an infrastructure provider for you.
+
+## 2. Connect your existing backend
+
+Replace `hot-updater.config.ts` with `defineConsoleConfig` and the database and
+storage plugins for your existing Hot Updater backend. Select plugin entry
+points compatible with the console's runtime. For example, a Node-compatible
+Supabase configuration is:
+
+```bash
+pnpm add --save-exact @hot-updater/supabase@rc
+```
+
+```ts
+import { defineConsoleConfig } from "@hot-updater/console";
+import { supabaseDatabase, supabaseStorage } from "@hot-updater/supabase";
+
+export default defineConsoleConfig(() => ({
+  database: supabaseDatabase({
+    supabaseUrl: process.env.HOT_UPDATER_SUPABASE_URL!,
+    supabaseServiceRoleKey: process.env.HOT_UPDATER_SUPABASE_SERVICE_ROLE_KEY!,
+  }),
+  storage: supabaseStorage({
+    supabaseUrl: process.env.HOT_UPDATER_SUPABASE_URL!,
+    supabaseServiceRoleKey: process.env.HOT_UPDATER_SUPABASE_SERVICE_ROLE_KEY!,
+    bucketName: process.env.HOT_UPDATER_SUPABASE_BUCKET_NAME!,
+  }),
+}));
+```
+
+Set the provider variables in the host's private **runtime** environment store.
+This example requires `HOT_UPDATER_SUPABASE_URL`,
+`HOT_UPDATER_SUPABASE_SERVICE_ROLE_KEY`, and
+`HOT_UPDATER_SUPABASE_BUCKET_NAME`, taken from the existing backend. Other
+providers use their own plugin settings; you do not need to move to Supabase
+to host the console on Node. For D1/R2 native bindings, use the Cloudflare
+example below.
+
+Hosting portability does not make every provider SDK compatible with every
+runtime. A Node SDK may require a Node preset; native Worker bindings require
+Cloudflare. Confirm both the Nitro preset and provider entry points before
+deploying. The template's Cloudflare package is a development dependency for
+its optional example and CI, not the default runtime configuration.
+
+Do not copy the entire mobile config. Build plugins, fingerprints, and mobile
+bundle-signing private keys stay in the mobile project. Connect existing
+resources; creating a console does not require a new database, bucket, or schema
+migration.
+
+## 3. Configure authentication
+
+Choose the console's canonical HTTPS origin, then create a GitHub OAuth App or
+Google OAuth client with that origin as its homepage and the matching callback:
+
+```text
+https://<console-host>/api/auth/callback/github
+https://<console-host>/api/auth/callback/google
+```
+
+GitHub login requests `user:email` to check verified addresses, without repository
+access. For Google, permit your test users when the OAuth client is in testing.
+Configure at least one complete provider pair in the host's private runtime
+environment store:
+
+| Variable                                   | Required | Purpose                                                                    |
+| ------------------------------------------ | -------- | -------------------------------------------------------------------------- |
+| `BETTER_AUTH_URL`                          | Yes      | Exact public HTTPS origin, without a path                                  |
+| `BETTER_AUTH_SECRET`                       | Yes      | Random secret of at least 32 characters; encrypts OAuth state and sessions |
+| `HOT_UPDATER_CONSOLE_ALLOWED_EMAILS`       | Yes      | Comma-separated exact verified addresses permitted to manage the backend   |
+| `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET` | One pair | GitHub OAuth App credentials                                               |
+| `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | One pair | Google OAuth client credentials                                            |
+
+Generate a session secret with `openssl rand -base64 32`. Do not use `VITE_`
+prefixes: authentication and backend credentials belong only on the server.
+The included adapter uses encrypted cookie sessions, so there is no separate
+authentication database. Access checks precede provider initialization, reads,
+writes, and downloads. Removing an address blocks its next protected request;
+rotating the session secret invalidates sessions.
+
+For local Node development, copy `.env.example` to `.env`, add the selected
+provider variables, and use `pnpm dev`. Use a localhost OAuth callback and
+`BETTER_AUTH_URL=http://localhost:3000`. Production hosting must inject runtime
+variables explicitly; the built Node server does not automatically load `.env`.
+
+## 4. Select a Nitro deployment target
+
+Nitro produces a deployment artifact for the selected infrastructure. Its
+[deployment guide](https://nitro.build/deploy) describes preset selection and
+provider detection. This repository builds through Vite's console plugin, so
+set `NITRO_PRESET` on **`pnpm build`**, rather than replacing the build with a
+standalone `nitro build` command.
+
+| Console host                                                          | Build command                      | Deployment artifact and next step                                                                 |
+| --------------------------------------------------------------------- | ---------------------------------- | ------------------------------------------------------------------------------------------------- |
+| [Node server / container](https://nitro.build/deploy/runtimes/node)   | `pnpm build:node`                  | Ship the complete `.output` directory; run `node .output/server/index.mjs`                        |
+| [Vercel](https://nitro.build/deploy/providers/vercel)                 | `NITRO_PRESET=vercel pnpm build`   | Generated `.vercel/output`; use Vercel's Git build/deploy integration                             |
+| [Netlify](https://nitro.build/deploy/providers/netlify)               | `NITRO_PRESET=netlify pnpm build`  | Generated Netlify functions and assets; use Netlify's Git integration and generated configuration |
+| [Cloudflare Workers](https://nitro.build/deploy/providers/cloudflare) | `pnpm build:cloudflare`            | Generated Worker/assets configuration; deploy with Wrangler as below                              |
+| Other Nitro hosts                                                     | `NITRO_PRESET=<preset> pnpm build` | Follow that host's guide in the [Nitro provider catalog](https://nitro.build/deploy)              |
+
+Without an explicit preset or provider detection, Nitro defaults to a Node
+server. On Vercel or Netlify, import your configured repository, set install to
+`pnpm install --frozen-lockfile`, build to the corresponding command above, and
+supply the server runtime variables from steps 2–3. Follow the linked Nitro
+provider guide for the generated output and platform deployment settings.
+Do not override its server output with a static Vite `dist` deployment.
+
+The console needs a server for OAuth, data queries, and mutations. Static-only
+hosting cannot run it. The lockfile pins Nitro with the console package; newer
+Nitro documentation may describe behavior unavailable in that version. Retain
+the lockfile and verify the generated artifact after upgrades. CI builds Node,
+Vercel, Netlify, and Cloudflare, and runs actual Node/Worker runtime smoke checks.
+Those checks do not claim that every provider has been deployed remotely.
+
+### Node server and containers
+
+```bash
+pnpm test
+pnpm test:type
+pnpm build:node
+pnpm test:node
+# Supply production runtime variables through your host, then:
+node .output/server/index.mjs
+```
+
+Deploy the **entire** `.output` directory, including its public assets and server
+dependencies. Set `PORT` / `NITRO_PORT` and `HOST` / `NITRO_HOST` as required.
+Terminate HTTPS at your hosting platform or reverse proxy. A container follows
+the same process: build with Node and pnpm, copy `.output` into a Node runtime
+image, inject secrets at runtime, and start the entry point. Never bake `.env`
+or credentials into the image. See [Nitro's Node deployment
+reference](https://nitro.build/deploy/runtimes/node).
+
+## 5. Verify the deployed console
+
+1. Open the HTTPS origin in a private browser. Expect sign-in with no management
+   data; anonymous reads, writes, and downloads must be denied.
+2. Sign in with an allowlisted verified address. Compare Bundles and Insights
+   against the local console using the same platform, channel, and period.
+3. Open Distribution and an app version, follow a bundle to its detail, check
+   events pagination, and download an existing artifact.
+4. Reload a nested URL and check a mobile viewport. Ensure the browser has no
+   failed server requests or missing static assets.
+5. Sign out and verify access is removed. Unapproved and unverified identities
+   must be denied.
+
+An anonymous request to `/api/bundles/<artifact-id>/download` must return `401`,
+even for an unknown ID. Use the Artifact ID in Bundle Detail's Advanced
+diagnostics for a real download. Do not alter a production rollout to test
+hosting; use a dedicated test channel for mutation QA.
+
+## Updates and recovery
+
+Update the console RC and the backend plugins you use, retain the lockfile,
+and rerun the selected build and runtime checks. Promote the new artifact with
+your host's deployment workflow. Keep the previous artifact/version available
+for a host-level rollback. Reverting console code does not undo database or
+storage changes made through the UI and does not roll back the mobile OTA
+server. Check the Hot Updater infrastructure upgrade requirements separately
+when changing backend versions.
+
+## Cloudflare example: D1 and R2
+
+This optional example is the path used for Modex dogfood. It does not determine
+the console's hosting architecture for other applications.
+
+Copy the example into the root of your private deployment checkout:
+
+```bash
+cp examples/cloudflare/hot-updater.config.ts.example hot-updater.config.ts
+cp examples/cloudflare/wrangler.jsonc wrangler.jsonc
+pnpm add --save-exact @hot-updater/cloudflare@1.0.0-rc.5
+pnpm exec wrangler login
+pnpm exec wrangler whoami
+```
+
+Find the resources in your OTA Worker's Wrangler configuration, your mobile
+project's provider settings, or the Cloudflare dashboard. You can also list them:
+
+```bash
+pnpm exec wrangler d1 list
+pnpm exec wrangler r2 bucket list
+```
+
+Edit `wrangler.jsonc`:
+
+| Field                                             | Value                                                      |
+| ------------------------------------------------- | ---------------------------------------------------------- |
+| `name`                                            | A new console Worker name, separate from the OTA Worker    |
+| `account_id`                                      | The account containing the existing resources, when needed |
+| `vars.BETTER_AUTH_URL`                            | The console's exact public HTTPS origin, without a path    |
+| `vars.BUCKET_NAME`                                | Your existing bundle bucket name                           |
+| `d1_databases[0].database_name` and `database_id` | Your existing Hot Updater D1 database                      |
+| `r2_buckets[0].bucket_name`                       | The same bucket as `BUCKET_NAME`                           |
+
+The default URL is `https://<worker-name>.<account-subdomain>.workers.dev`.
+Choose the origin before configuring OAuth. A custom domain also works; use
+that origin consistently in Wrangler and OAuth callbacks.
+
+The copied `hot-updater.config.ts` uses the worker entry point:
+
+```ts
+import { d1Database, r2Storage } from "@hot-updater/cloudflare/worker";
+import { defineConsoleConfig } from "@hot-updater/console";
+
+type CloudflareRequest = Request & {
+  runtime?: { cloudflare?: { env?: Env } };
+};
+
+export default defineConsoleConfig((request) => {
+  const env = (request as CloudflareRequest).runtime?.cloudflare?.env;
+  if (!env) throw new Error("Cloudflare bindings are unavailable.");
+
+  return {
+    console: { gitUrl: "https://github.com/your-org/your-mobile-app" },
+    database: d1Database(env.DB),
+    storage: r2Storage({
+      bucket: env.BUCKET,
+      bucketName: env.BUCKET_NAME,
+      downloadUrlSigningKey: env.STORAGE_DOWNLOAD_URL_SIGNING_KEY,
+    }),
+  };
+});
+```
+
+Generate `Env` from your Wrangler configuration with `pnpm cf:typegen` after
+changing bindings. Do not copy the entire mobile `hot-updater.config.ts`:
+Expo/native build plugins, fingerprint settings, and signing private keys stay
+in the mobile project. D1 and R2 bindings replace Cloudflare API tokens and S3
+credentials inside the hosted Worker.
+
+Do not create a new D1 database or run schema migrations for this console.
+It must connect to the backend already used by the app. Backend upgrades remain
+part of the Hot Updater infrastructure upgrade workflow.
+
+The copied `secrets.required` list includes GitHub's pair. Replace it with
+Google's pair if needed; Wrangler loads only listed names from `.dev.vars`.
+In addition to the shared authentication variables, the R2 plugin needs
+`STORAGE_DOWNLOAD_URL_SIGNING_KEY`: generate a separate random secret for
+storage URL capabilities. It is not a mobile signing private key.
+
+Use the ignored `.secrets.production.json` file for initial deployment:
+
+```json
+{
+  "BETTER_AUTH_SECRET": "REPLACE_WITH_RANDOM_SECRET",
+  "HOT_UPDATER_CONSOLE_ALLOWED_EMAILS": "owner@example.com",
+  "STORAGE_DOWNLOAD_URL_SIGNING_KEY": "REPLACE_WITH_ANOTHER_RANDOM_SECRET",
+  "GITHUB_CLIENT_ID": "REPLACE_WITH_CLIENT_ID",
+  "GITHUB_CLIENT_SECRET": "REPLACE_WITH_CLIENT_SECRET"
+}
+```
+
+Fill real values privately and run `chmod 600 .secrets.production.json`.
+Never commit the file or put secrets in shell command arguments.
+
+### Build and deploy the Worker
+
+```bash
+pnpm test
+pnpm cf:typegen
+pnpm test:type
+pnpm build:cloudflare
+pnpm exec wrangler deploy --dry-run
+pnpm test:cloudflare
+pnpm exec wrangler deploy --secrets-file .secrets.production.json
+```
+
+The last command uploads code and secrets together. Inspect the reported Worker
+name, D1 database, and bucket before confirming any CLI prompt.
+
+Nitro generates `.output/server/wrangler.json` and
+`.wrangler/deploy/config.json`. Wrangler automatically uses that generated
+configuration, which includes the server modules and static assets. Edit the
+root `wrangler.jsonc` and rebuild; do not edit generated configuration or pass
+the root file to deployment with `--config`. The root file is build input.
+
+The Worker smoke check starts the built artifact with test-only authentication
+settings and local resources. It catches runtime failures that a successful
+build or dry run cannot detect, and checks that anonymous reads, writes, and
+downloads are denied.
+
+Keep `preview_urls: false` so version preview addresses are not published with
+an origin that differs from the OAuth configuration. The standard `workers.dev`
+address remains enabled. Use `pnpm exec wrangler tail` to inspect runtime errors.
+
+The default configuration enables Workers logs and samples traces. Follow your
+account's observability retention and sampling requirements.
+
+### Local Worker preview
+
+```bash
+cp examples/cloudflare/.dev.vars.example .dev.vars
+pnpm build:cloudflare
+pnpm preview:cloudflare
+```
+
+Fill `.dev.vars` with a local OAuth client's credentials, random secrets, and
+`BETTER_AUTH_URL=http://localhost:3000`. Register the corresponding localhost
+callback on that OAuth client. The file stays local and is not automatically
+uploaded by deployment.
+
+Wrangler uses local D1 and R2 by default. An empty local database does not mean
+production data was lost. Avoid enabling remote bindings unless you intend to
+operate on the real backend. `pnpm dev` runs Vite on Node and needs a
+Node-compatible provider configuration instead of native Worker bindings.
+
+### Worker updates and rollback
+
+Rebuild and rerun `pnpm test:cloudflare` before `pnpm exec wrangler deploy`.
+Omitting `--secrets-file` preserves existing secrets. Use interactive
+`pnpm exec wrangler secret put NAME` to update a secret privately.
+Record the version ID printed after deployment:
+
+```bash
+pnpm exec wrangler deployments list
+pnpm exec wrangler rollback <previous-version-id>
+```
+
+A Worker rollback restores code/configuration, not D1 rows or R2 objects.
+
+## Troubleshooting
+
+| Symptom                                   | Check                                                                                       |
+| ----------------------------------------- | ------------------------------------------------------------------------------------------- |
+| Sign-in fails before OAuth opens          | Complete provider pair, strong session secret, nonempty exact email allowlist               |
+| OAuth callback is rejected                | Provider callback, `BETTER_AUTH_URL`, and the browser origin must match                     |
+| A signed-in user sees Forbidden           | The provider must return a verified address present in the allowlist                        |
+| Cloudflare bindings are unavailable       | Build with the Cloudflare preset and run the generated Worker through Wrangler              |
+| Insights is empty or queries fail         | Bind the existing database in the correct account; local preview has separate data          |
+| Bundle download reports a bucket mismatch | `BUCKET_NAME`, the R2 binding, and the stored bundle URI must refer to the same bucket      |
+| Deployment has stale bindings             | Update root Wrangler config, rebuild, and inspect the generated deployment before uploading |
+
+## Cloudflare references
+
+- [Nitro on Cloudflare](https://nitro.build/deploy/providers/cloudflare)
+- [Cloudflare Worker secrets](https://developers.cloudflare.com/workers/configuration/secrets/)
+- [Cloudflare binding types](https://developers.cloudflare.com/workers/languages/typescript/#generate-types)
+- [Cloudflare Worker rollback](https://developers.cloudflare.com/workers/versions-and-deployments/rollbacks/)
