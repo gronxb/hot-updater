@@ -1,5 +1,11 @@
 # @hot-updater/console
 
+## 1.0.0-rc.11
+
+### Patch Changes
+
+- 1e42b0b: Preserve Insights pagination history across browser reloads so page numbers and Previous buttons stay correct for events, installation searches, and installation history.
+
 ## 1.0.0-rc.10
 
 ### Patch Changes
