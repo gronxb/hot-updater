@@ -157,9 +157,7 @@ const eventRow = (row: Record<string, unknown>): BundleEventRow => {
   if (
     (platform !== "ios" && platform !== "android") ||
     !(
-      ((type === "UPDATE_APPLIED" ||
-        type === "RECOVERED" ||
-        type === "RELEASE_ADOPTED") &&
+      ((type === "UPDATE_APPLIED" || type === "RECOVERED") &&
         typeof fromBundleId === "string" &&
         (updateStrategy === "fingerprint" ||
           updateStrategy === "appVersion")) ||
@@ -195,9 +193,7 @@ const installationRow = (
   const type = stringValue(row, "type", "bundle_installations");
   const platform = stringValue(row, "platform", "bundle_installations");
   if (
-    !["UPDATE_APPLIED", "RECOVERED", "RELEASE_ADOPTED", "UNCHANGED"].includes(
-      type,
-    ) ||
+    !["UPDATE_APPLIED", "RECOVERED", "UNCHANGED"].includes(type) ||
     (platform !== "ios" && platform !== "android")
   ) {
     throw new InvalidD1RowError("bundle_installations");

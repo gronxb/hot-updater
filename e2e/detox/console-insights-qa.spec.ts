@@ -49,7 +49,7 @@ const createClient = (): ConsoleInsightsQaClient => ({
       },
       appliedReports: { count: 1, measuredAtMs: event.receivedAtMs + 1 },
       recoveredReports: { count: 0, measuredAtMs: event.receivedAtMs + 1 },
-      adoptedReports: { count: 0, measuredAtMs: event.receivedAtMs + 1 },
+      unchangedReports: { count: 0, measuredAtMs: event.receivedAtMs + 1 },
     },
   })),
   getInstallation: vi.fn(async () => ({
@@ -213,6 +213,19 @@ describe("console insights E2E QA", () => {
 
     // When / Then: ingestion and current state are checked, while the
     // transition-only movement endpoint is intentionally not queried.
+    const overview = await client.getReportingOverview({
+      bundleId,
+      channel: event.channel,
+      platform: event.platform,
+      window: "24h",
+    });
+    vi.mocked(client.getReportingOverview).mockResolvedValue({
+      ...overview,
+      bundle: {
+        ...overview.bundle!,
+        unchangedReports: { count: 1, measuredAtMs: event.receivedAtMs + 1 },
+      },
+    });
     await expect(
       verifyConsoleInsights(client, { observedEvents: [unchanged] }),
     ).resolves.toMatchObject({ eventType: "UNCHANGED" });
@@ -232,16 +245,16 @@ describe("console insights E2E QA", () => {
     );
   });
 
-  it("verifies Release adoption without requiring a bundle movement", async () => {
+  it("verifies same-file selection as no change without a bundle movement", async () => {
     const client = createClient();
-    const adopted = {
+    const unchangedSelection = {
       ...observedTransition,
-      fromBundleId: bundleId,
-      type: "RELEASE_ADOPTED" as const,
+      fromBundleId: null,
+      type: "UNCHANGED" as const,
     };
     vi.mocked(client.listEvents).mockResolvedValue({
       ...emptyEventPage,
-      data: [{ ...event, fromBundleId: bundleId, type: "RELEASE_ADOPTED" }],
+      data: [{ ...event, fromBundleId: null, type: "UNCHANGED" }],
     });
     const overview = await client.getReportingOverview({
       bundleId,
@@ -254,15 +267,15 @@ describe("console insights E2E QA", () => {
       bundle: {
         ...overview.bundle!,
         appliedReports: { count: 0, measuredAtMs: event.receivedAtMs + 1 },
-        adoptedReports: { count: 1, measuredAtMs: event.receivedAtMs + 1 },
+        unchangedReports: { count: 1, measuredAtMs: event.receivedAtMs + 1 },
       },
     });
 
     await expect(
-      verifyConsoleInsights(client, { observedEvents: [adopted] }),
+      verifyConsoleInsights(client, { observedEvents: [unchangedSelection] }),
     ).resolves.toMatchObject({
-      eventType: "RELEASE_ADOPTED",
-      outcomes: [{ bundleId, count: 1, outcome: "adopted" }],
+      eventType: "UNCHANGED",
+      outcomes: [{ bundleId, count: 1, outcome: "unchanged" }],
     });
     expect(client.listInstallationEvents).not.toHaveBeenCalled();
   });

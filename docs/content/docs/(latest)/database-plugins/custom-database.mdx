@@ -201,7 +201,7 @@ exclusive key: return strictly smaller tuples. The fixed filter is one of:
 { kind: "installationMovement", installId }
 { kind: "bundle", platform, channel, type: "RECOVERED", fromBundleId }
 { kind: "bundle", platform, channel,
-  type: "UPDATE_APPLIED" | "RELEASE_ADOPTED", toBundleId }
+  type: "UPDATE_APPLIED" | "UNCHANGED", toBundleId }
 ```
 
 Installation movement means `UPDATE_APPLIED` or `RECOVERED`. Apply filters
@@ -228,7 +228,7 @@ last-seen index can double-count moving rows. Never derive it from event history
 `countEvents({ filter, sinceMs, beforeReceivedAtMs })` counts a fixed raw bundle
 filter in the same receipt interval as `listEvents`. The filter has platform,
 channel, type, and `fromBundleId` for `RECOVERED` or `toBundleId` for
-`UPDATE_APPLIED`/`RELEASE_ADOPTED`; it has no `kind`. Recovery B → A therefore
+`UPDATE_APPLIED`/`UNCHANGED`; it has no `kind`. `UNCHANGED` means the running files did not change, including selecting another Release for those same files. Its `from_bundle_id` and `update_strategy` must be null. Recovery B → A therefore
 counts against B while latest state names A. Counts concern reports, not
 unique attempts or installations. Count all native pages or propagate failure.
 

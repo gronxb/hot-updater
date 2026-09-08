@@ -21,7 +21,7 @@ const recovery = vi.fn();
 vi.mock("@/components/features/bundles/BundleInsightsSummary", () => ({
   BundleInsightsSummary: (props: unknown) => {
     recovery(props);
-    return <div>Activity · 30 days</div>;
+    return <div>Activity · 24 hours</div>;
   },
 }));
 
@@ -201,7 +201,7 @@ describe("ReleaseEditorSheet", () => {
     expect(screen.queryByText("Rollout activity")).toBeNull();
     expect(
       screen
-        .getByText("Activity · 30 days")
+        .getByText("Activity · 24 hours")
         .compareDocumentPosition(screen.getByText("Delivery settings")) &
         Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();

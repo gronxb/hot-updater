@@ -1,11 +1,11 @@
+import { useQuery } from "@tanstack/react-query";
+
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import {
-  useBundleActivityQuery,
-  type BundleActivityInput,
-} from "@/lib/bundle-activity";
+import type { BundleActivityInput } from "@/lib/bundle-activity";
 import type { RecoveryReport } from "@/lib/insights-recovery";
+import { getRecoveryReportRpc } from "@/lib/insights-recovery-rpc";
 
 import { BundleActivityChart } from "./BundleActivityChart";
 
@@ -63,14 +63,19 @@ export function BundleInsightsSummary({
 }: {
   readonly input: BundleActivityInput;
 }) {
-  const query = useBundleActivityQuery([input]);
-  const report = query.data?.[input.releaseId];
+  const activityInput = { ...input, window: "24h" } as const;
+  const query = useQuery({
+    queryKey: ["rollout-activity", activityInput],
+    queryFn: () => getRecoveryReportRpc({ data: activityInput }),
+    staleTime: 30_000,
+  });
+  const report = query.data;
   const series = report?.series[0];
   return (
     <Card>
       <CardHeader className="px-4 pt-4 pb-3">
         <CardTitle className="text-sm font-medium">
-          Activity · 30 days
+          Activity · 24 hours
         </CardTitle>
       </CardHeader>
       <CardContent className="flex flex-col gap-3 px-4 pb-4">
@@ -101,7 +106,7 @@ export function BundleInsightsSummary({
               </div>
               <div className="pl-4">
                 <dt className="text-xs text-muted-foreground">
-                  Rollback · 30d
+                  Rollback · 24h
                 </dt>
                 <dd className="mt-1 text-xl font-semibold tabular-nums">
                   {series?.recoveredInstallations ?? 0}
@@ -110,7 +115,7 @@ export function BundleInsightsSummary({
             </dl>
             <BundleActivityChart series={series} />
             <p className="text-xs text-muted-foreground">
-              Last observed active installations · daily rollbacks
+              Last observed active installations · hourly rollbacks
               {report?.truncated ? " · Partial history" : ""}
             </p>
           </>

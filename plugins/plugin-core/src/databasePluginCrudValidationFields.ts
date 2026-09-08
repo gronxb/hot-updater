@@ -137,7 +137,6 @@ export const modelValidators: ValidatorMap = {
     type: (value) =>
       value === "UPDATE_APPLIED" ||
       value === "RECOVERED" ||
-      value === "RELEASE_ADOPTED" ||
       value === "UNCHANGED",
     install_id: isInsightsIdentityText,
     user_id: isNullableInsightsIdentityText,
@@ -166,7 +165,6 @@ export const modelValidators: ValidatorMap = {
     type: (value) =>
       value === "UPDATE_APPLIED" ||
       value === "RECOVERED" ||
-      value === "RELEASE_ADOPTED" ||
       value === "UNCHANGED",
     platform: (value) => value === "ios" || value === "android",
     app_version: (value) => typeof value === "string",

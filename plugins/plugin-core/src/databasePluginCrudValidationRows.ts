@@ -34,9 +34,7 @@ const hasValidReleaseInvariants = (
 const hasValidBundleEventInvariants = (
   data: Readonly<Record<string, unknown>>,
 ): boolean =>
-  ((data.type === "UPDATE_APPLIED" ||
-    data.type === "RECOVERED" ||
-    data.type === "RELEASE_ADOPTED") &&
+  ((data.type === "UPDATE_APPLIED" || data.type === "RECOVERED") &&
     typeof data.from_bundle_id === "string" &&
     (data.update_strategy === "fingerprint" ||
       data.update_strategy === "appVersion")) ||

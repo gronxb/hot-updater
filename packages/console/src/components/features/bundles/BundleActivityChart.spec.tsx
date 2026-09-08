@@ -17,14 +17,14 @@ afterEach(cleanup);
 it("shows a single observed active value without inventing observations in earlier intervals", () => {
   const series: RecoverySeries = {
     releaseId: "bundle-a",
-    firstAdoptedAtMs: 2 * 86_400_000,
+    firstAppliedAtMs: 2 * 3_600_000,
     activeInstallations: 2,
     recoveredInstallations: 0,
     points: [null, null, 2].map((active, index) => ({
-      startMs: index * 86_400_000,
+      startMs: index * 3_600_000,
       active,
       recoveredInstallations: 0,
-      adopted: active ?? 0,
+      applied: active ?? 0,
       recovered: 0,
       rate: active === null ? null : 0,
       spike: false,

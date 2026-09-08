@@ -13,7 +13,7 @@ const eventId = (index: number) =>
 
 type TransitionEventRow = Extract<
   BundleEventRow,
-  { readonly type: "UPDATE_APPLIED" | "RECOVERED" | "RELEASE_ADOPTED" }
+  { readonly type: "UPDATE_APPLIED" | "RECOVERED" }
 >;
 
 const eventRow = (
@@ -269,13 +269,13 @@ describe("createInsightsProvider", () => {
     expect(result.bundle?.reportingInstallations.count).toBe(2);
     expect(result.bundle?.appliedReports.count).toBe(5);
     expect(result.bundle?.recoveredReports.count).toBe(3);
-    expect(result.bundle?.adoptedReports.count).toBe(1);
+    expect(result.bundle?.unchangedReports.count).toBe(1);
     expect(
       fixture.countEvents.mock.calls.map(([input]) => input.filter),
     ).toEqual([
       { ...scope, type: "UPDATE_APPLIED", toBundleId: "B" },
       { ...scope, type: "RECOVERED", fromBundleId: "B" },
-      { ...scope, type: "RELEASE_ADOPTED", toBundleId: "B" },
+      { ...scope, type: "UNCHANGED", toBundleId: "B" },
     ]);
     await provider.listEvents({
       bundle: { ...scope, bundleId: "B", outcome: "recovered" },

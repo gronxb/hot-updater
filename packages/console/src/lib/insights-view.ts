@@ -11,5 +11,5 @@ export type InsightsViewPage<TRow> = {
 export const outcomeLabels = {
   applied: "Applied reports",
   recovered: "Recovered-from reports",
-  adopted: "Adopted reports",
+  unchanged: "No-change reports",
 } as const;

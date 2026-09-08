@@ -59,7 +59,7 @@ const isBundleFilter = (value: unknown, withKind = false): boolean => {
   return value.type === "RECOVERED"
     ? isText(value.fromBundleId) &&
         hasOnlyKeys(value, [...keys, "fromBundleId"])
-    : (value.type === "UPDATE_APPLIED" || value.type === "RELEASE_ADOPTED") &&
+    : (value.type === "UPDATE_APPLIED" || value.type === "UNCHANGED") &&
         isText(value.toBundleId) &&
         hasOnlyKeys(value, [...keys, "toBundleId"]);
 };
@@ -118,7 +118,7 @@ export const toInsightsInstallationRow = (
   };
 };
 
-/** Release adoption and unchanged lifecycle reports are not bundle movements. */
+/** Unchanged reports are not bundle movements. */
 export const isInsightsMovementEvent = (
   event: Pick<BundleEventRow, "type">,
 ): boolean => event.type === "UPDATE_APPLIED" || event.type === "RECOVERED";

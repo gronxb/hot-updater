@@ -114,9 +114,7 @@ export const parseFirebaseBundleEventRow = (
   );
   if (
     !(
-      ((type === "UPDATE_APPLIED" ||
-        type === "RECOVERED" ||
-        type === "RELEASE_ADOPTED") &&
+      ((type === "UPDATE_APPLIED" || type === "RECOVERED") &&
         typeof fromBundleId === "string" &&
         (updateStrategy === "fingerprint" ||
           updateStrategy === "appVersion")) ||
@@ -158,7 +156,6 @@ export const parseFirebaseInsightsInstallationRow = (
   if (
     type !== "UPDATE_APPLIED" &&
     type !== "RECOVERED" &&
-    type !== "RELEASE_ADOPTED" &&
     type !== "UNCHANGED"
   ) {
     throw new FirebaseDatabaseDataError(source);

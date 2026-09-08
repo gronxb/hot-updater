@@ -1142,11 +1142,12 @@ Recovery restores the complete safe selection receipt and channel.
 Launch reports retain #1141 statuses and add optional from/to Release IDs.
 Recovery reports R2/B2 -> R1/B1. Old events keep null Release identity.
 
-Same-Bundle adoption does not emit `UPDATE_APPLIED`. It emits a distinct
-best-effort `RELEASE_ADOPTED` insights event immediately after atomic native
-adoption. Its directional Bundle IDs may be equal. Insights failure never
-rolls back device state. Console labels Release adoption separately from Bundle
-application.
+Insights has three event types: `UPDATE_APPLIED`, `UNCHANGED`, and `RECOVERED`.
+Same-Bundle adoption emits a best-effort `UNCHANGED` event after atomic native
+adoption because the running files did not change. It retains from/to Release
+IDs while `fromBundleId` and `updateStrategy` are null. Insights failure never
+rolls back device state. Console labels these outcomes Update applied, No change,
+and Rolled back.
 
 ## Legacy endpoint compatibility
 

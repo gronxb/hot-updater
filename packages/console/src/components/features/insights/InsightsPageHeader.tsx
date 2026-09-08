@@ -27,7 +27,7 @@ export function InsightsPageHeader({
             buttonVariants({
               className: "h-11 px-3 lg:h-8 lg:px-2.5",
               size: "lg",
-              variant: view === "overview" ? "contrast" : "outline",
+              variant: view === "overview" ? "secondary" : "ghost",
             }),
           )}
           to="/insights"
@@ -40,7 +40,7 @@ export function InsightsPageHeader({
             buttonVariants({
               className: "h-11 px-3 lg:h-8 lg:px-2.5",
               size: "lg",
-              variant: view === "events" ? "contrast" : "outline",
+              variant: view === "events" ? "secondary" : "ghost",
             }),
           )}
           to="/installations"

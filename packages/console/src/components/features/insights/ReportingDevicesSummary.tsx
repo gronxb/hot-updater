@@ -24,16 +24,15 @@ export function ReportingDevicesSummary({
       className="flex items-center justify-between"
       role="region"
     >
-      <CardHeader className="min-w-0 gap-2 p-4 sm:px-6">
+      <CardHeader className="min-w-0 gap-2 p-6 sm:px-8">
         <CardTitle className="text-sm font-medium">
           Reporting devices · 30d
         </CardTitle>
         <CardDescription>
-          Latest report in this platform and channel within 30 days. Each
-          installation is counted once.
+          Installations last seen in this scope within 30 days.
         </CardDescription>
       </CardHeader>
-      <CardContent className="shrink-0 p-4 sm:px-6">
+      <CardContent className="shrink-0 p-6 sm:px-8">
         {query.isPending ? (
           <Skeleton
             aria-label="Loading reporting devices"

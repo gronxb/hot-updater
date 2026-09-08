@@ -31,12 +31,12 @@ export function buildRecoveryReport(
   const releases = new Map<
     string,
     {
-      firstAdoptedAtMs: number | null;
+      firstAppliedAtMs: number | null;
       recovered: Set<string>;
       buckets: Map<
         number,
         {
-          adopted: number;
+          applied: number;
           recovered: number;
           installations: Set<string>;
           lastRecoveredAtMs: number;
@@ -48,7 +48,7 @@ export function buildRecoveryReport(
     let release = releases.get(id);
     if (!release) {
       release = {
-        firstAdoptedAtMs: null,
+        firstAppliedAtMs: null,
         recovered: new Set(),
         buckets: new Map(),
       };
@@ -78,7 +78,7 @@ export function buildRecoveryReport(
       const inScope =
         row.platform === input.platform && row.channel === input.channel;
       const previous = latest.get(row.install_id);
-      // Older SDKs omit the ID on UNCHANGED. Only retain an observed ID for the same file and scope.
+      // Lifecycle reports can omit the ID on UNCHANGED. Only retain an observed ID for the same file and scope.
       const releaseId =
         row.to_release_id ??
         (row.type === "UNCHANGED" &&
@@ -110,14 +110,12 @@ export function buildRecoveryReport(
         row.type === "RECOVERED" ? row.from_release_id : row.to_release_id;
       if (
         !outcomeId ||
-        (row.type !== "RECOVERED" &&
-          row.type !== "RELEASE_ADOPTED" &&
-          row.type !== "UPDATE_APPLIED")
+        (row.type !== "RECOVERED" && row.type !== "UPDATE_APPLIED")
       )
         continue;
       const release = ensureRelease(outcomeId);
       const bucket = release.buckets.get(startMs) ?? {
-        adopted: 0,
+        applied: 0,
         recovered: 0,
         installations: new Set<string>(),
         lastRecoveredAtMs: -1,
@@ -128,8 +126,8 @@ export function buildRecoveryReport(
         bucket.lastRecoveredAtMs = row.received_at_ms;
         release.recovered.add(row.install_id);
       } else {
-        bucket.adopted += 1;
-        release.firstAdoptedAtMs ??= row.received_at_ms;
+        bucket.applied += 1;
+        release.firstAppliedAtMs ??= row.received_at_ms;
       }
       release.buckets.set(startMs, bucket);
     }
@@ -142,13 +140,13 @@ export function buildRecoveryReport(
     let previousRate: number | null = null;
     const points = Array.from(snapshots, ([startMs, snapshot]) => {
       const bucket = release.buckets.get(startMs);
-      const adopted = bucket?.adopted ?? 0;
+      const applied = bucket?.applied ?? 0;
       const recovered = bucket?.recovered ?? 0;
-      const total = adopted + recovered;
+      const total = applied + recovered;
       const rate = total === 0 ? null : (recovered / total) * 100;
       const spike =
-        release.firstAdoptedAtMs !== null &&
-        (bucket?.lastRecoveredAtMs ?? -1) >= release.firstAdoptedAtMs &&
+        release.firstAppliedAtMs !== null &&
+        (bucket?.lastRecoveredAtMs ?? -1) >= release.firstAppliedAtMs &&
         (!truncated || previousRate !== null) &&
         rate !== null &&
         total >= 10 &&
@@ -160,7 +158,7 @@ export function buildRecoveryReport(
         startMs,
         active: snapshot ? (snapshot.get(releaseId) ?? 0) : null,
         recoveredInstallations: bucket?.installations.size ?? 0,
-        adopted,
+        applied,
         recovered,
         rate,
         spike,
@@ -168,7 +166,7 @@ export function buildRecoveryReport(
     });
     series.push({
       releaseId,
-      firstAdoptedAtMs: release.firstAdoptedAtMs,
+      firstAppliedAtMs: release.firstAppliedAtMs,
       activeInstallations: active.get(releaseId) ?? 0,
       recoveredInstallations: release.recovered.size,
       points,

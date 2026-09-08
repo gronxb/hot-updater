@@ -1,10 +1,4 @@
-import {
-  Activity,
-  Check,
-  ChevronDown,
-  PackageCheck,
-  RotateCcw,
-} from "lucide-react";
+import { Activity, Check, ChevronDown, RotateCcw } from "lucide-react";
 import { useEffect, useState } from "react";
 
 import { HashValueDisplay } from "@/components/HashValueDisplay";
@@ -14,15 +8,21 @@ import type { InsightsEventRow } from "@/lib/insights-view";
 type EventHistoryRow = InsightsEventRow;
 
 const eventTypes = {
-  UPDATE_APPLIED: { label: "Bundle applied", variant: "success", icon: Check },
-  RECOVERED: { label: "Recovered", variant: "warning", icon: RotateCcw },
-  RELEASE_ADOPTED: {
-    label: "Bundle adopted",
+  UPDATE_APPLIED: {
+    label: "Update applied",
+    description: "The app started using the downloaded update.",
     variant: "success",
-    icon: PackageCheck,
+    icon: Check,
+  },
+  RECOVERED: {
+    label: "Rolled back",
+    description: "The app recovered to a previous working bundle.",
+    variant: "warning",
+    icon: RotateCcw,
   },
   UNCHANGED: {
-    label: "Activity reported",
+    label: "No change",
+    description: "The app continues using the same bundle files.",
     variant: "secondary",
     icon: Activity,
   },
@@ -92,7 +92,7 @@ export function EventTimestamp({
   );
 }
 
-export function EventTypeBadge({
+export function EventTypeDetails({
   type,
 }: {
   readonly type: EventHistoryRow["type"];
@@ -100,20 +100,18 @@ export function EventTypeBadge({
   const eventType = eventTypes[type];
   const Icon = eventType.icon;
   return (
-    <Badge
-      variant={eventType.variant}
-      className="gap-1 whitespace-nowrap [&_svg]:size-3"
-      title={
-        type === "UNCHANGED"
-          ? "App activity reported on the current bundle without a bundle transition."
-          : type === "RELEASE_ADOPTED"
-            ? "A different release was adopted without changing the bundle."
-            : undefined
-      }
-    >
-      <Icon aria-hidden="true" />
-      {eventType.label}
-    </Badge>
+    <div className="flex min-w-0 flex-col items-start gap-2">
+      <Badge
+        variant={eventType.variant}
+        className="gap-1 whitespace-nowrap [&_svg]:size-3"
+      >
+        <Icon aria-hidden="true" />
+        {eventType.label}
+      </Badge>
+      <p className="max-w-56 whitespace-normal text-xs text-muted-foreground">
+        {eventType.description}
+      </p>
+    </div>
   );
 }
 
@@ -124,9 +122,10 @@ export function EventBundleTransition({
   readonly event: Pick<EventHistoryRow, "type" | "fromBundleId" | "toBundleId">;
   readonly touch?: boolean;
 }) {
+  const changed = event.type === "UPDATE_APPLIED" || event.type === "RECOVERED";
   return (
     <dl className="grid grid-cols-[auto_minmax(0,1fr)] items-center gap-x-2 gap-y-2">
-      {event.fromBundleId ? (
+      {event.fromBundleId && changed ? (
         <>
           <dt className="text-muted-foreground">From</dt>
           <dd>
@@ -137,9 +136,7 @@ export function EventBundleTransition({
           </dd>
         </>
       ) : null}
-      <dt className="text-muted-foreground">
-        {event.type === "UNCHANGED" ? "Current" : "To"}
-      </dt>
+      <dt className="text-muted-foreground">{changed ? "To" : "Current"}</dt>
       <dd>
         <HashValueDisplay
           value={event.toBundleId}

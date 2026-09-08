@@ -157,8 +157,8 @@ const bundleFilter = (
       return { ...scope, type: "UPDATE_APPLIED", toBundleId: bundleId };
     case "recovered":
       return { ...scope, type: "RECOVERED", fromBundleId: bundleId };
-    case "adopted":
-      return { ...scope, type: "RELEASE_ADOPTED", toBundleId: bundleId };
+    case "unchanged":
+      return { ...scope, type: "UNCHANGED", toBundleId: bundleId };
     default:
       throw new InsightsBadRequestError("Invalid Insights outcome.");
   }
@@ -565,13 +565,13 @@ export const createInsightsProvider = (
         bundleInstallations,
         appliedReports,
         recoveredReports,
-        adoptedReports,
+        unchangedReports,
       ] = await Promise.all([
         reporting,
         measure(model.countInstallations({ ...scope, sinceMs, bundleId })),
         countOutcome("applied"),
         countOutcome("recovered"),
-        countOutcome("adopted"),
+        countOutcome("unchanged"),
       ]);
       return {
         ...scope,
@@ -584,7 +584,7 @@ export const createInsightsProvider = (
           reportingInstallations: bundleInstallations,
           appliedReports,
           recoveredReports,
-          adoptedReports,
+          unchangedReports,
         },
       };
     },

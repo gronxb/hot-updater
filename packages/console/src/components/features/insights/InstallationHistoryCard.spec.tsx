@@ -39,7 +39,7 @@ describe("InstallationHistoryCard", () => {
     );
 
     expect(screen.getByText("user-1")).toBeDefined();
-    expect(screen.getAllByText("Bundle applied").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Update applied").length).toBeGreaterThan(0);
     fireEvent.click(screen.getByRole("button", { name: "Next" }));
     expect(onNext).toHaveBeenCalledOnce();
   });

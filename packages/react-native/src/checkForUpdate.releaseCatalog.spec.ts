@@ -208,7 +208,7 @@ describe("checkForUpdate Release catalog protocol", () => {
     });
   });
 
-  it("sends RELEASE_ADOPTED only when insights is enabled", async () => {
+  it("reports same-file selection as UNCHANGED with the selected release identity", async () => {
     const active: PersistedSelectionReceipt = {
       catalogId: CATALOG_ID,
       bundleId: TARGET_BUNDLE_ID,
@@ -239,11 +239,12 @@ describe("checkForUpdate Release catalog protocol", () => {
 
     expect(sendInsightsEvent).toHaveBeenCalledWith(
       expect.objectContaining({
-        fromBundleId: TARGET_BUNDLE_ID,
+        fromBundleId: null,
+        updateStrategy: null,
         fromReleaseId: MINIMUM_RELEASE_ID,
         toBundleId: TARGET_BUNDLE_ID,
         toReleaseId: RELEASE_ID,
-        type: "RELEASE_ADOPTED",
+        type: "UNCHANGED",
       }),
     );
   });

@@ -117,8 +117,9 @@ describe("Detox Insights HTTP client", () => {
           toBundleId: "bundle-b",
         },
         {
-          type: "RELEASE_ADOPTED",
-          fromBundleId: "bundle-b",
+          type: "UNCHANGED",
+          fromBundleId: null,
+          updateStrategy: null,
           toBundleId: "bundle-b",
         },
         { type: "RECOVERED", fromBundleId: "bundle-b", toBundleId: "bundle-a" },
@@ -172,8 +173,9 @@ describe("Detox Insights HTTP client", () => {
         selectedBundleInstallations: 1,
         eventType: "UNCHANGED",
         outcomes: [
+          { bundleId: "bundle-a", count: 1, outcome: "unchanged" },
           { bundleId: "bundle-b", count: 1, outcome: "recovered" },
-          { bundleId: "bundle-b", count: 1, outcome: "adopted" },
+          { bundleId: "bundle-b", count: 1, outcome: "unchanged" },
           { bundleId: "bundle-b", count: 1, outcome: "applied" },
         ],
       });
@@ -187,7 +189,7 @@ describe("Detox Insights HTTP client", () => {
         reportingInstallations: { count: 0 },
         appliedReports: { count: 1 },
         recoveredReports: { count: 1 },
-        adoptedReports: { count: 1 },
+        unchangedReports: { count: 1 },
       });
       const destination = await client.getReportingOverview({
         platform: "ios",
@@ -199,7 +201,7 @@ describe("Detox Insights HTTP client", () => {
         reportingInstallations: { count: 1 },
         appliedReports: { count: 0 },
         recoveredReports: { count: 0 },
-        adoptedReports: { count: 0 },
+        unchangedReports: { count: 1 },
       });
       await expect(
         client.listEvents({

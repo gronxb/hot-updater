@@ -147,8 +147,7 @@ function requireEvent(payload: unknown): CreateBundleEventRequest {
   const type = requireStringField(payload, "type");
   switch (type) {
     case "UPDATE_APPLIED":
-    case "RECOVERED":
-    case "RELEASE_ADOPTED": {
+    case "RECOVERED": {
       const updateStrategy = requireStringField(payload, "updateStrategy");
       if (updateStrategy !== "fingerprint" && updateStrategy !== "appVersion") {
         throw new InsightsBadRequestError(
@@ -207,7 +206,6 @@ export function createBundleEventRow(
   switch (input.type) {
     case "UPDATE_APPLIED":
     case "RECOVERED":
-    case "RELEASE_ADOPTED":
       return {
         ...base,
         from_bundle_id: input.fromBundleId,

@@ -140,10 +140,10 @@ describe("createHotUpdater Insights", () => {
     });
     await report(300, {
       installId: "install-2",
-      type: "RELEASE_ADOPTED",
-      fromBundleId: "B",
+      type: "UNCHANGED",
+      fromBundleId: null,
       toBundleId: "B",
-      updateStrategy: "appVersion",
+      updateStrategy: null,
     });
     await report(400, {
       installId: "install-3",
@@ -166,7 +166,7 @@ describe("createHotUpdater Insights", () => {
         reportingInstallations: { count: 1 },
         appliedReports: { count: 1 },
         recoveredReports: { count: 1 },
-        adoptedReports: { count: 1 },
+        unchangedReports: { count: 1 },
       },
     });
     const drilldown = await hotUpdater.handlers.admin(
@@ -253,6 +253,44 @@ describe("createHotUpdater Insights", () => {
     expect(adminIngestion.status).toBe(404);
     expect(adminQuery.status).toBe(200);
     expect(adminQuery.headers.get("cache-control")).toBe("private, no-store");
+  });
+
+  it("records same-file selection as no change and rejects a fourth event type", async () => {
+    const database = createInMemoryDatabasePlugin();
+    const record = vi.spyOn(database.models.insights, "record");
+    const hotUpdater = createHotUpdater({
+      database,
+      clientAccess: { type: "public" },
+    });
+    const selection = {
+      ...event,
+      fromReleaseId: "previous-release",
+      toReleaseId: "selected-release",
+    };
+    expect(
+      (await hotUpdater.handlers.client(eventRequest(selection))).status,
+    ).toBe(204);
+    expect(record).toHaveBeenCalledWith({
+      event: expect.objectContaining({
+        type: "UNCHANGED",
+        from_bundle_id: null,
+        update_strategy: null,
+        from_release_id: "previous-release",
+        to_release_id: "selected-release",
+        to_bundle_id: event.toBundleId,
+      }),
+      installation: expect.objectContaining({ type: "UNCHANGED" }),
+    });
+    const response = await hotUpdater.handlers.client(
+      eventRequest({
+        ...selection,
+        type: "RELEASE_ADOPTED",
+        fromBundleId: event.toBundleId,
+        updateStrategy: "appVersion",
+      }),
+    );
+    expect(response.status).toBe(400);
+    expect(record).toHaveBeenCalledTimes(1);
   });
 
   it("returns a stable client error for malformed event payloads", async () => {

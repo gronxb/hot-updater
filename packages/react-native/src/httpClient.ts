@@ -43,7 +43,7 @@ interface InsightsEventCommonParams {
 }
 
 type InsightsTransitionEventParams = InsightsEventCommonParams & {
-  readonly type: "UPDATE_APPLIED" | "RECOVERED" | "RELEASE_ADOPTED";
+  readonly type: "UPDATE_APPLIED" | "RECOVERED";
   readonly fromBundleId: string;
   readonly toBundleId: string;
   readonly updateStrategy: "fingerprint" | "appVersion";
