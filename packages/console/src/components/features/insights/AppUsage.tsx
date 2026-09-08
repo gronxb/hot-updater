@@ -197,7 +197,7 @@ export function AppUsage({
       <Card
         aria-label="Usage distribution"
         role="region"
-        className="min-w-0 self-start shadow-sm"
+        className="flex min-w-0 flex-col shadow-sm"
       >
         <CardHeader className="flex-row items-center justify-between gap-3">
           <CardTitle className="flex min-h-9 items-center">
@@ -211,7 +211,7 @@ export function AppUsage({
               : ""}
           </InsightsInfo>
         </CardHeader>
-        <CardContent>
+        <CardContent className="flex-1">
           {query.isPending ? (
             <Skeleton aria-label="Loading distribution" className="h-48" />
           ) : query.error ? (
