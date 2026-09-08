@@ -62,6 +62,11 @@ function EventIdentity({
           query: event.installId || undefined,
           installId: event.installId,
         }}
+        state={(previous) => ({
+          insightsPagination: {
+            eventsBack: previous.insightsPagination?.eventsBack,
+          },
+        })}
         aria-label={`View history for ${event.userId ?? event.username ?? "anonymous installation"} (${event.installId})`}
       >
         <span

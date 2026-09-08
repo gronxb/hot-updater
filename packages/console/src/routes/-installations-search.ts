@@ -1,5 +1,17 @@
 import type { ParsedLocation } from "@tanstack/react-router";
 
+export type InsightsPaginationState = {
+  readonly eventsBack?: readonly string[];
+  readonly searchBack?: readonly string[];
+  readonly historyBack?: readonly string[];
+};
+
+declare module "@tanstack/react-router" {
+  interface HistoryState {
+    insightsPagination?: InsightsPaginationState;
+  }
+}
+
 const readCursor = (value: unknown): string | undefined =>
   typeof value === "string" && value.length > 0 ? value : undefined;
 

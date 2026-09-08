@@ -1,6 +1,7 @@
 import {
   createFileRoute,
   useElementScrollRestoration,
+  useLocation,
 } from "@tanstack/react-router";
 import { ArrowLeft } from "lucide-react";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
@@ -24,6 +25,7 @@ import {
 
 import {
   getInsightsScrollRestorationKey,
+  type InsightsPaginationState,
   validateInstallationsSearch,
 } from "./-installations-search";
 
@@ -50,9 +52,12 @@ function InstallationsPage() {
   const [draftQuery, setDraftQuery] = useState(search.query ?? "");
   const [initialEventsBefore] = useState(freshBefore);
   const [initialHistoryBefore] = useState(freshBefore);
-  const [eventsBack, setEventsBack] = useState<readonly string[]>([]);
-  const [searchBack, setSearchBack] = useState<readonly string[]>([]);
-  const [historyBack, setHistoryBack] = useState<readonly string[]>([]);
+  const pagination = useLocation({
+    select: (location) => location.state.insightsPagination,
+  });
+  const eventsBack = pagination?.eventsBack ?? [];
+  const searchBack = pagination?.searchBack ?? [];
+  const historyBack = pagination?.historyBack ?? [];
   const query = search.query?.trim() ?? "";
   const hasSearchQuery = query.length > 0;
   const hasSelection = search.installId !== undefined;
@@ -60,10 +65,21 @@ function InstallationsPage() {
   const eventsBefore = search.eventsBefore ?? initialEventsBefore;
   const historyBefore = search.historyBefore ?? initialHistoryBefore;
 
-  const updateSearch = (next: Partial<typeof search>, replace = false) => {
+  const updateSearch = (
+    next: Partial<typeof search>,
+    replace = false,
+    nextPagination: InsightsPaginationState = {},
+  ) => {
     void navigate({
       to: "/installations",
       search: { ...search, ...next },
+      state: (previous) => ({
+        ...previous,
+        insightsPagination: {
+          ...previous.insightsPagination,
+          ...nextPagination,
+        },
+      }),
       replace,
     });
   };
@@ -104,7 +120,6 @@ function InstallationsPage() {
   useEffect(() => {
     const firstInstallId = matches.data?.data[0]?.installId;
     if (!hasSearchQuery || hasSelection || firstInstallId === undefined) return;
-    setHistoryBack([]);
     updateSearch(
       {
         historyBefore: freshBefore(),
@@ -112,6 +127,7 @@ function InstallationsPage() {
         installId: firstInstallId,
       },
       true,
+      { historyBack: [] },
     );
   }, [hasSearchQuery, hasSelection, matches.data?.data]);
 
@@ -151,15 +167,17 @@ function InstallationsPage() {
 
   const clearLookup = () => {
     setDraftQuery("");
-    setHistoryBack([]);
-    setSearchBack([]);
-    updateSearch({
-      historyBefore: undefined,
-      historyCursor: undefined,
-      installId: undefined,
-      query: undefined,
-      searchCursor: undefined,
-    });
+    updateSearch(
+      {
+        historyBefore: undefined,
+        historyCursor: undefined,
+        installId: undefined,
+        query: undefined,
+        searchCursor: undefined,
+      },
+      false,
+      { historyBack: [], searchBack: [] },
+    );
   };
   const installationLookup = (
     <InstallationSearchPanel
@@ -172,15 +190,17 @@ function InstallationsPage() {
           clearLookup();
           return;
         }
-        setHistoryBack([]);
-        setSearchBack([]);
-        updateSearch({
-          historyBefore: undefined,
-          historyCursor: undefined,
-          installId: undefined,
-          query: nextQuery,
-          searchCursor: undefined,
-        });
+        updateSearch(
+          {
+            historyBefore: undefined,
+            historyCursor: undefined,
+            installId: undefined,
+            query: nextQuery,
+            searchCursor: undefined,
+          },
+          false,
+          { historyBack: [], searchBack: [] },
+        );
       }}
     />
   );
@@ -223,32 +243,32 @@ function InstallationsPage() {
               isLoading={events.isLoading}
               onNext={() => {
                 if (!events.data?.nextCursor) return;
-                setEventsBack(pushCursor(eventsBack, search.eventsCursor));
                 updateSearch(
                   {
                     eventsCursor: events.data.nextCursor,
                   },
                   true,
+                  { eventsBack: pushCursor(eventsBack, search.eventsCursor) },
                 );
               }}
               onPrevious={() => {
                 const previous = popCursor(eventsBack);
-                setEventsBack(previous.stack);
                 updateSearch(
                   {
                     eventsCursor: previous.cursor,
                   },
                   true,
+                  { eventsBack: previous.stack },
                 );
               }}
               onRefresh={() => {
-                setEventsBack([]);
                 updateSearch(
                   {
                     eventsBefore: freshBefore(),
                     eventsCursor: undefined,
                   },
                   true,
+                  { eventsBack: [] },
                 );
               }}
               pageNumber={eventsBack.length + 1}
@@ -266,33 +286,38 @@ function InstallationsPage() {
                   error={matches.error}
                   onNext={() => {
                     if (!matches.data?.nextCursor) return;
-                    setSearchBack(pushCursor(searchBack, search.searchCursor));
                     updateSearch(
                       {
                         installId: undefined,
                         searchCursor: matches.data.nextCursor,
                       },
                       true,
+                      {
+                        searchBack: pushCursor(searchBack, search.searchCursor),
+                      },
                     );
                   }}
                   onPrevious={() => {
                     const previous = popCursor(searchBack);
-                    setSearchBack(previous.stack);
                     updateSearch(
                       {
                         installId: undefined,
                         searchCursor: previous.cursor,
                       },
                       true,
+                      { searchBack: previous.stack },
                     );
                   }}
                   onSelect={(installId) => {
-                    setHistoryBack([]);
-                    updateSearch({
-                      historyBefore: freshBefore(),
-                      historyCursor: undefined,
-                      installId,
-                    });
+                    updateSearch(
+                      {
+                        historyBefore: freshBefore(),
+                        historyCursor: undefined,
+                        installId,
+                      },
+                      false,
+                      { historyBack: [] },
+                    );
                   }}
                   pageNumber={searchBack.length + 1}
                   results={matches.data}
@@ -305,32 +330,37 @@ function InstallationsPage() {
                 isLoading={history.isLoading || selectedInstallation.isLoading}
                 onNext={() => {
                   if (!history.data?.nextCursor) return;
-                  setHistoryBack(pushCursor(historyBack, search.historyCursor));
                   updateSearch(
                     {
                       historyCursor: history.data.nextCursor,
                     },
                     true,
+                    {
+                      historyBack: pushCursor(
+                        historyBack,
+                        search.historyCursor,
+                      ),
+                    },
                   );
                 }}
                 onPrevious={() => {
                   const previous = popCursor(historyBack);
-                  setHistoryBack(previous.stack);
                   updateSearch(
                     {
                       historyCursor: previous.cursor,
                     },
                     true,
+                    { historyBack: previous.stack },
                   );
                 }}
                 onRefresh={() => {
-                  setHistoryBack([]);
                   updateSearch(
                     {
                       historyBefore: freshBefore(),
                       historyCursor: undefined,
                     },
                     true,
+                    { historyBack: [] },
                   );
                 }}
                 pageNumber={historyBack.length + 1}
