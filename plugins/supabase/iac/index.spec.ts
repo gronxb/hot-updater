@@ -752,6 +752,73 @@ describe("Supabase CLI authentication", () => {
   });
 });
 
+describe("Supabase empty migration history", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockExeca.mockReset();
+    expectExit();
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it.each(["stderr", "stdout"])(
+    "pushes initial migrations when the missing history error is reported on %s",
+    async (stream) => {
+      const message =
+        'ERROR: relation "supabase_migrations.schema_migrations" does not exist (SQLSTATE 42P01)';
+      const error = await createExecaError(
+        ["node", "-e", "process.exit(1)"],
+        stream === "stderr" ? message : "",
+      );
+      Object.defineProperty(error, "stdout", {
+        value:
+          stream === "stdout" ? JSON.stringify({ error: { message } }) : "",
+      });
+      mockExeca
+        .mockRejectedValueOnce(error)
+        .mockResolvedValueOnce({ stdout: "migrations applied" });
+
+      await expect(pushDB("/tmp/hot-updater-supabase-push", {})).resolves.toBe(
+        "migrations applied",
+      );
+
+      expect(mockExeca).toHaveBeenCalledTimes(2);
+      expect(mockExeca.mock.calls[1]?.[1]).toEqual([
+        "supabase",
+        "db",
+        "push",
+        "--include-all",
+        "--yes",
+        "--workdir",
+        "/tmp/hot-updater-supabase-push",
+      ]);
+    },
+  );
+
+  it.each([
+    "failed to connect to postgres: connection refused",
+    'ERROR: permission denied for table "supabase_migrations.schema_migrations" (SQLSTATE 42501)',
+    'ERROR: relation "public.bundles" does not exist (SQLSTATE 42P01)',
+  ])(
+    "does not push after an unrelated history fetch failure: %s",
+    async (message) => {
+      const error = await createExecaError(
+        ["node", "-e", "process.exit(1)"],
+        message,
+      );
+      mockExeca.mockRejectedValueOnce(error);
+
+      await expect(
+        pushDB("/tmp/hot-updater-supabase-push", {}),
+      ).rejects.toThrow("process.exit(1)");
+
+      expect(mockExeca).toHaveBeenCalledOnce();
+    },
+  );
+});
+
 describe("Supabase CLI metadata cleanup", () => {
   it("removes metadata created during a failed init", async () => {
     const cwd = await fs.mkdtemp(
