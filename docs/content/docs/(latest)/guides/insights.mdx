@@ -33,7 +33,8 @@ HotUpdater.init({
 });
 ```
 
-Call `init` once when your app is ready. It configures reporting without
+Call `init` once at the top level of your app's entry module. It configures
+reporting without
 starting an update check; use [custom update flows](/docs/guides/custom-update)
 to check, download, and apply updates at your chosen time. Use one configuration
 API per app. If your custom server intentionally uses

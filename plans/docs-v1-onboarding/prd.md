@@ -95,12 +95,12 @@ Verified on September 9, 2026:
 | Page ownership and links | All 100 latest pages appear exactly once in navigation and the LLM index; internal route, fragment and asset checks pass |
 | Live production routes | All 100 HTML and 100 Markdown page URLs return successfully; canonical API index and its compatibility alias return identical Markdown |
 | First OTA canonical URL | `get-started/test-ota` appears once in navigation and the LLM index; old latest simulator-test HTML/Markdown return 404; archived v0 remains available |
-| Markdown fidelity | All 1,007 fenced code blocks and 851 link destinations survive serialization across the 176 latest and archived source pages |
+| Markdown fidelity | All 1,001 fenced code blocks and 849 link destinations survive serialization across the 176 latest and archived source pages |
 | Docs regressions | `pnpm --dir docs test:docs`: 2 files, 5 tests pass |
 | Production build | `pnpm -w build` and final `pnpm --dir docs build` pass; no dead links |
 | Static checks | `pnpm --dir docs test:type`, `pnpm -w lint` and `git diff --check` pass |
 | Repository tests | `pnpm -w test`: 290 files, 2,680 tests pass |
-| Executable documentation | Init onboarding sample passes six flow scenarios; six SDK examples pass strict typechecking; database conformance (48 tests) and standalone storage (13 tests) pass. The first OTA walkthrough uses the verified sample's actions and short CLI commands, with no independent protocol script. |
+| Executable documentation | Top-level init onboarding sample passes seven flow scenarios; eight SDK example units pass strict typechecking; database conformance (48 tests) and standalone storage (13 tests) pass. The first OTA walkthrough uses the verified sample's actions and short CLI commands, with no independent protocol script. |
 | Rendered navigation | Desktop Start here and agent path inspected; version selector opens the archived v0 navigation |
 | Landing entry and terminal | Skill discovery command succeeds; Get Started opens the agent guide; desktop and 320/375/1280px iframe viewports fit without horizontal overflow; resizing reuses the terminal |
 | Deploy demonstration | Actual xterm parser passes at 36/38/42/46/58/70 columns, during/after resizing and on cancellation; complete update ID and final prompt remain visible in 16 rows |

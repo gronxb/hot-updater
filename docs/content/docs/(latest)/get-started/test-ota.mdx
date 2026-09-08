@@ -13,7 +13,7 @@ native app once.
 ## Before you start
 
 - Complete [Connect your app](/docs/get-started/app-setup). This walkthrough
-  uses its **Check for updates** and **Restart to apply** buttons.
+  uses its **Check and apply update** button.
 - Use an unused test channel, such as `ota-test`. Set the
   [native channel](/docs/get-started/app-setup#choose-the-native-test-channel)
   before building, so existing updates cannot replace your starting screen.
@@ -135,10 +135,9 @@ app assigns a named cohort, [target that cohort](/docs/guides/rollout-cohorts).
 
 Return to the same installed Release app:
 
-1. Wait for **Ready to check**, then tap **Check for updates**.
-2. Wait for **Update ready**. The download must finish before you restart.
-3. Tap **Restart to apply**.
-4. Confirm that **OTA verified** and the **new image** both appear.
+1. Tap **Check and apply update**.
+2. Wait while the app downloads the update and restarts.
+3. Confirm that **OTA verified** and the **new image** both appear.
 
 After the restart, compare the screen's **Update ID** with the ID from
 deployment. The example reads it with
@@ -159,9 +158,9 @@ npx hot-updater bundle show <id>
 npx hot-updater bundle disable <id>
 ```
 
-In the app, tap **Check for updates**, wait for **Required update ready**, then
-tap **Restart to apply**. The [example flow](/docs/get-started/app-setup#configure-the-update-client)
-uses that label for rollback too.
+In the app, tap **Check and apply update** again and wait for the restart.
+The [example flow](/docs/get-started/app-setup#configure-the-update-client)
+applies the selected rollback through the same button.
 
 **You should see:** `OTA baseline` and the original image again. This assumes
 the channel had no earlier updates. If it did, the app may return to a previous
@@ -193,10 +192,10 @@ You can now explore [update timing](/docs/guides/custom-update),
 | What you see | What to do next |
 | --- | --- |
 | Update failed | Check the app's URL and client key with [client-access diagnostics](/docs/guides/doctor#check-client-access) |
-| No update selected | Inspect the deployment with `bundle show`; platform, channel, version/fingerprint and cohort must match the app |
-| New ID, old screen | Finish the download and tap **Restart to apply** |
+| Button becomes available again, screen unchanged | Inspect the deployment with `bundle show`; platform, channel, version/fingerprint and cohort must match the app |
+| New ID, old screen | Wait for the download and restart to finish; check app logs if the restart fails |
 | New screen disappears after restart | Check [startup errors and crash history](/docs/react-native-api/getCrashHistory) |
 
-`HotUpdater.init()` configures the client; your **Check for updates** button
-starts the check. Keep the sample's `onError` handling so request failures are
-shown as failures, rather than as “no update selected.”
+`HotUpdater.init()` configures the client at module scope. The button starts the
+check, download and restart. Keep the sample's shared error reporter so request,
+download and restart failures are visible.

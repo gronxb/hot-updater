@@ -6,10 +6,10 @@ icon: Settings2
 
 ## Usage
 
-Call `HotUpdater.init` once when your runtime considers the app ready. It
-configures the update server and lifecycle reporting, but it does not start an
-update check. Call `HotUpdater.checkForUpdate()` separately when your app is
-ready to check.
+Call `HotUpdater.init` at the top level of your app entry module, outside React
+components and effects. It configures the update server and handles native
+startup verification internally. Call `HotUpdater.checkForUpdate()` separately
+when your app should check for updates.
 
 Do not use `HotUpdater.init` and `HotUpdater.wrap` in the same app. Hot Updater
 reports mixed usage with `console.error`. Use `init + checkForUpdate` for a
@@ -25,7 +25,6 @@ import { HotUpdater } from "@hot-updater/react-native";
 
 HotUpdater.init({
   baseURL: "<your-update-server-url>",
-  insights: true,
   requestHeaders: {
     "x-api-key": "<your-api-key>",
   },
@@ -50,9 +49,7 @@ a promise, and Hot Updater calls it before each update check.
 
 ```tsx
 HotUpdater.init({
-  baseURL: async () => {
-    return await getUpdateServerURL();
-  },
+  baseURL: () => getUpdateServerURL(),
 });
 ```
 
@@ -60,18 +57,28 @@ After initialization, call `HotUpdater.checkForUpdate()` wherever your runtime
 or app state says it is safe to check.
 
 ```tsx
-const updateInfo = await HotUpdater.checkForUpdate({
-  updateStrategy: "appVersion",
-});
+async function prepareUpdate() {
+  try {
+    const update = await HotUpdater.checkForUpdate({
+      updateStrategy: "appVersion",
+    });
 
-if (!updateInfo) {
-  return;
-}
+    if (!update) {
+      return;
+    }
 
-const didUpdate = await updateInfo.updateBundle();
+    const downloaded = await update.updateBundle();
 
-if (didUpdate && updateInfo.shouldForceUpdate) {
-  await HotUpdater.reload();
+    if (!downloaded) {
+      throw new Error("Could not prepare the update");
+    }
+
+    if (update.shouldForceUpdate) {
+      await HotUpdater.reload();
+    }
+  } catch (error) {
+    console.error("Could not prepare update:", error);
+  }
 }
 ```
 
@@ -104,9 +111,10 @@ If the server intentionally uses the unauthenticated
 
 ## Recommended Flow
 
-Use `HotUpdater.init` once, then call `HotUpdater.checkForUpdate` from the point
-where your app is ready to check. Keep the check timing and update UI in your
-own application lifecycle.
+Initialize once at module scope, then call `HotUpdater.checkForUpdate` from the
+point where your app should check. Initialization returns `void`; no effect,
+readiness state or `onNotifyAppReady` callback is required. Use that callback
+only when your app needs to observe the native startup result.
 
 ## Related
 

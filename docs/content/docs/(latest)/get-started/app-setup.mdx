@@ -22,114 +22,93 @@ for the migration steps.
 ## Configure the update client
 
 Use `HotUpdater.init()` and a custom update flow so your app chooses when to
-check, download and restart. Initialization configures the client and starts
-native launch verification; it does **not** check for or download an update.
+check, download and restart. Initialization configures the client and reports
+native startup results; it does **not** check for or download an update.
 
-This complete example initializes after the root screen mounts. It enables an
-explicit check after native readiness, downloads the selected update, then
-waits for the user to choose **Restart to apply**:
+Initialize at the top level of your app entry module, outside the React
+component. The SDK handles native launch verification internally.
+
+This example has one button: **Check and apply update**. Tapping it checks for
+an update, downloads it, then restarts the app after a successful download.
 
 ```tsx title="App.tsx"
 import { HotUpdater } from "@hot-updater/react-native";
-import { useEffect, useRef, useState } from "react";
-import { Button, Text, View } from "react-native";
+import { useState } from "react";
+import { Alert, Button, Text, View } from "react-native";
+
+function reportUpdateError(error: unknown) {
+  console.error("Hot Updater:", error);
+  Alert.alert("Update failed", "Please try again.");
+}
+
+HotUpdater.init({
+  baseURL: "https://your-update-server-url",
+  requestHeaders: {
+    "x-api-key": "<your-registered-client-api-key>",
+  },
+  onError: reportUpdateError,
+});
 
 export default function App() {
-  const initialized = useRef(false);
-  const [canCheck, setCanCheck] = useState(false);
-  const [canReload, setCanReload] = useState(false);
-  const [status, setStatus] = useState("Starting");
+  const [isUpdating, setIsUpdating] = useState(false);
 
-  useEffect(() => {
-    if (initialized.current) return;
-    initialized.current = true;
-    HotUpdater.init({
-      baseURL: "https://your-update-server-url",
-      requestHeaders: {
-        "x-api-key": "<your-registered-client-api-key>",
-      },
-      onNotifyAppReady: () => {
-        setStatus("Ready to check");
-        setCanCheck(true);
-      },
-      onError: () => setStatus("Startup verification failed"),
-    });
-  }, []);
+  async function applyUpdate() {
+    setIsUpdating(true);
 
-  async function checkForUpdates() {
-    if (!canCheck || canReload) return;
-    setCanCheck(false);
-    setStatus("Checking");
     try {
-      let checkError: Error | undefined;
-      const updateInfo = await HotUpdater.checkForUpdate({
+      const update = await HotUpdater.checkForUpdate({
         updateStrategy: "appVersion",
-        onError: (error) => {
-          checkError = error;
-        },
       });
-      if (checkError) throw checkError;
-      if (!updateInfo) {
-        setStatus("No update selected");
+
+      if (!update) {
         return;
       }
-      setStatus("Downloading");
-      const downloaded = await updateInfo.updateBundle();
-      if (!downloaded) throw new Error("Download failed");
-      setCanReload(true);
-      setStatus(
-        updateInfo.shouldForceUpdate ? "Required update ready" : "Update ready",
-      );
-    } catch {
-      setStatus("Update failed. Try again.");
+
+      const downloaded = await update.updateBundle();
+
+      if (!downloaded) {
+        throw new Error("Could not prepare the update");
+      }
+
+      await HotUpdater.reload();
+    } catch (error) {
+      reportUpdateError(error);
     } finally {
-      setCanCheck(true);
+      setIsUpdating(false);
     }
   }
 
   return (
     <View>
       <Text>OTA baseline</Text>
-      <Text>{status}</Text>
       <Text>Update ID: {HotUpdater.getBundleId()}</Text>
       <Button
-        title="Check for updates"
-        disabled={!canCheck || canReload}
-        onPress={() => void checkForUpdates()}
+        title={isUpdating ? "Updating…" : "Check and apply update"}
+        disabled={isUpdating}
+        onPress={() => void applyUpdate()}
       />
-      {canReload && (
-        <Button
-          title="Restart to apply"
-          onPress={() => {
-            void HotUpdater.reload().catch(() => {
-              setStatus("Restart failed. Try again.");
-            });
-          }}
-        />
-      )}
     </View>
   );
 }
 ```
 
-Call `init` once at your app's readiness boundary. If startup includes essential
-bootstrap work, move initialization after that work succeeds. `init` returns
-`void`; its [`onNotifyAppReady`](/docs/react-native-api/notifyAppReady) callback
-reports the asynchronous native result. Export the root component directly and
-do not combine `init` with `wrap`.
+Keep `init` at module scope and export your component normally. It returns
+`void`; you do not need an effect, a readiness flag or an `onNotifyAppReady`
+callback for setup. Do not combine it with `wrap`.
 
-The example keeps checks behind a button. You can use the same sequence after
-login, when returning to foreground or from your own update screen. Capture
-`checkForUpdate`'s `onError`: a failed check can return `null`, so a `try/catch`
-alone cannot distinguish every failure from “no update selected.” Always await
-a successful `updateInfo.updateBundle()` before enabling restart.
+The `onError` handler in `init` reports lifecycle and update-check errors.
+The button's `try/catch` handles rejected operations, including download and
+restart failures. Both use a reporter that accepts `unknown` without casting
+or rethrowing callback errors. Connect it to your app's error-reporting service
+as needed.
 
-Your custom flow controls reload timing, including for `shouldForceUpdate`.
-This example labels required updates and waits for explicit restart. If your
-product requires immediate application, use that flag to select an appropriate
-reload point after the download succeeds. See
-[Control update timing](/docs/guides/custom-update) for progress and lifecycle
-patterns.
+If `checkForUpdate` returns `null`, simply stop the flow. It can mean no update
+was selected or a check error was already reported; do not display “up to date”
+based on that value alone.
+
+The button explicitly applies the update now, so it restarts for both normal
+and required updates. For background downloads or a separate restart prompt,
+see [Control update timing](/docs/guides/custom-update).
 
 Replace the URL and client-key placeholders using your verified provider setup.
 Keep any provider base path; the SDK appends the catalog and artifact routes.
@@ -149,19 +128,27 @@ loaded into your app**. Connect the server URL and client key to your project's
 app build configuration, and verify that both native builds and OTA bundle
 builds receive them, including CI or EAS.
 
-For Expo, public app variables can supply the two fields:
+For Expo, replace the example's configuration with public app variables after
+checking that they are present:
 
-```tsx
-baseURL: process.env.EXPO_PUBLIC_HOT_UPDATER_BASE_URL!,
-requestHeaders: {
-  "x-api-key": process.env.EXPO_PUBLIC_HOT_UPDATER_API_KEY!,
-},
+```ts
+const baseURL = process.env.EXPO_PUBLIC_HOT_UPDATER_BASE_URL;
+const clientApiKey = process.env.EXPO_PUBLIC_HOT_UPDATER_API_KEY;
+
+if (!baseURL || !clientApiKey) {
+  throw new Error("Missing Hot Updater URL or client API key");
+}
+
+HotUpdater.init({
+  baseURL,
+  requestHeaders: { "x-api-key": clientApiKey },
+  onError: reportUpdateError,
+});
 ```
 
 For bare React Native and Rock, use the project's existing build-time
 configuration mechanism. Validate required values in the native and OTA build
-pipelines; the TypeScript `!` operator alone does not check them at runtime.
-A missing URL or key must not silently disable initialization.
+pipelines too. A missing URL or key must not silently disable initialization.
 
 ### Reporting and custom update timing
 

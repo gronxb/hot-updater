@@ -19,26 +19,17 @@ HotUpdater.init({
   requestHeaders: {
     "x-api-key": "<client-api-key>",
   },
+  onError: (error) => console.error("Hot Updater:", error),
 });
 
 async function stageAppUpdate() {
   try {
-    let checkError: Error | null = null;
     const updateInfo = await HotUpdater.checkForUpdate({
       updateStrategy: "appVersion", // or "fingerprint"
-      onError: (error) => {
-        checkError = error;
-      },
     });
 
-    if (checkError) {
-      throw checkError;
-    }
-
     if (!updateInfo) {
-      return {
-        status: "NO_UPDATE",
-      };
+      return;
     }
 
     // Recommended: let the helper resolve the artifact and stage the selection.

@@ -123,12 +123,19 @@ look like this:
 ```tsx
 import { HotUpdater } from "@hot-updater/react-native";
 
+const baseURL = process.env.EXPO_PUBLIC_HOT_UPDATER_BASE_URL;
+const clientApiKey = process.env.EXPO_PUBLIC_HOT_UPDATER_API_KEY;
+
+if (!baseURL || !clientApiKey) {
+  throw new Error("Missing Hot Updater URL or client API key");
+}
+
 HotUpdater.init({
-  baseURL: process.env.EXPO_PUBLIC_HOT_UPDATER_BASE_URL!,
+  baseURL,
   requestHeaders: {
-    "x-api-key": process.env.EXPO_PUBLIC_HOT_UPDATER_API_KEY!,
+    "x-api-key": clientApiKey,
   },
-  insights: true,
+  onError: (error) => console.error("Hot Updater:", error),
 });
 ```
 

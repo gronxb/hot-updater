@@ -11,7 +11,8 @@ launch result. Both [`init`](/docs/react-native-api/init) and
 [`wrap`](/docs/react-native-api/wrap) wait until native launch verification has
 finished before invoking this callback.
 
-For a manual update flow, configure `init` when your app is ready:
+For a custom update flow, configure `init` at module scope. Add this optional
+callback when you need to observe the launch result:
 
 ```tsx
 import { HotUpdater } from "@hot-updater/react-native";

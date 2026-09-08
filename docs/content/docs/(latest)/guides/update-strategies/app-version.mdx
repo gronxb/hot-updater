@@ -54,7 +54,8 @@ Examples:
 
 ## Client Setup
 
-Initialize Hot Updater once when your app is ready, then choose when to check:
+Initialize Hot Updater at module scope, then choose when to check. Import this
+module from your app entry point:
 
 Keep the `baseURL` and client key from [App setup](/docs/get-started/app-setup).
 Managed providers require this client key; provider and admin credentials stay

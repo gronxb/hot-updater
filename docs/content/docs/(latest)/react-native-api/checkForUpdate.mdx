@@ -14,45 +14,37 @@ download and stage the selected update.
 ```tsx
 import { HotUpdater } from "@hot-updater/react-native";
 
-// First, configure baseURL with init
+// Configure the client once at module scope
 HotUpdater.init({
   baseURL: "<your-update-server-url>",
   requestHeaders: {
     "x-api-key": "<client-api-key>",
   },
+  onError: (error) => console.error("Hot Updater:", error),
 });
 
-// Use checkForUpdate - it reuses the configured baseURL
 async function checkForAppUpdate() {
   try {
-    let checkError: Error | null = null;
     const updateInfo = await HotUpdater.checkForUpdate({
       updateStrategy: "appVersion",
-      onError: (error) => {
-        checkError = error;
-      },
     });
 
-    if (checkError) {
-      throw checkError;
-    }
-
     if (!updateInfo) {
-      return {
-        status: "NO_UPDATE",
-      };
+      return;
     }
 
     // The helper resolves the artifact and preserves the selected transition.
     const didUpdate = await updateInfo.updateBundle();
 
-    if (didUpdate && updateInfo.shouldForceUpdate) {
+    if (!didUpdate) {
+      throw new Error("Could not prepare the update");
+    }
+
+    if (updateInfo.shouldForceUpdate) {
       await HotUpdater.reload();
     }
-    return updateInfo;
   } catch (error) {
-    console.error("Failed to check for update:", error);
-    return null;
+    console.error("Could not prepare update:", error);
   }
 }
 ```
@@ -61,10 +53,10 @@ async function checkForAppUpdate() {
 
 ## Initialize before checking
 
-Configure `HotUpdater.init()` once before calling `checkForUpdate`. This
-connects lifecycle reporting and update requests to your server without
-starting a check. See [custom update flows](/docs/guides/custom-update) for a
-complete integration.
+Configure `HotUpdater.init()` once at module scope before calling
+`checkForUpdate`. This connects lifecycle reporting and update requests to your
+server without starting a check. See
+[custom update flows](/docs/guides/custom-update) for a complete integration.
 
 The optional [`HotUpdater.wrap`](/docs/react-native-api/wrap) flow also
 configures the client and performs its own automatic startup check. Choose
@@ -106,8 +98,10 @@ selected artifact when called:
 
 The function returns `null` when no transition is selected, when checks are
 skipped in development, or after a check fails and calls `onError`. Do not
-interpret `null` alone as a successful up-to-date check. Use `onError` to track
-check failures and `try/catch` for rejected calls, such as a channel conflict.
+interpret `null` alone as a successful up-to-date check. Use the shared
+`init.onError` reporter for check failures and `try/catch` for rejected
+operations. A per-check `onError` is an optional override; it is not needed in
+the normal flow.
 
 When a transition is selected, the result includes its ID from the console, status,
 message, and an `updateBundle()` helper. The `fileUrl` and `fileHash` fields are

@@ -280,6 +280,40 @@ An independent reviewer checked the SDK's callback-error behavior, fresh-channel
 the agent probe and native OTA application. This changes the required reader
 workflow without changing any runtime API or server protocol.
 
+## 13. Keep initialization and error handling idiomatic
+
+**Reader finding:** The examples stored check errors in an outer variable and
+threw them after the callback. The app sample also initialized inside an effect
+and required an app-ready callback before enabling its check button. These
+patterns made routine configuration look like a custom state machine.
+
+**Challenge:** `checkForUpdate` can report a failure through the configured
+handler and resolve `null`; downloads and reloads can reject separately.
+Moving initialization must preserve both paths without inventing a new API
+contract or treating `null` as a successful up-to-date result.
+
+**Decision:** Initialize at module scope, outside React components and effects.
+Use the shared `init.onError` reporter for lifecycle/check errors and ordinary
+`try/catch` for rejected operations. Shared reporters accept `unknown` and do
+not throw. Remove callback capture, readiness gates and redundant state. Use
+runtime checks to narrow Expo environment values instead of non-null assertions.
+
+App setup now owns one **Check and apply update** button. It waits for a
+successful download before reloading for either normal or required updates.
+The first OTA and rollback steps use that same action. Control update timing
+owns the optional background workflow, confirmation handler and small store
+progress component; channel switching stays in its dedicated guide.
+
+An independent reviewer verified native startup polling, the global error
+handler fallback and download/reload behavior against the SDK implementation.
+Native bundle loading owns crash monitoring and first-render verification;
+initialization observes/reports that result. The extracted app example passes
+seven scenarios: no selection, a reported
+check failure, a false download result, a rejected download, normal/required
+updates waiting for download completion, and a rejected reload. Eight example
+units pass strict TypeScript checking against built SDK and React Native types,
+including both Expo environment configurations. No runtime API change is needed.
+
 ## Remaining limits
 
 - Content/source review and route checks do not prove actual OTA delivery for
