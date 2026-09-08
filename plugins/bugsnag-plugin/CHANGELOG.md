@@ -1,5 +1,12 @@
 # @hot-updater/bugsnag-plugin
 
+## 1.0.0-rc.3
+
+### Patch Changes
+
+- Updated dependencies [663d8e9]
+  - @hot-updater/plugin-core@1.0.0-rc.3
+
 ## 1.0.0-rc.2
 
 ### Patch Changes

@@ -1,5 +1,23 @@
 # hot-updater
 
+## 1.0.0-rc.8
+
+### Patch Changes
+
+- Updated dependencies [f869358]
+- Updated dependencies [663d8e9]
+- Updated dependencies [663d8e9]
+  - @hot-updater/supabase@1.0.0-rc.4
+  - @hot-updater/console@1.0.0-rc.6
+  - @hot-updater/server@1.0.0-rc.3
+  - @hot-updater/plugin-core@1.0.0-rc.3
+  - @hot-updater/cloudflare@1.0.0-rc.5
+  - @hot-updater/aws@1.0.0-rc.3
+  - @hot-updater/firebase@1.0.0-rc.4
+  - @hot-updater/android-helper@1.0.0-rc.3
+  - @hot-updater/apple-helper@1.0.0-rc.3
+  - @hot-updater/cli-tools@1.0.0-rc.3
+
 ## 1.0.0-rc.7
 
 ### Minor Changes
