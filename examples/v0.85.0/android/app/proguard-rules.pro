@@ -9,3 +9,8 @@
 
 # Add any project specific keep options here:
 -keep class com.wix.detox.** { *; }
+
+# The separate Detox test APK reads this field from the minified app APK.
+-keep class com.hotupdaterexample.BuildConfig {
+    public static final boolean DEBUG;
+}
