@@ -129,7 +129,7 @@ describe("Detox recovery foreground handling", () => {
     {
       platform: "android",
       stage: "launch crash bundle",
-      synchronization: undefined,
+      synchronization: 0,
     },
   ])(
     "sets launch synchronization before $platform $stage",

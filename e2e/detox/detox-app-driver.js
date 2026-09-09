@@ -97,8 +97,8 @@ class DetoxAppDriver {
         }
         await launchApp({
           newInstance: true,
-          // Native recovery restarts JS; the scenario verifies its native report.
-          ...(isCrashLaunch && !isAndroidRun()
+          // Crash teardown invalidates RN idling resources before native recovery.
+          ...(isCrashLaunch
             ? { launchArgs: { detoxEnableSynchronization: 0 } }
             : {}),
         });
