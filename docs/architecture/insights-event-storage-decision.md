@@ -1,4 +1,4 @@
-# Insights storage decision and RC replay
+# Insights storage decision
 
 Date: 2026-09-09. Baseline: #1289 at
 `ef1a071e83fc870038a591b7b83d91a6a738f96c`. Implements the
@@ -142,63 +142,8 @@ NoSQL authors keep their native document/item layouts. Maintainers own strategy
 research, native reference implementations, and repair procedures. Third-party
 authors implement the supplied plain specification and run conformance tests.
 
-## Offline RC normalization and private-copy rebuild
+## Release scope
 
-The existing single `1.0.0` initialization migration is edited because this is
-unreleased RC storage. Its version marker cannot distinguish old and new layouts.
-**Rerunning initialization does not upgrade an already initialized database.**
-No live infrastructure is changed by this PR.
-
-Use a maintenance window with ingestion and admin reads stopped for the entire
-export, target preparation, verification and cutover. Do not expose a partial
-replay. If downtime cannot be arranged, stop here and design a separate catch-up
-procedure; this PR does not implement online replication.
-
-1. Back up the original provider namespace and record runtime/configuration,
-   indexes, endpoint, credentials and signing configuration. Export canonical
-   `bundle_events` in full using native pagination, not Console chart samples.
-   For DynamoDB export `row` from the canonical `bundle_events` partition only;
-   do not export duplicate user/bundle-index items as additional events.
-2. Initialize a **separate empty target** with the revised initial schema/indexes.
-   Copy all non-Insights data faithfully: bundles, patches, channels, releases,
-   catalogs, API keys, settings and provider-owned catalog/index records. Keep
-   artifact objects and storage/signing configuration. Do not use public model
-   inserts to recreate catalog history or generate replacement IDs.
-3. Convert the old flat event export (one JSON object per line):
-
-   ```sh
-   node --experimental-strip-types scripts/insights-rc-export.ts old-events.ndjson events.ndjson
-   ```
-
-   This maintainer tool only transforms a local file. It refuses to overwrite an
-   output and rejects missing legacy metadata keys or mixed old/new fields.
-   On conversion failure, discard the incomplete output and correct the export.
-   It preserves event IDs and receipt times. The retired `RELEASE_ADOPTED` type
-   becomes `UNCHANGED`, with a null source bundle and update strategy, matching
-   the finalized same-file selection contract. Its original type, source bundle
-   and strategy are retained in `metadata.rc_legacy_event`; release IDs stay intact.
-   Other normalized events are unchanged. It does not invent missing download telemetry.
-4. Load the prepared target plugin in an operator-owned local script and replay
-   each parsed event through `target.models.insights.recordEvent({ event })`, awaiting
-   each call. The normal core boundary validates the event. Do not POST the old
-   event to the client endpoint: that would assign a new ID and receipt time.
-   Replay order does not affect the winning tuple. Keep the target offline until
-   all events succeed. No provider needs to implement another repair method.
-5. Verify complete sorted event IDs and payloads against the normalized export;
-   paginate to exhaustion. Compare exact installation results, current-user
-   pages, scoped/bundle counts and preserved non-Insights rows. Verify native
-   indexes are ready and DynamoDB secondary reads have converged. Run authenticated
-   client/admin smoke checks against the target before switching the preserved
-   endpoint/configuration. Keep the original backup for rollback.
-6. Switch storage and matching server code together, then resume traffic. Retain
-   old storage until verification and an explicit cleanup decision. A rollback
-   after accepting new target writes needs a new frozen export/catch-up plan;
-   blindly switching back would lose those reports.
-
-This same procedure repairs missing/corrupt private latest/user state. Replaying
-into the damaged original store does **not** repair it because duplicate IDs are
-no-ops. Native Firestore and DynamoDB tests deliberately remove a latest copy,
-prove duplicate replay cannot fix it, then replay a frozen export into empty
-Insights storage, including reverse order and duplicate inputs. They verify
-latest/user results and event identity while preserving unrelated data. Unit
-coverage verifies old-column normalization before normal validated replay.
+The unreleased initial schema defines the supported storage layout. One-off cleanup
+of development databases is an operator task and is not shipped as a conversion
+API, compatibility path, migration, or package setup procedure.

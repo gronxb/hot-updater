@@ -12,7 +12,7 @@
 The requested direction is to remove the shared `bundle_installations` table,
 keep events as the source of truth, evaluate derived state only for providers
 that need it, and put ancillary event data in a typed `metadata` JSON field.
-See the [storage decision, measurements, and RC replay procedure](./insights-event-storage-decision.md). This is an unreleased schema change.
+See the [storage decision and measurements](./insights-event-storage-decision.md). This is an unreleased schema change.
 
 ## Problem and intended outcome
 
@@ -370,12 +370,9 @@ generated schemas to remove the shared installation table and add event metadata
 do not append another RC migration or increment the schema version. Provider-local
 indexes or projections belong only in that provider's initialization artifacts.
 
-Existing initialized RC databases are not automatically transformed by rerunning
-initialization. The implementation must document and verify an explicit RC
-cutover: back up/export events, normalize old columns into metadata in replacement
-storage initialized with the revised schema, preserve event IDs/receipt times,
-rebuild any private projection, compare results, then switch the server. Do not
-drop the original event store before verification. This implementation PR does not perform a production cutover.
+One-off conversion of existing development databases stays in private operator
+scripts and backups. Do not ship an RC converter, compatibility path, extra
+migration, conversion tests, or public setup instructions for that cleanup.
 
 Regenerate scaffolds and ORM artifacts, update the existing unreleased 1.0.0
 infrastructure guidance and provider setup docs, and describe the custom-provider
@@ -412,9 +409,9 @@ Required regression scenarios:
 - Built-in bundles with null release IDs and same-file release attribution in
   historical charts; Downloaded continues to leave running distribution intact.
 - Delete/corrupt a disposable private projection, rebuild from events, and verify
-  equivalent query results under the documented rebuild concurrency protocol.
-- Fresh initialization has no shared `bundle_installations` table. The RC export
-  and normalization exercise preserves event identities, counts, and API results.
+  equivalent query results while preserving event identity and current-user membership.
+- Fresh initialization has no shared `bundle_installations` table or RC conversion
+  path.
 
 Completion requires the shared table and storage row to be absent, moved fields
 to exist only in metadata, every previously supported provider to retain its

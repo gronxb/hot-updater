@@ -1,13 +1,5 @@
 # Firebase setup checklist
 
-For an already initialized 1.0.0 RC namespace, inspect actual Insights fields;
-the unchanged version marker does not identify the current event layout.
-Fresh storage uses event `metadata` and no shared installation table. Follow the
-packaged 1.0.0 infrastructure upgrade's offline export/replay procedure for old
-flat-event data before deploying matching code. Preserve non-Insights data,
-artifacts, endpoint and credentials; do not rerun initialization as a conversion.
-
-
 Read COMMON.md first. Follow these steps in order and record verified observations
 in deployment.json. Use available Firebase/Google Cloud tools; CLI paths below
 are relative to this scaffold. The firebase/ project contains the same prepared

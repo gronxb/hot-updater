@@ -15,4 +15,4 @@
 
 Replace shared Insights installation storage with canonical event queries and provider-private latest copies where needed. Custom providers implement `recordEvent({ event })`, `findLatestEvents`, and explicit `countLatestEvents` predicates without lifecycle helpers. Move ancillary event fields into typed `metadata`, reusing Bundle JSON conventions, while preserving SDK requests and Console responses.
 
-This changes the unreleased 1.0.0 initialization and custom database contract. Existing RC stores need the documented offline export/normalization and fresh-target replay; rerunning the initial migration does not convert them. SQL latest-state counts now grow with retained event history; measured costs are documented.
+This changes the unreleased 1.0.0 initialization and custom database contract. SQL latest-state counts now grow with retained event history; measured costs are documented.

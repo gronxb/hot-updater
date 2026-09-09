@@ -413,6 +413,41 @@ exec node "${path.join(firebaseFunctionsPackagePath, "lib/bin/firebase-functions
     });
   });
 
+  it("preserves JSON event bodies through the Functions entrypoint", async () => {
+    const event = {
+      installId: "functions-json-body",
+      userId: "runtime-acceptance",
+      username: "다운로드 확인",
+      platform: "ios",
+      appVersion: "1.0.0",
+      channel: "production",
+      cohort: "default",
+      fingerprintHash: null,
+      fromReleaseId: null,
+      toReleaseId: null,
+      fromBundleId: "00000000-0000-0000-0000-000000000000",
+      toBundleId: "00000000-0000-0000-0000-000000000002",
+      updateStrategy: "appVersion",
+    };
+    for (const type of ["UPDATE_DOWNLOADED", "UPDATE_APPLIED"] as const) {
+      const response = await invokeHandler("/events", {
+        method: "POST",
+        headers: { "content-type": "application/json", "x-api-key": API_KEY },
+        body: JSON.stringify({ ...event, type }),
+      });
+      expect(response.status).toBe(204);
+      await expect(
+        seedHotUpdater.insights.getInstallation({ installId: event.installId }),
+      ).resolves.toMatchObject({
+        username: event.username,
+        latestStatus: type,
+        lastKnownBundleId:
+          type === "UPDATE_DOWNLOADED" ? event.fromBundleId : event.toBundleId,
+        pendingBundleId: type === "UPDATE_DOWNLOADED" ? event.toBundleId : null,
+      });
+    }
+  });
+
   it("does not support the legacy exact path", async () => {
     const response = await invokeHandler("/api/check-update");
 
