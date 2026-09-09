@@ -144,19 +144,28 @@ Each core object operation receives one input object and returns one result
 object so new fields can be added without introducing positional parameters or
 changing the result shape.
 
-| Consumer                                          | Required operations              |
-| ------------------------------------------------- | -------------------------------- |
-| `hot-updater deploy`                              | `put`, `get`, `exists`, `delete` |
-| `hot-updater patch`                               | `get`, `put`, `delete`           |
-| `hot-updater bundle promote`                     | None; reuses the existing artifact |
-| Console server mutations                          | `get`, `put`, `delete`           |
-| `createHotUpdater({ storage })` update responses  | `getDownloadUrl`                 |
-| `createHotUpdater({ storage })` download handling | `get`                            |
+| Consumer                                          | Required operations                |
+| ------------------------------------------------- | ---------------------------------- |
+| `hot-updater deploy`                              | `put`, `get`, `exists`, `delete`   |
+| `hot-updater patch`                               | `get`, `put`, `delete`             |
+| `hot-updater bundle promote`                      | None; reuses the existing artifact |
+| Console server mutations                          | `get`, `put`, `delete`             |
+| `createHotUpdater({ storage })` update responses  | `getDownloadUrl`                   |
+| `createHotUpdater({ storage })` download handling | `get`                              |
 
 `delete` always targets exactly one object and returns `{ deleted: true }` once
 that object is absent. Deleting an already-missing object has the same result,
 which makes retrying cleanup safe. Prefix or bucket cleanup is an administrative
 provider operation and is intentionally outside this contract.
+
+To support [storage pruning](/docs/guides/storage-cleanup), a plugin can also
+implement the optional `listObjects(prefix?)` and `deleteObjects(keys)`
+management operations. Listed `StorageObject` values include `key`,
+`storageUri`, `size` and an optional `lastModifiedAt`; keys and the list prefix
+are relative to the configured storage base path. Delete only the exact keys
+supplied by the caller. Pruning protects objects without a modification time.
+These capabilities stay on the same plugin object and do not change the
+single-object contract above.
 
 `put.body` is a one-shot Web stream. A provider must consume or cancel it before
 the returned promise settles. `contentLength` is supplied when the consumer

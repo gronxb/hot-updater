@@ -105,29 +105,30 @@ a deployment or E2E flow must wait for CloudFront propagation; it defaults to
 
 ## Usage
 
-```typescript
-import { dynamoDB } from "@hot-updater/aws";
+```typescript title="hot-updater.config.ts"
+import { dynamoDB } from "@hot-updater/aws"; // [!code ++]
 import { defineConfig } from "hot-updater";
 
 export default defineConfig({
-  database: dynamoDB({
-    tableName: "hot-updater",
-    region: "us-east-1",
-    credentials: {
-      accessKeyId: process.env.AWS_ACCESS_KEY_ID,
-      secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
-    },
-  }),
+  database: dynamoDB({ // [!code ++]
+    tableName: "hot-updater", // [!code ++]
+    region: "us-east-1", // [!code ++]
+    credentials: { // [!code ++]
+      accessKeyId: process.env.AWS_ACCESS_KEY_ID, // [!code ++]
+      secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY, // [!code ++]
+    }, // [!code ++]
+  }), // [!code ++]
 });
 ```
 
 ## Complete Example
 
-Combined storage and database:
+This example combines storage and database with your existing build plugin:
 
 ```typescript
 import { dynamoDB, s3Storage } from "@hot-updater/aws";
 import { defineConfig } from "hot-updater";
+import { build } from "./build";
 
 const credentials = {
   accessKeyId: process.env.AWS_ACCESS_KEY_ID,
@@ -135,6 +136,8 @@ const credentials = {
 };
 
 export default defineConfig({
+  build,
+  updateStrategy: "appVersion",
   storage: s3Storage({
     region: "us-east-1",
     credentials,
@@ -152,19 +155,19 @@ export default defineConfig({
 
 Use `dynamoDB` with `createHotUpdater` for self-hosted servers:
 
-```typescript
-import { dynamoDB } from "@hot-updater/aws";
+```typescript title="src/hotUpdater.ts"
+import { dynamoDB } from "@hot-updater/aws"; // [!code ++]
 import { createHotUpdater } from "@hot-updater/server";
 
 const hotUpdater = createHotUpdater({
-  database: dynamoDB({
-    tableName: process.env.AWS_DYNAMODB_TABLE_NAME!,
-    region: process.env.AWS_REGION!,
-    credentials: {
-      accessKeyId: process.env.AWS_ACCESS_KEY_ID!,
-      secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY!,
-    },
-  }),
+  database: dynamoDB({ // [!code ++]
+    tableName: process.env.AWS_DYNAMODB_TABLE_NAME!, // [!code ++]
+    region: process.env.AWS_REGION!, // [!code ++]
+    credentials: { // [!code ++]
+      accessKeyId: process.env.AWS_ACCESS_KEY_ID!, // [!code ++]
+      secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY!, // [!code ++]
+    }, // [!code ++]
+  }), // [!code ++]
   clientAccess: { type: "api-key" },
 });
 ```
@@ -185,6 +188,6 @@ Unfiltered totals use the transactionally maintained metadata counter. Batch
 reads retry unprocessed keys with bounded exponential backoff.
 
 DynamoDB permits at most 100 actions in one transaction. Every
-`commit({ mutations })` envelope is planned and submitted as one transaction,
+`commit({ changes, expectations })` envelope is planned and submitted as one transaction,
 including relation counters and cascade deletions; a commit that exceeds the
 service limit is rejected before it can be partially applied.

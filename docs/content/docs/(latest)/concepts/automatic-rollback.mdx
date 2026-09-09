@@ -11,9 +11,11 @@ Automatic rollback is the safety mechanism that prevents a bad OTA bundle from t
 
 When a new bundle is installed, Hot Updater does not trust it immediately. It launches that bundle in a temporary state first, keeps the last known-good bundle as a fallback, and only treats the new bundle as safe after startup succeeds.
 
-This happens automatically when you use `HotUpdater.wrap()`. For custom manual
-flows without a root wrapper, call [`HotUpdater.init()`](/docs/react-native-api/init)
-when your runtime considers the app ready.
+For a custom update flow, call [`HotUpdater.init()`](/docs/react-native-api/init)
+once at the top level of your app's entry module. The SDK waits for native
+launch verification internally; your app chooses when to check and stage updates.
+The optional [`HotUpdater.wrap()`](/docs/react-native-api/wrap) flow connects the
+same lifecycle handling to its automatic startup check.
 
 ## Core Mechanism
 
@@ -48,9 +50,11 @@ Typical examples include:
 - a native crash while the new bundle is loading
 - a fatal error before the first screen appears
 
-This is why Hot Updater must be configured with `HotUpdater.wrap()` or
-`HotUpdater.init()` for rollback support. These APIs connect bundle verification
-to the app lifecycle.
+Native bundle loading starts crash monitoring and marks a launch successful
+when the first React Native content appears. Configure `HotUpdater.init()` at
+module scope to connect update requests and observe or report that native
+launch result. The optional `HotUpdater.wrap()` flow uses the same native
+recovery mechanism.
 
 ## What Happens During Rollback?
 
@@ -62,6 +66,13 @@ When rollback happens, Hot Updater:
 - records the failed bundle in crash history
 
 This lets users reopen the app normally instead of hitting the same startup failure again.
+
+Observe the completed launch through
+[`onNotifyAppReady`](/docs/react-native-api/notifyAppReady) in your `init` or
+`wrap` configuration. A `RECOVERED` result identifies the failed artifact as
+`fromBundleId` and the restored artifact as `toBundleId`, with optional Release
+IDs for each side. [Insights](/docs/guides/insights) reports these outcomes to
+the configured server when client reporting is enabled.
 
 ## Managing Crashed Bundles
 

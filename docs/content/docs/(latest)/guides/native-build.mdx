@@ -15,7 +15,9 @@ Hot Updater ships dedicated native helpers so you can create store-ready artifac
 - React Native project with both `android/` and `ios/` directories tracked.
 - `hot-updater.config.ts` defines at least one scheme under `nativeBuild.android` and/or `nativeBuild.ios`.
 - Platform toolchains are installed locally (`gradlew`, `xcodebuild`, CocoaPods (or Bundler), `devicectl`/`simctl`).
-- Run `hot-updater channel set <channel>` so `HOT_UPDATER_CHANNEL` exists in Info.plist and `com.hotupdater.CHANNEL` exists in AndroidManifest.xml.
+- Confirm the [default channel](/docs/guides/channel-management) before building.
+  Run `hot-updater channel set <channel>` when choosing a channel other than the
+  default `production`.
 - Decide on an update strategy (`appVersion` or `fingerprint`); the CLI follows it automatically.
 
 ## Configure nativeBuild schemes
@@ -26,6 +28,7 @@ Schemes describe how each platform should be built. Define as many as needed (de
 import { defineConfig } from "hot-updater";
 
 export default defineConfig({
+  // [!code ++:32]
   nativeBuild: {
     android: {
       releaseApk: {
@@ -133,7 +136,7 @@ Options:
 ```
 
 ```package-install
-EXPERIMENTAL=1 npx hot-updater run:android -s debugApk -d "Pixel_6_Pro_API_35" --port 8082
+EXPERIMENTAL=1 npx hot-updater run:android -s releaseApk -d "Pixel_6_Pro_API_35" --port 8082
 ```
 
 - `-d` selects a specific device; otherwise all connected devices receive the build (or the CLI launches the first emulator).

@@ -28,7 +28,7 @@ npm install @hot-updater/standalone --save-dev
 Configure your CLI to connect to your self-hosted server:
 
 ```typescript title="hot-updater.config.ts (excerpt)"
-import { standaloneRepository } from "@hot-updater/standalone";
+import { standaloneRepository } from "@hot-updater/standalone"; // [!code ++]
 import { defineConfig } from "hot-updater";
 
 const adminToken = process.env.HOT_UPDATER_ADMIN_TOKEN;
@@ -37,68 +37,24 @@ if (!adminToken) {
 }
 
 export default defineConfig({
-  build: /* your build plugin */,
-  storage: /* your storage plugin */,
-  database: standaloneRepository({
-    baseUrl: "http://localhost:3000/hot-updater/admin",
-    commonHeaders: {
-      Authorization: `Bearer ${adminToken}`,
-    },
-  }),
+  build, // Your existing build plugin
+  storage, // Your existing storage plugin
+  database: standaloneRepository({ // [!code ++]
+    baseUrl: "http://localhost:3000/hot-updater/admin", // [!code ++]
+    commonHeaders: { // [!code ++]
+      Authorization: `Bearer ${adminToken}`, // [!code ++]
+    }, // [!code ++]
+  }), // [!code ++]
   updateStrategy: "appVersion",
 });
 ```
 
 ## Remote Storage Adapter
 
-`standaloneStorage` is a CLI-side adapter for sending storage operations to a
-remote HTTP service. `baseUrl` selects that HTTP transport, while `protocol`
-selects the persisted Storage URI scheme owned by the adapter. They are
-independent: an HTTPS service can, for example, own `s3://...` URIs.
-
-```typescript title="hot-updater.config.ts"
-import { bare } from "@hot-updater/bare";
-import {
-  standaloneRepository,
-  standaloneStorage,
-} from "@hot-updater/standalone";
-import { defineConfig } from "hot-updater";
-
-const adminToken = process.env.HOT_UPDATER_ADMIN_TOKEN;
-if (!adminToken) {
-  throw new Error("HOT_UPDATER_ADMIN_TOKEN is required");
-}
-
-export default defineConfig({
-  build: bare({ enableHermes: true }),
-  database: standaloneRepository({
-    baseUrl: "https://api.example.com/hot-updater/admin",
-    commonHeaders: {
-      Authorization: `Bearer ${adminToken}`,
-    },
-  }),
-  storage: standaloneStorage({
-    baseUrl: "https://storage.example.com/hot-updater",
-    protocol: "s3",
-  }),
-  updateStrategy: "appVersion",
-});
-```
-
-The remote storage service must implement these separate routes:
-
-| Method   | Default route | Request                             | Success response                         |
-| -------- | ------------- | ----------------------------------- | ---------------------------------------- |
-| `POST`   | `/upload`     | multipart `file` and `key` fields   | JSON `{ "storageUri": "s3://..." }`      |
-| `POST`   | `/get`        | JSON `{ "storageUri": "s3://..." }` | Object bytes, or `404` when missing      |
-| `POST`   | `/exists`     | JSON `{ "storageUri": "s3://..." }` | JSON `{ "exists": true }`                |
-| `DELETE` | `/delete`     | JSON `{ "storageUri": "s3://..." }` | Any `2xx`, or `404` for an absent object |
-
-`standaloneStorage` intentionally has no `getDownloadUrl` capability. It is
-for CLI-to-service storage transport, not the runtime storage passed to
-`createHotUpdater`. The built-in bundle routes mounted by `createHotUpdater`
-do not implement `/upload`, `/get`, `/exists`, or `/delete`; your remote
-storage service must provide them separately.
+For CLI uploads through a separate HTTP storage service, use
+[`standaloneStorage`](/docs/storage-plugins/standalone). Its configuration and
+service contract belong to Storage Plugins; the repository below manages
+database rows through the admin API.
 
 ## Configuration
 
@@ -133,7 +89,7 @@ interface Routes {
 
 ### Secure Example
 
-```typescript
+```typescript title="hot-updater.config.ts"
 const adminToken = process.env.HOT_UPDATER_ADMIN_TOKEN;
 if (!adminToken) {
   throw new Error("HOT_UPDATER_ADMIN_TOKEN is required");
@@ -141,9 +97,9 @@ if (!adminToken) {
 
 database: standaloneRepository({
   baseUrl: "http://localhost:3000/hot-updater/admin",
-  commonHeaders: {
-    Authorization: `Bearer ${adminToken}`,
-  },
+  commonHeaders: { // [!code ++]
+    Authorization: `Bearer ${adminToken}`, // [!code ++]
+  }, // [!code ++]
 });
 ```
 
@@ -153,18 +109,18 @@ the server setup.
 
 ### Alternate Authentication
 
-```typescript
+```typescript title="hot-updater.config.ts"
 database: standaloneRepository({
   baseUrl: process.env.HOT_UPDATER_ADMIN_URL!,
   commonHeaders: {
-    "X-Internal-Service-Key": process.env.INTERNAL_SERVICE_KEY!,
+    "X-Internal-Service-Key": process.env.INTERNAL_SERVICE_KEY!, // [!code ++]
   },
 });
 ```
 
 ### With Custom Routes
 
-```typescript
+```typescript title="hot-updater.config.ts"
 const adminToken = process.env.HOT_UPDATER_ADMIN_TOKEN;
 if (!adminToken) {
   throw new Error("HOT_UPDATER_ADMIN_TOKEN is required");
@@ -175,25 +131,25 @@ database: standaloneRepository({
   commonHeaders: {
     Authorization: `Bearer ${adminToken}`,
   },
-  routes: {
-    create: () => ({
-      path: "/v1/bundles",
-      headers: { "X-Custom-Header": "value" },
-    }),
-    update: (bundleId) => ({
-      path: `/v1/bundles/${bundleId}`,
-      headers: { "X-Custom-Header": "value" },
-    }),
-    list: () => ({
-      path: "/v1/bundles",
-    }),
-    retrieve: (bundleId) => ({
-      path: `/v1/bundles/${bundleId}`,
-    }),
-    delete: (bundleId) => ({
-      path: `/v1/bundles/${bundleId}`,
-    }),
-  },
+  routes: { // [!code ++]
+    create: () => ({ // [!code ++]
+      path: "/v1/bundles", // [!code ++]
+      headers: { "X-Custom-Header": "value" }, // [!code ++]
+    }), // [!code ++]
+    update: (bundleId) => ({ // [!code ++]
+      path: `/v1/bundles/${bundleId}`, // [!code ++]
+      headers: { "X-Custom-Header": "value" }, // [!code ++]
+    }), // [!code ++]
+    list: () => ({ // [!code ++]
+      path: "/v1/bundles", // [!code ++]
+    }), // [!code ++]
+    retrieve: (bundleId) => ({ // [!code ++]
+      path: `/v1/bundles/${bundleId}`, // [!code ++]
+    }), // [!code ++]
+    delete: (bundleId) => ({ // [!code ++]
+      path: `/v1/bundles/${bundleId}`, // [!code ++]
+    }), // [!code ++]
+  }, // [!code ++]
 });
 ```
 

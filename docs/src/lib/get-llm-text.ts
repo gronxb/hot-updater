@@ -1,11 +1,19 @@
 import type { InferPageType } from "fumadocs-core/source";
 
-import { source } from "@/lib/source";
+import type { source } from "@/lib/source";
 
-export async function getLLMText(page: InferPageType<typeof source>) {
-  const processed = await page.data.getText("processed");
+import { parseDocument } from "../../plugins/docs-content";
 
-  return `# ${page.data.title} (${page.url})
-
-${processed}`;
+export async function getLLMText(page: {
+  url: string;
+  data: Pick<
+    InferPageType<typeof source>["data"],
+    "title" | "description" | "getText"
+  >;
+}) {
+  const { markdown } = parseDocument(await page.data.getText("raw"));
+  const description = page.data.description
+    ? `\n\n> ${page.data.description}`
+    : "";
+  return `# ${page.data.title} (https://hot-updater.dev${page.url})${description}\n\n${markdown}`;
 }

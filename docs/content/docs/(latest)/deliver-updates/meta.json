@@ -1,0 +1,15 @@
+{
+  "title": "Deliver updates",
+  "description": "Build, target, and release compatible updates.",
+  "icon": "Send",
+  "pages": [
+    "../guides/deploy",
+    "../guides/channel-management",
+    "../guides/runtime-channel-switch",
+    "../guides/rollout-cohorts",
+    "../guides/update-strategies",
+    "../guides/bundle-diffing",
+    "../guides/compression",
+    "../guides/native-build"
+  ]
+}

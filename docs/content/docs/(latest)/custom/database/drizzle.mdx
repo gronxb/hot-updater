@@ -5,6 +5,13 @@ icon: drizzle
 version: "v0.22.0"
 ---
 
+## Before you start
+
+Use this recipe in the server project from the [custom-server quick start](/docs/custom/quick-start)
+or your existing backend. Make the database and storage environment variables
+available to the server and schema commands. The React Native project's deploy
+configuration is a separate step.
+
 ## Installation
 
 Install Drizzle ORM and SQLite driver.
@@ -14,7 +21,7 @@ npm install @hot-updater/server @hot-updater/aws drizzle-orm better-sqlite3
 ```
 
 ```package-install
-npm install --save-dev @hot-updater/bare @hot-updater/standalone hot-updater drizzle-kit @types/better-sqlite3
+npm install --save-dev hot-updater drizzle-kit @types/better-sqlite3
 ```
 
 For other databases, see [Drizzle's adapter documentation](https://orm.drizzle.team/docs/get-started).
@@ -26,10 +33,10 @@ Create a database connection file:
 ```typescript title="src/drizzle.ts"
 import { drizzle } from "drizzle-orm/better-sqlite3";
 import Database from "better-sqlite3";
-import * as schema from "../hot-updater-schema";
+import * as schema from "../hot-updater-schema"; // [!code ++]
 
 const sqlite = new Database("./data/database.db");
-export const db = drizzle(sqlite, { schema });
+export const db = drizzle(sqlite, { schema }); // [!code ++]
 ```
 
 ## Hot Updater Configuration
@@ -38,12 +45,12 @@ Create the Hot Updater instance:
 
 ```typescript title="src/hotUpdater.ts"
 import { createHotUpdater } from "@hot-updater/server";
-import { drizzleAdapter } from "@hot-updater/server/adapters/drizzle";
+import { drizzleAdapter } from "@hot-updater/server/adapters/drizzle"; // [!code ++]
 import { s3Storage } from "@hot-updater/aws";
 import { db } from "./drizzle";
 
 export const hotUpdater = createHotUpdater({
-  database: drizzleAdapter({ db, provider: "sqlite" }),
+  database: drizzleAdapter({ db, provider: "sqlite" }), // [!code ++]
   clientAccess: { type: "api-key" },
   storage: [
     s3Storage({
@@ -78,7 +85,7 @@ Point Drizzle Kit at the generated file and the same SQLite database:
 import { defineConfig } from "drizzle-kit";
 
 export default defineConfig({
-  schema: "./hot-updater-schema.ts",
+  schema: "./hot-updater-schema.ts", // [!code ++]
   out: "./drizzle",
   dialect: "sqlite",
   dbCredentials: {
@@ -101,60 +108,19 @@ npx drizzle-kit push
 
 ## CLI Configuration
 
-Configure your CLI to use this self-hosted server.
-
-```typescript title="hot-updater.config.ts"
-import { bare } from "@hot-updater/bare";
-import { s3Storage } from "@hot-updater/aws";
-import { standaloneRepository } from "@hot-updater/standalone";
-import { defineConfig } from "hot-updater";
-
-const adminToken = process.env.HOT_UPDATER_ADMIN_TOKEN;
-if (!adminToken) {
-  throw new Error("HOT_UPDATER_ADMIN_TOKEN is required");
-}
-
-export default defineConfig({
-  build: bare({ enableHermes: true }),
-  storage: s3Storage({
-    region: "auto",
-    endpoint: process.env.R2_ENDPOINT,
-    credentials: {
-      accessKeyId: process.env.R2_ACCESS_KEY_ID!,
-      secretAccessKey: process.env.R2_SECRET_ACCESS_KEY!,
-    },
-    bucketName: process.env.R2_BUCKET_NAME!,
-  }),
-  database: standaloneRepository({
-    baseUrl: "http://localhost:3000/hot-updater/admin",
-    commonHeaders: {
-      Authorization: `Bearer ${adminToken}`,
-    },
-  }),
-  updateStrategy: "appVersion",
-});
-```
-
-<Callout type="warn">
-  The CLI `storage` plugin must match a plugin in your server's
-  `createHotUpdater({storage})` array. Both use `s3Storage` in this example.
-  Mount `handlers.admin` only behind fail-closed framework authentication at
-  `/hot-updater/admin/*`. The CLI header above assumes the Bearer middleware from the Quick
-  Start.
-</Callout>
+After the schema is applied, [create the client API key](/docs/custom/api-key-authentication#bootstrap-a-self-hosted-client)
+using this same direct server configuration. Then
+[connect the React Native project's CLI](/docs/custom/cli-configuration) to the
+protected admin mount. Its storage configuration must match a server entry.
 
 ## API Endpoints
 
-The configuration above enables the update-check routes:
+The adapter persists data; your framework mounts the HTTP handlers. Continue
+with the [Hono](/docs/custom/frameworks/hono), [Express](/docs/custom/frameworks/express)
+or [Elysia](/docs/custom/frameworks/elysia) recipe. See the
+[handler boundaries](/docs/custom/overview#runtime-policy) and
+[repository contract](/docs/database-plugins/standalone#server-contract) for
+client and admin access.
 
-| Method | Endpoint                                                                                        | Description                            |
-| ------ | ----------------------------------------------------------------------------------------------- | -------------------------------------- |
-| GET    | `/hot-updater/version`                                                                          | Get the server version                 |
-| GET    | `/hot-updater/release-catalogs/app-version/:platform/:channelKey/:appVersion`                   | Resolve an app-version Release Catalog |
-| GET    | `/hot-updater/release-catalogs/fingerprint/:platform/:channelKey/:fingerprintHash`              | Resolve a fingerprint Release Catalog  |
-| GET    | `/hot-updater/artifacts/:targetBundleId/from/:currentBundleId`                                  | Resolve an artifact                    |
-
-`handlers.admin` owns the Bundle, Channel, Release, Release Catalog, and
-database-commit admin routes under `/hot-updater/admin/*`. See [CLI Configuration](/docs/custom/cli-configuration#api-endpoints) for their complete
-request and response contract. These admin routes do not authenticate themselves; keep the fail-closed
-framework middleware described above.
+Finish with [Set up your app](/docs/get-started/app-setup) and
+[Test an OTA update](/docs/get-started/test-ota).

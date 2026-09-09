@@ -6,6 +6,8 @@ import {
   defineDocs,
 } from "fumadocs-mdx/config";
 
+import { codeSnippetTransformers } from "./plugins/code-snippets";
+
 export const blogPosts = defineCollections({
   type: "doc",
   dir: "content/blog",
@@ -75,6 +77,10 @@ const convert = (cmd: string, pm: string): string => {
 
 export default defineConfig({
   mdxOptions: {
+    rehypeCodeOptions: {
+      themes: { light: "github-light", dark: "github-dark" },
+      transformers: codeSnippetTransformers,
+    },
     remarkPlugins: [
       [
         remarkNpm,

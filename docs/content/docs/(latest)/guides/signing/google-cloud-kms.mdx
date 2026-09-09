@@ -1,0 +1,79 @@
+---
+title: "Google Cloud KMS Signing"
+description: "Configure a pinned Google Cloud KMS key version for signed OTA deployments"
+icon: Shield
+---
+
+## Set Up Google Cloud KMS Signing
+
+Google Cloud projects, including Firebase projects, can use Cloud KMS without
+exporting the private key. Pin a full CryptoKeyVersion resource name; a moving
+alias would stop matching the public key embedded in installed apps.
+
+[Review the signing rollout](/docs/guides/bundle-signing#choose-and-roll-out-a-signer)
+before adding a signer to an existing Hot Updater project.
+
+### 1. Create the signing key
+
+Create an asymmetric signing key version using an RSA PKCS#1 SHA-256 algorithm,
+then export only that version's public key:
+
+```bash
+mkdir -p keys
+
+gcloud kms keyrings create hot-updater --location=global
+gcloud kms keys create bundle-signing \
+  --location=global \
+  --keyring=hot-updater \
+  --purpose=asymmetric-signing \
+  --default-algorithm=rsa-sign-pkcs1-4096-sha256
+gcloud kms keys versions get-public-key 1 \
+  --location=global \
+  --keyring=hot-updater \
+  --key=bundle-signing \
+  --output-file=keys/public-key.pem
+```
+
+### 2. Configure the provider
+
+```package-install
+npm install '@google-cloud/kms@^6.0.0' --save-dev
+```
+
+`@google-cloud/kms` 6 requires Node.js 22 or later. This requirement applies
+only to deploy environments that use `googleCloudKmsSigning`; the other signing
+options retain Hot Updater's Node.js 20.19 baseline.
+
+```ts title="hot-updater.config.ts"
+import { defineConfig } from "hot-updater";
+import { googleCloudKmsSigning } from "hot-updater/signing"; // [!code ++]
+
+export default defineConfig({
+  // ...other config
+  // [!code ++:4]
+  signing: googleCloudKmsSigning({
+    keyVersion:
+      "projects/PROJECT/locations/LOCATION/keyRings/RING/cryptoKeys/KEY/cryptoKeyVersions/1",
+  }),
+});
+```
+
+The provider uses Application Default Credentials. Locally, authenticate ADC;
+in Google Cloud, use an attached service account; in GitHub Actions, use
+Workload Identity Federation. Grant the key-level
+`roles/cloudkms.signerVerifier` role, or a custom role limited to signing and
+reading the public key. Only RSA PKCS#1 SHA-256 key versions are accepted.
+
+Google Cloud KMS submits `SHA-256(message)` to its digest API to preserve the
+[shared RSA-SHA256 protocol](/docs/guides/signing/remote#signing-protocol).
+See [remote call behavior](/docs/guides/signing/remote#remote-call-behavior)
+for request caching and deployment failures.
+
+## Embed the Public Key and Release the App
+
+Follow the shared steps for [Expo and EAS Build](/docs/guides/bundle-signing#expo-and-eas-build)
+or [React Native CLI](/docs/guides/bundle-signing#manual-public-key-configuration).
+Build and release the native app before deploying its first signed OTA bundle.
+
+When replacing an existing key, follow [Key Rotation](/docs/guides/bundle-signing#key-rotation)
+before changing the signer used for installed apps.

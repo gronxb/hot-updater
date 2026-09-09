@@ -12,9 +12,9 @@ npm install @hot-updater/supabase --save-dev
 
 ## Setup
 
-Set up the backend with an [AI agent or the interactive
-CLI](/docs/managed/supabase#step-2-configure-supabase), then use the
-configuration below.
+For a complete provider deployment, follow the [Supabase setup](/docs/managed/supabase#step-2-configure-supabase).
+For an existing bucket or a custom server, use the storage configuration below;
+you do not need to provision the provider's database and server to use this plugin.
 
 ## Configuration
 
@@ -30,17 +30,17 @@ interface SupabaseStorageConfig {
 
 ## Usage
 
-```typescript
-import { supabaseStorage } from "@hot-updater/supabase";
+```typescript title="hot-updater.config.ts"
+import { supabaseStorage } from "@hot-updater/supabase"; // [!code ++]
 import { defineConfig } from "hot-updater";
 
 export default defineConfig({
-  storage: supabaseStorage({
-    supabaseUrl: process.env.SUPABASE_URL,
-    supabaseServiceRoleKey: process.env.SUPABASE_SERVICE_ROLE_KEY,
-    bucketName: "hot-updater-bundles",
-    basePath: "bundles", // Optional
-  }),
+  storage: supabaseStorage({ // [!code ++]
+    supabaseUrl: process.env.SUPABASE_URL, // [!code ++]
+    supabaseServiceRoleKey: process.env.SUPABASE_SERVICE_ROLE_KEY, // [!code ++]
+    bucketName: "hot-updater-bundles", // [!code ++]
+    basePath: "bundles", // Optional // [!code ++]
+  }), // [!code ++]
   // ... other config
 });
 ```

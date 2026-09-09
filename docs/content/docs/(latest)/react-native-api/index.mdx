@@ -1,0 +1,75 @@
+---
+title: "React Native API"
+description: "Find the client API for configuration, updates, targeting, progress, and diagnostics."
+icon: Smartphone
+---
+
+## Find an API
+
+Use this reference when implementing a specific client behavior. For the full
+app integration and first OTA, start with [app integration](/docs/get-started/app-setup).
+
+## Configure the app
+
+Start with `init` to control check timing and update UI in your app. `wrap` is
+an optional alternative for an automatic startup flow. Use one configuration
+API per app:
+
+| API | Use it to |
+| --- | --- |
+| [`init`](/docs/react-native-api/init) | Configure a custom flow and lifecycle reporting without starting an update check. |
+| [`wrap`](/docs/react-native-api/wrap) | Optionally check automatically at startup, stage standard updates, and reload force updates by default. |
+
+Both enable Insights reporting by default. See [Insights](/docs/guides/insights)
+for reporting, optional user identity, and opting out.
+
+## Check, stage, and reload
+
+| API | Use it to |
+| --- | --- |
+| [`checkForUpdate`](/docs/react-native-api/checkForUpdate) | Select a compatible transition from the Release Catalog. |
+| [`updateBundle`](/docs/react-native-api/updateBundle) | Stage a transition; prefer the helper returned by `checkForUpdate`. |
+| [`reload`](/docs/react-native-api/reload) | Start the staged update immediately. |
+| [`setReloadBehavior`](/docs/react-native-api/setReloadBehavior) | Choose Android process restart, React Native reload, or a custom host handler. |
+
+A staged update can change the selected ID before its code runs. See
+[custom update flows](/docs/guides/custom-update) for check timing and UI, and
+[how updates work](/docs/concepts/how-it-works) for the delivery lifecycle.
+
+## Target channels and cohorts
+
+| API | Use it to |
+| --- | --- |
+| [`getChannel`](/docs/react-native-api/getChannel) | Read the effective channel. |
+| [`getDefaultChannel`](/docs/react-native-api/getDefaultChannel) | Read the channel embedded in the native build. |
+| [`isChannelSwitched`](/docs/react-native-api/isChannelSwitched) | Inspect whether a runtime channel switch is active. |
+| [`resetChannel`](/docs/react-native-api/resetChannel) | Clear OTA state and restore the built-in bundle selection. |
+| [`getCohort`](/docs/react-native-api/getCohort) | Read the persisted rollout cohort. |
+| [`setCohort`](/docs/react-native-api/setCohort) | Override the cohort for future checks. |
+
+For workflows, see [runtime channel switching](/docs/guides/runtime-channel-switch)
+and [rollout and cohorts](/docs/guides/rollout-cohorts).
+
+## Observe progress
+
+| API | Use it to |
+| --- | --- |
+| [`useHotUpdaterStore`](/docs/react-native-api/useHotUpdaterStore) | Subscribe to progress in React UI. |
+| [`addListener`](/docs/react-native-api/addListener) | Handle raw progress events with an unsubscribe function. |
+| [`isUpdateDownloaded`](/docs/react-native-api/isUpdateDownloaded) | Read download readiness for the current app session. |
+
+## Diagnose an installation
+
+| API | Use it to |
+| --- | --- |
+| [`getAppVersion`](/docs/react-native-api/getAppVersion) | Read the native app version. |
+| [`getBundleId`](/docs/react-native-api/getBundleId) | Read the selected update ID shown in the Console. |
+| [`notifyAppReady`](/docs/react-native-api/notifyAppReady) | Read the native launch outcome and applied or recovered transition IDs. |
+| [`getActiveUpdateState`](/docs/react-native-api/getActiveUpdateState) | Inspect active and stable selections, artifact IDs, and pending verification. |
+| [`getInstallId`](/docs/react-native-api/getInstallId) | Identify an installation in Insights or a support report. |
+| [`setUser`](/docs/react-native-api/setUser) | Associate optional user identity with future Insights reports. |
+| [`getCrashHistory`](/docs/react-native-api/getCrashHistory) | Inspect artifacts rejected after a crash. |
+| [`clearCrashHistory`](/docs/react-native-api/clearCrashHistory) | Allow the device to retry previously rejected artifacts. |
+
+See [Insights](/docs/guides/insights) for reporting limits and
+[automatic rollback](/docs/concepts/automatic-rollback) for recovery behavior.

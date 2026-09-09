@@ -28,24 +28,28 @@ Once wrapped, sourcemaps will automatically be uploaded to Datadog when running 
 
 ```ts title="hot-updater.config.ts"
 import { bare } from "@hot-updater/bare";
-import { withDatadog } from "@hot-updater/datadog-plugin";
+import { withDatadog } from "@hot-updater/datadog-plugin"; // [!code ++]
 import { defineConfig } from "hot-updater";
 import { config } from "dotenv";
 
 config({ path: ".env.hotupdater" });
 
 export default defineConfig({
-  build: withDatadog(
+  build: withDatadog( // [!code ++]
     bare({
       enableHermes: false, // or true, depending if you want to use it
-      sourcemap: true, // [!code ++] Required for sourcemap upload
+      // Required for sourcemap upload
+      sourcemap: true, // [!code ++]
     }),
-    {
-      buildNumber: "build number",       // [!code ++] The build number through which Datadog will sort the uploaded sourcemaps belonging to the same version
-      releaseVersion: "release version",    // [!code ++] This is the release version that must match the release version used to stream logs from the app
-      service: "service", // [!code ++] The datadog service to which the sourcemaps belong
-    },
-  ),
+    { // [!code ++]
+      // Sort sourcemaps for the same version by this build number.
+      buildNumber: "build number", // [!code ++]
+      // Match the release version used by the app's logs.
+      releaseVersion: "release version", // [!code ++]
+      // Datadog service associated with these sourcemaps.
+      service: "service", // [!code ++]
+    }, // [!code ++]
+  ), // [!code ++]
   // .. your other config
 });
 ```
@@ -53,21 +57,25 @@ export default defineConfig({
 <Tab value="Expo">
 
 ```ts title="hot-updater.config.ts"
-import { withDatadog } from "@hot-updater/datadog-plugin";
+import { withDatadog } from "@hot-updater/datadog-plugin"; // [!code ++]
 import { defineConfig } from "hot-updater";
 import { expo } from "@hot-updater/expo";
 
 export default defineConfig({
-  build: withDatadog(
+  build: withDatadog( // [!code ++]
     expo({
-      sourcemap: true, // [!code ++] Required for sourcemap upload
+      // Required for sourcemap upload
+      sourcemap: true, // [!code ++]
     }),
-    {
-      buildNumber: "build number",       // [!code ++] The build number through which Datadog will sort the uploaded sourcemaps belonging to the same version
-      releaseVersion: "release version",    // [!code ++] This is the release version that must match the release version used to stream logs from the app
-      service: "service", // [!code ++] The datadog service to which the sourcemaps belong
-    },
-  ),
+    { // [!code ++]
+      // Sort sourcemaps for the same version by this build number.
+      buildNumber: "build number", // [!code ++]
+      // Match the release version used by the app's logs.
+      releaseVersion: "release version", // [!code ++]
+      // Datadog service associated with these sourcemaps.
+      service: "service", // [!code ++]
+    }, // [!code ++]
+  ), // [!code ++]
   // .. your other config
 });
 ```
@@ -76,21 +84,25 @@ export default defineConfig({
 <Tab value="Rock">
 
 ```ts title="hot-updater.config.ts"
-import { withDatadog } from "@hot-updater/datadog-plugin";
+import { withDatadog } from "@hot-updater/datadog-plugin"; // [!code ++]
 import { defineConfig } from "hot-updater";
 import { rock } from "@hot-updater/rock";
 
 export default defineConfig({
-  build: withDatadog(
+  build: withDatadog( // [!code ++]
     rock({
-      sourcemap: true, // [!code ++] Required for sourcemap upload
+      // Required for sourcemap upload
+      sourcemap: true, // [!code ++]
     }),
-    {
-      buildNumber: "build number",       // [!code ++] The build number through which Datadog will sort the uploaded sourcemaps belonging to the same version
-      releaseVersion: "release version",    // [!code ++] This is the release version that must match the release version used to stream logs from the app
-      service: "service", // [!code ++] The datadog service to which the sourcemaps belong
-    },
-  ),
+    { // [!code ++]
+      // Sort sourcemaps for the same version by this build number.
+      buildNumber: "build number", // [!code ++]
+      // Match the release version used by the app's logs.
+      releaseVersion: "release version", // [!code ++]
+      // Datadog service associated with these sourcemaps.
+      service: "service", // [!code ++]
+    }, // [!code ++]
+  ), // [!code ++]
   // .. your other config
 });
 ```
@@ -103,10 +115,22 @@ export default defineConfig({
 When `withDatadog()` wraps your build plugin, all generated sourcemaps are uploaded to Datadog automatically during the `hot-updater deploy` process.
 </Callout>
 
-## Step 3: Deploy
+## Step 2: Deploy
 
 Now, every time you deploy, sourcemaps will be automatically uploaded to Datadog.
 
 ```package-install
 npx hot-updater deploy -i
 ```
+
+## Verify symbolication
+
+Install a release build, deploy a small JavaScript change with sourcemaps
+enabled, and trigger a controlled test error from the updated code. In your
+monitoring dashboard, confirm the stack points to the original source file
+and line in that update. A successful upload alone does not prove the app and
+uploaded map use the same identity.
+
+Match the runtime SDK's service, release version and build number to the values
+passed to `withDatadog`. Configure that SDK through your existing Datadog app
+integration before performing the test.

@@ -1,11 +1,10 @@
 {
   "title": "Self Hosting (Custom)",
-  "description": "Self-hosted server setup",
+  "description": "Build and host your own update server.",
   "icon": "Server",
   "pages": [
     "overview",
     "quick-start",
-    "api-key-authentication",
     "database",
     "frameworks",
     "cli-configuration",

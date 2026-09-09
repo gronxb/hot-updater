@@ -1,45 +1,68 @@
 ---
-title: "Introduction"
-description: "Self-hostable OTA update solution for React Native apps, alternative to CodePush."
-icon: BookOpen
+title: "Start here"
+description: "Set up Hot Updater v1 with an agent or your terminal, then verify an OTA update on a native app."
+icon: Rocket
 ---
-
-<video src={"/docs/deploy/deploy.mov"}  controls autoPlay loop muted />
 
 ## What is Hot Updater?
 
-Hot Updater is a self-hostable OTA (Over-The-Air) update solution for React Native apps. Deploy JavaScript bundle updates instantly without going through app stores.
+Hot Updater delivers JavaScript and asset updates to React Native apps over the
+air. You host the update infrastructure in your own account, using Cloudflare,
+Supabase, AWS, Firebase or a custom server. Native code changes require a new
+native app build.
 
-## Why Hot Updater?
+<a id="why-hot-updater" />
 
-CodePush depended on Microsoft's AppCenter, which had limitations:
-- No CDN support, causing slow downloads in some regions
-- Only supports Metro bundler, excluding newer alternatives like Re.Pack
-- AppCenter has been discontinued
+## Choose your starting point
 
-Hot Updater solves these problems with two core principles:
+| Your task | Start here |
+| --- | --- |
+| Let a coding agent inspect and set up your project | [Set up with an agent](/docs/guides/ai-agents) |
+| Choose a provider or connect custom infrastructure | [Choose infrastructure](/docs/get-started/choose-provider) |
+| Configure the app and server from your terminal | [Set up manually](/docs/get-started/basic-usage) |
+| Move an existing v0 app to v1 | [Move from v0 to v1](/docs/guides/upgrade-to-v1) |
+| Connect an app to infrastructure you already prepared | [Connect your app](/docs/get-started/app-setup) |
+| Prove that an integrated app receives updates | [Test an OTA update](/docs/get-started/test-ota) |
 
-**1. Deploy Anywhere**
-Use any infrastructure you want - AWS, Cloudflare, Supabase, Firebase, or your own servers.
+## Use the published v1 release
 
-**2. Use Any Bundler**
-Works with Metro, Re.Pack or any bundler through the plugin system.
+These pages describe the latest stable v1 release.
+[Install packages](/docs/get-started/installation) lists the CLI, SDK, required
+build/provider plugins and runtime prerequisites.
 
-## How It Works
+v1 uses Release Catalog infrastructure. For an existing v0 app, follow the
+[migration guide](/docs/guides/upgrade-to-v1) before changing the SDK or server.
 
-Hot Updater uses a [Plugin System](/docs/concepts/plugin-system) that separates concerns:
-- **Build Plugins**: Handle bundling (Metro, Re.Pack, Expo, Rock)
-- **Storage Plugins**: Store bundles anywhere (S3, R2, Supabase, Firebase)
-- **Database Plugins**: Manage metadata (PostgreSQL, D1, Firestore)
+<a id="how-it-works" />
 
-This architecture gives you complete control over your deployment infrastructure.
+## What a completed setup looks like
 
-## Key Features
+Both the agent and manual paths lead to the same verified result:
 
-- **Self-Hosting**: Full control over your update infrastructure
-- **Multi-Platform**: Seamless iOS and Android support
-- **Web Console**: Intuitive update management interface
-- **Version Control**: Robust versioning with semantic versioning support
-- **Forced Updates**: Push critical updates when needed
-- **Channel Management**: Separate environments (dev, staging, production)
-- **Fingerprint Strategy**: Automatic native compatibility checking
+1. The app has compatible v1 SDK, CLI and plugins.
+2. The deployed server has a known base URL and working client authentication.
+3. A native Release build loads Hot Updater and uses the intended channel and
+   compatibility target.
+4. A JavaScript and asset change arrives through OTA and is visible after the
+   app applies it.
+5. You can inspect that update in the Console and verify its rollback behavior
+   and [Insights](/docs/guides/insights) reports when reporting is enabled.
+
+Server deployment, native launch and OTA application are separate checks. An
+agent should report which passed and any remaining native release steps.
+
+<a id="key-features" />
+
+## Find the next task
+
+- **Deliver updates:** [Deploy](/docs/guides/deploy),
+  [Rollout & Cohorts](/docs/guides/rollout-cohorts), and
+  [Default Channel Setup](/docs/guides/channel-management).
+- **Operate:** [Console](/docs/guides/console),
+  [host the Console](/docs/guides/console-deployment),
+  [Insights](/docs/guides/insights), and [Doctor](/docs/guides/doctor).
+- **Understand the model:** [How it works](/docs/concepts/how-it-works),
+  [automatic crash rollback](/docs/concepts/automatic-rollback), and
+  [Plugin System](/docs/concepts/plugin-system).
+- **Protect delivery:** [Bundle Signing](/docs/guides/bundle-signing) and
+  [Security](/docs/policy/security).

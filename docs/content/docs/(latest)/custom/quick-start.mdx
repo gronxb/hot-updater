@@ -1,9 +1,27 @@
 ---
-title: "Quick Start"
+title: "Custom server quick start"
 description: Set up a self-hosted Hot Updater server and connect a React Native app.
 icon: Rocket
 version: "v0.22.0"
 ---
+
+## What you will build
+
+This guide builds one complete server with **Hono, SQLite and R2 storage**,
+then connects a React Native app. For an existing backend, use the
+[adapter and framework recipes](/docs/custom/overview).
+
+## Before you start
+
+Use separate server and React Native project directories. Install a supported
+Node.js version from [Install v1 packages](/docs/get-started/installation), and
+prepare an R2 bucket with S3-compatible credentials through your existing
+Cloudflare tooling. An agent can discover or create these resources within
+your setup request. Keep credentials in ignored local configuration.
+
+The examples use Bare for the React Native build. For Expo or Rock, install
+and use the [matching build plugin](/docs/get-started/installation) in that
+project before running Hot Updater commands.
 
 ## Installation
 
@@ -100,12 +118,12 @@ import { hotUpdater } from "./hotUpdater"; // [!code ++]
 
 const app = new Hono();
 
-const adminToken = process.env.HOT_UPDATER_ADMIN_TOKEN; // [!code ++]
+const adminToken = process.env.HOT_UPDATER_ADMIN_TOKEN;
 if (!adminToken) {
-  throw new Error("HOT_UPDATER_ADMIN_TOKEN is required"); // [!code ++]
-} // [!code ++]
+  throw new Error("HOT_UPDATER_ADMIN_TOKEN is required");
+}
 
-app.use(
+app.use( // [!code ++]
   "/hot-updater/admin/*", // [!code ++]
   bearerAuth({ token: adminToken }), // [!code ++]
 ); // [!code ++]
@@ -227,52 +245,25 @@ export default defineConfig({
 
 ## React Native Setup
 
-Configure your React Native app to connect to this server. Use the API key
-printed by the bootstrap command above.
+Before a release-build OTA test, expose the server through a reachable HTTPS
+endpoint using your existing deployment or HTTPS development endpoint. The
+local HTTP URL above is suitable for server and CLI smoke checks; do not assume
+a mobile release binary permits cleartext HTTP.
 
-```typescript title="App.tsx"
-import { HotUpdater } from "@hot-updater/react-native";
-import { useEffect } from "react";
-import { Text } from "react-native";
+Then follow [Set up your app](/docs/get-started/app-setup) to configure the SDK
+and native bundle loaders with these values:
 
-HotUpdater.init({
-  baseURL: "http://localhost:3000/hot-updater", // [!code ++]
-  requestHeaders: {
-    "x-api-key": "<API key printed by api-key create>", // [!code ++]
-  },
-});
+| Setting | Value |
+| --- | --- |
+| Client base URL | Your reachable HTTPS endpoint ending in `/hot-updater` |
+| Client header | `x-api-key` |
+| Client API key | The key created by `api-key create` above |
+| CLI/admin URL | `http://localhost:3000/hot-updater/admin`; keep its bearer token out of the app |
 
-function App() {
-  useEffect(() => {
-    void HotUpdater.checkForUpdate({ updateStrategy: "appVersion" })
-      .then(async (updateInfo) => {
-        if (!updateInfo) return;
-        await updateInfo.updateBundle();
-        if (updateInfo.shouldForceUpdate) await HotUpdater.reload();
-      })
-      .catch(console.error);
-  }, []);
-
-  return <Text>Hello Hot Updater</Text>;
-}
-
-export default App;
-```
-
-<Callout type="warn">
-  `localhost` works from the iOS Simulator on the same Mac. Use `10.0.2.2` from
-  the Android Emulator, or your development machine's LAN/HTTPS address from a
-  physical device.
-</Callout>
-
-The React Native `baseURL` always points to the client root. Never put the
-admin bearer token in the app. The API key is scoped to client update and
-Insights ingestion routes and is sent using `x-api-key`.
-
-`HotUpdater.init` initializes the client but does not start an update check.
-The example calls `HotUpdater.checkForUpdate()` when the app mounts. See the
-[Custom Update guide](/docs/guides/custom-update) when you need different
-timing or update UI.
+For local connectivity checks, the Android Emulator reaches the host at
+`10.0.2.2` and the iOS Simulator on the same Mac can use `localhost`. This only
+changes host routing; the release-build OTA test uses the HTTPS endpoint.
+The server's `.env.hotupdater` is not loaded into the mobile app automatically.
 
 ## Unauthenticated Alternative
 
@@ -281,8 +272,13 @@ unauthenticated, set `clientAccess: { type: "public" }` and omit `x-api-key`
 from React Native `requestHeaders`. This does not make the admin handler public;
 its framework authentication remains required.
 
-## Next Steps
+## Verify and deploy
 
-- Configure your CLI to use this server (see [Overview](/docs/custom/overview#cli-configuration))
-- Explore other [Database Adapters](/docs/custom/database/drizzle) (Drizzle, Prisma, MongoDB)
-- Try different [Server Frameworks](/docs/custom/frameworks/hono) (Express, Elysia)
+1. [Verify the CLI connection](/docs/custom/cli-configuration#verify-the-connection)
+   to the protected admin handler.
+2. Deploy with your existing process or the [Docker](/docs/custom/hosting/docker)
+   or [Vercel](/docs/custom/hosting/vercel) recipe, or expose your existing HTTPS
+   development endpoint. Update the CLI and mobile app to their respective
+   verified admin and client URLs.
+3. [Test an OTA update](/docs/get-started/test-ota) in a native release build
+   against that HTTPS endpoint, including application and restart of the changed code.

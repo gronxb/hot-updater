@@ -1,0 +1,11 @@
+{
+  "title": "Signing providers",
+  "description": "Choose the signer used by the deploy command.",
+  "icon": "KeyRound",
+  "pages": [
+    "local",
+    "aws-kms",
+    "google-cloud-kms",
+    "remote"
+  ]
+}

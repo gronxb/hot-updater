@@ -1,47 +1,39 @@
 ---
 title: "clearCrashHistory"
-description: Clears the crash history to allow retrying previously failed bundles.
+description: "Clear this device's rejected-artifact history to allow a controlled retry."
 icon: Eraser
 ---
 
 ## Usage
 
-Use `clearCrashHistory()` to reset the crash history and allow redeploying bundles that previously crashed.
+Use `HotUpdater.clearCrashHistory()` when testing a previously rejected
+artifact again. Clearing history only changes the current device: it does not
+deploy a Release, change delivery policy, download an update, or reload the app.
 
 ```tsx
 import { HotUpdater } from "@hot-updater/react-native";
 
-function AdminPanel() {
-  const handleClearHistory = () => {
-    const result = HotUpdater.clearCrashHistory();
+const didClear = HotUpdater.clearCrashHistory();
 
-    if (result) {
-      console.log("Crash history cleared successfully");
-    } else {
-      console.log("Failed to clear crash history");
-    }
-  };
-
-  return (
-    <View>
-      <Button title="Clear Crash History" onPress={handleClearHistory} />
-    </View>
-  );
+if (didClear) {
+  console.log("Device crash history cleared");
 }
-
-export default HotUpdater.wrap({
-  baseURL: "<your-update-server-url>",
-  updateStrategy: "appVersion",
-})(AdminPanel);
 ```
 
 ## Return Value
 
-Returns a boolean indicating success.
-
-```typescript
+```ts
 clearCrashHistory(): boolean
 ```
 
-- `true` - Crash history cleared successfully
-- `false` - Failed to clear crash history
+Returns `true` when local history was cleared and `false` if clearing failed.
+The method is synchronous and does not make a network request.
+
+An artifact that caused a crash can be selected again after clearing history.
+Use this for a controlled retry after investigating the failure; calling it at
+every startup removes the protection provided by the rejection history.
+
+## Related APIs
+
+- [`getCrashHistory`](/docs/react-native-api/getCrashHistory)
+- [Automatic rollback](/docs/concepts/automatic-rollback)

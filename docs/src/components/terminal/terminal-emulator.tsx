@@ -1,7 +1,7 @@
 "use client";
 import "@xterm/xterm/css/xterm.css";
 import type { Terminal } from "@xterm/xterm";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef } from "react";
 
 import type { TerminalEmulatorProps } from "./types";
 
@@ -12,108 +12,73 @@ const DEFAULT_THEME = {
   selectionBackground: "#3f3f46",
 };
 
-const getResponsiveConfig = (width: number) => {
-  // Mobile
-  if (width < 640) {
-    return {
-      fontSize: 10,
-      rows: 15,
-      cols: 50,
-    };
-  }
-  // Tablet
-  if (width < 1024) {
-    return {
-      fontSize: 11,
-      rows: 18,
-      cols: 50,
-    };
-  }
-  // Desktop
-  return {
-    fontSize: 13,
-    rows: 20,
-    cols: 70,
-  };
-};
-
 export function TerminalEmulator({ config, onReady }: TerminalEmulatorProps) {
   const terminalRef = useRef<HTMLDivElement>(null);
-  const xtermRef = useRef<Terminal | null>(null);
-  const isInitializedRef = useRef(false);
-  const [windowWidth, setWindowWidth] = useState(
-    typeof window !== "undefined" ? window.innerWidth : 1024,
-  );
 
-  // Handle window resize
   useEffect(() => {
-    if (typeof window === "undefined") return;
+    const container = terminalRef.current;
+    if (!container) return;
 
-    const handleResize = () => {
-      setWindowWidth(window.innerWidth);
+    const controller = new AbortController();
+    let term: Terminal | undefined;
+    let observer: ResizeObserver | undefined;
+    let resizeFrame = 0;
+    const context = document.createElement("canvas").getContext("2d")!;
+
+    const fit = () => {
+      if (!term || controller.signal.aborted || !container.clientWidth) return;
+      const fontSize =
+        config?.fontSize ?? (container.clientWidth < 400 ? 11 : 13);
+      const fontFamily = config?.fontFamily ?? "Geist Mono, monospace";
+      context.font = `${fontSize}px ${fontFamily}`;
+      const cellWidth = context.measureText("W").width;
+      const cols = Math.max(
+        1,
+        Math.floor((container.clientWidth - 2) / cellWidth),
+      );
+      term.options.fontSize = fontSize;
+      term.resize(Math.min(config?.cols ?? cols, cols), config?.rows ?? 16);
+      term.scrollToBottom();
     };
-
-    window.addEventListener("resize", handleResize);
-    return () => window.removeEventListener("resize", handleResize);
-  }, []);
-
-  // Update terminal size on window resize
-  useEffect(() => {
-    if (!xtermRef.current) return;
-
-    const responsiveConfig = getResponsiveConfig(windowWidth);
-    xtermRef.current.resize(responsiveConfig.cols, responsiveConfig.rows);
-  }, [windowWidth]);
-
-  useEffect(() => {
-    if (!terminalRef.current || typeof window === "undefined") return;
-
-    // Prevent duplicate terminal instances
-    if (isInitializedRef.current || xtermRef.current) return;
-
-    isInitializedRef.current = true;
-
-    // Dynamically import xterm only on client side
-    let term: Terminal | null = null;
 
     const init = async () => {
-      const { Terminal } = await import("@xterm/xterm");
-
-      if (!terminalRef.current || xtermRef.current) return;
-
-      const responsiveConfig = getResponsiveConfig(windowWidth);
+      const [{ Terminal }] = await Promise.all([
+        import("@xterm/xterm"),
+        document.fonts.ready,
+      ]);
+      if (controller.signal.aborted) return;
 
       term = new Terminal({
-        cursorBlink: true,
+        cursorBlink: false,
+        convertEol: true,
+        disableStdin: true,
         fontFamily: "Geist Mono, monospace",
-        ...responsiveConfig,
+        fontSize: 13,
+        rows: 16,
+        cols: 50,
         ...config,
-        theme: {
-          ...DEFAULT_THEME,
-          ...config?.theme,
-        },
+        theme: { ...DEFAULT_THEME, ...config?.theme },
       });
-
-      term.open(terminalRef.current);
-      xtermRef.current = term;
-
-      if (onReady) {
-        onReady(term);
-      }
+      term.open(container);
+      fit();
+      observer = new ResizeObserver(() => {
+        cancelAnimationFrame(resizeFrame);
+        resizeFrame = requestAnimationFrame(fit);
+      });
+      observer.observe(container);
+      await onReady?.(term, controller.signal);
     };
-    void init().catch(console.error);
+    void init().catch((error) => {
+      if (!controller.signal.aborted) console.error(error);
+    });
 
     return () => {
-      isInitializedRef.current = false;
-      if (term) {
-        term.dispose();
-      }
-      if (xtermRef.current) {
-        xtermRef.current.dispose();
-        xtermRef.current = null;
-      }
+      controller.abort();
+      observer?.disconnect();
+      cancelAnimationFrame(resizeFrame);
+      term?.dispose();
     };
-  }, [config, onReady, windowWidth]);
+  }, [config, onReady]);
 
   return (
     <>

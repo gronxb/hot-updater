@@ -28,7 +28,7 @@ npm install drizzle-orm pg
 ```
 
 ```package-install
-npm install -D drizzle-kit @types/pg dotenv
+npm install -D hot-updater drizzle-kit @types/pg dotenv
 ```
 
 ## Database Setup
@@ -56,13 +56,13 @@ Create the database connection file with Drizzle's transaction-capable
 ```typescript title="src/drizzle.ts"
 import { drizzle } from "drizzle-orm/node-postgres";
 import { Pool } from "pg";
-import * as schema from "../hot-updater-schema";
+import * as schema from "../hot-updater-schema"; // [!code ++]
 
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL!,
 });
 
-export const db = drizzle({ client: pool, schema });
+export const db = drizzle({ client: pool, schema }); // [!code ++]
 ```
 
 ## Hot Updater Configuration
@@ -99,8 +99,8 @@ Create Vercel serverless function with Hono.
 
 ```typescript title="src/index.ts"
 import { Hono } from "hono";
-import { bearerAuth } from "hono/bearer-auth";
-import { hotUpdater } from "./hotUpdater";
+import { bearerAuth } from "hono/bearer-auth"; // [!code ++]
+import { hotUpdater } from "./hotUpdater"; // [!code ++]
 
 const adminToken = process.env.HOT_UPDATER_ADMIN_TOKEN;
 if (!adminToken) {
@@ -109,9 +109,9 @@ if (!adminToken) {
 
 const app = new Hono();
 
-app.use("/hot-updater/admin/*", bearerAuth({ token: adminToken }));
-app.mount("/hot-updater/admin", hotUpdater.handlers.admin);
-app.mount("/hot-updater", hotUpdater.handlers.client);
+app.use("/hot-updater/admin/*", bearerAuth({ token: adminToken })); // [!code ++]
+app.mount("/hot-updater/admin", hotUpdater.handlers.admin); // [!code ++]
+app.mount("/hot-updater", hotUpdater.handlers.client); // [!code ++]
 
 export default app;
 ```
@@ -144,7 +144,7 @@ import { defineConfig } from "drizzle-kit";
 config({ path: ".env.local" });
 
 export default defineConfig({
-  schema: "./hot-updater-schema.ts",
+  schema: "./hot-updater-schema.ts", // [!code ++]
   out: "./drizzle",
   dialect: "postgresql",
   dbCredentials: {
@@ -187,43 +187,12 @@ Your Hot Updater server will be available at `https://your-project.vercel.app/ho
 
 ## CLI Configuration
 
-Configure your CLI to use this deployed server.
+[Connect the React Native project's CLI](/docs/custom/cli-configuration) to the
+verified deployment URL with `/hot-updater/admin` as its base path. Keep the
+admin token in the deploy environment and match the server's storage plugin
+and bucket configuration.
 
-```typescript title="hot-updater.config.ts"
-import { bare } from "@hot-updater/bare";
-import { s3Storage } from "@hot-updater/aws";
-import { standaloneRepository } from "@hot-updater/standalone";
-import { defineConfig } from "hot-updater";
-
-const adminToken = process.env.HOT_UPDATER_ADMIN_TOKEN;
-if (!adminToken) {
-  throw new Error("HOT_UPDATER_ADMIN_TOKEN is required");
-}
-
-export default defineConfig({
-  build: bare({ enableHermes: true }),
-  storage: s3Storage({
-    region: "auto",
-    endpoint: process.env.R2_ENDPOINT,
-    credentials: {
-      accessKeyId: process.env.R2_ACCESS_KEY_ID!,
-      secretAccessKey: process.env.R2_SECRET_ACCESS_KEY!,
-    },
-    bucketName: process.env.R2_BUCKET_NAME!,
-  }),
-  database: standaloneRepository({
-    baseUrl: "https://your-project.vercel.app/hot-updater/admin",
-    commonHeaders: {
-      Authorization: `Bearer ${adminToken}`,
-    },
-  }),
-  updateStrategy: "appVersion",
-});
-```
-
-<Callout type="warn">
-The CLI `storage` plugin must match one entry in the server's
-`createHotUpdater({ storage })` array.
-Configure `HOT_UPDATER_ADMIN_TOKEN` in every Vercel environment and in the CLI
-environment.
-</Callout>
+For the mobile app, use the client root ending in `/hot-updater` and its client
+API key through [Set up your app](/docs/get-started/app-setup). Run
+[Test an OTA update](/docs/get-started/test-ota) against the deployed server;
+a successful host deployment alone does not verify the mobile update path.

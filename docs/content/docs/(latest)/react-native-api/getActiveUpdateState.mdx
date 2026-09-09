@@ -1,0 +1,71 @@
+---
+title: "getActiveUpdateState"
+description: "Inspect the selected Release, its artifact, and native verification state."
+icon: ListChecks
+---
+
+## Usage
+
+Use `HotUpdater.getActiveUpdateState()` for support diagnostics that need both
+the Console update ID and the underlying artifact ID.
+
+```tsx
+import { HotUpdater } from "@hot-updater/react-native";
+
+const state = await HotUpdater.getActiveUpdateState();
+
+console.log({
+  updateId: state.activeSelection?.releaseId,
+  artifactId: state.activeSelection?.bundleId,
+  verificationPending: state.verificationPending,
+});
+```
+
+## Return value
+
+```ts
+type Selection = {
+  readonly kind: "BUNDLE" | "EMBEDDED" | "BUILTIN";
+  readonly releaseId: string | null;
+  readonly bundleId: string;
+  readonly channel: string;
+};
+
+type ActiveUpdateState = {
+  readonly activeSelection: Selection | null;
+  readonly stableSelection: Selection | null;
+  readonly verificationPending: boolean;
+};
+
+getActiveUpdateState(): Promise<ActiveUpdateState>
+```
+
+| Field | Meaning |
+| --- | --- |
+| `activeSelection` | The selected transition, including an update staged for a later runtime start. It may be `null` before a selection is recorded. |
+| `stableSelection` | The retained stable selection used by native recovery, when present. It may be `null` even when the app is healthy. |
+| `verificationPending` | Whether native state marks a transition as awaiting verification. |
+
+A selection's `releaseId` identifies delivery policy and matches the Console's
+update ID when present. For `kind: "BUNDLE"`, `bundleId` is the artifact ID.
+`EMBEDDED` selects the native app's built-in bundle through a Release;
+`BUILTIN` selects that bundle as a fallback without a Release. Those two kinds
+use the native build's bundle identifier.
+
+This method reads local state and does not make a network request. It does not
+reload, acknowledge readiness, or subscribe to changes. Read it again when you
+need a fresh snapshot.
+
+<Callout type="info">
+`activeSelection` and [`getBundleId()`](/docs/react-native-api/getBundleId) can
+change after staging and before reload. They do not prove that the selected
+code is already running. Use the app-ready result and
+[Insights reports](/docs/guides/insights#verify-reporting) when verifying an
+applied update.
+</Callout>
+
+## Related
+
+- [`getBundleId`](/docs/react-native-api/getBundleId)
+- [`getCrashHistory`](/docs/react-native-api/getCrashHistory)
+- [Automatic rollback](/docs/concepts/automatic-rollback)

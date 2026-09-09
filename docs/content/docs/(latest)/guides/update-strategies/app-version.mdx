@@ -19,7 +19,7 @@ Configure the strategy in your Hot Updater config:
 import { defineConfig } from "hot-updater";
 
 export default defineConfig({
-  updateStrategy: "appVersion",
+  updateStrategy: "appVersion", // [!code ++]
 });
 ```
 
@@ -54,25 +54,47 @@ Examples:
 
 ## Client Setup
 
-Configure your React Native app:
+Initialize Hot Updater at module scope, then choose when to check. Import this
+module from your app entry point:
 
-```tsx title="App.tsx"
+Keep the `baseURL` and client key from [App setup](/docs/get-started/app-setup).
+Managed providers require this client key; provider and admin credentials stay
+out of the app.
+
+```tsx title="updates.ts"
 import { HotUpdater } from "@hot-updater/react-native";
-import { View, Text } from "react-native";
 
-function App() {
-  return (
-    <View>
-      <Text>Hello World</Text>
-    </View>
-  );
+HotUpdater.init({
+  baseURL: "https://your-update-server.com",
+  requestHeaders: {
+    "x-api-key": "<your-client-api-key>",
+  },
+  onError: (error) => console.error("Hot Updater failed:", error),
+});
+
+export async function checkForAppUpdate() {
+  try {
+    const updateInfo = await HotUpdater.checkForUpdate({
+      updateStrategy: "appVersion",
+    });
+
+    if (!updateInfo) return;
+
+    const didUpdate = await updateInfo.updateBundle();
+    if (didUpdate && updateInfo.shouldForceUpdate) {
+      await HotUpdater.reload();
+    }
+  } catch (error) {
+    console.error("Failed to prepare update:", error);
+  }
 }
-
-export default HotUpdater.wrap({
-  baseURL: "https://your-update-server.com", // [!code ++]
-  updateStrategy: "appVersion", // [!code ++]
-})(App);
 ```
+
+Call `checkForAppUpdate()` from your app's startup, resume, or user action.
+`init` configures the client; it does not check for updates. The helper stages
+the selected update, and standard updates take effect on the next runtime
+start. Follow [custom update flows](/docs/guides/custom-update) to add progress
+and choose when to reload.
 
 The client fetches the app-version Release Catalog:
 
@@ -84,17 +106,11 @@ It evaluates the catalog locally, then resolves the selected artifact through
 `/artifacts/:targetBundleId/from/:currentBundleId`. `:channelKey` is the
 base64url-encoded channel name.
 
-## Testing the Endpoint
+## Test an app-version update
 
-Test your update endpoint using curl:
+Follow [Test an OTA update](/docs/get-started/test-ota) with a Release build.
+Use that build's native app version as the deployment target, then check,
+download and restart through your app's update flow. The SDK constructs the
+catalog request and sends the client headers configured in `HotUpdater.init`.
 
-```bash
-curl "https://your-update-endpoint.com/release-catalogs/app-version/ios/cHJvZHVjdGlvbg/1.0.0"
-```
-
-Parameters:
-
-- `:platform` - `ios` or `android`
-- `:channelKey` - Canonical base64url encoding of the channel name (for example,
-  `production` becomes `cHJvZHVjdGlvbg`)
-- `:appVersion` - Current app version (e.g., `1.0.0`)
+If the check fails, use [client-access diagnostics](/docs/guides/doctor#check-client-access).

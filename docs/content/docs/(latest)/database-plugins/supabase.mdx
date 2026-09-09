@@ -32,15 +32,15 @@ interface SupabaseDatabaseConfig {
 
 ## Usage
 
-```typescript
-import { supabaseDatabase } from "@hot-updater/supabase";
+```typescript title="hot-updater.config.ts"
+import { supabaseDatabase } from "@hot-updater/supabase"; // [!code ++]
 import { defineConfig } from "hot-updater";
 
 export default defineConfig({
-  database: supabaseDatabase({
-    supabaseUrl: process.env.SUPABASE_URL,
-    supabaseServiceRoleKey: process.env.SUPABASE_SERVICE_ROLE_KEY,
-  }),
+  database: supabaseDatabase({ // [!code ++]
+    supabaseUrl: process.env.SUPABASE_URL, // [!code ++]
+    supabaseServiceRoleKey: process.env.SUPABASE_SERVICE_ROLE_KEY, // [!code ++]
+  }), // [!code ++]
   // ... other config
 });
 ```
@@ -51,15 +51,15 @@ Use the `/edge` subpath when composing `createHotUpdater` inside a Supabase
 Edge Function. The provider keeps the same name while the subpath makes the
 runtime boundary explicit:
 
-```typescript
+```typescript title="src/hotUpdater.ts"
 import { createHotUpdater } from "@hot-updater/server";
-import { supabaseDatabase } from "@hot-updater/supabase/edge";
+import { supabaseDatabase } from "@hot-updater/supabase/edge"; // [!code ++]
 
 export const hotUpdater = createHotUpdater({
-  database: supabaseDatabase({
-    supabaseUrl: Deno.env.get("SUPABASE_URL")!,
-    supabaseServiceRoleKey: Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
-  }),
+  database: supabaseDatabase({ // [!code ++]
+    supabaseUrl: Deno.env.get("SUPABASE_URL")!, // [!code ++]
+    supabaseServiceRoleKey: Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!, // [!code ++]
+  }), // [!code ++]
   clientAccess: { type: "api-key" },
   // ... other options
 });

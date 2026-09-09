@@ -33,7 +33,7 @@ Returns `false` when:
 ```tsx
 const updateInfo = await HotUpdater.checkForUpdate({
   updateStrategy: "appVersion",
-  channel: "staging",
+  channel: "staging", // [!code ++]
 });
 
 if (updateInfo) {

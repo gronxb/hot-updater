@@ -1,8 +1,17 @@
-import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { mkdir, writeFile } from "node:fs/promises";
-import { dirname, join, relative } from "node:path";
+import { dirname, join } from "node:path";
 
+import type { Node } from "fumadocs-core/page-tree";
+import { llms } from "fumadocs-core/source";
 import type { Plugin, ResolvedConfig } from "vite";
+
+import {
+  type Documentation,
+  orderedPages,
+  pageMarkdown,
+  readDocumentation,
+} from "./docs-content";
+import { validateDocumentation } from "./validate-docs";
 
 interface LLMsTxtPluginOptions {
   baseUrl: string;
@@ -12,22 +21,37 @@ interface LLMsTxtPluginOptions {
   urlPrefix?: string;
 }
 
-interface DocPage {
-  title: string;
-  description: string;
-  pageUrl: string;
-  markdownUrl: string;
-  apiMarkdownUrl: string;
-  category: string;
-  body: string;
+export function llmsIndex(documentation: Documentation, baseUrl: string) {
+  const { source } = documentation;
+  const formatter = llms(source);
+  function markdownUrls(node: Node): Node {
+    if (node.type === "page") {
+      return { ...node, url: `${baseUrl}${node.url}.md` };
+    }
+    if (node.type === "separator") return node;
+    return {
+      ...node,
+      index: node.index
+        ? (markdownUrls(node.index) as typeof node.index)
+        : undefined,
+      children: node.children.map(markdownUrls),
+    };
+  }
+  const lines = [
+    "# Hot Updater v1 Documentation",
+    "",
+    "> Set up, deliver, and operate React Native OTA updates on your infrastructure.",
+    "",
+  ];
+  for (const node of source.pageTree.children) {
+    lines.push(formatter.indexNode(markdownUrls(node)), "");
+  }
+  return `${lines.join("\n").trim()}\n`;
 }
 
-interface Category {
-  title: string;
-  pages: string[];
-}
-
-export function llmsTxtPlugin(options: LLMsTxtPluginOptions): Plugin {
+export async function generateDocumentationFiles(
+  options: LLMsTxtPluginOptions,
+) {
   const {
     baseUrl,
     contentDir = "content/docs",
@@ -35,271 +59,52 @@ export function llmsTxtPlugin(options: LLMsTxtPluginOptions): Plugin {
     outputDir = "dist/public",
     urlPrefix,
   } = options;
-
-  let config: ResolvedConfig;
-
-  async function generateFiles() {
-    const contentRoot = join(process.cwd(), contentDir);
-    const outputRoot = join(process.cwd(), outputDir);
-    const categories = collectCategories(contentRoot);
-    const pages = collectDocPages(contentRoot, categories, urlPrefix);
-
-    await mkdir(outputRoot, { recursive: true });
-    await Promise.all([
-      ...(generateIndex
-        ? [
-            writeFile(
-              join(outputRoot, "llms.txt"),
-              generateLLMsIndex(pages, categories, baseUrl),
-              "utf-8",
-            ),
-            writeFile(
-              join(outputRoot, "llms-full.txt"),
-              generateLLMsFull(pages, baseUrl),
-              "utf-8",
-            ),
-          ]
-        : []),
-      ...pages.flatMap((page) => [
-        writeMarkdownPage(outputRoot, page.markdownUrl, page, baseUrl),
-        writeMarkdownPage(outputRoot, page.apiMarkdownUrl, page, baseUrl),
-      ]),
-    ]);
+  const documentation = readDocumentation(contentDir, urlPrefix);
+  const pages = orderedPages(documentation);
+  if (generateIndex) {
+    const issues = validateDocumentation(documentation, "public");
+    if (issues.length > 0)
+      throw new Error(`Documentation validation failed:\n${issues.join("\n")}`);
   }
+  await mkdir(outputDir, { recursive: true });
+  async function write(urlPath: string, content: string) {
+    const outputPath = join(outputDir, urlPath.replace(/^\//, ""));
+    await mkdir(dirname(outputPath), { recursive: true });
+    await writeFile(outputPath, content, "utf8");
+  }
+  await Promise.all([
+    ...(generateIndex
+      ? [
+          write("llms.txt", llmsIndex(documentation, baseUrl)),
+          write(
+            "llms-full.txt",
+            pages.map((page) => pageMarkdown(page, baseUrl)).join("\n\n"),
+          ),
+        ]
+      : []),
+    ...documentation.source.getPages().flatMap((page) => {
+      const markdown = pageMarkdown(page, baseUrl);
+      const paths = new Set([
+        `${page.url}.md`,
+        page.url.replace(/^\/docs\//, "/api/markdown/") + ".md",
+        // Keep previously published filename-based Markdown aliases working.
+        `/docs/${[urlPrefix, page.path.replace(/\.mdx?$/, "")].filter(Boolean).join("/")}.md`,
+        `/api/markdown/${[urlPrefix, page.path.replace(/\.mdx?$/, "")].filter(Boolean).join("/")}.md`,
+      ]);
+      return [...paths].map((url) => write(url, markdown));
+    }),
+  ]);
+}
 
+export function llmsTxtPlugin(options: LLMsTxtPluginOptions): Plugin {
+  let config: ResolvedConfig;
   return {
     name: "llms-txt-plugin",
     configResolved(resolvedConfig) {
       config = resolvedConfig;
     },
     async closeBundle() {
-      if (config.command === "build") {
-        await generateFiles();
-      }
+      if (config.command === "build") await generateDocumentationFiles(options);
     },
   };
-}
-
-function collectCategories(contentRoot: string) {
-  const rootMeta = readJson(join(contentRoot, "meta.json"));
-  const orderedPages = Array.isArray(rootMeta?.pages) ? rootMeta.pages : [];
-  const categories = new Map<string, Category>();
-
-  for (const page of orderedPages) {
-    if (typeof page !== "string") continue;
-
-    const meta = readJson(join(contentRoot, page, "meta.json"));
-    categories.set(page, {
-      title: typeof meta?.title === "string" ? meta.title : humanize(page),
-      pages: Array.isArray(meta?.pages)
-        ? meta.pages.filter((item): item is string => typeof item === "string")
-        : [],
-    });
-  }
-
-  return categories;
-}
-
-function collectDocPages(
-  contentRoot: string,
-  categories: Map<string, Category>,
-  urlPrefix?: string,
-) {
-  const pages: DocPage[] = [];
-
-  for (const [categorySlug, category] of categories) {
-    const categoryRoot = join(contentRoot, categorySlug);
-    const categoryPages = collectMdxFiles(categoryRoot, contentRoot, urlPrefix);
-    const ordered = orderPages(categoryPages, category.pages);
-
-    pages.push(
-      ...ordered.map((page) => ({
-        ...page,
-        category: categorySlug,
-      })),
-    );
-  }
-
-  return pages;
-}
-
-function collectMdxFiles(dir: string, contentRoot: string, urlPrefix?: string) {
-  if (!existsSync(dir)) return [];
-
-  const pages: Omit<DocPage, "category">[] = [];
-
-  for (const entry of readdirSync(dir, { withFileTypes: true })) {
-    const fullPath = join(dir, entry.name);
-
-    if (entry.isDirectory()) {
-      pages.push(...collectMdxFiles(fullPath, contentRoot, urlPrefix));
-      continue;
-    }
-
-    if (!entry.name.endsWith(".mdx") && !entry.name.endsWith(".md")) {
-      continue;
-    }
-
-    const raw = readFileSync(fullPath, "utf-8");
-    const { frontmatter, body } = splitFrontmatter(raw);
-    const sourcePath = relative(contentRoot, fullPath)
-      .replace(/\\/g, "/")
-      .replace(/\.mdx?$/, "");
-    const markdownSegments = sourcePath.split("/");
-    const markdownLast = markdownSegments.at(-1)!;
-    const markdownPath = [
-      ...(urlPrefix ? [urlPrefix] : []),
-      ...markdownSegments.slice(0, -1),
-      `${markdownLast}.md`,
-    ].join("/");
-    const docsPath = [urlPrefix, sourcePath].filter(Boolean).join("/");
-    const title =
-      frontmatter.title || humanize(entry.name.replace(/\.mdx?$/, ""));
-
-    pages.push({
-      title,
-      description: frontmatter.description || "",
-      pageUrl: `/docs/${docsPath}`,
-      markdownUrl: `/docs/${docsPath}.md`,
-      apiMarkdownUrl: `/api/markdown/${markdownPath}`,
-      body,
-    });
-  }
-
-  return pages;
-}
-
-function orderPages<T extends { pageUrl: string }>(
-  pages: T[],
-  order: string[],
-) {
-  const rank = new Map(order.map((slug, index) => [slug, index]));
-
-  return pages.sort((a, b) => {
-    const aSlug = a.pageUrl.split("/").at(-1) ?? "";
-    const bSlug = b.pageUrl.split("/").at(-1) ?? "";
-    const aRank = rank.get(aSlug) ?? Number.MAX_SAFE_INTEGER;
-    const bRank = rank.get(bSlug) ?? Number.MAX_SAFE_INTEGER;
-
-    return aRank - bRank || a.pageUrl.localeCompare(b.pageUrl);
-  });
-}
-
-function generateLLMsIndex(
-  pages: DocPage[],
-  categories: Map<string, Category>,
-  baseUrl: string,
-) {
-  const lines = [
-    "# Hot Updater Documentation",
-    "",
-    "> React Native OTA updates powered by your own infrastructure.",
-    "",
-  ];
-
-  for (const [slug, category] of categories) {
-    const categoryPages = pages.filter((page) => page.category === slug);
-    if (categoryPages.length === 0) continue;
-
-    lines.push(`## ${category.title}`, "");
-
-    for (const page of categoryPages) {
-      const description = page.description ? `: ${page.description}` : "";
-      lines.push(
-        `- [${page.title}](${baseUrl}${page.markdownUrl})${description}`,
-      );
-    }
-
-    lines.push("");
-  }
-
-  return `${lines.join("\n").trim()}\n`;
-}
-
-function generateLLMsFull(pages: DocPage[], baseUrl: string) {
-  return `${pages
-    .map((page) => generatePageMarkdown(page, baseUrl).trimEnd())
-    .join("\n\n")}\n`;
-}
-
-async function writeMarkdownPage(
-  outputRoot: string,
-  urlPath: string,
-  page: DocPage,
-  baseUrl: string,
-) {
-  const outputPath = join(outputRoot, urlPath.slice(1));
-
-  await mkdir(dirname(outputPath), { recursive: true });
-  await writeFile(outputPath, generatePageMarkdown(page, baseUrl), "utf-8");
-}
-
-function generatePageMarkdown(page: DocPage, baseUrl: string) {
-  const summary = page.description ? `\n\n> ${page.description}` : "";
-
-  return `# ${page.title} (${baseUrl}${page.pageUrl})${summary}\n\n${cleanMdx(page.body)}\n`;
-}
-
-function splitFrontmatter(raw: string) {
-  const match = raw.match(/^---\n([\s\S]*?)\n---\n?/);
-  if (!match) return { frontmatter: {}, body: raw };
-
-  const frontmatter = match[1] ?? "";
-
-  return {
-    frontmatter: Object.fromEntries(
-      frontmatter
-        .split("\n")
-        .map((line) => line.match(/^([A-Za-z0-9_-]+):\s*(.*)$/))
-        .filter((item): item is RegExpMatchArray => item !== null)
-        .map((item) => [
-          item[1] ?? "",
-          (item[2] ?? "").replace(/^["']|["']$/g, ""),
-        ]),
-    ) as Record<string, string>,
-    body: raw.slice(match[0].length),
-  };
-}
-
-function cleanMdx(body: string) {
-  const componentTag =
-    /<\/?(Tabs|Tab|Accordions|Accordion|Callout)(\s[^>]*)?>/g;
-  let inCodeBlock = false;
-
-  return body
-    .split("\n")
-    .flatMap((line) => {
-      if (/^\s*(```|~~~)/.test(line)) {
-        inCodeBlock = !inCodeBlock;
-        return line;
-      }
-
-      if (inCodeBlock) {
-        return line;
-      }
-
-      if (/^\s*import\s+.*?;?\s*$/.test(line)) {
-        return [];
-      }
-
-      const cleaned = line.replace(componentTag, "").trimEnd();
-      return cleaned.trim().length > 0 ? cleaned : [];
-    })
-    .join("\n")
-    .trim();
-}
-
-function readJson(path: string) {
-  if (!existsSync(path)) return undefined;
-
-  return JSON.parse(readFileSync(path, "utf-8")) as
-    | Record<string, unknown>
-    | undefined;
-}
-
-function humanize(value: string) {
-  return value
-    .split("-")
-    .map((word) => `${word.charAt(0).toUpperCase()}${word.slice(1)}`)
-    .join(" ");
 }

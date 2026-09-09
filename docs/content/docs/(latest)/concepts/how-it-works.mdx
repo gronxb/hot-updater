@@ -23,12 +23,15 @@ deploy → ID → bundle show/update/enable/disable/delete/promote
 
 - **Storage** holds immutable archives, manifests, assets, and patch objects.
 - **Database** holds Bundle delivery settings and internal catalog rows.
-- **Server** selects the compatible Bundle for an app's channel, platform, and
-  app-version or fingerprint scope.
+- **Server** serves a shared, cacheable Release Catalog for an app's channel,
+  platform, and app-version or fingerprint scope.
+- **Client** selects a compatible Bundle from that catalog using its local
+  state, rollout cohort, and target cohorts.
 
 Storage and Database are configured using plugins in `hot-updater.config.ts`.
-Set up the Server through an [AI agent or the interactive
-CLI](/docs/get-started/basic-usage#step-2-initialize-your-provider).
+Start with [agent setup](/docs/guides/ai-agents) or
+[manual setup](/docs/get-started/basic-usage), then
+[verify an OTA update](/docs/get-started/test-ota).
 
 Internally, Hot Updater can reuse one immutable artifact across multiple public
 Bundle IDs. This avoids copying uploaded bytes during promotion and lets policy changes
@@ -49,6 +52,12 @@ artifact commands.
 
 Changing rollout, enabled, force update, cohorts, or message never rewrites the
 uploaded bytes.
+
+`HotUpdater.getBundleId()` identifies the selected update and can change before
+downloaded code starts running. Use a visible app change and
+[`getActiveUpdateState()`](/docs/react-native-api/getActiveUpdateState) when
+verifying delivery. See the [Release Catalog contract](/docs/database-plugins/release-catalog-contract)
+when implementing a database plugin or inspecting protocol behavior.
 
 ## Two rollback mechanisms
 

@@ -20,7 +20,7 @@ You can use `HotUpdater.getChannel()` to dynamically check which channel the app
 import { HotUpdater } from "@hot-updater/react-native";
 import { Text, View } from "react-native";
 
-function App() {
+export default function App() {
   const channel = HotUpdater.getChannel();
 
   return (
@@ -29,14 +29,6 @@ function App() {
     </View>
   );
 }
-
-export default HotUpdater.wrap({
-  baseURL: "<your-update-server-url>",
-  updateStrategy: "appVersion", // or "fingerprint"
-  requestHeaders: {
-    "x-api-key": "<your-api-key>",
-  },
-})(App);
 ```
 
 ## Behavior
@@ -51,18 +43,22 @@ export default HotUpdater.wrap({
 
 ## Runtime Example
 
+After configuring [`HotUpdater.init`](/docs/react-native-api/init), check and
+apply a transition to another channel as part of your
+[custom update flow](/docs/guides/custom-update):
+
 ```tsx
 const updateInfo = await HotUpdater.checkForUpdate({
   updateStrategy: "appVersion",
-  channel: "beta",
+  channel: "beta", // [!code ++]
 });
 
 if (updateInfo) {
-  await updateInfo.updateBundle();
-  await HotUpdater.reload();
+  const didUpdate = await updateInfo.updateBundle();
+  if (didUpdate) {
+    await HotUpdater.reload();
+  }
 }
-
-console.log(HotUpdater.getChannel()); // "beta"
 ```
 
 ## Related APIs

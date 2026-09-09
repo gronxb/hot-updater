@@ -1,0 +1,201 @@
+---
+title: "Test an OTA update"
+description: "Change an installed app without rebuilding it, then roll back the update."
+icon: TestTube
+---
+
+import { Tabs, Tab } from "fumadocs-ui/components/tabs";
+
+In this walkthrough, you will install a Release build, change its text and image
+through an OTA update, then restore the original screen. You only build the
+native app once.
+
+## Before you start
+
+- Complete [Connect your app](/docs/get-started/app-setup). This walkthrough
+  uses its **Check and apply update** button.
+- Use an unused test channel, such as `ota-test`. Set the
+  [native channel](/docs/get-started/app-setup#choose-the-native-test-channel)
+  before building, so existing updates cannot replace your starting screen.
+- Add the text **OTA baseline** and a local image to a screen you can easily open.
+
+From the app directory, run Doctor with your deployed server URL and fix any
+reported setup issues:
+
+```sh
+npx hot-updater doctor --server-base-url https://updates.example.com
+```
+
+Keep the full provider path in the URL. Doctor checks native setup and server
+version; the app test below checks that your client can actually receive and
+apply an update.
+
+## 1. Install a Release build
+
+Choose your project's build tool. Run the command for the platform you want to
+test on a simulator, emulator or connected device.
+
+<Tabs items={["React Native CLI", "Rock", "Expo"]}>
+  <Tab value="React Native CLI">
+
+For iOS, install the native dependencies with your project's CocoaPods setup,
+then build:
+
+```sh
+cd ios
+pod install
+cd ..
+npx react-native run-ios --mode Release
+```
+
+For Android:
+
+```sh
+npx react-native run-android --mode Release
+```
+
+  </Tab>
+  <Tab value="Rock">
+
+For iOS:
+
+```sh
+npx rock run:ios --configuration Release
+```
+
+For Android:
+
+```sh
+npx rock run:android --variant Release
+```
+
+  </Tab>
+  <Tab value="Expo">
+
+For iOS:
+
+```sh
+npx expo run:ios --configuration Release
+```
+
+For Android:
+
+```sh
+npx expo run:android --variant release
+```
+
+  </Tab>
+</Tabs>
+
+Use your equivalent Release command if the app has custom schemes or flavors.
+The app must load its bundled JavaScript; a development session using Metro
+does not exercise OTA loading.
+
+**You should see:** `OTA baseline` and your original image. Keep this app
+installed for the remaining steps.
+
+## 2. Publish a visible change
+
+Change the text to **OTA verified** and replace the local image with a visibly
+different one. Leave native code, dependencies and the native app version
+unchanged. **Do not rebuild or reinstall the app.**
+
+Publish to the same platform, test channel and compatibility target as the
+installed app. These examples use iOS and version `1.0.0`; substitute your
+actual values. For Android, use `-p android`.
+
+<Tabs items={["App version", "Fingerprint"]}>
+  <Tab value="App version">
+
+Use the native app version of the Release build you just installed:
+
+```sh
+npx hot-updater deploy -p ios -c ota-test -t 1.0.0
+```
+
+  </Tab>
+  <Tab value="Fingerprint">
+
+For a project configured to use fingerprint matching, deploy with its existing
+fingerprint. Do not recreate the fingerprint between the native build and this
+update.
+
+```sh
+npx hot-updater deploy -p ios -c ota-test
+```
+
+  </Tab>
+</Tabs>
+
+**You should see:** `Deployment successful` and an **ID**. Save that ID for the
+application and rollback checks. Leave rollout at its default 100%; if your
+app assigns a named cohort, [target that cohort](/docs/guides/rollout-cohorts).
+
+## 3. Apply it in the app
+
+Return to the same installed Release app:
+
+1. Tap **Check and apply update**.
+2. Wait while the app downloads the update and restarts.
+3. Confirm that **OTA verified** and the **new image** both appear.
+
+After the restart, compare the screen's **Update ID** with the ID from
+deployment. The example reads it with
+[`HotUpdater.getBundleId()`](/docs/react-native-api/getBundleId).
+Keep the visible screen change as proof too: an ID can change when an update is
+staged, before its JavaScript is running.
+
+**You have now verified OTA delivery:** a new screen is running in the original
+native installation.
+
+## 4. Roll back the test update
+
+Use the ID you saved above. Inspect it first and confirm it belongs to your
+test channel, then disable it:
+
+```sh
+npx hot-updater bundle show <id>
+npx hot-updater bundle disable <id>
+```
+
+In the app, tap **Check and apply update** again and wait for the restart.
+The [example flow](/docs/get-started/app-setup#configure-the-update-client)
+applies the selected rollback through the same button.
+
+**You should see:** `OTA baseline` and the original image again. This assumes
+the channel had no earlier updates. If it did, the app may return to a previous
+compatible enabled update instead.
+
+This tests disabling an update. [Automatic crash rollback](/docs/concepts/automatic-rollback)
+is a separate recovery mechanism.
+
+## Finish the check
+
+Keep a short record of the platform, channel, deployment ID and what you saw:
+
+| Check | Expected result |
+| --- | --- |
+| Native build | Original text and image appear in a Release app |
+| OTA update | New text and image appear after restart, with the deployment ID |
+| Rollback | Original screen returns after disabling the test update |
+
+If [Insights](/docs/guides/insights#verify-reporting) is enabled, open the Console
+and confirm the application and rollback reports arrived for your test channel.
+Repeat the walkthrough for each platform you support.
+
+You can now explore [update timing](/docs/guides/custom-update),
+[required updates](/docs/guides/deploy#force-update) and
+[production channels](/docs/guides/channel-management).
+
+## If something goes wrong
+
+| What you see | What to do next |
+| --- | --- |
+| Update failed | Check the app's URL and client key with [client-access diagnostics](/docs/guides/doctor#check-client-access) |
+| Button becomes available again, screen unchanged | Inspect the deployment with `bundle show`; platform, channel, version/fingerprint and cohort must match the app |
+| New ID, old screen | Wait for the download and restart to finish; check app logs if the restart fails |
+| New screen disappears after restart | Check [startup errors and crash history](/docs/react-native-api/getCrashHistory) |
+
+`HotUpdater.init()` configures the client at module scope. The button starts the
+check, download and restart. Keep the sample's shared error reporter so request,
+download and restart failures are visible.

@@ -10,11 +10,15 @@ icon: Hammer
 npm install @hot-updater/plugin-core
 ```
 
-Install the public conformance suites in the project that tests your provider:
+Install your test runner in the provider project:
 
 ```package-install
-npm install @hot-updater/test-utils vitest --save-dev
+npm install vitest --save-dev
 ```
+
+The conformance helpers below belong to the Hot Updater repository workspace;
+`@hot-updater/test-utils` is a private workspace package, not an npm dependency
+for external provider projects.
 
 ## Contract
 
@@ -48,8 +52,9 @@ The fixed domains are:
 - `bundles`: immutable artifact metadata.
 - `bundle_patches`: patch artifacts owned by Bundles.
 - `releases`: mutable rollout and compatibility policy that references an
-  artifact Bundle or the embedded app.
-- `release_catalogs`: deterministic, rebuildable projections keyed by scope.
+  artifact Bundle.
+- `release_catalogs`: deterministic projections with persistent identity and
+  generation history, keyed by scope.
 - `channels`: persistent deployment-channel identity.
 - `insights`: immutable Bundle reports and latest installation state.
 - `api_keys`: hashed API key records.
@@ -156,6 +161,11 @@ the JSON payload. Only an atomic commit may write `releaseCatalogs`.
 Never delete the last catalog for a scope. Removing the last eligible Release
 writes a tombstone catalog with a higher generation.
 
+Back up Catalog rows together with Releases. Rebuild preserves an existing
+Catalog's identity and generation history; it cannot recover that history from
+Release rows alone. Restore a missing Catalog row from backup before rebuilding
+or deploying to its scope.
+
 ### Channels and API keys
 
 Channel names are exact and case-sensitive. Concurrent insert returns the
@@ -240,7 +250,7 @@ are not a common snapshot and must not imply an exact percentage. Document
 query costs. Do not return partial results; propagate native errors.
 
 The public constructor validates queries and returned rows, but cannot prove
-atomicity or index usage. Run the public conformance suite plus native rollback,
+atomicity or index usage. Run the repository conformance suite plus native rollback,
 concurrency, continuation, schema-bootstrap, and query-plan tests for your
 backend.
 
@@ -317,7 +327,7 @@ database. Unsupported populated storage is rejected without deleting its data.
 6. Implement atomic Insights recording and the fixed queries above. Record
    `schema.core = 1.0.0` after successful initialization;
    reject unsupported source versions without deleting their data.
-7. Run the public conformance and integration suites against the real backend.
+7. Run conformance and integration tests against the real backend.
 
 Provider-specific consistency requirements:
 
@@ -368,9 +378,10 @@ configured client or runtime binding.
 
 The database contract is independent of HTTP caching. If a custom deployment
 places a shared cache in front of the server, its catalog cache key must include
-the host, canonical path, `x-api-key`, and supported content encoding. It must
-not include installation state. Invalid-key and error responses remain
-`private, no-store`.
+the host, canonical path, supported content encoding, and the configured API
+key header (`x-api-key` by default). When using `clientAccess.headerName`,
+partition on that header instead. It must not include installation state.
+Invalid-key and error responses remain `private, no-store`.
 
 If custom authentication varies on any other header, map that identity to one
 stable, documented catalog cache partition and include it in the cache key.
@@ -379,7 +390,18 @@ partition contract.
 
 ## Test the provider
 
-```ts title="myDatabase.spec.ts"
+For an external provider project, implement tests against the
+[database contract](/docs/database-plugins/release-catalog-contract), using the
+[repository conformance helpers](https://github.com/gronxb/hot-updater/tree/next/packages/test-utils/src)
+as reference for the scenarios and expected results.
+
+The following helper API is for provider packages developed inside a Hot Updater
+checkout. Declare `"@hot-updater/test-utils": "workspace:*"` in that provider's
+`devDependencies`, install the workspace dependencies and build the workspace
+packages before running it. Supply the provider-specific database creation,
+migration and reset functions used in this excerpt:
+
+```ts title="myDatabase.spec.ts (repository workspace excerpt)"
 import { createDatabaseClient } from "@hot-updater/plugin-core";
 import {
   setupDatabaseClientTestSuite,
@@ -401,6 +423,14 @@ setupDatabaseClientTestSuite({
 });
 ```
 
+For a complete executable workspace example, see the
+[mock provider tests](https://github.com/gronxb/hot-updater/blob/next/plugins/mock/src/test/mockDatabase.spec.ts).
+From a prepared repository checkout, run:
+
+```bash
+pnpm -w test plugins/mock/src/test/mockDatabase.spec.ts
+```
+
 The suites verify exact model semantics, strong Release paging, catalog point
 reads, Release/catalog CAS conflicts, all-model rollback, Channel safety,
 Insights duplicate/identity/count/filter semantics, ordering, and the absence
@@ -415,7 +445,7 @@ Use the same provider in the CLI and self-hosted server:
 import { defineConfig } from "hot-updater";
 
 export default defineConfig({
-  database: myDatabase({ db }),
+  database: myDatabase({ db }), // [!code ++]
   // build: ...
   // storage: ...
 });
@@ -423,7 +453,7 @@ export default defineConfig({
 
 ```ts title="server.ts"
 export const hotUpdater = createHotUpdater({
-  database: myDatabase({ db }),
+  database: myDatabase({ db }), // [!code ++]
   clientAccess: { type: "api-key" },
   storage,
 });

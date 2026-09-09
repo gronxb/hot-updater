@@ -1,0 +1,106 @@
+---
+title: "Standalone Storage"
+description: Send CLI storage operations to your own authenticated HTTP storage service.
+icon: Server
+---
+
+## Before you start
+
+`standaloneStorage` sends CLI storage operations to a remote HTTP service.
+Use it when you already operate, or will implement, the storage service
+described below. The adapter does not provision that service.
+
+Complete the [CLI and app installation](/docs/get-started/installation), then
+install the adapter in the app or deploy workspace. This example also uses the
+Bare build plugin; keep your existing build plugin if it differs.
+
+```package-install
+npm install @hot-updater/standalone @hot-updater/bare --save-dev
+```
+
+The server that serves mobile updates needs its own runtime storage plugin
+with `get` and `getDownloadUrl`, configured for the same stored objects.
+`standaloneStorage` has no `getDownloadUrl` capability and cannot be passed
+as runtime storage to `createHotUpdater`.
+
+## Configuration
+
+`baseUrl` selects the HTTP storage service root; `protocol` selects the
+persisted Storage URI scheme owned by that service. An HTTPS service can own
+`s3://...` URIs. Set the root without a trailing slash because route paths are
+appended directly.
+
+Load credentials from your local ignored environment file or deployment secret
+store. The admin and storage tokens authenticate their respective services;
+neither belongs in the React Native app.
+
+```typescript title="hot-updater.config.ts"
+import { bare } from "@hot-updater/bare";
+import {
+  standaloneRepository,
+  standaloneStorage, // [!code ++]
+} from "@hot-updater/standalone";
+import { config } from "dotenv";
+import { defineConfig } from "hot-updater";
+
+config({ path: ".env.hotupdater" });
+
+const adminToken = process.env.HOT_UPDATER_ADMIN_TOKEN;
+const storageToken = process.env.HOT_UPDATER_STORAGE_TOKEN; // [!code ++]
+if (!adminToken || !storageToken) {
+  throw new Error("Admin and storage service credentials are required");
+}
+
+export default defineConfig({
+  build: bare({ enableHermes: true }),
+  database: standaloneRepository({
+    baseUrl: "https://api.example.com/hot-updater/admin",
+    commonHeaders: {
+      Authorization: `Bearer ${adminToken}`,
+    },
+  }),
+  storage: standaloneStorage({ // [!code ++]
+    baseUrl: "https://storage.example.com/hot-updater", // [!code ++]
+    protocol: "s3", // [!code ++]
+    commonHeaders: { // [!code ++]
+      Authorization: `Bearer ${storageToken}`, // [!code ++]
+    }, // [!code ++]
+  }), // [!code ++]
+  updateStrategy: "appVersion",
+});
+```
+
+The [Standalone Repository](/docs/database-plugins/standalone) configures the
+separate database/admin connection. The storage adapter can also be combined
+with another database plugin.
+
+`commonHeaders` applies to every storage request. Optional `routes.put`,
+`routes.get`, `routes.exists` and `routes.delete` callbacks can return
+`{ path, headers }` to customize a route; route headers override common headers.
+Keep the method and body contract below. Let the adapter set the multipart
+content type for uploads.
+
+## Storage service contract
+
+Authenticate these routes in your service before reading or changing objects.
+All paths are relative to `baseUrl`:
+
+| Method   | Default route | Request                             | Success response                                 |
+| -------- | ------------- | ----------------------------------- | ------------------------------------------------ |
+| `POST`   | `/upload`     | multipart `file` and `key` fields   | JSON `{ "storageUri": "s3://..." }`              |
+| `POST`   | `/get`        | JSON `{ "storageUri": "s3://..." }` | Object bytes, or `404` when missing              |
+| `POST`   | `/exists`     | JSON `{ "storageUri": "s3://..." }` | JSON `{ "exists": true }`, or `404` when missing |
+| `DELETE` | `/delete`     | JSON `{ "storageUri": "s3://..." }` | Any `2xx`, or `404` for an absent object         |
+
+Return a validated [storage URI](/docs/storage-plugins/custom-storage#storage-uri-format)
+using the configured protocol. A storage URI identifies the persisted object;
+the runtime storage plugin resolves its mobile download URL separately.
+
+The built-in handlers from `createHotUpdater` do not implement these four
+storage-service routes. Its signed mobile-download route is a separate
+protocol. See [custom server storage composition](/docs/custom/overview#storage-plugins)
+for configuring the runtime plugin.
+
+Uploads buffer the input stream into a multipart file before sending it.
+Reads return a Web `Response`. The adapter supports `put`, `get`, `exists`
+and exact `delete`; it does not implement storage pruning operations.

@@ -19,14 +19,15 @@ Choose Fingerprint for automatic safety. Choose App Version for manual control.
 
 ## Setup
 
-App Version is the default strategy. Fingerprint is opt-in, so select it
-explicitly:
+App Version is the default strategy. If you explicitly configured it, replace
+that setting with `fingerprint`:
 
 ```typescript title="hot-updater.config.ts"
 import { defineConfig } from "hot-updater";
 
 export default defineConfig({
-  updateStrategy: "fingerprint",
+  updateStrategy: "appVersion", // [!code --]
+  updateStrategy: "fingerprint", // [!code ++]
 });
 ```
 
@@ -39,6 +40,7 @@ import { defineConfig } from "hot-updater";
 
 export default defineConfig({
   updateStrategy: "fingerprint",
+  // [!code ++:4]
   fingerprint: {
     extraSources: ["config/native-config.json", "scripts/post-build.sh"],
     debug: true,
@@ -47,7 +49,8 @@ export default defineConfig({
 ```
 
 An array is shared: every entry is hashed into both the iOS and the Android
-fingerprint. When the native inputs differ per platform, use the object form so
+fingerprint. When the native inputs differ per platform, replace `extraSources`
+with the object form so
 that an iOS-only change does not move the Android fingerprint (and vice versa):
 
 ```typescript title="hot-updater.config.ts"
@@ -56,6 +59,8 @@ import { defineConfig } from "hot-updater";
 export default defineConfig({
   updateStrategy: "fingerprint",
   fingerprint: {
+    extraSources: ["config/native-config.json", "scripts/post-build.sh"], // [!code --]
+    // [!code ++:4]
     extraSources: {
       ios: ["ios/.env"],
       android: ["android/local.properties"],
@@ -84,7 +89,7 @@ This creates a `fingerprint.json` file and embeds the hash in your native files:
 
 Example `fingerprint.json`:
 
-```json
+```json title="fingerprint.json"
 {
   "ios": {
     "hash": "11142b9062165fa48665f5efa095dd94e9e45eb0"
@@ -127,25 +132,48 @@ npx hot-updater fingerprint create
 
 ## Client Setup
 
-Configure your React Native app:
+Change the app's existing `checkForUpdate` strategy to `fingerprint` too. The
+module below keeps initialization at module scope and shows the matching check:
 
-```tsx title="App.tsx"
+Keep the `baseURL` and client key from [App setup](/docs/get-started/app-setup).
+Managed providers require this client key; provider and admin credentials stay
+out of the app.
+
+```tsx title="updates.ts"
 import { HotUpdater } from "@hot-updater/react-native";
-import { View, Text } from "react-native";
 
-function App() {
-  return (
-    <View>
-      <Text>Hello World</Text>
-    </View>
-  );
+HotUpdater.init({
+  baseURL: "https://your-update-server.com",
+  requestHeaders: {
+    "x-api-key": "<your-client-api-key>",
+  },
+  onError: (error) => console.error("Hot Updater failed:", error),
+});
+
+export async function checkForAppUpdate() {
+  try {
+    const updateInfo = await HotUpdater.checkForUpdate({
+      updateStrategy: "appVersion", // [!code --]
+      updateStrategy: "fingerprint", // [!code ++]
+    });
+
+    if (!updateInfo) return;
+
+    const didUpdate = await updateInfo.updateBundle();
+    if (didUpdate && updateInfo.shouldForceUpdate) {
+      await HotUpdater.reload();
+    }
+  } catch (error) {
+    console.error("Failed to prepare update:", error);
+  }
 }
-
-export default HotUpdater.wrap({
-  baseURL: "https://your-update-server.com", // [!code ++]
-  updateStrategy: "fingerprint", // [!code ++]
-})(App);
 ```
+
+Call `checkForAppUpdate()` from your app's startup, resume, or user action.
+`init` configures the client; it does not check for updates. The helper stages
+the selected update, and standard updates take effect on the next runtime
+start. Follow [custom update flows](/docs/guides/custom-update) to add progress
+and choose when to reload.
 
 The client fetches the fingerprint Release Catalog:
 
@@ -209,6 +237,7 @@ import { defineConfig } from "hot-updater";
 
 export default defineConfig({
   updateStrategy: "fingerprint",
+  // [!code ++:15]
   platform: {
     ios: {
       infoPlistPaths: [
@@ -232,17 +261,11 @@ metadata.
 
 💡 Most projects don't need this - the defaults work perfectly.
 
-### Testing the Endpoint
+### Test a fingerprint update
 
-Test your update endpoint with curl:
+Follow [Test an OTA update](/docs/get-started/test-ota) with a Release build.
+Keep the native inputs and fingerprint unchanged while editing JavaScript or
+assets. Deploy without `-t`; the SDK and CLI use the matching fingerprint to
+select the update.
 
-```bash
-curl "https://your-update-endpoint.com/release-catalogs/fingerprint/ios/cHJvZHVjdGlvbg/11142b9062165fa48665f5efa095dd94e9e45eb0"
-```
-
-Parameters:
-
-- `:platform` - `ios` or `android`
-- `:channelKey` - Canonical base64url encoding of the channel name (for example,
-  `production` becomes `cHJvZHVjdGlvbg`)
-- `:fingerprintHash` - Current fingerprint hash
+If the check fails, use [client-access diagnostics](/docs/guides/doctor#check-client-access).

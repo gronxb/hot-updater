@@ -14,12 +14,12 @@ icon: FileArchive
 
 Set `compressStrategy` in your `hot-updater.config.ts`:
 
-```ts
+```ts title="hot-updater.config.ts"
 import { defineConfig } from 'hot-updater';
 
 export default defineConfig({
   // ... other options
-  compressStrategy: 'tar.gz', // 'zip' | 'tar.gz' | 'tar.br'
+  compressStrategy: 'tar.gz', // 'zip' | 'tar.gz' | 'tar.br' // [!code ++]
 });
 ```
 

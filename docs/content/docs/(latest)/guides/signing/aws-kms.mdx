@@ -1,0 +1,187 @@
+---
+title: "AWS KMS Signing"
+description: "Configure a non-exportable AWS KMS key for signed OTA deployments"
+icon: Shield
+---
+
+## Set Up AWS KMS Signing
+
+[AWS KMS asymmetric keys](https://docs.aws.amazon.com/kms/latest/developerguide/symmetric-asymmetric.html)
+perform signing without returning the private key. Create an RSA key with
+`SIGN_VERIFY` usage, export its public key, and give the deploy identity only
+the permissions it needs to use that key.
+
+[Review the signing rollout](/docs/guides/bundle-signing#choose-and-roll-out-a-signer)
+before adding a signer to an existing Hot Updater project.
+
+### 1. Create the signing key
+
+The following example creates a 4096-bit RSA key and writes its public key as
+SPKI PEM. The public key is not secret.
+
+```bash
+mkdir -p keys
+
+KEY_ARN=$(aws kms create-key \
+  --key-spec RSA_4096 \
+  --key-usage SIGN_VERIFY \
+  --description "Hot Updater bundle signing" \
+  --query KeyMetadata.Arn \
+  --output text)
+
+aws kms get-public-key \
+  --key-id "$KEY_ARN" \
+  --query PublicKey \
+  --output text \
+  | openssl base64 -d -A \
+  | openssl pkey -pubin -inform DER -out keys/public-key.pem
+```
+
+Save the immutable key ARN in deployment configuration. Do not use an alias
+that can silently move to another key: its public key would no longer match
+the key embedded in existing apps.
+
+### 2. Keep the public key with the project
+
+Keep local private material ignored and include only the public file:
+
+```txt title=".gitignore"
+# [!code --]
+keys/
+# [!code ++:2]
+keys/*
+!keys/public-key.pem
+```
+
+Commit `keys/public-key.pem`. Expo and native builds need this public file, and
+there is no security benefit in hiding it. Replace an existing `keys/` rule
+with the rules above: an exception for a file inside an ignored directory is
+not sufficient on its own.
+
+### 3. Configure the provider
+
+Install the optional AWS KMS SDK in the project that runs the deploy command:
+
+```package-install
+npm install '@aws-sdk/client-kms@^3.1066.0' --save-dev
+```
+
+```ts title="hot-updater.config.ts"
+import { defineConfig } from "hot-updater";
+import { awsKmsSigning } from "hot-updater/signing"; // [!code ++]
+
+export default defineConfig({
+  // ...other config
+  // [!code ++:6]
+  signing: awsKmsSigning({
+    // A key ARN is an identifier, not a secret. Pin the exact key.
+    keyId:
+      "arn:aws:kms:ap-northeast-2:123456789012:key/00000000-0000-0000-0000-000000000000",
+    region: "ap-northeast-2",
+  }),
+});
+```
+
+`awsKmsSigning` uses the AWS SDK default credential chain. Prefer a short-lived
+workload identity instead of putting long-lived credentials in
+`hot-updater.config.ts`. An explicit HTTPS `endpoint` is available for private
+KMS endpoints; HTTP is accepted only for loopback testing.
+
+Hot Updater verifies every provider signature against the public key returned
+by KMS before upload. It also compares that signer identity with the public key
+configured in the native app.
+
+### 4. Embed the public key and release the app
+
+Follow the shared steps for [React Native CLI](/docs/guides/bundle-signing#manual-public-key-configuration)
+or [Expo and EAS Build](/docs/guides/bundle-signing#expo-and-eas-build).
+The Expo config plugin reads the checked-in public key and does not need AWS
+credentials or private key material.
+
+Build and release the native app before the first signed OTA deployment.
+For an existing signing key, follow [Key Rotation](/docs/guides/bundle-signing#key-rotation)
+before switching the signer used for installed apps.
+
+### 5. Deploy with GitHub Actions OIDC
+
+Use [GitHub Actions OIDC](https://docs.github.com/en/actions/how-tos/secure-your-work/security-harden-deployments/oidc-in-aws)
+to exchange the workflow identity for short-lived AWS credentials. Restrict
+the IAM trust policy to the expected repository and protected branch, tag, or
+GitHub environment.
+
+For signing, the deploy role needs access only to the pinned key. Add storage
+and database permissions separately for the providers used by your project.
+
+```json title="IAM policy"
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Action": "kms:GetPublicKey",
+      "Resource": "arn:aws:kms:ap-northeast-2:123456789012:key/00000000-0000-0000-0000-000000000000"
+    },
+    {
+      "Effect": "Allow",
+      "Action": "kms:Sign",
+      "Resource": "arn:aws:kms:ap-northeast-2:123456789012:key/00000000-0000-0000-0000-000000000000",
+      "Condition": {
+        "StringEquals": {
+          "kms:MessageType": "RAW",
+          "kms:SigningAlgorithm": "RSASSA_PKCS1_V1_5_SHA_256"
+        }
+      }
+    }
+  ]
+}
+```
+
+```yaml title=".github/workflows/deploy.yml"
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - name: Check out the reviewed source
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+
+      - name: Set up Node.js
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          cache: npm
+          node-version: 22
+
+      - name: Install the locked dependency graph
+        run: npm ci
+
+      - name: Authenticate to AWS
+        uses: aws-actions/configure-aws-credentials@e6de054238d6b7531b4efff3b6587d9aade6a06c # v6
+        with:
+          role-to-assume: arn:aws:iam::123456789012:role/hot-updater-deploy
+          aws-region: ap-northeast-2
+
+      - name: Deploy signed bundle
+        run: npx --no-install hot-updater deploy -p ios
+```
+
+Use environment protection rules and required reviewers for the signing job.
+The example pins actions to the commits behind their v6 releases; review and
+update those pins deliberately when upgrading.
+
+KMS prevents private-key extraction, but it cannot decide whether code is safe.
+Any dependency or script running with `kms:Sign` can request signatures. Treat
+the build and deploy dependency graph as part of the trusted signing boundary,
+and run the signing workflow only from reviewed protected refs. Avoid granting
+signing credentials to pull-request workflows, especially
+`pull_request_target` jobs that execute untrusted code.
+
+The AWS provider uses the [shared RSA-SHA256 protocol](/docs/guides/signing/remote#signing-protocol)
+with `MessageType: RAW`. See [remote call behavior](/docs/guides/signing/remote#remote-call-behavior)
+for request caching and deployment failures.

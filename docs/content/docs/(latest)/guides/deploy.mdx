@@ -4,6 +4,8 @@ description: "Deploy an update to one platform or both platforms sequentially."
 icon: Upload
 ---
 
+## Publish an update
+
 <video src={"/docs/deploy/deploy.mov"} controls autoPlay loop muted />
 
 Deploy builds and uploads the update files for each platform and publishes its
@@ -12,11 +14,15 @@ the console, and [`HotUpdater.getBundleId()`](/docs/react-native-api/getBundleId
 
 ## Checklist
 
-1. Ensure `hot-updater.config.ts` is properly configured.
-2. Wrap your components using `HotUpdater.wrap`.
-3. Include the native code.
+1. Complete [manual setup](/docs/get-started/basic-usage) or
+   [agent setup](/docs/guides/ai-agents), including the server and client key.
+2. Connect the app with `HotUpdater.init` and implement the
+   [custom update flow](/docs/guides/custom-update), then apply the
+   [native integration](/docs/get-started/app-setup).
+3. Install a release build with the intended channel and compatibility target.
 
-If you haven't completed these steps, refer to the [Supabase Provider](/docs/managed/supabase) guide.
+For your first deployment, follow [Test an OTA update](/docs/get-started/test-ota)
+to verify delivery in a test channel before using the commands below.
 
 ## Options
 
@@ -114,7 +120,9 @@ npx hot-updater deploy -p <"ios" | "android">
 
 ### Force Update
 
-Create a Bundle whose selected update is applied immediately.
+Mark a Bundle as requiring immediate application when selected. A custom
+update flow receives `shouldForceUpdate: true` and controls when to reload
+after a successful download.
 
 Run the following command:
 
@@ -180,7 +188,12 @@ deploys.
 
 ## Force Update Flag Difference
 
-| Update Type  | When Applied                                                                                 | How to Enable                             |
+| Update Type  | Application in a custom flow                                                                 | How to Enable                             |
 | ------------ | -------------------------------------------------------------------------------------------- | ----------------------------------------- |
-| Default      | Downloads the update bundle in the background and applies it when the user restarts the app. | Default setting                           |
-| Force Update | Downloads the selected Bundle and applies it immediately.                                    | Use the `--force-update` flag or console. |
+| Default      | Download, then reload at a safe point or apply on the next app start.                        | Default setting                           |
+| Force Update | Read `shouldForceUpdate: true` and choose a reload point after download succeeds.            | Use the `--force-update` flag or console. |
+
+In the custom flow, `shouldForceUpdate` is a signal for your application to
+call `reload()` after a successful download. Your code controls the restart;
+setting the server flag alone does not restart an `init`-based app. The optional
+[`wrap` flow](/docs/react-native-api/wrap) handles this automatically by default.

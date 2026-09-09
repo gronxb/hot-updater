@@ -1,0 +1,40 @@
+---
+title: "getInstallId"
+description: "Read the persisted identifier used for this installation's Insights reports."
+icon: Fingerprint
+---
+
+## Usage
+
+Use `HotUpdater.getInstallId()` to connect a support report to an installation
+in [Insights](/docs/guides/insights).
+
+```tsx
+import { HotUpdater } from "@hot-updater/react-native";
+
+const installId = HotUpdater.getInstallId();
+console.log("Hot Updater installation:", installId);
+```
+
+## Return value
+
+```ts
+getInstallId(): string
+```
+
+The getter is synchronous. It returns the locally persisted installation ID,
+creating one if needed, without making a network request. It remains stable
+across runtime restarts while that local identity is retained.
+
+This identifies an app installation, not a person. Multiple installations for
+one user have separate IDs and count separately in Insights. Calling
+[`setUser`](/docs/react-native-api/setUser), including `setUser(null)`, does not
+change the installation ID.
+
+In the Console, open **Insights → All events** and search for this ID to inspect
+received reports. An ID only appears there after the server receives a report.
+
+## Related
+
+- [`setUser`](/docs/react-native-api/setUser)
+- [Insights](/docs/guides/insights)

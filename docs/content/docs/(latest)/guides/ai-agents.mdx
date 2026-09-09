@@ -1,100 +1,105 @@
 ---
-title: "AI Agent Guide"
-description: "Use the Hot Updater skill with AI coding agents for infrastructure setup, upgrades, and OTA operations."
+title: "Set up with an agent"
+description: "Ask a coding agent to install v1, provision infrastructure, connect your app and verify an OTA update."
 icon: Bot
 ---
 
+## Complete setup with your agent
+
+Use your coding agent to discover the app and existing infrastructure, complete
+setup and report observable results. For terminal setup, use
+[Set up manually](/docs/get-started/basic-usage). For a v0 app, follow
+[Move from v0 to v1](/docs/guides/upgrade-to-v1) instead of a new-project setup.
+
 ## Attach the Skill
 
-Agent skills are packaged capabilities that give AI coding agents structured
-instructions for a production workflow. Attach the Hot Updater skill from its
-GitHub location:
-
-- [`skills/hot-updater/SKILL.md`](https://github.com/hot-updater/skills/blob/main/skills/hot-updater/SKILL.md)
-
-You can also install it with `npx skills`:
+Install the [Hot Updater skill](https://github.com/hot-updater/skills/blob/main/skills/hot-updater/SKILL.md)
+from the app's project directory:
 
 ```sh
-npx skills add hot-updater/skills
+npx skills@latest add hot-updater/skills
 ```
+
+The skill gives the agent the workflow. Setup requires a compatible v1 CLI and
+access to your provider account. The request below authorizes package installation;
+the agent verifies the CLI's version and commands before provisioning.
 
 ## Ask With `$hot-updater`
 
-After attaching the skill, ask your agent to set up infrastructure:
+Ask for the complete setup and test:
 
 ```text
-$hot-updater Set up infrastructure for this project.
+$hot-updater Install Hot Updater v1 and set up this app, including its infrastructure.
+Use HotUpdater.init with a custom flow; verify OTA and rollback in a native Release build on a test channel.
 ```
 
-You can leave the provider unspecified. The agent checks your project's existing
-configuration and asks you to choose a provider if it cannot determine one.
+The agent can leave the provider choice until after discovery. It reuses suitable
+existing resources and creates missing projects, databases, buckets and services
+when its tools and access permit it. If a choice remains unresolved, use
+[Choose infrastructure](/docs/get-started/choose-provider).
 
-For an existing server:
+The shared [installation contract](/docs/get-started/installation) includes the
+CLI, SDK, selected build/provider packages and helper runtime prerequisites.
+The skill and generated [infrastructure instructions](/docs/guides/agent-infrastructure)
+carry the discovery, provisioning and verification steps; the prompt only needs
+to specify the desired app behavior and outcome.
 
-```text
-$hot-updater Upgrade this project's existing server infrastructure.
-```
+## What the agent should complete
 
-The agent uses `hot-updater agent infra upgrade`, reads all relevant versioned
-upgrade files, applies pending changes, and runs doctor against the deployed
-server. See [Upgrade an existing server](/docs/guides/agent-infrastructure#upgrade-an-existing-server).
+| Phase | Evidence to report |
+| --- | --- |
+| Inspect and install | App workspace, build system, provider and resolved package versions |
+| Provision infrastructure | Actual resource identifiers, deployed base URL, server version and authenticated client request |
+| Connect the app | Top-level init, explicit check/download/reload flow, native loading, client key, matching strategy/channel and signing key when enabled |
+| Test OTA | Release app launch, visible JavaScript and asset changes after application, matching deployment ID and rollback result |
+| Observe and hand off | Received Insights when enabled; remaining store/native release steps and any specific blockers |
 
-You can also ask for OTA operations and diagnostics:
+[Connect your app](/docs/get-started/app-setup) is the canonical integration
+procedure. Prefer its custom `init` flow so check timing and reload behavior
+fit the app. `init` alone does not download updates; preserve an existing
+intentional wrapper flow or use `wrap` only when its automatic behavior is
+wanted. Do not combine both initialization APIs.
+[Test an OTA update](/docs/get-started/test-ota) defines the device checks. A generated scaffold, a successful doctor check or an uploaded bundle
+alone does not prove that a device applied an OTA update.
 
-```text
-$hot-updater deploy using the current app version
-$hot-updater deploy the current iOS app version to production
-$hot-updater list iOS Bundles on the production channel
-$hot-updater inspect a Bundle, then disable that exact Bundle
-$hot-updater show which Bundles reference this artifact
-$hot-updater run doctor with server URL https://updates.example.com
-$hot-updater fix local doctor issues that do not require server credentials
-```
-
-The skill uses the project's installed CLI help to discover supported commands.
-For infrastructure work, the agent asks for missing project details or access,
-generates setup or upgrade templates, and applies them using available provider
-tools. It verifies each step and resumes unfinished work
-after inspecting remote state. The installed CLI must support the agent commands;
-attaching the skill does not add commands to an older CLI.
-
-The agent creates missing projects and infrastructure when its tools and access
-allow it. It asks only for unresolved choices or access. Authenticate through the
-provider or save credentials directly in a local ignored file; never paste
-tokens, passwords or private keys into the conversation. The generated
-`ENVIRONMENT.md` explains which settings are required and where to obtain them.
+If the agent cannot build or interact with the native app, it should complete
+available setup work and identify the exact remaining device check.
 
 ## Safety Rules
 
-- For agent-led infrastructure setup or upgrades, ask the agent to use
-  `npx hot-updater agent infra setup` or `npx hot-updater agent infra upgrade`.
-  These commands generate instructions and deployment templates for the agent
-  to apply using its available provider tools. See
-  [Agent Infrastructure](/docs/guides/agent-infrastructure).
-- For interactive setup in your terminal, use `npx hot-updater init`. The
-  [setup guide](/docs/get-started/basic-usage#step-2-initialize-your-provider)
-  shows both workflows in separate tabs.
-- The agent should ask for the update server URL before running a
-  server/infrastructure doctor check unless you already provided it or it is
-  obvious from local configuration.
-- When iterating on doctor failures, the agent should prefer
-  `npx hot-updater doctor --json`. It should repair issues marked
-  `fixability: "auto"`, run listed commands for `fixability: "command"`, and
-  inspect the prerequisite for `fixability: "blocked"`. During an authorized
-  infrastructure setup or upgrade, it should follow the generated instructions
-  when provider access is available. Pause only the step with a real unresolved
-  prerequisite; the label does not require repeating an existing authorization.
-- The agent should edit provider credentials only as part of a requested setup
-  or credential change. Credentials are commonly stored in `.env.hotupdater`,
-  but projects may use a different environment-loading setup.
-- Server infrastructure failures remain blocked until the agent has the
-  required provider access and authorization. It can generate upgrade
-  instructions locally, then apply them when that access is available.
-- If an OTA deploy fails, the agent should not keep trying fixes or mutate project
-  setup automatically. It should summarize the failed command, the likely
-  cause, and the next checks for you to decide.
-- For state-changing operations such as deploy, bundle enable/disable, or
-  database migration, the agent should identify the console ID and affected
-  scope first and verify the result afterward. Operational rollback uses
-  `bundle disable <id>`; Artifact IDs are used only for Advanced operations and
-  native crash diagnostics.
+- Authenticate through the provider's login flow or private local/provider
+  credential storage. Never paste tokens, passwords, private keys or credential
+  JSON into the conversation. The agent verifies access without printing values.
+- The app receives only its client API key. Provider, service-role, admin and
+  signing credentials remain in the CLI/server or protected deployment job.
+- Expect questions only for unresolved targets, missing login/access, billing
+  activation or consequential choices the agent cannot infer.
+- Use a dedicated test channel for the first OTA. Review the platform, channel
+  and compatibility scope before changing a production release.
+
+## Upgrade existing infrastructure
+
+For an existing v1 server, ask:
+
+```text
+$hot-updater Upgrade this project's existing server to the latest stable v1, preserving resources and verifying authenticated client access.
+```
+
+The agent follows
+[Upgrade an existing server](/docs/guides/agent-infrastructure#upgrade-an-existing-server).
+For v0, use the [migration workflow](/docs/guides/upgrade-to-v1).
+
+## Deploy and diagnose after setup
+
+```text
+$hot-updater Deploy the current iOS app version to the staging channel and verify the result.
+$hot-updater List iOS Bundles on the production channel.
+$hot-updater Inspect this Bundle ID and its affected scope, then disable it and verify rollback.
+$hot-updater Run doctor for this project's configured server and fix local setup issues.
+```
+
+Use [Doctor](/docs/guides/doctor) for structured `--json` diagnostics. Its
+`auto`, `command` and `blocked` labels describe repair prerequisites; the agent
+can continue an authorized infrastructure repair when the necessary access is
+available. Public Bundle IDs drive normal operations; Artifact IDs are for
+advanced storage and native crash diagnostics.

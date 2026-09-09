@@ -28,23 +28,23 @@ export function LandingHero() {
               </p>
             </div>
 
-            {/* Install command */}
+            {/* Agent setup */}
             <div className="relative w-full max-w-md">
-              <div className="relative rounded-lg border border-fd-border bg-fd-card/80 backdrop-blur-sm px-3 sm:px-4 py-2.5 sm:py-3 shadow-lg space-y-2">
-                <div className="flex items-center gap-2 sm:gap-3">
-                  <span className="text-orange-500 text-xs sm:text-sm font-mono select-none shrink-0">
-                    $
-                  </span>
-                  <code className="text-xs sm:text-sm font-mono text-fd-foreground flex-1 overflow-x-auto">
-                    npm i hot-updater --save-dev
+              <div className="relative rounded-lg border border-fd-border bg-fd-card/80 backdrop-blur-sm px-3 sm:px-4 py-3 sm:py-4 shadow-lg space-y-3">
+                <div className="space-y-1.5">
+                  <p className="text-xs text-fd-muted-foreground">
+                    <span className="text-orange-500">1.</span> Terminal
+                  </p>
+                  <code className="block text-xs sm:text-sm font-mono text-fd-foreground break-words">
+                    npx skills@latest add hot-updater/skills
                   </code>
                 </div>
-                <div className="flex items-center gap-2 sm:gap-3">
-                  <span className="text-orange-500 text-xs sm:text-sm font-mono select-none shrink-0">
-                    $
-                  </span>
-                  <code className="text-xs sm:text-sm font-mono text-fd-foreground flex-1 overflow-x-auto">
-                    npx hot-updater init
+                <div className="space-y-1.5 border-t border-fd-border pt-3">
+                  <p className="text-xs text-fd-muted-foreground">
+                    <span className="text-orange-500">2.</span> Your agent
+                  </p>
+                  <code className="block text-xs sm:text-sm font-mono text-fd-foreground break-words">
+                    $hot-updater Install v1, set up and test OTA.
                   </code>
                 </div>
               </div>
@@ -54,7 +54,7 @@ export function LandingHero() {
             <div className="flex flex-wrap items-center gap-3 sm:gap-4">
               <Link
                 unstable_prefetchOnView
-                to="/docs/get-started/introduction"
+                to="/docs/guides/ai-agents"
                 className="inline-flex items-center justify-center rounded-lg bg-linear-to-r from-orange-400 to-orange-500 px-5 sm:px-6 py-2.5 sm:py-3 text-sm font-semibold text-white shadow-lg transition-all hover:shadow-orange-500/30 hover:scale-105"
               >
                 Get Started →
@@ -88,7 +88,7 @@ export function LandingHero() {
               </div>
 
               {/* XTerm Terminal */}
-              <div className="p-2 sm:p-4 min-h-[190px] sm:min-h-[258px] lg:min-h-[333px]">
+              <div className="p-2 sm:p-4 min-h-[250px] sm:min-h-[286px]">
                 <TerminalEmulator onReady={runDeployDemo} />
               </div>
             </div>

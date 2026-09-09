@@ -1,83 +1,52 @@
 ---
-title: "When to Submit Your App for Review"
-description: "`HotUpdater` updates JavaScript (JS) files and assets without replacing the native binary. Native changes require a new app build, and every update must comply with the applicable app store policies."
+title: "Native Compatibility and App Review"
+description: "Decide when a change needs a native build and review the store policies that apply to OTA updates."
 icon: FileCheck
 ---
 
-## Scenarios Requiring App Store Review (Native Code Changes)
+Hot Updater delivers JavaScript and assets. It cannot replace the installed
+native binary. First determine whether the change is compatible with that
+binary, then check the applicable store policies.
 
+## Choose a delivery path
 
-1. **Initial Integration of `HotUpdater`**  
-   During the first integration of `HotUpdater`, native code modifications are required. This necessitates submitting your app for app store review.
+| Change | Technical delivery path |
+| --- | --- |
+| First integration of Hot Updater | Build and distribute a new native app through the store review process. |
+| Swift, Objective-C, Kotlin, or Java changes | Build and distribute a new native app. |
+| Installing or upgrading a dependency that changes native code | Build and distribute a new native app; inspect native dependency changes. |
+| JavaScript changes compatible with the installed native runtime | OTA is technically possible, subject to store policies. |
+| Assets referenced with `require`, such as images or media | OTA is technically possible, subject to store policies. |
+| A JavaScript-only library change | OTA is technically possible if it remains compatible with the installed runtime, subject to store policies. |
 
-2. **Native Code Changes**  
-   Any updates to native code, such as Swift, Objective-C, Kotlin, or Java, require an app store review before the changes can be distributed.
+A library requiring changes such as `pod install` may affect the native app.
+Inspect the actual dependency and native changes before choosing OTA.
+Use the [native build guide](/docs/guides/native-build) and configure an
+[app-version](/docs/guides/update-strategies/app-version) or
+[fingerprint](/docs/guides/update-strategies/fingerprint) compatibility strategy
+so the update reaches an appropriate native runtime.
 
-3. **Installing Native-Dependent Libraries**  
-   When using third-party libraries in React Native that modify native code, your app must go through app store review. A key indicator of native changes is the need for commands like:
-   ```bash
-   cd ios && pod install && cd ..
-   ```
+## Check store policies
 
+Technical compatibility does not guarantee that an update can bypass app
+store review. JavaScript-only updates are not exempt from store policies.
 
-## Scenarios Compatible with HotUpdater (No Native Code Changes)
+Apple's [App Review Guidelines, including section 2.5.2](https://developer.apple.com/app-store/review/guidelines/#software-requirements),
+restrict downloaded code that introduces or changes app features or
+functionality. Google's [Device and Network Abuse policy](https://support.google.com/googleplay/android-developer/answer/16559646?hl=en)
+also requires runtime-loaded interpreted code to comply with Google Play
+policies. Review the applicable policies before distributing an OTA update.
 
-Certain updates can be performed entirely via HotUpdater when they remain compatible with the installed native binary. Technical compatibility does not guarantee that an update can bypass app store review.
+## Check package upgrades
 
-<Callout type="warn">
-  JavaScript-only updates are not exempt from store policies. Apple's
-  [App Review Guidelines, including section 2.5.2](https://developer.apple.com/app-store/review/guidelines/#software-requirements),
-  restrict downloaded code that introduces or changes app features or
-  functionality. Google's
-  [Device and Network Abuse policy](https://support.google.com/googleplay/android-developer/answer/16559646?hl=en)
-  also requires runtime-loaded interpreted code to comply with Google Play
-  policies. Review the applicable policies before distributing an OTA update.
-</Callout>
+The package version number does not determine native compatibility or app
+store review requirements. Even a patch release of `@hot-updater/react-native`
+can include native changes.
 
-### JavaScript Code Updates
+Check release notes and native dependency changes before upgrading. Changes to
+the native runtime require a new native build distributed through the app
+store; an OTA bundle cannot install those changes. JavaScript-only changes
+still need to be compatible with the installed runtime and comply with store
+policies.
 
-Updates that only modify JS code can be handled by HotUpdater if they are compatible with the installed native binary and comply with store policies.
-
-```tsx
-   export default function App() {
-       return (
-           <View>
-             {/* [!code --] */}
-             <Text>Hello</Text>
-             {/* [!code ++] */}
-             <Text>Update Hello</Text>
-           </View>
-       );
-   }
-   ```
-
-### Asset Updates via `require`
-
-Changes to assets referenced using `require` (e.g., images or media files) can also be distributed via HotUpdater.
-
-```tsx
-   <Image source={require("../assets/image.png")} /> // [!code --]
-   <Image source={require("../assets/new_image.png")} /> // [!code ++]
-   ```
-
-
-### JavaScript Library Updates
-
-Updates that involve only JS library changes are compatible with HotUpdater:
-
-```sh
-> npm install lodash zustand ...
-```
-
-## Understanding HotUpdater Package Versioning
-
-The package version number does not determine native compatibility or app store review requirements. Even a patch release of `@hot-updater/react-native` can include native changes.
-
-Check the release notes and native dependency changes before upgrading. Changes to the native runtime require a new native build distributed through the app store; an OTA bundle cannot install those changes. JS-only changes still need to be compatible with the installed runtime and comply with store policies.
-
-### Summary
-
-To ensure a smooth update process:
--	Use HotUpdater for native-compatible JS updates and asset changes that comply with store policies.
--	Submit your app for review when native code changes or third-party libraries affecting native code are integrated.
--	Check actual native changes and current store policies, not only the package version number.
+For an existing v0 installation, use the [v1 upgrade guide](/docs/guides/upgrade-to-v1).

@@ -1,5 +1,5 @@
 ---
-title: "Doctor"
+title: "Diagnose setup and updates"
 description: "Check Hot Updater package versions, native setup, and server infrastructure."
 icon: Stethoscope
 version: "v0.30.0"
@@ -16,8 +16,10 @@ work:
 - React Native native files are connected to Hot Updater
 - Your deployed infrastructure server is not outdated
 
-Run it after upgrading Hot Updater, or when OTA updates behave differently after
-a package update.
+Run it during setup, after upgrading Hot Updater, or when OTA updates behave
+differently after a package update. It validates local configuration and server
+version; complete [Test an OTA update](/docs/get-started/test-ota) to verify
+actual device delivery and client authentication.
 
 ```package-install
 npx hot-updater doctor
@@ -106,24 +108,86 @@ npx hot-updater doctor --server-base-url https://updates.example.com
 https://updates.example.com/version
 ```
 
-Example success output:
+A passing version check confirms the server meets the installed CLI's
+infrastructure requirement. It does not verify a client key, artifact download
+or native update application. Complete the [OTA test](/docs/get-started/test-ota)
+to verify delivery through the app's actual configuration. For a separate server
+check during agent provisioning, use the generated
+[server probe](/docs/guides/agent-infrastructure#verify-completion).
 
-```txt
-Checking the health of Hot Updater.
-hot-updater CLI version: x.x.x
-Server version endpoint: https://updates.example.com/version
-Server version: x.x.x
-Required infrastructure version: x.x.x
-✅ Server infrastructure is up to date.
-✅ All Hot Updater checks passed!
-Doctor check complete.
+## Check client access
+
+If the app shows **Update failed**, check the connection settings before
+changing your deployment:
+
+1. **Use the deployed base URL.** Copy the full URL from provider setup,
+   including any path prefix. The app must be able to reach it over HTTPS.
+2. **Pass the client key if your server requires one.** Set the registered key
+   in `HotUpdater.init`'s `requestHeaders`. Managed providers use `x-api-key`;
+   a custom server may configure a different header or public access. Provider
+   and admin credentials are not client keys.
+3. **Check the build environment.** The value must be available when building
+   both the native Release app and OTA bundles. `.env.hotupdater` configures
+   the CLI; it is not automatically loaded into the mobile app. See
+   [app configuration](/docs/get-started/app-setup#configure-the-update-client).
+4. **If using a key, check that it is still active.** Inspect its metadata in the
+   Console's API keys view. For a custom server, follow [API key management](/docs/custom/api-key-authentication#manage-api-keys).
+   Listing a key confirms registration, not that the installed app sends it.
+
+After correcting the initial app configuration, rebuild the Release app and
+repeat [Test an OTA update](/docs/get-started/test-ota). Deploy a compatible test
+update before checking: a new channel may not have a catalog yet.
+
+For error details, inspect the `checkForUpdate` callback's `onError` value and
+the request status in your server logs. A `401` points to the client key or
+header. A `404` can mean an empty channel or an incorrect URL; it does not prove
+authentication succeeded. Keep keys and request headers out of logs.
+
+A successful download followed by the changed screen after restart verifies
+the app's update path. A healthy `/version`, a key listing or a `null` check
+result alone does not.
+
+## Check Release Catalogs
+
+Use Catalog preflight when the deployed server is reachable but its compiled
+delivery policy needs inspection. Run it from the workspace containing your
+`hot-updater.config.ts`; it uses that configuration's database connection.
+
+```bash
+npx hot-updater db catalog preflight --json
 ```
+
+With no scope arguments, it inspects all scopes found in Release and Catalog
+rows without writing. Review each result's `state` (`verified`, `missing`, or
+`rebuild required`) and diagnostics; successful command execution alone does
+not mean every projection is verified. Copy the relevant `scopeKey` from the
+output to inspect or repair only that scope:
+
+```bash
+npx hot-updater db catalog preflight "<scope-key>" --json
+npx hot-updater db catalog rebuild "<scope-key>" --yes --json
+npx hot-updater db catalog preflight "<scope-key>" --json
+```
+
+Rebuild writes compiled projections from the authoritative Release rows. Use
+`--yes` for an approved repair in a non-interactive shell, then confirm the
+scope reports `verified`. Then retry **Check and apply update** in the app and
+[verify that it applies](/docs/get-started/test-ota#3-apply-it-in-the-app).
+
+If the command reports `CATALOG_IDENTITY_MISSING`, restore the original Catalog
+row from backup before rebuilding or deploying. Do not invent a new identity
+for an existing Release history. These commands repair projections; they do
+not recover missing source policy or replace a native OTA delivery test.
+
+To preview a proposed change to one Bundle's policy, use
+[`bundle preflight`](/docs/guides/console#preview-and-protect-automated-changes).
 
 ## Update Package Versions
 
-If `doctor` reports version mismatches, update every Hot Updater package in
-`package.json` to the same compatible version, then run your package manager
-install command.
+If `doctor` reports version mismatches, update the CLI, SDK and required
+plugins to compatible stable v1 versions using
+[Install packages](/docs/get-started/installation). Keep the lockfile and rerun
+doctor after installation.
 
 ## Update Outdated Infrastructure
 
@@ -134,7 +198,8 @@ Infrastructure update required. Deploy server infrastructure version x.x.x or ne
 ```
 
 For managed providers (`aws`, `cloudflare`, `supabase`, `firebase`), choose your
-upgrade workflow:
+upgrade workflow. If the app/server is still on v0, follow
+[Move from v0 to v1](/docs/guides/upgrade-to-v1) before applying templates.
 
 <Tabs items={["AI agent", "Terminal"]}>
   <Tab value="AI agent">
@@ -154,7 +219,7 @@ See [Agent Infrastructure](/docs/guides/agent-infrastructure#upgrade-an-existing
   </Tab>
   <Tab value="Terminal">
 
-Update the Hot Updater packages together to the desired release. Extract that
+Install the compatible package set for the desired release first. Extract that
 release's templates for your provider, for example:
 
 ```package-install

@@ -1,116 +1,67 @@
 ---
 title: "checkForUpdate"
-description: "The `checkForUpdate` function checks if there is an available update for the app by comparing the current app version and platform with the update server's bundle information."
+description: "Select a compatible transition from the Release Catalog and return a helper to stage it."
 icon: Search
 ---
 
 ## Usage
 
 Use `checkForUpdate` to verify if an update bundle is available. The function
-reuses the update source configured in `HotUpdater.wrap()` or
-`HotUpdater.init()`.
+reuses the update source configured in [`HotUpdater.init`](/docs/react-native-api/init).
+Call it when your app is ready to check, then use the returned helper to
+download and stage the selected update.
 
 ```tsx
 import { HotUpdater } from "@hot-updater/react-native";
 
-// First, configure baseURL with init
+// Configure the client once at module scope
 HotUpdater.init({
   baseURL: "<your-update-server-url>",
+  requestHeaders: {
+    "x-api-key": "<client-api-key>",
+  },
+  onError: (error) => console.error("Hot Updater:", error),
 });
 
-// Use checkForUpdate - it reuses the configured baseURL
 async function checkForAppUpdate() {
   try {
-    let checkError: Error | null = null;
     const updateInfo = await HotUpdater.checkForUpdate({
       updateStrategy: "appVersion",
-      requestHeaders: {
-        "x-api-key": "<your-api-key>",
-      },
-      onError: (error) => {
-        checkError = error;
-      },
     });
 
-    if (checkError) {
-      throw checkError;
-    }
-
     if (!updateInfo) {
-      return {
-        status: "NO_UPDATE",
-      };
+      return;
     }
 
     // The helper resolves the artifact and preserves the selected transition.
     const didUpdate = await updateInfo.updateBundle();
 
-    if (didUpdate && updateInfo.shouldForceUpdate) {
+    if (!didUpdate) {
+      throw new Error("Could not prepare the update");
+    }
+
+    if (updateInfo.shouldForceUpdate) {
       await HotUpdater.reload();
     }
-    return updateInfo;
   } catch (error) {
-    console.error("Failed to check for update:", error);
-    return null;
+    console.error("Could not prepare update:", error);
   }
 }
 ```
 
-## Important: HotUpdater.wrap or HotUpdater.init Required
+<span id="important-hotupdaterwrap-or-hotupdaterinit-required" />
 
-When using `checkForUpdate`, configure Hot Updater first with
-`HotUpdater.wrap()` or `HotUpdater.init()`. This is required for proper crash
-detection and rollback functionality.
+## Initialize before checking
 
-```tsx
-import { HotUpdater } from "@hot-updater/react-native";
-import { useEffect } from "react";
+Configure `HotUpdater.init()` once at module scope before calling
+`checkForUpdate`. This connects lifecycle reporting and update requests to your
+server without starting a check. See
+[custom update flows](/docs/guides/custom-update) for a complete integration.
 
-function App() {
-  useEffect(() => {
-    HotUpdater.checkForUpdate({
-      updateStrategy: "appVersion",
-      requestHeaders: {
-        "x-api-key": "<your-api-key>",
-      },
-      onError: (error) => {
-        console.error("Failed to check for update:", error);
-      },
-    })
-      .then(async (updateInfo) => {
-        if (updateInfo) {
-          const didUpdate = await updateInfo.updateBundle();
-          if (didUpdate && updateInfo.shouldForceUpdate) {
-            await HotUpdater.reload();
-          }
-        }
-      })
-      .catch((error) => {
-        console.error("Failed to check for update:", error);
-      });
-  }, []);
-
-  return <YourApp />;
-}
-
-HotUpdater.init({
-  baseURL: "<your-update-server-url>",
-});
-
-export default App;
-```
-
-`HotUpdater.init()` configures Hot Updater without the unnecessary HOC that
-manual `wrap` would create:
-
-```tsx
-HotUpdater.init({
-  baseURL: "<your-update-server-url>",
-});
-```
-
-Without `wrap` or `init`, calling `checkForUpdate` will throw an error with
-instructions on how to fix it.
+The optional [`HotUpdater.wrap`](/docs/react-native-api/wrap) flow also
+configures the client and performs its own automatic startup check. Choose
+one configuration API. Calling `checkForUpdate` before either API throws an
+error with configuration instructions.
 
 ## Parameters
 
@@ -124,7 +75,7 @@ The `checkForUpdate` function accepts the following parameters:
 | `requestTimeout` | `number`                          | ❌       | Request timeout in milliseconds (default: 5000).            |
 | `onError`        | `(error: Error) => void`          | ❌       | Called when a check fails, including failures that return `null`. |
 
-The update source is always from `HotUpdater.wrap()` or `HotUpdater.init()`; it
+The update source is always from `HotUpdater.init()` or `HotUpdater.wrap()`; it
 cannot be overridden in `checkForUpdate`.
 
 A requested channel switch is persisted only after the returned update applies
@@ -147,10 +98,28 @@ selected artifact when called:
 
 The function returns `null` when no transition is selected, when checks are
 skipped in development, or after a check fails and calls `onError`. Do not
-interpret `null` alone as a successful up-to-date check. Use `onError` to track
-check failures and `try/catch` for rejected calls, such as a channel conflict.
+interpret `null` alone as a successful up-to-date check. Use the shared
+`init.onError` reporter for check failures and `try/catch` for rejected
+operations. A per-check `onError` is an optional override; it is not needed in
+the normal flow.
 
 When a transition is selected, the result includes its ID from the console, status,
 message, and an `updateBundle()` helper. The `fileUrl` and `fileHash` fields are
 `null` in this result: the helper resolves the artifact lazily when needed.
 Call the helper instead of copying these fields into `HotUpdater.updateBundle`.
+
+| Result field | Type | Meaning |
+| --- | --- | --- |
+| `id` | `string` | Selected update ID shown in the Console. |
+| `status` | `"UPDATE" \| "ROLLBACK"` | Selected transition direction. |
+| `shouldForceUpdate` | `boolean` | Whether the caller should apply the transition immediately; the helper does not reload. |
+| `message` | `string \| null` | Release message. |
+| `rolloutCohortCount` | `number` | Numeric cohort count selected by the Release policy. |
+| `targetCohorts` | `string[]` | Explicit cohort targets in that policy. |
+| `releaseId` | `string \| null \| undefined` | Release identifier when present. |
+| `transitionKind` | `"INSTALL" \| "ADOPT_RELEASE" \| "USE_EMBEDDED" \| "USE_BUILTIN" \| undefined` | How the selected transition will be applied. |
+| `updateBundle` | `() => Promise<boolean>` | Stage or commit this selection; resolves with whether it succeeded. |
+
+A different Release can reference the same artifact. `ADOPT_RELEASE` commits
+that policy selection without downloading the artifact or forcing a reload.
+The built-in and embedded transitions also do not require an artifact download.

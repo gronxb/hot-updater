@@ -4,7 +4,7 @@ description: "Hot Updater uses a flexible plugin system that lets you customize 
 icon: Puzzle
 ---
 
-import { Tabs, Tab } from 'fumadocs-ui/components/tabs';
+import { Tabs, Tab } from "fumadocs-ui/components/tabs";
 
 ## Build Plugin
 
@@ -67,7 +67,15 @@ export the same plugin name from runtime-specific subpaths; for example,
 
 ## Database Plugin
 
-Database plugins store bundle metadata that your app uses to check for updates. They run during the `hot-updater deploy` command.
+Database plugins persist immutable artifact metadata, Release policy, compiled
+Catalogs, Channels, Insights and API keys. Deploy and administrative operations
+commit changes atomically. The server uses the same provider for Catalog reads,
+artifact resolution, Insights and client authentication; the device selects an
+update from the returned Catalog.
+
+Use [custom-server adapters](/docs/custom/overview#database-adapters) to connect
+an existing ORM or database. To implement a new provider, follow the
+[database plugin contract](/docs/database-plugins/custom-database).
 
 ### Supported Plugins
 
@@ -75,3 +83,18 @@ Database plugins store bundle metadata that your app uses to check for updates. 
 - **`@hot-updater/aws`**: Provides `dynamoDB` for metadata.
 - **`@hot-updater/cloudflare`**: Provides `d1Database` functionality, leveraging Cloudflare D1 for database storage.
 - **`@hot-updater/firebase`**: Provides `firebaseDatabase` functionality, using Firebase Firestore for storing update metadata.
+
+## Integration Plugins
+
+Integration plugins connect bundle builds to error-monitoring services. They
+compose with your selected build plugin to upload source maps and associate
+them with the deployed update. The app's monitoring SDK must use matching
+identifiers for readable stack traces.
+
+- [Sentry](/docs/integration-plugins/sentry): `withSentry`.
+- [Datadog](/docs/integration-plugins/datadog): `withDatadog`.
+- [BugSnag](/docs/integration-plugins/bugsnag): `withBugsnag`.
+
+Each guide covers service credentials, build configuration and symbolication
+verification. These integrations can be used with any hosting, storage and
+database choice supported by the selected build workflow.

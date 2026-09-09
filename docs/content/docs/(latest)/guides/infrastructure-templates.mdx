@@ -4,9 +4,15 @@ description: "Extract versioned server deployment templates for your own provide
 icon: Server
 ---
 
+## Extract server templates
+
 `hot-updater infra scaffold` extracts the server deployment files shipped with
 the CLI. Use it directly in your terminal or scripts, then fill and deploy the
 files with your provider tools.
+
+Use the v1 CLI. In a server-only directory, install `hot-updater` before
+running these commands. For app onboarding, follow the
+[complete package installation](/docs/get-started/installation) first.
 
 ```bash
 npx hot-updater infra scaffold --provider cloudflare

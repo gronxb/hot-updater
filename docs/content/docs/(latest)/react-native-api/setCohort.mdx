@@ -18,6 +18,14 @@ function assignQaCohort() {
 }
 ```
 
+## Signature
+
+```ts
+setCohort(cohort: string): void
+```
+
+Numeric cohorts are passed as strings, for example `HotUpdater.setCohort("500")`.
+
 ## Behavior
 
 - Persists the cohort on the device for future update checks.

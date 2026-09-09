@@ -23,14 +23,14 @@ interface ExpoPluginConfig {
 
 ## Usage
 
-```typescript
-import { expo } from '@hot-updater/expo';
+```typescript title="hot-updater.config.ts"
+import { expo } from '@hot-updater/expo'; // [!code ++]
 import { defineConfig } from 'hot-updater';
 
 export default defineConfig({
-  build: expo({
-    sourcemap: false
-  }),
+  build: expo({ // [!code ++]
+    sourcemap: false // [!code ++]
+  }), // [!code ++]
   // ... other config
 });
 ```
@@ -40,11 +40,11 @@ export default defineConfig({
 The `@hot-updater/expo` package also provides the Expo config plugin. Add it to
 your `app.json` file as shown below:
 
-```json title="app.json"
+```jsonc title="app.json"
 {
   "expo": {
     "plugins": [
-      [
+      [ // [!code ++]
         "@hot-updater/expo", // [!code ++]
         { // [!code ++]
           "channel": "production" // [!code ++]
@@ -54,6 +54,22 @@ your `app.json` file as shown below:
   }
 }
 ```
+
+The app config plugin accepts these options:
+
+| Option | Purpose |
+| --- | --- |
+| `channel` | Native update channel. Defaults to `production`. |
+| `publicKeyPath` | Optional path to the signing public key, relative to the Expo project root. Required when bundle signing is enabled. |
+
+For signed updates, add `publicKeyPath: "./keys/public-key.pem"` to this app
+plugin's options. It requires an RSA SPKI PEM public key of at least 2048 bits.
+Prebuild reads only this public file, embeds it in both native apps, and
+includes it in their fingerprints. It does not need the private key or KMS
+credentials. Configure the signer separately in `hot-updater.config.ts`.
+
+See [Expo and EAS signing setup](/docs/guides/bundle-signing#expo-and-eas-build)
+for exporting the public file and releasing the matching native app.
 
 Run prebuild to apply the changes:
 
@@ -92,7 +108,7 @@ module.exports = function (api) {
 
 Modify `node_modules/expo/src/dom/dom.types.ts`:
 
-```diff
+```ts title="dom.types.ts"
 export interface DOMProps extends Omit<RNWebViewProps, 'source'> {
    /**
     * Whether to resize the native WebView size based on the DOM content size.
@@ -105,18 +121,18 @@ export interface DOMProps extends Omit<RNWebViewProps, 'source'> {
     * @default false
     */
    useExpoDOMWebView?: boolean;
-+
-+  /**
-+   * Allows dynamically redirecting a component to a different source, for example a prebuilt version.
-+   * @internal
-+   */
-+  overrideUri?: string;
+
+  /**
+   * Allows dynamically redirecting a component to a different source, for example a prebuilt version.
+   * @internal
+   */
+  overrideUri?: string; // [!code ++]
  }
 ```
 
 Modify `node_modules/expo/build/dom/dom.types.d.ts`:
 
-```diff
+```ts title="dom.types.d.ts"
 export interface DOMProps extends Omit<RNWebViewProps, 'source'> {
      /**
       * @default false
@@ -127,33 +143,33 @@ export interface DOMProps extends Omit<RNWebViewProps, 'source'> {
       * @default false
       */
      useExpoDOMWebView?: boolean;
-+    /**
-+     * Allows dynamically redirecting a component to a different source, for example a prebuilt version.
-+     * @internal
-+     */
-+    overrideUri?: string;
+    /**
+     * Allows dynamically redirecting a component to a different source, for example a prebuilt version.
+     * @internal
+     */
+    overrideUri?: string; // [!code ++]
  }
 ```
 
 Modify `node_modules/expo/src/dom/webview-wrapper.tsx`:
 
-```diff
- const RawWebView = React.forwardRef<object, Props>((props, ref) => {
--  const { children, dom, filePath, ref: _ref, ...marshalProps } = props as Props;
-+  const { children, dom: domProps, filePath, ref: _ref, ...marshalProps } = props as Props;
-+  const { overrideUri, ...dom } = domProps || {};
-   if (__DEV__) {
-     if (children !== undefined) {
-       throw new Error(
+```tsx title="webview-wrapper.tsx"
+const RawWebView = React.forwardRef<object, Props>((props, ref) => {
+  const { children, dom, filePath, ref: _ref, ...marshalProps } = props as Props; // [!code --]
+  const { children, dom: domProps, filePath, ref: _ref, ...marshalProps } = props as Props; // [!code ++]
+  const { overrideUri, ...dom } = domProps || {}; // [!code ++]
+  if (__DEV__) {
+    if (children !== undefined) {
+      throw new Error(
 ```
 
-```diff
-   const webView = resolveWebView(dom?.useExpoDOMWebView ?? false);
-   const webviewRef = React.useRef<WebViewRef>(null);
-   const domImperativeHandlePropsRef = React.useRef<string[]>([]);
--  const source = { uri: `${getBaseURL()}/${filePath}` };
-+  const source = { uri: overrideUri ?? `${getBaseURL()}/${filePath}` };
-   const [containerStyle, setContainerStyle] = React.useState<WebViewProps['containerStyle']>(null);
+```tsx title="webview-wrapper.tsx"
+  const webView = resolveWebView(dom?.useExpoDOMWebView ?? false);
+  const webviewRef = React.useRef<WebViewRef>(null);
+  const domImperativeHandlePropsRef = React.useRef<string[]>([]);
+  const source = { uri: `${getBaseURL()}/${filePath}` }; // [!code --]
+  const source = { uri: overrideUri ?? `${getBaseURL()}/${filePath}` }; // [!code ++]
+  const [containerStyle, setContainerStyle] = React.useState<WebViewProps['containerStyle']>(null);
 ```
 
 ### Persist changes
@@ -172,10 +188,10 @@ npx patch-package expo
 
 Add postinstall script:
 
-```json title="package.json"
+```jsonc title="package.json"
 {
   "scripts": {
-    "postinstall": "patch-package"
+    "postinstall": "patch-package" // [!code ++]
   }
 }
 ```

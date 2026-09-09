@@ -28,7 +28,7 @@ npm install drizzle-orm postgres
 ```
 
 ```package-install
-npm install -D drizzle-kit tsx typescript @types/node
+npm install -D hot-updater drizzle-kit tsx typescript @types/node
 ```
 
 ## Build Configuration
@@ -36,16 +36,16 @@ npm install -D drizzle-kit tsx typescript @types/node
 The Dockerfile below expects a CommonJS TypeScript build that preserves the
 project-root layout under `dist`:
 
-```json title="package.json (excerpt)"
+```jsonc title="package.json (excerpt)"
 {
-  "type": "commonjs",
+  "type": "commonjs", // [!code ++]
   "scripts": {
-    "build": "tsc"
+    "build": "tsc" // [!code ++]
   }
 }
 ```
 
-```json title="tsconfig.json"
+```jsonc title="tsconfig.json"
 {
   "compilerOptions": {
     "esModuleInterop": true,
@@ -56,7 +56,7 @@ project-root layout under `dist`:
     "strict": true,
     "target": "ES2022"
   },
-  "include": ["src", "hot-updater-schema.ts"]
+  "include": ["src", "hot-updater-schema.ts"] // [!code ++]
 }
 ```
 
@@ -69,10 +69,10 @@ Create the database connection file.
 ```typescript title="src/drizzle.ts"
 import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
-import * as schema from "../hot-updater-schema";
+import * as schema from "../hot-updater-schema"; // [!code ++]
 
 const client = postgres(process.env.DATABASE_URL!);
-export const db = drizzle(client, { schema });
+export const db = drizzle(client, { schema }); // [!code ++]
 ```
 
 ## Hot Updater Configuration
@@ -110,8 +110,8 @@ Create the server entry point.
 ```typescript title="src/index.ts"
 import { Hono } from "hono";
 import { serve } from "@hono/node-server";
-import { bearerAuth } from "hono/bearer-auth";
-import { hotUpdater } from "./hotUpdater";
+import { bearerAuth } from "hono/bearer-auth"; // [!code ++]
+import { hotUpdater } from "./hotUpdater"; // [!code ++]
 
 const adminToken = process.env.HOT_UPDATER_ADMIN_TOKEN;
 if (!adminToken) {
@@ -120,9 +120,9 @@ if (!adminToken) {
 
 const app = new Hono();
 
-app.use("/hot-updater/admin/*", bearerAuth({ token: adminToken }));
-app.mount("/hot-updater/admin", hotUpdater.handlers.admin);
-app.mount("/hot-updater", hotUpdater.handlers.client);
+app.use("/hot-updater/admin/*", bearerAuth({ token: adminToken })); // [!code ++]
+app.mount("/hot-updater/admin", hotUpdater.handlers.admin); // [!code ++]
+app.mount("/hot-updater", hotUpdater.handlers.client); // [!code ++]
 
 const port = Number(process.env.PORT) || 3000;
 
@@ -157,7 +157,7 @@ server:
 import { defineConfig } from "drizzle-kit";
 
 export default defineConfig({
-  schema: "./hot-updater-schema.ts",
+  schema: "./hot-updater-schema.ts", // [!code ++]
   out: "./drizzle",
   dialect: "postgresql",
   dbCredentials: {
@@ -178,7 +178,7 @@ against this same database before the first update check.
 
 Create `Dockerfile` for production builds.
 
-```dockerfile
+```dockerfile title="Dockerfile"
 FROM node:20-alpine AS builder
 
 WORKDIR /app
@@ -205,7 +205,7 @@ CMD ["node", "dist/src/index.js"]
 
 Create `.dockerignore`:
 
-```
+```text title=".dockerignore"
 node_modules
 dist
 .git
@@ -239,7 +239,7 @@ docker run -p 3000:3000 \
 
 Create `docker-compose.yml` for complete setup with PostgreSQL.
 
-```yaml
+```yaml title="docker-compose.yml"
 version: "3.8"
 
 services:
@@ -283,70 +283,51 @@ volumes:
 
 ## Run with Docker Compose
 
-Start all services.
+Start the database first so schema generation and application can finish
+before the application image is built:
 
 ```bash
-docker-compose up -d
+docker compose up -d postgres
 ```
 
-Generate and apply the schema before building the application image. The
-`generate` command writes TypeScript schema; `drizzle-kit push` changes the
-database.
+Make the same storage settings and a `DATABASE_URL` reachable from your local
+shell available to these commands. For the Compose database above, the local
+hostname is `localhost`, while the application container uses `postgres`.
 
 ```bash
 npx hot-updater db generate src/hotUpdater.ts --yes
 npx drizzle-kit push
 ```
 
+Create the [client API key](/docs/custom/api-key-authentication#bootstrap-a-self-hosted-client)
+against this database, then build and start the application:
+
+```bash
+docker compose up -d --build hot-updater
+```
+
 View logs.
 
 ```bash
-docker-compose logs -f hot-updater
+docker compose logs -f hot-updater
 ```
 
 Stop all services.
 
 ```bash
-docker-compose down
+docker compose down
 ```
 
 ## CLI Configuration
 
-Configure your CLI to use this server.
+[Connect the React Native project's CLI](/docs/custom/cli-configuration) to the
+verified deployment URL with `/hot-updater/admin` as its base path. Keep the
+admin token in the deploy environment and match the server's storage plugin
+and bucket configuration.
 
-```typescript title="hot-updater.config.ts"
-import { bare } from "@hot-updater/bare";
-import { s3Storage } from "@hot-updater/aws";
-import { standaloneRepository } from "@hot-updater/standalone";
-import { defineConfig } from "hot-updater";
-
-const adminToken = process.env.HOT_UPDATER_ADMIN_TOKEN;
-if (!adminToken) {
-  throw new Error("HOT_UPDATER_ADMIN_TOKEN is required");
-}
-
-export default defineConfig({
-  build: bare({ enableHermes: true }),
-  storage: s3Storage({
-    region: "auto",
-    endpoint: process.env.R2_ENDPOINT,
-    credentials: {
-      accessKeyId: process.env.R2_ACCESS_KEY_ID!,
-      secretAccessKey: process.env.R2_SECRET_ACCESS_KEY!,
-    },
-    bucketName: process.env.R2_BUCKET_NAME!,
-  }),
-  database: standaloneRepository({
-    baseUrl: "http://localhost:3000/hot-updater/admin",
-    commonHeaders: {
-      Authorization: `Bearer ${adminToken}`,
-    },
-  }),
-  updateStrategy: "appVersion",
-});
-```
-
-<Callout type="warn">
-The CLI `storage` plugin must match one entry in the server's
-`createHotUpdater({ storage })` array.
-</Callout>
+Expose the container through your existing HTTPS ingress before connecting a
+mobile release build. For the app, use the HTTPS client root ending in
+`/hot-updater` and its client
+API key through [Set up your app](/docs/get-started/app-setup). Run
+[Test an OTA update](/docs/get-started/test-ota) against the deployed server;
+a successful host deployment alone does not verify the mobile update path.

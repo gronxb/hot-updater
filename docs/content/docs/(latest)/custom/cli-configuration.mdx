@@ -24,7 +24,7 @@ and `HOT_UPDATER_ADMIN_TOKEN`, and add it to `.gitignore`. Then create
 ```typescript title="hot-updater.config.ts"
 import { bare } from "@hot-updater/bare";
 import { s3Storage } from "@hot-updater/aws";
-import { standaloneRepository } from "@hot-updater/standalone";
+import { standaloneRepository } from "@hot-updater/standalone"; // [!code ++]
 import { defineConfig } from "hot-updater";
 import { config } from "dotenv";
 
@@ -46,12 +46,12 @@ export default defineConfig({
     },
     bucketName: process.env.R2_BUCKET_NAME!,
   }),
-  database: standaloneRepository({
-    baseUrl: "http://localhost:3000/hot-updater/admin",
-    commonHeaders: {
-      Authorization: `Bearer ${adminToken}`,
-    },
-  }),
+  database: standaloneRepository({ // [!code ++]
+    baseUrl: "http://localhost:3000/hot-updater/admin", // [!code ++]
+    commonHeaders: { // [!code ++]
+      Authorization: `Bearer ${adminToken}`, // [!code ++]
+    }, // [!code ++]
+  }), // [!code ++]
   updateStrategy: "appVersion",
 });
 ```
@@ -71,124 +71,33 @@ the hierarchical `protocol://bucket/encoded/slash/key` storage URIs correctly.
 
 ## Standalone Repository Configuration
 
-The `standaloneRepository` HTTP repository connects your CLI to your
-self-hosted server:
+`baseUrl` is the exact root where the server mounts `handlers.admin`.
+`commonHeaders` must match the authentication middleware on that mount. Keep
+these values in the CLI's environment; the mobile app connects to the client
+root with its own API key.
 
-```typescript
-interface StandaloneRepositoryConfig {
-  baseUrl: string; // Exact root where handlers.admin is mounted
-  commonHeaders?: Record<string, string>; // Framework authentication headers
-  routes?: Routes; // Optional legacy Bundle-route mapping
-}
-```
-
-`routes` can remap only the five Bundle create, update, list, retrieve, and
-delete requests. Release, Release Catalog, database commit, and Channel
-requests use the fixed canonical paths summarized below.
-
-### Secure Example
-
-```typescript
-const adminToken = process.env.HOT_UPDATER_ADMIN_TOKEN;
-if (!adminToken) {
-  throw new Error("HOT_UPDATER_ADMIN_TOKEN is required");
-}
-
-database: standaloneRepository({
-  baseUrl: "http://localhost:3000/hot-updater/admin",
-  commonHeaders: {
-    Authorization: `Bearer ${adminToken}`,
-  },
-});
-```
-
-The admin handler does not authenticate requests itself. Keep its credential in
-server-side CLI or Console configuration and match the framework middleware in
-the server setup.
-
-### Alternate Authentication
-
-```typescript
-database: standaloneRepository({
-  baseUrl: process.env.HOT_UPDATER_ADMIN_URL!,
-  commonHeaders: {
-    "X-Internal-Service-Key": process.env.INTERNAL_SERVICE_KEY!,
-  },
-});
-```
-
-### With Custom Routes
-
-```typescript
-const adminToken = process.env.HOT_UPDATER_ADMIN_TOKEN;
-if (!adminToken) {
-  throw new Error("HOT_UPDATER_ADMIN_TOKEN is required");
-}
-
-database: standaloneRepository({
-  baseUrl: "https://api.example.com/hot-updater/admin",
-  commonHeaders: {
-    Authorization: `Bearer ${adminToken}`,
-  },
-  routes: {
-    create: () => ({
-      path: "/v1/bundles",
-      headers: { "X-Custom-Header": "value" },
-    }),
-    update: (bundleId) => ({
-      path: `/v1/bundles/${bundleId}`,
-      headers: { "X-Custom-Header": "value" },
-    }),
-    list: () => ({
-      path: "/v1/bundles",
-    }),
-    retrieve: (bundleId) => ({
-      path: `/v1/bundles/${bundleId}`,
-    }),
-    delete: (bundleId) => ({
-      path: `/v1/bundles/${bundleId}`,
-    }),
-  },
-});
-```
+See the [Standalone Repository reference](/docs/database-plugins/standalone#configuration)
+for all options, alternate authentication headers and custom Bundle route
+mapping. Release, Release Catalog, commit and Channel paths are fixed.
 
 ## API Endpoints
 
-Mounting `hotUpdater.handlers.admin` exposes the admin contract used by
-`standaloneRepository`:
+The [repository server contract](/docs/database-plugins/standalone#server-contract)
+is the canonical request and response reference. `createHotUpdater` implements
+it through `handlers.admin`; no handwritten endpoint implementation is needed
+when using that server. Protect the admin mount with framework middleware.
 
-| Method | Default endpoint                              | Mapping    | Purpose                              |
-| ------ | --------------------------------------------- | ---------- | ------------------------------------ |
-| POST   | `/hot-updater/admin/bundles`                    | remappable | Create Bundles                       |
-| PATCH  | `/hot-updater/admin/bundles/:id`                | remappable | Update a Bundle                      |
-| GET    | `/hot-updater/admin/bundles`                    | remappable | List Bundles                         |
-| GET    | `/hot-updater/admin/bundles/:id`                | remappable | Retrieve a Bundle                    |
-| DELETE | `/hot-updater/admin/bundles/:id`                | remappable | Delete a Bundle                      |
-| GET    | `/hot-updater/admin/releases/:id`               | fixed      | Retrieve a Release                   |
-| GET    | `/hot-updater/admin/releases`                   | fixed      | List Releases                        |
-| GET    | `/hot-updater/admin/release-catalogs/:scopeKey` | fixed      | Retrieve a Release Catalog row       |
-| GET    | `/hot-updater/admin/release-catalogs`           | fixed      | List Release Catalog rows            |
-| POST   | `/hot-updater/admin/database/commit`            | fixed      | Commit database mutations atomically |
-| GET    | `/hot-updater/admin/channels`                   | fixed      | List Channels                        |
-| POST   | `/hot-updater/admin/channels`                   | fixed      | Insert or resolve a Channel          |
-| DELETE | `/hot-updater/admin/channels/:id`               | fixed      | Delete an unreferenced Channel       |
+## Verify the connection
 
-A Channel referenced by a Release is not empty and cannot be deleted. For the
-complete request and response contract, use the canonical
-[Standalone Repository server contract](/docs/database-plugins/standalone#server-contract).
-The admin routes do not authenticate themselves; protect
-`/hot-updater/admin/*` before mounting `handlers.admin`.
+Run a read-only command from the React Native project:
 
-## Next Steps
+```bash
+npx hot-updater bundle list
+```
 
-**Choose your build and storage plugins:**
+A successful list, including an empty list for a new installation, verifies
+the configured admin URL and credentials. A `401` means the CLI header and
+server middleware do not agree. It does not verify the mobile client path.
 
-- [Build Plugins](/docs/build-plugins/bare) - React Native CLI, Expo, Re.Pack
-- [Storage Plugins](/docs/storage-plugins/supabase) - AWS S3, Supabase, Firebase, Cloudflare R2
-
-**Set up your server:**
-
-- [Quick Start Guide](/docs/custom/quick-start) - Set up a server in 5 minutes
-- [Database Adapters](/docs/custom/database/drizzle) - Drizzle, Prisma, Kysely, MongoDB
-- [Server Frameworks](/docs/custom/frameworks/hono) - Hono, Express, Elysia
-- [Overview](/docs/custom/overview) - Learn about the architecture
+Then [set up your app](/docs/get-started/app-setup) with the client URL and API
+key, and [test an OTA update](/docs/get-started/test-ota) in a release build.
