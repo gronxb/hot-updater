@@ -6,6 +6,11 @@ The Waku/Fumadocs site serves current v1 documentation from
 keep version-transition instructions in `guides/upgrade-to-v1.mdx` and preserve
 historical release/architecture records.
 
+Keep PRDs and planning records under `architecture/` in the repository only.
+They are excluded from site pages, search, and generated LLM documentation.
+Describe shipped behavior in `content/docs` without publishing or linking these
+PRDs from user-facing pages.
+
 ## Content ownership
 
 The sidebar starts with onboarding and custom update flows, followed by the
