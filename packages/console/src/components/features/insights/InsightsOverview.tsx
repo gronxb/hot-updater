@@ -51,18 +51,21 @@ const activityMetrics = {
     summary: "Active installations",
     point: "active",
     total: "activeInstallations",
+    color: "text-success/85",
   },
   downloaded: {
     label: "Downloaded",
     summary: "Installations waiting to apply",
     point: "pendingInstallations",
     total: "pendingInstallations",
+    color: "text-primary/85",
   },
-  rollback: {
-    label: "Rollback",
-    summary: "Bundles with rollbacks",
+  recovered: {
+    label: "Recovered",
+    summary: "Crashed bundle recovery",
     point: "recoveredInstallations",
     total: "recoveredInstallations",
+    color: "text-warning/85",
   },
 } as const;
 
@@ -102,7 +105,7 @@ export function ActivityChart({ report }: { readonly report: RecoveryReport }) {
       0,
     ),
     downloaded: report.pendingInstallations,
-    rollback: report.series.filter(
+    recovered: report.series.filter(
       (series) => series.recoveredInstallations > 0,
     ).length,
   };
@@ -119,17 +122,26 @@ export function ActivityChart({ report }: { readonly report: RecoveryReport }) {
         aria-label="Bundle activity overview"
         className="grid grid-cols-1 gap-5 sm:grid-cols-3 sm:gap-6"
       >
-        {Object.entries(activityMetrics).map(([value, { label, summary }]) => (
-          <div key={value} className="flex flex-col gap-2">
-            <dt className="text-sm font-medium">{label}</dt>
-            <dd className="flex flex-col gap-1">
-              <span className="text-4xl font-semibold tracking-tight tabular-nums">
-                {totals[value as keyof typeof totals].toLocaleString()}
-              </span>
-              <span className="text-xs text-muted-foreground">{summary}</span>
-            </dd>
-          </div>
-        ))}
+        {Object.entries(activityMetrics).map(
+          ([value, { label, summary, color }]) => (
+            <div key={value} className="flex flex-col gap-2">
+              <dt className="text-sm font-medium">{label}</dt>
+              <dd className="flex flex-col gap-1">
+                <span
+                  className={cn(
+                    "text-4xl font-semibold tracking-tight tabular-nums",
+                    totals[value as keyof typeof totals] > 0
+                      ? color
+                      : "text-muted-foreground",
+                  )}
+                >
+                  {totals[value as keyof typeof totals].toLocaleString()}
+                </span>
+                <span className="text-xs text-muted-foreground">{summary}</span>
+              </dd>
+            </div>
+          ),
+        )}
       </dl>
       <TabsList
         aria-label="Activity metric"
@@ -152,7 +164,7 @@ export function ActivityChart({ report }: { readonly report: RecoveryReport }) {
           <>
             <div>
               <p className="mb-2 text-right text-xs text-muted-foreground">
-                {metric !== "rollback"
+                {metric !== "recovered"
                   ? "Installations"
                   : `${metricInfo.label} installations per interval`}{" "}
                 · UTC
@@ -265,7 +277,7 @@ export function ActivityChart({ report }: { readonly report: RecoveryReport }) {
                     </span>
                     {series.points.some((point) => point.spike) ? (
                       <TriangleAlert
-                        aria-label="Rollback spike"
+                        aria-label="Recovery spike"
                         className="size-3 shrink-0"
                       />
                     ) : null}
@@ -285,17 +297,17 @@ export function ActivityChart({ report }: { readonly report: RecoveryReport }) {
                   <p className="mt-1 text-xs text-muted-foreground">
                     Active {selected.activeInstallations.toLocaleString()} ·
                     Downloaded {selected.pendingInstallations.toLocaleString()}{" "}
-                    waiting to apply · Rollback{" "}
+                    waiting to apply · Recovered{" "}
                     {selected.recoveredInstallations.toLocaleString()} in this
                     period
                   </p>
-                  {metric === "rollback" && lastSpike ? (
+                  {metric === "recovered" && lastSpike ? (
                     <p className="mt-2 flex items-center gap-2 text-xs">
                       <TriangleAlert
                         className="size-3 shrink-0"
                         aria-hidden="true"
                       />
-                      Rollback spike on {dates.format(lastSpike.startMs)}.
+                      Recovery spike on {dates.format(lastSpike.startMs)}.
                       Review this bundle’s delivery settings.
                     </p>
                   ) : null}
@@ -315,7 +327,7 @@ export function ActivityChart({ report }: { readonly report: RecoveryReport }) {
               <div className="mt-2 max-h-64 overflow-auto">
                 <table className="w-full text-left">
                   <caption className="sr-only">
-                    {metric === "rollback"
+                    {metric === "recovered"
                       ? "Recovered installations"
                       : metricInfo.summary}{" "}
                     by bundle ID, UTC
@@ -423,42 +435,13 @@ export function InsightsOverview({
         ) : null}
       </CardContent>
       <CardFooter className="flex-wrap items-center justify-between gap-4 border-t px-6 py-5">
-        <div className="flex min-w-0 basis-64 flex-1 flex-col gap-2 text-xs text-muted-foreground">
-          {query.data && !query.error ? (
-            <>
-              <p>
-                Active follows the last reported running bundle. Downloaded
-                counts installations with a downloaded bundle waiting to apply.
-                Rollbacks count recovered installations per interval.
-              </p>
-              <p>
-                {query.data.downloadedInstallations.toLocaleString()}{" "}
-                installations completed a download in this period, including
-                those already applied.
-              </p>
-              {query.data.unattributedInstallations > 0 ? (
-                <p>
-                  {query.data.unattributedInstallations.toLocaleString()}{" "}
-                  reporting installations have no observed running release ID
-                  and are excluded from Active. This includes built-in bundles.
-                </p>
-              ) : null}
-              {query.data.truncated ? (
-                <p>
-                  Partial history — only reports since{" "}
-                  {times.format(query.data.sinceMs)} UTC are included. Choose a
-                  shorter period to see more complete counts.
-                </p>
-              ) : null}
-            </>
-          ) : (
-            <p>Browse individual reports in the event log.</p>
-          )}
-        </div>
+        {query.data?.truncated && !query.error ? (
+          <p className="text-xs text-muted-foreground">Partial history</p>
+        ) : null}
         <Link
           className={cn(
             buttonVariants({
-              className: "h-11 px-4 sm:h-9",
+              className: "ml-auto h-11 px-4 sm:h-9",
               size: "lg",
               variant: "outline",
             }),

@@ -130,7 +130,7 @@ describe("InstallationsPage", () => {
       true,
     );
     expect(screen.getByRole("heading", { name: "All events" })).toBeDefined();
-    for (const label of ["No change", "Update applied", "Rolled back"]) {
+    for (const label of ["No change", "Update applied", "Recovered"]) {
       expect(screen.getAllByText(label).length).toBeGreaterThan(0);
     }
 

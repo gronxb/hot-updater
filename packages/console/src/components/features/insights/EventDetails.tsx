@@ -28,8 +28,8 @@ const eventTypes = {
     icon: Check,
   },
   RECOVERED: {
-    label: "Rolled back",
-    description: "The app recovered to a previous working bundle.",
+    label: "Recovered",
+    description: "Recovered from a crashed bundle.",
     variant: "warning",
     icon: RotateCcw,
   },

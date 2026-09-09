@@ -10,4 +10,4 @@
 "@hot-updater/postgres": minor
 ---
 
-Report completed bundle downloads separately from applied updates. Persist the running bundle and pending selection, show Downloaded and Pending apply in Console activity and installation history, and defer automatic No change reports until the update check finishes. Keep the unreleased 1.0.0 schema in its existing single initialization migration.
+Report completed bundle downloads separately from applied updates. Persist the running bundle and pending selection, show Downloaded as waiting to apply, and keep Active, Downloaded, and Recovered totals visible above the activity chart tabs. Defer automatic No change reports until the update check finishes. Keep the unreleased 1.0.0 schema in its existing single initialization migration.

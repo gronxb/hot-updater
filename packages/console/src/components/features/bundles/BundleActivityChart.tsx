@@ -10,11 +10,11 @@ import {
 import type { RecoverySeries } from "@/lib/insights-recovery";
 
 const config = {
-  active: { label: "Active", color: "var(--chart-2)" },
-  pendingInstallations: { label: "Downloaded", color: "var(--chart-1)" },
+  active: { label: "Active", color: "var(--success)" },
+  pendingInstallations: { label: "Downloaded", color: "var(--primary)" },
   recoveredInstallations: {
-    label: "Rollback",
-    color: "var(--muted-foreground)",
+    label: "Recovered",
+    color: "var(--warning)",
   },
 };
 const formatDate = (ms: number) =>

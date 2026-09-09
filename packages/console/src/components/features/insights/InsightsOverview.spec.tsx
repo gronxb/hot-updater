@@ -67,7 +67,7 @@ afterEach(() => {
 });
 
 describe("bundle trends", () => {
-  it("shows every ID together and preserves all lines when highlighting a bundle or filtering rollbacks", () => {
+  it("shows every ID together and preserves all lines when highlighting a bundle or filtering recoveries", () => {
     const { container } = render(<ActivityChart report={report} />);
     expect(container.querySelectorAll(".recharts-line-curve")).toHaveLength(2);
     expect(
@@ -81,12 +81,12 @@ describe("bundle trends", () => {
     expect(
       screen.getByRole("link", { name: "Review bundle" }).getAttribute("href"),
     ).toBe("/?releaseId=new-id");
-    fireEvent.click(screen.getByRole("tab", { name: "Rollback" }));
+    fireEvent.click(screen.getByRole("tab", { name: "Recovered" }));
     expect(
-      screen.getByLabelText("Rollback trend for all reported bundle IDs"),
+      screen.getByLabelText("Recovered trend for all reported bundle IDs"),
     ).toBeDefined();
     expect(container.querySelectorAll(".recharts-line-curve")).toHaveLength(2);
-    expect(screen.getByText(/Rollback spike on/)).toBeDefined();
+    expect(screen.getByText(/Recovery spike on/)).toBeDefined();
     expect(
       screen
         .getByRole("button", { name: "Highlight bundle new-id" })
@@ -99,7 +99,7 @@ describe("bundle trends", () => {
     fireEvent.click(
       screen.getByRole("button", { name: "Highlight bundle old-id" }),
     );
-    expect(screen.queryByText(/Rollback spike on/)).toBeNull();
+    expect(screen.queryByText(/Recovery spike on/)).toBeNull();
   });
 
   it("keeps all status totals visible while tabs only switch the chart", () => {
@@ -125,7 +125,7 @@ describe("bundle trends", () => {
     expect(within(overview).getByText("100")).toBeDefined();
     expect(within(overview).getByText("Downloaded")).toBeDefined();
     expect(within(overview).getByText("2")).toBeDefined();
-    expect(within(overview).getByText("Rollback")).toBeDefined();
+    expect(within(overview).getByText("Recovered")).toBeDefined();
     expect(within(overview).getByText("1")).toBeDefined();
     fireEvent.click(screen.getByRole("tab", { name: "Downloaded" }));
     expect(
@@ -141,10 +141,10 @@ describe("bundle trends", () => {
         .getAllByRole("cell", { hidden: true })
         .map((cell) => cell.textContent),
     ).toEqual(["1", "1"]);
-    fireEvent.click(screen.getByRole("tab", { name: "Rollback" }));
+    fireEvent.click(screen.getByRole("tab", { name: "Recovered" }));
     expect(overview.textContent).toBe(initialOverview);
     expect(
-      screen.getByLabelText("Rollback trend for all reported bundle IDs"),
+      screen.getByLabelText("Recovered trend for all reported bundle IDs"),
     ).toBeDefined();
   });
 
@@ -236,10 +236,5 @@ describe("bundle trends", () => {
     );
     expect(screen.getByText(/No bundle reports in this period/)).toBeDefined();
     expect(screen.getByText(/Partial history/)).toBeDefined();
-    expect(
-      screen.getByText(
-        /4 reporting installations have no observed running release ID/,
-      ),
-    ).toBeDefined();
   });
 });

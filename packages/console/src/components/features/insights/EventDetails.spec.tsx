@@ -85,8 +85,8 @@ describe("Insights event details", () => {
     );
 
     view.rerender(<EventTypeDetails type="RECOVERED" />);
-    expect(screen.getByText("Rolled back")).toBeDefined();
-    expect(screen.getByText("Rolled back").className).toContain("text-warning");
+    expect(screen.getByText("Recovered")).toBeDefined();
+    expect(screen.getByText("Recovered").className).toContain("text-warning");
 
     view.rerender(<EventTypeDetails type="UNCHANGED" />);
     expect(screen.getByText("No change")).toBeDefined();
