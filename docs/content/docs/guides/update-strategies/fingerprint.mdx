@@ -18,6 +18,27 @@ Choose Fingerprint for automatic safety. Choose App Version for manual control.
 
 ## Setup
 
+### Install the Fingerprint Library
+
+Hot Updater uses `@expo/fingerprint` to calculate native compatibility hashes.
+It is an optional peer dependency of `hot-updater`, so install it in your app
+project when using the Fingerprint strategy:
+
+```package-install
+npm install @expo/fingerprint --save-dev
+```
+
+**Using React Native without Expo?** `@expo/fingerprint` is a standalone Node.js
+library that [supports bare React Native projects](https://expo.dev/blog/fingerprint-your-native-runtime).
+You do not need to install `expo` or `expo-updates`, use Expo CLI, or migrate your
+app to Expo. Hot Updater runs the library when generating and checking
+fingerprints; it is not a runtime dependency of your app.
+
+Install development dependencies in CI jobs that build or deploy with the
+Fingerprint strategy too. Projects using `appVersion` do not need this package.
+
+### Enable the Fingerprint Strategy
+
 `appVersion` is the default update strategy. Fingerprint targeting is opt-in, so configure it explicitly:
 
 ```typescript title="hot-updater.config.ts"
