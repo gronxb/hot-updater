@@ -35,7 +35,7 @@ export function BundleMovementSummary({
       title={
         report.truncated
           ? "Partial history. Counts include only the available reports."
-          : "Active: last observed ID per installation. Rollbacks: distinct installations recovered from this ID in 30 days."
+          : "Active: last observed running ID per installation. Downloaded: waiting to apply. Rollbacks: distinct installations recovered from this ID in 30 days."
       }
       className="flex min-w-[140px] items-baseline gap-3 whitespace-nowrap"
     >
@@ -52,7 +52,7 @@ export function BundleMovementSummary({
         </span>
       </span>
       <span className="flex items-baseline gap-1.5">
-        <span className="text-xs text-muted-foreground">Pending apply</span>
+        <span className="text-xs text-muted-foreground">Downloaded</span>
         <span className="text-sm font-medium tabular-nums">
           {series?.pendingInstallations ?? 0}
         </span>
@@ -103,7 +103,7 @@ export function BundleInsightsSummary({
           </div>
         ) : (
           <>
-            <dl className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+            <dl className="grid grid-cols-3 gap-4">
               <div className="pr-4">
                 <dt className="text-xs text-muted-foreground">Active</dt>
                 <dd className="mt-1 text-xl font-semibold tabular-nums">
@@ -119,15 +119,7 @@ export function BundleInsightsSummary({
                 </dd>
               </div>
               <div>
-                <dt className="text-xs text-muted-foreground">
-                  Downloaded · 24h
-                </dt>
-                <dd className="mt-1 text-xl font-semibold tabular-nums">
-                  {series?.downloadedInstallations ?? 0}
-                </dd>
-              </div>
-              <div>
-                <dt className="text-xs text-muted-foreground">Pending apply</dt>
+                <dt className="text-xs text-muted-foreground">Downloaded</dt>
                 <dd className="mt-1 text-xl font-semibold tabular-nums">
                   {series?.pendingInstallations ?? 0}
                 </dd>
@@ -135,7 +127,8 @@ export function BundleInsightsSummary({
             </dl>
             <BundleActivityChart series={series} />
             <p className="text-xs text-muted-foreground">
-              Last observed active installations · hourly rollbacks
+              Downloaded bundles are waiting to apply. Active follows the
+              running bundle. Rollbacks are counted per hour.
               {report?.truncated ? " · Partial history" : ""}
             </p>
           </>

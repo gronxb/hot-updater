@@ -60,7 +60,7 @@ is best effort: a network failure produces a warning and does not block app
 startup or trigger rollback. `onNotifyAppReady` receives local native state;
 it is not confirmation that the server received an event.
 
-The overview shows **Downloaded** (distinct installations that completed a download in the selected period) and **Pending apply** (latest reported downloaded state). **Active** uses the running Release ID, so downloading a bundle does not increase its Active count. Applying, recovering, or a newer no-change report clears the pending snapshot. Historical `UNCHANGED` events cannot tell whether a download completed with an older SDK; they are not backfilled.
+The overview keeps all status totals above the tabs; switching tabs changes the chart. **Downloaded** is one state: the bundle has downloaded and is waiting to apply. Its count and trend follow the latest reported waiting state. A separate note gives the number of installations that completed a download in the selected period, including those already applied. **Active** uses the running Release ID, so downloading a bundle does not increase its Active count. Applying, recovering, or a newer no-change report clears the pending snapshot. Historical `UNCHANGED` events cannot tell whether a download completed with an older SDK; they are not backfilled.
 
 ![Completed downloads and the remaining pending installation](/docs/console/insights-download-pending.png)
 

@@ -102,7 +102,7 @@ describe("bundle trends", () => {
     expect(screen.queryByText(/Rollback spike on/)).toBeNull();
   });
 
-  it("switches between distinct downloaded installations and the current pending snapshot", () => {
+  it("keeps all status totals visible while tabs only switch the chart", () => {
     const downloads: RecoveryReport = {
       ...report,
       downloadedInstallations: 5,
@@ -119,17 +119,33 @@ describe("bundle trends", () => {
       })),
     };
     render(<ActivityChart report={downloads} />);
+    const overview = screen.getByLabelText("Bundle activity overview");
+    const initialOverview = overview.textContent;
+    expect(within(overview).getByText("Active")).toBeDefined();
+    expect(within(overview).getByText("100")).toBeDefined();
+    expect(within(overview).getByText("Downloaded")).toBeDefined();
+    expect(within(overview).getByText("2")).toBeDefined();
+    expect(within(overview).getByText("Rollback")).toBeDefined();
+    expect(within(overview).getByText("1")).toBeDefined();
     fireEvent.click(screen.getByRole("tab", { name: "Downloaded" }));
     expect(
       screen.getByLabelText("Downloaded trend for all reported bundle IDs"),
     ).toBeDefined();
-    // Five distinct installations across two releases, not eight release-installation pairs.
-    expect(screen.getAllByText("5").length).toBeGreaterThan(0);
-    fireEvent.click(screen.getByRole("tab", { name: "Pending apply" }));
+    expect(screen.queryByRole("tab", { name: "Pending apply" })).toBeNull();
+    expect(overview.textContent).toBe(initialOverview);
+    const rows = within(
+      screen.getByRole("table", { hidden: true }),
+    ).getAllByRole("row", { hidden: true });
     expect(
-      screen.getByLabelText("Pending apply trend for all reported bundle IDs"),
+      within(rows.at(-1)!)
+        .getAllByRole("cell", { hidden: true })
+        .map((cell) => cell.textContent),
+    ).toEqual(["1", "1"]);
+    fireEvent.click(screen.getByRole("tab", { name: "Rollback" }));
+    expect(overview.textContent).toBe(initialOverview);
+    expect(
+      screen.getByLabelText("Rollback trend for all reported bundle IDs"),
     ).toBeDefined();
-    expect(screen.getAllByText("2").length).toBeGreaterThan(0);
   });
 
   it("keeps IDs beyond a top-five list and exposes exact values without requiring chart interaction", () => {

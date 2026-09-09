@@ -54,12 +54,6 @@ const activityMetrics = {
   },
   downloaded: {
     label: "Downloaded",
-    summary: "Downloaded installations",
-    point: "downloadedInstallations",
-    total: "downloadedInstallations",
-  },
-  pending: {
-    label: "Pending apply",
     summary: "Installations waiting to apply",
     point: "pendingInstallations",
     total: "pendingInstallations",
@@ -102,20 +96,16 @@ export function ActivityChart({ report }: { readonly report: RecoveryReport }) {
   const lastSpike = selected
     ? [...selected.points].reverse().find((point) => point.spike)
     : undefined;
-  const total =
-    metric === "rollback"
-      ? report.series.filter((series) => series.recoveredInstallations > 0)
-          .length
-      : metric === "downloaded"
-        ? report.downloadedInstallations
-        : metric === "pending"
-          ? report.pendingInstallations
-          : report.series.reduce(
-              (sum, series) => sum + series[metricInfo.total],
-              0,
-            );
-  const downloaded = report.downloadedInstallations;
-  const pending = report.pendingInstallations;
+  const totals = {
+    active: report.series.reduce(
+      (sum, series) => sum + series.activeInstallations,
+      0,
+    ),
+    downloaded: report.pendingInstallations,
+    rollback: report.series.filter(
+      (series) => series.recoveredInstallations > 0,
+    ).length,
+  };
   return (
     <Tabs
       value={metric}
@@ -125,6 +115,22 @@ export function ActivityChart({ report }: { readonly report: RecoveryReport }) {
       }}
       className="gap-6"
     >
+      <dl
+        aria-label="Bundle activity overview"
+        className="grid grid-cols-1 gap-5 sm:grid-cols-3 sm:gap-6"
+      >
+        {Object.entries(activityMetrics).map(([value, { label, summary }]) => (
+          <div key={value} className="flex flex-col gap-2">
+            <dt className="text-sm font-medium">{label}</dt>
+            <dd className="flex flex-col gap-1">
+              <span className="text-4xl font-semibold tracking-tight tabular-nums">
+                {totals[value as keyof typeof totals].toLocaleString()}
+              </span>
+              <span className="text-xs text-muted-foreground">{summary}</span>
+            </dd>
+          </div>
+        ))}
+      </dl>
       <TabsList
         aria-label="Activity metric"
         variant="line"
@@ -137,29 +143,6 @@ export function ActivityChart({ report }: { readonly report: RecoveryReport }) {
         ))}
       </TabsList>
       <TabsContent value={metric} className="flex flex-col gap-4">
-        <div className="flex items-baseline gap-3">
-          <p className="text-4xl font-semibold tracking-tight tabular-nums">
-            {total.toLocaleString()}
-          </p>
-          <p className="text-sm text-muted-foreground">{metricInfo.summary}</p>
-        </div>
-        <dl
-          className="flex flex-wrap gap-x-6 gap-y-2 text-sm"
-          aria-label="Download summary"
-        >
-          <div className="flex items-baseline gap-2">
-            <dt className="text-muted-foreground">Downloaded</dt>
-            <dd className="font-medium tabular-nums">
-              {downloaded.toLocaleString()}
-            </dd>
-          </div>
-          <div className="flex items-baseline gap-2">
-            <dt className="text-muted-foreground">Pending apply</dt>
-            <dd className="font-medium tabular-nums">
-              {pending.toLocaleString()}
-            </dd>
-          </div>
-        </dl>
         {report.series.length === 0 ? (
           <div className="flex h-48 items-center justify-center text-center text-sm text-muted-foreground">
             No bundle reports in this period. Try another channel or check again
@@ -169,7 +152,7 @@ export function ActivityChart({ report }: { readonly report: RecoveryReport }) {
           <>
             <div>
               <p className="mb-2 text-right text-xs text-muted-foreground">
-                {metric === "active" || metric === "pending"
+                {metric !== "rollback"
                   ? "Installations"
                   : `${metricInfo.label} installations per interval`}{" "}
                 · UTC
@@ -301,10 +284,8 @@ export function ActivityChart({ report }: { readonly report: RecoveryReport }) {
                   </p>
                   <p className="mt-1 text-xs text-muted-foreground">
                     Active {selected.activeInstallations.toLocaleString()} ·
-                    Downloaded{" "}
-                    {selected.downloadedInstallations.toLocaleString()} ·
-                    Pending apply{" "}
-                    {selected.pendingInstallations.toLocaleString()} · Rollback{" "}
+                    Downloaded {selected.pendingInstallations.toLocaleString()}{" "}
+                    waiting to apply · Rollback{" "}
                     {selected.recoveredInstallations.toLocaleString()} in this
                     period
                   </p>
@@ -447,9 +428,13 @@ export function InsightsOverview({
             <>
               <p>
                 Active follows the last reported running bundle. Downloaded
-                counts installations with a completed download in this period.
-                Pending apply counts their last reported waiting state.
+                counts installations with a downloaded bundle waiting to apply.
                 Rollbacks count recovered installations per interval.
+              </p>
+              <p>
+                {query.data.downloadedInstallations.toLocaleString()}{" "}
+                installations completed a download in this period, including
+                those already applied.
               </p>
               {query.data.unattributedInstallations > 0 ? (
                 <p>
