@@ -174,11 +174,11 @@ describe("drizzleAdapter schema requirements", () => {
         const event = createBundleEventRowFixture("708", 100);
         const input = { event };
         let rejected = false;
-        try { await plugin.models.insights.record(input); } catch { rejected = true; }
+        try { await plugin.models.insights.recordEvent(input); } catch { rejected = true; }
         if (!rejected || db.query("select count(*) as total from bundle_events").get().total !== 0) throw new Error("transaction failed to roll back");
         db.exec("drop trigger reject_event");
-        await plugin.models.insights.record(input);
-        await plugin.models.insights.record(input);
+        await plugin.models.insights.recordEvent(input);
+        await plugin.models.insights.recordEvent(input);
         if (db.query("select count(*) as total from bundle_events").get().total !== 1) throw new Error("retry did not commit exactly one report");
         const stored = db.query("select json_type(cast(metadata as text)) as kind from bundle_events").get();
         if (stored.kind !== "object") throw new Error("event metadata was double encoded");
@@ -205,10 +205,10 @@ describe("drizzleAdapter schema requirements", () => {
     const event = createBundleEventRowFixture("701", 100);
     const input = { event };
     try {
-      await expect(plugin.models.insights.record(input)).rejects.toThrow();
+      await expect(plugin.models.insights.recordEvent(input)).rejects.toThrow();
       expect((await db.query("select id from bundle_events")).rows).toEqual([]);
       await db.exec("alter table bundle_events drop constraint reject_event");
-      await plugin.models.insights.record(input);
+      await plugin.models.insights.recordEvent(input);
       await expect(
         plugin.models.insights.findLatestEvents({
           installId: event.install_id,
@@ -230,7 +230,7 @@ describe("drizzleAdapter schema requirements", () => {
     });
     const event = createBundleEventRowFixture("702", 100);
     await expect(
-      plugin.models.insights.record({
+      plugin.models.insights.recordEvent({
         event,
       }),
     ).rejects.toThrow(DrizzleTestStateError);

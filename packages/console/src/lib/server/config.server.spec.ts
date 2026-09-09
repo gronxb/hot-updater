@@ -50,7 +50,7 @@ const createTestDatabasePlugin = (name: string) =>
         delete: vi.fn(async () => ({ deleted: true as const })),
       },
       insights: {
-        record: vi.fn(async () => undefined),
+        recordEvent: vi.fn(async () => undefined),
         listEvents: vi.fn(async () => []),
         countEvents: vi.fn(async () => 0),
         findLatestEvents: vi.fn(async () => []),

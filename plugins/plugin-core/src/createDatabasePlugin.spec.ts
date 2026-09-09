@@ -114,7 +114,7 @@ describe("createDatabasePlugin", () => {
     expect(plugin.models.bundlePatches.findByBundleIds).toBeTypeOf("function");
     expect(plugin.models.channels.insert).toBeTypeOf("function");
     expect(plugin.models.channels.delete).toBeTypeOf("function");
-    expect(plugin.models.insights.record).toBeTypeOf("function");
+    expect(plugin.models.insights.recordEvent).toBeTypeOf("function");
     expect(plugin.models.insights.listEvents).toBeTypeOf("function");
     expect(plugin.models.insights.findLatestEvents).toBeTypeOf("function");
     expect(plugin.models.insights.countEvents).toBeTypeOf("function");

@@ -62,7 +62,7 @@ const installationRow = (
 
 const createModel = () => {
   const model = {
-    record: vi.fn<InsightsModel["record"]>(async () => {}),
+    recordEvent: vi.fn<InsightsModel["recordEvent"]>(async () => {}),
     listEvents: vi.fn<InsightsModel["listEvents"]>(async () => []),
     findLatestEvents: vi.fn<InsightsModel["findLatestEvents"]>(async () => []),
     countLatestEvents: vi.fn<InsightsModel["countLatestEvents"]>(async () => 0),

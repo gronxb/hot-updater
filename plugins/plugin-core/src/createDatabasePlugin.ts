@@ -921,7 +921,7 @@ export const createDatabasePluginAdapter = (
         },
       },
       insights: {
-        record: (input) => implementation.recordInsights(input),
+        recordEvent: (input) => implementation.recordInsights(input),
         async listEvents(input) {
           const ranges = await Promise.all(
             toInsightsEventRanges(input.filter).map((where) =>

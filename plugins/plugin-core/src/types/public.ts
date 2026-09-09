@@ -9,7 +9,7 @@ export type {
   InsightsScope,
   InsightsBundleEventFilter,
   InsightsEventFilter,
-  InsightsRecordInput,
+  InsightsRecordEventInput,
   InsightsListEventsInput,
   InsightsFindLatestEventsInput,
   InsightsCountLatestEventsInput,

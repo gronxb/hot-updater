@@ -377,7 +377,7 @@ export const createMemoryDatabasePlugin = (): DatabasePlugin => {
         },
       },
       insights: {
-        async record({ event }) {
+        async recordEvent({ event }) {
           if (!events.has(event.id))
             events.set(event.id, structuredClone(event));
         },

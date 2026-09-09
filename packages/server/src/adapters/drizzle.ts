@@ -119,7 +119,7 @@ export const drizzleAdapter = (
         delete: (input) => getAdapter().models.channels.delete(input),
       },
       insights: {
-        record: (input) => getAdapter().models.insights.record(input),
+        recordEvent: (input) => getAdapter().models.insights.recordEvent(input),
         listEvents: (input) => getAdapter().models.insights.listEvents(input),
         findLatestEvents: (input) =>
           getAdapter().models.insights.findLatestEvents(input),

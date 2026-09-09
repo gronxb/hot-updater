@@ -209,8 +209,8 @@ describe("firebase insights storage", () => {
       received_at_ms: 200,
       user_id: "new-user",
     };
-    await insights.record({ event: latest });
-    await insights.record({ event: old });
+    await insights.recordEvent({ event: latest });
+    await insights.recordEvent({ event: old });
     await bundlesCollection.doc("unrelated").set({ preserve: "artifact" });
     const exported = await insights.listEvents({
       filter: { kind: "all" },
@@ -220,7 +220,7 @@ describe("firebase insights storage", () => {
     await insightsLatestCollection
       .doc(firebaseInstallationDocumentId(old.install_id))
       .delete();
-    await insights.record({ event: latest });
+    await insights.recordEvent({ event: latest });
     // Duplicate replay into damaged storage cannot repair it.
     await expect(
       insights.findLatestEvents({ installId: old.install_id }),
@@ -237,7 +237,7 @@ describe("firebase insights storage", () => {
       await batch.commit();
     }
     for (const event of [...exported, ...exported.toReversed()])
-      await insights.record({ event });
+      await insights.recordEvent({ event });
     await expect(
       insights.findLatestEvents({ installId: old.install_id }),
     ).resolves.toEqual([latest]);
@@ -296,7 +296,7 @@ describe("firebase insights storage", () => {
         install_id,
         user_id: "unicode-user",
       };
-      await insights.record({
+      await insights.recordEvent({
         event,
       });
       await expect(
@@ -326,7 +326,7 @@ describe("firebase insights storage", () => {
         throw new Error("injected installation write failure");
       });
     try {
-      await expect(insights.record(input)).rejects.toThrow(
+      await expect(insights.recordEvent(input)).rejects.toThrow(
         "injected installation write failure",
       );
     } finally {
@@ -338,8 +338,8 @@ describe("firebase insights storage", () => {
     await expect(
       insights.findLatestEvents({ installId: event.install_id }),
     ).resolves.toEqual([]);
-    await insights.record(input);
-    await insights.record(input);
+    await insights.recordEvent(input);
+    await insights.recordEvent(input);
     expect((await bundleEventsCollection.get()).size).toBe(1);
     await expect(
       insights.findLatestEvents({ installId: event.install_id }),
@@ -357,7 +357,7 @@ describe("firebase insights storage", () => {
     }));
     await Promise.all(
       events.map((event) =>
-        insights.record({
+        insights.recordEvent({
           event,
         }),
       ),
@@ -400,13 +400,13 @@ describe("firebase insights storage", () => {
         update_strategy: null,
       },
     };
-    await insights.record({
+    await insights.recordEvent({
       event: applied,
     });
-    await insights.record({
+    await insights.recordEvent({
       event: recovered,
     });
-    await insights.record({
+    await insights.recordEvent({
       event: unchanged,
     });
     await bundleEventsCollection.doc("malformed-old-event").set({

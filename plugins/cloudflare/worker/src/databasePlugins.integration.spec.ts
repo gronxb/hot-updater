@@ -219,7 +219,7 @@ describe.each([
       BEGIN SELECT RAISE(ABORT, 'injected event failure'); END;
     `).run();
     try {
-      await expect(plugin.models.insights.record(input)).rejects.toThrow(
+      await expect(plugin.models.insights.recordEvent(input)).rejects.toThrow(
         "injected event failure",
       );
       expect(
@@ -233,8 +233,8 @@ describe.each([
     } finally {
       await env.DB.prepare("DROP TRIGGER fail_insights_event").run();
     }
-    await plugin.models.insights.record(input);
-    await plugin.models.insights.record(input);
+    await plugin.models.insights.recordEvent(input);
+    await plugin.models.insights.recordEvent(input);
     await expect(
       plugin.models.insights.findLatestEvents({ installId: event.install_id }),
     ).resolves.toEqual([input.event]);

@@ -171,7 +171,7 @@ Channels use opaque IDs and exact case-sensitive names. Concurrent
 An empty Channel remains visible. Its reference check and explicit deletion
 are atomic against Releases.
 
-Insights uses `record`, `listEvents`, `findLatestEvents`, `countLatestEvents`,
+Insights uses `recordEvent`, `listEvents`, `findLatestEvents`, `countLatestEvents`,
 and `countEvents`. Core prepares reports and product views; providers own
 immutable event storage, any private latest-event copies, and fixed native queries. See the
 [Insights contract](./custom-database#insights) for ordering and count semantics.

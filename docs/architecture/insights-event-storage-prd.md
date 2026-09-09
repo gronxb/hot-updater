@@ -198,7 +198,7 @@ latest-event lookup; preserve their existing behavior and truncation indicator.
 Retain logical read capabilities; remove the requirement to persist their result.
 The implemented contract is:
 
-- `record({ event })`: core supplies one canonical immutable event. SQL stores
+- `recordEvent({ event })`: core supplies one canonical immutable event. SQL stores
   only that event; NoSQL may copy the same event into a private latest-event
   document. There is no separate state envelope, reducer, or helper to implement.
   Ordering comes directly from `(received_at_ms, id)`. The first event ID wins;

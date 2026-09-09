@@ -1,6 +1,6 @@
 import {
   DatabasePluginInputError,
-  type InsightsRecordInput,
+  type InsightsRecordEventInput,
 } from "@hot-updater/plugin-core";
 import {
   latestInsightsWhere,
@@ -89,7 +89,7 @@ const executeInsert = async (
 export const recordDrizzleInsights = (
   db: DrizzleDB,
   provider: DrizzleProvider,
-  { event }: InsightsRecordInput,
+  { event }: InsightsRecordEventInput,
 ): void | Promise<void> => {
   const events = getDrizzleTable(db, "bundle_events");
   const insert = db.insert(events).values(event);

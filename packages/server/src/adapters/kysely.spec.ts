@@ -66,10 +66,10 @@ describe("kyselyAdapter SQLite JSON storage", () => {
     const event = createBundleEventRowFixture("703", 100);
     const input = { event };
     try {
-      await expect(plugin.models.insights.record(input)).rejects.toThrow();
+      await expect(plugin.models.insights.recordEvent(input)).rejects.toThrow();
       expect((await db.query("select id from bundle_events")).rows).toEqual([]);
       await db.exec("alter table bundle_events drop constraint reject_event");
-      await plugin.models.insights.record(input);
+      await plugin.models.insights.recordEvent(input);
       await expect(
         plugin.models.insights.findLatestEvents({
           installId: event.install_id,
@@ -96,7 +96,7 @@ describe("kyselyAdapter SQLite JSON storage", () => {
       metadata: { ...base.metadata, device: { tags: [null, "ko-KR"] } },
     };
     try {
-      await insights.record({ event });
+      await insights.recordEvent({ event });
       expect(
         (await client.query("select metadata from bundle_events")).rows,
       ).toEqual([{ metadata: JSON.stringify(event.metadata) }]);

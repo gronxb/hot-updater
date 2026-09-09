@@ -185,7 +185,7 @@ it("returns canonical downloaded and applied events from the initialized D1 sche
       update_strategy: "appVersion" as const,
     },
   };
-  await plugin.models.insights.record({
+  await plugin.models.insights.recordEvent({
     event: download,
   });
   await expect(
@@ -199,10 +199,10 @@ it("returns canonical downloaded and applied events from the initialized D1 sche
     type: "UPDATE_APPLIED" as const,
     received_at_ms: 200,
   };
-  await plugin.models.insights.record({
+  await plugin.models.insights.recordEvent({
     event: applied,
   });
-  await plugin.models.insights.record({
+  await plugin.models.insights.recordEvent({
     event: download,
   });
   await expect(

@@ -24,7 +24,7 @@ Custom database authors implement five operations, all with object inputs:
 
 | Method                                                                  | Responsibility                                                                |
 | ----------------------------------------------------------------------- | ----------------------------------------------------------------------------- |
-| `record({ event })`                                       | Store one immutable event; any private latest copy advances atomically      |
+| `recordEvent({ event })`                                       | Store one immutable event; any private latest copy advances atomically      |
 | `listEvents({ filter, sinceMs, beforeReceivedAtMs, after, limit })`     | Indexed newest-first global, installation-movement, or bundle-outcome history |
 | `findLatestEvents({ installId } or { userId, afterInstallId, limit })` | Exact latest-state lookup or current-user page                                |
 | `countLatestEvents({ platform, channel, sinceMs, bundle })`          | Count recent latest rows, optionally naming one bundle                        |

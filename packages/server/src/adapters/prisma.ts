@@ -484,7 +484,7 @@ export const prismaAdapter = (
   const insights: InsightsModel =
     config.provider === "mssql"
       ? {
-          record: unsupportedMssqlInsights,
+          recordEvent: unsupportedMssqlInsights,
           listEvents: unsupportedMssqlInsights,
           findLatestEvents: unsupportedMssqlInsights,
           countLatestEvents: unsupportedMssqlInsights,

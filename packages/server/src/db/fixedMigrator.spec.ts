@@ -75,7 +75,7 @@ describe("Kysely migrator", () => {
     const plugin = kyselyAdapter({ db: kysely, provider: "postgresql" });
     const event = createBundleEventRowFixture("706", 100);
     const input = { event };
-    await plugin.models.insights.record(input);
+    await plugin.models.insights.recordEvent(input);
 
     const repeated = await migrator.migrateToLatest();
     expect(repeated.operations).toEqual([]);

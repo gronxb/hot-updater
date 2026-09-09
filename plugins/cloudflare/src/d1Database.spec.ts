@@ -207,7 +207,7 @@ it("stores an immutable event with one parameterized statement", async () => {
     databaseId: "database",
   });
   await expect(
-    plugin.models.insights.record({
+    plugin.models.insights.recordEvent({
       event: eventD1Row,
     }),
   ).resolves.toBeUndefined();

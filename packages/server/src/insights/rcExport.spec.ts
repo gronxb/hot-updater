@@ -18,7 +18,7 @@ describe("offline Insights RC event conversion", () => {
     expect(converted).toEqual(downloaded);
     expect(original).toEqual({ ...columns, ...metadata });
     // The fixture establishes the exact type; storage validates it again.
-    await target.record({ event: converted as typeof downloaded });
+    await target.recordEvent({ event: converted as typeof downloaded });
     await expect(
       target.findLatestEvents({ installId: downloaded.install_id }),
     ).resolves.toEqual([downloaded]);

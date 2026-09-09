@@ -71,7 +71,7 @@ const missingDatabase = createDatabasePlugin({
       },
     },
     insights: {
-      record: async () => {
+      recordEvent: async () => {
         throw new Error("database plugin is required");
       },
       listEvents: async () => {

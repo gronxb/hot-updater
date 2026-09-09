@@ -51,7 +51,7 @@ describe("prismaAdapter capabilities", () => {
       toBundleId: event.to_bundle_id,
     };
     const calls = [
-      plugin.models.insights.record({
+      plugin.models.insights.recordEvent({
         event,
       }),
       plugin.models.insights.listEvents({
@@ -79,7 +79,7 @@ describe("prismaAdapter capabilities", () => {
     const plugin = prismaAdapter({ prisma: client, provider: "postgresql" });
     const event = createBundleEventRowFixture("704", 100);
     await expect(
-      plugin.models.insights.record({
+      plugin.models.insights.recordEvent({
         event,
       }),
     ).resolves.toBeUndefined();
@@ -100,7 +100,7 @@ describe("prismaAdapter capabilities", () => {
       },
       provider: "postgresql",
     });
-    await expect(plugin.models.insights.record({ event })).rejects.toThrow(
+    await expect(plugin.models.insights.recordEvent({ event })).rejects.toThrow(
       "injected event failure",
     );
     const working = prismaAdapter({
@@ -110,7 +110,7 @@ describe("prismaAdapter capabilities", () => {
     await expect(
       working.models.insights.findLatestEvents({ installId: event.install_id }),
     ).resolves.toEqual([]);
-    await working.models.insights.record({ event });
+    await working.models.insights.recordEvent({ event });
     await expect(
       working.models.insights.findLatestEvents({ installId: event.install_id }),
     ).resolves.toEqual([event]);

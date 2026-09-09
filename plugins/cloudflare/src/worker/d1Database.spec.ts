@@ -60,7 +60,7 @@ it("rejects an unsuccessful event insert response", async () => {
   });
   const event = createBundleEventRowFixture("1", 1);
   await expect(
-    plugin.models.insights.record({
+    plugin.models.insights.recordEvent({
       event,
     }),
   ).rejects.toThrow(

@@ -10,7 +10,7 @@ import { createBundleEventRowFixture } from "./databaseTestFixtures";
 import { expectInsightsIndex } from "./expectInsightsIndex";
 
 const record = (plugin: DatabasePlugin, event: BundleEventRow) =>
-  plugin.models.insights.record({
+  plugin.models.insights.recordEvent({
     event,
   });
 
@@ -217,7 +217,7 @@ export const registerDatabasePluginInsightsTests = (
       const plugin = state.getPlugin();
       const event = createBundleEventRowFixture("920", 100);
       await expect(
-        plugin.models.insights.record({
+        plugin.models.insights.recordEvent({
           event: {
             ...event,
             metadata: { ...event.metadata, cohort: 123 },

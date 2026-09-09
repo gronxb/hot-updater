@@ -37,7 +37,7 @@ describe("MongoDB native Insights storage", () => {
     });
   const insights = () => mongoAdapter({ client }).models.insights;
   const record = (event: BundleEventRow) =>
-    insights().record({
+    insights().recordEvent({
       event,
     });
 

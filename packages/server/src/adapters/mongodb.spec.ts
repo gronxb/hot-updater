@@ -29,7 +29,7 @@ describe("mongoAdapter capabilities", () => {
     const event = createBundleEventRowFixture("981", 100);
     const input = { event };
     harness.failNextEventWrite();
-    await expect(insights.record(input)).rejects.toThrow(
+    await expect(insights.recordEvent(input)).rejects.toThrow(
       "injected event write failure",
     );
     await expect(
@@ -42,8 +42,8 @@ describe("mongoAdapter capabilities", () => {
     await expect(
       insights.findLatestEvents({ installId: event.install_id }),
     ).resolves.toEqual([]);
-    await insights.record(input);
-    await insights.record(input);
+    await insights.recordEvent(input);
+    await insights.recordEvent(input);
     await expect(
       insights.listEvents({
         filter: { kind: "all" },
@@ -66,7 +66,7 @@ describe("mongoAdapter capabilities", () => {
     }));
     await Promise.all(
       events.map((event) =>
-        insights.record({
+        insights.recordEvent({
           event,
         }),
       ),

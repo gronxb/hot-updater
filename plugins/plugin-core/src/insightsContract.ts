@@ -141,12 +141,12 @@ const validateCount = (count: number): number =>
 export const createValidatedInsightsModel = (
   model: InsightsModel,
 ): InsightsModel => ({
-  async record(input) {
+  async recordEvent(input) {
     if (!isRecord(input) || !hasOnlyKeys(input, ["event"])) {
       throw new DatabasePluginInputError("invalid-data");
     }
     validateRow("bundle_events", input.event);
-    await model.record(input);
+    await model.recordEvent(input);
   },
   async listEvents(input) {
     if (

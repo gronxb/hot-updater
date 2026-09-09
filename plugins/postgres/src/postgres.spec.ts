@@ -242,7 +242,7 @@ describe("PostgreSQL Insights projection", () => {
         }),
         to_bundle_id: "00000000-0000-7000-8000-000000001003",
       };
-      await plugin.models.insights.record({
+      await plugin.models.insights.recordEvent({
         event: sparseEvent,
       });
       await database.exec("ANALYZE bundle_events");
@@ -276,15 +276,15 @@ describe("PostgreSQL Insights projection", () => {
         CREATE TRIGGER fail_insights_event BEFORE INSERT ON bundle_events
         FOR EACH ROW EXECUTE FUNCTION fail_insights_event();
       `);
-      await expect(plugin.models.insights.record(input)).rejects.toThrow(
+      await expect(plugin.models.insights.recordEvent(input)).rejects.toThrow(
         "injected event failure",
       );
       expect(
         (await database.query("SELECT * FROM bundle_events")).rows,
       ).toEqual([]);
       await database.exec("DROP TRIGGER fail_insights_event ON bundle_events");
-      await plugin.models.insights.record(input);
-      await plugin.models.insights.record(input);
+      await plugin.models.insights.recordEvent(input);
+      await plugin.models.insights.recordEvent(input);
       expect(
         (await database.query("SELECT id FROM bundle_events")).rows,
       ).toEqual([{ id: event.id }]);

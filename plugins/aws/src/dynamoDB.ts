@@ -22,7 +22,7 @@ import {
   type BundlePatchRow,
   type BundleRow,
   type InsightsModel,
-  type InsightsRecordInput,
+  type InsightsRecordEventInput,
   type InsightsBundleEventFilter,
   type InsightsListEventsInput,
   isInsightsMovementEvent,
@@ -3134,7 +3134,7 @@ const advancesInsightsInstallation = (
 
 const recordDynamoDBInsightsEvent = async (
   store: DynamoDBStore,
-  { event: row }: InsightsRecordInput,
+  { event: row }: InsightsRecordEventInput,
 ): Promise<void> => {
   const next = row;
   const eventItem = toInsightsEventItem(row);
@@ -3269,7 +3269,7 @@ const insightsEventRange = (input: InsightsListEventsInput) => {
 export const createDynamoDBInsightsTable = (
   store: DynamoDBStore,
 ): InsightsModel => ({
-  record: (input) => recordDynamoDBInsightsEvent(store, input),
+  recordEvent: (input) => recordDynamoDBInsightsEvent(store, input),
   async listEvents(input) {
     if ((input.sinceMs ?? 0) === input.beforeReceivedAtMs) return [];
     const range = insightsEventRange(input);

@@ -176,7 +176,7 @@ procedure; this PR does not implement online replication.
    It preserves event IDs, receipt times, nulls and transition columns. Already
    normalized events are unchanged. It does not invent missing download telemetry.
 4. Load the prepared target plugin in an operator-owned local script and replay
-   each parsed event through `target.models.insights.record({ event })`, awaiting
+   each parsed event through `target.models.insights.recordEvent({ event })`, awaiting
    each call. The normal core boundary validates the event. Do not POST the old
    event to the client endpoint: that would assign a new ID and receipt time.
    Replay order does not affect the winning tuple. Keep the target offline until

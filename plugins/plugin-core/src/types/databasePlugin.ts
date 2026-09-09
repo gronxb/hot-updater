@@ -88,7 +88,7 @@ export type InsightsEventFilter =
     }
   | ({ readonly kind: "bundle" } & InsightsBundleEventFilter);
 
-export interface InsightsRecordInput {
+export interface InsightsRecordEventInput {
   readonly event: BundleEventRow;
 }
 
@@ -131,7 +131,7 @@ export interface InsightsModel {
    * IDs are complete no-ops.
    * Retry the identical prepared input after an ambiguous commit outcome.
    */
-  record(input: InsightsRecordInput): Promise<void>;
+  recordEvent(input: InsightsRecordEventInput): Promise<void>;
   /**
    * Descending (received_at_ms, id), in [sinceMs ?? 0, beforeReceivedAtMs).
    * Apply filters and the exclusive cursor before limit (1..101). Return the

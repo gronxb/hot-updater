@@ -151,8 +151,8 @@ describe("DynamoDB Insights", () => {
       receivedAtMs: 200,
       userId: "new-user",
     });
-    await insights.record({ event: latest });
-    await insights.record({ event: old });
+    await insights.recordEvent({ event: latest });
+    await insights.recordEvent({ event: old });
     const preserved = { pk: "unrelated", sk: "artifact", value: "preserve" };
     await fixture.client.send(
       new PutCommand({ TableName: fixture.tableName, Item: preserved }),
@@ -171,7 +171,7 @@ describe("DynamoDB Insights", () => {
         },
       }),
     );
-    await insights.record({ event: latest });
+    await insights.recordEvent({ event: latest });
     await expect(
       insights.findLatestEvents({ installId: old.install_id }),
     ).resolves.toEqual([]);
@@ -195,7 +195,7 @@ describe("DynamoDB Insights", () => {
       }
     }
     for (const event of [...exported, ...exported.toReversed()])
-      await insights.record({ event });
+      await insights.recordEvent({ event });
     await expect(
       insights.findLatestEvents({ installId: old.install_id }),
     ).resolves.toEqual([latest]);
@@ -253,7 +253,7 @@ describe("DynamoDB Insights", () => {
       { name, step: "initialize" },
     );
     try {
-      await expect(insights.record(input)).rejects.toMatchObject({
+      await expect(insights.recordEvent(input)).rejects.toMatchObject({
         name: "TransactionCanceledException",
       });
     } finally {
@@ -277,7 +277,7 @@ describe("DynamoDB Insights", () => {
       }),
     );
     expect(marker.Item).toBeUndefined();
-    await insights.record(input);
+    await insights.recordEvent(input);
     await expect(
       insights.findLatestEvents({ installId: event.install_id }),
     ).resolves.toEqual([input.event]);
@@ -305,20 +305,20 @@ describe("DynamoDB Insights", () => {
       { name, step: "deserialize" },
     );
     try {
-      await expect(insights.record(input)).rejects.toThrow(
+      await expect(insights.recordEvent(input)).rejects.toThrow(
         "response lost after commit",
       );
     } finally {
       fixture.client.middlewareStack.remove(name);
     }
-    await insights.record(input);
+    await insights.recordEvent(input);
     const reused = {
       ...event,
       install_id: "other-install",
       received_at_ms: 500,
       user_id: "changed",
     };
-    await insights.record({
+    await insights.recordEvent({
       event: reused,
     });
     await expect(
@@ -354,7 +354,7 @@ describe("DynamoDB Insights", () => {
       userId: "old",
     });
     for (const event of [previous, current, valid])
-      await insights.record({
+      await insights.recordEvent({
         event,
       });
     await fixture.client.send(
@@ -379,7 +379,7 @@ describe("DynamoDB Insights", () => {
     const first = insightsEvent(61, { installId: "a", receivedAtMs: 100 });
     const second = insightsEvent(62, { installId: "b", receivedAtMs: 100 });
     for (const event of [first, second])
-      await writer.record({
+      await writer.recordEvent({
         event,
       });
     const insights = createDynamoDBInsightsTable({
@@ -408,7 +408,7 @@ describe("DynamoDB Insights", () => {
         id: insightsEvent(63, { installId: "a", receivedAtMs: 300 }).id,
         received_at_ms: 300,
       };
-      await writer.record({
+      await writer.recordEvent({
         event: newer,
       });
       pause.release();
@@ -438,7 +438,7 @@ describe("DynamoDB Insights", () => {
       beforeReceivedAtMs: 200,
     };
     await expect(insights.countEvents(query)).resolves.toBe(0);
-    await insights.record({ event });
+    await insights.recordEvent({ event });
     await expect(insights.countEvents(query)).resolves.toBe(1);
     await expect(
       insights.findLatestEvents({ installId: event.install_id }),
@@ -460,7 +460,7 @@ describe("DynamoDB Insights", () => {
       channel,
     };
     expect(new TextEncoder().encode(channel).byteLength).toBeGreaterThan(2_048);
-    await insights.record({
+    await insights.recordEvent({
       event,
     });
     const filter = {

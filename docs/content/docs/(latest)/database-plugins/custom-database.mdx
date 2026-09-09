@@ -180,7 +180,7 @@ an object; custom providers do not implement the bundled internal CRUD adapter.
 
 ```ts
 interface InsightsModel {
-  record(input: InsightsRecordInput): Promise<void>;
+  recordEvent(input: InsightsRecordEventInput): Promise<void>;
   listEvents(
     input: InsightsListEventsInput,
   ): Promise<readonly BundleEventRow[]>;
@@ -192,7 +192,7 @@ interface InsightsModel {
 }
 ```
 
-`record({ event })` receives one validated, immutable `BundleEventRow`. Store
+`recordEvent({ event })` receives one validated, immutable `BundleEventRow`. Store
 it once by `id`; the first accepted payload wins, even if a retry carries different
 fields. SQL can implement this with one `INSERT ... ON CONFLICT DO NOTHING`.
 There is no required installation table or second input to prepare.
@@ -209,7 +209,7 @@ Implement these storage rules directly; no lifecycle helper or reducer is requir
 known keys are `cohort: string`, `username: string | null`,
 `update_strategy: "appVersion" | "fingerprint" | null`,
 `fingerprint_hash: string | null`, and `sdk_version: string | null`.
-Core validates these and the event-type relationship before calling `record`.
+Core validates these and the event-type relationship before calling `recordEvent`.
 Preserve all supplied JSON keys, including nested objects, arrays, and nulls.
 Do not unpack metadata into provider-specific columns or interpret it for queries.
 
@@ -297,7 +297,7 @@ An event-only PostgreSQL provider can append the supplied JSON object without a
 transaction spanning multiple records:
 
 ```ts
-async function record({ event }: InsightsRecordInput) {
+async function recordEvent({ event }: InsightsRecordEventInput) {
   await sql.query(
     `INSERT INTO bundle_events
      SELECT * FROM jsonb_populate_record(NULL::bundle_events, $1::jsonb)
@@ -325,11 +325,11 @@ Index `(install_id, received_at_ms, id)` and `(user_id, install_id)`. The same
 latest predicate can serve the fixed count filters. Counts still grow with event
 history; a scalar result does not imply constant database work.
 
-A Firestore-style provider can keep a private latest collection. Its `record`
+A Firestore-style provider can keep a private latest collection. Its `recordEvent`
 implementation only copies the supplied object and compares the receipt tuple:
 
 ```ts
-async function record({ event }: InsightsRecordInput) {
+async function recordEvent({ event }: InsightsRecordEventInput) {
   await db.runTransaction(async (tx) => {
     const eventRef = events.doc(event.id);
     // Use a reversible, collision-free document key for arbitrary install IDs.

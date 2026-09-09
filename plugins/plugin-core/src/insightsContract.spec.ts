@@ -58,7 +58,7 @@ describe("public Insights validation", () => {
       { ...event, id: "not-a-uuid" },
     ]) {
       await expect(
-        model.record({
+        model.recordEvent({
           event: invalid,
         }),
       ).rejects.toMatchObject({ code: "invalid-data" });
@@ -345,7 +345,7 @@ describe("Insights CRUD adapter", () => {
       }),
     });
     const input = { event };
-    await plugin.models.insights.record(input);
+    await plugin.models.insights.recordEvent(input);
     expect(recordInsights).toHaveBeenCalledExactlyOnceWith(input);
     expect(create).not.toHaveBeenCalled();
     const filter = {

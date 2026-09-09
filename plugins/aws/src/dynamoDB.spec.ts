@@ -515,7 +515,7 @@ describe("dynamoDB CloudFront lifecycle", () => {
       tableName: "hot-updater-metadata",
     });
 
-    await plugin.models.insights.record({
+    await plugin.models.insights.recordEvent({
       event: next,
     });
 
@@ -709,7 +709,7 @@ describe("dynamoDB CloudFront lifecycle", () => {
       tableName: "hot-updater-metadata",
     });
     const event = insightsEvent(1);
-    await plugin.models.insights.record({
+    await plugin.models.insights.recordEvent({
       event,
     });
 

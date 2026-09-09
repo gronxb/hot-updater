@@ -223,13 +223,13 @@ export const registerDatabasePluginOfficialDomainTests = (
       const first = createBundleEventRowFixture("701", 100);
       const second = createBundleEventRowFixture("702", 100);
       const third = createBundleEventRowFixture("703", 200);
-      await plugin.models.insights.record({
+      await plugin.models.insights.recordEvent({
         event: third,
       });
-      await plugin.models.insights.record({
+      await plugin.models.insights.recordEvent({
         event: second,
       });
-      await plugin.models.insights.record({
+      await plugin.models.insights.recordEvent({
         event: first,
       });
 
@@ -294,7 +294,7 @@ export const registerDatabasePluginOfficialDomainTests = (
         "install-target",
       );
       for (const row of [unchanged, unrelated, applied, recovered]) {
-        await plugin.models.insights.record({
+        await plugin.models.insights.recordEvent({
           event: row,
         });
       }

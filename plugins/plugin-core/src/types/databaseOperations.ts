@@ -302,7 +302,7 @@ export interface DatabasePluginImplementation {
   countLatestInsightsEvents: import("./databasePlugin").InsightsModel["countLatestEvents"];
   /** Native immutable event insert; any private index is advanced atomically. */
   recordInsights(
-    input: import("./databasePlugin").InsightsRecordInput,
+    input: import("./databasePlugin").InsightsRecordEventInput,
   ): Promise<void>;
   create(
     input: CreateDatabaseImplementationInput,

@@ -437,7 +437,7 @@ export const createInsightsProvider = (
   Object.freeze({
     async appendBundleEvent(input) {
       const event = createBundleEventRow(input);
-      await model.record({
+      await model.recordEvent({
         event,
       });
     },

@@ -3,7 +3,7 @@ import {
   type BundlePatchRow,
   type ChannelRow,
   type ApiKeyRow,
-  type InsightsRecordInput,
+  type InsightsRecordEventInput,
   type ReleaseCatalogRow,
 } from "@hot-updater/plugin-core";
 import {
@@ -128,7 +128,7 @@ const insertRow = async (
 export const recordKyselyInsights = async (
   executor: QueryExecutorProvider,
   provider: Exclude<ORMSQLProvider, "mssql">,
-  { event }: InsightsRecordInput,
+  { event }: InsightsRecordEventInput,
 ): Promise<void> => {
   const entries = Object.entries(toStoredBundleEventRow(event, provider));
   const insert = sql`insert into bundle_events (${sql.join(entries.map(([field]) => sql.ref(field)))}) values (${sql.join(entries.map(([, value]) => value))})`;

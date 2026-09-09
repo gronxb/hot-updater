@@ -170,9 +170,9 @@ export function createHotUpdaterCore(
   });
   const clientAccess = normalizeClientAccess(options.clientAccess);
   const insightsModel: InsightsModel = {
-    async record(input) {
+    async recordEvent(input) {
       await assertSchemaReady();
-      return plugin.models.insights.record(input);
+      return plugin.models.insights.recordEvent(input);
     },
     async listEvents(input) {
       await assertSchemaReady();
