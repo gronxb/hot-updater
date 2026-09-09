@@ -9,7 +9,7 @@
     "start": "react-native start",
     "test": "jest",
     "pod-install": "cd ios && bundle install && RCT_USE_PREBUILT_RNCORE=1 RCT_USE_RN_DEP=1 bundle exec pod install && cd ..",
-    "fingerprint:create": "hot-updater fingerprint create"
+    "fingerprint:create": "node ../../packages/hot-updater/dist/index.mjs fingerprint create"
   },
   "devDependencies": {
     "@aws-sdk/credential-provider-sso": "^3.972.25",
