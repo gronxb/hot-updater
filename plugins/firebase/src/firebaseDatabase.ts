@@ -3,6 +3,10 @@ import {
   createDatabasePlugin,
 } from "@hot-updater/plugin-core";
 import {
+  latestInsightsWhere,
+  latestInsightsCountGroups,
+} from "@hot-updater/plugin-core/internal";
+import {
   createDatabasePluginAdapter,
   type DatabasePluginImplementation,
   type TransactionDatabasePluginImplementation,
@@ -15,6 +19,7 @@ import {
 } from "firebase-admin/app";
 import {
   getFirestore,
+  Filter,
   type DocumentData,
   type Query,
   type WhereFilterOp,
@@ -24,7 +29,6 @@ import {
   parseFirebaseBundleEventRow,
   parseFirebaseBundleRow,
   parseFirebaseChannelRow,
-  parseFirebaseInsightsInstallationRow,
   parseFirebaseApiKeyRow,
   parseFirebasePatchRow,
 } from "./firebaseDatabaseParser";
@@ -40,10 +44,7 @@ import {
   persistFirebaseDatabaseSnapshot,
   requireFirebaseDocumentKey,
 } from "./firebaseDatabasePersistence";
-import {
-  matchesFirebaseDatabaseWhere,
-  queryFirebaseDatabaseRows,
-} from "./firebaseDatabaseQuery";
+import { queryFirebaseDatabaseRows } from "./firebaseDatabaseQuery";
 import {
   cloneFirebaseDatabaseSnapshot,
   createFirebaseDatabaseState,
@@ -65,18 +66,6 @@ const exactId = (
     typeof condition.value === "string"
     ? condition.value
     : undefined;
-};
-
-const exactInstallId = (
-  input:
-    | Parameters<DatabasePluginImplementation["findOne"]>[0]
-    | Parameters<DatabasePluginImplementation["update"]>[0],
-): string | undefined => {
-  const condition = input.where?.find(
-    ({ field, operator }) =>
-      field === "install_id" && (operator === undefined || operator === "eq"),
-  );
-  return typeof condition?.value === "string" ? condition.value : undefined;
 };
 
 const firestoreOperator = (
@@ -172,12 +161,12 @@ export const firebaseDatabase = (config: FirebaseDatabaseConfig) => {
     };
 
     return {
-      recordInsights: async ({ event, installation }) => {
+      recordInsights: async ({ event }) => {
         await ensureMigrated();
         await db.runTransaction(async (transaction) => {
           const eventReference = collections.bundleEvents.doc(event.id);
-          const installationReference = collections.bundleInstallations.doc(
-            firebaseInstallationDocumentId(installation.install_id),
+          const installationReference = collections.insightsLatest.doc(
+            firebaseInstallationDocumentId(event.install_id),
           );
           const [storedEvent, storedInstallation] = await transaction.getAll(
             eventReference,
@@ -186,150 +175,108 @@ export const firebaseDatabase = (config: FirebaseDatabaseConfig) => {
           if (storedEvent.exists) return;
           const current = storedInstallation.exists
             ? requireFirebaseDocumentKey(
-                "bundle_installations",
+                "insights_latest",
                 storedInstallation.id,
-                parseFirebaseInsightsInstallationRow(
+                parseFirebaseBundleEventRow(
                   storedInstallation.data(),
-                  `bundle_installations/${storedInstallation.id}`,
+                  `insights_latest/${storedInstallation.id}`,
                 ),
               )
             : null;
           transaction.create(eventReference, event);
           if (
             current === null ||
-            installation.received_at_ms > current.received_at_ms ||
-            (installation.received_at_ms === current.received_at_ms &&
-              compareInsightsText(installation.id, current.id) > 0)
+            event.received_at_ms > current.received_at_ms ||
+            (event.received_at_ms === current.received_at_ms &&
+              compareInsightsText(event.id, current.id) > 0)
           ) {
-            transaction.set(installationReference, installation);
+            transaction.set(installationReference, event);
           }
         });
+      },
+      findLatestInsightsEvents: async (input) => {
+        await ensureMigrated();
+        if ("installId" in input) {
+          const document = await collections.insightsLatest
+            .doc(firebaseInstallationDocumentId(input.installId))
+            .get();
+          return document.exists
+            ? [
+                requireFirebaseDocumentKey(
+                  "insights_latest",
+                  document.id,
+                  parseFirebaseBundleEventRow(
+                    document.data(),
+                    `insights_latest/${document.id}`,
+                  ),
+                ),
+              ]
+            : [];
+        }
+        const snapshot = await applyFirebaseWhere(
+          collections.insightsLatest,
+          latestInsightsWhere(input),
+        )
+          .orderBy("install_id", "asc")
+          .limit(input.limit)
+          .get();
+        return snapshot.docs.map((document) =>
+          requireFirebaseDocumentKey(
+            "insights_latest",
+            document.id,
+            parseFirebaseBundleEventRow(
+              document.data(),
+              `insights_latest/${document.id}`,
+            ),
+          ),
+        );
+      },
+      countLatestInsightsEvents: async (input) => {
+        await ensureMigrated();
+        const filter = Filter.or(
+          ...latestInsightsCountGroups(input).map((where) =>
+            Filter.and(
+              ...where.map((condition) => {
+                const operator = firestoreOperator(condition.operator);
+                if (operator === undefined)
+                  throw new FirebaseDatabaseConstraintError(
+                    "query.unsupported",
+                  );
+                return Filter.where(condition.field, operator, condition.value);
+              }),
+            ),
+          ),
+        );
+        const result = await collections.insightsLatest
+          .where(filter)
+          .count()
+          .get();
+        return result.data().count;
       },
       create: async (input) => {
-        if (
-          input.model !== "bundle_events" &&
-          input.model !== "bundle_installations"
-        ) {
+        if (input.model !== "bundle_events")
           return mutate((database) => database.create(input));
-        }
         await ensureMigrated();
-        return db.runTransaction(async (transaction) => {
-          const collection =
-            input.model === "bundle_events"
-              ? collections.bundleEvents
-              : collections.bundleInstallations;
-          const documentId =
-            input.model === "bundle_events"
-              ? input.data.id
-              : firebaseInstallationDocumentId(input.data.install_id);
-          const reference = collection.doc(documentId);
-          const document = await transaction.get(reference);
-          if (document.exists) {
-            const row =
-              input.model === "bundle_events"
-                ? requireFirebaseDocumentKey(
-                    "bundle_events",
-                    document.id,
-                    parseFirebaseBundleEventRow(
-                      document.data(),
-                      `bundle_events/${document.id}`,
-                    ),
-                  )
-                : requireFirebaseDocumentKey(
-                    "bundle_installations",
-                    document.id,
-                    parseFirebaseInsightsInstallationRow(
-                      document.data(),
-                      `bundle_installations/${document.id}`,
-                    ),
-                  );
-            if (input.onConflict === "ignore") return row;
-            throw new FirebaseDatabaseConstraintError(
-              `${input.model}.id.unique`,
-            );
-          }
-          transaction.create(reference, input.data);
-          return input.data;
-        });
+        await collections.bundleEvents.doc(input.data.id).create(input.data);
+        return input.data;
       },
-      update: async (input) => {
-        if (input.model !== "bundle_installations") {
-          return mutate((database) => database.update(input));
-        }
-        const installId = exactInstallId(input);
-        if (installId === undefined) {
-          return mutate((database) => database.update(input));
-        }
-        await ensureMigrated();
-        return db.runTransaction(async (transaction) => {
-          const reference = collections.bundleInstallations.doc(
-            firebaseInstallationDocumentId(installId),
-          );
-          const document = await transaction.get(reference);
-          if (!document.exists) return null;
-          const current = requireFirebaseDocumentKey(
-            "bundle_installations",
-            document.id,
-            parseFirebaseInsightsInstallationRow(
-              document.data(),
-              `bundle_installations/${document.id}`,
-            ),
-          );
-          if (
-            !matchesFirebaseDatabaseWhere<"bundle_installations">(
-              current,
-              input.where,
-            )
-          ) {
-            return null;
-          }
-          const updated = { ...current, ...input.update };
-          transaction.set(reference, updated, { merge: true });
-          return updated;
-        });
-      },
+      update: (input) => mutate((database) => database.update(input)),
       delete: (input) => mutate((database) => database.delete(input)),
       count: async (input) => {
-        if (
-          input.model !== "bundle_installations" &&
-          input.model !== "bundle_events"
-        ) {
+        if (input.model !== "bundle_events")
           return read((database) => database.count(input));
-        }
         await ensureMigrated();
-        let query = applyFirebaseWhere(
-          input.model === "bundle_events"
-            ? collections.bundleEvents
-            : collections.bundleInstallations,
+        const result = await applyFirebaseWhere(
+          collections.bundleEvents,
           input.where ?? [],
-        );
-        if (input.model === "bundle_events") {
-          query = query.orderBy("received_at_ms", "desc").orderBy("id", "desc");
-        }
-        const result = await query.count().get();
+        )
+          .orderBy("received_at_ms", "desc")
+          .orderBy("id", "desc")
+          .count()
+          .get();
         return result.data().count;
       },
       findOne: async (input) => {
-        if (input.model === "bundle_installations") {
-          const installId = exactInstallId(input);
-          if (installId === undefined) {
-            return read((database) => database.findOne(input));
-          }
-          await ensureMigrated();
-          const document = await collections.bundleInstallations
-            .doc(firebaseInstallationDocumentId(installId))
-            .get();
-          return document.exists
-            ? requireFirebaseDocumentKey(
-                "bundle_installations",
-                document.id,
-                parseFirebaseInsightsInstallationRow(
-                  document.data(),
-                  `bundle_installations/${document.id}`,
-                ),
-              )
-            : null;
-        }
         const id = exactId(input);
         if (id === undefined) {
           return read((database) => database.findOne(input));
@@ -380,20 +327,15 @@ export const firebaseDatabase = (config: FirebaseDatabaseConfig) => {
         }
       },
       findMany: async (input) => {
-        if (
-          input.model === "bundle_events" ||
-          input.model === "bundle_installations"
-        ) {
+        if (input.model === "bundle_events") {
           await ensureMigrated();
-          const collection =
-            input.model === "bundle_events"
-              ? collections.bundleEvents
-              : collections.bundleInstallations;
-          let query = applyFirebaseWhere(collection, input.where ?? []);
+          let query = applyFirebaseWhere(
+            collections.bundleEvents,
+            input.where ?? [],
+          );
           for (const order of input.orderBy ?? []) {
-            if (order.nulls !== undefined) {
+            if (order.nulls !== undefined)
               throw new FirebaseDatabaseConstraintError("query.unsupported");
-            }
             query = query.orderBy(order.field, order.direction);
           }
           const snapshot = await query
@@ -401,23 +343,14 @@ export const firebaseDatabase = (config: FirebaseDatabaseConfig) => {
             .limit(input.limit)
             .get();
           return snapshot.docs.map((document) =>
-            input.model === "bundle_events"
-              ? requireFirebaseDocumentKey(
-                  "bundle_events",
-                  document.id,
-                  parseFirebaseBundleEventRow(
-                    document.data(),
-                    `bundle_events/${document.id}`,
-                  ),
-                )
-              : requireFirebaseDocumentKey(
-                  "bundle_installations",
-                  document.id,
-                  parseFirebaseInsightsInstallationRow(
-                    document.data(),
-                    `bundle_installations/${document.id}`,
-                  ),
-                ),
+            requireFirebaseDocumentKey(
+              "bundle_events",
+              document.id,
+              parseFirebaseBundleEventRow(
+                document.data(),
+                `bundle_events/${document.id}`,
+              ),
+            ),
           );
         }
         if (input.model === "channels") {

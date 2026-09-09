@@ -1,7 +1,11 @@
 import {
-  type InsightsInstallationRow,
+  type BundleEventRow,
   DatabasePluginInputError,
 } from "@hot-updater/plugin-core";
+import {
+  latestInsightsWhere,
+  latestInsightsCountGroups,
+} from "@hot-updater/plugin-core/internal";
 import type {
   DatabaseImplementationResult,
   DatabasePluginImplementation,
@@ -22,20 +26,17 @@ import {
   createMongoChannelWhere,
   createMongoApiKeyWhere,
   createMongoEventWhere,
-  createMongoInstallationWhere,
   createMongoPatchWhere,
   createMongoReleaseCatalogWhere,
   createMongoReleaseWhere,
   createMongoSort,
 } from "./mongodbQuery";
 
-const withPendingFields = (
-  row: InsightsInstallationRow,
-): InsightsInstallationRow => ({
-  ...row,
-  pending_bundle_id: row.pending_bundle_id ?? null,
-  pending_release_id: row.pending_release_id ?? null,
-});
+const latestEventStages = [
+  { $sort: { install_id: -1, received_at_ms: -1, id: -1 } },
+  { $group: { _id: "$install_id", event: { $first: "$$ROOT" } } },
+  { $replaceRoot: { newRoot: "$event" } },
+];
 
 const findMongoRows = async (
   collections: MongoCollections,
@@ -128,38 +129,7 @@ const findMongoRows = async (
         ? cursor.toArray()
         : cursor.sort(sort).toArray();
     }
-    case "bundle_installations": {
-      const cursor = collections.bundleInstallations
-        .find(createMongoInstallationWhere(input.where), {
-          projection: WITHOUT_MONGO_ID,
-          ...mongoSessionOptions(session),
-          collation: { locale: "simple" },
-          readPreference: "primary",
-        })
-        .skip(input.offset)
-        .limit(input.limit);
-      if (rawOrderBy === undefined)
-        return (await cursor.toArray()).map(withPendingFields);
-      if (needsInMemoryOrder) {
-        const rows = await collections.bundleInstallations
-          .find(createMongoInstallationWhere(input.where), {
-            projection: WITHOUT_MONGO_ID,
-            ...mongoSessionOptions(session),
-            collation: { locale: "simple" },
-            readPreference: "primary",
-          })
-          .toArray();
-        return sortRowsByOrder(rows, rawOrderBy)
-          .slice(input.offset, input.offset + input.limit)
-          .map(withPendingFields);
-      }
-      const sort = createMongoSort(input);
-      return (
-        await (sort === undefined
-          ? cursor.toArray()
-          : cursor.sort(sort).toArray())
-      ).map(withPendingFields);
-    }
+
     case "api_keys": {
       const cursor = collections.apiKeys
         .find(createMongoApiKeyWhere(input.where), {
@@ -269,13 +239,59 @@ const findMongoRows = async (
 
 type MongoReadImplementation = Pick<
   DatabasePluginImplementation,
-  "count" | "findMany" | "findOne"
+  | "count"
+  | "findMany"
+  | "findOne"
+  | "findLatestInsightsEvents"
+  | "countLatestInsightsEvents"
 >;
 
 export const createMongoReads = (
   collections: MongoCollections,
   session?: ClientSession,
 ): MongoReadImplementation => ({
+  async findLatestInsightsEvents(input) {
+    return collections.bundleEvents
+      .aggregate<BundleEventRow>(
+        [
+          ...("installId" in input
+            ? [{ $match: { install_id: input.installId } }]
+            : []),
+          ...latestEventStages,
+          { $match: createMongoEventWhere(latestInsightsWhere(input)) },
+          { $sort: { install_id: 1 } },
+          { $limit: "installId" in input ? 1 : input.limit },
+          { $project: WITHOUT_MONGO_ID },
+        ],
+        {
+          ...mongoSessionOptions(session),
+          collation: { locale: "simple" },
+          readPreference: "primary",
+        },
+      )
+      .toArray();
+  },
+  async countLatestInsightsEvents(input) {
+    const rows = await collections.bundleEvents
+      .aggregate<{ count: number }>(
+        [
+          ...latestEventStages,
+          {
+            $match: {
+              $or: latestInsightsCountGroups(input).map(createMongoEventWhere),
+            },
+          },
+          { $count: "count" },
+        ],
+        {
+          ...mongoSessionOptions(session),
+          collation: { locale: "simple" },
+          readPreference: "primary",
+        },
+      )
+      .toArray();
+    return rows[0]?.count ?? 0;
+  },
   count: async (input) => {
     if (input.distinct !== undefined) {
       throw new DatabasePluginInputError("invalid-operation");
@@ -296,18 +312,7 @@ export const createMongoReads = (
           createMongoReleaseWhere(input.where),
           mongoSessionOptions(session),
         );
-      case "bundle_installations":
-        return collections.bundleInstallations.countDocuments(
-          createMongoInstallationWhere(input.where),
-          {
-            ...mongoSessionOptions(session),
-            collation: { locale: "simple" },
-            readPreference: "primary",
-            ...(session === undefined
-              ? { readConcern: { level: "snapshot" } }
-              : {}),
-          },
-        );
+
       case "bundle_events":
         return collections.bundleEvents.countDocuments(
           createMongoEventWhere(input.where),
@@ -372,15 +377,6 @@ export const createMongoReads = (
             ...mongoSessionOptions(session),
           },
         );
-      case "bundle_installations":
-        return collections.bundleInstallations
-          .findOne(createMongoInstallationWhere(input.where), {
-            projection: WITHOUT_MONGO_ID,
-            ...mongoSessionOptions(session),
-            collation: { locale: "simple" },
-            readPreference: "primary",
-          })
-          .then((row) => (row ? withPendingFields(row) : null));
     }
   },
   findMany: (input) => {

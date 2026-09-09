@@ -115,7 +115,6 @@ CREATE TABLE bundle_events (
   type TEXT NOT NULL,
   install_id TEXT NOT NULL,
   user_id TEXT,
-  username TEXT,
   from_release_id TEXT,
   from_bundle_id TEXT,
   to_release_id TEXT,
@@ -123,10 +122,7 @@ CREATE TABLE bundle_events (
   platform TEXT NOT NULL,
   app_version TEXT NOT NULL,
   channel TEXT NOT NULL,
-  cohort TEXT NOT NULL,
-  update_strategy TEXT,
-  fingerprint_hash TEXT,
-  sdk_version TEXT,
+  metadata TEXT NOT NULL,
   received_at_ms REAL NOT NULL,
   CONSTRAINT bundle_events_type_check CHECK (
     type IN ('UPDATE_DOWNLOADED', 'UPDATE_APPLIED', 'RECOVERED', 'UNCHANGED')
@@ -138,43 +134,14 @@ CREATE TABLE bundle_events (
     (
       type IN ('UPDATE_DOWNLOADED', 'UPDATE_APPLIED', 'RECOVERED')
       AND from_bundle_id IS NOT NULL
-      AND update_strategy IS NOT NULL
-      AND update_strategy IN ('fingerprint', 'appVersion')
     ) OR (
       type = 'UNCHANGED'
       AND from_bundle_id IS NULL
-      AND update_strategy IS NULL
     )
   ),
   CONSTRAINT bundle_events_received_at_check CHECK (received_at_ms >= 0)
 );
 
-CREATE TABLE bundle_installations (
-  install_id TEXT PRIMARY KEY NOT NULL,
-  id TEXT NOT NULL,
-  user_id TEXT,
-  username TEXT,
-  to_bundle_id TEXT NOT NULL,
-  pending_bundle_id TEXT,
-  pending_release_id TEXT,
-  type TEXT NOT NULL,
-  platform TEXT NOT NULL,
-  app_version TEXT NOT NULL,
-  channel TEXT NOT NULL,
-  cohort TEXT NOT NULL,
-  received_at_ms REAL NOT NULL,
-  CONSTRAINT bundle_installations_type_check CHECK (
-    type IN ('UPDATE_DOWNLOADED', 'UPDATE_APPLIED', 'RECOVERED', 'UNCHANGED')
-  ),
-  CONSTRAINT bundle_installations_pending_check CHECK (
-    (type = 'UPDATE_DOWNLOADED' AND pending_bundle_id IS NOT NULL)
-    OR (type <> 'UPDATE_DOWNLOADED' AND pending_bundle_id IS NULL AND pending_release_id IS NULL)
-  ),
-  CONSTRAINT bundle_installations_platform_check CHECK (
-    platform IN ('ios', 'android')
-  ),
-  CONSTRAINT bundle_installations_received_at_check CHECK (received_at_ms >= 0)
-);
 
 CREATE TABLE api_keys (
   id TEXT PRIMARY KEY NOT NULL,
@@ -207,12 +174,11 @@ CREATE INDEX releases_enabled_idx ON releases(enabled);
 CREATE INDEX release_catalogs_channel_idx ON release_catalogs(channel_id);
 CREATE INDEX bundle_events_received_at_idx ON bundle_events(received_at_ms, id);
 CREATE INDEX bundle_events_install_idx ON bundle_events(install_id, type, received_at_ms, id);
-CREATE INDEX bundle_installations_user_id_idx ON bundle_installations(user_id, install_id);
-CREATE INDEX bundle_installations_received_at_idx ON bundle_installations(received_at_ms);
 CREATE UNIQUE INDEX api_keys_hash_key ON api_keys(hash);
 CREATE INDEX api_keys_created_at_idx ON api_keys(created_at_ms, id);
 
 CREATE INDEX bundle_events_from_bundle_idx ON bundle_events(type, platform, channel, from_bundle_id, received_at_ms, id);
 CREATE INDEX bundle_events_to_bundle_idx ON bundle_events(type, platform, channel, to_bundle_id, received_at_ms, id);
-CREATE INDEX bundle_installations_scope_idx ON bundle_installations(platform, channel, received_at_ms);
-CREATE INDEX bundle_installations_bundle_idx ON bundle_installations(platform, channel, to_bundle_id, received_at_ms);
+
+CREATE INDEX bundle_events_latest_idx ON bundle_events(install_id, received_at_ms, id);
+CREATE INDEX bundle_events_user_idx ON bundle_events(user_id, install_id);

@@ -18,7 +18,6 @@ import {
   extractTimestampFromUUIDv7,
   releaseRowToRelease,
   type BundleEventRow,
-  type InsightsInstallationRow,
   type ReleaseCatalogRow,
   type ReleaseRow,
 } from "@hot-updater/plugin-core";
@@ -813,12 +812,15 @@ const downloadDemo = {
   platform: "ios" as const,
   app_version: "1.4.2",
   channel: "production",
-  cohort: "download-demo",
-  update_strategy: "appVersion" as const,
-  fingerprint_hash: null,
-  sdk_version: "1.0.0-rc",
+  metadata: {
+    cohort: "download-demo",
+    update_strategy: "appVersion" as const,
+    fingerprint_hash: null,
+    sdk_version: "1.0.0-rc",
+    username: "Download demo",
+  },
+
   user_id: "download-demo",
-  username: "Download demo",
 };
 
 const bundleEvents: readonly BundleEventRow[] = [
@@ -848,7 +850,13 @@ const bundleEvents: readonly BundleEventRow[] = [
     type: "UPDATE_APPLIED",
     install_id: "019f635d-0001-7000-8000-000000000001",
     user_id: "detox-e2e",
-    username: "hot-updater-e2e",
+    metadata: {
+      username: "hot-updater-e2e",
+      cohort: "staff-ios",
+      update_strategy: "appVersion",
+      fingerprint_hash: null,
+      sdk_version: "0.37.0",
+    },
     from_release_id: null,
     from_bundle_id: iosProdCorePatchA.id,
     to_release_id: null,
@@ -856,10 +864,7 @@ const bundleEvents: readonly BundleEventRow[] = [
     platform: "ios",
     app_version: "1.4.2",
     channel: "production",
-    cohort: "staff-ios",
-    update_strategy: "appVersion",
-    fingerprint_hash: null,
-    sdk_version: "0.37.0",
+
     received_at_ms: Date.UTC(2026, 6, 15, 1, 20),
   },
   {
@@ -867,7 +872,13 @@ const bundleEvents: readonly BundleEventRow[] = [
     type: "RECOVERED",
     install_id: "019f635d-0001-7000-8000-000000000001",
     user_id: "detox-e2e",
-    username: "hot-updater-e2e",
+    metadata: {
+      username: "hot-updater-e2e",
+      cohort: "staff-ios",
+      update_strategy: "appVersion",
+      fingerprint_hash: null,
+      sdk_version: "0.37.0",
+    },
     from_release_id: null,
     from_bundle_id: iosProdCorePatchB.id,
     to_release_id: null,
@@ -875,10 +886,7 @@ const bundleEvents: readonly BundleEventRow[] = [
     platform: "ios",
     app_version: "1.4.2",
     channel: "production",
-    cohort: "staff-ios",
-    update_strategy: "appVersion",
-    fingerprint_hash: null,
-    sdk_version: "0.37.0",
+
     received_at_ms: Date.UTC(2026, 6, 15, 1, 24),
   },
   {
@@ -886,7 +894,13 @@ const bundleEvents: readonly BundleEventRow[] = [
     type: "UPDATE_APPLIED",
     install_id: "019f635d-0002-7000-8000-000000000002",
     user_id: "detox-e2e-beta",
-    username: "hot-updater-e2e-beta",
+    metadata: {
+      username: "hot-updater-e2e-beta",
+      cohort: "default",
+      update_strategy: "appVersion",
+      fingerprint_hash: null,
+      sdk_version: "0.37.0",
+    },
     from_release_id: null,
     from_bundle_id: iosProdCorePatchA.id,
     to_release_id: null,
@@ -894,10 +908,7 @@ const bundleEvents: readonly BundleEventRow[] = [
     platform: "ios",
     app_version: "1.4.2",
     channel: "production",
-    cohort: "default",
-    update_strategy: "appVersion",
-    fingerprint_hash: null,
-    sdk_version: "0.37.0",
+
     received_at_ms: Date.UTC(2026, 6, 15, 1, 28),
   },
   {
@@ -905,7 +916,13 @@ const bundleEvents: readonly BundleEventRow[] = [
     type: "UPDATE_APPLIED",
     install_id: "019f635d-0002-7000-8000-000000000002",
     user_id: "detox-e2e-beta",
-    username: "hot-updater-e2e-beta",
+    metadata: {
+      username: "hot-updater-e2e-beta",
+      cohort: "default",
+      update_strategy: "appVersion",
+      fingerprint_hash: null,
+      sdk_version: "0.37.0",
+    },
     from_release_id: null,
     from_bundle_id: iosProdCorePatchB.id,
     to_release_id: null,
@@ -913,10 +930,7 @@ const bundleEvents: readonly BundleEventRow[] = [
     platform: "ios",
     app_version: "1.4.2",
     channel: "production",
-    cohort: "default",
-    update_strategy: "appVersion",
-    fingerprint_hash: null,
-    sdk_version: "0.37.0",
+
     received_at_ms: Date.UTC(2026, 6, 15, 1, 32),
   },
   ...(
@@ -1066,16 +1080,19 @@ const bundleEvents: readonly BundleEventRow[] = [
         id: `019f635e-1${String(index).padStart(3, "0")}-7000-8000-00000000${installSuffix}`,
         install_id: `019f635d-${installSuffix}-7000-8000-00000000${installSuffix}`,
         user_id: userId,
-        username: userId,
+        metadata: {
+          username: userId,
+          cohort: "default",
+          fingerprint_hash: null,
+          sdk_version: "0.37.0",
+        },
         from_release_id: null,
         to_release_id: null,
         to_bundle_id: toBundleId,
         platform: "ios",
         app_version: "1.4.2",
         channel: "production",
-        cohort: "default",
-        fingerprint_hash: null,
-        sdk_version: "0.37.0",
+
         received_at_ms: Date.UTC(2026, 6, Number(day), Number(hour)),
       } as const;
       return type === "UNCHANGED"
@@ -1083,13 +1100,13 @@ const bundleEvents: readonly BundleEventRow[] = [
             ...baseEvent,
             type,
             from_bundle_id: null,
-            update_strategy: null,
+            metadata: { ...baseEvent.metadata, update_strategy: null },
           }
         : {
             ...baseEvent,
             type,
             from_bundle_id: fromBundleId,
-            update_strategy: "appVersion",
+            metadata: { ...baseEvent.metadata, update_strategy: "appVersion" },
           };
     },
   ),
@@ -1103,33 +1120,6 @@ for (const event of bundleEvents) {
     received_at_ms: event.received_at_ms + receiptOffsetMs,
   };
   databaseData.bundleEvents.set(row.id, row);
-  const current = databaseData.bundleInstallations.get(row.install_id);
-  if (
-    current === undefined ||
-    row.received_at_ms > current.received_at_ms ||
-    (row.received_at_ms === current.received_at_ms && row.id > current.id)
-  ) {
-    databaseData.bundleInstallations.set(row.install_id, {
-      id: row.id,
-      install_id: row.install_id,
-      user_id: row.user_id,
-      username: row.username,
-      to_bundle_id:
-        row.type === "UPDATE_DOWNLOADED"
-          ? row.from_bundle_id
-          : row.to_bundle_id,
-      pending_bundle_id:
-        row.type === "UPDATE_DOWNLOADED" ? row.to_bundle_id : null,
-      pending_release_id:
-        row.type === "UPDATE_DOWNLOADED" ? row.to_release_id : null,
-      type: row.type,
-      platform: row.platform,
-      app_version: row.app_version,
-      channel: row.channel,
-      cohort: row.cohort,
-      received_at_ms: row.received_at_ms,
-    } satisfies InsightsInstallationRow);
-  }
 }
 
 const database = mockDatabase({

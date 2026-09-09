@@ -1,3 +1,7 @@
+import {
+  isDatabaseBundleEventMetadata,
+  type BundleEventRow,
+} from "@hot-updater/plugin-core";
 import type {
   BundleRow,
   ReleaseCatalogRow,
@@ -212,3 +216,23 @@ export const escapeLikePattern = (value: string): string =>
 
 export const escapeGlobPattern = (value: string): string =>
   value.replaceAll("[", "[[]").replaceAll("*", "[*]").replaceAll("?", "[?]");
+
+export type StoredBundleEventRow = Omit<BundleEventRow, "metadata"> & {
+  readonly metadata: unknown;
+};
+export const fromStoredBundleEventRow = (
+  row: StoredBundleEventRow,
+): BundleEventRow => {
+  const metadata =
+    typeof row.metadata === "string" ? parseJson(row.metadata) : row.metadata;
+  if (!isDatabaseBundleEventMetadata(metadata))
+    throw new StoredBundleRowError("Invalid event metadata field.");
+  return { ...row, metadata } as BundleEventRow;
+};
+export const toStoredBundleEventRow = (
+  row: BundleEventRow,
+  provider: ORMSQLProvider,
+): StoredBundleEventRow =>
+  provider === "mysql" || provider === "sqlite"
+    ? { ...row, metadata: JSON.stringify(row.metadata) }
+    : row;

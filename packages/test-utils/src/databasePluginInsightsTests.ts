@@ -1,5 +1,4 @@
 import {
-  toInsightsInstallationRow,
   type BundleEventRow,
   type DatabasePlugin,
   type InsightsBundleEventFilter,
@@ -13,36 +12,59 @@ import { expectInsightsIndex } from "./expectInsightsIndex";
 const record = (plugin: DatabasePlugin, event: BundleEventRow) =>
   plugin.models.insights.record({
     event,
-    installation: toInsightsInstallationRow(event),
   });
 
 export const registerDatabasePluginInsightsTests = (
   state: DatabasePluginTestState<DatabasePlugin>,
 ): void => {
   describe("Insights report contract", () => {
-    it("keeps the running bundle during download and clears pending only on a newer launch report", async () => {
+    it("preserves ancillary JSON through event history and latest-event reads", async () => {
+      const plugin = state.getPlugin();
+      const base = createBundleEventRowFixture("979", 100);
+      const event = {
+        ...base,
+        metadata: {
+          ...base.metadata,
+          device: { locale: "ko-KR", tags: ["minor", null, true, 2] },
+          diagnostic: null,
+        },
+      };
+      await record(plugin, event);
+      await expect(
+        plugin.models.insights.findLatestEvents({
+          installId: event.install_id,
+        }),
+      ).resolves.toEqual([event]);
+      await expectInsightsIndex(
+        () =>
+          plugin.models.insights.listEvents({
+            filter: { kind: "all" },
+            beforeReceivedAtMs: 101,
+            limit: 10,
+          }),
+        [event],
+      );
+    });
+
+    it("selects the latest complete event across download, replacement, apply, and delayed reports", async () => {
       const plugin = state.getPlugin();
       const download: BundleEventRow = {
         ...createBundleEventRowFixture("980", 100),
         type: "UPDATE_DOWNLOADED",
         from_bundle_id: "00000000-0000-7000-8000-000000001980",
-        update_strategy: "appVersion",
+        metadata: {
+          ...createBundleEventRowFixture("980", 100).metadata,
+          update_strategy: "appVersion",
+        },
         to_release_id: "00000000-0000-7000-8000-000000004980",
       };
       await record(plugin, download);
       await record(plugin, download);
       await expect(
-        plugin.models.insights.findInstallations({
+        plugin.models.insights.findLatestEvents({
           installId: download.install_id,
         }),
-      ).resolves.toEqual([
-        {
-          ...toInsightsInstallationRow(download),
-          to_bundle_id: download.from_bundle_id,
-          pending_bundle_id: download.to_bundle_id,
-          pending_release_id: download.to_release_id,
-        },
-      ]);
+      ).resolves.toEqual([download]);
       await expectInsightsIndex(
         () =>
           plugin.models.insights.listEvents({
@@ -66,10 +88,10 @@ export const registerDatabasePluginInsightsTests = (
       };
       await record(plugin, replacement);
       await expect(
-        plugin.models.insights.findInstallations({
+        plugin.models.insights.findLatestEvents({
           installId: download.install_id,
         }),
-      ).resolves.toEqual([toInsightsInstallationRow(replacement)]);
+      ).resolves.toEqual([replacement]);
       const applied: BundleEventRow = {
         ...replacement,
         type: "UPDATE_APPLIED",
@@ -83,17 +105,10 @@ export const registerDatabasePluginInsightsTests = (
         received_at_ms: 105,
       });
       await expect(
-        plugin.models.insights.findInstallations({
+        plugin.models.insights.findLatestEvents({
           installId: download.install_id,
         }),
-      ).resolves.toEqual([
-        {
-          ...toInsightsInstallationRow(applied),
-          to_bundle_id: replacement.to_bundle_id,
-          pending_bundle_id: null,
-          pending_release_id: null,
-        },
-      ]);
+      ).resolves.toEqual([applied]);
       await expectInsightsIndex(
         () =>
           plugin.models.insights.listEvents({
@@ -135,12 +150,12 @@ export const registerDatabasePluginInsightsTests = (
       const otherInstallation = { ...changed, install_id: "different-install" };
       await record(plugin, otherInstallation);
       await expect(
-        plugin.models.insights.findInstallations({
+        plugin.models.insights.findLatestEvents({
           installId: event.install_id,
         }),
-      ).resolves.toEqual([toInsightsInstallationRow(event)]);
+      ).resolves.toEqual([event]);
       await expect(
-        plugin.models.insights.findInstallations({
+        plugin.models.insights.findLatestEvents({
           installId: otherInstallation.install_id,
         }),
       ).resolves.toEqual([]);
@@ -171,7 +186,6 @@ export const registerDatabasePluginInsightsTests = (
         ...createBundleEventRowFixture("911", 200),
         install_id: "concurrent",
         user_id: null,
-        username: null,
       };
       await Promise.all([
         record(plugin, newest),
@@ -180,10 +194,10 @@ export const registerDatabasePluginInsightsTests = (
       ]);
       await record(plugin, older);
       await expect(
-        plugin.models.insights.findInstallations({ installId: "concurrent" }),
-      ).resolves.toEqual([toInsightsInstallationRow(newest)]);
+        plugin.models.insights.findLatestEvents({ installId: "concurrent" }),
+      ).resolves.toEqual([newest]);
       await expect(
-        plugin.models.insights.findInstallations({
+        plugin.models.insights.findLatestEvents({
           userId: "previous",
           limit: 10,
         }),
@@ -199,20 +213,19 @@ export const registerDatabasePluginInsightsTests = (
       );
     });
 
-    it("rejects mismatched prepared state before either canonical record is persisted", async () => {
+    it("rejects invalid event metadata before persisting a report", async () => {
       const plugin = state.getPlugin();
       const event = createBundleEventRowFixture("920", 100);
       await expect(
         plugin.models.insights.record({
-          event,
-          installation: {
-            ...toInsightsInstallationRow(event),
-            user_id: "wrong",
-          },
+          event: {
+            ...event,
+            metadata: { ...event.metadata, cohort: 123 },
+          } as unknown as BundleEventRow,
         }),
       ).rejects.toMatchObject({ code: "invalid-data" });
       await expect(
-        plugin.models.insights.findInstallations({
+        plugin.models.insights.findLatestEvents({
           installId: event.install_id,
         }),
       ).resolves.toEqual([]);
@@ -241,14 +254,20 @@ export const registerDatabasePluginInsightsTests = (
         type: "RECOVERED",
         from_bundle_id: bundleB,
         to_bundle_id: bundleA,
-        update_strategy: "appVersion",
+        metadata: {
+          ...createBundleEventRowFixture("931", 120).metadata,
+          update_strategy: "appVersion",
+        },
       };
       const unchanged: BundleEventRow = {
         ...createBundleEventRowFixture("932", 130),
         type: "UNCHANGED",
         from_bundle_id: null,
         to_bundle_id: bundleB,
-        update_strategy: null,
+        metadata: {
+          ...createBundleEventRowFixture("932", 130).metadata,
+          update_strategy: null,
+        },
       };
       const excluded = [
         {
@@ -296,12 +315,12 @@ export const registerDatabasePluginInsightsTests = (
           ...applied,
           type: "UNCHANGED",
           from_bundle_id: bundleB,
-          update_strategy: "appVersion",
+          metadata: { ...applied.metadata, update_strategy: "appVersion" },
         } as unknown as BundleEventRow),
       ).rejects.toThrow();
       await expect(
-        plugin.models.insights.findInstallations({ installId: "target" }),
-      ).resolves.toEqual([toInsightsInstallationRow(recovered)]);
+        plugin.models.insights.findLatestEvents({ installId: "target" }),
+      ).resolves.toEqual([recovered]);
       const cases: readonly [InsightsBundleEventFilter, BundleEventRow][] = [
         [
           {
@@ -354,17 +373,23 @@ export const registerDatabasePluginInsightsTests = (
       }
       await expectInsightsIndex(
         () =>
-          plugin.models.insights.countInstallations({
+          plugin.models.insights.countLatestEvents({
             platform: "ios",
             channel: "production",
             sinceMs: 100,
-            bundleId: bundleA,
+            bundle: [
+              {
+                field: "to_bundle_id",
+                value: bundleA,
+                types: ["UNCHANGED", "UPDATE_APPLIED", "RECOVERED"],
+              },
+            ],
           }),
         1,
       );
       await expectInsightsIndex(
         () =>
-          plugin.models.insights.countInstallations({
+          plugin.models.insights.countLatestEvents({
             platform: "ios",
             channel: "production",
             sinceMs: 100,
@@ -400,7 +425,7 @@ export const registerDatabasePluginInsightsTests = (
         const found: string[] = [];
         let afterInstallId: string | undefined;
         for (;;) {
-          const page = await plugin.models.insights.findInstallations({
+          const page = await plugin.models.insights.findLatestEvents({
             userId: "User-é",
             afterInstallId,
             limit: 2,
@@ -412,36 +437,57 @@ export const registerDatabasePluginInsightsTests = (
       }, ids);
       await expectInsightsIndex(
         () =>
-          plugin.models.insights.findInstallations({
+          plugin.models.insights.findLatestEvents({
             userId: "User-é ",
             limit: 10,
           }),
-        [toInsightsInstallationRow(spacedUser)],
+        [spacedUser],
       );
       await expect(
-        plugin.models.insights.findInstallations({
+        plugin.models.insights.findLatestEvents({
           userId: "user-é",
           limit: 10,
         }),
       ).resolves.toEqual([]);
       await expect(
-        plugin.models.insights.findInstallations({ installId: "INSTALL-a" }),
+        plugin.models.insights.findLatestEvents({ installId: "INSTALL-a" }),
       ).resolves.toEqual([]);
       await expect(
-        plugin.models.insights.findInstallations({ installId: "Install-a" }),
-      ).resolves.toEqual([toInsightsInstallationRow(events[0]!)]);
+        plugin.models.insights.findLatestEvents({ installId: "Install-a" }),
+      ).resolves.toEqual([events[0]!]);
       await expect(
-        plugin.models.insights.findInstallations({ installId: "install-a " }),
-      ).resolves.toEqual([toInsightsInstallationRow(events[3]!)]);
+        plugin.models.insights.findLatestEvents({ installId: "install-a " }),
+      ).resolves.toEqual([events[3]!]);
       await expect(
-        plugin.models.insights.findInstallations({ installId: "install-a" }),
-      ).resolves.toEqual([toInsightsInstallationRow(events[2]!)]);
+        plugin.models.insights.findLatestEvents({ installId: "install-a" }),
+      ).resolves.toEqual([events[2]!]);
+    });
+
+    it("counts overlapping bundle predicates once per latest installation", async () => {
+      const plugin = state.getPlugin();
+      const event = createBundleEventRowFixture("9700", 100);
+      await record(plugin, event);
+      const predicate = {
+        field: "to_bundle_id" as const,
+        value: event.to_bundle_id,
+        types: [event.type],
+      };
+      await expectInsightsIndex(
+        () =>
+          plugin.models.insights.countLatestEvents({
+            platform: event.platform,
+            channel: event.channel,
+            sinceMs: 0,
+            bundle: [predicate, predicate],
+          }),
+        1,
+      );
     });
 
     it("returns zero for successful empty scalar queries", async () => {
       const plugin = state.getPlugin();
       await expect(
-        plugin.models.insights.countInstallations({
+        plugin.models.insights.countLatestEvents({
           platform: "ios",
           channel: "production",
           sinceMs: 0,

@@ -1,7 +1,4 @@
-import {
-  createDatabaseClient,
-  toInsightsInstallationRow,
-} from "@hot-updater/plugin-core";
+import { createDatabaseClient } from "@hot-updater/plugin-core";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -30,10 +27,10 @@ describe("mongoAdapter capabilities", () => {
     harness.reset();
     const insights = mongoAdapter({ client: harness.client }).models.insights;
     const event = createBundleEventRowFixture("981", 100);
-    const input = { event, installation: toInsightsInstallationRow(event) };
-    harness.failNextInstallationWrite();
+    const input = { event };
+    harness.failNextEventWrite();
     await expect(insights.record(input)).rejects.toThrow(
-      "injected installation write failure",
+      "injected event write failure",
     );
     await expect(
       insights.listEvents({
@@ -43,7 +40,7 @@ describe("mongoAdapter capabilities", () => {
       }),
     ).resolves.toEqual([]);
     await expect(
-      insights.findInstallations({ installId: event.install_id }),
+      insights.findLatestEvents({ installId: event.install_id }),
     ).resolves.toEqual([]);
     await insights.record(input);
     await insights.record(input);
@@ -55,8 +52,8 @@ describe("mongoAdapter capabilities", () => {
       }),
     ).resolves.toEqual([event]);
     await expect(
-      insights.findInstallations({ installId: event.install_id }),
-    ).resolves.toEqual([input.installation]);
+      insights.findLatestEvents({ installId: event.install_id }),
+    ).resolves.toEqual([input.event]);
   });
 
   it("preserves all concurrent events while advancing one installation and clearing its user", async () => {
@@ -71,15 +68,14 @@ describe("mongoAdapter capabilities", () => {
       events.map((event) =>
         insights.record({
           event,
-          installation: toInsightsInstallationRow(event),
         }),
       ),
     );
     await expect(
-      insights.findInstallations({ installId: "concurrent-installation" }),
-    ).resolves.toEqual([toInsightsInstallationRow(events[1]!)]);
+      insights.findLatestEvents({ installId: "concurrent-installation" }),
+    ).resolves.toEqual([events[1]!]);
     await expect(
-      insights.findInstallations({ userId: "previous-user", limit: 10 }),
+      insights.findLatestEvents({ userId: "previous-user", limit: 10 }),
     ).resolves.toEqual([]);
     await expect(
       insights.listEvents({

@@ -103,7 +103,6 @@ CREATE TABLE public.hot_updater_v1_bundle_events (
   type text NOT NULL,
   install_id text COLLATE "C" NOT NULL,
   user_id text COLLATE "C",
-  username text,
   from_release_id uuid,
   from_bundle_id uuid,
   to_release_id uuid,
@@ -111,10 +110,7 @@ CREATE TABLE public.hot_updater_v1_bundle_events (
   platform text COLLATE "C" NOT NULL,
   app_version text NOT NULL,
   channel text COLLATE "C" NOT NULL,
-  cohort text NOT NULL,
-  update_strategy text,
-  fingerprint_hash text,
-  sdk_version text,
+  metadata JSONB NOT NULL,
   received_at_ms double precision NOT NULL,
   CONSTRAINT hot_updater_v1_bundle_events_type_check CHECK (
     type IN ('UPDATE_DOWNLOADED', 'UPDATE_APPLIED', 'RECOVERED', 'UNCHANGED')
@@ -124,37 +120,13 @@ CREATE TABLE public.hot_updater_v1_bundle_events (
   ),
   CONSTRAINT hot_updater_v1_bundle_events_shape_check CHECK (
     (type IN ('UPDATE_DOWNLOADED', 'UPDATE_APPLIED', 'RECOVERED')
-      AND from_bundle_id IS NOT NULL
-      AND update_strategy IS NOT NULL
-      AND update_strategy IN ('fingerprint', 'appVersion'))
+      AND from_bundle_id IS NOT NULL)
     OR (type = 'UNCHANGED'
-      AND from_bundle_id IS NULL
-      AND update_strategy IS NULL)
+      AND from_bundle_id IS NULL)
   ),
   CONSTRAINT hot_updater_v1_bundle_events_received_at_check CHECK (received_at_ms >= 0)
 );
 
-CREATE TABLE public.hot_updater_v1_bundle_installations (
-  install_id text COLLATE "C" PRIMARY KEY NOT NULL,
-  id uuid NOT NULL,
-  user_id text COLLATE "C",
-  username text,
-  to_bundle_id uuid NOT NULL,
-  pending_bundle_id uuid,
-  pending_release_id uuid,
-  type text NOT NULL CHECK (
-    type IN ('UPDATE_DOWNLOADED', 'UPDATE_APPLIED', 'RECOVERED', 'UNCHANGED')
-  ),
-  platform text COLLATE "C" NOT NULL CHECK (platform IN ('ios', 'android')),
-  app_version text NOT NULL,
-  channel text COLLATE "C" NOT NULL,
-  cohort text NOT NULL,
-  received_at_ms double precision NOT NULL CHECK (received_at_ms >= 0),
-  CONSTRAINT hot_updater_v1_bundle_installations_pending_check CHECK (
-    (type = 'UPDATE_DOWNLOADED' AND pending_bundle_id IS NOT NULL)
-    OR (type <> 'UPDATE_DOWNLOADED' AND pending_bundle_id IS NULL AND pending_release_id IS NULL)
-  )
-);
 
 CREATE TABLE public.hot_updater_v1_api_keys (
   id text PRIMARY KEY NOT NULL,
@@ -187,18 +159,10 @@ CREATE INDEX hot_updater_v1_bundle_events_received_at_idx
   ON public.hot_updater_v1_bundle_events(received_at_ms, id);
 CREATE INDEX hot_updater_v1_bundle_events_install_idx
   ON public.hot_updater_v1_bundle_events(install_id, type, received_at_ms, id);
-CREATE INDEX hot_updater_v1_bundle_installations_user_id_idx
-  ON public.hot_updater_v1_bundle_installations(user_id, install_id);
-CREATE INDEX hot_updater_v1_bundle_installations_received_at_idx
-  ON public.hot_updater_v1_bundle_installations(received_at_ms);
 CREATE INDEX hot_updater_v1_bundle_events_from_bundle_idx
   ON public.hot_updater_v1_bundle_events(type, platform, channel, from_bundle_id, received_at_ms, id);
 CREATE INDEX hot_updater_v1_bundle_events_to_bundle_idx
   ON public.hot_updater_v1_bundle_events(type, platform, channel, to_bundle_id, received_at_ms, id);
-CREATE INDEX hot_updater_v1_bundle_installations_scope_idx
-  ON public.hot_updater_v1_bundle_installations(platform, channel, received_at_ms);
-CREATE INDEX hot_updater_v1_bundle_installations_bundle_idx
-  ON public.hot_updater_v1_bundle_installations(platform, channel, to_bundle_id, received_at_ms);
 CREATE UNIQUE INDEX hot_updater_v1_api_keys_hash_key
   ON public.hot_updater_v1_api_keys(hash);
 CREATE INDEX hot_updater_v1_api_keys_created_at_idx
@@ -210,7 +174,6 @@ ALTER TABLE public.hot_updater_v1_bundle_patches ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.hot_updater_v1_releases ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.hot_updater_v1_release_catalogs ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.hot_updater_v1_bundle_events ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.hot_updater_v1_bundle_installations ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.hot_updater_v1_api_keys ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.hot_updater_v1_private_settings ENABLE ROW LEVEL SECURITY;
 
@@ -580,46 +543,18 @@ GRANT EXECUTE ON FUNCTION public.hot_updater_v1_delete_channel(text)
   TO service_role;
 
 -- The event insert gates the snapshot replacement in the same SQL statement.
-CREATE FUNCTION public.hot_updater_v1_record_insights(p_event jsonb, p_installation jsonb)
-RETURNS void
-LANGUAGE sql
-SECURITY DEFINER
-SET search_path = ''
-AS $$
-  WITH accepted_event AS (
-    INSERT INTO public.hot_updater_v1_bundle_events
-    SELECT * FROM pg_catalog.jsonb_populate_record(
-      NULL::public.hot_updater_v1_bundle_events, p_event
-    )
-    ON CONFLICT (id) DO NOTHING RETURNING id
-  )
-  INSERT INTO public.hot_updater_v1_bundle_installations
-  SELECT candidate.*
-  FROM pg_catalog.jsonb_populate_record(
-    NULL::public.hot_updater_v1_bundle_installations, p_installation
-  ) AS candidate
-  CROSS JOIN accepted_event
-  ON CONFLICT (install_id) DO UPDATE SET
-    id = excluded.id,
-    user_id = excluded.user_id,
-    username = excluded.username,
-    to_bundle_id = excluded.to_bundle_id,
-    pending_bundle_id = excluded.pending_bundle_id,
-    pending_release_id = excluded.pending_release_id,
-    type = excluded.type,
-    platform = excluded.platform,
-    app_version = excluded.app_version,
-    channel = excluded.channel,
-    cohort = excluded.cohort,
-    received_at_ms = excluded.received_at_ms
-  WHERE (excluded.received_at_ms, excluded.id) >
-    (hot_updater_v1_bundle_installations.received_at_ms,
-      hot_updater_v1_bundle_installations.id);
-$$;
 
-REVOKE EXECUTE ON FUNCTION public.hot_updater_v1_record_insights(jsonb, jsonb)
-  FROM PUBLIC, anon, authenticated;
-GRANT EXECUTE ON FUNCTION public.hot_updater_v1_record_insights(jsonb, jsonb)
-  TO service_role;
+CREATE INDEX hot_updater_v1_bundle_events_latest_idx ON public.hot_updater_v1_bundle_events(install_id, received_at_ms, id);
+CREATE INDEX hot_updater_v1_bundle_events_user_idx ON public.hot_updater_v1_bundle_events(user_id, install_id);
 
+-- A read-only view delegates latest-event selection to PostgreSQL; no snapshot table.
+CREATE VIEW public.hot_updater_v1_latest_bundle_events WITH (security_invoker = true) AS
+SELECT event.* FROM public.hot_updater_v1_bundle_events AS event
+WHERE NOT EXISTS (
+  SELECT 1 FROM public.hot_updater_v1_bundle_events AS newer
+  WHERE newer.install_id = event.install_id
+    AND (newer.received_at_ms, newer.id) > (event.received_at_ms, event.id)
+);
+REVOKE ALL ON public.hot_updater_v1_latest_bundle_events FROM PUBLIC, anon, authenticated;
+GRANT SELECT ON public.hot_updater_v1_latest_bundle_events TO service_role;
 NOTIFY pgrst, 'reload schema';

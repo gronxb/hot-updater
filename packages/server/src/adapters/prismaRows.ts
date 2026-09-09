@@ -1,10 +1,10 @@
+import { isDatabaseBundleEventMetadata } from "@hot-updater/plugin-core";
 import type {
   BundleEventRow,
   BundlePatchRow,
   BundleRow,
   ChannelRow,
   ApiKeyRow,
-  InsightsInstallationRow,
   ReleaseCatalogRow,
   ReleaseRow,
 } from "@hot-updater/plugin-core";
@@ -51,7 +51,7 @@ const modelDelegates = {
   bundles: "bundles",
   bundle_patches: "bundle_patches",
   bundle_events: "bundle_events",
-  bundle_installations: "bundle_installations",
+
   channels: "channels",
   api_keys: "api_keys",
   releases: "releases",
@@ -164,7 +164,14 @@ export const parsePrismaBundleEventRow = (value: unknown): BundleEventRow => {
   const type = readString(value, "type");
   const platform = readString(value, "platform");
   const fromBundleId = readNullableString(value, "from_bundle_id");
-  const updateStrategy = readNullableString(value, "update_strategy");
+  const storedMetadata = value["metadata"];
+  const metadata =
+    typeof storedMetadata === "string"
+      ? JSON.parse(storedMetadata)
+      : storedMetadata;
+  if (!isDatabaseBundleEventMetadata(metadata))
+    throw new PrismaAdapterError("invalid event metadata");
+  const updateStrategy = metadata.update_strategy;
   if (
     (platform !== "ios" && platform !== "android") ||
     !(
@@ -184,7 +191,6 @@ export const parsePrismaBundleEventRow = (value: unknown): BundleEventRow => {
     type,
     install_id: readString(value, "install_id"),
     user_id: readNullableString(value, "user_id"),
-    username: readNullableString(value, "username"),
     from_release_id: readNullableString(value, "from_release_id"),
     from_bundle_id: fromBundleId,
     to_release_id: readNullableString(value, "to_release_id"),
@@ -192,46 +198,9 @@ export const parsePrismaBundleEventRow = (value: unknown): BundleEventRow => {
     platform,
     app_version: readString(value, "app_version"),
     channel: readString(value, "channel"),
-    cohort: readString(value, "cohort"),
-    update_strategy: updateStrategy,
-    fingerprint_hash: readNullableString(value, "fingerprint_hash"),
-    sdk_version: readNullableString(value, "sdk_version"),
+    metadata,
     received_at_ms: readNumber(value, "received_at_ms"),
   } as BundleEventRow;
-};
-
-export const parsePrismaInsightsInstallationRow = (
-  value: unknown,
-): InsightsInstallationRow => {
-  if (!isRecord(value)) {
-    throw new PrismaAdapterError("invalid installation row");
-  }
-  const platform = readString(value, "platform");
-  const type = readString(value, "type");
-  if (
-    (platform !== "ios" && platform !== "android") ||
-    (type !== "UPDATE_DOWNLOADED" &&
-      type !== "UPDATE_APPLIED" &&
-      type !== "RECOVERED" &&
-      type !== "UNCHANGED")
-  ) {
-    throw new PrismaAdapterError("invalid installation fields");
-  }
-  return {
-    install_id: readString(value, "install_id"),
-    id: readString(value, "id"),
-    user_id: readNullableString(value, "user_id"),
-    username: readNullableString(value, "username"),
-    to_bundle_id: readString(value, "to_bundle_id"),
-    pending_bundle_id: readNullableString(value, "pending_bundle_id"),
-    pending_release_id: readNullableString(value, "pending_release_id"),
-    type,
-    platform,
-    app_version: readString(value, "app_version"),
-    channel: readString(value, "channel"),
-    cohort: readString(value, "cohort"),
-    received_at_ms: readNumber(value, "received_at_ms"),
-  };
 };
 
 export const parsePrismaApiKeyRow = (value: unknown): ApiKeyRow => {

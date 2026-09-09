@@ -13,14 +13,16 @@ export {
 export * from "./createStorageKeyBuilder";
 export * from "./createStoragePlugin";
 export * from "./databaseClient";
-export { isDatabaseMetadataObject } from "./databaseJsonValue";
+export {
+  isDatabaseMetadataObject,
+  isDatabaseBundleEventMetadata,
+} from "./databaseJsonValue";
 export * from "./databaseRows";
 export * from "./filterCompatibleAppVersions";
 export * from "./generateMinBundleId";
 export {
   compareInsightsText,
   isInsightsMovementEvent,
-  toInsightsInstallationRow,
 } from "./insightsContract";
 export * from "./parseStorageUri";
 export * from "./paginateBundles";

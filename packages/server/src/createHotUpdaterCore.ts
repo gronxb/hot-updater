@@ -178,13 +178,13 @@ export function createHotUpdaterCore(
       await assertSchemaReady();
       return plugin.models.insights.listEvents(input);
     },
-    async findInstallations(input) {
+    async findLatestEvents(input) {
       await assertSchemaReady();
-      return plugin.models.insights.findInstallations(input);
+      return plugin.models.insights.findLatestEvents(input);
     },
-    async countInstallations(input) {
+    async countLatestEvents(input) {
       await assertSchemaReady();
-      return plugin.models.insights.countInstallations(input);
+      return plugin.models.insights.countLatestEvents(input);
     },
     async countEvents(input) {
       await assertSchemaReady();

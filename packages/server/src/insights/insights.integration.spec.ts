@@ -125,7 +125,7 @@ describe("createHotUpdater Insights", () => {
       expect.objectContaining({
         event: expect.objectContaining({
           install_id: "install-1",
-          sdk_version: "2.0.0",
+          metadata: expect.objectContaining({ sdk_version: "2.0.0" }),
           to_bundle_id: "bundle-1",
           type: "UNCHANGED",
         }),
@@ -331,12 +331,11 @@ describe("createHotUpdater Insights", () => {
       event: expect.objectContaining({
         type: "UNCHANGED",
         from_bundle_id: null,
-        update_strategy: null,
+        metadata: expect.objectContaining({ update_strategy: null }),
         from_release_id: "previous-release",
         to_release_id: "selected-release",
         to_bundle_id: event.toBundleId,
       }),
-      installation: expect.objectContaining({ type: "UNCHANGED" }),
     });
     const response = await hotUpdater.handlers.client(
       eventRequest({

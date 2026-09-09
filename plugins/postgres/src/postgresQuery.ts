@@ -62,12 +62,16 @@ export const countPostgresRows = async (
       const query = rows.select(({ fn }) => fn.countAll<string>().as("count"));
       return Number((await query.executeTakeFirstOrThrow()).count);
     }
-    case "bundle_events":
-    case "bundle_installations": {
-      let rows = db.selectFrom(input.model);
+    case "bundle_events": {
+      let rows = db.selectFrom("bundle_events");
       if (where !== undefined) rows = rows.where(where);
-      const query = rows.select(({ fn }) => fn.countAll<string>().as("count"));
-      return Number((await query.executeTakeFirstOrThrow()).count);
+      return Number(
+        (
+          await rows
+            .select(({ fn }) => fn.countAll<string>().as("count"))
+            .executeTakeFirstOrThrow()
+        ).count,
+      );
     }
   }
 };
@@ -114,16 +118,7 @@ export const findManyPostgresRows = async (
       }
       return query.limit(input.limit).offset(input.offset).execute();
     }
-    case "bundle_installations": {
-      let query = db.selectFrom("bundle_installations").selectAll();
-      if (where !== undefined) query = query.where(where);
-      for (const clause of input.orderBy ?? []) {
-        query = query.orderBy(clause.field, (order) =>
-          applyOrder(order, clause),
-        );
-      }
-      return query.limit(input.limit).offset(input.offset).execute();
-    }
+
     case "channels": {
       let query = db.selectFrom("channels").selectAll();
       if (where !== undefined) query = query.where(where);

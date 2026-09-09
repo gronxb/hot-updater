@@ -130,12 +130,12 @@ export function isDatabasePlugin(plugin: unknown): plugin is DatabasePlugin {
     typeof plugin.models.insights.record === "function" &&
     "listEvents" in plugin.models.insights &&
     typeof plugin.models.insights.listEvents === "function" &&
-    "findInstallations" in plugin.models.insights &&
-    typeof plugin.models.insights.findInstallations === "function" &&
+    "findLatestEvents" in plugin.models.insights &&
+    typeof plugin.models.insights.findLatestEvents === "function" &&
     "countEvents" in plugin.models.insights &&
     typeof plugin.models.insights.countEvents === "function" &&
-    "countInstallations" in plugin.models.insights &&
-    typeof plugin.models.insights.countInstallations === "function" &&
+    "countLatestEvents" in plugin.models.insights &&
+    typeof plugin.models.insights.countLatestEvents === "function" &&
     "apiKeys" in plugin.models &&
     typeof plugin.models.apiKeys === "object" &&
     plugin.models.apiKeys !== null &&

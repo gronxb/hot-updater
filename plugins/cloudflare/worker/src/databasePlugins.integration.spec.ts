@@ -3,7 +3,6 @@ import type {
   ChannelRow,
   ReleaseRow,
 } from "@hot-updater/plugin-core";
-import { toInsightsInstallationRow } from "@hot-updater/plugin-core";
 import { setupDatabasePluginTestSuite } from "@hot-updater/test-utils";
 import { env } from "cloudflare:test";
 import {
@@ -94,7 +93,7 @@ vi.mock("cloudflare", () => ({
 const reset = async (): Promise<void> => {
   await getDb()
     .prepare(
-      "DELETE FROM bundle_events; DELETE FROM bundle_installations; DELETE FROM api_keys; DELETE FROM bundle_patches; DELETE FROM release_catalogs; DELETE FROM releases; DELETE FROM bundles; DELETE FROM channels;",
+      "DELETE FROM bundle_events; DELETE FROM api_keys; DELETE FROM bundle_patches; DELETE FROM release_catalogs; DELETE FROM releases; DELETE FROM bundles; DELETE FROM channels;",
     )
     .run();
 };
@@ -211,10 +210,10 @@ describe.each([
     ).resolves.toEqual({ deleted: false, reason: "not_found" });
   });
 
-  it("rolls back the snapshot when the later event insert fails, then safely retries", async () => {
+  it("keeps failed event inserts invisible, then safely retries", async () => {
     const plugin = createPlugin();
     const event = createBundleEventRowFixture("9101", 100);
-    const input = { event, installation: toInsightsInstallationRow(event) };
+    const input = { event };
     await env.DB.prepare(`
       CREATE TRIGGER fail_insights_event BEFORE INSERT ON bundle_events
       BEGIN SELECT RAISE(ABORT, 'injected event failure'); END;
@@ -226,18 +225,19 @@ describe.each([
       expect(
         (await env.DB.prepare("SELECT * FROM bundle_events").all()).results,
       ).toEqual([]);
-      expect(
-        (await env.DB.prepare("SELECT * FROM bundle_installations").all())
-          .results,
-      ).toEqual([]);
+      await expect(
+        plugin.models.insights.findLatestEvents({
+          installId: event.install_id,
+        }),
+      ).resolves.toEqual([]);
     } finally {
       await env.DB.prepare("DROP TRIGGER fail_insights_event").run();
     }
     await plugin.models.insights.record(input);
     await plugin.models.insights.record(input);
     await expect(
-      plugin.models.insights.findInstallations({ installId: event.install_id }),
-    ).resolves.toEqual([input.installation]);
+      plugin.models.insights.findLatestEvents({ installId: event.install_id }),
+    ).resolves.toEqual([input.event]);
     expect(
       (await env.DB.prepare("SELECT id FROM bundle_events").all()).results,
     ).toEqual([{ id: event.id }]);

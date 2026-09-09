@@ -1,7 +1,6 @@
 import {
   createDatabaseClient,
   compareInsightsText,
-  toInsightsInstallationRow,
   type BundleEventRow,
   type DatabasePlugin,
 } from "@hot-updater/plugin-core";
@@ -15,7 +14,10 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createBundleEventRowFixture } from "../../../packages/test-utils/src/databaseTestFixtures";
 import { createFirestoreMock } from "../test-utils/createFirestoreMock";
 import { firebaseDatabase } from "./firebaseDatabase";
-import { firebaseChannelDocumentId } from "./firebaseDatabasePersistence";
+import {
+  firebaseChannelDocumentId,
+  firebaseInstallationDocumentId,
+} from "./firebaseDatabasePersistence";
 
 const PROJECT_ID = "firebase-database-test";
 
@@ -25,6 +27,8 @@ const {
   bundlesCollection,
   channelsCollection,
   clearCollections,
+  insightsLatestCollection,
+  firestore,
   legacyBundlesCollection,
   legacySettingsCollection,
   settingsCollection,
@@ -193,6 +197,62 @@ describe("firebase bounded reads", () => {
 describe("firebase insights storage", () => {
   beforeEach(clearCollections);
 
+  it("rebuilds a lost private latest copy by replaying into empty Insights storage", async () => {
+    const insights = createPlugin().models.insights;
+    const old = {
+      ...createBundleEventRowFixture("9701", 100),
+      user_id: "old-user",
+    };
+    const latest = {
+      ...old,
+      id: createBundleEventRowFixture("9702", 200).id,
+      received_at_ms: 200,
+      user_id: "new-user",
+    };
+    await insights.record({ event: latest });
+    await insights.record({ event: old });
+    await bundlesCollection.doc("unrelated").set({ preserve: "artifact" });
+    const exported = await insights.listEvents({
+      filter: { kind: "all" },
+      beforeReceivedAtMs: 201,
+      limit: 10,
+    });
+    await insightsLatestCollection
+      .doc(firebaseInstallationDocumentId(old.install_id))
+      .delete();
+    await insights.record({ event: latest });
+    // Duplicate replay into damaged storage cannot repair it.
+    await expect(
+      insights.findLatestEvents({ installId: old.install_id }),
+    ).resolves.toEqual([]);
+    // No writers run during this offline fixture. Only disposable Insights
+    // storage is emptied; production uses a separately initialized target.
+    for (const collection of [
+      bundleEventsCollection,
+      insightsLatestCollection,
+    ]) {
+      const snapshot = await collection.get();
+      const batch = firestore.batch();
+      for (const document of snapshot.docs) batch.delete(document.ref);
+      await batch.commit();
+    }
+    for (const event of [...exported, ...exported.toReversed()])
+      await insights.record({ event });
+    await expect(
+      insights.findLatestEvents({ installId: old.install_id }),
+    ).resolves.toEqual([latest]);
+    await expect(
+      insights.findLatestEvents({ userId: "old-user", limit: 10 }),
+    ).resolves.toEqual([]);
+    await expect(
+      insights.findLatestEvents({ userId: "new-user", limit: 10 }),
+    ).resolves.toEqual([latest]);
+    expect((await bundleEventsCollection.get()).size).toBe(2);
+    expect((await bundlesCollection.doc("unrelated").get()).data()).toEqual({
+      preserve: "artifact",
+    });
+  });
+
   it("uses the event-list index ordering for event counts", async () => {
     const orderBy = vi.spyOn(Query.prototype, "orderBy");
     try {
@@ -238,15 +298,14 @@ describe("firebase insights storage", () => {
       };
       await insights.record({
         event,
-        installation: toInsightsInstallationRow(event),
       });
       await expect(
-        insights.findInstallations({ installId: install_id }),
-      ).resolves.toEqual([toInsightsInstallationRow(event)]);
+        insights.findLatestEvents({ installId: install_id }),
+      ).resolves.toEqual([event]);
     }
     const actual: string[] = [];
     for (;;) {
-      const page = await insights.findInstallations({
+      const page = await insights.findLatestEvents({
         userId: "unicode-user",
         afterInstallId: actual.at(-1),
         limit: 2,
@@ -260,7 +319,7 @@ describe("firebase insights storage", () => {
   it("rolls back an event when its installation write fails and retries safely", async () => {
     const insights = createPlugin().models.insights;
     const event = createBundleEventRowFixture("941", 100);
-    const input = { event, installation: toInsightsInstallationRow(event) };
+    const input = { event };
     const write = vi
       .spyOn(Transaction.prototype, "set")
       .mockImplementationOnce(() => {
@@ -277,19 +336,19 @@ describe("firebase insights storage", () => {
       false,
     );
     await expect(
-      insights.findInstallations({ installId: event.install_id }),
+      insights.findLatestEvents({ installId: event.install_id }),
     ).resolves.toEqual([]);
     await insights.record(input);
     await insights.record(input);
     expect((await bundleEventsCollection.get()).size).toBe(1);
     await expect(
-      insights.findInstallations({ installId: event.install_id }),
-    ).resolves.toEqual([input.installation]);
+      insights.findLatestEvents({ installId: event.install_id }),
+    ).resolves.toEqual([input.event]);
   });
 
   it("serializes concurrent reports, clears current user, and never loads other models", async () => {
     const insights = createPlugin().models.insights;
-    await insights.findInstallations({ installId: "initialize-schema" });
+    await insights.findLatestEvents({ installId: "initialize-schema" });
     await bundlesCollection.doc("unrelated-malformed").set({ invalid: true });
     const events = ["950", "953", "951", "952"].map((suffix) => ({
       ...createBundleEventRowFixture(suffix, 200),
@@ -300,20 +359,19 @@ describe("firebase insights storage", () => {
       events.map((event) =>
         insights.record({
           event,
-          installation: toInsightsInstallationRow(event),
         }),
       ),
     );
     const winner = events[1]!;
     await expect(
-      insights.findInstallations({ installId: winner.install_id }),
-    ).resolves.toEqual([toInsightsInstallationRow(winner)]);
+      insights.findLatestEvents({ installId: winner.install_id }),
+    ).resolves.toEqual([winner]);
     await expect(
-      insights.findInstallations({ userId: "previous-user", limit: 10 }),
+      insights.findLatestEvents({ userId: "previous-user", limit: 10 }),
     ).resolves.toEqual([]);
     expect((await bundleEventsCollection.get()).size).toBe(4);
     await expect(
-      insights.countInstallations({
+      insights.countLatestEvents({
         platform: "ios",
         channel: "production",
         sinceMs: 100,
@@ -337,19 +395,19 @@ describe("firebase insights storage", () => {
       type: "UNCHANGED" as const,
       install_id: applied.install_id,
       from_bundle_id: null,
-      update_strategy: null,
+      metadata: {
+        ...createBundleEventRowFixture("913", 300).metadata,
+        update_strategy: null,
+      },
     };
     await insights.record({
       event: applied,
-      installation: toInsightsInstallationRow(applied),
     });
     await insights.record({
       event: recovered,
-      installation: toInsightsInstallationRow(recovered),
     });
     await insights.record({
       event: unchanged,
-      installation: toInsightsInstallationRow(unchanged),
     });
     await bundleEventsCollection.doc("malformed-old-event").set({
       id: "malformed-old-event",

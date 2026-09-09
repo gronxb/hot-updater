@@ -12,7 +12,7 @@ type Tables = {
   bundle_patches: MongoTestRow[];
   bundles: MongoTestRow[];
   bundle_events: MongoTestRow[];
-  bundle_installations: MongoTestRow[];
+
   channels: MongoTestRow[];
   api_keys: MongoTestRow[];
   releases: MongoTestRow[];
@@ -26,7 +26,7 @@ type UpdateInput =
 type MongoTestHooks = {
   beforeBundlePatchInsert?: () => Promise<void>;
   failNextBundleTombstone: boolean;
-  failNextInstallationWrite: boolean;
+  failNextEventWrite: boolean;
   operationCount: number;
 };
 
@@ -92,6 +92,42 @@ const createCollection = (
   model: keyof Tables,
   hooks: MongoTestHooks,
 ) => ({
+  aggregate: (pipeline: readonly Record<string, unknown>[]) => ({
+    async toArray() {
+      hooks.operationCount += 1;
+      let rows: Record<string, unknown>[] = structuredClone(tables[model]).map(
+        (row) => ({ ...row }),
+      );
+      for (const stage of pipeline) {
+        if ("$match" in stage)
+          rows = rows.filter((row) =>
+            matchesMongoTestFilter(row as MongoTestRow, stage.$match),
+          );
+        else if ("$sort" in stage)
+          rows = sortMongoTestRows(rows as MongoTestRow[], stage.$sort).map(
+            (row) => ({ ...row }),
+          );
+        else if ("$group" in stage) {
+          const grouped = new Map<unknown, Record<string, unknown>>();
+          for (const row of rows)
+            if (!grouped.has(row.install_id))
+              grouped.set(row.install_id, { _id: row.install_id, event: row });
+          rows = [...grouped.values()];
+        } else if ("$replaceRoot" in stage)
+          rows = rows.map((row) => row.event as Record<string, unknown>);
+        else if ("$limit" in stage) rows = rows.slice(0, Number(stage.$limit));
+        else if ("$project" in stage)
+          rows = rows.map((row) => ({
+            ...projectMongoTestRow(row as MongoTestRow, stage.$project),
+          }));
+        else if ("$count" in stage)
+          rows = rows.length ? [{ [String(stage.$count)]: rows.length }] : [];
+        else
+          throw new MongoTestConstraintError("unsupported aggregation stage");
+      }
+      return rows;
+    },
+  }),
   countDocuments: async (filter?: unknown): Promise<number> => {
     hooks.operationCount += 1;
     return tables[model].filter((row) => matchesMongoTestFilter(row, filter))
@@ -151,24 +187,15 @@ const createCollection = (
   },
   insertOne: async (row: MongoTestRow): Promise<void> => {
     hooks.operationCount += 1;
-    if (model === "bundle_installations" && hooks.failNextInstallationWrite) {
-      hooks.failNextInstallationWrite = false;
-      throw new MongoTestConstraintError("injected installation write failure");
+    if (model === "bundle_events" && hooks.failNextEventWrite) {
+      hooks.failNextEventWrite = false;
+      throw new MongoTestConstraintError("injected event write failure");
     }
     if (model === "bundle_patches") await hooks.beforeBundlePatchInsert?.();
-    const key =
-      model === "bundle_installations" && "install_id" in row
-        ? row.install_id
-        : "id" in row
-          ? row.id
-          : row.scope_key;
+    const key = "id" in row ? row.id : row.scope_key;
     if (
       tables[model].some((candidate) =>
-        model === "bundle_installations" && "install_id" in candidate
-          ? candidate.install_id === key
-          : "id" in candidate
-            ? candidate.id === key
-            : candidate.scope_key === key,
+        "id" in candidate ? candidate.id === key : candidate.scope_key === key,
       )
     ) {
       throw new MongoTestConstraintError("duplicate id");
@@ -212,9 +239,9 @@ const createCollection = (
     options?: { readonly upsert?: boolean },
   ): Promise<{ matchedCount: number; upsertedCount: number }> => {
     hooks.operationCount += 1;
-    if (model === "bundle_installations" && hooks.failNextInstallationWrite) {
-      hooks.failNextInstallationWrite = false;
-      throw new MongoTestConstraintError("injected installation write failure");
+    if (model === "bundle_events" && hooks.failNextEventWrite) {
+      hooks.failNextEventWrite = false;
+      throw new MongoTestConstraintError("injected event write failure");
     }
     const index = tables[model].findIndex((row) =>
       matchesMongoTestFilter(row, filter),
@@ -230,18 +257,12 @@ const createCollection = (
     }
     if (options?.upsert === true && "$setOnInsert" in update) {
       const key =
-        model === "bundle_installations" && "install_id" in update.$setOnInsert
-          ? update.$setOnInsert.install_id
-          : "id" in update.$setOnInsert
-            ? update.$setOnInsert.id
-            : update.$setOnInsert.scope_key;
+        "id" in update.$setOnInsert
+          ? update.$setOnInsert.id
+          : update.$setOnInsert.scope_key;
       if (
         tables[model].some((row) =>
-          model === "bundle_installations" && "install_id" in row
-            ? row.install_id === key
-            : "id" in row
-              ? row.id === key
-              : row.scope_key === key,
+          "id" in row ? row.id === key : row.scope_key === key,
         )
       ) {
         throw new MongoTestConstraintError("duplicate id");
@@ -262,8 +283,7 @@ const createDatabase = (tables: Tables, hooks: MongoTestHooks) => ({
         return createCollection(tables, "bundle_patches", hooks);
       case "bundle_events":
         return createCollection(tables, "bundle_events", hooks);
-      case "bundle_installations":
-        return createCollection(tables, "bundle_installations", hooks);
+
       case "channels":
         return createCollection(tables, "channels", hooks);
       case "api_keys":
@@ -283,7 +303,7 @@ export const createMongoTestHarness = () => {
     bundle_patches: [],
     bundles: [],
     bundle_events: [],
-    bundle_installations: [],
+
     channels: [],
     api_keys: [],
     releases: [],
@@ -291,7 +311,7 @@ export const createMongoTestHarness = () => {
   };
   const hooks: MongoTestHooks = {
     failNextBundleTombstone: false,
-    failNextInstallationWrite: false,
+    failNextEventWrite: false,
     operationCount: 0,
   };
   let activeTables = tables;
@@ -319,7 +339,6 @@ export const createMongoTestHarness = () => {
             tables.bundle_patches = staged.bundle_patches;
             tables.bundles = staged.bundles;
             tables.bundle_events = staged.bundle_events;
-            tables.bundle_installations = staged.bundle_installations;
             tables.channels = staged.channels;
             tables.api_keys = staged.api_keys;
             tables.releases = staged.releases;
@@ -339,13 +358,12 @@ export const createMongoTestHarness = () => {
     close: () => client.close(),
     reset: (): void => {
       hooks.failNextBundleTombstone = false;
-      hooks.failNextInstallationWrite = false;
+      hooks.failNextEventWrite = false;
       hooks.operationCount = 0;
       transactionQueue = Promise.resolve();
       tables.bundle_patches = [];
       tables.bundles = [];
       tables.bundle_events = [];
-      tables.bundle_installations = [];
       tables.channels = [];
       tables.api_keys = [];
       tables.releases = [];
@@ -360,8 +378,8 @@ export const createMongoTestHarness = () => {
     failNextBundleTombstone: (): void => {
       hooks.failNextBundleTombstone = true;
     },
-    failNextInstallationWrite: (): void => {
-      hooks.failNextInstallationWrite = true;
+    failNextEventWrite: (): void => {
+      hooks.failNextEventWrite = true;
     },
     setBundleField: (id: string, field: string, value: unknown): void => {
       const row = tables.bundles.find(

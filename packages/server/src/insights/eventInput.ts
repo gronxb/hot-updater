@@ -191,35 +191,28 @@ export function createBundleEventRow(
   const base = {
     app_version: input.appVersion,
     channel: input.channel,
-    cohort: input.cohort,
-    fingerprint_hash: input.fingerprintHash,
     from_release_id: input.fromReleaseId,
     id: createUUIDv7(),
     install_id: input.installId,
     platform: input.platform,
     received_at_ms: Date.now(),
-    sdk_version: input.sdkVersion ?? null,
     to_bundle_id: input.toBundleId,
     to_release_id: input.toReleaseId,
     user_id: input.userId ?? null,
-    username: input.username ?? null,
+    metadata: {
+      cohort: input.cohort,
+      fingerprint_hash: input.fingerprintHash,
+      sdk_version: input.sdkVersion ?? null,
+      username: input.username ?? null,
+      update_strategy: input.updateStrategy,
+    },
   };
   switch (input.type) {
     case "UPDATE_DOWNLOADED":
     case "UPDATE_APPLIED":
     case "RECOVERED":
-      return {
-        ...base,
-        from_bundle_id: input.fromBundleId,
-        type: input.type,
-        update_strategy: input.updateStrategy,
-      };
+      return { ...base, from_bundle_id: input.fromBundleId, type: input.type };
     case "UNCHANGED":
-      return {
-        ...base,
-        from_bundle_id: null,
-        type: input.type,
-        update_strategy: null,
-      };
+      return { ...base, from_bundle_id: null, type: input.type };
   }
 }

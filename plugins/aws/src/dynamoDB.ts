@@ -16,11 +16,11 @@ import {
   TransactWriteCommand,
   type TransactWriteCommandInput,
 } from "@aws-sdk/lib-dynamodb";
+import { isDatabaseBundleEventMetadata } from "@hot-updater/plugin-core";
 import {
   type BundleEventRow,
   type BundlePatchRow,
   type BundleRow,
-  type InsightsInstallationRow,
   type InsightsModel,
   type InsightsRecordInput,
   type InsightsBundleEventFilter,
@@ -1629,6 +1629,10 @@ export const createDynamoDBCrud = (
   updateIndexName: string,
 ): DatabasePluginImplementation => ({
   recordInsights: (input) => recordDynamoDBInsightsEvent(store, input),
+  findLatestInsightsEvents: (input) =>
+    createDynamoDBInsightsTable(store).findLatestEvents(input),
+  countLatestInsightsEvents: (input) =>
+    createDynamoDBInsightsTable(store).countLatestEvents(input),
   async create(input): Promise<DatabaseImplementationResult> {
     switch (input.model) {
       case "bundles":
@@ -2939,7 +2943,9 @@ const DYNAMODB_INSIGHTS_RECORD_ATTEMPTS = 3;
 const hasValidBundleEventShape = (value: object): boolean => {
   const type = field(value, "type");
   const fromBundleId = field(value, "from_bundle_id");
-  const updateStrategy = field(value, "update_strategy");
+  const metadata = field(value, "metadata");
+  if (!isDatabaseBundleEventMetadata(metadata)) return false;
+  const updateStrategy = metadata.update_strategy;
   return (
     ((type === "UPDATE_DOWNLOADED" ||
       type === "UPDATE_APPLIED" ||
@@ -2962,27 +2968,6 @@ const isBundleEventRow = (value: unknown): value is BundleEventRow =>
     field(value, "platform") === "android") &&
   typeof field(value, "received_at_ms") === "number" &&
   hasValidBundleEventShape(value);
-
-const isInsightsInstallationRow = (
-  value: unknown,
-): value is InsightsInstallationRow =>
-  typeof value === "object" &&
-  value !== null &&
-  typeof field(value, "id") === "string" &&
-  typeof field(value, "install_id") === "string" &&
-  isNullableString(field(value, "user_id")) &&
-  isNullableString(field(value, "username")) &&
-  typeof field(value, "to_bundle_id") === "string" &&
-  (field(value, "type") === "UPDATE_DOWNLOADED" ||
-    field(value, "type") === "UPDATE_APPLIED" ||
-    field(value, "type") === "RECOVERED" ||
-    field(value, "type") === "UNCHANGED") &&
-  (field(value, "platform") === "ios" ||
-    field(value, "platform") === "android") &&
-  typeof field(value, "app_version") === "string" &&
-  typeof field(value, "channel") === "string" &&
-  typeof field(value, "cohort") === "string" &&
-  typeof field(value, "received_at_ms") === "number";
 
 const isApiKeyRow = (value: unknown): value is ApiKeyRow =>
   typeof value === "object" &&
@@ -3071,11 +3056,11 @@ type DynamoDBInsightsInstallationItem = {
   readonly sk: string;
   readonly order_key: string;
   readonly version: 1;
-  readonly row: InsightsInstallationRow;
+  readonly row: BundleEventRow;
 };
 
 const toInsightsInstallationItem = (
-  row: InsightsInstallationRow,
+  row: BundleEventRow,
 ): DynamoDBInsightsInstallationItem =>
   boundedDynamoDBMetadataItem({
     pk: DYNAMODB_INSIGHTS_INSTALLATIONS_PARTITION,
@@ -3086,7 +3071,7 @@ const toInsightsInstallationItem = (
   });
 
 const toInsightsUserItem = (
-  row: InsightsInstallationRow & { readonly user_id: string },
+  row: BundleEventRow & { readonly user_id: string },
 ): DynamoDBInsightsInstallationItem =>
   boundedDynamoDBMetadataItem({
     pk: insightsUserPartition(row.user_id),
@@ -3106,7 +3091,7 @@ const parseInsightsInstallationItem = (
     typeof value.sk !== "string" ||
     typeof value.order_key !== "string" ||
     value.version !== 1 ||
-    !isInsightsInstallationRow(row) ||
+    !isBundleEventRow(row) ||
     value.sk !== row.install_id ||
     value.order_key !== insightsSortKey(row)
   ) {
@@ -3114,11 +3099,7 @@ const parseInsightsInstallationItem = (
   }
   return {
     ...value,
-    row: {
-      ...row,
-      pending_bundle_id: row.pending_bundle_id ?? null,
-      pending_release_id: row.pending_release_id ?? null,
-    },
+    row,
   } as DynamoDBInsightsInstallationItem;
 };
 
@@ -3145,16 +3126,17 @@ const loadInsightsInstallationItem = async (
 };
 
 const advancesInsightsInstallation = (
-  row: Pick<InsightsInstallationRow, "id" | "received_at_ms">,
-  current: Pick<InsightsInstallationRow, "id" | "received_at_ms">,
+  row: Pick<BundleEventRow, "id" | "received_at_ms">,
+  current: Pick<BundleEventRow, "id" | "received_at_ms">,
 ): boolean =>
   row.received_at_ms > current.received_at_ms ||
   (row.received_at_ms === current.received_at_ms && row.id > current.id);
 
 const recordDynamoDBInsightsEvent = async (
   store: DynamoDBStore,
-  { event: row, installation: next }: InsightsRecordInput,
+  { event: row }: InsightsRecordInput,
 ): Promise<void> => {
+  const next = row;
   const eventItem = toInsightsEventItem(row);
   const bundleItem = toInsightsBundleItem(row);
   const identityKey = { pk: DYNAMODB_INSIGHTS_EVENT_IDS_PARTITION, sk: row.id };
@@ -3321,13 +3303,13 @@ export const createDynamoDBInsightsTable = (
     } while (rows.length < input.limit && exclusiveStartKey !== undefined);
     return rows;
   },
-  async findInstallations(input) {
+  async findLatestEvents(input) {
     if ("installId" in input) {
       const stored = await loadInsightsInstallationItem(store, input.installId);
       return stored === null ? [] : [stored.row];
     }
     const partition = insightsUserPartition(input.userId);
-    const rows: InsightsInstallationRow[] = [];
+    const rows: BundleEventRow[] = [];
     let exclusiveStartKey: Record<string, unknown> | undefined;
     do {
       const page = await store.client.send(
@@ -3368,7 +3350,15 @@ export const createDynamoDBInsightsTable = (
     } while (rows.length < input.limit && exclusiveStartKey !== undefined);
     return rows;
   },
-  async countInstallations(input) {
+  async countLatestEvents(input) {
+    const bundleConditions = input.bundle?.map(
+      (bundle, group) =>
+        `#row.#bundle${group} = :bundle${group} AND #row.#type IN (${bundle.types.map((_, i) => `:type${group}_${i}`).join(", ")})`,
+    );
+    const bundleFilter =
+      bundleConditions === undefined
+        ? ""
+        : ` AND ${bundleConditions.length === 1 ? bundleConditions[0] : `(${bundleConditions.join(" OR ")})`}`;
     let count = 0;
     let exclusiveStartKey: Record<string, unknown> | undefined;
     do {
@@ -3382,25 +3372,41 @@ export const createDynamoDBInsightsTable = (
           KeyConditionExpression: "#pk = :pk",
           FilterExpression:
             "#row.#platform = :platform AND #row.#channel = :channel AND #row.#received >= :since" +
-            (input.bundleId === undefined ? "" : " AND #row.#bundle = :bundle"),
+            bundleFilter,
           ExpressionAttributeNames: {
             "#pk": "pk",
             "#row": "row",
             "#platform": "platform",
             "#channel": "channel",
             "#received": "received_at_ms",
-            ...(input.bundleId === undefined
+            ...(input.bundle === undefined
               ? {}
-              : { "#bundle": "to_bundle_id" }),
+              : {
+                  ...Object.fromEntries(
+                    input.bundle.map((bundle, group) => [
+                      `#bundle${group}`,
+                      bundle.field,
+                    ]),
+                  ),
+                  "#type": "type",
+                }),
           },
           ExpressionAttributeValues: {
             ":pk": DYNAMODB_INSIGHTS_INSTALLATIONS_PARTITION,
             ":platform": input.platform,
             ":channel": input.channel,
             ":since": input.sinceMs,
-            ...(input.bundleId === undefined
+            ...(input.bundle === undefined
               ? {}
-              : { ":bundle": input.bundleId }),
+              : Object.fromEntries(
+                  input.bundle.flatMap((bundle, group) => [
+                    [`:bundle${group}`, bundle.value],
+                    ...bundle.types.map((type, i) => [
+                      `:type${group}_${i}`,
+                      type,
+                    ]),
+                  ]),
+                )),
           },
           Select: "COUNT",
           ScanIndexForward: true,

@@ -1,8 +1,4 @@
-import type {
-  BundleEventRow,
-  InsightsInstallationRow,
-  InsightsModel,
-} from "@hot-updater/plugin-core";
+import type { BundleEventRow, InsightsModel } from "@hot-updater/plugin-core";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { InsightsBadRequestError } from "./errors";
@@ -23,54 +19,53 @@ const eventRow = (
 ): TransitionEventRow => ({
   app_version: "1.0.0",
   channel: "production",
-  cohort: "default",
-  fingerprint_hash: null,
+  metadata: {
+    cohort: "default",
+    fingerprint_hash: null,
+    sdk_version: "2.0.0",
+    update_strategy: "appVersion",
+    username: "Jane",
+  },
+
   from_bundle_id: "bundle-before",
   from_release_id: null,
   id,
   install_id: "install-1",
   platform: "ios",
   received_at_ms: receivedAtMs,
-  sdk_version: "2.0.0",
+
   to_bundle_id: "bundle-after",
   to_release_id: null,
   type: "UPDATE_APPLIED",
-  update_strategy: "appVersion",
+
   user_id: "user-1",
-  username: "Jane",
+
   ...overrides,
 });
 
 const installationRow = (
   installId: string,
-  overrides: Partial<InsightsInstallationRow> = {},
-): InsightsInstallationRow => ({
-  app_version: "1.0.0",
-  channel: "production",
-  cohort: "default",
-  id: eventId(1),
-  install_id: installId,
-  platform: "ios",
-  received_at_ms: 1_000,
-  to_bundle_id: "bundle-1",
-  pending_bundle_id: null,
-  pending_release_id: null,
-  type: "UNCHANGED",
-  user_id: "user-1",
-  username: "Jane",
-  ...overrides,
-});
+  overrides: Partial<BundleEventRow> = {},
+): BundleEventRow =>
+  ({
+    ...eventRow(eventId(1), 1_000),
+    type: "UNCHANGED",
+    from_bundle_id: null,
+    metadata: {
+      ...eventRow(eventId(1), 1_000).metadata,
+      update_strategy: null,
+    },
+    install_id: installId,
+    to_bundle_id: "bundle-1",
+    ...overrides,
+  }) as BundleEventRow;
 
 const createModel = () => {
   const model = {
     record: vi.fn<InsightsModel["record"]>(async () => {}),
     listEvents: vi.fn<InsightsModel["listEvents"]>(async () => []),
-    findInstallations: vi.fn<InsightsModel["findInstallations"]>(
-      async () => [],
-    ),
-    countInstallations: vi.fn<InsightsModel["countInstallations"]>(
-      async () => 0,
-    ),
+    findLatestEvents: vi.fn<InsightsModel["findLatestEvents"]>(async () => []),
+    countLatestEvents: vi.fn<InsightsModel["countLatestEvents"]>(async () => 0),
     countEvents: vi.fn<InsightsModel["countEvents"]>(async () => 0),
   } satisfies InsightsModel;
   return { ...model, model };
@@ -157,7 +152,7 @@ describe("createInsightsProvider", () => {
     await expect(
       provider.pageInstallationsByCurrentUserId({ userId: tooLong }),
     ).rejects.toBeInstanceOf(InsightsBadRequestError);
-    expect(fixture.findInstallations).not.toHaveBeenCalled();
+    expect(fixture.findLatestEvents).not.toHaveBeenCalled();
     expect(fixture.listEvents).not.toHaveBeenCalled();
   });
 
@@ -194,7 +189,7 @@ describe("createInsightsProvider", () => {
 
   it("pages exact current user matches and binds the cursor to that user", async () => {
     const fixture = createModel();
-    fixture.findInstallations.mockResolvedValue([
+    fixture.findLatestEvents.mockResolvedValue([
       installationRow("install-a"),
       installationRow("install-b"),
       installationRow("install-c"),
@@ -210,7 +205,7 @@ describe("createInsightsProvider", () => {
       "install-a",
       "install-b",
     ]);
-    expect(fixture.findInstallations).toHaveBeenCalledWith({
+    expect(fixture.findLatestEvents).toHaveBeenCalledWith({
       limit: 3,
       userId: "user-1",
     });
@@ -220,14 +215,14 @@ describe("createInsightsProvider", () => {
         userId: "user-2",
       }),
     ).rejects.toBeInstanceOf(InsightsBadRequestError);
-    expect(fixture.findInstallations).toHaveBeenCalledOnce();
+    expect(fixture.findLatestEvents).toHaveBeenCalledOnce();
   });
 
   it("counts one explicit scope and returns independent measurement times", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-08-12T00:00:00.000Z"));
     const fixture = createModel();
-    fixture.countInstallations.mockResolvedValue(123);
+    fixture.countLatestEvents.mockResolvedValue(123);
     const provider = createInsightsProvider(fixture.model);
     const input = {
       window: "7d",
@@ -240,7 +235,7 @@ describe("createInsightsProvider", () => {
       beforeReceivedAtMs: Date.now(),
       reportingInstallations: { count: 123, measuredAtMs: Date.now() },
     });
-    expect(fixture.countInstallations).toHaveBeenCalledWith({
+    expect(fixture.countLatestEvents).toHaveBeenCalledWith({
       platform: "ios",
       channel: "production",
       sinceMs: Date.now() - 7 * 24 * 60 * 60 * 1_000,
@@ -252,9 +247,7 @@ describe("createInsightsProvider", () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-08-12T00:00:00.000Z"));
     const fixture = createModel();
-    fixture.countInstallations
-      .mockResolvedValueOnce(1)
-      .mockResolvedValueOnce(2);
+    fixture.countLatestEvents.mockResolvedValueOnce(1).mockResolvedValueOnce(2);
     fixture.countEvents
       .mockResolvedValueOnce(7)
       .mockResolvedValueOnce(5)
@@ -270,6 +263,19 @@ describe("createInsightsProvider", () => {
     expect(result.reportingInstallations.count).toBe(1);
     // Independent live measurements are never clamped or turned into a share.
     expect(result.bundle?.reportingInstallations.count).toBe(2);
+    expect(fixture.countLatestEvents).toHaveBeenCalledTimes(2);
+    expect(fixture.countLatestEvents.mock.calls[1]?.[0]).toEqual({
+      ...scope,
+      sinceMs: Date.now() - 24 * 60 * 60 * 1_000,
+      bundle: [
+        { field: "from_bundle_id", value: "B", types: ["UPDATE_DOWNLOADED"] },
+        {
+          field: "to_bundle_id",
+          value: "B",
+          types: ["UNCHANGED", "UPDATE_APPLIED", "RECOVERED"],
+        },
+      ],
+    });
     expect(result.bundle?.downloadedReports.count).toBe(7);
     expect(result.bundle?.appliedReports.count).toBe(5);
     expect(result.bundle?.recoveredReports.count).toBe(3);
@@ -375,7 +381,7 @@ describe("createInsightsProvider", () => {
 
   it("uses UTF-8 order when checking exact current-user pages", async () => {
     const fixture = createModel();
-    fixture.findInstallations.mockResolvedValue([
+    fixture.findLatestEvents.mockResolvedValue([
       installationRow("\uE000"),
       installationRow("\u{10000}"),
     ]);

@@ -3,7 +3,7 @@
 ## Status and delivery boundary
 
 - Date: 2026-09-09
-- Status: proposed implementation requirements; this PR delivers the PRD only.
+- Status: implemented; storage choices and measured limits are recorded in the decision document.
 - Baseline: [#1289](https://github.com/gronxb/hot-updater/pull/1289),
   `ef1a071e83fc870038a591b7b83d91a6a738f96c`
 - PR base: `codex/insights-download-pending`, not `next`.
@@ -11,13 +11,12 @@
 
 The requested direction is to remove the shared `bundle_installations` table,
 keep events as the source of truth, evaluate derived state only for providers
-that need it, and put ancillary event data in a typed `context` JSON field.
-The provider-specific storage decisions require measurements before implementation
-is accepted. This document does not describe already-shipped behavior.
+that need it, and put ancillary event data in a typed `metadata` JSON field.
+See the [storage decision, measurements, and RC replay procedure](./insights-event-storage-decision.md). This is an unreleased schema change.
 
 ## Problem and intended outcome
 
-Every accepted Insights event currently inserts into `bundle_events` and supplies
+In the #1289 baseline, every accepted Insights event inserts into `bundle_events` and supplies
 a complete replacement candidate for `bundle_installations`. Providers must
 atomically maintain both, including duplicate handling, ordering, current-user
 membership, and pending-download fields.
@@ -33,7 +32,7 @@ The intended result is one canonical Insights event schema. A relational provide
 can serve installation queries from events without maintaining a second table.
 A provider with restrictive query capabilities can use a justified internal
 projection without turning that projection into a universal schema requirement.
-New diagnostic attributes should normally extend `context`, not add columns
+New diagnostic attributes should normally extend `metadata`, not add columns
 across every provider.
 
 Reducing custom-plugin implementation and maintenance burden is an explicit
@@ -51,7 +50,7 @@ also call their physical containers tables; container terminology is not a rule.
 | App developer operating Insights | Upgrade infrastructure and inspect adoption without new setup decisions | Removing a table must not remove search, require Redis, or introduce storage-mode configuration | Existing SDK requests, Console behavior, and provider setup remain supported |
 | SQL plugin author | Implement Insights with native queries and the fewest maintained structures | Why maintain a second table and atomic dual writes when the DB can query events? | Event-only storage is a supported contract, with shared semantics, reference SQL, and conformance tests |
 | NoSQL plugin author | Implement a supplied storage/query specification with native keys/documents | Why discard a simple installation document or require knowledge of core helpers and lifecycle rules? | A document/item is allowed; inputs contain fully prepared values and predicates; only native I/O and atomicity are implemented |
-| Maintainer of all adapters | Keep lifecycle/context changes centralized | Provider freedom could multiply subtly different reducers, serializers, and cursor rules | Core prepares and validates data automatically at the boundary; one reusable conformance suite checks provider behavior |
+| Maintainer of all adapters | Keep lifecycle/metadata changes centralized | Provider freedom could multiply subtly different reducers, serializers, and cursor rules | Core prepares and validates data automatically at the boundary; one reusable conformance suite checks provider behavior |
 
 The adversarial positions and the agreement are:
 
@@ -103,7 +102,7 @@ SDK delivery queues, device heartbeats, new lifecycle events, a new analytics
 service, or new UI explanations. The separate limitation of learning only what
 devices report is not the justification for this storage change.
 
-## Canonical event schema and context
+## Canonical event schema and metadata
 
 Remove `bundle_installations` from the shared schema, generated SQL/ORM models,
 `DatabaseModelMap`, and the required custom-provider storage contract. A provider
@@ -116,7 +115,7 @@ Use the following classification for `bundle_events`:
 | Columns | `id`, `type`, `install_id`, `user_id`, `received_at_ms` | Event identity, latest-event ordering, installation and user lookup |
 | Columns | `platform`, `channel`, `app_version` | Existing scope and distribution dimensions |
 | Columns | `from_bundle_id`, `to_bundle_id`, `from_release_id`, `to_release_id` | Core transition identity, running/pending derivation, recovery and release attribution |
-| `context` | `username`, `cohort`, `update_strategy`, `fingerprint_hash`, `sdk_version` | Display or execution context; not predicates in the current Insights database query contract |
+| `metadata` | `username`, `cohort`, `update_strategy`, `fingerprint_hash`, `sdk_version` | Display or execution metadata; not predicates in the current Insights database query contract |
 
 Release IDs remain columns because their meaning is central to the lifecycle,
 even though the baseline does not index all of them. `user_id` remains a column
@@ -128,7 +127,6 @@ Example storage value for a downloaded event:
 
 ```json
 {
-  "schema_version": 1,
   "username": "Example user",
   "cohort": "example-cohort",
   "update_strategy": "appVersion",
@@ -139,27 +137,28 @@ Example storage value for a downloaded event:
 
 Rules:
 
-1. `context` is a JSON object, with a shared exported type and runtime validator.
+1. `metadata` is a JSON object, with a shared exported type and runtime validator.
    Providers use the existing JSON serialization facilities used by Bundle
    metadata, including string-backed SQL representations where necessary.
 2. Preserve today's validation: `cohort` remains required; nullable fields retain
    their null semantics; download/apply/recovery require a valid strategy;
    `UNCHANGED` requires a null strategy. Moving a field does not make it untyped
    or optional. Validate through the event-type discriminator.
-3. Additive ancillary keys use context version 1 without a migration. A breaking
-   interpretation requires an explicit context-version change and reader policy.
+3. Additive ancillary keys require no schema migration. Reuse the existing JSON
+   value type and serialization conventions; do not introduce a separate metadata
+   version field for this initial schema.
    Unknown JSON keys may be preserved but must not affect lifecycle or query
-   behavior. Known keys retain validation. Reject unsupported context versions
+   behavior. Known keys retain validation. Reject invalid known-key values
    at ingestion rather than accepting events that cannot be interpreted.
 4. Keep current request-size limits. JSON must not create an unbounded alternate
-   payload path. Do not add a user-configurable context schema or arbitrary
-   context filtering in this change.
-5. Normalize the current SDK request fields into `context` on the server. This
+   payload path. Do not add a user-configurable metadata schema or arbitrary
+   metadata filtering in this change.
+5. Normalize the current SDK request fields into `metadata` on the server. This
    storage refactor must not require existing RC clients to change their HTTP
    payload or make another request. Preserve existing admin/Console response
-   fields by mapping from context at the server boundary.
-6. Do not dual-write the moved values into both columns and context. Future
-   ancillary event data should enter context; a new column requires a documented
+   fields by mapping from metadata at the server boundary.
+6. Do not dual-write the moved values into both columns and metadata. Future
+   ancillary event data should enter metadata; a new column requires a documented
    query, index, constraint, or core identity requirement.
 
 ## Latest-state semantics
@@ -197,45 +196,43 @@ latest-event lookup; preserve their existing behavior and truncation indicator.
 ## Provider contract and query implementation
 
 Retain logical read capabilities; remove the requirement to persist their result.
-The proposed contract change is:
+The implemented contract is:
 
-- `record({ event, readValues })`: core supplies one immutable event plus fully
-  prepared read/index values, including its ordering tuple and running/pending
-  identities. SQL providers may ignore `readValues`; NoSQL providers may store
-  them alongside an event reference or event copy. This is a write envelope, not
-  a required table or separately writable model. Removing the shared table must
-  not remove prepared inputs and make authors calculate replacements themselves.
-  The first event ID wins and retrying an identical prepared input is a no-op.
-  This is storage idempotency, not a new guarantee that repeated HTTP requests
-  receive the same event ID.
+- `record({ event })`: core supplies one canonical immutable event. SQL stores
+  only that event; NoSQL may copy the same event into a private latest-event
+  document. There is no separate state envelope, reducer, or helper to implement.
+  Ordering comes directly from `(received_at_ms, id)`. The first event ID wins;
+  duplicate IDs are complete no-ops, including any private index writes.
+  This is storage idempotency, not HTTP-request deduplication.
 - `listEvents(...)`: retain history filters and cursors. Add an all-event
   installation filter if the shared latest-event implementation needs one;
   `installationMovement` alone excludes `UNCHANGED` and is insufficient.
 - Replace the storage-row return of `findInstallations` with a logical operation
-  such as `findLatestInstallationEvents(...)` returning canonical event rows.
+  `findLatestEvents(...)` returning canonical event rows.
   Core creates the installation DTO. Preserve zero-or-one exact lookup and the
   current-user page ordered by installation ID.
 - Replace the storage-row count with a latest-event count accepting explicit
   event-field predicates prepared by core. Core expands a running-bundle filter
-  into the downloaded/from-bundle and other-type/to-bundle cases; providers must
+  through `countLatestEvents(...)` into one OR of downloaded/from-bundle and
+  other-type/to-bundle predicates. Count each latest event once; providers must
   not discover that rule. Select each installation's latest event before applying
   the supplied predicates. Remove the requirement to count installation storage
   rows and never read history. A provider may satisfy the same query using its
   prepared private index values.
 - `countEvents(...)`: retain raw-event count semantics.
 
-The final names can follow repository conventions; the input/output and ownership
-changes above are requirements. Reducing method count is not a success metric.
+The input/output and ownership changes above are requirements. Reducing method count is not a success metric.
 Do not replace these reads with an invisible global-history scan in core.
 Core owns lifecycle interpretation, DTOs, window rules, and cursors. Providers
 own query execution, physical indexes, and any justified private acceleration.
 
-Core automatically performs event/context validation, state derivation, query
+Core automatically performs event/metadata validation, state derivation, query
 predicate preparation, and response mapping at the adapter boundary. It may reuse
 internal helpers, but author-facing instructions must not require calling them,
 choosing a reducer, or registering a synchronization pipeline. For example,
-`readValues.runningBundleId` arrives already calculated; the author does not need
-to learn which event type uses `from_bundle_id` instead of `to_bundle_id`.
+the running-bundle count receives explicit event-field predicates; the author
+does not need to learn which event type uses `from_bundle_id` instead of
+`to_bundle_id`.
 
 The specification must provide exact plain input/output shapes, field predicates,
 ordering, pagination, idempotency, and atomicity rules with concrete fixtures.
@@ -248,8 +245,8 @@ required to conduct an architecture study or submit performance evidence to
 implement the supplied contract.
 
 Supply a minimal custom SQL example and a minimal custom NoSQL example with native
-I/O only. The NoSQL example may persist the prepared snapshot directly. Neither
-example imports lifecycle/context helpers or defines Downloaded/Recovered rules.
+I/O only. The NoSQL example may persist the supplied event directly. Neither
+example imports lifecycle/metadata helpers or defines Downloaded/Recovered rules.
 Do not introduce a generic query language beyond the fixed predicates needed by
 these operations, a new storage framework, or a per-provider background service.
 
@@ -299,7 +296,7 @@ Any retained projection must be private to its provider, contain fields justifie
 by its access paths, and identify the canonical event that produced it. A snapshot
 similar to the baseline installation row is explicitly allowed for NoSQL. Do not
 require pointer-only storage if it adds reads or implementation complexity. It
-may copy the core-prepared context needed to serve a response, using native JSON
+may copy the core-prepared metadata needed to serve a response, using native JSON
 storage rather than expanding it into separately maintained columns. No core
 serializer import is required in the plugin implementation.
 Its mapping must be deterministic and rebuildable from retained events.
@@ -335,46 +332,50 @@ anonymous installs, user switches, multiple installs per user, scope changes,
 superseded downloads, recovery, and skewed event history on a few installs.
 Exercise a larger dataset if the results have not exposed the scaling boundary.
 
-Measure event ingestion alone and mixed ingestion with exact lookup, first and
-later user pages, and global/bundle installation counts. Report p50/p95 latency,
-read/write operations or billed units, examined rows/documents, index/storage
-size, and maintenance/rebuild work. Compare low and high dashboard-read frequency
-against ingestion frequency. Record concurrency, hardware/runtime, and dataset.
+Measure local append work, exact lookup, first and later user pages, and global/
+bundle installation counts against baseline results. Publish p50/p95, native
+query plans, total storage size, and private-copy read/write paths. State unavailable
+metrics explicitly: local SQLite/emulator evidence must not become a claim about
+production billed units, mixed-load throughput, or another SQL engine's latency.
+Discuss low/high dashboard-read frequency using the measured count cost. Native
+provider integration supplies correctness and query-capability evidence; a full
+cloud benchmark deployment is outside this implementation.
 
 For plugin-author effort, record the before/after required storage structures and
 indexes, native query/transaction implementations, required helper calls,
 provider-owned lifecycle branches, setup steps, and reusable versus custom tests.
-Required lifecycle/context helper calls and provider-owned lifecycle branches
+Required lifecycle/metadata helper calls and provider-owned lifecycle branches
 must both be zero. Lines changed can support the comparison but cannot replace it.
 SQL authors must lose the mandatory snapshot
 and dual-write implementation. NoSQL authors must be able to reuse a simple native
 snapshot without acquiring new domain logic or a bespoke repair service. Any new
 adapter-specific obligation needs an explicit justification in the decision record.
 
-Select event queries when they meet the documented latency/resource budget without
-adding disproportionate plugin-author work. Before retaining a projection, record
-the query limitation or implementation burden, measured costs, target budget, and
-the improvement including extra writes. Native query capability limitations can
-justify a NoSQL snapshot without first building a production-grade scan workaround;
-measure a bounded reference to document the trade-off. If no budget exists,
-establish it explicitly in that provider's measurement record; do not invent a
-universal threshold or claim an unmeasured benefit. A missing comparison leaves
-that provider decision pending.
+The primary acceptance goal is simpler shared storage and plugin implementation,
+not a universal speedup. Event-only SQL may increase latest-state read costs; publish
+that regression and its scaling boundary. No product latency budget was supplied,
+so do not invent a passing SLO after measuring. A deployment with high dashboard
+read frequency can use a private projection under the same contract.
+
+Before retaining a bundled NoSQL projection, document the native query limitation,
+bounded event-versus-latest cardinality comparison, private write cost, and authoring
+burden. Native capability limitations can justify a simple copy without building a
+production scan workaround first. Record unmeasured production latency/billing as
+limitations, not pending claims of improvement.
 
 ## RC schema and upgrade handling
 
 Keep one existing `1.0.0` initialization migration per provider. Update it and
-generated schemas to remove the shared installation table and add event context;
+generated schemas to remove the shared installation table and add event metadata;
 do not append another RC migration or increment the schema version. Provider-local
 indexes or projections belong only in that provider's initialization artifacts.
 
 Existing initialized RC databases are not automatically transformed by rerunning
 initialization. The implementation must document and verify an explicit RC
-cutover: back up/export events, normalize old columns into context in replacement
+cutover: back up/export events, normalize old columns into metadata in replacement
 storage initialized with the revised schema, preserve event IDs/receipt times,
 rebuild any private projection, compare results, then switch the server. Do not
-drop the original event store before verification. No production cutover is
-authorized by this document PR.
+drop the original event store before verification. This implementation PR does not perform a production cutover.
 
 Regenerate scaffolds and ORM artifacts, update the existing unreleased 1.0.0
 infrastructure guidance and provider setup docs, and describe the custom-provider
@@ -386,9 +387,9 @@ telemetry cannot be backfilled from an installation snapshot.
 1. Add the event-only reference queries and provider measurements. Verify latest
    selection, current-user ownership, counts, and pagination against baseline
    results before choosing provider optimizations.
-2. Introduce typed context and ingestion/response normalization. Update schema
+2. Introduce typed metadata and ingestion/response normalization. Update schema
    generation and all supported serializers. Verify old RC request compatibility,
-   JSON round trips, required keys, nulls, strategy validation, and version handling.
+   JSON round trips, required keys, nulls, strategy validation, and preservation of ancillary keys.
 3. Change the storage contract and remove shared installation persistence. Apply
    the measured provider-specific implementations and test their rebuild paths.
 4. Update Console/server consumers and published provider/setup documentation.
@@ -416,9 +417,9 @@ Required regression scenarios:
   and normalization exercise preserves event identities, counts, and API results.
 
 Completion requires the shared table and storage row to be absent, moved fields
-to exist only in context, every previously supported provider to retain its
-features, provider comparisons to justify any private projection, the SQL/NoSQL
-plugin-author examples to pass the shared conformance suite, and the authoring
+to exist only in metadata, every previously supported provider to retain its
+features, provider comparisons to justify any private projection, the bundled SQL/NoSQL
+reference implementations behind the author examples to pass shared conformance, and the authoring
 burden criteria above to be satisfied. All required validation must pass.
 Existing historical chart limits are not broadened as part of this refactor, and
 must not be copied into latest-state query results.

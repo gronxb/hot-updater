@@ -5,10 +5,9 @@ import {
   createDatabasePluginAdapter,
 } from "./createDatabasePlugin";
 import { createMemoryDatabasePlugin } from "./databasePluginMemory.testFixtures";
-import { toInsightsInstallationRow } from "./insightsContract";
 import type {
   BundleEventRow,
-  InsightsFindInstallationsInput,
+  InsightsFindLatestEventsInput,
   InsightsListEventsInput,
   InsightsModel,
 } from "./types";
@@ -19,7 +18,13 @@ const event: BundleEventRow = {
   type: "UPDATE_APPLIED",
   install_id: "install",
   user_id: "user",
-  username: null,
+  metadata: {
+    username: null,
+    cohort: "0",
+    update_strategy: "appVersion",
+    fingerprint_hash: null,
+    sdk_version: null,
+  },
   from_bundle_id: "bundle-a",
   to_bundle_id: "bundle-b",
   from_release_id: null,
@@ -27,10 +32,7 @@ const event: BundleEventRow = {
   platform: "ios",
   app_version: "1",
   channel: "production",
-  cohort: "0",
-  update_strategy: "appVersion",
-  fingerprint_hash: null,
-  sdk_version: null,
+
   received_at_ms: 100,
 };
 
@@ -52,13 +54,12 @@ describe("public Insights validation", () => {
     for (const invalid of [
       { ...event, install_id: "broken-\ud800" },
       { ...event, user_id: "broken-\udc00" },
-      { ...event, username: "broken-\ud800" },
+      { ...event, metadata: { ...event.metadata, username: "broken-\ud800" } },
       { ...event, id: "not-a-uuid" },
     ]) {
       await expect(
         model.record({
           event: invalid,
-          installation: toInsightsInstallationRow(event),
         }),
       ).rejects.toMatchObject({ code: "invalid-data" });
     }
@@ -74,12 +75,12 @@ describe("public Insights validation", () => {
   ])(
     "rejects invalid installation query form %j before provider I/O",
     async (input) => {
-      const findInstallations = vi.fn(async () => []);
-      const model = createModel({ findInstallations });
+      const findLatestEvents = vi.fn(async () => []);
+      const model = createModel({ findLatestEvents });
       await expect(
-        model.findInstallations(input as InsightsFindInstallationsInput),
+        model.findLatestEvents(input as InsightsFindLatestEventsInput),
       ).rejects.toMatchObject({ code: "invalid-query" });
-      expect(findInstallations).not.toHaveBeenCalled();
+      expect(findLatestEvents).not.toHaveBeenCalled();
     },
   );
 
@@ -150,25 +151,25 @@ describe("public Insights validation", () => {
   });
 
   it("rejects stale user membership and incorrectly ordered identity results", async () => {
-    const row = toInsightsInstallationRow(event);
+    const row = event;
     await expect(
-      createModel({ findInstallations: async () => [row] }).findInstallations({
+      createModel({ findLatestEvents: async () => [row] }).findLatestEvents({
         userId: "different",
         limit: 10,
       }),
     ).rejects.toMatchObject({ code: "invalid-result" });
     await expect(
       createModel({
-        findInstallations: async () => [row, row],
-      }).findInstallations({ installId: "install" }),
+        findLatestEvents: async () => [row, row],
+      }).findLatestEvents({ installId: "install" }),
     ).rejects.toMatchObject({ code: "invalid-result" });
     await expect(
       createModel({
-        findInstallations: async () => [
+        findLatestEvents: async () => [
           { ...row, install_id: "😀" },
           { ...row, install_id: "\ue000" },
         ],
-      }).findInstallations({ userId: "user", limit: 10 }),
+      }).findLatestEvents({ userId: "user", limit: 10 }),
     ).rejects.toMatchObject({ code: "invalid-result" });
   });
 
@@ -181,10 +182,10 @@ describe("public Insights validation", () => {
     } as const;
     await expect(
       createModel({
-        countInstallations: async () => {
+        countLatestEvents: async () => {
           throw failure;
         },
-      }).countInstallations(countInput),
+      }).countLatestEvents(countInput),
     ).rejects.toBe(failure);
     await expect(
       createModel({
@@ -200,8 +201,8 @@ describe("public Insights validation", () => {
     for (const count of [-1, 0.5, Number.MAX_SAFE_INTEGER + 1, Number.NaN]) {
       await expect(
         createModel({
-          countInstallations: async () => count,
-        }).countInstallations(countInput),
+          countLatestEvents: async () => count,
+        }).countLatestEvents(countInput),
       ).rejects.toMatchObject({ code: "invalid-result" });
     }
   });
@@ -272,6 +273,13 @@ describe("Insights CRUD adapter", () => {
     const model = createDatabasePlugin({
       name: "indexed-memory",
       ...createDatabasePluginAdapter("indexed-memory", {
+        findLatestInsightsEvents: async () => {
+          throw new Error("Unexpected Insights read");
+        },
+        countLatestInsightsEvents: async () => {
+          throw new Error("Unexpected Insights count");
+        },
+
         findMany,
         recordInsights: async () => undefined,
         count: async () => 0,
@@ -318,6 +326,13 @@ describe("Insights CRUD adapter", () => {
     const plugin = createDatabasePlugin({
       name: "adapter",
       ...createDatabasePluginAdapter("adapter", {
+        findLatestInsightsEvents: async () => {
+          throw new Error("Unexpected Insights read");
+        },
+        countLatestInsightsEvents: async () => {
+          throw new Error("Unexpected Insights count");
+        },
+
         recordInsights,
         count,
         findMany,
@@ -329,7 +344,7 @@ describe("Insights CRUD adapter", () => {
         deleteChannel: async () => ({ deleted: false, reason: "not_found" }),
       }),
     });
-    const input = { event, installation: toInsightsInstallationRow(event) };
+    const input = { event };
     await plugin.models.insights.record(input);
     expect(recordInsights).toHaveBeenCalledExactlyOnceWith(input);
     expect(create).not.toHaveBeenCalled();
@@ -371,6 +386,13 @@ describe("Insights CRUD adapter", () => {
     const plugin = createDatabasePlugin({
       name: "adapter",
       ...createDatabasePluginAdapter("adapter", {
+        findLatestInsightsEvents: async () => {
+          throw new Error("Unexpected Insights read");
+        },
+        countLatestInsightsEvents: async () => {
+          throw new Error("Unexpected Insights count");
+        },
+
         findMany,
         recordInsights: async () => undefined,
         count: async () => 0,

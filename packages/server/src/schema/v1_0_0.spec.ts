@@ -7,7 +7,6 @@ import {
 } from "../db/schemaGenerators";
 import {
   bundleEventsV100,
-  bundleInstallationsV100,
   bundlePatchesV100,
   bundlesV100,
   releaseCatalogsV100,
@@ -97,54 +96,21 @@ describe("v1.0.0 Release Catalog schema", () => {
     ).toBeUndefined();
   });
 
-  it("stores one current row per installation with the required lookup indexes", () => {
-    expect(
-      bundleInstallationsV100.columns.find(
-        ({ ormName }) => ormName === "install_id",
-      )?.primaryKey,
-    ).toBe(true);
-    expect(bundleInstallationsV100.indexes).toEqual(
-      expect.arrayContaining([
-        {
-          columns: ["user_id", "install_id"],
-          name: "bundle_installations_user_id_idx",
-        },
-        {
-          columns: ["received_at_ms"],
-          name: "bundle_installations_received_at_idx",
-        },
-      ]),
-    );
-
+  it("stores events with metadata and indexes latest-event reads without an installation table", () => {
     const sql = createTableSql("postgresql", "foreign-keys", v1_0_0).join("\n");
-    const prisma = generatePrismaSchema("postgresql", v1_0_0);
-    const drizzle = generateDrizzleSchema("postgresql", v1_0_0);
-    expect(sql).toContain("create table bundle_installations");
+    expect(sql).toContain("metadata json not null");
     expect(sql).toContain(
-      'install_id varchar(255) collate "C" primary key not null',
+      "bundle_events_latest_idx on bundle_events(install_id, received_at_ms, id)",
     );
     expect(sql).toContain(
-      "create index bundle_installations_user_id_idx on bundle_installations(user_id, install_id)",
+      "bundle_events_user_idx on bundle_events(user_id, install_id)",
     );
-    expect(sql).toContain(
-      "create index bundle_installations_received_at_idx on bundle_installations(received_at_ms)",
-    );
-    expect(sql).toContain(
-      "create index bundle_installations_bundle_idx on bundle_installations(platform, channel, to_bundle_id, received_at_ms)",
-    );
-    expect(sql).toContain(
-      "create index bundle_events_from_bundle_idx on bundle_events(type, platform, channel, from_bundle_id, received_at_ms, id)",
-    );
-    expect(prisma).toContain("initial Prisma SQL migration");
-    expect(prisma).toContain(
-      'alter table bundle_installations alter column install_id type varchar(255) collate "C"',
-    );
-    expect(prisma).toContain("model bundle_installations {");
-    expect(prisma).toContain("install_id String @db.VarChar(255) @id");
-    expect(drizzle).toContain("export const bundle_installations = pgTable(");
-    expect(drizzle).toContain(
-      'index("bundle_installations_user_id_idx").on(table.user_id, table.install_id)',
-    );
+    for (const generated of [
+      sql,
+      generatePrismaSchema("postgresql", v1_0_0),
+      generateDrizzleSchema("postgresql", v1_0_0),
+    ])
+      expect(generated).not.toContain("bundle_installations");
   });
 
   it("keeps identity indexes valid on MySQL and MSSQL", () => {
@@ -163,7 +129,7 @@ describe("v1.0.0 Release Catalog schema", () => {
         "create index bundle_events_install_idx on bundle_events(install_id, type, received_at_ms, id)",
       );
       expect(sql).toContain(
-        "create index bundle_installations_user_id_idx on bundle_installations(user_id, install_id)",
+        "create index bundle_events_user_idx on bundle_events(user_id, install_id)",
       );
     }
     expect(mssql).not.toContain("install_id nvarchar(max)");

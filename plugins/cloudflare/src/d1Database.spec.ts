@@ -1,4 +1,3 @@
-import { toInsightsInstallationRow } from "@hot-updater/plugin-core";
 import { beforeEach, expect, it, vi } from "vitest";
 
 import { d1Database } from "./d1Database";
@@ -32,7 +31,13 @@ const eventD1Row = {
   type: "UPDATE_APPLIED",
   install_id: "install-1",
   user_id: "user-1",
-  username: "Demo User",
+  metadata: {
+    username: "Demo User",
+    cohort: "cohort-1",
+    update_strategy: "appVersion",
+    fingerprint_hash: null,
+    sdk_version: "1.0.0",
+  },
   from_release_id: null,
   from_bundle_id: "bundle-previous",
   to_release_id: null,
@@ -40,10 +45,7 @@ const eventD1Row = {
   platform: "ios",
   app_version: "1.0.0",
   channel: "production",
-  cohort: "cohort-1",
-  update_strategy: "appVersion",
-  fingerprint_hash: null,
-  sdk_version: "1.0.0",
+
   received_at_ms: 100,
 } as const;
 
@@ -198,7 +200,7 @@ it("sends parameterized commits through the D1 batch body", async () => {
   expect(state.batches[0]?.[1]?.params.length).toBeGreaterThan(0);
 });
 
-it("stores the event and current installation in one parameterized atomic batch", async () => {
+it("stores an immutable event with one parameterized statement", async () => {
   const plugin = d1Database({
     accountId: "account",
     cloudflareApiToken: "token",
@@ -207,16 +209,12 @@ it("stores the event and current installation in one parameterized atomic batch"
   await expect(
     plugin.models.insights.record({
       event: eventD1Row,
-      installation: toInsightsInstallationRow(eventD1Row),
     }),
   ).resolves.toBeUndefined();
-  expect(state.queries).toHaveLength(0);
-  expect(state.batches).toHaveLength(1);
-  expect(state.batches[0]).toHaveLength(2);
-  expect(state.batches[0]?.[0]?.sql).toContain(
-    "WHERE NOT EXISTS (SELECT 1 FROM bundle_events",
-  );
-  expect(state.batches[0]?.[1]?.sql).toContain("ON CONFLICT(id) DO NOTHING");
+  expect(state.queries).toHaveLength(1);
+  expect(state.batches).toHaveLength(0);
+  expect(state.queries[0]?.sql).toContain("INSERT INTO bundle_events");
+  expect(state.queries[0]?.sql).toContain("ON CONFLICT(id) DO NOTHING");
 });
 
 it("queries each movement type through a bounded descending range", async () => {
@@ -253,7 +251,7 @@ it("queries each movement type through a bounded descending range", async () => 
   );
 });
 
-it("counts active installations without reading event history", async () => {
+it("counts latest events with native aggregation", async () => {
   state.results.push({ count: 2 });
   const plugin = d1Database({
     accountId: "account",
@@ -262,7 +260,7 @@ it("counts active installations without reading event history", async () => {
   });
 
   await expect(
-    plugin.models.insights.countInstallations({
+    plugin.models.insights.countLatestEvents({
       platform: "ios",
       channel: "production",
       sinceMs: 100,
@@ -271,8 +269,8 @@ it("counts active installations without reading event history", async () => {
 
   expect(state.queries).toHaveLength(1);
   expect(state.queries[0]?.sql).toContain(
-    "SELECT COUNT(*) AS count FROM bundle_installations",
+    "SELECT COUNT(*) AS count FROM bundle_events",
   );
   expect(state.queries[0]?.sql).toContain("received_at_ms >=");
-  expect(state.queries[0]?.sql).not.toContain("bundle_events");
+  expect(state.queries[0]?.sql).toContain("NOT EXISTS");
 });

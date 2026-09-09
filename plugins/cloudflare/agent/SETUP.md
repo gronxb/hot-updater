@@ -1,5 +1,13 @@
 # Cloudflare setup checklist
 
+For an already initialized 1.0.0 RC namespace, inspect actual Insights fields;
+the unchanged version marker does not identify the current event layout.
+Fresh storage uses event `metadata` and no shared installation table. Follow the
+packaged 1.0.0 infrastructure upgrade's offline export/replay procedure for old
+flat-event data before deploying matching code. Preserve non-Insights data,
+artifacts, endpoint and credentials; do not rerun initialization as a conversion.
+
+
 Read COMMON.md first. Work through this checklist in order; each Verify is a
 prerequisite for the next dependent step. Use available authenticated MCP/API
 operations or the CLI fallback shown below. Paths are relative to this scaffold.

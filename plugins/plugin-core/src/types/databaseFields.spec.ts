@@ -13,7 +13,6 @@ describe("database model fields", () => {
       "release_catalogs",
       "channels",
       "bundle_events",
-      "bundle_installations",
       "api_keys",
     ]);
   });

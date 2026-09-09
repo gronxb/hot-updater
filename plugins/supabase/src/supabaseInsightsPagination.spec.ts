@@ -1,7 +1,4 @@
-import {
-  compareInsightsText,
-  toInsightsInstallationRow,
-} from "@hot-updater/plugin-core";
+import { compareInsightsText } from "@hot-updater/plugin-core";
 import { afterEach, expect, it, vi } from "vitest";
 
 import { createBundleEventRowFixture } from "../../../packages/test-utils/src/databaseTestFixtures";
@@ -11,11 +8,9 @@ const events = Array.from({ length: 150 }, (_, index) => ({
   ...createBundleEventRowFixture(String(index + 1), 100),
   user_id: "current-user",
 })).reverse();
-const installations = events
-  .map(toInsightsInstallationRow)
-  .sort((left, right) =>
-    compareInsightsText(left.install_id, right.install_id),
-  );
+const installations = [...events].sort((left, right) =>
+  compareInsightsText(left.install_id, right.install_id),
+);
 
 afterEach(() => vi.unstubAllGlobals());
 
@@ -57,7 +52,7 @@ it.each(["events", "installations"] as const)(
             beforeReceivedAtMs: 200,
             limit: 101,
           })
-        : await plugin.models.insights.findInstallations({
+        : await plugin.models.insights.findLatestEvents({
             userId: "current-user",
             limit: 101,
           });

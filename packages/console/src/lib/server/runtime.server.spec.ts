@@ -7,10 +7,10 @@ import { createRuntimeHotUpdater } from "./runtime.server";
 
 const insights = {
   record: vi.fn(async () => undefined),
-  countInstallations: vi.fn(async () => 0),
+  countLatestEvents: vi.fn(async () => 0),
   countEvents: vi.fn(async () => 0),
   listEvents: vi.fn(async () => []),
-  findInstallations: vi.fn(async () => []),
+  findLatestEvents: vi.fn(async () => []),
 };
 
 describe("createRuntimeHotUpdater", () => {

@@ -1,10 +1,11 @@
+import { DatabaseSync, type SqliteValue } from "node:sqlite";
+
 import type {
   BundleEventRow,
   BundlePatchRow,
   BundleRow,
   ChannelRow,
   ApiKeyRow,
-  InsightsInstallationRow,
   ReleaseCatalogRow,
   ReleaseRow,
 } from "@hot-updater/plugin-core";
@@ -16,7 +17,6 @@ type Row =
   | BundleRow
   | ChannelRow
   | ApiKeyRow
-  | InsightsInstallationRow
   | ReleaseRow
   | ReleaseCatalogRow;
 type Table = Row[];
@@ -24,7 +24,7 @@ type Tables = {
   bundle_patches: Table;
   bundles: Table;
   bundle_events: Table;
-  bundle_installations: Table;
+
   channels: Table;
   api_keys: Table;
   releases: Table;
@@ -76,11 +76,7 @@ const readField = (row: Row, field: string): unknown =>
   Object.entries(row).find(([key]) => key === field)?.[1];
 
 const rowKey = (model: keyof Tables, row: Row): string =>
-  model === "bundle_installations" && "install_id" in row
-    ? row.install_id
-    : "id" in row
-      ? row.id
-      : row.scope_key;
+  "id" in row ? row.id : row.scope_key;
 
 const matchesCondition = (current: unknown, condition: unknown): boolean => {
   if (!isRecord(condition)) return Object.is(current, condition);
@@ -202,7 +198,9 @@ const createDelegate = (tables: Tables, model: keyof Tables, hooks: Hooks) => ({
     if (
       tables[model].some((row) => rowKey(model, row) === rowKey(model, data))
     ) {
-      throw new PrismaTestConstraintError("duplicate id");
+      throw Object.assign(new PrismaTestConstraintError("duplicate id"), {
+        code: "P2002",
+      });
     }
     if (
       model === "channels" &&
@@ -307,7 +305,9 @@ const createDelegate = (tables: Tables, model: keyof Tables, hooks: Hooks) => ({
     if (
       tables[model].some((row) => rowKey(model, row) === rowKey(model, create))
     ) {
-      throw new PrismaTestConstraintError("duplicate id");
+      throw Object.assign(new PrismaTestConstraintError("duplicate id"), {
+        code: "P2002",
+      });
     }
     assertReferences(tables, model, create);
     tables[model].push(structuredClone(create));
@@ -316,8 +316,33 @@ const createDelegate = (tables: Tables, model: keyof Tables, hooks: Hooks) => ({
 });
 
 const createClient = (tables: Tables, hooks: Hooks) => ({
+  $queryRawUnsafe: async (query: string, ...values: SqliteValue[]) => {
+    const database = new DatabaseSync(":memory:");
+    try {
+      database.exec(
+        "CREATE TABLE bundle_events (id TEXT PRIMARY KEY, type TEXT, install_id TEXT, user_id TEXT, from_bundle_id TEXT, from_release_id TEXT, to_bundle_id TEXT, to_release_id TEXT, platform TEXT, app_version TEXT, channel TEXT, metadata TEXT, received_at_ms REAL)",
+      );
+      for (const row of tables.bundle_events) {
+        const entries = Object.entries(row);
+        database
+          .prepare(
+            `INSERT INTO bundle_events (${entries.map(([field]) => field).join(",")}) VALUES (${entries.map(() => "?").join(",")})`,
+          )
+          .run(
+            ...(entries.map(([, value]) =>
+              typeof value === "object" && value !== null
+                ? JSON.stringify(value)
+                : value,
+            ) as SqliteValue[]),
+          );
+      }
+      return database.prepare(query.replace(/\$\d+/g, "?")).all(...values);
+    } finally {
+      database.close();
+    }
+  },
   bundle_events: createDelegate(tables, "bundle_events", hooks),
-  bundle_installations: createDelegate(tables, "bundle_installations", hooks),
+
   bundle_patches: createDelegate(tables, "bundle_patches", hooks),
   bundles: createDelegate(tables, "bundles", hooks),
   channels: createDelegate(tables, "channels", hooks),
@@ -331,7 +356,7 @@ export const createPrismaTestHarness = () => {
     bundle_patches: [],
     bundles: [],
     bundle_events: [],
-    bundle_installations: [],
+
     channels: [],
     api_keys: [],
     releases: [],
@@ -362,7 +387,6 @@ export const createPrismaTestHarness = () => {
         tables.bundle_patches = transactionTables.bundle_patches;
         tables.bundles = transactionTables.bundles;
         tables.bundle_events = transactionTables.bundle_events;
-        tables.bundle_installations = transactionTables.bundle_installations;
         tables.channels = transactionTables.channels;
         tables.api_keys = transactionTables.api_keys;
         tables.releases = transactionTables.releases;
@@ -403,7 +427,6 @@ export const createPrismaTestHarness = () => {
       tables.bundle_patches = [];
       tables.bundles = [];
       tables.bundle_events = [];
-      tables.bundle_installations = [];
       tables.channels = [];
       tables.api_keys = [];
       tables.releases = [];

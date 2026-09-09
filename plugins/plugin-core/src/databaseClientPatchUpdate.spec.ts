@@ -33,6 +33,13 @@ const createNativePlugin = (
   return createDatabasePlugin({
     name,
     ...createDatabasePluginAdapter(name, {
+      findLatestInsightsEvents: async () => {
+        throw new Error("Unexpected Insights read");
+      },
+      countLatestInsightsEvents: async () => {
+        throw new Error("Unexpected Insights count");
+      },
+
       recordInsights: async () => undefined,
       create: async (input) => input.data,
       update: async () => null,
@@ -75,6 +82,13 @@ describe("database client patch updates", () => {
     const plugin = createDatabasePlugin({
       name,
       ...createDatabasePluginAdapter(name, {
+        findLatestInsightsEvents: async () => {
+          throw new Error("Unexpected Insights read");
+        },
+        countLatestInsightsEvents: async () => {
+          throw new Error("Unexpected Insights count");
+        },
+
         create,
         update: async () => null,
         delete: async () => undefined,
@@ -118,6 +132,13 @@ describe("database client patch updates", () => {
     const plugin = createDatabasePlugin({
       name,
       ...createDatabasePluginAdapter(name, {
+        findLatestInsightsEvents: async () => {
+          throw new Error("Unexpected Insights read");
+        },
+        countLatestInsightsEvents: async () => {
+          throw new Error("Unexpected Insights count");
+        },
+
         create: async (input) => input.data,
         update: async () => {
           scalarUpdateCount += 1;

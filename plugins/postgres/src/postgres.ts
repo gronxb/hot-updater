@@ -1,4 +1,9 @@
+import type { BundleEventRow } from "@hot-updater/plugin-core";
 import { createDatabasePlugin } from "@hot-updater/plugin-core";
+import {
+  latestInsightsWhere,
+  latestInsightsCountGroups,
+} from "@hot-updater/plugin-core/internal";
 import type {
   CreateDatabaseImplementationInput,
   DatabaseModel,
@@ -140,28 +145,34 @@ const buildWhere = (
 const createPostgresImplementation = (
   db: Kysely<Database>,
 ): DatabasePluginImplementation => ({
-  async recordInsights({ event, installation }) {
-    const eventColumns = Object.keys(event);
-    const installationColumns = Object.keys(installation);
-    await sql`
-      WITH accepted_event AS (
-        INSERT INTO bundle_events (${sql.join(eventColumns.map(sql.ref))})
-        VALUES (${sql.join(Object.values(event))})
-        ON CONFLICT (id) DO NOTHING RETURNING id
-      )
-      INSERT INTO bundle_installations (${sql.join(installationColumns.map(sql.ref))})
-      SELECT ${sql.join(Object.values(installation))} FROM accepted_event
-      ON CONFLICT (install_id) DO UPDATE SET ${sql.join(
-        installationColumns
-          .filter((column) => column !== "install_id")
-          .map(
-            (column) =>
-              sql`${sql.ref(column)} = ${sql.ref(`excluded.${column}`)}`,
-          ),
-      )}
-      WHERE (excluded.received_at_ms, excluded.id) >
-        (bundle_installations.received_at_ms, bundle_installations.id)
-    `.execute(db);
+  async recordInsights({ event }) {
+    await db
+      .insertInto("bundle_events")
+      .values(event)
+      .onConflict((oc) => oc.column("id").doNothing())
+      .execute();
+  },
+  async findLatestInsightsEvents(input) {
+    const where = buildWhere(latestInsightsWhere(input));
+    const result =
+      await sql<BundleEventRow>`SELECT * FROM bundle_events WHERE ${where} AND NOT EXISTS (SELECT 1 FROM bundle_events AS newer WHERE newer.install_id = bundle_events.install_id AND (newer.received_at_ms > bundle_events.received_at_ms OR (newer.received_at_ms = bundle_events.received_at_ms AND newer.id > bundle_events.id))) ORDER BY install_id ASC LIMIT ${"installId" in input ? 1 : input.limit}`.execute(
+        db,
+      );
+    return result.rows;
+  },
+  async countLatestInsightsEvents(input) {
+    const where = sql`(${sql.join(
+      latestInsightsCountGroups(input).map(
+        (where) => sql`(${buildWhere(where)})`,
+      ),
+      sql` OR `,
+    )})`;
+    const result = await sql<{
+      count: string | number;
+    }>`SELECT COUNT(*) AS count FROM bundle_events WHERE ${where} AND NOT EXISTS (SELECT 1 FROM bundle_events AS newer WHERE newer.install_id = bundle_events.install_id AND (newer.received_at_ms > bundle_events.received_at_ms OR (newer.received_at_ms = bundle_events.received_at_ms AND newer.id > bundle_events.id)))`.execute(
+      db,
+    );
+    return Number(result.rows[0]?.count ?? 0);
   },
   async create(input: CreateDatabaseImplementationInput) {
     switch (input.model) {
@@ -183,26 +194,7 @@ const createPostgresImplementation = (
           .values(input.data)
           .returningAll()
           .executeTakeFirstOrThrow();
-      case "bundle_installations": {
-        const query = db.insertInto("bundle_installations").values(input.data);
-        const row = await (
-          input.onConflict === "ignore"
-            ? query.onConflict((conflict) =>
-                conflict.column("install_id").doNothing(),
-              )
-            : query
-        )
-          .returningAll()
-          .executeTakeFirst();
-        return (
-          row ??
-          (await db
-            .selectFrom("bundle_installations")
-            .selectAll()
-            .where("install_id", "=", input.data.install_id)
-            .executeTakeFirstOrThrow())
-        );
-      }
+
       case "releases":
         return db
           .insertInto("releases")
@@ -273,11 +265,7 @@ const createPostgresImplementation = (
       if (where !== undefined) query = query.where(where);
       return (await query.returningAll().executeTakeFirst()) ?? null;
     }
-    if (input.model === "bundle_installations") {
-      let query = db.updateTable("bundle_installations").set(input.update);
-      if (where !== undefined) query = query.where(where);
-      return (await query.returningAll().executeTakeFirst()) ?? null;
-    }
+
     let query = db.updateTable("bundles").set(input.update);
     if (where !== undefined) {
       query = query.where(where);
@@ -349,11 +337,6 @@ const createPostgresImplementation = (
       }
       case "release_catalogs": {
         let query = db.selectFrom("release_catalogs").selectAll();
-        if (where !== undefined) query = query.where(where);
-        return (await query.executeTakeFirst()) ?? null;
-      }
-      case "bundle_installations": {
-        let query = db.selectFrom("bundle_installations").selectAll();
         if (where !== undefined) query = query.where(where);
         return (await query.executeTakeFirst()) ?? null;
       }

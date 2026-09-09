@@ -1,10 +1,7 @@
 import net from "node:net";
 import path from "node:path";
 
-import {
-  toInsightsInstallationRow,
-  type BundleEventRow,
-} from "@hot-updater/plugin-core";
+import { type BundleEventRow } from "@hot-updater/plugin-core";
 import { execa } from "execa";
 import { MongoClient } from "mongodb";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
@@ -27,7 +24,7 @@ const availablePort = (): Promise<number> =>
     });
   });
 
-describe("MongoDB native Insights transactions", () => {
+describe("MongoDB native Insights storage", () => {
   let client: MongoClient;
   let composeEnvironment: Record<string, string>;
   const composeFile = path.resolve(
@@ -42,7 +39,6 @@ describe("MongoDB native Insights transactions", () => {
   const record = (event: BundleEventRow) =>
     insights().record({
       event,
-      installation: toInsightsInstallationRow(event),
     });
 
   beforeAll(async () => {
@@ -62,7 +58,6 @@ describe("MongoDB native Insights transactions", () => {
 
   beforeEach(async () => {
     await client.db().collection("bundle_events").deleteMany({});
-    await client.db().collection("bundle_installations").deleteMany({});
   });
 
   afterAll(async () => {
@@ -70,14 +65,14 @@ describe("MongoDB native Insights transactions", () => {
     if (composeEnvironment) await compose(["down", "-v", "--remove-orphans"]);
   }, 60_000);
 
-  it("rolls back both canonical changes after a native installation validation error", async () => {
+  it("preserves latest state after a native event validation error", async () => {
     const previous = {
       ...createBundleEventRowFixture("801", 100),
       user_id: "original",
     };
     await record(previous);
     await client.db().command({
-      collMod: "bundle_installations",
+      collMod: "bundle_events",
       validator: { user_id: { $ne: "reject" } },
     });
     const failed = {
@@ -91,12 +86,10 @@ describe("MongoDB native Insights transactions", () => {
         await client.db().collection("bundle_events").countDocuments({}),
       ).toBe(1);
       await expect(
-        insights().findInstallations({ installId: previous.install_id }),
-      ).resolves.toEqual([toInsightsInstallationRow(previous)]);
+        insights().findLatestEvents({ installId: previous.install_id }),
+      ).resolves.toEqual([previous]);
     } finally {
-      await client
-        .db()
-        .command({ collMod: "bundle_installations", validator: {} });
+      await client.db().command({ collMod: "bundle_events", validator: {} });
     }
     await record(failed);
     await record(failed);
@@ -104,8 +97,8 @@ describe("MongoDB native Insights transactions", () => {
       await client.db().collection("bundle_events").countDocuments({}),
     ).toBe(2);
     await expect(
-      insights().findInstallations({ installId: previous.install_id }),
-    ).resolves.toEqual([toInsightsInstallationRow(failed)]);
+      insights().findLatestEvents({ installId: previous.install_id }),
+    ).resolves.toEqual([failed]);
   });
 
   it("retries native conflicts without dropping events or letting duplicate IDs rewrite state", async () => {
@@ -127,15 +120,15 @@ describe("MongoDB native Insights transactions", () => {
       await client.db().collection("bundle_events").countDocuments({}),
     ).toBe(12);
     await expect(
-      insights().findInstallations({ installId: winner.install_id }),
-    ).resolves.toEqual([toInsightsInstallationRow(winner)]);
+      insights().findLatestEvents({ installId: winner.install_id }),
+    ).resolves.toEqual([winner]);
     await expect(
-      insights().findInstallations({
+      insights().findLatestEvents({
         installId: conflictingDuplicate.install_id,
       }),
     ).resolves.toEqual([]);
     await expect(
-      insights().findInstallations({ userId: "old-user", limit: 10 }),
+      insights().findLatestEvents({ userId: "old-user", limit: 10 }),
     ).resolves.toEqual([]);
   });
 
@@ -146,8 +139,55 @@ describe("MongoDB native Insights transactions", () => {
       await client.db().collection("bundle_events").countDocuments({}),
     ).toBe(1);
     await expect(
-      insights().findInstallations({ installId: event.install_id }),
-    ).resolves.toEqual([toInsightsInstallationRow(event)]);
+      insights().findLatestEvents({ installId: event.install_id }),
+    ).resolves.toEqual([event]);
+  });
+
+  it("groups indexed history before filtering current users", async () => {
+    const events = Array.from({ length: 10_000 }, (_, index) => ({
+      ...createBundleEventRowFixture(String(10000 + index), index % 10),
+      install_id: `installation-${Math.floor(index / 10)}`,
+      user_id: index % 10 === 9 ? "current" : "previous",
+    }));
+    const collection = client.db().collection("bundle_events");
+    await collection.insertMany(events);
+    await expect(
+      insights().findLatestEvents({ userId: "previous", limit: 10 }),
+    ).resolves.toEqual([]);
+    await expect(
+      insights().countLatestEvents({
+        platform: "ios",
+        channel: "production",
+        sinceMs: 0,
+      }),
+    ).resolves.toBe(1_000);
+    const pipeline = [
+      { $sort: { install_id: -1, received_at_ms: -1, id: -1 } },
+      { $group: { _id: "$install_id", event: { $first: "$$ROOT" } } },
+      { $replaceRoot: { newRoot: "$event" } },
+      { $match: { user_id: "current" } },
+      { $count: "count" },
+    ];
+    const plan = await collection
+      .aggregate(pipeline, { collation: { locale: "simple" } })
+      .explain("executionStats");
+    expect(JSON.stringify(plan)).toContain("bundle_events_latest_idx");
+    expect(JSON.stringify(plan)).not.toContain('"stage":"COLLSCAN"');
+    const cursor = plan.stages?.find(
+      (stage: Record<string, unknown>) => "$cursor" in stage,
+    )?.$cursor;
+    const stats = plan.executionStats ?? cursor?.executionStats;
+    expect(stats.totalDocsExamined).toBeLessThanOrEqual(events.length);
+    console.info(
+      "MongoDB latest-event plan",
+      JSON.stringify({
+        events: events.length,
+        installations: 1000,
+        keysExamined: stats.totalKeysExamined,
+        docsExamined: stats.totalDocsExamined,
+        executionTimeMs: stats.executionTimeMillis,
+      }),
+    );
   });
 
   it("uses raw recovery predicates consistently in native counts and indexed lists", async () => {
@@ -155,7 +195,10 @@ describe("MongoDB native Insights transactions", () => {
     const recovered: BundleEventRow = {
       ...createBundleEventRowFixture("832", 200),
       type: "RECOVERED",
-      update_strategy: "appVersion",
+      metadata: {
+        ...createBundleEventRowFixture("832", 200).metadata,
+        update_strategy: "appVersion",
+      },
       install_id: applied.install_id,
       from_bundle_id: applied.to_bundle_id,
       to_bundle_id: applied.from_bundle_id!,
@@ -183,10 +226,16 @@ describe("MongoDB native Insights transactions", () => {
       insights().countEvents({ filter, sinceMs: 100, beforeReceivedAtMs: 200 }),
     ).resolves.toBe(0);
     await expect(
-      insights().countInstallations({
+      insights().countLatestEvents({
         platform: "ios",
         channel: "production",
-        bundleId: applied.to_bundle_id,
+        bundle: [
+          {
+            field: "to_bundle_id",
+            value: applied.to_bundle_id,
+            types: ["UPDATE_APPLIED", "RECOVERED", "UNCHANGED"],
+          },
+        ],
         sinceMs: 0,
       }),
     ).resolves.toBe(0);

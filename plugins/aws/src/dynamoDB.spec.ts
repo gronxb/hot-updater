@@ -13,12 +13,7 @@ import {
   ScanCommand,
   TransactWriteCommand,
 } from "@aws-sdk/lib-dynamodb";
-import {
-  bundleToRow,
-  type BundleEventRow,
-  type InsightsInstallationRow,
-  toInsightsInstallationRow,
-} from "@hot-updater/plugin-core";
+import { bundleToRow, type BundleEventRow } from "@hot-updater/plugin-core";
 import { mockClient } from "aws-sdk-client-mock";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -72,7 +67,13 @@ const insightsEvent = (index: number): BundleEventRow => ({
   type: "UPDATE_APPLIED",
   install_id: `install-${index}`,
   user_id: null,
-  username: null,
+  metadata: {
+    username: null,
+    cohort: "0",
+    update_strategy: "appVersion",
+    fingerprint_hash: null,
+    sdk_version: null,
+  },
   from_release_id: null,
   from_bundle_id: bundleRow.id,
   to_release_id: null,
@@ -80,34 +81,14 @@ const insightsEvent = (index: number): BundleEventRow => ({
   platform: "ios",
   app_version: "1.0.0",
   channel: productionChannel.name,
-  cohort: "0",
-  update_strategy: "appVersion",
-  fingerprint_hash: null,
-  sdk_version: null,
+
   received_at_ms: index,
 });
 
 const insightsInstallation = (
   index: number,
   userId: string,
-): InsightsInstallationRow => {
-  const event = insightsEvent(index);
-  return {
-    id: event.id,
-    install_id: event.install_id,
-    user_id: userId,
-    username: event.username,
-    to_bundle_id: event.to_bundle_id,
-    pending_bundle_id: null,
-    pending_release_id: null,
-    type: event.type,
-    platform: event.platform,
-    app_version: event.app_version,
-    channel: event.channel,
-    cohort: event.cohort,
-    received_at_ms: event.received_at_ms,
-  };
-};
+): BundleEventRow => ({ ...insightsEvent(index), user_id: userId });
 
 describe("dynamoDB CloudFront lifecycle", () => {
   beforeEach(() => {
@@ -447,7 +428,7 @@ describe("dynamoDB CloudFront lifecycle", () => {
       insightsInstallation(2, userId),
       insightsInstallation(3, userId),
     ];
-    const toItem = (row: InsightsInstallationRow) => ({
+    const toItem = (row: BundleEventRow) => ({
       pk: partition,
       sk: row.install_id,
       order_key: `${String(row.received_at_ms).padStart(16, "0")}#${row.id}`,
@@ -486,7 +467,7 @@ describe("dynamoDB CloudFront lifecycle", () => {
     });
 
     await expect(
-      plugin.models.insights.findInstallations({
+      plugin.models.insights.findLatestEvents({
         userId,
         limit: 3,
       }),
@@ -507,19 +488,7 @@ describe("dynamoDB CloudFront lifecycle", () => {
 
   it("atomically records the ID, bundle index, latest, and user access rows", async () => {
     const previousEvent = { ...insightsEvent(1), user_id: "old-user" };
-    const previous = {
-      id: previousEvent.id,
-      install_id: previousEvent.install_id,
-      user_id: previousEvent.user_id,
-      username: previousEvent.username,
-      to_bundle_id: previousEvent.to_bundle_id,
-      type: previousEvent.type,
-      platform: previousEvent.platform,
-      app_version: previousEvent.app_version,
-      channel: previousEvent.channel,
-      cohort: previousEvent.cohort,
-      received_at_ms: previousEvent.received_at_ms,
-    };
+    const previous = previousEvent;
     documentClient
       .on(GetCommand, {
         Key: {
@@ -548,7 +517,6 @@ describe("dynamoDB CloudFront lifecycle", () => {
 
     await plugin.models.insights.record({
       event: next,
-      installation: toInsightsInstallationRow(next),
     });
 
     const transaction =
@@ -614,7 +582,7 @@ describe("dynamoDB CloudFront lifecycle", () => {
     });
 
     await expect(
-      plugin.models.insights.countInstallations({
+      plugin.models.insights.countLatestEvents({
         platform: "ios",
         channel: "production",
         sinceMs: 1_000,
@@ -743,7 +711,6 @@ describe("dynamoDB CloudFront lifecycle", () => {
     const event = insightsEvent(1);
     await plugin.models.insights.record({
       event,
-      installation: toInsightsInstallationRow(event),
     });
 
     expect(

@@ -1,6 +1,5 @@
 import type {
   BundleEventRow,
-  InsightsInstallationRow,
   BundlePatchRow,
   BundleRow,
   ChannelRow,
@@ -11,7 +10,6 @@ import type {
 
 export type MongoTestRow =
   | BundleEventRow
-  | InsightsInstallationRow
   | BundlePatchRow
   | BundleRow
   | ChannelRow

@@ -79,10 +79,9 @@ describe("MongoDB migration", () => {
     );
     expect(settings.get("schema.core")).toBe(HOT_UPDATER_SCHEMA_VERSION);
     expect(modelCollection.createIndex).toHaveBeenCalledWith(
-      { install_id: 1 },
+      { install_id: 1, received_at_ms: 1, id: 1 },
       {
-        name: "bundle_installations_install_id_idx",
-        unique: true,
+        name: "bundle_events_latest_idx",
         collation: { locale: "simple" },
       },
     );
@@ -112,9 +111,9 @@ describe("MongoDB migration", () => {
       { name: "bundle_events_to_bundle_idx", collation: { locale: "simple" } },
     );
     expect(modelCollection.createIndex).toHaveBeenCalledWith(
-      { platform: 1, channel: 1, to_bundle_id: 1, received_at_ms: 1 },
+      { user_id: 1, install_id: 1 },
       {
-        name: "bundle_installations_bundle_idx",
+        name: "bundle_events_user_idx",
         collation: { locale: "simple" },
       },
     );

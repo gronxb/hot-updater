@@ -11,14 +11,14 @@ it("pages sparse movements beyond 50,000 reports through ordered native index ra
     )
     INSERT INTO bundle_events (
       id, type, install_id, from_bundle_id, to_bundle_id, platform,
-      app_version, channel, cohort, update_strategy, received_at_ms
+      app_version, channel, metadata, received_at_ms
     )
     SELECT '00000000-0000-7000-8000-' || printf('%012d', n),
       CASE n % 800 WHEN 0 THEN 'UPDATE_APPLIED' WHEN 1 THEN 'RECOVERED' ELSE 'UNCHANGED' END,
       'sparse-movement-install',
       CASE WHEN n % 800 IN (0, 1) THEN '00000000-0000-7000-8000-000000001001' ELSE NULL END,
-      '00000000-0000-7000-8000-000000001002', 'ios', '1.0.0', 'production', '0',
-      CASE WHEN n % 800 IN (0, 1) THEN 'appVersion' ELSE NULL END,
+      '00000000-0000-7000-8000-000000001002', 'ios', '1.0.0', 'production',
+      json_object('cohort', '0', 'username', NULL, 'fingerprint_hash', NULL, 'sdk_version', NULL, 'update_strategy', CASE WHEN n % 800 IN (0, 1) THEN 'appVersion' ELSE NULL END),
       n / 2
     FROM reports
   `).run();

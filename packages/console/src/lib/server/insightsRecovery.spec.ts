@@ -32,12 +32,15 @@ const event = (
     platform: "ios",
     channel: "production",
     user_id: null,
-    username: null,
+    metadata: {
+      username: null,
+      cohort: "default",
+      fingerprint_hash: null,
+      sdk_version: null,
+      update_strategy: type === "UNCHANGED" ? null : "appVersion",
+    },
     app_version: "1.0.0",
-    cohort: "default",
-    fingerprint_hash: null,
-    sdk_version: null,
-    update_strategy: type === "UNCHANGED" ? null : "appVersion",
+
     ...overrides,
   }) as BundleEventRow;
 const reports = (

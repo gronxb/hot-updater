@@ -11,6 +11,10 @@ import type {
   DatabaseCommitExpectation,
   DatabaseCommitResult,
 } from "@hot-updater/plugin-core";
+import {
+  latestInsightsWhere,
+  latestInsightsCountGroups,
+} from "@hot-updater/plugin-core/internal";
 import type {
   CreateDatabaseImplementationInput,
   DatabasePluginImplementation,
@@ -198,7 +202,7 @@ const insertQuery = (
       values = channelValues(input.data);
       break;
     case "bundle_events":
-    case "bundle_installations":
+
     case "api_keys":
     case "release_catalogs":
     case "releases":
@@ -644,32 +648,42 @@ const deleteChannel = async (
 export const createD1Implementation = (
   executor: D1Executor,
 ): DatabasePluginImplementation => ({
-  async recordInsights({ event, installation }) {
-    const columns = Object.keys(installation);
-    const eventInsert = insertQuery({ model: "bundle_events", data: event });
-    // D1 executes the whole batch as one serial transaction. The snapshot
-    // guard runs before the event insert so a duplicate cannot mutate it.
-    await executor.batch([
-      {
-        sql: `INSERT INTO bundle_installations (${columns.join(", ")})
-          SELECT ${d1Placeholders(columns.length)}
-          WHERE NOT EXISTS (SELECT 1 FROM bundle_events WHERE id = json_extract(?, '$'))
-          ON CONFLICT(install_id) DO UPDATE SET ${columns
-            .filter((column) => column !== "install_id")
-            .map((column) => `${column} = excluded.${column}`)
-            .join(", ")}
-          WHERE (excluded.received_at_ms, excluded.id) >
-            (bundle_installations.received_at_ms, bundle_installations.id)`,
-        params: encodeD1Values([...Object.values(installation), event.id]),
-      },
-      {
-        ...eventInsert,
-        sql: eventInsert.sql.replace(
-          " RETURNING *",
-          " ON CONFLICT(id) DO NOTHING",
-        ),
-      },
-    ]);
+  async recordInsights({ event }) {
+    const query = insertQuery({ model: "bundle_events", data: event });
+    await executor.query(
+      query.sql.replace(" RETURNING *", " ON CONFLICT(id) DO NOTHING"),
+      query.params,
+    );
+  },
+  async findLatestInsightsEvents(input) {
+    const where = buildD1Where(latestInsightsWhere(input));
+    const rows = await executor.query(
+      `${"SELECT * FROM bundle_events"}${where.sql} AND NOT EXISTS (SELECT 1 FROM bundle_events AS newer WHERE newer.install_id = bundle_events.install_id AND (newer.received_at_ms > bundle_events.received_at_ms OR (newer.received_at_ms = bundle_events.received_at_ms AND newer.id > bundle_events.id))) ORDER BY install_id ASC LIMIT json_extract(?, '$')`,
+      [
+        ...where.params,
+        ...encodeD1Values(["installId" in input ? 1 : input.limit]),
+      ],
+    );
+    return rows.map((row) => parseD1Row("bundle_events", row));
+  },
+  async countLatestInsightsEvents(input) {
+    const groups = latestInsightsCountGroups(input).map(buildD1Where);
+    const where = {
+      sql: ` WHERE (${groups.map((group) => `(${group.sql.replace(/^ WHERE /, "")})`).join(" OR ")})`,
+      params: groups.flatMap((group) => group.params),
+    };
+    const rows = await executor.query(
+      `SELECT COUNT(*) AS count FROM bundle_events${where.sql} AND NOT EXISTS (SELECT 1 FROM bundle_events AS newer WHERE newer.install_id = bundle_events.install_id AND (newer.received_at_ms > bundle_events.received_at_ms OR (newer.received_at_ms = bundle_events.received_at_ms AND newer.id > bundle_events.id)))`,
+      where.params,
+    );
+    const first = rows[0];
+    const count =
+      typeof first === "object" && first !== null
+        ? Reflect.get(first, "count")
+        : undefined;
+    if (typeof count !== "number")
+      throw new Error("Invalid Insights count result.");
+    return count;
   },
   async create(input) {
     const query = insertQuery(input);
@@ -683,8 +697,7 @@ export const createD1Implementation = (
         return parseD1Row("channels", rows[0]);
       case "bundle_events":
         return parseD1Row("bundle_events", rows[0]);
-      case "bundle_installations":
-        return parseD1Row("bundle_installations", rows[0]);
+
       case "api_keys":
         return parseD1Row("api_keys", rows[0]);
       case "releases":
@@ -706,8 +719,6 @@ export const createD1Implementation = (
         return parseD1Row("releases", rows[0]);
       case "release_catalogs":
         return parseD1Row("release_catalogs", rows[0]);
-      case "bundle_installations":
-        return parseD1Row("bundle_installations", rows[0]);
     }
   },
   async delete(input) {
@@ -735,8 +746,6 @@ export const createD1Implementation = (
         return parseD1Row("releases", rows[0]);
       case "release_catalogs":
         return parseD1Row("release_catalogs", rows[0]);
-      case "bundle_installations":
-        return parseD1Row("bundle_installations", rows[0]);
     }
   },
   findMany: (input) => findManyD1Rows(executor, input),

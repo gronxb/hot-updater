@@ -77,10 +77,10 @@ const missingDatabase = createDatabasePlugin({
       listEvents: async () => {
         throw new Error("database plugin is required");
       },
-      findInstallations: async () => {
+      findLatestEvents: async () => {
         throw new Error("database plugin is required");
       },
-      countInstallations: async () => {
+      countLatestEvents: async () => {
         throw new Error("database plugin is required");
       },
       countEvents: async () => {

@@ -70,7 +70,6 @@ export const DATABASE_PLUGIN_TEST_SCHEMA_SQL = `
     type text not null,
     install_id text not null,
     user_id text,
-    username text,
     from_release_id text,
     from_bundle_id text,
     to_release_id text,
@@ -78,25 +77,7 @@ export const DATABASE_PLUGIN_TEST_SCHEMA_SQL = `
     platform text not null,
     app_version text not null,
     channel text not null,
-    cohort text not null,
-    update_strategy text,
-    fingerprint_hash text,
-    sdk_version text,
-    received_at_ms integer not null
-  );
-  create table bundle_installations (
-    install_id varchar(255) primary key,
-    id text not null,
-    user_id text,
-    username text,
-    to_bundle_id text not null,
-    pending_bundle_id text,
-    pending_release_id text,
-    type text not null,
-    platform text not null,
-    app_version text not null,
-    channel text not null,
-    cohort text not null,
+    metadata jsonb not null,
     received_at_ms integer not null
   );
   create table api_keys (
@@ -112,7 +93,6 @@ export const DATABASE_PLUGIN_TEST_SCHEMA_SQL = `
 
 export const DATABASE_PLUGIN_TEST_RESET_SQL = `
   delete from bundle_events;
-  delete from bundle_installations;
   delete from api_keys;
   delete from bundle_patches;
   delete from release_catalogs;

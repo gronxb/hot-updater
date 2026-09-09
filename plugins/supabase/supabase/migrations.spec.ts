@@ -2,7 +2,6 @@ import fs from "node:fs/promises";
 import path from "node:path";
 
 import { PGlite } from "@electric-sql/pglite";
-import { toInsightsInstallationRow } from "@hot-updater/plugin-core";
 import { describe, expect, it } from "vitest";
 
 import { createBundleEventRowFixture } from "../../../packages/test-utils/src/databaseTestFixtures";
@@ -27,10 +26,10 @@ const readMigrations = async () => {
 };
 
 describe("Supabase v1 schema", () => {
-  it("initializes 1.0.0 and atomically records retries through the service-role RPC", async () => {
+  it("initializes 1.0.0 and selects latest events through a service-role view", async () => {
     const database = new PGlite();
     const event = createBundleEventRowFixture("9301", 100);
-    const installation = toInsightsInstallationRow(event);
+    const installation = event;
     try {
       await database.exec(
         "CREATE ROLE anon; CREATE ROLE authenticated; CREATE ROLE service_role;",
@@ -46,8 +45,8 @@ describe("Supabase v1 schema", () => {
       ).toEqual([{ value: "1.0.0" }]);
       const record = (row: typeof event) =>
         database.query(
-          "SELECT public.hot_updater_v1_record_insights($1::jsonb, $2::jsonb)",
-          [JSON.stringify(row), JSON.stringify(toInsightsInstallationRow(row))],
+          "INSERT INTO public.hot_updater_v1_bundle_events SELECT * FROM jsonb_populate_record(NULL::public.hot_updater_v1_bundle_events, $1::jsonb) ON CONFLICT (id) DO NOTHING",
+          [JSON.stringify(row)],
         );
       await record(event);
       const reusedId = {
@@ -59,7 +58,7 @@ describe("Supabase v1 schema", () => {
       expect(
         (
           await database.query(
-            "SELECT * FROM public.hot_updater_v1_bundle_installations",
+            "SELECT * FROM public.hot_updater_v1_latest_bundle_events",
           )
         ).rows,
       ).toEqual([installation]);
@@ -69,12 +68,12 @@ describe("Supabase v1 schema", () => {
         received_at_ms: 200,
       };
       await database.exec(`
-        CREATE FUNCTION fail_insights_snapshot() RETURNS trigger LANGUAGE plpgsql AS $$
-        BEGIN RAISE EXCEPTION 'injected snapshot failure'; END; $$;
-        CREATE TRIGGER fail_insights_snapshot BEFORE INSERT ON public.hot_updater_v1_bundle_installations
-        FOR EACH ROW EXECUTE FUNCTION fail_insights_snapshot();
+        CREATE FUNCTION fail_insights_event() RETURNS trigger LANGUAGE plpgsql AS $$
+        BEGIN RAISE EXCEPTION 'injected event failure'; END; $$;
+        CREATE TRIGGER fail_insights_event BEFORE INSERT ON public.hot_updater_v1_bundle_events
+        FOR EACH ROW EXECUTE FUNCTION fail_insights_event();
       `);
-      await expect(record(next)).rejects.toThrow("injected snapshot failure");
+      await expect(record(next)).rejects.toThrow("injected event failure");
       expect(
         (
           await database.query(
@@ -85,22 +84,22 @@ describe("Supabase v1 schema", () => {
       expect(
         (
           await database.query(
-            "SELECT * FROM public.hot_updater_v1_bundle_installations",
+            "SELECT * FROM public.hot_updater_v1_latest_bundle_events",
           )
         ).rows,
       ).toEqual([installation]);
       await database.exec(
-        "DROP TRIGGER fail_insights_snapshot ON public.hot_updater_v1_bundle_installations",
+        "DROP TRIGGER fail_insights_event ON public.hot_updater_v1_bundle_events",
       );
       await record(next);
       await record(next);
       expect(
         (
           await database.query(
-            "SELECT * FROM public.hot_updater_v1_bundle_installations",
+            "SELECT * FROM public.hot_updater_v1_latest_bundle_events",
           )
         ).rows,
-      ).toEqual([toInsightsInstallationRow(next)]);
+      ).toEqual([next]);
       expect(
         (
           await database.query(
@@ -111,14 +110,14 @@ describe("Supabase v1 schema", () => {
       expect(
         (
           await database.query(
-            "SELECT has_function_privilege('anon', 'public.hot_updater_v1_record_insights(jsonb,jsonb)', 'EXECUTE') AS allowed",
+            "SELECT has_table_privilege('anon', 'public.hot_updater_v1_latest_bundle_events', 'SELECT') AS allowed",
           )
         ).rows,
       ).toEqual([{ allowed: false }]);
       expect(
         (
           await database.query(
-            "SELECT has_function_privilege('service_role', 'public.hot_updater_v1_record_insights(jsonb,jsonb)', 'EXECUTE') AS allowed",
+            "SELECT has_table_privilege('service_role', 'public.hot_updater_v1_latest_bundle_events', 'SELECT') AS allowed",
           )
         ).rows,
       ).toEqual([{ allowed: true }]);
@@ -127,7 +126,7 @@ describe("Supabase v1 schema", () => {
     }
   });
 
-  it("persists pending downloads and clears them when applied through the RPC", async () => {
+  it("selects downloaded and applied events without a stored installation row", async () => {
     const database = new PGlite();
     try {
       await database.exec(
@@ -140,25 +139,22 @@ describe("Supabase v1 schema", () => {
         ...base,
         type: "UPDATE_DOWNLOADED" as const,
         from_bundle_id: "00000000-0000-7000-8000-000000001001",
-        update_strategy: "appVersion" as const,
+        metadata: { ...base.metadata, update_strategy: "appVersion" as const },
       };
       const record = (event: typeof base) =>
         database.query(
-          "SELECT public.hot_updater_v1_record_insights($1::jsonb, $2::jsonb)",
-          [
-            JSON.stringify(event),
-            JSON.stringify(toInsightsInstallationRow(event)),
-          ],
+          "INSERT INTO public.hot_updater_v1_bundle_events SELECT * FROM jsonb_populate_record(NULL::public.hot_updater_v1_bundle_events, $1::jsonb) ON CONFLICT (id) DO NOTHING",
+          [JSON.stringify(event)],
         );
       await record(downloaded);
       await record(downloaded);
       expect(
         (
           await database.query(
-            "SELECT * FROM public.hot_updater_v1_bundle_installations",
+            "SELECT * FROM public.hot_updater_v1_latest_bundle_events",
           )
         ).rows,
-      ).toEqual([toInsightsInstallationRow(downloaded)]);
+      ).toEqual([downloaded]);
       const applied = {
         ...downloaded,
         id: createBundleEventRowFixture("9402", 200).id,
@@ -170,10 +166,10 @@ describe("Supabase v1 schema", () => {
       expect(
         (
           await database.query(
-            "SELECT * FROM public.hot_updater_v1_bundle_installations",
+            "SELECT * FROM public.hot_updater_v1_latest_bundle_events",
           )
         ).rows,
-      ).toEqual([toInsightsInstallationRow(applied)]);
+      ).toEqual([applied]);
       expect(
         (
           await database.query(
@@ -183,9 +179,9 @@ describe("Supabase v1 schema", () => {
       ).toEqual([{ count: 2 }]);
       await expect(
         database.query(
-          "UPDATE public.hot_updater_v1_bundle_installations SET type = 'UPDATE_DOWNLOADED'",
+          "UPDATE public.hot_updater_v1_bundle_events SET type = 'UNCHANGED'",
         ),
-      ).rejects.toThrow(/pending_check/);
+      ).rejects.toThrow(/bundle_events_shape_check/);
     } finally {
       await database.close();
     }
@@ -208,15 +204,14 @@ describe("Supabase v1 schema", () => {
       "CREATE TABLE public.hot_updater_v1_release_catalogs",
     );
     expect(sql).toContain("CREATE TABLE public.hot_updater_v1_bundle_events");
+    expect(sql).not.toContain("bundle_installations");
     expect(sql).toContain(
-      "CREATE TABLE public.hot_updater_v1_bundle_installations",
+      "CREATE VIEW public.hot_updater_v1_latest_bundle_events",
     );
     expect(sql).toContain(
-      "hot_updater_v1_bundle_installations(user_id, install_id)",
+      "hot_updater_v1_bundle_events(install_id, received_at_ms, id)",
     );
-    expect(sql).toContain(
-      "hot_updater_v1_bundle_installations(received_at_ms)",
-    );
+    expect(sql).toContain("hot_updater_v1_bundle_events(user_id, install_id)");
     expect(sql).toContain(
       "hot_updater_v1_bundle_events(install_id, type, received_at_ms, id)",
     );
@@ -225,15 +220,6 @@ describe("Supabase v1 schema", () => {
     );
     expect(sql).toContain(
       "hot_updater_v1_bundle_events(type, platform, channel, to_bundle_id, received_at_ms, id)",
-    );
-    expect(sql).toContain(
-      "hot_updater_v1_bundle_installations(platform, channel, received_at_ms)",
-    );
-    expect(sql).toContain(
-      "hot_updater_v1_bundle_installations(platform, channel, to_bundle_id, received_at_ms)",
-    );
-    expect(sql).toContain(
-      "CREATE FUNCTION public.hot_updater_v1_record_insights(p_event jsonb, p_installation jsonb)",
     );
     expect(sql).toContain("CREATE TABLE public.hot_updater_v1_api_keys");
     expect(sql).toContain(
@@ -290,7 +276,6 @@ describe("Supabase v1 schema", () => {
         expect.arrayContaining([
           "hot_updater_v1_bundles",
           "hot_updater_v1_bundle_events",
-          "hot_updater_v1_bundle_installations",
           "hot_updater_v1_bundle_patches",
           "hot_updater_v1_channels",
           "hot_updater_v1_api_keys",

@@ -1,7 +1,12 @@
+import type { BundleEventRow } from "@hot-updater/plugin-core";
 import {
   createDatabasePlugin,
   DatabasePluginInputError,
 } from "@hot-updater/plugin-core";
+import {
+  latestInsightsWhere,
+  latestInsightsCountGroups,
+} from "@hot-updater/plugin-core/internal";
 import type {
   CountDatabaseImplementationInput,
   CreateDatabaseImplementationInput,
@@ -23,6 +28,7 @@ import {
   type SupabaseServiceRoleConfig,
 } from "./supabaseConfig";
 import { buildSupabaseFilter } from "./supabaseFilter";
+import { SUPABASE_LATEST_EVENTS_VIEW } from "./supabaseInfrastructureNames";
 import {
   SUPABASE_V1_FUNCTION_NAMES,
   SUPABASE_V1_TABLE_NAMES,
@@ -41,12 +47,43 @@ const createSupabaseImplementation = (
   supabase: SupabaseClient<Database>,
 ): DatabasePluginImplementation => {
   const implementation: DatabasePluginImplementation = {
-    async recordInsights({ event, installation }) {
-      const { error } = await supabase.rpc(
-        SUPABASE_V1_FUNCTION_NAMES.recordInsights,
-        { p_event: event, p_installation: installation },
-      );
+    async recordInsights({ event }) {
+      const { error } = await supabase
+        .from(SUPABASE_V1_TABLE_NAMES.bundleEvents)
+        .upsert(event, { onConflict: "id", ignoreDuplicates: true });
       throwSupabaseError("record insights", error);
+    },
+    async findLatestInsightsEvents(input) {
+      const limit = "installId" in input ? 1 : input.limit;
+      const rows: BundleEventRow[] = [];
+      const filter = buildSupabaseFilter(latestInsightsWhere(input));
+      while (rows.length < limit) {
+        let query = supabase.from(SUPABASE_LATEST_EVENTS_VIEW).select("*");
+        if (filter !== undefined) query = query.or(filter);
+        const { data, error } = await query
+          .order("install_id", { ascending: true })
+          .range(rows.length, limit - 1);
+        throwSupabaseError("find latest insights events", error);
+        if (data === null)
+          throw new SupabaseMissingDataError("find latest insights events");
+        if (data.length === 0) break;
+        rows.push(...data);
+      }
+      return rows;
+    },
+    async countLatestInsightsEvents(input) {
+      let query = supabase
+        .from(SUPABASE_LATEST_EVENTS_VIEW)
+        .select("*", { count: "exact", head: true });
+      const filter = latestInsightsCountGroups(input)
+        .map(buildSupabaseFilter)
+        .join(",");
+      if (filter !== undefined) query = query.or(filter);
+      const { count, error } = await query;
+      throwSupabaseError("count latest insights events", error);
+      if (count === null)
+        throw new SupabaseMissingDataError("count latest insights events");
+      return count;
     },
     async create(input: CreateDatabaseImplementationInput) {
       switch (input.model) {
@@ -109,25 +146,7 @@ const createSupabaseImplementation = (
           }
           return data;
         }
-        case "bundle_installations": {
-          const query =
-            input.onConflict === "ignore"
-              ? supabase
-                  .from(SUPABASE_V1_TABLE_NAMES.bundleInstallations)
-                  .upsert(input.data, {
-                    onConflict: "install_id",
-                    ignoreDuplicates: true,
-                  })
-              : supabase
-                  .from(SUPABASE_V1_TABLE_NAMES.bundleInstallations)
-                  .insert(input.data);
-          const { data, error } = await query.select("*").maybeSingle();
-          throwSupabaseError("create bundle_installations", error);
-          if (data === null && input.onConflict !== "ignore") {
-            throw new SupabaseMissingDataError("create bundle_installations");
-          }
-          return data ?? input.data;
-        }
+
         case "releases": {
           const { data, error } = await supabase
             .from(SUPABASE_V1_TABLE_NAMES.releases)
@@ -201,15 +220,7 @@ const createSupabaseImplementation = (
         throwSupabaseError("update release_catalogs", error);
         return data;
       }
-      if (input.model === "bundle_installations") {
-        let query = supabase
-          .from(SUPABASE_V1_TABLE_NAMES.bundleInstallations)
-          .update(input.update);
-        if (filter !== undefined) query = query.or(filter);
-        const { data, error } = await query.select("*").maybeSingle();
-        throwSupabaseError("update bundle_installations", error);
-        return data;
-      }
+
       let query = supabase
         .from(SUPABASE_V1_TABLE_NAMES.bundles)
         .update(input.update);
@@ -269,14 +280,9 @@ const createSupabaseImplementation = (
           throwSupabaseError("count bundles", error);
           return count ?? 0;
         }
-        case "bundle_events":
-        case "bundle_installations": {
+        case "bundle_events": {
           let query = supabase
-            .from(
-              input.model === "bundle_events"
-                ? SUPABASE_V1_TABLE_NAMES.bundleEvents
-                : SUPABASE_V1_TABLE_NAMES.bundleInstallations,
-            )
+            .from(SUPABASE_V1_TABLE_NAMES.bundleEvents)
             .select("*", { count: "exact", head: true });
           if (filter !== undefined) query = query.or(filter);
           const { count, error } = await query;
@@ -362,15 +368,6 @@ const createSupabaseImplementation = (
           throwSupabaseError("findOne release_catalogs", error);
           return data;
         }
-        case "bundle_installations": {
-          let query = supabase
-            .from(SUPABASE_V1_TABLE_NAMES.bundleInstallations)
-            .select("*");
-          if (filter !== undefined) query = query.or(filter);
-          const { data, error } = await query.limit(1).maybeSingle();
-          throwSupabaseError("findOne bundle_installations", error);
-          return data;
-        }
       }
     },
     async findMany(input: FindManyDatabaseImplementationInput) {
@@ -397,18 +394,13 @@ const createSupabaseImplementation = (
           throwSupabaseError("findMany bundles", error);
           return data ?? [];
         }
-        case "bundle_events":
-        case "bundle_installations": {
+        case "bundle_events": {
           const rows: DatabaseImplementationResult[] = [];
           // PostgREST's max_rows can shorten a successful response. Only a
           // successful empty query proves that a short prefix is exhausted.
           while (rows.length < input.limit) {
             let query = supabase
-              .from(
-                input.model === "bundle_events"
-                  ? SUPABASE_V1_TABLE_NAMES.bundleEvents
-                  : SUPABASE_V1_TABLE_NAMES.bundleInstallations,
-              )
+              .from(SUPABASE_V1_TABLE_NAMES.bundleEvents)
               .select("*");
             if (filter !== undefined) query = query.or(filter);
             for (const clause of orderBy) {

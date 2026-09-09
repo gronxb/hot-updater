@@ -334,9 +334,7 @@ export const createMongoMigrator = (client: MongoClient): Migrator => {
               await ensureSettingsKeyIndex();
               for (const table of hotUpdaterSchema.tables) {
                 if (table.internal) continue;
-                const isInsights =
-                  table.ormName === "bundle_events" ||
-                  table.ormName === "bundle_installations";
+                const isInsights = table.ormName === "bundle_events";
                 const collection = db.collection(table.ormName);
                 const collation = isInsights ? { locale: "simple" } : undefined;
                 const primaryKey = table.columns.find(

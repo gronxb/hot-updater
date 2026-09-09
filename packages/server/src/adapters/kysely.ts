@@ -11,7 +11,6 @@ import type {
   ORMSQLProvider,
   RelationMode,
 } from "../db/types";
-import { runInsightsTransaction } from "./insightsTransaction";
 import { createKyselyCrud, recordKyselyInsights } from "./kyselyCrud";
 
 type KyselySQLProvider = Exclude<ORMSQLProvider, "mssql">;
@@ -32,14 +31,7 @@ const createImplementation = <TDatabase extends object>(
   const crud = createKyselyCrud(db, config.provider, relationMode);
   return {
     ...crud,
-    recordInsights: (input) =>
-      runInsightsTransaction(() =>
-        db
-          .transaction()
-          .execute((transaction) =>
-            recordKyselyInsights(transaction, config.provider, input),
-          ),
-      ),
+    recordInsights: (input) => recordKyselyInsights(db, config.provider, input),
     deleteChannel: (input) =>
       db
         .transaction()

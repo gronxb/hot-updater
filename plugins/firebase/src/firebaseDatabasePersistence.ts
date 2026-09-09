@@ -3,7 +3,6 @@ import type {
   BundlePatchRow,
   BundleRow,
   ChannelRow,
-  InsightsInstallationRow,
   ApiKeyRow,
   ReleaseCatalogRow,
   ReleaseRow,
@@ -32,7 +31,7 @@ export interface FirebaseDatabaseCollections {
   readonly bundles: CollectionReference<DocumentData>;
   readonly bundlePatches: CollectionReference<DocumentData>;
   readonly bundleEvents: CollectionReference<DocumentData>;
-  readonly bundleInstallations: CollectionReference<DocumentData>;
+  readonly insightsLatest: CollectionReference<DocumentData>;
   readonly channels: CollectionReference<DocumentData>;
   readonly apiKeys: CollectionReference<DocumentData>;
   readonly releaseCatalogs: CollectionReference<DocumentData>;
@@ -54,9 +53,7 @@ export const createFirebaseDatabaseCollections = (
   bundles: db.collection(FIREBASE_V1_COLLECTION_NAMES.bundles),
   bundlePatches: db.collection(FIREBASE_V1_COLLECTION_NAMES.bundlePatches),
   bundleEvents: db.collection(FIREBASE_V1_COLLECTION_NAMES.bundleEvents),
-  bundleInstallations: db.collection(
-    FIREBASE_V1_COLLECTION_NAMES.bundleInstallations,
-  ),
+  insightsLatest: db.collection(FIREBASE_V1_COLLECTION_NAMES.insightsLatest),
   channels: db.collection(FIREBASE_V1_COLLECTION_NAMES.channels),
   apiKeys: db.collection(FIREBASE_V1_COLLECTION_NAMES.apiKeys),
   releaseCatalogs: db.collection(FIREBASE_V1_COLLECTION_NAMES.releaseCatalogs),
@@ -66,7 +63,6 @@ export const createFirebaseDatabaseCollections = (
 
 type FixedRow =
   | BundleEventRow
-  | InsightsInstallationRow
   | BundlePatchRow
   | BundleRow
   | ChannelRow
@@ -74,8 +70,8 @@ type FixedRow =
   | ReleaseCatalogRow
   | ReleaseRow;
 type FixedModel =
+  | "insights_latest"
   | "bundle_events"
-  | "bundle_installations"
   | "bundle_patches"
   | "bundles"
   | "channels"
@@ -103,10 +99,8 @@ export const requireFirebaseDocumentKey = <TRow extends FixedRow>(
   row: TRow,
 ): TRow => {
   const key =
-    model === "bundle_installations"
-      ? firebaseInstallationDocumentId(
-          (row as InsightsInstallationRow).install_id,
-        )
+    model === "insights_latest"
+      ? firebaseInstallationDocumentId((row as BundleEventRow).install_id)
       : "id" in row
         ? row.id
         : row.scope_key;
@@ -123,8 +117,8 @@ const documentMap = <TRow extends FixedRow>(
   const rows = new Map<string, TRow>();
   for (const { row } of documents) {
     const key =
-      model === "bundle_installations"
-        ? (row as InsightsInstallationRow).install_id
+      model === "insights_latest"
+        ? (row as BundleEventRow).install_id
         : "id" in row
           ? row.id
           : row.scope_key;
@@ -247,7 +241,7 @@ const toSnapshot = (
     bundles: bundleMap(documents[0]),
     bundlePatches: patchMap(documents[1]),
     bundleEvents: new Map(),
-    bundleInstallations: new Map(),
+
     channels: channelMap(documents[2]),
     apiKeys: apiKeyMap(documents[3]),
     releases: releaseMap(documents[4]),
@@ -417,7 +411,7 @@ export const migrateFirebaseDatabase = async (
     collections.channels.limit(1).get(),
     collections.releases.limit(1).get(),
     collections.releaseCatalogs.limit(1).get(),
-    collections.bundleInstallations.limit(1).get(),
+    collections.insightsLatest.limit(1).get(),
     collections.bundleEvents.limit(1).get(),
   ]);
   if (existingCollections.some((snapshot) => !snapshot.empty)) {
