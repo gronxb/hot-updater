@@ -1327,10 +1327,10 @@ function readInsightsModel(database: BundleRepository): InsightsModel | null {
       : undefined;
   return typeof insights === "object" &&
     insights !== null &&
-    typeof Reflect.get(insights, "record") === "function" &&
+    typeof Reflect.get(insights, "recordEvent") === "function" &&
     typeof Reflect.get(insights, "listEvents") === "function" &&
-    typeof Reflect.get(insights, "findInstallations") === "function" &&
-    typeof Reflect.get(insights, "countInstallations") === "function" &&
+    typeof Reflect.get(insights, "findLatestEvents") === "function" &&
+    typeof Reflect.get(insights, "countLatestEvents") === "function" &&
     typeof Reflect.get(insights, "countEvents") === "function"
     ? (insights as InsightsModel)
     : null;

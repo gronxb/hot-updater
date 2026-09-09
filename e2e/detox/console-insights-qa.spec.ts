@@ -48,6 +48,7 @@ const createClient = (): ConsoleInsightsQaClient => ({
         measuredAtMs: event.receivedAtMs + 1,
       },
       appliedReports: { count: 1, measuredAtMs: event.receivedAtMs + 1 },
+      downloadedReports: { count: 0, measuredAtMs: event.receivedAtMs + 1 },
       recoveredReports: { count: 0, measuredAtMs: event.receivedAtMs + 1 },
       unchangedReports: { count: 0, measuredAtMs: event.receivedAtMs + 1 },
     },
@@ -196,6 +197,58 @@ describe("console insights E2E QA", () => {
       limit: 50,
       sinceMs: event.receivedAtMs - 86_400_000,
     });
+  });
+
+  it("verifies a download before apply in history, movement and bundle counts", async () => {
+    const client = createClient();
+    const downloaded = { ...event, type: "UPDATE_DOWNLOADED" as const };
+    const observed = { ...observedTransition, type: downloaded.type };
+    expect(readObservedInsightsEvent(observed, observed.observedAtMs)).toEqual(
+      observed,
+    );
+    vi.mocked(client.listEvents).mockResolvedValue({
+      ...emptyEventPage,
+      data: [downloaded],
+    });
+    vi.mocked(client.listInstallationEvents).mockResolvedValue({
+      ...emptyEventPage,
+      data: [downloaded],
+    });
+    const installation = await client.getInstallation({
+      installId: observed.installId,
+    });
+    vi.mocked(client.getInstallation).mockResolvedValue({
+      ...installation!,
+      lastKnownBundleId: downloaded.fromBundleId,
+    });
+    const overview = await client.getReportingOverview({
+      bundleId,
+      channel: event.channel,
+      platform: event.platform,
+      window: "24h",
+    });
+    vi.mocked(client.getReportingOverview).mockImplementation(
+      async (input) => ({
+        ...overview,
+        bundle: {
+          ...overview.bundle!,
+          bundleId: input.bundleId!,
+          downloadedReports: { count: 1, measuredAtMs: event.receivedAtMs + 1 },
+        },
+      }),
+    );
+    await expect(
+      verifyConsoleInsights(client, { observedEvents: [observed] }),
+    ).resolves.toMatchObject({
+      eventType: "UPDATE_DOWNLOADED",
+      outcomes: [
+        { bundleId, count: 1, eventId: event.id, outcome: "downloaded" },
+      ],
+    });
+    vi.mocked(client.listInstallationEvents).mockResolvedValue(emptyEventPage);
+    await expect(
+      verifyConsoleInsights(client, { observedEvents: [observed] }),
+    ).rejects.toMatchObject({ code: "inconsistent-data" });
   });
 
   it("verifies an unchanged report without inventing a movement", async () => {

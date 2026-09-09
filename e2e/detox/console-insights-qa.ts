@@ -12,7 +12,11 @@ type InsightsEvent = {
   readonly platform: "ios" | "android";
   readonly receivedAtMs: number;
   readonly toBundleId: string;
-  readonly type: "RECOVERED" | "UNCHANGED" | "UPDATE_APPLIED";
+  readonly type:
+    | "RECOVERED"
+    | "UNCHANGED"
+    | "UPDATE_APPLIED"
+    | "UPDATE_DOWNLOADED";
 };
 
 type Installation = {
@@ -57,6 +61,7 @@ export const readObservedInsightsEvent = (
     typeof event.userId !== "string" ||
     (event.type !== "RECOVERED" &&
       event.type !== "UNCHANGED" &&
+      event.type !== "UPDATE_DOWNLOADED" &&
       event.type !== "UPDATE_APPLIED")
   ) {
     return null;
@@ -209,7 +214,7 @@ export const verifyConsoleInsights = async (
     ),
   ]);
   const movement =
-    event.type !== "UPDATE_APPLIED" && event.type !== "RECOVERED"
+    event.type === "UNCHANGED"
       ? undefined
       : await readCursorPagesUntil(
           (cursor) =>
@@ -228,8 +233,7 @@ export const verifyConsoleInsights = async (
     installation?.installId !== observed.installId ||
     installation.userId !== observed.userId ||
     userInstallation === undefined ||
-    ((event.type === "UPDATE_APPLIED" || event.type === "RECOVERED") &&
-      movement === undefined)
+    (event.type !== "UNCHANGED" && movement === undefined)
   ) {
     throw new ConsoleInsightsQaError(
       "inconsistent-data",
@@ -275,7 +279,9 @@ export const verifyConsoleInsights = async (
         ? "recovered"
         : observedOutcome.type === "UNCHANGED"
           ? "unchanged"
-          : "applied";
+          : observedOutcome.type === "UPDATE_DOWNLOADED"
+            ? "downloaded"
+            : "applied";
     const bundle: InsightsBundleSelection = {
       bundleId,
       channel: observedOutcome.channel,
