@@ -1,9 +1,9 @@
 {
-  "title": "v1 (Latest)",
-  "description": "Hot Updater 1.x documentation",
+  "title": "Latest",
+  "description": "Current Hot Updater documentation",
   "icon": "Book",
   "root": true,
-  "pagesIndex": "[v1 (Latest)](/docs/get-started/introduction)",
+  "pagesIndex": "[Latest](/docs/get-started/introduction)",
   "pages": [
     "get-started",
     "---Hosting---",

@@ -37,7 +37,7 @@ export function TerminalEmulator({ config, onReady }: TerminalEmulatorProps) {
         Math.floor((container.clientWidth - 2) / cellWidth),
       );
       term.options.fontSize = fontSize;
-      term.resize(Math.min(config?.cols ?? cols, cols), config?.rows ?? 16);
+      term.resize(Math.min(config?.cols ?? cols, cols), config?.rows ?? 20);
       term.scrollToBottom();
     };
 
@@ -54,7 +54,8 @@ export function TerminalEmulator({ config, onReady }: TerminalEmulatorProps) {
         disableStdin: true,
         fontFamily: "Geist Mono, monospace",
         fontSize: 13,
-        rows: 16,
+        lineHeight: 1.2,
+        rows: 20,
         cols: 50,
         ...config,
         theme: { ...DEFAULT_THEME, ...config?.theme },

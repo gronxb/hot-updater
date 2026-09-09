@@ -6,7 +6,7 @@ guide; do not duplicate its page inventory here.
 
 ## Scope and structure
 
-- Current v1 documentation lives in `content/docs/(latest)` and is served at
+- Current documentation lives in `content/docs/(latest)` and is served at
   `/docs/...`. Leave `content/docs/v0` unchanged unless explicitly requested.
 - Keep v0/v1 comparisons and transition steps in `guides/upgrade-to-v1.mdx`.
   Preserve literal resource names, API paths and protocol identifiers.

@@ -38,9 +38,9 @@ export async function runDeployDemo(
   clack.write("\n\n");
   await clack.pause(200);
   clack.note("Deployment", [
-    `Platform: ${cyan("iOS")}`,
-    `Channel: ${blue(DEMO_CONFIG.channel)}`,
-    `Rollout: ${green("100%")}`,
+    `Platform:           ${cyan("iOS")}`,
+    `Channel:            ${blue(DEMO_CONFIG.channel)}`,
+    `Rollout:            ${green("100%")}`,
     `Target app version: ${magenta(DEMO_CONFIG.appVersion)}`,
   ]);
 
@@ -60,7 +60,10 @@ export async function runDeployDemo(
     500,
   );
 
-  const id = `${gray("  ID:")}\n${yellow(DEMO_UPDATE_ID)}`;
+  const id =
+    terminal.cols >= 43
+      ? `   ${gray("ID:")} ${yellow(DEMO_UPDATE_ID)}`
+      : `   ${gray("ID:")}\n${yellow(DEMO_UPDATE_ID)}`;
   clack.outro(`${green("Deployment successful")}\n${id}`);
   await clack.finish();
 }

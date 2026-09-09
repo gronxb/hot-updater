@@ -1,6 +1,6 @@
 ---
 title: "Set up with an agent"
-description: "Ask a coding agent to install v1, provision infrastructure, connect your app and verify an OTA update."
+description: "Ask a coding agent to install Hot Updater, provision infrastructure, connect your app and verify an OTA update."
 icon: Bot
 ---
 
@@ -20,7 +20,7 @@ from the app's project directory:
 npx skills@latest add hot-updater/skills
 ```
 
-The skill gives the agent the workflow. Setup requires a compatible v1 CLI and
+The skill gives the agent the workflow. Setup requires a compatible CLI and
 access to your provider account. The request below authorizes package installation;
 the agent verifies the CLI's version and commands before provisioning.
 
@@ -29,7 +29,7 @@ the agent verifies the CLI's version and commands before provisioning.
 Ask for the complete setup and test:
 
 ```text
-$hot-updater Install Hot Updater v1 and set up this app, including its infrastructure.
+$hot-updater Install Hot Updater and set up this app, including its infrastructure.
 Use HotUpdater.init with a custom flow; verify OTA and rollback in a native Release build on a test channel.
 ```
 
@@ -79,10 +79,10 @@ available setup work and identify the exact remaining device check.
 
 ## Upgrade existing infrastructure
 
-For an existing v1 server, ask:
+To update an existing server, ask:
 
 ```text
-$hot-updater Upgrade this project's existing server to the latest stable v1, preserving resources and verifying authenticated client access.
+$hot-updater Upgrade this project's existing server to the latest stable release, preserving resources and verifying authenticated client access.
 ```
 
 The agent follows
