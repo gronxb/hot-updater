@@ -22,7 +22,7 @@ export const infraBootstrap = (operation: AgentInfraOperation) =>
     "ENVIRONMENT.md explains each variable's purpose, conditions and source. Never request secrets in chat: use provider login or ask the user to save credentials directly in a private local file, then verify access without printing values. Do not require users to fill fields or create resources the agent can discover or prepare.",
     operation === "upgrade"
       ? "Read upgrades/README.md and all relevant upgrades/<version>.md files in ascending order before applying changes. Include the installed generation's baseline as context and every later requirement through the target. Preserve resource IDs, data, secrets and customizations."
-      : "Discover actual tool capabilities and ask for missing access. Scaffolding does not deploy resources or install packages. Continue with the provider guide to complete deployment and verification.",
+      : 'Discover actual tool capabilities and ask for missing access. Scaffolding does not deploy resources or install packages. Continue with the provider guide to complete deployment and verification. Provision or reuse the client API key. Finish with a ready-to-copy HotUpdater.init snippet containing the verified baseURL and actual registered client key in requestHeaders["x-api-key"], as described in common.report. Keep provider, service-role, admin and signing credentials private.',
   ].join("\n");
 
 export async function handleAgentInfra(
