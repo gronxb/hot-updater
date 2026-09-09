@@ -126,7 +126,7 @@ export function isDatabasePlugin(plugin: unknown): plugin is DatabasePlugin {
     "insights" in plugin.models &&
     typeof plugin.models.insights === "object" &&
     plugin.models.insights !== null &&
-    "record" in plugin.models.insights &&
+    "recordEvent" in plugin.models.insights &&
     typeof plugin.models.insights.recordEvent === "function" &&
     "listEvents" in plugin.models.insights &&
     typeof plugin.models.insights.listEvents === "function" &&

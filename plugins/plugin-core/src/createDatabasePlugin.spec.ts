@@ -124,7 +124,7 @@ describe("createDatabasePlugin", () => {
       "countLatestEvents",
       "findLatestEvents",
       "listEvents",
-      "record",
+      "recordEvent",
     ]);
     expect(plugin.models.apiKeys.findByHash).toBeTypeOf("function");
     expect(plugin.commit).toBeTypeOf("function");

@@ -97,7 +97,7 @@ describe("createHotUpdater Insights", () => {
     vi.setSystemTime(new Date("2026-08-12T00:00:00.000Z"));
     const receivedAtMs = Date.now();
     const database = createInMemoryDatabasePlugin();
-    const append = vi.spyOn(database.models.insights, "record");
+    const append = vi.spyOn(database.models.insights, "recordEvent");
     const hotUpdater = createHotUpdater({
       database,
       clientAccess: { type: "public" },
@@ -314,7 +314,7 @@ describe("createHotUpdater Insights", () => {
 
   it("records same-file selection as no change and rejects a fourth event type", async () => {
     const database = createInMemoryDatabasePlugin();
-    const record = vi.spyOn(database.models.insights, "record");
+    const recordEvent = vi.spyOn(database.models.insights, "recordEvent");
     const hotUpdater = createHotUpdater({
       database,
       clientAccess: { type: "public" },
@@ -327,7 +327,7 @@ describe("createHotUpdater Insights", () => {
     expect(
       (await hotUpdater.handlers.client(eventRequest(selection))).status,
     ).toBe(204);
-    expect(record).toHaveBeenCalledWith({
+    expect(recordEvent).toHaveBeenCalledWith({
       event: expect.objectContaining({
         type: "UNCHANGED",
         from_bundle_id: null,
@@ -346,7 +346,7 @@ describe("createHotUpdater Insights", () => {
       }),
     );
     expect(response.status).toBe(400);
-    expect(record).toHaveBeenCalledTimes(1);
+    expect(recordEvent).toHaveBeenCalledTimes(1);
   });
 
   it("returns a stable client error for malformed event payloads", async () => {

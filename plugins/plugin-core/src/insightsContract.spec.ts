@@ -49,8 +49,8 @@ const createModel = (overrides: Partial<InsightsModel>) => {
 
 describe("public Insights validation", () => {
   it("prevents malformed Unicode and noncanonical event IDs from reaching providers", async () => {
-    const record = vi.fn(async () => undefined);
-    const model = createModel({ record });
+    const recordEvent = vi.fn(async () => undefined);
+    const model = createModel({ recordEvent });
     for (const invalid of [
       { ...event, install_id: "broken-\ud800" },
       { ...event, user_id: "broken-\udc00" },
@@ -63,7 +63,7 @@ describe("public Insights validation", () => {
         }),
       ).rejects.toMatchObject({ code: "invalid-data" });
     }
-    expect(record).not.toHaveBeenCalled();
+    expect(recordEvent).not.toHaveBeenCalled();
   });
 
   it.each([
