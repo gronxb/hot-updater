@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import {
   createCrashRecoveryArtifactNames,
@@ -7,7 +7,6 @@ import {
 } from "./crash-recovery-wait.ts";
 import type {
   CrashRecoveryDiagnostics,
-  LaunchReportState,
   MetadataState,
 } from "./crash-recovery-wait.ts";
 
@@ -70,6 +69,25 @@ function recoveredDiagnostics(): CrashRecoveryDiagnostics {
   };
 }
 
+function waitOptions(
+  overrides: Partial<Parameters<typeof waitForCrashRecoveryState>[0]> = {},
+) {
+  return {
+    attempts: 3,
+    crashedBundleId: "crashed-1",
+    createTimeoutError: () => new Error("recovery timed out"),
+    getLaunchReportState,
+    getMetadataState: metadataState,
+    isAndroidRecoveryReady: vi.fn(() => true),
+    platform: "android" as const,
+    pollIntervalMs: 250,
+    readDiagnostics: vi.fn(() => pendingDiagnostics()),
+    sleepMs: vi.fn(async () => {}),
+    stableBundleId: "stable-1",
+    ...overrides,
+  };
+}
+
 describe("crash recovery wait", () => {
   it("reads directional bundle ids from the native launch report", () => {
     expect(
@@ -85,62 +103,127 @@ describe("crash recovery wait", () => {
     });
   });
 
-  it("stops polling when the control client aborts the recovery wait", async () => {
-    // Given: Android recovery has not reached the expected state yet.
-    const abortController = new AbortController();
-    const readCounts: string[] = [];
-    const sleeps: number[] = [];
+  it("times out with native diagnostics when Android does not restart itself", async () => {
+    const diagnostics = pendingDiagnostics();
+    const createTimeoutError = vi.fn(() => new Error("recovery timed out"));
+    const options = {
+      ...waitOptions({
+        createTimeoutError,
+        readDiagnostics: vi.fn(() => diagnostics),
+      }),
+      // A launch dependency from an older caller must never repair the app under test.
+      launchAndroidApp: vi.fn(() => {
+        throw new Error("test harness relaunched app");
+      }),
+    };
 
-    // When: the client timeout aborts during the first poll sleep.
-    const result = waitForCrashRecoveryState({
-      androidLaunchSettleMs: 2000,
-      attempts: 10,
+    await expect(waitForCrashRecoveryState(options)).rejects.toThrow(
+      "recovery timed out",
+    );
+
+    expect(options.launchAndroidApp).not.toHaveBeenCalled();
+    expect(options.isAndroidRecoveryReady).not.toHaveBeenCalled();
+    expect(options.sleepMs).toHaveBeenCalledTimes(3);
+    expect(createTimeoutError).toHaveBeenCalledWith({
+      attempts: 3,
       crashedBundleId: "crashed-1",
-      createTimeoutError: () => new Error("timed out"),
-      getLaunchReportState: (): LaunchReportState => ({
-        fromBundleId: null,
-        status: null,
-        toBundleId: null,
-      }),
-      getMetadataState: (): MetadataState => ({
-        stagingBundleId: null,
-        verificationPending: null,
-      }),
-      isAndroidAppRunning: () => false,
-      launchAndroidApp: () => {
-        readCounts.push("launch");
-      },
-      platform: "android",
-      pollIntervalMs: 1000,
-      readDiagnostics: () => {
-        readCounts.push("read");
-        return pendingDiagnostics();
-      },
-      signal: abortController.signal,
-      sleepMs: (_durationMs, signal) => {
-        sleeps.push(_durationMs);
-        expect(signal).toBe(abortController.signal);
-        abortController.abort(new Error("client timed out"));
-        throw new Error("Control job cancelled: client timed out");
-      },
       stableBundleId: "stable-1",
+      ...diagnostics,
+    });
+  });
+
+  it("observes delayed native recovery before checking the automatically restarted process", async () => {
+    const readDiagnostics = vi
+      .fn()
+      .mockReturnValueOnce(pendingDiagnostics())
+      .mockReturnValue(recoveredDiagnostics());
+    const isAndroidRecoveryReady = vi
+      .fn()
+      .mockReturnValueOnce(false)
+      .mockReturnValue(true);
+    const options = waitOptions({ readDiagnostics, isAndroidRecoveryReady });
+
+    await expect(waitForCrashRecoveryState(options)).resolves.toEqual({});
+
+    expect(readDiagnostics).toHaveBeenCalledTimes(3);
+    expect(isAndroidRecoveryReady).toHaveBeenCalledTimes(2);
+    expect(options.sleepMs).toHaveBeenCalledTimes(2);
+    expect(options.sleepMs).toHaveBeenNthCalledWith(1, 250, undefined);
+    expect(options.sleepMs).toHaveBeenNthCalledWith(2, 250, undefined);
+  });
+
+  it("does not pass recovered files while the Android process is dead or not ready", async () => {
+    const options = waitOptions({
+      readDiagnostics: vi.fn(() => recoveredDiagnostics()),
+      isAndroidRecoveryReady: vi.fn(() => false),
     });
 
-    // Then: no background poll continues into later scenarios.
-    await expect(result).rejects.toThrow("client timed out");
-    expect(readCounts).toEqual(["read", "launch"]);
-    expect(sleeps).toEqual([2000]);
+    await expect(waitForCrashRecoveryState(options)).rejects.toThrow(
+      "recovery timed out",
+    );
+    expect(options.isAndroidRecoveryReady).toHaveBeenCalledTimes(3);
+  });
+
+  it("waits for the directional report when metadata is visible first", async () => {
+    const recovered = recoveredDiagnostics();
+    const readDiagnostics = vi
+      .fn()
+      .mockReturnValueOnce({
+        ...recovered,
+        launchReport: pendingDiagnostics().launchReport,
+      })
+      .mockReturnValueOnce({
+        ...recovered,
+        launchReport: {
+          ...recovered.launchReport,
+          value: {
+            ...recovered.launchReport.value,
+            fromBundleId: "unrelated-crash",
+          },
+        },
+      })
+      .mockReturnValue(recovered);
+    const options = waitOptions({ readDiagnostics });
+
+    await expect(waitForCrashRecoveryState(options)).resolves.toEqual({});
+    expect(options.isAndroidRecoveryReady).toHaveBeenCalledTimes(1);
+    expect(options.sleepMs).toHaveBeenCalledTimes(2);
+  });
+
+  it("stops reading when the client aborts during a poll sleep", async () => {
+    const abortController = new AbortController();
+    const options = waitOptions({
+      signal: abortController.signal,
+      sleepMs: vi.fn(async (_durationMs, signal) => {
+        expect(signal).toBe(abortController.signal);
+        abortController.abort(new Error("client timed out"));
+      }),
+    });
+
+    await expect(waitForCrashRecoveryState(options)).rejects.toThrow(
+      "client timed out",
+    );
+    expect(options.readDiagnostics).toHaveBeenCalledTimes(1);
+    expect(options.sleepMs).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not consult Android process readiness for iOS recovery", async () => {
+    const options = waitOptions({
+      platform: "ios",
+      readDiagnostics: vi.fn(() => recoveredDiagnostics()),
+    });
+
+    await expect(waitForCrashRecoveryState(options)).resolves.toEqual({});
+    expect(options.isAndroidRecoveryReady).not.toHaveBeenCalled();
   });
 
   it("uses per-request diagnostic artifact names for recovery snapshots", () => {
-    // Given: two bundle ids identify one recovery wait request.
-    const names = createCrashRecoveryArtifactNames({
-      crashedBundleId: "019e9cec/b803",
-      stableBundleId: "019e9cec-03f9",
-    });
-
-    // When/Then: local diagnostic files cannot be overwritten by a later request.
-    expect(names).toEqual({
+    expect(
+      createCrashRecoveryArtifactNames({
+        crashedBundleId: "019e9cec/b803",
+        stableBundleId: "019e9cec-03f9",
+      }),
+    ).toEqual({
       crashHistory:
         "crash-recovery-019e9cec-03f9-019e9cec-b803-crash-history.json",
       crashMarker:
@@ -149,137 +232,5 @@ describe("crash recovery wait", () => {
         "crash-recovery-019e9cec-03f9-019e9cec-b803-launch-report.json",
       metadata: "crash-recovery-019e9cec-03f9-019e9cec-b803-metadata.json",
     });
-    expect(names.metadata).not.toBe("recovery-metadata.json");
-  });
-
-  it("relaunches Android recovery even before the crash marker is readable", async () => {
-    // Given: Android has crashed but run-as diagnostics do not expose the marker yet.
-    const reads: string[] = [];
-    const sleeps: number[] = [];
-    const launches: string[] = [];
-
-    // When: the first poll cannot read recovery files and the second poll recovers.
-    await waitForCrashRecoveryState({
-      androidLaunchSettleMs: 2000,
-      attempts: 3,
-      crashedBundleId: "crashed-1",
-      createTimeoutError: () => new Error("timed out"),
-      getLaunchReportState,
-      getMetadataState: metadataState,
-      isAndroidAppRunning: () => false,
-      launchAndroidApp: () => {
-        launches.push("launch");
-      },
-      platform: "android",
-      pollIntervalMs: 1000,
-      readDiagnostics: () => {
-        reads.push("read");
-        if (reads.length === 1) {
-          return {
-            ...pendingDiagnostics(),
-            crashMarker: {
-              exists: false,
-              path: "marker",
-              readError: null,
-              value: null,
-            },
-          };
-        }
-        return recoveredDiagnostics();
-      },
-      sleepMs: (durationMs) => {
-        sleeps.push(durationMs);
-        return Promise.resolve();
-      },
-      stableBundleId: "stable-1",
-    });
-
-    // Then: recovery gets a relaunch chance without waiting for marker IO.
-    expect(launches).toEqual(["launch"]);
-    expect(sleeps).toEqual([2000]);
-    expect(reads).toEqual(["read", "read"]);
-  });
-
-  it("cold launches recovery once when the crashed Android process is still alive", async () => {
-    // Given: the JS crash disconnected Detox but left the crashed app PID alive.
-    const reads: string[] = [];
-    const sleeps: number[] = [];
-    const launches: string[] = [];
-
-    // When: the first cold launch starts recovery and that process completes later.
-    await waitForCrashRecoveryState({
-      androidLaunchSettleMs: 1000,
-      attempts: 4,
-      crashedBundleId: "crashed-1",
-      createTimeoutError: () => new Error("timed out"),
-      getLaunchReportState,
-      getMetadataState: metadataState,
-      isAndroidAppRunning: () => true,
-      launchAndroidApp: () => {
-        launches.push("launch");
-      },
-      platform: "android",
-      pollIntervalMs: 250,
-      readDiagnostics: () => {
-        reads.push("read");
-        if (reads.length < 3) {
-          return pendingDiagnostics();
-        }
-        return recoveredDiagnostics();
-      },
-      sleepMs: (durationMs) => {
-        sleeps.push(durationMs);
-        return Promise.resolve();
-      },
-      stableBundleId: "stable-1",
-    });
-
-    // Then: the crashed process is replaced once, but the live recovery process is kept.
-    expect(launches).toEqual(["launch"]);
-    expect(sleeps).toEqual([1000, 250]);
-    expect(reads).toEqual(["read", "read", "read"]);
-  });
-
-  it("does not relaunch Android after recovered metadata is persisted", async () => {
-    // Given: metadata becomes visible one poll before the launch report.
-    const reads: string[] = [];
-    const sleeps: number[] = [];
-    const launches: string[] = [];
-
-    // When: the app exits after persisting recovered metadata.
-    await waitForCrashRecoveryState({
-      androidLaunchSettleMs: 1000,
-      attempts: 4,
-      crashedBundleId: "crashed-1",
-      createTimeoutError: () => new Error("timed out"),
-      getLaunchReportState,
-      getMetadataState: metadataState,
-      isAndroidAppRunning: () => false,
-      launchAndroidApp: () => {
-        launches.push("launch");
-      },
-      platform: "android",
-      pollIntervalMs: 250,
-      readDiagnostics: () => {
-        reads.push("read");
-        if (reads.length === 1) {
-          return pendingDiagnostics();
-        }
-        const recovered = recoveredDiagnostics();
-        return reads.length === 3
-          ? recovered
-          : { ...recovered, launchReport: pendingDiagnostics().launchReport };
-      },
-      sleepMs: (durationMs) => {
-        sleeps.push(durationMs);
-        return Promise.resolve();
-      },
-      stableBundleId: "stable-1",
-    });
-
-    // Then: a relaunch cannot erase the RECOVERED report between file reads.
-    expect(launches).toEqual(["launch"]);
-    expect(sleeps).toEqual([1000, 250]);
-    expect(reads).toEqual(["read", "read", "read"]);
   });
 });

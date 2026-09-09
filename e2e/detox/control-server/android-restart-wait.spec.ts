@@ -3,9 +3,48 @@ import { describe, expect, it } from "vitest";
 import {
   advanceAndroidRestartWait,
   hasNativeRestartEvidenceAfterMarker,
+  isAndroidRecoveryProcessReady,
 } from "./android-restart-wait.ts";
 
 describe("Android automatic restart wait", () => {
+  it.each([
+    {},
+    { processId: "" },
+    { focusedPackage: "launcher" },
+    { instrumentationActive: true },
+    { hasNativeRestartEvidence: false },
+  ])(
+    "requires a live foreground app after native restart and instrumentation teardown: %j",
+    (overrides) => {
+      expect(
+        isAndroidRecoveryProcessReady({
+          appId: "app.example",
+          focusedPackage: "app.example",
+          hasNativeRestartEvidence: true,
+          instrumentationActive: false,
+          processId: "1234",
+          ...overrides,
+        }),
+      ).toBe(Object.keys(overrides).length === 0);
+    },
+  );
+
+  it("accepts a native watchdog restart only after the current launch marker", () => {
+    const message = "Recovery watchdog detected crash marker, relaunching app";
+    expect(
+      hasNativeRestartEvidenceAfterMarker(
+        `${message}\ncurrent-launch-marker`,
+        "current-launch-marker",
+      ),
+    ).toBe(false);
+    expect(
+      hasNativeRestartEvidenceAfterMarker(
+        `current-launch-marker\n${message}`,
+        "current-launch-marker",
+      ),
+    ).toBe(true);
+  });
+
   it("rejects stale restart logs from an earlier launch", () => {
     const logs = [
       "I/HotUpdaterImpl: Started restart trampoline to apply update bundle",

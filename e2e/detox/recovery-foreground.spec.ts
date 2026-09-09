@@ -67,6 +67,63 @@ async function recoveryStages(): Promise<readonly string[]> {
 }
 
 describe("Detox recovery foreground handling", () => {
+  it.each([true, false])(
+    "reattaches Android only after observing native recovery (success=%s)",
+    async (succeeds) => {
+      const driverSource = await fs.readFile(detoxScenarioRuntimePath, "utf8");
+      let resolveRecovery!: (value: JsonObject) => void;
+      let rejectRecovery!: (reason: Error) => void;
+      const observedRecovery = new Promise<JsonObject>((resolve, reject) => {
+        resolveRecovery = resolve;
+        rejectRecovery = reject;
+      });
+      const launchApp = vi.fn(async () => {});
+      const controlClient = { postJson: vi.fn(() => observedRecovery) };
+      const driver = new Script(
+        `${driverSource}\nnew module.exports.DetoxAppDriver(controlClient);`,
+      ).runInNewContext({
+        module: { exports: {} },
+        controlClient,
+        console: { log: () => {} },
+        require: (name: string) =>
+          name === "detox"
+            ? { device: {} }
+            : {
+                isAndroidRun: () => true,
+                launchApp,
+              },
+      }) as {
+        control: (
+          stage: string,
+          pathName: string,
+          body: JsonObject,
+        ) => Promise<void>;
+      };
+
+      const waiting = driver.control(
+        "wait native recovery",
+        "/e2e/wait-for-crash-recovery",
+        {},
+      );
+      await Promise.resolve();
+      expect(launchApp).not.toHaveBeenCalled();
+
+      if (succeeds) {
+        resolveRecovery({});
+        await waiting;
+        expect(launchApp).toHaveBeenCalledExactlyOnceWith({
+          newInstance: false,
+        });
+      } else {
+        rejectRecovery(new Error("native recovery did not restart the app"));
+        await expect(waiting).rejects.toThrow(
+          "native recovery did not restart",
+        );
+        expect(launchApp).not.toHaveBeenCalled();
+      }
+    },
+  );
+
   it.each([
     { platform: "ios", stage: "launch crash bundle", synchronization: 0 },
     {

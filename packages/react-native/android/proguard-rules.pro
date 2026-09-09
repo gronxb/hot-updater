@@ -2,6 +2,7 @@
 # Invoked via reflection, when setting js bundle.
 -keepclassmembers class com.facebook.react.ReactInstanceManager {
     private final ** mBundleLoader;
+    private final ** mJSExceptionHandler;
 }
 
 # New Architecture
@@ -14,6 +15,11 @@
 
 -keepclassmembers class * implements com.facebook.react.runtime.ReactHostDelegate {
     ** jsBundleLoader;
+    ** exceptionHandler;
+}
+
+-keepclassmembers class com.facebook.react.bridge.CatalystInstanceImpl {
+    ** mJSExceptionHandler;
 }
 
 # Preserve the Brotli decoder and its embedded static dictionary
