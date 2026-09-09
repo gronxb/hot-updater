@@ -13,8 +13,11 @@ in deployment.json. Use available Firebase/Google Cloud tools; CLI paths below
 are relative to this scaffold. The firebase/ project contains the same prepared
 second-generation Function runtime and indexes as interactive init. Before using
 the CLI fallback, install `firebase-tools` as an app development dependency with
-its package manager and verify the local `firebase --version` binary. The Firebase
-client SDK package does not supply this CLI. Do this before remote provisioning.
+its package manager and verify the local `firebase --version` binary. Use Firebase
+CLI 15.29.0 or newer for the generated Functions 7 runtime; older emulators call
+the removed `functions.config()` API. Local Firestore emulator checks require
+Java 21 or newer. The Firebase client SDK package does not
+supply this CLI. Do this before remote provisioning.
 
 - [ ] **fb.project — Select or create the project**
   - Inputs: workspace configuration, authenticated account and established region.

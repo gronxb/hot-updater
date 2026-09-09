@@ -50,7 +50,7 @@
     "dotenv": "^16.4.5",
     "eslint": "^8.19.0",
     "firebase-admin": "catalog:firebase",
-    "firebase-tools": "^13.35.1",
+    "firebase-tools": "15.29.0",
     "hermes-compiler": "250829098.0.10",
     "hot-updater": "workspace:*",
     "jest": "^29.6.3",

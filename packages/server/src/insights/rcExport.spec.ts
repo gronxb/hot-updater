@@ -25,6 +25,34 @@ describe("offline Insights RC event conversion", () => {
     expect(normalizeInsightsRcEvent(downloaded)).toEqual(downloaded);
   });
 
+  it("replays legacy same-file release adoption without losing its original values", async () => {
+    const target = createInMemoryDatabasePlugin().models.insights;
+    const row = createBundleEventRowFixture("991", 101);
+    const { metadata, ...columns } = row;
+    const original = { ...columns, ...metadata, type: "RELEASE_ADOPTED" };
+    const converted = normalizeInsightsRcEvent(original);
+    expect(converted).toEqual({
+      ...row,
+      type: "UNCHANGED",
+      from_bundle_id: null,
+      metadata: {
+        ...metadata,
+        update_strategy: null,
+        rc_legacy_event: {
+          type: "RELEASE_ADOPTED",
+          from_bundle_id: row.from_bundle_id,
+          update_strategy: metadata.update_strategy,
+        },
+      },
+    });
+    expect(original.type).toBe("RELEASE_ADOPTED");
+    expect(normalizeInsightsRcEvent(converted)).toEqual(converted);
+    await target.recordEvent({ event: converted as typeof row });
+    await expect(
+      target.findLatestEvents({ installId: row.install_id }),
+    ).resolves.toEqual([converted]);
+  });
+
   it("rejects incomplete or ambiguous exports without guessing historical data", () => {
     expect(() => normalizeInsightsRcEvent({ id: "event" })).toThrow(
       "Missing legacy",

@@ -173,8 +173,11 @@ procedure; this PR does not implement online replication.
    This maintainer tool only transforms a local file. It refuses to overwrite an
    output and rejects missing legacy metadata keys or mixed old/new fields.
    On conversion failure, discard the incomplete output and correct the export.
-   It preserves event IDs, receipt times, nulls and transition columns. Already
-   normalized events are unchanged. It does not invent missing download telemetry.
+   It preserves event IDs and receipt times. The retired `RELEASE_ADOPTED` type
+   becomes `UNCHANGED`, with a null source bundle and update strategy, matching
+   the finalized same-file selection contract. Its original type, source bundle
+   and strategy are retained in `metadata.rc_legacy_event`; release IDs stay intact.
+   Other normalized events are unchanged. It does not invent missing download telemetry.
 4. Load the prepared target plugin in an operator-owned local script and replay
    each parsed event through `target.models.insights.recordEvent({ event })`, awaiting
    each call. The normal core boundary validates the event. Do not POST the old
