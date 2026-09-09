@@ -251,7 +251,7 @@
         "reasons": [
           "rncoreAutolinking"
         ],
-        "hash": "f018b6c28a2d182da4a16bb753070062700ffa00",
+        "hash": "82388ea0ccc8f5e425a0630e993373d818e53c6c",
         "debugInfo": {
           "path": "node_modules/@hot-updater/react-native",
           "children": [
@@ -264,7 +264,7 @@
                 },
                 {
                   "path": "node_modules/@hot-updater/react-native/android/proguard-rules.pro",
-                  "hash": "d34023c0d8b50ad1f4b62b849cf8e477e883649c"
+                  "hash": "68087b15b1f73c1444dd8aee2bf7067943fe2943"
                 },
                 {
                   "path": "node_modules/@hot-updater/react-native/android/react-native-helpers.gradle",
@@ -543,7 +543,7 @@
                   "hash": "05bfbd56702b19225dee3a0f7fe70b16bda7c7fd"
                 }
               ],
-              "hash": "cdfd562bed7b75e2c691ecee60d6e6f8c7b8609b"
+              "hash": "598f1c48bdc263b6e718bb2964893920dcc752db"
             },
             {
               "path": "node_modules/@hot-updater/react-native/HotUpdater.podspec",
@@ -726,7 +726,7 @@
               "hash": "05fb284d3672d0930af6a352392327a4bf8e6623"
             }
           ],
-          "hash": "f018b6c28a2d182da4a16bb753070062700ffa00"
+          "hash": "82388ea0ccc8f5e425a0630e993373d818e53c6c"
         }
       },
       {
@@ -3796,7 +3796,7 @@
         }
       }
     ],
-    "hash": "c0bfad8a0e9814880de63d4613035102fe9a5f86"
+    "hash": "bed3c579d54acf57df56313651435f4d32b102e9"
   },
   "android": {
     "sources": [
@@ -4050,7 +4050,7 @@
         "reasons": [
           "rncoreAutolinking"
         ],
-        "hash": "f018b6c28a2d182da4a16bb753070062700ffa00",
+        "hash": "82388ea0ccc8f5e425a0630e993373d818e53c6c",
         "debugInfo": {
           "path": "node_modules/@hot-updater/react-native",
           "children": [
@@ -4063,7 +4063,7 @@
                 },
                 {
                   "path": "node_modules/@hot-updater/react-native/android/proguard-rules.pro",
-                  "hash": "d34023c0d8b50ad1f4b62b849cf8e477e883649c"
+                  "hash": "68087b15b1f73c1444dd8aee2bf7067943fe2943"
                 },
                 {
                   "path": "node_modules/@hot-updater/react-native/android/react-native-helpers.gradle",
@@ -4342,7 +4342,7 @@
                   "hash": "05bfbd56702b19225dee3a0f7fe70b16bda7c7fd"
                 }
               ],
-              "hash": "cdfd562bed7b75e2c691ecee60d6e6f8c7b8609b"
+              "hash": "598f1c48bdc263b6e718bb2964893920dcc752db"
             },
             {
               "path": "node_modules/@hot-updater/react-native/HotUpdater.podspec",
@@ -4525,7 +4525,7 @@
               "hash": "05fb284d3672d0930af6a352392327a4bf8e6623"
             }
           ],
-          "hash": "f018b6c28a2d182da4a16bb753070062700ffa00"
+          "hash": "82388ea0ccc8f5e425a0630e993373d818e53c6c"
         }
       },
       {
@@ -7595,6 +7595,6 @@
         }
       }
     ],
-    "hash": "9c1b820cdd07fe41b82efddfd7a13a276afbc38c"
+    "hash": "1479ba1df38cc2b69faf04a70557100b0dc2e8fd"
   }
 }
