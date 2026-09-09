@@ -12,6 +12,7 @@ export type DetoxAssertTextOptions = {
 
 export type DetoxLaunchOptions = {
   readonly allowDisconnect?: boolean;
+  readonly expectCrash?: boolean;
 };
 
 export type DetoxAppDriver = {

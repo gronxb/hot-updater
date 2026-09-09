@@ -99,7 +99,7 @@ export const releaseOtaRecoveryScenario: DetoxScenarioDefinition = {
         verificationPending: true,
       },
     );
-    await app.launch("launch crash bundle");
+    await app.launch("launch crash bundle", { expectCrash: true });
     await app.control("wait crash recovery", "/e2e/wait-for-crash-recovery", {
       crashedBundleId: "$crashBundleId",
       stableBundleId: "$stableBundleId",

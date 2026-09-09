@@ -80,7 +80,7 @@ export const runtimeChannelCrashRestoreScenario: DetoxScenarioDefinition = {
         verificationPending: true,
       },
     );
-    await app.launch("launch beta crash Bundle");
+    await app.launch("launch beta crash Bundle", { expectCrash: true });
     await app.control(
       "wait beta crash recovery",
       "/e2e/wait-for-crash-recovery",

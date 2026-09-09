@@ -18,11 +18,16 @@ const detoxScenarioRuntimePath = path.join(
 type RecordedRecoveryCall = {
   readonly body?: JsonObject;
   readonly kind: "assertText" | "control" | "device" | "tap" | "typeText";
+  readonly options?: { readonly expectCrash?: boolean };
   readonly stage: string;
   readonly testID?: string;
 };
 
-async function recordRecoveryCalls(): Promise<readonly RecordedRecoveryCall[]> {
+async function recordRecoveryCalls(
+  scenario: Parameters<
+    typeof getDetoxScenarioDefinition
+  >[0] = "release-ota-recovery",
+): Promise<readonly RecordedRecoveryCall[]> {
   const calls: RecordedRecoveryCall[] = [];
   const app: DetoxAppDriver = {
     assertText: (stage, testID) => {
@@ -33,8 +38,8 @@ async function recordRecoveryCalls(): Promise<readonly RecordedRecoveryCall[]> {
       calls.push({ body, kind: "control", stage });
       return Promise.resolve();
     },
-    launch: (stage) => {
-      calls.push({ kind: "device", stage });
+    launch: (stage, options) => {
+      calls.push({ kind: "device", options, stage });
       return Promise.resolve();
     },
     reload: (stage) => {
@@ -58,7 +63,7 @@ async function recordRecoveryCalls(): Promise<readonly RecordedRecoveryCall[]> {
       return Promise.resolve();
     },
   };
-  await getDetoxScenarioDefinition("release-ota-recovery").run(app);
+  await getDetoxScenarioDefinition(scenario).run(app);
   return calls;
 }
 
@@ -126,11 +131,6 @@ describe("Detox recovery foreground handling", () => {
 
   it.each([
     { platform: "ios", stage: "launch crash bundle", synchronization: 0 },
-    {
-      platform: "android",
-      stage: "launch crash bundle",
-      synchronization: 0,
-    },
   ])(
     "sets launch synchronization before $platform $stage",
     async ({ platform, stage, synchronization }) => {
@@ -170,9 +170,14 @@ describe("Detox recovery foreground handling", () => {
         controlClient,
         require: (name: string) =>
           name === "detox" ? { device } : pageModule.exports,
-      }) as { launch: (stage: string) => Promise<void> };
+      }) as {
+        launch: (
+          stage: string,
+          options?: { expectCrash: boolean },
+        ) => Promise<void>;
+      };
 
-      await driver.launch(stage);
+      await driver.launch(stage, { expectCrash: true });
 
       expect(calls).toEqual(["prepare", "launch"]);
       expect(controlClient.postJson).toHaveBeenCalledWith(
@@ -202,6 +207,102 @@ describe("Detox recovery foreground handling", () => {
           },
         });
       }
+    },
+  );
+
+  it.each(["success", "terminate failure", "native launch failure"])(
+    "launches the Android crash bundle only after stopping instrumentation: %s",
+    async (outcome) => {
+      const source = await fs.readFile(detoxScenarioRuntimePath, "utf8");
+      let finishTermination!: () => void;
+      let failTermination!: (error: Error) => void;
+      const termination = new Promise<void>((resolve, reject) => {
+        finishTermination = resolve;
+        failTermination = reject;
+      });
+      const device = { terminateApp: vi.fn(() => termination) };
+      const launchApp = vi.fn(async () => {});
+      const controlClient = {
+        postJson: vi.fn(async (_stage: string, route: string) => {
+          if (
+            route === "/e2e/launch-android-crash-app" &&
+            outcome === "native launch failure"
+          ) {
+            throw new Error("native launch failed");
+          }
+          return {};
+        }),
+      };
+      const driver = new Script(
+        `${source}\nnew module.exports.DetoxAppDriver(controlClient);`,
+      ).runInNewContext({
+        module: { exports: {} },
+        controlClient,
+        console: { log: () => {} },
+        require: (name: string) =>
+          name === "detox"
+            ? { device }
+            : { isAndroidRun: () => true, launchApp },
+      }) as {
+        launch: (
+          stage: string,
+          options?: { allowDisconnect?: boolean; expectCrash?: boolean },
+        ) => Promise<void>;
+      };
+
+      const launching = driver.launch("launch crash bundle", {
+        allowDisconnect: true,
+        expectCrash: true,
+      });
+      expect(device.terminateApp).toHaveBeenCalledOnce();
+      expect(controlClient.postJson).not.toHaveBeenCalled();
+      expect(launchApp).not.toHaveBeenCalled();
+
+      if (outcome === "terminate failure") {
+        failTermination(new Error("instrumentation did not stop"));
+        await expect(launching).rejects.toThrow("instrumentation did not stop");
+        expect(controlClient.postJson).not.toHaveBeenCalled();
+      } else {
+        finishTermination();
+        if (outcome === "native launch failure") {
+          await expect(launching).rejects.toThrow("native launch failed");
+        } else {
+          await launching;
+        }
+        expect(controlClient.postJson).toHaveBeenCalledExactlyOnceWith(
+          "launch crash bundle: launch without instrumentation",
+          "/e2e/launch-android-crash-app",
+          {},
+        );
+      }
+      // Only the later, separately observed recovery can reattach Detox.
+      expect(launchApp).not.toHaveBeenCalled();
+      await driver.launch("launch stable bundle");
+      expect(launchApp).toHaveBeenCalledExactlyOnceWith({ newInstance: true });
+      await driver.launch("launch crash update app");
+      await driver.launch("launch ten-crash history app");
+      expect(launchApp).toHaveBeenCalledTimes(3);
+      expect(device.terminateApp).toHaveBeenCalledOnce();
+      expect(controlClient.postJson).toHaveBeenLastCalledWith(
+        "launch ten-crash history app: prepare launch",
+        "/e2e/prepare-app-launch",
+        {},
+      );
+    },
+  );
+
+  it.each([
+    ["release-ota-recovery", "launch crash bundle"],
+    ["crash-then-next-safe-update", "launch next-safe crash Bundle"],
+    ["runtime-channel-crash-restore", "launch beta crash Bundle"],
+    ["republished-crashed-bundle-skipped", "launch republished crash Bundle"],
+  ] as const)(
+    "marks only the installed crashing bundle launch in %s",
+    async (scenario, crashStage) => {
+      const calls = await recordRecoveryCalls(scenario);
+      expect(calls.filter((call) => call.options?.expectCrash)).toEqual([
+        { kind: "device", options: { expectCrash: true }, stage: crashStage },
+      ]);
     },
   );
 

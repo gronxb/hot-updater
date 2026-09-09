@@ -4374,7 +4374,6 @@ function launchAndroidApp({
         "1",
       ];
   const launchOutput = captureCommand("adb", launchArgs, {
-    allowFailure: explicitActivity,
     cwd: REPO_DIR,
   });
   const pid = captureCommand(
@@ -6875,6 +6874,22 @@ export async function handleWaitForCrashRecovery(
 
 export async function handlePrepareAppLaunch() {
   return prepareAppLaunch();
+}
+
+export async function handleLaunchAndroidCrashApp() {
+  if (fixtureSession.platform !== "android") {
+    throw new Error("Uninstrumented crash launch requires Android");
+  }
+  await prepareAppLaunch();
+  const processes = getAndroidActivityProcessesOutput();
+  if (
+    !processes ||
+    hasActiveInstrumentationForPackage(processes, fixtureSession.appId)
+  ) {
+    throw new Error("Android crash launch requires stopped instrumentation");
+  }
+  launchAndroidApp({ explicitActivity: true, forceStop: false });
+  return {};
 }
 
 export async function handleWriteSummary(args: {
