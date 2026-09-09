@@ -108,6 +108,8 @@ const bundleInstallations = pgTable("bundle_installations", {
   user_id: text("user_id"),
   username: text("username"),
   to_bundle_id: text("to_bundle_id").notNull(),
+  pending_bundle_id: text("pending_bundle_id"),
+  pending_release_id: text("pending_release_id"),
   type: text("type").notNull(),
   platform: text("platform").notNull(),
   app_version: text("app_version").notNull(),

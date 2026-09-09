@@ -107,6 +107,37 @@ describe("HotUpdater wrap initialization", () => {
 
   afterEach(cleanup);
 
+  it("does not report No change while an optional download is in progress", async () => {
+    const { client, sendInsightsEvent } = createClient();
+    let complete!: (success: boolean) => void;
+    const download = vi.fn(
+      () =>
+        new Promise<boolean>((resolve) => {
+          complete = resolve;
+        }),
+    );
+    mocks.checkForUpdate.mockResolvedValue({
+      id: "next",
+      status: "UPDATE",
+      shouldForceUpdate: false,
+      message: null,
+      updateBundle: download,
+    });
+    const { wrap } = await import("./wrap");
+    const onUpdateProcessCompleted = vi.fn();
+    const Wrapped = wrap({
+      client,
+      insights: true,
+      updateStrategy: "appVersion",
+      onUpdateProcessCompleted,
+    })(() => null);
+    render(createElement(Wrapped));
+    await waitFor(() => expect(download).toHaveBeenCalledOnce());
+    expect(onUpdateProcessCompleted).toHaveBeenCalledOnce();
+    expect(sendInsightsEvent).not.toHaveBeenCalled();
+    complete(true);
+  });
+
   it("reports the console ID when up to date while retaining file IDs in insights", async () => {
     const onUpdateProcessCompleted = vi.fn();
     const { client, sendInsightsEvent } = createClient();

@@ -114,7 +114,9 @@ export const parseFirebaseBundleEventRow = (
   );
   if (
     !(
-      ((type === "UPDATE_APPLIED" || type === "RECOVERED") &&
+      ((type === "UPDATE_DOWNLOADED" ||
+        type === "UPDATE_APPLIED" ||
+        type === "RECOVERED") &&
         typeof fromBundleId === "string" &&
         (updateStrategy === "fingerprint" ||
           updateStrategy === "appVersion")) ||
@@ -154,6 +156,7 @@ export const parseFirebaseInsightsInstallationRow = (
   const input = record(value, source);
   const type = string(property(input, "type"), source);
   if (
+    type !== "UPDATE_DOWNLOADED" &&
     type !== "UPDATE_APPLIED" &&
     type !== "RECOVERED" &&
     type !== "UNCHANGED"
@@ -167,6 +170,14 @@ export const parseFirebaseInsightsInstallationRow = (
     user_id: nullableString(property(input, "user_id"), source),
     username: nullableString(property(input, "username"), source),
     to_bundle_id: string(property(input, "to_bundle_id"), source),
+    pending_bundle_id: nullableString(
+      Reflect.get(input, "pending_bundle_id") ?? null,
+      source,
+    ),
+    pending_release_id: nullableString(
+      Reflect.get(input, "pending_release_id") ?? null,
+      source,
+    ),
     platform: platform(property(input, "platform"), source),
     app_version: string(property(input, "app_version"), source),
     channel: string(property(input, "channel"), source),

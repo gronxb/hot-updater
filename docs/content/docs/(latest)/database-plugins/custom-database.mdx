@@ -211,10 +211,10 @@ exclusive key: return strictly smaller tuples. The fixed filter is one of:
 { kind: "installationMovement", installId }
 { kind: "bundle", platform, channel, type: "RECOVERED", fromBundleId }
 { kind: "bundle", platform, channel,
-  type: "UPDATE_APPLIED" | "UNCHANGED", toBundleId }
+  type: "UPDATE_DOWNLOADED" | "UPDATE_APPLIED" | "UNCHANGED", toBundleId }
 ```
 
-Installation movement means `UPDATE_APPLIED` or `RECOVERED`. Apply filters
+Installation movement means `UPDATE_DOWNLOADED`, `UPDATE_APPLIED`, or `RECOVERED`. Apply filters
 before the limit using indexed cursor ranges; do not load global history or
 walk preceding pages. Limits are integers from 1 to 101; core uses lookahead
 to return at most 100. A short or empty native page with a continuation token
@@ -238,7 +238,7 @@ last-seen index can double-count moving rows. Never derive it from event history
 `countEvents({ filter, sinceMs, beforeReceivedAtMs })` counts a fixed raw bundle
 filter in the same receipt interval as `listEvents`. The filter has platform,
 channel, type, and `fromBundleId` for `RECOVERED` or `toBundleId` for
-`UPDATE_APPLIED`/`UNCHANGED`; it has no `kind`. `UNCHANGED` means the running files did not change, including selecting another Release for those same files. Its `from_bundle_id` and `update_strategy` must be null. Recovery B → A therefore
+`UPDATE_DOWNLOADED`/`UPDATE_APPLIED`/`UNCHANGED`; it has no `kind`. `UNCHANGED` means the running files did not change, including selecting another Release for those same files. Its `from_bundle_id` and `update_strategy` must be null. Recovery B → A therefore
 counts against B while latest state names A. Counts concern reports, not
 unique attempts or installations. Count all native pages or propagate failure.
 
@@ -476,3 +476,11 @@ methods reject before database I/O. SQL Server's padded string equality can
 merge IDs that differ by trailing spaces; its default Unicode/UUID ordering
 also differs from this contract. There is no silent fallback to weaker identity
 or pagination semantics. Use a supported Insights provider for these views.
+
+For `UPDATE_DOWNLOADED`, the event's `from_bundle_id` is still running and
+`to_bundle_id` is staged for the next runtime. Use `toInsightsInstallationRow`
+to preserve the running ID in the installation's `to_bundle_id` and persist the
+staged target in nullable `pending_bundle_id` / `pending_release_id`. All other
+event types clear the pending fields. Apply the same atomic latest-event
+ordering to these fields so retries and older reports cannot restore a stale
+download.

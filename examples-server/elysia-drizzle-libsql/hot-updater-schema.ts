@@ -206,6 +206,8 @@ export const bundle_installations = sqliteTable("bundle_installations", {
   user_id: text("user_id", { length: 255 }),
   username: text("username"),
   to_bundle_id: text("to_bundle_id").notNull(),
+  pending_bundle_id: text("pending_bundle_id"),
+  pending_release_id: text("pending_release_id"),
   type: text("type", { length: 32 }).notNull(),
   platform: text("platform").notNull(),
   app_version: text("app_version").notNull(),

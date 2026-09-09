@@ -51,6 +51,12 @@ export function BundleMovementSummary({
           {series?.recoveredInstallations ?? 0}
         </span>
       </span>
+      <span className="flex items-baseline gap-1.5">
+        <span className="text-xs text-muted-foreground">Pending apply</span>
+        <span className="text-sm font-medium tabular-nums">
+          {series?.pendingInstallations ?? 0}
+        </span>
+      </span>
       {report.truncated ? (
         <span className="text-xs text-muted-foreground">Partial</span>
       ) : null}
@@ -97,7 +103,7 @@ export function BundleInsightsSummary({
           </div>
         ) : (
           <>
-            <dl className="grid grid-cols-2 divide-x divide-border/70">
+            <dl className="grid grid-cols-2 gap-4 sm:grid-cols-4">
               <div className="pr-4">
                 <dt className="text-xs text-muted-foreground">Active</dt>
                 <dd className="mt-1 text-xl font-semibold tabular-nums">
@@ -110,6 +116,20 @@ export function BundleInsightsSummary({
                 </dt>
                 <dd className="mt-1 text-xl font-semibold tabular-nums">
                   {series?.recoveredInstallations ?? 0}
+                </dd>
+              </div>
+              <div>
+                <dt className="text-xs text-muted-foreground">
+                  Downloaded · 24h
+                </dt>
+                <dd className="mt-1 text-xl font-semibold tabular-nums">
+                  {series?.downloadedInstallations ?? 0}
+                </dd>
+              </div>
+              <div>
+                <dt className="text-xs text-muted-foreground">Pending apply</dt>
+                <dd className="mt-1 text-xl font-semibold tabular-nums">
+                  {series?.pendingInstallations ?? 0}
                 </dd>
               </div>
             </dl>

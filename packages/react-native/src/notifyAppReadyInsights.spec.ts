@@ -85,6 +85,65 @@ describe("automatic notifyAppReady insights", () => {
     mocks.readNotifyAppReady.mockReturnValue(createNotifyReadResult());
   });
 
+  it("orders download after in-flight startup reporting and suppresses a later no-change report", async () => {
+    const { handleNotifyAppReady, reportBundleDownloaded, reportNoChange } =
+      await import("./notifyAppReadyInsights");
+    const { client, sendInsightsEvent } = createClient();
+    let finishStartup!: () => void;
+    sendInsightsEvent.mockImplementationOnce(
+      () =>
+        new Promise<void>((resolve) => {
+          finishStartup = resolve;
+        }),
+    );
+    const options = { client, insights: true };
+    const startup = handleNotifyAppReady(options);
+    await vi.waitFor(() => expect(sendInsightsEvent).toHaveBeenCalledOnce());
+    const download = reportBundleDownloaded(options, {
+      fromBundleId: "bundle-id",
+      fromReleaseId: null,
+      toBundleId: "next-bundle",
+      toReleaseId: "next-release",
+      channel: "production",
+      updateStrategy: "appVersion",
+    });
+    await Promise.resolve();
+    expect(sendInsightsEvent).toHaveBeenCalledOnce();
+    finishStartup();
+    await Promise.all([startup, download]);
+    await reportNoChange(options);
+    expect(sendInsightsEvent.mock.calls.map(([params]) => params.type)).toEqual(
+      ["UNCHANGED", "UPDATE_DOWNLOADED"],
+    );
+  });
+
+  it("reports selecting a previous download again after a different pending bundle", async () => {
+    const { reportBundleDownloaded } = await import("./notifyAppReadyInsights");
+    const { client, sendInsightsEvent } = createClient();
+    const transition = {
+      fromBundleId: "bundle-id",
+      fromReleaseId: null,
+      toBundleId: "next-bundle",
+      toReleaseId: "next-release",
+      channel: "production",
+      updateStrategy: "appVersion" as const,
+    };
+    await reportBundleDownloaded({ client, insights: true }, transition);
+    await reportBundleDownloaded({ client, insights: true }, transition);
+    await reportBundleDownloaded(
+      { client, insights: true },
+      {
+        ...transition,
+        toBundleId: "other-bundle",
+        toReleaseId: "other-release",
+      },
+    );
+    await reportBundleDownloaded({ client, insights: true }, transition);
+    expect(
+      sendInsightsEvent.mock.calls.map(([params]) => params.toBundleId),
+    ).toEqual(["next-bundle", "other-bundle", "next-bundle"]);
+  });
+
   it("sends UPDATE_APPLIED with transition metadata and invokes readiness", async () => {
     stubNotifyFrame();
     mocks.getPersistedUserIdentity.mockReturnValue({

@@ -125,6 +125,8 @@ describe("parseFirebaseInsightsInstallationRow", () => {
     user_id: event.user_id,
     username: event.username,
     to_bundle_id: event.to_bundle_id,
+    pending_bundle_id: null,
+    pending_release_id: null,
     platform: event.platform,
     app_version: event.app_version,
     channel: event.channel,

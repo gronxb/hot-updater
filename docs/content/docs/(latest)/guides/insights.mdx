@@ -7,7 +7,7 @@ icon: ChartNoAxesCombined
 ## Monitor app activity
 
 Insights shows activity received from app installations: the last reported
-update, successful applications, and recoveries. Use it after
+update, completed downloads waiting to apply, successful applications, and recoveries. Use it after
 [verifying your first OTA](/docs/get-started/test-ota) and while operating a
 rollout.
 
@@ -50,14 +50,19 @@ The client reports these outcomes:
 
 | Outcome | Meaning |
 | --- | --- |
-| `UNCHANGED` | The app reported without an applied or recovered transition. This also reports a successful same-artifact Release adoption. |
+| `UNCHANGED` | No download or apply was reported at that point. This also reports a successful same-artifact Release adoption, which requires neither. |
+| `UPDATE_DOWNLOADED` | The SDK verified and staged the bundle. The current runtime still runs the previous bundle until restart/reload. |
 | `UPDATE_APPLIED` | Native app-ready state reports that an OTA transition became active. |
 | `RECOVERED` | Native app-ready state reports recovery from a failed update. |
 
-Automatic startup reporting is attempted once per JavaScript runtime. Reporting
+Automatic startup reporting is attempted once per JavaScript runtime. The automatic `wrap` flow defers `UNCHANGED` until its update check finds no update. A successful download reports `UPDATE_DOWNLOADED` instead. Custom flows using `init` may report `UNCHANGED` at startup followed by a download later. Repeated reports of the same pending selection are deduplicated within the runtime. Selecting a different pending bundle and then returning to an earlier one reports both changes. Reporting
 is best effort: a network failure produces a warning and does not block app
 startup or trigger rollback. `onNotifyAppReady` receives local native state;
 it is not confirmation that the server received an event.
+
+The overview shows **Downloaded** (distinct installations that completed a download in the selected period) and **Pending apply** (latest reported downloaded state). **Active** uses the running Release ID, so downloading a bundle does not increase its Active count. Applying, recovering, or a newer no-change report clears the pending snapshot. Historical `UNCHANGED` events cannot tell whether a download completed with an older SDK; they are not backfilled.
+
+![Completed downloads and the remaining pending installation](/docs/console/insights-download-pending.png)
 
 ## Identify an installation
 

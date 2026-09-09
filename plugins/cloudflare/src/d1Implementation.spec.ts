@@ -3,6 +3,8 @@ import { expect, it } from "vitest";
 import { createD1Implementation, type D1Statement } from "./d1Implementation";
 
 const installationRow = {
+  pending_bundle_id: null,
+  pending_release_id: null,
   id: "event-1",
   install_id: "install-1",
   user_id: "user-1",

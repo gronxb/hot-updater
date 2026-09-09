@@ -241,7 +241,9 @@ describe("Insights CRUD adapter", () => {
         });
         const type = input.where?.find((clause) => clause.field === "type");
         expect(type?.operator ?? "eq").toBe("eq");
-        expect(["UPDATE_APPLIED", "RECOVERED"]).toContain(type?.value);
+        expect(["UPDATE_DOWNLOADED", "UPDATE_APPLIED", "RECOVERED"]).toContain(
+          type?.value,
+        );
         const rows = all
           .filter((row) =>
             input.where!.every((clause) => {
@@ -293,9 +295,9 @@ describe("Insights CRUD adapter", () => {
         limit,
       });
       expect(findMany.mock.calls.length - queryCount).toBeLessThanOrEqual(
-        after ? 4 : 2,
+        after ? 6 : 3,
       );
-      expect(transferredRows - previousTransfer).toBeLessThanOrEqual(2 * limit);
+      expect(transferredRows - previousTransfer).toBeLessThanOrEqual(3 * limit);
       found.push(...page);
       if (page.length < limit) break;
       const last = page[page.length - 1]!;

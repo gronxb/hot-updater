@@ -133,6 +133,8 @@ model bundle_installations {
   user_id String?
   username String?
   to_bundle_id String
+  pending_bundle_id String?
+  pending_release_id String?
   type String
   platform String
   app_version String

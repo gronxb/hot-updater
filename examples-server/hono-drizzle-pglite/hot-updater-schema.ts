@@ -206,6 +206,8 @@ export const bundle_installations = pgTable("bundle_installations", {
   user_id: customType<{ data: string }>({ dataType: () => "varchar(255) collate \"C\"" })("user_id"),
   username: text("username"),
   to_bundle_id: uuid("to_bundle_id").notNull(),
+  pending_bundle_id: uuid("pending_bundle_id"),
+  pending_release_id: uuid("pending_release_id"),
   type: varchar("type", { length: 32 }).notNull(),
   platform: customType<{ data: string }>({ dataType: () => "text collate \"C\"" })("platform").notNull(),
   app_version: text("app_version").notNull(),

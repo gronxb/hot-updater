@@ -59,7 +59,9 @@ const isBundleFilter = (value: unknown, withKind = false): boolean => {
   return value.type === "RECOVERED"
     ? isText(value.fromBundleId) &&
         hasOnlyKeys(value, [...keys, "fromBundleId"])
-    : (value.type === "UPDATE_APPLIED" || value.type === "UNCHANGED") &&
+    : (value.type === "UPDATE_DOWNLOADED" ||
+        value.type === "UPDATE_APPLIED" ||
+        value.type === "UNCHANGED") &&
         isText(value.toBundleId) &&
         hasOnlyKeys(value, [...keys, "toBundleId"]);
 };
@@ -108,7 +110,14 @@ export const toInsightsInstallationRow = (
     install_id: event.install_id,
     user_id: event.user_id,
     username: event.username,
-    to_bundle_id: event.to_bundle_id,
+    to_bundle_id:
+      event.type === "UPDATE_DOWNLOADED"
+        ? event.from_bundle_id
+        : event.to_bundle_id,
+    pending_bundle_id:
+      event.type === "UPDATE_DOWNLOADED" ? event.to_bundle_id : null,
+    pending_release_id:
+      event.type === "UPDATE_DOWNLOADED" ? event.to_release_id : null,
     type: event.type,
     platform: event.platform,
     app_version: event.app_version,
@@ -118,10 +127,13 @@ export const toInsightsInstallationRow = (
   };
 };
 
-/** Unchanged reports are not bundle movements. */
+/** Downloads and applied transitions belong in installation history. */
 export const isInsightsMovementEvent = (
   event: Pick<BundleEventRow, "type">,
-): boolean => event.type === "UPDATE_APPLIED" || event.type === "RECOVERED";
+): boolean =>
+  event.type === "UPDATE_DOWNLOADED" ||
+  event.type === "UPDATE_APPLIED" ||
+  event.type === "RECOVERED";
 
 export const matchesInsightsEventFilter = (
   event: BundleEventRow,

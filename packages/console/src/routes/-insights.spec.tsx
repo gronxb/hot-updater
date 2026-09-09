@@ -94,6 +94,8 @@ function renderPage() {
     intervalMs: 3_600_000,
     truncated: false,
     unattributedInstallations: 0,
+    pendingInstallations: 0,
+    downloadedInstallations: 0,
     series: [],
   });
   if (!InsightsPage) throw new Error("Insights route component is required");

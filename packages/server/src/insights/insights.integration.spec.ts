@@ -35,6 +35,63 @@ afterEach(() => {
 });
 
 describe("createHotUpdater Insights", () => {
+  it("ingests a downloaded bundle and exposes the running and pending state until apply", async () => {
+    const hotUpdater = createHotUpdater({
+      database: createInMemoryDatabasePlugin(),
+      clientAccess: { type: "public" },
+    });
+    const downloaded = {
+      ...event,
+      type: "UPDATE_DOWNLOADED",
+      fromBundleId: "bundle-1",
+      toBundleId: "bundle-2",
+      toReleaseId: "release-2",
+      updateStrategy: "appVersion",
+    };
+    expect(
+      (await hotUpdater.handlers.client(eventRequest(downloaded))).status,
+    ).toBe(204);
+    const downloads = await hotUpdater.handlers.admin(
+      new Request(
+        `https://example.com/events?platform=ios&channel=production&bundleId=bundle-2&outcome=downloaded&beforeReceivedAtMs=${Date.now() + 1}`,
+      ),
+    );
+    expect(downloads.status).toBe(200);
+    await expect(downloads.json()).resolves.toMatchObject({
+      data: [{ type: "UPDATE_DOWNLOADED", toBundleId: "bundle-2" }],
+    });
+    const lookup = () =>
+      hotUpdater.handlers.admin(
+        new Request("https://example.com/installations/install-1"),
+      );
+    await expect((await lookup()).json()).resolves.toMatchObject({
+      latestStatus: "UPDATE_DOWNLOADED",
+      lastKnownBundleId: "bundle-1",
+      pendingBundleId: "bundle-2",
+      pendingReleaseId: "release-2",
+    });
+    expect(
+      (
+        await hotUpdater.handlers.client(
+          eventRequest({ ...downloaded, type: "UPDATE_APPLIED" }),
+        )
+      ).status,
+    ).toBe(204);
+    await expect((await lookup()).json()).resolves.toMatchObject({
+      latestStatus: "UPDATE_APPLIED",
+      lastKnownBundleId: "bundle-2",
+      pendingBundleId: null,
+      pendingReleaseId: null,
+    });
+    expect(
+      (
+        await hotUpdater.handlers.client(
+          eventRequest({ ...downloaded, fromBundleId: null }),
+        )
+      ).status,
+    ).toBe(400);
+  });
+
   it("persists an event and serves the lean Insights views", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-08-12T00:00:00.000Z"));

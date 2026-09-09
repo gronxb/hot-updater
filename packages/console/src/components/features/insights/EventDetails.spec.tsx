@@ -34,6 +34,25 @@ describe("Insights event details", () => {
     expect(screen.getByText("2026-07-18 00:00:00.000 UTC")).toBeDefined();
   });
 
+  it("labels a completed download with separate running and pending bundles", () => {
+    render(
+      <>
+        <EventTypeDetails type="UPDATE_DOWNLOADED" />
+        <EventBundleTransition
+          event={{
+            type: "UPDATE_DOWNLOADED",
+            fromBundleId: "file-a",
+            toBundleId: "file-b",
+          }}
+        />
+      </>,
+    );
+    expect(screen.getByText("Downloaded")).toBeDefined();
+    expect(screen.getByText("Running")).toBeDefined();
+    expect(screen.getByText("Pending")).toBeDefined();
+    expect(screen.getByText(/Waiting for the app to restart/)).toBeDefined();
+  });
+
   it("shows no change without implying a file transition", () => {
     const type = "UNCHANGED";
     render(
@@ -50,7 +69,7 @@ describe("Insights event details", () => {
     );
     expect(screen.getByText("No change")).toBeDefined();
     expect(
-      screen.getByText("The app continues using the same bundle files."),
+      screen.getByText("No download or apply was reported at this point."),
     ).toBeDefined();
     expect(screen.getByText("Current")).toBeDefined();
     expect(screen.queryByText("From")).toBeNull();
@@ -72,7 +91,7 @@ describe("Insights event details", () => {
     view.rerender(<EventTypeDetails type="UNCHANGED" />);
     expect(screen.getByText("No change")).toBeDefined();
     expect(
-      screen.getByText("The app continues using the same bundle files."),
+      screen.getByText("No download or apply was reported at this point."),
     ).toBeDefined();
     expect(screen.getByText("No change").className).toContain("bg-secondary");
   });

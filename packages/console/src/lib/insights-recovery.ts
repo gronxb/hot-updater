@@ -11,6 +11,8 @@ export type RecoveryInput = {
 export type RecoveryPoint = {
   readonly startMs: number;
   readonly active: number | null;
+  readonly pendingInstallations: number | null;
+  readonly downloadedInstallations: number;
   readonly recoveredInstallations: number;
   readonly applied: number;
   readonly recovered: number;
@@ -22,6 +24,8 @@ export type RecoverySeries = {
   readonly releaseId: string;
   readonly firstAppliedAtMs: number | null;
   readonly activeInstallations: number;
+  readonly pendingInstallations: number;
+  readonly downloadedInstallations: number;
   readonly recoveredInstallations: number;
   readonly points: readonly RecoveryPoint[];
 };
@@ -32,6 +36,8 @@ export type RecoveryReport = {
   readonly intervalMs: number;
   readonly truncated: boolean;
   readonly unattributedInstallations: number;
+  readonly pendingInstallations: number;
+  readonly downloadedInstallations: number;
   readonly series: readonly RecoverySeries[];
 };
 

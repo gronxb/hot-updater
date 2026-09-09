@@ -1,5 +1,9 @@
+import { toInsightsInstallationRow } from "@hot-updater/plugin-core";
 import { env } from "cloudflare:test";
 import { expect, inject, it } from "vitest";
+
+import { createBundleEventRowFixture } from "../../../../packages/test-utils/src/databaseTestFixtures";
+import { d1Database } from "../../src/worker";
 
 declare module "vitest" {
   export interface ProvidedContext {
@@ -188,4 +192,47 @@ it("creates the current schema with required artifact sizes", async () => {
       )
     `).run(),
   ).rejects.toThrow(/NOT NULL constraint failed/);
+});
+
+it("stores running and pending bundles separately in the initialized D1 schema", async () => {
+  const plugin = d1Database(env.DB);
+  const download = {
+    ...createBundleEventRowFixture("9601", 100),
+    type: "UPDATE_DOWNLOADED" as const,
+    from_bundle_id: "00000000-0000-7000-8000-000000001001",
+    update_strategy: "appVersion" as const,
+  };
+  await plugin.models.insights.record({
+    event: download,
+    installation: toInsightsInstallationRow(download),
+  });
+  await expect(
+    plugin.models.insights.findInstallations({
+      installId: download.install_id,
+    }),
+  ).resolves.toEqual([toInsightsInstallationRow(download)]);
+  const applied = {
+    ...download,
+    id: createBundleEventRowFixture("9602", 200).id,
+    type: "UPDATE_APPLIED" as const,
+    received_at_ms: 200,
+  };
+  await plugin.models.insights.record({
+    event: applied,
+    installation: toInsightsInstallationRow(applied),
+  });
+  await plugin.models.insights.record({
+    event: download,
+    installation: toInsightsInstallationRow(download),
+  });
+  await expect(
+    plugin.models.insights.findInstallations({
+      installId: download.install_id,
+    }),
+  ).resolves.toEqual([toInsightsInstallationRow(applied)]);
+  await expect(
+    env.DB.prepare(
+      "UPDATE bundle_installations SET type = 'UPDATE_DOWNLOADED'",
+    ).run(),
+  ).rejects.toThrow(/pending_check/);
 });

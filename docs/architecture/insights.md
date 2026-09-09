@@ -105,3 +105,20 @@ methods reject before database I/O. SQL Server's padded string equality can
 merge IDs that differ by trailing spaces; its default Unicode/UUID ordering
 also differs from this contract. There is no silent fallback to weaker identity
 or pagination semantics. Use a supported Insights provider for these views.
+
+## Download state
+
+`UPDATE_DOWNLOADED` is emitted by the SDK after native staging succeeds, before
+reload. Its `from_bundle_id` / `from_release_id` identify the running bundle;
+`to_bundle_id` / `to_release_id` identify the downloaded selection. It requires
+`from_bundle_id` and `update_strategy`, like an applied report. It is included
+in installation movement history and can be selected with the `downloaded`
+bundle outcome filter.
+
+For the latest installation snapshot, `to_bundle_id` retains the running file
+ID. `pending_bundle_id` and `pending_release_id` store the downloaded target.
+A newer report replaces the entire snapshot atomically; apply/recovery/no-change
+reports clear both pending fields. Event ID retries and out-of-order receipts
+must not restore stale pending state. All bundled providers share this contract.
+The unreleased 1.0.0 schema includes these fields in its single initialization
+migration; no additional RC migration or schema version is introduced.

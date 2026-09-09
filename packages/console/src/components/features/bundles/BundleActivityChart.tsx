@@ -11,6 +11,8 @@ import type { RecoverySeries } from "@/lib/insights-recovery";
 
 const config = {
   active: { label: "Active", color: "var(--chart-2)" },
+  pendingInstallations: { label: "Pending apply", color: "var(--chart-1)" },
+  downloadedInstallations: { label: "Downloaded", color: "var(--chart-3)" },
   recoveredInstallations: {
     label: "Rollback",
     color: "var(--muted-foreground)",
@@ -79,6 +81,23 @@ export function BundleActivityChart({
             isAnimationActive={false}
             stroke="var(--color-active)"
             strokeWidth={2}
+            type="linear"
+          />
+          <Area
+            dataKey="pendingInstallations"
+            fill="var(--color-pendingInstallations)"
+            fillOpacity={0.04}
+            stroke="var(--color-pendingInstallations)"
+            strokeDasharray="4 3"
+            isAnimationActive={false}
+            type="linear"
+          />
+          <Area
+            dataKey="downloadedInstallations"
+            fill="var(--color-downloadedInstallations)"
+            fillOpacity={0.04}
+            stroke="var(--color-downloadedInstallations)"
+            isAnimationActive={false}
             type="linear"
           />
           <Area

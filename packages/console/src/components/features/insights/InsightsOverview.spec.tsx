@@ -39,14 +39,20 @@ const report: RecoveryReport = {
   intervalMs: DAY,
   truncated: false,
   unattributedInstallations: 0,
+  pendingInstallations: 0,
+  downloadedInstallations: 0,
   series: ["new-id", "old-id"].map((releaseId, index) => ({
     releaseId,
     firstAppliedAtMs: 0,
     activeInstallations: index === 0 ? 90 : 10,
+    pendingInstallations: 0,
+    downloadedInstallations: 0,
     recoveredInstallations: index === 0 ? 3 : 0,
     points: [10, 50, 90].map((active, i) => ({
       startMs: i * DAY,
       active: index === 0 ? active : 100 - active,
+      pendingInstallations: 0,
+      downloadedInstallations: 0,
       recoveredInstallations: index === 0 && i === 2 ? 3 : 0,
       applied: 7,
       recovered: index === 0 && i === 2 ? 3 : 0,
@@ -94,6 +100,36 @@ describe("bundle trends", () => {
       screen.getByRole("button", { name: "Highlight bundle old-id" }),
     );
     expect(screen.queryByText(/Rollback spike on/)).toBeNull();
+  });
+
+  it("switches between distinct downloaded installations and the current pending snapshot", () => {
+    const downloads: RecoveryReport = {
+      ...report,
+      downloadedInstallations: 5,
+      pendingInstallations: 2,
+      series: report.series.map((series) => ({
+        ...series,
+        downloadedInstallations: 4,
+        pendingInstallations: 1,
+        points: series.points.map((point) => ({
+          ...point,
+          downloadedInstallations: 4,
+          pendingInstallations: 1,
+        })),
+      })),
+    };
+    render(<ActivityChart report={downloads} />);
+    fireEvent.click(screen.getByRole("tab", { name: "Downloaded" }));
+    expect(
+      screen.getByLabelText("Downloaded trend for all reported bundle IDs"),
+    ).toBeDefined();
+    // Five distinct installations across two releases, not eight release-installation pairs.
+    expect(screen.getAllByText("5").length).toBeGreaterThan(0);
+    fireEvent.click(screen.getByRole("tab", { name: "Pending apply" }));
+    expect(
+      screen.getByLabelText("Pending apply trend for all reported bundle IDs"),
+    ).toBeDefined();
+    expect(screen.getAllByText("2").length).toBeGreaterThan(0);
   });
 
   it("keeps IDs beyond a top-five list and exposes exact values without requiring chart interaction", () => {
@@ -185,7 +221,9 @@ describe("bundle trends", () => {
     expect(screen.getByText(/No bundle reports in this period/)).toBeDefined();
     expect(screen.getByText(/Partial history/)).toBeDefined();
     expect(
-      screen.getByText(/4 reporting installations have no observed bundle ID/),
+      screen.getByText(
+        /4 reporting installations have no observed running release ID/,
+      ),
     ).toBeDefined();
   });
 });

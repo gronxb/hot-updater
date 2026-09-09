@@ -76,6 +76,8 @@ const bundleInstallationRow = {
   user_id: bundleEventRow.user_id,
   username: bundleEventRow.username,
   to_bundle_id: bundleEventRow.to_bundle_id,
+  pending_bundle_id: null,
+  pending_release_id: null,
   type: bundleEventRow.type,
   platform: bundleEventRow.platform,
   app_version: bundleEventRow.app_version,

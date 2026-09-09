@@ -1,4 +1,7 @@
-import { DatabasePluginInputError } from "@hot-updater/plugin-core";
+import {
+  type InsightsInstallationRow,
+  DatabasePluginInputError,
+} from "@hot-updater/plugin-core";
 import type {
   DatabaseImplementationResult,
   DatabasePluginImplementation,
@@ -25,6 +28,14 @@ import {
   createMongoReleaseWhere,
   createMongoSort,
 } from "./mongodbQuery";
+
+const withPendingFields = (
+  row: InsightsInstallationRow,
+): InsightsInstallationRow => ({
+  ...row,
+  pending_bundle_id: row.pending_bundle_id ?? null,
+  pending_release_id: row.pending_release_id ?? null,
+});
 
 const findMongoRows = async (
   collections: MongoCollections,
@@ -127,7 +138,8 @@ const findMongoRows = async (
         })
         .skip(input.offset)
         .limit(input.limit);
-      if (rawOrderBy === undefined) return cursor.toArray();
+      if (rawOrderBy === undefined)
+        return (await cursor.toArray()).map(withPendingFields);
       if (needsInMemoryOrder) {
         const rows = await collections.bundleInstallations
           .find(createMongoInstallationWhere(input.where), {
@@ -137,15 +149,16 @@ const findMongoRows = async (
             readPreference: "primary",
           })
           .toArray();
-        return sortRowsByOrder(rows, rawOrderBy).slice(
-          input.offset,
-          input.offset + input.limit,
-        );
+        return sortRowsByOrder(rows, rawOrderBy)
+          .slice(input.offset, input.offset + input.limit)
+          .map(withPendingFields);
       }
       const sort = createMongoSort(input);
-      return sort === undefined
-        ? cursor.toArray()
-        : cursor.sort(sort).toArray();
+      return (
+        await (sort === undefined
+          ? cursor.toArray()
+          : cursor.sort(sort).toArray())
+      ).map(withPendingFields);
     }
     case "api_keys": {
       const cursor = collections.apiKeys
@@ -360,15 +373,14 @@ export const createMongoReads = (
           },
         );
       case "bundle_installations":
-        return collections.bundleInstallations.findOne(
-          createMongoInstallationWhere(input.where),
-          {
+        return collections.bundleInstallations
+          .findOne(createMongoInstallationWhere(input.where), {
             projection: WITHOUT_MONGO_ID,
             ...mongoSessionOptions(session),
             collation: { locale: "simple" },
             readPreference: "primary",
-          },
-        );
+          })
+          .then((row) => (row ? withPendingFields(row) : null));
     }
   },
   findMany: (input) => {

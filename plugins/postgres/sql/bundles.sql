@@ -93,6 +93,8 @@ create table bundle_installations (
   user_id text collate "C",
   username text,
   to_bundle_id uuid not null,
+  pending_bundle_id uuid,
+  pending_release_id uuid,
   type text not null,
   platform text collate "C" not null,
   app_version text not null,
@@ -161,15 +163,15 @@ alter table release_catalogs add constraint release_catalogs_generation_check
 alter table release_catalogs add constraint release_catalogs_byte_size_check
   check (byte_size >= 0 and byte_size <= 262144);
 alter table bundle_events add constraint bundle_events_type_check
-  check (type in ('UPDATE_APPLIED', 'RECOVERED', 'UNCHANGED'));
+  check (type in ('UPDATE_DOWNLOADED', 'UPDATE_APPLIED', 'RECOVERED', 'UNCHANGED'));
 alter table bundle_events add constraint bundle_events_platform_check
   check (platform in ('ios', 'android'));
 alter table bundle_events add constraint bundle_events_shape_check
-  check (((type in ('UPDATE_APPLIED', 'RECOVERED')) and from_bundle_id is not null and update_strategy is not null and update_strategy in ('fingerprint', 'appVersion')) or (type = 'UNCHANGED' and from_bundle_id is null and update_strategy is null));
+  check (((type in ('UPDATE_DOWNLOADED', 'UPDATE_APPLIED', 'RECOVERED')) and from_bundle_id is not null and update_strategy is not null and update_strategy in ('fingerprint', 'appVersion')) or (type = 'UNCHANGED' and from_bundle_id is null and update_strategy is null));
 alter table bundle_events add constraint bundle_events_received_at_check
   check (received_at_ms >= 0);
 alter table bundle_installations add constraint bundle_installations_type_check
-  check (type in ('UPDATE_APPLIED', 'RECOVERED', 'UNCHANGED'));
+  check (type in ('UPDATE_DOWNLOADED', 'UPDATE_APPLIED', 'RECOVERED', 'UNCHANGED'));
 alter table bundle_installations add constraint bundle_installations_platform_check
   check (platform in ('ios', 'android'));
 alter table bundle_installations add constraint bundle_installations_received_at_check
@@ -197,3 +199,6 @@ alter table release_catalogs add constraint release_catalogs_channel_id_fk
 insert into private_hot_updater_settings (key, value)
 values ('schema.core', '1.0.0')
 on conflict (key) do update set value = excluded.value;
+
+alter table bundle_installations add constraint bundle_installations_pending_check
+  check ((type = 'UPDATE_DOWNLOADED' and pending_bundle_id is not null) or (type <> 'UPDATE_DOWNLOADED' and pending_bundle_id is null and pending_release_id is null));

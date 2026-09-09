@@ -53,6 +53,8 @@ const installationRow = (
   platform: "ios",
   received_at_ms: 1_000,
   to_bundle_id: "bundle-1",
+  pending_bundle_id: null,
+  pending_release_id: null,
   type: "UNCHANGED",
   user_id: "user-1",
   username: "Jane",
@@ -254,6 +256,7 @@ describe("createInsightsProvider", () => {
       .mockResolvedValueOnce(1)
       .mockResolvedValueOnce(2);
     fixture.countEvents
+      .mockResolvedValueOnce(7)
       .mockResolvedValueOnce(5)
       .mockResolvedValueOnce(3)
       .mockResolvedValueOnce(1);
@@ -267,12 +270,14 @@ describe("createInsightsProvider", () => {
     expect(result.reportingInstallations.count).toBe(1);
     // Independent live measurements are never clamped or turned into a share.
     expect(result.bundle?.reportingInstallations.count).toBe(2);
+    expect(result.bundle?.downloadedReports.count).toBe(7);
     expect(result.bundle?.appliedReports.count).toBe(5);
     expect(result.bundle?.recoveredReports.count).toBe(3);
     expect(result.bundle?.unchangedReports.count).toBe(1);
     expect(
       fixture.countEvents.mock.calls.map(([input]) => input.filter),
     ).toEqual([
+      { ...scope, type: "UPDATE_DOWNLOADED", toBundleId: "B" },
       { ...scope, type: "UPDATE_APPLIED", toBundleId: "B" },
       { ...scope, type: "RECOVERED", fromBundleId: "B" },
       { ...scope, type: "UNCHANGED", toBundleId: "B" },
@@ -282,7 +287,7 @@ describe("createInsightsProvider", () => {
       sinceMs: result.sinceMs,
       beforeReceivedAtMs: result.beforeReceivedAtMs,
     });
-    const counted = fixture.countEvents.mock.calls[1]![0];
+    const counted = fixture.countEvents.mock.calls[2]![0];
     expect(fixture.listEvents).toHaveBeenCalledWith({
       ...counted,
       filter: { kind: "bundle", ...counted.filter },

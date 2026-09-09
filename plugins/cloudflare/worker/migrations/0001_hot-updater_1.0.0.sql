@@ -131,14 +131,14 @@ CREATE TABLE bundle_events (
   sdk_version TEXT,
   received_at_ms REAL NOT NULL,
   CONSTRAINT bundle_events_type_check CHECK (
-    type IN ('UPDATE_APPLIED', 'RECOVERED', 'UNCHANGED')
+    type IN ('UPDATE_DOWNLOADED', 'UPDATE_APPLIED', 'RECOVERED', 'UNCHANGED')
   ),
   CONSTRAINT bundle_events_platform_check CHECK (
     platform IN ('ios', 'android')
   ),
   CONSTRAINT bundle_events_shape_check CHECK (
     (
-      type IN ('UPDATE_APPLIED', 'RECOVERED')
+      type IN ('UPDATE_DOWNLOADED', 'UPDATE_APPLIED', 'RECOVERED')
       AND from_bundle_id IS NOT NULL
       AND update_strategy IS NOT NULL
       AND update_strategy IN ('fingerprint', 'appVersion')
@@ -157,6 +157,8 @@ CREATE TABLE bundle_installations (
   user_id TEXT,
   username TEXT,
   to_bundle_id TEXT NOT NULL,
+  pending_bundle_id TEXT,
+  pending_release_id TEXT,
   type TEXT NOT NULL,
   platform TEXT NOT NULL,
   app_version TEXT NOT NULL,
@@ -164,7 +166,11 @@ CREATE TABLE bundle_installations (
   cohort TEXT NOT NULL,
   received_at_ms REAL NOT NULL,
   CONSTRAINT bundle_installations_type_check CHECK (
-    type IN ('UPDATE_APPLIED', 'RECOVERED', 'UNCHANGED')
+    type IN ('UPDATE_DOWNLOADED', 'UPDATE_APPLIED', 'RECOVERED', 'UNCHANGED')
+  ),
+  CONSTRAINT bundle_installations_pending_check CHECK (
+    (type = 'UPDATE_DOWNLOADED' AND pending_bundle_id IS NOT NULL)
+    OR (type <> 'UPDATE_DOWNLOADED' AND pending_bundle_id IS NULL AND pending_release_id IS NULL)
   ),
   CONSTRAINT bundle_installations_platform_check CHECK (
     platform IN ('ios', 'android')

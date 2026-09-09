@@ -39,7 +39,9 @@ const getLastKnownBundleId = (
 ) =>
   "lastKnownBundleId" in event
     ? event.lastKnownBundleId
-    : (event.toBundleId ?? event.fromBundleId);
+    : event.type === "UPDATE_DOWNLOADED"
+      ? event.fromBundleId
+      : event.toBundleId;
 
 export function InstallationHistoryCard({
   error,
@@ -69,6 +71,15 @@ export function InstallationHistoryCard({
   const lastKnownBundleId = selectedEvent
     ? getLastKnownBundleId(selectedEvent)
     : undefined;
+
+  const pendingBundleId =
+    selectedEvent && "pendingBundleId" in selectedEvent
+      ? selectedEvent.pendingBundleId
+      : selectedEvent &&
+          "type" in selectedEvent &&
+          selectedEvent.type === "UPDATE_DOWNLOADED"
+        ? selectedEvent.toBundleId
+        : null;
 
   return (
     <Card className="@container min-h-0 min-w-0 shadow-sm">
@@ -138,6 +149,16 @@ export function InstallationHistoryCard({
                     )}
                   </dd>
                 </div>
+                {pendingBundleId ? (
+                  <div className="col-span-2 min-w-0">
+                    <dt className="text-xs text-muted-foreground">
+                      Downloaded · Pending apply
+                    </dt>
+                    <dd className="mt-1 text-xs">
+                      <HashValueDisplay value={pendingBundleId} />
+                    </dd>
+                  </div>
+                ) : null}
               </dl>
             </section>
             <Separator />

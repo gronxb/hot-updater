@@ -126,6 +126,8 @@ model bundle_installations {
   user_id String? @db.VarChar(255)
   username String?
   to_bundle_id String @db.Uuid
+  pending_bundle_id String? @db.Uuid
+  pending_release_id String? @db.Uuid
   type String @db.VarChar(32)
   platform String
   app_version String

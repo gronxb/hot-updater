@@ -117,13 +117,13 @@ CREATE TABLE public.hot_updater_v1_bundle_events (
   sdk_version text,
   received_at_ms double precision NOT NULL,
   CONSTRAINT hot_updater_v1_bundle_events_type_check CHECK (
-    type IN ('UPDATE_APPLIED', 'RECOVERED', 'UNCHANGED')
+    type IN ('UPDATE_DOWNLOADED', 'UPDATE_APPLIED', 'RECOVERED', 'UNCHANGED')
   ),
   CONSTRAINT hot_updater_v1_bundle_events_platform_check CHECK (
     platform IN ('ios', 'android')
   ),
   CONSTRAINT hot_updater_v1_bundle_events_shape_check CHECK (
-    (type IN ('UPDATE_APPLIED', 'RECOVERED')
+    (type IN ('UPDATE_DOWNLOADED', 'UPDATE_APPLIED', 'RECOVERED')
       AND from_bundle_id IS NOT NULL
       AND update_strategy IS NOT NULL
       AND update_strategy IN ('fingerprint', 'appVersion'))
@@ -140,14 +140,20 @@ CREATE TABLE public.hot_updater_v1_bundle_installations (
   user_id text COLLATE "C",
   username text,
   to_bundle_id uuid NOT NULL,
+  pending_bundle_id uuid,
+  pending_release_id uuid,
   type text NOT NULL CHECK (
-    type IN ('UPDATE_APPLIED', 'RECOVERED', 'UNCHANGED')
+    type IN ('UPDATE_DOWNLOADED', 'UPDATE_APPLIED', 'RECOVERED', 'UNCHANGED')
   ),
   platform text COLLATE "C" NOT NULL CHECK (platform IN ('ios', 'android')),
   app_version text NOT NULL,
   channel text COLLATE "C" NOT NULL,
   cohort text NOT NULL,
-  received_at_ms double precision NOT NULL CHECK (received_at_ms >= 0)
+  received_at_ms double precision NOT NULL CHECK (received_at_ms >= 0),
+  CONSTRAINT hot_updater_v1_bundle_installations_pending_check CHECK (
+    (type = 'UPDATE_DOWNLOADED' AND pending_bundle_id IS NOT NULL)
+    OR (type <> 'UPDATE_DOWNLOADED' AND pending_bundle_id IS NULL AND pending_release_id IS NULL)
+  )
 );
 
 CREATE TABLE public.hot_updater_v1_api_keys (
@@ -598,6 +604,8 @@ AS $$
     user_id = excluded.user_id,
     username = excluded.username,
     to_bundle_id = excluded.to_bundle_id,
+    pending_bundle_id = excluded.pending_bundle_id,
+    pending_release_id = excluded.pending_release_id,
     type = excluded.type,
     platform = excluded.platform,
     app_version = excluded.app_version,
