@@ -44,7 +44,7 @@ export function LandingHero() {
                     <span className="text-orange-500">2.</span> Your agent
                   </p>
                   <code className="block text-xs sm:text-sm font-mono text-fd-foreground break-words">
-                    $hot-updater Install v1, set up and test OTA.
+                    $hot-updater Set up this app and test OTA.
                   </code>
                 </div>
               </div>
@@ -88,7 +88,7 @@ export function LandingHero() {
               </div>
 
               {/* XTerm Terminal */}
-              <div className="p-2 sm:p-4 min-h-[250px] sm:min-h-[286px]">
+              <div className="p-2 sm:p-4 min-h-[300px] sm:min-h-[392px]">
                 <TerminalEmulator onReady={runDeployDemo} />
               </div>
             </div>

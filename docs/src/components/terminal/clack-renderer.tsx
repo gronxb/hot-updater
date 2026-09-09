@@ -46,33 +46,34 @@ export class ClackRenderer {
   }
 
   note(title: string, lines: string[]): void {
-    this.write(`${S_BAR}\n${S_STEP_SUBMIT} ${title}\n`);
-    for (const line of lines) this.write(`${S_BAR} ${line}\n`);
+    this.write(`${S_BAR}\n${S_STEP_SUBMIT}  ${title}\n`);
+    for (const line of lines) this.write(`${S_BAR}  ${line}\n`);
   }
 
   async task(text: string, completed: string, duration: number): Promise<void> {
     const frames = ["◒", "◐", "◓", "◑"] as const;
     const startTime = Date.now();
     let frameIndex = 0;
+    this.write(`${S_BAR}\n`);
     while (Date.now() - startTime < duration && !this.signal?.aborted) {
       const available = Math.max(1, this.terminal.cols - 3);
       const label =
         text.length > available ? `${text.slice(0, available - 1)}…` : text;
       const frame = frames[frameIndex++ % frames.length]!;
-      this.write(`\r\x1b[K${magenta(frame)} ${label}`);
+      this.write(`\r\x1b[K${magenta(frame)}  ${label}`);
       await this.pause(80);
     }
-    this.write(`\r\x1b[K${S_STEP_SUBMIT} ${completed}\n`);
+    this.write(`\r\x1b[K${S_STEP_SUBMIT}  ${completed}\n`);
   }
 
   outro(message: string): void {
-    this.write(`${S_BAR}\n${S_BAR_END} ${message}\n`);
+    this.write(`${S_BAR}\n${S_BAR_END}  ${message}\n`);
   }
 
   async finish(): Promise<void> {
     if (this.signal?.aborted) return;
     await new Promise<void>((resolve) => {
-      this.terminal.write("\x1b[0m$ ", () => {
+      this.terminal.write("\r\n\x1b[0m$ ", () => {
         this.terminal.scrollToBottom();
         resolve();
       });

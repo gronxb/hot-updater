@@ -1,10 +1,13 @@
 # Hot Updater documentation
 
-The Waku/Fumadocs site serves current v1 documentation from
+The Waku/Fumadocs site serves current documentation from
 `content/docs/(latest)` at `/docs/...`. Archived v0 content lives in
 `content/docs/v0` at `/docs/v0/...`. Change latest content for current behavior;
 keep version-transition instructions in `guides/upgrade-to-v1.mdx` and preserve
-historical release/architecture records.
+historical release/architecture records. Use “Hot Updater” without a major-version
+label in general setup and agent workflows. The version selector uses `v1.0` and
+`v0.36`. Reserve “v1” for v0 migration guidance; keep literal resource names, API
+paths and protocol identifiers.
 
 ## Content ownership
 

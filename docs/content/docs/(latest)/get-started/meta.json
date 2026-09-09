@@ -1,6 +1,6 @@
 {
   "title": "Start here",
-  "description": "Set up v1 with an agent or manually, then verify an OTA update.",
+  "description": "Set up Hot Updater with an agent or manually, then verify an OTA update.",
   "icon": "Rocket",
   "pages": [
     "introduction",

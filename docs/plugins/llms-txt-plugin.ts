@@ -38,7 +38,7 @@ export function llmsIndex(documentation: Documentation, baseUrl: string) {
     };
   }
   const lines = [
-    "# Hot Updater v1 Documentation",
+    "# Hot Updater Documentation",
     "",
     "> Set up, deliver, and operate React Native OTA updates on your infrastructure.",
     "",

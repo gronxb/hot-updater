@@ -1,6 +1,6 @@
 ---
 title: "Start here"
-description: "Set up Hot Updater v1 with an agent or your terminal, then verify an OTA update on a native app."
+description: "Set up Hot Updater with an agent or your terminal, then verify an OTA update on a native app."
 icon: Rocket
 ---
 
@@ -24,13 +24,13 @@ native app build.
 | Connect an app to infrastructure you already prepared | [Connect your app](/docs/get-started/app-setup) |
 | Prove that an integrated app receives updates | [Test an OTA update](/docs/get-started/test-ota) |
 
-## Use the published v1 release
+## Install the latest stable release
 
-These pages describe the latest stable v1 release.
+These pages describe the latest stable release.
 [Install packages](/docs/get-started/installation) lists the CLI, SDK, required
 build/provider plugins and runtime prerequisites.
 
-v1 uses Release Catalog infrastructure. For an existing v0 app, follow the
+For an existing v0 app, follow the
 [migration guide](/docs/guides/upgrade-to-v1) before changing the SDK or server.
 
 <a id="how-it-works" />
@@ -39,7 +39,7 @@ v1 uses Release Catalog infrastructure. For an existing v0 app, follow the
 
 Both the agent and manual paths lead to the same verified result:
 
-1. The app has compatible v1 SDK, CLI and plugins.
+1. The app has compatible SDK, CLI and plugins.
 2. The deployed server has a known base URL and working client authentication.
 3. A native Release build loads Hot Updater and uses the intended channel and
    compatibility target.
