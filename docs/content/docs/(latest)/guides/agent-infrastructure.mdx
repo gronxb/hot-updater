@@ -210,13 +210,40 @@ For fingerprint updates, use `--fingerprint <fingerprint>` instead of
 the manifest and the same Release Catalog URL without a key (401) and with the
 saved key (valid 200, or the documented empty-catalog 404). It returns sanitized
 JSON and a nonzero exit code on failure. It loads keys from private local storage;
-keys are never command arguments or printed output. The probe does not test
+keys are never command arguments or printed probe output. The probe does not test
 artifact downloads or native integration. The agent separately checks an existing
 artifact when available and runs:
 
 ```bash
 npx hot-updater doctor --json --server-base-url https://updates.example.com
 ```
+
+After setup passes these checks, the agent provides a ready-to-copy configuration
+like the final output of `hot-updater init`:
+
+```ts
+import { HotUpdater } from "@hot-updater/react-native";
+
+HotUpdater.init({
+  baseURL: "https://your-deployed-update-server",
+  requestHeaders: {
+    "x-api-key": "<your-registered-client-api-key>",
+  },
+});
+```
+
+The agent replaces these example values with the verified base URL, including
+any Function path, and the actual client key it registered or reused. It shows
+the client key itself, rather than a masked value or a path to its saved file.
+Provider tokens, service-role keys, admin credentials and signing keys remain
+private.
+
+Place initialization at module scope. `HotUpdater.init` does not start an update
+check; the agent also shows `HotUpdater.checkForUpdate` with your app's
+`appVersion` or `fingerprint` strategy. Preserve existing initialization options
+and use only one initialization API if the app already uses `HotUpdater.wrap`.
+Infrastructure-only setup includes this snippet and identifies app integration
+and native OTA verification as remaining work.
 
 Server deployment, JS/native integration, and an OTA test in a native Release
 build are separate results. Continue with [Connect your app](/docs/get-started/app-setup)

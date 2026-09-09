@@ -41,9 +41,13 @@ Never request token values, passwords, private keys or credential JSON in chat,
 tool arguments or browser URLs. Prefer the provider's login flow and available
 role/session credentials. If user input is needed, ask them to authenticate or
 save the needed secret directly into a local ignored file or provider secret
-store, then report only completion. Do not echo values or read entire credential
-files into tool output. Verify credential presence and access through redacted
-checks. Persist newly generated keys privately before remote registration.
+store, then report only completion. Do not echo provider credentials or read
+entire credential files into tool output. Verify credential presence and access
+through redacted checks. Persist newly generated keys privately before remote
+registration.
+The registered client API key is the only credential to include in the final
+setup handoff described in common.report. Keep provider, service-role, admin and
+signing credentials private; keep client keys out of logs and deployment records.
 
 Pause only the dependent step for missing login, access, billing activation or
 an unresolved consequential choice. Continue independent authorized preparation.
@@ -111,8 +115,9 @@ command or generated files alone do not prove that a remote step is complete.
 2. Use app/hot-updater.config.ts as the merge source for the app's existing
    config. Keep custom settings and the existing update strategy. Read
    ENVIRONMENT.md and fill only the applicable env.example settings in a local ignored
-   .env.hotupdater. Credential values must not enter logs, manifests, instructions,
-   browser URLs, or app bundles. Verify secret files are ignored and not tracked.
+   .env.hotupdater. Provider and signing credential values must not enter logs,
+   manifests, instructions, browser URLs, or app bundles. Verify secret files
+   are ignored and not tracked.
 3. After the schema is ready, use app/api-key.config.ts and
    app/provision-api-key.mjs to register a client key. Run the script from the
    directory whose .env.hotupdater contains the target provider settings, using
@@ -123,9 +128,10 @@ command or generated files alone do not prove that a remote step is complete.
    has HOT_UPDATER_API_KEY, provide that value in the environment or .env.hotupdater
    to reuse it. A revoked or mismatched key needs investigation, not silent rotation.
 4. Copy the saved client key to the app's intended build-time configuration and
-   local HOT_UPDATER_API_KEY setting without printing it. Client requests use
-   x-api-key. Never substitute a provider API token, service-role key, or admin
-   credential. Keep the key across setup retries and server upgrades.
+   local HOT_UPDATER_API_KEY setting without printing it during provisioning.
+   Client requests use x-api-key. Include this registered client key in the final
+   setup handoff below. Never substitute a provider API token, service-role key,
+   or admin credential. Keep the key across setup retries and server upgrades.
 
 ## App integration
 
@@ -156,7 +162,7 @@ separate validation result.
     with `--fingerprint <fingerprint>` for fingerprint updates. Keep the Function
     path in the base URL where applicable. The helper reads HOT_UPDATER_API_KEY
     from the local environment/.env.hotupdater or app/api-key.local; it rejects
-    conflicting keys. Never put the key in command arguments or print it.
+    conflicting keys. Never put the key in command arguments or probe output.
   - Verify/record: exit code 0 and JSON `status: "verified"`. The read-only helper
     requires /version to match manifest serverVersion/infrastructureGeneration,
     then checks the identical catalog URL without a key (401) and with the saved
@@ -193,6 +199,33 @@ separate validation result.
     setup. Complete App integration above when requested: JS initialization and
     update checks, Expo prebuild or Bare/Rock native wiring, and expo-updates
     compatibility. A native release OTA check is a separate result.
+  - For setup, finish with a ready-to-copy client configuration, like the final
+    output of hot-updater init. Read only the saved client key, not the entire
+    environment file. Replace both placeholders below with the actual base URL
+    and registered client key that passed common.verify, escaping them as
+    JavaScript strings. Preserve any Function path in the base URL; do not append
+    a catalog or update-check route. Do not return masked values, environment
+    variable names or a key-file path instead of the client key.
+
+    ```ts
+    import { HotUpdater } from "@hot-updater/react-native";
+
+    HotUpdater.init({
+      baseURL: "<verified-base-url>",
+      requestHeaders: {
+        "x-api-key": "<registered-client-api-key>",
+      },
+    });
+    ```
+
+    Explain that this belongs at module scope and that init does not check for
+    updates. Show the next check call with the app's actual strategy, for example
+    `HotUpdater.checkForUpdate({ updateStrategy: "appVersion" })` or
+    `HotUpdater.checkForUpdate({ updateStrategy: "fingerprint" })`.
+    Preserve existing initialization options; do not add init alongside wrap.
+    Include this handoff for infrastructure-only setup too, with app integration
+    and native OTA checks identified as remaining work. If registration or
+    verification is blocked, report that blocker instead of a completed setup.
   - Verify/record: report created/reused resources, applied local configuration,
     server/catalog checks, artifact checks performed or unavailable, app integration
     completed or out of scope, and any blocker. Do not claim native OTA success

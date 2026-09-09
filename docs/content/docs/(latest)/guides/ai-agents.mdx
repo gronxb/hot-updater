@@ -52,7 +52,7 @@ to specify the desired app behavior and outcome.
 | Provision infrastructure | Actual resource identifiers, deployed base URL, server version and authenticated client request |
 | Connect the app | Top-level init, explicit check/download/reload flow, native loading, client key, matching strategy/channel and signing key when enabled |
 | Test OTA | Release app launch, visible JavaScript and asset changes after application, matching deployment ID and rollback result |
-| Observe and hand off | Received Insights when enabled; remaining store/native release steps and any specific blockers |
+| Observe and hand off | Ready-to-copy HotUpdater.init configuration with the verified base URL and registered client x-api-key; received Insights when enabled; remaining store/native release steps and any specific blockers |
 
 [Connect your app](/docs/get-started/app-setup) is the canonical integration
 procedure. Prefer its custom `init` flow so check timing and reload behavior
@@ -64,6 +64,12 @@ alone does not prove that a device applied an OTA update.
 
 If the agent cannot build or interact with the native app, it should complete
 available setup work and identify the exact remaining device check.
+
+After infrastructure verification, the agent finishes like `hot-updater init`:
+it shows a `HotUpdater.init(...)` snippet with your deployed `baseURL` and the
+actual client API key it issued or reused in `requestHeaders["x-api-key"]`.
+This handoff also applies to infrastructure-only setup. See the
+[completion example](/docs/guides/agent-infrastructure#verify-completion).
 
 ## Safety Rules
 
