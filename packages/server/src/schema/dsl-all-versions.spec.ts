@@ -4,7 +4,6 @@ import { hotUpdaterSchemaVersions } from "./index";
 import { createSettingsTable } from "./settings";
 import {
   bundlePatchesV100,
-  bundleInstallationsV100,
   bundlesV100,
   channelsV100,
   releaseCatalogsV100,
@@ -18,7 +17,6 @@ describe("versioned schema DSL", () => {
     expect(channelsV100.dsl).toBe("table");
     expect(bundlesV100.dsl).toBe("table");
     expect(bundlePatchesV100.dsl).toBe("table");
-    expect(bundleInstallationsV100.dsl).toBe("table");
     expect(releasesV100.dsl).toBe("table");
     expect(releaseCatalogsV100.dsl).toBe("table");
     expect(createSettingsTable("1.0.0").dsl).toBe("table");

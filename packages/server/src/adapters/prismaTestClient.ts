@@ -1,10 +1,11 @@
+import { DatabaseSync, type SqliteValue } from "node:sqlite";
+
 import type {
   BundleEventRow,
   BundlePatchRow,
   BundleRow,
   ChannelRow,
   ApiKeyRow,
-  InsightsInstallationRow,
   ReleaseCatalogRow,
   ReleaseRow,
 } from "@hot-updater/plugin-core";
@@ -12,11 +13,22 @@ import { compareInsightsText } from "@hot-updater/plugin-core";
 
 type Row =
   | BundleEventRow
+  | Pick<
+      BundleEventRow,
+      | "install_id"
+      | "id"
+      | "received_at_ms"
+      | "user_id"
+      | "platform"
+      | "channel"
+      | "type"
+      | "from_bundle_id"
+      | "to_bundle_id"
+    >
   | BundlePatchRow
   | BundleRow
   | ChannelRow
   | ApiKeyRow
-  | InsightsInstallationRow
   | ReleaseRow
   | ReleaseCatalogRow;
 type Table = Row[];
@@ -24,7 +36,8 @@ type Tables = {
   bundle_patches: Table;
   bundles: Table;
   bundle_events: Table;
-  bundle_installations: Table;
+  bundle_event_heads: Table;
+
   channels: Table;
   api_keys: Table;
   releases: Table;
@@ -76,11 +89,7 @@ const readField = (row: Row, field: string): unknown =>
   Object.entries(row).find(([key]) => key === field)?.[1];
 
 const rowKey = (model: keyof Tables, row: Row): string =>
-  model === "bundle_installations" && "install_id" in row
-    ? row.install_id
-    : "id" in row
-      ? row.id
-      : row.scope_key;
+  "id" in row ? row.id : row.scope_key;
 
 const matchesCondition = (current: unknown, condition: unknown): boolean => {
   if (!isRecord(condition)) return Object.is(current, condition);
@@ -202,7 +211,9 @@ const createDelegate = (tables: Tables, model: keyof Tables, hooks: Hooks) => ({
     if (
       tables[model].some((row) => rowKey(model, row) === rowKey(model, data))
     ) {
-      throw new PrismaTestConstraintError("duplicate id");
+      throw Object.assign(new PrismaTestConstraintError("duplicate id"), {
+        code: "P2002",
+      });
     }
     if (
       model === "channels" &&
@@ -307,7 +318,9 @@ const createDelegate = (tables: Tables, model: keyof Tables, hooks: Hooks) => ({
     if (
       tables[model].some((row) => rowKey(model, row) === rowKey(model, create))
     ) {
-      throw new PrismaTestConstraintError("duplicate id");
+      throw Object.assign(new PrismaTestConstraintError("duplicate id"), {
+        code: "P2002",
+      });
     }
     assertReferences(tables, model, create);
     tables[model].push(structuredClone(create));
@@ -315,9 +328,60 @@ const createDelegate = (tables: Tables, model: keyof Tables, hooks: Hooks) => ({
   },
 });
 
+const querySqlite = (
+  tables: Tables,
+  query: string,
+  values: SqliteValue[],
+  write: boolean,
+) => {
+  const database = new DatabaseSync(":memory:");
+  try {
+    database.exec(
+      "CREATE TABLE bundle_events (id TEXT PRIMARY KEY, type TEXT, install_id TEXT, user_id TEXT, from_bundle_id TEXT, from_release_id TEXT, to_bundle_id TEXT, to_release_id TEXT, platform TEXT, app_version TEXT, channel TEXT, metadata TEXT, received_at_ms REAL)",
+    );
+    database.exec(
+      "CREATE TABLE bundle_event_heads (install_id TEXT PRIMARY KEY, id TEXT, received_at_ms REAL, user_id TEXT, platform TEXT, channel TEXT, type TEXT, from_bundle_id TEXT, to_bundle_id TEXT)",
+    );
+    for (const table of ["bundle_events", "bundle_event_heads"] as const) {
+      for (const row of tables[table]) {
+        const entries = Object.entries(row);
+        database
+          .prepare(
+            `INSERT INTO ${table} (${entries.map(([field]) => field).join(",")}) VALUES (${entries.map(() => "?").join(",")})`,
+          )
+          .run(
+            ...(entries.map(([, value]) =>
+              typeof value === "object" && value !== null
+                ? JSON.stringify(value)
+                : value,
+            ) as SqliteValue[]),
+          );
+      }
+    }
+    if (write) {
+      const result = database
+        .prepare(query.replace(/\$\d+(?:::uuid)?/g, "?"))
+        .run(...values);
+      tables.bundle_event_heads = database
+        .prepare("SELECT * FROM bundle_event_heads")
+        .all() as Row[];
+      return result.changes;
+    }
+    return database
+      .prepare(query.replace(/\$\d+(?:::uuid)?/g, "?"))
+      .all(...values);
+  } finally {
+    database.close();
+  }
+};
+
 const createClient = (tables: Tables, hooks: Hooks) => ({
+  $queryRawUnsafe: async (query: string, ...values: SqliteValue[]) =>
+    querySqlite(tables, query, values, false),
+  $executeRawUnsafe: async (query: string, ...values: SqliteValue[]) =>
+    querySqlite(tables, query, values, true),
   bundle_events: createDelegate(tables, "bundle_events", hooks),
-  bundle_installations: createDelegate(tables, "bundle_installations", hooks),
+
   bundle_patches: createDelegate(tables, "bundle_patches", hooks),
   bundles: createDelegate(tables, "bundles", hooks),
   channels: createDelegate(tables, "channels", hooks),
@@ -331,7 +395,8 @@ export const createPrismaTestHarness = () => {
     bundle_patches: [],
     bundles: [],
     bundle_events: [],
-    bundle_installations: [],
+    bundle_event_heads: [],
+
     channels: [],
     api_keys: [],
     releases: [],
@@ -362,7 +427,7 @@ export const createPrismaTestHarness = () => {
         tables.bundle_patches = transactionTables.bundle_patches;
         tables.bundles = transactionTables.bundles;
         tables.bundle_events = transactionTables.bundle_events;
-        tables.bundle_installations = transactionTables.bundle_installations;
+        tables.bundle_event_heads = transactionTables.bundle_event_heads;
         tables.channels = transactionTables.channels;
         tables.api_keys = transactionTables.api_keys;
         tables.releases = transactionTables.releases;
@@ -403,7 +468,7 @@ export const createPrismaTestHarness = () => {
       tables.bundle_patches = [];
       tables.bundles = [];
       tables.bundle_events = [];
-      tables.bundle_installations = [];
+      tables.bundle_event_heads = [];
       tables.channels = [];
       tables.api_keys = [];
       tables.releases = [];

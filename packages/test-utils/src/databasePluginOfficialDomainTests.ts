@@ -1,4 +1,3 @@
-import { toInsightsInstallationRow } from "@hot-updater/plugin-core";
 import type { BundleEventRow, DatabasePlugin } from "@hot-updater/plugin-core";
 import { describe, expect, it } from "vitest";
 
@@ -26,7 +25,7 @@ const createMovementEvent = (
     type,
     install_id: installId,
     from_bundle_id: row.to_bundle_id,
-    update_strategy: "appVersion",
+    metadata: { ...row.metadata, update_strategy: "appVersion" },
   };
 };
 
@@ -224,17 +223,14 @@ export const registerDatabasePluginOfficialDomainTests = (
       const first = createBundleEventRowFixture("701", 100);
       const second = createBundleEventRowFixture("702", 100);
       const third = createBundleEventRowFixture("703", 200);
-      await plugin.models.insights.record({
+      await plugin.models.insights.recordEvent({
         event: third,
-        installation: toInsightsInstallationRow(third),
       });
-      await plugin.models.insights.record({
+      await plugin.models.insights.recordEvent({
         event: second,
-        installation: toInsightsInstallationRow(second),
       });
-      await plugin.models.insights.record({
+      await plugin.models.insights.recordEvent({
         event: first,
-        installation: toInsightsInstallationRow(first),
       });
 
       await expectInsightsIndex(
@@ -274,7 +270,10 @@ export const registerDatabasePluginOfficialDomainTests = (
         type: "UNCHANGED",
         install_id: "install-target",
         from_bundle_id: null,
-        update_strategy: null,
+        metadata: {
+          ...createBundleEventRowFixture("711", 300).metadata,
+          update_strategy: null,
+        },
       };
       const unrelated = createMovementEvent(
         "712",
@@ -295,9 +294,8 @@ export const registerDatabasePluginOfficialDomainTests = (
         "install-target",
       );
       for (const row of [unchanged, unrelated, applied, recovered]) {
-        await plugin.models.insights.record({
+        await plugin.models.insights.recordEvent({
           event: row,
-          installation: toInsightsInstallationRow(row),
         });
       }
 

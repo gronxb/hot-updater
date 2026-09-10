@@ -32,6 +32,13 @@ const createFixture = (expectedUpdates: number) => {
   const plugin = createDatabasePlugin({
     name,
     ...createDatabasePluginAdapter(name, {
+      findLatestInsightsEvents: async () => {
+        throw new Error("Unexpected Insights read");
+      },
+      countLatestInsightsEvents: async () => {
+        throw new Error("Unexpected Insights count");
+      },
+
       create: async (input) => {
         if (input.model === "bundle_patches") patchCreateCount += 1;
         return input.data;

@@ -97,7 +97,7 @@ describe("createHotUpdater Insights", () => {
     vi.setSystemTime(new Date("2026-08-12T00:00:00.000Z"));
     const receivedAtMs = Date.now();
     const database = createInMemoryDatabasePlugin();
-    const append = vi.spyOn(database.models.insights, "record");
+    const append = vi.spyOn(database.models.insights, "recordEvent");
     const hotUpdater = createHotUpdater({
       database,
       clientAccess: { type: "public" },
@@ -125,7 +125,7 @@ describe("createHotUpdater Insights", () => {
       expect.objectContaining({
         event: expect.objectContaining({
           install_id: "install-1",
-          sdk_version: "2.0.0",
+          metadata: expect.objectContaining({ sdk_version: "2.0.0" }),
           to_bundle_id: "bundle-1",
           type: "UNCHANGED",
         }),
@@ -314,7 +314,7 @@ describe("createHotUpdater Insights", () => {
 
   it("records same-file selection as no change and rejects a fourth event type", async () => {
     const database = createInMemoryDatabasePlugin();
-    const record = vi.spyOn(database.models.insights, "record");
+    const recordEvent = vi.spyOn(database.models.insights, "recordEvent");
     const hotUpdater = createHotUpdater({
       database,
       clientAccess: { type: "public" },
@@ -327,16 +327,15 @@ describe("createHotUpdater Insights", () => {
     expect(
       (await hotUpdater.handlers.client(eventRequest(selection))).status,
     ).toBe(204);
-    expect(record).toHaveBeenCalledWith({
+    expect(recordEvent).toHaveBeenCalledWith({
       event: expect.objectContaining({
         type: "UNCHANGED",
         from_bundle_id: null,
-        update_strategy: null,
+        metadata: expect.objectContaining({ update_strategy: null }),
         from_release_id: "previous-release",
         to_release_id: "selected-release",
         to_bundle_id: event.toBundleId,
       }),
-      installation: expect.objectContaining({ type: "UNCHANGED" }),
     });
     const response = await hotUpdater.handlers.client(
       eventRequest({
@@ -347,7 +346,7 @@ describe("createHotUpdater Insights", () => {
       }),
     );
     expect(response.status).toBe(400);
-    expect(record).toHaveBeenCalledTimes(1);
+    expect(recordEvent).toHaveBeenCalledTimes(1);
   });
 
   it("returns a stable client error for malformed event payloads", async () => {

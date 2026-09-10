@@ -13,6 +13,7 @@ import {
   DYNAMODB_CHANNEL_PARTITION,
   DYNAMODB_API_KEY_HASH_PARTITION,
   DYNAMODB_API_KEY_PARTITION,
+  DYNAMODB_RELEASE_ID_PARTITION,
   DYNAMODB_UPDATE_INDEX_NAME,
 } from "../src/dynamoDB";
 
@@ -46,6 +47,9 @@ export const buildDynamoDBPolicy = (
               "_hot-updater",
               "bundles",
               "bundle_patches",
+              "release-scope#*",
+              "release_catalogs",
+              DYNAMODB_RELEASE_ID_PARTITION,
               DYNAMODB_CHANNEL_PARTITION,
               DYNAMODB_CHANNEL_NAME_PARTITION,
               DYNAMODB_INSIGHTS_PARTITION,
@@ -53,6 +57,7 @@ export const buildDynamoDBPolicy = (
               DYNAMODB_INSIGHTS_EVENT_IDS_PARTITION,
               `${DYNAMODB_INSIGHTS_BUNDLE_PREFIX}*`,
               "_hot-updater#insights-user#*",
+              "_hot-updater#insights-scope#*",
               DYNAMODB_API_KEY_PARTITION,
               DYNAMODB_API_KEY_HASH_PARTITION,
             ],

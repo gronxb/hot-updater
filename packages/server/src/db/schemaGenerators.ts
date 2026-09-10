@@ -30,6 +30,7 @@ const toPascalCase = (value: string): string =>
     .join("");
 
 const prismaDb = (type: HotUpdaterColumnType, provider: ORMProvider) => {
+  if (provider === "cockroachdb" && type === "uuid") return " @db.Uuid";
   if (provider === "postgresql") {
     if (type === "uuid") return " @db.Uuid";
     if (type.startsWith("varchar")) {

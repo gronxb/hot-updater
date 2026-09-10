@@ -24,7 +24,7 @@ describe("firebase firestore index template", () => {
     );
     const indexFile = JSON.parse(await readFile(indexFilePath, "utf8"));
     const events = FIREBASE_V1_COLLECTION_NAMES.bundleEvents;
-    const installations = FIREBASE_V1_COLLECTION_NAMES.bundleInstallations;
+    const installations = FIREBASE_V1_COLLECTION_NAMES.insightsLatest;
     const asc = "ASCENDING" as const;
     const desc = "DESCENDING" as const;
 
@@ -65,14 +65,21 @@ describe("firebase firestore index template", () => {
           ["channel", asc],
           ["received_at_ms", asc],
         ]),
-        index(installations, [
-          ["platform", asc],
-          ["channel", asc],
-          ["to_bundle_id", asc],
-          ["received_at_ms", asc],
-        ]),
+        ...["from_bundle_id", "to_bundle_id"].map((field) =>
+          index(installations, [
+            ["platform", asc],
+            ["channel", asc],
+            [field, asc],
+            ["type", asc],
+            ["received_at_ms", asc],
+          ]),
+        ),
       ],
-      fieldOverrides: [],
+      fieldOverrides: [events, installations].map((collectionGroup) => ({
+        collectionGroup,
+        fieldPath: "metadata",
+        indexes: [],
+      })),
     });
   });
 });

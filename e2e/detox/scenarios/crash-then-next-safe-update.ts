@@ -72,7 +72,7 @@ export const crashThenNextSafeUpdateScenario: DetoxScenarioDefinition = {
         verificationPending: true,
       },
     );
-    await app.launch("launch next-safe crash Bundle");
+    await app.launch("launch next-safe crash Bundle", { expectCrash: true });
     await app.control(
       "wait next-safe recovery",
       "/e2e/wait-for-crash-recovery",

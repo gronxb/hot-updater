@@ -4,7 +4,6 @@ import { validateCreateData } from "./databasePluginCrudValidationRows";
 import type {
   BundleEventRow,
   InsightsEventFilter,
-  InsightsInstallationRow,
   InsightsModel,
 } from "./types";
 import { isUUIDv7 } from "./uuidv7";
@@ -78,7 +77,7 @@ const isEventFilter = (value: unknown): boolean => {
 };
 
 const validateRow = (
-  model: "bundle_events" | "bundle_installations",
+  model: "bundle_events",
   row: unknown,
   result = false,
 ): void => {
@@ -88,9 +87,10 @@ const validateRow = (
       !isRecord(row) ||
       typeof row.id !== "string" ||
       !isUUIDv7(row.id) ||
-      Object.values(row).some(
-        (value) => typeof value === "string" && !isWellFormedText(value),
-      )
+      [
+        ...Object.values(row),
+        ...(isRecord(row.metadata) ? Object.values(row.metadata) : []),
+      ].some((value) => typeof value === "string" && !isWellFormedText(value))
     ) {
       throw new DatabasePluginInputError("invalid-data");
     }
@@ -98,33 +98,6 @@ const validateRow = (
     if (result) throw new DatabasePluginInputError("invalid-result");
     throw error;
   }
-};
-
-/** Prepare the full latest-state candidate; the provider owns winning writes. */
-export const toInsightsInstallationRow = (
-  event: BundleEventRow,
-): InsightsInstallationRow => {
-  validateRow("bundle_events", event);
-  return {
-    id: event.id,
-    install_id: event.install_id,
-    user_id: event.user_id,
-    username: event.username,
-    to_bundle_id:
-      event.type === "UPDATE_DOWNLOADED"
-        ? event.from_bundle_id
-        : event.to_bundle_id,
-    pending_bundle_id:
-      event.type === "UPDATE_DOWNLOADED" ? event.to_bundle_id : null,
-    pending_release_id:
-      event.type === "UPDATE_DOWNLOADED" ? event.to_release_id : null,
-    type: event.type,
-    platform: event.platform,
-    app_version: event.app_version,
-    channel: event.channel,
-    cohort: event.cohort,
-    received_at_ms: event.received_at_ms,
-  };
 };
 
 /** Downloads and applied transitions belong in installation history. */
@@ -168,20 +141,12 @@ const validateCount = (count: number): number =>
 export const createValidatedInsightsModel = (
   model: InsightsModel,
 ): InsightsModel => ({
-  async record(input) {
-    if (!isRecord(input) || !hasOnlyKeys(input, ["event", "installation"])) {
+  async recordEvent(input) {
+    if (!isRecord(input) || !hasOnlyKeys(input, ["event"])) {
       throw new DatabasePluginInputError("invalid-data");
     }
-    const expected = toInsightsInstallationRow(input.event);
-    validateRow("bundle_installations", input.installation);
-    if (
-      Object.entries(expected).some(
-        ([field, value]) => Reflect.get(input.installation, field) !== value,
-      )
-    ) {
-      throw new DatabasePluginInputError("invalid-data");
-    }
-    await model.record(input);
+    validateRow("bundle_events", input.event);
+    await model.recordEvent(input);
   },
   async listEvents(input) {
     if (
@@ -231,7 +196,7 @@ export const createValidatedInsightsModel = (
     }
     return rows;
   },
-  async findInstallations(input) {
+  async findLatestEvents(input) {
     if (!isRecord(input)) invalidQuery();
     if ("installId" in input) {
       if (!hasOnlyKeys(input, ["installId"]) || !isIdentity(input.installId))
@@ -243,7 +208,7 @@ export const createValidatedInsightsModel = (
       (input.afterInstallId !== undefined && !isIdentity(input.afterInstallId))
     )
       invalidQuery();
-    const rows = await model.findInstallations(input);
+    const rows = await model.findLatestEvents(input);
     if (
       !Array.isArray(rows) ||
       rows.length > ("installId" in input ? 1 : input.limit)
@@ -251,7 +216,7 @@ export const createValidatedInsightsModel = (
       invalidResult();
     let previous = "installId" in input ? undefined : input.afterInstallId;
     for (const row of rows) {
-      validateRow("bundle_installations", row, true);
+      validateRow("bundle_events", row, true);
       if (
         "installId" in input
           ? row.install_id !== input.installId
@@ -264,16 +229,38 @@ export const createValidatedInsightsModel = (
     }
     return rows;
   },
-  async countInstallations(input) {
+  async countLatestEvents(input) {
     if (
       !isRecord(input) ||
-      !hasOnlyKeys(input, ["platform", "channel", "sinceMs", "bundleId"]) ||
+      !hasOnlyKeys(input, ["platform", "channel", "sinceMs", "bundle"]) ||
       !hasScope(input) ||
       !isTimestamp(input.sinceMs) ||
-      (input.bundleId !== undefined && !isText(input.bundleId))
+      (input.bundle !== undefined &&
+        (!Array.isArray(input.bundle) ||
+          input.bundle.length < 1 ||
+          input.bundle.length > 2 ||
+          input.bundle.some(
+            (bundle) =>
+              !isRecord(bundle) ||
+              !hasOnlyKeys(bundle, ["field", "value", "types"]) ||
+              (bundle.field !== "from_bundle_id" &&
+                bundle.field !== "to_bundle_id") ||
+              !isText(bundle.value) ||
+              !Array.isArray(bundle.types) ||
+              bundle.types.length === 0 ||
+              bundle.types.some(
+                (type) =>
+                  ![
+                    "UNCHANGED",
+                    "UPDATE_DOWNLOADED",
+                    "UPDATE_APPLIED",
+                    "RECOVERED",
+                  ].includes(type),
+              ),
+          )))
     )
       invalidQuery();
-    return validateCount(await model.countInstallations(input));
+    return validateCount(await model.countLatestEvents(input));
   },
   async countEvents(input) {
     if (

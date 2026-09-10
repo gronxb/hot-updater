@@ -2,7 +2,6 @@ import type {
   BundlePatchRow,
   BundleRow,
   BundleEventRow,
-  InsightsInstallationRow,
   ChannelRow,
   ChannelDeleteResult,
   ApiKeyRow,
@@ -26,8 +25,6 @@ export type SupabaseBundlePatchRow = {
 };
 
 export type SupabaseBundleEventRow = BundleEventRow;
-
-export type SupabaseBundleInstallationRow = InsightsInstallationRow;
 
 export type SupabaseApiKeyRow = {
   [TField in keyof ApiKeyRow]: ApiKeyRow[TField];
@@ -59,18 +56,28 @@ export type Database = {
       [SUPABASE_V1_TABLE_NAMES.bundlePatches]: Table<SupabaseBundlePatchRow>;
       [SUPABASE_V1_TABLE_NAMES.channels]: Table<SupabaseChannelRow>;
       [SUPABASE_V1_TABLE_NAMES.bundleEvents]: Table<SupabaseBundleEventRow>;
-      [SUPABASE_V1_TABLE_NAMES.bundleInstallations]: Table<SupabaseBundleInstallationRow>;
+      [SUPABASE_V1_TABLE_NAMES.bundleEventHeads]: Table<
+        Pick<
+          BundleEventRow,
+          | "install_id"
+          | "id"
+          | "received_at_ms"
+          | "user_id"
+          | "platform"
+          | "channel"
+          | "type"
+          | "from_bundle_id"
+          | "to_bundle_id"
+        >
+      >;
       [SUPABASE_V1_TABLE_NAMES.apiKeys]: Table<SupabaseApiKeyRow>;
       [SUPABASE_V1_TABLE_NAMES.releaseCatalogs]: Table<SupabaseReleaseCatalogRow>;
       [SUPABASE_V1_TABLE_NAMES.releases]: Table<SupabaseReleaseRow>;
     };
-    Views: { [_ in never]: never };
+    Views: Record<never, never>;
     Functions: {
-      [SUPABASE_V1_FUNCTION_NAMES.recordInsights]: {
-        Args: {
-          p_event: BundleEventRow;
-          p_installation: InsightsInstallationRow;
-        };
+      [SUPABASE_V1_FUNCTION_NAMES.recordEvent]: {
+        Args: { p_event: BundleEventRow };
         Returns: undefined;
       };
       [SUPABASE_V1_FUNCTION_NAMES.commit]: {

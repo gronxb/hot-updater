@@ -180,26 +180,37 @@ an object; custom providers do not implement the bundled internal CRUD adapter.
 
 ```ts
 interface InsightsModel {
-  record(input: InsightsRecordInput): Promise<void>;
+  recordEvent(input: InsightsRecordEventInput): Promise<void>;
   listEvents(
     input: InsightsListEventsInput,
   ): Promise<readonly BundleEventRow[]>;
-  findInstallations(
-    input: InsightsFindInstallationsInput,
-  ): Promise<readonly InsightsInstallationRow[]>;
-  countInstallations(input: InsightsCountInstallationsInput): Promise<number>;
+  findLatestEvents(
+    input: InsightsFindLatestEventsInput,
+  ): Promise<readonly BundleEventRow[]>;
+  countLatestEvents(input: InsightsCountLatestEventsInput): Promise<number>;
   countEvents(input: InsightsCountEventsInput): Promise<number>;
 }
 ```
 
-`record({ event, installation })` receives a prepared immutable report and its
-full latest-state candidate. Atomically insert the event and replace the
-installation row only if `(received_at_ms, id)` advances. The first event ID
-wins: a duplicate must not overwrite the event or update state again. Retrying
-an identical prepared input after an ambiguous commit is safe. An older event
-still enters history without restoring an old user or bundle. A winning
-`user_id: null` clears the old association. Sequential best-effort writes are
-insufficient; native transaction prerequisites belong in provider documentation.
+`recordEvent({ event })` receives one validated, immutable `BundleEventRow`. Store
+it once by `id`; the first accepted payload wins, even if a retry carries different
+fields. There is no required installation table or second input to prepare.
+
+A provider may maintain a private latest index keyed by `install_id`, containing
+the canonical access fields or the complete supplied event. Event acceptance and
+advancing that index must be one native atomic operation. Replace its fields
+only if `(received_at_ms, id)` increases. A duplicate event ID changes nothing,
+including private indexes. Older events enter history without restoring an old
+user association. A winning `user_id: null` removes the previous association.
+Implement these storage rules directly; no lifecycle helper or reducer is required.
+
+`metadata` uses the same JSON value conventions as Bundle metadata. Its required
+known keys are `cohort: string`, `username: string | null`,
+`update_strategy: "appVersion" | "fingerprint" | null`,
+`fingerprint_hash: string | null`, and `sdk_version: string | null`.
+Core validates these and the event-type relationship before calling `recordEvent`.
+Preserve all supplied JSON keys, including nested objects, arrays, and nulls.
+Do not unpack metadata into provider-specific columns or interpret it for queries.
 
 `listEvents({ filter, sinceMs?, beforeReceivedAtMs, after?, limit })` returns
 newest-first `(received_at_ms, id)` order in the half-open interval
@@ -220,25 +231,50 @@ walk preceding pages. Limits are integers from 1 to 101; core uses lookahead
 to return at most 100. A short or empty native page with a continuation token
 is not exhaustion: continue until the result prefix is full or exhausted.
 
-`findInstallations({ installId })` returns an empty or one-row array from
-canonical latest state. `findInstallations({ userId, afterInstallId?, limit })`
-returns current matches in ascending UTF-8 byte order of installation ID, with
-an exclusive cursor and the same 1–101 limit. Mixing the forms is invalid.
-IDs are exact and case-sensitive, with no Unicode normalization. If a secondary
-user index lags, recheck candidates against canonical state and continue past
-stale candidates. New associations may temporarily be absent; historical users
-and usernames are not matches.
+`findLatestEvents` returns canonical **event rows**, not installation DTOs:
 
-`countInstallations({ platform, channel, sinceMs, bundleId? })` counts latest
-rows in that scope with `received_at_ms >= sinceMs`, optionally requiring
-`to_bundle_id = bundleId`. Each installation contributes at most once. Use a
-native aggregate or stable installation-ID traversal; paging a mutable
-last-seen index can double-count moving rows. Never derive it from event history.
+```ts
+type InsightsFindLatestEventsInput =
+  | { installId: string }
+  | { userId: string; afterInstallId?: string; limit: number };
+
+type InsightsCountLatestEventsInput = {
+  platform: "ios" | "android";
+  channel: string;
+  sinceMs: number;
+  bundle?: readonly {
+    field: "from_bundle_id" | "to_bundle_id";
+    value: string;
+    types: readonly BundleEventRow["type"][];
+  }[];
+};
+```
+
+For each installation, select the greatest `(received_at_ms, id)` across **all**
+its events, including `UNCHANGED`, before applying user, scope, receipt-window,
+or bundle predicates. Otherwise a historical match can restore a logged-out user.
+Exact lookup returns zero or one row. A user page returns matches ordered by
+`install_id` in ascending UTF-8 byte order, strictly after `afterInstallId`, with
+the same 1–101 limit. IDs are case-sensitive without Unicode normalization.
+A lagging secondary user index must validate candidates against canonical state
+and continue past stale candidates; newly assigned users can be temporarily absent.
+
+`countLatestEvents` counts selected latest events matching `platform`, `channel`,
+and `received_at_ms >= sinceMs`. If `bundle` is supplied, it contains one or two predicates joined by OR.
+A predicate matches when `event[predicate.field] === predicate.value` and
+`event.type` is in `predicate.types`. Count a matching installation once even
+when both predicates match. Evaluate the disjunction in one native query or
+stable installation traversal; do not sum independently observed counts. These are fixed native predicates;
+core supplies the Downloaded/from-bundle or other-type/to-bundle cases.
+Do not derive running/pending state inside the plugin. Use a native event query
+or a private latest index. A mutable last-seen cursor can double-count rows;
+DynamoDB instead traverses stable installation IDs in a compact scope partition. Propagate query failure
+rather than returning partial counts.
 
 `countEvents({ filter, sinceMs, beforeReceivedAtMs })` counts a fixed raw bundle
 filter in the same receipt interval as `listEvents`. The filter has platform,
 channel, type, and `fromBundleId` for `RECOVERED` or `toBundleId` for
-`UPDATE_DOWNLOADED`/`UPDATE_APPLIED`/`UNCHANGED`; it has no `kind`. `UNCHANGED` means the running files did not change, including selecting another Release for those same files. Its `from_bundle_id` and `update_strategy` must be null. Recovery B → A therefore
+`UPDATE_DOWNLOADED`/`UPDATE_APPLIED`/`UNCHANGED`; it has no `kind`. `UNCHANGED` means the running files did not change, including selecting another Release for those same files. Its `from_bundle_id` and `metadata.update_strategy` must be null. Recovery B → A therefore
 counts against B while latest state names A. Counts concern reports, not
 unique attempts or installations. Count all native pages or propagate failure.
 
@@ -253,6 +289,83 @@ The public constructor validates queries and returned rows, but cannot prove
 atomicity or index usage. Run the repository conformance suite plus native rollback,
 concurrency, continuation, schema-bootstrap, and query-plan tests for your
 backend.
+
+#### Native storage patterns
+
+The bundled SQL and MongoDB providers keep a private `bundle_event_heads`
+table/collection with `install_id`, `id`, `received_at_ms`, `user_id`, `platform`,
+`channel`, `type`, `from_bundle_id`, and `to_bundle_id`. These are canonical event
+fields used for latest ordering, user pages, and count predicates. Metadata,
+release IDs, app version, and calculated running/pending state are not copied.
+This physical layout is not a required custom-provider model.
+
+A PostgreSQL provider can append and advance the head atomically in one statement:
+
+```ts
+async function recordEvent({ event }: InsightsRecordEventInput) {
+  await sql.query(
+    `WITH accepted AS (
+       INSERT INTO bundle_events
+       SELECT * FROM jsonb_populate_record(NULL::bundle_events, $1::jsonb)
+       ON CONFLICT (id) DO NOTHING RETURNING *
+     )
+     INSERT INTO bundle_event_heads (
+       install_id, id, received_at_ms, user_id, platform, channel,
+       type, from_bundle_id, to_bundle_id
+     )
+     SELECT install_id, id, received_at_ms, user_id, platform, channel,
+       type, from_bundle_id, to_bundle_id FROM accepted
+     ON CONFLICT (install_id) DO UPDATE SET
+       id = excluded.id, received_at_ms = excluded.received_at_ms,
+       user_id = excluded.user_id, platform = excluded.platform,
+       channel = excluded.channel, type = excluded.type,
+       from_bundle_id = excluded.from_bundle_id,
+       to_bundle_id = excluded.to_bundle_id
+     WHERE (excluded.received_at_ms, excluded.id) >
+       (bundle_event_heads.received_at_ms, bundle_event_heads.id)`,
+    [JSON.stringify(event)],
+  );
+}
+```
+
+The bundled providers index heads by `(user_id, install_id)`,
+`(platform, channel, received_at_ms)`, and the two bundle-count tuples
+`(type, platform, channel, from_bundle_id, received_at_ms)` and
+`(type, platform, channel, to_bundle_id, received_at_ms)`.
+For a user page, select at most `limit` head IDs using `userId` and the optional
+exclusive installation cursor, then join those IDs to `bundle_events`. Return
+complete canonical event rows. Count the matching heads directly; no event
+hydration is needed for a scalar count. Latest-state reads then depend on current
+installations, without revisiting each installation's retained history. Counts
+still require database work proportional to the relevant current entries.
+
+A Firestore-style provider can keep a private latest collection. Its `recordEvent`
+implementation only copies the supplied object and compares the receipt tuple:
+
+```ts
+async function recordEvent({ event }: InsightsRecordEventInput) {
+  await db.runTransaction(async (tx) => {
+    const eventRef = events.doc(event.id);
+    // Use a reversible, collision-free document key for arbitrary install IDs.
+    const latestRef = latest.doc(Buffer.from(event.install_id).toString("hex"));
+    const [accepted, previous] = await tx.getAll(eventRef, latestRef);
+    if (accepted.exists) return;
+    const row = previous.data();
+    tx.create(eventRef, event);
+    if (!row || event.received_at_ms > row.received_at_ms ||
+        (event.received_at_ms === row.received_at_ms && event.id > row.id)) {
+      tx.set(latestRef, event);
+    }
+  });
+}
+```
+
+Read that private collection by exact document key or supplied native predicates;
+return its complete event unchanged. No pending-bundle calculation, metadata
+helper, background worker, or public repair method is part of the contract.
+The bundled SQL and Firestore implementations exercise these patterns through
+`setupDatabasePluginTestSuite`; custom authors use the same suite described below.
+
 
 ## Atomic commit and optimistic CAS
 
@@ -477,10 +590,7 @@ merge IDs that differ by trailing spaces; its default Unicode/UUID ordering
 also differs from this contract. There is no silent fallback to weaker identity
 or pagination semantics. Use a supported Insights provider for these views.
 
-For `UPDATE_DOWNLOADED`, the event's `from_bundle_id` is still running and
-`to_bundle_id` is staged for the next runtime. Use `toInsightsInstallationRow`
-to preserve the running ID in the installation's `to_bundle_id` and persist the
-staged target in nullable `pending_bundle_id` / `pending_release_id`. All other
-event types clear the pending fields. Apply the same atomic latest-event
-ordering to these fields so retries and older reports cannot restore a stale
-download.
+For `UPDATE_DOWNLOADED`, core maps the latest event to a response with its
+`from_bundle_id` running and its `to_bundle_id` / `to_release_id` pending.
+Other event types clear the pending response fields. These are server DTO rules,
+not fields that custom providers must store.

@@ -82,12 +82,23 @@ class DetoxAppDriver {
 
   async launch(stage, options = {}) {
     await this.runStage(stage, async () => {
+      const isCrashLaunch = options.expectCrash === true;
+      if (isAndroidRun() && isCrashLaunch) {
+        // Android finishes instrumentation by stopping the whole app package
+        // when native recovery kills its original process, including the restart.
+        await device.terminateApp();
+        await this.controlClient.postJson(
+          `${stage}: launch without instrumentation`,
+          "/e2e/launch-android-crash-app",
+          {},
+        );
+        return;
+      }
       const launchState = await this.controlClient.postJson(
         `${stage}: prepare launch`,
         "/e2e/prepare-app-launch",
         {},
       );
-      const isCrashLaunch = stage.toLowerCase().includes("crash");
       const shouldReattach =
         isAndroidRun() && launchState.alreadyFocused && !isCrashLaunch;
       try {
@@ -97,8 +108,8 @@ class DetoxAppDriver {
         }
         await launchApp({
           newInstance: true,
-          // Native recovery restarts JS; the scenario verifies its native report.
-          ...(isCrashLaunch && !isAndroidRun()
+          // Crash teardown invalidates RN idling resources before native recovery.
+          ...(isCrashLaunch
             ? { launchArgs: { detoxEnableSynchronization: 0 } }
             : {}),
         });

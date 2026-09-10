@@ -9,7 +9,7 @@
     "start": "react-native start",
     "test": "jest",
     "pod-install": "cd ios && bundle install && RCT_USE_PREBUILT_RNCORE=1 RCT_USE_RN_DEP=1 bundle exec pod install && cd ..",
-    "fingerprint:create": "hot-updater fingerprint create"
+    "fingerprint:create": "node ../../packages/hot-updater/dist/index.mjs fingerprint create"
   },
   "devDependencies": {
     "@aws-sdk/credential-provider-sso": "^3.972.25",
@@ -50,7 +50,7 @@
     "dotenv": "^16.4.5",
     "eslint": "^8.19.0",
     "firebase-admin": "catalog:firebase",
-    "firebase-tools": "^13.35.1",
+    "firebase-tools": "15.29.0",
     "hermes-compiler": "250829098.0.10",
     "hot-updater": "workspace:*",
     "jest": "^29.6.3",

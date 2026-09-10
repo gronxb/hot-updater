@@ -921,7 +921,7 @@ export const createDatabasePluginAdapter = (
         },
       },
       insights: {
-        record: (input) => implementation.recordInsights(input),
+        recordEvent: (input) => implementation.recordInsights(input),
         async listEvents(input) {
           const ranges = await Promise.all(
             toInsightsEventRanges(input.filter).map((where) =>
@@ -940,55 +940,10 @@ export const createDatabasePluginAdapter = (
             )
             .slice(0, input.limit);
         },
-        async findInstallations(input) {
-          if ("installId" in input) {
-            const row = await crud.findOne({
-              model: "bundle_installations",
-              where: [{ field: "install_id", value: input.installId }],
-            });
-            return row === null ? [] : [row];
-          }
-          return crud.findMany({
-            model: "bundle_installations",
-            where: [
-              { field: "user_id", value: input.userId },
-              ...(input.afterInstallId === undefined
-                ? []
-                : [
-                    {
-                      field: "install_id" as const,
-                      operator: "gt" as const,
-                      value: input.afterInstallId,
-                    },
-                  ]),
-            ],
-            orderBy: [{ field: "install_id", direction: "asc" }],
-            limit: input.limit,
-            offset: 0,
-          });
-        },
-        countInstallations(input) {
-          return crud.count({
-            model: "bundle_installations",
-            where: [
-              { field: "platform", value: input.platform },
-              { field: "channel", value: input.channel },
-              {
-                field: "received_at_ms",
-                operator: "gte",
-                value: input.sinceMs,
-              },
-              ...(input.bundleId === undefined
-                ? []
-                : [
-                    {
-                      field: "to_bundle_id" as const,
-                      value: input.bundleId,
-                    },
-                  ]),
-            ],
-          });
-        },
+        findLatestEvents: (input) =>
+          implementation.findLatestInsightsEvents(input),
+        countLatestEvents: (input) =>
+          implementation.countLatestInsightsEvents(input),
         countEvents(input) {
           return crud.count({
             model: "bundle_events",

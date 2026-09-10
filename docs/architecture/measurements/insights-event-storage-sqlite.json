@@ -1,0 +1,575 @@
+{
+  "baseline": "ef1a071e83fc870038a591b7b83d91a6a738f96c",
+  "sqlite": "3.50.4",
+  "host": "macOS-26.3-arm64-arm-64bit-Mach-O",
+  "notes": "One process, serial warm reads, 7 samples; p95 is max. Each query attempt has a 10-second measurement cap; interrupted queries report a lower bound, not a partial result. Bulk load has one transaction; not network latency, per-event durable commit cost, or provider billing.",
+  "results": [
+    {
+      "installations": 1000,
+      "events_per_install": 10,
+      "strategies": {
+        "baseline": {
+          "load_ms": 208,
+          "append_in_transaction_p50_ms": 0.015,
+          "append_in_transaction_p95_ms": 0.075,
+          "database_bytes": 5570560,
+          "indexes": [
+            "sqlite_autoindex_bundle_events_1",
+            "sqlite_autoindex_bundle_installations_1",
+            "bundle_events_received_at_idx",
+            "bundle_events_install_idx",
+            "bundle_installations_user_id_idx",
+            "bundle_installations_received_at_idx",
+            "bundle_events_from_bundle_idx",
+            "bundle_events_to_bundle_idx",
+            "bundle_installations_scope_idx",
+            "bundle_installations_bundle_idx"
+          ],
+          "queries": {
+            "exact": {
+              "p50_ms": 0.005,
+              "p95_ms": 0.012,
+              "plan": [
+                "SEARCH e USING INDEX sqlite_autoindex_bundle_installations_1 (install_id=?)"
+              ]
+            },
+            "user_first": {
+              "p50_ms": 0.035,
+              "p95_ms": 0.104,
+              "plan": [
+                "SEARCH e USING INDEX bundle_installations_user_id_idx (user_id=?)"
+              ]
+            },
+            "user_later": {
+              "p50_ms": 0.016,
+              "p95_ms": 0.042,
+              "plan": [
+                "SEARCH e USING INDEX bundle_installations_user_id_idx (user_id=? AND install_id>?)"
+              ]
+            },
+            "scope_count": {
+              "p50_ms": 0.019,
+              "p95_ms": 0.02,
+              "plan": [
+                "SEARCH e USING COVERING INDEX bundle_installations_scope_idx (platform=? AND channel=? AND received_at_ms>?)"
+              ]
+            },
+            "bundle_count": {
+              "p50_ms": 0.022,
+              "p95_ms": 0.024,
+              "plan": [
+                "SEARCH e USING COVERING INDEX bundle_installations_bundle_idx (platform=? AND channel=? AND to_bundle_id=? AND received_at_ms>?)"
+              ]
+            }
+          }
+        },
+        "event_only": {
+          "load_ms": 164,
+          "append_in_transaction_p50_ms": 0.009,
+          "append_in_transaction_p95_ms": 0.029,
+          "database_bytes": 7266304,
+          "indexes": [
+            "sqlite_autoindex_bundle_events_1",
+            "bundle_events_received_at_idx",
+            "bundle_events_install_idx",
+            "bundle_events_from_bundle_idx",
+            "bundle_events_to_bundle_idx",
+            "bundle_events_latest_idx",
+            "bundle_events_user_idx"
+          ],
+          "queries": {
+            "exact": {
+              "p50_ms": 0.007,
+              "p95_ms": 0.01,
+              "plan": [
+                "SEARCH e USING COVERING INDEX bundle_events_latest_idx (install_id=?)",
+                "CORRELATED SCALAR SUBQUERY 1",
+                "MULTI-INDEX OR",
+                "INDEX 1",
+                "SEARCH n USING COVERING INDEX bundle_events_latest_idx (install_id=? AND received_at_ms>?)",
+                "INDEX 2",
+                "SEARCH n USING COVERING INDEX bundle_events_latest_idx (install_id=? AND received_at_ms=? AND id>?)"
+              ]
+            },
+            "user_first": {
+              "p50_ms": 0.136,
+              "p95_ms": 0.15,
+              "plan": [
+                "SEARCH e USING INDEX bundle_events_user_idx (user_id=?)",
+                "CORRELATED SCALAR SUBQUERY 1",
+                "MULTI-INDEX OR",
+                "INDEX 1",
+                "SEARCH n USING COVERING INDEX bundle_events_latest_idx (install_id=? AND received_at_ms>?)",
+                "INDEX 2",
+                "SEARCH n USING COVERING INDEX bundle_events_latest_idx (install_id=? AND received_at_ms=? AND id>?)"
+              ]
+            },
+            "user_later": {
+              "p50_ms": 0.067,
+              "p95_ms": 0.069,
+              "plan": [
+                "SEARCH e USING INDEX bundle_events_user_idx (user_id=? AND install_id>?)",
+                "CORRELATED SCALAR SUBQUERY 1",
+                "MULTI-INDEX OR",
+                "INDEX 1",
+                "SEARCH n USING COVERING INDEX bundle_events_latest_idx (install_id=? AND received_at_ms>?)",
+                "INDEX 2",
+                "SEARCH n USING COVERING INDEX bundle_events_latest_idx (install_id=? AND received_at_ms=? AND id>?)"
+              ]
+            },
+            "scope_count": {
+              "p50_ms": 6.822,
+              "p95_ms": 7.753,
+              "plan": [
+                "SEARCH e USING INDEX bundle_events_received_at_idx (received_at_ms>?)",
+                "CORRELATED SCALAR SUBQUERY 1",
+                "MULTI-INDEX OR",
+                "INDEX 1",
+                "SEARCH n USING COVERING INDEX bundle_events_latest_idx (install_id=? AND received_at_ms>?)",
+                "INDEX 2",
+                "SEARCH n USING COVERING INDEX bundle_events_latest_idx (install_id=? AND received_at_ms=? AND id>?)"
+              ]
+            },
+            "bundle_count": {
+              "p50_ms": 4.206,
+              "p95_ms": 4.396,
+              "plan": [
+                "MULTI-INDEX OR",
+                "INDEX 1",
+                "SEARCH e USING INDEX bundle_events_from_bundle_idx (type=? AND platform=? AND channel=? AND from_bundle_id=? AND received_at_ms>?)",
+                "INDEX 2",
+                "SEARCH e USING INDEX bundle_events_to_bundle_idx (type=? AND platform=? AND channel=? AND to_bundle_id=? AND received_at_ms>?)",
+                "CORRELATED SCALAR SUBQUERY 1",
+                "MULTI-INDEX OR",
+                "INDEX 1",
+                "SEARCH n USING COVERING INDEX bundle_events_latest_idx (install_id=? AND received_at_ms>?)",
+                "INDEX 2",
+                "SEARCH n USING COVERING INDEX bundle_events_latest_idx (install_id=? AND received_at_ms=? AND id>?)"
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "installations": 1000,
+      "events_per_install": 100,
+      "strategies": {
+        "baseline": {
+          "load_ms": 3692,
+          "append_in_transaction_p50_ms": 0.026,
+          "append_in_transaction_p95_ms": 0.052,
+          "database_bytes": 52740096,
+          "indexes": [
+            "sqlite_autoindex_bundle_events_1",
+            "sqlite_autoindex_bundle_installations_1",
+            "bundle_events_received_at_idx",
+            "bundle_events_install_idx",
+            "bundle_installations_user_id_idx",
+            "bundle_installations_received_at_idx",
+            "bundle_events_from_bundle_idx",
+            "bundle_events_to_bundle_idx",
+            "bundle_installations_scope_idx",
+            "bundle_installations_bundle_idx"
+          ],
+          "queries": {
+            "exact": {
+              "p50_ms": 0.004,
+              "p95_ms": 0.008,
+              "plan": [
+                "SEARCH e USING INDEX sqlite_autoindex_bundle_installations_1 (install_id=?)"
+              ]
+            },
+            "user_first": {
+              "p50_ms": 0.014,
+              "p95_ms": 0.016,
+              "plan": [
+                "SEARCH e USING INDEX bundle_installations_user_id_idx (user_id=?)"
+              ]
+            },
+            "user_later": {
+              "p50_ms": 0.009,
+              "p95_ms": 0.009,
+              "plan": [
+                "SEARCH e USING INDEX bundle_installations_user_id_idx (user_id=? AND install_id>?)"
+              ]
+            },
+            "scope_count": {
+              "p50_ms": 0.018,
+              "p95_ms": 0.022,
+              "plan": [
+                "SEARCH e USING COVERING INDEX bundle_installations_scope_idx (platform=? AND channel=? AND received_at_ms>?)"
+              ]
+            },
+            "bundle_count": {
+              "p50_ms": 0.023,
+              "p95_ms": 0.024,
+              "plan": [
+                "SEARCH e USING COVERING INDEX bundle_installations_bundle_idx (platform=? AND channel=? AND to_bundle_id=? AND received_at_ms>?)"
+              ]
+            }
+          }
+        },
+        "event_only": {
+          "load_ms": 3365,
+          "append_in_transaction_p50_ms": 0.021,
+          "append_in_transaction_p95_ms": 0.042,
+          "database_bytes": 72335360,
+          "indexes": [
+            "sqlite_autoindex_bundle_events_1",
+            "bundle_events_received_at_idx",
+            "bundle_events_install_idx",
+            "bundle_events_from_bundle_idx",
+            "bundle_events_to_bundle_idx",
+            "bundle_events_latest_idx",
+            "bundle_events_user_idx"
+          ],
+          "queries": {
+            "exact": {
+              "p50_ms": 0.033,
+              "p95_ms": 0.039,
+              "plan": [
+                "SEARCH e USING COVERING INDEX bundle_events_latest_idx (install_id=?)",
+                "CORRELATED SCALAR SUBQUERY 1",
+                "MULTI-INDEX OR",
+                "INDEX 1",
+                "SEARCH n USING COVERING INDEX bundle_events_latest_idx (install_id=? AND received_at_ms>?)",
+                "INDEX 2",
+                "SEARCH n USING COVERING INDEX bundle_events_latest_idx (install_id=? AND received_at_ms=? AND id>?)"
+              ]
+            },
+            "user_first": {
+              "p50_ms": 3.007,
+              "p95_ms": 3.349,
+              "plan": [
+                "SEARCH e USING INDEX bundle_events_user_idx (user_id=?)",
+                "CORRELATED SCALAR SUBQUERY 1",
+                "MULTI-INDEX OR",
+                "INDEX 1",
+                "SEARCH n USING COVERING INDEX bundle_events_latest_idx (install_id=? AND received_at_ms>?)",
+                "INDEX 2",
+                "SEARCH n USING COVERING INDEX bundle_events_latest_idx (install_id=? AND received_at_ms=? AND id>?)"
+              ]
+            },
+            "user_later": {
+              "p50_ms": 1.277,
+              "p95_ms": 1.403,
+              "plan": [
+                "SEARCH e USING INDEX bundle_events_user_idx (user_id=? AND install_id>?)",
+                "CORRELATED SCALAR SUBQUERY 1",
+                "MULTI-INDEX OR",
+                "INDEX 1",
+                "SEARCH n USING COVERING INDEX bundle_events_latest_idx (install_id=? AND received_at_ms>?)",
+                "INDEX 2",
+                "SEARCH n USING COVERING INDEX bundle_events_latest_idx (install_id=? AND received_at_ms=? AND id>?)"
+              ]
+            },
+            "scope_count": {
+              "p50_ms": 149.461,
+              "p95_ms": 155.343,
+              "plan": [
+                "SEARCH e USING INDEX bundle_events_received_at_idx (received_at_ms>?)",
+                "CORRELATED SCALAR SUBQUERY 1",
+                "MULTI-INDEX OR",
+                "INDEX 1",
+                "SEARCH n USING COVERING INDEX bundle_events_latest_idx (install_id=? AND received_at_ms>?)",
+                "INDEX 2",
+                "SEARCH n USING COVERING INDEX bundle_events_latest_idx (install_id=? AND received_at_ms=? AND id>?)"
+              ]
+            },
+            "bundle_count": {
+              "p50_ms": 74.999,
+              "p95_ms": 77.266,
+              "plan": [
+                "MULTI-INDEX OR",
+                "INDEX 1",
+                "SEARCH e USING INDEX bundle_events_from_bundle_idx (type=? AND platform=? AND channel=? AND from_bundle_id=? AND received_at_ms>?)",
+                "INDEX 2",
+                "SEARCH e USING INDEX bundle_events_to_bundle_idx (type=? AND platform=? AND channel=? AND to_bundle_id=? AND received_at_ms>?)",
+                "CORRELATED SCALAR SUBQUERY 1",
+                "MULTI-INDEX OR",
+                "INDEX 1",
+                "SEARCH n USING COVERING INDEX bundle_events_latest_idx (install_id=? AND received_at_ms>?)",
+                "INDEX 2",
+                "SEARCH n USING COVERING INDEX bundle_events_latest_idx (install_id=? AND received_at_ms=? AND id>?)"
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "installations": 10000,
+      "events_per_install": 10,
+      "strategies": {
+        "baseline": {
+          "load_ms": 2173,
+          "append_in_transaction_p50_ms": 0.015,
+          "append_in_transaction_p95_ms": 0.035,
+          "database_bytes": 53768192,
+          "indexes": [
+            "sqlite_autoindex_bundle_events_1",
+            "sqlite_autoindex_bundle_installations_1",
+            "bundle_events_received_at_idx",
+            "bundle_events_install_idx",
+            "bundle_installations_user_id_idx",
+            "bundle_installations_received_at_idx",
+            "bundle_events_from_bundle_idx",
+            "bundle_events_to_bundle_idx",
+            "bundle_installations_scope_idx",
+            "bundle_installations_bundle_idx"
+          ],
+          "queries": {
+            "exact": {
+              "p50_ms": 0.005,
+              "p95_ms": 0.007,
+              "plan": [
+                "SEARCH e USING INDEX sqlite_autoindex_bundle_installations_1 (install_id=?)"
+              ]
+            },
+            "user_first": {
+              "p50_ms": 0.031,
+              "p95_ms": 0.038,
+              "plan": [
+                "SEARCH e USING INDEX bundle_installations_user_id_idx (user_id=?)"
+              ]
+            },
+            "user_later": {
+              "p50_ms": 0.03,
+              "p95_ms": 0.037,
+              "plan": [
+                "SEARCH e USING INDEX bundle_installations_user_id_idx (user_id=? AND install_id>?)"
+              ]
+            },
+            "scope_count": {
+              "p50_ms": 0.144,
+              "p95_ms": 0.152,
+              "plan": [
+                "SEARCH e USING COVERING INDEX bundle_installations_scope_idx (platform=? AND channel=? AND received_at_ms>?)"
+              ]
+            },
+            "bundle_count": {
+              "p50_ms": 0.188,
+              "p95_ms": 0.274,
+              "plan": [
+                "SEARCH e USING COVERING INDEX bundle_installations_bundle_idx (platform=? AND channel=? AND to_bundle_id=? AND received_at_ms>?)"
+              ]
+            }
+          }
+        },
+        "event_only": {
+          "load_ms": 1823,
+          "append_in_transaction_p50_ms": 0.01,
+          "append_in_transaction_p95_ms": 0.03,
+          "database_bytes": 70656000,
+          "indexes": [
+            "sqlite_autoindex_bundle_events_1",
+            "bundle_events_received_at_idx",
+            "bundle_events_install_idx",
+            "bundle_events_from_bundle_idx",
+            "bundle_events_to_bundle_idx",
+            "bundle_events_latest_idx",
+            "bundle_events_user_idx"
+          ],
+          "queries": {
+            "exact": {
+              "p50_ms": 0.009,
+              "p95_ms": 0.014,
+              "plan": [
+                "SEARCH e USING COVERING INDEX bundle_events_latest_idx (install_id=?)",
+                "CORRELATED SCALAR SUBQUERY 1",
+                "SEARCH n USING COVERING INDEX bundle_events_latest_idx (install_id=?)"
+              ]
+            },
+            "user_first": {
+              "p50_ms": 0.634,
+              "p95_ms": 0.91,
+              "plan": [
+                "SEARCH e USING INDEX bundle_events_user_idx (user_id=?)",
+                "CORRELATED SCALAR SUBQUERY 1",
+                "SEARCH n USING COVERING INDEX bundle_events_latest_idx (install_id=?)"
+              ]
+            },
+            "user_later": {
+              "p50_ms": 0.635,
+              "p95_ms": 0.656,
+              "plan": [
+                "SEARCH e USING INDEX bundle_events_user_idx (user_id=? AND install_id>?)",
+                "CORRELATED SCALAR SUBQUERY 1",
+                "SEARCH n USING COVERING INDEX bundle_events_latest_idx (install_id=?)"
+              ]
+            },
+            "scope_count": {
+              "p50_ms": 110.662,
+              "p95_ms": 125.389,
+              "plan": [
+                "SEARCH e USING INDEX bundle_events_received_at_idx (received_at_ms>?)",
+                "CORRELATED SCALAR SUBQUERY 1",
+                "SEARCH n USING COVERING INDEX bundle_events_latest_idx (install_id=?)"
+              ]
+            },
+            "bundle_count": {
+              "p50_ms": 59.49,
+              "p95_ms": 69.073,
+              "plan": [
+                "MULTI-INDEX OR",
+                "INDEX 1",
+                "SEARCH e USING INDEX bundle_events_from_bundle_idx (type=? AND platform=? AND channel=? AND from_bundle_id=? AND received_at_ms>?)",
+                "INDEX 2",
+                "SEARCH e USING INDEX bundle_events_to_bundle_idx (type=? AND platform=? AND channel=? AND to_bundle_id=? AND received_at_ms>?)",
+                "CORRELATED SCALAR SUBQUERY 1",
+                "SEARCH n USING COVERING INDEX bundle_events_latest_idx (install_id=?)"
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "installations": 10000,
+      "events_per_install": 100,
+      "strategies": {
+        "baseline": {
+          "load_ms": 41321,
+          "append_in_transaction_p50_ms": 0.034,
+          "append_in_transaction_p95_ms": 0.061,
+          "database_bytes": 516444160,
+          "indexes": [
+            "sqlite_autoindex_bundle_events_1",
+            "sqlite_autoindex_bundle_installations_1",
+            "bundle_events_received_at_idx",
+            "bundle_events_install_idx",
+            "bundle_installations_user_id_idx",
+            "bundle_installations_received_at_idx",
+            "bundle_events_from_bundle_idx",
+            "bundle_events_to_bundle_idx",
+            "bundle_installations_scope_idx",
+            "bundle_installations_bundle_idx"
+          ],
+          "queries": {
+            "exact": {
+              "p50_ms": 0.005,
+              "p95_ms": 0.009,
+              "plan": [
+                "SEARCH e USING INDEX sqlite_autoindex_bundle_installations_1 (install_id=?)"
+              ]
+            },
+            "user_first": {
+              "p50_ms": 0.032,
+              "p95_ms": 0.124,
+              "plan": [
+                "SEARCH e USING INDEX bundle_installations_user_id_idx (user_id=?)"
+              ]
+            },
+            "user_later": {
+              "p50_ms": 0.033,
+              "p95_ms": 0.047,
+              "plan": [
+                "SEARCH e USING INDEX bundle_installations_user_id_idx (user_id=? AND install_id>?)"
+              ]
+            },
+            "scope_count": {
+              "p50_ms": 0.141,
+              "p95_ms": 0.175,
+              "plan": [
+                "SEARCH e USING COVERING INDEX bundle_installations_scope_idx (platform=? AND channel=? AND received_at_ms>?)"
+              ]
+            },
+            "bundle_count": {
+              "p50_ms": 0.177,
+              "p95_ms": 0.272,
+              "plan": [
+                "SEARCH e USING COVERING INDEX bundle_installations_bundle_idx (platform=? AND channel=? AND to_bundle_id=? AND received_at_ms>?)"
+              ]
+            }
+          }
+        },
+        "event_only": {
+          "load_ms": 50501,
+          "append_in_transaction_p50_ms": 0.032,
+          "append_in_transaction_p95_ms": 0.077,
+          "database_bytes": 711180288,
+          "indexes": [
+            "sqlite_autoindex_bundle_events_1",
+            "bundle_events_received_at_idx",
+            "bundle_events_install_idx",
+            "bundle_events_from_bundle_idx",
+            "bundle_events_to_bundle_idx",
+            "bundle_events_latest_idx",
+            "bundle_events_user_idx"
+          ],
+          "queries": {
+            "exact": {
+              "p50_ms": 0.035,
+              "p95_ms": 0.091,
+              "plan": [
+                "SEARCH e USING COVERING INDEX bundle_events_latest_idx (install_id=?)",
+                "CORRELATED SCALAR SUBQUERY 1",
+                "MULTI-INDEX OR",
+                "INDEX 1",
+                "SEARCH n USING COVERING INDEX bundle_events_latest_idx (install_id=? AND received_at_ms>?)",
+                "INDEX 2",
+                "SEARCH n USING COVERING INDEX bundle_events_latest_idx (install_id=? AND received_at_ms=? AND id>?)"
+              ]
+            },
+            "user_first": {
+              "p50_ms": 10.593,
+              "p95_ms": 43.71,
+              "plan": [
+                "SEARCH e USING INDEX bundle_events_user_idx (user_id=?)",
+                "CORRELATED SCALAR SUBQUERY 1",
+                "MULTI-INDEX OR",
+                "INDEX 1",
+                "SEARCH n USING COVERING INDEX bundle_events_latest_idx (install_id=? AND received_at_ms>?)",
+                "INDEX 2",
+                "SEARCH n USING COVERING INDEX bundle_events_latest_idx (install_id=? AND received_at_ms=? AND id>?)"
+              ]
+            },
+            "user_later": {
+              "p50_ms": 9.809,
+              "p95_ms": 13.525,
+              "plan": [
+                "SEARCH e USING INDEX bundle_events_user_idx (user_id=? AND install_id>?)",
+                "CORRELATED SCALAR SUBQUERY 1",
+                "MULTI-INDEX OR",
+                "INDEX 1",
+                "SEARCH n USING COVERING INDEX bundle_events_latest_idx (install_id=? AND received_at_ms>?)",
+                "INDEX 2",
+                "SEARCH n USING COVERING INDEX bundle_events_latest_idx (install_id=? AND received_at_ms=? AND id>?)"
+              ]
+            },
+            "scope_count": {
+              "timed_out_after_ms": 10000,
+              "plan": [
+                "SEARCH e USING INDEX bundle_events_received_at_idx (received_at_ms>?)",
+                "CORRELATED SCALAR SUBQUERY 1",
+                "MULTI-INDEX OR",
+                "INDEX 1",
+                "SEARCH n USING COVERING INDEX bundle_events_latest_idx (install_id=? AND received_at_ms>?)",
+                "INDEX 2",
+                "SEARCH n USING COVERING INDEX bundle_events_latest_idx (install_id=? AND received_at_ms=? AND id>?)"
+              ]
+            },
+            "bundle_count": {
+              "p50_ms": 1419.541,
+              "p95_ms": 4784.698,
+              "plan": [
+                "MULTI-INDEX OR",
+                "INDEX 1",
+                "SEARCH e USING INDEX bundle_events_from_bundle_idx (type=? AND platform=? AND channel=? AND from_bundle_id=? AND received_at_ms>?)",
+                "INDEX 2",
+                "SEARCH e USING INDEX bundle_events_to_bundle_idx (type=? AND platform=? AND channel=? AND to_bundle_id=? AND received_at_ms>?)",
+                "CORRELATED SCALAR SUBQUERY 1",
+                "MULTI-INDEX OR",
+                "INDEX 1",
+                "SEARCH n USING COVERING INDEX bundle_events_latest_idx (install_id=? AND received_at_ms>?)",
+                "INDEX 2",
+                "SEARCH n USING COVERING INDEX bundle_events_latest_idx (install_id=? AND received_at_ms=? AND id>?)"
+              ]
+            }
+          }
+        }
+      }
+    }
+  ]
+}

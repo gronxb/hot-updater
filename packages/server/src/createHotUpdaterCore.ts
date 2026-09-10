@@ -170,21 +170,21 @@ export function createHotUpdaterCore(
   });
   const clientAccess = normalizeClientAccess(options.clientAccess);
   const insightsModel: InsightsModel = {
-    async record(input) {
+    async recordEvent(input) {
       await assertSchemaReady();
-      return plugin.models.insights.record(input);
+      return plugin.models.insights.recordEvent(input);
     },
     async listEvents(input) {
       await assertSchemaReady();
       return plugin.models.insights.listEvents(input);
     },
-    async findInstallations(input) {
+    async findLatestEvents(input) {
       await assertSchemaReady();
-      return plugin.models.insights.findInstallations(input);
+      return plugin.models.insights.findLatestEvents(input);
     },
-    async countInstallations(input) {
+    async countLatestEvents(input) {
       await assertSchemaReady();
-      return plugin.models.insights.countInstallations(input);
+      return plugin.models.insights.countLatestEvents(input);
     },
     async countEvents(input) {
       await assertSchemaReady();

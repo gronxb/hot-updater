@@ -79,7 +79,9 @@ export const republishedCrashedBundleSkippedScenario: DetoxScenarioDefinition =
           verificationPending: true,
         },
       );
-      await app.launch("launch republished crash Bundle");
+      await app.launch("launch republished crash Bundle", {
+        expectCrash: true,
+      });
       await app.control(
         "wait republished crash recovery",
         "/e2e/wait-for-crash-recovery",

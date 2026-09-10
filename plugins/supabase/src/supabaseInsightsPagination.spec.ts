@@ -1,7 +1,4 @@
-import {
-  compareInsightsText,
-  toInsightsInstallationRow,
-} from "@hot-updater/plugin-core";
+import { compareInsightsText } from "@hot-updater/plugin-core";
 import { afterEach, expect, it, vi } from "vitest";
 
 import { createBundleEventRowFixture } from "../../../packages/test-utils/src/databaseTestFixtures";
@@ -11,11 +8,9 @@ const events = Array.from({ length: 150 }, (_, index) => ({
   ...createBundleEventRowFixture(String(index + 1), 100),
   user_id: "current-user",
 })).reverse();
-const installations = events
-  .map(toInsightsInstallationRow)
-  .sort((left, right) =>
-    compareInsightsText(left.install_id, right.install_id),
-  );
+const installations = [...events].sort((left, right) =>
+  compareInsightsText(left.install_id, right.install_id),
+);
 
 afterEach(() => vi.unstubAllGlobals());
 
@@ -30,11 +25,25 @@ it.each(["events", "installations"] as const)(
         const url = new URL(input instanceof Request ? input.url : input);
         const offset = Number(url.searchParams.get("offset") ?? 0);
         const limit = Number(url.searchParams.get("limit"));
-        ranges.push({ offset, limit });
+        const canonicalLookup =
+          model === "installations" &&
+          url.pathname.endsWith("/hot_updater_v1_bundle_events");
+        if (!canonicalLookup) ranges.push({ offset, limit });
         expect(new Headers(init?.headers).get("Prefer") ?? "").not.toContain(
           "count=",
         );
-        const rows = stored.slice(offset, offset + Math.min(limit, 100));
+        const source = canonicalLookup
+          ? stored
+              .filter(({ id }) => url.searchParams.get("id")?.includes(id))
+              .toSorted((left, right) => compareInsightsText(left.id, right.id))
+          : stored;
+        const rows = source.slice(offset, offset + Math.min(limit, 100));
+        if (model === "installations" && !canonicalLookup) {
+          expect(url.pathname).toBe(
+            "/rest/v1/hot_updater_v1_bundle_event_heads",
+          );
+          expect(url.searchParams.get("select")).toBe("id,install_id");
+        }
         return new Response(JSON.stringify(rows), {
           headers: {
             "Content-Type": "application/json",
@@ -57,7 +66,7 @@ it.each(["events", "installations"] as const)(
             beforeReceivedAtMs: 200,
             limit: 101,
           })
-        : await plugin.models.insights.findInstallations({
+        : await plugin.models.insights.findLatestEvents({
             userId: "current-user",
             limit: 101,
           });

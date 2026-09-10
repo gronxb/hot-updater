@@ -1,7 +1,4 @@
-import {
-  compareInsightsText,
-  createDatabasePlugin,
-} from "@hot-updater/plugin-core";
+import { createDatabasePlugin } from "@hot-updater/plugin-core";
 import {
   createDatabasePluginAdapter,
   type DatabasePluginImplementation,
@@ -31,59 +28,56 @@ const createMongoImplementation = (
 ): DatabasePluginImplementation => {
   const collections = createMongoCollections(client);
   return {
-    recordInsights: async (input) => {
+    recordInsights: async ({ event }) => {
       const record = () =>
-        client.withSession((recordSession) =>
-          recordSession.withTransaction(
-            async () => {
-              const records = createMongoCollections(client);
-              const options = {
-                session: recordSession,
-                collation: { locale: "simple" },
-              };
-              const inserted = await records.bundleEvents.updateOne(
-                { id: input.event.id },
-                { $setOnInsert: input.event },
-                { ...options, upsert: true },
-              );
-              if (inserted.upsertedCount === 0) return;
-              const current = await records.bundleInstallations.findOne(
-                { install_id: input.installation.install_id },
-                options,
-              );
-              if (current === null) {
-                await records.bundleInstallations.insertOne(
-                  { ...input.installation },
-                  {
-                    session: recordSession,
-                  },
-                );
-              } else if (
-                input.installation.received_at_ms > current.received_at_ms ||
-                (input.installation.received_at_ms === current.received_at_ms &&
-                  compareInsightsText(input.installation.id, current.id) > 0)
-              ) {
-                await records.bundleInstallations.updateOne(
-                  { install_id: input.installation.install_id },
-                  { $set: input.installation },
-                  options,
-                );
-              }
-            },
-            {
-              readConcern: { level: "snapshot" },
-              readPreference: "primary",
-              writeConcern: { w: "majority" },
-            },
-          ),
+        client.withSession((insightsSession) =>
+          insightsSession.withTransaction(async () => {
+            const insights = createMongoCollections(client);
+            const options = {
+              session: insightsSession,
+              collation: { locale: "simple" },
+            };
+            const accepted = await insights.bundleEvents.updateOne(
+              { id: event.id },
+              { $setOnInsert: event },
+              { ...options, upsert: true },
+            );
+            if (accepted.upsertedCount === 0) return;
+            const current = await insights.bundleEventHeads.findOne(
+              { install_id: event.install_id },
+              options,
+            );
+            if (
+              current !== null &&
+              (event.received_at_ms < current.received_at_ms ||
+                (event.received_at_ms === current.received_at_ms &&
+                  event.id <= current.id))
+            )
+              return;
+            await insights.bundleEventHeads.updateOne(
+              { install_id: event.install_id },
+              {
+                $set: {
+                  install_id: event.install_id,
+                  id: event.id,
+                  received_at_ms: event.received_at_ms,
+                  user_id: event.user_id,
+                  platform: event.platform,
+                  channel: event.channel,
+                  type: event.type,
+                  from_bundle_id: event.from_bundle_id,
+                  to_bundle_id: event.to_bundle_id,
+                },
+              },
+              { ...options, upsert: true },
+            );
+          }),
         );
       try {
         await record();
       } catch (error) {
         if (!(error instanceof MongoServerError) || error.code !== 11000)
           throw error;
-        // A concurrent insert won a canonical key. Read that committed winner
-        // in a new transaction; some MongoDB versions do not retry E11000.
         await record();
       }
     },

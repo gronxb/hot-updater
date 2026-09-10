@@ -1,17 +1,32 @@
 import {
   DatabasePluginInputError,
-  type InsightsRecordInput,
+  type InsightsRecordEventInput,
 } from "@hot-updater/plugin-core";
+import {
+  latestInsightsWhere,
+  latestInsightsCountGroups,
+} from "@hot-updater/plugin-core/internal";
 import type {
   DatabasePluginImplementation,
   TransactionDatabasePluginImplementation,
 } from "@hot-updater/plugin-core/internal";
-import { and, asc, desc, eq, lt, or, sql, type SQLWrapper } from "drizzle-orm";
+import {
+  or,
+  asc,
+  desc,
+  eq,
+  sql,
+  getTableColumns,
+  is,
+  Table,
+  type SQLWrapper,
+} from "drizzle-orm";
 
 import {
   isChannelDeleteReferencedError,
   translateChannelDeleteError,
 } from "./databaseConstraintErrors";
+import { fromStoredBundleEventRow } from "./databasePluginUtils";
 import {
   fromStoredBundleRow,
   fromStoredReleaseCatalogRow,
@@ -84,89 +99,108 @@ const executeInsert = async (
 export const recordDrizzleInsights = (
   db: DrizzleDB,
   provider: DrizzleProvider,
-  input: InsightsRecordInput,
+  { event }: InsightsRecordEventInput,
 ): void | Promise<void> => {
-  if (db.resultKind !== "sync")
-    return recordAsyncDrizzleInsights(db, provider, input);
   const events = getDrizzleTable(db, "bundle_events");
-  const installations = getDrizzleTable(db, "bundle_installations");
-  const eventInsert = db
-    .insert(events)
-    .values(input.event)
-    .onConflictDoNothing?.()
-    .returning?.({ id: getDrizzleColumn(events, "id") });
-  const installationInsert = db
-    .insert(installations)
-    .values(input.installation)
-    .onConflictDoNothing?.();
-  const installationUpdate = db
-    .update(installations)
-    .set(input.installation)
-    .where(newerInstallationWhere(installations, input.installation));
-  if (
-    eventInsert?.all === undefined ||
-    installationInsert?.run === undefined ||
-    installationUpdate.run === undefined
-  )
+  const heads = getDrizzleTable(db, "bundle_event_heads");
+  if (!is(heads, Table) || !is(events, Table)) {
     throw new DrizzleAdapterInvariantError();
-  if (eventInsert.all().length === 0) return;
-  installationInsert.run();
-  installationUpdate.run();
-};
-
-const newerInstallationWhere = (
-  installations: DrizzleTable,
-  installation: InsightsRecordInput["installation"],
-) => {
-  const receivedAt = getDrizzleColumn(installations, "received_at_ms");
-  return and(
-    eq(getDrizzleColumn(installations, "install_id"), installation.install_id),
-    or(
-      lt(receivedAt, installation.received_at_ms),
-      and(
-        eq(receivedAt, installation.received_at_ms),
-        lt(getDrizzleColumn(installations, "id"), installation.id),
-      ),
-    ),
-  );
-};
-
-const recordAsyncDrizzleInsights = async (
-  db: DrizzleDB,
-  provider: DrizzleProvider,
-  { event, installation }: InsightsRecordInput,
-): Promise<void> => {
-  const events = getDrizzleTable(db, "bundle_events");
-  const installations = getDrizzleTable(db, "bundle_installations");
-  if (provider === "mysql") {
-    const existing = await db.query.bundle_events.findFirst({
-      where: eq(getDrizzleColumn(events, "id"), event.id),
-    });
-    if (existing !== undefined) return;
-    await db.insert(events).values(event).execute();
-    const insertInstallation = db
-      .insert(installations)
-      .values(installation)
-      .onDuplicateKeyUpdate?.({ set: { install_id: installation.install_id } });
-    if (insertInstallation === undefined)
-      throw new DrizzleAdapterInvariantError();
-    await insertInstallation.execute();
-  } else {
-    const insert = db.insert(events).values(event).onConflictDoNothing?.();
-    const returning = insert?.returning?.({
-      id: getDrizzleColumn(events, "id"),
-    });
-    if (returning === undefined) throw new DrizzleAdapterInvariantError();
-    const rows = await returning.execute();
-    if (!Array.isArray(rows)) throw new DrizzleAdapterInvariantError();
-    if (rows.length === 0) return;
-    await executeInsert(db, provider, installations, installation, "ignore");
   }
-  await db
-    .update(installations)
-    .set(installation)
-    .where(newerInstallationWhere(installations, installation))
-    .execute();
+  const fields = Object.keys(getTableColumns(heads));
+  if (provider === "mysql") {
+    if (!db.transaction) throw new DrizzleAdapterInvariantError();
+    return db.transaction(async (transaction) => {
+      const accepted = transaction
+        .insert(events)
+        .values(event)
+        .onDuplicateKeyUpdate?.({ set: { id: sql`id` } });
+      if (!accepted || !transaction.execute)
+        throw new DrizzleAdapterInvariantError();
+      await accepted.execute();
+      const wins = sql`VALUES(received_at_ms) > bundle_event_heads.received_at_ms OR (VALUES(received_at_ms) = bundle_event_heads.received_at_ms AND VALUES(id) > bundle_event_heads.id)`;
+      // Drizzle orders UPDATE assignments by schema columns. Emit these explicitly
+      // so MySQL compares against the old tuple until every payload field is set.
+      const ordered = [
+        ...fields.filter(
+          (field) => !["install_id", "id", "received_at_ms"].includes(field),
+        ),
+        "id",
+        "received_at_ms",
+      ];
+      const columns = sql.join(
+        fields.map((field) => sql.identifier(field)),
+        sql`, `,
+      );
+      const assignments = sql.join(
+        ordered.map(
+          (field) =>
+            sql`${sql.identifier(field)} = CASE WHEN ${wins} THEN VALUES(${sql.identifier(field)}) ELSE bundle_event_heads.${sql.identifier(field)} END`,
+        ),
+        sql`, `,
+      );
+      await transaction.execute(
+        sql`INSERT INTO bundle_event_heads (${columns}) SELECT ${columns} FROM bundle_events WHERE id = ${event.id} ON DUPLICATE KEY UPDATE ${assignments}`,
+      );
+    });
+  }
+  const newer = sql`excluded.received_at_ms > bundle_event_heads.received_at_ms OR (excluded.received_at_ms = bundle_event_heads.received_at_ms AND excluded.id > bundle_event_heads.id)`;
+  const mutations = (executor: DrizzleDB, fromInserted = false) => {
+    const insert = executor.insert(events).values(event);
+    const accepted = insert.onConflictDoNothing?.();
+    // Read the immutable accepted row, never a possibly altered duplicate input.
+    const select = fromInserted
+      ? sql`SELECT ${sql.join(
+          fields.map((field) => sql.identifier(field)),
+          sql`, `,
+        )} FROM inserted`
+      : sql`SELECT ${sql.join(
+          fields.map((field) => sql.identifier(field)),
+          sql`, `,
+        )} FROM bundle_events WHERE id = ${event.id}`;
+    const headInsert = executor.insert(heads).select?.(select);
+    const head = headInsert?.onConflictDoUpdate?.({
+      target: getDrizzleColumn(heads, "install_id"),
+      set: Object.fromEntries(
+        fields
+          .filter((field) => field !== "install_id")
+          .map((field) => [field, sql`excluded.${sql.identifier(field)}`]),
+      ),
+      setWhere: newer,
+    });
+    if (accepted === undefined || head === undefined)
+      throw new DrizzleAdapterInvariantError();
+    return { accepted, head };
+  };
+  if (provider === "postgresql") {
+    const { accepted, head } = mutations(db, true);
+    const returning =
+      "returning" in accepted && typeof accepted.returning === "function"
+        ? accepted.returning(getTableColumns(events))
+        : undefined;
+    if (!returning?.getSQL || !head.getSQL || !db.execute)
+      throw new DrizzleAdapterInvariantError();
+    return db
+      .execute(sql`WITH inserted AS (${returning.getSQL()}) ${head.getSQL()}`)
+      .then(() => undefined);
+  }
+  if (db.batch !== undefined) {
+    const { accepted, head } = mutations(db);
+    return db.batch([accepted, head]).then(() => undefined);
+  }
+  if (db.transaction === undefined) throw new DrizzleAdapterInvariantError();
+  return db.transaction((transaction) => {
+    const { accepted, head } = mutations(transaction);
+    if (db.resultKind === "sync") {
+      if (!accepted.run || !head.run) throw new DrizzleAdapterInvariantError();
+      accepted.run();
+      head.run();
+      return;
+    }
+    return accepted
+      .execute()
+      .then(() => head.execute())
+      .then(() => undefined);
+  });
 };
 
 const toOrderBy = (
@@ -183,10 +217,7 @@ const toOrderBy = (
   const clauses = input.orderBy;
   return clauses?.flatMap((clause) => {
     const column = getDrizzleColumn(table, clause.field);
-    if (
-      input.model === "bundle_events" ||
-      input.model === "bundle_installations"
-    ) {
+    if (input.model === "bundle_events") {
       return [clause.direction === "asc" ? asc(column) : desc(column)];
     }
     const nulls =
@@ -204,16 +235,68 @@ export const createDrizzleCrud = (
   db: DrizzleDB,
   provider: DrizzleProvider,
 ): TransactionDatabasePluginImplementation &
-  Pick<DatabasePluginImplementation, "deleteChannel" | "insertChannel"> => {
+  Pick<
+    DatabasePluginImplementation,
+    | "deleteChannel"
+    | "insertChannel"
+    | "findLatestInsightsEvents"
+    | "countLatestInsightsEvents"
+  > => {
   const bundles = getDrizzleTable(db, "bundles");
   const patches = getDrizzleTable(db, "bundle_patches");
   const events = getDrizzleTable(db, "bundle_events");
-  const installations = getDrizzleTable(db, "bundle_installations");
+  const heads = getDrizzleTable(db, "bundle_event_heads");
   const releases = getDrizzleTable(db, "releases");
   const releaseCatalogs = getDrizzleTable(db, "release_catalogs");
   const channels = getDrizzleTable(db, "channels");
   const apiKeys = getDrizzleTable(db, "api_keys");
   return {
+    async findLatestInsightsEvents(input) {
+      const where = sql.join(
+        latestInsightsWhere(input).map((condition) =>
+          condition.operator === "gt"
+            ? sql`${sql.identifier(condition.field)} > ${condition.value}`
+            : sql`${sql.identifier(condition.field)} = ${condition.value}`,
+        ),
+        sql` AND `,
+      );
+      const rows = await db.query.bundle_events.findMany({
+        where: sql`${getDrizzleColumn(events, "id")} IN (SELECT id FROM (SELECT id FROM bundle_event_heads WHERE ${where} ORDER BY install_id ASC LIMIT ${"installId" in input ? 1 : input.limit}) AS latest)`,
+        orderBy: [asc(getDrizzleColumn(events, "install_id"))],
+        limit: "installId" in input ? 1 : input.limit,
+      });
+      return rows.map(fromStoredBundleEventRow);
+    },
+    async countLatestInsightsEvents(input) {
+      const groups = latestInsightsCountGroups(input).map((where) =>
+        buildDrizzleWhere(provider, heads, where),
+      );
+      if (provider === "mysql" && groups.length === 2) {
+        const native = db.resolve === undefined ? db : await db.resolve();
+        if (!native.select) throw new DrizzleAdapterInvariantError();
+        // Separate index ranges in one snapshot, excluding overlap including NULL.
+        const result = await native
+          .select({
+            count: sql`(SELECT COUNT(*) FROM bundle_event_heads WHERE ${groups[0]}) + (SELECT COUNT(*) FROM bundle_event_heads WHERE ${groups[1]} AND (${groups[0]}) IS NOT TRUE)`,
+          })
+          .from(sql`(SELECT 1) AS counted`)
+          .execute();
+        const row = result[0];
+        const count =
+          typeof row === "object" && row !== null
+            ? Reflect.get(row, "count")
+            : undefined;
+        if (
+          typeof count !== "number" &&
+          typeof count !== "string" &&
+          typeof count !== "bigint"
+        ) {
+          throw new DrizzleAdapterInvariantError();
+        }
+        return Number(count);
+      }
+      return db.$count(heads, or(...groups));
+    },
     async deleteChannel({ id }) {
       const idPredicate = eq(getDrizzleColumn(channels, "id"), id);
       const existing = await db.query.channels.findFirst({
@@ -268,15 +351,7 @@ export const createDrizzleCrud = (
         case "bundle_events":
           await executeInsert(db, provider, events, input.data, undefined);
           return input.data;
-        case "bundle_installations":
-          await executeInsert(
-            db,
-            provider,
-            installations,
-            input.data,
-            input.onConflict,
-          );
-          return input.data;
+
         case "releases":
           await executeInsert(
             db,
@@ -316,27 +391,6 @@ export const createDrizzleCrud = (
       }
     },
     async update(input) {
-      if (input.model === "bundle_installations") {
-        const installId = input.where.find(
-          (item) =>
-            item.field === "install_id" &&
-            (item.operator === undefined || item.operator === "eq") &&
-            typeof item.value === "string",
-        )?.value;
-        if (typeof installId !== "string") {
-          throw new DrizzleAdapterInvariantError();
-        }
-        const where = buildDrizzleWhere(provider, installations, input.where);
-        if (where === undefined) throw new DrizzleAdapterInvariantError();
-        await db.update(installations).set(input.update).where(where).execute();
-        const row = await db.query.bundle_installations.findFirst({
-          where: eq(getDrizzleColumn(installations, "install_id"), installId),
-        });
-        return row?.id === input.update.id &&
-          row.received_at_ms === input.update.received_at_ms
-          ? row
-          : null;
-      }
       const selector = input.where[0];
       if (selector === undefined || typeof selector.value !== "string") {
         throw new DrizzleAdapterInvariantError();
@@ -445,11 +499,6 @@ export const createDrizzleCrud = (
             releases,
             buildDrizzleWhere(provider, releases, input.where),
           );
-        case "bundle_installations":
-          return db.$count(
-            installations,
-            buildDrizzleWhere(provider, installations, input.where),
-          );
       }
     },
     async findOne(input) {
@@ -490,12 +539,6 @@ export const createDrizzleCrud = (
           });
           return row === undefined ? null : fromStoredReleaseCatalogRow(row);
         }
-        case "bundle_installations":
-          return (
-            (await db.query.bundle_installations.findFirst({
-              where: buildDrizzleWhere(provider, installations, input.where),
-            })) ?? null
-          );
       }
     },
     async findMany(input) {
@@ -513,19 +556,15 @@ export const createDrizzleCrud = (
           return rows.map(fromStoredBundleRow);
         }
         case "bundle_events":
-          return db.query.bundle_events.findMany({
-            where: buildDrizzleWhere(provider, events, input.where),
-            orderBy: toOrderBy(events, input),
-            limit: input.limit,
-            offset: input.offset,
-          });
-        case "bundle_installations":
-          return db.query.bundle_installations.findMany({
-            where: buildDrizzleWhere(provider, installations, input.where),
-            orderBy: toOrderBy(installations, input),
-            limit: input.limit,
-            offset: input.offset,
-          });
+          return (
+            await db.query.bundle_events.findMany({
+              where: buildDrizzleWhere(provider, events, input.where),
+              orderBy: toOrderBy(events, input),
+              limit: input.limit,
+              offset: input.offset,
+            })
+          ).map(fromStoredBundleEventRow);
+
         case "api_keys":
           return db.query.api_keys.findMany({
             where: buildDrizzleWhere(provider, apiKeys, input.where),

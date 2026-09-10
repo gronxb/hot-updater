@@ -6,21 +6,11 @@ import {
 } from "../../../packages/test-utils/src/databaseTestFixtures";
 import { parseD1Row } from "./d1Rows";
 
-const installationD1Row = {
-  pending_bundle_id: null,
-  pending_release_id: null,
-  id: "event-1",
-  install_id: "install-1",
-  user_id: "user-1",
-  username: "Demo User",
-  to_bundle_id: "bundle-1",
-  type: "UPDATE_APPLIED",
-  platform: "ios",
-  app_version: "1.0.0",
-  channel: "production",
-  cohort: "cohort-1",
-  received_at_ms: 100,
-} as const;
+const eventFixture = createBundleEventRowFixture("1", 1);
+const eventD1Fixture = {
+  ...eventFixture,
+  metadata: JSON.stringify(eventFixture.metadata),
+};
 
 const bundleD1Row = {
   id: "bundle-1",
@@ -94,16 +84,17 @@ it.each(["null", "[]", "1", '"metadata"'])(
 );
 
 it("preserves explicit null Release ids on an Insights row", () => {
-  expect(
-    parseD1Row("bundle_events", createBundleEventRowFixture("1", 1)),
-  ).toMatchObject({ from_release_id: null, to_release_id: null });
+  expect(parseD1Row("bundle_events", eventD1Fixture)).toMatchObject({
+    from_release_id: null,
+    to_release_id: null,
+  });
 });
 
 it.each(["from_release_id", "to_release_id"])(
   "rejects an omitted Insights field: %s",
   (field) => {
     const row: Record<string, unknown> = {
-      ...createBundleEventRowFixture("1", 1),
+      ...eventD1Fixture,
     };
     delete row[field];
 
@@ -120,26 +111,8 @@ it.each([
 ])("rejects an invalid Insights direction shape", (overrides) => {
   expect(() =>
     parseD1Row("bundle_events", {
-      ...createBundleEventRowFixture("1", 1),
+      ...eventD1Fixture,
       ...overrides,
     }),
   ).toThrow("D1 returned an invalid bundle_events row");
 });
-
-it("parses a current Insights installation", () => {
-  expect(parseD1Row("bundle_installations", installationD1Row)).toEqual(
-    installationD1Row,
-  );
-});
-
-it.each([{ type: "UNKNOWN" }, { platform: "web" }])(
-  "rejects an invalid current Insights installation",
-  (overrides) => {
-    expect(() =>
-      parseD1Row("bundle_installations", {
-        ...installationD1Row,
-        ...overrides,
-      }),
-    ).toThrow("D1 returned an invalid bundle_installations row");
-  },
-);

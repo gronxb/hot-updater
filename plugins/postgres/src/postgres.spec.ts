@@ -7,7 +7,6 @@ import type {
   BundleRow,
   ChannelRow,
   ApiKeyRow,
-  InsightsInstallationRow,
   ReleaseRow,
 } from "@hot-updater/plugin-core";
 import { setupDatabasePluginTestSuite } from "@hot-updater/test-utils";
@@ -42,7 +41,7 @@ setupDatabasePluginTestSuite({
   createPlugin: () => postgres({ dialect: new PGliteDialect(getClient()) }),
   reset: async () => {
     await getClient().exec(
-      "DELETE FROM bundle_installations; DELETE FROM bundle_events; DELETE FROM api_keys; DELETE FROM bundle_patches; DELETE FROM release_catalogs; DELETE FROM releases; DELETE FROM bundles; DELETE FROM channels;",
+      "DELETE FROM bundle_event_heads; DELETE FROM bundle_events; DELETE FROM api_keys; DELETE FROM bundle_patches; DELETE FROM release_catalogs; DELETE FROM releases; DELETE FROM bundles; DELETE FROM channels;",
     );
   },
   dispose: async (plugin) => {
@@ -124,7 +123,13 @@ const insightsEventFixture = (input: {
   type: "UPDATE_APPLIED",
   install_id: input.installId,
   user_id: input.userId,
-  username: null,
+  metadata: {
+    username: null,
+    cohort: "0",
+    update_strategy: "appVersion",
+    fingerprint_hash: null,
+    sdk_version: null,
+  },
   from_bundle_id: "00000000-0000-7000-8000-000000001001",
   from_release_id: null,
   to_bundle_id: "00000000-0000-7000-8000-000000001002",
@@ -132,34 +137,8 @@ const insightsEventFixture = (input: {
   platform: "ios",
   app_version: "1.0.0",
   channel: "production",
-  cohort: "0",
-  update_strategy: "appVersion",
-  fingerprint_hash: null,
-  sdk_version: null,
-  received_at_ms: input.receivedAtMs,
-});
 
-const installationFixture = (
-  event: BundleEventRow,
-): InsightsInstallationRow => ({
-  id: event.id,
-  install_id: event.install_id,
-  user_id: event.user_id,
-  username: event.username,
-  to_bundle_id:
-    event.type === "UPDATE_DOWNLOADED"
-      ? event.from_bundle_id
-      : event.to_bundle_id,
-  pending_bundle_id:
-    event.type === "UPDATE_DOWNLOADED" ? event.to_bundle_id : null,
-  pending_release_id:
-    event.type === "UPDATE_DOWNLOADED" ? event.to_release_id : null,
-  type: event.type,
-  platform: event.platform,
-  app_version: event.app_version,
-  channel: event.channel,
-  cohort: event.cohort,
-  received_at_ms: event.received_at_ms,
+  received_at_ms: input.receivedAtMs,
 });
 
 describe("PostgreSQL artifact byte-size constraints", () => {
@@ -225,12 +204,12 @@ describe("PostgreSQL Insights projection", () => {
       await database.exec(`
         INSERT INTO bundle_events (
           id, type, install_id, from_bundle_id, to_bundle_id, platform,
-          app_version, channel, cohort, update_strategy, received_at_ms
+          app_version, channel, metadata, received_at_ms
         )
         SELECT ('00000000-0000-7000-8000-' || lpad(n::text, 12, '0'))::uuid,
           'UPDATE_APPLIED', 'install-scale',
           '00000000-0000-7000-8000-000000001001'::uuid,
-          '${bundleId}'::uuid, 'ios', '1.0.0', 'production', '0', 'appVersion', n
+           '${bundleId}'::uuid, 'ios', '1.0.0', 'production', '{"cohort":"0","update_strategy":"appVersion","username":null,"fingerprint_hash":null,"sdk_version":null}'::jsonb, n
         FROM generate_series(1, 50001) AS n;
         ANALYZE bundle_events;
       `);
@@ -263,9 +242,8 @@ describe("PostgreSQL Insights projection", () => {
         }),
         to_bundle_id: "00000000-0000-7000-8000-000000001003",
       };
-      await plugin.models.insights.record({
+      await plugin.models.insights.recordEvent({
         event: sparseEvent,
-        installation: installationFixture(sparseEvent),
       });
       await database.exec("ANALYZE bundle_events");
       const plan = await database.query(`
@@ -282,7 +260,7 @@ describe("PostgreSQL Insights projection", () => {
     }
   });
 
-  it("rolls back the event when snapshot storage fails and permits retry", async () => {
+  it("keeps failed event inserts absent and permits an idempotent retry", async () => {
     const { database, plugin } = await createPostgresTestPlugin();
     const event = insightsEventFixture({
       id: "00000000-0000-7000-8000-000000002101",
@@ -290,36 +268,49 @@ describe("PostgreSQL Insights projection", () => {
       receivedAtMs: 100,
       userId: "user-before-failure",
     });
-    const input = { event, installation: installationFixture(event) };
+    const input = { event };
     try {
       await database.exec(`
-        CREATE FUNCTION fail_insights_snapshot() RETURNS trigger LANGUAGE plpgsql AS $$
-        BEGIN RAISE EXCEPTION 'injected snapshot failure'; END; $$;
-        CREATE TRIGGER fail_insights_snapshot BEFORE INSERT ON bundle_installations
-        FOR EACH ROW EXECUTE FUNCTION fail_insights_snapshot();
+        CREATE FUNCTION fail_insights_event() RETURNS trigger LANGUAGE plpgsql AS $$
+        BEGIN RAISE EXCEPTION 'injected event failure'; END; $$;
+        CREATE TRIGGER fail_insights_event BEFORE INSERT ON bundle_events
+        FOR EACH ROW EXECUTE FUNCTION fail_insights_event();
       `);
-      await expect(plugin.models.insights.record(input)).rejects.toThrow(
-        "injected snapshot failure",
+      await expect(plugin.models.insights.recordEvent(input)).rejects.toThrow(
+        "injected event failure",
+      );
+      expect(
+        (await database.query("SELECT * FROM bundle_events")).rows,
+      ).toEqual([]);
+      await database.exec("DROP TRIGGER fail_insights_event ON bundle_events");
+      await database.exec(`
+        CREATE FUNCTION fail_insights_head() RETURNS trigger LANGUAGE plpgsql AS $$
+        BEGIN RAISE EXCEPTION 'injected head failure'; END; $$;
+        CREATE TRIGGER fail_insights_head BEFORE INSERT ON bundle_event_heads
+        FOR EACH ROW EXECUTE FUNCTION fail_insights_head();
+      `);
+      await expect(plugin.models.insights.recordEvent(input)).rejects.toThrow(
+        "injected head failure",
       );
       expect(
         (await database.query("SELECT * FROM bundle_events")).rows,
       ).toEqual([]);
       expect(
-        (await database.query("SELECT * FROM bundle_installations")).rows,
+        (await database.query("SELECT * FROM bundle_event_heads")).rows,
       ).toEqual([]);
       await database.exec(
-        "DROP TRIGGER fail_insights_snapshot ON bundle_installations",
+        "DROP TRIGGER fail_insights_head ON bundle_event_heads",
       );
-      await plugin.models.insights.record(input);
-      await plugin.models.insights.record(input);
+      await plugin.models.insights.recordEvent(input);
+      await plugin.models.insights.recordEvent(input);
       expect(
         (await database.query("SELECT id FROM bundle_events")).rows,
       ).toEqual([{ id: event.id }]);
       await expect(
-        plugin.models.insights.findInstallations({
+        plugin.models.insights.findLatestEvents({
           installId: event.install_id,
         }),
-      ).resolves.toEqual([input.installation]);
+      ).resolves.toEqual([input.event]);
     } finally {
       await plugin.dispose?.();
     }

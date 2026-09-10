@@ -5,7 +5,6 @@ import type {
   BundleRow,
   ChannelRow,
   ApiKeyRow,
-  InsightsInstallationRow,
   ReleaseCatalogRow,
   ReleaseRow,
 } from "./databaseRows";
@@ -89,9 +88,8 @@ export type InsightsEventFilter =
     }
   | ({ readonly kind: "bundle" } & InsightsBundleEventFilter);
 
-export interface InsightsRecordInput {
+export interface InsightsRecordEventInput {
   readonly event: BundleEventRow;
-  readonly installation: InsightsInstallationRow;
 }
 
 export interface InsightsListEventsInput {
@@ -102,7 +100,7 @@ export interface InsightsListEventsInput {
   readonly limit: number;
 }
 
-export type InsightsFindInstallationsInput =
+export type InsightsFindLatestEventsInput =
   | { readonly installId: string }
   | {
       readonly userId: string;
@@ -110,9 +108,14 @@ export type InsightsFindInstallationsInput =
       readonly limit: number;
     };
 
-export interface InsightsCountInstallationsInput extends InsightsScope {
+export interface InsightsCountLatestEventsInput extends InsightsScope {
   readonly sinceMs: number;
-  readonly bundleId?: string;
+  /** Optional OR of one or two fixed predicates; count a matching event once. */
+  readonly bundle?: readonly {
+    readonly field: "from_bundle_id" | "to_bundle_id";
+    readonly value: string;
+    readonly types: readonly BundleEventRow["type"][];
+  }[];
 }
 
 export interface InsightsCountEventsInput {
@@ -123,11 +126,12 @@ export interface InsightsCountEventsInput {
 
 export interface InsightsModel {
   /**
-   * Atomically persist the immutable event and advance its installation only
-   * for a greater (received_at_ms, id). Duplicate event IDs are complete no-ops.
+   * Persist the immutable event once. A private latest-event index, if used,
+   * advances atomically for a greater (received_at_ms, id). Duplicate event
+   * IDs are complete no-ops.
    * Retry the identical prepared input after an ambiguous commit outcome.
    */
-  record(input: InsightsRecordInput): Promise<void>;
+  recordEvent(input: InsightsRecordEventInput): Promise<void>;
   /**
    * Descending (received_at_ms, id), in [sinceMs ?? 0, beforeReceivedAtMs).
    * Apply filters and the exclusive cursor before limit (1..101). Return the
@@ -137,16 +141,17 @@ export interface InsightsModel {
     input: InsightsListEventsInput,
   ): Promise<readonly BundleEventRow[]>;
   /**
-   * Exact installation lookup returns zero or one canonical row. User lookup
+   * Choose each installation's greatest (received_at_ms, id) before filtering.
+   * Exact installation lookup returns zero or one canonical event. User lookup
    * returns current membership ordered by UTF-8 installation ID, exclusive
    * afterInstallId and limit 1..101. Check lagging index candidates against
    * canonical state; newly indexed associations may temporarily be absent.
    */
-  findInstallations(
-    input: InsightsFindInstallationsInput,
-  ): Promise<readonly InsightsInstallationRow[]>;
-  /** Count latest rows in scope with received_at_ms >= sinceMs, once each. */
-  countInstallations(input: InsightsCountInstallationsInput): Promise<number>;
+  findLatestEvents(
+    input: InsightsFindLatestEventsInput,
+  ): Promise<readonly BundleEventRow[]>;
+  /** Count latest events once per installation, then apply the supplied predicates. */
+  countLatestEvents(input: InsightsCountLatestEventsInput): Promise<number>;
   /** Count accepted reports in [sinceMs, beforeReceivedAtMs), across all pages. */
   countEvents(input: InsightsCountEventsInput): Promise<number>;
 }

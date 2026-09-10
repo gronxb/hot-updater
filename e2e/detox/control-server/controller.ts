@@ -49,6 +49,7 @@ import { hasActiveInstrumentationForPackage } from "./android-instrumentation.ts
 import {
   advanceAndroidRestartWait,
   hasNativeRestartEvidenceAfterMarker,
+  isAndroidRecoveryProcessReady,
 } from "./android-restart-wait.ts";
 import {
   createCrashRecoveryArtifactNames,
@@ -1327,10 +1328,10 @@ function readInsightsModel(database: BundleRepository): InsightsModel | null {
       : undefined;
   return typeof insights === "object" &&
     insights !== null &&
-    typeof Reflect.get(insights, "record") === "function" &&
+    typeof Reflect.get(insights, "recordEvent") === "function" &&
     typeof Reflect.get(insights, "listEvents") === "function" &&
-    typeof Reflect.get(insights, "findInstallations") === "function" &&
-    typeof Reflect.get(insights, "countInstallations") === "function" &&
+    typeof Reflect.get(insights, "findLatestEvents") === "function" &&
+    typeof Reflect.get(insights, "countLatestEvents") === "function" &&
     typeof Reflect.get(insights, "countEvents") === "function"
     ? (insights as InsightsModel)
     : null;
@@ -4373,7 +4374,6 @@ function launchAndroidApp({
         "1",
       ];
   const launchOutput = captureCommand("adb", launchArgs, {
-    allowFailure: explicitActivity,
     cwd: REPO_DIR,
   });
   const pid = captureCommand(
@@ -4468,6 +4468,7 @@ function readAndroidAutomaticRestartLogs() {
       "brief",
       "HotUpdaterE2E:I",
       "HotUpdaterImpl:I",
+      "HotUpdaterRecovery:I",
       "*:S",
     ],
     { allowFailure: true, maxBuffer: 1024 * 1024 },
@@ -4846,15 +4847,40 @@ async function waitForCrashRecovery(
   crashedBundleId: string,
   options: { attempts?: number; signal?: AbortSignal } = {},
 ) {
+  const launchLogMarker = androidLaunchLogMarker;
+  if (fixtureSession.platform === "android" && !launchLogMarker) {
+    throw new Error("Missing Android launch log marker");
+  }
+  let readyObservations = 0;
   return waitForCrashRecoveryState({
-    androidLaunchSettleMs: E2E_ANDROID_LAUNCH_SETTLE_MS,
     attempts: options.attempts ?? 360,
     crashedBundleId,
     createTimeoutError: createWaitForRecoveryTimeoutError,
     getLaunchReportState,
     getMetadataState,
-    isAndroidAppRunning: () => getAndroidProcessId().length > 0,
-    launchAndroidApp,
+    isAndroidRecoveryReady: () => {
+      const activityProcessesOutput = getAndroidActivityProcessesOutput();
+      const ready = isAndroidRecoveryProcessReady({
+        appId: fixtureSession.appId,
+        focusedPackage: getAndroidFocusedPackage(),
+        hasNativeRestartEvidence: hasNativeRestartEvidenceAfterMarker(
+          readAndroidAutomaticRestartLogs(),
+          launchLogMarker as string,
+        ),
+        instrumentationActive:
+          activityProcessesOutput.length === 0 ||
+          hasActiveInstrumentationForPackage(
+            activityProcessesOutput,
+            fixtureSession.appId,
+          ),
+        processId: getAndroidProcessId(),
+      });
+      readyObservations = ready ? readyObservations + 1 : 0;
+      return (
+        readyObservations >=
+        E2E_ANDROID_INSTRUMENTATION_CLEARED_STABLE_OBSERVATIONS
+      );
+    },
     platform: fixtureSession.platform,
     pollIntervalMs: E2E_POLL_INTERVAL_MS,
     readDiagnostics: (artifactNames) =>
@@ -6848,6 +6874,22 @@ export async function handleWaitForCrashRecovery(
 
 export async function handlePrepareAppLaunch() {
   return prepareAppLaunch();
+}
+
+export async function handleLaunchAndroidCrashApp() {
+  if (fixtureSession.platform !== "android") {
+    throw new Error("Uninstrumented crash launch requires Android");
+  }
+  await prepareAppLaunch();
+  const processes = getAndroidActivityProcessesOutput();
+  if (
+    !processes ||
+    hasActiveInstrumentationForPackage(processes, fixtureSession.appId)
+  ) {
+    throw new Error("Android crash launch requires stopped instrumentation");
+  }
+  launchAndroidApp({ explicitActivity: true, forceStop: false });
+  return {};
 }
 
 export async function handleWriteSummary(args: {

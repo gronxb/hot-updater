@@ -2,9 +2,19 @@
 # Invoked via reflection, when setting js bundle.
 -keepclassmembers class com.facebook.react.ReactInstanceManager {
     private final ** mBundleLoader;
+    private final ** mJSExceptionHandler;
 }
 
 # New Architecture
+# Crash recovery discovers these accessors through reflection.
+-keepclassmembers class * implements com.facebook.react.ReactApplication {
+    public *** getReactHost();
+}
+
+-keepclassmembers class * implements com.facebook.react.ReactHost {
+    public *** getCurrentReactContext();
+}
+
 # Keep fields accessed via reflection in ReactHost
 # Support both Java (mReactHostDelegate) and Kotlin (reactHostDelegate) field names
 -keepclassmembers class com.facebook.react.runtime.ReactHostImpl {
@@ -14,6 +24,11 @@
 
 -keepclassmembers class * implements com.facebook.react.runtime.ReactHostDelegate {
     ** jsBundleLoader;
+    ** exceptionHandler;
+}
+
+-keepclassmembers class com.facebook.react.bridge.CatalystInstanceImpl {
+    ** mJSExceptionHandler;
 }
 
 # Preserve the Brotli decoder and its embedded static dictionary

@@ -1,4 +1,3 @@
-import { toInsightsInstallationRow } from "@hot-updater/plugin-core";
 import { expect, it } from "vitest";
 
 import { createBundleEventRowFixture } from "../../../../packages/test-utils/src/databaseTestFixtures";
@@ -52,16 +51,17 @@ it("does not report a failed D1 query as empty Insights history", async () => {
   );
 });
 
-it("rejects an incomplete Insights batch response", async () => {
+it("rejects an unsuccessful event insert response", async () => {
   const plugin = d1Database({
     ...database,
-    batch: async () => [{ success: true, results: [] }],
+    prepare: () => ({
+      bind: () => ({ all: async () => ({ success: false, results: [] }) }),
+    }),
   });
   const event = createBundleEventRowFixture("1", 1);
   await expect(
-    plugin.models.insights.record({
+    plugin.models.insights.recordEvent({
       event,
-      installation: toInsightsInstallationRow(event),
     }),
   ).rejects.toThrow(
     "D1 did not successfully execute every requested statement",

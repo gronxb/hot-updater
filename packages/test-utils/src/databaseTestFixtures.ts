@@ -85,12 +85,18 @@ export const createReleaseRowFixture = (
 export const createBundleEventRowFixture = (
   suffix: string,
   receivedAtMs: number,
-): BundleEventRow => ({
+): Extract<BundleEventRow, { type: "UPDATE_APPLIED" | "RECOVERED" }> => ({
   id: fixtureId(suffix),
   type: "UPDATE_APPLIED",
   install_id: `install-${suffix}`,
   user_id: null,
-  username: null,
+  metadata: {
+    username: null,
+    cohort: "0",
+    update_strategy: "appVersion",
+    fingerprint_hash: null,
+    sdk_version: null,
+  },
   from_bundle_id: fixtureId(`${Number(suffix) + 1000}`),
   from_release_id: null,
   to_bundle_id: fixtureId(`${Number(suffix) + 2000}`),
@@ -98,10 +104,7 @@ export const createBundleEventRowFixture = (
   platform: "ios",
   app_version: "1.0.0",
   channel: "production",
-  cohort: "0",
-  update_strategy: "appVersion",
-  fingerprint_hash: null,
-  sdk_version: null,
+
   received_at_ms: receivedAtMs,
 });
 

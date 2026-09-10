@@ -48,6 +48,7 @@ const createClient = (): ConsoleInsightsQaClient => ({
         measuredAtMs: event.receivedAtMs + 1,
       },
       appliedReports: { count: 1, measuredAtMs: event.receivedAtMs + 1 },
+      downloadedReports: { count: 0, measuredAtMs: event.receivedAtMs + 1 },
       recoveredReports: { count: 0, measuredAtMs: event.receivedAtMs + 1 },
       unchangedReports: { count: 0, measuredAtMs: event.receivedAtMs + 1 },
     },
@@ -196,6 +197,95 @@ describe("console insights E2E QA", () => {
       limit: 50,
       sinceMs: event.receivedAtMs - 86_400_000,
     });
+  });
+
+  it("reuses outcome pages while checking every observed installation", async () => {
+    const client = createClient();
+    const second = { ...event, id: "event-2", installId: "install-2" };
+    vi.mocked(client.listEvents).mockImplementation(async (input) => ({
+      ...emptyEventPage,
+      data: input?.cursor === "second-page" ? [second] : [event],
+      nextCursor: input?.cursor === "second-page" ? null : "second-page",
+    }));
+    const options = {
+      observedEvents: [
+        observedTransition,
+        { ...observedTransition, installId: second.installId },
+      ],
+    };
+
+    const evidence = await verifyConsoleInsights(client, options);
+    expect(evidence.outcomes.map(({ eventId }) => eventId)).toEqual([
+      event.id,
+      second.id,
+    ]);
+    expect(client.getReportingOverview).toHaveBeenCalledTimes(1);
+    expect(
+      vi
+        .mocked(client.listEvents)
+        .mock.calls.filter(([input]) => input?.bundle),
+    ).toHaveLength(2);
+
+    // A missing second report must still fail; cached pages belong to one check.
+    vi.mocked(client.listEvents).mockResolvedValue({
+      ...emptyEventPage,
+      data: [event],
+    });
+    await expect(verifyConsoleInsights(client, options)).rejects.toMatchObject({
+      code: "inconsistent-data",
+    });
+  });
+
+  it("verifies a download before apply in history, movement and bundle counts", async () => {
+    const client = createClient();
+    const downloaded = { ...event, type: "UPDATE_DOWNLOADED" as const };
+    const observed = { ...observedTransition, type: downloaded.type };
+    expect(readObservedInsightsEvent(observed, observed.observedAtMs)).toEqual(
+      observed,
+    );
+    vi.mocked(client.listEvents).mockResolvedValue({
+      ...emptyEventPage,
+      data: [downloaded],
+    });
+    vi.mocked(client.listInstallationEvents).mockResolvedValue({
+      ...emptyEventPage,
+      data: [downloaded],
+    });
+    const installation = await client.getInstallation({
+      installId: observed.installId,
+    });
+    vi.mocked(client.getInstallation).mockResolvedValue({
+      ...installation!,
+      lastKnownBundleId: downloaded.fromBundleId,
+    });
+    const overview = await client.getReportingOverview({
+      bundleId,
+      channel: event.channel,
+      platform: event.platform,
+      window: "24h",
+    });
+    vi.mocked(client.getReportingOverview).mockImplementation(
+      async (input) => ({
+        ...overview,
+        bundle: {
+          ...overview.bundle!,
+          bundleId: input.bundleId!,
+          downloadedReports: { count: 1, measuredAtMs: event.receivedAtMs + 1 },
+        },
+      }),
+    );
+    await expect(
+      verifyConsoleInsights(client, { observedEvents: [observed] }),
+    ).resolves.toMatchObject({
+      eventType: "UPDATE_DOWNLOADED",
+      outcomes: [
+        { bundleId, count: 1, eventId: event.id, outcome: "downloaded" },
+      ],
+    });
+    vi.mocked(client.listInstallationEvents).mockResolvedValue(emptyEventPage);
+    await expect(
+      verifyConsoleInsights(client, { observedEvents: [observed] }),
+    ).rejects.toMatchObject({ code: "inconsistent-data" });
   });
 
   it("verifies an unchanged report without inventing a movement", async () => {

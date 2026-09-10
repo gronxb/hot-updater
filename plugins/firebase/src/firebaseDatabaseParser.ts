@@ -1,9 +1,9 @@
+import { isDatabaseBundleEventMetadata } from "@hot-updater/plugin-core";
 import {
   isDatabaseMetadataObject,
   type BundlePatchRow,
   type BundleRow,
   type BundleEventRow,
-  type InsightsInstallationRow,
   type ChannelRow,
   type ApiKeyRow,
   type ReleaseCatalogRow,
@@ -107,11 +107,10 @@ export const parseFirebaseBundleEventRow = (
   const input = record(value, source);
   const type = string(property(input, "type"), source);
   const fromBundleId = requiredNullableString(input, "from_bundle_id", source);
-  const updateStrategy = requiredNullableString(
-    input,
-    "update_strategy",
-    source,
-  );
+  const metadata = property(input, "metadata");
+  if (!isDatabaseBundleEventMetadata(metadata))
+    throw new FirebaseDatabaseDataError(source);
+  const updateStrategy = metadata.update_strategy;
   if (
     !(
       ((type === "UPDATE_DOWNLOADED" ||
@@ -130,7 +129,6 @@ export const parseFirebaseBundleEventRow = (
     type,
     install_id: string(property(input, "install_id"), source),
     user_id: nullableString(property(input, "user_id"), source),
-    username: nullableString(property(input, "username"), source),
     from_release_id: requiredNullableString(input, "from_release_id", source),
     from_bundle_id: fromBundleId,
     to_release_id: requiredNullableString(input, "to_release_id", source),
@@ -138,52 +136,9 @@ export const parseFirebaseBundleEventRow = (
     platform: platform(property(input, "platform"), source),
     app_version: string(property(input, "app_version"), source),
     channel: string(property(input, "channel"), source),
-    cohort: string(property(input, "cohort"), source),
-    update_strategy: updateStrategy,
-    fingerprint_hash: nullableString(
-      property(input, "fingerprint_hash"),
-      source,
-    ),
-    sdk_version: nullableString(property(input, "sdk_version"), source),
+    metadata,
     received_at_ms: number(property(input, "received_at_ms"), source),
   } as BundleEventRow;
-};
-
-export const parseFirebaseInsightsInstallationRow = (
-  value: unknown,
-  source: string,
-): InsightsInstallationRow => {
-  const input = record(value, source);
-  const type = string(property(input, "type"), source);
-  if (
-    type !== "UPDATE_DOWNLOADED" &&
-    type !== "UPDATE_APPLIED" &&
-    type !== "RECOVERED" &&
-    type !== "UNCHANGED"
-  ) {
-    throw new FirebaseDatabaseDataError(source);
-  }
-  return {
-    id: string(property(input, "id"), source),
-    type,
-    install_id: string(property(input, "install_id"), source),
-    user_id: nullableString(property(input, "user_id"), source),
-    username: nullableString(property(input, "username"), source),
-    to_bundle_id: string(property(input, "to_bundle_id"), source),
-    pending_bundle_id: nullableString(
-      Reflect.get(input, "pending_bundle_id") ?? null,
-      source,
-    ),
-    pending_release_id: nullableString(
-      Reflect.get(input, "pending_release_id") ?? null,
-      source,
-    ),
-    platform: platform(property(input, "platform"), source),
-    app_version: string(property(input, "app_version"), source),
-    channel: string(property(input, "channel"), source),
-    cohort: string(property(input, "cohort"), source),
-    received_at_ms: number(property(input, "received_at_ms"), source),
-  };
 };
 
 export const parseFirebaseApiKeyRow = (

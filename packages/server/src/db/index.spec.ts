@@ -837,9 +837,10 @@ describe("server/db hotUpdater (PGlite + Kysely)", async () => {
         bundle_events: {
           id: "event_id",
         },
-        bundle_installations: {
+        bundle_event_heads: {
           install_id: "install_id",
         },
+
         bundle_patches: {
           bundle_id: "bundle_id",
           id: "patch_id",
@@ -881,10 +882,7 @@ describe("server/db hotUpdater (PGlite + Kysely)", async () => {
             findFirst: vi.fn(),
             findMany: vi.fn(),
           },
-          bundle_installations: {
-            findFirst: vi.fn(),
-            findMany: vi.fn(),
-          },
+
           bundle_patches: {
             findFirst: vi.fn(),
             findMany: vi.fn(),

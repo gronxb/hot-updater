@@ -52,6 +52,14 @@ let package = Package(
     dependencies: [],
     targets: [
         .target(
+            name: "HotUpdaterRecovery",
+            path: "Recovery",
+            exclude: ["HotUpdaterRecoveryHooks.mm"],
+            sources: ["HotUpdaterRecovery.mm"],
+            publicHeadersPath: ".",
+            cxxSettings: [.define("RCT_NEW_ARCH_ENABLED")]
+        ),
+        .target(
             name: "HotUpdaterBsdiffPatch",
             path: "Internal",
             exclude: bsdiffPatchBridgeExcludedFiles,
@@ -73,7 +81,7 @@ let package = Package(
         ),
         .testTarget(
             name: "HotUpdaterTest",
-            dependencies: ["HotUpdaterArchive"],
+            dependencies: ["HotUpdaterArchive", "HotUpdaterRecovery"],
             path: "Test",
             exclude: ["Fixtures"]
         ),

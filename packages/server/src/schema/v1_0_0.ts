@@ -389,7 +389,6 @@ export const bundleEventsV100 = table(
     user_id: column("user_id", varchar(255))
       .collate(insightsTextCollations)
       .nullable(),
-    username: stringColumn("username").nullable(),
     from_release_id: uuid("from_release_id").nullable(),
     from_bundle_id: uuid("from_bundle_id").nullable(),
     to_release_id: uuid("to_release_id").nullable(),
@@ -397,15 +396,13 @@ export const bundleEventsV100 = table(
     platform: stringColumn("platform").collate(insightsTextCollations),
     app_version: stringColumn("app_version"),
     channel: stringColumn("channel").collate(insightsTextCollations),
-    cohort: stringColumn("cohort"),
-    update_strategy: stringColumn("update_strategy").nullable(),
-    fingerprint_hash: stringColumn("fingerprint_hash").nullable(),
-    sdk_version: stringColumn("sdk_version").nullable(),
+    metadata: json("metadata"),
     received_at_ms: float("received_at_ms"),
   },
   {
     indexes: [
       index("bundle_events_received_at_idx", ["received_at_ms", "id"]),
+      index("bundle_events_latest_idx", ["install_id", "received_at_ms", "id"]),
       index("bundle_events_install_idx", [
         "install_id",
         "type",
@@ -445,7 +442,7 @@ export const bundleEventsV100 = table(
       check({
         name: "bundle_events_shape_check",
         expression:
-          "((type in ('UPDATE_DOWNLOADED', 'UPDATE_APPLIED', 'RECOVERED')) and from_bundle_id is not null and update_strategy is not null and update_strategy in ('fingerprint', 'appVersion')) or (type = 'UNCHANGED' and from_bundle_id is null and update_strategy is null)",
+          "((type in ('UPDATE_DOWNLOADED', 'UPDATE_APPLIED', 'RECOVERED')) and from_bundle_id is not null) or (type = 'UNCHANGED' and from_bundle_id is null)",
         sqliteInline: true,
       }),
       check({
@@ -457,65 +454,42 @@ export const bundleEventsV100 = table(
   },
 );
 
-export const bundleInstallationsV100 = table(
-  "bundle_installations",
+// Private access index: full event payloads remain in bundle_events.
+export const bundleEventHeadsV100 = table(
+  "bundle_event_heads",
   {
     install_id: idColumn("install_id", varchar(255)).collate(
       insightsTextCollations,
     ),
     id: uuid("id"),
+    received_at_ms: float("received_at_ms"),
     user_id: column("user_id", varchar(255))
       .collate(insightsTextCollations)
       .nullable(),
-    username: stringColumn("username").nullable(),
-    to_bundle_id: uuid("to_bundle_id"),
-    pending_bundle_id: uuid("pending_bundle_id").nullable(),
-    pending_release_id: uuid("pending_release_id").nullable(),
-    type: column("type", varchar(32)),
     platform: stringColumn("platform").collate(insightsTextCollations),
-    app_version: stringColumn("app_version"),
     channel: stringColumn("channel").collate(insightsTextCollations),
-    cohort: stringColumn("cohort"),
-    received_at_ms: float("received_at_ms"),
+    type: column("type", varchar(32)),
+    from_bundle_id: uuid("from_bundle_id").nullable(),
+    to_bundle_id: uuid("to_bundle_id"),
   },
   {
     indexes: [
-      index("bundle_installations_user_id_idx", ["user_id", "install_id"]),
-      index("bundle_installations_received_at_idx", ["received_at_ms"]),
+      index("bundle_event_heads_user_idx", ["user_id", "install_id"]),
       index(
-        "bundle_installations_scope_idx",
+        "bundle_event_heads_scope_idx",
         ["platform", "channel", "received_at_ms"],
         insightsProviders,
       ),
       index(
-        "bundle_installations_bundle_idx",
-        ["platform", "channel", "to_bundle_id", "received_at_ms"],
+        "bundle_event_heads_from_idx",
+        ["type", "platform", "channel", "from_bundle_id", "received_at_ms"],
         insightsProviders,
       ),
-    ],
-    checks: [
-      check({
-        name: "bundle_installations_type_check",
-        expression:
-          "type in ('UPDATE_DOWNLOADED', 'UPDATE_APPLIED', 'RECOVERED', 'UNCHANGED')",
-        sqliteInline: true,
-      }),
-      check({
-        name: "bundle_installations_pending_check",
-        expression:
-          "(type = 'UPDATE_DOWNLOADED' and pending_bundle_id is not null) or (type <> 'UPDATE_DOWNLOADED' and pending_bundle_id is null and pending_release_id is null)",
-        sqliteInline: true,
-      }),
-      check({
-        name: "bundle_installations_platform_check",
-        expression: "platform in ('ios', 'android')",
-        sqliteInline: true,
-      }),
-      check({
-        name: "bundle_installations_received_at_check",
-        expression: "received_at_ms >= 0",
-        sqliteInline: true,
-      }),
+      index(
+        "bundle_event_heads_to_idx",
+        ["type", "platform", "channel", "to_bundle_id", "received_at_ms"],
+        insightsProviders,
+      ),
     ],
   },
 );
@@ -530,7 +504,7 @@ export const v1_0_0 = schema({
     releasesV100,
     releaseCatalogsV100,
     bundleEventsV100,
-    bundleInstallationsV100,
+    bundleEventHeadsV100,
     apiKeysV100,
     createSettingsTable("1.0.0"),
   ],

@@ -24,6 +24,13 @@ describe("database client pagination", () => {
     const row = bundlesRow(createBundle("001"));
     const findMany = vi.fn(async () => [row]);
     const adapter = createDatabasePluginAdapter("finite-id-memory", {
+      findLatestInsightsEvents: async () => {
+        throw new Error("Unexpected Insights read");
+      },
+      countLatestInsightsEvents: async () => {
+        throw new Error("Unexpected Insights count");
+      },
+
       create: async () => row,
       update: async () => row,
       delete: async () => {},
@@ -96,6 +103,13 @@ describe("database client pagination", () => {
     const plugin = createDatabasePlugin({
       name,
       ...createDatabasePluginAdapter(name, {
+        findLatestInsightsEvents: async () => {
+          throw new Error("Unexpected Insights read");
+        },
+        countLatestInsightsEvents: async () => {
+          throw new Error("Unexpected Insights count");
+        },
+
         create: async () => {
           throw new Error("not implemented");
         },
@@ -147,6 +161,13 @@ describe("database client pagination", () => {
     const plugin = createDatabasePlugin({
       name,
       ...createDatabasePluginAdapter(name, {
+        findLatestInsightsEvents: async () => {
+          throw new Error("Unexpected Insights read");
+        },
+        countLatestInsightsEvents: async () => {
+          throw new Error("Unexpected Insights count");
+        },
+
         create: async () => {
           throw new Error("not implemented");
         },

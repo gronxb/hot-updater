@@ -11,6 +11,12 @@
       "sourceType": "github",
       "computedHash": "063a0e6448123cd359ad0044cc46b0e490cc7964d45ef4bb9fd842bd2ffbca67"
     },
+    "hot-updater": {
+      "source": "hot-updater/skills",
+      "sourceType": "github",
+      "skillPath": "skills/hot-updater/SKILL.md",
+      "computedHash": "4a44b86cb5582a4450c4d62b7e1dbcdaed57d28c1c3dadda45b75f3387cb7714"
+    },
     "shadcn": {
       "source": "shadcn/ui",
       "sourceType": "github",

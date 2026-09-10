@@ -1,4 +1,3 @@
-import { toInsightsInstallationRow } from "@hot-updater/plugin-core";
 import { env } from "cloudflare:test";
 import { expect, inject, it } from "vitest";
 
@@ -51,7 +50,7 @@ it("creates the current schema with required artifact sizes", async () => {
   expect(tables.results.map(({ name }) => name)).toEqual(
     expect.arrayContaining([
       "bundle_events",
-      "bundle_installations",
+      "bundle_event_heads",
       "bundle_patches",
       "bundles",
       "channels",
@@ -101,35 +100,39 @@ it("creates the current schema with required artifact sizes", async () => {
     byte_size: 3_000_000_002,
   });
 
-  await env.DB.prepare(`
-    INSERT INTO bundle_installations (
-      install_id, id, user_id, username, to_bundle_id, type, platform,
-      app_version, channel, cohort, received_at_ms
-    ) VALUES (
-      'install-1', 'event-1', 'user-1', 'Demo User',
-      '00000000-0000-0000-0000-000000000001', 'UPDATE_APPLIED', 'ios',
-      '1.0.0', 'production', 'cohort-1', 100
-    )
-  `).run();
-  await expect(
-    env.DB.prepare(
-      "SELECT install_id, received_at_ms FROM bundle_installations",
-    ).first(),
-  ).resolves.toEqual({ install_id: "install-1", received_at_ms: 100 });
-
-  const installationIndexes = await env.DB.prepare(`
-    SELECT name FROM sqlite_master
-    WHERE type = 'index' AND tbl_name = 'bundle_installations'
-    ORDER BY name
-  `).all<{ name: string }>();
-  expect(installationIndexes.results.map(({ name }) => name)).toEqual(
-    expect.arrayContaining([
-      "bundle_installations_received_at_idx",
-      "bundle_installations_user_id_idx",
-      "bundle_installations_scope_idx",
-      "bundle_installations_bundle_idx",
-    ]),
+  expect(tables.results.map(({ name }) => name)).not.toContain(
+    "bundle_installations",
   );
+  const latestIndex = await env.DB.prepare(
+    "PRAGMA index_info(bundle_events_latest_idx)",
+  ).all<{ name: string }>();
+  expect(latestIndex.results.map(({ name }) => name)).toEqual([
+    "install_id",
+    "received_at_ms",
+    "id",
+  ]);
+  const headColumns = await env.DB.prepare(
+    "PRAGMA table_info(bundle_event_heads)",
+  ).all<{ name: string }>();
+  expect(headColumns.results.map(({ name }) => name)).toEqual([
+    "install_id",
+    "id",
+    "received_at_ms",
+    "user_id",
+    "platform",
+    "channel",
+    "type",
+    "from_bundle_id",
+    "to_bundle_id",
+  ]);
+  const headScopeIndex = await env.DB.prepare(
+    "PRAGMA index_info(bundle_event_heads_scope_idx)",
+  ).all<{ name: string }>();
+  expect(headScopeIndex.results.map(({ name }) => name)).toEqual([
+    "platform",
+    "channel",
+    "received_at_ms",
+  ]);
 
   const movementIndex = await env.DB.prepare(
     "PRAGMA index_info(bundle_events_install_idx)",
@@ -194,45 +197,43 @@ it("creates the current schema with required artifact sizes", async () => {
   ).rejects.toThrow(/NOT NULL constraint failed/);
 });
 
-it("stores running and pending bundles separately in the initialized D1 schema", async () => {
+it("returns canonical downloaded and applied events from the initialized D1 schema", async () => {
   const plugin = d1Database(env.DB);
   const download = {
     ...createBundleEventRowFixture("9601", 100),
     type: "UPDATE_DOWNLOADED" as const,
     from_bundle_id: "00000000-0000-7000-8000-000000001001",
-    update_strategy: "appVersion" as const,
+    metadata: {
+      ...createBundleEventRowFixture("9601", 100).metadata,
+      update_strategy: "appVersion" as const,
+    },
   };
-  await plugin.models.insights.record({
+  await plugin.models.insights.recordEvent({
     event: download,
-    installation: toInsightsInstallationRow(download),
   });
   await expect(
-    plugin.models.insights.findInstallations({
+    plugin.models.insights.findLatestEvents({
       installId: download.install_id,
     }),
-  ).resolves.toEqual([toInsightsInstallationRow(download)]);
+  ).resolves.toEqual([download]);
   const applied = {
     ...download,
     id: createBundleEventRowFixture("9602", 200).id,
     type: "UPDATE_APPLIED" as const,
     received_at_ms: 200,
   };
-  await plugin.models.insights.record({
+  await plugin.models.insights.recordEvent({
     event: applied,
-    installation: toInsightsInstallationRow(applied),
   });
-  await plugin.models.insights.record({
+  await plugin.models.insights.recordEvent({
     event: download,
-    installation: toInsightsInstallationRow(download),
   });
   await expect(
-    plugin.models.insights.findInstallations({
+    plugin.models.insights.findLatestEvents({
       installId: download.install_id,
     }),
-  ).resolves.toEqual([toInsightsInstallationRow(applied)]);
+  ).resolves.toEqual([applied]);
   await expect(
-    env.DB.prepare(
-      "UPDATE bundle_installations SET type = 'UPDATE_DOWNLOADED'",
-    ).run(),
-  ).rejects.toThrow(/pending_check/);
+    env.DB.prepare("UPDATE bundle_events SET type = 'UNCHANGED'").run(),
+  ).rejects.toThrow(/bundle_events_shape_check/);
 });

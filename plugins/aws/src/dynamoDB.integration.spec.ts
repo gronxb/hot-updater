@@ -1,12 +1,14 @@
 import {
+  DeleteCommand,
+  ScanCommand,
   GetCommand,
   PutCommand,
+  QueryCommand,
   type TransactWriteCommandInput,
 } from "@aws-sdk/lib-dynamodb";
 import {
   type BundleEventRow,
   createDatabaseClient,
-  toInsightsInstallationRow,
 } from "@hot-updater/plugin-core";
 import { setupDatabasePluginTestSuite } from "@hot-updater/test-utils";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
@@ -14,6 +16,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import {
   createDynamoDBInsightsTable,
   DYNAMODB_INSIGHTS_EVENT_IDS_PARTITION,
+  DYNAMODB_INSIGHTS_INSTALLATIONS_PARTITION,
 } from "./dynamoDB";
 import { DynamoDBIntegrationFixture } from "./dynamoDB.integration-fixture";
 
@@ -36,25 +39,33 @@ const insightsEvent = (
     type,
     install_id: input.installId,
     user_id: input.userId ?? null,
-    username: null,
+    metadata: {
+      username: null,
+      cohort: "0",
+      fingerprint_hash: null,
+      sdk_version: null,
+    },
     from_release_id: null,
     to_release_id: null,
     to_bundle_id: "00000000-0000-0000-0000-000000000002",
     platform: "ios" as const,
     app_version: "1.0.0",
     channel: "production",
-    cohort: "0",
-    fingerprint_hash: null,
-    sdk_version: null,
+
     received_at_ms: input.receivedAtMs,
   };
   return type === "UNCHANGED"
-    ? { ...base, type, from_bundle_id: null, update_strategy: null }
+    ? {
+        ...base,
+        type,
+        from_bundle_id: null,
+        metadata: { ...base.metadata, update_strategy: null },
+      }
     : {
         ...base,
         type,
         from_bundle_id: "00000000-0000-0000-0000-000000000001",
-        update_strategy: "appVersion",
+        metadata: { ...base.metadata, update_strategy: "appVersion" },
       };
 };
 
@@ -126,13 +137,102 @@ describe("DynamoDB aggregate mutations", () => {
 describe("DynamoDB Insights", () => {
   beforeEach(clearTable);
 
+  it("rebuilds lost latest and user items from a frozen event export", async () => {
+    const insights = createDynamoDBInsightsTable({
+      client: fixture.client,
+      tableName: fixture.tableName,
+    });
+    const old = insightsEvent(9701, {
+      installId: "replay",
+      receivedAtMs: 100,
+      userId: "old-user",
+    });
+    const latest = insightsEvent(9702, {
+      installId: "replay",
+      receivedAtMs: 200,
+      userId: "new-user",
+    });
+    await insights.recordEvent({ event: latest });
+    await insights.recordEvent({ event: old });
+    const preserved = { pk: "unrelated", sk: "artifact", value: "preserve" };
+    await fixture.client.send(
+      new PutCommand({ TableName: fixture.tableName, Item: preserved }),
+    );
+    const exported = await insights.listEvents({
+      filter: { kind: "all" },
+      beforeReceivedAtMs: 201,
+      limit: 10,
+    });
+    await fixture.client.send(
+      new DeleteCommand({
+        TableName: fixture.tableName,
+        Key: {
+          pk: DYNAMODB_INSIGHTS_INSTALLATIONS_PARTITION,
+          sk: old.install_id,
+        },
+      }),
+    );
+    await insights.recordEvent({ event: latest });
+    await expect(
+      insights.findLatestEvents({ installId: old.install_id }),
+    ).resolves.toEqual([]);
+    // This disposable fixture has no concurrent writers and fewer than one
+    // native scan page. Production replays into a separately initialized target.
+    const snapshot = await fixture.client.send(
+      new ScanCommand({ TableName: fixture.tableName, ConsistentRead: true }),
+    );
+    expect(snapshot.LastEvaluatedKey).toBeUndefined();
+    for (const item of snapshot.Items ?? []) {
+      if (
+        item.pk === "bundle_events" ||
+        String(item.pk).startsWith("_hot-updater#insights-")
+      ) {
+        await fixture.client.send(
+          new DeleteCommand({
+            TableName: fixture.tableName,
+            Key: { pk: item.pk, sk: item.sk },
+          }),
+        );
+      }
+    }
+    for (const event of [...exported, ...exported.toReversed()])
+      await insights.recordEvent({ event });
+    await expect(
+      insights.findLatestEvents({ installId: old.install_id }),
+    ).resolves.toEqual([latest]);
+    await expect(
+      insights.findLatestEvents({ userId: "old-user", limit: 10 }),
+    ).resolves.toEqual([]);
+    await expect(
+      insights.findLatestEvents({ userId: "new-user", limit: 10 }),
+    ).resolves.toEqual([latest]);
+    await expect(
+      insights.listEvents({
+        filter: { kind: "all" },
+        beforeReceivedAtMs: 201,
+        limit: 10,
+      }),
+    ).resolves.toEqual(exported);
+    expect(
+      (
+        await fixture.client.send(
+          new GetCommand({
+            TableName: fixture.tableName,
+            Key: { pk: preserved.pk, sk: preserved.sk },
+            ConsistentRead: true,
+          }),
+        )
+      ).Item,
+    ).toEqual(preserved);
+  });
+
   it("rolls back both canonical records when a native transaction condition fails", async () => {
     const insights = createDynamoDBInsightsTable({
       client: fixture.client,
       tableName: fixture.tableName,
     });
     const event = insightsEvent(31, { installId: "atomic", receivedAtMs: 100 });
-    const input = { event, installation: toInsightsInstallationRow(event) };
+    const input = { event };
     const name = "reject-insights-transaction";
     fixture.client.middlewareStack.add(
       (next, context) => async (args) => {
@@ -154,7 +254,7 @@ describe("DynamoDB Insights", () => {
       { name, step: "initialize" },
     );
     try {
-      await expect(insights.record(input)).rejects.toMatchObject({
+      await expect(insights.recordEvent(input)).rejects.toMatchObject({
         name: "TransactionCanceledException",
       });
     } finally {
@@ -168,7 +268,7 @@ describe("DynamoDB Insights", () => {
       }),
     ).resolves.toEqual([]);
     await expect(
-      insights.findInstallations({ installId: event.install_id }),
+      insights.findLatestEvents({ installId: event.install_id }),
     ).resolves.toEqual([]);
     const marker = await fixture.client.send(
       new GetCommand({
@@ -178,10 +278,209 @@ describe("DynamoDB Insights", () => {
       }),
     );
     expect(marker.Item).toBeUndefined();
-    await insights.record(input);
     await expect(
-      insights.findInstallations({ installId: event.install_id }),
-    ).resolves.toEqual([input.installation]);
+      insights.countLatestEvents({
+        platform: "ios",
+        channel: "production",
+        sinceMs: 0,
+      }),
+    ).resolves.toBe(0);
+    await insights.recordEvent(input);
+    await expect(
+      insights.findLatestEvents({ installId: event.install_id }),
+    ).resolves.toEqual([input.event]);
+    await expect(
+      insights.countLatestEvents({
+        platform: "ios",
+        channel: "production",
+        sinceMs: 0,
+      }),
+    ).resolves.toBe(1);
+  });
+
+  it("moves compact scope membership atomically and ignores duplicate or delayed reports", async () => {
+    const insights = createPlugin().models.insights;
+    const previous = insightsEvent(101, {
+      installId: "scope-movement",
+      receivedAtMs: 100,
+      userId: "old",
+    });
+    await insights.recordEvent({ event: previous });
+    const tied = [102, 103].map((id) => ({
+      ...previous,
+      id: insightsEvent(id, {
+        installId: previous.install_id,
+        receivedAtMs: 200,
+      }).id,
+      received_at_ms: 200,
+      channel: `preview-${id}`,
+      user_id: id === 103 ? null : "old",
+    }));
+    await Promise.all(tied.map((event) => insights.recordEvent({ event })));
+    await insights.recordEvent({
+      event: { ...previous, channel: "duplicate", received_at_ms: 300 },
+    });
+    await insights.recordEvent({
+      event: {
+        ...previous,
+        id: insightsEvent(104, {
+          installId: previous.install_id,
+          receivedAtMs: 50,
+        }).id,
+        received_at_ms: 50,
+      },
+    });
+    await expect(
+      insights.findLatestEvents({ installId: previous.install_id }),
+    ).resolves.toEqual([tied[1]]);
+    await expect(
+      insights.findLatestEvents({ userId: "old", limit: 10 }),
+    ).resolves.toEqual([]);
+    for (const [channel, expected] of [
+      ["production", 0],
+      ["preview-102", 0],
+      ["preview-103", 1],
+      ["duplicate", 0],
+    ] as const)
+      await expect(
+        insights.countLatestEvents({ platform: "ios", channel, sinceMs: 0 }),
+      ).resolves.toBe(expected);
+    await expect(
+      insights.countLatestEvents({
+        platform: "ios",
+        channel: "preview-103",
+        sinceMs: 0,
+        bundle: [
+          {
+            field: "from_bundle_id",
+            value: previous.from_bundle_id!,
+            types: ["UPDATE_APPLIED"],
+          },
+          {
+            field: "to_bundle_id",
+            value: previous.to_bundle_id,
+            types: ["UPDATE_APPLIED"],
+          },
+        ],
+      }),
+    ).resolves.toBe(1);
+  });
+
+  it("keeps native count reads inside the scope as history and other scopes grow", async () => {
+    const insights = createDynamoDBInsightsTable({
+      client: fixture.client,
+      tableName: fixture.tableName,
+    });
+    const events = Array.from({ length: 24 }, (_, index) =>
+      insightsEvent(10_000 + index, {
+        installId: `installation-${index}`,
+        receivedAtMs: 1000,
+      }),
+    );
+    await Promise.all(events.map((event) => insights.recordEvent({ event })));
+    const name = "measure-insights-count-reads";
+    let scanned = 0;
+    let queries = 0;
+    fixture.client.middlewareStack.add(
+      (next, context) => async (args) => {
+        const result = await next(args);
+        if (context.commandName === "QueryCommand") {
+          queries += 1;
+          scanned += Number(Reflect.get(result.output, "ScannedCount"));
+        }
+        return result;
+      },
+      { name, step: "initialize" },
+    );
+    const measure = async () => {
+      scanned = 0;
+      queries = 0;
+      const count = await insights.countLatestEvents({
+        platform: "ios",
+        channel: "production",
+        sinceMs: 500,
+      });
+      return { count, scanned, queries };
+    };
+    try {
+      const before = await measure();
+      for (let batch = 0; batch < 10; batch++) {
+        await Promise.all(
+          events.map((event, index) =>
+            insights.recordEvent({
+              event: {
+                ...event,
+                id: insightsEvent(20_000 + batch * events.length + index, {
+                  installId: event.install_id,
+                  receivedAtMs: batch,
+                }).id,
+                received_at_ms: batch,
+              },
+            }),
+          ),
+        );
+      }
+      const afterHistory = await measure();
+      for (let batch = 0; batch < 4; batch++) {
+        await Promise.all(
+          events.map((_, index) =>
+            insights.recordEvent({
+              event: {
+                ...insightsEvent(30_000 + batch * events.length + index, {
+                  installId: `other-${batch}-${index}`,
+                  receivedAtMs: 1000,
+                }),
+                channel: "other",
+              },
+            }),
+          ),
+        );
+      }
+      const afterScopes = await measure();
+      expect(before).toEqual({
+        count: events.length,
+        scanned: events.length,
+        queries: 1,
+      });
+      expect(afterHistory).toEqual(before);
+      expect(afterScopes).toEqual(before);
+      const oldCount = await fixture.client.send(
+        new QueryCommand({
+          TableName: fixture.tableName,
+          ConsistentRead: true,
+          KeyConditionExpression: "pk = :pk",
+          FilterExpression:
+            "#row.#channel = :channel AND #row.#platform = :platform AND #row.#received >= :since",
+          ExpressionAttributeNames: {
+            "#row": "row",
+            "#channel": "channel",
+            "#platform": "platform",
+            "#received": "received_at_ms",
+          },
+          ExpressionAttributeValues: {
+            ":pk": DYNAMODB_INSIGHTS_INSTALLATIONS_PARTITION,
+            ":channel": "production",
+            ":platform": "ios",
+            ":since": 500,
+          },
+          Select: "COUNT",
+        }),
+      );
+      expect(oldCount.LastEvaluatedKey).toBeUndefined();
+      expect(oldCount.Count).toBe(afterScopes.count);
+      expect(oldCount.ScannedCount).toBe(events.length * 5);
+      console.info(
+        "DynamoDB latest read growth",
+        JSON.stringify({
+          before,
+          afterHistory,
+          afterScopes,
+          globalLatestScanned: oldCount.ScannedCount,
+        }),
+      );
+    } finally {
+      fixture.client.middlewareStack.remove(name);
+    }
   });
 
   it("treats retry after an ambiguous committed write as an event-ID no-op", async () => {
@@ -194,7 +493,7 @@ describe("DynamoDB Insights", () => {
       receivedAtMs: 100,
       userId: "original",
     });
-    const input = { event, installation: toInsightsInstallationRow(event) };
+    const input = { event };
     const name = "lose-transaction-response";
     fixture.client.middlewareStack.add(
       (next, context) => async (args) => {
@@ -206,22 +505,21 @@ describe("DynamoDB Insights", () => {
       { name, step: "deserialize" },
     );
     try {
-      await expect(insights.record(input)).rejects.toThrow(
+      await expect(insights.recordEvent(input)).rejects.toThrow(
         "response lost after commit",
       );
     } finally {
       fixture.client.middlewareStack.remove(name);
     }
-    await insights.record(input);
+    await insights.recordEvent(input);
     const reused = {
       ...event,
       install_id: "other-install",
       received_at_ms: 500,
       user_id: "changed",
     };
-    await insights.record({
+    await insights.recordEvent({
       event: reused,
-      installation: toInsightsInstallationRow(reused),
     });
     await expect(
       insights.listEvents({
@@ -231,10 +529,10 @@ describe("DynamoDB Insights", () => {
       }),
     ).resolves.toEqual([event]);
     await expect(
-      insights.findInstallations({ installId: event.install_id }),
-    ).resolves.toEqual([input.installation]);
+      insights.findLatestEvents({ installId: event.install_id }),
+    ).resolves.toEqual([input.event]);
     await expect(
-      insights.findInstallations({ installId: reused.install_id }),
+      insights.findLatestEvents({ installId: reused.install_id }),
     ).resolves.toEqual([]);
   });
 
@@ -256,9 +554,8 @@ describe("DynamoDB Insights", () => {
       userId: "old",
     });
     for (const event of [previous, current, valid])
-      await insights.record({
+      await insights.recordEvent({
         event,
-        installation: toInsightsInstallationRow(event),
       });
     await fixture.client.send(
       new PutCommand({
@@ -268,13 +565,13 @@ describe("DynamoDB Insights", () => {
           sk: "a",
           order_key: `0000000000000100#${previous.id}`,
           version: 1,
-          row: toInsightsInstallationRow(previous),
+          row: previous,
         },
       }),
     );
     await expect(
-      insights.findInstallations({ userId: "old", limit: 1 }),
-    ).resolves.toEqual([toInsightsInstallationRow(valid)]);
+      insights.findLatestEvents({ userId: "old", limit: 1 }),
+    ).resolves.toEqual([valid]);
   });
 
   it("does not count an installation again when its receipt time advances between native pages", async () => {
@@ -282,9 +579,8 @@ describe("DynamoDB Insights", () => {
     const first = insightsEvent(61, { installId: "a", receivedAtMs: 100 });
     const second = insightsEvent(62, { installId: "b", receivedAtMs: 100 });
     for (const event of [first, second])
-      await writer.record({
+      await writer.recordEvent({
         event,
-        installation: toInsightsInstallationRow(event),
       });
     const insights = createDynamoDBInsightsTable({
       client: fixture.client,
@@ -301,7 +597,7 @@ describe("DynamoDB Insights", () => {
     );
     const pause = fixture.pauseNextQuery();
     try {
-      const count = insights.countInstallations({
+      const count = insights.countLatestEvents({
         platform: "ios",
         channel: "production",
         sinceMs: 0,
@@ -312,9 +608,8 @@ describe("DynamoDB Insights", () => {
         id: insightsEvent(63, { installId: "a", receivedAtMs: 300 }).id,
         received_at_ms: 300,
       };
-      await writer.record({
+      await writer.recordEvent({
         event: newer,
-        installation: toInsightsInstallationRow(newer),
       });
       pause.release();
       await expect(count).resolves.toBe(2);
@@ -331,7 +626,7 @@ describe("DynamoDB Insights", () => {
       installId: "initial",
       receivedAtMs: 100,
     });
-    const installation = toInsightsInstallationRow(event);
+    const installation = event;
     const query = {
       filter: {
         platform: "ios" as const,
@@ -343,10 +638,10 @@ describe("DynamoDB Insights", () => {
       beforeReceivedAtMs: 200,
     };
     await expect(insights.countEvents(query)).resolves.toBe(0);
-    await insights.record({ event, installation });
+    await insights.recordEvent({ event });
     await expect(insights.countEvents(query)).resolves.toBe(1);
     await expect(
-      insights.findInstallations({ installId: event.install_id }),
+      insights.findLatestEvents({ installId: event.install_id }),
     ).resolves.toEqual([installation]);
     await expect(
       insights.listEvents({
@@ -365,9 +660,8 @@ describe("DynamoDB Insights", () => {
       channel,
     };
     expect(new TextEncoder().encode(channel).byteLength).toBeGreaterThan(2_048);
-    await insights.record({
+    await insights.recordEvent({
       event,
-      installation: toInsightsInstallationRow(event),
     });
     const filter = {
       platform: "ios" as const,
@@ -385,12 +679,22 @@ describe("DynamoDB Insights", () => {
       }),
     ).resolves.toEqual([event]);
     await expect(
-      insights.findInstallations({ installId: event.install_id }),
-    ).resolves.toEqual([toInsightsInstallationRow(event)]);
+      insights.findLatestEvents({ installId: event.install_id }),
+    ).resolves.toEqual([event]);
     await expect(
       insights.countEvents({
         filter: { ...filter, channel: `${channel}나` },
         ...range,
+      }),
+    ).resolves.toBe(0);
+    await expect(
+      insights.countLatestEvents({ platform: "ios", channel, sinceMs: 0 }),
+    ).resolves.toBe(1);
+    await expect(
+      insights.countLatestEvents({
+        platform: "ios",
+        channel: `${channel}나`,
+        sinceMs: 0,
       }),
     ).resolves.toBe(0);
   });

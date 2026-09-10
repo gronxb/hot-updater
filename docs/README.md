@@ -9,6 +9,11 @@ label in general setup and agent workflows. The version selector uses `v1.0` and
 `v0.36`. Reserve “v1” for v0 migration guidance; keep literal resource names, API
 paths and protocol identifiers.
 
+Keep PRDs and planning records under `architecture/` in the repository only.
+They are excluded from site pages, search, and generated LLM documentation.
+Describe shipped behavior in `content/docs` without publishing or linking these
+PRDs from user-facing pages.
+
 ## Content ownership
 
 The sidebar starts with onboarding and custom update flows, followed by the

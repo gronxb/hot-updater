@@ -59,7 +59,6 @@ export type CrashRecoveryTimeoutDetails = {
 };
 
 export type CrashRecoveryWaitOptions = {
-  readonly androidLaunchSettleMs: number;
   readonly attempts: number;
   readonly crashedBundleId: string;
   readonly createTimeoutError: (details: CrashRecoveryTimeoutDetails) => Error;
@@ -69,8 +68,7 @@ export type CrashRecoveryWaitOptions = {
   readonly getMetadataState: (
     metadata: Record<string, unknown> | null,
   ) => MetadataState;
-  readonly isAndroidAppRunning: () => boolean;
-  readonly launchAndroidApp: () => void;
+  readonly isAndroidRecoveryReady: () => boolean;
   readonly platform: CrashRecoveryPlatform;
   readonly pollIntervalMs: number;
   readonly readDiagnostics: (
@@ -136,16 +134,6 @@ function isRecovered(args: {
   );
 }
 
-function hasRecoveredMetadata(args: {
-  readonly metadataState: MetadataState;
-  readonly stableBundleId: string;
-}) {
-  return (
-    args.metadataState.stagingBundleId === args.stableBundleId &&
-    args.metadataState.verificationPending === false
-  );
-}
-
 export async function waitForCrashRecoveryState(
   options: CrashRecoveryWaitOptions,
 ) {
@@ -153,8 +141,6 @@ export async function waitForCrashRecoveryState(
     crashedBundleId: options.crashedBundleId,
     stableBundleId: options.stableBundleId,
   });
-  let androidLaunchAttempts = 0;
-
   for (let index = 0; index < options.attempts; index += 1) {
     throwIfAborted(options.signal);
     const diagnostics = options.readDiagnostics(artifactNames);
@@ -169,24 +155,10 @@ export async function waitForCrashRecoveryState(
         launchReportState,
         metadataState,
         stableBundleId: options.stableBundleId,
-      })
+      }) &&
+      (options.platform !== "android" || options.isAndroidRecoveryReady())
     ) {
       return {};
-    }
-
-    if (
-      options.platform === "android" &&
-      androidLaunchAttempts < 3 &&
-      !hasRecoveredMetadata({
-        metadataState,
-        stableBundleId: options.stableBundleId,
-      }) &&
-      (androidLaunchAttempts === 0 || !options.isAndroidAppRunning())
-    ) {
-      options.launchAndroidApp();
-      androidLaunchAttempts += 1;
-      await options.sleepMs(options.androidLaunchSettleMs, options.signal);
-      continue;
     }
 
     await options.sleepMs(options.pollIntervalMs, options.signal);

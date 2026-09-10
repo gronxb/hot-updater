@@ -1,4 +1,7 @@
-import { isDatabaseMetadataObject } from "./databaseJsonValue";
+import {
+  isDatabaseMetadataObject,
+  isDatabaseBundleEventMetadata,
+} from "./databaseJsonValue";
 import { DatabasePluginInputError } from "./databasePluginCrudValidationErrors";
 import { databaseFields } from "./types/databaseFields";
 import type { DatabaseModel } from "./types/internal";
@@ -141,7 +144,6 @@ export const modelValidators: ValidatorMap = {
       value === "UNCHANGED",
     install_id: isInsightsIdentityText,
     user_id: isNullableInsightsIdentityText,
-    username: (value) => value === null || typeof value === "string",
     from_bundle_id: (value) => value === null || typeof value === "string",
     from_release_id: (value) => value === null || typeof value === "string",
     to_release_id: (value) => value === null || typeof value === "string",
@@ -149,34 +151,11 @@ export const modelValidators: ValidatorMap = {
     platform: (value) => value === "ios" || value === "android",
     app_version: (value) => typeof value === "string",
     channel: (value) => typeof value === "string",
-    cohort: (value) => typeof value === "string",
-    update_strategy: (value) =>
-      value === null || value === "fingerprint" || value === "appVersion",
-    fingerprint_hash: (value) => value === null || typeof value === "string",
-    sdk_version: (value) => value === null || typeof value === "string",
+    metadata: isDatabaseBundleEventMetadata,
     received_at_ms: (value) =>
       typeof value === "number" && Number.isSafeInteger(value) && value >= 0,
   },
-  bundle_installations: {
-    id: (value) => typeof value === "string",
-    install_id: isInsightsIdentityText,
-    user_id: isNullableInsightsIdentityText,
-    username: (value) => value === null || typeof value === "string",
-    to_bundle_id: (value) => typeof value === "string",
-    pending_bundle_id: (value) => value === null || typeof value === "string",
-    pending_release_id: (value) => value === null || typeof value === "string",
-    type: (value) =>
-      value === "UPDATE_DOWNLOADED" ||
-      value === "UPDATE_APPLIED" ||
-      value === "RECOVERED" ||
-      value === "UNCHANGED",
-    platform: (value) => value === "ios" || value === "android",
-    app_version: (value) => typeof value === "string",
-    channel: (value) => typeof value === "string",
-    cohort: (value) => typeof value === "string",
-    received_at_ms: (value) =>
-      typeof value === "number" && Number.isSafeInteger(value) && value >= 0,
-  },
+
   api_keys: {
     id: (value) => typeof value === "string",
     hash: (value) => typeof value === "string",
@@ -337,21 +316,7 @@ export const sortableFields: Record<DatabaseModel, ReadonlySet<string>> = {
     "sdk_version",
     "received_at_ms",
   ]),
-  bundle_installations: new Set([
-    "id",
-    "install_id",
-    "user_id",
-    "username",
-    "to_bundle_id",
-    "pending_bundle_id",
-    "pending_release_id",
-    "type",
-    "platform",
-    "app_version",
-    "channel",
-    "cohort",
-    "received_at_ms",
-  ]),
+
   api_keys: new Set([
     "id",
     "hash",

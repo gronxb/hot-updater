@@ -1,7 +1,4 @@
-import {
-  createDatabaseClient,
-  toInsightsInstallationRow,
-} from "@hot-updater/plugin-core";
+import { createDatabaseClient } from "@hot-updater/plugin-core";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -30,10 +27,10 @@ describe("mongoAdapter capabilities", () => {
     harness.reset();
     const insights = mongoAdapter({ client: harness.client }).models.insights;
     const event = createBundleEventRowFixture("981", 100);
-    const input = { event, installation: toInsightsInstallationRow(event) };
-    harness.failNextInstallationWrite();
-    await expect(insights.record(input)).rejects.toThrow(
-      "injected installation write failure",
+    const input = { event };
+    harness.failNextEventWrite();
+    await expect(insights.recordEvent(input)).rejects.toThrow(
+      "injected event write failure",
     );
     await expect(
       insights.listEvents({
@@ -43,10 +40,10 @@ describe("mongoAdapter capabilities", () => {
       }),
     ).resolves.toEqual([]);
     await expect(
-      insights.findInstallations({ installId: event.install_id }),
+      insights.findLatestEvents({ installId: event.install_id }),
     ).resolves.toEqual([]);
-    await insights.record(input);
-    await insights.record(input);
+    await insights.recordEvent(input);
+    await insights.recordEvent(input);
     await expect(
       insights.listEvents({
         filter: { kind: "all" },
@@ -55,8 +52,8 @@ describe("mongoAdapter capabilities", () => {
       }),
     ).resolves.toEqual([event]);
     await expect(
-      insights.findInstallations({ installId: event.install_id }),
-    ).resolves.toEqual([input.installation]);
+      insights.findLatestEvents({ installId: event.install_id }),
+    ).resolves.toEqual([input.event]);
   });
 
   it("preserves all concurrent events while advancing one installation and clearing its user", async () => {
@@ -69,17 +66,16 @@ describe("mongoAdapter capabilities", () => {
     }));
     await Promise.all(
       events.map((event) =>
-        insights.record({
+        insights.recordEvent({
           event,
-          installation: toInsightsInstallationRow(event),
         }),
       ),
     );
     await expect(
-      insights.findInstallations({ installId: "concurrent-installation" }),
-    ).resolves.toEqual([toInsightsInstallationRow(events[1]!)]);
+      insights.findLatestEvents({ installId: "concurrent-installation" }),
+    ).resolves.toEqual([events[1]!]);
     await expect(
-      insights.findInstallations({ userId: "previous-user", limit: 10 }),
+      insights.findLatestEvents({ userId: "previous-user", limit: 10 }),
     ).resolves.toEqual([]);
     await expect(
       insights.listEvents({
@@ -88,6 +84,31 @@ describe("mongoAdapter capabilities", () => {
         limit: 10,
       }),
     ).resolves.toHaveLength(4);
+  });
+
+  it("rolls back a new event when its private head write fails", async () => {
+    harness.reset();
+    const insights = mongoAdapter({ client: harness.client }).models.insights;
+    const event = createBundleEventRowFixture("995", 100);
+    harness.failNextHeadWrite();
+    await expect(insights.recordEvent({ event })).rejects.toThrow(
+      "injected head write failure",
+    );
+    await expect(
+      insights.listEvents({
+        filter: { kind: "all" },
+        beforeReceivedAtMs: 200,
+        limit: 10,
+      }),
+    ).resolves.toEqual([]);
+    await expect(
+      insights.findLatestEvents({ installId: event.install_id }),
+    ).resolves.toEqual([]);
+    await insights.recordEvent({ event });
+    await insights.recordEvent({ event });
+    await expect(
+      insights.findLatestEvents({ installId: event.install_id }),
+    ).resolves.toEqual([event]);
   });
 
   it("returns an adapter without an unsafe atomic-batch fallback", () => {

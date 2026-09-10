@@ -59,7 +59,9 @@ const handler = onRequest(
       method: req.method,
       headers: req.headers as Record<string, string>,
       body:
-        req.method !== "GET" && req.method !== "HEAD" ? req.body : undefined,
+        req.method !== "GET" && req.method !== "HEAD"
+          ? new Uint8Array(req.rawBody)
+          : undefined,
     });
     const honoResponse = await app.fetch(request);
     res.status(honoResponse.status);

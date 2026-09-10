@@ -1,5 +1,6 @@
 import type {
   DatabaseBundleMetadata,
+  DatabaseBundleEventMetadata,
   DatabaseJsonObject,
   DatabaseJsonValue,
 } from "./types";
@@ -79,3 +80,16 @@ export const isDatabaseMetadataObject = (
   isDatabaseJsonObject(value) &&
   (!Object.hasOwn(value, "app_version") ||
     typeof value["app_version"] === "string");
+
+export const isDatabaseBundleEventMetadata = (
+  value: unknown,
+): value is DatabaseBundleEventMetadata =>
+  isDatabaseJsonObject(value) &&
+  (value.username === null || typeof value.username === "string") &&
+  typeof value.cohort === "string" &&
+  (value.update_strategy === null ||
+    value.update_strategy === "fingerprint" ||
+    value.update_strategy === "appVersion") &&
+  (value.fingerprint_hash === null ||
+    typeof value.fingerprint_hash === "string") &&
+  (value.sdk_version === null || typeof value.sdk_version === "string");

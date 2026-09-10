@@ -38,11 +38,14 @@ const hasValidBundleEventInvariants = (
     data.type === "UPDATE_APPLIED" ||
     data.type === "RECOVERED") &&
     typeof data.from_bundle_id === "string" &&
-    (data.update_strategy === "fingerprint" ||
-      data.update_strategy === "appVersion")) ||
+    ((isRecord(data.metadata) ? data.metadata.update_strategy : undefined) ===
+      "fingerprint" ||
+      (isRecord(data.metadata) ? data.metadata.update_strategy : undefined) ===
+        "appVersion")) ||
   (data.type === "UNCHANGED" &&
     data.from_bundle_id === null &&
-    data.update_strategy === null);
+    (isRecord(data.metadata) ? data.metadata.update_strategy : undefined) ===
+      null);
 
 export const validateCreateData = (
   model: DatabaseModel,
@@ -140,7 +143,7 @@ export const validateResult = (
   }
   if (
     model === "bundle_events" &&
-    ["type", "from_bundle_id", "update_strategy"].every((field) =>
+    ["type", "from_bundle_id", "metadata"].every((field) =>
       Object.hasOwn(row, field),
     ) &&
     !hasValidBundleEventInvariants(row)

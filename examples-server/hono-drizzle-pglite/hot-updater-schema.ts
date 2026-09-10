@@ -180,7 +180,6 @@ export const bundle_events = pgTable("bundle_events", {
   type: varchar("type", { length: 32 }).notNull(),
   install_id: customType<{ data: string }>({ dataType: () => "varchar(255) collate \"C\"" })("install_id").notNull(),
   user_id: customType<{ data: string }>({ dataType: () => "varchar(255) collate \"C\"" })("user_id"),
-  username: text("username"),
   from_release_id: uuid("from_release_id"),
   from_bundle_id: uuid("from_bundle_id"),
   to_release_id: uuid("to_release_id"),
@@ -188,37 +187,31 @@ export const bundle_events = pgTable("bundle_events", {
   platform: customType<{ data: string }>({ dataType: () => "text collate \"C\"" })("platform").notNull(),
   app_version: text("app_version").notNull(),
   channel: customType<{ data: string }>({ dataType: () => "text collate \"C\"" })("channel").notNull(),
-  cohort: text("cohort").notNull(),
-  update_strategy: text("update_strategy"),
-  fingerprint_hash: text("fingerprint_hash"),
-  sdk_version: text("sdk_version"),
+  metadata: json("metadata").notNull(),
   received_at_ms: doublePrecision("received_at_ms").notNull()
 }, (table) => [
   index("bundle_events_received_at_idx").on(table.received_at_ms, table.id),
+  index("bundle_events_latest_idx").on(table.install_id, table.received_at_ms, table.id),
   index("bundle_events_install_idx").on(table.install_id, table.type, table.received_at_ms, table.id),
   index("bundle_events_from_bundle_idx").on(table.type, table.platform, table.channel, table.from_bundle_id, table.received_at_ms, table.id),
   index("bundle_events_to_bundle_idx").on(table.type, table.platform, table.channel, table.to_bundle_id, table.received_at_ms, table.id)
 ])
 
-export const bundle_installations = pgTable("bundle_installations", {
+export const bundle_event_heads = pgTable("bundle_event_heads", {
   install_id: customType<{ data: string }>({ dataType: () => "varchar(255) collate \"C\"" })("install_id").primaryKey().notNull(),
   id: uuid("id").notNull(),
+  received_at_ms: doublePrecision("received_at_ms").notNull(),
   user_id: customType<{ data: string }>({ dataType: () => "varchar(255) collate \"C\"" })("user_id"),
-  username: text("username"),
-  to_bundle_id: uuid("to_bundle_id").notNull(),
-  pending_bundle_id: uuid("pending_bundle_id"),
-  pending_release_id: uuid("pending_release_id"),
-  type: varchar("type", { length: 32 }).notNull(),
   platform: customType<{ data: string }>({ dataType: () => "text collate \"C\"" })("platform").notNull(),
-  app_version: text("app_version").notNull(),
   channel: customType<{ data: string }>({ dataType: () => "text collate \"C\"" })("channel").notNull(),
-  cohort: text("cohort").notNull(),
-  received_at_ms: doublePrecision("received_at_ms").notNull()
+  type: varchar("type", { length: 32 }).notNull(),
+  from_bundle_id: uuid("from_bundle_id"),
+  to_bundle_id: uuid("to_bundle_id").notNull()
 }, (table) => [
-  index("bundle_installations_user_id_idx").on(table.user_id, table.install_id),
-  index("bundle_installations_received_at_idx").on(table.received_at_ms),
-  index("bundle_installations_scope_idx").on(table.platform, table.channel, table.received_at_ms),
-  index("bundle_installations_bundle_idx").on(table.platform, table.channel, table.to_bundle_id, table.received_at_ms)
+  index("bundle_event_heads_user_idx").on(table.user_id, table.install_id),
+  index("bundle_event_heads_scope_idx").on(table.platform, table.channel, table.received_at_ms),
+  index("bundle_event_heads_from_idx").on(table.type, table.platform, table.channel, table.from_bundle_id, table.received_at_ms),
+  index("bundle_event_heads_to_idx").on(table.type, table.platform, table.channel, table.to_bundle_id, table.received_at_ms)
 ])
 
 export const api_keys = pgTable("api_keys", {

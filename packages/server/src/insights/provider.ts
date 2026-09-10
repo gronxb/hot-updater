@@ -2,12 +2,10 @@ import {
   compareInsightsText,
   isInsightsMovementEvent,
   isUUIDv7,
-  toInsightsInstallationRow,
   type InsightsBundleEventFilter,
   type BundleEventRow,
   type InsightsEventCursor,
   type InsightsEventFilter,
-  type InsightsInstallationRow,
   type InsightsModel,
 } from "@hot-updater/plugin-core";
 
@@ -309,7 +307,7 @@ const assertEventRows = (
 const toEventHistoryRow = (row: BundleEventRow): EventHistoryRow => ({
   appVersion: row.app_version,
   channel: row.channel,
-  cohort: row.cohort,
+  cohort: row.metadata.cohort,
   fromBundleId: row.from_bundle_id,
   id: row.id,
   installId: row.install_id,
@@ -318,22 +316,23 @@ const toEventHistoryRow = (row: BundleEventRow): EventHistoryRow => ({
   toBundleId: row.to_bundle_id,
   type: row.type,
   userId: row.user_id,
-  username: row.username,
+  username: row.metadata.username,
 });
 
-const toInstallationRow = (row: InsightsInstallationRow): InstallationRow => ({
+const toInstallationRow = (row: BundleEventRow): InstallationRow => ({
   appVersion: row.app_version,
   channel: row.channel,
-  cohort: row.cohort,
+  cohort: row.metadata.cohort,
   installId: row.install_id,
-  lastKnownBundleId: row.to_bundle_id,
-  pendingBundleId: row.pending_bundle_id,
-  pendingReleaseId: row.pending_release_id,
+  lastKnownBundleId:
+    row.type === "UPDATE_DOWNLOADED" ? row.from_bundle_id : row.to_bundle_id,
+  pendingBundleId: row.type === "UPDATE_DOWNLOADED" ? row.to_bundle_id : null,
+  pendingReleaseId: row.type === "UPDATE_DOWNLOADED" ? row.to_release_id : null,
   latestStatus: row.type,
   platform: row.platform,
   receivedAtMs: row.received_at_ms,
   userId: row.user_id,
-  username: row.username,
+  username: row.metadata.username,
 });
 
 const pageEventRows = async <T extends EventHistoryRow>(
@@ -406,7 +405,7 @@ const pageEventRows = async <T extends EventHistoryRow>(
 };
 
 const assertInstallationRows = (
-  rows: readonly InsightsInstallationRow[],
+  rows: readonly BundleEventRow[],
   input: {
     readonly afterInstallId?: string;
     readonly limit: number;
@@ -438,9 +437,8 @@ export const createInsightsProvider = (
   Object.freeze({
     async appendBundleEvent(input) {
       const event = createBundleEventRow(input);
-      await model.record({
+      await model.recordEvent({
         event,
-        installation: toInsightsInstallationRow(event),
       });
     },
     listEvents(input) {
@@ -474,7 +472,7 @@ export const createInsightsProvider = (
         "install ID",
         MAX_IDENTITY_LENGTH,
       );
-      const rows = await model.findInstallations({
+      const rows = await model.findLatestEvents({
         installId: normalizedInstallId,
       });
       const row = rows[0] ?? null;
@@ -506,7 +504,7 @@ export const createInsightsProvider = (
           : { afterInstallId: cursor.afterInstallId }),
         limit: limit + 1,
       };
-      const rows = await model.findInstallations(databaseInput);
+      const rows = await model.findLatestEvents(databaseInput);
       assertInstallationRows(rows, databaseInput);
       const pageRows = rows.slice(0, limit);
       const last = pageRows.at(-1);
@@ -544,9 +542,7 @@ export const createInsightsProvider = (
         input.bundleId === undefined
           ? undefined
           : requireString(input.bundleId, "bundle ID", MAX_EVENT_ID_LENGTH);
-      const reporting = measure(
-        model.countInstallations({ ...scope, sinceMs }),
-      );
+      const reporting = measure(model.countLatestEvents({ ...scope, sinceMs }));
       if (bundleId === undefined) {
         return {
           ...scope,
@@ -573,7 +569,24 @@ export const createInsightsProvider = (
         unchangedReports,
       ] = await Promise.all([
         reporting,
-        measure(model.countInstallations({ ...scope, sinceMs, bundleId })),
+        measure(
+          model.countLatestEvents({
+            ...scope,
+            sinceMs,
+            bundle: [
+              {
+                field: "from_bundle_id",
+                value: bundleId,
+                types: ["UPDATE_DOWNLOADED"],
+              },
+              {
+                field: "to_bundle_id",
+                value: bundleId,
+                types: ["UNCHANGED", "UPDATE_APPLIED", "RECOVERED"],
+              },
+            ],
+          }),
+        ),
         countOutcome("downloaded"),
         countOutcome("applied"),
         countOutcome("recovered"),

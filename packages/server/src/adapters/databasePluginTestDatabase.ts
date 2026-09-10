@@ -70,7 +70,6 @@ export const DATABASE_PLUGIN_TEST_SCHEMA_SQL = `
     type text not null,
     install_id text not null,
     user_id text,
-    username text,
     from_release_id text,
     from_bundle_id text,
     to_release_id text,
@@ -78,27 +77,22 @@ export const DATABASE_PLUGIN_TEST_SCHEMA_SQL = `
     platform text not null,
     app_version text not null,
     channel text not null,
-    cohort text not null,
-    update_strategy text,
-    fingerprint_hash text,
-    sdk_version text,
+    metadata jsonb not null,
     received_at_ms integer not null
   );
-  create table bundle_installations (
-    install_id varchar(255) primary key,
+  create table bundle_event_heads (
+    install_id text primary key,
     id text not null,
+    received_at_ms integer not null,
     user_id text,
-    username text,
-    to_bundle_id text not null,
-    pending_bundle_id text,
-    pending_release_id text,
-    type text not null,
     platform text not null,
-    app_version text not null,
     channel text not null,
-    cohort text not null,
-    received_at_ms integer not null
+    type text not null,
+    from_bundle_id text,
+    to_bundle_id text not null
   );
+  create index bundle_event_heads_user_idx on bundle_event_heads(user_id, install_id);
+  create index bundle_event_heads_scope_idx on bundle_event_heads(platform, channel, received_at_ms);
   create table api_keys (
     id text primary key,
     hash text not null unique,
@@ -111,8 +105,8 @@ export const DATABASE_PLUGIN_TEST_SCHEMA_SQL = `
 `;
 
 export const DATABASE_PLUGIN_TEST_RESET_SQL = `
+  delete from bundle_event_heads;
   delete from bundle_events;
-  delete from bundle_installations;
   delete from api_keys;
   delete from bundle_patches;
   delete from release_catalogs;

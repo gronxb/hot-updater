@@ -32,13 +32,16 @@ const event = (
     platform: "ios",
     channel: "production",
     user_id: "same-person",
-    username: null,
+    metadata: {
+      username: null,
+      cohort: "default",
+      fingerprint_hash: null,
+      sdk_version: null,
+      update_strategy:
+        overrides.type && overrides.type !== "UNCHANGED" ? "appVersion" : null,
+    },
     app_version: "1.0.0",
-    cohort: "default",
-    fingerprint_hash: null,
-    sdk_version: null,
-    update_strategy:
-      overrides.type && overrides.type !== "UNCHANGED" ? "appVersion" : null,
+
     ...overrides,
   }) as BundleEventRow;
 function modelFor(events: BundleEventRow[]): InsightsModel {

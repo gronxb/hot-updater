@@ -10,6 +10,13 @@ const unimplemented = async (): Promise<never> => {
 };
 
 const createMethods = () => ({
+  findLatestInsightsEvents: async () => {
+    throw new Error("Unexpected Insights read");
+  },
+  countLatestInsightsEvents: async () => {
+    throw new Error("Unexpected Insights count");
+  },
+
   create: unimplemented,
   update: unimplemented,
   delete: unimplemented,
@@ -55,7 +62,13 @@ const bundleEventRow = {
   type: "UPDATE_APPLIED" as const,
   install_id: "install-1",
   user_id: null,
-  username: null,
+  metadata: {
+    username: null,
+    cohort: "default",
+    update_strategy: "fingerprint" as const,
+    fingerprint_hash: null,
+    sdk_version: null,
+  },
   from_release_id: null,
   from_bundle_id: "bundle-old",
   to_release_id: null,
@@ -63,27 +76,8 @@ const bundleEventRow = {
   platform: "ios" as const,
   app_version: "1.0.0",
   channel: "production",
-  cohort: "default",
-  update_strategy: "fingerprint" as const,
-  fingerprint_hash: null,
-  sdk_version: null,
-  received_at_ms: 1,
-};
 
-const bundleInstallationRow = {
-  id: bundleEventRow.id,
-  install_id: bundleEventRow.install_id,
-  user_id: bundleEventRow.user_id,
-  username: bundleEventRow.username,
-  to_bundle_id: bundleEventRow.to_bundle_id,
-  pending_bundle_id: null,
-  pending_release_id: null,
-  type: bundleEventRow.type,
-  platform: bundleEventRow.platform,
-  app_version: bundleEventRow.app_version,
-  channel: bundleEventRow.channel,
-  cohort: bundleEventRow.cohort,
-  received_at_ms: bundleEventRow.received_at_ms,
+  received_at_ms: 1,
 };
 
 const invoke = (
@@ -293,10 +287,6 @@ describe("database plugin CRUD runtime contract", () => {
     ["bundle_events", "install_id", "i".repeat(256)],
     ["bundle_events", "user_id", ""],
     ["bundle_events", "user_id", "u".repeat(256)],
-    ["bundle_installations", "install_id", ""],
-    ["bundle_installations", "install_id", "i".repeat(256)],
-    ["bundle_installations", "user_id", ""],
-    ["bundle_installations", "user_id", "u".repeat(256)],
   ] as const)(
     "rejects invalid Insights identity %s.%s",
     async (model, field, value) => {
@@ -305,8 +295,7 @@ describe("database plugin CRUD runtime contract", () => {
         name: "insights-identity-contract",
         plugin: () => ({ ...createMethods(), create }),
       });
-      const row =
-        model === "bundle_events" ? bundleEventRow : bundleInstallationRow;
+      const row = bundleEventRow;
 
       const result = invoke(plugin, "create", {
         model,
@@ -318,7 +307,7 @@ describe("database plugin CRUD runtime contract", () => {
     },
   );
 
-  it.each(["bundle_events", "bundle_installations"] as const)(
+  it.each(["bundle_events"] as const)(
     "accepts 255-character Insights identities for %s",
     async (model) => {
       const create = vi.fn(async ({ data }) => data);
@@ -326,8 +315,7 @@ describe("database plugin CRUD runtime contract", () => {
         name: "insights-identity-contract",
         plugin: () => ({ ...createMethods(), create }),
       });
-      const row =
-        model === "bundle_events" ? bundleEventRow : bundleInstallationRow;
+      const row = bundleEventRow;
       const data = {
         ...row,
         install_id: "i".repeat(255),
@@ -341,33 +329,20 @@ describe("database plugin CRUD runtime contract", () => {
     },
   );
 
-  it.each(["", "u".repeat(256)])(
-    "rejects an invalid current user identity on installation update",
-    async (userId) => {
-      const update = vi.fn(async () => bundleInstallationRow);
-      const plugin = createValidatedCrud({
-        name: "insights-identity-contract",
-        plugin: () => ({ ...createMethods(), update }),
-      });
-      const { install_id: _installId, ...validUpdate } = bundleInstallationRow;
-
-      const result = invoke(plugin, "update", {
+  it("rejects the removed shared installation model before storage I/O", async () => {
+    const create = vi.fn(async ({ data }) => data);
+    const plugin = createValidatedCrud({
+      name: "removed-model",
+      plugin: () => ({ ...createMethods(), create }),
+    });
+    await expect(
+      invoke(plugin, "create", {
         model: "bundle_installations",
-        where: [
-          {
-            field: "install_id",
-            operator: "eq",
-            value: bundleInstallationRow.install_id,
-          },
-          { field: "received_at_ms", operator: "lt", value: 2 },
-        ],
-        update: { ...validUpdate, user_id: userId },
-      });
-
-      await expect(result).rejects.toMatchObject({ code: "invalid-data" });
-      expect(update).not.toHaveBeenCalled();
-    },
-  );
+        data: bundleEventRow,
+      }),
+    ).rejects.toMatchObject({ code: "invalid-model" });
+    expect(create).not.toHaveBeenCalled();
+  });
 
   it.each([
     { from_bundle_id: null },
@@ -375,7 +350,7 @@ describe("database plugin CRUD runtime contract", () => {
     {
       type: "UNCHANGED",
       from_bundle_id: "bundle-old",
-      update_strategy: null,
+      metadata: { ...bundleEventRow.metadata, update_strategy: null },
     },
   ])("rejects an invalid Insights direction shape", async (overrides) => {
     const create = vi.fn(async ({ data }) => data);

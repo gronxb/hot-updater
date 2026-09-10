@@ -20,6 +20,7 @@ import {
   handleCleanup,
   handleComputeRolloutSample,
   handleConfigureProxy,
+  handleLaunchAndroidCrashApp,
   handlePrepareAppLaunch,
   handleProxyRemoteAssetRequest,
   handleProxyState,
@@ -632,6 +633,10 @@ app.post("/e2e/assert-crash-history", async (c) => {
 
 app.post("/e2e/prepare-app-launch", async (c) => {
   return c.json(await handlePrepareAppLaunch());
+});
+
+app.post("/e2e/launch-android-crash-app", async (c) => {
+  return c.json(await handleLaunchAndroidCrashApp());
 });
 
 app.post("/e2e/wait-for-crash-recovery", async (c) => {

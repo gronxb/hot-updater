@@ -12,7 +12,6 @@ import type {
   DatabaseBundleQueryWhere,
   DatabaseCommit,
   DatabasePlugin,
-  InsightsInstallationRow,
   ReleaseCatalogRow,
   ReleaseRow,
 } from "./types";
@@ -40,8 +39,8 @@ const replaceMap = <T>(target: Map<string, T>, source: Map<string, T>) => {
 };
 
 const isNewerInstallationRow = (
-  candidate: InsightsInstallationRow,
-  current: InsightsInstallationRow | undefined,
+  candidate: BundleEventRow,
+  current: BundleEventRow | undefined,
 ): boolean =>
   current === undefined ||
   candidate.received_at_ms > current.received_at_ms ||
@@ -52,7 +51,14 @@ export const createMemoryDatabasePlugin = (): DatabasePlugin => {
   const bundles = new Map<string, BundleRow>();
   const patches = new Map<string, BundlePatchRow>();
   const events = new Map<string, BundleEventRow>();
-  const installations = new Map<string, InsightsInstallationRow>();
+  const latest = () => {
+    const installations = new Map<string, BundleEventRow>();
+    for (const event of events.values()) {
+      if (isNewerInstallationRow(event, installations.get(event.install_id)))
+        installations.set(event.install_id, event);
+    }
+    return installations;
+  };
   const releases = new Map<string, ReleaseRow>();
   const releaseCatalogs = new Map<string, ReleaseCatalogRow>();
   const channels = new Map<string, ChannelRow>();
@@ -371,20 +377,9 @@ export const createMemoryDatabasePlugin = (): DatabasePlugin => {
         },
       },
       insights: {
-        async record({ event, installation }) {
-          if (events.has(event.id)) return;
-          events.set(event.id, structuredClone(event));
-          if (
-            isNewerInstallationRow(
-              installation,
-              installations.get(installation.install_id),
-            )
-          ) {
-            installations.set(
-              installation.install_id,
-              structuredClone(installation),
-            );
-          }
+        async recordEvent({ event }) {
+          if (!events.has(event.id))
+            events.set(event.id, structuredClone(event));
         },
         async listEvents(input) {
           return structuredClone(
@@ -407,13 +402,13 @@ export const createMemoryDatabasePlugin = (): DatabasePlugin => {
               .slice(0, input.limit),
           );
         },
-        async findInstallations(input) {
+        async findLatestEvents(input) {
           if ("installId" in input) {
-            const row = installations.get(input.installId);
+            const row = latest().get(input.installId);
             return row === undefined ? [] : [structuredClone(row)];
           }
           return structuredClone(
-            [...installations.values()]
+            [...latest().values()]
               .filter(
                 (row) =>
                   row.user_id === input.userId &&
@@ -427,14 +422,18 @@ export const createMemoryDatabasePlugin = (): DatabasePlugin => {
               .slice(0, input.limit),
           );
         },
-        async countInstallations(input) {
-          return [...installations.values()].filter(
+        async countLatestEvents(input) {
+          return [...latest().values()].filter(
             (row) =>
               row.platform === input.platform &&
               row.channel === input.channel &&
               row.received_at_ms >= input.sinceMs &&
-              (input.bundleId === undefined ||
-                row.to_bundle_id === input.bundleId),
+              (input.bundle === undefined ||
+                input.bundle.some(
+                  (bundle) =>
+                    row[bundle.field] === bundle.value &&
+                    bundle.types.includes(row.type),
+                )),
           ).length;
         },
         async countEvents(input) {

@@ -1,22 +1,7 @@
 import { expect, it } from "vitest";
 
+import { createBundleEventRowFixture } from "../../../packages/test-utils/src/databaseTestFixtures";
 import { createD1Implementation, type D1Statement } from "./d1Implementation";
-
-const installationRow = {
-  pending_bundle_id: null,
-  pending_release_id: null,
-  id: "event-1",
-  install_id: "install-1",
-  user_id: "user-1",
-  username: "Demo User",
-  to_bundle_id: "bundle-1",
-  type: "UPDATE_APPLIED" as const,
-  platform: "ios" as const,
-  app_version: "1.0.0",
-  channel: "production",
-  cohort: "cohort-1",
-  received_at_ms: 100,
-};
 
 it("guards every write and reports the missing change index", async () => {
   let recorded: readonly D1Statement[] = [];
@@ -267,78 +252,23 @@ it("guards a generic Channel delete and reports a referenced conflict", async ()
   expect(recorded[1]?.sql).toContain("NOT EXISTS");
 });
 
-it("returns the canonical current installation on an idempotent create", async () => {
-  const queries: D1Statement[] = [];
+it("records the event and advances its head in one atomic batch", async () => {
+  let statements: readonly D1Statement[] = [];
   const implementation = createD1Implementation({
-    async query(sql, params) {
-      queries.push({ sql, params });
-      return [installationRow];
+    query: () => Promise.reject(new Error("unexpected standalone query")),
+    async batch(input) {
+      statements = input;
+      return [];
     },
-    batch: () => Promise.reject(new Error("unexpected batch")),
   });
-
-  await expect(
-    implementation.create({
-      model: "bundle_installations",
-      data: installationRow,
-      onConflict: "ignore",
-    }),
-  ).resolves.toEqual(installationRow);
-
-  expect(queries[0]?.sql).toContain("INSERT INTO bundle_installations");
-  expect(queries[0]?.sql).toContain(
-    "ON CONFLICT(install_id) DO UPDATE SET install_id = excluded.install_id",
+  const event = createBundleEventRowFixture("1", 100);
+  await implementation.recordInsights({ event });
+  expect(statements).toHaveLength(2);
+  expect(statements[0]?.sql).toContain("INSERT INTO bundle_events");
+  expect(statements[0]?.sql).toContain("ON CONFLICT(id) DO NOTHING");
+  expect(statements[1]?.sql).toContain("INSERT INTO bundle_event_heads");
+  expect(statements[1]?.sql).toContain(
+    "FROM bundle_events WHERE id = json_extract(?, '$')",
   );
-  expect(queries[0]?.sql).toContain("RETURNING *");
-});
-
-it("updates a current installation only through the supplied latest-row condition", async () => {
-  const queries: D1Statement[] = [];
-  const implementation = createD1Implementation({
-    async query(sql, params) {
-      queries.push({ sql, params });
-      return [installationRow];
-    },
-    batch: () => Promise.reject(new Error("unexpected batch")),
-  });
-  const { install_id: _installId, ...update } = installationRow;
-
-  await expect(
-    implementation.update({
-      model: "bundle_installations",
-      where: [
-        { field: "install_id", value: installationRow.install_id },
-        {
-          field: "received_at_ms",
-          operator: "lt",
-          value: installationRow.received_at_ms,
-        },
-      ],
-      update,
-    }),
-  ).resolves.toEqual(installationRow);
-
-  await expect(
-    implementation.update({
-      model: "bundle_installations",
-      where: [
-        { field: "install_id", value: installationRow.install_id },
-        {
-          field: "received_at_ms",
-          value: installationRow.received_at_ms,
-        },
-        { field: "id", operator: "lt", value: installationRow.id },
-      ],
-      update,
-    }),
-  ).resolves.toEqual(installationRow);
-
-  expect(queries[0]?.sql).toContain("UPDATE bundle_installations SET");
-  expect(queries[0]?.sql).toContain(
-    "WHERE (install_id = json_extract(?, '$') AND received_at_ms < json_extract(?, '$'))",
-  );
-  expect(queries[0]?.sql).toContain("RETURNING *");
-  expect(queries[1]?.sql).toContain(
-    "WHERE ((install_id = json_extract(?, '$') AND received_at_ms = json_extract(?, '$')) AND id < json_extract(?, '$'))",
-  );
+  expect(statements[1]?.params).toEqual([JSON.stringify(event.id)]);
 });

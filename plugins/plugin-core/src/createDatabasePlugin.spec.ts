@@ -20,6 +20,13 @@ const unimplemented = async (): Promise<never> => {
 };
 
 const createMethods = (): DatabasePluginImplementation => ({
+  findLatestInsightsEvents: async () => {
+    throw new Error("Unexpected Insights read");
+  },
+  countLatestInsightsEvents: async () => {
+    throw new Error("Unexpected Insights count");
+  },
+
   create: unimplemented,
   update: unimplemented,
   delete: unimplemented,
@@ -107,17 +114,17 @@ describe("createDatabasePlugin", () => {
     expect(plugin.models.bundlePatches.findByBundleIds).toBeTypeOf("function");
     expect(plugin.models.channels.insert).toBeTypeOf("function");
     expect(plugin.models.channels.delete).toBeTypeOf("function");
-    expect(plugin.models.insights.record).toBeTypeOf("function");
+    expect(plugin.models.insights.recordEvent).toBeTypeOf("function");
     expect(plugin.models.insights.listEvents).toBeTypeOf("function");
-    expect(plugin.models.insights.findInstallations).toBeTypeOf("function");
+    expect(plugin.models.insights.findLatestEvents).toBeTypeOf("function");
     expect(plugin.models.insights.countEvents).toBeTypeOf("function");
-    expect(plugin.models.insights.countInstallations).toBeTypeOf("function");
+    expect(plugin.models.insights.countLatestEvents).toBeTypeOf("function");
     expect(Object.keys(plugin.models.insights).sort()).toEqual([
       "countEvents",
-      "countInstallations",
-      "findInstallations",
+      "countLatestEvents",
+      "findLatestEvents",
       "listEvents",
-      "record",
+      "recordEvent",
     ]);
     expect(plugin.models.apiKeys.findByHash).toBeTypeOf("function");
     expect(plugin.commit).toBeTypeOf("function");

@@ -83,57 +83,38 @@ export interface ChannelRow {
   readonly name: string;
 }
 
+/** Ancillary report data; queryable identity and lifecycle fields stay on the row. */
+export type DatabaseBundleEventMetadata = DatabaseJsonObject & {
+  readonly username: string | null;
+  readonly cohort: string;
+  readonly update_strategy: "fingerprint" | "appVersion" | null;
+  readonly fingerprint_hash: string | null;
+  readonly sdk_version: string | null;
+};
+
 export type BundleEventRowBase = {
   readonly id: string;
   readonly install_id: string;
   readonly user_id: string | null;
-  readonly username: string | null;
   readonly from_release_id: string | null;
   readonly to_release_id: string | null;
   readonly to_bundle_id: string;
   readonly platform: Platform;
   readonly app_version: string;
   readonly channel: string;
-  readonly cohort: string;
-  readonly fingerprint_hash: string | null;
-  readonly sdk_version: string | null;
+  readonly metadata: DatabaseBundleEventMetadata;
   readonly received_at_ms: number;
 };
 
-export type BundleEventRow =
-  | (BundleEventRowBase & {
-      readonly type: "UPDATE_DOWNLOADED";
-      readonly from_bundle_id: string;
-      readonly update_strategy: "fingerprint" | "appVersion";
-    })
-  | (BundleEventRowBase & {
-      readonly type: "UPDATE_APPLIED" | "RECOVERED";
-      readonly from_bundle_id: string;
-      readonly update_strategy: "fingerprint" | "appVersion";
-    })
-  | (BundleEventRowBase & {
-      readonly type: "UNCHANGED";
-      readonly from_bundle_id: null;
-      readonly update_strategy: null;
-    });
-
-export type InsightsInstallationRow = Pick<
-  BundleEventRow,
-  | "id"
-  | "install_id"
-  | "user_id"
-  | "username"
-  | "to_bundle_id"
-  | "type"
-  | "platform"
-  | "app_version"
-  | "channel"
-  | "cohort"
-  | "received_at_ms"
-> & {
-  readonly pending_bundle_id: string | null;
-  readonly pending_release_id: string | null;
-};
+export type BundleEventRow = BundleEventRowBase &
+  (
+    | { readonly type: "UPDATE_DOWNLOADED"; readonly from_bundle_id: string }
+    | {
+        readonly type: "UPDATE_APPLIED" | "RECOVERED";
+        readonly from_bundle_id: string;
+      }
+    | { readonly type: "UNCHANGED"; readonly from_bundle_id: null }
+  );
 
 export interface ApiKeyRow {
   readonly id: string;
@@ -152,7 +133,7 @@ export interface DatabaseModelMap {
   readonly release_catalogs: ReleaseCatalogRow;
   readonly channels: ChannelRow;
   readonly bundle_events: BundleEventRow;
-  readonly bundle_installations: InsightsInstallationRow;
+
   readonly api_keys: ApiKeyRow;
 }
 

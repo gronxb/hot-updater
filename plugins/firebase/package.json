@@ -61,9 +61,9 @@
     "es-toolkit": "^1.32.0",
     "execa": "catalog:tools",
     "firebase-admin": "catalog:firebase",
-    "firebase-functions": "6.3.2",
+    "firebase-functions": "7.3.2",
     "firebase-functions-test": "^3.5.0",
-    "firebase-tools": "^13.32.0",
+    "firebase-tools": "15.29.0",
     "fkill": "^9.0.0",
     "mime": "^4.0.4"
   },

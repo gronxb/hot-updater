@@ -394,6 +394,13 @@ data class PendingCrashRecovery(
     val shouldRollback: Boolean,
 ) {
     companion object {
+        internal fun loadFromFile(file: File): PendingCrashRecovery? =
+            try {
+                fromJson(JSONObject(file.readText()))
+            } catch (_: Exception) {
+                null
+            }
+
         fun fromJson(json: JSONObject): PendingCrashRecovery =
             PendingCrashRecovery(
                 launchedBundleId =

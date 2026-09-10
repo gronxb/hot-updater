@@ -1,13 +1,15 @@
 import {
   DatabasePluginInputError,
-  type BundleEventRow,
   type BundlePatchRow,
   type ChannelRow,
   type ApiKeyRow,
-  type InsightsInstallationRow,
-  type InsightsRecordInput,
+  type InsightsRecordEventInput,
   type ReleaseCatalogRow,
 } from "@hot-updater/plugin-core";
+import {
+  latestInsightsWhere,
+  latestInsightsCountGroups,
+} from "@hot-updater/plugin-core/internal";
 import type {
   DatabasePluginImplementation,
   DatabaseWhere,
@@ -20,6 +22,11 @@ import {
   isChannelDeleteReferencedError,
   translateChannelDeleteError,
 } from "./databaseConstraintErrors";
+import {
+  fromStoredBundleEventRow,
+  toStoredBundleEventRow,
+  type StoredBundleEventRow,
+} from "./databasePluginUtils";
 import {
   fromStoredBundleRow,
   fromStoredReleaseCatalogRow,
@@ -70,10 +77,7 @@ const orderClause = (
   return sql` order by ${sql.join(
     clauses.map((clause) => {
       const field = sql.ref(clause.field);
-      if (
-        input?.model === "bundle_events" ||
-        input?.model === "bundle_installations"
-      ) {
+      if (input?.model === "bundle_events") {
         return clause.direction === "asc"
           ? sql`${field} asc`
           : sql`${field} desc`;
@@ -124,41 +128,50 @@ const insertRow = async (
 export const recordKyselyInsights = async (
   executor: QueryExecutorProvider,
   provider: Exclude<ORMSQLProvider, "mssql">,
-  { event, installation }: InsightsRecordInput,
+  { event }: InsightsRecordEventInput,
 ): Promise<void> => {
-  const insert = (table: string, row: object) => {
-    const entries = Object.entries(row);
-    return sql`insert into ${sql.table(table)} (${sql.join(entries.map(([field]) => sql.ref(field)))}) values (${sql.join(entries.map(([, value]) => value))})`;
-  };
-  if (provider === "mysql") {
-    const existing = await sql<{
-      id: string;
-    }>`select id from bundle_events where id = ${event.id} for update`.execute(
-      executor,
-    );
-    if (existing.rows.length > 0) return;
-    await insert("bundle_events", event).execute(executor);
-    await sql`${insert("bundle_installations", installation)} on duplicate key update install_id = ${installation.install_id}`.execute(
-      executor,
-    );
-  } else {
-    const result =
-      await sql`${insert("bundle_events", event)} on conflict (id) do nothing returning id`.execute(
-        executor,
-      );
-    if (result.rows.length === 0) return;
-    await sql`${insert("bundle_installations", installation)} on conflict (install_id) do nothing`.execute(
-      executor,
-    );
-  }
-  const assignments = Object.entries(installation).map(
-    ([field, value]) => sql`${sql.ref(field)} = ${value}`,
+  const entries = Object.entries(toStoredBundleEventRow(event, provider));
+  const insert = sql`insert into bundle_events (${sql.join(entries.map(([field]) => sql.ref(field)))}) values (${sql.join(entries.map(([, value]) => value))})`;
+  await (
+    provider === "mysql"
+      ? sql`${insert} on duplicate key update id = id`
+      : sql`${insert} on conflict (id) do nothing`
+  ).execute(executor);
+
+  const fields = [
+    "install_id",
+    "user_id",
+    "platform",
+    "channel",
+    "type",
+    "from_bundle_id",
+    "to_bundle_id",
+    "id",
+    "received_at_ms",
+  ];
+  const columns = sql.join(fields.map((field) => sql.ref(field)));
+  const headInsert = sql`insert into bundle_event_heads (${columns}) select ${columns} from bundle_events where id = ${event.id}`;
+  const newer =
+    provider === "mysql"
+      ? sql`(values(received_at_ms) > bundle_event_heads.received_at_ms or (values(received_at_ms) = bundle_event_heads.received_at_ms and values(id) > bundle_event_heads.id))`
+      : sql`(excluded.received_at_ms > bundle_event_heads.received_at_ms or (excluded.received_at_ms = bundle_event_heads.received_at_ms and excluded.id > bundle_event_heads.id))`;
+  // MySQL evaluates assignments in order: keep the timestamp comparison intact
+  // until the other fields and the event ID have been replaced.
+  const assignments = sql.join(
+    fields
+      .filter((field) => field !== "install_id")
+      .map((field) => {
+        const column = sql.ref(field);
+        return provider === "mysql"
+          ? sql`${column} = if(${newer}, values(${column}), ${sql.ref(`bundle_event_heads.${field}`)})`
+          : sql`${column} = ${sql.ref(`excluded.${field}`)}`;
+      }),
   );
-  await sql`update ${sql.table("bundle_installations")} set ${sql.join(assignments)}
-    where ${sql.ref("install_id")} = ${installation.install_id}
-    and (${sql.ref("received_at_ms")} < ${installation.received_at_ms}
-      or (${sql.ref("received_at_ms")} = ${installation.received_at_ms}
-        and ${sql.ref("id")} < ${installation.id}))`.execute(executor);
+  await (
+    provider === "mysql"
+      ? sql`${headInsert} on duplicate key update ${assignments}`
+      : sql`${headInsert} on conflict (install_id) do update set ${assignments} where ${newer}`
+  ).execute(executor);
 };
 
 const updateBundle = async (
@@ -277,7 +290,37 @@ export const createKyselyCrud = (
   provider: Exclude<ORMSQLProvider, "mssql">,
   relationMode: RelationMode = "foreign-keys",
 ): TransactionDatabasePluginImplementation &
-  Pick<DatabasePluginImplementation, "deleteChannel" | "insertChannel"> => ({
+  Pick<
+    DatabasePluginImplementation,
+    | "deleteChannel"
+    | "insertChannel"
+    | "findLatestInsightsEvents"
+    | "countLatestInsightsEvents"
+  > => ({
+  async findLatestInsightsEvents(input) {
+    const where = buildKyselyWhere(provider, latestInsightsWhere(input));
+    const result =
+      await sql<StoredBundleEventRow>`SELECT canonical.* FROM (SELECT id, install_id FROM bundle_event_heads WHERE ${where} ORDER BY install_id ASC LIMIT ${"installId" in input ? 1 : input.limit}) AS head JOIN bundle_events AS canonical ON canonical.id = head.id ORDER BY head.install_id ASC`.execute(
+        executor,
+      );
+    return result.rows.map(fromStoredBundleEventRow);
+  },
+  async countLatestInsightsEvents(input) {
+    const groups = latestInsightsCountGroups(input).map(
+      (where) => sql`(${buildKyselyWhere(provider, where)})`,
+    );
+    // NULL from_bundle_id must not exclude a later matching group.
+    const query =
+      provider === "mysql" && groups.length === 2
+        ? sql<{
+            count: string | number;
+          }>`SELECT (SELECT COUNT(*) FROM bundle_event_heads WHERE ${groups[0]}) + (SELECT COUNT(*) FROM bundle_event_heads WHERE ${groups[1]} AND ${groups[0]} IS NOT TRUE) AS count`
+        : sql<{
+            count: string | number;
+          }>`SELECT COUNT(*) AS count FROM bundle_event_heads WHERE (${sql.join(groups, sql` OR `)})`;
+    const result = await query.execute(executor);
+    return Number(result.rows[0]?.count ?? 0);
+  },
   async deleteChannel({ id }) {
     const existing = await sql<ChannelRow>`select ${sql.ref("id")}, ${sql.ref(
       "name",
@@ -347,17 +390,14 @@ export const createKyselyCrud = (
         await insertRow(executor, "bundle_patches", input.data, provider);
         return input.data;
       case "bundle_events":
-        await insertRow(executor, "bundle_events", input.data, provider);
-        return input.data;
-      case "bundle_installations":
         await insertRow(
           executor,
-          "bundle_installations",
-          input.data,
+          "bundle_events",
+          toStoredBundleEventRow(input.data, provider),
           provider,
-          input.onConflict,
         );
         return input.data;
+
       case "releases":
         await insertRow(
           executor,
@@ -390,38 +430,6 @@ export const createKyselyCrud = (
     }
   },
   async update(input) {
-    if (input.model === "bundle_installations") {
-      const installId = input.where.find(
-        (item) =>
-          item.field === "install_id" &&
-          (item.operator === undefined || item.operator === "eq") &&
-          typeof item.value === "string",
-      )?.value;
-      if (typeof installId !== "string") {
-        throw new KyselyAdapterInvariantError(
-          "bundle_installations.update.selector",
-        );
-      }
-      const assignments = Object.entries(input.update)
-        .filter(([, value]) => value !== undefined)
-        .map(([field, value]) => sql`${sql.ref(field)} = ${value}`);
-      const where = buildKyselyWhere(provider, input.where);
-      let updated = false;
-      if (assignments.length > 0 && where !== undefined) {
-        const result = await sql`update ${sql.table(
-          "bundle_installations",
-        )} set ${sql.join(assignments)} where ${where}`.execute(executor);
-        updated = Number(result.numAffectedRows ?? 0) > 0;
-      }
-      if (!updated) return null;
-      const result =
-        await sql<InsightsInstallationRow>`select * from ${sql.table(
-          "bundle_installations",
-        )} where ${sql.ref("install_id")} = ${installId} limit 1`.execute(
-          executor,
-        );
-      return result.rows[0] ?? null;
-    }
     const selector = input.where[0];
     if (selector === undefined || typeof selector.value !== "string") {
       throw new KyselyAdapterInvariantError(`${input.model}.update.selector`);
@@ -568,12 +576,6 @@ export const createKyselyCrud = (
           "releases",
           buildKyselyWhere(provider, input.where),
         );
-      case "bundle_installations":
-        return countRows(
-          executor,
-          "bundle_installations",
-          buildKyselyWhere(provider, input.where),
-        );
     }
   },
   async findOne(input) {
@@ -623,14 +625,6 @@ export const createKyselyCrud = (
         const row = result.rows[0];
         return row === undefined ? null : fromStoredReleaseCatalogRow(row);
       }
-      case "bundle_installations": {
-        const where = whereClause(buildKyselyWhere(provider, input.where));
-        const result =
-          await sql<InsightsInstallationRow>`select * from ${sql.table(
-            "bundle_installations",
-          )}${where} limit 1`.execute(executor);
-        return result.rows[0] ?? null;
-      }
     }
   },
   async findMany(input) {
@@ -658,20 +652,13 @@ export const createKyselyCrud = (
       case "bundle_events": {
         const where = whereClause(buildKyselyWhere(provider, input.where));
         const order = orderClause(input);
-        const result = await sql<BundleEventRow>`select * from ${sql.table(
-          "bundle_events",
-        )}${where}${order}${pagination}`.execute(executor);
-        return [...result.rows];
-      }
-      case "bundle_installations": {
-        const where = whereClause(buildKyselyWhere(provider, input.where));
-        const order = orderClause(input);
         const result =
-          await sql<InsightsInstallationRow>`select * from ${sql.table(
-            "bundle_installations",
+          await sql<StoredBundleEventRow>`select * from ${sql.table(
+            "bundle_events",
           )}${where}${order}${pagination}`.execute(executor);
-        return [...result.rows];
+        return result.rows.map(fromStoredBundleEventRow);
       }
+
       case "api_keys": {
         const where = whereClause(buildKyselyWhere(provider, input.where));
         const order = orderClause(input);

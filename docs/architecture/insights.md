@@ -1,7 +1,7 @@
 # Built-in Insights
 
 Insights is a server domain backed by `database.models.insights`. The database
-stores immutable reports and one latest report per installation; the server
+stores immutable reports and queries the latest event per installation; the server
 assembles operational views and selected-bundle deployment evidence.
 
 ```ts
@@ -24,10 +24,10 @@ Custom database authors implement five operations, all with object inputs:
 
 | Method                                                                  | Responsibility                                                                |
 | ----------------------------------------------------------------------- | ----------------------------------------------------------------------------- |
-| `record({ event, installation })`                                       | Atomically store the event and advance latest state; first event ID wins      |
+| `recordEvent({ event })`                                       | Store one immutable event; any private latest copy advances atomically      |
 | `listEvents({ filter, sinceMs, beforeReceivedAtMs, after, limit })`     | Indexed newest-first global, installation-movement, or bundle-outcome history |
-| `findInstallations({ installId } or { userId, afterInstallId, limit })` | Exact latest-state lookup or current-user page                                |
-| `countInstallations({ platform, channel, sinceMs, bundleId })`          | Count recent latest rows, optionally naming one bundle                        |
+| `findLatestEvents({ installId } or { userId, afterInstallId, limit })` | Exact latest-state lookup or current-user page                                |
+| `countLatestEvents({ platform, channel, sinceMs, bundle })`          | Count recent latest rows, optionally naming one bundle                        |
 | `countEvents({ filter, sinceMs, beforeReceivedAtMs })`                  | Count accepted reports matching one raw bundle/type/scope filter              |
 
 The [custom database guide](../content/docs/%28latest%29/database-plugins/custom-database.mdx#insights)
@@ -37,7 +37,7 @@ requirements. Public types and boundary validation come from
 for bundled providers, not an additional interface that custom providers must
 implement.
 
-Core creates the report ID, receipt time, and full installation candidate. It
+Core creates the report ID, receipt time, metadata, and explicit query predicates. It
 owns movement semantics, scope/window selection, opaque cursors, and UI labels.
 Providers translate fixed predicates and persist data; they do not implement
 summary objects, outcome classifications, percentages, top-N groups, or charts.
@@ -48,22 +48,21 @@ The Console provides:
 
 - scoped reporting-installation counts over 24 hours, 7 days, or 30 days;
 - selected-bundle reporting installations plus applied, recovered-from, and
-  adopted report counts;
+  downloaded and unchanged report counts;
 - outcome drill-down using exactly the same scope and receipt interval;
 - all-event browsing and exact installation/current-user lookup;
 - bundle movement history for a selected installation.
 
 `getReportingOverview({ platform, channel, window, bundleId? })` returns one
-scope measurement and, when a bundle is selected, four bundle measurements.
+scope measurement and, when a bundle is selected, five bundle measurements.
 Each scalar has `count` and `measuredAtMs`. The response also includes `sinceMs`
 and `beforeReceivedAtMs`, which bind outcome drill-down pages. The admin HTTP
 route is `GET /overview` relative to the admin handler mount. The global event
 method is `listEvents`; exact installation lookup takes `{ installId }`.
 
 Recovery from B to A contributes a recovered-from report to B, while the latest
-installation row names A. Adoption of a Release with the same bundle contributes
-an adoption report, not an application. `UNCHANGED` reports update latest state
-but do not increment those outcome counters.
+installation response names A. Selecting another Release for the same running
+files is `UNCHANGED`; it does not count as applying a bundle.
 
 Counts describe reports received by the server, not all devices or unique
 update attempts. Offline devices and failed sends are absent. Independent live
@@ -77,11 +76,13 @@ before returning a short result. Core does not aggregate raw history. The
 Console keeps previous cursors in session memory; only the current cursor and
 filter bounds appear in its URL.
 
-Latest-state counts never read event history. DynamoDB traverses canonical
-installation IDs so an installation cannot be counted twice when its last-report
-time advances. Its cost grows with stored installation rows, including rows
-outside the selected window. Other providers use native aggregate queries;
-returning one scalar does not imply constant work or latency.
+Latest-state counts use provider-private current entries. SQL and MongoDB count
+compact heads; Firestore uses native latest-document counts. DynamoDB traverses
+stable installation IDs in the selected scope's compact count partition, so a
+last-report update cannot move an already-counted installation past the cursor.
+Its work includes current scope entries outside the selected window, but not
+other scopes or retained event history. Returning one scalar does not imply
+constant work or latency.
 
 ## Initial storage setup
 
@@ -90,7 +91,8 @@ first initialization. Standalone SQL tooling initializes empty storage and
 leaves an initialized `1.0.0` database unchanged. Generate ORM schema artifacts
 before deployment. Prisma PostgreSQL/MySQL require the emitted companion
 collation SQL. MongoDB requires version 5 or later on a replica set or sharded
-cluster for native transactions and snapshot counts.
+cluster for its transactions and snapshot event counts. Insights append and
+advancing its private event head run in one transaction.
 
 Secondary indexes may lag. Exact installation reads use canonical state;
 current-user queries validate index candidates against that state so an old
@@ -111,14 +113,31 @@ or pagination semantics. Use a supported Insights provider for these views.
 `UPDATE_DOWNLOADED` is emitted by the SDK after native staging succeeds, before
 reload. Its `from_bundle_id` / `from_release_id` identify the running bundle;
 `to_bundle_id` / `to_release_id` identify the downloaded selection. It requires
-`from_bundle_id` and `update_strategy`, like an applied report. It is included
+`from_bundle_id` and `metadata.update_strategy`, like an applied report. It is included
 in installation movement history and can be selected with the `downloaded`
 bundle outcome filter.
 
-For the latest installation snapshot, `to_bundle_id` retains the running file
-ID. `pending_bundle_id` and `pending_release_id` store the downloaded target.
-A newer report replaces the entire snapshot atomically; apply/recovery/no-change
-reports clear both pending fields. Event ID retries and out-of-order receipts
-must not restore stale pending state. All bundled providers share this contract.
-The unreleased 1.0.0 schema includes these fields in its single initialization
-migration; no additional RC migration or schema version is introduced.
+Core derives running and pending response fields from the latest event. For a
+download, the running file is `from_bundle_id` and the pending selection is
+`to_bundle_id` / `to_release_id`. Apply/recovery/no-change clear pending response
+fields. The provider returns the original event; it does not calculate lifecycle
+state or maintain shared pending columns.
+
+There is no shared `bundle_installations` model. SQL adapters, D1, Supabase, and
+MongoDB keep private `bundle_event_heads` with nine canonical access fields:
+`install_id`, `id`, `received_at_ms`, `user_id`, `platform`, `channel`, `type`,
+`from_bundle_id`, and `to_bundle_id`. Atomic writes choose the globally latest
+receipt tuple. User, scope, and two bundle indexes filter heads; queries hydrate
+at most 101 canonical events for a page and count heads directly. Metadata, app version, release IDs, and calculated
+pending fields are not duplicated there.
+
+DynamoDB and Firestore retain their native full latest-event copies for responses;
+DynamoDB also maintains compact count items in the existing table. These are
+private access paths, not additional public database models or author-facing
+helpers. Event `username`, `cohort`, `update_strategy`,
+`fingerprint_hash`, and `sdk_version` live in typed `metadata`, using the existing
+Bundle JSON conventions. SDK request and Console response formats are unchanged.
+
+The single unreleased 1.0.0 initialization defines the physical layout. This
+optimization changes neither the canonical event schema nor the public database
+specification. See the [storage decision and measurements](./insights-event-storage-decision.md).

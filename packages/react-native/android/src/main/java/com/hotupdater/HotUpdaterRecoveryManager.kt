@@ -9,6 +9,7 @@ import android.os.Looper
 import android.os.Process
 import android.os.SystemClock
 import android.util.Log
+import androidx.core.util.AtomicFile
 import com.facebook.react.ReactApplication
 import com.facebook.react.bridge.JSExceptionHandler
 import com.facebook.react.bridge.ReactContext
@@ -16,6 +17,7 @@ import com.facebook.react.bridge.ReactMarker
 import com.facebook.react.bridge.ReactMarkerConstants
 import org.json.JSONObject
 import java.io.File
+import java.io.FileOutputStream
 import java.lang.reflect.Field
 import kotlin.system.exitProcess
 
@@ -28,10 +30,7 @@ internal class HotUpdaterRecoveryManager(
     private val crashMarkerFile = File(bundleStoreDir, CRASH_MARKER_FILENAME)
     private val watchdogStateFile = File(bundleStoreDir, WATCHDOG_STATE_FILENAME)
 
-    private var currentBundleId: String? = null
-    private var shouldRollbackOnCrash = false
-    private var isMonitoring = false
-    private var recoveryRequested = false
+    private val launchState = HotUpdaterRecoveryState()
     private var contentAppearedCallback: ((String?) -> Unit)? = null
     private var recoveryRestartCallback: (() -> Boolean)? = null
 
@@ -39,10 +38,7 @@ internal class HotUpdaterRecoveryManager(
         Runnable {
             cancelRecoveryWatchdog()
             Log.d(TAG, "Stopping crash monitoring for current launch")
-            isMonitoring = false
-            recoveryRequested = false
-            shouldRollbackOnCrash = false
-            currentBundleId = null
+            launchState.stop()
             contentAppearedCallback = null
             recoveryRestartCallback = null
             activeManager = null
@@ -52,7 +48,7 @@ internal class HotUpdaterRecoveryManager(
     private val installJsExceptionHooksRunnable =
         object : Runnable {
             override fun run() {
-                if (!isMonitoring) {
+                if (launchState.snapshot() == null) {
                     return
                 }
 
@@ -74,7 +70,7 @@ internal class HotUpdaterRecoveryManager(
         }
 
         return try {
-            val recovery = PendingCrashRecovery.fromJson(JSONObject(crashMarkerFile.readText()))
+            val recovery = PendingCrashRecovery.loadFromFile(crashMarkerFile) ?: return null
             Log.d(
                 TAG,
                 "Consumed pending crash marker bundleId=${recovery.launchedBundleId} shouldRollback=${recovery.shouldRollback}",
@@ -96,11 +92,8 @@ internal class HotUpdaterRecoveryManager(
     ) {
         crashMarkerFile.parentFile?.mkdirs()
         contentAppearedCallback = onContentAppeared
-        currentBundleId = bundleId
-        shouldRollbackOnCrash = shouldRollback
-        isMonitoring = true
-        recoveryRequested = false
         recoveryRestartCallback = onRecoveryRestartRequested
+        launchState.start(bundleId, shouldRollback)
         activeManager = this
 
         ensureExceptionHandlerInstalled()
@@ -122,17 +115,13 @@ internal class HotUpdaterRecoveryManager(
     }
 
     private fun handleContentAppeared() {
-        if (!isMonitoring) {
-            return
-        }
-
-        Log.d(TAG, "First content appeared for bundleId=$currentBundleId")
+        val launch = launchState.completeLaunch() ?: return
+        Log.d(TAG, "First content appeared for bundleId=${launch.bundleId}")
         ReactMarker.removeListener(contentAppearedListener)
         mainHandler.removeCallbacks(installJsExceptionHooksRunnable)
         mainHandler.removeCallbacks(stopMonitoringRunnable)
-        contentAppearedCallback?.invoke(currentBundleId)
-        shouldRollbackOnCrash = false
-        updateNativeLaunchState(currentBundleId, false)
+        contentAppearedCallback?.invoke(launch.bundleId)
+        updateNativeLaunchState(launch.bundleId, false)
         cancelRecoveryWatchdog()
         mainHandler.postDelayed(stopMonitoringRunnable, MONITORING_GRACE_PERIOD_MS)
     }
@@ -145,11 +134,10 @@ internal class HotUpdaterRecoveryManager(
         previousExceptionHandler = Thread.getDefaultUncaughtExceptionHandler()
         Thread.setDefaultUncaughtExceptionHandler { thread, throwable ->
             val manager = activeManager
-            manager?.writeCrashMarker()
-
             if (manager?.requestAutomaticRecovery() == true) {
-                Process.killProcess(Process.myPid())
-                exitProcess(10)
+                // The separate restart activity kills this process after it starts.
+                // A second fatal error must not kill it while that request is in flight.
+                return@setDefaultUncaughtExceptionHandler
             }
 
             previousExceptionHandler?.uncaughtException(thread, throwable)
@@ -161,20 +149,21 @@ internal class HotUpdaterRecoveryManager(
         exceptionHandlerInstalled = true
     }
 
-    private fun writeCrashMarker() {
-        if (!isMonitoring) {
-            return
-        }
-
+    private fun writeCrashMarker(launch: HotUpdaterRecoveryState.Launch) {
+        val atomicFile = AtomicFile(crashMarkerFile)
+        var output: FileOutputStream? = null
         try {
             val payload =
                 JSONObject().apply {
-                    put("bundleId", currentBundleId ?: JSONObject.NULL)
-                    put("shouldRollback", shouldRollbackOnCrash)
+                    put("bundleId", launch.bundleId ?: JSONObject.NULL)
+                    put("shouldRollback", launch.shouldRollback)
                 }
             crashMarkerFile.parentFile?.mkdirs()
-            crashMarkerFile.writeText(payload.toString())
+            output = atomicFile.startWrite()
+            output.write(payload.toString().toByteArray(Charsets.UTF_8))
+            atomicFile.finishWrite(output)
         } catch (e: Exception) {
+            output?.let(atomicFile::failWrite)
             Log.e(TAG, "Failed to write crash marker", e)
         }
     }
@@ -194,35 +183,28 @@ internal class HotUpdaterRecoveryManager(
         cancelRecoveryWatchdogAlarm(appContext)
     }
 
-    private fun requestAutomaticRecovery(): Boolean {
-        if (!isMonitoring || !shouldRollbackOnCrash) {
+    private fun requestAutomaticRecovery(exception: Exception? = null): Boolean {
+        val request = launchState.requestRecovery()
+        if (exception != null) {
+            Log.e(TAG, "Caught React startup exception for bundleId=${launchState.snapshot()?.bundleId}", exception)
+        }
+        if (request == null) {
+            launchState.snapshot()?.let(::writeCrashMarker)
             return false
         }
-
-        synchronized(this) {
-            if (recoveryRequested) {
-                return true
-            }
-            recoveryRequested = true
-        }
-
+        if (!request.shouldRestart) return true
+        writeCrashMarker(request.launch)
         val started = recoveryRestartCallback?.invoke() == true
+        launchState.finishRecoveryRequest(request, started)
         if (!started) {
-            synchronized(this) {
-                recoveryRequested = false
-            }
             Log.w(TAG, "Failed to schedule automatic recovery restart")
         } else {
-            Log.i(TAG, "Scheduled automatic recovery restart for bundleId=$currentBundleId")
+            Log.i(TAG, "Scheduled automatic recovery restart for bundleId=${request.launch.bundleId}")
         }
         return started
     }
 
-    private fun handleJavaScriptException(exception: Exception): Boolean {
-        Log.e(TAG, "Caught React startup exception for bundleId=$currentBundleId", exception)
-        writeCrashMarker()
-        return requestAutomaticRecovery()
-    }
+    private fun handleJavaScriptException(exception: Exception): Boolean = requestAutomaticRecovery(exception)
 
     private fun ensureNativeSignalHandlerInstalled() {
         if (signalHandlerInstalled || !loadNativeLibrary()) {
@@ -467,7 +449,8 @@ internal class HotUpdaterRecoveryManager(
             }
 
             val crashMarkerFile = File(getBundleStoreDir(appContext), CRASH_MARKER_FILENAME)
-            if (crashMarkerFile.exists()) {
+            val recovery = PendingCrashRecovery.loadFromFile(crashMarkerFile)
+            if (recovery?.shouldRollback == true && recovery.launchedBundleId != null) {
                 Log.i(TAG, "Recovery watchdog detected crash marker, relaunching app")
                 watchdogStateFile.delete()
                 cancelRecoveryWatchdogAlarm(appContext)

@@ -17,7 +17,6 @@ import type {
 } from "../db/types";
 import { createDrizzleCrud, recordDrizzleInsights } from "./drizzleCrud";
 import { createLazyDB } from "./drizzleLazyDB";
-import { runInsightsTransaction } from "./insightsTransaction";
 
 export type DrizzleProvider = Exclude<
   ORMProvider,
@@ -39,16 +38,11 @@ const createImplementation = (
   const transaction = db.transaction?.bind(db);
   return {
     ...crud,
-    recordInsights: (input) => {
-      if (transaction === undefined) {
-        throw new Error(
-          "Drizzle Insights recording requires transaction support.",
-        );
-      }
-      return runInsightsTransaction(() =>
-        transaction((transactionDatabase) =>
-          recordDrizzleInsights(transactionDatabase, config.provider, input),
-        ),
+    recordInsights: async (input) => {
+      await recordDrizzleInsights(
+        db.resolve === undefined ? db : await db.resolve(),
+        config.provider,
+        input,
       );
     },
     deleteChannel: (input) => {
@@ -129,12 +123,12 @@ export const drizzleAdapter = (
         delete: (input) => getAdapter().models.channels.delete(input),
       },
       insights: {
-        record: (input) => getAdapter().models.insights.record(input),
+        recordEvent: (input) => getAdapter().models.insights.recordEvent(input),
         listEvents: (input) => getAdapter().models.insights.listEvents(input),
-        findInstallations: (input) =>
-          getAdapter().models.insights.findInstallations(input),
-        countInstallations: (input) =>
-          getAdapter().models.insights.countInstallations(input),
+        findLatestEvents: (input) =>
+          getAdapter().models.insights.findLatestEvents(input),
+        countLatestEvents: (input) =>
+          getAdapter().models.insights.countLatestEvents(input),
         countEvents: (input) => getAdapter().models.insights.countEvents(input),
       },
       apiKeys: {

@@ -171,9 +171,9 @@ Channels use opaque IDs and exact case-sensitive names. Concurrent
 An empty Channel remains visible. Its reference check and explicit deletion
 are atomic against Releases.
 
-Insights uses `record`, `listEvents`, `findInstallations`, `countInstallations`,
+Insights uses `recordEvent`, `listEvents`, `findLatestEvents`, `countLatestEvents`,
 and `countEvents`. Core prepares reports and product views; providers own
-atomic event/latest-state storage and fixed native queries. See the
+immutable event storage, any private latest-event copies, and fixed native queries. See the
 [Insights contract](./custom-database#insights) for ordering and count semantics.
 Transition rows carry directional Release identity alongside Bundle identity.
 Old nullable Release IDs remain valid and are never inferred from Bundle ID.

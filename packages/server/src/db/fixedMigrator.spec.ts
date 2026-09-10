@@ -1,7 +1,6 @@
 import { DatabaseSync, type SqliteValue } from "node:sqlite";
 
 import { PGlite } from "@electric-sql/pglite";
-import { toInsightsInstallationRow } from "@hot-updater/plugin-core";
 import { Kysely, SqliteDialect } from "kysely";
 import { PGliteDialect } from "kysely-pglite-dialect";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -75,8 +74,8 @@ describe("Kysely migrator", () => {
     await expect(migrator.getVersion()).resolves.toBe("1.0.0");
     const plugin = kyselyAdapter({ db: kysely, provider: "postgresql" });
     const event = createBundleEventRowFixture("706", 100);
-    const input = { event, installation: toInsightsInstallationRow(event) };
-    await plugin.models.insights.record(input);
+    const input = { event };
+    await plugin.models.insights.recordEvent(input);
 
     const repeated = await migrator.migrateToLatest();
     expect(repeated.operations).toEqual([]);
@@ -84,8 +83,8 @@ describe("Kysely migrator", () => {
     await repeated.execute();
     await expect(migrator.next()).resolves.toBeUndefined();
     await expect(
-      plugin.models.insights.findInstallations({ installId: event.install_id }),
-    ).resolves.toEqual([input.installation]);
+      plugin.models.insights.findLatestEvents({ installId: event.install_id }),
+    ).resolves.toEqual([input.event]);
     await expect(
       plugin.models.insights.countEvents({
         filter: {
@@ -99,14 +98,13 @@ describe("Kysely migrator", () => {
       }),
     ).resolves.toBe(1);
     const indexes = await database.query<{ indexname: string }>(
-      "select indexname from pg_indexes where tablename in ('bundle_events', 'bundle_installations')",
+      "select indexname from pg_indexes where tablename = 'bundle_events'",
     );
     expect(indexes.rows.map(({ indexname }) => indexname)).toEqual(
       expect.arrayContaining([
         "bundle_events_from_bundle_idx",
         "bundle_events_to_bundle_idx",
-        "bundle_installations_scope_idx",
-        "bundle_installations_bundle_idx",
+        "bundle_events_latest_idx",
       ]),
     );
     await database.exec("set enable_seqscan = off");

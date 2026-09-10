@@ -2,7 +2,6 @@ import type {
   BundlePatchRow,
   BundleRow,
   BundleEventRow,
-  InsightsInstallationRow,
   ApiKeyRow,
   ChannelRow,
   ReleaseCatalogRow,
@@ -22,7 +21,6 @@ export interface FirebaseDatabaseSnapshot {
   readonly bundles: Map<string, BundleRow>;
   readonly bundlePatches: Map<string, BundlePatchRow>;
   readonly bundleEvents: Map<string, BundleEventRow>;
-  readonly bundleInstallations: Map<string, InsightsInstallationRow>;
   readonly channels: Map<string, ChannelRow>;
   readonly apiKeys: Map<string, ApiKeyRow>;
   readonly releaseCatalogs: Map<string, ReleaseCatalogRow>;
@@ -43,7 +41,6 @@ export const cloneFirebaseDatabaseSnapshot = (
   bundles: new Map(snapshot.bundles),
   bundlePatches: new Map(snapshot.bundlePatches),
   bundleEvents: new Map(snapshot.bundleEvents),
-  bundleInstallations: new Map(snapshot.bundleInstallations),
   channels: new Map(snapshot.channels),
   apiKeys: new Map(snapshot.apiKeys),
   releaseCatalogs: new Map(snapshot.releaseCatalogs),
@@ -100,17 +97,7 @@ export const createFirebaseDatabaseState = (
         requireUnique(snapshot.bundleEvents, input.data.id, input.model);
         snapshot.bundleEvents.set(input.data.id, input.data);
         return input.data;
-      case "bundle_installations": {
-        const current = snapshot.bundleInstallations.get(input.data.install_id);
-        if (current && input.onConflict === "ignore") return current;
-        if (current) {
-          throw new FirebaseDatabaseConstraintError(
-            "bundle_installations.install_id.unique",
-          );
-        }
-        snapshot.bundleInstallations.set(input.data.install_id, input.data);
-        return input.data;
-      }
+
       case "releases":
         requireUnique(snapshot.releases, input.data.id, input.model);
         if (!snapshot.channels.has(input.data.channel_id)) {
@@ -163,15 +150,6 @@ export const createFirebaseDatabaseState = (
     }
   },
   async update(input): Promise<DatabaseImplementationResult | null> {
-    if (input.model === "bundle_installations") {
-      const current = [...snapshot.bundleInstallations.values()].find((row) =>
-        matchesFirebaseDatabaseWhere<"bundle_installations">(row, input.where),
-      );
-      if (!current) return null;
-      const updated = { ...current, ...input.update };
-      snapshot.bundleInstallations.set(current.install_id, updated);
-      return updated;
-    }
     if (input.model === "api_keys") {
       const current = [...snapshot.apiKeys.values()].find((row) =>
         matchesFirebaseDatabaseWhere(row, input.where),
@@ -270,16 +248,7 @@ export const createFirebaseDatabaseState = (
           ),
           input.distinct as readonly string[] | undefined,
         );
-      case "bundle_installations":
-        return distinctCount(
-          [...snapshot.bundleInstallations.values()].filter((row) =>
-            matchesFirebaseDatabaseWhere<"bundle_installations">(
-              row,
-              input.where,
-            ),
-          ),
-          input.distinct as readonly string[] | undefined,
-        );
+
       case "bundle_events":
         return distinctCount(
           [...snapshot.bundleEvents.values()].filter((row) =>
@@ -327,15 +296,6 @@ export const createFirebaseDatabaseState = (
             matchesFirebaseDatabaseWhere<"release_catalogs">(row, input.where),
           ) ?? null
         );
-      case "bundle_installations":
-        return (
-          [...snapshot.bundleInstallations.values()].find((row) =>
-            matchesFirebaseDatabaseWhere<"bundle_installations">(
-              row,
-              input.where,
-            ),
-          ) ?? null
-        );
     }
   },
   async findMany(input): Promise<readonly DatabaseImplementationResult[]> {
@@ -352,11 +312,7 @@ export const createFirebaseDatabaseState = (
           [...snapshot.bundleEvents.values()],
           input,
         );
-      case "bundle_installations":
-        return queryFirebaseDatabaseRows<"bundle_installations">(
-          [...snapshot.bundleInstallations.values()],
-          input,
-        );
+
       case "channels":
         return queryFirebaseDatabaseRows(
           [...snapshot.channels.values()],
