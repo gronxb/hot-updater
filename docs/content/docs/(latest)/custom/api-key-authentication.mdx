@@ -81,6 +81,26 @@ HotUpdater.init({
 `HotUpdater.init` configures the client but does not start an update check.
 Continue with the [`init + checkForUpdate` flow](/docs/react-native-api/init).
 
+## Configure a self-hosted cache
+
+Configure your CDN or reverse proxy explicitly to cache successful client
+Release Catalog GET responses. A cache hit can skip the server and its API key
+database lookup.
+
+- **Separate entries by API key.** Include the server host, full catalog path,
+  configured API key header (`x-api-key` by default), and `Accept-Encoding` in
+  the cache identity. Honor `Vary`, or explicitly configure these header values
+  in the cache key if your proxy does not support it. Forward the API key to the
+  origin. Requests with missing or different keys must never reuse another
+  key's cached response.
+- **Keep the shared TTL short.** Honor the server's
+  `Cache-Control: public, max-age=0, s-maxage=5`. Do not extend the five-second
+  shared TTL or serve stale responses. A revoked key can still receive a
+  previously cached catalog until that entry expires.
+- **Never cache authentication failures.** Preserve
+  `Cache-Control: private, no-store` for `401`, `403`, and other error responses.
+  Keep artifact-resolution responses and Insights writes uncached.
+
 ## Manage API keys
 
 List metadata and revoke a key by ID with:
