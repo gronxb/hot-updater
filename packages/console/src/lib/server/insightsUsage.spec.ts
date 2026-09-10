@@ -64,6 +64,31 @@ function modelFor(events: BundleEventRow[]): InsightsModel {
 }
 
 describe("app usage", () => {
+  it("counts a downloaded report as app usage while retaining the running bundle in distribution", async () => {
+    const report = await getAppUsageReport(
+      modelFor([
+        event("phone", now - HOUR),
+        event("phone", now - 1, {
+          type: "UPDATE_DOWNLOADED",
+          from_bundle_id: "file-a",
+          to_bundle_id: "file-b",
+          to_release_id: "bundle-b",
+        }),
+      ]),
+      input,
+      now,
+    );
+    expect(report.activeInstallations).toBe(1);
+    expect(report.bundleDistribution).toEqual([
+      {
+        appVersion: "1.0.0",
+        platform: "ios",
+        releaseId: "bundle-a",
+        installations: 1,
+      },
+    ]);
+  });
+
   it("deduplicates all event types by installation and assigns each installation to its latest matching version", async () => {
     const model = modelFor([
       event("phone", now - 2 * HOUR),

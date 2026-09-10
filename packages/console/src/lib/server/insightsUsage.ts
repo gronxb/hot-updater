@@ -30,12 +30,17 @@ export async function getAppUsageReport(
 
   for (const event of history.events) {
     const previous = observed.get(event.install_id);
+    const downloaded = event.type === "UPDATE_DOWNLOADED";
+    const currentBundleId = downloaded
+      ? event.from_bundle_id
+      : event.to_bundle_id;
     const row = {
       ...event,
+      to_bundle_id: currentBundleId,
       to_release_id:
-        event.to_release_id ??
-        (event.type === "UNCHANGED" &&
-        previous?.to_bundle_id === event.to_bundle_id &&
+        (downloaded ? event.from_release_id : event.to_release_id) ??
+        ((event.type === "UNCHANGED" || downloaded) &&
+        previous?.to_bundle_id === currentBundleId &&
         previous.platform === event.platform &&
         previous.channel === event.channel
           ? previous.to_release_id

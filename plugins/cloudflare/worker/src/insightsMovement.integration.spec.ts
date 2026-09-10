@@ -59,7 +59,7 @@ it("pages sparse movements beyond 50,000 reports through ordered native index ra
       (index) => `00000000-0000-7000-8000-${String(index).padStart(12, "0")}`,
     );
   expect([...first, ...second].map(({ id }) => id)).toEqual(expected);
-  expect(queries.length).toBeLessThanOrEqual(6);
+  expect(queries.length).toBeLessThanOrEqual(9);
   for (const { sql, params } of queries) {
     expect(sql).toContain("LIMIT");
     expect(params[params.length - 1]).toBe("0");

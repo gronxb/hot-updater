@@ -30,6 +30,7 @@ import {
   isChannelSwitched,
   updateBundle,
 } from "./native";
+import { reportBundleDownloaded } from "./notifyAppReadyInsights";
 import {
   hasExpectedReleaseCatalogScope,
   type ExpectedReleaseCatalogScope,
@@ -217,7 +218,8 @@ async function checkForReleaseCatalogUpdate(input: {
   const scopeKey = catalog.scopeKey;
 
   const crashedBundleIds = getCrashHistory();
-  const active = getActiveUpdateState().activeSelection;
+  const activeState = getActiveUpdateState();
+  const active = activeState.activeSelection;
   const explicitScopeSwitch =
     input.explicitChannel !== undefined &&
     input.explicitChannel !== input.currentChannel;
@@ -364,7 +366,7 @@ async function checkForReleaseCatalogUpdate(input: {
     if (!isReleaseSelectionCurrent(guard)) {
       throw new StaleReleaseCatalogError();
     }
-    return updateBundle({
+    const downloaded = await updateBundle({
       bundleId: desired.bundleId,
       changedAssets: artifact.changedAssets ?? null,
       channel: input.targetChannel,
@@ -376,6 +378,22 @@ async function checkForReleaseCatalogUpdate(input: {
       shouldSkipCurrentBundleIdCheck: true,
       status: desired.status,
     });
+    if (downloaded) {
+      await reportBundleDownloaded(options, {
+        fromBundleId: input.currentBundleId,
+        fromReleaseId:
+          active?.bundleId === input.currentBundleId
+            ? active.releaseId
+            : activeState.stableSelection?.bundleId === input.currentBundleId
+              ? activeState.stableSelection.releaseId
+              : null,
+        toBundleId: desired.bundleId,
+        toReleaseId: desired.releaseId,
+        channel: input.targetChannel,
+        updateStrategy: options.updateStrategy,
+      });
+    }
+    return downloaded;
   };
 
   return {

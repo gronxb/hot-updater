@@ -23,6 +23,25 @@ const event: InsightsEventRow = {
 describe("InstallationHistoryCard", () => {
   afterEach(cleanup);
 
+  it("shows downloaded and waiting without replacing the running bundle", () => {
+    const downloaded = { ...event, type: "UPDATE_DOWNLOADED" as const };
+    render(
+      <InstallationHistoryCard
+        error={null}
+        history={{ data: [downloaded], nextCursor: null }}
+        isLoading={false}
+        onNext={vi.fn()}
+        onPrevious={vi.fn()}
+        pageNumber={1}
+        selectedEvent={downloaded}
+        selectedInstallId="install-1"
+      />,
+    );
+    expect(screen.getByText("Downloaded · Pending apply")).toBeDefined();
+    expect(screen.getAllByText("bundle-old").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("bundle-new").length).toBeGreaterThan(0);
+  });
+
   it("shows latest identity and paged movement history", () => {
     const onNext = vi.fn();
     render(

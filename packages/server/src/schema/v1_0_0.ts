@@ -433,7 +433,8 @@ export const bundleEventsV100 = table(
     checks: [
       check({
         name: "bundle_events_type_check",
-        expression: "type in ('UPDATE_APPLIED', 'RECOVERED', 'UNCHANGED')",
+        expression:
+          "type in ('UPDATE_DOWNLOADED', 'UPDATE_APPLIED', 'RECOVERED', 'UNCHANGED')",
         sqliteInline: true,
       }),
       check({
@@ -444,7 +445,7 @@ export const bundleEventsV100 = table(
       check({
         name: "bundle_events_shape_check",
         expression:
-          "((type in ('UPDATE_APPLIED', 'RECOVERED')) and from_bundle_id is not null and update_strategy is not null and update_strategy in ('fingerprint', 'appVersion')) or (type = 'UNCHANGED' and from_bundle_id is null and update_strategy is null)",
+          "((type in ('UPDATE_DOWNLOADED', 'UPDATE_APPLIED', 'RECOVERED')) and from_bundle_id is not null and update_strategy is not null and update_strategy in ('fingerprint', 'appVersion')) or (type = 'UNCHANGED' and from_bundle_id is null and update_strategy is null)",
         sqliteInline: true,
       }),
       check({
@@ -468,6 +469,8 @@ export const bundleInstallationsV100 = table(
       .nullable(),
     username: stringColumn("username").nullable(),
     to_bundle_id: uuid("to_bundle_id"),
+    pending_bundle_id: uuid("pending_bundle_id").nullable(),
+    pending_release_id: uuid("pending_release_id").nullable(),
     type: column("type", varchar(32)),
     platform: stringColumn("platform").collate(insightsTextCollations),
     app_version: stringColumn("app_version"),
@@ -493,7 +496,14 @@ export const bundleInstallationsV100 = table(
     checks: [
       check({
         name: "bundle_installations_type_check",
-        expression: "type in ('UPDATE_APPLIED', 'RECOVERED', 'UNCHANGED')",
+        expression:
+          "type in ('UPDATE_DOWNLOADED', 'UPDATE_APPLIED', 'RECOVERED', 'UNCHANGED')",
+        sqliteInline: true,
+      }),
+      check({
+        name: "bundle_installations_pending_check",
+        expression:
+          "(type = 'UPDATE_DOWNLOADED' and pending_bundle_id is not null) or (type <> 'UPDATE_DOWNLOADED' and pending_bundle_id is null and pending_release_id is null)",
         sqliteInline: true,
       }),
       check({

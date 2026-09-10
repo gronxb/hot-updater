@@ -799,7 +799,50 @@ for (const catalog of compiledCatalogs) {
   });
 }
 
+const downloadDemo = {
+  from_release_id:
+    Array.from(databaseData.releases.values()).find(
+      (release) => release.bundle_id === iosProdCorePatchA.id,
+    )?.id ?? null,
+  from_bundle_id: iosProdCorePatchA.id,
+  to_release_id:
+    Array.from(databaseData.releases.values()).find(
+      (release) => release.bundle_id === iosProdCorePatchB.id,
+    )?.id ?? null,
+  to_bundle_id: iosProdCorePatchB.id,
+  platform: "ios" as const,
+  app_version: "1.4.2",
+  channel: "production",
+  cohort: "download-demo",
+  update_strategy: "appVersion" as const,
+  fingerprint_hash: null,
+  sdk_version: "1.0.0-rc",
+  user_id: "download-demo",
+  username: "Download demo",
+};
+
 const bundleEvents: readonly BundleEventRow[] = [
+  {
+    ...downloadDemo,
+    id: "019f635e-d001-7000-8000-000000000001",
+    type: "UPDATE_DOWNLOADED",
+    install_id: "demo-download-pending",
+    received_at_ms: Date.UTC(2026, 6, 18, 9, 50),
+  },
+  {
+    ...downloadDemo,
+    id: "019f635e-d002-7000-8000-000000000002",
+    type: "UPDATE_DOWNLOADED",
+    install_id: "demo-download-applied",
+    received_at_ms: Date.UTC(2026, 6, 18, 9, 55),
+  },
+  {
+    ...downloadDemo,
+    id: "019f635e-d003-7000-8000-000000000003",
+    type: "UPDATE_APPLIED",
+    install_id: "demo-download-applied",
+    received_at_ms: Date.UTC(2026, 6, 18, 9, 58),
+  },
   {
     id: "019f635e-0001-7000-8000-000000000001",
     type: "UPDATE_APPLIED",
@@ -1071,7 +1114,14 @@ for (const event of bundleEvents) {
       install_id: row.install_id,
       user_id: row.user_id,
       username: row.username,
-      to_bundle_id: row.to_bundle_id,
+      to_bundle_id:
+        row.type === "UPDATE_DOWNLOADED"
+          ? row.from_bundle_id
+          : row.to_bundle_id,
+      pending_bundle_id:
+        row.type === "UPDATE_DOWNLOADED" ? row.to_bundle_id : null,
+      pending_release_id:
+        row.type === "UPDATE_DOWNLOADED" ? row.to_release_id : null,
       type: row.type,
       platform: row.platform,
       app_version: row.app_version,

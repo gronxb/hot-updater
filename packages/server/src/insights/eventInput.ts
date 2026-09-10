@@ -146,6 +146,7 @@ function requireEvent(payload: unknown): CreateBundleEventRequest {
   };
   const type = requireStringField(payload, "type");
   switch (type) {
+    case "UPDATE_DOWNLOADED":
     case "UPDATE_APPLIED":
     case "RECOVERED": {
       const updateStrategy = requireStringField(payload, "updateStrategy");
@@ -204,6 +205,7 @@ export function createBundleEventRow(
     username: input.username ?? null,
   };
   switch (input.type) {
+    case "UPDATE_DOWNLOADED":
     case "UPDATE_APPLIED":
     case "RECOVERED":
       return {

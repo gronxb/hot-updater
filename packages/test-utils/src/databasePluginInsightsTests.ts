@@ -20,6 +20,103 @@ export const registerDatabasePluginInsightsTests = (
   state: DatabasePluginTestState<DatabasePlugin>,
 ): void => {
   describe("Insights report contract", () => {
+    it("keeps the running bundle during download and clears pending only on a newer launch report", async () => {
+      const plugin = state.getPlugin();
+      const download: BundleEventRow = {
+        ...createBundleEventRowFixture("980", 100),
+        type: "UPDATE_DOWNLOADED",
+        from_bundle_id: "00000000-0000-7000-8000-000000001980",
+        update_strategy: "appVersion",
+        to_release_id: "00000000-0000-7000-8000-000000004980",
+      };
+      await record(plugin, download);
+      await record(plugin, download);
+      await expect(
+        plugin.models.insights.findInstallations({
+          installId: download.install_id,
+        }),
+      ).resolves.toEqual([
+        {
+          ...toInsightsInstallationRow(download),
+          to_bundle_id: download.from_bundle_id,
+          pending_bundle_id: download.to_bundle_id,
+          pending_release_id: download.to_release_id,
+        },
+      ]);
+      await expectInsightsIndex(
+        () =>
+          plugin.models.insights.listEvents({
+            filter: {
+              kind: "bundle",
+              type: "UPDATE_DOWNLOADED",
+              toBundleId: download.to_bundle_id,
+              platform: "ios",
+              channel: "production",
+            },
+            beforeReceivedAtMs: 200,
+            limit: 10,
+          }),
+        [download],
+      );
+      const replacement: BundleEventRow = {
+        ...download,
+        id: createBundleEventRowFixture("981", 110).id,
+        received_at_ms: 110,
+        to_bundle_id: "00000000-0000-7000-8000-000000002981",
+      };
+      await record(plugin, replacement);
+      await expect(
+        plugin.models.insights.findInstallations({
+          installId: download.install_id,
+        }),
+      ).resolves.toEqual([toInsightsInstallationRow(replacement)]);
+      const applied: BundleEventRow = {
+        ...replacement,
+        type: "UPDATE_APPLIED",
+        id: createBundleEventRowFixture("982", 120).id,
+        received_at_ms: 120,
+      };
+      await record(plugin, applied);
+      await record(plugin, {
+        ...download,
+        id: createBundleEventRowFixture("983", 105).id,
+        received_at_ms: 105,
+      });
+      await expect(
+        plugin.models.insights.findInstallations({
+          installId: download.install_id,
+        }),
+      ).resolves.toEqual([
+        {
+          ...toInsightsInstallationRow(applied),
+          to_bundle_id: replacement.to_bundle_id,
+          pending_bundle_id: null,
+          pending_release_id: null,
+        },
+      ]);
+      await expectInsightsIndex(
+        () =>
+          plugin.models.insights.listEvents({
+            filter: {
+              kind: "installationMovement",
+              installId: download.install_id,
+            },
+            beforeReceivedAtMs: 200,
+            limit: 10,
+          }),
+        [
+          applied,
+          replacement,
+          {
+            ...download,
+            id: createBundleEventRowFixture("983", 105).id,
+            received_at_ms: 105,
+          },
+          download,
+        ],
+      );
+    });
+
     it("treats duplicate IDs as complete no-ops, including changed retry payloads", async () => {
       const plugin = state.getPlugin();
       const event = createBundleEventRowFixture("901", 100);

@@ -9,6 +9,7 @@ export type InsightsViewPage<TRow> = {
 };
 
 export const outcomeLabels = {
+  downloaded: "Downloaded reports",
   applied: "Applied reports",
   recovered: "Recovered-from reports",
   unchanged: "No-change reports",

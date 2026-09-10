@@ -35,8 +35,8 @@ describe("Supabase v1 schema", () => {
       await database.exec(
         "CREATE ROLE anon; CREATE ROLE authenticated; CREATE ROLE service_role;",
       );
-      const [initial] = await readMigrations();
-      await database.exec(initial!.sql);
+      for (const migration of await readMigrations())
+        await database.exec(migration.sql);
       expect(
         (
           await database.query(
@@ -122,6 +122,70 @@ describe("Supabase v1 schema", () => {
           )
         ).rows,
       ).toEqual([{ allowed: true }]);
+    } finally {
+      await database.close();
+    }
+  });
+
+  it("persists pending downloads and clears them when applied through the RPC", async () => {
+    const database = new PGlite();
+    try {
+      await database.exec(
+        "CREATE ROLE anon; CREATE ROLE authenticated; CREATE ROLE service_role;",
+      );
+      for (const migration of await readMigrations())
+        await database.exec(migration.sql);
+      const base = createBundleEventRowFixture("9401", 100);
+      const downloaded = {
+        ...base,
+        type: "UPDATE_DOWNLOADED" as const,
+        from_bundle_id: "00000000-0000-7000-8000-000000001001",
+        update_strategy: "appVersion" as const,
+      };
+      const record = (event: typeof base) =>
+        database.query(
+          "SELECT public.hot_updater_v1_record_insights($1::jsonb, $2::jsonb)",
+          [
+            JSON.stringify(event),
+            JSON.stringify(toInsightsInstallationRow(event)),
+          ],
+        );
+      await record(downloaded);
+      await record(downloaded);
+      expect(
+        (
+          await database.query(
+            "SELECT * FROM public.hot_updater_v1_bundle_installations",
+          )
+        ).rows,
+      ).toEqual([toInsightsInstallationRow(downloaded)]);
+      const applied = {
+        ...downloaded,
+        id: createBundleEventRowFixture("9402", 200).id,
+        type: "UPDATE_APPLIED" as const,
+        received_at_ms: 200,
+      };
+      await record(applied);
+      await record(downloaded);
+      expect(
+        (
+          await database.query(
+            "SELECT * FROM public.hot_updater_v1_bundle_installations",
+          )
+        ).rows,
+      ).toEqual([toInsightsInstallationRow(applied)]);
+      expect(
+        (
+          await database.query(
+            "SELECT COUNT(*)::integer AS count FROM public.hot_updater_v1_bundle_events",
+          )
+        ).rows,
+      ).toEqual([{ count: 2 }]);
+      await expect(
+        database.query(
+          "UPDATE public.hot_updater_v1_bundle_installations SET type = 'UPDATE_DOWNLOADED'",
+        ),
+      ).rejects.toThrow(/pending_check/);
     } finally {
       await database.close();
     }

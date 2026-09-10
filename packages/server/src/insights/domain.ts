@@ -15,7 +15,7 @@ export type CreateBundleEventRequestBase = {
 
 export type CreateBundleEventRequest =
   | (CreateBundleEventRequestBase & {
-      readonly type: "UPDATE_APPLIED" | "RECOVERED";
+      readonly type: "UPDATE_DOWNLOADED" | "UPDATE_APPLIED" | "RECOVERED";
       readonly fromBundleId: string;
       readonly updateStrategy: "fingerprint" | "appVersion";
     })
@@ -30,7 +30,11 @@ export type ActiveInstallationWindow = "24h" | "7d" | "30d";
 export type EventHistoryRow = {
   readonly id: string;
   readonly installId: string;
-  readonly type: "UPDATE_APPLIED" | "RECOVERED" | "UNCHANGED";
+  readonly type:
+    | "UPDATE_DOWNLOADED"
+    | "UPDATE_APPLIED"
+    | "RECOVERED"
+    | "UNCHANGED";
   readonly fromBundleId: string | null;
   readonly toBundleId: string;
   readonly username: string | null;
@@ -43,7 +47,7 @@ export type EventHistoryRow = {
 };
 
 export type InstallationHistoryRow = EventHistoryRow & {
-  readonly type: "UPDATE_APPLIED" | "RECOVERED";
+  readonly type: "UPDATE_DOWNLOADED" | "UPDATE_APPLIED" | "RECOVERED";
   readonly fromBundleId: string;
 };
 
@@ -52,6 +56,8 @@ export type InstallationRow = {
   readonly username: string | null;
   readonly userId: string | null;
   readonly lastKnownBundleId: string;
+  readonly pendingBundleId: string | null;
+  readonly pendingReleaseId: string | null;
   readonly latestStatus: EventHistoryRow["type"];
   readonly platform: "ios" | "android";
   readonly appVersion: string;
@@ -76,7 +82,7 @@ export type InsightsScope = {
 
 export type InsightsBundleSelection = InsightsScope & {
   readonly bundleId: string;
-  readonly outcome: "applied" | "recovered" | "unchanged";
+  readonly outcome: "downloaded" | "applied" | "recovered" | "unchanged";
 };
 
 export type InsightsCountMeasurement = {
@@ -92,6 +98,7 @@ export type ReportingOverview = InsightsScope & {
   readonly bundle?: {
     readonly bundleId: string;
     readonly reportingInstallations: InsightsCountMeasurement;
+    readonly downloadedReports: InsightsCountMeasurement;
     readonly appliedReports: InsightsCountMeasurement;
     readonly recoveredReports: InsightsCountMeasurement;
     readonly unchangedReports: InsightsCountMeasurement;

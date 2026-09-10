@@ -146,7 +146,14 @@ const installationFixture = (
   install_id: event.install_id,
   user_id: event.user_id,
   username: event.username,
-  to_bundle_id: event.to_bundle_id,
+  to_bundle_id:
+    event.type === "UPDATE_DOWNLOADED"
+      ? event.from_bundle_id
+      : event.to_bundle_id,
+  pending_bundle_id:
+    event.type === "UPDATE_DOWNLOADED" ? event.to_bundle_id : null,
+  pending_release_id:
+    event.type === "UPDATE_DOWNLOADED" ? event.to_release_id : null,
   type: event.type,
   platform: event.platform,
   app_version: event.app_version,

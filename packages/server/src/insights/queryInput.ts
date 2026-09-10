@@ -85,6 +85,7 @@ export const parseEventPageInput = (
   if (bundleFields.some((key) => url.searchParams.has(key))) {
     const outcome = readSingle(url, "outcome");
     if (
+      outcome !== "downloaded" &&
       outcome !== "applied" &&
       outcome !== "recovered" &&
       outcome !== "unchanged"

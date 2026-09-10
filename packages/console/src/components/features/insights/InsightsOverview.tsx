@@ -45,9 +45,34 @@ const colors = [
 ];
 const dashes = [undefined, "6 3", "2 3"];
 
+const activityMetrics = {
+  active: {
+    label: "Active",
+    summary: "Active installations",
+    point: "active",
+    total: "activeInstallations",
+    color: "text-success/85",
+  },
+  downloaded: {
+    label: "Downloaded",
+    summary: "Installations waiting to apply",
+    point: "pendingInstallations",
+    total: "pendingInstallations",
+    color: "text-primary/85",
+  },
+  recovered: {
+    label: "Recovered",
+    summary: "Crashed bundle recovery",
+    point: "recoveredInstallations",
+    total: "recoveredInstallations",
+    color: "text-warning/85",
+  },
+} as const;
+
 export function ActivityChart({ report }: { readonly report: RecoveryReport }) {
-  const [metric, setMetric] = useState<"active" | "rollback">("active");
+  const [metric, setMetric] = useState<keyof typeof activityMetrics>("active");
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const metricInfo = activityMetrics[metric];
   const selected = report.series.find(
     (series) => series.releaseId === selectedId,
   );
@@ -65,9 +90,7 @@ export function ActivityChart({ report }: { readonly report: RecoveryReport }) {
     ...Object.fromEntries(
       report.series.map((series, index) => [
         `bundle${index}`,
-        metric === "active"
-          ? series.points[pointIndex].active
-          : series.points[pointIndex].recoveredInstallations,
+        series.points[pointIndex][metricInfo.point],
       ]),
     ),
   }));
@@ -76,45 +99,62 @@ export function ActivityChart({ report }: { readonly report: RecoveryReport }) {
   const lastSpike = selected
     ? [...selected.points].reverse().find((point) => point.spike)
     : undefined;
-  const total =
-    metric === "active"
-      ? report.series.reduce(
-          (sum, series) => sum + series.activeInstallations,
-          0,
-        )
-      : report.series.filter((series) => series.recoveredInstallations > 0)
-          .length;
+  const totals = {
+    active: report.series.reduce(
+      (sum, series) => sum + series.activeInstallations,
+      0,
+    ),
+    downloaded: report.pendingInstallations,
+    recovered: report.series.filter(
+      (series) => series.recoveredInstallations > 0,
+    ).length,
+  };
   return (
     <Tabs
       value={metric}
       onValueChange={(value) => {
-        if (value === "active" || value === "rollback") setMetric(value);
+        if (Object.hasOwn(activityMetrics, value))
+          setMetric(value as keyof typeof activityMetrics);
       }}
       className="gap-6"
     >
+      <dl
+        aria-label="Bundle activity overview"
+        className="grid grid-cols-1 gap-5 sm:grid-cols-3 sm:gap-6"
+      >
+        {Object.entries(activityMetrics).map(
+          ([value, { label, summary, color }]) => (
+            <div key={value} className="flex flex-col gap-2">
+              <dt className="text-sm font-medium">{label}</dt>
+              <dd className="flex flex-col gap-1">
+                <span
+                  className={cn(
+                    "text-4xl font-semibold tracking-tight tabular-nums",
+                    totals[value as keyof typeof totals] > 0
+                      ? color
+                      : "text-muted-foreground",
+                  )}
+                >
+                  {totals[value as keyof typeof totals].toLocaleString()}
+                </span>
+                <span className="text-xs text-muted-foreground">{summary}</span>
+              </dd>
+            </div>
+          ),
+        )}
+      </dl>
       <TabsList
         aria-label="Activity metric"
         variant="line"
         className="min-h-11 sm:min-h-9"
       >
-        <TabsTrigger className="min-w-24 px-4" value="active">
-          Active
-        </TabsTrigger>
-        <TabsTrigger className="min-w-24 px-4" value="rollback">
-          Rollback
-        </TabsTrigger>
+        {Object.entries(activityMetrics).map(([value, { label }]) => (
+          <TabsTrigger key={value} className="px-3" value={value}>
+            {label}
+          </TabsTrigger>
+        ))}
       </TabsList>
       <TabsContent value={metric} className="flex flex-col gap-4">
-        <div className="flex items-baseline gap-3">
-          <p className="text-4xl font-semibold tracking-tight tabular-nums">
-            {total.toLocaleString()}
-          </p>
-          <p className="text-sm text-muted-foreground">
-            {metric === "active"
-              ? "Active installations"
-              : "Bundles with rollbacks"}
-          </p>
-        </div>
         {report.series.length === 0 ? (
           <div className="flex h-48 items-center justify-center text-center text-sm text-muted-foreground">
             No bundle reports in this period. Try another channel or check again
@@ -124,13 +164,13 @@ export function ActivityChart({ report }: { readonly report: RecoveryReport }) {
           <>
             <div>
               <p className="mb-2 text-right text-xs text-muted-foreground">
-                {metric === "active"
+                {metric !== "recovered"
                   ? "Installations"
-                  : "Recovered installations per interval"}{" "}
+                  : `${metricInfo.label} installations per interval`}{" "}
                 · UTC
               </p>
               <ChartContainer
-                aria-label={`${metric === "active" ? "Active" : "Rollback"} trend for all reported bundle IDs`}
+                aria-label={`${metricInfo.label} trend for all reported bundle IDs`}
                 className="h-56 w-full aspect-auto sm:h-64"
                 config={config}
               >
@@ -237,15 +277,12 @@ export function ActivityChart({ report }: { readonly report: RecoveryReport }) {
                     </span>
                     {series.points.some((point) => point.spike) ? (
                       <TriangleAlert
-                        aria-label="Rollback spike"
+                        aria-label="Recovery spike"
                         className="size-3 shrink-0"
                       />
                     ) : null}
                     <span className="ml-auto tabular-nums">
-                      {(metric === "active"
-                        ? series.activeInstallations
-                        : series.recoveredInstallations
-                      ).toLocaleString()}
+                      {series[metricInfo.total].toLocaleString()}
                     </span>
                   </button>
                 ))}
@@ -259,16 +296,18 @@ export function ActivityChart({ report }: { readonly report: RecoveryReport }) {
                   </p>
                   <p className="mt-1 text-xs text-muted-foreground">
                     Active {selected.activeInstallations.toLocaleString()} ·
-                    Rollback {selected.recoveredInstallations.toLocaleString()}{" "}
-                    in this period
+                    Downloaded {selected.pendingInstallations.toLocaleString()}{" "}
+                    waiting to apply · Recovered{" "}
+                    {selected.recoveredInstallations.toLocaleString()} in this
+                    period
                   </p>
-                  {metric === "rollback" && lastSpike ? (
+                  {metric === "recovered" && lastSpike ? (
                     <p className="mt-2 flex items-center gap-2 text-xs">
                       <TriangleAlert
                         className="size-3 shrink-0"
                         aria-hidden="true"
                       />
-                      Rollback spike on {dates.format(lastSpike.startMs)}.
+                      Recovery spike on {dates.format(lastSpike.startMs)}.
                       Review this bundle’s delivery settings.
                     </p>
                   ) : null}
@@ -288,9 +327,9 @@ export function ActivityChart({ report }: { readonly report: RecoveryReport }) {
               <div className="mt-2 max-h-64 overflow-auto">
                 <table className="w-full text-left">
                   <caption className="sr-only">
-                    {metric === "active"
-                      ? "Active installations"
-                      : "Recovered installations"}{" "}
+                    {metric === "recovered"
+                      ? "Recovered installations"
+                      : metricInfo.summary}{" "}
                     by bundle ID, UTC
                   </caption>
                   <thead>
@@ -323,9 +362,7 @@ export function ActivityChart({ report }: { readonly report: RecoveryReport }) {
                             className="px-2 tabular-nums"
                             key={series.releaseId}
                           >
-                            {(metric === "active"
-                              ? series.points[i].active
-                              : series.points[i].recoveredInstallations) ?? "—"}
+                            {series.points[i][metricInfo.point] ?? "—"}
                           </td>
                         ))}
                       </tr>
@@ -398,36 +435,13 @@ export function InsightsOverview({
         ) : null}
       </CardContent>
       <CardFooter className="flex-wrap items-center justify-between gap-4 border-t px-6 py-5">
-        <div className="flex min-w-0 basis-64 flex-1 flex-col gap-2 text-xs text-muted-foreground">
-          {query.data && !query.error ? (
-            <>
-              <p>
-                Active follows each installation’s last reported ID in this
-                period. Rollbacks count recovered installations per interval.
-              </p>
-              {query.data.unattributedInstallations > 0 ? (
-                <p>
-                  {query.data.unattributedInstallations.toLocaleString()}{" "}
-                  reporting installations have no observed bundle ID and are
-                  excluded.
-                </p>
-              ) : null}
-              {query.data.truncated ? (
-                <p>
-                  Partial history — only reports since{" "}
-                  {times.format(query.data.sinceMs)} UTC are included. Choose a
-                  shorter period to see more complete counts.
-                </p>
-              ) : null}
-            </>
-          ) : (
-            <p>Browse individual reports in the event log.</p>
-          )}
-        </div>
+        {query.data?.truncated && !query.error ? (
+          <p className="text-xs text-muted-foreground">Partial history</p>
+        ) : null}
         <Link
           className={cn(
             buttonVariants({
-              className: "h-11 px-4 sm:h-9",
+              className: "ml-auto h-11 px-4 sm:h-9",
               size: "lg",
               variant: "outline",
             }),

@@ -168,7 +168,9 @@ export const parsePrismaBundleEventRow = (value: unknown): BundleEventRow => {
   if (
     (platform !== "ios" && platform !== "android") ||
     !(
-      ((type === "UPDATE_APPLIED" || type === "RECOVERED") &&
+      ((type === "UPDATE_DOWNLOADED" ||
+        type === "UPDATE_APPLIED" ||
+        type === "RECOVERED") &&
         typeof fromBundleId === "string" &&
         (updateStrategy === "fingerprint" ||
           updateStrategy === "appVersion")) ||
@@ -208,7 +210,10 @@ export const parsePrismaInsightsInstallationRow = (
   const type = readString(value, "type");
   if (
     (platform !== "ios" && platform !== "android") ||
-    (type !== "UPDATE_APPLIED" && type !== "RECOVERED" && type !== "UNCHANGED")
+    (type !== "UPDATE_DOWNLOADED" &&
+      type !== "UPDATE_APPLIED" &&
+      type !== "RECOVERED" &&
+      type !== "UNCHANGED")
   ) {
     throw new PrismaAdapterError("invalid installation fields");
   }
@@ -218,6 +223,8 @@ export const parsePrismaInsightsInstallationRow = (
     user_id: readNullableString(value, "user_id"),
     username: readNullableString(value, "username"),
     to_bundle_id: readString(value, "to_bundle_id"),
+    pending_bundle_id: readNullableString(value, "pending_bundle_id"),
+    pending_release_id: readNullableString(value, "pending_release_id"),
     type,
     platform,
     app_version: readString(value, "app_version"),

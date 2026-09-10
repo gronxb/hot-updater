@@ -44,6 +44,8 @@ const mocks = vi.hoisted(() => {
   };
 });
 
+vi.mock("react-native", () => ({ Platform: { OS: "ios" } }));
+
 vi.mock("./httpClient", () => ({
   createHttpClient: mocks.createHttpClient,
 }));
@@ -56,6 +58,8 @@ vi.mock("./native", () => ({
   addListener: mocks.addListener,
   clearCrashHistory: mocks.clearCrashHistory,
   getPublicActiveUpdateState: mocks.getActiveUpdateState,
+  getActiveUpdateState: mocks.getActiveUpdateState,
+  getBundleId: () => "bundle-id",
   getAppVersion: mocks.getAppVersion,
   getBaseURL: mocks.getBaseURL,
   getUpdateId: mocks.getUpdateId,

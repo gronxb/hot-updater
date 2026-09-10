@@ -7,6 +7,8 @@ import { createHttpClient, type HotUpdaterHttpClient } from "./httpClient";
 import {
   addListener,
   getPublicActiveUpdateState,
+  getActiveUpdateState,
+  getBundleId,
   clearCrashHistory,
   getAppVersion,
   getBaseURL,
@@ -29,6 +31,7 @@ import {
   type UpdateParams,
   updateBundle,
 } from "./native";
+import { reportBundleDownloaded } from "./notifyAppReadyInsights";
 import { hotUpdaterStore } from "./store";
 import {
   type AutoUpdateOptions,
@@ -491,9 +494,34 @@ function createHotUpdaterClient() {
      * }
      * ```
      */
-    updateBundle: (params: UpdateParams) => {
-      ensureGlobalClient("updateBundle");
-      return updateBundle(params);
+    updateBundle: async (params: UpdateParams) => {
+      const client = ensureGlobalClient("updateBundle");
+      const fromBundleId = getBundleId();
+      const state = getActiveUpdateState();
+      const active = state.activeSelection;
+      const downloaded = await updateBundle(params);
+      if (downloaded && params.fileUrl !== null) {
+        const selection = getActiveUpdateState().activeSelection;
+        await reportBundleDownloaded(
+          { ...globalConfig, client },
+          {
+            fromBundleId,
+            fromReleaseId:
+              active?.bundleId === fromBundleId
+                ? active.releaseId
+                : state.stableSelection?.bundleId === fromBundleId
+                  ? state.stableSelection.releaseId
+                  : null,
+            toBundleId: params.bundleId,
+            toReleaseId: selection?.releaseId ?? null,
+            channel: params.channel ?? getChannel(),
+            updateStrategy: selection?.scopeKey?.startsWith("v1:fingerprint:")
+              ? "fingerprint"
+              : "appVersion",
+          },
+        );
+      }
+      return downloaded;
     },
 
     /**

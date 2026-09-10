@@ -135,6 +135,7 @@ export const modelValidators: ValidatorMap = {
   bundle_events: {
     id: (value) => typeof value === "string",
     type: (value) =>
+      value === "UPDATE_DOWNLOADED" ||
       value === "UPDATE_APPLIED" ||
       value === "RECOVERED" ||
       value === "UNCHANGED",
@@ -162,7 +163,10 @@ export const modelValidators: ValidatorMap = {
     user_id: isNullableInsightsIdentityText,
     username: (value) => value === null || typeof value === "string",
     to_bundle_id: (value) => typeof value === "string",
+    pending_bundle_id: (value) => value === null || typeof value === "string",
+    pending_release_id: (value) => value === null || typeof value === "string",
     type: (value) =>
+      value === "UPDATE_DOWNLOADED" ||
       value === "UPDATE_APPLIED" ||
       value === "RECOVERED" ||
       value === "UNCHANGED",
@@ -322,6 +326,8 @@ export const sortableFields: Record<DatabaseModel, ReadonlySet<string>> = {
     "from_release_id",
     "to_release_id",
     "to_bundle_id",
+    "pending_bundle_id",
+    "pending_release_id",
     "platform",
     "app_version",
     "channel",
@@ -337,6 +343,8 @@ export const sortableFields: Record<DatabaseModel, ReadonlySet<string>> = {
     "user_id",
     "username",
     "to_bundle_id",
+    "pending_bundle_id",
+    "pending_release_id",
     "type",
     "platform",
     "app_version",

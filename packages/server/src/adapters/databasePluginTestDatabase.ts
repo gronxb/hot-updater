@@ -90,6 +90,8 @@ export const DATABASE_PLUGIN_TEST_SCHEMA_SQL = `
     user_id text,
     username text,
     to_bundle_id text not null,
+    pending_bundle_id text,
+    pending_release_id text,
     type text not null,
     platform text not null,
     app_version text not null,

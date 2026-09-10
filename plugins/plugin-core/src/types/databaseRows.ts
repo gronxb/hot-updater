@@ -102,6 +102,11 @@ export type BundleEventRowBase = {
 
 export type BundleEventRow =
   | (BundleEventRowBase & {
+      readonly type: "UPDATE_DOWNLOADED";
+      readonly from_bundle_id: string;
+      readonly update_strategy: "fingerprint" | "appVersion";
+    })
+  | (BundleEventRowBase & {
       readonly type: "UPDATE_APPLIED" | "RECOVERED";
       readonly from_bundle_id: string;
       readonly update_strategy: "fingerprint" | "appVersion";
@@ -125,7 +130,10 @@ export type InsightsInstallationRow = Pick<
   | "channel"
   | "cohort"
   | "received_at_ms"
->;
+> & {
+  readonly pending_bundle_id: string | null;
+  readonly pending_release_id: string | null;
+};
 
 export interface ApiKeyRow {
   readonly id: string;

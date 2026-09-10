@@ -83,6 +83,84 @@ const pointAt = (
 ) => seriesFor(report, id).points.find((p) => p.startMs === hour * HOUR)!;
 
 describe("observed bundle activity", () => {
+  it("keeps an unattributed download visible in overall pending and downloaded counts", async () => {
+    const report = await getRecoveryReport(
+      modelFor([
+        event("UPDATE_DOWNLOADED", 26, "unknown", {
+          from_bundle_id: "built-in",
+          to_bundle_id: "downloaded-file",
+          from_release_id: null,
+          to_release_id: null,
+        }),
+      ]),
+      input,
+      now,
+    );
+    expect(report).toMatchObject({
+      pendingInstallations: 1,
+      downloadedInstallations: 1,
+      unattributedInstallations: 1,
+      series: [],
+    });
+  });
+
+  it("separates downloads from running and pending state across repeated reports, supersession, and apply", async () => {
+    const rows = [
+      event("UNCHANGED", 25, "release-a", {
+        install_id: "phone",
+        to_bundle_id: "file-a",
+      }),
+      event("UPDATE_DOWNLOADED", 26, "release-b", {
+        install_id: "phone",
+        from_bundle_id: "file-a",
+        to_bundle_id: "file-b",
+      }),
+      event("UPDATE_DOWNLOADED", 27, "release-b", {
+        install_id: "phone",
+        from_bundle_id: "file-a",
+        to_bundle_id: "file-b",
+      }),
+      event("UPDATE_DOWNLOADED", 28, "release-c", {
+        install_id: "phone",
+        from_bundle_id: "file-a",
+        to_bundle_id: "file-c",
+      }),
+    ];
+    const report = await getRecoveryReport(modelFor(rows), input, now);
+    expect(report.downloadedInstallations).toBe(1);
+    expect(seriesFor(report, "release-a").activeInstallations).toBe(1);
+    expect(seriesFor(report, "release-b")).toMatchObject({
+      activeInstallations: 0,
+      pendingInstallations: 0,
+      downloadedInstallations: 1,
+    });
+    expect(seriesFor(report, "release-c")).toMatchObject({
+      activeInstallations: 0,
+      pendingInstallations: 1,
+      downloadedInstallations: 1,
+    });
+    expect(pointAt(report, 26, "release-b")).toMatchObject({
+      active: 0,
+      pendingInstallations: 1,
+      downloadedInstallations: 1,
+      applied: 0,
+    });
+    rows.push(
+      event("UPDATE_APPLIED", 29, "release-c", {
+        install_id: "phone",
+        from_bundle_id: "file-a",
+        to_bundle_id: "file-c",
+      }),
+    );
+    const applied = await getRecoveryReport(modelFor(rows), input, now);
+    expect(seriesFor(applied, "release-c")).toMatchObject({
+      activeInstallations: 1,
+      pendingInstallations: 0,
+      downloadedInstallations: 1,
+    });
+    expect(seriesFor(applied, "release-a").activeInstallations).toBe(0);
+  });
+
   it("charts all 30-day IDs and transfers installations between same-file promotions, producing a crossover", async () => {
     const events = [
       ...Array.from({ length: 10 }, (_, i) =>

@@ -83,6 +83,8 @@ export const databaseFields = {
     "user_id",
     "username",
     "to_bundle_id",
+    "pending_bundle_id",
+    "pending_release_id",
     "type",
     "platform",
     "app_version",

@@ -65,10 +65,12 @@ const toInsightsEventRanges = (
 ): readonly (readonly DatabaseWhere<"bundle_events">[])[] => {
   if (filter.kind === "all") return [[]];
   if (filter.kind === "bundle") return [toInsightsBundleWhere(filter)];
-  return (["UPDATE_APPLIED", "RECOVERED"] as const).map((type) => [
-    { field: "install_id", value: filter.installId },
-    { field: "type", value: type },
-  ]);
+  return (["UPDATE_DOWNLOADED", "UPDATE_APPLIED", "RECOVERED"] as const).map(
+    (type) => [
+      { field: "install_id", value: filter.installId },
+      { field: "type", value: type },
+    ],
+  );
 };
 
 const listInsightsEventRange = async (

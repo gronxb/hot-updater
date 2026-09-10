@@ -157,7 +157,9 @@ const eventRow = (row: Record<string, unknown>): BundleEventRow => {
   if (
     (platform !== "ios" && platform !== "android") ||
     !(
-      ((type === "UPDATE_APPLIED" || type === "RECOVERED") &&
+      ((type === "UPDATE_DOWNLOADED" ||
+        type === "UPDATE_APPLIED" ||
+        type === "RECOVERED") &&
         typeof fromBundleId === "string" &&
         (updateStrategy === "fingerprint" ||
           updateStrategy === "appVersion")) ||
@@ -193,7 +195,9 @@ const installationRow = (
   const type = stringValue(row, "type", "bundle_installations");
   const platform = stringValue(row, "platform", "bundle_installations");
   if (
-    !["UPDATE_APPLIED", "RECOVERED", "UNCHANGED"].includes(type) ||
+    !["UPDATE_DOWNLOADED", "UPDATE_APPLIED", "RECOVERED", "UNCHANGED"].includes(
+      type,
+    ) ||
     (platform !== "ios" && platform !== "android")
   ) {
     throw new InvalidD1RowError("bundle_installations");
@@ -204,6 +208,16 @@ const installationRow = (
     user_id: nullableString(row, "user_id", "bundle_installations"),
     username: nullableString(row, "username", "bundle_installations"),
     to_bundle_id: stringValue(row, "to_bundle_id", "bundle_installations"),
+    pending_bundle_id: nullableString(
+      row,
+      "pending_bundle_id",
+      "bundle_installations",
+    ),
+    pending_release_id: nullableString(
+      row,
+      "pending_release_id",
+      "bundle_installations",
+    ),
     type: type as InsightsInstallationRow["type"],
     platform,
     app_version: stringValue(row, "app_version", "bundle_installations"),

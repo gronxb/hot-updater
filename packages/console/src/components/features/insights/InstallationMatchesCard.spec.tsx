@@ -11,6 +11,8 @@ const row: InsightsInstallationViewRow = {
   cohort: "1",
   installId: "install-1",
   lastKnownBundleId: "bundle-1",
+  pendingBundleId: null,
+  pendingReleaseId: null,
   latestStatus: "UNCHANGED",
   platform: "ios",
   receivedAtMs: Date.UTC(2026, 6, 18),

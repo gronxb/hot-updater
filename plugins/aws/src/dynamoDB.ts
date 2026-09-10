@@ -2941,7 +2941,9 @@ const hasValidBundleEventShape = (value: object): boolean => {
   const fromBundleId = field(value, "from_bundle_id");
   const updateStrategy = field(value, "update_strategy");
   return (
-    ((type === "UPDATE_APPLIED" || type === "RECOVERED") &&
+    ((type === "UPDATE_DOWNLOADED" ||
+      type === "UPDATE_APPLIED" ||
+      type === "RECOVERED") &&
       typeof fromBundleId === "string" &&
       (updateStrategy === "fingerprint" || updateStrategy === "appVersion")) ||
     (type === "UNCHANGED" && fromBundleId === null && updateStrategy === null)
@@ -2971,7 +2973,8 @@ const isInsightsInstallationRow = (
   isNullableString(field(value, "user_id")) &&
   isNullableString(field(value, "username")) &&
   typeof field(value, "to_bundle_id") === "string" &&
-  (field(value, "type") === "UPDATE_APPLIED" ||
+  (field(value, "type") === "UPDATE_DOWNLOADED" ||
+    field(value, "type") === "UPDATE_APPLIED" ||
     field(value, "type") === "RECOVERED" ||
     field(value, "type") === "UNCHANGED") &&
   (field(value, "platform") === "ios" ||
@@ -3109,7 +3112,14 @@ const parseInsightsInstallationItem = (
   ) {
     throw new DynamoDBStoredItemError();
   }
-  return value as DynamoDBInsightsInstallationItem;
+  return {
+    ...value,
+    row: {
+      ...row,
+      pending_bundle_id: row.pending_bundle_id ?? null,
+      pending_release_id: row.pending_release_id ?? null,
+    },
+  } as DynamoDBInsightsInstallationItem;
 };
 
 const loadInsightsInstallationItem = async (

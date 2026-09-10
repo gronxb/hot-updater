@@ -20,6 +20,7 @@ export type NotifyAppReadyOptions = {
   client: HotUpdaterHttpClient;
   requestHeaders?: Record<string, string>;
   requestTimeout?: number;
+  reportUnchanged?: boolean;
   onNotifyAppReady?: (result: NotifyAppReadyResult) => void;
   onError?: (error: HotUpdaterError | Error | unknown) => void;
 };
@@ -27,6 +28,8 @@ export type NotifyAppReadyOptions = {
 type RequestAnimationFrame = (callback: (timestamp: number) => void) => number;
 
 let didAttemptAutomaticInsights = false;
+let didDownload = false;
+let readinessPromise: Promise<NotifyAppReadyResult | undefined> | undefined;
 
 const waitForNextFrame = () =>
   new Promise<void>((resolve) => {
@@ -139,12 +142,31 @@ const buildNotifyAppReadyInsightsParams = (
   }
 };
 
+let lastInsightsReport = Promise.resolve();
+const sendInsights = (
+  options: Pick<NotifyAppReadyOptions, "client">,
+  params: InsightsEventParams,
+): Promise<void> => {
+  lastInsightsReport = lastInsightsReport
+    .catch(() => {})
+    .then(async () => {
+      const session = await options.client.createSession();
+      await session.sendInsightsEvent(params);
+    });
+  return lastInsightsReport;
+};
+
 const maybeSendAutomaticInsights = async (
   options: NotifyAppReadyOptions,
   nativeResult: NotifyAppReadyResult,
   insightsEvent: NotifyAppReadyInsightsEvent | null,
 ): Promise<void> => {
-  if (!options.insights || didAttemptAutomaticInsights) {
+  if (
+    !options.insights ||
+    didAttemptAutomaticInsights ||
+    (nativeResult.status === "UNCHANGED" &&
+      (options.reportUnchanged === false || didDownload))
+  ) {
     return;
   }
 
@@ -156,15 +178,15 @@ const maybeSendAutomaticInsights = async (
     );
   }
 
-  const session = await options.client.createSession();
-  await session.sendInsightsEvent(
+  await sendInsights(
+    options,
     buildNotifyAppReadyInsightsParams(nativeResult, insightsEvent, options),
   );
 };
 
-export const handleNotifyAppReady = async (
+const notifyAppReady = async (
   options: NotifyAppReadyOptions,
-): Promise<void> => {
+): Promise<NotifyAppReadyResult | undefined> => {
   try {
     let nativeReadResult: ReturnType<typeof readNotifyAppReady>;
     do {
@@ -185,10 +207,75 @@ export const handleNotifyAppReady = async (
     }
 
     options.onNotifyAppReady?.(nativeResult);
+    return nativeResult;
   } catch (error) {
     const normalizedError =
       error instanceof Error ? error : new Error(String(error));
     options.onError?.(error);
     console.warn("[HotUpdater] Failed to notify app ready:", normalizedError);
+    return undefined;
+  }
+};
+
+export const handleNotifyAppReady = (
+  options: NotifyAppReadyOptions,
+): Promise<NotifyAppReadyResult | undefined> => {
+  readinessPromise = notifyAppReady(options);
+  return readinessPromise;
+};
+
+/** Called after an automatic update check finds no download or transition. */
+export const reportNoChange = async (
+  options: NotifyAppReadyOptions,
+): Promise<void> => {
+  try {
+    await maybeSendAutomaticInsights(options, { status: "UNCHANGED" }, null);
+  } catch (error) {
+    console.warn("[HotUpdater] Automatic no-change insights failed:", error);
+  }
+};
+
+let lastDownloadedSelection: string | undefined;
+
+/** Report only after the archive/diff has been verified and staged successfully. */
+export const reportBundleDownloaded = async (
+  options: Pick<
+    NotifyAppReadyOptions,
+    "insights" | "client" | "requestHeaders" | "requestTimeout"
+  >,
+  transition: {
+    readonly fromBundleId: string;
+    readonly fromReleaseId: string | null;
+    readonly toBundleId: string;
+    readonly toReleaseId: string | null;
+    readonly channel: string;
+    readonly updateStrategy: "fingerprint" | "appVersion";
+  },
+): Promise<void> => {
+  if (!options.insights || transition.fromBundleId === transition.toBundleId)
+    return;
+  const key = JSON.stringify([
+    transition.channel,
+    transition.toReleaseId,
+    transition.toBundleId,
+  ]);
+  if (lastDownloadedSelection === key) return;
+  lastDownloadedSelection = key;
+  // A later init/mount in this JS runtime must not overwrite pending apply with UNCHANGED.
+  didDownload = true;
+  try {
+    await readinessPromise;
+    const common = buildNotifyAppReadyInsightsParams(
+      { status: "UNCHANGED" },
+      null,
+      options,
+    );
+    await sendInsights(options, {
+      ...common,
+      ...transition,
+      type: "UPDATE_DOWNLOADED",
+    });
+  } catch (error) {
+    console.warn("[HotUpdater] Download insights failed:", error);
   }
 };

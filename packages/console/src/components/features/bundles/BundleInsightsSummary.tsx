@@ -6,8 +6,23 @@ import { Skeleton } from "@/components/ui/skeleton";
 import type { BundleActivityInput } from "@/lib/bundle-activity";
 import type { RecoveryReport } from "@/lib/insights-recovery";
 import { getRecoveryReportRpc } from "@/lib/insights-recovery-rpc";
+import { cn } from "@/lib/utils";
 
 import { BundleActivityChart } from "./BundleActivityChart";
+
+const activityStats = [
+  { label: "Active", field: "activeInstallations", color: "text-success/85" },
+  {
+    label: "Downloaded",
+    field: "pendingInstallations",
+    color: "text-primary/85",
+  },
+  {
+    label: "Recovered",
+    field: "recoveredInstallations",
+    color: "text-warning/85",
+  },
+] as const;
 
 export function BundleMovementSummary({
   report,
@@ -35,22 +50,23 @@ export function BundleMovementSummary({
       title={
         report.truncated
           ? "Partial history. Counts include only the available reports."
-          : "Active: last observed ID per installation. Rollbacks: distinct installations recovered from this ID in 30 days."
+          : "Active: last observed running ID per installation. Downloaded: waiting to apply. Recovered: distinct installations recovered from this ID in 30 days."
       }
       className="flex min-w-[140px] items-baseline gap-3 whitespace-nowrap"
     >
-      <span className="flex items-baseline gap-1.5">
-        <span className="text-xs text-muted-foreground">Active</span>
-        <span className="text-sm font-medium tabular-nums">
-          {series?.activeInstallations ?? 0}
+      {activityStats.map(({ label, field, color }) => (
+        <span key={field} className="flex items-baseline gap-1.5">
+          <span className="text-xs text-muted-foreground">{label}</span>
+          <span
+            className={cn(
+              "text-sm font-medium tabular-nums",
+              (series?.[field] ?? 0) > 0 ? color : "text-muted-foreground",
+            )}
+          >
+            {series?.[field] ?? 0}
+          </span>
         </span>
-      </span>
-      <span className="flex items-baseline gap-1.5">
-        <span className="text-xs text-muted-foreground">Rollback</span>
-        <span className="text-sm font-medium tabular-nums">
-          {series?.recoveredInstallations ?? 0}
-        </span>
-      </span>
+      ))}
       {report.truncated ? (
         <span className="text-xs text-muted-foreground">Partial</span>
       ) : null}
@@ -97,27 +113,27 @@ export function BundleInsightsSummary({
           </div>
         ) : (
           <>
-            <dl className="grid grid-cols-2 divide-x divide-border/70">
-              <div className="pr-4">
-                <dt className="text-xs text-muted-foreground">Active</dt>
-                <dd className="mt-1 text-xl font-semibold tabular-nums">
-                  {series?.activeInstallations ?? 0}
-                </dd>
-              </div>
-              <div className="pl-4">
-                <dt className="text-xs text-muted-foreground">
-                  Rollback · 24h
-                </dt>
-                <dd className="mt-1 text-xl font-semibold tabular-nums">
-                  {series?.recoveredInstallations ?? 0}
-                </dd>
-              </div>
+            <dl className="grid grid-cols-3 gap-4">
+              {activityStats.map(({ label, field, color }) => (
+                <div key={field}>
+                  <dt className="text-xs text-muted-foreground">{label}</dt>
+                  <dd
+                    className={cn(
+                      "mt-1 text-xl font-semibold tabular-nums",
+                      (series?.[field] ?? 0) > 0
+                        ? color
+                        : "text-muted-foreground",
+                    )}
+                  >
+                    {series?.[field] ?? 0}
+                  </dd>
+                </div>
+              ))}
             </dl>
             <BundleActivityChart series={series} />
-            <p className="text-xs text-muted-foreground">
-              Last observed active installations · hourly rollbacks
-              {report?.truncated ? " · Partial history" : ""}
-            </p>
+            {report?.truncated ? (
+              <p className="text-xs text-muted-foreground">Partial history</p>
+            ) : null}
           </>
         )}
       </CardContent>

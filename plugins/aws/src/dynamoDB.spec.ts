@@ -98,6 +98,8 @@ const insightsInstallation = (
     user_id: userId,
     username: event.username,
     to_bundle_id: event.to_bundle_id,
+    pending_bundle_id: null,
+    pending_release_id: null,
     type: event.type,
     platform: event.platform,
     app_version: event.app_version,

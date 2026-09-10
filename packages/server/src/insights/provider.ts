@@ -153,6 +153,8 @@ const bundleFilter = (
     MAX_EVENT_ID_LENGTH,
   );
   switch (input.outcome) {
+    case "downloaded":
+      return { ...scope, type: "UPDATE_DOWNLOADED", toBundleId: bundleId };
     case "applied":
       return { ...scope, type: "UPDATE_APPLIED", toBundleId: bundleId };
     case "recovered":
@@ -325,6 +327,8 @@ const toInstallationRow = (row: InsightsInstallationRow): InstallationRow => ({
   cohort: row.cohort,
   installId: row.install_id,
   lastKnownBundleId: row.to_bundle_id,
+  pendingBundleId: row.pending_bundle_id,
+  pendingReleaseId: row.pending_release_id,
   latestStatus: row.type,
   platform: row.platform,
   receivedAtMs: row.received_at_ms,
@@ -563,12 +567,14 @@ export const createInsightsProvider = (
       const [
         reportingInstallations,
         bundleInstallations,
+        downloadedReports,
         appliedReports,
         recoveredReports,
         unchangedReports,
       ] = await Promise.all([
         reporting,
         measure(model.countInstallations({ ...scope, sinceMs, bundleId })),
+        countOutcome("downloaded"),
         countOutcome("applied"),
         countOutcome("recovered"),
         countOutcome("unchanged"),
@@ -582,6 +588,7 @@ export const createInsightsProvider = (
         bundle: {
           bundleId,
           reportingInstallations: bundleInstallations,
+          downloadedReports,
           appliedReports,
           recoveredReports,
           unchangedReports,

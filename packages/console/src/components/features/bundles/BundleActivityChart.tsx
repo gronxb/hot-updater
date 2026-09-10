@@ -10,10 +10,11 @@ import {
 import type { RecoverySeries } from "@/lib/insights-recovery";
 
 const config = {
-  active: { label: "Active", color: "var(--chart-2)" },
+  active: { label: "Active", color: "var(--success)" },
+  pendingInstallations: { label: "Downloaded", color: "var(--primary)" },
   recoveredInstallations: {
-    label: "Rollback",
-    color: "var(--muted-foreground)",
+    label: "Recovered",
+    color: "var(--warning)",
   },
 };
 const formatDate = (ms: number) =>
@@ -79,6 +80,15 @@ export function BundleActivityChart({
             isAnimationActive={false}
             stroke="var(--color-active)"
             strokeWidth={2}
+            type="linear"
+          />
+          <Area
+            dataKey="pendingInstallations"
+            fill="var(--color-pendingInstallations)"
+            fillOpacity={0.04}
+            stroke="var(--color-pendingInstallations)"
+            strokeDasharray="4 3"
+            isAnimationActive={false}
             type="linear"
           />
           <Area

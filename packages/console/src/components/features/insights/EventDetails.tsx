@@ -1,4 +1,10 @@
-import { Activity, Check, ChevronDown, RotateCcw } from "lucide-react";
+import {
+  Activity,
+  Check,
+  ChevronDown,
+  Download,
+  RotateCcw,
+} from "lucide-react";
 import { useEffect, useState } from "react";
 
 import { HashValueDisplay } from "@/components/HashValueDisplay";
@@ -8,6 +14,13 @@ import type { InsightsEventRow } from "@/lib/insights-view";
 type EventHistoryRow = InsightsEventRow;
 
 const eventTypes = {
+  UPDATE_DOWNLOADED: {
+    label: "Downloaded",
+    description:
+      "Download complete. Waiting for the app to restart and apply it.",
+    variant: "secondary",
+    icon: Download,
+  },
   UPDATE_APPLIED: {
     label: "Update applied",
     description: "The app started using the downloaded update.",
@@ -15,14 +28,14 @@ const eventTypes = {
     icon: Check,
   },
   RECOVERED: {
-    label: "Rolled back",
-    description: "The app recovered to a previous working bundle.",
+    label: "Recovered",
+    description: "Recovered from a crashed bundle.",
     variant: "warning",
     icon: RotateCcw,
   },
   UNCHANGED: {
     label: "No change",
-    description: "The app continues using the same bundle files.",
+    description: "No download or apply was reported at this point.",
     variant: "secondary",
     icon: Activity,
   },
@@ -122,12 +135,16 @@ export function EventBundleTransition({
   readonly event: Pick<EventHistoryRow, "type" | "fromBundleId" | "toBundleId">;
   readonly touch?: boolean;
 }) {
-  const changed = event.type === "UPDATE_APPLIED" || event.type === "RECOVERED";
+  const downloaded = event.type === "UPDATE_DOWNLOADED";
+  const changed =
+    downloaded || event.type === "UPDATE_APPLIED" || event.type === "RECOVERED";
   return (
     <dl className="grid grid-cols-[auto_minmax(0,1fr)] items-center gap-x-2 gap-y-2">
       {event.fromBundleId && changed ? (
         <>
-          <dt className="text-muted-foreground">From</dt>
+          <dt className="text-muted-foreground">
+            {downloaded ? "Running" : "From"}
+          </dt>
           <dd>
             <HashValueDisplay
               value={event.fromBundleId}
@@ -136,7 +153,9 @@ export function EventBundleTransition({
           </dd>
         </>
       ) : null}
-      <dt className="text-muted-foreground">{changed ? "To" : "Current"}</dt>
+      <dt className="text-muted-foreground">
+        {downloaded ? "Pending" : changed ? "To" : "Current"}
+      </dt>
       <dd>
         <HashValueDisplay
           value={event.toBundleId}

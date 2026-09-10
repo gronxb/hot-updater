@@ -95,6 +95,7 @@ const createClient = (catalog = createCatalog()) => {
 
 describe("checkForUpdate Release catalog protocol", () => {
   beforeEach(() => {
+    vi.resetModules();
     vi.clearAllMocks();
     vi.stubGlobal("__DEV__", false);
     mocks.acceptReleaseCatalog.mockReturnValue(true);
@@ -108,6 +109,59 @@ describe("checkForUpdate Release catalog protocol", () => {
     mocks.commitReleaseSelection.mockResolvedValue(true);
     mocks.updateBundle.mockResolvedValue(true);
   });
+
+  it("reports an optional download only after staging, without treating the target as running", async () => {
+    const { checkForUpdate } = await import("./checkForUpdate");
+    const { client, sendInsightsEvent } = createClient();
+    let complete!: (success: boolean) => void;
+    mocks.updateBundle.mockImplementationOnce(
+      () =>
+        new Promise<boolean>((resolve) => {
+          complete = resolve;
+        }),
+    );
+    const update = await checkForUpdate({
+      client,
+      insights: true,
+      updateStrategy: "appVersion",
+    });
+    expect(update?.shouldForceUpdate).toBe(false);
+    const pending = update!.updateBundle();
+    await vi.waitFor(() => expect(mocks.updateBundle).toHaveBeenCalledOnce());
+    expect(sendInsightsEvent).not.toHaveBeenCalled();
+    complete(true);
+    await expect(pending).resolves.toBe(true);
+    expect(sendInsightsEvent).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({
+        type: "UPDATE_DOWNLOADED",
+        fromBundleId: CURRENT_BUNDLE_ID,
+        toBundleId: TARGET_BUNDLE_ID,
+        fromReleaseId: null,
+        toReleaseId: RELEASE_ID,
+        updateStrategy: "appVersion",
+      }),
+    );
+    await update!.updateBundle();
+    expect(sendInsightsEvent).toHaveBeenCalledOnce();
+  });
+
+  it.each([false, "failure"])(
+    "does not report a download when staging returns %s",
+    async (result) => {
+      const { checkForUpdate } = await import("./checkForUpdate");
+      const { client, sendInsightsEvent } = createClient();
+      if (result === false) mocks.updateBundle.mockResolvedValueOnce(false);
+      else
+        mocks.updateBundle.mockRejectedValueOnce(new Error("download failed"));
+      const update = await checkForUpdate({
+        client,
+        insights: true,
+        updateStrategy: "appVersion",
+      });
+      await update!.updateBundle().catch(() => false);
+      expect(sendInsightsEvent).not.toHaveBeenCalled();
+    },
+  );
 
   it("selects locally and defers Bundle artifact resolution until install", async () => {
     const { checkForUpdate } = await import("./checkForUpdate");

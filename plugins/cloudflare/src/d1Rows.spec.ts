@@ -7,6 +7,8 @@ import {
 import { parseD1Row } from "./d1Rows";
 
 const installationD1Row = {
+  pending_bundle_id: null,
+  pending_release_id: null,
   id: "event-1",
   install_id: "install-1",
   user_id: "user-1",

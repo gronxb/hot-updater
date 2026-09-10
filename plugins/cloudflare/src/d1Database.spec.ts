@@ -237,7 +237,7 @@ it("queries each movement type through a bounded descending range", async () => 
     }),
   ).resolves.toEqual([]);
 
-  expect(state.queries).toHaveLength(2);
+  expect(state.queries).toHaveLength(3);
   for (const query of state.queries) {
     expect(query.sql).toContain("SELECT * FROM bundle_events");
     expect(query.sql).toContain("type = json_extract(?, '$')");
@@ -246,6 +246,7 @@ it("queries each movement type through a bounded descending range", async () => 
   }
   expect(state.queries.flatMap(({ params }) => params)).toEqual(
     expect.arrayContaining([
+      JSON.stringify("UPDATE_DOWNLOADED"),
       JSON.stringify("UPDATE_APPLIED"),
       JSON.stringify("RECOVERED"),
     ]),
