@@ -1,5 +1,22 @@
 # @hot-updater/react-native
 
+## 1.0.0-rc.5
+
+### Minor Changes
+
+- 479c1e5: Report completed bundle downloads separately from applied updates. Persist the running bundle and pending selection, show Downloaded as waiting to apply, and keep Active, Downloaded, and Recovered totals visible above the activity chart tabs. Defer automatic No change reports until the update check finishes. Keep the unreleased 1.0.0 schema in its existing single initialization migration.
+
+### Patch Changes
+
+- b23db5e: Drain queued iOS surface starts before recovery and prevent failed runtimes from
+  starting surfaces or reporting readiness. Preserve fatal error handling when
+  recovery cannot proceed and prevent delayed content events from verifying a
+  crashing bundle. Serialize Android recovery decisions, publish complete crash
+  markers before restarting, and preserve exception hooks in minified builds.
+- Updated dependencies [479c1e5]
+- Updated dependencies [b23db5e]
+  - @hot-updater/plugin-core@1.0.0-rc.4
+
 ## 1.0.0-rc.4
 
 ### Patch Changes

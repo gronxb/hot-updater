@@ -1,5 +1,14 @@
 # @hot-updater/bare
 
+## 1.0.0-rc.4
+
+### Patch Changes
+
+- Updated dependencies [479c1e5]
+- Updated dependencies [b23db5e]
+  - @hot-updater/plugin-core@1.0.0-rc.4
+  - @hot-updater/cli-tools@1.0.0-rc.4
+
 ## 1.0.0-rc.3
 
 ### Patch Changes
