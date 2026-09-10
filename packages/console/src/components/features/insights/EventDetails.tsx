@@ -18,7 +18,7 @@ const eventTypes = {
     label: "Downloaded",
     description:
       "Download complete. Waiting for the app to restart and apply it.",
-    variant: "secondary",
+    variant: "default",
     icon: Download,
   },
   UPDATE_APPLIED: {
