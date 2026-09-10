@@ -1,5 +1,12 @@
 # @hot-updater/standalone
 
+## 0.36.12
+
+### Patch Changes
+
+- @hot-updater/core@0.36.12
+- @hot-updater/plugin-core@0.36.12
+
 ## 0.36.11
 
 ### Patch Changes
