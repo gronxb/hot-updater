@@ -31,7 +31,7 @@ npm install drizzle-orm postgres
 npm install -D hot-updater drizzle-kit tsx typescript @types/node
 ```
 
-## Build Configuration
+## Build configuration
 
 The Dockerfile below expects a CommonJS TypeScript build that preserves the
 project-root layout under `dist`:
@@ -62,7 +62,7 @@ project-root layout under `dist`:
 
 With this layout, `src/index.ts` is emitted as `dist/src/index.js`.
 
-## Database Setup
+## Database setup
 
 Create the database connection file.
 
@@ -75,7 +75,7 @@ const client = postgres(process.env.DATABASE_URL!);
 export const db = drizzle(client, { schema }); // [!code ++]
 ```
 
-## Hot Updater Configuration
+## Hot Updater configuration
 
 Create the Hot Updater instance.
 
@@ -103,7 +103,7 @@ export const hotUpdater = createHotUpdater({
 });
 ```
 
-## Server Setup
+## Server setup
 
 Create the server entry point.
 
@@ -140,7 +140,7 @@ middleware and mount must be registered before the broader client mount. Omit
 both to deploy a client-only server.
 </Callout>
 
-## Schema Generation
+## Schema generation
 
 Generate the Drizzle schema for Hot Updater tables. Run these commands in the
 server project with `DATABASE_URL` and the storage environment variables from
@@ -213,7 +213,7 @@ dist
 *.log
 ```
 
-## Build and Run
+## Build and run
 
 Build the Docker image.
 
@@ -318,7 +318,7 @@ Stop all services.
 docker compose down
 ```
 
-## CLI Configuration
+## CLI configuration
 
 [Connect the React Native project's CLI](/docs/custom/cli-configuration) to the
 verified deployment URL with `/hot-updater/admin` as its base path. Keep the

@@ -6,9 +6,8 @@ icon: TestTube
 
 import { Tabs, Tab } from "fumadocs-ui/components/tabs";
 
-In this walkthrough, you will install a Release build, change its text and image
-through an OTA update, then restore the original screen. You only build the
-native app once.
+Install a Release build, change its text and image through an OTA update, then
+restore the original screen. You only build the native app once.
 
 ## Before you start
 
@@ -91,7 +90,7 @@ Use your equivalent Release command if the app has custom schemes or flavors.
 The app must load its bundled JavaScript; a development session using Metro
 does not exercise OTA loading.
 
-**You should see:** `OTA baseline` and your original image. Keep this app
+You should see `OTA baseline` and your original image. Keep this app
 installed for the remaining steps.
 
 ## 2. Publish a visible change
@@ -127,7 +126,7 @@ npx hot-updater deploy -p ios -c ota-test
   </Tab>
 </Tabs>
 
-**You should see:** `Deployment successful` and an **ID**. Save that ID for the
+You should see `Deployment successful` and an **ID**. Save that ID for the
 application and rollback checks. Leave rollout at its default 100%; if your
 app assigns a named cohort, [target that cohort](/docs/guides/rollout-cohorts).
 
@@ -145,9 +144,6 @@ deployment. The example reads it with
 Keep the visible screen change as proof too: an ID can change when an update is
 staged, before its JavaScript is running.
 
-**You have now verified OTA delivery:** a new screen is running in the original
-native installation.
-
 ## 4. Roll back the test update
 
 Use the ID you saved above. Inspect it first and confirm it belongs to your
@@ -162,7 +158,7 @@ In the app, tap **Check and apply update** again and wait for the restart.
 The [example flow](/docs/get-started/app-setup#configure-the-update-client)
 applies the selected rollback through the same button.
 
-**You should see:** `OTA baseline` and the original image again. This assumes
+You should see `OTA baseline` and the original image again. This assumes
 the channel had no earlier updates. If it did, the app may return to a previous
 compatible enabled update instead.
 

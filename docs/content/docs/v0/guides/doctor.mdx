@@ -44,8 +44,8 @@ directories exist, `doctor` checks:
   fingerprint hashes match it
 - Signing settings match native public key entries
 
-If any required native setting is missing, rebuild-time OTA configuration is not
-healthy yet. Run the command shown by `doctor`, then rebuild the native app.
+If a required native setting is missing, run the command shown by `doctor`,
+then rebuild the native app.
 
 `doctor` does not require a default channel in native files. If
 `HOT_UPDATER_CHANNEL` or `hot_updater_channel` exists, the command reports it as
@@ -78,8 +78,8 @@ Use `fixability` as the automation boundary:
 | `command`  | The agent may run the listed local command, then rerun doctor.                                     |
 | `blocked`  | The issue needs credentials, environment variables, server access, or a human deployment decision. |
 
-Native wiring, fingerprint creation, and native public key export/removal are
-intended to be iterated locally by an agent. Infrastructure failures are marked
+An agent can fix native wiring, create fingerprints, and export or remove
+native public keys locally. Infrastructure failures are marked
 as blocked because applying migrations or redeploying a server usually depends
 on provider credentials and environment-specific access.
 

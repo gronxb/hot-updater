@@ -16,7 +16,7 @@ The default channel is the release channel embedded in your native app at build 
 - Changing the default channel requires rebuilding the native app.
 
 <Callout type="info">
-  Need to temporarily move a device to another channel without rebuilding? See
+  To temporarily move a device to another channel without rebuilding, see
   [Runtime Channel Switch](/docs/v0/guides/runtime-channel-switch).
 </Callout>
 
@@ -26,13 +26,13 @@ The default channel is the release channel embedded in your native app at build 
 
 <Tabs items={["Basic", "Expo"]}>
   <Tab value="Basic">
-    Use the `hot-updater channel set` command to specify your desired channel.
+    Set the channel with `hot-updater channel set`.
 
     ```package-install
     npx hot-updater channel set <channel>
     ```
 
-    This command modifies the native project files for you. Here is what changes:
+    This command updates the native project files:
 
     <Tabs items={["iOS", "Android"]}>
       <Tab value="iOS">

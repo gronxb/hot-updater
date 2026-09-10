@@ -4,7 +4,7 @@ description: "Opens a localhost server based on plugins configured in `hot-updat
 icon: Terminal
 ---
 
-**The console provides the following features:**
+Use the console for:
 
 - Rollback
 - Force update flag
@@ -14,11 +14,8 @@ icon: Terminal
 
 ## Configuration (Optional)
 
-This is a console configuration that does not affect the bundle.
-
-You can configure additional console settings in the `hot-updater.config.ts` file.
-
-The `storage` and `database` plugins must be exist.
+Configure console settings in `hot-updater.config.ts`. These settings do not
+affect the bundle. Both `storage` and `database` plugins are required.
 
 | Option           | Description                                              | Default |
 | ---------------- | -------------------------------------------------------- | ------- |
@@ -41,7 +38,7 @@ export default defineConfig({
 
 ## Usage
 
-Execute the following command:
+Start the console:
 
 ```package-install
 npx hot-updater console
@@ -92,6 +89,6 @@ export default defineConfig({
 });
 ```
 
-When you set the git URL, the commit hash will be clickable and redirect you to the corresponding commit in your repository.
+With the git URL configured, each commit hash links to its commit in your repository.
 
 <img src={"/docs/console/git_url.png"} />

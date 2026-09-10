@@ -48,9 +48,7 @@ instead of reshuffling everyone.
 
 ## Scenario 1: Numeric Rollout Flow
 
-This scenario covers the normal numeric rollout flow.
-
-In this scenario, assume `HotUpdater.getCohort()` returns `411`.
+Assume `HotUpdater.getCohort()` returns `411`.
 
 ### See the Current Cohort on Device
 
@@ -98,7 +96,7 @@ stable for that bundle.
   selected for that rollout.
 </Callout>
 
-You can read the result like this:
+The settings determine which devices receive the bundle:
 
 | Check                        | Example                           | Result                                                 |
 | ---------------------------- | --------------------------------- | ------------------------------------------------------ |
@@ -107,7 +105,7 @@ You can read the result like this:
 | Cohort excluded from preview | `410` is not in the selected list | A device in cohort `410` does not receive this bundle. |
 | Cohort included in preview   | `411` is in the selected list     | A device in cohort `411` does receive this bundle.     |
 
-Here is the direct check for cohort `411`:
+Check whether cohort `411` is included:
 
 <img src={"/docs/rollout-cohorts/preview_411.png"} />
 
@@ -115,8 +113,7 @@ In this example, cohort `411` is included in the selected rollout set. Since
 the iOS example app above reported `HotUpdater.getCohort(): 411`, this device
 is eligible for the rollout and will receive the bundle.
 
-After the app checks for updates and applies the eligible bundle, you end up
-with the post-update state below:
+After the app checks for updates and applies the eligible bundle, it shows:
 
 <img src={"/docs/rollout-cohorts/final-current-state.png"} width="320" />
 
@@ -126,10 +123,6 @@ This walkthrough shows the normal numeric rollout flow:
 2. You deploy with `npx hot-updater deploy -p ios -r 50`.
 3. The preview confirms that cohort `411` is included.
 4. The device is eligible, so it receives the bundle.
-
-This is why the preview is useful: percentage rollout is not a simple `1..500`
-range. Hot Updater keeps a stable shuffled set per bundle, and `Preview
-Cohorts` shows the exact numeric cohorts included in that rollout.
 
 ## Scenario 2: Manual Cohort Override and Target Cohorts
 
@@ -225,9 +218,8 @@ In this example, the bundle is configured like this:
 - `Rollout Percentage = 50.0%`
 - `Target Cohorts = qa`
 
-`Target Cohorts` supports both custom cohorts like `qa` and numeric values like
-`411`. Think of it as an explicit cohort list: you can put existing numeric
-cohorts and custom cohorts in the same place.
+`Target Cohorts` accepts both custom cohorts like `qa` and existing numeric
+cohorts like `411` in the same list.
 
 <Callout type="info">
   `Rollout Percentage` and `Target Cohorts` work together.
@@ -249,7 +241,7 @@ This is useful in two common cases:
 - Raise the same bundle to `50%` later and keep `qa` in `Target Cohorts` so
   the main rollout and QA testing continue together.
 
-You can read the result like this:
+The settings determine which devices receive the bundle:
 
 | Check                          | Example                                                               | Result                                                                                  |
 | ------------------------------ | --------------------------------------------------------------------- | --------------------------------------------------------------------------------------- |
@@ -257,10 +249,6 @@ You can read the result like this:
 | QA tester device               | `HotUpdater.getCohort() = qa`                                         | This device receives the bundle because `qa` is in `Target Cohorts`.                    |
 | Numeric cohort outside rollout | `HotUpdater.getCohort() = 410`, and `410` is not in `Preview Cohorts` | This device does not receive the bundle unless `410` is also added to `Target Cohorts`. |
 | Other custom cohort            | `HotUpdater.getCohort() = dogfood`                                    | This device does not receive the bundle unless `dogfood` is targeted.                   |
-
-Use this flow when you want stable tester coverage without giving up gradual
-numeric rollout. If needed, you can do the same thing with a numeric cohort
-such as `411`.
 
 ### Manual Override Flow
 

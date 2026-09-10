@@ -52,8 +52,6 @@ rollout seed, even though the Bundle bytes are reused.
 
 ## Scenario 1: Numeric Rollout Flow
 
-This scenario covers the normal numeric rollout flow.
-
 In this scenario, assume `HotUpdater.getCohort()` returns `411`.
 
 ### See the Current Cohort on Device
@@ -102,7 +100,7 @@ stable when you update that Bundle's rollout policy.
   selected for that rollout.
 </Callout>
 
-You can read the result like this:
+Interpret the preview as follows:
 
 | Check                        | Example                           | Result                                                 |
 | ---------------------------- | --------------------------------- | ------------------------------------------------------ |
@@ -111,7 +109,7 @@ You can read the result like this:
 | Cohort excluded from preview | `410` is not in the selected list | A device in cohort `410` does not select this Bundle.       |
 | Cohort included in preview   | `411` is in the selected list     | A device in cohort `411` selects this Bundle.               |
 
-Here is the direct check for cohort `411`:
+Check cohort `411` in the preview:
 
 <img src={"/docs/rollout-cohorts/preview_411.png"} />
 
@@ -119,8 +117,8 @@ In this example, cohort `411` is included in the selected rollout set. Since
 the iOS example app above reported `HotUpdater.getCohort(): 411`, this device
 is eligible for the rollout and will receive the Bundle.
 
-After the app checks for updates and applies the selected Bundle, you
-end up with the post-update state below:
+After the app checks for updates and applies the selected Bundle, it shows
+the updated state:
 
 <img src={"/docs/rollout-cohorts/final-current-state.png"} width="320" />
 
@@ -131,17 +129,17 @@ This walkthrough shows the normal numeric rollout flow:
 3. The preview confirms that cohort `411` is included.
 4. The device is eligible, so it receives the Bundle.
 
-This is why the preview is useful: percentage rollout is not a simple `1..500`
-range. Hot Updater keeps a stable shuffled set per Bundle, and `Preview
-Cohorts` shows the exact numeric cohorts included in that rollout.
+Percentage rollout uses a stable shuffled set per Bundle, rather than a
+`1..500` range. Check `Preview
+Cohorts` for the selected numeric cohorts.
 
 ## Scenario 2: Manual Cohort Override and Target Cohorts
 
 Use this flow when you want a fixed tester group to keep receiving a Bundle
 while numeric rollout continues for the rest of the audience.
 
-This is useful because numeric rollout picks a stable but Bundle-specific
-numeric cohort set. A tester device may or may not be in that set.
+Numeric rollout picks a stable, Bundle-specific cohort set. A tester device
+may fall outside that set.
 `Target Cohorts` lets you keep a known group such as `qa` included throughout
 rollout.
 
@@ -253,7 +251,7 @@ This is useful in two common cases:
 - Raise the same Bundle to `50%` later and keep `qa` in `Target Cohorts` so
   the main rollout and QA testing continue together.
 
-You can read the result like this:
+Interpret the preview as follows:
 
 | Check                          | Example                                                               | Result                                                                                  |
 | ------------------------------ | --------------------------------------------------------------------- | --------------------------------------------------------------------------------------- |

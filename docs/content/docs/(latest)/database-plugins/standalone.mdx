@@ -6,13 +6,10 @@ icon: Server
 
 ## Overview
 
-The `standaloneRepository` HTTP repository connects your Hot Updater CLI to a
-self-hosted backend server. This is the **client-side configuration** for
-connecting to your server.
+Configure `standaloneRepository` in your Hot Updater CLI to connect to a
+self-hosted backend server.
 
 <Callout type="info">
-**Building a Self-Hosted Server?**
-
 See the [Self-Hosting (Custom) Guide](/docs/custom/overview) for complete server implementation instructions using `@hot-updater/server` with database adapters (Drizzle, Prisma, Kysely, MongoDB) and frameworks (Hono, Express, Elysia).
 
 </Callout>
@@ -49,7 +46,7 @@ export default defineConfig({
 });
 ```
 
-## Remote Storage Adapter
+## Remote storage adapter
 
 For CLI uploads through a separate HTTP storage service, use
 [`standaloneStorage`](/docs/storage-plugins/standalone). Its configuration and
@@ -87,7 +84,7 @@ interface Routes {
 }
 ```
 
-### Secure Example
+### Secure example
 
 ```typescript title="hot-updater.config.ts"
 const adminToken = process.env.HOT_UPDATER_ADMIN_TOKEN;
@@ -107,7 +104,7 @@ The admin handler does not authenticate requests itself. Keep its credential in
 server-side CLI or Console configuration and match the framework middleware in
 the server setup.
 
-### Alternate Authentication
+### Alternate authentication
 
 ```typescript title="hot-updater.config.ts"
 database: standaloneRepository({
@@ -118,7 +115,7 @@ database: standaloneRepository({
 });
 ```
 
-### With Custom Routes
+### With custom routes
 
 ```typescript title="hot-updater.config.ts"
 const adminToken = process.env.HOT_UPDATER_ADMIN_TOKEN;
@@ -153,19 +150,19 @@ database: standaloneRepository({
 });
 ```
 
-## Server Contract
+## Server contract
 
 `standaloneRepository` is an HTTP client. If you are building a custom
 backend, your server must implement the admin contract below. All paths in the
 table are relative to `baseUrl`.
 
 <Callout type="info">
-  If you use `@hot-updater/server`, you do **not** need to implement these
+  If you use `@hot-updater/server`, you do not need to implement these
   endpoints manually. `createHotUpdater()` provides this contract through
   `handlers.admin`, including the canonical `GET /channels` route.
 </Callout>
 
-### Contract Types
+### Contract types
 
 ```typescript
 interface PaginationInfo {
@@ -194,10 +191,10 @@ interface ChannelRow {
 type ChannelsResponse = DataResponse<{ channels: ChannelRow[] }>;
 ```
 
-### Default Routes
+### Default routes
 
 These are the routes used by `standaloneRepository`. The `routes` option can
-remap only the five Bundle rows marked **remappable**. All other rows use fixed
+remap only the five Bundle rows marked remappable. All other rows use fixed
 paths relative to `baseUrl`.
 
 | Method | Default route                 | Mapping    | Success response                     |
@@ -216,7 +213,7 @@ paths relative to `baseUrl`.
 | POST   | `/channels`                   | fixed      | `DataResponse<ChannelInsertResult>`  |
 | DELETE | `/channels/:id`               | fixed      | `204 No Content`                     |
 
-### Bundle Shape
+### Bundle shape
 
 Create requests send full `Bundle` objects. Update requests send
 `Partial<Bundle>` and, if an `id` is present in the body, it must match the
@@ -253,7 +250,7 @@ integers. Bundle objects contain immutable artifact data only; Channel,
 rollout, targeting, enablement, force-update, and message policy belong to
 Releases.
 
-### List Bundles Contract
+### List bundles contract
 
 `GET /bundles` must accept the pagination and filter query params used by
 the console and `standaloneRepository`, and return a paginated JSON body.
@@ -309,7 +306,7 @@ If your standalone server is backed by object storage or manifest files, keep
 pages should not require rescanning all manifests, and this should be covered
 by deterministic read-counter regression tests.
 
-### Retrieve And Channels Contract
+### Retrieve and channels contract
 
 - `GET /bundles/:id` should return `200` with a `Bundle` body or `404` if
   the bundle does not exist.
@@ -344,7 +341,7 @@ caller's losing candidate.
   and `409` with reason `not_empty` when a Release still references the Channel.
   The reference check and deletion are atomic.
 
-### Minimal `@hot-updater/server` Example
+### Minimal `@hot-updater/server` example
 
 If you want this contract without implementing it yourself, use
 `@hot-updater/server`:
@@ -383,10 +380,10 @@ routes are public or require an API key.
   `createHotUpdater`.
 </Callout>
 
-## Next Steps
+## Next steps
 
 - [CLI Configuration](/docs/custom/cli-configuration) - Complete CLI configuration guide
 - [Self-Hosting (Custom) Overview](/docs/custom/overview) - Learn about the architecture
-- [Quick Start Guide](/docs/custom/quick-start) - Set up a server in 5 minutes
+- [Quick Start Guide](/docs/custom/quick-start) - Set up a server
 - [Database Adapters](/docs/custom/database/drizzle) - Choose your ORM (Drizzle, Prisma, Kysely, MongoDB)
 - [Server Frameworks](/docs/custom/frameworks/hono) - Choose your framework (Hono, Express, Elysia)

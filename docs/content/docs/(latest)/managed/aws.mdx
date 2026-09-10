@@ -15,19 +15,19 @@ the provider resources here, then connect your app with the verified URL and key
 
 ## Prerequisites
 
-Your deployment needs the resources and access below. When using an AI agent,
-it can prepare missing resources through its available provider tools.
+You need the following resources and access. An AI agent can prepare missing
+resources through its available provider tools.
 
 - **Node.js**: The CLI requires 20.19+. Agent setup uses a client-key helper that
   requires Node 22.18+ or Node 24+; prepare it before provisioning resources.
 - **AWS Account**: Sign up at [AWS](https://aws.amazon.com) if you don't have one.
 - **AWS CLI (terminal setup)**: Install the AWS CLI and sign in or configure a profile.
 
-## Required AWS Permissions
+## Required AWS permissions
 
 Hot Updater requires specific AWS IAM permissions for setup and ongoing usage:
 
-### 1. Initialization (One-Time Setup)
+### 1. Initialization (one-time setup)
 
 Used for `hot-updater init`:
 
@@ -38,7 +38,7 @@ Used for `hot-updater init`:
 - `IAMFullAccess`: Create IAM roles for Lambda@Edge.
 - `AmazonSSMFullAccess`: Access SSM Parameters used for CloudFront key pairs.
 
-### 2. Ongoing Usage
+### 2. Ongoing usage
 
 Used for `hot-updater deploy` and `hot-updater console`:
 
@@ -67,7 +67,7 @@ If this permission is missing, you may encounter the following error:
 AccessDenied: User: arn:aws:sts::***:assumed-role/***/*** is not authorized to perform: cloudfront:CreateInvalidation on resource: arn:aws:cloudfront::***:distribution/*** because no identity-based policy allows the cloudfront:CreateInvalidation action
 ```
 
-## Step 1: Install Required Packages
+## Step 1: Install required packages
 
 Complete [Install packages](/docs/get-started/installation) in the React
 Native project before running init or an agent scaffold. Install the CLI, React
@@ -112,18 +112,17 @@ npx hot-updater init
 <Accordions type="single">
   <Accordion title="Interactive Setup Steps">
 
-1. **Select a Build Plugin**: Choose a build plugin for your project (e.g., Bare (React Native CLI) for React Native).
-2. **Select a Provider**: Select AWS + Lambda@Edge as the provider for handling updates.
-   During the setup, you will be prompted to:
-3. **Choose AWS Login Method**: Select current AWS CLI/default session, a shared AWS profile, account access keys, or an AWS SSO profile
-4. **Enter AWS Credentials**: Provide a profile name for shared-profile or SSO mode, or credentials for account/access-key mode
-5. **Select Region**: Choose an AWS region for S3 and DynamoDB
-6. **Select S3 Bucket**: Reuse an existing bucket or create a new one
-7. **Create DynamoDB Table**: Enter a table name; init creates it or validates its schema
-8. **Provision API Key**: Create the first client API key or reuse the saved key
-9. **Create IAM Role**: Create or reuse a resource-scoped role for this Lambda installation
-10. **Deploy Lambda Function**: Deploy the Lambda@Edge function to handle updates
-11. **Create/Update CloudFront Distribution**: Create a new distribution by default, or update the exact distribution saved by a previous init
+1. Choose a build plugin for your project, such as Bare for React Native CLI projects.
+2. Select AWS + Lambda@Edge as the provider for handling updates.
+3. Select current AWS CLI/default session, a shared AWS profile, account access keys, or an AWS SSO profile
+4. Provide a profile name for shared-profile or SSO mode, or credentials for account/access-key mode
+5. Choose an AWS region for S3 and DynamoDB
+6. Reuse an existing S3 bucket or create a new one
+7. Enter a DynamoDB table name; init creates it or validates its schema
+8. Create the first client API key or reuse the saved key
+9. Create or reuse a resource-scoped IAM role for this Lambda installation
+10. Deploy the Lambda@Edge function to handle updates
+11. Create a new CloudFront distribution by default, or update the exact distribution saved by a previous init
 
   </Accordion>
 </Accordions>
@@ -179,12 +178,11 @@ HOT_UPDATER_S3_SECRET_ACCESS_KEY=your-secret-access-key
 
 If you're **not** using the `react-native-dotenv` solution, provider credentials from `.env.hotupdater` will not be included in your app bundle. The API key is the exception: add it explicitly to the app as shown below.
 
-please refer to the article below for more details:
-[Security](/docs/policy/security#plugin-token-protection)
+See [Security](/docs/policy/security#plugin-token-protection).
 
 </Callout>
 
-## Optional: Bundle Signing
+## Optional: Bundle signing
 
 Managed AWS init does not create or enable a signing key. The
 [built-in local config](/docs/guides/bundle-signing#local-private-key) works
@@ -195,7 +193,7 @@ Embed the chosen public key in a native release before deploying signed
 bundles. Signing credentials belong in the deploy environment, never in the
 React Native app.
 
-## Step 3: Add HotUpdater to Your Project
+## Step 3: Add HotUpdater to your project
 
 After provisioning, record these outputs for [Set up your app](/docs/get-started/app-setup):
 
@@ -292,11 +290,9 @@ configured database. Do not run `hot-updater storage prune --yes` while the
 bucket is also used by another active Hot Updater database. Give each active
 database a distinct `basePath` before using prune.
 
-## Generated Configuration and Operations
+## Generated configuration and operations
 
-During the initialization process, the following file is automatically generated:
-
-- `hot-updater.config.ts`: This file contains the configuration settings for integrating AWS with your project.
+Init generates `hot-updater.config.ts` with your AWS configuration.
 
 If you choose **current AWS CLI/default session**, the generated config uses the
 AWS SDK default provider chain instead of embedding access keys:
@@ -338,7 +334,7 @@ If you choose **shared AWS profile**, `fromNodeProviderChain()` is replaced with
 `fromSSO({ profile: process.env.HOT_UPDATER_AWS_PROFILE! })`; only
 account/access-key mode emits a literal access-key credential block.
 
-### Replace Account Access Keys (Optional)
+### Replace account access keys (optional)
 
 By this point, `.env.hotupdater` already contains the settings selected during
 `hot-updater init`.
@@ -350,7 +346,7 @@ generated credential providers and do not read these two variables.
 The account-mode credentials entered during infrastructure setup may have
 broader permissions than ongoing deployment requires.
 
-To avoid issues, replace it with a permanent least-privilege identity that can
+Replace those credentials with a permanent least-privilege identity that can
 write bundle artifacts to S3, read and write the selected DynamoDB table, and
 invalidate the CloudFront distribution.
 
@@ -359,13 +355,13 @@ HOT_UPDATER_S3_ACCESS_KEY_ID=your-access-key-id
 HOT_UPDATER_S3_SECRET_ACCESS_KEY=your-secret-access-key
 ```
 
-## Step 4: If You Use Expo, Add the Config Plugin
+## Step 4: If you use Expo, add the config plugin
 
 Follow the Expo path in [Set up your app](/docs/get-started/app-setup). It applies
 the config plugin and generates the native integration. For DOM components,
 continue with [Expo DOM components](/docs/build-plugins/expo#expo-dom-components-use-dom).
 
-## Step 5: Add Native Code
+## Step 5: Add native code
 
 For Bare or Rock, follow the Android and iOS instructions in
 [Set up your app](/docs/get-started/app-setup). Keep the integration appropriate
@@ -390,7 +386,7 @@ For server templates to apply with your own deployment tooling, use
 `hot-updater infra scaffold --provider aws`. See
 [Infrastructure Templates](/docs/guides/infrastructure-templates).
 
-## Verifying the Setup
+## Verifying the setup
 
 1. Confirm the selected AWS resources and the deployed client base URL.
 2. From the React Native project, check the server and native integration:

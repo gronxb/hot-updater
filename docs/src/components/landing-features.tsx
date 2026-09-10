@@ -2,32 +2,32 @@ export function LandingFeatures() {
   const features = [
     {
       icon: "🚀",
-      title: "Over-the-Air Updates",
-      description: "Deploy updates instantly without app store submissions",
+      title: "Over-the-air updates",
+      description: "Deploy updates without app store submissions",
     },
     {
       icon: "♻️",
-      title: "Reliable Rollbacks",
+      title: "Rollbacks",
       description: "Revert to previous versions in case of issues",
     },
     {
       icon: "🛠️",
-      title: "Plugin System",
+      title: "Plugin system",
       description: "Customize build and deployment processes",
     },
     {
       icon: "📦",
-      title: "Architecture Support",
+      title: "Architecture support",
       description: "Works with new and legacy React Native versions",
     },
     {
       icon: "🔖",
-      title: "Version Control",
+      title: "Version targeting",
       description: "Semantic versioning and custom targeting rules",
     },
     {
       icon: "🖥️",
-      title: "Web Console",
+      title: "Web console",
       description: "Manage deployments and monitor updates",
     },
   ];
@@ -38,10 +38,10 @@ export function LandingFeatures() {
         {/* Section header */}
         <div className="mb-12 sm:mb-16 text-center">
           <h2 className="text-2xl sm:text-3xl lg:text-4xl font-bold tracking-tight text-fd-foreground">
-            Everything you need
+            Build, deploy, and manage updates
           </h2>
           <p className="mt-3 sm:mt-4 text-base sm:text-lg text-fd-muted-foreground">
-            Powerful features for seamless OTA updates
+            Control OTA delivery from your own infrastructure
           </p>
         </div>
 

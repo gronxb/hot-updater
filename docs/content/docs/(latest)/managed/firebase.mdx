@@ -15,8 +15,8 @@ the provider resources here, then connect your app with the verified URL and key
 
 ## Prerequisites
 
-Your deployment needs the resources and access below. When using an AI agent,
-it can prepare missing resources through its available provider tools.
+You need the following resources and access. An AI agent can prepare missing
+resources through its available provider tools.
 
 - **Node.js**: The CLI requires 20.19+. Agent setup uses a client-key helper that
   requires Node 22.18+ or Node 24+; prepare it before provisioning resources.
@@ -24,7 +24,7 @@ it can prepare missing resources through its available provider tools.
 - **Google Cloud CLI (terminal setup)**: Install `gcloud` and authenticate the account that owns the Firebase project.
 - **Service readiness**: Agent setup can enable Storage and prepare Firestore. Terminal init needs Storage enabled so it can find the project's canonical default `.firebasestorage.app` or `.appspot.com` bucket. Complete any required billing activation in your account when prompted.
 
-## Step 1: Install Required Packages
+## Step 1: Install required packages
 
 Complete [Install packages](/docs/get-started/installation) in the React
 Native project before running init or an agent scaffold. Install the CLI, React
@@ -69,17 +69,17 @@ npx hot-updater init
 <Accordions type="single">
   <Accordion title="Interactive Setup Steps">
 
-1. **Select a Build Plugin**: Choose a build plugin for your project (e.g., Bare (React Native CLI) for React Native).
-2. **Select a Provider**: Select Firebase as the provider for handling updates.
+1. Choose a build plugin for your project, such as Bare for React Native CLI projects.
+2. Select Firebase as the provider for handling updates.
 
-During the setup, you will be prompted to:
+The initializer then prompts you to:
 
-1. **Create or Select a Firebase Project**: Choose an existing project or create a new one.
-2. **Verify Storage**: Init locates the selected project's canonical default bucket and stops if Storage has not been enabled.
-3. **Deploy Firestore Indexes**: Deploy the indexes used to store and query updates.
-4. **Provision API Key**: Create the first client API key or reuse the saved key.
-5. **Deploy Functions**: Deploy a Firebase Function v2 called `hot-updater-v1`.
-6. **Add IAM Policy**: Add a new IAM policy to the service account of the function.
+1. Choose an existing project or create a new one.
+2. Init locates the selected project's canonical default bucket and stops if Storage has not been enabled.
+3. Deploy the Firestore indexes used to store and query updates.
+4. Create the first client API key or reuse the saved key.
+5. Deploy a Firebase Function v2 called `hot-updater-v1`.
+6. Add a new IAM policy to the service account of the function.
 
   </Accordion>
 </Accordions>
@@ -122,12 +122,11 @@ unless you explicitly configure that behavior. The API key is the exception:
 add `HOT_UPDATER_API_KEY` to your React Native build-time configuration as
 shown in [Set up your app](/docs/get-started/app-setup), but never add the Firebase service-account credential.
 
-For more details, see:
-[Security](/docs/policy/security#plugin-token-protection)
+See [Security](/docs/policy/security#plugin-token-protection).
 
 </Callout>
 
-## Optional: Bundle Signing
+## Optional: Bundle signing
 
 Managed Firebase init does not create or enable a signing key. The
 [built-in local config](/docs/guides/bundle-signing#local-private-key) works
@@ -138,7 +137,7 @@ choice. Embed the chosen public key in a native release before deploying
 signed bundles. Signing credentials belong in the deploy environment, never
 in the React Native app.
 
-## Step 3: Add HotUpdater to Your Project
+## Step 3: Add HotUpdater to your project
 
 After provisioning, record these outputs for [Set up your app](/docs/get-started/app-setup):
 
@@ -162,17 +161,16 @@ credentials stay in the deploy environment.
   including Insights queries, are not mounted on the public Function URL.
 </Callout>
 
-## Generated Configuration and Operations
+## Generated configuration and operations
 
-During the initialization process, the following file is automatically generated:
+Init generates `hot-updater.config.ts` with your Firebase configuration.
 
-- `hot-updater.config.ts`: This file contains the configuration settings for integrating Firebase with your project.
-- `.env.hotupdater`: Provider settings and optional credential-file path. Reuse
-  working application-default credentials first. Set `GOOGLE_APPLICATION_CREDENTIALS`
-  only when a private local credential file is needed; downloading a new key is
-  not required when ADC already works. A Firebase CLI login alone does not
-  necessarily authenticate the local Admin SDK. See
-  [Firebase Admin setup](https://firebase.google.com/docs/admin/setup#initialize_the_sdk_in_non-google_environments).
+`.env.hotupdater` contains provider settings and an optional credential-file path.
+Reuse working application-default credentials first. Set `GOOGLE_APPLICATION_CREDENTIALS`
+only when a private local credential file is needed; downloading a new key is
+not required when ADC already works. A Firebase CLI login alone does not
+necessarily authenticate the local Admin SDK. See
+[Firebase Admin setup](https://firebase.google.com/docs/admin/setup#initialize_the_sdk_in_non-google_environments).
 
 ```bash title=".env.hotupdater"
 HOT_UPDATER_FIREBASE_PROJECT_ID=your-project-id
@@ -229,13 +227,13 @@ default Hosting site may already belong to the app or another service.
 Catalog checks still use the precompiled Release Catalog and the runtime's
 short in-process cache, but every device request invokes the Function.
 
-## Step 4: If You Use Expo, Add the Config Plugin
+## Step 4: If you use Expo, add the config plugin
 
 Follow the Expo path in [Set up your app](/docs/get-started/app-setup). It applies
 the config plugin and generates the native integration. For DOM components,
 continue with [Expo DOM components](/docs/build-plugins/expo#expo-dom-components-use-dom).
 
-## Step 5: Add Native Code
+## Step 5: Add native code
 
 For Bare or Rock, follow the Android and iOS instructions in
 [Set up your app](/docs/get-started/app-setup). Keep the integration appropriate
@@ -260,7 +258,7 @@ For server templates to apply with your own deployment tooling, use
 `hot-updater infra scaffold --provider firebase`. See
 [Infrastructure Templates](/docs/guides/infrastructure-templates).
 
-## Verifying the Setup
+## Verifying the setup
 
 1. Confirm the selected Firebase resources and the deployed client base URL.
 2. From the React Native project, check the server and native integration:

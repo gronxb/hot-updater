@@ -6,19 +6,19 @@ icon: Puzzle
 
 import { Tabs, Tab } from "fumadocs-ui/components/tabs";
 
-## Build Plugin
+## Build plugin
 
-Build plugins handle the bundling process when you run the `hot-updater deploy` command. They generate the JavaScript bundles for your updates.
+Build plugins generate JavaScript bundles when you run `hot-updater deploy`.
 
-### Supported Plugins
+### Supported plugins
 
-- **`@hot-updater/bare`**: Runs the project's configured bundler through the
+- `@hot-updater/bare`: Runs the project's configured bundler through the
   React Native CLI `bundle` command.
-- **`@hot-updater/rock`**: Runs the project's configured bundler through the
+- `@hot-updater/rock`: Runs the project's configured bundler through the
   [Rock CLI](https://github.com/callstack/rock) `bundle` command.
-- **`@hot-updater/expo`**: Executes the bundle command through Expo.
+- `@hot-updater/expo`: Executes the bundle command through Expo.
 
-## Bundle Signing
+## Bundle signing
 
 Signing plugins authenticate immutable OTA artifact content during
 `hot-updater deploy`. They resolve the provider public key and sign the 32 raw
@@ -30,11 +30,11 @@ Signing is independent of the storage and database plugins. Omit `signing` or
 set local `enabled: false` for unsigned deployments; Hot Updater never falls
 back from an enabled signer to an unsigned deployment.
 
-### Supported Options
+### Supported options
 
-- **Built-in local signing**: Use `enabled: true` and `privateKeyPath`. Signing
+- Built-in local signing: Use `enabled: true` and `privateKeyPath`. Signing
   is never enabled automatically.
-- **`hot-updater/signing`**: Use a compatible signing endpoint with
+- `hot-updater/signing`: Use a compatible signing endpoint with
   `remoteSigning`, or hardened managed-key custody with `awsKmsSigning` and
   `googleCloudKmsSigning`.
 
@@ -48,9 +48,9 @@ signer is used for deployment.
 See [Bundle Signing](/docs/guides/bundle-signing) for custody differences,
 provider setup, native trust-anchor rollout, and rotation guidance.
 
-## Storage Plugin
+## Storage plugin
 
-Storage plugins upload your generated bundles during the `hot-updater deploy` command and store them in your chosen storage provider.
+Storage plugins upload generated bundles to your chosen provider during `hot-updater deploy`.
 
 Storage plugins expose one flat, runtime-independent byte contract. CLI and
 server consumers validate only the operations they need. Provider packages can
@@ -58,14 +58,14 @@ export the same plugin name from runtime-specific subpaths; for example,
 `@hot-updater/cloudflare` uses S3-compatible credentials while
 `@hot-updater/cloudflare/worker` captures an R2 binding.
 
-### Supported Plugins
+### Supported plugins
 
-- **`@hot-updater/supabase`**: Provides `supabaseStorage` functionality, leveraging Supabase for storage.
-- **`@hot-updater/cloudflare`**: Provides deploy-time `r2Storage` and Worker runtime storage for Cloudflare R2.
-- **`@hot-updater/aws`**: Provides `s3Storage` functionality, enabling the use of AWS S3 for storage.
-- **`@hot-updater/firebase`**: Provides `firebaseStorage` functionality, utilizing Firebase Storage for storing update bundles.
+- `@hot-updater/supabase`: Stores bundles in Supabase with `supabaseStorage`.
+- `@hot-updater/cloudflare`: Provides deploy-time `r2Storage` and Worker runtime storage for Cloudflare R2.
+- `@hot-updater/aws`: Stores bundles in AWS S3 with `s3Storage`.
+- `@hot-updater/firebase`: Stores bundles in Firebase Storage with `firebaseStorage`.
 
-## Database Plugin
+## Database plugin
 
 Database plugins persist immutable artifact metadata, Release policy, compiled
 Catalogs, Channels, Insights and API keys. Deploy and administrative operations
@@ -77,14 +77,14 @@ Use [custom-server adapters](/docs/custom/overview#database-adapters) to connect
 an existing ORM or database. To implement a new provider, follow the
 [database plugin contract](/docs/database-plugins/custom-database).
 
-### Supported Plugins
+### Supported plugins
 
-- **`@hot-updater/supabase`**: Provides `supabaseDatabase` functionality, using Supabase as a database solution.
-- **`@hot-updater/aws`**: Provides `dynamoDB` for metadata.
-- **`@hot-updater/cloudflare`**: Provides `d1Database` functionality, leveraging Cloudflare D1 for database storage.
-- **`@hot-updater/firebase`**: Provides `firebaseDatabase` functionality, using Firebase Firestore for storing update metadata.
+- `@hot-updater/supabase`: Stores metadata in Supabase with `supabaseDatabase`.
+- `@hot-updater/aws`: Provides `dynamoDB` for metadata.
+- `@hot-updater/cloudflare`: Stores metadata in Cloudflare D1 with `d1Database`.
+- `@hot-updater/firebase`: Stores update metadata in Firebase Firestore with `firebaseDatabase`.
 
-## Integration Plugins
+## Integration plugins
 
 Integration plugins connect bundle builds to error-monitoring services. They
 compose with your selected build plugin to upload source maps and associate

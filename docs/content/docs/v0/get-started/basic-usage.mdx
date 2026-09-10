@@ -139,7 +139,7 @@ The update server URL will be provided after running `npx hot-updater init`. Che
 
 ## Build Configuration
 
-Hot Updater now configures bundling through the `build` field in `hot-updater.config.ts`. Legacy build-time plugin examples are no longer used.
+Configure bundling through the `build` field in `hot-updater.config.ts`.
 
 <Tabs items={['Bare (React Native CLI)', 'Rock', 'Expo']}>
   <Tab value="Bare (React Native CLI)">
@@ -228,7 +228,7 @@ If you use Expo DOM components (`use dom`), see [Expo DOM Components (`use dom`)
 
 ## Native Code Setup
 
-To complete the integration of `hot-updater`, you'll need to add native code modifications for both Android and iOS platforms. This step ensures the `hot-updater` can interact with your app's underlying framework to apply updates seamlessly.
+Add the following Android and iOS native code so `hot-updater` can apply updates.
 
 <Callout type="info">
 If you're using Expo with the plugin configured above, this step is handled automatically during prebuild.
@@ -510,8 +510,6 @@ For brownfield apps where the JS bundle is embedded in an XCFramework, you can p
 
 ## Next Steps
 
-Now that you've completed the setup, you can start deploying updates:
-
 ### Deploy Your First Update
 
 Build and publish an update to your users:
@@ -550,8 +548,6 @@ npx hot-updater console
 ```
 
 ### Explore Advanced Features
-
-Learn more about advanced capabilities:
 
 - [App Version Strategy](/docs/v0/guides/update-strategies/app-version) - Match updates to the native app version
 - [Fingerprint Strategy](/docs/v0/guides/update-strategies/fingerprint) - Opt in to native dependency fingerprints

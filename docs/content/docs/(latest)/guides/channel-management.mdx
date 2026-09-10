@@ -23,7 +23,7 @@ integrations manage those rows through the
 [admin handler](/docs/custom/overview#runtime-policy).
 
 <Callout type="info">
-  Need to temporarily move a device to another channel without rebuilding? See
+  To temporarily move a device to another channel without rebuilding, see
   [Runtime Channel Switch](/docs/guides/runtime-channel-switch).
 </Callout>
 
@@ -39,7 +39,7 @@ integrations manage those rows through the
     npx hot-updater channel set <channel>
     ```
 
-    This command modifies the native project files for you. Here is what changes:
+    The command updates these native project settings:
 
     <Tabs items={["iOS", "Android"]}>
       <Tab value="iOS">
@@ -128,7 +128,7 @@ This is useful when:
 - You have multiple Android build variants with different manifest paths
 - Your project does not follow the standard React Native file structure
 
-**Important**: Configure these custom paths before running
+Configure these custom paths before running
 `hot-updater channel set` so all relevant files are updated with the new
 channel.
 
@@ -186,9 +186,8 @@ or `production`.
 
 ## Check the Current Channel
 
-Use `HotUpdater.getChannel()` to retrieve the app's effective channel in your UI.
-This is useful for confirming that the build is using the intended default
-channel.
+Use `HotUpdater.getChannel()` in your UI to confirm that the app is using the
+intended channel.
 
 ### Example Usage
 

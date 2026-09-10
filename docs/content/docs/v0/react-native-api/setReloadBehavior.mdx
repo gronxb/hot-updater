@@ -27,7 +27,7 @@ HotUpdater.setReloadBehavior("processRestart");
 Android's normal React Native reload is an in-process reload.
 The current React instance goes down, a new one comes up, and native modules can still touch JS in the middle of that handoff.
 
-We reproduced a real Android release failure pattern where a third-party native module or background callback kept emitting to JS while React was being recreated.
+We reproduced an Android release failure where a third-party native module or background callback kept emitting to JS while React was being recreated.
 That can show up as errors like `ReactNoCrashSoftException`, `reactInstance is null`, or `Tried to access a JS module before the React instance was fully set up.`
 Depending on timing, the result can be a soft exception, blank screen, or full app crash.
 

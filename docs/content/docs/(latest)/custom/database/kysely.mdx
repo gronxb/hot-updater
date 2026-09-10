@@ -41,7 +41,7 @@ export const db = new Kysely({
 });
 ```
 
-## Hot Updater Configuration
+## Hot Updater configuration
 
 Create the Hot Updater instance:
 
@@ -69,7 +69,7 @@ export const hotUpdater = createHotUpdater({
 });
 ```
 
-## Schema Management
+## Schema management
 
 Generate SQL migration files for Hot Updater tables:
 
@@ -98,14 +98,14 @@ npx hot-updater db migrate src/hotUpdater.ts
   the `--sql` flag.
 </Callout>
 
-## CLI Configuration
+## CLI configuration
 
 After the schema is applied, [create the client API key](/docs/custom/api-key-authentication#bootstrap-a-self-hosted-client)
 using this same direct server configuration. Then
 [connect the React Native project's CLI](/docs/custom/cli-configuration) to the
 protected admin mount. Its storage configuration must match a server entry.
 
-## API Endpoints
+## API endpoints
 
 The adapter persists data; your framework mounts the HTTP handlers. Continue
 with the [Hono](/docs/custom/frameworks/hono), [Express](/docs/custom/frameworks/express)

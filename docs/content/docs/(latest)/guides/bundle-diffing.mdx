@@ -7,10 +7,8 @@ version: 0.31.0
 
 ## What it is
 
-> Bundle diffing means: do not download the whole OTA archive again when the
-> device can reuse files it already has.
-
-Think of an OTA bundle as a folder of files installed on the device.
+Bundle diffing reuses files already installed on the device to reduce how much
+of the next OTA bundle it downloads. An OTA bundle is a folder of files.
 
 ```txt
 First OTA update:
@@ -32,13 +30,13 @@ What the device downloads depends on what changed:
 | Later OTA, changed regular asset | Complete new asset file |
 | Later OTA, changed Hermes bundle file | `.bsdiff` patch when available, otherwise the complete new Hermes bundle file |
 
-For example, an update that would otherwise download a **10 MB archive** might
-only need to download a **600 KB patch file** when the byte-level Hermes changes
+For example, an update that would otherwise download a 10 MB archive might
+only need to download a 600 KB patch file when the byte-level Hermes changes
 are small.
 
-Those numbers are only an example. The archive and the patch file are different
-artifacts, and the patch file size always depends on what changed between the
-two bundles. Large or widespread changes can still produce a much larger patch.
+The archive and patch are different artifacts. Patch size depends on the
+changes between the two bundles; large or widespread changes can produce a
+much larger patch.
 
 You do not need to change your update-check code or deploy command. After your
 app is using a diff-enabled Hot Updater runtime, new deployments include the
@@ -48,15 +46,13 @@ data needed for bundle diffing automatically.
 
 Bundle diffing has two separate optimizations:
 
-1. **File reuse for the whole OTA bundle.** Files that already exist locally can
-   be copied into the next OTA bundle. This applies to regular assets and the
-   Hermes bundle file.
-2. **Binary patches for changed Hermes bundles.** If the Hermes bundle changed
-   and Hot Updater has a matching `.bsdiff` patch, the app can download the
-   patch instead of the complete new Hermes bundle file.
+1. Files that already exist locally can be copied into the next OTA bundle.
+   This applies to regular assets and the Hermes bundle file.
+2. If the Hermes bundle changed and Hot Updater has a matching `.bsdiff` patch,
+   the app can download the patch instead of the complete new Hermes bundle file.
 
-The key difference is that assets are reused at the file level, while changed
-Hermes bundles can also be patched at the byte level.
+Assets are reused at the file level. Changed Hermes bundles can also be patched
+at the byte level.
 
 | File type | If unchanged | If changed |
 | --- | --- | --- |
@@ -191,7 +187,6 @@ Notes:
   exponentially.
 
 If a patch cannot be created, Hot Updater still deploys the normal OTA update.
-Patch generation is an optimization, not a requirement for delivery.
 
 ## How it works
 

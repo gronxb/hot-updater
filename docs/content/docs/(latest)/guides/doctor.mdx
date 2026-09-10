@@ -48,8 +48,8 @@ directories exist, `doctor` checks:
   fingerprint hashes match it
 - Signing settings match native public key entries
 
-If any required native setting is missing, rebuild-time OTA configuration is not
-healthy yet. Run the command shown by `doctor`, then rebuild the native app.
+If a required native setting is missing, run the command shown by `doctor`,
+then rebuild the native app.
 
 `doctor` does not require a default channel in native files. If
 `HOT_UPDATER_CHANNEL` or `hot_updater_channel` exists, the command reports it as
@@ -120,17 +120,17 @@ check during agent provisioning, use the generated
 If the app shows **Update failed**, check the connection settings before
 changing your deployment:
 
-1. **Use the deployed base URL.** Copy the full URL from provider setup,
+1. Use the deployed base URL. Copy the full URL from provider setup,
    including any path prefix. The app must be able to reach it over HTTPS.
-2. **Pass the client key if your server requires one.** Set the registered key
+2. Pass the client key if your server requires one. Set the registered key
    in `HotUpdater.init`'s `requestHeaders`. Managed providers use `x-api-key`;
    a custom server may configure a different header or public access. Provider
    and admin credentials are not client keys.
-3. **Check the build environment.** The value must be available when building
+3. Check the build environment. The value must be available when building
    both the native Release app and OTA bundles. `.env.hotupdater` configures
    the CLI; it is not automatically loaded into the mobile app. See
    [app configuration](/docs/get-started/app-setup#configure-the-update-client).
-4. **If using a key, check that it is still active.** Inspect its metadata in the
+4. If using a key, check that it is still active. Inspect its metadata in the
    Console's API keys view. For a custom server, follow [API key management](/docs/custom/api-key-authentication#manage-api-keys).
    Listing a key confirms registration, not that the installed app sends it.
 

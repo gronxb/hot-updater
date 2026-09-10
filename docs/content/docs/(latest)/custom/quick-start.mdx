@@ -7,7 +7,7 @@ version: "v0.22.0"
 
 ## What you will build
 
-This guide builds one complete server with **Hono, SQLite and R2 storage**,
+This guide builds a server with Hono, SQLite and R2 storage,
 then connects a React Native app. For an existing backend, use the
 [adapter and framework recipes](/docs/custom/overview).
 
@@ -45,7 +45,7 @@ npm install @hot-updater/react-native
 npm install --save-dev @hot-updater/bare @hot-updater/aws @hot-updater/standalone hot-updater dotenv
 ```
 
-## Database Setup
+## Database setup
 
 Create the database connection file.
 
@@ -64,7 +64,7 @@ export const db = new Kysely({
 });
 ```
 
-## Hot Updater Configuration
+## Hot Updater configuration
 
 Create the Hot Updater instance with your database adapter and storage plugin (see [Storage Plugins](/docs/custom/overview#storage-plugins)).
 
@@ -106,7 +106,7 @@ lifecycle events by default and can opt out with
 `clientAccess` is required so the client authentication policy is never
 selected implicitly.
 
-## Server Setup
+## Server setup
 
 Create the server entry point.
 
@@ -135,7 +135,7 @@ serve({ fetch: app.fetch, port: 3000 }, (info) => {
 });
 ```
 
-## Security Settings
+## Security settings
 
 The recommended self-hosted policy requires an API key for update-check and
 Insights ingestion routes. Always protect admin routes separately before
@@ -163,7 +163,7 @@ HOT_UPDATER_STORAGE_DOWNLOAD_URL_KEY=your-download-url-signing-key
 HOT_UPDATER_ADMIN_TOKEN=your-secret-auth-token
 ```
 
-## Bootstrap the Schema and API Key
+## Bootstrap the schema and API key
 
 Generate and apply the database schema first:
 
@@ -185,7 +185,7 @@ existing React Native build-time configuration, do not commit it to source,
 and do not reuse it as an admin credential. The server's `.env.hotupdater` file
 is not loaded into the React Native app automatically.
 
-## Run Server
+## Run server
 
 Start your server.
 
@@ -193,9 +193,9 @@ Start your server.
 npx tsx src/index.ts
 ```
 
-Your Hot Updater server is now running at `http://localhost:3000/hot-updater`!
+The server runs at `http://localhost:3000/hot-updater`.
 
-## CLI Configuration
+## CLI configuration
 
 Configure your Hot Updater CLI to connect to this self-hosted server.
 
@@ -243,7 +243,7 @@ export default defineConfig({
   `createHotUpdater({storage})` array. Both use `s3Storage` here.
 </Callout>
 
-## React Native Setup
+## React Native setup
 
 Before a release-build OTA test, expose the server through a reachable HTTPS
 endpoint using your existing deployment or HTTPS development endpoint. The
@@ -265,7 +265,7 @@ For local connectivity checks, the Android Emulator reaches the host at
 changes host routing; the release-build OTA test uses the HTTPS endpoint.
 The server's `.env.hotupdater` is not loaded into the mobile app automatically.
 
-## Unauthenticated Alternative
+## Unauthenticated alternative
 
 If you intentionally want client update and Insights ingestion routes to be
 unauthenticated, set `clientAccess: { type: "public" }` and omit `x-api-key`

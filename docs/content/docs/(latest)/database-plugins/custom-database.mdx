@@ -231,7 +231,7 @@ walk preceding pages. Limits are integers from 1 to 101; core uses lookahead
 to return at most 100. A short or empty native page with a continuation token
 is not exhaustion: continue until the result prefix is full or exhausted.
 
-`findLatestEvents` returns canonical **event rows**, not installation DTOs:
+`findLatestEvents` returns canonical event rows, not installation DTOs:
 
 ```ts
 type InsightsFindLatestEventsInput =
@@ -250,12 +250,12 @@ type InsightsCountLatestEventsInput = {
 };
 ```
 
-For each installation, select the greatest `(received_at_ms, id)` across **all**
+For each installation, select the greatest `(received_at_ms, id)` across all
 its events, including `UNCHANGED`, before applying user, scope, receipt-window,
 or bundle predicates. Otherwise a historical match can restore a logged-out user.
 Exact lookup returns zero or one row. A user page returns matches ordered by
 `install_id` in ascending UTF-8 byte order, strictly after `afterInstallId`, with
-the same 1–101 limit. IDs are case-sensitive without Unicode normalization.
+the same 1 to 101 limit. IDs are case-sensitive without Unicode normalization.
 A lagging secondary user index must validate candidates against canonical state
 and continue past stale candidates; newly assigned users can be temporarily absent.
 

@@ -5,11 +5,13 @@ icon: ShieldCheck
 version: "0.24.0"
 ---
 
-## What is Automatic Rollback?
+<a id="in-one-sentence" />
 
-Automatic rollback is the safety mechanism that prevents a bad OTA bundle from trapping users in a crash loop.
+## What is automatic rollback?
 
-When a new bundle is installed, Hot Updater does not trust it immediately. It launches that bundle in a temporary state first, keeps the last known-good bundle as a fallback, and only treats the new bundle as safe after startup succeeds.
+Automatic rollback prevents a bad OTA bundle from trapping users in a crash loop.
+
+Hot Updater first launches a newly installed bundle in a temporary state, keeping the last known-good bundle as a fallback. It treats the new bundle as safe after startup succeeds.
 
 For a custom update flow, call [`HotUpdater.init()`](/docs/react-native-api/init)
 once at the top level of your app's entry module. The SDK waits for native
@@ -17,7 +19,7 @@ launch verification internally; your app chooses when to check and stage updates
 The optional [`HotUpdater.wrap()`](/docs/react-native-api/wrap) flow connects the
 same lifecycle handling to its automatic startup check.
 
-## Core Mechanism
+## Core mechanism
 
 Hot Updater manages two roles during rollout:
 
@@ -38,11 +40,9 @@ The flow is:
    - If the app exits or crashes before that point, the staging bundle is treated as failed.
    - On the next launch, Hot Updater automatically returns to the last stable bundle.
 
-## What Counts as a Failed Launch?
+## What counts as a failed launch?
 
-A bundle is considered failed if it cannot complete startup.
-
-In practice, that means the app never reaches the point where Hot Updater can confirm that the new bundle started successfully.
+A bundle fails launch verification if the app cannot complete startup.
 
 Typical examples include:
 
@@ -56,7 +56,7 @@ module scope to connect update requests and observe or report that native
 launch result. The optional `HotUpdater.wrap()` flow uses the same native
 recovery mechanism.
 
-## What Happens During Rollback?
+## What happens during rollback?
 
 When rollback happens, Hot Updater:
 
@@ -65,8 +65,6 @@ When rollback happens, Hot Updater:
 - falls back to the embedded bundle when there is no stable OTA fallback
 - records the failed bundle in crash history
 
-This lets users reopen the app normally instead of hitting the same startup failure again.
-
 Observe the completed launch through
 [`onNotifyAppReady`](/docs/react-native-api/notifyAppReady) in your `init` or
 `wrap` configuration. A `RECOVERED` result identifies the failed artifact as
@@ -74,7 +72,7 @@ Observe the completed launch through
 IDs for each side. [Insights](/docs/guides/insights) reports these outcomes to
 the configured server when client reporting is enabled.
 
-## Managing Crashed Bundles
+## Managing crashed bundles
 
 Hot Updater keeps a crash history for bundles that failed startup and triggered recovery.
 
@@ -104,7 +102,7 @@ You can use this to:
 
 ### clearCrashHistory()
 
-Clears the crash history so a previously failed artifact ID can be retried again.
+Clears the crash history so a previously failed artifact ID can be retried.
 
 ```tsx
 import { HotUpdater } from "@hot-updater/react-native";
@@ -119,7 +117,7 @@ async function retryFailedBundle() {
 Only clear crash history after fixing the underlying issue. Otherwise the same broken bundle can be applied again.
 </Callout>
 
-### Crash History Blocking
+### Crash history blocking
 
 When a bundle fails startup, Hot Updater adds that exact artifact ID to crash history and blocks it from being applied again. This prevents repeated crash loops from the same broken deployment.
 
@@ -137,7 +135,3 @@ If you need to retry the same artifact ID:
 1. Verify the bundle is fixed
 2. Call `clearCrashHistory()` to reset the blocked list
 3. Redeploy the bundle
-
-## In One Sentence
-
-Hot Updater only trusts a new bundle after it launches successfully once. Until then, it keeps a working fallback and can automatically recover if startup fails.

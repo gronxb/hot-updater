@@ -8,7 +8,7 @@ icon: Settings2
 
 Hot Updater can manage updates automatically with `HotUpdater.wrap`, but you can
 also build the client flow yourself. A custom flow is useful when you want to
-check only after login, gate updates by app state, coordinate with navigation
+check only after login, control updates based on app state, coordinate with navigation
 state, or let another runtime own the root component.
 
 The custom flow has four parts:
@@ -39,7 +39,7 @@ HotUpdater.init({
 
 <Callout>
 `HotUpdater.init` has the same initialization effect as manual `wrap`, without
-creating an unnecessary React HOC.
+creating a React HOC.
 
 ```tsx
 HotUpdater.init({
@@ -55,7 +55,7 @@ launch is ready.
 
 ## Check on Your Schedule
 
-Call `checkForUpdate` only when your app is ready for the decision.
+Call `checkForUpdate` when your app is ready to check for an update.
 
 ```tsx
 async function checkForAppUpdate() {
@@ -76,7 +76,7 @@ Common places to check:
 - After authentication finishes
 - After the first screen becomes interactive
 - When the app returns to foreground
-- Behind a remote-config or staged rollout gate
+- When remote config or staged rollout settings allow it
 - From a user-facing "Check for updates" action
 
 ## Download and Apply

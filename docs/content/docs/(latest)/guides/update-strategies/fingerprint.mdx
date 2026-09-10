@@ -8,14 +8,9 @@ import { Tabs, Tab } from "fumadocs-ui/components/tabs";
 
 ## Why Choose Fingerprint?
 
-Fingerprint automatically detects native code changes and blocks incompatible OTA updates. This ensures only safe updates reach your users.
-
-**Fingerprint vs App Version:**
-
-- **Fingerprint**: Automatic protection - detects native changes and blocks unsafe updates
-- **App Version**: Manual control - you specify version targets, no automatic checking
-
-Choose Fingerprint for automatic safety. Choose App Version for manual control.
+Fingerprint detects native code changes and blocks OTA updates that are
+incompatible with the native build. App Version leaves compatibility checks
+to you: you specify the version targets manually.
 
 ## Setup
 
@@ -29,7 +24,7 @@ project when using the Fingerprint strategy:
 npm install @expo/fingerprint --save-dev
 ```
 
-**Using React Native without Expo?** `@expo/fingerprint` is a standalone Node.js
+`@expo/fingerprint` is a standalone Node.js
 library that [supports bare React Native projects](https://expo.dev/blog/fingerprint-your-native-runtime).
 You do not need to install `expo` or `expo-updates`, use Expo CLI, or migrate your
 app to Expo. Hot Updater runs the library when generating and checking
@@ -133,7 +128,7 @@ After your app is live, deploy JavaScript-only updates:
 npx hot-updater deploy
 ```
 
-The system automatically ensures only compatible updates reach users.
+Hot Updater uses the fingerprint to limit delivery to compatible native builds.
 
 ### When Native Code Changes
 
@@ -149,7 +144,8 @@ If there's a mismatch, create a new fingerprint:
 npx hot-updater fingerprint create
 ```
 
-**Important**: After creating a new fingerprint, you must rebuild your app. The new fingerprint must be embedded in the app binary before deploying OTA updates.
+After creating a new fingerprint, rebuild your app to embed it in the binary
+before deploying OTA updates.
 
 ## Client Setup
 
@@ -218,7 +214,7 @@ It evaluates the catalog locally, then resolves the selected artifact through
 // - API call modifications
 ```
 
-**Result**: Fingerprint unchanged → OTA update deployed
+The fingerprint is unchanged, so the OTA update is deployed.
 
 ### Native Code Changes ⚠️ Rebuild Required
 
@@ -230,7 +226,7 @@ It evaluates the catalog locally, then resolves the selected artifact through
 # - Build configuration changes
 ```
 
-**Result**: Fingerprint changed → OTA blocked → Rebuild needed
+The fingerprint changed, so OTA deployment is blocked until you rebuild.
 
 If you try to deploy with a changed fingerprint:
 
@@ -280,7 +276,7 @@ export default defineConfig({
 The Android hash is stored as `com.hotupdater.FINGERPRINT_HASH` application
 metadata.
 
-💡 Most projects don't need this - the defaults work perfectly.
+Most projects can use the default paths.
 
 ### Test a fingerprint update
 

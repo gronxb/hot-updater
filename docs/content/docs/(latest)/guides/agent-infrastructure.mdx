@@ -118,7 +118,7 @@ each variable's purpose, when it is needed and where to obtain it. The JSON
 your app's existing configuration and prepares credentials for future CLI deploys.
 Connecting an MCP server does not automatically provide credentials to the CLI.
 
-Optional creation or authentication fields are not a form you must fill out.
+The agent configures optional creation or authentication fields only when your setup needs them.
 For example, an existing Supabase project needs no new-project name or region,
 and the AWS scaffold can use an existing profile or role without creating access
 keys. The agent discovers resource values and configures only the credentials
@@ -129,8 +129,8 @@ hashes. `deployment.json` starts with empty resource IDs and verification result
 Before each remote mutation, the agent saves `pendingStep` with a stable target
 locator and records a request ID when available. After observing the result, it
 saves actual resource IDs and dated verification evidence in `verifiedSteps`.
-This record is maintained by the agent; the CLI does not execute or enforce it. Generating a manifest
-does not mean the target server version has been deployed.
+The agent maintains this record; the CLI does not execute or enforce it.
+Generating a manifest does not mean the target server version has been deployed.
 
 Keep real credentials and key files private. The supplied key helper persists
 the client key before registration and reuses it after an interrupted request.

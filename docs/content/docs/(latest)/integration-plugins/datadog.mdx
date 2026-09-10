@@ -17,11 +17,9 @@ import { Tabs, Tab } from 'fumadocs-ui/components/tabs';
 npm install @hot-updater/datadog-plugin @datadog/datadog-ci --save-dev
 ```
 
-## Step 1: Wrap Your Build Plugin
+## Step 1: Wrap your build plugin
 
 Use `withDatadog()` to wrap any compatible build plugin such as bare.
-
-Once wrapped, sourcemaps will automatically be uploaded to Datadog when running the `hot-updater deploy` process.
 
 <Tabs items={['Bare', 'Expo', 'Rock']}>
   <Tab value="Bare">
@@ -112,12 +110,12 @@ export default defineConfig({
 </Tabs>
 
 <Callout title="Automatic Upload">
-When `withDatadog()` wraps your build plugin, all generated sourcemaps are uploaded to Datadog automatically during the `hot-updater deploy` process.
+`withDatadog()` uploads all generated sourcemaps to Datadog during `hot-updater deploy`.
 </Callout>
 
 ## Step 2: Deploy
 
-Now, every time you deploy, sourcemaps will be automatically uploaded to Datadog.
+Deploy the update to build the bundle and upload its sourcemaps to Datadog.
 
 ```package-install
 npx hot-updater deploy -i

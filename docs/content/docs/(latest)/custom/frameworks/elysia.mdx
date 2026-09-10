@@ -13,7 +13,7 @@ Install Elysia and its bearer token plugin.
 npm install elysia @elysiajs/bearer
 ```
 
-## Setup and Security
+## Setup and security
 
 Set up a [database adapter](/docs/custom/database/drizzle), generate its Hot Updater
 schema, and apply the schema before starting the server.
@@ -85,7 +85,7 @@ export default defineConfig({
 });
 ```
 
-## Handler Boundaries
+## Handler boundaries
 
 Insights ingestion and query capabilities are built in. Client reporting is on
 by default and can be disabled in the mobile SDK. The client API key protects
@@ -102,7 +102,7 @@ admin request without the expected token is rejected. Then use
 [CLI configuration](/docs/custom/cli-configuration#verify-the-connection) to
 verify authenticated management access.
 
-## React Native Setup
+## React Native setup
 
 [Create a client API key](/docs/custom/api-key-authentication#bootstrap-a-self-hosted-client)
 against the prepared database, then follow [Set up your app](/docs/get-started/app-setup).

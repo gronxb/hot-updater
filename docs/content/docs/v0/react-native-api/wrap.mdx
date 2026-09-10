@@ -24,7 +24,7 @@ current session must remain uninterrupted.
 
 ### Automatic Updates
 
-Use this for apps that want automatic OTA updates. This is the standard approach with full update management.
+Use this to let Hot Updater manage automatic OTA updates.
 
 ```tsx
 import { HotUpdater } from "@hot-updater/react-native";
@@ -140,17 +140,17 @@ The following options are available in automatic mode:
 
 During an update check, access to the entry point is temporarily blocked while communicating with the server.
 
-- If the update is **force update**, the entry point remains blocked, and the progress updates as the bundle downloads.
-- If **not force update**, the entry point is only blocked during the update check.
+- For a force update, the entry point remains blocked, and the progress updates as the bundle downloads.
+- For a standard update, the entry point is only blocked during the update check.
 
 Without a `fallbackComponent`, the bundle downloads without blocking the screen.
 
-**Props:**
+Props:
 - `progress`: Download progress (0-1, e.g., for a progress bar)
 - `status`: Update state (`CHECK_FOR_UPDATE` or `UPDATING`)
 - `message`: Message from the server, or `null`
 
-**Example:**
+Example:
 ```tsx
 import { HotUpdater } from "@hot-updater/react-native";
 import { View, Text, Modal } from "react-native";
@@ -211,7 +211,7 @@ This option only controls the automatic `HotUpdater.wrap` flow.
 
 The actual reload behavior follows [`HotUpdater.setReloadBehavior()`](/docs/v0/react-native-api/setReloadBehavior).
 
-**Example with auto-reload:**
+Example with auto-reload:
 
 ```tsx
 import { HotUpdater } from "@hot-updater/react-native";
@@ -236,7 +236,7 @@ export default HotUpdater.wrap({
 })(App);
 ```
 
-**Example without auto-reload:**
+Example without auto-reload:
 
 ```tsx
 import { HotUpdater } from "@hot-updater/react-native";
@@ -270,7 +270,7 @@ For a non-force update, the automatic flow invokes this callback after starting
 the non-blocking download, not after the download finishes. Do not use it as a
 download-readiness signal.
 
-**Callback Arguments:**
+Callback Arguments:
 
 | Property | Type | Description |
 |----------|-------------|-------------|
@@ -313,7 +313,7 @@ export default HotUpdater.wrap({
 
 Handles all errors during the update process.
 
-**Example:**
+Example:
 
 ```tsx
 import { HotUpdater } from "@hot-updater/react-native";
@@ -340,7 +340,7 @@ The function automatically appends the correct path and parameters to your `base
 
 ## Advanced: Custom Resolver
 
-For advanced use cases where you need full control over network operations - such as implementing a custom server, using GraphQL, or complex authentication flows - you can use a custom `resolver` instead of `baseURL`.
+Use a custom `resolver` instead of `baseURL` when you need control over network operations, such as a custom server, GraphQL, or complex authentication flows.
 
 ```tsx
 import { HotUpdater } from "@hot-updater/react-native";

@@ -16,11 +16,9 @@ import { Tabs, Tab } from 'fumadocs-ui/components/tabs';
 npm install @hot-updater/bugsnag-plugin @bugsnag/cli --save-dev
 ```
 
-## Step 1: Wrap Your Build Plugin
+## Step 1: Wrap your build plugin
 
 Use `withBugsnag()` to wrap any compatible build plugin such as bare.
-
-Once wrapped, sourcemaps will automatically be uploaded to BugSnag when running the `hot-updater deploy` process.
 
 <Tabs items={['Bare', 'Expo', 'Rock']}>
   <Tab value="Bare">
@@ -99,10 +97,10 @@ export default defineConfig({
 </Tabs>
 
 <Callout title="Automatic Upload">
-When `withBugsnag()` wraps your build plugin, all generated sourcemaps are uploaded to BugSnag automatically during the `hot-updater deploy` process. Each upload is identified by a `codeBundleId`, which defaults to the bundle id hot-updater generates for the deploy.
+`withBugsnag()` uploads all generated sourcemaps to BugSnag during `hot-updater deploy`. Each upload is identified by a `codeBundleId`, which defaults to the bundle id hot-updater generates for the deploy.
 </Callout>
 
-## Step 2: Set the `codeBundleId` in Your App
+## Step 2: Set the `codeBundleId` in your app
 
 BugSnag matches errors from OTA-updated apps to the uploaded sourcemaps through the `codeBundleId`. Pass the file identifier from the current manifest when starting BugSnag:
 
@@ -120,7 +118,7 @@ same files are promoted to another channel.
 
 ## Step 3: Deploy
 
-Now, every time you deploy, sourcemaps will be automatically uploaded to BugSnag.
+Deploy the update to build the bundle and upload its sourcemaps to BugSnag.
 
 ```package-install
 npx hot-updater deploy -i

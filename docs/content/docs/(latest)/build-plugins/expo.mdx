@@ -35,10 +35,10 @@ export default defineConfig({
 });
 ```
 
-## Expo Configuration
+## Expo configuration
 
 The `@hot-updater/expo` package also provides the Expo config plugin. Add it to
-your `app.json` file as shown below:
+your `app.json` file:
 
 ```jsonc title="app.json"
 {
@@ -104,7 +104,7 @@ module.exports = function (api) {
 
 ### Apply patch
 
-> **Note**: The patch and persistence steps below are only required for Expo SDK < 55. Expo SDK 55+ includes native `overrideUri` support ([PR #40397](https://github.com/expo/expo/pull/40397)), but still needs the Babel plugin above.
+> The patch and persistence steps below are only required for Expo SDK < 55. Expo SDK 55+ includes native `overrideUri` support ([PR #40397](https://github.com/expo/expo/pull/40397)), but still needs the Babel plugin above.
 
 Modify `node_modules/expo/src/dom/dom.types.ts`:
 
@@ -176,7 +176,7 @@ const RawWebView = React.forwardRef<object, Props>((props, ref) => {
 
 Use patch-package, yarn patch, or pnpm patch to persist these changes across installs.
 
-**Using patch-package:**
+Using patch-package:
 
 ```package-install
 npm install patch-package --save-dev
@@ -186,7 +186,7 @@ npm install patch-package --save-dev
 npx patch-package expo
 ```
 
-Add postinstall script:
+Add a postinstall script:
 
 ```jsonc title="package.json"
 {
@@ -196,7 +196,7 @@ Add postinstall script:
 }
 ```
 
-**Using pnpm patch:**
+Using pnpm patch:
 
 ```bash
 pnpm patch expo
@@ -204,16 +204,16 @@ pnpm patch expo
 pnpm patch-commit <path-shown-in-output>
 ```
 
-**Using yarn patch:**
+Using yarn patch:
 
 ```bash
 yarn patch expo
 # Make the changes above, then follow yarn's instructions
 ```
 
-Once configured, the Babel plugin automatically handles `overrideUri` for all DOM components. No additional code changes required.
+The Babel plugin handles `overrideUri` for all DOM components without further code changes.
 
-## Key Features
+## Key features
 
 - Uses Expo's `expo export:embed` command
 - Auto-detects Hermes from app.json configuration

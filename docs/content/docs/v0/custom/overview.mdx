@@ -27,7 +27,7 @@ Self-hosted mode lets you control the database layer while using existing cloud 
 - **Server**: Handles database operations with `@hot-updater/server`
 - **Storage**: Uses existing plugins (AWS S3, Supabase, Cloudflare R2, Firebase)
 
-This approach gives you full control over metadata while leveraging reliable cloud storage.
+
 
 ## CLI Configuration
 
@@ -174,7 +174,7 @@ This ensures consistency and simplifies configuration. Only use multiple plugins
 Start by setting up your database adapter. Choose the ORM that fits your project:
 
 - [Drizzle](./database/drizzle) - TypeScript ORM with SQL-like syntax
-- [Prisma](./database/prisma) - Next-generation ORM with intuitive data modeling
+- [Prisma](./database/prisma) - ORM with data modeling
 - [Kysely](./database/kysely) - Type-safe SQL query builder
 - [MongoDB](./database/mongodb) - Native MongoDB driver
 - [S3](./database/s3) - S3-compatible object storage for bundle metadata
@@ -197,6 +197,6 @@ After configuring your database, choose the framework that fits your stack:
 - **Framework Agnostic**: Use Hono, Express, Elysia, or any Web Standard framework
 - **ORM choice**: Drizzle, Prisma, Kysely, or native MongoDB driver
 - **Database control**: PostgreSQL, SQLite, or MongoDB on your infrastructure
-- **Cloud storage**: Leverage existing AWS S3, Cloudflare R2, Supabase, or Firebase storage
+- **Cloud storage**: Use existing AWS S3, Cloudflare R2, Supabase, or Firebase storage
 - **Type safety**: Full TypeScript support across all adapters
 - **Operational control**: Add framework-specific lifecycle and error handling for your deployment

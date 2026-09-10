@@ -22,7 +22,7 @@ channel without changing the default channel embedded in the binary.
 <Callout type="info">
   Set your app's default channel first. See
   [Default Channel Setup](/docs/v0/guides/channel-management). Runtime channel
-  switching is explicit. It only starts when you pass a
+  switching starts only when you pass a
   specific `channel` to `HotUpdater.checkForUpdate({ channel: "..." })`.
   Calling `HotUpdater.checkForUpdate()` without `channel` keeps the existing
   update flow for the app's current channel.
@@ -42,7 +42,7 @@ channel without rebuilding the native app:
 6. When you want to leave the runtime channel switch, call
    `HotUpdater.resetChannel()` and reload again.
 
-This keeps the full lifecycle explicit:
+The API calls for each step are:
 
 - Opt in with `checkForUpdate({ channel })` + `updateBundle()` + `reload()`
 - Observe state with `getChannel()` + `getDefaultChannel()` + `isChannelSwitched()`

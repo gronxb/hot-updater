@@ -6,7 +6,7 @@ icon: Hammer
 
 ## Overview
 
-Hot Updater ships dedicated native helpers so you can create store-ready artifacts or boot the app on a device without leaving the CLI. `build:android`, `build:ios`, `run:android`, and `run:ios` reuse the same configuration defined in `hot-updater.config.ts` and respect your update strategy. The `build:*` commands copy artifacts into a predictable output directory, while the `run:*` commands build, install, and launch directly.
+Use Hot Updater's native commands to create store-ready artifacts or launch the app on a device from the CLI. `build:android`, `build:ios`, `run:android`, and `run:ios` reuse the same configuration defined in `hot-updater.config.ts` and respect your update strategy. The `build:*` commands copy artifacts into a predictable output directory, while the `run:*` commands build, install, and launch directly.
 
 `build:android` is available normally. `build:ios`, `run:android`, and `run:ios` are experimental and are registered only when `EXPERIMENTAL=1` is set.
 
@@ -162,5 +162,5 @@ Artifacts from `build:android` and `build:ios` default to `.hot-updater/output/b
 
 ## Fingerprint and version awareness
 
-- `updateStrategy: "fingerprint"` regenerates `fingerprint.json` before the build and surfaces diffs from the last checked-in fingerprint.
+- `updateStrategy: "fingerprint"` regenerates `fingerprint.json` before the build and shows changes since the last checked-in fingerprint.
 - `updateStrategy: "appVersion"` reads the native app version (`CFBundleShortVersionString` / `versionName`). Missing values stop the build so artifacts never ship with unknown versions.

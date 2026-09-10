@@ -27,7 +27,7 @@ function App() {
 export default App;
 ```
 
-## Return Value
+## Return value
 
 ```ts
 getAppVersion(): string | null
@@ -44,4 +44,4 @@ getAppVersion(): string | null
 	- Android: `PackageInfo.versionName`
 - The native module then exposes this as `APP_VERSION`, and
 	`HotUpdater.getAppVersion()` returns that bridged value.
-- It does **not** make a network request.
+- It does not make a network request.

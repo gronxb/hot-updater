@@ -31,7 +31,7 @@ npm install drizzle-orm pg
 npm install -D hot-updater drizzle-kit @types/pg dotenv
 ```
 
-## Database Setup
+## Database setup
 
 Vercel Postgres is no longer available for new projects. Install a current
 Postgres integration from the Marketplace and connect it to the project. This
@@ -65,7 +65,7 @@ const pool = new Pool({
 export const db = drizzle({ client: pool, schema }); // [!code ++]
 ```
 
-## Hot Updater Configuration
+## Hot Updater configuration
 
 Create the Hot Updater instance.
 
@@ -93,9 +93,9 @@ export const hotUpdater = createHotUpdater({
 });
 ```
 
-## Serverless Function
+## Serverless function
 
-Create Vercel serverless function with Hono.
+Create a Vercel serverless function with Hono.
 
 ```typescript title="src/index.ts"
 import { Hono } from "hono";
@@ -124,7 +124,7 @@ diagnostics. The specific admin middleware and mount must be registered before
 the broader client mount. Omit both to deploy a client-only server.
 </Callout>
 
-## Schema Generation
+## Schema generation
 
 Generate the Drizzle schema for Hot Updater tables. The local command process
 must have `DATABASE_URL` and the storage environment variables above available;
@@ -170,7 +170,7 @@ Run the development server locally.
 npx vercel dev
 ```
 
-Server runs at `http://localhost:3000`.
+The server runs at `http://localhost:3000`.
 
 ## Deploy
 
@@ -185,7 +185,7 @@ npx vercel deploy --prod
 
 Your Hot Updater server will be available at `https://your-project.vercel.app/hot-updater`.
 
-## CLI Configuration
+## CLI configuration
 
 [Connect the React Native project's CLI](/docs/custom/cli-configuration) to the
 verified deployment URL with `/hot-updater/admin` as its base path. Keep the
