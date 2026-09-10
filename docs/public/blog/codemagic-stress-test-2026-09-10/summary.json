@@ -1,0 +1,412 @@
+{
+  "startedAt": "2026-09-10T13:34:31.712Z",
+  "finishedAt": "2026-09-10T13:36:22.933Z",
+  "totalRequests": 81000,
+  "groups": {
+    "hot": {
+      "requests": 36000,
+      "success": 36000,
+      "cacheHitPercent": 99.94722222222222,
+      "medianP50": 60.373,
+      "medianP95": 175.355,
+      "medianP99": 203.641,
+      "pooledP95": 176.73087499999383,
+      "p95Range": [
+        185.846,
+        174.215,
+        175.355
+      ],
+      "payloadBytes": [
+        724
+      ],
+      "maxSchedulingLagP99": 7.538,
+      "pooledP99": 271.81645800000115
+    },
+    "patch": {
+      "requests": 36000,
+      "success": 36000,
+      "cacheHitPercent": 100,
+      "medianP50": 62.816,
+      "medianP95": 176.961,
+      "medianP99": 236.1,
+      "pooledP95": 176.52304200000071,
+      "p95Range": [
+        175.303,
+        176.961,
+        177.401
+      ],
+      "payloadBytes": [
+        289
+      ],
+      "maxSchedulingLagP99": 4.636,
+      "pooledP99": 243.29795900000317
+    }
+  },
+  "runs": [
+    {
+      "target": "hot",
+      "offeredRps": 250,
+      "seconds": 6,
+      "repetition": 0,
+      "requests": 1500,
+      "correctResponses": 1500,
+      "statuses": {
+        "200": 1500
+      },
+      "cache": {
+        "HIT": 1497,
+        "REVALIDATED": 2,
+        "MISS": 1
+      },
+      "pops": {
+        "HKG": 1125,
+        "DEN": 125,
+        "NRT": 250
+      },
+      "sendDurationMs": 5996.651,
+      "drainMs": 528.848,
+      "completedRpsIncludingDrain": 229.75,
+      "p50Ms": 65.478,
+      "p95Ms": 273.538,
+      "p99Ms": 401.442,
+      "maxMs": 622.281,
+      "scheduledP95Ms": 274.131,
+      "scheduleLagP99Ms": 2.658,
+      "distinctOriginResponsesObserved": 3,
+      "responseBytes": [
+        724
+      ]
+    },
+    {
+      "target": "patch",
+      "offeredRps": 250,
+      "seconds": 6,
+      "repetition": 0,
+      "requests": 1500,
+      "correctResponses": 1500,
+      "statuses": {
+        "200": 1500
+      },
+      "cache": {
+        "HIT": 1500
+      },
+      "pops": {
+        "HKG": 1125,
+        "DEN": 125,
+        "NRT": 250
+      },
+      "sendDurationMs": 5997.123,
+      "drainMs": 130.668,
+      "completedRpsIncludingDrain": 244.67,
+      "p50Ms": 66.288,
+      "p95Ms": 187.069,
+      "p99Ms": 257.529,
+      "maxMs": 381.013,
+      "scheduledP95Ms": 187.816,
+      "scheduleLagP99Ms": 2.595,
+      "distinctOriginResponsesObserved": 0,
+      "responseBytes": [
+        289
+      ]
+    },
+    {
+      "target": "patch",
+      "offeredRps": 500,
+      "seconds": 6,
+      "repetition": 0,
+      "requests": 3000,
+      "correctResponses": 3000,
+      "statuses": {
+        "200": 3000
+      },
+      "cache": {
+        "HIT": 3000
+      },
+      "pops": {
+        "HKG": 2250,
+        "DEN": 250,
+        "NRT": 500
+      },
+      "sendDurationMs": 5999.749,
+      "drainMs": 343.941,
+      "completedRpsIncludingDrain": 472.89,
+      "p50Ms": 60.405,
+      "p95Ms": 172.188,
+      "p99Ms": 177.517,
+      "maxMs": 359.748,
+      "scheduledP95Ms": 173.617,
+      "scheduleLagP99Ms": 2.895,
+      "distinctOriginResponsesObserved": 0,
+      "responseBytes": [
+        289
+      ]
+    },
+    {
+      "target": "hot",
+      "offeredRps": 500,
+      "seconds": 6,
+      "repetition": 0,
+      "requests": 3000,
+      "correctResponses": 3000,
+      "statuses": {
+        "200": 3000
+      },
+      "cache": {
+        "HIT": 2996,
+        "REVALIDATED": 4
+      },
+      "pops": {
+        "HKG": 2250,
+        "DEN": 250,
+        "NRT": 500
+      },
+      "sendDurationMs": 5998.423,
+      "drainMs": 154.065,
+      "completedRpsIncludingDrain": 487.48,
+      "p50Ms": 60.225,
+      "p95Ms": 176.971,
+      "p99Ms": 325.298,
+      "maxMs": 480.772,
+      "scheduledP95Ms": 178.25,
+      "scheduleLagP99Ms": 2.756,
+      "distinctOriginResponsesObserved": 3,
+      "responseBytes": [
+        724
+      ]
+    },
+    {
+      "target": "hot",
+      "offeredRps": 1000,
+      "seconds": 12,
+      "repetition": 1,
+      "requests": 12000,
+      "correctResponses": 12000,
+      "statuses": {
+        "200": 12000
+      },
+      "cache": {
+        "HIT": 11993,
+        "REVALIDATED": 7
+      },
+      "pops": {
+        "HKG": 9000,
+        "DEN": 1000,
+        "NRT": 2000
+      },
+      "sendDurationMs": 12001.197,
+      "drainMs": 162.776,
+      "completedRpsIncludingDrain": 986.62,
+      "p50Ms": 60.373,
+      "p95Ms": 185.846,
+      "p99Ms": 379.159,
+      "maxMs": 907.872,
+      "scheduledP95Ms": 187.124,
+      "scheduleLagP99Ms": 2.673,
+      "distinctOriginResponsesObserved": 3,
+      "responseBytes": [
+        724
+      ]
+    },
+    {
+      "target": "patch",
+      "offeredRps": 1000,
+      "seconds": 12,
+      "repetition": 1,
+      "requests": 12000,
+      "correctResponses": 12000,
+      "statuses": {
+        "200": 12000
+      },
+      "cache": {
+        "HIT": 12000
+      },
+      "pops": {
+        "HKG": 9000,
+        "DEN": 1000,
+        "NRT": 2000
+      },
+      "sendDurationMs": 11999.562,
+      "drainMs": 163.137,
+      "completedRpsIncludingDrain": 986.59,
+      "p50Ms": 65.373,
+      "p95Ms": 175.303,
+      "p99Ms": 190.702,
+      "maxMs": 242.863,
+      "scheduledP95Ms": 176.737,
+      "scheduleLagP99Ms": 4.636,
+      "distinctOriginResponsesObserved": 0,
+      "responseBytes": [
+        289
+      ]
+    },
+    {
+      "target": "patch",
+      "offeredRps": 1000,
+      "seconds": 12,
+      "repetition": 2,
+      "requests": 12000,
+      "correctResponses": 12000,
+      "statuses": {
+        "200": 12000
+      },
+      "cache": {
+        "HIT": 12000
+      },
+      "pops": {
+        "HKG": 9000,
+        "DEN": 1000,
+        "NRT": 2000
+      },
+      "sendDurationMs": 12000.405,
+      "drainMs": 162.615,
+      "completedRpsIncludingDrain": 986.63,
+      "p50Ms": 62.816,
+      "p95Ms": 176.961,
+      "p99Ms": 236.1,
+      "maxMs": 578.39,
+      "scheduledP95Ms": 178.451,
+      "scheduleLagP99Ms": 3.486,
+      "distinctOriginResponsesObserved": 0,
+      "responseBytes": [
+        289
+      ]
+    },
+    {
+      "target": "hot",
+      "offeredRps": 1000,
+      "seconds": 12,
+      "repetition": 2,
+      "requests": 12000,
+      "correctResponses": 12000,
+      "statuses": {
+        "200": 12000
+      },
+      "cache": {
+        "HIT": 11994,
+        "REVALIDATED": 6
+      },
+      "pops": {
+        "HKG": 9000,
+        "DEN": 1000,
+        "NRT": 2000
+      },
+      "sendDurationMs": 12000.476,
+      "drainMs": 346.75,
+      "completedRpsIncludingDrain": 971.92,
+      "p50Ms": 60.772,
+      "p95Ms": 174.215,
+      "p99Ms": 203.641,
+      "maxMs": 491.832,
+      "scheduledP95Ms": 175.386,
+      "scheduleLagP99Ms": 2.612,
+      "distinctOriginResponsesObserved": 3,
+      "responseBytes": [
+        724
+      ]
+    },
+    {
+      "target": "hot",
+      "offeredRps": 1000,
+      "seconds": 12,
+      "repetition": 3,
+      "requests": 12000,
+      "correctResponses": 12000,
+      "statuses": {
+        "200": 12000
+      },
+      "cache": {
+        "HIT": 11994,
+        "REVALIDATED": 6
+      },
+      "pops": {
+        "HKG": 9000,
+        "DEN": 1000,
+        "NRT": 2000
+      },
+      "sendDurationMs": 11999.854,
+      "drainMs": 166.245,
+      "completedRpsIncludingDrain": 986.34,
+      "p50Ms": 59.242,
+      "p95Ms": 175.355,
+      "p99Ms": 202.003,
+      "maxMs": 496.715,
+      "scheduledP95Ms": 176.602,
+      "scheduleLagP99Ms": 7.538,
+      "distinctOriginResponsesObserved": 3,
+      "responseBytes": [
+        724
+      ]
+    },
+    {
+      "target": "patch",
+      "offeredRps": 1000,
+      "seconds": 12,
+      "repetition": 3,
+      "requests": 12000,
+      "correctResponses": 12000,
+      "statuses": {
+        "200": 12000
+      },
+      "cache": {
+        "HIT": 12000
+      },
+      "pops": {
+        "HKG": 9000,
+        "DEN": 1000,
+        "NRT": 2000
+      },
+      "sendDurationMs": 11999.669,
+      "drainMs": 221.758,
+      "completedRpsIncludingDrain": 981.86,
+      "p50Ms": 62.429,
+      "p95Ms": 177.401,
+      "p99Ms": 287.836,
+      "maxMs": 592.236,
+      "scheduledP95Ms": 178.643,
+      "scheduleLagP99Ms": 2.495,
+      "distinctOriginResponsesObserved": 0,
+      "responseBytes": [
+        289
+      ]
+    }
+  ],
+  "versions": {
+    "hotUpdaterCommit": "0dbbefb4c536053fb6369d51722d3c72b43a26a7",
+    "codemagicCommit": "f22294f7c2599b79979b8620e5cb6db4bf3bdf0a",
+    "serverVersion": "1.0.0-rc.14",
+    "files": {
+      "packages/server/src/handlerReleaseCatalogRoutes.ts": "048838cc14a3d76e234cd64dc3b3523acc8ccabf35f1939d59e78c6793b0d2cd",
+      "packages/server/src/apiKeys.ts": "97f0a8be69b594d4d8c9db74779cb8e843a7e66811ccc4f3efa980f890501537",
+      "packages/server/src/db/releaseCatalog.ts": "a475663b3d5b4677d7b9001210d0b8205d1df564ce73a077cfe5677a5b5b966c",
+      "plugins/cloudflare/worker/wrangler.json": "e0d28d09708302417bffb7c509764d1cbdda7f43ccba415df1ea7932991a02e6",
+      "plugins/cloudflare/src/worker/d1Database.ts": "19956f7e69ae0194aee3377db7e0939b93bf3c8611779a98c28d11616e80dbff"
+    }
+  },
+  "environment": {
+    "os": "Darwin 25.3.0 arm64",
+    "cpu": "Apple M4",
+    "cpuCores": 10,
+    "ramGiB": 24,
+    "node": "v24.15.0",
+    "pnpm": "11.6.0",
+    "wrangler": "4.99.0",
+    "requestConnections": 12,
+    "protocol": "HTTP/2",
+    "acceptEncoding": "identity",
+    "d1LocationHint": "APAC",
+    "d1ImportColo": "KIX",
+    "compatibilityDate": "2026-09-10",
+    "templateCompatibilityDate": "2026-08-13",
+    "workersCache": true,
+    "accountPlan": "not recorded",
+    "resourcesDeleted": true
+  },
+  "publicDataNote": "Deployment origin omitted. Only update-metadata delivery was measured; the Codemagic manifest was hosted on Static Assets, not R2 or a full Patch deployment.",
+  "requestData": {
+    "file": "results.json.gz",
+    "compression": "gzip",
+    "sha256": "b0dc97517ea7c2eb2e3b6ae819ba695d4351c6c886ff15d2b9cc1cea8a379044",
+    "bytes": 2003032,
+    "requests": 81000
+  }
+}
