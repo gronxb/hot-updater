@@ -81,8 +81,7 @@ export default function BlogIndex() {
               No posts yet
             </h2>
             <p className="mt-3 max-w-xl leading-7 text-fd-muted-foreground">
-              Engineering notes are on the way. Until then, explore how Hot
-              Updater works in the documentation.
+              Read how Hot Updater works in the documentation.
             </p>
             <a
               href="/docs/get-started/introduction"

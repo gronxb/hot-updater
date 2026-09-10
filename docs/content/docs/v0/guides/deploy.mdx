@@ -8,7 +8,7 @@ icon: Upload
 
 ## Checklist
 
-1. Ensure `hot-updater.config.ts` is properly configured.
+1. Configure `hot-updater.config.ts`.
 2. Wrap your components using `HotUpdater.wrap`.
 3. Include the native code.
 
@@ -66,7 +66,7 @@ fallback rules.
 
 ### Interactive Mode
 
-Interactive mode guides you through the deployment steps via keyboard inputs.
+Use interactive mode to choose deployment options with the keyboard.
 
 Execute the following command:
 
@@ -75,8 +75,6 @@ npx hot-updater deploy -i
 ```
 
 The `-i` (or `--interactive`) flag enables interactive keyboard input.
-
-- This mode allows you to proceed through deployment steps interactively.
 
 ### For Continuous Deployment (CD) Pipelines
 
@@ -112,7 +110,7 @@ Run the following command:
 npx hot-updater deploy -p <"ios" | "android"> -c "<channel>"
 ```
 
-The `-c` (or `--channel`) flag specifies the release channel. The default value is `production`.
+The `-c` (or `--channel`) flag sets the release channel. The default is `production`.
 
 For more details about default channels, refer to
 [Default Channel Setup](/docs/v0/guides/channel-management).

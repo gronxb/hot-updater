@@ -12,7 +12,7 @@ see [Runtime Channel Switch](/docs/guides/runtime-channel-switch).
 
 ## Usage
 
-You can use `HotUpdater.getChannel()` to dynamically check which channel the app is currently using.
+Use `HotUpdater.getChannel()` to read the app's current channel.
 
 ### Example
 
@@ -41,7 +41,7 @@ export default function App() {
 - Use [`HotUpdater.getDefaultChannel()`](/docs/react-native-api/getDefaultChannel) when you need the embedded default channel regardless of runtime channel switch state.
 - You can restore the original channel with [`HotUpdater.resetChannel()`](/docs/react-native-api/resetChannel).
 
-## Runtime Example
+## Runtime example
 
 After configuring [`HotUpdater.init`](/docs/react-native-api/init), check and
 apply a transition to another channel as part of your

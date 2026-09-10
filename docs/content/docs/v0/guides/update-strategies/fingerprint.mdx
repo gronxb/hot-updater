@@ -8,13 +8,11 @@ import { Tabs, Tab } from 'fumadocs-ui/components/tabs';
 
 ## Why Choose Fingerprint?
 
-Fingerprint automatically detects native code changes and blocks incompatible OTA updates. This ensures only safe updates reach your users.
+Fingerprint detects native code changes and blocks incompatible OTA updates.
 
 **Fingerprint vs App Version:**
 - **Fingerprint**: Automatic protection - detects native changes and blocks unsafe updates
 - **App Version**: Manual control - you specify version targets, no automatic checking
-
-Choose Fingerprint for automatic safety. Choose App Version for manual control.
 
 ## Setup
 
@@ -28,7 +26,7 @@ project when using the Fingerprint strategy:
 npm install @expo/fingerprint --save-dev
 ```
 
-**Using React Native without Expo?** `@expo/fingerprint` is a standalone Node.js
+`@expo/fingerprint` is a standalone Node.js
 library that [supports bare React Native projects](https://expo.dev/blog/fingerprint-your-native-runtime).
 You do not need to install `expo` or `expo-updates`, use Expo CLI, or migrate your
 app to Expo. Hot Updater runs the library when generating and checking
@@ -248,7 +246,7 @@ metadata. `stringResourcePaths` remains available only as a legacy read
 fallback for projects that already use `hot_updater_fingerprint_hash` in
 `strings.xml`.
 
-💡 Most projects don't need this - the defaults work perfectly.
+The default paths work for most projects.
 
 ### Testing the Endpoint
 

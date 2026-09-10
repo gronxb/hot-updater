@@ -7,10 +7,8 @@ version: 0.31.0
 
 ## What it is
 
-> Bundle diffing means: do not download the whole OTA archive again when the
-> device can reuse files it already has.
-
-Think of an OTA bundle as a folder of files installed on the device.
+Bundle diffing reuses files already on the device to avoid downloading the
+whole OTA archive again. An OTA bundle is a folder of installed files.
 
 ```txt
 First OTA update:
@@ -32,8 +30,8 @@ What the device downloads depends on what changed:
 | Later OTA, changed regular asset | Complete new asset file |
 | Later OTA, changed Hermes bundle file | `.bsdiff` patch when available, otherwise the complete new Hermes bundle file |
 
-For example, an update that would otherwise download a **10 MB archive** might
-only need to download a **600 KB patch file** when the byte-level Hermes changes
+For example, an update that would otherwise download a 10 MB archive might
+only need to download a 600 KB patch file when the byte-level Hermes changes
 are small.
 
 Those numbers are only an example. The archive and the patch file are different
@@ -55,8 +53,8 @@ Bundle diffing has two separate optimizations:
    and Hot Updater has a matching `.bsdiff` patch, the app can download the
    patch instead of the complete new Hermes bundle file.
 
-The key difference is that assets are reused at the file level, while changed
-Hermes bundles can also be patched at the byte level.
+Assets are reused at the file level. Changed Hermes bundles can also be patched
+at the byte level.
 
 | File type | If unchanged | If changed |
 | --- | --- | --- |
@@ -152,7 +150,6 @@ Notes:
   exponentially.
 
 If a patch cannot be created, Hot Updater still deploys the normal OTA update.
-Patch generation is an optimization, not a requirement for delivery.
 
 ## How it works
 

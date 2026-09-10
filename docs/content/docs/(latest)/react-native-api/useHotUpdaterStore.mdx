@@ -4,14 +4,13 @@ description: "Read update progress from React components."
 icon: Database
 ---
 
-Use `useHotUpdaterStore` when you want to show OTA update progress in your
-React Native UI.
+Use `useHotUpdaterStore` to show OTA update progress in your React Native UI.
 
 For most apps, `progress` and `isUpdateDownloaded` are enough. Use
 `artifactType` and `details` only when you want to render bundle diffing
-progress more specifically.
+progress for individual files.
 
-## Basic Usage
+## Basic usage
 
 `progress` is a number from `0` to `1`. `isUpdateDownloaded` becomes `true`
 when the update has finished downloading and can be applied with
@@ -75,7 +74,7 @@ function UpdateProgress() {
 }
 ```
 
-## Optimizing Renders with Selectors
+## Optimizing renders with selectors
 
 Pass a selector when a component only needs one field from the store.
 

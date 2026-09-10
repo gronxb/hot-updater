@@ -6,7 +6,7 @@ icon: Package
 
 ## Usage
 
-> **Important:** Configure Hot Updater with either `HotUpdater.wrap` or
+> Configure Hot Updater with either `HotUpdater.wrap` or
 > [`HotUpdater.init`](/docs/react-native-api/init) before calling update APIs.
 > This enables automatic crash detection and rollback. Update methods will
 > throw an error if neither API is used. Do not use both configuration APIs in
@@ -24,7 +24,7 @@ including bundle-changing server-directed rollbacks, prepare the selected
 transition and then reload by default. Set `reloadOnForceUpdate: false` when the
 current session must remain uninterrupted.
 
-### Automatic Updates
+### Automatic updates
 
 Use this optional integration when you want automatic startup checks and
 wrapper-managed staging/reload. For app-controlled check and apply timing,
@@ -59,18 +59,18 @@ default. Set `insights: false` to send no Insights events. The server routes
 remain available either way. See [Insights](/docs/guides/insights) for reporting
 and optional user identity.
 
-### Manual Updates
+### Manual updates
 
 For checks triggered by your own app lifecycle, use
 [`HotUpdater.init`](/docs/react-native-api/init) and follow the
 [custom update flow](/docs/guides/custom-update). Choose one configuration API;
 `wrap` always performs its automatic startup check.
 
-## Configuration Reference
+## Configuration reference
 
-`HotUpdater.wrap` accepts automatic update options.
+Configure the automatic update flow with `HotUpdater.wrap`.
 
-### Common Options
+### Common options
 
 | Option             | Type                                        | Required | Description                                                 |
 | ------------------ | ------------------------------------------- | -------- | ----------------------------------------------------------- |
@@ -89,9 +89,7 @@ for the `UNCHANGED`, `UPDATE_APPLIED`, and `RECOVERED` result shapes and a
 callback example. A callback result describes local native state; it does not
 confirm Insights delivery to the server.
 
-### Automatic Mode Options
-
-The following options are available in automatic mode:
+### Automatic mode options
 
 | Option                     | Type                                         | Required | Description                                     |
 | -------------------------- | -------------------------------------------- | -------- | ----------------------------------------------- |
@@ -108,12 +106,12 @@ The following options are available in automatic mode:
 
 During an update check, access to the entry point is temporarily blocked while communicating with the server.
 
-- If the update is **force update**, the entry point remains blocked, and the progress updates as the bundle downloads.
-- If **not force update**, the entry point is only blocked during the update check.
+- For a force update, the entry point remains blocked, and progress updates as the bundle downloads.
+- For a standard update, the entry point is only blocked during the update check.
 
 Without a `fallbackComponent`, the bundle downloads without blocking the screen.
 
-**Props:**
+Props:
 
 - `progress`: Download progress (0-1, e.g., for a progress bar)
 - `status`: Update state (`CHECK_FOR_UPDATE` or `UPDATING`)
@@ -125,7 +123,7 @@ Without a `fallbackComponent`, the bundle downloads without blocking the screen.
 The progress fields have the same shape as
 [`useHotUpdaterStore`](/docs/react-native-api/useHotUpdaterStore).
 
-**Example:**
+Example:
 
 ```tsx
 import { HotUpdater } from "@hot-updater/react-native";
@@ -187,7 +185,7 @@ This option only controls the automatic `HotUpdater.wrap` flow.
 
 The actual reload behavior follows [`HotUpdater.setReloadBehavior()`](/docs/react-native-api/setReloadBehavior).
 
-**Example with auto-reload:**
+Example with auto-reload:
 
 ```tsx
 import { HotUpdater } from "@hot-updater/react-native";
@@ -212,7 +210,7 @@ export default HotUpdater.wrap({
 })(App);
 ```
 
-**Example without auto-reload:**
+Example without auto-reload:
 
 ```tsx
 import { HotUpdater } from "@hot-updater/react-native";
@@ -247,7 +245,7 @@ For a non-force update, the automatic flow invokes this callback after starting
 the non-blocking download, not after the download finishes. Do not use it as a
 download-readiness signal.
 
-**Callback Arguments:**
+Callback arguments:
 
 | Property            | Type                                   | Description                          |
 | ------------------- | -------------------------------------- | ------------------------------------ |
@@ -290,7 +288,7 @@ export default HotUpdater.wrap({
 
 Handles all errors during the update process.
 
-**Example:**
+Example:
 
 ```tsx
 import { HotUpdater } from "@hot-updater/react-native";
@@ -306,19 +304,19 @@ export default HotUpdater.wrap({
 })(App);
 ```
 
-## How It Works
+## How it works
 
 The client reads a shared Release Catalog, selects a transition on the device,
 and resolves the artifact when staging is needed. See
 [how updates work](/docs/concepts/how-it-works) for the full lifecycle.
 
-## Custom Backends
+## Custom backends
 
 Point `baseURL` at a server exposing the standard Hot Updater HTTP protocol.
 A GraphQL or RPC backend needs an HTTP adapter or proxy for these routes;
 see the [Release Catalog contract](/docs/database-plugins/release-catalog-contract).
 
-## Flag Behavior
+## Flag behavior
 
 | Update Response            | Runtime Behavior                                                                                                            | How to Enable                                                                  |
 | -------------------------- | --------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------ |

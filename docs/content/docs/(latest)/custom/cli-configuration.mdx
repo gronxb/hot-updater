@@ -9,7 +9,7 @@ version: "v0.22.0"
 
 Your CLI configuration (`hot-updater.config.ts`) connects your React Native project to your self-hosted Hot Updater server. This file defines how bundles are built, stored, and tracked.
 
-## Basic Configuration
+## Basic configuration
 
 Install the CLI dependencies in your React Native project:
 
@@ -57,19 +57,17 @@ export default defineConfig({
 ```
 
 <Callout type="warn">
-**Critical: Storage Plugin Must Match**
-
 The CLI `storage` plugin must match one entry in the server's
 `createHotUpdater({ storage })` array.
 
-**CLI uses `s3Storage` → Server must use `s3Storage`**
+If the CLI uses `s3Storage`, the server must also use `s3Storage`.
 
 Both sides need the same plugin type and URI configuration to encode and decode
 the hierarchical `protocol://bucket/encoded/slash/key` storage URIs correctly.
 
 </Callout>
 
-## Standalone Repository Configuration
+## Standalone Repository configuration
 
 `baseUrl` is the exact root where the server mounts `handlers.admin`.
 `commonHeaders` must match the authentication middleware on that mount. Keep
@@ -80,7 +78,7 @@ See the [Standalone Repository reference](/docs/database-plugins/standalone#conf
 for all options, alternate authentication headers and custom Bundle route
 mapping. Release, Release Catalog, commit and Channel paths are fixed.
 
-## API Endpoints
+## API endpoints
 
 The [repository server contract](/docs/database-plugins/standalone#server-contract)
 is the canonical request and response reference. `createHotUpdater` implements

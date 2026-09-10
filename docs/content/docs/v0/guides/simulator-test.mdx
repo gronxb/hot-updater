@@ -8,8 +8,8 @@ import { Tabs, Tab } from "fumadocs-ui/components/tabs";
 
 ## Checklist
 
-- Make sure `hot-updater.config.ts` is properly configured.
-- Make sure `HotUpdater.wrap` is properly implemented.
+- Configure `hot-updater.config.ts`.
+- Set up `HotUpdater.wrap`.
 
 ## Step 1: Simulator Release Mode
 
@@ -57,7 +57,7 @@ Run your app in Release mode to test hot-updater (it doesn't work in dev mode).
 
 ## Step 2: Deploy
 
-Deploy with interactive mode and force update flag enabled in hot-updater deploy mode.
+To test an immediate update, deploy in interactive mode with the force update flag enabled.
 
 When [HotUpdater.wrap](/docs/v0/react-native-api/wrap) is set up, updates will be applied when you restart the app.
 
@@ -67,7 +67,7 @@ You can check the update progress status using [useHotUpdaterStore](/docs/v0/rea
 
 ### For Normal Deployment
 
-This is the standard deployment mode. After an update is created, users need to restart their app after downloading the bundle for the update to take effect.
+In standard deployment mode, users must restart the app after downloading the bundle to apply the update.
 
 ```package-install
 npx hot-updater deploy -i
@@ -75,7 +75,7 @@ npx hot-updater deploy -i
 
 ### For Emergency Deployment
 
-This is the emergency deployment mode. After an update is created, the bundle will automatically reload and apply the update as soon as users download it.
+In emergency deployment mode, the app reloads and applies the update as soon as the bundle finishes downloading.
 
 ```package-install
 npx hot-updater deploy -i --force-update

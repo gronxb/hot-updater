@@ -53,7 +53,7 @@ async function stageAppUpdate() {
 
 ## Parameters
 
-The `updateBundle` function accepts the following parameters:
+`updateBundle` accepts these parameters:
 
 | Parameter  | Type                     | Required | Description                                       |
 | ---------- | ------------------------ | -------- | ------------------------------------------------- |
@@ -87,7 +87,7 @@ are preserved.
 - An in-progress download is not guaranteed to finish after the app is
   force-quit.
 
-### Security Recommendation
+### Security recommendation
 
 Use `updateInfo.updateBundle()` to resolve the artifact and pass its verification
 hash to the native updater. The `fileUrl` and `fileHash` fields returned by
@@ -95,7 +95,7 @@ hash to the native updater. The `fileUrl` and `fileHash` fields returned by
 A plain SHA256 hash checks integrity but does not authenticate the publisher;
 a `sig:` value also verifies publisher authenticity with the configured public key.
 
-#### Recommended Approach
+#### Recommended approach
 
 Use `updateInfo.updateBundle()` whenever possible. The helper resolves the
 artifact when needed and preserves the complete update context selected by

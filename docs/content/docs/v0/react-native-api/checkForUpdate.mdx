@@ -6,7 +6,7 @@ icon: Search
 
 ## Usage
 
-Use `checkForUpdate` to verify if an update bundle is available. The function
+Use `checkForUpdate` to check whether an update bundle is available. The function
 reuses the update source configured in `HotUpdater.wrap()` or
 `HotUpdater.init()`.
 
@@ -52,8 +52,7 @@ async function checkForAppUpdate() {
 ## Important: HotUpdater.wrap or HotUpdater.init Required
 
 When using `checkForUpdate`, configure Hot Updater first with
-`HotUpdater.wrap()` or `HotUpdater.init()`. This is required for proper crash
-detection and rollback functionality.
+`HotUpdater.wrap()` or `HotUpdater.init()`. This enables crash detection and rollback.
 
 ```tsx
 import { HotUpdater } from "@hot-updater/react-native";
@@ -88,7 +87,7 @@ HotUpdater.init({
 export default App;
 ```
 
-`HotUpdater.init()` configures Hot Updater without the unnecessary HOC that
+`HotUpdater.init()` configures Hot Updater without the HOC that
 manual `wrap` would create:
 
 ```tsx

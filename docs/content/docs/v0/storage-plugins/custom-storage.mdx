@@ -15,7 +15,7 @@ npm install @hot-updater/plugin-core
 Build a custom storage plugin when the built-in providers do not match your
 storage backend.
 
-The goal is small: teach Hot Updater how to save bundle artifacts, read small
+A storage plugin tells Hot Updater how to save bundle artifacts, read small
 runtime metadata, and turn stored bundles into client-downloadable URLs. A
 storage plugin should not know about database rows, rollout rules, or update
 selection.
@@ -112,7 +112,7 @@ export const myStorage = createUniversalStoragePlugin<MyStorageConfig>({
 ## Profile Contracts
 
 Each method should validate that the incoming `storageUri` belongs to the
-expected provider and bucket before touching storage. That small guard prevents
+expected provider and bucket before touching storage. This check prevents
 accidentally deleting or reading from the wrong namespace when multiple storage
 plugins are configured.
 

@@ -22,7 +22,7 @@ npm install @hot-updater/sentry-plugin --save-dev
   <Tab value="Metro">
     
 
-    You need to configure Metro. Please refer to the [Sentry documentation](https://docs.sentry.io/platforms/react-native/manual-setup/metro/) above for detailed setup instructions.
+    Configure Metro following the [Sentry documentation](https://docs.sentry.io/platforms/react-native/manual-setup/metro/).
 
     ```js title="metro.config.js"
     const { getDefaultConfig } = require("@react-native/metro-config");
@@ -34,7 +34,7 @@ npm install @hot-updater/sentry-plugin --save-dev
   </Tab>
   <Tab value="Re.Pack">
 
-  You need to configure Re.Pack.
+  Configure Re.Pack:
 
 ```package-install
 npm install repack-plugin-sentry --save-dev
@@ -56,11 +56,9 @@ export default {
 
 
 
-## Step 2: Wrap Your Build Plugin
+## Step 2: Wrap your build plugin
 
 Use `withSentry()` to wrap any compatible build plugin such as bare.
-
-Once wrapped, sourcemaps will automatically be uploaded to Sentry when running the `hot-updater deploy` process.
 
 <Tabs items={['Bare', 'Expo', 'Rock']}>
   <Tab value="Bare">
@@ -148,12 +146,12 @@ export default defineConfig({
 </Tabs>
 
 <Callout title="Automatic Upload">
-When `withSentry()` wraps your build plugin, all generated sourcemaps are uploaded to Sentry automatically during the `hot-updater deploy` process.
+`withSentry()` uploads all generated sourcemaps to Sentry during `hot-updater deploy`.
 </Callout>
 
 ## Step 3: Deploy
 
-Now, every time you deploy, sourcemaps will be automatically uploaded to Sentry.
+Deploy the update to build the bundle and upload its sourcemaps to Sentry.
 
 ```package-install
 npx hot-updater deploy -i

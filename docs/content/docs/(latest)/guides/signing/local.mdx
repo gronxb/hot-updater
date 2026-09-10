@@ -30,8 +30,7 @@ Omit `signing` or set `signing: { enabled: false }` to disable signing. A local
 config must set `enabled: true`; other shapes are rejected. Local signing
 derives its public identity only from `privateKeyPath`.
 
-Generate a local pair only when you accept responsibility for backing up and
-protecting the exportable private key:
+Generate the key pair, then back up and protect the exportable private key:
 
 ```bash
 npx hot-updater keys generate --output ./keys --key-size 4096
@@ -82,7 +81,7 @@ before changing the signer used for installed apps.
 
 ## Deploy from CI
 
-For CI, use a protected secret manager and materialize the private file
+For CI, use a protected secret manager and write the private file
 only outside the workspace for the duration of the trusted signing job. A PEM
 retrieved from a secret manager is still available to that process and is less
 isolated than a KMS or HSM-backed remote signer.

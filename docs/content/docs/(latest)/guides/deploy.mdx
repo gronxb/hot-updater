@@ -94,17 +94,13 @@ fallback rules.
 
 ### Interactive Mode
 
-Interactive mode guides you through the deployment steps via keyboard inputs.
-
-Execute the following command:
+Use interactive mode to choose deployment options with the keyboard:
 
 ```package-install
 npx hot-updater deploy -i
 ```
 
 The `-i` (or `--interactive`) flag enables interactive keyboard input.
-
-- This mode allows you to proceed through deployment steps interactively.
 
 ### For Continuous Deployment (CD) Pipelines
 
@@ -143,7 +139,7 @@ Run the following command:
 npx hot-updater deploy -p <"ios" | "android"> -c "<channel>"
 ```
 
-The `-c` (or `--channel`) flag specifies the release channel. The default value is `production`.
+The `-c` (or `--channel`) default is `production`.
 
 For more details about default channels, refer to
 [Default Channel Setup](/docs/guides/channel-management).

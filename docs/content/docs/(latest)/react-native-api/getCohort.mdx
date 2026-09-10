@@ -6,8 +6,7 @@ icon: Users
 
 ## Usage
 
-Use `HotUpdater.getCohort()` when you want to inspect which cohort the current
-device belongs to.
+Use `HotUpdater.getCohort()` to read the current device's cohort.
 
 ```tsx
 import { HotUpdater } from "@hot-updater/react-native";
@@ -27,7 +26,7 @@ function CohortStatus() {
 - Custom cohorts such as `qa` or `dogfood` may also be returned if the app has
   previously called `HotUpdater.setCohort()`.
 
-## When to Use
+## When to use
 
 - Show the current cohort in a debug screen
 - Copy the current value into the console's `Target Cohorts` field

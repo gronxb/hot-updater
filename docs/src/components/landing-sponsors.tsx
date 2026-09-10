@@ -65,12 +65,12 @@ export function LandingSponsors() {
             </span>
           </div>
           <h2 className="text-2xl font-bold tracking-tight text-fd-foreground sm:text-3xl lg:text-4xl">
-            {hasSponsors ? "Built with our sponsors" : "Become a Sponsor"}
+            {hasSponsors ? "Supported by our sponsors" : "Become a sponsor"}
           </h2>
           <p className="mx-auto mt-3 max-w-2xl text-base leading-relaxed text-fd-muted-foreground sm:mt-4 sm:text-lg">
             {hasSponsors
-              ? "Every person and team who has supported Hot Updater has a place here. Thank you for keeping open source moving."
-              : "Support Hot Updater development and help us build the best OTA update solution for React Native."}
+              ? "Thank you to everyone who has supported Hot Updater development."
+              : "Support Hot Updater development for React Native."}
           </p>
         </div>
 

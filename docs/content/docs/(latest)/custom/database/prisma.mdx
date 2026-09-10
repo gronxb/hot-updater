@@ -46,7 +46,7 @@ import { PrismaClient } from "@prisma/client";
 export const prisma = new PrismaClient();
 ```
 
-## Hot Updater Configuration
+## Hot Updater configuration
 
 Create the Hot Updater instance:
 
@@ -74,7 +74,7 @@ export const hotUpdater = createHotUpdater({
 });
 ```
 
-## Schema Generation
+## Schema generation
 
 Generate the Prisma schema for Hot Updater tables.
 
@@ -99,7 +99,7 @@ npx prisma generate
 npx prisma db push
 ```
 
-## Query Semantics
+## Query semantics
 
 Prisma uses backend collations and pattern engines for string filters. The
 adapter therefore rejects explicit insensitive comparisons and pattern values
@@ -107,14 +107,14 @@ containing backend metacharacters before querying Prisma. Explicit sensitive
 mode is available only for PostgreSQL, CockroachDB, and MongoDB; other
 providers reject it instead of silently using their default collation.
 
-## CLI Configuration
+## CLI configuration
 
 After the schema is applied, [create the client API key](/docs/custom/api-key-authentication#bootstrap-a-self-hosted-client)
 using this same direct server configuration. Then
 [connect the React Native project's CLI](/docs/custom/cli-configuration) to the
 protected admin mount. Its storage configuration must match a server entry.
 
-## API Endpoints
+## API endpoints
 
 The adapter persists data; your framework mounts the HTTP handlers. Continue
 with the [Hono](/docs/custom/frameworks/hono), [Express](/docs/custom/frameworks/express)

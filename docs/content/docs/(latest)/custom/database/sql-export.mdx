@@ -13,7 +13,7 @@ Export Hot Updater table schemas as plain SQL files without requiring a config f
 For ORM-specific schema generation (Drizzle, Prisma, Kysely), see the respective adapter documentation pages.
 </Callout>
 
-## Interactive Mode
+## Interactive mode
 
 Run the command and select your database:
 
@@ -26,7 +26,7 @@ You'll be prompted to select:
 - MySQL
 - SQLite
 
-## Direct Provider Selection
+## Direct provider selection
 
 Specify the database dialect directly:
 
@@ -43,13 +43,13 @@ npx hot-updater db generate --sql sqlite
 
 ## Output
 
-Generates a single file: `hot-updater.sql`
+The command generates one file, `hot-updater.sql`.
 
 The SQL file includes:
 - Hot Updater table definitions
 - Dialect-specific syntax for your selected database
 
-## Preview Before Saving
+## Preview before saving
 
 Without the `--yes` flag, you'll see a preview before the file is created:
 
@@ -59,11 +59,11 @@ npx hot-updater db generate --sql postgresql
 
 The command will:
 1. Generate SQL
-2. Show formatted preview
-3. Warn if file already exists
+2. Show a formatted preview
+3. Warn if the file already exists
 4. Prompt for confirmation
 
-## Skip Confirmation
+## Skip confirmation
 
 Use `--yes` to skip confirmation and overwrite existing files:
 

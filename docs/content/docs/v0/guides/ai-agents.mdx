@@ -6,9 +6,8 @@ icon: Bot
 
 ## Attach the Skill
 
-Agent skills are packaged capabilities that give AI coding agents structured
-instructions for a production workflow. Attach the Hot Updater skill from its
-GitHub location:
+The Hot Updater skill gives AI coding agents instructions for OTA operations.
+Attach it from GitHub:
 
 - [`skills/hot-updater/SKILL.md`](https://github.com/hot-updater/skills/blob/main/skills/hot-updater/SKILL.md)
 
@@ -31,8 +30,8 @@ $hot-updater run doctor with server URL https://updates.example.com/api/check-up
 $hot-updater fix local doctor issues that do not require server credentials
 ```
 
-The skill gives the agent enough CLI context to translate those requests into
-safe `npx hot-updater ...` flows.
+The agent uses the skill's CLI instructions to carry out those requests with
+`npx hot-updater ...`.
 
 ## Safety Rules
 

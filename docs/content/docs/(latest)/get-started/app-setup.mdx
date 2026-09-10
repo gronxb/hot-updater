@@ -102,8 +102,8 @@ restart failures. Both use a reporter that accepts `unknown` without casting
 or rethrowing callback errors. Connect it to your app's error-reporting service
 as needed.
 
-If `checkForUpdate` returns `null`, simply stop the flow. It can mean no update
-was selected or a check error was already reported; do not display “up to date”
+If `checkForUpdate` returns `null`, stop the flow. It can mean no update
+was selected or a check error was already reported; do not display "up to date"
 based on that value alone.
 
 The button explicitly applies the update now, so it restarts for both normal
@@ -167,7 +167,7 @@ want its automatic launch check and update behavior. Use that wrapper instead
 of the `init` flow above, preserving the same URL, client key and strategy.
 Do not initialize with both APIs.
 
-## Build Configuration
+## Build configuration
 
 Setup configures bundling through the `build` field in `hot-updater.config.ts`.
 Keep the selected build plugin alongside your existing storage and database settings.
@@ -260,7 +260,7 @@ npx expo prebuild
   </Tab>
 </Tabs>
 
-## Native Code Setup
+## Native code setup
 
 Apply the marked Hot Updater changes to your existing native files. Preserve
 your app's package/module names, registered packages and React Native bootstrap
@@ -544,7 +544,7 @@ For Objective-C projects, modify your `AppDelegate.mm`:
 
 <Callout type="info">
   For brownfield apps where the JS bundle is embedded in an XCFramework, you can
-  pass a custom `Bundle` instance to lookup the JavaScript bundle resource:
+  pass a custom `Bundle` instance to look up the JavaScript bundle resource:
   `HotUpdater.bundleURL(bundle: xcframeworkBundle)` in Swift or `[HotUpdater
   bundleURLWithBundle:xcframeworkBundle]` in Objective-C.
 </Callout>

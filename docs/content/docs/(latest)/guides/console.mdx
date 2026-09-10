@@ -4,7 +4,7 @@ description: "Manage bundles and Insights locally, or deploy an authenticated co
 icon: Terminal
 ---
 
-**The console provides the following features:**
+Use the console for:
 
 - Bundle rollout and targeting management
 - Bundle disable and force-update controls
@@ -22,9 +22,8 @@ works without a developer's computer, clone the standalone host and follow
 
 Console configuration does not change bundle delivery settings or artifacts.
 
-You can configure additional console settings in the `hot-updater.config.ts` file.
-
-Configure both the `storage` and `database` plugins.
+Set console options in `hot-updater.config.ts`, along with both the `storage`
+and `database` plugins.
 
 | Option           | Description                                              | Default |
 | ---------------- | -------------------------------------------------------- | ------- |
@@ -51,7 +50,7 @@ The Bundles list and its detail sheet show an **ID** that matches
 [`HotUpdater.getBundleId()`](/docs/react-native-api/getBundleId) on the device.
 Promoted updates have their own IDs even when they reuse the same files.
 
-Execute the following command:
+Start the local console:
 
 ```package-install
 npx hot-updater console
@@ -188,6 +187,6 @@ export default defineConfig({
 });
 ```
 
-When you set the git URL, the commit hash will be clickable and redirect you to the corresponding commit in your repository.
+The commit hash links to the corresponding commit in your repository.
 
 <img src={"/docs/console/git_url.png"} />

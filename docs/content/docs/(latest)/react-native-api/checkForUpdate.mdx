@@ -6,7 +6,7 @@ icon: Search
 
 ## Usage
 
-Use `checkForUpdate` to verify if an update bundle is available. The function
+Use `checkForUpdate` to check whether an update bundle is available. The function
 reuses the update source configured in [`HotUpdater.init`](/docs/react-native-api/init).
 Call it when your app is ready to check, then use the returned helper to
 download and stage the selected update.
@@ -65,7 +65,7 @@ error with configuration instructions.
 
 ## Parameters
 
-The `checkForUpdate` function accepts the following parameters:
+`checkForUpdate` accepts these parameters:
 
 | Parameter        | Type                              | Required | Description                                                 |
 | ---------------- | --------------------------------- | -------- | ----------------------------------------------------------- |
@@ -82,7 +82,7 @@ A requested channel switch is persisted only after the returned update applies
 successfully. If a different runtime channel is already active, call
 `resetChannel()` first; that conflict rejects instead of returning `null`.
 
-## How It Works
+## How it works
 
 The client fetches a shared Release Catalog and evaluates it on the device.
 When installation is needed, the returned `updateBundle()` helper resolves the
@@ -94,7 +94,7 @@ selected artifact when called:
 
 `:channelKey` is the base64url-encoded channel name.
 
-## Return Value
+## Return value
 
 The function returns `null` when no transition is selected, when checks are
 skipped in development, or after a check fails and calls `onError`. Do not

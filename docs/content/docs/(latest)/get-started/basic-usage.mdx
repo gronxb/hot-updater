@@ -15,7 +15,7 @@ The result is a deployed update server, an integrated native app and a verified
 OTA update on a dedicated test channel. Follow these steps from the app's
 workspace directory.
 
-## Provider Setup
+## Provider setup
 
 ### Step 1: Install hot-updater
 
@@ -24,7 +24,7 @@ First [choose infrastructure](/docs/get-started/choose-provider), then follow
 `@hot-updater/react-native` SDK, `hot-updater` CLI, your selected build
 plugin and provider package. Complete all four package choices before init.
 
-### Step 2: Initialize Your Provider
+### Step 2: Initialize your provider
 
 Run the interactive initializer after installation:
 
@@ -45,7 +45,7 @@ If you are assembling your own server, use
 files through your own tooling, use
 [Infrastructure Templates](/docs/guides/infrastructure-templates).
 
-### Step 3: Generated Configuration
+### Step 3: Generated configuration
 
 Review the setup result:
 
@@ -66,7 +66,7 @@ installed binaries no longer depend on them.
 
 <a id="step-4-wrap-your-application" />
 
-### Step 4: Initialize Your Application
+### Step 4: Initialize your application
 
 Follow [Connect your app](/docs/get-started/app-setup#configure-the-update-client)
 for the complete `HotUpdater.init()` flow: initialize at module scope,
@@ -77,13 +77,13 @@ That page also configures the client URL/key, native and OTA build variables,
 build plugin, native loading, compatibility and test channel. The automatic
 wrapper remains an [optional alternative](/docs/get-started/app-setup#optional-automatic-wrapper).
 
-## Build Configuration
+## Build configuration
 
 The [build configuration](/docs/get-started/app-setup#build-configuration)
 section covers Bare, Rock and Expo. Keep its build setting alongside your
 provider's storage and database settings.
 
-## Native Code Setup
+## Native code setup
 
 Native integration is required before the first Release build. Expo applies the
 native changes through its config plugin during prebuild; bare and Rock apps
@@ -99,22 +99,22 @@ React Native version and Kotlin or Java project.
 Follow the [iOS native setup](/docs/get-started/app-setup#ios) for Swift or
 Objective-C.
 
-## Next Steps
+## Next steps
 
-### Deploy Your First Update
+### Deploy your first update
 
 Complete [Test an OTA update](/docs/get-started/test-ota). Use a native Release
 build on a dedicated test channel, change visible JavaScript and an asset,
 deploy to the matching platform/compatibility target and verify the change on
 the device. A successful upload alone does not complete onboarding.
 
-### Monitor and Manage Updates
+### Monitor and manage updates
 
 Open the [Console](/docs/guides/console) and verify received
 [Insights](/docs/guides/insights) reports. Insights is enabled by default in the
 SDK; its guide explains reporting and opt-out.
 
-### Explore Advanced Features
+### Explore advanced features
 
 After the first verified OTA:
 

@@ -30,7 +30,7 @@ import { Tabs, Tab } from 'fumadocs-ui/components/tabs';
     npx hot-updater deploy -p ios
     ```
 
-    You need to manually export the public key to native configuration files.
+    Export the public key to native configuration files manually.
   </Tab>
   <Tab value="Expo">
     ```bash
@@ -158,7 +158,7 @@ When you run `expo prebuild`, the plugin:
 2. Loads `./keys/public-key.pem` (derived from `privateKeyPath`)
 3. Embeds it in native files automatically
 
-**No need to run `npx hot-updater keys export-public` manually for Expo projects.**
+Expo projects do not need to run `npx hot-updater keys export-public` manually.
 
 ### EAS Build
 
@@ -183,7 +183,7 @@ For simpler setup, include the keys directory in EAS builds:
 
 This tells EAS to include the `keys/` directory even though it's in `.gitignore`. The plugin will use the private key file directly during prebuild.
 
-> **Note**: This approach is especially useful for local EAS builds (`eas build --local`) where you don't need to configure environment variables.
+> For local EAS builds (`eas build --local`), this avoids configuring environment variables.
 
 #### How It Works
 

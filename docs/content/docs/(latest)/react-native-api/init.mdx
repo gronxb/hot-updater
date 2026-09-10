@@ -83,7 +83,7 @@ async function prepareUpdate() {
 }
 ```
 
-## Configuration Reference
+## Configuration reference
 
 | Option             | Type                                        | Required | Description                                                      |
 | ------------------ | ------------------------------------------- | -------- | ---------------------------------------------------------------- |
@@ -110,7 +110,7 @@ If the server intentionally uses the unauthenticated
 `clientAccess: { type: "public" }` alternative, omit `x-api-key` from
 `requestHeaders`.
 
-## Recommended Flow
+## Recommended flow
 
 Initialize once at module scope, then call `HotUpdater.checkForUpdate` from the
 point where your app should check. Initialization returns `void`; no effect,

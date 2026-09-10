@@ -32,13 +32,10 @@ npx hot-updater deploy -p ios
 npx hot-updater deploy -p android
 ```
 
-The bundle will be compressed and deployed using the specified format.
-
-**How it works:**
-- The client app automatically detects the compression format (ZIP, GZIP, or Brotli) and decompresses accordingly
-- Users download the compressed bundle, reducing bandwidth usage
-- Choose a format with better compression ratio to minimize download size and save users' data
+Deploy compresses the bundle in the specified format. The client detects ZIP,
+GZIP, or Brotli and decompresses it automatically. Users download the compressed
+bundle, so a better compression ratio reduces bandwidth usage.
 
 <Callout title="Recommendation">
-Since the client handles all formats transparently, choose the format with the best compression ratio (`tar.br` or `tar.gz`) to reduce download sizes for your users.
+Choose `tar.br` or `tar.gz` for a better compression ratio and smaller downloads.
 </Callout>

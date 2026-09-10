@@ -8,13 +8,13 @@ icon: FileCheck
 
 
 1. **Initial Integration of `HotUpdater`**
-   During the first integration of `HotUpdater`, native code modifications are required. This necessitates submitting your app for app store review.
+   Integrating `HotUpdater` requires native code changes, so you must submit the app for store review.
 
 2. **Native Code Changes**
    Any updates to native code, such as Swift, Objective-C, Kotlin, or Java, require an app store review before the changes can be distributed.
 
 3. **Installing Native-Dependent Libraries**
-   When using third-party libraries in React Native that modify native code, your app must go through app store review. A key indicator of native changes is the need for commands like:
+   When using third-party libraries in React Native that modify native code, your app must go through app store review. Commands like these indicate native changes:
    ```bash
    cd ios && pod install && cd ..
    ```
@@ -77,7 +77,7 @@ If the version change only affects the `0.5.x` part of the package (patch versio
 
 ### Summary
 
-To ensure a smooth update process:
+Choose the update path based on what changed:
 -	Use HotUpdater for JS updates and asset changes to avoid app store reviews.
 -	Submit your app for review when native code changes or third-party libraries affecting native code are integrated.
 -	Follow HotUpdater versioning guidelines to determine when a review is required.
