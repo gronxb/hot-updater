@@ -1,6 +1,6 @@
 # @hot-updater/plugin-core
 
-## 1.0.0-rc.4
+## 1.0.0-rc.14
 
 ### Minor Changes
 
@@ -8,6 +8,12 @@
 - b23db5e: Replace shared Insights installation storage with canonical events and provider-private indexes for current installation queries. SQL and MongoDB keep nine access fields and fetch full event payloads only for selected results; DynamoDB counts compact scope entries. Custom providers implement `recordEvent({ event })`, `findLatestEvents`, and explicit `countLatestEvents` predicates without lifecycle helpers. Move ancillary event fields into typed `metadata`, reusing Bundle JSON conventions, while preserving SDK requests and Console responses.
 
   This changes the unreleased 1.0.0 initialization and custom database contract from the previous installation-row design. The read-cost fix preserves the canonical-event contract and keeps current-state queries independent of retained event history. Append and index updates are atomic; measured read/write costs are documented.
+
+### Patch Changes
+
+- Align all Hot Updater packages on 1.0.0-rc.14 for a coordinated release candidate. Future releases continue to use independent package versions.
+- Updated dependencies
+  - @hot-updater/core@1.0.0-rc.14
 
 ## 1.0.0-rc.3
 

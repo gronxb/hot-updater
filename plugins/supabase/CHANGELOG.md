@@ -1,6 +1,6 @@
 # @hot-updater/supabase
 
-## 1.0.0-rc.5
+## 1.0.0-rc.14
 
 ### Minor Changes
 
@@ -11,11 +11,14 @@
 
 ### Patch Changes
 
+- Align all Hot Updater packages on 1.0.0-rc.14 for a coordinated release candidate. Future releases continue to use independent package versions.
 - Updated dependencies [479c1e5]
+- Updated dependencies
 - Updated dependencies [b23db5e]
-  - @hot-updater/server@1.0.0-rc.4
-  - @hot-updater/plugin-core@1.0.0-rc.4
-  - @hot-updater/cli-tools@1.0.0-rc.4
+  - @hot-updater/server@1.0.0-rc.14
+  - @hot-updater/plugin-core@1.0.0-rc.14
+  - @hot-updater/cli-tools@1.0.0-rc.14
+  - @hot-updater/core@1.0.0-rc.14
 
 ## 1.0.0-rc.4
 

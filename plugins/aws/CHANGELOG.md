@@ -1,6 +1,6 @@
 # @hot-updater/aws
 
-## 1.0.0-rc.5
+## 1.0.0-rc.14
 
 ### Minor Changes
 
@@ -11,6 +11,7 @@
 
 ### Patch Changes
 
+- Align all Hot Updater packages on 1.0.0-rc.14 for a coordinated release candidate. Future releases continue to use independent package versions.
 - b23db5e: Align Firebase Functions and its CLI with the Admin SDK used by generated servers. Firebase emulator checks now require Java 21.
 
   Forward the original JSON request body through the Firebase Functions entrypoint so Insights events retain their payload and can be recorded.
@@ -19,10 +20,11 @@
 
 - b0387d8: Remove unused `aws-lambda` dependency
 - Updated dependencies [479c1e5]
+- Updated dependencies
 - Updated dependencies [b23db5e]
-  - @hot-updater/server@1.0.0-rc.4
-  - @hot-updater/plugin-core@1.0.0-rc.4
-  - @hot-updater/cli-tools@1.0.0-rc.4
+  - @hot-updater/server@1.0.0-rc.14
+  - @hot-updater/plugin-core@1.0.0-rc.14
+  - @hot-updater/cli-tools@1.0.0-rc.14
 
 ## 1.0.0-rc.4
 
