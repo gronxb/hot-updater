@@ -1,5 +1,11 @@
 # @hot-updater/console
 
+## 1.0.0-rc.15
+
+### Patch Changes
+
+- 7f3ba17: Distinguish downloaded update events from no-change events with the primary badge style.
+
 ## 1.0.0-rc.14
 
 ### Minor Changes
