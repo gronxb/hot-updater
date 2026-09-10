@@ -1,5 +1,11 @@
 # @hot-updater/bsdiff
 
+## 1.0.0-rc.14
+
+### Patch Changes
+
+- Align all Hot Updater packages on 1.0.0-rc.14 for a coordinated release candidate. Future releases continue to use independent package versions.
+
 ## 1.0.0-rc.0
 
 ### Major Changes

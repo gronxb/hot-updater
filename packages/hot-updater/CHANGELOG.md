@@ -1,5 +1,39 @@
 # hot-updater
 
+## 1.0.0-rc.14
+
+### Patch Changes
+
+- Align all Hot Updater packages on 1.0.0-rc.14 for a coordinated release candidate. Future releases continue to use independent package versions.
+- b23db5e: Replace shared Insights installation storage with canonical events and provider-private indexes for current installation queries. SQL and MongoDB keep nine access fields and fetch full event payloads only for selected results; DynamoDB counts compact scope entries. Custom providers implement `recordEvent({ event })`, `findLatestEvents`, and explicit `countLatestEvents` predicates without lifecycle helpers. Move ancillary event fields into typed `metadata`, reusing Bundle JSON conventions, while preserving SDK requests and Console responses.
+
+  This changes the unreleased 1.0.0 initialization and custom database contract from the previous installation-row design. The read-cost fix preserves the canonical-event contract and keeps current-state queries independent of retained event history. Append and index updates are atomic; measured read/write costs are documented.
+
+- b23db5e: Align Firebase Functions and its CLI with the Admin SDK used by generated servers. Firebase emulator checks now require Java 21.
+
+  Forward the original JSON request body through the Firebase Functions entrypoint so Insights events retain their payload and can be recorded.
+
+  Allow the managed AWS runtime to access release catalogs and release lookup records required by the current storage implementation.
+
+- e828ecb: Finish agent infrastructure setup with a ready-to-copy HotUpdater.init snippet
+  containing the verified server URL and registered client API key.
+- Updated dependencies [479c1e5]
+- Updated dependencies
+- Updated dependencies [b23db5e]
+- Updated dependencies [b23db5e]
+- Updated dependencies [b0387d8]
+  - @hot-updater/server@1.0.0-rc.14
+  - @hot-updater/console@1.0.0-rc.14
+  - @hot-updater/plugin-core@1.0.0-rc.14
+  - @hot-updater/cloudflare@1.0.0-rc.14
+  - @hot-updater/supabase@1.0.0-rc.14
+  - @hot-updater/firebase@1.0.0-rc.14
+  - @hot-updater/aws@1.0.0-rc.14
+  - @hot-updater/android-helper@1.0.0-rc.14
+  - @hot-updater/apple-helper@1.0.0-rc.14
+  - @hot-updater/cli-tools@1.0.0-rc.14
+  - @hot-updater/core@1.0.0-rc.14
+
 ## 1.0.0-rc.13
 
 ### Patch Changes
