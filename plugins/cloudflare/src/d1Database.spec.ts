@@ -200,7 +200,7 @@ it("sends parameterized commits through the D1 batch body", async () => {
   expect(state.batches[0]?.[1]?.params.length).toBeGreaterThan(0);
 });
 
-it("stores an immutable event with one parameterized statement", async () => {
+it("sends the immutable event and canonical head update in one parameterized REST batch", async () => {
   const plugin = d1Database({
     accountId: "account",
     cloudflareApiToken: "token",
@@ -211,10 +211,23 @@ it("stores an immutable event with one parameterized statement", async () => {
       event: eventD1Row,
     }),
   ).resolves.toBeUndefined();
-  expect(state.queries).toHaveLength(1);
-  expect(state.batches).toHaveLength(0);
-  expect(state.queries[0]?.sql).toContain("INSERT INTO bundle_events");
-  expect(state.queries[0]?.sql).toContain("ON CONFLICT(id) DO NOTHING");
+  expect(state.queries).toHaveLength(0);
+  expect(state.batches).toHaveLength(1);
+  expect(state.batches[0]).toHaveLength(2);
+  const [insert, head] = state.batches[0]!;
+  expect(insert?.sql).toContain("INSERT INTO bundle_events");
+  expect(insert?.sql).toContain("ON CONFLICT(id) DO NOTHING");
+  expect(insert?.params).toEqual(
+    Object.values(eventD1Row).map((value) => JSON.stringify(value)),
+  );
+  expect(head?.sql).toContain("INSERT INTO bundle_event_heads");
+  expect(head?.sql).toContain(
+    "FROM bundle_events WHERE id = json_extract(?, '$')",
+  );
+  expect(head?.sql).toContain(
+    "WHERE (excluded.received_at_ms, excluded.id) > (bundle_event_heads.received_at_ms, bundle_event_heads.id)",
+  );
+  expect(head?.params).toEqual([JSON.stringify(eventD1Row.id)]);
 });
 
 it("queries each movement type through a bounded descending range", async () => {
@@ -251,7 +264,7 @@ it("queries each movement type through a bounded descending range", async () => 
   );
 });
 
-it("counts latest events with native aggregation", async () => {
+it("counts scoped latest events on heads without reading event history", async () => {
   state.results.push({ count: 2 });
   const plugin = d1Database({
     accountId: "account",
@@ -269,8 +282,15 @@ it("counts latest events with native aggregation", async () => {
 
   expect(state.queries).toHaveLength(1);
   expect(state.queries[0]?.sql).toContain(
-    "SELECT COUNT(*) AS count FROM bundle_events",
+    "SELECT COUNT(*) AS count FROM bundle_event_heads",
   );
+  expect(state.queries[0]?.sql).toContain("platform = json_extract(?, '$')");
+  expect(state.queries[0]?.sql).toContain("channel = json_extract(?, '$')");
   expect(state.queries[0]?.sql).toContain("received_at_ms >=");
-  expect(state.queries[0]?.sql).toContain("NOT EXISTS");
+  expect(state.queries[0]?.sql).not.toContain("bundle_events");
+  expect(state.queries[0]?.params).toEqual([
+    JSON.stringify("ios"),
+    JSON.stringify("production"),
+    "100",
+  ]);
 });

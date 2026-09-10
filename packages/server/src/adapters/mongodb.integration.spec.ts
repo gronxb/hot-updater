@@ -3,7 +3,7 @@ import path from "node:path";
 
 import { type BundleEventRow } from "@hot-updater/plugin-core";
 import { execa } from "execa";
-import { MongoClient } from "mongodb";
+import { MongoClient, type CommandStartedEvent, type Document } from "mongodb";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
 import { createBundleEventRowFixture } from "../../../test-utils/src/databaseTestFixtures";
@@ -41,6 +41,40 @@ describe("MongoDB native Insights storage", () => {
       event,
     });
 
+  const measure = async (read: () => Promise<unknown>) => {
+    let pipeline: Document[] | undefined;
+    const capture = (event: CommandStartedEvent) => {
+      if (event.command.aggregate === "bundle_event_heads")
+        pipeline = event.command.pipeline;
+    };
+    client.on("commandStarted", capture);
+    let result: unknown;
+    try {
+      result = await read();
+    } finally {
+      client.off("commandStarted", capture);
+    }
+    expect(pipeline).toBeDefined();
+    const plan = await client
+      .db()
+      .collection("bundle_event_heads")
+      .aggregate(pipeline!, { collation: { locale: "simple" } })
+      .explain("executionStats");
+    expect(JSON.stringify(plan)).not.toContain('"stage":"COLLSCAN"');
+    const cursor = plan.stages?.find(
+      (stage: Record<string, unknown>) => "$cursor" in stage,
+    )?.$cursor;
+    const stats = plan.executionStats ?? cursor?.executionStats;
+    const lookup = plan.stages?.find(
+      (stage: Record<string, unknown>) => "$lookup" in stage,
+    );
+    return {
+      result,
+      keysExamined: stats.totalKeysExamined + (lookup?.totalKeysExamined ?? 0),
+      docsExamined: stats.totalDocsExamined + (lookup?.totalDocsExamined ?? 0),
+    };
+  };
+
   beforeAll(async () => {
     const port = await availablePort();
     composeEnvironment = {
@@ -50,6 +84,7 @@ describe("MongoDB native Insights storage", () => {
     await compose(["up", "-d", "--wait"]);
     client = new MongoClient(
       `mongodb://127.0.0.1:${port}/insights_native?replicaSet=rs0&directConnection=true`,
+      { monitorCommands: true },
     );
     await client.connect();
     const adapter = mongoAdapter({ client });
@@ -58,6 +93,7 @@ describe("MongoDB native Insights storage", () => {
 
   beforeEach(async () => {
     await client.db().collection("bundle_events").deleteMany({});
+    await client.db().collection("bundle_event_heads").deleteMany({});
   });
 
   afterAll(async () => {
@@ -143,49 +179,163 @@ describe("MongoDB native Insights storage", () => {
     ).resolves.toEqual([event]);
   });
 
-  it("groups indexed history before filtering current users", async () => {
-    const events = Array.from({ length: 10_000 }, (_, index) => ({
-      ...createBundleEventRowFixture(String(10000 + index), index % 10),
-      install_id: `installation-${Math.floor(index / 10)}`,
-      user_id: index % 10 === 9 ? "current" : "previous",
+  it("atomically moves scope membership while rejecting old or duplicate state", async () => {
+    const previous = {
+      ...createBundleEventRowFixture("840", 100),
+      user_id: "old",
+    };
+    const current = {
+      ...previous,
+      id: createBundleEventRowFixture("842", 200).id,
+      received_at_ms: 200,
+      user_id: null,
+      channel: "preview",
+    };
+    await record(previous);
+    const heads = client.db().collection("bundle_event_heads");
+    await client.db().command({
+      collMod: "bundle_event_heads",
+      validator: { channel: { $ne: "preview" } },
+    });
+    try {
+      await expect(record(current)).rejects.toThrow();
+      expect(
+        await client.db().collection("bundle_events").countDocuments({}),
+      ).toBe(1);
+      await expect(
+        insights().findLatestEvents({ installId: current.install_id }),
+      ).resolves.toEqual([previous]);
+    } finally {
+      await client
+        .db()
+        .command({ collMod: "bundle_event_heads", validator: {} });
+    }
+    await record(current);
+    await record({ ...current, channel: "duplicate", received_at_ms: 300 });
+    await record({
+      ...previous,
+      id: createBundleEventRowFixture("841", 200).id,
+      received_at_ms: 200,
+    });
+    await expect(
+      insights().findLatestEvents({ userId: "old", limit: 10 }),
+    ).resolves.toEqual([]);
+    for (const [channel, expected] of [
+      ["production", 0],
+      ["preview", 1],
+      ["duplicate", 0],
+    ] as const)
+      await expect(
+        insights().countLatestEvents({ platform: "ios", channel, sinceMs: 0 }),
+      ).resolves.toBe(expected);
+    expect(
+      Object.keys((await heads.findOne({ install_id: current.install_id }))!)
+        .filter((key) => key !== "_id")
+        .sort(),
+    ).toEqual([
+      "channel",
+      "from_bundle_id",
+      "id",
+      "install_id",
+      "platform",
+      "received_at_ms",
+      "to_bundle_id",
+      "type",
+      "user_id",
+    ]);
+  });
+
+  it("keeps native latest reads bounded as history and unrelated scopes grow", async () => {
+    const events = Array.from({ length: 24 }, (_, index) => ({
+      ...createBundleEventRowFixture(String(10000 + index), 1000),
+      install_id: `installation-${String(index).padStart(3, "0")}`,
+      user_id: "current",
     }));
-    const collection = client.db().collection("bundle_events");
-    await collection.insertMany(events);
+    await Promise.all(events.map(record));
+    const reads = async () => ({
+      user: await measure(() =>
+        insights().findLatestEvents({ userId: "current", limit: 10 }),
+      ),
+      scope: await measure(() =>
+        insights().countLatestEvents({
+          platform: "ios",
+          channel: "production",
+          sinceMs: 500,
+        }),
+      ),
+      bundle: await measure(() =>
+        insights().countLatestEvents({
+          platform: "ios",
+          channel: "production",
+          sinceMs: 500,
+          bundle: [
+            {
+              field: "to_bundle_id",
+              value: events[0]!.to_bundle_id,
+              types: ["UPDATE_APPLIED"],
+            },
+          ],
+        }),
+      ),
+    });
+    const before = await reads();
+    // Older accepted events do not advance heads. Bulk seed the immutable
+    // history so this measurement isolates read cost from transaction timing.
+    await client
+      .db()
+      .collection("bundle_events")
+      .insertMany(
+        Array.from({ length: 2400 }, (_, index) => ({
+          ...events[index % events.length]!,
+          id: createBundleEventRowFixture(String(20000 + index), 1).id,
+          received_at_ms: index % 100,
+          user_id: "previous",
+        })),
+      );
+    const afterHistory = await reads();
+    await Promise.all(
+      Array.from({ length: 240 }, (_, index) =>
+        record({
+          ...createBundleEventRowFixture(String(30000 + index), 1000),
+          install_id: `other-${index}`,
+          user_id: "other",
+          channel: "other",
+        }),
+      ),
+    );
+    const afterScopes = await reads();
+    for (const sample of [before, afterHistory, afterScopes]) {
+      expect(sample.user.result).toEqual(events.slice(0, 10));
+      expect(sample.user.keysExamined).toBeLessThanOrEqual(22);
+      expect(sample.user.docsExamined).toBeLessThanOrEqual(20);
+      expect(sample.scope.result).toBe(events.length);
+      expect(sample.scope.keysExamined).toBeLessThanOrEqual(events.length + 1);
+      expect(sample.scope.docsExamined).toBeLessThanOrEqual(events.length);
+      expect(sample.bundle.result).toBe(1);
+      expect(sample.bundle.keysExamined).toBeLessThanOrEqual(2);
+      expect(sample.bundle.docsExamined).toBeLessThanOrEqual(1);
+    }
+    expect(afterHistory).toEqual(before);
     await expect(
       insights().findLatestEvents({ userId: "previous", limit: 10 }),
     ).resolves.toEqual([]);
-    await expect(
-      insights().countLatestEvents({
-        platform: "ios",
-        channel: "production",
-        sinceMs: 0,
-      }),
-    ).resolves.toBe(1_000);
-    const pipeline = [
-      { $sort: { install_id: -1, received_at_ms: -1, id: -1 } },
-      { $group: { _id: "$install_id", event: { $first: "$$ROOT" } } },
-      { $replaceRoot: { newRoot: "$event" } },
-      { $match: { user_id: "current" } },
-      { $count: "count" },
-    ];
-    const plan = await collection
-      .aggregate(pipeline, { collation: { locale: "simple" } })
-      .explain("executionStats");
-    expect(JSON.stringify(plan)).toContain("bundle_events_latest_idx");
-    expect(JSON.stringify(plan)).not.toContain('"stage":"COLLSCAN"');
-    const cursor = plan.stages?.find(
-      (stage: Record<string, unknown>) => "$cursor" in stage,
-    )?.$cursor;
-    const stats = plan.executionStats ?? cursor?.executionStats;
-    expect(stats.totalDocsExamined).toBeLessThanOrEqual(events.length);
+    const metrics = (sample: Awaited<ReturnType<typeof reads>>) =>
+      Object.fromEntries(
+        Object.entries(sample).map(
+          ([query, { keysExamined, docsExamined }]) => [
+            query,
+            { keysExamined, docsExamined },
+          ],
+        ),
+      );
     console.info(
-      "MongoDB latest-event plan",
+      "MongoDB latest read growth",
       JSON.stringify({
-        events: events.length,
-        installations: 1000,
-        keysExamined: stats.totalKeysExamined,
-        docsExamined: stats.totalDocsExamined,
-        executionTimeMs: stats.executionTimeMillis,
+        before: metrics(before),
+        afterHistory: metrics(afterHistory),
+        afterScopes: metrics(afterScopes),
+        historyEventsAdded: 2400,
+        unrelatedInstallationsAdded: 240,
       }),
     );
   });
@@ -255,5 +405,79 @@ describe("MongoDB native Insights storage", () => {
       .explain("executionStats");
     expect(explanation.executionStats.nReturned).toBe(1);
     expect(explanation.executionStats.totalKeysExamined).toBeLessThanOrEqual(2);
+  });
+
+  it("uses native bundle indexes for rare, common, absent, and overlapping predicates", async () => {
+    const rare = createBundleEventRowFixture("40000", 1000).to_bundle_id;
+    const common = createBundleEventRowFixture("40001", 1000).to_bundle_id;
+    const absent = createBundleEventRowFixture("40002", 1000).to_bundle_id;
+    const events = Array.from({ length: 1000 }, (_, index) => {
+      const bundleId = index === 0 ? rare : common;
+      return {
+        ...createBundleEventRowFixture(String(50000 + index), 1000),
+        from_bundle_id: bundleId,
+        to_bundle_id: bundleId,
+      };
+    });
+    // Seed a consistent large read fixture; transaction correctness is covered
+    // above. The index contains only the access fields used by production.
+    await client.db().collection("bundle_events").insertMany(events);
+    await client
+      .db()
+      .collection("bundle_event_heads")
+      .insertMany(
+        events.map((event) => ({
+          install_id: event.install_id,
+          id: event.id,
+          received_at_ms: event.received_at_ms,
+          user_id: event.user_id,
+          platform: event.platform,
+          channel: event.channel,
+          type: event.type,
+          from_bundle_id: event.from_bundle_id,
+          to_bundle_id: event.to_bundle_id,
+        })),
+      );
+    const count = (bundleId: string, overlap = false) =>
+      measure(() =>
+        insights().countLatestEvents({
+          platform: "ios",
+          channel: "production",
+          sinceMs: 500,
+          bundle: [
+            {
+              field: "from_bundle_id",
+              value: bundleId,
+              types: overlap ? ["UPDATE_APPLIED"] : ["UPDATE_DOWNLOADED"],
+            },
+            {
+              field: "to_bundle_id",
+              value: bundleId,
+              types: ["UNCHANGED", "UPDATE_APPLIED", "RECOVERED"],
+            },
+          ],
+        }),
+      );
+    const samples = {
+      rare: await count(rare),
+      common: await count(common),
+      absent: await count(absent),
+      rareOverlap: await count(rare, true),
+      commonOverlap: await count(common, true),
+    };
+    for (const query of [samples.rare, samples.rareOverlap]) {
+      expect(query.result).toBe(1);
+      expect(query.keysExamined).toBeLessThanOrEqual(8);
+      expect(query.docsExamined).toBeLessThanOrEqual(1);
+    }
+    expect(samples.absent.result).toBe(0);
+    expect(samples.absent.keysExamined).toBeLessThanOrEqual(4);
+    expect(samples.absent.docsExamined).toBe(0);
+    for (const query of [samples.common, samples.commonOverlap]) {
+      expect(query.result).toBe(999);
+      expect(query.keysExamined).toBeLessThanOrEqual(2 * 999 + 8);
+      expect(query.docsExamined).toBeLessThanOrEqual(1000);
+    }
+    console.info("MongoDB native bundle selectivity", JSON.stringify(samples));
   });
 });

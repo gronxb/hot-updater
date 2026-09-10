@@ -268,6 +268,7 @@ export const verifyConsoleInsights = async (
       overview,
     ],
   ]);
+  const outcomePages = new Map<string, EventCursorPage>();
   const outcomeEvidence = [];
   for (const observedOutcome of observedEvents) {
     const bundleId =
@@ -307,14 +308,22 @@ export const verifyConsoleInsights = async (
       );
     }
     const report = await readCursorPagesUntil(
-      (cursor) =>
-        client.listEvents({
+      async (cursor) => {
+        const input = {
           beforeReceivedAtMs: selected.beforeReceivedAtMs,
           bundle,
           cursor,
           limit: PAGE_LIMIT,
           sinceMs: selected.sinceMs,
-        }),
+        };
+        const pageKey = JSON.stringify(input);
+        let page = outcomePages.get(pageKey);
+        if (page === undefined) {
+          page = await client.listEvents(input);
+          outcomePages.set(pageKey, page);
+        }
+        return page;
+      },
       (row) =>
         row.receivedAtMs >= (options.sinceMs ?? 0) &&
         sameEvent(row, observedOutcome),

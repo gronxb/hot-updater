@@ -837,6 +837,9 @@ describe("server/db hotUpdater (PGlite + Kysely)", async () => {
         bundle_events: {
           id: "event_id",
         },
+        bundle_event_heads: {
+          install_id: "install_id",
+        },
 
         bundle_patches: {
           bundle_id: "bundle_id",

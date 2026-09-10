@@ -199,6 +199,43 @@ describe("console insights E2E QA", () => {
     });
   });
 
+  it("reuses outcome pages while checking every observed installation", async () => {
+    const client = createClient();
+    const second = { ...event, id: "event-2", installId: "install-2" };
+    vi.mocked(client.listEvents).mockImplementation(async (input) => ({
+      ...emptyEventPage,
+      data: input?.cursor === "second-page" ? [second] : [event],
+      nextCursor: input?.cursor === "second-page" ? null : "second-page",
+    }));
+    const options = {
+      observedEvents: [
+        observedTransition,
+        { ...observedTransition, installId: second.installId },
+      ],
+    };
+
+    const evidence = await verifyConsoleInsights(client, options);
+    expect(evidence.outcomes.map(({ eventId }) => eventId)).toEqual([
+      event.id,
+      second.id,
+    ]);
+    expect(client.getReportingOverview).toHaveBeenCalledTimes(1);
+    expect(
+      vi
+        .mocked(client.listEvents)
+        .mock.calls.filter(([input]) => input?.bundle),
+    ).toHaveLength(2);
+
+    // A missing second report must still fail; cached pages belong to one check.
+    vi.mocked(client.listEvents).mockResolvedValue({
+      ...emptyEventPage,
+      data: [event],
+    });
+    await expect(verifyConsoleInsights(client, options)).rejects.toMatchObject({
+      code: "inconsistent-data",
+    });
+  });
+
   it("verifies a download before apply in history, movement and bundle counts", async () => {
     const client = createClient();
     const downloaded = { ...event, type: "UPDATE_DOWNLOADED" as const };

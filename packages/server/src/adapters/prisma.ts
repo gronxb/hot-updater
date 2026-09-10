@@ -27,7 +27,11 @@ import {
   translateChannelDeleteError,
 } from "./databaseConstraintErrors";
 import { hasNullOrderOverrides, sortRowsByOrder } from "./databasePluginUtils";
-import { queryPrismaLatestEvents } from "./prismaInsights";
+import {
+  queryPrismaLatestEvents,
+  recordPrismaEventWithCte,
+  updatePrismaEventHead,
+} from "./prismaInsights";
 import { createPrismaOrderBy, createPrismaWhere } from "./prismaQuery";
 import {
   getPrismaDelegate,
@@ -90,6 +94,14 @@ const runPrismaTransaction = <TResult>(
           error === null ||
           !("code" in error) ||
           (error.code !== "P2034" &&
+            !(
+              error.code === "P2010" &&
+              "meta" in error &&
+              typeof error.meta === "object" &&
+              error.meta !== null &&
+              "code" in error.meta &&
+              error.meta.code === "40001"
+            ) &&
             !(retryUniqueConflict && error.code === "P2002"))
         ) {
           throw error;
@@ -363,9 +375,21 @@ const createPrismaImplementation = (
   const implementation: DatabasePluginImplementation = {
     ...crud,
     async recordInsights({ event }) {
+      if (!hasCallbackTransaction(client)) {
+        return recordPrismaEventWithCte(client, provider, event);
+      }
       const events = getPrismaDelegate(client, "bundle_events");
       try {
-        await events.create({ data: event });
+        await runPrismaTransaction(
+          client,
+          provider === "cockroachdb" ? "serializable" : "default",
+          async (transaction) => {
+            await getPrismaDelegate(transaction, "bundle_events").create({
+              data: event,
+            });
+            await updatePrismaEventHead(transaction, provider, event);
+          },
+        );
       } catch (error) {
         if (
           typeof error !== "object" ||

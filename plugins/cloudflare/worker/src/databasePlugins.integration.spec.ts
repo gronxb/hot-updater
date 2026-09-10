@@ -93,7 +93,7 @@ vi.mock("cloudflare", () => ({
 const reset = async (): Promise<void> => {
   await getDb()
     .prepare(
-      "DELETE FROM bundle_events; DELETE FROM api_keys; DELETE FROM bundle_patches; DELETE FROM release_catalogs; DELETE FROM releases; DELETE FROM bundles; DELETE FROM channels;",
+      "DELETE FROM bundle_event_heads; DELETE FROM bundle_events; DELETE FROM api_keys; DELETE FROM bundle_patches; DELETE FROM release_catalogs; DELETE FROM releases; DELETE FROM bundles; DELETE FROM channels;",
     )
     .run();
 };
@@ -232,6 +232,24 @@ describe.each([
       ).resolves.toEqual([]);
     } finally {
       await env.DB.prepare("DROP TRIGGER fail_insights_event").run();
+    }
+    await env.DB.prepare(`
+      CREATE TRIGGER fail_insights_head BEFORE INSERT ON bundle_event_heads
+      BEGIN SELECT RAISE(ABORT, 'injected head failure'); END;
+    `).run();
+    try {
+      await expect(plugin.models.insights.recordEvent(input)).rejects.toThrow(
+        "injected head failure",
+      );
+      expect(
+        (await env.DB.prepare("SELECT * FROM bundle_events").all()).results,
+      ).toEqual([]);
+      expect(
+        (await env.DB.prepare("SELECT * FROM bundle_event_heads").all())
+          .results,
+      ).toEqual([]);
+    } finally {
+      await env.DB.prepare("DROP TRIGGER fail_insights_head").run();
     }
     await plugin.models.insights.recordEvent(input);
     await plugin.models.insights.recordEvent(input);

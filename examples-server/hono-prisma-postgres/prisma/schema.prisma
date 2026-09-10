@@ -113,10 +113,24 @@ model bundle_events {
   received_at_ms Float
   @@index([received_at_ms, id], map: "bundle_events_received_at_idx")
   @@index([install_id, received_at_ms, id], map: "bundle_events_latest_idx")
-  @@index([user_id, install_id], map: "bundle_events_user_idx")
   @@index([install_id, type, received_at_ms, id], map: "bundle_events_install_idx")
   @@index([type, platform, channel, from_bundle_id, received_at_ms, id], map: "bundle_events_from_bundle_idx")
   @@index([type, platform, channel, to_bundle_id, received_at_ms, id], map: "bundle_events_to_bundle_idx")
+}
+model bundle_event_heads {
+  install_id String @db.VarChar(255) @id
+  id String @db.Uuid
+  received_at_ms Float
+  user_id String? @db.VarChar(255)
+  platform String
+  channel String
+  type String @db.VarChar(32)
+  from_bundle_id String? @db.Uuid
+  to_bundle_id String @db.Uuid
+  @@index([user_id, install_id], map: "bundle_event_heads_user_idx")
+  @@index([platform, channel, received_at_ms], map: "bundle_event_heads_scope_idx")
+  @@index([type, platform, channel, from_bundle_id, received_at_ms], map: "bundle_event_heads_from_idx")
+  @@index([type, platform, channel, to_bundle_id, received_at_ms], map: "bundle_event_heads_to_idx")
 }
 model api_keys {
   id String @db.VarChar(255) @id

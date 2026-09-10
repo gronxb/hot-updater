@@ -39,7 +39,11 @@ const createImplementation = (
   return {
     ...crud,
     recordInsights: async (input) => {
-      await recordDrizzleInsights(db, config.provider, input);
+      await recordDrizzleInsights(
+        db.resolve === undefined ? db : await db.resolve(),
+        config.provider,
+        input,
+      );
     },
     deleteChannel: (input) => {
       if (transaction === undefined) {

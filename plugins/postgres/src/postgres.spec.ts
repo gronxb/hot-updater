@@ -41,7 +41,7 @@ setupDatabasePluginTestSuite({
   createPlugin: () => postgres({ dialect: new PGliteDialect(getClient()) }),
   reset: async () => {
     await getClient().exec(
-      "DELETE FROM bundle_events; DELETE FROM api_keys; DELETE FROM bundle_patches; DELETE FROM release_catalogs; DELETE FROM releases; DELETE FROM bundles; DELETE FROM channels;",
+      "DELETE FROM bundle_event_heads; DELETE FROM bundle_events; DELETE FROM api_keys; DELETE FROM bundle_patches; DELETE FROM release_catalogs; DELETE FROM releases; DELETE FROM bundles; DELETE FROM channels;",
     );
   },
   dispose: async (plugin) => {
@@ -283,6 +283,24 @@ describe("PostgreSQL Insights projection", () => {
         (await database.query("SELECT * FROM bundle_events")).rows,
       ).toEqual([]);
       await database.exec("DROP TRIGGER fail_insights_event ON bundle_events");
+      await database.exec(`
+        CREATE FUNCTION fail_insights_head() RETURNS trigger LANGUAGE plpgsql AS $$
+        BEGIN RAISE EXCEPTION 'injected head failure'; END; $$;
+        CREATE TRIGGER fail_insights_head BEFORE INSERT ON bundle_event_heads
+        FOR EACH ROW EXECUTE FUNCTION fail_insights_head();
+      `);
+      await expect(plugin.models.insights.recordEvent(input)).rejects.toThrow(
+        "injected head failure",
+      );
+      expect(
+        (await database.query("SELECT * FROM bundle_events")).rows,
+      ).toEqual([]);
+      expect(
+        (await database.query("SELECT * FROM bundle_event_heads")).rows,
+      ).toEqual([]);
+      await database.exec(
+        "DROP TRIGGER fail_insights_head ON bundle_event_heads",
+      );
       await plugin.models.insights.recordEvent(input);
       await plugin.models.insights.recordEvent(input);
       expect(

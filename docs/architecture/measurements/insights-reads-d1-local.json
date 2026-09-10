@@ -1,0 +1,3853 @@
+{
+  "baseline": "ef1a071e83fc870038a591b7b83d91a6a738f96c",
+  "event_only": "dfee6cb63e6cf6d79a03453284d2417f2c1600db",
+  "selected_strategy": "heads_bundle_indexes",
+  "selected_schema": {
+    "path": "plugins/cloudflare/worker/migrations/0001_hot-updater_1.0.0.sql",
+    "sha256": "58e9b32cb3241170017fb55adf6b09f73a963c944d1dd70791235dd950471a1f",
+    "manifest": {
+      "bundle_events": {
+        "columns": [
+          {
+            "cid": 0,
+            "name": "id",
+            "type": "TEXT",
+            "notnull": 1,
+            "dflt_value": null,
+            "pk": 1
+          },
+          {
+            "cid": 1,
+            "name": "type",
+            "type": "TEXT",
+            "notnull": 1,
+            "dflt_value": null,
+            "pk": 0
+          },
+          {
+            "cid": 2,
+            "name": "install_id",
+            "type": "TEXT",
+            "notnull": 1,
+            "dflt_value": null,
+            "pk": 0
+          },
+          {
+            "cid": 3,
+            "name": "user_id",
+            "type": "TEXT",
+            "notnull": 0,
+            "dflt_value": null,
+            "pk": 0
+          },
+          {
+            "cid": 4,
+            "name": "from_release_id",
+            "type": "TEXT",
+            "notnull": 0,
+            "dflt_value": null,
+            "pk": 0
+          },
+          {
+            "cid": 5,
+            "name": "from_bundle_id",
+            "type": "TEXT",
+            "notnull": 0,
+            "dflt_value": null,
+            "pk": 0
+          },
+          {
+            "cid": 6,
+            "name": "to_release_id",
+            "type": "TEXT",
+            "notnull": 0,
+            "dflt_value": null,
+            "pk": 0
+          },
+          {
+            "cid": 7,
+            "name": "to_bundle_id",
+            "type": "TEXT",
+            "notnull": 1,
+            "dflt_value": null,
+            "pk": 0
+          },
+          {
+            "cid": 8,
+            "name": "platform",
+            "type": "TEXT",
+            "notnull": 1,
+            "dflt_value": null,
+            "pk": 0
+          },
+          {
+            "cid": 9,
+            "name": "app_version",
+            "type": "TEXT",
+            "notnull": 1,
+            "dflt_value": null,
+            "pk": 0
+          },
+          {
+            "cid": 10,
+            "name": "channel",
+            "type": "TEXT",
+            "notnull": 1,
+            "dflt_value": null,
+            "pk": 0
+          },
+          {
+            "cid": 11,
+            "name": "metadata",
+            "type": "TEXT",
+            "notnull": 1,
+            "dflt_value": null,
+            "pk": 0
+          },
+          {
+            "cid": 12,
+            "name": "received_at_ms",
+            "type": "REAL",
+            "notnull": 1,
+            "dflt_value": null,
+            "pk": 0
+          }
+        ],
+        "indexes": [
+          {
+            "name": "bundle_events_from_bundle_idx",
+            "unique": 0,
+            "columns": [
+              "type",
+              "platform",
+              "channel",
+              "from_bundle_id",
+              "received_at_ms",
+              "id"
+            ]
+          },
+          {
+            "name": "bundle_events_install_idx",
+            "unique": 0,
+            "columns": ["install_id", "type", "received_at_ms", "id"]
+          },
+          {
+            "name": "bundle_events_latest_idx",
+            "unique": 0,
+            "columns": ["install_id", "received_at_ms", "id"]
+          },
+          {
+            "name": "bundle_events_received_at_idx",
+            "unique": 0,
+            "columns": ["received_at_ms", "id"]
+          },
+          {
+            "name": "bundle_events_to_bundle_idx",
+            "unique": 0,
+            "columns": [
+              "type",
+              "platform",
+              "channel",
+              "to_bundle_id",
+              "received_at_ms",
+              "id"
+            ]
+          },
+          {
+            "name": "sqlite_autoindex_bundle_events_1",
+            "unique": 1,
+            "columns": ["id"]
+          }
+        ]
+      },
+      "bundle_event_heads": {
+        "columns": [
+          {
+            "cid": 0,
+            "name": "install_id",
+            "type": "TEXT",
+            "notnull": 1,
+            "dflt_value": null,
+            "pk": 1
+          },
+          {
+            "cid": 1,
+            "name": "id",
+            "type": "TEXT",
+            "notnull": 1,
+            "dflt_value": null,
+            "pk": 0
+          },
+          {
+            "cid": 2,
+            "name": "received_at_ms",
+            "type": "REAL",
+            "notnull": 1,
+            "dflt_value": null,
+            "pk": 0
+          },
+          {
+            "cid": 3,
+            "name": "user_id",
+            "type": "TEXT",
+            "notnull": 0,
+            "dflt_value": null,
+            "pk": 0
+          },
+          {
+            "cid": 4,
+            "name": "platform",
+            "type": "TEXT",
+            "notnull": 1,
+            "dflt_value": null,
+            "pk": 0
+          },
+          {
+            "cid": 5,
+            "name": "channel",
+            "type": "TEXT",
+            "notnull": 1,
+            "dflt_value": null,
+            "pk": 0
+          },
+          {
+            "cid": 6,
+            "name": "type",
+            "type": "TEXT",
+            "notnull": 1,
+            "dflt_value": null,
+            "pk": 0
+          },
+          {
+            "cid": 7,
+            "name": "from_bundle_id",
+            "type": "TEXT",
+            "notnull": 0,
+            "dflt_value": null,
+            "pk": 0
+          },
+          {
+            "cid": 8,
+            "name": "to_bundle_id",
+            "type": "TEXT",
+            "notnull": 1,
+            "dflt_value": null,
+            "pk": 0
+          }
+        ],
+        "indexes": [
+          {
+            "name": "bundle_event_heads_from_idx",
+            "unique": 0,
+            "columns": [
+              "type",
+              "platform",
+              "channel",
+              "from_bundle_id",
+              "received_at_ms"
+            ]
+          },
+          {
+            "name": "bundle_event_heads_scope_idx",
+            "unique": 0,
+            "columns": ["platform", "channel", "received_at_ms"]
+          },
+          {
+            "name": "bundle_event_heads_to_idx",
+            "unique": 0,
+            "columns": [
+              "type",
+              "platform",
+              "channel",
+              "to_bundle_id",
+              "received_at_ms"
+            ]
+          },
+          {
+            "name": "bundle_event_heads_user_idx",
+            "unique": 0,
+            "columns": ["user_id", "install_id"]
+          },
+          {
+            "name": "sqlite_autoindex_bundle_event_heads_1",
+            "unique": 1,
+            "columns": ["install_id"]
+          }
+        ]
+      }
+    }
+  },
+  "miniflare": "4.20260609.0",
+  "node": "v24.15.0",
+  "notes": [
+    "Local workerd D1 meta.rows_read/rows_written, not production billing or the causal multiplier of the quota incident.",
+    "Same canonical events and expected latest IDs/counts across all strategies. Runtime-shaped OR groups and json_extract parameter binding. One measured read per query after ANALYZE; elapsed time includes local proxy overhead and is secondary to row counts.",
+    "Fixtures bulk-load history then insert only final heads. fixture_load_rows_written is construction cost, not realistic ingestion cost; writes reports separate atomic per-event receipt costs including duplicate/delayed delivery.",
+    "database_bytes is D1 meta.size_after after fixture construction; not retained production storage or network transfer.",
+    "Current-user and scope filters apply after choosing the global latest event. Fixtures include user/channel moves, anonymous users, and all event kinds. Latest type varies independently within each common bundle. The rare running bundle belongs to one in 1000 installations. bundleVariety controls the number of other current bundles. Every event and bundle identifier uses a valid 36-character UUIDv7 representation.",
+    "Historical snapshot pages return their stored installation payload; all other strategies return full canonical event payload. ID results are identical; heads hydrate canonical rows after paging, accounting for 101 extra reads for a 101-row page.",
+    "Head projections remove the obsolete canonical-event user index. The selected strategy uses the captured current migration verbatim, records its SHA-256 and PRAGMA column/index manifest, and verifies the nine-field head and bundle index definitions. Historical and tuple/pointer alternatives retain their pinned event indexes."
+  ],
+  "results": [
+    {
+      "scoped": 1000,
+      "unrelated": 0,
+      "depth": 10,
+      "bundleVariety": 1,
+      "events": 10000,
+      "strategies": {
+        "snapshot": {
+          "database_bytes": 7024640,
+          "fixture_load_rows_written": 66000,
+          "writes": {
+            "new_event_existing_installation": {
+              "rows_read": 6,
+              "rows_written": 11
+            },
+            "duplicate_event": {
+              "rows_read": 5,
+              "rows_written": 0
+            },
+            "delayed_event": {
+              "rows_read": 5,
+              "rows_written": 6
+            }
+          },
+          "queries": {
+            "exact": {
+              "rows_read": 1,
+              "rows_written": 0,
+              "elapsed_ms": 1.932,
+              "result_count": 1,
+              "plan": [
+                "SEARCH h USING INDEX sqlite_autoindex_bundle_installations_1 (install_id=?)"
+              ],
+              "sql": "SELECT h.* FROM bundle_installations h WHERE h.install_id=json_extract(?, '$') ORDER BY h.install_id LIMIT json_extract(?, '$')",
+              "parameters": ["\"install-000500\"", "1"]
+            },
+            "user_first": {
+              "rows_read": 101,
+              "rows_written": 0,
+              "elapsed_ms": 7.294,
+              "result_count": 101,
+              "plan": [
+                "SEARCH h USING INDEX bundle_installations_user_id_idx (user_id=?)"
+              ],
+              "sql": "SELECT h.* FROM bundle_installations h WHERE h.user_id=json_extract(?, '$') ORDER BY h.install_id LIMIT json_extract(?, '$')",
+              "parameters": ["\"user-1\"", "101"]
+            },
+            "user_later": {
+              "rows_read": 92,
+              "rows_written": 0,
+              "elapsed_ms": 4.137,
+              "result_count": 91,
+              "plan": [
+                "SEARCH h USING INDEX bundle_installations_user_id_idx (user_id=? AND install_id>?)"
+              ],
+              "sql": "SELECT h.* FROM bundle_installations h WHERE h.user_id=json_extract(?, '$') AND h.install_id>json_extract(?, '$') ORDER BY h.install_id LIMIT json_extract(?, '$')",
+              "parameters": ["\"user-1\"", "\"install-000500\"", "101"]
+            },
+            "scope_count": {
+              "rows_read": 1000,
+              "rows_written": 0,
+              "elapsed_ms": 1.749,
+              "result_count": 1000,
+              "plan": [
+                "SEARCH h USING COVERING INDEX bundle_installations_scope_idx (platform=? AND channel=? AND received_at_ms>?)"
+              ],
+              "sql": "SELECT COUNT(*) AS count FROM bundle_installations h WHERE (h.platform=json_extract(?, '$') AND h.channel=json_extract(?, '$') AND h.received_at_ms>=json_extract(?, '$'))",
+              "parameters": ["\"ios\"", "\"production\"", "0"]
+            },
+            "common_bundle_count": {
+              "rows_read": 1000,
+              "rows_written": 0,
+              "elapsed_ms": 3.358,
+              "result_count": 999,
+              "plan": [
+                "SEARCH h USING COVERING INDEX bundle_installations_bundle_idx (platform=? AND channel=? AND to_bundle_id=? AND received_at_ms>?)"
+              ],
+              "sql": "SELECT COUNT(*) AS count FROM bundle_installations h WHERE (h.platform=json_extract(?, '$') AND h.channel=json_extract(?, '$') AND h.received_at_ms>=json_extract(?, '$') AND h.to_bundle_id=json_extract(?, '$'))",
+              "parameters": [
+                "\"ios\"",
+                "\"production\"",
+                "0",
+                "\"00000000-0000-7000-8000-000000000001\""
+              ]
+            },
+            "rare_bundle_count": {
+              "rows_read": 1,
+              "rows_written": 0,
+              "elapsed_ms": 1.862,
+              "result_count": 1,
+              "plan": [
+                "SEARCH h USING COVERING INDEX bundle_installations_bundle_idx (platform=? AND channel=? AND to_bundle_id=? AND received_at_ms>?)"
+              ],
+              "sql": "SELECT COUNT(*) AS count FROM bundle_installations h WHERE (h.platform=json_extract(?, '$') AND h.channel=json_extract(?, '$') AND h.received_at_ms>=json_extract(?, '$') AND h.to_bundle_id=json_extract(?, '$'))",
+              "parameters": [
+                "\"ios\"",
+                "\"production\"",
+                "0",
+                "\"00000000-0000-7000-8000-000000000002\""
+              ]
+            }
+          }
+        },
+        "event_only": {
+          "database_bytes": 8634368,
+          "fixture_load_rows_written": 80000,
+          "writes": {
+            "new_event_existing_installation": {
+              "rows_read": 2,
+              "rows_written": 8
+            },
+            "duplicate_event": {
+              "rows_read": 2,
+              "rows_written": 0
+            },
+            "delayed_event": {
+              "rows_read": 2,
+              "rows_written": 8
+            }
+          },
+          "queries": {
+            "exact": {
+              "rows_read": 75,
+              "rows_written": 0,
+              "elapsed_ms": 1.75,
+              "result_count": 1,
+              "plan": [
+                "SEARCH e USING INDEX bundle_events_latest_idx (install_id=?)",
+                "CORRELATED SCALAR SUBQUERY 1",
+                "SEARCH n USING COVERING INDEX bundle_events_latest_idx (install_id=?)"
+              ],
+              "sql": "SELECT e.* FROM bundle_events e WHERE NOT EXISTS (SELECT 1 FROM bundle_events n WHERE n.install_id=e.install_id AND (n.received_at_ms>e.received_at_ms OR (n.received_at_ms=e.received_at_ms AND n.id>e.id))) AND e.install_id=json_extract(?, '$') ORDER BY e.install_id LIMIT json_extract(?, '$')",
+              "parameters": ["\"install-000500\"", "1"]
+            },
+            "user_first": {
+              "rows_read": 7541,
+              "rows_written": 0,
+              "elapsed_ms": 5.104,
+              "result_count": 101,
+              "plan": [
+                "SEARCH e USING INDEX bundle_events_user_idx (user_id=?)",
+                "CORRELATED SCALAR SUBQUERY 1",
+                "SEARCH n USING COVERING INDEX bundle_events_latest_idx (install_id=?)"
+              ],
+              "sql": "SELECT e.* FROM bundle_events e WHERE NOT EXISTS (SELECT 1 FROM bundle_events n WHERE n.install_id=e.install_id AND (n.received_at_ms>e.received_at_ms OR (n.received_at_ms=e.received_at_ms AND n.id>e.id))) AND e.user_id=json_extract(?, '$') ORDER BY e.install_id LIMIT json_extract(?, '$')",
+              "parameters": ["\"user-1\"", "101"]
+            },
+            "user_later": {
+              "rows_read": 6791,
+              "rows_written": 0,
+              "elapsed_ms": 4.016,
+              "result_count": 91,
+              "plan": [
+                "SEARCH e USING INDEX bundle_events_user_idx (user_id=? AND install_id>?)",
+                "CORRELATED SCALAR SUBQUERY 1",
+                "SEARCH n USING COVERING INDEX bundle_events_latest_idx (install_id=?)"
+              ],
+              "sql": "SELECT e.* FROM bundle_events e WHERE NOT EXISTS (SELECT 1 FROM bundle_events n WHERE n.install_id=e.install_id AND (n.received_at_ms>e.received_at_ms OR (n.received_at_ms=e.received_at_ms AND n.id>e.id))) AND e.user_id=json_extract(?, '$') AND e.install_id>json_extract(?, '$') ORDER BY e.install_id LIMIT json_extract(?, '$')",
+              "parameters": ["\"user-1\"", "\"install-000500\"", "101"]
+            },
+            "scope_count": {
+              "rows_read": 63999,
+              "rows_written": 0,
+              "elapsed_ms": 13.548,
+              "result_count": 1000,
+              "plan": [
+                "SEARCH e USING INDEX bundle_events_received_at_idx (received_at_ms>?)",
+                "CORRELATED SCALAR SUBQUERY 1",
+                "SEARCH n USING COVERING INDEX bundle_events_latest_idx (install_id=?)"
+              ],
+              "sql": "SELECT COUNT(*) AS count FROM bundle_events e WHERE NOT EXISTS (SELECT 1 FROM bundle_events n WHERE n.install_id=e.install_id AND (n.received_at_ms>e.received_at_ms OR (n.received_at_ms=e.received_at_ms AND n.id>e.id))) AND (e.platform=json_extract(?, '$') AND e.channel=json_extract(?, '$') AND e.received_at_ms>=json_extract(?, '$'))",
+              "parameters": ["\"ios\"", "\"production\"", "0"]
+            },
+            "common_bundle_count": {
+              "rows_read": 61944,
+              "rows_written": 0,
+              "elapsed_ms": 17.302,
+              "result_count": 999,
+              "plan": [
+                "MULTI-INDEX OR",
+                "INDEX 1",
+                "SEARCH e USING INDEX bundle_events_from_bundle_idx (type=? AND platform=? AND channel=? AND from_bundle_id=? AND received_at_ms>?)",
+                "INDEX 2",
+                "SEARCH e USING INDEX bundle_events_to_bundle_idx (type=? AND platform=? AND channel=? AND to_bundle_id=? AND received_at_ms>?)",
+                "CORRELATED SCALAR SUBQUERY 1",
+                "SEARCH n USING COVERING INDEX bundle_events_latest_idx (install_id=?)"
+              ],
+              "sql": "SELECT COUNT(*) AS count FROM bundle_events e WHERE NOT EXISTS (SELECT 1 FROM bundle_events n WHERE n.install_id=e.install_id AND (n.received_at_ms>e.received_at_ms OR (n.received_at_ms=e.received_at_ms AND n.id>e.id))) AND ((e.platform=json_extract(?, '$') AND e.channel=json_extract(?, '$') AND e.received_at_ms>=json_extract(?, '$') AND e.type=json_extract(?, '$') AND e.from_bundle_id=json_extract(?, '$')) OR (e.platform=json_extract(?, '$') AND e.channel=json_extract(?, '$') AND e.received_at_ms>=json_extract(?, '$') AND e.type IN (json_extract(?, '$'),json_extract(?, '$'),json_extract(?, '$')) AND e.to_bundle_id=json_extract(?, '$')))",
+              "parameters": [
+                "\"ios\"",
+                "\"production\"",
+                "0",
+                "\"UPDATE_DOWNLOADED\"",
+                "\"00000000-0000-7000-8000-000000000001\"",
+                "\"ios\"",
+                "\"production\"",
+                "0",
+                "\"UNCHANGED\"",
+                "\"UPDATE_APPLIED\"",
+                "\"RECOVERED\"",
+                "\"00000000-0000-7000-8000-000000000001\""
+              ]
+            },
+            "rare_bundle_count": {
+              "rows_read": 68,
+              "rows_written": 0,
+              "elapsed_ms": 1.659,
+              "result_count": 1,
+              "plan": [
+                "MULTI-INDEX OR",
+                "INDEX 1",
+                "SEARCH e USING INDEX bundle_events_from_bundle_idx (type=? AND platform=? AND channel=? AND from_bundle_id=? AND received_at_ms>?)",
+                "INDEX 2",
+                "SEARCH e USING INDEX bundle_events_to_bundle_idx (type=? AND platform=? AND channel=? AND to_bundle_id=? AND received_at_ms>?)",
+                "CORRELATED SCALAR SUBQUERY 1",
+                "SEARCH n USING COVERING INDEX bundle_events_latest_idx (install_id=?)"
+              ],
+              "sql": "SELECT COUNT(*) AS count FROM bundle_events e WHERE NOT EXISTS (SELECT 1 FROM bundle_events n WHERE n.install_id=e.install_id AND (n.received_at_ms>e.received_at_ms OR (n.received_at_ms=e.received_at_ms AND n.id>e.id))) AND ((e.platform=json_extract(?, '$') AND e.channel=json_extract(?, '$') AND e.received_at_ms>=json_extract(?, '$') AND e.type=json_extract(?, '$') AND e.from_bundle_id=json_extract(?, '$')) OR (e.platform=json_extract(?, '$') AND e.channel=json_extract(?, '$') AND e.received_at_ms>=json_extract(?, '$') AND e.type IN (json_extract(?, '$'),json_extract(?, '$'),json_extract(?, '$')) AND e.to_bundle_id=json_extract(?, '$')))",
+              "parameters": [
+                "\"ios\"",
+                "\"production\"",
+                "0",
+                "\"UPDATE_DOWNLOADED\"",
+                "\"00000000-0000-7000-8000-000000000002\"",
+                "\"ios\"",
+                "\"production\"",
+                "0",
+                "\"UNCHANGED\"",
+                "\"UPDATE_APPLIED\"",
+                "\"RECOVERED\"",
+                "\"00000000-0000-7000-8000-000000000002\""
+              ]
+            }
+          }
+        },
+        "tuple_index": {
+          "database_bytes": 8921088,
+          "fixture_load_rows_written": 90000,
+          "writes": {
+            "new_event_existing_installation": {
+              "rows_read": 2,
+              "rows_written": 9
+            },
+            "duplicate_event": {
+              "rows_read": 2,
+              "rows_written": 0
+            },
+            "delayed_event": {
+              "rows_read": 2,
+              "rows_written": 9
+            }
+          },
+          "queries": {
+            "exact": {
+              "rows_read": 30,
+              "rows_written": 0,
+              "elapsed_ms": 1.767,
+              "result_count": 1,
+              "plan": [
+                "SEARCH e USING INDEX bundle_events_latest_idx (install_id=?)",
+                "CORRELATED SCALAR SUBQUERY 1",
+                "SEARCH n USING COVERING INDEX bundle_events_latest_idx (install_id=? AND received_at_ms>?)"
+              ],
+              "sql": "SELECT e.* FROM bundle_events e WHERE NOT EXISTS (SELECT 1 FROM bundle_events n WHERE n.install_id=e.install_id AND (n.received_at_ms,n.id)>(e.received_at_ms,e.id)) AND e.install_id=json_extract(?, '$') ORDER BY e.install_id LIMIT json_extract(?, '$')",
+              "parameters": ["\"install-000500\"", "1"]
+            },
+            "user_first": {
+              "rows_read": 3018,
+              "rows_written": 0,
+              "elapsed_ms": 4.231,
+              "result_count": 101,
+              "plan": [
+                "SEARCH e USING INDEX bundle_events_user_idx (user_id=?)",
+                "CORRELATED SCALAR SUBQUERY 1",
+                "SEARCH n USING COVERING INDEX bundle_events_latest_idx (install_id=? AND received_at_ms>?)"
+              ],
+              "sql": "SELECT e.* FROM bundle_events e WHERE NOT EXISTS (SELECT 1 FROM bundle_events n WHERE n.install_id=e.install_id AND (n.received_at_ms,n.id)>(e.received_at_ms,e.id)) AND e.user_id=json_extract(?, '$') ORDER BY e.install_id LIMIT json_extract(?, '$')",
+              "parameters": ["\"user-1\"", "101"]
+            },
+            "user_later": {
+              "rows_read": 2718,
+              "rows_written": 0,
+              "elapsed_ms": 3.778,
+              "result_count": 91,
+              "plan": [
+                "SEARCH e USING INDEX bundle_events_user_idx (user_id=? AND install_id>?)",
+                "CORRELATED SCALAR SUBQUERY 1",
+                "SEARCH n USING COVERING INDEX bundle_events_latest_idx (install_id=? AND received_at_ms>?)"
+              ],
+              "sql": "SELECT e.* FROM bundle_events e WHERE NOT EXISTS (SELECT 1 FROM bundle_events n WHERE n.install_id=e.install_id AND (n.received_at_ms,n.id)>(e.received_at_ms,e.id)) AND e.user_id=json_extract(?, '$') AND e.install_id>json_extract(?, '$') ORDER BY e.install_id LIMIT json_extract(?, '$')",
+              "parameters": ["\"user-1\"", "\"install-000500\"", "101"]
+            },
+            "scope_count": {
+              "rows_read": 23999,
+              "rows_written": 0,
+              "elapsed_ms": 9.953,
+              "result_count": 1000,
+              "plan": [
+                "SEARCH e USING INDEX bundle_events_scope_idx (platform=? AND channel=? AND received_at_ms>?)",
+                "CORRELATED SCALAR SUBQUERY 1",
+                "SEARCH n USING COVERING INDEX bundle_events_latest_idx (install_id=? AND received_at_ms>?)"
+              ],
+              "sql": "SELECT COUNT(*) AS count FROM bundle_events e WHERE NOT EXISTS (SELECT 1 FROM bundle_events n WHERE n.install_id=e.install_id AND (n.received_at_ms,n.id)>(e.received_at_ms,e.id)) AND (e.platform=json_extract(?, '$') AND e.channel=json_extract(?, '$') AND e.received_at_ms>=json_extract(?, '$'))",
+              "parameters": ["\"ios\"", "\"production\"", "0"]
+            },
+            "common_bundle_count": {
+              "rows_read": 23982,
+              "rows_written": 0,
+              "elapsed_ms": 11.164,
+              "result_count": 999,
+              "plan": [
+                "MULTI-INDEX OR",
+                "INDEX 1",
+                "SEARCH e USING INDEX bundle_events_from_bundle_idx (type=? AND platform=? AND channel=? AND from_bundle_id=? AND received_at_ms>?)",
+                "INDEX 2",
+                "SEARCH e USING INDEX bundle_events_to_bundle_idx (type=? AND platform=? AND channel=? AND to_bundle_id=? AND received_at_ms>?)",
+                "CORRELATED SCALAR SUBQUERY 1",
+                "SEARCH n USING COVERING INDEX bundle_events_latest_idx (install_id=? AND received_at_ms>?)"
+              ],
+              "sql": "SELECT COUNT(*) AS count FROM bundle_events e WHERE NOT EXISTS (SELECT 1 FROM bundle_events n WHERE n.install_id=e.install_id AND (n.received_at_ms,n.id)>(e.received_at_ms,e.id)) AND ((e.platform=json_extract(?, '$') AND e.channel=json_extract(?, '$') AND e.received_at_ms>=json_extract(?, '$') AND e.type=json_extract(?, '$') AND e.from_bundle_id=json_extract(?, '$')) OR (e.platform=json_extract(?, '$') AND e.channel=json_extract(?, '$') AND e.received_at_ms>=json_extract(?, '$') AND e.type IN (json_extract(?, '$'),json_extract(?, '$'),json_extract(?, '$')) AND e.to_bundle_id=json_extract(?, '$')))",
+              "parameters": [
+                "\"ios\"",
+                "\"production\"",
+                "0",
+                "\"UPDATE_DOWNLOADED\"",
+                "\"00000000-0000-7000-8000-000000000001\"",
+                "\"ios\"",
+                "\"production\"",
+                "0",
+                "\"UNCHANGED\"",
+                "\"UPDATE_APPLIED\"",
+                "\"RECOVERED\"",
+                "\"00000000-0000-7000-8000-000000000001\""
+              ]
+            },
+            "rare_bundle_count": {
+              "rows_read": 30,
+              "rows_written": 0,
+              "elapsed_ms": 1.421,
+              "result_count": 1,
+              "plan": [
+                "MULTI-INDEX OR",
+                "INDEX 1",
+                "SEARCH e USING INDEX bundle_events_from_bundle_idx (type=? AND platform=? AND channel=? AND from_bundle_id=? AND received_at_ms>?)",
+                "INDEX 2",
+                "SEARCH e USING INDEX bundle_events_to_bundle_idx (type=? AND platform=? AND channel=? AND to_bundle_id=? AND received_at_ms>?)",
+                "CORRELATED SCALAR SUBQUERY 1",
+                "SEARCH n USING COVERING INDEX bundle_events_latest_idx (install_id=? AND received_at_ms>?)"
+              ],
+              "sql": "SELECT COUNT(*) AS count FROM bundle_events e WHERE NOT EXISTS (SELECT 1 FROM bundle_events n WHERE n.install_id=e.install_id AND (n.received_at_ms,n.id)>(e.received_at_ms,e.id)) AND ((e.platform=json_extract(?, '$') AND e.channel=json_extract(?, '$') AND e.received_at_ms>=json_extract(?, '$') AND e.type=json_extract(?, '$') AND e.from_bundle_id=json_extract(?, '$')) OR (e.platform=json_extract(?, '$') AND e.channel=json_extract(?, '$') AND e.received_at_ms>=json_extract(?, '$') AND e.type IN (json_extract(?, '$'),json_extract(?, '$'),json_extract(?, '$')) AND e.to_bundle_id=json_extract(?, '$')))",
+              "parameters": [
+                "\"ios\"",
+                "\"production\"",
+                "0",
+                "\"UPDATE_DOWNLOADED\"",
+                "\"00000000-0000-7000-8000-000000000002\"",
+                "\"ios\"",
+                "\"production\"",
+                "0",
+                "\"UNCHANGED\"",
+                "\"UPDATE_APPLIED\"",
+                "\"RECOVERED\"",
+                "\"00000000-0000-7000-8000-000000000002\""
+              ]
+            }
+          }
+        },
+        "pointer": {
+          "database_bytes": 8728576,
+          "fixture_load_rows_written": 82000,
+          "writes": {
+            "new_event_existing_installation": {
+              "rows_read": 6,
+              "rows_written": 9
+            },
+            "duplicate_event": {
+              "rows_read": 8,
+              "rows_written": 0
+            },
+            "delayed_event": {
+              "rows_read": 8,
+              "rows_written": 8
+            }
+          },
+          "queries": {
+            "exact": {
+              "rows_read": 2,
+              "rows_written": 0,
+              "elapsed_ms": 1.436,
+              "result_count": 1,
+              "plan": [
+                "SEARCH h USING INDEX sqlite_autoindex_bundle_event_heads_1 (install_id=?)",
+                "SEARCH e USING INDEX sqlite_autoindex_bundle_events_1 (id=?)"
+              ],
+              "sql": "SELECT e.* FROM bundle_event_heads h JOIN bundle_events e ON e.id=h.id WHERE h.install_id=json_extract(?, '$') ORDER BY h.install_id LIMIT json_extract(?, '$')",
+              "parameters": ["\"install-000500\"", "1"]
+            },
+            "user_first": {
+              "rows_read": 1110,
+              "rows_written": 0,
+              "elapsed_ms": 3.461,
+              "result_count": 101,
+              "plan": [
+                "SCAN h USING INDEX sqlite_autoindex_bundle_event_heads_1",
+                "SEARCH e USING INDEX sqlite_autoindex_bundle_events_1 (id=?)"
+              ],
+              "sql": "SELECT e.* FROM bundle_event_heads h JOIN bundle_events e ON e.id=h.id WHERE e.user_id=json_extract(?, '$') ORDER BY h.install_id LIMIT json_extract(?, '$')",
+              "parameters": ["\"user-1\"", "101"]
+            },
+            "user_later": {
+              "rows_read": 2000,
+              "rows_written": 0,
+              "elapsed_ms": 4.341,
+              "result_count": 91,
+              "plan": [
+                "SCAN h USING INDEX sqlite_autoindex_bundle_event_heads_1",
+                "SEARCH e USING INDEX sqlite_autoindex_bundle_events_1 (id=?)"
+              ],
+              "sql": "SELECT e.* FROM bundle_event_heads h JOIN bundle_events e ON e.id=h.id WHERE e.user_id=json_extract(?, '$') AND e.install_id>json_extract(?, '$') ORDER BY h.install_id LIMIT json_extract(?, '$')",
+              "parameters": ["\"user-1\"", "\"install-000500\"", "101"]
+            },
+            "scope_count": {
+              "rows_read": 2000,
+              "rows_written": 0,
+              "elapsed_ms": 2.552,
+              "result_count": 1000,
+              "plan": [
+                "SCAN h",
+                "SEARCH e USING INDEX sqlite_autoindex_bundle_events_1 (id=?)"
+              ],
+              "sql": "SELECT COUNT(*) AS count FROM bundle_event_heads h JOIN bundle_events e ON e.id=h.id WHERE (e.platform=json_extract(?, '$') AND e.channel=json_extract(?, '$') AND e.received_at_ms>=json_extract(?, '$'))",
+              "parameters": ["\"ios\"", "\"production\"", "0"]
+            },
+            "common_bundle_count": {
+              "rows_read": 2000,
+              "rows_written": 0,
+              "elapsed_ms": 2.938,
+              "result_count": 999,
+              "plan": [
+                "SCAN h",
+                "SEARCH e USING INDEX sqlite_autoindex_bundle_events_1 (id=?)"
+              ],
+              "sql": "SELECT COUNT(*) AS count FROM bundle_event_heads h JOIN bundle_events e ON e.id=h.id WHERE ((e.platform=json_extract(?, '$') AND e.channel=json_extract(?, '$') AND e.received_at_ms>=json_extract(?, '$') AND e.type=json_extract(?, '$') AND e.from_bundle_id=json_extract(?, '$')) OR (e.platform=json_extract(?, '$') AND e.channel=json_extract(?, '$') AND e.received_at_ms>=json_extract(?, '$') AND e.type IN (json_extract(?, '$'),json_extract(?, '$'),json_extract(?, '$')) AND e.to_bundle_id=json_extract(?, '$')))",
+              "parameters": [
+                "\"ios\"",
+                "\"production\"",
+                "0",
+                "\"UPDATE_DOWNLOADED\"",
+                "\"00000000-0000-7000-8000-000000000001\"",
+                "\"ios\"",
+                "\"production\"",
+                "0",
+                "\"UNCHANGED\"",
+                "\"UPDATE_APPLIED\"",
+                "\"RECOVERED\"",
+                "\"00000000-0000-7000-8000-000000000001\""
+              ]
+            },
+            "rare_bundle_count": {
+              "rows_read": 2000,
+              "rows_written": 0,
+              "elapsed_ms": 6.316,
+              "result_count": 1,
+              "plan": [
+                "SCAN h",
+                "SEARCH e USING INDEX sqlite_autoindex_bundle_events_1 (id=?)"
+              ],
+              "sql": "SELECT COUNT(*) AS count FROM bundle_event_heads h JOIN bundle_events e ON e.id=h.id WHERE ((e.platform=json_extract(?, '$') AND e.channel=json_extract(?, '$') AND e.received_at_ms>=json_extract(?, '$') AND e.type=json_extract(?, '$') AND e.from_bundle_id=json_extract(?, '$')) OR (e.platform=json_extract(?, '$') AND e.channel=json_extract(?, '$') AND e.received_at_ms>=json_extract(?, '$') AND e.type IN (json_extract(?, '$'),json_extract(?, '$'),json_extract(?, '$')) AND e.to_bundle_id=json_extract(?, '$')))",
+              "parameters": [
+                "\"ios\"",
+                "\"production\"",
+                "0",
+                "\"UPDATE_DOWNLOADED\"",
+                "\"00000000-0000-7000-8000-000000000002\"",
+                "\"ios\"",
+                "\"production\"",
+                "0",
+                "\"UNCHANGED\"",
+                "\"UPDATE_APPLIED\"",
+                "\"RECOVERED\"",
+                "\"00000000-0000-7000-8000-000000000002\""
+              ]
+            }
+          }
+        },
+        "heads": {
+          "database_bytes": 8585216,
+          "fixture_load_rows_written": 74000,
+          "writes": {
+            "new_event_existing_installation": {
+              "rows_read": 4,
+              "rows_written": 10
+            },
+            "duplicate_event": {
+              "rows_read": 4,
+              "rows_written": 0
+            },
+            "delayed_event": {
+              "rows_read": 4,
+              "rows_written": 7
+            }
+          },
+          "queries": {
+            "exact": {
+              "rows_read": 2,
+              "rows_written": 0,
+              "elapsed_ms": 1.327,
+              "result_count": 1,
+              "plan": [
+                "CO-ROUTINE h",
+                "SEARCH h USING INDEX sqlite_autoindex_bundle_event_heads_1 (install_id=?)",
+                "SCAN h",
+                "SEARCH e USING INDEX sqlite_autoindex_bundle_events_1 (id=?)"
+              ],
+              "sql": "SELECT e.* FROM (SELECT id,install_id FROM bundle_event_heads h WHERE h.install_id=json_extract(?, '$') ORDER BY install_id LIMIT json_extract(?, '$')) h JOIN bundle_events e ON e.id=h.id ORDER BY h.install_id",
+              "parameters": ["\"install-000500\"", "1"]
+            },
+            "user_first": {
+              "rows_read": 202,
+              "rows_written": 0,
+              "elapsed_ms": 4.623,
+              "result_count": 101,
+              "plan": [
+                "CO-ROUTINE h",
+                "SEARCH h USING INDEX bundle_event_heads_user_idx (user_id=?)",
+                "SCAN h",
+                "SEARCH e USING INDEX sqlite_autoindex_bundle_events_1 (id=?)"
+              ],
+              "sql": "SELECT e.* FROM (SELECT id,install_id FROM bundle_event_heads h WHERE h.user_id=json_extract(?, '$') ORDER BY install_id LIMIT json_extract(?, '$')) h JOIN bundle_events e ON e.id=h.id ORDER BY h.install_id",
+              "parameters": ["\"user-1\"", "101"]
+            },
+            "user_later": {
+              "rows_read": 183,
+              "rows_written": 0,
+              "elapsed_ms": 2.435,
+              "result_count": 91,
+              "plan": [
+                "CO-ROUTINE h",
+                "SEARCH h USING INDEX bundle_event_heads_user_idx (user_id=? AND install_id>?)",
+                "SCAN h",
+                "SEARCH e USING INDEX sqlite_autoindex_bundle_events_1 (id=?)"
+              ],
+              "sql": "SELECT e.* FROM (SELECT id,install_id FROM bundle_event_heads h WHERE h.user_id=json_extract(?, '$') AND h.install_id>json_extract(?, '$') ORDER BY install_id LIMIT json_extract(?, '$')) h JOIN bundle_events e ON e.id=h.id ORDER BY h.install_id",
+              "parameters": ["\"user-1\"", "\"install-000500\"", "101"]
+            },
+            "scope_count": {
+              "rows_read": 1000,
+              "rows_written": 0,
+              "elapsed_ms": 1.318,
+              "result_count": 1000,
+              "plan": [
+                "SEARCH h USING COVERING INDEX bundle_event_heads_scope_idx (platform=? AND channel=? AND received_at_ms>?)"
+              ],
+              "sql": "SELECT COUNT(*) AS count FROM bundle_event_heads h WHERE (h.platform=json_extract(?, '$') AND h.channel=json_extract(?, '$') AND h.received_at_ms>=json_extract(?, '$'))",
+              "parameters": ["\"ios\"", "\"production\"", "0"]
+            },
+            "common_bundle_count": {
+              "rows_read": 2000,
+              "rows_written": 0,
+              "elapsed_ms": 1.545,
+              "result_count": 999,
+              "plan": [
+                "MULTI-INDEX OR",
+                "INDEX 1",
+                "SEARCH h USING INDEX bundle_event_heads_scope_idx (platform=? AND channel=? AND received_at_ms>?)",
+                "INDEX 2",
+                "SEARCH h USING INDEX bundle_event_heads_scope_idx (platform=? AND channel=? AND received_at_ms>?)"
+              ],
+              "sql": "SELECT COUNT(*) AS count FROM bundle_event_heads h WHERE ((h.platform=json_extract(?, '$') AND h.channel=json_extract(?, '$') AND h.received_at_ms>=json_extract(?, '$') AND h.type=json_extract(?, '$') AND h.from_bundle_id=json_extract(?, '$')) OR (h.platform=json_extract(?, '$') AND h.channel=json_extract(?, '$') AND h.received_at_ms>=json_extract(?, '$') AND h.type IN (json_extract(?, '$'),json_extract(?, '$'),json_extract(?, '$')) AND h.to_bundle_id=json_extract(?, '$')))",
+              "parameters": [
+                "\"ios\"",
+                "\"production\"",
+                "0",
+                "\"UPDATE_DOWNLOADED\"",
+                "\"00000000-0000-7000-8000-000000000001\"",
+                "\"ios\"",
+                "\"production\"",
+                "0",
+                "\"UNCHANGED\"",
+                "\"UPDATE_APPLIED\"",
+                "\"RECOVERED\"",
+                "\"00000000-0000-7000-8000-000000000001\""
+              ]
+            },
+            "rare_bundle_count": {
+              "rows_read": 2000,
+              "rows_written": 0,
+              "elapsed_ms": 1.202,
+              "result_count": 1,
+              "plan": [
+                "MULTI-INDEX OR",
+                "INDEX 1",
+                "SEARCH h USING INDEX bundle_event_heads_scope_idx (platform=? AND channel=? AND received_at_ms>?)",
+                "INDEX 2",
+                "SEARCH h USING INDEX bundle_event_heads_scope_idx (platform=? AND channel=? AND received_at_ms>?)"
+              ],
+              "sql": "SELECT COUNT(*) AS count FROM bundle_event_heads h WHERE ((h.platform=json_extract(?, '$') AND h.channel=json_extract(?, '$') AND h.received_at_ms>=json_extract(?, '$') AND h.type=json_extract(?, '$') AND h.from_bundle_id=json_extract(?, '$')) OR (h.platform=json_extract(?, '$') AND h.channel=json_extract(?, '$') AND h.received_at_ms>=json_extract(?, '$') AND h.type IN (json_extract(?, '$'),json_extract(?, '$'),json_extract(?, '$')) AND h.to_bundle_id=json_extract(?, '$')))",
+              "parameters": [
+                "\"ios\"",
+                "\"production\"",
+                "0",
+                "\"UPDATE_DOWNLOADED\"",
+                "\"00000000-0000-7000-8000-000000000002\"",
+                "\"ios\"",
+                "\"production\"",
+                "0",
+                "\"UNCHANGED\"",
+                "\"UPDATE_APPLIED\"",
+                "\"RECOVERED\"",
+                "\"00000000-0000-7000-8000-000000000002\""
+              ]
+            }
+          }
+        },
+        "heads_bundle_indexes": {
+          "database_bytes": 8761344,
+          "fixture_load_rows_written": 76000,
+          "writes": {
+            "new_event_existing_installation": {
+              "rows_read": 4,
+              "rows_written": 12
+            },
+            "duplicate_event": {
+              "rows_read": 4,
+              "rows_written": 0
+            },
+            "delayed_event": {
+              "rows_read": 4,
+              "rows_written": 7
+            }
+          },
+          "queries": {
+            "exact": {
+              "rows_read": 2,
+              "rows_written": 0,
+              "elapsed_ms": 1.701,
+              "result_count": 1,
+              "plan": [
+                "CO-ROUTINE h",
+                "SEARCH h USING INDEX sqlite_autoindex_bundle_event_heads_1 (install_id=?)",
+                "SCAN h",
+                "SEARCH e USING INDEX sqlite_autoindex_bundle_events_1 (id=?)"
+              ],
+              "sql": "SELECT e.* FROM (SELECT id,install_id FROM bundle_event_heads h WHERE h.install_id=json_extract(?, '$') ORDER BY install_id LIMIT json_extract(?, '$')) h JOIN bundle_events e ON e.id=h.id ORDER BY h.install_id",
+              "parameters": ["\"install-000500\"", "1"]
+            },
+            "user_first": {
+              "rows_read": 202,
+              "rows_written": 0,
+              "elapsed_ms": 4.402,
+              "result_count": 101,
+              "plan": [
+                "CO-ROUTINE h",
+                "SEARCH h USING INDEX bundle_event_heads_user_idx (user_id=?)",
+                "SCAN h",
+                "SEARCH e USING INDEX sqlite_autoindex_bundle_events_1 (id=?)"
+              ],
+              "sql": "SELECT e.* FROM (SELECT id,install_id FROM bundle_event_heads h WHERE h.user_id=json_extract(?, '$') ORDER BY install_id LIMIT json_extract(?, '$')) h JOIN bundle_events e ON e.id=h.id ORDER BY h.install_id",
+              "parameters": ["\"user-1\"", "101"]
+            },
+            "user_later": {
+              "rows_read": 183,
+              "rows_written": 0,
+              "elapsed_ms": 2.401,
+              "result_count": 91,
+              "plan": [
+                "CO-ROUTINE h",
+                "SEARCH h USING INDEX bundle_event_heads_user_idx (user_id=? AND install_id>?)",
+                "SCAN h",
+                "SEARCH e USING INDEX sqlite_autoindex_bundle_events_1 (id=?)"
+              ],
+              "sql": "SELECT e.* FROM (SELECT id,install_id FROM bundle_event_heads h WHERE h.user_id=json_extract(?, '$') AND h.install_id>json_extract(?, '$') ORDER BY install_id LIMIT json_extract(?, '$')) h JOIN bundle_events e ON e.id=h.id ORDER BY h.install_id",
+              "parameters": ["\"user-1\"", "\"install-000500\"", "101"]
+            },
+            "scope_count": {
+              "rows_read": 1000,
+              "rows_written": 0,
+              "elapsed_ms": 1.791,
+              "result_count": 1000,
+              "plan": [
+                "SEARCH h USING COVERING INDEX bundle_event_heads_scope_idx (platform=? AND channel=? AND received_at_ms>?)"
+              ],
+              "sql": "SELECT COUNT(*) AS count FROM bundle_event_heads h WHERE (h.platform=json_extract(?, '$') AND h.channel=json_extract(?, '$') AND h.received_at_ms>=json_extract(?, '$'))",
+              "parameters": ["\"ios\"", "\"production\"", "0"]
+            },
+            "common_bundle_count": {
+              "rows_read": 1005,
+              "rows_written": 0,
+              "elapsed_ms": 1.185,
+              "result_count": 999,
+              "plan": [
+                "MULTI-INDEX OR",
+                "INDEX 1",
+                "SEARCH h USING INDEX bundle_event_heads_from_idx (type=? AND platform=? AND channel=? AND from_bundle_id=? AND received_at_ms>?)",
+                "INDEX 2",
+                "SEARCH h USING INDEX bundle_event_heads_to_idx (type=? AND platform=? AND channel=? AND to_bundle_id=? AND received_at_ms>?)"
+              ],
+              "sql": "SELECT COUNT(*) AS count FROM bundle_event_heads h WHERE ((h.platform=json_extract(?, '$') AND h.channel=json_extract(?, '$') AND h.received_at_ms>=json_extract(?, '$') AND h.type=json_extract(?, '$') AND h.from_bundle_id=json_extract(?, '$')) OR (h.platform=json_extract(?, '$') AND h.channel=json_extract(?, '$') AND h.received_at_ms>=json_extract(?, '$') AND h.type IN (json_extract(?, '$'),json_extract(?, '$'),json_extract(?, '$')) AND h.to_bundle_id=json_extract(?, '$')))",
+              "parameters": [
+                "\"ios\"",
+                "\"production\"",
+                "0",
+                "\"UPDATE_DOWNLOADED\"",
+                "\"00000000-0000-7000-8000-000000000001\"",
+                "\"ios\"",
+                "\"production\"",
+                "0",
+                "\"UNCHANGED\"",
+                "\"UPDATE_APPLIED\"",
+                "\"RECOVERED\"",
+                "\"00000000-0000-7000-8000-000000000001\""
+              ]
+            },
+            "rare_bundle_count": {
+              "rows_read": 8,
+              "rows_written": 0,
+              "elapsed_ms": 1.852,
+              "result_count": 1,
+              "plan": [
+                "MULTI-INDEX OR",
+                "INDEX 1",
+                "SEARCH h USING INDEX bundle_event_heads_from_idx (type=? AND platform=? AND channel=? AND from_bundle_id=? AND received_at_ms>?)",
+                "INDEX 2",
+                "SEARCH h USING INDEX bundle_event_heads_to_idx (type=? AND platform=? AND channel=? AND to_bundle_id=? AND received_at_ms>?)"
+              ],
+              "sql": "SELECT COUNT(*) AS count FROM bundle_event_heads h WHERE ((h.platform=json_extract(?, '$') AND h.channel=json_extract(?, '$') AND h.received_at_ms>=json_extract(?, '$') AND h.type=json_extract(?, '$') AND h.from_bundle_id=json_extract(?, '$')) OR (h.platform=json_extract(?, '$') AND h.channel=json_extract(?, '$') AND h.received_at_ms>=json_extract(?, '$') AND h.type IN (json_extract(?, '$'),json_extract(?, '$'),json_extract(?, '$')) AND h.to_bundle_id=json_extract(?, '$')))",
+              "parameters": [
+                "\"ios\"",
+                "\"production\"",
+                "0",
+                "\"UPDATE_DOWNLOADED\"",
+                "\"00000000-0000-7000-8000-000000000002\"",
+                "\"ios\"",
+                "\"production\"",
+                "0",
+                "\"UNCHANGED\"",
+                "\"UPDATE_APPLIED\"",
+                "\"RECOVERED\"",
+                "\"00000000-0000-7000-8000-000000000002\""
+              ]
+            }
+          }
+        },
+        "heads_bundle_union": {
+          "database_bytes": 8761344,
+          "fixture_load_rows_written": 76000,
+          "writes": {
+            "new_event_existing_installation": {
+              "rows_read": 4,
+              "rows_written": 12
+            },
+            "duplicate_event": {
+              "rows_read": 4,
+              "rows_written": 0
+            },
+            "delayed_event": {
+              "rows_read": 4,
+              "rows_written": 7
+            }
+          },
+          "queries": {
+            "exact": {
+              "rows_read": 2,
+              "rows_written": 0,
+              "elapsed_ms": 2.631,
+              "result_count": 1,
+              "plan": [
+                "CO-ROUTINE h",
+                "SEARCH h USING INDEX sqlite_autoindex_bundle_event_heads_1 (install_id=?)",
+                "SCAN h",
+                "SEARCH e USING INDEX sqlite_autoindex_bundle_events_1 (id=?)"
+              ],
+              "sql": "SELECT e.* FROM (SELECT id,install_id FROM bundle_event_heads h WHERE h.install_id=json_extract(?, '$') ORDER BY install_id LIMIT json_extract(?, '$')) h JOIN bundle_events e ON e.id=h.id ORDER BY h.install_id",
+              "parameters": ["\"install-000500\"", "1"]
+            },
+            "user_first": {
+              "rows_read": 202,
+              "rows_written": 0,
+              "elapsed_ms": 6.182,
+              "result_count": 101,
+              "plan": [
+                "CO-ROUTINE h",
+                "SEARCH h USING INDEX bundle_event_heads_user_idx (user_id=?)",
+                "SCAN h",
+                "SEARCH e USING INDEX sqlite_autoindex_bundle_events_1 (id=?)"
+              ],
+              "sql": "SELECT e.* FROM (SELECT id,install_id FROM bundle_event_heads h WHERE h.user_id=json_extract(?, '$') ORDER BY install_id LIMIT json_extract(?, '$')) h JOIN bundle_events e ON e.id=h.id ORDER BY h.install_id",
+              "parameters": ["\"user-1\"", "101"]
+            },
+            "user_later": {
+              "rows_read": 183,
+              "rows_written": 0,
+              "elapsed_ms": 4.785,
+              "result_count": 91,
+              "plan": [
+                "CO-ROUTINE h",
+                "SEARCH h USING INDEX bundle_event_heads_user_idx (user_id=? AND install_id>?)",
+                "SCAN h",
+                "SEARCH e USING INDEX sqlite_autoindex_bundle_events_1 (id=?)"
+              ],
+              "sql": "SELECT e.* FROM (SELECT id,install_id FROM bundle_event_heads h WHERE h.user_id=json_extract(?, '$') AND h.install_id>json_extract(?, '$') ORDER BY install_id LIMIT json_extract(?, '$')) h JOIN bundle_events e ON e.id=h.id ORDER BY h.install_id",
+              "parameters": ["\"user-1\"", "\"install-000500\"", "101"]
+            },
+            "scope_count": {
+              "rows_read": 1000,
+              "rows_written": 0,
+              "elapsed_ms": 2.657,
+              "result_count": 1000,
+              "plan": [
+                "SEARCH h USING COVERING INDEX bundle_event_heads_scope_idx (platform=? AND channel=? AND received_at_ms>?)"
+              ],
+              "sql": "SELECT COUNT(*) AS count FROM bundle_event_heads h WHERE (h.platform=json_extract(?, '$') AND h.channel=json_extract(?, '$') AND h.received_at_ms>=json_extract(?, '$'))",
+              "parameters": ["\"ios\"", "\"production\"", "0"]
+            },
+            "common_bundle_count": {
+              "rows_read": 2004,
+              "rows_written": 0,
+              "elapsed_ms": 3.399,
+              "result_count": 999,
+              "plan": [
+                "CO-ROUTINE (subquery-2)",
+                "COMPOUND QUERY",
+                "LEFT-MOST SUBQUERY",
+                "SEARCH h USING INDEX bundle_event_heads_from_idx (type=? AND platform=? AND channel=? AND from_bundle_id=? AND received_at_ms>?)",
+                "UNION USING TEMP B-TREE",
+                "SEARCH h USING INDEX bundle_event_heads_to_idx (type=? AND platform=? AND channel=? AND to_bundle_id=? AND received_at_ms>?)",
+                "SCAN (subquery-2)"
+              ],
+              "sql": "SELECT COUNT(*) AS count FROM (SELECT h.install_id FROM bundle_event_heads h WHERE h.platform=json_extract(?, '$') AND h.channel=json_extract(?, '$') AND h.received_at_ms>=json_extract(?, '$') AND h.type=json_extract(?, '$') AND h.from_bundle_id=json_extract(?, '$') UNION SELECT h.install_id FROM bundle_event_heads h WHERE h.platform=json_extract(?, '$') AND h.channel=json_extract(?, '$') AND h.received_at_ms>=json_extract(?, '$') AND h.type IN (json_extract(?, '$'),json_extract(?, '$'),json_extract(?, '$')) AND h.to_bundle_id=json_extract(?, '$'))",
+              "parameters": [
+                "\"ios\"",
+                "\"production\"",
+                "0",
+                "\"UPDATE_DOWNLOADED\"",
+                "\"00000000-0000-7000-8000-000000000001\"",
+                "\"ios\"",
+                "\"production\"",
+                "0",
+                "\"UNCHANGED\"",
+                "\"UPDATE_APPLIED\"",
+                "\"RECOVERED\"",
+                "\"00000000-0000-7000-8000-000000000001\""
+              ]
+            },
+            "rare_bundle_count": {
+              "rows_read": 9,
+              "rows_written": 0,
+              "elapsed_ms": 3.05,
+              "result_count": 1,
+              "plan": [
+                "CO-ROUTINE (subquery-2)",
+                "COMPOUND QUERY",
+                "LEFT-MOST SUBQUERY",
+                "SEARCH h USING INDEX bundle_event_heads_from_idx (type=? AND platform=? AND channel=? AND from_bundle_id=? AND received_at_ms>?)",
+                "UNION USING TEMP B-TREE",
+                "SEARCH h USING INDEX bundle_event_heads_to_idx (type=? AND platform=? AND channel=? AND to_bundle_id=? AND received_at_ms>?)",
+                "SCAN (subquery-2)"
+              ],
+              "sql": "SELECT COUNT(*) AS count FROM (SELECT h.install_id FROM bundle_event_heads h WHERE h.platform=json_extract(?, '$') AND h.channel=json_extract(?, '$') AND h.received_at_ms>=json_extract(?, '$') AND h.type=json_extract(?, '$') AND h.from_bundle_id=json_extract(?, '$') UNION SELECT h.install_id FROM bundle_event_heads h WHERE h.platform=json_extract(?, '$') AND h.channel=json_extract(?, '$') AND h.received_at_ms>=json_extract(?, '$') AND h.type IN (json_extract(?, '$'),json_extract(?, '$'),json_extract(?, '$')) AND h.to_bundle_id=json_extract(?, '$'))",
+              "parameters": [
+                "\"ios\"",
+                "\"production\"",
+                "0",
+                "\"UPDATE_DOWNLOADED\"",
+                "\"00000000-0000-7000-8000-000000000002\"",
+                "\"ios\"",
+                "\"production\"",
+                "0",
+                "\"UNCHANGED\"",
+                "\"UPDATE_APPLIED\"",
+                "\"RECOVERED\"",
+                "\"00000000-0000-7000-8000-000000000002\""
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "scoped": 1000,
+      "unrelated": 0,
+      "depth": 100,
+      "bundleVariety": 1,
+      "events": 100000,
+      "strategies": {
+        "snapshot": {
+          "database_bytes": 66125824,
+          "fixture_load_rows_written": 606000,
+          "writes": {
+            "new_event_existing_installation": {
+              "rows_read": 6,
+              "rows_written": 11
+            },
+            "duplicate_event": {
+              "rows_read": 5,
+              "rows_written": 0
+            },
+            "delayed_event": {
+              "rows_read": 5,
+              "rows_written": 6
+            }
+          },
+          "queries": {
+            "exact": {
+              "rows_read": 1,
+              "rows_written": 0,
+              "elapsed_ms": 1.466,
+              "result_count": 1,
+              "plan": [
+                "SEARCH h USING INDEX sqlite_autoindex_bundle_installations_1 (install_id=?)"
+              ],
+              "sql": "SELECT h.* FROM bundle_installations h WHERE h.install_id=json_extract(?, '$') ORDER BY h.install_id LIMIT json_extract(?, '$')",
+              "parameters": ["\"install-000500\"", "1"]
+            },
+            "user_first": {
+              "rows_read": 101,
+              "rows_written": 0,
+              "elapsed_ms": 2.147,
+              "result_count": 101,
+              "plan": [
+                "SEARCH h USING INDEX bundle_installations_user_id_idx (user_id=?)"
+              ],
+              "sql": "SELECT h.* FROM bundle_installations h WHERE h.user_id=json_extract(?, '$') ORDER BY h.install_id LIMIT json_extract(?, '$')",
+              "parameters": ["\"user-1\"", "101"]
+            },
+            "user_later": {
+              "rows_read": 92,
+              "rows_written": 0,
+              "elapsed_ms": 3.377,
+              "result_count": 91,
+              "plan": [
+                "SEARCH h USING INDEX bundle_installations_user_id_idx (user_id=? AND install_id>?)"
+              ],
+              "sql": "SELECT h.* FROM bundle_installations h WHERE h.user_id=json_extract(?, '$') AND h.install_id>json_extract(?, '$') ORDER BY h.install_id LIMIT json_extract(?, '$')",
+              "parameters": ["\"user-1\"", "\"install-000500\"", "101"]
+            },
+            "scope_count": {
+              "rows_read": 1000,
+              "rows_written": 0,
+              "elapsed_ms": 1.663,
+              "result_count": 1000,
+              "plan": [
+                "SEARCH h USING COVERING INDEX bundle_installations_scope_idx (platform=? AND channel=? AND received_at_ms>?)"
+              ],
+              "sql": "SELECT COUNT(*) AS count FROM bundle_installations h WHERE (h.platform=json_extract(?, '$') AND h.channel=json_extract(?, '$') AND h.received_at_ms>=json_extract(?, '$'))",
+              "parameters": ["\"ios\"", "\"production\"", "0"]
+            },
+            "common_bundle_count": {
+              "rows_read": 1000,
+              "rows_written": 0,
+              "elapsed_ms": 2.977,
+              "result_count": 999,
+              "plan": [
+                "SEARCH h USING COVERING INDEX bundle_installations_bundle_idx (platform=? AND channel=? AND to_bundle_id=? AND received_at_ms>?)"
+              ],
+              "sql": "SELECT COUNT(*) AS count FROM bundle_installations h WHERE (h.platform=json_extract(?, '$') AND h.channel=json_extract(?, '$') AND h.received_at_ms>=json_extract(?, '$') AND h.to_bundle_id=json_extract(?, '$'))",
+              "parameters": [
+                "\"ios\"",
+                "\"production\"",
+                "0",
+                "\"00000000-0000-7000-8000-000000000001\""
+              ]
+            },
+            "rare_bundle_count": {
+              "rows_read": 1,
+              "rows_written": 0,
+              "elapsed_ms": 3.863,
+              "result_count": 1,
+              "plan": [
+                "SEARCH h USING COVERING INDEX bundle_installations_bundle_idx (platform=? AND channel=? AND to_bundle_id=? AND received_at_ms>?)"
+              ],
+              "sql": "SELECT COUNT(*) AS count FROM bundle_installations h WHERE (h.platform=json_extract(?, '$') AND h.channel=json_extract(?, '$') AND h.received_at_ms>=json_extract(?, '$') AND h.to_bundle_id=json_extract(?, '$'))",
+              "parameters": [
+                "\"ios\"",
+                "\"production\"",
+                "0",
+                "\"00000000-0000-7000-8000-000000000002\""
+              ]
+            }
+          }
+        },
+        "event_only": {
+          "database_bytes": 85315584,
+          "fixture_load_rows_written": 800000,
+          "writes": {
+            "new_event_existing_installation": {
+              "rows_read": 2,
+              "rows_written": 8
+            },
+            "duplicate_event": {
+              "rows_read": 2,
+              "rows_written": 0
+            },
+            "delayed_event": {
+              "rows_read": 2,
+              "rows_written": 8
+            }
+          },
+          "queries": {
+            "exact": {
+              "rows_read": 201,
+              "rows_written": 0,
+              "elapsed_ms": 2.001,
+              "result_count": 1,
+              "plan": [
+                "SEARCH e USING INDEX bundle_events_latest_idx (install_id=?)",
+                "CORRELATED SCALAR SUBQUERY 1",
+                "MULTI-INDEX OR",
+                "INDEX 1",
+                "SEARCH n USING COVERING INDEX bundle_events_latest_idx (install_id=? AND received_at_ms>?)",
+                "INDEX 2",
+                "SEARCH n USING COVERING INDEX bundle_events_latest_idx (install_id=? AND received_at_ms=? AND id>?)"
+              ],
+              "sql": "SELECT e.* FROM bundle_events e WHERE NOT EXISTS (SELECT 1 FROM bundle_events n WHERE n.install_id=e.install_id AND (n.received_at_ms>e.received_at_ms OR (n.received_at_ms=e.received_at_ms AND n.id>e.id))) AND e.install_id=json_extract(?, '$') ORDER BY e.install_id LIMIT json_extract(?, '$')",
+              "parameters": ["\"install-000500\"", "1"]
+            },
+            "user_first": {
+              "rows_read": 20181,
+              "rows_written": 0,
+              "elapsed_ms": 9.661,
+              "result_count": 101,
+              "plan": [
+                "SEARCH e USING INDEX bundle_events_user_idx (user_id=?)",
+                "CORRELATED SCALAR SUBQUERY 1",
+                "MULTI-INDEX OR",
+                "INDEX 1",
+                "SEARCH n USING COVERING INDEX bundle_events_latest_idx (install_id=? AND received_at_ms>?)",
+                "INDEX 2",
+                "SEARCH n USING COVERING INDEX bundle_events_latest_idx (install_id=? AND received_at_ms=? AND id>?)"
+              ],
+              "sql": "SELECT e.* FROM bundle_events e WHERE NOT EXISTS (SELECT 1 FROM bundle_events n WHERE n.install_id=e.install_id AND (n.received_at_ms>e.received_at_ms OR (n.received_at_ms=e.received_at_ms AND n.id>e.id))) AND e.user_id=json_extract(?, '$') ORDER BY e.install_id LIMIT json_extract(?, '$')",
+              "parameters": ["\"user-1\"", "101"]
+            },
+            "user_later": {
+              "rows_read": 18252,
+              "rows_written": 0,
+              "elapsed_ms": 8.39,
+              "result_count": 91,
+              "plan": [
+                "SEARCH e USING INDEX bundle_events_user_idx (user_id=? AND install_id>?)",
+                "CORRELATED SCALAR SUBQUERY 1",
+                "MULTI-INDEX OR",
+                "INDEX 1",
+                "SEARCH n USING COVERING INDEX bundle_events_latest_idx (install_id=? AND received_at_ms>?)",
+                "INDEX 2",
+                "SEARCH n USING COVERING INDEX bundle_events_latest_idx (install_id=? AND received_at_ms=? AND id>?)"
+              ],
+              "sql": "SELECT e.* FROM bundle_events e WHERE NOT EXISTS (SELECT 1 FROM bundle_events n WHERE n.install_id=e.install_id AND (n.received_at_ms>e.received_at_ms OR (n.received_at_ms=e.received_at_ms AND n.id>e.id))) AND e.user_id=json_extract(?, '$') AND e.install_id>json_extract(?, '$') ORDER BY e.install_id LIMIT json_extract(?, '$')",
+              "parameters": ["\"user-1\"", "\"install-000500\"", "101"]
+            },
+            "scope_count": {
+              "rows_read": 186000,
+              "rows_written": 0,
+              "elapsed_ms": 213.716,
+              "result_count": 1000,
+              "plan": [
+                "SEARCH e USING INDEX bundle_events_received_at_idx (received_at_ms>?)",
+                "CORRELATED SCALAR SUBQUERY 1",
+                "MULTI-INDEX OR",
+                "INDEX 1",
+                "SEARCH n USING COVERING INDEX bundle_events_latest_idx (install_id=? AND received_at_ms>?)",
+                "INDEX 2",
+                "SEARCH n USING COVERING INDEX bundle_events_latest_idx (install_id=? AND received_at_ms=? AND id>?)"
+              ],
+              "sql": "SELECT COUNT(*) AS count FROM bundle_events e WHERE NOT EXISTS (SELECT 1 FROM bundle_events n WHERE n.install_id=e.install_id AND (n.received_at_ms>e.received_at_ms OR (n.received_at_ms=e.received_at_ms AND n.id>e.id))) AND (e.platform=json_extract(?, '$') AND e.channel=json_extract(?, '$') AND e.received_at_ms>=json_extract(?, '$'))",
+              "parameters": ["\"ios\"", "\"production\"", "0"]
+            },
+            "common_bundle_count": {
+              "rows_read": 170836,
+              "rows_written": 0,
+              "elapsed_ms": 186.491,
+              "result_count": 999,
+              "plan": [
+                "MULTI-INDEX OR",
+                "INDEX 1",
+                "SEARCH e USING INDEX bundle_events_from_bundle_idx (type=? AND platform=? AND channel=? AND from_bundle_id=? AND received_at_ms>?)",
+                "INDEX 2",
+                "SEARCH e USING INDEX bundle_events_to_bundle_idx (type=? AND platform=? AND channel=? AND to_bundle_id=? AND received_at_ms>?)",
+                "CORRELATED SCALAR SUBQUERY 1",
+                "MULTI-INDEX OR",
+                "INDEX 1",
+                "SEARCH n USING COVERING INDEX bundle_events_latest_idx (install_id=? AND received_at_ms>?)",
+                "INDEX 2",
+                "SEARCH n USING COVERING INDEX bundle_events_latest_idx (install_id=? AND received_at_ms=? AND id>?)"
+              ],
+              "sql": "SELECT COUNT(*) AS count FROM bundle_events e WHERE NOT EXISTS (SELECT 1 FROM bundle_events n WHERE n.install_id=e.install_id AND (n.received_at_ms>e.received_at_ms OR (n.received_at_ms=e.received_at_ms AND n.id>e.id))) AND ((e.platform=json_extract(?, '$') AND e.channel=json_extract(?, '$') AND e.received_at_ms>=json_extract(?, '$') AND e.type=json_extract(?, '$') AND e.from_bundle_id=json_extract(?, '$')) OR (e.platform=json_extract(?, '$') AND e.channel=json_extract(?, '$') AND e.received_at_ms>=json_extract(?, '$') AND e.type IN (json_extract(?, '$'),json_extract(?, '$'),json_extract(?, '$')) AND e.to_bundle_id=json_extract(?, '$')))",
+              "parameters": [
+                "\"ios\"",
+                "\"production\"",
+                "0",
+                "\"UPDATE_DOWNLOADED\"",
+                "\"00000000-0000-7000-8000-000000000001\"",
+                "\"ios\"",
+                "\"production\"",
+                "0",
+                "\"UNCHANGED\"",
+                "\"UPDATE_APPLIED\"",
+                "\"RECOVERED\"",
+                "\"00000000-0000-7000-8000-000000000001\""
+              ]
+            },
+            "rare_bundle_count": {
+              "rows_read": 177,
+              "rows_written": 0,
+              "elapsed_ms": 1.66,
+              "result_count": 1,
+              "plan": [
+                "MULTI-INDEX OR",
+                "INDEX 1",
+                "SEARCH e USING INDEX bundle_events_from_bundle_idx (type=? AND platform=? AND channel=? AND from_bundle_id=? AND received_at_ms>?)",
+                "INDEX 2",
+                "SEARCH e USING INDEX bundle_events_to_bundle_idx (type=? AND platform=? AND channel=? AND to_bundle_id=? AND received_at_ms>?)",
+                "CORRELATED SCALAR SUBQUERY 1",
+                "MULTI-INDEX OR",
+                "INDEX 1",
+                "SEARCH n USING COVERING INDEX bundle_events_latest_idx (install_id=? AND received_at_ms>?)",
+                "INDEX 2",
+                "SEARCH n USING COVERING INDEX bundle_events_latest_idx (install_id=? AND received_at_ms=? AND id>?)"
+              ],
+              "sql": "SELECT COUNT(*) AS count FROM bundle_events e WHERE NOT EXISTS (SELECT 1 FROM bundle_events n WHERE n.install_id=e.install_id AND (n.received_at_ms>e.received_at_ms OR (n.received_at_ms=e.received_at_ms AND n.id>e.id))) AND ((e.platform=json_extract(?, '$') AND e.channel=json_extract(?, '$') AND e.received_at_ms>=json_extract(?, '$') AND e.type=json_extract(?, '$') AND e.from_bundle_id=json_extract(?, '$')) OR (e.platform=json_extract(?, '$') AND e.channel=json_extract(?, '$') AND e.received_at_ms>=json_extract(?, '$') AND e.type IN (json_extract(?, '$'),json_extract(?, '$'),json_extract(?, '$')) AND e.to_bundle_id=json_extract(?, '$')))",
+              "parameters": [
+                "\"ios\"",
+                "\"production\"",
+                "0",
+                "\"UPDATE_DOWNLOADED\"",
+                "\"00000000-0000-7000-8000-000000000002\"",
+                "\"ios\"",
+                "\"production\"",
+                "0",
+                "\"UNCHANGED\"",
+                "\"UPDATE_APPLIED\"",
+                "\"RECOVERED\"",
+                "\"00000000-0000-7000-8000-000000000002\""
+              ]
+            }
+          }
+        },
+        "tuple_index": {
+          "database_bytes": 88289280,
+          "fixture_load_rows_written": 900000,
+          "writes": {
+            "new_event_existing_installation": {
+              "rows_read": 2,
+              "rows_written": 9
+            },
+            "duplicate_event": {
+              "rows_read": 2,
+              "rows_written": 0
+            },
+            "delayed_event": {
+              "rows_read": 2,
+              "rows_written": 9
+            }
+          },
+          "queries": {
+            "exact": {
+              "rows_read": 300,
+              "rows_written": 0,
+              "elapsed_ms": 1.643,
+              "result_count": 1,
+              "plan": [
+                "SEARCH e USING INDEX bundle_events_latest_idx (install_id=?)",
+                "CORRELATED SCALAR SUBQUERY 1",
+                "SEARCH n USING COVERING INDEX bundle_events_latest_idx (install_id=? AND received_at_ms>?)"
+              ],
+              "sql": "SELECT e.* FROM bundle_events e WHERE NOT EXISTS (SELECT 1 FROM bundle_events n WHERE n.install_id=e.install_id AND (n.received_at_ms,n.id)>(e.received_at_ms,e.id)) AND e.install_id=json_extract(?, '$') ORDER BY e.install_id LIMIT json_extract(?, '$')",
+              "parameters": ["\"install-000500\"", "1"]
+            },
+            "user_first": {
+              "rows_read": 30120,
+              "rows_written": 0,
+              "elapsed_ms": 9.927,
+              "result_count": 101,
+              "plan": [
+                "SEARCH e USING INDEX bundle_events_user_idx (user_id=?)",
+                "CORRELATED SCALAR SUBQUERY 1",
+                "SEARCH n USING COVERING INDEX bundle_events_latest_idx (install_id=? AND received_at_ms>?)"
+              ],
+              "sql": "SELECT e.* FROM bundle_events e WHERE NOT EXISTS (SELECT 1 FROM bundle_events n WHERE n.install_id=e.install_id AND (n.received_at_ms,n.id)>(e.received_at_ms,e.id)) AND e.user_id=json_extract(?, '$') ORDER BY e.install_id LIMIT json_extract(?, '$')",
+              "parameters": ["\"user-1\"", "101"]
+            },
+            "user_later": {
+              "rows_read": 27241,
+              "rows_written": 0,
+              "elapsed_ms": 11.89,
+              "result_count": 91,
+              "plan": [
+                "SEARCH e USING INDEX bundle_events_user_idx (user_id=? AND install_id>?)",
+                "CORRELATED SCALAR SUBQUERY 1",
+                "SEARCH n USING COVERING INDEX bundle_events_latest_idx (install_id=? AND received_at_ms>?)"
+              ],
+              "sql": "SELECT e.* FROM bundle_events e WHERE NOT EXISTS (SELECT 1 FROM bundle_events n WHERE n.install_id=e.install_id AND (n.received_at_ms,n.id)>(e.received_at_ms,e.id)) AND e.user_id=json_extract(?, '$') AND e.install_id>json_extract(?, '$') ORDER BY e.install_id LIMIT json_extract(?, '$')",
+              "parameters": ["\"user-1\"", "\"install-000500\"", "101"]
+            },
+            "scope_count": {
+              "rows_read": 254999,
+              "rows_written": 0,
+              "elapsed_ms": 173.645,
+              "result_count": 1000,
+              "plan": [
+                "SEARCH e USING INDEX bundle_events_scope_idx (platform=? AND channel=? AND received_at_ms>?)",
+                "CORRELATED SCALAR SUBQUERY 1",
+                "SEARCH n USING COVERING INDEX bundle_events_latest_idx (install_id=? AND received_at_ms>?)"
+              ],
+              "sql": "SELECT COUNT(*) AS count FROM bundle_events e WHERE NOT EXISTS (SELECT 1 FROM bundle_events n WHERE n.install_id=e.install_id AND (n.received_at_ms,n.id)>(e.received_at_ms,e.id)) AND (e.platform=json_extract(?, '$') AND e.channel=json_extract(?, '$') AND e.received_at_ms>=json_extract(?, '$'))",
+              "parameters": ["\"ios\"", "\"production\"", "0"]
+            },
+            "common_bundle_count": {
+              "rows_read": 254751,
+              "rows_written": 0,
+              "elapsed_ms": 193.025,
+              "result_count": 999,
+              "plan": [
+                "MULTI-INDEX OR",
+                "INDEX 1",
+                "SEARCH e USING INDEX bundle_events_from_bundle_idx (type=? AND platform=? AND channel=? AND from_bundle_id=? AND received_at_ms>?)",
+                "INDEX 2",
+                "SEARCH e USING INDEX bundle_events_to_bundle_idx (type=? AND platform=? AND channel=? AND to_bundle_id=? AND received_at_ms>?)",
+                "CORRELATED SCALAR SUBQUERY 1",
+                "SEARCH n USING COVERING INDEX bundle_events_latest_idx (install_id=? AND received_at_ms>?)"
+              ],
+              "sql": "SELECT COUNT(*) AS count FROM bundle_events e WHERE NOT EXISTS (SELECT 1 FROM bundle_events n WHERE n.install_id=e.install_id AND (n.received_at_ms,n.id)>(e.received_at_ms,e.id)) AND ((e.platform=json_extract(?, '$') AND e.channel=json_extract(?, '$') AND e.received_at_ms>=json_extract(?, '$') AND e.type=json_extract(?, '$') AND e.from_bundle_id=json_extract(?, '$')) OR (e.platform=json_extract(?, '$') AND e.channel=json_extract(?, '$') AND e.received_at_ms>=json_extract(?, '$') AND e.type IN (json_extract(?, '$'),json_extract(?, '$'),json_extract(?, '$')) AND e.to_bundle_id=json_extract(?, '$')))",
+              "parameters": [
+                "\"ios\"",
+                "\"production\"",
+                "0",
+                "\"UPDATE_DOWNLOADED\"",
+                "\"00000000-0000-7000-8000-000000000001\"",
+                "\"ios\"",
+                "\"production\"",
+                "0",
+                "\"UNCHANGED\"",
+                "\"UPDATE_APPLIED\"",
+                "\"RECOVERED\"",
+                "\"00000000-0000-7000-8000-000000000001\""
+              ]
+            },
+            "rare_bundle_count": {
+              "rows_read": 261,
+              "rows_written": 0,
+              "elapsed_ms": 1.386,
+              "result_count": 1,
+              "plan": [
+                "MULTI-INDEX OR",
+                "INDEX 1",
+                "SEARCH e USING INDEX bundle_events_from_bundle_idx (type=? AND platform=? AND channel=? AND from_bundle_id=? AND received_at_ms>?)",
+                "INDEX 2",
+                "SEARCH e USING INDEX bundle_events_to_bundle_idx (type=? AND platform=? AND channel=? AND to_bundle_id=? AND received_at_ms>?)",
+                "CORRELATED SCALAR SUBQUERY 1",
+                "SEARCH n USING COVERING INDEX bundle_events_latest_idx (install_id=? AND received_at_ms>?)"
+              ],
+              "sql": "SELECT COUNT(*) AS count FROM bundle_events e WHERE NOT EXISTS (SELECT 1 FROM bundle_events n WHERE n.install_id=e.install_id AND (n.received_at_ms,n.id)>(e.received_at_ms,e.id)) AND ((e.platform=json_extract(?, '$') AND e.channel=json_extract(?, '$') AND e.received_at_ms>=json_extract(?, '$') AND e.type=json_extract(?, '$') AND e.from_bundle_id=json_extract(?, '$')) OR (e.platform=json_extract(?, '$') AND e.channel=json_extract(?, '$') AND e.received_at_ms>=json_extract(?, '$') AND e.type IN (json_extract(?, '$'),json_extract(?, '$'),json_extract(?, '$')) AND e.to_bundle_id=json_extract(?, '$')))",
+              "parameters": [
+                "\"ios\"",
+                "\"production\"",
+                "0",
+                "\"UPDATE_DOWNLOADED\"",
+                "\"00000000-0000-7000-8000-000000000002\"",
+                "\"ios\"",
+                "\"production\"",
+                "0",
+                "\"UNCHANGED\"",
+                "\"UPDATE_APPLIED\"",
+                "\"RECOVERED\"",
+                "\"00000000-0000-7000-8000-000000000002\""
+              ]
+            }
+          }
+        },
+        "pointer": {
+          "database_bytes": 85409792,
+          "fixture_load_rows_written": 802000,
+          "writes": {
+            "new_event_existing_installation": {
+              "rows_read": 6,
+              "rows_written": 9
+            },
+            "duplicate_event": {
+              "rows_read": 8,
+              "rows_written": 0
+            },
+            "delayed_event": {
+              "rows_read": 8,
+              "rows_written": 8
+            }
+          },
+          "queries": {
+            "exact": {
+              "rows_read": 2,
+              "rows_written": 0,
+              "elapsed_ms": 1.134,
+              "result_count": 1,
+              "plan": [
+                "SEARCH h USING INDEX sqlite_autoindex_bundle_event_heads_1 (install_id=?)",
+                "SEARCH e USING INDEX sqlite_autoindex_bundle_events_1 (id=?)"
+              ],
+              "sql": "SELECT e.* FROM bundle_event_heads h JOIN bundle_events e ON e.id=h.id WHERE h.install_id=json_extract(?, '$') ORDER BY h.install_id LIMIT json_extract(?, '$')",
+              "parameters": ["\"install-000500\"", "1"]
+            },
+            "user_first": {
+              "rows_read": 1106,
+              "rows_written": 0,
+              "elapsed_ms": 4.531,
+              "result_count": 101,
+              "plan": [
+                "SCAN h USING INDEX sqlite_autoindex_bundle_event_heads_1",
+                "SEARCH e USING INDEX sqlite_autoindex_bundle_events_1 (id=?)"
+              ],
+              "sql": "SELECT e.* FROM bundle_event_heads h JOIN bundle_events e ON e.id=h.id WHERE e.user_id=json_extract(?, '$') ORDER BY h.install_id LIMIT json_extract(?, '$')",
+              "parameters": ["\"user-1\"", "101"]
+            },
+            "user_later": {
+              "rows_read": 2000,
+              "rows_written": 0,
+              "elapsed_ms": 5.104,
+              "result_count": 91,
+              "plan": [
+                "SCAN h USING INDEX sqlite_autoindex_bundle_event_heads_1",
+                "SEARCH e USING INDEX sqlite_autoindex_bundle_events_1 (id=?)"
+              ],
+              "sql": "SELECT e.* FROM bundle_event_heads h JOIN bundle_events e ON e.id=h.id WHERE e.user_id=json_extract(?, '$') AND e.install_id>json_extract(?, '$') ORDER BY h.install_id LIMIT json_extract(?, '$')",
+              "parameters": ["\"user-1\"", "\"install-000500\"", "101"]
+            },
+            "scope_count": {
+              "rows_read": 2000,
+              "rows_written": 0,
+              "elapsed_ms": 3.163,
+              "result_count": 1000,
+              "plan": [
+                "SCAN h",
+                "SEARCH e USING INDEX sqlite_autoindex_bundle_events_1 (id=?)"
+              ],
+              "sql": "SELECT COUNT(*) AS count FROM bundle_event_heads h JOIN bundle_events e ON e.id=h.id WHERE (e.platform=json_extract(?, '$') AND e.channel=json_extract(?, '$') AND e.received_at_ms>=json_extract(?, '$'))",
+              "parameters": ["\"ios\"", "\"production\"", "0"]
+            },
+            "common_bundle_count": {
+              "rows_read": 2000,
+              "rows_written": 0,
+              "elapsed_ms": 3.68,
+              "result_count": 999,
+              "plan": [
+                "SCAN h",
+                "SEARCH e USING INDEX sqlite_autoindex_bundle_events_1 (id=?)"
+              ],
+              "sql": "SELECT COUNT(*) AS count FROM bundle_event_heads h JOIN bundle_events e ON e.id=h.id WHERE ((e.platform=json_extract(?, '$') AND e.channel=json_extract(?, '$') AND e.received_at_ms>=json_extract(?, '$') AND e.type=json_extract(?, '$') AND e.from_bundle_id=json_extract(?, '$')) OR (e.platform=json_extract(?, '$') AND e.channel=json_extract(?, '$') AND e.received_at_ms>=json_extract(?, '$') AND e.type IN (json_extract(?, '$'),json_extract(?, '$'),json_extract(?, '$')) AND e.to_bundle_id=json_extract(?, '$')))",
+              "parameters": [
+                "\"ios\"",
+                "\"production\"",
+                "0",
+                "\"UPDATE_DOWNLOADED\"",
+                "\"00000000-0000-7000-8000-000000000001\"",
+                "\"ios\"",
+                "\"production\"",
+                "0",
+                "\"UNCHANGED\"",
+                "\"UPDATE_APPLIED\"",
+                "\"RECOVERED\"",
+                "\"00000000-0000-7000-8000-000000000001\""
+              ]
+            },
+            "rare_bundle_count": {
+              "rows_read": 2000,
+              "rows_written": 0,
+              "elapsed_ms": 4.454,
+              "result_count": 1,
+              "plan": [
+                "SCAN h",
+                "SEARCH e USING INDEX sqlite_autoindex_bundle_events_1 (id=?)"
+              ],
+              "sql": "SELECT COUNT(*) AS count FROM bundle_event_heads h JOIN bundle_events e ON e.id=h.id WHERE ((e.platform=json_extract(?, '$') AND e.channel=json_extract(?, '$') AND e.received_at_ms>=json_extract(?, '$') AND e.type=json_extract(?, '$') AND e.from_bundle_id=json_extract(?, '$')) OR (e.platform=json_extract(?, '$') AND e.channel=json_extract(?, '$') AND e.received_at_ms>=json_extract(?, '$') AND e.type IN (json_extract(?, '$'),json_extract(?, '$'),json_extract(?, '$')) AND e.to_bundle_id=json_extract(?, '$')))",
+              "parameters": [
+                "\"ios\"",
+                "\"production\"",
+                "0",
+                "\"UPDATE_DOWNLOADED\"",
+                "\"00000000-0000-7000-8000-000000000002\"",
+                "\"ios\"",
+                "\"production\"",
+                "0",
+                "\"UNCHANGED\"",
+                "\"UPDATE_APPLIED\"",
+                "\"RECOVERED\"",
+                "\"00000000-0000-7000-8000-000000000002\""
+              ]
+            }
+          }
+        },
+        "heads": {
+          "database_bytes": 82268160,
+          "fixture_load_rows_written": 704000,
+          "writes": {
+            "new_event_existing_installation": {
+              "rows_read": 4,
+              "rows_written": 10
+            },
+            "duplicate_event": {
+              "rows_read": 4,
+              "rows_written": 0
+            },
+            "delayed_event": {
+              "rows_read": 4,
+              "rows_written": 7
+            }
+          },
+          "queries": {
+            "exact": {
+              "rows_read": 2,
+              "rows_written": 0,
+              "elapsed_ms": 1.01,
+              "result_count": 1,
+              "plan": [
+                "CO-ROUTINE h",
+                "SEARCH h USING INDEX sqlite_autoindex_bundle_event_heads_1 (install_id=?)",
+                "SCAN h",
+                "SEARCH e USING INDEX sqlite_autoindex_bundle_events_1 (id=?)"
+              ],
+              "sql": "SELECT e.* FROM (SELECT id,install_id FROM bundle_event_heads h WHERE h.install_id=json_extract(?, '$') ORDER BY install_id LIMIT json_extract(?, '$')) h JOIN bundle_events e ON e.id=h.id ORDER BY h.install_id",
+              "parameters": ["\"install-000500\"", "1"]
+            },
+            "user_first": {
+              "rows_read": 202,
+              "rows_written": 0,
+              "elapsed_ms": 3.436,
+              "result_count": 101,
+              "plan": [
+                "CO-ROUTINE h",
+                "SEARCH h USING INDEX bundle_event_heads_user_idx (user_id=?)",
+                "SCAN h",
+                "SEARCH e USING INDEX sqlite_autoindex_bundle_events_1 (id=?)"
+              ],
+              "sql": "SELECT e.* FROM (SELECT id,install_id FROM bundle_event_heads h WHERE h.user_id=json_extract(?, '$') ORDER BY install_id LIMIT json_extract(?, '$')) h JOIN bundle_events e ON e.id=h.id ORDER BY h.install_id",
+              "parameters": ["\"user-1\"", "101"]
+            },
+            "user_later": {
+              "rows_read": 183,
+              "rows_written": 0,
+              "elapsed_ms": 2.328,
+              "result_count": 91,
+              "plan": [
+                "CO-ROUTINE h",
+                "SEARCH h USING INDEX bundle_event_heads_user_idx (user_id=? AND install_id>?)",
+                "SCAN h",
+                "SEARCH e USING INDEX sqlite_autoindex_bundle_events_1 (id=?)"
+              ],
+              "sql": "SELECT e.* FROM (SELECT id,install_id FROM bundle_event_heads h WHERE h.user_id=json_extract(?, '$') AND h.install_id>json_extract(?, '$') ORDER BY install_id LIMIT json_extract(?, '$')) h JOIN bundle_events e ON e.id=h.id ORDER BY h.install_id",
+              "parameters": ["\"user-1\"", "\"install-000500\"", "101"]
+            },
+            "scope_count": {
+              "rows_read": 1000,
+              "rows_written": 0,
+              "elapsed_ms": 1.971,
+              "result_count": 1000,
+              "plan": [
+                "SEARCH h USING COVERING INDEX bundle_event_heads_scope_idx (platform=? AND channel=? AND received_at_ms>?)"
+              ],
+              "sql": "SELECT COUNT(*) AS count FROM bundle_event_heads h WHERE (h.platform=json_extract(?, '$') AND h.channel=json_extract(?, '$') AND h.received_at_ms>=json_extract(?, '$'))",
+              "parameters": ["\"ios\"", "\"production\"", "0"]
+            },
+            "common_bundle_count": {
+              "rows_read": 2000,
+              "rows_written": 0,
+              "elapsed_ms": 1.133,
+              "result_count": 999,
+              "plan": [
+                "MULTI-INDEX OR",
+                "INDEX 1",
+                "SEARCH h USING INDEX bundle_event_heads_scope_idx (platform=? AND channel=? AND received_at_ms>?)",
+                "INDEX 2",
+                "SEARCH h USING INDEX bundle_event_heads_scope_idx (platform=? AND channel=? AND received_at_ms>?)"
+              ],
+              "sql": "SELECT COUNT(*) AS count FROM bundle_event_heads h WHERE ((h.platform=json_extract(?, '$') AND h.channel=json_extract(?, '$') AND h.received_at_ms>=json_extract(?, '$') AND h.type=json_extract(?, '$') AND h.from_bundle_id=json_extract(?, '$')) OR (h.platform=json_extract(?, '$') AND h.channel=json_extract(?, '$') AND h.received_at_ms>=json_extract(?, '$') AND h.type IN (json_extract(?, '$'),json_extract(?, '$'),json_extract(?, '$')) AND h.to_bundle_id=json_extract(?, '$')))",
+              "parameters": [
+                "\"ios\"",
+                "\"production\"",
+                "0",
+                "\"UPDATE_DOWNLOADED\"",
+                "\"00000000-0000-7000-8000-000000000001\"",
+                "\"ios\"",
+                "\"production\"",
+                "0",
+                "\"UNCHANGED\"",
+                "\"UPDATE_APPLIED\"",
+                "\"RECOVERED\"",
+                "\"00000000-0000-7000-8000-000000000001\""
+              ]
+            },
+            "rare_bundle_count": {
+              "rows_read": 2000,
+              "rows_written": 0,
+              "elapsed_ms": 1.32,
+              "result_count": 1,
+              "plan": [
+                "MULTI-INDEX OR",
+                "INDEX 1",
+                "SEARCH h USING INDEX bundle_event_heads_scope_idx (platform=? AND channel=? AND received_at_ms>?)",
+                "INDEX 2",
+                "SEARCH h USING INDEX bundle_event_heads_scope_idx (platform=? AND channel=? AND received_at_ms>?)"
+              ],
+              "sql": "SELECT COUNT(*) AS count FROM bundle_event_heads h WHERE ((h.platform=json_extract(?, '$') AND h.channel=json_extract(?, '$') AND h.received_at_ms>=json_extract(?, '$') AND h.type=json_extract(?, '$') AND h.from_bundle_id=json_extract(?, '$')) OR (h.platform=json_extract(?, '$') AND h.channel=json_extract(?, '$') AND h.received_at_ms>=json_extract(?, '$') AND h.type IN (json_extract(?, '$'),json_extract(?, '$'),json_extract(?, '$')) AND h.to_bundle_id=json_extract(?, '$')))",
+              "parameters": [
+                "\"ios\"",
+                "\"production\"",
+                "0",
+                "\"UPDATE_DOWNLOADED\"",
+                "\"00000000-0000-7000-8000-000000000002\"",
+                "\"ios\"",
+                "\"production\"",
+                "0",
+                "\"UNCHANGED\"",
+                "\"UPDATE_APPLIED\"",
+                "\"RECOVERED\"",
+                "\"00000000-0000-7000-8000-000000000002\""
+              ]
+            }
+          }
+        },
+        "heads_bundle_indexes": {
+          "database_bytes": 82444288,
+          "fixture_load_rows_written": 706000,
+          "writes": {
+            "new_event_existing_installation": {
+              "rows_read": 4,
+              "rows_written": 12
+            },
+            "duplicate_event": {
+              "rows_read": 4,
+              "rows_written": 0
+            },
+            "delayed_event": {
+              "rows_read": 4,
+              "rows_written": 7
+            }
+          },
+          "queries": {
+            "exact": {
+              "rows_read": 2,
+              "rows_written": 0,
+              "elapsed_ms": 1.62,
+              "result_count": 1,
+              "plan": [
+                "CO-ROUTINE h",
+                "SEARCH h USING INDEX sqlite_autoindex_bundle_event_heads_1 (install_id=?)",
+                "SCAN h",
+                "SEARCH e USING INDEX sqlite_autoindex_bundle_events_1 (id=?)"
+              ],
+              "sql": "SELECT e.* FROM (SELECT id,install_id FROM bundle_event_heads h WHERE h.install_id=json_extract(?, '$') ORDER BY install_id LIMIT json_extract(?, '$')) h JOIN bundle_events e ON e.id=h.id ORDER BY h.install_id",
+              "parameters": ["\"install-000500\"", "1"]
+            },
+            "user_first": {
+              "rows_read": 202,
+              "rows_written": 0,
+              "elapsed_ms": 2.599,
+              "result_count": 101,
+              "plan": [
+                "CO-ROUTINE h",
+                "SEARCH h USING INDEX bundle_event_heads_user_idx (user_id=?)",
+                "SCAN h",
+                "SEARCH e USING INDEX sqlite_autoindex_bundle_events_1 (id=?)"
+              ],
+              "sql": "SELECT e.* FROM (SELECT id,install_id FROM bundle_event_heads h WHERE h.user_id=json_extract(?, '$') ORDER BY install_id LIMIT json_extract(?, '$')) h JOIN bundle_events e ON e.id=h.id ORDER BY h.install_id",
+              "parameters": ["\"user-1\"", "101"]
+            },
+            "user_later": {
+              "rows_read": 183,
+              "rows_written": 0,
+              "elapsed_ms": 7.303,
+              "result_count": 91,
+              "plan": [
+                "CO-ROUTINE h",
+                "SEARCH h USING INDEX bundle_event_heads_user_idx (user_id=? AND install_id>?)",
+                "SCAN h",
+                "SEARCH e USING INDEX sqlite_autoindex_bundle_events_1 (id=?)"
+              ],
+              "sql": "SELECT e.* FROM (SELECT id,install_id FROM bundle_event_heads h WHERE h.user_id=json_extract(?, '$') AND h.install_id>json_extract(?, '$') ORDER BY install_id LIMIT json_extract(?, '$')) h JOIN bundle_events e ON e.id=h.id ORDER BY h.install_id",
+              "parameters": ["\"user-1\"", "\"install-000500\"", "101"]
+            },
+            "scope_count": {
+              "rows_read": 1000,
+              "rows_written": 0,
+              "elapsed_ms": 1.79,
+              "result_count": 1000,
+              "plan": [
+                "SEARCH h USING COVERING INDEX bundle_event_heads_scope_idx (platform=? AND channel=? AND received_at_ms>?)"
+              ],
+              "sql": "SELECT COUNT(*) AS count FROM bundle_event_heads h WHERE (h.platform=json_extract(?, '$') AND h.channel=json_extract(?, '$') AND h.received_at_ms>=json_extract(?, '$'))",
+              "parameters": ["\"ios\"", "\"production\"", "0"]
+            },
+            "common_bundle_count": {
+              "rows_read": 1005,
+              "rows_written": 0,
+              "elapsed_ms": 1.322,
+              "result_count": 999,
+              "plan": [
+                "MULTI-INDEX OR",
+                "INDEX 1",
+                "SEARCH h USING INDEX bundle_event_heads_from_idx (type=? AND platform=? AND channel=? AND from_bundle_id=? AND received_at_ms>?)",
+                "INDEX 2",
+                "SEARCH h USING INDEX bundle_event_heads_to_idx (type=? AND platform=? AND channel=? AND to_bundle_id=? AND received_at_ms>?)"
+              ],
+              "sql": "SELECT COUNT(*) AS count FROM bundle_event_heads h WHERE ((h.platform=json_extract(?, '$') AND h.channel=json_extract(?, '$') AND h.received_at_ms>=json_extract(?, '$') AND h.type=json_extract(?, '$') AND h.from_bundle_id=json_extract(?, '$')) OR (h.platform=json_extract(?, '$') AND h.channel=json_extract(?, '$') AND h.received_at_ms>=json_extract(?, '$') AND h.type IN (json_extract(?, '$'),json_extract(?, '$'),json_extract(?, '$')) AND h.to_bundle_id=json_extract(?, '$')))",
+              "parameters": [
+                "\"ios\"",
+                "\"production\"",
+                "0",
+                "\"UPDATE_DOWNLOADED\"",
+                "\"00000000-0000-7000-8000-000000000001\"",
+                "\"ios\"",
+                "\"production\"",
+                "0",
+                "\"UNCHANGED\"",
+                "\"UPDATE_APPLIED\"",
+                "\"RECOVERED\"",
+                "\"00000000-0000-7000-8000-000000000001\""
+              ]
+            },
+            "rare_bundle_count": {
+              "rows_read": 8,
+              "rows_written": 0,
+              "elapsed_ms": 1.314,
+              "result_count": 1,
+              "plan": [
+                "MULTI-INDEX OR",
+                "INDEX 1",
+                "SEARCH h USING INDEX bundle_event_heads_from_idx (type=? AND platform=? AND channel=? AND from_bundle_id=? AND received_at_ms>?)",
+                "INDEX 2",
+                "SEARCH h USING INDEX bundle_event_heads_to_idx (type=? AND platform=? AND channel=? AND to_bundle_id=? AND received_at_ms>?)"
+              ],
+              "sql": "SELECT COUNT(*) AS count FROM bundle_event_heads h WHERE ((h.platform=json_extract(?, '$') AND h.channel=json_extract(?, '$') AND h.received_at_ms>=json_extract(?, '$') AND h.type=json_extract(?, '$') AND h.from_bundle_id=json_extract(?, '$')) OR (h.platform=json_extract(?, '$') AND h.channel=json_extract(?, '$') AND h.received_at_ms>=json_extract(?, '$') AND h.type IN (json_extract(?, '$'),json_extract(?, '$'),json_extract(?, '$')) AND h.to_bundle_id=json_extract(?, '$')))",
+              "parameters": [
+                "\"ios\"",
+                "\"production\"",
+                "0",
+                "\"UPDATE_DOWNLOADED\"",
+                "\"00000000-0000-7000-8000-000000000002\"",
+                "\"ios\"",
+                "\"production\"",
+                "0",
+                "\"UNCHANGED\"",
+                "\"UPDATE_APPLIED\"",
+                "\"RECOVERED\"",
+                "\"00000000-0000-7000-8000-000000000002\""
+              ]
+            }
+          }
+        },
+        "heads_bundle_union": {
+          "database_bytes": 82444288,
+          "fixture_load_rows_written": 706000,
+          "writes": {
+            "new_event_existing_installation": {
+              "rows_read": 4,
+              "rows_written": 12
+            },
+            "duplicate_event": {
+              "rows_read": 4,
+              "rows_written": 0
+            },
+            "delayed_event": {
+              "rows_read": 4,
+              "rows_written": 7
+            }
+          },
+          "queries": {
+            "exact": {
+              "rows_read": 2,
+              "rows_written": 0,
+              "elapsed_ms": 1.511,
+              "result_count": 1,
+              "plan": [
+                "CO-ROUTINE h",
+                "SEARCH h USING INDEX sqlite_autoindex_bundle_event_heads_1 (install_id=?)",
+                "SCAN h",
+                "SEARCH e USING INDEX sqlite_autoindex_bundle_events_1 (id=?)"
+              ],
+              "sql": "SELECT e.* FROM (SELECT id,install_id FROM bundle_event_heads h WHERE h.install_id=json_extract(?, '$') ORDER BY install_id LIMIT json_extract(?, '$')) h JOIN bundle_events e ON e.id=h.id ORDER BY h.install_id",
+              "parameters": ["\"install-000500\"", "1"]
+            },
+            "user_first": {
+              "rows_read": 202,
+              "rows_written": 0,
+              "elapsed_ms": 3.443,
+              "result_count": 101,
+              "plan": [
+                "CO-ROUTINE h",
+                "SEARCH h USING INDEX bundle_event_heads_user_idx (user_id=?)",
+                "SCAN h",
+                "SEARCH e USING INDEX sqlite_autoindex_bundle_events_1 (id=?)"
+              ],
+              "sql": "SELECT e.* FROM (SELECT id,install_id FROM bundle_event_heads h WHERE h.user_id=json_extract(?, '$') ORDER BY install_id LIMIT json_extract(?, '$')) h JOIN bundle_events e ON e.id=h.id ORDER BY h.install_id",
+              "parameters": ["\"user-1\"", "101"]
+            },
+            "user_later": {
+              "rows_read": 183,
+              "rows_written": 0,
+              "elapsed_ms": 5.449,
+              "result_count": 91,
+              "plan": [
+                "CO-ROUTINE h",
+                "SEARCH h USING INDEX bundle_event_heads_user_idx (user_id=? AND install_id>?)",
+                "SCAN h",
+                "SEARCH e USING INDEX sqlite_autoindex_bundle_events_1 (id=?)"
+              ],
+              "sql": "SELECT e.* FROM (SELECT id,install_id FROM bundle_event_heads h WHERE h.user_id=json_extract(?, '$') AND h.install_id>json_extract(?, '$') ORDER BY install_id LIMIT json_extract(?, '$')) h JOIN bundle_events e ON e.id=h.id ORDER BY h.install_id",
+              "parameters": ["\"user-1\"", "\"install-000500\"", "101"]
+            },
+            "scope_count": {
+              "rows_read": 1000,
+              "rows_written": 0,
+              "elapsed_ms": 0.978,
+              "result_count": 1000,
+              "plan": [
+                "SEARCH h USING COVERING INDEX bundle_event_heads_scope_idx (platform=? AND channel=? AND received_at_ms>?)"
+              ],
+              "sql": "SELECT COUNT(*) AS count FROM bundle_event_heads h WHERE (h.platform=json_extract(?, '$') AND h.channel=json_extract(?, '$') AND h.received_at_ms>=json_extract(?, '$'))",
+              "parameters": ["\"ios\"", "\"production\"", "0"]
+            },
+            "common_bundle_count": {
+              "rows_read": 2004,
+              "rows_written": 0,
+              "elapsed_ms": 1.408,
+              "result_count": 999,
+              "plan": [
+                "CO-ROUTINE (subquery-2)",
+                "COMPOUND QUERY",
+                "LEFT-MOST SUBQUERY",
+                "SEARCH h USING INDEX bundle_event_heads_from_idx (type=? AND platform=? AND channel=? AND from_bundle_id=? AND received_at_ms>?)",
+                "UNION USING TEMP B-TREE",
+                "SEARCH h USING INDEX bundle_event_heads_to_idx (type=? AND platform=? AND channel=? AND to_bundle_id=? AND received_at_ms>?)",
+                "SCAN (subquery-2)"
+              ],
+              "sql": "SELECT COUNT(*) AS count FROM (SELECT h.install_id FROM bundle_event_heads h WHERE h.platform=json_extract(?, '$') AND h.channel=json_extract(?, '$') AND h.received_at_ms>=json_extract(?, '$') AND h.type=json_extract(?, '$') AND h.from_bundle_id=json_extract(?, '$') UNION SELECT h.install_id FROM bundle_event_heads h WHERE h.platform=json_extract(?, '$') AND h.channel=json_extract(?, '$') AND h.received_at_ms>=json_extract(?, '$') AND h.type IN (json_extract(?, '$'),json_extract(?, '$'),json_extract(?, '$')) AND h.to_bundle_id=json_extract(?, '$'))",
+              "parameters": [
+                "\"ios\"",
+                "\"production\"",
+                "0",
+                "\"UPDATE_DOWNLOADED\"",
+                "\"00000000-0000-7000-8000-000000000001\"",
+                "\"ios\"",
+                "\"production\"",
+                "0",
+                "\"UNCHANGED\"",
+                "\"UPDATE_APPLIED\"",
+                "\"RECOVERED\"",
+                "\"00000000-0000-7000-8000-000000000001\""
+              ]
+            },
+            "rare_bundle_count": {
+              "rows_read": 9,
+              "rows_written": 0,
+              "elapsed_ms": 1.131,
+              "result_count": 1,
+              "plan": [
+                "CO-ROUTINE (subquery-2)",
+                "COMPOUND QUERY",
+                "LEFT-MOST SUBQUERY",
+                "SEARCH h USING INDEX bundle_event_heads_from_idx (type=? AND platform=? AND channel=? AND from_bundle_id=? AND received_at_ms>?)",
+                "UNION USING TEMP B-TREE",
+                "SEARCH h USING INDEX bundle_event_heads_to_idx (type=? AND platform=? AND channel=? AND to_bundle_id=? AND received_at_ms>?)",
+                "SCAN (subquery-2)"
+              ],
+              "sql": "SELECT COUNT(*) AS count FROM (SELECT h.install_id FROM bundle_event_heads h WHERE h.platform=json_extract(?, '$') AND h.channel=json_extract(?, '$') AND h.received_at_ms>=json_extract(?, '$') AND h.type=json_extract(?, '$') AND h.from_bundle_id=json_extract(?, '$') UNION SELECT h.install_id FROM bundle_event_heads h WHERE h.platform=json_extract(?, '$') AND h.channel=json_extract(?, '$') AND h.received_at_ms>=json_extract(?, '$') AND h.type IN (json_extract(?, '$'),json_extract(?, '$'),json_extract(?, '$')) AND h.to_bundle_id=json_extract(?, '$'))",
+              "parameters": [
+                "\"ios\"",
+                "\"production\"",
+                "0",
+                "\"UPDATE_DOWNLOADED\"",
+                "\"00000000-0000-7000-8000-000000000002\"",
+                "\"ios\"",
+                "\"production\"",
+                "0",
+                "\"UNCHANGED\"",
+                "\"UPDATE_APPLIED\"",
+                "\"RECOVERED\"",
+                "\"00000000-0000-7000-8000-000000000002\""
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "scoped": 1000,
+      "unrelated": 9000,
+      "depth": 10,
+      "bundleVariety": 1,
+      "events": 100000,
+      "strategies": {
+        "snapshot": {
+          "database_bytes": 69500928,
+          "fixture_load_rows_written": 660000,
+          "writes": {
+            "new_event_existing_installation": {
+              "rows_read": 6,
+              "rows_written": 11
+            },
+            "duplicate_event": {
+              "rows_read": 5,
+              "rows_written": 0
+            },
+            "delayed_event": {
+              "rows_read": 5,
+              "rows_written": 6
+            }
+          },
+          "queries": {
+            "exact": {
+              "rows_read": 1,
+              "rows_written": 0,
+              "elapsed_ms": 1.253,
+              "result_count": 1,
+              "plan": [
+                "SEARCH h USING INDEX sqlite_autoindex_bundle_installations_1 (install_id=?)"
+              ],
+              "sql": "SELECT h.* FROM bundle_installations h WHERE h.install_id=json_extract(?, '$') ORDER BY h.install_id LIMIT json_extract(?, '$')",
+              "parameters": ["\"install-000500\"", "1"]
+            },
+            "user_first": {
+              "rows_read": 101,
+              "rows_written": 0,
+              "elapsed_ms": 3.467,
+              "result_count": 101,
+              "plan": [
+                "SEARCH h USING INDEX bundle_installations_user_id_idx (user_id=?)"
+              ],
+              "sql": "SELECT h.* FROM bundle_installations h WHERE h.user_id=json_extract(?, '$') ORDER BY h.install_id LIMIT json_extract(?, '$')",
+              "parameters": ["\"user-1\"", "101"]
+            },
+            "user_later": {
+              "rows_read": 101,
+              "rows_written": 0,
+              "elapsed_ms": 2.923,
+              "result_count": 101,
+              "plan": [
+                "SEARCH h USING INDEX bundle_installations_user_id_idx (user_id=? AND install_id>?)"
+              ],
+              "sql": "SELECT h.* FROM bundle_installations h WHERE h.user_id=json_extract(?, '$') AND h.install_id>json_extract(?, '$') ORDER BY h.install_id LIMIT json_extract(?, '$')",
+              "parameters": ["\"user-1\"", "\"install-000500\"", "101"]
+            },
+            "scope_count": {
+              "rows_read": 1000,
+              "rows_written": 0,
+              "elapsed_ms": 3.445,
+              "result_count": 1000,
+              "plan": [
+                "SEARCH h USING COVERING INDEX bundle_installations_scope_idx (platform=? AND channel=? AND received_at_ms>?)"
+              ],
+              "sql": "SELECT COUNT(*) AS count FROM bundle_installations h WHERE (h.platform=json_extract(?, '$') AND h.channel=json_extract(?, '$') AND h.received_at_ms>=json_extract(?, '$'))",
+              "parameters": ["\"ios\"", "\"production\"", "0"]
+            },
+            "common_bundle_count": {
+              "rows_read": 1000,
+              "rows_written": 0,
+              "elapsed_ms": 1.365,
+              "result_count": 999,
+              "plan": [
+                "SEARCH h USING COVERING INDEX bundle_installations_bundle_idx (platform=? AND channel=? AND to_bundle_id=? AND received_at_ms>?)"
+              ],
+              "sql": "SELECT COUNT(*) AS count FROM bundle_installations h WHERE (h.platform=json_extract(?, '$') AND h.channel=json_extract(?, '$') AND h.received_at_ms>=json_extract(?, '$') AND h.to_bundle_id=json_extract(?, '$'))",
+              "parameters": [
+                "\"ios\"",
+                "\"production\"",
+                "0",
+                "\"00000000-0000-7000-8000-000000000001\""
+              ]
+            },
+            "rare_bundle_count": {
+              "rows_read": 1,
+              "rows_written": 0,
+              "elapsed_ms": 1.381,
+              "result_count": 1,
+              "plan": [
+                "SEARCH h USING COVERING INDEX bundle_installations_bundle_idx (platform=? AND channel=? AND to_bundle_id=? AND received_at_ms>?)"
+              ],
+              "sql": "SELECT COUNT(*) AS count FROM bundle_installations h WHERE (h.platform=json_extract(?, '$') AND h.channel=json_extract(?, '$') AND h.received_at_ms>=json_extract(?, '$') AND h.to_bundle_id=json_extract(?, '$'))",
+              "parameters": [
+                "\"ios\"",
+                "\"production\"",
+                "0",
+                "\"00000000-0000-7000-8000-000000000002\""
+              ]
+            }
+          }
+        },
+        "event_only": {
+          "database_bytes": 85364736,
+          "fixture_load_rows_written": 800000,
+          "writes": {
+            "new_event_existing_installation": {
+              "rows_read": 2,
+              "rows_written": 8
+            },
+            "duplicate_event": {
+              "rows_read": 2,
+              "rows_written": 0
+            },
+            "delayed_event": {
+              "rows_read": 2,
+              "rows_written": 8
+            }
+          },
+          "queries": {
+            "exact": {
+              "rows_read": 75,
+              "rows_written": 0,
+              "elapsed_ms": 1.603,
+              "result_count": 1,
+              "plan": [
+                "SEARCH e USING INDEX bundle_events_latest_idx (install_id=?)",
+                "CORRELATED SCALAR SUBQUERY 1",
+                "SEARCH n USING COVERING INDEX bundle_events_latest_idx (install_id=?)"
+              ],
+              "sql": "SELECT e.* FROM bundle_events e WHERE NOT EXISTS (SELECT 1 FROM bundle_events n WHERE n.install_id=e.install_id AND (n.received_at_ms>e.received_at_ms OR (n.received_at_ms=e.received_at_ms AND n.id>e.id))) AND e.install_id=json_extract(?, '$') ORDER BY e.install_id LIMIT json_extract(?, '$')",
+              "parameters": ["\"install-000500\"", "1"]
+            },
+            "user_first": {
+              "rows_read": 7541,
+              "rows_written": 0,
+              "elapsed_ms": 3.35,
+              "result_count": 101,
+              "plan": [
+                "SEARCH e USING INDEX bundle_events_user_idx (user_id=?)",
+                "CORRELATED SCALAR SUBQUERY 1",
+                "SEARCH n USING COVERING INDEX bundle_events_latest_idx (install_id=?)"
+              ],
+              "sql": "SELECT e.* FROM bundle_events e WHERE NOT EXISTS (SELECT 1 FROM bundle_events n WHERE n.install_id=e.install_id AND (n.received_at_ms>e.received_at_ms OR (n.received_at_ms=e.received_at_ms AND n.id>e.id))) AND e.user_id=json_extract(?, '$') ORDER BY e.install_id LIMIT json_extract(?, '$')",
+              "parameters": ["\"user-1\"", "101"]
+            },
+            "user_later": {
+              "rows_read": 7541,
+              "rows_written": 0,
+              "elapsed_ms": 3.1,
+              "result_count": 101,
+              "plan": [
+                "SEARCH e USING INDEX bundle_events_user_idx (user_id=? AND install_id>?)",
+                "CORRELATED SCALAR SUBQUERY 1",
+                "SEARCH n USING COVERING INDEX bundle_events_latest_idx (install_id=?)"
+              ],
+              "sql": "SELECT e.* FROM bundle_events e WHERE NOT EXISTS (SELECT 1 FROM bundle_events n WHERE n.install_id=e.install_id AND (n.received_at_ms>e.received_at_ms OR (n.received_at_ms=e.received_at_ms AND n.id>e.id))) AND e.user_id=json_extract(?, '$') AND e.install_id>json_extract(?, '$') ORDER BY e.install_id LIMIT json_extract(?, '$')",
+              "parameters": ["\"user-1\"", "\"install-000500\"", "101"]
+            },
+            "scope_count": {
+              "rows_read": 154000,
+              "rows_written": 0,
+              "elapsed_ms": 83.191,
+              "result_count": 1000,
+              "plan": [
+                "SEARCH e USING INDEX bundle_events_received_at_idx (received_at_ms>?)",
+                "CORRELATED SCALAR SUBQUERY 1",
+                "SEARCH n USING COVERING INDEX bundle_events_latest_idx (install_id=?)"
+              ],
+              "sql": "SELECT COUNT(*) AS count FROM bundle_events e WHERE NOT EXISTS (SELECT 1 FROM bundle_events n WHERE n.install_id=e.install_id AND (n.received_at_ms>e.received_at_ms OR (n.received_at_ms=e.received_at_ms AND n.id>e.id))) AND (e.platform=json_extract(?, '$') AND e.channel=json_extract(?, '$') AND e.received_at_ms>=json_extract(?, '$'))",
+              "parameters": ["\"ios\"", "\"production\"", "0"]
+            },
+            "common_bundle_count": {
+              "rows_read": 61945,
+              "rows_written": 0,
+              "elapsed_ms": 12.894,
+              "result_count": 999,
+              "plan": [
+                "MULTI-INDEX OR",
+                "INDEX 1",
+                "SEARCH e USING INDEX bundle_events_from_bundle_idx (type=? AND platform=? AND channel=? AND from_bundle_id=? AND received_at_ms>?)",
+                "INDEX 2",
+                "SEARCH e USING INDEX bundle_events_to_bundle_idx (type=? AND platform=? AND channel=? AND to_bundle_id=? AND received_at_ms>?)",
+                "CORRELATED SCALAR SUBQUERY 1",
+                "SEARCH n USING COVERING INDEX bundle_events_latest_idx (install_id=?)"
+              ],
+              "sql": "SELECT COUNT(*) AS count FROM bundle_events e WHERE NOT EXISTS (SELECT 1 FROM bundle_events n WHERE n.install_id=e.install_id AND (n.received_at_ms>e.received_at_ms OR (n.received_at_ms=e.received_at_ms AND n.id>e.id))) AND ((e.platform=json_extract(?, '$') AND e.channel=json_extract(?, '$') AND e.received_at_ms>=json_extract(?, '$') AND e.type=json_extract(?, '$') AND e.from_bundle_id=json_extract(?, '$')) OR (e.platform=json_extract(?, '$') AND e.channel=json_extract(?, '$') AND e.received_at_ms>=json_extract(?, '$') AND e.type IN (json_extract(?, '$'),json_extract(?, '$'),json_extract(?, '$')) AND e.to_bundle_id=json_extract(?, '$')))",
+              "parameters": [
+                "\"ios\"",
+                "\"production\"",
+                "0",
+                "\"UPDATE_DOWNLOADED\"",
+                "\"00000000-0000-7000-8000-000000000001\"",
+                "\"ios\"",
+                "\"production\"",
+                "0",
+                "\"UNCHANGED\"",
+                "\"UPDATE_APPLIED\"",
+                "\"RECOVERED\"",
+                "\"00000000-0000-7000-8000-000000000001\""
+              ]
+            },
+            "rare_bundle_count": {
+              "rows_read": 68,
+              "rows_written": 0,
+              "elapsed_ms": 1.09,
+              "result_count": 1,
+              "plan": [
+                "MULTI-INDEX OR",
+                "INDEX 1",
+                "SEARCH e USING INDEX bundle_events_from_bundle_idx (type=? AND platform=? AND channel=? AND from_bundle_id=? AND received_at_ms>?)",
+                "INDEX 2",
+                "SEARCH e USING INDEX bundle_events_to_bundle_idx (type=? AND platform=? AND channel=? AND to_bundle_id=? AND received_at_ms>?)",
+                "CORRELATED SCALAR SUBQUERY 1",
+                "SEARCH n USING COVERING INDEX bundle_events_latest_idx (install_id=?)"
+              ],
+              "sql": "SELECT COUNT(*) AS count FROM bundle_events e WHERE NOT EXISTS (SELECT 1 FROM bundle_events n WHERE n.install_id=e.install_id AND (n.received_at_ms>e.received_at_ms OR (n.received_at_ms=e.received_at_ms AND n.id>e.id))) AND ((e.platform=json_extract(?, '$') AND e.channel=json_extract(?, '$') AND e.received_at_ms>=json_extract(?, '$') AND e.type=json_extract(?, '$') AND e.from_bundle_id=json_extract(?, '$')) OR (e.platform=json_extract(?, '$') AND e.channel=json_extract(?, '$') AND e.received_at_ms>=json_extract(?, '$') AND e.type IN (json_extract(?, '$'),json_extract(?, '$'),json_extract(?, '$')) AND e.to_bundle_id=json_extract(?, '$')))",
+              "parameters": [
+                "\"ios\"",
+                "\"production\"",
+                "0",
+                "\"UPDATE_DOWNLOADED\"",
+                "\"00000000-0000-7000-8000-000000000002\"",
+                "\"ios\"",
+                "\"production\"",
+                "0",
+                "\"UNCHANGED\"",
+                "\"UPDATE_APPLIED\"",
+                "\"RECOVERED\"",
+                "\"00000000-0000-7000-8000-000000000002\""
+              ]
+            }
+          }
+        },
+        "tuple_index": {
+          "database_bytes": 88743936,
+          "fixture_load_rows_written": 900000,
+          "writes": {
+            "new_event_existing_installation": {
+              "rows_read": 2,
+              "rows_written": 9
+            },
+            "duplicate_event": {
+              "rows_read": 2,
+              "rows_written": 0
+            },
+            "delayed_event": {
+              "rows_read": 2,
+              "rows_written": 9
+            }
+          },
+          "queries": {
+            "exact": {
+              "rows_read": 30,
+              "rows_written": 0,
+              "elapsed_ms": 1.175,
+              "result_count": 1,
+              "plan": [
+                "SEARCH e USING INDEX bundle_events_latest_idx (install_id=?)",
+                "CORRELATED SCALAR SUBQUERY 1",
+                "SEARCH n USING COVERING INDEX bundle_events_latest_idx (install_id=? AND received_at_ms>?)"
+              ],
+              "sql": "SELECT e.* FROM bundle_events e WHERE NOT EXISTS (SELECT 1 FROM bundle_events n WHERE n.install_id=e.install_id AND (n.received_at_ms,n.id)>(e.received_at_ms,e.id)) AND e.install_id=json_extract(?, '$') ORDER BY e.install_id LIMIT json_extract(?, '$')",
+              "parameters": ["\"install-000500\"", "1"]
+            },
+            "user_first": {
+              "rows_read": 3018,
+              "rows_written": 0,
+              "elapsed_ms": 3.272,
+              "result_count": 101,
+              "plan": [
+                "SEARCH e USING INDEX bundle_events_user_idx (user_id=?)",
+                "CORRELATED SCALAR SUBQUERY 1",
+                "SEARCH n USING COVERING INDEX bundle_events_latest_idx (install_id=? AND received_at_ms>?)"
+              ],
+              "sql": "SELECT e.* FROM bundle_events e WHERE NOT EXISTS (SELECT 1 FROM bundle_events n WHERE n.install_id=e.install_id AND (n.received_at_ms,n.id)>(e.received_at_ms,e.id)) AND e.user_id=json_extract(?, '$') ORDER BY e.install_id LIMIT json_extract(?, '$')",
+              "parameters": ["\"user-1\"", "101"]
+            },
+            "user_later": {
+              "rows_read": 3018,
+              "rows_written": 0,
+              "elapsed_ms": 3.007,
+              "result_count": 101,
+              "plan": [
+                "SEARCH e USING INDEX bundle_events_user_idx (user_id=? AND install_id>?)",
+                "CORRELATED SCALAR SUBQUERY 1",
+                "SEARCH n USING COVERING INDEX bundle_events_latest_idx (install_id=? AND received_at_ms>?)"
+              ],
+              "sql": "SELECT e.* FROM bundle_events e WHERE NOT EXISTS (SELECT 1 FROM bundle_events n WHERE n.install_id=e.install_id AND (n.received_at_ms,n.id)>(e.received_at_ms,e.id)) AND e.user_id=json_extract(?, '$') AND e.install_id>json_extract(?, '$') ORDER BY e.install_id LIMIT json_extract(?, '$')",
+              "parameters": ["\"user-1\"", "\"install-000500\"", "101"]
+            },
+            "scope_count": {
+              "rows_read": 24000,
+              "rows_written": 0,
+              "elapsed_ms": 9.787,
+              "result_count": 1000,
+              "plan": [
+                "SEARCH e USING INDEX bundle_events_scope_idx (platform=? AND channel=? AND received_at_ms>?)",
+                "CORRELATED SCALAR SUBQUERY 1",
+                "SEARCH n USING COVERING INDEX bundle_events_latest_idx (install_id=? AND received_at_ms>?)"
+              ],
+              "sql": "SELECT COUNT(*) AS count FROM bundle_events e WHERE NOT EXISTS (SELECT 1 FROM bundle_events n WHERE n.install_id=e.install_id AND (n.received_at_ms,n.id)>(e.received_at_ms,e.id)) AND (e.platform=json_extract(?, '$') AND e.channel=json_extract(?, '$') AND e.received_at_ms>=json_extract(?, '$'))",
+              "parameters": ["\"ios\"", "\"production\"", "0"]
+            },
+            "common_bundle_count": {
+              "rows_read": 23983,
+              "rows_written": 0,
+              "elapsed_ms": 11.084,
+              "result_count": 999,
+              "plan": [
+                "MULTI-INDEX OR",
+                "INDEX 1",
+                "SEARCH e USING INDEX bundle_events_from_bundle_idx (type=? AND platform=? AND channel=? AND from_bundle_id=? AND received_at_ms>?)",
+                "INDEX 2",
+                "SEARCH e USING INDEX bundle_events_to_bundle_idx (type=? AND platform=? AND channel=? AND to_bundle_id=? AND received_at_ms>?)",
+                "CORRELATED SCALAR SUBQUERY 1",
+                "SEARCH n USING COVERING INDEX bundle_events_latest_idx (install_id=? AND received_at_ms>?)"
+              ],
+              "sql": "SELECT COUNT(*) AS count FROM bundle_events e WHERE NOT EXISTS (SELECT 1 FROM bundle_events n WHERE n.install_id=e.install_id AND (n.received_at_ms,n.id)>(e.received_at_ms,e.id)) AND ((e.platform=json_extract(?, '$') AND e.channel=json_extract(?, '$') AND e.received_at_ms>=json_extract(?, '$') AND e.type=json_extract(?, '$') AND e.from_bundle_id=json_extract(?, '$')) OR (e.platform=json_extract(?, '$') AND e.channel=json_extract(?, '$') AND e.received_at_ms>=json_extract(?, '$') AND e.type IN (json_extract(?, '$'),json_extract(?, '$'),json_extract(?, '$')) AND e.to_bundle_id=json_extract(?, '$')))",
+              "parameters": [
+                "\"ios\"",
+                "\"production\"",
+                "0",
+                "\"UPDATE_DOWNLOADED\"",
+                "\"00000000-0000-7000-8000-000000000001\"",
+                "\"ios\"",
+                "\"production\"",
+                "0",
+                "\"UNCHANGED\"",
+                "\"UPDATE_APPLIED\"",
+                "\"RECOVERED\"",
+                "\"00000000-0000-7000-8000-000000000001\""
+              ]
+            },
+            "rare_bundle_count": {
+              "rows_read": 30,
+              "rows_written": 0,
+              "elapsed_ms": 1.315,
+              "result_count": 1,
+              "plan": [
+                "MULTI-INDEX OR",
+                "INDEX 1",
+                "SEARCH e USING INDEX bundle_events_from_bundle_idx (type=? AND platform=? AND channel=? AND from_bundle_id=? AND received_at_ms>?)",
+                "INDEX 2",
+                "SEARCH e USING INDEX bundle_events_to_bundle_idx (type=? AND platform=? AND channel=? AND to_bundle_id=? AND received_at_ms>?)",
+                "CORRELATED SCALAR SUBQUERY 1",
+                "SEARCH n USING COVERING INDEX bundle_events_latest_idx (install_id=? AND received_at_ms>?)"
+              ],
+              "sql": "SELECT COUNT(*) AS count FROM bundle_events e WHERE NOT EXISTS (SELECT 1 FROM bundle_events n WHERE n.install_id=e.install_id AND (n.received_at_ms,n.id)>(e.received_at_ms,e.id)) AND ((e.platform=json_extract(?, '$') AND e.channel=json_extract(?, '$') AND e.received_at_ms>=json_extract(?, '$') AND e.type=json_extract(?, '$') AND e.from_bundle_id=json_extract(?, '$')) OR (e.platform=json_extract(?, '$') AND e.channel=json_extract(?, '$') AND e.received_at_ms>=json_extract(?, '$') AND e.type IN (json_extract(?, '$'),json_extract(?, '$'),json_extract(?, '$')) AND e.to_bundle_id=json_extract(?, '$')))",
+              "parameters": [
+                "\"ios\"",
+                "\"production\"",
+                "0",
+                "\"UPDATE_DOWNLOADED\"",
+                "\"00000000-0000-7000-8000-000000000002\"",
+                "\"ios\"",
+                "\"production\"",
+                "0",
+                "\"UNCHANGED\"",
+                "\"UPDATE_APPLIED\"",
+                "\"RECOVERED\"",
+                "\"00000000-0000-7000-8000-000000000002\""
+              ]
+            }
+          }
+        },
+        "pointer": {
+          "database_bytes": 86208512,
+          "fixture_load_rows_written": 820000,
+          "writes": {
+            "new_event_existing_installation": {
+              "rows_read": 6,
+              "rows_written": 9
+            },
+            "duplicate_event": {
+              "rows_read": 8,
+              "rows_written": 0
+            },
+            "delayed_event": {
+              "rows_read": 8,
+              "rows_written": 8
+            }
+          },
+          "queries": {
+            "exact": {
+              "rows_read": 2,
+              "rows_written": 0,
+              "elapsed_ms": 1.691,
+              "result_count": 1,
+              "plan": [
+                "SEARCH h USING INDEX sqlite_autoindex_bundle_event_heads_1 (install_id=?)",
+                "SEARCH e USING INDEX sqlite_autoindex_bundle_events_1 (id=?)"
+              ],
+              "sql": "SELECT e.* FROM bundle_event_heads h JOIN bundle_events e ON e.id=h.id WHERE h.install_id=json_extract(?, '$') ORDER BY h.install_id LIMIT json_extract(?, '$')",
+              "parameters": ["\"install-000500\"", "1"]
+            },
+            "user_first": {
+              "rows_read": 1110,
+              "rows_written": 0,
+              "elapsed_ms": 3.393,
+              "result_count": 101,
+              "plan": [
+                "SCAN h USING INDEX sqlite_autoindex_bundle_event_heads_1",
+                "SEARCH e USING INDEX sqlite_autoindex_bundle_events_1 (id=?)"
+              ],
+              "sql": "SELECT e.* FROM bundle_event_heads h JOIN bundle_events e ON e.id=h.id WHERE e.user_id=json_extract(?, '$') ORDER BY h.install_id LIMIT json_extract(?, '$')",
+              "parameters": ["\"user-1\"", "101"]
+            },
+            "user_later": {
+              "rows_read": 2110,
+              "rows_written": 0,
+              "elapsed_ms": 3.239,
+              "result_count": 101,
+              "plan": [
+                "SCAN h USING INDEX sqlite_autoindex_bundle_event_heads_1",
+                "SEARCH e USING INDEX sqlite_autoindex_bundle_events_1 (id=?)"
+              ],
+              "sql": "SELECT e.* FROM bundle_event_heads h JOIN bundle_events e ON e.id=h.id WHERE e.user_id=json_extract(?, '$') AND e.install_id>json_extract(?, '$') ORDER BY h.install_id LIMIT json_extract(?, '$')",
+              "parameters": ["\"user-1\"", "\"install-000500\"", "101"]
+            },
+            "scope_count": {
+              "rows_read": 20000,
+              "rows_written": 0,
+              "elapsed_ms": 10.988,
+              "result_count": 1000,
+              "plan": [
+                "SCAN h",
+                "SEARCH e USING INDEX sqlite_autoindex_bundle_events_1 (id=?)"
+              ],
+              "sql": "SELECT COUNT(*) AS count FROM bundle_event_heads h JOIN bundle_events e ON e.id=h.id WHERE (e.platform=json_extract(?, '$') AND e.channel=json_extract(?, '$') AND e.received_at_ms>=json_extract(?, '$'))",
+              "parameters": ["\"ios\"", "\"production\"", "0"]
+            },
+            "common_bundle_count": {
+              "rows_read": 20000,
+              "rows_written": 0,
+              "elapsed_ms": 11.668,
+              "result_count": 999,
+              "plan": [
+                "SCAN h",
+                "SEARCH e USING INDEX sqlite_autoindex_bundle_events_1 (id=?)"
+              ],
+              "sql": "SELECT COUNT(*) AS count FROM bundle_event_heads h JOIN bundle_events e ON e.id=h.id WHERE ((e.platform=json_extract(?, '$') AND e.channel=json_extract(?, '$') AND e.received_at_ms>=json_extract(?, '$') AND e.type=json_extract(?, '$') AND e.from_bundle_id=json_extract(?, '$')) OR (e.platform=json_extract(?, '$') AND e.channel=json_extract(?, '$') AND e.received_at_ms>=json_extract(?, '$') AND e.type IN (json_extract(?, '$'),json_extract(?, '$'),json_extract(?, '$')) AND e.to_bundle_id=json_extract(?, '$')))",
+              "parameters": [
+                "\"ios\"",
+                "\"production\"",
+                "0",
+                "\"UPDATE_DOWNLOADED\"",
+                "\"00000000-0000-7000-8000-000000000001\"",
+                "\"ios\"",
+                "\"production\"",
+                "0",
+                "\"UNCHANGED\"",
+                "\"UPDATE_APPLIED\"",
+                "\"RECOVERED\"",
+                "\"00000000-0000-7000-8000-000000000001\""
+              ]
+            },
+            "rare_bundle_count": {
+              "rows_read": 20000,
+              "rows_written": 0,
+              "elapsed_ms": 11.01,
+              "result_count": 1,
+              "plan": [
+                "SCAN h",
+                "SEARCH e USING INDEX sqlite_autoindex_bundle_events_1 (id=?)"
+              ],
+              "sql": "SELECT COUNT(*) AS count FROM bundle_event_heads h JOIN bundle_events e ON e.id=h.id WHERE ((e.platform=json_extract(?, '$') AND e.channel=json_extract(?, '$') AND e.received_at_ms>=json_extract(?, '$') AND e.type=json_extract(?, '$') AND e.from_bundle_id=json_extract(?, '$')) OR (e.platform=json_extract(?, '$') AND e.channel=json_extract(?, '$') AND e.received_at_ms>=json_extract(?, '$') AND e.type IN (json_extract(?, '$'),json_extract(?, '$'),json_extract(?, '$')) AND e.to_bundle_id=json_extract(?, '$')))",
+              "parameters": [
+                "\"ios\"",
+                "\"production\"",
+                "0",
+                "\"UPDATE_DOWNLOADED\"",
+                "\"00000000-0000-7000-8000-000000000002\"",
+                "\"ios\"",
+                "\"production\"",
+                "0",
+                "\"UNCHANGED\"",
+                "\"UPDATE_APPLIED\"",
+                "\"RECOVERED\"",
+                "\"00000000-0000-7000-8000-000000000002\""
+              ]
+            }
+          }
+        },
+        "heads": {
+          "database_bytes": 84725760,
+          "fixture_load_rows_written": 740000,
+          "writes": {
+            "new_event_existing_installation": {
+              "rows_read": 4,
+              "rows_written": 10
+            },
+            "duplicate_event": {
+              "rows_read": 4,
+              "rows_written": 0
+            },
+            "delayed_event": {
+              "rows_read": 4,
+              "rows_written": 7
+            }
+          },
+          "queries": {
+            "exact": {
+              "rows_read": 2,
+              "rows_written": 0,
+              "elapsed_ms": 1.277,
+              "result_count": 1,
+              "plan": [
+                "CO-ROUTINE h",
+                "SEARCH h USING INDEX sqlite_autoindex_bundle_event_heads_1 (install_id=?)",
+                "SCAN h",
+                "SEARCH e USING INDEX sqlite_autoindex_bundle_events_1 (id=?)"
+              ],
+              "sql": "SELECT e.* FROM (SELECT id,install_id FROM bundle_event_heads h WHERE h.install_id=json_extract(?, '$') ORDER BY install_id LIMIT json_extract(?, '$')) h JOIN bundle_events e ON e.id=h.id ORDER BY h.install_id",
+              "parameters": ["\"install-000500\"", "1"]
+            },
+            "user_first": {
+              "rows_read": 202,
+              "rows_written": 0,
+              "elapsed_ms": 2.532,
+              "result_count": 101,
+              "plan": [
+                "CO-ROUTINE h",
+                "SEARCH h USING INDEX bundle_event_heads_user_idx (user_id=?)",
+                "SCAN h",
+                "SEARCH e USING INDEX sqlite_autoindex_bundle_events_1 (id=?)"
+              ],
+              "sql": "SELECT e.* FROM (SELECT id,install_id FROM bundle_event_heads h WHERE h.user_id=json_extract(?, '$') ORDER BY install_id LIMIT json_extract(?, '$')) h JOIN bundle_events e ON e.id=h.id ORDER BY h.install_id",
+              "parameters": ["\"user-1\"", "101"]
+            },
+            "user_later": {
+              "rows_read": 202,
+              "rows_written": 0,
+              "elapsed_ms": 2.675,
+              "result_count": 101,
+              "plan": [
+                "CO-ROUTINE h",
+                "SEARCH h USING INDEX bundle_event_heads_user_idx (user_id=? AND install_id>?)",
+                "SCAN h",
+                "SEARCH e USING INDEX sqlite_autoindex_bundle_events_1 (id=?)"
+              ],
+              "sql": "SELECT e.* FROM (SELECT id,install_id FROM bundle_event_heads h WHERE h.user_id=json_extract(?, '$') AND h.install_id>json_extract(?, '$') ORDER BY install_id LIMIT json_extract(?, '$')) h JOIN bundle_events e ON e.id=h.id ORDER BY h.install_id",
+              "parameters": ["\"user-1\"", "\"install-000500\"", "101"]
+            },
+            "scope_count": {
+              "rows_read": 1000,
+              "rows_written": 0,
+              "elapsed_ms": 1.553,
+              "result_count": 1000,
+              "plan": [
+                "SEARCH h USING COVERING INDEX bundle_event_heads_scope_idx (platform=? AND channel=? AND received_at_ms>?)"
+              ],
+              "sql": "SELECT COUNT(*) AS count FROM bundle_event_heads h WHERE (h.platform=json_extract(?, '$') AND h.channel=json_extract(?, '$') AND h.received_at_ms>=json_extract(?, '$'))",
+              "parameters": ["\"ios\"", "\"production\"", "0"]
+            },
+            "common_bundle_count": {
+              "rows_read": 2000,
+              "rows_written": 0,
+              "elapsed_ms": 1.382,
+              "result_count": 999,
+              "plan": [
+                "MULTI-INDEX OR",
+                "INDEX 1",
+                "SEARCH h USING INDEX bundle_event_heads_scope_idx (platform=? AND channel=? AND received_at_ms>?)",
+                "INDEX 2",
+                "SEARCH h USING INDEX bundle_event_heads_scope_idx (platform=? AND channel=? AND received_at_ms>?)"
+              ],
+              "sql": "SELECT COUNT(*) AS count FROM bundle_event_heads h WHERE ((h.platform=json_extract(?, '$') AND h.channel=json_extract(?, '$') AND h.received_at_ms>=json_extract(?, '$') AND h.type=json_extract(?, '$') AND h.from_bundle_id=json_extract(?, '$')) OR (h.platform=json_extract(?, '$') AND h.channel=json_extract(?, '$') AND h.received_at_ms>=json_extract(?, '$') AND h.type IN (json_extract(?, '$'),json_extract(?, '$'),json_extract(?, '$')) AND h.to_bundle_id=json_extract(?, '$')))",
+              "parameters": [
+                "\"ios\"",
+                "\"production\"",
+                "0",
+                "\"UPDATE_DOWNLOADED\"",
+                "\"00000000-0000-7000-8000-000000000001\"",
+                "\"ios\"",
+                "\"production\"",
+                "0",
+                "\"UNCHANGED\"",
+                "\"UPDATE_APPLIED\"",
+                "\"RECOVERED\"",
+                "\"00000000-0000-7000-8000-000000000001\""
+              ]
+            },
+            "rare_bundle_count": {
+              "rows_read": 2000,
+              "rows_written": 0,
+              "elapsed_ms": 1.265,
+              "result_count": 1,
+              "plan": [
+                "MULTI-INDEX OR",
+                "INDEX 1",
+                "SEARCH h USING INDEX bundle_event_heads_scope_idx (platform=? AND channel=? AND received_at_ms>?)",
+                "INDEX 2",
+                "SEARCH h USING INDEX bundle_event_heads_scope_idx (platform=? AND channel=? AND received_at_ms>?)"
+              ],
+              "sql": "SELECT COUNT(*) AS count FROM bundle_event_heads h WHERE ((h.platform=json_extract(?, '$') AND h.channel=json_extract(?, '$') AND h.received_at_ms>=json_extract(?, '$') AND h.type=json_extract(?, '$') AND h.from_bundle_id=json_extract(?, '$')) OR (h.platform=json_extract(?, '$') AND h.channel=json_extract(?, '$') AND h.received_at_ms>=json_extract(?, '$') AND h.type IN (json_extract(?, '$'),json_extract(?, '$'),json_extract(?, '$')) AND h.to_bundle_id=json_extract(?, '$')))",
+              "parameters": [
+                "\"ios\"",
+                "\"production\"",
+                "0",
+                "\"UPDATE_DOWNLOADED\"",
+                "\"00000000-0000-7000-8000-000000000002\"",
+                "\"ios\"",
+                "\"production\"",
+                "0",
+                "\"UNCHANGED\"",
+                "\"UPDATE_APPLIED\"",
+                "\"RECOVERED\"",
+                "\"00000000-0000-7000-8000-000000000002\""
+              ]
+            }
+          }
+        },
+        "heads_bundle_indexes": {
+          "database_bytes": 86454272,
+          "fixture_load_rows_written": 760000,
+          "writes": {
+            "new_event_existing_installation": {
+              "rows_read": 4,
+              "rows_written": 12
+            },
+            "duplicate_event": {
+              "rows_read": 4,
+              "rows_written": 0
+            },
+            "delayed_event": {
+              "rows_read": 4,
+              "rows_written": 7
+            }
+          },
+          "queries": {
+            "exact": {
+              "rows_read": 2,
+              "rows_written": 0,
+              "elapsed_ms": 1.225,
+              "result_count": 1,
+              "plan": [
+                "CO-ROUTINE h",
+                "SEARCH h USING INDEX sqlite_autoindex_bundle_event_heads_1 (install_id=?)",
+                "SCAN h",
+                "SEARCH e USING INDEX sqlite_autoindex_bundle_events_1 (id=?)"
+              ],
+              "sql": "SELECT e.* FROM (SELECT id,install_id FROM bundle_event_heads h WHERE h.install_id=json_extract(?, '$') ORDER BY install_id LIMIT json_extract(?, '$')) h JOIN bundle_events e ON e.id=h.id ORDER BY h.install_id",
+              "parameters": ["\"install-000500\"", "1"]
+            },
+            "user_first": {
+              "rows_read": 202,
+              "rows_written": 0,
+              "elapsed_ms": 2.871,
+              "result_count": 101,
+              "plan": [
+                "CO-ROUTINE h",
+                "SEARCH h USING INDEX bundle_event_heads_user_idx (user_id=?)",
+                "SCAN h",
+                "SEARCH e USING INDEX sqlite_autoindex_bundle_events_1 (id=?)"
+              ],
+              "sql": "SELECT e.* FROM (SELECT id,install_id FROM bundle_event_heads h WHERE h.user_id=json_extract(?, '$') ORDER BY install_id LIMIT json_extract(?, '$')) h JOIN bundle_events e ON e.id=h.id ORDER BY h.install_id",
+              "parameters": ["\"user-1\"", "101"]
+            },
+            "user_later": {
+              "rows_read": 202,
+              "rows_written": 0,
+              "elapsed_ms": 2.573,
+              "result_count": 101,
+              "plan": [
+                "CO-ROUTINE h",
+                "SEARCH h USING INDEX bundle_event_heads_user_idx (user_id=? AND install_id>?)",
+                "SCAN h",
+                "SEARCH e USING INDEX sqlite_autoindex_bundle_events_1 (id=?)"
+              ],
+              "sql": "SELECT e.* FROM (SELECT id,install_id FROM bundle_event_heads h WHERE h.user_id=json_extract(?, '$') AND h.install_id>json_extract(?, '$') ORDER BY install_id LIMIT json_extract(?, '$')) h JOIN bundle_events e ON e.id=h.id ORDER BY h.install_id",
+              "parameters": ["\"user-1\"", "\"install-000500\"", "101"]
+            },
+            "scope_count": {
+              "rows_read": 1000,
+              "rows_written": 0,
+              "elapsed_ms": 0.974,
+              "result_count": 1000,
+              "plan": [
+                "SEARCH h USING COVERING INDEX bundle_event_heads_scope_idx (platform=? AND channel=? AND received_at_ms>?)"
+              ],
+              "sql": "SELECT COUNT(*) AS count FROM bundle_event_heads h WHERE (h.platform=json_extract(?, '$') AND h.channel=json_extract(?, '$') AND h.received_at_ms>=json_extract(?, '$'))",
+              "parameters": ["\"ios\"", "\"production\"", "0"]
+            },
+            "common_bundle_count": {
+              "rows_read": 1005,
+              "rows_written": 0,
+              "elapsed_ms": 1.305,
+              "result_count": 999,
+              "plan": [
+                "MULTI-INDEX OR",
+                "INDEX 1",
+                "SEARCH h USING INDEX bundle_event_heads_from_idx (type=? AND platform=? AND channel=? AND from_bundle_id=? AND received_at_ms>?)",
+                "INDEX 2",
+                "SEARCH h USING INDEX bundle_event_heads_to_idx (type=? AND platform=? AND channel=? AND to_bundle_id=? AND received_at_ms>?)"
+              ],
+              "sql": "SELECT COUNT(*) AS count FROM bundle_event_heads h WHERE ((h.platform=json_extract(?, '$') AND h.channel=json_extract(?, '$') AND h.received_at_ms>=json_extract(?, '$') AND h.type=json_extract(?, '$') AND h.from_bundle_id=json_extract(?, '$')) OR (h.platform=json_extract(?, '$') AND h.channel=json_extract(?, '$') AND h.received_at_ms>=json_extract(?, '$') AND h.type IN (json_extract(?, '$'),json_extract(?, '$'),json_extract(?, '$')) AND h.to_bundle_id=json_extract(?, '$')))",
+              "parameters": [
+                "\"ios\"",
+                "\"production\"",
+                "0",
+                "\"UPDATE_DOWNLOADED\"",
+                "\"00000000-0000-7000-8000-000000000001\"",
+                "\"ios\"",
+                "\"production\"",
+                "0",
+                "\"UNCHANGED\"",
+                "\"UPDATE_APPLIED\"",
+                "\"RECOVERED\"",
+                "\"00000000-0000-7000-8000-000000000001\""
+              ]
+            },
+            "rare_bundle_count": {
+              "rows_read": 8,
+              "rows_written": 0,
+              "elapsed_ms": 1.049,
+              "result_count": 1,
+              "plan": [
+                "MULTI-INDEX OR",
+                "INDEX 1",
+                "SEARCH h USING INDEX bundle_event_heads_from_idx (type=? AND platform=? AND channel=? AND from_bundle_id=? AND received_at_ms>?)",
+                "INDEX 2",
+                "SEARCH h USING INDEX bundle_event_heads_to_idx (type=? AND platform=? AND channel=? AND to_bundle_id=? AND received_at_ms>?)"
+              ],
+              "sql": "SELECT COUNT(*) AS count FROM bundle_event_heads h WHERE ((h.platform=json_extract(?, '$') AND h.channel=json_extract(?, '$') AND h.received_at_ms>=json_extract(?, '$') AND h.type=json_extract(?, '$') AND h.from_bundle_id=json_extract(?, '$')) OR (h.platform=json_extract(?, '$') AND h.channel=json_extract(?, '$') AND h.received_at_ms>=json_extract(?, '$') AND h.type IN (json_extract(?, '$'),json_extract(?, '$'),json_extract(?, '$')) AND h.to_bundle_id=json_extract(?, '$')))",
+              "parameters": [
+                "\"ios\"",
+                "\"production\"",
+                "0",
+                "\"UPDATE_DOWNLOADED\"",
+                "\"00000000-0000-7000-8000-000000000002\"",
+                "\"ios\"",
+                "\"production\"",
+                "0",
+                "\"UNCHANGED\"",
+                "\"UPDATE_APPLIED\"",
+                "\"RECOVERED\"",
+                "\"00000000-0000-7000-8000-000000000002\""
+              ]
+            }
+          }
+        },
+        "heads_bundle_union": {
+          "database_bytes": 86454272,
+          "fixture_load_rows_written": 760000,
+          "writes": {
+            "new_event_existing_installation": {
+              "rows_read": 4,
+              "rows_written": 12
+            },
+            "duplicate_event": {
+              "rows_read": 4,
+              "rows_written": 0
+            },
+            "delayed_event": {
+              "rows_read": 4,
+              "rows_written": 7
+            }
+          },
+          "queries": {
+            "exact": {
+              "rows_read": 2,
+              "rows_written": 0,
+              "elapsed_ms": 1.272,
+              "result_count": 1,
+              "plan": [
+                "CO-ROUTINE h",
+                "SEARCH h USING INDEX sqlite_autoindex_bundle_event_heads_1 (install_id=?)",
+                "SCAN h",
+                "SEARCH e USING INDEX sqlite_autoindex_bundle_events_1 (id=?)"
+              ],
+              "sql": "SELECT e.* FROM (SELECT id,install_id FROM bundle_event_heads h WHERE h.install_id=json_extract(?, '$') ORDER BY install_id LIMIT json_extract(?, '$')) h JOIN bundle_events e ON e.id=h.id ORDER BY h.install_id",
+              "parameters": ["\"install-000500\"", "1"]
+            },
+            "user_first": {
+              "rows_read": 202,
+              "rows_written": 0,
+              "elapsed_ms": 2.811,
+              "result_count": 101,
+              "plan": [
+                "CO-ROUTINE h",
+                "SEARCH h USING INDEX bundle_event_heads_user_idx (user_id=?)",
+                "SCAN h",
+                "SEARCH e USING INDEX sqlite_autoindex_bundle_events_1 (id=?)"
+              ],
+              "sql": "SELECT e.* FROM (SELECT id,install_id FROM bundle_event_heads h WHERE h.user_id=json_extract(?, '$') ORDER BY install_id LIMIT json_extract(?, '$')) h JOIN bundle_events e ON e.id=h.id ORDER BY h.install_id",
+              "parameters": ["\"user-1\"", "101"]
+            },
+            "user_later": {
+              "rows_read": 202,
+              "rows_written": 0,
+              "elapsed_ms": 4.509,
+              "result_count": 101,
+              "plan": [
+                "CO-ROUTINE h",
+                "SEARCH h USING INDEX bundle_event_heads_user_idx (user_id=? AND install_id>?)",
+                "SCAN h",
+                "SEARCH e USING INDEX sqlite_autoindex_bundle_events_1 (id=?)"
+              ],
+              "sql": "SELECT e.* FROM (SELECT id,install_id FROM bundle_event_heads h WHERE h.user_id=json_extract(?, '$') AND h.install_id>json_extract(?, '$') ORDER BY install_id LIMIT json_extract(?, '$')) h JOIN bundle_events e ON e.id=h.id ORDER BY h.install_id",
+              "parameters": ["\"user-1\"", "\"install-000500\"", "101"]
+            },
+            "scope_count": {
+              "rows_read": 1000,
+              "rows_written": 0,
+              "elapsed_ms": 0.943,
+              "result_count": 1000,
+              "plan": [
+                "SEARCH h USING COVERING INDEX bundle_event_heads_scope_idx (platform=? AND channel=? AND received_at_ms>?)"
+              ],
+              "sql": "SELECT COUNT(*) AS count FROM bundle_event_heads h WHERE (h.platform=json_extract(?, '$') AND h.channel=json_extract(?, '$') AND h.received_at_ms>=json_extract(?, '$'))",
+              "parameters": ["\"ios\"", "\"production\"", "0"]
+            },
+            "common_bundle_count": {
+              "rows_read": 2004,
+              "rows_written": 0,
+              "elapsed_ms": 1.274,
+              "result_count": 999,
+              "plan": [
+                "CO-ROUTINE (subquery-2)",
+                "COMPOUND QUERY",
+                "LEFT-MOST SUBQUERY",
+                "SEARCH h USING INDEX bundle_event_heads_from_idx (type=? AND platform=? AND channel=? AND from_bundle_id=? AND received_at_ms>?)",
+                "UNION USING TEMP B-TREE",
+                "SEARCH h USING INDEX bundle_event_heads_to_idx (type=? AND platform=? AND channel=? AND to_bundle_id=? AND received_at_ms>?)",
+                "SCAN (subquery-2)"
+              ],
+              "sql": "SELECT COUNT(*) AS count FROM (SELECT h.install_id FROM bundle_event_heads h WHERE h.platform=json_extract(?, '$') AND h.channel=json_extract(?, '$') AND h.received_at_ms>=json_extract(?, '$') AND h.type=json_extract(?, '$') AND h.from_bundle_id=json_extract(?, '$') UNION SELECT h.install_id FROM bundle_event_heads h WHERE h.platform=json_extract(?, '$') AND h.channel=json_extract(?, '$') AND h.received_at_ms>=json_extract(?, '$') AND h.type IN (json_extract(?, '$'),json_extract(?, '$'),json_extract(?, '$')) AND h.to_bundle_id=json_extract(?, '$'))",
+              "parameters": [
+                "\"ios\"",
+                "\"production\"",
+                "0",
+                "\"UPDATE_DOWNLOADED\"",
+                "\"00000000-0000-7000-8000-000000000001\"",
+                "\"ios\"",
+                "\"production\"",
+                "0",
+                "\"UNCHANGED\"",
+                "\"UPDATE_APPLIED\"",
+                "\"RECOVERED\"",
+                "\"00000000-0000-7000-8000-000000000001\""
+              ]
+            },
+            "rare_bundle_count": {
+              "rows_read": 9,
+              "rows_written": 0,
+              "elapsed_ms": 1.521,
+              "result_count": 1,
+              "plan": [
+                "CO-ROUTINE (subquery-2)",
+                "COMPOUND QUERY",
+                "LEFT-MOST SUBQUERY",
+                "SEARCH h USING INDEX bundle_event_heads_from_idx (type=? AND platform=? AND channel=? AND from_bundle_id=? AND received_at_ms>?)",
+                "UNION USING TEMP B-TREE",
+                "SEARCH h USING INDEX bundle_event_heads_to_idx (type=? AND platform=? AND channel=? AND to_bundle_id=? AND received_at_ms>?)",
+                "SCAN (subquery-2)"
+              ],
+              "sql": "SELECT COUNT(*) AS count FROM (SELECT h.install_id FROM bundle_event_heads h WHERE h.platform=json_extract(?, '$') AND h.channel=json_extract(?, '$') AND h.received_at_ms>=json_extract(?, '$') AND h.type=json_extract(?, '$') AND h.from_bundle_id=json_extract(?, '$') UNION SELECT h.install_id FROM bundle_event_heads h WHERE h.platform=json_extract(?, '$') AND h.channel=json_extract(?, '$') AND h.received_at_ms>=json_extract(?, '$') AND h.type IN (json_extract(?, '$'),json_extract(?, '$'),json_extract(?, '$')) AND h.to_bundle_id=json_extract(?, '$'))",
+              "parameters": [
+                "\"ios\"",
+                "\"production\"",
+                "0",
+                "\"UPDATE_DOWNLOADED\"",
+                "\"00000000-0000-7000-8000-000000000002\"",
+                "\"ios\"",
+                "\"production\"",
+                "0",
+                "\"UNCHANGED\"",
+                "\"UPDATE_APPLIED\"",
+                "\"RECOVERED\"",
+                "\"00000000-0000-7000-8000-000000000002\""
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "scoped": 1000,
+      "unrelated": 0,
+      "depth": 100,
+      "bundleVariety": 10,
+      "events": 100000,
+      "strategies": {
+        "snapshot": {
+          "database_bytes": 65658880,
+          "fixture_load_rows_written": 606000,
+          "writes": {
+            "new_event_existing_installation": {
+              "rows_read": 6,
+              "rows_written": 11
+            },
+            "duplicate_event": {
+              "rows_read": 5,
+              "rows_written": 0
+            },
+            "delayed_event": {
+              "rows_read": 5,
+              "rows_written": 6
+            }
+          },
+          "queries": {
+            "exact": {
+              "rows_read": 1,
+              "rows_written": 0,
+              "elapsed_ms": 1.242,
+              "result_count": 1,
+              "plan": [
+                "SEARCH h USING INDEX sqlite_autoindex_bundle_installations_1 (install_id=?)"
+              ],
+              "sql": "SELECT h.* FROM bundle_installations h WHERE h.install_id=json_extract(?, '$') ORDER BY h.install_id LIMIT json_extract(?, '$')",
+              "parameters": ["\"install-000500\"", "1"]
+            },
+            "user_first": {
+              "rows_read": 101,
+              "rows_written": 0,
+              "elapsed_ms": 2.174,
+              "result_count": 101,
+              "plan": [
+                "SEARCH h USING INDEX bundle_installations_user_id_idx (user_id=?)"
+              ],
+              "sql": "SELECT h.* FROM bundle_installations h WHERE h.user_id=json_extract(?, '$') ORDER BY h.install_id LIMIT json_extract(?, '$')",
+              "parameters": ["\"user-1\"", "101"]
+            },
+            "user_later": {
+              "rows_read": 92,
+              "rows_written": 0,
+              "elapsed_ms": 2.038,
+              "result_count": 91,
+              "plan": [
+                "SEARCH h USING INDEX bundle_installations_user_id_idx (user_id=? AND install_id>?)"
+              ],
+              "sql": "SELECT h.* FROM bundle_installations h WHERE h.user_id=json_extract(?, '$') AND h.install_id>json_extract(?, '$') ORDER BY h.install_id LIMIT json_extract(?, '$')",
+              "parameters": ["\"user-1\"", "\"install-000500\"", "101"]
+            },
+            "scope_count": {
+              "rows_read": 1000,
+              "rows_written": 0,
+              "elapsed_ms": 1.198,
+              "result_count": 1000,
+              "plan": [
+                "SEARCH h USING COVERING INDEX bundle_installations_scope_idx (platform=? AND channel=? AND received_at_ms>?)"
+              ],
+              "sql": "SELECT COUNT(*) AS count FROM bundle_installations h WHERE (h.platform=json_extract(?, '$') AND h.channel=json_extract(?, '$') AND h.received_at_ms>=json_extract(?, '$'))",
+              "parameters": ["\"ios\"", "\"production\"", "0"]
+            },
+            "common_bundle_count": {
+              "rows_read": 101,
+              "rows_written": 0,
+              "elapsed_ms": 0.941,
+              "result_count": 100,
+              "plan": [
+                "SEARCH h USING COVERING INDEX bundle_installations_bundle_idx (platform=? AND channel=? AND to_bundle_id=? AND received_at_ms>?)"
+              ],
+              "sql": "SELECT COUNT(*) AS count FROM bundle_installations h WHERE (h.platform=json_extract(?, '$') AND h.channel=json_extract(?, '$') AND h.received_at_ms>=json_extract(?, '$') AND h.to_bundle_id=json_extract(?, '$'))",
+              "parameters": [
+                "\"ios\"",
+                "\"production\"",
+                "0",
+                "\"00000000-0000-7000-8000-000000000001\""
+              ]
+            },
+            "rare_bundle_count": {
+              "rows_read": 2,
+              "rows_written": 0,
+              "elapsed_ms": 0.746,
+              "result_count": 1,
+              "plan": [
+                "SEARCH h USING COVERING INDEX bundle_installations_bundle_idx (platform=? AND channel=? AND to_bundle_id=? AND received_at_ms>?)"
+              ],
+              "sql": "SELECT COUNT(*) AS count FROM bundle_installations h WHERE (h.platform=json_extract(?, '$') AND h.channel=json_extract(?, '$') AND h.received_at_ms>=json_extract(?, '$') AND h.to_bundle_id=json_extract(?, '$'))",
+              "parameters": [
+                "\"ios\"",
+                "\"production\"",
+                "0",
+                "\"00000000-0000-7000-8000-000000000002\""
+              ]
+            }
+          }
+        },
+        "event_only": {
+          "database_bytes": 84856832,
+          "fixture_load_rows_written": 800000,
+          "writes": {
+            "new_event_existing_installation": {
+              "rows_read": 2,
+              "rows_written": 8
+            },
+            "duplicate_event": {
+              "rows_read": 2,
+              "rows_written": 0
+            },
+            "delayed_event": {
+              "rows_read": 2,
+              "rows_written": 8
+            }
+          },
+          "queries": {
+            "exact": {
+              "rows_read": 201,
+              "rows_written": 0,
+              "elapsed_ms": 1.861,
+              "result_count": 1,
+              "plan": [
+                "SEARCH e USING INDEX bundle_events_latest_idx (install_id=?)",
+                "CORRELATED SCALAR SUBQUERY 1",
+                "MULTI-INDEX OR",
+                "INDEX 1",
+                "SEARCH n USING COVERING INDEX bundle_events_latest_idx (install_id=? AND received_at_ms>?)",
+                "INDEX 2",
+                "SEARCH n USING COVERING INDEX bundle_events_latest_idx (install_id=? AND received_at_ms=? AND id>?)"
+              ],
+              "sql": "SELECT e.* FROM bundle_events e WHERE NOT EXISTS (SELECT 1 FROM bundle_events n WHERE n.install_id=e.install_id AND (n.received_at_ms>e.received_at_ms OR (n.received_at_ms=e.received_at_ms AND n.id>e.id))) AND e.install_id=json_extract(?, '$') ORDER BY e.install_id LIMIT json_extract(?, '$')",
+              "parameters": ["\"install-000500\"", "1"]
+            },
+            "user_first": {
+              "rows_read": 20181,
+              "rows_written": 0,
+              "elapsed_ms": 11.296,
+              "result_count": 101,
+              "plan": [
+                "SEARCH e USING INDEX bundle_events_user_idx (user_id=?)",
+                "CORRELATED SCALAR SUBQUERY 1",
+                "MULTI-INDEX OR",
+                "INDEX 1",
+                "SEARCH n USING COVERING INDEX bundle_events_latest_idx (install_id=? AND received_at_ms>?)",
+                "INDEX 2",
+                "SEARCH n USING COVERING INDEX bundle_events_latest_idx (install_id=? AND received_at_ms=? AND id>?)"
+              ],
+              "sql": "SELECT e.* FROM bundle_events e WHERE NOT EXISTS (SELECT 1 FROM bundle_events n WHERE n.install_id=e.install_id AND (n.received_at_ms>e.received_at_ms OR (n.received_at_ms=e.received_at_ms AND n.id>e.id))) AND e.user_id=json_extract(?, '$') ORDER BY e.install_id LIMIT json_extract(?, '$')",
+              "parameters": ["\"user-1\"", "101"]
+            },
+            "user_later": {
+              "rows_read": 18252,
+              "rows_written": 0,
+              "elapsed_ms": 14.014,
+              "result_count": 91,
+              "plan": [
+                "SEARCH e USING INDEX bundle_events_user_idx (user_id=? AND install_id>?)",
+                "CORRELATED SCALAR SUBQUERY 1",
+                "MULTI-INDEX OR",
+                "INDEX 1",
+                "SEARCH n USING COVERING INDEX bundle_events_latest_idx (install_id=? AND received_at_ms>?)",
+                "INDEX 2",
+                "SEARCH n USING COVERING INDEX bundle_events_latest_idx (install_id=? AND received_at_ms=? AND id>?)"
+              ],
+              "sql": "SELECT e.* FROM bundle_events e WHERE NOT EXISTS (SELECT 1 FROM bundle_events n WHERE n.install_id=e.install_id AND (n.received_at_ms>e.received_at_ms OR (n.received_at_ms=e.received_at_ms AND n.id>e.id))) AND e.user_id=json_extract(?, '$') AND e.install_id>json_extract(?, '$') ORDER BY e.install_id LIMIT json_extract(?, '$')",
+              "parameters": ["\"user-1\"", "\"install-000500\"", "101"]
+            },
+            "scope_count": {
+              "rows_read": 186000,
+              "rows_written": 0,
+              "elapsed_ms": 186.828,
+              "result_count": 1000,
+              "plan": [
+                "SEARCH e USING INDEX bundle_events_received_at_idx (received_at_ms>?)",
+                "CORRELATED SCALAR SUBQUERY 1",
+                "MULTI-INDEX OR",
+                "INDEX 1",
+                "SEARCH n USING COVERING INDEX bundle_events_latest_idx (install_id=? AND received_at_ms>?)",
+                "INDEX 2",
+                "SEARCH n USING COVERING INDEX bundle_events_latest_idx (install_id=? AND received_at_ms=? AND id>?)"
+              ],
+              "sql": "SELECT COUNT(*) AS count FROM bundle_events e WHERE NOT EXISTS (SELECT 1 FROM bundle_events n WHERE n.install_id=e.install_id AND (n.received_at_ms>e.received_at_ms OR (n.received_at_ms=e.received_at_ms AND n.id>e.id))) AND (e.platform=json_extract(?, '$') AND e.channel=json_extract(?, '$') AND e.received_at_ms>=json_extract(?, '$'))",
+              "parameters": ["\"ios\"", "\"production\"", "0"]
+            },
+            "common_bundle_count": {
+              "rows_read": 17107,
+              "rows_written": 0,
+              "elapsed_ms": 11.008,
+              "result_count": 100,
+              "plan": [
+                "MULTI-INDEX OR",
+                "INDEX 1",
+                "SEARCH e USING INDEX bundle_events_from_bundle_idx (type=? AND platform=? AND channel=? AND from_bundle_id=? AND received_at_ms>?)",
+                "INDEX 2",
+                "SEARCH e USING INDEX bundle_events_to_bundle_idx (type=? AND platform=? AND channel=? AND to_bundle_id=? AND received_at_ms>?)",
+                "CORRELATED SCALAR SUBQUERY 1",
+                "MULTI-INDEX OR",
+                "INDEX 1",
+                "SEARCH n USING COVERING INDEX bundle_events_latest_idx (install_id=? AND received_at_ms>?)",
+                "INDEX 2",
+                "SEARCH n USING COVERING INDEX bundle_events_latest_idx (install_id=? AND received_at_ms=? AND id>?)"
+              ],
+              "sql": "SELECT COUNT(*) AS count FROM bundle_events e WHERE NOT EXISTS (SELECT 1 FROM bundle_events n WHERE n.install_id=e.install_id AND (n.received_at_ms>e.received_at_ms OR (n.received_at_ms=e.received_at_ms AND n.id>e.id))) AND ((e.platform=json_extract(?, '$') AND e.channel=json_extract(?, '$') AND e.received_at_ms>=json_extract(?, '$') AND e.type=json_extract(?, '$') AND e.from_bundle_id=json_extract(?, '$')) OR (e.platform=json_extract(?, '$') AND e.channel=json_extract(?, '$') AND e.received_at_ms>=json_extract(?, '$') AND e.type IN (json_extract(?, '$'),json_extract(?, '$'),json_extract(?, '$')) AND e.to_bundle_id=json_extract(?, '$')))",
+              "parameters": [
+                "\"ios\"",
+                "\"production\"",
+                "0",
+                "\"UPDATE_DOWNLOADED\"",
+                "\"00000000-0000-7000-8000-000000000001\"",
+                "\"ios\"",
+                "\"production\"",
+                "0",
+                "\"UNCHANGED\"",
+                "\"UPDATE_APPLIED\"",
+                "\"RECOVERED\"",
+                "\"00000000-0000-7000-8000-000000000001\""
+              ]
+            },
+            "rare_bundle_count": {
+              "rows_read": 178,
+              "rows_written": 0,
+              "elapsed_ms": 1.16,
+              "result_count": 1,
+              "plan": [
+                "MULTI-INDEX OR",
+                "INDEX 1",
+                "SEARCH e USING INDEX bundle_events_from_bundle_idx (type=? AND platform=? AND channel=? AND from_bundle_id=? AND received_at_ms>?)",
+                "INDEX 2",
+                "SEARCH e USING INDEX bundle_events_to_bundle_idx (type=? AND platform=? AND channel=? AND to_bundle_id=? AND received_at_ms>?)",
+                "CORRELATED SCALAR SUBQUERY 1",
+                "MULTI-INDEX OR",
+                "INDEX 1",
+                "SEARCH n USING COVERING INDEX bundle_events_latest_idx (install_id=? AND received_at_ms>?)",
+                "INDEX 2",
+                "SEARCH n USING COVERING INDEX bundle_events_latest_idx (install_id=? AND received_at_ms=? AND id>?)"
+              ],
+              "sql": "SELECT COUNT(*) AS count FROM bundle_events e WHERE NOT EXISTS (SELECT 1 FROM bundle_events n WHERE n.install_id=e.install_id AND (n.received_at_ms>e.received_at_ms OR (n.received_at_ms=e.received_at_ms AND n.id>e.id))) AND ((e.platform=json_extract(?, '$') AND e.channel=json_extract(?, '$') AND e.received_at_ms>=json_extract(?, '$') AND e.type=json_extract(?, '$') AND e.from_bundle_id=json_extract(?, '$')) OR (e.platform=json_extract(?, '$') AND e.channel=json_extract(?, '$') AND e.received_at_ms>=json_extract(?, '$') AND e.type IN (json_extract(?, '$'),json_extract(?, '$'),json_extract(?, '$')) AND e.to_bundle_id=json_extract(?, '$')))",
+              "parameters": [
+                "\"ios\"",
+                "\"production\"",
+                "0",
+                "\"UPDATE_DOWNLOADED\"",
+                "\"00000000-0000-7000-8000-000000000002\"",
+                "\"ios\"",
+                "\"production\"",
+                "0",
+                "\"UNCHANGED\"",
+                "\"UPDATE_APPLIED\"",
+                "\"RECOVERED\"",
+                "\"00000000-0000-7000-8000-000000000002\""
+              ]
+            }
+          }
+        },
+        "tuple_index": {
+          "database_bytes": 87830528,
+          "fixture_load_rows_written": 900000,
+          "writes": {
+            "new_event_existing_installation": {
+              "rows_read": 2,
+              "rows_written": 9
+            },
+            "duplicate_event": {
+              "rows_read": 2,
+              "rows_written": 0
+            },
+            "delayed_event": {
+              "rows_read": 2,
+              "rows_written": 9
+            }
+          },
+          "queries": {
+            "exact": {
+              "rows_read": 300,
+              "rows_written": 0,
+              "elapsed_ms": 1.755,
+              "result_count": 1,
+              "plan": [
+                "SEARCH e USING INDEX bundle_events_latest_idx (install_id=?)",
+                "CORRELATED SCALAR SUBQUERY 1",
+                "SEARCH n USING COVERING INDEX bundle_events_latest_idx (install_id=? AND received_at_ms>?)"
+              ],
+              "sql": "SELECT e.* FROM bundle_events e WHERE NOT EXISTS (SELECT 1 FROM bundle_events n WHERE n.install_id=e.install_id AND (n.received_at_ms,n.id)>(e.received_at_ms,e.id)) AND e.install_id=json_extract(?, '$') ORDER BY e.install_id LIMIT json_extract(?, '$')",
+              "parameters": ["\"install-000500\"", "1"]
+            },
+            "user_first": {
+              "rows_read": 30120,
+              "rows_written": 0,
+              "elapsed_ms": 11.195,
+              "result_count": 101,
+              "plan": [
+                "SEARCH e USING INDEX bundle_events_user_idx (user_id=?)",
+                "CORRELATED SCALAR SUBQUERY 1",
+                "SEARCH n USING COVERING INDEX bundle_events_latest_idx (install_id=? AND received_at_ms>?)"
+              ],
+              "sql": "SELECT e.* FROM bundle_events e WHERE NOT EXISTS (SELECT 1 FROM bundle_events n WHERE n.install_id=e.install_id AND (n.received_at_ms,n.id)>(e.received_at_ms,e.id)) AND e.user_id=json_extract(?, '$') ORDER BY e.install_id LIMIT json_extract(?, '$')",
+              "parameters": ["\"user-1\"", "101"]
+            },
+            "user_later": {
+              "rows_read": 27241,
+              "rows_written": 0,
+              "elapsed_ms": 9.614,
+              "result_count": 91,
+              "plan": [
+                "SEARCH e USING INDEX bundle_events_user_idx (user_id=? AND install_id>?)",
+                "CORRELATED SCALAR SUBQUERY 1",
+                "SEARCH n USING COVERING INDEX bundle_events_latest_idx (install_id=? AND received_at_ms>?)"
+              ],
+              "sql": "SELECT e.* FROM bundle_events e WHERE NOT EXISTS (SELECT 1 FROM bundle_events n WHERE n.install_id=e.install_id AND (n.received_at_ms,n.id)>(e.received_at_ms,e.id)) AND e.user_id=json_extract(?, '$') AND e.install_id>json_extract(?, '$') ORDER BY e.install_id LIMIT json_extract(?, '$')",
+              "parameters": ["\"user-1\"", "\"install-000500\"", "101"]
+            },
+            "scope_count": {
+              "rows_read": 254999,
+              "rows_written": 0,
+              "elapsed_ms": 175.84,
+              "result_count": 1000,
+              "plan": [
+                "SEARCH e USING INDEX bundle_events_scope_idx (platform=? AND channel=? AND received_at_ms>?)",
+                "CORRELATED SCALAR SUBQUERY 1",
+                "SEARCH n USING COVERING INDEX bundle_events_latest_idx (install_id=? AND received_at_ms>?)"
+              ],
+              "sql": "SELECT COUNT(*) AS count FROM bundle_events e WHERE NOT EXISTS (SELECT 1 FROM bundle_events n WHERE n.install_id=e.install_id AND (n.received_at_ms,n.id)>(e.received_at_ms,e.id)) AND (e.platform=json_extract(?, '$') AND e.channel=json_extract(?, '$') AND e.received_at_ms>=json_extract(?, '$'))",
+              "parameters": ["\"ios\"", "\"production\"", "0"]
+            },
+            "common_bundle_count": {
+              "rows_read": 25507,
+              "rows_written": 0,
+              "elapsed_ms": 11.17,
+              "result_count": 100,
+              "plan": [
+                "MULTI-INDEX OR",
+                "INDEX 1",
+                "SEARCH e USING INDEX bundle_events_from_bundle_idx (type=? AND platform=? AND channel=? AND from_bundle_id=? AND received_at_ms>?)",
+                "INDEX 2",
+                "SEARCH e USING INDEX bundle_events_to_bundle_idx (type=? AND platform=? AND channel=? AND to_bundle_id=? AND received_at_ms>?)",
+                "CORRELATED SCALAR SUBQUERY 1",
+                "SEARCH n USING COVERING INDEX bundle_events_latest_idx (install_id=? AND received_at_ms>?)"
+              ],
+              "sql": "SELECT COUNT(*) AS count FROM bundle_events e WHERE NOT EXISTS (SELECT 1 FROM bundle_events n WHERE n.install_id=e.install_id AND (n.received_at_ms,n.id)>(e.received_at_ms,e.id)) AND ((e.platform=json_extract(?, '$') AND e.channel=json_extract(?, '$') AND e.received_at_ms>=json_extract(?, '$') AND e.type=json_extract(?, '$') AND e.from_bundle_id=json_extract(?, '$')) OR (e.platform=json_extract(?, '$') AND e.channel=json_extract(?, '$') AND e.received_at_ms>=json_extract(?, '$') AND e.type IN (json_extract(?, '$'),json_extract(?, '$'),json_extract(?, '$')) AND e.to_bundle_id=json_extract(?, '$')))",
+              "parameters": [
+                "\"ios\"",
+                "\"production\"",
+                "0",
+                "\"UPDATE_DOWNLOADED\"",
+                "\"00000000-0000-7000-8000-000000000001\"",
+                "\"ios\"",
+                "\"production\"",
+                "0",
+                "\"UNCHANGED\"",
+                "\"UPDATE_APPLIED\"",
+                "\"RECOVERED\"",
+                "\"00000000-0000-7000-8000-000000000001\""
+              ]
+            },
+            "rare_bundle_count": {
+              "rows_read": 262,
+              "rows_written": 0,
+              "elapsed_ms": 1.144,
+              "result_count": 1,
+              "plan": [
+                "MULTI-INDEX OR",
+                "INDEX 1",
+                "SEARCH e USING INDEX bundle_events_from_bundle_idx (type=? AND platform=? AND channel=? AND from_bundle_id=? AND received_at_ms>?)",
+                "INDEX 2",
+                "SEARCH e USING INDEX bundle_events_to_bundle_idx (type=? AND platform=? AND channel=? AND to_bundle_id=? AND received_at_ms>?)",
+                "CORRELATED SCALAR SUBQUERY 1",
+                "SEARCH n USING COVERING INDEX bundle_events_latest_idx (install_id=? AND received_at_ms>?)"
+              ],
+              "sql": "SELECT COUNT(*) AS count FROM bundle_events e WHERE NOT EXISTS (SELECT 1 FROM bundle_events n WHERE n.install_id=e.install_id AND (n.received_at_ms,n.id)>(e.received_at_ms,e.id)) AND ((e.platform=json_extract(?, '$') AND e.channel=json_extract(?, '$') AND e.received_at_ms>=json_extract(?, '$') AND e.type=json_extract(?, '$') AND e.from_bundle_id=json_extract(?, '$')) OR (e.platform=json_extract(?, '$') AND e.channel=json_extract(?, '$') AND e.received_at_ms>=json_extract(?, '$') AND e.type IN (json_extract(?, '$'),json_extract(?, '$'),json_extract(?, '$')) AND e.to_bundle_id=json_extract(?, '$')))",
+              "parameters": [
+                "\"ios\"",
+                "\"production\"",
+                "0",
+                "\"UPDATE_DOWNLOADED\"",
+                "\"00000000-0000-7000-8000-000000000002\"",
+                "\"ios\"",
+                "\"production\"",
+                "0",
+                "\"UNCHANGED\"",
+                "\"UPDATE_APPLIED\"",
+                "\"RECOVERED\"",
+                "\"00000000-0000-7000-8000-000000000002\""
+              ]
+            }
+          }
+        },
+        "pointer": {
+          "database_bytes": 84951040,
+          "fixture_load_rows_written": 802000,
+          "writes": {
+            "new_event_existing_installation": {
+              "rows_read": 6,
+              "rows_written": 9
+            },
+            "duplicate_event": {
+              "rows_read": 8,
+              "rows_written": 0
+            },
+            "delayed_event": {
+              "rows_read": 8,
+              "rows_written": 8
+            }
+          },
+          "queries": {
+            "exact": {
+              "rows_read": 2,
+              "rows_written": 0,
+              "elapsed_ms": 1.448,
+              "result_count": 1,
+              "plan": [
+                "SEARCH h USING INDEX sqlite_autoindex_bundle_event_heads_1 (install_id=?)",
+                "SEARCH e USING INDEX sqlite_autoindex_bundle_events_1 (id=?)"
+              ],
+              "sql": "SELECT e.* FROM bundle_event_heads h JOIN bundle_events e ON e.id=h.id WHERE h.install_id=json_extract(?, '$') ORDER BY h.install_id LIMIT json_extract(?, '$')",
+              "parameters": ["\"install-000500\"", "1"]
+            },
+            "user_first": {
+              "rows_read": 1106,
+              "rows_written": 0,
+              "elapsed_ms": 3.898,
+              "result_count": 101,
+              "plan": [
+                "SCAN h USING INDEX sqlite_autoindex_bundle_event_heads_1",
+                "SEARCH e USING INDEX sqlite_autoindex_bundle_events_1 (id=?)"
+              ],
+              "sql": "SELECT e.* FROM bundle_event_heads h JOIN bundle_events e ON e.id=h.id WHERE e.user_id=json_extract(?, '$') ORDER BY h.install_id LIMIT json_extract(?, '$')",
+              "parameters": ["\"user-1\"", "101"]
+            },
+            "user_later": {
+              "rows_read": 2000,
+              "rows_written": 0,
+              "elapsed_ms": 4.261,
+              "result_count": 91,
+              "plan": [
+                "SCAN h USING INDEX sqlite_autoindex_bundle_event_heads_1",
+                "SEARCH e USING INDEX sqlite_autoindex_bundle_events_1 (id=?)"
+              ],
+              "sql": "SELECT e.* FROM bundle_event_heads h JOIN bundle_events e ON e.id=h.id WHERE e.user_id=json_extract(?, '$') AND e.install_id>json_extract(?, '$') ORDER BY h.install_id LIMIT json_extract(?, '$')",
+              "parameters": ["\"user-1\"", "\"install-000500\"", "101"]
+            },
+            "scope_count": {
+              "rows_read": 2000,
+              "rows_written": 0,
+              "elapsed_ms": 3.703,
+              "result_count": 1000,
+              "plan": [
+                "SCAN h",
+                "SEARCH e USING INDEX sqlite_autoindex_bundle_events_1 (id=?)"
+              ],
+              "sql": "SELECT COUNT(*) AS count FROM bundle_event_heads h JOIN bundle_events e ON e.id=h.id WHERE (e.platform=json_extract(?, '$') AND e.channel=json_extract(?, '$') AND e.received_at_ms>=json_extract(?, '$'))",
+              "parameters": ["\"ios\"", "\"production\"", "0"]
+            },
+            "common_bundle_count": {
+              "rows_read": 2000,
+              "rows_written": 0,
+              "elapsed_ms": 3.921,
+              "result_count": 100,
+              "plan": [
+                "SCAN h",
+                "SEARCH e USING INDEX sqlite_autoindex_bundle_events_1 (id=?)"
+              ],
+              "sql": "SELECT COUNT(*) AS count FROM bundle_event_heads h JOIN bundle_events e ON e.id=h.id WHERE ((e.platform=json_extract(?, '$') AND e.channel=json_extract(?, '$') AND e.received_at_ms>=json_extract(?, '$') AND e.type=json_extract(?, '$') AND e.from_bundle_id=json_extract(?, '$')) OR (e.platform=json_extract(?, '$') AND e.channel=json_extract(?, '$') AND e.received_at_ms>=json_extract(?, '$') AND e.type IN (json_extract(?, '$'),json_extract(?, '$'),json_extract(?, '$')) AND e.to_bundle_id=json_extract(?, '$')))",
+              "parameters": [
+                "\"ios\"",
+                "\"production\"",
+                "0",
+                "\"UPDATE_DOWNLOADED\"",
+                "\"00000000-0000-7000-8000-000000000001\"",
+                "\"ios\"",
+                "\"production\"",
+                "0",
+                "\"UNCHANGED\"",
+                "\"UPDATE_APPLIED\"",
+                "\"RECOVERED\"",
+                "\"00000000-0000-7000-8000-000000000001\""
+              ]
+            },
+            "rare_bundle_count": {
+              "rows_read": 2000,
+              "rows_written": 0,
+              "elapsed_ms": 3.492,
+              "result_count": 1,
+              "plan": [
+                "SCAN h",
+                "SEARCH e USING INDEX sqlite_autoindex_bundle_events_1 (id=?)"
+              ],
+              "sql": "SELECT COUNT(*) AS count FROM bundle_event_heads h JOIN bundle_events e ON e.id=h.id WHERE ((e.platform=json_extract(?, '$') AND e.channel=json_extract(?, '$') AND e.received_at_ms>=json_extract(?, '$') AND e.type=json_extract(?, '$') AND e.from_bundle_id=json_extract(?, '$')) OR (e.platform=json_extract(?, '$') AND e.channel=json_extract(?, '$') AND e.received_at_ms>=json_extract(?, '$') AND e.type IN (json_extract(?, '$'),json_extract(?, '$'),json_extract(?, '$')) AND e.to_bundle_id=json_extract(?, '$')))",
+              "parameters": [
+                "\"ios\"",
+                "\"production\"",
+                "0",
+                "\"UPDATE_DOWNLOADED\"",
+                "\"00000000-0000-7000-8000-000000000002\"",
+                "\"ios\"",
+                "\"production\"",
+                "0",
+                "\"UNCHANGED\"",
+                "\"UPDATE_APPLIED\"",
+                "\"RECOVERED\"",
+                "\"00000000-0000-7000-8000-000000000002\""
+              ]
+            }
+          }
+        },
+        "heads": {
+          "database_bytes": 81809408,
+          "fixture_load_rows_written": 704000,
+          "writes": {
+            "new_event_existing_installation": {
+              "rows_read": 4,
+              "rows_written": 10
+            },
+            "duplicate_event": {
+              "rows_read": 4,
+              "rows_written": 0
+            },
+            "delayed_event": {
+              "rows_read": 4,
+              "rows_written": 7
+            }
+          },
+          "queries": {
+            "exact": {
+              "rows_read": 2,
+              "rows_written": 0,
+              "elapsed_ms": 2.16,
+              "result_count": 1,
+              "plan": [
+                "CO-ROUTINE h",
+                "SEARCH h USING INDEX sqlite_autoindex_bundle_event_heads_1 (install_id=?)",
+                "SCAN h",
+                "SEARCH e USING INDEX sqlite_autoindex_bundle_events_1 (id=?)"
+              ],
+              "sql": "SELECT e.* FROM (SELECT id,install_id FROM bundle_event_heads h WHERE h.install_id=json_extract(?, '$') ORDER BY install_id LIMIT json_extract(?, '$')) h JOIN bundle_events e ON e.id=h.id ORDER BY h.install_id",
+              "parameters": ["\"install-000500\"", "1"]
+            },
+            "user_first": {
+              "rows_read": 202,
+              "rows_written": 0,
+              "elapsed_ms": 2.813,
+              "result_count": 101,
+              "plan": [
+                "CO-ROUTINE h",
+                "SEARCH h USING INDEX bundle_event_heads_user_idx (user_id=?)",
+                "SCAN h",
+                "SEARCH e USING INDEX sqlite_autoindex_bundle_events_1 (id=?)"
+              ],
+              "sql": "SELECT e.* FROM (SELECT id,install_id FROM bundle_event_heads h WHERE h.user_id=json_extract(?, '$') ORDER BY install_id LIMIT json_extract(?, '$')) h JOIN bundle_events e ON e.id=h.id ORDER BY h.install_id",
+              "parameters": ["\"user-1\"", "101"]
+            },
+            "user_later": {
+              "rows_read": 183,
+              "rows_written": 0,
+              "elapsed_ms": 2.136,
+              "result_count": 91,
+              "plan": [
+                "CO-ROUTINE h",
+                "SEARCH h USING INDEX bundle_event_heads_user_idx (user_id=? AND install_id>?)",
+                "SCAN h",
+                "SEARCH e USING INDEX sqlite_autoindex_bundle_events_1 (id=?)"
+              ],
+              "sql": "SELECT e.* FROM (SELECT id,install_id FROM bundle_event_heads h WHERE h.user_id=json_extract(?, '$') AND h.install_id>json_extract(?, '$') ORDER BY install_id LIMIT json_extract(?, '$')) h JOIN bundle_events e ON e.id=h.id ORDER BY h.install_id",
+              "parameters": ["\"user-1\"", "\"install-000500\"", "101"]
+            },
+            "scope_count": {
+              "rows_read": 1000,
+              "rows_written": 0,
+              "elapsed_ms": 1.099,
+              "result_count": 1000,
+              "plan": [
+                "SEARCH h USING COVERING INDEX bundle_event_heads_scope_idx (platform=? AND channel=? AND received_at_ms>?)"
+              ],
+              "sql": "SELECT COUNT(*) AS count FROM bundle_event_heads h WHERE (h.platform=json_extract(?, '$') AND h.channel=json_extract(?, '$') AND h.received_at_ms>=json_extract(?, '$'))",
+              "parameters": ["\"ios\"", "\"production\"", "0"]
+            },
+            "common_bundle_count": {
+              "rows_read": 2000,
+              "rows_written": 0,
+              "elapsed_ms": 10.845,
+              "result_count": 100,
+              "plan": [
+                "MULTI-INDEX OR",
+                "INDEX 1",
+                "SEARCH h USING INDEX bundle_event_heads_scope_idx (platform=? AND channel=? AND received_at_ms>?)",
+                "INDEX 2",
+                "SEARCH h USING INDEX bundle_event_heads_scope_idx (platform=? AND channel=? AND received_at_ms>?)"
+              ],
+              "sql": "SELECT COUNT(*) AS count FROM bundle_event_heads h WHERE ((h.platform=json_extract(?, '$') AND h.channel=json_extract(?, '$') AND h.received_at_ms>=json_extract(?, '$') AND h.type=json_extract(?, '$') AND h.from_bundle_id=json_extract(?, '$')) OR (h.platform=json_extract(?, '$') AND h.channel=json_extract(?, '$') AND h.received_at_ms>=json_extract(?, '$') AND h.type IN (json_extract(?, '$'),json_extract(?, '$'),json_extract(?, '$')) AND h.to_bundle_id=json_extract(?, '$')))",
+              "parameters": [
+                "\"ios\"",
+                "\"production\"",
+                "0",
+                "\"UPDATE_DOWNLOADED\"",
+                "\"00000000-0000-7000-8000-000000000001\"",
+                "\"ios\"",
+                "\"production\"",
+                "0",
+                "\"UNCHANGED\"",
+                "\"UPDATE_APPLIED\"",
+                "\"RECOVERED\"",
+                "\"00000000-0000-7000-8000-000000000001\""
+              ]
+            },
+            "rare_bundle_count": {
+              "rows_read": 2000,
+              "rows_written": 0,
+              "elapsed_ms": 1.311,
+              "result_count": 1,
+              "plan": [
+                "MULTI-INDEX OR",
+                "INDEX 1",
+                "SEARCH h USING INDEX bundle_event_heads_scope_idx (platform=? AND channel=? AND received_at_ms>?)",
+                "INDEX 2",
+                "SEARCH h USING INDEX bundle_event_heads_scope_idx (platform=? AND channel=? AND received_at_ms>?)"
+              ],
+              "sql": "SELECT COUNT(*) AS count FROM bundle_event_heads h WHERE ((h.platform=json_extract(?, '$') AND h.channel=json_extract(?, '$') AND h.received_at_ms>=json_extract(?, '$') AND h.type=json_extract(?, '$') AND h.from_bundle_id=json_extract(?, '$')) OR (h.platform=json_extract(?, '$') AND h.channel=json_extract(?, '$') AND h.received_at_ms>=json_extract(?, '$') AND h.type IN (json_extract(?, '$'),json_extract(?, '$'),json_extract(?, '$')) AND h.to_bundle_id=json_extract(?, '$')))",
+              "parameters": [
+                "\"ios\"",
+                "\"production\"",
+                "0",
+                "\"UPDATE_DOWNLOADED\"",
+                "\"00000000-0000-7000-8000-000000000002\"",
+                "\"ios\"",
+                "\"production\"",
+                "0",
+                "\"UNCHANGED\"",
+                "\"UPDATE_APPLIED\"",
+                "\"RECOVERED\"",
+                "\"00000000-0000-7000-8000-000000000002\""
+              ]
+            }
+          }
+        },
+        "heads_bundle_indexes": {
+          "database_bytes": 81981440,
+          "fixture_load_rows_written": 706000,
+          "writes": {
+            "new_event_existing_installation": {
+              "rows_read": 4,
+              "rows_written": 12
+            },
+            "duplicate_event": {
+              "rows_read": 4,
+              "rows_written": 0
+            },
+            "delayed_event": {
+              "rows_read": 4,
+              "rows_written": 7
+            }
+          },
+          "queries": {
+            "exact": {
+              "rows_read": 2,
+              "rows_written": 0,
+              "elapsed_ms": 1.98,
+              "result_count": 1,
+              "plan": [
+                "CO-ROUTINE h",
+                "SEARCH h USING INDEX sqlite_autoindex_bundle_event_heads_1 (install_id=?)",
+                "SCAN h",
+                "SEARCH e USING INDEX sqlite_autoindex_bundle_events_1 (id=?)"
+              ],
+              "sql": "SELECT e.* FROM (SELECT id,install_id FROM bundle_event_heads h WHERE h.install_id=json_extract(?, '$') ORDER BY install_id LIMIT json_extract(?, '$')) h JOIN bundle_events e ON e.id=h.id ORDER BY h.install_id",
+              "parameters": ["\"install-000500\"", "1"]
+            },
+            "user_first": {
+              "rows_read": 202,
+              "rows_written": 0,
+              "elapsed_ms": 3.527,
+              "result_count": 101,
+              "plan": [
+                "CO-ROUTINE h",
+                "SEARCH h USING INDEX bundle_event_heads_user_idx (user_id=?)",
+                "SCAN h",
+                "SEARCH e USING INDEX sqlite_autoindex_bundle_events_1 (id=?)"
+              ],
+              "sql": "SELECT e.* FROM (SELECT id,install_id FROM bundle_event_heads h WHERE h.user_id=json_extract(?, '$') ORDER BY install_id LIMIT json_extract(?, '$')) h JOIN bundle_events e ON e.id=h.id ORDER BY h.install_id",
+              "parameters": ["\"user-1\"", "101"]
+            },
+            "user_later": {
+              "rows_read": 183,
+              "rows_written": 0,
+              "elapsed_ms": 2.419,
+              "result_count": 91,
+              "plan": [
+                "CO-ROUTINE h",
+                "SEARCH h USING INDEX bundle_event_heads_user_idx (user_id=? AND install_id>?)",
+                "SCAN h",
+                "SEARCH e USING INDEX sqlite_autoindex_bundle_events_1 (id=?)"
+              ],
+              "sql": "SELECT e.* FROM (SELECT id,install_id FROM bundle_event_heads h WHERE h.user_id=json_extract(?, '$') AND h.install_id>json_extract(?, '$') ORDER BY install_id LIMIT json_extract(?, '$')) h JOIN bundle_events e ON e.id=h.id ORDER BY h.install_id",
+              "parameters": ["\"user-1\"", "\"install-000500\"", "101"]
+            },
+            "scope_count": {
+              "rows_read": 1000,
+              "rows_written": 0,
+              "elapsed_ms": 1.798,
+              "result_count": 1000,
+              "plan": [
+                "SEARCH h USING COVERING INDEX bundle_event_heads_scope_idx (platform=? AND channel=? AND received_at_ms>?)"
+              ],
+              "sql": "SELECT COUNT(*) AS count FROM bundle_event_heads h WHERE (h.platform=json_extract(?, '$') AND h.channel=json_extract(?, '$') AND h.received_at_ms>=json_extract(?, '$'))",
+              "parameters": ["\"ios\"", "\"production\"", "0"]
+            },
+            "common_bundle_count": {
+              "rows_read": 107,
+              "rows_written": 0,
+              "elapsed_ms": 1.407,
+              "result_count": 100,
+              "plan": [
+                "MULTI-INDEX OR",
+                "INDEX 1",
+                "SEARCH h USING INDEX bundle_event_heads_from_idx (type=? AND platform=? AND channel=? AND from_bundle_id=? AND received_at_ms>?)",
+                "INDEX 2",
+                "SEARCH h USING INDEX bundle_event_heads_to_idx (type=? AND platform=? AND channel=? AND to_bundle_id=? AND received_at_ms>?)"
+              ],
+              "sql": "SELECT COUNT(*) AS count FROM bundle_event_heads h WHERE ((h.platform=json_extract(?, '$') AND h.channel=json_extract(?, '$') AND h.received_at_ms>=json_extract(?, '$') AND h.type=json_extract(?, '$') AND h.from_bundle_id=json_extract(?, '$')) OR (h.platform=json_extract(?, '$') AND h.channel=json_extract(?, '$') AND h.received_at_ms>=json_extract(?, '$') AND h.type IN (json_extract(?, '$'),json_extract(?, '$'),json_extract(?, '$')) AND h.to_bundle_id=json_extract(?, '$')))",
+              "parameters": [
+                "\"ios\"",
+                "\"production\"",
+                "0",
+                "\"UPDATE_DOWNLOADED\"",
+                "\"00000000-0000-7000-8000-000000000001\"",
+                "\"ios\"",
+                "\"production\"",
+                "0",
+                "\"UNCHANGED\"",
+                "\"UPDATE_APPLIED\"",
+                "\"RECOVERED\"",
+                "\"00000000-0000-7000-8000-000000000001\""
+              ]
+            },
+            "rare_bundle_count": {
+              "rows_read": 8,
+              "rows_written": 0,
+              "elapsed_ms": 2.04,
+              "result_count": 1,
+              "plan": [
+                "MULTI-INDEX OR",
+                "INDEX 1",
+                "SEARCH h USING INDEX bundle_event_heads_from_idx (type=? AND platform=? AND channel=? AND from_bundle_id=? AND received_at_ms>?)",
+                "INDEX 2",
+                "SEARCH h USING INDEX bundle_event_heads_to_idx (type=? AND platform=? AND channel=? AND to_bundle_id=? AND received_at_ms>?)"
+              ],
+              "sql": "SELECT COUNT(*) AS count FROM bundle_event_heads h WHERE ((h.platform=json_extract(?, '$') AND h.channel=json_extract(?, '$') AND h.received_at_ms>=json_extract(?, '$') AND h.type=json_extract(?, '$') AND h.from_bundle_id=json_extract(?, '$')) OR (h.platform=json_extract(?, '$') AND h.channel=json_extract(?, '$') AND h.received_at_ms>=json_extract(?, '$') AND h.type IN (json_extract(?, '$'),json_extract(?, '$'),json_extract(?, '$')) AND h.to_bundle_id=json_extract(?, '$')))",
+              "parameters": [
+                "\"ios\"",
+                "\"production\"",
+                "0",
+                "\"UPDATE_DOWNLOADED\"",
+                "\"00000000-0000-7000-8000-000000000002\"",
+                "\"ios\"",
+                "\"production\"",
+                "0",
+                "\"UNCHANGED\"",
+                "\"UPDATE_APPLIED\"",
+                "\"RECOVERED\"",
+                "\"00000000-0000-7000-8000-000000000002\""
+              ]
+            }
+          }
+        },
+        "heads_bundle_union": {
+          "database_bytes": 81981440,
+          "fixture_load_rows_written": 706000,
+          "writes": {
+            "new_event_existing_installation": {
+              "rows_read": 4,
+              "rows_written": 12
+            },
+            "duplicate_event": {
+              "rows_read": 4,
+              "rows_written": 0
+            },
+            "delayed_event": {
+              "rows_read": 4,
+              "rows_written": 7
+            }
+          },
+          "queries": {
+            "exact": {
+              "rows_read": 2,
+              "rows_written": 0,
+              "elapsed_ms": 1.938,
+              "result_count": 1,
+              "plan": [
+                "CO-ROUTINE h",
+                "SEARCH h USING INDEX sqlite_autoindex_bundle_event_heads_1 (install_id=?)",
+                "SCAN h",
+                "SEARCH e USING INDEX sqlite_autoindex_bundle_events_1 (id=?)"
+              ],
+              "sql": "SELECT e.* FROM (SELECT id,install_id FROM bundle_event_heads h WHERE h.install_id=json_extract(?, '$') ORDER BY install_id LIMIT json_extract(?, '$')) h JOIN bundle_events e ON e.id=h.id ORDER BY h.install_id",
+              "parameters": ["\"install-000500\"", "1"]
+            },
+            "user_first": {
+              "rows_read": 202,
+              "rows_written": 0,
+              "elapsed_ms": 3.224,
+              "result_count": 101,
+              "plan": [
+                "CO-ROUTINE h",
+                "SEARCH h USING INDEX bundle_event_heads_user_idx (user_id=?)",
+                "SCAN h",
+                "SEARCH e USING INDEX sqlite_autoindex_bundle_events_1 (id=?)"
+              ],
+              "sql": "SELECT e.* FROM (SELECT id,install_id FROM bundle_event_heads h WHERE h.user_id=json_extract(?, '$') ORDER BY install_id LIMIT json_extract(?, '$')) h JOIN bundle_events e ON e.id=h.id ORDER BY h.install_id",
+              "parameters": ["\"user-1\"", "101"]
+            },
+            "user_later": {
+              "rows_read": 183,
+              "rows_written": 0,
+              "elapsed_ms": 2.759,
+              "result_count": 91,
+              "plan": [
+                "CO-ROUTINE h",
+                "SEARCH h USING INDEX bundle_event_heads_user_idx (user_id=? AND install_id>?)",
+                "SCAN h",
+                "SEARCH e USING INDEX sqlite_autoindex_bundle_events_1 (id=?)"
+              ],
+              "sql": "SELECT e.* FROM (SELECT id,install_id FROM bundle_event_heads h WHERE h.user_id=json_extract(?, '$') AND h.install_id>json_extract(?, '$') ORDER BY install_id LIMIT json_extract(?, '$')) h JOIN bundle_events e ON e.id=h.id ORDER BY h.install_id",
+              "parameters": ["\"user-1\"", "\"install-000500\"", "101"]
+            },
+            "scope_count": {
+              "rows_read": 1000,
+              "rows_written": 0,
+              "elapsed_ms": 1.179,
+              "result_count": 1000,
+              "plan": [
+                "SEARCH h USING COVERING INDEX bundle_event_heads_scope_idx (platform=? AND channel=? AND received_at_ms>?)"
+              ],
+              "sql": "SELECT COUNT(*) AS count FROM bundle_event_heads h WHERE (h.platform=json_extract(?, '$') AND h.channel=json_extract(?, '$') AND h.received_at_ms>=json_extract(?, '$'))",
+              "parameters": ["\"ios\"", "\"production\"", "0"]
+            },
+            "common_bundle_count": {
+              "rows_read": 207,
+              "rows_written": 0,
+              "elapsed_ms": 1.366,
+              "result_count": 100,
+              "plan": [
+                "CO-ROUTINE (subquery-2)",
+                "COMPOUND QUERY",
+                "LEFT-MOST SUBQUERY",
+                "SEARCH h USING INDEX bundle_event_heads_from_idx (type=? AND platform=? AND channel=? AND from_bundle_id=? AND received_at_ms>?)",
+                "UNION USING TEMP B-TREE",
+                "SEARCH h USING INDEX bundle_event_heads_to_idx (type=? AND platform=? AND channel=? AND to_bundle_id=? AND received_at_ms>?)",
+                "SCAN (subquery-2)"
+              ],
+              "sql": "SELECT COUNT(*) AS count FROM (SELECT h.install_id FROM bundle_event_heads h WHERE h.platform=json_extract(?, '$') AND h.channel=json_extract(?, '$') AND h.received_at_ms>=json_extract(?, '$') AND h.type=json_extract(?, '$') AND h.from_bundle_id=json_extract(?, '$') UNION SELECT h.install_id FROM bundle_event_heads h WHERE h.platform=json_extract(?, '$') AND h.channel=json_extract(?, '$') AND h.received_at_ms>=json_extract(?, '$') AND h.type IN (json_extract(?, '$'),json_extract(?, '$'),json_extract(?, '$')) AND h.to_bundle_id=json_extract(?, '$'))",
+              "parameters": [
+                "\"ios\"",
+                "\"production\"",
+                "0",
+                "\"UPDATE_DOWNLOADED\"",
+                "\"00000000-0000-7000-8000-000000000001\"",
+                "\"ios\"",
+                "\"production\"",
+                "0",
+                "\"UNCHANGED\"",
+                "\"UPDATE_APPLIED\"",
+                "\"RECOVERED\"",
+                "\"00000000-0000-7000-8000-000000000001\""
+              ]
+            },
+            "rare_bundle_count": {
+              "rows_read": 9,
+              "rows_written": 0,
+              "elapsed_ms": 1.505,
+              "result_count": 1,
+              "plan": [
+                "CO-ROUTINE (subquery-2)",
+                "COMPOUND QUERY",
+                "LEFT-MOST SUBQUERY",
+                "SEARCH h USING INDEX bundle_event_heads_from_idx (type=? AND platform=? AND channel=? AND from_bundle_id=? AND received_at_ms>?)",
+                "UNION USING TEMP B-TREE",
+                "SEARCH h USING INDEX bundle_event_heads_to_idx (type=? AND platform=? AND channel=? AND to_bundle_id=? AND received_at_ms>?)",
+                "SCAN (subquery-2)"
+              ],
+              "sql": "SELECT COUNT(*) AS count FROM (SELECT h.install_id FROM bundle_event_heads h WHERE h.platform=json_extract(?, '$') AND h.channel=json_extract(?, '$') AND h.received_at_ms>=json_extract(?, '$') AND h.type=json_extract(?, '$') AND h.from_bundle_id=json_extract(?, '$') UNION SELECT h.install_id FROM bundle_event_heads h WHERE h.platform=json_extract(?, '$') AND h.channel=json_extract(?, '$') AND h.received_at_ms>=json_extract(?, '$') AND h.type IN (json_extract(?, '$'),json_extract(?, '$'),json_extract(?, '$')) AND h.to_bundle_id=json_extract(?, '$'))",
+              "parameters": [
+                "\"ios\"",
+                "\"production\"",
+                "0",
+                "\"UPDATE_DOWNLOADED\"",
+                "\"00000000-0000-7000-8000-000000000002\"",
+                "\"ios\"",
+                "\"production\"",
+                "0",
+                "\"UNCHANGED\"",
+                "\"UPDATE_APPLIED\"",
+                "\"RECOVERED\"",
+                "\"00000000-0000-7000-8000-000000000002\""
+              ]
+            }
+          }
+        }
+      }
+    }
+  ]
+}

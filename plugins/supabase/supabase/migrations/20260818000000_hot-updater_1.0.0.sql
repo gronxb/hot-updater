@@ -542,19 +542,65 @@ REVOKE EXECUTE ON FUNCTION public.hot_updater_v1_delete_channel(text)
 GRANT EXECUTE ON FUNCTION public.hot_updater_v1_delete_channel(text)
   TO service_role;
 
--- The event insert gates the snapshot replacement in the same SQL statement.
+CREATE INDEX hot_updater_v1_bundle_events_latest_idx
+  ON public.hot_updater_v1_bundle_events(install_id, received_at_ms, id);
 
-CREATE INDEX hot_updater_v1_bundle_events_latest_idx ON public.hot_updater_v1_bundle_events(install_id, received_at_ms, id);
-CREATE INDEX hot_updater_v1_bundle_events_user_idx ON public.hot_updater_v1_bundle_events(user_id, install_id);
-
--- A read-only view delegates latest-event selection to PostgreSQL; no snapshot table.
-CREATE VIEW public.hot_updater_v1_latest_bundle_events WITH (security_invoker = true) AS
-SELECT event.* FROM public.hot_updater_v1_bundle_events AS event
-WHERE NOT EXISTS (
-  SELECT 1 FROM public.hot_updater_v1_bundle_events AS newer
-  WHERE newer.install_id = event.install_id
-    AND (newer.received_at_ms, newer.id) > (event.received_at_ms, event.id)
+CREATE TABLE public.hot_updater_v1_bundle_event_heads (
+  install_id text COLLATE "C" PRIMARY KEY NOT NULL,
+  id uuid NOT NULL,
+  received_at_ms double precision NOT NULL,
+  user_id text COLLATE "C",
+  platform text COLLATE "C" NOT NULL,
+  channel text COLLATE "C" NOT NULL,
+  type text NOT NULL,
+  from_bundle_id uuid,
+  to_bundle_id uuid NOT NULL
 );
-REVOKE ALL ON public.hot_updater_v1_latest_bundle_events FROM PUBLIC, anon, authenticated;
-GRANT SELECT ON public.hot_updater_v1_latest_bundle_events TO service_role;
+CREATE INDEX hot_updater_v1_bundle_event_heads_user_idx
+  ON public.hot_updater_v1_bundle_event_heads(user_id, install_id);
+CREATE INDEX hot_updater_v1_bundle_event_heads_scope_idx
+  ON public.hot_updater_v1_bundle_event_heads(platform, channel, received_at_ms);
+CREATE INDEX hot_updater_v1_bundle_event_heads_from_idx
+  ON public.hot_updater_v1_bundle_event_heads(type, platform, channel, from_bundle_id, received_at_ms);
+CREATE INDEX hot_updater_v1_bundle_event_heads_to_idx
+  ON public.hot_updater_v1_bundle_event_heads(type, platform, channel, to_bundle_id, received_at_ms);
+ALTER TABLE public.hot_updater_v1_bundle_event_heads ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON public.hot_updater_v1_bundle_event_heads FROM PUBLIC, anon, authenticated;
+GRANT SELECT, INSERT, UPDATE ON public.hot_updater_v1_bundle_event_heads TO service_role;
+
+CREATE FUNCTION public.hot_updater_v1_record_event(p_event jsonb)
+RETURNS void
+LANGUAGE plpgsql
+SECURITY INVOKER
+SET search_path = pg_catalog
+AS $$
+BEGIN
+  INSERT INTO public.hot_updater_v1_bundle_events
+  SELECT * FROM pg_catalog.jsonb_populate_record(NULL::public.hot_updater_v1_bundle_events, p_event)
+  ON CONFLICT (id) DO NOTHING;
+
+  INSERT INTO public.hot_updater_v1_bundle_event_heads (
+    install_id, id, received_at_ms, user_id, platform, channel, type,
+    from_bundle_id, to_bundle_id
+  )
+  SELECT install_id, id, received_at_ms, user_id, platform, channel, type,
+    from_bundle_id, to_bundle_id
+  FROM public.hot_updater_v1_bundle_events WHERE id = (p_event->>'id')::uuid
+  ON CONFLICT (install_id) DO UPDATE SET
+    id = excluded.id,
+    received_at_ms = excluded.received_at_ms,
+    user_id = excluded.user_id,
+    platform = excluded.platform,
+    channel = excluded.channel,
+    type = excluded.type,
+    from_bundle_id = excluded.from_bundle_id,
+    to_bundle_id = excluded.to_bundle_id
+  WHERE (excluded.received_at_ms, excluded.id) >
+    (hot_updater_v1_bundle_event_heads.received_at_ms, hot_updater_v1_bundle_event_heads.id);
+END;
+$$;
+REVOKE EXECUTE ON FUNCTION public.hot_updater_v1_record_event(jsonb)
+  FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.hot_updater_v1_record_event(jsonb)
+  TO service_role;
 NOTIFY pgrst, 'reload schema';

@@ -76,11 +76,13 @@ before returning a short result. Core does not aggregate raw history. The
 Console keeps previous cursors in session memory; only the current cursor and
 filter bounds appear in its URL.
 
-Latest-state counts use native event queries or provider-private copies. DynamoDB traverses canonical
-installation IDs so an installation cannot be counted twice when its last-report
-time advances. Its cost grows with stored installation rows, including rows
-outside the selected window. Other providers use native aggregate queries;
-returning one scalar does not imply constant work or latency.
+Latest-state counts use provider-private current entries. SQL and MongoDB count
+compact heads; Firestore uses native latest-document counts. DynamoDB traverses
+stable installation IDs in the selected scope's compact count partition, so a
+last-report update cannot move an already-counted installation past the cursor.
+Its work includes current scope entries outside the selected window, but not
+other scopes or retained event history. Returning one scalar does not imply
+constant work or latency.
 
 ## Initial storage setup
 
@@ -89,7 +91,8 @@ first initialization. Standalone SQL tooling initializes empty storage and
 leaves an initialized `1.0.0` database unchanged. Generate ORM schema artifacts
 before deployment. Prisma PostgreSQL/MySQL require the emitted companion
 collation SQL. MongoDB requires version 5 or later on a replica set or sharded
-cluster for its catalog transactions and snapshot event counts. Insights append is a single document write.
+cluster for its transactions and snapshot event counts. Insights append and
+advancing its private event head run in one transaction.
 
 Secondary indexes may lag. Exact installation reads use canonical state;
 current-user queries validate index candidates against that state so an old
@@ -120,13 +123,21 @@ download, the running file is `from_bundle_id` and the pending selection is
 fields. The provider returns the original event; it does not calculate lifecycle
 state or maintain shared pending columns.
 
-There is no shared `bundle_installations` model. SQL adapters query indexed events;
-Supabase exposes a non-materialized latest-event view. MongoDB groups events.
-DynamoDB and Firestore retain private atomic latest-event copies for native user
-lookup and counting. Event `username`, `cohort`, `update_strategy`,
+There is no shared `bundle_installations` model. SQL adapters, D1, Supabase, and
+MongoDB keep private `bundle_event_heads` with nine canonical access fields:
+`install_id`, `id`, `received_at_ms`, `user_id`, `platform`, `channel`, `type`,
+`from_bundle_id`, and `to_bundle_id`. Atomic writes choose the globally latest
+receipt tuple. User, scope, and two bundle indexes filter heads; queries hydrate
+at most 101 canonical events for a page and count heads directly. Metadata, app version, release IDs, and calculated
+pending fields are not duplicated there.
+
+DynamoDB and Firestore retain their native full latest-event copies for responses;
+DynamoDB also maintains compact count items in the existing table. These are
+private access paths, not additional public database models or author-facing
+helpers. Event `username`, `cohort`, `update_strategy`,
 `fingerprint_hash`, and `sdk_version` live in typed `metadata`, using the existing
 Bundle JSON conventions. SDK request and Console response formats are unchanged.
 
-The unreleased 1.0.0 initialization migration contains the new layout. Already
-initialized RC stores require an explicit offline export/replay, not rerunning
-that migration. See the [storage decision and replay procedure](./insights-event-storage-decision.md).
+The single unreleased 1.0.0 initialization defines the physical layout. This
+optimization changes neither the canonical event schema nor the public database
+specification. See the [storage decision and measurements](./insights-event-storage-decision.md).

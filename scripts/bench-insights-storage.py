@@ -14,6 +14,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 BASE = "ef1a071e83fc870038a591b7b83d91a6a738f96c"
+EVENT_ONLY = "dfee6cb63e6cf6d79a03453284d2417f2c1600db"
 SCHEMA = "plugins/cloudflare/worker/migrations/0001_hot-updater_1.0.0.sql"
 LATEST = """NOT EXISTS (SELECT 1 FROM bundle_events n WHERE n.install_id=e.install_id
 AND (n.received_at_ms>e.received_at_ms OR (n.received_at_ms=e.received_at_ms AND n.id>e.id)))"""
@@ -66,8 +67,8 @@ for installations, depth in [(1000,10),(1000,100),(10000,10),(10000,100)]:
         print(f"{installations} x {depth}: {strategy}", file=sys.stderr, flush=True)
         with tempfile.TemporaryDirectory(prefix="insights-bench-") as folder:
             db = sqlite3.connect(str(Path(folder) / "events.db"))
-            sql = (subprocess.check_output(["git", "show", f"{BASE}:{SCHEMA}"], cwd=ROOT).decode()
-                   if strategy == "baseline" else (ROOT / SCHEMA).read_text())
+            revision = BASE if strategy == "baseline" else EVENT_ONLY
+            sql = subprocess.check_output(["git", "show", f"{revision}:{SCHEMA}"], cwd=ROOT).decode()
             db.executescript(sql)
             samples = []
             started = time.perf_counter()
@@ -120,5 +121,5 @@ for installations, depth in [(1000,10),(1000,100),(10000,10),(10000,100)]:
                 queries=measurements)
             db.close()
     results.append(dataset)
-print(json.dumps(dict(baseline=BASE,sqlite=sqlite3.sqlite_version,host=platform.platform(),
+print(json.dumps(dict(baseline=BASE,event_only=EVENT_ONLY,sqlite=sqlite3.sqlite_version,host=platform.platform(),
     notes="One process, serial warm reads, 7 samples; p95 is max. Each query attempt has a 10-second measurement cap; interrupted queries report a lower bound, not a partial result. Bulk load has one transaction; not network latency, per-event durable commit cost, or provider billing.",results=results),indent=2))

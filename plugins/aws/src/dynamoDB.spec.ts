@@ -486,7 +486,7 @@ describe("dynamoDB CloudFront lifecycle", () => {
     await plugin.dispose?.();
   });
 
-  it("atomically records the ID, bundle index, latest, and user access rows", async () => {
+  it("atomically records the ID, bundle index, latest, user, and compact scope rows", async () => {
     const previousEvent = { ...insightsEvent(1), user_id: "old-user" };
     const previous = previousEvent;
     documentClient
@@ -522,7 +522,19 @@ describe("dynamoDB CloudFront lifecycle", () => {
     const transaction =
       documentClient.commandCalls(TransactWriteCommand)[0]?.args[0].input
         .TransactItems;
-    expect(transaction).toHaveLength(6);
+    expect(transaction).toHaveLength(7);
+    expect(
+      transaction?.find((item) =>
+        String(item.Put?.Item?.pk).startsWith("_hot-updater#insights-scope#"),
+      )?.Put?.Item,
+    ).toEqual({
+      pk: expect.stringMatching(/^_hot-updater#insights-scope#[0-9a-f]{64}$/),
+      sk: next.install_id,
+      received_at_ms: next.received_at_ms,
+      type: next.type,
+      from_bundle_id: next.from_bundle_id,
+      to_bundle_id: next.to_bundle_id,
+    });
     expect(
       transaction?.find(
         (item) => item.Put?.Item?.pk === DYNAMODB_INSIGHTS_EVENT_IDS_PARTITION,
@@ -564,13 +576,16 @@ describe("dynamoDB CloudFront lifecycle", () => {
     await plugin.dispose?.();
   });
 
-  it("counts every canonical installation page with a stable install-ID cursor", async () => {
+  it("counts every compact scope page with a stable install-ID cursor", async () => {
+    const partition = `_hot-updater#insights-scope#${createHash("sha256")
+      .update(JSON.stringify(["ios", "production"]), "utf8")
+      .digest("hex")}`;
     const queryMock = documentClient.on(QueryCommand);
     for (let index = 1; index <= 11; index++) {
       queryMock.resolvesOnce({
         Count: 5_000,
         LastEvaluatedKey: {
-          pk: DYNAMODB_INSIGHTS_INSTALLATIONS_PARTITION,
+          pk: partition,
           sk: `active-page-${index}`,
         },
       });
@@ -596,15 +611,13 @@ describe("dynamoDB CloudFront lifecycle", () => {
         ConsistentRead: true,
         Select: "COUNT",
         ExpressionAttributeValues: {
-          ":pk": DYNAMODB_INSIGHTS_INSTALLATIONS_PARTITION,
+          ":pk": partition,
           ":since": 1_000,
-          ":platform": "ios",
-          ":channel": "production",
         },
       });
     }
     expect(queries[1]?.args[0].input.ExclusiveStartKey).toEqual({
-      pk: DYNAMODB_INSIGHTS_INSTALLATIONS_PARTITION,
+      pk: partition,
       sk: "active-page-1",
     });
     expect(documentClient.commandCalls(ScanCommand)).toHaveLength(0);

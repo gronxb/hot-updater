@@ -8,8 +8,11 @@ import type {
   ReleaseRow,
 } from "@hot-updater/plugin-core";
 
+import type { MongoBundleEventHead } from "./mongodbCollections";
+
 export type MongoTestRow =
   | BundleEventRow
+  | MongoBundleEventHead
   | BundlePatchRow
   | BundleRow
   | ChannelRow

@@ -3,6 +3,7 @@ import {
   ScanCommand,
   GetCommand,
   PutCommand,
+  QueryCommand,
   type TransactWriteCommandInput,
 } from "@aws-sdk/lib-dynamodb";
 import {
@@ -277,10 +278,209 @@ describe("DynamoDB Insights", () => {
       }),
     );
     expect(marker.Item).toBeUndefined();
+    await expect(
+      insights.countLatestEvents({
+        platform: "ios",
+        channel: "production",
+        sinceMs: 0,
+      }),
+    ).resolves.toBe(0);
     await insights.recordEvent(input);
     await expect(
       insights.findLatestEvents({ installId: event.install_id }),
     ).resolves.toEqual([input.event]);
+    await expect(
+      insights.countLatestEvents({
+        platform: "ios",
+        channel: "production",
+        sinceMs: 0,
+      }),
+    ).resolves.toBe(1);
+  });
+
+  it("moves compact scope membership atomically and ignores duplicate or delayed reports", async () => {
+    const insights = createPlugin().models.insights;
+    const previous = insightsEvent(101, {
+      installId: "scope-movement",
+      receivedAtMs: 100,
+      userId: "old",
+    });
+    await insights.recordEvent({ event: previous });
+    const tied = [102, 103].map((id) => ({
+      ...previous,
+      id: insightsEvent(id, {
+        installId: previous.install_id,
+        receivedAtMs: 200,
+      }).id,
+      received_at_ms: 200,
+      channel: `preview-${id}`,
+      user_id: id === 103 ? null : "old",
+    }));
+    await Promise.all(tied.map((event) => insights.recordEvent({ event })));
+    await insights.recordEvent({
+      event: { ...previous, channel: "duplicate", received_at_ms: 300 },
+    });
+    await insights.recordEvent({
+      event: {
+        ...previous,
+        id: insightsEvent(104, {
+          installId: previous.install_id,
+          receivedAtMs: 50,
+        }).id,
+        received_at_ms: 50,
+      },
+    });
+    await expect(
+      insights.findLatestEvents({ installId: previous.install_id }),
+    ).resolves.toEqual([tied[1]]);
+    await expect(
+      insights.findLatestEvents({ userId: "old", limit: 10 }),
+    ).resolves.toEqual([]);
+    for (const [channel, expected] of [
+      ["production", 0],
+      ["preview-102", 0],
+      ["preview-103", 1],
+      ["duplicate", 0],
+    ] as const)
+      await expect(
+        insights.countLatestEvents({ platform: "ios", channel, sinceMs: 0 }),
+      ).resolves.toBe(expected);
+    await expect(
+      insights.countLatestEvents({
+        platform: "ios",
+        channel: "preview-103",
+        sinceMs: 0,
+        bundle: [
+          {
+            field: "from_bundle_id",
+            value: previous.from_bundle_id!,
+            types: ["UPDATE_APPLIED"],
+          },
+          {
+            field: "to_bundle_id",
+            value: previous.to_bundle_id,
+            types: ["UPDATE_APPLIED"],
+          },
+        ],
+      }),
+    ).resolves.toBe(1);
+  });
+
+  it("keeps native count reads inside the scope as history and other scopes grow", async () => {
+    const insights = createDynamoDBInsightsTable({
+      client: fixture.client,
+      tableName: fixture.tableName,
+    });
+    const events = Array.from({ length: 24 }, (_, index) =>
+      insightsEvent(10_000 + index, {
+        installId: `installation-${index}`,
+        receivedAtMs: 1000,
+      }),
+    );
+    await Promise.all(events.map((event) => insights.recordEvent({ event })));
+    const name = "measure-insights-count-reads";
+    let scanned = 0;
+    let queries = 0;
+    fixture.client.middlewareStack.add(
+      (next, context) => async (args) => {
+        const result = await next(args);
+        if (context.commandName === "QueryCommand") {
+          queries += 1;
+          scanned += Number(Reflect.get(result.output, "ScannedCount"));
+        }
+        return result;
+      },
+      { name, step: "initialize" },
+    );
+    const measure = async () => {
+      scanned = 0;
+      queries = 0;
+      const count = await insights.countLatestEvents({
+        platform: "ios",
+        channel: "production",
+        sinceMs: 500,
+      });
+      return { count, scanned, queries };
+    };
+    try {
+      const before = await measure();
+      for (let batch = 0; batch < 10; batch++) {
+        await Promise.all(
+          events.map((event, index) =>
+            insights.recordEvent({
+              event: {
+                ...event,
+                id: insightsEvent(20_000 + batch * events.length + index, {
+                  installId: event.install_id,
+                  receivedAtMs: batch,
+                }).id,
+                received_at_ms: batch,
+              },
+            }),
+          ),
+        );
+      }
+      const afterHistory = await measure();
+      for (let batch = 0; batch < 4; batch++) {
+        await Promise.all(
+          events.map((_, index) =>
+            insights.recordEvent({
+              event: {
+                ...insightsEvent(30_000 + batch * events.length + index, {
+                  installId: `other-${batch}-${index}`,
+                  receivedAtMs: 1000,
+                }),
+                channel: "other",
+              },
+            }),
+          ),
+        );
+      }
+      const afterScopes = await measure();
+      expect(before).toEqual({
+        count: events.length,
+        scanned: events.length,
+        queries: 1,
+      });
+      expect(afterHistory).toEqual(before);
+      expect(afterScopes).toEqual(before);
+      const oldCount = await fixture.client.send(
+        new QueryCommand({
+          TableName: fixture.tableName,
+          ConsistentRead: true,
+          KeyConditionExpression: "pk = :pk",
+          FilterExpression:
+            "#row.#channel = :channel AND #row.#platform = :platform AND #row.#received >= :since",
+          ExpressionAttributeNames: {
+            "#row": "row",
+            "#channel": "channel",
+            "#platform": "platform",
+            "#received": "received_at_ms",
+          },
+          ExpressionAttributeValues: {
+            ":pk": DYNAMODB_INSIGHTS_INSTALLATIONS_PARTITION,
+            ":channel": "production",
+            ":platform": "ios",
+            ":since": 500,
+          },
+          Select: "COUNT",
+        }),
+      );
+      expect(oldCount.LastEvaluatedKey).toBeUndefined();
+      expect(oldCount.Count).toBe(afterScopes.count);
+      expect(oldCount.ScannedCount).toBe(events.length * 5);
+      console.info(
+        "DynamoDB latest read growth",
+        JSON.stringify({
+          before,
+          afterHistory,
+          afterScopes,
+          globalLatestScanned: oldCount.ScannedCount,
+        }),
+      );
+    } finally {
+      fixture.client.middlewareStack.remove(name);
+    }
   });
 
   it("treats retry after an ambiguous committed write as an event-ID no-op", async () => {
@@ -485,6 +685,16 @@ describe("DynamoDB Insights", () => {
       insights.countEvents({
         filter: { ...filter, channel: `${channel}나` },
         ...range,
+      }),
+    ).resolves.toBe(0);
+    await expect(
+      insights.countLatestEvents({ platform: "ios", channel, sinceMs: 0 }),
+    ).resolves.toBe(1);
+    await expect(
+      insights.countLatestEvents({
+        platform: "ios",
+        channel: `${channel}나`,
+        sinceMs: 0,
       }),
     ).resolves.toBe(0);
   });

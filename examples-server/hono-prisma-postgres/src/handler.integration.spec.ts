@@ -6,7 +6,10 @@ import {
   createReleaseCatalogScopeKey,
   encodeChannelKey,
 } from "@hot-updater/core";
-import { commitReleaseCatalogMutations } from "@hot-updater/plugin-core";
+import {
+  commitReleaseCatalogMutations,
+  type BundleEventRow,
+} from "@hot-updater/plugin-core";
 import type { HotUpdaterAPI } from "@hot-updater/server";
 import { prismaAdapter } from "@hot-updater/server/adapters/prisma";
 import { setupBundleMethodsTestSuite } from "@hot-updater/test-utils";
@@ -230,6 +233,44 @@ describe("Hot Updater Handler Integration Tests (Hono + Prisma + PostgreSQL)", (
       hotUpdater.updateBundleById(bundleId, newBundle),
     deleteBundleById: (bundleId: string) =>
       hotUpdater.deleteBundleById(bundleId),
+  });
+
+  it("keeps every concurrent Insights event and the newest installation head", async () => {
+    const insights = prismaAdapter({ prisma, provider: "postgresql" }).models
+      .insights;
+    const installId = "prisma-concurrent-insights";
+    const now = Date.now();
+    const events: BundleEventRow[] = Array.from({ length: 16 }, (_, index) => ({
+      id: `0198a5b1-0000-7000-8000-${String(index + 1).padStart(12, "0")}`,
+      type: "UPDATE_APPLIED",
+      install_id: installId,
+      user_id: index === 15 ? null : "previous-user",
+      metadata: {
+        username: null,
+        cohort: "0",
+        update_strategy: "appVersion",
+        fingerprint_hash: null,
+        sdk_version: null,
+      },
+      from_bundle_id: "0198a5b1-0000-7000-8001-000000000001",
+      from_release_id: null,
+      to_bundle_id: `0198a5b1-0000-7000-8002-${String(index + 1).padStart(12, "0")}`,
+      to_release_id: null,
+      platform: "ios",
+      app_version: "1.0.0",
+      channel: "production",
+      received_at_ms: now + index,
+    }));
+    await Promise.all(events.map((event) => insights.recordEvent({ event })));
+    expect(
+      await prisma.bundle_events.count({ where: { install_id: installId } }),
+    ).toBe(16);
+    await expect(insights.findLatestEvents({ installId })).resolves.toEqual([
+      events[15],
+    ]);
+    await expect(
+      insights.findLatestEvents({ userId: "previous-user", limit: 101 }),
+    ).resolves.toEqual([]);
   });
 
   it("allows exactly one concurrent Release/catalog CAS writer", async () => {

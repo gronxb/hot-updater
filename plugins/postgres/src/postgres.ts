@@ -146,16 +146,28 @@ const createPostgresImplementation = (
   db: Kysely<Database>,
 ): DatabasePluginImplementation => ({
   async recordInsights({ event }) {
-    await db
-      .insertInto("bundle_events")
-      .values(event)
-      .onConflict((oc) => oc.column("id").doNothing())
-      .execute();
+    await db.transaction().execute(async (transaction) => {
+      await transaction
+        .insertInto("bundle_events")
+        .values(event)
+        .onConflict((oc) => oc.column("id").doNothing())
+        .execute();
+      await sql`INSERT INTO bundle_event_heads (install_id, id, received_at_ms, user_id, platform, channel, type, from_bundle_id, to_bundle_id)
+SELECT install_id, id, received_at_ms, user_id, platform, channel, type, from_bundle_id, to_bundle_id
+FROM bundle_events WHERE id = ${event.id}
+ON CONFLICT(install_id) DO UPDATE SET
+  id = excluded.id, received_at_ms = excluded.received_at_ms, user_id = excluded.user_id,
+  platform = excluded.platform, channel = excluded.channel, type = excluded.type,
+  from_bundle_id = excluded.from_bundle_id, to_bundle_id = excluded.to_bundle_id
+WHERE (excluded.received_at_ms, excluded.id) > (bundle_event_heads.received_at_ms, bundle_event_heads.id)`.execute(
+        transaction,
+      );
+    });
   },
   async findLatestInsightsEvents(input) {
     const where = buildWhere(latestInsightsWhere(input));
     const result =
-      await sql<BundleEventRow>`SELECT * FROM bundle_events WHERE ${where} AND NOT EXISTS (SELECT 1 FROM bundle_events AS newer WHERE newer.install_id = bundle_events.install_id AND (newer.received_at_ms > bundle_events.received_at_ms OR (newer.received_at_ms = bundle_events.received_at_ms AND newer.id > bundle_events.id))) ORDER BY install_id ASC LIMIT ${"installId" in input ? 1 : input.limit}`.execute(
+      await sql<BundleEventRow>`SELECT event.* FROM (SELECT id, install_id FROM bundle_event_heads WHERE ${where} ORDER BY install_id ASC LIMIT ${"installId" in input ? 1 : input.limit}) AS head JOIN bundle_events AS event ON event.id = head.id ORDER BY head.install_id ASC`.execute(
         db,
       );
     return result.rows;
@@ -169,7 +181,7 @@ const createPostgresImplementation = (
     )})`;
     const result = await sql<{
       count: string | number;
-    }>`SELECT COUNT(*) AS count FROM bundle_events WHERE ${where} AND NOT EXISTS (SELECT 1 FROM bundle_events AS newer WHERE newer.install_id = bundle_events.install_id AND (newer.received_at_ms > bundle_events.received_at_ms OR (newer.received_at_ms = bundle_events.received_at_ms AND newer.id > bundle_events.id)))`.execute(
+    }>`SELECT COUNT(*) AS count FROM bundle_event_heads WHERE ${where}`.execute(
       db,
     );
     return Number(result.rows[0]?.count ?? 0);

@@ -25,11 +25,25 @@ it.each(["events", "installations"] as const)(
         const url = new URL(input instanceof Request ? input.url : input);
         const offset = Number(url.searchParams.get("offset") ?? 0);
         const limit = Number(url.searchParams.get("limit"));
-        ranges.push({ offset, limit });
+        const canonicalLookup =
+          model === "installations" &&
+          url.pathname.endsWith("/hot_updater_v1_bundle_events");
+        if (!canonicalLookup) ranges.push({ offset, limit });
         expect(new Headers(init?.headers).get("Prefer") ?? "").not.toContain(
           "count=",
         );
-        const rows = stored.slice(offset, offset + Math.min(limit, 100));
+        const source = canonicalLookup
+          ? stored
+              .filter(({ id }) => url.searchParams.get("id")?.includes(id))
+              .toSorted((left, right) => compareInsightsText(left.id, right.id))
+          : stored;
+        const rows = source.slice(offset, offset + Math.min(limit, 100));
+        if (model === "installations" && !canonicalLookup) {
+          expect(url.pathname).toBe(
+            "/rest/v1/hot_updater_v1_bundle_event_heads",
+          );
+          expect(url.searchParams.get("select")).toBe("id,install_id");
+        }
         return new Response(JSON.stringify(rows), {
           headers: {
             "Content-Type": "application/json",

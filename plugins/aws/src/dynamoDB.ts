@@ -2938,6 +2938,7 @@ export const DYNAMODB_API_KEY_HASH_PARTITION = "_hot-updater#api-key-hashes";
 
 const DYNAMODB_INSIGHTS_MOVEMENT_PREFIX = "_hot-updater#insights-movement#";
 const DYNAMODB_INSIGHTS_USER_PREFIX = "_hot-updater#insights-user#";
+const DYNAMODB_INSIGHTS_SCOPE_PREFIX = "_hot-updater#insights-scope#";
 const DYNAMODB_INSIGHTS_RECORD_ATTEMPTS = 3;
 
 const hasValidBundleEventShape = (value: object): boolean => {
@@ -3009,6 +3010,22 @@ const insightsMovementPartition = (installId: string): string =>
 
 const insightsUserPartition = (userId: string): string =>
   `${DYNAMODB_INSIGHTS_USER_PREFIX}${userId}`;
+
+const insightsScopePartition = (
+  scope: Pick<BundleEventRow, "platform" | "channel">,
+): string =>
+  `${DYNAMODB_INSIGHTS_SCOPE_PREFIX}${createHash("sha256")
+    .update(JSON.stringify([scope.platform, scope.channel]), "utf8")
+    .digest("hex")}`;
+
+const toInsightsScopeItem = (row: BundleEventRow) => ({
+  pk: insightsScopePartition(row),
+  sk: row.install_id,
+  received_at_ms: row.received_at_ms,
+  type: row.type,
+  from_bundle_id: row.from_bundle_id,
+  to_bundle_id: row.to_bundle_id,
+});
 
 const insightsBundlePartition = (filter: InsightsBundleEventFilter): string => {
   const scope = JSON.stringify([
@@ -3189,6 +3206,23 @@ const recordDynamoDBInsightsEvent = async (
       });
       if (
         current !== null &&
+        insightsScopePartition(current.row) !== insightsScopePartition(next)
+      ) {
+        actions.push({
+          Delete: {
+            TableName: store.tableName,
+            Key: {
+              pk: insightsScopePartition(current.row),
+              sk: current.row.install_id,
+            },
+          },
+        });
+      }
+      actions.push({
+        Put: { TableName: store.tableName, Item: toInsightsScopeItem(next) },
+      });
+      if (
+        current !== null &&
         current.row.user_id !== null &&
         current.row.user_id !== next.user_id
       ) {
@@ -3353,7 +3387,7 @@ export const createDynamoDBInsightsTable = (
   async countLatestEvents(input) {
     const bundleConditions = input.bundle?.map(
       (bundle, group) =>
-        `#row.#bundle${group} = :bundle${group} AND #row.#type IN (${bundle.types.map((_, i) => `:type${group}_${i}`).join(", ")})`,
+        `#bundle${group} = :bundle${group} AND #type IN (${bundle.types.map((_, i) => `:type${group}_${i}`).join(", ")})`,
     );
     const bundleFilter =
       bundleConditions === undefined
@@ -3362,7 +3396,7 @@ export const createDynamoDBInsightsTable = (
     let count = 0;
     let exclusiveStartKey: Record<string, unknown> | undefined;
     do {
-      // Canonical rows have immutable install-ID keys. A last-seen update cannot
+      // Scope entries have immutable install-ID keys. A last-seen update cannot
       // move an already counted installation past the cursor and count it twice.
       const page = await store.client.send(
         new QueryCommand({
@@ -3370,14 +3404,9 @@ export const createDynamoDBInsightsTable = (
           ConsistentRead: true,
           ExclusiveStartKey: exclusiveStartKey,
           KeyConditionExpression: "#pk = :pk",
-          FilterExpression:
-            "#row.#platform = :platform AND #row.#channel = :channel AND #row.#received >= :since" +
-            bundleFilter,
+          FilterExpression: "#received >= :since" + bundleFilter,
           ExpressionAttributeNames: {
             "#pk": "pk",
-            "#row": "row",
-            "#platform": "platform",
-            "#channel": "channel",
             "#received": "received_at_ms",
             ...(input.bundle === undefined
               ? {}
@@ -3392,9 +3421,7 @@ export const createDynamoDBInsightsTable = (
                 }),
           },
           ExpressionAttributeValues: {
-            ":pk": DYNAMODB_INSIGHTS_INSTALLATIONS_PARTITION,
-            ":platform": input.platform,
-            ":channel": input.channel,
+            ":pk": insightsScopePartition(input),
             ":since": input.sinceMs,
             ...(input.bundle === undefined
               ? {}

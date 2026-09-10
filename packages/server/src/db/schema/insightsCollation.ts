@@ -1,11 +1,11 @@
-import { bundleEventsV100 } from "../../schema/v1_0_0";
+import { bundleEventHeadsV100, bundleEventsV100 } from "../../schema/v1_0_0";
 import type { ORMSQLProvider } from "../types";
 import { getSqlType, sqlColumnDefinition } from "./sql";
 
 export const getInsightsCollationSql = (
   provider: ORMSQLProvider,
 ): readonly string[] =>
-  [bundleEventsV100].flatMap((table) =>
+  [bundleEventsV100, bundleEventHeadsV100].flatMap((table) =>
     table.columns.flatMap((column) => {
       const collation = column.providerCollations?.[provider];
       if (collation === undefined) return [];

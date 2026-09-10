@@ -113,7 +113,22 @@ describe("MongoDB migration", () => {
     expect(modelCollection.createIndex).toHaveBeenCalledWith(
       { user_id: 1, install_id: 1 },
       {
-        name: "bundle_events_user_idx",
+        name: "bundle_event_heads_user_idx",
+        collation: { locale: "simple" },
+      },
+    );
+    expect(modelCollection.createIndex).toHaveBeenCalledWith(
+      { install_id: 1 },
+      {
+        name: "bundle_event_heads_install_id_idx",
+        unique: true,
+        collation: { locale: "simple" },
+      },
+    );
+    expect(modelCollection.createIndex).toHaveBeenCalledWith(
+      { platform: 1, channel: 1, received_at_ms: 1 },
+      {
+        name: "bundle_event_heads_scope_idx",
         collation: { locale: "simple" },
       },
     );

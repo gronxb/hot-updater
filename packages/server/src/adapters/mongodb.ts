@@ -30,10 +30,48 @@ const createMongoImplementation = (
   return {
     recordInsights: async ({ event }) => {
       const record = () =>
-        collections.bundleEvents.updateOne(
-          { id: event.id },
-          { $setOnInsert: event },
-          { upsert: true, collation: { locale: "simple" } },
+        client.withSession((insightsSession) =>
+          insightsSession.withTransaction(async () => {
+            const insights = createMongoCollections(client);
+            const options = {
+              session: insightsSession,
+              collation: { locale: "simple" },
+            };
+            const accepted = await insights.bundleEvents.updateOne(
+              { id: event.id },
+              { $setOnInsert: event },
+              { ...options, upsert: true },
+            );
+            if (accepted.upsertedCount === 0) return;
+            const current = await insights.bundleEventHeads.findOne(
+              { install_id: event.install_id },
+              options,
+            );
+            if (
+              current !== null &&
+              (event.received_at_ms < current.received_at_ms ||
+                (event.received_at_ms === current.received_at_ms &&
+                  event.id <= current.id))
+            )
+              return;
+            await insights.bundleEventHeads.updateOne(
+              { install_id: event.install_id },
+              {
+                $set: {
+                  install_id: event.install_id,
+                  id: event.id,
+                  received_at_ms: event.received_at_ms,
+                  user_id: event.user_id,
+                  platform: event.platform,
+                  channel: event.channel,
+                  type: event.type,
+                  from_bundle_id: event.from_bundle_id,
+                  to_bundle_id: event.to_bundle_id,
+                },
+              },
+              { ...options, upsert: true },
+            );
+          }),
         );
       try {
         await record();

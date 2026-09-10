@@ -26,7 +26,7 @@ const readMigrations = async () => {
 };
 
 describe("Supabase v1 schema", () => {
-  it("initializes 1.0.0 and selects latest events through a service-role view", async () => {
+  it("initializes 1.0.0 and atomically maintains service-role event heads", async () => {
     const database = new PGlite();
     const event = createBundleEventRowFixture("9301", 100);
     const installation = event;
@@ -44,10 +44,9 @@ describe("Supabase v1 schema", () => {
         ).rows,
       ).toEqual([{ value: "1.0.0" }]);
       const record = (row: typeof event) =>
-        database.query(
-          "INSERT INTO public.hot_updater_v1_bundle_events SELECT * FROM jsonb_populate_record(NULL::public.hot_updater_v1_bundle_events, $1::jsonb) ON CONFLICT (id) DO NOTHING",
-          [JSON.stringify(row)],
-        );
+        database.query("SELECT public.hot_updater_v1_record_event($1::jsonb)", [
+          JSON.stringify(row),
+        ]);
       await record(event);
       const reusedId = {
         ...event,
@@ -58,7 +57,7 @@ describe("Supabase v1 schema", () => {
       expect(
         (
           await database.query(
-            "SELECT * FROM public.hot_updater_v1_latest_bundle_events",
+            "SELECT event.* FROM public.hot_updater_v1_bundle_event_heads AS head JOIN public.hot_updater_v1_bundle_events AS event ON event.id = head.id",
           )
         ).rows,
       ).toEqual([installation]);
@@ -84,19 +83,43 @@ describe("Supabase v1 schema", () => {
       expect(
         (
           await database.query(
-            "SELECT * FROM public.hot_updater_v1_latest_bundle_events",
+            "SELECT event.* FROM public.hot_updater_v1_bundle_event_heads AS head JOIN public.hot_updater_v1_bundle_events AS event ON event.id = head.id",
           )
         ).rows,
       ).toEqual([installation]);
       await database.exec(
         "DROP TRIGGER fail_insights_event ON public.hot_updater_v1_bundle_events",
       );
+      await database.exec(`
+        CREATE FUNCTION fail_insights_head() RETURNS trigger LANGUAGE plpgsql AS $$
+        BEGIN RAISE EXCEPTION 'injected head failure'; END; $$;
+        CREATE TRIGGER fail_insights_head BEFORE UPDATE ON public.hot_updater_v1_bundle_event_heads
+        FOR EACH ROW EXECUTE FUNCTION fail_insights_head();
+      `);
+      await expect(record(next)).rejects.toThrow("injected head failure");
+      expect(
+        (
+          await database.query(
+            "SELECT id FROM public.hot_updater_v1_bundle_events",
+          )
+        ).rows,
+      ).toEqual([{ id: event.id }]);
+      expect(
+        (
+          await database.query(
+            "SELECT id FROM public.hot_updater_v1_bundle_event_heads",
+          )
+        ).rows,
+      ).toEqual([{ id: event.id }]);
+      await database.exec(
+        "DROP TRIGGER fail_insights_head ON public.hot_updater_v1_bundle_event_heads",
+      );
       await record(next);
       await record(next);
       expect(
         (
           await database.query(
-            "SELECT * FROM public.hot_updater_v1_latest_bundle_events",
+            "SELECT event.* FROM public.hot_updater_v1_bundle_event_heads AS head JOIN public.hot_updater_v1_bundle_events AS event ON event.id = head.id",
           )
         ).rows,
       ).toEqual([next]);
@@ -110,14 +133,14 @@ describe("Supabase v1 schema", () => {
       expect(
         (
           await database.query(
-            "SELECT has_table_privilege('anon', 'public.hot_updater_v1_latest_bundle_events', 'SELECT') AS allowed",
+            "SELECT has_table_privilege('anon', 'public.hot_updater_v1_bundle_event_heads', 'SELECT') AS allowed",
           )
         ).rows,
       ).toEqual([{ allowed: false }]);
       expect(
         (
           await database.query(
-            "SELECT has_table_privilege('service_role', 'public.hot_updater_v1_latest_bundle_events', 'SELECT') AS allowed",
+            "SELECT has_table_privilege('service_role', 'public.hot_updater_v1_bundle_event_heads', 'SELECT') AS allowed",
           )
         ).rows,
       ).toEqual([{ allowed: true }]);
@@ -126,7 +149,7 @@ describe("Supabase v1 schema", () => {
     }
   });
 
-  it("selects downloaded and applied events without a stored installation row", async () => {
+  it("keeps canonical downloaded and applied events behind a minimal head", async () => {
     const database = new PGlite();
     try {
       await database.exec(
@@ -142,16 +165,15 @@ describe("Supabase v1 schema", () => {
         metadata: { ...base.metadata, update_strategy: "appVersion" as const },
       };
       const record = (event: typeof base) =>
-        database.query(
-          "INSERT INTO public.hot_updater_v1_bundle_events SELECT * FROM jsonb_populate_record(NULL::public.hot_updater_v1_bundle_events, $1::jsonb) ON CONFLICT (id) DO NOTHING",
-          [JSON.stringify(event)],
-        );
+        database.query("SELECT public.hot_updater_v1_record_event($1::jsonb)", [
+          JSON.stringify(event),
+        ]);
       await record(downloaded);
       await record(downloaded);
       expect(
         (
           await database.query(
-            "SELECT * FROM public.hot_updater_v1_latest_bundle_events",
+            "SELECT event.* FROM public.hot_updater_v1_bundle_event_heads AS head JOIN public.hot_updater_v1_bundle_events AS event ON event.id = head.id",
           )
         ).rows,
       ).toEqual([downloaded]);
@@ -166,7 +188,7 @@ describe("Supabase v1 schema", () => {
       expect(
         (
           await database.query(
-            "SELECT * FROM public.hot_updater_v1_latest_bundle_events",
+            "SELECT event.* FROM public.hot_updater_v1_bundle_event_heads AS head JOIN public.hot_updater_v1_bundle_events AS event ON event.id = head.id",
           )
         ).rows,
       ).toEqual([applied]);
@@ -206,12 +228,17 @@ describe("Supabase v1 schema", () => {
     expect(sql).toContain("CREATE TABLE public.hot_updater_v1_bundle_events");
     expect(sql).not.toContain("bundle_installations");
     expect(sql).toContain(
-      "CREATE VIEW public.hot_updater_v1_latest_bundle_events",
+      "CREATE TABLE public.hot_updater_v1_bundle_event_heads",
     );
     expect(sql).toContain(
-      "hot_updater_v1_bundle_events(install_id, received_at_ms, id)",
+      "hot_updater_v1_bundle_event_heads(user_id, install_id)",
     );
-    expect(sql).toContain("hot_updater_v1_bundle_events(user_id, install_id)");
+    expect(sql).toContain(
+      "hot_updater_v1_bundle_event_heads(platform, channel, received_at_ms)",
+    );
+    expect(sql).toContain(
+      "CREATE FUNCTION public.hot_updater_v1_record_event(p_event jsonb)",
+    );
     expect(sql).toContain(
       "hot_updater_v1_bundle_events(install_id, type, received_at_ms, id)",
     );

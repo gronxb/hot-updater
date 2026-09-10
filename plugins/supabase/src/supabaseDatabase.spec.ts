@@ -9,6 +9,7 @@ const supabaseMock = vi.hoisted(() => {
   type Row = Record<string, unknown>;
   type TableName =
     | "bundle_events"
+    | "bundle_event_heads"
     | "bundle_patches"
     | "bundles"
     | "channels"
@@ -24,6 +25,7 @@ const supabaseMock = vi.hoisted(() => {
   const physicalTableNames: Record<string, TableName> = {
     hot_updater_v1_api_keys: "api_keys",
     hot_updater_v1_bundle_events: "bundle_events",
+    hot_updater_v1_bundle_event_heads: "bundle_event_heads",
     hot_updater_v1_bundle_patches: "bundle_patches",
     hot_updater_v1_bundles: "bundles",
     hot_updater_v1_channels: "channels",
@@ -33,6 +35,7 @@ const supabaseMock = vi.hoisted(() => {
 
   const rows: Record<TableName, Map<string, Row>> = {
     bundle_events: new Map(),
+    bundle_event_heads: new Map(),
 
     bundle_patches: new Map(),
     bundles: new Map(),
@@ -43,6 +46,7 @@ const supabaseMock = vi.hoisted(() => {
   };
   const tableReadCounts: Record<TableName, number> = {
     bundle_events: 0,
+    bundle_event_heads: 0,
 
     bundle_patches: 0,
     bundles: 0,
@@ -198,10 +202,7 @@ const supabaseMock = vi.hoisted(() => {
     private rangeEnd: number | undefined;
     private singleRow = false;
 
-    constructor(
-      private readonly table: TableName,
-      private readonly latest = false,
-    ) {}
+    constructor(private readonly table: TableName) {}
 
     insert(payload: Row) {
       this.mode = "insert";
@@ -243,6 +244,10 @@ const supabaseMock = vi.hoisted(() => {
           ? `"${value.replaceAll("\\", "\\\\").replaceAll('"', '\\"')}"`
           : String(value);
       this.filter = `${field}.eq.${encoded}`;
+      return this;
+    }
+    in(field: string, values: readonly string[]) {
+      this.filter = `${field}.in.(${values.map((value) => JSON.stringify(value)).join(",")})`;
       return this;
     }
     order(
@@ -289,19 +294,7 @@ const supabaseMock = vi.hoisted(() => {
 
     private selectedRows(): Row[] {
       const source = [...rows[this.table].values()];
-      const latest = new Map<string, Row>();
-      if (this.latest)
-        for (const row of source) {
-          const current = latest.get(String(row.install_id));
-          if (
-            !current ||
-            Number(row.received_at_ms) > Number(current.received_at_ms) ||
-            (row.received_at_ms === current.received_at_ms &&
-              String(row.id) > String(current.id))
-          )
-            latest.set(String(row.install_id), row);
-        }
-      return (this.latest ? [...latest.values()] : source)
+      return source
         .filter((row) => this.filter === undefined || matches(row, this.filter))
         .sort((left, right) => {
           const clauses = this.orderClauses.length
@@ -439,8 +432,6 @@ const supabaseMock = vi.hoisted(() => {
   return {
     createMockClient: () => ({
       from: (table: string) => {
-        if (table === "hot_updater_v1_latest_bundle_events")
-          return new QueryBuilder("bundle_events", true);
         const logicalTable = physicalTableNames[table];
         if (!logicalTable)
           throw new Error(`Unexpected Supabase table: ${table}`);
@@ -448,6 +439,38 @@ const supabaseMock = vi.hoisted(() => {
       },
       rpc: async (name: string, args?: Record<string, unknown>) => {
         const bundles = [...rows.bundles.values()];
+        if (name === "hot_updater_v1_record_event") {
+          const input = args?.p_event as Row;
+          const id = String(input.id);
+          const event = rows.bundle_events.get(id) ?? input;
+          rows.bundle_events.set(id, event);
+          const installId = String(event.install_id);
+          const current = rows.bundle_event_heads.get(installId);
+          if (
+            current === undefined ||
+            Number(event.received_at_ms) > Number(current.received_at_ms) ||
+            (event.received_at_ms === current.received_at_ms &&
+              String(event.id) > String(current.id))
+          ) {
+            rows.bundle_event_heads.set(
+              installId,
+              Object.fromEntries(
+                [
+                  "install_id",
+                  "id",
+                  "received_at_ms",
+                  "user_id",
+                  "platform",
+                  "channel",
+                  "type",
+                  "from_bundle_id",
+                  "to_bundle_id",
+                ].map((key) => [key, event[key]]),
+              ),
+            );
+          }
+          return { data: null, error: null };
+        }
         if (name === "hot_updater_v1_delete_channel") {
           const id = String(args?.p_id);
           if (!rows.channels.has(id)) {
@@ -744,6 +767,7 @@ const supabaseMock = vi.hoisted(() => {
     getTableReadCount: (table: TableName) => tableReadCounts[table],
     resetMockClient: () => {
       rows.bundle_events.clear();
+      rows.bundle_event_heads.clear();
       rows.bundle_patches.clear();
       rows.bundles.clear();
       rows.channels.clear();

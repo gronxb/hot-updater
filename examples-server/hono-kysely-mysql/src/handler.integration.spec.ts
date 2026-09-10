@@ -89,6 +89,196 @@ describe("Hot Updater Handler Integration Tests (Hono + MySQL)", () => {
       hotUpdater.deleteBundleById(bundleId),
   });
 
+  it("keeps the canonical latest event through concurrent writes and altered retries", async () => {
+    const { kysely } = await import("./db.js");
+    const insights = kyselyAdapter({ db: kysely, provider: "mysql" }).models
+      .insights;
+    const previous = {
+      ...createBundleEventRowFixture("9805", 100),
+      user_id: "mysql-previous-user",
+    };
+    const newer = {
+      ...createBundleEventRowFixture("9801", 200),
+      install_id: previous.install_id,
+      user_id: "mysql-current-user",
+    };
+    await insights.recordEvent({ event: previous });
+    await insights.recordEvent({ event: newer });
+    await expect(
+      insights.findLatestEvents({ installId: previous.install_id }),
+    ).resolves.toEqual([newer]);
+    const tied = {
+      ...newer,
+      id: createBundleEventRowFixture("9802", 300).id,
+      received_at_ms: 300,
+    };
+    const newest = {
+      ...tied,
+      id: createBundleEventRowFixture("9803", 300).id,
+      channel: "preview",
+      metadata: { ...tied.metadata, device: { locale: "ko-KR" } },
+    };
+    await Promise.all([
+      insights.recordEvent({ event: tied }),
+      insights.recordEvent({ event: newest }),
+      insights.recordEvent({ event: previous }),
+      insights.recordEvent({
+        event: {
+          ...previous,
+          install_id: "mysql-altered-retry",
+          user_id: "mysql-altered-user",
+          received_at_ms: 400,
+        },
+      }),
+    ]);
+
+    await expect(
+      insights.findLatestEvents({ installId: previous.install_id }),
+    ).resolves.toEqual([newest]);
+    await expect(
+      insights.findLatestEvents({ userId: "mysql-previous-user", limit: 10 }),
+    ).resolves.toEqual([]);
+    await expect(
+      insights.findLatestEvents({ userId: "mysql-current-user", limit: 10 }),
+    ).resolves.toEqual([newest]);
+    await expect(
+      insights.findLatestEvents({ installId: "mysql-altered-retry" }),
+    ).resolves.toEqual([]);
+    expect(
+      (
+        await sql`select id from bundle_events where id = ${previous.id}`.execute(
+          kysely,
+        )
+      ).rows,
+    ).toEqual([{ id: previous.id }]);
+  });
+
+  it("rolls back the MySQL event if its head fails, then records the retry", async () => {
+    const { kysely } = await import("./db.js");
+    const insights = kyselyAdapter({ db: kysely, provider: "mysql" }).models
+      .insights;
+    const event = createBundleEventRowFixture("9810", 100);
+    await sql`alter table bundle_event_heads add constraint reject_test_head check (install_id <> 'install-9810')`.execute(
+      kysely,
+    );
+    try {
+      await expect(insights.recordEvent({ event })).rejects.toThrow();
+      expect(
+        (
+          await sql`select id from bundle_events where id = ${event.id}`.execute(
+            kysely,
+          )
+        ).rows,
+      ).toEqual([]);
+    } finally {
+      await sql`alter table bundle_event_heads drop check reject_test_head`.execute(
+        kysely,
+      );
+    }
+    await insights.recordEvent({ event });
+    await expect(
+      insights.findLatestEvents({ installId: event.install_id }),
+    ).resolves.toEqual([event]);
+  });
+
+  it("counts overlapping bundle predicates once, including nullable sources and moved installations", async () => {
+    const { kysely } = await import("./db.js");
+    const insights = kyselyAdapter({ db: kysely, provider: "mysql" }).models
+      .insights;
+    const overlap = {
+      ...createBundleEventRowFixture("9820", 100),
+      channel: "mysql-count-test",
+    };
+    const nullable = {
+      ...overlap,
+      id: createBundleEventRowFixture("9821", 100).id,
+      install_id: "mysql-count-nullable",
+      type: "UNCHANGED" as const,
+      from_bundle_id: null,
+      metadata: { ...overlap.metadata, update_strategy: null },
+    };
+    const otherBundle = "00000000-0000-7000-8000-000000009900";
+    const fromOnly = {
+      ...overlap,
+      id: createBundleEventRowFixture("9822", 100).id,
+      install_id: "mysql-count-from-only",
+      to_bundle_id: otherBundle,
+    };
+    const neither = {
+      ...nullable,
+      id: createBundleEventRowFixture("9823", 100).id,
+      install_id: "mysql-count-neither",
+      to_bundle_id: otherBundle,
+    };
+    const superseded = {
+      ...overlap,
+      id: createBundleEventRowFixture("9824", 100).id,
+      install_id: "mysql-count-superseded",
+    };
+    const moved = {
+      ...overlap,
+      id: createBundleEventRowFixture("9825", 100).id,
+      install_id: "mysql-count-moved",
+    };
+    for (const event of [
+      overlap,
+      nullable,
+      fromOnly,
+      neither,
+      superseded,
+      moved,
+      {
+        ...overlap,
+        id: createBundleEventRowFixture("9826", 50).id,
+        install_id: "mysql-count-too-old",
+        received_at_ms: 50,
+      },
+      {
+        ...neither,
+        id: createBundleEventRowFixture("9827", 200).id,
+        install_id: superseded.install_id,
+        received_at_ms: 200,
+      },
+      {
+        ...moved,
+        id: createBundleEventRowFixture("9828", 200).id,
+        channel: "mysql-count-elsewhere",
+        received_at_ms: 200,
+      },
+    ]) {
+      await insights.recordEvent({ event });
+    }
+    const scope = {
+      platform: overlap.platform,
+      channel: overlap.channel,
+      sinceMs: 100,
+    };
+    const from = {
+      field: "from_bundle_id" as const,
+      value: overlap.from_bundle_id,
+      types: ["UPDATE_APPLIED", "UNCHANGED"] as const,
+    };
+    const to = {
+      ...from,
+      field: "to_bundle_id" as const,
+      value: overlap.to_bundle_id,
+    };
+    await expect(insights.countLatestEvents(scope)).resolves.toBe(5);
+    for (const bundle of [[from], [to], [from, from], [to, to]]) {
+      await expect(
+        insights.countLatestEvents({ ...scope, bundle }),
+      ).resolves.toBe(2);
+    }
+    for (const bundle of [
+      [from, to],
+      [to, from],
+    ]) {
+      await expect(
+        insights.countLatestEvents({ ...scope, bundle }),
+      ).resolves.toBe(3);
+    }
+  });
+
   it("rejects in-place upgrade from a v0 MySQL schema", async () => {
     const database = `hot_updater_v0_${process.pid}`;
     const admin = createPool({
@@ -313,6 +503,28 @@ const createAdapterBundleRow = (id: string) => ({
   manifest_storage_uri: null,
   manifest_file_hash: null,
   asset_base_storage_uri: null,
+});
+
+const createBundleEventRowFixture = (suffix: string, receivedAtMs: number) => ({
+  id: `00000000-0000-7000-8000-${suffix.padStart(12, "0")}`,
+  type: "UPDATE_APPLIED" as const,
+  install_id: `install-${suffix}`,
+  user_id: null,
+  from_release_id: null,
+  from_bundle_id: "00000000-0000-7000-8000-000000009799",
+  to_release_id: null,
+  to_bundle_id: "00000000-0000-7000-8000-000000009800",
+  platform: "ios" as const,
+  app_version: "1.0.0",
+  channel: "production",
+  metadata: {
+    username: null,
+    cohort: "0",
+    update_strategy: "appVersion" as const,
+    fingerprint_hash: null,
+    sdk_version: null,
+  },
+  received_at_ms: receivedAtMs,
 });
 
 const waitForMySQLUserLock = async (

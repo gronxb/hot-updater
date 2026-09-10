@@ -13,7 +13,6 @@ import type {
 
 import {
   SUPABASE_V1_FUNCTION_NAMES,
-  SUPABASE_LATEST_EVENTS_VIEW,
   SUPABASE_V1_TABLE_NAMES,
 } from "./supabaseInfrastructureNames";
 
@@ -57,14 +56,30 @@ export type Database = {
       [SUPABASE_V1_TABLE_NAMES.bundlePatches]: Table<SupabaseBundlePatchRow>;
       [SUPABASE_V1_TABLE_NAMES.channels]: Table<SupabaseChannelRow>;
       [SUPABASE_V1_TABLE_NAMES.bundleEvents]: Table<SupabaseBundleEventRow>;
+      [SUPABASE_V1_TABLE_NAMES.bundleEventHeads]: Table<
+        Pick<
+          BundleEventRow,
+          | "install_id"
+          | "id"
+          | "received_at_ms"
+          | "user_id"
+          | "platform"
+          | "channel"
+          | "type"
+          | "from_bundle_id"
+          | "to_bundle_id"
+        >
+      >;
       [SUPABASE_V1_TABLE_NAMES.apiKeys]: Table<SupabaseApiKeyRow>;
       [SUPABASE_V1_TABLE_NAMES.releaseCatalogs]: Table<SupabaseReleaseCatalogRow>;
       [SUPABASE_V1_TABLE_NAMES.releases]: Table<SupabaseReleaseRow>;
     };
-    Views: {
-      [SUPABASE_LATEST_EVENTS_VIEW]: { Row: BundleEventRow; Relationships: [] };
-    };
+    Views: Record<never, never>;
     Functions: {
+      [SUPABASE_V1_FUNCTION_NAMES.recordEvent]: {
+        Args: { p_event: BundleEventRow };
+        Returns: undefined;
+      };
       [SUPABASE_V1_FUNCTION_NAMES.commit]: {
         Args: {
           p_commit: DatabaseCommit;

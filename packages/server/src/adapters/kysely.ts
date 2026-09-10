@@ -31,7 +31,12 @@ const createImplementation = <TDatabase extends object>(
   const crud = createKyselyCrud(db, config.provider, relationMode);
   return {
     ...crud,
-    recordInsights: (input) => recordKyselyInsights(db, config.provider, input),
+    recordInsights: (input) =>
+      db
+        .transaction()
+        .execute((transaction) =>
+          recordKyselyInsights(transaction, config.provider, input),
+        ),
     deleteChannel: (input) =>
       db
         .transaction()

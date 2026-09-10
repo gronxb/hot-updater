@@ -252,19 +252,23 @@ it("guards a generic Channel delete and reports a referenced conflict", async ()
   expect(recorded[1]?.sql).toContain("NOT EXISTS");
 });
 
-it("records an event with one statement and no snapshot write", async () => {
-  const queries: D1Statement[] = [];
+it("records the event and advances its head in one atomic batch", async () => {
+  let statements: readonly D1Statement[] = [];
   const implementation = createD1Implementation({
-    async query(sql, params) {
-      queries.push({ sql, params });
+    query: () => Promise.reject(new Error("unexpected standalone query")),
+    async batch(input) {
+      statements = input;
       return [];
     },
-    batch: () => Promise.reject(new Error("unexpected batch")),
   });
-  await implementation.recordInsights({
-    event: createBundleEventRowFixture("1", 100),
-  });
-  expect(queries).toHaveLength(1);
-  expect(queries[0]?.sql).toContain("INSERT INTO bundle_events");
-  expect(queries[0]?.sql).toContain("ON CONFLICT(id) DO NOTHING");
+  const event = createBundleEventRowFixture("1", 100);
+  await implementation.recordInsights({ event });
+  expect(statements).toHaveLength(2);
+  expect(statements[0]?.sql).toContain("INSERT INTO bundle_events");
+  expect(statements[0]?.sql).toContain("ON CONFLICT(id) DO NOTHING");
+  expect(statements[1]?.sql).toContain("INSERT INTO bundle_event_heads");
+  expect(statements[1]?.sql).toContain(
+    "FROM bundle_events WHERE id = json_extract(?, '$')",
+  );
+  expect(statements[1]?.params).toEqual([JSON.stringify(event.id)]);
 });

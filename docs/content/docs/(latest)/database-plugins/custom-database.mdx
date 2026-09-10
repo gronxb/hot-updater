@@ -194,12 +194,11 @@ interface InsightsModel {
 
 `recordEvent({ event })` receives one validated, immutable `BundleEventRow`. Store
 it once by `id`; the first accepted payload wins, even if a retry carries different
-fields. SQL can implement this with one `INSERT ... ON CONFLICT DO NOTHING`.
-There is no required installation table or second input to prepare.
+fields. There is no required installation table or second input to prepare.
 
-A provider may copy this exact event into a private latest document/item, keyed
-by `install_id`, when its query API needs it. In that case, event acceptance and
-advancing the copy must be one native atomic operation. Replace the whole copy
+A provider may maintain a private latest index keyed by `install_id`, containing
+the canonical access fields or the complete supplied event. Event acceptance and
+advancing that index must be one native atomic operation. Replace its fields
 only if `(received_at_ms, id)` increases. A duplicate event ID changes nothing,
 including private indexes. Older events enter history without restoring an old
 user association. A winning `user_id: null` removes the previous association.
@@ -269,7 +268,7 @@ stable installation traversal; do not sum independently observed counts. These a
 core supplies the Downloaded/from-bundle or other-type/to-bundle cases.
 Do not derive running/pending state inside the plugin. Use a native event query
 or a private latest index. A mutable last-seen cursor can double-count rows;
-DynamoDB instead traverses stable installation IDs. Propagate query failure
+DynamoDB instead traverses stable installation IDs in a compact scope partition. Propagate query failure
 rather than returning partial counts.
 
 `countEvents({ filter, sinceMs, beforeReceivedAtMs })` counts a fixed raw bundle
@@ -293,37 +292,52 @@ backend.
 
 #### Native storage patterns
 
-An event-only PostgreSQL provider can append the supplied JSON object without a
-transaction spanning multiple records:
+The bundled SQL and MongoDB providers keep a private `bundle_event_heads`
+table/collection with `install_id`, `id`, `received_at_ms`, `user_id`, `platform`,
+`channel`, `type`, `from_bundle_id`, and `to_bundle_id`. These are canonical event
+fields used for latest ordering, user pages, and count predicates. Metadata,
+release IDs, app version, and calculated running/pending state are not copied.
+This physical layout is not a required custom-provider model.
+
+A PostgreSQL provider can append and advance the head atomically in one statement:
 
 ```ts
 async function recordEvent({ event }: InsightsRecordEventInput) {
   await sql.query(
-    `INSERT INTO bundle_events
-     SELECT * FROM jsonb_populate_record(NULL::bundle_events, $1::jsonb)
-     ON CONFLICT (id) DO NOTHING`,
+    `WITH accepted AS (
+       INSERT INTO bundle_events
+       SELECT * FROM jsonb_populate_record(NULL::bundle_events, $1::jsonb)
+       ON CONFLICT (id) DO NOTHING RETURNING *
+     )
+     INSERT INTO bundle_event_heads (
+       install_id, id, received_at_ms, user_id, platform, channel,
+       type, from_bundle_id, to_bundle_id
+     )
+     SELECT install_id, id, received_at_ms, user_id, platform, channel,
+       type, from_bundle_id, to_bundle_id FROM accepted
+     ON CONFLICT (install_id) DO UPDATE SET
+       id = excluded.id, received_at_ms = excluded.received_at_ms,
+       user_id = excluded.user_id, platform = excluded.platform,
+       channel = excluded.channel, type = excluded.type,
+       from_bundle_id = excluded.from_bundle_id,
+       to_bundle_id = excluded.to_bundle_id
+     WHERE (excluded.received_at_ms, excluded.id) >
+       (bundle_event_heads.received_at_ms, bundle_event_heads.id)`,
     [JSON.stringify(event)],
   );
 }
 ```
 
-For a user page, bind `userId`, the optional cursor, and `limit`; omit the cursor
-predicate on the first page. The anti-join checks **all** newer events:
-
-```sql
-SELECT e.* FROM bundle_events e
-WHERE e.user_id = $1 AND e.install_id > $2
-  AND NOT EXISTS (
-    SELECT 1 FROM bundle_events n WHERE n.install_id = e.install_id
-    AND (n.received_at_ms > e.received_at_ms OR
-      (n.received_at_ms = e.received_at_ms AND n.id > e.id))
-  )
-ORDER BY e.install_id LIMIT $3;
-```
-
-Index `(install_id, received_at_ms, id)` and `(user_id, install_id)`. The same
-latest predicate can serve the fixed count filters. Counts still grow with event
-history; a scalar result does not imply constant database work.
+The bundled providers index heads by `(user_id, install_id)`,
+`(platform, channel, received_at_ms)`, and the two bundle-count tuples
+`(type, platform, channel, from_bundle_id, received_at_ms)` and
+`(type, platform, channel, to_bundle_id, received_at_ms)`.
+For a user page, select at most `limit` head IDs using `userId` and the optional
+exclusive installation cursor, then join those IDs to `bundle_events`. Return
+complete canonical event rows. Count the matching heads directly; no event
+hydration is needed for a scalar count. Latest-state reads then depend on current
+installations, without revisiting each installation's retained history. Counts
+still require database work proportional to the relevant current entries.
 
 A Firestore-style provider can keep a private latest collection. Its `recordEvent`
 implementation only copies the supplied object and compares the receipt tuple:

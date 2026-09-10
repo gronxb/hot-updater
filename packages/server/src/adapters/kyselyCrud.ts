@@ -137,6 +137,41 @@ export const recordKyselyInsights = async (
       ? sql`${insert} on duplicate key update id = id`
       : sql`${insert} on conflict (id) do nothing`
   ).execute(executor);
+
+  const fields = [
+    "install_id",
+    "user_id",
+    "platform",
+    "channel",
+    "type",
+    "from_bundle_id",
+    "to_bundle_id",
+    "id",
+    "received_at_ms",
+  ];
+  const columns = sql.join(fields.map((field) => sql.ref(field)));
+  const headInsert = sql`insert into bundle_event_heads (${columns}) select ${columns} from bundle_events where id = ${event.id}`;
+  const newer =
+    provider === "mysql"
+      ? sql`(values(received_at_ms) > bundle_event_heads.received_at_ms or (values(received_at_ms) = bundle_event_heads.received_at_ms and values(id) > bundle_event_heads.id))`
+      : sql`(excluded.received_at_ms > bundle_event_heads.received_at_ms or (excluded.received_at_ms = bundle_event_heads.received_at_ms and excluded.id > bundle_event_heads.id))`;
+  // MySQL evaluates assignments in order: keep the timestamp comparison intact
+  // until the other fields and the event ID have been replaced.
+  const assignments = sql.join(
+    fields
+      .filter((field) => field !== "install_id")
+      .map((field) => {
+        const column = sql.ref(field);
+        return provider === "mysql"
+          ? sql`${column} = if(${newer}, values(${column}), ${sql.ref(`bundle_event_heads.${field}`)})`
+          : sql`${column} = ${sql.ref(`excluded.${field}`)}`;
+      }),
+  );
+  await (
+    provider === "mysql"
+      ? sql`${headInsert} on duplicate key update ${assignments}`
+      : sql`${headInsert} on conflict (install_id) do update set ${assignments} where ${newer}`
+  ).execute(executor);
 };
 
 const updateBundle = async (
@@ -265,23 +300,25 @@ export const createKyselyCrud = (
   async findLatestInsightsEvents(input) {
     const where = buildKyselyWhere(provider, latestInsightsWhere(input));
     const result =
-      await sql<StoredBundleEventRow>`SELECT * FROM bundle_events WHERE ${where} AND NOT EXISTS (SELECT 1 FROM bundle_events AS newer WHERE newer.install_id = bundle_events.install_id AND (newer.received_at_ms > bundle_events.received_at_ms OR (newer.received_at_ms = bundle_events.received_at_ms AND newer.id > bundle_events.id))) ORDER BY install_id ASC LIMIT ${"installId" in input ? 1 : input.limit}`.execute(
+      await sql<StoredBundleEventRow>`SELECT canonical.* FROM (SELECT id, install_id FROM bundle_event_heads WHERE ${where} ORDER BY install_id ASC LIMIT ${"installId" in input ? 1 : input.limit}) AS head JOIN bundle_events AS canonical ON canonical.id = head.id ORDER BY head.install_id ASC`.execute(
         executor,
       );
     return result.rows.map(fromStoredBundleEventRow);
   },
   async countLatestInsightsEvents(input) {
-    const where = sql`(${sql.join(
-      latestInsightsCountGroups(input).map(
-        (where) => sql`(${buildKyselyWhere(provider, where)})`,
-      ),
-      sql` OR `,
-    )})`;
-    const result = await sql<{
-      count: string | number;
-    }>`SELECT COUNT(*) AS count FROM bundle_events WHERE ${where} AND NOT EXISTS (SELECT 1 FROM bundle_events AS newer WHERE newer.install_id = bundle_events.install_id AND (newer.received_at_ms > bundle_events.received_at_ms OR (newer.received_at_ms = bundle_events.received_at_ms AND newer.id > bundle_events.id)))`.execute(
-      executor,
+    const groups = latestInsightsCountGroups(input).map(
+      (where) => sql`(${buildKyselyWhere(provider, where)})`,
     );
+    // NULL from_bundle_id must not exclude a later matching group.
+    const query =
+      provider === "mysql" && groups.length === 2
+        ? sql<{
+            count: string | number;
+          }>`SELECT (SELECT COUNT(*) FROM bundle_event_heads WHERE ${groups[0]}) + (SELECT COUNT(*) FROM bundle_event_heads WHERE ${groups[1]} AND ${groups[0]} IS NOT TRUE) AS count`
+        : sql<{
+            count: string | number;
+          }>`SELECT COUNT(*) AS count FROM bundle_event_heads WHERE (${sql.join(groups, sql` OR `)})`;
+    const result = await query.execute(executor);
     return Number(result.rows[0]?.count ?? 0);
   },
   async deleteChannel({ id }) {

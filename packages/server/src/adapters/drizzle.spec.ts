@@ -98,6 +98,17 @@ const bundleEvents = pgTable("bundle_events", {
 
   received_at_ms: integer("received_at_ms").notNull(),
 });
+const bundleEventHeads = pgTable("bundle_event_heads", {
+  install_id: text("install_id").primaryKey(),
+  id: text("id").notNull(),
+  received_at_ms: integer("received_at_ms").notNull(),
+  user_id: text("user_id"),
+  platform: text("platform").notNull(),
+  channel: text("channel").notNull(),
+  type: text("type").notNull(),
+  from_bundle_id: text("from_bundle_id"),
+  to_bundle_id: text("to_bundle_id").notNull(),
+});
 const apiKeys = pgTable("api_keys", {
   id: text("id").primaryKey(),
   hash: text("hash").notNull().unique(),
@@ -109,6 +120,7 @@ const apiKeys = pgTable("api_keys", {
 });
 const schema = {
   bundle_events: bundleEvents,
+  bundle_event_heads: bundleEventHeads,
 
   bundle_patches: bundlePatches,
   bundles,
@@ -155,7 +167,111 @@ setupDatabasePluginTestSuite({
 });
 
 describe("drizzleAdapter schema requirements", () => {
-  it("records Bun SQLite events atomically without a snapshot table", async () => {
+  it("counts MySQL predicate overlap and nullable sources in one SQL snapshot", async () => {
+    const db = new PGlite();
+    await db.exec(DATABASE_PLUGIN_TEST_SCHEMA_SQL);
+    const native = drizzle(db, { schema });
+    const writer = drizzleAdapter({ db: native, provider: "postgresql" }).models
+      .insights;
+    const applied = createBundleEventRowFixture("711", 100);
+    const overlap = { ...applied, from_bundle_id: applied.to_bundle_id };
+    const unchanged = {
+      ...createBundleEventRowFixture("712", 100),
+      type: "UNCHANGED" as const,
+      from_bundle_id: null,
+      to_bundle_id: applied.to_bundle_id,
+      metadata: { ...applied.metadata, update_strategy: null },
+    };
+    const count = drizzleAdapter({
+      db: async () => native,
+      schema,
+      provider: "mysql",
+      transaction: false,
+    }).models.insights.countLatestEvents;
+    const scope = {
+      platform: "ios" as const,
+      channel: "production",
+      sinceMs: 0,
+    };
+    const from = {
+      field: "from_bundle_id" as const,
+      value: applied.to_bundle_id,
+      types: ["UPDATE_APPLIED", "UNCHANGED"] as const,
+    };
+    const to = { ...from, field: "to_bundle_id" as const };
+    try {
+      await writer.recordEvent({ event: overlap });
+      await writer.recordEvent({ event: unchanged });
+      for (const bundle of [
+        [from, to],
+        [to, from],
+        [to, to],
+      ]) {
+        await expect(count({ ...scope, bundle })).resolves.toBe(2);
+      }
+      await expect(count({ ...scope, bundle: [from] })).resolves.toBe(1);
+      await expect(count(scope)).resolves.toBe(2);
+    } finally {
+      await db.close();
+    }
+  });
+  it.each([undefined, false])(
+    "keeps lazy Insights writes atomic with catalog transaction option %s",
+    async (transaction) => {
+      const db = new PGlite();
+      await db.exec(DATABASE_PLUGIN_TEST_SCHEMA_SQL);
+      const native = drizzle(db, { schema });
+      const callbackTransaction = vi
+        .spyOn(native, "transaction")
+        .mockImplementation(() => {
+          throw new Error("callback transactions are unavailable");
+        });
+      const plugin = drizzleAdapter({
+        db: async () => native,
+        provider: "postgresql",
+        schema,
+        transaction,
+      });
+      const previous = createBundleEventRowFixture("709", 100);
+      const next = {
+        ...createBundleEventRowFixture("710", 200),
+        install_id: previous.install_id,
+      };
+      try {
+        await plugin.models.insights.recordEvent({ event: previous });
+        await db.exec(
+          "alter table bundle_event_heads add constraint reject_head check (received_at_ms < 200)",
+        );
+        await expect(
+          plugin.models.insights.recordEvent({ event: next }),
+        ).rejects.toThrow();
+        expect((await db.query("select id from bundle_events")).rows).toEqual([
+          { id: previous.id },
+        ]);
+        await expect(
+          plugin.models.insights.findLatestEvents({
+            installId: previous.install_id,
+          }),
+        ).resolves.toEqual([previous]);
+        await db.exec(
+          "alter table bundle_event_heads drop constraint reject_head",
+        );
+        await plugin.models.insights.recordEvent({ event: next });
+        await plugin.models.insights.recordEvent({
+          event: { ...next, received_at_ms: 300, user_id: "incorrect-user" },
+        });
+        await expect(
+          plugin.models.insights.findLatestEvents({
+            installId: previous.install_id,
+          }),
+        ).resolves.toEqual([next]);
+        expect(callbackTransaction).not.toHaveBeenCalled();
+      } finally {
+        await db.close();
+      }
+    },
+  );
+  it("rolls back a Bun SQLite event when its head cannot be written", async () => {
     const { stdout } = await promisify(execFile)(
       new URL("../../../../node_modules/.bin/bun", import.meta.url).pathname,
       [
@@ -169,14 +285,14 @@ describe("drizzleAdapter schema requirements", () => {
         import * as schema from "../../examples-server/elysia-drizzle-libsql/hot-updater-schema.ts";
         const db = new Database(":memory:");
         db.exec(createTableSql("sqlite").join(";"));
-        db.exec("create trigger reject_event before insert on bundle_events begin select raise(abort, 'injected snapshot failure'); end;");
+        db.exec("create trigger reject_head before insert on bundle_event_heads begin select raise(abort, 'injected head failure'); end;");
         const plugin = drizzleAdapter({ db: drizzle(db, { schema }), provider: "sqlite" });
         const event = createBundleEventRowFixture("708", 100);
         const input = { event };
         let rejected = false;
         try { await plugin.models.insights.recordEvent(input); } catch { rejected = true; }
         if (!rejected || db.query("select count(*) as total from bundle_events").get().total !== 0) throw new Error("transaction failed to roll back");
-        db.exec("drop trigger reject_event");
+        db.exec("drop trigger reject_head");
         await plugin.models.insights.recordEvent(input);
         await plugin.models.insights.recordEvent(input);
         if (db.query("select count(*) as total from bundle_events").get().total !== 1) throw new Error("retry did not commit exactly one report");

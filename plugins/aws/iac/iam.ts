@@ -57,6 +57,7 @@ export const buildDynamoDBPolicy = (
               DYNAMODB_INSIGHTS_EVENT_IDS_PARTITION,
               `${DYNAMODB_INSIGHTS_BUNDLE_PREFIX}*`,
               "_hot-updater#insights-user#*",
+              "_hot-updater#insights-scope#*",
               DYNAMODB_API_KEY_PARTITION,
               DYNAMODB_API_KEY_HASH_PARTITION,
             ],

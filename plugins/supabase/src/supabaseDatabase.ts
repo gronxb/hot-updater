@@ -28,7 +28,6 @@ import {
   type SupabaseServiceRoleConfig,
 } from "./supabaseConfig";
 import { buildSupabaseFilter } from "./supabaseFilter";
-import { SUPABASE_LATEST_EVENTS_VIEW } from "./supabaseInfrastructureNames";
 import {
   SUPABASE_V1_FUNCTION_NAMES,
   SUPABASE_V1_TABLE_NAMES,
@@ -48,32 +47,57 @@ const createSupabaseImplementation = (
 ): DatabasePluginImplementation => {
   const implementation: DatabasePluginImplementation = {
     async recordInsights({ event }) {
-      const { error } = await supabase
-        .from(SUPABASE_V1_TABLE_NAMES.bundleEvents)
-        .upsert(event, { onConflict: "id", ignoreDuplicates: true });
+      const { error } = await supabase.rpc(
+        SUPABASE_V1_FUNCTION_NAMES.recordEvent,
+        { p_event: event },
+      );
       throwSupabaseError("record insights", error);
     },
     async findLatestInsightsEvents(input) {
       const limit = "installId" in input ? 1 : input.limit;
-      const rows: BundleEventRow[] = [];
+      const heads: Pick<BundleEventRow, "id" | "install_id">[] = [];
       const filter = buildSupabaseFilter(latestInsightsWhere(input));
-      while (rows.length < limit) {
-        let query = supabase.from(SUPABASE_LATEST_EVENTS_VIEW).select("*");
+      while (heads.length < limit) {
+        let query = supabase
+          .from(SUPABASE_V1_TABLE_NAMES.bundleEventHeads)
+          .select("id,install_id");
         if (filter !== undefined) query = query.or(filter);
         const { data, error } = await query
           .order("install_id", { ascending: true })
-          .range(rows.length, limit - 1);
+          .range(heads.length, limit - 1);
         throwSupabaseError("find latest insights events", error);
         if (data === null)
           throw new SupabaseMissingDataError("find latest insights events");
         if (data.length === 0) break;
+        heads.push(...data);
+      }
+      const rows: BundleEventRow[] = [];
+      while (rows.length < heads.length) {
+        const { data, error } = await supabase
+          .from(SUPABASE_V1_TABLE_NAMES.bundleEvents)
+          .select("*")
+          .in(
+            "id",
+            heads.map(({ id }) => id),
+          )
+          .order("id", { ascending: true })
+          .range(rows.length, heads.length - 1);
+        throwSupabaseError("find latest insights events", error);
+        if (data === null || data.length === 0)
+          throw new SupabaseMissingDataError("find latest insights events");
         rows.push(...data);
       }
-      return rows;
+      const eventsById = new Map(rows.map((event) => [event.id, event]));
+      return heads.map(({ id }) => {
+        const event = eventsById.get(id);
+        if (event === undefined)
+          throw new SupabaseMissingDataError("find latest insights events");
+        return event;
+      });
     },
     async countLatestInsightsEvents(input) {
       let query = supabase
-        .from(SUPABASE_LATEST_EVENTS_VIEW)
+        .from(SUPABASE_V1_TABLE_NAMES.bundleEventHeads)
         .select("*", { count: "exact", head: true });
       const filter = latestInsightsCountGroups(input)
         .map(buildSupabaseFilter)

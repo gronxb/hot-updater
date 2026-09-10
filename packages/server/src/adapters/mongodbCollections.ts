@@ -24,6 +24,19 @@ export type MongoBundleDocument = BundleRow & {
   readonly [DELETION_TOKEN_FIELD]?: string;
 };
 
+export type MongoBundleEventHead = Pick<
+  BundleEventRow,
+  | "install_id"
+  | "id"
+  | "received_at_ms"
+  | "user_id"
+  | "platform"
+  | "channel"
+  | "type"
+  | "from_bundle_id"
+  | "to_bundle_id"
+>;
+
 export const WITHOUT_INTERNAL_FIELDS = {
   ...WITHOUT_MONGO_ID,
   [DELETION_TOKEN_FIELD]: 0,
@@ -37,6 +50,7 @@ export type MongoCollections = {
   readonly bundles: Collection<MongoBundleDocument>;
   readonly bundlePatches: Collection<BundlePatchRow>;
   readonly bundleEvents: Collection<BundleEventRow>;
+  readonly bundleEventHeads: Collection<MongoBundleEventHead>;
   readonly channels: Collection<ChannelRow>;
   readonly apiKeys: Collection<ApiKeyRow>;
   readonly releases: Collection<ReleaseRow>;
@@ -51,6 +65,8 @@ export const createMongoCollections = (
     bundles: database.collection<MongoBundleDocument>("bundles"),
     bundlePatches: database.collection<BundlePatchRow>("bundle_patches"),
     bundleEvents: database.collection<BundleEventRow>("bundle_events"),
+    bundleEventHeads:
+      database.collection<MongoBundleEventHead>("bundle_event_heads"),
     channels: database.collection<ChannelRow>("channels"),
     apiKeys: database.collection<ApiKeyRow>("api_keys"),
     releases: database.collection<ReleaseRow>("releases"),

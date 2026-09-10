@@ -50,6 +50,7 @@ it("creates the current schema with required artifact sizes", async () => {
   expect(tables.results.map(({ name }) => name)).toEqual(
     expect.arrayContaining([
       "bundle_events",
+      "bundle_event_heads",
       "bundle_patches",
       "bundles",
       "channels",
@@ -109,6 +110,28 @@ it("creates the current schema with required artifact sizes", async () => {
     "install_id",
     "received_at_ms",
     "id",
+  ]);
+  const headColumns = await env.DB.prepare(
+    "PRAGMA table_info(bundle_event_heads)",
+  ).all<{ name: string }>();
+  expect(headColumns.results.map(({ name }) => name)).toEqual([
+    "install_id",
+    "id",
+    "received_at_ms",
+    "user_id",
+    "platform",
+    "channel",
+    "type",
+    "from_bundle_id",
+    "to_bundle_id",
+  ]);
+  const headScopeIndex = await env.DB.prepare(
+    "PRAGMA index_info(bundle_event_heads_scope_idx)",
+  ).all<{ name: string }>();
+  expect(headScopeIndex.results.map(({ name }) => name)).toEqual([
+    "platform",
+    "channel",
+    "received_at_ms",
   ]);
 
   const movementIndex = await env.DB.prepare(

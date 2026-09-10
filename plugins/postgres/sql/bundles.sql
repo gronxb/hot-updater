@@ -84,6 +84,18 @@ create table bundle_events (
 );
 
 
+create table bundle_event_heads (
+  install_id text collate "C" primary key not null,
+  id uuid not null,
+  received_at_ms double precision not null,
+  user_id text collate "C",
+  platform text collate "C" not null,
+  channel text collate "C" not null,
+  type text not null,
+  from_bundle_id uuid,
+  to_bundle_id uuid not null
+);
+
 create table api_keys (
   id varchar(255) primary key not null,
   hash text not null,
@@ -173,4 +185,7 @@ on conflict (key) do update set value = excluded.value;
 
 
 CREATE INDEX bundle_events_latest_idx ON bundle_events(install_id, received_at_ms, id);
-CREATE INDEX bundle_events_user_idx ON bundle_events(user_id, install_id);
+CREATE INDEX bundle_event_heads_user_idx ON bundle_event_heads(user_id, install_id);
+CREATE INDEX bundle_event_heads_scope_idx ON bundle_event_heads(platform, channel, received_at_ms);
+CREATE INDEX bundle_event_heads_from_idx ON bundle_event_heads(type, platform, channel, from_bundle_id, received_at_ms);
+CREATE INDEX bundle_event_heads_to_idx ON bundle_event_heads(type, platform, channel, to_bundle_id, received_at_ms);

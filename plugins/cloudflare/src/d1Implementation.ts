@@ -650,15 +650,28 @@ export const createD1Implementation = (
 ): DatabasePluginImplementation => ({
   async recordInsights({ event }) {
     const query = insertQuery({ model: "bundle_events", data: event });
-    await executor.query(
-      query.sql.replace(" RETURNING *", " ON CONFLICT(id) DO NOTHING"),
-      query.params,
-    );
+    await executor.batch([
+      {
+        sql: query.sql.replace(" RETURNING *", " ON CONFLICT(id) DO NOTHING"),
+        params: query.params,
+      },
+      {
+        sql: `INSERT INTO bundle_event_heads (install_id, id, received_at_ms, user_id, platform, channel, type, from_bundle_id, to_bundle_id)
+SELECT install_id, id, received_at_ms, user_id, platform, channel, type, from_bundle_id, to_bundle_id
+FROM bundle_events WHERE id = json_extract(?, '$')
+ON CONFLICT(install_id) DO UPDATE SET
+  id = excluded.id, received_at_ms = excluded.received_at_ms, user_id = excluded.user_id,
+  platform = excluded.platform, channel = excluded.channel, type = excluded.type,
+  from_bundle_id = excluded.from_bundle_id, to_bundle_id = excluded.to_bundle_id
+WHERE (excluded.received_at_ms, excluded.id) > (bundle_event_heads.received_at_ms, bundle_event_heads.id)`,
+        params: encodeD1Values([event.id]),
+      },
+    ]);
   },
   async findLatestInsightsEvents(input) {
     const where = buildD1Where(latestInsightsWhere(input));
     const rows = await executor.query(
-      `${"SELECT * FROM bundle_events"}${where.sql} AND NOT EXISTS (SELECT 1 FROM bundle_events AS newer WHERE newer.install_id = bundle_events.install_id AND (newer.received_at_ms > bundle_events.received_at_ms OR (newer.received_at_ms = bundle_events.received_at_ms AND newer.id > bundle_events.id))) ORDER BY install_id ASC LIMIT json_extract(?, '$')`,
+      `SELECT event.* FROM (SELECT id, install_id FROM bundle_event_heads${where.sql} ORDER BY install_id ASC LIMIT json_extract(?, '$')) AS head JOIN bundle_events AS event ON event.id = head.id ORDER BY head.install_id ASC`,
       [
         ...where.params,
         ...encodeD1Values(["installId" in input ? 1 : input.limit]),
@@ -673,7 +686,7 @@ export const createD1Implementation = (
       params: groups.flatMap((group) => group.params),
     };
     const rows = await executor.query(
-      `SELECT COUNT(*) AS count FROM bundle_events${where.sql} AND NOT EXISTS (SELECT 1 FROM bundle_events AS newer WHERE newer.install_id = bundle_events.install_id AND (newer.received_at_ms > bundle_events.received_at_ms OR (newer.received_at_ms = bundle_events.received_at_ms AND newer.id > bundle_events.id)))`,
+      `SELECT COUNT(*) AS count FROM bundle_event_heads${where.sql}`,
       where.params,
     );
     const first = rows[0];

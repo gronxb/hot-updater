@@ -6,6 +6,7 @@ import {
   generatePrismaSchema,
 } from "../db/schemaGenerators";
 import {
+  bundleEventHeadsV100,
   bundleEventsV100,
   bundlePatchesV100,
   bundlesV100,
@@ -96,15 +97,30 @@ describe("v1.0.0 Release Catalog schema", () => {
     ).toBeUndefined();
   });
 
-  it("stores events with metadata and indexes latest-event reads without an installation table", () => {
+  it("stores canonical payloads once and indexes only latest-event access fields", () => {
     const sql = createTableSql("postgresql", "foreign-keys", v1_0_0).join("\n");
     expect(sql).toContain("metadata json not null");
     expect(sql).toContain(
       "bundle_events_latest_idx on bundle_events(install_id, received_at_ms, id)",
     );
     expect(sql).toContain(
-      "bundle_events_user_idx on bundle_events(user_id, install_id)",
+      "bundle_event_heads_user_idx on bundle_event_heads(user_id, install_id)",
     );
+    expect(sql).toContain(
+      "bundle_event_heads_scope_idx on bundle_event_heads(platform, channel, received_at_ms)",
+    );
+    expect(sql).not.toContain("bundle_events_user_idx");
+    expect(bundleEventHeadsV100.columns.map(({ ormName }) => ormName)).toEqual([
+      "install_id",
+      "id",
+      "received_at_ms",
+      "user_id",
+      "platform",
+      "channel",
+      "type",
+      "from_bundle_id",
+      "to_bundle_id",
+    ]);
     for (const generated of [
       sql,
       generatePrismaSchema("postgresql", v1_0_0),
@@ -129,11 +145,29 @@ describe("v1.0.0 Release Catalog schema", () => {
         "create index bundle_events_install_idx on bundle_events(install_id, type, received_at_ms, id)",
       );
       expect(sql).toContain(
-        "create index bundle_events_user_idx on bundle_events(user_id, install_id)",
+        "create index bundle_event_heads_user_idx on bundle_event_heads(user_id, install_id)",
       );
     }
     expect(mssql).not.toContain("install_id nvarchar(max)");
     expect(mssql).not.toContain("user_id nvarchar(max)");
+  });
+
+  it("keeps generated Cockroach event and head UUIDs compatible with native queries", () => {
+    const prisma = generatePrismaSchema("cockroachdb", v1_0_0);
+    const sql = createTableSql("cockroachdb", "foreign-keys", v1_0_0).join(
+      "\n",
+    );
+    for (const table of [bundleEventsV100, bundleEventHeadsV100]) {
+      const model = prisma.split(`model ${table.ormName} {`)[1]!.split("}")[0]!;
+      for (const column of table.columns.filter(
+        ({ type }) => type === "uuid",
+      )) {
+        expect(model).toContain(
+          `${column.ormName} String${column.nullable ? "?" : ""} @db.Uuid`,
+        );
+        expect(sql).toContain(`${column.ormName} uuid`);
+      }
+    }
   });
 
   it("generates nullable source and artifact relations with the intended deletion rules", () => {

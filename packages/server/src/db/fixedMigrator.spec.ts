@@ -105,7 +105,6 @@ describe("Kysely migrator", () => {
         "bundle_events_from_bundle_idx",
         "bundle_events_to_bundle_idx",
         "bundle_events_latest_idx",
-        "bundle_events_user_idx",
       ]),
     );
     await database.exec("set enable_seqscan = off");

@@ -80,6 +80,19 @@ export const DATABASE_PLUGIN_TEST_SCHEMA_SQL = `
     metadata jsonb not null,
     received_at_ms integer not null
   );
+  create table bundle_event_heads (
+    install_id text primary key,
+    id text not null,
+    received_at_ms integer not null,
+    user_id text,
+    platform text not null,
+    channel text not null,
+    type text not null,
+    from_bundle_id text,
+    to_bundle_id text not null
+  );
+  create index bundle_event_heads_user_idx on bundle_event_heads(user_id, install_id);
+  create index bundle_event_heads_scope_idx on bundle_event_heads(platform, channel, received_at_ms);
   create table api_keys (
     id text primary key,
     hash text not null unique,
@@ -92,6 +105,7 @@ export const DATABASE_PLUGIN_TEST_SCHEMA_SQL = `
 `;
 
 export const DATABASE_PLUGIN_TEST_RESET_SQL = `
+  delete from bundle_event_heads;
   delete from bundle_events;
   delete from api_keys;
   delete from bundle_patches;

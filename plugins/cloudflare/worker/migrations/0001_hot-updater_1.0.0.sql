@@ -145,6 +145,18 @@ CREATE TABLE bundle_events (
 );
 
 
+CREATE TABLE bundle_event_heads (
+  install_id TEXT PRIMARY KEY NOT NULL,
+  id TEXT NOT NULL,
+  received_at_ms REAL NOT NULL,
+  user_id TEXT,
+  platform TEXT NOT NULL,
+  channel TEXT NOT NULL,
+  type TEXT NOT NULL,
+  from_bundle_id TEXT,
+  to_bundle_id TEXT NOT NULL
+);
+
 CREATE TABLE api_keys (
   id TEXT PRIMARY KEY NOT NULL,
   hash TEXT NOT NULL,
@@ -189,4 +201,7 @@ VALUES ('schema.core', '1.0.0')
 ON CONFLICT(key) DO UPDATE SET value = excluded.value;
 
 CREATE INDEX bundle_events_latest_idx ON bundle_events(install_id, received_at_ms, id);
-CREATE INDEX bundle_events_user_idx ON bundle_events(user_id, install_id);
+CREATE INDEX bundle_event_heads_user_idx ON bundle_event_heads(user_id, install_id);
+CREATE INDEX bundle_event_heads_scope_idx ON bundle_event_heads(platform, channel, received_at_ms);
+CREATE INDEX bundle_event_heads_from_idx ON bundle_event_heads(type, platform, channel, from_bundle_id, received_at_ms);
+CREATE INDEX bundle_event_heads_to_idx ON bundle_event_heads(type, platform, channel, to_bundle_id, received_at_ms);

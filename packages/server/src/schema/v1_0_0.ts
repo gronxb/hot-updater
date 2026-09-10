@@ -403,7 +403,6 @@ export const bundleEventsV100 = table(
     indexes: [
       index("bundle_events_received_at_idx", ["received_at_ms", "id"]),
       index("bundle_events_latest_idx", ["install_id", "received_at_ms", "id"]),
-      index("bundle_events_user_idx", ["user_id", "install_id"]),
       index("bundle_events_install_idx", [
         "install_id",
         "type",
@@ -455,6 +454,46 @@ export const bundleEventsV100 = table(
   },
 );
 
+// Private access index: full event payloads remain in bundle_events.
+export const bundleEventHeadsV100 = table(
+  "bundle_event_heads",
+  {
+    install_id: idColumn("install_id", varchar(255)).collate(
+      insightsTextCollations,
+    ),
+    id: uuid("id"),
+    received_at_ms: float("received_at_ms"),
+    user_id: column("user_id", varchar(255))
+      .collate(insightsTextCollations)
+      .nullable(),
+    platform: stringColumn("platform").collate(insightsTextCollations),
+    channel: stringColumn("channel").collate(insightsTextCollations),
+    type: column("type", varchar(32)),
+    from_bundle_id: uuid("from_bundle_id").nullable(),
+    to_bundle_id: uuid("to_bundle_id"),
+  },
+  {
+    indexes: [
+      index("bundle_event_heads_user_idx", ["user_id", "install_id"]),
+      index(
+        "bundle_event_heads_scope_idx",
+        ["platform", "channel", "received_at_ms"],
+        insightsProviders,
+      ),
+      index(
+        "bundle_event_heads_from_idx",
+        ["type", "platform", "channel", "from_bundle_id", "received_at_ms"],
+        insightsProviders,
+      ),
+      index(
+        "bundle_event_heads_to_idx",
+        ["type", "platform", "channel", "to_bundle_id", "received_at_ms"],
+        insightsProviders,
+      ),
+    ],
+  },
+);
+
 export const v1_0_0 = schema({
   version: "1.0.0",
   settingsTable: HOT_UPDATER_SETTINGS_TABLE,
@@ -465,6 +504,7 @@ export const v1_0_0 = schema({
     releasesV100,
     releaseCatalogsV100,
     bundleEventsV100,
+    bundleEventHeadsV100,
     apiKeysV100,
     createSettingsTable("1.0.0"),
   ],

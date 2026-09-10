@@ -192,10 +192,26 @@ export const bundle_events = sqliteTable("bundle_events", {
 }, (table) => [
   index("bundle_events_received_at_idx").on(table.received_at_ms, table.id),
   index("bundle_events_latest_idx").on(table.install_id, table.received_at_ms, table.id),
-  index("bundle_events_user_idx").on(table.user_id, table.install_id),
   index("bundle_events_install_idx").on(table.install_id, table.type, table.received_at_ms, table.id),
   index("bundle_events_from_bundle_idx").on(table.type, table.platform, table.channel, table.from_bundle_id, table.received_at_ms, table.id),
   index("bundle_events_to_bundle_idx").on(table.type, table.platform, table.channel, table.to_bundle_id, table.received_at_ms, table.id)
+])
+
+export const bundle_event_heads = sqliteTable("bundle_event_heads", {
+  install_id: text("install_id", { length: 255 }).primaryKey().notNull(),
+  id: text("id").notNull(),
+  received_at_ms: real("received_at_ms").notNull(),
+  user_id: text("user_id", { length: 255 }),
+  platform: text("platform").notNull(),
+  channel: text("channel").notNull(),
+  type: text("type", { length: 32 }).notNull(),
+  from_bundle_id: text("from_bundle_id"),
+  to_bundle_id: text("to_bundle_id").notNull()
+}, (table) => [
+  index("bundle_event_heads_user_idx").on(table.user_id, table.install_id),
+  index("bundle_event_heads_scope_idx").on(table.platform, table.channel, table.received_at_ms),
+  index("bundle_event_heads_from_idx").on(table.type, table.platform, table.channel, table.from_bundle_id, table.received_at_ms),
+  index("bundle_event_heads_to_idx").on(table.type, table.platform, table.channel, table.to_bundle_id, table.received_at_ms)
 ])
 
 export const api_keys = sqliteTable("api_keys", {

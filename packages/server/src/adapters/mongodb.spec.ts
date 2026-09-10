@@ -86,6 +86,31 @@ describe("mongoAdapter capabilities", () => {
     ).resolves.toHaveLength(4);
   });
 
+  it("rolls back a new event when its private head write fails", async () => {
+    harness.reset();
+    const insights = mongoAdapter({ client: harness.client }).models.insights;
+    const event = createBundleEventRowFixture("995", 100);
+    harness.failNextHeadWrite();
+    await expect(insights.recordEvent({ event })).rejects.toThrow(
+      "injected head write failure",
+    );
+    await expect(
+      insights.listEvents({
+        filter: { kind: "all" },
+        beforeReceivedAtMs: 200,
+        limit: 10,
+      }),
+    ).resolves.toEqual([]);
+    await expect(
+      insights.findLatestEvents({ installId: event.install_id }),
+    ).resolves.toEqual([]);
+    await insights.recordEvent({ event });
+    await insights.recordEvent({ event });
+    await expect(
+      insights.findLatestEvents({ installId: event.install_id }),
+    ).resolves.toEqual([event]);
+  });
+
   it("returns an adapter without an unsafe atomic-batch fallback", () => {
     const plugin = mongoAdapter({ client: harness.client });
     expect(plugin.name).toBe("mongodb");

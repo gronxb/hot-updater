@@ -32,12 +32,6 @@ import {
   createMongoSort,
 } from "./mongodbQuery";
 
-const latestEventStages = [
-  { $sort: { install_id: -1, received_at_ms: -1, id: -1 } },
-  { $group: { _id: "$install_id", event: { $first: "$$ROOT" } } },
-  { $replaceRoot: { newRoot: "$event" } },
-];
-
 const findMongoRows = async (
   collections: MongoCollections,
   input: FindManyDatabaseImplementationInput,
@@ -251,16 +245,22 @@ export const createMongoReads = (
   session?: ClientSession,
 ): MongoReadImplementation => ({
   async findLatestInsightsEvents(input) {
-    return collections.bundleEvents
+    return collections.bundleEventHeads
       .aggregate<BundleEventRow>(
         [
-          ...("installId" in input
-            ? [{ $match: { install_id: input.installId } }]
-            : []),
-          ...latestEventStages,
           { $match: createMongoEventWhere(latestInsightsWhere(input)) },
           { $sort: { install_id: 1 } },
           { $limit: "installId" in input ? 1 : input.limit },
+          {
+            $lookup: {
+              from: "bundle_events",
+              localField: "id",
+              foreignField: "id",
+              as: "event",
+            },
+          },
+          { $unwind: "$event" },
+          { $replaceRoot: { newRoot: "$event" } },
           { $project: WITHOUT_MONGO_ID },
         ],
         {
@@ -272,10 +272,9 @@ export const createMongoReads = (
       .toArray();
   },
   async countLatestInsightsEvents(input) {
-    const rows = await collections.bundleEvents
+    const rows = await collections.bundleEventHeads
       .aggregate<{ count: number }>(
         [
-          ...latestEventStages,
           {
             $match: {
               $or: latestInsightsCountGroups(input).map(createMongoEventWhere),
