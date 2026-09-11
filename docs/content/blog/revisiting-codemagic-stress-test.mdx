@@ -103,6 +103,12 @@ platform, but that requires its own deployment and verification work.
 For a Firebase team, this makes a practical difference. Using a GCS bucket
 with Patch leaves its PostgreSQL-backed API and release worker to host.
 Hot Updater supplies the Firestore and Cloud Functions integration too.
+The Patch version we reviewed has no equivalent integration: using
+Firestore for its metadata would require changes to its PostgreSQL data
+layer. Choosing a different host for that server keeps the same database
+requirement. Hot Updater lets the team's infrastructure choice extend to
+the database and function runtime that OTA actually uses.
+
 Both setups still need upgrades, credential management, and data recovery;
 we haven't measured the maintenance effort for either.
 
@@ -125,8 +131,11 @@ and deploys.
 
 You can use [Docker](/docs/custom/hosting/docker) if containers fit your
 operations, or deploy to a [serverless host](/docs/custom/hosting/vercel).
-A custom environment needs a compatible runtime and database and storage
-adapters; a provider we don't cover may require integration work.
+The same design leaves room for more providers: implement the
+[database contract](/docs/database-plugins/custom-database) and storage
+operations, then connect the request handlers to a compatible runtime.
+A new integration still needs implementation and validation, but can reuse
+Hot Updater's OTA logic with that provider's services.
 
 ## An MIT license without a usage threshold
 
@@ -166,13 +175,15 @@ These cached metadata results give us little reason to choose on speed.
 We'd choose Hot Updater for a team that wants OTA to use the managed
 platform it already operates. A provider preset includes the database,
 storage, and function integration, with the Console for update management.
-The team can keep using its platform's services without adopting a
-separate PostgreSQL-backed application stack for OTA.
+That lets the team keep using services it already knows how to deploy,
+secure, and monitor. Patch offers a choice of storage, CDN, and PostgreSQL
+host; its current integrations keep the PostgreSQL data layer and Node.js
+server. Hot Updater provides choices at those layers too.
 
 A team with an established backend can choose its database and run the OTA
 handlers alongside its own routes, using the framework and authentication
-it already maintains. Those choices reach further into the application
-than Patch's documented storage and delivery adapters. MIT lets that team
+it already maintains. Its database and storage contracts also give the
+team a way to add integrations beyond the supplied presets. MIT lets it
 modify and build on the system without a usage threshold or
 competing-product restriction.
 
