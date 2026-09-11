@@ -3,7 +3,10 @@ import { spawnSync } from "node:child_process";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-const exampleDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const exampleDir = path.resolve(
+  path.dirname(fileURLToPath(import.meta.url)),
+  "..",
+);
 const platformArg = process.argv.includes("--platform")
   ? process.argv[process.argv.indexOf("--platform") + 1]
   : "all";
@@ -14,7 +17,9 @@ const platforms =
       ? [platformArg]
       : null;
 if (!platforms) {
-  throw new Error("Usage: node scripts/build-e2e-native.mjs --platform <ios|android|all>");
+  throw new Error(
+    "Usage: node scripts/build-e2e-native.mjs --platform <ios|android|all>",
+  );
 }
 
 function run(command, args, cwd) {
@@ -30,6 +35,8 @@ function run(command, args, cwd) {
 
 for (const platform of platforms) {
   if (platform === "ios") {
+    const iosDir = path.join(exampleDir, "ios");
+    run("sh", ["bootstrap.sh"], iosDir);
     run(
       "xcodebuild",
       [
@@ -46,13 +53,9 @@ for (const platform of platforms) {
         "CODE_SIGNING_ALLOWED=NO",
         "build",
       ],
-      path.join(exampleDir, "ios"),
+      iosDir,
     );
     continue;
   }
-  run(
-    "./gradlew",
-    [":app:assembleRelease"],
-    path.join(exampleDir, "android"),
-  );
+  run("./gradlew", [":app:assembleRelease"], path.join(exampleDir, "android"));
 }
