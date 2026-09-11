@@ -190,7 +190,10 @@ const HOT_UPDATER_CLI_PATH = path.join(
   "packages/hot-updater/dist/index.mjs",
 );
 const COMMAND_STDIO_DRAIN_GRACE_MS = 500;
-const EXAMPLE_DIR = path.join(REPO_DIR, "examples/v0.85.0");
+const EXAMPLE_DIR = path.resolve(
+  process.env.HOT_UPDATER_E2E_ENV_TARGET_DIR ??
+    path.join(REPO_DIR, "examples/v0.85.0"),
+);
 const E2E_PATCH_SOURCE_FILE = path.join(
   EXAMPLE_DIR,
   "src/e2eApp/patchSurface.ts",
