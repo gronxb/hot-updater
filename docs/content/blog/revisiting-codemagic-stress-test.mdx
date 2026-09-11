@@ -56,25 +56,25 @@ We wouldn't use these results to claim a speed advantage for Hot Updater.
 
 ## Start with a provider preset and a Console
 
-If your team already uses Cloudflare, Hot Updater's
-[Cloudflare preset](/docs/managed/cloudflare) puts OTA delivery on Workers,
-D1, and R2. The initializer walks you through choosing or creating the
-storage and database, applying migrations, and deploying the Worker. You
-don't need a separate VM, Docker Compose stack, or PostgreSQL server.
+Hot Updater's [provider presets](/docs/get-started/choose-provider) set up
+an OTA server in your cloud account using managed services. Choose a
+supported provider your team already operates, then follow its setup guide
+to provision resources and connect your app. You can use the supplied
+deployment without running a separate Docker host or writing the server
+yourself.
 
 The [Console](/docs/guides/console) gives your team a UI for managing rollout
 and targeting, disabling bundles, and inspecting artifacts. Run it locally,
 or [deploy an authenticated Console](/docs/guides/console-deployment) for
 your team. Both use your provider resources.
 
-The [provider presets](/docs/get-started/choose-provider) also cover AWS,
-Supabase, and Firebase, each with its own deployment and caching behavior.
-You can choose the cloud your team already operates.
+Each preset has its own deployment and caching behavior. The benchmark
+above covers one of those configurations.
 
 Patch's [documented default installation](https://patch.codemagic.io/docs/install)
 runs Caddy, its API and release worker, PostgreSQL, and MinIO on a Docker
 host. Its [adapters](https://patch.codemagic.io/docs/setup/infrastructure)
-support external storage and CDNs, including R2 and CloudFront.
+support external storage and CDNs.
 
 You still handle application upgrades, credentials, and data recovery. We
 haven't measured maintenance time or total operating cost for either setup.
@@ -114,7 +114,9 @@ under the
 in the license. We're comparing the terms that apply to this pinned
 version now.
 
-## Where Patch remains a strong choice
+<span id="where-patch-remains-a-strong-choice" />
+
+## When Patch fits
 
 Patch offers an integrated installer and dashboard, plus
 [commercial support and optional vendor hosting](https://patch.codemagic.io/docs/introduction/pricing).
@@ -122,17 +124,17 @@ That can suit a team that wants help adopting and operating Patch's stack.
 
 Patch keeps published manifests and bundle URLs separate from the
 management API. Codemagic [demonstrates delivery with that API offline](https://blog.codemagic.io/designing-scalable-ota-update-architecture/#simulated-crash-test),
-while storage and the CDN remain available. Hot Updater's Cloudflare path
-needs the Worker and D1 when a Catalog request reaches the origin, and an
-update can require a separate artifact lookup. We didn't test whether the
-two systems behave alike during an outage.
+while storage and the CDN remain available. Hot Updater's origin
+dependencies vary by deployment. We didn't test whether the two systems
+behave alike during an outage.
 
 ## Why we'd choose Hot Updater
 
-For a team already using Cloudflare, we'd choose Hot Updater's preset.
-It puts OTA on Workers, D1, and R2, and the Console handles everyday update
-management. That team can add OTA without taking on a separate Docker
-host and PostgreSQL service.
+We'd choose Hot Updater for a team that wants to keep OTA within its
+existing infrastructure. A provider preset supplies the server deployment,
+and the Console handles everyday update management. The team can use a
+supported cloud it already operates, with no separate Docker host to
+maintain for that deployment.
 
 A team with an established backend has a different reason to choose it:
 the OTA server can use its framework, database tooling, and admin
@@ -191,6 +193,11 @@ artifact resolution, downloads, and patch generation. A complete v1.0
 update may need a separate artifact request, and the two response bodies
 contain different information. We can't infer full SDK equivalence,
 hosting costs, or outage behavior from these results.
+
+In the Cloudflare configuration we tested, a Catalog request that reaches
+the origin needs the Worker and D1. An update can also require a separate
+artifact lookup. We didn't test how these dependencies affect delivery
+during an outage.
 
 The video doesn't identify the Hot Updater commit it tested or give enough
 detail about its fixtures and request distribution for an exact rerun.
