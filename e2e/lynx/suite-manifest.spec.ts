@@ -75,6 +75,27 @@ describe("Lynx E2E suite manifest", () => {
     expect(source).toContain("src_test_");
   });
 
+  it("passes the exported native public key into Lynx hosts", () => {
+    const iosHost = readFileSync(
+      path.join(
+        repoDir,
+        "examples/lynx/ios/SparklingGo/SparklingGo/PublicHost.swift",
+      ),
+      "utf8",
+    );
+    const androidHost = readFileSync(
+      path.join(
+        repoDir,
+        "examples/lynx/android/app/src/main/java/com/hotupdater/lynxexample/OtaActivity.kt",
+      ),
+      "utf8",
+    );
+    expect(iosHost).toContain("HOT_UPDATER_PUBLIC_KEY");
+    expect(iosHost).toContain("publicKeyPEM:");
+    expect(androidHost).toContain("com.hotupdater.PUBLIC_KEY");
+    expect(androidHost).toContain("publicKeyPem");
+  });
+
   it("uses agent device env vars instead of simctl booted", () => {
     const source = readFileSync(
       path.join(repoDir, "e2e/lynx/lynx-app-driver.ts"),

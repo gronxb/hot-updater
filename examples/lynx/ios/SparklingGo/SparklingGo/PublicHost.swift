@@ -60,11 +60,12 @@ final class PublicHost {
             digest = manifestDigest
             startupResourcePaths = native["variant"] == "sdk1" ? ["assets/probe.png"] : ["assets/probe.png", "assets/probe.ttf", "assets/bootstrap.js", "dynamic/component.lynx.bundle"]
         }
+        let publicKeyPEM = Bundle.main.object(forInfoDictionaryKey: "HOT_UPDATER_PUBLIC_KEY") as? String
         controller = try LynxController(configuration: .init(root: home.appendingPathComponent("stores"), runtimeId: Self.runtimeId,
             binaryIdentity: SpikeArtifact.hash(Data(contentsOf: Bundle.main.executableURL!)), embeddedDirectory: embeddedDirectory,
             embeddedBundleId: embeddedBundleId, embeddedManifestDigest: digest, minimumBundleId: embeddedBundleId,
             appVersion: "1.0.0", channel: Self.requestedChannel ?? "ota-\(framework)", cohort: "1",
-            startupResourcePaths: startupResourcePaths))
+            publicKeyPEM: publicKeyPEM, startupResourcePaths: startupResourcePaths))
         context = controller.createContext(primary: true)
         observation = NotificationCenter.default.addObserver(forName: SPKWrapperLynxView.willDestroyNotification, object: nil, queue: nil) { [weak self] notice in
             guard let self, let view = notice.object as? SPKWrapperLynxView, let config = view.lynxConfig else { return }
