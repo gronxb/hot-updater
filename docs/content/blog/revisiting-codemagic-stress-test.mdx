@@ -6,9 +6,10 @@ author: "gronxb"
 image: "/blog/revisiting-codemagic-stress-test.webp"
 ---
 
-With Hot Updater v1.0, you can provision an OTA server in your cloud account
-and manage updates through the Console. If you need OTA inside an existing
-backend, you can choose that setup too.
+Hot Updater's philosophy is to be infrastructure-agnostic: your team chooses
+where OTA runs, which database it uses, and where bundles live. With
+Hot Updater v1.0, you can start with a provider preset or add OTA to an
+existing backend, with the Console for everyday update management.
 
 ## Revisiting the cached read path
 
@@ -35,7 +36,7 @@ We scheduled 1,000 requests per second for each path in three 12-second runs.
 Each path completed all 36,000 requests with HTTP 200 and the expected
 Bundle ID or package hash.
 
-| Metric at 1,000 requests/s | Hot Updater v1.0 | Codemagic Patch |
+| Metric at 1,000 requests/s | Hot Updater v1.0 on Cloudflare | Codemagic Patch |
 | --- | ---: | ---: |
 | HTTP 200 + expected identifier | 36,000 / 36,000 | 36,000 / 36,000 |
 | HTTP, timeout, or payload failures | 0 | 0 |
@@ -72,9 +73,21 @@ Each preset has its own deployment and caching behavior. The benchmark
 above covers one of those configurations.
 
 Patch's [documented default installation](https://patch.codemagic.io/docs/install)
-runs Caddy, its API and release worker, PostgreSQL, and MinIO on a Docker
-host. Its [adapters](https://patch.codemagic.io/docs/setup/infrastructure)
-support external storage and CDNs.
+requires an SSH-accessible server with Docker and Docker Compose v2. It
+runs Caddy, the API and release worker, PostgreSQL, and MinIO on that host.
+That gives you a prescribed stack to install and operate for management
+and publishing; published updates can still be delivered through storage
+and a CDN independently of the API.
+
+Patch also supports [external PostgreSQL](https://patch.codemagic.io/docs/reference/configuration)
+and [storage and delivery adapters](https://patch.codemagic.io/docs/setup/infrastructure),
+including custom deployments that separate its API and worker. Those give
+you hosting choices around its application stack: a
+[Node.js server](https://github.com/codemagic-ci-cd/codemagic-patch/blob/f22294f7c2599b79979b8620e5cb6db4bf3bdf0a/server/package.json)
+that [uses PostgreSQL directly](https://github.com/codemagic-ci-cd/codemagic-patch/blob/f22294f7c2599b79979b8620e5cb6db4bf3bdf0a/server/src/db/client.ts).
+Its documented adapter points cover storage and delivery. Docker is
+required by the supplied installation path; we haven't evaluated a
+non-Docker deployment.
 
 You still handle application upgrades, credentials, and data recovery. We
 haven't measured maintenance time or total operating cost for either setup.
@@ -88,13 +101,20 @@ management routes. Database integrations cover Kysely, Drizzle, Prisma,
 and MongoDB. The [plugin system](/docs/concepts/plugin-system) lets you
 choose database and storage independently.
 
-For example, an Express and Prisma team can add Hot Updater's schema
-through its existing database migration process and protect management
-routes with its authentication middleware. The team still implements the
-admin access policy, using the backend it already reviews and deploys.
+That includes database choices such as [SQLite](/docs/custom/database/kysely)
+and [MongoDB](/docs/custom/database/mongodb). A MongoDB team can keep OTA
+metadata in its existing database. An Express and Prisma team can add
+Hot Updater's schema through its existing migration process and protect
+management routes with its authentication middleware. The team still
+implements the admin access policy, using the backend it already reviews
+and deploys.
 
-If a provider preset fits your needs, you can use it and the Console
-without writing a custom server.
+You can use [Docker](/docs/custom/hosting/docker) if containers fit your
+operations, or deploy to a [serverless host](/docs/custom/hosting/vercel).
+A custom environment needs a compatible runtime and database and storage
+adapters; a provider we don't cover may require integration work. Hot
+Updater's integration choices extend into the server framework and database
+as well as storage and hosting. That is what we mean by infrastructure-agnostic.
 
 ## An MIT license without a usage threshold
 
@@ -130,16 +150,19 @@ behave alike during an outage.
 
 ## Why we'd choose Hot Updater
 
-We'd choose Hot Updater for a team that wants to keep OTA within its
-existing infrastructure. A provider preset supplies the server deployment,
-and the Console handles everyday update management. The team can use a
-supported cloud it already operates, with no separate Docker host to
-maintain for that deployment.
+These cached metadata results give us little reason to choose on speed.
+We'd choose Hot Updater because its infrastructure-agnostic design lets a
+team fit OTA into the systems it already operates. A provider preset
+supplies the server deployment, and the Console handles everyday update
+management. A team that uses managed services can keep that operating
+model for OTA.
 
-A team with an established backend has a different reason to choose it:
-the OTA server can use its framework, database tooling, and admin
-authentication. MIT lets that team modify and build on the system without
-a usage threshold or competing-product restriction.
+A team with an established backend can choose its database and run the OTA
+handlers alongside its own routes, using the framework and authentication
+it already maintains. Those choices reach further into the application
+than Patch's documented storage and delivery adapters. MIT lets that team
+modify and build on the system without a usage threshold or
+competing-product restriction.
 
 [Choose a provider preset](/docs/get-started/choose-provider) to set up the
 OTA server in your cloud account, or follow the
@@ -239,7 +262,7 @@ enabled iOS Release with 100% rollout, no custom cohorts, and
 fixture only needed to read persisted metadata. Publishing and artifact
 resolution were outside the test.
 
-| Request or fixture | Hot Updater v1.0 | Codemagic Patch |
+| Request or fixture | Hot Updater v1.0 on Cloudflare | Codemagic Patch |
 | --- | --- | --- |
 | Request path | `/release-catalogs/app-version/ios/cHJvZHVjdGlvbg/1.0.0` | `/patch/production/1.0.0/manifest.json` |
 | App target | iOS, `production`, app version `1.0.0` | Synthetic manifest for the same version and channel |
@@ -301,15 +324,15 @@ Codemagic Patch rows show the same static manifest control described above.
 
 | Offered requests/s | Run | Target | Correct / sent | p50 | p95 | p99 | CDN HIT |
 | ---: | --- | --- | ---: | ---: | ---: | ---: | ---: |
-| 250 | Ramp | Hot Updater v1.0 | 1,500 / 1,500 | 65.5 | 273.5 | 401.4 | 99.800% |
+| 250 | Ramp | Hot Updater v1.0 on Cloudflare | 1,500 / 1,500 | 65.5 | 273.5 | 401.4 | 99.800% |
 | 250 | Ramp | Codemagic Patch | 1,500 / 1,500 | 66.3 | 187.1 | 257.5 | 100.000% |
 | 500 | Ramp | Codemagic Patch | 3,000 / 3,000 | 60.4 | 172.2 | 177.5 | 100.000% |
-| 500 | Ramp | Hot Updater v1.0 | 3,000 / 3,000 | 60.2 | 177.0 | 325.3 | 99.867% |
-| 1,000 | 1 | Hot Updater v1.0 | 12,000 / 12,000 | 60.4 | 185.8 | 379.2 | 99.942% |
+| 500 | Ramp | Hot Updater v1.0 on Cloudflare | 3,000 / 3,000 | 60.2 | 177.0 | 325.3 | 99.867% |
+| 1,000 | 1 | Hot Updater v1.0 on Cloudflare | 12,000 / 12,000 | 60.4 | 185.8 | 379.2 | 99.942% |
 | 1,000 | 1 | Codemagic Patch | 12,000 / 12,000 | 65.4 | 175.3 | 190.7 | 100.000% |
 | 1,000 | 2 | Codemagic Patch | 12,000 / 12,000 | 62.8 | 177.0 | 236.1 | 100.000% |
-| 1,000 | 2 | Hot Updater v1.0 | 12,000 / 12,000 | 60.8 | 174.2 | 203.6 | 99.950% |
-| 1,000 | 3 | Hot Updater v1.0 | 12,000 / 12,000 | 59.2 | 175.4 | 202.0 | 99.950% |
+| 1,000 | 2 | Hot Updater v1.0 on Cloudflare | 12,000 / 12,000 | 60.8 | 174.2 | 203.6 | 99.950% |
+| 1,000 | 3 | Hot Updater v1.0 on Cloudflare | 12,000 / 12,000 | 59.2 | 175.4 | 202.0 | 99.950% |
 | 1,000 | 3 | Codemagic Patch | 12,000 / 12,000 | 62.4 | 177.4 | 287.8 | 100.000% |
 
 </details>

@@ -61,13 +61,8 @@ export default function BlogPost({ slug }: PageProps<"/blog/[slug]">) {
                   height={40}
                   className="size-10 rounded-full border border-fd-border object-cover"
                 />
-                <span className="flex flex-col gap-0.5">
-                  <span className="text-sm font-medium text-fd-foreground group-hover:text-fd-primary">
-                    {author.name}
-                  </span>
-                  <span className="text-xs text-fd-muted-foreground">
-                    GitHub profile
-                  </span>
+                <span className="text-sm font-medium text-fd-foreground group-hover:text-fd-primary">
+                  {author.name}
                 </span>
               </a>
             </dd>
