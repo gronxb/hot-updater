@@ -52,6 +52,7 @@ describe("Lynx E2E suite manifest", () => {
       "utf8",
     );
     expect(source).toContain('run("sh", ["bootstrap.sh"], iosDir)');
+    expect(source).toContain('mkdirSync(path.join(iosDir, "Embedded")');
     expect(source).toContain("-derivedDataPath");
     expect(source).toContain("build");
     expect(gemfile).toContain('gem "cocoapods-lynx-library", "3.9.0"');

@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import { spawnSync } from "node:child_process";
+import { mkdirSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -37,6 +38,8 @@ for (const platform of platforms) {
   if (platform === "ios") {
     const iosDir = path.join(exampleDir, "ios");
     run("sh", ["bootstrap.sh"], iosDir);
+    // Gitignored G1 fixtures; E2E overlays --ota-embedded-dir= at launch.
+    mkdirSync(path.join(iosDir, "Embedded"), { recursive: true });
     run(
       "xcodebuild",
       [
