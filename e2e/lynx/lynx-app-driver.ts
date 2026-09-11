@@ -213,10 +213,16 @@ export class LynxAppDriver implements DetoxAppDriver {
     return exampleDir;
   }
 
+  ensureInstalled(): void {
+    this.installApp();
+  }
+
   private installApp(): void {
     if (this.platform === "ios") {
       const binaryPath = this.env.HOT_UPDATER_E2E_IOS_BINARY_PATH;
-      if (!binaryPath) return;
+      if (!binaryPath) {
+        throw new Error("HOT_UPDATER_E2E_IOS_BINARY_PATH is required");
+      }
       this.runOrThrow("xcrun", [
         "simctl",
         "install",
@@ -228,7 +234,9 @@ export class LynxAppDriver implements DetoxAppDriver {
     const apkPath =
       this.env.HOT_UPDATER_E2E_ANDROID_BINARY_PATH ??
       this.env.HOT_UPDATER_E2E_ANDROID_APK_PATH;
-    if (!apkPath) return;
+    if (!apkPath) {
+      throw new Error("HOT_UPDATER_E2E_ANDROID_BINARY_PATH is required");
+    }
     this.runOrThrow("adb", [
       "-s",
       this.deviceId(),

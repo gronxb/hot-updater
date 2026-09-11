@@ -215,6 +215,13 @@ async function runScenarios(
         "/e2e/jobs/bootstrap",
         {},
       );
+      const app = new LynxAppDriver(
+        controlClient,
+        platform,
+        env,
+        bootstrapResult,
+      );
+      app.ensureInstalled();
       await controlClient.runJob(
         "reset remote bundles",
         "/e2e/jobs/reset-remote-bundles",
@@ -225,7 +232,6 @@ async function runScenarios(
         "/e2e/reset-local-app-state",
         {},
       );
-      const app = new LynxAppDriver(controlClient, platform, env, bootstrapResult);
       const scenario = getDetoxScenarioDefinition(scenarioName);
       await scenario.run(app);
       console.log(`Scenario passed: ${platform}/${scenarioName}`);

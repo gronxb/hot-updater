@@ -17,6 +17,7 @@ android {
     release {
       isMinifyEnabled = false
       signingConfig = signingConfigs.getByName("debug")
+      isDebuggable = project.findProperty("lynxE2eDebuggable") == "true"
     }
   }
   compileOptions { sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }

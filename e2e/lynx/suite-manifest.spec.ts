@@ -53,6 +53,7 @@ describe("Lynx E2E suite manifest", () => {
     );
     expect(source).toContain('run("sh", ["bootstrap.sh"], iosDir)');
     expect(source).toContain('mkdirSync(path.join(iosDir, "Embedded")');
+    expect(source).toContain("-PlynxE2eDebuggable=true");
     expect(source).toContain("-derivedDataPath");
     expect(source).toContain("build");
     expect(gemfile).toContain('gem "cocoapods-lynx-library", "3.9.0"');
@@ -67,5 +68,18 @@ describe("Lynx E2E suite manifest", () => {
     );
     expect(source).toContain('privateKeyPath: "./keys/private-key.pem"');
     expect(source).toMatch(/signing:\s*\{[\s\S]*enabled:\s*true/);
+    expect(source).toContain("getBundleSigningPublicKey");
+    expect(source).toContain("keys/public-key.pem");
+  });
+
+  it("installs the Lynx app before resetting local device state", () => {
+    const source = readFileSync(
+      path.join(repoDir, "e2e/lynx/scripts/run.ts"),
+      "utf8",
+    );
+    const installAt = source.indexOf("app.ensureInstalled()");
+    const resetAt = source.indexOf('"/e2e/reset-local-app-state"');
+    expect(installAt).toBeGreaterThan(0);
+    expect(resetAt).toBeGreaterThan(installAt);
   });
 });

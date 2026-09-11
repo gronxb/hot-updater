@@ -60,5 +60,9 @@ for (const platform of platforms) {
     );
     continue;
   }
-  run("./gradlew", [":app:assembleRelease"], path.join(exampleDir, "android"));
+  run(
+    "./gradlew",
+    [":app:assembleRelease", "-PlynxE2eDebuggable=true"],
+    path.join(exampleDir, "android"),
+  );
 }

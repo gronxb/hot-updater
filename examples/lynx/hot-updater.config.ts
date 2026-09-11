@@ -132,6 +132,12 @@ export default {
   },
   /* E2E_AUTO_PATCH_CONFIG_END */
   build: lynx({
+    getBundleSigningPublicKey: async ({ cwd }) => ({
+      publicKey: await fsp.readFile(
+        path.join(cwd, "keys/public-key.pem"),
+        "utf8",
+      ),
+    }),
     build: async ({ cwd, outDir, platform }) => {
       await run(
         "pnpm",
