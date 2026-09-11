@@ -1,15 +1,16 @@
 ---
 title: "Hot Updater v1.0 and Codemagic Patch: Beyond the Stress Test"
-description: "Why choose Hot Updater v1.0 when cached metadata delivery looks similar: start with a provider preset and Console, or fit OTA into the backend you already run."
+description: "Why choose Hot Updater v1.0 when cached metadata delivery looks similar: use your platform's database, storage, and functions, or add OTA to your existing backend."
 date: "2026-09-10"
 author: "gronxb"
 image: "/blog/revisiting-codemagic-stress-test.webp"
 ---
 
 Hot Updater's philosophy is to be infrastructure-agnostic: your team chooses
-where OTA runs, which database it uses, and where bundles live. With
-Hot Updater v1.0, you can start with a provider preset or add OTA to an
-existing backend, with the Console for everyday update management.
+where OTA runs, which database it uses, and where bundles live. Hot Updater
+v1.0 supplies integrations for a platform's managed database, storage, and
+functions. You can also add OTA to an existing backend and use the Console
+for everyday update management.
 
 ## Revisiting the cached read path
 
@@ -55,19 +56,24 @@ kept up with this workload. These short runs did not test maximum capacity,
 sustained production traffic, or performance across the complete products.
 We wouldn't use these results to claim a speed advantage for Hot Updater.
 
-## Start with a provider preset and a Console
+## Use your platform's database, storage, and functions
 
-Hot Updater's [provider presets](/docs/get-started/choose-provider) set up
-an OTA server in your cloud account using managed services. Choose a
-supported provider your team already operates, then follow its setup guide
-to provision resources and connect your app. You can use the supplied
-deployment without running a separate Docker host or writing the server
-yourself.
+Hot Updater's [provider presets](/docs/get-started/choose-provider) connect
+OTA to services your team may already operate. The
+[Supabase preset](/docs/managed/supabase) uses PostgreSQL, Storage, and Edge
+Functions. The [Firebase preset](/docs/managed/firebase) uses Firestore,
+Storage, and Cloud Functions. Each supplies the database and storage
+integration together with the function that handles client requests.
+
+The setup tools apply the provider's schema or indexes and deploy the
+function. You still configure access and connect your app, but the
+integration code is supplied. These deployments don't need a separate
+Docker host for the OTA server.
 
 The [Console](/docs/guides/console) gives your team a UI for managing rollout
 and targeting, disabling bundles, and inspecting artifacts. Run it locally,
 or [deploy an authenticated Console](/docs/guides/console-deployment) for
-your team. Both use your provider resources.
+your team using the same backend resources.
 
 Each preset has its own deployment and caching behavior. The benchmark
 above covers one of those configurations.
@@ -79,18 +85,26 @@ That gives you a prescribed stack to install and operate for management
 and publishing; published updates can still be delivered through storage
 and a CDN independently of the API.
 
-Patch also supports [external PostgreSQL](https://patch.codemagic.io/docs/reference/configuration)
-and [storage and delivery adapters](https://patch.codemagic.io/docs/setup/infrastructure),
-including custom deployments that separate its API and worker. Those give
-you hosting choices around its application stack: a
+Patch can connect to [external PostgreSQL](https://patch.codemagic.io/docs/reference/configuration),
+so the database does not have to run inside Compose. Its
+[storage and delivery adapters](https://patch.codemagic.io/docs/setup/infrastructure)
+also let you change object storage and CDN services around its application
+stack: a
 [Node.js server](https://github.com/codemagic-ci-cd/codemagic-patch/blob/f22294f7c2599b79979b8620e5cb6db4bf3bdf0a/server/package.json)
 that [uses PostgreSQL directly](https://github.com/codemagic-ci-cd/codemagic-patch/blob/f22294f7c2599b79979b8620e5cb6db4bf3bdf0a/server/src/db/client.ts).
-Its documented adapter points cover storage and delivery. Docker is
-required by the supplied installation path; we haven't evaluated a
-non-Docker deployment.
 
-You still handle application upgrades, credentials, and data recovery. We
-haven't measured maintenance time or total operating cost for either setup.
+For the commit we compared, Patch's
+[custom-deployment guide](https://github.com/codemagic-ci-cd/codemagic-patch/blob/f22294f7c2599b79979b8620e5cb6db4bf3bdf0a/docs/custom-deployment.md)
+identifies Compose as the only supported self-hosting path. Deployments
+outside Compose are reference material; separate API and worker services
+are work in progress. An operator could adapt Patch to another hosting
+platform, but that requires its own deployment and verification work.
+
+For a Firebase team, this makes a practical difference. Using a GCS bucket
+with Patch leaves its PostgreSQL-backed API and release worker to host.
+Hot Updater supplies the Firestore and Cloud Functions integration too.
+Both setups still need upgrades, credential management, and data recovery;
+we haven't measured the maintenance effort for either.
 
 ## Fit OTA into an existing backend when you need to
 
@@ -102,8 +116,8 @@ and MongoDB. The [plugin system](/docs/concepts/plugin-system) lets you
 choose database and storage independently.
 
 That includes database choices such as [SQLite](/docs/custom/database/kysely)
-and [MongoDB](/docs/custom/database/mongodb). A MongoDB team can keep OTA
-metadata in its existing database. An Express and Prisma team can add
+and [MongoDB](/docs/custom/database/mongodb). A team with a transaction-capable
+MongoDB deployment can keep OTA metadata there. An Express and Prisma team can add
 Hot Updater's schema through its existing migration process and protect
 management routes with its authentication middleware. The team still
 implements the admin access policy, using the backend it already reviews
@@ -112,9 +126,7 @@ and deploys.
 You can use [Docker](/docs/custom/hosting/docker) if containers fit your
 operations, or deploy to a [serverless host](/docs/custom/hosting/vercel).
 A custom environment needs a compatible runtime and database and storage
-adapters; a provider we don't cover may require integration work. Hot
-Updater's integration choices extend into the server framework and database
-as well as storage and hosting. That is what we mean by infrastructure-agnostic.
+adapters; a provider we don't cover may require integration work.
 
 ## An MIT license without a usage threshold
 
@@ -151,11 +163,11 @@ behave alike during an outage.
 ## Why we'd choose Hot Updater
 
 These cached metadata results give us little reason to choose on speed.
-We'd choose Hot Updater because its infrastructure-agnostic design lets a
-team fit OTA into the systems it already operates. A provider preset
-supplies the server deployment, and the Console handles everyday update
-management. A team that uses managed services can keep that operating
-model for OTA.
+We'd choose Hot Updater for a team that wants OTA to use the managed
+platform it already operates. A provider preset includes the database,
+storage, and function integration, with the Console for update management.
+The team can keep using its platform's services without adopting a
+separate PostgreSQL-backed application stack for OTA.
 
 A team with an established backend can choose its database and run the OTA
 handlers alongside its own routes, using the framework and authentication
