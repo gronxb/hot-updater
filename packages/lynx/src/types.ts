@@ -9,6 +9,78 @@ export interface HotUpdaterOptions {
   requestTimeout?: number;
 }
 
+export type HotUpdaterInitOptions = HotUpdaterOptions & {
+  insights?: boolean;
+  onError?: (error: Error) => void;
+};
+
+export interface CheckForUpdateOptions {
+  updateStrategy: "appVersion" | "fingerprint";
+  channel?: string;
+  requestHeaders?: Record<string, string>;
+  requestTimeout?: number;
+  onError?: (error: Error) => void;
+}
+
+export type ReleaseTransitionKind =
+  | "INSTALL"
+  | "ADOPT_RELEASE"
+  | "USE_EMBEDDED"
+  | "USE_BUILTIN";
+
+export type NotifyAppReadyResult =
+  | { status: "UNCHANGED" }
+  | {
+      status: "UPDATE_APPLIED";
+      fromBundleId: string;
+      toBundleId: string;
+      fromReleaseId?: string;
+      toReleaseId?: string;
+    }
+  | {
+      status: "RECOVERED";
+      fromBundleId: string;
+      toBundleId: string;
+      fromReleaseId?: string;
+      toReleaseId?: string;
+    };
+
+export type ReloadBehavior = "reload" | "processRestart";
+export type ReloadBehaviorSetting = ReloadBehavior | "custom";
+export type CustomReloadHandler = () => void | Promise<void>;
+
+export interface ManifestAsset {
+  fileHash: string;
+  signature?: string;
+}
+
+export interface Manifest {
+  bundleId: string;
+  assets: Record<string, ManifestAsset>;
+}
+
+export interface ActiveUpdateSelection {
+  kind: "BUNDLE" | "EMBEDDED" | "BUILTIN";
+  releaseId: string | null;
+  bundleId: string;
+  channel: string;
+}
+
+export interface ActiveUpdateState {
+  activeSelection: ActiveUpdateSelection | null;
+  stableSelection: ActiveUpdateSelection | null;
+  verificationPending: boolean;
+}
+
+export type HotUpdaterEvent = {
+  onProgress: { progress: number };
+};
+
+export type SetUserParams = {
+  userId?: string | null;
+  name?: string | null;
+};
+
 export type SelectionSummary = Pick<
   PersistedSelectionReceipt,
   "kind" | "bundleId" | "releaseId" | "channel"
@@ -31,21 +103,23 @@ export interface ConfirmationResult {
   status: "CONFIRMED" | "ALREADY_CONFIRMED";
 }
 
-export interface PreparedUpdate {
-  bundleId: string;
-  releaseId: string | null;
-  status: "UPDATE" | "ROLLBACK";
-  message: string | null;
-  shouldForceUpdate: boolean;
-  /** Publishes the prepared selection; never changes this process's bytes. */
-  install(): Promise<InstallResult>;
-}
-
-export interface HotUpdater {
-  getLaunchInfo(): Promise<LaunchInfo>;
-  notifyAppReady(): Promise<ConfirmationResult>;
-  /** Downloads and verifies the candidate, without selecting it for launch. */
-  checkForUpdate(): Promise<PreparedUpdate | null>;
+export interface CheckForUpdateResult {
+  readonly id: string;
+  readonly bundleId: string;
+  readonly message: string | null;
+  readonly rolloutCohortCount: number;
+  readonly shouldForceUpdate: boolean;
+  readonly status: "ROLLBACK" | "UPDATE";
+  readonly targetCohorts: string[];
+  readonly releaseId: string | null;
+  readonly transitionKind: ReleaseTransitionKind;
+  readonly fileUrl: string | null;
+  readonly fileHash: string | null;
+  /**
+   * Publishes the prepared selection. Equivalent to RN
+   * `update.updateBundle()`. Never changes this process's bytes.
+   */
+  updateBundle: () => Promise<boolean>;
 }
 
 /** Internal bridge contract. These fields come from one native state snapshot. */
@@ -122,4 +196,5 @@ export interface HotUpdaterLynxNative {
     callback: Callback<InstallResult>,
   ): void;
   notifyAppReady(callback: Callback<ConfirmationResult>): void;
+  reload?(callback: Callback<void>): void;
 }

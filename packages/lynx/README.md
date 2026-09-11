@@ -5,24 +5,29 @@ integration contract: the same runtime, build plugin, and native controllers
 on iOS and Android.
 
 ```ts
-import { createHotUpdater } from "@hot-updater/lynx";
+import { HotUpdater } from "@hot-updater/lynx";
 
-const updater = createHotUpdater({
+HotUpdater.init({
   baseURL: "https://updates.example.com/hot-updater",
 });
 
-await updater.notifyAppReady();
+await HotUpdater.notifyAppReady();
 
-const update = await updater.checkForUpdate();
+const update = await HotUpdater.checkForUpdate({
+  updateStrategy: "appVersion",
+});
 if (update) {
-  await update.install();
+  await update.updateBundle();
+  if (update.shouldForceUpdate) {
+    await HotUpdater.reload();
+  }
 }
 ```
 
-Importing the package does not call native code or open a network connection.
-The host registers `HotUpdaterLynx`, then background scripting talks to the
-bound native context. Native verifies archives, signatures, and compatibility
-before evaluating a candidate, and it owns confirmation and recovery.
+This matches the React Native client: `HotUpdater.init`,
+`HotUpdater.checkForUpdate`, and `update.updateBundle()`. There is no
+`HotUpdater.wrap` HOC. Importing the package does not call native code or
+open a network connection.
 
 ## How it fits
 
@@ -42,42 +47,36 @@ hosts for iOS and Android.
 
 ## Runtime contract
 
-Create the same controller in each UI framework and invoke its methods from
-Lynx background scripting after the host registers `HotUpdaterLynx`:
+Call the same `HotUpdater` object from each UI framework's background
+scripting after the host registers `HotUpdaterLynx`:
 
 ```ts
-import { createHotUpdater } from "@hot-updater/lynx";
+import { HotUpdater } from "@hot-updater/lynx";
 
-const updater = createHotUpdater({ baseURL: "https://updates.example.com" });
+HotUpdater.init({ baseURL: "https://updates.example.com/hot-updater" });
 
-// Call after the application's essential background startup succeeds.
-await updater.notifyAppReady();
+await HotUpdater.notifyAppReady();
 
-const update = await updater.checkForUpdate();
+const update = await HotUpdater.checkForUpdate({
+  updateStrategy: "appVersion",
+});
 if (update) {
-  await update.install();
+  await update.updateBundle();
 }
-
-const launch = await updater.getLaunchInfo();
 ```
 
-Importing the package and creating the controller perform no native calls,
-network requests or listener registration. The current HTTP implementation needs
-`fetch` and `AbortController` in background scripting; their host integration is
-part of the native example validation.
+Importing the package and calling `init` perform no native calls, network
+requests, or listener registration. The HTTP client needs `fetch` and
+`AbortController` in background scripting.
 
-`checkForUpdate()` can download files: native prepares and verifies the candidate
-before returning it, including its compatibility identity. A known incompatible
-candidate rejects with `LynxUpdaterError.code === "INCOMPATIBLE"`. It does not
-select an older candidate automatically. `install()` publishes that exact
-prepared selection for the next process, subject to a fresh native authorization
-check. A stale prepared selection rejects; it cannot silently install a different
-update.
+`checkForUpdate()` can download files: native prepares and verifies the
+candidate before returning it. A known incompatible candidate rejects with
+`LynxUpdaterError.code === "INCOMPATIBLE"`. `update.updateBundle()` publishes
+that exact prepared selection for the next process. A stale prepared selection
+rejects; it cannot silently install a different update.
 
-`getLaunchInfo().running` describes the current process. `next` describes a staged
-selection. Installation leaves the running bytes unchanged. Native may adopt a
-new Release for already confirmed running bytes without a restart; matching
-cached bytes alone cannot confer startup confirmation.
+`HotUpdater.getLaunchInfo().running` describes the current process. `next`
+describes a staged selection. Installation leaves the running bytes unchanged.
 
 Readiness requires both the live primary context's native content observation
 and successful essential application startup. A secondary, destroyed or stale

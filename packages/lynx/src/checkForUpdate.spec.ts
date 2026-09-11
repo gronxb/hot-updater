@@ -8,7 +8,7 @@ import {
 } from "@hot-updater/core";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { createHotUpdater } from "./index";
+import { HotUpdater } from "./index";
 import type {
   AcceptCatalogParams,
   HotUpdaterLynxNative,
@@ -140,10 +140,10 @@ function setup(
       ),
   );
   vi.stubGlobal("fetch", fetch);
-  const updater = createHotUpdater({ baseURL: "https://updates.test" });
+  HotUpdater.init({ baseURL: "https://updates.test" });
   const prepared = () =>
     native.prepareSelection.mock.calls[0]![0] as PrepareSelectionParams;
-  return { updater, state, catalog, native, fetch, prepared };
+  return { updater: HotUpdater, state, catalog, native, fetch, prepared };
 }
 
 afterEach(() => vi.unstubAllGlobals());
@@ -151,7 +151,9 @@ afterEach(() => vi.unstubAllGlobals());
 describe("Lynx catalog controller (mock native transport)", () => {
   it("prepares during check but publishes only the retained native token on install", async () => {
     const { updater, native, prepared } = setup();
-    const update = await updater.checkForUpdate();
+    const update = await updater.checkForUpdate({
+      updateStrategy: "appVersion",
+    });
     expect(prepared().artifact).toEqual({
       bundleId: B,
       fileUrl: "https://updates.test/storage/archive.tar.gz",
@@ -161,13 +163,10 @@ describe("Lynx catalog controller (mock native transport)", () => {
     expect(prepared().selection.bundleId).toBe(B);
     expect(native.stageSelection).not.toHaveBeenCalled();
     expect((await updater.getLaunchInfo()).running.bundleId).toBe(A);
-    const first = update!.install();
-    const second = update!.install();
-    expect(first).toBe(second);
-    await expect(first).resolves.toEqual({
-      status: "STAGED",
-      requiresRestart: true,
-    });
+    const first = update!.updateBundle();
+    const second = update!.updateBundle();
+    await expect(first).resolves.toBe(true);
+    await expect(second).resolves.toBe(true);
     expect(native.stageSelection).toHaveBeenCalledOnce();
     expect(native.stageSelection.mock.calls[0]![0]).toEqual({
       preparedId: "native-prepared",
@@ -189,7 +188,10 @@ describe("Lynx catalog controller (mock native transport)", () => {
       ],
     );
     // Catalog order is policy order: exclusions apply even ahead of a valid target.
-    expect((await updater.checkForUpdate())?.releaseId).toBe(newRelease);
+    expect(
+      (await updater.checkForUpdate({ updateStrategy: "appVersion" }))
+        ?.releaseId,
+    ).toBe(newRelease);
     expect(prepared().selection.releaseId).toBe(newRelease);
     const accepted = native.acceptCatalog.mock
       .calls[0]![0] as AcceptCatalogParams;
@@ -216,7 +218,7 @@ describe("Lynx catalog controller (mock native transport)", () => {
       },
       [release(releaseC, C), release(releaseB, B)],
     );
-    await updater.checkForUpdate();
+    await updater.checkForUpdate({ updateStrategy: "appVersion" });
     expect(prepared().selection.bundleId).toBe(C);
     expect(fetch.mock.calls[1]![0]).toBe(
       `https://updates.test/artifacts/${C}/from/${A}`,
@@ -229,7 +231,7 @@ describe("Lynx catalog controller (mock native transport)", () => {
       { runningSelection: receipt(B, releaseB), runningConfirmed: false },
       [release(id(14), B)],
     );
-    await updater.checkForUpdate();
+    await updater.checkForUpdate({ updateStrategy: "appVersion" });
     expect(fetch).toHaveBeenCalledTimes(2);
     expect(prepared().artifact?.bundleId).toBe(B);
     expect(prepared()).not.toHaveProperty("alreadyConfirmed");
@@ -246,14 +248,13 @@ describe("Lynx catalog controller (mock native transport)", () => {
         data: { status: "ADOPTED", requiresRestart: false },
       }),
     );
-    const update = await updater.checkForUpdate();
+    const update = await updater.checkForUpdate({
+      updateStrategy: "appVersion",
+    });
     expect(prepared().artifact).toBeNull();
     expect(fetch).toHaveBeenCalledOnce();
     expect(native.stageSelection).not.toHaveBeenCalled();
-    await expect(update!.install()).resolves.toEqual({
-      status: "ADOPTED",
-      requiresRestart: false,
-    });
+    await expect(update!.updateBundle()).resolves.toBe(true);
   });
 
   it("stages an authorized embedded rollback without requesting an archive", async () => {
@@ -261,7 +262,9 @@ describe("Lynx catalog controller (mock native transport)", () => {
       { runningSelection: receipt(B, releaseB) },
       [release(id(14), null)],
     );
-    const update = await updater.checkForUpdate();
+    const update = await updater.checkForUpdate({
+      updateStrategy: "appVersion",
+    });
     expect(update).toMatchObject({ bundleId: A, status: "ROLLBACK" });
     expect(prepared()).toMatchObject({
       artifact: null,
@@ -285,7 +288,9 @@ describe("Lynx catalog controller (mock native transport)", () => {
         release(releaseA, A),
       ],
     });
-    expect(await updater.checkForUpdate()).toMatchObject({
+    expect(
+      await updater.checkForUpdate({ updateStrategy: "appVersion" }),
+    ).toMatchObject({
       releaseId: releaseA,
       status: "ROLLBACK",
     });
@@ -300,7 +305,9 @@ describe("Lynx catalog controller (mock native transport)", () => {
         error: { code: "STALE_SELECTION", message: "Native state changed." },
       }),
     );
-    await expect(updater.checkForUpdate()).rejects.toMatchObject({
+    await expect(
+      updater.checkForUpdate({ updateStrategy: "appVersion" }),
+    ).rejects.toMatchObject({
       code: "STALE_SELECTION",
     });
     expect(native.prepareSelection).not.toHaveBeenCalled();
@@ -318,7 +325,9 @@ describe("Lynx catalog controller (mock native transport)", () => {
         },
       }),
     );
-    await expect(updater.checkForUpdate()).rejects.toMatchObject({
+    await expect(
+      updater.checkForUpdate({ updateStrategy: "appVersion" }),
+    ).rejects.toMatchObject({
       code: "INCOMPATIBLE",
     });
     expect(native.stageSelection).not.toHaveBeenCalled();
@@ -329,7 +338,9 @@ describe("Lynx catalog controller (mock native transport)", () => {
     native.prepareSelection.mockImplementation((_params, callback) =>
       callback({ ok: true, data: { preparedId: "" } }),
     );
-    await expect(updater.checkForUpdate()).rejects.toMatchObject({
+    await expect(
+      updater.checkForUpdate({ updateStrategy: "appVersion" }),
+    ).rejects.toMatchObject({
       code: "INVALID_NATIVE_REPLY",
     });
     expect(native.stageSelection).not.toHaveBeenCalled();
@@ -337,7 +348,9 @@ describe("Lynx catalog controller (mock native transport)", () => {
 
   it("rejects stale prepared installation without fetching or selecting a new candidate", async () => {
     const { updater, native, fetch } = setup();
-    const update = await updater.checkForUpdate();
+    const update = await updater.checkForUpdate({
+      updateStrategy: "appVersion",
+    });
     native.stageSelection.mockImplementation((_params, callback) =>
       callback({
         ok: false,
@@ -347,7 +360,7 @@ describe("Lynx catalog controller (mock native transport)", () => {
         },
       }),
     );
-    await expect(update!.install()).rejects.toMatchObject({
+    await expect(update!.updateBundle()).rejects.toMatchObject({
       code: "STALE_SELECTION",
     });
     expect(fetch).toHaveBeenCalledTimes(2);
@@ -356,7 +369,9 @@ describe("Lynx catalog controller (mock native transport)", () => {
 
   it("still accepts catalog high-water when already on the built-in selection", async () => {
     const { updater, native, fetch } = setup({}, []);
-    await expect(updater.checkForUpdate()).resolves.toBeNull();
+    await expect(
+      updater.checkForUpdate({ updateStrategy: "appVersion" }),
+    ).resolves.toBeNull();
     expect(native.acceptCatalog).toHaveBeenCalledOnce();
     expect(native.prepareSelection).not.toHaveBeenCalled();
     expect(fetch).toHaveBeenCalledOnce();

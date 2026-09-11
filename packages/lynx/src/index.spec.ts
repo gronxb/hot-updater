@@ -18,11 +18,11 @@ describe("Lynx public controller", () => {
     );
     const fetch = vi.fn();
     vi.stubGlobal("fetch", fetch);
-    const { createHotUpdater } = await import("./index");
-    const updater = createHotUpdater({ baseURL: "https://updates.test" });
+    const { HotUpdater } = await import("./index");
+    HotUpdater.init({ baseURL: "https://updates.test" });
     expect(readModule).not.toHaveBeenCalled();
     expect(fetch).not.toHaveBeenCalled();
-    await expect(updater.getLaunchInfo()).rejects.toThrow(
+    await expect(HotUpdater.getLaunchInfo()).rejects.toThrow(
       "Native access during import",
     );
     expect(readModule).toHaveBeenCalledOnce();
@@ -53,9 +53,9 @@ describe("Lynx public controller", () => {
           }),
       },
     });
-    const { createHotUpdater } = await import("./index");
-    const updater = createHotUpdater({ baseURL: "https://updates.test" });
-    const info = await updater.getLaunchInfo();
+    const { HotUpdater } = await import("./index");
+    HotUpdater.init({ baseURL: "https://updates.test" });
+    const info = await HotUpdater.getLaunchInfo();
     expect(info).toEqual({
       platform: "android",
       runtimeId: "runtime",
@@ -64,14 +64,14 @@ describe("Lynx public controller", () => {
       confirmed: true,
     });
     Object.assign(info.running, { bundleId: "changed" });
-    expect((await updater.getLaunchInfo()).running.bundleId).toBe("A");
+    expect((await HotUpdater.getLaunchInfo()).running.bundleId).toBe("A");
   });
 
   it("fails explicitly on a method call when native integration is absent", async () => {
     vi.stubGlobal("NativeModules", undefined);
-    const { createHotUpdater } = await import("./index");
-    const updater = createHotUpdater({ baseURL: "https://updates.test" });
-    await expect(updater.notifyAppReady()).rejects.toMatchObject({
+    const { HotUpdater } = await import("./index");
+    HotUpdater.init({ baseURL: "https://updates.test" });
+    await expect(HotUpdater.notifyAppReady()).rejects.toMatchObject({
       code: "NATIVE_MODULE_UNAVAILABLE",
     });
   });

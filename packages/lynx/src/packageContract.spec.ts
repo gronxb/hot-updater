@@ -36,12 +36,12 @@ describe("framework-independent Lynx package contract", () => {
     const build = path.join(packageRoot, "dist/build.mjs");
     expect(await fs.stat(runtime).then((value) => value.isFile())).toBe(true);
     expect(await fs.stat(build).then((value) => value.isFile())).toBe(true);
-    const { createHotUpdater } = await import(runtime);
-    const updater = createHotUpdater({ baseURL: "https://updates.test" });
-    await expect(updater.getLaunchInfo()).rejects.toMatchObject({
+    const { HotUpdater } = await import(runtime);
+    HotUpdater.init({ baseURL: "https://updates.test" });
+    await expect(HotUpdater.getLaunchInfo()).rejects.toMatchObject({
       code: "NATIVE_MODULE_UNAVAILABLE",
     });
-    await expect(updater.notifyAppReady()).rejects.toMatchObject({
+    await expect(HotUpdater.notifyAppReady()).rejects.toMatchObject({
       code: "NATIVE_MODULE_UNAVAILABLE",
     });
     const { lynx } = await import(build);

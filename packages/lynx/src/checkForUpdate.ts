@@ -9,11 +9,13 @@ import { createHttpClient } from "./httpClient";
 import { callNative, LynxUpdaterError } from "./native";
 import type {
   AcceptCatalogParams,
+  CheckForUpdateOptions,
+  CheckForUpdateResult,
   HotUpdaterOptions,
   InstallResult,
   NativeState,
-  PreparedUpdate,
   PrepareSelectionParams,
+  ReleaseTransitionKind,
   SelectionGuard,
 } from "./types";
 
@@ -26,11 +28,34 @@ function sameReceipt(
   );
 }
 
+export interface InternalCheckForUpdateOptions extends CheckForUpdateOptions {
+  client: HotUpdaterOptions;
+}
+
 export async function checkForUpdate(
-  options: HotUpdaterOptions,
-): Promise<PreparedUpdate | null> {
+  options: InternalCheckForUpdateOptions,
+): Promise<CheckForUpdateResult | null> {
+  if (options.updateStrategy !== "appVersion") {
+    throw new LynxUpdaterError(
+      "UNSUPPORTED_STRATEGY",
+      'Lynx updates use updateStrategy: "appVersion".',
+    );
+  }
   const state = await callNative<NativeState>("getState");
-  const http = createHttpClient(options);
+  if (options.channel && options.channel !== state.channel) {
+    throw new LynxUpdaterError(
+      "CHANNEL_LOCKED",
+      `Native channel is "${state.channel}". Lynx does not switch channel from downloaded code.`,
+    );
+  }
+  const http = createHttpClient({
+    ...options.client,
+    requestHeaders: {
+      ...options.client.requestHeaders,
+      ...options.requestHeaders,
+    },
+    requestTimeout: options.requestTimeout ?? options.client.requestTimeout,
+  });
   const catalog = await http.fetchCatalog(state);
   // Policy may replace an installed next selection. Running bytes stay separate.
   const current = state.nextSelection ?? state.runningSelection;
@@ -129,19 +154,36 @@ export async function checkForUpdate(
     );
   }
   const preparedId = prepared.preparedId;
-  let installation: Promise<InstallResult> | undefined;
+  let installation: Promise<boolean> | undefined;
+  const transitionKind: ReleaseTransitionKind = canRequestAdoption
+    ? "ADOPT_RELEASE"
+    : desired.kind === "EMBEDDED"
+      ? "USE_EMBEDDED"
+      : desired.kind === "BUILTIN"
+        ? "USE_BUILTIN"
+        : "INSTALL";
   return {
+    id: desired.releaseId ?? desired.bundleId,
     bundleId: desired.bundleId,
-    releaseId: desired.releaseId,
-    status: desired.status,
+    fileHash: artifact?.fileHash ?? null,
+    fileUrl: artifact?.fileUrl ?? null,
     message: desired.release?.message ?? null,
+    releaseId: desired.releaseId,
+    rolloutCohortCount: desired.release?.rolloutCohortCount ?? 1000,
     shouldForceUpdate: canRequestAdoption
       ? false
       : desired.status === "ROLLBACK" ||
         (desired.release?.shouldForceUpdate ?? false),
-    install: () =>
+    status: desired.status,
+    targetCohorts: desired.release?.targetCohorts
+      ? [...desired.release.targetCohorts]
+      : [],
+    transitionKind,
+    updateBundle: () =>
       (installation ??= callNative<InstallResult>("stageSelection", {
         preparedId,
-      })),
+      }).then(
+        (result) => result.status === "STAGED" || result.status === "ADOPTED",
+      )),
   };
 }

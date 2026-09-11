@@ -1,4 +1,4 @@
-import { createHotUpdater, type PreparedUpdate } from "@hot-updater/lynx";
+import { HotUpdater, type CheckForUpdateResult } from "@hot-updater/lynx";
 
 declare const __SPIKE_VARIANT__: string;
 declare const __SPIKE_BEHAVIOR__: string;
@@ -9,10 +9,10 @@ declare const __SDK_RESOURCES__: boolean;
 export const variant = __SPIKE_VARIANT__;
 export const resources = __SDK_RESOURCES__;
 export const imageUrl = `${__SPIKE_ASSET_PREFIX__}assets/probe.png`;
-const updater = createHotUpdater({ baseURL: __SDK_BASE_URL__ });
+HotUpdater.init({ baseURL: __SDK_BASE_URL__ });
 let imageReady = false;
 let completeImage: (() => void) | undefined;
-let prepared: PreparedUpdate | null = null;
+let prepared: CheckForUpdateResult | null = null;
 let busy = false;
 let ready = false;
 
@@ -29,7 +29,7 @@ export async function startSdk(
   loadDynamic: (url: string) => Promise<string>,
 ) {
   try {
-    const launch = await updater.getLaunchInfo();
+    const launch = await HotUpdater.getLaunchInfo();
     console.log("HOT_UPDATER_SDK_LAUNCH", JSON.stringify(launch));
     console.log(
       "HOT_UPDATER_SDK_TRANSPORT",
@@ -64,10 +64,10 @@ export async function startSdk(
     }
     // Font registration is not loading. Native must hold this callback until
     // its actual essential font/image loaders and initial content succeed.
-    const confirmation = await updater.notifyAppReady();
+    const confirmation = await HotUpdater.notifyAppReady();
     console.log("HOT_UPDATER_SDK_READY", JSON.stringify(confirmation));
     if (__SPIKE_BEHAVIOR__ === "double-ready") {
-      const repeated = await updater.notifyAppReady();
+      const repeated = await HotUpdater.notifyAppReady();
       console.log(
         "HOT_UPDATER_SDK_REPEATED_READY",
         JSON.stringify({ confirmation, repeated }),
@@ -95,7 +95,9 @@ export async function checkSdkUpdate(
   canInstall(false);
   status("Checking and preparing update…");
   try {
-    prepared = await updater.checkForUpdate();
+    prepared = await HotUpdater.checkForUpdate({
+      updateStrategy: "appVersion",
+    });
     console.log(
       "HOT_UPDATER_SDK_CHECK",
       JSON.stringify(
@@ -127,14 +129,24 @@ export async function installSdkUpdate(
   if (busy || !prepared) return;
   busy = true;
   try {
-    const result = await prepared.install();
-    console.log("HOT_UPDATER_SDK_INSTALL", JSON.stringify(result));
+    const installed = await prepared.updateBundle();
+    console.log(
+      "HOT_UPDATER_SDK_INSTALL",
+      JSON.stringify({
+        installed,
+        id: prepared.id,
+        transitionKind: prepared.transitionKind,
+      }),
+    );
+    const needsRestart = prepared.transitionKind !== "ADOPT_RELEASE";
     prepared = null;
     canInstall(false);
     status(
-      result.requiresRestart
+      installed && needsRestart
         ? "Update installed. Close and reopen the app."
-        : "Release adopted.",
+        : installed
+          ? "Release adopted."
+          : "Installation skipped.",
     );
   } catch (error) {
     status(`Installation failed: ${String(error)}`);
