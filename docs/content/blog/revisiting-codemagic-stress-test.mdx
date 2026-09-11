@@ -8,7 +8,7 @@ image: "/blog/revisiting-codemagic-stress-test.webp"
 
 With Hot Updater v1.0, you can provision an OTA server in your cloud account
 and manage updates through the Console. If you need OTA inside an existing
-backend, you can choose that setup too. A custom integration is optional.
+backend, you can choose that setup too.
 
 ## Revisiting the cached read path
 
@@ -35,7 +35,7 @@ We scheduled 1,000 requests per second for each path in three 12-second runs.
 Each path completed all 36,000 requests with HTTP 200 and the expected
 Bundle ID or package hash.
 
-| Metric at 1,000 requests/s | Hot Updater v1.0 | Static control using Patch's manifest format |
+| Metric at 1,000 requests/s | Hot Updater v1.0 | Codemagic Patch |
 | --- | ---: | ---: |
 | HTTP 200 + expected identifier | 36,000 / 36,000 | 36,000 / 36,000 |
 | HTTP, timeout, or payload failures | 0 | 0 |
@@ -43,6 +43,9 @@ Bundle ID or package hash.
 | p95, all three runs pooled | 176.7 ms | 176.5 ms |
 | p99, all three runs pooled | 271.8 ms | 243.3 ms |
 | CDN `HIT` responses | 35,981 (99.947%) | 36,000 (100%) |
+
+*Codemagic Patch results are from the static manifest control described
+above, not a full Patch deployment.*
 
 All 81,000 measured requests passed, including the 250 and 500 requests/s
 stages. Median latency and p95 were close; the static control had a lower
@@ -62,8 +65,7 @@ don't need a separate VM, Docker Compose stack, or PostgreSQL server.
 The [Console](/docs/guides/console) gives your team a UI for managing rollout
 and targeting, disabling bundles, and inspecting artifacts. Run it locally,
 or [deploy an authenticated Console](/docs/guides/console-deployment) for
-your team. Both use your provider resources. The preset supplies the OTA
-server; the Console supplies the management interface.
+your team. Both use your provider resources.
 
 The [provider presets](/docs/get-started/choose-provider) also cover AWS,
 Supabase, and Firebase, each with its own deployment and caching behavior.
@@ -86,16 +88,13 @@ management routes. Database integrations cover Kysely, Drizzle, Prisma,
 and MongoDB. The [plugin system](/docs/concepts/plugin-system) lets you
 choose database and storage independently.
 
-For example, a team that already runs Express with Prisma can use those
-same tools for OTA management. Hot Updater's schema changes go through
-that team's database migration process, and its admin routes sit behind
-the team's authentication middleware. Your team still prepares the schema
-and implements the admin access policy, within the backend it already
-knows how to review and deploy.
+For example, an Express and Prisma team can add Hot Updater's schema
+through its existing database migration process and protect management
+routes with its authentication middleware. The team still implements the
+admin access policy, using the backend it already reviews and deploys.
 
-This path is useful when OTA needs to fit your application architecture.
-A team happy with a provider preset can keep using that deployment and
-the Console without building a custom server.
+If a provider preset fits your needs, you can use it and the Console
+without writing a custom server.
 
 ## An MIT license without a usage threshold
 
@@ -119,8 +118,7 @@ version now.
 
 Patch offers an integrated installer and dashboard, plus
 [commercial support and optional vendor hosting](https://patch.codemagic.io/docs/introduction/pricing).
-Its installer and vendor support can be a good fit for a team that wants
-help adopting and operating Patch's stack.
+That can suit a team that wants help adopting and operating Patch's stack.
 
 Patch keeps published manifests and bundle URLs separate from the
 management API. Codemagic [demonstrates delivery with that API offline](https://blog.codemagic.io/designing-scalable-ota-update-architecture/#simulated-crash-test),
@@ -141,10 +139,9 @@ the OTA server can use its framework, database tooling, and admin
 authentication. MIT lets that team modify and build on the system without
 a usage threshold or competing-product restriction.
 
-Those are practical reasons to pick Hot Updater even when cached metadata delivery
-is close in this test. [Start with a provider preset](/docs/get-started/choose-provider)
-for the supplied deployment, or use the
-[custom-server guide](/docs/custom/overview) when integration is a requirement.
+[Choose a provider preset](/docs/get-started/choose-provider) to set up the
+OTA server in your cloud account, or follow the
+[custom-server guide](/docs/custom/overview) to connect it to your backend.
 
 ## Measurement record
 
@@ -235,7 +232,7 @@ enabled iOS Release with 100% rollout, no custom cohorts, and
 fixture only needed to read persisted metadata. Publishing and artifact
 resolution were outside the test.
 
-| Request or fixture | Hot Updater v1.0 | Static control using Patch's manifest format |
+| Request or fixture | Hot Updater v1.0 | Codemagic Patch |
 | --- | --- | --- |
 | Request path | `/release-catalogs/app-version/ios/cHJvZHVjdGlvbg/1.0.0` | `/patch/production/1.0.0/manifest.json` |
 | App target | iOS, `production`, app version `1.0.0` | Synthetic manifest for the same version and channel |
@@ -293,18 +290,19 @@ latency distributions.
 <summary>Every measured stage</summary>
 
 All times are milliseconds. Rows follow execution order; warmup is excluded.
+Codemagic Patch rows show the same static manifest control described above.
 
 | Offered requests/s | Run | Target | Correct / sent | p50 | p95 | p99 | CDN HIT |
 | ---: | --- | --- | ---: | ---: | ---: | ---: | ---: |
-| 250 | Ramp | v1.0 | 1,500 / 1,500 | 65.5 | 273.5 | 401.4 | 99.800% |
-| 250 | Ramp | Static | 1,500 / 1,500 | 66.3 | 187.1 | 257.5 | 100.000% |
-| 500 | Ramp | Static | 3,000 / 3,000 | 60.4 | 172.2 | 177.5 | 100.000% |
-| 500 | Ramp | v1.0 | 3,000 / 3,000 | 60.2 | 177.0 | 325.3 | 99.867% |
-| 1,000 | 1 | v1.0 | 12,000 / 12,000 | 60.4 | 185.8 | 379.2 | 99.942% |
-| 1,000 | 1 | Static | 12,000 / 12,000 | 65.4 | 175.3 | 190.7 | 100.000% |
-| 1,000 | 2 | Static | 12,000 / 12,000 | 62.8 | 177.0 | 236.1 | 100.000% |
-| 1,000 | 2 | v1.0 | 12,000 / 12,000 | 60.8 | 174.2 | 203.6 | 99.950% |
-| 1,000 | 3 | v1.0 | 12,000 / 12,000 | 59.2 | 175.4 | 202.0 | 99.950% |
-| 1,000 | 3 | Static | 12,000 / 12,000 | 62.4 | 177.4 | 287.8 | 100.000% |
+| 250 | Ramp | Hot Updater v1.0 | 1,500 / 1,500 | 65.5 | 273.5 | 401.4 | 99.800% |
+| 250 | Ramp | Codemagic Patch | 1,500 / 1,500 | 66.3 | 187.1 | 257.5 | 100.000% |
+| 500 | Ramp | Codemagic Patch | 3,000 / 3,000 | 60.4 | 172.2 | 177.5 | 100.000% |
+| 500 | Ramp | Hot Updater v1.0 | 3,000 / 3,000 | 60.2 | 177.0 | 325.3 | 99.867% |
+| 1,000 | 1 | Hot Updater v1.0 | 12,000 / 12,000 | 60.4 | 185.8 | 379.2 | 99.942% |
+| 1,000 | 1 | Codemagic Patch | 12,000 / 12,000 | 65.4 | 175.3 | 190.7 | 100.000% |
+| 1,000 | 2 | Codemagic Patch | 12,000 / 12,000 | 62.8 | 177.0 | 236.1 | 100.000% |
+| 1,000 | 2 | Hot Updater v1.0 | 12,000 / 12,000 | 60.8 | 174.2 | 203.6 | 99.950% |
+| 1,000 | 3 | Hot Updater v1.0 | 12,000 / 12,000 | 59.2 | 175.4 | 202.0 | 99.950% |
+| 1,000 | 3 | Codemagic Patch | 12,000 / 12,000 | 62.4 | 177.4 | 287.8 | 100.000% |
 
 </details>
