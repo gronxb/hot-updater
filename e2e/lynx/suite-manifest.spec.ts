@@ -43,9 +43,20 @@ describe("Lynx E2E suite manifest", () => {
       path.join(repoDir, "examples/lynx/scripts/build-e2e-native.mjs"),
       "utf8",
     );
+    const bootstrap = readFileSync(
+      path.join(repoDir, "examples/lynx/ios/bootstrap.sh"),
+      "utf8",
+    );
+    const gemfile = readFileSync(
+      path.join(repoDir, "examples/lynx/ios/Gemfile"),
+      "utf8",
+    );
     expect(source).toContain('run("sh", ["bootstrap.sh"], iosDir)');
     expect(source).toContain("-derivedDataPath");
     expect(source).toContain("build");
+    expect(gemfile).toContain('gem "cocoapods-lynx-library", "3.9.0"');
+    expect(bootstrap).toContain("bundle install");
+    expect(bootstrap).toContain("bundle exec pod install");
   });
 
   it("declares bundle signing so agent setup can export the public key", () => {

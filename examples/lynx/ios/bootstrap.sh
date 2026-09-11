@@ -7,4 +7,8 @@ if [ ! -d .upstream/sparkling/.git ]; then
   git clone https://github.com/tiktok/sparkling.git .upstream/sparkling
 fi
 git -C .upstream/sparkling checkout --detach "$revision"
-pod install
+if ! command -v bundle >/dev/null 2>&1; then
+  gem install bundler
+fi
+bundle install
+bundle exec pod install

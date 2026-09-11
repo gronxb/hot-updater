@@ -4,9 +4,9 @@ This private G1 host derives from Sparkling's production template at
 `c4ce8d25c5ea277e13752d68ff1f2a66f5704240`. It runs real compiled Lynx files in
 an iOS release simulator binary. It is not the completed Hot Updater native SDK.
 
-Prerequisites: Xcode, CocoaPods 1.16.2, and the
-`cocoapods-lynx-library` 3.9.0 Ruby plugin. Run `./bootstrap.sh` to fetch the pinned
-Sparkling sources and resolve the locked native dependencies. Sparkling's
+Prerequisites: Xcode and Bundler. Run `./bootstrap.sh` to fetch the pinned
+Sparkling sources, install `cocoapods-lynx-library` 3.9.0, and resolve the
+locked native dependencies. Sparkling's
 2.1.0-rc.12 router pod is unavailable from the CDN, so the local source dependency
 is intentional.
 
