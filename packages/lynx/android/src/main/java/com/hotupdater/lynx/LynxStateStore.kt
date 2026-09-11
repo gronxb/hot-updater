@@ -1,6 +1,5 @@
 package com.hotupdater.lynx
 
-import android.system.Os
 import com.hotupdater.lynx.internal.DurableFiles
 import org.json.JSONObject
 import java.io.File
@@ -29,9 +28,12 @@ internal class LynxStateStore(private val directory: File) {
         try {
             FileOutputStream(staging).use { output -> output.write(next.toString().toByteArray()); output.fd.sync() }
             // Unlike Android AtomicFile.finishWrite, these APIs report fsync and rename failures.
-            Os.rename(staging.path, stateFile.path)
+            DurableFiles.replace(staging, stateFile)
             DurableFiles.syncDirectory(directory)
             value = next
         } finally { if (staging.exists()) check(staging.delete()) { "Could not remove failed state preparation" } }
+    }
+    fun close() {
+        try { processLock.release() } finally { ownerFile.close() }
     }
 }

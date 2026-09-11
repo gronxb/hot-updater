@@ -10,6 +10,8 @@ import { config } from "dotenv";
 import { Kysely, sql } from "kysely";
 import { PGliteDialect } from "kysely-pglite-dialect";
 
+import { localFsStorage } from "./localFsStorage.mjs";
+
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 // Load .env.hotupdater
@@ -34,7 +36,14 @@ export const hotUpdater = createHotUpdater({
   }),
   clientAccess: { type: "public" },
   storage: [
-    mockStorage({}),
+    process.env.HOT_UPDATER_STORAGE_DIR
+      ? localFsStorage({
+          directory: process.env.HOT_UPDATER_STORAGE_DIR,
+          signingKey:
+            process.env.HOT_UPDATER_STORAGE_DOWNLOAD_URL_KEY ??
+            "development-storage-download-url-key",
+        })
+      : mockStorage({}),
     s3Storage({
       region: "auto",
       endpoint: process.env.R2_ENDPOINT,

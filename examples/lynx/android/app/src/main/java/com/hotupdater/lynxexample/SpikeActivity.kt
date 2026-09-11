@@ -25,6 +25,11 @@ class SpikeActivity : Activity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        if (intent.getBooleanExtra("ota", false) || intent.getStringExtra("mode") == "ota") {
+            startActivity(android.content.Intent(this, OtaActivity::class.java).putExtras(intent))
+            finish()
+            return
+        }
         try { openPrimary() } catch (error: Exception) {
             Log.e("HotUpdaterLynxG1", "pre-execution-rejection ${error.message}", error)
             setContentView(TextView(this).apply { text = "G1 rejected before execution: ${error.message}" })

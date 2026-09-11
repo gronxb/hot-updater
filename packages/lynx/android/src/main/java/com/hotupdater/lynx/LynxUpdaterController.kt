@@ -13,14 +13,24 @@ import kotlinx.coroutines.ensureActive
 import kotlin.coroutines.coroutineContext
 
 /** Native policy, scoped persistence and immutable process selection. */
-class LynxUpdaterController(context: Context, val configuration: LynxHostConfiguration) {
+class LynxUpdaterController internal constructor(
+    filesDir: File,
+    packageCodePath: File,
+    private val embedded: VerifiedLynxInstallation,
+    val configuration: LynxHostConfiguration,
+) {
+    constructor(context: Context, configuration: LynxHostConfiguration) : this(
+        context.filesDir,
+        File(context.packageCodePath),
+        loadEmbedded(context, configuration),
+        configuration,
+    )
     private val stateLock = Any()
-    private val embedded = loadEmbedded(context, configuration)
-    private val binaryId = HashUtils.calculateSHA256(File(context.packageCodePath))
+    private val binaryId = HashUtils.calculateSHA256(packageCodePath)
     private val keyIdentity = ArchiveIntegrity(configuration.publicKeyPem).keyIdentity
     private val namespace = digestString(listOf(binaryId, configuration.runtimeId, configuration.channel,
         configuration.appVersion, embedded.bundleId, embedded.manifestHash, keyIdentity).joinToString("\n"))
-    private val directory = File(context.filesDir, "hot-updater-lynx/scopes/$namespace").canonicalFile
+    private val directory = File(filesDir, "hot-updater-lynx/scopes/$namespace").canonicalFile
     private val store = LynxStateStore(directory)
     private val installer = LynxArtifactInstaller(File(directory, "artifacts"), LynxInstallConfiguration(configuration.runtimeId, configuration.publicKeyPem))
     private var running = builtin()
@@ -257,7 +267,20 @@ class LynxUpdaterController(context: Context, val configuration: LynxHostConfigu
         session.failed = true
         val pending = store.value.optJSONObject("pending") ?: return@synchronized
         if (pending.optString("attemptId") != session.id) return@synchronized
-        mutate { it.put("pending", JSONObject(pending.toString()).put("fatal", true).put("message", message)) }
+        mutate { next ->
+            next.put("pending", JSONObject(pending.toString()).put("fatal", true).put("message", message))
+            if (running.kind == "BUNDLE") {
+                val crashed = exclusions("crashed").toMutableList()
+                crashed.removeAll { it == running.bundleId }
+                crashed.add(running.bundleId)
+                while (crashed.size > 10) crashed.removeAt(0)
+                next.put("crashed", JSONArray(crashed))
+            } else if (running.releaseId != null) {
+                val unconfirmed = exclusions("unconfirmed").toMutableList()
+                if (running.releaseId !in unconfirmed) unconfirmed.add(running.releaseId!!)
+                next.put("unconfirmed", JSONArray(unconfirmed))
+            }
+        }
     }
     }
     internal fun destroy(session: LynxLaunchSession) {
@@ -283,5 +306,6 @@ class LynxUpdaterController(context: Context, val configuration: LynxHostConfigu
             }
         } } }.onFailure { Log.e(TAG, "Unused cache cleanup deferred", it) }
     }
+    fun close() { store.close() }
     companion object { private const val TAG = "HotUpdaterLynx"; private const val CAPACITY = 128 }
 }

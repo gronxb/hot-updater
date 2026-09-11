@@ -38,7 +38,12 @@ internal class LynxArtifactVerifier(private val config: LynxInstallConfiguration
         try {
         val metadata = StrictJson.read(ManagedPaths.resolve(root, "hot-updater-lynx.json"))
         val version = metadata.opt("schemaVersion")
-        if (version !is BigDecimal || version.compareTo(BigDecimal.ONE) != 0) throw LynxIncompatibleArtifactException("Unsupported Lynx metadata schema")
+        val schemaOne = when (version) {
+            is BigDecimal -> version.compareTo(BigDecimal.ONE) == 0
+            is Number -> version.toDouble() == 1.0
+            else -> false
+        }
+        if (!schemaOne) throw LynxIncompatibleArtifactException("Unsupported Lynx metadata schema")
         val bundleId = StrictJson.string(metadata, "bundleId")
         val platform = StrictJson.string(metadata, "platform")
         val runtime = StrictJson.string(metadata, "runtimeId")

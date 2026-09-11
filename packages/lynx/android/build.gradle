@@ -22,6 +22,7 @@ dependencies {
     implementation files('libs/hot-updater-brotli-dec-1.2.0.jar')
     testImplementation 'junit:junit:4.13.2'
     testImplementation 'org.json:json:20240303'
+    testImplementation 'org.lynxsdk.lynx:lynx:3.9.0'
 }
 
 tasks.withType(Test).configureEach {
