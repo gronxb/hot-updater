@@ -7,6 +7,7 @@ import {
 } from "fumadocs-mdx/config";
 
 import { codeSnippetTransformers } from "./plugins/code-snippets";
+import { blogAuthors } from "./src/lib/blog-authors";
 
 export const blogPosts = defineCollections({
   type: "doc",
@@ -15,7 +16,7 @@ export const blogPosts = defineCollections({
     title: "string",
     description: "string",
     date: "string",
-    author: "string",
+    author: type.enumerated(...Object.keys(blogAuthors)),
     "image?": "string",
   }),
 });

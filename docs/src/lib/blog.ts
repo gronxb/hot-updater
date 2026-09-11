@@ -3,11 +3,12 @@ import { toFumadocsSource } from "fumadocs-mdx/runtime/server";
 import type { DocData, DocMethods } from "fumadocs-mdx/runtime/types";
 
 import { blogPosts } from "../../.source/server";
+import type { BlogAuthorId } from "./blog-authors";
 
 type BlogPostData = PageData &
   DocData &
   DocMethods & {
-    author: string;
+    author: BlogAuthorId;
     date: string;
     image?: string;
   };
