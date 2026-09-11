@@ -213,8 +213,34 @@ export class LynxAppDriver implements DetoxAppDriver {
     return exampleDir;
   }
 
+  private installApp(): void {
+    if (this.platform === "ios") {
+      const binaryPath = this.env.HOT_UPDATER_E2E_IOS_BINARY_PATH;
+      if (!binaryPath) return;
+      this.runOrThrow("xcrun", [
+        "simctl",
+        "install",
+        this.deviceId(),
+        binaryPath,
+      ]);
+      return;
+    }
+    const apkPath =
+      this.env.HOT_UPDATER_E2E_ANDROID_BINARY_PATH ??
+      this.env.HOT_UPDATER_E2E_ANDROID_APK_PATH;
+    if (!apkPath) return;
+    this.runOrThrow("adb", [
+      "-s",
+      this.deviceId(),
+      "install",
+      "-r",
+      apkPath,
+    ]);
+  }
+
   private async launchApp(): Promise<void> {
     this.terminateApp();
+    this.installApp();
     const embeddedDir = await compileLynxE2eEmbedded({
       exampleDir: this.exampleDir(),
       platform: this.platform,
