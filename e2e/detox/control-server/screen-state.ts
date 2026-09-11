@@ -3,7 +3,11 @@ export type E2eScreenState = {
   readonly cohortActionResult: string;
   readonly cohortInput: string | null;
   readonly runtimeChannelInput: string;
+  readonly stagingBundleId: string | null;
+  readonly stagingReleaseId: string | null;
+  readonly stableBundleId: string | null;
   readonly updateActionResult: string;
+  readonly verificationPending: boolean | null;
 };
 
 type E2eScreenStatePatch = Partial<E2eScreenState>;
@@ -13,7 +17,11 @@ const defaultE2eScreenState = {
   cohortActionResult: "idle",
   cohortInput: null,
   runtimeChannelInput: "beta",
+  stagingBundleId: null,
+  stagingReleaseId: null,
+  stableBundleId: null,
   updateActionResult: "idle",
+  verificationPending: null,
 } as const satisfies E2eScreenState;
 
 let e2eScreenState: E2eScreenState = defaultE2eScreenState;
@@ -49,6 +57,32 @@ const parseOptionalCohortInput = (payload: Record<string, unknown>) => {
   });
 };
 
+const parseOptionalNullableString = (
+  payload: Record<string, unknown>,
+  key: keyof E2eScreenState,
+) => {
+  if (!(key in payload)) return undefined;
+  const value = payload[key];
+  if (value === null || typeof value === "string") return value;
+  throw createScreenStateError("screen state field must be a string or null", {
+    field: key,
+    received: value,
+  });
+};
+
+const parseOptionalNullableBoolean = (
+  payload: Record<string, unknown>,
+  key: keyof E2eScreenState,
+) => {
+  if (!(key in payload)) return undefined;
+  const value = payload[key];
+  if (value === null || typeof value === "boolean") return value;
+  throw createScreenStateError("screen state field must be a boolean or null", {
+    field: key,
+    received: value,
+  });
+};
+
 const parseScreenStatePatch = (payload: unknown): E2eScreenStatePatch => {
   if (!isRecord(payload)) {
     throw createScreenStateError("screen state payload must be an object", {
@@ -67,13 +101,30 @@ const parseScreenStatePatch = (payload: unknown): E2eScreenStatePatch => {
   );
   const updateActionResult = parseOptionalString(payload, "updateActionResult");
   const cohortInput = parseOptionalCohortInput(payload);
+  const stagingBundleId = parseOptionalNullableString(
+    payload,
+    "stagingBundleId",
+  );
+  const stagingReleaseId = parseOptionalNullableString(
+    payload,
+    "stagingReleaseId",
+  );
+  const stableBundleId = parseOptionalNullableString(payload, "stableBundleId");
+  const verificationPending = parseOptionalNullableBoolean(
+    payload,
+    "verificationPending",
+  );
 
   return {
     ...(channelActionResult === undefined ? {} : { channelActionResult }),
     ...(cohortActionResult === undefined ? {} : { cohortActionResult }),
     ...(cohortInput === undefined ? {} : { cohortInput }),
     ...(runtimeChannelInput === undefined ? {} : { runtimeChannelInput }),
+    ...(stagingBundleId === undefined ? {} : { stagingBundleId }),
+    ...(stagingReleaseId === undefined ? {} : { stagingReleaseId }),
+    ...(stableBundleId === undefined ? {} : { stableBundleId }),
     ...(updateActionResult === undefined ? {} : { updateActionResult }),
+    ...(verificationPending === undefined ? {} : { verificationPending }),
   };
 };
 

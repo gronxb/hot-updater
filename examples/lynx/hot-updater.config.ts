@@ -130,12 +130,18 @@ async function copyE2eFixtures(cwd: string, outDir: string) {
     throw error;
   }
   const destDir = path.join(outDir, "assets/src/test");
+  const androidRawDir = path.join(outDir, "raw");
   await fsp.mkdir(destDir, { recursive: true });
+  await fsp.mkdir(androidRawDir, { recursive: true });
   for (const name of names) {
     if (!name.startsWith("_fixture-")) {
       continue;
     }
     await fsp.copyFile(path.join(srcDir, name), path.join(destDir, name));
+    await fsp.copyFile(
+      path.join(srcDir, name),
+      path.join(androidRawDir, `src_test_${name.replaceAll("-", "")}`),
+    );
   }
 }
 

@@ -16,10 +16,19 @@ describe("E2E screen state control boundary", () => {
       runtimeChannelInput: "beta-next",
     });
 
+    handlePatchE2eScreenState({
+      stagingBundleId: "bundle-1",
+      stagingReleaseId: "release-1",
+      verificationPending: true,
+    });
+
     expect(readE2eScreenStateSnapshot()).toMatchObject({
       cohortActionResult: "set -> qa",
       cohortInput: "qa",
       runtimeChannelInput: "beta-next",
+      stagingBundleId: "bundle-1",
+      stagingReleaseId: "release-1",
+      verificationPending: true,
     });
 
     expect(resetE2eScreenState()).toEqual({
@@ -28,7 +37,11 @@ describe("E2E screen state control boundary", () => {
         cohortActionResult: "idle",
         cohortInput: null,
         runtimeChannelInput: "beta",
+        stagingBundleId: null,
+        stagingReleaseId: null,
+        stableBundleId: null,
         updateActionResult: "idle",
+        verificationPending: null,
       },
     });
   });
@@ -45,7 +58,11 @@ describe("E2E screen state control boundary", () => {
       cohortActionResult: "idle",
       cohortInput: null,
       runtimeChannelInput: "beta",
+      stagingBundleId: null,
+      stagingReleaseId: null,
+      stableBundleId: null,
       updateActionResult: "idle",
+      verificationPending: null,
     });
   });
 });

@@ -17,7 +17,11 @@ type ScreenState = {
   cohortActionResult: string;
   cohortInput: string | null;
   runtimeChannelInput: string;
+  stagingBundleId: string | null;
+  stagingReleaseId: string | null;
+  stableBundleId: string | null;
   updateActionResult: string;
+  verificationPending: boolean | null;
 };
 
 const runtimeConfigURL =
@@ -117,6 +121,13 @@ function App() {
             : updateInfo.transitionKind === "USE_BUILTIN"
               ? `${actionLabel} -> selected BUILTIN`
               : `${actionLabel} -> installed ID ${updateInfo.id}`;
+      const active = HotUpdater.getActiveUpdateState();
+      await patchScreenState({
+        stagingBundleId: active.activeSelection?.bundleId ?? null,
+        stagingReleaseId: active.activeSelection?.releaseId ?? null,
+        stableBundleId: active.stableSelection?.bundleId ?? null,
+        verificationPending: active.verificationPending,
+      });
       await setUpdateActionResult(
         installed ? appliedResult : `${actionLabel} -> skipped`,
       );

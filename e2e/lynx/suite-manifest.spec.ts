@@ -72,6 +72,7 @@ describe("Lynx E2E suite manifest", () => {
     expect(source).toContain("keys/public-key.pem");
     expect(source).toContain("copyE2eFixtures");
     expect(source).toContain("assets/src/test");
+    expect(source).toContain("src_test_");
   });
 
   it("uses agent device env vars instead of simctl booted", () => {

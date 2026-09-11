@@ -2276,6 +2276,44 @@ function normalizeCatalogHighWaters(value: unknown) {
   ) as Record<string, { catalogHash: string; generation: number }>;
 }
 
+function readScreenMetadataState() {
+  const screen = readE2eScreenStateSnapshot();
+  if (screen.stagingBundleId == null && screen.stableBundleId == null) {
+    return null;
+  }
+  return {
+    highestSeenCatalogs: null,
+    schema: null,
+    stableBundleId: screen.stableBundleId,
+    stableSelection: null,
+    stagingBundleId: screen.stagingBundleId,
+    stagingSelection:
+      screen.stagingReleaseId == null
+        ? null
+        : {
+            catalogHash: null,
+            catalogId: null,
+            bundleId: screen.stagingBundleId,
+            channel: null,
+            generation: null,
+            kind: null,
+            releaseId: screen.stagingReleaseId,
+            scopeKey: null,
+            selectionContextHash: null,
+          },
+    verificationPending: screen.verificationPending,
+  };
+}
+
+function resolveMetadataState(
+  metadata: Record<string, unknown> | null,
+) {
+  if (metadata) {
+    return getMetadataState(metadata);
+  }
+  return readScreenMetadataState() ?? getMetadataState(null);
+}
+
 function getMetadataState(metadata: Record<string, unknown> | null) {
   return {
     highestSeenCatalogs: normalizeCatalogHighWaters(
@@ -4692,9 +4730,8 @@ async function waitForIosMetadataState(
       totalAttempts += 1;
 
       const metadata = readIosMetadataSnapshot();
-      if (metadata.value) {
-        const metadataState = getMetadataState(metadata.value);
-
+      const metadataState = resolveMetadataState(metadata.value);
+      if (metadataState.stagingBundleId !== null || metadata.value) {
         if (
           isExpectedMetadataStateReached(
             metadataState,
@@ -4726,7 +4763,7 @@ async function waitForIosMetadataState(
     }
 
     const metadata = readIosMetadataSnapshot();
-    const metadataState = getMetadataState(metadata.value);
+    const metadataState = resolveMetadataState(metadata.value);
     if (
       relaunchIndex === relaunchLimit ||
       metadataState.verificationPending === true
@@ -4782,8 +4819,8 @@ async function waitForAndroidMetadataState(
       const metadata = readAndroidMetadataSnapshot(
         "wait-for-metadata-metadata.json",
       );
-      if (metadata.value) {
-        const metadataState = getMetadataState(metadata.value);
+      const metadataState = resolveMetadataState(metadata.value);
+      if (metadataState.stagingBundleId !== null || metadata.value) {
         if (
           isExpectedMetadataStateReached(
             metadataState,
@@ -4818,7 +4855,7 @@ async function waitForAndroidMetadataState(
     const metadata = readAndroidMetadataSnapshot(
       "wait-for-metadata-metadata.json",
     );
-    const metadataState = getMetadataState(metadata.value);
+    const metadataState = resolveMetadataState(metadata.value);
     if (
       relaunchIndex === relaunchLimit ||
       metadataState.verificationPending === true
