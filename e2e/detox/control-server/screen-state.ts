@@ -2,6 +2,7 @@ export type E2eScreenState = {
   readonly channelActionResult: string;
   readonly cohortActionResult: string;
   readonly cohortInput: string | null;
+  readonly launchStatus: string;
   readonly runtimeChannelInput: string;
   readonly stagingBundleId: string | null;
   readonly stagingReleaseId: string | null;
@@ -16,6 +17,7 @@ const defaultE2eScreenState = {
   channelActionResult: "idle",
   cohortActionResult: "idle",
   cohortInput: null,
+  launchStatus: "Current Launch Status: null",
   runtimeChannelInput: "beta",
   stagingBundleId: null,
   stagingReleaseId: null,
@@ -99,6 +101,7 @@ const parseScreenStatePatch = (payload: unknown): E2eScreenStatePatch => {
     payload,
     "runtimeChannelInput",
   );
+  const launchStatus = parseOptionalString(payload, "launchStatus");
   const updateActionResult = parseOptionalString(payload, "updateActionResult");
   const cohortInput = parseOptionalCohortInput(payload);
   const stagingBundleId = parseOptionalNullableString(
@@ -119,6 +122,7 @@ const parseScreenStatePatch = (payload: unknown): E2eScreenStatePatch => {
     ...(channelActionResult === undefined ? {} : { channelActionResult }),
     ...(cohortActionResult === undefined ? {} : { cohortActionResult }),
     ...(cohortInput === undefined ? {} : { cohortInput }),
+    ...(launchStatus === undefined ? {} : { launchStatus }),
     ...(runtimeChannelInput === undefined ? {} : { runtimeChannelInput }),
     ...(stagingBundleId === undefined ? {} : { stagingBundleId }),
     ...(stagingReleaseId === undefined ? {} : { stagingReleaseId }),

@@ -1637,6 +1637,23 @@ function ensureStorePath() {
       fixtureSession.appId,
       "data",
     ]);
+    if (fixtureSession.appId === "com.hotupdater.lynxexample") {
+      const stores = path.join(
+        appDataDir,
+        "Library/Application Support/HotUpdaterLynxPublic/stores",
+      );
+      try {
+        for (const scope of fs.readdirSync(stores)) {
+          const bundles = path.join(stores, scope, "bundles");
+          if (fs.existsSync(bundles)) {
+            fixtureSession.storePath = bundles;
+            return fixtureSession.storePath;
+          }
+        }
+      } catch {
+        // Fall through to the RN layout if the Lynx store is not ready.
+      }
+    }
     fixtureSession.storePath = path.join(appDataDir, "Documents/bundle-store");
     return fixtureSession.storePath;
   }

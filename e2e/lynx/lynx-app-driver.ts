@@ -28,6 +28,7 @@ const ACTION_RESULT_FIELDS: Record<string, string> = {
 const ACTION_RESULT_TEXT_FIELDS: Record<string, string> = {
   "channel-action-result": "channelActionResult",
   "cohort-action-result": "cohortActionResult",
+  "launch-status-result": "launchStatus",
   "update-action-result": "updateActionResult",
 };
 

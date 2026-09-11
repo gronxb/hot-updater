@@ -16,6 +16,7 @@ type ScreenState = {
   channelActionResult: string;
   cohortActionResult: string;
   cohortInput: string | null;
+  launchStatus: string;
   runtimeChannelInput: string;
   stagingBundleId: string | null;
   stagingReleaseId: string | null;
@@ -230,7 +231,9 @@ function App() {
   useEffect(() => {
     void HotUpdater.notifyAppReady()
       .then((result) => {
-        setLaunchStatus(`Current Launch Status: ${result.status}`);
+        const status = `Current Launch Status: ${result.status}`;
+        setLaunchStatus(status);
+        void patchScreenState({ launchStatus: status });
       })
       .catch(() => undefined);
     const timer = setInterval(() => {
