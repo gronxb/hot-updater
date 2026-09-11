@@ -6,24 +6,19 @@ author: "gronxb"
 image: "/blog/revisiting-codemagic-stress-test.webp"
 ---
 
-Hot Updater's philosophy is to be infrastructure-agnostic: your team chooses
-where OTA runs, which database it uses, and where bundles live. Hot Updater
-v1.0 supplies integrations for a platform's managed database, storage, and
-functions. You can also add OTA to an existing backend and use the Console
-for everyday update management.
+In [Codemagic's stress-test video](https://www.youtube.com/watch?v=-sYn7MZDw78),
+an earlier Hot Updater deployment slowed down at around 250 requests per
+second, while Patch handled 1,000 requests per second. Codemagic attributed
+the gap to Hot Updater querying a database for each check and Patch serving
+a pre-generated manifest through a CDN.
+
+Hot Updater v1.0 has since changed that request path. Its
+[Release Catalogs](/blog/v1) can serve shared update metadata through a CDN,
+as they do in the Cloudflare configuration we tested. A cache hit no
+longer needs a database lookup, so the video's explanation of the gap
+doesn't describe this v1.0 configuration.
 
 ## Revisiting the cached read path
-
-In [Codemagic's stress-test video](https://www.youtube.com/watch?v=-sYn7MZDw78),
-Hot Updater slows down at around 250 requests per second, while Patch
-handles 1,000 requests per second. Codemagic attributes the gap to Hot
-Updater querying a database for each check and Patch serving a
-pre-generated manifest through a CDN.
-
-That result describes the earlier deployment. Hot Updater v1.0's
-[Release Catalogs](/blog/v1) now also serve shared update metadata through
-a CDN on Cloudflare, so the video's explanation no longer describes this
-request path.
 
 We maintain Hot Updater and ran this test ourselves, using the Hot Updater
 v1.0 release candidate `1.0.0-rc.14` with real Cloudflare D1 and the preset's
@@ -52,11 +47,19 @@ above, not a full Patch deployment.*
 All 81,000 measured requests passed, including the 250 and 500 requests/s
 stages. Median latency and p95 were close; the static control had a lower
 pooled p99. With one warmed URL per path, v1.0's cached Catalog delivery
-kept up with this workload. These short runs did not test maximum capacity,
-sustained production traffic, or performance across the complete products.
-We wouldn't use these results to claim a speed advantage for Hot Updater.
+kept up with the static manifest control at 1,000 requests per second.
+
+These short runs cover cached metadata delivery, not maximum capacity or
+performance across the complete products under sustained production
+traffic. Within that scope, the results are close enough that we'd choose
+based on how OTA fits the infrastructure our team already uses.
 
 ## Use your platform's database, storage, and functions
+
+Hot Updater's philosophy is to be infrastructure-agnostic: your team chooses
+where OTA runs, which database it uses, and where bundles live. We provide
+integrations for managed cloud services and for existing backends, so that
+choice reaches the services OTA actually uses.
 
 Hot Updater's [provider presets](/docs/get-started/choose-provider) connect
 OTA to services your team may already operate. The
@@ -68,22 +71,16 @@ integration together with the function that handles client requests.
 The setup tools apply the provider's schema or indexes and deploy the
 function. You still configure access and connect your app, but the
 integration code is supplied. These deployments don't need a separate
-Docker host for the OTA server.
+Docker host for the OTA server. Each preset has its own deployment and
+caching behavior; the benchmark above covers one configuration.
 
-The [Console](/docs/guides/console) gives your team a UI for managing rollout
-and targeting, disabling bundles, and inspecting artifacts. Run it locally,
-or [deploy an authenticated Console](/docs/guides/console-deployment) for
-your team using the same backend resources.
-
-Each preset has its own deployment and caching behavior. The benchmark
-above covers one of those configurations.
-
-Patch's [documented default installation](https://patch.codemagic.io/docs/install)
+Patch takes an integrated approach. Its
+[documented default installation](https://patch.codemagic.io/docs/install)
 requires an SSH-accessible server with Docker and Docker Compose v2. It
 runs Caddy, the API and release worker, PostgreSQL, and MinIO on that host.
-That gives you a prescribed stack to install and operate for management
-and publishing; published updates can still be delivered through storage
-and a CDN independently of the API.
+The installer gives a team a defined stack for management and publishing,
+while storage and a CDN can deliver published updates independently of
+the API.
 
 Patch can connect to [external PostgreSQL](https://patch.codemagic.io/docs/reference/configuration),
 so the database does not have to run inside Compose. Its
@@ -92,6 +89,8 @@ also let you change object storage and CDN services around its application
 stack: a
 [Node.js server](https://github.com/codemagic-ci-cd/codemagic-patch/blob/f22294f7c2599b79979b8620e5cb6db4bf3bdf0a/server/package.json)
 that [uses PostgreSQL directly](https://github.com/codemagic-ci-cd/codemagic-patch/blob/f22294f7c2599b79979b8620e5cb6db4bf3bdf0a/server/src/db/client.ts).
+That gives Patch flexibility in hosting, storage, and delivery, while its
+database and server runtime remain more prescribed than Hot Updater's.
 
 For the commit we compared, Patch's
 [custom-deployment guide](https://github.com/codemagic-ci-cd/codemagic-patch/blob/f22294f7c2599b79979b8620e5cb6db4bf3bdf0a/docs/custom-deployment.md)
@@ -103,11 +102,8 @@ platform, but that requires its own deployment and verification work.
 For a Firebase team, this makes a practical difference. Using a GCS bucket
 with Patch leaves its PostgreSQL-backed API and release worker to host.
 Hot Updater supplies the Firestore and Cloud Functions integration too.
-The Patch version we reviewed has no equivalent integration: using
-Firestore for its metadata would require changes to its PostgreSQL data
-layer. Choosing a different host for that server keeps the same database
-requirement. Hot Updater lets the team's infrastructure choice extend to
-the database and function runtime that OTA actually uses.
+Using Firestore for Patch's metadata would require changes to its data
+layer; the version we reviewed doesn't provide that integration.
 
 Both setups still need upgrades, credential management, and data recovery;
 we haven't measured the maintenance effort for either.
@@ -116,18 +112,17 @@ we haven't measured the maintenance effort for either.
 
 If your team already has a backend it wants to reuse, you can run
 Hot Updater [inside that server](/docs/custom/overview). Its handlers mount
-in Hono, Express, or Elysia, with your authentication middleware protecting
-management routes. Database integrations cover Kysely, Drizzle, Prisma,
-and MongoDB. The [plugin system](/docs/concepts/plugin-system) lets you
-choose database and storage independently.
+in Hono, Express, or Elysia. Database integrations cover Kysely, Drizzle,
+Prisma, and MongoDB. The [plugin system](/docs/concepts/plugin-system) lets
+you choose database and storage independently.
 
 That includes database choices such as [SQLite](/docs/custom/database/kysely)
 and [MongoDB](/docs/custom/database/mongodb). A team with a transaction-capable
-MongoDB deployment can keep OTA metadata there. An Express and Prisma team can add
-Hot Updater's schema through its existing migration process and protect
-management routes with its authentication middleware. The team still
-implements the admin access policy, using the backend it already reviews
-and deploys.
+MongoDB deployment can keep OTA metadata there. An Express and Prisma team
+can add Hot Updater's schema through its existing migration process and
+protect management routes with its authentication middleware. The team
+implements the admin access policy in the backend it already reviews and
+deploys.
 
 You can use [Docker](/docs/custom/hosting/docker) if containers fit your
 operations, or deploy to a [serverless host](/docs/custom/hosting/vercel).
@@ -137,8 +132,14 @@ operations, then connect the request handlers to a compatible runtime.
 A new integration still needs implementation and validation, but can reuse
 Hot Updater's OTA logic with that provider's services.
 
+The [Console](/docs/guides/console) gives your team a UI for managing rollout
+and targeting, disabling bundles, and inspecting artifacts. Run it locally,
+or [deploy an authenticated Console](/docs/guides/console-deployment) for
+your team using the same backend resources.
+
 ## An MIT license without a usage threshold
 
+For teams extending these integrations, the license matters too.
 Hot Updater uses the [MIT license](https://github.com/gronxb/hot-updater/blob/0dbbefb4c536053fb6369d51722d3c72b43a26a7/LICENSE).
 You can use it commercially, modify it, and redistribute it as long as you
 meet its notice requirements. There is no MAU-based license fee or
@@ -161,7 +162,8 @@ version now.
 
 Patch offers an integrated installer and dashboard, plus
 [commercial support and optional vendor hosting](https://patch.codemagic.io/docs/introduction/pricing).
-That can suit a team that wants help adopting and operating Patch's stack.
+For a team comfortable with PostgreSQL and containers, that can be a
+practical fit, with help available for adoption and operation.
 
 Patch keeps published manifests and bundle URLs separate from the
 management API. Codemagic [demonstrates delivery with that API offline](https://blog.codemagic.io/designing-scalable-ota-update-architecture/#simulated-crash-test),
@@ -171,21 +173,17 @@ behave alike during an outage.
 
 ## Why we'd choose Hot Updater
 
-These cached metadata results give us little reason to choose on speed.
-We'd choose Hot Updater for a team that wants OTA to use the managed
-platform it already operates. A provider preset includes the database,
-storage, and function integration, with the Console for update management.
-That lets the team keep using services it already knows how to deploy,
-secure, and monitor. Patch offers a choice of storage, CDN, and PostgreSQL
-host; its current integrations keep the PostgreSQL data layer and Node.js
-server. Hot Updater provides choices at those layers too.
+The earlier video raised a useful question about the cost of checking for
+updates. Hot Updater v1.0's cached Catalog path now handles the workload we
+tested with latency close to the static manifest control. Those results
+give us little reason to choose between these cached paths on speed alone.
 
-A team with an established backend can choose its database and run the OTA
-handlers alongside its own routes, using the framework and authentication
-it already maintains. Its database and storage contracts also give the
-team a way to add integrations beyond the supplied presets. MIT lets it
-modify and build on the system without a usage threshold or
-competing-product restriction.
+We'd choose Hot Updater when the team wants OTA to fit its existing
+infrastructure. It can use a managed platform's database and functions,
+or run the handlers in a backend with its own framework and authentication.
+The database and storage contracts also let the team implement further
+integrations as its needs change. The MIT license allows those extensions
+without a usage threshold or competing-product restriction.
 
 [Choose a provider preset](/docs/get-started/choose-provider) to set up the
 OTA server in your cloud account, or follow the
