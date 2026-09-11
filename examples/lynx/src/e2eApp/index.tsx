@@ -1,6 +1,5 @@
-import { root, useEffect, useRef, useState } from "@lynx-js/react";
-
 import { HotUpdater } from "@hot-updater/lynx";
+import { root, useEffect, useRef, useState } from "@lynx-js/react";
 
 import {
   E2E_SCENARIO_MARKER,
@@ -10,9 +9,6 @@ import {
 
 declare const __E2E_APP_BASE_URL__: string;
 declare const __E2E_RUNTIME_CONFIG_URL__: string;
-
-maybeCrashForE2E();
-loadE2EDeployBundleAssets();
 
 const DEFAULT_ACTION_RESULT = "idle";
 
@@ -40,11 +36,18 @@ const pendingActionURL = screenStateURL.replace(
   "/pending-action",
 );
 
-HotUpdater.init({
-  insights: true,
-  baseURL: appBaseURL,
-  requestTimeout: 15000,
-});
+async function resolveAppBaseURL(): Promise<string> {
+  try {
+    const response = await fetch(runtimeConfigURL);
+    const config = (await response.json()) as { baseURL?: string };
+    if (typeof config.baseURL === "string" && config.baseURL.length > 0) {
+      return config.baseURL;
+    }
+  } catch {
+    // Fall back to the compile-time control-server URL.
+  }
+  return appBaseURL;
+}
 
 const patchScreenState = async (patch: Partial<ScreenState>) => {
   await fetch(screenStateURL, {
@@ -231,11 +234,7 @@ function App() {
       <text id="launch-status-result">{launchStatus}</text>
       <text id="runtime-marker-result">{E2E_SCENARIO_MARKER}</text>
       {Object.keys(actions).map((testID) => (
-        <view
-          key={testID}
-          id={testID}
-          bindtap={() => void actions[testID]?.()}
-        >
+        <view key={testID} id={testID} bindtap={() => void actions[testID]?.()}>
           <text>{testID}</text>
         </view>
       ))}
@@ -243,4 +242,17 @@ function App() {
   );
 }
 
-root.render(<App />);
+void resolveAppBaseURL()
+  .then((baseURL) => {
+    HotUpdater.init({
+      insights: true,
+      baseURL,
+      requestTimeout: 15000,
+    });
+    maybeCrashForE2E();
+    loadE2EDeployBundleAssets();
+    root.render(<App />);
+  })
+  .catch((error) => {
+    throw error;
+  });

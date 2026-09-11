@@ -26,10 +26,11 @@ class OtaActivity : Activity() {
             val existing = processController
             check(existing == null || processFramework == framework) { "Framework selection is pinned until process restart" }
             val channel = intent.getStringExtra("channel") ?: "ota-$framework"
+            val embeddedDir = intent.getStringExtra("embeddedDir") ?: "ota/$framework/A"
             val controller = existing ?: LynxUpdaterController(applicationContext, LynxHostConfiguration(
                 runtimeId = BuildConfig.LYNX_OTA_COMPATIBILITY_ID,
                 channel = channel, appVersion = "1.0.0", cohort = getSharedPreferences("native-ota-config", MODE_PRIVATE).getString("cohort", "1")!!,
-                embeddedAssetDirectory = "ota/$framework/A",
+                embeddedAssetDirectory = embeddedDir,
             )).also { processController = it; processFramework = framework }
             val session = if (intent.getBooleanExtra("secondary", false)) controller.pinSecondary() else controller.pinPrimary()
             if ("assets/probe.ttf" in session.installation.managedPaths) session.requireFontBeforeReady("assets/probe.ttf")

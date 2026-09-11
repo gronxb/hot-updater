@@ -18,6 +18,11 @@ final class PublicHost {
         guard let channel = argument.map({ String($0.dropFirst("--ota-channel=".count)) }), !channel.isEmpty else { return nil }
         return channel
     }
+    static var requestedEmbeddedDir: URL? {
+        let argument = ProcessInfo.processInfo.arguments.first { $0.hasPrefix("--ota-embedded-dir=") }
+        guard let path = argument.map({ String($0.dropFirst("--ota-embedded-dir=".count)) }), !path.isEmpty else { return nil }
+        return URL(fileURLWithPath: path)
+    }
     static var shared: PublicHost?
     let controller: LynxController
     let context: LynxLaunchContext
@@ -31,13 +36,35 @@ final class PublicHost {
         home = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0].appendingPathComponent("HotUpdaterLynxPublic")
         try FileManager.default.createDirectory(at: home, withIntermediateDirectories: true)
         let root = Bundle.main.resourceURL!.appendingPathComponent("Embedded/Public")
-        let native = try JSONSerialization.jsonObject(with: Data(contentsOf: root.appendingPathComponent(framework + "-native.json"))) as! [String: String]
-        guard native["runtimeId"] == Self.runtimeId, native["bundleId"] == "00000000-0000-0000-0000-000000000000", let digest = native["manifestDigest"] else { throw SpikeAdmissionError.invalid("Native embedded configuration mismatch") }
+        let overlay = Self.requestedEmbeddedDir
+        let native = overlay == nil
+            ? try JSONSerialization.jsonObject(with: Data(contentsOf: root.appendingPathComponent(framework + "-native.json"))) as! [String: String]
+            : [:]
+        let embeddedDirectory: URL
+        let embeddedBundleId: String
+        let digest: String
+        let startupResourcePaths: Set<String>
+        if let overlay {
+            let metadata = try JSONSerialization.jsonObject(with: Data(contentsOf: overlay.appendingPathComponent("hot-updater-lynx.json"))) as! [String: Any]
+            guard let bundleId = metadata["bundleId"] as? String, let runtimeId = metadata["runtimeId"] as? String, runtimeId == Self.runtimeId else {
+                throw SpikeAdmissionError.invalid("E2E embedded configuration mismatch")
+            }
+            embeddedDirectory = overlay
+            embeddedBundleId = bundleId
+            digest = SpikeArtifact.hash(try Data(contentsOf: overlay.appendingPathComponent("manifest.json")))
+            startupResourcePaths = []
+        } else {
+            guard native["runtimeId"] == Self.runtimeId, native["bundleId"] == "00000000-0000-0000-0000-000000000000", let manifestDigest = native["manifestDigest"] else { throw SpikeAdmissionError.invalid("Native embedded configuration mismatch") }
+            embeddedDirectory = root.appendingPathComponent(framework)
+            embeddedBundleId = native["bundleId"]!
+            digest = manifestDigest
+            startupResourcePaths = native["variant"] == "sdk1" ? ["assets/probe.png"] : ["assets/probe.png", "assets/probe.ttf", "assets/bootstrap.js", "dynamic/component.lynx.bundle"]
+        }
         controller = try LynxController(configuration: .init(root: home.appendingPathComponent("stores"), runtimeId: Self.runtimeId,
-            binaryIdentity: SpikeArtifact.hash(Data(contentsOf: Bundle.main.executableURL!)), embeddedDirectory: root.appendingPathComponent(framework),
-            embeddedBundleId: native["bundleId"]!, embeddedManifestDigest: digest, minimumBundleId: native["bundleId"]!,
+            binaryIdentity: SpikeArtifact.hash(Data(contentsOf: Bundle.main.executableURL!)), embeddedDirectory: embeddedDirectory,
+            embeddedBundleId: embeddedBundleId, embeddedManifestDigest: digest, minimumBundleId: embeddedBundleId,
             appVersion: "1.0.0", channel: Self.requestedChannel ?? "ota-\(framework)", cohort: "1",
-            startupResourcePaths: native["variant"] == "sdk1" ? ["assets/probe.png"] : ["assets/probe.png", "assets/probe.ttf", "assets/bootstrap.js", "dynamic/component.lynx.bundle"]))
+            startupResourcePaths: startupResourcePaths))
         context = controller.createContext(primary: true)
         observation = NotificationCenter.default.addObserver(forName: SPKWrapperLynxView.willDestroyNotification, object: nil, queue: nil) { [weak self] notice in
             guard let self, let view = notice.object as? SPKWrapperLynxView, let config = view.lynxConfig else { return }

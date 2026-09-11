@@ -1,6 +1,6 @@
 import { HotUpdater } from "@hot-updater/lynx";
 
-export const E2E_SCENARIO_MARKER = "targeted-qa-lynx";
+export const E2E_SCENARIO_MARKER = "targeted-qa-detox";
 
 void HotUpdater;
 

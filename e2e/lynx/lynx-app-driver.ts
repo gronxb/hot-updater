@@ -4,6 +4,7 @@ import { createControlClient } from "../detox/control-client.ts";
 import type { JsonObject } from "../detox/control-protocol.ts";
 import type { DetoxAppDriver } from "../detox/scenarios/types.ts";
 import type { DetoxPlatform } from "../detox/scripts/control-server-env.ts";
+import { compileLynxE2eEmbedded } from "./embedded-bundle.ts";
 
 type ControlClient = ReturnType<typeof createControlClient>;
 
@@ -22,6 +23,12 @@ const ACTION_RESULT_FIELDS: Record<string, string> = {
   "action-reset-runtime-channel": "channelActionResult",
   "action-restore-initial-cohort": "cohortActionResult",
   "action-set-cohort-qa": "cohortActionResult",
+};
+
+const ACTION_RESULT_TEXT_FIELDS: Record<string, string> = {
+  "channel-action-result": "channelActionResult",
+  "cohort-action-result": "cohortActionResult",
+  "update-action-result": "updateActionResult",
 };
 
 export class LynxAppDriver implements DetoxAppDriver {
@@ -50,11 +57,15 @@ export class LynxAppDriver implements DetoxAppDriver {
   ): Promise<void> {
     await this.runStage(stage, async () => {
       const expected = this.resolvePlaceholders(contains);
-      const expectedTexts = (Array.isArray(expected) ? expected : [expected]).map(
-        String,
-      );
+      const expectedTexts = (
+        Array.isArray(expected) ? expected : [expected]
+      ).map(String);
       if (options.exactText === true) {
-        await this.waitForExpectedActionResultText(stage, testID, expectedTexts[0]);
+        await this.waitForExpectedActionResultText(
+          stage,
+          testID,
+          expectedTexts[0],
+        );
         return;
       }
       const snapshot = (await this.controlClient.postJson(
@@ -94,7 +105,7 @@ export class LynxAppDriver implements DetoxAppDriver {
         "/e2e/prepare-app-launch",
         {},
       );
-      this.launchApp();
+      await this.launchApp();
     });
   }
 
@@ -106,7 +117,7 @@ export class LynxAppDriver implements DetoxAppDriver {
         "/e2e/prepare-app-launch",
         {},
       );
-      this.launchApp();
+      await this.launchApp();
     });
   }
 
@@ -117,7 +128,7 @@ export class LynxAppDriver implements DetoxAppDriver {
         "/e2e/reset-local-app-state",
         {},
       );
-      this.launchApp();
+      await this.launchApp();
     });
   }
 
@@ -131,9 +142,13 @@ export class LynxAppDriver implements DetoxAppDriver {
           { [actionResultField]: "idle" },
         );
       }
-      await this.controlClient.postJson(`${stage}: queue ${testID}`, "/e2e/pending-action", {
-        testID,
-      });
+      await this.controlClient.postJson(
+        `${stage}: queue ${testID}`,
+        "/e2e/pending-action",
+        {
+          testID,
+        },
+      );
       if (actionResultField) {
         await this.controlClient.waitForScreenStateField(
           `${stage}: wait ${actionResultField}`,
@@ -156,10 +171,14 @@ export class LynxAppDriver implements DetoxAppDriver {
   async typeText(stage: string, testID: string, text: string): Promise<void> {
     await this.runStage(stage, async () => {
       const resolvedText = String(this.resolvePlaceholders(text));
-      await this.controlClient.postJson(`${stage}: queue ${testID}`, "/e2e/pending-action", {
-        testID,
-        text: resolvedText,
-      });
+      await this.controlClient.postJson(
+        `${stage}: queue ${testID}`,
+        "/e2e/pending-action",
+        {
+          testID,
+          text: resolvedText,
+        },
+      );
     });
   }
 
@@ -182,19 +201,48 @@ export class LynxAppDriver implements DetoxAppDriver {
     return this.env.HOT_UPDATER_E2E_APP_ID ?? "com.hotupdater.lynxexample";
   }
 
-  private launchApp(): void {
+  private deviceId(): string {
+    return this.env.HOT_UPDATER_E2E_DEVICE_ID ?? "booted";
+  }
+
+  private exampleDir(): string {
+    const exampleDir = this.env.HOT_UPDATER_E2E_ENV_TARGET_DIR;
+    if (!exampleDir) {
+      throw new Error("HOT_UPDATER_E2E_ENV_TARGET_DIR is required");
+    }
+    return exampleDir;
+  }
+
+  private async launchApp(): Promise<void> {
+    this.terminateApp();
+    const embeddedDir = await compileLynxE2eEmbedded({
+      exampleDir: this.exampleDir(),
+      platform: this.platform,
+      env: this.env,
+    });
     if (this.platform === "ios") {
       this.runOrThrow("xcrun", [
         "simctl",
         "launch",
-        "booted",
+        this.deviceId(),
         this.appId(),
         "--ota-framework=react",
         "--ota-channel=production",
+        `--ota-embedded-dir=${embeddedDir}`,
       ]);
       return;
     }
+    const deviceEmbeddedDir = "/data/local/tmp/hot-updater-lynx-e2e-embedded";
     this.runOrThrow("adb", [
+      "-s",
+      this.deviceId(),
+      "push",
+      embeddedDir,
+      deviceEmbeddedDir,
+    ]);
+    this.runOrThrow("adb", [
+      "-s",
+      this.deviceId(),
       "shell",
       "am",
       "start",
@@ -206,15 +254,26 @@ export class LynxAppDriver implements DetoxAppDriver {
       "--es",
       "channel",
       "production",
+      "--es",
+      "embeddedDir",
+      deviceEmbeddedDir,
     ]);
   }
 
   private terminateApp(): void {
     if (this.platform === "ios") {
-      this.runOrThrow("xcrun", ["simctl", "terminate", "booted", this.appId()]);
+      spawnSync(
+        "xcrun",
+        ["simctl", "terminate", this.deviceId(), this.appId()],
+        { encoding: "utf8", env: this.env },
+      );
       return;
     }
-    this.runOrThrow("adb", ["shell", "am", "force-stop", this.appId()]);
+    spawnSync(
+      "adb",
+      ["-s", this.deviceId(), "shell", "am", "force-stop", this.appId()],
+      { encoding: "utf8", env: this.env },
+    );
   }
 
   private runOrThrow(command: string, args: readonly string[]): void {
@@ -257,7 +316,10 @@ export class LynxAppDriver implements DetoxAppDriver {
     return value;
   }
 
-  private async runStage(stage: string, operation: () => Promise<void>): Promise<void> {
+  private async runStage(
+    stage: string,
+    operation: () => Promise<void>,
+  ): Promise<void> {
     console.log(`[lynx-stage:start] ${stage}`);
     try {
       await operation();
@@ -301,7 +363,8 @@ export class LynxAppDriver implements DetoxAppDriver {
     testID: string,
     expectedText: string,
   ): Promise<void> {
-    const fieldName = ACTION_RESULT_FIELDS[testID] ?? testID;
+    const fieldName = ACTION_RESULT_TEXT_FIELDS[testID];
+    if (!fieldName) return;
     await this.controlClient.waitForScreenStateField(
       `${stage}: wait ${fieldName} exact`,
       fieldName,
