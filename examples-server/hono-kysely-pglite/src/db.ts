@@ -10,7 +10,7 @@ import { config } from "dotenv";
 import { Kysely, sql } from "kysely";
 import { PGliteDialect } from "kysely-pglite-dialect";
 
-import { localFsStorage } from "./localFsStorage.mjs";
+import { localFsStorage } from "./localFsStorage.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
