@@ -67,6 +67,44 @@ describe("Lynx public controller", () => {
     expect((await HotUpdater.getLaunchInfo()).running.bundleId).toBe("A");
   });
 
+  it("reports RECOVERED when native crash history points at another bundle", async () => {
+    const running = {
+      kind: "BUNDLE" as const,
+      bundleId: "stable",
+      releaseId: "release-stable",
+      channel: "production",
+    };
+    vi.stubGlobal("NativeModules", {
+      HotUpdaterLynx: {
+        getState: (
+          callback: (reply: NativeReply<Partial<NativeState>>) => void,
+        ) =>
+          callback({
+            ok: true,
+            data: {
+              platform: "ios",
+              runtimeId: "runtime",
+              runningSelection: running as NativeState["runningSelection"],
+              runningConfirmed: true,
+              crashedBundleIds: ["crash"],
+              embeddedBundleId: "embedded",
+            },
+          }),
+        notifyAppReady: (
+          callback: (reply: NativeReply<{ status: string }>) => void,
+        ) => callback({ ok: true, data: { status: "ALREADY_CONFIRMED" } }),
+      },
+    });
+    const { HotUpdater } = await import("./index");
+    HotUpdater.init({ baseURL: "https://updates.test" });
+    await expect(HotUpdater.notifyAppReady()).resolves.toEqual({
+      status: "RECOVERED",
+      fromBundleId: "crash",
+      toBundleId: "stable",
+      toReleaseId: "release-stable",
+    });
+  });
+
   it("fails explicitly on a method call when native integration is absent", async () => {
     vi.stubGlobal("NativeModules", undefined);
     const { HotUpdater } = await import("./index");

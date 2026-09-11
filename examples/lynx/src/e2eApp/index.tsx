@@ -18,9 +18,11 @@ type ScreenState = {
   cohortInput: string | null;
   launchStatus: string;
   runtimeChannelInput: string;
+  runtimeScenarioMarker: string | null;
   stagingBundleId: string | null;
   stagingReleaseId: string | null;
   stableBundleId: string | null;
+  stableReleaseId: string | null;
   updateActionResult: string;
   verificationPending: boolean | null;
 };
@@ -228,12 +230,32 @@ function App() {
   const actionsRef = useRef(actions);
   actionsRef.current = actions;
 
+  const publishRuntimeSnapshot = async (launchStatusValue?: string) => {
+    const patch: Partial<ScreenState> = {
+      runtimeScenarioMarker: E2E_SCENARIO_MARKER,
+    };
+    if (launchStatusValue) {
+      patch.launchStatus = launchStatusValue;
+    }
+    try {
+      const active = HotUpdater.getActiveUpdateState();
+      patch.stagingBundleId = active.activeSelection?.bundleId ?? null;
+      patch.stagingReleaseId = active.activeSelection?.releaseId ?? null;
+      patch.stableBundleId = active.stableSelection?.bundleId ?? null;
+      patch.stableReleaseId = active.stableSelection?.releaseId ?? null;
+      patch.verificationPending = active.verificationPending;
+    } catch {
+      // Native snapshot may not be readable until notifyAppReady.
+    }
+    await patchScreenState(patch);
+  };
+
   useEffect(() => {
     void HotUpdater.notifyAppReady()
       .then((result) => {
         const status = `Current Launch Status: ${result.status}`;
         setLaunchStatus(status);
-        void patchScreenState({ launchStatus: status });
+        void publishRuntimeSnapshot(status);
       })
       .catch(() => undefined);
     const timer = setInterval(() => {

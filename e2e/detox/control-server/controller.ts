@@ -62,10 +62,18 @@ import {
   getFixtureResetChannels as resolveFixtureResetChannels,
   resetFixtureReleases,
 } from "./fixture-release-reset.ts";
+import {
+  isLynxE2eAppId,
+  lynxCrashedBundleIds,
+  lynxReceipt,
+  synthesizeLynxCrashHistory,
+  synthesizeLynxLaunchReport,
+  synthesizeLynxMetadata,
+} from "./lynx-store.ts";
 import { inferPatchAssetPathFromStorageUri } from "./patch-storage-path.ts";
+import { resetPendingE2eAction } from "./pending-action.ts";
 import { resetProviderAfterReady } from "./provider-reset-retry.ts";
 import { buildReleaseCatalogUrl } from "./release-catalog-url.ts";
-import { resetPendingE2eAction } from "./pending-action.ts";
 import {
   readE2eScreenStateSnapshot,
   resetE2eScreenState,
@@ -140,6 +148,7 @@ type SessionState = {
   sizeAwareLargeAssetBackupPath: string | null;
   sizeAwareLargeAssetPath: string;
   storePath: string | null;
+  lynxScopePath: string | null;
 };
 
 type DeployBundleRequest = {
@@ -491,6 +500,7 @@ const fixtureSession: SessionState = {
     SIZE_AWARE_LARGE_ASSET_RELATIVE_PATH,
   ),
   storePath: null,
+  lynxScopePath: null,
 };
 
 const channelNamespace =
@@ -1624,49 +1634,273 @@ function updateTrackedReleaseRecord(
   }
 }
 
+function isLynxE2eApp() {
+  return isLynxE2eAppId(fixtureSession.appId);
+}
+
+function iosAppDataDir() {
+  return captureCommand("xcrun", [
+    "simctl",
+    "get_app_container",
+    deviceId as string,
+    fixtureSession.appId,
+    "data",
+  ]);
+}
+
+function lynxIosStoresDir() {
+  return path.join(
+    iosAppDataDir(),
+    "Library/Application Support/HotUpdaterLynxPublic/stores",
+  );
+}
+
+function listAndroidRunAsEntries(relativeDir: string) {
+  const output = captureCommand(
+    "adb",
+    [
+      "-s",
+      deviceId as string,
+      "shell",
+      "run-as",
+      fixtureSession.appId,
+      "ls",
+      "-1",
+      relativeDir,
+    ],
+    { allowFailure: true },
+  );
+  return output
+    .split(/\r?\n/)
+    .map((entry) => entry.trim())
+    .filter((entry) => entry.length > 0 && entry !== "." && entry !== "..");
+}
+
+function rememberLynxStore(scopePath: string, storePath: string) {
+  fixtureSession.lynxScopePath = scopePath;
+  fixtureSession.storePath = storePath;
+  return storePath;
+}
+
+function ensureLynxIosStorePath() {
+  const stores = lynxIosStoresDir();
+  try {
+    for (const scope of fs.readdirSync(stores)) {
+      const scopePath = path.join(stores, scope);
+      const bundles = path.join(scopePath, "bundles");
+      if (!fs.existsSync(bundles)) {
+        continue;
+      }
+      for (const bundleId of fs.readdirSync(bundles)) {
+        if (fs.existsSync(path.join(bundles, bundleId, "manifest.json"))) {
+          return rememberLynxStore(scopePath, bundles);
+        }
+      }
+      if (fs.existsSync(path.join(scopePath, "state.json"))) {
+        return rememberLynxStore(scopePath, bundles);
+      }
+    }
+  } catch {
+    // The Lynx store is created on first launch.
+  }
+  return null;
+}
+
+function ensureLynxAndroidStorePath() {
+  const scopesRoot = `files/hot-updater-lynx/scopes`;
+  for (const scope of listAndroidRunAsEntries(scopesRoot)) {
+    const installations = `${scopesRoot}/${scope}/artifacts/installations`;
+    const bundleIds = listAndroidRunAsEntries(installations);
+    const hasManifest = bundleIds.some((bundleId) =>
+      androidFileExists(
+        `/data/data/${fixtureSession.appId}/${installations}/${bundleId}/manifest.json`,
+      ),
+    );
+    if (
+      hasManifest ||
+      androidFileExists(
+        `/data/data/${fixtureSession.appId}/${scopesRoot}/${scope}/state.json`,
+      )
+    ) {
+      return rememberLynxStore(
+        `/data/data/${fixtureSession.appId}/${scopesRoot}/${scope}`,
+        `/data/data/${fixtureSession.appId}/${installations}`,
+      );
+    }
+  }
+  return null;
+}
+
+function ensureLynxScopePath() {
+  if (fixtureSession.lynxScopePath) {
+    return fixtureSession.lynxScopePath;
+  }
+  if (fixtureSession.platform === "ios") {
+    ensureLynxIosStorePath();
+  } else {
+    ensureLynxAndroidStorePath();
+  }
+  return fixtureSession.lynxScopePath;
+}
+
 function ensureStorePath() {
   if (fixtureSession.storePath) {
     return fixtureSession.storePath;
   }
 
   if (fixtureSession.platform === "ios") {
-    const appDataDir = captureCommand("xcrun", [
-      "simctl",
-      "get_app_container",
-      deviceId as string,
-      fixtureSession.appId,
-      "data",
-    ]);
-    if (fixtureSession.appId === "com.hotupdater.lynxexample") {
-      const stores = path.join(
-        appDataDir,
-        "Library/Application Support/HotUpdaterLynxPublic/stores",
-      );
-      try {
-        for (const scope of fs.readdirSync(stores)) {
-          const bundles = path.join(stores, scope, "bundles");
-          if (!fs.existsSync(bundles)) {
-            continue;
-          }
-          for (const bundleId of fs.readdirSync(bundles)) {
-            if (
-              fs.existsSync(path.join(bundles, bundleId, "manifest.json"))
-            ) {
-              fixtureSession.storePath = bundles;
-              return fixtureSession.storePath;
-            }
-          }
-        }
-      } catch {
-        // Fall through to the RN layout if the Lynx store is not ready.
+    if (isLynxE2eApp()) {
+      const lynxStorePath = ensureLynxIosStorePath();
+      if (lynxStorePath) {
+        return lynxStorePath;
       }
     }
-    fixtureSession.storePath = path.join(appDataDir, "Documents/bundle-store");
+    fixtureSession.storePath = path.join(
+      iosAppDataDir(),
+      "Documents/bundle-store",
+    );
     return fixtureSession.storePath;
+  }
+
+  if (isLynxE2eApp()) {
+    const lynxStorePath = ensureLynxAndroidStorePath();
+    if (lynxStorePath) {
+      return lynxStorePath;
+    }
   }
 
   fixtureSession.storePath = `/data/data/${fixtureSession.appId}/files/bundle-store`;
   return fixtureSession.storePath;
+}
+
+function findLynxIosBundleDir(bundleId: string) {
+  const stores = lynxIosStoresDir();
+  try {
+    for (const scope of fs.readdirSync(stores)) {
+      const bundleDir = path.join(stores, scope, "bundles", bundleId);
+      if (fs.existsSync(path.join(bundleDir, "manifest.json"))) {
+        rememberLynxStore(path.join(stores, scope), path.dirname(bundleDir));
+        return bundleDir;
+      }
+    }
+  } catch {
+    return null;
+  }
+  return null;
+}
+
+function findLynxAndroidBundleDir(bundleId: string) {
+  const scopesRoot = `files/hot-updater-lynx/scopes`;
+  for (const scope of listAndroidRunAsEntries(scopesRoot)) {
+    const bundleDir = `/data/data/${fixtureSession.appId}/${scopesRoot}/${scope}/artifacts/installations/${bundleId}`;
+    if (androidFileExists(`${bundleDir}/manifest.json`)) {
+      rememberLynxStore(
+        `/data/data/${fixtureSession.appId}/${scopesRoot}/${scope}`,
+        path.posix.dirname(bundleDir),
+      );
+      return bundleDir;
+    }
+  }
+  return null;
+}
+
+function releaseIdForBundle(bundleId: string | null) {
+  if (!bundleId) {
+    return null;
+  }
+  return (
+    fixtureSession.deployedBundles.findLast(
+      (record) => record.bundleId === bundleId,
+    )?.releaseId ?? null
+  );
+}
+
+function readLynxJournalValue(): Record<string, unknown> | null {
+  const scopePath = ensureLynxScopePath();
+  if (!scopePath) {
+    return null;
+  }
+  if (fixtureSession.platform === "ios") {
+    const journalPath = path.join(scopePath, "state.json");
+    if (!fs.existsSync(journalPath)) {
+      return null;
+    }
+    try {
+      return JSON.parse(fs.readFileSync(journalPath, "utf8")) as Record<
+        string,
+        unknown
+      >;
+    } catch {
+      return null;
+    }
+  }
+  const result = readAndroidFileBuffer(`${scopePath}/state.json`);
+  if (!result.fileBuffer) {
+    return null;
+  }
+  try {
+    return JSON.parse(result.fileBuffer.toString("utf8")) as Record<
+      string,
+      unknown
+    >;
+  } catch {
+    return null;
+  }
+}
+
+function readLynxSynthesizedSnapshot(
+  fileName: "metadata.json" | "crashed-history.json" | "launch-report.json",
+): JsonSnapshot {
+  const scopePath = ensureLynxScopePath();
+  const journalPath = scopePath
+    ? `${scopePath.replace(/\\/g, "/")}/state.json`
+    : "lynx-state.json";
+  const journal = readLynxJournalValue();
+  if (!journal) {
+    return {
+      exists: false,
+      path: journalPath,
+      readError: null,
+      value: null,
+    };
+  }
+  if (fileName === "metadata.json") {
+    return {
+      exists: true,
+      path: journalPath,
+      readError: null,
+      value: synthesizeLynxMetadata(journal, fixtureSession.platform),
+    };
+  }
+  if (fileName === "crashed-history.json") {
+    return {
+      exists: true,
+      path: journalPath,
+      readError: null,
+      value: synthesizeLynxCrashHistory(journal, fixtureSession.platform),
+    };
+  }
+  const confirmed = lynxReceipt(journal, fixtureSession.platform, "confirmed");
+  const confirmedBundleId =
+    typeof confirmed?.bundleId === "string" ? confirmed.bundleId : null;
+  const report = synthesizeLynxLaunchReport({
+    crashedBundleIds: lynxCrashedBundleIds(journal, fixtureSession.platform),
+    confirmedBundleId,
+    confirmedReleaseId:
+      typeof confirmed?.releaseId === "string" ? confirmed.releaseId : null,
+    fromReleaseId: releaseIdForBundle(
+      lynxCrashedBundleIds(journal, fixtureSession.platform).at(-1) ?? null,
+    ),
+    toReleaseId:
+      (typeof confirmed?.releaseId === "string" ? confirmed.releaseId : null) ??
+      releaseIdForBundle(confirmedBundleId),
+  });
+  return {
+    exists: report !== null,
+    path: journalPath,
+    readError: null,
+    value: report,
+  };
 }
 
 async function clearIosLocalBundleState() {
@@ -1688,14 +1922,15 @@ async function clearIosLocalBundleState() {
     { allowFailure: true },
   );
 
-  const appDataDir = captureCommand("xcrun", [
-    "simctl",
-    "get_app_container",
-    deviceId as string,
-    fixtureSession.appId,
-    "data",
-  ]);
+  const appDataDir = iosAppDataDir();
   const documentsDir = path.join(appDataDir, "Documents");
+  await fsPromises.rm(
+    path.join(appDataDir, "Library/Application Support/HotUpdaterLynxPublic"),
+    {
+      force: true,
+      recursive: true,
+    },
+  );
 
   await fsPromises.rm(path.join(documentsDir, "bundle-store"), {
     force: true,
@@ -1727,6 +1962,7 @@ async function clearIosLocalBundleState() {
   }
 
   fixtureSession.storePath = null;
+  fixtureSession.lynxScopePath = null;
   logDetoxFixture("ios local bundle state reset", {
     documentsDir,
   });
@@ -1752,6 +1988,7 @@ function clearAndroidLocalAppState() {
         `rm -rf ${ensureAndroidFilesDir()}/bundle-store`,
         `${ensureAndroidFilesDir()}/bundle-temp`,
         `${ensureAndroidFilesDir()}/bundle-manifest-temp`,
+        `${ensureAndroidFilesDir()}/hot-updater-lynx`,
         `/data/data/${fixtureSession.appId}/shared_prefs/HotUpdaterPrefs_*.xml`,
       ].join(" "),
     ],
@@ -1760,7 +1997,8 @@ function clearAndroidLocalAppState() {
   if (androidPathExists(`${ensureAndroidFilesDir()}/bundle-store`)) {
     throw new Error("Failed to clear Android bundle-store state");
   }
-  fixtureSession.storePath = undefined;
+  fixtureSession.storePath = null;
+  fixtureSession.lynxScopePath = null;
   logDetoxFixture("android local app state reset", {
     appId: fixtureSession.appId,
   });
@@ -2329,9 +2567,7 @@ function readScreenMetadataState() {
   };
 }
 
-function resolveMetadataState(
-  metadata: Record<string, unknown> | null,
-) {
+function resolveMetadataState(metadata: Record<string, unknown> | null) {
   if (metadata) {
     return getMetadataState(metadata);
   }
@@ -2525,6 +2761,13 @@ function createWaitForMetadataResetTimeoutError(args: {
 }
 
 function readIosWaitForMetadataDiagnostics() {
+  if (isLynxE2eApp()) {
+    return {
+      crashHistory: readLynxSynthesizedSnapshot("crashed-history.json"),
+      launchReport: readLynxSynthesizedSnapshot("launch-report.json"),
+      metadata: readLynxSynthesizedSnapshot("metadata.json"),
+    };
+  }
   const storePath = ensureStorePath();
   return {
     crashHistory: readOptionalJsonSnapshot(
@@ -2538,6 +2781,9 @@ function readIosWaitForMetadataDiagnostics() {
 }
 
 function readIosMetadataSnapshot() {
+  if (isLynxE2eApp()) {
+    return readLynxSynthesizedSnapshot("metadata.json");
+  }
   return readOptionalJsonSnapshot(
     path.join(ensureStorePath(), "metadata.json"),
   );
@@ -2547,6 +2793,14 @@ function readAndroidStoreSnapshot(
   remoteFileName: string,
   localFileName: string,
 ) {
+  if (
+    isLynxE2eApp() &&
+    (remoteFileName === "metadata.json" ||
+      remoteFileName === "crashed-history.json" ||
+      remoteFileName === "launch-report.json")
+  ) {
+    return readLynxSynthesizedSnapshot(remoteFileName);
+  }
   const storePath = ensureStorePath();
   const remotePath = `${storePath}/${remoteFileName}`;
   const localPath = path.join(fixtureSession.resultsDir, localFileName);
@@ -2633,9 +2887,19 @@ function readBundleFileSnapshot(bundleId: string) {
 
 function readBundleManifestSnapshot(bundleId: string) {
   if (fixtureSession.platform === "ios") {
+    if (isLynxE2eApp()) {
+      const bundleDir = findLynxIosBundleDir(bundleId);
+      if (bundleDir) {
+        return readOptionalJsonSnapshot(path.join(bundleDir, "manifest.json"));
+      }
+    }
     return readOptionalJsonSnapshot(
       path.join(ensureStorePath(), bundleId, "manifest.json"),
     );
+  }
+
+  if (isLynxE2eApp()) {
+    findLynxAndroidBundleDir(bundleId);
   }
 
   return readAndroidStoreSnapshot(
@@ -2664,6 +2928,10 @@ function resolveManifestAssetPath(assetPath: string) {
     return assetPath;
   }
 
+  if (isLynxE2eApp()) {
+    return assetPath;
+  }
+
   return (
     MULTI_ASSET_FIXTURES.find((fixture) => fixture.manifestPath === assetPath)
       ?.androidManifestPath ?? assetPath
@@ -2671,12 +2939,20 @@ function resolveManifestAssetPath(assetPath: string) {
 }
 
 function readIosBundleAssetFileHash(bundleId: string, assetPath: string) {
-  const filePath = path.join(ensureStorePath(), bundleId, assetPath);
-  if (!fs.existsSync(filePath)) {
+  const lynxBundleDir = isLynxE2eApp() ? findLynxIosBundleDir(bundleId) : null;
+  const bundleRoot = lynxBundleDir ?? path.join(ensureStorePath(), bundleId);
+  const candidates = [path.join(bundleRoot, assetPath)];
+  if (isLynxE2eApp()) {
+    candidates.push(
+      path.join(bundleRoot, "static/image", path.basename(assetPath)),
+    );
+  }
+  const filePath = candidates.find((candidate) => fs.existsSync(candidate));
+  if (!filePath) {
     return {
       exists: false,
       fileHash: null,
-      path: filePath,
+      path: candidates[0],
       readError: null,
     };
   }
@@ -2702,7 +2978,10 @@ function readIosBundleAssetFileHash(bundleId: string, assetPath: string) {
 }
 
 function readAndroidBundleAssetFileHash(bundleId: string, assetPath: string) {
-  const remotePath = `${ensureStorePath()}/${bundleId}/${assetPath}`;
+  const lynxBundleDir = isLynxE2eApp()
+    ? findLynxAndroidBundleDir(bundleId)
+    : null;
+  const remotePath = `${lynxBundleDir ?? `${ensureStorePath()}/${bundleId}`}/${assetPath}`;
   const result = readAndroidFileBuffer(remotePath);
   if (!result.fileBuffer) {
     return {
@@ -4350,6 +4629,19 @@ function createWaitForRecoveryTimeoutError(args: {
 }
 
 function readIosRecoveryDiagnostics() {
+  if (isLynxE2eApp()) {
+    return {
+      crashHistory: readLynxSynthesizedSnapshot("crashed-history.json"),
+      crashMarker: {
+        exists: false,
+        path: "lynx-recovery-crash-marker.json",
+        readError: null,
+        value: null,
+      },
+      launchReport: readLynxSynthesizedSnapshot("launch-report.json"),
+      metadata: readLynxSynthesizedSnapshot("metadata.json"),
+    };
+  }
   const storePath = ensureStorePath();
   return {
     crashHistory: readOptionalJsonSnapshot(
@@ -4913,7 +5205,11 @@ async function waitForCrashRecovery(
   options: { attempts?: number; signal?: AbortSignal } = {},
 ) {
   const launchLogMarker = androidLaunchLogMarker;
-  if (fixtureSession.platform === "android" && !launchLogMarker) {
+  if (
+    fixtureSession.platform === "android" &&
+    !isLynxE2eApp() &&
+    !launchLogMarker
+  ) {
     throw new Error("Missing Android launch log marker");
   }
   let readyObservations = 0;
@@ -4924,6 +5220,9 @@ async function waitForCrashRecovery(
     getLaunchReportState,
     getMetadataState,
     isAndroidRecoveryReady: () => {
+      if (isLynxE2eApp()) {
+        return getAndroidProcessId().trim().length > 0;
+      }
       const activityProcessesOutput = getAndroidActivityProcessesOutput();
       const ready = isAndroidRecoveryProcessReady({
         appId: fixtureSession.appId,
@@ -6353,7 +6652,46 @@ async function assertFirstOtaUsesArchive(args: { bundleId: string }) {
   );
 }
 
+function writeLynxSnapshotFile(
+  fileName: "metadata.json" | "crashed-history.json" | "launch-report.json",
+  destination: string,
+) {
+  const snapshot = readLynxSynthesizedSnapshot(fileName);
+  if (!snapshot.exists || !snapshot.value) {
+    return false;
+  }
+  fs.writeFileSync(destination, `${JSON.stringify(snapshot.value, null, 2)}\n`);
+  return true;
+}
+
 async function captureState(prefix: string) {
+  if (isLynxE2eApp()) {
+    writeLynxSnapshotFile(
+      "metadata.json",
+      path.join(fixtureSession.resultsDir, `${prefix}-metadata.json`),
+    );
+    if (
+      !writeLynxSnapshotFile(
+        "launch-report.json",
+        path.join(fixtureSession.resultsDir, `${prefix}-launch-report.json`),
+      )
+    ) {
+      // Optional for the first capture before recovery.
+    }
+    if (
+      !writeLynxSnapshotFile(
+        "crashed-history.json",
+        path.join(fixtureSession.resultsDir, `${prefix}-crashed-history.json`),
+      ) &&
+      prefix === "stable"
+    ) {
+      await fsPromises.writeFile(
+        path.join(fixtureSession.resultsDir, `${prefix}-crashed-history.json`),
+        JSON.stringify(EMPTY_CRASH_HISTORY, null, 2),
+      );
+    }
+    return {};
+  }
   const storePath = ensureStorePath();
 
   if (fixtureSession.platform === "ios") {
@@ -6520,8 +6858,15 @@ async function assertBundlePatchBases(args: {
 }
 
 async function assertMetadataActive(bundleId: string) {
-  const metadata =
-    fixtureSession.platform === "ios"
+  const metadata = isLynxE2eApp()
+    ? (() => {
+        const snapshot = readLynxSynthesizedSnapshot("metadata.json");
+        if (!snapshot.value) {
+          throw new Error("Lynx journal metadata is missing");
+        }
+        return snapshot.value;
+      })()
+    : fixtureSession.platform === "ios"
       ? readJson(path.join(ensureStorePath(), "metadata.json"))
       : (() => {
           const probePath = path.join(
@@ -6584,6 +6929,26 @@ async function assertLaunchReportState({
   toBundleId,
   toReleaseId,
 }: LaunchReportAssertion) {
+  if (isLynxE2eApp()) {
+    const launchReportPath = path.join(
+      fixtureSession.resultsDir,
+      "launch-report-assert.json",
+    );
+    if (!writeLynxSnapshotFile("launch-report.json", launchReportPath)) {
+      if (optional) {
+        return {};
+      }
+      throw new Error("launch-report.json is missing");
+    }
+    assertLaunchReport(launchReportPath, {
+      fromBundleId,
+      fromReleaseId,
+      status,
+      toBundleId,
+      toReleaseId,
+    });
+    return {};
+  }
   let launchReportPath =
     fixtureSession.platform === "ios"
       ? path.join(ensureStorePath(), "launch-report.json")
@@ -6626,6 +6991,17 @@ async function assertLaunchReportState({
 }
 
 async function assertCrashHistory(bundleId: string) {
+  if (isLynxE2eApp()) {
+    const crashHistoryPath = path.join(
+      fixtureSession.resultsDir,
+      "crash-history-assert.json",
+    );
+    if (!writeLynxSnapshotFile("crashed-history.json", crashHistoryPath)) {
+      throw new Error("Lynx crash history is missing");
+    }
+    assertCrashHistoryContains(crashHistoryPath, bundleId);
+    return {};
+  }
   const crashHistoryPath =
     fixtureSession.platform === "ios"
       ? path.join(ensureStorePath(), "crashed-history.json")

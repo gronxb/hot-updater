@@ -131,6 +131,18 @@ function createHotUpdaterClient() {
       const confirmation =
         await callNative<ConfirmationResult>("notifyAppReady");
       const after = await refreshState();
+      const crashedBundleId = (before.crashedBundleIds ?? []).at(-1);
+      if (
+        crashedBundleId &&
+        after.runningSelection.bundleId !== crashedBundleId
+      ) {
+        return {
+          status: "RECOVERED",
+          fromBundleId: crashedBundleId,
+          toBundleId: after.runningSelection.bundleId,
+          toReleaseId: after.runningSelection.releaseId ?? undefined,
+        };
+      }
       if (confirmation.status === "ALREADY_CONFIRMED") {
         return { status: "UNCHANGED" };
       }

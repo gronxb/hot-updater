@@ -4,9 +4,11 @@ export type E2eScreenState = {
   readonly cohortInput: string | null;
   readonly launchStatus: string;
   readonly runtimeChannelInput: string;
+  readonly runtimeScenarioMarker: string | null;
   readonly stagingBundleId: string | null;
   readonly stagingReleaseId: string | null;
   readonly stableBundleId: string | null;
+  readonly stableReleaseId: string | null;
   readonly updateActionResult: string;
   readonly verificationPending: boolean | null;
 };
@@ -19,9 +21,11 @@ const defaultE2eScreenState = {
   cohortInput: null,
   launchStatus: "Current Launch Status: null",
   runtimeChannelInput: "beta",
+  runtimeScenarioMarker: null,
   stagingBundleId: null,
   stagingReleaseId: null,
   stableBundleId: null,
+  stableReleaseId: null,
   updateActionResult: "idle",
   verificationPending: null,
 } as const satisfies E2eScreenState;
@@ -104,6 +108,10 @@ const parseScreenStatePatch = (payload: unknown): E2eScreenStatePatch => {
   const launchStatus = parseOptionalString(payload, "launchStatus");
   const updateActionResult = parseOptionalString(payload, "updateActionResult");
   const cohortInput = parseOptionalCohortInput(payload);
+  const runtimeScenarioMarker = parseOptionalNullableString(
+    payload,
+    "runtimeScenarioMarker",
+  );
   const stagingBundleId = parseOptionalNullableString(
     payload,
     "stagingBundleId",
@@ -113,6 +121,10 @@ const parseScreenStatePatch = (payload: unknown): E2eScreenStatePatch => {
     "stagingReleaseId",
   );
   const stableBundleId = parseOptionalNullableString(payload, "stableBundleId");
+  const stableReleaseId = parseOptionalNullableString(
+    payload,
+    "stableReleaseId",
+  );
   const verificationPending = parseOptionalNullableBoolean(
     payload,
     "verificationPending",
@@ -124,9 +136,11 @@ const parseScreenStatePatch = (payload: unknown): E2eScreenStatePatch => {
     ...(cohortInput === undefined ? {} : { cohortInput }),
     ...(launchStatus === undefined ? {} : { launchStatus }),
     ...(runtimeChannelInput === undefined ? {} : { runtimeChannelInput }),
+    ...(runtimeScenarioMarker === undefined ? {} : { runtimeScenarioMarker }),
     ...(stagingBundleId === undefined ? {} : { stagingBundleId }),
     ...(stagingReleaseId === undefined ? {} : { stagingReleaseId }),
     ...(stableBundleId === undefined ? {} : { stableBundleId }),
+    ...(stableReleaseId === undefined ? {} : { stableReleaseId }),
     ...(updateActionResult === undefined ? {} : { updateActionResult }),
     ...(verificationPending === undefined ? {} : { verificationPending }),
   };

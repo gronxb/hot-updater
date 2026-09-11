@@ -2,7 +2,10 @@ import { spawnSync } from "node:child_process";
 
 import { createControlClient } from "../detox/control-client.ts";
 import type { JsonObject } from "../detox/control-protocol.ts";
-import type { DetoxAppDriver } from "../detox/scenarios/types.ts";
+import type {
+  DetoxAppDriver,
+  DetoxLaunchOptions,
+} from "../detox/scenarios/types.ts";
 import type { DetoxPlatform } from "../detox/scripts/control-server-env.ts";
 import { compileLynxE2eEmbedded } from "./embedded-bundle.ts";
 
@@ -100,14 +103,14 @@ export class LynxAppDriver implements DetoxAppDriver {
     });
   }
 
-  async launch(stage: string): Promise<void> {
+  async launch(stage: string, options: DetoxLaunchOptions = {}): Promise<void> {
     await this.runStage(stage, async () => {
       await this.controlClient.postJson(
         `${stage}: prepare launch`,
         "/e2e/prepare-app-launch",
         {},
       );
-      await this.launchApp();
+      await this.launchApp({ expectCrash: options.expectCrash === true });
     });
   }
 
@@ -259,29 +262,28 @@ export class LynxAppDriver implements DetoxAppDriver {
     if (!apkPath) {
       throw new Error("HOT_UPDATER_E2E_ANDROID_BINARY_PATH is required");
     }
-    this.runOrThrow("adb", [
-      "-s",
-      this.deviceId(),
-      "install",
-      "-r",
-      apkPath,
-    ]);
+    this.runOrThrow("adb", ["-s", this.deviceId(), "install", "-r", apkPath]);
   }
 
-  private async launchApp(): Promise<void> {
+  private async launchApp(
+    options: { expectCrash?: boolean } = {},
+  ): Promise<void> {
     this.terminateApp();
-    this.installApp();
     const embeddedDir = await this.prepareOverlay();
     if (this.platform === "ios") {
-      this.runOrThrow("xcrun", [
-        "simctl",
-        "launch",
-        this.deviceId(),
-        this.appId(),
-        "--ota-framework=react",
-        "--ota-channel=production",
-        `--ota-embedded-dir=${embeddedDir}`,
-      ]);
+      this.runLaunch(
+        "xcrun",
+        [
+          "simctl",
+          "launch",
+          this.deviceId(),
+          this.appId(),
+          "--ota-framework=react",
+          "--ota-channel=production",
+          `--ota-embedded-dir=${embeddedDir}`,
+        ],
+        options.expectCrash === true,
+      );
       return;
     }
     const deviceEmbeddedDir = "/data/local/tmp/hot-updater-lynx-e2e-embedded";
@@ -292,24 +294,28 @@ export class LynxAppDriver implements DetoxAppDriver {
       embeddedDir,
       deviceEmbeddedDir,
     ]);
-    this.runOrThrow("adb", [
-      "-s",
-      this.deviceId(),
-      "shell",
-      "am",
-      "start",
-      "-n",
-      `${this.appId()}/.OtaActivity`,
-      "--es",
-      "framework",
-      "react",
-      "--es",
-      "channel",
-      "production",
-      "--es",
-      "embeddedDir",
-      deviceEmbeddedDir,
-    ]);
+    this.runLaunch(
+      "adb",
+      [
+        "-s",
+        this.deviceId(),
+        "shell",
+        "am",
+        "start",
+        "-n",
+        `${this.appId()}/.OtaActivity`,
+        "--es",
+        "framework",
+        "react",
+        "--es",
+        "channel",
+        "production",
+        "--es",
+        "embeddedDir",
+        deviceEmbeddedDir,
+      ],
+      options.expectCrash === true,
+    );
   }
 
   private terminateApp(): void {
@@ -326,6 +332,21 @@ export class LynxAppDriver implements DetoxAppDriver {
       ["-s", this.deviceId(), "shell", "am", "force-stop", this.appId()],
       { encoding: "utf8", env: this.env },
     );
+  }
+
+  private runLaunch(
+    command: string,
+    args: readonly string[],
+    expectCrash: boolean,
+  ): void {
+    if (expectCrash) {
+      spawnSync(command, args, {
+        encoding: "utf8",
+        env: this.env,
+      });
+      return;
+    }
+    this.runOrThrow(command, args);
   }
 
   private runOrThrow(command: string, args: readonly string[]): void {

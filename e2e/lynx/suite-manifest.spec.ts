@@ -128,6 +128,23 @@ describe("Lynx E2E suite manifest", () => {
     expect(source).toContain("await this.prepareOverlay()");
   });
 
+  it("installs the Lynx app only during ensureInstalled", () => {
+    const source = readFileSync(
+      path.join(repoDir, "e2e/lynx/lynx-app-driver.ts"),
+      "utf8",
+    );
+    const launchAt = source.indexOf("private async launchApp(");
+    const terminateAt = source.indexOf("private terminateApp()");
+    expect(launchAt).toBeGreaterThan(0);
+    expect(terminateAt).toBeGreaterThan(launchAt);
+    expect(source.slice(launchAt, terminateAt)).not.toContain(
+      "this.installApp()",
+    );
+    expect(source).toContain(
+      "ensureInstalled(): void {\n    this.installApp();",
+    );
+  });
+
   it("keeps Lynx overlay running if Metro asset requires throw", () => {
     const source = readFileSync(
       path.join(repoDir, "examples/lynx/src/e2eApp/patchSurface.ts"),
@@ -136,5 +153,22 @@ describe("Lynx E2E suite manifest", () => {
     expect(source).toContain("loadE2EDeployBundleAssets");
     expect(source).toContain("try {");
     expect(source).toContain("E2E_DEPLOY_ASSET_GUARD_START");
+  });
+
+  it("projects Lynx journals onto RN store assertions", () => {
+    const controller = readFileSync(
+      path.join(repoDir, "e2e/detox/control-server/controller.ts"),
+      "utf8",
+    );
+    const overlay = readFileSync(
+      path.join(repoDir, "examples/lynx/src/e2eApp/index.tsx"),
+      "utf8",
+    );
+    expect(controller).toContain('from "./lynx-store.ts"');
+    expect(controller).toContain("readLynxSynthesizedSnapshot");
+    expect(controller).toContain("HotUpdaterLynxPublic");
+    expect(controller).toContain("hot-updater-lynx/scopes");
+    expect(overlay).toContain("runtimeScenarioMarker");
+    expect(overlay).toContain("publishRuntimeSnapshot");
   });
 });
