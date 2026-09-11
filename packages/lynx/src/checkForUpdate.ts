@@ -35,18 +35,20 @@ export interface InternalCheckForUpdateOptions extends CheckForUpdateOptions {
 export async function checkForUpdate(
   options: InternalCheckForUpdateOptions,
 ): Promise<CheckForUpdateResult | null> {
-  if (options.updateStrategy !== "appVersion") {
+  if (
+    options.updateStrategy !== "appVersion" &&
+    options.updateStrategy !== "fingerprint"
+  ) {
     throw new LynxUpdaterError(
       "UNSUPPORTED_STRATEGY",
-      'Lynx updates use updateStrategy: "appVersion".',
+      'Lynx updates use updateStrategy: "appVersion" or "fingerprint".',
     );
   }
-  const state = await callNative<NativeState>("getState");
+  let state = await callNative<NativeState>("getState");
   if (options.channel && options.channel !== state.channel) {
-    throw new LynxUpdaterError(
-      "CHANNEL_LOCKED",
-      `Native channel is "${state.channel}". Lynx does not switch channel from downloaded code.`,
-    );
+    state = await callNative<NativeState>("setChannel", {
+      channel: options.channel,
+    });
   }
   const http = createHttpClient({
     ...options.client,
@@ -56,7 +58,10 @@ export async function checkForUpdate(
     },
     requestTimeout: options.requestTimeout ?? options.client.requestTimeout,
   });
-  const catalog = await http.fetchCatalog(state);
+  const catalog = await http.fetchCatalog(
+    state,
+    options.updateStrategy === "fingerprint" ? "fingerprint" : "app-version",
+  );
   // Policy may replace an installed next selection. Running bytes stay separate.
   const current = state.nextSelection ?? state.runningSelection;
   const authenticated = current.catalogId !== null && current.scopeKey !== null;
@@ -75,8 +80,12 @@ export async function checkForUpdate(
     activeReleaseId: authenticated ? current.releaseId : null,
     cohort: state.cohort,
     minimumReleaseId: state.minimumBundleId,
-    strategy: "APP_VERSION",
-    strategyValue: state.appVersion,
+    strategy:
+      options.updateStrategy === "fingerprint" ? "FINGERPRINT" : "APP_VERSION",
+    strategyValue:
+      options.updateStrategy === "fingerprint"
+        ? (state.fingerprintHash ?? "")
+        : state.appVersion,
     crashedBundleIds: state.crashedBundleIds,
     unconfirmedReleaseIds: state.unconfirmedReleaseIds,
   });

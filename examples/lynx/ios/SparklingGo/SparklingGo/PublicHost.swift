@@ -13,6 +13,11 @@ final class PublicHost {
         guard let name = argument.map({ String($0.dropFirst("--ota-framework=".count)) }), ["react", "vue", "octane"].contains(name) else { return nil }
         return name
     }
+    static var requestedChannel: String? {
+        let argument = ProcessInfo.processInfo.arguments.first { $0.hasPrefix("--ota-channel=") }
+        guard let channel = argument.map({ String($0.dropFirst("--ota-channel=".count)) }), !channel.isEmpty else { return nil }
+        return channel
+    }
     static var shared: PublicHost?
     let controller: LynxController
     let context: LynxLaunchContext
@@ -31,7 +36,7 @@ final class PublicHost {
         controller = try LynxController(configuration: .init(root: home.appendingPathComponent("stores"), runtimeId: Self.runtimeId,
             binaryIdentity: SpikeArtifact.hash(Data(contentsOf: Bundle.main.executableURL!)), embeddedDirectory: root.appendingPathComponent(framework),
             embeddedBundleId: native["bundleId"]!, embeddedManifestDigest: digest, minimumBundleId: native["bundleId"]!,
-            appVersion: "1.0.0", channel: "ota-\(framework)", cohort: "1",
+            appVersion: "1.0.0", channel: Self.requestedChannel ?? "ota-\(framework)", cohort: "1",
             startupResourcePaths: native["variant"] == "sdk1" ? ["assets/probe.png"] : ["assets/probe.png", "assets/probe.ttf", "assets/bootstrap.js", "dynamic/component.lynx.bundle"]))
         context = controller.createContext(primary: true)
         observation = NotificationCenter.default.addObserver(forName: SPKWrapperLynxView.willDestroyNotification, object: nil, queue: nil) { [weak self] notice in

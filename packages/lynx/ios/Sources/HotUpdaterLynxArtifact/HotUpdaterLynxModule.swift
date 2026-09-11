@@ -16,6 +16,10 @@ public final class HotUpdaterLynxModuleContext {
          "acceptCatalog": NSStringFromSelector(#selector(acceptCatalog(_:callback:))),
          "prepareSelection": NSStringFromSelector(#selector(prepareSelection(_:callback:))),
          "stageSelection": NSStringFromSelector(#selector(stageSelection(_:callback:))),
+         "setCohort": NSStringFromSelector(#selector(setCohort(_:callback:))),
+         "setChannel": NSStringFromSelector(#selector(setChannel(_:callback:))),
+         "resetChannel": NSStringFromSelector(#selector(resetChannel(_:))),
+         "clearCrashHistory": NSStringFromSelector(#selector(clearCrashHistory(_:))),
          "notifyAppReady": NSStringFromSelector(#selector(notifyAppReady(_:)))]
     }
     private let context: HotUpdaterLynxModuleContext?
@@ -72,6 +76,35 @@ public final class HotUpdaterLynxModuleContext {
             let value = try bound()
             guard let id = params["preparedId"] as? String else { throw LynxArtifactError.invalid("Missing prepared token") }
             callback?(["ok": true, "data": try value.controller.stageSelection(id, context: value.launch)])
+        } catch { failure(error, callback) }
+    }
+    @objc public func setCohort(_ params: [String: Any], callback: LynxCallbackBlock?) {
+        do {
+            let value = try bound()
+            guard let cohort = params["cohort"] as? String else { throw LynxArtifactError.invalid("Missing cohort") }
+            try value.controller.setCohort(cohort, context: value.launch)
+            callback?(["ok": true, "data": try value.controller.getState(value.launch)])
+        } catch { failure(error, callback) }
+    }
+    @objc public func setChannel(_ params: [String: Any], callback: LynxCallbackBlock?) {
+        do {
+            let value = try bound()
+            guard let channel = params["channel"] as? String else { throw LynxArtifactError.invalid("Missing channel") }
+            try value.controller.setChannel(channel, context: value.launch)
+            callback?(["ok": true, "data": try value.controller.getState(value.launch)])
+        } catch { failure(error, callback) }
+    }
+    @objc public func resetChannel(_ callback: LynxCallbackBlock?) {
+        do {
+            let value = try bound()
+            callback?(["ok": true, "data": ["reset": try value.controller.resetChannel(value.launch)]])
+        } catch { failure(error, callback) }
+    }
+    @objc public func clearCrashHistory(_ callback: LynxCallbackBlock?) {
+        do {
+            let value = try bound()
+            try value.controller.clearCrashHistory(value.launch)
+            callback?(["ok": true, "data": try value.controller.getState(value.launch)])
         } catch { failure(error, callback) }
     }
     @objc public func notifyAppReady(_ callback: LynxCallbackBlock?) {

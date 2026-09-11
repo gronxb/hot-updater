@@ -19,6 +19,21 @@ class HotUpdaterLynxModule(context: Context) : LynxModule(context) {
     @LynxMethod fun acceptCatalog(params: ReadableMap, callback: Callback) = call(callback) { session -> session.controller.accept(session, json(params)) }
     @LynxMethod fun prepareSelection(params: ReadableMap, callback: Callback) = call(callback) { session -> session.controller.prepare(session, json(params)) }
     @LynxMethod fun stageSelection(params: ReadableMap, callback: Callback) = call(callback) { session -> session.controller.stage(session, json(params).getString("preparedId")) }
+    @LynxMethod fun setCohort(params: ReadableMap, callback: Callback) = call(callback) { session ->
+        session.controller.setCohort(params.getString("cohort"))
+        session.controller.state(session)
+    }
+    @LynxMethod fun setChannel(params: ReadableMap, callback: Callback) = call(callback) { session ->
+        session.controller.setChannel(params.getString("channel"))
+        session.controller.state(session)
+    }
+    @LynxMethod fun resetChannel(callback: Callback) = call(callback) { session ->
+        JSONObject().put("reset", session.controller.resetChannel())
+    }
+    @LynxMethod fun clearCrashHistory(callback: Callback) = call(callback) { session ->
+        session.controller.clearCrashHistory()
+        session.controller.state(session)
+    }
     @LynxMethod fun notifyAppReady(callback: Callback) {
         Handler(Looper.getMainLooper()).post {
             val session = sessions[mContext]

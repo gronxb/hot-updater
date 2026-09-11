@@ -167,6 +167,10 @@ describe("Detox E2E harness contract", () => {
       "e2e/detox/scripts/control-server-env.ts",
       "e2e/detox/scripts/control-server.ts",
       "e2e/detox/scripts/run.ts",
+      "e2e/detox/control-server/pending-action.ts",
+      "e2e/lynx/lynx-app-driver.ts",
+      "e2e/lynx/scripts/run.ts",
+      "e2e/lynx/suite-manifest.spec.ts",
     ];
     const result = spawnSync(
       "git",

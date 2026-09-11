@@ -212,12 +212,10 @@ function createHotUpdaterClient() {
     getChannel: () => requireSnapshot((state) => state.channel),
     getDefaultChannel: () => requireSnapshot((state) => state.channel),
     isChannelSwitched: () => false,
-    setCohort: (_cohort: string) => {
-      throw new LynxUpdaterError(
-        "NATIVE_MODULE_UNAVAILABLE",
-        "HotUpdater.setCohort is owned by native Lynx host configuration.",
-      );
-    },
+    setCohort: (cohort: string) =>
+      callNative<NativeState>("setCohort", { cohort }).then((state) => {
+        snapshot = state;
+      }),
     getCohort: () => requireSnapshot((state) => state.cohort),
     addListener: <T extends keyof HotUpdaterEvent>(
       eventName: T,
@@ -243,12 +241,12 @@ function createHotUpdaterClient() {
       );
     },
     async resetChannel() {
-      throw new LynxUpdaterError(
-        "NATIVE_MODULE_UNAVAILABLE",
-        "Lynx channel is owned by native host configuration.",
-      );
+      const result = await callNative<{ reset: boolean }>("resetChannel");
+      await refreshState();
+      return result.reset;
     },
-    getFingerprintHash: () => null,
+    getFingerprintHash: () =>
+      requireSnapshot((state) => state.fingerprintHash ?? null),
     getInstallId: () =>
       requireSnapshot((state) => state.runningSelection.bundleId),
     setUser: (_params: SetUserParams | null) => {
@@ -260,10 +258,7 @@ function createHotUpdaterClient() {
     getCrashHistory: () =>
       requireSnapshot((state) => [...state.crashedBundleIds]),
     clearCrashHistory: () => {
-      throw new LynxUpdaterError(
-        "NATIVE_MODULE_UNAVAILABLE",
-        "HotUpdater.clearCrashHistory is not available on Lynx yet.",
-      );
+      void callNative("clearCrashHistory").then(refreshState);
     },
   };
 }

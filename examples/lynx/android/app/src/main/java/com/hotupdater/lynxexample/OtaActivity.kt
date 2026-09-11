@@ -25,9 +25,10 @@ class OtaActivity : Activity() {
             require(framework in setOf("react", "vue", "octane"))
             val existing = processController
             check(existing == null || processFramework == framework) { "Framework selection is pinned until process restart" }
+            val channel = intent.getStringExtra("channel") ?: "ota-$framework"
             val controller = existing ?: LynxUpdaterController(applicationContext, LynxHostConfiguration(
                 runtimeId = BuildConfig.LYNX_OTA_COMPATIBILITY_ID,
-                channel = "ota-$framework", appVersion = "1.0.0", cohort = getSharedPreferences("native-ota-config", MODE_PRIVATE).getString("cohort", "1")!!,
+                channel = channel, appVersion = "1.0.0", cohort = getSharedPreferences("native-ota-config", MODE_PRIVATE).getString("cohort", "1")!!,
                 embeddedAssetDirectory = "ota/$framework/A",
             )).also { processController = it; processFramework = framework }
             val session = if (intent.getBooleanExtra("secondary", false)) controller.pinSecondary() else controller.pinPrimary()

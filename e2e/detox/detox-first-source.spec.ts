@@ -8,7 +8,7 @@ import { describe, expect, it } from "vitest";
 const repoDir = path.resolve(import.meta.dirname, "../..");
 const detoxDir = path.join(repoDir, "e2e/detox");
 const scenarioDir = path.join(detoxDir, "scenarios");
-const e2eSourceDirectories = ["e2e/detox/"] as const;
+const e2eSourceDirectories = ["e2e/detox/", "e2e/lynx/"] as const;
 const textScenarioFilePattern = /^e2e\/.*\.(?:ya?ml)$/i;
 const legacyHarnessTerms = [
   "DetoxScenarioRuntime",

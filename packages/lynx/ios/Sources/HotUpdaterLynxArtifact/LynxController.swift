@@ -68,6 +68,8 @@ public final class LynxController {
     private var inFlightBundles: [String: Int] = [:]
     private var readyCallbacks: [(Result<String, Error>) -> Void] = []
     private var readyRequested = false
+    private var runtimeCohort: String
+    private var runtimeChannel: String
 
     public init(configuration config: LynxControllerConfiguration) throws {
         guard !config.runtimeId.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
@@ -78,6 +80,8 @@ public final class LynxController {
             throw LynxArtifactError.invalid("Invalid native Lynx controller configuration")
         }
         configuration = config
+        runtimeCohort = config.cohort
+        runtimeChannel = config.channel
         let profile = LynxArtifactConfiguration(runtimeId: config.runtimeId, publicKeyPEM: config.publicKeyPEM)
         // The binary's embedded digest is its trust anchor; downloaded signatures are a separate policy.
         let embeddedRoot = config.embeddedDirectory.standardizedFileURL.resolvingSymlinksInPath()
@@ -160,9 +164,9 @@ public final class LynxController {
         return (try? LynxCatalogPolicy.isEligibleStored(receipt: receipt, catalog: catalog, snapshot: snapshot, highestSeen: state.highWater[key]?.policy, rollbackAuthorization: stored.rollback)) == true
     }
     private func snapshot() throws -> LynxPolicySnapshot {
-        .init(revision: state.revision, platform: "ios", appVersion: configuration.appVersion, channel: configuration.channel,
+        .init(revision: state.revision, platform: "ios", appVersion: configuration.appVersion, channel: runtimeChannel,
               embeddedBundleId: configuration.embeddedBundleId, minimumBundleId: configuration.minimumBundleId,
-              cohort: configuration.cohort, runningSelection: runningSelection, nextSelection: try state.next?.policy,
+              cohort: runtimeCohort, runningSelection: runningSelection, nextSelection: try state.next?.policy,
               crashedBundleIds: state.crashedBundleIds, unconfirmedReleaseIds: state.unconfirmedReleaseIds)
     }
     private func save(_ next: LynxControllerState) throws { try journal.save(next); state = next }
@@ -207,16 +211,36 @@ public final class LynxController {
             callbacks.forEach { $0(.failure(LynxArtifactError.invalid("STALE_CONTEXT: Primary was destroyed"))) }
         }
     }
+    public func setCohort(_ cohort: String, context: LynxLaunchContext) throws {
+        lock.lock(); defer { lock.unlock() }; try validate(context)
+        runtimeCohort = cohort
+    }
+    public func setChannel(_ channel: String, context: LynxLaunchContext) throws {
+        lock.lock(); defer { lock.unlock() }; try validate(context)
+        runtimeChannel = channel
+    }
+    public func resetChannel(_ context: LynxLaunchContext) throws -> Bool {
+        lock.lock(); defer { lock.unlock() }; try validate(context)
+        runtimeChannel = configuration.channel
+        return true
+    }
+    public func clearCrashHistory(_ context: LynxLaunchContext) throws {
+        lock.lock(); defer { lock.unlock() }; try validate(context)
+        var next = state
+        next.crashedBundleIds = []
+        try save(next)
+    }
     public func getState(_ context: LynxLaunchContext) throws -> [String: Any] {
         lock.lock(); defer { lock.unlock() }; try validate(context)
         return ["revision": state.revision, "platform": "ios", "appVersion": configuration.appVersion,
-                "channel": configuration.channel, "channelKey": Data(configuration.channel.utf8).base64EncodedString().replacingOccurrences(of: "+", with: "-").replacingOccurrences(of: "/", with: "_").replacingOccurrences(of: "=", with: ""), "runtimeId": configuration.runtimeId,
+                "channel": runtimeChannel, "channelKey": Data(runtimeChannel.utf8).base64EncodedString().replacingOccurrences(of: "+", with: "-").replacingOccurrences(of: "/", with: "_").replacingOccurrences(of: "=", with: ""), "runtimeId": configuration.runtimeId,
                 "embeddedBundleId": configuration.embeddedBundleId, "minimumBundleId": configuration.minimumBundleId,
-                "cohort": configuration.cohort, "runningSelection": runningSelection.dictionary,
+                "cohort": runtimeCohort, "runningSelection": runningSelection.dictionary,
                 "runningConfirmed": runningConfirmed,
                 "confirmedSelection": try state.confirmed?.policy.dictionary as Any? ?? NSNull(),
                 "nextSelection": try state.next?.policy.dictionary as Any? ?? NSNull(),
-                "crashedBundleIds": state.crashedBundleIds, "unconfirmedReleaseIds": state.unconfirmedReleaseIds]
+                "crashedBundleIds": state.crashedBundleIds, "unconfirmedReleaseIds": state.unconfirmedReleaseIds,
+                "fingerprintHash": configuration.binaryIdentity]
     }
     public func acceptCatalog(_ json: Data, expectedRevision: String, contextHash: String, context: LynxLaunchContext) throws -> LynxPolicyGuard {
         lock.lock(); defer { lock.unlock() }; try validate(context, primaryRequired: true)

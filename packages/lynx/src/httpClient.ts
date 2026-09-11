@@ -35,14 +35,23 @@ function descriptor(value: unknown): value is ReleaseCatalogDescriptor {
   );
 }
 
-type CatalogState = Pick<NativeState, "platform" | "channelKey" | "appVersion">;
+type CatalogState = Pick<
+  NativeState,
+  "platform" | "channelKey" | "appVersion"
+> & {
+  readonly fingerprintHash?: string | null;
+};
 
-function validateCatalog(value: unknown, state: CatalogState): ReleaseCatalog {
+function validateCatalog(
+  value: unknown,
+  state: CatalogState,
+  strategy: "app-version" | "fingerprint",
+): ReleaseCatalog {
   if (!value || typeof value !== "object") {
     return invalidResponse("Expected a Release catalog.");
   }
   const catalog = value as Partial<ReleaseCatalog>;
-  const expectedScope = `v1:app-version:${state.platform}:${state.channelKey}`;
+  const expectedScope = `v1:${strategy}:${state.platform}:${state.channelKey}`;
   if (
     catalog.schemaVersion !== 1 ||
     typeof catalog.catalogId !== "string" ||
@@ -138,7 +147,10 @@ export function createHttpClient(options: HotUpdaterOptions) {
   }
 
   return {
-    async fetchCatalog(state: CatalogState): Promise<ReleaseCatalog> {
+    async fetchCatalog(
+      state: CatalogState,
+      strategy: "app-version" | "fingerprint" = "app-version",
+    ): Promise<ReleaseCatalog> {
       // Native owns Unicode normalization and the exact scope identity.
       if (
         typeof state.channelKey !== "string" ||
@@ -150,8 +162,16 @@ export function createHttpClient(options: HotUpdaterOptions) {
           "Native state did not provide an encoded channel key.",
         );
       }
-      const path = `/release-catalogs/app-version/${state.platform}/${state.channelKey}/${encodeURIComponent(state.appVersion)}`;
-      return validateCatalog(await getJSON(path), state);
+      const strategyValue =
+        strategy === "fingerprint" ? state.fingerprintHash : state.appVersion;
+      if (!strategyValue) {
+        throw new LynxUpdaterError(
+          "UNSUPPORTED_STRATEGY",
+          "Native fingerprint hash is unavailable.",
+        );
+      }
+      const path = `/release-catalogs/${strategy}/${state.platform}/${state.channelKey}/${encodeURIComponent(strategyValue)}`;
+      return validateCatalog(await getJSON(path), state, strategy);
     },
     async resolveArtifact(
       bundleId: string,

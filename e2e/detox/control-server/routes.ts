@@ -43,7 +43,14 @@ import {
   startWaitForAndroidRestartJob,
   startWaitForMetadataJob,
 } from "./controller.ts";
-import { handlePatchE2eScreenState } from "./screen-state.ts";
+import {
+  handleEnqueuePendingE2eAction,
+  takePendingE2eAction,
+} from "./pending-action.ts";
+import {
+  handlePatchE2eScreenState,
+  readE2eScreenStateSnapshot,
+} from "./screen-state.ts";
 
 const app = new Hono();
 
@@ -80,6 +87,18 @@ app.get("/e2e/runtime-config", (c) => {
 
 app.post("/e2e/screen-state", async (c) => {
   return c.json(handlePatchE2eScreenState(await c.req.json()));
+});
+
+app.get("/e2e/screen-state", (c) => {
+  return c.json({ screenState: readE2eScreenStateSnapshot() });
+});
+
+app.post("/e2e/pending-action", async (c) => {
+  return c.json(handleEnqueuePendingE2eAction(await c.req.json()));
+});
+
+app.get("/e2e/pending-action", (c) => {
+  return c.json({ action: takePendingE2eAction() });
 });
 
 app.post("/e2e/verify-console-insights", async (c) => {

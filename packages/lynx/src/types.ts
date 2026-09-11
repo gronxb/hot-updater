@@ -141,6 +141,7 @@ export interface NativeState {
   nextSelection: PersistedSelectionReceipt | null;
   crashedBundleIds: string[];
   unconfirmedReleaseIds: string[];
+  fingerprintHash?: string | null;
 }
 
 /** Native binds this guard to its revision and accepted catalog. */
@@ -197,4 +198,11 @@ export interface HotUpdaterLynxNative {
   ): void;
   notifyAppReady(callback: Callback<ConfirmationResult>): void;
   reload?(callback: Callback<void>): void;
+  setCohort?(params: { cohort: string }, callback: Callback<NativeState>): void;
+  setChannel?(
+    params: { channel: string },
+    callback: Callback<NativeState>,
+  ): void;
+  resetChannel?(callback: Callback<{ reset: boolean }>): void;
+  clearCrashHistory?(callback: Callback<NativeState>): void;
 }

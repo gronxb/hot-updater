@@ -58,8 +58,10 @@ class LynxUpdaterController internal constructor(
     private fun exclusions(key: String): List<String> = store.value.optJSONArray(key)?.let { array -> (0 until array.length()).map { array.getString(it) } } ?: emptyList()
     private fun eligible(value: CatalogPolicy.Receipt) = value.releaseId !in exclusions("unconfirmed") &&
         (value.bundleId == embedded.bundleId || value.bundleId !in exclusions("crashed"))
+    private var runtimeCohort: String = configuration.cohort
+    private var runtimeChannel: String = configuration.channel
     private fun snapshot() = CatalogPolicy.NativeSnapshot(store.value.getString("revision"), configuration.appVersion,
-        configuration.channel, configuration.runtimeId, embedded.bundleId, embedded.bundleId, configuration.cohort,
+        runtimeChannel, configuration.runtimeId, embedded.bundleId, embedded.bundleId, runtimeCohort,
         running, receipt("next"), exclusions("crashed"), exclusions("unconfirmed"))
     private fun mutate(change: (JSONObject) -> Unit) = store.update { change(it); it.put("revision", UUID.randomUUID().toString()) }
     private fun highWater(): CatalogPolicy.HighWater? = store.value.optJSONObject("highWater")?.let {
@@ -137,6 +139,16 @@ class LynxUpdaterController internal constructor(
         LynxLaunchSession(this, runningFiles, UUID.randomUUID().toString(), false)
     }
 
+    fun setCohort(cohort: String) = synchronized(stateLock) { runtimeCohort = cohort }
+    fun setChannel(channel: String) = synchronized(stateLock) { runtimeChannel = channel }
+    fun resetChannel(): Boolean = synchronized(stateLock) {
+        runtimeChannel = configuration.channel
+        true
+    }
+    fun clearCrashHistory() = synchronized(stateLock) {
+        mutate { it.put("crashed", JSONArray()) }
+    }
+
     internal fun state(session: LynxLaunchSession): JSONObject = synchronized(stateLock) {
         requireLive(session, false)
         val state = snapshot()
@@ -147,6 +159,7 @@ class LynxUpdaterController internal constructor(
             .put("confirmedSelection", receipt("confirmed")?.toJson() ?: JSONObject.NULL)
             .put("nextSelection", receipt("next")?.toJson() ?: JSONObject.NULL)
             .put("crashedBundleIds", JSONArray(state.crashedBundleIds)).put("unconfirmedReleaseIds", JSONArray(state.unconfirmedReleaseIds))
+            .put("fingerprintHash", binaryId)
     }
 
     internal fun accept(session: LynxLaunchSession, params: JSONObject): JSONObject = synchronized(stateLock) {
