@@ -202,7 +202,18 @@ export class LynxAppDriver implements DetoxAppDriver {
   }
 
   private deviceId(): string {
-    return this.env.HOT_UPDATER_E2E_DEVICE_ID ?? "booted";
+    if (this.platform === "ios") {
+      return (
+        this.env.HOT_UPDATER_E2E_DEVICE_ID ??
+        this.env.HOT_UPDATER_E2E_IOS_SIMULATOR_NAME ??
+        "booted"
+      );
+    }
+    return (
+      this.env.HOT_UPDATER_E2E_ANDROID_SERIAL ??
+      this.env.HOT_UPDATER_E2E_DEVICE_ID ??
+      "emulator-5554"
+    );
   }
 
   private exampleDir(): string {

@@ -70,6 +70,17 @@ describe("Lynx E2E suite manifest", () => {
     expect(source).toMatch(/signing:\s*\{[\s\S]*enabled:\s*true/);
     expect(source).toContain("getBundleSigningPublicKey");
     expect(source).toContain("keys/public-key.pem");
+    expect(source).toContain("copyE2eFixtures");
+    expect(source).toContain("assets/src/test");
+  });
+
+  it("uses agent device env vars instead of simctl booted", () => {
+    const source = readFileSync(
+      path.join(repoDir, "e2e/lynx/lynx-app-driver.ts"),
+      "utf8",
+    );
+    expect(source).toContain("HOT_UPDATER_E2E_IOS_SIMULATOR_NAME");
+    expect(source).toContain("HOT_UPDATER_E2E_ANDROID_SERIAL");
   });
 
   it("installs the Lynx app before resetting local device state", () => {

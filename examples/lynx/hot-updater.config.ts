@@ -118,6 +118,27 @@ const runtimeId = (platform: "ios" | "android") =>
     ? "sparkling-c4ce8d2-lynx-3.9.0-primjs-3.8.0-alpha.6-ios-ota-v2"
     : "android-sparkling-2.1.0-rc.12-lynx-3.9.0-primjs-3.8.0-alpha.6-ota-v2";
 
+async function copyE2eFixtures(cwd: string, outDir: string) {
+  const srcDir = path.join(cwd, "src/test");
+  let names: string[];
+  try {
+    names = await fsp.readdir(srcDir);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+      return;
+    }
+    throw error;
+  }
+  const destDir = path.join(outDir, "assets/src/test");
+  await fsp.mkdir(destDir, { recursive: true });
+  for (const name of names) {
+    if (!name.startsWith("_fixture-")) {
+      continue;
+    }
+    await fsp.copyFile(path.join(srcDir, name), path.join(destDir, name));
+  }
+}
+
 export default {
   updateStrategy: "appVersion",
   compressStrategy: "zip",
@@ -159,6 +180,7 @@ export default {
           maxBuffer: 10 * 1024 * 1024,
         },
       );
+      await copyE2eFixtures(cwd, outDir);
       return {
         entry: "main.lynx.bundle",
         runtimeId: runtimeId(platform),
