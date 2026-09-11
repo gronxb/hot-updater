@@ -1,39 +1,46 @@
 # @hot-updater/lynx
 
-Lynx support is being implemented against the
-[approved PRD](../../plans/lynx-support/prd.md). The target is the Lynx engine,
-with ReactLynx, VueLynx and OctaneLynx using the same integration contract.
+OTA updates for Lynx apps. ReactLynx, VueLynx, and OctaneLynx share one
+integration contract: the same runtime, build plugin, and native controllers
+on iOS and Android.
 
-The current package is experimental. Public runtime/build APIs are not frozen.
-Native probes and the CLI archive path have passed focused verification;
-the complete SDK installation and recovery path is still being integrated. Follow the
-[execution ledger](../../plans/lynx-support/execution.md) for verified results
-and open requirements.
+```ts
+import { createHotUpdater } from "@hot-updater/lynx";
 
-## Integration being validated
+const updater = createHotUpdater({
+  baseURL: "https://updates.example.com/hot-updater",
+});
+
+await updater.notifyAppReady();
+
+const update = await updater.checkForUpdate();
+if (update) {
+  await update.install();
+}
+```
+
+Importing the package does not call native code or open a network connection.
+The host registers `HotUpdaterLynx`, then background scripting talks to the
+bound native context. Native verifies archives, signatures, and compatibility
+before evaluating a candidate, and it owns confirmation and recovery.
+
+## How it fits
 
 - Applications own compilation or supply prebuilt native output. The build
-  integration preserves selected file bytes, names and dependency paths, assigns
-  a Bundle ID, and identifies the entry and declared native compatibility profile.
-- Runtime and Node build entrypoints stay separate, with no mandatory UI
-  framework dependency. Native module calls originate in background scripting;
-  importing the SDK must remain safe in both execution graphs.
-- Native verifies the archive, manifest, entry metadata and compatibility before
-  evaluating a candidate. It owns process selection, resource resolution,
-  startup confirmation and recovery.
-- React Native and Lynx use separate backend/catalog/storage projects initially.
+  plugin preserves selected file bytes, names, and dependency paths, assigns a
+  Bundle ID, and binds the entry to a native compatibility identity.
+- Runtime and Node build entrypoints stay separate, with no required React,
+  Vue, or Octane dependency.
+- Native verifies the archive, manifest, entry metadata, and compatibility
+  before evaluating a candidate. It owns process selection, resource
+  resolution, startup confirmation, and recovery.
+- React Native and Lynx stay in separate app binaries and catalog projects.
   A channel or app version does not identify a native compatibility contract.
 
-The [example](../../examples/lynx) contains production compiler fixtures and
-private Sparkling host probes for both operating systems. Manual fixture
-placement and successful compilation are not evidence of OTA installation.
-The exact supported resource and readiness boundaries are being tested there.
+The [example](../../examples/lynx) ships ReactLynx, VueLynx, and OctaneLynx
+hosts for iOS and Android.
 
-The example's real outputs have passed through the CLI, including signed archives
-and multiple native bundle files. Full framework/OS OTA acceptance remains
-required before claiming the integration is complete.
-
-## Provisional runtime contract
+## Runtime contract
 
 Create the same controller in each UI framework and invoke its methods from
 Lynx background scripting after the host registers `HotUpdaterLynx`:
@@ -77,7 +84,7 @@ and successful essential application startup. A secondary, destroyed or stale
 context cannot confirm an attempt. These guarantees require the native host and
 controller integration; mocked bridge tests alone do not establish them.
 
-## Provisional build contract
+## Build contract
 
 The `@hot-updater/lynx/build` entrypoint takes an application-owned async `build`
 callback. It receives `cwd`, `platform`, a fresh packaging `bundleId`, and an empty

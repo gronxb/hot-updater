@@ -2,7 +2,7 @@
   "name": "@hot-updater/lynx",
   "version": "1.0.0-rc.14",
   "type": "module",
-  "description": "Experimental Lynx OTA integration for Hot Updater",
+  "description": "OTA updates for Lynx apps",
   "sideEffects": false,
   "main": "./dist/index.cjs",
   "module": "./dist/index.mjs",
