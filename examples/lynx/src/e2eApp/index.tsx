@@ -121,12 +121,25 @@ function App() {
             : updateInfo.transitionKind === "USE_BUILTIN"
               ? `${actionLabel} -> selected BUILTIN`
               : `${actionLabel} -> installed ID ${updateInfo.id}`;
-      const active = HotUpdater.getActiveUpdateState();
+      let stagingBundleId: string | null = updateInfo.id;
+      let stagingReleaseId: string | null = updateInfo.releaseId ?? null;
+      let stableBundleId: string | null = null;
+      let verificationPending: boolean | null = installed;
+      try {
+        const active = HotUpdater.getActiveUpdateState();
+        stagingBundleId = active.activeSelection?.bundleId ?? stagingBundleId;
+        stagingReleaseId =
+          active.activeSelection?.releaseId ?? stagingReleaseId;
+        stableBundleId = active.stableSelection?.bundleId ?? null;
+        verificationPending = active.verificationPending;
+      } catch {
+        // Native snapshot may not be readable until notifyAppReady.
+      }
       await patchScreenState({
-        stagingBundleId: active.activeSelection?.bundleId ?? null,
-        stagingReleaseId: active.activeSelection?.releaseId ?? null,
-        stableBundleId: active.stableSelection?.bundleId ?? null,
-        verificationPending: active.verificationPending,
+        stagingBundleId,
+        stagingReleaseId,
+        stableBundleId,
+        verificationPending,
       });
       await setUpdateActionResult(
         installed ? appliedResult : `${actionLabel} -> skipped`,
@@ -253,17 +266,24 @@ function App() {
   );
 }
 
-void resolveAppBaseURL()
-  .then((baseURL) => {
+const startE2eApp = (baseURL: string) => {
+  void Promise.resolve(
     HotUpdater.init({
       insights: true,
       baseURL,
       requestTimeout: 15000,
-    });
-    maybeCrashForE2E();
-    loadE2EDeployBundleAssets();
-    root.render(<App />);
+    }),
+  ).catch(() => undefined);
+  maybeCrashForE2E();
+  loadE2EDeployBundleAssets();
+  root.render(<App />);
+};
+
+startE2eApp(appBaseURL);
+void resolveAppBaseURL()
+  .then((baseURL) => {
+    if (baseURL !== appBaseURL) {
+      startE2eApp(baseURL);
+    }
   })
-  .catch((error) => {
-    throw error;
-  });
+  .catch(() => undefined);
