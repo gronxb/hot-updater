@@ -11,12 +11,8 @@ const repoDir = path.resolve(
   "../../..",
 );
 const resultsRoot = path.join(repoDir, "e2e/results/detox");
-const iosAppId =
-  process.env.HOT_UPDATER_E2E_IOS_APP_ID ??
-  process.env.HOT_UPDATER_E2E_APP_ID ??
-  "org.reactjs.native.example.HotUpdaterExample";
-const androidAppId =
-  process.env.HOT_UPDATER_E2E_APP_ID ?? "com.hotupdaterexample";
+const iosAppId = "org.reactjs.native.example.HotUpdaterExample";
+const androidAppId = "com.hotupdaterexample";
 const androidRuntimeConfigDevicePort = "3107";
 
 function parsePositivePort(value: string | undefined, name: string): string {
