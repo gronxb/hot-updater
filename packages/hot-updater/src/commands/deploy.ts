@@ -16,6 +16,7 @@ import {
   putStorageFile,
 } from "@hot-updater/cli-tools";
 import type {
+  BuildPlugin,
   Bundle,
   BundleRepository,
   DatabaseMutationClient,
@@ -748,6 +749,9 @@ const deployPlatform = async ({
   const signingValidation = await validateSigningConfig(config, {
     expectedPublicKey: signingSession?.publicKey,
     platform,
+    ...(buildPlugin.nativeBuild?.signingConfigSource === undefined
+      ? {}
+      : { signingConfigSource: buildPlugin.nativeBuild.signingConfigSource }),
     ...(getNativeSigningPublicKey === undefined
       ? {}
       : { nativePublicKey: nativeSigningPublicKey?.publicKey ?? null }),
@@ -927,14 +931,11 @@ const deployPlatform = async ({
 
   const storagePlugin = config.storage;
   assertStorageOperations(storagePlugin, ["put", "get", "exists", "delete"]);
+  let archiveWriteStarted = false;
 
   try {
     const taskRef: {
-      buildResult: {
-        buildPath: string;
-        bundleId: string;
-        stdout: string | null;
-      } | null;
+      buildResult: Awaited<ReturnType<BuildPlugin["build"]>> | null;
       assetUploadTargets: PreparedAssetUploadTarget[];
       archiveByteSize: number | null;
       manifestPath: string | null;
@@ -974,9 +975,11 @@ const deployPlatform = async ({
             files
               .filter(
                 (file) =>
+                  taskRef.buildResult?.filePolicy === "preserve" ||
                   !fs.statSync(path.join(buildPath, file)).isDirectory(),
               )
               .map((file) => path.join(buildPath, file)),
+            taskRef.buildResult.filePolicy,
           );
           const currentBundleId = taskRef.buildResult.bundleId;
           bundleId = currentBundleId;
@@ -1007,6 +1010,7 @@ const deployPlatform = async ({
           taskRef.assetUploadTargets = assetUploadTargets;
           taskRef.manifestPath = manifestPath;
 
+          archiveWriteStarted = true;
           switch (compressStrategy) {
             case "tar.br":
               await createTarBrTargetFiles({
@@ -1289,7 +1293,9 @@ const deployPlatform = async ({
 
     return { bundleId: confirmedBundleId, platform, runDeferredPatches };
   } catch (e) {
-    await fs.promises.rm(bundlePath, { force: true });
+    if (archiveWriteStarted) {
+      await fs.promises.rm(bundlePath, { force: true });
+    }
     console.error(e);
     process.exit(1);
   }

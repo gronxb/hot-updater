@@ -9,6 +9,7 @@ const { mockBuildPlugin, mockCli, mockServer, mockStoragePlugin } = vi.hoisted(
       name: "mock-build",
       nativeBuild: undefined as
         | {
+            signingConfigSource?: "build-plugin";
             getBundleSigningPublicKey: ReturnType<typeof vi.fn>;
             getFingerprintExtraSources?: ReturnType<typeof vi.fn>;
           }
@@ -609,6 +610,36 @@ describe("deploy rollout wiring", () => {
       expect(open).not.toHaveBeenCalled();
       expect(mockCli.p.log.message).not.toHaveBeenCalled();
       expect(mockCli.p.outro).not.toHaveBeenCalled();
+    } finally {
+      exit.mockRestore();
+      errorLog.mockRestore();
+    }
+  });
+
+  it("removes the partial archive when compression fails before upload", async () => {
+    mockCli.createTarBrTargetFiles.mockRejectedValueOnce(
+      new Error("Compression failed"),
+    );
+    const exit = vi.spyOn(process, "exit").mockImplementationOnce(() => {
+      throw new Error("process.exit");
+    });
+    const errorLog = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      await expect(
+        deploy({
+          channel: "production",
+          forceUpdate: false,
+          interactive: false,
+          platform: "ios",
+          targetAppVersion: "1.0.x",
+        }),
+      ).rejects.toThrow("process.exit");
+      expect(fs.promises.rm).toHaveBeenCalledWith(
+        "/mock/cwd/.hot-updater/output/bundle/bundle.tar.br",
+        { force: true },
+      );
+      expect(mockStoragePlugin.put).not.toHaveBeenCalled();
+      expect(databaseHarness.commit).not.toHaveBeenCalled();
     } finally {
       exit.mockRestore();
       errorLog.mockRestore();
@@ -1344,6 +1375,45 @@ describe("deploy rollout wiring", () => {
       expectedPublicKey: "provider-public-key",
       nativePublicKey: "expo-public-key",
       platform: "ios",
+    });
+  });
+
+  it("forwards authoritative build-plugin signing configuration to validation", async () => {
+    const getBundleSigningPublicKey = vi.fn(async () => ({
+      publicKey: "native-public-key",
+    }));
+    mockBuildPlugin.nativeBuild = {
+      signingConfigSource: "build-plugin",
+      getBundleSigningPublicKey,
+    };
+    mockCli.loadConfig.mockResolvedValue({
+      build: async () => mockBuildPlugin,
+      compressStrategy: "tar.br",
+      database: databasePlugin,
+      fingerprint: {},
+      patch: { enabled: false },
+      signing: mockSigningPlugin,
+      storage: mockStoragePlugin,
+      updateStrategy: "appVersion",
+    });
+    mockCli.prepareBundleSigning.mockResolvedValue({
+      name: "provider",
+      publicKey: "provider-public-key",
+      signFileHash: vi.fn(async () => "signature"),
+    });
+    await deploy({
+      channel: "production",
+      forceUpdate: false,
+      interactive: false,
+      platform: "ios",
+      targetAppVersion: "1.0.x",
+    });
+    expect(getBundleSigningPublicKey).toHaveBeenCalledOnce();
+    expect(validateSigningConfig).toHaveBeenCalledWith(expect.anything(), {
+      expectedPublicKey: "provider-public-key",
+      nativePublicKey: "native-public-key",
+      platform: "ios",
+      signingConfigSource: "build-plugin",
     });
   });
 

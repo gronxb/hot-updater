@@ -1,0 +1,44 @@
+# Sparkling template c4ce8d25c5ea277e13752d68ff1f2a66f5704240, production target.
+require 'pathname'
+platform :ios, '15.0'
+source 'https://cdn.cocoapods.org/'
+use_modular_headers!
+plugin 'cocoapods-lynx-library'
+use_frameworks! :linkage => :static
+
+# Normalize native dependency paths before CocoaPods stores them, including the generated registry.
+def pod(name, *requirements)
+  requirements.each do |value|
+    if value.is_a?(Hash) && value[:path] && Pathname.new(value[:path]).absolute?
+      value[:path] = Pathname.new(value[:path]).relative_path_from(Pathname.new(__dir__)).to_s
+    end
+  end
+  super
+end
+
+target 'SparklingGo' do
+  use_lynx_library!
+  lynx_package = Pod::Executable.execute_command('node', ['-p', 'require.resolve("@hot-updater/lynx/package.json", {paths: [process.argv[1]]})', __dir__]).strip
+  pod 'HotUpdaterLynxArtifact', :path => File.join(File.dirname(lynx_package), 'ios')
+  pod 'Sparkling', :path => '.upstream/sparkling/packages/sparkling-sdk/ios/Sparkling'
+  pod 'SparklingMacro', :path => '.upstream/sparkling/packages/sparkling-sdk/ios/SparklingMacro'
+  pod 'SparklingMethod', :path => '.upstream/sparkling/packages/sparkling-method/ios', :subspecs => ['Lynx', 'DIProvider']
+  pod 'Sparkling-Router', :path => '.upstream/sparkling/packages/methods/sparkling-navigation/ios'
+  pod 'Lynx', '3.9.0', :subspecs => ['Framework', 'ReleaseResource']
+  pod 'PrimJS', '3.8.0-alpha.6', :subspecs => ['quickjs', 'napi']
+  pod 'LynxService', '3.9.0', :subspecs => ['Image', 'Log', 'Http']
+  pod 'SnapKit', '5.7.1'
+  pod 'Mantle', '2.2.0'
+  pod 'SDWebImage', '5.15.5'
+  pod 'SDWebImageWebPCoder', '0.11.0'
+
+end
+
+post_install do |installer|
+  # Lynx 3.9.0 uses GNU array designators; Xcode 26.4 promotes this diagnostic.
+  installer.pods_project.targets.select { |target| target.name == 'Lynx' }.each do |target|
+    target.build_configurations.each do |config|
+      config.build_settings['WARNING_CFLAGS'] = ['$(inherited)', '-Wno-error=c99-designator']
+    end
+  end
+end

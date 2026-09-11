@@ -1,0 +1,56 @@
+.page {
+  min-height: 100vh;
+  padding: 64px 24px 32px;
+  background-color: #f4f1e9;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+text {
+  color: #173c36;
+  font-size: 16px;
+}
+
+.eyebrow {
+  font-size: 12px;
+  letter-spacing: 2px;
+}
+
+.title {
+  font-size: 48px;
+  font-weight: 700;
+}
+
+.description {
+  color: #52635d;
+}
+
+.details {
+  padding: 20px;
+  border: 1px solid #c9d2c9;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.probe {
+  width: 96px;
+  height: 96px;
+}
+
+.font-probe {
+  font-family: ReleaseProbe;
+  font-size: 28px;
+}
+
+.action {
+  padding: 16px 20px;
+  border-radius: 8px;
+  background-color: #173c36;
+}
+
+.action-label {
+  color: #fff;
+  font-size: 18px;
+}

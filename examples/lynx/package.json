@@ -1,0 +1,33 @@
+{
+  "name": "@hot-updater/example-lynx",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev:react": "rspeedy dev --config react/lynx.config.ts --environment lynx",
+    "dev:vue": "rspeedy dev --config vue/lynx.config.ts --environment lynx",
+    "build": "node scripts/build-public.mjs react && node scripts/build-public.mjs vue",
+    "build:public": "node scripts/build-public.mjs",
+    "build:hot-updater": "node scripts/build.mjs",
+    "build:prebuilt": "node scripts/prebuilt.mjs",
+    "test:type": "tsc --noEmit && vue-tsc --noEmit -p vue/tsconfig.json",
+    "build:spike": "node scripts/build-spike.mjs",
+    "build:octane": "node scripts/build-octane.mjs"
+  },
+  "dependencies": {
+    "@hot-updater/lynx": "workspace:*",
+    "@lynx-js/react": "0.116.5",
+    "vue-lynx": "0.5.1"
+  },
+  "devDependencies": {
+    "@lynx-js/react-rsbuild-plugin": "0.12.7",
+    "@lynx-js/rspeedy": "0.13.5",
+    "@lynx-js/types": "3.7.0",
+    "@rsbuild/plugin-vue": "1.2.6",
+    "@types/node": "catalog:",
+    "@types/react": "18.3.20",
+    "@vue/compiler-sfc": "3.5.42",
+    "typescript": "5.9.3",
+    "vue-tsc": "3.0.8"
+  }
+}

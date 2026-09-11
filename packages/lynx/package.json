@@ -1,0 +1,48 @@
+{
+  "name": "@hot-updater/lynx",
+  "version": "1.0.0-rc.14",
+  "type": "module",
+  "description": "Experimental Lynx OTA integration for Hot Updater",
+  "sideEffects": false,
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.mjs",
+  "types": "./dist/index.d.cts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.mjs",
+      "require": "./dist/index.cjs"
+    },
+    "./build": {
+      "import": "./dist/build.mjs",
+      "require": "./dist/build.cjs"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist",
+    "android",
+    "ios",
+    "fixtures/catalog-policy.json",
+    "*.podspec",
+    "README.md",
+    "!**/build",
+    "!**/.build",
+    "!**/.gradle",
+    "!**/local.properties"
+  ],
+  "license": "MIT",
+  "repository": "https://github.com/gronxb/hot-updater",
+  "publishConfig": { "access": "public" },
+  "scripts": {
+    "build": "tsdown",
+    "test:type": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@hot-updater/core": "workspace:*",
+    "@hot-updater/plugin-core": "workspace:*",
+    "uuidv7": "catalog:"
+  },
+  "devDependencies": {
+    "@types/node": "catalog:"
+  }
+}

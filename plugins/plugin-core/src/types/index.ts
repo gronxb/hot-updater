@@ -95,6 +95,8 @@ export interface BuildPluginConfig {
 
 export interface BuildPlugin {
   nativeBuild?: {
+    /** Use the plugin's native key resolver instead of RN config discovery. */
+    signingConfigSource?: "build-plugin";
     /** Resolves the public key embedded by the native build configuration. */
     getBundleSigningPublicKey?: () => Promise<{
       readonly publicKey: string;
@@ -108,6 +110,8 @@ export interface BuildPlugin {
     buildPath: string;
     bundleId: string;
     stdout: string | null;
+    /** Preserve output files without React Native bundle filtering or renaming. */
+    filePolicy?: "preserve";
   }>;
   name: string;
 }
