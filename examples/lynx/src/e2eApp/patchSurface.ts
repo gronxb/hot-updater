@@ -15,6 +15,10 @@ export function maybeCrashForE2E(): void {
 }
 
 export function loadE2EDeployBundleAssets(): void {
-  /* E2E_DEPLOY_ASSET_GUARD_START */
-  /* E2E_DEPLOY_ASSET_GUARD_END */
+  try {
+    /* E2E_DEPLOY_ASSET_GUARD_START */
+    /* E2E_DEPLOY_ASSET_GUARD_END */
+  } catch {
+    // Lynx cannot load Metro Image assets; fixtures are copied into the archive.
+  }
 }

@@ -37,6 +37,7 @@ export class LynxAppDriver implements DetoxAppDriver {
   private readonly platform: DetoxPlatform;
   private readonly env: NodeJS.ProcessEnv;
   private stageValues: Record<string, unknown>;
+  private overlayDirPromise: Promise<string> | null = null;
 
   constructor(
     controlClient: ControlClient,
@@ -229,6 +230,15 @@ export class LynxAppDriver implements DetoxAppDriver {
     this.installApp();
   }
 
+  prepareOverlay(): Promise<string> {
+    this.overlayDirPromise ??= compileLynxE2eEmbedded({
+      exampleDir: this.exampleDir(),
+      platform: this.platform,
+      env: this.env,
+    });
+    return this.overlayDirPromise;
+  }
+
   private installApp(): void {
     if (this.platform === "ios") {
       const binaryPath = this.env.HOT_UPDATER_E2E_IOS_BINARY_PATH;
@@ -261,11 +271,7 @@ export class LynxAppDriver implements DetoxAppDriver {
   private async launchApp(): Promise<void> {
     this.terminateApp();
     this.installApp();
-    const embeddedDir = await compileLynxE2eEmbedded({
-      exampleDir: this.exampleDir(),
-      platform: this.platform,
-      env: this.env,
-    });
+    const embeddedDir = await this.prepareOverlay();
     if (this.platform === "ios") {
       this.runOrThrow("xcrun", [
         "simctl",

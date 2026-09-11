@@ -269,7 +269,12 @@ function App() {
   );
 }
 
+let started = false;
 const startE2eApp = (baseURL: string) => {
+  if (started) {
+    return;
+  }
+  started = true;
   void Promise.resolve(
     HotUpdater.init({
       insights: true,
@@ -278,15 +283,18 @@ const startE2eApp = (baseURL: string) => {
     }),
   ).catch(() => undefined);
   maybeCrashForE2E();
-  loadE2EDeployBundleAssets();
+  try {
+    loadE2EDeployBundleAssets();
+  } catch {
+    // Overlay must keep polling even if Metro asset requires throw.
+  }
   root.render(<App />);
 };
 
-startE2eApp(appBaseURL);
 void resolveAppBaseURL()
   .then((baseURL) => {
-    if (baseURL !== appBaseURL) {
-      startE2eApp(baseURL);
-    }
+    startE2eApp(baseURL);
   })
-  .catch(() => undefined);
+  .catch(() => {
+    startE2eApp(appBaseURL);
+  });

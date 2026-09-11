@@ -111,8 +111,30 @@ describe("Lynx E2E suite manifest", () => {
       "utf8",
     );
     const installAt = source.indexOf("app.ensureInstalled()");
+    const overlayAt = source.indexOf("app.prepareOverlay()");
     const resetAt = source.indexOf('"/e2e/reset-local-app-state"');
     expect(installAt).toBeGreaterThan(0);
-    expect(resetAt).toBeGreaterThan(installAt);
+    expect(overlayAt).toBeGreaterThan(installAt);
+    expect(resetAt).toBeGreaterThan(overlayAt);
+  });
+
+  it("reuses one overlay compile across launch and reload", () => {
+    const source = readFileSync(
+      path.join(repoDir, "e2e/lynx/lynx-app-driver.ts"),
+      "utf8",
+    );
+    expect(source).toContain("overlayDirPromise");
+    expect(source).toContain("prepareOverlay()");
+    expect(source).toContain("await this.prepareOverlay()");
+  });
+
+  it("keeps Lynx overlay running if Metro asset requires throw", () => {
+    const source = readFileSync(
+      path.join(repoDir, "examples/lynx/src/e2eApp/patchSurface.ts"),
+      "utf8",
+    );
+    expect(source).toContain("loadE2EDeployBundleAssets");
+    expect(source).toContain("try {");
+    expect(source).toContain("E2E_DEPLOY_ASSET_GUARD_START");
   });
 });

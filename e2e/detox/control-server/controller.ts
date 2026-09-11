@@ -1645,9 +1645,16 @@ function ensureStorePath() {
       try {
         for (const scope of fs.readdirSync(stores)) {
           const bundles = path.join(stores, scope, "bundles");
-          if (fs.existsSync(bundles)) {
-            fixtureSession.storePath = bundles;
-            return fixtureSession.storePath;
+          if (!fs.existsSync(bundles)) {
+            continue;
+          }
+          for (const bundleId of fs.readdirSync(bundles)) {
+            if (
+              fs.existsSync(path.join(bundles, bundleId, "manifest.json"))
+            ) {
+              fixtureSession.storePath = bundles;
+              return fixtureSession.storePath;
+            }
           }
         }
       } catch {
