@@ -36,4 +36,13 @@ describe("Lynx E2E suite manifest", () => {
       .map((line) => line.replace(/^\d+\.\s+/, ""));
     expect(planned).toEqual(expected);
   });
+
+  it("declares bundle signing so agent setup can export the public key", () => {
+    const source = readFileSync(
+      path.join(repoDir, "examples/lynx/hot-updater.config.ts"),
+      "utf8",
+    );
+    expect(source).toContain('privateKeyPath: "./keys/private-key.pem"');
+    expect(source).toMatch(/signing:\s*\{[\s\S]*enabled:\s*true/);
+  });
 });

@@ -121,6 +121,10 @@ const runtimeId = (platform: "ios" | "android") =>
 export default {
   updateStrategy: "appVersion",
   compressStrategy: "zip",
+  signing: {
+    enabled: true,
+    privateKeyPath: "./keys/private-key.pem",
+  },
   /* E2E_AUTO_PATCH_CONFIG_START */
   patch: {
     enabled: false,
