@@ -24,6 +24,13 @@ android {
   kotlinOptions { jvmTarget = "17" }
   androidResources { ignoreAssetsPattern = "" }
   sourceSets.getByName("main").assets.srcDir("../.hot-updater/embedded")
+  // AGP 7.4 cannot 16KB-zipalign uncompressed JNI. Compress instead so 16KB
+  // emulators do not run the page-size compatibility overlay.
+  packagingOptions {
+    jniLibs {
+      useLegacyPackaging = true
+    }
+  }
 }
 dependencies {
   implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3")

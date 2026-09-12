@@ -102,6 +102,17 @@ describe("Lynx E2E suite manifest", () => {
     expect(androidHost).toContain("resolveEmbeddedDir");
     expect(androidHost).toContain("filesDir");
     expect(androidHost).toContain("overlay-js-load-started");
+    const lynxGradle = readFileSync(
+      path.join(repoDir, "examples/lynx/android/app/build.gradle.kts"),
+      "utf8",
+    );
+    expect(lynxGradle).toContain("useLegacyPackaging = true");
+    expect(
+      readFileSync(
+        path.join(repoDir, "examples-server/hono-dynamodb/docker-compose.yml"),
+        "utf8",
+      ),
+    ).toContain("quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z");
     const manifest = readFileSync(
       path.join(
         repoDir,
@@ -242,6 +253,9 @@ describe("Lynx E2E suite manifest", () => {
     expect(source).toContain("startE2eApp(baseURL)");
     expect(source).toContain("Native revision changed");
     expect(source).toContain("handledScenarioAction");
+    expect(source).toContain("e2e-ready-status");
+    expect(source).toContain("TEST_ID_TO_SCREEN");
+    expect(source).toContain("setCurrentScreen");
     const bindAt = source.indexOf("actionHandlers.current = actions;");
     const pollerAt = source.indexOf("ensurePendingActionPoller();");
     const crashAt = source.indexOf("maybeCrashForE2E();");

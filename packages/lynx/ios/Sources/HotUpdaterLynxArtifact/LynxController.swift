@@ -377,6 +377,8 @@ public final class LynxController {
         var retained = Set([runningSelection.bundleId] + preparations.values.map { $0.receipt.bundleId } + Array(inFlightBundles.keys))
         if let confirmed = try state.confirmed?.policy { retained.insert(confirmed.bundleId) }
         if let next = try state.next?.policy { retained.insert(next.bundleId) }
+        let extras = state.installedDigests.keys.filter { !retained.contains($0) }.sorted()
+        retained.formUnion(extras.suffix(1))
         _ = try installer.pruneInstalled(keeping: retained)
         let digests = state.installedDigests.filter { retained.contains($0.key) }
         if digests != state.installedDigests {

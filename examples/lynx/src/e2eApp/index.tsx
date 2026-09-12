@@ -2,6 +2,13 @@ import { HotUpdater } from "@hot-updater/lynx";
 import { root, useEffect, useRef, useState } from "@lynx-js/react";
 
 import {
+  NAV_ITEMS,
+  SCREEN_PATHS,
+  TEST_ID_TO_SCREEN,
+  styles,
+  type ScreenName,
+} from "./e2eStack";
+import {
   E2E_SCENARIO_MARKER,
   loadE2EDeployBundleAssets,
   maybeCrashForE2E,
@@ -91,6 +98,11 @@ function App() {
   const [launchStatus, setLaunchStatus] = useState(
     "Current Launch Status: null",
   );
+  const [currentScreen, setCurrentScreen] = useState<ScreenName>("Ready");
+  navigateToTestId.current = (testID) => {
+    const screen = TEST_ID_TO_SCREEN[testID];
+    if (screen) setCurrentScreen(screen);
+  };
   const capturedUpdate = useRef<Awaited<
     ReturnType<typeof HotUpdater.checkForUpdate>
   > | null>(null);
@@ -336,19 +348,165 @@ function App() {
     };
   }, []);
 
+  const activeSelection = (() => {
+    try {
+      return HotUpdater.getActiveUpdateState();
+    } catch {
+      return null;
+    }
+  })();
+  const crashHistoryCount = (() => {
+    try {
+      return String(HotUpdater.getCrashHistory().length);
+    } catch {
+      return "0";
+    }
+  })();
+  const currentChannel = (() => {
+    try {
+      return HotUpdater.getChannel();
+    } catch {
+      return "";
+    }
+  })();
+  const defaultChannel = (() => {
+    try {
+      return HotUpdater.getDefaultChannel();
+    } catch {
+      return "";
+    }
+  })();
+  const channelSwitched = (() => {
+    try {
+      return String(HotUpdater.isChannelSwitched());
+    } catch {
+      return "false";
+    }
+  })();
+  const currentCohort = (() => {
+    try {
+      return HotUpdater.getCohort();
+    } catch {
+      return cohortInput;
+    }
+  })();
+  const bundleId =
+    activeSelection?.activeSelection?.bundleId ??
+    (() => {
+      try {
+        return HotUpdater.getBundleId();
+      } catch {
+        return "";
+      }
+    })();
+  const releaseId = activeSelection?.activeSelection?.releaseId ?? "";
+
+  const valueScreen = (testID: string, value: string) => (
+    <text id={testID} style={styles.resultText}>
+      {value}
+    </text>
+  );
+  const actionScreen = (testID: string, title: string) => (
+    <view
+      id={testID}
+      style={styles.button}
+      bindtap={() => void actions[testID]?.()}
+    >
+      <text style={styles.buttonText}>{title}</text>
+    </view>
+  );
+
+  const body =
+    currentScreen === "Ready" ? (
+      <view>
+        <text id="e2e-ready-status" style={styles.resultText}>
+          Ready
+        </text>
+        <text id="ready" style={styles.resultText}>
+          Ready
+        </text>
+        {NAV_ITEMS.map((item) => (
+          <view
+            key={item.name}
+            style={styles.button}
+            bindtap={() => setCurrentScreen(item.name)}
+          >
+            <text style={styles.buttonText}>{item.title}</text>
+          </view>
+        ))}
+      </view>
+    ) : currentScreen === "RuntimeMarker" ? (
+      valueScreen("runtime-scenario-marker", scenarioMarker)
+    ) : currentScreen === "LaunchStatus" ? (
+      valueScreen("launch-status-result", launchStatus)
+    ) : currentScreen === "UpdateActionResult" ? (
+      valueScreen("update-action-result", updateActionResult)
+    ) : currentScreen === "ChannelActionResult" ? (
+      valueScreen("channel-action-result", channelActionResult)
+    ) : currentScreen === "CohortActionResult" ? (
+      valueScreen("cohort-action-result", cohortActionResult)
+    ) : currentScreen === "RuntimeBundle" ? (
+      valueScreen("runtime-bundle-id", bundleId)
+    ) : currentScreen === "RuntimeReleaseState" ? (
+      valueScreen("runtime-release-state", releaseId)
+    ) : currentScreen === "RuntimeCurrentChannel" ? (
+      valueScreen("runtime-current-channel", currentChannel)
+    ) : currentScreen === "RuntimeDefaultChannel" ? (
+      valueScreen("runtime-default-channel", defaultChannel)
+    ) : currentScreen === "RuntimeChannelSwitched" ? (
+      valueScreen("runtime-channel-switched", channelSwitched)
+    ) : currentScreen === "RuntimeCurrentCohort" ? (
+      valueScreen("runtime-current-cohort", currentCohort)
+    ) : currentScreen === "RuntimeInitialCohort" ? (
+      valueScreen("runtime-initial-cohort", "1")
+    ) : currentScreen === "CrashHistoryCount" ? (
+      valueScreen("crash-history-count", crashHistoryCount)
+    ) : currentScreen === "CohortInput" ? (
+      valueScreen("cohort-input", cohortInput)
+    ) : currentScreen === "RuntimeChannelInput" ? (
+      valueScreen("runtime-channel-input", runtimeChannelInput)
+    ) : currentScreen === "InstallCurrentChannelUpdateAction" ? (
+      actionScreen("action-install-current-channel-update", "Install Current")
+    ) : currentScreen === "InstallFingerprintUpdateAction" ? (
+      actionScreen("action-install-fingerprint-update", "Install Fingerprint")
+    ) : currentScreen === "InstallRuntimeChannelUpdateAction" ? (
+      actionScreen(
+        "action-install-runtime-channel-update",
+        "Install Runtime Channel",
+      )
+    ) : currentScreen === "ResetRuntimeChannelAction" ? (
+      actionScreen("action-reset-runtime-channel", "Reset Channel")
+    ) : currentScreen === "SetCohortQaAction" ? (
+      actionScreen("action-set-cohort-qa", "Set Cohort QA")
+    ) : currentScreen === "RestoreInitialCohortAction" ? (
+      actionScreen("action-restore-initial-cohort", "Restore Cohort")
+    ) : currentScreen === "ApplyCohortInputAction" ? (
+      actionScreen("action-apply-cohort-input", "Apply Cohort")
+    ) : currentScreen === "ClearCrashHistoryAction" ? (
+      actionScreen("action-clear-crash-history", "Clear Crash History")
+    ) : currentScreen === "ReloadAppAction" ? (
+      actionScreen("action-reload-app", "Reload")
+    ) : currentScreen === "RefreshRuntimeSnapshotAction" ? (
+      actionScreen("action-refresh-runtime-snapshot", "Refresh Snapshot")
+    ) : currentScreen === "CaptureCurrentChannelUpdateAction" ? (
+      actionScreen("action-capture-current-channel-update", "Capture Update")
+    ) : currentScreen === "ApplyCapturedUpdateAction" ? (
+      actionScreen("action-apply-captured-update", "Apply Captured")
+    ) : (
+      valueScreen("e2e-ready-status", "Ready")
+    );
+
   return (
-    <scroll-view style={{ width: "100%", height: "100%" }}>
-      <text id="ready">Lynx E2E {scenarioMarker}</text>
-      <text id="update-action-result">{updateActionResult}</text>
-      <text id="channel-action-result">{channelActionResult}</text>
-      <text id="cohort-action-result">{cohortActionResult}</text>
-      <text id="launch-status-result">{launchStatus}</text>
-      <text id="runtime-marker-result">{scenarioMarker}</text>
-      {Object.keys(actions).map((testID) => (
-        <view key={testID} id={testID} bindtap={() => void actions[testID]?.()}>
-          <text>{testID}</text>
-        </view>
-      ))}
+    <scroll-view style={styles.root}>
+      <view style={styles.content}>
+        {currentScreen !== "Ready" ? (
+          <view bindtap={() => setCurrentScreen("Ready")}>
+            <text style={styles.back}>Back</text>
+          </view>
+        ) : null}
+        <text style={styles.resultText}>{SCREEN_PATHS[currentScreen]}</text>
+        {body}
+      </view>
     </scroll-view>
   );
 }
@@ -356,6 +514,9 @@ function App() {
 const actionHandlers: {
   current: Record<string, (text?: string) => Promise<void>>;
 } = { current: {} };
+const navigateToTestId: { current: (testID: string) => void } = {
+  current: () => undefined,
+};
 
 let pollerStarted = false;
 let handledScenarioAction = false;
@@ -372,6 +533,7 @@ const pollPendingActionOnce = async () => {
   const handler = actionHandlers.current[testID];
   if (!handler) return;
   handledScenarioAction = true;
+  navigateToTestId.current(testID);
   await handler(payload.action?.text);
 };
 
