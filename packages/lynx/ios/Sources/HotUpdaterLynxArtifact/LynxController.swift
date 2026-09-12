@@ -101,12 +101,7 @@ public final class LynxController {
         installer = try LynxArtifactInstaller(root: home, configuration: profile)
         journal = LynxControllerJournal(file: home.appendingPathComponent("state.json"))
         var recovered = try journal.load()
-        if let pending = recovered.pending {
-            let receipt = try pending.selection.policy
-            if let releaseId = receipt.releaseId, !recovered.unconfirmedReleaseIds.contains(releaseId) {
-                guard recovered.unconfirmedReleaseIds.count < 128 else { throw LynxArtifactError.invalid("Missing reserved startup recovery capacity") }
-                recovered.unconfirmedReleaseIds.append(releaseId)
-            }
+        if recovered.pending != nil {
             recovered.pending = nil
             recovered.revision = UUID().uuidString
             try journal.save(recovered)

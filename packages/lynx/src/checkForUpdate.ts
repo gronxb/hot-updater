@@ -108,12 +108,7 @@ export async function checkForUpdate(
     crashedBundleIds: state.crashedBundleIds,
     unconfirmedReleaseIds: state.unconfirmedReleaseIds,
   });
-  if (
-    desired === null ||
-    (desired.kind === "BUILTIN" &&
-      current.kind === "BUILTIN" &&
-      current.bundleId === state.embeddedBundleId)
-  ) {
+  if (desired === null) {
     return null;
   }
   const selection: PersistedSelectionReceipt = {

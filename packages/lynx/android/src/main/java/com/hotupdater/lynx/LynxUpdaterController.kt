@@ -100,8 +100,8 @@ class LynxUpdaterController internal constructor(
         val pending = store.value.optJSONObject("pending") ?: return
         val selected = CatalogPolicy.parseReceipt(pending.getJSONObject("selection"))
         mutate { next ->
-            if (selected.releaseId != null) {
-                val key = if (pending.optBoolean("fatal") && selected.bundleId != embedded.bundleId) "crashed" else "unconfirmed"
+            if (pending.optBoolean("fatal") && selected.releaseId != null) {
+                val key = if (selected.bundleId != embedded.bundleId) "crashed" else "unconfirmed"
                 val id = if (key == "crashed") selected.bundleId else checkNotNull(selected.releaseId)
                 val values = exclusions(key).toMutableSet().also { it.add(id) }
                 next.put(key, JSONArray(values.toList()))
