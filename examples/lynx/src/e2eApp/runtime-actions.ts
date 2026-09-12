@@ -80,11 +80,13 @@ const installUpdate = async ({
     } catch (error) {
       const message =
         error instanceof Error ? error.message : "Failed to install update";
-      const stale =
+      const retryable =
         message.includes("Native revision changed") ||
         message.includes("STALE_STATE") ||
-        message.includes("STALE_SELECTION");
-      if (stale && attempt < 2) {
+        message.includes("STALE_SELECTION") ||
+        message.includes("HTTP 499") ||
+        message.includes("timed out");
+      if (retryable && attempt < 2) {
         await new Promise((resolve) => setTimeout(resolve, 200));
         continue;
       }

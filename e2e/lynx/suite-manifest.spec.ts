@@ -283,10 +283,14 @@ describe("Lynx E2E suite manifest", () => {
     expect(source).toContain("void resolveAppBaseURL()");
     expect(source).toContain("startE2eApp(baseURL)");
     expect(runtime).toContain("Native revision changed");
+    expect(runtime).toContain("HTTP 499");
     expect(runtime).toContain("handledScenarioAction");
     expect(screens).toContain("e2e-ready-status");
     expect(source).toContain("TEST_ID_TO_SCREEN");
-    expect(source).toContain("navigateToTestId(testID)");
+    expect(source).toContain("mod.navigateToTestId(testID)");
+    expect(source).toContain('import("./app")');
+    expect(source).toContain('import("./router")');
+    expect(source).not.toContain('import { App } from "./app"');
     expect(router).toContain("createMemoryHistory");
     expect(router).toContain("isServer: false");
     expect(router).toContain("navigateToTestId");
@@ -409,9 +413,15 @@ describe("Lynx E2E suite manifest", () => {
       path.join(repoDir, "examples/lynx/src/e2eApp/runtime-model.tsx"),
       "utf8",
     );
-    expect(runtime).toContain("shouldForceUpdate");
+    const runtimeActions = readFileSync(
+      path.join(repoDir, "examples/lynx/src/e2eApp/runtime-actions.ts"),
+      "utf8",
+    );
+    expect(runtimeActions).toContain("shouldForceUpdate");
+    expect(runtimeActions).toContain("updateInfo.updateBundle()");
     expect(runtime).toContain("updateInfo.updateBundle()");
     expect(e2eApp).toContain("root.render(<App />)");
+    expect(e2eApp).toContain('import("./app")');
     expect(androidController).toContain("Process.killProcess");
     expect(driver).toContain("options.expectCrash === true");
     expect(driver).toContain("files/e2e-embedded");

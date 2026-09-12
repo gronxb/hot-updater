@@ -2,10 +2,8 @@ import "./polyfill";
 import { HotUpdater } from "@hot-updater/lynx";
 import { root } from "@lynx-js/react";
 
-import { App } from "./app";
 import { TEST_ID_TO_SCREEN } from "./e2eStack";
 import { loadE2EDeployBundleAssets, maybeCrashForE2E } from "./patchSurface";
-import { navigateToTestId } from "./router";
 import {
   bindStandaloneE2eActionHandlers,
   bootNotifyAppReady,
@@ -61,7 +59,11 @@ const pollPendingActionOnce = async () => {
   const handler = actionHandlers.current[testID];
   if (!handler) return;
   markScenarioActionHandled();
-  navigateToTestId(testID);
+  void import("./router")
+    .then((mod) => {
+      mod.navigateToTestId(testID);
+    })
+    .catch(() => undefined);
   await handler(payload.action?.text);
 };
 
@@ -106,11 +108,15 @@ const startE2eApp = (baseURL: string) => {
   ensurePendingActionPoller();
   void bootNotifyAppReady();
   scheduleForceUpdateReload();
-  try {
-    root.render(<App />);
-  } catch {
-    // Poller must keep running even if the Lynx tree fails to mount.
-  }
+  void import("./app")
+    .then(({ App }) => {
+      try {
+        root.render(<App />);
+      } catch {
+        // Poller must keep running even if the Lynx tree fails to mount.
+      }
+    })
+    .catch(() => undefined);
 };
 
 void resolveAppBaseURL()
