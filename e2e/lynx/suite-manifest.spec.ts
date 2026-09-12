@@ -213,9 +213,8 @@ describe("Lynx E2E suite manifest", () => {
     );
     expect(iosHost).toContain("hot-updater e2e crash");
     expect(iosHost).toContain("exit(0)");
-    expect(iosHost).toContain("errorCode == 201");
-    expect(iosHost).toContain("isJSError()");
     expect(iosHost).toContain("lynxErrorText");
+    expect(iosHost).toContain("summaryMessage");
     const iosModule = readFileSync(
       path.join(
         repoDir,
@@ -225,7 +224,6 @@ describe("Lynx E2E suite manifest", () => {
     );
     expect(iosModule).toContain("rawArtifact == nil || rawArtifact is NSNull");
     expect(androidController).toContain("Process.killProcess");
-    expect(androidController).toContain("isUnconfirmedBundleTrial");
     expect(driver).toContain("options.expectCrash === true");
     expect(driver).toContain("files/e2e-embedded");
     expect(driver).toContain('return "e2e-embedded"');

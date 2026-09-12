@@ -168,11 +168,8 @@ final class PublicLifecycle: NSObject, SPKContainerLifecycleProtocol {
         let message = lynxErrorText(error)
         let lynx = error as? LynxError
         let lynxFatal = lynx?.isFatal == true
-        let jsError = lynx?.isJSError() == true || lynx?.errorCode == 201
         let e2eCrash = message.contains("hot-updater e2e crash")
-        let trial = ((try? host.controller.getState(host.context))?["runningConfirmed"] as? Bool) == false
-            && host.controller.runningSelection.kind == "BUNDLE"
-        let fatal = lynxFatal || e2eCrash || (jsError && trial)
+        let fatal = lynxFatal || e2eCrash
         host.record("publicRuntimeError", ["error": message, "fatal": fatal, "code": lynx?.errorCode ?? NSNull()])
         try? host.controller.reportFailure(host.context, fatal: fatal)
         if fatal {
