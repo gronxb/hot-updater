@@ -327,6 +327,8 @@ describe("Lynx E2E suite manifest", () => {
     );
     expect(androidController).toContain("runCatching {");
     expect(androidController).toContain("}.getOrNull()");
+    expect(androidController).toContain("highWaters");
+    expect(androidController).toContain("catalogKey(catalogId, scopeKey)");
     const iosCatalogPolicy = readFileSync(
       path.join(
         repoDir,
@@ -368,6 +370,7 @@ describe("Lynx E2E suite manifest", () => {
     );
     expect(e2eApp).toContain("shouldForceUpdate");
     expect(e2eApp).toContain("updateInfo.updateBundle()");
+    expect(e2eApp).toContain("void HotUpdater.notifyAppReady()");
     expect(androidController).toContain("Process.killProcess");
     expect(driver).toContain("options.expectCrash === true");
     expect(driver).toContain("files/e2e-embedded");

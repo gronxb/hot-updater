@@ -571,6 +571,7 @@ const startE2eApp = (baseURL: string) => {
   if (!started) {
     started = true;
   }
+  void HotUpdater.notifyAppReady().catch(() => undefined);
   try {
     root.render(<App />);
   } catch {

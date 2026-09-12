@@ -295,4 +295,75 @@ class LynxUpdaterControllerTest {
         } finally { root.deleteRecursively() }
     }
 
+    @Test fun acceptKeepsHighWaterPerCatalogScopeAfterChannelSwitch() {
+        val root = temp()
+        try {
+            val controller = controller(root)
+            val session = controller.pinPrimary()
+            val production = catalog(releaseB, bundleB)
+            val before = controller.state(session)
+            controller.accept(
+                session,
+                JSONObject()
+                    .put("catalog", production)
+                    .put("expectedRevision", before.getString("revision"))
+                    .put(
+                        "selectionContextHash",
+                        CatalogPolicy.selectionContextHash(
+                            nativeSnapshot(before),
+                            scopeKey,
+                        ),
+                    ),
+            )
+            controller.setChannel("beta")
+            val betaScope = "v1:app-version:android:${CatalogPolicy.channelKey("beta")}"
+            val betaCatalog = catalog(releaseC, bundleC)
+                .put("catalogId", "lynx-beta")
+                .put("scopeKey", betaScope)
+            val after = controller.state(session)
+            val guard = controller.accept(
+                session,
+                JSONObject()
+                    .put("catalog", betaCatalog)
+                    .put("expectedRevision", after.getString("revision"))
+                    .put(
+                        "selectionContextHash",
+                        CatalogPolicy.selectionContextHash(
+                            nativeSnapshot(after),
+                            betaScope,
+                        ),
+                    ),
+            )
+            assertEquals("lynx-beta", guard.getString("catalogId"))
+            assertEquals(betaScope, guard.getString("scopeKey"))
+            val journal = journal(root)
+            assertTrue(journal.getJSONObject("highWaters").length() >= 2)
+            controller.close()
+        } finally { root.deleteRecursively() }
+    }
+
+    private fun nativeSnapshot(state: JSONObject): CatalogPolicy.NativeSnapshot {
+        val next = state.opt("nextSelection")
+        return CatalogPolicy.NativeSnapshot(
+            state.getString("revision"),
+            state.getString("appVersion"),
+            state.getString("channel"),
+            state.getString("runtimeId"),
+            state.getString("embeddedBundleId"),
+            state.getString("minimumBundleId"),
+            state.getString("cohort"),
+            CatalogPolicy.parseReceipt(state.getJSONObject("runningSelection")),
+            if (next == null || next == JSONObject.NULL) {
+                null
+            } else {
+                CatalogPolicy.parseReceipt(state.getJSONObject("nextSelection"))
+            },
+            jsonStrings(state.getJSONArray("crashedBundleIds")),
+            jsonStrings(state.getJSONArray("unconfirmedReleaseIds")),
+            state.optString("fingerprintHash").takeIf { it.isNotEmpty() },
+        )
+    }
+
+    private fun jsonStrings(array: JSONArray) =
+        (0 until array.length()).map { array.getString(it) }
 }

@@ -68,8 +68,33 @@ class LynxUpdaterController internal constructor(
         running, receipt("next"), exclusions("crashed"), exclusions("unconfirmed"),
         configuration.fingerprintHash ?: binaryId)
     private fun mutate(change: (JSONObject) -> Unit) = store.update { change(it); it.put("revision", UUID.randomUUID().toString()) }
-    private fun highWater(): CatalogPolicy.HighWater? = store.value.optJSONObject("highWater")?.let {
-        CatalogPolicy.HighWater(it.getString("catalogId"), it.getString("scopeKey"), it.getLong("generation"), it.getString("catalogHash"))
+    private fun catalogKey(catalogId: String, scopeKey: String) =
+        digestString("$catalogId\u0000$scopeKey")
+    private fun parseHighWater(value: JSONObject) = CatalogPolicy.HighWater(
+        value.getString("catalogId"),
+        value.getString("scopeKey"),
+        value.getLong("generation"),
+        value.getString("catalogHash"),
+    )
+    private fun highWaterMark(value: CatalogPolicy.HighWater) = JSONObject()
+        .put("catalogId", value.catalogId)
+        .put("scopeKey", value.scopeKey)
+        .put("generation", value.generation)
+        .put("catalogHash", value.catalogHash)
+    private fun highWater(catalogId: String? = null, scopeKey: String? = null): CatalogPolicy.HighWater? {
+        if (!catalogId.isNullOrEmpty() && !scopeKey.isNullOrEmpty()) {
+            store.value.optJSONObject("highWaters")?.optJSONObject(catalogKey(catalogId, scopeKey))
+                ?.let { return parseHighWater(it) }
+        }
+        val single = store.value.optJSONObject("highWater") ?: return null
+        if (
+            catalogId.isNullOrEmpty() ||
+            scopeKey.isNullOrEmpty() ||
+            (single.optString("catalogId") == catalogId && single.optString("scopeKey") == scopeKey)
+        ) {
+            return parseHighWater(single)
+        }
+        return null
     }
     private fun recover() {
         val pending = store.value.optJSONObject("pending") ?: return
@@ -104,16 +129,24 @@ class LynxUpdaterController internal constructor(
         check(primary == null) { "The primary is already pinned; restart is required" }
         val startupSnapshot = snapshot()
         val persistedCatalog = store.value.optString("catalog").takeIf { it.isNotEmpty() }?.let {
-            val storedScope = JSONObject(it).optString("scopeKey").takeIf { key -> key.isNotEmpty() }
+            val stored = JSONObject(it)
+            val storedId = stored.optString("catalogId").takeIf { id -> id.isNotEmpty() }
+            val storedScope = stored.optString("scopeKey").takeIf { key -> key.isNotEmpty() }
             runCatching {
-                CatalogPolicy.accept(it, startupSnapshot, startupSnapshot.revision, CatalogPolicy.selectionContextHash(startupSnapshot, storedScope), highWater())
+                CatalogPolicy.accept(
+                    it,
+                    startupSnapshot,
+                    startupSnapshot.revision,
+                    CatalogPolicy.selectionContextHash(startupSnapshot, storedScope),
+                    highWater(storedId, storedScope),
+                )
             }.getOrNull()
         }
         fun eligibleStored(candidate: CatalogPolicy.Receipt): Boolean {
             if (!eligible(candidate)) return false
             if (candidate.kind == "BUILTIN" && candidate.catalogId == null) return true
             val catalog = persistedCatalog ?: return false
-            val mark = highWater() ?: return false
+            val mark = highWater(catalog.guard.catalogId, catalog.guard.scopeKey) ?: return false
             val proof = store.value.optJSONObject("rollbackProofs")?.optJSONObject(receiptKey(candidate))?.let {
                 CatalogPolicy.RollbackAuthorization(CatalogPolicy.parseReceipt(it.getJSONObject("receipt")), CatalogPolicy.parseReceipt(it.getJSONObject("fromSelection")))
             }
@@ -179,18 +212,66 @@ class LynxUpdaterController internal constructor(
 
     internal fun accept(session: LynxLaunchSession, params: JSONObject): JSONObject = synchronized(stateLock) {
         requireLive(session)
-        val raw = params.getJSONObject("catalog").toString()
+        val incoming = params.getJSONObject("catalog")
+        val raw = incoming.toString()
+        val incomingId = incoming.getString("catalogId")
+        val incomingScope = incoming.getString("scopeKey")
         val before = snapshot()
+        val mark = highWater(incomingId, incomingScope)
         // Persisted raw projection also binds same generation/hash bodies after restart.
-        val previous = accepted ?: store.value.optString("catalog").takeIf { it.isNotEmpty() }?.let {
-            val storedScope = JSONObject(it).optString("scopeKey").takeIf { key -> key.isNotEmpty() }
-            CatalogPolicy.accept(it, before, before.revision, CatalogPolicy.selectionContextHash(before, storedScope), highWater())
+        val previous = runCatching {
+            val inMemory = accepted
+            if (
+                inMemory != null &&
+                inMemory.guard.catalogId == incomingId &&
+                inMemory.guard.scopeKey == incomingScope
+            ) {
+                inMemory
+            } else {
+                store.value.optString("catalog").takeIf { it.isNotEmpty() }?.let {
+                    val stored = JSONObject(it)
+                    if (
+                        stored.optString("catalogId") != incomingId ||
+                        stored.optString("scopeKey") != incomingScope
+                    ) {
+                        null
+                    } else {
+                        CatalogPolicy.accept(
+                            it,
+                            before,
+                            before.revision,
+                            CatalogPolicy.selectionContextHash(before, incomingScope),
+                            mark,
+                        )
+                    }
+                }
+            }
+        }.getOrNull()
+        val checked = CatalogPolicy.accept(
+            raw,
+            before,
+            params.getString("expectedRevision"),
+            params.getString("selectionContextHash"),
+            mark,
+            previous,
+        )
+        mutate { next ->
+            next.put("catalog", raw)
+            val waters = next.optJSONObject("highWaters") ?: JSONObject()
+            val recorded = highWaterMark(checked.highWater)
+            waters.put(catalogKey(checked.guard.catalogId, checked.guard.scopeKey), recorded)
+            next.put("highWaters", waters)
+            next.put("highWater", recorded)
         }
-        val checked = CatalogPolicy.accept(raw, before, params.getString("expectedRevision"), params.getString("selectionContextHash"), highWater(), previous)
-        mutate { next -> next.put("catalog", raw); next.put("highWater", JSONObject().put("catalogId", checked.guard.catalogId)
-            .put("scopeKey", checked.guard.scopeKey).put("generation", checked.guard.generation).put("catalogHash", checked.guard.catalogHash)) }
         val after = snapshot()
-        accepted = CatalogPolicy.accept(raw, after, after.revision, CatalogPolicy.selectionContextHash(after, checked.guard.scopeKey), highWater(), checked)
+        accepted = CatalogPolicy.accept(
+            raw,
+            after,
+            after.revision,
+            CatalogPolicy.selectionContextHash(after, checked.guard.scopeKey),
+            highWater(checked.guard.catalogId, checked.guard.scopeKey),
+            checked,
+        )
         checkNotNull(accepted).guard.toJson()
     }
 
