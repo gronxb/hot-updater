@@ -124,11 +124,13 @@ describe("Lynx E2E suite manifest", () => {
     const installAt = source.indexOf("app.ensureInstalled()");
     const overlayAt = source.indexOf("app.prepareOverlay()");
     const resetAt = source.indexOf('"/e2e/reset-local-app-state"');
+    const uninstallAt = source.indexOf("app.uninstallApp()");
     const reinstallAt = source.lastIndexOf("app.ensureInstalled()");
     expect(installAt).toBeGreaterThan(0);
     expect(overlayAt).toBeGreaterThan(installAt);
     expect(resetAt).toBeGreaterThan(overlayAt);
-    expect(reinstallAt).toBeGreaterThan(resetAt);
+    expect(uninstallAt).toBeGreaterThan(resetAt);
+    expect(reinstallAt).toBeGreaterThan(uninstallAt);
   });
 
   it("reuses one overlay compile across launch and reload", () => {
@@ -156,6 +158,9 @@ describe("Lynx E2E suite manifest", () => {
     expect(source).toContain(
       "ensureInstalled(): void {\n    this.installApp();",
     );
+    expect(source).toContain("uninstallApp(): void {");
+    expect(source).toContain('["simctl", "uninstall", this.deviceId()');
+    expect(source).toContain('"uninstall", this.appId()');
   });
 
   it("keeps Lynx overlay running if Metro asset requires throw", () => {
@@ -242,6 +247,7 @@ describe("Lynx E2E suite manifest", () => {
       "utf8",
     );
     expect(embed).toContain("Lynx overlay bundle is missing scenario marker");
+    expect(embed).toContain("Lynx overlay bundle contains the E2E crash guard");
     expect(embed).toContain("HOT_UPDATER_E2E_OVERLAY_MARKER");
     expect(embed).toContain("rewriteLynxAndroidEmulatorUrl");
     expect(embed).toContain("10.0.2.2");

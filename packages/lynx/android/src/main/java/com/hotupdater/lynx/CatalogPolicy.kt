@@ -409,10 +409,16 @@ internal object CatalogPolicy {
         return json.get(key)
     }
     private fun text(json: JSONObject, key: String): String = required(json, key) as? String ?: throw Rejected("INVALID_CATALOG", "Expected string $key")
-    private fun nullableText(json: JSONObject, key: String): String? = when (val value = required(json, key)) {
-        JSONObject.NULL -> null
-        is String -> value
-        else -> throw Rejected("INVALID_CATALOG", "Expected nullable string $key")
+    private fun nullableText(json: JSONObject, key: String): String? {
+        if (!json.has(key)) return null
+        return when (val value = json.get(key)) {
+            JSONObject.NULL -> null
+            is String -> value
+            else -> throw Rejected(
+                "INVALID_CATALOG",
+                "Expected nullable string $key",
+            )
+        }
     }
     private fun array(json: JSONObject, key: String): JSONArray = required(json, key) as? JSONArray ?: throw Rejected("INVALID_CATALOG", "Expected array $key")
     private fun integer(json: JSONObject, key: String, minimum: Long, maximum: Long): Long {

@@ -257,6 +257,27 @@ describe("Lynx catalog controller (mock native transport)", () => {
     await expect(update!.updateBundle()).resolves.toBe(true);
   });
 
+  it("stages an authorized builtin rollback without a Release id or archive", async () => {
+    const { updater, fetch, prepared } = setup(
+      { runningSelection: receipt(B, releaseB) },
+      [],
+    );
+    const update = await updater.checkForUpdate({
+      updateStrategy: "appVersion",
+    });
+    expect(update).toMatchObject({
+      bundleId: A,
+      releaseId: null,
+      status: "ROLLBACK",
+      transitionKind: "USE_BUILTIN",
+    });
+    expect(prepared()).toMatchObject({
+      artifact: null,
+      selection: { kind: "BUILTIN", bundleId: A, releaseId: null },
+    });
+    expect(fetch).toHaveBeenCalledOnce();
+  });
+
   it("stages an authorized embedded rollback without requesting an archive", async () => {
     const { updater, fetch, prepared } = setup(
       { runningSelection: receipt(B, releaseB) },

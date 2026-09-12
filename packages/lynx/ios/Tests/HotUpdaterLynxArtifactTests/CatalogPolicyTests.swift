@@ -307,6 +307,9 @@ final class CatalogPolicyTests: XCTestCase {
         let builtin = LynxPolicyReceipt(kind: "BUILTIN", releaseId: nil, bundleId: nilID, catalogId: nil, scopeKey: nil,
             generation: nil, catalogHash: nil, channel: state.channel, selectionContextHash: nil)
         XCTAssertEqual(try LynxCatalogPolicy.parseReceipt(builtin.dictionary), builtin)
+        var omittedReleaseId = builtin.dictionary
+        omittedReleaseId.removeValue(forKey: "releaseId")
+        XCTAssertEqual(try LynxCatalogPolicy.parseReceipt(omittedReleaseId), builtin)
         XCTAssertTrue(try LynxCatalogPolicy.isEligibleStored(receipt: builtin, catalog: catalog, snapshot: snapshot(stateJSON), highestSeen: nil))
         var authorizedBuiltin = embedded.dictionary; authorizedBuiltin["kind"] = "BUILTIN"; authorizedBuiltin["releaseId"] = NSNull()
         let builtinReceipt = try LynxCatalogPolicy.parseReceipt(authorizedBuiltin)

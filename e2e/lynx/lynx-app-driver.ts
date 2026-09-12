@@ -249,6 +249,23 @@ export class LynxAppDriver implements DetoxAppDriver {
     this.installApp();
   }
 
+  uninstallApp(): void {
+    this.terminateApp();
+    if (this.platform === "ios") {
+      spawnSync(
+        "xcrun",
+        ["simctl", "uninstall", this.deviceId(), this.appId()],
+        { encoding: "utf8", env: this.env },
+      );
+      return;
+    }
+    spawnSync(
+      "adb",
+      ["-s", this.deviceId(), "uninstall", this.appId()],
+      { encoding: "utf8", env: this.env },
+    );
+  }
+
   prepareOverlay(): Promise<string> {
     this.overlayDirPromise ??= compileLynxE2eEmbedded({
       exampleDir: this.exampleDir(),

@@ -142,7 +142,7 @@ public enum LynxCatalogPolicy {
         return number.boolValue
     }
     private static func nullableString(_ object: [String: Any], _ key: String) throws -> String? {
-        guard let value = object[key] else { throw fail("INVALID_CATALOG", "Missing \(key)") }
+        guard let value = object[key] else { return nil }
         if value is NSNull { return nil }
         guard let result = value as? String else { throw fail("INVALID_CATALOG", "Invalid \(key)") }
         return result

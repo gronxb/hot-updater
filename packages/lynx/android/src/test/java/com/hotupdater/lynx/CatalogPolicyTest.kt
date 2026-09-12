@@ -359,6 +359,14 @@ class CatalogPolicyTest {
         val ota = vector("confirmed-current-retained").getJSONObject("snapshot").getJSONObject("runningSelection")
         rejected("INVALID_RECEIPT") { CatalogPolicy.parseReceipt(clone(ota).put("bundleId", nil)) }
         rejected("INVALID_RECEIPT") { CatalogPolicy.parseReceipt(clone(ota).put("releaseId", nil)) }
+        rejected("INVALID_RECEIPT") { CatalogPolicy.parseReceipt(clone(ota).apply { remove("releaseId") }) }
+        val builtin = JSONObject()
+            .put("kind", "BUILTIN").put("bundleId", nil)
+            .put("catalogId", JSONObject.NULL).put("scopeKey", JSONObject.NULL)
+            .put("generation", JSONObject.NULL).put("catalogHash", JSONObject.NULL)
+            .put("channel", "production").put("selectionContextHash", JSONObject.NULL)
+        assertNull(CatalogPolicy.parseReceipt(builtin).releaseId)
+        assertEquals("BUILTIN", CatalogPolicy.parseReceipt(builtin).kind)
         val invalid = vector("first-update")
         invalid.getJSONObject("catalog").getJSONArray("releases").getJSONObject(0).put("bundleId", nil)
         rejected("INVALID_CATALOG") { accept(invalid) }

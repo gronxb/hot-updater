@@ -195,10 +195,14 @@ export async function compileLynxE2eEmbedded(options: {
     runtimeId: lynxE2eRuntimeId(options.platform),
   });
   const bundle = await fs.readFile(path.join(outDir, "main.lynx.bundle"));
-  if (!bundle.toString("utf8").includes("targeted-qa-detox")) {
+  const bundleText = bundle.toString("utf8");
+  if (!bundleText.includes("targeted-qa-detox")) {
     throw new Error(
       "Lynx overlay bundle is missing scenario marker targeted-qa-detox",
     );
+  }
+  if (bundleText.includes("hot-updater e2e crash bundle")) {
+    throw new Error("Lynx overlay bundle contains the E2E crash guard");
   }
   return outDir;
 }
