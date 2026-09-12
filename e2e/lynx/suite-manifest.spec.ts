@@ -256,7 +256,7 @@ describe("Lynx E2E suite manifest", () => {
     expect(source).toContain("`${actionLabel} -> no-update`");
     expect(source).toContain("Promise.race");
     expect(source).toContain("requestTimeout: 5000");
-    expect(source).toContain("pendingActionFetchInFlight");
+    expect(source).toContain("takingPendingAction");
     expect(source).toContain("?take=1");
     expect(source).toContain("handledScenarioAction");
     const pendingRoutes = readFileSync(
@@ -400,9 +400,10 @@ describe("Lynx E2E suite manifest", () => {
     expect(e2eApp).toContain("updateInfo.updateBundle()");
     expect(e2eApp).toContain("HotUpdater.getLaunchInfo()");
     expect(e2eApp).toContain("applyForceUpdateIfNeeded");
-    expect(e2eApp).toContain('updateInfo.status !== "ROLLBACK"');
+    expect(e2eApp).toContain('updateInfo.status === "UPDATE"');
+    expect(e2eApp).toContain('scenarioMarker.includes("chain-")');
     expect(e2eApp).toContain("void HotUpdater.reload()");
-    expect(e2eApp).toContain("pendingActionFetchInFlight");
+    expect(e2eApp).toContain("takingPendingAction");
     expect(e2eApp).toContain("void HotUpdater.notifyAppReady()");
     expect(androidController).toContain("Process.killProcess");
     expect(driver).toContain("options.expectCrash === true");

@@ -144,7 +144,8 @@ function App() {
         const installed = await updateInfo.updateBundle();
         const appliedResult =
           updateInfo.transitionKind === "ADOPT_RELEASE" &&
-          updateInfo.status !== "ROLLBACK"
+          updateInfo.status === "UPDATE" &&
+          !scenarioMarker.includes("chain-")
             ? `${actionLabel} -> adopted ID ${updateInfo.id}`
             : updateInfo.transitionKind === "USE_EMBEDDED"
               ? `${actionLabel} -> selected EMBEDDED ID ${updateInfo.id}`
@@ -503,7 +504,7 @@ const navigateToTestId: { current: (testID: string) => void } = {
 };
 
 let pollerStarted = false;
-let pendingActionFetchInFlight = false;
+let takingPendingAction = false;
 let handledScenarioAction = false;
 
 const isAlreadyRunningForceUpdate = async (updateInfo: {
@@ -559,7 +560,7 @@ const fetchJsonWithTimeout = async (
 };
 
 const pollPendingActionOnce = async () => {
-  if (Object.keys(actionHandlers.current).length === 0) {
+  if (takingPendingAction || Object.keys(actionHandlers.current).length === 0) {
     return;
   }
   const peeked = (await fetchJsonWithTimeout(pendingActionURL)) as {
@@ -567,23 +568,27 @@ const pollPendingActionOnce = async () => {
   } | null;
   const queued = peeked?.action;
   if (!queued?.testID) return;
-  const taken = (await fetch(`${pendingActionURL}?take=1`).then(
-    (response) => response.json(),
-    () => null,
-  )) as { action?: { testID?: string; text?: string } | null } | null;
-  const testID = taken?.action?.testID;
-  if (!testID) return;
-  const handler = actionHandlers.current[testID];
-  if (!handler) return;
-  handledScenarioAction = true;
-  navigateToTestId.current(testID);
-  pendingActionFetchInFlight = false;
-  await Promise.race([
-    handler(taken.action?.text),
-    new Promise<void>((resolve) => {
-      setTimeout(resolve, 20_000);
-    }),
-  ]);
+  takingPendingAction = true;
+  try {
+    const taken = (await fetch(`${pendingActionURL}?take=1`).then(
+      (response) => response.json(),
+      () => null,
+    )) as { action?: { testID?: string; text?: string } | null } | null;
+    const testID = taken?.action?.testID;
+    if (!testID) return;
+    const handler = actionHandlers.current[testID];
+    if (!handler) return;
+    handledScenarioAction = true;
+    navigateToTestId.current(testID);
+    await Promise.race([
+      handler(taken.action?.text),
+      new Promise<void>((resolve) => {
+        setTimeout(resolve, 20_000);
+      }),
+    ]);
+  } finally {
+    takingPendingAction = false;
+  }
 };
 
 const ensurePendingActionPoller = () => {
@@ -592,14 +597,7 @@ const ensurePendingActionPoller = () => {
   }
   pollerStarted = true;
   const tick = () => {
-    if (!pendingActionFetchInFlight) {
-      pendingActionFetchInFlight = true;
-      void pollPendingActionOnce()
-        .catch(() => undefined)
-        .finally(() => {
-          pendingActionFetchInFlight = false;
-        });
-    }
+    void pollPendingActionOnce().catch(() => undefined);
     setTimeout(tick, 200);
   };
   tick();
