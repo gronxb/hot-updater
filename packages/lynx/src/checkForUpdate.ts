@@ -63,7 +63,12 @@ export async function checkForUpdate(
     options.updateStrategy === "fingerprint" ? "fingerprint" : "app-version",
   );
   // Policy may replace an installed next selection. Running bytes stay separate.
-  const current = state.nextSelection ?? state.runningSelection;
+  // A leftover next from another channel is not the policy base after setChannel.
+  const next = state.nextSelection;
+  const current =
+    next !== null && next.channel === state.channel
+      ? next
+      : state.runningSelection;
   const authenticated = current.catalogId !== null && current.scopeKey !== null;
   if (
     authenticated &&

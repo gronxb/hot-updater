@@ -123,6 +123,13 @@ function setup(
         }),
     ),
     notifyAppReady: vi.fn<HotUpdaterLynxNative["notifyAppReady"]>(),
+    setChannel: vi.fn<HotUpdaterLynxNative["setChannel"]>(
+      (params, callback) => {
+        state.channel = params.channel;
+        state.channelKey = encodeChannelKey(params.channel);
+        callback({ ok: true, data: { ...state } });
+      },
+    ),
   };
   vi.stubGlobal("NativeModules", { HotUpdaterLynx: native });
   const fetch = vi.fn(
@@ -231,6 +238,63 @@ describe("Lynx catalog controller (mock native transport)", () => {
         unconfirmedReleaseIds: [releaseB, releaseC],
       }),
     );
+  });
+
+  it("ignores leftover next selection after an explicit channel switch", async () => {
+    const { updater, native, prepared, fetch } = setup({
+      runningSelection: receipt(),
+      nextSelection: receipt(B, releaseB),
+    });
+    const betaScope = createReleaseCatalogScopeKey({
+      strategy: "APP_VERSION",
+      platform: "android",
+      channelKey: encodeChannelKey("beta"),
+    });
+    native.acceptCatalog.mockImplementation((params, callback) =>
+      callback({
+        ok: true,
+        data: {
+          revision: "accepted-revision",
+          catalogId: params.catalog.catalogId,
+          scopeKey: params.catalog.scopeKey,
+          generation: params.catalog.generation,
+          catalogHash: params.catalog.catalogHash,
+          channel: "beta",
+          selectionContextHash: params.selectionContextHash,
+        },
+      }),
+    );
+    fetch.mockImplementation(async (url) => {
+      const href = String(url);
+      if (href.includes("/release-catalogs/")) {
+        return new Response(
+          JSON.stringify({
+            schemaVersion: 1,
+            catalogId: "catalog",
+            scopeKey: betaScope,
+            generation: 2,
+            catalogHash,
+            fallbackPolicy: "BUILTIN_IF_ACTIVE_INELIGIBLE",
+            releases: [release(releaseC, C)],
+          }),
+          { status: 200 },
+        );
+      }
+      return new Response(
+        JSON.stringify({
+          fileUrl: "/storage/archive.tar.gz",
+          fileHash: "b".repeat(64),
+        }),
+        { status: 200 },
+      );
+    });
+    await updater.checkForUpdate({
+      updateStrategy: "appVersion",
+      channel: "beta",
+    });
+    expect(native.setChannel).toHaveBeenCalledOnce();
+    expect(prepared().selection.bundleId).toBe(C);
+    expect(prepared().selection.channel).toBe("beta");
   });
 
   it("uses a staged selection for policy while resolving artifacts from actual running bytes", async () => {
