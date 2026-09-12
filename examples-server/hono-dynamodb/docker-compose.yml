@@ -6,7 +6,7 @@ services:
       - "${DYNAMODB_PORT:-8000}:8000"
 
   minio:
-    image: minio/minio:latest
+    image: quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z
     command: server /data --console-address ":9001"
     ports:
       - "${MINIO_API_PORT:-9000}:9000"
