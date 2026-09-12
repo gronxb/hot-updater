@@ -375,6 +375,13 @@ const ensurePendingActionPoller = () => {
   tick();
 };
 
+try {
+  loadE2EDeployBundleAssets();
+} catch {
+  // Overlay must keep polling even if Metro asset requires throw.
+}
+maybeCrashForE2E();
+
 let started = false;
 const startE2eApp = (baseURL: string) => {
   HotUpdater.init({
@@ -384,12 +391,6 @@ const startE2eApp = (baseURL: string) => {
   });
   if (!started) {
     started = true;
-    try {
-      loadE2EDeployBundleAssets();
-    } catch {
-      // Overlay must keep polling even if Metro asset requires throw.
-    }
-    maybeCrashForE2E();
   }
   try {
     root.render(<App />);
