@@ -461,19 +461,24 @@ export class LynxAppDriver implements DetoxAppDriver {
   }
 
   private assertAndroidOverlayLoaded(): void {
-    spawnSync("sleep", ["1"]);
-    const logs = spawnSync(
-      "adb",
-      ["-s", this.deviceId(), "logcat", "-d", "-s", "HotUpdaterLynx:I"],
-      { encoding: "utf8" },
-    );
-    const out = `${logs.stdout || ""}\n${logs.stderr || ""}`;
-    if (
-      !out.includes("overlay-js-load-started") &&
-      !out.includes("absoluteDir=true")
-    ) {
-      throw new Error(`Android overlay not loaded by host: ${out.slice(-2000)}`);
+    const deadline = Date.now() + 20_000;
+    let out = "";
+    while (Date.now() < deadline) {
+      const logs = spawnSync(
+        "adb",
+        ["-s", this.deviceId(), "logcat", "-d", "-s", "HotUpdaterLynx:V"],
+        { encoding: "utf8" },
+      );
+      out = `${logs.stdout || ""}\n${logs.stderr || ""}`;
+      if (
+        out.includes("overlay-js-load-started") ||
+        out.includes("absoluteDir=true")
+      ) {
+        return;
+      }
+      spawnSync("sleep", ["1"]);
     }
+    throw new Error(`Android overlay not loaded by host: ${out.slice(-2000)}`);
   }
 
   private terminateApp(): void {

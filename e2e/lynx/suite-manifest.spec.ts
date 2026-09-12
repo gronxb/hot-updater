@@ -228,6 +228,7 @@ describe("Lynx E2E suite manifest", () => {
     expect(driver).toContain("files/e2e-embedded");
     expect(driver).toContain('return "e2e-embedded"');
     expect(driver).toContain("assertAndroidOverlayLoaded");
+    expect(driver).toContain("Date.now() + 20_000");
     expect(driver).toContain("waitForOverlayReady");
     expect(driver).toContain("runtimeScenarioMarker");
     expect(driver).toContain('"tee"');
@@ -242,6 +243,13 @@ describe("Lynx E2E suite manifest", () => {
     expect(embed).toContain("HOT_UPDATER_E2E_OVERLAY_MARKER");
     expect(embed).toContain("rewriteLynxAndroidEmulatorUrl");
     expect(embed).toContain("10.0.2.2");
+    const lynxConfig = readFileSync(
+      path.join(repoDir, "examples/lynx/hot-updater.config.ts"),
+      "utf8",
+    );
+    expect(lynxConfig).toContain("rewriteAndroidEmulatorUrl");
+    expect(lynxConfig).toContain("10.0.2.2");
+    expect(lynxConfig).toContain('platform === "android"');
     const overlayApp = readFileSync(
       path.join(repoDir, "examples/lynx/src/e2eApp/index.tsx"),
       "utf8",

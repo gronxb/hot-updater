@@ -118,6 +118,28 @@ const runtimeId = (platform: "ios" | "android") =>
     ? "sparkling-c4ce8d2-lynx-3.9.0-primjs-3.8.0-alpha.6-ios-ota-v2"
     : "android-sparkling-2.1.0-rc.12-lynx-3.9.0-primjs-3.8.0-alpha.6-ota-v2";
 
+function rewriteAndroidEmulatorUrl(
+  url: string,
+  env: NodeJS.ProcessEnv,
+): string {
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    return url;
+  }
+  if (parsed.hostname !== "localhost" && parsed.hostname !== "127.0.0.1") {
+    return url;
+  }
+  parsed.hostname = "10.0.2.2";
+  const devicePort = env.HOT_UPDATER_E2E_ANDROID_CONTROL_DEVICE_PORT ?? "3107";
+  const hostPort = env.HOT_UPDATER_E2E_CONTROL_PORT ?? env.PORT ?? "";
+  if (hostPort && parsed.port === devicePort) {
+    parsed.port = hostPort;
+  }
+  return parsed.toString();
+}
+
 async function copyE2eFixtures(cwd: string, outDir: string) {
   const srcDir = path.join(cwd, "src/test");
   let names: string[];
@@ -176,6 +198,25 @@ export default {
           force: true,
         });
       }
+      const compileEnv: NodeJS.ProcessEnv = {
+        ...process.env,
+        HOT_UPDATER_BUILD_DIR: outDir,
+        HOT_UPDATER_E2E_BUILD_ID: bundleId,
+      };
+      if (platform === "android") {
+        for (const key of [
+          "HOT_UPDATER_E2E_RUNTIME_CONFIG_URL",
+          "HOT_UPDATER_E2E_APP_BASE_URL",
+          "HOT_UPDATER_APP_BASE_URL",
+        ] as const) {
+          if (compileEnv[key]) {
+            compileEnv[key] = rewriteAndroidEmulatorUrl(
+              compileEnv[key],
+              compileEnv,
+            );
+          }
+        }
+      }
       await run(
         "pnpm",
         [
@@ -189,11 +230,7 @@ export default {
         ],
         {
           cwd,
-          env: {
-            ...process.env,
-            HOT_UPDATER_BUILD_DIR: outDir,
-            HOT_UPDATER_E2E_BUILD_ID: bundleId,
-          },
+          env: compileEnv,
           maxBuffer: 10 * 1024 * 1024,
         },
       );
