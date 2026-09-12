@@ -26,7 +26,9 @@ class OtaActivity : Activity() {
             val existing = processController
             check(existing == null || processFramework == framework) { "Framework selection is pinned until process restart" }
             val channel = intent.getStringExtra("channel") ?: "ota-$framework"
-            val embeddedDir = intent.getStringExtra("embeddedDir") ?: "ota/$framework/A"
+            val embeddedDir = resolveEmbeddedDir(
+                intent.getStringExtra("embeddedDir") ?: "ota/$framework/A",
+            )
             Log.i(
                 "HotUpdaterLynx",
                 "embeddedDir=$embeddedDir absoluteDir=${java.io.File(embeddedDir).isDirectory} manifest=${java.io.File(embeddedDir, "manifest.json").isFile}",
@@ -64,6 +66,15 @@ class OtaActivity : Activity() {
         }
     }
     override fun onDestroy() { launch?.close(); view?.destroy(); super.onDestroy() }
+    private fun resolveEmbeddedDir(raw: String): String {
+        val configured = java.io.File(raw)
+        val fromFiles = java.io.File(filesDir, configured.name)
+        return when {
+            configured.isAbsolute && configured.isDirectory -> configured.absolutePath
+            fromFiles.isDirectory -> fromFiles.absolutePath
+            else -> raw
+        }
+    }
     companion object {
         private var processController: LynxUpdaterController? = null
         private var processFramework: String? = null

@@ -23,7 +23,12 @@ data class LynxHostConfiguration(
 internal fun digestString(value: String): String = MessageDigest.getInstance("SHA-256").digest(value.toByteArray()).joinToString("") { "%02x".format(it) }
 
 internal fun loadEmbedded(context: Context, config: LynxHostConfiguration): VerifiedLynxInstallation {
-    val overlay = File(config.embeddedAssetDirectory)
+    val configured = File(config.embeddedAssetDirectory)
+    val overlay = when {
+        configured.isAbsolute && configured.isDirectory -> configured
+        File(context.filesDir, configured.name).isDirectory -> File(context.filesDir, configured.name)
+        else -> configured
+    }
     if (overlay.isAbsolute && overlay.isDirectory) {
         val manifestFile = File(overlay, "manifest.json")
         val nativeManifest = JSONObject(String(manifestFile.readBytes()))

@@ -94,6 +94,8 @@ describe("Lynx E2E suite manifest", () => {
     expect(iosHost).toContain("publicKeyPEM:");
     expect(androidHost).toContain("com.hotupdater.PUBLIC_KEY");
     expect(androidHost).toContain("publicKeyPem");
+    expect(androidHost).toContain("resolveEmbeddedDir");
+    expect(androidHost).toContain("filesDir");
   });
 
   it("uses agent device env vars instead of simctl booted", () => {
@@ -157,7 +159,7 @@ describe("Lynx E2E suite manifest", () => {
     expect(source).toContain("NATIVE_STATE");
   });
 
-  it("starts the pending-action poller before overlay render", () => {
+  it("starts the pending-action poller after notifyAppReady", () => {
     const source = readFileSync(
       path.join(repoDir, "examples/lynx/src/e2eApp/index.tsx"),
       "utf8",
@@ -173,10 +175,12 @@ describe("Lynx E2E suite manifest", () => {
     );
     const bindAt = source.indexOf("actionHandlers.current = actions;");
     const pollerAt = source.indexOf("ensurePendingActionPoller();");
+    const finallyAt = source.indexOf(".finally(() => {");
     const crashAt = source.indexOf("maybeCrashForE2E();");
     const renderAt = source.indexOf("root.render(<App />);");
     expect(bindAt).toBeGreaterThan(0);
-    expect(pollerAt).toBeGreaterThan(bindAt);
+    expect(finallyAt).toBeGreaterThan(bindAt);
+    expect(pollerAt).toBeGreaterThan(finallyAt);
     expect(crashAt).toBeGreaterThan(0);
     expect(renderAt).toBeGreaterThan(crashAt);
   });
@@ -201,10 +205,8 @@ describe("Lynx E2E suite manifest", () => {
       "utf8",
     );
     expect(iosHost).toContain("hot-updater e2e crash");
-    expect(iosHost).toContain("unconfirmedOta");
     expect(iosHost).toContain("exit(0)");
     expect(androidController).toContain("Process.killProcess");
-    expect(androidController).toContain("runningIsBundle");
     expect(driver).toContain("options.expectCrash === true");
     expect(driver).toContain("files/e2e-embedded");
     expect(driver).toContain('"start",\n        "-S"');

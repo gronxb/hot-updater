@@ -273,7 +273,6 @@ class LynxUpdaterController internal constructor(
         Log.i(TAG, "confirmed bundle=${running.bundleId} release=${running.releaseId} attempt=${session.id}")
         "CONFIRMED"
     }
-    internal fun runningIsBundle(): Boolean = synchronized(stateLock) { running.kind == "BUNDLE" }
     internal fun fail(session: LynxLaunchSession, message: String) {
         session.failed = true
         synchronized(stateLock) {
