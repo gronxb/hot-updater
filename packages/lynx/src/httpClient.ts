@@ -110,12 +110,25 @@ export function createHttpClient(options: HotUpdaterOptions) {
       );
     }
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), timeout);
+    let timedOut = false;
+    const timeoutError = () =>
+      new LynxUpdaterError("REQUEST_TIMEOUT", "Update request timed out.");
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const timeoutPromise = new Promise<never>((_, reject) => {
+      timer = setTimeout(() => {
+        timedOut = true;
+        controller.abort();
+        reject(timeoutError());
+      }, timeout);
+    });
     try {
-      const response = await fetch(`${baseURL()}${path}`, {
-        headers: options.requestHeaders,
-        signal: controller.signal,
-      });
+      const response = await Promise.race([
+        fetch(`${baseURL()}${path}`, {
+          headers: options.requestHeaders,
+          signal: controller.signal,
+        }),
+        timeoutPromise,
+      ]);
       if (response.status !== 200) {
         throw new LynxUpdaterError(
           "HTTP_ERROR",
@@ -137,15 +150,12 @@ export function createHttpClient(options: HotUpdaterOptions) {
         return invalidResponse("Update response is not valid JSON.");
       }
     } catch (error) {
-      if (controller.signal.aborted) {
-        throw new LynxUpdaterError(
-          "REQUEST_TIMEOUT",
-          "Update request timed out.",
-        );
+      if (timedOut || controller.signal.aborted) {
+        throw timeoutError();
       }
       throw error;
     } finally {
-      clearTimeout(timer);
+      if (timer !== undefined) clearTimeout(timer);
     }
   }
 

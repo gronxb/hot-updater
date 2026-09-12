@@ -527,6 +527,7 @@ const applyForceUpdateIfNeeded = async () => {
   try {
     const updateInfo = await HotUpdater.checkForUpdate({
       updateStrategy: "appVersion",
+      requestTimeout: 5000,
     });
     if (handledScenarioAction || !updateInfo?.shouldForceUpdate) return;
     if (await isAlreadyRunningForceUpdate(updateInfo)) return;
@@ -536,21 +537,34 @@ const applyForceUpdateIfNeeded = async () => {
   }
 };
 
-const pollPendingActionOnce = async () => {
-  if (Object.keys(actionHandlers.current).length === 0) {
-    return;
-  }
+const fetchJsonWithTimeout = async (
+  url: string,
+  init?: RequestInit,
+): Promise<unknown> => {
   const response = await Promise.race([
-    fetch(pendingActionURL).catch(() => null),
+    fetch(url, init).catch(() => null),
     new Promise<null>((resolve) => {
       setTimeout(() => resolve(null), 5000);
     }),
   ]);
-  if (!response) return;
-  const payload = (await response.json()) as {
+  if (!response) return null;
+  return response.json();
+};
+
+const pollPendingActionOnce = async () => {
+  if (Object.keys(actionHandlers.current).length === 0) {
+    return;
+  }
+  const peeked = (await fetchJsonWithTimeout(pendingActionURL)) as {
     action?: { testID?: string; text?: string } | null;
-  };
-  const testID = payload.action?.testID;
+  } | null;
+  const queued = peeked?.action;
+  if (!queued?.testID) return;
+  const taken = (await fetch(pendingActionURL, { method: "DELETE" }).then(
+    (response) => response.json(),
+    () => null,
+  )) as { action?: { testID?: string; text?: string } | null } | null;
+  const testID = taken?.action?.testID;
   if (!testID) return;
   const handler = actionHandlers.current[testID];
   if (!handler) return;
@@ -558,7 +572,7 @@ const pollPendingActionOnce = async () => {
   navigateToTestId.current(testID);
   pendingActionFetchInFlight = false;
   await Promise.race([
-    handler(payload.action?.text),
+    handler(taken.action?.text),
     new Promise<void>((resolve) => {
       setTimeout(resolve, 20_000);
     }),

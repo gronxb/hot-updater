@@ -257,7 +257,14 @@ describe("Lynx E2E suite manifest", () => {
     expect(source).toContain("Promise.race");
     expect(source).toContain("requestTimeout: 5000");
     expect(source).toContain("pendingActionFetchInFlight");
+    expect(source).toContain('method: "DELETE"');
     expect(source).toContain("handledScenarioAction");
+    const pendingRoutes = readFileSync(
+      path.join(repoDir, "e2e/detox/control-server/routes.ts"),
+      "utf8",
+    );
+    expect(pendingRoutes).toContain("readPendingE2eAction()");
+    expect(pendingRoutes).toContain('app.delete("/e2e/pending-action"');
     expect(source).toContain("e2e-ready-status");
     expect(source).toContain("TEST_ID_TO_SCREEN");
     expect(source).toContain("setCurrentScreen");

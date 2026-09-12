@@ -228,4 +228,21 @@ describe("Lynx delivery HTTP contract", () => {
     await vi.advanceTimersByTimeAsync(20);
     await assertion;
   });
+
+  it("times out even when fetch ignores abort", async () => {
+    vi.useFakeTimers();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(() => new Promise(() => undefined)),
+    );
+    const request = createHttpClient({
+      baseURL: "https://updates.test",
+      requestTimeout: 20,
+    }).fetchCatalog(state);
+    const assertion = expect(request).rejects.toMatchObject({
+      code: "REQUEST_TIMEOUT",
+    });
+    await vi.advanceTimersByTimeAsync(20);
+    await assertion;
+  });
 });

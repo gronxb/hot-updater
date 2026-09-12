@@ -45,6 +45,7 @@ import {
 } from "./controller.ts";
 import {
   handleEnqueuePendingE2eAction,
+  readPendingE2eAction,
   takePendingE2eAction,
 } from "./pending-action.ts";
 import {
@@ -98,6 +99,9 @@ app.post("/e2e/pending-action", async (c) => {
 });
 
 app.get("/e2e/pending-action", (c) => {
+  return c.json({ action: readPendingE2eAction() });
+});
+app.delete("/e2e/pending-action", (c) => {
   return c.json({ action: takePendingE2eAction() });
 });
 
