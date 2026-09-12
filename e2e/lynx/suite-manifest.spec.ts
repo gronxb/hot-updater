@@ -221,7 +221,7 @@ describe("Lynx E2E suite manifest", () => {
     expect(driver).toContain("waitForOverlayReady");
     expect(driver).toContain("runtimeScenarioMarker");
     expect(driver).toContain("base64 -d");
-    expect(driver).toContain("runAsPwd");
+    expect(driver).toContain("/data/data/");
     expect(driver).toContain("overlay-js-load-started");
     expect(driver).toContain('"start",\n        "-S"');
     expect(driver).toContain("Date.now() + 60_000");

@@ -334,7 +334,9 @@ export class LynxAppDriver implements DetoxAppDriver {
 
   private installAndroidOverlay(localDir: string): string {
     const remoteRel = "files/e2e-embedded";
-    const appRoot = this.runAsPwd();
+    // run-as cwd is /data/data/<pkg>. /data/user/0/<pkg> is the app view and
+    // is not writable through run-as sh redirections.
+    const dataDir = `/data/data/${this.appId()}`;
     this.runOrThrow("adb", [
       "-s",
       this.deviceId(),
@@ -370,7 +372,7 @@ export class LynxAppDriver implements DetoxAppDriver {
         ]);
       }
       const localFile = path.join(localDir, rel);
-      const remoteFile = `${appRoot}/${remoteRel}/${rel}`;
+      const remoteFile = `${dataDir}/${remoteRel}/${rel}`;
       const pushed = spawnSync(
         "adb",
         [
@@ -406,32 +408,12 @@ export class LynxAppDriver implements DetoxAppDriver {
       "-f",
       `${remoteRel}/manifest.json`,
     ]);
-    this.assertCopiedOverlaySize(localDir, appRoot, remoteRel);
+    this.assertCopiedOverlaySize(localDir, remoteRel);
     return "e2e-embedded";
   }
 
-  private runAsPwd(): string {
-    const result = spawnSync(
-      "adb",
-      ["-s", this.deviceId(), "shell", "run-as", this.appId(), "pwd"],
-      { encoding: "utf8" },
-    );
-    const pwd = (result.stdout || "").trim();
-    if (result.status !== 0 || !pwd.startsWith("/")) {
-      throw new Error(
-        `run-as pwd failed: ${result.stderr || result.stdout || result.status}`,
-      );
-    }
-    return pwd;
-  }
-
-  private assertCopiedOverlaySize(
-    localDir: string,
-    appRoot: string,
-    remoteRel: string,
-  ): void {
-    const localBundle = path.join(localDir, "main.lynx.bundle");
-    const localSize = statSync(localBundle).size;
+  private assertCopiedOverlaySize(localDir: string, remoteRel: string): void {
+    const localSize = statSync(path.join(localDir, "main.lynx.bundle")).size;
     const remote = spawnSync(
       "adb",
       [
@@ -442,7 +424,7 @@ export class LynxAppDriver implements DetoxAppDriver {
         this.appId(),
         "wc",
         "-c",
-        `${appRoot}/${remoteRel}/main.lynx.bundle`,
+        `${remoteRel}/main.lynx.bundle`,
       ],
       { encoding: "utf8" },
     );
