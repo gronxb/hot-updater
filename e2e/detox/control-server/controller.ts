@@ -2862,22 +2862,38 @@ function readWaitForMetadataDiagnostics() {
     : readAndroidWaitForMetadataDiagnostics();
 }
 
+function lynxBundleFileName() {
+  return "main.lynx.bundle";
+}
+
 function readBundleFileSnapshot(bundleId: string) {
-  const bundleFileName =
-    fixtureSession.platform === "ios"
+  const bundleFileName = isLynxE2eApp()
+    ? lynxBundleFileName()
+    : fixtureSession.platform === "ios"
       ? "index.ios.bundle"
       : "index.android.bundle";
-  const storePath = ensureStorePath();
+  const lynxBundleDir =
+    isLynxE2eApp() && fixtureSession.platform === "ios"
+      ? findLynxIosBundleDir(bundleId)
+      : isLynxE2eApp()
+        ? findLynxAndroidBundleDir(bundleId)
+        : null;
+  const storePath = lynxBundleDir
+    ? path.dirname(lynxBundleDir)
+    : ensureStorePath();
 
   if (fixtureSession.platform === "ios") {
-    const bundleFilePath = path.join(storePath, bundleId, bundleFileName);
+    const bundleFilePath = path.join(
+      lynxBundleDir ?? path.join(storePath, bundleId),
+      bundleFileName,
+    );
     return {
       exists: fs.existsSync(bundleFilePath),
       path: bundleFilePath,
     };
   }
 
-  const remotePath = `${storePath}/${bundleId}/${bundleFileName}`;
+  const remotePath = `${lynxBundleDir ?? `${storePath}/${bundleId}`}/${bundleFileName}`;
 
   return {
     exists: androidFileExists(remotePath),
@@ -6308,6 +6324,9 @@ function readBsdiffPatchStoreEvidence(args: {
 }
 
 function getPrimaryBundleAssetPath() {
+  if (isLynxE2eApp()) {
+    return lynxBundleFileName();
+  }
   return fixtureSession.platform === "ios"
     ? "index.ios.bundle"
     : "index.android.bundle";
@@ -6381,21 +6400,30 @@ async function readManifestDiffState(args: {
     fixtureSession.deployedBundles.find(
       (entry) => entry.bundleId === args.bundleId,
     ) ?? null;
-  const ok =
-    metadataState.stableBundleId === null &&
-    metadataState.stagingBundleId === args.bundleId &&
-    metadataState.stagingSelection?.bundleId === args.bundleId &&
-    metadataState.verificationPending === false &&
-    hasManifestBackedBundleEvidence({
-      assetFile,
-      bundleFile,
-      expectedHash,
-      manifest,
-    }) &&
-    !includesAllFragments(archiveLogs, archiveFragments) &&
-    !includesAllFragments(nativeLogs, manifestFallbackFragments) &&
-    (args.allowBsdiff === true ||
-      !includesAllFragments(bsdiffLogs, bsdiffFragments));
+  const ok = isLynxE2eApp()
+    ? (metadataState.stagingBundleId === args.bundleId ||
+        metadataState.stableBundleId === args.bundleId) &&
+      metadataState.verificationPending === false &&
+      hasManifestBackedBundleEvidence({
+        assetFile,
+        bundleFile,
+        expectedHash,
+        manifest,
+      })
+    : metadataState.stableBundleId === null &&
+      metadataState.stagingBundleId === args.bundleId &&
+      metadataState.stagingSelection?.bundleId === args.bundleId &&
+      metadataState.verificationPending === false &&
+      hasManifestBackedBundleEvidence({
+        assetFile,
+        bundleFile,
+        expectedHash,
+        manifest,
+      }) &&
+      !includesAllFragments(archiveLogs, archiveFragments) &&
+      !includesAllFragments(nativeLogs, manifestFallbackFragments) &&
+      (args.allowBsdiff === true ||
+        !includesAllFragments(bsdiffLogs, bsdiffFragments));
 
   return {
     archiveFragments,

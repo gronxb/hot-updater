@@ -155,6 +155,37 @@ describe("Lynx E2E suite manifest", () => {
     expect(source).toContain("E2E_DEPLOY_ASSET_GUARD_START");
   });
 
+  it("starts the pending-action poller before overlay render", () => {
+    const source = readFileSync(
+      path.join(repoDir, "examples/lynx/src/e2eApp/index.tsx"),
+      "utf8",
+    );
+    expect(source).toContain("ensurePendingActionPoller");
+    const pollerAt = source.indexOf("ensurePendingActionPoller();");
+    const renderAt = source.indexOf("root.render(<App />)");
+    expect(pollerAt).toBeGreaterThan(0);
+    expect(renderAt).toBeGreaterThan(pollerAt);
+  });
+
+  it("treats Lynx startup JS errors as fatal native crashes", () => {
+    const iosHost = readFileSync(
+      path.join(
+        repoDir,
+        "examples/lynx/ios/SparklingGo/SparklingGo/PublicHost.swift",
+      ),
+      "utf8",
+    );
+    const androidSession = readFileSync(
+      path.join(
+        repoDir,
+        "packages/lynx/android/src/main/java/com/hotupdater/lynx/LynxLaunchSession.kt",
+      ),
+      "utf8",
+    );
+    expect(iosHost).toContain("!contentObserved");
+    expect(androidSession).toContain("error.isFatal || !firstScreen");
+  });
+
   it("projects Lynx journals onto RN store assertions", () => {
     const controller = readFileSync(
       path.join(repoDir, "e2e/detox/control-server/controller.ts"),
@@ -168,6 +199,7 @@ describe("Lynx E2E suite manifest", () => {
     expect(controller).toContain("readLynxSynthesizedSnapshot");
     expect(controller).toContain("HotUpdaterLynxPublic");
     expect(controller).toContain("hot-updater-lynx/scopes");
+    expect(controller).toContain("main.lynx.bundle");
     expect(overlay).toContain("runtimeScenarioMarker");
     expect(overlay).toContain("publishRuntimeSnapshot");
   });

@@ -151,8 +151,10 @@ final class PublicResourceLoader: NSObject, SPKResourceLoaderProtocol {
 
 final class PublicLifecycle: NSObject, SPKContainerLifecycleProtocol {
     let host: PublicHost
+    private var contentObserved = false
     init(_ host: PublicHost) { self.host = host }
     func containerDidFirstScreen(_ container: SPKContainerProtocol) {
+        contentObserved = true
         do { try host.controller.observedContent(host.context); host.record("publicFirstContent") }
         catch { host.record("publicFirstContentRejected", ["error": error.localizedDescription]) }
     }
@@ -161,7 +163,7 @@ final class PublicLifecycle: NSObject, SPKContainerLifecycleProtocol {
         try? host.controller.reportFailure(host.context, fatal: true)
     }
     func container(_ container: SPKContainerProtocol, didRecieveError error: Error?) {
-        let fatal = (error as? LynxError)?.isFatal == true
+        let fatal = (error as? LynxError)?.isFatal == true || !contentObserved
         host.record("publicRuntimeError", ["error": error?.localizedDescription ?? "unknown", "fatal": fatal])
         try? host.controller.reportFailure(host.context, fatal: fatal)
     }

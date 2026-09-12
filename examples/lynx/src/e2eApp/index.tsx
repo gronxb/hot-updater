@@ -227,8 +227,7 @@ function App() {
       await patchScreenState({ runtimeChannelInput: text });
     },
   };
-  const actionsRef = useRef(actions);
-  actionsRef.current = actions;
+  actionHandlers.current = actions;
 
   const publishRuntimeSnapshot = async (launchStatusValue?: string) => {
     const patch: Partial<ScreenState> = {
@@ -258,20 +257,6 @@ function App() {
         void publishRuntimeSnapshot(status);
       })
       .catch(() => undefined);
-    const timer = setInterval(() => {
-      void (async () => {
-        const response = await fetch(pendingActionURL);
-        const payload = (await response.json()) as {
-          action?: { testID?: string; text?: string } | null;
-        };
-        const testID = payload.action?.testID;
-        if (!testID) return;
-        const handler = actionsRef.current[testID];
-        if (!handler) return;
-        await handler(payload.action?.text);
-      })().catch(() => undefined);
-    }, 200);
-    return () => clearInterval(timer);
   }, []);
 
   return (
@@ -291,12 +276,38 @@ function App() {
   );
 }
 
+const actionHandlers: {
+  current: Record<string, (text?: string) => Promise<void>>;
+} = { current: {} };
+
+let pollerStarted = false;
+const ensurePendingActionPoller = () => {
+  if (pollerStarted) {
+    return;
+  }
+  pollerStarted = true;
+  setInterval(() => {
+    void (async () => {
+      const response = await fetch(pendingActionURL);
+      const payload = (await response.json()) as {
+        action?: { testID?: string; text?: string } | null;
+      };
+      const testID = payload.action?.testID;
+      if (!testID) return;
+      const handler = actionHandlers.current[testID];
+      if (!handler) return;
+      await handler(payload.action?.text);
+    })().catch(() => undefined);
+  }, 200);
+};
+
 let started = false;
 const startE2eApp = (baseURL: string) => {
   if (started) {
     return;
   }
   started = true;
+  ensurePendingActionPoller();
   void Promise.resolve(
     HotUpdater.init({
       insights: true,
@@ -304,19 +315,27 @@ const startE2eApp = (baseURL: string) => {
       requestTimeout: 15000,
     }),
   ).catch(() => undefined);
-  maybeCrashForE2E();
   try {
     loadE2EDeployBundleAssets();
   } catch {
     // Overlay must keep polling even if Metro asset requires throw.
   }
   root.render(<App />);
+  maybeCrashForE2E();
 };
 
+ensurePendingActionPoller();
+startE2eApp(appBaseURL);
 void resolveAppBaseURL()
   .then((baseURL) => {
-    startE2eApp(baseURL);
+    if (baseURL !== appBaseURL) {
+      void Promise.resolve(
+        HotUpdater.init({
+          insights: true,
+          baseURL,
+          requestTimeout: 15000,
+        }),
+      ).catch(() => undefined);
+    }
   })
-  .catch(() => {
-    startE2eApp(appBaseURL);
-  });
+  .catch(() => undefined);

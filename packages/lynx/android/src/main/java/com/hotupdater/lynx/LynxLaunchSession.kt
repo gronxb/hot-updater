@@ -72,7 +72,10 @@ class LynxLaunchSession internal constructor(
             override fun onFirstScreen() { handler.post { if (live) { firstScreen = true; flushReady() } } }
             override fun onReceivedError(error: LynxError) {
                 android.util.Log.i("HotUpdaterLynx", "engine-error fatal=${error.isFatal} code=${error.errorCode} message=${error.msg}")
-                if (error.isFatal) { controller.fail(this@LynxLaunchSession, error.msg); handler.post { flushReady() } }
+                if (error.isFatal || !firstScreen) {
+                    controller.fail(this@LynxLaunchSession, error.msg)
+                    handler.post { flushReady() }
+                }
             }
             override fun onLoadFailed(message: String) { controller.fail(this@LynxLaunchSession, message); handler.post { flushReady() } }
         })
