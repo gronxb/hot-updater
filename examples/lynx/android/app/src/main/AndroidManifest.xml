@@ -1,5 +1,5 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
-  <application android:name=".SpikeApplication" android:theme="@style/AppTheme" android:label="Hot Updater Lynx G1" android:allowBackup="false" android:networkSecurityConfig="@xml/lynx_network_security_config">
+  <application android:name=".SpikeApplication" android:theme="@style/AppTheme" android:label="Hot Updater Lynx G1" android:allowBackup="false" android:usesCleartextTraffic="true" android:networkSecurityConfig="@xml/lynx_network_security_config">
     <provider android:name=".SpikeStagingProvider" android:authorities="com.hotupdater.lynxexample.staging" android:exported="true" android:permission="android.permission.DUMP" />
     <activity android:name=".ControllerProbeActivity" android:exported="true" android:permission="android.permission.DUMP" />
     <activity android:name=".InstallProbeActivity" android:exported="true" android:permission="android.permission.DUMP" />

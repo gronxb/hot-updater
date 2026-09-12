@@ -96,6 +96,15 @@ describe("Lynx E2E suite manifest", () => {
     expect(androidHost).toContain("publicKeyPem");
     expect(androidHost).toContain("resolveEmbeddedDir");
     expect(androidHost).toContain("filesDir");
+    expect(androidHost).toContain("overlay-js-load-started");
+    const manifest = readFileSync(
+      path.join(
+        repoDir,
+        "examples/lynx/android/app/src/main/AndroidManifest.xml",
+      ),
+      "utf8",
+    );
+    expect(manifest).toContain('android:usesCleartextTraffic="true"');
   });
 
   it("uses agent device env vars instead of simctl booted", () => {
@@ -211,8 +220,9 @@ describe("Lynx E2E suite manifest", () => {
     expect(driver).toContain("assertAndroidOverlayLoaded");
     expect(driver).toContain("waitForOverlayReady");
     expect(driver).toContain("runtimeScenarioMarker");
-    expect(driver).toContain("dd");
-    expect(driver).toContain("of=${remoteRel}/${rel}");
+    expect(driver).toContain("base64 -d");
+    expect(driver).toContain("runAsPwd");
+    expect(driver).toContain("overlay-js-load-started");
     expect(driver).toContain('"start",\n        "-S"');
     expect(driver).toContain("Date.now() + 60_000");
     const embed = readFileSync(

@@ -334,6 +334,7 @@ export class LynxAppDriver implements DetoxAppDriver {
 
   private installAndroidOverlay(localDir: string): string {
     const remoteRel = "files/e2e-embedded";
+    const appRoot = this.runAsPwd();
     this.runOrThrow("adb", [
       "-s",
       this.deviceId(),
@@ -368,6 +369,8 @@ export class LynxAppDriver implements DetoxAppDriver {
           `${remoteRel}/${parent}`,
         ]);
       }
+      const localFile = path.join(localDir, rel);
+      const remoteFile = `${appRoot}/${remoteRel}/${rel}`;
       const pushed = spawnSync(
         "adb",
         [
@@ -377,18 +380,19 @@ export class LynxAppDriver implements DetoxAppDriver {
           "-T",
           "run-as",
           this.appId(),
-          "dd",
-          `of=${remoteRel}/${rel}`,
+          "sh",
+          "-c",
+          `base64 -d > '${remoteFile}'`,
         ],
         {
-          encoding: "buffer",
-          input: readFileSync(path.join(localDir, rel)),
+          encoding: "utf8",
+          input: readFileSync(localFile).toString("base64"),
           timeout: 15_000,
         },
       );
       if (pushed.status !== 0) {
         throw new Error(
-          `overlay copy ${rel} failed: ${pushed.stderr?.toString() || pushed.status}`,
+          `overlay copy ${rel} failed: ${pushed.stderr || pushed.status}`,
         );
       }
     }
@@ -402,7 +406,52 @@ export class LynxAppDriver implements DetoxAppDriver {
       "-f",
       `${remoteRel}/manifest.json`,
     ]);
+    this.assertCopiedOverlaySize(localDir, appRoot, remoteRel);
     return "e2e-embedded";
+  }
+
+  private runAsPwd(): string {
+    const result = spawnSync(
+      "adb",
+      ["-s", this.deviceId(), "shell", "run-as", this.appId(), "pwd"],
+      { encoding: "utf8" },
+    );
+    const pwd = (result.stdout || "").trim();
+    if (result.status !== 0 || !pwd.startsWith("/")) {
+      throw new Error(
+        `run-as pwd failed: ${result.stderr || result.stdout || result.status}`,
+      );
+    }
+    return pwd;
+  }
+
+  private assertCopiedOverlaySize(
+    localDir: string,
+    appRoot: string,
+    remoteRel: string,
+  ): void {
+    const localBundle = path.join(localDir, "main.lynx.bundle");
+    const localSize = statSync(localBundle).size;
+    const remote = spawnSync(
+      "adb",
+      [
+        "-s",
+        this.deviceId(),
+        "shell",
+        "run-as",
+        this.appId(),
+        "wc",
+        "-c",
+        `${appRoot}/${remoteRel}/main.lynx.bundle`,
+      ],
+      { encoding: "utf8" },
+    );
+    const remoteSize = Number.parseInt((remote.stdout || "").trim(), 10);
+    if (!Number.isFinite(remoteSize) || remoteSize !== localSize) {
+      throw new Error(
+        `overlay main.lynx.bundle size mismatch local=${localSize} remote=${remote.stdout || remote.status}`,
+      );
+    }
   }
 
   private listRelativeFiles(root: string): string[] {
@@ -440,7 +489,10 @@ export class LynxAppDriver implements DetoxAppDriver {
       { encoding: "utf8" },
     );
     const out = `${logs.stdout || ""}\n${logs.stderr || ""}`;
-    if (!out.includes("absoluteDir=true") && !out.includes("manifest=true")) {
+    if (
+      !out.includes("overlay-js-load-started") &&
+      !out.includes("absoluteDir=true")
+    ) {
       throw new Error(`Android overlay not loaded by host: ${out.slice(-2000)}`);
     }
   }

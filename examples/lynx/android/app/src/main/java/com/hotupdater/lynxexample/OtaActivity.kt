@@ -60,6 +60,7 @@ class OtaActivity : Activity() {
             session.bind(lynxView)
             setContentView(lynxView)
             kit.load()
+            Log.i("HotUpdaterLynx", "overlay-js-load-started entry=$entry")
         } catch (error: Exception) {
             Log.e("HotUpdaterLynx", "host-rejected-before-evaluation", error)
             setContentView(TextView(this).apply { text = "Native Lynx host rejected\n${error.message}"; setPadding(24, 70, 24, 24) })
