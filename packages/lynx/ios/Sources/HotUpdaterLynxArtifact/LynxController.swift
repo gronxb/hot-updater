@@ -108,15 +108,16 @@ public final class LynxController {
             recovered.revision = UUID().uuidString
             try journal.save(recovered)
         }
-        if recovered.selectionCohort != config.cohort {
-            recovered.selectionCohort = config.cohort
-            recovered.revision = UUID().uuidString
-            try journal.save(recovered)
+        if let cohort = recovered.selectionCohort, !cohort.isEmpty {
+            runtimeCohort = cohort
+        }
+        if let channel = recovered.selectionChannel, !channel.isEmpty {
+            runtimeChannel = channel
         }
         let nativeSnapshot = { (base: LynxPolicyReceipt) in
             LynxPolicySnapshot(revision: recovered.revision, platform: "ios", appVersion: config.appVersion,
-                channel: config.channel, embeddedBundleId: config.embeddedBundleId, minimumBundleId: config.minimumBundleId,
-                cohort: config.cohort, runningSelection: base, nextSelection: nil,
+                channel: runtimeChannel, embeddedBundleId: config.embeddedBundleId, minimumBundleId: config.minimumBundleId,
+                cohort: runtimeCohort, runningSelection: base, nextSelection: nil,
                 crashedBundleIds: recovered.crashedBundleIds, unconfirmedReleaseIds: recovered.unconfirmedReleaseIds)
         }
         var selected: (LynxStoredSelection, LynxInstalledArtifact)?
@@ -145,9 +146,6 @@ public final class LynxController {
             try journal.save(recovered)
         }
         state = recovered
-        if let channel = recovered.selectionChannel, !channel.isEmpty {
-            runtimeChannel = channel
-        }
         runningConfirmed = Self.sameIdentity(runningSelection, try recovered.confirmed?.policy)
         try? cleanupUnusedArtifacts()
     }
@@ -217,6 +215,10 @@ public final class LynxController {
     public func setCohort(_ cohort: String, context: LynxLaunchContext) throws {
         lock.lock(); defer { lock.unlock() }; try validate(context)
         runtimeCohort = cohort
+        var next = state
+        next.selectionCohort = cohort
+        next.revision = UUID().uuidString
+        try save(next)
     }
     public func setChannel(_ channel: String, context: LynxLaunchContext) throws {
         lock.lock(); defer { lock.unlock() }; try validate(context)

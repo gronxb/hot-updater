@@ -179,16 +179,24 @@ function App() {
       installUpdate({ actionLabel: "current-channel" }),
     "action-install-fingerprint-update": () =>
       installUpdate({ actionLabel: "fingerprint", strategy: "fingerprint" }),
-    "action-install-runtime-channel-update": () =>
-      installUpdate({
-        actionLabel: `runtime-channel:${runtimeChannelInput.trim().toLowerCase()}`,
-        channel: runtimeChannelInput.trim().toLowerCase(),
-      }),
+    "action-install-runtime-channel-update": async () => {
+      const normalizedChannel = runtimeChannelInput.trim().toLowerCase();
+      if (!normalizedChannel) {
+        await setChannelActionResult("runtime-channel -> invalid");
+        return;
+      }
+      await setChannelActionResult(`runtime-channel -> ${normalizedChannel}`);
+      await installUpdate({
+        actionLabel: `runtime-channel:${normalizedChannel}`,
+        channel: normalizedChannel,
+      });
+    },
     "action-reset-runtime-channel": async () => {
       const didReset = await HotUpdater.resetChannel();
       await setChannelActionResult(`reset -> ${String(didReset)}`);
     },
-    "action-apply-cohort-input": () => applyCohortValue(cohortInput),
+    "action-apply-cohort-input": () =>
+      applyCohortValue(HotUpdater.getCohort() || cohortInput),
     "action-set-cohort-qa": () => applyCohortValue("qa"),
     "action-restore-initial-cohort": async () => {
       await applyCohortValue("1");

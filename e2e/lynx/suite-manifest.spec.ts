@@ -180,6 +180,9 @@ describe("Lynx E2E suite manifest", () => {
     expect(source).toContain(
       "ensureInstalled(): void {\n    this.installApp();",
     );
+    expect(source).toContain("INPUT_TEXT_FIELDS");
+    expect(source).toContain('"cohort-input": "cohortInput"');
+    expect(source).toContain("wait ${field}");
     expect(source).toContain("uninstallApp(): void {");
     expect(source).toContain('["simctl", "uninstall", this.deviceId()');
     expect(source).toContain('"uninstall", this.appId()');

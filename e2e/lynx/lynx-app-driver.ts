@@ -46,6 +46,11 @@ const SCREEN_TEXT_FIELDS: Record<string, string> = {
   "runtime-scenario-marker": "runtimeScenarioMarker",
 };
 
+const INPUT_TEXT_FIELDS: Record<string, string> = {
+  "cohort-input": "cohortInput",
+  "runtime-channel-input": "runtimeChannelInput",
+};
+
 export class LynxAppDriver implements DetoxAppDriver {
   private readonly controlClient: ControlClient;
   private readonly platform: DetoxPlatform;
@@ -217,6 +222,14 @@ export class LynxAppDriver implements DetoxAppDriver {
           text: resolvedText,
         },
       );
+      const field = INPUT_TEXT_FIELDS[testID];
+      if (field) {
+        await this.controlClient.waitForScreenStateField(
+          `${stage}: wait ${field}`,
+          field,
+          { expectedValue: resolvedText },
+        );
+      }
     });
   }
 

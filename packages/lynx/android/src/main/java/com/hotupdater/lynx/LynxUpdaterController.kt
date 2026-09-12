@@ -58,7 +58,8 @@ class LynxUpdaterController internal constructor(
     private fun exclusions(key: String): List<String> = store.value.optJSONArray(key)?.let { array -> (0 until array.length()).map { array.getString(it) } } ?: emptyList()
     private fun eligible(value: CatalogPolicy.Receipt) = value.releaseId !in exclusions("unconfirmed") &&
         (value.bundleId == embedded.bundleId || value.bundleId !in exclusions("crashed"))
-    private var runtimeCohort: String = configuration.cohort
+    private var runtimeCohort: String =
+        store.value.optString("cohort").ifEmpty { configuration.cohort }
     private var runtimeChannel: String =
         store.value.optString("channel").ifEmpty { configuration.channel }
     private fun snapshot() = CatalogPolicy.NativeSnapshot(store.value.getString("revision"), configuration.appVersion,
@@ -140,7 +141,10 @@ class LynxUpdaterController internal constructor(
         LynxLaunchSession(this, runningFiles, UUID.randomUUID().toString(), false)
     }
 
-    fun setCohort(cohort: String) = synchronized(stateLock) { runtimeCohort = cohort }
+    fun setCohort(cohort: String) = synchronized(stateLock) {
+        runtimeCohort = cohort
+        mutate { it.put("cohort", cohort) }
+    }
     fun setChannel(channel: String) = synchronized(stateLock) {
         runtimeChannel = channel
         mutate { it.put("channel", channel) }
