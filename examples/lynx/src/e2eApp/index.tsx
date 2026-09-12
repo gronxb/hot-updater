@@ -6,7 +6,6 @@ import { TEST_ID_TO_SCREEN } from "./e2eStack";
 import { loadE2EDeployBundleAssets, maybeCrashForE2E } from "./patchSurface";
 import {
   bindStandaloneE2eActionHandlers,
-  bootNotifyAppReady,
   publishOverlayReady,
   scheduleForceUpdateReload,
 } from "./runtime-actions";
@@ -91,33 +90,41 @@ maybeCrashForE2E();
 
 let started = false;
 const startE2eApp = (baseURL: string) => {
-  try {
-    HotUpdater.init({
-      insights: true,
-      baseURL,
-      requestTimeout: 15000,
-    });
-  } catch {
-    // Overlay ready and the pending-action poller must still start.
-  }
   if (!started) {
     started = true;
   }
-  bindStandaloneE2eActionHandlers();
   void publishOverlayReady();
   ensurePendingActionPoller();
   void import("./app")
     .then(({ App }) => {
       try {
+        HotUpdater.init({
+          insights: true,
+          baseURL,
+          requestTimeout: 15000,
+        });
+      } catch {
+        // Overlay ready and the pending-action poller must still start.
+      }
+      bindStandaloneE2eActionHandlers();
+      try {
         root.render(<App />);
       } catch {
         // Poller must keep running even if the Lynx tree fails to mount.
       }
-      void bootNotifyAppReady();
       scheduleForceUpdateReload();
     })
     .catch(() => {
-      void bootNotifyAppReady();
+      try {
+        HotUpdater.init({
+          insights: true,
+          baseURL,
+          requestTimeout: 15000,
+        });
+      } catch {
+        // Native methods stay unavailable until a later overlay reload.
+      }
+      bindStandaloneE2eActionHandlers();
       scheduleForceUpdateReload();
     });
 };

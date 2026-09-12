@@ -274,8 +274,11 @@ describe("Lynx E2E suite manifest", () => {
     );
     expect(source).toContain("bindStandaloneE2eActionHandlers");
     expect(source).toContain("publishOverlayReady");
-    expect(source).toContain("bootNotifyAppReady");
     expect(source).toContain("scheduleForceUpdateReload");
+    expect(source).toContain('import("./app")');
+    expect(source.indexOf("HotUpdater.init")).toBeGreaterThan(
+      source.indexOf('import("./app")'),
+    );
     expect(runtime).toContain("actionHandlers.current = actions;");
     expect(runtime).toContain(
       "void patchScreenState({ runtimeScenarioMarker: scenarioMarker });",
