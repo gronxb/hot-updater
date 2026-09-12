@@ -334,9 +334,6 @@ export class LynxAppDriver implements DetoxAppDriver {
 
   private installAndroidOverlay(localDir: string): string {
     const remoteRel = "files/e2e-embedded";
-    // run-as cwd is /data/data/<pkg>. /data/user/0/<pkg> is the app view and
-    // is not writable through run-as sh redirections.
-    const dataDir = `/data/data/${this.appId()}`;
     this.runOrThrow("adb", [
       "-s",
       this.deviceId(),
@@ -371,8 +368,8 @@ export class LynxAppDriver implements DetoxAppDriver {
           `${remoteRel}/${parent}`,
         ]);
       }
-      const localFile = path.join(localDir, rel);
-      const remoteFile = `${dataDir}/${remoteRel}/${rel}`;
+      // run-as execs tee with the app cwd. Avoid sh redirections: they resolve
+      // /data/user/0 or /data/data with Permission denied.
       const pushed = spawnSync(
         "adb",
         [
@@ -382,19 +379,19 @@ export class LynxAppDriver implements DetoxAppDriver {
           "-T",
           "run-as",
           this.appId(),
-          "sh",
-          "-c",
-          `base64 -d > '${remoteFile}'`,
+          "tee",
+          `${remoteRel}/${rel}`,
         ],
         {
-          encoding: "utf8",
-          input: readFileSync(localFile).toString("base64"),
+          encoding: "buffer",
+          input: readFileSync(path.join(localDir, rel)),
+          maxBuffer: 32 * 1024 * 1024,
           timeout: 15_000,
         },
       );
       if (pushed.status !== 0) {
         throw new Error(
-          `overlay copy ${rel} failed: ${pushed.stderr || pushed.status}`,
+          `overlay copy ${rel} failed: ${pushed.stderr?.toString() || pushed.status}`,
         );
       }
     }
