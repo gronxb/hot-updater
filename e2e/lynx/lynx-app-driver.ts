@@ -290,27 +290,7 @@ export class LynxAppDriver implements DetoxAppDriver {
       );
       return;
     }
-    const deviceEmbeddedDir = "/data/local/tmp/hot-updater-lynx-e2e-embedded";
-    spawnSync(
-      "adb",
-      ["-s", this.deviceId(), "shell", "rm", "-rf", deviceEmbeddedDir],
-      { encoding: "utf8", env: this.env },
-    );
-    this.runOrThrow("adb", [
-      "-s",
-      this.deviceId(),
-      "push",
-      embeddedDir,
-      deviceEmbeddedDir,
-    ]);
-    this.runOrThrow("adb", [
-      "-s",
-      this.deviceId(),
-      "shell",
-      "test",
-      "-f",
-      `${deviceEmbeddedDir}/manifest.json`,
-    ]);
+    const deviceEmbeddedDir = this.installAndroidOverlay(embeddedDir);
     this.runLaunch(
       "adb",
       [
@@ -333,6 +313,72 @@ export class LynxAppDriver implements DetoxAppDriver {
       ],
       options.expectCrash === true,
     );
+  }
+
+  private installAndroidOverlay(localDir: string): string {
+    const remoteRel = "files/e2e-embedded";
+    const remoteAbs = `/data/data/${this.appId()}/files/e2e-embedded`;
+    this.runOrThrow("adb", [
+      "-s",
+      this.deviceId(),
+      "shell",
+      "run-as",
+      this.appId(),
+      "rm",
+      "-rf",
+      remoteRel,
+    ]);
+    this.runOrThrow("adb", [
+      "-s",
+      this.deviceId(),
+      "shell",
+      "run-as",
+      this.appId(),
+      "mkdir",
+      "-p",
+      remoteRel,
+    ]);
+    const packed = spawnSync("tar", ["-C", localDir, "-cf", "-", "."], {
+      encoding: "buffer",
+      maxBuffer: 32 * 1024 * 1024,
+    });
+    if (packed.status !== 0) {
+      throw new Error(
+        `tar overlay failed: ${packed.stderr?.toString() || packed.status}`,
+      );
+    }
+    const unpacked = spawnSync(
+      "adb",
+      [
+        "-s",
+        this.deviceId(),
+        "exec-out",
+        "run-as",
+        this.appId(),
+        "tar",
+        "-xf",
+        "-",
+        "-C",
+        remoteRel,
+      ],
+      { encoding: "buffer", input: packed.stdout, maxBuffer: 32 * 1024 * 1024 },
+    );
+    if (unpacked.status !== 0) {
+      throw new Error(
+        `adb overlay install failed: ${unpacked.stderr?.toString() || unpacked.status}`,
+      );
+    }
+    this.runOrThrow("adb", [
+      "-s",
+      this.deviceId(),
+      "shell",
+      "run-as",
+      this.appId(),
+      "test",
+      "-f",
+      `${remoteRel}/manifest.json`,
+    ]);
+    return remoteAbs;
   }
 
   private terminateApp(): void {

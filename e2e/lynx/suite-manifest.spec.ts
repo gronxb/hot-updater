@@ -162,10 +162,14 @@ describe("Lynx E2E suite manifest", () => {
     );
     expect(source).toContain("ensurePendingActionPoller");
     expect(source).toContain("pollPendingActionOnce");
+    expect(source).toContain(
+      "Object.keys(actionHandlers.current).length === 0",
+    );
+    expect(source).toContain("actionHandlers.current = actions;");
+    const bindAt = source.indexOf("actionHandlers.current = actions;");
     const pollerAt = source.indexOf("ensurePendingActionPoller();");
-    const renderAt = source.indexOf("root.render(<App />)");
-    expect(pollerAt).toBeGreaterThan(0);
-    expect(renderAt).toBeGreaterThan(pollerAt);
+    expect(bindAt).toBeGreaterThan(0);
+    expect(pollerAt).toBeGreaterThan(bindAt);
   });
 
   it("treats Lynx startup JS errors as fatal native crashes", () => {
@@ -191,6 +195,7 @@ describe("Lynx E2E suite manifest", () => {
     expect(iosHost).toContain("exit(0)");
     expect(androidController).toContain("Process.killProcess");
     expect(driver).toContain("options.expectCrash === true");
+    expect(driver).toContain("files/e2e-embedded");
   });
 
   it("projects Lynx journals onto RN store assertions", () => {

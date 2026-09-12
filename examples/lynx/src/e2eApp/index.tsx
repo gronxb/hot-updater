@@ -42,7 +42,6 @@ const pendingActionURL = screenStateURL.replace(
   /\/screen-state$/,
   "/pending-action",
 );
-void fetch(pendingActionURL).catch(() => undefined);
 
 async function resolveAppBaseURL(): Promise<string> {
   try {
@@ -229,6 +228,7 @@ function App() {
     },
   };
   actionHandlers.current = actions;
+  ensurePendingActionPoller();
 
   const publishRuntimeSnapshot = async (launchStatusValue?: string) => {
     const patch: Partial<ScreenState> = {
@@ -283,6 +283,9 @@ const actionHandlers: {
 
 let pollerStarted = false;
 const pollPendingActionOnce = async () => {
+  if (Object.keys(actionHandlers.current).length === 0) {
+    return;
+  }
   const response = await fetch(pendingActionURL);
   const payload = (await response.json()) as {
     action?: { testID?: string; text?: string } | null;
@@ -315,7 +318,6 @@ const startE2eApp = (baseURL: string) => {
     return;
   }
   started = true;
-  ensurePendingActionPoller();
   void Promise.resolve(
     HotUpdater.init({
       insights: true,
@@ -336,7 +338,6 @@ const startE2eApp = (baseURL: string) => {
   maybeCrashForE2E();
 };
 
-ensurePendingActionPoller();
 startE2eApp(appBaseURL);
 void resolveAppBaseURL()
   .then((baseURL) => {
