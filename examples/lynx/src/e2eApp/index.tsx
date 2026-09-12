@@ -143,7 +143,8 @@ function App() {
         }
         const installed = await updateInfo.updateBundle();
         const appliedResult =
-          updateInfo.transitionKind === "ADOPT_RELEASE"
+          updateInfo.transitionKind === "ADOPT_RELEASE" &&
+          updateInfo.status !== "ROLLBACK"
             ? `${actionLabel} -> adopted ID ${updateInfo.id}`
             : updateInfo.transitionKind === "USE_EMBEDDED"
               ? `${actionLabel} -> selected EMBEDDED ID ${updateInfo.id}`
@@ -523,17 +524,23 @@ const isAlreadyRunningForceUpdate = async (updateInfo: {
 };
 
 const applyForceUpdateIfNeeded = async () => {
-  if (handledScenarioAction) return;
-  try {
-    const updateInfo = await HotUpdater.checkForUpdate({
-      updateStrategy: "appVersion",
-      requestTimeout: 5000,
-    });
-    if (handledScenarioAction || !updateInfo?.shouldForceUpdate) return;
-    if (await isAlreadyRunningForceUpdate(updateInfo)) return;
-    if (await updateInfo.updateBundle()) await HotUpdater.reload();
-  } catch {
-    // Overlay launch continues; metadata wait observes the native result.
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    if (handledScenarioAction) return;
+    try {
+      const updateInfo = await HotUpdater.checkForUpdate({
+        updateStrategy: "appVersion",
+        requestTimeout: 5000,
+      });
+      if (handledScenarioAction || !updateInfo?.shouldForceUpdate) return;
+      if (await isAlreadyRunningForceUpdate(updateInfo)) return;
+      if (await updateInfo.updateBundle()) {
+        void HotUpdater.reload();
+        return;
+      }
+    } catch {
+      if (attempt === 2) return;
+      await new Promise((resolve) => setTimeout(resolve, 500));
+    }
   }
 };
 
@@ -560,7 +567,7 @@ const pollPendingActionOnce = async () => {
   } | null;
   const queued = peeked?.action;
   if (!queued?.testID) return;
-  const taken = (await fetch(pendingActionURL, { method: "DELETE" }).then(
+  const taken = (await fetch(`${pendingActionURL}?take=1`).then(
     (response) => response.json(),
     () => null,
   )) as { action?: { testID?: string; text?: string } | null } | null;

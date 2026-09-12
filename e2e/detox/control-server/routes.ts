@@ -99,7 +99,11 @@ app.post("/e2e/pending-action", async (c) => {
 });
 
 app.get("/e2e/pending-action", (c) => {
-  return c.json({ action: readPendingE2eAction() });
+  const action =
+    c.req.query("take") === "1"
+      ? takePendingE2eAction()
+      : readPendingE2eAction();
+  return c.json({ action });
 });
 app.delete("/e2e/pending-action", (c) => {
   return c.json({ action: takePendingE2eAction() });
