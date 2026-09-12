@@ -1,4 +1,4 @@
-import "url-search-params-polyfill";
+import "./polyfill";
 import { HotUpdater } from "@hot-updater/lynx";
 import { root } from "@lynx-js/react";
 
@@ -7,11 +7,15 @@ import { TEST_ID_TO_SCREEN } from "./e2eStack";
 import { loadE2EDeployBundleAssets, maybeCrashForE2E } from "./patchSurface";
 import { navigateToTestId } from "./router";
 import {
+  bindStandaloneE2eActionHandlers,
+  bootNotifyAppReady,
+  publishOverlayReady,
+  scheduleForceUpdateReload,
+} from "./runtime-actions";
+import {
   actionHandlers,
   markScenarioActionHandled,
   pendingActionURL,
-  patchScreenState,
-  scenarioMarker,
 } from "./runtime-model";
 
 declare const __E2E_APP_BASE_URL__: string;
@@ -85,15 +89,23 @@ maybeCrashForE2E();
 
 let started = false;
 const startE2eApp = (baseURL: string) => {
-  HotUpdater.init({
-    insights: true,
-    baseURL,
-    requestTimeout: 15000,
-  });
+  try {
+    HotUpdater.init({
+      insights: true,
+      baseURL,
+      requestTimeout: 15000,
+    });
+  } catch {
+    // Overlay ready and the pending-action poller must still start.
+  }
   if (!started) {
     started = true;
   }
+  bindStandaloneE2eActionHandlers();
+  void publishOverlayReady();
   ensurePendingActionPoller();
+  void bootNotifyAppReady();
+  scheduleForceUpdateReload();
   try {
     root.render(<App />);
   } catch {

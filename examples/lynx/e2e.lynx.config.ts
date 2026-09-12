@@ -11,6 +11,9 @@ export default defineConfig({
   source: {
     alias: {
       react$: require.resolve("@lynx-js/react/compat"),
+      "react/jsx-runtime": require.resolve("@lynx-js/react/jsx-runtime"),
+      "react/jsx-dev-runtime":
+        require.resolve("@lynx-js/react/jsx-dev-runtime"),
     },
     entry: { main: "./src/e2eApp/index.tsx" },
     define: {

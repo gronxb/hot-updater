@@ -260,12 +260,22 @@ describe("Lynx E2E suite manifest", () => {
       path.join(repoDir, "examples/lynx/e2e.lynx.config.ts"),
       "utf8",
     );
-    expect(source).toContain('import "url-search-params-polyfill"');
+    const polyfill = readFileSync(
+      path.join(repoDir, "examples/lynx/src/e2eApp/polyfill.ts"),
+      "utf8",
+    );
+    expect(source).toContain('import "./polyfill"');
+    expect(polyfill).toContain('import "url-search-params-polyfill"');
+    expect(polyfill).toContain("createElement");
     expect(source).toContain("ensurePendingActionPoller");
     expect(source).toContain("pollPendingActionOnce");
     expect(source).toContain(
       "Object.keys(actionHandlers.current).length === 0",
     );
+    expect(source).toContain("bindStandaloneE2eActionHandlers");
+    expect(source).toContain("publishOverlayReady");
+    expect(source).toContain("bootNotifyAppReady");
+    expect(source).toContain("scheduleForceUpdateReload");
     expect(runtime).toContain("actionHandlers.current = actions;");
     expect(runtime).toContain(
       "void patchScreenState({ runtimeScenarioMarker: scenarioMarker });",
@@ -283,6 +293,7 @@ describe("Lynx E2E suite manifest", () => {
     expect(app).toContain("RouterProvider");
     expect(config).toContain('from "@tanstack/router-plugin/rspack"');
     expect(config).toContain('require.resolve("@lynx-js/react/compat")');
+    expect(config).toContain('require.resolve("@lynx-js/react/jsx-runtime")');
     const crashAt = source.indexOf("maybeCrashForE2E();");
     const renderAt = source.indexOf("root.render(<App />);");
     const resolveAt = source.indexOf("void resolveAppBaseURL()");
@@ -292,7 +303,10 @@ describe("Lynx E2E suite manifest", () => {
     expect(renderAt).toBeGreaterThan(crashAt);
     expect(resolveAt).toBeGreaterThan(renderAt);
     expect(startAt).toBeGreaterThan(resolveAt);
+    const readyAt = source.indexOf("void publishOverlayReady();");
     expect(pollerAt).toBeGreaterThan(crashAt);
+    expect(readyAt).toBeGreaterThan(crashAt);
+    expect(readyAt).toBeLessThan(renderAt);
     expect(pollerAt).toBeLessThan(renderAt);
   });
 
@@ -442,7 +456,7 @@ describe("Lynx E2E suite manifest", () => {
     expect(overlayRuntime).toContain("__E2E_OVERLAY_MARKER__");
     expect(overlayApp).toContain("__E2E_BUILD_ID__");
     expect(overlayRuntime).toContain("Current Launch Status: ERROR");
-    expect(overlayApp).toContain("scenarioMarker");
+    expect(overlayRuntime).toContain("scenarioMarker");
     expect(overlayRuntime).toContain("HotUpdater.getDefaultChannel()");
     expect(overlayRuntime).toContain("HotUpdater.isChannelSwitched()");
     expect(driver).toContain("runtime-current-channel");
