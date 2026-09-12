@@ -162,6 +162,7 @@ final class PublicLifecycle: NSObject, SPKContainerLifecycleProtocol {
     func container(_ container: SPKContainerProtocol, didLoadFailedWithURL url: URL?, error: Error?) {
         host.record("publicLoadFailed", ["error": error?.localizedDescription ?? "unknown"])
         try? host.controller.reportFailure(host.context, fatal: true)
+        exit(0)
     }
     func container(_ container: SPKContainerProtocol, didRecieveError error: Error?) {
         let message = error?.localizedDescription ?? "unknown"

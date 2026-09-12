@@ -209,10 +209,15 @@ describe("Lynx E2E suite manifest", () => {
     expect(androidController).toContain("Process.killProcess");
     expect(driver).toContain("options.expectCrash === true");
     expect(driver).toContain("files/e2e-embedded");
+    expect(driver).toContain('return "e2e-embedded"');
+    expect(driver).toContain("assertAndroidOverlayLoaded");
     expect(driver).toContain('"start",\n        "-S"');
     expect(driver).toContain("Date.now() + 60_000");
-    expect(driver).toContain('"shell",\n        "-T"');
-    expect(driver).toContain("timeout: 30_000");
+    const embed = readFileSync(
+      path.join(repoDir, "e2e/lynx/embedded-bundle.ts"),
+      "utf8",
+    );
+    expect(embed).toContain("Lynx overlay bundle is missing scenario marker");
   });
 
   it("projects Lynx journals onto RN store assertions", () => {

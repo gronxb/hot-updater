@@ -101,6 +101,16 @@ export async function compileLynxE2eEmbedded(options: {
 }): Promise<string> {
   const outDir = lynxE2eEmbeddedDir(options.exampleDir, options.platform);
   await fs.rm(outDir, { recursive: true, force: true });
+  for (const cacheDir of [
+    ".rspeedy",
+    "node_modules/.cache",
+    "node_modules/.rspack",
+  ]) {
+    await fs.rm(path.join(options.exampleDir, cacheDir), {
+      recursive: true,
+      force: true,
+    });
+  }
   await fs.mkdir(outDir, { recursive: true });
   const result = spawnSync(
     "pnpm",
@@ -134,5 +144,20 @@ export async function compileLynxE2eEmbedded(options: {
     bundleId: LYNX_E2E_BUILTIN_BUNDLE_ID,
     runtimeId: lynxE2eRuntimeId(options.platform),
   });
+  const source = await fs.readFile(
+    path.join(options.exampleDir, "src/e2eApp/patchSurface.ts"),
+    "utf8",
+  );
+  const marker = source.match(
+    /export const E2E_SCENARIO_MARKER = "([^"]+)"/,
+  )?.[1];
+  const bundle = await fs.readFile(
+    path.join(outDir, "main.lynx.bundle"),
+  );
+  if (marker && !bundle.toString("utf8").includes(marker)) {
+    throw new Error(
+      `Lynx overlay bundle is missing scenario marker ${marker}`,
+    );
+  }
   return outDir;
 }

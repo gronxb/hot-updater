@@ -1,4 +1,6 @@
 import { spawnSync } from "node:child_process";
+import { readdirSync, readFileSync, statSync } from "node:fs";
+import path from "node:path";
 
 import { createControlClient } from "../detox/control-client.ts";
 import type { JsonObject } from "../detox/control-protocol.ts";
@@ -299,6 +301,7 @@ export class LynxAppDriver implements DetoxAppDriver {
       return;
     }
     const deviceEmbeddedDir = this.installAndroidOverlay(embeddedDir);
+    this.runOrThrow("adb", ["-s", this.deviceId(), "logcat", "-c"]);
     this.runLaunch(
       "adb",
       [
@@ -322,11 +325,13 @@ export class LynxAppDriver implements DetoxAppDriver {
       ],
       options.expectCrash === true,
     );
+    if (options.expectCrash !== true) {
+      this.assertAndroidOverlayLoaded();
+    }
   }
 
   private installAndroidOverlay(localDir: string): string {
     const remoteRel = "files/e2e-embedded";
-    const remoteAbs = `/data/data/${this.appId()}/files/e2e-embedded`;
     this.runOrThrow("adb", [
       "-s",
       this.deviceId(),
@@ -347,44 +352,44 @@ export class LynxAppDriver implements DetoxAppDriver {
       "-p",
       remoteRel,
     ]);
-    const packed = spawnSync("tar", ["-C", localDir, "-cf", "-", "."], {
-      encoding: "buffer",
-      maxBuffer: 32 * 1024 * 1024,
-    });
-    if (packed.status !== 0) {
-      throw new Error(
-        `tar overlay failed: ${packed.stderr?.toString() || packed.status}`,
+    for (const rel of this.listRelativeFiles(localDir)) {
+      const parent = path.posix.dirname(rel);
+      if (parent !== ".") {
+        this.runOrThrow("adb", [
+          "-s",
+          this.deviceId(),
+          "shell",
+          "run-as",
+          this.appId(),
+          "mkdir",
+          "-p",
+          `${remoteRel}/${parent}`,
+        ]);
+      }
+      const pushed = spawnSync(
+        "adb",
+        [
+          "-s",
+          this.deviceId(),
+          "shell",
+          "-T",
+          "run-as",
+          this.appId(),
+          "sh",
+          "-c",
+          `cat > ${remoteRel}/${rel}`,
+        ],
+        {
+          encoding: "buffer",
+          input: readFileSync(path.join(localDir, rel)),
+          timeout: 15_000,
+        },
       );
-    }
-    const unpacked = spawnSync(
-      "adb",
-      [
-        "-s",
-        this.deviceId(),
-        "shell",
-        "-T",
-        "run-as",
-        this.appId(),
-        "tar",
-        "-xf",
-        "-",
-        "-C",
-        remoteRel,
-      ],
-      {
-        encoding: "buffer",
-        input: packed.stdout,
-        maxBuffer: 32 * 1024 * 1024,
-        timeout: 30_000,
-      },
-    );
-    if (unpacked.error) {
-      throw new Error(`adb overlay install failed: ${unpacked.error.message}`);
-    }
-    if (unpacked.status !== 0) {
-      throw new Error(
-        `adb overlay install failed: ${unpacked.stderr?.toString() || unpacked.status}`,
-      );
+      if (pushed.status !== 0) {
+        throw new Error(
+          `overlay copy ${rel} failed: ${pushed.stderr?.toString() || pushed.status}`,
+        );
+      }
     }
     this.runOrThrow("adb", [
       "-s",
@@ -396,7 +401,37 @@ export class LynxAppDriver implements DetoxAppDriver {
       "-f",
       `${remoteRel}/manifest.json`,
     ]);
-    return remoteAbs;
+    return "e2e-embedded";
+  }
+
+  private listRelativeFiles(root: string): string[] {
+    const names: string[] = [];
+    const walk = (dir: string): void => {
+      for (const entry of readdirSync(dir)) {
+        const full = path.join(dir, entry);
+        const stat = statSync(full);
+        if (stat.isDirectory()) {
+          walk(full);
+          continue;
+        }
+        names.push(path.relative(root, full).split(path.sep).join("/"));
+      }
+    };
+    walk(root);
+    return names;
+  }
+
+  private assertAndroidOverlayLoaded(): void {
+    spawnSync("sleep", ["1"]);
+    const logs = spawnSync(
+      "adb",
+      ["-s", this.deviceId(), "logcat", "-d", "-s", "HotUpdaterLynx:I"],
+      { encoding: "utf8" },
+    );
+    const out = `${logs.stdout || ""}\n${logs.stderr || ""}`;
+    if (!out.includes("absoluteDir=true") && !out.includes("manifest=true")) {
+      throw new Error(`Android overlay not loaded by host: ${out.slice(-2000)}`);
+    }
   }
 
   private terminateApp(): void {
