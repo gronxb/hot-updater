@@ -117,52 +117,64 @@ function App() {
     channel?: string;
     strategy?: "appVersion" | "fingerprint";
   }) => {
-    try {
-      await setUpdateActionResult(`${actionLabel} -> checking`);
-      const updateInfo = await HotUpdater.checkForUpdate({
-        updateStrategy: strategy,
-        ...(channel ? { channel } : {}),
-      });
-      if (!updateInfo) {
-        await setUpdateActionResult(`${actionLabel} -> no-update`);
+    await setUpdateActionResult(`${actionLabel} -> checking`);
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      try {
+        const updateInfo = await HotUpdater.checkForUpdate({
+          updateStrategy: strategy,
+          ...(channel ? { channel } : {}),
+        });
+        if (!updateInfo) {
+          await setUpdateActionResult(`${actionLabel} -> no-update`);
+          return;
+        }
+        const installed = await updateInfo.updateBundle();
+        const appliedResult =
+          updateInfo.transitionKind === "ADOPT_RELEASE"
+            ? `${actionLabel} -> adopted ID ${updateInfo.id}`
+            : updateInfo.transitionKind === "USE_EMBEDDED"
+              ? `${actionLabel} -> selected EMBEDDED ID ${updateInfo.id}`
+              : updateInfo.transitionKind === "USE_BUILTIN"
+                ? `${actionLabel} -> selected BUILTIN`
+                : `${actionLabel} -> installed ID ${updateInfo.id}`;
+        let stagingBundleId: string | null = updateInfo.id;
+        let stagingReleaseId: string | null = updateInfo.releaseId ?? null;
+        let stableBundleId: string | null = null;
+        let verificationPending: boolean | null = installed;
+        try {
+          const active = HotUpdater.getActiveUpdateState();
+          stagingBundleId = active.activeSelection?.bundleId ?? stagingBundleId;
+          stagingReleaseId =
+            active.activeSelection?.releaseId ?? stagingReleaseId;
+          stableBundleId = active.stableSelection?.bundleId ?? null;
+          verificationPending = active.verificationPending;
+        } catch {
+          // Native snapshot may not be readable until notifyAppReady.
+        }
+        await patchScreenState({
+          stagingBundleId,
+          stagingReleaseId,
+          stableBundleId,
+          verificationPending,
+        });
+        await setUpdateActionResult(
+          installed ? appliedResult : `${actionLabel} -> skipped`,
+        );
+        return;
+      } catch (error) {
+        const message =
+          error instanceof Error ? error.message : "Failed to install update";
+        const stale =
+          message.includes("Native revision changed") ||
+          message.includes("STALE_STATE") ||
+          message.includes("STALE_SELECTION");
+        if (stale && attempt < 2) {
+          await new Promise((resolve) => setTimeout(resolve, 200));
+          continue;
+        }
+        await setUpdateActionResult(`${actionLabel} -> error ${message}`);
         return;
       }
-      const installed = await updateInfo.updateBundle();
-      const appliedResult =
-        updateInfo.transitionKind === "ADOPT_RELEASE"
-          ? `${actionLabel} -> adopted ID ${updateInfo.id}`
-          : updateInfo.transitionKind === "USE_EMBEDDED"
-            ? `${actionLabel} -> selected EMBEDDED ID ${updateInfo.id}`
-            : updateInfo.transitionKind === "USE_BUILTIN"
-              ? `${actionLabel} -> selected BUILTIN`
-              : `${actionLabel} -> installed ID ${updateInfo.id}`;
-      let stagingBundleId: string | null = updateInfo.id;
-      let stagingReleaseId: string | null = updateInfo.releaseId ?? null;
-      let stableBundleId: string | null = null;
-      let verificationPending: boolean | null = installed;
-      try {
-        const active = HotUpdater.getActiveUpdateState();
-        stagingBundleId = active.activeSelection?.bundleId ?? stagingBundleId;
-        stagingReleaseId =
-          active.activeSelection?.releaseId ?? stagingReleaseId;
-        stableBundleId = active.stableSelection?.bundleId ?? null;
-        verificationPending = active.verificationPending;
-      } catch {
-        // Native snapshot may not be readable until notifyAppReady.
-      }
-      await patchScreenState({
-        stagingBundleId,
-        stagingReleaseId,
-        stableBundleId,
-        verificationPending,
-      });
-      await setUpdateActionResult(
-        installed ? appliedResult : `${actionLabel} -> skipped`,
-      );
-    } catch (error) {
-      const message =
-        error instanceof Error ? error.message : "Failed to install update";
-      await setUpdateActionResult(`${actionLabel} -> error ${message}`);
     }
   };
 
@@ -365,13 +377,11 @@ const ensurePendingActionPoller = () => {
 
 let started = false;
 const startE2eApp = (baseURL: string) => {
-  const initPromise = Promise.resolve(
-    HotUpdater.init({
-      insights: true,
-      baseURL,
-      requestTimeout: 15000,
-    }),
-  ).catch(() => undefined);
+  HotUpdater.init({
+    insights: true,
+    baseURL,
+    requestTimeout: 15000,
+  });
   if (!started) {
     started = true;
     try {
@@ -381,16 +391,13 @@ const startE2eApp = (baseURL: string) => {
     }
     maybeCrashForE2E();
   }
-  void initPromise.then(() => {
-    try {
-      root.render(<App />);
-    } catch {
-      // Poller must keep running even if the Lynx tree fails to mount.
-    }
-  });
+  try {
+    root.render(<App />);
+  } catch {
+    // Poller must keep running even if the Lynx tree fails to mount.
+  }
 };
 
-void patchScreenState({ runtimeScenarioMarker: scenarioMarker });
 void resolveAppBaseURL()
   .then((baseURL) => {
     startE2eApp(baseURL);

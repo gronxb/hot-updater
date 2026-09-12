@@ -142,6 +142,7 @@ export class LynxAppDriver implements DetoxAppDriver {
         "/e2e/prepare-app-launch",
         {},
       );
+      await this.clearOverlayMarker(stage);
       await this.launchApp({ expectCrash: options.expectCrash === true });
       if (options.expectCrash === true) {
         await new Promise((resolve) => setTimeout(resolve, 2000));
@@ -162,6 +163,7 @@ export class LynxAppDriver implements DetoxAppDriver {
         "/e2e/prepare-app-launch",
         {},
       );
+      await this.clearOverlayMarker(stage);
       await this.launchApp();
       await this.waitForOverlayReady(stage);
     });
@@ -505,12 +507,15 @@ export class LynxAppDriver implements DetoxAppDriver {
     return names;
   }
 
-  private async waitForOverlayReady(stage: string): Promise<void> {
+  private async clearOverlayMarker(stage: string): Promise<void> {
     await this.controlClient.postJson(
       `${stage}: clear overlay marker`,
       "/e2e/screen-state",
       { runtimeScenarioMarker: null },
     );
+  }
+
+  private async waitForOverlayReady(stage: string): Promise<void> {
     await this.controlClient.waitForScreenStateField(
       `${stage}: wait overlay ready`,
       "runtimeScenarioMarker",

@@ -240,6 +240,7 @@ describe("Lynx E2E suite manifest", () => {
     );
     expect(source).toContain("void resolveAppBaseURL()");
     expect(source).toContain("startE2eApp(baseURL)");
+    expect(source).toContain("Native revision changed");
     const bindAt = source.indexOf("actionHandlers.current = actions;");
     const pollerAt = source.indexOf("ensurePendingActionPoller();");
     const crashAt = source.indexOf("maybeCrashForE2E();");
