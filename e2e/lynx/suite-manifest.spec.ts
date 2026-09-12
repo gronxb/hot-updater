@@ -124,9 +124,11 @@ describe("Lynx E2E suite manifest", () => {
     const installAt = source.indexOf("app.ensureInstalled()");
     const overlayAt = source.indexOf("app.prepareOverlay()");
     const resetAt = source.indexOf('"/e2e/reset-local-app-state"');
+    const reinstallAt = source.lastIndexOf("app.ensureInstalled()");
     expect(installAt).toBeGreaterThan(0);
     expect(overlayAt).toBeGreaterThan(installAt);
     expect(resetAt).toBeGreaterThan(overlayAt);
+    expect(reinstallAt).toBeGreaterThan(resetAt);
   });
 
   it("reuses one overlay compile across launch and reload", () => {

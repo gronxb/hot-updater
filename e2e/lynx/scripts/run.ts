@@ -233,6 +233,7 @@ async function runScenarios(
         "/e2e/reset-local-app-state",
         {},
       );
+      app.ensureInstalled();
       const scenario = getDetoxScenarioDefinition(scenarioName);
       await scenario.run(app);
       console.log(`Scenario passed: ${platform}/${scenarioName}`);
