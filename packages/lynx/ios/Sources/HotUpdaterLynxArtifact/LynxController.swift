@@ -114,10 +114,12 @@ public final class LynxController {
         if let channel = recovered.selectionChannel, !channel.isEmpty {
             runtimeChannel = channel
         }
+        let snapshotChannel = runtimeChannel
+        let snapshotCohort = runtimeCohort
         let nativeSnapshot = { (base: LynxPolicyReceipt) in
             LynxPolicySnapshot(revision: recovered.revision, platform: "ios", appVersion: config.appVersion,
-                channel: runtimeChannel, embeddedBundleId: config.embeddedBundleId, minimumBundleId: config.minimumBundleId,
-                cohort: runtimeCohort, runningSelection: base, nextSelection: nil,
+                channel: snapshotChannel, embeddedBundleId: config.embeddedBundleId, minimumBundleId: config.minimumBundleId,
+                cohort: snapshotCohort, runningSelection: base, nextSelection: nil,
                 crashedBundleIds: recovered.crashedBundleIds, unconfirmedReleaseIds: recovered.unconfirmedReleaseIds)
         }
         var selected: (LynxStoredSelection, LynxInstalledArtifact)?

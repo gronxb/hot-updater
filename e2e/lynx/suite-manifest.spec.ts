@@ -255,6 +255,17 @@ describe("Lynx E2E suite manifest", () => {
       "utf8",
     );
     expect(iosModule).toContain("rawArtifact == nil || rawArtifact is NSNull");
+    const iosController = readFileSync(
+      path.join(
+        repoDir,
+        "packages/lynx/ios/Sources/HotUpdaterLynxArtifact/LynxController.swift",
+      ),
+      "utf8",
+    );
+    expect(iosController).toContain("let snapshotChannel = runtimeChannel");
+    expect(iosController).toContain("let snapshotCohort = runtimeCohort");
+    expect(iosController).toContain("channel: snapshotChannel");
+    expect(iosController).toContain("cohort: snapshotCohort");
     expect(androidController).toContain("Process.killProcess");
     expect(driver).toContain("options.expectCrash === true");
     expect(driver).toContain("files/e2e-embedded");
