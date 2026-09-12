@@ -475,22 +475,13 @@ describe("Lynx catalog controller (mock native transport)", () => {
     expect(native.prepareSelection).toHaveBeenCalledOnce();
   });
 
-  it("stages builtin fallback even when running the embedded selection", async () => {
-    const { updater, native, fetch, prepared } = setup({}, []);
-    const update = await updater.checkForUpdate({
-      updateStrategy: "appVersion",
-    });
-    expect(update).toMatchObject({
-      bundleId: A,
-      releaseId: null,
-      status: "ROLLBACK",
-      transitionKind: "USE_BUILTIN",
-    });
-    expect(prepared()).toMatchObject({
-      artifact: null,
-      selection: { kind: "BUILTIN", bundleId: A, releaseId: null },
-    });
+  it("still accepts catalog high-water when already on the built-in selection", async () => {
+    const { updater, native, fetch } = setup({}, []);
+    await expect(
+      updater.checkForUpdate({ updateStrategy: "appVersion" }),
+    ).resolves.toBeNull();
     expect(native.acceptCatalog).toHaveBeenCalledOnce();
+    expect(native.prepareSelection).not.toHaveBeenCalled();
     expect(fetch).toHaveBeenCalledOnce();
   });
 });
