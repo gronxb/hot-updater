@@ -73,16 +73,24 @@ export class LynxAppDriver implements DetoxAppDriver {
         );
         return;
       }
-      const snapshot = (await this.controlClient.postJson(
-        `${stage}: read screen state`,
-        "/e2e/screen-state",
-        {},
-      )) as Record<string, unknown>;
-      const text = JSON.stringify(snapshot);
-      if (!expectedTexts.some((value) => text.includes(value))) {
-        throw new Error(
-          `${stage} expected ${testID} to contain one of ${JSON.stringify(expectedTexts)}, received ${text}`,
-        );
+      const deadlineMs = Date.now() + 60_000;
+      let last = "";
+      for (;;) {
+        const snapshot = (await this.controlClient.postJson(
+          `${stage}: read screen state`,
+          "/e2e/screen-state",
+          {},
+        )) as Record<string, unknown>;
+        last = JSON.stringify(snapshot);
+        if (expectedTexts.some((value) => last.includes(value))) {
+          return;
+        }
+        if (Date.now() >= deadlineMs) {
+          throw new Error(
+            `${stage} expected ${testID} to contain one of ${JSON.stringify(expectedTexts)}, received ${last}`,
+          );
+        }
+        await new Promise((resolve) => setTimeout(resolve, 250));
       }
     });
   }
@@ -299,6 +307,7 @@ export class LynxAppDriver implements DetoxAppDriver {
         "shell",
         "am",
         "start",
+        "-S",
         "-n",
         `${this.appId()}/.OtaActivity`,
         "--es",
@@ -352,7 +361,8 @@ export class LynxAppDriver implements DetoxAppDriver {
       [
         "-s",
         this.deviceId(),
-        "exec-out",
+        "shell",
+        "-T",
         "run-as",
         this.appId(),
         "tar",
@@ -361,8 +371,16 @@ export class LynxAppDriver implements DetoxAppDriver {
         "-C",
         remoteRel,
       ],
-      { encoding: "buffer", input: packed.stdout, maxBuffer: 32 * 1024 * 1024 },
+      {
+        encoding: "buffer",
+        input: packed.stdout,
+        maxBuffer: 32 * 1024 * 1024,
+        timeout: 30_000,
+      },
     );
+    if (unpacked.error) {
+      throw new Error(`adb overlay install failed: ${unpacked.error.message}`);
+    }
     if (unpacked.status !== 0) {
       throw new Error(
         `adb overlay install failed: ${unpacked.stderr?.toString() || unpacked.status}`,

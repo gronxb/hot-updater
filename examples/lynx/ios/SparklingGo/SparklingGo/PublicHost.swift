@@ -167,7 +167,8 @@ final class PublicLifecycle: NSObject, SPKContainerLifecycleProtocol {
         let message = error?.localizedDescription ?? "unknown"
         let lynxFatal = (error as? LynxError)?.isFatal == true
         let e2eCrash = message.contains("hot-updater e2e crash")
-        let fatal = lynxFatal || e2eCrash
+        let unconfirmedOta = host.controller.runningSelection.kind == "BUNDLE" && !contentObserved
+        let fatal = lynxFatal || e2eCrash || unconfirmedOta
         host.record("publicRuntimeError", ["error": message, "fatal": fatal])
         try? host.controller.reportFailure(host.context, fatal: fatal)
         if fatal {

@@ -153,6 +153,8 @@ describe("Lynx E2E suite manifest", () => {
     expect(source).toContain("loadE2EDeployBundleAssets");
     expect(source).toContain("try {");
     expect(source).toContain("E2E_DEPLOY_ASSET_GUARD_START");
+    expect(source).toContain("hot-updater e2e crash bundle");
+    expect(source).toContain("NATIVE_STATE");
   });
 
   it("starts the pending-action poller before overlay render", () => {
@@ -166,10 +168,17 @@ describe("Lynx E2E suite manifest", () => {
       "Object.keys(actionHandlers.current).length === 0",
     );
     expect(source).toContain("actionHandlers.current = actions;");
+    expect(source).toContain(
+      "void patchScreenState({ runtimeScenarioMarker: E2E_SCENARIO_MARKER });",
+    );
     const bindAt = source.indexOf("actionHandlers.current = actions;");
     const pollerAt = source.indexOf("ensurePendingActionPoller();");
+    const crashAt = source.indexOf("maybeCrashForE2E();");
+    const renderAt = source.indexOf("root.render(<App />);");
     expect(bindAt).toBeGreaterThan(0);
     expect(pollerAt).toBeGreaterThan(bindAt);
+    expect(crashAt).toBeGreaterThan(0);
+    expect(renderAt).toBeGreaterThan(crashAt);
   });
 
   it("treats Lynx startup JS errors as fatal native crashes", () => {
@@ -192,10 +201,16 @@ describe("Lynx E2E suite manifest", () => {
       "utf8",
     );
     expect(iosHost).toContain("hot-updater e2e crash");
+    expect(iosHost).toContain("unconfirmedOta");
     expect(iosHost).toContain("exit(0)");
     expect(androidController).toContain("Process.killProcess");
+    expect(androidController).toContain("runningIsBundle");
     expect(driver).toContain("options.expectCrash === true");
     expect(driver).toContain("files/e2e-embedded");
+    expect(driver).toContain('"start",\n        "-S"');
+    expect(driver).toContain("Date.now() + 60_000");
+    expect(driver).toContain('"shell",\n        "-T"');
+    expect(driver).toContain("timeout: 30_000");
   });
 
   it("projects Lynx journals onto RN store assertions", () => {

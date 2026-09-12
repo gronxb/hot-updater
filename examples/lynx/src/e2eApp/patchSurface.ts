@@ -10,8 +10,22 @@ void HotUpdater;
 void Image;
 
 export function maybeCrashForE2E(): void {
-  /* E2E_CRASH_GUARD_START */
-  /* E2E_CRASH_GUARD_END */
+  try {
+    /* E2E_CRASH_GUARD_START */
+    /* E2E_CRASH_GUARD_END */
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (message.includes("hot-updater e2e crash")) {
+      throw error;
+    }
+    if (
+      message.includes("notifyAppReady") ||
+      message.includes("NATIVE_STATE")
+    ) {
+      throw new Error("hot-updater e2e crash bundle");
+    }
+    throw error;
+  }
 }
 
 export function loadE2EDeployBundleAssets(): void {

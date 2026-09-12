@@ -229,6 +229,7 @@ function App() {
   };
   actionHandlers.current = actions;
   ensurePendingActionPoller();
+  void patchScreenState({ runtimeScenarioMarker: E2E_SCENARIO_MARKER });
 
   const publishRuntimeSnapshot = async (launchStatusValue?: string) => {
     const patch: Partial<ScreenState> = {
@@ -330,12 +331,12 @@ const startE2eApp = (baseURL: string) => {
   } catch {
     // Overlay must keep polling even if Metro asset requires throw.
   }
+  maybeCrashForE2E();
   try {
     root.render(<App />);
   } catch {
     // Poller must keep running even if the Lynx tree fails to mount.
   }
-  maybeCrashForE2E();
 };
 
 startE2eApp(appBaseURL);
