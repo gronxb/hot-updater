@@ -70,6 +70,7 @@ describe("Lynx E2E suite manifest", () => {
     expect(source).toMatch(/signing:\s*\{[\s\S]*enabled:\s*true/);
     expect(source).toContain("getBundleSigningPublicKey");
     expect(source).toContain("keys/public-key.pem");
+    expect(source).toContain("fingerprint:");
     expect(source).toContain("copyE2eFixtures");
     expect(source).toContain("assets/src/test");
     expect(source).toContain("src_test_");
@@ -91,8 +92,12 @@ describe("Lynx E2E suite manifest", () => {
       "utf8",
     );
     expect(iosHost).toContain("HOT_UPDATER_PUBLIC_KEY");
+    expect(iosHost).toContain("HOT_UPDATER_FINGERPRINT_HASH");
+    expect(iosHost).toContain("fingerprintHash:");
     expect(iosHost).toContain("publicKeyPEM:");
     expect(androidHost).toContain("com.hotupdater.PUBLIC_KEY");
+    expect(androidHost).toContain("com.hotupdater.FINGERPRINT_HASH");
+    expect(androidHost).toContain("fingerprintHash");
     expect(androidHost).toContain("publicKeyPem");
     expect(androidHost).toContain("resolveEmbeddedDir");
     expect(androidHost).toContain("filesDir");
@@ -105,6 +110,18 @@ describe("Lynx E2E suite manifest", () => {
       "utf8",
     );
     expect(manifest).toContain('android:usesCleartextTraffic="true"');
+    expect(manifest).toContain("com.hotupdater.FINGERPRINT_HASH");
+    const fingerprintJson = readFileSync(
+      path.join(repoDir, "examples/lynx/fingerprint.json"),
+      "utf8",
+    );
+    expect(fingerprintJson).toContain('"ios"');
+    expect(fingerprintJson).toContain('"android"');
+    const iosPlist = readFileSync(
+      path.join(repoDir, "examples/lynx/ios/Info.plist"),
+      "utf8",
+    );
+    expect(iosPlist).toContain("HOT_UPDATER_FINGERPRINT_HASH");
   });
 
   it("uses agent device env vars instead of simctl booted", () => {
@@ -138,9 +155,7 @@ describe("Lynx E2E suite manifest", () => {
       path.join(repoDir, "e2e/detox/control-server/controller.ts"),
       "utf8",
     );
-    expect(controller).toContain(
-      "async function resetBootstrappedAppSource()",
-    );
+    expect(controller).toContain("async function resetBootstrappedAppSource()");
     const startBootstrap = controller.slice(
       controller.indexOf("export function startBootstrapJob()"),
       controller.indexOf("export function startDeployBundleJob"),
@@ -266,6 +281,36 @@ describe("Lynx E2E suite manifest", () => {
     expect(iosController).toContain("let snapshotCohort = runtimeCohort");
     expect(iosController).toContain("channel: snapshotChannel");
     expect(iosController).toContain("cohort: snapshotCohort");
+    expect(iosController).toContain(
+      "fingerprintHash: configuration.fingerprintHash",
+    );
+    expect(androidController).toContain(
+      "configuration.fingerprintHash ?: binaryId",
+    );
+    expect(androidController).toContain(
+      'it.put("channel", configuration.channel)',
+    );
+    expect(iosController).toContain(
+      "recovered.selectionChannel = config.channel",
+    );
+    expect(iosModule).toContain("NSStringFromSelector(#selector(reload(_:)))");
+    const androidModule = readFileSync(
+      path.join(
+        repoDir,
+        "packages/lynx/android/src/main/java/com/hotupdater/lynx/HotUpdaterLynxModule.kt",
+      ),
+      "utf8",
+    );
+    expect(androidModule).toContain(
+      "Started restart trampoline to apply update bundle",
+    );
+    expect(androidModule).toContain("@LynxMethod fun reload");
+    const e2eApp = readFileSync(
+      path.join(repoDir, "examples/lynx/src/e2eApp/index.tsx"),
+      "utf8",
+    );
+    expect(e2eApp).toContain("shouldForceUpdate");
+    expect(e2eApp).toContain("updateInfo.updateBundle()");
     expect(androidController).toContain("Process.killProcess");
     expect(driver).toContain("options.expectCrash === true");
     expect(driver).toContain("files/e2e-embedded");

@@ -169,6 +169,9 @@ async function copyE2eFixtures(cwd: string, outDir: string) {
 
 export default {
   updateStrategy: "appVersion",
+  fingerprint: {
+    debug: true,
+  },
   compressStrategy: "zip",
   signing: {
     enabled: true,

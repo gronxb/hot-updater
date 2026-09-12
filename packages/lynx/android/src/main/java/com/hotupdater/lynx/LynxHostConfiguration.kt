@@ -18,6 +18,7 @@ data class LynxHostConfiguration(
     val embeddedAssetDirectory: String,
     val cohort: String,
     val publicKeyPem: String? = null,
+    val fingerprintHash: String? = null,
 )
 
 internal fun digestString(value: String): String = MessageDigest.getInstance("SHA-256").digest(value.toByteArray()).joinToString("") { "%02x".format(it) }

@@ -33,16 +33,19 @@ class OtaActivity : Activity() {
                 "HotUpdaterLynx",
                 "embeddedDir=$embeddedDir absoluteDir=${java.io.File(embeddedDir).isDirectory} manifest=${java.io.File(embeddedDir, "manifest.json").isFile}",
             )
-            val publicKeyPem = packageManager
+            val meta = packageManager
                 .getApplicationInfo(packageName, android.content.pm.PackageManager.GET_META_DATA)
                 .metaData
+            val publicKeyPem = meta
                 ?.getString("com.hotupdater.PUBLIC_KEY")
                 ?.replace("\\n", "\n")
+            val fingerprintHash = meta?.getString("com.hotupdater.FINGERPRINT_HASH")
             val controller = existing ?: LynxUpdaterController(applicationContext, LynxHostConfiguration(
                 runtimeId = BuildConfig.LYNX_OTA_COMPATIBILITY_ID,
                 channel = channel, appVersion = "1.0.0", cohort = getSharedPreferences("native-ota-config", MODE_PRIVATE).getString("cohort", "1")!!,
                 embeddedAssetDirectory = embeddedDir,
                 publicKeyPem = publicKeyPem,
+                fingerprintHash = fingerprintHash,
             )).also { processController = it; processFramework = framework }
             val session = if (intent.getBooleanExtra("secondary", false)) controller.pinSecondary() else controller.pinPrimary()
             if ("assets/probe.ttf" in session.installation.managedPaths) session.requireFontBeforeReady("assets/probe.ttf")

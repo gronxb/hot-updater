@@ -13,6 +13,28 @@ import org.junit.Test
 import java.io.File
 
 class CatalogPolicyTest {
+    @Test fun nativeSnapshotAllowsBuiltinReceiptAfterRuntimeChannelSwitch() {
+        val input = vector("first-update")
+        val json = input.getJSONObject("snapshot")
+        val running = CatalogPolicy.parseReceipt(json.getJSONObject("runningSelection"))
+        val switched = CatalogPolicy.NativeSnapshot(
+            revision = json.getString("revision"),
+            appVersion = json.getString("appVersion"),
+            channel = "beta",
+            runtimeId = json.getString("runtimeId"),
+            embeddedBundleId = json.getString("embeddedBundleId"),
+            minimumBundleId = json.getString("minimumBundleId"),
+            cohort = json.getString("cohort"),
+            runningSelection = running,
+            nextSelection = null,
+            crashedBundleIds = strings(json.getJSONArray("crashedBundleIds")),
+            unconfirmedReleaseIds = strings(json.getJSONArray("unconfirmedReleaseIds")),
+        )
+        assertEquals("beta", switched.channel)
+        assertEquals(running.channel, switched.runningSelection.channel)
+        assertNotEquals("beta", switched.runningSelection.channel)
+    }
+
     @Test fun nativeChannelRouteIsCanonicalUtf8WithoutJavascriptNormalization() {
         assertEquals("b3RhLXJlYWN0", CatalogPolicy.channelKey("ota-react"))
         assertEquals("Y2Fmw6k", CatalogPolicy.channelKey("café"))

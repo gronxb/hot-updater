@@ -24,7 +24,8 @@ class HotUpdaterLynxModule(context: Context) : LynxModule(context) {
         session.controller.state(session)
     }
     @LynxMethod fun setChannel(params: ReadableMap, callback: Callback) = call(callback) { session ->
-        session.controller.setChannel(params.getString("channel"))
+        val channel = json(params).getString("channel")
+        session.controller.setChannel(channel)
         session.controller.state(session)
     }
     @LynxMethod fun resetChannel(callback: Callback) = call(callback) { session ->
@@ -33,6 +34,20 @@ class HotUpdaterLynxModule(context: Context) : LynxModule(context) {
     @LynxMethod fun clearCrashHistory(callback: Callback) = call(callback) { session ->
         session.controller.clearCrashHistory()
         session.controller.state(session)
+    }
+    @LynxMethod fun reload(callback: Callback) {
+        reply(callback, Result.success(JSONObject()))
+        Handler(Looper.getMainLooper()).post {
+            android.util.Log.i("HotUpdaterImpl", "Started restart trampoline to apply update bundle")
+            val activity = mContext as? android.app.Activity
+            if (activity != null) {
+                val intent = android.content.Intent(activity, activity.javaClass)
+                activity.intent.extras?.let(intent::putExtras)
+                intent.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+                activity.startActivity(intent)
+            }
+            android.os.Process.killProcess(android.os.Process.myPid())
+        }
     }
     @LynxMethod fun notifyAppReady(callback: Callback) {
         Handler(Looper.getMainLooper()).post {

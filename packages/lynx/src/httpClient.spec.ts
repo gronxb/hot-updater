@@ -75,6 +75,25 @@ describe("Lynx delivery HTTP contract", () => {
     }
   });
 
+  it("uses the fingerprint catalog route and scope when native supplies a hash", async () => {
+    const fingerprintHash = "005a331297a3884be21fe8eddf7d3f0136145a28";
+    const fingerprintCatalog = {
+      ...catalog,
+      scopeKey: `v1:fingerprint:ios:${state.channelKey}:${fingerprintHash}`,
+    };
+    const fetch = respond(fingerprintCatalog);
+    await expect(
+      createHttpClient({ baseURL: "https://updates.test" }).fetchCatalog(
+        { ...state, fingerprintHash },
+        "fingerprint",
+      ),
+    ).resolves.toEqual(fingerprintCatalog);
+    expect(fetch).toHaveBeenCalledWith(
+      `https://updates.test/release-catalogs/fingerprint/ios/${state.channelKey}/${fingerprintHash}`,
+      expect.anything(),
+    );
+  });
+
   it.each([undefined, "", "../other", "key=", "a"])(
     "rejects malformed native channel key %s before making a request",
     async (channelKey) => {

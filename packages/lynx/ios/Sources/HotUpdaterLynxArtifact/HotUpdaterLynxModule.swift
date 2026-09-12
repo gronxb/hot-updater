@@ -20,7 +20,8 @@ public final class HotUpdaterLynxModuleContext {
          "setChannel": NSStringFromSelector(#selector(setChannel(_:callback:))),
          "resetChannel": NSStringFromSelector(#selector(resetChannel(_:))),
          "clearCrashHistory": NSStringFromSelector(#selector(clearCrashHistory(_:))),
-         "notifyAppReady": NSStringFromSelector(#selector(notifyAppReady(_:)))]
+         "notifyAppReady": NSStringFromSelector(#selector(notifyAppReady(_:))),
+         "reload": NSStringFromSelector(#selector(reload(_:)))]
     }
     private let context: HotUpdaterLynxModuleContext?
     public required init(param: Any) { context = param as? HotUpdaterLynxModuleContext; super.init() }
@@ -118,6 +119,10 @@ public final class HotUpdaterLynxModuleContext {
                 }
             }
         } catch { failure(error, callback) }
+    }
+    @objc public func reload(_ callback: LynxCallbackBlock?) {
+        callback?(["ok": true, "data": NSNull()])
+        DispatchQueue.main.async { exit(0) }
     }
 }
 #endif

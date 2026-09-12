@@ -289,6 +289,24 @@ function App() {
       });
   }, []);
 
+  useEffect(() => {
+    let active = true;
+    void (async () => {
+      try {
+        const updateInfo = await HotUpdater.checkForUpdate({
+          updateStrategy: "appVersion",
+        });
+        if (!active || !updateInfo?.shouldForceUpdate) return;
+        if (await updateInfo.updateBundle()) await HotUpdater.reload();
+      } catch {
+        // Overlay launch continues; metadata wait observes the native result.
+      }
+    })();
+    return () => {
+      active = false;
+    };
+  }, []);
+
   return (
     <scroll-view style={{ width: "100%", height: "100%" }}>
       <text id="ready">Lynx E2E {scenarioMarker}</text>

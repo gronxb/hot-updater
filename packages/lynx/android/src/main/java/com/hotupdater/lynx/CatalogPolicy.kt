@@ -49,6 +49,7 @@ internal object CatalogPolicy {
         val nextSelection: Receipt?,
         crashedBundleIds: List<String>,
         unconfirmedReleaseIds: List<String>,
+        val fingerprintHash: String? = null,
     ) {
         val crashedBundleIds: List<String> = immutable(crashedBundleIds)
         val unconfirmedReleaseIds: List<String> = immutable(unconfirmedReleaseIds)
@@ -63,7 +64,6 @@ internal object CatalogPolicy {
             ensure(validCohort(cohort), "INVALID_STATE", "Invalid native cohort")
             listOfNotNull(runningSelection, nextSelection).forEach { receipt ->
                 validateReceipt(receipt)
-                ensure(receipt.channel == channel, "INVALID_STATE", "Native receipt channel mismatch")
                 ensure(receipt.kind == "BUNDLE" || receipt.bundleId == embeddedBundleId, "INVALID_STATE", "Embedded receipt identity mismatch")
             }
             ensure(this.crashedBundleIds.all { uuid.matches(it) } && this.unconfirmedReleaseIds.all { uuid.matches(it) }, "INVALID_STATE", "Invalid native exclusion identity")
@@ -121,14 +121,14 @@ internal object CatalogPolicy {
         previouslyAcceptedCatalog: AcceptedCatalog? = null,
     ): AcceptedCatalog {
         ensure(expectedRevision == snapshot.revision, "STALE_STATE", "Native revision changed")
-        val nativeContext = selectionContextHash(snapshot)
-        ensure(claimedContextHash == nativeContext, "INVALID_CONTEXT", "Selection context does not match native state")
         val json = parseObject(catalogJson)
         ensure(integer(json, "schemaVersion", 1, 1) == 1L, "INVALID_CATALOG", "Unsupported catalog schema")
         val id = text(json, "catalogId")
         ensure(id.isNotEmpty(), "INVALID_CATALOG", "Catalog identity is empty")
         val scope = text(json, "scopeKey")
-        ensure(scope == expectedScope(snapshot.channel), "INVALID_SCOPE", "Unexpected catalog scope")
+        ensure(matchesScope(scope, snapshot), "INVALID_SCOPE", "Unexpected catalog scope")
+        val nativeContext = selectionContextHash(snapshot, scope)
+        ensure(claimedContextHash == nativeContext, "INVALID_CONTEXT", "Selection context does not match native state")
         val generation = integer(json, "generation", 1, MAX_SAFE_INTEGER)
         val hash = text(json, "catalogHash")
         ensure(catalogHash.matches(hash), "INVALID_CATALOG", "Invalid catalog hash")
@@ -183,7 +183,7 @@ internal object CatalogPolicy {
 
     fun desiredSelection(accepted: AcceptedCatalog, snapshot: NativeSnapshot): DesiredSelection? {
         val guard = accepted.guard
-        ensure(guard.revision == snapshot.revision && guard.channel == snapshot.channel && guard.scopeKey == expectedScope(snapshot.channel) && guard.selectionContextHash == selectionContextHash(snapshot), "STALE_SELECTION", "Native selection context changed")
+        ensure(guard.revision == snapshot.revision && guard.channel == snapshot.channel && matchesScope(guard.scopeKey, snapshot) && guard.selectionContextHash == selectionContextHash(snapshot, guard.scopeKey), "STALE_SELECTION", "Native selection context changed")
         val base = snapshot.base
         val excluded = snapshot.unconfirmedReleaseIds.toSet()
         val crashed = snapshot.crashedBundleIds.toSet()
@@ -221,12 +221,14 @@ internal object CatalogPolicy {
         rollbackAuthorization: RollbackAuthorization? = null,
     ): Boolean {
         try { validateReceipt(receipt) } catch (_: Rejected) { return false }
+        if (receipt.kind == "BUILTIN" && receipt.catalogId == null) {
+            return receipt.bundleId == snapshot.embeddedBundleId
+        }
         if (receipt.channel != snapshot.channel ||
             (receipt.kind != "BUNDLE" && receipt.bundleId != snapshot.embeddedBundleId)) return false
-        if (receipt.kind == "BUILTIN" && receipt.catalogId == null) return true
         val guard = accepted.guard
         if (accepted.highWater != highWater || accepted.appVersion != snapshot.appVersion ||
-            guard.channel != snapshot.channel || guard.scopeKey != expectedScope(snapshot.channel) ||
+            guard.channel != snapshot.channel || !matchesScope(guard.scopeKey, snapshot) ||
             receipt.catalogId != guard.catalogId || receipt.scopeKey != guard.scopeKey) return false
         val base = snapshot.base
         if (base.generation != null && (base.catalogId != guard.catalogId || base.scopeKey != guard.scopeKey ||
@@ -258,15 +260,18 @@ internal object CatalogPolicy {
             from.bundleId != embeddedBundleId && receipt.bundleId < from.bundleId
     }
 
-    fun selectionContextHash(snapshot: NativeSnapshot): String {
+    fun selectionContextHash(snapshot: NativeSnapshot, scopeKey: String? = null): String {
         val base = snapshot.base
         val crashed = snapshot.crashedBundleIds.distinct().sorted().take(10)
         val unconfirmed = snapshot.unconfirmedReleaseIds.distinct().sorted()
+        val fingerprint = scopeKey?.startsWith("v1:fingerprint:") == true
+        val strategy = if (fingerprint) "FINGERPRINT" else "APP_VERSION"
+        val strategyValue = if (fingerprint) snapshot.fingerprintHash.orEmpty() else snapshot.appVersion
         // Exact property order and omission behavior of @hot-updater/core's JSON.stringify.
         val canonical = "{\"activeBundleId\":${quote(base.bundleId)},\"activeReleaseId\":${quote(base.releaseId)}," +
             "\"cohort\":${quote(normalizeCohort(snapshot.cohort))},\"crashedBundleIds\":${stringArray(crashed)}," +
             "\"minimumReleaseId\":${quote(snapshot.minimumBundleId)},\"selectorSchemaVersion\":1," +
-            "\"strategy\":\"APP_VERSION\",\"strategyValue\":${quote(snapshot.appVersion)}" +
+            "\"strategy\":\"$strategy\",\"strategyValue\":${quote(strategyValue)}" +
             (if (unconfirmed.isEmpty()) "" else ",\"unconfirmedReleaseIds\":${stringArray(unconfirmed)}") + "}"
         var first = 0x811c9dc5.toInt()
         var second = 0x9e3779b9.toInt()
@@ -295,7 +300,7 @@ internal object CatalogPolicy {
         if (unauthenticated) {
             ensure(receipt.kind == "BUILTIN", "INVALID_RECEIPT", "Only native embedded selection may lack catalog authority")
         } else {
-            ensure(!receipt.catalogId.isNullOrEmpty() && receipt.scopeKey == expectedScope(receipt.channel) &&
+            ensure(!receipt.catalogId.isNullOrEmpty() && receipt.scopeKey?.let { validScopeKey(it, receipt.channel) } == true &&
                 receipt.generation != null && receipt.generation in 1..MAX_SAFE_INTEGER &&
                 receipt.catalogHash?.let { catalogHash.matches(it) } == true &&
                 receipt.selectionContextHash?.let { contextHash.matches(it) } == true, "INVALID_RECEIPT", "Incomplete catalog authority")
@@ -368,6 +373,19 @@ internal object CatalogPolicy {
 
     fun channelKey(channel: String): String { validateChannel(channel); return base64Url(channel.toByteArray(Charsets.UTF_8)) }
     private fun expectedScope(channel: String): String = "v1:app-version:android:${channelKey(channel)}"
+    private fun fingerprintScope(channel: String, hash: String): String =
+        "v1:fingerprint:android:${channelKey(channel)}:$hash"
+    private fun matchesScope(scope: String, snapshot: NativeSnapshot): Boolean {
+        if (scope == expectedScope(snapshot.channel)) return true
+        val hash = snapshot.fingerprintHash
+        return !hash.isNullOrEmpty() && scope == fingerprintScope(snapshot.channel, hash)
+    }
+    private fun validScopeKey(scope: String, channel: String): Boolean {
+        if (scope == expectedScope(channel)) return true
+        val prefix = "v1:fingerprint:android:${channelKey(channel)}:"
+        val rest = scope.removePrefix(prefix)
+        return scope.startsWith(prefix) && rest.isNotEmpty() && ':' !in rest
+    }
     private fun validateChannel(channel: String) {
         ensure(channel.isNotEmpty() && channel == jsTrim(channel) && channel == Normalizer.normalize(channel, Normalizer.Form.NFC) && channel.codePointCount(0, channel.length) <= 255, "INVALID_STATE", "Invalid native channel")
     }

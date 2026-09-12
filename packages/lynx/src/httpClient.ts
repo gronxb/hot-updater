@@ -51,7 +51,10 @@ function validateCatalog(
     return invalidResponse("Expected a Release catalog.");
   }
   const catalog = value as Partial<ReleaseCatalog>;
-  const expectedScope = `v1:${strategy}:${state.platform}:${state.channelKey}`;
+  const expectedScope =
+    strategy === "fingerprint"
+      ? `v1:fingerprint:${state.platform}:${state.channelKey}:${state.fingerprintHash}`
+      : `v1:app-version:${state.platform}:${state.channelKey}`;
   if (
     catalog.schemaVersion !== 1 ||
     typeof catalog.catalogId !== "string" ||

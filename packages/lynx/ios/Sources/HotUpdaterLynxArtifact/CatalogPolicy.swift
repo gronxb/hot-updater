@@ -47,13 +47,15 @@ public struct LynxPolicySnapshot {
     public let nextSelection: LynxPolicyReceipt?
     public let crashedBundleIds: [String]
     public let unconfirmedReleaseIds: [String]
+    public let fingerprintHash: String?
     public var policyBase: LynxPolicyReceipt { nextSelection ?? runningSelection }
 
-    public init(revision: String, platform: String, appVersion: String, channel: String, embeddedBundleId: String, minimumBundleId: String, cohort: String, runningSelection: LynxPolicyReceipt, nextSelection: LynxPolicyReceipt?, crashedBundleIds: [String], unconfirmedReleaseIds: [String]) {
+    public init(revision: String, platform: String, appVersion: String, channel: String, embeddedBundleId: String, minimumBundleId: String, cohort: String, runningSelection: LynxPolicyReceipt, nextSelection: LynxPolicyReceipt?, crashedBundleIds: [String], unconfirmedReleaseIds: [String], fingerprintHash: String? = nil) {
         self.revision = revision; self.platform = platform; self.appVersion = appVersion; self.channel = channel
         self.embeddedBundleId = embeddedBundleId; self.minimumBundleId = minimumBundleId; self.cohort = cohort
         self.runningSelection = runningSelection; self.nextSelection = nextSelection
         self.crashedBundleIds = crashedBundleIds; self.unconfirmedReleaseIds = unconfirmedReleaseIds
+        self.fingerprintHash = fingerprintHash
     }
 }
 
@@ -190,7 +192,7 @@ public enum LynxCatalogPolicy {
         try rejectDuplicateKeys(json)
         guard let object = decoded as? [String: Any], integer(object["schemaVersion"]) == 1,
               let catalogId = object["catalogId"] as? String, !catalogId.isEmpty,
-              let scopeKey = object["scopeKey"] as? String, scopeKey == (try expectedScope(snapshot)),
+              let scopeKey = object["scopeKey"] as? String, (try matchesScope(scopeKey, snapshot)),
               let generation = integer(object["generation"]), generation > 0,
               let hash = object["catalogHash"] as? String, matches(hash, "^sha256:[0-9a-f]{64}$"),
               object["fallbackPolicy"] as? String == "BUILTIN_IF_ACTIVE_INELIGIBLE",
@@ -234,6 +236,10 @@ public enum LynxCatalogPolicy {
     }
 
     private static func expectedScope(_ snapshot: LynxPolicySnapshot) throws -> String {
+        try appVersionScope(snapshot)
+    }
+
+    private static func channelKey(_ snapshot: LynxPolicySnapshot) throws -> String {
         let channel = snapshot.channel
         guard ["ios", "android"].contains(snapshot.platform), !channel.isEmpty,
               channel == trimJS(channel),
@@ -241,19 +247,36 @@ public enum LynxCatalogPolicy {
               uuid(snapshot.embeddedBundleId) || snapshot.embeddedBundleId == nilUUID,
               uuid(snapshot.minimumBundleId) || snapshot.minimumBundleId == nilUUID,
               !snapshot.revision.isEmpty, !snapshot.appVersion.isEmpty else { throw fail("INVALID_STATE", "Invalid native scope configuration") }
-        let key = Data(channel.utf8).base64EncodedString().replacingOccurrences(of: "+", with: "-")
+        return Data(channel.utf8).base64EncodedString().replacingOccurrences(of: "+", with: "-")
             .replacingOccurrences(of: "/", with: "_").replacingOccurrences(of: "=", with: "")
-        return "v1:app-version:\(snapshot.platform):\(key)"
     }
 
-    public static func contextHash(snapshot: LynxPolicySnapshot) -> String {
+    private static func appVersionScope(_ snapshot: LynxPolicySnapshot) throws -> String {
+        "v1:app-version:\(snapshot.platform):\(try channelKey(snapshot))"
+    }
+
+    private static func fingerprintScope(_ snapshot: LynxPolicySnapshot) throws -> String? {
+        guard let hash = snapshot.fingerprintHash, !hash.isEmpty else { return nil }
+        return "v1:fingerprint:\(snapshot.platform):\(try channelKey(snapshot)):\(hash)"
+    }
+
+    private static func matchesScope(_ scopeKey: String, _ snapshot: LynxPolicySnapshot) throws -> Bool {
+        if scopeKey == (try appVersionScope(snapshot)) { return true }
+        if let fingerprint = try fingerprintScope(snapshot), scopeKey == fingerprint { return true }
+        return false
+    }
+
+    public static func contextHash(snapshot: LynxPolicySnapshot, scopeKey: String? = nil) -> String {
         let base = snapshot.policyBase
         let crashed = Array(Set(snapshot.crashedBundleIds)).sorted().prefix(10)
         let excluded = Array(Set(snapshot.unconfirmedReleaseIds)).sorted()
+        let fingerprint = scopeKey?.hasPrefix("v1:fingerprint:") == true
+        let strategy = fingerprint ? "FINGERPRINT" : "APP_VERSION"
+        let strategyValue = fingerprint ? (snapshot.fingerprintHash ?? "") : snapshot.appVersion
         var fields = ["\"activeBundleId\":" + quote(base.bundleId), "\"activeReleaseId\":" + (base.releaseId.map(quote) ?? "null"),
                       "\"cohort\":" + quote(normalizeCohort(snapshot.cohort)), "\"crashedBundleIds\":" + array(Array(crashed)),
                       "\"minimumReleaseId\":" + quote(snapshot.minimumBundleId), "\"selectorSchemaVersion\":1",
-                      "\"strategy\":\"APP_VERSION\"", "\"strategyValue\":" + quote(snapshot.appVersion)]
+                      "\"strategy\":" + quote(strategy), "\"strategyValue\":" + quote(strategyValue)]
         if !excluded.isEmpty { fields.append("\"unconfirmedReleaseIds\":" + array(excluded)) }
         var first: UInt32 = 0x811c9dc5
         var second: UInt32 = 0x9e3779b9
@@ -270,8 +293,8 @@ public enum LynxCatalogPolicy {
                               claimedContextHash: String, highestSeen: LynxPolicyHighWater?,
                               previouslyAcceptedCatalog: LynxPolicyCatalog? = nil) throws -> LynxPolicyAcceptance {
         guard expectedRevision == snapshot.revision else { throw fail("STALE_STATE", "Native revision changed") }
-        guard catalog.scopeKey == (try expectedScope(snapshot)), catalog.appVersion == snapshot.appVersion else { throw fail("INVALID_CATALOG", "Catalog scope or projection changed") }
-        guard claimedContextHash == contextHash(snapshot: snapshot) else { throw fail("CONTEXT_MISMATCH", "Selection context differs from native state") }
+        guard (try matchesScope(catalog.scopeKey, snapshot)), catalog.appVersion == snapshot.appVersion else { throw fail("INVALID_CATALOG", "Catalog scope or projection changed") }
+        guard claimedContextHash == contextHash(snapshot: snapshot, scopeKey: catalog.scopeKey) else { throw fail("CONTEXT_MISMATCH", "Selection context differs from native state") }
         if let previous = highestSeen {
             guard catalog.generation >= previous.generation else { throw fail("STALE_GENERATION", "Catalog generation regressed") }
             guard catalog.generation != previous.generation || catalog.catalogHash == previous.catalogHash else {
@@ -290,7 +313,7 @@ public enum LynxCatalogPolicy {
 
     private static func makeGuard(_ catalog: LynxPolicyCatalog, _ snapshot: LynxPolicySnapshot) -> LynxPolicyGuard {
         LynxPolicyGuard(revision: snapshot.revision, catalogId: catalog.catalogId, scopeKey: catalog.scopeKey,
-            generation: catalog.generation, catalogHash: catalog.catalogHash, channel: snapshot.channel, selectionContextHash: contextHash(snapshot: snapshot))
+            generation: catalog.generation, catalogHash: catalog.catalogHash, channel: snapshot.channel, selectionContextHash: contextHash(snapshot: snapshot, scopeKey: catalog.scopeKey))
     }
 
     /// Rechecks a native-stored receipt without adopting a newer, unstaged Release.
@@ -300,13 +323,13 @@ public enum LynxCatalogPolicy {
                                  snapshot: LynxPolicySnapshot, highestSeen: LynxPolicyHighWater?,
                                  rollbackAuthorization: LynxPolicyRollbackAuthorization? = nil) throws -> Bool {
         _ = try expectedScope(snapshot)
-        guard receipt.channel == snapshot.channel else { return false }
         let nativeBuiltin = receipt.kind == "BUILTIN" && receipt.releaseId == nil && receipt.bundleId == snapshot.embeddedBundleId
             && receipt.catalogId == nil && receipt.scopeKey == nil && receipt.generation == nil
             && receipt.catalogHash == nil && receipt.selectionContextHash == nil
         if nativeBuiltin { return true }
+        guard receipt.channel == snapshot.channel else { return false }
         let acceptance = try accept(catalog: catalog, snapshot: snapshot, expectedRevision: snapshot.revision,
-            claimedContextHash: contextHash(snapshot: snapshot), highestSeen: highestSeen)
+            claimedContextHash: contextHash(snapshot: snapshot, scopeKey: catalog.scopeKey), highestSeen: highestSeen)
         guard !acceptance.shouldAdvanceHighWater,
               receipt.catalogId == catalog.catalogId, receipt.scopeKey == catalog.scopeKey,
               let generation = receipt.generation, generation > 0, generation <= catalog.generation,
@@ -382,7 +405,7 @@ public enum LynxCatalogPolicy {
 
     public static func authorize(catalog: LynxPolicyCatalog, snapshot: LynxPolicySnapshot, selectionGuard: LynxPolicyGuard,
                                  requestedReceipt: LynxPolicyReceipt) throws -> LynxPolicyAuthorization {
-        guard selectionGuard == makeGuard(catalog, snapshot), catalog.scopeKey == (try expectedScope(snapshot)),
+        guard selectionGuard == makeGuard(catalog, snapshot), (try matchesScope(catalog.scopeKey, snapshot)),
               catalog.appVersion == snapshot.appVersion else {
             throw fail("STALE_SELECTION", "Prepared selection no longer matches native state/catalog")
         }

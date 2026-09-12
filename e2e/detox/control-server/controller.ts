@@ -5156,10 +5156,7 @@ async function waitForIosMetadataState(
 
     const metadata = readIosMetadataSnapshot();
     const metadataState = resolveMetadataState(metadata.value);
-    if (
-      relaunchIndex === relaunchLimit ||
-      metadataState.verificationPending === true
-    ) {
+    if (relaunchIndex === relaunchLimit) {
       break;
     }
 
@@ -5248,10 +5245,7 @@ async function waitForAndroidMetadataState(
       "wait-for-metadata-metadata.json",
     );
     const metadataState = resolveMetadataState(metadata.value);
-    if (
-      relaunchIndex === relaunchLimit ||
-      metadataState.verificationPending === true
-    ) {
+    if (relaunchIndex === relaunchLimit) {
       break;
     }
 
@@ -5411,10 +5405,7 @@ async function resetBootstrappedAppSource() {
     fixtureSession.configBackupPath,
     fixtureSession.configSourceFile,
   );
-  await restoreFile(
-    fixtureSession.appBackupPath,
-    fixtureSession.appSourceFile,
-  );
+  await restoreFile(fixtureSession.appBackupPath, fixtureSession.appSourceFile);
   await restoreMultiAssetFixtures();
   await applyAppScenario({
     bundleProfile: "default",

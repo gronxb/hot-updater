@@ -47,6 +47,7 @@ class LynxUpdaterController internal constructor(
         synchronized(stateLock) {
             if (!store.value.has("revision")) store.update { it.put("revision", UUID.randomUUID().toString()) }
             recover()
+            if (!store.value.has("channel")) mutate { it.put("channel", configuration.channel) }
             running = receipt("active") ?: builtin()
             // The process does not execute any restored candidate before pinPrimary().
         }
@@ -64,7 +65,8 @@ class LynxUpdaterController internal constructor(
         store.value.optString("channel").ifEmpty { configuration.channel }
     private fun snapshot() = CatalogPolicy.NativeSnapshot(store.value.getString("revision"), configuration.appVersion,
         runtimeChannel, configuration.runtimeId, embedded.bundleId, embedded.bundleId, runtimeCohort,
-        running, receipt("next"), exclusions("crashed"), exclusions("unconfirmed"))
+        running, receipt("next"), exclusions("crashed"), exclusions("unconfirmed"),
+        configuration.fingerprintHash ?: binaryId)
     private fun mutate(change: (JSONObject) -> Unit) = store.update { change(it); it.put("revision", UUID.randomUUID().toString()) }
     private fun highWater(): CatalogPolicy.HighWater? = store.value.optJSONObject("highWater")?.let {
         CatalogPolicy.HighWater(it.getString("catalogId"), it.getString("scopeKey"), it.getLong("generation"), it.getString("catalogHash"))
@@ -169,7 +171,7 @@ class LynxUpdaterController internal constructor(
             .put("confirmedSelection", receipt("confirmed")?.toJson() ?: JSONObject.NULL)
             .put("nextSelection", receipt("next")?.toJson() ?: JSONObject.NULL)
             .put("crashedBundleIds", JSONArray(state.crashedBundleIds)).put("unconfirmedReleaseIds", JSONArray(state.unconfirmedReleaseIds))
-            .put("fingerprintHash", binaryId)
+            .put("fingerprintHash", configuration.fingerprintHash ?: binaryId)
     }
 
     internal fun accept(session: LynxLaunchSession, params: JSONObject): JSONObject = synchronized(stateLock) {

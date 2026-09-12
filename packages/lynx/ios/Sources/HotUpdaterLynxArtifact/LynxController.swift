@@ -15,14 +15,17 @@ public struct LynxControllerConfiguration {
     public let cohort: String
     public let publicKeyPEM: String?
     public let startupResourcePaths: Set<String>
+    public let fingerprintHash: String
     public init(root: URL, runtimeId: String, binaryIdentity: String, embeddedDirectory: URL,
                 embeddedBundleId: String, embeddedManifestDigest: String, minimumBundleId: String,
-                appVersion: String, channel: String, cohort: String, publicKeyPEM: String? = nil, startupResourcePaths: Set<String> = []) {
+                appVersion: String, channel: String, cohort: String, publicKeyPEM: String? = nil, startupResourcePaths: Set<String> = [],
+                fingerprintHash: String? = nil) {
         self.root = root; self.runtimeId = runtimeId; self.binaryIdentity = binaryIdentity
         self.embeddedDirectory = embeddedDirectory; self.embeddedBundleId = embeddedBundleId
         self.embeddedManifestDigest = embeddedManifestDigest; self.minimumBundleId = minimumBundleId
         self.appVersion = appVersion; self.channel = channel; self.cohort = cohort; self.publicKeyPEM = publicKeyPEM
         self.startupResourcePaths = startupResourcePaths
+        self.fingerprintHash = fingerprintHash.flatMap { $0.isEmpty ? nil : $0 } ?? binaryIdentity
     }
 }
 
@@ -108,6 +111,11 @@ public final class LynxController {
             recovered.revision = UUID().uuidString
             try journal.save(recovered)
         }
+        if recovered.selectionChannel == nil || recovered.selectionChannel?.isEmpty == true {
+            recovered.selectionChannel = config.channel
+            recovered.revision = UUID().uuidString
+            try journal.save(recovered)
+        }
         if let cohort = recovered.selectionCohort, !cohort.isEmpty {
             runtimeCohort = cohort
         }
@@ -120,7 +128,8 @@ public final class LynxController {
             LynxPolicySnapshot(revision: recovered.revision, platform: "ios", appVersion: config.appVersion,
                 channel: snapshotChannel, embeddedBundleId: config.embeddedBundleId, minimumBundleId: config.minimumBundleId,
                 cohort: snapshotCohort, runningSelection: base, nextSelection: nil,
-                crashedBundleIds: recovered.crashedBundleIds, unconfirmedReleaseIds: recovered.unconfirmedReleaseIds)
+                crashedBundleIds: recovered.crashedBundleIds, unconfirmedReleaseIds: recovered.unconfirmedReleaseIds,
+                fingerprintHash: config.fingerprintHash)
         }
         var selected: (LynxStoredSelection, LynxInstalledArtifact)?
         for candidate in [recovered.next, recovered.confirmed].compactMap({ $0 }) {
@@ -160,7 +169,7 @@ public final class LynxController {
     }
     private static func storedEligible(_ stored: LynxStoredSelection, state: LynxControllerState, snapshot: LynxPolicySnapshot) -> Bool {
         guard let receipt = try? stored.policy else { return false }
-        if receipt.kind == "BUILTIN", receipt.catalogId == nil { return receipt.bundleId == snapshot.embeddedBundleId && receipt.channel == snapshot.channel }
+        if receipt.kind == "BUILTIN", receipt.catalogId == nil { return receipt.bundleId == snapshot.embeddedBundleId }
         guard let catalogId = receipt.catalogId, let scope = receipt.scopeKey else { return false }
         let key = key(catalogId, scope)
         guard let bytes = state.catalogs[key], let catalog = try? LynxCatalogPolicy.parseCatalog(json: bytes, snapshot: snapshot) else { return false }
@@ -170,7 +179,8 @@ public final class LynxController {
         .init(revision: state.revision, platform: "ios", appVersion: configuration.appVersion, channel: runtimeChannel,
               embeddedBundleId: configuration.embeddedBundleId, minimumBundleId: configuration.minimumBundleId,
               cohort: runtimeCohort, runningSelection: runningSelection, nextSelection: try state.next?.policy,
-              crashedBundleIds: state.crashedBundleIds, unconfirmedReleaseIds: state.unconfirmedReleaseIds)
+              crashedBundleIds: state.crashedBundleIds, unconfirmedReleaseIds: state.unconfirmedReleaseIds,
+              fingerprintHash: configuration.fingerprintHash)
     }
     private func save(_ next: LynxControllerState) throws { try journal.save(next); state = next }
     private func validate(_ context: LynxLaunchContext, primaryRequired: Bool = false) throws {
@@ -256,7 +266,7 @@ public final class LynxController {
                 "confirmedSelection": try state.confirmed?.policy.dictionary as Any? ?? NSNull(),
                 "nextSelection": try state.next?.policy.dictionary as Any? ?? NSNull(),
                 "crashedBundleIds": state.crashedBundleIds, "unconfirmedReleaseIds": state.unconfirmedReleaseIds,
-                "fingerprintHash": configuration.binaryIdentity]
+                "fingerprintHash": configuration.fingerprintHash]
     }
     public func acceptCatalog(_ json: Data, expectedRevision: String, contextHash: String, context: LynxLaunchContext) throws -> LynxPolicyGuard {
         lock.lock(); defer { lock.unlock() }; try validate(context, primaryRequired: true)
