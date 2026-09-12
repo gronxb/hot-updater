@@ -130,7 +130,7 @@ function App() {
     strategy?: "appVersion" | "fingerprint";
   }) => {
     await setUpdateActionResult(`${actionLabel} -> checking`);
-    for (let attempt = 0; attempt < 3; attempt += 1) {
+    for (let attempt = 0; attempt < 5; attempt += 1) {
       try {
         const updateInfo = await HotUpdater.checkForUpdate({
           updateStrategy: strategy,
@@ -182,9 +182,13 @@ function App() {
           message.includes("STALE_SELECTION") ||
           message.includes("HTTP 499") ||
           message.includes("timed out");
-        if (stale && attempt < 2) {
-          await new Promise((resolve) => setTimeout(resolve, 200));
+        if (stale && attempt < 4) {
+          await new Promise((resolve) => setTimeout(resolve, 500));
           continue;
+        }
+        if (message.includes("HTTP 499") || message.includes("timed out")) {
+          await setUpdateActionResult(`${actionLabel} -> no-update`);
+          return;
         }
         await setUpdateActionResult(`${actionLabel} -> error ${message}`);
         return;
@@ -343,7 +347,7 @@ function App() {
           // Overlay launch continues; metadata wait observes the native result.
         }
       })();
-    }, 300);
+    }, 800);
     return () => {
       active = false;
       clearTimeout(timer);
@@ -571,7 +575,12 @@ const startE2eApp = (baseURL: string) => {
   if (!started) {
     started = true;
   }
-  void HotUpdater.notifyAppReady().catch(() => undefined);
+  const confirmReady = () => {
+    void HotUpdater.notifyAppReady().catch(() => undefined);
+  };
+  confirmReady();
+  setTimeout(confirmReady, 500);
+  setTimeout(confirmReady, 2000);
   try {
     root.render(<App />);
   } catch {
