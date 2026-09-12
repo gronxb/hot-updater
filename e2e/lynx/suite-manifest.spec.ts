@@ -238,14 +238,20 @@ describe("Lynx E2E suite manifest", () => {
     expect(source).toContain(
       "void patchScreenState({ runtimeScenarioMarker: scenarioMarker });",
     );
+    expect(source).toContain("void resolveAppBaseURL()");
+    expect(source).toContain("startE2eApp(baseURL)");
     const bindAt = source.indexOf("actionHandlers.current = actions;");
     const pollerAt = source.indexOf("ensurePendingActionPoller();");
     const crashAt = source.indexOf("maybeCrashForE2E();");
     const renderAt = source.indexOf("root.render(<App />);");
+    const resolveAt = source.indexOf("void resolveAppBaseURL()");
+    const startAt = source.lastIndexOf("startE2eApp(baseURL)");
     expect(bindAt).toBeGreaterThan(0);
     expect(pollerAt).toBeGreaterThan(bindAt);
     expect(crashAt).toBeGreaterThan(0);
     expect(renderAt).toBeGreaterThan(crashAt);
+    expect(resolveAt).toBeGreaterThan(renderAt);
+    expect(startAt).toBeGreaterThan(resolveAt);
   });
 
   it("treats Lynx startup JS errors as fatal native crashes", () => {

@@ -404,17 +404,10 @@ const startE2eApp = (baseURL: string) => {
 };
 
 void patchScreenState({ runtimeScenarioMarker: scenarioMarker });
-startE2eApp(appBaseURL);
 void resolveAppBaseURL()
   .then((baseURL) => {
-    if (baseURL !== appBaseURL) {
-      void Promise.resolve(
-        HotUpdater.init({
-          insights: true,
-          baseURL,
-          requestTimeout: 15000,
-        }),
-      ).catch(() => undefined);
-    }
+    startE2eApp(baseURL);
   })
-  .catch(() => undefined);
+  .catch(() => {
+    startE2eApp(appBaseURL);
+  });
