@@ -254,6 +254,8 @@ describe("Lynx E2E suite manifest", () => {
     expect(source).toContain("Native revision changed");
     expect(source).toContain("HTTP 499");
     expect(source).toContain("`${actionLabel} -> no-update`");
+    expect(source).toContain("Promise.race");
+    expect(source).toContain("requestTimeout: 5000");
     expect(source).toContain("handledScenarioAction");
     expect(source).toContain("e2e-ready-status");
     expect(source).toContain("TEST_ID_TO_SCREEN");
@@ -364,6 +366,7 @@ describe("Lynx E2E suite manifest", () => {
     expect(androidModule).toContain(
       "Started restart trampoline to apply update bundle",
     );
+    expect(androidModule).toContain("getLaunchIntentForPackage");
     expect(androidModule).toContain("@LynxMethod fun reload");
     const e2eApp = readFileSync(
       path.join(repoDir, "examples/lynx/src/e2eApp/index.tsx"),

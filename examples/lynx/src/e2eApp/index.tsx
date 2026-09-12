@@ -130,10 +130,11 @@ function App() {
     strategy?: "appVersion" | "fingerprint";
   }) => {
     await setUpdateActionResult(`${actionLabel} -> checking`);
-    for (let attempt = 0; attempt < 5; attempt += 1) {
+    for (let attempt = 0; attempt < 3; attempt += 1) {
       try {
         const updateInfo = await HotUpdater.checkForUpdate({
           updateStrategy: strategy,
+          requestTimeout: 5000,
           ...(channel ? { channel } : {}),
         });
         if (!updateInfo) {
@@ -182,8 +183,8 @@ function App() {
           message.includes("STALE_SELECTION") ||
           message.includes("HTTP 499") ||
           message.includes("timed out");
-        if (stale && attempt < 4) {
-          await new Promise((resolve) => setTimeout(resolve, 500));
+        if (stale && attempt < 2) {
+          await new Promise((resolve) => setTimeout(resolve, 200));
           continue;
         }
         if (message.includes("HTTP 499") || message.includes("timed out")) {
@@ -540,7 +541,12 @@ const pollPendingActionOnce = async () => {
   if (!handler) return;
   handledScenarioAction = true;
   navigateToTestId.current(testID);
-  await handler(payload.action?.text);
+  await Promise.race([
+    handler(payload.action?.text),
+    new Promise<void>((resolve) => {
+      setTimeout(resolve, 20_000);
+    }),
+  ]);
 };
 
 const ensurePendingActionPoller = () => {
@@ -586,6 +592,25 @@ const startE2eApp = (baseURL: string) => {
   } catch {
     // Poller must keep running even if the Lynx tree fails to mount.
   }
+  setTimeout(() => {
+    if (handledScenarioAction) return;
+    void (async () => {
+      if (handledScenarioAction) return;
+      try {
+        const updateInfo = await HotUpdater.checkForUpdate({
+          updateStrategy: "appVersion",
+        });
+        if (handledScenarioAction || !updateInfo?.shouldForceUpdate) return;
+        const runningId = HotUpdater.getBundleId();
+        if (updateInfo.id === runningId || updateInfo.bundleId === runningId) {
+          return;
+        }
+        if (await updateInfo.updateBundle()) await HotUpdater.reload();
+      } catch {
+        // Overlay launch continues; metadata wait observes the native result.
+      }
+    })();
+  }, 800);
 };
 
 void resolveAppBaseURL()
