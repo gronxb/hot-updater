@@ -117,6 +117,8 @@ describe("Lynx E2E suite manifest", () => {
     );
     expect(fingerprintJson).toContain('"ios"');
     expect(fingerprintJson).toContain('"android"');
+    expect(fingerprintJson).not.toContain("package:react-native");
+    expect(fingerprintJson).not.toContain("expoAutolinkingConfig");
     const iosPlist = readFileSync(
       path.join(repoDir, "examples/lynx/ios/Info.plist"),
       "utf8",
@@ -131,6 +133,13 @@ describe("Lynx E2E suite manifest", () => {
     );
     expect(source).toContain("HOT_UPDATER_E2E_IOS_SIMULATOR_NAME");
     expect(source).toContain("HOT_UPDATER_E2E_ANDROID_SERIAL");
+    expect(source).toContain("lynx-overlay-dir");
+    const controller = readFileSync(
+      path.join(repoDir, "e2e/detox/control-server/controller.ts"),
+      "utf8",
+    );
+    expect(controller).toContain(".OtaActivity");
+    expect(controller).toContain("--ota-channel=production");
   });
 
   it("installs the Lynx app before resetting local device state", () => {

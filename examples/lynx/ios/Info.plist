@@ -3,7 +3,7 @@
 <plist version="1.0">
 <dict>
 	<key>HOT_UPDATER_FINGERPRINT_HASH</key>
-	<string>6a48a7ddfda62813ad410403a29a53e148c3cdae</string>
+	<string>da39a3ee5e6b4b0d3255bfef95601890afd80709</string>
 	<key>NSAppTransportSecurity</key>
 	<dict>
 		<key>NSAllowsLocalNetworking</key>

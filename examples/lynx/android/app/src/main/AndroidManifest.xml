@@ -4,7 +4,7 @@
     <activity android:name=".ControllerProbeActivity" android:exported="true" android:permission="android.permission.DUMP" />
     <activity android:name=".InstallProbeActivity" android:exported="true" android:permission="android.permission.DUMP" />
     <activity android:name=".OtaActivity" android:exported="true" />
-    <meta-data android:name="com.hotupdater.FINGERPRINT_HASH" android:value="c359fe8146e0e0a6d89939ed4df40798ed9d0972"/>
+    <meta-data android:name="com.hotupdater.FINGERPRINT_HASH" android:value="da39a3ee5e6b4b0d3255bfef95601890afd80709"/>
     <activity android:name=".SpikeActivity" android:exported="true">
       <intent-filter><action android:name="android.intent.action.MAIN"/><category android:name="android.intent.category.LAUNCHER"/></intent-filter>
     </activity>

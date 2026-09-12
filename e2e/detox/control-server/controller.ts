@@ -4753,6 +4753,16 @@ function readAndroidRecoveryDiagnostics(
   };
 }
 
+function lynxOverlayDir() {
+  try {
+    return fs
+      .readFileSync(path.join(resultsDir, "lynx-overlay-dir"), "utf8")
+      .trim();
+  } catch {
+    return "";
+  }
+}
+
 function launchAndroidApp({
   explicitActivity = false,
   forceStop = true,
@@ -4785,28 +4795,48 @@ function launchAndroidApp({
     );
   }
 
-  const launchArgs = explicitActivity
+  const launchArgs = isLynxE2eApp()
     ? [
         "-s",
         deviceId as string,
         "shell",
         "am",
         "start",
-        "-W",
+        "-S",
         "-n",
-        `${fixtureSession.appId}/.MainActivity`,
+        `${fixtureSession.appId}/.OtaActivity`,
+        "--es",
+        "framework",
+        "react",
+        "--es",
+        "channel",
+        "production",
+        "--es",
+        "embeddedDir",
+        "e2e-embedded",
       ]
-    : [
-        "-s",
-        deviceId as string,
-        "shell",
-        "monkey",
-        "-p",
-        fixtureSession.appId,
-        "-c",
-        "android.intent.category.LAUNCHER",
-        "1",
-      ];
+    : explicitActivity
+      ? [
+          "-s",
+          deviceId as string,
+          "shell",
+          "am",
+          "start",
+          "-W",
+          "-n",
+          `${fixtureSession.appId}/.MainActivity`,
+        ]
+      : [
+          "-s",
+          deviceId as string,
+          "shell",
+          "monkey",
+          "-p",
+          fixtureSession.appId,
+          "-c",
+          "android.intent.category.LAUNCHER",
+          "1",
+        ];
   const launchOutput = captureCommand("adb", launchArgs, {
     cwd: REPO_DIR,
   });
@@ -4828,17 +4858,22 @@ function launchAndroidApp({
 }
 
 function launchIosApp() {
+  const overlayDir = lynxOverlayDir();
   logDetoxFixture("ios metadata wait relaunch", {
     appId: fixtureSession.appId,
     deviceId,
+    overlayDir: overlayDir || null,
   });
-  captureCommand(
-    "xcrun",
-    ["simctl", "launch", deviceId as string, fixtureSession.appId],
-    {
-      allowFailure: true,
-    },
-  );
+  const args = ["simctl", "launch", deviceId as string, fixtureSession.appId];
+  if (isLynxE2eApp()) {
+    args.push("--ota-framework=react", "--ota-channel=production");
+    if (overlayDir) {
+      args.push(`--ota-embedded-dir=${overlayDir}`);
+    }
+  }
+  captureCommand("xcrun", args, {
+    allowFailure: true,
+  });
 }
 
 function parseAndroidFocusedPackage(output: string) {

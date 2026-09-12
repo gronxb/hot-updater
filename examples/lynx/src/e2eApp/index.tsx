@@ -297,6 +297,10 @@ function App() {
           updateStrategy: "appVersion",
         });
         if (!active || !updateInfo?.shouldForceUpdate) return;
+        const runningId = HotUpdater.getBundleId();
+        if (updateInfo.id === runningId || updateInfo.bundleId === runningId) {
+          return;
+        }
         if (await updateInfo.updateBundle()) await HotUpdater.reload();
       } catch {
         // Overlay launch continues; metadata wait observes the native result.
@@ -361,10 +365,6 @@ const ensurePendingActionPoller = () => {
 
 let started = false;
 const startE2eApp = (baseURL: string) => {
-  if (started) {
-    return;
-  }
-  started = true;
   void Promise.resolve(
     HotUpdater.init({
       insights: true,
@@ -372,12 +372,15 @@ const startE2eApp = (baseURL: string) => {
       requestTimeout: 15000,
     }),
   ).catch(() => undefined);
-  try {
-    loadE2EDeployBundleAssets();
-  } catch {
-    // Overlay must keep polling even if Metro asset requires throw.
+  if (!started) {
+    started = true;
+    try {
+      loadE2EDeployBundleAssets();
+    } catch {
+      // Overlay must keep polling even if Metro asset requires throw.
+    }
+    maybeCrashForE2E();
   }
-  maybeCrashForE2E();
   try {
     root.render(<App />);
   } catch {

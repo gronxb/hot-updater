@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { readdirSync, readFileSync, statSync } from "node:fs";
+import { readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import path from "node:path";
 
 import { createControlClient } from "../detox/control-client.ts";
@@ -289,11 +289,10 @@ export class LynxAppDriver implements DetoxAppDriver {
       );
       return;
     }
-    spawnSync(
-      "adb",
-      ["-s", this.deviceId(), "uninstall", this.appId()],
-      { encoding: "utf8", env: this.env },
-    );
+    spawnSync("adb", ["-s", this.deviceId(), "uninstall", this.appId()], {
+      encoding: "utf8",
+      env: this.env,
+    });
   }
 
   prepareOverlay(): Promise<string> {
@@ -301,6 +300,12 @@ export class LynxAppDriver implements DetoxAppDriver {
       exampleDir: this.exampleDir(),
       platform: this.platform,
       env: this.env,
+    }).then((dir) => {
+      const resultsDir = this.env.HOT_UPDATER_E2E_RESULTS_DIR;
+      if (resultsDir) {
+        writeFileSync(path.join(resultsDir, "lynx-overlay-dir"), dir);
+      }
+      return dir;
     });
     return this.overlayDirPromise;
   }
