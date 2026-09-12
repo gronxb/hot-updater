@@ -111,6 +111,10 @@ export class LynxAppDriver implements DetoxAppDriver {
         {},
       );
       await this.launchApp({ expectCrash: options.expectCrash === true });
+      if (options.expectCrash === true) {
+        await new Promise((resolve) => setTimeout(resolve, 500));
+        await this.launchApp();
+      }
     });
   }
 
@@ -287,6 +291,11 @@ export class LynxAppDriver implements DetoxAppDriver {
       return;
     }
     const deviceEmbeddedDir = "/data/local/tmp/hot-updater-lynx-e2e-embedded";
+    spawnSync(
+      "adb",
+      ["-s", this.deviceId(), "shell", "rm", "-rf", deviceEmbeddedDir],
+      { encoding: "utf8", env: this.env },
+    );
     this.runOrThrow("adb", [
       "-s",
       this.deviceId(),

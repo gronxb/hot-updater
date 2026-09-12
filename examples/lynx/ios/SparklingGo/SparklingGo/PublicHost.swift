@@ -1,4 +1,5 @@
 // Public SDK example host. Native configuration owns scope, embedded identity and compatibility.
+import Darwin
 import Foundation
 import HotUpdaterLynxArtifact
 import Lynx
@@ -166,6 +167,11 @@ final class PublicLifecycle: NSObject, SPKContainerLifecycleProtocol {
         let fatal = (error as? LynxError)?.isFatal == true || !contentObserved
         host.record("publicRuntimeError", ["error": error?.localizedDescription ?? "unknown", "fatal": fatal])
         try? host.controller.reportFailure(host.context, fatal: fatal)
+        if fatal {
+            // Crash-recovery E2E (and native policy) requires a new process after a
+            // fatal startup failure. Leaving JS running uses a STALE_CONTEXT.
+            exit(0)
+        }
     }
 }
 

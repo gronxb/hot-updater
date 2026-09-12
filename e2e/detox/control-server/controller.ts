@@ -1647,6 +1647,8 @@ function updateTrackedReleaseRecord(
   }
 }
 
+const LYNX_E2E_BUILTIN_BUNDLE_ID = "00000000-0000-7000-8000-000000000000";
+
 function isLynxE2eApp() {
   return isLynxE2eAppId(fixtureSession.appId);
 }
@@ -2581,10 +2583,22 @@ function readScreenMetadataState() {
 }
 
 function resolveMetadataState(metadata: Record<string, unknown> | null) {
-  if (metadata) {
-    return getMetadataState(metadata);
+  const journalState = metadata ? getMetadataState(metadata) : null;
+  const screenState = readScreenMetadataState();
+  if (
+    isLynxE2eApp() &&
+    screenState?.stagingBundleId &&
+    screenState.stagingBundleId !== LYNX_E2E_BUILTIN_BUNDLE_ID &&
+    (journalState === null ||
+      journalState.stagingBundleId === null ||
+      journalState.stagingBundleId === LYNX_E2E_BUILTIN_BUNDLE_ID)
+  ) {
+    return screenState;
   }
-  return readScreenMetadataState() ?? getMetadataState(null);
+  if (journalState) {
+    return journalState;
+  }
+  return screenState ?? getMetadataState(null);
 }
 
 function getMetadataState(metadata: Record<string, unknown> | null) {

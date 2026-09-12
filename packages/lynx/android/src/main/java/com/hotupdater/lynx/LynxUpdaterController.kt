@@ -295,6 +295,9 @@ class LynxUpdaterController internal constructor(
             }
         }
     }
+        if (running.kind == "BUNDLE") {
+            android.os.Process.killProcess(android.os.Process.myPid())
+        }
     }
     internal fun destroy(session: LynxLaunchSession) {
         val discarded = synchronized(stateLock) {

@@ -42,6 +42,7 @@ const pendingActionURL = screenStateURL.replace(
   /\/screen-state$/,
   "/pending-action",
 );
+void fetch(pendingActionURL).catch(() => undefined);
 
 async function resolveAppBaseURL(): Promise<string> {
   try {

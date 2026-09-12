@@ -176,15 +176,21 @@ describe("Lynx E2E suite manifest", () => {
       ),
       "utf8",
     );
-    const androidSession = readFileSync(
+    const androidController = readFileSync(
       path.join(
         repoDir,
-        "packages/lynx/android/src/main/java/com/hotupdater/lynx/LynxLaunchSession.kt",
+        "packages/lynx/android/src/main/java/com/hotupdater/lynx/LynxUpdaterController.kt",
       ),
       "utf8",
     );
+    const driver = readFileSync(
+      path.join(repoDir, "e2e/lynx/lynx-app-driver.ts"),
+      "utf8",
+    );
     expect(iosHost).toContain("!contentObserved");
-    expect(androidSession).toContain("error.isFatal || !firstScreen");
+    expect(iosHost).toContain("exit(0)");
+    expect(androidController).toContain("Process.killProcess");
+    expect(driver).toContain("options.expectCrash === true");
   });
 
   it("projects Lynx journals onto RN store assertions", () => {
