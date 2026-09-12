@@ -15,6 +15,9 @@ export default defineConfig({
         process.env.HOT_UPDATER_E2E_RUNTIME_CONFIG_URL ??
           "http://localhost:3107/e2e/runtime-config",
       ),
+      __E2E_OVERLAY_MARKER__: JSON.stringify(
+        process.env.HOT_UPDATER_E2E_OVERLAY_MARKER ?? "",
+      ),
     },
   },
   output: {

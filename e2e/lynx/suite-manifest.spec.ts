@@ -171,7 +171,7 @@ describe("Lynx E2E suite manifest", () => {
     );
     expect(source).toContain("actionHandlers.current = actions;");
     expect(source).toContain(
-      "void patchScreenState({ runtimeScenarioMarker: E2E_SCENARIO_MARKER });",
+      "void patchScreenState({ runtimeScenarioMarker: scenarioMarker });",
     );
     const bindAt = source.indexOf("actionHandlers.current = actions;");
     const pollerAt = source.indexOf("ensurePendingActionPoller();");
@@ -211,6 +211,8 @@ describe("Lynx E2E suite manifest", () => {
     expect(driver).toContain("files/e2e-embedded");
     expect(driver).toContain('return "e2e-embedded"');
     expect(driver).toContain("assertAndroidOverlayLoaded");
+    expect(driver).toContain("dd");
+    expect(driver).toContain("of=${remoteRel}/${rel}");
     expect(driver).toContain('"start",\n        "-S"');
     expect(driver).toContain("Date.now() + 60_000");
     const embed = readFileSync(
@@ -218,6 +220,13 @@ describe("Lynx E2E suite manifest", () => {
       "utf8",
     );
     expect(embed).toContain("Lynx overlay bundle is missing scenario marker");
+    expect(embed).toContain("HOT_UPDATER_E2E_OVERLAY_MARKER");
+    const overlayApp = readFileSync(
+      path.join(repoDir, "examples/lynx/src/e2eApp/index.tsx"),
+      "utf8",
+    );
+    expect(overlayApp).toContain("__E2E_OVERLAY_MARKER__");
+    expect(overlayApp).toContain("scenarioMarker");
   });
 
   it("projects Lynx journals onto RN store assertions", () => {

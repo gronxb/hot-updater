@@ -375,9 +375,8 @@ export class LynxAppDriver implements DetoxAppDriver {
           "-T",
           "run-as",
           this.appId(),
-          "sh",
-          "-c",
-          `cat > ${remoteRel}/${rel}`,
+          "dd",
+          `of=${remoteRel}/${rel}`,
         ],
         {
           encoding: "buffer",

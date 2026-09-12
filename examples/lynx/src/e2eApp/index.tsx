@@ -9,6 +9,12 @@ import {
 
 declare const __E2E_APP_BASE_URL__: string;
 declare const __E2E_RUNTIME_CONFIG_URL__: string;
+declare const __E2E_OVERLAY_MARKER__: string;
+
+const scenarioMarker =
+  typeof __E2E_OVERLAY_MARKER__ === "string" && __E2E_OVERLAY_MARKER__.length > 0
+    ? __E2E_OVERLAY_MARKER__
+    : E2E_SCENARIO_MARKER;
 
 const DEFAULT_ACTION_RESULT = "idle";
 
@@ -228,11 +234,11 @@ function App() {
     },
   };
   actionHandlers.current = actions;
-  void patchScreenState({ runtimeScenarioMarker: E2E_SCENARIO_MARKER });
+  void patchScreenState({ runtimeScenarioMarker: scenarioMarker });
 
   const publishRuntimeSnapshot = async (launchStatusValue?: string) => {
     const patch: Partial<ScreenState> = {
-      runtimeScenarioMarker: E2E_SCENARIO_MARKER,
+      runtimeScenarioMarker: scenarioMarker,
     };
     if (launchStatusValue) {
       patch.launchStatus = launchStatusValue;
@@ -265,12 +271,12 @@ function App() {
 
   return (
     <scroll-view style={{ width: "100%", height: "100%" }}>
-      <text id="ready">Lynx E2E {E2E_SCENARIO_MARKER}</text>
+      <text id="ready">Lynx E2E {scenarioMarker}</text>
       <text id="update-action-result">{updateActionResult}</text>
       <text id="channel-action-result">{channelActionResult}</text>
       <text id="cohort-action-result">{cohortActionResult}</text>
       <text id="launch-status-result">{launchStatus}</text>
-      <text id="runtime-marker-result">{E2E_SCENARIO_MARKER}</text>
+      <text id="runtime-marker-result">{scenarioMarker}</text>
       {Object.keys(actions).map((testID) => (
         <view key={testID} id={testID} bindtap={() => void actions[testID]?.()}>
           <text>{testID}</text>

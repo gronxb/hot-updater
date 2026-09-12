@@ -129,6 +129,7 @@ export async function compileLynxE2eEmbedded(options: {
       env: {
         ...options.env,
         HOT_UPDATER_BUILD_DIR: outDir,
+        HOT_UPDATER_E2E_OVERLAY_MARKER: "targeted-qa-detox",
       },
       maxBuffer: 20 * 1024 * 1024,
     },
@@ -144,19 +145,10 @@ export async function compileLynxE2eEmbedded(options: {
     bundleId: LYNX_E2E_BUILTIN_BUNDLE_ID,
     runtimeId: lynxE2eRuntimeId(options.platform),
   });
-  const source = await fs.readFile(
-    path.join(options.exampleDir, "src/e2eApp/patchSurface.ts"),
-    "utf8",
-  );
-  const marker = source.match(
-    /export const E2E_SCENARIO_MARKER = "([^"]+)"/,
-  )?.[1];
-  const bundle = await fs.readFile(
-    path.join(outDir, "main.lynx.bundle"),
-  );
-  if (marker && !bundle.toString("utf8").includes(marker)) {
+  const bundle = await fs.readFile(path.join(outDir, "main.lynx.bundle"));
+  if (!bundle.toString("utf8").includes("targeted-qa-detox")) {
     throw new Error(
-      `Lynx overlay bundle is missing scenario marker ${marker}`,
+      "Lynx overlay bundle is missing scenario marker targeted-qa-detox",
     );
   }
   return outDir;
