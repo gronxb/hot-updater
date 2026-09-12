@@ -4,6 +4,20 @@ export function isLynxE2eAppId(appId: string): boolean {
   return appId === LYNX_E2E_APP_ID;
 }
 
+export function lynxAndroidInstalledManifestPaths(
+  appId: string,
+  scope: string,
+  bundleId: string,
+): string[] {
+  const installation =
+    `/data/data/${appId}/files/hot-updater-lynx/scopes/${scope}` +
+    `/artifacts/installations/${bundleId}`;
+  return [
+    `${installation}/payload/manifest.json`,
+    `${installation}/manifest.json`,
+  ];
+}
+
 function asRecord(value: unknown): Record<string, unknown> | null {
   return value !== null && typeof value === "object" && !Array.isArray(value)
     ? (value as Record<string, unknown>)

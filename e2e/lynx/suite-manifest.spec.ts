@@ -213,7 +213,11 @@ describe("Lynx E2E suite manifest", () => {
     );
     expect(iosHost).toContain("hot-updater e2e crash");
     expect(iosHost).toContain("exit(0)");
+    expect(iosHost).toContain("errorCode == 201");
+    expect(iosHost).toContain("isJSError()");
+    expect(iosHost).toContain("lynxErrorText");
     expect(androidController).toContain("Process.killProcess");
+    expect(androidController).toContain("isUnconfirmedBundleTrial");
     expect(driver).toContain("options.expectCrash === true");
     expect(driver).toContain("files/e2e-embedded");
     expect(driver).toContain('return "e2e-embedded"');
@@ -237,6 +241,7 @@ describe("Lynx E2E suite manifest", () => {
       "utf8",
     );
     expect(overlayApp).toContain("__E2E_OVERLAY_MARKER__");
+    expect(overlayApp).toContain("__E2E_BUILD_ID__");
     expect(overlayApp).toContain("scenarioMarker");
   });
 
@@ -253,7 +258,13 @@ describe("Lynx E2E suite manifest", () => {
     expect(controller).toContain("readLynxSynthesizedSnapshot");
     expect(controller).toContain("HotUpdaterLynxPublic");
     expect(controller).toContain("hot-updater-lynx/scopes");
+    expect(controller).toContain("lynxAndroidInstalledManifestPaths");
     expect(controller).toContain("main.lynx.bundle");
+    const lynxStore = readFileSync(
+      path.join(repoDir, "e2e/detox/control-server/lynx-store.ts"),
+      "utf8",
+    );
+    expect(lynxStore).toContain("payload/manifest.json");
     expect(controller).toContain("lynx zip install used instead of bsdiff");
     expect(overlay).toContain("runtimeScenarioMarker");
     expect(overlay).toContain("publishRuntimeSnapshot");

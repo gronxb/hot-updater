@@ -160,21 +160,35 @@ final class PublicLifecycle: NSObject, SPKContainerLifecycleProtocol {
         catch { host.record("publicFirstContentRejected", ["error": error.localizedDescription]) }
     }
     func container(_ container: SPKContainerProtocol, didLoadFailedWithURL url: URL?, error: Error?) {
-        host.record("publicLoadFailed", ["error": error?.localizedDescription ?? "unknown"])
+        host.record("publicLoadFailed", ["error": lynxErrorText(error)])
         try? host.controller.reportFailure(host.context, fatal: true)
         exit(0)
     }
     func container(_ container: SPKContainerProtocol, didRecieveError error: Error?) {
-        let message = error?.localizedDescription ?? "unknown"
-        let lynxFatal = (error as? LynxError)?.isFatal == true
+        let message = lynxErrorText(error)
+        let lynx = error as? LynxError
+        let lynxFatal = lynx?.isFatal == true
+        let jsError = lynx?.isJSError() == true || lynx?.errorCode == 201
         let e2eCrash = message.contains("hot-updater e2e crash")
-        let fatal = lynxFatal || e2eCrash
-        host.record("publicRuntimeError", ["error": message, "fatal": fatal])
+        let trial = ((try? host.controller.getState(host.context))?["runningConfirmed"] as? Bool) == false
+            && host.controller.runningSelection.kind == "BUNDLE"
+        let fatal = lynxFatal || e2eCrash || (jsError && trial)
+        host.record("publicRuntimeError", ["error": message, "fatal": fatal, "code": lynx?.errorCode ?? NSNull()])
         try? host.controller.reportFailure(host.context, fatal: fatal)
         if fatal {
             // Crash-recovery E2E needs a new process. Overlay warnings must not exit.
             exit(0)
         }
+    }
+    private func lynxErrorText(_ error: Error?) -> String {
+        guard let error else { return "unknown" }
+        var parts = [error.localizedDescription]
+        if let lynx = error as? LynxError {
+            parts.append(lynx.summaryMessage)
+            parts.append(lynx.rootCause ?? "")
+            parts.append(lynx.callStack ?? "")
+        }
+        return parts.filter { !$0.isEmpty }.joined(separator: "\n")
     }
 }
 

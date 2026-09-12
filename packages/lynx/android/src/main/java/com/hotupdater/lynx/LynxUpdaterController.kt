@@ -149,6 +149,10 @@ class LynxUpdaterController internal constructor(
         mutate { it.put("crashed", JSONArray()) }
     }
 
+    internal fun isUnconfirmedBundleTrial(): Boolean = synchronized(stateLock) {
+        !runningConfirmed && running.kind == "BUNDLE"
+    }
+
     internal fun state(session: LynxLaunchSession): JSONObject = synchronized(stateLock) {
         requireLive(session, false)
         val state = snapshot()

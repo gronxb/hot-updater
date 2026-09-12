@@ -64,6 +64,7 @@ import {
 } from "./fixture-release-reset.ts";
 import {
   isLynxE2eAppId,
+  lynxAndroidInstalledManifestPaths,
   lynxCrashedBundleIds,
   lynxReceipt,
   synthesizeLynxCrashHistory,
@@ -1727,9 +1728,11 @@ function ensureLynxAndroidStorePath() {
     const installations = `${scopesRoot}/${scope}/artifacts/installations`;
     const bundleIds = listAndroidRunAsEntries(installations);
     const hasManifest = bundleIds.some((bundleId) =>
-      androidFileExists(
-        `/data/data/${fixtureSession.appId}/${installations}/${bundleId}/manifest.json`,
-      ),
+      lynxAndroidInstalledManifestPaths(
+        fixtureSession.appId,
+        scope,
+        bundleId,
+      ).some((manifestPath) => androidFileExists(manifestPath)),
     );
     if (
       hasManifest ||
@@ -1807,11 +1810,22 @@ function findLynxIosBundleDir(bundleId: string) {
 function findLynxAndroidBundleDir(bundleId: string) {
   const scopesRoot = `files/hot-updater-lynx/scopes`;
   for (const scope of listAndroidRunAsEntries(scopesRoot)) {
-    const bundleDir = `/data/data/${fixtureSession.appId}/${scopesRoot}/${scope}/artifacts/installations/${bundleId}`;
-    if (androidFileExists(`${bundleDir}/manifest.json`)) {
+    for (const manifestPath of lynxAndroidInstalledManifestPaths(
+      fixtureSession.appId,
+      scope,
+      bundleId,
+    )) {
+      if (!androidFileExists(manifestPath)) {
+        continue;
+      }
+      const bundleDir = path.posix.dirname(manifestPath);
       rememberLynxStore(
         `/data/data/${fixtureSession.appId}/${scopesRoot}/${scope}`,
-        path.posix.dirname(bundleDir),
+        path.posix.dirname(
+          bundleDir.endsWith("/payload")
+            ? bundleDir.slice(0, -"/payload".length)
+            : bundleDir,
+        ),
       );
       return bundleDir;
     }
@@ -2942,7 +2956,26 @@ function readBundleManifestSnapshot(bundleId: string) {
   }
 
   if (isLynxE2eApp()) {
-    findLynxAndroidBundleDir(bundleId);
+    const bundleDir = findLynxAndroidBundleDir(bundleId);
+    if (bundleDir) {
+      const remotePath = `${bundleDir}/manifest.json`;
+      const localPath = path.join(
+        fixtureSession.resultsDir,
+        `bundle-${bundleId}-manifest.json`,
+      );
+      if (!copyAndroidFileIfExists(remotePath, localPath)) {
+        return {
+          exists: false,
+          path: remotePath,
+          readError: null,
+          value: null,
+        } satisfies JsonSnapshot;
+      }
+      return {
+        ...readOptionalJsonSnapshot(localPath),
+        path: remotePath,
+      };
+    }
   }
 
   return readAndroidStoreSnapshot(

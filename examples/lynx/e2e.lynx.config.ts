@@ -18,6 +18,9 @@ export default defineConfig({
       __E2E_OVERLAY_MARKER__: JSON.stringify(
         process.env.HOT_UPDATER_E2E_OVERLAY_MARKER ?? "",
       ),
+      __E2E_BUILD_ID__: JSON.stringify(
+        process.env.HOT_UPDATER_E2E_BUILD_ID ?? "",
+      ),
     },
   },
   output: {

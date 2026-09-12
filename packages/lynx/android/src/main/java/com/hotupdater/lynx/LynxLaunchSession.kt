@@ -72,8 +72,10 @@ class LynxLaunchSession internal constructor(
             override fun onFirstScreen() { handler.post { if (live) { firstScreen = true; flushReady() } } }
             override fun onReceivedError(error: LynxError) {
                 val e2eCrash = error.msg.contains("hot-updater e2e crash")
-                android.util.Log.i("HotUpdaterLynx", "engine-error fatal=${error.isFatal} e2eCrash=$e2eCrash code=${error.errorCode} message=${error.msg}")
-                if (error.isFatal || e2eCrash) {
+                val jsError = error.errorCode == 201
+                val trial = controller.isUnconfirmedBundleTrial()
+                android.util.Log.i("HotUpdaterLynx", "engine-error fatal=${error.isFatal} e2eCrash=$e2eCrash jsError=$jsError trial=$trial code=${error.errorCode} message=${error.msg}")
+                if (error.isFatal || e2eCrash || (jsError && trial)) {
                     controller.fail(this@LynxLaunchSession, error.msg)
                     handler.post { flushReady() }
                 }

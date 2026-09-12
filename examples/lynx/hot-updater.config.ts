@@ -165,7 +165,17 @@ export default {
         "utf8",
       ),
     }),
-    build: async ({ cwd, outDir, platform }) => {
+    build: async ({ cwd, outDir, platform, bundleId }) => {
+      for (const cacheDir of [
+        ".rspeedy",
+        "node_modules/.cache",
+        "node_modules/.rspack",
+      ]) {
+        await fsp.rm(path.join(cwd, cacheDir), {
+          recursive: true,
+          force: true,
+        });
+      }
       await run(
         "pnpm",
         [
@@ -182,6 +192,7 @@ export default {
           env: {
             ...process.env,
             HOT_UPDATER_BUILD_DIR: outDir,
+            HOT_UPDATER_E2E_BUILD_ID: bundleId,
           },
           maxBuffer: 10 * 1024 * 1024,
         },

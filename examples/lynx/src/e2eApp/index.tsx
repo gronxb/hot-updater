@@ -10,11 +10,14 @@ import {
 declare const __E2E_APP_BASE_URL__: string;
 declare const __E2E_RUNTIME_CONFIG_URL__: string;
 declare const __E2E_OVERLAY_MARKER__: string;
+declare const __E2E_BUILD_ID__: string;
 
 const scenarioMarker =
-  typeof __E2E_OVERLAY_MARKER__ === "string" && __E2E_OVERLAY_MARKER__.length > 0
+  typeof __E2E_OVERLAY_MARKER__ === "string" &&
+  __E2E_OVERLAY_MARKER__.length > 0
     ? __E2E_OVERLAY_MARKER__
     : E2E_SCENARIO_MARKER;
+void (typeof __E2E_BUILD_ID__ === "string" ? __E2E_BUILD_ID__ : "");
 
 const DEFAULT_ACTION_RESULT = "idle";
 

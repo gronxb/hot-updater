@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   decodeLynxIosStoredSelection,
   isLynxE2eAppId,
+  lynxAndroidInstalledManifestPaths,
   lynxCrashedBundleIds,
   synthesizeLynxCrashHistory,
   synthesizeLynxLaunchReport,
@@ -104,6 +105,16 @@ describe("Lynx E2E store projection", () => {
     expect(synthesizeLynxCrashHistory(journal, "ios")).toMatchObject({
       bundles: [{ bundleId: "bundle-crash", crashCount: 1 }],
     });
+    expect(
+      lynxAndroidInstalledManifestPaths(
+        "com.hotupdater.lynxexample",
+        "scope-a",
+        "bundle-1",
+      ),
+    ).toEqual([
+      "/data/data/com.hotupdater.lynxexample/files/hot-updater-lynx/scopes/scope-a/artifacts/installations/bundle-1/payload/manifest.json",
+      "/data/data/com.hotupdater.lynxexample/files/hot-updater-lynx/scopes/scope-a/artifacts/installations/bundle-1/manifest.json",
+    ]);
     expect(
       synthesizeLynxLaunchReport({
         crashedBundleIds: ["bundle-crash"],
