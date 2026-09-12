@@ -105,7 +105,9 @@ class LynxUpdaterController internal constructor(
         val startupSnapshot = snapshot()
         val persistedCatalog = store.value.optString("catalog").takeIf { it.isNotEmpty() }?.let {
             val storedScope = JSONObject(it).optString("scopeKey").takeIf { key -> key.isNotEmpty() }
-            CatalogPolicy.accept(it, startupSnapshot, startupSnapshot.revision, CatalogPolicy.selectionContextHash(startupSnapshot, storedScope), highWater())
+            runCatching {
+                CatalogPolicy.accept(it, startupSnapshot, startupSnapshot.revision, CatalogPolicy.selectionContextHash(startupSnapshot, storedScope), highWater())
+            }.getOrNull()
         }
         fun eligibleStored(candidate: CatalogPolicy.Receipt): Boolean {
             if (!eligible(candidate)) return false

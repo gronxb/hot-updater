@@ -302,6 +302,8 @@ describe("Lynx E2E suite manifest", () => {
     expect(androidController).toContain(
       "CatalogPolicy.selectionContextHash(startupSnapshot, storedScope)",
     );
+    expect(androidController).toContain("runCatching {");
+    expect(androidController).toContain("}.getOrNull()");
     const iosCatalogPolicy = readFileSync(
       path.join(
         repoDir,

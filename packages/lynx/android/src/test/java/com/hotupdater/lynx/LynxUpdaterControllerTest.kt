@@ -248,6 +248,30 @@ class LynxUpdaterControllerTest {
         } finally { root.deleteRecursively() }
     }
 
+    @Test fun pinPrimaryFallsBackToBuiltinWhenPersistedCatalogScopeDoesNotMatch() {
+        val root = temp()
+        try {
+            val first = controller(root)
+            val primary = first.pinPrimary()
+            primary.firstScreen = true
+            first.confirm(primary)
+            first.close()
+            plantNext(root, releaseB, bundleB, "B")
+            val file = File(store(root), "state.json")
+            val state = JSONObject(file.readText())
+            val otherScope = "v1:app-version:android:YmV0YQ"
+            val catalog = JSONObject(state.getString("catalog")).put("scopeKey", otherScope)
+            state.put("catalog", catalog.toString())
+            state.getJSONObject("highWater").put("scopeKey", otherScope)
+            state.getJSONObject("next").put("channel", "beta").put("scopeKey", otherScope)
+            file.writeText(state.toString())
+            val recovered = controller(root)
+            val snapshot = recovered.state(recovered.pinPrimary())
+            assertEquals(embeddedId, snapshot.getJSONObject("runningSelection").getString("bundleId"))
+            recovered.close()
+        } finally { root.deleteRecursively() }
+    }
+
     @Test fun journalWriteFailureLeavesThePreviousPersistedSelection() {
         val root = temp()
         try {
