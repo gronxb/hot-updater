@@ -359,6 +359,7 @@ export class LynxAppDriver implements DetoxAppDriver {
       );
       return;
     }
+    spawnSync("sleep", ["1"]);
     const deviceEmbeddedDir = this.installAndroidOverlay(embeddedDir);
     this.runOrThrow("adb", ["-s", this.deviceId(), "logcat", "-c"]);
     this.runLaunch(
@@ -425,6 +426,44 @@ export class LynxAppDriver implements DetoxAppDriver {
           `${remoteRel}/${parent}`,
         ]);
       }
+      this.pushAndroidOverlayFile(localDir, remoteRel, rel);
+    }
+    this.runOrThrow("adb", [
+      "-s",
+      this.deviceId(),
+      "shell",
+      "run-as",
+      this.appId(),
+      "test",
+      "-f",
+      `${remoteRel}/manifest.json`,
+    ]);
+    this.assertCopiedOverlaySize(localDir, remoteRel);
+    return "e2e-embedded";
+  }
+
+  private pushAndroidOverlayFile(
+    localDir: string,
+    remoteRel: string,
+    rel: string,
+  ): void {
+    const input = readFileSync(path.join(localDir, rel));
+    let lastError = "";
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      if (attempt > 0) {
+        this.terminateApp();
+        spawnSync("sleep", ["1"]);
+        this.runOrThrow("adb", [
+          "-s",
+          this.deviceId(),
+          "shell",
+          "run-as",
+          this.appId(),
+          "mkdir",
+          "-p",
+          remoteRel,
+        ]);
+      }
       // run-as execs tee with the app cwd. Avoid sh redirections: they resolve
       // /data/user/0 or /data/data with Permission denied.
       const pushed = spawnSync(
@@ -441,29 +480,22 @@ export class LynxAppDriver implements DetoxAppDriver {
         ],
         {
           encoding: "buffer",
-          input: readFileSync(path.join(localDir, rel)),
+          input,
           maxBuffer: 32 * 1024 * 1024,
-          timeout: 15_000,
+          timeout: 20_000,
         },
       );
-      if (pushed.status !== 0) {
-        throw new Error(
-          `overlay copy ${rel} failed: ${pushed.stderr?.toString() || pushed.status}`,
-        );
+      if (pushed.status === 0) {
+        return;
       }
+      lastError = [
+        `status=${pushed.status}`,
+        `signal=${pushed.signal}`,
+        `error=${pushed.error?.message ?? ""}`,
+        `stderr=${pushed.stderr?.toString() ?? ""}`,
+      ].join(" ");
     }
-    this.runOrThrow("adb", [
-      "-s",
-      this.deviceId(),
-      "shell",
-      "run-as",
-      this.appId(),
-      "test",
-      "-f",
-      `${remoteRel}/manifest.json`,
-    ]);
-    this.assertCopiedOverlaySize(localDir, remoteRel);
-    return "e2e-embedded";
+    throw new Error(`overlay copy ${rel} failed: ${lastError}`);
   }
 
   private assertCopiedOverlaySize(localDir: string, remoteRel: string): void {

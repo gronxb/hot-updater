@@ -375,6 +375,8 @@ describe("Lynx E2E suite manifest", () => {
     expect(driver).toContain("Date.now() + 20_000");
     expect(driver).toContain("waitForOverlayReady");
     expect(driver).toContain("options.allowDisconnect === true");
+    expect(driver).toContain("pushAndroidOverlayFile");
+    expect(driver).toContain("overlay copy ${rel} failed");
     expect(driver).toContain("runtimeScenarioMarker: null");
     expect(driver).toContain("runtimeScenarioMarker");
     expect(driver).toContain('"tee"');
