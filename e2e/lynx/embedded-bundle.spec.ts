@@ -8,6 +8,7 @@ import { describe, expect, it } from "vitest";
 import {
   LYNX_E2E_BUILTIN_BUNDLE_ID,
   packageLynxEmbeddedDirectory,
+  rewriteLynxAndroidEmulatorUrl,
 } from "./embedded-bundle.ts";
 
 describe("Lynx E2E embedded bundle packaging", () => {
@@ -50,5 +51,28 @@ describe("Lynx E2E embedded bundle packaging", () => {
     } finally {
       await fs.rm(root, { recursive: true, force: true });
     }
+  });
+});
+
+describe("rewriteLynxAndroidEmulatorUrl", () => {
+  it("rewrites localhost control URLs to the emulator host port", () => {
+    expect(
+      rewriteLynxAndroidEmulatorUrl(
+        "http://localhost:3107/e2e/runtime-config",
+        {
+          HOT_UPDATER_E2E_ANDROID_CONTROL_DEVICE_PORT: "3107",
+          HOT_UPDATER_E2E_CONTROL_PORT: "3108",
+        },
+      ),
+    ).toBe("http://10.0.2.2:3108/e2e/runtime-config");
+  });
+
+  it("rewrites 127.0.0.1 app URLs without changing a host provider port", () => {
+    expect(
+      rewriteLynxAndroidEmulatorUrl("http://127.0.0.1:3008/hot-updater", {
+        HOT_UPDATER_E2E_ANDROID_CONTROL_DEVICE_PORT: "3107",
+        PORT: "3108",
+      }),
+    ).toBe("http://10.0.2.2:3008/hot-updater");
   });
 });

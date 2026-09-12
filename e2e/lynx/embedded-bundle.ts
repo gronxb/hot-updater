@@ -94,6 +94,39 @@ export async function packageLynxEmbeddedDirectory(options: {
   return { manifestDigest: sha256File(manifestBytes) };
 }
 
+export function rewriteLynxAndroidEmulatorUrl(
+  url: string,
+  env: NodeJS.ProcessEnv,
+): string {
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    return url;
+  }
+  if (parsed.hostname !== "localhost" && parsed.hostname !== "127.0.0.1") {
+    return url;
+  }
+  parsed.hostname = "10.0.2.2";
+  const devicePort = env.HOT_UPDATER_E2E_ANDROID_CONTROL_DEVICE_PORT ?? "3107";
+  const hostPort =
+    env.HOT_UPDATER_E2E_CONTROL_PORT ??
+    env.PORT ??
+    (() => {
+      try {
+        return new URL(
+          env.HOT_UPDATER_E2E_CONTROL_BASE_URL ?? env.CONTROL_URL ?? "",
+        ).port;
+      } catch {
+        return "";
+      }
+    })();
+  if (hostPort && parsed.port === devicePort) {
+    parsed.port = hostPort;
+  }
+  return parsed.toString();
+}
+
 export async function compileLynxE2eEmbedded(options: {
   readonly exampleDir: string;
   readonly platform: "ios" | "android";
@@ -112,6 +145,26 @@ export async function compileLynxE2eEmbedded(options: {
     });
   }
   await fs.mkdir(outDir, { recursive: true });
+  const compileEnv: NodeJS.ProcessEnv = {
+    ...options.env,
+    HOT_UPDATER_BUILD_DIR: outDir,
+    HOT_UPDATER_E2E_OVERLAY_MARKER: "targeted-qa-detox",
+  };
+  if (options.platform === "android") {
+    if (compileEnv.HOT_UPDATER_E2E_RUNTIME_CONFIG_URL) {
+      compileEnv.HOT_UPDATER_E2E_RUNTIME_CONFIG_URL =
+        rewriteLynxAndroidEmulatorUrl(
+          compileEnv.HOT_UPDATER_E2E_RUNTIME_CONFIG_URL,
+          compileEnv,
+        );
+    }
+    if (compileEnv.HOT_UPDATER_E2E_APP_BASE_URL) {
+      compileEnv.HOT_UPDATER_E2E_APP_BASE_URL = rewriteLynxAndroidEmulatorUrl(
+        compileEnv.HOT_UPDATER_E2E_APP_BASE_URL,
+        compileEnv,
+      );
+    }
+  }
   const result = spawnSync(
     "pnpm",
     [
@@ -126,11 +179,7 @@ export async function compileLynxE2eEmbedded(options: {
     {
       cwd: options.exampleDir,
       encoding: "utf8",
-      env: {
-        ...options.env,
-        HOT_UPDATER_BUILD_DIR: outDir,
-        HOT_UPDATER_E2E_OVERLAY_MARKER: "targeted-qa-detox",
-      },
+      env: compileEnv,
       maxBuffer: 20 * 1024 * 1024,
     },
   );

@@ -230,6 +230,8 @@ describe("Lynx E2E suite manifest", () => {
     );
     expect(embed).toContain("Lynx overlay bundle is missing scenario marker");
     expect(embed).toContain("HOT_UPDATER_E2E_OVERLAY_MARKER");
+    expect(embed).toContain("rewriteLynxAndroidEmulatorUrl");
+    expect(embed).toContain("10.0.2.2");
     const overlayApp = readFileSync(
       path.join(repoDir, "examples/lynx/src/e2eApp/index.tsx"),
       "utf8",
