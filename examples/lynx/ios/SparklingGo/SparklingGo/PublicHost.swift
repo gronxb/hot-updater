@@ -164,12 +164,14 @@ final class PublicLifecycle: NSObject, SPKContainerLifecycleProtocol {
         try? host.controller.reportFailure(host.context, fatal: true)
     }
     func container(_ container: SPKContainerProtocol, didRecieveError error: Error?) {
-        let fatal = (error as? LynxError)?.isFatal == true || !contentObserved
-        host.record("publicRuntimeError", ["error": error?.localizedDescription ?? "unknown", "fatal": fatal])
+        let message = error?.localizedDescription ?? "unknown"
+        let lynxFatal = (error as? LynxError)?.isFatal == true
+        let e2eCrash = message.contains("hot-updater e2e crash")
+        let fatal = lynxFatal || e2eCrash
+        host.record("publicRuntimeError", ["error": message, "fatal": fatal])
         try? host.controller.reportFailure(host.context, fatal: fatal)
         if fatal {
-            // Crash-recovery E2E (and native policy) requires a new process after a
-            // fatal startup failure. Leaving JS running uses a STALE_CONTEXT.
+            // Crash-recovery E2E needs a new process. Overlay warnings must not exit.
             exit(0)
         }
     }

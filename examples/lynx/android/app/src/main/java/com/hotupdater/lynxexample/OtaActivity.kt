@@ -27,6 +27,10 @@ class OtaActivity : Activity() {
             check(existing == null || processFramework == framework) { "Framework selection is pinned until process restart" }
             val channel = intent.getStringExtra("channel") ?: "ota-$framework"
             val embeddedDir = intent.getStringExtra("embeddedDir") ?: "ota/$framework/A"
+            Log.i(
+                "HotUpdaterLynx",
+                "embeddedDir=$embeddedDir absoluteDir=${java.io.File(embeddedDir).isDirectory} manifest=${java.io.File(embeddedDir, "manifest.json").isFile}",
+            )
             val publicKeyPem = packageManager
                 .getApplicationInfo(packageName, android.content.pm.PackageManager.GET_META_DATA)
                 .metaData

@@ -187,7 +187,7 @@ describe("Lynx E2E suite manifest", () => {
       path.join(repoDir, "e2e/lynx/lynx-app-driver.ts"),
       "utf8",
     );
-    expect(iosHost).toContain("!contentObserved");
+    expect(iosHost).toContain("hot-updater e2e crash");
     expect(iosHost).toContain("exit(0)");
     expect(androidController).toContain("Process.killProcess");
     expect(driver).toContain("options.expectCrash === true");

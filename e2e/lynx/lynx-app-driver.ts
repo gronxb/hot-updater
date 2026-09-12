@@ -303,6 +303,14 @@ export class LynxAppDriver implements DetoxAppDriver {
       embeddedDir,
       deviceEmbeddedDir,
     ]);
+    this.runOrThrow("adb", [
+      "-s",
+      this.deviceId(),
+      "shell",
+      "test",
+      "-f",
+      `${deviceEmbeddedDir}/manifest.json`,
+    ]);
     this.runLaunch(
       "adb",
       [
