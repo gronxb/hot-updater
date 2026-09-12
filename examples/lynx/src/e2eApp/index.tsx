@@ -106,8 +106,6 @@ const startE2eApp = (baseURL: string) => {
   bindStandaloneE2eActionHandlers();
   void publishOverlayReady();
   ensurePendingActionPoller();
-  void bootNotifyAppReady();
-  scheduleForceUpdateReload();
   void import("./app")
     .then(({ App }) => {
       try {
@@ -115,8 +113,13 @@ const startE2eApp = (baseURL: string) => {
       } catch {
         // Poller must keep running even if the Lynx tree fails to mount.
       }
+      void bootNotifyAppReady();
+      scheduleForceUpdateReload();
     })
-    .catch(() => undefined);
+    .catch(() => {
+      void bootNotifyAppReady();
+      scheduleForceUpdateReload();
+    });
 };
 
 void resolveAppBaseURL()

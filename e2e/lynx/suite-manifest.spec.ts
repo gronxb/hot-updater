@@ -284,6 +284,7 @@ describe("Lynx E2E suite manifest", () => {
     expect(source).toContain("startE2eApp(baseURL)");
     expect(runtime).toContain("Native revision changed");
     expect(runtime).toContain("HTTP 499");
+    expect(runtime).toContain("STALE_CONTEXT");
     expect(runtime).toContain("handledScenarioAction");
     expect(screens).toContain("e2e-ready-status");
     expect(source).toContain("TEST_ID_TO_SCREEN");

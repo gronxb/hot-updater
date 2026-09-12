@@ -85,6 +85,7 @@ const installUpdate = async ({
         message.includes("STALE_STATE") ||
         message.includes("STALE_SELECTION") ||
         message.includes("HTTP 499") ||
+        message.includes("STALE_CONTEXT") ||
         message.includes("timed out");
       if (retryable && attempt < 2) {
         await new Promise((resolve) => setTimeout(resolve, 200));
