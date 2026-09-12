@@ -330,6 +330,7 @@ public final class LynxController {
             next.installedDigests[value.receipt.bundleId] = value.digest
             // Running bytes/receipt remain immutable. A same-byte new Release still requires its own trial unless running is already confirmed.
             if adopt { next.confirmed = selection }
+            else if value.receipt.kind == "BUILTIN" { next.confirmed = nil }
             next.revision = UUID().uuidString
             try save(next)
         }

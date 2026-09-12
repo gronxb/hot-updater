@@ -201,7 +201,7 @@ export async function compileLynxE2eEmbedded(options: {
       "Lynx overlay bundle is missing scenario marker targeted-qa-detox",
     );
   }
-  if (bundleText.includes("hot-updater e2e crash bundle")) {
+  if (bundleText.includes("E2E_SAFE_BUNDLE_IDS")) {
     throw new Error("Lynx overlay bundle contains the E2E crash guard");
   }
   return outDir;

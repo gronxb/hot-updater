@@ -237,8 +237,14 @@ class LynxUpdaterController internal constructor(
                     val records = next.optJSONObject("artifacts") ?: JSONObject()
                     records.put(input.bundleId, artifactJson(input).put("verifiedManifestHash", checkNotNull(verified).manifestHash)); next.put("artifacts", records)
                 }
-                if (adoption) { next.put("active", selected.toJson()); next.put("confirmed", selected.toJson()); next.remove("next") }
-                else next.put("next", selected.toJson())
+                if (adoption) {
+                    next.put("active", selected.toJson())
+                    next.put("confirmed", selected.toJson())
+                    next.remove("next")
+                } else {
+                    next.put("next", selected.toJson())
+                    if (selected.kind == "BUILTIN") next.remove("confirmed")
+                }
             }
             if (adoption) running = selected
             result = JSONObject().put("status", if (adoption) "ADOPTED" else "STAGED").put("requiresRestart", !adoption)

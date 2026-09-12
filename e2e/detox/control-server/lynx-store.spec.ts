@@ -72,6 +72,31 @@ describe("Lynx E2E store projection", () => {
     });
   });
 
+  it("treats a staged BUILTIN rollback as metadata reset", () => {
+    const metadata = synthesizeLynxMetadata(
+      {
+        next: {
+          kind: "BUILTIN",
+          releaseId: null,
+          bundleId: "00000000-0000-7000-8000-000000000000",
+          catalogId: "catalog-1",
+          scopeKey: "scope-1",
+          generation: 5,
+          catalogHash: "sha256:efgh",
+          channel: "production",
+          selectionContextHash: "v1:abcdabcdabcdabcd",
+        },
+      },
+      "android",
+    );
+    expect(metadata).toMatchObject({
+      stableBundleId: null,
+      stagingBundleId: "00000000-0000-7000-8000-000000000000",
+      verificationPending: false,
+      stagingSelection: { kind: "BUILTIN", releaseId: null },
+    });
+  });
+
   it("ignores a crashed next selection when projecting recovery metadata", () => {
     const metadata = synthesizeLynxMetadata(
       {

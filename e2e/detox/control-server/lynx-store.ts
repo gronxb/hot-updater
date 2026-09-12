@@ -123,8 +123,10 @@ export function synthesizeLynxMetadata(
   const active = nextIsCrashed ? confirmed : (next ?? confirmed);
   const confirmedBundleId = asString(confirmed?.bundleId);
   const stagingBundleId = asString(active?.bundleId);
+  const nextIsBuiltin = asString(next?.kind) === "BUILTIN";
   const verificationPending =
     !nextIsCrashed &&
+    !nextIsBuiltin &&
     (pending !== null ||
       (next !== null && asString(next.bundleId) !== confirmedBundleId));
 

@@ -5395,9 +5395,39 @@ async function prepareAppLaunch() {
   return { alreadyFocused };
 }
 
+async function resetBootstrappedAppSource() {
+  fixtureSession.builtInBundleId = null;
+  fixtureSession.deployedBundles = [];
+  fixtureSession.observedInsightsEvents = [];
+  fixtureSession.storePath = null;
+  handleConfigureProxy({
+    artifactDelayMs: 0,
+    catalogDelayMs: 0,
+    catalogMode: "live",
+    replayGeneration: null,
+    reset: true,
+  });
+  await restoreFile(
+    fixtureSession.configBackupPath,
+    fixtureSession.configSourceFile,
+  );
+  await restoreFile(
+    fixtureSession.appBackupPath,
+    fixtureSession.appSourceFile,
+  );
+  await restoreMultiAssetFixtures();
+  await applyAppScenario({
+    bundleProfile: "default",
+    marker: fixtureSession.initialMarker,
+    mode: "reset",
+    safeBundleIds: [],
+  });
+}
+
 async function bootstrap() {
   if (fixtureSession.bootstrapResult) {
-    logDetoxFixture("bootstrap result reused", {
+    await resetBootstrappedAppSource();
+    logDetoxFixture("bootstrap session reset", {
       platform: fixtureSession.platform,
     });
     return fixtureSession.bootstrapResult;
@@ -7241,7 +7271,7 @@ function createJob(task: (context: JobExecutionContext) => Promise<JobResult>) {
 export function startBootstrapJob() {
   if (bootstrapJobId) {
     const job = jobs.get(bootstrapJobId);
-    if (job?.status === "running" || job?.status === "succeeded") {
+    if (job?.status === "running") {
       return bootstrapJobId;
     }
   }

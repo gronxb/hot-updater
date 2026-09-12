@@ -133,6 +133,28 @@ describe("Lynx E2E suite manifest", () => {
     expect(reinstallAt).toBeGreaterThan(uninstallAt);
   });
 
+  it("resets patched app source on every bootstrap after the first", () => {
+    const controller = readFileSync(
+      path.join(repoDir, "e2e/detox/control-server/controller.ts"),
+      "utf8",
+    );
+    expect(controller).toContain(
+      "async function resetBootstrappedAppSource()",
+    );
+    const startBootstrap = controller.slice(
+      controller.indexOf("export function startBootstrapJob()"),
+      controller.indexOf("export function startDeployBundleJob"),
+    );
+    expect(startBootstrap).toContain('job?.status === "running"');
+    expect(startBootstrap).not.toContain("succeeded");
+    const bootstrapFn = controller.slice(
+      controller.indexOf("async function bootstrap()"),
+      controller.indexOf("async function captureBuiltInBundleId"),
+    );
+    expect(bootstrapFn).toContain("await resetBootstrappedAppSource()");
+    expect(bootstrapFn).toContain('mode: "reset"');
+  });
+
   it("reuses one overlay compile across launch and reload", () => {
     const source = readFileSync(
       path.join(repoDir, "e2e/lynx/lynx-app-driver.ts"),
@@ -248,6 +270,7 @@ describe("Lynx E2E suite manifest", () => {
     );
     expect(embed).toContain("Lynx overlay bundle is missing scenario marker");
     expect(embed).toContain("Lynx overlay bundle contains the E2E crash guard");
+    expect(embed).toContain("E2E_SAFE_BUNDLE_IDS");
     expect(embed).toContain("HOT_UPDATER_E2E_OVERLAY_MARKER");
     expect(embed).toContain("rewriteLynxAndroidEmulatorUrl");
     expect(embed).toContain("10.0.2.2");
