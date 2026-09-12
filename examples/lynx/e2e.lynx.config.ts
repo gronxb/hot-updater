@@ -1,9 +1,17 @@
+import { createRequire } from "node:module";
+
 import { pluginReactLynx } from "@lynx-js/react-rsbuild-plugin";
 import { defineConfig } from "@lynx-js/rspeedy";
+import { tanstackRouter } from "@tanstack/router-plugin/rspack";
+
+const require = createRequire(import.meta.url);
 
 export default defineConfig({
   environments: { lynx: {} },
   source: {
+    alias: {
+      react$: require.resolve("@lynx-js/react/compat"),
+    },
     entry: { main: "./src/e2eApp/index.tsx" },
     define: {
       __E2E_APP_BASE_URL__: JSON.stringify(
@@ -29,4 +37,16 @@ export default defineConfig({
     filename: { bundle: "[name].lynx.bundle" },
   },
   plugins: [pluginReactLynx()],
+  tools: {
+    rspack: {
+      plugins: [
+        tanstackRouter({
+          target: "react",
+          autoCodeSplitting: false,
+          routesDirectory: "./src/e2eApp/routes",
+          generatedRouteTree: "./src/e2eApp/routeTree.gen.ts",
+        }),
+      ],
+    },
+  },
 });

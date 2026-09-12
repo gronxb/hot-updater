@@ -17,6 +17,8 @@
   "dependencies": {
     "@hot-updater/lynx": "workspace:*",
     "@lynx-js/react": "0.116.5",
+    "@tanstack/react-router": "1.167.0",
+    "url-search-params-polyfill": "8.2.5",
     "vue-lynx": "0.5.1"
   },
   "devDependencies": {
@@ -24,6 +26,7 @@
     "@lynx-js/rspeedy": "0.13.5",
     "@lynx-js/types": "3.7.0",
     "@rsbuild/plugin-vue": "1.2.6",
+    "@tanstack/router-plugin": "1.167.0",
     "@types/node": "catalog:",
     "@types/react": "18.3.20",
     "@vue/compiler-sfc": "3.5.42",

@@ -5,5 +5,5 @@
     "jsxImportSource": "@lynx-js/react",
     "types": ["node", "@lynx-js/types", "@lynx-js/rspeedy/client"]
   },
-  "include": ["react", "app.config.ts"]
+  "include": ["react", "src", "app.config.ts", "e2e.lynx.config.ts"]
 }
