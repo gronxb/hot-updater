@@ -531,7 +531,10 @@ const pollPendingActionOnce = async () => {
   if (Object.keys(actionHandlers.current).length === 0) {
     return;
   }
-  const response = await fetch(pendingActionURL);
+  const abort = new AbortController();
+  const abortTimer = setTimeout(() => abort.abort(), 5000);
+  const response = await fetch(pendingActionURL, { signal: abort.signal });
+  clearTimeout(abortTimer);
   const payload = (await response.json()) as {
     action?: { testID?: string; text?: string } | null;
   };

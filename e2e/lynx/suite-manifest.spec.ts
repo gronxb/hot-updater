@@ -256,6 +256,7 @@ describe("Lynx E2E suite manifest", () => {
     expect(source).toContain("`${actionLabel} -> no-update`");
     expect(source).toContain("Promise.race");
     expect(source).toContain("requestTimeout: 5000");
+    expect(source).toContain("new AbortController()");
     expect(source).toContain("handledScenarioAction");
     expect(source).toContain("e2e-ready-status");
     expect(source).toContain("TEST_ID_TO_SCREEN");
