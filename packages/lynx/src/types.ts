@@ -129,6 +129,7 @@ export interface NativeState {
   /** Canonical app version supplied by native configuration. */
   appVersion: string;
   channel: string;
+  defaultChannel?: string;
   /** Native-validated NFC channel encoded as unpadded UTF-8 base64url. */
   channelKey: string;
   runtimeId: string;

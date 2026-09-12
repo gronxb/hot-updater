@@ -35,6 +35,7 @@ struct LynxStoredHighWater: Codable {
 }
 struct LynxControllerState: Codable {
     var revision = UUID().uuidString
+    var selectionChannel: String?
     var selectionCohort: String?
     var confirmed: LynxStoredSelection?
     var next: LynxStoredSelection?

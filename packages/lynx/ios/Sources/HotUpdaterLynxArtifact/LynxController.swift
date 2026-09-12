@@ -145,6 +145,9 @@ public final class LynxController {
             try journal.save(recovered)
         }
         state = recovered
+        if let channel = recovered.selectionChannel, !channel.isEmpty {
+            runtimeChannel = channel
+        }
         runningConfirmed = Self.sameIdentity(runningSelection, try recovered.confirmed?.policy)
         try? cleanupUnusedArtifacts()
     }
@@ -218,10 +221,18 @@ public final class LynxController {
     public func setChannel(_ channel: String, context: LynxLaunchContext) throws {
         lock.lock(); defer { lock.unlock() }; try validate(context)
         runtimeChannel = channel
+        var next = state
+        next.selectionChannel = channel
+        next.revision = UUID().uuidString
+        try save(next)
     }
     public func resetChannel(_ context: LynxLaunchContext) throws -> Bool {
         lock.lock(); defer { lock.unlock() }; try validate(context)
         runtimeChannel = configuration.channel
+        var next = state
+        next.selectionChannel = configuration.channel
+        next.revision = UUID().uuidString
+        try save(next)
         return true
     }
     public func clearCrashHistory(_ context: LynxLaunchContext) throws {
@@ -233,7 +244,8 @@ public final class LynxController {
     public func getState(_ context: LynxLaunchContext) throws -> [String: Any] {
         lock.lock(); defer { lock.unlock() }; try validate(context)
         return ["revision": state.revision, "platform": "ios", "appVersion": configuration.appVersion,
-                "channel": runtimeChannel, "channelKey": Data(runtimeChannel.utf8).base64EncodedString().replacingOccurrences(of: "+", with: "-").replacingOccurrences(of: "/", with: "_").replacingOccurrences(of: "=", with: ""), "runtimeId": configuration.runtimeId,
+                "channel": runtimeChannel, "defaultChannel": configuration.channel,
+                "channelKey": Data(runtimeChannel.utf8).base64EncodedString().replacingOccurrences(of: "+", with: "-").replacingOccurrences(of: "/", with: "_").replacingOccurrences(of: "=", with: ""), "runtimeId": configuration.runtimeId,
                 "embeddedBundleId": configuration.embeddedBundleId, "minimumBundleId": configuration.minimumBundleId,
                 "cohort": runtimeCohort, "runningSelection": runningSelection.dictionary,
                 "runningConfirmed": runningConfirmed,

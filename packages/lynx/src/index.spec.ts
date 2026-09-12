@@ -148,6 +148,39 @@ describe("Lynx public controller", () => {
     });
   });
 
+  it("reports a switched channel against the native default", async () => {
+    const running = {
+      kind: "BUNDLE" as const,
+      bundleId: "A",
+      releaseId: "release-A",
+      channel: "beta",
+    };
+    vi.stubGlobal("NativeModules", {
+      HotUpdaterLynx: {
+        getState: (
+          callback: (reply: NativeReply<Partial<NativeState>>) => void,
+        ) =>
+          callback({
+            ok: true,
+            data: {
+              platform: "android",
+              runtimeId: "runtime",
+              channel: "beta",
+              defaultChannel: "production",
+              runningSelection: running as NativeState["runningSelection"],
+              runningConfirmed: true,
+            },
+          }),
+      },
+    });
+    const { HotUpdater } = await import("./index");
+    HotUpdater.init({ baseURL: "https://updates.test" });
+    await HotUpdater.getLaunchInfo();
+    expect(HotUpdater.getChannel()).toBe("beta");
+    expect(HotUpdater.getDefaultChannel()).toBe("production");
+    expect(HotUpdater.isChannelSwitched()).toBe(true);
+  });
+
   it("fails explicitly on a method call when native integration is absent", async () => {
     vi.stubGlobal("NativeModules", undefined);
     const { HotUpdater } = await import("./index");

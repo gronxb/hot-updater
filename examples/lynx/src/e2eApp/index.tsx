@@ -25,6 +25,9 @@ type ScreenState = {
   channelActionResult: string;
   cohortActionResult: string;
   cohortInput: string | null;
+  currentChannel: string | null;
+  defaultChannel: string | null;
+  channelSwitched: string | null;
   launchStatus: string;
   runtimeChannelInput: string;
   runtimeScenarioMarker: string | null;
@@ -254,6 +257,9 @@ function App() {
       patch.stableBundleId = active.stableSelection?.bundleId ?? null;
       patch.stableReleaseId = active.stableSelection?.releaseId ?? null;
       patch.verificationPending = active.verificationPending;
+      patch.currentChannel = HotUpdater.getChannel();
+      patch.defaultChannel = HotUpdater.getDefaultChannel();
+      patch.channelSwitched = String(HotUpdater.isChannelSwitched());
     } catch {
       // Native snapshot may not be readable until notifyAppReady.
     }

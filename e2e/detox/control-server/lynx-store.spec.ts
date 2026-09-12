@@ -72,6 +72,30 @@ describe("Lynx E2E store projection", () => {
     });
   });
 
+  it("projects a confirmed BUILTIN receipt as a null stable bundle", () => {
+    const metadata = synthesizeLynxMetadata(
+      {
+        confirmed: {
+          kind: "BUILTIN",
+          releaseId: null,
+          bundleId: "00000000-0000-7000-8000-000000000000",
+          catalogId: "catalog-1",
+          scopeKey: "scope-1",
+          generation: 5,
+          catalogHash: "sha256:efgh",
+          channel: "production",
+          selectionContextHash: "v1:abcdabcdabcdabcd",
+        },
+      },
+      "android",
+    );
+    expect(metadata).toMatchObject({
+      stableBundleId: null,
+      stagingBundleId: "00000000-0000-7000-8000-000000000000",
+      verificationPending: false,
+    });
+  });
+
   it("treats a staged BUILTIN rollback as metadata reset", () => {
     const metadata = synthesizeLynxMetadata(
       {

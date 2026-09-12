@@ -2,6 +2,9 @@ export type E2eScreenState = {
   readonly channelActionResult: string;
   readonly cohortActionResult: string;
   readonly cohortInput: string | null;
+  readonly currentChannel: string | null;
+  readonly defaultChannel: string | null;
+  readonly channelSwitched: string | null;
   readonly launchStatus: string;
   readonly runtimeChannelInput: string;
   readonly runtimeScenarioMarker: string | null;
@@ -19,6 +22,9 @@ const defaultE2eScreenState = {
   channelActionResult: "idle",
   cohortActionResult: "idle",
   cohortInput: null,
+  currentChannel: null,
+  defaultChannel: null,
+  channelSwitched: null,
   launchStatus: "Current Launch Status: null",
   runtimeChannelInput: "beta",
   runtimeScenarioMarker: null,
@@ -108,6 +114,12 @@ const parseScreenStatePatch = (payload: unknown): E2eScreenStatePatch => {
   const launchStatus = parseOptionalString(payload, "launchStatus");
   const updateActionResult = parseOptionalString(payload, "updateActionResult");
   const cohortInput = parseOptionalCohortInput(payload);
+  const currentChannel = parseOptionalNullableString(payload, "currentChannel");
+  const defaultChannel = parseOptionalNullableString(payload, "defaultChannel");
+  const channelSwitched = parseOptionalNullableString(
+    payload,
+    "channelSwitched",
+  );
   const runtimeScenarioMarker = parseOptionalNullableString(
     payload,
     "runtimeScenarioMarker",
@@ -134,6 +146,9 @@ const parseScreenStatePatch = (payload: unknown): E2eScreenStatePatch => {
     ...(channelActionResult === undefined ? {} : { channelActionResult }),
     ...(cohortActionResult === undefined ? {} : { cohortActionResult }),
     ...(cohortInput === undefined ? {} : { cohortInput }),
+    ...(currentChannel === undefined ? {} : { currentChannel }),
+    ...(defaultChannel === undefined ? {} : { defaultChannel }),
+    ...(channelSwitched === undefined ? {} : { channelSwitched }),
     ...(launchStatus === undefined ? {} : { launchStatus }),
     ...(runtimeChannelInput === undefined ? {} : { runtimeChannelInput }),
     ...(runtimeScenarioMarker === undefined ? {} : { runtimeScenarioMarker }),

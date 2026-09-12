@@ -250,8 +250,12 @@ function createHotUpdaterClient() {
         assets: {},
       })),
     getChannel: () => requireSnapshot((state) => state.channel),
-    getDefaultChannel: () => requireSnapshot((state) => state.channel),
-    isChannelSwitched: () => false,
+    getDefaultChannel: () =>
+      requireSnapshot((state) => state.defaultChannel ?? state.channel),
+    isChannelSwitched: () =>
+      requireSnapshot(
+        (state) => state.channel !== (state.defaultChannel ?? state.channel),
+      ),
     setCohort: (cohort: string) =>
       callNative<NativeState>("setCohort", { cohort }).then((state) => {
         snapshot = state;

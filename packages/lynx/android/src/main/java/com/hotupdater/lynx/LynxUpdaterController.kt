@@ -59,7 +59,8 @@ class LynxUpdaterController internal constructor(
     private fun eligible(value: CatalogPolicy.Receipt) = value.releaseId !in exclusions("unconfirmed") &&
         (value.bundleId == embedded.bundleId || value.bundleId !in exclusions("crashed"))
     private var runtimeCohort: String = configuration.cohort
-    private var runtimeChannel: String = configuration.channel
+    private var runtimeChannel: String =
+        store.value.optString("channel").ifEmpty { configuration.channel }
     private fun snapshot() = CatalogPolicy.NativeSnapshot(store.value.getString("revision"), configuration.appVersion,
         runtimeChannel, configuration.runtimeId, embedded.bundleId, embedded.bundleId, runtimeCohort,
         running, receipt("next"), exclusions("crashed"), exclusions("unconfirmed"))
@@ -140,9 +141,13 @@ class LynxUpdaterController internal constructor(
     }
 
     fun setCohort(cohort: String) = synchronized(stateLock) { runtimeCohort = cohort }
-    fun setChannel(channel: String) = synchronized(stateLock) { runtimeChannel = channel }
+    fun setChannel(channel: String) = synchronized(stateLock) {
+        runtimeChannel = channel
+        mutate { it.put("channel", channel) }
+    }
     fun resetChannel(): Boolean = synchronized(stateLock) {
         runtimeChannel = configuration.channel
+        mutate { it.put("channel", configuration.channel) }
         true
     }
     fun clearCrashHistory() = synchronized(stateLock) {
@@ -153,7 +158,8 @@ class LynxUpdaterController internal constructor(
         requireLive(session, false)
         val state = snapshot()
         JSONObject().put("revision", state.revision).put("platform", "android").put("appVersion", state.appVersion)
-            .put("channel", state.channel).put("channelKey", CatalogPolicy.channelKey(state.channel)).put("runtimeId", state.runtimeId).put("embeddedBundleId", state.embeddedBundleId)
+            .put("channel", state.channel).put("defaultChannel", configuration.channel)
+            .put("channelKey", CatalogPolicy.channelKey(state.channel)).put("runtimeId", state.runtimeId).put("embeddedBundleId", state.embeddedBundleId)
             .put("minimumBundleId", state.minimumBundleId).put("cohort", state.cohort)
             .put("runningSelection", running.toJson()).put("runningConfirmed", runningConfirmed)
             .put("confirmedSelection", receipt("confirmed")?.toJson() ?: JSONObject.NULL)

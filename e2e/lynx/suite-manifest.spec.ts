@@ -289,6 +289,10 @@ describe("Lynx E2E suite manifest", () => {
     expect(overlayApp).toContain("__E2E_BUILD_ID__");
     expect(overlayApp).toContain("Current Launch Status: ERROR");
     expect(overlayApp).toContain("scenarioMarker");
+    expect(overlayApp).toContain("HotUpdater.getDefaultChannel()");
+    expect(overlayApp).toContain("HotUpdater.isChannelSwitched()");
+    expect(driver).toContain("runtime-current-channel");
+    expect(driver).toContain("currentChannel");
   });
 
   it("projects Lynx journals onto RN store assertions", () => {

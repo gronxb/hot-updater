@@ -37,6 +37,15 @@ const ACTION_RESULT_TEXT_FIELDS: Record<string, string> = {
   "update-action-result": "updateActionResult",
 };
 
+const SCREEN_TEXT_FIELDS: Record<string, string> = {
+  ...ACTION_RESULT_TEXT_FIELDS,
+  "runtime-current-channel": "currentChannel",
+  "runtime-default-channel": "defaultChannel",
+  "runtime-channel-switched": "channelSwitched",
+  "runtime-bundle-id": "stagingBundleId",
+  "runtime-scenario-marker": "runtimeScenarioMarker",
+};
+
 export class LynxAppDriver implements DetoxAppDriver {
   private readonly controlClient: ControlClient;
   private readonly platform: DetoxPlatform;
@@ -83,7 +92,15 @@ export class LynxAppDriver implements DetoxAppDriver {
           "/e2e/screen-state",
           {},
         )) as Record<string, unknown>;
-        last = JSON.stringify(snapshot);
+        const screenState =
+          snapshot.screenState && typeof snapshot.screenState === "object"
+            ? (snapshot.screenState as Record<string, unknown>)
+            : snapshot;
+        const field = SCREEN_TEXT_FIELDS[testID];
+        last =
+          field === undefined
+            ? JSON.stringify(snapshot)
+            : String(screenState[field] ?? "");
         if (expectedTexts.some((value) => last.includes(value))) {
           return;
         }
