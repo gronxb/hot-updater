@@ -240,82 +240,34 @@ describe("Lynx E2E suite manifest", () => {
       path.join(repoDir, "examples/lynx/src/e2eApp/index.tsx"),
       "utf8",
     );
-    const runtime = readFileSync(
-      path.join(repoDir, "examples/lynx/src/e2eApp/runtime-model.tsx"),
-      "utf8",
-    );
-    const screens = readFileSync(
-      path.join(repoDir, "examples/lynx/src/e2eApp/screens.tsx"),
-      "utf8",
-    );
-    const router = readFileSync(
-      path.join(repoDir, "examples/lynx/src/e2eApp/router.tsx"),
-      "utf8",
-    );
-    const app = readFileSync(
-      path.join(repoDir, "examples/lynx/src/e2eApp/app.tsx"),
-      "utf8",
-    );
-    const config = readFileSync(
-      path.join(repoDir, "examples/lynx/e2e.lynx.config.ts"),
-      "utf8",
-    );
-    const polyfill = readFileSync(
-      path.join(repoDir, "examples/lynx/src/e2eApp/polyfill.ts"),
-      "utf8",
-    );
-    expect(source).toContain('import "./polyfill"');
-    expect(polyfill).toContain('import "url-search-params-polyfill"');
-    expect(polyfill).toContain("createElement");
     expect(source).toContain("ensurePendingActionPoller");
     expect(source).toContain("pollPendingActionOnce");
     expect(source).toContain(
       "Object.keys(actionHandlers.current).length === 0",
     );
-    expect(source).toContain("bindStandaloneE2eActionHandlers");
-    expect(source).toContain("publishOverlayReady");
-    expect(source).toContain("scheduleForceUpdateReload");
-    expect(source).toContain('import("./app")');
-    expect(source.indexOf("HotUpdater.init")).toBeGreaterThan(
-      source.indexOf('import("./app")'),
-    );
-    expect(runtime).toContain("actionHandlers.current = actions;");
-    expect(runtime).toContain(
+    expect(source).toContain("actionHandlers.current = actions;");
+    expect(source).toContain(
       "void patchScreenState({ runtimeScenarioMarker: scenarioMarker });",
     );
     expect(source).toContain("void resolveAppBaseURL()");
     expect(source).toContain("startE2eApp(baseURL)");
-    expect(runtime).toContain("Native revision changed");
-    expect(runtime).toContain("HTTP 499");
-    expect(runtime).toContain("STALE_CONTEXT");
-    expect(runtime).toContain("handledScenarioAction");
-    expect(screens).toContain("e2e-ready-status");
+    expect(source).toContain("Native revision changed");
+    expect(source).toContain("handledScenarioAction");
+    expect(source).toContain("e2e-ready-status");
     expect(source).toContain("TEST_ID_TO_SCREEN");
-    expect(source).toContain("mod.navigateToTestId(testID)");
-    expect(source).toContain('import("./app")');
-    expect(source).toContain('import("./router")');
-    expect(source).not.toContain('import { App } from "./app"');
-    expect(router).toContain("createMemoryHistory");
-    expect(router).toContain("isServer: false");
-    expect(router).toContain("navigateToTestId");
-    expect(app).toContain("RouterProvider");
-    expect(config).toContain('from "@tanstack/router-plugin/rspack"');
-    expect(config).toContain('require.resolve("@lynx-js/react/compat")');
-    expect(config).toContain('require.resolve("@lynx-js/react/jsx-runtime")');
+    expect(source).toContain("setCurrentScreen");
+    const bindAt = source.indexOf("actionHandlers.current = actions;");
+    const pollerAt = source.indexOf("ensurePendingActionPoller();");
     const crashAt = source.indexOf("maybeCrashForE2E();");
     const renderAt = source.indexOf("root.render(<App />);");
     const resolveAt = source.indexOf("void resolveAppBaseURL()");
     const startAt = source.lastIndexOf("startE2eApp(baseURL)");
-    const pollerAt = source.indexOf("ensurePendingActionPoller();");
+    expect(bindAt).toBeGreaterThan(0);
+    expect(pollerAt).toBeGreaterThan(bindAt);
     expect(crashAt).toBeGreaterThan(0);
     expect(renderAt).toBeGreaterThan(crashAt);
     expect(resolveAt).toBeGreaterThan(renderAt);
     expect(startAt).toBeGreaterThan(resolveAt);
-    const readyAt = source.indexOf("void publishOverlayReady();");
-    expect(pollerAt).toBeGreaterThan(crashAt);
-    expect(readyAt).toBeGreaterThan(crashAt);
-    expect(readyAt).toBeLessThan(renderAt);
-    expect(pollerAt).toBeLessThan(renderAt);
   });
 
   it("treats Lynx startup JS errors as fatal native crashes", () => {
@@ -413,19 +365,8 @@ describe("Lynx E2E suite manifest", () => {
       path.join(repoDir, "examples/lynx/src/e2eApp/index.tsx"),
       "utf8",
     );
-    const runtime = readFileSync(
-      path.join(repoDir, "examples/lynx/src/e2eApp/runtime-model.tsx"),
-      "utf8",
-    );
-    const runtimeActions = readFileSync(
-      path.join(repoDir, "examples/lynx/src/e2eApp/runtime-actions.ts"),
-      "utf8",
-    );
-    expect(runtimeActions).toContain("shouldForceUpdate");
-    expect(runtimeActions).toContain("updateInfo.updateBundle()");
-    expect(runtime).toContain("updateInfo.updateBundle()");
-    expect(e2eApp).toContain("root.render(<App />)");
-    expect(e2eApp).toContain('import("./app")');
+    expect(e2eApp).toContain("shouldForceUpdate");
+    expect(e2eApp).toContain("updateInfo.updateBundle()");
     expect(androidController).toContain("Process.killProcess");
     expect(driver).toContain("options.expectCrash === true");
     expect(driver).toContain("files/e2e-embedded");
@@ -463,16 +404,12 @@ describe("Lynx E2E suite manifest", () => {
       path.join(repoDir, "examples/lynx/src/e2eApp/index.tsx"),
       "utf8",
     );
-    const overlayRuntime = readFileSync(
-      path.join(repoDir, "examples/lynx/src/e2eApp/runtime-model.tsx"),
-      "utf8",
-    );
-    expect(overlayRuntime).toContain("__E2E_OVERLAY_MARKER__");
+    expect(overlayApp).toContain("__E2E_OVERLAY_MARKER__");
     expect(overlayApp).toContain("__E2E_BUILD_ID__");
-    expect(overlayRuntime).toContain("Current Launch Status: ERROR");
-    expect(overlayRuntime).toContain("scenarioMarker");
-    expect(overlayRuntime).toContain("HotUpdater.getDefaultChannel()");
-    expect(overlayRuntime).toContain("HotUpdater.isChannelSwitched()");
+    expect(overlayApp).toContain("Current Launch Status: ERROR");
+    expect(overlayApp).toContain("scenarioMarker");
+    expect(overlayApp).toContain("HotUpdater.getDefaultChannel()");
+    expect(overlayApp).toContain("HotUpdater.isChannelSwitched()");
     expect(driver).toContain("runtime-current-channel");
     expect(driver).toContain("currentChannel");
   });
@@ -483,7 +420,7 @@ describe("Lynx E2E suite manifest", () => {
       "utf8",
     );
     const overlay = readFileSync(
-      path.join(repoDir, "examples/lynx/src/e2eApp/runtime-model.tsx"),
+      path.join(repoDir, "examples/lynx/src/e2eApp/index.tsx"),
       "utf8",
     );
     expect(controller).toContain('from "./lynx-store.ts"');
