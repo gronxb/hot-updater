@@ -1,8 +1,8 @@
 import type { Platform } from "@hot-updater/plugin-core";
 import { normalizeRange } from "verkit";
 
-import { getAndroidVersion } from "@/utils/version/getAndroidVersion";
-import { getIOSVersion } from "@/utils/version/getIOSVersion";
+import { getAndroidVersion } from "./getAndroidVersion";
+import { getIOSVersion } from "./getIOSVersion";
 
 export const getDefaultTargetAppVersion = async (
   platform: Platform,
@@ -11,7 +11,12 @@ export const getDefaultTargetAppVersion = async (
 
   switch (platform) {
     case "ios":
-      version = await getIOSVersion({ parser: "info-plist" });
+      // Mirror getNativeAppVersion: Info.plist first, project.pbxproj as a
+      // fallback. The React Native template ships Info.plist with
+      // CFBundleShortVersionString set to "$(MARKETING_VERSION)", which the
+      // plist parser cannot resolve, so the real version only lives in
+      // project.pbxproj for most projects.
+      version = await getIOSVersion({ parser: ["info-plist", "xcodeproj"] });
       break;
     case "android":
       version = await getAndroidVersion({ parser: "app-build-gradle" });

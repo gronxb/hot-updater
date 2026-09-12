@@ -17,7 +17,10 @@ describe("standalone-dynamodb local infrastructure contract", () => {
     const dockerCompose = await readProjectFile("docker-compose.yml");
 
     expect(dockerCompose).toContain("amazon/dynamodb-local:");
-    expect(dockerCompose).toContain("minio/minio:");
+    expect(dockerCompose).toContain(
+      "image: quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z",
+    );
+    expect(dockerCompose).not.toMatch(/image:\s+minio\/minio/);
     expect(dockerCompose).not.toContain("localstack");
     expect(dockerCompose).not.toContain("amazonaws.com");
   });
