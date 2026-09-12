@@ -336,10 +336,15 @@ function App() {
           ) {
             return;
           }
-          const runningId = HotUpdater.getBundleId();
+          let runningId: string | null = null;
+          try {
+            runningId = HotUpdater.getBundleId();
+          } catch {
+            runningId = null;
+          }
           if (
-            updateInfo.id === runningId ||
-            updateInfo.bundleId === runningId
+            runningId &&
+            (updateInfo.id === runningId || updateInfo.bundleId === runningId)
           ) {
             return;
           }
@@ -604,8 +609,16 @@ const startE2eApp = (baseURL: string) => {
           updateStrategy: "appVersion",
         });
         if (handledScenarioAction || !updateInfo?.shouldForceUpdate) return;
-        const runningId = HotUpdater.getBundleId();
-        if (updateInfo.id === runningId || updateInfo.bundleId === runningId) {
+        let runningId: string | null = null;
+        try {
+          runningId = HotUpdater.getBundleId();
+        } catch {
+          runningId = null;
+        }
+        if (
+          runningId &&
+          (updateInfo.id === runningId || updateInfo.bundleId === runningId)
+        ) {
           return;
         }
         if (await updateInfo.updateBundle()) await HotUpdater.reload();

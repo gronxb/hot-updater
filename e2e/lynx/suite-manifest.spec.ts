@@ -375,6 +375,7 @@ describe("Lynx E2E suite manifest", () => {
     );
     expect(e2eApp).toContain("shouldForceUpdate");
     expect(e2eApp).toContain("updateInfo.updateBundle()");
+    expect(e2eApp).toContain("runningId = null");
     expect(e2eApp).toContain("void HotUpdater.notifyAppReady()");
     expect(androidController).toContain("Process.killProcess");
     expect(driver).toContain("options.expectCrash === true");
