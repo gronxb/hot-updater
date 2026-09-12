@@ -103,12 +103,16 @@ export function synthesizeLynxMetadata(
   const confirmed = lynxReceipt(journal, platform, "confirmed");
   const next = lynxReceipt(journal, platform, "next");
   const pending = asRecord(journal.pending);
-  const active = next ?? confirmed;
+  const crashed = lynxCrashedBundleIds(journal, platform);
+  const nextBundleId = asString(next?.bundleId);
+  const nextIsCrashed = nextBundleId !== null && crashed.includes(nextBundleId);
+  const active = nextIsCrashed ? confirmed : (next ?? confirmed);
   const confirmedBundleId = asString(confirmed?.bundleId);
   const stagingBundleId = asString(active?.bundleId);
   const verificationPending =
-    pending !== null ||
-    (next !== null && asString(next.bundleId) !== confirmedBundleId);
+    !nextIsCrashed &&
+    (pending !== null ||
+      (next !== null && asString(next.bundleId) !== confirmedBundleId));
 
   return {
     schema: "metadata-v2",

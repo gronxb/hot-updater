@@ -161,6 +161,7 @@ describe("Lynx E2E suite manifest", () => {
       "utf8",
     );
     expect(source).toContain("ensurePendingActionPoller");
+    expect(source).toContain("pollPendingActionOnce");
     const pollerAt = source.indexOf("ensurePendingActionPoller();");
     const renderAt = source.indexOf("root.render(<App />)");
     expect(pollerAt).toBeGreaterThan(0);
@@ -200,6 +201,7 @@ describe("Lynx E2E suite manifest", () => {
     expect(controller).toContain("HotUpdaterLynxPublic");
     expect(controller).toContain("hot-updater-lynx/scopes");
     expect(controller).toContain("main.lynx.bundle");
+    expect(controller).toContain("lynx zip install used instead of bsdiff");
     expect(overlay).toContain("runtimeScenarioMarker");
     expect(overlay).toContain("publishRuntimeSnapshot");
   });

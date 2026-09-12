@@ -71,6 +71,26 @@ describe("Lynx E2E store projection", () => {
     });
   });
 
+  it("ignores a crashed next selection when projecting recovery metadata", () => {
+    const metadata = synthesizeLynxMetadata(
+      {
+        confirmed: receipt,
+        next: {
+          ...receipt,
+          bundleId: "bundle-crash",
+          releaseId: "release-crash",
+        },
+        crashed: ["bundle-crash"],
+      },
+      "android",
+    );
+    expect(metadata).toMatchObject({
+      stableBundleId: "bundle-stable",
+      stagingBundleId: "bundle-stable",
+      verificationPending: false,
+    });
+  });
+
   it("projects crash history and recovery launch reports", () => {
     const journal = {
       crashedBundleIds: ["bundle-crash"],

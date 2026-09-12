@@ -281,24 +281,31 @@ const actionHandlers: {
 } = { current: {} };
 
 let pollerStarted = false;
+const pollPendingActionOnce = async () => {
+  const response = await fetch(pendingActionURL);
+  const payload = (await response.json()) as {
+    action?: { testID?: string; text?: string } | null;
+  };
+  const testID = payload.action?.testID;
+  if (!testID) return;
+  const handler = actionHandlers.current[testID];
+  if (!handler) return;
+  await handler(payload.action?.text);
+};
+
 const ensurePendingActionPoller = () => {
   if (pollerStarted) {
     return;
   }
   pollerStarted = true;
-  setInterval(() => {
-    void (async () => {
-      const response = await fetch(pendingActionURL);
-      const payload = (await response.json()) as {
-        action?: { testID?: string; text?: string } | null;
-      };
-      const testID = payload.action?.testID;
-      if (!testID) return;
-      const handler = actionHandlers.current[testID];
-      if (!handler) return;
-      await handler(payload.action?.text);
-    })().catch(() => undefined);
-  }, 200);
+  const tick = () => {
+    void pollPendingActionOnce()
+      .catch(() => undefined)
+      .then(() => {
+        setTimeout(tick, 200);
+      });
+  };
+  tick();
 };
 
 let started = false;
@@ -320,7 +327,11 @@ const startE2eApp = (baseURL: string) => {
   } catch {
     // Overlay must keep polling even if Metro asset requires throw.
   }
-  root.render(<App />);
+  try {
+    root.render(<App />);
+  } catch {
+    // Poller must keep running even if the Lynx tree fails to mount.
+  }
   maybeCrashForE2E();
 };
 

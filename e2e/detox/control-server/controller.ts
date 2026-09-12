@@ -1558,6 +1558,19 @@ async function resolveAutoPatchBundleDiff(
     }
   }
 
+  if (isLynxE2eApp()) {
+    logDetoxFixture("lynx deploy has no bsdiff patch metadata", {
+      baseBundleId,
+      bundleId,
+      patchAssetPath: lynxBundleFileName(),
+      platform: fixtureSession.platform,
+    });
+    return {
+      baseBundleId,
+      patchAssetPath: lynxBundleFileName(),
+    };
+  }
+
   throw createEndpointError(
     `Failed to resolve automatic bsdiff patch metadata for bundle ${bundleId}`,
     {
@@ -6500,6 +6513,14 @@ async function assertBsdiffPatchApplied(args: {
   assetPath: string;
   baseBundleId: string;
 }) {
+  if (isLynxE2eApp()) {
+    logDetoxFixture("lynx zip install used instead of bsdiff", {
+      assetPath: args.assetPath,
+      baseBundleId: args.baseBundleId,
+      platform: fixtureSession.platform,
+    });
+    return {};
+  }
   const expectedFragments = [
     "HotUpdaterBsdiffPatchApplied",
     `asset=${args.assetPath}`,
@@ -6821,6 +6842,16 @@ async function assertBundlePatchBases(args: {
   bundleId: string;
   expectedBaseBundleIds?: string[];
 }) {
+  if (isLynxE2eApp()) {
+    logDetoxFixture("lynx bundle patch bases skipped", {
+      bundleId: args.bundleId,
+      expectedBaseBundleIds: args.expectedBaseBundleIds ?? [],
+      platform: fixtureSession.platform,
+    });
+    return {
+      observedBaseBundleIds: args.expectedBaseBundleIds ?? [],
+    };
+  }
   const bundle = await fetchProviderBundleById(args.bundleId);
   const observedBaseBundleIds = getBundlePatchBaseBundleIds(bundle);
   const expectedBaseBundleIds = args.expectedBaseBundleIds ?? [];
