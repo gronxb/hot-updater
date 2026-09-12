@@ -359,6 +359,7 @@ describe("Lynx E2E suite manifest", () => {
     expect(driver).toContain("Date.now() + 20_000");
     expect(driver).toContain("waitForOverlayReady");
     expect(driver).toContain("options.allowDisconnect === true");
+    expect(driver).toContain("runtimeScenarioMarker: null");
     expect(driver).toContain("runtimeScenarioMarker");
     expect(driver).toContain('"tee"');
     expect(driver).toContain("overlay-js-load-started");
