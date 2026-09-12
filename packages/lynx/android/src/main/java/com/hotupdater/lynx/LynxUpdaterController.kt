@@ -104,7 +104,8 @@ class LynxUpdaterController internal constructor(
         check(primary == null) { "The primary is already pinned; restart is required" }
         val startupSnapshot = snapshot()
         val persistedCatalog = store.value.optString("catalog").takeIf { it.isNotEmpty() }?.let {
-            CatalogPolicy.accept(it, startupSnapshot, startupSnapshot.revision, CatalogPolicy.selectionContextHash(startupSnapshot), highWater())
+            val storedScope = JSONObject(it).optString("scopeKey").takeIf { key -> key.isNotEmpty() }
+            CatalogPolicy.accept(it, startupSnapshot, startupSnapshot.revision, CatalogPolicy.selectionContextHash(startupSnapshot, storedScope), highWater())
         }
         fun eligibleStored(candidate: CatalogPolicy.Receipt): Boolean {
             if (!eligible(candidate)) return false
@@ -180,13 +181,14 @@ class LynxUpdaterController internal constructor(
         val before = snapshot()
         // Persisted raw projection also binds same generation/hash bodies after restart.
         val previous = accepted ?: store.value.optString("catalog").takeIf { it.isNotEmpty() }?.let {
-            CatalogPolicy.accept(it, before, before.revision, CatalogPolicy.selectionContextHash(before), highWater())
+            val storedScope = JSONObject(it).optString("scopeKey").takeIf { key -> key.isNotEmpty() }
+            CatalogPolicy.accept(it, before, before.revision, CatalogPolicy.selectionContextHash(before, storedScope), highWater())
         }
         val checked = CatalogPolicy.accept(raw, before, params.getString("expectedRevision"), params.getString("selectionContextHash"), highWater(), previous)
         mutate { next -> next.put("catalog", raw); next.put("highWater", JSONObject().put("catalogId", checked.guard.catalogId)
             .put("scopeKey", checked.guard.scopeKey).put("generation", checked.guard.generation).put("catalogHash", checked.guard.catalogHash)) }
         val after = snapshot()
-        accepted = CatalogPolicy.accept(raw, after, after.revision, CatalogPolicy.selectionContextHash(after), highWater(), checked)
+        accepted = CatalogPolicy.accept(raw, after, after.revision, CatalogPolicy.selectionContextHash(after, checked.guard.scopeKey), highWater(), checked)
         checkNotNull(accepted).guard.toJson()
     }
 

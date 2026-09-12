@@ -365,7 +365,7 @@ const ensurePendingActionPoller = () => {
 
 let started = false;
 const startE2eApp = (baseURL: string) => {
-  void Promise.resolve(
+  const initPromise = Promise.resolve(
     HotUpdater.init({
       insights: true,
       baseURL,
@@ -380,6 +380,21 @@ const startE2eApp = (baseURL: string) => {
       // Overlay must keep polling even if Metro asset requires throw.
     }
     maybeCrashForE2E();
+    void initPromise.then(async () => {
+      try {
+        const updateInfo = await HotUpdater.checkForUpdate({
+          updateStrategy: "appVersion",
+        });
+        if (!updateInfo?.shouldForceUpdate) return;
+        const runningId = HotUpdater.getBundleId();
+        if (updateInfo.id === runningId || updateInfo.bundleId === runningId) {
+          return;
+        }
+        if (await updateInfo.updateBundle()) await HotUpdater.reload();
+      } catch {
+        // Overlay launch continues; metadata wait observes the native result.
+      }
+    });
   }
   try {
     root.render(<App />);
@@ -388,6 +403,7 @@ const startE2eApp = (baseURL: string) => {
   }
 };
 
+void patchScreenState({ runtimeScenarioMarker: scenarioMarker });
 startE2eApp(appBaseURL);
 void resolveAppBaseURL()
   .then((baseURL) => {

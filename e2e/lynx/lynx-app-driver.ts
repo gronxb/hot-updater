@@ -147,6 +147,9 @@ export class LynxAppDriver implements DetoxAppDriver {
         await new Promise((resolve) => setTimeout(resolve, 2000));
         await this.launchApp();
       }
+      if (options.allowDisconnect === true) {
+        return;
+      }
       await this.waitForOverlayReady(stage);
     });
   }

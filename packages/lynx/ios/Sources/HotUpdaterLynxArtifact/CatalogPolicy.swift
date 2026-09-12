@@ -381,7 +381,7 @@ public enum LynxCatalogPolicy {
             let receipt = LynxPolicyReceipt(kind: kind, releaseId: release?.releaseId,
                 bundleId: kind == "BUNDLE" ? release!.bundleId! : snapshot.embeddedBundleId,
                 catalogId: catalog.catalogId, scopeKey: catalog.scopeKey, generation: catalog.generation,
-                catalogHash: catalog.catalogHash, channel: snapshot.channel, selectionContextHash: contextHash(snapshot: snapshot))
+                catalogHash: catalog.catalogHash, channel: snapshot.channel, selectionContextHash: contextHash(snapshot: snapshot, scopeKey: catalog.scopeKey))
             return LynxPolicyDesired(receipt: receipt, status: status, descriptor: release)
         }
         for release in catalog.releases {

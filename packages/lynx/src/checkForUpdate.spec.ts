@@ -173,6 +173,29 @@ describe("Lynx catalog controller (mock native transport)", () => {
     });
   });
 
+  it("uses the native guard selection context hash on the prepared receipt", async () => {
+    const { updater, native, prepared } = setup();
+    native.acceptCatalog.mockImplementation((params, callback) =>
+      callback({
+        ok: true,
+        data: {
+          revision: "accepted-revision",
+          catalogId: params.catalog.catalogId,
+          scopeKey: params.catalog.scopeKey,
+          generation: params.catalog.generation,
+          catalogHash: params.catalog.catalogHash,
+          channel: "production",
+          selectionContextHash: "v1:nativeguardhash",
+        },
+      }),
+    );
+    await updater.checkForUpdate({ updateStrategy: "appVersion" });
+    expect(prepared().selection.selectionContextHash).toBe(
+      "v1:nativeguardhash",
+    );
+    expect(prepared().guard.selectionContextHash).toBe("v1:nativeguardhash");
+  });
+
   it("preserves every unconfirmed exclusion in selection and its context while allowing a new Release for the same bytes", async () => {
     const newRelease = id(14);
     const { updater, native, prepared, state } = setup(

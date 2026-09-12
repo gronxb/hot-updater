@@ -120,7 +120,7 @@ export async function checkForUpdate(
     generation: catalog.generation,
     catalogHash: catalog.catalogHash,
     channel: state.channel,
-    selectionContextHash,
+    selectionContextHash: guard.selectionContextHash ?? selectionContextHash,
   };
   if (sameReceipt(current, selection)) return null;
   const authorization = authorizeReleaseTransition({

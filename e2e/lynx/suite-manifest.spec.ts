@@ -297,6 +297,29 @@ describe("Lynx E2E suite manifest", () => {
       "configuration.fingerprintHash ?: binaryId",
     );
     expect(androidController).toContain(
+      "CatalogPolicy.selectionContextHash(after, checked.guard.scopeKey)",
+    );
+    expect(androidController).toContain(
+      "CatalogPolicy.selectionContextHash(startupSnapshot, storedScope)",
+    );
+    const iosCatalogPolicy = readFileSync(
+      path.join(
+        repoDir,
+        "packages/lynx/ios/Sources/HotUpdaterLynxArtifact/CatalogPolicy.swift",
+      ),
+      "utf8",
+    );
+    expect(iosCatalogPolicy).toContain(
+      "selectionContextHash: contextHash(snapshot: snapshot, scopeKey: catalog.scopeKey)",
+    );
+    const checkForUpdate = readFileSync(
+      path.join(repoDir, "packages/lynx/src/checkForUpdate.ts"),
+      "utf8",
+    );
+    expect(checkForUpdate).toContain(
+      "guard.selectionContextHash ?? selectionContextHash",
+    );
+    expect(androidController).toContain(
       'it.put("channel", configuration.channel)',
     );
     expect(iosController).toContain(
@@ -327,6 +350,7 @@ describe("Lynx E2E suite manifest", () => {
     expect(driver).toContain("assertAndroidOverlayLoaded");
     expect(driver).toContain("Date.now() + 20_000");
     expect(driver).toContain("waitForOverlayReady");
+    expect(driver).toContain("options.allowDisconnect === true");
     expect(driver).toContain("runtimeScenarioMarker");
     expect(driver).toContain('"tee"');
     expect(driver).toContain("overlay-js-load-started");
