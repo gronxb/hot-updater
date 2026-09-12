@@ -5334,6 +5334,8 @@ async function waitForCrashRecovery(
 }
 
 async function prepareAppLaunch() {
+  resetE2eScreenState();
+  resetPendingE2eAction();
   assertConfiguredBaseUrl();
   await seedMissingE2ECohort();
 

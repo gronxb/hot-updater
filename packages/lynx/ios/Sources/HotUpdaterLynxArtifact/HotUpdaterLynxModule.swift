@@ -60,8 +60,9 @@ public final class HotUpdaterLynxModuleContext {
             let guardValue = try LynxCatalogPolicy.parseGuard(guardJSON)
             let receipt = try LynxCatalogPolicy.parseReceipt(selection)
             let artifact: LynxArtifactRequest?
-            if params["artifact"] is NSNull { artifact = nil }
-            else if let object = params["artifact"] as? [String: Any] { artifact = try JSONDecoder().decode(LynxArtifactRequest.self, from: JSONSerialization.data(withJSONObject: object)) }
+            let rawArtifact = params["artifact"]
+            if rawArtifact == nil || rawArtifact is NSNull { artifact = nil }
+            else if let object = rawArtifact as? [String: Any] { artifact = try JSONDecoder().decode(LynxArtifactRequest.self, from: JSONSerialization.data(withJSONObject: object)) }
             else { throw LynxArtifactError.invalid("Missing artifact parameter") }
             Task {
                 do {

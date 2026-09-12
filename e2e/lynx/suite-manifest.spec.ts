@@ -216,6 +216,14 @@ describe("Lynx E2E suite manifest", () => {
     expect(iosHost).toContain("errorCode == 201");
     expect(iosHost).toContain("isJSError()");
     expect(iosHost).toContain("lynxErrorText");
+    const iosModule = readFileSync(
+      path.join(
+        repoDir,
+        "packages/lynx/ios/Sources/HotUpdaterLynxArtifact/HotUpdaterLynxModule.swift",
+      ),
+      "utf8",
+    );
+    expect(iosModule).toContain("rawArtifact == nil || rawArtifact is NSNull");
     expect(androidController).toContain("Process.killProcess");
     expect(androidController).toContain("isUnconfirmedBundleTrial");
     expect(driver).toContain("options.expectCrash === true");
@@ -242,6 +250,7 @@ describe("Lynx E2E suite manifest", () => {
     );
     expect(overlayApp).toContain("__E2E_OVERLAY_MARKER__");
     expect(overlayApp).toContain("__E2E_BUILD_ID__");
+    expect(overlayApp).toContain("Current Launch Status: ERROR");
     expect(overlayApp).toContain("scenarioMarker");
   });
 
@@ -260,6 +269,12 @@ describe("Lynx E2E suite manifest", () => {
     expect(controller).toContain("hot-updater-lynx/scopes");
     expect(controller).toContain("lynxAndroidInstalledManifestPaths");
     expect(controller).toContain("main.lynx.bundle");
+    const prepareBody = controller.slice(
+      controller.indexOf("async function prepareAppLaunch()"),
+      controller.indexOf("async function bootstrap()"),
+    );
+    expect(prepareBody).toContain("resetE2eScreenState();");
+    expect(prepareBody).toContain("resetPendingE2eAction();");
     const lynxStore = readFileSync(
       path.join(repoDir, "e2e/detox/control-server/lynx-store.ts"),
       "utf8",

@@ -267,7 +267,12 @@ function App() {
         setLaunchStatus(status);
         void publishRuntimeSnapshot(status);
       })
-      .catch(() => undefined);
+      .catch((error) => {
+        const message = error instanceof Error ? error.message : String(error);
+        const status = `Current Launch Status: ERROR ${message}`;
+        setLaunchStatus(status);
+        void publishRuntimeSnapshot(status);
+      });
   }, []);
 
   return (
