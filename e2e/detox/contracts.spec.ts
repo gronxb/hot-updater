@@ -90,6 +90,8 @@ describe("Detox E2E harness contract", () => {
       "e2e/detox/control-server/fixture-release-reset.spec.ts",
       "e2e/detox/control-server/fixture-release-reset.ts",
       "e2e/detox/control-server/index.ts",
+      "e2e/detox/control-server/lynx-store.spec.ts",
+      "e2e/detox/control-server/lynx-store.ts",
       "e2e/detox/control-server/patch-storage-path.spec.ts",
       "e2e/detox/control-server/patch-storage-path.ts",
       "e2e/detox/control-server/provider-reset-retry.spec.ts",
