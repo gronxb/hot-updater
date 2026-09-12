@@ -323,36 +323,7 @@ function App() {
   useEffect(() => {
     let active = true;
     const timer = setTimeout(() => {
-      void (async () => {
-        if (!active || handledScenarioAction) return;
-        try {
-          const updateInfo = await HotUpdater.checkForUpdate({
-            updateStrategy: "appVersion",
-          });
-          if (
-            !active ||
-            handledScenarioAction ||
-            !updateInfo?.shouldForceUpdate
-          ) {
-            return;
-          }
-          let runningId: string | null = null;
-          try {
-            runningId = HotUpdater.getBundleId();
-          } catch {
-            runningId = null;
-          }
-          if (
-            runningId &&
-            (updateInfo.id === runningId || updateInfo.bundleId === runningId)
-          ) {
-            return;
-          }
-          if (await updateInfo.updateBundle()) await HotUpdater.reload();
-        } catch {
-          // Overlay launch continues; metadata wait observes the native result.
-        }
-      })();
+      if (active) void applyForceUpdateIfNeeded();
     }, 800);
     return () => {
       active = false;
@@ -531,15 +502,51 @@ const navigateToTestId: { current: (testID: string) => void } = {
 };
 
 let pollerStarted = false;
+let pendingActionFetchInFlight = false;
 let handledScenarioAction = false;
+
+const isAlreadyRunningForceUpdate = async (updateInfo: {
+  id: string;
+  bundleId: string;
+}) => {
+  try {
+    const running = (await HotUpdater.getLaunchInfo()).running;
+    return (
+      running.bundleId === updateInfo.bundleId ||
+      running.bundleId === updateInfo.id ||
+      running.releaseId === updateInfo.id ||
+      running.releaseId === updateInfo.bundleId
+    );
+  } catch {
+    return false;
+  }
+};
+
+const applyForceUpdateIfNeeded = async () => {
+  if (handledScenarioAction) return;
+  try {
+    const updateInfo = await HotUpdater.checkForUpdate({
+      updateStrategy: "appVersion",
+    });
+    if (handledScenarioAction || !updateInfo?.shouldForceUpdate) return;
+    if (await isAlreadyRunningForceUpdate(updateInfo)) return;
+    if (await updateInfo.updateBundle()) await HotUpdater.reload();
+  } catch {
+    // Overlay launch continues; metadata wait observes the native result.
+  }
+};
+
 const pollPendingActionOnce = async () => {
   if (Object.keys(actionHandlers.current).length === 0) {
     return;
   }
-  const abort = new AbortController();
-  const abortTimer = setTimeout(() => abort.abort(), 5000);
-  const response = await fetch(pendingActionURL, { signal: abort.signal });
-  clearTimeout(abortTimer);
+  const response = await Promise.race([
+    fetch(pendingActionURL).catch(() => null),
+    new Promise<null>((resolve) => {
+      setTimeout(() => resolve(null), 5000);
+    }),
+  ]);
+  if (!response) return;
   const payload = (await response.json()) as {
     action?: { testID?: string; text?: string } | null;
   };
@@ -549,6 +556,7 @@ const pollPendingActionOnce = async () => {
   if (!handler) return;
   handledScenarioAction = true;
   navigateToTestId.current(testID);
+  pendingActionFetchInFlight = false;
   await Promise.race([
     handler(payload.action?.text),
     new Promise<void>((resolve) => {
@@ -563,11 +571,15 @@ const ensurePendingActionPoller = () => {
   }
   pollerStarted = true;
   const tick = () => {
-    void pollPendingActionOnce()
-      .catch(() => undefined)
-      .then(() => {
-        setTimeout(tick, 200);
-      });
+    if (!pendingActionFetchInFlight) {
+      pendingActionFetchInFlight = true;
+      void pollPendingActionOnce()
+        .catch(() => undefined)
+        .finally(() => {
+          pendingActionFetchInFlight = false;
+        });
+    }
+    setTimeout(tick, 200);
   };
   tick();
 };
@@ -601,31 +613,7 @@ const startE2eApp = (baseURL: string) => {
     // Poller must keep running even if the Lynx tree fails to mount.
   }
   setTimeout(() => {
-    if (handledScenarioAction) return;
-    void (async () => {
-      if (handledScenarioAction) return;
-      try {
-        const updateInfo = await HotUpdater.checkForUpdate({
-          updateStrategy: "appVersion",
-        });
-        if (handledScenarioAction || !updateInfo?.shouldForceUpdate) return;
-        let runningId: string | null = null;
-        try {
-          runningId = HotUpdater.getBundleId();
-        } catch {
-          runningId = null;
-        }
-        if (
-          runningId &&
-          (updateInfo.id === runningId || updateInfo.bundleId === runningId)
-        ) {
-          return;
-        }
-        if (await updateInfo.updateBundle()) await HotUpdater.reload();
-      } catch {
-        // Overlay launch continues; metadata wait observes the native result.
-      }
-    })();
+    void applyForceUpdateIfNeeded();
   }, 800);
 };
 

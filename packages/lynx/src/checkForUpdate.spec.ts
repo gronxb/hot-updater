@@ -123,7 +123,7 @@ function setup(
         }),
     ),
     notifyAppReady: vi.fn<HotUpdaterLynxNative["notifyAppReady"]>(),
-    setChannel: vi.fn<HotUpdaterLynxNative["setChannel"]>(
+    setChannel: vi.fn<NonNullable<HotUpdaterLynxNative["setChannel"]>>(
       (params, callback) => {
         state.channel = params.channel;
         state.channelKey = encodeChannelKey(params.channel);

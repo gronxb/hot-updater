@@ -38,21 +38,41 @@ class HotUpdaterLynxModule(context: Context) : LynxModule(context) {
     @LynxMethod fun reload(callback: Callback) {
         reply(callback, Result.success(JSONObject()))
         Handler(Looper.getMainLooper()).post {
-            android.util.Log.i("HotUpdaterImpl", "Started restart trampoline to apply update bundle")
             val context = mContext as android.content.Context
-            val activity = context as? android.app.Activity
-                ?: (context as? android.content.ContextWrapper)?.baseContext as? android.app.Activity
-            val launchContext: android.content.Context = activity ?: context.applicationContext
-            val intent = if (activity != null) {
-                android.content.Intent(activity, activity.javaClass).also { next ->
-                    activity.intent.extras?.let(next::putExtras)
+            val applicationContext = context.applicationContext
+            try {
+                val activity = activityOf(context)
+                val relaunch = relaunchIntent(applicationContext, activity)
+                val restartIntent = android.content.Intent(
+                    applicationContext,
+                    HotUpdaterRestartActivity::class.java,
+                ).apply {
+                    addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+                    addFlags(android.content.Intent.FLAG_ACTIVITY_NO_ANIMATION)
+                    putExtra(HotUpdaterRestartActivity.EXTRA_PACKAGE_NAME, applicationContext.packageName)
+                    putExtra(HotUpdaterRestartActivity.EXTRA_TARGET_PID, android.os.Process.myPid())
+                    if (relaunch != null) {
+                        putExtra(HotUpdaterRestartActivity.EXTRA_RELAUNCH_INTENT, relaunch)
+                    }
                 }
-            } else {
-                launchContext.packageManager.getLaunchIntentForPackage(launchContext.packageName)
+                if (activity != null) {
+                    val options = android.app.ActivityOptions.makeCustomAnimation(activity, 0, 0)
+                    activity.startActivity(restartIntent, options.toBundle())
+                } else {
+                    applicationContext.startActivity(restartIntent)
+                }
+                android.util.Log.i("HotUpdaterImpl", "Started restart trampoline to apply update bundle")
+            } catch (error: Exception) {
+                android.util.Log.w("HotUpdaterImpl", "Failed to start restart trampoline", error)
+                val intent = relaunchIntent(applicationContext, activityOf(context))
+                    ?: applicationContext.packageManager.getLaunchIntentForPackage(
+                        applicationContext.packageName,
+                    )
+                intent?.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+                if (intent != null) applicationContext.startActivity(intent)
+                android.util.Log.i("HotUpdaterImpl", "Started restart trampoline to apply update bundle")
+                android.os.Process.killProcess(android.os.Process.myPid())
             }
-            intent?.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
-            if (intent != null) launchContext.startActivity(intent)
-            android.os.Process.killProcess(android.os.Process.myPid())
         }
     }
     @LynxMethod fun notifyAppReady(callback: Callback) {
@@ -85,6 +105,27 @@ class HotUpdaterLynxModule(context: Context) : LynxModule(context) {
         is JSONObject -> toMap(value)
         is org.json.JSONArray -> JavaOnlyArray.from((0 until value.length()).map { index -> toBridge(value.get(index)) })
         else -> value
+    }
+    private fun activityOf(context: android.content.Context): android.app.Activity? {
+        var current: android.content.Context? = context
+        while (current is android.content.ContextWrapper) {
+            if (current is android.app.Activity) return current
+            current = current.baseContext
+        }
+        return current as? android.app.Activity
+    }
+    private fun relaunchIntent(
+        applicationContext: android.content.Context,
+        activity: android.app.Activity?,
+    ): android.content.Intent? {
+        if (activity != null) {
+            val component = activity.componentName
+            return android.content.Intent.makeRestartActivityTask(component).apply {
+                activity.intent.extras?.let(::putExtras)
+                addFlags(android.content.Intent.FLAG_ACTIVITY_NO_ANIMATION)
+            }
+        }
+        return applicationContext.packageManager.getLaunchIntentForPackage(applicationContext.packageName)
     }
     companion object {
         private val sessions = IdentityHashMap<Context, LynxLaunchSession>()

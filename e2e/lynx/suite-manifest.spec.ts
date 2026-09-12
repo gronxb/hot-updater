@@ -256,7 +256,7 @@ describe("Lynx E2E suite manifest", () => {
     expect(source).toContain("`${actionLabel} -> no-update`");
     expect(source).toContain("Promise.race");
     expect(source).toContain("requestTimeout: 5000");
-    expect(source).toContain("new AbortController()");
+    expect(source).toContain("pendingActionFetchInFlight");
     expect(source).toContain("handledScenarioAction");
     expect(source).toContain("e2e-ready-status");
     expect(source).toContain("TEST_ID_TO_SCREEN");
@@ -367,15 +367,33 @@ describe("Lynx E2E suite manifest", () => {
     expect(androidModule).toContain(
       "Started restart trampoline to apply update bundle",
     );
+    expect(androidModule).toContain("HotUpdaterRestartActivity");
     expect(androidModule).toContain("getLaunchIntentForPackage");
     expect(androidModule).toContain("@LynxMethod fun reload");
+    expect(androidModule).toContain("EXTRA_RELAUNCH_INTENT");
+    const androidRestart = readFileSync(
+      path.join(
+        repoDir,
+        "packages/lynx/android/src/main/java/com/hotupdater/lynx/HotUpdaterRestartActivity.kt",
+      ),
+      "utf8",
+    );
+    expect(androidRestart).toContain("makeRestartActivityTask");
+    const androidManifest = readFileSync(
+      path.join(repoDir, "packages/lynx/android/src/main/AndroidManifest.xml"),
+      "utf8",
+    );
+    expect(androidManifest).toContain("HotUpdaterRestartActivity");
+    expect(androidManifest).toContain(":hotupdater_restart");
     const e2eApp = readFileSync(
       path.join(repoDir, "examples/lynx/src/e2eApp/index.tsx"),
       "utf8",
     );
     expect(e2eApp).toContain("shouldForceUpdate");
     expect(e2eApp).toContain("updateInfo.updateBundle()");
-    expect(e2eApp).toContain("runningId = null");
+    expect(e2eApp).toContain("HotUpdater.getLaunchInfo()");
+    expect(e2eApp).toContain("applyForceUpdateIfNeeded");
+    expect(e2eApp).toContain("pendingActionFetchInFlight");
     expect(e2eApp).toContain("void HotUpdater.notifyAppReady()");
     expect(androidController).toContain("Process.killProcess");
     expect(driver).toContain("options.expectCrash === true");

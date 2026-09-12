@@ -63,8 +63,10 @@ describe("Lynx public controller", () => {
       next,
       confirmed: true,
     });
+    expect(HotUpdater.getBundleId()).toBe("release-A");
     Object.assign(info.running, { bundleId: "changed" });
     expect((await HotUpdater.getLaunchInfo()).running.bundleId).toBe("A");
+    expect(HotUpdater.getBundleId()).toBe("release-A");
   });
 
   it("reports RECOVERED when native crash history points at another bundle", async () => {

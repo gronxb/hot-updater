@@ -240,8 +240,7 @@ function createHotUpdaterClient() {
     getBundleId: () =>
       requireSnapshot(
         (state) =>
-          (state.nextSelection ?? state.runningSelection).releaseId ??
-          (state.nextSelection ?? state.runningSelection).bundleId,
+          state.runningSelection.releaseId ?? state.runningSelection.bundleId,
       ),
     getMinBundleId: () => requireSnapshot((state) => state.minimumBundleId),
     getManifest: (): Manifest =>
