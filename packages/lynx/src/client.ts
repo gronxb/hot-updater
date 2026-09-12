@@ -68,8 +68,35 @@ function createHotUpdaterClient() {
     return config.client;
   };
 
+  const asStringList = (value: unknown): string[] => {
+    if (Array.isArray(value)) {
+      return value.filter((item): item is string => typeof item === "string");
+    }
+    if (
+      value !== null &&
+      typeof value === "object" &&
+      typeof (value as { length?: unknown }).length === "number"
+    ) {
+      const length = (value as { length: number }).length;
+      const items: string[] = [];
+      for (let index = 0; index < length; index += 1) {
+        const item = (value as Record<number, unknown>)[index];
+        if (typeof item === "string") {
+          items.push(item);
+        }
+      }
+      return items;
+    }
+    return [];
+  };
+
   const refreshState = async () => {
-    snapshot = await callNative<NativeState>("getState");
+    const next = await callNative<NativeState>("getState");
+    snapshot = {
+      ...next,
+      crashedBundleIds: asStringList(next.crashedBundleIds),
+      unconfirmedReleaseIds: asStringList(next.unconfirmedReleaseIds),
+    };
     return snapshot;
   };
 
@@ -131,7 +158,8 @@ function createHotUpdaterClient() {
       const confirmation =
         await callNative<ConfirmationResult>("notifyAppReady");
       const after = await refreshState();
-      const crashedBundleId = (before.crashedBundleIds ?? []).at(-1);
+      const crashedIds = before.crashedBundleIds;
+      const crashedBundleId = crashedIds[crashedIds.length - 1];
       if (
         crashedBundleId &&
         after.runningSelection.bundleId !== crashedBundleId
