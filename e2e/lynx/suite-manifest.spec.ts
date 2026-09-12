@@ -159,7 +159,7 @@ describe("Lynx E2E suite manifest", () => {
     expect(source).toContain("NATIVE_STATE");
   });
 
-  it("starts the pending-action poller after notifyAppReady", () => {
+  it("starts the pending-action poller after handlers bind", () => {
     const source = readFileSync(
       path.join(repoDir, "examples/lynx/src/e2eApp/index.tsx"),
       "utf8",
@@ -175,12 +175,10 @@ describe("Lynx E2E suite manifest", () => {
     );
     const bindAt = source.indexOf("actionHandlers.current = actions;");
     const pollerAt = source.indexOf("ensurePendingActionPoller();");
-    const finallyAt = source.indexOf(".finally(() => {");
     const crashAt = source.indexOf("maybeCrashForE2E();");
     const renderAt = source.indexOf("root.render(<App />);");
     expect(bindAt).toBeGreaterThan(0);
-    expect(finallyAt).toBeGreaterThan(bindAt);
-    expect(pollerAt).toBeGreaterThan(finallyAt);
+    expect(pollerAt).toBeGreaterThan(bindAt);
     expect(crashAt).toBeGreaterThan(0);
     expect(renderAt).toBeGreaterThan(crashAt);
   });
@@ -211,6 +209,8 @@ describe("Lynx E2E suite manifest", () => {
     expect(driver).toContain("files/e2e-embedded");
     expect(driver).toContain('return "e2e-embedded"');
     expect(driver).toContain("assertAndroidOverlayLoaded");
+    expect(driver).toContain("waitForOverlayReady");
+    expect(driver).toContain("runtimeScenarioMarker");
     expect(driver).toContain("dd");
     expect(driver).toContain("of=${remoteRel}/${rel}");
     expect(driver).toContain('"start",\n        "-S"');

@@ -122,9 +122,10 @@ export class LynxAppDriver implements DetoxAppDriver {
       );
       await this.launchApp({ expectCrash: options.expectCrash === true });
       if (options.expectCrash === true) {
-        await new Promise((resolve) => setTimeout(resolve, 500));
+        await new Promise((resolve) => setTimeout(resolve, 2000));
         await this.launchApp();
       }
+      await this.waitForOverlayReady(stage);
     });
   }
 
@@ -137,6 +138,7 @@ export class LynxAppDriver implements DetoxAppDriver {
         {},
       );
       await this.launchApp();
+      await this.waitForOverlayReady(stage);
     });
   }
 
@@ -418,6 +420,16 @@ export class LynxAppDriver implements DetoxAppDriver {
     };
     walk(root);
     return names;
+  }
+
+  private async waitForOverlayReady(stage: string): Promise<void> {
+    await this.controlClient.waitForScreenStateField(
+      `${stage}: wait overlay ready`,
+      "runtimeScenarioMarker",
+      {
+        rejectValues: [""],
+      },
+    );
   }
 
   private assertAndroidOverlayLoaded(): void {

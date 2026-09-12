@@ -234,6 +234,7 @@ function App() {
     },
   };
   actionHandlers.current = actions;
+  ensurePendingActionPoller();
   void patchScreenState({ runtimeScenarioMarker: scenarioMarker });
 
   const publishRuntimeSnapshot = async (launchStatusValue?: string) => {
@@ -263,10 +264,7 @@ function App() {
         setLaunchStatus(status);
         void publishRuntimeSnapshot(status);
       })
-      .catch(() => undefined)
-      .finally(() => {
-        ensurePendingActionPoller();
-      });
+      .catch(() => undefined);
   }, []);
 
   return (
