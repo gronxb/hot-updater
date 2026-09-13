@@ -90,18 +90,15 @@ describe("AppSidebar navigation", () => {
     apiKeysSupported = false;
   });
 
-  it.each([
-    /hot updater/i,
-    /bundles/i,
-    /insights/i,
-    /api keys/i,
-    /bundle signing/i,
-  ])("closes the mobile sidebar when selecting %s", (name) => {
-    apiKeysSupported = true;
-    render(<AppSidebar />);
-    fireEvent.click(screen.getByRole("link", { name }));
-    expect(setOpenMobile).toHaveBeenCalledWith(false);
-  });
+  it.each([/hot updater/i, /bundles/i, /insights/i, /api keys/i])(
+    "closes the mobile sidebar when selecting %s",
+    (name) => {
+      apiKeysSupported = true;
+      render(<AppSidebar />);
+      fireEvent.click(screen.getByRole("link", { name }));
+      expect(setOpenMobile).toHaveBeenCalledWith(false);
+    },
+  );
 
   it("always exposes the canonical Insights destination", () => {
     render(<AppSidebar />);
@@ -175,12 +172,14 @@ describe("AppSidebar navigation", () => {
     ).toBe("/api-keys");
   });
 
-  it("always exposes the read-only Bundle signing destination", () => {
-    pathname = "/signing";
-    render(<AppSidebar />);
+  it.each([false, true])(
+    "omits Bundle signing when canSignOut is %s",
+    (canSignOut) => {
+      render(<AppSidebar canSignOut={canSignOut} />);
 
-    const signing = screen.getByRole("link", { name: /bundle signing/i });
-    expect(signing.getAttribute("href")).toBe("/signing");
-    expect(signing.getAttribute("data-active")).toBe("true");
-  });
+      expect(
+        screen.queryByRole("link", { name: /bundle signing/i }),
+      ).toBeNull();
+    },
+  );
 });

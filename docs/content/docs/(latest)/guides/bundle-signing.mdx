@@ -232,15 +232,11 @@ it with unsigned bundles.
 
 ## Console
 
-The Hot Updater Console provides read-only inspection of bundle signing. It
-shows whether signing is configured, plus the provider and algorithm. It does
-not call the remote signer or store, return, generate, activate, rotate, or
-delete private keys.
-
-A hosted Console does not need KMS credentials or remote signing tokens for
-this inspection. Do not grant its runtime permission to sign. Provider and
-signature health are verified by the deploy command, which already runs inside
-the trusted signing boundary.
+Configure signing and manage keys through the Hot Updater CLI or your signing
+provider. Local and hosted Consoles do not inspect signing configuration or
+manage signing keys. A hosted Console does not need signing credentials or
+permission to sign. The deploy command verifies provider and signature health
+inside the trusted signing environment.
 
 ## Configuration States
 
@@ -271,9 +267,7 @@ For a planned migration:
 5. Switch each supported app cohort only after it trusts the new public key
 6. Retire the old signer after those cohorts no longer receive updates
 
-Console inspection does not provide an Activate or Rotate action because the
-current single-key protocol cannot make that operation safe. Seamless rotation
-requires a future multi-key or key-ID protocol.
+Seamless rotation requires a future multi-key or key-ID protocol.
 
 If the active private key is compromised, an OTA update cannot teach existing
 apps to trust a new key safely. Disable the compromised signer, stop OTA
