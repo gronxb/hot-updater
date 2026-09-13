@@ -8,6 +8,11 @@ import java.security.MessageDigest
  * Utility class for file hash operations
  */
 object HashUtils {
+    fun calculateSHA256(bytes: ByteArray): String =
+        MessageDigest.getInstance("SHA-256")
+            .digest(bytes)
+            .joinToString("") { "%02x".format(it) }
+
     /**
      * Calculates SHA256 hash of a file
      * @param file The file to hash

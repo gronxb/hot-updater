@@ -7,13 +7,20 @@ import java.io.FilterInputStream
 import java.io.InputStream
 import java.io.InterruptedIOException
 import java.io.RandomAccessFile
+import java.text.Normalizer
+import java.util.Locale
 import java.util.zip.CRC32
 import java.util.zip.GZIPInputStream
 import java.util.zip.ZipFile
 
 internal object ManagedPaths {
     fun normalize(path: String): String {
-        require(path.isNotBlank() && path.toByteArray().size <= ArchiveLimits.MAX_PATH_BYTES && !path.contains('\\') && !path.contains('\u0000')) { "Invalid managed path" }
+        require(
+            path.isNotBlank() &&
+                path.toByteArray(Charsets.UTF_8).size <= ArchiveLimits.MAX_PATH_BYTES &&
+                !path.contains('\\') &&
+                path.none { it in '\u0000'..'\u001f' || it == '\u007f' || it == ':' },
+        ) { "Invalid managed path" }
         require(!path.startsWith('/') && !Regex("^[A-Za-z]:").containsMatchIn(path)) { "Absolute managed path" }
         val result = path.removeSuffix("/")
         require(result.split('/').none { it.isEmpty() || it == "." || it == ".." }) { "Managed path traversal" }
@@ -24,6 +31,70 @@ internal object ManagedPaths {
         require(result == result.canonicalFile && result.path.startsWith(root.canonicalPath + File.separator)) { "Managed path escapes root or uses a symbolic link" }
         return result
     }
+}
+
+/** Portable namespace shared by archive extraction and manifest-backed installs. */
+internal class ManagedPathNamespace {
+    private val portablePaths = mutableMapOf<String, String>()
+    private val portableDirectories = mutableSetOf<String>()
+    private val portableFiles = mutableSetOf<String>()
+
+    fun directory(path: String): String = add(path, directory = true)
+
+    fun file(path: String): String = add(path, directory = false)
+
+    private fun add(path: String, directory: Boolean): String {
+        val normalized = ManagedPaths.normalize(path)
+        require(normalized == path) { "Noncanonical managed path" }
+        var prefix = ""
+        val segments = normalized.split('/')
+        segments.forEachIndexed { index, segment ->
+            prefix = if (prefix.isEmpty()) segment else "$prefix/$segment"
+            val key = portable(prefix)
+            require(portablePaths[key].let { it == null || it == prefix }) {
+                "Portable managed path collision"
+            }
+            portablePaths[key] = prefix
+            if (index < segments.lastIndex || directory) {
+                require(key !in portableFiles) {
+                    "Portable managed ancestor collision"
+                }
+                portableDirectories.add(key)
+            } else {
+                require(key !in portableDirectories && portableFiles.add(key)) {
+                    "Portable managed ancestor or duplicate file collision"
+                }
+            }
+            require(portableDirectories.size + portableFiles.size <= ArchiveLimits.MAX_ENTRIES) {
+                "Managed namespace entry limit exceeded"
+            }
+        }
+        return normalized
+    }
+
+    private fun portable(path: String) =
+        Normalizer.normalize(path, Normalizer.Form.NFC)
+            .uppercase(Locale.ROOT)
+            .lowercase(Locale.ROOT)
+}
+
+/** Bounds decoded TAR bytes, including headers, padding, metadata, and end blocks. */
+internal class BoundedTarInput(input: InputStream) : FilterInputStream(input) {
+    private var count = 0L
+
+    private fun add(size: Int) {
+        if (size > 0) {
+            count += size
+            require(count <= ArchiveLimits.MAX_TAR_STREAM_BYTES) {
+                "Decoded TAR stream exceeds limit"
+            }
+        }
+    }
+
+    override fun read(): Int = `in`.read().also { add(if (it < 0) 0 else 1) }
+
+    override fun read(buffer: ByteArray, offset: Int, length: Int): Int =
+        `in`.read(buffer, offset, length).also(::add)
 }
 
 /** Strict policy over the existing TAR decoder and Android's ZIP decoder. */
@@ -46,7 +117,7 @@ internal object StrictArchive {
         } else {
             archive.inputStream().buffered().use { input ->
                 val decoded = if (magic.size >= 2 && magic[0] == 0x1f.toByte() && magic[1] == 0x8b.toByte()) GZIPInputStream(input) else BrotliInputStream(input)
-                TarArchiveInputStream(BoundedInput(decoded)).use { tar ->
+                TarArchiveInputStream(BoundedTarInput(decoded)).use { tar ->
                     while (true) {
                         val entry = tar.getNextEntry() ?: break
                         require(entry.typeFlag == '5' || entry.isFile) { "Archive links and special entries are forbidden" }
@@ -61,27 +132,22 @@ internal object StrictArchive {
         return writer.files.toSet()
     }
 
-    private class BoundedInput(input: InputStream) : FilterInputStream(input) {
-        private var count = 0L
-        private fun add(n: Int) { if (n > 0) { count += n; require(count <= ArchiveLimits.MAX_EXTRACTED_BYTES) { "Decoded archive exceeds limit" } } }
-        override fun read(): Int = `in`.read().also { add(if (it < 0) 0 else 1) }
-        override fun read(buffer: ByteArray, offset: Int, length: Int): Int = `in`.read(buffer, offset, length).also { add(it) }
-    }
-
     private class Writer(private val root: File) {
         private val entries = mutableSetOf<String>()
+        private val namespace = ManagedPathNamespace()
         val files = mutableSetOf<String>()
         private var bytes = 0L
-        private fun destination(name: String): File {
+        private fun destination(name: String, directory: Boolean): File {
             if (Thread.currentThread().isInterrupted) throw InterruptedIOException("Archive extraction interrupted")
             val normalized = ManagedPaths.normalize(name)
-            require(entries.size < ArchiveLimits.MAX_ENTRIES && entries.add(normalized)) { "Duplicate archive entry or entry limit exceeded" }
+            require(entries.add(normalized)) { "Duplicate archive entry" }
+            if (directory) namespace.directory(normalized) else namespace.file(normalized)
             return ManagedPaths.resolve(root, normalized)
         }
-        fun directory(name: String) { val target = destination(name); check(target.mkdirs() || target.isDirectory) { "Archive directory conflicts with a file" } }
+        fun directory(name: String) { val target = destination(name, true); check(target.mkdirs() || target.isDirectory) { "Archive directory conflicts with a file" } }
         fun file(name: String, expectedSize: Long, input: InputStream, expectedCrc: Long = -1) {
             require(expectedSize in 0..ArchiveLimits.MAX_FILE_BYTES) { "Archive entry exceeds size limit" }
-            val target = destination(name)
+            val target = destination(name, false)
             check(!target.exists()) { "Archive entry conflicts with an existing path" }
             check(target.parentFile!!.mkdirs() || target.parentFile!!.isDirectory) { "Cannot create archive parent" }
             var count = 0L

@@ -33,6 +33,59 @@ struct LynxStoredHighWater: Codable {
     let hash: String
     var policy: LynxPolicyHighWater { .init(generation: generation, catalogHash: hash) }
 }
+struct LynxStoredCatalogAcceptance: Codable {
+    let guardData: Data
+    let explicitScopeSwitch: Bool
+    var policyGuard: LynxPolicyGuard {
+        get throws {
+            guard let object = try JSONSerialization.jsonObject(with: guardData) as? [String: Any] else {
+                throw LynxArtifactError.invalid("Invalid native stored catalog acceptance")
+            }
+            return try LynxCatalogPolicy.parseGuard(object)
+        }
+    }
+    init(_ policyGuard: LynxPolicyGuard, explicitScopeSwitch: Bool) throws {
+        guardData = try JSONSerialization.data(withJSONObject: policyGuard.dictionary, options: [.sortedKeys])
+        self.explicitScopeSwitch = explicitScopeSwitch
+    }
+}
+struct LynxStoredLaunchTransition: Codable {
+    let kind: String
+    let fromReceipt: Data
+    let toReceipt: Data
+    var policy: LynxLaunchTransition {
+        get throws {
+            guard ["UPDATE_APPLIED", "RECOVERED", "UNCHANGED"].contains(kind),
+                  let fromObject = try JSONSerialization.jsonObject(with: fromReceipt) as? [String: Any],
+                  let toObject = try JSONSerialization.jsonObject(with: toReceipt) as? [String: Any] else {
+                throw LynxArtifactError.invalid("Invalid native launch transition")
+            }
+            let transition = LynxLaunchTransition(
+                kind: kind,
+                from: try LynxCatalogPolicy.parseReceipt(fromObject),
+                to: try LynxCatalogPolicy.parseReceipt(toObject)
+            )
+            let identityChanged = transition.from.bundleId != transition.to.bundleId
+                || transition.from.releaseId != transition.to.releaseId
+            guard identityChanged,
+                  kind != "UPDATE_APPLIED" || transition.from.bundleId != transition.to.bundleId,
+                  kind != "UNCHANGED" || (
+                    transition.from.bundleId == transition.to.bundleId
+                        && transition.from.releaseId != nil
+                        && transition.to.releaseId != nil
+                        && transition.from.releaseId != transition.to.releaseId
+                  ) else {
+                throw LynxArtifactError.invalid("Invalid native launch transition identity")
+            }
+            return transition
+        }
+    }
+    init(_ transition: LynxLaunchTransition) throws {
+        kind = transition.kind
+        fromReceipt = try JSONSerialization.data(withJSONObject: transition.from.dictionary, options: [.sortedKeys])
+        toReceipt = try JSONSerialization.data(withJSONObject: transition.to.dictionary, options: [.sortedKeys])
+    }
+}
 struct LynxControllerState: Codable {
     var revision = UUID().uuidString
     var selectionChannel: String?
@@ -42,9 +95,13 @@ struct LynxControllerState: Codable {
     var pending: LynxControllerPending?
     var unconfirmedReleaseIds: [String] = []
     var crashedBundleIds: [String] = []
-    var incompatibleArtifacts: Set<String> = []
+    // Oldest first. Persisting the admission order lets a full cache evict one
+    // entry without permanently denying future artifacts.
+    var incompatibleArtifacts: [String] = []
     var highWater: [String: LynxStoredHighWater] = [:]
     var catalogs: [String: Data] = [:]
+    var catalogAcceptances: [String: LynxStoredCatalogAcceptance]?
+    var launchTransition: LynxStoredLaunchTransition?
     var installedDigests: [String: String] = [:]
 }
 
@@ -52,13 +109,22 @@ struct LynxControllerState: Codable {
 // the previous selection and leaves at most a complete, unselected immutable tree.
 final class LynxControllerJournal {
     let file: URL
-    init(file: URL) { self.file = file }
+    private let synchronizeDirectory: (URL) throws -> Void
+    init(file: URL) {
+        self.file = file
+        synchronizeDirectory = Self.syncDirectory
+    }
+    init(file: URL, synchronizeDirectory: @escaping (URL) throws -> Void) {
+        self.file = file
+        self.synchronizeDirectory = synchronizeDirectory
+    }
     func load() throws -> LynxControllerState {
         guard FileManager.default.fileExists(atPath: file.path) else { return LynxControllerState() }
         let bytes = try StrictMetadataJSON.read(file, limit: 24 * 1024 * 1024)
         let state = try JSONDecoder().decode(LynxControllerState.self, from: bytes)
         guard state.unconfirmedReleaseIds.count <= 128, state.crashedBundleIds.count <= 10,
-              state.incompatibleArtifacts.count <= 128, state.highWater.count <= 32, state.catalogs.count <= 32 else {
+              state.incompatibleArtifacts.count <= 128, state.highWater.count <= 32, state.catalogs.count <= 32,
+              (state.catalogAcceptances?.count ?? 0) <= 32 else {
             throw LynxArtifactError.invalid("Native journal capacity invariant violated")
         }
         return state
@@ -71,7 +137,17 @@ final class LynxControllerJournal {
         let handle = try FileHandle(forWritingTo: temporary)
         try handle.synchronize(); try handle.close()
         guard rename(temporary.path, file.path) == 0 else { throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO) }
-        let descriptor = Darwin.open(file.deletingLastPathComponent().path, O_RDONLY)
+        // Rename is the commit point. Once it succeeds, throwing would leave the
+        // new disk state visible while the controller retains the old state.
+        do {
+            try synchronizeDirectory(file.deletingLastPathComponent())
+        } catch {
+            NSLog("[HotUpdaterLynx] Journal committed but directory sync failed: %@", error.localizedDescription)
+        }
+    }
+
+    private static func syncDirectory(_ directory: URL) throws {
+        let descriptor = Darwin.open(directory.path, O_RDONLY)
         guard descriptor >= 0 else { throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO) }
         defer { Darwin.close(descriptor) }
         guard fsync(descriptor) == 0 else { throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO) }

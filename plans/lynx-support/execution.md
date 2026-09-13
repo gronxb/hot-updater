@@ -1,9 +1,9 @@
 # Lynx implementation goal and execution ledger
 
-Status: resumed on 2026-09-13 with a replacement active goal. Read the current
-[handoff and completion plan](./handoff.md) first. The sections below preserve
-the September 11 execution history; their gate states and API descriptions are
-historical and require reconciliation with the subsequent Grok implementation.
+Status: active on 2026-09-13. The English PRD is finalized and Sol High
+implementation is in final adversarial review. Read the current
+[handoff and completion plan](./handoff.md) first. Historical G1/G2 observations
+below remain useful evidence but do not establish current acceptance.
 
 ## Goal
 
@@ -40,18 +40,23 @@ approved PRD.
 | Gate | State | Evidence needed |
 | --- | --- | --- |
 | G0: PRD review | Complete | Explicit user instruction to execute the PRD |
-| G1: Native feasibility | In progress | Six native combinations; bridge, resource, compatibility and startup/retry evidence; concrete contract decisions |
-| G2: Package and examples | Not complete | Real compiler outputs through the actual CLI archive path; package types/builds and scenario validation |
-| G3: OTA and recovery | Not complete | Every PRD acceptance scenario on the six unchanged native release binaries |
+| G1: Native feasibility | Native packages and hosts build; current device rerun pending | Retain current bridge/resource/startup receipts on both OSes |
+| G2: Package and examples | Implemented; aggregate validation pending | Final workspace checks and packaged consumer/deployment checks |
+| G3: OTA and recovery | Not complete | Green full agent job and every current six-cell receipt on unchanged native binaries |
 
 ## Coordination
 
 All agents must use this worktree explicitly. Native iOS, native Android and
 framework fixtures have separate ownership. Root package/lockfile changes,
 shared contracts, deployment integration and evidence reconciliation are owned
-by the primary agent. Internal spike APIs are provisional until G1 closes.
+by the primary agent. Historical spike APIs and placement probes are retained
+only as evidence and are not part of the production integration.
 
-## Evidence matrix
+Implementation and adversarial correction use GPT-5.6 Sol with High reasoning.
+The subagent that launches and waits for the full E2E job uses GPT-5.6 Sol with
+Low reasoning; it reports failures back to Sol High implementation owners.
+
+## Historical G1 evidence matrix
 
 | Framework | iOS | Android |
 | --- | --- | --- |
@@ -62,6 +67,78 @@ by the primary agent. Internal spike APIs are provisional until G1 closes.
 Record exact commands, binary/runtime identities, logs and results as work
 completes. A missing result remains unverified. Never replace this matrix with
 aggregate test counts that do not exercise its scenarios.
+
+## September 13 Sol High implementation checkpoint
+
+The current uncommitted worktree implements the consolidated PRD contracts:
+
+- `@hot-updater/lynx` targets the Lynx engine and has no React, Vue, or Octane
+  runtime dependency. A check authorizes the catalog and performs nonretained
+  native compatibility validation; installation prepares and consumes one exact
+  selection only when `update.updateBundle()` is called.
+- The public client omits manifest, filesystem install-identity, user,
+  event-listener, and init-time insights APIs that native cannot implement
+  authoritatively. Default `reload()` propagates native errors. A custom reload
+  is configured only with `setReloadBehavior("custom", handler)` and a required
+  handler; ignored reload-mode and process-restart values are not accepted.
+  `isUpdateDownloaded()` derives from native `nextSelection`, not a JS-local
+  installation latch.
+- Default reload resolves only after all managed runtimes and views have been
+  recreated and propagates any native or reconstruction failure. Channel reset
+  persists the default scope before recreating that full generation; the JS
+  snapshot is cleared in both the success and failure paths.
+- Native iOS and Android installers support full archives, raw and Brotli changed
+  files, actual BSDIFF application, verified unchanged-file reuse, bounded
+  extraction, cancellation, fallback, and durable atomic publication.
+- Build plugins now declare every artifact, portable final name,
+  `downloadCompression`, and `patchAssetPath`. Common packaging snapshots those
+  exact files without following symlinks or inferring an engine from filenames.
+  Older ambiguous manifests use complete-archive delivery. Shared bounds are
+  128 MiB per archive and artifact, 512 MiB expanded, 1 MiB per signed manifest,
+  and 16 KiB per Lynx sidecar. Artifact paths and fingerprint inputs use stable,
+  locale-independent ordering.
+- The provider-neutral database contract retains at most 24 ordered base patches
+  per target, replaces them atomically, and refuses Bundle deletion while a
+  Release or another Bundle's patch still references it.
+- Serialized `ArtifactInfo` is capped at 528,384 UTF-8 bytes. Changed-file URL
+  resolution uses ordered batches of at most 16 concurrent operations. The
+  artifact endpoint selects a usable bounded manifest response or verified
+  archive fallback, and it can omit corrupt optional patch rows without weakening
+  strict administrative Bundle hydration.
+- Archive writers normalize entry order and metadata. Promotion validates source
+  archive structure, bounds, manifest coverage, and hashes before repackaging.
+  Integration-owned fingerprint providers use bounded roots and stable source
+  ordering and fail when source identity changes during hashing.
+- Rollback cleanup retains shared content-addressed promotion assets. Replacing a
+  patch row retains the superseded patch storage object. Future cleanup requires
+  atomic proof of ownership and absence of references before deletion.
+- React Native/Hermes selection and default native fingerprinting are owned by
+  `@hot-updater/react-native`; bare and Rock consume that provider. Expo owns its
+  fingerprint discovery. The common CLI/server/storage paths remain
+  engine-neutral.
+- The optional Sparkling host owns the bridge, all managed resource loaders,
+  primary/secondary authority, startup observations, recovery, leases, and
+  same-process replacement of every managed runtime and view. Production
+  `SparklingGo` and Android `:app` sources contain configuration and packaged
+  host wiring only.
+- Separate nonproduction iOS and Android matrix targets expose the lifecycle
+  controls needed for strict six-cell evidence. The runner requires correlated
+  process, generation, context, attempt, release, resource, patch, and transition
+  events; it does not infer success from screen text or old logs.
+- The Lynx default suite contains 25 scenarios: the shared default list minus
+  only `metadata-v1-migration`. All delta, channel, fingerprint, stale-catalog,
+  recovery, and crash-history scenarios remain enabled. The delta rollback chain
+  requires real A-to-B and B-to-C forward patches and C-to-B and B-to-A reverse
+  patches; archive fallback is not accepted as patch evidence.
+
+Focused checks completed during this phase: 141 Lynx JS tests, 10 CLI promotion
+tests, 66 Android controller/installer tests, two Android Sparkling tests, 63
+Swift tests with 13 environment-dependent skips, 308 E2E unit tests, and 65
+matrix contract tests. The server's 442 focused tests passed before the final
+1.0.0 Supabase schema fold and require one final rerun. Both iOS schemes and
+both Android applications build in debug/release as applicable. These results do
+not close G2 or G3: full workspace checks, the current full-platform agent job,
+and the real six-cell device run remain pending.
 
 ## Execution observations
 

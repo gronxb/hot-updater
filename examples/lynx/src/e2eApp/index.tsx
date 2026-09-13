@@ -13,6 +13,13 @@ import {
   loadE2EDeployBundleAssets,
   maybeCrashForE2E,
 } from "./patchSurface";
+import {
+  applyForcedUpdate,
+  confirmRuntimeReady,
+  installCheckedUpdate,
+  readRuntimeSnapshot,
+  type RuntimeSnapshot,
+} from "./runtimeObservation";
 
 declare const __E2E_APP_BASE_URL__: string;
 declare const __E2E_RUNTIME_CONFIG_URL__: string;
@@ -32,6 +39,10 @@ type ScreenState = {
   channelActionResult: string;
   cohortActionResult: string;
   cohortInput: string | null;
+  currentBundleId: string | null;
+  currentReleaseId: string | null;
+  currentCohort: string | null;
+  crashHistoryCount: string | null;
   currentChannel: string | null;
   defaultChannel: string | null;
   channelSwitched: string | null;
@@ -84,11 +95,12 @@ async function resolveAppBaseURL(): Promise<string> {
 }
 
 const patchScreenState = async (patch: Partial<ScreenState>) => {
-  await fetch(screenStateURL, {
+  const response = await fetch(screenStateURL, {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify(patch),
   });
+  if (!response.ok) throw new Error(`Screen state HTTP ${response.status}`);
 };
 
 function App() {
@@ -106,6 +118,10 @@ function App() {
   const [launchStatus, setLaunchStatus] = useState(
     "Current Launch Status: null",
   );
+  const [runtimeSnapshot, setRuntimeSnapshot] =
+    useState<RuntimeSnapshot | null>(null);
+  const [snapshotError, setSnapshotError] = useState<string | null>(null);
+  const initialCohort = useRef<string | null>(null);
   const [currentScreen, setCurrentScreen] = useState<ScreenName>("Ready");
   navigateToTestId.current = (testID) => {
     const screen = TEST_ID_TO_SCREEN[testID];
@@ -138,83 +154,29 @@ function App() {
     strategy?: "appVersion" | "fingerprint";
   }) => {
     await setUpdateActionResult(`${actionLabel} -> checking`);
-    for (let attempt = 0; attempt < 3; attempt += 1) {
-      try {
-        const updateInfo = await HotUpdater.checkForUpdate({
+    try {
+      const result = await installCheckedUpdate(
+        HotUpdater,
+        {
           updateStrategy: strategy,
           requestTimeout: 5000,
           ...(channel ? { channel } : {}),
-        });
-        if (!updateInfo) {
-          if (scenarioMarker.includes("chain-")) {
-            await setUpdateActionResult(`${actionLabel} -> selected BUILTIN`);
-            return;
-          }
-          await setUpdateActionResult(`${actionLabel} -> no-update`);
-          return;
-        }
-        const installed = await updateInfo.updateBundle();
-        const appliedResult =
-          updateInfo.transitionKind === "ADOPT_RELEASE" &&
-          updateInfo.status === "UPDATE" &&
-          !scenarioMarker.includes("chain-")
-            ? `${actionLabel} -> adopted ID ${updateInfo.id}`
-            : updateInfo.transitionKind === "USE_EMBEDDED"
-              ? `${actionLabel} -> selected EMBEDDED ID ${updateInfo.id}`
-              : updateInfo.transitionKind === "USE_BUILTIN"
-                ? `${actionLabel} -> selected BUILTIN`
-                : `${actionLabel} -> installed ID ${updateInfo.id}`;
-        let stagingBundleId: string | null = updateInfo.id;
-        let stagingReleaseId: string | null = updateInfo.releaseId ?? null;
-        let stableBundleId: string | null = null;
-        let verificationPending: boolean | null = installed;
-        try {
-          const active = HotUpdater.getActiveUpdateState();
-          stagingBundleId = active.activeSelection?.bundleId ?? stagingBundleId;
-          stagingReleaseId =
-            active.activeSelection?.releaseId ?? stagingReleaseId;
-          stableBundleId = active.stableSelection?.bundleId ?? null;
-          verificationPending = active.verificationPending;
-        } catch {
-          // Native snapshot may not be readable until notifyAppReady.
-        }
-        await patchScreenState({
-          stagingBundleId,
-          stagingReleaseId,
-          stableBundleId,
-          verificationPending,
-        });
-        await setUpdateActionResult(
-          installed ? appliedResult : `${actionLabel} -> skipped`,
-        );
-        return;
-      } catch (error) {
-        const message =
-          error instanceof Error ? error.message : "Failed to install update";
-        const stale =
-          message.includes("Native revision changed") ||
-          message.includes("STALE_STATE") ||
-          message.includes("STALE_SELECTION") ||
-          message.includes("HTTP 499") ||
-          message.includes("timed out");
-        if (stale && attempt < 2) {
-          await new Promise((resolve) => setTimeout(resolve, 200));
-          continue;
-        }
-        if (message.includes("HTTP 499") || message.includes("timed out")) {
-          await setUpdateActionResult(`${actionLabel} -> no-update`);
-          return;
-        }
-        await setUpdateActionResult(`${actionLabel} -> error ${message}`);
-        return;
-      }
+        },
+        actionLabel,
+      );
+      await publishRuntimeSnapshot();
+      await setUpdateActionResult(result);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      await setUpdateActionResult(`${actionLabel} -> error ${message}`);
     }
   };
 
   const applyCohortValue = async (nextCohort: string) => {
-    await Promise.resolve(HotUpdater.setCohort(nextCohort));
+    await HotUpdater.setCohort(nextCohort);
     const applied = HotUpdater.getCohort();
     setCohortInputState(applied);
+    await publishRuntimeSnapshot();
     await patchScreenState({ cohortInput: applied });
     await setCohortActionResult(`set -> ${applied}`);
   };
@@ -238,29 +200,33 @@ function App() {
     },
     "action-reset-runtime-channel": async () => {
       const didReset = await HotUpdater.resetChannel();
+      await publishRuntimeSnapshot();
       await setChannelActionResult(`reset -> ${String(didReset)}`);
     },
-    "action-apply-cohort-input": () =>
-      applyCohortValue(HotUpdater.getCohort() || cohortInput),
+    "action-apply-cohort-input": () => applyCohortValue(cohortInput),
     "action-set-cohort-qa": () => applyCohortValue("qa"),
     "action-restore-initial-cohort": async () => {
-      await applyCohortValue("1");
+      if (initialCohort.current === null)
+        throw new Error("Initial cohort is unavailable");
+      await applyCohortValue(initialCohort.current);
       await setCohortActionResult(`restore -> ${HotUpdater.getCohort()}`);
     },
     "action-clear-crash-history": async () => {
-      HotUpdater.clearCrashHistory();
+      await HotUpdater.clearCrashHistory();
+      await publishRuntimeSnapshot();
     },
     "action-reload-app": async () => {
       await HotUpdater.reload();
     },
     "action-refresh-runtime-snapshot": async () => {
-      await HotUpdater.notifyAppReady();
+      await publishRuntimeSnapshot();
     },
     "action-capture-current-channel-update": async () => {
       const updateInfo = await HotUpdater.checkForUpdate({
         updateStrategy: "appVersion",
       });
       capturedUpdate.current = updateInfo;
+      await publishRuntimeSnapshot();
       await setUpdateActionResult(
         updateInfo
           ? `captured-update -> Release ${updateInfo.releaseId ?? "legacy"}`
@@ -274,6 +240,7 @@ function App() {
         return;
       }
       const installed = await updateInfo.updateBundle();
+      await publishRuntimeSnapshot();
       await setUpdateActionResult(
         installed
           ? `captured-update -> installed Release ${updateInfo.releaseId ?? "legacy"}`
@@ -282,7 +249,6 @@ function App() {
     },
     "cohort-input": async (text) => {
       if (text === undefined) return;
-      await Promise.resolve(HotUpdater.setCohort(text));
       setCohortInputState(text);
       await patchScreenState({ cohortInput: text });
     },
@@ -292,52 +258,90 @@ function App() {
       await patchScreenState({ runtimeChannelInput: text });
     },
   };
-  actionHandlers.current = actions;
-  ensurePendingActionPoller();
-  void patchScreenState({ runtimeScenarioMarker: scenarioMarker });
+  const reportActionError = async (testID: string, error: unknown) => {
+    const message = error instanceof Error ? error.message : String(error);
+    if (testID.includes("cohort")) {
+      await setCohortActionResult(`error ${message}`);
+    } else if (testID === "action-reset-runtime-channel") {
+      await setChannelActionResult(`reset -> error ${message}`);
+    } else {
+      await setUpdateActionResult(`error ${message}`);
+    }
+  };
+  const runAction = async (testID: string, text?: string) => {
+    try {
+      await actions[testID]?.(text);
+    } catch (error) {
+      await reportActionError(testID, error);
+    }
+  };
+  actionHandlers.current = Object.fromEntries(
+    Object.keys(actions).map((testID) => [
+      testID,
+      (text?: string) => runAction(testID, text),
+    ]),
+  );
 
   const publishRuntimeSnapshot = async (launchStatusValue?: string) => {
-    const patch: Partial<ScreenState> = {
-      runtimeScenarioMarker: scenarioMarker,
-    };
-    if (launchStatusValue) {
-      patch.launchStatus = launchStatusValue;
-    }
     try {
-      const active = HotUpdater.getActiveUpdateState();
-      patch.stagingBundleId = active.activeSelection?.bundleId ?? null;
-      patch.stagingReleaseId = active.activeSelection?.releaseId ?? null;
-      patch.stableBundleId = active.stableSelection?.bundleId ?? null;
-      patch.stableReleaseId = active.stableSelection?.releaseId ?? null;
-      patch.verificationPending = active.verificationPending;
-      patch.currentChannel = HotUpdater.getChannel();
-      patch.defaultChannel = HotUpdater.getDefaultChannel();
-      patch.channelSwitched = String(HotUpdater.isChannelSwitched());
-    } catch {
-      // Native snapshot may not be readable until notifyAppReady.
+      const snapshot = await readRuntimeSnapshot(HotUpdater);
+      setRuntimeSnapshot(snapshot);
+      setSnapshotError(null);
+      if (initialCohort.current === null)
+        initialCohort.current = snapshot.currentCohort;
+      await patchScreenState({
+        ...snapshot,
+        runtimeScenarioMarker: scenarioMarker,
+        ...(launchStatusValue ? { launchStatus: launchStatusValue } : {}),
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      setRuntimeSnapshot(null);
+      setSnapshotError(message);
+      const status = `Current Launch Status: ERROR ${message}`;
+      setLaunchStatus(status);
+      await patchScreenState({
+        currentBundleId: null,
+        currentReleaseId: null,
+        currentCohort: null,
+        crashHistoryCount: null,
+        currentChannel: null,
+        defaultChannel: null,
+        channelSwitched: null,
+        stagingBundleId: null,
+        stagingReleaseId: null,
+        stableBundleId: null,
+        stableReleaseId: null,
+        verificationPending: null,
+        launchStatus: status,
+      });
+      throw error;
     }
-    await patchScreenState(patch);
   };
 
   useEffect(() => {
-    void HotUpdater.notifyAppReady()
-      .then((result) => {
-        const status = `Current Launch Status: ${result.status}`;
-        setLaunchStatus(status);
-        void publishRuntimeSnapshot(status);
-      })
-      .catch((error) => {
+    ensurePendingActionPoller();
+    void (async () => {
+      try {
+        await confirmRuntimeReady(HotUpdater, async (status) => {
+          setLaunchStatus(status);
+          await publishRuntimeSnapshot(status);
+        });
+      } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         const status = `Current Launch Status: ERROR ${message}`;
         setLaunchStatus(status);
-        void publishRuntimeSnapshot(status);
-      });
+        await patchScreenState({ launchStatus: status });
+      }
+    })();
   }, []);
 
   useEffect(() => {
     let active = true;
     const timer = setTimeout(() => {
-      if (active) void applyForceUpdateIfNeeded();
+      void applyForcedUpdate(HotUpdater, () => !active || handledScenarioAction)
+        .then(() => (active ? publishRuntimeSnapshot() : undefined))
+        .catch((error) => reportActionError("force-update", error));
     }, 2500);
     return () => {
       active = false;
@@ -345,58 +349,16 @@ function App() {
     };
   }, []);
 
-  const activeSelection = (() => {
-    try {
-      return HotUpdater.getActiveUpdateState();
-    } catch {
-      return null;
-    }
-  })();
-  const crashHistoryCount = (() => {
-    try {
-      return String(HotUpdater.getCrashHistory().length);
-    } catch {
-      return "0";
-    }
-  })();
-  const currentChannel = (() => {
-    try {
-      return HotUpdater.getChannel();
-    } catch {
-      return "";
-    }
-  })();
-  const defaultChannel = (() => {
-    try {
-      return HotUpdater.getDefaultChannel();
-    } catch {
-      return "";
-    }
-  })();
-  const channelSwitched = (() => {
-    try {
-      return String(HotUpdater.isChannelSwitched());
-    } catch {
-      return "false";
-    }
-  })();
-  const currentCohort = (() => {
-    try {
-      return HotUpdater.getCohort();
-    } catch {
-      return cohortInput;
-    }
-  })();
-  const bundleId =
-    activeSelection?.activeSelection?.bundleId ??
-    (() => {
-      try {
-        return HotUpdater.getBundleId();
-      } catch {
-        return "";
-      }
-    })();
-  const releaseId = activeSelection?.activeSelection?.releaseId ?? "";
+  const unavailable = snapshotError ? `ERROR ${snapshotError}` : "unavailable";
+  const bundleId = runtimeSnapshot?.currentBundleId ?? unavailable;
+  const releaseId = runtimeSnapshot
+    ? (runtimeSnapshot.currentReleaseId ?? "")
+    : unavailable;
+  const currentChannel = runtimeSnapshot?.currentChannel ?? unavailable;
+  const defaultChannel = runtimeSnapshot?.defaultChannel ?? unavailable;
+  const channelSwitched = runtimeSnapshot?.channelSwitched ?? unavailable;
+  const currentCohort = runtimeSnapshot?.currentCohort ?? unavailable;
+  const crashHistoryCount = runtimeSnapshot?.crashHistoryCount ?? unavailable;
 
   const valueScreen = (testID: string, value: string) => (
     <text id={testID} style={styles.resultText}>
@@ -407,7 +369,7 @@ function App() {
     <view
       id={testID}
       style={styles.button}
-      bindtap={() => void actions[testID]?.()}
+      bindtap={() => void runAction(testID)}
     >
       <text style={styles.buttonText}>{title}</text>
     </view>
@@ -455,7 +417,10 @@ function App() {
     ) : currentScreen === "RuntimeCurrentCohort" ? (
       valueScreen("runtime-current-cohort", currentCohort)
     ) : currentScreen === "RuntimeInitialCohort" ? (
-      valueScreen("runtime-initial-cohort", "1")
+      valueScreen(
+        "runtime-initial-cohort",
+        initialCohort.current ?? unavailable,
+      )
     ) : currentScreen === "CrashHistoryCount" ? (
       valueScreen("crash-history-count", crashHistoryCount)
     ) : currentScreen === "CohortInput" ? (
@@ -518,57 +483,6 @@ const navigateToTestId: { current: (testID: string) => void } = {
 let pollerStarted = false;
 let takingPendingAction = false;
 let handledScenarioAction = false;
-
-const isAlreadyRunningForceUpdate = async (updateInfo: {
-  id: string;
-  bundleId: string;
-}) => {
-  try {
-    const running = (await HotUpdater.getLaunchInfo()).running;
-    return (
-      running.bundleId === updateInfo.bundleId ||
-      running.bundleId === updateInfo.id ||
-      running.releaseId === updateInfo.id ||
-      running.releaseId === updateInfo.bundleId
-    );
-  } catch {
-    return false;
-  }
-};
-
-const applyForceUpdateIfNeeded = async () => {
-  for (let attempt = 0; attempt < 5; attempt += 1) {
-    if (handledScenarioAction) return;
-    try {
-      const resolved = await resolveAppBaseURL();
-      HotUpdater.init({
-        insights: true,
-        baseURL: resolved,
-        requestTimeout: 15000,
-      });
-      const updateInfo = await HotUpdater.checkForUpdate({
-        updateStrategy: "appVersion",
-        requestTimeout: 5000,
-      });
-      if (handledScenarioAction) return;
-      if (updateInfo?.shouldForceUpdate) {
-        if (!(await isAlreadyRunningForceUpdate(updateInfo))) {
-          await updateInfo.updateBundle().catch(() => false);
-        }
-        void HotUpdater.reload();
-        return;
-      }
-      const launch = await HotUpdater.getLaunchInfo().catch(() => null);
-      if (launch?.next && launch.next.bundleId !== launch.running.bundleId) {
-        void HotUpdater.reload();
-        return;
-      }
-    } catch {
-      // Catalog or native may not be ready yet; retry.
-    }
-    await new Promise((resolve) => setTimeout(resolve, 400));
-  }
-};
 
 const fetchJsonWithTimeout = async (
   url: string,
@@ -633,45 +547,21 @@ const ensurePendingActionPoller = () => {
   tick();
 };
 
-try {
-  loadE2EDeployBundleAssets();
-} catch {
-  // Overlay must keep polling even if Metro asset requires throw.
-}
+loadE2EDeployBundleAssets();
 maybeCrashForE2E();
 
-let started = false;
 const startE2eApp = (baseURL: string) => {
   HotUpdater.init({
-    insights: true,
     baseURL,
     requestTimeout: 15000,
   });
-  if (!started) {
-    started = true;
-  }
-  const confirmReady = () => {
-    void HotUpdater.notifyAppReady().catch(() => undefined);
-  };
-  confirmReady();
-  setTimeout(confirmReady, 500);
-  setTimeout(confirmReady, 2000);
-  setTimeout(confirmReady, 5000);
-  try {
-    root.render(<App />);
-  } catch {
-    // Poller must keep running even if the Lynx tree fails to mount.
-  }
-  setTimeout(() => {
-    void applyForceUpdateIfNeeded();
-  }, 2500);
+  root.render(<App />);
 };
 
 startE2eApp(appBaseURL);
 void resolveAppBaseURL().then((baseURL) => {
   if (baseURL === appBaseURL) return;
   HotUpdater.init({
-    insights: true,
     baseURL,
     requestTimeout: 15000,
   });

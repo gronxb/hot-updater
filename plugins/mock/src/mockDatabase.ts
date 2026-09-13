@@ -2,6 +2,7 @@ import {
   createDatabasePlugin,
   compareInsightsText,
   type BundleEventRow,
+  MAX_BUNDLE_PATCHES,
 } from "@hot-updater/plugin-core";
 import {
   latestInsightsWhere,
@@ -111,6 +112,57 @@ export const mockDatabase = (config: MockDatabaseConfig) => {
           }
           data.channels.delete(id);
           return { deleted: true };
+        }),
+      publishBundlePatch: (input) =>
+        mutate(async () => {
+          if (input.row.bundle_id === input.row.base_bundle_id) {
+            throw new Error(
+              "A bundle patch cannot reference its owner as base",
+            );
+          }
+          if (
+            !data.bundles.has(input.row.bundle_id) ||
+            !data.bundles.has(input.row.base_bundle_id)
+          ) {
+            return { published: false as const, reason: "not_found" as const };
+          }
+          const existing = [...data.bundlePatches.values()]
+            .filter(({ bundle_id }) => bundle_id === input.row.bundle_id)
+            .sort(
+              (left, right) =>
+                left.order_index - right.order_index ||
+                left.id.localeCompare(right.id),
+            );
+          const previous =
+            existing.find(({ id }) => id === input.row.id) ?? null;
+          if (previous === null && existing.length >= MAX_BUNDLE_PATCHES) {
+            return {
+              published: false as const,
+              reason: "limit_exceeded" as const,
+            };
+          }
+          const remaining = existing.filter(({ id }) => id !== input.row.id);
+          const ordered =
+            input.position === "primary"
+              ? [input.row, ...remaining]
+              : [...remaining, input.row];
+          const patches = ordered.map((row, order_index) => ({
+            ...row,
+            order_index,
+          }));
+          for (const [id, patch] of data.bundlePatches) {
+            if (patch.bundle_id === input.row.bundle_id) {
+              data.bundlePatches.delete(id);
+            }
+          }
+          for (const patch of patches) {
+            data.bundlePatches.set(patch.id, patch);
+          }
+          return structuredClone({
+            patches,
+            previous,
+            published: true as const,
+          });
         }),
       transaction: (callback) =>
         mutate(async () => {

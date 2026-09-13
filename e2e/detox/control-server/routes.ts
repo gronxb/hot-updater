@@ -35,6 +35,7 @@ import {
   handleWaitForMetadata,
   handleWriteSummary,
   startBootstrapJob,
+  startCreateBundleDiffJob,
   startCreateRepublishedReleaseJob,
   startDeployBundleJob,
   startPatchReleaseJob,
@@ -300,6 +301,17 @@ app.post("/e2e/jobs/deploy-bundle", async (c) => {
   });
 });
 
+app.post("/e2e/jobs/create-bundle-diff", async (c) => {
+  const payload = (await c.req.json()) as {
+    baseBundleId?: string;
+    bundleId?: string;
+  };
+  if (!payload.baseBundleId || !payload.bundleId) {
+    return c.json({ error: "baseBundleId and bundleId are required" }, 400);
+  }
+  return c.json({ jobId: startCreateBundleDiffJob(payload) });
+});
+
 app.post("/e2e/jobs/create-republished-release", async (c) => {
   const payload = (await c.req.json()) as {
     bundleId?: string;
@@ -490,6 +502,7 @@ app.post("/e2e/assert-bsdiff-patch-applied", async (c) => {
   const payload = (await c.req.json()) as {
     assetPath?: string;
     baseBundleId?: string;
+    bundleId?: string;
   };
 
   if (!payload.baseBundleId) {
@@ -500,6 +513,7 @@ app.post("/e2e/assert-bsdiff-patch-applied", async (c) => {
     await handleAssertBsdiffPatchApplied({
       assetPath: payload.assetPath || "index.ios.bundle",
       baseBundleId: payload.baseBundleId,
+      bundleId: payload.bundleId,
     }),
   );
 });

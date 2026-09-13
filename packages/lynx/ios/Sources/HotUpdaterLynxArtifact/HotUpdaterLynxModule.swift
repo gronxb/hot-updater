@@ -1,11 +1,43 @@
 #if canImport(Lynx)
+import CoreFoundation
 import Foundation
 import Lynx
 
 public final class HotUpdaterLynxModuleContext {
     public let controller: LynxController
     public let launch: LynxLaunchContext
-    public init(controller: LynxController, launch: LynxLaunchContext) { self.controller = controller; self.launch = launch }
+    public let reload: (((@escaping (Result<Void, Error>) -> Void)) -> Void)?
+    public let didConfirm: ((LynxConfirmationResult) -> Void)?
+    private let bridgeReplies = LynxBridgeReplies()
+    public init(controller: LynxController, launch: LynxLaunchContext,
+                reload: (((@escaping (Result<Void, Error>) -> Void)) -> Void)? = nil,
+                didConfirm: ((LynxConfirmationResult) -> Void)? = nil) {
+        self.controller = controller
+        self.launch = launch
+        self.reload = reload
+        self.didConfirm = didConfirm
+    }
+
+    func beginReply(
+        _ cancellation: @escaping (Error) -> Void
+    ) -> LynxBridgeReplies.Ticket? {
+        bridgeReplies.register(cancellation)
+    }
+
+    func finishReply(
+        _ ticket: LynxBridgeReplies.Ticket,
+        _ completion: () -> Void
+    ) {
+        bridgeReplies.settle(ticket, completion)
+    }
+
+    func claimReply(_ ticket: LynxBridgeReplies.Ticket) -> Bool {
+        bridgeReplies.claim(ticket)
+    }
+
+    public func invalidate() {
+        bridgeReplies.close()
+    }
 }
 
 /// Register per LynxConfig using a native-created HotUpdaterLynxModuleContext.
@@ -14,10 +46,10 @@ public final class HotUpdaterLynxModuleContext {
     public static var methodLookup: [String: String] {
         ["getState": NSStringFromSelector(#selector(getState(_:))),
          "acceptCatalog": NSStringFromSelector(#selector(acceptCatalog(_:callback:))),
+         "validateSelection": NSStringFromSelector(#selector(validateSelection(_:callback:))),
          "prepareSelection": NSStringFromSelector(#selector(prepareSelection(_:callback:))),
          "stageSelection": NSStringFromSelector(#selector(stageSelection(_:callback:))),
          "setCohort": NSStringFromSelector(#selector(setCohort(_:callback:))),
-         "setChannel": NSStringFromSelector(#selector(setChannel(_:callback:))),
          "resetChannel": NSStringFromSelector(#selector(resetChannel(_:))),
          "clearCrashHistory": NSStringFromSelector(#selector(clearCrashHistory(_:))),
          "notifyAppReady": NSStringFromSelector(#selector(notifyAppReady(_:))),
@@ -41,6 +73,28 @@ public final class HotUpdaterLynxModuleContext {
         else { code = "NATIVE_ERROR" }
         callback?(["ok": false, "error": ["code": code, "message": error.localizedDescription]])
     }
+    private func selectionParameters(_ params: [String: Any]) throws -> (
+        guardValue: LynxPolicyGuard,
+        receipt: LynxPolicyReceipt,
+        artifact: LynxArtifactRequest?
+    ) {
+        guard let guardJSON = params["guard"] as? [String: Any],
+              let selection = params["selection"] as? [String: Any] else {
+            throw LynxArtifactError.invalid("Invalid selection parameters")
+        }
+        let guardValue = try LynxCatalogPolicy.parseGuard(guardJSON)
+        let receipt = try LynxCatalogPolicy.parseReceipt(selection)
+        let artifact: LynxArtifactRequest?
+        let rawArtifact = params["artifact"]
+        if rawArtifact == nil || rawArtifact is NSNull { artifact = nil }
+        else if let object = rawArtifact as? [String: Any] {
+            artifact = try JSONDecoder().decode(
+                LynxArtifactRequest.self,
+                from: JSONSerialization.data(withJSONObject: object)
+            )
+        } else { throw LynxArtifactError.invalid("Missing artifact parameter") }
+        return (guardValue, receipt, artifact)
+    }
     @objc public func getState(_ callback: LynxCallbackBlock?) {
         do { let value = try bound(); callback?(["ok": true, "data": try value.controller.getState(value.launch)]) }
         catch { failure(error, callback) }
@@ -48,28 +102,74 @@ public final class HotUpdaterLynxModuleContext {
     @objc public func acceptCatalog(_ params: [String: Any], callback: LynxCallbackBlock?) {
         do {
             let value = try bound()
-            guard let catalog = params["catalog"] as? [String: Any], let revision = params["expectedRevision"] as? String,
-                  let hash = params["selectionContextHash"] as? String else { throw LynxArtifactError.invalid("Invalid catalog parameters") }
-            let guardValue = try value.controller.acceptCatalog(JSONSerialization.data(withJSONObject: catalog), expectedRevision: revision, contextHash: hash, context: value.launch)
+            guard let catalog = params["catalog"] as? [String: Any],
+                  let revision = params["expectedRevision"] as? String,
+                  let hash = params["selectionContextHash"] as? String,
+                  let targetChannel = params["targetChannel"] as? String,
+                  let switchNumber = params["explicitScopeSwitch"] as? NSNumber,
+                  CFGetTypeID(switchNumber) == CFBooleanGetTypeID() else {
+                throw LynxArtifactError.invalid("Invalid catalog parameters")
+            }
+            let guardValue = try value.controller.acceptCatalog(
+                JSONSerialization.data(withJSONObject: catalog),
+                expectedRevision: revision,
+                contextHash: hash,
+                targetChannel: targetChannel,
+                explicitScopeSwitch: switchNumber.boolValue,
+                context: value.launch
+            )
             callback?(["ok": true, "data": guardValue.dictionary])
+        } catch { failure(error, callback) }
+    }
+    @objc public func validateSelection(_ params: [String: Any], callback: LynxCallbackBlock?) {
+        do {
+            let value = try bound()
+            let parsed = try selectionParameters(params)
+            guard let reply = value.beginReply({ self.failure($0, callback) }) else {
+                return
+            }
+            Task {
+                do {
+                    try await value.controller.validateSelection(
+                        guard: parsed.guardValue,
+                        receipt: parsed.receipt,
+                        artifact: parsed.artifact,
+                        context: value.launch
+                    )
+                    value.finishReply(reply) {
+                        callback?(["ok": true, "data": ["validated": true]])
+                    }
+                } catch {
+                    value.finishReply(reply) {
+                        self.failure(error, callback)
+                    }
+                }
+            }
         } catch { failure(error, callback) }
     }
     @objc public func prepareSelection(_ params: [String: Any], callback: LynxCallbackBlock?) {
         do {
             let value = try bound()
-            guard let guardJSON = params["guard"] as? [String: Any], let selection = params["selection"] as? [String: Any] else { throw LynxArtifactError.invalid("Invalid selection parameters") }
-            let guardValue = try LynxCatalogPolicy.parseGuard(guardJSON)
-            let receipt = try LynxCatalogPolicy.parseReceipt(selection)
-            let artifact: LynxArtifactRequest?
-            let rawArtifact = params["artifact"]
-            if rawArtifact == nil || rawArtifact is NSNull { artifact = nil }
-            else if let object = rawArtifact as? [String: Any] { artifact = try JSONDecoder().decode(LynxArtifactRequest.self, from: JSONSerialization.data(withJSONObject: object)) }
-            else { throw LynxArtifactError.invalid("Missing artifact parameter") }
+            let parsed = try selectionParameters(params)
+            guard let reply = value.beginReply({ self.failure($0, callback) }) else {
+                return
+            }
             Task {
                 do {
-                    let id = try await value.controller.prepareSelection(guard: guardValue, receipt: receipt, artifact: artifact, context: value.launch)
-                    callback?(["ok": true, "data": ["preparedId": id]])
-                } catch { self.failure(error, callback) }
+                    let id = try await value.controller.prepareSelection(
+                        guard: parsed.guardValue,
+                        receipt: parsed.receipt,
+                        artifact: parsed.artifact,
+                        context: value.launch
+                    )
+                    value.finishReply(reply) {
+                        callback?(["ok": true, "data": ["preparedId": id]])
+                    }
+                } catch {
+                    value.finishReply(reply) {
+                        self.failure(error, callback)
+                    }
+                }
             }
         } catch { failure(error, callback) }
     }
@@ -88,18 +188,32 @@ public final class HotUpdaterLynxModuleContext {
             callback?(["ok": true, "data": try value.controller.getState(value.launch)])
         } catch { failure(error, callback) }
     }
-    @objc public func setChannel(_ params: [String: Any], callback: LynxCallbackBlock?) {
-        do {
-            let value = try bound()
-            guard let channel = params["channel"] as? String else { throw LynxArtifactError.invalid("Missing channel") }
-            try value.controller.setChannel(channel, context: value.launch)
-            callback?(["ok": true, "data": try value.controller.getState(value.launch)])
-        } catch { failure(error, callback) }
-    }
     @objc public func resetChannel(_ callback: LynxCallbackBlock?) {
         do {
             let value = try bound()
-            callback?(["ok": true, "data": ["reset": try value.controller.resetChannel(value.launch)]])
+            guard value.launch.primary, let reload = value.reload else {
+                throw LynxArtifactError.invalid("The native host does not support managed Lynx generation reload")
+            }
+            guard let reply = value.beginReply({ self.failure($0, callback) }) else {
+                return
+            }
+            do {
+                let reset = try value.controller.resetChannel(value.launch)
+                DispatchQueue.main.async {
+                    guard value.claimReply(reply) else { return }
+                    let once = LynxOnceReply<Void> { result in
+                        switch result {
+                        case .success:
+                            callback?(["ok": true, "data": ["reset": reset]])
+                        case .failure(let error):
+                            self.failure(error, callback)
+                        }
+                    }
+                    reload(once.settle)
+                }
+            } catch {
+                value.finishReply(reply) { self.failure(error, callback) }
+            }
         } catch { failure(error, callback) }
     }
     @objc public func clearCrashHistory(_ callback: LynxCallbackBlock?) {
@@ -112,17 +226,43 @@ public final class HotUpdaterLynxModuleContext {
     @objc public func notifyAppReady(_ callback: LynxCallbackBlock?) {
         do {
             let value = try bound()
+            guard let reply = value.beginReply({ self.failure($0, callback) }) else {
+                return
+            }
             value.controller.notifyAppReady(value.launch) { result in
-                switch result {
-                case .success(let status): callback?(["ok": true, "data": ["status": status]])
-                case .failure(let error): self.failure(error, callback)
+                value.finishReply(reply) {
+                    switch result {
+                    case .success(let confirmation):
+                        value.didConfirm?(confirmation)
+                        callback?(["ok": true, "data": confirmation.dictionary])
+                    case .failure(let error): self.failure(error, callback)
+                    }
                 }
             }
         } catch { failure(error, callback) }
     }
     @objc public func reload(_ callback: LynxCallbackBlock?) {
-        callback?(["ok": true, "data": NSNull()])
-        DispatchQueue.main.async { exit(0) }
+        do {
+            let value = try bound()
+            guard value.launch.primary, let reload = value.reload else {
+                throw LynxArtifactError.invalid("The native host does not support managed Lynx generation reload")
+            }
+            guard let reply = value.beginReply({ self.failure($0, callback) }) else {
+                return
+            }
+            DispatchQueue.main.async {
+                guard value.claimReply(reply) else { return }
+                let once = LynxOnceReply<Void> { result in
+                    switch result {
+                    case .success:
+                        callback?(["ok": true, "data": NSNull()])
+                    case .failure(let error):
+                        self.failure(error, callback)
+                    }
+                }
+                reload(once.settle)
+            }
+        } catch { failure(error, callback) }
     }
 }
 #endif

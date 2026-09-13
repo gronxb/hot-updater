@@ -216,6 +216,124 @@ describe("Supabase v1 schema", () => {
     ]);
   });
 
+  it("rejects a self-referencing patch through the service RPC", async () => {
+    const database = new PGlite();
+    const bundleId = "00000000-0000-0000-0000-000000000001";
+    try {
+      await database.exec(
+        "CREATE ROLE anon; CREATE ROLE authenticated; CREATE ROLE service_role;",
+      );
+      for (const migration of await readMigrations())
+        await database.exec(migration.sql);
+      await database.query(
+        `INSERT INTO public.hot_updater_v1_bundles (
+          id, platform, file_hash, storage_uri, archive_byte_size, metadata
+        ) VALUES ($1, 'ios', 'hash', 'storage://bundle', 1, '{}'::jsonb)`,
+        [bundleId],
+      );
+      const row = {
+        base_bundle_id: bundleId,
+        base_file_hash: "a".repeat(64),
+        bundle_id: bundleId,
+        byte_size: 1,
+        id: `${bundleId}:${bundleId}`,
+        patch_file_hash: "b".repeat(64),
+        patch_storage_uri: "storage://patch",
+      };
+
+      await expect(
+        database.query(
+          "SELECT public.hot_updater_v1_publish_bundle_patch($1::jsonb)",
+          [JSON.stringify({ position: "primary", row })],
+        ),
+      ).rejects.toThrow("bundle patch id is invalid");
+      await expect(
+        database.query<{ count: number }>(
+          "SELECT COUNT(*)::integer AS count FROM public.hot_updater_v1_bundle_patches",
+        ),
+      ).resolves.toMatchObject({ rows: [{ count: 0 }] });
+    } finally {
+      await database.close();
+    }
+  });
+
+  it("rolls back an oversized patch commit and protects referenced bases", async () => {
+    const database = new PGlite();
+    const ownerId = "00000000-0000-0000-0000-000000000100";
+    const baseIds = Array.from(
+      { length: 25 },
+      (_, index) =>
+        `00000000-0000-0000-0000-${String(index + 101).padStart(12, "0")}`,
+    );
+    const patch = (baseId: string, index: number) => ({
+      base_bundle_id: baseId,
+      base_file_hash: index.toString(16).padStart(64, "a"),
+      bundle_id: ownerId,
+      byte_size: 1,
+      id: `${ownerId}:${baseId}`,
+      order_index: index,
+      patch_file_hash: index.toString(16).padStart(64, "b"),
+      patch_storage_uri: `storage://patch-${index}`,
+    });
+    try {
+      await database.exec(
+        "CREATE ROLE anon; CREATE ROLE authenticated; CREATE ROLE service_role;",
+      );
+      for (const migration of await readMigrations())
+        await database.exec(migration.sql);
+      for (const id of [ownerId, ...baseIds]) {
+        await database.query(
+          `INSERT INTO public.hot_updater_v1_bundles (
+            id, platform, file_hash, storage_uri, archive_byte_size, metadata
+          ) VALUES ($1, 'ios', 'hash', 'storage://bundle', 1, '{}'::jsonb)`,
+          [id],
+        );
+      }
+      const commit = (changes: readonly object[]) =>
+        database.query("SELECT public.hot_updater_v1_commit($1::jsonb)", [
+          JSON.stringify({ changes }),
+        ]);
+      const oversizedChanges = baseIds.map((baseId, index) => ({
+        model: "bundlePatches",
+        operation: "insert",
+        row: patch(baseId, index),
+      }));
+
+      await expect(commit(oversizedChanges)).rejects.toThrow(
+        "bundle patch limit exceeded",
+      );
+      await expect(
+        database.query<{ count: number }>(
+          "SELECT COUNT(*)::integer AS count FROM public.hot_updater_v1_bundle_patches",
+        ),
+      ).resolves.toMatchObject({ rows: [{ count: 0 }] });
+
+      await expect(commit([oversizedChanges[0]!])).resolves.toMatchObject({
+        rows: [{ hot_updater_v1_commit: { committed: true } }],
+      });
+      await expect(
+        commit([
+          {
+            model: "bundles",
+            operation: "delete",
+            where: { id: baseIds[0] },
+          },
+        ]),
+      ).resolves.toMatchObject({
+        rows: [
+          {
+            hot_updater_v1_commit: {
+              committed: false,
+              conflict: { changeIndex: 0, reason: "referenced" },
+            },
+          },
+        ],
+      });
+    } finally {
+      await database.close();
+    }
+  });
+
   it("creates namespaced tables, RLS, and functions", async () => {
     const sql = await fs.readFile(migrationPath, "utf8");
 

@@ -41,7 +41,7 @@ export const styles = {
     fontWeight: "700" as const,
     marginBottom: "12px",
   },
-};
+} as const;
 
 export type ScreenName =
   | "Ready"

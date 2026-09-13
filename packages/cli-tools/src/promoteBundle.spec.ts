@@ -7,7 +7,12 @@ import path from "node:path";
 import { brotliDecompressSync } from "node:zlib";
 
 import type { Bundle } from "@hot-updater/plugin-core";
-import { createStoragePlugin } from "@hot-updater/plugin-core";
+import {
+  createStoragePlugin,
+  MAX_BUNDLE_ARCHIVE_BYTES,
+  MAX_BUNDLE_ARTIFACT_BYTES,
+  MAX_BUNDLE_MANIFEST_BYTES,
+} from "@hot-updater/plugin-core";
 import JSZip from "jszip";
 import * as tar from "tar";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -34,6 +39,7 @@ interface TestBundleManifest {
     string,
     {
       downloadByteSize?: number;
+      downloadCompression?: "br" | null;
       downloadFileHash?: string;
       fileHash: string;
     }
@@ -206,6 +212,53 @@ async function createSourceArchive(
   };
 }
 
+function patchZipDeclaredUncompressedSize(
+  archive: Buffer,
+  entryName: string,
+  byteSize: number,
+) {
+  const patched = Buffer.from(archive);
+  let patchedHeaders = 0;
+
+  for (let offset = 0; offset <= patched.length - 4; offset += 1) {
+    const signature = patched.readUInt32LE(offset);
+    const isLocalHeader = signature === 0x04034b50;
+    const isCentralHeader = signature === 0x02014b50;
+    if (!isLocalHeader && !isCentralHeader) {
+      continue;
+    }
+    const nameLengthOffset = offset + (isLocalHeader ? 26 : 28);
+    const nameOffset = offset + (isLocalHeader ? 30 : 46);
+    const nameLength = patched.readUInt16LE(nameLengthOffset);
+    if (
+      patched.subarray(nameOffset, nameOffset + nameLength).toString("utf8") !==
+      entryName
+    ) {
+      continue;
+    }
+    patched.writeUInt32LE(byteSize, offset + (isLocalHeader ? 22 : 24));
+    patchedHeaders += 1;
+  }
+
+  if (patchedHeaders !== 2) {
+    throw new Error(`Could not patch ZIP entry headers for ${entryName}`);
+  }
+  return patched;
+}
+
+const createGuardedStorage = (sourceResponse: Response | null = null) => {
+  const put = vi.fn(async () => ({ storageUri: "s3://bucket/unreachable" }));
+  const storagePlugin = createStoragePlugin({
+    name: "guardedStorage",
+    protocol: "s3",
+    delete: vi.fn(async () => ({ deleted: true as const })),
+    exists: vi.fn(async () => ({ exists: false })),
+    get: vi.fn(async () => ({ response: sourceResponse })),
+    put,
+  });
+  return { put, storagePlugin };
+};
+
 afterEach(() => {
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
@@ -219,6 +272,14 @@ describe("createCopiedBundleArchive", () => {
   ] as const)(
     "rewrites manifest.json and uploads a %s archive",
     async (format, readManifest) => {
+      const logoFileHash = crypto
+        .createHash("sha256")
+        .update("logo")
+        .digest("hex");
+      const indexFileHash = crypto
+        .createHash("sha256")
+        .update("console.log('hello');")
+        .digest("hex");
       const {
         archivePath,
         cleanup,
@@ -231,11 +292,13 @@ describe("createCopiedBundleArchive", () => {
           assets: {
             "assets/logo.png": {
               downloadByteSize: 999,
+              downloadCompression: null,
               downloadFileHash: "stale-transfer-hash",
-              fileHash: "logo-hash",
+              fileHash: logoFileHash,
             },
             "index.js": {
-              fileHash: "asset-hash",
+              downloadCompression: null,
+              fileHash: indexFileHash,
             },
           },
         }),
@@ -317,8 +380,16 @@ describe("createCopiedBundleArchive", () => {
           ]),
         );
         expect(uploadedStorageUris).toHaveLength(2);
-        expect(uploadedFiles.has("assets/sha256/lo/logo-hash.png")).toBe(true);
-        expect(uploadedFiles.has("assets/sha256/as/asset-hash.js")).toBe(true);
+        expect(
+          uploadedFiles.has(
+            `assets/sha256/${logoFileHash.slice(0, 2)}/${logoFileHash}.png`,
+          ),
+        ).toBe(true);
+        expect(
+          uploadedFiles.has(
+            `assets/sha256/${indexFileHash.slice(0, 2)}/${indexFileHash}.js`,
+          ),
+        ).toBe(true);
 
         const uploadedArchivePath = uploadedFiles.get(
           path.posix.join("bundles", "bundle-copy-id", `bundle.${format}`),
@@ -334,6 +405,14 @@ describe("createCopiedBundleArchive", () => {
           "bundles/bundle-copy-id/manifest.json",
         );
         expect(uploadedManifestPath).toBeDefined();
+        const manifestContentHash = crypto
+          .createHash("sha256")
+          .update(await fs.readFile(uploadedManifestPath as string))
+          .digest("hex");
+        expect(copiedBundle.manifestFileHash).toBe(manifestContentHash);
+        expect(copiedBundle.metadata?.manifest_content_hash).toBe(
+          manifestContentHash,
+        );
         const uploadedManifest = JSON.parse(
           await fs.readFile(uploadedManifestPath as string, "utf8"),
         ) as TestBundleManifest;
@@ -341,11 +420,13 @@ describe("createCopiedBundleArchive", () => {
           assets: {
             "assets/logo.png": {
               downloadByteSize: Buffer.byteLength("logo"),
-              fileHash: "logo-hash",
+              downloadCompression: null,
+              fileHash: logoFileHash,
             },
             "index.js": {
               downloadByteSize: Buffer.byteLength("console.log('hello');"),
-              fileHash: "asset-hash",
+              downloadCompression: null,
+              fileHash: indexFileHash,
             },
           },
           bundleId: "bundle-copy-id",
@@ -397,7 +478,7 @@ describe("createCopiedBundleArchive", () => {
         assets: Object.fromEntries(
           sourceAssets.map(({ assetPath, fileHash, signature }) => [
             assetPath,
-            { fileHash, signature },
+            { downloadCompression: null, fileHash, signature },
           ]),
         ),
       }),
@@ -510,6 +591,13 @@ describe("createCopiedBundleArchive", () => {
           uploadedManifestPath as string,
         ),
       ).resolves.toBe(true);
+      expect(bundle.manifestFileHash).toMatch(/^sig:/);
+      expect(bundle.metadata?.manifest_content_hash).toBe(
+        crypto
+          .createHash("sha256")
+          .update(await fs.readFile(uploadedManifestPath as string))
+          .digest("hex"),
+      );
       expect(providerSign).toHaveBeenCalledTimes(sourceAssets.length + 2);
       expect(maxActiveSignCalls).toBeGreaterThan(1);
       expect(maxActiveSignCalls).toBeLessThanOrEqual(8);
@@ -646,7 +734,7 @@ describe("createCopiedBundleArchive", () => {
     }
   });
 
-  it("does not sign or upload a copied asset whose bytes do not match the manifest", async () => {
+  it("rejects an unsigned copied asset whose bytes do not match the manifest", async () => {
     const {
       archivePath,
       cleanup,
@@ -660,14 +748,6 @@ describe("createCopiedBundleArchive", () => {
         },
       }),
     });
-    const keys = crypto.generateKeyPairSync("rsa", {
-      modulusLength: 2048,
-      publicKeyEncoding: { type: "spki", format: "pem" },
-      privateKeyEncoding: { type: "pkcs8", format: "pem" },
-    });
-    const sign = vi.fn(async ({ message }: { message: Uint8Array }) => ({
-      signature: crypto.sign("RSA-SHA256", message, keys.privateKey),
-    }));
     const storagePlugin = createStoragePlugin({
       name: "mockStorage",
       protocol: "s3",
@@ -676,15 +756,6 @@ describe("createCopiedBundleArchive", () => {
       get: vi.fn(async () => ({ response: null })),
       put: vi.fn(async () => ({ storageUri: "s3://bucket/unreachable" })),
     });
-    const signedConfig = {
-      ...config,
-      signing: {
-        name: "test-provider",
-        getPublicKey: async () => ({ publicKey: keys.publicKey }),
-        sign,
-      },
-    } satisfies ConfigResponse;
-
     vi.stubGlobal(
       "fetch",
       vi.fn(async () => new Response(await fs.readFile(archivePath))),
@@ -694,13 +765,88 @@ describe("createCopiedBundleArchive", () => {
       await expect(
         createCopiedBundleArchive({
           bundle: { ...baseBundle, fileHash: sourceFileHash },
-          config: signedConfig,
+          config,
           nextBundleId: "bundle-copy-id",
           storagePlugin,
         }),
       ).rejects.toThrow("Manifest file hash mismatch for index.js");
-      expect(sign).not.toHaveBeenCalled();
       expect(storagePlugin.put).not.toHaveBeenCalled();
+    } finally {
+      await cleanup();
+    }
+  });
+
+  it("preserves a shared asset when a concurrent copy publishes it before rollback", async () => {
+    const assetContent = "copy asset";
+    const assetFileHash = crypto
+      .createHash("sha256")
+      .update(assetContent)
+      .digest("hex");
+    const {
+      archivePath,
+      cleanup,
+      fileHash: sourceFileHash,
+    } = await createSourceArchive("zip", {
+      "runtime/entry.bin": assetContent,
+      "manifest.json": JSON.stringify({
+        assets: {
+          "runtime/entry.bin": {
+            downloadCompression: null,
+            fileHash: assetFileHash,
+          },
+        },
+        bundleId: baseBundle.id,
+      }),
+    });
+    const assetStorageUri = `s3://bucket/assets/sha256/${assetFileHash.slice(
+      0,
+      2,
+    )}/${assetFileHash}.bin`;
+    const sharedObjects = new Set<string>();
+    const deletedStorageUris: string[] = [];
+    const put = vi.fn(async ({ key }: { key: string }) => {
+      if (key === "bundles/copy-cleanup-id/manifest.json") {
+        throw new Error("manifest upload failed");
+      }
+      const storageUri = `s3://bucket/${key}`;
+      if (storageUri === assetStorageUri) {
+        // A concurrent promotion may publish the same content-addressed object
+        // after both callers observe exists:false.
+        sharedObjects.add(storageUri);
+      }
+      return { storageUri };
+    });
+    const storagePlugin = createStoragePlugin({
+      name: "cleanupStorage",
+      protocol: "s3",
+      delete: vi.fn(async ({ storageUri }) => {
+        deletedStorageUris.push(storageUri);
+        sharedObjects.delete(storageUri);
+        return { deleted: true as const };
+      }),
+      exists: vi.fn(async () => ({ exists: false })),
+      get: vi.fn(async () => ({ response: null })),
+      put,
+    });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response(await fs.readFile(archivePath))),
+    );
+
+    try {
+      await expect(
+        createCopiedBundleArchive({
+          bundle: { ...baseBundle, fileHash: sourceFileHash },
+          config,
+          nextBundleId: "copy-cleanup-id",
+          storagePlugin,
+        }),
+      ).rejects.toThrow("manifest upload failed");
+
+      expect(deletedStorageUris).toEqual([
+        "s3://bucket/bundles/copy-cleanup-id/bundle.zip",
+      ]);
+      expect(sharedObjects).toContain(assetStorageUri);
     } finally {
       await cleanup();
     }
@@ -744,24 +890,206 @@ describe("createCopiedBundleArchive", () => {
     }
   });
 
-  it("uploads copied Hermes bundle assets with the brotli artifact name", async () => {
+  it.each(["http", "storage"] as const)(
+    "rejects an oversized %s source response before writing or publishing",
+    async (source) => {
+      const response = new Response("small body", {
+        headers: {
+          "content-length": String(MAX_BUNDLE_ARCHIVE_BYTES + 1),
+        },
+      });
+      const { put, storagePlugin } = createGuardedStorage(
+        source === "storage" ? response : null,
+      );
+      if (source === "http") {
+        vi.stubGlobal(
+          "fetch",
+          vi.fn(async () => response),
+        );
+      }
+
+      await expect(
+        createCopiedBundleArchive({
+          bundle: {
+            ...baseBundle,
+            storageUri:
+              source === "http"
+                ? "https://example.com/oversized.zip"
+                : "s3://bucket/oversized.zip",
+          },
+          config,
+          nextBundleId: "oversized-copy-id",
+          storagePlugin,
+        }),
+      ).rejects.toThrow(
+        `Bundle archive exceeds ${MAX_BUNDLE_ARCHIVE_BYTES} bytes`,
+      );
+      expect(put).not.toHaveBeenCalled();
+    },
+  );
+
+  it("rejects a ZIP entry bomb from its declared size before decompression", async () => {
+    const { archivePath, cleanup } = await createSourceArchive("zip", {
+      "bomb.bin": "small compressed body",
+      "manifest.json": JSON.stringify({
+        assets: {
+          "bomb.bin": {
+            downloadCompression: null,
+            fileHash: "ab".repeat(32),
+          },
+        },
+        bundleId: baseBundle.id,
+      }),
+    });
+    const patchedArchive = patchZipDeclaredUncompressedSize(
+      await fs.readFile(archivePath),
+      "bomb.bin",
+      MAX_BUNDLE_ARTIFACT_BYTES + 1,
+    );
+    await fs.writeFile(archivePath, patchedArchive);
+    const fileHash = crypto
+      .createHash("sha256")
+      .update(patchedArchive)
+      .digest("hex");
+    const { put, storagePlugin } = createGuardedStorage();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response(await fs.readFile(archivePath))),
+    );
+
+    try {
+      await expect(
+        createCopiedBundleArchive({
+          bundle: { ...baseBundle, fileHash },
+          config,
+          nextBundleId: "zip-bomb-copy-id",
+          storagePlugin,
+        }),
+      ).rejects.toThrow(
+        `Build artifact exceeds ${MAX_BUNDLE_ARTIFACT_BYTES} bytes: bomb.bin`,
+      );
+      expect(put).not.toHaveBeenCalled();
+    } finally {
+      await cleanup();
+    }
+  });
+
+  it("rejects an oversized manifest before parsing or publishing", async () => {
+    const {
+      archivePath,
+      cleanup,
+      fileHash: sourceFileHash,
+    } = await createSourceArchive("zip", {
+      "manifest.json": JSON.stringify({
+        assets: {},
+        bundleId: baseBundle.id,
+        padding: "x".repeat(MAX_BUNDLE_MANIFEST_BYTES),
+      }),
+    });
+    const { put, storagePlugin } = createGuardedStorage();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response(await fs.readFile(archivePath))),
+    );
+
+    try {
+      await expect(
+        createCopiedBundleArchive({
+          bundle: { ...baseBundle, fileHash: sourceFileHash },
+          config,
+          nextBundleId: "oversized-manifest-copy-id",
+          storagePlugin,
+        }),
+      ).rejects.toThrow(
+        `Bundle manifest exceeds ${MAX_BUNDLE_MANIFEST_BYTES} bytes`,
+      );
+      expect(put).not.toHaveBeenCalled();
+    } finally {
+      await cleanup();
+    }
+  });
+
+  it("rejects a TAR symlink without reading its external target or publishing", async () => {
+    const directory = await fs.mkdtemp(
+      path.join(os.tmpdir(), "promote-tar-symlink-"),
+    );
+    const sourceDir = path.join(directory, "source");
+    const secretPath = path.join(directory, "external-secret.txt");
+    const archivePath = path.join(directory, "bundle.tar.gz");
+    await fs.mkdir(sourceDir);
+    await fs.writeFile(secretPath, "must not be read");
+    await fs.symlink(secretPath, path.join(sourceDir, "manifest.json"));
+    await tar.create(
+      {
+        cwd: sourceDir,
+        file: archivePath,
+        gzip: true,
+      },
+      ["manifest.json"],
+    );
+    const sourceFileHash = crypto
+      .createHash("sha256")
+      .update(await fs.readFile(archivePath))
+      .digest("hex");
+    const { put, storagePlugin } = createGuardedStorage();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response(await fs.readFile(archivePath))),
+    );
+    const readFile = vi.spyOn(fs, "readFile");
+
+    try {
+      await expect(
+        createCopiedBundleArchive({
+          bundle: {
+            ...baseBundle,
+            fileHash: sourceFileHash,
+            storageUri: "https://example.com/bundle.tar.gz",
+          },
+          config,
+          nextBundleId: "symlink-copy-id",
+          storagePlugin,
+        }),
+      ).rejects.toThrow("Unsupported TAR entry type: SymbolicLink");
+      expect(readFile).not.toHaveBeenCalledWith(secretPath);
+      expect(put).not.toHaveBeenCalled();
+      await expect(fs.readFile(secretPath, "utf8")).resolves.toBe(
+        "must not be read",
+      );
+    } finally {
+      readFile.mockRestore();
+      await fs.rm(directory, { force: true, recursive: true });
+    }
+  });
+
+  it("uploads an explicitly brotli-compressed engine-neutral asset", async () => {
+    const logoFileHash = crypto
+      .createHash("sha256")
+      .update("logo")
+      .digest("hex");
+    const bundleFileHash = crypto
+      .createHash("sha256")
+      .update("lynx bytecode")
+      .digest("hex");
     const {
       archivePath,
       cleanup,
       fileHash: sourceFileHash,
     } = await createSourceArchive("zip", {
       "assets/logo.png": "logo",
-      "index.ios.bundle": "hermes bytecode",
+      "runtime/entry.lynxbc": "lynx bytecode",
       "manifest.json": JSON.stringify({
         bundleId: baseBundle.id,
         assets: {
           "assets/logo.png": {
-            fileHash: "logo-hash",
+            downloadCompression: null,
+            fileHash: logoFileHash,
           },
-          "index.ios.bundle": {
+          "runtime/entry.lynxbc": {
             downloadByteSize: 999,
+            downloadCompression: "br",
             downloadFileHash: "c".repeat(64),
-            fileHash: "bundle-hash",
+            fileHash: bundleFileHash,
           },
         },
       }),
@@ -816,7 +1144,7 @@ describe("createCopiedBundleArchive", () => {
         ]),
       );
       expect(uploadedStorageUris).not.toContain(
-        "s3://bucket/assets/sha256/bu/bundle-hash.br",
+        `s3://bucket/assets/sha256/${bundleFileHash.slice(0, 2)}/${bundleFileHash}.br`,
       );
 
       const uploadedManifestPath = uploadedFiles.get(
@@ -826,7 +1154,7 @@ describe("createCopiedBundleArchive", () => {
       const uploadedManifest = JSON.parse(
         await fs.readFile(uploadedManifestPath as string, "utf8"),
       ) as TestBundleManifest;
-      const bundleAsset = uploadedManifest.assets["index.ios.bundle"]!;
+      const bundleAsset = uploadedManifest.assets["runtime/entry.lynxbc"]!;
       expect(bundleAsset.downloadFileHash).toMatch(/^[a-f0-9]{64}$/);
 
       const transferredFileHash = bundleAsset.downloadFileHash!;
@@ -836,10 +1164,14 @@ describe("createCopiedBundleArchive", () => {
       )}/${transferredFileHash}.br`;
       const uploadedBundlePath = uploadedFiles.get(transferredStorageKey);
       expect(uploadedBundlePath).toBeDefined();
-      expect(uploadedFiles.has("assets/sha256/bu/bundle-hash.br")).toBe(false);
+      expect(
+        uploadedFiles.has(
+          `assets/sha256/${bundleFileHash.slice(0, 2)}/${bundleFileHash}.br`,
+        ),
+      ).toBe(false);
       const transferredBody = await fs.readFile(uploadedBundlePath as string);
       expect(brotliDecompressSync(transferredBody).toString("utf8")).toBe(
-        "hermes bytecode",
+        "lynx bytecode",
       );
       expect(bundleAsset.downloadByteSize).toBe(transferredBody.byteLength);
       expect(
@@ -858,6 +1190,83 @@ describe("createCopiedBundleArchive", () => {
       );
       expect(await readZipManifest(uploadedArchivePath as string)).toEqual(
         uploadedManifest,
+      );
+    } finally {
+      await cleanup();
+    }
+  });
+
+  it("keeps a legacy manifest archive-only without inferring compression from filenames", async () => {
+    const bundleFileHash = crypto
+      .createHash("sha256")
+      .update("legacy hermes bytecode")
+      .digest("hex");
+    const {
+      archivePath,
+      cleanup,
+      fileHash: sourceFileHash,
+    } = await createSourceArchive("zip", {
+      "index.ios.bundle": "legacy hermes bytecode",
+      "manifest.json": JSON.stringify({
+        bundleId: baseBundle.id,
+        assets: {
+          "index.ios.bundle": {
+            downloadByteSize: 999,
+            downloadFileHash: "c".repeat(64),
+            fileHash: bundleFileHash,
+          },
+        },
+      }),
+    });
+    const uploadedFiles = new Map<string, string>();
+    const storagePlugin = createStoragePlugin({
+      name: "mockStorage",
+      protocol: "s3",
+      delete: vi.fn(async () => ({ deleted: true as const })),
+      exists: vi.fn(async () => ({ exists: false })),
+      get: vi.fn(async () => ({ response: null })),
+      put: vi.fn(async ({ key, body }) => {
+        const finalPath = path.join(path.dirname(archivePath), "uploads", key);
+        await fs.mkdir(path.dirname(finalPath), { recursive: true });
+        await fs.writeFile(
+          finalPath,
+          new Uint8Array(await new Response(body).arrayBuffer()),
+        );
+        uploadedFiles.set(key, finalPath);
+        return { storageUri: `s3://bucket/${key}` };
+      }),
+    });
+
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response(await fs.readFile(archivePath))),
+    );
+
+    try {
+      const { bundle } = await createCopiedBundleArchive({
+        bundle: { ...baseBundle, fileHash: sourceFileHash },
+        config,
+        nextBundleId: "legacy-copy-id",
+        storagePlugin,
+      });
+
+      expect(bundle.storageUri).toBe(
+        "s3://bucket/bundles/legacy-copy-id/bundle.zip",
+      );
+      expect(storagePlugin.exists).not.toHaveBeenCalled();
+      expect([...uploadedFiles.keys()].sort()).toEqual([
+        "bundles/legacy-copy-id/bundle.zip",
+        "bundles/legacy-copy-id/manifest.json",
+      ]);
+
+      const copiedManifest = JSON.parse(
+        await fs.readFile(
+          uploadedFiles.get("bundles/legacy-copy-id/manifest.json")!,
+          "utf8",
+        ),
+      ) as TestBundleManifest;
+      expect(copiedManifest.assets["index.ios.bundle"]).not.toHaveProperty(
+        "downloadCompression",
       );
     } finally {
       await cleanup();

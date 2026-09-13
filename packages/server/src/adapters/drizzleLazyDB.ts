@@ -77,6 +77,7 @@ export type DrizzleDB = {
   };
   readonly transaction?: <TResult>(
     operation: (transaction: DrizzleDB) => TResult | Promise<TResult>,
+    config?: { readonly isolationLevel: "serializable" },
   ) => Promise<TResult>;
 };
 
@@ -269,6 +270,7 @@ export const createLazyDB = (config: DrizzleConfig): DrizzleDB => {
       ? {
           transaction: async <TResult>(
             operation: (transaction: DrizzleDB) => TResult | Promise<TResult>,
+            transactionConfig?: { readonly isolationLevel: "serializable" },
           ): Promise<TResult> => {
             const db = await getDB();
             if (db.transaction === undefined) {
@@ -276,7 +278,7 @@ export const createLazyDB = (config: DrizzleConfig): DrizzleDB => {
                 "The resolved Drizzle database does not support transactions.",
               );
             }
-            return db.transaction(operation);
+            return db.transaction(operation, transactionConfig);
           },
         }
       : {}),

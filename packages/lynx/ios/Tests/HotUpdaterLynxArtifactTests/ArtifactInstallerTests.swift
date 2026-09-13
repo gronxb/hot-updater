@@ -126,7 +126,7 @@ final class ArtifactInstallerTests: XCTestCase {
 
     func testInterruptedAndCanceledHTTPPreparationsStayPrivate() async throws {
         let request = try await receipt()
-        let suffix = request.fileUrl.path.replacingOccurrences(of: "/files/", with: "")
+        let suffix = try XCTUnwrap(request.fileUrl).path.replacingOccurrences(of: "/files/", with: "")
         let root = temporaryRoot(); defer { try? FileManager.default.removeItem(at: root) }
         let installer = try LynxArtifactInstaller(root: root, configuration: .init(runtimeId: profile))
         let truncated = LynxArtifactRequest(bundleId: request.bundleId, fileUrl: URL(string: "http://127.0.0.1:18792/qa/truncated/\(suffix)")!, fileHash: request.fileHash)

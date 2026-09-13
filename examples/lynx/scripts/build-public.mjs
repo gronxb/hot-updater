@@ -15,6 +15,7 @@ export async function buildPublic({
   framework,
   outDir,
   variant = "A",
+  behavior = "normal",
   baseURL,
   octaneSource,
 }) {
@@ -22,6 +23,8 @@ export async function buildPublic({
     throw new Error("Choose react, vue, or octane.");
   if (!["A", "B", "C"].includes(variant))
     throw new Error("Choose fixture variant A, B, or C.");
+  if (!["normal", "unconfirmed"].includes(behavior))
+    throw new Error("Choose normal or unconfirmed behavior.");
   if (!baseURL || !/^https?:\/\//i.test(baseURL))
     throw new Error(
       "Set HOT_UPDATER_SDK_BASE_URL to an explicit HTTP(S) endpoint.",
@@ -35,7 +38,7 @@ export async function buildPublic({
     HOT_UPDATER_BUILD_DIR: outDir,
     HOT_UPDATER_SDK_BASE_URL: baseURL,
     HOT_UPDATER_SPIKE_VARIANT: variant,
-    HOT_UPDATER_SPIKE_BEHAVIOR: "normal",
+    HOT_UPDATER_SPIKE_BEHAVIOR: behavior,
     HOT_UPDATER_SPIKE_SDK: "1",
     HOT_UPDATER_SPIKE_RESOURCES: "sdk3",
     HOT_UPDATER_SPIKE_ASSET_PREFIX: "hot-updater:///",
@@ -49,7 +52,7 @@ export async function buildPublic({
         path.join(cwd, "scripts/build-octane.mjs"),
         octaneSource,
         variant,
-        "normal",
+        behavior,
         "sdk3",
       ],
       {
@@ -81,7 +84,7 @@ export async function buildPublic({
     rspeedy: "0.13.5",
     framework:
       framework === "react" ? "@lynx-js/react@0.116.5" : "vue-lynx@0.5.1",
-    behavior: "normal",
+    behavior,
     resourceSet: "sdk3",
     baseURL,
     assetPrefix: "hot-updater:///",
@@ -93,11 +96,13 @@ if (
   process.argv[1] &&
   path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)
 ) {
-  const [framework, variant = "A", octaneSource] = process.argv.slice(2);
+  const [framework, variant = "A", octaneSource, behavior = "normal"] =
+    process.argv.slice(2);
   const outDir = path.join(cwd, "dist", framework ?? "unknown");
   const result = await buildPublic({
     framework,
     variant,
+    behavior,
     outDir,
     baseURL: process.env.HOT_UPDATER_SDK_BASE_URL,
     octaneSource,

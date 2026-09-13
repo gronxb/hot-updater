@@ -1,131 +1,74 @@
-import { colors, getCwd, p } from "@hot-updater/cli-tools";
+import { colors, p } from "@hot-updater/cli-tools";
 
-import {
-  type FingerprintSource,
-  type FingerprintOptions,
-  type FingerprintResult,
-  getOtaFingerprintOptions,
-} from "./common";
-import { type ExpoFingerprint, loadExpoFingerprint } from "./dependency";
+import type { FingerprintResult, FingerprintSource } from "./common";
 
 export type FingerprintDiffItem =
-  | {
-      op: "added";
-      addedSource: FingerprintSource;
-    }
-  | {
-      op: "removed";
-      removedSource: FingerprintSource;
-    }
+  | { op: "added"; addedSource: FingerprintSource }
+  | { op: "removed"; removedSource: FingerprintSource }
   | {
       op: "changed";
       beforeSource: FingerprintSource;
       afterSource: FingerprintSource;
     };
 
-export async function getFingerprintDiff(
-  oldFingerprint: FingerprintResult,
-  options: FingerprintOptions,
-): Promise<FingerprintDiffItem[]> {
-  const projectPath = getCwd();
-  const { diffFingerprintChangesAsync } = await loadExpoFingerprint();
-  return await diffFingerprintChangesAsync(
-    oldFingerprint as Parameters<
-      ExpoFingerprint["diffFingerprintChangesAsync"]
-    >[0],
-    projectPath,
-    await getOtaFingerprintOptions(options.platform, projectPath, options),
-  );
-}
+const sourcePath = (source: FingerprintSource) =>
+  "filePath" in source ? source.filePath : source.id;
 
-function getSourcePath(source: FingerprintSource): string {
-  if (source.type === "file" || source.type === "dir") {
-    return source.filePath;
-  }
-  if ("id" in source) {
-    return source.id;
-  }
-  return source.type;
+export function getFingerprintDiff(
+  oldFingerprint: FingerprintResult,
+  newFingerprint: FingerprintResult,
+): FingerprintDiffItem[] {
+  const before = new Map(
+    oldFingerprint.sources.map((source) => [sourcePath(source), source]),
+  );
+  const after = new Map(
+    newFingerprint.sources.map((source) => [sourcePath(source), source]),
+  );
+  return [...new Set([...before.keys(), ...after.keys()])]
+    .sort()
+    .flatMap((key): FingerprintDiffItem[] => {
+      const left = before.get(key);
+      const right = after.get(key);
+      if (!left && right) return [{ op: "added", addedSource: right }];
+      if (left && !right) return [{ op: "removed", removedSource: left }];
+      if (left && right && left.hash !== right.hash) {
+        return [{ op: "changed", beforeSource: left, afterSource: right }];
+      }
+      return [];
+    });
 }
 
 export function formatDiffItem(item: FingerprintDiffItem): string {
-  const typeColor = {
-    added: colors.green,
-    removed: colors.red,
-    changed: colors.yellow,
-  };
-
-  const color = typeColor[item.op];
   const prefix = item.op === "added" ? "+" : item.op === "removed" ? "-" : "~";
-
-  let sourcePath: string;
-  switch (item.op) {
-    case "added":
-      sourcePath = getSourcePath(item.addedSource);
-      break;
-    case "removed":
-      sourcePath = getSourcePath(item.removedSource);
-      break;
-    case "changed":
-      sourcePath = getSourcePath(item.beforeSource);
-      break;
-  }
-
-  return `${color(`${prefix} ${sourcePath}`)}`;
+  const source =
+    item.op === "added"
+      ? item.addedSource
+      : item.op === "removed"
+        ? item.removedSource
+        : item.beforeSource;
+  const color =
+    item.op === "added"
+      ? colors.green
+      : item.op === "removed"
+        ? colors.red
+        : colors.yellow;
+  return color(`${prefix} ${sourcePath(source)}`);
 }
 
 export function showFingerprintDiff(
   diff: FingerprintDiffItem[],
   platform: string,
-): void {
-  if (diff.length === 0) {
-    return;
-  }
-
+) {
+  if (diff.length === 0) return;
   p.log.info(`${colors.bold(`${platform} Fingerprint Changes:`)}`);
-
-  const added = diff.filter((item) => item.op === "added");
-  const removed = diff.filter((item) => item.op === "removed");
-  const changed = diff.filter((item) => item.op === "changed");
-
-  if (added.length > 0) {
-    p.log.info(
-      `  ${colors.green("Added:")} ${added.map((item) => getSourcePath(item.addedSource)).join(", ")}`,
-    );
-  }
-
-  if (removed.length > 0) {
-    p.log.info(
-      `  ${colors.red("Removed:")} ${removed.map((item) => getSourcePath(item.removedSource)).join(", ")}`,
-    );
-  }
-
-  if (changed.length > 0) {
-    p.log.info(
-      `  ${colors.yellow("Changed:")} ${changed.map((item) => getSourcePath(item.beforeSource)).join(", ")}`,
-    );
-  }
+  for (const item of diff) p.log.info(`  ${formatDiffItem(item)}`);
 }
 
 export function getDiffSummary(diff: FingerprintDiffItem[]): string {
-  if (diff.length === 0) {
-    return "No changes detected";
-  }
-
-  const added = diff.filter((item) => item.op === "added").length;
-  const removed = diff.filter((item) => item.op === "removed").length;
-  const changed = diff.filter((item) => item.op === "changed").length;
-
-  const parts: string[] = [];
-  if (added > 0) {
-    parts.push(`${added} added`);
-  }
-  if (removed > 0) {
-    parts.push(`${removed} removed`);
-  }
-  if (changed > 0) {
-    parts.push(`${changed} changed`);
-  }
-
-  return parts.join(", ");
+  if (diff.length === 0) return "No changes detected";
+  return (["added", "removed", "changed"] as const)
+    .map((op) => [op, diff.filter((item) => item.op === op).length] as const)
+    .filter(([, count]) => count > 0)
+    .map(([op, count]) => `${count} ${op}`)
+    .join(", ");
 }

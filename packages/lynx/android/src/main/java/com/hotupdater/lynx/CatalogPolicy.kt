@@ -64,7 +64,15 @@ internal object CatalogPolicy {
             ensure(validCohort(cohort), "INVALID_STATE", "Invalid native cohort")
             listOfNotNull(runningSelection, nextSelection).forEach { receipt ->
                 validateReceipt(receipt)
-                ensure(receipt.kind == "BUNDLE" || receipt.bundleId == embeddedBundleId, "INVALID_STATE", "Embedded receipt identity mismatch")
+                ensure(
+                    receipt.kind == "BUNDLE" ||
+                        receipt.bundleId == embeddedBundleId ||
+                        receipt === runningSelection &&
+                        receipt.kind == "BUILTIN" &&
+                        receipt.bundleId == minimumBundleId,
+                    "INVALID_STATE",
+                    "Embedded receipt identity mismatch",
+                )
             }
             ensure(this.crashedBundleIds.all { uuid.matches(it) } && this.unconfirmedReleaseIds.all { uuid.matches(it) }, "INVALID_STATE", "Invalid native exclusion identity")
         }
@@ -360,6 +368,19 @@ internal object CatalogPolicy {
     private fun normalizeCohort(value: String): String {
         val normalized = jsTrim(value).lowercase(Locale.ROOT)
         return numericCohort(normalized)?.toString() ?: normalized
+    }
+
+    fun normalizedCohort(value: String): String {
+        val normalized = normalizeCohort(value)
+        ensure(
+            numericCohort(normalized) != null ||
+                normalized.length in 1..64 &&
+                Regex("[a-z0-9-]+").matches(normalized) &&
+                !Regex("[0-9]+").matches(normalized),
+            "INVALID_COHORT",
+            "Cohort must be 1...1000 or a lowercase alphanumeric/hyphen identifier",
+        )
+        return normalized
     }
 
     private fun numericCohort(value: String): Int? = if (Regex("[0-9]+").matches(value)) value.toIntOrNull()?.takeIf { it in 1..1000 } else null

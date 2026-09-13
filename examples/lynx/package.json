@@ -12,7 +12,9 @@
     "build:prebuilt": "node scripts/prebuilt.mjs",
     "test:type": "tsc --noEmit && vue-tsc --noEmit -p vue/tsconfig.json",
     "build:spike": "node scripts/build-spike.mjs",
-    "build:octane": "node scripts/build-octane.mjs"
+    "build:octane": "node scripts/build-octane.mjs",
+    "build:e2e-native": "node scripts/build-e2e-native.mjs --target matrix",
+    "validate:native-scaffold": "node scripts/build-e2e-native.mjs --target scaffold"
   },
   "dependencies": {
     "@hot-updater/lynx": "workspace:*",

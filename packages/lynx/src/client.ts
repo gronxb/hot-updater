@@ -1,21 +1,24 @@
+import {
+  INVALID_COHORT_ERROR_MESSAGE,
+  isValidCohort,
+  normalizeCohortValue,
+} from "@hot-updater/core";
+
 import { checkForUpdate } from "./checkForUpdate";
-import { callNative, LynxUpdaterError } from "./native";
+import { callNative, LynxUpdaterError, normalizeNativeState } from "./native";
 import type {
   ActiveUpdateSelection,
   ActiveUpdateState,
   CheckForUpdateOptions,
   ConfirmationResult,
   CustomReloadHandler,
-  HotUpdaterEvent,
   HotUpdaterInitOptions,
   HotUpdaterOptions,
   LaunchInfo,
-  Manifest,
+  LaunchTransitionReceipt,
   NativeState,
   NotifyAppReadyResult,
-  ReloadBehaviorSetting,
   SelectionSummary,
-  SetUserParams,
 } from "./types";
 
 const missingInit = (methodName: string) =>
@@ -45,58 +48,81 @@ const publicSelection = (
         channel: selection.channel,
       };
 
+const isSelectionSummary = (value: unknown): value is SelectionSummary => {
+  if (value === null || typeof value !== "object") return false;
+  const selection = value as Partial<SelectionSummary>;
+  return (
+    (selection.kind === "BUNDLE" ||
+      selection.kind === "EMBEDDED" ||
+      selection.kind === "BUILTIN") &&
+    typeof selection.bundleId === "string" &&
+    selection.bundleId.length > 0 &&
+    (selection.releaseId === null ||
+      (typeof selection.releaseId === "string" &&
+        selection.releaseId.length > 0)) &&
+    typeof selection.channel === "string" &&
+    selection.channel.length > 0
+  );
+};
+
+const sameSelectionIdentity = (
+  left: SelectionSummary,
+  right: SelectionSummary,
+) => left.bundleId === right.bundleId && left.releaseId === right.releaseId;
+
+const sameSelection = (left: SelectionSummary, right: SelectionSummary) =>
+  sameSelectionIdentity(left, right) &&
+  left.kind === right.kind &&
+  left.channel === right.channel;
+
+const isLaunchTransition = (
+  value: unknown,
+  running: SelectionSummary,
+): value is LaunchTransitionReceipt => {
+  if (value === null || typeof value !== "object") return false;
+  const transition = value as Partial<LaunchTransitionReceipt>;
+  if (
+    (transition.kind !== "UPDATE_APPLIED" &&
+      transition.kind !== "RECOVERED" &&
+      transition.kind !== "UNCHANGED") ||
+    !isSelectionSummary(transition.from) ||
+    !isSelectionSummary(transition.to) ||
+    !sameSelection(transition.to, running)
+  ) {
+    return false;
+  }
+  if (transition.kind === "UNCHANGED") {
+    return (
+      transition.from.bundleId === transition.to.bundleId &&
+      typeof transition.from.releaseId === "string" &&
+      typeof transition.to.releaseId === "string" &&
+      transition.from.releaseId !== transition.to.releaseId
+    );
+  }
+  if (transition.kind === "UPDATE_APPLIED") {
+    return transition.from.bundleId !== transition.to.bundleId;
+  }
+  return !sameSelectionIdentity(transition.from, transition.to);
+};
+
 function createHotUpdaterClient() {
   const config: {
     client: HotUpdaterOptions | null;
-    insights: boolean;
     onError?: (error: Error) => void;
   } = {
     client: null,
-    insights: true,
   };
   let snapshot: NativeState | null = null;
-  let updateDownloaded = false;
-  let reloadBehavior: ReloadBehaviorSetting = "processRestart";
   let customReload: CustomReloadHandler | null = null;
-  const listeners = new Map<
-    keyof HotUpdaterEvent,
-    Set<(event: HotUpdaterEvent[keyof HotUpdaterEvent]) => void>
-  >();
 
   const ensureClient = (methodName: string): HotUpdaterOptions => {
     if (!config.client) throw missingInit(methodName);
     return config.client;
   };
 
-  const asStringList = (value: unknown): string[] => {
-    if (Array.isArray(value)) {
-      return value.filter((item): item is string => typeof item === "string");
-    }
-    if (
-      value !== null &&
-      typeof value === "object" &&
-      typeof (value as { length?: unknown }).length === "number"
-    ) {
-      const length = (value as { length: number }).length;
-      const items: string[] = [];
-      for (let index = 0; index < length; index += 1) {
-        const item = (value as Record<number, unknown>)[index];
-        if (typeof item === "string") {
-          items.push(item);
-        }
-      }
-      return items;
-    }
-    return [];
-  };
-
   const refreshState = async () => {
     const next = await callNative<NativeState>("getState");
-    snapshot = {
-      ...next,
-      crashedBundleIds: asStringList(next.crashedBundleIds),
-      unconfirmedReleaseIds: asStringList(next.unconfirmedReleaseIds),
-    };
+    snapshot = normalizeNativeState(next);
     return snapshot;
   };
 
@@ -112,7 +138,6 @@ function createHotUpdaterClient() {
 
   return {
     init: (options: HotUpdaterInitOptions): void => {
-      config.insights = options.insights ?? true;
       config.onError = options.onError;
       config.client = {
         baseURL: options.baseURL,
@@ -142,7 +167,6 @@ function createHotUpdaterClient() {
           ...result,
           updateBundle: async () => {
             const ok = await result.updateBundle();
-            updateDownloaded = ok;
             await refreshState();
             return ok;
           },
@@ -154,39 +178,42 @@ function createHotUpdaterClient() {
     },
 
     async notifyAppReady(): Promise<NotifyAppReadyResult> {
-      const before = await refreshState();
+      await refreshState();
       const confirmation =
         await callNative<ConfirmationResult>("notifyAppReady");
       const after = await refreshState();
-      const crashedIds = before.crashedBundleIds;
-      const crashedBundleId = crashedIds[crashedIds.length - 1];
+      const transition = confirmation?.transition;
       if (
-        crashedBundleId &&
-        after.runningSelection.bundleId !== crashedBundleId
+        (confirmation?.status !== "CONFIRMED" &&
+          confirmation?.status !== "ALREADY_CONFIRMED") ||
+        !("transition" in confirmation) ||
+        (transition !== null &&
+          !isLaunchTransition(transition, after.runningSelection))
       ) {
+        throw new LynxUpdaterError(
+          "INVALID_NATIVE_REPLY",
+          "Native readiness returned an invalid launch transition receipt.",
+        );
+      }
+      if (transition === null) return { status: "UNCHANGED" };
+      if (transition.kind === "UNCHANGED") {
         return {
-          status: "RECOVERED",
-          fromBundleId: crashedBundleId,
-          toBundleId: after.runningSelection.bundleId,
-          toReleaseId: after.runningSelection.releaseId ?? undefined,
+          status: "UNCHANGED",
+          fromReleaseId: transition.from.releaseId!,
+          toReleaseId: transition.to.releaseId!,
         };
       }
-      if (confirmation.status === "ALREADY_CONFIRMED") {
-        return { status: "UNCHANGED" };
-      }
-      if (
-        after.runningSelection.kind === "BUNDLE" &&
-        after.runningSelection.bundleId !== before.embeddedBundleId
-      ) {
-        return {
-          status: "UPDATE_APPLIED",
-          fromBundleId: before.runningSelection.bundleId,
-          toBundleId: after.runningSelection.bundleId,
-          fromReleaseId: before.runningSelection.releaseId ?? undefined,
-          toReleaseId: after.runningSelection.releaseId ?? undefined,
-        };
-      }
-      return { status: "UNCHANGED" };
+      return {
+        status: transition.kind,
+        fromBundleId: transition.from.bundleId,
+        toBundleId: transition.to.bundleId,
+        ...(transition.from.releaseId === null
+          ? {}
+          : { fromReleaseId: transition.from.releaseId }),
+        ...(transition.to.releaseId === null
+          ? {}
+          : { toReleaseId: transition.to.releaseId }),
+      };
     },
 
     async getLaunchInfo(): Promise<LaunchInfo> {
@@ -201,32 +228,25 @@ function createHotUpdaterClient() {
     },
 
     async reload() {
-      if (reloadBehavior === "custom") {
-        await customReload?.();
+      if (customReload !== null) {
+        await customReload();
         return;
       }
-      try {
-        await callNative("reload");
-      } catch (error) {
-        if (
-          error instanceof LynxUpdaterError &&
-          error.code === "NATIVE_MODULE_UNAVAILABLE"
-        ) {
-          return;
-        }
-        throw error;
+      await callNative("reload");
+    },
+
+    setReloadBehavior(behavior: "custom", handler: CustomReloadHandler) {
+      if (behavior !== "custom" || typeof handler !== "function") {
+        throw new LynxUpdaterError(
+          "INVALID_CONFIG",
+          'HotUpdater.setReloadBehavior("custom") requires a reload handler.',
+        );
       }
+      customReload = handler;
     },
 
-    setReloadBehavior(
-      behavior: ReloadBehaviorSetting,
-      handler?: CustomReloadHandler,
-    ) {
-      reloadBehavior = behavior;
-      customReload = behavior === "custom" ? (handler ?? null) : null;
-    },
-
-    isUpdateDownloaded: () => updateDownloaded,
+    isUpdateDownloaded: () =>
+      requireSnapshot((state) => state.nextSelection !== null),
 
     getAppVersion: () => requireSnapshot((state) => state.appVersion),
     getActiveUpdateState: (): ActiveUpdateState =>
@@ -243,11 +263,6 @@ function createHotUpdaterClient() {
           state.runningSelection.releaseId ?? state.runningSelection.bundleId,
       ),
     getMinBundleId: () => requireSnapshot((state) => state.minimumBundleId),
-    getManifest: (): Manifest =>
-      requireSnapshot((state) => ({
-        bundleId: state.runningSelection.bundleId,
-        assets: {},
-      })),
     getChannel: () => requireSnapshot((state) => state.channel),
     getDefaultChannel: () =>
       requireSnapshot((state) => state.defaultChannel ?? state.channel),
@@ -255,28 +270,21 @@ function createHotUpdaterClient() {
       requireSnapshot(
         (state) => state.channel !== (state.defaultChannel ?? state.channel),
       ),
-    setCohort: (cohort: string) =>
-      callNative<NativeState>("setCohort", { cohort }).then((state) => {
-        snapshot = state;
-      }),
-    getCohort: () => requireSnapshot((state) => state.cohort),
-    addListener: <T extends keyof HotUpdaterEvent>(
-      eventName: T,
-      listener: (event: HotUpdaterEvent[T]) => void,
-    ) => {
-      const bucket =
-        listeners.get(eventName) ??
-        new Set<(event: HotUpdaterEvent[keyof HotUpdaterEvent]) => void>();
-      bucket.add(
-        listener as (event: HotUpdaterEvent[keyof HotUpdaterEvent]) => void,
-      );
-      listeners.set(eventName, bucket);
-      return () => {
-        bucket.delete(
-          listener as (event: HotUpdaterEvent[keyof HotUpdaterEvent]) => void,
+    setCohort: (cohort: string) => {
+      const normalized = normalizeCohortValue(cohort);
+      if (!isValidCohort(normalized)) {
+        throw new LynxUpdaterError(
+          "INVALID_COHORT",
+          INVALID_COHORT_ERROR_MESSAGE,
         );
-      };
+      }
+      return callNative<NativeState>("setCohort", {
+        cohort: normalized,
+      }).then((state) => {
+        snapshot = normalizeNativeState(state);
+      });
     },
+    getCohort: () => requireSnapshot((state) => state.cohort),
     async updateBundle() {
       throw new LynxUpdaterError(
         "USE_CHECK_FOR_UPDATE",
@@ -284,24 +292,20 @@ function createHotUpdaterClient() {
       );
     },
     async resetChannel() {
-      const result = await callNative<{ reset: boolean }>("resetChannel");
-      await refreshState();
-      return result.reset;
+      try {
+        const result = await callNative<{ reset: boolean }>("resetChannel");
+        return result.reset;
+      } finally {
+        snapshot = null;
+      }
     },
     getFingerprintHash: () =>
       requireSnapshot((state) => state.fingerprintHash ?? null),
-    getInstallId: () =>
-      requireSnapshot((state) => state.runningSelection.bundleId),
-    setUser: (_params: SetUserParams | null) => {
-      throw new LynxUpdaterError(
-        "NATIVE_MODULE_UNAVAILABLE",
-        "HotUpdater.setUser is not available on Lynx yet.",
-      );
-    },
     getCrashHistory: () =>
       requireSnapshot((state) => [...state.crashedBundleIds]),
-    clearCrashHistory: () => {
-      void callNative("clearCrashHistory").then(refreshState);
+    clearCrashHistory: async () => {
+      await callNative("clearCrashHistory");
+      await refreshState();
     },
   };
 }

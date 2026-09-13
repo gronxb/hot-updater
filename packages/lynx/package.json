@@ -21,6 +21,7 @@
   "files": [
     "dist",
     "android",
+    "android-sparkling",
     "ios",
     "fixtures/catalog-policy.json",
     "*.podspec",

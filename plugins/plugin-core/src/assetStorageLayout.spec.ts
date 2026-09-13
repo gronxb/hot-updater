@@ -131,15 +131,12 @@ describe("assetStorageLayout", () => {
     ).toBe(`s3://bucket/assets/sha256/bb/${downloadFileHash}.br`);
   });
 
-  it("uses one physical download-name rule for bundle assets", () => {
-    expect(getManifestAssetDownloadPath("index.ios.bundle")).toBe(
-      "index.ios.bundle.br",
+  it("uses only the producer-declared download representation", () => {
+    expect(getManifestAssetDownloadPath("opaque/runtime.bin", "br")).toBe(
+      "opaque/runtime.bin.br",
     );
-    expect(getManifestAssetDownloadPath("nested/index.android.bundle")).toBe(
-      "nested/index.android.bundle.br",
-    );
-    expect(getManifestAssetDownloadPath("main.ios.bundle")).toBe(
-      "main.ios.bundle",
+    expect(getManifestAssetDownloadPath("index.ios.bundle", null)).toBe(
+      "index.ios.bundle",
     );
   });
 });

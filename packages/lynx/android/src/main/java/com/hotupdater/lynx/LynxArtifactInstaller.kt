@@ -1,12 +1,13 @@
 package com.hotupdater.lynx
 
-import android.system.Os
-import android.system.OsConstants
+import android.util.Log
 import com.hotupdater.lynx.internal.ArchiveDownload
 import com.hotupdater.lynx.internal.ArchiveIntegrity
 import com.hotupdater.lynx.internal.ArchiveLimits
 import com.hotupdater.lynx.internal.DurableFiles
 import com.hotupdater.lynx.internal.LynxArtifactVerifier
+import com.hotupdater.lynx.internal.LynxDeltaAssembler
+import com.hotupdater.lynx.internal.LynxPatchedAssetEvidence
 import com.hotupdater.lynx.internal.StrictArchive
 import java.io.File
 import java.io.FileOutputStream
@@ -20,6 +21,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
+import org.json.JSONObject
 import kotlin.coroutines.coroutineContext
 
 internal class PreparationLease(val file: RandomAccessFile, val lock: FileLock) {
@@ -27,12 +29,71 @@ internal class PreparationLease(val file: RandomAccessFile, val lock: FileLock) 
     fun close() { if (closed.compareAndSet(false, true)) { try { lock.release() } finally { file.close() } } }
 }
 
+internal class InstallationLease private constructor(
+    private val path: String?,
+) {
+    private val closed = AtomicBoolean()
+
+    fun close() {
+        val retainedPath = path ?: return
+        if (!closed.compareAndSet(false, true)) return
+        synchronized(entries) {
+            val entry = checkNotNull(entries[retainedPath])
+            entry.references -= 1
+            if (entry.references == 0) {
+                entries.remove(retainedPath)
+                try {
+                    entry.lock.release()
+                } finally {
+                    entry.file.close()
+                }
+            }
+        }
+    }
+
+    private class Entry(
+        val file: RandomAccessFile,
+        val lock: FileLock,
+        var references: Int,
+    )
+
+    companion object {
+        private val entries = mutableMapOf<String, Entry>()
+        val none = InstallationLease(null)
+
+        fun acquire(directory: File): InstallationLease {
+            val path = directory.canonicalPath
+            synchronized(entries) {
+                entries[path]?.let {
+                    it.references += 1
+                    return InstallationLease(path)
+                }
+                val file = RandomAccessFile(File(directory, "resource.lease"), "rw")
+                try {
+                    val lock = file.channel.lock(0L, Long.MAX_VALUE, true)
+                    entries[path] = Entry(file, lock, 1)
+                } catch (error: Throwable) {
+                    file.close()
+                    throw error
+                }
+                return InstallationLease(path)
+            }
+        }
+    }
+}
+
 /** Request and verified files are retained natively; JS receives a controller-owned opaque ID. */
 class PreparedLynxArtifact internal constructor(
     internal val owner: String,
+    internal val transactionId: String,
     internal val transaction: File,
     internal val request: LynxArtifactRequest,
+    internal val releaseId: String?,
     internal val manifestHash: String,
+    internal val manifestBacked: Boolean,
+    internal val baseBundleId: String?,
+    internal val patchedAssets: List<LynxPatchedAssetEvidence>,
+    internal val archiveFallback: Boolean,
     internal val lease: PreparationLease,
 ) {
     val bundleId: String get() = request.bundleId
@@ -40,12 +101,22 @@ class PreparedLynxArtifact internal constructor(
 }
 
 /** Prepares immutable artifacts. It never changes running or next-selection state. */
-class LynxArtifactInstaller(storageDirectory: File, config: LynxInstallConfiguration) {
+class LynxArtifactInstaller internal constructor(
+    storageDirectory: File,
+    config: LynxInstallConfiguration,
+    private val directorySync: (File) -> Unit,
+) {
+    constructor(storageDirectory: File, config: LynxInstallConfiguration) : this(
+        storageDirectory,
+        config,
+        DurableFiles::syncDirectory,
+    )
     private val root = storageDirectory.canonicalFile
     private val owner = UUID.randomUUID().toString()
     private val integrity = ArchiveIntegrity(config.publicKeyPem)
     private val verifier = LynxArtifactVerifier(config, integrity)
     private val downloader = ArchiveDownload()
+    private val deltaAssembler = LynxDeltaAssembler(integrity, downloader)
     private val transactions = File(root, "preparations")
     private val installations = File(root, "installations")
 
@@ -64,14 +135,20 @@ class LynxArtifactInstaller(storageDirectory: File, config: LynxInstallConfigura
         }
     }
 
-    suspend fun prepare(request: LynxArtifactRequest, onDownload: (Long) -> Unit = {}): PreparedLynxArtifact {
+    suspend fun prepare(
+        request: LynxArtifactRequest,
+        base: VerifiedLynxInstallation? = null,
+        onDownload: (Long) -> Unit = {},
+        releaseId: String? = null,
+    ): PreparedLynxArtifact {
         var ownedTransaction: File? = null
         var ownedLease: PreparationLease? = null
         try {
             return withContext(Dispatchers.IO) {
-                require(request.bundleId.matches(Regex("[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}"))) { "Invalid Bundle ID" }
+                request.validateForPreparation()
                 val transaction = locked {
-                    File(transactions, UUID.randomUUID().toString()).also { directory ->
+                    val transactionId = UUID.randomUUID().toString()
+                    File(transactions, transactionId).also { directory ->
                         check(directory.mkdir()) { "Cannot create private preparation" }
                         ownedTransaction = directory
                         val leaseFile = RandomAccessFile(File(directory, "lease"), "rw")
@@ -79,20 +156,72 @@ class LynxArtifactInstaller(storageDirectory: File, config: LynxInstallConfigura
                         FileOutputStream(File(directory, "bundleId")).use { output -> output.write(request.bundleId.toByteArray()); output.fd.sync() }
                     }
                 }
-                val archive = File(transaction, "archive")
-                val cachedArchive = File(File(installations, request.bundleId), "archive")
-                if (cachedArchive.isFile) {
-                    require(cachedArchive.length() in 1..ArchiveLimits.MAX_ARCHIVE_BYTES) { "Invalid cached archive size" }
-                    cachedArchive.inputStream().use { input -> FileOutputStream(archive).use { output -> input.copyTo(output); output.fd.sync() } }
-                } else downloader.download(request.fileUrl, archive, onDownload)
+                var manifestError: Exception? = null
+                var verified: VerifiedLynxInstallation? = null
+                var patchedAssets = emptyList<LynxPatchedAssetEvidence>()
+                if (request.hasDelta && base != null) {
+                    val payload = File(transaction, "payload").also { check(it.mkdir()) }
+                    try {
+                        patchedAssets = deltaAssembler.assemble(
+                            transaction,
+                            payload,
+                            request,
+                            base,
+                            onDownload,
+                        )
+                        coroutineContext.ensureActive()
+                        verified = verifier.verify(payload, request, manifestBacked = true)
+                    } catch (error: kotlinx.coroutines.CancellationException) {
+                        throw error
+                    } catch (error: Exception) {
+                        manifestError = error
+                        check(payload.deleteRecursively()) {
+                            "Cannot clean failed manifest preparation"
+                        }
+                    }
+                }
+                if (verified == null) {
+                    if (!request.hasArchive) {
+                        throw manifestError ?: IllegalArgumentException(
+                            "Full archive required without a usable native delta base",
+                        )
+                    }
+                    val archive = File(transaction, "archive")
+                    val cachedArchive = File(File(installations, request.bundleId), "archive")
+                    if (cachedArchive.isFile) {
+                        require(cachedArchive.length() in 1..ArchiveLimits.MAX_ARCHIVE_BYTES) {
+                            "Invalid cached archive size"
+                        }
+                        cachedArchive.inputStream().use { input ->
+                            FileOutputStream(archive).use { output ->
+                                input.copyTo(output)
+                                output.fd.sync()
+                            }
+                        }
+                    } else {
+                        downloader.download(checkNotNull(request.fileUrl), archive, onDownload)
+                    }
+                    coroutineContext.ensureActive()
+                    integrity.verify(archive, checkNotNull(request.fileHash))
+                    val payload = File(transaction, "payload").also { check(it.mkdir()) }
+                    StrictArchive.extract(archive, payload)
+                    coroutineContext.ensureActive()
+                    verified = verifier.verify(payload, request)
+                }
                 coroutineContext.ensureActive()
-                integrity.verify(archive, request.fileHash)
-                val payload = File(transaction, "payload").also { check(it.mkdir()) }
-                StrictArchive.extract(archive, payload)
-                coroutineContext.ensureActive()
-                val verified = verifier.verify(payload, request)
-                coroutineContext.ensureActive()
-                PreparedLynxArtifact(owner, transaction, request.copy(), verified.manifestHash, checkNotNull(ownedLease))
+                PreparedLynxArtifact(
+                    owner,
+                    transaction.name,
+                    transaction,
+                    request.copy(),
+                    releaseId,
+                    checkNotNull(verified).manifestHash,
+                    verified.manifestBacked,
+                    base?.bundleId,
+                    patchedAssets,
+                    manifestError != null && !verified.manifestBacked,
+                    checkNotNull(ownedLease),
+                )
             }
         } catch (error: Throwable) {
             // This also owns cleanup if prompt cancellation discards the verified result
@@ -120,8 +249,7 @@ class LynxArtifactInstaller(storageDirectory: File, config: LynxInstallConfigura
             var active = true
             try {
                 operationContext.ensureActive()
-                integrity.verify(File(prepared.transaction, "archive"), prepared.request.fileHash)
-                val verified = verifier.verify(File(prepared.transaction, "payload"), prepared.request)
+                val verified = verifyPrepared(prepared.transaction, prepared)
                 check(verified.manifestHash == prepared.manifestHash) { "Prepared metadata changed" }
                 operationContext.ensureActive()
                 val result = withCurrentAuthorization {
@@ -129,20 +257,33 @@ class LynxArtifactInstaller(storageDirectory: File, config: LynxInstallConfigura
                     check(active && published == null && !prepared.consumed) { "Publication must run once inside authorization" }
                     val destination = File(installations, prepared.request.bundleId)
                     if (destination.exists()) {
-                        integrity.verify(File(destination, "archive"), prepared.request.fileHash)
-                        val existing = verifier.verify(File(destination, "payload"), prepared.request)
+                        val existing = verifyPrepared(destination, prepared)
                         check(existing.manifestHash == prepared.manifestHash) { "Immutable Bundle identity conflict" }
                     } else {
                         syncDirectories(prepared.transaction)
                         operationContext.ensureActive()
                         check(prepared.transaction.renameTo(destination)) { "Atomic installation publication failed" }
-                        syncDirectory(installations)
-                        syncDirectory(transactions)
+                        try {
+                            syncDirectory(installations)
+                            syncDirectory(transactions)
+                        } catch (error: Throwable) {
+                            try {
+                                check(destination.renameTo(prepared.transaction)) {
+                                    "Could not roll back undurable installation publication"
+                                }
+                                syncDirectory(installations)
+                                syncDirectory(transactions)
+                            } catch (rollbackError: Throwable) {
+                                error.addSuppressed(rollbackError)
+                            }
+                            throw error
+                        }
                     }
                     prepared.consumed = true
-                    verifier.verify(File(destination, "payload"), prepared.request).also { published = it }
+                    verifyPrepared(destination, prepared).also { published = it }
                 }
                 check(result === published) { "Authorization did not publish this preparation" }
+                logPublished(prepared)
                 result
             } finally {
                 active = false
@@ -162,13 +303,37 @@ class LynxArtifactInstaller(storageDirectory: File, config: LynxInstallConfigura
         }
     }
 
+    internal fun retain(installation: VerifiedLynxInstallation): InstallationLease {
+        val installationDirectory = checkNotNull(
+            installation.directory.parentFile,
+        ).canonicalFile
+        if (installationDirectory.parentFile?.canonicalFile != installations) {
+            return InstallationLease.none
+        }
+        return locked {
+            check(installationDirectory.name == installation.bundleId) {
+                "Installation lease Bundle identity mismatch"
+            }
+            check(
+                installationDirectory.isDirectory &&
+                    installation.directory.canonicalFile ==
+                    File(installationDirectory, "payload").canonicalFile &&
+                    installation.directory.isDirectory,
+            ) { "Installation disappeared before resource retention" }
+            InstallationLease.acquire(installationDirectory)
+        }
+    }
+
     /** Keep every native/context/preparation lease plus at most two unused cached bundles. */
     internal fun prune(withProtectedState: (removeUnused: (Set<String>) -> Set<String>) -> Unit) = locked {
         withProtectedState { protected ->
             val preparing = transactions.listFiles().orEmpty().mapNotNull { directory ->
                 File(directory, "bundleId").takeIf { it.isFile }?.readText()
             }.toSet()
-            val unused = installations.listFiles().orEmpty().filter { it.isDirectory && it.name !in protected && it.name !in preparing }
+            val unused = installations.listFiles().orEmpty().filter {
+                it.isDirectory && it.name !in protected && it.name !in preparing &&
+                    !isRetained(it)
+            }
                 .sortedByDescending { it.lastModified() }
             unused.drop(2).forEach { check(it.deleteRecursively()) { "Cannot remove unused cached installation" } }
             syncDirectory(installations)
@@ -179,10 +344,109 @@ class LynxArtifactInstaller(storageDirectory: File, config: LynxInstallConfigura
     private fun <T> locked(block: () -> T): T = synchronized(locks.getOrPut(root.path) { Any() }) {
         RandomAccessFile(File(root, "installation.lock"), "rw").use { file -> file.channel.lock().use { block() } }
     }
-    private fun syncDirectories(directory: File) { directory.walkBottomUp().filter { it.isDirectory }.forEach(::syncDirectory) }
-    private fun syncDirectory(directory: File) {
-        val descriptor = Os.open(directory.path, OsConstants.O_RDONLY, 0)
-        try { Os.fsync(descriptor) } finally { Os.close(descriptor) }
+
+    private fun isRetained(directory: File): Boolean {
+        val leaseFile = File(directory, "resource.lease")
+        if (!leaseFile.isFile) return false
+        RandomAccessFile(leaseFile, "rw").use { file ->
+            val lease = try {
+                file.channel.tryLock()
+            } catch (_: OverlappingFileLockException) {
+                null
+            }
+            if (lease == null) return true
+            lease.release()
+            return false
+        }
     }
-    companion object { private val locks = ConcurrentHashMap<String, Any>() }
+
+    private fun verifyPrepared(
+        directory: File,
+        prepared: PreparedLynxArtifact,
+    ): VerifiedLynxInstallation {
+        if (prepared.manifestBacked) {
+            require(!prepared.request.manifestFileHash.isNullOrBlank()) {
+                "Manifest-backed installation lost its trust token"
+            }
+        } else {
+            integrity.verify(
+                File(directory, "archive"),
+                checkNotNull(prepared.request.fileHash),
+            )
+        }
+        return verifier.verify(
+            File(directory, "payload"),
+            prepared.request,
+            prepared.manifestBacked,
+        )
+    }
+
+    private fun logPublished(prepared: PreparedLynxArtifact) {
+        if (prepared.manifestBacked) {
+            val baseBundleId = checkNotNull(prepared.baseBundleId)
+            prepared.patchedAssets.sortedBy { it.path }.forEach { asset ->
+                val event = LynxInstallEvent.json(
+                    "HotUpdaterBsdiffPatchApplied",
+                    prepared,
+                    baseBundleId,
+                    asset,
+                )
+                Log.i(
+                    TAG,
+                    "HotUpdaterBsdiffPatchApplied bundleId=${prepared.bundleId} baseBundleId=$baseBundleId asset=${asset.path} HotUpdaterLynxEvent=$event",
+                )
+            }
+            val event = LynxInstallEvent.json(
+                "HotUpdaterManifestDiffApplied",
+                prepared,
+                baseBundleId,
+            )
+            Log.i(
+                TAG,
+                "HotUpdaterManifestDiffApplied bundleId=${prepared.bundleId} baseBundleId=$baseBundleId HotUpdaterLynxEvent=$event",
+            )
+        } else {
+            if (prepared.archiveFallback) {
+                Log.i(
+                    TAG,
+                    "HotUpdaterArchiveFallbackApplied bundleId=${prepared.bundleId} baseBundleId=${prepared.baseBundleId ?: "none"}",
+                )
+            }
+            Log.i(TAG, "HotUpdaterArchiveInstalled bundleId=${prepared.bundleId}")
+        }
+    }
+
+    private fun syncDirectories(directory: File) {
+        directory.walkBottomUp().filter { it.isDirectory }.forEach(::syncDirectory)
+    }
+
+    private fun syncDirectory(directory: File) = directorySync(directory)
+
+    companion object {
+        private const val TAG = "HotUpdaterLynx"
+        private val locks = ConcurrentHashMap<String, Any>()
+    }
+}
+
+internal object LynxInstallEvent {
+    fun json(
+        event: String,
+        prepared: PreparedLynxArtifact,
+        baseBundleId: String,
+        patchedAsset: LynxPatchedAssetEvidence? = null,
+    ): String = JSONObject()
+        .put("schemaVersion", 1)
+        .put("event", event)
+        .put("transactionId", prepared.transactionId)
+        .put("bundleId", prepared.bundleId)
+        .put("releaseId", prepared.releaseId ?: JSONObject.NULL)
+        .put("baseBundleId", baseBundleId)
+        .also { value ->
+            patchedAsset?.let {
+                value.put("asset", it.path)
+                value.put("patchFileHash", it.patchFileHash)
+                value.put("reconstructedFileHash", it.reconstructedFileHash)
+            }
+        }
+        .toString()
 }

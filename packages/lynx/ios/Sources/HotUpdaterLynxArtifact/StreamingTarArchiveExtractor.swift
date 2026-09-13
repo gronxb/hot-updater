@@ -55,11 +55,14 @@ public enum StreamingTarArchiveExtractor {
 
     public static func decompressBrotliFile(
         from sourcePath: String,
-        to outputPath: String
+        to outputPath: String,
+        maximumOutputBytes: UInt64
     ) throws {
         try decompressBrotliArchive(
             from: sourcePath,
             to: outputPath,
+            strict: true,
+            maximumOutputBytes: maximumOutputBytes,
             progressHandler: { _ in }
         )
     }
@@ -160,7 +163,13 @@ public enum StreamingTarArchiveExtractor {
             let bytesRead = gzread(gzipFile, &buffer, UInt32(buffer.count))
 
             if bytesRead > 0 {
-                if strict { try ArchiveLimits.checkOutput(outputHandle, adding: Int(bytesRead)) }
+                if strict {
+                    try ArchiveLimits.checkOutput(
+                        outputHandle,
+                        adding: Int(bytesRead),
+                        maximumBytes: ArchiveLimits.tarStream
+                    )
+                }
                 try outputHandle.write(contentsOf: Data(buffer[0..<Int(bytesRead)]))
 
                 if totalSourceSize > 0 {
@@ -193,6 +202,7 @@ public enum StreamingTarArchiveExtractor {
         from sourcePath: String,
         to outputPath: String,
         strict: Bool = false,
+        maximumOutputBytes: UInt64 = ArchiveLimits.tarStream,
         progressHandler: @escaping (Double) -> Void
     ) throws {
         let totalSourceSize = try fileSize(atPath: sourcePath)
@@ -252,7 +262,8 @@ public enum StreamingTarArchiveExtractor {
                     into: outputHandle,
                     outputBuffer: outputBuffer,
                     finalize: true,
-            strict: strict
+                    strict: strict,
+                    maximumOutputBytes: maximumOutputBytes
                 )
             } else {
                 streamStatus = try chunk.withUnsafeBytes { rawBuffer in
@@ -268,7 +279,8 @@ public enum StreamingTarArchiveExtractor {
                         into: outputHandle,
                         outputBuffer: outputBuffer,
                         finalize: false,
-                        strict: strict
+                        strict: strict,
+                        maximumOutputBytes: maximumOutputBytes
                     )
                 }
             }
@@ -297,7 +309,8 @@ public enum StreamingTarArchiveExtractor {
         into outputHandle: FileHandle,
         outputBuffer: UnsafeMutablePointer<UInt8>,
         finalize: Bool,
-        strict: Bool = false
+        strict: Bool = false,
+        maximumOutputBytes: UInt64 = ArchiveLimits.tarStream
     ) throws -> compression_status {
         let flags = finalize ? Int32(COMPRESSION_STREAM_FINALIZE.rawValue) : 0
         var lastStatus = COMPRESSION_STATUS_OK
@@ -314,7 +327,7 @@ public enum StreamingTarArchiveExtractor {
             case COMPRESSION_STATUS_OK, COMPRESSION_STATUS_END:
                 let producedBytes = bufferSize - stream.dst_size
                 if producedBytes > 0 {
-                    if strict { try ArchiveLimits.checkOutput(outputHandle, adding: producedBytes) }
+                    if strict { try ArchiveLimits.checkOutput(outputHandle, adding: producedBytes, maximumBytes: maximumOutputBytes) }
                     try outputHandle.write(contentsOf:
                         Data(bytes: outputBuffer, count: producedBytes)
                     )

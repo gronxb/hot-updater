@@ -19,6 +19,7 @@ React Native source files, package dependencies and CocoaPods setup remain uncha
 | `ZipArchiveExtractor.swift` | `594b3f5f3690e17b1bb24434f0dcc8456ec65d1734db7a0490314f829e3dd1f8` |
 | `ZipDecompressionStrategy.swift` | `8e1043ddc18d9fb5bd3fe4cbcf5a66c9af608468cb083669e0fcde5d8faaacfe` |
 | `SignatureVerifier.swift` | `43b6cc8ef639cdf3e4ab22e45b303c422b9b1274fe98d8f2255565c0eb256003` |
+| `BsdiffPatchBridge.mm` | `8e544d41c02917cd1daf90e349d3c01c1b0140e6d3611f140fc653b90d2c1077` |
 
 The copied cryptographic implementation is named `ArtifactSignatureVerifier` and
 receives an immutable native configuration key explicitly. Its RSA-SHA256 wire
@@ -34,6 +35,11 @@ available internally for comparison, but the installer always uses strict mode.
 session and persistent download state. `ArtifactDownload` instead gives each
 preparation one ephemeral session, private destination, response-length/size
 checks and cancellation. It has no global download-state file.
+
+The BSDIFF bridge is compiled in a Lynx-only target and retains the
+`ENDSLEY/BSDIFF43` wire format. The adaptation adds regular-file checks, checked
+integer and output bounds, rejection of trailing patch content, and atomic
+temporary output. It does not depend on React Native headers or configuration.
 
 Preparation is not catalog authorization. Immutable publication occurs only when
 the native finalization owner invokes a synchronous publish closure while retaining

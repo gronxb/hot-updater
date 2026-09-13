@@ -17,6 +17,10 @@ describe("E2E screen state control boundary", () => {
     });
 
     handlePatchE2eScreenState({
+      crashHistoryCount: "2",
+      currentBundleId: "bundle-running",
+      currentCohort: "qa",
+      currentReleaseId: "release-running",
       stagingBundleId: "bundle-1",
       stagingReleaseId: "release-1",
       verificationPending: true,
@@ -25,6 +29,10 @@ describe("E2E screen state control boundary", () => {
     expect(readE2eScreenStateSnapshot()).toMatchObject({
       cohortActionResult: "set -> qa",
       cohortInput: "qa",
+      crashHistoryCount: "2",
+      currentBundleId: "bundle-running",
+      currentCohort: "qa",
+      currentReleaseId: "release-running",
       runtimeChannelInput: "beta-next",
       stagingBundleId: "bundle-1",
       stagingReleaseId: "release-1",
@@ -37,6 +45,10 @@ describe("E2E screen state control boundary", () => {
         cohortActionResult: "idle",
         cohortInput: null,
         currentChannel: null,
+        currentBundleId: null,
+        currentReleaseId: null,
+        currentCohort: null,
+        crashHistoryCount: null,
         defaultChannel: null,
         channelSwitched: null,
         launchStatus: "Current Launch Status: null",
@@ -58,12 +70,26 @@ describe("E2E screen state control boundary", () => {
     expect(() =>
       handlePatchE2eScreenState({ cohortActionResult: 309 }),
     ).toThrow("screen state field must be a string");
+    for (const field of [
+      "crashHistoryCount",
+      "currentBundleId",
+      "currentCohort",
+      "currentReleaseId",
+    ]) {
+      expect(() => handlePatchE2eScreenState({ [field]: false })).toThrow(
+        "screen state field must be a string or null",
+      );
+    }
 
     expect(readE2eScreenStateSnapshot()).toEqual({
       channelActionResult: "idle",
       cohortActionResult: "idle",
       cohortInput: null,
       currentChannel: null,
+      currentBundleId: null,
+      currentReleaseId: null,
+      currentCohort: null,
+      crashHistoryCount: null,
       defaultChannel: null,
       channelSwitched: null,
       launchStatus: "Current Launch Status: null",

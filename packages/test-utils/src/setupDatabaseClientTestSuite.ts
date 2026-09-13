@@ -1,5 +1,5 @@
 import type { Bundle } from "@hot-updater/core";
-import type { ChannelRow } from "@hot-updater/plugin-core";
+import { type ChannelRow, MAX_BUNDLE_PATCHES } from "@hot-updater/plugin-core";
 import { describe, expect, it } from "vitest";
 
 import type { DatabasePluginTestLifecycle } from "./databasePluginTestRunner";
@@ -64,9 +64,9 @@ export const setupDatabaseClientTestSuite = <TPlugin>(
             {
               baseBundleId: base.id,
               baseFileHash: base.fileHash,
-              patchFileHash: "patch-hash-102",
+              patchFileHash: "b".repeat(64),
               patchStorageUri: "storage://patches/102.patch",
-              byteSize: 3_000_000_002,
+              byteSize: 3_000_002,
             },
           ],
         } satisfies Bundle;
@@ -88,6 +88,36 @@ export const setupDatabaseClientTestSuite = <TPlugin>(
           id: bundle.id,
           patches: bundle.patches,
         });
+      });
+
+      it("rejects oversized aggregate patch insertion and replacement", async () => {
+        const client = getClient();
+        const bases = Array.from(
+          { length: MAX_BUNDLE_PATCHES + 1 },
+          (_, index) => createBundleFixture(String(300 + index)),
+        );
+        for (const base of bases) await client.insertBundle(base);
+        const owner = createBundleFixture("399");
+        const patches = bases.map((base, index) => ({
+          baseBundleId: base.id,
+          baseFileHash: base.fileHash,
+          byteSize: index + 1,
+          patchFileHash: index.toString(16).padStart(64, "0"),
+          patchStorageUri: `storage://patches/${index}.patch`,
+        }));
+
+        await expect(
+          client.insertBundle({ ...owner, patches }),
+        ).rejects.toMatchObject({ name: "DatabasePluginInputError" });
+        await expect(client.getBundleById(owner.id)).resolves.toBeNull();
+
+        await client.insertBundle(owner);
+        await expect(
+          client.updateBundleById(owner.id, { patches }),
+        ).rejects.toMatchObject({ name: "DatabasePluginInputError" });
+        await expect(client.getBundleById(owner.id)).resolves.toMatchObject(
+          owner,
+        );
       });
 
       it("paginates bundle aggregates using the row count", async () => {
@@ -127,9 +157,9 @@ export const setupDatabaseClientTestSuite = <TPlugin>(
               {
                 baseBundleId: secondBase.id,
                 baseFileHash: secondBase.fileHash,
-                patchFileHash: "replacement-hash",
+                patchFileHash: "d".repeat(64),
                 patchStorageUri: "storage://patches/replacement.patch",
-                byteSize: 3_000_000_003,
+                byteSize: 3_000_003,
               },
             ],
           });
@@ -150,9 +180,9 @@ export const setupDatabaseClientTestSuite = <TPlugin>(
           {
             baseBundleId: secondBase.id,
             baseFileHash: secondBase.fileHash,
-            patchFileHash: "replacement-hash",
+            patchFileHash: "d".repeat(64),
             patchStorageUri: "storage://patches/replacement.patch",
-            byteSize: 3_000_000_003,
+            byteSize: 3_000_003,
           },
         ]);
       });

@@ -1152,6 +1152,9 @@ describe("resolveEdgeFunctionDenoConfig", () => {
             searchFrom: path.resolve("plugins/supabase"),
           },
         )}`,
+        "fast-glob": `npm:fast-glob@${resolvePackageVersion("fast-glob", {
+          searchFrom: path.resolve("plugins/plugin-core"),
+        })}`,
         mime: `npm:mime@${resolvePackageVersion("mime", {
           searchFrom: path.resolve("plugins/plugin-core"),
         })}`,

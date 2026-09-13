@@ -34,7 +34,7 @@ final class LynxControllerTests: XCTestCase {
     private func confirm(_ controller: LynxController, _ context: LynxLaunchContext) throws {
         try controller.observedContent(context)
         var result: String?
-        controller.notifyAppReady(context) { reply in result = try? reply.get() }
+        controller.notifyAppReady(context) { reply in result = try? reply.get().status }
         XCTAssertEqual(result, "CONFIRMED")
     }
     private func prepare(_ controller: LynxController, _ context: LynxLaunchContext, _ bytes: Data, _ artifact: LynxArtifactRequest) async throws -> String {
@@ -93,7 +93,7 @@ final class LynxControllerTests: XCTestCase {
         XCTAssertTrue(secondaryRejected)
         var ready: String?
         var primaryFailed = false
-        controller.notifyAppReady(primary) { result in ready = try? result.get(); if case .failure = result { primaryFailed = true } }
+        controller.notifyAppReady(primary) { result in ready = try? result.get().status; if case .failure = result { primaryFailed = true } }
         XCTAssertNil(ready)
         secondaryRejected = false
         controller.notifyAppReady(secondary) { if case .failure = $0 { secondaryRejected = true } }
@@ -101,7 +101,7 @@ final class LynxControllerTests: XCTestCase {
         XCTAssertFalse(primaryFailed)
         try controller.observedContent(primary)
         XCTAssertEqual(ready, "CONFIRMED")
-        controller.notifyAppReady(primary) { ready = try? $0.get() }
+        controller.notifyAppReady(primary) { ready = try? $0.get().status }
         XCTAssertEqual(ready, "ALREADY_CONFIRMED")
         controller.destroy(primary)
         XCTAssertThrowsError(try controller.getState(primary))
@@ -156,7 +156,7 @@ final class LynxControllerTests: XCTestCase {
         }
     }
 
-    func testSameByteAuthorizedAdoptionKeepsProcessReceiptAndConfirmation() async throws {
+    func testSameByteAuthorizedAdoptionUpdatesLiveReceiptAndConfirmation() async throws {
         let (root, config, original, artifact) = try await fixture(); defer { try? FileManager.default.removeItem(at: root) }
         var controller: LynxController? = try LynxController(configuration: config)
         var context = controller!.createContext(primary: true); _ = try controller!.begin(context); try confirm(controller!, context)
@@ -181,8 +181,21 @@ final class LynxControllerTests: XCTestCase {
         let result = try controller!.stageSelection(adopted, context: context)
         XCTAssertEqual(result["status"] as? String, "ADOPTED")
         XCTAssertEqual(result["requiresRestart"] as? Bool, false)
-        XCTAssertEqual(controller!.runningSelection, immutableRunning)
+        XCTAssertEqual(controller!.runningSelection, receipt)
         XCTAssertEqual(try controller!.getState(context)["runningConfirmed"] as? Bool, true)
+        XCTAssertTrue(try controller!.getState(context)["nextSelection"] is NSNull)
+        XCTAssertEqual(
+            (try controller!.getState(context)["confirmedSelection"] as? [String: Any])?["releaseId"] as? String,
+            receipt.releaseId
+        )
+        var confirmation: LynxConfirmationResult?
+        controller!.notifyAppReady(context) { confirmation = try? $0.get() }
+        XCTAssertEqual(confirmation?.status, "ALREADY_CONFIRMED")
+        XCTAssertEqual(confirmation?.transition?.kind, "UNCHANGED")
+        XCTAssertEqual(confirmation?.transition?.from.bundleId, confirmation?.transition?.to.bundleId)
+        XCTAssertNotEqual(confirmation?.transition?.from.releaseId, confirmation?.transition?.to.releaseId)
+        XCTAssertEqual(confirmation?.transition?.from, immutableRunning)
+        XCTAssertEqual(confirmation?.transition?.to, receipt)
         // A delayed resource/content event after same-byte adoption cannot confirm old provenance again.
         XCTAssertNoThrow(try controller!.observedResource("assets/probe.png", context: context))
         XCTAssertNoThrow(try controller!.observedContent(context))

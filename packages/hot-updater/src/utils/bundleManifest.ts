@@ -1,21 +1,24 @@
 import fs from "fs/promises";
 import path from "path";
 
+import type { BundleManifest } from "@hot-updater/core";
+import {
+  assertBundleManifestByteSize,
+  type BuildArtifact,
+  compareStringsByCodeUnit,
+} from "@hot-updater/plugin-core";
+
 import { getFileHashFromFile } from "./getFileHash";
 
 const MANIFEST_HASH_CONCURRENCY = 8;
 
-export interface Manifest {
-  bundleId: string;
-  assets: Record<string, ManifestAsset>;
-}
+export type Manifest = BundleManifest;
 
-export interface ManifestAsset {
-  downloadByteSize?: number;
-  downloadFileHash?: string;
-  fileHash: string;
-  signature?: string;
-}
+export const serializeBundleManifest = (manifest: Manifest): string => {
+  const contents = `${JSON.stringify(manifest, null, 2)}\n`;
+  assertBundleManifestByteSize(Buffer.byteLength(contents));
+  return contents;
+};
 
 export const writeBundleManifestFile = async ({
   buildPath,
@@ -26,7 +29,7 @@ export const writeBundleManifestFile = async ({
 }) => {
   const manifestPath = path.join(buildPath, "manifest.json");
 
-  await fs.writeFile(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
+  await fs.writeFile(manifestPath, serializeBundleManifest(manifest));
 
   return manifestPath;
 };
@@ -57,22 +60,27 @@ const mapWithConcurrency = async <T, R>(
 export const createBundleManifest = async ({
   bundleId,
   hashConcurrency = MANIFEST_HASH_CONCURRENCY,
+  patchAssetPath,
   signFileHash,
   targetFiles,
 }: {
   bundleId: string;
   hashConcurrency?: number;
+  patchAssetPath: string;
   signFileHash?: (fileHash: string) => Promise<string>;
-  targetFiles: { path: string; name: string }[];
+  targetFiles: BuildArtifact[];
 }): Promise<Manifest> => {
   if (!Number.isInteger(hashConcurrency) || hashConcurrency < 1) {
     throw new Error("Manifest hash concurrency must be a positive integer");
+  }
+  if (!targetFiles.some((target) => target.name === patchAssetPath)) {
+    throw new Error("patchAssetPath must name a declared build artifact");
   }
 
   const assets = Object.fromEntries(
     await mapWithConcurrency(
       [...targetFiles].sort((left, right) =>
-        left.name.localeCompare(right.name),
+        compareStringsByCodeUnit(left.name, right.name),
       ),
       hashConcurrency,
       async (target) => {
@@ -84,6 +92,7 @@ export const createBundleManifest = async ({
         return [
           target.name,
           {
+            downloadCompression: target.downloadCompression,
             fileHash,
             ...(signature ? { signature } : {}),
           },
@@ -93,8 +102,9 @@ export const createBundleManifest = async ({
   );
 
   return {
-    bundleId,
     assets,
+    bundleId,
+    patchAssetPath,
   };
 };
 
@@ -102,18 +112,21 @@ export const writeBundleManifest = async ({
   buildPath,
   bundleId,
   hashConcurrency,
+  patchAssetPath,
   signFileHash,
   targetFiles,
 }: {
   buildPath: string;
   bundleId: string;
   hashConcurrency?: number;
+  patchAssetPath: string;
   signFileHash?: (fileHash: string) => Promise<string>;
-  targetFiles: { path: string; name: string }[];
+  targetFiles: BuildArtifact[];
 }) => {
   const manifest = await createBundleManifest({
     bundleId,
     hashConcurrency,
+    patchAssetPath,
     signFileHash,
     targetFiles,
   });

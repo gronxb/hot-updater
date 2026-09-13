@@ -10,7 +10,6 @@ export interface HotUpdaterOptions {
 }
 
 export type HotUpdaterInitOptions = HotUpdaterOptions & {
-  insights?: boolean;
   onError?: (error: Error) => void;
 };
 
@@ -29,7 +28,11 @@ export type ReleaseTransitionKind =
   | "USE_BUILTIN";
 
 export type NotifyAppReadyResult =
-  | { status: "UNCHANGED" }
+  | {
+      status: "UNCHANGED";
+      fromReleaseId?: string;
+      toReleaseId?: string;
+    }
   | {
       status: "UPDATE_APPLIED";
       fromBundleId: string;
@@ -45,19 +48,7 @@ export type NotifyAppReadyResult =
       toReleaseId?: string;
     };
 
-export type ReloadBehavior = "reload" | "processRestart";
-export type ReloadBehaviorSetting = ReloadBehavior | "custom";
 export type CustomReloadHandler = () => void | Promise<void>;
-
-export interface ManifestAsset {
-  fileHash: string;
-  signature?: string;
-}
-
-export interface Manifest {
-  bundleId: string;
-  assets: Record<string, ManifestAsset>;
-}
 
 export interface ActiveUpdateSelection {
   kind: "BUNDLE" | "EMBEDDED" | "BUILTIN";
@@ -71,15 +62,6 @@ export interface ActiveUpdateState {
   stableSelection: ActiveUpdateSelection | null;
   verificationPending: boolean;
 }
-
-export type HotUpdaterEvent = {
-  onProgress: { progress: number };
-};
-
-export type SetUserParams = {
-  userId?: string | null;
-  name?: string | null;
-};
 
 export type SelectionSummary = Pick<
   PersistedSelectionReceipt,
@@ -99,8 +81,15 @@ export interface InstallResult {
   requiresRestart: boolean;
 }
 
+export interface LaunchTransitionReceipt {
+  kind: "UPDATE_APPLIED" | "RECOVERED" | "UNCHANGED";
+  from: SelectionSummary;
+  to: SelectionSummary;
+}
+
 export interface ConfirmationResult {
   status: "CONFIRMED" | "ALREADY_CONFIRMED";
+  transition: LaunchTransitionReceipt | null;
 }
 
 export interface CheckForUpdateResult {
@@ -116,7 +105,7 @@ export interface CheckForUpdateResult {
   readonly fileUrl: string | null;
   readonly fileHash: string | null;
   /**
-   * Publishes the prepared selection. Equivalent to RN
+   * Downloads, verifies, and publishes the selected update. Equivalent to RN
    * `update.updateBundle()`. Never changes this process's bytes.
    */
   updateBundle: () => Promise<boolean>;
@@ -159,21 +148,55 @@ export interface SelectionGuard {
 export interface AcceptCatalogParams {
   catalog: ReleaseCatalog;
   expectedRevision: string;
+  explicitScopeSwitch: boolean;
   selectionContextHash: string;
+  targetChannel: string;
 }
 
-export interface ArchiveArtifact {
-  bundleId: string;
-  fileUrl: string;
+export interface UpdateChangedAsset {
   fileHash: string;
-  /** When absent, native must use the verified archive as the trust anchor. */
-  manifestFileHash: string | null;
+  file: {
+    url: string;
+    compression: "br" | null;
+  } | null;
+  patch: {
+    algorithm: "bsdiff";
+    baseBundleId: string;
+    baseFileHash: string;
+    patchFileHash: string;
+    patchUrl: string;
+  } | null;
 }
+
+type ArchiveDelivery = { fileUrl: string; fileHash: string };
+
+type NoArchiveDelivery = { fileUrl: null; fileHash: null };
+
+type ManifestDelivery = {
+  manifestUrl: string;
+  manifestFileHash: string;
+  changedAssets: Record<string, UpdateChangedAsset>;
+};
+
+type NoManifestDelivery = {
+  manifestUrl: null;
+  /** An archive may still authenticate its contained target manifest. */
+  manifestFileHash: string | null;
+  changedAssets: null;
+};
+
+/** Network descriptors only. Native selects and verifies the running patch base. */
+export type UpdateArtifact = {
+  bundleId: string;
+} & (
+  | (ArchiveDelivery & (ManifestDelivery | NoManifestDelivery))
+  | (NoArchiveDelivery & ManifestDelivery)
+);
 
 export interface PrepareSelectionParams {
   guard: SelectionGuard;
   selection: PersistedSelectionReceipt;
-  artifact: ArchiveArtifact | null;
+  artifact: UpdateArtifact | null;
 }
 
 export type NativeReply<T> =
@@ -189,6 +212,10 @@ export interface HotUpdaterLynxNative {
     params: AcceptCatalogParams,
     callback: Callback<SelectionGuard>,
   ): void;
+  validateSelection(
+    params: PrepareSelectionParams,
+    callback: Callback<{ validated: true }>,
+  ): void;
   prepareSelection(
     params: PrepareSelectionParams,
     callback: Callback<{ preparedId: string }>,
@@ -200,10 +227,6 @@ export interface HotUpdaterLynxNative {
   notifyAppReady(callback: Callback<ConfirmationResult>): void;
   reload?(callback: Callback<void>): void;
   setCohort?(params: { cohort: string }, callback: Callback<NativeState>): void;
-  setChannel?(
-    params: { channel: string },
-    callback: Callback<NativeState>,
-  ): void;
   resetChannel?(callback: Callback<{ reset: boolean }>): void;
   clearCrashHistory?(callback: Callback<NativeState>): void;
 }

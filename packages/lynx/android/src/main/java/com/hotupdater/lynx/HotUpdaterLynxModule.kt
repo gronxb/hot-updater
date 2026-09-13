@@ -17,63 +17,51 @@ import org.json.JSONObject
 class HotUpdaterLynxModule(context: Context) : LynxModule(context) {
     @LynxMethod fun getState(callback: Callback) = call(callback) { session -> session.controller.state(session) }
     @LynxMethod fun acceptCatalog(params: ReadableMap, callback: Callback) = call(callback) { session -> session.controller.accept(session, json(params)) }
+    @LynxMethod fun validateSelection(params: ReadableMap, callback: Callback) = call(callback) { session -> session.controller.validate(session, json(params)) }
     @LynxMethod fun prepareSelection(params: ReadableMap, callback: Callback) = call(callback) { session -> session.controller.prepare(session, json(params)) }
     @LynxMethod fun stageSelection(params: ReadableMap, callback: Callback) = call(callback) { session -> session.controller.stage(session, json(params).getString("preparedId")) }
     @LynxMethod fun setCohort(params: ReadableMap, callback: Callback) = call(callback) { session ->
         session.controller.setCohort(params.getString("cohort"))
         session.controller.state(session)
     }
-    @LynxMethod fun setChannel(params: ReadableMap, callback: Callback) = call(callback) { session ->
-        val channel = json(params).getString("channel")
-        session.controller.setChannel(channel)
-        session.controller.state(session)
-    }
-    @LynxMethod fun resetChannel(callback: Callback) = call(callback) { session ->
-        JSONObject().put("reset", session.controller.resetChannel())
+    @LynxMethod fun resetChannel(callback: Callback) {
+        Handler(Looper.getMainLooper()).post {
+            val once = LynxOnceReply<JSONObject> { reply(callback, it) }
+            val result = runCatching {
+                val session = sessions[mContext] ?: throw CatalogPolicy.Rejected(
+                    "CONTEXT_REJECTED",
+                    "No registered native context",
+                )
+                val reload = session.reloadAction()
+                val reset = session.controller.resetChannel()
+                reload { reloadResult ->
+                    once.settle(reloadResult.map {
+                        JSONObject().put("reset", reset)
+                    })
+                }
+            }
+            result.exceptionOrNull()?.let {
+                once.settle(Result.failure(it))
+            }
+        }
     }
     @LynxMethod fun clearCrashHistory(callback: Callback) = call(callback) { session ->
         session.controller.clearCrashHistory()
         session.controller.state(session)
     }
     @LynxMethod fun reload(callback: Callback) {
-        reply(callback, Result.success(JSONObject()))
         Handler(Looper.getMainLooper()).post {
-            val context = mContext as android.content.Context
-            val applicationContext = context.applicationContext
-            try {
-                android.util.Log.i("HotUpdaterImpl", "Started restart trampoline to apply update bundle")
-                android.util.Log.i("HotUpdaterE2E", "Started restart trampoline to apply update bundle")
-                val activity = activityOf(context)
-                val relaunch = relaunchIntent(applicationContext, activity)
-                val restartIntent = android.content.Intent(
-                    applicationContext,
-                    HotUpdaterRestartActivity::class.java,
-                ).apply {
-                    addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
-                    addFlags(android.content.Intent.FLAG_ACTIVITY_NO_ANIMATION)
-                    putExtra(HotUpdaterRestartActivity.EXTRA_PACKAGE_NAME, applicationContext.packageName)
-                    putExtra(HotUpdaterRestartActivity.EXTRA_TARGET_PID, android.os.Process.myPid())
-                    if (relaunch != null) {
-                        putExtra(HotUpdaterRestartActivity.EXTRA_RELAUNCH_INTENT, relaunch)
-                    }
-                }
-                if (activity != null) {
-                    val options = android.app.ActivityOptions.makeCustomAnimation(activity, 0, 0)
-                    activity.startActivity(restartIntent, options.toBundle())
-                } else {
-                    applicationContext.startActivity(restartIntent)
-                }
-            } catch (error: Exception) {
-                android.util.Log.w("HotUpdaterImpl", "Failed to start restart trampoline", error)
-                val intent = relaunchIntent(applicationContext, activityOf(context))
-                    ?: applicationContext.packageManager.getLaunchIntentForPackage(
-                        applicationContext.packageName,
-                    )
-                intent?.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
-                if (intent != null) applicationContext.startActivity(intent)
-                android.util.Log.i("HotUpdaterImpl", "Started restart trampoline to apply update bundle")
-                android.util.Log.i("HotUpdaterE2E", "Started restart trampoline to apply update bundle")
-                android.os.Process.killProcess(android.os.Process.myPid())
+            val once = LynxOnceReply<JSONObject> { reply(callback, it) }
+            val result = runCatching {
+                val session = sessions[mContext] ?: throw CatalogPolicy.Rejected(
+                    "CONTEXT_REJECTED",
+                    "No registered native context",
+                )
+                val reload = session.reloadAction()
+                reload { result -> once.settle(result.map { JSONObject() }) }
+            }
+            result.exceptionOrNull()?.let {
+                once.settle(Result.failure(it))
             }
         }
     }
@@ -81,14 +69,29 @@ class HotUpdaterLynxModule(context: Context) : LynxModule(context) {
         Handler(Looper.getMainLooper()).post {
             val session = sessions[mContext]
             if (session == null) reply(callback, Result.failure(CatalogPolicy.Rejected("NO_CONTEXT", "No registered native context")))
-            else session.notifyReady { result -> if (session.live) reply(callback, result) }
+            else {
+                val ticket = session.beginBridgeReply { reply(callback, it) }
+                    ?: return@post
+                session.notifyReady { result ->
+                    session.finishBridgeReply(ticket, result)
+                }
+            }
         }
     }
     private fun call(callback: Callback, operation: suspend (LynxLaunchSession) -> JSONObject) {
         Handler(Looper.getMainLooper()).post {
             val session = sessions[mContext]
             if (session == null) reply(callback, Result.failure(CatalogPolicy.Rejected("NO_CONTEXT", "No registered native context")))
-            else session.scope.launch { val result = runCatching { operation(session) }; if (session.live) reply(callback, result) }
+            else {
+                val ticket = session.beginBridgeReply { reply(callback, it) }
+                    ?: return@post
+                session.scope.launch {
+                    session.finishBridgeReply(
+                        ticket,
+                        runCatching { operation(session) },
+                    )
+                }
+            }
         }
     }
     private fun json(map: ReadableMap) = JSONObject(map.asHashMap())
@@ -96,7 +99,7 @@ class HotUpdaterLynxModule(context: Context) : LynxModule(context) {
         val envelope = result.fold(
             { JSONObject().put("ok", true).put("data", it) },
             { error -> JSONObject().put("ok", false).put("error", JSONObject()
-                .put("code", when (error) { is CatalogPolicy.Rejected -> error.code; is LynxIncompatibleArtifactException -> "INCOMPATIBLE"; else -> "NATIVE_ERROR" })
+                .put("code", when (error) { is CatalogPolicy.Rejected -> error.code; is LynxNativeOperationException -> error.code; is LynxIncompatibleArtifactException -> "INCOMPATIBLE"; else -> "NATIVE_ERROR" })
                 .put("message", error.message ?: "Native operation failed")) },
         )
         callback.invoke(toMap(envelope))
@@ -107,27 +110,6 @@ class HotUpdaterLynxModule(context: Context) : LynxModule(context) {
         is JSONObject -> toMap(value)
         is org.json.JSONArray -> JavaOnlyArray.from((0 until value.length()).map { index -> toBridge(value.get(index)) })
         else -> value
-    }
-    private fun activityOf(context: android.content.Context): android.app.Activity? {
-        var current: android.content.Context? = context
-        while (current is android.content.ContextWrapper) {
-            if (current is android.app.Activity) return current
-            current = current.baseContext
-        }
-        return current as? android.app.Activity
-    }
-    private fun relaunchIntent(
-        applicationContext: android.content.Context,
-        activity: android.app.Activity?,
-    ): android.content.Intent? {
-        if (activity != null) {
-            val component = activity.componentName
-            return android.content.Intent.makeRestartActivityTask(component).apply {
-                activity.intent.extras?.let(::putExtras)
-                addFlags(android.content.Intent.FLAG_ACTIVITY_NO_ANIMATION)
-            }
-        }
-        return applicationContext.packageManager.getLaunchIntentForPackage(applicationContext.packageName)
     }
     companion object {
         private val sessions = IdentityHashMap<Context, LynxLaunchSession>()

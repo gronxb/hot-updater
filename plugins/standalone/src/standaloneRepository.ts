@@ -96,6 +96,7 @@ export const standaloneRepository = (
             offset: 0,
           })) as readonly BundlePatchRow[];
         },
+        publish: (input) => releaseRemote.publishBundlePatch(input),
       },
       releases: {
         findById: (id) => releaseRemote.findReleaseById(id),

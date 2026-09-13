@@ -93,8 +93,53 @@ export interface BuildPluginConfig {
   outDir?: string;
 }
 
+export interface BuildArtifact {
+  /** Source file produced inside buildPath. */
+  path: string;
+  /** Final POSIX path stored in the archive and signed manifest. */
+  name: string;
+  /** Representation used for independently downloadable manifest assets. */
+  downloadCompression: "br" | null;
+}
+
+export type NativeFingerprintSource =
+  | {
+      type: "file" | "dir";
+      filePath: string;
+      reasons: string[];
+      overrideHashKey?: string;
+      hash: string | null;
+      debugInfo?: unknown;
+    }
+  | {
+      type: "contents";
+      id: string;
+      contents: string | Uint8Array;
+      reasons: string[];
+      hash: string | null;
+      debugInfo?: unknown;
+    };
+
+export interface NativeFingerprint {
+  hash: string;
+  sources: NativeFingerprintSource[];
+}
+
+export interface NativeFingerprintOptions {
+  platform: Platform;
+  extraSources?: FingerprintExtraSources;
+  ignorePaths?: string[];
+  debug?: boolean;
+}
+
+export type NativeFingerprintProvider = (
+  options: NativeFingerprintOptions,
+) => Promise<NativeFingerprint>;
+
 export interface BuildPlugin {
   nativeBuild?: {
+    /** Fingerprint native inputs using the selected build integration. */
+    fingerprint?: NativeFingerprintProvider;
     /** Use the plugin's native key resolver instead of RN config discovery. */
     signingConfigSource?: "build-plugin";
     /** Resolves the public key embedded by the native build configuration. */
@@ -110,8 +155,10 @@ export interface BuildPlugin {
     buildPath: string;
     bundleId: string;
     stdout: string | null;
-    /** Preserve output files without React Native bundle filtering or renaming. */
-    filePolicy?: "preserve";
+    /** Complete selected logical artifact inventory. */
+    artifacts: readonly BuildArtifact[];
+    /** Logical artifact selected for binary delta generation. */
+    patchAssetPath: string;
   }>;
   name: string;
 }

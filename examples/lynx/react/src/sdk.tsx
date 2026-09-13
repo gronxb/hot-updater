@@ -9,6 +9,7 @@ import {
   checkSdkUpdate,
   imageUrl,
   installSdkUpdate,
+  installSdkUpdateAndReload,
   resources,
   sdkImageLoaded,
   startSdk,
@@ -47,12 +48,22 @@ function App() {
         <text className="action-label">Check update</text>
       </view>
       {canInstall ? (
-        <view
-          className="action"
-          bindtap={() => void installSdkUpdate(setStatus, setCanInstall)}
-        >
-          <text className="action-label">Install next launch</text>
-        </view>
+        <>
+          <view
+            className="action"
+            bindtap={() => void installSdkUpdate(setStatus, setCanInstall)}
+          >
+            <text className="action-label">Install next launch</text>
+          </view>
+          <view
+            className="action"
+            bindtap={() =>
+              void installSdkUpdateAndReload(setStatus, setCanInstall)
+            }
+          >
+            <text className="action-label">Install and reload</text>
+          </view>
+        </>
       ) : null}
     </view>
   );

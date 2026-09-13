@@ -3,19 +3,240 @@ import {
   MAX_COMPILED_CATALOG_BYTES,
   MAX_DISTINCT_TARGET_COHORTS_PER_SCOPE,
   MAX_TARGET_COHORTS_PER_RELEASE,
+  MAX_UPDATE_ARTIFACT_RESPONSE_BYTES,
   NUMERIC_COHORT_SIZE,
   type ReleaseCatalog,
   type ReleaseCatalogDescriptor,
 } from "@hot-updater/core";
 
 import { LynxUpdaterError } from "./native";
-import type { ArchiveArtifact, HotUpdaterOptions, NativeState } from "./types";
+import type {
+  HotUpdaterOptions,
+  NativeState,
+  UpdateArtifact,
+  UpdateChangedAsset,
+} from "./types";
 
-const MAX_RESPONSE_BYTES = MAX_COMPILED_CATALOG_BYTES * 2 + 4096;
+const MAX_CATALOG_RESPONSE_BYTES = MAX_COMPILED_CATALOG_BYTES * 2 + 4096;
 
 const invalidResponse = (message: string): never => {
   throw new LynxUpdaterError("INVALID_RESPONSE", message);
 };
+
+const isObject = (value: unknown): value is Record<string, unknown> =>
+  value !== null && typeof value === "object" && !Array.isArray(value);
+
+const isHash = (value: unknown): value is string =>
+  typeof value === "string" && /^[0-9a-f]{64}$/i.test(value);
+
+const isIntegrityToken = (value: unknown): value is string =>
+  isHash(value) ||
+  (typeof value === "string" &&
+    value.length > 4 &&
+    /^sig:(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(
+      value,
+    ));
+
+function utf8ByteLength(value: string): number {
+  let bytes = 0;
+  for (const character of value) {
+    const code = character.codePointAt(0)!;
+    bytes += code <= 0x7f ? 1 : code <= 0x7ff ? 2 : code <= 0xffff ? 3 : 4;
+  }
+  return bytes;
+}
+
+function contentLength(response: Response): number | null {
+  const value = response.headers?.get?.("content-length") ?? null;
+  if (value === null) return null;
+  if (!/^\d+$/.test(value)) {
+    return invalidResponse("Invalid Content-Length response header.");
+  }
+  const parsed = Number(value);
+  if (!Number.isSafeInteger(parsed)) {
+    return invalidResponse("Invalid Content-Length response header.");
+  }
+  return parsed;
+}
+
+async function cancelBody(
+  body: ReadableStream<Uint8Array> | null,
+): Promise<void> {
+  try {
+    await body?.cancel();
+  } catch {
+    // The size violation remains the authoritative failure.
+  }
+}
+
+async function readBoundedBody(
+  response: Response,
+  maxResponseBytes: number,
+): Promise<string> {
+  const declaredLength = contentLength(response);
+  if (declaredLength !== null && declaredLength > maxResponseBytes) {
+    await cancelBody(response.body);
+    return invalidResponse("Update response exceeds the size limit.");
+  }
+
+  const body = response.body;
+  if (
+    body !== null &&
+    typeof body.getReader === "function" &&
+    typeof TextDecoder === "function"
+  ) {
+    const reader = body.getReader();
+    const chunks: Uint8Array[] = [];
+    let bytes = 0;
+    try {
+      while (true) {
+        const chunk = await reader.read();
+        if (chunk.done) break;
+        bytes += chunk.value.byteLength;
+        if (bytes > maxResponseBytes) {
+          try {
+            await reader.cancel();
+          } catch {
+            // The size violation remains the authoritative failure.
+          }
+          return invalidResponse("Update response exceeds the size limit.");
+        }
+        chunks.push(chunk.value);
+      }
+    } finally {
+      reader.releaseLock();
+    }
+    const content = new Uint8Array(bytes);
+    let offset = 0;
+    for (const chunk of chunks) {
+      content.set(chunk, offset);
+      offset += chunk.byteLength;
+    }
+    return new TextDecoder().decode(content);
+  }
+
+  if (declaredLength === null) {
+    await cancelBody(body);
+    return invalidResponse(
+      "A bounded Content-Length header is required without response streaming.",
+    );
+  }
+  const text = await response.text();
+  if (utf8ByteLength(text) > maxResponseBytes) {
+    return invalidResponse("Update response exceeds the size limit.");
+  }
+  return text;
+}
+
+function hasUnsafeUrlCharacter(value: string): boolean {
+  for (let index = 0; index < value.length; index += 1) {
+    const character = value[index]!;
+    const code = value.charCodeAt(index);
+    if (code <= 0x20 || code === 0x7f || character === "\\") return true;
+  }
+  return false;
+}
+
+function hasUnsafeAssetPathCharacter(value: string): boolean {
+  for (let index = 0; index < value.length; index += 1) {
+    const character = value[index]!;
+    const code = value.charCodeAt(index);
+    if (
+      code <= 0x1f ||
+      code === 0x7f ||
+      character === "\\" ||
+      character === ":"
+    ) {
+      return true;
+    }
+  }
+  return false;
+}
+
+// Lynx background runtimes need not provide the WHATWG URL constructor.
+function resolveArtifactUrl(baseURL: string, value: unknown): string {
+  if (typeof value !== "string") {
+    return invalidResponse("Artifact URLs must be strings.");
+  }
+  const url = value.startsWith("/storage/") ? `${baseURL}${value}` : value;
+  const match =
+    /^https?:\/\/(\[[0-9a-f:.]+\]|[A-Za-z0-9.-]+)(?::([0-9]{1,5}))?(?:[/?#].*)?$/i.exec(
+      url,
+    );
+  if (
+    hasUnsafeUrlCharacter(url) ||
+    !match ||
+    (match[2] !== undefined && Number(match[2]) > 65535)
+  ) {
+    return invalidResponse(
+      "Artifact URLs must use HTTP(S) or a /storage/ path without credentials.",
+    );
+  }
+  return url;
+}
+
+function parseChangedAssets(
+  baseURL: string,
+  value: unknown,
+): Record<string, UpdateChangedAsset> {
+  if (!isObject(value) || Object.keys(value).length > 10_000) {
+    return invalidResponse("Invalid changed asset map.");
+  }
+  return Object.fromEntries(
+    Object.entries(value).map(([assetPath, asset]) => {
+      if (
+        !assetPath ||
+        assetPath === "manifest.json" ||
+        hasUnsafeAssetPathCharacter(assetPath) ||
+        assetPath
+          .split("/")
+          .some((part) => !part || part === "." || part === "..") ||
+        !isObject(asset) ||
+        asset.file === undefined ||
+        asset.patch === undefined ||
+        !isHash(asset.fileHash)
+      ) {
+        return invalidResponse("Invalid changed asset path or hash.");
+      }
+      let file: UpdateChangedAsset["file"] = null;
+      if (asset.file != null) {
+        if (
+          !isObject(asset.file) ||
+          (asset.file.compression !== null && asset.file.compression !== "br")
+        ) {
+          return invalidResponse("Invalid changed asset file descriptor.");
+        }
+        file = {
+          url: resolveArtifactUrl(baseURL, asset.file.url),
+          compression: asset.file.compression,
+        };
+      }
+      let patch: UpdateChangedAsset["patch"] = null;
+      if (asset.patch != null) {
+        if (
+          !isObject(asset.patch) ||
+          asset.patch.algorithm !== "bsdiff" ||
+          !isUUIDv7(asset.patch.baseBundleId) ||
+          !isHash(asset.patch.baseFileHash) ||
+          !isHash(asset.patch.patchFileHash)
+        ) {
+          return invalidResponse("Invalid changed asset patch descriptor.");
+        }
+        patch = {
+          algorithm: "bsdiff",
+          baseBundleId: asset.patch.baseBundleId,
+          baseFileHash: asset.patch.baseFileHash,
+          patchFileHash: asset.patch.patchFileHash,
+          patchUrl: resolveArtifactUrl(baseURL, asset.patch.patchUrl),
+        };
+      }
+      if (!file && !patch) {
+        return invalidResponse("A changed asset requires a file or patch.");
+      }
+      return [assetPath, { fileHash: asset.fileHash, file, patch }];
+    }),
+  );
+}
 
 function descriptor(value: unknown): value is ReleaseCatalogDescriptor {
   if (!value || typeof value !== "object") return false;
@@ -95,7 +316,10 @@ export function createHttpClient(options: HotUpdaterOptions) {
     return url;
   };
 
-  async function getJSON(path: string): Promise<unknown> {
+  async function getJSON(
+    path: string,
+    maxResponseBytes: number,
+  ): Promise<unknown> {
     if (typeof fetch !== "function" || typeof AbortController !== "function") {
       throw new LynxUpdaterError(
         "HTTP_UNAVAILABLE",
@@ -135,15 +359,7 @@ export function createHttpClient(options: HotUpdaterOptions) {
           `Update request returned HTTP ${response.status}.`,
         );
       }
-      const body = await response.text();
-      let bytes = 0;
-      for (const character of body) {
-        const code = character.codePointAt(0)!;
-        bytes += code <= 0x7f ? 1 : code <= 0x7ff ? 2 : code <= 0xffff ? 3 : 4;
-        if (bytes > MAX_RESPONSE_BYTES) {
-          return invalidResponse("Update response exceeds the size limit.");
-        }
-      }
+      const body = await readBoundedBody(response, maxResponseBytes);
       try {
         return JSON.parse(body) as unknown;
       } catch {
@@ -184,48 +400,90 @@ export function createHttpClient(options: HotUpdaterOptions) {
         );
       }
       const path = `/release-catalogs/${strategy}/${state.platform}/${state.channelKey}/${encodeURIComponent(strategyValue)}`;
-      return validateCatalog(await getJSON(path), state, strategy);
+      return validateCatalog(
+        await getJSON(path, MAX_CATALOG_RESPONSE_BYTES),
+        state,
+        strategy,
+      );
     },
     async resolveArtifact(
       bundleId: string,
       currentBundleId: string,
-    ): Promise<ArchiveArtifact> {
+    ): Promise<UpdateArtifact> {
       const value = await getJSON(
         `/artifacts/${encodeURIComponent(bundleId)}/from/${encodeURIComponent(currentBundleId)}`,
+        MAX_UPDATE_ARTIFACT_RESPONSE_BYTES,
       );
-      if (!value || typeof value !== "object") {
+      if (!isObject(value)) {
         return invalidResponse("Expected an update artifact.");
       }
-      const artifact = value as Record<string, unknown>;
-      if (
-        typeof artifact.fileUrl !== "string" ||
-        typeof artifact.fileHash !== "string" ||
-        !artifact.fileHash
-      ) {
-        return invalidResponse(
-          "Lynx updates require a full archive URL and hash.",
-        );
-      }
-      let fileUrl = artifact.fileUrl;
-      if (fileUrl.startsWith("/storage/")) fileUrl = `${baseURL()}${fileUrl}`;
-      else if (!/^https?:\/\//i.test(fileUrl)) {
-        return invalidResponse(
-          "Artifact URLs must use HTTP(S) or a /storage/ path.",
-        );
+      const artifact = value;
+      let fileUrl: string | null = null;
+      let fileHash: string | null = null;
+      if (artifact.fileUrl != null || artifact.fileHash != null) {
+        if (!isIntegrityToken(artifact.fileHash)) {
+          return invalidResponse("Invalid archive integrity token.");
+        }
+        fileUrl = resolveArtifactUrl(baseURL(), artifact.fileUrl);
+        fileHash = artifact.fileHash;
       }
       if (
         artifact.manifestFileHash != null &&
-        (typeof artifact.manifestFileHash !== "string" ||
-          !artifact.manifestFileHash)
+        !isIntegrityToken(artifact.manifestFileHash)
       ) {
-        return invalidResponse("Invalid manifest hash.");
+        return invalidResponse("Invalid manifest integrity token.");
+      }
+      const manifestFileHash =
+        (artifact.manifestFileHash as string | null | undefined) ?? null;
+      let manifestUrl: string | null = null;
+      let changedAssets: Record<string, UpdateChangedAsset> | null = null;
+      if (artifact.manifestUrl != null || artifact.changedAssets != null) {
+        if (!manifestFileHash) {
+          return invalidResponse(
+            "Manifest updates require an integrity token.",
+          );
+        }
+        manifestUrl = resolveArtifactUrl(baseURL(), artifact.manifestUrl);
+        changedAssets = parseChangedAssets(baseURL(), artifact.changedAssets);
+      }
+      if (manifestUrl !== null) {
+        if (manifestFileHash === null || changedAssets === null) {
+          return invalidResponse("Incomplete manifest update.");
+        }
+        if (fileUrl !== null) {
+          if (fileHash === null) {
+            return invalidResponse("Incomplete archive update.");
+          }
+          return {
+            bundleId,
+            fileUrl,
+            fileHash,
+            manifestUrl,
+            manifestFileHash,
+            changedAssets,
+          };
+        }
+        return {
+          bundleId,
+          fileUrl: null,
+          fileHash: null,
+          manifestUrl,
+          manifestFileHash,
+          changedAssets,
+        };
+      }
+      if (fileUrl === null || fileHash === null) {
+        return invalidResponse(
+          "An archive or complete manifest update is required.",
+        );
       }
       return {
         bundleId,
         fileUrl,
-        fileHash: artifact.fileHash,
-        manifestFileHash:
-          (artifact.manifestFileHash as string | null | undefined) ?? null,
+        fileHash,
+        manifestUrl: null,
+        manifestFileHash,
+        changedAssets: null,
       };
     },
   };

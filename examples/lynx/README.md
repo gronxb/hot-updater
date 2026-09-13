@@ -1,241 +1,173 @@
-# Lynx native feasibility example
+# Lynx example and acceptance matrix
 
-This example executes G1 of the [Lynx PRD](../../plans/lynx-support/prd.md).
-ReactLynx, VueLynx, and OctaneLynx use production native compilers, a shared private
-bridge probe, and the native hosts in `ios/` and `android/`. Native OTA support is
-not complete. See the [execution ledger](../../plans/lynx-support/execution.md)
-and [framework evidence](../../plans/lynx-support/evidence/frameworks.md) for
-verified results and remaining work.
+This example starts from the official Sparkling application structure and uses
+the packaged `@hot-updater/lynx` host integration. ReactLynx, VueLynx, and
+OctaneLynx are equal Lynx-engine targets on iOS and Android.
 
-## Public example builds
+The repository keeps two native targets per platform:
 
-The ordinary build now uses the public SDK and includes the entry, image, font,
-external background JavaScript, and native dynamic template. Supply the delivery
-endpoint explicitly:
+| Purpose | iOS | Android |
+| --- | --- | --- |
+| Production scaffold | `SparklingGo` | `:app` (`com.hotupdater.lynxexample`) |
+| Nonproduction matrix harness | `SparklingMatrixHarness` | `:matrix-app` (`com.hotupdater.lynxmatrix`) |
+
+The production scaffold contains native identity and embedded-release
+configuration, module registration, and one packaged host/view attachment. Its
+application sources do not implement OTA selection, download, verification,
+recovery, resource loading, crash policy, or restart behavior. Those behaviors
+live in the optional Sparkling integration shipped by `@hot-updater/lynx`.
+
+The matrix targets are separate QA applications. They expose multi-container,
+primary-removal, secondary-failure, stale-context, and diagnostic controls while
+still delegating every lifecycle operation to the packaged host API. Matrix-only
+controls do not ship in the production target.
+
+## Build framework output
+
+The public compiler wrapper emits a main template, image, font, external
+background JavaScript, and native dynamic component under one release-owned
+tree. It is shared by ordinary builds and the Hot Updater build callback.
 
 ```sh
-HOT_UPDATER_SDK_BASE_URL=https://updates.example.com/hot-updater pnpm --filter @hot-updater/example-lynx build
-HOT_UPDATER_SDK_BASE_URL=https://updates.example.com/hot-updater pnpm --filter @hot-updater/example-lynx build:public octane A /absolute/pinned-octane-source
+HOT_UPDATER_SDK_BASE_URL=https://updates.example.com/hot-updater \
+  pnpm --filter @hot-updater/example-lynx build:public react A
+
+HOT_UPDATER_SDK_BASE_URL=https://updates.example.com/hot-updater \
+  pnpm --filter @hot-updater/example-lynx build:public vue A
+
+HOT_UPDATER_SDK_BASE_URL=https://updates.example.com/hot-updater \
+  pnpm --filter @hot-updater/example-lynx build:public \
+  octane A /absolute/path/to/pinned/octane
 ```
 
-The first command builds React and Vue into `dist/<framework>`. Octane uses the
-pinned source checkout described below. The same compiler wrapper feeds
-`build:hot-updater`, which adds the packaging Bundle ID and native compatibility
-metadata. For example:
+The Octane path must point to the pinned source checkout at commit
+`c31f629185f7d768c821557f6fb49dc46daf671c`. The build script rejects a wrong
+commit or tracked source changes. It invokes the real Octane compiler without
+patching the upstream renderer.
 
-```sh
-HOT_UPDATER_SDK_BASE_URL=https://updates.example.com/hot-updater pnpm --filter @hot-updater/example-lynx build:hot-updater react ios <native-runtime-id> B
-HOT_UPDATER_SDK_BASE_URL=https://updates.example.com/hot-updater pnpm --filter @hot-updater/example-lynx build:hot-updater octane android <native-runtime-id> B /absolute/pinned-octane-source
-```
+The application compiler owns framework details. The shared
+`@hot-updater/lynx/build` adapter receives only the selected output tree, entry,
+platform, and native runtime identity. It preserves portable relative names and
+bytes, creates `hot-updater-lynx.json`, and declares the entry as the manifest's
+delta patch asset.
 
-Use the actual host's compatibility identity and public native module. The
-private feasibility commands below remain explicit probes; successful public
-compilation alone does not establish the native acceptance matrix.
+Managed application files use `hot-updater:///` URLs. The packaged host resolves
+the entry, image, font, external JavaScript, and dynamic component against one
+verified installation. A missing managed dependency fails that release instead
+of reading another installed or embedded release.
 
-## Production fixture builds
+The tested VueLynx and OctaneLynx framework-generated `import()` output calls
+`lynx.loadLazyBundle`, which those runtimes do not currently expose. The example
+therefore uses an independently compiled background module through the Lynx core
+API and a native dynamic component. This is a documented upstream output
+limitation; it does not reduce VueLynx or OctaneLynx's OTA support scope.
 
-From the repository root:
+## Build the native targets
+
+Install workspace and iOS dependencies first:
 
 ```sh
 pnpm install
-pnpm --filter @hot-updater/example-lynx build:spike react A normal resources
-pnpm --filter @hot-updater/example-lynx build:spike react B normal resources
-pnpm --filter @hot-updater/example-lynx build:spike vue A normal resources
-pnpm --filter @hot-updater/example-lynx build:spike vue B normal resources
 pnpm --filter @hot-updater/example-lynx test:type
 ```
 
-These commands write to
-`.hot-updater/g1/<framework>/<A|B>-resources-managed/` inside this example.
-`main.lynx.bundle` is the actual main entry; preserve the complete emitted tree,
-including `async/*.bundle`, `assets/probe.png`, `assets/probe.ttf`, and its font
-license. Adjacent `*.build.json` files record every emitted file's size and SHA-256
-outside the artifact tree. They are build evidence, not trusted OTA metadata.
-
-The optional behavior argument is `normal`, `unconfirmed`, `fatal`, or
-`double-ready`. The latter waits for two real native readiness replies. The
-`fatal` fixture throws during asynchronous bootstrap; the native host must record
-its actual error severity. Default resource mode `basic` checks only the image and
-native bridge. Non-default behavior is included in the output
-name, e.g. `B-unconfirmed-resources-managed`. `C` is also accepted for sequential
-unconfirmed-attempt scenarios. Every rebuild replaces its named compiler output;
-stage an immutable copy before using it in a native evidence run.
-
-A is blue with Inter Regular; B/C are red with Inter Black. The image and font
-paths remain the same while their bytes differ. All managed URLs use the
-compiler-declared `hot-updater:///` prefix. A runtime must map this namespace to
-the selected release; a generic Lynx viewer is insufficient. The earlier
-`asset:///` fixture failed Android's image-resolution test because Fresco opened
-APK assets directly.
-
-## Pinned-source Octane build
-
-The inspected Octane Lynx renderer and compiler plugin are private upstream
-packages. Use the real pinned checkout and its workspace dependencies:
+Build the production Sparkling scaffold on both platforms:
 
 ```sh
-git clone https://github.com/octanejs/octane.git /tmp/hot-updater-octane
-git -C /tmp/hot-updater-octane checkout c31f629185f7d768c821557f6fb49dc46daf671c
-(cd /tmp/hot-updater-octane && pnpm --filter @octanejs/rspeedy-plugin... install --frozen-lockfile --ignore-scripts)
-pnpm --filter @hot-updater/example-lynx build:octane /tmp/hot-updater-octane A normal resources
-pnpm --filter @hot-updater/example-lynx build:octane /tmp/hot-updater-octane B normal resources
+pnpm validate:lynx:scaffold-native
 ```
 
-The script checks the commit and rejects tracked source changes. It copies this
-repository's authored fixture and a real private native-access dependency into a
-unique temporary example below the upstream compiler package, invokes production
-`rspeedy build --environment lynx`, then removes that temporary source. It never
-patches the upstream renderer or substitutes a simulated compiler or native module.
-Output goes to the same `.hot-updater/g1/octane/` structure.
+Native builds consume already validated embedded A trees under the platform
+fixture directories. The acceptance workflow creates those trees with the public
+compiler and `scripts/ota-embedded.mjs` before invoking the native build; they
+are generated evidence and are not committed application source.
 
-Octane compiles application source into both execution graphs and rejects direct
-`NativeModules` references and static platform imports in its main-thread graph.
-The private dependency under `spike/native-package/` exposes deferred native
-access as ordinary installed JS. Its import is inert; an Octane background
-`useEffect` invokes it. This tests the eventual packaged-SDK boundary without
-freezing a public API. Real callback success must still be observed on each OS.
-
-## Startup probe
-
-React `useEffect`, Vue `onMounted` with initial-frame rendering enabled, and
-Octane `useEffect` begin the same background bootstrap. It requires a successful
-`getLaunchInfo` callback, the expected asynchronous `probeError` failure envelope,
-and an image `load` event. Resource fixtures additionally execute the emitted
-lazy chunk and request the packaged font with `lynx.addFont` before calling
-`notifyReady`.
-
-These app callbacks do not alone confirm startup. Native owns attempt/context
-identity, observes initial content, attributes the ready call, and records actual
-resource bytes. The JS font callback does not prove the selected font bytes; use
-native resource-loader logs. No JS-supplied bundle or attempt ID grants authority.
-
-`build:hot-updater` and `build:prebuilt` remain experimental G2 integrations.
-Their package contract must be reconciled with G1 before they establish deploy or
-OTA support. Both require the exact native-owned compatibility identity as the
-last argument:
+Build one matrix binary per OS. Each binary is reused for ReactLynx, VueLynx,
+and OctaneLynx cells:
 
 ```sh
-pnpm --filter @hot-updater/example-lynx build:hot-updater react ios <native-runtime-id>
-pnpm --filter @hot-updater/example-lynx build:prebuilt android /absolute/native-output main.lynx.bundle <native-runtime-id>
+pnpm build:lynx:matrix-native
 ```
 
-Use the identity from the native host's build configuration. The value is not a
-framework name or app version, and packaging cannot establish compatibility by
-inventing a matching label. Inputs must be compiler output without an existing
-root `manifest.json` or `hot-updater-lynx.json`; repackaging an installation is
-rejected. Packaging creates a fresh Bundle ID and preserves all selected files.
+The build writes native artifact receipts below
+`.hot-updater/public-matrix/`. See the [iOS](./ios/README.md) and
+[Android](./android/README.md) guides for the production integration boundary.
+Both production and matrix iOS schemes and Android applications currently build;
+that is native build verification rather than device acceptance.
 
-`app.config.ts` selects a React/Vue configuration using
-`LYNX_FRAMEWORK` for the Sparkling CLI; the pinned Octane build uses its own
-workspace compiler configuration.
+## Run the public six-cell matrix
 
-## Isolating managed-resource loaders
-
-Current native experiments use these additional modes:
+Inspect the exact six cells and required phases without using devices:
 
 ```sh
-pnpm --filter @hot-updater/example-lynx build:spike vue A normal fonts
-pnpm --filter @hot-updater/example-lynx build:spike vue A normal dynamic
-pnpm --filter @hot-updater/example-lynx build:spike vue A normal external2
-pnpm --filter @hot-updater/example-lynx build:octane /tmp/hot-updater-octane A normal external2
+pnpm e2e:lynx:matrix -- --dry-run
 ```
 
-`fonts` mounts the font probe after registration and leaves native lazy-template
-loading out of that isolated test. `external2` additionally loads an independently
-compiled background module through core `lynx.requireModuleAsync`. The source is
-compiled by real Rspack/SWC and the official Lynx runtime-wrapper plugin. These
-outputs use `A-fonts-managed/` and `A-external2-managed/` respectively; B works the
-same way. The native host must record actual image/font/JS bytes and enforce
-readiness after its required resource observations.
-
-The first frozen `external` artifacts failed on both native hosts: generic
-minification discarded the official runtime wrapper's evaluated return value,
-which Lynx uses to obtain its initialization function. The compiler now preserves
-that value by disabling minification for this standalone background module.
-`external2` selects a fresh output name so those failed snapshots remain intact.
-The source remains TypeScript compiled by Rspack in production mode.
-
-`dynamic` separately compiles an app-owned native `DynamicComponent` bundle at
-`dynamic/component.lynx.bundle`. All three frameworks invoke the core
-`lynx.loadDynamicComponent` API and check the A/B marker written by its real
-background program through Lynx shared data. This probes native template lookup,
-decoding and execution. It does not mount a component from another UI framework.
-The standalone compiler uses the installed official ReactLynx plugin's lazy-bundle
-option, but the component source imports no React/Vue/Octane runtime.
-
-Vue/Octane framework-generated `import()` currently fails on the tested Android
-host because those runtimes do not provide `lynx.loadLazyBundle`. The core-module
-experiment tests a valid app-owned background artifact; it does not establish
-support for those framework-generated dynamic templates. Preserve the distinction
-when reading the evidence or preparing a release.
-
-## Public SDK bridge and update-flow probe
-
-The public SDK entrypoints import the installed `@hot-updater/lynx`
-package in both execution graphs. Background bootstrap calls `getLaunchInfo`,
-waits for the required managed resources, and submits `notifyAppReady`. The UI offers
-`Check update`, which downloads and verifies a prepared update, followed by
-`Install next launch`. Installing does not replace this process's running bytes.
-
-The endpoint must be explicit. For the task-owned local test service:
+A real run requires the built matrix artifacts, an iOS simulator, an Android
+emulator, the pinned Octane checkout, and an explicit results directory:
 
 ```sh
-HOT_UPDATER_SDK_BASE_URL=http://127.0.0.1:18791/hot-updater pnpm --filter @hot-updater/example-lynx build:spike react A normal sdk3
-HOT_UPDATER_SDK_BASE_URL=http://127.0.0.1:18791/hot-updater pnpm --filter @hot-updater/example-lynx build:spike vue B normal sdk3
-HOT_UPDATER_SDK_BASE_URL=http://127.0.0.1:18791/hot-updater pnpm --filter @hot-updater/example-lynx build:octane /tmp/hot-updater-octane A normal sdk3
+pnpm e2e:lynx:matrix -- \
+  --native-artifacts examples/lynx/.hot-updater/public-matrix/matrix-native-artifacts.json \
+  --ios-device IOS_SIMULATOR_UDID \
+  --android-serial ANDROID_SERIAL \
+  --octane-source /absolute/path/to/pinned/octane \
+  --results-dir /absolute/path/to/lynx-matrix-results
 ```
 
-Raw outputs use `<framework>/<A|B>-sdk3-managed/`. Their native host must register
-the public `HotUpdaterLynx` module and use the matching `ota-v2` runtime profile and
-native-configured `ota-react`, `ota-vue`, or `ota-octane` channel. The earlier
-private G1 host profile cannot run this public flow. Android uses the task-owned
-port reverse for `18791`; the compiled artifact URLs are unchanged.
+The runner installs each native binary once per platform and validates all three
+frameworks. Every cell must prove embedded A, archive A-to-B, B activation and
+retention with the delivery origin unavailable, a real B-to-C BSDIFF, same-process
+managed-generation reload, stale-context rejection, primary replacement,
+secondary fatal recovery, and unconfirmed-candidate recovery. It accepts only
+correlated native events and writes one receipt per cell plus a summary.
 
-Earlier SDK1 snapshots contained only the main entry and image. Their Android
-update check exposed missing `String.prototype.normalize` in the pinned PrimJS
-runtime. SDK3 uses the native-owned canonical channel key supplied by `ota-v2`;
-it does not add a normalization or HTTP polyfill. SDK1 and the full-resource
-SDK2 snapshots remain preserved as earlier evidence.
+The real six-cell device run for the current implementation is still pending.
+A dry run, compiler output, native build, historical probe, or synthetic receipt
+does not close this acceptance gate.
 
-SDK3 includes image, font, core external JS and native dynamic-component files
-in the same public SDK entrypoint.
-Bootstrap waits for the image, mounts the font text after registration, and
-checks the actual A/B exports from core external JS and the native dynamic
-component before calling public readiness. The example host must hold that
-callback until its declared font has actually loaded and decoded, as well as
-observing initial content. A registration callback alone cannot pass this gate.
-The complete SDK3 native OTA matrix still needs execution evidence.
+## Run the shared Lynx E2E suite
 
-Public recovery probes use the existing behavior argument with `sdk3`:
-`B unconfirmed`, `C unconfirmed`, or `B double-ready`. Each has a separate output
-name. Unconfirmed variants complete the resource work and omit public readiness;
-the duplicate-ready variant awaits two actual public callbacks. Their outputs
-are preserved independently of normal SDK3. An ordinary JavaScript throw is not
-evidence of a native fatal-template classification.
-
-The shared public build wrapper produces the same complete resource tree under
-`dist/<framework>`:
+The Lynx suite uses every shared default OTA scenario except
+`metadata-v1-migration`. That scenario migrates React Native's legacy metadata
+store and does not apply to Lynx. Delta, channel, fingerprint, stale-catalog,
+recovery, and crash-history scenarios remain enabled.
 
 ```sh
-HOT_UPDATER_SDK_BASE_URL=http://127.0.0.1:18791/hot-updater node examples/lynx/scripts/build-public.mjs react A
-HOT_UPDATER_SDK_BASE_URL=http://127.0.0.1:18791/hot-updater node examples/lynx/scripts/build-public.mjs vue A
-HOT_UPDATER_SDK_BASE_URL=http://127.0.0.1:18791/hot-updater node examples/lynx/scripts/build-public.mjs octane A /tmp/hot-updater-octane
+hot-updater-agent verify \
+  -platform full \
+  -profile standalone-kysely \
+  -env-target examples/lynx/.env.hotupdater
 ```
 
-This wrapper explicitly selects the public SDK and full resources. Direct
-compiler configuration defaults are being coordinated with native validation;
-the private probe scripts continue supplying explicit G1 flags. A caller of
-the exported `buildPublic` function supplies the output directory and endpoint;
-the wrapper does not inject or infer native runtime identity.
+The full `hot-updater-agent` run for the current implementation is still
+pending. Its ReactLynx host path is an additional gate and does not replace the
+VueLynx and OctaneLynx matrix cells.
 
-`http` is a separate diagnostic mode using the proven private G1 host. It reports
-the actual lexical and global `fetch`, `AbortController`, and native fetch module,
-then requests `http://127.0.0.1:18791/health` before calling the native launch
-probe. Its final on-screen status preserves the response or failure. These
-`A-http-managed/` outputs provide no replacement globals: the SDK uses the
-lexical `fetch` supplied by Lynx's background-module wrapper, which may differ
-from `globalThis.fetch`.
+## Delivery and activation behavior
 
-The real HTTP diagnostic succeeded on Android React and all three iOS
-frameworks: lexical `fetch` and `AbortController` were functions, while
-`globalThis.fetch` was undefined. No example transport replacement was needed.
+`checkForUpdate()` performs catalog authorization and nonretained native
+compatibility validation. `update.updateBundle()` performs the actual download,
+delta/archive verification, and atomic staging. A selected update becomes active
+on the next launch or after `HotUpdater.reload()`.
+
+Reload keeps the OS process foregrounded and reconstructs every library-managed
+runtime and view. The old generation stops accepting work, drains its resource
+leases, and loses native authority before a fresh primary and its secondaries
+evaluate one release. Startup is confirmed only after actual first content, all
+declared startup resources, and application readiness. Native returns the launch
+transition once; repeated readiness cannot replay it.
+
+An explicit `channel` on `checkForUpdate()` authorizes and persists the channel
+switch atomically with catalog acceptance. A second cross-channel switch is
+rejected until `HotUpdater.resetChannel()` returns the host to its configured
+default scope.
+
+See the [PRD](../../plans/lynx-support/prd.md),
+[execution ledger](../../plans/lynx-support/execution.md), and
+[current evidence reconciliation](../../plans/lynx-support/evidence/reconciliation-2026-09-13.md)
+for the acceptance status. Historical G1 probe artifacts remain evidence of
+earlier feasibility work, but they are not commands for the production scaffold.
+
+See [third-party notices](./THIRD_PARTY_NOTICES.md) for Sparkling and fixture
+licenses.

@@ -70,6 +70,7 @@ function setup(
     platform: "android",
     appVersion: "1.0.0",
     channel: "production",
+    defaultChannel: "production",
     channelKey: "cHJvZHVjdGlvbg",
     runtimeId: "native-runtime",
     embeddedBundleId: A,
@@ -106,10 +107,13 @@ function setup(
             scopeKey: params.catalog.scopeKey,
             generation: params.catalog.generation,
             catalogHash: params.catalog.catalogHash,
-            channel: state.channel,
+            channel: params.targetChannel,
             selectionContextHash: params.selectionContextHash,
           },
         }),
+    ),
+    validateSelection: vi.fn<HotUpdaterLynxNative["validateSelection"]>(
+      (_params, callback) => callback({ ok: true, data: { validated: true } }),
     ),
     prepareSelection: vi.fn<HotUpdaterLynxNative["prepareSelection"]>(
       (_params, callback) =>
@@ -123,13 +127,6 @@ function setup(
         }),
     ),
     notifyAppReady: vi.fn<HotUpdaterLynxNative["notifyAppReady"]>(),
-    setChannel: vi.fn<NonNullable<HotUpdaterLynxNative["setChannel"]>>(
-      (params, callback) => {
-        state.channel = params.channel;
-        state.channelKey = encodeChannelKey(params.channel);
-        callback({ ok: true, data: { ...state } });
-      },
-    ),
   };
   vi.stubGlobal("NativeModules", { HotUpdaterLynx: native });
   const fetch = vi.fn(
@@ -150,34 +147,208 @@ function setup(
   HotUpdater.init({ baseURL: "https://updates.test" });
   const prepared = () =>
     native.prepareSelection.mock.calls[0]![0] as PrepareSelectionParams;
-  return { updater: HotUpdater, state, catalog, native, fetch, prepared };
+  const validated = () =>
+    native.validateSelection.mock.calls[0]![0] as PrepareSelectionParams;
+  return {
+    updater: HotUpdater,
+    state,
+    catalog,
+    native,
+    fetch,
+    prepared,
+    validated,
+  };
 }
 
 afterEach(() => vi.unstubAllGlobals());
 
 describe("Lynx catalog controller (mock native transport)", () => {
-  it("prepares during check but publishes only the retained native token on install", async () => {
-    const { updater, native, prepared } = setup();
+  it("retains no native preparation until updateBundle prepares and stages once", async () => {
+    const { updater, native, prepared, validated } = setup();
     const update = await updater.checkForUpdate({
       updateStrategy: "appVersion",
     });
+    expect(native.prepareSelection).not.toHaveBeenCalled();
+    expect(native.stageSelection).not.toHaveBeenCalled();
+    expect(native.validateSelection).toHaveBeenCalledOnce();
+    expect(native.acceptCatalog.mock.calls[0]![0]).toMatchObject({
+      explicitScopeSwitch: false,
+      targetChannel: "production",
+    });
+    expect(validated().selection.bundleId).toBe(B);
+    expect((await updater.getLaunchInfo()).running.bundleId).toBe(A);
+    const first = update!.updateBundle();
+    const second = update!.updateBundle();
     expect(prepared().artifact).toEqual({
       bundleId: B,
       fileUrl: "https://updates.test/storage/archive.tar.gz",
       fileHash: "b".repeat(64),
+      manifestUrl: null,
       manifestFileHash: null,
+      changedAssets: null,
     });
     expect(prepared().selection.bundleId).toBe(B);
-    expect(native.stageSelection).not.toHaveBeenCalled();
-    expect((await updater.getLaunchInfo()).running.bundleId).toBe(A);
-    const first = update!.updateBundle();
-    const second = update!.updateBundle();
+    expect(prepared()).toEqual(validated());
     await expect(first).resolves.toBe(true);
     await expect(second).resolves.toBe(true);
     expect(native.stageSelection).toHaveBeenCalledOnce();
     expect(native.stageSelection.mock.calls[0]![0]).toEqual({
       preparedId: "native-prepared",
     });
+  });
+
+  it("does not consume native preparation capacity when updates are repeatedly declined", async () => {
+    const { updater, native } = setup();
+
+    for (let index = 0; index < 32; index += 1) {
+      await expect(
+        updater.checkForUpdate({ updateStrategy: "appVersion" }),
+      ).resolves.toMatchObject({ bundleId: B });
+    }
+
+    expect(native.prepareSelection).not.toHaveBeenCalled();
+    expect(native.stageSelection).not.toHaveBeenCalled();
+    expect(native.validateSelection).toHaveBeenCalledTimes(32);
+  });
+
+  it("normalizes array-like native lists before catalog policy selection", async () => {
+    const { updater, native } = setup({
+      crashedBundleIds: { 0: C, length: 1 } as unknown as string[],
+      unconfirmedReleaseIds: {
+        0: releaseA,
+        length: 1,
+      } as unknown as string[],
+    });
+
+    await expect(
+      updater.checkForUpdate({ updateStrategy: "appVersion" }),
+    ).resolves.toMatchObject({ bundleId: B });
+    expect(native.validateSelection).toHaveBeenCalledOnce();
+  });
+
+  it("does not retain a preparation when the post-check state refresh fails", async () => {
+    const { updater, native, state } = setup();
+    let getStateCalls = 0;
+    native.getState.mockImplementation((callback) => {
+      getStateCalls += 1;
+      if (getStateCalls === 2) {
+        callback({
+          ok: false,
+          error: {
+            code: "STATE_READ_FAILED",
+            message: "Could not refresh native state.",
+          },
+        });
+        return;
+      }
+      callback({ ok: true, data: state });
+    });
+
+    await expect(
+      updater.checkForUpdate({ updateStrategy: "appVersion" }),
+    ).rejects.toMatchObject({ code: "STATE_READ_FAILED" });
+    expect(native.prepareSelection).not.toHaveBeenCalled();
+    expect(native.stageSelection).not.toHaveBeenCalled();
+    expect(native.validateSelection).toHaveBeenCalledOnce();
+  });
+
+  it("forwards the complete manifest contract without JavaScript filesystem base authority", async () => {
+    const { updater, catalog, native, fetch, prepared, validated } = setup();
+    const manifestFileHash = "c".repeat(64);
+    fetch.mockImplementation(
+      async (url) =>
+        new Response(
+          JSON.stringify(
+            String(url).includes("/release-catalogs/")
+              ? catalog
+              : {
+                  fileUrl: "/storage/archive.tar.gz",
+                  fileHash: "d".repeat(64),
+                  manifestUrl: "/storage/manifest.json",
+                  manifestFileHash,
+                  changedAssets: {
+                    "runtime/main.lynx": {
+                      fileHash: "e".repeat(64),
+                      file: {
+                        url: "/storage/runtime-main.lynx",
+                        compression: null,
+                      },
+                      patch: {
+                        algorithm: "bsdiff",
+                        baseBundleId: A,
+                        baseFileHash: "f".repeat(64),
+                        patchFileHash: "1".repeat(64),
+                        patchUrl: "/storage/runtime-main.patch",
+                      },
+                    },
+                  },
+                },
+          ),
+          { status: 200 },
+        ),
+    );
+
+    const update = await updater.checkForUpdate({
+      updateStrategy: "appVersion",
+    });
+    expect(native.prepareSelection).not.toHaveBeenCalled();
+    expect(validated().artifact).toEqual({
+      bundleId: B,
+      fileUrl: "https://updates.test/storage/archive.tar.gz",
+      fileHash: "d".repeat(64),
+      manifestUrl: "https://updates.test/storage/manifest.json",
+      manifestFileHash,
+      changedAssets: {
+        "runtime/main.lynx": {
+          fileHash: "e".repeat(64),
+          file: {
+            url: "https://updates.test/storage/runtime-main.lynx",
+            compression: null,
+          },
+          patch: {
+            algorithm: "bsdiff",
+            baseBundleId: A,
+            baseFileHash: "f".repeat(64),
+            patchFileHash: "1".repeat(64),
+            patchUrl: "https://updates.test/storage/runtime-main.patch",
+          },
+        },
+      },
+    });
+    await update!.updateBundle();
+    expect(prepared()).toEqual(validated());
+  });
+
+  it("rejects a malformed optional manifest route before native preparation", async () => {
+    const { updater, catalog, native, fetch } = setup();
+    fetch.mockImplementation(
+      async (url) =>
+        new Response(
+          JSON.stringify(
+            String(url).includes("/release-catalogs/")
+              ? catalog
+              : {
+                  fileUrl: "/storage/archive.tar.gz",
+                  fileHash: "d".repeat(64),
+                  manifestUrl: "/storage/manifest.json",
+                  manifestFileHash: "c".repeat(64),
+                  changedAssets: {
+                    "runtime/main.lynx": {
+                      fileHash: "e".repeat(64),
+                      file: { url: "/storage/runtime-main.lynx" },
+                      patch: null,
+                    },
+                  },
+                },
+          ),
+          { status: 200 },
+        ),
+    );
+
+    await expect(
+      updater.checkForUpdate({ updateStrategy: "appVersion" }),
+    ).rejects.toMatchObject({ code: "INVALID_RESPONSE" });
+    expect(native.prepareSelection).not.toHaveBeenCalled();
   });
 
   it("uses the native guard selection context hash on the prepared receipt", async () => {
@@ -196,7 +367,10 @@ describe("Lynx catalog controller (mock native transport)", () => {
         },
       }),
     );
-    await updater.checkForUpdate({ updateStrategy: "appVersion" });
+    const update = await updater.checkForUpdate({
+      updateStrategy: "appVersion",
+    });
+    await update!.updateBundle();
     expect(prepared().selection.selectionContextHash).toBe(
       "v1:nativeguardhash",
     );
@@ -218,10 +392,11 @@ describe("Lynx catalog controller (mock native transport)", () => {
       ],
     );
     // Catalog order is policy order: exclusions apply even ahead of a valid target.
-    expect(
-      (await updater.checkForUpdate({ updateStrategy: "appVersion" }))
-        ?.releaseId,
-    ).toBe(newRelease);
+    const update = await updater.checkForUpdate({
+      updateStrategy: "appVersion",
+    });
+    expect(update?.releaseId).toBe(newRelease);
+    await update!.updateBundle();
     expect(prepared().selection.releaseId).toBe(newRelease);
     const accepted = native.acceptCatalog.mock
       .calls[0]![0] as AcceptCatalogParams;
@@ -240,9 +415,9 @@ describe("Lynx catalog controller (mock native transport)", () => {
     );
   });
 
-  it("ignores leftover next selection after an explicit channel switch", async () => {
-    const { updater, native, prepared, fetch } = setup({
-      runningSelection: receipt(),
+  it("stages an explicit channel switch without persisting it during the check", async () => {
+    const { updater, native, prepared, fetch, state } = setup({
+      runningSelection: receipt(A, releaseA),
       nextSelection: receipt(B, releaseB),
     });
     const betaScope = createReleaseCatalogScopeKey({
@@ -264,6 +439,14 @@ describe("Lynx catalog controller (mock native transport)", () => {
         },
       }),
     );
+    native.stageSelection.mockImplementation((_params, callback) => {
+      state.channel = "beta";
+      state.channelKey = encodeChannelKey("beta");
+      callback({
+        ok: true,
+        data: { status: "STAGED", requiresRestart: true },
+      });
+    });
     fetch.mockImplementation(async (url) => {
       const href = String(url);
       if (href.includes("/release-catalogs/")) {
@@ -288,13 +471,91 @@ describe("Lynx catalog controller (mock native transport)", () => {
         { status: 200 },
       );
     });
-    await updater.checkForUpdate({
+    const update = await updater.checkForUpdate({
       updateStrategy: "appVersion",
       channel: "beta",
     });
-    expect(native.setChannel).toHaveBeenCalledOnce();
+    expect(state.channel).toBe("production");
+    expect(native.acceptCatalog.mock.calls[0]![0]).toMatchObject({
+      explicitScopeSwitch: true,
+      targetChannel: "beta",
+    });
+    expect(fetch.mock.calls[0]![0]).toContain(
+      `/release-catalogs/app-version/android/${encodeChannelKey("beta")}/`,
+    );
+    await update!.updateBundle();
     expect(prepared().selection.bundleId).toBe(C);
     expect(prepared().selection.channel).toBe("beta");
+    expect(updater.getChannel()).toBe("beta");
+  });
+
+  it("keeps the current channel after a failed switch and permits a clean retry", async () => {
+    const { updater, native, fetch, state } = setup({
+      runningSelection: receipt(A, releaseA),
+    });
+    const betaScope = createReleaseCatalogScopeKey({
+      strategy: "APP_VERSION",
+      platform: "android",
+      channelKey: encodeChannelKey("beta"),
+    });
+    fetch.mockImplementation(
+      async (url) =>
+        new Response(
+          JSON.stringify(
+            String(url).includes("/release-catalogs/")
+              ? {
+                  schemaVersion: 1,
+                  catalogId: "beta-catalog",
+                  scopeKey: betaScope,
+                  generation: 1,
+                  catalogHash,
+                  fallbackPolicy: "BUILTIN_IF_ACTIVE_INELIGIBLE",
+                  releases: [release(releaseC, C)],
+                }
+              : {
+                  fileUrl: "/storage/archive.tar.gz",
+                  fileHash: "b".repeat(64),
+                },
+          ),
+          { status: 200 },
+        ),
+    );
+    native.stageSelection.mockImplementationOnce((_params, callback) =>
+      callback({
+        ok: false,
+        error: {
+          code: "STATE_WRITE_FAILED",
+          message: "Could not commit the channel switch.",
+        },
+      }),
+    );
+
+    const first = await updater.checkForUpdate({
+      updateStrategy: "appVersion",
+      channel: "beta",
+    });
+    await expect(first!.updateBundle()).rejects.toMatchObject({
+      code: "STATE_WRITE_FAILED",
+    });
+    expect(state.channel).toBe("production");
+    expect(updater.getChannel()).toBe("production");
+
+    native.stageSelection.mockImplementation((_params, callback) => {
+      state.channel = "beta";
+      state.channelKey = encodeChannelKey("beta");
+      callback({
+        ok: true,
+        data: { status: "STAGED", requiresRestart: true },
+      });
+    });
+    const retry = await updater.checkForUpdate({
+      updateStrategy: "appVersion",
+      channel: "beta",
+    });
+    await expect(retry!.updateBundle()).resolves.toBe(true);
+    expect(updater.getChannel()).toBe("beta");
+    expect(native.prepareSelection).toHaveBeenCalledTimes(2);
+    expect(native.stageSelection).toHaveBeenCalledTimes(2);
   });
 
   it("uses a staged selection for policy while resolving artifacts from actual running bytes", async () => {
@@ -305,7 +566,10 @@ describe("Lynx catalog controller (mock native transport)", () => {
       },
       [release(releaseC, C), release(releaseB, B)],
     );
-    await updater.checkForUpdate({ updateStrategy: "appVersion" });
+    const update = await updater.checkForUpdate({
+      updateStrategy: "appVersion",
+    });
+    await update!.updateBundle();
     expect(prepared().selection.bundleId).toBe(C);
     expect(fetch.mock.calls[1]![0]).toBe(
       `https://updates.test/artifacts/${C}/from/${A}`,
@@ -318,8 +582,11 @@ describe("Lynx catalog controller (mock native transport)", () => {
       { runningSelection: receipt(B, releaseB), runningConfirmed: false },
       [release(id(14), B)],
     );
-    await updater.checkForUpdate({ updateStrategy: "appVersion" });
+    const update = await updater.checkForUpdate({
+      updateStrategy: "appVersion",
+    });
     expect(fetch).toHaveBeenCalledTimes(2);
+    await update!.updateBundle();
     expect(prepared().artifact?.bundleId).toBe(B);
     expect(prepared()).not.toHaveProperty("alreadyConfirmed");
   });
@@ -338,10 +605,11 @@ describe("Lynx catalog controller (mock native transport)", () => {
     const update = await updater.checkForUpdate({
       updateStrategy: "appVersion",
     });
-    expect(prepared().artifact).toBeNull();
     expect(fetch).toHaveBeenCalledOnce();
+    expect(native.prepareSelection).not.toHaveBeenCalled();
     expect(native.stageSelection).not.toHaveBeenCalled();
     await expect(update!.updateBundle()).resolves.toBe(true);
+    expect(prepared().artifact).toBeNull();
   });
 
   it("stages an authorized builtin rollback without a Release id or archive", async () => {
@@ -358,6 +626,7 @@ describe("Lynx catalog controller (mock native transport)", () => {
       status: "ROLLBACK",
       transitionKind: "USE_BUILTIN",
     });
+    await update!.updateBundle();
     expect(prepared()).toMatchObject({
       artifact: null,
       selection: { kind: "BUILTIN", bundleId: A, releaseId: null },
@@ -374,6 +643,7 @@ describe("Lynx catalog controller (mock native transport)", () => {
       updateStrategy: "appVersion",
     });
     expect(update).toMatchObject({ bundleId: A, status: "ROLLBACK" });
+    await update!.updateBundle();
     expect(prepared()).toMatchObject({
       artifact: null,
       selection: { kind: "EMBEDDED", bundleId: A },
@@ -396,12 +666,14 @@ describe("Lynx catalog controller (mock native transport)", () => {
         release(releaseA, A),
       ],
     });
-    expect(
-      await updater.checkForUpdate({ updateStrategy: "appVersion" }),
-    ).toMatchObject({
+    const update = await updater.checkForUpdate({
+      updateStrategy: "appVersion",
+    });
+    expect(update).toMatchObject({
       releaseId: releaseA,
       status: "ROLLBACK",
     });
+    await update!.updateBundle();
     expect(prepared().selection.releaseId).toBe(releaseA);
   });
 
@@ -422,9 +694,9 @@ describe("Lynx catalog controller (mock native transport)", () => {
     expect(fetch).toHaveBeenCalledOnce();
   });
 
-  it("rejects INCOMPATIBLE during check instead of returning an installable update", async () => {
+  it("rejects INCOMPATIBLE during check without retaining a preparation", async () => {
     const { updater, native } = setup();
-    native.prepareSelection.mockImplementation((_params, callback) =>
+    native.validateSelection.mockImplementation((_params, callback) =>
       callback({
         ok: false,
         error: {
@@ -435,20 +707,20 @@ describe("Lynx catalog controller (mock native transport)", () => {
     );
     await expect(
       updater.checkForUpdate({ updateStrategy: "appVersion" }),
-    ).rejects.toMatchObject({
-      code: "INCOMPATIBLE",
-    });
+    ).rejects.toMatchObject({ code: "INCOMPATIBLE" });
+    expect(native.prepareSelection).not.toHaveBeenCalled();
     expect(native.stageSelection).not.toHaveBeenCalled();
   });
 
-  it("does not return an installable update without a native prepared token", async () => {
+  it("does not stage an update without a native prepared token", async () => {
     const { updater, native } = setup();
     native.prepareSelection.mockImplementation((_params, callback) =>
       callback({ ok: true, data: { preparedId: "" } }),
     );
-    await expect(
-      updater.checkForUpdate({ updateStrategy: "appVersion" }),
-    ).rejects.toMatchObject({
+    const update = await updater.checkForUpdate({
+      updateStrategy: "appVersion",
+    });
+    await expect(update!.updateBundle()).rejects.toMatchObject({
       code: "INVALID_NATIVE_REPLY",
     });
     expect(native.stageSelection).not.toHaveBeenCalled();
@@ -475,6 +747,31 @@ describe("Lynx catalog controller (mock native transport)", () => {
     expect(native.prepareSelection).toHaveBeenCalledOnce();
   });
 
+  it("immediately stages every preparation across repeated stale failures", async () => {
+    const { updater, native } = setup();
+    native.stageSelection.mockImplementation((_params, callback) =>
+      callback({
+        ok: false,
+        error: {
+          code: "STALE_SELECTION",
+          message: "Exclusions changed after preparation.",
+        },
+      }),
+    );
+
+    for (let index = 0; index < 32; index += 1) {
+      const update = await updater.checkForUpdate({
+        updateStrategy: "appVersion",
+      });
+      await expect(update!.updateBundle()).rejects.toMatchObject({
+        code: "STALE_SELECTION",
+      });
+    }
+
+    expect(native.prepareSelection).toHaveBeenCalledTimes(32);
+    expect(native.stageSelection).toHaveBeenCalledTimes(32);
+  });
+
   it("still accepts catalog high-water when already on the built-in selection", async () => {
     const { updater, native, fetch } = setup({}, []);
     await expect(
@@ -483,6 +780,7 @@ describe("Lynx catalog controller (mock native transport)", () => {
     expect(native.acceptCatalog).toHaveBeenCalledOnce();
     expect(native.prepareSelection).not.toHaveBeenCalled();
     expect(fetch).toHaveBeenCalledOnce();
+    expect(updater.isUpdateDownloaded()).toBe(false);
   });
 
   it("stages builtin fallback when overlay is running over a confirmed bundle", async () => {
@@ -497,6 +795,7 @@ describe("Lynx catalog controller (mock native transport)", () => {
       status: "ROLLBACK",
       transitionKind: "USE_BUILTIN",
     });
+    await update!.updateBundle();
     expect(prepared()).toMatchObject({
       artifact: null,
       selection: { kind: "BUILTIN", bundleId: A, releaseId: null },
@@ -519,6 +818,7 @@ describe("Lynx catalog controller (mock native transport)", () => {
       status: "ROLLBACK",
       transitionKind: "USE_BUILTIN",
     });
+    await update!.updateBundle();
     expect(prepared()).toMatchObject({
       artifact: null,
       selection: { kind: "BUILTIN", bundleId: A, releaseId: null },

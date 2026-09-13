@@ -155,3 +155,37 @@ export async function installSdkUpdate(
     busy = false;
   }
 }
+
+export async function installSdkUpdateAndReload(
+  status: (value: string) => void,
+  canInstall: (value: boolean) => void,
+) {
+  if (busy) throw new Error("An SDK update action is already running");
+  if (!prepared) throw new Error("No verified SDK update is prepared");
+  busy = true;
+  const update = prepared;
+  try {
+    const installed = await update.updateBundle();
+    if (!installed)
+      throw new Error("The verified SDK update was not installed");
+    prepared = null;
+    canInstall(false);
+    status("Update installed. Replacing the managed Lynx generation…");
+    console.log(
+      "HOT_UPDATER_SDK_RELOAD",
+      JSON.stringify({
+        id: update.id,
+        bundleId: update.bundleId,
+        releaseId: update.releaseId,
+        transitionKind: update.transitionKind,
+      }),
+    );
+    await HotUpdater.reload();
+  } catch (error) {
+    status(`Install and reload failed: ${String(error)}`);
+    console.error("HOT_UPDATER_SDK_RELOAD_FAILURE", String(error));
+    throw error;
+  } finally {
+    busy = false;
+  }
+}

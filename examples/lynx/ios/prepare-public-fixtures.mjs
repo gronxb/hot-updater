@@ -19,6 +19,6 @@ for(const framework of ['react','vue','octane']) {
  const output=path.join(ios,'Embedded/Public',framework);
  await fs.rm(output,{recursive:true,force:true});
  await fs.cp(receipt.outputPath,output,{recursive:true});
- await fs.writeFile(path.join(ios,'Embedded/Public',framework+'-native.json'),JSON.stringify({framework,variant,runtimeId,bundleId,manifestDigest:receipt.manifestFileHash,entry:'main.lynx.bundle'}));
+ await fs.writeFile(path.join(ios,'Embedded/Public',framework+'-native.json'),JSON.stringify({framework,variant,runtimeId,bundleId,minimumBundleId:receipt.minimumBundleId,manifestDigest:receipt.manifestFileHash,entry:'main.lynx.bundle'}));
  console.log(framework,variant,receipt.manifestFileHash);
 }

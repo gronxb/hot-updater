@@ -2,7 +2,7 @@
 import { useEffect, useState } from "octane";
 import { loadDynamicProbe, loadExternalBootstrap, loadProbeFont } from "@hot-updater/lynx-g1-probe";
 
-import { checkSdkUpdate, imageUrl, installSdkUpdate, resources, sdkImageLoaded, startSdk, variant } from "./sdk-shared";
+import { checkSdkUpdate, imageUrl, installSdkUpdate, installSdkUpdateAndReload, resources, sdkImageLoaded, startSdk, variant } from "./sdk-shared";
 
 export function App() @{
   const [status, setStatus] = useState(`Bundle ${variant}: starting`);
@@ -24,6 +24,9 @@ export function App() @{
     @if (canInstall) {
       <view class="action" bindtap={() => { void installSdkUpdate(setStatus, setCanInstall); }}>
         <text class="action-label">{"Install next launch"}</text>
+      </view>
+      <view class="action" bindtap={() => { void installSdkUpdateAndReload(setStatus, setCanInstall); }}>
+        <text class="action-label">{"Install and reload"}</text>
       </view>
     }
   </view>

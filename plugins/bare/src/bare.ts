@@ -7,7 +7,12 @@ import type {
   BasePluginArgs,
   BuildPlugin,
   BuildPluginConfig,
+  NativeFingerprintProvider,
 } from "@hot-updater/plugin-core";
+import {
+  createReactNativeFingerprint,
+  selectReactNativeArtifacts,
+} from "@hot-updater/react-native/build";
 import { ExecaError, execa } from "execa";
 import { uuidv7 } from "uuidv7";
 
@@ -259,6 +264,8 @@ const runBundle = async ({
 };
 
 export interface BarePluginConfig extends BuildPluginConfig {
+  /** Native fingerprint implementation for a non-Expo React Native host. */
+  fingerprint?: NativeFingerprintProvider;
   /**
    * @default "index.js"
    * The entry file to bundle.
@@ -292,8 +299,15 @@ export const bare =
       entryFile = "index.js",
       enableHermes,
       resetCache = true,
+      fingerprint,
     } = config;
     return {
+      nativeBuild: {
+        fingerprint: (options) =>
+          fingerprint
+            ? fingerprint(options)
+            : createReactNativeFingerprint(cwd, options),
+      },
       build: async ({ platform }) => {
         const buildPath = path.join(cwd, outDir);
 
@@ -309,10 +323,16 @@ export const bare =
           enableHermes,
           resetCache,
         });
+        const { artifacts, patchAssetPath } = await selectReactNativeArtifacts({
+          buildPath,
+          platform,
+        });
 
         return {
+          artifacts,
           buildPath,
           bundleId,
+          patchAssetPath,
           stdout,
         };
       },

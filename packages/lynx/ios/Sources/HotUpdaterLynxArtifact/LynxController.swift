@@ -47,18 +47,39 @@ private struct LynxSelectionPreparation {
     let context: LynxLaunchContext
 }
 
-/// One controller owns one process launch and one native storage/scope lease.
+public struct LynxLaunchTransition {
+    public let kind: String
+    public let from: LynxPolicyReceipt
+    public let to: LynxPolicyReceipt
+    var dictionary: [String: Any] {
+        ["kind": kind, "from": Self.summary(from), "to": Self.summary(to)]
+    }
+    private static func summary(_ receipt: LynxPolicyReceipt) -> [String: Any] {
+        ["kind": receipt.kind, "releaseId": receipt.releaseId as Any? ?? NSNull(),
+         "bundleId": receipt.bundleId, "channel": receipt.channel]
+    }
+}
+
+public struct LynxConfirmationResult {
+    public let status: String
+    public let transition: LynxLaunchTransition?
+    public var dictionary: [String: Any] {
+        ["status": status, "transition": transition?.dictionary as Any? ?? NSNull()]
+    }
+}
+
+/// One controller owns one managed runtime generation and one native storage/scope lease.
 public final class LynxController {
     public let configuration: LynxControllerConfiguration
     public let runningArtifact: LynxInstalledArtifact
-    public let runningSelection: LynxPolicyReceipt
+    public private(set) var runningSelection: LynxPolicyReceipt
     public let attemptId = UUID().uuidString
     private let identity = UUID()
     private let lock = NSRecursiveLock()
     private let installer: LynxArtifactInstaller
     private let journal: LynxControllerJournal
     private let builtin: LynxStoredSelection
-    private let running: LynxStoredSelection
+    private var running: LynxStoredSelection
     private var state: LynxControllerState
     private var primary: LynxLaunchContext?
     private var contexts: [ObjectIdentifier: LynxLaunchContext] = [:]
@@ -69,12 +90,23 @@ public final class LynxController {
     private var preparations: [String: LynxSelectionPreparation] = [:]
     private var inFlight = 0
     private var inFlightBundles: [String: Int] = [:]
-    private var readyCallbacks: [(Result<String, Error>) -> Void] = []
+    private var readyCallbacks: [(Result<LynxConfirmationResult, Error>) -> Void] = []
     private var readyRequested = false
+    private var closed = false
     private var runtimeCohort: String
     private var runtimeChannel: String
 
-    public init(configuration config: LynxControllerConfiguration) throws {
+    public convenience init(configuration config: LynxControllerConfiguration) throws {
+        try self.init(
+            configuration: config,
+            artifactFetch: nil,
+            journalDirectorySync: nil
+        )
+    }
+
+    init(configuration config: LynxControllerConfiguration,
+         artifactFetch: LynxArtifactFetch?,
+         journalDirectorySync: ((URL) throws -> Void)? = nil) throws {
         guard !config.runtimeId.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
               !config.binaryIdentity.isEmpty, !config.channel.isEmpty, config.channel == config.channel.trimmingCharacters(in: .whitespacesAndNewlines),
               config.channel.utf8.elementsEqual(config.channel.precomposedStringWithCanonicalMapping.utf8),
@@ -83,7 +115,7 @@ public final class LynxController {
             throw LynxArtifactError.invalid("Invalid native Lynx controller configuration")
         }
         configuration = config
-        runtimeCohort = config.cohort
+        runtimeCohort = try LynxCatalogPolicy.normalizedCohort(config.cohort)
         runtimeChannel = config.channel
         let profile = LynxArtifactConfiguration(runtimeId: config.runtimeId, publicKeyPEM: config.publicKeyPEM)
         // The binary's embedded digest is its trust anchor; downloaded signatures are a separate policy.
@@ -98,30 +130,56 @@ public final class LynxController {
             config.embeddedBundleId, embedded.digest, config.appVersion, config.channel,
             config.minimumBundleId, Self.hash(Data((config.publicKeyPEM ?? "unsigned").utf8))]))
         let home = config.root.appendingPathComponent(scope)
-        installer = try LynxArtifactInstaller(root: home, configuration: profile)
-        journal = LynxControllerJournal(file: home.appendingPathComponent("state.json"))
+        if let artifactFetch {
+            installer = try LynxArtifactInstaller(
+                root: home,
+                configuration: profile,
+                fetch: artifactFetch
+            )
+        } else {
+            installer = try LynxArtifactInstaller(root: home, configuration: profile)
+        }
+        let journalFile = home.appendingPathComponent("state.json")
+        if let journalDirectorySync {
+            journal = LynxControllerJournal(
+                file: journalFile,
+                synchronizeDirectory: journalDirectorySync
+            )
+        } else {
+            journal = LynxControllerJournal(file: journalFile)
+        }
         var recovered = try journal.load()
-        if recovered.pending != nil {
+        var recoveredChanged = false
+        if let cohort = recovered.selectionCohort, !cohort.isEmpty {
+            let normalized = try LynxCatalogPolicy.normalizedCohort(cohort)
+            runtimeCohort = normalized
+            if normalized != cohort {
+                recovered.selectionCohort = normalized
+                recoveredChanged = true
+            }
+        }
+        var failedPendingSelection: LynxStoredSelection?
+        if let pending = recovered.pending {
+            failedPendingSelection = pending.selection
+            let receipt = try pending.selection.policy
+            if let releaseId = receipt.releaseId, !recovered.unconfirmedReleaseIds.contains(releaseId) {
+                guard recovered.unconfirmedReleaseIds.count < 128 else { throw LynxArtifactError.invalid("Missing reserved startup recovery capacity") }
+                recovered.unconfirmedReleaseIds.append(releaseId)
+            }
             recovered.pending = nil
-            recovered.revision = UUID().uuidString
-            try journal.save(recovered)
+            recoveredChanged = true
         }
         if recovered.selectionChannel == nil || recovered.selectionChannel?.isEmpty == true {
             recovered.selectionChannel = config.channel
-            recovered.revision = UUID().uuidString
-            try journal.save(recovered)
-        }
-        if let cohort = recovered.selectionCohort, !cohort.isEmpty {
-            runtimeCohort = cohort
+            recoveredChanged = true
         }
         if let channel = recovered.selectionChannel, !channel.isEmpty {
             runtimeChannel = channel
         }
-        let snapshotChannel = runtimeChannel
         let snapshotCohort = runtimeCohort
         let nativeSnapshot = { (base: LynxPolicyReceipt) in
             LynxPolicySnapshot(revision: recovered.revision, platform: "ios", appVersion: config.appVersion,
-                channel: snapshotChannel, embeddedBundleId: config.embeddedBundleId, minimumBundleId: config.minimumBundleId,
+                channel: base.channel, embeddedBundleId: config.embeddedBundleId, minimumBundleId: config.minimumBundleId,
                 cohort: snapshotCohort, runningSelection: base, nextSelection: nil,
                 crashedBundleIds: recovered.crashedBundleIds, unconfirmedReleaseIds: recovered.unconfirmedReleaseIds,
                 fingerprintHash: config.fingerprintHash)
@@ -148,7 +206,34 @@ public final class LynxController {
         }
         // A rejected staged selection is not retained as the policy base. Preserve only an eligible selected receipt.
         if recovered.next != nil, !Self.sameIdentity(try recovered.next?.policy, runningSelection) {
-            recovered.next = nil; recovered.revision = UUID().uuidString
+            recovered.next = nil
+            recoveredChanged = true
+        }
+        let selectedChannel = selected != nil ? runningSelection.channel
+            : (failedPendingSelection != nil ? config.channel : (recovered.selectionChannel ?? config.channel))
+        if recovered.selectionChannel != selectedChannel {
+            recovered.selectionChannel = selectedChannel
+            recoveredChanged = true
+        }
+        runtimeChannel = selectedChannel
+        let transition: LynxLaunchTransition?
+        if let failed = try failedPendingSelection?.policy {
+            transition = Self.launchTransition(from: failed, to: runningSelection, recovery: true)
+        } else {
+            let stable = try recovered.confirmed?.policy ?? builtinPolicy
+            transition = Self.launchTransition(from: stable, to: runningSelection)
+        }
+        if let transition {
+            recovered.launchTransition = try LynxStoredLaunchTransition(transition)
+            recoveredChanged = true
+        } else if let storedTransition = recovered.launchTransition {
+            if (try? Self.sameIdentity(storedTransition.policy.to, runningSelection)) != true {
+                recovered.launchTransition = nil
+                recoveredChanged = true
+            }
+        }
+        if recoveredChanged {
+            recovered.revision = UUID().uuidString
             try journal.save(recovered)
         }
         state = recovered
@@ -161,6 +246,20 @@ public final class LynxController {
     private static func sameIdentity(_ a: LynxPolicyReceipt?, _ b: LynxPolicyReceipt?) -> Bool {
         guard let a, let b else { return false }
         return a.kind == b.kind && a.bundleId == b.bundleId && a.releaseId == b.releaseId && a.channel == b.channel
+    }
+    private static func sameReleaseIdentity(_ a: LynxPolicyReceipt, _ b: LynxPolicyReceipt) -> Bool {
+        a.bundleId == b.bundleId && a.releaseId == b.releaseId
+    }
+    private static func launchTransition(from: LynxPolicyReceipt, to: LynxPolicyReceipt,
+                                         recovery: Bool = false) -> LynxLaunchTransition? {
+        guard !sameReleaseIdentity(from, to) else { return nil }
+        if recovery { return .init(kind: "RECOVERED", from: from, to: to) }
+        if from.bundleId != to.bundleId {
+            return .init(kind: "UPDATE_APPLIED", from: from, to: to)
+        }
+        guard let fromRelease = from.releaseId, let toRelease = to.releaseId,
+              fromRelease != toRelease else { return nil }
+        return .init(kind: "UNCHANGED", from: from, to: to)
     }
     private static func storedEligible(_ stored: LynxStoredSelection, state: LynxControllerState, snapshot: LynxPolicySnapshot) -> Bool {
         guard let receipt = try? stored.policy else { return false }
@@ -177,23 +276,56 @@ public final class LynxController {
               crashedBundleIds: state.crashedBundleIds, unconfirmedReleaseIds: state.unconfirmedReleaseIds,
               fingerprintHash: configuration.fingerprintHash)
     }
+    private func selectionSnapshot(targetChannel: String, explicitScopeSwitch: Bool,
+                                   accepting: Bool = false) throws -> LynxPolicySnapshot {
+        guard explicitScopeSwitch == (targetChannel != runtimeChannel) else {
+            throw LynxPolicyError(
+                code: accepting ? "INVALID_SCOPE_SWITCH" : "STALE_SELECTION",
+                message: "Catalog channel-switch intent no longer matches native state"
+            )
+        }
+        if explicitScopeSwitch {
+            guard runtimeChannel == configuration.channel else {
+                throw LynxPolicyError(
+                    code: accepting ? "CHANNEL_ALREADY_SWITCHED" : "STALE_SELECTION",
+                    message: "Reset the current native channel before switching again"
+                )
+            }
+            let minimumBase = LynxPolicyReceipt(
+                kind: "BUILTIN", releaseId: nil, bundleId: configuration.minimumBundleId,
+                catalogId: nil, scopeKey: nil, generation: nil, catalogHash: nil,
+                channel: targetChannel, selectionContextHash: nil
+            )
+            return .init(
+                revision: state.revision, platform: "ios", appVersion: configuration.appVersion,
+                channel: targetChannel, embeddedBundleId: configuration.embeddedBundleId,
+                minimumBundleId: configuration.minimumBundleId, cohort: runtimeCohort,
+                runningSelection: minimumBase, nextSelection: nil,
+                crashedBundleIds: state.crashedBundleIds,
+                unconfirmedReleaseIds: state.unconfirmedReleaseIds,
+                fingerprintHash: configuration.fingerprintHash
+            )
+        }
+        return try snapshot()
+    }
     private func save(_ next: LynxControllerState) throws { try journal.save(next); state = next }
     private func validate(_ context: LynxLaunchContext, primaryRequired: Bool = false) throws {
         guard context.owner == identity, contexts[ObjectIdentifier(context)] === context, context.active, context.started, !fatal,
-              !primaryRequired || primary === context else { throw LynxArtifactError.invalid("STALE_CONTEXT: Native launch context has no authority") }
+              !closed, !primaryRequired || primary === context else { throw LynxArtifactError.invalid("STALE_CONTEXT: Native launch context has no authority") }
     }
     public func createContext(primary: Bool) -> LynxLaunchContext {
         lock.lock(); defer { lock.unlock() }
+        precondition(!closed, "The native Lynx controller is closed")
         let context = LynxLaunchContext(primary: primary, owner: identity)
         contexts[ObjectIdentifier(context)] = context
         return context
     }
-    /// Call before loading the first template byte. A second primary cannot replace the process attempt.
+    /// Call before loading the first template byte. A second primary cannot replace this generation.
     public func begin(_ context: LynxLaunchContext) throws -> LynxInstalledArtifact {
         lock.lock(); defer { lock.unlock() }
         guard context.owner == identity, contexts[ObjectIdentifier(context)] === context, context.active, !context.started, !fatal else { throw LynxArtifactError.invalid("Invalid launch context") }
         if context.primary {
-            guard primary == nil else { throw LynxArtifactError.invalid("A native primary already owns this process") }
+            guard primary == nil else { throw LynxArtifactError.invalid("A native primary already owns this generation") }
             var next = state
             if runningSelection.kind != "BUILTIN", !Self.sameIdentity(runningSelection, try state.confirmed?.policy) {
                 guard next.pending == nil, next.unconfirmedReleaseIds.count < 128 else { throw LynxArtifactError.invalid("Startup trial capacity exhausted") }
@@ -219,29 +351,49 @@ public final class LynxController {
             callbacks.forEach { $0(.failure(LynxArtifactError.invalid("STALE_CONTEXT: Primary was destroyed"))) }
         }
     }
+
+    /// Invalidates every context before releasing this generation's store lease.
+    public func close() throws {
+        lock.lock()
+        guard !closed else { lock.unlock(); return }
+        closed = true
+        fatal = true
+        contexts.values.forEach { $0.active = false }
+        contexts.removeAll()
+        primary = nil
+        let discarded = preparations.values.compactMap(\.artifact)
+        preparations.removeAll()
+        inFlightBundles.removeAll()
+        let callbacks = readyCallbacks
+        readyCallbacks.removeAll()
+        lock.unlock()
+        discarded.forEach { try? installer.discard($0) }
+        installer.close()
+        callbacks.forEach {
+            $0(.failure(LynxArtifactError.invalid("STALE_CONTEXT: Generation closed")))
+        }
+    }
     public func setCohort(_ cohort: String, context: LynxLaunchContext) throws {
         lock.lock(); defer { lock.unlock() }; try validate(context)
-        runtimeCohort = cohort
+        let normalized = try LynxCatalogPolicy.normalizedCohort(cohort)
         var next = state
-        next.selectionCohort = cohort
+        next.selectionCohort = normalized
         next.revision = UUID().uuidString
         try save(next)
-    }
-    public func setChannel(_ channel: String, context: LynxLaunchContext) throws {
-        lock.lock(); defer { lock.unlock() }; try validate(context)
-        runtimeChannel = channel
-        var next = state
-        next.selectionChannel = channel
-        next.revision = UUID().uuidString
-        try save(next)
+        runtimeCohort = normalized
     }
     public func resetChannel(_ context: LynxLaunchContext) throws -> Bool {
         lock.lock(); defer { lock.unlock() }; try validate(context)
-        runtimeChannel = configuration.channel
         var next = state
         next.selectionChannel = configuration.channel
+        next.confirmed = nil
+        next.next = nil
+        next.pending = nil
+        next.launchTransition = nil
+        next.catalogAcceptances = nil
         next.revision = UUID().uuidString
         try save(next)
+        runtimeChannel = configuration.channel
         return true
     }
     public func clearCrashHistory(_ context: LynxLaunchContext) throws {
@@ -263,9 +415,15 @@ public final class LynxController {
                 "crashedBundleIds": state.crashedBundleIds, "unconfirmedReleaseIds": state.unconfirmedReleaseIds,
                 "fingerprintHash": configuration.fingerprintHash]
     }
-    public func acceptCatalog(_ json: Data, expectedRevision: String, contextHash: String, context: LynxLaunchContext) throws -> LynxPolicyGuard {
+    public func acceptCatalog(_ json: Data, expectedRevision: String, contextHash: String,
+                              targetChannel: String? = nil, explicitScopeSwitch: Bool = false,
+                              context: LynxLaunchContext) throws -> LynxPolicyGuard {
         lock.lock(); defer { lock.unlock() }; try validate(context, primaryRequired: true)
-        let current = try snapshot()
+        let current = try selectionSnapshot(
+            targetChannel: targetChannel ?? runtimeChannel,
+            explicitScopeSwitch: explicitScopeSwitch,
+            accepting: true
+        )
         let catalog = try LynxCatalogPolicy.parseCatalog(json: json, snapshot: current)
         let key = Self.key(catalog.catalogId, catalog.scopeKey)
         let prior = try state.catalogs[key].map { try LynxCatalogPolicy.parseCatalog(json: $0, snapshot: current) }
@@ -275,13 +433,26 @@ public final class LynxController {
         var next = state
         next.highWater[key] = .init(generation: catalog.generation, hash: catalog.catalogHash)
         next.catalogs[key] = json
+        var acceptances = next.catalogAcceptances ?? [:]
+        acceptances[key] = try LynxStoredCatalogAcceptance(
+            accepted.selectionGuard,
+            explicitScopeSwitch: explicitScopeSwitch
+        )
+        next.catalogAcceptances = acceptances
         try save(next)
         return accepted.selectionGuard
     }
     @discardableResult private func authorize(_ guardValue: LynxPolicyGuard, _ receipt: LynxPolicyReceipt) throws -> LynxPolicyAuthorization {
-        let current = try snapshot()
         let key = Self.key(guardValue.catalogId, guardValue.scopeKey)
-        guard let bytes = state.catalogs[key] else { throw LynxArtifactError.authorizationRequired }
+        guard let bytes = state.catalogs[key],
+              let accepted = state.catalogAcceptances?[key],
+              (try? accepted.policyGuard) == guardValue else {
+            throw LynxArtifactError.authorizationRequired
+        }
+        let current = try selectionSnapshot(
+            targetChannel: guardValue.channel,
+            explicitScopeSwitch: accepted.explicitScopeSwitch
+        )
         let catalog = try LynxCatalogPolicy.parseCatalog(json: bytes, snapshot: current)
         let authorization = try LynxCatalogPolicy.authorize(catalog: catalog, snapshot: current, selectionGuard: guardValue, requestedReceipt: receipt)
         guard !state.unconfirmedReleaseIds.contains(receipt.releaseId ?? ""), !state.crashedBundleIds.contains(receipt.bundleId) else { throw LynxArtifactError.authorizationRequired }
@@ -292,37 +463,89 @@ public final class LynxController {
         defer { finishPreparation(receipt.bundleId) }
         var prepared: LynxPreparedArtifact?
         do {
-            if let artifact { prepared = try await installer.prepare(artifact) }
+            if let artifact {
+                // JavaScript cannot nominate a patch base. The controller's immutable,
+                // verified running tree is the only base admitted to the installer.
+                prepared = try await installer.prepare(
+                    artifact,
+                    base: runningArtifact,
+                    releaseId: receipt.releaseId
+                )
+            }
             return try retainPreparation(guardValue, receipt, prepared, context)
         } catch {
             if let prepared { try? installer.discard(prepared) }
-            if case LynxArtifactError.incompatible = error { try rememberIncompatible(cacheKey) }
+            if case LynxArtifactError.incompatible = error, let cacheKey {
+                try rememberIncompatible(cacheKey)
+            }
             throw error
         }
     }
-    private func reservePreparation(_ guardValue: LynxPolicyGuard, _ receipt: LynxPolicyReceipt, _ artifact: LynxArtifactRequest?, _ context: LynxLaunchContext) throws -> String {
+    public func validateSelection(guard guardValue: LynxPolicyGuard, receipt: LynxPolicyReceipt,
+                                  artifact: LynxArtifactRequest?, context: LynxLaunchContext) async throws {
+        let preparedId = try await prepareSelection(
+            guard: guardValue,
+            receipt: receipt,
+            artifact: artifact,
+            context: context
+        )
+        let consumed = consumeValidation(preparedId, context: context)
+        guard let retained = consumed.preparation else { throw LynxArtifactError.stalePreparation }
+        if let prepared = retained.artifact { try installer.discard(prepared) }
+        if let error = consumed.contextError { throw error }
+    }
+    private func consumeValidation(_ preparedId: String, context: LynxLaunchContext) -> (
+        preparation: LynxSelectionPreparation?,
+        contextError: Error?
+    ) {
+        lock.lock(); defer { lock.unlock() }
+        guard let retained = preparations.removeValue(forKey: preparedId),
+              retained.context === context else {
+            return (nil, LynxArtifactError.stalePreparation)
+        }
+        let contextError: Error?
+        do { try validate(context, primaryRequired: true); contextError = nil }
+        catch { contextError = error }
+        try? cleanupUnusedArtifacts()
+        return (retained, contextError)
+    }
+    private func reservePreparation(_ guardValue: LynxPolicyGuard, _ receipt: LynxPolicyReceipt, _ artifact: LynxArtifactRequest?, _ context: LynxLaunchContext) throws -> String? {
         lock.lock(); defer { lock.unlock() }; try validate(context, primaryRequired: true); try authorize(guardValue, receipt)
         try cleanupUnusedArtifacts() // A failed prune blocks additional downloads, while existing launches remain usable.
         guard preparations.count + inFlight < 16 else { throw LynxArtifactError.invalid("Preparation capacity exhausted") }
         if let artifact {
             guard receipt.kind == "BUNDLE", artifact.bundleId == receipt.bundleId else { throw LynxArtifactError.invalid("Artifact does not belong to selected Bundle") }
         }
-        let key = Self.hash(try JSONSerialization.data(withJSONObject: [guardValue.scopeKey, receipt.bundleId, artifact?.fileHash ?? "cached", artifact?.manifestFileHash ?? "archive-anchor"]))
-        guard !state.incompatibleArtifacts.contains(key) else { throw LynxArtifactError.incompatible }
-        guard state.incompatibleArtifacts.count < 128 else { throw LynxArtifactError.invalid("Compatibility admission capacity exhausted") }
+        let key = try artifact.map {
+            Self.hash(try JSONSerialization.data(withJSONObject: [
+                guardValue.scopeKey, receipt.bundleId, $0.fileHash ?? "cached",
+                $0.manifestFileHash ?? "archive-anchor",
+            ]))
+        }
+        if let key, state.incompatibleArtifacts.contains(key) {
+            throw LynxArtifactError.incompatible
+        }
         inFlight += 1
         inFlightBundles[receipt.bundleId, default: 0] += 1
         return key
     }
     private func finishPreparation(_ bundleId: String) {
-        lock.lock(); defer { lock.unlock() }; inFlight -= 1
+        lock.lock(); defer { lock.unlock() }
+        if inFlight > 0 { inFlight -= 1 }
+        guard !closed else { return }
         if inFlightBundles[bundleId] == 1 { inFlightBundles.removeValue(forKey: bundleId) }
         else { inFlightBundles[bundleId, default: 0] -= 1 }
     }
     private func rememberIncompatible(_ key: String) throws {
         lock.lock(); defer { lock.unlock() }
-        guard state.incompatibleArtifacts.count < 128 || state.incompatibleArtifacts.contains(key) else { throw LynxArtifactError.invalid("Compatibility admission capacity exhausted") }
-        var next = state; next.incompatibleArtifacts.insert(key); try save(next)
+        guard !closed else { return }
+        guard !state.incompatibleArtifacts.contains(key) else { return }
+        var next = state
+        if next.incompatibleArtifacts.count == 128 {
+            next.incompatibleArtifacts.removeFirst()
+        }
+        next.incompatibleArtifacts.append(key)
+        try save(next)
     }
     private func retainPreparation(_ guardValue: LynxPolicyGuard, _ receipt: LynxPolicyReceipt, _ prepared: LynxPreparedArtifact?, _ context: LynxLaunchContext) throws -> String {
         lock.lock(); defer { lock.unlock() }; try validate(context, primaryRequired: true); try authorize(guardValue, receipt)
@@ -342,18 +565,38 @@ public final class LynxController {
     public func stageSelection(_ preparedId: String, context: LynxLaunchContext) throws -> [String: Any] {
         lock.lock(); defer { lock.unlock() }; try validate(context, primaryRequired: true)
         guard let value = preparations[preparedId], value.context === context else { throw LynxArtifactError.stalePreparation }
+        defer {
+            preparations.removeValue(forKey: preparedId)
+            if let artifact = value.artifact { try? installer.discard(artifact) }
+            try? cleanupUnusedArtifacts()
+        }
         let authorization = try authorize(value.guardValue, value.receipt)
-        let adopt = value.receipt.bundleId == runningSelection.bundleId && runningConfirmed
+        let adopt = value.receipt.kind == "BUNDLE"
+            && value.receipt.bundleId == runningSelection.bundleId && runningConfirmed
         func publishState() throws {
             var next = state
             let selection = try LynxStoredSelection(value.receipt, manifestDigest: value.digest, rollback: authorization.rollback)
-            next.next = selection
+            next.selectionChannel = value.receipt.channel
             next.installedDigests[value.receipt.bundleId] = value.digest
-            // Running bytes/receipt remain immutable. A same-byte new Release still requires its own trial unless running is already confirmed.
-            if adopt { next.confirmed = selection }
-            else if value.receipt.kind == "BUILTIN" { next.confirmed = nil }
+            // Running bytes remain immutable. A same-byte new Release may adopt
+            // its authorized identity only after the current bytes are confirmed.
+            if adopt {
+                next.next = nil
+                next.confirmed = selection
+                if let transition = Self.launchTransition(from: runningSelection, to: value.receipt) {
+                    next.launchTransition = try LynxStoredLaunchTransition(transition)
+                }
+            } else {
+                next.next = selection
+                if value.receipt.kind == "BUILTIN" { next.confirmed = nil }
+            }
             next.revision = UUID().uuidString
             try save(next)
+            if adopt {
+                running = selection
+                runningSelection = value.receipt
+            }
+            runtimeChannel = value.receipt.channel
         }
         if let artifact = value.artifact {
             _ = try installer.commit(artifact) { publish in
@@ -364,8 +607,6 @@ public final class LynxController {
             if value.receipt.bundleId != configuration.embeddedBundleId { _ = try installer.inspectInstalled(bundleId: value.receipt.bundleId, expectedManifestDigest: value.digest) }
             try publishState()
         }
-        preparations.removeValue(forKey: preparedId)
-        try? cleanupUnusedArtifacts()
         return ["status": adopt ? "ADOPTED" : "STAGED", "requiresRestart": !adopt]
     }
     private func cleanupUnusedArtifacts() throws {
@@ -393,11 +634,27 @@ public final class LynxController {
         contentObserved = true
         try confirmIfReady()
     }
-    public func notifyAppReady(_ context: LynxLaunchContext, completion: @escaping (Result<String, Error>) -> Void) {
+    public func notifyAppReady(_ context: LynxLaunchContext,
+                               completion: @escaping (Result<LynxConfirmationResult, Error>) -> Void) {
         lock.lock(); defer { lock.unlock() }
         do { try validate(context, primaryRequired: true) }
         catch { completion(.failure(error)); return }
-        if runningConfirmed { completion(.success("ALREADY_CONFIRMED")); return }
+        if runningConfirmed {
+            do {
+                var next = state
+                let transition = try next.launchTransition?.policy
+                guard transition.map({ Self.sameIdentity($0.to, runningSelection) }) ?? true else {
+                    throw LynxArtifactError.invalid("Launch transition does not match the running selection")
+                }
+                if next.launchTransition != nil {
+                    next.launchTransition = nil
+                    next.revision = UUID().uuidString
+                    try save(next)
+                }
+                completion(.success(.init(status: "ALREADY_CONFIRMED", transition: transition)))
+            } catch { completion(.failure(error)) }
+            return
+        }
         readyCallbacks.append(completion); readyRequested = true
         do { try confirmIfReady() }
         catch {
@@ -416,12 +673,22 @@ public final class LynxController {
         } else if runningSelection.kind != "BUILTIN", !Self.sameIdentity(runningSelection, try state.confirmed?.policy) {
             throw LynxArtifactError.invalid("No pending startup attempt")
         }
+        let transition = try next.launchTransition?.policy
+        guard transition.map({ Self.sameIdentity($0.to, runningSelection) }) ?? true else {
+            throw LynxArtifactError.invalid("Launch transition does not match the running selection")
+        }
         next.confirmed = running; next.pending = nil
+        next.launchTransition = nil
         next.revision = UUID().uuidString
         try save(next)
         runningConfirmed = true
         let callbacks = readyCallbacks; readyCallbacks = []
-        callbacks.enumerated().forEach { $0.element(.success($0.offset == 0 ? "CONFIRMED" : "ALREADY_CONFIRMED")) }
+        callbacks.enumerated().forEach {
+            $0.element(.success(.init(
+                status: $0.offset == 0 ? "CONFIRMED" : "ALREADY_CONFIRMED",
+                transition: $0.offset == 0 ? transition : nil
+            )))
+        }
         } catch {
             readyRequested = false
             let callbacks = readyCallbacks; readyCallbacks = []
@@ -429,9 +696,15 @@ public final class LynxController {
             throw error
         }
     }
-    public func reportFailure(_ context: LynxLaunchContext, fatal knownFatal: Bool) throws {
+    @discardableResult
+    public func reportFailure(
+        _ context: LynxLaunchContext,
+        fatal knownFatal: Bool,
+        allowConfirmed: Bool = false
+    ) throws -> Bool {
         lock.lock(); defer { lock.unlock() }; try validate(context, primaryRequired: true)
-        guard knownFatal else { return } // Unknown/nonfatal errors leave the attempt for next-process recovery.
+        // Errors after startup confirmation are outside the initial rollback window.
+        guard knownFatal, !runningConfirmed || allowConfirmed else { return false }
         fatal = true // A storage failure cannot restore a context already observed to fail.
         let callbacks = readyCallbacks; readyCallbacks = []
         defer { callbacks.forEach { $0(.failure(LynxArtifactError.invalid("Native startup failed"))) } }
@@ -448,8 +721,9 @@ public final class LynxController {
         if next.pending?.attemptId == attemptId { next.pending = nil }
         next.revision = UUID().uuidString
         try save(next)
+        return true
     }
-    /// All contexts retain the same process-pinned immutable tree; no resource uses next selection.
+    /// All contexts retain the same generation-pinned immutable tree; no resource uses next selection.
     public func resource(_ rawURL: String, context: LynxLaunchContext) throws -> Data {
         lock.lock(); defer { lock.unlock() }; try validate(context)
         guard let url = URL(string: rawURL), url.scheme == "hot-updater", url.host == nil || url.host == "",

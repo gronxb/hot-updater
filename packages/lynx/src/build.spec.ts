@@ -4,7 +4,13 @@ import path from "node:path";
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { lynx, type LynxBuildContext, type LynxBuildOutput } from "./build";
+import {
+  lynx,
+  type LynxBuildContext,
+  type LynxBuildOutput,
+  MAX_LYNX_RUNTIME_ID_UTF8_BYTES,
+  MAX_LYNX_SIDECAR_BYTES,
+} from "./build";
 
 describe("framework-independent Lynx artifacts", () => {
   let cwd: string;
@@ -60,7 +66,31 @@ describe("framework-independent Lynx artifacts", () => {
         entry: "templates/main.bin",
         runtimeId,
       });
-      expect(result).toHaveProperty("filePolicy", "preserve");
+      expect(result.patchAssetPath).toBe("templates/main.bin");
+      expect(result.artifacts).toEqual(
+        expect.arrayContaining([
+          {
+            path: path.join(result.buildPath, "templates/main.bin"),
+            name: "templates/main.bin",
+            downloadCompression: "br",
+          },
+          {
+            path: path.join(result.buildPath, "templates/lazy.bundle"),
+            name: "templates/lazy.bundle",
+            downloadCompression: null,
+          },
+          {
+            path: path.join(result.buildPath, "icon.png"),
+            name: "icon.png",
+            downloadCompression: null,
+          },
+          {
+            path: path.join(result.buildPath, "hot-updater-lynx.json"),
+            name: "hot-updater-lynx.json",
+            downloadCompression: null,
+          },
+        ]),
+      );
       expect(
         await fs.readFile(path.join(result.buildPath, "templates/main.bin")),
       ).toEqual(binary);
@@ -81,6 +111,26 @@ describe("framework-independent Lynx artifacts", () => {
         outDir: result.buildPath,
       });
     }
+  });
+
+  it("orders artifact names by locale-independent UTF-16 code units", async () => {
+    build.mockImplementation(async ({ outDir }) => {
+      await Promise.all([
+        fs.writeFile(path.join(outDir, "Z.asset"), "upper"),
+        fs.writeFile(path.join(outDir, "ä.asset"), "non-ascii"),
+        fs.writeFile(path.join(outDir, "main.bundle"), binary),
+      ]);
+      return { entry: "main.bundle", runtimeId };
+    });
+
+    const result = await lynx({ build })({ cwd }).build({ platform: "ios" });
+
+    expect(result.artifacts.map(({ name }) => name)).toEqual([
+      "Z.asset",
+      "hot-updater-lynx.json",
+      "main.bundle",
+      "ä.asset",
+    ]);
   });
 
   it("resolves the native build's public key lazily with the application directory", async () => {
@@ -224,6 +274,36 @@ describe("framework-independent Lynx artifacts", () => {
       expect(await fs.readdir(path.join(cwd, ".hot-updater/lynx"))).toEqual([]);
     },
   );
+
+  it("accepts the runtime identity boundary within the native sidecar cap", async () => {
+    build.mockImplementation(async ({ outDir }) => {
+      await fs.writeFile(path.join(outDir, "main.bundle"), binary);
+      return {
+        entry: "main.bundle",
+        runtimeId: "\0".repeat(MAX_LYNX_RUNTIME_ID_UTF8_BYTES),
+      };
+    });
+
+    const result = await lynx({ build })({ cwd }).build({ platform: "ios" });
+    const metadata = await fs.readFile(
+      path.join(result.buildPath, "hot-updater-lynx.json"),
+    );
+    expect(metadata.byteLength).toBeLessThanOrEqual(MAX_LYNX_SIDECAR_BYTES);
+  });
+
+  it("rejects a runtime identity one byte above the sidecar-safe boundary", async () => {
+    build.mockImplementation(async ({ outDir }) => {
+      await fs.writeFile(path.join(outDir, "main.bundle"), binary);
+      return {
+        entry: "main.bundle",
+        runtimeId: "r".repeat(MAX_LYNX_RUNTIME_ID_UTF8_BYTES + 1),
+      };
+    });
+
+    await expect(
+      lynx({ build })({ cwd }).build({ platform: "ios" }),
+    ).rejects.toThrow(`exceeds ${MAX_LYNX_RUNTIME_ID_UTF8_BYTES} UTF-8 bytes`);
+  });
 
   it.each([
     ["manifest.json", "file"],

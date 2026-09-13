@@ -2,6 +2,7 @@ package com.hotupdater.lynx.internal
 
 import java.io.ByteArrayOutputStream
 import java.io.File
+import java.io.InputStream
 import java.io.InterruptedIOException
 import java.nio.file.Files
 import java.util.zip.GZIPOutputStream
@@ -37,6 +38,26 @@ class StrictArchiveTest {
         return bytes.toByteArray()
     }
     private fun gzip(bytes: ByteArray): ByteArray { val output = ByteArrayOutputStream(); GZIPOutputStream(output).use { it.write(bytes) }; return output.toByteArray() }
+    private class SyntheticInput(private var remaining: Long) : InputStream() {
+        override fun read(): Int {
+            if (remaining == 0L) return -1
+            remaining -= 1
+            return 0
+        }
+        override fun read(buffer: ByteArray, offset: Int, length: Int): Int {
+            if (remaining == 0L) return -1
+            return minOf(remaining, length.toLong()).toInt().also { remaining -= it }
+        }
+    }
+    private fun drain(input: InputStream): Long {
+        var total = 0L
+        val buffer = ByteArray(64 * 1024)
+        while (true) {
+            val size = input.read(buffer)
+            if (size < 0) return total
+            total += size
+        }
+    }
 
     @Test fun `preserves nested underscore and whitespace paths in real ZIP and PAX TAR`() {
         val name = "async/__/" + "long-name-".repeat(18) + " source .bundle "
@@ -49,9 +70,50 @@ class StrictArchiveTest {
             assertThrows(Exception::class.java) { StrictArchive.extract(archive, out) }; assertFalse(File(out.parentFile, "outside").exists())
         }
     }
+    @Test fun `enforces the 1024 UTF-8 byte managed path boundary`() {
+        val asciiBoundary = "a".repeat(ArchiveLimits.MAX_PATH_BYTES)
+        val unicodeBoundary = "é".repeat(ArchiveLimits.MAX_PATH_BYTES / 2)
+        assertEquals(asciiBoundary, ManagedPaths.normalize(asciiBoundary))
+        assertEquals(unicodeBoundary, ManagedPaths.normalize(unicodeBoundary))
+        assertThrows(IllegalArgumentException::class.java) {
+            ManagedPaths.normalize("a".repeat(ArchiveLimits.MAX_PATH_BYTES + 1))
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            ManagedPaths.normalize(unicodeBoundary + "é")
+        }
+    }
+    @Test fun `rejects C0 DEL and colon in managed and archive paths`() {
+        val controls = (0x00..0x1f).map(Int::toChar) + '\u007f'
+        (controls.map { "asset${it}name" } + "asset:name").forEach { path ->
+            assertThrows(IllegalArgumentException::class.java) {
+                ManagedPaths.normalize(path)
+            }
+        }
+        listOf("asset\u001fname", "asset\u007fname", "asset:name").forEach { path ->
+            fixture(zip(path)) { archive, out ->
+                assertThrows(IllegalArgumentException::class.java) {
+                    StrictArchive.extract(archive, out)
+                }
+                assertTrue(out.list().orEmpty().isEmpty())
+            }
+        }
+    }
     @Test fun `rejects duplicate files before a later entry can replace bytes`() {
         for (bytes in listOf(zip("entry", "entry"), gzip(tar("entry", "entry")))) fixture(bytes) { archive, out ->
             assertThrows(IllegalArgumentException::class.java) { StrictArchive.extract(archive, out) }
+        }
+    }
+    @Test fun `rejects shared portable full case-fold collision fixtures`() {
+        for (names in listOf(
+            arrayOf("Straße", "STRASSE"),
+            arrayOf("μέρος", "ΜΈΡΟσ"),
+            arrayOf("Straße", "strasse/entry.lynxbc"),
+        )) {
+            for (bytes in listOf(zip(*names), gzip(tar(*names)))) fixture(bytes) { archive, out ->
+                assertThrows(IllegalArgumentException::class.java) {
+                    StrictArchive.extract(archive, out)
+                }
+            }
         }
     }
     @Test fun `rejects ZIP Unix symlink and TAR symlink metadata`() {
@@ -65,6 +127,31 @@ class StrictArchiveTest {
     @Test fun `rejects truncated archive and excessive ZIP entry count`() {
         for (bytes in listOf(zip("entry").copyOf(20), zip(*Array(ArchiveLimits.MAX_ENTRIES + 1) { "entry-$it" }))) fixture(bytes) { archive, out ->
             assertThrows(Exception::class.java) { StrictArchive.extract(archive, out) }
+        }
+    }
+    @Test fun `counts implicit directories toward the portable entry limit`() {
+        val names = Array(ArchiveLimits.MAX_ENTRIES / 2 + 1) { "directory-$it/entry" }
+        fixture(zip(*names)) { archive, out ->
+            assertThrows(IllegalArgumentException::class.java) {
+                StrictArchive.extract(archive, out)
+            }
+        }
+    }
+    @Test fun `allows the derived TAR framing ceiling and rejects the next byte`() {
+        assertEquals(
+            30_711_024L,
+            ArchiveLimits.MAX_TAR_STREAM_BYTES - ArchiveLimits.MAX_EXTRACTED_BYTES,
+        )
+        assertEquals(
+            ArchiveLimits.MAX_TAR_STREAM_BYTES,
+            drain(BoundedTarInput(SyntheticInput(ArchiveLimits.MAX_TAR_STREAM_BYTES))),
+        )
+        assertThrows(IllegalArgumentException::class.java) {
+            drain(
+                BoundedTarInput(
+                    SyntheticInput(ArchiveLimits.MAX_TAR_STREAM_BYTES + 1),
+                ),
+            )
         }
     }
     @Test fun `rejects oversized GNU metadata before allocating its declared size`() {

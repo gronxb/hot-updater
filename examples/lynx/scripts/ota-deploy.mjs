@@ -19,7 +19,9 @@ const { positionals, values: options } = parseArgs({
   allowPositionals: true,
   options: {
     signed: { type: "boolean" },
+    patch: { type: "boolean" },
     channel: { type: "string" },
+    "from-bundle-id": { type: "string" },
     "runtime-id": { type: "string" },
   },
 });
@@ -33,13 +35,17 @@ if (
   positionals.length > 4
 ) {
   throw new Error(
-    "Usage: node scripts/ota-deploy.mjs <react|vue|octane> <ios|android> [zip|tar.gz|tar.br] [frozen-fixture-name] [--signed] [--channel <native-channel>] [--runtime-id <native-profile>]",
+    "Usage: node scripts/ota-deploy.mjs <react|vue|octane> <ios|android> [zip|tar.gz|tar.br] [frozen-fixture-name] [--signed] [--patch] [--from-bundle-id <verified-base>] [--channel <native-channel>] [--runtime-id <native-profile>]",
   );
 }
 const example = fileURLToPath(new URL("../", import.meta.url));
 const workspace = fileURLToPath(new URL("../../../", import.meta.url));
 const root = path.join(example, ".hot-updater/ota");
 const signed = options.signed === true;
+const patchEnabled = options.patch === true;
+if (options["from-bundle-id"] && !patchEnabled) {
+  throw new Error("--from-bundle-id requires --patch.");
+}
 if (
   /sdk\d/.test(fixture) &&
   (!options["runtime-id"]?.trim() ||
@@ -88,8 +94,11 @@ if (signed) {
   );
 }
 const origin = "http://127.0.0.1:18791";
+const buildRoot = fixture.startsWith("matrix-")
+  ? ".hot-updater/public-matrix/builds"
+  : ".hot-updater/g1";
 const source = await fs.realpath(
-  path.join(example, ".hot-updater/g1", framework, fixture),
+  path.join(example, buildRoot, framework, fixture),
 );
 const runtimeId =
   options["runtime-id"] ??
@@ -169,7 +178,7 @@ const commonHeaders = { authorization: "Bearer " + token };
 export default {
   updateStrategy: "appVersion",
   compressStrategy: ${JSON.stringify(format)},
-  patch: { enabled: false },
+  patch: { enabled: ${patchEnabled}, maxBaseBundles: 2 },
   ${signed ? `signing: { enabled: true, privateKeyPath: ${JSON.stringify(privateKeyPath)} },` : ""}
   build: ({ cwd }) => {
     const plugin = lynx({
@@ -323,6 +332,26 @@ assert.deepEqual(
   sourceFiles,
   "Frozen compiler output must remain unchanged",
 );
+const deliveryArtifactUrl = options["from-bundle-id"]
+  ? `${origin}/hot-updater/artifacts/${bundle.id}/from/${options["from-bundle-id"]}`
+  : artifactUrl;
+const deliveryArtifact = options["from-bundle-id"]
+  ? await getJson(deliveryArtifactUrl)
+  : artifact;
+if (options["from-bundle-id"]) {
+  assert.equal(deliveryArtifact.manifestFileHash, bundle.manifestFileHash);
+  assert.ok(deliveryArtifact.manifestUrl, "Delta delivery needs a manifest");
+  const changedAssets = Object.entries(deliveryArtifact.changedAssets ?? {});
+  assert.ok(changedAssets.length > 0, "Delta delivery needs changed assets");
+  assert.ok(
+    changedAssets.some(
+      ([, changed]) =>
+        changed.patch?.algorithm === "bsdiff" &&
+        changed.patch.baseBundleId === options["from-bundle-id"],
+    ),
+    "Delta delivery needs a real BSDIFF patch from the requested base",
+  );
+}
 const receipt = {
   verifiedAt: new Date().toISOString(),
   framework,
@@ -330,6 +359,7 @@ const receipt = {
   fixture,
   format,
   signed,
+  patchEnabled,
   ...(signed ? { publicKeyPath } : {}),
   bundleId: bundle.id,
   releaseId: release.id,
@@ -341,6 +371,8 @@ const receipt = {
   persistedManifestFileHash: bundle.manifestFileHash,
   artifactResponse: artifact,
   artifactUrl,
+  deliveryArtifactResponse: deliveryArtifact,
+  deliveryArtifactUrl,
   catalogUrl,
   catalogId: catalog.catalogId,
   scopeKey: catalog.scopeKey,

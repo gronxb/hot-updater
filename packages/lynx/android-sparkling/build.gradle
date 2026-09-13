@@ -1,0 +1,25 @@
+apply plugin: 'com.android.library'
+apply plugin: 'kotlin-android'
+
+android {
+    namespace 'com.hotupdater.lynx.sparkling'
+    compileSdkVersion rootProject.ext.has('compileSdkVersion') ? rootProject.ext.compileSdkVersion : 34
+    defaultConfig { minSdkVersion 24 }
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_1_8
+        targetCompatibility JavaVersion.VERSION_1_8
+    }
+    kotlinOptions { jvmTarget = '1.8' }
+}
+
+dependencies {
+    api project(':hot-updater-lynx')
+    compileOnly 'org.lynxsdk.lynx:lynx:3.9.0'
+    compileOnly('com.tiktok.sparkling:sparkling:2.1.0-rc.12') {
+        exclude group: 'org.lynxsdk.lynx', module: 'lynx-service-devtool'
+        exclude group: 'org.lynxsdk.lynx', module: 'lynx-devtool'
+        exclude group: 'org.lynxsdk.lynx', module: 'debug-router'
+        exclude group: 'org.lynxsdk.lynx', module: 'base-devtool'
+    }
+    testImplementation 'junit:junit:4.13.2'
+}

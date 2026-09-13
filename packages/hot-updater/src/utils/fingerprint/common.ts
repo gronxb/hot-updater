@@ -1,27 +1,20 @@
 import { getCwd, loadConfig, p } from "@hot-updater/cli-tools";
-import type { FingerprintExtraSources } from "@hot-updater/plugin-core";
-
-import { isExpo } from "../expoDetection";
-import { loadExpoFingerprint } from "./dependency";
-import {
-  processExtraSources,
-  resolveExtraSources,
-} from "./processExtraSources";
+import type {
+  FingerprintExtraSources,
+  NativeFingerprint,
+  NativeFingerprintOptions,
+  NativeFingerprintSource,
+} from "@hot-updater/plugin-core";
 
 export const appendFingerprintExtraSources = (
   extraSources: FingerprintExtraSources | undefined,
   additions: readonly string[],
 ): FingerprintExtraSources | undefined => {
   if (additions.length === 0) return extraSources;
-
   const append = (sources: readonly string[] = []) => [
     ...new Set([...sources, ...additions]),
   ];
-
-  if (!extraSources || Array.isArray(extraSources)) {
-    return append(extraSources);
-  }
-
+  if (!extraSources || Array.isArray(extraSources)) return append(extraSources);
   return {
     ios: append(extraSources.ios),
     android: append(extraSources.android),
@@ -44,7 +37,6 @@ export const ensureFingerprintConfig = async (
     nativeExtraSources =
       (await buildPlugin.nativeBuild?.getFingerprintExtraSources?.()) ?? [];
   }
-
   return {
     ...config.fingerprint,
     extraSources: appendFingerprintExtraSources(
@@ -54,140 +46,23 @@ export const ensureFingerprintConfig = async (
   };
 };
 
-/**
- * Utility function that takes an array of extensions and generates glob patterns to allow those extensions.
- * @param extensions Array of allowed extensions (e.g., ["*.swift", "*.kt", "*.java"])
- * @returns Array of glob patterns
- */
-function allowExtensions(extensions: string[]): string[] {
-  return extensions.map((ext) => `!**/${ext}`);
-}
+export type FingerprintOptions = NativeFingerprintOptions;
+export type FingerprintResult = NativeFingerprint;
+export type FingerprintSource = NativeFingerprintSource;
 
-/**
- * Utility function that returns the default ignore paths.
- * @returns Array of default ignore paths
- */
-function getDefaultIgnorePaths(): string[] {
-  return ["**/*", "**/.build/**/*", "**/build/", "**/build*/**/*"];
-}
-
-export async function getOtaFingerprintOptions(
-  platform: "ios" | "android",
-  path: string,
-  options: FingerprintOptions,
-): Promise<OtaFingerprintOptions> {
-  const { SourceSkips } = await loadExpoFingerprint();
-
-  return {
-    useRNCoreAutolinkingFromExpo: isExpo(path),
-    platforms: [platform],
-    ignorePaths: [
-      ...getDefaultIgnorePaths(),
-      ...allowExtensions([
-        // iOS native code
-        "*.swift",
-        "*.h",
-        "*.m",
-        "*.mm",
-
-        // Android native code
-        "*.kt",
-        "*.java",
-
-        // C/C++ native code
-        "*.cpp",
-        "*.hpp",
-        "*.c",
-        "*.cc",
-        "*.cxx",
-
-        // Build configuration files
-        "*.podspec",
-        "*.gradle",
-        "*.kts", // Kotlin Script (Gradle build scripts)
-        "CMakeLists.txt",
-        "Android.mk",
-        "Application.mk",
-
-        // Additional native code and build files
-        "*.pro", // ProGuard rules
-        "*.mk", // Makefiles
-        "*.cmake", // CMake files
-        "*.ninja", // Ninja build files
-        "Makefile", // Makefile (no extension)
-        "*.bazel", // Bazel build files
-        "*.buck", // Buck build files
-        "BUILD", // Bazel BUILD files
-        "WORKSPACE", // Bazel WORKSPACE files
-        "BUILD.bazel", // Bazel BUILD files with extension
-        "WORKSPACE.bazel", // Bazel WORKSPACE files with extension
-      ]),
-      // base paths (target CNG)
-      "android/**/*",
-      "ios/**/*",
-      ...(options.ignorePaths ?? []),
-    ],
-    sourceSkips:
-      SourceSkips.GitIgnore |
-      SourceSkips.PackageJsonScriptsAll |
-      SourceSkips.PackageJsonAndroidAndIosScriptsIfNotContainRun |
-      SourceSkips.ExpoConfigAll |
-      SourceSkips.ExpoConfigVersions |
-      SourceSkips.ExpoConfigNames |
-      SourceSkips.ExpoConfigRuntimeVersionIfString |
-      SourceSkips.ExpoConfigAssets |
-      SourceSkips.ExpoConfigExtraSection |
-      SourceSkips.ExpoConfigEASProject |
-      SourceSkips.ExpoConfigSchemes,
-    extraSources: processExtraSources(
-      resolveExtraSources(options.extraSources, platform),
-      path,
-    ),
-    debug: options.debug,
-  };
-}
-
-export type FingerprintSources = {
-  extraSources: string[];
-};
-
-export type FingerprintSource =
-  | {
-      type: "file" | "dir";
-      filePath: string;
-      reasons: string[];
-      overrideHashKey?: string;
-      hash: string | null;
-      debugInfo?: any;
-    }
-  | {
-      type: "contents";
-      id: string;
-      contents: string | Buffer;
-      reasons: string[];
-      hash: string | null;
-      debugInfo?: any;
-    };
-
-export type FingerprintOptions = {
-  platform: "ios" | "android";
-  extraSources?: FingerprintExtraSources;
-  ignorePaths?: string[];
-  debug?: boolean;
-};
-
-export type FingerprintResult = {
-  hash: string;
-  sources: FingerprintSource[];
-};
-
-type OtaFingerprintOptions = {
-  useRNCoreAutolinkingFromExpo: boolean;
-  platforms: Array<"ios" | "android">;
-  ignorePaths: string[];
-  sourceSkips: number;
-  extraSources: ReturnType<typeof processExtraSources>;
-  debug?: boolean;
+const isFingerprintPair = (
+  value: Record<string, unknown>,
+): value is { android: FingerprintResult; ios: FingerprintResult } => {
+  const android = value["android"];
+  const ios = value["ios"];
+  return (
+    typeof android === "object" &&
+    android !== null &&
+    typeof ios === "object" &&
+    ios !== null &&
+    "hash" in android &&
+    "hash" in ios
+  );
 };
 
 export function isFingerprintEquals(
@@ -205,29 +80,20 @@ export function isFingerprintEquals(
   } | null,
 ): boolean;
 export function isFingerprintEquals(
-  lhs?: Record<string, any> | null,
-  rhs?: Record<string, any> | null,
+  lhs?: object | null,
+  rhs?: object | null,
 ): boolean {
   if (!lhs || !rhs) return false;
-  if (isFingerprintResultsObject(lhs) && isFingerprintResultsObject(rhs)) {
+  const left = lhs as Record<string, unknown>;
+  const right = rhs as Record<string, unknown>;
+  if (isFingerprintPair(left) && isFingerprintPair(right)) {
     return (
-      lhs.android.hash === rhs.android.hash && lhs.ios.hash === rhs.ios.hash
+      left["android"].hash === right["android"].hash &&
+      left["ios"].hash === right["ios"].hash
     );
   }
-  if (!isFingerprintResultsObject(lhs) && !isFingerprintResultsObject(rhs)) {
-    return lhs["hash"] === rhs["hash"];
+  if (!isFingerprintPair(left) && !isFingerprintPair(right)) {
+    return left["hash"] === right["hash"];
   }
-
   return false;
-
-  function isFingerprintResultsObject(
-    result: Record<string, any>,
-  ): result is { android: FingerprintResult; ios: FingerprintResult } {
-    return (
-      typeof result["android"] === "object" &&
-      typeof result["ios"] === "object" &&
-      !!result["android"]?.hash &&
-      !!result["ios"]?.hash
-    );
-  }
 }

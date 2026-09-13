@@ -1742,9 +1742,6 @@ importers:
       '@commander-js/extra-typings':
         specifier: ^14.0.0
         version: 14.0.0(commander@14.0.3)
-      '@expo/fingerprint':
-        specifier: ^0.15.4
-        version: 0.15.5
       '@google-cloud/kms':
         specifier: 6.0.0
         version: 6.0.0
@@ -2073,6 +2070,9 @@ importers:
       '@hot-updater/plugin-core':
         specifier: workspace:*
         version: link:../plugin-core
+      '@hot-updater/react-native':
+        specifier: workspace:*
+        version: link:../../packages/react-native
       uuidv7:
         specifier: 'catalog:'
         version: 1.2.1
@@ -2203,6 +2203,9 @@ importers:
       '@babel/types':
         specifier: 7.26.0
         version: 7.26.0
+      '@expo/fingerprint':
+        specifier: ^0.15.4
+        version: 0.15.5
       '@hot-updater/bare':
         specifier: workspace:*
         version: link:../bare
@@ -2212,6 +2215,12 @@ importers:
       '@hot-updater/plugin-core':
         specifier: workspace:*
         version: link:../plugin-core
+      '@hot-updater/react-native':
+        specifier: workspace:*
+        version: link:../../packages/react-native
+      fast-glob:
+        specifier: 3.3.3
+        version: 3.3.3
       uuidv7:
         specifier: 'catalog:'
         version: 1.2.1
@@ -2317,6 +2326,9 @@ importers:
       es-toolkit:
         specifier: ^1.32.0
         version: 1.47.0
+      fast-glob:
+        specifier: 3.3.3
+        version: 3.3.3
       mime:
         specifier: ^4.0.4
         version: 4.1.0
@@ -2379,6 +2391,9 @@ importers:
       '@hot-updater/plugin-core':
         specifier: workspace:*
         version: link:../plugin-core
+      '@hot-updater/react-native':
+        specifier: workspace:*
+        version: link:../../packages/react-native
       uuidv7:
         specifier: 'catalog:'
         version: 1.2.1
@@ -28089,7 +28104,9 @@ snapshots:
     transitivePeerDependencies:
       - '@babel/core'
       - '@babel/preset-env'
+      - bufferutil
       - supports-color
+      - utf-8-validate
 
   '@react-native/metro-config@0.85.2(@babel/core@7.26.0)':
     dependencies:

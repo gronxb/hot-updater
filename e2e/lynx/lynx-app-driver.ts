@@ -30,19 +30,18 @@ const ACTION_RESULT_FIELDS: Record<string, string> = {
   "action-set-cohort-qa": "cohortActionResult",
 };
 
-const ACTION_RESULT_TEXT_FIELDS: Record<string, string> = {
+const SCREEN_TEXT_FIELDS: Record<string, string> = {
   "channel-action-result": "channelActionResult",
   "cohort-action-result": "cohortActionResult",
   "launch-status-result": "launchStatus",
   "update-action-result": "updateActionResult",
-};
-
-const SCREEN_TEXT_FIELDS: Record<string, string> = {
-  ...ACTION_RESULT_TEXT_FIELDS,
   "runtime-current-channel": "currentChannel",
   "runtime-default-channel": "defaultChannel",
   "runtime-channel-switched": "channelSwitched",
-  "runtime-bundle-id": "stagingBundleId",
+  "runtime-bundle-id": "currentBundleId",
+  "runtime-release-state": "currentReleaseId",
+  "runtime-current-cohort": "currentCohort",
+  "crash-history-count": "crashHistoryCount",
   "runtime-scenario-marker": "runtimeScenarioMarker",
 };
 
@@ -77,20 +76,16 @@ export class LynxAppDriver implements DetoxAppDriver {
     options: { exactText?: boolean } = {},
   ): Promise<void> {
     await this.runStage(stage, async () => {
+      if (!Object.hasOwn(SCREEN_TEXT_FIELDS, testID)) {
+        throw new Error(`Unsupported Lynx text assertion: ${testID}`);
+      }
+      const field = SCREEN_TEXT_FIELDS[testID];
       const expected = this.resolvePlaceholders(contains);
       const expectedTexts = (
         Array.isArray(expected) ? expected : [expected]
       ).map(String);
-      if (options.exactText === true) {
-        await this.waitForExpectedActionResultText(
-          stage,
-          testID,
-          expectedTexts[0],
-        );
-        return;
-      }
       const deadlineMs = Date.now() + 60_000;
-      let last = "";
+      let last: string | null = null;
       for (;;) {
         const snapshot = (await this.controlClient.postJson(
           `${stage}: read screen state`,
@@ -101,17 +96,21 @@ export class LynxAppDriver implements DetoxAppDriver {
           snapshot.screenState && typeof snapshot.screenState === "object"
             ? (snapshot.screenState as Record<string, unknown>)
             : snapshot;
-        const field = SCREEN_TEXT_FIELDS[testID];
-        last =
-          field === undefined
-            ? JSON.stringify(snapshot)
-            : String(screenState[field] ?? "");
-        if (expectedTexts.some((value) => last.includes(value))) {
+        const observed = screenState[field];
+        last = typeof observed === "string" ? observed : null;
+        if (
+          typeof observed === "string" &&
+          expectedTexts.some((value) =>
+            options.exactText === true
+              ? observed === value
+              : observed.includes(value),
+          )
+        ) {
           return;
         }
         if (Date.now() >= deadlineMs) {
           throw new Error(
-            `${stage} expected ${testID} to contain one of ${JSON.stringify(expectedTexts)}, received ${last}`,
+            `${stage} expected ${testID} (${field}) to ${options.exactText === true ? "equal" : "contain"} one of ${JSON.stringify(expectedTexts)}, received ${JSON.stringify(last)}`,
           );
         }
         await new Promise((resolve) => setTimeout(resolve, 250));
@@ -361,7 +360,6 @@ export class LynxAppDriver implements DetoxAppDriver {
     }
     spawnSync("sleep", ["1"]);
     const deviceEmbeddedDir = this.installAndroidOverlay(embeddedDir);
-    this.runOrThrow("adb", ["-s", this.deviceId(), "logcat", "-c"]);
     this.runLaunch(
       "adb",
       [
@@ -561,9 +559,29 @@ export class LynxAppDriver implements DetoxAppDriver {
     const deadline = Date.now() + 20_000;
     let out = "";
     while (Date.now() < deadline) {
+      const process = spawnSync(
+        "adb",
+        ["-s", this.deviceId(), "shell", "pidof", this.appId()],
+        { encoding: "utf8" },
+      );
+      const processId = (process.stdout || "").trim().split(/\s+/)[0];
+      if (!/^\d+$/.test(processId)) {
+        out = `${process.stdout || ""}\n${process.stderr || ""}`;
+        spawnSync("sleep", ["1"]);
+        continue;
+      }
       const logs = spawnSync(
         "adb",
-        ["-s", this.deviceId(), "logcat", "-d", "-s", "HotUpdaterLynx:V"],
+        [
+          "-s",
+          this.deviceId(),
+          "logcat",
+          "-d",
+          "--pid",
+          processId,
+          "-s",
+          "HotUpdaterLynx:V",
+        ],
         { encoding: "utf8" },
       );
       out = `${logs.stdout || ""}\n${logs.stderr || ""}`;
@@ -689,23 +707,5 @@ export class LynxAppDriver implements DetoxAppDriver {
     if (typeof result.builtInBundleId === "string") {
       this.stageValues[options.saveResultAs] = result.builtInBundleId;
     }
-  }
-
-  private async waitForExpectedActionResultText(
-    stage: string,
-    testID: string,
-    expectedText: string,
-  ): Promise<void> {
-    const fieldName = ACTION_RESULT_TEXT_FIELDS[testID];
-    if (!fieldName) return;
-    await this.controlClient.waitForScreenStateField(
-      `${stage}: wait ${fieldName} exact`,
-      fieldName,
-      {
-        expectedValue: expectedText,
-        rejectSubstrings: [" -> checking"],
-        rejectValues: ["idle"],
-      },
-    );
   }
 }

@@ -1,12 +1,13 @@
 import {
   authorizeReleaseTransition,
   createReleaseSelectionContextHash,
+  encodeChannelKey,
   selectDesiredRelease,
   type PersistedSelectionReceipt,
 } from "@hot-updater/core";
 
 import { createHttpClient } from "./httpClient";
-import { callNative, LynxUpdaterError } from "./native";
+import { callNative, LynxUpdaterError, normalizeNativeState } from "./native";
 import type {
   AcceptCatalogParams,
   CheckForUpdateOptions,
@@ -44,11 +45,16 @@ export async function checkForUpdate(
       'Lynx updates use updateStrategy: "appVersion" or "fingerprint".',
     );
   }
-  let state = await callNative<NativeState>("getState");
-  if (options.channel && options.channel !== state.channel) {
-    state = await callNative<NativeState>("setChannel", {
-      channel: options.channel,
-    });
+  const state = normalizeNativeState(await callNative<NativeState>("getState"));
+  const explicitChannel = options.channel || undefined;
+  const targetChannel = explicitChannel ?? state.channel;
+  const explicitScopeSwitch = targetChannel !== state.channel;
+  const defaultChannel = state.defaultChannel ?? state.channel;
+  if (state.channel !== defaultChannel && explicitScopeSwitch) {
+    throw new LynxUpdaterError(
+      "CHANNEL_ALREADY_SWITCHED",
+      `Runtime channel is already switched to "${state.channel}". Call HotUpdater.resetChannel() before checking "${targetChannel}".`,
+    );
   }
   const http = createHttpClient({
     ...options.client,
@@ -58,31 +64,44 @@ export async function checkForUpdate(
     },
     requestTimeout: options.requestTimeout ?? options.client.requestTimeout,
   });
+  const catalogState = explicitScopeSwitch
+    ? {
+        ...state,
+        channel: targetChannel,
+        channelKey: encodeChannelKey(targetChannel),
+      }
+    : state;
   const catalog = await http.fetchCatalog(
-    state,
+    catalogState,
     options.updateStrategy === "fingerprint" ? "fingerprint" : "app-version",
   );
   // Policy may replace an installed next selection. Running bytes stay separate.
-  // A leftover next from another channel is not the policy base after setChannel.
+  // A leftover next from another channel is not the target policy base.
   const next = state.nextSelection;
   const current =
-    next !== null && next.channel === state.channel
+    next !== null && next.channel === targetChannel
       ? next
       : state.runningSelection;
   const authenticated = current.catalogId !== null && current.scopeKey !== null;
-  if (
+  const activeInTargetScope =
     authenticated &&
-    (current.catalogId !== catalog.catalogId ||
-      current.scopeKey !== catalog.scopeKey)
-  ) {
+    current.catalogId === catalog.catalogId &&
+    current.scopeKey === catalog.scopeKey
+      ? current
+      : null;
+  if (authenticated && activeInTargetScope === null && !explicitScopeSwitch) {
     throw new LynxUpdaterError(
       "UNSOLICITED_SCOPE",
       "The catalog does not match the native selection scope.",
     );
   }
+  const selectorCurrentBundleId =
+    activeInTargetScope !== null || (!authenticated && !explicitScopeSwitch)
+      ? current.bundleId
+      : state.minimumBundleId;
   const selectionContextHash = createReleaseSelectionContextHash({
-    activeBundleId: current.bundleId,
-    activeReleaseId: authenticated ? current.releaseId : null,
+    activeBundleId: selectorCurrentBundleId,
+    activeReleaseId: activeInTargetScope?.releaseId ?? null,
     cohort: state.cohort,
     minimumReleaseId: state.minimumBundleId,
     strategy:
@@ -97,12 +116,14 @@ export async function checkForUpdate(
   const guard = await callNative<SelectionGuard>("acceptCatalog", {
     catalog,
     expectedRevision: state.revision,
+    explicitScopeSwitch,
     selectionContextHash,
+    targetChannel,
   } satisfies AcceptCatalogParams);
   const desired = selectDesiredRelease(catalog, {
-    activeReleaseId: authenticated ? current.releaseId : null,
+    activeReleaseId: activeInTargetScope?.releaseId ?? null,
     builtInBundleId: state.embeddedBundleId,
-    currentBundleId: current.bundleId,
+    currentBundleId: selectorCurrentBundleId,
     minimumReleaseId: state.minimumBundleId,
     cohort: state.cohort,
     crashedBundleIds: state.crashedBundleIds,
@@ -130,16 +151,17 @@ export async function checkForUpdate(
     scopeKey: catalog.scopeKey,
     generation: catalog.generation,
     catalogHash: catalog.catalogHash,
-    channel: state.channel,
+    channel: targetChannel,
     selectionContextHash: guard.selectionContextHash ?? selectionContextHash,
   };
   if (sameReceipt(current, selection) && !hasCoveredBundle) return null;
   const authorization = authorizeReleaseTransition({
     active: authenticated ? current : null,
     desired: selection,
-    explicitScopeSwitch: false,
+    explicitScopeSwitch,
   });
   if (!authorization.authorized) {
+    if (authorization.reason === "EMPTY_TARGET_SCOPE") return null;
     throw new LynxUpdaterError(
       authorization.reason,
       `Release transition rejected: ${authorization.reason}.`,
@@ -157,24 +179,40 @@ export async function checkForUpdate(
           desired.bundleId,
           state.runningSelection.bundleId,
         );
-  // Native prepares verified bytes and retains the receipt/guard behind a token.
-  // INCOMPATIBLE and stale authorization reject here without changing selection.
-  const prepared = await callNative<{ preparedId: string }>(
-    "prepareSelection",
-    {
-      guard,
-      selection,
-      artifact,
-    } satisfies PrepareSelectionParams,
+  const preparation = {
+    guard,
+    selection,
+    artifact,
+  } satisfies PrepareSelectionParams;
+  const validation = await callNative<{ validated: true }>(
+    "validateSelection",
+    preparation,
   );
-  if (typeof prepared?.preparedId !== "string" || !prepared.preparedId) {
+  if (validation?.validated !== true) {
     throw new LynxUpdaterError(
       "INVALID_NATIVE_REPLY",
-      "Native preparation did not return a prepared selection token.",
+      "Native validation did not confirm the selected update.",
     );
   }
-  const preparedId = prepared.preparedId;
   let installation: Promise<boolean> | undefined;
+  const prepareAndInstall = async (): Promise<boolean> => {
+    // A declined update retains no native preparation. Once requested, native
+    // prepares and immediately consumes the token by staging the same receipt.
+    const prepared = await callNative<{ preparedId: string }>(
+      "prepareSelection",
+      preparation,
+    );
+    if (typeof prepared?.preparedId !== "string" || !prepared.preparedId) {
+      throw new LynxUpdaterError(
+        "INVALID_NATIVE_REPLY",
+        "Native preparation did not return a prepared selection token.",
+      );
+    }
+    const result = await callNative<InstallResult>("stageSelection", {
+      preparedId: prepared.preparedId,
+    });
+    return result.status === "STAGED" || result.status === "ADOPTED";
+  };
   const transitionKind: ReleaseTransitionKind = canRequestAdoption
     ? "ADOPT_RELEASE"
     : desired.kind === "EMBEDDED"
@@ -199,11 +237,6 @@ export async function checkForUpdate(
       ? [...desired.release.targetCohorts]
       : [],
     transitionKind,
-    updateBundle: () =>
-      (installation ??= callNative<InstallResult>("stageSelection", {
-        preparedId,
-      }).then(
-        (result) => result.status === "STAGED" || result.status === "ADOPTED",
-      )),
+    updateBundle: () => (installation ??= prepareAndInstall()),
   };
 }

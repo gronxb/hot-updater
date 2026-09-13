@@ -47,7 +47,9 @@ describe("parsePrismaPatchRow", () => {
   const row = createBundlePatchRowFixture("large", "bundle", "base");
 
   it("preserves safe patch sizes above 2 GiB", () => {
-    expect(parsePrismaPatchRow(row)).toMatchObject({
+    expect(
+      parsePrismaPatchRow({ ...row, byte_size: 3_000_000_002 }),
+    ).toMatchObject({
       byte_size: 3_000_000_002,
     });
   });

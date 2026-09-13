@@ -3,6 +3,10 @@ export type E2eScreenState = {
   readonly cohortActionResult: string;
   readonly cohortInput: string | null;
   readonly currentChannel: string | null;
+  readonly currentBundleId: string | null;
+  readonly currentReleaseId: string | null;
+  readonly currentCohort: string | null;
+  readonly crashHistoryCount: string | null;
   readonly defaultChannel: string | null;
   readonly channelSwitched: string | null;
   readonly launchStatus: string;
@@ -23,6 +27,10 @@ const defaultE2eScreenState = {
   cohortActionResult: "idle",
   cohortInput: null,
   currentChannel: null,
+  currentBundleId: null,
+  currentReleaseId: null,
+  currentCohort: null,
+  crashHistoryCount: null,
   defaultChannel: null,
   channelSwitched: null,
   launchStatus: "Current Launch Status: null",
@@ -115,6 +123,19 @@ const parseScreenStatePatch = (payload: unknown): E2eScreenStatePatch => {
   const updateActionResult = parseOptionalString(payload, "updateActionResult");
   const cohortInput = parseOptionalCohortInput(payload);
   const currentChannel = parseOptionalNullableString(payload, "currentChannel");
+  const currentBundleId = parseOptionalNullableString(
+    payload,
+    "currentBundleId",
+  );
+  const currentReleaseId = parseOptionalNullableString(
+    payload,
+    "currentReleaseId",
+  );
+  const currentCohort = parseOptionalNullableString(payload, "currentCohort");
+  const crashHistoryCount = parseOptionalNullableString(
+    payload,
+    "crashHistoryCount",
+  );
   const defaultChannel = parseOptionalNullableString(payload, "defaultChannel");
   const channelSwitched = parseOptionalNullableString(
     payload,
@@ -147,6 +168,10 @@ const parseScreenStatePatch = (payload: unknown): E2eScreenStatePatch => {
     ...(cohortActionResult === undefined ? {} : { cohortActionResult }),
     ...(cohortInput === undefined ? {} : { cohortInput }),
     ...(currentChannel === undefined ? {} : { currentChannel }),
+    ...(currentBundleId === undefined ? {} : { currentBundleId }),
+    ...(currentReleaseId === undefined ? {} : { currentReleaseId }),
+    ...(currentCohort === undefined ? {} : { currentCohort }),
+    ...(crashHistoryCount === undefined ? {} : { crashHistoryCount }),
     ...(defaultChannel === undefined ? {} : { defaultChannel }),
     ...(channelSwitched === undefined ? {} : { channelSwitched }),
     ...(launchStatus === undefined ? {} : { launchStatus }),

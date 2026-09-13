@@ -5,6 +5,8 @@ import {
 } from "@hot-updater/plugin-core";
 import {
   createDatabasePluginAdapter,
+  createTransactionDatabasePlugin,
+  publishBundlePatchInTransaction,
   type DatabaseImplementationResult,
   type DatabasePluginImplementation,
   type FindManyDatabaseImplementationInput,
@@ -475,6 +477,15 @@ const createPrismaImplementation = (
     );
   return {
     ...implementation,
+    publishBundlePatch: (input) =>
+      runPrismaTransaction(client, "serializable", (transactionClient) =>
+        publishBundlePatchInTransaction(
+          createTransactionDatabasePlugin(
+            createCrudImplementation(transactionClient, provider, relationMode),
+          ),
+          input,
+        ),
+      ),
     transaction: (callback) =>
       runPrismaTransaction(
         client,

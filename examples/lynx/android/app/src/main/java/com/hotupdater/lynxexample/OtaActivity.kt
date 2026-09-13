@@ -2,85 +2,79 @@ package com.hotupdater.lynxexample
 
 import android.app.Activity
 import android.os.Bundle
-import android.util.Log
-import android.widget.TextView
 import com.hotupdater.lynx.LynxHostConfiguration
-import com.hotupdater.lynx.LynxLaunchSession
-import com.hotupdater.lynx.LynxUpdaterController
-import com.lynx.tasm.LynxView
-import com.lynx.tasm.LynxViewBuilder
-import com.tiktok.sparkling.SparklingContext
-import com.tiktok.sparkling.hybridkit.base.HybridKitType
-import com.tiktok.sparkling.hybridkit.lynx.SimpleLynxKitView
-import com.tiktok.sparkling.hybridkit.scheme.HybridSchemeParam
+import com.hotupdater.lynx.sparkling.HotUpdaterSparklingConfiguration
+import com.hotupdater.lynx.sparkling.HotUpdaterSparklingHost
 
-/** Each native example entry owns its channel; downloaded code cannot change it. */
+/** The scaffold supplies native identity and scope; the library owns Lynx. */
 class OtaActivity : Activity() {
-    private var launch: LynxLaunchSession? = null
-    private var view: LynxView? = null
+    private var hotUpdaterHost: HotUpdaterSparklingHost? = null
+
     override fun onCreate(state: Bundle?) {
         super.onCreate(state)
-        try {
-            val framework = intent.getStringExtra("framework") ?: "react"
-            require(framework in setOf("react", "vue", "octane"))
-            val existing = processController
-            check(existing == null || processFramework == framework) { "Framework selection is pinned until process restart" }
-            val channel = intent.getStringExtra("channel") ?: "ota-$framework"
-            val embeddedDir = resolveEmbeddedDir(
-                intent.getStringExtra("embeddedDir") ?: "ota/$framework/A",
-            )
-            Log.i(
-                "HotUpdaterLynx",
-                "embeddedDir=$embeddedDir absoluteDir=${java.io.File(embeddedDir).isDirectory} manifest=${java.io.File(embeddedDir, "manifest.json").isFile}",
-            )
-            val meta = packageManager
-                .getApplicationInfo(packageName, android.content.pm.PackageManager.GET_META_DATA)
-                .metaData
-            val publicKeyPem = meta
-                ?.getString("com.hotupdater.PUBLIC_KEY")
-                ?.replace("\\n", "\n")
-            val fingerprintHash = meta?.getString("com.hotupdater.FINGERPRINT_HASH")
-            val controller = existing ?: LynxUpdaterController(applicationContext, LynxHostConfiguration(
+        val framework = intent.getStringExtra("framework") ?: "react"
+        require(framework in setOf("react", "vue", "octane"))
+        val embeddedDir = intent.getStringExtra("embeddedDir")
+            ?: "ota/$framework/A"
+        val embedded = org.json.JSONObject(BuildConfig.LYNX_EMBEDDED_DESCRIPTORS)
+            .getJSONObject(framework)
+        val embeddedBundleId = embedded.getString("bundleId")
+        val embeddedManifestHash = embedded.getString("manifestHash")
+        val metadata = packageManager.getApplicationInfo(
+            packageName,
+            android.content.pm.PackageManager.GET_META_DATA,
+        ).metaData
+        val configuration = HotUpdaterSparklingConfiguration(
+            lynx = LynxHostConfiguration(
                 runtimeId = BuildConfig.LYNX_OTA_COMPATIBILITY_ID,
-                channel = channel, appVersion = "1.0.0", cohort = getSharedPreferences("native-ota-config", MODE_PRIVATE).getString("cohort", "1")!!,
+                channel = intent.getStringExtra("channel") ?: "ota-$framework",
+                appVersion = "1.0.0",
+                cohort = getSharedPreferences("native-ota-config", MODE_PRIVATE)
+                    .getString("cohort", "1")!!,
                 embeddedAssetDirectory = embeddedDir,
-                publicKeyPem = publicKeyPem,
-                fingerprintHash = fingerprintHash,
-            )).also { processController = it; processFramework = framework }
-            val session = if (intent.getBooleanExtra("secondary", false)) controller.pinSecondary() else controller.pinPrimary()
-            if ("assets/probe.ttf" in session.installation.managedPaths) session.requireFontBeforeReady("assets/probe.ttf")
-            launch = session
-            val entry = session.entryUrl
-            val sparkling = SparklingContext().apply {
-                hybridSchemeParam = HybridSchemeParam(engineType = HybridKitType.LYNX, bundle = entry)
-                scheme = "hybrid://lynxview_page?bundle=$entry"
-                containerId = java.util.UUID.randomUUID().toString()
-            }
-            val builder = LynxViewBuilder().also { session.configure(it) }
-            val kit = SimpleLynxKitView(this, sparkling, builder, null, null)
-            val lynxView = kit.realView() as LynxView
-            view = lynxView
-            session.bind(lynxView)
-            setContentView(lynxView)
-            kit.load()
-            Log.i("HotUpdaterLynx", "overlay-js-load-started entry=$entry")
-        } catch (error: Exception) {
-            Log.e("HotUpdaterLynx", "host-rejected-before-evaluation", error)
-            setContentView(TextView(this).apply { text = "Native Lynx host rejected\n${error.message}"; setPadding(24, 70, 24, 24) })
-        }
+                embeddedBundleId = embeddedBundleId,
+                embeddedManifestHash = embeddedManifestHash,
+                minimumBundleId = embedded.getString("minimumBundleId"),
+                publicKeyPem = metadata
+                    ?.getString("com.hotupdater.PUBLIC_KEY")
+                    ?.replace("\\n", "\n"),
+                fingerprintHash = metadata?.getString(
+                    "com.hotupdater.FINGERPRINT_HASH",
+                ),
+            ),
+            requiredStartupResourcePaths = startupResources(
+                intent.getStringExtra("resourceSet") ?: "sdk3",
+            ),
+        )
+        val host = HotUpdaterSparklingHost(
+            applicationContext,
+            configuration,
+        )
+        hotUpdaterHost = host
+        setContentView(host.createView(this))
     }
-    override fun onDestroy() { launch?.close(); view?.destroy(); super.onDestroy() }
-    private fun resolveEmbeddedDir(raw: String): String {
-        val configured = java.io.File(raw)
-        val fromFiles = java.io.File(filesDir, configured.name)
-        return when {
-            configured.isAbsolute && configured.isDirectory -> configured.absolutePath
-            fromFiles.isDirectory -> fromFiles.absolutePath
-            else -> raw
-        }
+
+    override fun onDestroy() {
+        hotUpdaterHost?.close()
+        hotUpdaterHost = null
+        super.onDestroy()
     }
-    companion object {
-        private var processController: LynxUpdaterController? = null
-        private var processFramework: String? = null
+    private fun startupResources(resourceSet: String): Set<String> = when (resourceSet) {
+        "sdk1" -> setOf("main.lynx.bundle", "assets/probe.png")
+        "sdk2" -> setOf(
+            "main.lynx.bundle",
+            "assets/probe.png",
+            "assets/probe.ttf",
+            "assets/bootstrap.js",
+            "dynamic/component.lynx.bundle",
+        )
+        "sdk3" -> setOf(
+            "main.lynx.bundle",
+            "assets/probe.png",
+            "assets/probe.ttf",
+            "assets/bootstrap.js",
+            "dynamic/component.lynx.bundle",
+        )
+        else -> error("Unknown OTA resource set: $resourceSet")
     }
 }

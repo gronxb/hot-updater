@@ -84,12 +84,16 @@ public enum ArchiveExtractionUtilities {
     }
 
     public static func normalizedRelativePath(from rawPath: String) -> String? {
+        guard !rawPath.unicodeScalars.contains(where: {
+            $0.value <= 0x1f || $0.value == 0x7f
+        }), !rawPath.contains(":") else {
+            return nil
+        }
         let candidate = rawPath.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !candidate.isEmpty,
-              !candidate.contains("\0"),
               !candidate.contains("\\"),
               !candidate.hasPrefix("/"),
-              candidate.range(of: #"^[A-Za-z]:"#, options: .regularExpression) == nil
+              candidate.utf8.count <= 1024
         else {
             return nil
         }

@@ -5,6 +5,8 @@ import type {
   ChannelInsertInput,
   ChannelInsertResult,
   ChannelRow,
+  BundlePatchPublishInput,
+  BundlePatchPublishResult,
   DatabaseBundleQueryOptions,
   DatabaseCommit,
   DatabaseCommitResult,
@@ -68,6 +70,9 @@ export interface HandlerAPI {
     scopeKey: string,
   ) => Promise<ReleaseCatalogRebuildResult>;
   commitDatabase?: (input: DatabaseCommit) => Promise<DatabaseCommitResult>;
+  publishBundlePatch?: (
+    input: BundlePatchPublishInput,
+  ) => Promise<BundlePatchPublishResult>;
   getBundleById: (id: string) => Promise<Bundle | null>;
   getBundles: (options: DatabaseBundleQueryOptions) => Promise<PaginatedResult>;
   insertBundle: (bundle: Bundle) => Promise<void>;

@@ -24,8 +24,10 @@ describe("withBugsnag", () => {
     () =>
     (_: BasePluginArgs): BuildPlugin => ({
       build: async () => ({
+        artifacts: [],
         buildPath,
         bundleId: BUNDLE_ID,
+        patchAssetPath: "index.bundle",
         stdout: null,
       }),
       name: "test-build",

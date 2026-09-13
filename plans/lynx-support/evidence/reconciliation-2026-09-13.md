@@ -1,14 +1,16 @@
 # Lynx evidence reconciliation
 
-Date: 2026-09-13. Inspected commit:
-`84244ae429a899bf5631bbc99de3675a03fdaddf`, branch `codex/lynx-support`.
-Worktree: `/Users/gronxb/workspace/hot-updater-lynx`.
+Date: 2026-09-13. PRD decision commit:
+`01bb61260b932e20d3e3f8a3e8e957369f887e17`, branch
+`codex/lynx-support`. Worktree:
+`/Users/gronxb/workspace/hot-updater-lynx`.
 
-G1 and G2 have substantial recorded evidence, and retained SDK3 native logs
-establish public A → B operation for all six framework/OS combinations. They do
-not establish completion of the current implementation. The singleton client,
-native readiness, reload, channel and fingerprint paths changed afterward.
-This record preserves the PRD acceptance criteria; it does not close a gate.
+G1 and G2 have substantial historical evidence, and retained SDK3 native logs
+establish public A → B operation for all six framework/OS combinations on earlier
+implementations. The current Sol High implementation is uncommitted and changes
+the client, native readiness, delta, reload, channel, fingerprint, resource, and
+packaging paths. Historical receipts do not establish its acceptance. This record
+preserves the evidence boundary; it does not close a current gate.
 
 ## Evidence that can still be inspected
 
@@ -73,24 +75,56 @@ of the PRD's offline restart scenario.
 
 ## Current contract versus the PRD
 
-| Area | Current source | Reconciliation needed |
+| Area | Current implementation | Current evidence boundary |
 | --- | --- | --- |
-| Framework independence | `packages/lynx/package.json` has no required React, Vue or Octane dependency; runtime and Node build exports are separate | Rebuild and exercise all three real compiler graphs with the current exported runtime |
-| Public API | `HotUpdater.init`, `checkForUpdate`, `update.updateBundle()`, `notifyAppReady`, `getLaunchInfo` and additional RN-like methods; no exported `createHotUpdater` | Earlier SDK3 tests used a previous API; update public contract documentation and its native receipts together |
-| Packaging | App-owned callback receives `cwd`, `platform`, packaging `bundleId`, empty attempt `outDir`; returns `entry` and `runtimeId`; sidecar schema 1; explicit `filePolicy: "preserve"` | Existing archive evidence remains relevant; rerun changed shared CLI boundaries and current package consumer checks |
-| Identity and signing | Manifest-covered `hot-updater-lynx.json`; native compatibility equality; build-plugin signing resolver | Retain mismatch/signature rejection and no-redownload assertions through final changes |
-| Additional scope | Client supports fingerprint selection and reload; example includes fingerprint inputs and a React E2E overlay | PRD G4 originally deferred these. Record the later user-requested scope and actual supported semantics; do not silently rewrite the original gate |
-| Agent E2E | `e2e:lynx` exists; shared controller launches `framework=react` on Android and `--ota-framework=react` on iOS | Full-platform standalone E2E is an additional required result and proves the React host path. It does not replace the Vue/Octane matrix |
+| Framework independence | `@hot-updater/lynx` has separate runtime/build exports and no required React, Vue, or Octane dependency | Real compiler outputs exist; current six-cell device execution is pending |
+| Public API | Check performs catalog authorization and nonretained native compatibility validation; `updateBundle()` prepares and stages; readiness returns a one-shot transition receipt; reload completes after all managed views recreate and propagates failures; reset persists then recreates and invalidates JS state | 141 focused JS tests pass; current device receipts are pending |
+| Packaging | Build plugins declare artifacts, portable names, `downloadCompression`, and `patchAssetPath`; packaging consumes an immutable no-follow snapshot with 128 MiB archive/artifact, 512 MiB expanded, 1 MiB manifest, and 16 KiB Lynx-sidecar limits; archive, promotion, and fingerprint inputs are deterministic and mutation-checked | Focused CLI/server tests pass; final workspace and real deployment rerun are pending |
+| Artifact response | Engine-neutral `ArtifactInfo` is capped at 528,384 UTF-8 bytes; URL resolution uses ordered batches of at most 16; valid manifest-only and archive fallback remain available; artifact lookup may omit corrupt optional patch rows while admin hydration stays strict | Focused server tests pass; final server/provider reruns and deployment remain pending |
+| Provider patch lifecycle | Providers atomically retain at most 24 ordered base patches per target and reject deletion of Bundles still referenced by Releases or another Bundle's patch | Focused provider tests exist; final provider and server reruns are pending |
+| Engine ownership | RN/Hermes handling lives in `@hot-updater/react-native`; bare and Rock use it; Expo owns Expo fingerprinting | Focused provider regressions exist; full final regressions are pending |
+| Native artifacts | Both OSes implement bounded archive/raw/Brotli/BSDIFF installation, strict trust, fallback, cancellation, and atomic publication | 66 Android controller/installer tests, two Android Sparkling tests, and 63 Swift tests with 13 environment-dependent skips pass; final host/device validation is pending |
+| Sparkling host | Packaged hosts own bridge, all managed resources, primary/secondary authority, readiness, recovery, and same-process generation replacement | Production and matrix native builds pass; real six-cell execution is pending |
+| Agent E2E | Explicit Lynx manifest contains every shared scenario except RN legacy `metadata-v1-migration` | 308 E2E unit tests and 25-scenario dry run pass; full current agent job is pending |
 
-Two iOS readiness regressions at the inspected commit require correction before
-completion. `PublicHost.bind` schedules `observedContent` after a fixed 0.5-second
-delay. `PublicContainerController.viewDidLoad` calls `begin`, `observedContent`,
-and `notifyAppReady` before recording `publicBeforeEvaluation` or creating the
-Lynx container. These calls can authorize confirmation without actual first
-content or essential background bootstrap, contrary to PRD sections 5.5 and 7.
-The corresponding source-string assertions in `suite-manifest.spec.ts` do not
-validate startup authority. The real `containerDidFirstScreen` callback already
-exists and must remain distinct from the application's readiness signal.
+The earlier timer and pre-render iOS confirmation paths were removed from the
+production scaffold. Current host code attributes first content, required
+resource success, and application readiness separately to the live primary
+context. This is a source and focused-test result until the rebuilt host proves
+the behavior on a device. The matrix contract also requires stale primary and
+secondary authorities to fail with their original full identity after reload.
+
+The final client surface does not claim native manifest or filesystem
+install-identity access, user mutation, event listeners, or init-time insights.
+It does not accept inert reload-mode or process-restart values. These removals
+are source and focused-test findings. `isUpdateDownloaded()` now reads native
+`nextSelection` from the current snapshot instead of a JS-local latch. None of
+these findings establishes device acceptance.
+
+The native reload callback now settles only after every registered managed view
+has been attached to the replacement generation, and forwards reconstruction
+failure. Reset persists the default scope before invoking that same recreation;
+the JS client clears its state snapshot in a `finally` path. These are source and
+focused-test findings until device receipts prove them.
+
+The shared rollback scenario now creates and asserts actual reverse C-to-B and
+B-to-A patches after the forward A-to-B and B-to-C chain. The scenario contract
+rejects archive fallback as reverse-delta evidence. It has not yet passed in the
+current full agent job or real six-cell matrix.
+
+The settled storage rule retains shared content-addressed promotion assets during
+rollback and retains superseded patch objects after patch-row replacement. No
+cleanup acceptance is claimed; deletion remains future work until an atomic
+ownership/reference proof exists.
+
+Focused results reported for the current implementation are 141 Lynx JS tests,
+10 CLI promotion tests, 66 Android controller/installer tests, two Android
+Sparkling tests, 63 Swift tests with 13 environment-dependent skips, 308 E2E unit
+tests, and 65 matrix contract tests. The 25-scenario manifest dry run also passes.
+Both iOS schemes and both Android applications build in debug/release as
+applicable. The server's 442 focused tests passed before the final 1.0.0 Supabase
+schema fold and require one final rerun. Full workspace verification has not yet
+run; these results must not be presented as final-commit or device evidence.
 
 ## Unresolved framework boundary
 
@@ -105,29 +139,22 @@ The PRD explicitly requires separate user review for any framework scope change.
 
 ## Remaining checks, in execution order
 
-1. Restore content/readiness authority and add a behavioral regression proving
-   that time elapsed or controller creation cannot confirm a candidate. Verify
-   fatal and unconfirmed startup recovery against the corrected public host.
-2. Complete the user-requested `hot-updater-agent` full-platform Lynx verification
+1. Finish the final adversarial review, rebuild both production scaffolds and
+   matrix targets, and rerun the affected focused tests after any correction.
+2. Run workspace build, types, lint, unit, and integration checks. Recheck RN,
+   bare, Rock, Expo, server, promotion, and packaged-consumer behavior on the
+   exact implementation that will be pushed.
+3. Commit and push without the six protected staged-only helpers, then require
+   green Integration on that exact commit.
+4. Complete the user-requested `hot-updater-agent` full-platform Lynx verification
    on `standalone-kysely`; record job ID, tested commit, binary identities,
-   terminal conclusion and failed/passed scenarios. A queued job or dry run is
+   terminal conclusion, and every scenario result. A queued job or dry run is
    not completion.
-3. Run the current public API on all three frameworks per OS using unchanged
-   release binaries within each A/B scenario. Capture A → B, an explicitly
-   unavailable delivery origin, B confirmation, a second B restart, and exact
-   resource identities. Keep separate Bundle and Release IDs in every receipt.
-4. Map every PRD section 7 recovery/security/context scenario to current native
-   tests and device evidence: B/C exclusions, cached-byte new Release, stale
-   authorization, late/secondary/no-primary readiness, concurrent/interrupted
-   installation, live resource lifetime and native-binary upgrade. Rerun where
-   changed implementation or missing receipts leave the outcome unestablished.
-5. Close the framework lazy-loading decision and refresh documentation only to
-   the extent supported by those outcomes. Recheck shared RN regressions and
-   package build/type/lint/test results at the final commit.
-
-Stale documents to reconcile: PRD status/section 9 and all-Unverified table;
-execution ledger's pre-Grok checkpoint; package README's provisional-build
-wording; example README's G1-only positioning; OS evidence files that stop at
-SDK1 or SDK3 preparation. Preserve their historical failures and hashes while
-adding the final public contract and evidence links. Do not promote a historical
-pass to the current commit without accounting for intervening changes.
+5. Run the public API across ReactLynx, VueLynx, and OctaneLynx on both OSes with
+   one unchanged binary per OS. Require strict receipts for archive A-to-B,
+   origin-off B activation/retention, real B-to-C BSDIFF, same-process all-context
+   reload, stale authority, primary replacement, secondary fatal recovery, and
+   unconfirmed recovery.
+6. Update this record and PR #1300 with the final commit, job, binary hashes, and
+   six receipts. Keep the Vue/Octane framework-generated lazy-template limitation
+   separate from supported core external-JS and native dynamic-component paths.

@@ -7,23 +7,39 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		19582C7FAE4A58C9B1B5FCB5 /* Foundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 2697CADA991EB811DD54A3C4 /* Foundation.framework */; };
 		33B39DF22B55CD8F6E1F1E08 /* Embedded in Resources */ = {isa = PBXBuildFile; fileRef = D92C37C89B7499F03A3C9986 /* Embedded */; };
+		3523D63C1650C13BAE301696 /* RouterServiceImpl.swift in Sources */ = {isa = PBXBuildFile; fileRef = 54851AC7C2E69CC0760BB20F /* RouterServiceImpl.swift */; };
+		87CA3466A4726A8540CF992B /* SPKServiceRegistrar.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2047CC43C0B11E557E850F8E /* SPKServiceRegistrar.swift */; };
+		9A4D60441484168F1BAB1C27 /* MatrixHarnessApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 75EC5736A8DE847E74838117 /* MatrixHarnessApp.swift */; };
+		BCD6732F95BA626371C0660E /* Pods_SparklingMatrixHarness.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = BB962ADF47A0CBE8B2552EB6 /* Pods_SparklingMatrixHarness.framework */; };
+		CDF4C748E7DBBBE8DD4D9104 /* PublicHost.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB10868959E329809C9E17EE /* PublicHost.swift */; };
 		CEAB8C5202B26CF8F0BE5581 /* Pods_SparklingGo.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 4B00F0DF4C89E15C31BC93A3 /* Pods_SparklingGo.framework */; };
+		DE1404C2217060F72361A1EC /* Embedded in Resources */ = {isa = PBXBuildFile; fileRef = D92C37C89B7499F03A3C9986 /* Embedded */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
 		105D1EA8BB03A87166570D75 /* Pods-SparklingGoTests.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-SparklingGoTests.debug.xcconfig"; path = "Target Support Files/Pods-SparklingGoTests/Pods-SparklingGoTests.debug.xcconfig"; sourceTree = "<group>"; };
+		2047CC43C0B11E557E850F8E /* SPKServiceRegistrar.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = SPKServiceRegistrar.swift; path = ../SparklingGo/SparklingGo/MethodServices/SPKServiceRegistrar.swift; sourceTree = "<group>"; };
+		2697CADA991EB811DD54A3C4 /* Foundation.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Foundation.framework; path = Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS26.0.sdk/System/Library/Frameworks/Foundation.framework; sourceTree = DEVELOPER_DIR; };
+		2C12225ADAD6F475BAF48AF1 /* Pods-SparklingMatrixHarness.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-SparklingMatrixHarness.debug.xcconfig"; path = "Target Support Files/Pods-SparklingMatrixHarness/Pods-SparklingMatrixHarness.debug.xcconfig"; sourceTree = "<group>"; };
 		34294AA1E3153C7FF24DA29D /* Pods_SparklingGoTests.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = Pods_SparklingGoTests.framework; sourceTree = BUILT_PRODUCTS_DIR; };
 		44A4C3032E271D570011A613 /* SparklingMethodTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = SparklingMethodTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		44B59A872DE9041F00A05B89 /* SparklingGo.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = SparklingGo.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		44B59A982DE9042100A05B89 /* SparklingGoTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = SparklingGoTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		44B59AA22DE9042100A05B89 /* SparklingGoUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = SparklingGoUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		486AC90FCDC2169048A11E41 /* SparklingMatrixHarness.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = SparklingMatrixHarness.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		4B00F0DF4C89E15C31BC93A3 /* Pods_SparklingGo.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = Pods_SparklingGo.framework; sourceTree = BUILT_PRODUCTS_DIR; };
+		5451216ACCD073182561CD16 /* Pods-SparklingMatrixHarness.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-SparklingMatrixHarness.release.xcconfig"; path = "Target Support Files/Pods-SparklingMatrixHarness/Pods-SparklingMatrixHarness.release.xcconfig"; sourceTree = "<group>"; };
+		54851AC7C2E69CC0760BB20F /* RouterServiceImpl.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = RouterServiceImpl.swift; path = ../SparklingGo/SparklingGo/MethodServices/RouterServiceImpl.swift; sourceTree = "<group>"; };
+		75EC5736A8DE847E74838117 /* MatrixHarnessApp.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = MatrixHarnessApp.swift; sourceTree = "<group>"; };
 		80857B85C0422883390B2606 /* Pods_SparklingMethodTests.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = Pods_SparklingMethodTests.framework; sourceTree = BUILT_PRODUCTS_DIR; };
 		8C76000D4A2F6C5E1542B66F /* Pods-SparklingMethodTests.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-SparklingMethodTests.debug.xcconfig"; path = "Target Support Files/Pods-SparklingMethodTests/Pods-SparklingMethodTests.debug.xcconfig"; sourceTree = "<group>"; };
 		8CA3C88BC922913EC94B79D5 /* Pods-SparklingGo.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-SparklingGo.release.xcconfig"; path = "Target Support Files/Pods-SparklingGo/Pods-SparklingGo.release.xcconfig"; sourceTree = "<group>"; };
 		9AD74935FFBD17E3B3D4E69A /* Pods_SparklingGoUITests.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = Pods_SparklingGoUITests.framework; sourceTree = BUILT_PRODUCTS_DIR; };
+		AB10868959E329809C9E17EE /* PublicHost.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = PublicHost.swift; path = ../SparklingGo/SparklingGo/PublicHost.swift; sourceTree = "<group>"; };
 		B5E42D779278857A5AAB06BF /* Pods-SparklingGoUITests.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-SparklingGoUITests.debug.xcconfig"; path = "Target Support Files/Pods-SparklingGoUITests/Pods-SparklingGoUITests.debug.xcconfig"; sourceTree = "<group>"; };
+		BB962ADF47A0CBE8B2552EB6 /* Pods_SparklingMatrixHarness.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = Pods_SparklingMatrixHarness.framework; sourceTree = BUILT_PRODUCTS_DIR; };
 		BEB0A8939FDC0E69DE1ACBE1 /* Pods-SparklingGoUITests.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-SparklingGoUITests.release.xcconfig"; path = "Target Support Files/Pods-SparklingGoUITests/Pods-SparklingGoUITests.release.xcconfig"; sourceTree = "<group>"; };
 		C070511DD16ADB8A7E080D02 /* SparklingGoInHouse.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = SparklingGoInHouse.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		C492CACB668E9CA099F62A4E /* Pods-SparklingGoInHouse.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-SparklingGoInHouse.debug.xcconfig"; path = "Target Support Files/Pods-SparklingGoInHouse/Pods-SparklingGoInHouse.debug.xcconfig"; sourceTree = "<group>"; };
@@ -46,6 +62,15 @@
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
+		04B7E3BC27396438CC8FDD0B /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				19582C7FAE4A58C9B1B5FCB5 /* Foundation.framework in Frameworks */,
+				BCD6732F95BA626371C0660E /* Pods_SparklingMatrixHarness.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		44B59A842DE9041F00A05B89 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
@@ -57,6 +82,18 @@
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
+		056267874EC77D1BDA8638F1 /* MatrixHarness */ = {
+			isa = PBXGroup;
+			children = (
+				75EC5736A8DE847E74838117 /* MatrixHarnessApp.swift */,
+				AB10868959E329809C9E17EE /* PublicHost.swift */,
+				2047CC43C0B11E557E850F8E /* SPKServiceRegistrar.swift */,
+				54851AC7C2E69CC0760BB20F /* RouterServiceImpl.swift */,
+			);
+			name = MatrixHarness;
+			path = MatrixHarness;
+			sourceTree = "<group>";
+		};
 		2C26194B87B073C85741772F /* Frameworks */ = {
 			isa = PBXGroup;
 			children = (
@@ -65,6 +102,8 @@
 				9AD74935FFBD17E3B3D4E69A /* Pods_SparklingGoUITests.framework */,
 				80857B85C0422883390B2606 /* Pods_SparklingMethodTests.framework */,
 				F7872262C3B07417CD3D64FD /* Pods_SparklingGoInHouse.framework */,
+				98E0F8DBD47FE89EC36D4906 /* iOS */,
+				BB962ADF47A0CBE8B2552EB6 /* Pods_SparklingMatrixHarness.framework */,
 			);
 			name = Frameworks;
 			sourceTree = "<group>";
@@ -77,6 +116,7 @@
 				ADC955934F105445573B90AE /* Pods */,
 				2C26194B87B073C85741772F /* Frameworks */,
 				D92C37C89B7499F03A3C9986 /* Embedded */,
+				056267874EC77D1BDA8638F1 /* MatrixHarness */,
 			);
 			sourceTree = "<group>";
 		};
@@ -88,8 +128,17 @@
 				44B59AA22DE9042100A05B89 /* SparklingGoUITests.xctest */,
 				44A4C3032E271D570011A613 /* SparklingMethodTests.xctest */,
 				C070511DD16ADB8A7E080D02 /* SparklingGoInHouse.app */,
+				486AC90FCDC2169048A11E41 /* SparklingMatrixHarness.app */,
 			);
 			name = Products;
+			sourceTree = "<group>";
+		};
+		98E0F8DBD47FE89EC36D4906 /* iOS */ = {
+			isa = PBXGroup;
+			children = (
+				2697CADA991EB811DD54A3C4 /* Foundation.framework */,
+			);
+			name = iOS;
 			sourceTree = "<group>";
 		};
 		ADC955934F105445573B90AE /* Pods */ = {
@@ -105,6 +154,8 @@
 				C50586CC4ECBC63F4329F466 /* Pods-SparklingMethodTests.release.xcconfig */,
 				C492CACB668E9CA099F62A4E /* Pods-SparklingGoInHouse.debug.xcconfig */,
 				CF08A3181F6F8598B5B549B6 /* Pods-SparklingGoInHouse.release.xcconfig */,
+				5451216ACCD073182561CD16 /* Pods-SparklingMatrixHarness.release.xcconfig */,
+				2C12225ADAD6F475BAF48AF1 /* Pods-SparklingMatrixHarness.debug.xcconfig */,
 			);
 			path = Pods;
 			sourceTree = "<group>";
@@ -132,6 +183,25 @@
 			name = SparklingGo;
 			productName = SparklingGo;
 			productReference = 44B59A872DE9041F00A05B89 /* SparklingGo.app */;
+			productType = "com.apple.product-type.application";
+		};
+		948E69847D9C7CBC71FFE8A1 /* SparklingMatrixHarness */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = D8A4FFAFE91ECBFDEB16A55E /* Build configuration list for PBXNativeTarget "SparklingMatrixHarness" */;
+			buildPhases = (
+				517BF6FE6633F3D98220F338 /* [CP] Check Pods Manifest.lock */,
+				46FDA24C4ED6BC651A61B109 /* Sources */,
+				04B7E3BC27396438CC8FDD0B /* Frameworks */,
+				4F5ECF7F7BB4D5B30B8B0D8D /* Resources */,
+				329EFDBD61D2C33E11A501CA /* [CP] Copy Pods Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = SparklingMatrixHarness;
+			productName = SparklingMatrixHarness;
+			productReference = 486AC90FCDC2169048A11E41 /* SparklingMatrixHarness.app */;
 			productType = "com.apple.product-type.application";
 		};
 /* End PBXNativeTarget section */
@@ -178,6 +248,7 @@
 			projectRoot = "";
 			targets = (
 				44B59A862DE9041F00A05B89 /* SparklingGo */,
+				948E69847D9C7CBC71FFE8A1 /* SparklingMatrixHarness */,
 			);
 		};
 /* End PBXProject section */
@@ -188,6 +259,14 @@
 			buildActionMask = 2147483647;
 			files = (
 				33B39DF22B55CD8F6E1F1E08 /* Embedded in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		4F5ECF7F7BB4D5B30B8B0D8D /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				DE1404C2217060F72361A1EC /* Embedded in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -209,6 +288,45 @@
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
 			shellScript = "\"${PODS_ROOT}/Target Support Files/Pods-SparklingGo/Pods-SparklingGo-resources.sh\"\n";
+			showEnvVarsInLog = 0;
+		};
+		329EFDBD61D2C33E11A501CA /* [CP] Copy Pods Resources */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+				"${PODS_ROOT}/Target Support Files/Pods-SparklingMatrixHarness/Pods-SparklingMatrixHarness-resources-${CONFIGURATION}-input-files.xcfilelist",
+			);
+			name = "[CP] Copy Pods Resources";
+			outputFileListPaths = (
+				"${PODS_ROOT}/Target Support Files/Pods-SparklingMatrixHarness/Pods-SparklingMatrixHarness-resources-${CONFIGURATION}-output-files.xcfilelist",
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "\"${PODS_ROOT}/Target Support Files/Pods-SparklingMatrixHarness/Pods-SparklingMatrixHarness-resources.sh\"\n";
+			showEnvVarsInLog = 0;
+		};
+		517BF6FE6633F3D98220F338 /* [CP] Check Pods Manifest.lock */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+				"${PODS_PODFILE_DIR_PATH}/Podfile.lock",
+				"${PODS_ROOT}/Manifest.lock",
+			);
+			name = "[CP] Check Pods Manifest.lock";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+				"$(DERIVED_FILE_DIR)/Pods-SparklingMatrixHarness-checkManifestLockResult.txt",
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "diff \"${PODS_PODFILE_DIR_PATH}/Podfile.lock\" \"${PODS_ROOT}/Manifest.lock\" > /dev/null\nif [ $? != 0 ] ; then\n    # print error to STDERR\n    echo \"error: The sandbox is not in sync with the Podfile.lock. Run 'pod install' or update your CocoaPods installation.\" >&2\n    exit 1\nfi\n# This output is used by Xcode 'outputs' to avoid re-running this script phase.\necho \"SUCCESS\" > \"${SCRIPT_OUTPUT_FILE_0}\"\n";
 			showEnvVarsInLog = 0;
 		};
 		9C984960EF9A3261DC49D691 /* [CP] Check Pods Manifest.lock */ = {
@@ -243,9 +361,53 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		46FDA24C4ED6BC651A61B109 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				9A4D60441484168F1BAB1C27 /* MatrixHarnessApp.swift in Sources */,
+				CDF4C748E7DBBBE8DD4D9104 /* PublicHost.swift in Sources */,
+				87CA3466A4726A8540CF992B /* SPKServiceRegistrar.swift in Sources */,
+				3523D63C1650C13BAE301696 /* RouterServiceImpl.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
 
 /* Begin XCBuildConfiguration section */
+		2263C8207C5A3DBAF76DD546 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = 2C12225ADAD6F475BAF48AF1 /* Pods-SparklingMatrixHarness.debug.xcconfig */;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CLANG_ENABLE_OBJC_WEAK = NO;
+				CODE_SIGNING_ALLOWED = NO;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = RL87M95CBB;
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = "Hot Updater Lynx Matrix";
+				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphoneos*]" = YES;
+				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphonesimulator*]" = YES;
+				"INFOPLIST_KEY_UILaunchScreen_Generation[sdk=iphoneos*]" = YES;
+				"INFOPLIST_KEY_UILaunchScreen_Generation[sdk=iphonesimulator*]" = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.hotupdater.lynxmatrix;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_OBJC_BRIDGING_HEADER = "SparklingGo/SparklingGo/Bridging-Header.h";
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
 		44B59AAA2DE9042100A05B89 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -450,6 +612,40 @@
 			};
 			name = Release;
 		};
+		DB65923279D31420F4F1B932 /* Release */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = 5451216ACCD073182561CD16 /* Pods-SparklingMatrixHarness.release.xcconfig */;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CLANG_ENABLE_OBJC_WEAK = NO;
+				CODE_SIGNING_ALLOWED = NO;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = RL87M95CBB;
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = "Hot Updater Lynx Matrix";
+				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphoneos*]" = YES;
+				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphonesimulator*]" = YES;
+				"INFOPLIST_KEY_UILaunchScreen_Generation[sdk=iphoneos*]" = YES;
+				"INFOPLIST_KEY_UILaunchScreen_Generation[sdk=iphonesimulator*]" = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.hotupdater.lynxmatrix;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_OBJC_BRIDGING_HEADER = "SparklingGo/SparklingGo/Bridging-Header.h";
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -467,6 +663,15 @@
 			buildConfigurations = (
 				44B59AAD2DE9042100A05B89 /* Debug */,
 				44B59AAE2DE9042100A05B89 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		D8A4FFAFE91ECBFDEB16A55E /* Build configuration list for PBXNativeTarget "SparklingMatrixHarness" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				DB65923279D31420F4F1B932 /* Release */,
+				2263C8207C5A3DBAF76DD546 /* Debug */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;

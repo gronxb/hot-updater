@@ -48,12 +48,16 @@ describe("Lynx native callback transport", () => {
         callback: (value: unknown) => void,
       ) {
         expect(this).toBe(module);
-        callback({ ok: true, data: { status: "ALREADY_CONFIRMED" } });
+        callback({
+          ok: true,
+          data: { status: "ALREADY_CONFIRMED", transition: null },
+        });
       }),
     };
     vi.stubGlobal("NativeModules", { HotUpdaterLynx: module });
     await expect(callNative("notifyAppReady")).resolves.toEqual({
       status: "ALREADY_CONFIRMED",
+      transition: null,
     });
     expect(module.notifyAppReady.mock.calls[0]).toHaveLength(1);
   });

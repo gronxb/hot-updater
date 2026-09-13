@@ -5,8 +5,20 @@ import type {
   BasePluginArgs,
   BuildPlugin,
   BuildPluginConfig,
+  NativeFingerprintProvider,
+} from "@hot-updater/plugin-core";
+import {
+  compareStringsByCodeUnit,
+  getUtf8ByteSize,
+  MAX_BUNDLE_ARTIFACT_PATH_UTF8_BYTES,
 } from "@hot-updater/plugin-core";
 import { uuidv7 } from "uuidv7";
+
+import { createLynxNativeFingerprint } from "./buildFingerprint";
+
+export const MAX_LYNX_SIDECAR_BYTES = 16 * 1024;
+// This leaves room for worst-case JSON escaping and a maximum-size entry path.
+export const MAX_LYNX_RUNTIME_ID_UTF8_BYTES = 2 * 1024;
 
 export interface LynxBuildContext {
   readonly cwd: string;
@@ -31,6 +43,8 @@ export interface LynxPluginConfig extends BuildPluginConfig {
   getBundleSigningPublicKey?: (context: BasePluginArgs) => Promise<{
     readonly publicKey: string;
   } | null>;
+  /** Override native compatibility fingerprinting for a custom Lynx host. */
+  fingerprint?: NativeFingerprintProvider;
 }
 
 const isSubdirectory = (parent: string, child: string): boolean => {
@@ -54,12 +68,17 @@ const isRelativeFilePath = (value: string): boolean =>
 export const lynx =
   ({
     build,
+    fingerprint,
     getBundleSigningPublicKey,
     outDir = ".hot-updater/lynx",
   }: LynxPluginConfig) =>
   ({ cwd }: BasePluginArgs): BuildPlugin => ({
     name: "lynx",
     nativeBuild: {
+      fingerprint: (options) =>
+        fingerprint
+          ? fingerprint(options)
+          : createLynxNativeFingerprint(cwd, options),
       signingConfigSource: "build-plugin",
       getBundleSigningPublicKey: async () =>
         getBundleSigningPublicKey ? getBundleSigningPublicKey({ cwd }) : null,
@@ -97,9 +116,19 @@ export const lynx =
             "Lynx entry must be a relative file path inside outDir.",
           );
         }
+        if (getUtf8ByteSize(entry) > MAX_BUNDLE_ARTIFACT_PATH_UTF8_BYTES) {
+          throw new Error(
+            `Lynx entry exceeds ${MAX_BUNDLE_ARTIFACT_PATH_UTF8_BYTES} UTF-8 bytes.`,
+          );
+        }
         if (typeof runtimeId !== "string" || !runtimeId.trim()) {
           throw new Error(
             "Lynx output must declare its native compatibility identity.",
+          );
+        }
+        if (getUtf8ByteSize(runtimeId) > MAX_LYNX_RUNTIME_ID_UTF8_BYTES) {
+          throw new Error(
+            `Lynx runtime identity exceeds ${MAX_LYNX_RUNTIME_ID_UTF8_BYTES} UTF-8 bytes.`,
           );
         }
         const files = await fs.readdir(buildPath, { recursive: true });
@@ -128,12 +157,38 @@ export const lynx =
         if (!entryStat.isFile() || entryStat.size === 0) {
           throw new Error("Lynx entry must be a non-empty file.");
         }
+        const sidecar = `${JSON.stringify({ schemaVersion: 1, bundleId, platform, entry, runtimeId }, null, 2)}\n`;
+        if (Buffer.byteLength(sidecar) > MAX_LYNX_SIDECAR_BYTES) {
+          throw new Error(
+            `Lynx metadata exceeds ${MAX_LYNX_SIDECAR_BYTES} bytes.`,
+          );
+        }
         await fs.writeFile(
           path.join(buildPath, "hot-updater-lynx.json"),
-          `${JSON.stringify({ schemaVersion: 1, bundleId, platform, entry, runtimeId }, null, 2)}\n`,
-          { flag: "wx" },
+          sidecar,
+          {
+            flag: "wx",
+          },
         );
-        return { buildPath, bundleId, filePolicy: "preserve", stdout };
+        const artifactNames: string[] = [];
+        for (const name of await fs.readdir(buildPath, { recursive: true })) {
+          if ((await fs.lstat(path.join(buildPath, name))).isFile()) {
+            artifactNames.push(name.split(path.sep).join("/"));
+          }
+        }
+        artifactNames.sort(compareStringsByCodeUnit);
+        const artifacts = artifactNames.map((name) => ({
+          path: path.join(buildPath, name),
+          name,
+          downloadCompression: name === entry ? ("br" as const) : null,
+        }));
+        return {
+          artifacts,
+          buildPath,
+          bundleId,
+          patchAssetPath: entry,
+          stdout,
+        };
       } catch (error) {
         await fs.rm(buildPath, { recursive: true, force: true });
         throw error;

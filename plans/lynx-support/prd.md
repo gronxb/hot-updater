@@ -70,7 +70,7 @@ The shared E2E scenarios must exercise those actual behaviors. An archive downlo
 must not be reported as a successful delta application.
 
 Independent per-container updates, arbitrary multi-entry deployment policies,
-insights expansion, and init/doctor integration remain follow-up scope. Runtime
+analytics telemetry, and init/doctor integration remain follow-up scope. Runtime
 compatibility validation remains required. Existing fingerprint targeting must
 use a meaningful integration-owned native fingerprint when enabled.
 
@@ -95,6 +95,9 @@ behavior. A URL accessor alone is not proof of resource or readiness integration
 Do not patch upstream source, use reflection, or simulate callbacks in the example
 to manufacture missing host capabilities. Document the supported host/version and
 verify the normal scaffold integration separately from private native probes.
+Any controls needed to prove multiple containers, stale authorities, fatal
+secondaries, or generation teardown must live in a separate nonproduction target
+or scheme. The production application target must not compile those diagnostics.
 
 ### 2.2 Engine-neutral delivery requirements (2026-09-13 amendment)
 
@@ -125,6 +128,50 @@ reason to retain RN filename rules in common code. Existing explicit patch
 metadata may be consumed only when the storage path, base identity, and manifest
 hashes establish the exact asset without guessing. Verify this compatibility
 behavior with RN regression fixtures.
+
+All database providers enforce one delivery contract: a target Bundle has at
+most 24 ordered base patches, and replacing those patch rows is atomic. Bundle
+deletion fails with the common referenced-row result while a Release or another
+Bundle's patch still refers to it. Provider-native transactions and constraint
+errors must preserve these results without partial patch publication or deletion.
+
+The engine-neutral `ArtifactInfo` JSON response is limited to 528,384 UTF-8
+bytes. The artifact endpoint resolves changed-file URLs in batches of at most 16
+concurrent operations and preserves manifest order. It returns a valid bounded
+manifest representation when usable, falls back to the verified archive when
+manifest resolution or the response budget prevents that representation, and
+returns no artifact when neither delivery is usable. An unavailable archive does
+not prevent a valid bounded manifest-only response.
+
+Optional patch rows must not make an otherwise valid archive unavailable. The
+artifact endpoint may retry Bundle lookup without optional patch hydration when
+strict hydration encounters a corrupt patch row, then use the archive or a valid
+manifest without that patch. Administrative Bundle reads and lists remain strict
+so corruption is visible to operators rather than silently normalized.
+
+Deployment and promotion rollback must never delete shared content-addressed
+assets. Replacing a patch row also does not prove that its former storage object
+is unreferenced, so superseded patch objects remain stored. Any future cleanup
+requires an ownership/reference model whose decision and deletion are proven
+atomically across all possible references.
+
+No formal release containing this server contract has shipped. Provider schema
+changes therefore remain part of the initial 1.0.0 schema. In particular,
+Supabase atomic Bundle-patch publication belongs in the existing 1.0.0 migration;
+do not introduce a 1.0.1 migration, doctor requirement, or infrastructure-upgrade
+document for this work.
+
+An update check may authorize a catalog selection and ask native code to validate
+its compatibility, but it must not retain downloaded bytes or an outstanding
+native preparation merely because the caller received an update object. Native
+preparation begins only when the caller requests installation and is consumed by
+that same atomic stage operation.
+
+An explicit channel change is an authorized catalog-scope transition. Native
+must persist catalog acceptance and the selected channel under one revision, and
+must reject an unrelated second switch until an explicit reset returns to the
+configured default scope. Reset must clear the switched scope's accepted,
+staged, pending, and stable state atomically.
 
 ### 2.3 Execution requirements
 
@@ -244,6 +291,27 @@ retry-policy rebuttal. Open implementation details remain in section 8.
 - Reject traversal, symbolic links, missing or empty entries, and collisions
   with root `manifest.json` or the selected Hot Updater metadata path. Do not
   silently overwrite earlier Hot Updater metadata when accepting prebuilt input.
+- Apply finite path-byte, artifact-count, archive-entry, metadata, compressed,
+  per-file, and expanded-output limits before allocation or publication. Paths
+  must remain portable across iOS, Android, and storage: reject absolute paths,
+  backslashes, drive or URL prefixes, empty or dot segments, control characters,
+  ancestor/file conflicts, and case-insensitive aliases.
+- The shared upper bounds are 128 MiB for an archive, 128 MiB for each artifact,
+  512 MiB for total expanded files, and 1 MiB for the signed manifest. The Lynx
+  sidecar is limited to 16 KiB. These limits apply consistently in packaging,
+  server-side delta work, download, extraction, and native verification.
+- Order portable artifact paths, fingerprint inputs, and patch rows
+  deterministically. Path and fingerprint ordering uses locale-independent
+  JavaScript UTF-16 code-unit order; patch rows preserve their explicit order
+  with a stable identity tie-breaker.
+- Archive writers sort entries and normalize portable metadata so equal inputs
+  produce equal archives. Promotion revalidates source archive bounds, entry
+  types and paths, manifest coverage, and every asset hash before repackaging,
+  including unsigned promotion. It records the promoted manifest content hash.
+- Integration-owned fingerprint providers constrain source traversal to an
+  allowed root, use stable source ordering, preserve explicit symbolic-link
+  identity, and reject file or directory mutation during hashing. Fingerprint
+  diffs compare the stored prior and newly generated provider results directly.
 - Versioned entry metadata must bind the bundle ID, OS, main entry and native
   compatibility identity. A manifest-covered sidecar is the proposed transport;
   its filename and final serialization are G1 outputs. Unsupported schema
@@ -333,6 +401,12 @@ failure. Repeated valid signals are idempotent. Stale, destroyed-context, or
 unrelated-context signals cannot confirm another attempt. JS-supplied IDs alone
 do not establish authority.
 
+The native launch transition is a durable one-shot receipt. The first valid
+confirmation after activation or recovery reports the exact source and target
+Bundle/Release selections. Consuming it and confirming startup are one atomic
+state mutation. Repeated readiness calls are idempotent and cannot replay a
+prior `UPDATE_APPLIED` or `RECOVERED` result.
+
 SDK-free prebuilt files may be packaged, but confirmed OTA operation also requires
 an application signal or a host that proves the same startup conditions. Merely
 installing such files is not evidence of full support.
@@ -377,6 +451,19 @@ This is an in-process transition, not an OS process restart. It must not be
 implemented by `exit(0)`, an Android restart trampoline, a driver relaunch, a
 fixed timer, or an application-defined native workaround. A URL accessor or a
 reload of only the main template cannot satisfy this operation.
+
+The default `reload()` resolves only after the packaged host has retired the old
+generation and recreated every managed runtime and view. Any reconstruction or
+native-operation failure rejects the same call. A custom host may replace it only
+by calling `HotUpdater.setReloadBehavior("custom", handler)` with a required
+handler. The public API does not accept ignored `reload` or `processRestart`
+behavior values.
+
+`resetChannel()` first persists the default-channel state and clears the switched
+scope's accepted, confirmed, staged, pending, and transition state, then recreates
+the complete managed generation before resolving. The JS client clears its
+cached native snapshot whether reset/recreation succeeds or fails, so callers
+must obtain a new authoritative snapshot from the replacement generation.
 
 The library owns a serialized transition with these requirements:
 
@@ -434,6 +521,9 @@ must identify the actual path used. Cancellation propagates and removes only the
 owned preparation; it must not trigger a fallback or publish partial files.
 Patch failures must preserve the currently running installation and its leases.
 Do not count archive fallback as a passing BSDIFF-application assertion.
+The required chain covers forward A-to-B and B-to-C deltas and reverse C-to-B
+and B-to-A deltas. Each reverse transition must use and prove the declared patch
+against the exact active base rather than relying on archive fallback.
 
 ## 6. Proposed milestones and gates
 
@@ -498,7 +588,7 @@ matrix in section 7 on unchanged release binaries, without a development server.
 
 ### G4 — Subsequent proposals
 
-Use G3 evidence to propose insights expansion, CLI onboarding and richer
+Use G3 evidence to propose analytics telemetry, CLI onboarding and richer
 multi-entry/container policies separately. Delta delivery and engine-neutral
 native fingerprint ownership are now required by the September 13 amendment.
 
@@ -525,7 +615,7 @@ archive inspection do not prove device OTA.
 | Multiple containers and in-flight resource requests | One process release; no mixed resources or premature cleanup |
 | Native binary upgrade | Revalidate compatibility and binary-scoped state; use a safe fallback |
 | Native files resemble RN names or collide with reserved metadata | Preserve supported runtime files; reject metadata conflicts before upload |
-| Archive → delta → consecutive delta and rollback | Apply the actual patch to the verified native base, retain required bases, and verify every target manifest asset before activation |
+| Archive → forward delta → reverse delta and rollback | Apply actual A-to-B and B-to-C patches, then actual C-to-B and B-to-A patches against each verified active base; retain required bases and verify every target manifest asset before activation |
 | Corrupt/missing patch, changed file, or stale base | Use an authorized verified fallback or reject safely; do not publish a partial target or change the running bytes |
 | Standard Sparkling scaffold integration | App native sources contain configuration and library wiring only; packaged integration supplies real bridge, resource, lifecycle, and update behavior |
 | Engine-neutral build and fingerprint | Opaque entries and explicit compression work without RN filename rules; native input changes alter the integration fingerprint; RN regressions stay green |
@@ -545,28 +635,47 @@ default manifest. The RN manifest and its migration coverage remain unchanged.
 
 All six cells must pass before claiming the proposed support is complete.
 
-## 8. Decisions that require G1 evidence
+## 8. Resolved design decisions
 
-| Decision | Fixed requirement | Detail still to determine |
+| Area | Implemented contract | Evidence still required |
 | --- | --- | --- |
-| Host | Sparkling is the first candidate; all targets remain | Resolved versions and supported loader/module hooks on each OS |
-| Compatibility | Native-owned, exact, fail-closed declared identity | Identity derivation/provenance, invalidating inputs and rejection-cache invalidation |
-| Metadata | Versioned, manifest-bound, conflict-free | Filename, concrete fields and native parser boundary |
-| Resource addressing | Release-bound resolution, cache and lifetime | Supported schemes/prefixes and per-resource loader mapping |
-| Startup confirmation | Native observation plus attributed app/host readiness | Concrete callbacks and essential background-bootstrap observation |
-| Immediate activation | Recreate all library-managed runtimes on both OSes, as user-approved | Serialize generation replacement, invalidate old contexts, retain leased files, prove same-process recovery |
-| Unconfirmed exits | Conservative fallback and durable per-Release suppression | Storage/compaction/capacity handling without re-enabling exclusions |
-| Native reuse | Preserve relevant policy/security guarantees | Selective reuse versus small Lynx-specific implementations |
-| CLI integration | Actual final artifact must satisfy the contract | Minimum explicit artifact-handling changes, native configuration discovery and signing |
+| Host | Optional packaged Sparkling hosts own bridge, resources, lifecycle, recovery, and all managed containers | Final native build plus six current device cells |
+| Compatibility | Native supplies an exact runtime identity; check-time validation retains no preparation | Current device mismatch and no-redownload evidence |
+| Metadata | Manifest-covered `hot-updater-lynx.json` binds schema, Bundle, OS, entry, and runtime | Final packaged archive and launch receipts |
+| Resource addressing | `hot-updater:///` resolves only through the selected installation and context-scoped leases | Origin-off and in-flight retirement receipts |
+| Startup confirmation | Durable primary attempt plus real first content, required resource success, and app readiness | Current host recovery and stale-context device receipts |
+| Immediate activation | Both OSes replace every managed runtime/view in one foreground process | Process/generation/context identity receipts |
+| Unconfirmed exits | Durable per-Release suppression remains separate from Bundle crash history | Current B/C recovery device receipts |
+| Native reuse | Lynx owns its native controller/installer; common delivery contracts stay engine-neutral | Mixed RN/Lynx regression and package checks |
+| CLI integration | Build plugins declare artifacts, portable names, compression, patch asset, fingerprint, and signing authority | Final workspace and real deployment validation |
 
 ## 9. Current implementation and remaining evidence
 
-The Grok handoff HEAD is `84244ae429a899bf5631bbc99de3675a03fdaddf` on PR #1300.
-It contains a public runtime/build package and native examples. Its GitHub
-Integration passed, but the last full native agent job failed on the preceding
-commit. The resumed job was cancelled after independent reviewers identified
-premature iOS confirmation and false E2E success paths. No native E2E success is
-claimed for the current implementation.
+The PRD decision commit is `01bb61260b932e20d3e3f8a3e8e957369f887e17` on PR
+#1300. The current worktree adds the engine-independent runtime/build API, strict
+archive and delta installers, engine-neutral delivery declarations, integration-
+owned RN/Expo fingerprint policy, optional packaged Sparkling hosts, a clean
+production scaffold, and a separate matrix harness. These implementation changes
+are not yet committed or attributed to a final acceptance commit.
+
+The final prerelease public client has no `getManifest`, `getInstallId`,
+`addListener`, `setUser`, or init-time insights surface. `init()` accepts only
+transport configuration and an error callback. Update bytes are prepared only
+through the update returned by `checkForUpdate()`. `isUpdateDownloaded()` derives
+its answer from the latest authoritative native `nextSelection`, rather than a
+JS-local installation latch. Default reload failures remain observable to the
+caller, and custom reload requires an explicit handler.
+
+The settled server path limits serialized `ArtifactInfo` to 528,384 UTF-8 bytes,
+resolves changed-file URLs with at most 16 concurrent operations, and selects a
+usable bounded manifest representation or verified archive fallback. Artifact
+lookup alone tolerates corrupt optional patch rows by omitting patch hydration;
+administrative Bundle hydration remains strict. Archive construction, promotion,
+and integration-owned fingerprinting apply the deterministic and mutation-safe
+rules above. Shared promotion assets and superseded patch objects are retained
+until a future cleanup operation can prove ownership and absence of references
+atomically. The shared rollback scenario now requires real C-to-B and B-to-A
+BSDIFF evidence in addition to the forward chain.
 
 Historical SDK3 receipts demonstrate A-to-B operation across all six framework/OS
 cells. They predate the current singleton API, native changes, delta support,
@@ -581,12 +690,26 @@ probes are distinct results. Keep all three frameworks in scope and explicitly
 describe that unsupported output category; do not relabel it as a passing lazy
 template scenario or substitute a mocked compiler.
 
-Resumed native corrections restored unconfirmed Release exclusions and rejected
-unauthorized Android process termination; focused native tests passed before the
-subsequent partial delta changes. E2E driver and application observations were
-corrected with focused tests. All in-progress delta, shared manifest, and package
-boundary changes were interrupted for the requested model transition. They are
-uncommitted and must be inspected and completed by Sol High before validation.
+Focused implementation checks reported during the current Sol High phase are:
+
+- 141 Lynx JS runtime/build tests, with package type checking, build, formatting,
+  and lint passing;
+- 442 server tests for manifest paths, download representations, delta
+  descriptions, and storage publication before the final 1.0.0 Supabase schema
+  fold;
+- 10 CLI promotion tests covering explicit compression and archive-only handling
+  for older manifests;
+- 66 Android controller/installer tests, two Android Sparkling tests, lint and
+  release assembly, plus debug and release APK assembly for both native targets;
+- 63 Swift tests with 13 environment-dependent skips and no failures, plus
+  successful simulator builds for both native schemes; and
+- 308 E2E unit tests, a 25-scenario Lynx manifest dry run, and 65 focused matrix
+  contract tests.
+
+These are component and native-build results, not final aggregate validation.
+Full workspace build, type, lint, unit, and integration checks are pending. The
+current full `hot-updater-agent` run and real six-cell iOS/Android device matrix
+are also pending, so no current native E2E success is claimed.
 
 ## 10. Execution sequence and completion criteria
 

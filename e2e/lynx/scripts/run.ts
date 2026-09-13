@@ -16,6 +16,7 @@ import {
   startDetoxControlServer,
 } from "../../detox/scripts/control-server.ts";
 import { LynxAppDriver } from "../lynx-app-driver.ts";
+import { readLynxDefaultScenarioNames } from "../suite-manifest.ts";
 
 const repoDir = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -136,7 +137,7 @@ function usage(): string {
 }
 
 function printCatalog(): void {
-  const defaultSuite = resolveDetoxSuiteScenarioNames("default");
+  const defaultSuite = readLynxDefaultScenarioNames(repoDir);
   console.log(
     [
       "Lynx E2E",
@@ -155,6 +156,9 @@ function printCatalog(): void {
 
 function resolveScenarioNames(options: RunOptions): readonly string[] {
   if (options.scenarioInputs.length === 0) {
+    if (options.suiteName === "default") {
+      return readLynxDefaultScenarioNames(repoDir);
+    }
     return resolveDetoxSuiteScenarioNames(options.suiteName);
   }
 

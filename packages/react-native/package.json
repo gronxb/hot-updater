@@ -18,6 +18,17 @@
         "default": "./lib/commonjs/index.js"
       }
     },
+    "./build": {
+      "source": "./src/build.ts",
+      "import": {
+        "types": "./lib/typescript/module/build.d.ts",
+        "default": "./lib/module/build.js"
+      },
+      "require": {
+        "types": "./lib/typescript/commonjs/build.d.ts",
+        "default": "./lib/commonjs/build.js"
+      }
+    },
     "./package.json": "./package.json"
   },
   "files": [

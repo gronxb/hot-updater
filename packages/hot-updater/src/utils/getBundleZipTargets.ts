@@ -1,12 +1,80 @@
-import fs from "fs/promises";
-import path from "path";
+import { constants, type BigIntStats } from "node:fs";
+import fs, { type FileHandle } from "node:fs/promises";
+import path from "node:path";
 
-import type { BuildPlugin } from "@hot-updater/plugin-core";
+import type { BuildArtifact } from "@hot-updater/plugin-core";
+import {
+  assertBundleArtifactByteSize,
+  assertBundleExpandedByteSize,
+  findPortableArtifactPathConflict,
+  getBundleArchiveEntryCount,
+  getPortableArtifactPathCollisionKey,
+  getUtf8ByteSize,
+  MAX_BUNDLE_ARCHIVE_ENTRIES,
+  MAX_BUNDLE_ARTIFACT_PATH_UTF8_BYTES,
+  MAX_DECLARED_BUNDLE_ARTIFACTS,
+} from "@hot-updater/plugin-core";
 
-type FilePolicy = Awaited<ReturnType<BuildPlugin["build"]>>["filePolicy"];
+const isCanonicalArtifactName = (name: string) =>
+  !!name &&
+  !name.includes("\\") &&
+  !name.includes(":") &&
+  !path.posix.isAbsolute(name) &&
+  [...name].every((character) => {
+    const codePoint = character.codePointAt(0) ?? 0;
+    return codePoint > 0x1f && codePoint !== 0x7f;
+  }) &&
+  name.split("/").every((part) => part && part !== "." && part !== "..");
 
-const getPreservedTargets = async (basePath: string, files: string[]) => {
+export interface BundleArtifactSnapshot {
+  artifacts: BuildArtifact[];
+  expandedByteSize: number;
+  path: string;
+}
+
+const noFollow = constants.O_NOFOLLOW ?? 0;
+const COPY_BUFFER_SIZE = 64 * 1024;
+
+const copyFileHandle = async (source: FileHandle, destination: FileHandle) => {
+  const buffer = Buffer.allocUnsafe(COPY_BUFFER_SIZE);
+  let position = 0;
+  while (true) {
+    const { bytesRead } = await source.read(
+      buffer,
+      0,
+      buffer.byteLength,
+      position,
+    );
+    if (bytesRead === 0) return;
+    let written = 0;
+    while (written < bytesRead) {
+      const { bytesWritten } = await destination.write(
+        buffer,
+        written,
+        bytesRead - written,
+        position + written,
+      );
+      if (bytesWritten === 0) {
+        throw new Error("Failed to copy build artifact into snapshot");
+      }
+      written += bytesWritten;
+    }
+    position += bytesRead;
+  }
+};
+
+const hasSameIdentity = (left: BigIntStats, right: BigIntStats) =>
+  left.dev === right.dev &&
+  left.ino === right.ino &&
+  left.size === right.size &&
+  left.ctimeNs === right.ctimeNs;
+
+export async function getBundleZipTargets(
+  basePath: string,
+  artifacts: readonly BuildArtifact[],
+): Promise<BundleArtifactSnapshot> {
   const base = path.resolve(basePath);
+  const realBase = await fs.realpath(base);
   const checkedDirectories = new Set<string>();
   const checkDirectory = async (directory: string): Promise<void> => {
     if (checkedDirectories.has(directory)) return;
@@ -29,16 +97,80 @@ const getPreservedTargets = async (basePath: string, files: string[]) => {
       return null;
     });
   if (reserved) throw new Error("Build output contains reserved manifest.json");
+  if (artifacts.length === 0) {
+    throw new Error("Build integration did not declare any artifacts");
+  }
+  if (artifacts.length > MAX_DECLARED_BUNDLE_ARTIFACTS) {
+    throw new Error(
+      `Build integration declared more than ${MAX_DECLARED_BUNDLE_ARTIFACTS} artifacts`,
+    );
+  }
 
-  const targets: { path: string; name: string }[] = [];
-  for (const file of files) {
-    if (
-      (path.sep !== "\\" && file.includes("\\")) ||
-      file.split(/[\\/]/).includes("..")
-    ) {
-      throw new Error(`Invalid build artifact path: ${file}`);
+  for (const artifact of artifacts) {
+    if (!isCanonicalArtifactName(artifact.name)) {
+      throw new Error(`Invalid build artifact name: ${artifact.name}`);
     }
-    const absolute = path.resolve(file);
+    if (getUtf8ByteSize(artifact.name) > MAX_BUNDLE_ARTIFACT_PATH_UTF8_BYTES) {
+      throw new Error(
+        `Build artifact name exceeds ${MAX_BUNDLE_ARTIFACT_PATH_UTF8_BYTES} UTF-8 bytes: ${artifact.name}`,
+      );
+    }
+    const portableName = getPortableArtifactPathCollisionKey(artifact.name);
+    if (
+      portableName === "manifest.json" ||
+      portableName.startsWith("manifest.json/")
+    ) {
+      throw new Error("Build output contains reserved manifest.json");
+    }
+  }
+  const pathConflict = findPortableArtifactPathConflict(
+    artifacts.map(({ name }) => name),
+  );
+  if (pathConflict?.kind === "duplicate") {
+    throw new Error(`Duplicate build artifact name: ${pathConflict.second}`);
+  }
+  if (pathConflict?.kind === "ancestor") {
+    throw new Error(
+      `Build artifact names conflict as file and descendant: ${pathConflict.ancestor}, ${pathConflict.descendant}`,
+    );
+  }
+  if (pathConflict?.kind === "directory-alias") {
+    throw new Error(
+      `Build artifact directories have a portable name collision: ${pathConflict.first}, ${pathConflict.second}`,
+    );
+  }
+  if (
+    getBundleArchiveEntryCount(artifacts.map(({ name }) => name)) >
+    MAX_BUNDLE_ARCHIVE_ENTRIES
+  ) {
+    throw new Error(
+      `Build artifact archive would contain more than ${MAX_BUNDLE_ARCHIVE_ENTRIES} entries`,
+    );
+  }
+
+  const validated: {
+    artifact: BuildArtifact;
+    initialStat: BigIntStats;
+    path: string;
+    relativePath: string;
+  }[] = [];
+  let expandedByteSize = 0n;
+  for (const artifact of artifacts) {
+    if (
+      artifact.downloadCompression !== null &&
+      artifact.downloadCompression !== "br"
+    ) {
+      throw new Error(
+        `Invalid download compression for build artifact: ${artifact.name}`,
+      );
+    }
+    if (
+      (path.sep !== "\\" && artifact.path.includes("\\")) ||
+      artifact.path.split(/[\\/]/).includes("..")
+    ) {
+      throw new Error(`Invalid build artifact path: ${artifact.path}`);
+    }
+    const absolute = path.resolve(base, artifact.path);
     const relative = path.relative(base, absolute);
     if (
       !relative ||
@@ -46,87 +178,121 @@ const getPreservedTargets = async (basePath: string, files: string[]) => {
       relative === ".." ||
       path.isAbsolute(relative)
     ) {
-      throw new Error(`Build artifact is outside the build directory: ${file}`);
-    }
-    if (relative.split(path.sep)[0]?.toLowerCase() === "manifest.json") {
-      throw new Error("Build output contains reserved manifest.json");
+      throw new Error(
+        `Build artifact is outside the build directory: ${artifact.path}`,
+      );
     }
     await checkDirectory(path.dirname(absolute));
-    const stat = await fs.lstat(absolute);
-    if (stat.isSymbolicLink() || (!stat.isFile() && !stat.isDirectory())) {
-      throw new Error(`Build artifact must be a regular file: ${file}`);
+    const stat = await fs.lstat(absolute, { bigint: true });
+    if (stat.isSymbolicLink() || !stat.isFile()) {
+      throw new Error(
+        `Build artifact must be a regular file: ${artifact.path}`,
+      );
     }
-    if (stat.isDirectory()) continue;
-    targets.push({ path: absolute, name: relative.split(path.sep).join("/") });
-  }
-  return targets;
-};
-
-export async function getBundleZipTargets(
-  basePath: string,
-  files: string[],
-  filePolicy?: FilePolicy,
-): Promise<{ path: string; name: string }[]> {
-  if (filePolicy === "preserve") return getPreservedTargets(basePath, files);
-  if (filePolicy !== undefined) {
-    throw new Error(`Unsupported build file policy: ${String(filePolicy)}`);
-  }
-  const bundleCandidates: Record<string, string> = {};
-  const targets: { path: string; name: string }[] = [];
-
-  const normalizeToPosix = (filePath: string) =>
-    filePath.split(path.sep).join("/");
-
-  const normalizedBase = normalizeToPosix(path.normalize(basePath));
-
-  const getRelative = (file: string): string => {
-    const normalizedFile = normalizeToPosix(path.normalize(file));
-
-    if (normalizedFile.startsWith(`${normalizedBase}/`)) {
-      return normalizedFile.slice(normalizedBase.length + 1);
-    }
-    return normalizedFile;
-  };
-
-  for (const file of files) {
-    const normalizedFile = normalizeToPosix(path.normalize(file));
-
-    if (normalizedFile.endsWith(".map")) {
-      continue;
-    }
-
-    const relative = getRelative(normalizedFile);
-
-    if (relative.endsWith(".bundle") || relative.endsWith(".bundle.hbc")) {
-      let bundleBase = relative;
-      if (relative.endsWith(".bundle.hbc")) {
-        bundleBase = relative.slice(0, -4);
-      }
-      if (bundleCandidates[bundleBase]) {
-        if (
-          !bundleCandidates[bundleBase]?.endsWith(".hbc") &&
-          normalizedFile.endsWith(".hbc")
-        ) {
-          bundleCandidates[bundleBase] = normalizedFile;
-        }
-      } else {
-        bundleCandidates[bundleBase] = normalizedFile;
-      }
-    } else {
-      targets.push({
-        path: file,
-        name: relative.replace(/\\/g, "/"),
-      });
-    }
-  }
-
-  for (const bundleBase in bundleCandidates) {
-    if (!bundleCandidates[bundleBase]) continue;
-    targets.push({
-      path: bundleCandidates[bundleBase],
-      name: bundleBase.replace(/\\/g, "/"),
+    assertBundleArtifactByteSize(stat.size, artifact.name);
+    expandedByteSize += stat.size;
+    assertBundleExpandedByteSize(expandedByteSize);
+    validated.push({
+      artifact,
+      initialStat: stat,
+      path: absolute,
+      relativePath: relative,
     });
   }
 
-  return targets;
+  const openedSources: {
+    source: FileHandle;
+    stat: BigIntStats;
+    target: (typeof validated)[number];
+  }[] = [];
+  let snapshotPath: string | null = null;
+  let operationError: unknown;
+  let operationFailed = false;
+  let result: BundleArtifactSnapshot | undefined;
+  const targets: BuildArtifact[] = [];
+  try {
+    for (const target of validated) {
+      const source = await fs.open(target.path, constants.O_RDONLY | noFollow);
+      try {
+        const openedStat = await source.stat({ bigint: true });
+        const namedStat = await fs.lstat(target.path, { bigint: true });
+        const realSource = await fs.realpath(target.path);
+        if (
+          !openedStat.isFile() ||
+          namedStat.isSymbolicLink() ||
+          !namedStat.isFile() ||
+          !hasSameIdentity(target.initialStat, openedStat) ||
+          !hasSameIdentity(target.initialStat, namedStat) ||
+          realSource !== path.join(realBase, target.relativePath)
+        ) {
+          throw new Error(
+            `Build artifact changed during snapshot: ${target.artifact.path}`,
+          );
+        }
+        openedSources.push({ source, stat: openedStat, target });
+      } catch (error) {
+        await source.close().catch(() => {});
+        throw error;
+      }
+    }
+
+    snapshotPath = await fs.mkdtemp(path.join(base, ".hot-updater-snapshot-"));
+    for (const [index, { source, stat, target }] of openedSources.entries()) {
+      const snapshotFile = path.join(
+        snapshotPath,
+        `artifact-${String(index).padStart(6, "0")}`,
+      );
+      const destination = await fs.open(
+        snapshotFile,
+        constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL,
+        0o400,
+      );
+      try {
+        await copyFileHandle(source, destination);
+        await destination.sync();
+      } finally {
+        await destination.close();
+      }
+      const copiedStat = await source.stat({ bigint: true });
+      if (
+        !hasSameIdentity(stat, copiedStat) ||
+        copiedStat.mtimeNs !== stat.mtimeNs
+      ) {
+        throw new Error(
+          `Build artifact changed during snapshot: ${target.artifact.path}`,
+        );
+      }
+      targets.push({ ...target.artifact, path: snapshotFile });
+    }
+    result = {
+      artifacts: targets,
+      expandedByteSize: Number(expandedByteSize),
+      path: snapshotPath,
+    };
+  } catch (error) {
+    operationFailed = true;
+    operationError = error;
+    if (snapshotPath) {
+      await fs
+        .rm(snapshotPath, { recursive: true, force: true })
+        .catch(() => {});
+    }
+  }
+
+  const closeResults = await Promise.allSettled(
+    openedSources.map(({ source }) => source.close()),
+  );
+  if (operationFailed) throw operationError;
+
+  const closeFailure = closeResults.find(
+    (closeResult): closeResult is PromiseRejectedResult =>
+      closeResult.status === "rejected",
+  );
+  if (closeFailure) {
+    if (snapshotPath) {
+      await fs.rm(snapshotPath, { recursive: true, force: true });
+    }
+    throw closeFailure.reason;
+  }
+  return result!;
 }

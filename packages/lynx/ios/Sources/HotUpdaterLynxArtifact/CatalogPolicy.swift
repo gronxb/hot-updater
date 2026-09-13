@@ -7,6 +7,10 @@ import Foundation
 public struct LynxPolicyError: Error, Equatable, LocalizedError {
     public let code: String
     public let message: String
+    public init(code: String, message: String) {
+        self.code = code
+        self.message = message
+    }
     public var errorDescription: String? { message }
 }
 
@@ -440,6 +444,13 @@ public enum LynxCatalogPolicy {
     private static func validCohort(_ value: String) -> Bool {
         if let numeric = Int(value), matches(value, "^[0-9]+$") { return (1...1000).contains(numeric) }
         return matches(value, "^[a-z0-9-]{1,64}$") && !matches(value, "^[0-9]+$")
+    }
+    public static func normalizedCohort(_ value: String) throws -> String {
+        let normalized = normalizeCohort(value)
+        guard validCohort(normalized) else {
+            throw fail("INVALID_COHORT", "Cohort must be 1...1000 or a lowercase alphanumeric/hyphen identifier")
+        }
+        return normalized
     }
     private static func eligible(_ release: LynxPolicyDescriptor, _ cohort: String) -> Bool {
         let cohort = normalizeCohort(cohort)

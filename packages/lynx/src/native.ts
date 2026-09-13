@@ -1,4 +1,4 @@
-import type { HotUpdaterLynxNative, NativeReply } from "./types";
+import type { HotUpdaterLynxNative, NativeReply, NativeState } from "./types";
 
 declare const NativeModules:
   | { HotUpdaterLynx?: HotUpdaterLynxNative }
@@ -13,6 +13,34 @@ export class LynxUpdaterError extends Error {
     super(message);
     this.name = "LynxUpdaterError";
   }
+}
+
+function asStringList(value: unknown): string[] {
+  if (Array.isArray(value)) {
+    return value.filter((item): item is string => typeof item === "string");
+  }
+  if (
+    value !== null &&
+    typeof value === "object" &&
+    typeof (value as { length?: unknown }).length === "number"
+  ) {
+    const length = (value as { length: number }).length;
+    const items: string[] = [];
+    for (let index = 0; index < length; index += 1) {
+      const item = (value as Record<number, unknown>)[index];
+      if (typeof item === "string") items.push(item);
+    }
+    return items;
+  }
+  return [];
+}
+
+export function normalizeNativeState(state: NativeState): NativeState {
+  return {
+    ...state,
+    crashedBundleIds: asStringList(state.crashedBundleIds),
+    unconfirmedReleaseIds: asStringList(state.unconfirmedReleaseIds),
+  };
 }
 
 export function callNative<T>(

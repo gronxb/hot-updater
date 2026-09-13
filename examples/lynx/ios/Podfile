@@ -20,6 +20,7 @@ target 'SparklingGo' do
   use_lynx_library!
   lynx_package = Pod::Executable.execute_command('node', ['-p', 'require.resolve("@hot-updater/lynx/package.json", {paths: [process.argv[1]]})', __dir__]).strip
   pod 'HotUpdaterLynxArtifact', :path => File.join(File.dirname(lynx_package), 'ios')
+  pod 'HotUpdaterLynxSparkling', :path => File.join(File.dirname(lynx_package), 'ios')
   pod 'Sparkling', :path => '.upstream/sparkling/packages/sparkling-sdk/ios/Sparkling'
   pod 'SparklingMacro', :path => '.upstream/sparkling/packages/sparkling-sdk/ios/SparklingMacro'
   pod 'SparklingMethod', :path => '.upstream/sparkling/packages/sparkling-method/ios', :subspecs => ['Lynx', 'DIProvider']
@@ -32,6 +33,24 @@ target 'SparklingGo' do
   pod 'SDWebImage', '5.15.5'
   pod 'SDWebImageWebPCoder', '0.11.0'
 
+end
+
+target 'SparklingMatrixHarness' do
+  use_lynx_library!
+  lynx_package = Pod::Executable.execute_command('node', ['-p', 'require.resolve("@hot-updater/lynx/package.json", {paths: [process.argv[1]]})', __dir__]).strip
+  pod 'HotUpdaterLynxArtifact', :path => File.join(File.dirname(lynx_package), 'ios')
+  pod 'HotUpdaterLynxSparkling', :path => File.join(File.dirname(lynx_package), 'ios')
+  pod 'Sparkling', :path => '.upstream/sparkling/packages/sparkling-sdk/ios/Sparkling'
+  pod 'SparklingMacro', :path => '.upstream/sparkling/packages/sparkling-sdk/ios/SparklingMacro'
+  pod 'SparklingMethod', :path => '.upstream/sparkling/packages/sparkling-method/ios', :subspecs => ['Lynx', 'DIProvider']
+  pod 'Sparkling-Router', :path => '.upstream/sparkling/packages/methods/sparkling-navigation/ios'
+  pod 'Lynx', '3.9.0', :subspecs => ['Framework', 'ReleaseResource']
+  pod 'PrimJS', '3.8.0-alpha.6', :subspecs => ['quickjs', 'napi']
+  pod 'LynxService', '3.9.0', :subspecs => ['Image', 'Log', 'Http']
+  pod 'SnapKit', '5.7.1'
+  pod 'Mantle', '2.2.0'
+  pod 'SDWebImage', '5.15.5'
+  pod 'SDWebImageWebPCoder', '0.11.0'
 end
 
 post_install do |installer|

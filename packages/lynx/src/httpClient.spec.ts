@@ -1,4 +1,7 @@
-import { MAX_COMPILED_CATALOG_BYTES } from "@hot-updater/core";
+import {
+  MAX_COMPILED_CATALOG_BYTES,
+  MAX_UPDATE_ARTIFACT_RESPONSE_BYTES,
+} from "@hot-updater/core";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { createHttpClient } from "./httpClient";
@@ -23,6 +26,26 @@ const catalog = {
   fallbackPolicy: "BUILTIN_IF_ACTIVE_INELIGIBLE",
   releases: [],
 };
+const baseBundleId = "00000000-0000-7000-8000-000000000001";
+const archiveSignature = `sig:${Buffer.from("archive-signature").toString("base64")}`;
+const manifestSignature = `sig:${Buffer.from("manifest-signature").toString("base64")}`;
+const changedAsset = {
+  fileHash: "b".repeat(64),
+  file: { url: "/storage/native-entry.br", compression: "br" },
+  patch: {
+    algorithm: "bsdiff",
+    baseBundleId,
+    baseFileHash: "a".repeat(64),
+    patchFileHash: "c".repeat(64),
+    patchUrl: "https://objects.test/native-entry.patch?Signature=abc%2Fdef%3D",
+  },
+};
+const manifestArtifact = {
+  manifestUrl: "/storage/manifest.json",
+  manifestFileHash: manifestSignature,
+  changedAssets: { "native/entry.bin": changedAsset },
+};
+const maxResponseBytes = MAX_COMPILED_CATALOG_BYTES * 2 + 4096;
 
 function respond(value: unknown) {
   const fetch = vi.fn(
@@ -30,6 +53,34 @@ function respond(value: unknown) {
   );
   vi.stubGlobal("fetch", fetch);
   return fetch;
+}
+
+function artifactResponseBody(byteLength: number): string {
+  const artifact = {
+    fileUrl: "/storage/archive.zip",
+    fileHash: archiveSignature,
+    manifestUrl: "/storage/manifest.json",
+    manifestFileHash: manifestSignature,
+    changedAssets: {
+      "native/entry.bin": {
+        fileHash: "b".repeat(64),
+        file: {
+          url: "https://objects.test/native-entry?padding=",
+          compression: null,
+        },
+        patch: null,
+      },
+    },
+  };
+  const paddingLength = byteLength - JSON.stringify(artifact).length;
+  if (paddingLength < 0)
+    throw new Error("Artifact response budget is too low.");
+  artifact.changedAssets["native/entry.bin"].file.url += "x".repeat(
+    paddingLength,
+  );
+  const body = JSON.stringify(artifact);
+  if (body.length !== byteLength) throw new Error("Invalid artifact fixture.");
+  return body;
 }
 
 describe("Lynx delivery HTTP contract", () => {
@@ -122,9 +173,8 @@ describe("Lynx delivery HTTP contract", () => {
     async (fileUrl, expected) => {
       respond({
         fileUrl,
-        fileHash: "sig:archive-signature",
-        manifestFileHash: "sig:manifest-signature",
-        changedAssets: { ignored: {} },
+        fileHash: archiveSignature,
+        manifestFileHash: manifestSignature,
       });
       const result = await createHttpClient({
         baseURL: "https://updates.test/api",
@@ -132,17 +182,61 @@ describe("Lynx delivery HTTP contract", () => {
       expect(result).toEqual({
         bundleId: "target",
         fileUrl: expected,
-        fileHash: "sig:archive-signature",
-        manifestFileHash: "sig:manifest-signature",
+        fileHash: archiveSignature,
+        manifestUrl: null,
+        manifestFileHash: manifestSignature,
+        changedAssets: null,
       });
     },
   );
+
+  it("accepts artifact metadata at the shared response limit with archive fallback", async () => {
+    const body = artifactResponseBody(MAX_UPDATE_ARTIFACT_RESPONSE_BYTES);
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response(body, { status: 200 })),
+    );
+
+    const result = await createHttpClient({
+      baseURL: "https://updates.test",
+    }).resolveArtifact("target", baseBundleId);
+
+    expect(result.fileUrl).toBe("https://updates.test/storage/archive.zip");
+    expect(result.manifestUrl).toBe(
+      "https://updates.test/storage/manifest.json",
+    );
+    expect(result.changedAssets?.["native/entry.bin"]?.file?.url).toMatch(
+      /^https:\/\/objects\.test\/native-entry\?padding=x+$/,
+    );
+  });
+
+  it("rejects artifact metadata above the shared response limit", async () => {
+    const body = artifactResponseBody(MAX_UPDATE_ARTIFACT_RESPONSE_BYTES + 1);
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response(body, { status: 200 })),
+    );
+
+    await expect(
+      createHttpClient({ baseURL: "https://updates.test" }).resolveArtifact(
+        "target",
+        baseBundleId,
+      ),
+    ).rejects.toMatchObject({
+      code: "INVALID_RESPONSE",
+      message: "Update response exceeds the size limit.",
+    });
+  });
 
   it.each([
     "file:///tmp/archive",
     "//untrusted.test/archive",
     "/other/archive",
     "javascript:alert(1)",
+    "https://user:password@objects.test/archive",
+    "https://objects.test\\@other.test/archive",
+    "https://objects.test:65536/archive",
+    "https://objects.test/archive\nother",
   ])("rejects an unsupported artifact URL %s", async (fileUrl) => {
     respond({ fileUrl, fileHash: "a".repeat(64) });
     await expect(
@@ -165,17 +259,238 @@ describe("Lynx delivery HTTP contract", () => {
     ).toMatchObject({ manifestFileHash: null });
   });
 
-  it("rejects a diff-only response because initial Lynx installation requires a full archive", async () => {
+  it.each([false, true])(
+    "preserves manifest files and binary patches with archive fallback=%s",
+    async (withArchive) => {
+      respond({
+        ...manifestArtifact,
+        ...(withArchive
+          ? { fileUrl: "/storage/archive.zip", fileHash: archiveSignature }
+          : {}),
+      });
+      // Background scripting does not require a browser URL implementation.
+      vi.stubGlobal("URL", undefined);
+      await expect(
+        createHttpClient({
+          baseURL: "https://updates.test/api",
+        }).resolveArtifact("target", baseBundleId),
+      ).resolves.toEqual({
+        bundleId: "target",
+        fileUrl: withArchive
+          ? "https://updates.test/api/storage/archive.zip"
+          : null,
+        fileHash: withArchive ? archiveSignature : null,
+        manifestUrl: "https://updates.test/api/storage/manifest.json",
+        manifestFileHash: manifestSignature,
+        changedAssets: {
+          "native/entry.bin": {
+            ...changedAsset,
+            file: {
+              url: "https://updates.test/api/storage/native-entry.br",
+              compression: "br",
+            },
+          },
+        },
+      });
+    },
+  );
+
+  it("accepts the exact server manifest-only DTO with file-only and patch-only assets", async () => {
     respond({
       fileUrl: null,
       fileHash: null,
-      manifestUrl: "/storage/manifest",
-      changedAssets: {},
+      manifestUrl: "/storage/manifest.json",
+      manifestFileHash: manifestSignature,
+      changedAssets: {
+        "native/file.bin": {
+          fileHash: "d".repeat(64),
+          file: { url: "/storage/file.bin", compression: null },
+          patch: null,
+        },
+        "native/patch.bin": {
+          fileHash: "e".repeat(64),
+          file: null,
+          patch: changedAsset.patch,
+        },
+      },
+    });
+
+    await expect(
+      createHttpClient({ baseURL: "https://updates.test" }).resolveArtifact(
+        "target",
+        baseBundleId,
+      ),
+    ).resolves.toEqual({
+      bundleId: "target",
+      fileUrl: null,
+      fileHash: null,
+      manifestUrl: "https://updates.test/storage/manifest.json",
+      manifestFileHash: manifestSignature,
+      changedAssets: {
+        "native/file.bin": {
+          fileHash: "d".repeat(64),
+          file: {
+            url: "https://updates.test/storage/file.bin",
+            compression: null,
+          },
+          patch: null,
+        },
+        "native/patch.bin": {
+          fileHash: "e".repeat(64),
+          file: null,
+          patch: changedAsset.patch,
+        },
+      },
+    });
+  });
+
+  it.each([
+    {},
+    { "native/entry.bin": { ...changedAsset, file: null } },
+    {
+      "assets/empty.txt": {
+        fileHash: "d".repeat(64),
+        file: { url: "/storage/empty.txt", compression: null },
+        patch: null,
+      },
+    },
+  ])(
+    "accepts manifest updates with reusable or independently downloadable assets: %j",
+    async (changedAssets) => {
+      respond({ ...manifestArtifact, changedAssets });
+      const result = await createHttpClient({
+        baseURL: "https://updates.test",
+      }).resolveArtifact("target", baseBundleId);
+      expect(Object.keys(result.changedAssets!)).toEqual(
+        Object.keys(changedAssets),
+      );
+      expect(result.fileUrl).toBeNull();
+    },
+  );
+
+  it.each([
+    ["missing archive hash", { fileUrl: "/storage/archive.zip" }],
+    ["missing archive URL", { fileHash: "a".repeat(64) }],
+    [
+      "malformed archive hash",
+      { fileUrl: "/storage/archive.zip", fileHash: "not-a-hash" },
+    ],
+    ["empty signature", { fileUrl: "/storage/archive.zip", fileHash: "sig:" }],
+    [
+      "invalid signature encoding",
+      { fileUrl: "/storage/archive.zip", fileHash: "sig:not-base64" },
+    ],
+    ["missing manifest hash", { ...manifestArtifact, manifestFileHash: null }],
+    ["missing manifest URL", { ...manifestArtifact, manifestUrl: null }],
+    ["missing changed map", { ...manifestArtifact, changedAssets: null }],
+    ["array changed map", { ...manifestArtifact, changedAssets: [] }],
+    ["no artifact", {}],
+  ])("rejects %s", async (_name, artifact) => {
+    respond(artifact);
+    await expect(
+      createHttpClient({ baseURL: "https://updates.test" }).resolveArtifact(
+        "target",
+        baseBundleId,
+      ),
+    ).rejects.toMatchObject({ code: "INVALID_RESPONSE" });
+  });
+
+  it.each([
+    [
+      "changed hash mismatch format",
+      { ...changedAsset, fileHash: "sha256:" + "b".repeat(64) },
+    ],
+    ["missing file and patch", { fileHash: "b".repeat(64) }],
+    [
+      "missing explicit file field",
+      { fileHash: "b".repeat(64), patch: changedAsset.patch },
+    ],
+    [
+      "missing explicit patch field",
+      { fileHash: "b".repeat(64), file: changedAsset.file },
+    ],
+    [
+      "unsupported file compression",
+      { ...changedAsset, file: { ...changedAsset.file, compression: "gzip" } },
+    ],
+    [
+      "missing explicit file compression",
+      { ...changedAsset, file: { url: changedAsset.file.url } },
+    ],
+    [
+      "local file URL",
+      {
+        ...changedAsset,
+        file: { url: "file:///etc/passwd", compression: null },
+      },
+    ],
+    [
+      "unsupported patch algorithm",
+      {
+        ...changedAsset,
+        patch: { ...changedAsset.patch, algorithm: "hpatch" },
+      },
+    ],
+    [
+      "invalid base identity",
+      {
+        ...changedAsset,
+        patch: { ...changedAsset.patch, baseBundleId: "other" },
+      },
+    ],
+    [
+      "missing base hash",
+      { ...changedAsset, patch: { ...changedAsset.patch, baseFileHash: null } },
+    ],
+    [
+      "signed patch hash",
+      {
+        ...changedAsset,
+        patch: { ...changedAsset.patch, patchFileHash: archiveSignature },
+      },
+    ],
+    [
+      "unsafe patch URL",
+      {
+        ...changedAsset,
+        patch: { ...changedAsset.patch, patchUrl: "//objects.test/patch" },
+      },
+    ],
+  ])(
+    "rejects %s before trusting the archive fallback",
+    async (_name, asset) => {
+      respond({
+        ...manifestArtifact,
+        fileUrl: "/storage/archive.zip",
+        fileHash: archiveSignature,
+        changedAssets: { "native/entry.bin": asset },
+      });
+      await expect(
+        createHttpClient({ baseURL: "https://updates.test" }).resolveArtifact(
+          "target",
+          baseBundleId,
+        ),
+      ).rejects.toMatchObject({ code: "INVALID_RESPONSE" });
+    },
+  );
+
+  it.each([
+    "../entry.bin",
+    "/entry.bin",
+    "native//entry.bin",
+    "native\\entry.bin",
+    "native/./entry.bin",
+    "native/entry\u0000.bin",
+    "manifest.json",
+  ])("rejects noncanonical changed asset path %j", async (assetPath) => {
+    respond({
+      ...manifestArtifact,
+      changedAssets: { [assetPath]: changedAsset },
     });
     await expect(
       createHttpClient({ baseURL: "https://updates.test" }).resolveArtifact(
         "target",
-        "running",
+        baseBundleId,
       ),
     ).rejects.toMatchObject({ code: "INVALID_RESPONSE" });
   });
@@ -190,10 +505,7 @@ describe("Lynx delivery HTTP contract", () => {
   it("bounds malformed catalog responses before parsing or selection", async () => {
     vi.stubGlobal(
       "fetch",
-      vi.fn(
-        async () =>
-          new Response("x".repeat(MAX_COMPILED_CATALOG_BYTES * 2 + 4097)),
-      ),
+      vi.fn(async () => new Response("x".repeat(maxResponseBytes + 1))),
     );
     await expect(
       createHttpClient({ baseURL: "https://updates.test" }).fetchCatalog(state),
@@ -201,6 +513,139 @@ describe("Lynx delivery HTTP contract", () => {
       code: "INVALID_RESPONSE",
       message: "Update response exceeds the size limit.",
     });
+  });
+
+  it("rejects an oversized Content-Length before reading and cancels the body", async () => {
+    const cancel = vi.fn(async () => undefined);
+    const getReader = vi.fn();
+    const text = vi.fn();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        Promise.resolve({
+          status: 200,
+          headers: {
+            get: () => String(maxResponseBytes + 1),
+          },
+          body: { cancel, getReader },
+          text,
+        } as unknown as Response),
+      ),
+    );
+
+    await expect(
+      createHttpClient({ baseURL: "https://updates.test" }).fetchCatalog(state),
+    ).rejects.toMatchObject({
+      code: "INVALID_RESPONSE",
+      message: "Update response exceeds the size limit.",
+    });
+    expect(cancel).toHaveBeenCalledOnce();
+    expect(getReader).not.toHaveBeenCalled();
+    expect(text).not.toHaveBeenCalled();
+  });
+
+  it("cancels a chunked body that exceeds its small declared Content-Length", async () => {
+    const chunks = [new Uint8Array(maxResponseBytes), new Uint8Array(1)];
+    const read = vi.fn(async () => {
+      const value = chunks.shift();
+      return value === undefined
+        ? ({ done: true, value: undefined } as const)
+        : ({ done: false, value } as const);
+    });
+    const cancel = vi.fn(async () => undefined);
+    const releaseLock = vi.fn();
+    const text = vi.fn();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        Promise.resolve({
+          status: 200,
+          headers: { get: () => "1" },
+          body: {
+            getReader: () => ({ read, cancel, releaseLock }),
+          },
+          text,
+        } as unknown as Response),
+      ),
+    );
+
+    await expect(
+      createHttpClient({ baseURL: "https://updates.test" }).fetchCatalog(state),
+    ).rejects.toMatchObject({
+      code: "INVALID_RESPONSE",
+      message: "Update response exceeds the size limit.",
+    });
+    expect(cancel).toHaveBeenCalledOnce();
+    expect(releaseLock).toHaveBeenCalledOnce();
+    expect(text).not.toHaveBeenCalled();
+  });
+
+  it("fails closed without streaming when Content-Length is absent", async () => {
+    const text = vi.fn(async () => JSON.stringify(catalog));
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        Promise.resolve({
+          status: 200,
+          headers: { get: () => null },
+          body: null,
+          text,
+        } as unknown as Response),
+      ),
+    );
+
+    await expect(
+      createHttpClient({ baseURL: "https://updates.test" }).fetchCatalog(state),
+    ).rejects.toMatchObject({
+      code: "INVALID_RESPONSE",
+      message:
+        "A bounded Content-Length header is required without response streaming.",
+    });
+    expect(text).not.toHaveBeenCalled();
+  });
+
+  it("supports a bounded Content-Length fallback without response streams", async () => {
+    const body = JSON.stringify(catalog);
+    const text = vi.fn(async () => body);
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        Promise.resolve({
+          status: 200,
+          headers: { get: () => String(body.length) },
+          body: null,
+          text,
+        } as unknown as Response),
+      ),
+    );
+
+    await expect(
+      createHttpClient({ baseURL: "https://updates.test" }).fetchCatalog(state),
+    ).resolves.toEqual(catalog);
+    expect(text).toHaveBeenCalledOnce();
+  });
+
+  it("checks actual UTF-8 bytes after the bounded non-streaming fallback", async () => {
+    const text = vi.fn(async () => "가".repeat(maxResponseBytes));
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        Promise.resolve({
+          status: 200,
+          headers: { get: () => "1" },
+          body: null,
+          text,
+        } as unknown as Response),
+      ),
+    );
+
+    await expect(
+      createHttpClient({ baseURL: "https://updates.test" }).fetchCatalog(state),
+    ).rejects.toMatchObject({
+      code: "INVALID_RESPONSE",
+      message: "Update response exceeds the size limit.",
+    });
+    expect(text).toHaveBeenCalledOnce();
   });
 
   it("aborts a stalled HTTP request and returns a typed timeout", async () => {

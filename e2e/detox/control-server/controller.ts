@@ -19,8 +19,10 @@ import {
 } from "../../../packages/core/src/releaseCatalogScope.ts";
 import { getRolledOutNumericCohorts } from "../../../packages/core/src/rollout.ts";
 import type { Bundle } from "../../../packages/core/src/types.ts";
+import { createBundleDiff } from "../../../packages/server/dist/db/index.mjs";
 import { createInsightsProvider } from "../../../packages/server/dist/index.mjs";
 import {
+  assertStorageOperations,
   type InsightsModel,
   type BundleRepository,
   createDatabaseClient,
@@ -72,6 +74,7 @@ import {
   synthesizeLynxLaunchReport,
   synthesizeLynxMetadata,
 } from "./lynx-store.ts";
+import { hasNativeInstallEvent } from "./native-install-log.ts";
 import { inferPatchAssetPathFromStorageUri } from "./patch-storage-path.ts";
 import { resetPendingE2eAction } from "./pending-action.ts";
 import { resetProviderAfterReady } from "./provider-reset-retry.ts";
@@ -1560,19 +1563,6 @@ async function resolveAutoPatchBundleDiff(
     }
   }
 
-  if (isLynxE2eApp()) {
-    logDetoxFixture("lynx deploy has no bsdiff patch metadata", {
-      baseBundleId,
-      bundleId,
-      patchAssetPath: lynxBundleFileName(),
-      platform: fixtureSession.platform,
-    });
-    return {
-      baseBundleId,
-      patchAssetPath: lynxBundleFileName(),
-    };
-  }
-
   throw createEndpointError(
     `Failed to resolve automatic bsdiff patch metadata for bundle ${bundleId}`,
     {
@@ -1584,6 +1574,53 @@ async function resolveAutoPatchBundleDiff(
       retryDelayMs: AUTO_PATCH_METADATA_WAIT_DELAY_MS,
     },
   );
+}
+
+async function createFixtureBundleDiff(input: {
+  baseBundleId: string;
+  bundleId: string;
+}) {
+  const { loadConfig } =
+    (await import("../../../packages/cli-tools/dist/index.mjs")) as {
+      loadConfig: (options: null) => Promise<{
+        database: BundleRepository;
+        storage: import("../../../plugins/plugin-core/dist/index.mjs").StoragePlugin;
+      }>;
+    };
+  const originalCwd = process.cwd();
+
+  try {
+    process.chdir(fixtureSession.exampleDir);
+    return await withHotUpdaterControlEnv(async () => {
+      const config = await loadConfig(null);
+      try {
+        assertStorageOperations(config.storage, ["delete", "get", "put"]);
+        await createBundleDiff(input, {
+          databasePlugin: config.database,
+          storagePlugin: config.storage,
+        });
+        const diff = await resolveAutoPatchBundleDiff(
+          input.baseBundleId,
+          input.bundleId,
+        );
+        const record = fixtureSession.deployedBundles.find(
+          ({ bundleId }) => bundleId === input.bundleId,
+        );
+        if (record) {
+          record.diffBaseBundleId = diff.baseBundleId;
+          record.diffPatchAssetPath = diff.patchAssetPath;
+          record.patchBaseBundleIds = getBundlePatchBaseBundleIds(
+            await fetchProviderBundleById(input.bundleId),
+          );
+        }
+        return diff;
+      } finally {
+        await config.database.dispose?.();
+      }
+    });
+  } finally {
+    process.chdir(originalCwd);
+  }
 }
 
 async function clearProviderReleases() {
@@ -2265,17 +2302,12 @@ function seedDeviceCrashHistory(bundleIds: readonly string[]) {
 }
 
 function seedLegacyDeviceMetadata() {
-  terminateFixtureApp();
   if (isLynxE2eApp()) {
-    const snapshot = readLynxSynthesizedSnapshot("metadata.json");
-    const state = getMetadataState(snapshot.value);
-    return {
-      schema: "metadata-v1",
-      stableBundleId: state.stableBundleId,
-      stagingBundleId: state.stagingBundleId,
-      verificationPending: state.verificationPending,
-    };
+    throw createEndpointError(
+      "metadata-v1-migration is unsupported for Lynx: legacy metadata belongs to React Native",
+    );
   }
+  terminateFixtureApp();
   const metadata = readDeviceStoreJson("metadata.json");
   metadata.schema = "metadata-v1";
   if (fixtureSession.platform === "ios") {
@@ -2701,7 +2733,11 @@ function isExpectedMetadataStateReached(
     return true;
   }
 
-  return verificationPending && metadataState.verificationPending === false;
+  return (
+    !isLynxE2eApp() &&
+    verificationPending &&
+    metadataState.verificationPending === false
+  );
 }
 
 function isExpectedCrashRecoveryReached(
@@ -3978,9 +4014,8 @@ export function handleAssertBundleArtifactSelection(input: {
     });
   }
 
-  const matches = isLynxE2eApp()
-    ? observed.fileUrlPresent
-    : input.selection === "manifest-diff"
+  const matches =
+    input.selection === "manifest-diff"
       ? observed.changedAssetsPresent &&
         observed.changedAssetCount > 0 &&
         observed.manifestFileHashPresent &&
@@ -6306,6 +6341,7 @@ function readBsdiffPatchLogs() {
       "-v",
       "time",
       "BundleStorage:D",
+      "HotUpdaterLynx:D",
       "*:S",
     ],
     { allowFailure: true, maxBuffer: 8 * 1024 * 1024 },
@@ -6317,6 +6353,9 @@ function readBsdiffPatchLogs() {
 
 function readFirstOtaArchiveInstallLogs() {
   if (fixtureSession.platform === "ios") {
+    const event = isLynxE2eApp()
+      ? "HotUpdaterArchiveInstalled"
+      : "Skipping manifest-driven install";
     return captureCommand(
       "xcrun",
       [
@@ -6330,12 +6369,15 @@ function readFirstOtaArchiveInstallLogs() {
         "--last",
         "10m",
         "--predicate",
-        'eventMessage CONTAINS "Skipping manifest-driven install"',
+        `eventMessage CONTAINS "${event}"`,
       ],
       { allowFailure: true },
     );
   }
 
+  const event = isLynxE2eApp()
+    ? "HotUpdaterArchiveInstalled"
+    : "Skipping manifest-driven install";
   return captureCommand(
     "adb",
     [
@@ -6346,12 +6388,13 @@ function readFirstOtaArchiveInstallLogs() {
       "-v",
       "time",
       "BundleStorage:D",
+      "HotUpdaterLynx:D",
       "*:S",
     ],
     { allowFailure: true, maxBuffer: 8 * 1024 * 1024 },
   )
     .split("\n")
-    .filter((line) => line.includes("Skipping manifest-driven install"))
+    .filter((line) => line.includes(event))
     .join("\n");
 }
 
@@ -6393,6 +6436,7 @@ function readHotUpdaterNativeLogs() {
       "BundleStorage:D",
       "SignatureVerifier:D",
       "HotUpdaterRecovery:D",
+      "HotUpdaterLynx:D",
       "DecompressService:D",
       "ReactNativeJS:E",
       "*:S",
@@ -6408,11 +6452,13 @@ function includesAllFragments(logs: string, fragments: string[]) {
 function readBsdiffPatchStoreEvidence(args: {
   assetPath: string;
   baseBundleId: string;
+  bundleId?: string;
 }) {
   const record = fixtureSession.deployedBundles.find(
     (entry) =>
       entry.diffBaseBundleId === args.baseBundleId &&
-      entry.diffPatchAssetPath === args.assetPath,
+      entry.diffPatchAssetPath === args.assetPath &&
+      (args.bundleId === undefined || entry.bundleId === args.bundleId),
   );
   if (!record) {
     return {
@@ -6428,7 +6474,9 @@ function readBsdiffPatchStoreEvidence(args: {
   const expectedHash = getManifestAssetFileHash(manifest, args.assetPath);
   const assetFile = readBundleAssetFileHash(record.bundleId, args.assetPath);
   const ok =
-    metadataState.stableBundleId === null &&
+    (isLynxE2eApp()
+      ? metadataState.stableBundleId === record.bundleId
+      : metadataState.stableBundleId === null) &&
     metadataState.stagingBundleId === record.bundleId &&
     metadataState.stagingSelection?.bundleId === record.bundleId &&
     metadataState.verificationPending === false &&
@@ -6510,56 +6558,82 @@ async function readManifestDiffState(args: {
   const archiveLogs = readFirstOtaArchiveInstallLogs();
   const nativeLogs = readHotUpdaterNativeLogs();
   const bsdiffLogs = readBsdiffPatchLogs();
-  const archiveFragments = [
-    "Skipping manifest-driven install",
-    `for ${args.bundleId}`,
-    "no active OTA manifest is available",
-    "Using archive",
-  ];
+  const archiveFragments = isLynxE2eApp()
+    ? ["HotUpdaterArchiveInstalled", `bundleId=${args.bundleId}`]
+    : [
+        "Skipping manifest-driven install",
+        `for ${args.bundleId}`,
+        "no active OTA manifest is available",
+        "Using archive",
+      ];
   const bsdiffFragments = [
     "HotUpdaterBsdiffPatchApplied",
     `asset=${assetPath}`,
     `baseBundleId=${args.previousBundleId}`,
   ];
-  const manifestFallbackFragments = [
-    `Manifest-driven install failed for ${args.bundleId}`,
-    "Falling back to archive",
-  ];
+  const manifestFallbackFragments = isLynxE2eApp()
+    ? [
+        "HotUpdaterArchiveFallbackApplied",
+        `bundleId=${args.bundleId}`,
+        `baseBundleId=${args.previousBundleId}`,
+      ]
+    : [
+        `Manifest-driven install failed for ${args.bundleId}`,
+        "Falling back to archive",
+      ];
   const record =
     fixtureSession.deployedBundles.find(
       (entry) => entry.bundleId === args.bundleId,
     ) ?? null;
-  const ok = isLynxE2eApp()
-    ? (metadataState.stagingBundleId === args.bundleId ||
-        metadataState.stableBundleId === args.bundleId) &&
-      metadataState.verificationPending === false &&
-      hasManifestBackedBundleEvidence({
-        assetFile,
-        bundleFile,
-        expectedHash,
-        manifest,
+  const archiveInstalled = isLynxE2eApp()
+    ? hasNativeInstallEvent(archiveLogs, "HotUpdaterArchiveInstalled", {
+        bundleId: args.bundleId,
       })
-    : metadataState.stableBundleId === null &&
-      metadataState.stagingBundleId === args.bundleId &&
-      metadataState.stagingSelection?.bundleId === args.bundleId &&
-      metadataState.verificationPending === false &&
-      hasManifestBackedBundleEvidence({
-        assetFile,
-        bundleFile,
-        expectedHash,
-        manifest,
-      }) &&
-      !includesAllFragments(archiveLogs, archiveFragments) &&
-      !includesAllFragments(nativeLogs, manifestFallbackFragments) &&
-      (args.allowBsdiff === true ||
-        !includesAllFragments(bsdiffLogs, bsdiffFragments));
+    : includesAllFragments(archiveLogs, archiveFragments);
+  const archiveFallbackApplied = isLynxE2eApp()
+    ? hasNativeInstallEvent(nativeLogs, "HotUpdaterArchiveFallbackApplied", {
+        baseBundleId: args.previousBundleId,
+        bundleId: args.bundleId,
+      })
+    : includesAllFragments(nativeLogs, manifestFallbackFragments);
+  const bsdiffApplied = isLynxE2eApp()
+    ? hasNativeInstallEvent(bsdiffLogs, "HotUpdaterBsdiffPatchApplied", {
+        asset: assetPath,
+        baseBundleId: args.previousBundleId,
+        bundleId: args.bundleId,
+      })
+    : includesAllFragments(bsdiffLogs, bsdiffFragments);
+  const ok =
+    (isLynxE2eApp()
+      ? metadataState.stableBundleId === args.bundleId
+      : metadataState.stableBundleId === null) &&
+    metadataState.stagingBundleId === args.bundleId &&
+    metadataState.stagingSelection?.bundleId === args.bundleId &&
+    metadataState.verificationPending === false &&
+    hasManifestBackedBundleEvidence({
+      assetFile,
+      bundleFile,
+      expectedHash,
+      manifest,
+    }) &&
+    !archiveInstalled &&
+    !archiveFallbackApplied &&
+    (!isLynxE2eApp() ||
+      hasNativeInstallEvent(nativeLogs, "HotUpdaterManifestDiffApplied", {
+        baseBundleId: args.previousBundleId,
+        bundleId: args.bundleId,
+      })) &&
+    (args.allowBsdiff === true || !bsdiffApplied);
 
   return {
+    archiveFallbackApplied,
     archiveFragments,
+    archiveInstalled,
     archiveLogs,
     assetFile,
     assetPath,
     bsdiffFragments,
+    bsdiffApplied,
     bsdiffLogs,
     bundleFile,
     diagnostics,
@@ -6628,15 +6702,8 @@ async function assertMultipleAssetsReplaced(args: {
 async function assertBsdiffPatchApplied(args: {
   assetPath: string;
   baseBundleId: string;
+  bundleId?: string;
 }) {
-  if (isLynxE2eApp()) {
-    logDetoxFixture("lynx zip install used instead of bsdiff", {
-      assetPath: args.assetPath,
-      baseBundleId: args.baseBundleId,
-      platform: fixtureSession.platform,
-    });
-    return {};
-  }
   const expectedFragments = [
     "HotUpdaterBsdiffPatchApplied",
     `asset=${args.assetPath}`,
@@ -6649,7 +6716,13 @@ async function assertBsdiffPatchApplied(args: {
     if (
       evidence.ok &&
       "record" in evidence &&
-      includesAllFragments(logs, expectedFragments)
+      (isLynxE2eApp()
+        ? hasNativeInstallEvent(logs, "HotUpdaterBsdiffPatchApplied", {
+            asset: args.assetPath,
+            baseBundleId: args.baseBundleId,
+            bundleId: evidence.record.bundleId,
+          })
+        : includesAllFragments(logs, expectedFragments))
     ) {
       logDetoxFixture("bsdiff patch applied", {
         assetPath: args.assetPath,
@@ -6703,25 +6776,16 @@ async function assertManifestDiffApplied(args: {
   throw createEndpointError(
     "Timed out waiting for manifest diff install evidence.",
     {
-      archiveLogMatched: includesAllFragments(
-        state.archiveLogs,
-        state.archiveFragments,
-      ),
+      archiveLogMatched: state.archiveInstalled,
       assetFile: state.assetFile,
       assetPath: state.assetPath,
-      bsdiffLogMatched: includesAllFragments(
-        state.bsdiffLogs,
-        state.bsdiffFragments,
-      ),
+      bsdiffLogMatched: state.bsdiffApplied,
       bundleFile: state.bundleFile,
       bundleId: args.bundleId,
       diagnostics: state.diagnostics,
       expectedHash: state.expectedHash,
       manifest: state.manifest,
-      manifestFallbackLogMatched: includesAllFragments(
-        state.nativeLogs,
-        state.manifestFallbackFragments,
-      ),
+      manifestFallbackLogMatched: state.archiveFallbackApplied,
       metadataState: state.metadataState,
       platform: fixtureSession.platform,
       previousBundleId: args.previousBundleId,
@@ -6731,16 +6795,25 @@ async function assertManifestDiffApplied(args: {
 }
 
 async function assertFirstOtaUsesArchive(args: { bundleId: string }) {
-  const expectedFragments = [
-    "Skipping manifest-driven install",
-    `for ${args.bundleId}`,
-    "no active OTA manifest is available",
-    "Using archive",
-  ];
+  const expectedFragments = isLynxE2eApp()
+    ? ["HotUpdaterArchiveInstalled", `bundleId=${args.bundleId}`]
+    : [
+        "Skipping manifest-driven install",
+        `for ${args.bundleId}`,
+        "no active OTA manifest is available",
+        "Using archive",
+      ];
 
   for (let attempt = 0; attempt < 40; attempt += 1) {
     const state = readFirstOtaArchiveState(args.bundleId);
+    const logs = readFirstOtaArchiveInstallLogs();
+    const hasArchiveEvent = isLynxE2eApp()
+      ? hasNativeInstallEvent(logs, "HotUpdaterArchiveInstalled", {
+          bundleId: args.bundleId,
+        })
+      : true;
     if (
+      hasArchiveEvent &&
       state.metadataState.stagingBundleId === args.bundleId &&
       state.metadataState.stagingSelection?.bundleId === args.bundleId &&
       state.metadataState.verificationPending === true &&
@@ -6750,7 +6823,9 @@ async function assertFirstOtaUsesArchive(args: { bundleId: string }) {
       logDetoxFixture("first OTA used archive install path", {
         bundleId: args.bundleId,
         bundleFilePath: state.bundleFile.path,
-        evidence: "bundle-store",
+        evidence: isLynxE2eApp()
+          ? "bundle-store-and-native-log"
+          : "bundle-store",
         metadataPath: state.diagnostics.metadata.path,
         platform: fixtureSession.platform,
       });
@@ -6758,6 +6833,7 @@ async function assertFirstOtaUsesArchive(args: { bundleId: string }) {
     }
 
     if (
+      !isLynxE2eApp() &&
       state.metadataState.stagingBundleId === args.bundleId &&
       state.metadataState.verificationPending === false &&
       state.bundleFile.exists
@@ -6772,8 +6848,7 @@ async function assertFirstOtaUsesArchive(args: { bundleId: string }) {
       return {};
     }
 
-    const logs = readFirstOtaArchiveInstallLogs();
-    if (includesAllFragments(logs, expectedFragments)) {
+    if (!isLynxE2eApp() && includesAllFragments(logs, expectedFragments)) {
       logDetoxFixture("first OTA used archive install path", {
         bundleId: args.bundleId,
         evidence: "native-log",
@@ -6958,16 +7033,6 @@ async function assertBundlePatchBases(args: {
   bundleId: string;
   expectedBaseBundleIds?: string[];
 }) {
-  if (isLynxE2eApp()) {
-    logDetoxFixture("lynx bundle patch bases skipped", {
-      bundleId: args.bundleId,
-      expectedBaseBundleIds: args.expectedBaseBundleIds ?? [],
-      platform: fixtureSession.platform,
-    });
-    return {
-      observedBaseBundleIds: args.expectedBaseBundleIds ?? [],
-    };
-  }
   const bundle = await fetchProviderBundleById(args.bundleId);
   const observedBaseBundleIds = getBundlePatchBaseBundleIds(bundle);
   const expectedBaseBundleIds = args.expectedBaseBundleIds ?? [];
@@ -7321,6 +7386,13 @@ export function startDeployBundleJob(request: DeployBundleRequest) {
   return createJob((context) => deployFixtureBundle(request, context));
 }
 
+export function startCreateBundleDiffJob(input: {
+  baseBundleId: string;
+  bundleId: string;
+}) {
+  return createJob(() => createFixtureBundleDiff(input));
+}
+
 export function startPatchReleaseJob(request: PatchReleaseRequest) {
   return createJob((context) => updateFixtureRelease(request, context));
 }
@@ -7404,6 +7476,7 @@ export async function handleWaitForMetadata(
 export async function handleAssertBsdiffPatchApplied(args: {
   assetPath: string;
   baseBundleId: string;
+  bundleId?: string;
 }) {
   return assertBsdiffPatchApplied(args);
 }

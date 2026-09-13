@@ -94,7 +94,7 @@ const options = {
   targetAppVersion: "1.0.x",
 };
 
-describe("deploy archive file policy", () => {
+describe("deploy archive artifact declarations", () => {
   const database = createDatabasePluginHarness();
   const uploads = new Map<string, Buffer>();
   const storage: StoragePluginWith<"put" | "get" | "exists" | "delete"> = {
@@ -122,13 +122,28 @@ describe("deploy archive file policy", () => {
     buildPath = path.join(directory, "build");
     await fs.mkdir(buildPath);
     getCwd.mockReturnValue(directory);
+    const declareOpaqueArtifacts = async () => {
+      const artifacts = [];
+      for (const name of await fs.readdir(buildPath, { recursive: true })) {
+        const filePath = path.join(buildPath, name);
+        if ((await fs.lstat(filePath)).isFile()) {
+          artifacts.push({
+            path: filePath,
+            name: name.split(path.sep).join("/"),
+            downloadCompression: null,
+          });
+        }
+      }
+      return artifacts;
+    };
     build = {
       name: "opaque-output",
       build: async () => ({
+        artifacts: await declareOpaqueArtifacts(),
         buildPath,
         bundleId,
+        patchAssetPath: "entry.bundle",
         stdout: null,
-        filePolicy: "preserve",
       }),
     };
     loadConfig.mockImplementation(async () => ({
@@ -140,9 +155,6 @@ describe("deploy archive file policy", () => {
       storage,
       updateStrategy: "appVersion",
     }));
-    vi.spyOn(process, "exit").mockImplementation((code) => {
-      throw new Error(`process.exit(${code})`);
-    });
     vi.spyOn(console, "error").mockImplementation(() => {});
   });
 
@@ -244,6 +256,9 @@ describe("deploy archive file policy", () => {
       ).toEqual(archive["manifest.json"]);
       const stored = (await database.bundles())[0]!;
       expect(stored.manifestFileHash).toBe(sha256(archive["manifest.json"]!));
+      expect(stored.metadata?.manifest_content_hash).toBe(
+        sha256(archive["manifest.json"]!),
+      );
       expect(stored.fileHash).toBe(
         sha256(
           [...uploads].find(([key]) =>
@@ -254,14 +269,26 @@ describe("deploy archive file policy", () => {
     },
   );
 
-  it("retains default RN filtering and Hermes renaming in the deployed archive", async () => {
+  it("honors RN-owned Hermes selection declarations", async () => {
     const files = {
       "index.bundle": Buffer.from("javascript"),
       "index.bundle.hbc": Buffer.from("hermes"),
       "index.bundle.map": Buffer.from("source map"),
     };
     await writeFiles(files);
-    build.build = async () => ({ buildPath, bundleId, stdout: null });
+    build.build = async () => ({
+      artifacts: [
+        {
+          path: path.join(buildPath, "index.bundle.hbc"),
+          name: "index.bundle",
+          downloadCompression: "br",
+        },
+      ],
+      buildPath,
+      bundleId,
+      patchAssetPath: "index.bundle",
+      stdout: null,
+    });
     await deploy(options);
     const archive = await readArchive("zip");
     expect(Object.keys(archive).sort()).toEqual([
@@ -288,7 +315,7 @@ describe("deploy archive file policy", () => {
       throw new Error("Compiler failed");
     };
 
-    await expect(deploy(options)).rejects.toThrow("process.exit(1)");
+    await expect(deploy(options)).rejects.toThrow("Compiler failed");
 
     expect(await fs.readFile(archivePath)).toEqual(previousArchive);
     expect(storage.put).not.toHaveBeenCalled();
@@ -296,6 +323,21 @@ describe("deploy archive file policy", () => {
     expect(console.error).toHaveBeenCalledWith(
       expect.objectContaining({ message: "Compiler failed" }),
     );
+  });
+
+  it("removes the attempt snapshot before propagating a database failure", async () => {
+    await writeFiles({
+      "entry.bundle": Buffer.from("snapshot cleanup"),
+    });
+    database.commit.mockRejectedValueOnce(new Error("commit failed"));
+
+    await expect(deploy(options)).rejects.toThrow("commit failed");
+
+    expect(
+      (await fs.readdir(buildPath)).filter((name) =>
+        name.startsWith(".hot-updater-snapshot-"),
+      ),
+    ).toEqual([]);
   });
 
   it.each(["file", "directory", "symlink", "case-alias"])(
@@ -311,7 +353,9 @@ describe("deploy archive file policy", () => {
       else await fs.writeFile(reserved, "compiler manifest");
       await fs.writeFile(path.join(buildPath, "entry.bundle"), "entry");
       const hash = vi.spyOn(fileHash, "getFileHashFromFile");
-      await expect(deploy(options)).rejects.toThrow("process.exit(1)");
+      await expect(deploy(options)).rejects.toThrow(
+        "Build output contains reserved manifest.json",
+      );
       expect(console.error).toHaveBeenCalledWith(
         expect.objectContaining({
           message: "Build output contains reserved manifest.json",
