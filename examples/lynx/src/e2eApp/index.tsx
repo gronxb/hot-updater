@@ -64,7 +64,15 @@ const pendingActionURL = screenStateURL.replace(
 
 async function resolveAppBaseURL(): Promise<string> {
   try {
-    const response = await fetch(runtimeConfigURL);
+    const response = await Promise.race([
+      fetch(runtimeConfigURL).catch(() => null),
+      new Promise<null>((resolve) => {
+        setTimeout(() => resolve(null), 2000);
+      }),
+    ]);
+    if (!response) {
+      return appBaseURL;
+    }
     const config = (await response.json()) as { baseURL?: string };
     if (typeof config.baseURL === "string" && config.baseURL.length > 0) {
       return config.baseURL;
@@ -525,23 +533,30 @@ const isAlreadyRunningForceUpdate = async (updateInfo: {
 };
 
 const applyForceUpdateIfNeeded = async () => {
-  for (let attempt = 0; attempt < 3; attempt += 1) {
+  for (let attempt = 0; attempt < 5; attempt += 1) {
     if (handledScenarioAction) return;
     try {
       const updateInfo = await HotUpdater.checkForUpdate({
         updateStrategy: "appVersion",
         requestTimeout: 5000,
       });
-      if (handledScenarioAction || !updateInfo?.shouldForceUpdate) return;
-      if (await isAlreadyRunningForceUpdate(updateInfo)) return;
-      if (await updateInfo.updateBundle()) {
+      if (handledScenarioAction) return;
+      if (updateInfo?.shouldForceUpdate) {
+        if (!(await isAlreadyRunningForceUpdate(updateInfo))) {
+          await updateInfo.updateBundle().catch(() => false);
+        }
+        void HotUpdater.reload();
+        return;
+      }
+      const launch = await HotUpdater.getLaunchInfo().catch(() => null);
+      if (launch?.next && launch.next.bundleId !== launch.running.bundleId) {
         void HotUpdater.reload();
         return;
       }
     } catch {
-      if (attempt === 2) return;
-      await new Promise((resolve) => setTimeout(resolve, 500));
+      // Catalog or native may not be ready yet; retry.
     }
+    await new Promise((resolve) => setTimeout(resolve, 400));
   }
 };
 
@@ -626,6 +641,7 @@ const startE2eApp = (baseURL: string) => {
   confirmReady();
   setTimeout(confirmReady, 500);
   setTimeout(confirmReady, 2000);
+  setTimeout(confirmReady, 5000);
   try {
     root.render(<App />);
   } catch {

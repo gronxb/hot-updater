@@ -502,4 +502,26 @@ describe("Lynx catalog controller (mock native transport)", () => {
       selection: { kind: "BUILTIN", bundleId: A, releaseId: null },
     });
   });
+
+  it("stages builtin fallback when overlay is running over a staged next bundle", async () => {
+    const { updater, prepared } = setup(
+      {
+        runningSelection: receipt(),
+        nextSelection: receipt(B, releaseB),
+        confirmedSelection: null,
+      },
+      [],
+    );
+    const update = await updater.checkForUpdate({
+      updateStrategy: "appVersion",
+    });
+    expect(update).toMatchObject({
+      status: "ROLLBACK",
+      transitionKind: "USE_BUILTIN",
+    });
+    expect(prepared()).toMatchObject({
+      artifact: null,
+      selection: { kind: "BUILTIN", bundleId: A, releaseId: null },
+    });
+  });
 });

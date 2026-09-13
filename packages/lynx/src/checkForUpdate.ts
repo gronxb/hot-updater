@@ -111,11 +111,14 @@ export async function checkForUpdate(
   if (desired === null) {
     return null;
   }
+  const hasCoveredBundle =
+    state.confirmedSelection?.kind === "BUNDLE" ||
+    state.nextSelection?.kind === "BUNDLE";
   if (
     desired.kind === "BUILTIN" &&
     current.kind === "BUILTIN" &&
     current.bundleId === state.embeddedBundleId &&
-    state.confirmedSelection?.kind !== "BUNDLE"
+    !hasCoveredBundle
   ) {
     return null;
   }
@@ -130,7 +133,7 @@ export async function checkForUpdate(
     channel: state.channel,
     selectionContextHash: guard.selectionContextHash ?? selectionContextHash,
   };
-  if (sameReceipt(current, selection)) return null;
+  if (sameReceipt(current, selection) && !hasCoveredBundle) return null;
   const authorization = authorizeReleaseTransition({
     active: authenticated ? current : null,
     desired: selection,

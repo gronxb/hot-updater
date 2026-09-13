@@ -400,11 +400,14 @@ describe("Lynx E2E suite manifest", () => {
     expect(e2eApp).toContain("updateInfo.updateBundle()");
     expect(e2eApp).toContain("HotUpdater.getLaunchInfo()");
     expect(e2eApp).toContain("applyForceUpdateIfNeeded");
+    expect(e2eApp).toContain("launch.next.bundleId");
+    expect(e2eApp).toContain("setTimeout(() => resolve(null), 2000)");
     expect(e2eApp).toContain('updateInfo.status === "UPDATE"');
     expect(e2eApp).toContain('scenarioMarker.includes("chain-")');
     expect(e2eApp).toContain("void HotUpdater.reload()");
     expect(e2eApp).toContain("takingPendingAction");
     expect(e2eApp).toContain("void HotUpdater.notifyAppReady()");
+    expect(e2eApp).toContain("setTimeout(confirmReady, 5000)");
     expect(androidController).toContain("Process.killProcess");
     expect(driver).toContain("options.expectCrash === true");
     expect(driver).toContain("files/e2e-embedded");
