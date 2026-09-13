@@ -1,5 +1,13 @@
 # @hot-updater/console
 
+## 1.0.0-rc.16
+
+### Patch Changes
+
+- 3fa24fc: Remove the Bundle Signing page and its inspection API from local and hosted
+  Consoles. Console configuration no longer includes signing settings; signing
+  and key management remain in the Hot Updater CLI and signing providers.
+
 ## 1.0.0-rc.15
 
 ### Patch Changes
