@@ -200,6 +200,8 @@ export default {
           maxBuffer: 10 * 1024 * 1024,
         },
       );
+      const { finishLynxE2eBundle } = await import("./scripts/e2e-assets.mjs");
+      await finishLynxE2eBundle(outDir);
       await copyE2eFixtures(cwd, outDir);
       return {
         entry: "main.lynx.bundle",

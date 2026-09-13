@@ -52,6 +52,17 @@ export async function confirmRuntimeReady(
   return result;
 }
 
+export async function bootstrapRuntimeReady(
+  configurationReady: Promise<boolean>,
+  loadStartupResources: () => Promise<void>,
+  confirmReady: () => Promise<unknown>,
+): Promise<boolean> {
+  if (!(await configurationReady)) return false;
+  await loadStartupResources();
+  await confirmReady();
+  return true;
+}
+
 export async function installCheckedUpdate(
   client: Pick<typeof HotUpdater, "checkForUpdate">,
   options: CheckForUpdateOptions,

@@ -185,6 +185,7 @@ describe("Detox E2E harness contract", () => {
       "e2e/lynx/public-matrix-evidence.spec.ts",
       "e2e/lynx/public-matrix-runner.spec.ts",
       "e2e/lynx/runtime-observation.spec.ts",
+      "e2e/lynx/startup-resources.spec.ts",
       "e2e/lynx/scripts/run-public-matrix.ts",
       "e2e/lynx/scripts/run.ts",
       "e2e/lynx/suite-manifest.spec.ts",

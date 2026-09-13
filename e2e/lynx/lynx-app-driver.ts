@@ -1,4 +1,5 @@
 import { spawnSync } from "node:child_process";
+import path from "node:path";
 
 import { createControlClient } from "../detox/control-client.ts";
 import type { JsonObject } from "../detox/control-protocol.ts";
@@ -56,6 +57,10 @@ const INPUT_TEXT_FIELDS: Record<string, string> = {
   "cohort-input": "cohortInput",
   "runtime-channel-input": "runtimeChannelInput",
 };
+
+function androidShellQuote(value: string): string {
+  return `'${value.replaceAll("'", `'"'"'`)}'`;
+}
 
 export class LynxAppDriver implements DetoxAppDriver {
   private readonly controlClient: ControlClient;
@@ -303,6 +308,7 @@ export class LynxAppDriver implements DetoxAppDriver {
       if (!binaryPath) {
         throw new Error("HOT_UPDATER_E2E_IOS_BINARY_PATH is required");
       }
+      this.runOrThrow("xcrun", ["simctl", "bootstatus", this.deviceId(), "-b"]);
       this.runOrThrow("xcrun", [
         "simctl",
         "install",
@@ -366,7 +372,7 @@ export class LynxAppDriver implements DetoxAppDriver {
         "production",
         "--es",
         HOT_UPDATER_LYNX_ANDROID_LAUNCH_CONFIGURATION_EXTRA,
-        launchConfiguration,
+        androidShellQuote(launchConfiguration),
       ],
       options.expectCrash === true,
     );
@@ -381,13 +387,123 @@ export class LynxAppDriver implements DetoxAppDriver {
   }
 
   private async waitForOverlayReady(stage: string): Promise<void> {
-    await this.controlClient.waitForScreenStateField(
-      `${stage}: wait overlay ready`,
-      "runtimeScenarioMarker",
-      {
-        rejectValues: [""],
-      },
-    );
+    try {
+      await this.controlClient.waitForScreenStateField(
+        `${stage}: wait overlay ready`,
+        "runtimeScenarioMarker",
+        {
+          rejectValues: [""],
+        },
+      );
+    } catch (error) {
+      const diagnostics = await this.captureStartupDiagnostics(stage);
+      const message = error instanceof Error ? error.message : String(error);
+      throw new Error(`${message}\nLynx startup diagnostics:\n${diagnostics}`, {
+        cause: error,
+      });
+    }
+  }
+
+  private async captureStartupDiagnostics(stage: string): Promise<string> {
+    const sections: string[] = [];
+    try {
+      const state = await this.controlClient.postJson(
+        `${stage}: capture failed screen state`,
+        "/e2e/screen-state",
+        {},
+      );
+      sections.push(`screen-state ${JSON.stringify(state)}`);
+    } catch (error) {
+      sections.push(`screen-state unavailable: ${String(error)}`);
+    }
+    if (this.platform === "ios") {
+      const processName = path.basename(
+        this.env.HOT_UPDATER_E2E_IOS_BINARY_PATH ?? "SparklingGo.app",
+        ".app",
+      );
+      sections.push(
+        this.captureCommand("ios-processes", "xcrun", [
+          "simctl",
+          "spawn",
+          this.deviceId(),
+          "ps",
+          "-axo",
+          "pid=,state=,command=",
+        ]).text,
+        this.captureCommand("ios-unified-log", "xcrun", [
+          "simctl",
+          "spawn",
+          this.deviceId(),
+          "log",
+          "show",
+          "--last",
+          "2m",
+          "--style",
+          "compact",
+          "--predicate",
+          `process == "${processName}" AND (messageType == error OR messageType == fault OR eventMessage CONTAINS[c] "hot-updater" OR eventMessage CONTAINS "onErrorOccurred" OR eventMessage CONTAINS "FirstScreen" OR eventMessage CONTAINS "onPageChanged" OR (eventMessage CONTAINS "NativeModule" AND eventMessage CONTAINS "HotUpdaterLynx") OR eventMessage CONTAINS "Public Lynx host failed")`,
+        ]).text,
+      );
+    } else {
+      const pid = this.captureCommand("android-pid", "adb", [
+        "-s",
+        this.deviceId(),
+        "shell",
+        "pidof",
+        this.appId(),
+      ]);
+      const pidOutput = pid.stdout.trim();
+      const pidValue = /^\d+$/.test(pidOutput) ? pidOutput : undefined;
+      sections.push(
+        pid.text,
+        this.captureCommand("android-process", "adb", [
+          "-s",
+          this.deviceId(),
+          "shell",
+          "dumpsys",
+          "activity",
+          "processes",
+          this.appId(),
+        ]).text,
+        this.captureCommand("android-logcat", "adb", [
+          "-s",
+          this.deviceId(),
+          "logcat",
+          "-d",
+          "-t",
+          "500",
+          ...(pidValue ? ["--pid", pidValue] : []),
+        ]).text,
+      );
+    }
+    return sections.join("\n");
+  }
+
+  private captureCommand(
+    label: string,
+    command: string,
+    args: readonly string[],
+  ): { readonly stdout: string; readonly text: string } {
+    try {
+      const result = spawnSync(command, args, {
+        encoding: "utf8",
+        env: this.env,
+        maxBuffer: 512 * 1024,
+        timeout: 5000,
+      });
+      const stdout = result.stdout ?? "";
+      const commandError = result.error ? `\n${String(result.error)}` : "";
+      const output = `${stdout}${result.stderr ?? ""}${commandError}`;
+      return {
+        stdout,
+        text: `${label} (status ${String(result.status)}): ${output.slice(-64 * 1024)}`,
+      };
+    } catch (error) {
+      return {
+        stdout: "",
+        text: `${label} unavailable: ${String(error)}`,
+      };
+    }
   }
 
   private terminateApp(): void {

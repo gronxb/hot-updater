@@ -48,6 +48,22 @@ async function collectFileHashes(root: string) {
 }
 
 describe("Lynx E2E embedded bundle packaging", () => {
+  it("finalizes every E2E OTA archive with the exact sdk3 startup files", async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "lynx-e2e-ota-"));
+    try {
+      await fs.writeFile(path.join(root, "main.lynx.bundle"), "bundle-bytes");
+      const { finishLynxE2eBundle } =
+        await import("../../examples/lynx/scripts/e2e-assets.mjs");
+      await finishLynxE2eBundle(root);
+
+      expect(Object.keys(await collectFileHashes(root)).sort()).toEqual(
+        [...LYNX_E2E_SDK3_FILES].sort(),
+      );
+    } finally {
+      await fs.rm(root, { recursive: true, force: true });
+    }
+  });
+
   it("writes a native-verifiable manifest for the builtin tree", async () => {
     const root = await fs.mkdtemp(path.join(os.tmpdir(), "lynx-e2e-embed-"));
     try {

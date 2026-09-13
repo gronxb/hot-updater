@@ -2,20 +2,29 @@ import { HotUpdater } from "@hot-updater/lynx";
 import { root, useEffect, useRef, useState } from "@lynx-js/react";
 
 import {
+  loadDynamicProbe,
+  loadExternalBootstrap,
+  loadProbeFont,
+} from "../../spike/native";
+import {
   NAV_ITEMS,
   SCREEN_PATHS,
   TEST_ID_TO_SCREEN,
   styles,
   type ScreenName,
 } from "./e2eStack";
-import { resolveE2eLaunchConfiguration } from "./launchConfiguration";
+import { readE2eLaunchConfiguration } from "./launchConfiguration";
 import {
   E2E_SCENARIO_MARKER,
+  E2E_STARTUP_IMAGE_URL,
   loadE2EDeployBundleAssets,
+  loadE2EStartupResources,
+  markE2EStartupImageLoaded,
   maybeCrashForE2E,
 } from "./patchSurface";
 import {
   applyForcedUpdate,
+  bootstrapRuntimeReady,
   confirmRuntimeReady,
   installCheckedUpdate,
   readRuntimeSnapshot,
@@ -23,6 +32,7 @@ import {
 } from "./runtimeObservation";
 
 declare const __E2E_OVERLAY_MARKER__: string;
+declare const NativeModules: unknown;
 
 const scenarioMarker =
   typeof __E2E_OVERLAY_MARKER__ === "string" &&
@@ -95,6 +105,7 @@ const patchScreenState = async (patch: Partial<ScreenState>) => {
 };
 
 function App() {
+  const [startupFontReady, setStartupFontReady] = useState(false);
   const [updateActionResult, setUpdateActionResultState] = useState(
     DEFAULT_ACTION_RESULT,
   );
@@ -311,13 +322,27 @@ function App() {
   };
 
   useEffect(() => {
-    ensurePendingActionPoller();
     void (async () => {
       try {
-        await confirmRuntimeReady(HotUpdater, async (status) => {
-          setLaunchStatus(status);
-          await publishRuntimeSnapshot(status);
-        });
+        await bootstrapRuntimeReady(
+          runtimeConfigurationReady,
+          async () => {
+            ensurePendingActionPoller();
+            await loadE2EStartupResources({
+              loadFont: async (url) => {
+                await loadProbeFont(url);
+                setStartupFontReady(true);
+              },
+              loadExternal: loadExternalBootstrap,
+              loadDynamic: loadDynamicProbe,
+            });
+          },
+          () =>
+            confirmRuntimeReady(HotUpdater, async (status) => {
+              setLaunchStatus(status);
+              await publishRuntimeSnapshot(status);
+            }),
+        );
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         const status = `Current Launch Status: ERROR ${message}`;
@@ -329,14 +354,25 @@ function App() {
 
   useEffect(() => {
     let active = true;
-    const timer = setTimeout(() => {
-      void applyForcedUpdate(HotUpdater, () => !active || handledScenarioAction)
-        .then(() => (active ? publishRuntimeSnapshot() : undefined))
-        .catch((error) => reportActionError("force-update", error));
-    }, 2500);
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    void runtimeConfigurationReady
+      .then((ready) => {
+        if (!active || !ready) return;
+        timer = setTimeout(() => {
+          void applyForcedUpdate(
+            HotUpdater,
+            () => !active || handledScenarioAction,
+          )
+            .then(() => (active ? publishRuntimeSnapshot() : undefined))
+            .catch((error) => reportActionError("force-update", error));
+        }, 2500);
+      })
+      .catch((error) => {
+        if (active) void reportActionError("force-update", error);
+      });
     return () => {
       active = false;
-      clearTimeout(timer);
+      if (timer !== null) clearTimeout(timer);
     };
   }, []);
 
@@ -458,6 +494,14 @@ function App() {
           </view>
         ) : null}
         <text style={styles.resultText}>{SCREEN_PATHS[currentScreen]}</text>
+        <image
+          style={{ height: "8px", width: "8px" }}
+          src={E2E_STARTUP_IMAGE_URL}
+          bindload={markE2EStartupImageLoaded}
+        />
+        {startupFontReady ? (
+          <text style={{ fontFamily: "ReleaseProbe" }}>E2E</text>
+        ) : null}
         {body}
       </view>
     </scroll-view>
@@ -541,16 +585,12 @@ const ensurePendingActionPoller = () => {
 loadE2EDeployBundleAssets();
 maybeCrashForE2E();
 
-const startE2eApp = (baseURL: string) => {
-  HotUpdater.init({
-    baseURL,
-    requestTimeout: 15000,
-  });
-  root.render(<App />);
-};
-
-void HotUpdater.getLaunchConfiguration().then((launchConfiguration) => {
-  const resolved = resolveE2eLaunchConfiguration(launchConfiguration);
+const configureE2eRuntime = async (): Promise<boolean> => {
+  const resolved = await readE2eLaunchConfiguration(
+    typeof NativeModules !== "undefined",
+    () => HotUpdater.getLaunchConfiguration(),
+  );
+  if (!resolved) return false;
   runtimeConfigURL = resolved.runtimeConfigURL;
   appBaseURL = resolved.appBaseURL;
   screenStateURL = runtimeConfigURL.endsWith("/runtime-config")
@@ -560,12 +600,20 @@ void HotUpdater.getLaunchConfiguration().then((launchConfiguration) => {
     /\/screen-state$/,
     "/pending-action",
   );
-  startE2eApp(appBaseURL);
-  void resolveAppBaseURL().then((baseURL) => {
-    if (baseURL === appBaseURL) return;
+  HotUpdater.init({
+    baseURL: appBaseURL,
+    requestTimeout: 15000,
+  });
+  const resolvedBaseURL = await resolveAppBaseURL();
+  if (resolvedBaseURL !== appBaseURL) {
     HotUpdater.init({
-      baseURL,
+      baseURL: resolvedBaseURL,
       requestTimeout: 15000,
     });
-  });
-});
+  }
+  return true;
+};
+
+const runtimeConfigurationReady = configureE2eRuntime();
+
+root.render(<App />);

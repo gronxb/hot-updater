@@ -1,7 +1,11 @@
+import { spawnSync } from "node:child_process";
+
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { createControlClient } from "../detox/control-client.ts";
 import { LynxAppDriver } from "./lynx-app-driver.ts";
+
+vi.mock("node:child_process", () => ({ spawnSync: vi.fn() }));
 
 function createDriver(readScreenState: () => Record<string, unknown>) {
   const fetch = vi.fn(async () => ({
@@ -136,5 +140,328 @@ describe("Lynx app text assertions", () => {
     await assertion;
     expect(complete).toBe(true);
     expect(fetch.mock.calls.length).toBeGreaterThan(1);
+  });
+});
+
+describe("Lynx app installation", () => {
+  beforeEach(() => {
+    vi.mocked(spawnSync).mockReset();
+  });
+
+  it("boots an iOS simulator before installing the shared native binary", () => {
+    vi.mocked(spawnSync).mockReturnValue({ status: 0 } as ReturnType<
+      typeof spawnSync
+    >);
+    const client = createControlClient({
+      baseUrl: "http://control.test",
+      fetch: vi.fn(),
+    });
+    const driver = new LynxAppDriver(client, "ios", {
+      HOT_UPDATER_E2E_IOS_BINARY_PATH: "/tmp/SparklingGo.app",
+      HOT_UPDATER_E2E_IOS_SIMULATOR_NAME: "iPhone 17 Pro",
+    });
+
+    driver.ensureInstalled();
+
+    expect(vi.mocked(spawnSync).mock.calls.slice(0, 2)).toEqual([
+      [
+        "xcrun",
+        ["simctl", "bootstatus", "iPhone 17 Pro", "-b"],
+        expect.objectContaining({ encoding: "utf8" }),
+      ],
+      [
+        "xcrun",
+        ["simctl", "install", "iPhone 17 Pro", "/tmp/SparklingGo.app"],
+        expect.objectContaining({ encoding: "utf8" }),
+      ],
+    ]);
+  });
+
+  it("does not install when the iOS simulator fails to boot", () => {
+    vi.mocked(spawnSync).mockReturnValueOnce({
+      status: 1,
+      stderr: "boot failed",
+    } as ReturnType<typeof spawnSync>);
+    const client = createControlClient({
+      baseUrl: "http://control.test",
+      fetch: vi.fn(),
+    });
+    const driver = new LynxAppDriver(client, "ios", {
+      HOT_UPDATER_E2E_IOS_BINARY_PATH: "/tmp/SparklingGo.app",
+      HOT_UPDATER_E2E_IOS_SIMULATOR_NAME: "iPhone 17 Pro",
+    });
+
+    expect(() => driver.ensureInstalled()).toThrow("boot failed");
+    expect(vi.mocked(spawnSync)).toHaveBeenCalledOnce();
+    expect(vi.mocked(spawnSync)).toHaveBeenCalledWith(
+      "xcrun",
+      ["simctl", "bootstatus", "iPhone 17 Pro", "-b"],
+      expect.objectContaining({ encoding: "utf8" }),
+    );
+  });
+
+  it("preserves Android launch configuration JSON through adb shell", async () => {
+    vi.mocked(spawnSync).mockReturnValue({ status: 0 } as ReturnType<
+      typeof spawnSync
+    >);
+    const fetch = vi.fn(async (url: string) => ({
+      ok: true,
+      status: 200,
+      text: async () =>
+        JSON.stringify(
+          url.endsWith("/e2e/runtime-config")
+            ? { screenState: { runtimeScenarioMarker: "ready" } }
+            : {},
+        ),
+    }));
+    const client = createControlClient({
+      baseUrl: "http://control.test",
+      fetch,
+    });
+    const driver = new LynxAppDriver(client, "android", {
+      HOT_UPDATER_CONTROL_BASE_URL: "http://127.0.0.1:3008/hot-updater",
+      HOT_UPDATER_E2E_ANDROID_SERIAL: "emulator-5554",
+    });
+
+    await driver.launch("initial launch");
+
+    expect(vi.mocked(spawnSync)).toHaveBeenCalledWith(
+      "adb",
+      [
+        "-s",
+        "emulator-5554",
+        "shell",
+        "am",
+        "start",
+        "-S",
+        "-n",
+        "com.hotupdater.lynxexample/.OtaActivity",
+        "--es",
+        "framework",
+        "react",
+        "--es",
+        "channel",
+        "production",
+        "--es",
+        "hotUpdaterLaunchConfiguration",
+        `'{"appBaseURL":"http://127.0.0.1:3008/hot-updater","runtimeConfigURL":"http://localhost:3107/e2e/runtime-config"}'`,
+      ],
+      expect.objectContaining({ encoding: "utf8" }),
+    );
+  });
+});
+
+describe("Lynx startup failure diagnostics", () => {
+  beforeEach(() => {
+    vi.mocked(spawnSync).mockReset();
+  });
+
+  it("adds failed screen state and bounded iOS native output to a marker timeout", async () => {
+    let screenStatePosts = 0;
+    const fetch = vi.fn(async (url: string, init?: RequestInit) => {
+      if (url.endsWith("/e2e/runtime-config")) {
+        return {
+          ok: true,
+          status: 200,
+          text: async () => JSON.stringify({ screenState: {} }),
+        };
+      }
+      if (url.endsWith("/e2e/screen-state")) {
+        screenStatePosts += 1;
+        const body =
+          screenStatePosts === 1
+            ? {}
+            : { screenState: { launchStatus: "ERROR startup failed" } };
+        return {
+          ok: true,
+          status: 200,
+          text: async () => JSON.stringify(body),
+        };
+      }
+      expect(init?.method).toBe("POST");
+      return {
+        ok: true,
+        status: 200,
+        text: async () => "{}",
+      };
+    });
+    vi.mocked(spawnSync).mockImplementation(
+      (_command, args) =>
+        ({
+          status: 0,
+          stdout: args.includes("log") ? "native bootstrap error" : "123 R app",
+          stderr: "",
+        }) as ReturnType<typeof spawnSync>,
+    );
+    const client = createControlClient({
+      baseUrl: "http://control.test",
+      fetch,
+      screenStateTimeoutMs: 0,
+    });
+    const driver = new LynxAppDriver(client, "ios", {
+      HOT_UPDATER_E2E_IOS_BINARY_PATH: "/tmp/SparklingGo.app",
+      HOT_UPDATER_E2E_IOS_SIMULATOR_NAME: "iPhone 17 Pro",
+    });
+
+    await expect(driver.launch("initial launch")).rejects.toThrow(
+      /timed out waiting for runtimeScenarioMarker[\s\S]*ERROR startup failed[\s\S]*native bootstrap error/,
+    );
+    expect(vi.mocked(spawnSync)).toHaveBeenCalledWith(
+      "xcrun",
+      [
+        "simctl",
+        "spawn",
+        "iPhone 17 Pro",
+        "log",
+        "show",
+        "--last",
+        "2m",
+        "--style",
+        "compact",
+        "--predicate",
+        expect.stringMatching(
+          /process == "SparklingGo".*messageType == error.*eventMessage CONTAINS\[c\] "hot-updater".*eventMessage CONTAINS "FirstScreen".*eventMessage CONTAINS "onPageChanged".*eventMessage CONTAINS "NativeModule" AND eventMessage CONTAINS "HotUpdaterLynx"/,
+        ),
+      ],
+      expect.objectContaining({ maxBuffer: 512 * 1024, timeout: 5000 }),
+    );
+  });
+
+  it("reports native diagnostic command buffer failures", async () => {
+    let screenStatePosts = 0;
+    const fetch = vi.fn(async (url: string) => {
+      if (url.endsWith("/e2e/runtime-config")) {
+        return {
+          ok: true,
+          status: 200,
+          text: async () => JSON.stringify({ screenState: {} }),
+        };
+      }
+      if (url.endsWith("/e2e/screen-state")) screenStatePosts += 1;
+      return {
+        ok: true,
+        status: 200,
+        text: async () =>
+          JSON.stringify(screenStatePosts > 1 ? { screenState: {} } : {}),
+      };
+    });
+    vi.mocked(spawnSync).mockImplementation(
+      (_command, args) =>
+        ({
+          status: args.includes("log") ? null : 0,
+          stdout: "",
+          stderr: "",
+          ...(args.includes("log")
+            ? { error: new Error("spawnSync ENOBUFS") }
+            : {}),
+        }) as ReturnType<typeof spawnSync>,
+    );
+    const client = createControlClient({
+      baseUrl: "http://control.test",
+      fetch,
+      screenStateTimeoutMs: 0,
+    });
+    const driver = new LynxAppDriver(client, "ios", {
+      HOT_UPDATER_E2E_IOS_BINARY_PATH: "/tmp/SparklingGo.app",
+      HOT_UPDATER_E2E_IOS_SIMULATOR_NAME: "iPhone 17 Pro",
+    });
+
+    await expect(driver.launch("initial launch")).rejects.toThrow(
+      /timed out waiting for runtimeScenarioMarker[\s\S]*ios-unified-log \(status null\):[\s\S]*spawnSync ENOBUFS/,
+    );
+  });
+
+  it("captures Android process-specific logcat output with a trimmed pid", async () => {
+    let screenStatePosts = 0;
+    const fetch = vi.fn(async (url: string) => {
+      if (url.endsWith("/e2e/runtime-config")) {
+        return {
+          ok: true,
+          status: 200,
+          text: async () => JSON.stringify({ screenState: {} }),
+        };
+      }
+      if (url.endsWith("/e2e/screen-state")) screenStatePosts += 1;
+      return {
+        ok: true,
+        status: 200,
+        text: async () =>
+          JSON.stringify(
+            screenStatePosts > 1
+              ? { screenState: { launchStatus: "ERROR Android startup" } }
+              : {},
+          ),
+      };
+    });
+    vi.mocked(spawnSync).mockImplementation(
+      (_command, args) =>
+        ({
+          status: 0,
+          stdout: args.includes("pidof")
+            ? "\n  456  \n"
+            : args.includes("logcat")
+              ? "android bootstrap error"
+              : "",
+          stderr: "",
+        }) as ReturnType<typeof spawnSync>,
+    );
+    const client = createControlClient({
+      baseUrl: "http://control.test",
+      fetch,
+      screenStateTimeoutMs: 0,
+    });
+    const driver = new LynxAppDriver(client, "android", {
+      HOT_UPDATER_E2E_ANDROID_SERIAL: "emulator-5554",
+    });
+
+    await expect(driver.launch("initial launch")).rejects.toThrow(
+      /timed out waiting for runtimeScenarioMarker[\s\S]*ERROR Android startup[\s\S]*android bootstrap error/,
+    );
+    expect(vi.mocked(spawnSync)).toHaveBeenCalledWith(
+      "adb",
+      ["-s", "emulator-5554", "logcat", "-d", "-t", "500", "--pid", "456"],
+      expect.objectContaining({ timeout: 5000 }),
+    );
+  });
+
+  it("does not mask the marker timeout when diagnostics also fail", async () => {
+    let screenStatePosts = 0;
+    const fetch = vi.fn(async (url: string) => {
+      if (url.endsWith("/e2e/runtime-config")) {
+        return {
+          ok: true,
+          status: 200,
+          text: async () => JSON.stringify({ screenState: {} }),
+        };
+      }
+      if (url.endsWith("/e2e/screen-state")) {
+        screenStatePosts += 1;
+        if (screenStatePosts > 1) throw new Error("diagnostic server failed");
+      }
+      return {
+        ok: true,
+        status: 200,
+        text: async () => "{}",
+      };
+    });
+    vi.mocked(spawnSync).mockImplementation((_command, args) => {
+      if (args.includes("spawn")) throw new Error("simctl unavailable");
+      return { status: 0, stdout: "", stderr: "" } as ReturnType<
+        typeof spawnSync
+      >;
+    });
+    const client = createControlClient({
+      baseUrl: "http://control.test",
+      fetch,
+      screenStateTimeoutMs: 0,
+    });
+    const driver = new LynxAppDriver(client, "ios", {
+      HOT_UPDATER_E2E_IOS_BINARY_PATH: "/tmp/SparklingGo.app",
+      HOT_UPDATER_E2E_IOS_SIMULATOR_NAME: "iPhone 17 Pro",
+    });
+
+    await expect(driver.launch("initial launch")).rejects.toThrow(
+      /timed out waiting for runtimeScenarioMarker[\s\S]*screen-state unavailable: Error: diagnostic server failed[\s\S]*ios-processes unavailable: Error: simctl unavailable/,
+    );
   });
 });

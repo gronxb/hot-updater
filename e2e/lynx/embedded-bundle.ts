@@ -292,15 +292,9 @@ export async function compileLynxE2eEmbedded(options: {
       `rspeedy e2e embed failed: ${result.stderr || result.stdout || result.status}`,
     );
   }
-  const { finishSpike } =
-    await import("../../examples/lynx/scripts/spike-assets.mjs");
-  await finishSpike(outDir, "react", "A", {
-    rspeedy: "0.13.5",
-    framework: "@lynx-js/react@0.116.5",
-    behavior: "normal",
-    resourceSet: "sdk3",
-    assetPrefix: "hot-updater:///",
-  });
+  const { finishLynxE2eBundle } =
+    await import("../../examples/lynx/scripts/e2e-assets.mjs");
+  await finishLynxE2eBundle(outDir);
   await packageLynxEmbeddedDirectory({
     root: outDir,
     platform: options.platform,

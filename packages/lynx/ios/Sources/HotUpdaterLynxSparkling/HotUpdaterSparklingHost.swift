@@ -769,6 +769,10 @@ public final class HotUpdaterSparklingViewController: UIViewController {
                 LYNX_PROVIDER_TYPE_EXTERNAL_JS,
                 provider: provider
             )
+            builder.addLynxResourceProvider(
+                LYNX_PROVIDER_TYPE_FONT,
+                provider: provider
+            )
         }
 
         self.generation = ContainerGeneration(
