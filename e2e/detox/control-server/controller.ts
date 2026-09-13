@@ -34,6 +34,12 @@ import {
   updateReleasePolicy,
 } from "../../../plugins/plugin-core/dist/index.mjs";
 import {
+  createLynxNativeLaunchConfiguration,
+  HOT_UPDATER_LYNX_ANDROID_LAUNCH_CONFIGURATION_EXTRA,
+  HOT_UPDATER_LYNX_IOS_LAUNCH_CONFIGURATION_PREFIX,
+  serializeLynxNativeLaunchConfiguration,
+} from "../../lynx/native-launch-configuration.ts";
+import {
   ConsoleInsightsQaError,
   readObservedInsightsEvent,
   verifyConsoleInsights,
@@ -4800,14 +4806,13 @@ function readAndroidRecoveryDiagnostics(
   };
 }
 
-function lynxOverlayDir() {
-  try {
-    return fs
-      .readFileSync(path.join(resultsDir, "lynx-overlay-dir"), "utf8")
-      .trim();
-  } catch {
-    return "";
-  }
+function lynxLaunchConfiguration() {
+  return serializeLynxNativeLaunchConfiguration(
+    createLynxNativeLaunchConfiguration({
+      appBaseURL: fixtureSession.appBaseUrl,
+      runtimeConfigURL: getRuntimeConfigUrl(),
+    }),
+  );
 }
 
 function launchAndroidApp({
@@ -4859,8 +4864,8 @@ function launchAndroidApp({
         "channel",
         "production",
         "--es",
-        "embeddedDir",
-        "e2e-embedded",
+        HOT_UPDATER_LYNX_ANDROID_LAUNCH_CONFIGURATION_EXTRA,
+        lynxLaunchConfiguration(),
       ]
     : explicitActivity
       ? [
@@ -4905,18 +4910,16 @@ function launchAndroidApp({
 }
 
 function launchIosApp() {
-  const overlayDir = lynxOverlayDir();
   logDetoxFixture("ios metadata wait relaunch", {
     appId: fixtureSession.appId,
     deviceId,
-    overlayDir: overlayDir || null,
   });
   const args = ["simctl", "launch", deviceId as string, fixtureSession.appId];
   if (isLynxE2eApp()) {
     args.push("--ota-framework=react", "--ota-channel=production");
-    if (overlayDir) {
-      args.push(`--ota-embedded-dir=${overlayDir}`);
-    }
+    args.push(
+      `${HOT_UPDATER_LYNX_IOS_LAUNCH_CONFIGURATION_PREFIX}${lynxLaunchConfiguration()}`,
+    );
   }
   captureCommand("xcrun", args, {
     allowFailure: true,

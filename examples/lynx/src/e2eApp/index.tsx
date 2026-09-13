@@ -8,6 +8,7 @@ import {
   styles,
   type ScreenName,
 } from "./e2eStack";
+import { resolveE2eLaunchConfiguration } from "./launchConfiguration";
 import {
   E2E_SCENARIO_MARKER,
   loadE2EDeployBundleAssets,
@@ -21,17 +22,13 @@ import {
   type RuntimeSnapshot,
 } from "./runtimeObservation";
 
-declare const __E2E_APP_BASE_URL__: string;
-declare const __E2E_RUNTIME_CONFIG_URL__: string;
 declare const __E2E_OVERLAY_MARKER__: string;
-declare const __E2E_BUILD_ID__: string;
 
 const scenarioMarker =
   typeof __E2E_OVERLAY_MARKER__ === "string" &&
   __E2E_OVERLAY_MARKER__.length > 0
     ? __E2E_OVERLAY_MARKER__
     : E2E_SCENARIO_MARKER;
-void (typeof __E2E_BUILD_ID__ === "string" ? __E2E_BUILD_ID__ : "");
 
 const DEFAULT_ACTION_RESULT = "idle";
 
@@ -57,18 +54,12 @@ type ScreenState = {
   verificationPending: boolean | null;
 };
 
-const runtimeConfigURL =
-  typeof __E2E_RUNTIME_CONFIG_URL__ === "string" && __E2E_RUNTIME_CONFIG_URL__
-    ? __E2E_RUNTIME_CONFIG_URL__
-    : "http://localhost:3107/e2e/runtime-config";
-const appBaseURL =
-  typeof __E2E_APP_BASE_URL__ === "string" && __E2E_APP_BASE_URL__
-    ? __E2E_APP_BASE_URL__
-    : "http://localhost:3007/hot-updater";
-const screenStateURL = runtimeConfigURL.endsWith("/runtime-config")
+let runtimeConfigURL = "http://localhost:3107/e2e/runtime-config";
+let appBaseURL = "http://localhost:3007/hot-updater";
+let screenStateURL = runtimeConfigURL.endsWith("/runtime-config")
   ? runtimeConfigURL.replace(/\/runtime-config$/, "/screen-state")
   : `${runtimeConfigURL.replace(/\/+$/, "")}/screen-state`;
-const pendingActionURL = screenStateURL.replace(
+let pendingActionURL = screenStateURL.replace(
   /\/screen-state$/,
   "/pending-action",
 );
@@ -558,11 +549,23 @@ const startE2eApp = (baseURL: string) => {
   root.render(<App />);
 };
 
-startE2eApp(appBaseURL);
-void resolveAppBaseURL().then((baseURL) => {
-  if (baseURL === appBaseURL) return;
-  HotUpdater.init({
-    baseURL,
-    requestTimeout: 15000,
+void HotUpdater.getLaunchConfiguration().then((launchConfiguration) => {
+  const resolved = resolveE2eLaunchConfiguration(launchConfiguration);
+  runtimeConfigURL = resolved.runtimeConfigURL;
+  appBaseURL = resolved.appBaseURL;
+  screenStateURL = runtimeConfigURL.endsWith("/runtime-config")
+    ? runtimeConfigURL.replace(/\/runtime-config$/, "/screen-state")
+    : `${runtimeConfigURL.replace(/\/+$/, "")}/screen-state`;
+  pendingActionURL = screenStateURL.replace(
+    /\/screen-state$/,
+    "/pending-action",
+  );
+  startE2eApp(appBaseURL);
+  void resolveAppBaseURL().then((baseURL) => {
+    if (baseURL === appBaseURL) return;
+    HotUpdater.init({
+      baseURL,
+      requestTimeout: 15000,
+    });
   });
 });

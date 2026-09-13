@@ -148,10 +148,17 @@ class LynxLaunchSession internal constructor(
         builder.setEnableGenericResourceFetcher(LynxBooleanOption.TRUE)
     }
     /** Bind before load/evaluation so module construction sees the exact native context. */
-    fun bind(view: LynxView) {
+    fun bind(
+        view: LynxView,
+        launchConfiguration: Map<String, String> = emptyMap(),
+    ) {
         check(context == null && live)
         context = view.lynxContext
-        HotUpdaterLynxModule.bind(view.lynxContext, this)
+        HotUpdaterLynxModule.bind(
+            view.lynxContext,
+            this,
+            launchConfiguration,
+        )
         view.addLynxViewClient(object : LynxViewClient() {
             override fun onFirstScreen() { handler.post {
                 if (live) {

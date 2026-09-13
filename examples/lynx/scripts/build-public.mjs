@@ -16,7 +16,6 @@ export async function buildPublic({
   outDir,
   variant = "A",
   behavior = "normal",
-  baseURL,
   octaneSource,
 }) {
   if (!["react", "vue", "octane"].includes(framework))
@@ -25,10 +24,6 @@ export async function buildPublic({
     throw new Error("Choose fixture variant A, B, or C.");
   if (!["normal", "unconfirmed"].includes(behavior))
     throw new Error("Choose normal or unconfirmed behavior.");
-  if (!baseURL || !/^https?:\/\//i.test(baseURL))
-    throw new Error(
-      "Set HOT_UPDATER_SDK_BASE_URL to an explicit HTTP(S) endpoint.",
-    );
   if (!path.isAbsolute(outDir) || path.resolve(outDir) === path.resolve(cwd))
     throw new Error(
       "The build output must be an absolute directory below a build root.",
@@ -36,7 +31,6 @@ export async function buildPublic({
   const env = {
     ...process.env,
     HOT_UPDATER_BUILD_DIR: outDir,
-    HOT_UPDATER_SDK_BASE_URL: baseURL,
     HOT_UPDATER_SPIKE_VARIANT: variant,
     HOT_UPDATER_SPIKE_BEHAVIOR: behavior,
     HOT_UPDATER_SPIKE_SDK: "1",
@@ -86,7 +80,6 @@ export async function buildPublic({
       framework === "react" ? "@lynx-js/react@0.116.5" : "vue-lynx@0.5.1",
     behavior,
     resourceSet: "sdk3",
-    baseURL,
     assetPrefix: "hot-updater:///",
   });
   return { ...receipt, stdout, stderr };
@@ -104,7 +97,6 @@ if (
     variant,
     behavior,
     outDir,
-    baseURL: process.env.HOT_UPDATER_SDK_BASE_URL,
     octaneSource,
   });
   console.log(

@@ -47,8 +47,6 @@ const { stdout: changed } = await run(
 if (changed.trim())
   throw new Error("Pinned Octane source has tracked modifications");
 const isSdk = resourceSet.startsWith("sdk");
-if (isSdk && !process.env.HOT_UPDATER_SDK_BASE_URL)
-  throw new Error("SDK fixtures require explicit HOT_UPDATER_SDK_BASE_URL");
 const cwd = fileURLToPath(new URL("..", import.meta.url));
 const plugin = path.join(source, "packages/rspeedy-plugin-octane");
 const fixture = await fs.mkdtemp(path.join(plugin, "examples/hot-updater-g1-"));
@@ -133,7 +131,6 @@ try {
         rspeedy: "0.16.0",
         behavior,
         resourceSet,
-        ...(isSdk ? { baseURL: process.env.HOT_UPDATER_SDK_BASE_URL } : {}),
         assetPrefix: "hot-updater:///",
       }),
       null,

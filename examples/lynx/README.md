@@ -6,9 +6,9 @@ OctaneLynx are equal Lynx-engine targets on iOS and Android.
 
 The repository keeps two native targets per platform:
 
-| Purpose | iOS | Android |
-| --- | --- | --- |
-| Production scaffold | `SparklingGo` | `:app` (`com.hotupdater.lynxexample`) |
+| Purpose                      | iOS                      | Android                                     |
+| ---------------------------- | ------------------------ | ------------------------------------------- |
+| Production scaffold          | `SparklingGo`            | `:app` (`com.hotupdater.lynxexample`)       |
 | Nonproduction matrix harness | `SparklingMatrixHarness` | `:matrix-app` (`com.hotupdater.lynxmatrix`) |
 
 The production scaffold contains native identity and embedded-release
@@ -29,14 +29,9 @@ background JavaScript, and native dynamic component under one release-owned
 tree. It is shared by ordinary builds and the Hot Updater build callback.
 
 ```sh
-HOT_UPDATER_SDK_BASE_URL=https://updates.example.com/hot-updater \
-  pnpm --filter @hot-updater/example-lynx build:public react A
-
-HOT_UPDATER_SDK_BASE_URL=https://updates.example.com/hot-updater \
-  pnpm --filter @hot-updater/example-lynx build:public vue A
-
-HOT_UPDATER_SDK_BASE_URL=https://updates.example.com/hot-updater \
-  pnpm --filter @hot-updater/example-lynx build:public \
+pnpm --filter @hot-updater/example-lynx build:public react A
+pnpm --filter @hot-updater/example-lynx build:public vue A
+pnpm --filter @hot-updater/example-lynx build:public \
   octane A /absolute/path/to/pinned/octane
 ```
 
@@ -77,10 +72,11 @@ Build the production Sparkling scaffold on both platforms:
 pnpm validate:lynx:scaffold-native
 ```
 
-Native builds consume already validated embedded A trees under the platform
-fixture directories. The acceptance workflow creates those trees with the public
-compiler and `scripts/ota-embedded.mjs` before invoking the native build; they
-are generated evidence and are not committed application source.
+Scaffold validation deterministically compiles, validates, and embeds the React
+SDK3 A tree from a clean checkout. An explicit matrix build instead consumes the
+prevalidated React, Vue, and Octane SDK3 A trees created by the public acceptance
+workflow. These trees are generated evidence and are not committed application
+source.
 
 Build one matrix binary per OS. Each binary is reused for ReactLynx, VueLynx,
 and OctaneLynx cells:

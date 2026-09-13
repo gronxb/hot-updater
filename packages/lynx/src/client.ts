@@ -15,6 +15,7 @@ import type {
   HotUpdaterInitOptions,
   HotUpdaterOptions,
   LaunchInfo,
+  LaunchConfiguration,
   LaunchTransitionReceipt,
   NativeState,
   NotifyAppReadyResult,
@@ -137,6 +138,26 @@ function createHotUpdaterClient() {
   };
 
   return {
+    async getLaunchConfiguration(): Promise<LaunchConfiguration> {
+      const value = await callNative<LaunchConfiguration>(
+        "getLaunchConfiguration",
+      );
+      if (
+        value === null ||
+        typeof value !== "object" ||
+        Array.isArray(value) ||
+        Object.entries(value).some(
+          ([key, item]) => key.length === 0 || typeof item !== "string",
+        )
+      ) {
+        throw new LynxUpdaterError(
+          "INVALID_NATIVE_REPLY",
+          "Native launch configuration must be a string map.",
+        );
+      }
+      return { ...value };
+    },
+
     init: (options: HotUpdaterInitOptions): void => {
       config.onError = options.onError;
       config.client = {

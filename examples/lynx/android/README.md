@@ -26,14 +26,16 @@ Build the production release APK with JDK 17 and Android SDK 34:
 pnpm validate:lynx:scaffold-native -- --platform android
 ```
 
-The build expects the acceptance workflow's validated embedded A trees at
-`.hot-updater/embedded/ota/<framework>/A`. They are generated from public
-compiler output and are not application-owned OTA logic.
+The scaffold validation command deterministically generates, validates, and
+embeds the React SDK3 A tree at
+`.hot-updater/embedded/ota/react/A` from a clean checkout. The explicit matrix
+build consumes the prevalidated React, Vue, and Octane SDK3 A trees produced by
+the public acceptance workflow. They are generated compiler output and are not
+application-owned OTA logic.
 
 The APK is written to `app/build/outputs/apk/release/app-release.apk` and embeds
-one compatible A artifact for each framework. The same binary selects ReactLynx,
-VueLynx, or OctaneLynx through host configuration; OTA files are never copied
-into the app by an application-owned provider.
+only the compatible ReactLynx A artifact. OTA files are never copied into the app
+by an application-owned provider.
 
 ## Nonproduction matrix target
 

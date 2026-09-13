@@ -16,6 +16,21 @@ import org.json.JSONObject
 /** Framework-independent background native bridge; never accepts context or attempt IDs. */
 class HotUpdaterLynxModule(context: Context) : LynxModule(context) {
     @LynxMethod fun getState(callback: Callback) = call(callback) { session -> session.controller.state(session) }
+    @LynxMethod fun getLaunchConfiguration(callback: Callback) {
+        Handler(Looper.getMainLooper()).post {
+            val session = sessions[mContext]
+            if (session == null) {
+                reply(callback, Result.failure(CatalogPolicy.Rejected(
+                    "NO_CONTEXT",
+                    "No registered native context",
+                )))
+            } else {
+                reply(callback, Result.success(JSONObject(
+                    launchConfigurations[mContext] ?: emptyMap<String, String>(),
+                )))
+            }
+        }
+    }
     @LynxMethod fun acceptCatalog(params: ReadableMap, callback: Callback) = call(callback) { session -> session.controller.accept(session, json(params)) }
     @LynxMethod fun validateSelection(params: ReadableMap, callback: Callback) = call(callback) { session -> session.controller.validate(session, json(params)) }
     @LynxMethod fun prepareSelection(params: ReadableMap, callback: Callback) = call(callback) { session -> session.controller.prepare(session, json(params)) }
@@ -113,7 +128,19 @@ class HotUpdaterLynxModule(context: Context) : LynxModule(context) {
     }
     companion object {
         private val sessions = IdentityHashMap<Context, LynxLaunchSession>()
-        internal fun bind(context: Context, session: LynxLaunchSession) { check(!sessions.containsKey(context)); sessions[context] = session }
-        internal fun unbind(context: Context) { sessions.remove(context) }
+        private val launchConfigurations = IdentityHashMap<Context, Map<String, String>>()
+        internal fun bind(
+            context: Context,
+            session: LynxLaunchSession,
+            launchConfiguration: Map<String, String> = emptyMap(),
+        ) {
+            check(!sessions.containsKey(context))
+            sessions[context] = session
+            launchConfigurations[context] = launchConfiguration.toMap()
+        }
+        internal fun unbind(context: Context) {
+            sessions.remove(context)
+            launchConfigurations.remove(context)
+        }
     }
 }

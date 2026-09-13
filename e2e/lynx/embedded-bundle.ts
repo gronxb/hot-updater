@@ -6,6 +6,15 @@ import path from "node:path";
 export const LYNX_E2E_BUILTIN_BUNDLE_ID =
   "00000000-0000-7000-8000-000000000000";
 
+export const LYNX_E2E_SDK3_FILES = [
+  "assets/OFL.txt",
+  "assets/bootstrap.js",
+  "assets/probe.png",
+  "assets/probe.ttf",
+  "dynamic/component.lynx.bundle",
+  "main.lynx.bundle",
+] as const;
+
 export function lynxE2eRuntimeId(platform: "ios" | "android"): string {
   return platform === "ios"
     ? "sparkling-c4ce8d2-lynx-3.9.0-primjs-3.8.0-alpha.6-ios-ota-v2"
@@ -94,77 +103,172 @@ export async function packageLynxEmbeddedDirectory(options: {
   return { manifestDigest: sha256File(manifestBytes) };
 }
 
-export function rewriteLynxAndroidEmulatorUrl(
-  url: string,
-  env: NodeJS.ProcessEnv,
-): string {
-  let parsed: URL;
-  try {
-    parsed = new URL(url);
-  } catch {
-    return url;
+type NativeEmbeddedPlatform = "ios" | "android";
+
+export async function validateLynxEmbeddedDirectory(options: {
+  readonly root: string;
+  readonly platform: NativeEmbeddedPlatform;
+  readonly expectedBundleId?: string;
+  readonly expectedRuntimeId?: string;
+  readonly expectedFiles?: readonly string[];
+}): Promise<{
+  readonly bundleId: string;
+  readonly entry: string;
+  readonly runtimeId: string;
+  readonly manifestDigest: string;
+}> {
+  const metadataPath = path.join(options.root, "hot-updater-lynx.json");
+  const manifestPath = path.join(options.root, "manifest.json");
+  const [metadataBytes, manifestBytes] = await Promise.all([
+    fs.readFile(metadataPath),
+    fs.readFile(manifestPath),
+  ]);
+  const metadata = JSON.parse(metadataBytes.toString("utf8")) as {
+    bundleId?: string;
+    entry?: string;
+    platform?: string;
+    runtimeId?: string;
+  };
+  const manifest = JSON.parse(manifestBytes.toString("utf8")) as {
+    bundleId?: string;
+    assets?: Record<string, { fileHash?: string }>;
+  };
+  if (
+    !metadata.bundleId ||
+    manifest.bundleId !== metadata.bundleId ||
+    metadata.platform !== options.platform ||
+    !metadata.runtimeId ||
+    !metadata.entry ||
+    (options.expectedBundleId &&
+      metadata.bundleId !== options.expectedBundleId) ||
+    (options.expectedRuntimeId &&
+      metadata.runtimeId !== options.expectedRuntimeId)
+  ) {
+    throw new Error("Generated Lynx embedded identity is invalid.");
   }
-  if (parsed.hostname !== "localhost" && parsed.hostname !== "127.0.0.1") {
-    return url;
+  const files = await listRelativeFiles(options.root);
+  const payloadFiles = files.filter((name) => name !== "manifest.json");
+  if (
+    !payloadFiles.includes(metadata.entry) ||
+    !payloadFiles.includes("hot-updater-lynx.json") ||
+    Object.keys(manifest.assets ?? {})
+      .sort()
+      .join("\0") !== payloadFiles.sort().join("\0")
+  ) {
+    throw new Error("Generated Lynx embedded manifest coverage is invalid.");
   }
-  parsed.hostname = "10.0.2.2";
-  const devicePort = env.HOT_UPDATER_E2E_ANDROID_CONTROL_DEVICE_PORT ?? "3107";
-  const hostPort =
-    env.HOT_UPDATER_E2E_CONTROL_PORT ??
-    env.PORT ??
-    (() => {
-      try {
-        return new URL(
-          env.HOT_UPDATER_E2E_CONTROL_BASE_URL ?? env.CONTROL_URL ?? "",
-        ).port;
-      } catch {
-        return "";
-      }
-    })();
-  if (hostPort && parsed.port === devicePort) {
-    parsed.port = hostPort;
+  for (const name of options.expectedFiles ?? []) {
+    if (!payloadFiles.includes(name)) {
+      throw new Error(`Generated Lynx embedded resource is missing: ${name}`);
+    }
   }
-  return parsed.toString();
+  for (const name of payloadFiles) {
+    const expected = manifest.assets?.[name]?.fileHash;
+    const actual = sha256File(await fs.readFile(path.join(options.root, name)));
+    if (!expected || expected !== actual) {
+      throw new Error(`Generated Lynx embedded hash mismatch: ${name}`);
+    }
+  }
+  return {
+    bundleId: metadata.bundleId,
+    entry: metadata.entry,
+    runtimeId: metadata.runtimeId,
+    manifestDigest: sha256File(manifestBytes),
+  };
+}
+
+export async function materializeLynxNativeEmbedded(options: {
+  readonly exampleDir: string;
+  readonly platform: NativeEmbeddedPlatform;
+  readonly source: string;
+  readonly framework?: "react" | "vue" | "octane";
+  readonly variant?: "sdk1" | "sdk2" | "sdk3";
+  readonly resetPlatformRoot?: boolean;
+}): Promise<readonly string[]> {
+  const framework = options.framework ?? "react";
+  const variant = options.variant ?? "sdk3";
+  const embedded = await validateLynxEmbeddedDirectory({
+    root: options.source,
+    platform: options.platform,
+    expectedBundleId: LYNX_E2E_BUILTIN_BUNDLE_ID,
+    expectedRuntimeId: lynxE2eRuntimeId(options.platform),
+    expectedFiles:
+      variant === "sdk1"
+        ? ["assets/probe.png", "main.lynx.bundle"]
+        : LYNX_E2E_SDK3_FILES,
+  });
+  if (embedded.entry !== "main.lynx.bundle") {
+    throw new Error("Generated Lynx embedded entry is invalid.");
+  }
+  if (options.platform === "ios") {
+    const publicRoot = path.join(options.exampleDir, "ios/Embedded/Public");
+    const destination = path.join(publicRoot, framework);
+    if (options.resetPlatformRoot !== false) {
+      await fs.rm(path.join(options.exampleDir, "ios/Embedded"), {
+        recursive: true,
+        force: true,
+      });
+    } else {
+      await fs.rm(destination, { recursive: true, force: true });
+      await fs.rm(path.join(publicRoot, `${framework}-native.json`), {
+        force: true,
+      });
+    }
+    await fs.mkdir(publicRoot, { recursive: true });
+    await fs.cp(options.source, destination, { recursive: true });
+    const descriptorPath = path.join(publicRoot, `${framework}-native.json`);
+    await fs.writeFile(
+      descriptorPath,
+      `${JSON.stringify({
+        framework,
+        variant,
+        runtimeId: embedded.runtimeId,
+        bundleId: embedded.bundleId,
+        minimumBundleId: embedded.bundleId,
+        manifestDigest: embedded.manifestDigest,
+        entry: embedded.entry,
+      })}\n`,
+    );
+    return [
+      path.join(destination, "main.lynx.bundle"),
+      path.join(destination, "manifest.json"),
+      descriptorPath,
+    ];
+  }
+
+  const embeddedRoot = path.join(
+    options.exampleDir,
+    "android/.hot-updater/embedded",
+  );
+  const destination = path.join(embeddedRoot, "ota", framework, "A");
+  if (options.resetPlatformRoot !== false) {
+    await fs.rm(embeddedRoot, { recursive: true, force: true });
+  } else {
+    await fs.rm(destination, { recursive: true, force: true });
+  }
+  await fs.mkdir(path.dirname(destination), { recursive: true });
+  await fs.cp(options.source, destination, { recursive: true });
+  return [
+    path.join(destination, "main.lynx.bundle"),
+    path.join(destination, "manifest.json"),
+  ];
 }
 
 export async function compileLynxE2eEmbedded(options: {
   readonly exampleDir: string;
   readonly platform: "ios" | "android";
   readonly env: NodeJS.ProcessEnv;
+  readonly outDir?: string;
 }): Promise<string> {
-  const outDir = lynxE2eEmbeddedDir(options.exampleDir, options.platform);
+  const outDir =
+    options.outDir ?? lynxE2eEmbeddedDir(options.exampleDir, options.platform);
   await fs.rm(outDir, { recursive: true, force: true });
-  for (const cacheDir of [
-    ".rspeedy",
-    "node_modules/.cache",
-    "node_modules/.rspack",
-  ]) {
-    await fs.rm(path.join(options.exampleDir, cacheDir), {
-      recursive: true,
-      force: true,
-    });
-  }
   await fs.mkdir(outDir, { recursive: true });
   const compileEnv: NodeJS.ProcessEnv = {
     ...options.env,
     HOT_UPDATER_BUILD_DIR: outDir,
     HOT_UPDATER_E2E_OVERLAY_MARKER: "targeted-qa-detox",
   };
-  if (options.platform === "android") {
-    if (compileEnv.HOT_UPDATER_E2E_RUNTIME_CONFIG_URL) {
-      compileEnv.HOT_UPDATER_E2E_RUNTIME_CONFIG_URL =
-        rewriteLynxAndroidEmulatorUrl(
-          compileEnv.HOT_UPDATER_E2E_RUNTIME_CONFIG_URL,
-          compileEnv,
-        );
-    }
-    if (compileEnv.HOT_UPDATER_E2E_APP_BASE_URL) {
-      compileEnv.HOT_UPDATER_E2E_APP_BASE_URL = rewriteLynxAndroidEmulatorUrl(
-        compileEnv.HOT_UPDATER_E2E_APP_BASE_URL,
-        compileEnv,
-      );
-    }
-  }
   const result = spawnSync(
     "pnpm",
     [
@@ -188,6 +292,15 @@ export async function compileLynxE2eEmbedded(options: {
       `rspeedy e2e embed failed: ${result.stderr || result.stdout || result.status}`,
     );
   }
+  const { finishSpike } =
+    await import("../../examples/lynx/scripts/spike-assets.mjs");
+  await finishSpike(outDir, "react", "A", {
+    rspeedy: "0.13.5",
+    framework: "@lynx-js/react@0.116.5",
+    behavior: "normal",
+    resourceSet: "sdk3",
+    assetPrefix: "hot-updater:///",
+  });
   await packageLynxEmbeddedDirectory({
     root: outDir,
     platform: options.platform,

@@ -8,6 +8,50 @@ afterEach(() => {
 });
 
 describe("Lynx public controller", () => {
+  it("reads immutable native launch configuration before SDK initialization", async () => {
+    vi.stubGlobal("NativeModules", {
+      HotUpdaterLynx: {
+        getLaunchConfiguration: (
+          callback: (reply: NativeReply<unknown>) => void,
+        ) =>
+          callback({
+            ok: true,
+            data: {
+              runtimeConfigURL: "http://localhost:3111/e2e/runtime-config",
+              appBaseURL: "http://localhost:3011/hot-updater",
+            },
+          }),
+      },
+    });
+    const { HotUpdater } = await import("./index");
+    await expect(HotUpdater.getLaunchConfiguration()).resolves.toEqual({
+      runtimeConfigURL: "http://localhost:3111/e2e/runtime-config",
+      appBaseURL: "http://localhost:3011/hot-updater",
+    });
+  });
+
+  it.each([
+    null,
+    [],
+    { runtimeConfigURL: 3111 },
+    { "": "http://localhost:3111/e2e/runtime-config" },
+  ])(
+    "rejects a malformed native launch configuration reply %#",
+    async (data) => {
+      vi.stubGlobal("NativeModules", {
+        HotUpdaterLynx: {
+          getLaunchConfiguration: (
+            callback: (reply: NativeReply<unknown>) => void,
+          ) => callback({ ok: true, data }),
+        },
+      });
+      const { HotUpdater } = await import("./index");
+      await expect(HotUpdater.getLaunchConfiguration()).rejects.toMatchObject({
+        code: "INVALID_NATIVE_REPLY",
+      });
+    },
+  );
+
   it("omits public APIs without truthful native behavior", async () => {
     const { HotUpdater } = await import("./index");
     expect("getManifest" in HotUpdater).toBe(false);

@@ -31,8 +31,6 @@ if (
   );
 }
 const isSdk = resourceSet.startsWith("sdk");
-if (isSdk && !process.env.HOT_UPDATER_SDK_BASE_URL)
-  throw new Error("SDK fixtures require explicit HOT_UPDATER_SDK_BASE_URL");
 const cwd = fileURLToPath(new URL("..", import.meta.url));
 const name = `${variant}${behavior === "normal" ? "" : `-${behavior}`}${resourceSet === "basic" ? "" : `-${resourceSet}`}-managed`;
 const outDir = path.join(cwd, ".hot-updater/g1", framework, name);
@@ -75,7 +73,6 @@ console.log(
         framework === "react" ? "@lynx-js/react@0.116.5" : "vue-lynx@0.5.1",
       behavior,
       resourceSet,
-      ...(isSdk ? { baseURL: process.env.HOT_UPDATER_SDK_BASE_URL } : {}),
       assetPrefix: "hot-updater:///",
     }),
     null,

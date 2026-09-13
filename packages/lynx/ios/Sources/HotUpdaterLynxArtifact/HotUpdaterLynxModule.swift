@@ -8,14 +8,17 @@ public final class HotUpdaterLynxModuleContext {
     public let launch: LynxLaunchContext
     public let reload: (((@escaping (Result<Void, Error>) -> Void)) -> Void)?
     public let didConfirm: ((LynxConfirmationResult) -> Void)?
+    public let launchConfiguration: [String: String]
     private let bridgeReplies = LynxBridgeReplies()
     public init(controller: LynxController, launch: LynxLaunchContext,
                 reload: (((@escaping (Result<Void, Error>) -> Void)) -> Void)? = nil,
-                didConfirm: ((LynxConfirmationResult) -> Void)? = nil) {
+                didConfirm: ((LynxConfirmationResult) -> Void)? = nil,
+                launchConfiguration: [String: String] = [:]) {
         self.controller = controller
         self.launch = launch
         self.reload = reload
         self.didConfirm = didConfirm
+        self.launchConfiguration = launchConfiguration
     }
 
     func beginReply(
@@ -45,6 +48,7 @@ public final class HotUpdaterLynxModuleContext {
     public static var name: String { "HotUpdaterLynx" }
     public static var methodLookup: [String: String] {
         ["getState": NSStringFromSelector(#selector(getState(_:))),
+         "getLaunchConfiguration": NSStringFromSelector(#selector(getLaunchConfiguration(_:))),
          "acceptCatalog": NSStringFromSelector(#selector(acceptCatalog(_:callback:))),
          "validateSelection": NSStringFromSelector(#selector(validateSelection(_:callback:))),
          "prepareSelection": NSStringFromSelector(#selector(prepareSelection(_:callback:))),
@@ -98,6 +102,12 @@ public final class HotUpdaterLynxModuleContext {
     @objc public func getState(_ callback: LynxCallbackBlock?) {
         do { let value = try bound(); callback?(["ok": true, "data": try value.controller.getState(value.launch)]) }
         catch { failure(error, callback) }
+    }
+    @objc public func getLaunchConfiguration(_ callback: LynxCallbackBlock?) {
+        do {
+            let value = try bound()
+            callback?(["ok": true, "data": value.launchConfiguration])
+        } catch { failure(error, callback) }
     }
     @objc public func acceptCatalog(_ params: [String: Any], callback: LynxCallbackBlock?) {
         do {

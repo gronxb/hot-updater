@@ -7,12 +7,17 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it, vi } from "vitest";
 
 import {
+  androidMatrixLaunchArguments,
   EVENT_MARKER,
+  iosMatrixLaunchArguments,
   parseEvents,
 } from "../../examples/lynx/scripts/public-matrix/device-adapters.mjs";
 
 const native = vi.hoisted(() => ({
   checkForUpdate: vi.fn(),
+  getLaunchConfiguration: vi.fn().mockResolvedValue({
+    appBaseURL: "https://updates.test",
+  }),
   getLaunchInfo: vi.fn(),
   init: vi.fn(),
   notifyAppReady: vi.fn(),
@@ -47,8 +52,30 @@ function buildNative(args: readonly string[]) {
 }
 
 describe("Lynx public matrix runner", () => {
+  it.each(["react", "vue", "octane"])(
+    "passes runtime endpoints to every %s matrix launch on both platforms",
+    (framework) => {
+      const baseURL = "http://updates.test/hot-updater";
+      const encoded = JSON.stringify({ appBaseURL: baseURL });
+      expect(iosMatrixLaunchArguments(framework, "qa", baseURL)).toContain(
+        `--hot-updater-launch-configuration=${encoded}`,
+      );
+      expect(androidMatrixLaunchArguments(framework, "qa", baseURL)).toEqual([
+        "--es",
+        "framework",
+        framework,
+        "--es",
+        "channel",
+        "qa",
+        "--es",
+        "hotUpdaterLaunchConfiguration",
+        encoded,
+      ]);
+    },
+  );
+
   it("builds the dedicated matrix targets and emits their exact artifact paths", () => {
-    const result = buildNative(["--", "--dry-run"]);
+    const result = buildNative(["--", "--dry-run", "--target", "matrix"]);
     expect(result.status).toBe(0);
     const encoded = result.stdout
       .split("\n")
@@ -60,7 +87,10 @@ describe("Lynx public matrix runner", () => {
       target: "matrix",
       appId: "com.hotupdater.lynxmatrix",
       artifacts: {
-        ios: { scheme: "SparklingMatrixHarness" },
+        ios: {
+          scheme: "SparklingMatrixHarness",
+          arch: process.arch === "arm64" ? "arm64" : "x86_64",
+        },
         android: { task: ":matrix-app:assembleRelease" },
       },
     });
@@ -71,11 +101,14 @@ describe("Lynx public matrix runner", () => {
   });
 
   it("keeps the production scaffold as a separately selected validation build", () => {
-    const result = buildNative(["--dry-run", "--target", "scaffold"]);
+    const result = buildNative(["--dry-run"]);
     expect(result.status).toBe(0);
     expect(result.stdout).toContain('"target":"scaffold"');
     expect(result.stdout).toContain('"scheme":"SparklingGo"');
     expect(result.stdout).toContain('"task":":app:assembleRelease"');
+    expect(result.stdout).toContain(
+      "/ios/build/Build/Products/Release-iphonesimulator/SparklingGo.app",
+    );
   });
 
   it("validates the matrix artifact receipt before a dry run", () => {
@@ -109,7 +142,6 @@ describe("Lynx public matrix runner", () => {
     vi.stubGlobal("__SPIKE_VARIANT__", "B");
     vi.stubGlobal("__SPIKE_BEHAVIOR__", "normal");
     vi.stubGlobal("__SPIKE_ASSET_PREFIX__", "hu://");
-    vi.stubGlobal("__SDK_BASE_URL__", "https://updates.test");
     vi.stubGlobal("__SDK_RESOURCES__", false);
     native.getLaunchInfo.mockResolvedValue({
       running: { bundleId: "bundle-b", releaseId: "release-b" },

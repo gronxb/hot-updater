@@ -4,6 +4,13 @@ import fs from "node:fs";
 import fsp from "node:fs/promises";
 import path from "node:path";
 
+import {
+  createLynxNativeLaunchConfiguration,
+  HOT_UPDATER_LYNX_ANDROID_LAUNCH_CONFIGURATION_EXTRA,
+  HOT_UPDATER_LYNX_IOS_LAUNCH_CONFIGURATION_PREFIX,
+  serializeLynxNativeLaunchConfiguration,
+} from "../../../../e2e/lynx/native-launch-configuration.ts";
+
 const APP_ID = "com.hotupdater.lynxmatrix";
 const EVENT_MARKER = "HOT_UPDATER_MATRIX_EVENT ";
 
@@ -60,8 +67,33 @@ function parseEvents(text) {
   return events;
 }
 
+export function iosMatrixLaunchArguments(framework, channel, appBaseURL) {
+  const configuration = serializeLynxNativeLaunchConfiguration(
+    createLynxNativeLaunchConfiguration({ appBaseURL }),
+  );
+  return `--launch-args=--ota-framework=${framework} --ota-channel=${channel} ${HOT_UPDATER_LYNX_IOS_LAUNCH_CONFIGURATION_PREFIX}${configuration}`;
+}
+
+export function androidMatrixLaunchArguments(framework, channel, appBaseURL) {
+  const configuration = serializeLynxNativeLaunchConfiguration(
+    createLynxNativeLaunchConfiguration({ appBaseURL }),
+  );
+  return [
+    "--es",
+    "framework",
+    framework,
+    "--es",
+    "channel",
+    channel,
+    "--es",
+    HOT_UPDATER_LYNX_ANDROID_LAUNCH_CONFIGURATION_EXTRA,
+    configuration,
+  ];
+}
+
 class IOSAdapter {
-  constructor({ deviceId, binaryPath, resultsDir, session }) {
+  constructor({ appBaseURL, deviceId, binaryPath, resultsDir, session }) {
+    this.appBaseURL = appBaseURL;
     this.deviceId = deviceId;
     this.binaryPath = binaryPath;
     this.resultsDir = resultsDir;
@@ -148,7 +180,7 @@ class IOSAdapter {
       "--udid",
       this.deviceId,
       "--foreground",
-      `--launch-args=--ota-framework=${framework} --ota-channel=${channel}`,
+      iosMatrixLaunchArguments(framework, channel, this.appBaseURL),
     ]);
     return this.processId();
   }
@@ -249,7 +281,8 @@ class IOSAdapter {
 }
 
 class AndroidAdapter {
-  constructor({ deviceId, binaryPath, resultsDir }) {
+  constructor({ appBaseURL, deviceId, binaryPath, resultsDir }) {
+    this.appBaseURL = appBaseURL;
     this.deviceId = deviceId;
     this.binaryPath = binaryPath;
     this.resultsDir = resultsDir;
@@ -294,12 +327,7 @@ class AndroidAdapter {
       "start",
       "-n",
       `${APP_ID}/.MatrixActivity`,
-      "--es",
-      "framework",
-      framework,
-      "--es",
-      "channel",
-      channel,
+      ...androidMatrixLaunchArguments(framework, channel, this.appBaseURL),
     ]);
     return this.processId();
   }

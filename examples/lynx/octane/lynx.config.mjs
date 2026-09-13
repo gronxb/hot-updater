@@ -4,12 +4,6 @@ import { pluginOctane } from "@octanejs/rspeedy-plugin";
 const isPublic = process.env.HOT_UPDATER_SPIKE_SDK !== "0";
 const resourceSet =
   process.env.HOT_UPDATER_SPIKE_RESOURCES ?? (isPublic ? "sdk3" : "basic");
-const baseURL = process.env.HOT_UPDATER_SDK_BASE_URL;
-if (isPublic && (!baseURL || !/^https?:\/\//i.test(baseURL))) {
-  throw new Error(
-    "Set HOT_UPDATER_SDK_BASE_URL to an explicit HTTP(S) endpoint for the public Lynx example.",
-  );
-}
 
 export default defineConfig({
   mode: "production",
@@ -20,7 +14,6 @@ export default defineConfig({
     },
     define: {
       __SDK_RESOURCES__: JSON.stringify(["sdk2", "sdk3"].includes(resourceSet)),
-      __SDK_BASE_URL__: JSON.stringify(baseURL ?? ""),
       __SPIKE_VARIANT__: JSON.stringify(
         process.env.HOT_UPDATER_SPIKE_VARIANT ?? "A",
       ),

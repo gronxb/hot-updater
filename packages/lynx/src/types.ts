@@ -76,6 +76,8 @@ export interface LaunchInfo {
   next: SelectionSummary | null;
 }
 
+export type LaunchConfiguration = Readonly<Record<string, string>>;
+
 export interface InstallResult {
   status: "STAGED" | "ADOPTED";
   requiresRestart: boolean;
@@ -208,6 +210,7 @@ type Callback<T> = (reply: NativeReply<T>) => void;
 /** Methods are called only from Lynx background scripting. */
 export interface HotUpdaterLynxNative {
   getState(callback: Callback<NativeState>): void;
+  getLaunchConfiguration(callback: Callback<LaunchConfiguration>): void;
   acceptCatalog(
     params: AcceptCatalogParams,
     callback: Callback<SelectionGuard>,

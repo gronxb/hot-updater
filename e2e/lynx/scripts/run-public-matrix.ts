@@ -294,7 +294,6 @@ async function compile(
     outDir,
     variant,
     behavior,
-    baseURL: sdkBaseURL(platform),
     octaneSource,
   });
   return { fixture, compilerReceipt };
@@ -862,6 +861,7 @@ if (platforms.includes("ios")) {
   adapters.set(
     "ios",
     createDeviceAdapter("ios", {
+      appBaseURL: sdkBaseURL("ios"),
       deviceId: requiredString("ios-device"),
       binaryPath: binaryPath("ios"),
       resultsDir,
@@ -873,6 +873,7 @@ if (platforms.includes("android")) {
   adapters.set(
     "android",
     createDeviceAdapter("android", {
+      appBaseURL: sdkBaseURL("android"),
       deviceId: requiredString("android-serial"),
       binaryPath: binaryPath("android"),
       resultsDir,

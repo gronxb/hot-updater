@@ -226,7 +226,6 @@ async function runScenarios(
         bootstrapResult,
       );
       app.ensureInstalled();
-      await app.prepareOverlay();
       await controlClient.runJob(
         "reset remote bundles",
         "/e2e/jobs/reset-remote-bundles",

@@ -1,6 +1,4 @@
 import { spawnSync } from "node:child_process";
-import { readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
-import path from "node:path";
 
 import { createControlClient } from "../detox/control-client.ts";
 import type { JsonObject } from "../detox/control-protocol.ts";
@@ -8,8 +6,17 @@ import type {
   DetoxAppDriver,
   DetoxLaunchOptions,
 } from "../detox/scenarios/types.ts";
-import type { DetoxPlatform } from "../detox/scripts/control-server-env.ts";
-import { compileLynxE2eEmbedded } from "./embedded-bundle.ts";
+import {
+  type DetoxPlatform,
+  resolveAppBaseUrl,
+  resolveRuntimeConfigUrl,
+} from "../detox/scripts/control-server-env.ts";
+import {
+  createLynxNativeLaunchConfiguration,
+  HOT_UPDATER_LYNX_ANDROID_LAUNCH_CONFIGURATION_EXTRA,
+  HOT_UPDATER_LYNX_IOS_LAUNCH_CONFIGURATION_PREFIX,
+  serializeLynxNativeLaunchConfiguration,
+} from "./native-launch-configuration.ts";
 
 type ControlClient = ReturnType<typeof createControlClient>;
 
@@ -55,7 +62,6 @@ export class LynxAppDriver implements DetoxAppDriver {
   private readonly platform: DetoxPlatform;
   private readonly env: NodeJS.ProcessEnv;
   private stageValues: Record<string, unknown>;
-  private overlayDirPromise: Promise<string> | null = null;
 
   constructor(
     controlClient: ControlClient,
@@ -271,14 +277,6 @@ export class LynxAppDriver implements DetoxAppDriver {
     );
   }
 
-  private exampleDir(): string {
-    const exampleDir = this.env.HOT_UPDATER_E2E_ENV_TARGET_DIR;
-    if (!exampleDir) {
-      throw new Error("HOT_UPDATER_E2E_ENV_TARGET_DIR is required");
-    }
-    return exampleDir;
-  }
-
   ensureInstalled(): void {
     this.installApp();
   }
@@ -297,21 +295,6 @@ export class LynxAppDriver implements DetoxAppDriver {
       encoding: "utf8",
       env: this.env,
     });
-  }
-
-  prepareOverlay(): Promise<string> {
-    this.overlayDirPromise ??= compileLynxE2eEmbedded({
-      exampleDir: this.exampleDir(),
-      platform: this.platform,
-      env: this.env,
-    }).then((dir) => {
-      const resultsDir = this.env.HOT_UPDATER_E2E_RESULTS_DIR;
-      if (resultsDir) {
-        writeFileSync(path.join(resultsDir, "lynx-overlay-dir"), dir);
-      }
-      return dir;
-    });
-    return this.overlayDirPromise;
   }
 
   private installApp(): void {
@@ -341,7 +324,12 @@ export class LynxAppDriver implements DetoxAppDriver {
     options: { expectCrash?: boolean } = {},
   ): Promise<void> {
     this.terminateApp();
-    const embeddedDir = await this.prepareOverlay();
+    const launchConfiguration = serializeLynxNativeLaunchConfiguration(
+      createLynxNativeLaunchConfiguration({
+        appBaseURL: resolveAppBaseUrl(this.env),
+        runtimeConfigURL: resolveRuntimeConfigUrl(this.platform, this.env),
+      }),
+    );
     if (this.platform === "ios") {
       this.runLaunch(
         "xcrun",
@@ -352,14 +340,13 @@ export class LynxAppDriver implements DetoxAppDriver {
           this.appId(),
           "--ota-framework=react",
           "--ota-channel=production",
-          `--ota-embedded-dir=${embeddedDir}`,
+          `${HOT_UPDATER_LYNX_IOS_LAUNCH_CONFIGURATION_PREFIX}${launchConfiguration}`,
         ],
         options.expectCrash === true,
       );
       return;
     }
     spawnSync("sleep", ["1"]);
-    const deviceEmbeddedDir = this.installAndroidOverlay(embeddedDir);
     this.runLaunch(
       "adb",
       [
@@ -378,163 +365,11 @@ export class LynxAppDriver implements DetoxAppDriver {
         "channel",
         "production",
         "--es",
-        "embeddedDir",
-        deviceEmbeddedDir,
+        HOT_UPDATER_LYNX_ANDROID_LAUNCH_CONFIGURATION_EXTRA,
+        launchConfiguration,
       ],
       options.expectCrash === true,
     );
-    if (options.expectCrash !== true) {
-      this.assertAndroidOverlayLoaded();
-    }
-  }
-
-  private installAndroidOverlay(localDir: string): string {
-    const remoteRel = "files/e2e-embedded";
-    this.runOrThrow("adb", [
-      "-s",
-      this.deviceId(),
-      "shell",
-      "run-as",
-      this.appId(),
-      "rm",
-      "-rf",
-      remoteRel,
-    ]);
-    this.runOrThrow("adb", [
-      "-s",
-      this.deviceId(),
-      "shell",
-      "run-as",
-      this.appId(),
-      "mkdir",
-      "-p",
-      remoteRel,
-    ]);
-    for (const rel of this.listRelativeFiles(localDir)) {
-      const parent = path.posix.dirname(rel);
-      if (parent !== ".") {
-        this.runOrThrow("adb", [
-          "-s",
-          this.deviceId(),
-          "shell",
-          "run-as",
-          this.appId(),
-          "mkdir",
-          "-p",
-          `${remoteRel}/${parent}`,
-        ]);
-      }
-      this.pushAndroidOverlayFile(localDir, remoteRel, rel);
-    }
-    this.runOrThrow("adb", [
-      "-s",
-      this.deviceId(),
-      "shell",
-      "run-as",
-      this.appId(),
-      "test",
-      "-f",
-      `${remoteRel}/manifest.json`,
-    ]);
-    this.assertCopiedOverlaySize(localDir, remoteRel);
-    return "e2e-embedded";
-  }
-
-  private pushAndroidOverlayFile(
-    localDir: string,
-    remoteRel: string,
-    rel: string,
-  ): void {
-    const input = readFileSync(path.join(localDir, rel));
-    let lastError = "";
-    for (let attempt = 0; attempt < 3; attempt += 1) {
-      if (attempt > 0) {
-        this.terminateApp();
-        spawnSync("sleep", ["1"]);
-        this.runOrThrow("adb", [
-          "-s",
-          this.deviceId(),
-          "shell",
-          "run-as",
-          this.appId(),
-          "mkdir",
-          "-p",
-          remoteRel,
-        ]);
-      }
-      // run-as execs tee with the app cwd. Avoid sh redirections: they resolve
-      // /data/user/0 or /data/data with Permission denied.
-      const pushed = spawnSync(
-        "adb",
-        [
-          "-s",
-          this.deviceId(),
-          "shell",
-          "-T",
-          "run-as",
-          this.appId(),
-          "tee",
-          `${remoteRel}/${rel}`,
-        ],
-        {
-          encoding: "buffer",
-          input,
-          maxBuffer: 32 * 1024 * 1024,
-          timeout: 20_000,
-        },
-      );
-      if (pushed.status === 0) {
-        return;
-      }
-      lastError = [
-        `status=${pushed.status}`,
-        `signal=${pushed.signal}`,
-        `error=${pushed.error?.message ?? ""}`,
-        `stderr=${pushed.stderr?.toString() ?? ""}`,
-      ].join(" ");
-    }
-    throw new Error(`overlay copy ${rel} failed: ${lastError}`);
-  }
-
-  private assertCopiedOverlaySize(localDir: string, remoteRel: string): void {
-    const localSize = statSync(path.join(localDir, "main.lynx.bundle")).size;
-    const remote = spawnSync(
-      "adb",
-      [
-        "-s",
-        this.deviceId(),
-        "shell",
-        "run-as",
-        this.appId(),
-        "wc",
-        "-c",
-        `${remoteRel}/main.lynx.bundle`,
-      ],
-      { encoding: "utf8" },
-    );
-    const remoteSize = Number.parseInt((remote.stdout || "").trim(), 10);
-    if (!Number.isFinite(remoteSize) || remoteSize !== localSize) {
-      throw new Error(
-        `overlay main.lynx.bundle size mismatch local=${localSize} remote=${remote.stdout || remote.status}`,
-      );
-    }
-  }
-
-  private listRelativeFiles(root: string): string[] {
-    const names: string[] = [];
-    const walk = (dir: string): void => {
-      for (const entry of readdirSync(dir)) {
-        const full = path.join(dir, entry);
-        const stat = statSync(full);
-        if (stat.isDirectory()) {
-          walk(full);
-          continue;
-        }
-        names.push(path.relative(root, full).split(path.sep).join("/"));
-      }
-    };
-    walk(root);
-    return names;
   }
 
   private async clearOverlayMarker(stage: string): Promise<void> {
@@ -553,47 +388,6 @@ export class LynxAppDriver implements DetoxAppDriver {
         rejectValues: [""],
       },
     );
-  }
-
-  private assertAndroidOverlayLoaded(): void {
-    const deadline = Date.now() + 20_000;
-    let out = "";
-    while (Date.now() < deadline) {
-      const process = spawnSync(
-        "adb",
-        ["-s", this.deviceId(), "shell", "pidof", this.appId()],
-        { encoding: "utf8" },
-      );
-      const processId = (process.stdout || "").trim().split(/\s+/)[0];
-      if (!/^\d+$/.test(processId)) {
-        out = `${process.stdout || ""}\n${process.stderr || ""}`;
-        spawnSync("sleep", ["1"]);
-        continue;
-      }
-      const logs = spawnSync(
-        "adb",
-        [
-          "-s",
-          this.deviceId(),
-          "logcat",
-          "-d",
-          "--pid",
-          processId,
-          "-s",
-          "HotUpdaterLynx:V",
-        ],
-        { encoding: "utf8" },
-      );
-      out = `${logs.stdout || ""}\n${logs.stderr || ""}`;
-      if (
-        out.includes("overlay-js-load-started") ||
-        out.includes("absoluteDir=true")
-      ) {
-        return;
-      }
-      spawnSync("sleep", ["1"]);
-    }
-    throw new Error(`Android overlay not loaded by host: ${out.slice(-2000)}`);
   }
 
   private terminateApp(): void {

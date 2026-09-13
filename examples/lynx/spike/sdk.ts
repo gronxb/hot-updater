@@ -3,13 +3,12 @@ import { HotUpdater, type CheckForUpdateResult } from "@hot-updater/lynx";
 declare const __SPIKE_VARIANT__: string;
 declare const __SPIKE_BEHAVIOR__: string;
 declare const __SPIKE_ASSET_PREFIX__: string;
-declare const __SDK_BASE_URL__: string;
 declare const __SDK_RESOURCES__: boolean;
 
 export const variant = __SPIKE_VARIANT__;
 export const resources = __SDK_RESOURCES__;
 export const imageUrl = `${__SPIKE_ASSET_PREFIX__}assets/probe.png`;
-HotUpdater.init({ baseURL: __SDK_BASE_URL__ });
+let initialized = false;
 let imageReady = false;
 let completeImage: (() => void) | undefined;
 let prepared: CheckForUpdateResult | null = null;
@@ -29,6 +28,14 @@ export async function startSdk(
   loadDynamic: (url: string) => Promise<string>,
 ) {
   try {
+    if (!initialized) {
+      const launchConfiguration = await HotUpdater.getLaunchConfiguration();
+      HotUpdater.init({
+        baseURL:
+          launchConfiguration.appBaseURL ?? "http://localhost:3007/hot-updater",
+      });
+      initialized = true;
+    }
     const launch = await HotUpdater.getLaunchInfo();
     console.log("HOT_UPDATER_SDK_LAUNCH", JSON.stringify(launch));
     console.log(

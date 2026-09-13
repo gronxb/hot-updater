@@ -24,7 +24,6 @@ const result = await lynx({
       framework,
       outDir,
       variant,
-      baseURL: process.env.HOT_UPDATER_SDK_BASE_URL,
       octaneSource,
     });
     return { entry, runtimeId, stdout };

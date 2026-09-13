@@ -4,7 +4,9 @@ plugins { id("com.android.application"); id("org.jetbrains.kotlin.android") }
 
 fun embeddedDescriptors(): String {
   val root = file("../.hot-updater/embedded/ota")
-  return listOf("react", "vue", "octane").joinToString(",", "{", "}") { framework ->
+  val frameworks = providers.gradleProperty("hotUpdaterLynxEmbeddedFrameworks")
+    .orNull?.split(",") ?: listOf("react", "vue", "octane")
+  return frameworks.joinToString(",", "{", "}") { framework ->
     val manifest = root.resolve("$framework/A/manifest.json").readBytes()
     val bundleId = Regex("\\\"bundleId\\\"\\s*:\\s*\\\"([^\\\"]+)\\\"")
       .find(String(manifest))?.groupValues?.get(1)
@@ -26,7 +28,10 @@ android {
     buildConfigField("String", "LYNX_EMBEDDED_DESCRIPTORS", "\"${embeddedDescriptors()}\"")
     versionCode = 1
     versionName = "0.0.1"
-    ndk { abiFilters += "arm64-v8a" }
+    ndk {
+      abiFilters += providers.gradleProperty("hotUpdaterLynxAndroidAbis")
+        .orNull?.split(",") ?: listOf("arm64-v8a", "x86_64")
+    }
   }
   buildTypes {
     release {

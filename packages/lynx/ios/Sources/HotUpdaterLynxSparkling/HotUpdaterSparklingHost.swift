@@ -120,6 +120,7 @@ public final class HotUpdaterSparklingHost {
     private var containers: [ObjectIdentifier: WeakContainer] = [:]
     private var replacing = false
     private var closed = false
+  fileprivate let launchConfiguration: [String: String]
 
     public init(
         configuration: HotUpdaterSparklingConfiguration,
@@ -134,6 +135,9 @@ public final class HotUpdaterSparklingHost {
         self.configuration = configuration
         self.events = events
         self.fallback = fallback
+        launchConfiguration = try HotUpdaterSparklingLaunchConfiguration.parse(
+            arguments: ProcessInfo.processInfo.arguments
+        )
         controller = try LynxController(configuration: configuration.controller)
         generationEvents = SparklingGenerationEvents(sink: events)
     }
@@ -749,7 +753,8 @@ public final class HotUpdaterSparklingViewController: UIViewController {
                     ),
                     "confirmation": confirmation.dictionary,
                 ])
-            } : nil
+            } : nil,
+        launchConfiguration: host.launchConfiguration
         )
         let sparkling = SPKContext()
         sparkling.containerLifecycleDelegate = lifecycle

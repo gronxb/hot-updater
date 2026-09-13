@@ -477,7 +477,10 @@ class HotUpdaterSparklingView internal constructor(
         }
         val builder = LynxViewBuilder().also(launch::configure)
         val nextKit = SimpleLynxKitView(context, sparkling, builder, null, null)
-        launch.bind(nextKit)
+        launch.bind(
+            nextKit,
+            HotUpdaterSparklingLaunchConfiguration.from(context),
+        )
         kit = nextKit
         addView(
             nextKit,

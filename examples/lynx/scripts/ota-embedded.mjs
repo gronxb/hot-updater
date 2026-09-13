@@ -5,7 +5,7 @@ import { createRequire } from "node:module";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { NIL_UUID } from "../../../packages/core/dist/index.mjs";
+import { LYNX_E2E_BUILTIN_BUNDLE_ID } from "../../../e2e/lynx/embedded-bundle.ts";
 import { lynx } from "../../../packages/lynx/dist/build.mjs";
 
 const [framework, platform, fixture, runtimeId, ...extra] =
@@ -58,7 +58,6 @@ const validation = await lynx({
     return { entry: "main.lynx.bundle", runtimeId };
   },
 })({ cwd: example }).build({ platform });
-assert.equal(validation.filePolicy, "preserve");
 const validatedFiles = await collect(validation.buildPath);
 const label = `${framework}-${platform}-${fixture}`;
 const outputPath = path.join(
@@ -68,25 +67,33 @@ const outputPath = path.join(
 );
 await fs.cp(validation.buildPath, outputPath, { recursive: true });
 
-// Native embedding owns the NIL identity; the validated OTA build stays immutable.
+// Native embedding owns the fixed E2E identity; the validated OTA build stays immutable.
 const metadata = JSON.parse(validatedFiles["hot-updater-lynx.json"].toString());
 assert.equal(metadata.bundleId, validation.bundleId);
-metadata.bundleId = NIL_UUID;
+metadata.bundleId = LYNX_E2E_BUILTIN_BUNDLE_ID;
 await fs.writeFile(
   path.join(outputPath, "hot-updater-lynx.json"),
   `${JSON.stringify(metadata, null, 2)}\n`,
 );
+const outputFilesBeforeManifest = await collect(outputPath);
 const targets = await getBundleZipTargets(
   outputPath,
-  (await fs.readdir(outputPath, { recursive: true })).map((name) =>
-    path.join(outputPath, name),
-  ),
-  "preserve",
+  Object.keys(outputFilesBeforeManifest).map((name) => ({
+    path: path.join(outputPath, name),
+    name,
+    downloadCompression: null,
+  })),
 );
-const manifest = await createBundleManifest({
-  bundleId: NIL_UUID,
-  targetFiles: targets,
-});
+let manifest;
+try {
+  manifest = await createBundleManifest({
+    bundleId: LYNX_E2E_BUILTIN_BUNDLE_ID,
+    patchAssetPath: metadata.entry,
+    targetFiles: targets.artifacts,
+  });
+} finally {
+  await fs.rm(targets.path, { recursive: true, force: true });
+}
 await writeBundleManifestFile({ buildPath: outputPath, manifest });
 const files = await collect(outputPath);
 assert.deepEqual(
@@ -112,8 +119,8 @@ const receipt = {
   source,
   validationBundleId: validation.bundleId,
   validatedBuildPath: validation.buildPath,
-  embeddedBundleId: NIL_UUID,
-  minimumBundleId: NIL_UUID,
+  embeddedBundleId: LYNX_E2E_BUILTIN_BUNDLE_ID,
+  minimumBundleId: LYNX_E2E_BUILTIN_BUNDLE_ID,
   outputPath,
   manifestFileHash: sha256(files["manifest.json"]),
   catalogMutation: false,
@@ -137,7 +144,7 @@ console.log(
       receiptPath,
       outputPath,
       manifestFileHash: receipt.manifestFileHash,
-      embeddedBundleId: NIL_UUID,
+      embeddedBundleId: LYNX_E2E_BUILTIN_BUNDLE_ID,
     },
     null,
     2,

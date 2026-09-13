@@ -26,14 +26,15 @@ Build the production simulator application:
 pnpm validate:lynx:scaffold-native -- --platform ios
 ```
 
-The build expects the acceptance workflow's validated embedded A trees under
-`Embedded/Public`. They are generated from public compiler output and are not
-application-owned OTA logic.
+The scaffold validation command deterministically generates, validates, and
+embeds the React SDK3 A tree under `Embedded/Public` from a clean checkout. The
+explicit matrix build consumes the prevalidated React, Vue, and Octane SDK3 A
+trees produced by the public acceptance workflow. They are generated compiler
+output and are not application-owned OTA logic.
 
 The result is under
-`ios/build/scaffold/Build/Products/Release-iphonesimulator/SparklingGo.app`.
-It embeds one compatible A artifact for ReactLynx, VueLynx, and OctaneLynx. The
-same binary chooses the framework through host configuration.
+`ios/build/Build/Products/Release-iphonesimulator/SparklingGo.app`.
+It embeds the production scaffold's compatible ReactLynx A artifact.
 
 ## Nonproduction matrix target
 

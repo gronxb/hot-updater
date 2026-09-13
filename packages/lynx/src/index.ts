@@ -8,6 +8,7 @@ export type {
   HotUpdaterInitOptions,
   HotUpdaterOptions,
   InstallResult,
+  LaunchConfiguration,
   LaunchInfo,
   NotifyAppReadyResult,
   ReleaseTransitionKind,

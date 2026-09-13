@@ -22,4 +22,5 @@ dependencies {
         exclude group: 'org.lynxsdk.lynx', module: 'base-devtool'
     }
     testImplementation 'junit:junit:4.13.2'
+    testImplementation 'org.json:json:20240303'
 }
