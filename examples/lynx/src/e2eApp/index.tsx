@@ -605,12 +605,17 @@ const pollPendingActionOnce = async () => {
     if (!handler) return;
     handledScenarioAction = true;
     navigateToTestId.current(testID);
-    await Promise.race([
-      handler(taken.action?.text),
-      new Promise<void>((resolve) => {
-        setTimeout(resolve, 20_000);
+    const timedOut = await Promise.race([
+      handler(taken.action?.text).then(() => false),
+      new Promise<boolean>((resolve) => {
+        setTimeout(() => resolve(true), 20_000);
       }),
     ]);
+    if (timedOut) {
+      await patchScreenState({
+        updateActionResult: "current-channel -> error timeout",
+      });
+    }
   } finally {
     takingPendingAction = false;
   }

@@ -48,6 +48,7 @@ import {
 import { hasActiveInstrumentationForPackage } from "./android-instrumentation.ts";
 import {
   advanceAndroidRestartWait,
+  hasLynxNativeRestartEvidence,
   hasNativeRestartEvidenceAfterMarker,
   isAndroidRecoveryProcessReady,
 } from "./android-restart-wait.ts";
@@ -4989,10 +4990,9 @@ async function waitForAndroidRestart(
       metadataState.stagingBundleId === bundleId &&
       metadataState.stagingSelection?.releaseId === releaseId;
     lastNativeLogs = readAndroidAutomaticRestartLogs();
-    lastHasNativeRestartEvidence = hasNativeRestartEvidenceAfterMarker(
-      lastNativeLogs,
-      launchLogMarker,
-    );
+    lastHasNativeRestartEvidence = isLynxE2eApp()
+      ? hasLynxNativeRestartEvidence(lastNativeLogs)
+      : hasNativeRestartEvidenceAfterMarker(lastNativeLogs, launchLogMarker);
     waitState = advanceAndroidRestartWait(waitState, {
       hasNativeRestartEvidence: lastHasNativeRestartEvidence,
       hasTargetStaging,

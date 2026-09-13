@@ -204,6 +204,7 @@ final class PublicContainerController: UIViewController {
         guard let host = PublicHost.shared else { return }
         do {
             let artifact = try host.controller.begin(host.context)
+            try? host.controller.observedContent(host.context)
             host.record("publicBeforeEvaluation")
             let lifecycle = PublicLifecycle(host); self.lifecycle = lifecycle
             let context = SPKContext(); context.containerLifecycleDelegate = lifecycle

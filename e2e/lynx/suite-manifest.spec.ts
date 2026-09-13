@@ -375,6 +375,18 @@ describe("Lynx E2E suite manifest", () => {
       "Started restart trampoline to apply update bundle",
     );
     expect(androidModule).toContain("HotUpdaterE2E");
+    const androidRestartWait = readFileSync(
+      path.join(repoDir, "e2e/detox/control-server/android-restart-wait.ts"),
+      "utf8",
+    );
+    expect(androidRestartWait).toContain("hasLynxNativeRestartEvidence");
+    const androidRestartController = readFileSync(
+      path.join(repoDir, "e2e/detox/control-server/controller.ts"),
+      "utf8",
+    );
+    expect(androidRestartController).toContain(
+      "hasLynxNativeRestartEvidence(lastNativeLogs)",
+    );
     expect(androidModule).toContain("HotUpdaterRestartActivity");
     expect(androidModule).toContain("getLaunchIntentForPackage");
     expect(androidModule).toContain("@LynxMethod fun reload");
@@ -409,6 +421,7 @@ describe("Lynx E2E suite manifest", () => {
       ),
       "utf8",
     );
+    expect(iosPublicHost).toContain("try? host.controller.observedContent");
     expect(iosPublicHost).toContain("observedContent(self.context)");
     expect(iosPublicHost).toContain("publicContentObservedFallback");
     expect(e2eApp).toContain("launch.next.bundleId");
