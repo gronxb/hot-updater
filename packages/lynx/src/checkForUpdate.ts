@@ -108,11 +108,14 @@ export async function checkForUpdate(
     crashedBundleIds: state.crashedBundleIds,
     unconfirmedReleaseIds: state.unconfirmedReleaseIds,
   });
+  if (desired === null) {
+    return null;
+  }
   if (
-    desired === null ||
-    (desired.kind === "BUILTIN" &&
-      current.kind === "BUILTIN" &&
-      current.bundleId === state.embeddedBundleId)
+    desired.kind === "BUILTIN" &&
+    current.kind === "BUILTIN" &&
+    current.bundleId === state.embeddedBundleId &&
+    state.confirmedSelection?.kind !== "BUNDLE"
   ) {
     return null;
   }

@@ -484,4 +484,22 @@ describe("Lynx catalog controller (mock native transport)", () => {
     expect(native.prepareSelection).not.toHaveBeenCalled();
     expect(fetch).toHaveBeenCalledOnce();
   });
+
+  it("stages builtin fallback when overlay is running over a confirmed bundle", async () => {
+    const { updater, prepared } = setup(
+      { confirmedSelection: receipt(B, releaseB) },
+      [],
+    );
+    const update = await updater.checkForUpdate({
+      updateStrategy: "appVersion",
+    });
+    expect(update).toMatchObject({
+      status: "ROLLBACK",
+      transitionKind: "USE_BUILTIN",
+    });
+    expect(prepared()).toMatchObject({
+      artifact: null,
+      selection: { kind: "BUILTIN", bundleId: A, releaseId: null },
+    });
+  });
 });
