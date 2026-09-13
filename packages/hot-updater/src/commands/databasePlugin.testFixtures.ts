@@ -161,6 +161,10 @@ export const createDatabasePluginHarness = () => {
   const read = vi.fn(async (): Promise<void> => {});
   const commit = vi.fn((input) => basePlugin.commit(input));
   const dispose = vi.fn(async (): Promise<void> => {});
+  const publishBundlePatch = basePlugin.models.bundlePatches.publish;
+  if (!publishBundlePatch) {
+    throw new Error("Mock database must support atomic patch publication");
+  }
   const plugin: DatabasePlugin = {
     name: "test-database-v2",
     models: {
@@ -183,6 +187,7 @@ export const createDatabasePluginHarness = () => {
           await read();
           return basePlugin.models.bundlePatches.findByBundleIds(bundleIds);
         },
+        publish: (input) => publishBundlePatch(input),
       },
       releases: {
         async findById(id) {

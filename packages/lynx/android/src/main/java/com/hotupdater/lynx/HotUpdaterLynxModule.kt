@@ -1,0 +1,119 @@
+package com.hotupdater.lynx
+
+import android.content.Context
+import android.os.Handler
+import android.os.Looper
+import com.lynx.jsbridge.LynxMethod
+import com.lynx.jsbridge.LynxModule
+import com.lynx.react.bridge.Callback
+import com.lynx.react.bridge.ReadableMap
+import com.lynx.react.bridge.JavaOnlyMap
+import com.lynx.react.bridge.JavaOnlyArray
+import java.util.IdentityHashMap
+import kotlinx.coroutines.launch
+import org.json.JSONObject
+
+/** Framework-independent background native bridge; never accepts context or attempt IDs. */
+class HotUpdaterLynxModule(context: Context) : LynxModule(context) {
+    @LynxMethod fun getState(callback: Callback) = call(callback) { session -> session.controller.state(session) }
+    @LynxMethod fun acceptCatalog(params: ReadableMap, callback: Callback) = call(callback) { session -> session.controller.accept(session, json(params)) }
+    @LynxMethod fun validateSelection(params: ReadableMap, callback: Callback) = call(callback) { session -> session.controller.validate(session, json(params)) }
+    @LynxMethod fun prepareSelection(params: ReadableMap, callback: Callback) = call(callback) { session -> session.controller.prepare(session, json(params)) }
+    @LynxMethod fun stageSelection(params: ReadableMap, callback: Callback) = call(callback) { session -> session.controller.stage(session, json(params).getString("preparedId")) }
+    @LynxMethod fun setCohort(params: ReadableMap, callback: Callback) = call(callback) { session ->
+        session.controller.setCohort(params.getString("cohort"))
+        session.controller.state(session)
+    }
+    @LynxMethod fun resetChannel(callback: Callback) {
+        Handler(Looper.getMainLooper()).post {
+            val once = LynxOnceReply<JSONObject> { reply(callback, it) }
+            val result = runCatching {
+                val session = sessions[mContext] ?: throw CatalogPolicy.Rejected(
+                    "CONTEXT_REJECTED",
+                    "No registered native context",
+                )
+                val reload = session.reloadAction()
+                val reset = session.controller.resetChannel()
+                reload { reloadResult ->
+                    once.settle(reloadResult.map {
+                        JSONObject().put("reset", reset)
+                    })
+                }
+            }
+            result.exceptionOrNull()?.let {
+                once.settle(Result.failure(it))
+            }
+        }
+    }
+    @LynxMethod fun clearCrashHistory(callback: Callback) = call(callback) { session ->
+        session.controller.clearCrashHistory()
+        session.controller.state(session)
+    }
+    @LynxMethod fun reload(callback: Callback) {
+        Handler(Looper.getMainLooper()).post {
+            val once = LynxOnceReply<JSONObject> { reply(callback, it) }
+            val result = runCatching {
+                val session = sessions[mContext] ?: throw CatalogPolicy.Rejected(
+                    "CONTEXT_REJECTED",
+                    "No registered native context",
+                )
+                val reload = session.reloadAction()
+                reload { result -> once.settle(result.map { JSONObject() }) }
+            }
+            result.exceptionOrNull()?.let {
+                once.settle(Result.failure(it))
+            }
+        }
+    }
+    @LynxMethod fun notifyAppReady(callback: Callback) {
+        Handler(Looper.getMainLooper()).post {
+            val session = sessions[mContext]
+            if (session == null) reply(callback, Result.failure(CatalogPolicy.Rejected("NO_CONTEXT", "No registered native context")))
+            else {
+                val ticket = session.beginBridgeReply { reply(callback, it) }
+                    ?: return@post
+                session.notifyReady { result ->
+                    session.finishBridgeReply(ticket, result)
+                }
+            }
+        }
+    }
+    private fun call(callback: Callback, operation: suspend (LynxLaunchSession) -> JSONObject) {
+        Handler(Looper.getMainLooper()).post {
+            val session = sessions[mContext]
+            if (session == null) reply(callback, Result.failure(CatalogPolicy.Rejected("NO_CONTEXT", "No registered native context")))
+            else {
+                val ticket = session.beginBridgeReply { reply(callback, it) }
+                    ?: return@post
+                session.scope.launch {
+                    session.finishBridgeReply(
+                        ticket,
+                        runCatching { operation(session) },
+                    )
+                }
+            }
+        }
+    }
+    private fun json(map: ReadableMap) = JSONObject(map.asHashMap())
+    private fun reply(callback: Callback, result: Result<JSONObject>) {
+        val envelope = result.fold(
+            { JSONObject().put("ok", true).put("data", it) },
+            { error -> JSONObject().put("ok", false).put("error", JSONObject()
+                .put("code", when (error) { is CatalogPolicy.Rejected -> error.code; is LynxNativeOperationException -> error.code; is LynxIncompatibleArtifactException -> "INCOMPATIBLE"; else -> "NATIVE_ERROR" })
+                .put("message", error.message ?: "Native operation failed")) },
+        )
+        callback.invoke(toMap(envelope))
+    }
+    private fun toMap(value: JSONObject): JavaOnlyMap = JavaOnlyMap.from(value.keys().asSequence().associateWith { key -> toBridge(value.get(key)) })
+    private fun toBridge(value: Any): Any? = when (value) {
+        JSONObject.NULL -> null
+        is JSONObject -> toMap(value)
+        is org.json.JSONArray -> JavaOnlyArray.from((0 until value.length()).map { index -> toBridge(value.get(index)) })
+        else -> value
+    }
+    companion object {
+        private val sessions = IdentityHashMap<Context, LynxLaunchSession>()
+        internal fun bind(context: Context, session: LynxLaunchSession) { check(!sessions.containsKey(context)); sessions[context] = session }
+        internal fun unbind(context: Context) { sessions.remove(context) }
+    }
+}

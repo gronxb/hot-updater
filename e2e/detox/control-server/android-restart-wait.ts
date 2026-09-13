@@ -15,6 +15,13 @@ export function hasNativeRestartEvidenceAfterMarker(
   );
 }
 
+export function hasLynxNativeRestartEvidence(logs: string) {
+  return (
+    logs.includes(ANDROID_NATIVE_RESTART_MESSAGE) ||
+    logs.includes(ANDROID_WATCHDOG_RESTART_MESSAGE)
+  );
+}
+
 export function isAndroidRecoveryProcessReady(observation: {
   appId: string;
   focusedPackage: string | null;

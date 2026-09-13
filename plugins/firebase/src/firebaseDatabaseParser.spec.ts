@@ -59,9 +59,12 @@ describe("parseFirebasePatchRow", () => {
   const row = createBundlePatchRowFixture("large", "bundle", "base");
 
   it("preserves safe patch sizes above 2 GiB", () => {
-    expect(parseFirebasePatchRow(row, "bundle_patches/large")).toMatchObject({
-      byte_size: 3_000_000_002,
-    });
+    expect(
+      parseFirebasePatchRow(
+        { ...row, byte_size: 3_000_000_002 },
+        "bundle_patches/large",
+      ),
+    ).toMatchObject({ byte_size: 3_000_000_002 });
   });
 
   it.each([-1, 1.5, Number.MAX_SAFE_INTEGER + 1, Number.NaN])(

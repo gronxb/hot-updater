@@ -8,11 +8,7 @@ export default defineConfig({
   },
   deps: {
     alwaysBundle: [/^@hot-updater\/(aws|cloudflare|firebase|supabase)\/init$/],
-    neverBundle: [
-      "@aws-sdk/client-kms",
-      "@expo/fingerprint",
-      "@google-cloud/kms",
-    ],
+    neverBundle: ["@aws-sdk/client-kms", "@google-cloud/kms"],
     onlyBundle: false,
   },
   exports: {

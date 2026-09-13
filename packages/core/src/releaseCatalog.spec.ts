@@ -287,6 +287,117 @@ describe("createReleaseSelectionContextHash", () => {
   });
 });
 
+describe("unconfirmed Release selection", () => {
+  const selection = {
+    activeReleaseId: releaseId(1),
+    builtInBundleId: bundleId(0),
+    cohort: "qa",
+    crashedBundleIds: [],
+    currentBundleId: bundleId(1),
+    minimumReleaseId: bundleId(0),
+  };
+
+  it("keeps both B and C excluded while a new Release can retry B's bytes", () => {
+    const unconfirmedReleaseIds = [releaseId(2), releaseId(3)];
+    expect(
+      selectDesiredRelease(
+        catalog([descriptor(3), descriptor(2), descriptor(1)]),
+        {
+          ...selection,
+          unconfirmedReleaseIds,
+        },
+      ),
+    ).toMatchObject({ releaseId: releaseId(1), bundleId: bundleId(1) });
+
+    expect(
+      selectDesiredRelease(
+        catalog([
+          descriptor(4, { bundleId: bundleId(2) }),
+          descriptor(3),
+          descriptor(2),
+          descriptor(1),
+        ]),
+        { ...selection, unconfirmedReleaseIds },
+      ),
+    ).toMatchObject({
+      releaseId: releaseId(4),
+      bundleId: bundleId(2),
+      status: "UPDATE",
+    });
+  });
+
+  it("excludes unconfirmed Releases from predecessor rollback too", () => {
+    expect(
+      selectDesiredRelease(
+        catalog([], {
+          rollbackReleases: [descriptor(3), descriptor(2), descriptor(1)],
+        }),
+        {
+          ...selection,
+          activeReleaseId: releaseId(4),
+          currentBundleId: bundleId(4),
+          unconfirmedReleaseIds: [releaseId(3), releaseId(2)],
+        },
+      ),
+    ).toMatchObject({ releaseId: releaseId(1), status: "ROLLBACK" });
+  });
+
+  it("does not authorize an excluded explicit embedded Release", () => {
+    expect(
+      selectDesiredRelease(
+        catalog([
+          descriptor(3, { kind: "EMBEDDED", bundleId: null }),
+          descriptor(2),
+        ]),
+        { ...selection, unconfirmedReleaseIds: [releaseId(3)] },
+      ),
+    ).toMatchObject({ releaseId: releaseId(2), kind: "BUNDLE" });
+  });
+
+  it("preserves the existing context hash when there are no exclusions", () => {
+    const context = {
+      activeBundleId: "bundle-a",
+      activeReleaseId: "release-a",
+      cohort: "qa",
+      crashedBundleIds: [],
+      minimumReleaseId: "bundle-0",
+      strategy: "APP_VERSION" as const,
+      strategyValue: "1.0.0",
+    };
+    // Captured from the existing implementation before adding this input.
+    expect(createReleaseSelectionContextHash(context)).toBe(
+      "v1:4402b43a70e82ebe",
+    );
+    expect(
+      createReleaseSelectionContextHash({
+        ...context,
+        unconfirmedReleaseIds: [],
+      }),
+    ).toBe("v1:4402b43a70e82ebe");
+
+    const excluded = Array.from({ length: 12 }, (_, index) =>
+      releaseId(index + 2),
+    );
+    const withExclusions = createReleaseSelectionContextHash({
+      ...context,
+      unconfirmedReleaseIds: excluded,
+    });
+    expect(withExclusions).not.toBe(createReleaseSelectionContextHash(context));
+    expect(
+      createReleaseSelectionContextHash({
+        ...context,
+        unconfirmedReleaseIds: [...excluded].reverse().concat(excluded[0]!),
+      }),
+    ).toBe(withExclusions);
+    expect(
+      createReleaseSelectionContextHash({
+        ...context,
+        unconfirmedReleaseIds: excluded.slice(0, 11),
+      }),
+    ).not.toBe(withExclusions);
+  });
+});
+
 describe("assessCatalogAcceptance", () => {
   it("rejects an older generation and a same-generation hash mismatch", () => {
     expect(

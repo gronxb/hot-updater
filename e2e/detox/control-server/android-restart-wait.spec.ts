@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   advanceAndroidRestartWait,
+  hasLynxNativeRestartEvidence,
   hasNativeRestartEvidenceAfterMarker,
   isAndroidRecoveryProcessReady,
 } from "./android-restart-wait.ts";
@@ -43,6 +44,18 @@ describe("Android automatic restart wait", () => {
         "current-launch-marker",
       ),
     ).toBe(true);
+  });
+
+  it("accepts a Lynx trampoline even if it landed before the wait marker", () => {
+    const logs = [
+      "I/HotUpdaterImpl: Started restart trampoline to apply update bundle",
+      "I/HotUpdaterE2E: current-launch-marker",
+    ].join("\n");
+
+    expect(
+      hasNativeRestartEvidenceAfterMarker(logs, "current-launch-marker"),
+    ).toBe(false);
+    expect(hasLynxNativeRestartEvidence(logs)).toBe(true);
   });
 
   it("rejects stale restart logs from an earlier launch", () => {

@@ -37,12 +37,14 @@ const referencedChannels = new Set<string>();
 const channelIds = new Map<string, string>();
 const requestPaths: string[] = [];
 const createRequestBodies: unknown[] = [];
+const PATCH_FILE_HASH = "b".repeat(64);
+const REPLACEMENT_PATCH_FILE_HASH = "c".repeat(64);
 
 const bundle = (id: string, overrides: Partial<Bundle> = {}): Bundle => {
   const value: Bundle = {
     id,
     platform: "ios",
-    fileHash: `hash-${id}`,
+    fileHash: id.replaceAll("-", "").padStart(64, "0"),
     gitCommitHash: null,
     storageUri: `storage://${id}`,
     archiveByteSize: 3_000_000_001,
@@ -264,9 +266,9 @@ describe("standaloneRepository", () => {
         {
           baseBundleId: base.id,
           baseFileHash: base.fileHash,
-          patchFileHash: "patch-hash",
+          patchFileHash: PATCH_FILE_HASH,
           patchStorageUri: "storage://patch",
-          byteSize: 3_000_000_002,
+          byteSize: 3_000_002,
         },
       ],
     });
@@ -302,9 +304,9 @@ describe("standaloneRepository", () => {
         {
           baseBundleId: base.id,
           baseFileHash: base.fileHash,
-          patchFileHash: "replacement-patch-hash",
+          patchFileHash: REPLACEMENT_PATCH_FILE_HASH,
           patchStorageUri: "storage://replacement-patch",
-          byteSize: 3_000_000_002,
+          byteSize: 3_000_002,
         },
       ],
     });
@@ -313,7 +315,7 @@ describe("standaloneRepository", () => {
       patches: [
         {
           baseBundleId: base.id,
-          patchFileHash: "replacement-patch-hash",
+          patchFileHash: REPLACEMENT_PATCH_FILE_HASH,
         },
       ],
     });

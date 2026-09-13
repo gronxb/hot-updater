@@ -1,0 +1,3998 @@
+[
+  {
+    "name": "ios/first-update",
+    "snapshot": {
+      "revision": "policy-fixture-revision",
+      "platform": "ios",
+      "appVersion": "1.0.0",
+      "channel": "production",
+      "runtimeId": "policy-fixture-runtime",
+      "embeddedBundleId": "01900000-0000-7000-8000-000000000001",
+      "minimumBundleId": "01900000-0000-7000-8000-000000000001",
+      "cohort": "1",
+      "runningSelection": {
+        "kind": "BUILTIN",
+        "releaseId": null,
+        "bundleId": "01900000-0000-7000-8000-000000000001",
+        "catalogId": null,
+        "scopeKey": null,
+        "generation": null,
+        "catalogHash": null,
+        "channel": "production",
+        "selectionContextHash": null
+      },
+      "runningConfirmed": true,
+      "confirmedSelection": {
+        "kind": "BUILTIN",
+        "releaseId": null,
+        "bundleId": "01900000-0000-7000-8000-000000000001",
+        "catalogId": null,
+        "scopeKey": null,
+        "generation": null,
+        "catalogHash": null,
+        "channel": "production",
+        "selectionContextHash": null
+      },
+      "nextSelection": null,
+      "crashedBundleIds": [],
+      "unconfirmedReleaseIds": []
+    },
+    "catalog": {
+      "schemaVersion": 1,
+      "catalogId": "lynx-policy-fixture",
+      "scopeKey": "v1:app-version:ios:cHJvZHVjdGlvbg",
+      "generation": 2,
+      "catalogHash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "fallbackPolicy": "BUILTIN_IF_ACTIVE_INELIGIBLE",
+      "releases": [
+        {
+          "releaseId": "01900000-0000-7000-8000-000000000120",
+          "kind": "BUNDLE",
+          "bundleId": "01900000-0000-7000-8000-000000000020",
+          "rolloutCohortCount": 1000,
+          "targetCohorts": [],
+          "shouldForceUpdate": false,
+          "message": null
+        }
+      ]
+    },
+    "expected": {
+      "contextHash": "v1:53adaf9821e0e4e4",
+      "selection": {
+        "kind": "BUNDLE",
+        "releaseId": "01900000-0000-7000-8000-000000000120",
+        "bundleId": "01900000-0000-7000-8000-000000000020",
+        "catalogId": "lynx-policy-fixture",
+        "scopeKey": "v1:app-version:ios:cHJvZHVjdGlvbg",
+        "generation": 2,
+        "catalogHash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "channel": "production",
+        "selectionContextHash": "v1:53adaf9821e0e4e4"
+      },
+      "status": "UPDATE",
+      "authorization": {
+        "authorized": true,
+        "reason": "FIRST_AUTHENTICATED_SELECTION"
+      }
+    }
+  },
+  {
+    "name": "ios/empty-keeps-embedded",
+    "snapshot": {
+      "revision": "policy-fixture-revision",
+      "platform": "ios",
+      "appVersion": "1.0.0",
+      "channel": "production",
+      "runtimeId": "policy-fixture-runtime",
+      "embeddedBundleId": "01900000-0000-7000-8000-000000000001",
+      "minimumBundleId": "01900000-0000-7000-8000-000000000001",
+      "cohort": "1",
+      "runningSelection": {
+        "kind": "BUILTIN",
+        "releaseId": null,
+        "bundleId": "01900000-0000-7000-8000-000000000001",
+        "catalogId": null,
+        "scopeKey": null,
+        "generation": null,
+        "catalogHash": null,
+        "channel": "production",
+        "selectionContextHash": null
+      },
+      "runningConfirmed": true,
+      "confirmedSelection": {
+        "kind": "BUILTIN",
+        "releaseId": null,
+        "bundleId": "01900000-0000-7000-8000-000000000001",
+        "catalogId": null,
+        "scopeKey": null,
+        "generation": null,
+        "catalogHash": null,
+        "channel": "production",
+        "selectionContextHash": null
+      },
+      "nextSelection": null,
+      "crashedBundleIds": [],
+      "unconfirmedReleaseIds": []
+    },
+    "catalog": {
+      "schemaVersion": 1,
+      "catalogId": "lynx-policy-fixture",
+      "scopeKey": "v1:app-version:ios:cHJvZHVjdGlvbg",
+      "generation": 2,
+      "catalogHash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "fallbackPolicy": "BUILTIN_IF_ACTIVE_INELIGIBLE",
+      "releases": []
+    },
+    "expected": {
+      "contextHash": "v1:53adaf9821e0e4e4",
+      "selection": {
+        "kind": "BUILTIN",
+        "releaseId": null,
+        "bundleId": "01900000-0000-7000-8000-000000000001",
+        "catalogId": "lynx-policy-fixture",
+        "scopeKey": "v1:app-version:ios:cHJvZHVjdGlvbg",
+        "generation": 2,
+        "catalogHash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "channel": "production",
+        "selectionContextHash": "v1:53adaf9821e0e4e4"
+      },
+      "status": "ROLLBACK",
+      "authorization": {
+        "authorized": true,
+        "reason": "FIRST_AUTHENTICATED_SELECTION"
+      }
+    }
+  },
+  {
+    "name": "ios/confirmed-current-retained",
+    "snapshot": {
+      "revision": "policy-fixture-revision",
+      "platform": "ios",
+      "appVersion": "1.0.0",
+      "channel": "production",
+      "runtimeId": "policy-fixture-runtime",
+      "embeddedBundleId": "01900000-0000-7000-8000-000000000001",
+      "minimumBundleId": "01900000-0000-7000-8000-000000000001",
+      "cohort": "1",
+      "runningSelection": {
+        "kind": "BUNDLE",
+        "releaseId": "01900000-0000-7000-8000-000000000120",
+        "bundleId": "01900000-0000-7000-8000-000000000020",
+        "catalogId": "lynx-policy-fixture",
+        "scopeKey": "v1:app-version:ios:cHJvZHVjdGlvbg",
+        "generation": 1,
+        "catalogHash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "channel": "production",
+        "selectionContextHash": "v1:0000000000000000"
+      },
+      "runningConfirmed": true,
+      "confirmedSelection": {
+        "kind": "BUNDLE",
+        "releaseId": "01900000-0000-7000-8000-000000000120",
+        "bundleId": "01900000-0000-7000-8000-000000000020",
+        "catalogId": "lynx-policy-fixture",
+        "scopeKey": "v1:app-version:ios:cHJvZHVjdGlvbg",
+        "generation": 1,
+        "catalogHash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "channel": "production",
+        "selectionContextHash": "v1:0000000000000000"
+      },
+      "nextSelection": null,
+      "crashedBundleIds": [],
+      "unconfirmedReleaseIds": []
+    },
+    "catalog": {
+      "schemaVersion": 1,
+      "catalogId": "lynx-policy-fixture",
+      "scopeKey": "v1:app-version:ios:cHJvZHVjdGlvbg",
+      "generation": 2,
+      "catalogHash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "fallbackPolicy": "BUILTIN_IF_ACTIVE_INELIGIBLE",
+      "releases": [
+        {
+          "releaseId": "01900000-0000-7000-8000-000000000120",
+          "kind": "BUNDLE",
+          "bundleId": "01900000-0000-7000-8000-000000000020",
+          "rolloutCohortCount": 1000,
+          "targetCohorts": [],
+          "shouldForceUpdate": false,
+          "message": null
+        }
+      ]
+    },
+    "expected": {
+      "contextHash": "v1:09efc9a057b7a954",
+      "selection": {
+        "kind": "BUNDLE",
+        "releaseId": "01900000-0000-7000-8000-000000000120",
+        "bundleId": "01900000-0000-7000-8000-000000000020",
+        "catalogId": "lynx-policy-fixture",
+        "scopeKey": "v1:app-version:ios:cHJvZHVjdGlvbg",
+        "generation": 2,
+        "catalogHash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "channel": "production",
+        "selectionContextHash": "v1:09efc9a057b7a954"
+      },
+      "status": "UPDATE",
+      "authorization": {
+        "authorized": true,
+        "reason": "NEWER_POLICY"
+      }
+    }
+  },
+  {
+    "name": "ios/next-selection-is-policy-base",
+    "snapshot": {
+      "revision": "policy-fixture-revision",
+      "platform": "ios",
+      "appVersion": "1.0.0",
+      "channel": "production",
+      "runtimeId": "policy-fixture-runtime",
+      "embeddedBundleId": "01900000-0000-7000-8000-000000000001",
+      "minimumBundleId": "01900000-0000-7000-8000-000000000001",
+      "cohort": "1",
+      "runningSelection": {
+        "kind": "BUNDLE",
+        "releaseId": "01900000-0000-7000-8000-000000000120",
+        "bundleId": "01900000-0000-7000-8000-000000000020",
+        "catalogId": "lynx-policy-fixture",
+        "scopeKey": "v1:app-version:ios:cHJvZHVjdGlvbg",
+        "generation": 1,
+        "catalogHash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "channel": "production",
+        "selectionContextHash": "v1:0000000000000000"
+      },
+      "runningConfirmed": true,
+      "confirmedSelection": {
+        "kind": "BUNDLE",
+        "releaseId": "01900000-0000-7000-8000-000000000120",
+        "bundleId": "01900000-0000-7000-8000-000000000020",
+        "catalogId": "lynx-policy-fixture",
+        "scopeKey": "v1:app-version:ios:cHJvZHVjdGlvbg",
+        "generation": 1,
+        "catalogHash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "channel": "production",
+        "selectionContextHash": "v1:0000000000000000"
+      },
+      "nextSelection": {
+        "kind": "BUNDLE",
+        "releaseId": "01900000-0000-7000-8000-000000000130",
+        "bundleId": "01900000-0000-7000-8000-000000000030",
+        "catalogId": "lynx-policy-fixture",
+        "scopeKey": "v1:app-version:ios:cHJvZHVjdGlvbg",
+        "generation": 1,
+        "catalogHash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "channel": "production",
+        "selectionContextHash": "v1:0000000000000000"
+      },
+      "crashedBundleIds": [],
+      "unconfirmedReleaseIds": []
+    },
+    "catalog": {
+      "schemaVersion": 1,
+      "catalogId": "lynx-policy-fixture",
+      "scopeKey": "v1:app-version:ios:cHJvZHVjdGlvbg",
+      "generation": 2,
+      "catalogHash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "fallbackPolicy": "BUILTIN_IF_ACTIVE_INELIGIBLE",
+      "releases": [
+        {
+          "releaseId": "01900000-0000-7000-8000-000000000130",
+          "kind": "BUNDLE",
+          "bundleId": "01900000-0000-7000-8000-000000000030",
+          "rolloutCohortCount": 1000,
+          "targetCohorts": [],
+          "shouldForceUpdate": false,
+          "message": null
+        },
+        {
+          "releaseId": "01900000-0000-7000-8000-000000000120",
+          "kind": "BUNDLE",
+          "bundleId": "01900000-0000-7000-8000-000000000020",
+          "rolloutCohortCount": 1000,
+          "targetCohorts": [],
+          "shouldForceUpdate": false,
+          "message": null
+        }
+      ]
+    },
+    "expected": {
+      "contextHash": "v1:27e006f290ed527e",
+      "selection": {
+        "kind": "BUNDLE",
+        "releaseId": "01900000-0000-7000-8000-000000000130",
+        "bundleId": "01900000-0000-7000-8000-000000000030",
+        "catalogId": "lynx-policy-fixture",
+        "scopeKey": "v1:app-version:ios:cHJvZHVjdGlvbg",
+        "generation": 2,
+        "catalogHash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "channel": "production",
+        "selectionContextHash": "v1:27e006f290ed527e"
+      },
+      "status": "UPDATE",
+      "authorization": {
+        "authorized": true,
+        "reason": "NEWER_POLICY"
+      }
+    }
+  },
+  {
+    "name": "ios/two-unknown-exits-do-not-reenable-b",
+    "snapshot": {
+      "revision": "policy-fixture-revision",
+      "platform": "ios",
+      "appVersion": "1.0.0",
+      "channel": "production",
+      "runtimeId": "policy-fixture-runtime",
+      "embeddedBundleId": "01900000-0000-7000-8000-000000000001",
+      "minimumBundleId": "01900000-0000-7000-8000-000000000001",
+      "cohort": "1",
+      "runningSelection": {
+        "kind": "BUNDLE",
+        "releaseId": "01900000-0000-7000-8000-000000000110",
+        "bundleId": "01900000-0000-7000-8000-000000000010",
+        "catalogId": "lynx-policy-fixture",
+        "scopeKey": "v1:app-version:ios:cHJvZHVjdGlvbg",
+        "generation": 1,
+        "catalogHash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "channel": "production",
+        "selectionContextHash": "v1:0000000000000000"
+      },
+      "runningConfirmed": true,
+      "confirmedSelection": {
+        "kind": "BUNDLE",
+        "releaseId": "01900000-0000-7000-8000-000000000110",
+        "bundleId": "01900000-0000-7000-8000-000000000010",
+        "catalogId": "lynx-policy-fixture",
+        "scopeKey": "v1:app-version:ios:cHJvZHVjdGlvbg",
+        "generation": 1,
+        "catalogHash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "channel": "production",
+        "selectionContextHash": "v1:0000000000000000"
+      },
+      "nextSelection": null,
+      "crashedBundleIds": [],
+      "unconfirmedReleaseIds": [
+        "01900000-0000-7000-8000-000000000130",
+        "01900000-0000-7000-8000-000000000120"
+      ]
+    },
+    "catalog": {
+      "schemaVersion": 1,
+      "catalogId": "lynx-policy-fixture",
+      "scopeKey": "v1:app-version:ios:cHJvZHVjdGlvbg",
+      "generation": 2,
+      "catalogHash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "fallbackPolicy": "BUILTIN_IF_ACTIVE_INELIGIBLE",
+      "releases": [
+        {
+          "releaseId": "01900000-0000-7000-8000-000000000130",
+          "kind": "BUNDLE",
+          "bundleId": "01900000-0000-7000-8000-000000000030",
+          "rolloutCohortCount": 1000,
+          "targetCohorts": [],
+          "shouldForceUpdate": false,
+          "message": null
+        },
+        {
+          "releaseId": "01900000-0000-7000-8000-000000000120",
+          "kind": "BUNDLE",
+          "bundleId": "01900000-0000-7000-8000-000000000020",
+          "rolloutCohortCount": 1000,
+          "targetCohorts": [],
+          "shouldForceUpdate": false,
+          "message": null
+        },
+        {
+          "releaseId": "01900000-0000-7000-8000-000000000110",
+          "kind": "BUNDLE",
+          "bundleId": "01900000-0000-7000-8000-000000000010",
+          "rolloutCohortCount": 1000,
+          "targetCohorts": [],
+          "shouldForceUpdate": false,
+          "message": null
+        }
+      ]
+    },
+    "expected": {
+      "contextHash": "v1:33fc21a070c0aafc",
+      "selection": {
+        "kind": "BUNDLE",
+        "releaseId": "01900000-0000-7000-8000-000000000110",
+        "bundleId": "01900000-0000-7000-8000-000000000010",
+        "catalogId": "lynx-policy-fixture",
+        "scopeKey": "v1:app-version:ios:cHJvZHVjdGlvbg",
+        "generation": 2,
+        "catalogHash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "channel": "production",
+        "selectionContextHash": "v1:33fc21a070c0aafc"
+      },
+      "status": "UPDATE",
+      "authorization": {
+        "authorized": true,
+        "reason": "NEWER_POLICY"
+      }
+    }
+  },
+  {
+    "name": "ios/fresh-release-retries-unknown-cached-bytes",
+    "snapshot": {
+      "revision": "policy-fixture-revision",
+      "platform": "ios",
+      "appVersion": "1.0.0",
+      "channel": "production",
+      "runtimeId": "policy-fixture-runtime",
+      "embeddedBundleId": "01900000-0000-7000-8000-000000000001",
+      "minimumBundleId": "01900000-0000-7000-8000-000000000001",
+      "cohort": "1",
+      "runningSelection": {
+        "kind": "BUNDLE",
+        "releaseId": "01900000-0000-7000-8000-000000000110",
+        "bundleId": "01900000-0000-7000-8000-000000000010",
+        "catalogId": "lynx-policy-fixture",
+        "scopeKey": "v1:app-version:ios:cHJvZHVjdGlvbg",
+        "generation": 1,
+        "catalogHash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "channel": "production",
+        "selectionContextHash": "v1:0000000000000000"
+      },
+      "runningConfirmed": true,
+      "confirmedSelection": {
+        "kind": "BUNDLE",
+        "releaseId": "01900000-0000-7000-8000-000000000110",
+        "bundleId": "01900000-0000-7000-8000-000000000010",
+        "catalogId": "lynx-policy-fixture",
+        "scopeKey": "v1:app-version:ios:cHJvZHVjdGlvbg",
+        "generation": 1,
+        "catalogHash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "channel": "production",
+        "selectionContextHash": "v1:0000000000000000"
+      },
+      "nextSelection": null,
+      "crashedBundleIds": [],
+      "unconfirmedReleaseIds": [
+        "01900000-0000-7000-8000-000000000130",
+        "01900000-0000-7000-8000-000000000120"
+      ]
+    },
+    "catalog": {
+      "schemaVersion": 1,
+      "catalogId": "lynx-policy-fixture",
+      "scopeKey": "v1:app-version:ios:cHJvZHVjdGlvbg",
+      "generation": 2,
+      "catalogHash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "fallbackPolicy": "BUILTIN_IF_ACTIVE_INELIGIBLE",
+      "releases": [
+        {
+          "releaseId": "01900000-0000-7000-8000-000000000140",
+          "kind": "BUNDLE",
+          "bundleId": "01900000-0000-7000-8000-000000000020",
+          "rolloutCohortCount": 1000,
+          "targetCohorts": [],
+          "shouldForceUpdate": false,
+          "message": null
+        },
+        {
+          "releaseId": "01900000-0000-7000-8000-000000000130",
+          "kind": "BUNDLE",
+          "bundleId": "01900000-0000-7000-8000-000000000030",
+          "rolloutCohortCount": 1000,
+          "targetCohorts": [],
+          "shouldForceUpdate": false,
+          "message": null
+        },
+        {
+          "releaseId": "01900000-0000-7000-8000-000000000120",
+          "kind": "BUNDLE",
+          "bundleId": "01900000-0000-7000-8000-000000000020",
+          "rolloutCohortCount": 1000,
+          "targetCohorts": [],
+          "shouldForceUpdate": false,
+          "message": null
+        },
+        {
+          "releaseId": "01900000-0000-7000-8000-000000000110",
+          "kind": "BUNDLE",
+          "bundleId": "01900000-0000-7000-8000-000000000010",
+          "rolloutCohortCount": 1000,
+          "targetCohorts": [],
+          "shouldForceUpdate": false,
+          "message": null
+        }
+      ]
+    },
+    "expected": {
+      "contextHash": "v1:33fc21a070c0aafc",
+      "selection": {
+        "kind": "BUNDLE",
+        "releaseId": "01900000-0000-7000-8000-000000000140",
+        "bundleId": "01900000-0000-7000-8000-000000000020",
+        "catalogId": "lynx-policy-fixture",
+        "scopeKey": "v1:app-version:ios:cHJvZHVjdGlvbg",
+        "generation": 2,
+        "catalogHash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "channel": "production",
+        "selectionContextHash": "v1:33fc21a070c0aafc"
+      },
+      "status": "UPDATE",
+      "authorization": {
+        "authorized": true,
+        "reason": "NEWER_POLICY"
+      }
+    }
+  },
+  {
+    "name": "ios/fresh-release-cannot-bypass-fatal-bundle",
+    "snapshot": {
+      "revision": "policy-fixture-revision",
+      "platform": "ios",
+      "appVersion": "1.0.0",
+      "channel": "production",
+      "runtimeId": "policy-fixture-runtime",
+      "embeddedBundleId": "01900000-0000-7000-8000-000000000001",
+      "minimumBundleId": "01900000-0000-7000-8000-000000000001",
+      "cohort": "1",
+      "runningSelection": {
+        "kind": "BUNDLE",
+        "releaseId": "01900000-0000-7000-8000-000000000110",
+        "bundleId": "01900000-0000-7000-8000-000000000010",
+        "catalogId": "lynx-policy-fixture",
+        "scopeKey": "v1:app-version:ios:cHJvZHVjdGlvbg",
+        "generation": 1,
+        "catalogHash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "channel": "production",
+        "selectionContextHash": "v1:0000000000000000"
+      },
+      "runningConfirmed": true,
+      "confirmedSelection": {
+        "kind": "BUNDLE",
+        "releaseId": "01900000-0000-7000-8000-000000000110",
+        "bundleId": "01900000-0000-7000-8000-000000000010",
+        "catalogId": "lynx-policy-fixture",
+        "scopeKey": "v1:app-version:ios:cHJvZHVjdGlvbg",
+        "generation": 1,
+        "catalogHash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "channel": "production",
+        "selectionContextHash": "v1:0000000000000000"
+      },
+      "nextSelection": null,
+      "crashedBundleIds": [
+        "01900000-0000-7000-8000-000000000020"
+      ],
+      "unconfirmedReleaseIds": []
+    },
+    "catalog": {
+      "schemaVersion": 1,
+      "catalogId": "lynx-policy-fixture",
+      "scopeKey": "v1:app-version:ios:cHJvZHVjdGlvbg",
+      "generation": 2,
+      "catalogHash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "fallbackPolicy": "BUILTIN_IF_ACTIVE_INELIGIBLE",
+      "releases": [
+        {
+          "releaseId": "01900000-0000-7000-8000-000000000140",
+          "kind": "BUNDLE",
+          "bundleId": "01900000-0000-7000-8000-000000000020",
+          "rolloutCohortCount": 1000,
+          "targetCohorts": [],
+          "shouldForceUpdate": false,
+          "message": null
+        },
+        {
+          "releaseId": "01900000-0000-7000-8000-000000000110",
+          "kind": "BUNDLE",
+          "bundleId": "01900000-0000-7000-8000-000000000010",
+          "rolloutCohortCount": 1000,
+          "targetCohorts": [],
+          "shouldForceUpdate": false,
+          "message": null
+        }
+      ]
+    },
+    "expected": {
+      "contextHash": "v1:7f898de170527b0d",
+      "selection": {
+        "kind": "BUNDLE",
+        "releaseId": "01900000-0000-7000-8000-000000000110",
+        "bundleId": "01900000-0000-7000-8000-000000000010",
+        "catalogId": "lynx-policy-fixture",
+        "scopeKey": "v1:app-version:ios:cHJvZHVjdGlvbg",
+        "generation": 2,
+        "catalogHash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "channel": "production",
+        "selectionContextHash": "v1:7f898de170527b0d"
+      },
+      "status": "UPDATE",
+      "authorization": {
+        "authorized": true,
+        "reason": "NEWER_POLICY"
+      }
+    }
+  },
+  {
+    "name": "ios/rollback-skips-excluded-predecessor",
+    "snapshot": {
+      "revision": "policy-fixture-revision",
+      "platform": "ios",
+      "appVersion": "1.0.0",
+      "channel": "production",
+      "runtimeId": "policy-fixture-runtime",
+      "embeddedBundleId": "01900000-0000-7000-8000-000000000001",
+      "minimumBundleId": "01900000-0000-7000-8000-000000000001",
+      "cohort": "1",
+      "runningSelection": {
+        "kind": "BUNDLE",
+        "releaseId": "01900000-0000-7000-8000-000000000140",
+        "bundleId": "01900000-0000-7000-8000-000000000040",
+        "catalogId": "lynx-policy-fixture",
+        "scopeKey": "v1:app-version:ios:cHJvZHVjdGlvbg",
+        "generation": 1,
+        "catalogHash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "channel": "production",
+        "selectionContextHash": "v1:0000000000000000"
+      },
+      "runningConfirmed": true,
+      "confirmedSelection": {
+        "kind": "BUNDLE",
+        "releaseId": "01900000-0000-7000-8000-000000000140",
+        "bundleId": "01900000-0000-7000-8000-000000000040",
+        "catalogId": "lynx-policy-fixture",
+        "scopeKey": "v1:app-version:ios:cHJvZHVjdGlvbg",
+        "generation": 1,
+        "catalogHash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "channel": "production",
+        "selectionContextHash": "v1:0000000000000000"
+      },
+      "nextSelection": null,
+      "crashedBundleIds": [],
+      "unconfirmedReleaseIds": [
+        "01900000-0000-7000-8000-000000000130"
+      ]
+    },
+    "catalog": {
+      "schemaVersion": 1,
+      "catalogId": "lynx-policy-fixture",
+      "scopeKey": "v1:app-version:ios:cHJvZHVjdGlvbg",
+      "generation": 2,
+      "catalogHash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "fallbackPolicy": "BUILTIN_IF_ACTIVE_INELIGIBLE",
+      "releases": [],
+      "rollbackReleases": [
+        {
+          "releaseId": "01900000-0000-7000-8000-000000000130",
+          "kind": "BUNDLE",
+          "bundleId": "01900000-0000-7000-8000-000000000030",
+          "rolloutCohortCount": 1000,
+          "targetCohorts": [],
+          "shouldForceUpdate": false,
+          "message": null
+        },
+        {
+          "releaseId": "01900000-0000-7000-8000-000000000120",
+          "kind": "BUNDLE",
+          "bundleId": "01900000-0000-7000-8000-000000000020",
+          "rolloutCohortCount": 1000,
+          "targetCohorts": [],
+          "shouldForceUpdate": false,
+          "message": null
+        }
+      ]
+    },
+    "expected": {
+      "contextHash": "v1:327ff0e480416e58",
+      "selection": {
+        "kind": "BUNDLE",
+        "releaseId": "01900000-0000-7000-8000-000000000120",
+        "bundleId": "01900000-0000-7000-8000-000000000020",
+        "catalogId": "lynx-policy-fixture",
+        "scopeKey": "v1:app-version:ios:cHJvZHVjdGlvbg",
+        "generation": 2,
+        "catalogHash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "channel": "production",
+        "selectionContextHash": "v1:327ff0e480416e58"
+      },
+      "status": "ROLLBACK",
+      "authorization": {
+        "authorized": true,
+        "reason": "NEWER_POLICY"
+      }
+    }
+  },
+  {
+    "name": "ios/rollback-predecessor-does-not-require-rollout-cohort",
+    "snapshot": {
+      "revision": "policy-fixture-revision",
+      "platform": "ios",
+      "appVersion": "1.0.0",
+      "channel": "production",
+      "runtimeId": "policy-fixture-runtime",
+      "embeddedBundleId": "01900000-0000-7000-8000-000000000001",
+      "minimumBundleId": "01900000-0000-7000-8000-000000000001",
+      "cohort": "1",
+      "runningSelection": {
+        "kind": "BUNDLE",
+        "releaseId": "01900000-0000-7000-8000-000000000130",
+        "bundleId": "01900000-0000-7000-8000-000000000030",
+        "catalogId": "lynx-policy-fixture",
+        "scopeKey": "v1:app-version:ios:cHJvZHVjdGlvbg",
+        "generation": 1,
+        "catalogHash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "channel": "production",
+        "selectionContextHash": "v1:0000000000000000"
+      },
+      "runningConfirmed": true,
+      "confirmedSelection": {
+        "kind": "BUNDLE",
+        "releaseId": "01900000-0000-7000-8000-000000000130",
+        "bundleId": "01900000-0000-7000-8000-000000000030",
+        "catalogId": "lynx-policy-fixture",
+        "scopeKey": "v1:app-version:ios:cHJvZHVjdGlvbg",
+        "generation": 1,
+        "catalogHash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "channel": "production",
+        "selectionContextHash": "v1:0000000000000000"
+      },
+      "nextSelection": null,
+      "crashedBundleIds": [],
+      "unconfirmedReleaseIds": []
+    },
+    "catalog": {
+      "schemaVersion": 1,
+      "catalogId": "lynx-policy-fixture",
+      "scopeKey": "v1:app-version:ios:cHJvZHVjdGlvbg",
+      "generation": 2,
+      "catalogHash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "fallbackPolicy": "BUILTIN_IF_ACTIVE_INELIGIBLE",
+      "releases": [],
+      "rollbackReleases": [
+        {
+          "releaseId": "01900000-0000-7000-8000-000000000130",
+          "kind": "BUNDLE",
+          "bundleId": "01900000-0000-7000-8000-000000000030",
+          "rolloutCohortCount": 0,
+          "targetCohorts": [],
+          "shouldForceUpdate": false,
+          "message": null
+        },
+        {
+          "releaseId": "01900000-0000-7000-8000-000000000120",
+          "kind": "BUNDLE",
+          "bundleId": "01900000-0000-7000-8000-000000000020",
+          "rolloutCohortCount": 0,
+          "targetCohorts": [],
+          "shouldForceUpdate": false,
+          "message": null
+        }
+      ]
+    },
+    "expected": {
+      "contextHash": "v1:27e006f290ed527e",
+      "selection": {
+        "kind": "BUNDLE",
+        "releaseId": "01900000-0000-7000-8000-000000000120",
+        "bundleId": "01900000-0000-7000-8000-000000000020",
+        "catalogId": "lynx-policy-fixture",
+        "scopeKey": "v1:app-version:ios:cHJvZHVjdGlvbg",
+        "generation": 2,
+        "catalogHash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "channel": "production",
+        "selectionContextHash": "v1:27e006f290ed527e"
+      },
+      "status": "ROLLBACK",
+      "authorization": {
+        "authorized": true,
+        "reason": "NEWER_POLICY"
+      }
+    }
+  },
+  {
+    "name": "ios/rollback-cohort-exception-cannot-bypass-release-exclusion",
+    "snapshot": {
+      "revision": "policy-fixture-revision",
+      "platform": "ios",
+      "appVersion": "1.0.0",
+      "channel": "production",
+      "runtimeId": "policy-fixture-runtime",
+      "embeddedBundleId": "01900000-0000-7000-8000-000000000001",
+      "minimumBundleId": "01900000-0000-7000-8000-000000000001",
+      "cohort": "1",
+      "runningSelection": {
+        "kind": "BUNDLE",
+        "releaseId": "01900000-0000-7000-8000-000000000130",
+        "bundleId": "01900000-0000-7000-8000-000000000030",
+        "catalogId": "lynx-policy-fixture",
+        "scopeKey": "v1:app-version:ios:cHJvZHVjdGlvbg",
+        "generation": 1,
+        "catalogHash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "channel": "production",
+        "selectionContextHash": "v1:0000000000000000"
+      },
+      "runningConfirmed": true,
+      "confirmedSelection": {
+        "kind": "BUNDLE",
+        "releaseId": "01900000-0000-7000-8000-000000000130",
+        "bundleId": "01900000-0000-7000-8000-000000000030",
+        "catalogId": "lynx-policy-fixture",
+        "scopeKey": "v1:app-version:ios:cHJvZHVjdGlvbg",
+        "generation": 1,
+        "catalogHash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "channel": "production",
+        "selectionContextHash": "v1:0000000000000000"
+      },
+      "nextSelection": null,
+      "crashedBundleIds": [],
+      "unconfirmedReleaseIds": [
+        "01900000-0000-7000-8000-000000000120"
+      ]
+    },
+    "catalog": {
+      "schemaVersion": 1,
+      "catalogId": "lynx-policy-fixture",
+      "scopeKey": "v1:app-version:ios:cHJvZHVjdGlvbg",
+      "generation": 2,
+      "catalogHash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "fallbackPolicy": "BUILTIN_IF_ACTIVE_INELIGIBLE",
+      "releases": [],
+      "rollbackReleases": [
+        {
+          "releaseId": "01900000-0000-7000-8000-000000000130",
+          "kind": "BUNDLE",
+          "bundleId": "01900000-0000-7000-8000-000000000030",
+          "rolloutCohortCount": 0,
+          "targetCohorts": [],
+          "shouldForceUpdate": false,
+          "message": null
+        },
+        {
+          "releaseId": "01900000-0000-7000-8000-000000000120",
+          "kind": "BUNDLE",
+          "bundleId": "01900000-0000-7000-8000-000000000020",
+          "rolloutCohortCount": 0,
+          "targetCohorts": [],
+          "shouldForceUpdate": false,
+          "message": null
+        }
+      ]
+    },
+    "expected": {
+      "contextHash": "v1:5bbffdfd99f18d21",
+      "selection": {
+        "kind": "BUILTIN",
+        "releaseId": null,
+        "bundleId": "01900000-0000-7000-8000-000000000001",
+        "catalogId": "lynx-policy-fixture",
+        "scopeKey": "v1:app-version:ios:cHJvZHVjdGlvbg",
+        "generation": 2,
+        "catalogHash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "channel": "production",
+        "selectionContextHash": "v1:5bbffdfd99f18d21"
+      },
+      "status": "ROLLBACK",
+      "authorization": {
+        "authorized": true,
+        "reason": "NEWER_POLICY"
+      }
+    }
+  },
+  {
+    "name": "ios/embedded-release-held-after-unknown-exit",
+    "snapshot": {
+      "revision": "policy-fixture-revision",
+      "platform": "ios",
+      "appVersion": "1.0.0",
+      "channel": "production",
+      "runtimeId": "policy-fixture-runtime",
+      "embeddedBundleId": "01900000-0000-7000-8000-000000000001",
+      "minimumBundleId": "01900000-0000-7000-8000-000000000001",
+      "cohort": "1",
+      "runningSelection": {
+        "kind": "BUNDLE",
+        "releaseId": "01900000-0000-7000-8000-000000000110",
+        "bundleId": "01900000-0000-7000-8000-000000000010",
+        "catalogId": "lynx-policy-fixture",
+        "scopeKey": "v1:app-version:ios:cHJvZHVjdGlvbg",
+        "generation": 1,
+        "catalogHash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "channel": "production",
+        "selectionContextHash": "v1:0000000000000000"
+      },
+      "runningConfirmed": true,
+      "confirmedSelection": {
+        "kind": "BUNDLE",
+        "releaseId": "01900000-0000-7000-8000-000000000110",
+        "bundleId": "01900000-0000-7000-8000-000000000010",
+        "catalogId": "lynx-policy-fixture",
+        "scopeKey": "v1:app-version:ios:cHJvZHVjdGlvbg",
+        "generation": 1,
+        "catalogHash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "channel": "production",
+        "selectionContextHash": "v1:0000000000000000"
+      },
+      "nextSelection": null,
+      "crashedBundleIds": [],
+      "unconfirmedReleaseIds": [
+        "01900000-0000-7000-8000-000000000140"
+      ]
+    },
+    "catalog": {
+      "schemaVersion": 1,
+      "catalogId": "lynx-policy-fixture",
+      "scopeKey": "v1:app-version:ios:cHJvZHVjdGlvbg",
+      "generation": 2,
+      "catalogHash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "fallbackPolicy": "BUILTIN_IF_ACTIVE_INELIGIBLE",
+      "releases": [
+        {
+          "releaseId": "01900000-0000-7000-8000-000000000140",
+          "kind": "EMBEDDED",
+          "bundleId": null,
+          "rolloutCohortCount": 1000,
+          "targetCohorts": [],
+          "shouldForceUpdate": false,
+          "message": null
+        },
+        {
+          "releaseId": "01900000-0000-7000-8000-000000000110",
+          "kind": "BUNDLE",
+          "bundleId": "01900000-0000-7000-8000-000000000010",
+          "rolloutCohortCount": 1000,
+          "targetCohorts": [],
+          "shouldForceUpdate": false,
+          "message": null
+        }
+      ]
+    },
+    "expected": {
+      "contextHash": "v1:21ff4c13ef4c6f1f",
+      "selection": {
+        "kind": "BUNDLE",
+        "releaseId": "01900000-0000-7000-8000-000000000110",
+        "bundleId": "01900000-0000-7000-8000-000000000010",
+        "catalogId": "lynx-policy-fixture",
+        "scopeKey": "v1:app-version:ios:cHJvZHVjdGlvbg",
+        "generation": 2,
+        "catalogHash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "channel": "production",
+        "selectionContextHash": "v1:21ff4c13ef4c6f1f"
+      },
+      "status": "UPDATE",
+      "authorization": {
+        "authorized": true,
+        "reason": "NEWER_POLICY"
+      }
+    }
+  },
+  {
+    "name": "ios/explicit-embedded-rollback",
+    "snapshot": {
+      "revision": "policy-fixture-revision",
+      "platform": "ios",
+      "appVersion": "1.0.0",
+      "channel": "production",
+      "runtimeId": "policy-fixture-runtime",
+      "embeddedBundleId": "01900000-0000-7000-8000-000000000001",
+      "minimumBundleId": "01900000-0000-7000-8000-000000000001",
+      "cohort": "1",
+      "runningSelection": {
+        "kind": "BUNDLE",
+        "releaseId": "01900000-0000-7000-8000-000000000110",
+        "bundleId": "01900000-0000-7000-8000-000000000010",
+        "catalogId": "lynx-policy-fixture",
+        "scopeKey": "v1:app-version:ios:cHJvZHVjdGlvbg",
+        "generation": 1,
+        "catalogHash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "channel": "production",
+        "selectionContextHash": "v1:0000000000000000"
+      },
+      "runningConfirmed": true,
+      "confirmedSelection": {
+        "kind": "BUNDLE",
+        "releaseId": "01900000-0000-7000-8000-000000000110",
+        "bundleId": "01900000-0000-7000-8000-000000000010",
+        "catalogId": "lynx-policy-fixture",
+        "scopeKey": "v1:app-version:ios:cHJvZHVjdGlvbg",
+        "generation": 1,
+        "catalogHash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "channel": "production",
+        "selectionContextHash": "v1:0000000000000000"
+      },
+      "nextSelection": null,
+      "crashedBundleIds": [],
+      "unconfirmedReleaseIds": []
+    },
+    "catalog": {
+      "schemaVersion": 1,
+      "catalogId": "lynx-policy-fixture",
+      "scopeKey": "v1:app-version:ios:cHJvZHVjdGlvbg",
+      "generation": 2,
+      "catalogHash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "fallbackPolicy": "BUILTIN_IF_ACTIVE_INELIGIBLE",
+      "releases": [
+        {
+          "releaseId": "01900000-0000-7000-8000-000000000140",
+          "kind": "EMBEDDED",
+          "bundleId": null,
+          "rolloutCohortCount": 1000,
+          "targetCohorts": [],
+          "shouldForceUpdate": false,
+          "message": null
+        }
+      ]
+    },
+    "expected": {
+      "contextHash": "v1:7d63d5ae2a7006ea",
+      "selection": {
+        "kind": "EMBEDDED",
+        "releaseId": "01900000-0000-7000-8000-000000000140",
+        "bundleId": "01900000-0000-7000-8000-000000000001",
+        "catalogId": "lynx-policy-fixture",
+        "scopeKey": "v1:app-version:ios:cHJvZHVjdGlvbg",
+        "generation": 2,
+        "catalogHash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "channel": "production",
+        "selectionContextHash": "v1:7d63d5ae2a7006ea"
+      },
+      "status": "ROLLBACK",
+      "authorization": {
+        "authorized": true,
+        "reason": "NEWER_POLICY"
+      }
+    }
+  },
+  {
+    "name": "ios/ineligible-current-falls-back-to-builtin",
+    "snapshot": {
+      "revision": "policy-fixture-revision",
+      "platform": "ios",
+      "appVersion": "1.0.0",
+      "channel": "production",
+      "runtimeId": "policy-fixture-runtime",
+      "embeddedBundleId": "01900000-0000-7000-8000-000000000001",
+      "minimumBundleId": "01900000-0000-7000-8000-000000000001",
+      "cohort": "1",
+      "runningSelection": {
+        "kind": "BUNDLE",
+        "releaseId": "01900000-0000-7000-8000-000000000120",
+        "bundleId": "01900000-0000-7000-8000-000000000020",
+        "catalogId": "lynx-policy-fixture",
+        "scopeKey": "v1:app-version:ios:cHJvZHVjdGlvbg",
+        "generation": 1,
+        "catalogHash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "channel": "production",
+        "selectionContextHash": "v1:0000000000000000"
+      },
+      "runningConfirmed": true,
+      "confirmedSelection": {
+        "kind": "BUNDLE",
+        "releaseId": "01900000-0000-7000-8000-000000000120",
+        "bundleId": "01900000-0000-7000-8000-000000000020",
+        "catalogId": "lynx-policy-fixture",
+        "scopeKey": "v1:app-version:ios:cHJvZHVjdGlvbg",
+        "generation": 1,
+        "catalogHash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "channel": "production",
+        "selectionContextHash": "v1:0000000000000000"
+      },
+      "nextSelection": null,
+      "crashedBundleIds": [],
+      "unconfirmedReleaseIds": []
+    },
+    "catalog": {
+      "schemaVersion": 1,
+      "catalogId": "lynx-policy-fixture",
+      "scopeKey": "v1:app-version:ios:cHJvZHVjdGlvbg",
+      "generation": 2,
+      "catalogHash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "fallbackPolicy": "BUILTIN_IF_ACTIVE_INELIGIBLE",
+      "releases": [
+        {
+          "releaseId": "01900000-0000-7000-8000-000000000120",
+          "kind": "BUNDLE",
+          "bundleId": "01900000-0000-7000-8000-000000000020",
+          "rolloutCohortCount": 0,
+          "targetCohorts": [],
+          "shouldForceUpdate": false,
+          "message": null
+        }
+      ]
+    },
+    "expected": {
+      "contextHash": "v1:09efc9a057b7a954",
+      "selection": {
+        "kind": "BUILTIN",
+        "releaseId": null,
+        "bundleId": "01900000-0000-7000-8000-000000000001",
+        "catalogId": "lynx-policy-fixture",
+        "scopeKey": "v1:app-version:ios:cHJvZHVjdGlvbg",
+        "generation": 2,
+        "catalogHash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "channel": "production",
+        "selectionContextHash": "v1:09efc9a057b7a954"
+      },
+      "status": "ROLLBACK",
+      "authorization": {
+        "authorized": true,
+        "reason": "NEWER_POLICY"
+      }
+    }
+  },
+  {
+    "name": "ios/native-minimum-excludes-old-bytes",
+    "snapshot": {
+      "revision": "policy-fixture-revision",
+      "platform": "ios",
+      "appVersion": "1.0.0",
+      "channel": "production",
+      "runtimeId": "policy-fixture-runtime",
+      "embeddedBundleId": "01900000-0000-7000-8000-000000000001",
+      "minimumBundleId": "01900000-0000-7000-8000-000000000025",
+      "cohort": "1",
+      "runningSelection": {
+        "kind": "BUILTIN",
+        "releaseId": null,
+        "bundleId": "01900000-0000-7000-8000-000000000001",
+        "catalogId": null,
+        "scopeKey": null,
+        "generation": null,
+        "catalogHash": null,
+        "channel": "production",
+        "selectionContextHash": null
+      },
+      "runningConfirmed": true,
+      "confirmedSelection": {
+        "kind": "BUILTIN",
+        "releaseId": null,
+        "bundleId": "01900000-0000-7000-8000-000000000001",
+        "catalogId": null,
+        "scopeKey": null,
+        "generation": null,
+        "catalogHash": null,
+        "channel": "production",
+        "selectionContextHash": null
+      },
+      "nextSelection": null,
+      "crashedBundleIds": [],
+      "unconfirmedReleaseIds": []
+    },
+    "catalog": {
+      "schemaVersion": 1,
+      "catalogId": "lynx-policy-fixture",
+      "scopeKey": "v1:app-version:ios:cHJvZHVjdGlvbg",
+      "generation": 2,
+      "catalogHash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "fallbackPolicy": "BUILTIN_IF_ACTIVE_INELIGIBLE",
+      "releases": [
+        {
+          "releaseId": "01900000-0000-7000-8000-000000000120",
+          "kind": "BUNDLE",
+          "bundleId": "01900000-0000-7000-8000-000000000020",
+          "rolloutCohortCount": 1000,
+          "targetCohorts": [],
+          "shouldForceUpdate": false,
+          "message": null
+        }
+      ]
+    },
+    "expected": {
+      "contextHash": "v1:a8ba412aa1d06d1e",
+      "selection": {
+        "kind": "BUILTIN",
+        "releaseId": null,
+        "bundleId": "01900000-0000-7000-8000-000000000001",
+        "catalogId": "lynx-policy-fixture",
+        "scopeKey": "v1:app-version:ios:cHJvZHVjdGlvbg",
+        "generation": 2,
+        "catalogHash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "channel": "production",
+        "selectionContextHash": "v1:a8ba412aa1d06d1e"
+      },
+      "status": "ROLLBACK",
+      "authorization": {
+        "authorized": true,
+        "reason": "FIRST_AUTHENTICATED_SELECTION"
+      }
+    }
+  },
+  {
+    "name": "ios/custom-cohort-target",
+    "snapshot": {
+      "revision": "policy-fixture-revision",
+      "platform": "ios",
+      "appVersion": "1.0.0",
+      "channel": "production",
+      "runtimeId": "policy-fixture-runtime",
+      "embeddedBundleId": "01900000-0000-7000-8000-000000000001",
+      "minimumBundleId": "01900000-0000-7000-8000-000000000001",
+      "cohort": "beta",
+      "runningSelection": {
+        "kind": "BUILTIN",
+        "releaseId": null,
+        "bundleId": "01900000-0000-7000-8000-000000000001",
+        "catalogId": null,
+        "scopeKey": null,
+        "generation": null,
+        "catalogHash": null,
+        "channel": "production",
+        "selectionContextHash": null
+      },
+      "runningConfirmed": true,
+      "confirmedSelection": {
+        "kind": "BUILTIN",
+        "releaseId": null,
+        "bundleId": "01900000-0000-7000-8000-000000000001",
+        "catalogId": null,
+        "scopeKey": null,
+        "generation": null,
+        "catalogHash": null,
+        "channel": "production",
+        "selectionContextHash": null
+      },
+      "nextSelection": null,
+      "crashedBundleIds": [],
+      "unconfirmedReleaseIds": []
+    },
+    "catalog": {
+      "schemaVersion": 1,
+      "catalogId": "lynx-policy-fixture",
+      "scopeKey": "v1:app-version:ios:cHJvZHVjdGlvbg",
+      "generation": 2,
+      "catalogHash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "fallbackPolicy": "BUILTIN_IF_ACTIVE_INELIGIBLE",
+      "releases": [
+        {
+          "releaseId": "01900000-0000-7000-8000-000000000120",
+          "kind": "BUNDLE",
+          "bundleId": "01900000-0000-7000-8000-000000000020",
+          "rolloutCohortCount": 0,
+          "targetCohorts": [
+            "beta"
+          ],
+          "shouldForceUpdate": false,
+          "message": null
+        }
+      ]
+    },
+    "expected": {
+      "contextHash": "v1:aa67026160ea1b9d",
+      "selection": {
+        "kind": "BUNDLE",
+        "releaseId": "01900000-0000-7000-8000-000000000120",
+        "bundleId": "01900000-0000-7000-8000-000000000020",
+        "catalogId": "lynx-policy-fixture",
+        "scopeKey": "v1:app-version:ios:cHJvZHVjdGlvbg",
+        "generation": 2,
+        "catalogHash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "channel": "production",
+        "selectionContextHash": "v1:aa67026160ea1b9d"
+      },
+      "status": "UPDATE",
+      "authorization": {
+        "authorized": true,
+        "reason": "FIRST_AUTHENTICATED_SELECTION"
+      }
+    }
+  },
+  {
+    "name": "ios/context-keeps-all-exclusions-canonically",
+    "snapshot": {
+      "revision": "policy-fixture-revision",
+      "platform": "ios",
+      "appVersion": "1.0.0",
+      "channel": "production",
+      "runtimeId": "policy-fixture-runtime",
+      "embeddedBundleId": "01900000-0000-7000-8000-000000000001",
+      "minimumBundleId": "01900000-0000-7000-8000-000000000001",
+      "cohort": "1",
+      "runningSelection": {
+        "kind": "BUILTIN",
+        "releaseId": null,
+        "bundleId": "01900000-0000-7000-8000-000000000001",
+        "catalogId": null,
+        "scopeKey": null,
+        "generation": null,
+        "catalogHash": null,
+        "channel": "production",
+        "selectionContextHash": null
+      },
+      "runningConfirmed": true,
+      "confirmedSelection": {
+        "kind": "BUILTIN",
+        "releaseId": null,
+        "bundleId": "01900000-0000-7000-8000-000000000001",
+        "catalogId": null,
+        "scopeKey": null,
+        "generation": null,
+        "catalogHash": null,
+        "channel": "production",
+        "selectionContextHash": null
+      },
+      "nextSelection": null,
+      "crashedBundleIds": [],
+      "unconfirmedReleaseIds": [
+        "01900000-0000-7000-8000-000000000211",
+        "01900000-0000-7000-8000-000000000210",
+        "01900000-0000-7000-8000-000000000209",
+        "01900000-0000-7000-8000-000000000208",
+        "01900000-0000-7000-8000-000000000207",
+        "01900000-0000-7000-8000-000000000206",
+        "01900000-0000-7000-8000-000000000205",
+        "01900000-0000-7000-8000-000000000204",
+        "01900000-0000-7000-8000-000000000203",
+        "01900000-0000-7000-8000-000000000202",
+        "01900000-0000-7000-8000-000000000201",
+        "01900000-0000-7000-8000-000000000200",
+        "01900000-0000-7000-8000-000000000205"
+      ]
+    },
+    "catalog": {
+      "schemaVersion": 1,
+      "catalogId": "lynx-policy-fixture",
+      "scopeKey": "v1:app-version:ios:cHJvZHVjdGlvbg",
+      "generation": 2,
+      "catalogHash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "fallbackPolicy": "BUILTIN_IF_ACTIVE_INELIGIBLE",
+      "releases": [
+        {
+          "releaseId": "01900000-0000-7000-8000-000000000120",
+          "kind": "BUNDLE",
+          "bundleId": "01900000-0000-7000-8000-000000000020",
+          "rolloutCohortCount": 1000,
+          "targetCohorts": [],
+          "shouldForceUpdate": false,
+          "message": null
+        }
+      ]
+    },
+    "expected": {
+      "contextHash": "v1:a3c254e3fc678b8f",
+      "selection": {
+        "kind": "BUNDLE",
+        "releaseId": "01900000-0000-7000-8000-000000000120",
+        "bundleId": "01900000-0000-7000-8000-000000000020",
+        "catalogId": "lynx-policy-fixture",
+        "scopeKey": "v1:app-version:ios:cHJvZHVjdGlvbg",
+        "generation": 2,
+        "catalogHash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "channel": "production",
+        "selectionContextHash": "v1:a3c254e3fc678b8f"
+      },
+      "status": "UPDATE",
+      "authorization": {
+        "authorized": true,
+        "reason": "FIRST_AUTHENTICATED_SELECTION"
+      }
+    }
+  },
+  {
+    "name": "ios/same-generation-same-context-denied",
+    "snapshot": {
+      "revision": "policy-fixture-revision",
+      "platform": "ios",
+      "appVersion": "1.0.0",
+      "channel": "production",
+      "runtimeId": "policy-fixture-runtime",
+      "embeddedBundleId": "01900000-0000-7000-8000-000000000001",
+      "minimumBundleId": "01900000-0000-7000-8000-000000000001",
+      "cohort": "1",
+      "runningSelection": {
+        "kind": "BUNDLE",
+        "releaseId": "01900000-0000-7000-8000-000000000120",
+        "bundleId": "01900000-0000-7000-8000-000000000020",
+        "catalogId": "lynx-policy-fixture",
+        "scopeKey": "v1:app-version:ios:cHJvZHVjdGlvbg",
+        "generation": 2,
+        "catalogHash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "channel": "production",
+        "selectionContextHash": "v1:09efc9a057b7a954"
+      },
+      "runningConfirmed": true,
+      "confirmedSelection": {
+        "kind": "BUNDLE",
+        "releaseId": "01900000-0000-7000-8000-000000000120",
+        "bundleId": "01900000-0000-7000-8000-000000000020",
+        "catalogId": "lynx-policy-fixture",
+        "scopeKey": "v1:app-version:ios:cHJvZHVjdGlvbg",
+        "generation": 2,
+        "catalogHash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "channel": "production",
+        "selectionContextHash": "v1:0000000000000000"
+      },
+      "nextSelection": null,
+      "crashedBundleIds": [],
+      "unconfirmedReleaseIds": []
+    },
+    "catalog": {
+      "schemaVersion": 1,
+      "catalogId": "lynx-policy-fixture",
+      "scopeKey": "v1:app-version:ios:cHJvZHVjdGlvbg",
+      "generation": 2,
+      "catalogHash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "fallbackPolicy": "BUILTIN_IF_ACTIVE_INELIGIBLE",
+      "releases": [
+        {
+          "releaseId": "01900000-0000-7000-8000-000000000130",
+          "kind": "BUNDLE",
+          "bundleId": "01900000-0000-7000-8000-000000000030",
+          "rolloutCohortCount": 1000,
+          "targetCohorts": [],
+          "shouldForceUpdate": false,
+          "message": null
+        },
+        {
+          "releaseId": "01900000-0000-7000-8000-000000000120",
+          "kind": "BUNDLE",
+          "bundleId": "01900000-0000-7000-8000-000000000020",
+          "rolloutCohortCount": 1000,
+          "targetCohorts": [],
+          "shouldForceUpdate": false,
+          "message": null
+        }
+      ]
+    },
+    "expected": {
+      "contextHash": "v1:09efc9a057b7a954",
+      "selection": {
+        "kind": "BUNDLE",
+        "releaseId": "01900000-0000-7000-8000-000000000130",
+        "bundleId": "01900000-0000-7000-8000-000000000030",
+        "catalogId": "lynx-policy-fixture",
+        "scopeKey": "v1:app-version:ios:cHJvZHVjdGlvbg",
+        "generation": 2,
+        "catalogHash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "channel": "production",
+        "selectionContextHash": "v1:09efc9a057b7a954"
+      },
+      "status": "UPDATE",
+      "authorization": {
+        "authorized": false,
+        "reason": "BACKWARD_NOT_AUTHORIZED"
+      }
+    }
+  },
+  {
+    "name": "ios/older-policy-generation-denied",
+    "snapshot": {
+      "revision": "policy-fixture-revision",
+      "platform": "ios",
+      "appVersion": "1.0.0",
+      "channel": "production",
+      "runtimeId": "policy-fixture-runtime",
+      "embeddedBundleId": "01900000-0000-7000-8000-000000000001",
+      "minimumBundleId": "01900000-0000-7000-8000-000000000001",
+      "cohort": "1",
+      "runningSelection": {
+        "kind": "BUNDLE",
+        "releaseId": "01900000-0000-7000-8000-000000000120",
+        "bundleId": "01900000-0000-7000-8000-000000000020",
+        "catalogId": "lynx-policy-fixture",
+        "scopeKey": "v1:app-version:ios:cHJvZHVjdGlvbg",
+        "generation": 3,
+        "catalogHash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "channel": "production",
+        "selectionContextHash": "v1:0000000000000000"
+      },
+      "runningConfirmed": true,
+      "confirmedSelection": {
+        "kind": "BUNDLE",
+        "releaseId": "01900000-0000-7000-8000-000000000120",
+        "bundleId": "01900000-0000-7000-8000-000000000020",
+        "catalogId": "lynx-policy-fixture",
+        "scopeKey": "v1:app-version:ios:cHJvZHVjdGlvbg",
+        "generation": 3,
+        "catalogHash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "channel": "production",
+        "selectionContextHash": "v1:0000000000000000"
+      },
+      "nextSelection": null,
+      "crashedBundleIds": [],
+      "unconfirmedReleaseIds": []
+    },
+    "catalog": {
+      "schemaVersion": 1,
+      "catalogId": "lynx-policy-fixture",
+      "scopeKey": "v1:app-version:ios:cHJvZHVjdGlvbg",
+      "generation": 2,
+      "catalogHash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "fallbackPolicy": "BUILTIN_IF_ACTIVE_INELIGIBLE",
+      "releases": [
+        {
+          "releaseId": "01900000-0000-7000-8000-000000000130",
+          "kind": "BUNDLE",
+          "bundleId": "01900000-0000-7000-8000-000000000030",
+          "rolloutCohortCount": 1000,
+          "targetCohorts": [],
+          "shouldForceUpdate": false,
+          "message": null
+        },
+        {
+          "releaseId": "01900000-0000-7000-8000-000000000120",
+          "kind": "BUNDLE",
+          "bundleId": "01900000-0000-7000-8000-000000000020",
+          "rolloutCohortCount": 1000,
+          "targetCohorts": [],
+          "shouldForceUpdate": false,
+          "message": null
+        }
+      ]
+    },
+    "expected": {
+      "contextHash": "v1:09efc9a057b7a954",
+      "selection": {
+        "kind": "BUNDLE",
+        "releaseId": "01900000-0000-7000-8000-000000000130",
+        "bundleId": "01900000-0000-7000-8000-000000000030",
+        "catalogId": "lynx-policy-fixture",
+        "scopeKey": "v1:app-version:ios:cHJvZHVjdGlvbg",
+        "generation": 2,
+        "catalogHash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "channel": "production",
+        "selectionContextHash": "v1:09efc9a057b7a954"
+      },
+      "status": "UPDATE",
+      "authorization": {
+        "authorized": false,
+        "reason": "STALE_GENERATION"
+      }
+    }
+  },
+  {
+    "name": "ios/partial-rollout-included-7",
+    "snapshot": {
+      "revision": "policy-fixture-revision",
+      "platform": "ios",
+      "appVersion": "1.0.0",
+      "channel": "production",
+      "runtimeId": "policy-fixture-runtime",
+      "embeddedBundleId": "01900000-0000-7000-8000-000000000001",
+      "minimumBundleId": "01900000-0000-7000-8000-000000000001",
+      "cohort": "7",
+      "runningSelection": {
+        "kind": "BUILTIN",
+        "releaseId": null,
+        "bundleId": "01900000-0000-7000-8000-000000000001",
+        "catalogId": null,
+        "scopeKey": null,
+        "generation": null,
+        "catalogHash": null,
+        "channel": "production",
+        "selectionContextHash": null
+      },
+      "runningConfirmed": true,
+      "confirmedSelection": {
+        "kind": "BUILTIN",
+        "releaseId": null,
+        "bundleId": "01900000-0000-7000-8000-000000000001",
+        "catalogId": null,
+        "scopeKey": null,
+        "generation": null,
+        "catalogHash": null,
+        "channel": "production",
+        "selectionContextHash": null
+      },
+      "nextSelection": null,
+      "crashedBundleIds": [],
+      "unconfirmedReleaseIds": []
+    },
+    "catalog": {
+      "schemaVersion": 1,
+      "catalogId": "lynx-policy-fixture",
+      "scopeKey": "v1:app-version:ios:cHJvZHVjdGlvbg",
+      "generation": 2,
+      "catalogHash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "fallbackPolicy": "BUILTIN_IF_ACTIVE_INELIGIBLE",
+      "releases": [
+        {
+          "releaseId": "01900000-0000-7000-8000-000000000120",
+          "kind": "BUNDLE",
+          "bundleId": "01900000-0000-7000-8000-000000000020",
+          "rolloutCohortCount": 137,
+          "targetCohorts": [],
+          "shouldForceUpdate": false,
+          "message": null
+        }
+      ]
+    },
+    "expected": {
+      "contextHash": "v1:b2dc134a2819bd7e",
+      "selection": {
+        "kind": "BUNDLE",
+        "releaseId": "01900000-0000-7000-8000-000000000120",
+        "bundleId": "01900000-0000-7000-8000-000000000020",
+        "catalogId": "lynx-policy-fixture",
+        "scopeKey": "v1:app-version:ios:cHJvZHVjdGlvbg",
+        "generation": 2,
+        "catalogHash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "channel": "production",
+        "selectionContextHash": "v1:b2dc134a2819bd7e"
+      },
+      "status": "UPDATE",
+      "authorization": {
+        "authorized": true,
+        "reason": "FIRST_AUTHENTICATED_SELECTION"
+      }
+    }
+  },
+  {
+    "name": "ios/partial-rollout-included-498",
+    "snapshot": {
+      "revision": "policy-fixture-revision",
+      "platform": "ios",
+      "appVersion": "1.0.0",
+      "channel": "production",
+      "runtimeId": "policy-fixture-runtime",
+      "embeddedBundleId": "01900000-0000-7000-8000-000000000001",
+      "minimumBundleId": "01900000-0000-7000-8000-000000000001",
+      "cohort": "498",
+      "runningSelection": {
+        "kind": "BUILTIN",
+        "releaseId": null,
+        "bundleId": "01900000-0000-7000-8000-000000000001",
+        "catalogId": null,
+        "scopeKey": null,
+        "generation": null,
+        "catalogHash": null,
+        "channel": "production",
+        "selectionContextHash": null
+      },
+      "runningConfirmed": true,
+      "confirmedSelection": {
+        "kind": "BUILTIN",
+        "releaseId": null,
+        "bundleId": "01900000-0000-7000-8000-000000000001",
+        "catalogId": null,
+        "scopeKey": null,
+        "generation": null,
+        "catalogHash": null,
+        "channel": "production",
+        "selectionContextHash": null
+      },
+      "nextSelection": null,
+      "crashedBundleIds": [],
+      "unconfirmedReleaseIds": []
+    },
+    "catalog": {
+      "schemaVersion": 1,
+      "catalogId": "lynx-policy-fixture",
+      "scopeKey": "v1:app-version:ios:cHJvZHVjdGlvbg",
+      "generation": 2,
+      "catalogHash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "fallbackPolicy": "BUILTIN_IF_ACTIVE_INELIGIBLE",
+      "releases": [
+        {
+          "releaseId": "01900000-0000-7000-8000-000000000120",
+          "kind": "BUNDLE",
+          "bundleId": "01900000-0000-7000-8000-000000000020",
+          "rolloutCohortCount": 137,
+          "targetCohorts": [],
+          "shouldForceUpdate": false,
+          "message": null
+        }
+      ]
+    },
+    "expected": {
+      "contextHash": "v1:3dbc649ec99d26ca",
+      "selection": {
+        "kind": "BUNDLE",
+        "releaseId": "01900000-0000-7000-8000-000000000120",
+        "bundleId": "01900000-0000-7000-8000-000000000020",
+        "catalogId": "lynx-policy-fixture",
+        "scopeKey": "v1:app-version:ios:cHJvZHVjdGlvbg",
+        "generation": 2,
+        "catalogHash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "channel": "production",
+        "selectionContextHash": "v1:3dbc649ec99d26ca"
+      },
+      "status": "UPDATE",
+      "authorization": {
+        "authorized": true,
+        "reason": "FIRST_AUTHENTICATED_SELECTION"
+      }
+    }
+  },
+  {
+    "name": "ios/partial-rollout-included-994",
+    "snapshot": {
+      "revision": "policy-fixture-revision",
+      "platform": "ios",
+      "appVersion": "1.0.0",
+      "channel": "production",
+      "runtimeId": "policy-fixture-runtime",
+      "embeddedBundleId": "01900000-0000-7000-8000-000000000001",
+      "minimumBundleId": "01900000-0000-7000-8000-000000000001",
+      "cohort": "994",
+      "runningSelection": {
+        "kind": "BUILTIN",
+        "releaseId": null,
+        "bundleId": "01900000-0000-7000-8000-000000000001",
+        "catalogId": null,
+        "scopeKey": null,
+        "generation": null,
+        "catalogHash": null,
+        "channel": "production",
+        "selectionContextHash": null
+      },
+      "runningConfirmed": true,
+      "confirmedSelection": {
+        "kind": "BUILTIN",
+        "releaseId": null,
+        "bundleId": "01900000-0000-7000-8000-000000000001",
+        "catalogId": null,
+        "scopeKey": null,
+        "generation": null,
+        "catalogHash": null,
+        "channel": "production",
+        "selectionContextHash": null
+      },
+      "nextSelection": null,
+      "crashedBundleIds": [],
+      "unconfirmedReleaseIds": []
+    },
+    "catalog": {
+      "schemaVersion": 1,
+      "catalogId": "lynx-policy-fixture",
+      "scopeKey": "v1:app-version:ios:cHJvZHVjdGlvbg",
+      "generation": 2,
+      "catalogHash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "fallbackPolicy": "BUILTIN_IF_ACTIVE_INELIGIBLE",
+      "releases": [
+        {
+          "releaseId": "01900000-0000-7000-8000-000000000120",
+          "kind": "BUNDLE",
+          "bundleId": "01900000-0000-7000-8000-000000000020",
+          "rolloutCohortCount": 137,
+          "targetCohorts": [],
+          "shouldForceUpdate": false,
+          "message": null
+        }
+      ]
+    },
+    "expected": {
+      "contextHash": "v1:686f8a03750b054f",
+      "selection": {
+        "kind": "BUNDLE",
+        "releaseId": "01900000-0000-7000-8000-000000000120",
+        "bundleId": "01900000-0000-7000-8000-000000000020",
+        "catalogId": "lynx-policy-fixture",
+        "scopeKey": "v1:app-version:ios:cHJvZHVjdGlvbg",
+        "generation": 2,
+        "catalogHash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "channel": "production",
+        "selectionContextHash": "v1:686f8a03750b054f"
+      },
+      "status": "UPDATE",
+      "authorization": {
+        "authorized": true,
+        "reason": "FIRST_AUTHENTICATED_SELECTION"
+      }
+    }
+  },
+  {
+    "name": "ios/partial-rollout-excluded-1",
+    "snapshot": {
+      "revision": "policy-fixture-revision",
+      "platform": "ios",
+      "appVersion": "1.0.0",
+      "channel": "production",
+      "runtimeId": "policy-fixture-runtime",
+      "embeddedBundleId": "01900000-0000-7000-8000-000000000001",
+      "minimumBundleId": "01900000-0000-7000-8000-000000000001",
+      "cohort": "1",
+      "runningSelection": {
+        "kind": "BUILTIN",
+        "releaseId": null,
+        "bundleId": "01900000-0000-7000-8000-000000000001",
+        "catalogId": null,
+        "scopeKey": null,
+        "generation": null,
+        "catalogHash": null,
+        "channel": "production",
+        "selectionContextHash": null
+      },
+      "runningConfirmed": true,
+      "confirmedSelection": {
+        "kind": "BUILTIN",
+        "releaseId": null,
+        "bundleId": "01900000-0000-7000-8000-000000000001",
+        "catalogId": null,
+        "scopeKey": null,
+        "generation": null,
+        "catalogHash": null,
+        "channel": "production",
+        "selectionContextHash": null
+      },
+      "nextSelection": null,
+      "crashedBundleIds": [],
+      "unconfirmedReleaseIds": []
+    },
+    "catalog": {
+      "schemaVersion": 1,
+      "catalogId": "lynx-policy-fixture",
+      "scopeKey": "v1:app-version:ios:cHJvZHVjdGlvbg",
+      "generation": 2,
+      "catalogHash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "fallbackPolicy": "BUILTIN_IF_ACTIVE_INELIGIBLE",
+      "releases": [
+        {
+          "releaseId": "01900000-0000-7000-8000-000000000120",
+          "kind": "BUNDLE",
+          "bundleId": "01900000-0000-7000-8000-000000000020",
+          "rolloutCohortCount": 137,
+          "targetCohorts": [],
+          "shouldForceUpdate": false,
+          "message": null
+        }
+      ]
+    },
+    "expected": {
+      "contextHash": "v1:53adaf9821e0e4e4",
+      "selection": {
+        "kind": "BUILTIN",
+        "releaseId": null,
+        "bundleId": "01900000-0000-7000-8000-000000000001",
+        "catalogId": "lynx-policy-fixture",
+        "scopeKey": "v1:app-version:ios:cHJvZHVjdGlvbg",
+        "generation": 2,
+        "catalogHash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "channel": "production",
+        "selectionContextHash": "v1:53adaf9821e0e4e4"
+      },
+      "status": "ROLLBACK",
+      "authorization": {
+        "authorized": true,
+        "reason": "FIRST_AUTHENTICATED_SELECTION"
+      }
+    }
+  },
+  {
+    "name": "ios/partial-rollout-excluded-501",
+    "snapshot": {
+      "revision": "policy-fixture-revision",
+      "platform": "ios",
+      "appVersion": "1.0.0",
+      "channel": "production",
+      "runtimeId": "policy-fixture-runtime",
+      "embeddedBundleId": "01900000-0000-7000-8000-000000000001",
+      "minimumBundleId": "01900000-0000-7000-8000-000000000001",
+      "cohort": "501",
+      "runningSelection": {
+        "kind": "BUILTIN",
+        "releaseId": null,
+        "bundleId": "01900000-0000-7000-8000-000000000001",
+        "catalogId": null,
+        "scopeKey": null,
+        "generation": null,
+        "catalogHash": null,
+        "channel": "production",
+        "selectionContextHash": null
+      },
+      "runningConfirmed": true,
+      "confirmedSelection": {
+        "kind": "BUILTIN",
+        "releaseId": null,
+        "bundleId": "01900000-0000-7000-8000-000000000001",
+        "catalogId": null,
+        "scopeKey": null,
+        "generation": null,
+        "catalogHash": null,
+        "channel": "production",
+        "selectionContextHash": null
+      },
+      "nextSelection": null,
+      "crashedBundleIds": [],
+      "unconfirmedReleaseIds": []
+    },
+    "catalog": {
+      "schemaVersion": 1,
+      "catalogId": "lynx-policy-fixture",
+      "scopeKey": "v1:app-version:ios:cHJvZHVjdGlvbg",
+      "generation": 2,
+      "catalogHash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "fallbackPolicy": "BUILTIN_IF_ACTIVE_INELIGIBLE",
+      "releases": [
+        {
+          "releaseId": "01900000-0000-7000-8000-000000000120",
+          "kind": "BUNDLE",
+          "bundleId": "01900000-0000-7000-8000-000000000020",
+          "rolloutCohortCount": 137,
+          "targetCohorts": [],
+          "shouldForceUpdate": false,
+          "message": null
+        }
+      ]
+    },
+    "expected": {
+      "contextHash": "v1:9ac7e9e5e94a9389",
+      "selection": {
+        "kind": "BUILTIN",
+        "releaseId": null,
+        "bundleId": "01900000-0000-7000-8000-000000000001",
+        "catalogId": "lynx-policy-fixture",
+        "scopeKey": "v1:app-version:ios:cHJvZHVjdGlvbg",
+        "generation": 2,
+        "catalogHash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "channel": "production",
+        "selectionContextHash": "v1:9ac7e9e5e94a9389"
+      },
+      "status": "ROLLBACK",
+      "authorization": {
+        "authorized": true,
+        "reason": "FIRST_AUTHENTICATED_SELECTION"
+      }
+    }
+  },
+  {
+    "name": "ios/partial-rollout-excluded-1000",
+    "snapshot": {
+      "revision": "policy-fixture-revision",
+      "platform": "ios",
+      "appVersion": "1.0.0",
+      "channel": "production",
+      "runtimeId": "policy-fixture-runtime",
+      "embeddedBundleId": "01900000-0000-7000-8000-000000000001",
+      "minimumBundleId": "01900000-0000-7000-8000-000000000001",
+      "cohort": "1000",
+      "runningSelection": {
+        "kind": "BUILTIN",
+        "releaseId": null,
+        "bundleId": "01900000-0000-7000-8000-000000000001",
+        "catalogId": null,
+        "scopeKey": null,
+        "generation": null,
+        "catalogHash": null,
+        "channel": "production",
+        "selectionContextHash": null
+      },
+      "runningConfirmed": true,
+      "confirmedSelection": {
+        "kind": "BUILTIN",
+        "releaseId": null,
+        "bundleId": "01900000-0000-7000-8000-000000000001",
+        "catalogId": null,
+        "scopeKey": null,
+        "generation": null,
+        "catalogHash": null,
+        "channel": "production",
+        "selectionContextHash": null
+      },
+      "nextSelection": null,
+      "crashedBundleIds": [],
+      "unconfirmedReleaseIds": []
+    },
+    "catalog": {
+      "schemaVersion": 1,
+      "catalogId": "lynx-policy-fixture",
+      "scopeKey": "v1:app-version:ios:cHJvZHVjdGlvbg",
+      "generation": 2,
+      "catalogHash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "fallbackPolicy": "BUILTIN_IF_ACTIVE_INELIGIBLE",
+      "releases": [
+        {
+          "releaseId": "01900000-0000-7000-8000-000000000120",
+          "kind": "BUNDLE",
+          "bundleId": "01900000-0000-7000-8000-000000000020",
+          "rolloutCohortCount": 137,
+          "targetCohorts": [],
+          "shouldForceUpdate": false,
+          "message": null
+        }
+      ]
+    },
+    "expected": {
+      "contextHash": "v1:2bcca550f1146af4",
+      "selection": {
+        "kind": "BUILTIN",
+        "releaseId": null,
+        "bundleId": "01900000-0000-7000-8000-000000000001",
+        "catalogId": "lynx-policy-fixture",
+        "scopeKey": "v1:app-version:ios:cHJvZHVjdGlvbg",
+        "generation": 2,
+        "catalogHash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "channel": "production",
+        "selectionContextHash": "v1:2bcca550f1146af4"
+      },
+      "status": "ROLLBACK",
+      "authorization": {
+        "authorized": true,
+        "reason": "FIRST_AUTHENTICATED_SELECTION"
+      }
+    }
+  },
+  {
+    "name": "android/first-update",
+    "snapshot": {
+      "revision": "policy-fixture-revision",
+      "platform": "android",
+      "appVersion": "1.0.0",
+      "channel": "production",
+      "runtimeId": "policy-fixture-runtime",
+      "embeddedBundleId": "01900000-0000-7000-8000-000000000001",
+      "minimumBundleId": "01900000-0000-7000-8000-000000000001",
+      "cohort": "1",
+      "runningSelection": {
+        "kind": "BUILTIN",
+        "releaseId": null,
+        "bundleId": "01900000-0000-7000-8000-000000000001",
+        "catalogId": null,
+        "scopeKey": null,
+        "generation": null,
+        "catalogHash": null,
+        "channel": "production",
+        "selectionContextHash": null
+      },
+      "runningConfirmed": true,
+      "confirmedSelection": {
+        "kind": "BUILTIN",
+        "releaseId": null,
+        "bundleId": "01900000-0000-7000-8000-000000000001",
+        "catalogId": null,
+        "scopeKey": null,
+        "generation": null,
+        "catalogHash": null,
+        "channel": "production",
+        "selectionContextHash": null
+      },
+      "nextSelection": null,
+      "crashedBundleIds": [],
+      "unconfirmedReleaseIds": []
+    },
+    "catalog": {
+      "schemaVersion": 1,
+      "catalogId": "lynx-policy-fixture",
+      "scopeKey": "v1:app-version:android:cHJvZHVjdGlvbg",
+      "generation": 2,
+      "catalogHash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "fallbackPolicy": "BUILTIN_IF_ACTIVE_INELIGIBLE",
+      "releases": [
+        {
+          "releaseId": "01900000-0000-7000-8000-000000000120",
+          "kind": "BUNDLE",
+          "bundleId": "01900000-0000-7000-8000-000000000020",
+          "rolloutCohortCount": 1000,
+          "targetCohorts": [],
+          "shouldForceUpdate": false,
+          "message": null
+        }
+      ]
+    },
+    "expected": {
+      "contextHash": "v1:53adaf9821e0e4e4",
+      "selection": {
+        "kind": "BUNDLE",
+        "releaseId": "01900000-0000-7000-8000-000000000120",
+        "bundleId": "01900000-0000-7000-8000-000000000020",
+        "catalogId": "lynx-policy-fixture",
+        "scopeKey": "v1:app-version:android:cHJvZHVjdGlvbg",
+        "generation": 2,
+        "catalogHash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "channel": "production",
+        "selectionContextHash": "v1:53adaf9821e0e4e4"
+      },
+      "status": "UPDATE",
+      "authorization": {
+        "authorized": true,
+        "reason": "FIRST_AUTHENTICATED_SELECTION"
+      }
+    }
+  },
+  {
+    "name": "android/empty-keeps-embedded",
+    "snapshot": {
+      "revision": "policy-fixture-revision",
+      "platform": "android",
+      "appVersion": "1.0.0",
+      "channel": "production",
+      "runtimeId": "policy-fixture-runtime",
+      "embeddedBundleId": "01900000-0000-7000-8000-000000000001",
+      "minimumBundleId": "01900000-0000-7000-8000-000000000001",
+      "cohort": "1",
+      "runningSelection": {
+        "kind": "BUILTIN",
+        "releaseId": null,
+        "bundleId": "01900000-0000-7000-8000-000000000001",
+        "catalogId": null,
+        "scopeKey": null,
+        "generation": null,
+        "catalogHash": null,
+        "channel": "production",
+        "selectionContextHash": null
+      },
+      "runningConfirmed": true,
+      "confirmedSelection": {
+        "kind": "BUILTIN",
+        "releaseId": null,
+        "bundleId": "01900000-0000-7000-8000-000000000001",
+        "catalogId": null,
+        "scopeKey": null,
+        "generation": null,
+        "catalogHash": null,
+        "channel": "production",
+        "selectionContextHash": null
+      },
+      "nextSelection": null,
+      "crashedBundleIds": [],
+      "unconfirmedReleaseIds": []
+    },
+    "catalog": {
+      "schemaVersion": 1,
+      "catalogId": "lynx-policy-fixture",
+      "scopeKey": "v1:app-version:android:cHJvZHVjdGlvbg",
+      "generation": 2,
+      "catalogHash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "fallbackPolicy": "BUILTIN_IF_ACTIVE_INELIGIBLE",
+      "releases": []
+    },
+    "expected": {
+      "contextHash": "v1:53adaf9821e0e4e4",
+      "selection": {
+        "kind": "BUILTIN",
+        "releaseId": null,
+        "bundleId": "01900000-0000-7000-8000-000000000001",
+        "catalogId": "lynx-policy-fixture",
+        "scopeKey": "v1:app-version:android:cHJvZHVjdGlvbg",
+        "generation": 2,
+        "catalogHash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "channel": "production",
+        "selectionContextHash": "v1:53adaf9821e0e4e4"
+      },
+      "status": "ROLLBACK",
+      "authorization": {
+        "authorized": true,
+        "reason": "FIRST_AUTHENTICATED_SELECTION"
+      }
+    }
+  },
+  {
+    "name": "android/confirmed-current-retained",
+    "snapshot": {
+      "revision": "policy-fixture-revision",
+      "platform": "android",
+      "appVersion": "1.0.0",
+      "channel": "production",
+      "runtimeId": "policy-fixture-runtime",
+      "embeddedBundleId": "01900000-0000-7000-8000-000000000001",
+      "minimumBundleId": "01900000-0000-7000-8000-000000000001",
+      "cohort": "1",
+      "runningSelection": {
+        "kind": "BUNDLE",
+        "releaseId": "01900000-0000-7000-8000-000000000120",
+        "bundleId": "01900000-0000-7000-8000-000000000020",
+        "catalogId": "lynx-policy-fixture",
+        "scopeKey": "v1:app-version:android:cHJvZHVjdGlvbg",
+        "generation": 1,
+        "catalogHash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "channel": "production",
+        "selectionContextHash": "v1:0000000000000000"
+      },
+      "runningConfirmed": true,
+      "confirmedSelection": {
+        "kind": "BUNDLE",
+        "releaseId": "01900000-0000-7000-8000-000000000120",
+        "bundleId": "01900000-0000-7000-8000-000000000020",
+        "catalogId": "lynx-policy-fixture",
+        "scopeKey": "v1:app-version:android:cHJvZHVjdGlvbg",
+        "generation": 1,
+        "catalogHash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "channel": "production",
+        "selectionContextHash": "v1:0000000000000000"
+      },
+      "nextSelection": null,
+      "crashedBundleIds": [],
+      "unconfirmedReleaseIds": []
+    },
+    "catalog": {
+      "schemaVersion": 1,
+      "catalogId": "lynx-policy-fixture",
+      "scopeKey": "v1:app-version:android:cHJvZHVjdGlvbg",
+      "generation": 2,
+      "catalogHash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "fallbackPolicy": "BUILTIN_IF_ACTIVE_INELIGIBLE",
+      "releases": [
+        {
+          "releaseId": "01900000-0000-7000-8000-000000000120",
+          "kind": "BUNDLE",
+          "bundleId": "01900000-0000-7000-8000-000000000020",
+          "rolloutCohortCount": 1000,
+          "targetCohorts": [],
+          "shouldForceUpdate": false,
+          "message": null
+        }
+      ]
+    },
+    "expected": {
+      "contextHash": "v1:09efc9a057b7a954",
+      "selection": {
+        "kind": "BUNDLE",
+        "releaseId": "01900000-0000-7000-8000-000000000120",
+        "bundleId": "01900000-0000-7000-8000-000000000020",
+        "catalogId": "lynx-policy-fixture",
+        "scopeKey": "v1:app-version:android:cHJvZHVjdGlvbg",
+        "generation": 2,
+        "catalogHash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "channel": "production",
+        "selectionContextHash": "v1:09efc9a057b7a954"
+      },
+      "status": "UPDATE",
+      "authorization": {
+        "authorized": true,
+        "reason": "NEWER_POLICY"
+      }
+    }
+  },
+  {
+    "name": "android/next-selection-is-policy-base",
+    "snapshot": {
+      "revision": "policy-fixture-revision",
+      "platform": "android",
+      "appVersion": "1.0.0",
+      "channel": "production",
+      "runtimeId": "policy-fixture-runtime",
+      "embeddedBundleId": "01900000-0000-7000-8000-000000000001",
+      "minimumBundleId": "01900000-0000-7000-8000-000000000001",
+      "cohort": "1",
+      "runningSelection": {
+        "kind": "BUNDLE",
+        "releaseId": "01900000-0000-7000-8000-000000000120",
+        "bundleId": "01900000-0000-7000-8000-000000000020",
+        "catalogId": "lynx-policy-fixture",
+        "scopeKey": "v1:app-version:android:cHJvZHVjdGlvbg",
+        "generation": 1,
+        "catalogHash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "channel": "production",
+        "selectionContextHash": "v1:0000000000000000"
+      },
+      "runningConfirmed": true,
+      "confirmedSelection": {
+        "kind": "BUNDLE",
+        "releaseId": "01900000-0000-7000-8000-000000000120",
+        "bundleId": "01900000-0000-7000-8000-000000000020",
+        "catalogId": "lynx-policy-fixture",
+        "scopeKey": "v1:app-version:android:cHJvZHVjdGlvbg",
+        "generation": 1,
+        "catalogHash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "channel": "production",
+        "selectionContextHash": "v1:0000000000000000"
+      },
+      "nextSelection": {
+        "kind": "BUNDLE",
+        "releaseId": "01900000-0000-7000-8000-000000000130",
+        "bundleId": "01900000-0000-7000-8000-000000000030",
+        "catalogId": "lynx-policy-fixture",
+        "scopeKey": "v1:app-version:android:cHJvZHVjdGlvbg",
+        "generation": 1,
+        "catalogHash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "channel": "production",
+        "selectionContextHash": "v1:0000000000000000"
+      },
+      "crashedBundleIds": [],
+      "unconfirmedReleaseIds": []
+    },
+    "catalog": {
+      "schemaVersion": 1,
+      "catalogId": "lynx-policy-fixture",
+      "scopeKey": "v1:app-version:android:cHJvZHVjdGlvbg",
+      "generation": 2,
+      "catalogHash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "fallbackPolicy": "BUILTIN_IF_ACTIVE_INELIGIBLE",
+      "releases": [
+        {
+          "releaseId": "01900000-0000-7000-8000-000000000130",
+          "kind": "BUNDLE",
+          "bundleId": "01900000-0000-7000-8000-000000000030",
+          "rolloutCohortCount": 1000,
+          "targetCohorts": [],
+          "shouldForceUpdate": false,
+          "message": null
+        },
+        {
+          "releaseId": "01900000-0000-7000-8000-000000000120",
+          "kind": "BUNDLE",
+          "bundleId": "01900000-0000-7000-8000-000000000020",
+          "rolloutCohortCount": 1000,
+          "targetCohorts": [],
+          "shouldForceUpdate": false,
+          "message": null
+        }
+      ]
+    },
+    "expected": {
+      "contextHash": "v1:27e006f290ed527e",
+      "selection": {
+        "kind": "BUNDLE",
+        "releaseId": "01900000-0000-7000-8000-000000000130",
+        "bundleId": "01900000-0000-7000-8000-000000000030",
+        "catalogId": "lynx-policy-fixture",
+        "scopeKey": "v1:app-version:android:cHJvZHVjdGlvbg",
+        "generation": 2,
+        "catalogHash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "channel": "production",
+        "selectionContextHash": "v1:27e006f290ed527e"
+      },
+      "status": "UPDATE",
+      "authorization": {
+        "authorized": true,
+        "reason": "NEWER_POLICY"
+      }
+    }
+  },
+  {
+    "name": "android/two-unknown-exits-do-not-reenable-b",
+    "snapshot": {
+      "revision": "policy-fixture-revision",
+      "platform": "android",
+      "appVersion": "1.0.0",
+      "channel": "production",
+      "runtimeId": "policy-fixture-runtime",
+      "embeddedBundleId": "01900000-0000-7000-8000-000000000001",
+      "minimumBundleId": "01900000-0000-7000-8000-000000000001",
+      "cohort": "1",
+      "runningSelection": {
+        "kind": "BUNDLE",
+        "releaseId": "01900000-0000-7000-8000-000000000110",
+        "bundleId": "01900000-0000-7000-8000-000000000010",
+        "catalogId": "lynx-policy-fixture",
+        "scopeKey": "v1:app-version:android:cHJvZHVjdGlvbg",
+        "generation": 1,
+        "catalogHash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "channel": "production",
+        "selectionContextHash": "v1:0000000000000000"
+      },
+      "runningConfirmed": true,
+      "confirmedSelection": {
+        "kind": "BUNDLE",
+        "releaseId": "01900000-0000-7000-8000-000000000110",
+        "bundleId": "01900000-0000-7000-8000-000000000010",
+        "catalogId": "lynx-policy-fixture",
+        "scopeKey": "v1:app-version:android:cHJvZHVjdGlvbg",
+        "generation": 1,
+        "catalogHash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "channel": "production",
+        "selectionContextHash": "v1:0000000000000000"
+      },
+      "nextSelection": null,
+      "crashedBundleIds": [],
+      "unconfirmedReleaseIds": [
+        "01900000-0000-7000-8000-000000000130",
+        "01900000-0000-7000-8000-000000000120"
+      ]
+    },
+    "catalog": {
+      "schemaVersion": 1,
+      "catalogId": "lynx-policy-fixture",
+      "scopeKey": "v1:app-version:android:cHJvZHVjdGlvbg",
+      "generation": 2,
+      "catalogHash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "fallbackPolicy": "BUILTIN_IF_ACTIVE_INELIGIBLE",
+      "releases": [
+        {
+          "releaseId": "01900000-0000-7000-8000-000000000130",
+          "kind": "BUNDLE",
+          "bundleId": "01900000-0000-7000-8000-000000000030",
+          "rolloutCohortCount": 1000,
+          "targetCohorts": [],
+          "shouldForceUpdate": false,
+          "message": null
+        },
+        {
+          "releaseId": "01900000-0000-7000-8000-000000000120",
+          "kind": "BUNDLE",
+          "bundleId": "01900000-0000-7000-8000-000000000020",
+          "rolloutCohortCount": 1000,
+          "targetCohorts": [],
+          "shouldForceUpdate": false,
+          "message": null
+        },
+        {
+          "releaseId": "01900000-0000-7000-8000-000000000110",
+          "kind": "BUNDLE",
+          "bundleId": "01900000-0000-7000-8000-000000000010",
+          "rolloutCohortCount": 1000,
+          "targetCohorts": [],
+          "shouldForceUpdate": false,
+          "message": null
+        }
+      ]
+    },
+    "expected": {
+      "contextHash": "v1:33fc21a070c0aafc",
+      "selection": {
+        "kind": "BUNDLE",
+        "releaseId": "01900000-0000-7000-8000-000000000110",
+        "bundleId": "01900000-0000-7000-8000-000000000010",
+        "catalogId": "lynx-policy-fixture",
+        "scopeKey": "v1:app-version:android:cHJvZHVjdGlvbg",
+        "generation": 2,
+        "catalogHash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "channel": "production",
+        "selectionContextHash": "v1:33fc21a070c0aafc"
+      },
+      "status": "UPDATE",
+      "authorization": {
+        "authorized": true,
+        "reason": "NEWER_POLICY"
+      }
+    }
+  },
+  {
+    "name": "android/fresh-release-retries-unknown-cached-bytes",
+    "snapshot": {
+      "revision": "policy-fixture-revision",
+      "platform": "android",
+      "appVersion": "1.0.0",
+      "channel": "production",
+      "runtimeId": "policy-fixture-runtime",
+      "embeddedBundleId": "01900000-0000-7000-8000-000000000001",
+      "minimumBundleId": "01900000-0000-7000-8000-000000000001",
+      "cohort": "1",
+      "runningSelection": {
+        "kind": "BUNDLE",
+        "releaseId": "01900000-0000-7000-8000-000000000110",
+        "bundleId": "01900000-0000-7000-8000-000000000010",
+        "catalogId": "lynx-policy-fixture",
+        "scopeKey": "v1:app-version:android:cHJvZHVjdGlvbg",
+        "generation": 1,
+        "catalogHash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "channel": "production",
+        "selectionContextHash": "v1:0000000000000000"
+      },
+      "runningConfirmed": true,
+      "confirmedSelection": {
+        "kind": "BUNDLE",
+        "releaseId": "01900000-0000-7000-8000-000000000110",
+        "bundleId": "01900000-0000-7000-8000-000000000010",
+        "catalogId": "lynx-policy-fixture",
+        "scopeKey": "v1:app-version:android:cHJvZHVjdGlvbg",
+        "generation": 1,
+        "catalogHash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "channel": "production",
+        "selectionContextHash": "v1:0000000000000000"
+      },
+      "nextSelection": null,
+      "crashedBundleIds": [],
+      "unconfirmedReleaseIds": [
+        "01900000-0000-7000-8000-000000000130",
+        "01900000-0000-7000-8000-000000000120"
+      ]
+    },
+    "catalog": {
+      "schemaVersion": 1,
+      "catalogId": "lynx-policy-fixture",
+      "scopeKey": "v1:app-version:android:cHJvZHVjdGlvbg",
+      "generation": 2,
+      "catalogHash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "fallbackPolicy": "BUILTIN_IF_ACTIVE_INELIGIBLE",
+      "releases": [
+        {
+          "releaseId": "01900000-0000-7000-8000-000000000140",
+          "kind": "BUNDLE",
+          "bundleId": "01900000-0000-7000-8000-000000000020",
+          "rolloutCohortCount": 1000,
+          "targetCohorts": [],
+          "shouldForceUpdate": false,
+          "message": null
+        },
+        {
+          "releaseId": "01900000-0000-7000-8000-000000000130",
+          "kind": "BUNDLE",
+          "bundleId": "01900000-0000-7000-8000-000000000030",
+          "rolloutCohortCount": 1000,
+          "targetCohorts": [],
+          "shouldForceUpdate": false,
+          "message": null
+        },
+        {
+          "releaseId": "01900000-0000-7000-8000-000000000120",
+          "kind": "BUNDLE",
+          "bundleId": "01900000-0000-7000-8000-000000000020",
+          "rolloutCohortCount": 1000,
+          "targetCohorts": [],
+          "shouldForceUpdate": false,
+          "message": null
+        },
+        {
+          "releaseId": "01900000-0000-7000-8000-000000000110",
+          "kind": "BUNDLE",
+          "bundleId": "01900000-0000-7000-8000-000000000010",
+          "rolloutCohortCount": 1000,
+          "targetCohorts": [],
+          "shouldForceUpdate": false,
+          "message": null
+        }
+      ]
+    },
+    "expected": {
+      "contextHash": "v1:33fc21a070c0aafc",
+      "selection": {
+        "kind": "BUNDLE",
+        "releaseId": "01900000-0000-7000-8000-000000000140",
+        "bundleId": "01900000-0000-7000-8000-000000000020",
+        "catalogId": "lynx-policy-fixture",
+        "scopeKey": "v1:app-version:android:cHJvZHVjdGlvbg",
+        "generation": 2,
+        "catalogHash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "channel": "production",
+        "selectionContextHash": "v1:33fc21a070c0aafc"
+      },
+      "status": "UPDATE",
+      "authorization": {
+        "authorized": true,
+        "reason": "NEWER_POLICY"
+      }
+    }
+  },
+  {
+    "name": "android/fresh-release-cannot-bypass-fatal-bundle",
+    "snapshot": {
+      "revision": "policy-fixture-revision",
+      "platform": "android",
+      "appVersion": "1.0.0",
+      "channel": "production",
+      "runtimeId": "policy-fixture-runtime",
+      "embeddedBundleId": "01900000-0000-7000-8000-000000000001",
+      "minimumBundleId": "01900000-0000-7000-8000-000000000001",
+      "cohort": "1",
+      "runningSelection": {
+        "kind": "BUNDLE",
+        "releaseId": "01900000-0000-7000-8000-000000000110",
+        "bundleId": "01900000-0000-7000-8000-000000000010",
+        "catalogId": "lynx-policy-fixture",
+        "scopeKey": "v1:app-version:android:cHJvZHVjdGlvbg",
+        "generation": 1,
+        "catalogHash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "channel": "production",
+        "selectionContextHash": "v1:0000000000000000"
+      },
+      "runningConfirmed": true,
+      "confirmedSelection": {
+        "kind": "BUNDLE",
+        "releaseId": "01900000-0000-7000-8000-000000000110",
+        "bundleId": "01900000-0000-7000-8000-000000000010",
+        "catalogId": "lynx-policy-fixture",
+        "scopeKey": "v1:app-version:android:cHJvZHVjdGlvbg",
+        "generation": 1,
+        "catalogHash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "channel": "production",
+        "selectionContextHash": "v1:0000000000000000"
+      },
+      "nextSelection": null,
+      "crashedBundleIds": [
+        "01900000-0000-7000-8000-000000000020"
+      ],
+      "unconfirmedReleaseIds": []
+    },
+    "catalog": {
+      "schemaVersion": 1,
+      "catalogId": "lynx-policy-fixture",
+      "scopeKey": "v1:app-version:android:cHJvZHVjdGlvbg",
+      "generation": 2,
+      "catalogHash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "fallbackPolicy": "BUILTIN_IF_ACTIVE_INELIGIBLE",
+      "releases": [
+        {
+          "releaseId": "01900000-0000-7000-8000-000000000140",
+          "kind": "BUNDLE",
+          "bundleId": "01900000-0000-7000-8000-000000000020",
+          "rolloutCohortCount": 1000,
+          "targetCohorts": [],
+          "shouldForceUpdate": false,
+          "message": null
+        },
+        {
+          "releaseId": "01900000-0000-7000-8000-000000000110",
+          "kind": "BUNDLE",
+          "bundleId": "01900000-0000-7000-8000-000000000010",
+          "rolloutCohortCount": 1000,
+          "targetCohorts": [],
+          "shouldForceUpdate": false,
+          "message": null
+        }
+      ]
+    },
+    "expected": {
+      "contextHash": "v1:7f898de170527b0d",
+      "selection": {
+        "kind": "BUNDLE",
+        "releaseId": "01900000-0000-7000-8000-000000000110",
+        "bundleId": "01900000-0000-7000-8000-000000000010",
+        "catalogId": "lynx-policy-fixture",
+        "scopeKey": "v1:app-version:android:cHJvZHVjdGlvbg",
+        "generation": 2,
+        "catalogHash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "channel": "production",
+        "selectionContextHash": "v1:7f898de170527b0d"
+      },
+      "status": "UPDATE",
+      "authorization": {
+        "authorized": true,
+        "reason": "NEWER_POLICY"
+      }
+    }
+  },
+  {
+    "name": "android/rollback-skips-excluded-predecessor",
+    "snapshot": {
+      "revision": "policy-fixture-revision",
+      "platform": "android",
+      "appVersion": "1.0.0",
+      "channel": "production",
+      "runtimeId": "policy-fixture-runtime",
+      "embeddedBundleId": "01900000-0000-7000-8000-000000000001",
+      "minimumBundleId": "01900000-0000-7000-8000-000000000001",
+      "cohort": "1",
+      "runningSelection": {
+        "kind": "BUNDLE",
+        "releaseId": "01900000-0000-7000-8000-000000000140",
+        "bundleId": "01900000-0000-7000-8000-000000000040",
+        "catalogId": "lynx-policy-fixture",
+        "scopeKey": "v1:app-version:android:cHJvZHVjdGlvbg",
+        "generation": 1,
+        "catalogHash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "channel": "production",
+        "selectionContextHash": "v1:0000000000000000"
+      },
+      "runningConfirmed": true,
+      "confirmedSelection": {
+        "kind": "BUNDLE",
+        "releaseId": "01900000-0000-7000-8000-000000000140",
+        "bundleId": "01900000-0000-7000-8000-000000000040",
+        "catalogId": "lynx-policy-fixture",
+        "scopeKey": "v1:app-version:android:cHJvZHVjdGlvbg",
+        "generation": 1,
+        "catalogHash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "channel": "production",
+        "selectionContextHash": "v1:0000000000000000"
+      },
+      "nextSelection": null,
+      "crashedBundleIds": [],
+      "unconfirmedReleaseIds": [
+        "01900000-0000-7000-8000-000000000130"
+      ]
+    },
+    "catalog": {
+      "schemaVersion": 1,
+      "catalogId": "lynx-policy-fixture",
+      "scopeKey": "v1:app-version:android:cHJvZHVjdGlvbg",
+      "generation": 2,
+      "catalogHash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "fallbackPolicy": "BUILTIN_IF_ACTIVE_INELIGIBLE",
+      "releases": [],
+      "rollbackReleases": [
+        {
+          "releaseId": "01900000-0000-7000-8000-000000000130",
+          "kind": "BUNDLE",
+          "bundleId": "01900000-0000-7000-8000-000000000030",
+          "rolloutCohortCount": 1000,
+          "targetCohorts": [],
+          "shouldForceUpdate": false,
+          "message": null
+        },
+        {
+          "releaseId": "01900000-0000-7000-8000-000000000120",
+          "kind": "BUNDLE",
+          "bundleId": "01900000-0000-7000-8000-000000000020",
+          "rolloutCohortCount": 1000,
+          "targetCohorts": [],
+          "shouldForceUpdate": false,
+          "message": null
+        }
+      ]
+    },
+    "expected": {
+      "contextHash": "v1:327ff0e480416e58",
+      "selection": {
+        "kind": "BUNDLE",
+        "releaseId": "01900000-0000-7000-8000-000000000120",
+        "bundleId": "01900000-0000-7000-8000-000000000020",
+        "catalogId": "lynx-policy-fixture",
+        "scopeKey": "v1:app-version:android:cHJvZHVjdGlvbg",
+        "generation": 2,
+        "catalogHash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "channel": "production",
+        "selectionContextHash": "v1:327ff0e480416e58"
+      },
+      "status": "ROLLBACK",
+      "authorization": {
+        "authorized": true,
+        "reason": "NEWER_POLICY"
+      }
+    }
+  },
+  {
+    "name": "android/rollback-predecessor-does-not-require-rollout-cohort",
+    "snapshot": {
+      "revision": "policy-fixture-revision",
+      "platform": "android",
+      "appVersion": "1.0.0",
+      "channel": "production",
+      "runtimeId": "policy-fixture-runtime",
+      "embeddedBundleId": "01900000-0000-7000-8000-000000000001",
+      "minimumBundleId": "01900000-0000-7000-8000-000000000001",
+      "cohort": "1",
+      "runningSelection": {
+        "kind": "BUNDLE",
+        "releaseId": "01900000-0000-7000-8000-000000000130",
+        "bundleId": "01900000-0000-7000-8000-000000000030",
+        "catalogId": "lynx-policy-fixture",
+        "scopeKey": "v1:app-version:android:cHJvZHVjdGlvbg",
+        "generation": 1,
+        "catalogHash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "channel": "production",
+        "selectionContextHash": "v1:0000000000000000"
+      },
+      "runningConfirmed": true,
+      "confirmedSelection": {
+        "kind": "BUNDLE",
+        "releaseId": "01900000-0000-7000-8000-000000000130",
+        "bundleId": "01900000-0000-7000-8000-000000000030",
+        "catalogId": "lynx-policy-fixture",
+        "scopeKey": "v1:app-version:android:cHJvZHVjdGlvbg",
+        "generation": 1,
+        "catalogHash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "channel": "production",
+        "selectionContextHash": "v1:0000000000000000"
+      },
+      "nextSelection": null,
+      "crashedBundleIds": [],
+      "unconfirmedReleaseIds": []
+    },
+    "catalog": {
+      "schemaVersion": 1,
+      "catalogId": "lynx-policy-fixture",
+      "scopeKey": "v1:app-version:android:cHJvZHVjdGlvbg",
+      "generation": 2,
+      "catalogHash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "fallbackPolicy": "BUILTIN_IF_ACTIVE_INELIGIBLE",
+      "releases": [],
+      "rollbackReleases": [
+        {
+          "releaseId": "01900000-0000-7000-8000-000000000130",
+          "kind": "BUNDLE",
+          "bundleId": "01900000-0000-7000-8000-000000000030",
+          "rolloutCohortCount": 0,
+          "targetCohorts": [],
+          "shouldForceUpdate": false,
+          "message": null
+        },
+        {
+          "releaseId": "01900000-0000-7000-8000-000000000120",
+          "kind": "BUNDLE",
+          "bundleId": "01900000-0000-7000-8000-000000000020",
+          "rolloutCohortCount": 0,
+          "targetCohorts": [],
+          "shouldForceUpdate": false,
+          "message": null
+        }
+      ]
+    },
+    "expected": {
+      "contextHash": "v1:27e006f290ed527e",
+      "selection": {
+        "kind": "BUNDLE",
+        "releaseId": "01900000-0000-7000-8000-000000000120",
+        "bundleId": "01900000-0000-7000-8000-000000000020",
+        "catalogId": "lynx-policy-fixture",
+        "scopeKey": "v1:app-version:android:cHJvZHVjdGlvbg",
+        "generation": 2,
+        "catalogHash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "channel": "production",
+        "selectionContextHash": "v1:27e006f290ed527e"
+      },
+      "status": "ROLLBACK",
+      "authorization": {
+        "authorized": true,
+        "reason": "NEWER_POLICY"
+      }
+    }
+  },
+  {
+    "name": "android/rollback-cohort-exception-cannot-bypass-release-exclusion",
+    "snapshot": {
+      "revision": "policy-fixture-revision",
+      "platform": "android",
+      "appVersion": "1.0.0",
+      "channel": "production",
+      "runtimeId": "policy-fixture-runtime",
+      "embeddedBundleId": "01900000-0000-7000-8000-000000000001",
+      "minimumBundleId": "01900000-0000-7000-8000-000000000001",
+      "cohort": "1",
+      "runningSelection": {
+        "kind": "BUNDLE",
+        "releaseId": "01900000-0000-7000-8000-000000000130",
+        "bundleId": "01900000-0000-7000-8000-000000000030",
+        "catalogId": "lynx-policy-fixture",
+        "scopeKey": "v1:app-version:android:cHJvZHVjdGlvbg",
+        "generation": 1,
+        "catalogHash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "channel": "production",
+        "selectionContextHash": "v1:0000000000000000"
+      },
+      "runningConfirmed": true,
+      "confirmedSelection": {
+        "kind": "BUNDLE",
+        "releaseId": "01900000-0000-7000-8000-000000000130",
+        "bundleId": "01900000-0000-7000-8000-000000000030",
+        "catalogId": "lynx-policy-fixture",
+        "scopeKey": "v1:app-version:android:cHJvZHVjdGlvbg",
+        "generation": 1,
+        "catalogHash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "channel": "production",
+        "selectionContextHash": "v1:0000000000000000"
+      },
+      "nextSelection": null,
+      "crashedBundleIds": [],
+      "unconfirmedReleaseIds": [
+        "01900000-0000-7000-8000-000000000120"
+      ]
+    },
+    "catalog": {
+      "schemaVersion": 1,
+      "catalogId": "lynx-policy-fixture",
+      "scopeKey": "v1:app-version:android:cHJvZHVjdGlvbg",
+      "generation": 2,
+      "catalogHash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "fallbackPolicy": "BUILTIN_IF_ACTIVE_INELIGIBLE",
+      "releases": [],
+      "rollbackReleases": [
+        {
+          "releaseId": "01900000-0000-7000-8000-000000000130",
+          "kind": "BUNDLE",
+          "bundleId": "01900000-0000-7000-8000-000000000030",
+          "rolloutCohortCount": 0,
+          "targetCohorts": [],
+          "shouldForceUpdate": false,
+          "message": null
+        },
+        {
+          "releaseId": "01900000-0000-7000-8000-000000000120",
+          "kind": "BUNDLE",
+          "bundleId": "01900000-0000-7000-8000-000000000020",
+          "rolloutCohortCount": 0,
+          "targetCohorts": [],
+          "shouldForceUpdate": false,
+          "message": null
+        }
+      ]
+    },
+    "expected": {
+      "contextHash": "v1:5bbffdfd99f18d21",
+      "selection": {
+        "kind": "BUILTIN",
+        "releaseId": null,
+        "bundleId": "01900000-0000-7000-8000-000000000001",
+        "catalogId": "lynx-policy-fixture",
+        "scopeKey": "v1:app-version:android:cHJvZHVjdGlvbg",
+        "generation": 2,
+        "catalogHash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "channel": "production",
+        "selectionContextHash": "v1:5bbffdfd99f18d21"
+      },
+      "status": "ROLLBACK",
+      "authorization": {
+        "authorized": true,
+        "reason": "NEWER_POLICY"
+      }
+    }
+  },
+  {
+    "name": "android/embedded-release-held-after-unknown-exit",
+    "snapshot": {
+      "revision": "policy-fixture-revision",
+      "platform": "android",
+      "appVersion": "1.0.0",
+      "channel": "production",
+      "runtimeId": "policy-fixture-runtime",
+      "embeddedBundleId": "01900000-0000-7000-8000-000000000001",
+      "minimumBundleId": "01900000-0000-7000-8000-000000000001",
+      "cohort": "1",
+      "runningSelection": {
+        "kind": "BUNDLE",
+        "releaseId": "01900000-0000-7000-8000-000000000110",
+        "bundleId": "01900000-0000-7000-8000-000000000010",
+        "catalogId": "lynx-policy-fixture",
+        "scopeKey": "v1:app-version:android:cHJvZHVjdGlvbg",
+        "generation": 1,
+        "catalogHash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "channel": "production",
+        "selectionContextHash": "v1:0000000000000000"
+      },
+      "runningConfirmed": true,
+      "confirmedSelection": {
+        "kind": "BUNDLE",
+        "releaseId": "01900000-0000-7000-8000-000000000110",
+        "bundleId": "01900000-0000-7000-8000-000000000010",
+        "catalogId": "lynx-policy-fixture",
+        "scopeKey": "v1:app-version:android:cHJvZHVjdGlvbg",
+        "generation": 1,
+        "catalogHash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "channel": "production",
+        "selectionContextHash": "v1:0000000000000000"
+      },
+      "nextSelection": null,
+      "crashedBundleIds": [],
+      "unconfirmedReleaseIds": [
+        "01900000-0000-7000-8000-000000000140"
+      ]
+    },
+    "catalog": {
+      "schemaVersion": 1,
+      "catalogId": "lynx-policy-fixture",
+      "scopeKey": "v1:app-version:android:cHJvZHVjdGlvbg",
+      "generation": 2,
+      "catalogHash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "fallbackPolicy": "BUILTIN_IF_ACTIVE_INELIGIBLE",
+      "releases": [
+        {
+          "releaseId": "01900000-0000-7000-8000-000000000140",
+          "kind": "EMBEDDED",
+          "bundleId": null,
+          "rolloutCohortCount": 1000,
+          "targetCohorts": [],
+          "shouldForceUpdate": false,
+          "message": null
+        },
+        {
+          "releaseId": "01900000-0000-7000-8000-000000000110",
+          "kind": "BUNDLE",
+          "bundleId": "01900000-0000-7000-8000-000000000010",
+          "rolloutCohortCount": 1000,
+          "targetCohorts": [],
+          "shouldForceUpdate": false,
+          "message": null
+        }
+      ]
+    },
+    "expected": {
+      "contextHash": "v1:21ff4c13ef4c6f1f",
+      "selection": {
+        "kind": "BUNDLE",
+        "releaseId": "01900000-0000-7000-8000-000000000110",
+        "bundleId": "01900000-0000-7000-8000-000000000010",
+        "catalogId": "lynx-policy-fixture",
+        "scopeKey": "v1:app-version:android:cHJvZHVjdGlvbg",
+        "generation": 2,
+        "catalogHash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "channel": "production",
+        "selectionContextHash": "v1:21ff4c13ef4c6f1f"
+      },
+      "status": "UPDATE",
+      "authorization": {
+        "authorized": true,
+        "reason": "NEWER_POLICY"
+      }
+    }
+  },
+  {
+    "name": "android/explicit-embedded-rollback",
+    "snapshot": {
+      "revision": "policy-fixture-revision",
+      "platform": "android",
+      "appVersion": "1.0.0",
+      "channel": "production",
+      "runtimeId": "policy-fixture-runtime",
+      "embeddedBundleId": "01900000-0000-7000-8000-000000000001",
+      "minimumBundleId": "01900000-0000-7000-8000-000000000001",
+      "cohort": "1",
+      "runningSelection": {
+        "kind": "BUNDLE",
+        "releaseId": "01900000-0000-7000-8000-000000000110",
+        "bundleId": "01900000-0000-7000-8000-000000000010",
+        "catalogId": "lynx-policy-fixture",
+        "scopeKey": "v1:app-version:android:cHJvZHVjdGlvbg",
+        "generation": 1,
+        "catalogHash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "channel": "production",
+        "selectionContextHash": "v1:0000000000000000"
+      },
+      "runningConfirmed": true,
+      "confirmedSelection": {
+        "kind": "BUNDLE",
+        "releaseId": "01900000-0000-7000-8000-000000000110",
+        "bundleId": "01900000-0000-7000-8000-000000000010",
+        "catalogId": "lynx-policy-fixture",
+        "scopeKey": "v1:app-version:android:cHJvZHVjdGlvbg",
+        "generation": 1,
+        "catalogHash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "channel": "production",
+        "selectionContextHash": "v1:0000000000000000"
+      },
+      "nextSelection": null,
+      "crashedBundleIds": [],
+      "unconfirmedReleaseIds": []
+    },
+    "catalog": {
+      "schemaVersion": 1,
+      "catalogId": "lynx-policy-fixture",
+      "scopeKey": "v1:app-version:android:cHJvZHVjdGlvbg",
+      "generation": 2,
+      "catalogHash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "fallbackPolicy": "BUILTIN_IF_ACTIVE_INELIGIBLE",
+      "releases": [
+        {
+          "releaseId": "01900000-0000-7000-8000-000000000140",
+          "kind": "EMBEDDED",
+          "bundleId": null,
+          "rolloutCohortCount": 1000,
+          "targetCohorts": [],
+          "shouldForceUpdate": false,
+          "message": null
+        }
+      ]
+    },
+    "expected": {
+      "contextHash": "v1:7d63d5ae2a7006ea",
+      "selection": {
+        "kind": "EMBEDDED",
+        "releaseId": "01900000-0000-7000-8000-000000000140",
+        "bundleId": "01900000-0000-7000-8000-000000000001",
+        "catalogId": "lynx-policy-fixture",
+        "scopeKey": "v1:app-version:android:cHJvZHVjdGlvbg",
+        "generation": 2,
+        "catalogHash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "channel": "production",
+        "selectionContextHash": "v1:7d63d5ae2a7006ea"
+      },
+      "status": "ROLLBACK",
+      "authorization": {
+        "authorized": true,
+        "reason": "NEWER_POLICY"
+      }
+    }
+  },
+  {
+    "name": "android/ineligible-current-falls-back-to-builtin",
+    "snapshot": {
+      "revision": "policy-fixture-revision",
+      "platform": "android",
+      "appVersion": "1.0.0",
+      "channel": "production",
+      "runtimeId": "policy-fixture-runtime",
+      "embeddedBundleId": "01900000-0000-7000-8000-000000000001",
+      "minimumBundleId": "01900000-0000-7000-8000-000000000001",
+      "cohort": "1",
+      "runningSelection": {
+        "kind": "BUNDLE",
+        "releaseId": "01900000-0000-7000-8000-000000000120",
+        "bundleId": "01900000-0000-7000-8000-000000000020",
+        "catalogId": "lynx-policy-fixture",
+        "scopeKey": "v1:app-version:android:cHJvZHVjdGlvbg",
+        "generation": 1,
+        "catalogHash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "channel": "production",
+        "selectionContextHash": "v1:0000000000000000"
+      },
+      "runningConfirmed": true,
+      "confirmedSelection": {
+        "kind": "BUNDLE",
+        "releaseId": "01900000-0000-7000-8000-000000000120",
+        "bundleId": "01900000-0000-7000-8000-000000000020",
+        "catalogId": "lynx-policy-fixture",
+        "scopeKey": "v1:app-version:android:cHJvZHVjdGlvbg",
+        "generation": 1,
+        "catalogHash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "channel": "production",
+        "selectionContextHash": "v1:0000000000000000"
+      },
+      "nextSelection": null,
+      "crashedBundleIds": [],
+      "unconfirmedReleaseIds": []
+    },
+    "catalog": {
+      "schemaVersion": 1,
+      "catalogId": "lynx-policy-fixture",
+      "scopeKey": "v1:app-version:android:cHJvZHVjdGlvbg",
+      "generation": 2,
+      "catalogHash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "fallbackPolicy": "BUILTIN_IF_ACTIVE_INELIGIBLE",
+      "releases": [
+        {
+          "releaseId": "01900000-0000-7000-8000-000000000120",
+          "kind": "BUNDLE",
+          "bundleId": "01900000-0000-7000-8000-000000000020",
+          "rolloutCohortCount": 0,
+          "targetCohorts": [],
+          "shouldForceUpdate": false,
+          "message": null
+        }
+      ]
+    },
+    "expected": {
+      "contextHash": "v1:09efc9a057b7a954",
+      "selection": {
+        "kind": "BUILTIN",
+        "releaseId": null,
+        "bundleId": "01900000-0000-7000-8000-000000000001",
+        "catalogId": "lynx-policy-fixture",
+        "scopeKey": "v1:app-version:android:cHJvZHVjdGlvbg",
+        "generation": 2,
+        "catalogHash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "channel": "production",
+        "selectionContextHash": "v1:09efc9a057b7a954"
+      },
+      "status": "ROLLBACK",
+      "authorization": {
+        "authorized": true,
+        "reason": "NEWER_POLICY"
+      }
+    }
+  },
+  {
+    "name": "android/native-minimum-excludes-old-bytes",
+    "snapshot": {
+      "revision": "policy-fixture-revision",
+      "platform": "android",
+      "appVersion": "1.0.0",
+      "channel": "production",
+      "runtimeId": "policy-fixture-runtime",
+      "embeddedBundleId": "01900000-0000-7000-8000-000000000001",
+      "minimumBundleId": "01900000-0000-7000-8000-000000000025",
+      "cohort": "1",
+      "runningSelection": {
+        "kind": "BUILTIN",
+        "releaseId": null,
+        "bundleId": "01900000-0000-7000-8000-000000000001",
+        "catalogId": null,
+        "scopeKey": null,
+        "generation": null,
+        "catalogHash": null,
+        "channel": "production",
+        "selectionContextHash": null
+      },
+      "runningConfirmed": true,
+      "confirmedSelection": {
+        "kind": "BUILTIN",
+        "releaseId": null,
+        "bundleId": "01900000-0000-7000-8000-000000000001",
+        "catalogId": null,
+        "scopeKey": null,
+        "generation": null,
+        "catalogHash": null,
+        "channel": "production",
+        "selectionContextHash": null
+      },
+      "nextSelection": null,
+      "crashedBundleIds": [],
+      "unconfirmedReleaseIds": []
+    },
+    "catalog": {
+      "schemaVersion": 1,
+      "catalogId": "lynx-policy-fixture",
+      "scopeKey": "v1:app-version:android:cHJvZHVjdGlvbg",
+      "generation": 2,
+      "catalogHash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "fallbackPolicy": "BUILTIN_IF_ACTIVE_INELIGIBLE",
+      "releases": [
+        {
+          "releaseId": "01900000-0000-7000-8000-000000000120",
+          "kind": "BUNDLE",
+          "bundleId": "01900000-0000-7000-8000-000000000020",
+          "rolloutCohortCount": 1000,
+          "targetCohorts": [],
+          "shouldForceUpdate": false,
+          "message": null
+        }
+      ]
+    },
+    "expected": {
+      "contextHash": "v1:a8ba412aa1d06d1e",
+      "selection": {
+        "kind": "BUILTIN",
+        "releaseId": null,
+        "bundleId": "01900000-0000-7000-8000-000000000001",
+        "catalogId": "lynx-policy-fixture",
+        "scopeKey": "v1:app-version:android:cHJvZHVjdGlvbg",
+        "generation": 2,
+        "catalogHash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "channel": "production",
+        "selectionContextHash": "v1:a8ba412aa1d06d1e"
+      },
+      "status": "ROLLBACK",
+      "authorization": {
+        "authorized": true,
+        "reason": "FIRST_AUTHENTICATED_SELECTION"
+      }
+    }
+  },
+  {
+    "name": "android/custom-cohort-target",
+    "snapshot": {
+      "revision": "policy-fixture-revision",
+      "platform": "android",
+      "appVersion": "1.0.0",
+      "channel": "production",
+      "runtimeId": "policy-fixture-runtime",
+      "embeddedBundleId": "01900000-0000-7000-8000-000000000001",
+      "minimumBundleId": "01900000-0000-7000-8000-000000000001",
+      "cohort": "beta",
+      "runningSelection": {
+        "kind": "BUILTIN",
+        "releaseId": null,
+        "bundleId": "01900000-0000-7000-8000-000000000001",
+        "catalogId": null,
+        "scopeKey": null,
+        "generation": null,
+        "catalogHash": null,
+        "channel": "production",
+        "selectionContextHash": null
+      },
+      "runningConfirmed": true,
+      "confirmedSelection": {
+        "kind": "BUILTIN",
+        "releaseId": null,
+        "bundleId": "01900000-0000-7000-8000-000000000001",
+        "catalogId": null,
+        "scopeKey": null,
+        "generation": null,
+        "catalogHash": null,
+        "channel": "production",
+        "selectionContextHash": null
+      },
+      "nextSelection": null,
+      "crashedBundleIds": [],
+      "unconfirmedReleaseIds": []
+    },
+    "catalog": {
+      "schemaVersion": 1,
+      "catalogId": "lynx-policy-fixture",
+      "scopeKey": "v1:app-version:android:cHJvZHVjdGlvbg",
+      "generation": 2,
+      "catalogHash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "fallbackPolicy": "BUILTIN_IF_ACTIVE_INELIGIBLE",
+      "releases": [
+        {
+          "releaseId": "01900000-0000-7000-8000-000000000120",
+          "kind": "BUNDLE",
+          "bundleId": "01900000-0000-7000-8000-000000000020",
+          "rolloutCohortCount": 0,
+          "targetCohorts": [
+            "beta"
+          ],
+          "shouldForceUpdate": false,
+          "message": null
+        }
+      ]
+    },
+    "expected": {
+      "contextHash": "v1:aa67026160ea1b9d",
+      "selection": {
+        "kind": "BUNDLE",
+        "releaseId": "01900000-0000-7000-8000-000000000120",
+        "bundleId": "01900000-0000-7000-8000-000000000020",
+        "catalogId": "lynx-policy-fixture",
+        "scopeKey": "v1:app-version:android:cHJvZHVjdGlvbg",
+        "generation": 2,
+        "catalogHash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "channel": "production",
+        "selectionContextHash": "v1:aa67026160ea1b9d"
+      },
+      "status": "UPDATE",
+      "authorization": {
+        "authorized": true,
+        "reason": "FIRST_AUTHENTICATED_SELECTION"
+      }
+    }
+  },
+  {
+    "name": "android/context-keeps-all-exclusions-canonically",
+    "snapshot": {
+      "revision": "policy-fixture-revision",
+      "platform": "android",
+      "appVersion": "1.0.0",
+      "channel": "production",
+      "runtimeId": "policy-fixture-runtime",
+      "embeddedBundleId": "01900000-0000-7000-8000-000000000001",
+      "minimumBundleId": "01900000-0000-7000-8000-000000000001",
+      "cohort": "1",
+      "runningSelection": {
+        "kind": "BUILTIN",
+        "releaseId": null,
+        "bundleId": "01900000-0000-7000-8000-000000000001",
+        "catalogId": null,
+        "scopeKey": null,
+        "generation": null,
+        "catalogHash": null,
+        "channel": "production",
+        "selectionContextHash": null
+      },
+      "runningConfirmed": true,
+      "confirmedSelection": {
+        "kind": "BUILTIN",
+        "releaseId": null,
+        "bundleId": "01900000-0000-7000-8000-000000000001",
+        "catalogId": null,
+        "scopeKey": null,
+        "generation": null,
+        "catalogHash": null,
+        "channel": "production",
+        "selectionContextHash": null
+      },
+      "nextSelection": null,
+      "crashedBundleIds": [],
+      "unconfirmedReleaseIds": [
+        "01900000-0000-7000-8000-000000000211",
+        "01900000-0000-7000-8000-000000000210",
+        "01900000-0000-7000-8000-000000000209",
+        "01900000-0000-7000-8000-000000000208",
+        "01900000-0000-7000-8000-000000000207",
+        "01900000-0000-7000-8000-000000000206",
+        "01900000-0000-7000-8000-000000000205",
+        "01900000-0000-7000-8000-000000000204",
+        "01900000-0000-7000-8000-000000000203",
+        "01900000-0000-7000-8000-000000000202",
+        "01900000-0000-7000-8000-000000000201",
+        "01900000-0000-7000-8000-000000000200",
+        "01900000-0000-7000-8000-000000000205"
+      ]
+    },
+    "catalog": {
+      "schemaVersion": 1,
+      "catalogId": "lynx-policy-fixture",
+      "scopeKey": "v1:app-version:android:cHJvZHVjdGlvbg",
+      "generation": 2,
+      "catalogHash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "fallbackPolicy": "BUILTIN_IF_ACTIVE_INELIGIBLE",
+      "releases": [
+        {
+          "releaseId": "01900000-0000-7000-8000-000000000120",
+          "kind": "BUNDLE",
+          "bundleId": "01900000-0000-7000-8000-000000000020",
+          "rolloutCohortCount": 1000,
+          "targetCohorts": [],
+          "shouldForceUpdate": false,
+          "message": null
+        }
+      ]
+    },
+    "expected": {
+      "contextHash": "v1:a3c254e3fc678b8f",
+      "selection": {
+        "kind": "BUNDLE",
+        "releaseId": "01900000-0000-7000-8000-000000000120",
+        "bundleId": "01900000-0000-7000-8000-000000000020",
+        "catalogId": "lynx-policy-fixture",
+        "scopeKey": "v1:app-version:android:cHJvZHVjdGlvbg",
+        "generation": 2,
+        "catalogHash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "channel": "production",
+        "selectionContextHash": "v1:a3c254e3fc678b8f"
+      },
+      "status": "UPDATE",
+      "authorization": {
+        "authorized": true,
+        "reason": "FIRST_AUTHENTICATED_SELECTION"
+      }
+    }
+  },
+  {
+    "name": "android/same-generation-same-context-denied",
+    "snapshot": {
+      "revision": "policy-fixture-revision",
+      "platform": "android",
+      "appVersion": "1.0.0",
+      "channel": "production",
+      "runtimeId": "policy-fixture-runtime",
+      "embeddedBundleId": "01900000-0000-7000-8000-000000000001",
+      "minimumBundleId": "01900000-0000-7000-8000-000000000001",
+      "cohort": "1",
+      "runningSelection": {
+        "kind": "BUNDLE",
+        "releaseId": "01900000-0000-7000-8000-000000000120",
+        "bundleId": "01900000-0000-7000-8000-000000000020",
+        "catalogId": "lynx-policy-fixture",
+        "scopeKey": "v1:app-version:android:cHJvZHVjdGlvbg",
+        "generation": 2,
+        "catalogHash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "channel": "production",
+        "selectionContextHash": "v1:09efc9a057b7a954"
+      },
+      "runningConfirmed": true,
+      "confirmedSelection": {
+        "kind": "BUNDLE",
+        "releaseId": "01900000-0000-7000-8000-000000000120",
+        "bundleId": "01900000-0000-7000-8000-000000000020",
+        "catalogId": "lynx-policy-fixture",
+        "scopeKey": "v1:app-version:android:cHJvZHVjdGlvbg",
+        "generation": 2,
+        "catalogHash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "channel": "production",
+        "selectionContextHash": "v1:0000000000000000"
+      },
+      "nextSelection": null,
+      "crashedBundleIds": [],
+      "unconfirmedReleaseIds": []
+    },
+    "catalog": {
+      "schemaVersion": 1,
+      "catalogId": "lynx-policy-fixture",
+      "scopeKey": "v1:app-version:android:cHJvZHVjdGlvbg",
+      "generation": 2,
+      "catalogHash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "fallbackPolicy": "BUILTIN_IF_ACTIVE_INELIGIBLE",
+      "releases": [
+        {
+          "releaseId": "01900000-0000-7000-8000-000000000130",
+          "kind": "BUNDLE",
+          "bundleId": "01900000-0000-7000-8000-000000000030",
+          "rolloutCohortCount": 1000,
+          "targetCohorts": [],
+          "shouldForceUpdate": false,
+          "message": null
+        },
+        {
+          "releaseId": "01900000-0000-7000-8000-000000000120",
+          "kind": "BUNDLE",
+          "bundleId": "01900000-0000-7000-8000-000000000020",
+          "rolloutCohortCount": 1000,
+          "targetCohorts": [],
+          "shouldForceUpdate": false,
+          "message": null
+        }
+      ]
+    },
+    "expected": {
+      "contextHash": "v1:09efc9a057b7a954",
+      "selection": {
+        "kind": "BUNDLE",
+        "releaseId": "01900000-0000-7000-8000-000000000130",
+        "bundleId": "01900000-0000-7000-8000-000000000030",
+        "catalogId": "lynx-policy-fixture",
+        "scopeKey": "v1:app-version:android:cHJvZHVjdGlvbg",
+        "generation": 2,
+        "catalogHash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "channel": "production",
+        "selectionContextHash": "v1:09efc9a057b7a954"
+      },
+      "status": "UPDATE",
+      "authorization": {
+        "authorized": false,
+        "reason": "BACKWARD_NOT_AUTHORIZED"
+      }
+    }
+  },
+  {
+    "name": "android/older-policy-generation-denied",
+    "snapshot": {
+      "revision": "policy-fixture-revision",
+      "platform": "android",
+      "appVersion": "1.0.0",
+      "channel": "production",
+      "runtimeId": "policy-fixture-runtime",
+      "embeddedBundleId": "01900000-0000-7000-8000-000000000001",
+      "minimumBundleId": "01900000-0000-7000-8000-000000000001",
+      "cohort": "1",
+      "runningSelection": {
+        "kind": "BUNDLE",
+        "releaseId": "01900000-0000-7000-8000-000000000120",
+        "bundleId": "01900000-0000-7000-8000-000000000020",
+        "catalogId": "lynx-policy-fixture",
+        "scopeKey": "v1:app-version:android:cHJvZHVjdGlvbg",
+        "generation": 3,
+        "catalogHash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "channel": "production",
+        "selectionContextHash": "v1:0000000000000000"
+      },
+      "runningConfirmed": true,
+      "confirmedSelection": {
+        "kind": "BUNDLE",
+        "releaseId": "01900000-0000-7000-8000-000000000120",
+        "bundleId": "01900000-0000-7000-8000-000000000020",
+        "catalogId": "lynx-policy-fixture",
+        "scopeKey": "v1:app-version:android:cHJvZHVjdGlvbg",
+        "generation": 3,
+        "catalogHash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "channel": "production",
+        "selectionContextHash": "v1:0000000000000000"
+      },
+      "nextSelection": null,
+      "crashedBundleIds": [],
+      "unconfirmedReleaseIds": []
+    },
+    "catalog": {
+      "schemaVersion": 1,
+      "catalogId": "lynx-policy-fixture",
+      "scopeKey": "v1:app-version:android:cHJvZHVjdGlvbg",
+      "generation": 2,
+      "catalogHash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "fallbackPolicy": "BUILTIN_IF_ACTIVE_INELIGIBLE",
+      "releases": [
+        {
+          "releaseId": "01900000-0000-7000-8000-000000000130",
+          "kind": "BUNDLE",
+          "bundleId": "01900000-0000-7000-8000-000000000030",
+          "rolloutCohortCount": 1000,
+          "targetCohorts": [],
+          "shouldForceUpdate": false,
+          "message": null
+        },
+        {
+          "releaseId": "01900000-0000-7000-8000-000000000120",
+          "kind": "BUNDLE",
+          "bundleId": "01900000-0000-7000-8000-000000000020",
+          "rolloutCohortCount": 1000,
+          "targetCohorts": [],
+          "shouldForceUpdate": false,
+          "message": null
+        }
+      ]
+    },
+    "expected": {
+      "contextHash": "v1:09efc9a057b7a954",
+      "selection": {
+        "kind": "BUNDLE",
+        "releaseId": "01900000-0000-7000-8000-000000000130",
+        "bundleId": "01900000-0000-7000-8000-000000000030",
+        "catalogId": "lynx-policy-fixture",
+        "scopeKey": "v1:app-version:android:cHJvZHVjdGlvbg",
+        "generation": 2,
+        "catalogHash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "channel": "production",
+        "selectionContextHash": "v1:09efc9a057b7a954"
+      },
+      "status": "UPDATE",
+      "authorization": {
+        "authorized": false,
+        "reason": "STALE_GENERATION"
+      }
+    }
+  },
+  {
+    "name": "android/partial-rollout-included-7",
+    "snapshot": {
+      "revision": "policy-fixture-revision",
+      "platform": "android",
+      "appVersion": "1.0.0",
+      "channel": "production",
+      "runtimeId": "policy-fixture-runtime",
+      "embeddedBundleId": "01900000-0000-7000-8000-000000000001",
+      "minimumBundleId": "01900000-0000-7000-8000-000000000001",
+      "cohort": "7",
+      "runningSelection": {
+        "kind": "BUILTIN",
+        "releaseId": null,
+        "bundleId": "01900000-0000-7000-8000-000000000001",
+        "catalogId": null,
+        "scopeKey": null,
+        "generation": null,
+        "catalogHash": null,
+        "channel": "production",
+        "selectionContextHash": null
+      },
+      "runningConfirmed": true,
+      "confirmedSelection": {
+        "kind": "BUILTIN",
+        "releaseId": null,
+        "bundleId": "01900000-0000-7000-8000-000000000001",
+        "catalogId": null,
+        "scopeKey": null,
+        "generation": null,
+        "catalogHash": null,
+        "channel": "production",
+        "selectionContextHash": null
+      },
+      "nextSelection": null,
+      "crashedBundleIds": [],
+      "unconfirmedReleaseIds": []
+    },
+    "catalog": {
+      "schemaVersion": 1,
+      "catalogId": "lynx-policy-fixture",
+      "scopeKey": "v1:app-version:android:cHJvZHVjdGlvbg",
+      "generation": 2,
+      "catalogHash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "fallbackPolicy": "BUILTIN_IF_ACTIVE_INELIGIBLE",
+      "releases": [
+        {
+          "releaseId": "01900000-0000-7000-8000-000000000120",
+          "kind": "BUNDLE",
+          "bundleId": "01900000-0000-7000-8000-000000000020",
+          "rolloutCohortCount": 137,
+          "targetCohorts": [],
+          "shouldForceUpdate": false,
+          "message": null
+        }
+      ]
+    },
+    "expected": {
+      "contextHash": "v1:b2dc134a2819bd7e",
+      "selection": {
+        "kind": "BUNDLE",
+        "releaseId": "01900000-0000-7000-8000-000000000120",
+        "bundleId": "01900000-0000-7000-8000-000000000020",
+        "catalogId": "lynx-policy-fixture",
+        "scopeKey": "v1:app-version:android:cHJvZHVjdGlvbg",
+        "generation": 2,
+        "catalogHash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "channel": "production",
+        "selectionContextHash": "v1:b2dc134a2819bd7e"
+      },
+      "status": "UPDATE",
+      "authorization": {
+        "authorized": true,
+        "reason": "FIRST_AUTHENTICATED_SELECTION"
+      }
+    }
+  },
+  {
+    "name": "android/partial-rollout-included-498",
+    "snapshot": {
+      "revision": "policy-fixture-revision",
+      "platform": "android",
+      "appVersion": "1.0.0",
+      "channel": "production",
+      "runtimeId": "policy-fixture-runtime",
+      "embeddedBundleId": "01900000-0000-7000-8000-000000000001",
+      "minimumBundleId": "01900000-0000-7000-8000-000000000001",
+      "cohort": "498",
+      "runningSelection": {
+        "kind": "BUILTIN",
+        "releaseId": null,
+        "bundleId": "01900000-0000-7000-8000-000000000001",
+        "catalogId": null,
+        "scopeKey": null,
+        "generation": null,
+        "catalogHash": null,
+        "channel": "production",
+        "selectionContextHash": null
+      },
+      "runningConfirmed": true,
+      "confirmedSelection": {
+        "kind": "BUILTIN",
+        "releaseId": null,
+        "bundleId": "01900000-0000-7000-8000-000000000001",
+        "catalogId": null,
+        "scopeKey": null,
+        "generation": null,
+        "catalogHash": null,
+        "channel": "production",
+        "selectionContextHash": null
+      },
+      "nextSelection": null,
+      "crashedBundleIds": [],
+      "unconfirmedReleaseIds": []
+    },
+    "catalog": {
+      "schemaVersion": 1,
+      "catalogId": "lynx-policy-fixture",
+      "scopeKey": "v1:app-version:android:cHJvZHVjdGlvbg",
+      "generation": 2,
+      "catalogHash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "fallbackPolicy": "BUILTIN_IF_ACTIVE_INELIGIBLE",
+      "releases": [
+        {
+          "releaseId": "01900000-0000-7000-8000-000000000120",
+          "kind": "BUNDLE",
+          "bundleId": "01900000-0000-7000-8000-000000000020",
+          "rolloutCohortCount": 137,
+          "targetCohorts": [],
+          "shouldForceUpdate": false,
+          "message": null
+        }
+      ]
+    },
+    "expected": {
+      "contextHash": "v1:3dbc649ec99d26ca",
+      "selection": {
+        "kind": "BUNDLE",
+        "releaseId": "01900000-0000-7000-8000-000000000120",
+        "bundleId": "01900000-0000-7000-8000-000000000020",
+        "catalogId": "lynx-policy-fixture",
+        "scopeKey": "v1:app-version:android:cHJvZHVjdGlvbg",
+        "generation": 2,
+        "catalogHash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "channel": "production",
+        "selectionContextHash": "v1:3dbc649ec99d26ca"
+      },
+      "status": "UPDATE",
+      "authorization": {
+        "authorized": true,
+        "reason": "FIRST_AUTHENTICATED_SELECTION"
+      }
+    }
+  },
+  {
+    "name": "android/partial-rollout-included-994",
+    "snapshot": {
+      "revision": "policy-fixture-revision",
+      "platform": "android",
+      "appVersion": "1.0.0",
+      "channel": "production",
+      "runtimeId": "policy-fixture-runtime",
+      "embeddedBundleId": "01900000-0000-7000-8000-000000000001",
+      "minimumBundleId": "01900000-0000-7000-8000-000000000001",
+      "cohort": "994",
+      "runningSelection": {
+        "kind": "BUILTIN",
+        "releaseId": null,
+        "bundleId": "01900000-0000-7000-8000-000000000001",
+        "catalogId": null,
+        "scopeKey": null,
+        "generation": null,
+        "catalogHash": null,
+        "channel": "production",
+        "selectionContextHash": null
+      },
+      "runningConfirmed": true,
+      "confirmedSelection": {
+        "kind": "BUILTIN",
+        "releaseId": null,
+        "bundleId": "01900000-0000-7000-8000-000000000001",
+        "catalogId": null,
+        "scopeKey": null,
+        "generation": null,
+        "catalogHash": null,
+        "channel": "production",
+        "selectionContextHash": null
+      },
+      "nextSelection": null,
+      "crashedBundleIds": [],
+      "unconfirmedReleaseIds": []
+    },
+    "catalog": {
+      "schemaVersion": 1,
+      "catalogId": "lynx-policy-fixture",
+      "scopeKey": "v1:app-version:android:cHJvZHVjdGlvbg",
+      "generation": 2,
+      "catalogHash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "fallbackPolicy": "BUILTIN_IF_ACTIVE_INELIGIBLE",
+      "releases": [
+        {
+          "releaseId": "01900000-0000-7000-8000-000000000120",
+          "kind": "BUNDLE",
+          "bundleId": "01900000-0000-7000-8000-000000000020",
+          "rolloutCohortCount": 137,
+          "targetCohorts": [],
+          "shouldForceUpdate": false,
+          "message": null
+        }
+      ]
+    },
+    "expected": {
+      "contextHash": "v1:686f8a03750b054f",
+      "selection": {
+        "kind": "BUNDLE",
+        "releaseId": "01900000-0000-7000-8000-000000000120",
+        "bundleId": "01900000-0000-7000-8000-000000000020",
+        "catalogId": "lynx-policy-fixture",
+        "scopeKey": "v1:app-version:android:cHJvZHVjdGlvbg",
+        "generation": 2,
+        "catalogHash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "channel": "production",
+        "selectionContextHash": "v1:686f8a03750b054f"
+      },
+      "status": "UPDATE",
+      "authorization": {
+        "authorized": true,
+        "reason": "FIRST_AUTHENTICATED_SELECTION"
+      }
+    }
+  },
+  {
+    "name": "android/partial-rollout-excluded-1",
+    "snapshot": {
+      "revision": "policy-fixture-revision",
+      "platform": "android",
+      "appVersion": "1.0.0",
+      "channel": "production",
+      "runtimeId": "policy-fixture-runtime",
+      "embeddedBundleId": "01900000-0000-7000-8000-000000000001",
+      "minimumBundleId": "01900000-0000-7000-8000-000000000001",
+      "cohort": "1",
+      "runningSelection": {
+        "kind": "BUILTIN",
+        "releaseId": null,
+        "bundleId": "01900000-0000-7000-8000-000000000001",
+        "catalogId": null,
+        "scopeKey": null,
+        "generation": null,
+        "catalogHash": null,
+        "channel": "production",
+        "selectionContextHash": null
+      },
+      "runningConfirmed": true,
+      "confirmedSelection": {
+        "kind": "BUILTIN",
+        "releaseId": null,
+        "bundleId": "01900000-0000-7000-8000-000000000001",
+        "catalogId": null,
+        "scopeKey": null,
+        "generation": null,
+        "catalogHash": null,
+        "channel": "production",
+        "selectionContextHash": null
+      },
+      "nextSelection": null,
+      "crashedBundleIds": [],
+      "unconfirmedReleaseIds": []
+    },
+    "catalog": {
+      "schemaVersion": 1,
+      "catalogId": "lynx-policy-fixture",
+      "scopeKey": "v1:app-version:android:cHJvZHVjdGlvbg",
+      "generation": 2,
+      "catalogHash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "fallbackPolicy": "BUILTIN_IF_ACTIVE_INELIGIBLE",
+      "releases": [
+        {
+          "releaseId": "01900000-0000-7000-8000-000000000120",
+          "kind": "BUNDLE",
+          "bundleId": "01900000-0000-7000-8000-000000000020",
+          "rolloutCohortCount": 137,
+          "targetCohorts": [],
+          "shouldForceUpdate": false,
+          "message": null
+        }
+      ]
+    },
+    "expected": {
+      "contextHash": "v1:53adaf9821e0e4e4",
+      "selection": {
+        "kind": "BUILTIN",
+        "releaseId": null,
+        "bundleId": "01900000-0000-7000-8000-000000000001",
+        "catalogId": "lynx-policy-fixture",
+        "scopeKey": "v1:app-version:android:cHJvZHVjdGlvbg",
+        "generation": 2,
+        "catalogHash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "channel": "production",
+        "selectionContextHash": "v1:53adaf9821e0e4e4"
+      },
+      "status": "ROLLBACK",
+      "authorization": {
+        "authorized": true,
+        "reason": "FIRST_AUTHENTICATED_SELECTION"
+      }
+    }
+  },
+  {
+    "name": "android/partial-rollout-excluded-501",
+    "snapshot": {
+      "revision": "policy-fixture-revision",
+      "platform": "android",
+      "appVersion": "1.0.0",
+      "channel": "production",
+      "runtimeId": "policy-fixture-runtime",
+      "embeddedBundleId": "01900000-0000-7000-8000-000000000001",
+      "minimumBundleId": "01900000-0000-7000-8000-000000000001",
+      "cohort": "501",
+      "runningSelection": {
+        "kind": "BUILTIN",
+        "releaseId": null,
+        "bundleId": "01900000-0000-7000-8000-000000000001",
+        "catalogId": null,
+        "scopeKey": null,
+        "generation": null,
+        "catalogHash": null,
+        "channel": "production",
+        "selectionContextHash": null
+      },
+      "runningConfirmed": true,
+      "confirmedSelection": {
+        "kind": "BUILTIN",
+        "releaseId": null,
+        "bundleId": "01900000-0000-7000-8000-000000000001",
+        "catalogId": null,
+        "scopeKey": null,
+        "generation": null,
+        "catalogHash": null,
+        "channel": "production",
+        "selectionContextHash": null
+      },
+      "nextSelection": null,
+      "crashedBundleIds": [],
+      "unconfirmedReleaseIds": []
+    },
+    "catalog": {
+      "schemaVersion": 1,
+      "catalogId": "lynx-policy-fixture",
+      "scopeKey": "v1:app-version:android:cHJvZHVjdGlvbg",
+      "generation": 2,
+      "catalogHash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "fallbackPolicy": "BUILTIN_IF_ACTIVE_INELIGIBLE",
+      "releases": [
+        {
+          "releaseId": "01900000-0000-7000-8000-000000000120",
+          "kind": "BUNDLE",
+          "bundleId": "01900000-0000-7000-8000-000000000020",
+          "rolloutCohortCount": 137,
+          "targetCohorts": [],
+          "shouldForceUpdate": false,
+          "message": null
+        }
+      ]
+    },
+    "expected": {
+      "contextHash": "v1:9ac7e9e5e94a9389",
+      "selection": {
+        "kind": "BUILTIN",
+        "releaseId": null,
+        "bundleId": "01900000-0000-7000-8000-000000000001",
+        "catalogId": "lynx-policy-fixture",
+        "scopeKey": "v1:app-version:android:cHJvZHVjdGlvbg",
+        "generation": 2,
+        "catalogHash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "channel": "production",
+        "selectionContextHash": "v1:9ac7e9e5e94a9389"
+      },
+      "status": "ROLLBACK",
+      "authorization": {
+        "authorized": true,
+        "reason": "FIRST_AUTHENTICATED_SELECTION"
+      }
+    }
+  },
+  {
+    "name": "android/partial-rollout-excluded-1000",
+    "snapshot": {
+      "revision": "policy-fixture-revision",
+      "platform": "android",
+      "appVersion": "1.0.0",
+      "channel": "production",
+      "runtimeId": "policy-fixture-runtime",
+      "embeddedBundleId": "01900000-0000-7000-8000-000000000001",
+      "minimumBundleId": "01900000-0000-7000-8000-000000000001",
+      "cohort": "1000",
+      "runningSelection": {
+        "kind": "BUILTIN",
+        "releaseId": null,
+        "bundleId": "01900000-0000-7000-8000-000000000001",
+        "catalogId": null,
+        "scopeKey": null,
+        "generation": null,
+        "catalogHash": null,
+        "channel": "production",
+        "selectionContextHash": null
+      },
+      "runningConfirmed": true,
+      "confirmedSelection": {
+        "kind": "BUILTIN",
+        "releaseId": null,
+        "bundleId": "01900000-0000-7000-8000-000000000001",
+        "catalogId": null,
+        "scopeKey": null,
+        "generation": null,
+        "catalogHash": null,
+        "channel": "production",
+        "selectionContextHash": null
+      },
+      "nextSelection": null,
+      "crashedBundleIds": [],
+      "unconfirmedReleaseIds": []
+    },
+    "catalog": {
+      "schemaVersion": 1,
+      "catalogId": "lynx-policy-fixture",
+      "scopeKey": "v1:app-version:android:cHJvZHVjdGlvbg",
+      "generation": 2,
+      "catalogHash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "fallbackPolicy": "BUILTIN_IF_ACTIVE_INELIGIBLE",
+      "releases": [
+        {
+          "releaseId": "01900000-0000-7000-8000-000000000120",
+          "kind": "BUNDLE",
+          "bundleId": "01900000-0000-7000-8000-000000000020",
+          "rolloutCohortCount": 137,
+          "targetCohorts": [],
+          "shouldForceUpdate": false,
+          "message": null
+        }
+      ]
+    },
+    "expected": {
+      "contextHash": "v1:2bcca550f1146af4",
+      "selection": {
+        "kind": "BUILTIN",
+        "releaseId": null,
+        "bundleId": "01900000-0000-7000-8000-000000000001",
+        "catalogId": "lynx-policy-fixture",
+        "scopeKey": "v1:app-version:android:cHJvZHVjdGlvbg",
+        "generation": 2,
+        "catalogHash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "channel": "production",
+        "selectionContextHash": "v1:2bcca550f1146af4"
+      },
+      "status": "ROLLBACK",
+      "authorization": {
+        "authorized": true,
+        "reason": "FIRST_AUTHENTICATED_SELECTION"
+      }
+    }
+  }
+]

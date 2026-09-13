@@ -324,6 +324,9 @@ export interface DatabasePluginImplementation {
   deleteChannel(
     input: import("./databasePlugin").ChannelDeleteInput,
   ): Promise<import("./databasePlugin").ChannelDeleteResult>;
+  publishBundlePatch?: (
+    input: import("./databasePlugin").BundlePatchPublishInput,
+  ) => Promise<import("./databasePlugin").BundlePatchPublishResult>;
   transaction?: <TResult>(
     callback: (
       transaction: TransactionDatabasePluginImplementation,

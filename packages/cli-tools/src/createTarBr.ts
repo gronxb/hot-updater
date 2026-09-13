@@ -6,6 +6,11 @@ import { createBrotliCompress, constants as zlibConstants } from "zlib";
 
 import * as tar from "tar";
 
+import {
+  getSortedArchiveEntries,
+  normalizeTarEntryMode,
+} from "./archiveDeterminism";
+
 export const createTarBrTargetFiles = async ({
   outfile,
   targetFiles,
@@ -41,6 +46,8 @@ export const createTarBrTargetFiles = async ({
 
     await fs.mkdir(path.dirname(outfile), { recursive: true });
 
+    const archiveEntries = await getSortedArchiveEntries(tmpDir);
+
     await pipeline(
       tar.create(
         {
@@ -48,8 +55,10 @@ export const createTarBrTargetFiles = async ({
           portable: true,
           mtime: new Date(0),
           gzip: false,
+          noDirRecurse: true,
+          onWriteEntry: normalizeTarEntryMode,
         },
-        await fs.readdir(tmpDir),
+        archiveEntries,
       ),
       createBrotliCompress({
         params: {

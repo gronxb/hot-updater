@@ -16,6 +16,8 @@ import {
   putStorageFile,
 } from "@hot-updater/cli-tools";
 import type {
+  BuildPlugin,
+  BuildArtifact,
   Bundle,
   BundleRepository,
   DatabaseMutationClient,
@@ -24,13 +26,20 @@ import type {
   StoragePluginWith,
 } from "@hot-updater/plugin-core";
 import {
+  assertBundleArchiveByteSize,
+  assertBundleArtifactByteSize,
+  assertBundleExpandedByteSize,
+  assertBundleTarStreamByteSize,
   assertStorageOperations,
+  compareStringsByCodeUnit,
   createBundleStorageKey,
   createDatabaseClient,
   createStorageRootUriWithPath,
   createStorageUriWithRelativePath,
   getManifestAssetDownloadPath,
   getManifestAssetStoragePath,
+  getBundleArchiveEntryCount,
+  getMaximumBundleTarStreamByteSize,
   isContentAddressedAssetFileHash,
 } from "@hot-updater/plugin-core";
 import { createBundleDiff } from "@hot-updater/server/db";
@@ -42,6 +51,7 @@ import { getPlatform } from "@/prompts/getPlatform";
 import { createSignedFileHash } from "@/signedHashUtils";
 import {
   createBundleManifest,
+  serializeBundleManifest,
   type Manifest,
   writeBundleManifestFile,
 } from "@/utils/bundleManifest";
@@ -356,7 +366,7 @@ const getRelativeStorageDir = (relativePath: string) => {
   return dirname === "." ? "" : dirname;
 };
 
-type ManifestTargetFile = { path: string; name: string };
+type ManifestTargetFile = BuildArtifact;
 
 type PreparedAssetUploadTarget = {
   storagePath: string;
@@ -370,7 +380,10 @@ const prepareManifestAssetUploadFile = async ({
   outputPath: string;
   targetFile: ManifestTargetFile;
 }) => {
-  const uploadName = getManifestAssetDownloadPath(targetFile.name);
+  const uploadName = getManifestAssetDownloadPath(
+    targetFile.name,
+    targetFile.downloadCompression,
+  );
   const expectedFilename = path.posix.basename(uploadName);
   const actualFilename = path.basename(targetFile.path);
 
@@ -450,7 +463,10 @@ const prepareContentAddressedAssetUploadTargets = async ({
       throw new Error(`Manifest file hash not found for ${targetFile.name}`);
     }
 
-    const downloadPath = getManifestAssetDownloadPath(targetFile.name);
+    const downloadPath = getManifestAssetDownloadPath(
+      targetFile.name,
+      targetFile.downloadCompression,
+    );
     const logicalStoragePath = getManifestAssetStoragePath({
       assetPath: downloadPath,
       fileHash: manifestAsset.fileHash,
@@ -473,13 +489,17 @@ const prepareContentAddressedAssetUploadTargets = async ({
     [...candidates.values()],
     MANIFEST_ASSET_UPLOAD_CONCURRENCY,
     async ({ targetFile, targetNames }) => {
-      const uploadName = getManifestAssetDownloadPath(targetFile.name);
-      const usesBrotli = uploadName !== targetFile.name;
+      const uploadName = getManifestAssetDownloadPath(
+        targetFile.name,
+        targetFile.downloadCompression,
+      );
+      const usesBrotli = targetFile.downloadCompression === "br";
       const preparedPath = await prepareManifestAssetUploadFile({
         outputPath,
         targetFile,
       });
       const downloadByteSize = await getStorageFileByteSize(preparedPath);
+      assertBundleArtifactByteSize(downloadByteSize, targetFile.name);
       const downloadFileHash = usesBrotli
         ? await getFileHashFromFile(preparedPath)
         : undefined;
@@ -503,10 +523,12 @@ const prepareContentAddressedAssetUploadTargets = async ({
         sourcePath: preparedPath,
         storagePath,
       });
+      await fs.promises.chmod(uploadSourcePath, 0o400);
 
       for (const targetName of targetNames) {
         manifest.assets[targetName] = {
           ...manifest.assets[targetName]!,
+          downloadCompression: targetFile.downloadCompression,
           downloadByteSize,
           ...(downloadFileHash ? { downloadFileHash } : {}),
         };
@@ -516,7 +538,7 @@ const prepareContentAddressedAssetUploadTargets = async ({
   );
 
   return [...targets.values()].sort((left, right) =>
-    left.storagePath.localeCompare(right.storagePath),
+    compareStringsByCodeUnit(left.storagePath, right.storagePath),
   );
 };
 
@@ -748,6 +770,9 @@ const deployPlatform = async ({
   const signingValidation = await validateSigningConfig(config, {
     expectedPublicKey: signingSession?.publicKey,
     platform,
+    ...(buildPlugin.nativeBuild?.signingConfigSource === undefined
+      ? {}
+      : { signingConfigSource: buildPlugin.nativeBuild.signingConfigSource }),
     ...(getNativeSigningPublicKey === undefined
       ? {}
       : { nativePublicKey: nativeSigningPublicKey?.publicKey ?? null }),
@@ -801,10 +826,14 @@ const deployPlatform = async ({
       );
       process.exit(1);
     }
-    const newFingerprint = await nativeFingerprint(cwd, {
-      platform,
-      ...fingerprintConfig,
-    });
+    const newFingerprint = await nativeFingerprint(
+      cwd,
+      {
+        platform,
+        ...fingerprintConfig,
+      },
+      buildPlugin.nativeBuild?.fingerprint,
+    );
     const projectFingerprint = await readLocalFingerprint();
     if (!isFingerprintEquals(newFingerprint, projectFingerprint?.[platform])) {
       s.error(
@@ -814,10 +843,10 @@ const deployPlatform = async ({
       // Show what changed
       if (projectFingerprint?.[platform]) {
         try {
-          const diff = await getFingerprintDiff(projectFingerprint[platform], {
-            platform,
-            ...fingerprintConfig,
-          });
+          const diff = getFingerprintDiff(
+            projectFingerprint[platform],
+            newFingerprint,
+          );
           showFingerprintDiff(diff, platform === "ios" ? "iOS" : "Android");
         } catch {
           p.log.warn("Could not generate fingerprint diff");
@@ -887,6 +916,7 @@ const deployPlatform = async ({
 
   let bundleId: string | null = null;
   let fileHash: string;
+  let manifestContentHash: string | null = null;
   let manifestFileHash: string | null = null;
   const platformName = getPlatformName(platform);
   const outputRoot = getBundleOutputRoot({
@@ -927,14 +957,12 @@ const deployPlatform = async ({
 
   const storagePlugin = config.storage;
   assertStorageOperations(storagePlugin, ["put", "get", "exists", "delete"]);
+  let archiveWriteStarted = false;
+  let artifactSnapshotPath: string | null = null;
 
   try {
     const taskRef: {
-      buildResult: {
-        buildPath: string;
-        bundleId: string;
-        stdout: string | null;
-      } | null;
+      buildResult: Awaited<ReturnType<BuildPlugin["build"]>> | null;
       assetUploadTargets: PreparedAssetUploadTarget[];
       archiveByteSize: number | null;
       manifestPath: string | null;
@@ -965,37 +993,45 @@ const deployPlatform = async ({
           if (!buildPath) {
             throw new Error("Build result not found");
           }
-          const files = await fs.promises.readdir(buildPath, {
-            recursive: true,
-          });
-
-          const targetFiles = await getBundleZipTargets(
+          const snapshot = await getBundleZipTargets(
             buildPath,
-            files
-              .filter(
-                (file) =>
-                  !fs.statSync(path.join(buildPath, file)).isDirectory(),
-              )
-              .map((file) => path.join(buildPath, file)),
+            taskRef.buildResult.artifacts,
           );
+          artifactSnapshotPath = snapshot.path;
+          const targetFiles = snapshot.artifacts;
           const currentBundleId = taskRef.buildResult.bundleId;
           bundleId = currentBundleId;
 
           const manifest = await createBundleManifest({
             bundleId: currentBundleId,
+            patchAssetPath: taskRef.buildResult.patchAssetPath,
             signFileHash: signingSession?.signFileHash,
             targetFiles,
           });
           const assetUploadTargets =
             await prepareContentAddressedAssetUploadTargets({
               manifest,
-              outputPath: outputRoot,
+              outputPath: snapshot.path,
               targetFiles,
             });
           const manifestPath = await writeBundleManifestFile({
-            buildPath,
+            buildPath: snapshot.path,
             manifest,
           });
+          const expandedByteSize =
+            snapshot.expandedByteSize +
+            Buffer.byteLength(serializeBundleManifest(manifest));
+          assertBundleExpandedByteSize(expandedByteSize);
+          if (compressStrategy !== "zip") {
+            assertBundleTarStreamByteSize(
+              getMaximumBundleTarStreamByteSize(
+                expandedByteSize,
+                getBundleArchiveEntryCount(targetFiles.map(({ name }) => name)),
+              ),
+            );
+          }
+          await fs.promises.chmod(manifestPath, 0o400);
+          await fs.promises.chmod(snapshot.path, 0o500);
 
           const bundleTargetFiles = [
             ...targetFiles,
@@ -1007,6 +1043,7 @@ const deployPlatform = async ({
           taskRef.assetUploadTargets = assetUploadTargets;
           taskRef.manifestPath = manifestPath;
 
+          archiveWriteStarted = true;
           switch (compressStrategy) {
             case "tar.br":
               await createTarBrTargetFiles({
@@ -1031,6 +1068,7 @@ const deployPlatform = async ({
                 `Unsupported compression strategy: ${compressStrategy}`,
               );
           }
+          assertBundleArchiveByteSize(await getStorageFileByteSize(bundlePath));
           fileHash = await getFileHashFromFile(bundlePath);
 
           // Sign bundle if signing is enabled
@@ -1049,10 +1087,11 @@ const deployPlatform = async ({
             }
           }
 
-          manifestFileHash = await getFileHashFromFile(manifestPath);
+          manifestContentHash = await getFileHashFromFile(manifestPath);
+          manifestFileHash = manifestContentHash;
           if (signingSession) {
             const signature =
-              await signingSession.signFileHash(manifestFileHash);
+              await signingSession.signFileHash(manifestContentHash);
             manifestFileHash = createSignedFileHash(signature);
           }
 
@@ -1175,6 +1214,9 @@ const deployPlatform = async ({
           if (!manifestFileHash) {
             throw new Error("Manifest file hash not found");
           }
+          if (!manifestContentHash) {
+            throw new Error("Manifest content hash not found");
+          }
           if (taskRef.archiveByteSize === null) {
             throw new Error("Bundle archive byte size not found");
           }
@@ -1189,7 +1231,10 @@ const deployPlatform = async ({
                 id: bundleId,
                 archiveByteSize: taskRef.archiveByteSize,
                 storageUri: taskRef.storageUri,
-                metadata: appVersion ? { app_version: appVersion } : {},
+                metadata: {
+                  ...(appVersion ? { app_version: appVersion } : {}),
+                  manifest_content_hash: manifestContentHash,
+                },
                 assetBaseStorageUri: taskRef.assetBaseStorageUri,
                 manifestFileHash,
                 manifestStorageUri: taskRef.manifestStorageUri,
@@ -1289,9 +1334,19 @@ const deployPlatform = async ({
 
     return { bundleId: confirmedBundleId, platform, runDeferredPatches };
   } catch (e) {
-    await fs.promises.rm(bundlePath, { force: true });
+    if (archiveWriteStarted) {
+      await fs.promises.rm(bundlePath, { force: true });
+    }
     console.error(e);
-    process.exit(1);
+    throw e;
+  } finally {
+    if (artifactSnapshotPath) {
+      await fs.promises.chmod(artifactSnapshotPath, 0o700).catch(() => {});
+      await fs.promises.rm(artifactSnapshotPath, {
+        recursive: true,
+        force: true,
+      });
+    }
   }
 };
 

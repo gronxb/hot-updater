@@ -48,7 +48,9 @@ describe("parseMongoPatchRow", () => {
   const row = createBundlePatchRowFixture("large", "bundle", "base");
 
   it("preserves safe patch sizes above 2 GiB", () => {
-    expect(parseMongoPatchRow(row)).toMatchObject({
+    expect(
+      parseMongoPatchRow({ ...row, byte_size: 3_000_000_002 }),
+    ).toMatchObject({
       byte_size: 3_000_000_002,
     });
   });

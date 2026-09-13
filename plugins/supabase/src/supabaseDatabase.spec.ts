@@ -1,3 +1,4 @@
+import { MAX_BUNDLE_PATCHES } from "@hot-updater/plugin-core";
 import { setupDatabasePluginTestSuite } from "@hot-updater/test-utils";
 import { describe, expect, it, vi } from "vitest";
 
@@ -495,6 +496,55 @@ const supabaseMock = vi.hoisted(() => {
           rows.channels.delete(id);
           return { data: { deleted: true }, error: null };
         }
+        if (name === "hot_updater_v1_publish_bundle_patch") {
+          const input = (args?.p_input ?? {}) as Row;
+          const patch = input.row as Row;
+          const ownerId = String(patch.bundle_id);
+          const baseId = String(patch.base_bundle_id);
+          if (!rows.bundles.has(ownerId) || !rows.bundles.has(baseId)) {
+            return {
+              data: { published: false, reason: "not_found" },
+              error: null,
+            };
+          }
+          const previous = rows.bundle_patches.get(String(patch.id)) ?? null;
+          const existing = [...rows.bundle_patches.values()]
+            .filter(
+              (candidate) =>
+                candidate.bundle_id === ownerId && candidate.id !== patch.id,
+            )
+            .sort(
+              (left, right) =>
+                Number(left.order_index) - Number(right.order_index) ||
+                String(left.id).localeCompare(String(right.id)),
+            );
+          if (previous === null && existing.length >= MAX_BUNDLE_PATCHES) {
+            return {
+              data: { published: false, reason: "limit_exceeded" },
+              error: null,
+            };
+          }
+          const ordered =
+            input.position === "primary"
+              ? [patch, ...existing]
+              : [...existing, patch];
+          for (const [id, candidate] of rows.bundle_patches) {
+            if (candidate.bundle_id === ownerId) {
+              rows.bundle_patches.delete(id);
+            }
+          }
+          const patches: Row[] = ordered.map((candidate, orderIndex) => ({
+            ...candidate,
+            order_index: orderIndex,
+          }));
+          for (const candidate of patches) {
+            rows.bundle_patches.set(String(candidate.id), candidate);
+          }
+          return {
+            data: { patches, previous, published: true },
+            error: null,
+          };
+        }
         if (name === "hot_updater_v1_commit") {
           const staged = {
             bundle_patches: new Map(rows.bundle_patches),
@@ -597,6 +647,10 @@ const supabaseMock = vi.hoisted(() => {
                 if (
                   [...staged.releases.values()].some(
                     (release) => release.bundle_id === id,
+                  ) ||
+                  [...staged.bundle_patches.values()].some(
+                    (patch) =>
+                      patch.base_bundle_id === id && patch.bundle_id !== id,
                   )
                 ) {
                   return {
@@ -726,6 +780,24 @@ const supabaseMock = vi.hoisted(() => {
                 current.revoked_at_ms = update.revokedAtMs;
               }
             }
+          }
+          const ownedPatchCounts = new Map<string, number>();
+          for (const patch of staged.bundle_patches.values()) {
+            const ownerId = String(patch.bundle_id);
+            ownedPatchCounts.set(
+              ownerId,
+              (ownedPatchCounts.get(ownerId) ?? 0) + 1,
+            );
+          }
+          if (
+            [...ownedPatchCounts.values()].some(
+              (count) => count > MAX_BUNDLE_PATCHES,
+            )
+          ) {
+            return {
+              data: null,
+              error: { message: "bundle patch limit exceeded" },
+            };
           }
           rows.bundles = staged.bundles;
           rows.bundle_patches = staged.bundle_patches;

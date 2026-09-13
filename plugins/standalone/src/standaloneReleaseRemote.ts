@@ -1,4 +1,6 @@
 import type {
+  BundlePatchPublishInput,
+  BundlePatchPublishResult,
   DatabaseCommit,
   DatabaseCommitResult,
   ReleaseCatalogRow,
@@ -28,6 +30,20 @@ export const createStandaloneReleaseRemote = (
   const headers = () => http.headers({ "Cache-Control": "no-cache" });
 
   return {
+    async publishBundlePatch(
+      input: BundlePatchPublishInput,
+    ): Promise<BundlePatchPublishResult> {
+      const response = await fetch(http.buildUrl("/bundle-patches/publish"), {
+        body: JSON.stringify(input),
+        headers: http.headers(),
+        method: "POST",
+      });
+      return data(
+        await http.parseJson(response),
+        "Invalid bundle patch publish response.",
+      ) as BundlePatchPublishResult;
+    },
+
     async findReleaseById(id: string): Promise<ReleaseRow | null> {
       const response = await fetch(
         http.buildUrl(`/releases/${encodeURIComponent(id)}`),

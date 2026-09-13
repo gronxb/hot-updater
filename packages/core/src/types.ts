@@ -1,7 +1,26 @@
 export type Platform = "ios" | "android";
 
+/** Signed inventory of logical runtime files and their download representation. */
+export interface BundleManifestAsset {
+  fileHash: string;
+  signature?: string;
+  downloadByteSize?: number;
+  downloadFileHash?: string;
+  /** Explicit null means raw bytes. Omission identifies an older manifest. */
+  downloadCompression?: "br" | null;
+}
+
+export interface BundleManifest {
+  bundleId: string;
+  assets: Record<string, BundleManifestAsset>;
+  /** Logical asset selected by the producer for binary delta generation. */
+  patchAssetPath?: string;
+}
+
 export type BundleMetadata = {
   app_version?: string;
+  /** Raw lowercase SHA-256 of manifest bytes, including when manifestFileHash is signed. */
+  manifest_content_hash?: string;
 };
 
 export interface BundlePatchArtifact {

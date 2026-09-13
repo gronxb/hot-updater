@@ -400,7 +400,7 @@ describe("Hot Updater Handler Integration Tests (Hono + Prisma + PostgreSQL)", (
     });
     const baseId = "5d8b5ebf-8008-4ab8-9fb5-79af0ec766c3";
     const targetId = "5e08db65-e31d-4de3-a795-8492327c30d8";
-    const patchId = "prisma-rollback-patch";
+    const patchId = `${targetId}:${baseId}`;
     const bundle = {
       platform: "ios" as const,
       file_hash: "rollback-hash",
@@ -428,10 +428,10 @@ describe("Hot Updater Handler Integration Tests (Hono + Prisma + PostgreSQL)", (
       id: patchId,
       bundle_id: targetId,
       base_bundle_id: baseId,
-      base_file_hash: "rollback-base-hash",
-      patch_file_hash: "rollback-patch-hash",
+      base_file_hash: "b".repeat(64),
+      patch_file_hash: "c".repeat(64),
       patch_storage_uri: "storage://rollback-patch",
-      byte_size: 3_000_000_002,
+      byte_size: 3_000_002,
       order_index: 0,
     };
     await database.commit({

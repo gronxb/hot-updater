@@ -1,0 +1,7 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+  <application android:name=".MatrixApplication" android:theme="@style/AppTheme" android:label="Hot Updater Lynx Matrix" android:allowBackup="false" android:usesCleartextTraffic="true">
+    <activity android:name=".MatrixActivity" android:screenOrientation="portrait" android:exported="true">
+      <intent-filter><action android:name="android.intent.action.MAIN"/><category android:name="android.intent.category.LAUNCHER"/></intent-filter>
+    </activity>
+  </application>
+</manifest>

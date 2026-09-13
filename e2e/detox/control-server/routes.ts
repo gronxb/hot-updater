@@ -35,6 +35,7 @@ import {
   handleWaitForMetadata,
   handleWriteSummary,
   startBootstrapJob,
+  startCreateBundleDiffJob,
   startCreateRepublishedReleaseJob,
   startDeployBundleJob,
   startPatchReleaseJob,
@@ -43,7 +44,15 @@ import {
   startWaitForAndroidRestartJob,
   startWaitForMetadataJob,
 } from "./controller.ts";
-import { handlePatchE2eScreenState } from "./screen-state.ts";
+import {
+  handleEnqueuePendingE2eAction,
+  readPendingE2eAction,
+  takePendingE2eAction,
+} from "./pending-action.ts";
+import {
+  handlePatchE2eScreenState,
+  readE2eScreenStateSnapshot,
+} from "./screen-state.ts";
 
 const app = new Hono();
 
@@ -80,6 +89,25 @@ app.get("/e2e/runtime-config", (c) => {
 
 app.post("/e2e/screen-state", async (c) => {
   return c.json(handlePatchE2eScreenState(await c.req.json()));
+});
+
+app.get("/e2e/screen-state", (c) => {
+  return c.json({ screenState: readE2eScreenStateSnapshot() });
+});
+
+app.post("/e2e/pending-action", async (c) => {
+  return c.json(handleEnqueuePendingE2eAction(await c.req.json()));
+});
+
+app.get("/e2e/pending-action", (c) => {
+  const action =
+    c.req.query("take") === "1"
+      ? takePendingE2eAction()
+      : readPendingE2eAction();
+  return c.json({ action });
+});
+app.delete("/e2e/pending-action", (c) => {
+  return c.json({ action: takePendingE2eAction() });
 });
 
 app.post("/e2e/verify-console-insights", async (c) => {
@@ -273,6 +301,17 @@ app.post("/e2e/jobs/deploy-bundle", async (c) => {
   });
 });
 
+app.post("/e2e/jobs/create-bundle-diff", async (c) => {
+  const payload = (await c.req.json()) as {
+    baseBundleId?: string;
+    bundleId?: string;
+  };
+  if (!payload.baseBundleId || !payload.bundleId) {
+    return c.json({ error: "baseBundleId and bundleId are required" }, 400);
+  }
+  return c.json({ jobId: startCreateBundleDiffJob(payload) });
+});
+
 app.post("/e2e/jobs/create-republished-release", async (c) => {
   const payload = (await c.req.json()) as {
     bundleId?: string;
@@ -463,6 +502,7 @@ app.post("/e2e/assert-bsdiff-patch-applied", async (c) => {
   const payload = (await c.req.json()) as {
     assetPath?: string;
     baseBundleId?: string;
+    bundleId?: string;
   };
 
   if (!payload.baseBundleId) {
@@ -473,6 +513,7 @@ app.post("/e2e/assert-bsdiff-patch-applied", async (c) => {
     await handleAssertBsdiffPatchApplied({
       assetPath: payload.assetPath || "index.ios.bundle",
       baseBundleId: payload.baseBundleId,
+      bundleId: payload.bundleId,
     }),
   );
 });

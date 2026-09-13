@@ -6,13 +6,11 @@ import { getCwd, p } from "@hot-updater/cli-tools";
 import { warnIfExpoCNG } from "@/utils/expoDetection";
 import {
   createAndInjectFingerprintFiles,
-  ensureFingerprintConfig,
   type FingerprintResult,
   generateFingerprints,
   isFingerprintEquals,
   readLocalFingerprint,
 } from "@/utils/fingerprint";
-import { isMissingFingerprintDependencyError } from "@/utils/fingerprint/dependency";
 import {
   getFingerprintDiff,
   showFingerprintDiff,
@@ -27,9 +25,7 @@ const exitWithFingerprintError = (error: unknown): never => {
     p.log.error(String(error));
   }
 
-  if (!isMissingFingerprintDependencyError(error)) {
-    console.error(error);
-  }
+  console.error(error);
   process.exit(1);
 };
 
@@ -64,18 +60,13 @@ export const handleFingerprint = async () => {
   );
   const localFingerprint = JSON.parse(readFingerprint);
 
-  const fingerprintConfig = await ensureFingerprintConfig();
-
   if (localFingerprint.ios.hash !== fingerPrintRef.ios?.hash) {
     p.log.error(
       "iOS fingerprint mismatch. Please update using 'hot-updater fingerprint create' command.",
     );
 
     try {
-      const diff = await getFingerprintDiff(localFingerprint.ios, {
-        platform: "ios",
-        ...fingerprintConfig,
-      });
+      const diff = getFingerprintDiff(localFingerprint.ios, fingerPrintRef.ios);
       showFingerprintDiff(diff, "iOS");
     } catch {
       p.log.warn("Could not generate fingerprint diff");
@@ -90,10 +81,10 @@ export const handleFingerprint = async () => {
     );
 
     try {
-      const diff = await getFingerprintDiff(localFingerprint.android, {
-        platform: "android",
-        ...fingerprintConfig,
-      });
+      const diff = getFingerprintDiff(
+        localFingerprint.android,
+        fingerPrintRef.android,
+      );
       showFingerprintDiff(diff, "Android");
     } catch {
       p.log.warn("Could not generate fingerprint diff");
@@ -165,18 +156,16 @@ export const handleCreateFingerprint = async () => {
 
     // Show what changed
     if (localFingerprint && result.fingerprint) {
-      const fingerprintConfig = await ensureFingerprintConfig();
-
       try {
         // Show iOS changes
         if (
           localFingerprint.ios &&
           localFingerprint.ios.hash !== result.fingerprint.ios.hash
         ) {
-          const iosDiff = await getFingerprintDiff(localFingerprint.ios, {
-            platform: "ios",
-            ...fingerprintConfig,
-          });
+          const iosDiff = getFingerprintDiff(
+            localFingerprint.ios,
+            result.fingerprint.ios,
+          );
           showFingerprintDiff(iosDiff, "iOS");
         }
 
@@ -185,12 +174,9 @@ export const handleCreateFingerprint = async () => {
           localFingerprint.android &&
           localFingerprint.android.hash !== result.fingerprint.android.hash
         ) {
-          const androidDiff = await getFingerprintDiff(
+          const androidDiff = getFingerprintDiff(
             localFingerprint.android,
-            {
-              platform: "android",
-              ...fingerprintConfig,
-            },
+            result.fingerprint.android,
           );
           showFingerprintDiff(androidDiff, "Android");
         }

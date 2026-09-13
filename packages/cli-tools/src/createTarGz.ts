@@ -3,6 +3,11 @@ import path from "path";
 
 import * as tar from "tar";
 
+import {
+  getSortedArchiveEntries,
+  normalizeTarEntryMode,
+} from "./archiveDeterminism";
+
 export const createTarGzTargetFiles = async ({
   outfile,
   targetFiles,
@@ -39,6 +44,8 @@ export const createTarGzTargetFiles = async ({
     // Ensure output directory exists
     await fs.mkdir(path.dirname(outfile), { recursive: true });
 
+    const archiveEntries = await getSortedArchiveEntries(tmpDir);
+
     // Create tar.gz archive directly from temp directory
     await tar.create(
       {
@@ -47,8 +54,10 @@ export const createTarGzTargetFiles = async ({
         portable: true,
         mtime: new Date(0), // Set consistent timestamp for deterministic builds
         gzip: true, // Enable gzip compression
+        noDirRecurse: true,
+        onWriteEntry: normalizeTarEntryMode,
       },
-      await fs.readdir(tmpDir),
+      archiveEntries,
     );
 
     return outfile;

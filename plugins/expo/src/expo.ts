@@ -8,10 +8,12 @@ import type {
   BuildPlugin,
   BuildPluginConfig,
 } from "@hot-updater/plugin-core";
+import { selectReactNativeArtifacts } from "@hot-updater/react-native/build";
 import { ExecaError, execa } from "execa";
 import { uuidv7 } from "uuidv7";
 
 import { getConfig } from "./expoConfig";
+import { createExpoFingerprint } from "./fingerprint";
 import { resolveMain } from "./resolveMain";
 import { runExpoPrebuild } from "./util/prebuild";
 
@@ -187,6 +189,7 @@ export const expo =
     const { outDir = "dist", sourcemap = false, resetCache = true } = config;
     return {
       nativeBuild: {
+        fingerprint: (options) => createExpoFingerprint(cwd, options),
         getBundleSigningPublicKey: () => getExpoBundleSigningPublicKey(cwd),
         getFingerprintExtraSources: async () =>
           getExpoFingerprintExtraSources(cwd),
@@ -207,10 +210,16 @@ export const expo =
           sourcemap,
           resetCache,
         });
+        const { artifacts, patchAssetPath } = await selectReactNativeArtifacts({
+          buildPath,
+          platform,
+        });
 
         return {
+          artifacts,
           buildPath,
           bundleId,
+          patchAssetPath,
           stdout,
         };
       },

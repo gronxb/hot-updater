@@ -1,127 +1,114 @@
 import fs from "fs";
 import path from "path";
 
-import { getCwd } from "@hot-updater/cli-tools";
-import type { Platform } from "@hot-updater/plugin-core";
+import { getCwd, loadConfig } from "@hot-updater/cli-tools";
+import type { NativeFingerprintProvider } from "@hot-updater/plugin-core";
 
 import { setFingerprintHash } from "../setFingerprintHash";
 import {
-  ensureFingerprintConfig,
+  appendFingerprintExtraSources,
   type FingerprintOptions,
   type FingerprintResult,
-  getOtaFingerprintOptions,
 } from "./common";
-import { loadExpoFingerprint } from "./dependency";
 
 export * from "./common";
 export * from "./diff";
 
-/**
- * Calculates the fingerprint of the native parts project of the project.
- */
+const requireProvider = (provider?: NativeFingerprintProvider) => {
+  if (!provider) {
+    throw new Error(
+      "The selected build integration does not provide native fingerprinting.",
+    );
+  }
+  return provider;
+};
+
 export async function nativeFingerprint(
-  path: string,
+  projectPath: string,
   options: FingerprintOptions,
+  provider?: NativeFingerprintProvider,
 ): Promise<FingerprintResult> {
-  const platform = options.platform;
-  const { createFingerprintAsync } = await loadExpoFingerprint();
-  return createFingerprintAsync(
-    path,
-    await getOtaFingerprintOptions(platform, path, options),
-  );
+  if (provider) return provider(options);
+  const config = await loadConfig(null);
+  const buildPlugin = await config.build({ cwd: projectPath });
+  return requireProvider(buildPlugin.nativeBuild?.fingerprint)(options);
 }
+
+const resolveContext = async (additionalExtraSources?: readonly string[]) => {
+  const cwd = getCwd();
+  const config = await loadConfig(null);
+  const buildPlugin = await config.build({ cwd });
+  const integrationSources =
+    (await buildPlugin.nativeBuild?.getFingerprintExtraSources?.()) ?? [];
+  return {
+    options: {
+      ...config.fingerprint,
+      extraSources: appendFingerprintExtraSources(
+        appendFingerprintExtraSources(
+          config.fingerprint.extraSources,
+          integrationSources,
+        ),
+        additionalExtraSources ?? [],
+      ),
+    },
+    provider: requireProvider(buildPlugin.nativeBuild?.fingerprint),
+  };
+};
 
 export const generateFingerprints = async (
   additionalExtraSources?: readonly string[],
 ) => {
-  const fingerprintConfig = await ensureFingerprintConfig(
-    additionalExtraSources,
-  );
-
-  const projectPath = getCwd();
+  const context = await resolveContext(additionalExtraSources);
   const [ios, android] = await Promise.all([
-    nativeFingerprint(projectPath, {
-      platform: "ios",
-      ...fingerprintConfig,
-    }),
-    nativeFingerprint(projectPath, {
-      platform: "android",
-      ...fingerprintConfig,
-    }),
+    context.provider({ platform: "ios", ...context.options }),
+    context.provider({ platform: "android", ...context.options }),
   ]);
   return { ios, android };
 };
 
 export const generateFingerprint = async (platform: "ios" | "android") => {
-  const fingerprintConfig = await ensureFingerprintConfig();
-
-  return nativeFingerprint(getCwd(), {
-    platform,
-    ...fingerprintConfig,
-  });
+  const context = await resolveContext();
+  return context.provider({ platform, ...context.options });
 };
 
 export const createAndInjectFingerprintFiles = async ({
   platform,
 }: {
-  platform?: Platform;
+  platform?: "ios" | "android";
 } = {}) => {
-  const localFingerprint = await readLocalFingerprint();
-  const newFingerprint = await generateFingerprints();
-
+  const local = await readLocalFingerprint();
+  const fingerprint = await generateFingerprints();
   const androidPaths: string[] = [];
   const iosPaths: string[] = [];
-  // replace whole file if and only if platform argument is none or fingerprint file doesn't exist
-  if (!localFingerprint || !platform) {
-    await createFingerprintJSON(newFingerprint);
-    const { paths: _androidPaths } = await setFingerprintHash(
-      "android",
-      newFingerprint.android.hash,
+  if (!local || !platform) {
+    await createFingerprintJSON(fingerprint);
+    androidPaths.push(
+      ...(await setFingerprintHash("android", fingerprint.android.hash)).paths,
     );
-    androidPaths.push(..._androidPaths);
-
-    const { paths: _iosPaths } = await setFingerprintHash(
-      "ios",
-      newFingerprint.ios.hash,
+    iosPaths.push(
+      ...(await setFingerprintHash("ios", fingerprint.ios.hash)).paths,
     );
-    iosPaths.push(..._iosPaths);
   } else {
-    // respect previous local fingerprint content first and replace the fingerprint of target platform.
-    const nextFingerprints = {
-      android: localFingerprint.android || newFingerprint.android,
-      ios: localFingerprint.ios || newFingerprint.ios,
-      [platform]: newFingerprint[platform],
-    } satisfies Record<Platform, FingerprintResult>;
-
-    await createFingerprintJSON(nextFingerprints);
-    const { paths: _platformPaths } = await setFingerprintHash(
-      platform,
-      newFingerprint[platform].hash,
-    );
-    switch (platform) {
-      case "android":
-        androidPaths.push(..._platformPaths);
-        break;
-      case "ios":
-        iosPaths.push(..._platformPaths);
-        break;
-    }
+    const next = {
+      android: local.android || fingerprint.android,
+      ios: local.ios || fingerprint.ios,
+      [platform]: fingerprint[platform],
+    } satisfies Record<"ios" | "android", FingerprintResult>;
+    await createFingerprintJSON(next);
+    const paths = (
+      await setFingerprintHash(platform, fingerprint[platform].hash)
+    ).paths;
+    (platform === "android" ? androidPaths : iosPaths).push(...paths);
   }
-
-  return {
-    fingerprint: newFingerprint,
-    androidPaths,
-    iosPaths,
-  };
+  return { fingerprint, androidPaths, iosPaths };
 };
 
 export const createFingerprintJSON = async (fingerprint: {
   ios: FingerprintResult;
   android: FingerprintResult;
 }) => {
-  const FINGERPRINT_FILE_PATH = path.join(getCwd(), "fingerprint.json");
   await fs.promises.writeFile(
-    FINGERPRINT_FILE_PATH,
+    path.join(getCwd(), "fingerprint.json"),
     JSON.stringify(fingerprint, null, 2),
   );
   return fingerprint;
@@ -131,10 +118,13 @@ export const readLocalFingerprint = async (): Promise<{
   ios: FingerprintResult | null;
   android: FingerprintResult | null;
 } | null> => {
-  const FINGERPRINT_FILE_PATH = path.join(getCwd(), "fingerprint.json");
   try {
-    const content = await fs.promises.readFile(FINGERPRINT_FILE_PATH, "utf-8");
-    return JSON.parse(content);
+    return JSON.parse(
+      await fs.promises.readFile(
+        path.join(getCwd(), "fingerprint.json"),
+        "utf-8",
+      ),
+    );
   } catch {
     return null;
   }

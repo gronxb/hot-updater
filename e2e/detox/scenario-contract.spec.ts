@@ -648,7 +648,7 @@ describe("Detox scenario contract", () => {
     const harness = createDatabasePluginHarness();
     const base = {
       archiveByteSize: 100,
-      fileHash: "base-hash",
+      fileHash: "a".repeat(64),
       gitCommitHash: null,
       id: "01900000-0000-7000-8000-000000000001",
       platform: "ios" as const,
@@ -656,7 +656,7 @@ describe("Detox scenario contract", () => {
     };
     const file = {
       ...base,
-      fileHash: "target-hash",
+      fileHash: "b".repeat(64),
       id: "01900000-0000-7000-8000-000000000002",
       storageUri: "storage://artifacts/target.zip",
       patches: [
@@ -664,7 +664,7 @@ describe("Detox scenario contract", () => {
           baseBundleId: base.id,
           baseFileHash: base.fileHash,
           byteSize: 10,
-          patchFileHash: "patch-hash",
+          patchFileHash: "c".repeat(64),
           patchStorageUri: "storage://patches/target.patch",
         },
       ],
@@ -3036,6 +3036,8 @@ describe("Detox scenario contract", () => {
       "assert chain bundle B launch status",
       "deploy chain bundle C",
       "assert chain bundle C bases",
+      "create chain rollback patch C to B",
+      "create chain rollback patch B to A",
       "launch chain bundle C app",
       "install chain bundle C",
       "wait chain bundle C metadata pending",
@@ -3058,6 +3060,7 @@ describe("Detox scenario contract", () => {
       "assert chain bundle B rollback launch",
       "assert chain bundle B rollback launch status",
       "assert chain bundle B rollback active",
+      "assert chain bundle B rollback patch",
       "disable chain bundle B",
       "install rollback to chain bundle A",
       "assert chain bundle A rollback action result",
@@ -3068,6 +3071,7 @@ describe("Detox scenario contract", () => {
       "assert chain bundle A rollback launch",
       "assert chain bundle A rollback launch status",
       "assert chain bundle A rollback active",
+      "assert chain bundle A rollback patch",
       "disable chain bundle A",
       "install rollback to built-in chain",
       "assert chain built-in rollback action result",

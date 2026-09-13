@@ -3,6 +3,14 @@ import path from "path";
 
 import JSZip from "jszip";
 
+import { compareArchivePaths } from "./archiveDeterminism";
+
+const normalizeZipMetadata = (zip: JSZip) => {
+  zip.forEach((_, file) => {
+    file.date = new Date(0);
+  });
+};
+
 export const createZipTargetFiles = async ({
   outfile,
   targetFiles,
@@ -32,7 +40,11 @@ export const createZipTargetFiles = async ({
     }
   }
 
-  for (const target of targetFiles) {
+  const sortedTargetFiles = [...targetFiles].sort((left, right) =>
+    compareArchivePaths(left.name, right.name),
+  );
+
+  for (const target of sortedTargetFiles) {
     const stats = await fs.stat(target.path);
     if (stats.isDirectory()) {
       const folder = zip.folder(target.name);
@@ -44,6 +56,8 @@ export const createZipTargetFiles = async ({
       zip.file(target.name, data);
     }
   }
+
+  normalizeZipMetadata(zip);
 
   const content = await zip.generateAsync({
     type: "nodebuffer",

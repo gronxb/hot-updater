@@ -1,3 +1,4 @@
+import { MAX_BUNDLE_PATCHES } from "./bundlePatchLimits";
 import { createDatabasePlugin } from "./createDatabasePlugin";
 import {
   compareInsightsText,
@@ -275,6 +276,49 @@ export const createMemoryDatabasePlugin = (): DatabasePlugin => {
                   left.id.localeCompare(right.id),
               ),
           );
+        },
+        async publish(input) {
+          if (input.row.bundle_id === input.row.base_bundle_id) {
+            throw new Error(
+              "A bundle patch cannot reference its owner as base",
+            );
+          }
+          if (
+            !bundles.has(input.row.bundle_id) ||
+            !bundles.has(input.row.base_bundle_id)
+          ) {
+            return { published: false, reason: "not_found" };
+          }
+          const existing = [...patches.values()]
+            .filter(({ bundle_id }) => bundle_id === input.row.bundle_id)
+            .sort(
+              (left, right) =>
+                left.order_index - right.order_index ||
+                left.id.localeCompare(right.id),
+            );
+          const previous =
+            existing.find(({ id }) => id === input.row.id) ?? null;
+          if (previous === null && existing.length >= MAX_BUNDLE_PATCHES) {
+            return { published: false, reason: "limit_exceeded" };
+          }
+          const remaining = existing.filter(({ id }) => id !== input.row.id);
+          const ordered =
+            input.position === "primary"
+              ? [input.row, ...remaining]
+              : [...remaining, input.row];
+          const published = ordered.map((row, order_index) => ({
+            ...row,
+            order_index,
+          }));
+          for (const [id, patch] of patches) {
+            if (patch.bundle_id === input.row.bundle_id) patches.delete(id);
+          }
+          for (const patch of published) patches.set(patch.id, patch);
+          return structuredClone({
+            patches: published,
+            previous,
+            published: true,
+          });
         },
       },
       releases: {

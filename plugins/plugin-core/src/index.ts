@@ -1,11 +1,14 @@
 export * from "./calculatePagination";
 export * from "./bundleStorageLayout";
+export * from "./bundlePatchLimits";
+export * from "./bundlePackagingLimits";
 export * from "./compressionFormat";
 export * from "./assetStorageLayout";
 export * from "./contentAddressedAssets";
 export {
   createDatabasePlugin,
   DatabaseAtomicCommitUnsupportedError,
+  DatabasePatchPublishUnsupportedError,
   DatabasePluginInputError,
   type CreateDatabasePluginOptions,
   type DatabasePluginInputErrorCode,
@@ -18,7 +21,9 @@ export {
   isDatabaseBundleEventMetadata,
 } from "./databaseJsonValue";
 export * from "./databaseRows";
+export * from "./deterministicOrder";
 export * from "./filterCompatibleAppVersions";
+export * from "./fingerprintSourcePaths";
 export * from "./generateMinBundleId";
 export {
   compareInsightsText,
@@ -26,6 +31,7 @@ export {
 } from "./insightsContract";
 export * from "./parseStorageUri";
 export * from "./paginateBundles";
+export * from "./portableArtifactPath";
 export * from "./queryBundles";
 export { createRequestBundleResolver } from "./requestBundleCache";
 export * from "./releaseCatalogCompiler";

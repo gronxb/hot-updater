@@ -9,6 +9,7 @@ const { mockBuildPlugin, mockCli, mockServer, mockStoragePlugin } = vi.hoisted(
       name: "mock-build",
       nativeBuild: undefined as
         | {
+            signingConfigSource?: "build-plugin";
             getBundleSigningPublicKey: ReturnType<typeof vi.fn>;
             getFingerprintExtraSources?: ReturnType<typeof vi.fn>;
           }
@@ -123,6 +124,7 @@ vi.mock("fs", async () => {
       existsSync: vi.fn(),
       promises: {
         ...actual.promises,
+        chmod: vi.fn(),
         copyFile: vi.fn(),
         mkdir: vi.fn(),
         readFile: vi.fn(),
@@ -137,6 +139,7 @@ vi.mock("fs", async () => {
     existsSync: vi.fn(),
     promises: {
       ...actual.promises,
+      chmod: vi.fn(),
       copyFile: vi.fn(),
       mkdir: vi.fn(),
       readFile: vi.fn(),
@@ -175,6 +178,7 @@ vi.mock("@/signedHashUtils", () => ({
 
 vi.mock("@/utils/bundleManifest", () => ({
   createBundleManifest: vi.fn(),
+  serializeBundleManifest: vi.fn((manifest) => `${JSON.stringify(manifest)}\n`),
   writeBundleManifestFile: vi.fn(),
 }));
 
@@ -230,16 +234,23 @@ vi.mock("./console", () => ({
 
 import fs from "fs";
 
-import type { Bundle, DatabasePlugin } from "@hot-updater/plugin-core";
+import type {
+  BuildArtifact,
+  Bundle,
+  DatabasePlugin,
+} from "@hot-updater/plugin-core";
 import {
   createStorageUri,
   DatabaseAtomicCommitUnsupportedError,
+  MAX_BUNDLE_ARCHIVE_BYTES,
+  MAX_BUNDLE_EXPANDED_BYTES,
 } from "@hot-updater/plugin-core";
 import isPortReachable from "is-port-reachable";
 import open from "open";
 
 import {
   createBundleManifest,
+  serializeBundleManifest,
   writeBundleManifestFile,
 } from "@/utils/bundleManifest";
 import { getBundleZipTargets } from "@/utils/getBundleZipTargets";
@@ -269,6 +280,11 @@ const fixtureBundleId = (sequence: number): string =>
 const DEPLOY_BUNDLE_ID = fixtureBundleId(123);
 const LOGICAL_FILE_HASH = "a".repeat(64);
 const TRANSFER_FILE_HASH = "b".repeat(64);
+const mockArtifactSnapshot = (artifacts: BuildArtifact[]) => ({
+  artifacts,
+  expandedByteSize: artifacts.length * 4,
+  path: "/mock/build/.hot-updater-snapshot-test",
+});
 const mockSigningPlugin = {
   getPublicKey: vi.fn(async () => ({ publicKey: "public-key" })),
   name: "mock-signing",
@@ -277,8 +293,10 @@ const mockSigningPlugin = {
 
 const mockGetBundlesWithFixtures = (fixtures: DeploymentFixture[]) => {
   mockBuildPlugin.build.mockResolvedValue({
+    artifacts: [],
     buildPath: "/mock/build",
     bundleId: DEPLOY_BUNDLE_ID,
+    patchAssetPath: "index.bundle",
     stdout: null,
   });
   mockServer.createBundleDiff.mockResolvedValue({ id: DEPLOY_BUNDLE_ID });
@@ -383,8 +401,10 @@ describe("deploy rollout wiring", () => {
     });
 
     mockBuildPlugin.build.mockResolvedValue({
+      artifacts: [],
       buildPath: "/mock/build",
       bundleId: "bundle-123",
+      patchAssetPath: "index.bundle",
       stdout: null,
     });
     mockBuildPlugin.nativeBuild = undefined;
@@ -432,25 +452,31 @@ describe("deploy rollout wiring", () => {
           targetFiles.map((targetFile) => [
             targetFile.name,
             {
+              downloadCompression: targetFile.downloadCompression,
               fileHash: LOGICAL_FILE_HASH,
             },
           ]),
         ),
         bundleId,
+        patchAssetPath: targetFiles[0]!.name,
       }),
     );
     vi.mocked(writeBundleManifestFile).mockResolvedValue(
-      "/mock/build/manifest.json",
+      "/mock/build/.hot-updater-snapshot-test/manifest.json",
     );
-    vi.mocked(getBundleZipTargets).mockResolvedValue([
-      {
-        name: "index.bundle",
-        path: "/mock/build/index.bundle",
-      },
-    ]);
+    vi.mocked(getBundleZipTargets).mockResolvedValue(
+      mockArtifactSnapshot([
+        {
+          name: "index.bundle",
+          path: "/mock/build/.hot-updater-snapshot-test/artifact-000000",
+          downloadCompression: null,
+        },
+      ]),
+    );
     vi.mocked(getFileHashFromFile).mockResolvedValue(TRANSFER_FILE_HASH);
 
     vi.mocked(fs.existsSync).mockReturnValue(true);
+    vi.mocked(fs.promises.chmod).mockResolvedValue(undefined);
     vi.mocked(fs.promises.mkdir).mockResolvedValue(undefined);
     vi.mocked(fs.promises.copyFile).mockResolvedValue(undefined);
     vi.mocked(fs.promises.readFile).mockResolvedValue(Buffer.from("bundle"));
@@ -588,9 +614,6 @@ describe("deploy rollout wiring", () => {
 
   it("does not open the console or announce success after a failed interactive commit", async () => {
     databaseHarness.commit.mockRejectedValueOnce(new Error("commit failed"));
-    const exit = vi.spyOn(process, "exit").mockImplementationOnce(() => {
-      throw new Error("process.exit");
-    });
     const errorLog = vi.spyOn(console, "error").mockImplementation(() => {});
     try {
       await expect(
@@ -601,8 +624,11 @@ describe("deploy rollout wiring", () => {
           platform: "ios",
           targetAppVersion: "1.0.x",
         }),
-      ).rejects.toThrow("process.exit");
-      expect(exit).toHaveBeenCalledWith(1);
+      ).rejects.toThrow("commit failed");
+      expect(fs.promises.rm).toHaveBeenCalledWith(
+        "/mock/build/.hot-updater-snapshot-test",
+        { force: true, recursive: true },
+      );
       expect(await databaseHarness.releases()).toEqual([]);
       expect(getConsolePort).not.toHaveBeenCalled();
       expect(openConsole).not.toHaveBeenCalled();
@@ -610,15 +636,120 @@ describe("deploy rollout wiring", () => {
       expect(mockCli.p.log.message).not.toHaveBeenCalled();
       expect(mockCli.p.outro).not.toHaveBeenCalled();
     } finally {
-      exit.mockRestore();
       errorLog.mockRestore();
     }
   });
 
+  it("removes the partial archive when compression fails before upload", async () => {
+    mockCli.createTarBrTargetFiles.mockRejectedValueOnce(
+      new Error("Compression failed"),
+    );
+    const errorLog = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      await expect(
+        deploy({
+          channel: "production",
+          forceUpdate: false,
+          interactive: false,
+          platform: "ios",
+          targetAppVersion: "1.0.x",
+        }),
+      ).rejects.toThrow("Compression failed");
+      expect(fs.promises.rm).toHaveBeenCalledWith(
+        "/mock/cwd/.hot-updater/output/bundle/bundle.tar.br",
+        { force: true },
+      );
+      expect(mockStoragePlugin.put).not.toHaveBeenCalled();
+      expect(databaseHarness.commit).not.toHaveBeenCalled();
+    } finally {
+      errorLog.mockRestore();
+    }
+  });
+
+  it("rejects an oversized final archive before any upload", async () => {
+    mockCli.getStorageFileByteSize
+      .mockResolvedValueOnce(4)
+      .mockResolvedValueOnce(MAX_BUNDLE_ARCHIVE_BYTES + 1);
+    const errorLog = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      await expect(
+        deploy({
+          channel: "production",
+          forceUpdate: false,
+          interactive: false,
+          platform: "ios",
+          targetAppVersion: "1.0.x",
+        }),
+      ).rejects.toThrow(`exceeds ${MAX_BUNDLE_ARCHIVE_BYTES} bytes`);
+      expect(mockStoragePlugin.put).not.toHaveBeenCalled();
+      expect(databaseHarness.commit).not.toHaveBeenCalled();
+    } finally {
+      errorLog.mockRestore();
+    }
+  });
+
+  it("includes generated manifest bytes in the expanded-size limit", async () => {
+    vi.mocked(getBundleZipTargets).mockResolvedValue({
+      artifacts: [
+        {
+          name: "index.bundle",
+          path: "/mock/build/.hot-updater-snapshot-test/artifact-000000",
+          downloadCompression: null,
+        },
+      ],
+      expandedByteSize: MAX_BUNDLE_EXPANDED_BYTES,
+      path: "/mock/build/.hot-updater-snapshot-test",
+    });
+    const errorLog = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      await expect(
+        deploy({
+          channel: "production",
+          forceUpdate: false,
+          interactive: false,
+          platform: "ios",
+          targetAppVersion: "1.0.x",
+        }),
+      ).rejects.toThrow(`beyond ${MAX_BUNDLE_EXPANDED_BYTES} bytes`);
+      expect(mockCli.createTarBrTargetFiles).not.toHaveBeenCalled();
+      expect(mockStoragePlugin.put).not.toHaveBeenCalled();
+    } finally {
+      errorLog.mockRestore();
+    }
+  });
+
+  it("accepts the exact logical byte limit for TAR packaging", async () => {
+    vi.mocked(serializeBundleManifest).mockReturnValueOnce("m");
+    vi.mocked(getBundleZipTargets).mockResolvedValue({
+      artifacts: [
+        {
+          name: "index.bundle",
+          path: "/mock/build/.hot-updater-snapshot-test/artifact-000000",
+          downloadCompression: null,
+        },
+      ],
+      expandedByteSize: MAX_BUNDLE_EXPANDED_BYTES - 1,
+      path: "/mock/build/.hot-updater-snapshot-test",
+    });
+
+    await expect(
+      deploy({
+        channel: "production",
+        forceUpdate: false,
+        interactive: false,
+        platform: "ios",
+        targetAppVersion: "1.0.x",
+      }),
+    ).resolves.toBeUndefined();
+    expect(mockStoragePlugin.put).toHaveBeenCalled();
+  });
+
   it("deploys both platforms sequentially when platform is omitted", async () => {
     mockBuildPlugin.build.mockImplementation(async ({ platform }) => ({
+      artifacts: [],
       buildPath: "/mock/build",
       bundleId: platform === "ios" ? "bundle-ios" : "bundle-android",
+      patchAssetPath: `index.${platform}.bundle`,
       stdout: null,
     }));
 
@@ -724,8 +855,10 @@ describe("deploy rollout wiring", () => {
       updateStrategy: "appVersion",
     });
     mockBuildPlugin.build.mockImplementation(async ({ platform }) => ({
+      artifacts: [],
       buildPath: "/mock/build",
       bundleId: platform === "ios" ? "bundle-ios" : "bundle-android",
+      patchAssetPath: `index.${platform}.bundle`,
       stdout: null,
     }));
 
@@ -832,8 +965,10 @@ describe("deploy rollout wiring", () => {
       updateStrategy: "appVersion",
     });
     mockBuildPlugin.build.mockImplementation(async ({ platform }) => ({
+      artifacts: [],
       buildPath: "/mock/build",
       bundleId: platform === "ios" ? "bundle-ios" : "bundle-android",
+      patchAssetPath: `index.${platform}.bundle`,
       stdout: null,
     }));
 
@@ -872,8 +1007,10 @@ describe("deploy rollout wiring", () => {
       updateStrategy: "appVersion",
     });
     mockBuildPlugin.build.mockImplementation(async ({ platform }) => ({
+      artifacts: [],
       buildPath: "/mock/build",
       bundleId: platform === "ios" ? "bundle-ios" : "bundle-android",
+      patchAssetPath: `index.${platform}.bundle`,
       stdout: null,
     }));
 
@@ -900,8 +1037,10 @@ describe("deploy rollout wiring", () => {
 
   it("renders build stdout in a note instead of raw task output", async () => {
     mockBuildPlugin.build.mockResolvedValue({
+      artifacts: [],
       buildPath: "/mock/build",
       bundleId: "bundle-123",
+      patchAssetPath: "index.bundle",
       stdout: "LLVM\nHermes",
     });
 
@@ -939,6 +1078,7 @@ describe("deploy rollout wiring", () => {
       manifestStorageUri: "s3://bundles/bundles/bundle-123/manifest.json",
       metadata: expect.objectContaining({
         app_version: "1.0",
+        manifest_content_hash: TRANSFER_FILE_HASH,
       }),
     });
   });
@@ -976,22 +1116,27 @@ describe("deploy rollout wiring", () => {
     const assetFiles = Array.from({ length: 20 }, (_, index) => ({
       name: `assets/file-${index}.png`,
       path: `/mock/build/assets/file-${index}.png`,
+      downloadCompression: null,
     }));
     let activeAssetUploads = 0;
     let maxActiveAssetUploads = 0;
 
-    vi.mocked(getBundleZipTargets).mockResolvedValue(assetFiles);
+    vi.mocked(getBundleZipTargets).mockResolvedValue(
+      mockArtifactSnapshot(assetFiles),
+    );
     vi.mocked(createBundleManifest).mockImplementation(
       async ({ bundleId, targetFiles }) => ({
         assets: Object.fromEntries(
           targetFiles.map((targetFile, index) => [
             targetFile.name,
             {
+              downloadCompression: targetFile.downloadCompression,
               fileHash: (index + 1).toString(16).padStart(64, "0"),
             },
           ]),
         ),
         bundleId,
+        patchAssetPath: targetFiles[0]!.name,
       }),
     );
     mockStoragePlugin.put.mockImplementation(async ({ key }) => {
@@ -1024,16 +1169,20 @@ describe("deploy rollout wiring", () => {
   });
 
   it("deduplicates content-addressed asset uploads with the same object key", async () => {
-    vi.mocked(getBundleZipTargets).mockResolvedValue([
-      {
-        name: "assets/src/logo.png",
-        path: "/mock/build/assets/src/logo.png",
-      },
-      {
-        name: "assets/src/logo-copy.png",
-        path: "/mock/build/assets/src/logo-copy.png",
-      },
-    ]);
+    vi.mocked(getBundleZipTargets).mockResolvedValue(
+      mockArtifactSnapshot([
+        {
+          name: "assets/src/logo.png",
+          path: "/mock/build/assets/src/logo.png",
+          downloadCompression: null,
+        },
+        {
+          name: "assets/src/logo-copy.png",
+          path: "/mock/build/assets/src/logo-copy.png",
+          downloadCompression: null,
+        },
+      ]),
+    );
 
     await deploy({
       channel: "production",
@@ -1060,12 +1209,15 @@ describe("deploy rollout wiring", () => {
       exists:
         storageUri === `s3://bundles/assets/sha256/aa/${LOGICAL_FILE_HASH}.png`,
     }));
-    vi.mocked(getBundleZipTargets).mockResolvedValue([
-      {
-        name: "assets/src/logo.png",
-        path: "/mock/build/assets/src/logo.png",
-      },
-    ]);
+    vi.mocked(getBundleZipTargets).mockResolvedValue(
+      mockArtifactSnapshot([
+        {
+          name: "assets/src/logo.png",
+          path: "/mock/build/assets/src/logo.png",
+          downloadCompression: null,
+        },
+      ]),
+    );
 
     await deploy({
       channel: "production",
@@ -1100,12 +1252,15 @@ describe("deploy rollout wiring", () => {
       storage: mockStoragePlugin,
       updateStrategy: "appVersion",
     });
-    vi.mocked(getBundleZipTargets).mockResolvedValue([
-      {
-        name: "assets/src/logo.png",
-        path: "/mock/build/assets/src/logo.png",
-      },
-    ]);
+    vi.mocked(getBundleZipTargets).mockResolvedValue(
+      mockArtifactSnapshot([
+        {
+          name: "assets/src/logo.png",
+          path: "/mock/build/assets/src/logo.png",
+          downloadCompression: null,
+        },
+      ]),
+    );
 
     await deploy({
       channel: "production",
@@ -1138,12 +1293,15 @@ describe("deploy rollout wiring", () => {
         storageUri: "s3://bundles/bundles/bundle-123/bundle.tar.br",
       };
     });
-    vi.mocked(getBundleZipTargets).mockResolvedValue([
-      {
-        name: "assets/src/logo.png",
-        path: "/mock/build/assets/src/logo.png",
-      },
-    ]);
+    vi.mocked(getBundleZipTargets).mockResolvedValue(
+      mockArtifactSnapshot([
+        {
+          name: "assets/src/logo.png",
+          path: "/mock/build/assets/src/logo.png",
+          downloadCompression: null,
+        },
+      ]),
+    );
 
     await expect(
       deploy({
@@ -1153,9 +1311,13 @@ describe("deploy rollout wiring", () => {
         platform: "ios",
         targetAppVersion: "1.0.x",
       }),
-    ).rejects.toThrow("process.exit unexpectedly called");
+    ).rejects.toThrow("Failed to upload bundle to storage");
 
     expect(mockCli.p.log.error).toHaveBeenCalledWith("asset upload failed");
+    expect(fs.promises.rm).toHaveBeenCalledWith(
+      "/mock/build/.hot-updater-snapshot-test",
+      { force: true, recursive: true },
+    );
     expect(fs.promises.writeFile).not.toHaveBeenCalledWith(
       expect.stringContaining("deploy-upload-cache.json"),
       expect.anything(),
@@ -1173,16 +1335,20 @@ describe("deploy rollout wiring", () => {
       }
     });
 
-    vi.mocked(getBundleZipTargets).mockResolvedValue([
-      {
-        name: "index.bundle",
-        path: "/mock/build/index.bundle",
-      },
-      {
-        name: "assets/src/logo.png",
-        path: "/mock/build/assets/src/logo.png",
-      },
-    ]);
+    vi.mocked(getBundleZipTargets).mockResolvedValue(
+      mockArtifactSnapshot([
+        {
+          name: "index.bundle",
+          path: "/mock/build/index.bundle",
+          downloadCompression: null,
+        },
+        {
+          name: "assets/src/logo.png",
+          path: "/mock/build/assets/src/logo.png",
+          downloadCompression: null,
+        },
+      ]),
+    );
 
     await deploy({
       channel: "production",
@@ -1200,16 +1366,20 @@ describe("deploy rollout wiring", () => {
   });
 
   it("uploads hermes bundle artifacts using the manifest filename", async () => {
-    vi.mocked(getBundleZipTargets).mockResolvedValue([
-      {
-        name: "index.ios.bundle",
-        path: "/mock/build/index.ios.bundle.hbc",
-      },
-      {
-        name: "assets/src/logo.png",
-        path: "/mock/build/assets/src/logo.png",
-      },
-    ]);
+    vi.mocked(getBundleZipTargets).mockResolvedValue(
+      mockArtifactSnapshot([
+        {
+          name: "index.ios.bundle",
+          path: "/mock/build/.hot-updater-snapshot-test/artifact-000000",
+          downloadCompression: "br",
+        },
+        {
+          name: "assets/src/logo.png",
+          path: "/mock/build/.hot-updater-snapshot-test/artifact-000001",
+          downloadCompression: null,
+        },
+      ]),
+    );
 
     await deploy({
       channel: "production",
@@ -1231,22 +1401,51 @@ describe("deploy rollout wiring", () => {
     );
     expect(pipeline).toHaveBeenCalledTimes(1);
     expect(writeBundleManifestFile).toHaveBeenCalledWith({
-      buildPath: "/mock/build",
+      buildPath: "/mock/build/.hot-updater-snapshot-test",
       manifest: {
         assets: {
           "assets/src/logo.png": {
             downloadByteSize: 4,
+            downloadCompression: null,
             fileHash: LOGICAL_FILE_HASH,
           },
           "index.ios.bundle": {
             downloadByteSize: 4,
+            downloadCompression: "br",
             downloadFileHash: TRANSFER_FILE_HASH,
             fileHash: LOGICAL_FILE_HASH,
           },
         },
         bundleId: "bundle-123",
+        patchAssetPath: "index.ios.bundle",
       },
     });
+    expect(mockCli.createTarBrTargetFiles).toHaveBeenCalledWith({
+      outfile: "/mock/cwd/.hot-updater/output/bundle/bundle.tar.br",
+      targetFiles: [
+        {
+          name: "index.ios.bundle",
+          path: "/mock/build/.hot-updater-snapshot-test/artifact-000000",
+          downloadCompression: "br",
+        },
+        {
+          name: "assets/src/logo.png",
+          path: "/mock/build/.hot-updater-snapshot-test/artifact-000001",
+          downloadCompression: null,
+        },
+        {
+          name: "manifest.json",
+          path: "/mock/build/.hot-updater-snapshot-test/manifest.json",
+        },
+      ],
+    });
+    for (const [, destination] of vi.mocked(fs.promises.copyFile).mock.calls) {
+      expect(destination).toEqual(
+        expect.stringContaining(
+          "/mock/build/.hot-updater-snapshot-test/upload-artifacts/",
+        ),
+      );
+    }
   });
 
   it("does not create a nested spinner when signing is enabled", async () => {
@@ -1264,8 +1463,10 @@ describe("deploy rollout wiring", () => {
       updateStrategy: "appVersion",
     });
     mockBuildPlugin.build.mockResolvedValue({
+      artifacts: [],
       buildPath: "/mock/build",
       bundleId: "bundle-123",
+      patchAssetPath: "index.bundle",
       stdout: "LLVM\nHermes",
     });
     const signFileHash = vi.fn(async () => "signature");
@@ -1293,6 +1494,12 @@ describe("deploy rollout wiring", () => {
     expect(mockCli.p.log.success).toHaveBeenCalledWith(
       "✅ Bundle Signing Complete",
     );
+    expect((await databaseHarness.bundles())[0]).toMatchObject({
+      manifestFileHash: "sig:signature",
+      metadata: expect.objectContaining({
+        manifest_content_hash: TRANSFER_FILE_HASH,
+      }),
+    });
     expect(mockCli.p.note).toHaveBeenCalledWith(
       "Platform: iOS\nChannel: production\nRollout: 100%\nTarget app version: >=1.0.0 <1.1.0-0",
       "Deployment",
@@ -1344,6 +1551,45 @@ describe("deploy rollout wiring", () => {
       expectedPublicKey: "provider-public-key",
       nativePublicKey: "expo-public-key",
       platform: "ios",
+    });
+  });
+
+  it("forwards authoritative build-plugin signing configuration to validation", async () => {
+    const getBundleSigningPublicKey = vi.fn(async () => ({
+      publicKey: "native-public-key",
+    }));
+    mockBuildPlugin.nativeBuild = {
+      signingConfigSource: "build-plugin",
+      getBundleSigningPublicKey,
+    };
+    mockCli.loadConfig.mockResolvedValue({
+      build: async () => mockBuildPlugin,
+      compressStrategy: "tar.br",
+      database: databasePlugin,
+      fingerprint: {},
+      patch: { enabled: false },
+      signing: mockSigningPlugin,
+      storage: mockStoragePlugin,
+      updateStrategy: "appVersion",
+    });
+    mockCli.prepareBundleSigning.mockResolvedValue({
+      name: "provider",
+      publicKey: "provider-public-key",
+      signFileHash: vi.fn(async () => "signature"),
+    });
+    await deploy({
+      channel: "production",
+      forceUpdate: false,
+      interactive: false,
+      platform: "ios",
+      targetAppVersion: "1.0.x",
+    });
+    expect(getBundleSigningPublicKey).toHaveBeenCalledOnce();
+    expect(validateSigningConfig).toHaveBeenCalledWith(expect.anything(), {
+      expectedPublicKey: "provider-public-key",
+      nativePublicKey: "native-public-key",
+      platform: "ios",
+      signingConfigSource: "build-plugin",
     });
   });
 

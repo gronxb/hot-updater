@@ -216,6 +216,7 @@ export function createHotUpdaterHandlers(
     "rebuildReleaseCatalog",
   );
   addAdminRoute("POST", "/database/commit", "commitDatabase");
+  addAdminRoute("POST", "/bundle-patches/publish", "publishBundlePatch");
   addAdminRoute("GET", "/channels", "getChannels");
   addAdminRoute("POST", "/channels", "createChannel");
   addAdminRoute("DELETE", "/channels/:id", "deleteChannel");

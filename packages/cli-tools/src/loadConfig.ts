@@ -39,6 +39,9 @@ const missingDatabase = createDatabasePlugin({
       findByBundleIds: async () => {
         throw new Error("database plugin is required");
       },
+      publish: async () => {
+        throw new Error("database plugin is required");
+      },
     },
     releases: {
       findById: async () => {

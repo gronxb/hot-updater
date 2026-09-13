@@ -1,0 +1,28 @@
+{
+  "ios": {
+    "sources": [
+      {
+        "type": "dir",
+        "filePath": "ios",
+        "reasons": [
+          "bareNativeDir"
+        ],
+        "hash": null
+      }
+    ],
+    "hash": "da39a3ee5e6b4b0d3255bfef95601890afd80709"
+  },
+  "android": {
+    "sources": [
+      {
+        "type": "dir",
+        "filePath": "android",
+        "reasons": [
+          "bareNativeDir"
+        ],
+        "hash": null
+      }
+    ],
+    "hash": "da39a3ee5e6b4b0d3255bfef95601890afd80709"
+  }
+}

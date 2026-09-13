@@ -5,6 +5,8 @@ import type {
   ChannelInsertInput,
   ChannelInsertResult,
   ChannelRow,
+  BundlePatchPublishInput,
+  BundlePatchPublishResult,
   DatabaseCommit,
   DatabaseCommitResult,
   DatabasePlugin as DatabasePluginContract,
@@ -215,6 +217,9 @@ export interface DatabaseAPI {
   }): Promise<ReleaseCatalogMutationResult>;
   rebuildReleaseCatalog(scopeKey: string): Promise<ReleaseCatalogRebuildResult>;
   commitDatabase(input: DatabaseCommit): Promise<DatabaseCommitResult>;
+  publishBundlePatch(
+    input: BundlePatchPublishInput,
+  ): Promise<BundlePatchPublishResult>;
   getChannels(): Promise<readonly ChannelRow[]>;
   insertChannel(input: ChannelInsertInput): Promise<ChannelInsertResult>;
   deleteChannel(input: ChannelDeleteInput): Promise<ChannelDeleteResult>;

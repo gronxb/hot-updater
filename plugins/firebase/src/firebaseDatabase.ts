@@ -8,6 +8,8 @@ import {
 } from "@hot-updater/plugin-core/internal";
 import {
   createDatabasePluginAdapter,
+  createTransactionDatabasePlugin,
+  publishBundlePatchInTransaction,
   type DatabasePluginImplementation,
   type TransactionDatabasePluginImplementation,
 } from "@hot-updater/plugin-core/internal";
@@ -439,6 +441,13 @@ export const firebaseDatabase = (config: FirebaseDatabaseConfig) => {
           return { deleted: true };
         });
       },
+      publishBundlePatch: (input) =>
+        mutate((transaction) =>
+          publishBundlePatchInTransaction(
+            createTransactionDatabasePlugin(transaction),
+            input,
+          ),
+        ),
       transaction: (callback) => mutate(callback),
     };
   })();

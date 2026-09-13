@@ -5,6 +5,7 @@ import {
   CreateInvalidationCommand,
   GetInvalidationCommand,
 } from "@aws-sdk/client-cloudfront";
+import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
 import {
   DynamoDBDocumentClient,
   GetCommand,
@@ -13,7 +14,12 @@ import {
   ScanCommand,
   TransactWriteCommand,
 } from "@aws-sdk/lib-dynamodb";
-import { bundleToRow, type BundleEventRow } from "@hot-updater/plugin-core";
+import {
+  bundleToRow,
+  type BundleEventRow,
+  type BundlePatchRow,
+  MAX_BUNDLE_PATCHES,
+} from "@hot-updater/plugin-core";
 import { mockClient } from "aws-sdk-client-mock";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -21,7 +27,10 @@ import {
   DYNAMODB_INSIGHTS_EVENT_IDS_PARTITION,
   DYNAMODB_INSIGHTS_INSTALLATIONS_PARTITION,
   DYNAMODB_UPDATE_INDEX_NAME,
+  createDynamoDBAggregateMutations,
   dynamoDB,
+  toDynamoDBBundleItem,
+  toDynamoDBPatchItem,
 } from "./dynamoDB";
 
 const cloudFront = mockClient(CloudFrontClient);
@@ -104,6 +113,70 @@ describe("dynamoDB CloudFront lifecycle", () => {
 
   afterEach(() => {
     vi.useRealTimers();
+  });
+
+  it("keeps the maximum disjoint patch replacement below 100 actions", async () => {
+    const owner = {
+      ...bundleRow,
+      id: "00000000-0000-0000-0000-000000000900",
+    };
+    const patch = (prefix: string, index: number): BundlePatchRow => {
+      const baseId = `00000000-0000-0000-${prefix}-${String(index).padStart(12, "0")}`;
+      return {
+        id: `${owner.id}:${baseId}`,
+        bundle_id: owner.id,
+        base_bundle_id: baseId,
+        base_file_hash: `${prefix}${index.toString(16)}`.padEnd(64, "a"),
+        patch_file_hash: `${prefix}${index.toString(16)}`.padEnd(64, "b"),
+        patch_storage_uri: `storage://patch-${prefix}-${index}`,
+        byte_size: 1,
+        order_index: index,
+      };
+    };
+    const current = Array.from({ length: MAX_BUNDLE_PATCHES }, (_, index) =>
+      patch("7000", index),
+    );
+    const next = Array.from({ length: MAX_BUNDLE_PATCHES }, (_, index) =>
+      patch("8000", index),
+    );
+    documentClient.on(GetCommand).resolves({
+      Item: toDynamoDBBundleItem(owner, 1, current.length, current.length),
+    });
+    documentClient.on(QueryCommand).resolves({
+      Items: current.map((row) => toDynamoDBPatchItem(row)),
+    });
+    const client = DynamoDBDocumentClient.from(
+      new DynamoDBClient({
+        credentials: { accessKeyId: "test", secretAccessKey: "test" },
+        region: "us-east-1",
+      }),
+    );
+    const mutations = createDynamoDBAggregateMutations({
+      client,
+      tableName: "hot-updater-metadata",
+    });
+
+    await expect(
+      mutations.updateBundleWithPatches({
+        bundleId: owner.id,
+        patches: next,
+        update: {},
+      }),
+    ).resolves.toBe(true);
+    expect(
+      documentClient.commandCalls(TransactWriteCommand)[0]?.args[0].input
+        .TransactItems,
+    ).toHaveLength(97);
+
+    documentClient.resetHistory();
+    await expect(
+      mutations.updateBundleWithPatches({
+        bundleId: owner.id,
+        patches: [...next, patch("8000", MAX_BUNDLE_PATCHES)],
+        update: {},
+      }),
+    ).rejects.toThrow("invalid-data");
+    expect(documentClient.commandCalls(TransactWriteCommand)).toHaveLength(0);
   });
 
   it("invalidates cached update checks after a successful commit", async () => {

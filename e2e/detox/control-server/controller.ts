@@ -19,8 +19,10 @@ import {
 } from "../../../packages/core/src/releaseCatalogScope.ts";
 import { getRolledOutNumericCohorts } from "../../../packages/core/src/rollout.ts";
 import type { Bundle } from "../../../packages/core/src/types.ts";
+import { createBundleDiff } from "../../../packages/server/dist/db/index.mjs";
 import { createInsightsProvider } from "../../../packages/server/dist/index.mjs";
 import {
+  assertStorageOperations,
   type InsightsModel,
   type BundleRepository,
   createDatabaseClient,
@@ -48,6 +50,7 @@ import {
 import { hasActiveInstrumentationForPackage } from "./android-instrumentation.ts";
 import {
   advanceAndroidRestartWait,
+  hasLynxNativeRestartEvidence,
   hasNativeRestartEvidenceAfterMarker,
   isAndroidRecoveryProcessReady,
 } from "./android-restart-wait.ts";
@@ -62,7 +65,18 @@ import {
   getFixtureResetChannels as resolveFixtureResetChannels,
   resetFixtureReleases,
 } from "./fixture-release-reset.ts";
+import {
+  isLynxE2eAppId,
+  lynxAndroidInstalledManifestPaths,
+  lynxCrashedBundleIds,
+  lynxReceipt,
+  synthesizeLynxCrashHistory,
+  synthesizeLynxLaunchReport,
+  synthesizeLynxMetadata,
+} from "./lynx-store.ts";
+import { hasNativeInstallEvent } from "./native-install-log.ts";
 import { inferPatchAssetPathFromStorageUri } from "./patch-storage-path.ts";
+import { resetPendingE2eAction } from "./pending-action.ts";
 import { resetProviderAfterReady } from "./provider-reset-retry.ts";
 import { buildReleaseCatalogUrl } from "./release-catalog-url.ts";
 import {
@@ -139,6 +153,7 @@ type SessionState = {
   sizeAwareLargeAssetBackupPath: string | null;
   sizeAwareLargeAssetPath: string;
   storePath: string | null;
+  lynxScopePath: string | null;
 };
 
 type DeployBundleRequest = {
@@ -190,7 +205,10 @@ const HOT_UPDATER_CLI_PATH = path.join(
   "packages/hot-updater/dist/index.mjs",
 );
 const COMMAND_STDIO_DRAIN_GRACE_MS = 500;
-const EXAMPLE_DIR = path.join(REPO_DIR, "examples/v0.85.0");
+const EXAMPLE_DIR = path.resolve(
+  process.env.HOT_UPDATER_E2E_ENV_TARGET_DIR ??
+    path.join(REPO_DIR, "examples/v0.85.0"),
+);
 const E2E_PATCH_SOURCE_FILE = path.join(
   EXAMPLE_DIR,
   "src/e2eApp/patchSurface.ts",
@@ -487,6 +505,7 @@ const fixtureSession: SessionState = {
     SIZE_AWARE_LARGE_ASSET_RELATIVE_PATH,
   ),
   storePath: null,
+  lynxScopePath: null,
 };
 
 const channelNamespace =
@@ -1557,6 +1576,53 @@ async function resolveAutoPatchBundleDiff(
   );
 }
 
+async function createFixtureBundleDiff(input: {
+  baseBundleId: string;
+  bundleId: string;
+}) {
+  const { loadConfig } =
+    (await import("../../../packages/cli-tools/dist/index.mjs")) as {
+      loadConfig: (options: null) => Promise<{
+        database: BundleRepository;
+        storage: import("../../../plugins/plugin-core/dist/index.mjs").StoragePlugin;
+      }>;
+    };
+  const originalCwd = process.cwd();
+
+  try {
+    process.chdir(fixtureSession.exampleDir);
+    return await withHotUpdaterControlEnv(async () => {
+      const config = await loadConfig(null);
+      try {
+        assertStorageOperations(config.storage, ["delete", "get", "put"]);
+        await createBundleDiff(input, {
+          databasePlugin: config.database,
+          storagePlugin: config.storage,
+        });
+        const diff = await resolveAutoPatchBundleDiff(
+          input.baseBundleId,
+          input.bundleId,
+        );
+        const record = fixtureSession.deployedBundles.find(
+          ({ bundleId }) => bundleId === input.bundleId,
+        );
+        if (record) {
+          record.diffBaseBundleId = diff.baseBundleId;
+          record.diffPatchAssetPath = diff.patchAssetPath;
+          record.patchBaseBundleIds = getBundlePatchBaseBundleIds(
+            await fetchProviderBundleById(input.bundleId),
+          );
+        }
+        return diff;
+      } finally {
+        await config.database.dispose?.();
+      }
+    });
+  } finally {
+    process.chdir(originalCwd);
+  }
+}
+
 async function clearProviderReleases() {
   const result = await withConfiguredDatabase((database) =>
     resetFixtureReleases({
@@ -1620,25 +1686,288 @@ function updateTrackedReleaseRecord(
   }
 }
 
+const LYNX_E2E_BUILTIN_BUNDLE_ID = "00000000-0000-7000-8000-000000000000";
+
+function isLynxE2eApp() {
+  return isLynxE2eAppId(fixtureSession.appId);
+}
+
+function iosAppDataDir() {
+  return captureCommand("xcrun", [
+    "simctl",
+    "get_app_container",
+    deviceId as string,
+    fixtureSession.appId,
+    "data",
+  ]);
+}
+
+function lynxIosStoresDir() {
+  return path.join(
+    iosAppDataDir(),
+    "Library/Application Support/HotUpdaterLynxPublic/stores",
+  );
+}
+
+function listAndroidRunAsEntries(relativeDir: string) {
+  const output = captureCommand(
+    "adb",
+    [
+      "-s",
+      deviceId as string,
+      "shell",
+      "run-as",
+      fixtureSession.appId,
+      "ls",
+      "-1",
+      relativeDir,
+    ],
+    { allowFailure: true },
+  );
+  return output
+    .split(/\r?\n/)
+    .map((entry) => entry.trim())
+    .filter((entry) => entry.length > 0 && entry !== "." && entry !== "..");
+}
+
+function rememberLynxStore(scopePath: string, storePath: string) {
+  fixtureSession.lynxScopePath = scopePath;
+  fixtureSession.storePath = storePath;
+  return storePath;
+}
+
+function ensureLynxIosStorePath() {
+  const stores = lynxIosStoresDir();
+  try {
+    for (const scope of fs.readdirSync(stores)) {
+      const scopePath = path.join(stores, scope);
+      const bundles = path.join(scopePath, "bundles");
+      if (!fs.existsSync(bundles)) {
+        continue;
+      }
+      for (const bundleId of fs.readdirSync(bundles)) {
+        if (fs.existsSync(path.join(bundles, bundleId, "manifest.json"))) {
+          return rememberLynxStore(scopePath, bundles);
+        }
+      }
+      if (fs.existsSync(path.join(scopePath, "state.json"))) {
+        return rememberLynxStore(scopePath, bundles);
+      }
+    }
+  } catch {
+    // The Lynx store is created on first launch.
+  }
+  return null;
+}
+
+function ensureLynxAndroidStorePath() {
+  const scopesRoot = `files/hot-updater-lynx/scopes`;
+  for (const scope of listAndroidRunAsEntries(scopesRoot)) {
+    const installations = `${scopesRoot}/${scope}/artifacts/installations`;
+    const bundleIds = listAndroidRunAsEntries(installations);
+    const hasManifest = bundleIds.some((bundleId) =>
+      lynxAndroidInstalledManifestPaths(
+        fixtureSession.appId,
+        scope,
+        bundleId,
+      ).some((manifestPath) => androidFileExists(manifestPath)),
+    );
+    if (
+      hasManifest ||
+      androidFileExists(
+        `/data/data/${fixtureSession.appId}/${scopesRoot}/${scope}/state.json`,
+      )
+    ) {
+      return rememberLynxStore(
+        `/data/data/${fixtureSession.appId}/${scopesRoot}/${scope}`,
+        `/data/data/${fixtureSession.appId}/${installations}`,
+      );
+    }
+  }
+  return null;
+}
+
+function ensureLynxScopePath() {
+  if (fixtureSession.lynxScopePath) {
+    return fixtureSession.lynxScopePath;
+  }
+  if (fixtureSession.platform === "ios") {
+    ensureLynxIosStorePath();
+  } else {
+    ensureLynxAndroidStorePath();
+  }
+  return fixtureSession.lynxScopePath;
+}
+
 function ensureStorePath() {
   if (fixtureSession.storePath) {
     return fixtureSession.storePath;
   }
 
   if (fixtureSession.platform === "ios") {
-    const appDataDir = captureCommand("xcrun", [
-      "simctl",
-      "get_app_container",
-      deviceId as string,
-      fixtureSession.appId,
-      "data",
-    ]);
-    fixtureSession.storePath = path.join(appDataDir, "Documents/bundle-store");
+    if (isLynxE2eApp()) {
+      const lynxStorePath = ensureLynxIosStorePath();
+      if (lynxStorePath) {
+        return lynxStorePath;
+      }
+    }
+    fixtureSession.storePath = path.join(
+      iosAppDataDir(),
+      "Documents/bundle-store",
+    );
     return fixtureSession.storePath;
+  }
+
+  if (isLynxE2eApp()) {
+    const lynxStorePath = ensureLynxAndroidStorePath();
+    if (lynxStorePath) {
+      return lynxStorePath;
+    }
   }
 
   fixtureSession.storePath = `/data/data/${fixtureSession.appId}/files/bundle-store`;
   return fixtureSession.storePath;
+}
+
+function findLynxIosBundleDir(bundleId: string) {
+  const stores = lynxIosStoresDir();
+  try {
+    for (const scope of fs.readdirSync(stores)) {
+      const bundleDir = path.join(stores, scope, "bundles", bundleId);
+      if (fs.existsSync(path.join(bundleDir, "manifest.json"))) {
+        rememberLynxStore(path.join(stores, scope), path.dirname(bundleDir));
+        return bundleDir;
+      }
+    }
+  } catch {
+    return null;
+  }
+  return null;
+}
+
+function findLynxAndroidBundleDir(bundleId: string) {
+  const scopesRoot = `files/hot-updater-lynx/scopes`;
+  for (const scope of listAndroidRunAsEntries(scopesRoot)) {
+    for (const manifestPath of lynxAndroidInstalledManifestPaths(
+      fixtureSession.appId,
+      scope,
+      bundleId,
+    )) {
+      if (!androidFileExists(manifestPath)) {
+        continue;
+      }
+      const bundleDir = path.posix.dirname(manifestPath);
+      rememberLynxStore(
+        `/data/data/${fixtureSession.appId}/${scopesRoot}/${scope}`,
+        path.posix.dirname(
+          bundleDir.endsWith("/payload")
+            ? bundleDir.slice(0, -"/payload".length)
+            : bundleDir,
+        ),
+      );
+      return bundleDir;
+    }
+  }
+  return null;
+}
+
+function releaseIdForBundle(bundleId: string | null) {
+  if (!bundleId) {
+    return null;
+  }
+  return (
+    fixtureSession.deployedBundles.findLast(
+      (record) => record.bundleId === bundleId,
+    )?.releaseId ?? null
+  );
+}
+
+function readLynxJournalValue(): Record<string, unknown> | null {
+  const scopePath = ensureLynxScopePath();
+  if (!scopePath) {
+    return null;
+  }
+  if (fixtureSession.platform === "ios") {
+    const journalPath = path.join(scopePath, "state.json");
+    if (!fs.existsSync(journalPath)) {
+      return null;
+    }
+    try {
+      return JSON.parse(fs.readFileSync(journalPath, "utf8")) as Record<
+        string,
+        unknown
+      >;
+    } catch {
+      return null;
+    }
+  }
+  const result = readAndroidFileBuffer(`${scopePath}/state.json`);
+  if (!result.fileBuffer) {
+    return null;
+  }
+  try {
+    return JSON.parse(result.fileBuffer.toString("utf8")) as Record<
+      string,
+      unknown
+    >;
+  } catch {
+    return null;
+  }
+}
+
+function readLynxSynthesizedSnapshot(
+  fileName: "metadata.json" | "crashed-history.json" | "launch-report.json",
+): JsonSnapshot {
+  const scopePath = ensureLynxScopePath();
+  const journalPath = scopePath
+    ? `${scopePath.replace(/\\/g, "/")}/state.json`
+    : "lynx-state.json";
+  const journal = readLynxJournalValue();
+  if (!journal) {
+    return {
+      exists: false,
+      path: journalPath,
+      readError: null,
+      value: null,
+    };
+  }
+  if (fileName === "metadata.json") {
+    return {
+      exists: true,
+      path: journalPath,
+      readError: null,
+      value: synthesizeLynxMetadata(journal, fixtureSession.platform),
+    };
+  }
+  if (fileName === "crashed-history.json") {
+    return {
+      exists: true,
+      path: journalPath,
+      readError: null,
+      value: synthesizeLynxCrashHistory(journal, fixtureSession.platform),
+    };
+  }
+  const confirmed = lynxReceipt(journal, fixtureSession.platform, "confirmed");
+  const confirmedBundleId =
+    typeof confirmed?.bundleId === "string" ? confirmed.bundleId : null;
+  const report = synthesizeLynxLaunchReport({
+    crashedBundleIds: lynxCrashedBundleIds(journal, fixtureSession.platform),
+    confirmedBundleId,
+    confirmedReleaseId:
+      typeof confirmed?.releaseId === "string" ? confirmed.releaseId : null,
+    fromReleaseId: releaseIdForBundle(
+      lynxCrashedBundleIds(journal, fixtureSession.platform).at(-1) ?? null,
+    ),
+    toReleaseId:
+      (typeof confirmed?.releaseId === "string" ? confirmed.releaseId : null) ??
+      releaseIdForBundle(confirmedBundleId),
+  });
+  return {
+    exists: report !== null,
+    path: journalPath,
+    readError: null,
+    value: report,
+  };
 }
 
 async function clearIosLocalBundleState() {
@@ -1660,14 +1989,15 @@ async function clearIosLocalBundleState() {
     { allowFailure: true },
   );
 
-  const appDataDir = captureCommand("xcrun", [
-    "simctl",
-    "get_app_container",
-    deviceId as string,
-    fixtureSession.appId,
-    "data",
-  ]);
+  const appDataDir = iosAppDataDir();
   const documentsDir = path.join(appDataDir, "Documents");
+  await fsPromises.rm(
+    path.join(appDataDir, "Library/Application Support/HotUpdaterLynxPublic"),
+    {
+      force: true,
+      recursive: true,
+    },
+  );
 
   await fsPromises.rm(path.join(documentsDir, "bundle-store"), {
     force: true,
@@ -1699,6 +2029,7 @@ async function clearIosLocalBundleState() {
   }
 
   fixtureSession.storePath = null;
+  fixtureSession.lynxScopePath = null;
   logDetoxFixture("ios local bundle state reset", {
     documentsDir,
   });
@@ -1724,6 +2055,7 @@ function clearAndroidLocalAppState() {
         `rm -rf ${ensureAndroidFilesDir()}/bundle-store`,
         `${ensureAndroidFilesDir()}/bundle-temp`,
         `${ensureAndroidFilesDir()}/bundle-manifest-temp`,
+        `${ensureAndroidFilesDir()}/hot-updater-lynx`,
         `/data/data/${fixtureSession.appId}/shared_prefs/HotUpdaterPrefs_*.xml`,
       ].join(" "),
     ],
@@ -1732,7 +2064,8 @@ function clearAndroidLocalAppState() {
   if (androidPathExists(`${ensureAndroidFilesDir()}/bundle-store`)) {
     throw new Error("Failed to clear Android bundle-store state");
   }
-  fixtureSession.storePath = undefined;
+  fixtureSession.storePath = null;
+  fixtureSession.lynxScopePath = null;
   logDetoxFixture("android local app state reset", {
     appId: fixtureSession.appId,
   });
@@ -1969,6 +2302,11 @@ function seedDeviceCrashHistory(bundleIds: readonly string[]) {
 }
 
 function seedLegacyDeviceMetadata() {
+  if (isLynxE2eApp()) {
+    throw createEndpointError(
+      "metadata-v1-migration is unsupported for Lynx: legacy metadata belongs to React Native",
+    );
+  }
   terminateFixtureApp();
   const metadata = readDeviceStoreJson("metadata.json");
   metadata.schema = "metadata-v1";
@@ -2272,6 +2610,54 @@ function normalizeCatalogHighWaters(value: unknown) {
   ) as Record<string, { catalogHash: string; generation: number }>;
 }
 
+function readScreenMetadataState() {
+  const screen = readE2eScreenStateSnapshot();
+  if (screen.stagingBundleId == null && screen.stableBundleId == null) {
+    return null;
+  }
+  return {
+    highestSeenCatalogs: null,
+    schema: null,
+    stableBundleId: screen.stableBundleId,
+    stableSelection: null,
+    stagingBundleId: screen.stagingBundleId,
+    stagingSelection:
+      screen.stagingReleaseId == null
+        ? null
+        : {
+            catalogHash: null,
+            catalogId: null,
+            bundleId: screen.stagingBundleId,
+            channel: null,
+            generation: null,
+            kind: null,
+            releaseId: screen.stagingReleaseId,
+            scopeKey: null,
+            selectionContextHash: null,
+          },
+    verificationPending: screen.verificationPending,
+  };
+}
+
+function resolveMetadataState(metadata: Record<string, unknown> | null) {
+  const journalState = metadata ? getMetadataState(metadata) : null;
+  const screenState = readScreenMetadataState();
+  if (
+    isLynxE2eApp() &&
+    screenState?.stagingBundleId &&
+    screenState.stagingBundleId !== LYNX_E2E_BUILTIN_BUNDLE_ID &&
+    (journalState === null ||
+      journalState.stagingBundleId === null ||
+      journalState.stagingBundleId === LYNX_E2E_BUILTIN_BUNDLE_ID)
+  ) {
+    return screenState;
+  }
+  if (journalState) {
+    return journalState;
+  }
+  return screenState ?? getMetadataState(null);
+}
+
 function getMetadataState(metadata: Record<string, unknown> | null) {
   return {
     highestSeenCatalogs: normalizeCatalogHighWaters(
@@ -2347,7 +2733,11 @@ function isExpectedMetadataStateReached(
     return true;
   }
 
-  return verificationPending && metadataState.verificationPending === false;
+  return (
+    !isLynxE2eApp() &&
+    verificationPending &&
+    metadataState.verificationPending === false
+  );
 }
 
 function isExpectedCrashRecoveryReached(
@@ -2459,6 +2849,13 @@ function createWaitForMetadataResetTimeoutError(args: {
 }
 
 function readIosWaitForMetadataDiagnostics() {
+  if (isLynxE2eApp()) {
+    return {
+      crashHistory: readLynxSynthesizedSnapshot("crashed-history.json"),
+      launchReport: readLynxSynthesizedSnapshot("launch-report.json"),
+      metadata: readLynxSynthesizedSnapshot("metadata.json"),
+    };
+  }
   const storePath = ensureStorePath();
   return {
     crashHistory: readOptionalJsonSnapshot(
@@ -2472,6 +2869,9 @@ function readIosWaitForMetadataDiagnostics() {
 }
 
 function readIosMetadataSnapshot() {
+  if (isLynxE2eApp()) {
+    return readLynxSynthesizedSnapshot("metadata.json");
+  }
   return readOptionalJsonSnapshot(
     path.join(ensureStorePath(), "metadata.json"),
   );
@@ -2481,6 +2881,14 @@ function readAndroidStoreSnapshot(
   remoteFileName: string,
   localFileName: string,
 ) {
+  if (
+    isLynxE2eApp() &&
+    (remoteFileName === "metadata.json" ||
+      remoteFileName === "crashed-history.json" ||
+      remoteFileName === "launch-report.json")
+  ) {
+    return readLynxSynthesizedSnapshot(remoteFileName);
+  }
   const storePath = ensureStorePath();
   const remotePath = `${storePath}/${remoteFileName}`;
   const localPath = path.join(fixtureSession.resultsDir, localFileName);
@@ -2542,22 +2950,38 @@ function readWaitForMetadataDiagnostics() {
     : readAndroidWaitForMetadataDiagnostics();
 }
 
+function lynxBundleFileName() {
+  return "main.lynx.bundle";
+}
+
 function readBundleFileSnapshot(bundleId: string) {
-  const bundleFileName =
-    fixtureSession.platform === "ios"
+  const bundleFileName = isLynxE2eApp()
+    ? lynxBundleFileName()
+    : fixtureSession.platform === "ios"
       ? "index.ios.bundle"
       : "index.android.bundle";
-  const storePath = ensureStorePath();
+  const lynxBundleDir =
+    isLynxE2eApp() && fixtureSession.platform === "ios"
+      ? findLynxIosBundleDir(bundleId)
+      : isLynxE2eApp()
+        ? findLynxAndroidBundleDir(bundleId)
+        : null;
+  const storePath = lynxBundleDir
+    ? path.dirname(lynxBundleDir)
+    : ensureStorePath();
 
   if (fixtureSession.platform === "ios") {
-    const bundleFilePath = path.join(storePath, bundleId, bundleFileName);
+    const bundleFilePath = path.join(
+      lynxBundleDir ?? path.join(storePath, bundleId),
+      bundleFileName,
+    );
     return {
       exists: fs.existsSync(bundleFilePath),
       path: bundleFilePath,
     };
   }
 
-  const remotePath = `${storePath}/${bundleId}/${bundleFileName}`;
+  const remotePath = `${lynxBundleDir ?? `${storePath}/${bundleId}`}/${bundleFileName}`;
 
   return {
     exists: androidFileExists(remotePath),
@@ -2567,9 +2991,38 @@ function readBundleFileSnapshot(bundleId: string) {
 
 function readBundleManifestSnapshot(bundleId: string) {
   if (fixtureSession.platform === "ios") {
+    if (isLynxE2eApp()) {
+      const bundleDir = findLynxIosBundleDir(bundleId);
+      if (bundleDir) {
+        return readOptionalJsonSnapshot(path.join(bundleDir, "manifest.json"));
+      }
+    }
     return readOptionalJsonSnapshot(
       path.join(ensureStorePath(), bundleId, "manifest.json"),
     );
+  }
+
+  if (isLynxE2eApp()) {
+    const bundleDir = findLynxAndroidBundleDir(bundleId);
+    if (bundleDir) {
+      const remotePath = `${bundleDir}/manifest.json`;
+      const localPath = path.join(
+        fixtureSession.resultsDir,
+        `bundle-${bundleId}-manifest.json`,
+      );
+      if (!copyAndroidFileIfExists(remotePath, localPath)) {
+        return {
+          exists: false,
+          path: remotePath,
+          readError: null,
+          value: null,
+        } satisfies JsonSnapshot;
+      }
+      return {
+        ...readOptionalJsonSnapshot(localPath),
+        path: remotePath,
+      };
+    }
   }
 
   return readAndroidStoreSnapshot(
@@ -2598,6 +3051,10 @@ function resolveManifestAssetPath(assetPath: string) {
     return assetPath;
   }
 
+  if (isLynxE2eApp()) {
+    return assetPath;
+  }
+
   return (
     MULTI_ASSET_FIXTURES.find((fixture) => fixture.manifestPath === assetPath)
       ?.androidManifestPath ?? assetPath
@@ -2605,12 +3062,20 @@ function resolveManifestAssetPath(assetPath: string) {
 }
 
 function readIosBundleAssetFileHash(bundleId: string, assetPath: string) {
-  const filePath = path.join(ensureStorePath(), bundleId, assetPath);
-  if (!fs.existsSync(filePath)) {
+  const lynxBundleDir = isLynxE2eApp() ? findLynxIosBundleDir(bundleId) : null;
+  const bundleRoot = lynxBundleDir ?? path.join(ensureStorePath(), bundleId);
+  const candidates = [path.join(bundleRoot, assetPath)];
+  if (isLynxE2eApp()) {
+    candidates.push(
+      path.join(bundleRoot, "static/image", path.basename(assetPath)),
+    );
+  }
+  const filePath = candidates.find((candidate) => fs.existsSync(candidate));
+  if (!filePath) {
     return {
       exists: false,
       fileHash: null,
-      path: filePath,
+      path: candidates[0],
       readError: null,
     };
   }
@@ -2636,7 +3101,10 @@ function readIosBundleAssetFileHash(bundleId: string, assetPath: string) {
 }
 
 function readAndroidBundleAssetFileHash(bundleId: string, assetPath: string) {
-  const remotePath = `${ensureStorePath()}/${bundleId}/${assetPath}`;
+  const lynxBundleDir = isLynxE2eApp()
+    ? findLynxAndroidBundleDir(bundleId)
+    : null;
+  const remotePath = `${lynxBundleDir ?? `${ensureStorePath()}/${bundleId}`}/${assetPath}`;
   const result = readAndroidFileBuffer(remotePath);
   if (!result.fileBuffer) {
     return {
@@ -4284,6 +4752,19 @@ function createWaitForRecoveryTimeoutError(args: {
 }
 
 function readIosRecoveryDiagnostics() {
+  if (isLynxE2eApp()) {
+    return {
+      crashHistory: readLynxSynthesizedSnapshot("crashed-history.json"),
+      crashMarker: {
+        exists: false,
+        path: "lynx-recovery-crash-marker.json",
+        readError: null,
+        value: null,
+      },
+      launchReport: readLynxSynthesizedSnapshot("launch-report.json"),
+      metadata: readLynxSynthesizedSnapshot("metadata.json"),
+    };
+  }
   const storePath = ensureStorePath();
   return {
     crashHistory: readOptionalJsonSnapshot(
@@ -4319,6 +4800,16 @@ function readAndroidRecoveryDiagnostics(
   };
 }
 
+function lynxOverlayDir() {
+  try {
+    return fs
+      .readFileSync(path.join(resultsDir, "lynx-overlay-dir"), "utf8")
+      .trim();
+  } catch {
+    return "";
+  }
+}
+
 function launchAndroidApp({
   explicitActivity = false,
   forceStop = true,
@@ -4351,28 +4842,48 @@ function launchAndroidApp({
     );
   }
 
-  const launchArgs = explicitActivity
+  const launchArgs = isLynxE2eApp()
     ? [
         "-s",
         deviceId as string,
         "shell",
         "am",
         "start",
-        "-W",
+        "-S",
         "-n",
-        `${fixtureSession.appId}/.MainActivity`,
+        `${fixtureSession.appId}/.OtaActivity`,
+        "--es",
+        "framework",
+        "react",
+        "--es",
+        "channel",
+        "production",
+        "--es",
+        "embeddedDir",
+        "e2e-embedded",
       ]
-    : [
-        "-s",
-        deviceId as string,
-        "shell",
-        "monkey",
-        "-p",
-        fixtureSession.appId,
-        "-c",
-        "android.intent.category.LAUNCHER",
-        "1",
-      ];
+    : explicitActivity
+      ? [
+          "-s",
+          deviceId as string,
+          "shell",
+          "am",
+          "start",
+          "-W",
+          "-n",
+          `${fixtureSession.appId}/.MainActivity`,
+        ]
+      : [
+          "-s",
+          deviceId as string,
+          "shell",
+          "monkey",
+          "-p",
+          fixtureSession.appId,
+          "-c",
+          "android.intent.category.LAUNCHER",
+          "1",
+        ];
   const launchOutput = captureCommand("adb", launchArgs, {
     cwd: REPO_DIR,
   });
@@ -4394,17 +4905,22 @@ function launchAndroidApp({
 }
 
 function launchIosApp() {
+  const overlayDir = lynxOverlayDir();
   logDetoxFixture("ios metadata wait relaunch", {
     appId: fixtureSession.appId,
     deviceId,
+    overlayDir: overlayDir || null,
   });
-  captureCommand(
-    "xcrun",
-    ["simctl", "launch", deviceId as string, fixtureSession.appId],
-    {
-      allowFailure: true,
-    },
-  );
+  const args = ["simctl", "launch", deviceId as string, fixtureSession.appId];
+  if (isLynxE2eApp()) {
+    args.push("--ota-framework=react", "--ota-channel=production");
+    if (overlayDir) {
+      args.push(`--ota-embedded-dir=${overlayDir}`);
+    }
+  }
+  captureCommand("xcrun", args, {
+    allowFailure: true,
+  });
 }
 
 function parseAndroidFocusedPackage(output: string) {
@@ -4520,10 +5036,9 @@ async function waitForAndroidRestart(
       metadataState.stagingBundleId === bundleId &&
       metadataState.stagingSelection?.releaseId === releaseId;
     lastNativeLogs = readAndroidAutomaticRestartLogs();
-    lastHasNativeRestartEvidence = hasNativeRestartEvidenceAfterMarker(
-      lastNativeLogs,
-      launchLogMarker,
-    );
+    lastHasNativeRestartEvidence = isLynxE2eApp()
+      ? hasLynxNativeRestartEvidence(lastNativeLogs)
+      : hasNativeRestartEvidenceAfterMarker(lastNativeLogs, launchLogMarker);
     waitState = advanceAndroidRestartWait(waitState, {
       hasNativeRestartEvidence: lastHasNativeRestartEvidence,
       hasTargetStaging,
@@ -4688,9 +5203,8 @@ async function waitForIosMetadataState(
       totalAttempts += 1;
 
       const metadata = readIosMetadataSnapshot();
-      if (metadata.value) {
-        const metadataState = getMetadataState(metadata.value);
-
+      const metadataState = resolveMetadataState(metadata.value);
+      if (metadataState.stagingBundleId !== null || metadata.value) {
         if (
           isExpectedMetadataStateReached(
             metadataState,
@@ -4722,11 +5236,8 @@ async function waitForIosMetadataState(
     }
 
     const metadata = readIosMetadataSnapshot();
-    const metadataState = getMetadataState(metadata.value);
-    if (
-      relaunchIndex === relaunchLimit ||
-      metadataState.verificationPending === true
-    ) {
+    const metadataState = resolveMetadataState(metadata.value);
+    if (relaunchIndex === relaunchLimit) {
       break;
     }
 
@@ -4778,8 +5289,8 @@ async function waitForAndroidMetadataState(
       const metadata = readAndroidMetadataSnapshot(
         "wait-for-metadata-metadata.json",
       );
-      if (metadata.value) {
-        const metadataState = getMetadataState(metadata.value);
+      const metadataState = resolveMetadataState(metadata.value);
+      if (metadataState.stagingBundleId !== null || metadata.value) {
         if (
           isExpectedMetadataStateReached(
             metadataState,
@@ -4814,11 +5325,8 @@ async function waitForAndroidMetadataState(
     const metadata = readAndroidMetadataSnapshot(
       "wait-for-metadata-metadata.json",
     );
-    const metadataState = getMetadataState(metadata.value);
-    if (
-      relaunchIndex === relaunchLimit ||
-      metadataState.verificationPending === true
-    ) {
+    const metadataState = resolveMetadataState(metadata.value);
+    if (relaunchIndex === relaunchLimit) {
       break;
     }
 
@@ -4848,7 +5356,11 @@ async function waitForCrashRecovery(
   options: { attempts?: number; signal?: AbortSignal } = {},
 ) {
   const launchLogMarker = androidLaunchLogMarker;
-  if (fixtureSession.platform === "android" && !launchLogMarker) {
+  if (
+    fixtureSession.platform === "android" &&
+    !isLynxE2eApp() &&
+    !launchLogMarker
+  ) {
     throw new Error("Missing Android launch log marker");
   }
   let readyObservations = 0;
@@ -4859,6 +5371,9 @@ async function waitForCrashRecovery(
     getLaunchReportState,
     getMetadataState,
     isAndroidRecoveryReady: () => {
+      if (isLynxE2eApp()) {
+        return getAndroidProcessId().trim().length > 0;
+      }
       const activityProcessesOutput = getAndroidActivityProcessesOutput();
       const ready = isAndroidRecoveryProcessReady({
         appId: fixtureSession.appId,
@@ -4894,6 +5409,8 @@ async function waitForCrashRecovery(
 }
 
 async function prepareAppLaunch() {
+  resetE2eScreenState();
+  resetPendingE2eAction();
   assertConfiguredBaseUrl();
   await seedMissingE2ECohort();
 
@@ -4953,9 +5470,36 @@ async function prepareAppLaunch() {
   return { alreadyFocused };
 }
 
+async function resetBootstrappedAppSource() {
+  fixtureSession.builtInBundleId = null;
+  fixtureSession.deployedBundles = [];
+  fixtureSession.observedInsightsEvents = [];
+  fixtureSession.storePath = null;
+  handleConfigureProxy({
+    artifactDelayMs: 0,
+    catalogDelayMs: 0,
+    catalogMode: "live",
+    replayGeneration: null,
+    reset: true,
+  });
+  await restoreFile(
+    fixtureSession.configBackupPath,
+    fixtureSession.configSourceFile,
+  );
+  await restoreFile(fixtureSession.appBackupPath, fixtureSession.appSourceFile);
+  await restoreMultiAssetFixtures();
+  await applyAppScenario({
+    bundleProfile: "default",
+    marker: fixtureSession.initialMarker,
+    mode: "reset",
+    safeBundleIds: [],
+  });
+}
+
 async function bootstrap() {
   if (fixtureSession.bootstrapResult) {
-    logDetoxFixture("bootstrap result reused", {
+    await resetBootstrappedAppSource();
+    logDetoxFixture("bootstrap session reset", {
       platform: fixtureSession.platform,
     });
     return fixtureSession.bootstrapResult;
@@ -5797,6 +6341,7 @@ function readBsdiffPatchLogs() {
       "-v",
       "time",
       "BundleStorage:D",
+      "HotUpdaterLynx:D",
       "*:S",
     ],
     { allowFailure: true, maxBuffer: 8 * 1024 * 1024 },
@@ -5808,6 +6353,9 @@ function readBsdiffPatchLogs() {
 
 function readFirstOtaArchiveInstallLogs() {
   if (fixtureSession.platform === "ios") {
+    const event = isLynxE2eApp()
+      ? "HotUpdaterArchiveInstalled"
+      : "Skipping manifest-driven install";
     return captureCommand(
       "xcrun",
       [
@@ -5821,12 +6369,15 @@ function readFirstOtaArchiveInstallLogs() {
         "--last",
         "10m",
         "--predicate",
-        'eventMessage CONTAINS "Skipping manifest-driven install"',
+        `eventMessage CONTAINS "${event}"`,
       ],
       { allowFailure: true },
     );
   }
 
+  const event = isLynxE2eApp()
+    ? "HotUpdaterArchiveInstalled"
+    : "Skipping manifest-driven install";
   return captureCommand(
     "adb",
     [
@@ -5837,12 +6388,13 @@ function readFirstOtaArchiveInstallLogs() {
       "-v",
       "time",
       "BundleStorage:D",
+      "HotUpdaterLynx:D",
       "*:S",
     ],
     { allowFailure: true, maxBuffer: 8 * 1024 * 1024 },
   )
     .split("\n")
-    .filter((line) => line.includes("Skipping manifest-driven install"))
+    .filter((line) => line.includes(event))
     .join("\n");
 }
 
@@ -5884,6 +6436,7 @@ function readHotUpdaterNativeLogs() {
       "BundleStorage:D",
       "SignatureVerifier:D",
       "HotUpdaterRecovery:D",
+      "HotUpdaterLynx:D",
       "DecompressService:D",
       "ReactNativeJS:E",
       "*:S",
@@ -5899,11 +6452,13 @@ function includesAllFragments(logs: string, fragments: string[]) {
 function readBsdiffPatchStoreEvidence(args: {
   assetPath: string;
   baseBundleId: string;
+  bundleId?: string;
 }) {
   const record = fixtureSession.deployedBundles.find(
     (entry) =>
       entry.diffBaseBundleId === args.baseBundleId &&
-      entry.diffPatchAssetPath === args.assetPath,
+      entry.diffPatchAssetPath === args.assetPath &&
+      (args.bundleId === undefined || entry.bundleId === args.bundleId),
   );
   if (!record) {
     return {
@@ -5919,7 +6474,9 @@ function readBsdiffPatchStoreEvidence(args: {
   const expectedHash = getManifestAssetFileHash(manifest, args.assetPath);
   const assetFile = readBundleAssetFileHash(record.bundleId, args.assetPath);
   const ok =
-    metadataState.stableBundleId === null &&
+    (isLynxE2eApp()
+      ? metadataState.stableBundleId === record.bundleId
+      : metadataState.stableBundleId === null) &&
     metadataState.stagingBundleId === record.bundleId &&
     metadataState.stagingSelection?.bundleId === record.bundleId &&
     metadataState.verificationPending === false &&
@@ -5944,6 +6501,9 @@ function readBsdiffPatchStoreEvidence(args: {
 }
 
 function getPrimaryBundleAssetPath() {
+  if (isLynxE2eApp()) {
+    return lynxBundleFileName();
+  }
   return fixtureSession.platform === "ios"
     ? "index.ios.bundle"
     : "index.android.bundle";
@@ -5998,27 +6558,55 @@ async function readManifestDiffState(args: {
   const archiveLogs = readFirstOtaArchiveInstallLogs();
   const nativeLogs = readHotUpdaterNativeLogs();
   const bsdiffLogs = readBsdiffPatchLogs();
-  const archiveFragments = [
-    "Skipping manifest-driven install",
-    `for ${args.bundleId}`,
-    "no active OTA manifest is available",
-    "Using archive",
-  ];
+  const archiveFragments = isLynxE2eApp()
+    ? ["HotUpdaterArchiveInstalled", `bundleId=${args.bundleId}`]
+    : [
+        "Skipping manifest-driven install",
+        `for ${args.bundleId}`,
+        "no active OTA manifest is available",
+        "Using archive",
+      ];
   const bsdiffFragments = [
     "HotUpdaterBsdiffPatchApplied",
     `asset=${assetPath}`,
     `baseBundleId=${args.previousBundleId}`,
   ];
-  const manifestFallbackFragments = [
-    `Manifest-driven install failed for ${args.bundleId}`,
-    "Falling back to archive",
-  ];
+  const manifestFallbackFragments = isLynxE2eApp()
+    ? [
+        "HotUpdaterArchiveFallbackApplied",
+        `bundleId=${args.bundleId}`,
+        `baseBundleId=${args.previousBundleId}`,
+      ]
+    : [
+        `Manifest-driven install failed for ${args.bundleId}`,
+        "Falling back to archive",
+      ];
   const record =
     fixtureSession.deployedBundles.find(
       (entry) => entry.bundleId === args.bundleId,
     ) ?? null;
+  const archiveInstalled = isLynxE2eApp()
+    ? hasNativeInstallEvent(archiveLogs, "HotUpdaterArchiveInstalled", {
+        bundleId: args.bundleId,
+      })
+    : includesAllFragments(archiveLogs, archiveFragments);
+  const archiveFallbackApplied = isLynxE2eApp()
+    ? hasNativeInstallEvent(nativeLogs, "HotUpdaterArchiveFallbackApplied", {
+        baseBundleId: args.previousBundleId,
+        bundleId: args.bundleId,
+      })
+    : includesAllFragments(nativeLogs, manifestFallbackFragments);
+  const bsdiffApplied = isLynxE2eApp()
+    ? hasNativeInstallEvent(bsdiffLogs, "HotUpdaterBsdiffPatchApplied", {
+        asset: assetPath,
+        baseBundleId: args.previousBundleId,
+        bundleId: args.bundleId,
+      })
+    : includesAllFragments(bsdiffLogs, bsdiffFragments);
   const ok =
-    metadataState.stableBundleId === null &&
+    (isLynxE2eApp()
+      ? metadataState.stableBundleId === args.bundleId
+      : metadataState.stableBundleId === null) &&
     metadataState.stagingBundleId === args.bundleId &&
     metadataState.stagingSelection?.bundleId === args.bundleId &&
     metadataState.verificationPending === false &&
@@ -6028,17 +6616,24 @@ async function readManifestDiffState(args: {
       expectedHash,
       manifest,
     }) &&
-    !includesAllFragments(archiveLogs, archiveFragments) &&
-    !includesAllFragments(nativeLogs, manifestFallbackFragments) &&
-    (args.allowBsdiff === true ||
-      !includesAllFragments(bsdiffLogs, bsdiffFragments));
+    !archiveInstalled &&
+    !archiveFallbackApplied &&
+    (!isLynxE2eApp() ||
+      hasNativeInstallEvent(nativeLogs, "HotUpdaterManifestDiffApplied", {
+        baseBundleId: args.previousBundleId,
+        bundleId: args.bundleId,
+      })) &&
+    (args.allowBsdiff === true || !bsdiffApplied);
 
   return {
+    archiveFallbackApplied,
     archiveFragments,
+    archiveInstalled,
     archiveLogs,
     assetFile,
     assetPath,
     bsdiffFragments,
+    bsdiffApplied,
     bsdiffLogs,
     bundleFile,
     diagnostics,
@@ -6107,6 +6702,7 @@ async function assertMultipleAssetsReplaced(args: {
 async function assertBsdiffPatchApplied(args: {
   assetPath: string;
   baseBundleId: string;
+  bundleId?: string;
 }) {
   const expectedFragments = [
     "HotUpdaterBsdiffPatchApplied",
@@ -6120,7 +6716,13 @@ async function assertBsdiffPatchApplied(args: {
     if (
       evidence.ok &&
       "record" in evidence &&
-      includesAllFragments(logs, expectedFragments)
+      (isLynxE2eApp()
+        ? hasNativeInstallEvent(logs, "HotUpdaterBsdiffPatchApplied", {
+            asset: args.assetPath,
+            baseBundleId: args.baseBundleId,
+            bundleId: evidence.record.bundleId,
+          })
+        : includesAllFragments(logs, expectedFragments))
     ) {
       logDetoxFixture("bsdiff patch applied", {
         assetPath: args.assetPath,
@@ -6174,25 +6776,16 @@ async function assertManifestDiffApplied(args: {
   throw createEndpointError(
     "Timed out waiting for manifest diff install evidence.",
     {
-      archiveLogMatched: includesAllFragments(
-        state.archiveLogs,
-        state.archiveFragments,
-      ),
+      archiveLogMatched: state.archiveInstalled,
       assetFile: state.assetFile,
       assetPath: state.assetPath,
-      bsdiffLogMatched: includesAllFragments(
-        state.bsdiffLogs,
-        state.bsdiffFragments,
-      ),
+      bsdiffLogMatched: state.bsdiffApplied,
       bundleFile: state.bundleFile,
       bundleId: args.bundleId,
       diagnostics: state.diagnostics,
       expectedHash: state.expectedHash,
       manifest: state.manifest,
-      manifestFallbackLogMatched: includesAllFragments(
-        state.nativeLogs,
-        state.manifestFallbackFragments,
-      ),
+      manifestFallbackLogMatched: state.archiveFallbackApplied,
       metadataState: state.metadataState,
       platform: fixtureSession.platform,
       previousBundleId: args.previousBundleId,
@@ -6202,16 +6795,25 @@ async function assertManifestDiffApplied(args: {
 }
 
 async function assertFirstOtaUsesArchive(args: { bundleId: string }) {
-  const expectedFragments = [
-    "Skipping manifest-driven install",
-    `for ${args.bundleId}`,
-    "no active OTA manifest is available",
-    "Using archive",
-  ];
+  const expectedFragments = isLynxE2eApp()
+    ? ["HotUpdaterArchiveInstalled", `bundleId=${args.bundleId}`]
+    : [
+        "Skipping manifest-driven install",
+        `for ${args.bundleId}`,
+        "no active OTA manifest is available",
+        "Using archive",
+      ];
 
   for (let attempt = 0; attempt < 40; attempt += 1) {
     const state = readFirstOtaArchiveState(args.bundleId);
+    const logs = readFirstOtaArchiveInstallLogs();
+    const hasArchiveEvent = isLynxE2eApp()
+      ? hasNativeInstallEvent(logs, "HotUpdaterArchiveInstalled", {
+          bundleId: args.bundleId,
+        })
+      : true;
     if (
+      hasArchiveEvent &&
       state.metadataState.stagingBundleId === args.bundleId &&
       state.metadataState.stagingSelection?.bundleId === args.bundleId &&
       state.metadataState.verificationPending === true &&
@@ -6221,7 +6823,9 @@ async function assertFirstOtaUsesArchive(args: { bundleId: string }) {
       logDetoxFixture("first OTA used archive install path", {
         bundleId: args.bundleId,
         bundleFilePath: state.bundleFile.path,
-        evidence: "bundle-store",
+        evidence: isLynxE2eApp()
+          ? "bundle-store-and-native-log"
+          : "bundle-store",
         metadataPath: state.diagnostics.metadata.path,
         platform: fixtureSession.platform,
       });
@@ -6229,6 +6833,7 @@ async function assertFirstOtaUsesArchive(args: { bundleId: string }) {
     }
 
     if (
+      !isLynxE2eApp() &&
       state.metadataState.stagingBundleId === args.bundleId &&
       state.metadataState.verificationPending === false &&
       state.bundleFile.exists
@@ -6243,8 +6848,7 @@ async function assertFirstOtaUsesArchive(args: { bundleId: string }) {
       return {};
     }
 
-    const logs = readFirstOtaArchiveInstallLogs();
-    if (includesAllFragments(logs, expectedFragments)) {
+    if (!isLynxE2eApp() && includesAllFragments(logs, expectedFragments)) {
       logDetoxFixture("first OTA used archive install path", {
         bundleId: args.bundleId,
         evidence: "native-log",
@@ -6288,7 +6892,46 @@ async function assertFirstOtaUsesArchive(args: { bundleId: string }) {
   );
 }
 
+function writeLynxSnapshotFile(
+  fileName: "metadata.json" | "crashed-history.json" | "launch-report.json",
+  destination: string,
+) {
+  const snapshot = readLynxSynthesizedSnapshot(fileName);
+  if (!snapshot.exists || !snapshot.value) {
+    return false;
+  }
+  fs.writeFileSync(destination, `${JSON.stringify(snapshot.value, null, 2)}\n`);
+  return true;
+}
+
 async function captureState(prefix: string) {
+  if (isLynxE2eApp()) {
+    writeLynxSnapshotFile(
+      "metadata.json",
+      path.join(fixtureSession.resultsDir, `${prefix}-metadata.json`),
+    );
+    if (
+      !writeLynxSnapshotFile(
+        "launch-report.json",
+        path.join(fixtureSession.resultsDir, `${prefix}-launch-report.json`),
+      )
+    ) {
+      // Optional for the first capture before recovery.
+    }
+    if (
+      !writeLynxSnapshotFile(
+        "crashed-history.json",
+        path.join(fixtureSession.resultsDir, `${prefix}-crashed-history.json`),
+      ) &&
+      prefix === "stable"
+    ) {
+      await fsPromises.writeFile(
+        path.join(fixtureSession.resultsDir, `${prefix}-crashed-history.json`),
+        JSON.stringify(EMPTY_CRASH_HISTORY, null, 2),
+      );
+    }
+    return {};
+  }
   const storePath = ensureStorePath();
 
   if (fixtureSession.platform === "ios") {
@@ -6369,6 +7012,7 @@ async function resetRemoteBundles() {
 
 async function resetLocalAppState() {
   resetE2eScreenState();
+  resetPendingE2eAction();
   fixtureSession.observedInsightsEvents = [];
   if (fixtureSession.platform === "ios") {
     await clearIosLocalBundleState();
@@ -6454,8 +7098,15 @@ async function assertBundlePatchBases(args: {
 }
 
 async function assertMetadataActive(bundleId: string) {
-  const metadata =
-    fixtureSession.platform === "ios"
+  const metadata = isLynxE2eApp()
+    ? (() => {
+        const snapshot = readLynxSynthesizedSnapshot("metadata.json");
+        if (!snapshot.value) {
+          throw new Error("Lynx journal metadata is missing");
+        }
+        return snapshot.value;
+      })()
+    : fixtureSession.platform === "ios"
       ? readJson(path.join(ensureStorePath(), "metadata.json"))
       : (() => {
           const probePath = path.join(
@@ -6518,6 +7169,26 @@ async function assertLaunchReportState({
   toBundleId,
   toReleaseId,
 }: LaunchReportAssertion) {
+  if (isLynxE2eApp()) {
+    const launchReportPath = path.join(
+      fixtureSession.resultsDir,
+      "launch-report-assert.json",
+    );
+    if (!writeLynxSnapshotFile("launch-report.json", launchReportPath)) {
+      if (optional) {
+        return {};
+      }
+      throw new Error("launch-report.json is missing");
+    }
+    assertLaunchReport(launchReportPath, {
+      fromBundleId,
+      fromReleaseId,
+      status,
+      toBundleId,
+      toReleaseId,
+    });
+    return {};
+  }
   let launchReportPath =
     fixtureSession.platform === "ios"
       ? path.join(ensureStorePath(), "launch-report.json")
@@ -6560,6 +7231,17 @@ async function assertLaunchReportState({
 }
 
 async function assertCrashHistory(bundleId: string) {
+  if (isLynxE2eApp()) {
+    const crashHistoryPath = path.join(
+      fixtureSession.resultsDir,
+      "crash-history-assert.json",
+    );
+    if (!writeLynxSnapshotFile("crashed-history.json", crashHistoryPath)) {
+      throw new Error("Lynx crash history is missing");
+    }
+    assertCrashHistoryContains(crashHistoryPath, bundleId);
+    return {};
+  }
   const crashHistoryPath =
     fixtureSession.platform === "ios"
       ? path.join(ensureStorePath(), "crashed-history.json")
@@ -6691,7 +7373,7 @@ function createJob(task: (context: JobExecutionContext) => Promise<JobResult>) {
 export function startBootstrapJob() {
   if (bootstrapJobId) {
     const job = jobs.get(bootstrapJobId);
-    if (job?.status === "running" || job?.status === "succeeded") {
+    if (job?.status === "running") {
       return bootstrapJobId;
     }
   }
@@ -6702,6 +7384,13 @@ export function startBootstrapJob() {
 
 export function startDeployBundleJob(request: DeployBundleRequest) {
   return createJob((context) => deployFixtureBundle(request, context));
+}
+
+export function startCreateBundleDiffJob(input: {
+  baseBundleId: string;
+  bundleId: string;
+}) {
+  return createJob(() => createFixtureBundleDiff(input));
 }
 
 export function startPatchReleaseJob(request: PatchReleaseRequest) {
@@ -6787,6 +7476,7 @@ export async function handleWaitForMetadata(
 export async function handleAssertBsdiffPatchApplied(args: {
   assetPath: string;
   baseBundleId: string;
+  bundleId?: string;
 }) {
   return assertBsdiffPatchApplied(args);
 }
