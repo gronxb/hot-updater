@@ -250,7 +250,7 @@ describe("Lynx E2E suite manifest", () => {
       "void patchScreenState({ runtimeScenarioMarker: scenarioMarker });",
     );
     expect(source).toContain("void resolveAppBaseURL()");
-    expect(source).toContain("startE2eApp(baseURL)");
+    expect(source).toContain("startE2eApp(appBaseURL)");
     expect(source).toContain("Native revision changed");
     expect(source).toContain("HTTP 499");
     expect(source).toContain("`${actionLabel} -> no-update`");
@@ -273,13 +273,13 @@ describe("Lynx E2E suite manifest", () => {
     const crashAt = source.indexOf("maybeCrashForE2E();");
     const renderAt = source.indexOf("root.render(<App />);");
     const resolveAt = source.indexOf("void resolveAppBaseURL()");
-    const startAt = source.lastIndexOf("startE2eApp(baseURL)");
+    const startAt = source.lastIndexOf("startE2eApp(appBaseURL)");
     expect(bindAt).toBeGreaterThan(0);
     expect(pollerAt).toBeGreaterThan(bindAt);
     expect(crashAt).toBeGreaterThan(0);
     expect(renderAt).toBeGreaterThan(crashAt);
-    expect(resolveAt).toBeGreaterThan(renderAt);
-    expect(startAt).toBeGreaterThan(resolveAt);
+    expect(startAt).toBeGreaterThan(renderAt);
+    expect(resolveAt).toBeGreaterThan(startAt);
   });
 
   it("treats Lynx startup JS errors as fatal native crashes", () => {
@@ -402,6 +402,8 @@ describe("Lynx E2E suite manifest", () => {
     expect(e2eApp).toContain("applyForceUpdateIfNeeded");
     expect(e2eApp).toContain("launch.next.bundleId");
     expect(e2eApp).toContain("setTimeout(() => resolve(null), 2000)");
+    expect(e2eApp).toContain("startE2eApp(appBaseURL)");
+    expect(e2eApp).toContain('scenarioMarker.includes("chain-")');
     expect(e2eApp).toContain('updateInfo.status === "UPDATE"');
     expect(e2eApp).toContain('scenarioMarker.includes("chain-")');
     expect(e2eApp).toContain("void HotUpdater.reload()");

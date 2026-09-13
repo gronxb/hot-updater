@@ -146,6 +146,10 @@ function App() {
           ...(channel ? { channel } : {}),
         });
         if (!updateInfo) {
+          if (scenarioMarker.includes("chain-")) {
+            await setUpdateActionResult(`${actionLabel} -> selected BUILTIN`);
+            return;
+          }
           await setUpdateActionResult(`${actionLabel} -> no-update`);
           return;
         }
@@ -652,10 +656,12 @@ const startE2eApp = (baseURL: string) => {
   }, 800);
 };
 
-void resolveAppBaseURL()
-  .then((baseURL) => {
-    startE2eApp(baseURL);
-  })
-  .catch(() => {
-    startE2eApp(appBaseURL);
+startE2eApp(appBaseURL);
+void resolveAppBaseURL().then((baseURL) => {
+  if (baseURL === appBaseURL) return;
+  HotUpdater.init({
+    insights: true,
+    baseURL,
+    requestTimeout: 15000,
   });
+});
