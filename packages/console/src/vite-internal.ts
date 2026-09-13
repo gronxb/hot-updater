@@ -135,7 +135,6 @@ const createConsoleModulesPlugin = (mode: ConsoleModuleMode): Plugin => {
             "  return {",
             "    console: { gitUrl: config.console.gitUrl },",
             "    database: config.database,",
-            "    signing: config.signing,",
             "    storage: config.storage,",
             "  };",
             "};",
