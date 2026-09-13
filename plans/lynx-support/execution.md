@@ -1,6 +1,9 @@
 # Lynx implementation goal and execution ledger
 
-Status: active. User authorized PRD execution and subagents on 2026-09-11.
+Status: resumed on 2026-09-13 with a replacement active goal. Read the current
+[handoff and completion plan](./handoff.md) first. The sections below preserve
+the September 11 execution history; their gate states and API descriptions are
+historical and require reconciliation with the subsequent Grok implementation.
 
 ## Goal
 
