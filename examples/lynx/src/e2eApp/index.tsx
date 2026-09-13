@@ -540,6 +540,12 @@ const applyForceUpdateIfNeeded = async () => {
   for (let attempt = 0; attempt < 5; attempt += 1) {
     if (handledScenarioAction) return;
     try {
+      const resolved = await resolveAppBaseURL();
+      HotUpdater.init({
+        insights: true,
+        baseURL: resolved,
+        requestTimeout: 15000,
+      });
       const updateInfo = await HotUpdater.checkForUpdate({
         updateStrategy: "appVersion",
         requestTimeout: 5000,

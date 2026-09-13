@@ -401,6 +401,16 @@ describe("Lynx E2E suite manifest", () => {
     expect(e2eApp).toContain("updateInfo.updateBundle()");
     expect(e2eApp).toContain("HotUpdater.getLaunchInfo()");
     expect(e2eApp).toContain("applyForceUpdateIfNeeded");
+    expect(e2eApp).toContain("const resolved = await resolveAppBaseURL()");
+    const iosPublicHost = readFileSync(
+      path.join(
+        repoDir,
+        "examples/lynx/ios/SparklingGo/SparklingGo/PublicHost.swift",
+      ),
+      "utf8",
+    );
+    expect(iosPublicHost).toContain("observedContent(self.context)");
+    expect(iosPublicHost).toContain("publicContentObservedFallback");
     expect(e2eApp).toContain("launch.next.bundleId");
     expect(e2eApp).toContain("setTimeout(() => resolve(null), 2000)");
     expect(e2eApp).toContain("startE2eApp(appBaseURL)");

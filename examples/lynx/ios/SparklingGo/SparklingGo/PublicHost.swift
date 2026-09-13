@@ -80,6 +80,11 @@ final class PublicHost {
     func bind(_ config: LynxConfig) {
         lock.lock(); configs.insert(ObjectIdentifier(config)); lock.unlock()
         config.register(HotUpdaterLynx.self, param: HotUpdaterLynxModuleContext(controller: controller, launch: context))
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
+            guard let self else { return }
+            try? self.controller.observedContent(self.context)
+            self.record("publicContentObservedFallback")
+        }
     }
     func record(_ event: String, _ detail: [String: Any] = [:]) {
         lock.lock(); defer { lock.unlock() }
