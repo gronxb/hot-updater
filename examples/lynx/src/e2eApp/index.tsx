@@ -338,7 +338,7 @@ function App() {
     let active = true;
     const timer = setTimeout(() => {
       if (active) void applyForceUpdateIfNeeded();
-    }, 800);
+    }, 2500);
     return () => {
       active = false;
       clearTimeout(timer);
@@ -653,7 +653,7 @@ const startE2eApp = (baseURL: string) => {
   }
   setTimeout(() => {
     void applyForceUpdateIfNeeded();
-  }, 800);
+  }, 2500);
 };
 
 startE2eApp(appBaseURL);

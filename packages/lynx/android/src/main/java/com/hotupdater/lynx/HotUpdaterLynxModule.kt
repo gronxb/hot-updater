@@ -42,6 +42,7 @@ class HotUpdaterLynxModule(context: Context) : LynxModule(context) {
             val applicationContext = context.applicationContext
             try {
                 android.util.Log.i("HotUpdaterImpl", "Started restart trampoline to apply update bundle")
+                android.util.Log.i("HotUpdaterE2E", "Started restart trampoline to apply update bundle")
                 val activity = activityOf(context)
                 val relaunch = relaunchIntent(applicationContext, activity)
                 val restartIntent = android.content.Intent(
@@ -71,6 +72,7 @@ class HotUpdaterLynxModule(context: Context) : LynxModule(context) {
                 intent?.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
                 if (intent != null) applicationContext.startActivity(intent)
                 android.util.Log.i("HotUpdaterImpl", "Started restart trampoline to apply update bundle")
+                android.util.Log.i("HotUpdaterE2E", "Started restart trampoline to apply update bundle")
                 android.os.Process.killProcess(android.os.Process.myPid())
             }
         }

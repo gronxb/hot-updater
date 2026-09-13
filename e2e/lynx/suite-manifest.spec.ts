@@ -374,6 +374,7 @@ describe("Lynx E2E suite manifest", () => {
     expect(androidModule).toContain(
       "Started restart trampoline to apply update bundle",
     );
+    expect(androidModule).toContain("HotUpdaterE2E");
     expect(androidModule).toContain("HotUpdaterRestartActivity");
     expect(androidModule).toContain("getLaunchIntentForPackage");
     expect(androidModule).toContain("@LynxMethod fun reload");
