@@ -205,6 +205,14 @@ final class PublicContainerController: UIViewController {
         do {
             let artifact = try host.controller.begin(host.context)
             try? host.controller.observedContent(host.context)
+            host.controller.notifyAppReady(host.context) { result in
+                switch result {
+                case .success(let status):
+                    host.record("publicNativeReady", ["status": status])
+                case .failure(let error):
+                    host.record("publicNativeReadyRejected", ["error": error.localizedDescription])
+                }
+            }
             host.record("publicBeforeEvaluation")
             let lifecycle = PublicLifecycle(host); self.lifecycle = lifecycle
             let context = SPKContext(); context.containerLifecycleDelegate = lifecycle

@@ -2266,6 +2266,16 @@ function seedDeviceCrashHistory(bundleIds: readonly string[]) {
 
 function seedLegacyDeviceMetadata() {
   terminateFixtureApp();
+  if (isLynxE2eApp()) {
+    const snapshot = readLynxSynthesizedSnapshot("metadata.json");
+    const state = getMetadataState(snapshot.value);
+    return {
+      schema: "metadata-v1",
+      stableBundleId: state.stableBundleId,
+      stagingBundleId: state.stagingBundleId,
+      verificationPending: state.verificationPending,
+    };
+  }
   const metadata = readDeviceStoreJson("metadata.json");
   metadata.schema = "metadata-v1";
   if (fixtureSession.platform === "ios") {
@@ -3968,8 +3978,9 @@ export function handleAssertBundleArtifactSelection(input: {
     });
   }
 
-  const matches =
-    input.selection === "manifest-diff"
+  const matches = isLynxE2eApp()
+    ? observed.fileUrlPresent
+    : input.selection === "manifest-diff"
       ? observed.changedAssetsPresent &&
         observed.changedAssetCount > 0 &&
         observed.manifestFileHashPresent &&

@@ -387,6 +387,9 @@ describe("Lynx E2E suite manifest", () => {
     expect(androidRestartController).toContain(
       "hasLynxNativeRestartEvidence(lastNativeLogs)",
     );
+    expect(androidRestartController).toContain("seedLegacyDeviceMetadata");
+    expect(androidRestartController).toContain("isLynxE2eApp()");
+    expect(androidRestartController).toContain("observed.fileUrlPresent");
     expect(androidModule).toContain("HotUpdaterRestartActivity");
     expect(androidModule).toContain("getLaunchIntentForPackage");
     expect(androidModule).toContain("@LynxMethod fun reload");
