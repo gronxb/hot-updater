@@ -55,6 +55,17 @@ class LynxReleaseResources(
         "Native resource context is no longer live",
     )
 
+    private interface ManagedWrapper {
+        val hostDelegate: Any?
+    }
+
+    @Suppress("UNCHECKED_CAST")
+    private fun <T> originalHostDelegate(value: T?): T? {
+        var candidate: Any? = value
+        while (candidate is ManagedWrapper) candidate = candidate.hostDelegate
+        return candidate as? T
+    }
+
     val verifiedFileHashes: Map<String, String> =
         java.util.Collections.unmodifiableMap(HashMap(verifiedFileHashes))
     val verifiedPaths: Set<String> get() = verifiedFileHashes.keys
@@ -132,7 +143,10 @@ class LynxReleaseResources(
         }
     }
 
-    val fontPath = object : LynxResourceProvider<Any, String>() {
+    val fontPath: LynxResourceProvider<Any, String> = object :
+        LynxResourceProvider<Any, String>(), ManagedWrapper {
+        override val hostDelegate: Any? get() = unmanagedFontPath
+
         override fun request(
             request: com.lynx.tasm.provider.LynxResourceRequest<Any>,
             callback: com.lynx.tasm.provider.LynxResourceCallback<String>,
@@ -438,7 +452,9 @@ class LynxReleaseResources(
         loaded("resourceLoaded", snapshot)
     }
 
-    val media = object : LynxMediaResourceFetcher() {
+    val media: LynxMediaResourceFetcher = object : LynxMediaResourceFetcher(), ManagedWrapper {
+        override val hostDelegate: Any? get() = unmanagedMedia
+
         override fun isLocalResource(url: String): OptionalBool =
             when {
                 isManaged(url) -> OptionalBool.FALSE
@@ -453,9 +469,7 @@ class LynxReleaseResources(
                 tracked {
                     val snapshot = snapshotForUrl(request.url)
                         ?: snapshot(request.url, "image")
-                    snapshot.file.toLynxFileUri().also {
-                        loaded("resourceLoaded", snapshot)
-                    }
+                    snapshot.file.toLynxFileUri()
                 }
             }
         } catch (error: Exception) {
@@ -471,7 +485,10 @@ class LynxReleaseResources(
         }
     }
 
-    val template = object : LynxTemplateResourceFetcher() {
+    val template: LynxTemplateResourceFetcher = object :
+        LynxTemplateResourceFetcher(), ManagedWrapper {
+        override val hostDelegate: Any? get() = unmanagedTemplate
+
         override fun fetchTemplate(
             request: LynxResourceRequest,
             callback: LynxResourceCallback<TemplateProviderResult>,
@@ -516,7 +533,10 @@ class LynxReleaseResources(
         }
     }
 
-    val generic = object : LynxGenericResourceFetcher() {
+    val generic: LynxGenericResourceFetcher = object :
+        LynxGenericResourceFetcher(), ManagedWrapper {
+        override val hostDelegate: Any? get() = unmanagedGeneric
+
         override fun fetchResource(
             request: LynxResourceRequest,
             callback: LynxResourceCallback<ByteArray>,
@@ -574,7 +594,10 @@ class LynxReleaseResources(
         }
     }
 
-    val externalScript = object : LynxResourceProvider<Any, ByteArray>() {
+    val externalScript: LynxResourceProvider<Any, ByteArray> = object :
+        LynxResourceProvider<Any, ByteArray>(), ManagedWrapper {
+        override val hostDelegate: Any? get() = unmanagedExternalScript
+
         override fun request(
             request: com.lynx.tasm.provider.LynxResourceRequest<Any>,
             callback: com.lynx.tasm.provider.LynxResourceCallback<ByteArray>,
@@ -651,18 +674,25 @@ class LynxReleaseResources(
 
     internal fun configureBuilder(builder: LynxViewBuilder) {
         val runtimeOptions = builder.lynxRuntimeOptions
-        unmanagedGeneric = unmanagedGeneric ?: builder.lynxGenericResourceFetcher
-        unmanagedMedia = builder.lynxMediaResourceFetcher
-        unmanagedTemplate = unmanagedTemplate ?: builder.lynxTemplateResourceFetcher
+        unmanagedGeneric = originalHostDelegate(
+            unmanagedGeneric ?: builder.lynxGenericResourceFetcher,
+        )
+        unmanagedMedia = originalHostDelegate(builder.lynxMediaResourceFetcher)
+        unmanagedTemplate = originalHostDelegate(
+            unmanagedTemplate ?: builder.lynxTemplateResourceFetcher,
+        )
         @Suppress("UNCHECKED_CAST")
-        unmanagedExternalScript = runtimeOptions
-            .getResourceProvidersByKey(
+        unmanagedExternalScript = originalHostDelegate(
+            runtimeOptions.getResourceProvidersByKey(
                 LynxProviderRegistry.LYNX_PROVIDER_TYPE_EXTERNAL_JS,
-            ) as? LynxResourceProvider<Any, ByteArray>
+            ) as? LynxResourceProvider<Any, ByteArray>,
+        )
         @Suppress("UNCHECKED_CAST")
-        unmanagedFontPath = runtimeOptions.getResourceProvidersByKey(
-            LynxProviderRegistry.LYNX_PROVIDER_TYPE_FONT,
-        ) as? LynxResourceProvider<Any, String>
+        unmanagedFontPath = originalHostDelegate(
+            runtimeOptions.getResourceProvidersByKey(
+                LynxProviderRegistry.LYNX_PROVIDER_TYPE_FONT,
+            ) as? LynxResourceProvider<Any, String>,
+        )
         builder.setTemplateProvider(object :
             com.lynx.tasm.provider.AbsTemplateProvider() {
             override fun loadTemplate(uri: String, callback: Callback) {

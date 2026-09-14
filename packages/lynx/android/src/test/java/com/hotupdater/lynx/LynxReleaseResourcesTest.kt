@@ -18,6 +18,7 @@ import com.lynx.tasm.provider.LynxResourceResponse
 import com.lynx.tasm.resourceprovider.LynxResourceRequest.LynxResourceType
 import com.lynx.tasm.resourceprovider.generic.LynxGenericResourceFetcher
 import com.lynx.tasm.resourceprovider.media.LynxMediaResourceFetcher
+import com.lynx.tasm.resourceprovider.template.LynxTemplateResourceFetcher
 import com.lynx.tasm.resourceprovider.template.TemplateProviderResult
 import java.io.File
 import java.lang.reflect.Proxy
@@ -97,13 +98,13 @@ class LynxReleaseResourcesTest {
     }
 
     @Test
-    fun builderFetchersCannotInterceptManagedReleaseResources() {
-        assertCallerFetchersAreWrapped(inheritFromGroup = false)
+    fun repeatedConfigurationPreservesExplicitHostDelegates() {
+        assertRepeatedConfiguration(crossRelease = false)
     }
 
     @Test
-    fun inheritedGroupFetchersCannotInterceptManagedReleaseResources() {
-        assertCallerFetchersAreWrapped(inheritFromGroup = true)
+    fun crossReleaseBuilderReusePreservesInheritedHostDelegates() {
+        assertRepeatedConfiguration(crossRelease = true)
     }
 
     @Test
@@ -474,24 +475,18 @@ class LynxReleaseResourcesTest {
         }
     }
 
-    private fun assertCallerFetchersAreWrapped(inheritFromGroup: Boolean) {
+    private fun assertRepeatedConfiguration(crossRelease: Boolean) {
         val root = Files.createTempDirectory("lynx-resource-wrappers-").toFile()
+        val oldRoot = Files.createTempDirectory("lynx-resource-old-").toFile()
         try {
-            val resourceBytes = "release-resource".toByteArray()
-            val imageBytes = "release-image".toByteArray()
-            val files = listOf(
-                root.resolve("assets/resource.bin").apply {
-                    parentFile.mkdirs()
-                    writeBytes(resourceBytes)
-                },
-                root.resolve("assets/image.bin").apply { writeBytes(imageBytes) },
-            )
+            val releaseBytes = "current-release".toByteArray()
+            val file = root.resolve("assets/member.bin").apply {
+                parentFile.mkdirs()
+                writeBytes(releaseBytes)
+            }
             val resources = resources(
                 root,
-                files.associate {
-                    it.relativeTo(root).invariantSeparatorsPath to
-                        HashUtils.calculateSHA256(it)
-                },
+                mapOf("assets/member.bin" to HashUtils.calculateSHA256(file)),
             )
             val callerRequests = mutableListOf<String>()
             val callerGeneric = object : LynxGenericResourceFetcher() {
@@ -502,7 +497,7 @@ class LynxReleaseResourcesTest {
                     callerRequests += "generic:${request.url}"
                     callback.onResponse(
                         com.lynx.tasm.resourceprovider.LynxResourceResponse.onSuccess(
-                            "caller-resource".toByteArray(),
+                            "host-generic".toByteArray(),
                         ),
                     )
                 }
@@ -517,47 +512,125 @@ class LynxReleaseResourcesTest {
                     request: com.lynx.tasm.resourceprovider.LynxResourceRequest,
                 ): String {
                     callerRequests += "media:${request.url}"
-                    return "caller-redirect"
+                    return "host-media"
+                }
+            }
+            val callerTemplate = object : LynxTemplateResourceFetcher() {
+                override fun fetchTemplate(
+                    request: com.lynx.tasm.resourceprovider.LynxResourceRequest,
+                    callback: com.lynx.tasm.resourceprovider
+                        .LynxResourceCallback<TemplateProviderResult>,
+                ) {
+                    callerRequests += "template:${request.url}"
+                    callback.onResponse(
+                        com.lynx.tasm.resourceprovider.LynxResourceResponse.onSuccess(
+                            TemplateProviderResult.fromBinary("host-template".toByteArray()),
+                        ),
+                    )
+                }
+
+                override fun fetchSSRData(
+                    request: com.lynx.tasm.resourceprovider.LynxResourceRequest,
+                    callback: com.lynx.tasm.resourceprovider.LynxResourceCallback<ByteArray>,
+                ) = Unit
+            }
+            val callerExternal = object : LynxResourceProvider<Any, ByteArray>() {
+                override fun request(
+                    request: LynxResourceRequest<Any>,
+                    callback: LynxResourceCallback<ByteArray>,
+                ) {
+                    callerRequests += "external:${request.url}"
+                    callback.onResponse(LynxResourceResponse.success("host-script".toByteArray()))
+                }
+            }
+            val callerFont = object : LynxResourceProvider<Any, String>() {
+                override fun request(
+                    request: LynxResourceRequest<Any>,
+                    callback: LynxResourceCallback<String>,
+                ) {
+                    callerRequests += "font:${request.url}"
+                    callback.onResponse(LynxResourceResponse.success("host-font"))
                 }
             }
             val builder = LynxViewBuilder()
-            if (inheritFromGroup) {
+            if (crossRelease) {
                 val options = LynxBackgroundRuntimeOptions().apply {
                     setGenericResourceFetcher(callerGeneric)
                     setMediaResourceFetcher(callerMedia)
+                    setTemplateResourceFetcher(callerTemplate)
+                    setResourceProviders(
+                        LynxProviderRegistry.LYNX_PROVIDER_TYPE_EXTERNAL_JS,
+                        callerExternal,
+                    )
+                    setResourceProviders(
+                        LynxProviderRegistry.LYNX_PROVIDER_TYPE_FONT,
+                        callerFont,
+                    )
                 }
                 val group = Proxy.newProxyInstance(
                     ILynxViewGroup::class.java.classLoader,
                     arrayOf(ILynxViewGroup::class.java),
                 ) { _, method, _ ->
-                    when (method.name) {
-                        "getLynxRuntimeOptions" -> options
-                        "getLynxTemplateResourceFetcher" -> null
-                        else -> error("Unexpected group method: ${method.name}")
-                    }
+                    check(method.name == "getLynxRuntimeOptions")
+                    options
                 } as ILynxViewGroup
                 builder.setLynxViewGroup(group)
+                val oldFile = oldRoot.resolve("assets/member.bin").apply {
+                    parentFile.mkdirs()
+                    writeText("old-release")
+                }
+                resources(
+                    oldRoot,
+                    mapOf("assets/member.bin" to HashUtils.calculateSHA256(oldFile)),
+                ).configureBuilder(builder)
+                resources.configureBuilder(builder)
             } else {
                 builder.setGenericResourceFetcher(callerGeneric)
                 builder.setMediaResourceFetcher(callerMedia)
+                builder.setTemplateResourceFetcher(object : LynxTemplateResourceFetcher() {
+                    override fun fetchTemplate(
+                        request: com.lynx.tasm.resourceprovider.LynxResourceRequest,
+                        callback: com.lynx.tasm.resourceprovider
+                            .LynxResourceCallback<TemplateProviderResult>,
+                    ) = error("Hostile builder template must not be retained")
+
+                    override fun fetchSSRData(
+                        request: com.lynx.tasm.resourceprovider.LynxResourceRequest,
+                        callback: com.lynx.tasm.resourceprovider
+                            .LynxResourceCallback<ByteArray>,
+                    ) = Unit
+                })
+                builder.setResourceProvider(
+                    LynxProviderRegistry.LYNX_PROVIDER_TYPE_EXTERNAL_JS,
+                    callerExternal,
+                )
+                builder.setResourceProvider(
+                    LynxProviderRegistry.LYNX_PROVIDER_TYPE_FONT,
+                    callerFont,
+                )
+                resources.unmanagedGeneric = callerGeneric
+                resources.unmanagedTemplate = callerTemplate
+                resources.configureBuilder(builder)
+                resources.configureBuilder(builder)
             }
             val loaded = mutableListOf<String>()
             var tracked = 0
-            resources.onLoaded = { _, path, _ -> loaded += path }
+            resources.onLoaded = { event, path, _ -> loaded += "$event:$path" }
             resources.resourceGate = { operation ->
                 tracked += 1
                 operation()
             }
 
-            resources.configureBuilder(builder)
-
             assertSame(resources.generic, builder.lynxGenericResourceFetcher)
             assertSame(resources.media, builder.lynxMediaResourceFetcher)
             assertSame(resources.template, builder.lynxTemplateResourceFetcher)
             var bytes: ByteArray? = null
+            var template: TemplateProviderResult? = null
+            var script: LynxResourceResponse<ByteArray>? = null
+            var font: LynxResourceResponse<String>? = null
             checkNotNull(builder.lynxGenericResourceFetcher).fetchResource(
                 com.lynx.tasm.resourceprovider.LynxResourceRequest(
-                    "hot-updater:///assets/resource.bin",
+                    "hot-updater:///assets/member.bin",
                     LynxResourceType.LynxResourceTypeExternalJSSource,
                 ),
                 typedResponseCallback { bytes = it.data },
@@ -565,19 +638,45 @@ class LynxReleaseResourcesTest {
             val redirected = checkNotNull(builder.lynxMediaResourceFetcher)
                 .shouldRedirectUrl(
                     com.lynx.tasm.resourceprovider.LynxResourceRequest(
-                        "hot-updater:///assets/image.bin",
+                        "hot-updater:///assets/member.bin",
                         LynxResourceType.LynxResourceTypeImage,
                     ),
                 )
+            checkNotNull(builder.lynxTemplateResourceFetcher).fetchTemplate(
+                com.lynx.tasm.resourceprovider.LynxResourceRequest(
+                    "hot-updater:///assets/member.bin",
+                    LynxResourceType.LynxResourceTypeDynamicComponent,
+                ),
+                typedResponseCallback { template = it.data },
+            )
+            configuredProvider<ByteArray>(
+                builder,
+                LynxProviderRegistry.LYNX_PROVIDER_TYPE_EXTERNAL_JS,
+            ).request(
+                LynxResourceRequest("hot-updater:///assets/member.bin"),
+                responseCallback { script = it },
+            )
+            configuredProvider<String>(
+                builder,
+                LynxProviderRegistry.LYNX_PROVIDER_TYPE_FONT,
+            ).request(
+                LynxResourceRequest("hot-updater:///assets/member.bin"),
+                responseCallback { font = it },
+            )
 
-            assertArrayEquals(resourceBytes, bytes)
-            assertArrayEquals(imageBytes, File(java.net.URI(redirected)).readBytes())
+            assertArrayEquals(releaseBytes, bytes)
+            assertArrayEquals(releaseBytes, File(java.net.URI(redirected)).readBytes())
+            assertArrayEquals(releaseBytes, checkNotNull(template).templateBinary)
+            assertArrayEquals(releaseBytes, checkNotNull(script).data)
+            assertArrayEquals(releaseBytes, File(java.net.URI(checkNotNull(font).data)).readBytes())
             assertEquals(emptyList<String>(), callerRequests)
-            assertEquals(2, tracked)
+            assertEquals(5, tracked)
             assertEquals(
                 listOf(
-                    "assets/resource.bin",
-                    "assets/image.bin",
+                    "resourceLoaded:assets/member.bin",
+                    "resourceLoaded:assets/member.bin",
+                    "resourceLoaded:assets/member.bin",
+                    "fontLoaded:assets/member.bin",
                 ),
                 loaded,
             )
@@ -591,24 +690,56 @@ class LynxReleaseResourcesTest {
                 typedResponseCallback { bytes = it.data },
             )
             assertEquals(
-                "caller-redirect",
+                "host-media",
                 checkNotNull(builder.lynxMediaResourceFetcher)
                     .shouldRedirectUrl(unmanaged),
             )
+            checkNotNull(builder.lynxTemplateResourceFetcher).fetchTemplate(
+                unmanaged,
+                typedResponseCallback { template = it.data },
+            )
+            configuredProvider<ByteArray>(
+                builder,
+                LynxProviderRegistry.LYNX_PROVIDER_TYPE_EXTERNAL_JS,
+            ).request(
+                LynxResourceRequest("custom://caller/script"),
+                responseCallback { script = it },
+            )
+            configuredProvider<String>(
+                builder,
+                LynxProviderRegistry.LYNX_PROVIDER_TYPE_FONT,
+            ).request(
+                LynxResourceRequest("custom://caller/font"),
+                responseCallback { font = it },
+            )
 
-            assertArrayEquals("caller-resource".toByteArray(), bytes)
+            assertArrayEquals("host-generic".toByteArray(), bytes)
+            assertArrayEquals("host-template".toByteArray(), checkNotNull(template).templateBinary)
+            assertArrayEquals("host-script".toByteArray(), checkNotNull(script).data)
+            assertEquals("host-font", checkNotNull(font).data)
             assertEquals(
                 listOf(
                     "generic:custom://caller/resource",
                     "media:custom://caller/resource",
+                    "template:custom://caller/resource",
+                    "external:custom://caller/script",
+                    "font:custom://caller/font",
                 ),
                 callerRequests,
             )
-            assertEquals(2, tracked)
+            assertEquals(5, tracked)
         } finally {
             root.deleteRecursively()
+            oldRoot.deleteRecursively()
         }
     }
+
+    @Suppress("UNCHECKED_CAST")
+    private fun <T> configuredProvider(
+        builder: LynxViewBuilder,
+        key: String,
+    ) = builder.lynxRuntimeOptions.getResourceProvidersByKey(key)
+        as LynxResourceProvider<Any, T>
 
     private fun <T> responseCallback(
         consume: (LynxResourceResponse<T>) -> Unit,
