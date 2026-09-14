@@ -10,6 +10,11 @@ private func lynxValidProcessId(_ value: String?) -> Bool {
     return value.utf8.dropFirst().allSatisfy { $0 >= 0x30 && $0 <= 0x39 }
 }
 
+private func lynxValidTransitionId(_ value: String) -> Bool {
+    guard let uuid = UUID(uuidString: value) else { return false }
+    return uuid.uuidString.caseInsensitiveCompare(value) == .orderedSame
+}
+
 struct LynxStoredSelection: Codable {
     let receipt: Data
     let manifestDigest: String
@@ -36,6 +41,7 @@ struct LynxControllerPending: Codable {
     let selection: LynxStoredSelection
     let attemptId: String
     let contextId: String
+    let transitionId: String?
 }
 struct LynxStoredPageParameter: Codable, Equatable {
     let name: String
@@ -239,17 +245,23 @@ final class LynxControllerJournal {
         let state = try JSONDecoder().decode(LynxControllerState.self, from: bytes)
         if let launchTransition = state.launchTransition {
             _ = try launchTransition.policy
-            guard launchTransition.transitionId?.isEmpty != true else {
+            guard launchTransition.transitionId.map(lynxValidTransitionId) != false else {
                 throw LynxArtifactError.invalid("Invalid native launch transition identifier")
             }
         }
         if let managedTransition = state.managedTransition {
-            guard !managedTransition.transitionId.isEmpty else {
+            guard lynxValidTransitionId(managedTransition.transitionId) else {
                 throw LynxArtifactError.invalid("Invalid native managed transition identifier")
             }
             if let launchTransitionId = state.launchTransition?.transitionId,
                launchTransitionId != managedTransition.transitionId {
                 throw LynxArtifactError.invalid("Native transition identifiers do not match")
+            }
+        }
+        if let pendingTransitionId = state.pending?.transitionId {
+            guard lynxValidTransitionId(pendingTransitionId),
+                  pendingTransitionId == state.managedTransition?.transitionId else {
+                throw LynxArtifactError.invalid("Invalid pending transition identifier")
             }
         }
         guard state.unconfirmedReleaseIds.count <= 128, state.crashedBundleIds.count <= 10,

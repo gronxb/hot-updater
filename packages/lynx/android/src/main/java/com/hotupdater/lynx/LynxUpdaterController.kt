@@ -56,7 +56,6 @@ class LynxUpdaterController internal constructor(
     private val members = linkedSetOf<LynxLaunchSession>()
     private var accepted: CatalogPolicy.AcceptedCatalog? = null
     private var acceptedScopeSwitch = false
-    private var recoveredFrom: CatalogPolicy.Receipt? = null
     private data class Preparation(val guard: String, val receipt: CatalogPolicy.Receipt,
         val artifact: LynxArtifactRequest?, val bytes: PreparedLynxArtifact?, val contextId: String)
     private data class LaunchPlan(
@@ -83,10 +82,10 @@ class LynxUpdaterController internal constructor(
         )
         synchronized(stateLock) {
             if (!store.value.has("revision")) store.update { it.put("revision", UUID.randomUUID().toString()) }
+            normalizeStoredLaunchTransition()
             recover()
             if (!store.value.has("channel")) mutate { it.put("channel", configuration.channel) }
             running = receipt("active") ?: builtin()
-            normalizeStoredLaunchTransition()
             // The process does not execute any restored candidate before pinPrimary().
         }
         Log.i(TAG, "native-profile binary=$binaryId runtime=${configuration.runtimeId} scope=$namespace")
@@ -191,8 +190,28 @@ class LynxUpdaterController internal constructor(
             (pendingPage ?: pending ?: checkNotNull(generationFailure))
                 .getJSONObject("selection"),
         )
-        recoveredFrom = selected
-        val fallbackChannel = receipt("confirmed")?.channel ?: configuration.channel
+        val stable = receipt("confirmed") ?: builtin()
+        val managedTransitionId = store.value.optJSONObject("managedTransition")
+            ?.let(::transitionId)
+        val pendingTransitionId = pending?.opt("transitionId") as? String
+        if (pendingTransitionId != null) {
+            check(isCanonicalTransitionId(pendingTransitionId)) {
+                "Pending transition identifier is invalid"
+            }
+            check(pendingTransitionId == managedTransitionId) {
+                "Pending managed transition identity changed"
+            }
+        }
+        val recoveredTransitionId = pendingTransitionId
+            ?: managedTransitionId?.takeIf { pending != null }
+        val wasConfirmedManagedReload = recoveredTransitionId != null &&
+            sameRelease(selected, stable)
+        val recoveryTransition = if (sameRelease(selected, stable)) {
+            null
+        } else {
+            launchTransition(selected, stable, recovery = true)
+        }
+        val fallbackChannel = stable.channel
         mutate { next ->
             pendingPage?.let { pageAttempt ->
                 appendPageAttemptTerminal(
@@ -201,11 +220,11 @@ class LynxUpdaterController internal constructor(
                     terminal = "process-interruption",
                     stack = retainedStack(),
                     reason = "processRecovery",
-                    transitionId = activeManagedTransitionId(),
+                    transitionId = recoveredTransitionId,
                     topContextId = null,
                 )
             }
-            if (selected.releaseId != null) {
+            if (!wasConfirmedManagedReload && selected.releaseId != null) {
                 val unconfirmed = exclusions("unconfirmed").toMutableSet().also {
                     it.add(checkNotNull(selected.releaseId))
                 }
@@ -229,6 +248,14 @@ class LynxUpdaterController internal constructor(
             next.remove("pending")
             next.remove("pageAttempt")
             next.remove("generationFailure")
+            if (recoveryTransition != null) {
+                next.put("launchTransition", recoveryTransition)
+            } else if (wasConfirmedManagedReload) {
+                next.remove("launchTransition")
+            }
+            if (recoveredTransitionId != null) {
+                next.remove("managedTransition")
+            }
             next.put("channel", fallbackChannel)
         }
         replayPageAttemptTerminals()
@@ -613,13 +640,8 @@ class LynxUpdaterController internal constructor(
                 "No eligible complete Lynx page generation can be reconstructed"
             }
             val selectedFiles = checkNotNull(files)
-            val failed = recoveredFrom
             val stable = confirmed ?: builtin()
-            val transition = if (failed != null) {
-                launchTransition(failed, selected, recovery = true)
-            } else {
-                launchTransition(stable, selected)
-            }
+            val transition = launchTransition(stable, selected)
             LaunchPlan(
                 store.value.getString("revision"),
                 selected,
@@ -672,17 +694,24 @@ class LynxUpdaterController internal constructor(
                             next.remove("launchTransition")
                         }
                     }
-                    if (!runningConfirmed) {
+                    val managedTransitionId = next
+                        .optJSONObject("managedTransition")
+                        ?.let(::transitionId)
+                    if (!runningConfirmed || managedTransitionId != null) {
                         next.put(
                             "pending",
                             JSONObject()
                                 .put("attemptId", session.id)
                                 .put("selection", plan.receipt.toJson())
-                                .put("fatal", false),
+                                .put("fatal", false)
+                                .also { pending ->
+                                    managedTransitionId?.let {
+                                        pending.put("transitionId", it)
+                                    }
+                                },
                         )
                     }
                 }
-                recoveredFrom = null
                 primary = session
                 members.add(session)
                 Log.i(
@@ -1326,11 +1355,15 @@ class LynxUpdaterController internal constructor(
 
     private fun transitionId(value: JSONObject): String {
         val transitionId = value.opt("transitionId") as? String
-        check(!transitionId.isNullOrEmpty()) {
-            "Transition identifier is missing"
+        check(transitionId != null && isCanonicalTransitionId(transitionId)) {
+            "Transition identifier is invalid"
         }
         return transitionId
     }
+
+    private fun isCanonicalTransitionId(value: String): Boolean = runCatching {
+        UUID.fromString(value).toString().equals(value, ignoreCase = true)
+    }.getOrDefault(false)
 
     private fun validateStoredLaunchTransition(value: JSONObject) {
         val kind = value.getString("kind")
@@ -1411,9 +1444,28 @@ class LynxUpdaterController internal constructor(
             managedTransitionId == null || launchTransitionId == null ||
                 managedTransitionId == launchTransitionId,
         ) { "Launch and managed transition identifiers do not match" }
+        val pending = store.value.optJSONObject("pending")
         if (runningConfirmed) {
-            if (transition != null || store.value.has("managedTransition")) {
+            if (pending != null) {
+                check(
+                    pending.optString("attemptId") == session.id &&
+                        !pending.optBoolean("fatal") &&
+                        CatalogPolicy.parseReceipt(
+                            pending.getJSONObject("selection"),
+                        ) == running &&
+                        (pending.opt("transitionId") as? String) == managedTransitionId,
+                ) { "Startup attempt cannot be confirmed" }
+            } else {
+                check(managedTransitionId == null) {
+                    "No pending managed startup attempt"
+                }
+            }
+            if (
+                pending != null || transition != null ||
+                store.value.has("managedTransition")
+            ) {
                 mutate {
+                    it.remove("pending")
                     it.remove("launchTransition")
                     it.remove("managedTransition")
                 }
@@ -1423,7 +1475,6 @@ class LynxUpdaterController internal constructor(
                 .put("transitionId", launchTransitionId ?: JSONObject.NULL)
                 .put("transition", transitionResponse(transition))
         }
-        val pending = store.value.optJSONObject("pending")
         check(pending?.optString("attemptId") == session.id && !pending.optBoolean("fatal")) { "Startup attempt cannot be confirmed" }
         check(eligible(running)) { "Running selection is excluded" }
         mutate {
@@ -1606,13 +1657,15 @@ class LynxUpdaterController internal constructor(
         failureResourcePath: String? = null,
     ): Boolean {
         return synchronized(stateLock) {
+            val pending = store.value.optJSONObject("pending")
+            val managedStartupPending = pending?.opt("transitionId") is String
             if (
                 closed || session !in members || !session.live ||
                 session.isPrimary && session !== primary ||
-                session.isPrimary && runningConfirmed && !allowConfirmed
+                session.isPrimary && runningConfirmed && !allowConfirmed &&
+                !managedStartupPending
             ) return@synchronized false
             if (session.failed) return@synchronized false
-            val pending = store.value.optJSONObject("pending")
             val pageAttempt = store.value.optJSONObject("pageAttempt")
             if (!session.isPrimary && (
                 pageAttempt == null ||
@@ -1621,7 +1674,7 @@ class LynxUpdaterController internal constructor(
             )) {
                 return@synchronized false
             }
-            if (session.isPrimary && !runningConfirmed &&
+            if (session.isPrimary && (!runningConfirmed || managedStartupPending) &&
                 pending?.optString("attemptId") != session.id) {
                 return@synchronized false
             }

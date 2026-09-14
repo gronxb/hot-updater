@@ -374,7 +374,7 @@ final class LynxManagedPagesTests: XCTestCase {
             )]
             state.pageAttemptTerminalCount = 1
             state.managedTransition = .init(
-                transitionId: "transition",
+                transitionId: UUID().uuidString,
                 trigger: "reload",
                 source: selection,
                 target: selection,
@@ -481,6 +481,11 @@ final class LynxManagedPagesTests: XCTestCase {
         )
         let nextPrimary = reconstructed.createContext(primary: true)
         _ = try reconstructed.begin(nextPrimary)
+        let journal = try journal(fixture.configuration)
+        XCTAssertEqual(
+            try journal.load().pending?.transitionId,
+            acceptance.transitionId
+        )
         try reconstructed.observedResource(
             "main.lynx.bundle",
             context: nextPrimary
@@ -492,6 +497,57 @@ final class LynxManagedPagesTests: XCTestCase {
         try reconstructed.observedContent(nextPrimary)
         var confirmation: LynxConfirmationResult?
         reconstructed.notifyAppReady(nextPrimary) {
+            confirmation = try? $0.get()
+        }
+        XCTAssertNil(confirmation?.transition)
+        XCTAssertNil(confirmation?.transitionId)
+        let consumed = try journal.load()
+        XCTAssertNil(consumed.pending)
+        XCTAssertNil(consumed.managedTransition)
+        XCTAssertNil(consumed.launchTransition)
+        reconstructed.notifyAppReady(nextPrimary) {
+            confirmation = try? $0.get()
+        }
+        XCTAssertNil(confirmation?.transition)
+        XCTAssertNil(confirmation?.transitionId)
+    }
+
+    func testSameReleaseManagedGenerationCrashIsConsumedWithoutReloadLoop()
+        throws {
+        let fixture = try makeFixture()
+        defer { try? FileManager.default.removeItem(at: fixture.root) }
+        var controller: LynxController? = try LynxController(
+            configuration: fixture.configuration
+        )
+        var primary = controller!.createContext(primary: true)
+        _ = try controller!.begin(primary)
+        try confirmPrimary(controller!, primary)
+        let acceptance = try controller!.acceptManagedTransition(
+            primary,
+            trigger: "reload",
+            stack: [.init(entry: "main.lynx.bundle")]
+        )
+        try controller!.close()
+
+        controller = try LynxController(configuration: fixture.configuration)
+        primary = controller!.createContext(primary: true)
+        _ = try controller!.begin(primary)
+        let journal = try journal(fixture.configuration)
+        XCTAssertEqual(
+            try journal.load().pending?.transitionId,
+            acceptance.transitionId
+        )
+        try controller!.close()
+
+        controller = try LynxController(configuration: fixture.configuration)
+        let recovered = try journal.load()
+        XCTAssertNil(recovered.pending)
+        XCTAssertNil(recovered.managedTransition)
+        XCTAssertNil(recovered.launchTransition)
+        primary = controller!.createContext(primary: true)
+        _ = try controller!.begin(primary)
+        var confirmation: LynxConfirmationResult?
+        controller!.notifyAppReady(primary) {
             confirmation = try? $0.get()
         }
         XCTAssertNil(confirmation?.transition)
@@ -555,6 +611,20 @@ final class LynxManagedPagesTests: XCTestCase {
         var status: String?
         controller.notifyAppReady(context) { status = try? $0.get().status }
         XCTAssertTrue(["CONFIRMED", "ALREADY_CONFIRMED"].contains(status))
+    }
+
+    private func journal(
+        _ configuration: LynxControllerConfiguration
+    ) throws -> LynxControllerJournal {
+        let scope = try XCTUnwrap(
+            FileManager.default.contentsOfDirectory(
+                at: configuration.root,
+                includingPropertiesForKeys: nil
+            ).first
+        )
+        return LynxControllerJournal(
+            file: scope.appendingPathComponent("state.json")
+        )
     }
 
     private func makeFixture() throws -> (

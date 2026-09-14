@@ -888,6 +888,29 @@ transition and enters the recovery policy; it cannot reject or resolve the old
 Promise retroactively. A terminal fail-closed outcome is also durable even when
 no application context survives to consume it.
 
+Every accepted transition that creates a replacement runtime generation must
+write a durable startup attempt before that generation begins evaluation. The
+attempt carries the accepted canonical UUID transition ID and remains bound to
+the exact target selection. This also applies when the accepted target is the
+already confirmed Release or built-in bundle. A process exit before readiness
+therefore consumes the interrupted attempt through recovery instead of starting
+the same accepted transition repeatedly. When recovery changes the running
+identity, native atomically consumes the attempt and accepted transition and
+persists a `RECOVERED` launch receipt with the same ID before exposing the
+fallback. A second exit before the fallback is pinned cannot lose or replace
+that receipt.
+
+An exact-identity replacement that reaches readiness has no public launch
+movement to report. Native retains the accepted ID internally for startup and
+failure correlation until readiness atomically clears the startup attempt,
+accepted transition, and any launch receipt. The strict JavaScript result is
+then `transition: null` and `transitionId: null`; native must never return an ID
+with a null transition. Exact-identity process recovery likewise consumes the
+internal attempt and transition without exposing a synthetic launch movement.
+Persisted launch and managed transition IDs must use canonical UUID syntax.
+Legacy launch receipts without an ID are backfilled atomically before exposure,
+while malformed or conflicting IDs fail closed.
+
 Concurrent default transition requests are serialized in native. Exactly one
 request may create the accepted transition; every later `reload`, `resetChannel`
 or forced-activation request for the source generation rejects with

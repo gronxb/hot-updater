@@ -263,11 +263,34 @@ public final class LynxController {
             }
         }
         var failedPendingSelection: LynxStoredSelection?
+        var recoveredTransitionId: String?
+        var consumeManagedTransition = false
         var interruptedPageSelection: LynxStoredSelection?
         if let pending = recovered.pending {
-            failedPendingSelection = pending.selection
             let receipt = try pending.selection.policy
-            if let releaseId = receipt.releaseId, !recovered.unconfirmedReleaseIds.contains(releaseId) {
+            let managedTransitionId = recovered.managedTransition?.transitionId
+            if pending.transitionId != nil || managedTransitionId != nil {
+                guard let managedTransitionId,
+                      pending.transitionId == nil
+                        || pending.transitionId == managedTransitionId else {
+                    throw LynxArtifactError.invalid(
+                        "Pending managed transition identity changed"
+                    )
+                }
+                recoveredTransitionId = managedTransitionId
+                consumeManagedTransition = true
+            }
+            let confirmedReceipt = try recovered.confirmed?.policy
+            let wasConfirmedManagedReload = recoveredTransitionId != nil
+                && Self.sameIdentity(receipt, confirmedReceipt)
+            if wasConfirmedManagedReload {
+                recovered.launchTransition = nil
+            } else {
+                failedPendingSelection = pending.selection
+            }
+            if !wasConfirmedManagedReload,
+               let releaseId = receipt.releaseId,
+               !recovered.unconfirmedReleaseIds.contains(releaseId) {
                 guard recovered.unconfirmedReleaseIds.count < 128 else { throw LynxArtifactError.invalid("Missing reserved startup recovery capacity") }
                 recovered.unconfirmedReleaseIds.append(releaseId)
             }
@@ -319,6 +342,10 @@ public final class LynxController {
                     }
                 )
             }
+        }
+        if consumeManagedTransition {
+            recovered.managedTransition = nil
+            recoveredChanged = true
         }
         if recovered.selectionChannel == nil || recovered.selectionChannel?.isEmpty == true {
             recovered.selectionChannel = config.channel
@@ -420,7 +447,8 @@ public final class LynxController {
         if let transition {
             recovered.launchTransition = try LynxStoredLaunchTransition(
                 transition,
-                transitionId: recovered.managedTransition?.transitionId
+                transitionId: recoveredTransitionId
+                    ?? recovered.managedTransition?.transitionId
                     ?? Self.inheritedTransitionId(
                         for: transition,
                         from: recovered.launchTransition,
@@ -688,9 +716,21 @@ public final class LynxController {
                 )
             }
             var next = state
-            if runningSelection.kind != "BUILTIN", !Self.sameIdentity(runningSelection, try state.confirmed?.policy) {
+            let managedTransitionId = next.managedTransition?.transitionId
+            let confirmedReceipt = try state.confirmed?.policy
+            if managedTransitionId != nil
+                || runningSelection.kind != "BUILTIN"
+                    && !Self.sameIdentity(
+                        runningSelection,
+                        confirmedReceipt
+                    ) {
                 guard next.pending == nil, next.unconfirmedReleaseIds.count < 128 else { throw LynxArtifactError.invalid("Startup trial capacity exhausted") }
-                next.pending = .init(selection: running, attemptId: attemptId, contextId: context.id)
+                next.pending = .init(
+                    selection: running,
+                    attemptId: attemptId,
+                    contextId: context.id,
+                    transitionId: managedTransitionId
+                )
                 try save(next)
             }
             primary = context
@@ -1120,10 +1160,30 @@ public final class LynxController {
         if runningConfirmed {
             do {
                 var next = state
+                if let pending = next.pending {
+                    guard pending.contextId == context.id,
+                          pending.attemptId == attemptId,
+                          Self.sameIdentity(
+                            try pending.selection.policy,
+                            runningSelection
+                          ),
+                          pending.transitionId
+                            == next.managedTransition?.transitionId else {
+                        throw LynxArtifactError.invalid(
+                            "Startup attempt changed"
+                        )
+                    }
+                } else if next.managedTransition != nil {
+                    throw LynxArtifactError.invalid(
+                        "No pending managed startup attempt"
+                    )
+                }
                 let (transition, transitionId) = try launchConfirmation(
                     from: next
                 )
-                if next.launchTransition != nil || next.managedTransition != nil {
+                if next.pending != nil || next.launchTransition != nil
+                    || next.managedTransition != nil {
+                    next.pending = nil
                     next.launchTransition = nil
                     next.managedTransition = nil
                     next.revision = UUID().uuidString
@@ -1506,7 +1566,10 @@ public final class LynxController {
     ) throws -> Bool {
         lock.lock(); defer { lock.unlock() }; try validate(context, primaryRequired: true)
         // Errors after startup confirmation are outside the initial rollback window.
-        guard knownFatal, !runningConfirmed || allowConfirmed else { return false }
+        let managedStartupPending = state.pending?.transitionId != nil
+        guard knownFatal,
+              !runningConfirmed || allowConfirmed || managedStartupPending
+        else { return false }
         let callbacks = readyCallbacks; readyCallbacks = []
         defer { callbacks.forEach { $0(.failure(LynxArtifactError.invalid("Native startup failed"))) } }
         var next = state
@@ -1516,7 +1579,6 @@ public final class LynxController {
             reason: "generationFatal",
             in: &next
         )
-        if next.pending?.attemptId == attemptId { next.pending = nil }
         next.revision = UUID().uuidString
         try save(next)
         fatal = true

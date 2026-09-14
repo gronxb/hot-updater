@@ -289,6 +289,14 @@ final class LynxControllerLocalTests: XCTestCase {
         controller = nil
 
         controller = try LynxController(configuration: config)
+        XCTAssertEqual(try journal.load().launchTransition?.transitionId, transitionId)
+        XCTAssertEqual(
+            try journal.load().launchTransition?.policy.kind,
+            "RECOVERED"
+        )
+        controller = nil
+
+        controller = try LynxController(configuration: config)
         context = controller!.createContext(primary: true)
         _ = try controller!.begin(context)
         XCTAssertEqual(try journal.load().launchTransition?.transitionId, transitionId)
@@ -336,14 +344,32 @@ final class LynxControllerLocalTests: XCTestCase {
         try journal.save(state)
         XCTAssertThrowsError(try LynxController(configuration: config))
 
-        state.launchTransition = try LynxStoredLaunchTransition(
-            transition,
-            transitionId: "launch-id"
-        )
         let source = try XCTUnwrap(state.confirmed)
         let target = try XCTUnwrap(state.next)
+        state.launchTransition = nil
         state.managedTransition = .init(
-            transitionId: "managed-id",
+            transitionId: "not-a-uuid",
+            trigger: "reload",
+            source: source,
+            target: target,
+            stack: [.init(entry: "main.lynx.bundle", parameters: [])]
+        )
+        try journal.save(state)
+        XCTAssertThrowsError(try LynxController(configuration: config))
+
+        state.launchTransition = try LynxStoredLaunchTransition(
+            transition,
+            transitionId: "not-a-uuid"
+        )
+        try journal.save(state)
+        XCTAssertThrowsError(try LynxController(configuration: config))
+
+        state.launchTransition = try LynxStoredLaunchTransition(
+            transition,
+            transitionId: "11111111-1111-4111-8111-111111111111"
+        )
+        state.managedTransition = .init(
+            transitionId: "22222222-2222-4222-8222-222222222222",
             trigger: "reload",
             source: source,
             target: target,

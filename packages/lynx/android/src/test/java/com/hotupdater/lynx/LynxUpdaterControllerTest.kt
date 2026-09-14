@@ -368,6 +368,18 @@ class LynxUpdaterControllerTest {
             val transitionId = journal(root).getJSONObject("launchTransition")
                 .getString("transitionId")
             trial.close()
+            val recoveredBeforePin = controller(root)
+            assertEquals(
+                transitionId,
+                journal(root).getJSONObject("launchTransition")
+                    .getString("transitionId"),
+            )
+            assertEquals(
+                "RECOVERED",
+                journal(root).getJSONObject("launchTransition")
+                    .getString("kind"),
+            )
+            recoveredBeforePin.close()
             withController(root) { recovered ->
                 val primary = recovered.pinPrimary().also { it.firstScreen = true }
                 assertEquals(
@@ -409,9 +421,44 @@ class LynxUpdaterControllerTest {
             assertTrue(backfilled.isNotEmpty())
             upgraded.close()
 
-            val malformed = journal(root)
-            malformed.getJSONObject("launchTransition").put("transitionId", "")
-            stateFile.writeText(malformed.toString())
+            val base = journal(root)
+            stateFile.writeText(
+                JSONObject(base.toString()).apply {
+                    getJSONObject("launchTransition")
+                        .put("transitionId", "not-a-uuid")
+                }.toString(),
+            )
+            assertThrows(IllegalStateException::class.java) { controller(root) }
+
+            fun managedTransition(id: String) = JSONObject()
+                .put("transitionId", id)
+                .put("trigger", "reload")
+                .put("sourceGenerationId", "generation-old")
+                .put("source", base.getJSONObject("confirmed"))
+                .put("target", base.getJSONObject("confirmed"))
+                .put(
+                    "stack",
+                    JSONArray().put(
+                        JSONObject().put("entry", "main.lynx.bundle")
+                            .put("parameters", JSONArray()),
+                    ),
+                )
+
+            stateFile.writeText(
+                JSONObject(base.toString()).apply {
+                    remove("launchTransition")
+                    put("managedTransition", managedTransition("not-a-uuid"))
+                }.toString(),
+            )
+            assertThrows(IllegalStateException::class.java) { controller(root) }
+
+            stateFile.writeText(
+                JSONObject(base.toString()).apply {
+                    getJSONObject("launchTransition")
+                        .put("transitionId", "not-a-uuid")
+                    put("managedTransition", managedTransition("not-a-uuid"))
+                }.toString(),
+            )
             assertThrows(IllegalStateException::class.java) { controller(root) }
 
         } finally {
@@ -432,10 +479,16 @@ class LynxUpdaterControllerTest {
             val stateFile = File(store(mismatchRoot), "state.json")
             val mismatched = journal(mismatchRoot)
             mismatched.getJSONObject("launchTransition")
-                .put("transitionId", "launch-id")
+                .put(
+                    "transitionId",
+                    "11111111-1111-4111-8111-111111111111",
+                )
             mismatched.put(
                 "managedTransition",
-                JSONObject().put("transitionId", "managed-id"),
+                JSONObject().put(
+                    "transitionId",
+                    "22222222-2222-4222-8222-222222222222",
+                ),
             )
             stateFile.writeText(mismatched.toString())
             trial.close()
@@ -944,6 +997,11 @@ class LynxUpdaterControllerTest {
 
             val fresh = controller(root)
             val freshPrimary = fresh.pinPrimary(generationId = "generation-new")
+            assertEquals(
+                transitionId,
+                journal(root).getJSONObject("pending")
+                    .getString("transitionId"),
+            )
             assertEquals(stack, fresh.retainedLogicalStack(freshPrimary))
             val freshDetail = fresh.pinSecondary(
                 "detail.lynx.bundle",
@@ -967,9 +1025,45 @@ class LynxUpdaterControllerTest {
             assertEquals("ALREADY_CONFIRMED", confirmation.getString("status"))
             assertEquals(JSONObject.NULL, confirmation.opt("transitionId"))
             assertEquals(JSONObject.NULL, confirmation.opt("transition"))
+            val repeated = fresh.confirm(freshPrimary)
+            assertEquals(JSONObject.NULL, repeated.opt("transitionId"))
+            assertEquals(JSONObject.NULL, repeated.opt("transition"))
+            assertFalse(journal(root).has("pending"))
             assertFalse(journal(root).has("managedTransition"))
+            assertFalse(journal(root).has("launchTransition"))
             freshDetail.close()
             fresh.close()
+        } finally {
+            root.deleteRecursively()
+        }
+    }
+
+    @Test fun sameReleaseManagedGenerationCrashIsConsumedWithoutReloadLoop() {
+        val root = temp()
+        try {
+            val transitionId = prepareAcceptedStack(root, 1)
+            val interrupted = controller(root)
+            interrupted.pinPrimary(generationId = "generation-interrupted")
+            assertEquals(
+                transitionId,
+                journal(root).getJSONObject("pending")
+                    .getString("transitionId"),
+            )
+            interrupted.close()
+
+            val recovered = controller(root)
+            val recoveredState = journal(root)
+            assertFalse(recoveredState.has("pending"))
+            assertFalse(recoveredState.has("managedTransition"))
+            assertFalse(recoveredState.has("launchTransition"))
+            val primary = recovered.pinPrimary(
+                generationId = "generation-recovered",
+            ).also { it.firstScreen = true }
+            val confirmation = recovered.confirm(primary)
+            assertEquals(JSONObject.NULL, confirmation.opt("transition"))
+            assertEquals(JSONObject.NULL, confirmation.opt("transitionId"))
+            assertFalse(journal(root).has("pending"))
+            recovered.close()
         } finally {
             root.deleteRecursively()
         }
