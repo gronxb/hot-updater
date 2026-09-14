@@ -160,7 +160,80 @@ function parseIndex(repoDir) {
   return entries;
 }
 
-function currentTreeEntry(repoDir, file, objectFormat) {
+function hashRegularFiles(repoDir, files) {
+  if (files.some((file) => file.includes("\n") || file.includes("\r"))) {
+    throw new Error("Tracked paths with line breaks are unsupported");
+  }
+  if (files.length === 0) return new Map();
+  const result = spawnSync("git", ["hash-object", "--stdin-paths"], {
+    cwd: repoDir,
+    encoding: "utf8",
+    input: `${files.join("\n")}\n`,
+    maxBuffer: 16 * 1024 * 1024,
+  });
+  const hashes = result.stdout?.trim().split("\n") ?? [];
+  if (
+    result.status !== 0 ||
+    hashes.length !== files.length ||
+    hashes.some((hash) => !/^[0-9a-f]+$/.test(hash))
+  ) {
+    throw new Error("Could not inspect native source");
+  }
+  return new Map(files.map((file, index) => [file, hashes[index]]));
+}
+
+function assertNoGitFilters(repoDir, files) {
+  if (files.length === 0) return;
+  const input = Buffer.from(`${files.join("\0")}\0`);
+  const result = spawnSync("git", ["check-attr", "-z", "--stdin", "filter"], {
+    cwd: repoDir,
+    encoding: null,
+    input,
+    maxBuffer: 16 * 1024 * 1024,
+  });
+  if (result.status !== 0 || !Buffer.isBuffer(result.stdout)) {
+    throw new Error("Could not inspect native source");
+  }
+  const fields = result.stdout.toString("utf8").split("\0");
+  if (fields.at(-1) !== "") {
+    throw new Error("Could not inspect native source");
+  }
+  fields.pop();
+  if (fields.length !== files.length * 3) {
+    throw new Error("Could not inspect native source");
+  }
+  for (const [index, file] of files.entries()) {
+    const offset = index * 3;
+    if (fields[offset] !== file || fields[offset + 1] !== "filter") {
+      throw new Error("Could not inspect native source");
+    }
+    if (fields[offset + 2] !== "unspecified") {
+      throw new Error(`Tracked source uses a Git filter attribute: ${file}`);
+    }
+  }
+}
+
+function assertNoAmbiguousUnspecifiedFilter(repoDir) {
+  const result = spawnSync(
+    "git",
+    [
+      "config",
+      "-z",
+      "--name-only",
+      "--get-regexp",
+      "^[Ff][Ii][Ll][Tt][Ee][Rr]\\.[Uu][Nn][Ss][Pp][Ee][Cc][Ii][Ff][Ii][Ee][Dd]\\.",
+    ],
+    { cwd: repoDir, encoding: null, maxBuffer: 16 * 1024 * 1024 },
+  );
+  if (result.status === 0) {
+    throw new Error("Git filter driver name 'unspecified' is reserved");
+  }
+  if (result.status !== 1) {
+    throw new Error("Could not inspect native source");
+  }
+}
+
+function currentTreeEntry(repoDir, file, objectFormat, regularObjectIds) {
   const absolutePath = path.join(repoDir, file);
   let stat;
   try {
@@ -179,11 +252,14 @@ function currentTreeEntry(repoDir, file, objectFormat) {
   const bytes = stat.isSymbolicLink()
     ? Buffer.from(fs.readlinkSync(absolutePath))
     : fs.readFileSync(absolutePath);
-  const objectId = crypto
-    .createHash(objectFormat)
-    .update(`blob ${bytes.length}\0`)
-    .update(bytes)
-    .digest("hex");
+  const objectId = stat.isSymbolicLink()
+    ? crypto
+        .createHash(objectFormat)
+        .update(`blob ${bytes.length}\0`)
+        .update(bytes)
+        .digest("hex")
+    : regularObjectIds.get(file);
+  if (!objectId) throw new Error("Could not inspect native source");
   return { bytes, mode, objectId };
 }
 
@@ -196,10 +272,28 @@ function inspectTrackedTree(repoDir, checkedCommit) {
   }
   const head = parseHeadTree(repoDir, checkedCommit);
   const index = parseIndex(repoDir);
+  const allPaths = [...new Set([...head.keys(), ...index.keys()])];
+  assertNoAmbiguousUnspecifiedFilter(repoDir);
+  assertNoGitFilters(repoDir, allPaths);
+  const regularObjectIds = hashRegularFiles(
+    repoDir,
+    allPaths.filter((file) => {
+      try {
+        return fs.lstatSync(path.join(repoDir, file)).isFile();
+      } catch {
+        return false;
+      }
+    }),
+  );
   const current = new Map();
   const changed = [];
   for (const [file, expected] of head) {
-    const observed = currentTreeEntry(repoDir, file, objectFormat);
+    const observed = currentTreeEntry(
+      repoDir,
+      file,
+      objectFormat,
+      regularObjectIds,
+    );
     if (observed) current.set(file, observed);
     if (
       !observed ||
@@ -214,7 +308,12 @@ function inspectTrackedTree(repoDir, checkedCommit) {
   for (const file of index.keys()) {
     if (!head.has(file)) {
       changed.push(file);
-      const observed = currentTreeEntry(repoDir, file, objectFormat);
+      const observed = currentTreeEntry(
+        repoDir,
+        file,
+        objectFormat,
+        regularObjectIds,
+      );
       if (observed) current.set(file, observed);
     }
   }

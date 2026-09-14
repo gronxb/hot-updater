@@ -85,6 +85,18 @@ function createFixture() {
   return { checkedCommit: git(targetRepo, ["rev-parse", "HEAD"]), targetRepo };
 }
 
+function configureCrlfTextFilter(targetRepo: string) {
+  fs.writeFileSync(
+    path.join(targetRepo, ".gitattributes"),
+    "tracked.txt text eol=crlf\n",
+  );
+  git(targetRepo, ["add", ".gitattributes"]);
+  git(targetRepo, ["commit", "--quiet", "-m", "configure CRLF"]);
+  fs.writeFileSync(path.join(targetRepo, "tracked.txt"), "unchanged\r\n");
+  git(targetRepo, ["add", "tracked.txt"]);
+  return git(targetRepo, ["rev-parse", "HEAD"]);
+}
+
 async function applyWorkerPublicKeyTransform(
   targetRepo: string,
   value = publicKey,
@@ -171,6 +183,143 @@ describe("native public-key source integrity", () => {
     });
     expect(result.trackedTreeSha256).toMatch(/^[a-f0-9]{64}$/);
     expect(result).not.toHaveProperty("nativePublicKeyInjection");
+  });
+
+  it("accepts a clean path-aware CRLF smudge", () => {
+    const { targetRepo } = createFixture();
+    const checkedCommit = configureCrlfTextFilter(targetRepo);
+    const headObject = git(targetRepo, [
+      "rev-parse",
+      `${checkedCommit}:tracked.txt`,
+    ]);
+    const rawObject = git(targetRepo, [
+      "hash-object",
+      "--no-filters",
+      "tracked.txt",
+    ]);
+    const cleanObject = git(targetRepo, [
+      "hash-object",
+      "--path=tracked.txt",
+      "tracked.txt",
+    ]);
+
+    expect(rawObject).not.toBe(headObject);
+    expect(cleanObject).toBe(headObject);
+    expect(
+      git(targetRepo, ["status", "--porcelain", "--", "tracked.txt"]),
+    ).toBe("");
+    expect(() =>
+      integrity.assertNativePublicKeyOnlySourceChanges(
+        targetRepo,
+        checkedCommit,
+      ),
+    ).not.toThrow();
+  });
+
+  it("rejects a semantic edit hidden behind a CRLF filter and index flag", () => {
+    const { targetRepo } = createFixture();
+    const checkedCommit = configureCrlfTextFilter(targetRepo);
+    git(targetRepo, ["update-index", "--assume-unchanged", "tracked.txt"]);
+    fs.writeFileSync(path.join(targetRepo, "tracked.txt"), "changed\r\n");
+
+    expect(() =>
+      integrity.assertNativePublicKeyOnlySourceChanges(
+        targetRepo,
+        checkedCommit,
+      ),
+    ).toThrow("tracked.txt");
+  });
+
+  it("rejects an info-attributes clean filter that masks malicious bytes", () => {
+    const { checkedCommit, targetRepo } = createFixture();
+    fs.writeFileSync(
+      path.join(targetRepo, ".git/info/attributes"),
+      "tracked.txt filter=mask\n",
+    );
+    git(targetRepo, [
+      "config",
+      "filter.mask.clean",
+      "sed s/malicious/unchanged/g",
+    ]);
+    fs.writeFileSync(path.join(targetRepo, "tracked.txt"), "malicious\n");
+    const headObject = git(targetRepo, [
+      "rev-parse",
+      `${checkedCommit}:tracked.txt`,
+    ]);
+    const maskedObject = git(targetRepo, [
+      "hash-object",
+      "--path=tracked.txt",
+      "tracked.txt",
+    ]);
+
+    expect(maskedObject).toBe(headObject);
+    expect(() =>
+      integrity.assertNativePublicKeyOnlySourceChanges(
+        targetRepo,
+        checkedCommit,
+      ),
+    ).toThrow("uses a Git filter attribute: tracked.txt");
+  });
+
+  it("rejects a filter driver named unspecified before its masked hash is trusted", () => {
+    const { checkedCommit, targetRepo } = createFixture();
+    fs.writeFileSync(
+      path.join(targetRepo, ".git/info/attributes"),
+      "tracked.txt filter=unspecified\n",
+    );
+    git(targetRepo, [
+      "config",
+      "filter.unspecified.clean",
+      "sed s/malicious/unchanged/g",
+    ]);
+    fs.writeFileSync(path.join(targetRepo, "tracked.txt"), "malicious\n");
+    const headObject = git(targetRepo, [
+      "rev-parse",
+      `${checkedCommit}:tracked.txt`,
+    ]);
+    const maskedObject = git(targetRepo, [
+      "hash-object",
+      "--path=tracked.txt",
+      "tracked.txt",
+    ]);
+
+    expect(git(targetRepo, ["check-attr", "filter", "--", "tracked.txt"])).toBe(
+      "tracked.txt: filter: unspecified",
+    );
+    expect(maskedObject).toBe(headObject);
+    expect(() =>
+      integrity.assertNativePublicKeyOnlySourceChanges(
+        targetRepo,
+        checkedCommit,
+      ),
+    ).toThrow("filter driver name 'unspecified' is reserved");
+  });
+
+  it("rejects an inherited filter.unspecified process driver", () => {
+    const { checkedCommit, targetRepo } = createFixture();
+    const inheritedConfig = {
+      GIT_CONFIG_COUNT: "1",
+      GIT_CONFIG_KEY_0: "filter.unspecified.process",
+      GIT_CONFIG_VALUE_0: "cat",
+    };
+    const previous = Object.fromEntries(
+      Object.keys(inheritedConfig).map((key) => [key, process.env[key]]),
+    );
+
+    Object.assign(process.env, inheritedConfig);
+    try {
+      expect(() =>
+        integrity.assertNativePublicKeyOnlySourceChanges(
+          targetRepo,
+          checkedCommit,
+        ),
+      ).toThrow("filter driver name 'unspecified' is reserved");
+    } finally {
+      for (const [key, value] of Object.entries(previous)) {
+        if (value === undefined) delete process.env[key];
+        else process.env[key] = value;
+      }
+    }
   });
 
   it.each(["--assume-unchanged", "--skip-worktree"])(
