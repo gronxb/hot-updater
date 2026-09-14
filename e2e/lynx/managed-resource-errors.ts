@@ -1,6 +1,7 @@
 import {
   type AndroidRuntimeJournalEvidence,
-  isFontDiagnosticRecoveredByAndroidJournal,
+  evaluateFontDiagnosticRecoveryByAndroidJournal,
+  formatAndroidRuntimeJournalRecoveryDiagnostic,
 } from "./android-runtime-journal.ts";
 
 const ENGINE_ERROR_CODE = /\bengine-error\b[^\r\n]*?\bcode=(301|302)\b/;
@@ -234,7 +235,10 @@ function isRecoveredFontDiagnostic(
   if (journalEvidence !== undefined) {
     return (
       engineError.envelope?.processId === journalEvidence.currentProcessId &&
-      isFontDiagnosticRecoveredByAndroidJournal(relativePath, journalEvidence)
+      evaluateFontDiagnosticRecoveryByAndroidJournal(
+        relativePath,
+        journalEvidence,
+      ).recovered
     );
   }
   const boundIdentity = precedingIdentity(records, engineError);
@@ -388,8 +392,42 @@ export function assertNoManagedResourceEngineErrors(
 ): void {
   const codes = findManagedResourceEngineErrorCodes(logs, journalEvidence);
   if (codes.length > 0) {
+    const records = logs.split(/\r?\n/).map((line, index) => ({
+      index,
+      line,
+      envelope: parseEnvelope(line),
+    }));
+    const eligiblePaths = journalEvidence
+      ? records.flatMap((record) => {
+          const path = recoverableAndroidFontPath(
+            record,
+            journalEvidence.currentProcessId,
+          );
+          return path === null ? [] : [path];
+        })
+      : [];
+    const evaluatedRecovery =
+      journalEvidence && eligiblePaths.length === 1 && codes.includes(302)
+        ? evaluateFontDiagnosticRecoveryByAndroidJournal(
+            eligiblePaths[0],
+            journalEvidence,
+          )
+        : null;
+    const recoveryResult =
+      evaluatedRecovery?.recovered === true
+        ? {
+            recovered: false as const,
+            rejection: { code: "log.unmatched-engine-error" },
+          }
+        : evaluatedRecovery;
+    const diagnostic =
+      journalEvidence && recoveryResult
+        ? `; Android journal recovery: ${formatAndroidRuntimeJournalRecoveryDiagnostic(journalEvidence, recoveryResult)}`
+        : journalEvidence && codes.includes(302)
+          ? `; Android journal recovery: reason=log.eligible-diagnostic-count count=${eligiblePaths.length}`
+          : "";
     throw new Error(
-      `Managed Lynx resources emitted engine errors: ${codes.join(", ")}`,
+      `Managed Lynx resources emitted engine errors: ${codes.join(", ")}${diagnostic}`,
     );
   }
 }

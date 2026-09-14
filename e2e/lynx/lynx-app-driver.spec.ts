@@ -547,6 +547,28 @@ describe("Lynx app installation", () => {
     );
   });
 
+  it("reports the exact redacted Android journal rejection gate", async () => {
+    const fixture = androidJournalFixture();
+    const snapshot = JSON.parse(fixture.snapshot) as {
+      events: Array<{ details: Record<string, unknown> }>;
+    };
+    snapshot.events[0].details.primary = false;
+    const diagnostic = String.raw`09-14 20:30:41.275  456  7719 I HotUpdaterLynx: engine-error fatal=false code=302 message={"error_code":302,"sub_code":30201,"error":"Src format is incorrect","src":"hot-updater:\/\/\/assets\/probe.ttf","type":"font"}`;
+    mockAndroidCommands(diagnostic, fixture.journal);
+    const driver = new LynxAppDriver(
+      createControlClient({
+        baseUrl: "http://control.test",
+        fetch: androidJournalFetch(JSON.stringify(snapshot)),
+      }),
+      "android",
+      { HOT_UPDATER_E2E_ANDROID_SERIAL: "emulator-5554" },
+    );
+
+    await expect(driver.launch("journal rejection")).rejects.toThrow(
+      /Managed Lynx resources emitted engine errors: 302; Android journal recovery: reason=evidence\.canonical-events-mismatch .*action=\{type=object keys=\[updateActionResult\] keyCount=1 receipt=generation-events:5\} .*journal=\{bytes=.+ events=5 first=1 last=5 next=6 truncated=false\}/,
+    );
+  });
+
   it("fails closed when run-as cannot read the Android runtime journal", async () => {
     const fixture = androidJournalFixture();
     const diagnostic = String.raw`09-14 20:30:41.275  456  7719 I HotUpdaterLynx: engine-error fatal=false code=302 message={"error_code":302,"sub_code":30201,"error":"Src format is incorrect","src":"hot-updater:\/\/\/assets\/probe.ttf","type":"font"}`;
