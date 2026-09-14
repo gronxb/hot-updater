@@ -219,7 +219,7 @@ export function hasLynxFirstOtaArchiveEvidence(input: {
     input.stagingBundleId === input.targetBundleId &&
     input.stagingSelectionBundleId === input.targetBundleId &&
     input.verificationPending === true &&
-    input.stableBundleId !== input.targetBundleId &&
+    input.stableBundleId === null &&
     input.bundleFileExists
   );
 }

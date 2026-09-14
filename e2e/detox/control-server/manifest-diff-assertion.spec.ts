@@ -342,6 +342,30 @@ describe("manifest diff assertion", () => {
     ).toBe(false);
   });
 
+  it("rejects the hkmqe0-shaped first OTA state with an unrelated stable Bundle", () => {
+    const builtInBundleId = "00000000-0000-7000-8000-000000000000";
+    const targetBundleId = "019f0000-0000-7000-8000-000000000001";
+
+    expect(
+      hasLynxFirstOtaArchiveEvidence({
+        builtInBundleId,
+        bundleFileExists: true,
+        selections: [
+          {
+            ...capture(archivePayload),
+            currentBundleId: builtInBundleId,
+            targetBundleId,
+          },
+        ],
+        stableBundleId: "unrelated-stable",
+        stagingBundleId: targetBundleId,
+        stagingSelectionBundleId: targetBundleId,
+        targetBundleId,
+        verificationPending: true,
+      }),
+    ).toBe(false);
+  });
+
   it("normalizes object key order while preserving ordered selection fields", () => {
     const reordered = Object.fromEntries(
       Object.entries(manifestPayload).reverse(),

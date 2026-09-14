@@ -6975,7 +6975,7 @@ async function assertFirstOtaUsesArchive(args: {
         },
         expectedState: {
           bundleFileExists: true,
-          stableBundleId: "different from the staging Bundle",
+          stableBundleId: null,
           stagingBundleId: args.bundleId,
           stagingSelectionBundleId: args.bundleId,
           verificationPending: true,
