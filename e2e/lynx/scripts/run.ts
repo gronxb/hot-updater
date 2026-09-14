@@ -15,6 +15,10 @@ import {
 } from "../../detox/scripts/control-server.ts";
 import { LynxAppDriver } from "../lynx-app-driver.ts";
 import {
+  runScenarioBatch,
+  type ScenarioExecution,
+} from "../scenario-runner.ts";
+import {
   getLynxScenarioDefinition,
   listLynxScenarioNames,
 } from "../scenarios.ts";
@@ -25,6 +29,7 @@ const repoDir = path.resolve(
   "../../..",
 );
 const supportedPlatforms = ["ios", "android"] as const;
+const resultsRoot = path.join(repoDir, "e2e/results/detox");
 
 type RunOptions = {
   readonly dryRun: boolean;
@@ -201,55 +206,42 @@ function lynxChildEnv(platform: DetoxPlatform): NodeJS.ProcessEnv {
   };
 }
 
-async function runScenarios(
-  platform: DetoxPlatform,
-  scenarios: readonly string[],
-): Promise<void> {
-  const env = lynxChildEnv(platform);
-  const controlServer = await startDetoxControlServer(platform, env);
+async function executeScenario({
+  controlServer,
+  env,
+  platform,
+  scenarioName,
+}: ScenarioExecution): Promise<void> {
   const controlClient = createControlClient({
     baseUrl: controlServer.baseUrl,
     onStageTiming: (timing) => {
       console.log(`[lynx-stage:timing] ${JSON.stringify(timing)}`);
     },
   });
-  try {
-    for (const scenarioName of scenarios) {
-      console.log(`Start ${platform}/${scenarioName}`);
-      const bootstrapResult = await controlClient.runJob(
-        "bootstrap",
-        "/e2e/jobs/bootstrap",
-        {},
-      );
-      const app = new LynxAppDriver(
-        controlClient,
-        platform,
-        env,
-        bootstrapResult,
-      );
-      app.ensureInstalled();
-      await controlClient.runJob(
-        "reset remote bundles",
-        "/e2e/jobs/reset-remote-bundles",
-        {},
-      );
-      await controlClient.postJson(
-        "reset local app state",
-        "/e2e/reset-local-app-state",
-        {},
-      );
-      app.uninstallApp();
-      app.ensureInstalled();
-      const scenario = getLynxScenarioDefinition(scenarioName);
-      await scenario.run(app);
-      console.log(
-        `[lynx-generation-ledger:final] ${JSON.stringify(app.runtimeEventLedgerReceipt())}`,
-      );
-      console.log(`Scenario passed: ${platform}/${scenarioName}`);
-    }
-  } finally {
-    await controlServer.stop();
-  }
+  const bootstrapResult = await controlClient.runJob(
+    "bootstrap",
+    "/e2e/jobs/bootstrap",
+    {},
+  );
+  const app = new LynxAppDriver(controlClient, platform, env, bootstrapResult);
+  app.ensureInstalled();
+  await controlClient.runJob(
+    "reset remote bundles",
+    "/e2e/jobs/reset-remote-bundles",
+    {},
+  );
+  await controlClient.postJson(
+    "reset local app state",
+    "/e2e/reset-local-app-state",
+    {},
+  );
+  app.uninstallApp();
+  app.ensureInstalled();
+  const scenario = getLynxScenarioDefinition(scenarioName);
+  await scenario.run(app);
+  console.log(
+    `[lynx-generation-ledger:final] ${JSON.stringify(app.runtimeEventLedgerReceipt())}`,
+  );
 }
 
 async function run(options: RunOptions): Promise<number> {
@@ -269,10 +261,27 @@ async function run(options: RunOptions): Promise<number> {
     return 0;
   }
 
+  let status = 0;
   for (const platform of options.platforms) {
-    await runScenarios(platform, scenarios);
+    status = Math.max(
+      status,
+      await runScenarioBatch(
+        {
+          env: lynxChildEnv(platform),
+          platform,
+          resultsRoot,
+          scenarios,
+        },
+        {
+          error: console.error,
+          executeScenario,
+          log: console.log,
+          startControlServer: startDetoxControlServer,
+        },
+      ),
+    );
   }
-  return 0;
+  return status;
 }
 
 try {
