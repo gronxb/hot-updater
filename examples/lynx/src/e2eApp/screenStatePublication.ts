@@ -6,6 +6,7 @@ type ScreenStatePatch = {
 type ScreenStateResponse = {
   readonly ok: boolean;
   readonly status: number;
+  readonly statusText?: string;
   readonly json: () => Promise<unknown>;
 };
 
@@ -70,7 +71,10 @@ export async function publishScreenStatePatch(
         }),
       });
       if (!response.ok) {
-        throw new Error(`Screen state HTTP ${response.status}`);
+        const statusText = response.statusText?.trim();
+        throw new Error(
+          `Screen state HTTP ${response.status}${statusText ? `: ${statusText}` : ""}`,
+        );
       }
       if (requireMarkerAcknowledgement) {
         const payload = await response.json();

@@ -111,7 +111,7 @@ export function resolveRuntimeConfigUrl(
     return env.HOT_UPDATER_E2E_RUNTIME_CONFIG_URL;
   }
   if (platform === "android") {
-    return `http://localhost:${androidRuntimeConfigDevicePort}/e2e/runtime-config`;
+    return `http://127.0.0.1:${androidRuntimeConfigDevicePort}/e2e/runtime-config`;
   }
   const controlPort = resolveControlPort(env);
   return `http://localhost:${controlPort}/e2e/runtime-config`;

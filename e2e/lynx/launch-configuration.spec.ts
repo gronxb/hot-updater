@@ -114,7 +114,7 @@ describe("Lynx E2E launch configuration", () => {
       "http://localhost:3114/e2e/runtime-config",
     );
     expect(resolveRuntimeConfigUrl("android", env)).toBe(
-      "http://localhost:3107/e2e/runtime-config",
+      "http://127.0.0.1:3107/e2e/runtime-config",
     );
   });
 

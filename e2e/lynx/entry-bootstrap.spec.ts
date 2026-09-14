@@ -32,7 +32,8 @@ vi.mock("../../packages/lynx/dist/index.mjs", () => ({
   HotUpdater: {
     getLaunchConfiguration: vi.fn(async () => ({
       appBaseURL: "http://127.0.0.1:3014/hot-updater",
-      runtimeConfigURL: "http://localhost:3114/e2e/runtime-config",
+      launchGeneration: "launch-android",
+      runtimeConfigURL: "http://127.0.0.1:3114/e2e/runtime-config",
     })),
     getLaunchInfo: vi.fn(async () => ({
       next: null,
@@ -138,6 +139,21 @@ describe("Lynx E2E page entry bootstrap", () => {
       expect(
         fetchState.mock.calls.some(([url]) => url.includes("/pending-action")),
       ).toBe(true);
+      expect(fetchState).toHaveBeenCalledWith(
+        "http://127.0.0.1:3114/e2e/pending-action",
+        expect.objectContaining({ signal: expect.any(AbortSignal) }),
+      );
+      if (entry === "detail") {
+        expect(fetchState).toHaveBeenCalledWith(
+          "http://127.0.0.1:3114/e2e/screen-state",
+          expect.objectContaining({
+            body: expect.stringContaining(
+              '"launchGeneration":"launch-android"',
+            ),
+            method: "POST",
+          }),
+        );
+      }
     },
   );
 });

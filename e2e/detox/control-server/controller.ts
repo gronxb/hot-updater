@@ -3316,7 +3316,9 @@ function getAppReachableControlBaseUrl() {
     fixtureSession.platform === "android"
       ? getAndroidControlDevicePort()
       : getControlServerHostPort();
-  return `http://localhost:${port}`;
+  const hostname =
+    fixtureSession.platform === "android" ? "127.0.0.1" : "localhost";
+  return `http://${hostname}:${port}`;
 }
 
 function getRuntimeConfigUrl() {
@@ -4879,7 +4881,7 @@ function readAndroidRecoveryDiagnostics(
   };
 }
 
-function lynxLaunchConfiguration() {
+export function createLynxRecoveryLaunchConfiguration() {
   return serializeLynxNativeLaunchConfiguration(
     createLynxNativeLaunchConfiguration({
       appBaseURL: fixtureSession.appBaseUrl,
@@ -4932,7 +4934,7 @@ function launchAndroidApp({
         "-n",
         `${fixtureSession.appId}/.OtaActivity`,
         ...createLynxAndroidLaunchConfigurationArguments(
-          lynxLaunchConfiguration(),
+          createLynxRecoveryLaunchConfiguration(),
         ),
       ]
     : explicitActivity
@@ -4986,7 +4988,7 @@ function launchIosApp() {
   if (isLynxE2eApp()) {
     args.push("--ota-framework=react", "--ota-channel=production");
     args.push(
-      `${HOT_UPDATER_LYNX_IOS_LAUNCH_CONFIGURATION_PREFIX}${lynxLaunchConfiguration()}`,
+      `${HOT_UPDATER_LYNX_IOS_LAUNCH_CONFIGURATION_PREFIX}${createLynxRecoveryLaunchConfiguration()}`,
     );
   }
   captureCommand("xcrun", args, {

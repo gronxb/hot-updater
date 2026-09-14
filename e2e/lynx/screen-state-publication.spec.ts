@@ -6,9 +6,11 @@ const response = (
   status: number,
   marker?: string,
   launchGeneration?: string,
+  statusText = "",
 ) => ({
   ok: status >= 200 && status < 300,
   status,
+  statusText,
   json: async () => ({
     launchGeneration,
     screenState: { runtimeScenarioMarker: marker },
@@ -56,6 +58,27 @@ describe("Lynx E2E screen-state publication", () => {
     });
   });
 
+  it("accepts only an exact marker and launch-generation roundtrip", async () => {
+    const fetchState = vi
+      .fn()
+      .mockResolvedValue(
+        response(200, "actual-bundle-marker", "launch-current"),
+      );
+
+    await publishScreenStatePatch(
+      fetchState,
+      "http://127.0.0.1:3107/e2e/screen-state",
+      { runtimeScenarioMarker: "actual-bundle-marker" },
+      { launchGeneration: "launch-current", retryDelayMs: 0 },
+    );
+
+    expect(fetchState).toHaveBeenCalledOnce();
+    expect(JSON.parse(fetchState.mock.calls[0]![1].body as string)).toEqual({
+      launchGeneration: "launch-current",
+      runtimeScenarioMarker: "actual-bundle-marker",
+    });
+  });
+
   it("rejects success responses that do not acknowledge the actual bundle marker", async () => {
     const fetchState = vi
       .fn()
@@ -73,7 +96,11 @@ describe("Lynx E2E screen-state publication", () => {
   });
 
   it("does not retry ordinary screen-state failures", async () => {
-    const fetchState = vi.fn().mockResolvedValue(response(499));
+    const fetchState = vi
+      .fn()
+      .mockResolvedValue(
+        response(499, undefined, undefined, "java.io.IOException: Canceled"),
+      );
 
     await expect(
       publishScreenStatePatch(
@@ -81,7 +108,7 @@ describe("Lynx E2E screen-state publication", () => {
         "http://control.test/e2e/screen-state",
         { updateActionResult: "checking" },
       ),
-    ).rejects.toThrow("Screen state HTTP 499");
+    ).rejects.toThrow("Screen state HTTP 499: java.io.IOException: Canceled");
     expect(fetchState).toHaveBeenCalledOnce();
   });
 });

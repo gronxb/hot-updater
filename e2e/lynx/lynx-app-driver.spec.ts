@@ -360,7 +360,7 @@ describe("Lynx app installation", () => {
         "--es",
         "hotUpdaterLaunchConfiguration",
         expect.stringMatching(
-          /^'\{"appBaseURL":"http:\/\/127\.0\.0\.1:3008\/hot-updater","channel":"production","launchGeneration":"[0-9a-f-]+","runtimeConfigURL":"http:\/\/localhost:3107\/e2e\/runtime-config"\}'$/,
+          /^'\{"appBaseURL":"http:\/\/127\.0\.0\.1:3008\/hot-updater","channel":"production","launchGeneration":"[0-9a-f-]+","runtimeConfigURL":"http:\/\/127\.0\.0\.1:3107\/e2e\/runtime-config"\}'$/,
         ),
       ],
       expect.objectContaining({ encoding: "utf8" }),
