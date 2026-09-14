@@ -138,7 +138,7 @@ model insights_install_states {
   state String
 }
 model insights_lifetime_markers {
-  marker_key String @db.VarChar(2048) @id
+  marker_key String @db.VarChar(64) @id
   release_id String @db.Uuid
   platform String
   channel String
@@ -146,7 +146,7 @@ model insights_lifetime_markers {
   metric String @db.VarChar(32)
 }
 model insights_release_summaries {
-  release_key String @db.VarChar(2048) @id
+  release_key String @db.VarChar(64) @id
   release_id String @db.Uuid
   platform String
   channel String
@@ -156,7 +156,7 @@ model insights_release_summaries {
   recovered_installations Float @default(0)
 }
 model insights_hourly_activity {
-  bucket_key String @db.VarChar(2048) @id
+  bucket_key String @db.VarChar(64) @id
   release_id String @db.Uuid
   platform String
   channel String

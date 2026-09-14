@@ -17,6 +17,7 @@ import {
   recordDrizzleInsights,
 } from "./drizzleCrud";
 import type { DrizzleDB } from "./drizzleLazyDB";
+import { insightsSqlKey, prepareInsightsSqlKeys } from "./insightsSqlKeys";
 
 type AggregateQuery = {
   readonly findFirst: (args?: unknown) => Promise<
@@ -122,6 +123,7 @@ const releaseDeltas = (prepared: PreparedInsightsEvent) => {
 const commitSynchronousSqliteEvent = (
   transaction: DrizzleDB,
   prepared: PreparedInsightsEvent,
+  keys: ReadonlyMap<string, string>,
 ) => {
   const states = getDrizzleTable(transaction, "insights_install_states");
   const current = syncFirst(transaction, "insights_install_states", {
@@ -146,7 +148,7 @@ const commitSynchronousSqliteEvent = (
     syncFirst(transaction, "insights_lifetime_markers", {
       where: eq(
         getDrizzleColumn(markers, "marker_key"),
-        insightsLifetimeMarkerKey(lifetime),
+        keys.get(insightsLifetimeMarkerKey(lifetime))!,
       ),
     })
   ) {
@@ -195,7 +197,7 @@ const commitSynchronousSqliteEvent = (
   if (lifetime !== null) {
     run(
       transaction.insert(markers).values({
-        marker_key: insightsLifetimeMarkerKey(lifetime),
+        marker_key: keys.get(insightsLifetimeMarkerKey(lifetime))!,
         release_id: lifetime.release.releaseId,
         platform: lifetime.release.platform,
         channel: lifetime.release.channel,
@@ -206,7 +208,8 @@ const commitSynchronousSqliteEvent = (
   }
 
   const summaries = getDrizzleTable(transaction, "insights_release_summaries");
-  for (const [key, delta] of releaseDeltas(prepared)) {
+  for (const [logicalKey, delta] of releaseDeltas(prepared)) {
+    const key = keys.get(logicalKey)!;
     const ignored = transaction
       .insert(summaries)
       .values({
@@ -239,7 +242,9 @@ const commitSynchronousSqliteEvent = (
     const value = prepared.hourly;
     const buckets = getDrizzleTable(transaction, "insights_hourly_activity");
     const data = {
-      bucket_key: insightsHourlyBucketKey(value.release, value.hourStartMs),
+      bucket_key: keys.get(
+        insightsHourlyBucketKey(value.release, value.hourStartMs),
+      )!,
       release_id: value.release.releaseId,
       platform: value.release.platform,
       channel: value.release.channel,
@@ -275,6 +280,10 @@ export const createDrizzleInsightsStorage = (
   async readRecordContext({ installId, lifetimeKey }) {
     const states = getDrizzleTable(db, "insights_install_states");
     const markers = getDrizzleTable(db, "insights_lifetime_markers");
+    const markerKey =
+      lifetimeKey === null
+        ? null
+        : await insightsSqlKey(insightsLifetimeMarkerKey(lifetimeKey));
     const [state, marker] = await Promise.all([
       query(db, "insights_install_states").findFirst({
         where: eq(getDrizzleColumn(states, "install_id"), installId),
@@ -282,10 +291,7 @@ export const createDrizzleInsightsStorage = (
       lifetimeKey === null
         ? undefined
         : query(db, "insights_lifetime_markers").findFirst({
-            where: eq(
-              getDrizzleColumn(markers, "marker_key"),
-              insightsLifetimeMarkerKey(lifetimeKey),
-            ),
+            where: eq(getDrizzleColumn(markers, "marker_key"), markerKey!),
           }),
     ]);
     return {
@@ -298,13 +304,14 @@ export const createDrizzleInsightsStorage = (
     if (!db.transaction) {
       throw new Error("Drizzle Insights aggregation requires transactions.");
     }
+    const keys = await prepareInsightsSqlKeys(prepared);
     try {
       if (db.resultKind === "sync") {
         if (provider !== "sqlite") {
           throw new Error("Synchronous Drizzle Insights requires SQLite.");
         }
         return await db.transaction((transaction) =>
-          commitSynchronousSqliteEvent(transaction, prepared),
+          commitSynchronousSqliteEvent(transaction, prepared, keys),
         );
       }
       return await db.transaction(async (transaction) => {
@@ -350,7 +357,7 @@ export const createDrizzleInsightsStorage = (
           ).findFirst({
             where: eq(
               getDrizzleColumn(markers, "marker_key"),
-              insightsLifetimeMarkerKey(prepared.firstLifetime),
+              keys.get(insightsLifetimeMarkerKey(prepared.firstLifetime))!,
             ),
           });
           if (marker) return { status: "conflict" as const };
@@ -401,7 +408,7 @@ export const createDrizzleInsightsStorage = (
           await transaction
             .insert(getDrizzleTable(transaction, "insights_lifetime_markers"))
             .values({
-              marker_key: insightsLifetimeMarkerKey(lifetime),
+              marker_key: keys.get(insightsLifetimeMarkerKey(lifetime))!,
               release_id: lifetime.release.releaseId,
               platform: lifetime.release.platform,
               channel: lifetime.release.channel,
@@ -414,7 +421,8 @@ export const createDrizzleInsightsStorage = (
           transaction,
           "insights_release_summaries",
         );
-        for (const [key, delta] of deltas) {
+        for (const [logicalKey, delta] of deltas) {
+          const key = keys.get(logicalKey)!;
           const insert = transaction.insert(summaries).values({
             release_key: key,
             release_id: delta.release.releaseId,
@@ -458,10 +466,9 @@ export const createDrizzleInsightsStorage = (
             "insights_hourly_activity",
           );
           const data = {
-            bucket_key: insightsHourlyBucketKey(
-              value.release,
-              value.hourStartMs,
-            ),
+            bucket_key: keys.get(
+              insightsHourlyBucketKey(value.release, value.hourStartMs),
+            )!,
             release_id: value.release.releaseId,
             platform: value.release.platform,
             channel: value.release.channel,
@@ -529,7 +536,11 @@ export const createDrizzleInsightsStorage = (
   async getReleaseActivity(input) {
     const summaries = getDrizzleTable(db, "insights_release_summaries");
     const buckets = getDrizzleTable(db, "insights_hourly_activity");
-    const keys = input.releases.map(insightsReleaseKey);
+    const keys = await Promise.all(
+      input.releases.map((release) =>
+        insightsSqlKey(insightsReleaseKey(release)),
+      ),
+    );
     const summaryRows = await query(db, "insights_release_summaries").findMany({
       where: inArray(getDrizzleColumn(summaries, "release_key"), keys),
     });
@@ -566,8 +577,8 @@ export const createDrizzleInsightsStorage = (
     );
     return {
       coverage: { kind: "complete" as const, sinceMs: 0 },
-      data: input.releases.map((release) => {
-        const key = insightsReleaseKey(release);
+      data: input.releases.map((release, index) => {
+        const key = keys[index]!;
         const summary = summaryByKey.get(key);
         return {
           release,

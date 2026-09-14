@@ -11,6 +11,7 @@ import type {
 import { sql, type Kysely, type QueryExecutorProvider } from "kysely";
 
 import type { ORMSQLProvider } from "../db/types";
+import { insightsSqlKey, prepareInsightsSqlKeys } from "./insightsSqlKeys";
 import { recordKyselyInsights } from "./kyselyCrud";
 
 type Provider = Exclude<ORMSQLProvider, "mssql">;
@@ -47,6 +48,7 @@ const commit = async (
   executor: QueryExecutorProvider,
   provider: Provider,
   prepared: PreparedInsightsEvent,
+  keys: ReadonlyMap<string, string>,
 ): Promise<"committed" | "duplicate" | "conflict"> => {
   const lock = provider === "sqlite" ? sql`` : sql` for update`;
   const state = await sql<{ revision: number | string }>`select revision
@@ -60,7 +62,7 @@ const commit = async (
   if (prepared.firstLifetime !== null) {
     const marker = await sql<{ marker_key: string }>`select marker_key
       from insights_lifetime_markers
-      where marker_key = ${insightsLifetimeMarkerKey(prepared.firstLifetime)}`.execute(
+      where marker_key = ${keys.get(insightsLifetimeMarkerKey(prepared.firstLifetime))!}`.execute(
       executor,
     );
     if (marker.rows.length > 0) return "conflict";
@@ -116,12 +118,13 @@ const commit = async (
     const lifetime = prepared.firstLifetime;
     await sql`insert into insights_lifetime_markers
       (marker_key, release_id, platform, channel, install_id, metric)
-      values (${insightsLifetimeMarkerKey(lifetime)}, ${lifetime.release.releaseId},
+      values (${keys.get(insightsLifetimeMarkerKey(lifetime))!}, ${lifetime.release.releaseId},
         ${lifetime.release.platform}, ${lifetime.release.channel},
         ${lifetime.installId}, ${lifetime.metric})`.execute(executor);
     add(lifetime.release, lifetime.metric, 1);
   }
-  for (const [key, delta] of deltas) {
+  for (const [logicalKey, delta] of deltas) {
+    const key = keys.get(logicalKey)!;
     await insertIgnore(executor, provider, "insights_release_summaries", {
       release_key: key,
       release_id: delta.release.releaseId,
@@ -141,7 +144,9 @@ const commit = async (
   }
   if (prepared.hourly !== null) {
     const value = prepared.hourly;
-    const bucketKey = insightsHourlyBucketKey(value.release, value.hourStartMs);
+    const bucketKey = keys.get(
+      insightsHourlyBucketKey(value.release, value.hourStartMs),
+    )!;
     await insertIgnore(executor, provider, "insights_hourly_activity", {
       bucket_key: bucketKey,
       release_id: value.release.releaseId,
@@ -166,6 +171,10 @@ export const createKyselyInsightsStorage = <TDatabase extends object>(
   provider: Provider,
 ): InsightsStorageAdapter => ({
   async readRecordContext({ installId, lifetimeKey }) {
+    const markerKey =
+      lifetimeKey === null
+        ? null
+        : await insightsSqlKey(insightsLifetimeMarkerKey(lifetimeKey));
     const [state, marker] = await Promise.all([
       sql<{ revision: number | string; state: string }>`select revision, state
         from insights_install_states where install_id = ${installId}`.execute(
@@ -175,9 +184,7 @@ export const createKyselyInsightsStorage = <TDatabase extends object>(
         ? Promise.resolve({ rows: [] as readonly { marker_key: string }[] })
         : sql<{ marker_key: string }>`select marker_key
           from insights_lifetime_markers
-          where marker_key = ${insightsLifetimeMarkerKey(lifetimeKey)}`.execute(
-            db,
-          ),
+          where marker_key = ${markerKey}`.execute(db),
     ]);
     return {
       revision: String(state.rows[0]?.revision ?? 0),
@@ -186,10 +193,13 @@ export const createKyselyInsightsStorage = <TDatabase extends object>(
     };
   },
   async commitPreparedEvent(prepared) {
+    const keys = await prepareInsightsSqlKeys(prepared);
     try {
       const status = await db
         .transaction()
-        .execute((transaction) => commit(transaction, provider, prepared));
+        .execute((transaction) =>
+          commit(transaction, provider, prepared, keys),
+        );
       return { status };
     } catch (error) {
       if (error instanceof ProjectionConflictError) {
@@ -217,7 +227,11 @@ export const createKyselyInsightsStorage = <TDatabase extends object>(
     }
   },
   async getReleaseActivity(input) {
-    const keys = input.releases.map(insightsReleaseKey);
+    const keys = await Promise.all(
+      input.releases.map((release) =>
+        insightsSqlKey(insightsReleaseKey(release)),
+      ),
+    );
     const summaries = await sql<Record<string, number | string>>`select *
       from insights_release_summaries
       where release_key in (${sql.join(keys)})`.execute(db);
@@ -248,8 +262,8 @@ export const createKyselyInsightsStorage = <TDatabase extends object>(
     };
     return {
       coverage: { kind: "complete" as const, sinceMs: 0 },
-      data: input.releases.map((release) => {
-        const key = insightsReleaseKey(release);
+      data: input.releases.map((release, index) => {
+        const key = keys[index]!;
         const summary = summaryByKey.get(key);
         const points = rows(hourly).filter(
           (row) =>

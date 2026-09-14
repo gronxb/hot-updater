@@ -1,12 +1,15 @@
 import { createDatabasePluginAdapter } from "@hot-updater/plugin-core/internal";
 import { env } from "cloudflare:test";
-import { expect, inject, it } from "vitest";
+import { beforeAll, expect, inject, it } from "vitest";
 
 import { createBundleEventRowFixture } from "../../../../packages/test-utils/src/databaseTestFixtures";
 import { createD1Implementation } from "../../src/d1Implementation";
 
-it("keeps current-state reads independent of history and unrelated scopes", async () => {
+beforeAll(async () => {
   await env.DB.prepare(inject("d1Migrations")[0]!.sql).run();
+});
+
+it("keeps current-state reads independent of history and unrelated scopes", async () => {
   let reads = 0;
   const model = createDatabasePluginAdapter(
     "measured-d1",

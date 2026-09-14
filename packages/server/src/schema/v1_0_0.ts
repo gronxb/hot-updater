@@ -517,8 +517,8 @@ export const insightsInstallStatesV100 = table(
 export const insightsLifetimeMarkersV100 = table(
   "insights_lifetime_markers",
   {
-    marker_key: idColumn("marker_key", varchar(2048)).collate(
-      insightsTextCollations,
+    marker_key: idColumn("marker_key", varchar(64)).collate(
+      catalogKeyCollations,
     ),
     release_id: uuid("release_id"),
     platform: stringColumn("platform").collate(insightsTextCollations),
@@ -547,8 +547,8 @@ export const insightsLifetimeMarkersV100 = table(
 export const insightsReleaseSummariesV100 = table(
   "insights_release_summaries",
   {
-    release_key: idColumn("release_key", varchar(2048)).collate(
-      insightsTextCollations,
+    release_key: idColumn("release_key", varchar(64)).collate(
+      catalogKeyCollations,
     ),
     release_id: uuid("release_id"),
     platform: stringColumn("platform").collate(insightsTextCollations),
@@ -578,8 +578,8 @@ export const insightsReleaseSummariesV100 = table(
 export const insightsHourlyActivityV100 = table(
   "insights_hourly_activity",
   {
-    bucket_key: idColumn("bucket_key", varchar(2048)).collate(
-      insightsTextCollations,
+    bucket_key: idColumn("bucket_key", varchar(64)).collate(
+      catalogKeyCollations,
     ),
     release_id: uuid("release_id"),
     platform: stringColumn("platform").collate(insightsTextCollations),

@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import {
   prepareInsightsEvent,
@@ -192,5 +192,50 @@ describe("Insights release projection", () => {
     expect(commits[0]!.event.id).toBe(commits[1]!.event.id);
     expect(commits[0]!.expectedRevision).toBe("0");
     expect(commits[1]!.expectedRevision).toBe("1");
+  });
+
+  it("accepts a burst of sixteen writers competing for one installation", async () => {
+    vi.useFakeTimers();
+    vi.spyOn(Math, "random").mockReturnValue(0.5);
+    let revision = 0;
+    let state: string | null = null;
+    const accepted = new Set<string>();
+    const storage: InsightsStorageAdapter = {
+      readRecordContext: async () => ({
+        revision: String(revision),
+        state,
+        lifetimeExists: false,
+      }),
+      commitPreparedEvent: async (prepared) => {
+        if (prepared.expectedRevision !== String(revision)) {
+          return { status: "conflict" };
+        }
+        accepted.add(prepared.event.id);
+        revision += 1;
+        state = prepared.nextState;
+        return { status: "committed" };
+      },
+      getReleaseActivity: async () => ({
+        coverage: { kind: "complete", sinceMs: 0 },
+        data: [],
+      }),
+    };
+    try {
+      const writes = Promise.all(
+        Array.from({ length: 16 }, (_, index) =>
+          recordProjectedInsightsEvent(storage, {
+            event: { ...event(String(index + 1), index), install_id: "burst" },
+          }),
+        ),
+      );
+      const completed = expect(writes).resolves.toHaveLength(16);
+      await vi.runAllTimersAsync();
+      await completed;
+      expect(accepted.size).toBe(16);
+      expect(revision).toBe(16);
+    } finally {
+      vi.restoreAllMocks();
+      vi.useRealTimers();
+    }
   });
 });

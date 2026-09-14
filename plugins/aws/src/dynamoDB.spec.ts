@@ -13,6 +13,7 @@ import {
   QueryCommand,
   ScanCommand,
   TransactWriteCommand,
+  type TransactWriteCommandInput,
 } from "@aws-sdk/lib-dynamodb";
 import { bundleToRow, type BundleEventRow } from "@hot-updater/plugin-core";
 import { mockClient } from "aws-sdk-client-mock";
@@ -106,6 +107,59 @@ describe("dynamoDB CloudFront lifecycle", () => {
 
   afterEach(() => {
     vi.useRealTimers();
+  });
+
+  it.each(["ConditionalCheckFailed", "TransactionConflict"])(
+    "retries a native Insights %s cancellation",
+    async (code) => {
+      let attempts = 0;
+      documentClient
+        .on(TransactWriteCommand)
+        .callsFake(async (input: TransactWriteCommandInput) => {
+          attempts += 1;
+          if (attempts === 1) {
+            throw Object.assign(new Error("transaction conflict"), {
+              name: "TransactionCanceledException",
+              CancellationReasons: (input.TransactItems ?? []).map(
+                (_, index) => ({
+                  Code: index === 0 ? code : "None",
+                }),
+              ),
+            });
+          }
+          return {};
+        });
+      const plugin = dynamoDB({ region: "us-east-1", tableName: "metadata" });
+
+      await plugin.models.insights.recordEvent({ event: insightsEvent(1) });
+
+      expect(attempts).toBe(2);
+      await plugin.dispose?.();
+    },
+  );
+
+  it("preserves a native Insights validation failure without retrying", async () => {
+    const failure = Object.assign(new Error("invalid transaction value"), {
+      name: "TransactionCanceledException",
+      CancellationReasons: [] as { Code: string }[],
+    });
+    documentClient
+      .on(TransactWriteCommand)
+      .callsFake(async (input: TransactWriteCommandInput) => {
+        failure.CancellationReasons = (input.TransactItems ?? []).map(
+          (_, index) => ({
+            Code: index === 0 ? "ValidationError" : "None",
+          }),
+        );
+        throw failure;
+      });
+    const plugin = dynamoDB({ region: "us-east-1", tableName: "metadata" });
+
+    await expect(
+      plugin.models.insights.recordEvent({ event: insightsEvent(1) }),
+    ).rejects.toBe(failure);
+    expect(documentClient.commandCalls(TransactWriteCommand)).toHaveLength(1);
+    await plugin.dispose?.();
   });
 
   it("invalidates cached update checks after a successful commit", async () => {

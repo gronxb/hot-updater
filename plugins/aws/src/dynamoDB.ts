@@ -3389,6 +3389,24 @@ const commitDynamoDBInsightsEvent = async (
     return "committed";
   } catch (error) {
     if (!isDynamoDBTransactionConflict(error)) throw error;
+    const reasons = Reflect.get(error as object, "CancellationReasons");
+    if (
+      !Array.isArray(reasons) ||
+      reasons.length !== actions.length ||
+      !reasons.some(
+        (reason) =>
+          reason.Code === "ConditionalCheckFailed" ||
+          reason.Code === "TransactionConflict",
+      ) ||
+      reasons.some(
+        (reason) =>
+          !["None", "ConditionalCheckFailed", "TransactionConflict"].includes(
+            reason.Code,
+          ),
+      )
+    ) {
+      throw error;
+    }
     const { Item } = await store.client.send(
       new GetCommand({
         TableName: store.tableName,

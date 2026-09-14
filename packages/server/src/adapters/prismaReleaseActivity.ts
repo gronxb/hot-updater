@@ -10,6 +10,7 @@ import type {
 } from "@hot-updater/plugin-core/internal";
 
 import type { ORMSQLProvider } from "../db/types";
+import { insightsSqlKey, prepareInsightsSqlKeys } from "./insightsSqlKeys";
 import { updatePrismaEventHead } from "./prismaInsights";
 import { PrismaAdapterError, type PrismaDelegate } from "./prismaRows";
 
@@ -90,6 +91,7 @@ const commit = async (
   client: object,
   provider: ORMSQLProvider,
   prepared: PreparedInsightsEvent,
+  keys: ReadonlyMap<string, string>,
 ): Promise<"committed" | "duplicate" | "conflict"> => {
   const events = delegate(client, "bundle_events");
   if (await events.findFirst({ where: { id: prepared.event.id } })) {
@@ -108,7 +110,7 @@ const commit = async (
   const markerKey =
     prepared.firstLifetime === null
       ? null
-      : insightsLifetimeMarkerKey(prepared.firstLifetime);
+      : keys.get(insightsLifetimeMarkerKey(prepared.firstLifetime))!;
   if (
     markerKey !== null &&
     (await markers.findFirst({ where: { marker_key: markerKey } }))
@@ -152,7 +154,8 @@ const commit = async (
   }
 
   const summaries = delegate(client, "insights_release_summaries");
-  for (const [releaseKey, delta] of summaryDeltas(prepared)) {
+  for (const [logicalKey, delta] of summaryDeltas(prepared)) {
+    const releaseKey = keys.get(logicalKey)!;
     await summaries.upsert({
       where: { release_key: releaseKey },
       create: {
@@ -183,10 +186,9 @@ const commit = async (
     const downloaded = activity.metric === "downloaded" ? 1 : 0;
     const applied = activity.metric === "applied" ? 1 : 0;
     const recovered = activity.metric === "recovered" ? 1 : 0;
-    const bucketKey = insightsHourlyBucketKey(
-      activity.release,
-      activity.hourStartMs,
-    );
+    const bucketKey = keys.get(
+      insightsHourlyBucketKey(activity.release, activity.hourStartMs),
+    )!;
     await delegate(client, "insights_hourly_activity").upsert({
       where: { bucket_key: bucketKey },
       create: {
@@ -222,6 +224,10 @@ export const createPrismaInsightsStorage = (
   provider: ORMSQLProvider,
 ): InsightsStorageAdapter => ({
   async readRecordContext({ installId, lifetimeKey }) {
+    const markerKey =
+      lifetimeKey === null
+        ? null
+        : await insightsSqlKey(insightsLifetimeMarkerKey(lifetimeKey));
     const [stateValue, marker] = await Promise.all([
       delegate(client, "insights_install_states").findFirst({
         where: { install_id: installId },
@@ -230,7 +236,7 @@ export const createPrismaInsightsStorage = (
         ? null
         : delegate(client, "insights_lifetime_markers").findFirst({
             where: {
-              marker_key: insightsLifetimeMarkerKey(lifetimeKey),
+              marker_key: markerKey,
             },
           }),
     ]);
@@ -242,10 +248,11 @@ export const createPrismaInsightsStorage = (
     };
   },
   async commitPreparedEvent(prepared) {
+    const keys = await prepareInsightsSqlKeys(prepared);
     for (let attempt = 0; ; attempt += 1) {
       try {
         const status = await client.$transaction(
-          (transaction) => commit(transaction, provider, prepared),
+          (transaction) => commit(transaction, provider, prepared, keys),
           { isolationLevel: "Serializable" },
         );
         return { status };
@@ -258,11 +265,16 @@ export const createPrismaInsightsStorage = (
     }
   },
   async getReleaseActivity(input) {
+    const keys = await Promise.all(
+      input.releases.map((release) =>
+        insightsSqlKey(insightsReleaseKey(release)),
+      ),
+    );
     const summaryRows = await delegate(
       client,
       "insights_release_summaries",
     ).findMany({
-      where: { release_key: { in: input.releases.map(insightsReleaseKey) } },
+      where: { release_key: { in: keys } },
     });
     const pointRows =
       input.timeRange === undefined
@@ -290,8 +302,8 @@ export const createPrismaInsightsStorage = (
     const measuredAtMs = Date.now();
     return {
       coverage: { kind: "complete" as const, sinceMs: 0 },
-      data: input.releases.map((release) => {
-        const summary = summaries.get(insightsReleaseKey(release));
+      data: input.releases.map((release, index) => {
+        const summary = summaries.get(keys[index]!);
         return {
           release,
           summary: {

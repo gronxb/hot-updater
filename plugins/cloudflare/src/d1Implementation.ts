@@ -879,7 +879,28 @@ ON CONFLICT(install_id) DO UPDATE SET revision = revision + 1, state = excluded.
           encodeD1Values([prepared.event.id]),
         );
         if (accepted.length > 0) return { status: "duplicate" };
-        if (error instanceof Error) return { status: "conflict" };
+        const [states = [], markers = []] = await executor.batch([
+          {
+            sql: "SELECT revision FROM insights_install_states WHERE install_id = json_extract(?, '$') LIMIT 1",
+            params: encodeD1Values([prepared.event.install_id]),
+          },
+          prepared.firstLifetime === null
+            ? { sql: "SELECT 1 WHERE 0", params: [] }
+            : {
+                sql: "SELECT marker_key FROM insights_lifetime_markers WHERE marker_key = json_extract(?, '$') LIMIT 1",
+                params: encodeD1Values([
+                  insightsLifetimeMarkerKey(prepared.firstLifetime),
+                ]),
+              },
+        ]);
+        const actualRevision =
+          states[0] === undefined ? 0 : d1Number(states[0], "revision");
+        if (
+          String(actualRevision) !== prepared.expectedRevision ||
+          markers.length > 0
+        ) {
+          return { status: "conflict" };
+        }
         throw error;
       }
     },

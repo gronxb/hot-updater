@@ -35,7 +35,7 @@ type ProjectionState = {
   readonly barrier: ReceiptTuple | null;
 };
 
-const RECORD_ATTEMPTS = 8;
+const RECORD_ATTEMPTS = 32;
 
 export const insightsReleaseKey = (release: ReleaseReference): string =>
   JSON.stringify([release.platform, release.channel, release.releaseId]);
@@ -300,6 +300,11 @@ export const recordProjectedInsightsEvent = async (
       prepareInsightsEvent(input, context),
     );
     if (result.status === "committed" || result.status === "duplicate") return;
+    if (attempt + 1 < RECORD_ATTEMPTS) {
+      // Spread competing writers before reading another revision.
+      const delayMs = Math.random() * Math.min(10 * 2 ** attempt, 250);
+      await new Promise((resolve) => setTimeout(resolve, delayMs));
+    }
   }
   throw new Error("Insights projection write conflicted too many times");
 };

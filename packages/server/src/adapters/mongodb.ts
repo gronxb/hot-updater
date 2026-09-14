@@ -80,7 +80,7 @@ const createMongoInsightsStorage = (
               return { status: "conflict" as const };
             }
             const event = prepared.event;
-            await collections.bundleEvents.insertOne(event, options);
+            await collections.bundleEvents.insertOne({ ...event }, options);
             const head = await collections.bundleEventHeads.findOne(
               { install_id: event.install_id },
               options,

@@ -336,7 +336,7 @@ export const insights_install_states = sqliteTable("insights_install_states", {
 export const insights_lifetime_markers = sqliteTable(
   "insights_lifetime_markers",
   {
-    marker_key: text("marker_key", { length: 2048 }).primaryKey().notNull(),
+    marker_key: text("marker_key", { length: 64 }).primaryKey().notNull(),
     release_id: text("release_id").notNull(),
     platform: text("platform").notNull(),
     channel: text("channel").notNull(),
@@ -348,7 +348,7 @@ export const insights_lifetime_markers = sqliteTable(
 export const insights_release_summaries = sqliteTable(
   "insights_release_summaries",
   {
-    release_key: text("release_key", { length: 2048 }).primaryKey().notNull(),
+    release_key: text("release_key", { length: 64 }).primaryKey().notNull(),
     release_id: text("release_id").notNull(),
     platform: text("platform").notNull(),
     channel: text("channel").notNull(),
@@ -366,7 +366,7 @@ export const insights_release_summaries = sqliteTable(
 export const insights_hourly_activity = sqliteTable(
   "insights_hourly_activity",
   {
-    bucket_key: text("bucket_key", { length: 2048 }).primaryKey().notNull(),
+    bucket_key: text("bucket_key", { length: 64 }).primaryKey().notNull(),
     release_id: text("release_id").notNull(),
     platform: text("platform").notNull(),
     channel: text("channel").notNull(),

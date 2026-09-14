@@ -338,7 +338,7 @@ export const insights_install_states = pgTable("insights_install_states", {
 
 export const insights_lifetime_markers = pgTable("insights_lifetime_markers", {
   marker_key: customType<{ data: string }>({
-    dataType: () => 'varchar(2048) collate "C"',
+    dataType: () => 'varchar(64) collate "C"',
   })("marker_key")
     .primaryKey()
     .notNull(),
@@ -359,7 +359,7 @@ export const insights_release_summaries = pgTable(
   "insights_release_summaries",
   {
     release_key: customType<{ data: string }>({
-      dataType: () => 'varchar(2048) collate "C"',
+      dataType: () => 'varchar(64) collate "C"',
     })("release_key")
       .primaryKey()
       .notNull(),
@@ -389,7 +389,7 @@ export const insights_hourly_activity = pgTable(
   "insights_hourly_activity",
   {
     bucket_key: customType<{ data: string }>({
-      dataType: () => 'varchar(2048) collate "C"',
+      dataType: () => 'varchar(64) collate "C"',
     })("bucket_key")
       .primaryKey()
       .notNull(),
