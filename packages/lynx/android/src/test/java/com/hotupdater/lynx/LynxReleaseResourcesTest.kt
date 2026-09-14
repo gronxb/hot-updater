@@ -2,6 +2,7 @@ package com.hotupdater.lynx
 
 import android.graphics.Typeface
 import com.hotupdater.lynx.internal.HashUtils
+import com.lynx.tasm.LynxBooleanOption
 import com.lynx.tasm.LynxViewBuilder
 import com.lynx.tasm.behavior.LynxContext
 import com.lynx.tasm.fontface.FontFace
@@ -65,6 +66,7 @@ class LynxReleaseResourcesTest {
 
             resources.configureBuilder(builder)
 
+            assertSame(LynxBooleanOption.TRUE, builder.isEnableGenericResourceFetcher)
             assertNull(builder.lynxGenericResourceFetcher)
             assertNull(builder.lynxMediaResourceFetcher)
             assertNull(field(builder, "imageFetcher"))
@@ -262,12 +264,19 @@ class LynxReleaseResourcesTest {
             var templateResult:
                 com.lynx.tasm.resourceprovider.LynxResourceResponse<TemplateProviderResult>? = null
             resources.onLoaded = { _, path, _ -> loaded += path }
+            val builder = LynxViewBuilder()
+            resources.configureBuilder(builder)
+
+            assertSame(LynxBooleanOption.TRUE, builder.isEnableGenericResourceFetcher)
+            assertSame(resources.template, builder.lynxTemplateResourceFetcher)
+            assertNull(builder.lynxGenericResourceFetcher)
+            assertNull(builder.lynxMediaResourceFetcher)
 
             resources.externalScript.request(
                 LynxResourceRequest("hot-updater:///assets/bootstrap.js"),
                 responseCallback { scriptResult = it },
             )
-            resources.template.fetchTemplate(
+            checkNotNull(builder.lynxTemplateResourceFetcher).fetchTemplate(
                 com.lynx.tasm.resourceprovider.LynxResourceRequest(
                     "hot-updater:///dynamic/component.lynx.bundle",
                     LynxResourceType.LynxResourceTypeDynamicComponent,

@@ -4,6 +4,7 @@ import android.graphics.Typeface
 import android.util.Log
 import com.hotupdater.lynx.internal.HashUtils
 import com.hotupdater.lynx.internal.ManagedPaths
+import com.lynx.tasm.LynxBooleanOption
 import com.lynx.tasm.LynxViewBuilder
 import com.lynx.tasm.behavior.LynxContext
 import com.lynx.tasm.fontface.FontFace
@@ -666,6 +667,7 @@ class LynxReleaseResources(
                 }
             }
         })
+        builder.setEnableGenericResourceFetcher(LynxBooleanOption.TRUE)
         builder.setTemplateResourceFetcher(template)
         builder.setResourceProvider(
             LynxProviderRegistry.LYNX_PROVIDER_TYPE_EXTERNAL_JS,
