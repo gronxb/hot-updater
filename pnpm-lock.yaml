@@ -840,6 +840,9 @@ importers:
       fast-xml-parser:
         specifier: 5.7.2
         version: 5.7.2
+      plist:
+        specifier: 3.1.1
+        version: 3.1.1
       typescript:
         specifier: 5.9.3
         version: 5.9.3

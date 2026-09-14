@@ -1,4 +1,5 @@
 import { spawnSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import fs from "node:fs";
 import http from "node:http";
 import os from "node:os";
@@ -71,19 +72,69 @@ const nativeBuilder = path.join(
   "examples/lynx/scripts/build-e2e-native.mjs",
 );
 const hash = (value: string) => value.repeat(64).slice(0, 64);
+const nativeConfigSha256 = (files: Record<string, string>) =>
+  createHash("sha256")
+    .update(
+      Object.entries(files)
+        .sort(([left], [right]) => left.localeCompare(right))
+        .map(([file, digest]) => `${file}\0${digest}\n`)
+        .join(""),
+    )
+    .digest("hex");
 
 function nativeReceipt(sourceCommit: string) {
-  const nativeConfig = {
-    sha256: hash("c"),
-    files: Object.fromEntries(
-      [
-        "fingerprint.json",
-        "native/project",
-        "native/lock",
-        "native/target",
-        "native/config",
-      ].map((file, index) => [file, hash(String(index + 1))]),
-    ),
+  const nativePublicKeyFiles = {
+    android: {
+      "examples/lynx/android/app/src/main/AndroidManifest.xml": hash("6"),
+      "examples/lynx/android/e2e-app/src/main/AndroidManifest.xml": hash("7"),
+      "examples/lynx/android/matrix-app/src/main/AndroidManifest.xml":
+        hash("8"),
+    },
+    ios: {
+      "examples/lynx/ios/Info.plist": hash("9"),
+      "examples/lynx/ios/MatrixHarness/NonProductionInfo.plist": hash("a"),
+    },
+  };
+  const publicKeyIdentity = {
+    schemaVersion: 1,
+    provenance: "post-fingerprint-trust-anchor-injection",
+    runtimeFingerprintRecalculated: false,
+    algorithm: "rsa-spki",
+    modulusLength: 2048,
+    spkiSha256: hash("b"),
+  };
+  const nativeConfig = (platform: "ios" | "android") => {
+    const basePaths =
+      platform === "ios"
+        ? [
+            "examples/lynx/fingerprint.json",
+            "examples/lynx/ios/Podfile",
+            "examples/lynx/ios/Podfile.lock",
+            "examples/lynx/ios/SparklingGo.xcodeproj/project.pbxproj",
+            "examples/lynx/ios/SparklingGo.xcodeproj/xcshareddata/xcschemes/SparklingMatrixHarness.xcscheme",
+          ]
+        : [
+            "examples/lynx/fingerprint.json",
+            "examples/lynx/android/settings.gradle.kts",
+            "examples/lynx/android/gradle.properties",
+            "examples/lynx/android/matrix-app/build.gradle.kts",
+            "packages/lynx/android/build.gradle",
+            "packages/lynx/android-sparkling/build.gradle",
+          ];
+    const files = {
+      ...Object.fromEntries(
+        basePaths.map((file, index) => [file, hash(String(index + 1))]),
+      ),
+      ...nativePublicKeyFiles[platform],
+    };
+    return {
+      sha256: nativeConfigSha256(files),
+      files,
+      nativePublicKeyInjection: {
+        ...publicKeyIdentity,
+        files: nativePublicKeyFiles[platform],
+      },
+    };
   };
   return {
     schemaVersion: "lynx-native-artifacts-v2",
@@ -94,6 +145,7 @@ function nativeReceipt(sourceCommit: string) {
       checkedCommit: sourceCommit,
       clean: true,
       trackedChanges: [],
+      trackedTreeSha256: hash("e"),
       allowedTrackedChanges: [
         "examples-server/hono-kysely-pglite/hot-updater_migrations/migration_2026-09-11T14-30-47.sql",
         "examples-server/hono-kysely-pglite/src/db.ts",
@@ -102,6 +154,13 @@ function nativeReceipt(sourceCommit: string) {
         "examples/lynx/.gitignore",
         "examples/lynx/scripts/e2e-kysely-deploy.mjs",
       ],
+      nativePublicKeyInjection: {
+        ...publicKeyIdentity,
+        files: {
+          ...nativePublicKeyFiles.android,
+          ...nativePublicKeyFiles.ios,
+        },
+      },
     },
     versions: { ...LYNX_MATRIX_NATIVE_VERSIONS },
     sparklingNavigation: { ...SPARKLING_NAVIGATION_PROVENANCE },
@@ -114,7 +173,7 @@ function nativeReceipt(sourceCommit: string) {
         binarySha256: hash("b"),
         artifactHashKind: "deterministic-full-app-tree-v1",
         nativeFingerprintSha256: hash("d"),
-        nativeConfig,
+        nativeConfig: nativeConfig("ios"),
         scheme: "SparklingMatrixHarness",
         arch: "arm64",
         sparklingCheckout: { ...LYNX_MATRIX_IOS_SPARKLING_CHECKOUT },
@@ -127,7 +186,7 @@ function nativeReceipt(sourceCommit: string) {
         binarySha256: hash("a"),
         artifactHashKind: "full-apk-bytes",
         nativeFingerprintSha256: hash("d"),
-        nativeConfig,
+        nativeConfig: nativeConfig("android"),
         task: ":matrix-app:assembleRelease",
         abis: ["arm64-v8a"],
         sparklingArtifacts: { ...LYNX_MATRIX_ANDROID_SPARKLING_ARTIFACTS },

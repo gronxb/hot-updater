@@ -7,11 +7,15 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 
+import {
+  assertNativePublicKeyOnlySourceChanges,
+  assertNativePublicKeySourceUnchanged,
+  nativePublicKeyPaths,
+} from "./native-public-key-integrity.mjs";
 import { resolveProductionAppBaseURL } from "./production-configuration.mjs";
 import { validateProductionEmbeddedBundles } from "./production-embedded-contract.mjs";
 import {
   androidArtifactAppId,
-  assertTrackedSourceClean,
   deterministicArtifactSha256,
   iosArtifactAppId,
 } from "./public-matrix/native-artifact-evidence.mjs";
@@ -81,6 +85,12 @@ const definitions = {
   },
 };
 const definition = definitions[target];
+const receiptPath = path.join(
+  exampleDir,
+  ".hot-updater/public-matrix",
+  definition.receipt,
+);
+if (!values["dry-run"]) fs.rmSync(receiptPath, { force: true });
 const artifacts = {};
 const embeddedContracts = {};
 const protectedPreexistingPaths = [
@@ -98,12 +108,16 @@ const sourceCommit = spawnSync("git", ["rev-parse", "HEAD"], {
 if (!/^[0-9a-f]{40}$/.test(sourceCommit)) {
   throw new Error("Could not resolve the exact native source commit");
 }
-const sourceIntegrity = values["dry-run"]
+const sourceAttestation = values["dry-run"]
   ? undefined
-  : {
-      checkedCommit: sourceCommit,
-      ...assertTrackedSourceClean(repoDir, protectedPreexistingPaths),
-    };
+  : assertNativePublicKeyOnlySourceChanges(
+      repoDir,
+      sourceCommit,
+      protectedPreexistingPaths,
+    );
+const sourceIntegrity = sourceAttestation
+  ? { checkedCommit: sourceCommit, ...sourceAttestation }
+  : undefined;
 const sha256 = (bytes) =>
   crypto.createHash("sha256").update(bytes).digest("hex");
 const fileSha256 = (file) => sha256(fs.readFileSync(file));
@@ -148,7 +162,7 @@ function scanProductionDiagnostics(platform, artifactPath, executable) {
   };
 }
 
-const configReceipt = (files) => {
+const configReceipt = (files, nativePublicKeyInjection) => {
   const entries = Object.fromEntries(
     files.map((relativePath) => [
       relativePath,
@@ -160,10 +174,23 @@ const configReceipt = (files) => {
     sha256: sha256(
       Buffer.from(
         Object.entries(entries)
+          .sort(([left], [right]) => left.localeCompare(right))
           .map(([file, hash]) => `${file}\0${hash}\n`)
           .join(""),
       ),
     ),
+    ...(nativePublicKeyInjection
+      ? {
+          nativePublicKeyInjection: {
+            ...nativePublicKeyInjection,
+            files: Object.fromEntries(
+              Object.entries(nativePublicKeyInjection.files).filter(([file]) =>
+                files.includes(file),
+              ),
+            ),
+          },
+        }
+      : {}),
   };
 };
 const versions = {
@@ -564,6 +591,11 @@ if (!values["dry-run"]) {
         definition.iosScheme,
       );
     }
+    const nativePublicKeyInjection =
+      sourceIntegrity?.nativePublicKeyInjection ?? null;
+    const publicKeyConfigFiles = nativePublicKeyInjection
+      ? nativePublicKeyPaths[platform]
+      : [];
     artifact.nativeConfig = configReceipt(
       platform === "ios"
         ? [
@@ -572,6 +604,7 @@ if (!values["dry-run"]) {
             "examples/lynx/ios/Podfile.lock",
             "examples/lynx/ios/SparklingGo.xcodeproj/project.pbxproj",
             `examples/lynx/ios/SparklingGo.xcodeproj/xcshareddata/xcschemes/${definition.iosScheme}.xcscheme`,
+            ...publicKeyConfigFiles,
           ]
         : [
             "examples/lynx/fingerprint.json",
@@ -580,7 +613,9 @@ if (!values["dry-run"]) {
             `examples/lynx/android/${definition.androidModule}/build.gradle.kts`,
             "packages/lynx/android/build.gradle",
             "packages/lynx/android-sparkling/build.gradle",
+            ...publicKeyConfigFiles,
           ],
+      nativePublicKeyInjection,
     );
     if (platform === "ios") {
       const checkout = path.join(exampleDir, "ios/.upstream/sparkling");
@@ -607,13 +642,23 @@ if (!values["dry-run"]) {
         "c68329c1968de962c8574f298ba46f43db016195bbbf4422b5e01145278aebe3";
     }
   }
-  const receiptPath = path.join(
-    exampleDir,
-    ".hot-updater/public-matrix",
-    definition.receipt,
+  assertNativePublicKeySourceUnchanged(
+    repoDir,
+    sourceCommit,
+    protectedPreexistingPaths,
+    sourceAttestation,
   );
   fs.mkdirSync(path.dirname(receiptPath), { recursive: true });
-  fs.writeFileSync(receiptPath, `${JSON.stringify(receipt, null, 2)}\n`);
+  const temporaryReceiptPath = `${receiptPath}.${process.pid}.tmp`;
+  try {
+    fs.writeFileSync(
+      temporaryReceiptPath,
+      `${JSON.stringify(receipt, null, 2)}\n`,
+    );
+    fs.renameSync(temporaryReceiptPath, receiptPath);
+  } finally {
+    fs.rmSync(temporaryReceiptPath, { force: true });
+  }
   receipt.receiptPath = receiptPath;
 }
 

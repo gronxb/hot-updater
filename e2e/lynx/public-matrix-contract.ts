@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto";
+
 import {
   expectedRawDetailNativeFailure,
   MISSING_ASSET_RESPONSE_SHA256,
@@ -85,6 +87,27 @@ const LYNX_NATIVE_ALLOWED_PREEXISTING_TRACKED_PATHS = [
   "examples/lynx/scripts/e2e-kysely-deploy.mjs",
 ] as const;
 
+const LYNX_NATIVE_PUBLIC_KEY_PATHS = {
+  android: [
+    "examples/lynx/android/app/src/main/AndroidManifest.xml",
+    "examples/lynx/android/e2e-app/src/main/AndroidManifest.xml",
+    "examples/lynx/android/matrix-app/src/main/AndroidManifest.xml",
+  ],
+  ios: [
+    "examples/lynx/ios/Info.plist",
+    "examples/lynx/ios/MatrixHarness/NonProductionInfo.plist",
+  ],
+} as const;
+
+const LYNX_NATIVE_TARGETS = {
+  e2e: { androidModule: "e2e-app", iosScheme: "SparklingGoE2E" },
+  matrix: {
+    androidModule: "matrix-app",
+    iosScheme: "SparklingMatrixHarness",
+  },
+  scaffold: { androidModule: "app", iosScheme: "SparklingGo" },
+} as const;
+
 type JsonRecord = Record<string, unknown>;
 
 function fail(path: string, message: string): never {
@@ -134,6 +157,82 @@ function hash(value: unknown, at: string): string {
   const result = string(value, at);
   if (!/^[a-f0-9]{64}$/.test(result)) fail(at, "expected a SHA-256 hash");
   return result;
+}
+
+function nativeConfigSha256(files: JsonRecord): string {
+  return createHash("sha256")
+    .update(
+      Buffer.from(
+        Object.entries(files)
+          .sort(([left], [right]) => left.localeCompare(right))
+          .map(([file, digest]) => `${file}\0${digest}\n`)
+          .join(""),
+      ),
+    )
+    .digest("hex");
+}
+
+function nativeConfigPaths(
+  platform: LynxMatrixPlatform,
+  target: keyof typeof LYNX_NATIVE_TARGETS,
+  includesPublicKey: boolean,
+) {
+  const definition = LYNX_NATIVE_TARGETS[target];
+  const base =
+    platform === "ios"
+      ? [
+          "examples/lynx/fingerprint.json",
+          "examples/lynx/ios/Podfile",
+          "examples/lynx/ios/Podfile.lock",
+          "examples/lynx/ios/SparklingGo.xcodeproj/project.pbxproj",
+          `examples/lynx/ios/SparklingGo.xcodeproj/xcshareddata/xcschemes/${definition.iosScheme}.xcscheme`,
+        ]
+      : [
+          "examples/lynx/fingerprint.json",
+          "examples/lynx/android/settings.gradle.kts",
+          "examples/lynx/android/gradle.properties",
+          `examples/lynx/android/${definition.androidModule}/build.gradle.kts`,
+          "packages/lynx/android/build.gradle",
+          "packages/lynx/android-sparkling/build.gradle",
+        ];
+  return includesPublicKey
+    ? [...base, ...LYNX_NATIVE_PUBLIC_KEY_PATHS[platform]]
+    : base;
+}
+
+function nativePublicKeyInjection(
+  value: unknown,
+  expectedFiles: readonly string[],
+  at: string,
+) {
+  const injection = record(value, at);
+  if (injection.schemaVersion !== 1) {
+    fail(`${at}.schemaVersion`, "expected 1");
+  }
+  exactString(
+    injection.provenance,
+    "post-fingerprint-trust-anchor-injection",
+    `${at}.provenance`,
+  );
+  boolean(
+    injection.runtimeFingerprintRecalculated,
+    false,
+    `${at}.runtimeFingerprintRecalculated`,
+  );
+  exactString(injection.algorithm, "rsa-spki", `${at}.algorithm`);
+  if (
+    !Number.isSafeInteger(injection.modulusLength) ||
+    (injection.modulusLength as number) < 2048
+  ) {
+    fail(`${at}.modulusLength`, "expected RSA modulus of at least 2048 bits");
+  }
+  hash(injection.spkiSha256, `${at}.spkiSha256`);
+  const files = record(injection.files, `${at}.files`);
+  sameMembers(Object.keys(files), expectedFiles, `${at}.files`);
+  for (const file of expectedFiles) {
+    hash(files[file], `${at}.files.${file}`);
+  }
+  return { injection, files };
 }
 
 function absoluteUrl(value: unknown, at: string): string {
@@ -187,6 +286,10 @@ export function validateLynxNativeArtifactsReceipt(
     "nativeArtifacts.sourceIntegrity.checkedCommit",
   );
   boolean(sourceIntegrity.clean, true, "nativeArtifacts.sourceIntegrity.clean");
+  hash(
+    sourceIntegrity.trackedTreeSha256,
+    "nativeArtifacts.sourceIntegrity.trackedTreeSha256",
+  );
   if (
     !Array.isArray(sourceIntegrity.trackedChanges) ||
     sourceIntegrity.trackedChanges.length !== 0
@@ -205,6 +308,14 @@ export function validateLynxNativeArtifactsReceipt(
       "expected only the preserved preexisting staged paths",
     );
   }
+  const sourcePublicKey =
+    sourceIntegrity.nativePublicKeyInjection === undefined
+      ? null
+      : nativePublicKeyInjection(
+          sourceIntegrity.nativePublicKeyInjection,
+          Object.values(LYNX_NATIVE_PUBLIC_KEY_PATHS).flat(),
+          "nativeArtifacts.sourceIntegrity.nativePublicKeyInjection",
+        );
   if (
     JSON.stringify(receipt.versions) !==
     JSON.stringify(LYNX_MATRIX_NATIVE_VERSIONS)
@@ -241,14 +352,12 @@ export function validateLynxNativeArtifactsReceipt(
     );
     hash(artifact.nativeFingerprintSha256, `${at}.nativeFingerprintSha256`);
     const nativeConfig = record(artifact.nativeConfig, `${at}.nativeConfig`);
-    hash(nativeConfig.sha256, `${at}.nativeConfig.sha256`);
     const files = record(nativeConfig.files, `${at}.nativeConfig.files`);
-    if (Object.keys(files).length < 5) {
-      fail(
-        `${at}.nativeConfig.files`,
-        "expected complete native config inputs",
-      );
-    }
+    sameMembers(
+      Object.keys(files),
+      nativeConfigPaths(platform, options.target, sourcePublicKey !== null),
+      `${at}.nativeConfig.files`,
+    );
     for (const [file, digest] of Object.entries(files)) {
       if (!file || file.startsWith("/") || file.split("/").includes("..")) {
         fail(
@@ -257,6 +366,61 @@ export function validateLynxNativeArtifactsReceipt(
         );
       }
       hash(digest, `${at}.nativeConfig.files.${file}`);
+    }
+    exactString(
+      nativeConfig.sha256,
+      nativeConfigSha256(files),
+      `${at}.nativeConfig.sha256`,
+    );
+    if (sourcePublicKey === null) {
+      if (nativeConfig.nativePublicKeyInjection !== undefined) {
+        fail(
+          `${at}.nativeConfig.nativePublicKeyInjection`,
+          "must be absent when source integrity has no key injection",
+        );
+      }
+      for (const file of LYNX_NATIVE_PUBLIC_KEY_PATHS[platform]) {
+        if (file in files) {
+          fail(
+            `${at}.nativeConfig.files.${file}`,
+            "must be absent when source integrity has no key injection",
+          );
+        }
+      }
+    } else {
+      const configPublicKey = nativePublicKeyInjection(
+        nativeConfig.nativePublicKeyInjection,
+        LYNX_NATIVE_PUBLIC_KEY_PATHS[platform],
+        `${at}.nativeConfig.nativePublicKeyInjection`,
+      );
+      for (const field of [
+        "schemaVersion",
+        "provenance",
+        "runtimeFingerprintRecalculated",
+        "algorithm",
+        "modulusLength",
+        "spkiSha256",
+      ]) {
+        if (
+          configPublicKey.injection[field] !== sourcePublicKey.injection[field]
+        ) {
+          fail(
+            `${at}.nativeConfig.nativePublicKeyInjection.${field}`,
+            "does not match source integrity",
+          );
+        }
+      }
+      for (const file of LYNX_NATIVE_PUBLIC_KEY_PATHS[platform]) {
+        if (
+          configPublicKey.files[file] !== sourcePublicKey.files[file] ||
+          files[file] !== sourcePublicKey.files[file]
+        ) {
+          fail(
+            `${at}.nativeConfig.files.${file}`,
+            "does not match the injected source file",
+          );
+        }
+      }
     }
     if (platform === "ios") {
       if (

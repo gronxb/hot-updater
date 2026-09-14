@@ -19,10 +19,20 @@ import {
   LYNX_MATRIX_RUNTIME_IDS,
   validateLynxMatrixCell,
   validateLynxMatrixSummary,
+  validateLynxNativeArtifactsReceipt,
 } from "./public-matrix-contract";
 
 const hash = (value: string) => value.repeat(64).slice(0, 64);
 const commit = "0123456789abcdef0123456789abcdef01234567";
+const nativeConfigSha256 = (files: Record<string, string>) =>
+  createHash("sha256")
+    .update(
+      Object.entries(files)
+        .sort(([left], [right]) => left.localeCompare(right))
+        .map(([file, digest]) => `${file}\0${digest}\n`)
+        .join(""),
+    )
+    .digest("hex");
 
 function diagnosticSummary(
   eventCount: number,
@@ -128,28 +138,93 @@ function makeNativeDiagnostics() {
 function makeNativeArtifacts(
   platforms: readonly ("ios" | "android")[],
   binarySha256 = hash("f"),
+  withPublicKeyInjection = true,
+  target: "e2e" | "matrix" | "scaffold" = "matrix",
 ) {
-  const nativeConfig = {
-    sha256: hash("c"),
-    files: Object.fromEntries(
-      [
-        "fingerprint.json",
-        "native/project",
-        "native/lock",
-        "native/target",
-        "native/config",
-      ].map((file, index) => [file, hash(String(index + 1))]),
-    ),
+  const targetDefinition = {
+    e2e: {
+      androidModule: "e2e-app",
+      appId: "com.hotupdater.lynxexample",
+      iosScheme: "SparklingGoE2E",
+    },
+    matrix: {
+      androidModule: "matrix-app",
+      appId: "com.hotupdater.lynxmatrix",
+      iosScheme: "SparklingMatrixHarness",
+    },
+    scaffold: {
+      androidModule: "app",
+      appId: "com.hotupdater.lynxexample",
+      iosScheme: "SparklingGo",
+    },
+  }[target];
+  const nativePublicKeyFiles = {
+    android: {
+      "examples/lynx/android/app/src/main/AndroidManifest.xml": hash("6"),
+      "examples/lynx/android/e2e-app/src/main/AndroidManifest.xml": hash("7"),
+      "examples/lynx/android/matrix-app/src/main/AndroidManifest.xml":
+        hash("8"),
+    },
+    ios: {
+      "examples/lynx/ios/Info.plist": hash("9"),
+      "examples/lynx/ios/MatrixHarness/NonProductionInfo.plist": hash("a"),
+    },
+  };
+  const publicKeyIdentity = {
+    schemaVersion: 1,
+    provenance: "post-fingerprint-trust-anchor-injection",
+    runtimeFingerprintRecalculated: false,
+    algorithm: "rsa-spki",
+    modulusLength: 2048,
+    spkiSha256: hash("b"),
+  };
+  const nativeConfig = (platform: "ios" | "android") => {
+    const basePaths =
+      platform === "ios"
+        ? [
+            "examples/lynx/fingerprint.json",
+            "examples/lynx/ios/Podfile",
+            "examples/lynx/ios/Podfile.lock",
+            "examples/lynx/ios/SparklingGo.xcodeproj/project.pbxproj",
+            `examples/lynx/ios/SparklingGo.xcodeproj/xcshareddata/xcschemes/${targetDefinition.iosScheme}.xcscheme`,
+          ]
+        : [
+            "examples/lynx/fingerprint.json",
+            "examples/lynx/android/settings.gradle.kts",
+            "examples/lynx/android/gradle.properties",
+            `examples/lynx/android/${targetDefinition.androidModule}/build.gradle.kts`,
+            "packages/lynx/android/build.gradle",
+            "packages/lynx/android-sparkling/build.gradle",
+          ];
+    const files = {
+      ...Object.fromEntries(
+        basePaths.map((file, index) => [file, hash(String(index + 1))]),
+      ),
+      ...(withPublicKeyInjection ? nativePublicKeyFiles[platform] : {}),
+    };
+    return {
+      sha256: nativeConfigSha256(files),
+      files,
+      ...(withPublicKeyInjection
+        ? {
+            nativePublicKeyInjection: {
+              ...publicKeyIdentity,
+              files: nativePublicKeyFiles[platform],
+            },
+          }
+        : {}),
+    };
   };
   return {
     schemaVersion: "lynx-native-artifacts-v2",
-    target: "matrix",
-    appId: "com.hotupdater.lynxmatrix",
+    target,
+    appId: targetDefinition.appId,
     sourceCommit: commit,
     sourceIntegrity: {
       checkedCommit: commit,
       clean: true,
       trackedChanges: [],
+      trackedTreeSha256: hash("e"),
       allowedTrackedChanges: [
         "examples-server/hono-kysely-pglite/hot-updater_migrations/migration_2026-09-11T14-30-47.sql",
         "examples-server/hono-kysely-pglite/src/db.ts",
@@ -158,6 +233,17 @@ function makeNativeArtifacts(
         "examples/lynx/.gitignore",
         "examples/lynx/scripts/e2e-kysely-deploy.mjs",
       ],
+      ...(withPublicKeyInjection
+        ? {
+            nativePublicKeyInjection: {
+              ...publicKeyIdentity,
+              files: {
+                ...nativePublicKeyFiles.android,
+                ...nativePublicKeyFiles.ios,
+              },
+            },
+          }
+        : {}),
     },
     versions: { ...LYNX_MATRIX_NATIVE_VERSIONS },
     sparklingNavigation: { ...SPARKLING_NAVIGATION_PROVENANCE },
@@ -170,7 +256,7 @@ function makeNativeArtifacts(
               ? "/tmp/SparklingMatrixHarness.app"
               : "/tmp/matrix-app-release.apk",
           sourceCommit: commit,
-          appId: "com.hotupdater.lynxmatrix",
+          appId: targetDefinition.appId,
           runtimeId: LYNX_MATRIX_RUNTIME_IDS[platform],
           binarySha256,
           artifactHashKind:
@@ -178,15 +264,15 @@ function makeNativeArtifacts(
               ? "deterministic-full-app-tree-v1"
               : "full-apk-bytes",
           nativeFingerprintSha256: hash("d"),
-          nativeConfig,
+          nativeConfig: nativeConfig(platform),
           ...(platform === "ios"
             ? {
-                scheme: "SparklingMatrixHarness",
+                scheme: targetDefinition.iosScheme,
                 arch: "arm64",
                 sparklingCheckout: { ...LYNX_MATRIX_IOS_SPARKLING_CHECKOUT },
               }
             : {
-                task: ":matrix-app:assembleRelease",
+                task: `:${targetDefinition.androidModule}:assembleRelease`,
                 abis: ["arm64-v8a"],
                 sparklingArtifacts: {
                   ...LYNX_MATRIX_ANDROID_SPARKLING_ARTIFACTS,
@@ -975,6 +1061,38 @@ describe("Lynx public matrix evidence contract", () => {
     expect(() => validateLynxMatrixCell(makeCell())).not.toThrow();
   });
 
+  it("accepts a clean native receipt with no public-key injection", () => {
+    const cell = makeCell();
+    cell.nativeArtifacts = makeNativeArtifacts(["ios"], hash("f"), false);
+
+    expect(() => validateLynxMatrixCell(cell)).not.toThrow();
+  });
+
+  it.each(["scaffold", "e2e", "matrix"] as const)(
+    "accepts the exact %s native config path sets",
+    (target) => {
+      const appId =
+        target === "matrix"
+          ? "com.hotupdater.lynxmatrix"
+          : "com.hotupdater.lynxexample";
+      const receipt = makeNativeArtifacts(
+        ["ios", "android"],
+        hash("f"),
+        true,
+        target,
+      );
+
+      expect(() =>
+        validateLynxNativeArtifactsReceipt(receipt, {
+          appId,
+          commit,
+          platforms: ["ios", "android"],
+          target,
+        }),
+      ).not.toThrow();
+    },
+  );
+
   it.each([
     [
       "a build that drops compiler page metadata",
@@ -1209,6 +1327,64 @@ describe("Lynx public matrix evidence contract", () => {
         cell.nativeArtifacts.sourceIntegrity.trackedChanges = [
           "examples/lynx/ios/Info.plist",
         ];
+      },
+    ],
+    [
+      "a native config injection without source provenance",
+      (cell: any) => {
+        delete cell.nativeArtifacts.sourceIntegrity.nativePublicKeyInjection;
+      },
+    ],
+    [
+      "source provenance without a native config injection",
+      (cell: any) => {
+        delete cell.nativeArtifacts.artifacts.ios.nativeConfig
+          .nativePublicKeyInjection;
+      },
+    ],
+    [
+      "a native config bound to another SPKI key",
+      (cell: any) => {
+        cell.nativeArtifacts.artifacts.ios.nativeConfig.nativePublicKeyInjection.spkiSha256 =
+          hash("0");
+      },
+    ],
+    [
+      "a native config file hash that differs from source integrity",
+      (cell: any) => {
+        cell.nativeArtifacts.artifacts.ios.nativeConfig.files[
+          "examples/lynx/ios/Info.plist"
+        ] = hash("0");
+      },
+    ],
+    [
+      "a native config aggregate digest that does not match its files",
+      (cell: any) => {
+        cell.nativeArtifacts.artifacts.ios.nativeConfig.sha256 = hash("0");
+      },
+    ],
+    [
+      "a native config with an extra path",
+      (cell: any) => {
+        cell.nativeArtifacts.artifacts.ios.nativeConfig.files[
+          "examples/lynx/ios/Unbound.xcconfig"
+        ] = hash("0");
+      },
+    ],
+    [
+      "a native config with a missing base path",
+      (cell: any) => {
+        delete cell.nativeArtifacts.artifacts.ios.nativeConfig.files[
+          "examples/lynx/ios/Podfile.lock"
+        ];
+      },
+    ],
+    [
+      "a native config with a substituted base path",
+      (cell: any) => {
+        const files = cell.nativeArtifacts.artifacts.ios.nativeConfig.files;
+        delete files["examples/lynx/ios/Podfile.lock"];
+        files["examples/lynx/ios/Podfile.resolved"] = hash("0");
       },
     ],
     [
