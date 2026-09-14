@@ -171,9 +171,9 @@ describe("Lynx E2E embedded bundle packaging", () => {
         `${root}.page-graph.json`,
         JSON.stringify(compilerPageGraph()),
       );
-      const { finishLynxE2eBundle } =
-        await import("../../examples/lynx/scripts/e2e-assets.mjs");
-      await finishLynxE2eBundle(root);
+      const { finishSpike } =
+        await import("../../examples/lynx/scripts/spike-assets.mjs");
+      await finishSpike(root, "react", "A", {});
 
       expect(Object.keys(await collectFileHashes(root)).sort()).toEqual(
         [...LYNX_E2E_SDK3_FILES].sort(),

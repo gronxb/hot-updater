@@ -822,6 +822,9 @@ importers:
       '@lynx-js/rspeedy':
         specifier: 0.13.5
         version: 0.13.5(@rspack/core@1.7.11(@swc/helpers@0.5.23))(esbuild@0.28.1)(typescript@5.9.3)(webpack@5.107.2(esbuild@0.28.1)(postcss@8.5.15))
+      '@lynx-js/tasm':
+        specifier: 0.0.53
+        version: 0.0.53
       '@lynx-js/types':
         specifier: 3.7.0
         version: 3.7.0
@@ -5852,6 +5855,10 @@ packages:
 
   '@lynx-js/tasm@0.0.26':
     resolution: {integrity: sha512-WmcuTYh/KfdRqriT7+Qg8iwxsCDN4PKbCuXoN35npn23p33grpSNW306DJi9tX7LzP2vDZkOjxulSOknfiB/0Q==}
+
+  '@lynx-js/tasm@0.0.53':
+    resolution: {integrity: sha512-P4b16NDniUC5IQ5lHxXvXFb+rK9nQtFMBNUXV2UQydIJlxun1XKWZk6Rm/GoKTiQ01rBvxctoxyKu7sLPo0BOw==}
+    hasBin: true
 
   '@lynx-js/template-webpack-plugin@0.10.3':
     resolution: {integrity: sha512-LRoWpQP/aDpOBFBGlKwODxzyRI0m6CDTDShPbARz3e9oQkGZN2am1GG9AOI5Qr8e9+8nhrRvWcPG+o16h3mC3w==}
@@ -25418,6 +25425,8 @@ snapshots:
   '@lynx-js/tasm@0.0.20': {}
 
   '@lynx-js/tasm@0.0.26': {}
+
+  '@lynx-js/tasm@0.0.53': {}
 
   '@lynx-js/template-webpack-plugin@0.10.3':
     dependencies:

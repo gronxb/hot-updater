@@ -5,7 +5,10 @@ import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 
 import { preparePinnedOctane } from "./prepare-octane.mjs";
-import { finishSpike } from "./spike-assets.mjs";
+import {
+  finishSpike,
+  validateStandardStreamingPageBundles,
+} from "./spike-assets.mjs";
 
 const cwd = fileURLToPath(new URL("..", import.meta.url));
 const run = promisify(execFile);
@@ -151,6 +154,7 @@ export async function buildPublic({
         ],
         { cwd, env, maxBuffer: 10 * 1024 * 1024 },
       );
+      await validateStandardStreamingPageBundles(stageDir);
       const receipt = await finishSpike(stageDir, framework, variant, {
         rspeedy: "0.13.5",
         framework:

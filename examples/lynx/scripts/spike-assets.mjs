@@ -3,6 +3,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 
 import { SPARKLING_NAVIGATION_PROVENANCE } from "@hot-updater/lynx/navigationProvenance";
+import tasm from "@lynx-js/tasm";
 
 export const pageEntries = ["detail.lynx.bundle", "main.lynx.bundle"];
 
@@ -288,6 +289,37 @@ async function readCompilerGraph(directory) {
     });
   }
   return graph;
+}
+
+export async function validateStandardStreamingPageBundles(directory) {
+  const decode = tasm.supportNapi() ? tasm.decode_napi : tasm.decode_wasm;
+  for (const entry of pageEntries) {
+    const decoded = await decode(
+      await fs.readFile(path.join(directory, entry)),
+    );
+    let pageConfig;
+    try {
+      pageConfig = JSON.parse(decoded["page-config"]);
+    } catch (error) {
+      throw new Error(`Cannot decode page config from ${entry}`, {
+        cause: error,
+      });
+    }
+    if (pageConfig.enableFetchAPIStandardStreaming !== true) {
+      throw new Error(
+        `${entry} does not enable standard Fetch response streaming`,
+      );
+    }
+    const decodedText = JSON.stringify(decoded);
+    if (
+      decodedText.includes("lynxExtension") ||
+      decodedText.includes("useStreaming")
+    ) {
+      throw new Error(
+        `${entry} contains the deprecated Lynx request streaming extension`,
+      );
+    }
+  }
 }
 
 export async function readSpikePageContract(directory) {

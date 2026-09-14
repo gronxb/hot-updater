@@ -3,7 +3,10 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 
-import { finishSpike } from "./spike-assets.mjs";
+import {
+  finishSpike,
+  validateStandardStreamingPageBundles,
+} from "./spike-assets.mjs";
 
 const [
   framework,
@@ -88,6 +91,7 @@ const { stdout, stderr } = await promisify(execFile)(
 );
 process.stdout.write(stdout);
 process.stderr.write(stderr);
+await validateStandardStreamingPageBundles(outDir);
 console.log(
   JSON.stringify(
     await finishSpike(outDir, framework, variant, {

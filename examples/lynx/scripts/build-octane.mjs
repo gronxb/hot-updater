@@ -6,7 +6,10 @@ import { pathToFileURL } from "node:url";
 import { promisify } from "node:util";
 
 import { octaneCommit, octaneRepository } from "./prepare-octane.mjs";
-import { finishSpike } from "./spike-assets.mjs";
+import {
+  finishSpike,
+  validateStandardStreamingPageBundles,
+} from "./spike-assets.mjs";
 
 const [source, variant, behavior = "normal", resourceSet = "basic"] =
   process.argv.slice(2);
@@ -146,6 +149,7 @@ try {
   );
   process.stdout.write(stdout);
   process.stderr.write(stderr);
+  await validateStandardStreamingPageBundles(outDir);
   console.log(
     JSON.stringify(
       await finishSpike(outDir, "octane", variant, {
