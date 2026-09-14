@@ -12,6 +12,10 @@ const ACTIVE_GENERATION_BOUNDARIES = new Set([
   "generationWillEvaluate",
   "generationStarted",
 ]);
+const TERMINAL_GENERATION_BOUNDARIES = new Set([
+  "generationWillRetire",
+  "generationRetired",
+]);
 const GENERATION_BOUNDARIES = new Set([
   "generationWillEvaluate",
   "generationStarted",
@@ -186,6 +190,23 @@ function precedingIdentity(
   return null;
 }
 
+function stopsRecoveryAtBoundary(
+  record: LogRecord,
+  event: MatrixEvent | null,
+  boundIdentity: ManagedIdentity,
+): boolean {
+  if (
+    event === null ||
+    record.envelope?.processId !== boundIdentity.processId ||
+    !GENERATION_BOUNDARIES.has(event.event)
+  ) {
+    return false;
+  }
+  if (TERMINAL_GENERATION_BOUNDARIES.has(event.event)) return true;
+  const identity = managedIdentity(event);
+  return identity === null || !sameIdentity(boundIdentity, identity);
+}
+
 function isRecoveredFontDiagnostic(
   records: readonly LogRecord[],
   engineError: LogRecord,
@@ -219,16 +240,10 @@ function isRecoveredFontDiagnostic(
 
   for (const fontRecord of laterRecords) {
     const fontEvent = parseMatrixEvent(fontRecord);
-    const identity = fontEvent && managedIdentity(fontEvent);
-    if (
-      fontEvent &&
-      identity &&
-      identity.processId === boundIdentity.processId &&
-      GENERATION_BOUNDARIES.has(fontEvent.event) &&
-      !sameIdentity(boundIdentity, identity)
-    ) {
+    if (stopsRecoveryAtBoundary(fontRecord, fontEvent, boundIdentity)) {
       return false;
     }
+    const identity = fontEvent && managedIdentity(fontEvent);
     if (
       fontEvent?.event !== "fontLoaded" ||
       fontEvent.path !== relativePath ||
@@ -246,16 +261,10 @@ function isRecoveredFontDiagnostic(
     }
     for (const readyRecord of records.slice(fontRecord.index + 1)) {
       const readyEvent = parseMatrixEvent(readyRecord);
-      const readyIdentity = readyEvent && managedIdentity(readyEvent);
-      if (
-        readyEvent &&
-        readyIdentity &&
-        readyIdentity.processId === boundIdentity.processId &&
-        GENERATION_BOUNDARIES.has(readyEvent.event) &&
-        !sameIdentity(boundIdentity, readyIdentity)
-      ) {
+      if (stopsRecoveryAtBoundary(readyRecord, readyEvent, boundIdentity)) {
         return false;
       }
+      const readyIdentity = readyEvent && managedIdentity(readyEvent);
       if (
         readyEvent?.event === "jsReady" &&
         readyIdentity !== null &&

@@ -379,6 +379,37 @@ describe("managed Lynx resource engine errors", () => {
 
   it.each([
     [
+      "retirement before font recovery",
+      [
+        matrixEvent("generationWillEvaluate"),
+        engineError(),
+        matrixEvent("generationWillRetire"),
+        matrixEvent("fontLoaded", {
+          path: "assets/probe.ttf",
+          sha256: SHA,
+        }),
+        matrixEvent("jsReady", { confirmation: { status: "CONFIRMED" } }),
+      ].join("\n"),
+    ],
+    [
+      "retirement before confirmed readiness",
+      [
+        matrixEvent("generationWillEvaluate"),
+        engineError(),
+        matrixEvent("fontLoaded", {
+          path: "assets/probe.ttf",
+          sha256: SHA,
+        }),
+        matrixEvent("generationRetired"),
+        matrixEvent("jsReady", { confirmation: { status: "CONFIRMED" } }),
+      ].join("\n"),
+    ],
+  ])("rejects same-identity %s", (_case, logs) => {
+    expectRejected(logs);
+  });
+
+  it.each([
+    [
       "embedded diagnostic payload",
       recoveredSequence({
         error: log(
