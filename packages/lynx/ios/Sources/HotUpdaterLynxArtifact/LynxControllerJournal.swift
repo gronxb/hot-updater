@@ -158,6 +158,7 @@ struct LynxStoredLaunchTransition: Codable {
     let kind: String
     let fromReceipt: Data
     let toReceipt: Data
+    let transitionId: String?
     var policy: LynxLaunchTransition {
         get throws {
             guard ["UPDATE_APPLIED", "RECOVERED", "UNCHANGED"].contains(kind),
@@ -185,10 +186,14 @@ struct LynxStoredLaunchTransition: Codable {
             return transition
         }
     }
-    init(_ transition: LynxLaunchTransition) throws {
+    init(_ transition: LynxLaunchTransition, transitionId: String) throws {
         kind = transition.kind
         fromReceipt = try JSONSerialization.data(withJSONObject: transition.from.dictionary, options: [.sortedKeys])
         toReceipt = try JSONSerialization.data(withJSONObject: transition.to.dictionary, options: [.sortedKeys])
+        self.transitionId = transitionId
+    }
+    func assigningTransitionId(_ transitionId: String) throws -> Self {
+        try .init(policy, transitionId: transitionId)
     }
 }
 struct LynxControllerState: Codable {
@@ -232,6 +237,21 @@ final class LynxControllerJournal {
         guard FileManager.default.fileExists(atPath: file.path) else { return LynxControllerState() }
         let bytes = try StrictMetadataJSON.read(file, limit: 24 * 1024 * 1024)
         let state = try JSONDecoder().decode(LynxControllerState.self, from: bytes)
+        if let launchTransition = state.launchTransition {
+            _ = try launchTransition.policy
+            guard launchTransition.transitionId?.isEmpty != true else {
+                throw LynxArtifactError.invalid("Invalid native launch transition identifier")
+            }
+        }
+        if let managedTransition = state.managedTransition {
+            guard !managedTransition.transitionId.isEmpty else {
+                throw LynxArtifactError.invalid("Invalid native managed transition identifier")
+            }
+            if let launchTransitionId = state.launchTransition?.transitionId,
+               launchTransitionId != managedTransition.transitionId {
+                throw LynxArtifactError.invalid("Native transition identifiers do not match")
+            }
+        }
         guard state.unconfirmedReleaseIds.count <= 128, state.crashedBundleIds.count <= 10,
               state.incompatibleArtifacts.count <= 128, state.highWater.count <= 32, state.catalogs.count <= 32,
               (state.catalogAcceptances?.count ?? 0) <= 32,

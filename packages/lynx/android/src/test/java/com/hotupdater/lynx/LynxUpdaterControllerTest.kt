@@ -322,6 +322,179 @@ class LynxUpdaterControllerTest {
         }
     }
 
+    @Test fun coldUpdatePersistsAndAtomicallyConsumesLaunchTransitionId() {
+        val root = temp()
+        try {
+            withController(root) { initial ->
+                initial.pinPrimary().also {
+                    it.firstScreen = true
+                    initial.confirm(it)
+                }
+            }
+            plantNext(root, releaseB, bundleB, "B")
+            withController(root) { update ->
+                val primary = update.pinPrimary().also { it.firstScreen = true }
+                val transitionId = journal(root).getJSONObject("launchTransition")
+                    .getString("transitionId")
+                assertTrue(transitionId.isNotEmpty())
+                val confirmation = update.confirm(primary)
+                assertEquals("UPDATE_APPLIED", confirmation.getJSONObject("transition").getString("kind"))
+                assertEquals(transitionId, confirmation.getString("transitionId"))
+                val consumed = journal(root)
+                assertFalse(consumed.has("pending"))
+                assertFalse(consumed.has("launchTransition"))
+                assertFalse(consumed.has("managedTransition"))
+                val repeated = update.confirm(primary)
+                assertEquals(JSONObject.NULL, repeated.opt("transition"))
+                assertEquals(JSONObject.NULL, repeated.opt("transitionId"))
+            }
+        } finally {
+            root.deleteRecursively()
+        }
+    }
+
+    @Test fun recoveryPreservesTheUnconsumedLaunchTransitionId() {
+        val root = temp()
+        try {
+            withController(root) { initial ->
+                initial.pinPrimary().also {
+                    it.firstScreen = true
+                    initial.confirm(it)
+                }
+            }
+            plantNext(root, releaseB, bundleB, "B")
+            val trial = controller(root)
+            trial.pinPrimary()
+            val transitionId = journal(root).getJSONObject("launchTransition")
+                .getString("transitionId")
+            trial.close()
+            withController(root) { recovered ->
+                val primary = recovered.pinPrimary().also { it.firstScreen = true }
+                assertEquals(
+                    transitionId,
+                    journal(root).getJSONObject("launchTransition")
+                        .getString("transitionId"),
+                )
+                val confirmation = recovered.confirm(primary)
+                assertEquals("RECOVERED", confirmation.getJSONObject("transition").getString("kind"))
+                assertEquals(transitionId, confirmation.getString("transitionId"))
+            }
+        } finally {
+            root.deleteRecursively()
+        }
+    }
+
+    @Test fun legacyLaunchTransitionIsBackfilledAndInvalidIdsFailClosed() {
+        val root = temp()
+        try {
+            withController(root) { initial ->
+                initial.pinPrimary().also {
+                    it.firstScreen = true
+                    initial.confirm(it)
+                }
+            }
+            plantNext(root, releaseB, bundleB, "B")
+            val trial = controller(root)
+            trial.pinPrimary()
+            val stateFile = File(store(root), "state.json")
+            val legacy = journal(root)
+            legacy.getJSONObject("launchTransition").remove("transitionId")
+            legacy.remove("pending")
+            stateFile.writeText(legacy.toString())
+            trial.close()
+
+            val upgraded = controller(root)
+            val backfilled = journal(root).getJSONObject("launchTransition")
+                .getString("transitionId")
+            assertTrue(backfilled.isNotEmpty())
+            upgraded.close()
+
+            val malformed = journal(root)
+            malformed.getJSONObject("launchTransition").put("transitionId", "")
+            stateFile.writeText(malformed.toString())
+            assertThrows(IllegalStateException::class.java) { controller(root) }
+
+        } finally {
+            root.deleteRecursively()
+        }
+
+        val mismatchRoot = temp()
+        try {
+            withController(mismatchRoot) { initial ->
+                initial.pinPrimary().also {
+                    it.firstScreen = true
+                    initial.confirm(it)
+                }
+            }
+            plantNext(mismatchRoot, releaseB, bundleB, "B")
+            val trial = controller(mismatchRoot)
+            trial.pinPrimary()
+            val stateFile = File(store(mismatchRoot), "state.json")
+            val mismatched = journal(mismatchRoot)
+            mismatched.getJSONObject("launchTransition")
+                .put("transitionId", "launch-id")
+            mismatched.put(
+                "managedTransition",
+                JSONObject().put("transitionId", "managed-id"),
+            )
+            stateFile.writeText(mismatched.toString())
+            trial.close()
+            assertThrows(IllegalStateException::class.java) {
+                controller(mismatchRoot)
+            }
+        } finally {
+            mismatchRoot.deleteRecursively()
+        }
+    }
+
+    @Test fun managedReloadAndLaunchTransitionShareIdentity() {
+        val root = temp()
+        try {
+            withController(root) { initial ->
+                initial.pinPrimary().also {
+                    it.firstScreen = true
+                    initial.confirm(it)
+                }
+            }
+            plantNext(root, releaseB, bundleB, "B")
+            val stateFile = File(store(root), "state.json")
+            val state = journal(root)
+            val transitionId = java.util.UUID.randomUUID().toString()
+            state.put(
+                "managedTransition",
+                JSONObject()
+                    .put("transitionId", transitionId)
+                    .put("trigger", "reload")
+                    .put("sourceGenerationId", "generation-old")
+                    .put("source", state.getJSONObject("confirmed"))
+                    .put("target", state.getJSONObject("next"))
+                    .put(
+                        "stack",
+                        JSONArray().put(
+                            JSONObject().put("entry", "main.lynx.bundle")
+                                .put("parameters", JSONArray()),
+                        ),
+                    ),
+            )
+            stateFile.writeText(state.toString())
+            withController(root) { update ->
+                val primary = update.pinPrimary(
+                    generationId = "generation-new",
+                ).also { it.firstScreen = true }
+                assertEquals(
+                    transitionId,
+                    journal(root).getJSONObject("launchTransition")
+                        .getString("transitionId"),
+                )
+                val confirmation = update.confirm(primary)
+                assertEquals(transitionId, confirmation.getString("transitionId"))
+                assertEquals("UPDATE_APPLIED", confirmation.getJSONObject("transition").getString("kind"))
+            }
+        } finally {
+            root.deleteRecursively()
+        }
+    }
+
     @Test fun secondaryAdmissionIsDurableAndBlocksPrimaryConfirmation() {
         val root = temp()
         try {
@@ -792,7 +965,7 @@ class LynxUpdaterControllerTest {
             )
             val confirmation = fresh.confirm(freshPrimary)
             assertEquals("ALREADY_CONFIRMED", confirmation.getString("status"))
-            assertEquals(transitionId, confirmation.getString("transitionId"))
+            assertEquals(JSONObject.NULL, confirmation.opt("transitionId"))
             assertEquals(JSONObject.NULL, confirmation.opt("transition"))
             assertFalse(journal(root).has("managedTransition"))
             freshDetail.close()
@@ -815,8 +988,8 @@ class LynxUpdaterControllerTest {
                     firstContent = {},
                     confirmed = { confirmation ->
                         assertEquals(
-                            transitionId,
-                            confirmation.getString("transitionId"),
+                            JSONObject.NULL,
+                            confirmation.opt("transitionId"),
                         )
                         eventOrder += "jsReady"
                     },
@@ -1807,6 +1980,7 @@ class LynxUpdaterControllerTest {
                     releaseC,
                     transition.getJSONObject("to").getString("releaseId"),
                 )
+                assertTrue(confirmation.getString("transitionId").isNotEmpty())
                 assertEquals(
                     JSONObject.NULL,
                     controller.confirm(primary).opt("transition"),

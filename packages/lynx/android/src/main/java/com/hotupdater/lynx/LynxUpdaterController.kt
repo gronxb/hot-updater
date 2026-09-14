@@ -86,6 +86,7 @@ class LynxUpdaterController internal constructor(
             recover()
             if (!store.value.has("channel")) mutate { it.put("channel", configuration.channel) }
             running = receipt("active") ?: builtin()
+            normalizeStoredLaunchTransition()
             // The process does not execute any restored candidate before pinPrimary().
         }
         Log.i(TAG, "native-profile binary=$binaryId runtime=${configuration.runtimeId} scope=$namespace")
@@ -1296,25 +1297,48 @@ class LynxUpdaterController internal constructor(
                 from.releaseId != to.releaseId -> "UNCHANGED"
             else -> return null
         }
+        val previous = store.value.optJSONObject("launchTransition")
+        val inheritedTransitionId = previous?.let {
+            validateStoredLaunchTransition(it)
+            val previousFrom = CatalogPolicy.parseReceipt(it.getJSONObject("from"))
+            val previousTo = CatalogPolicy.parseReceipt(it.getJSONObject("to"))
+            val sameTransition = it.getString("kind") == kind &&
+                previousFrom == from && previousTo == to
+            val reversesInterruptedTransition = recovery && previousTo == from
+            if (sameTransition || reversesInterruptedTransition) {
+                transitionId(it)
+            } else {
+                null
+            }
+        }
         return JSONObject()
             .put("kind", kind)
             .put("from", from.toJson())
             .put("to", to.toJson())
-            .also { transition ->
+            .put(
+                "transitionId",
                 store.value.optJSONObject("managedTransition")
-                    ?.optString("transitionId")
-                    ?.takeIf(String::isNotEmpty)
-                    ?.let { transition.put("transitionId", it) }
-            }
+                    ?.let(::transitionId)
+                    ?: inheritedTransitionId
+                    ?: UUID.randomUUID().toString(),
+            )
     }
 
-    private fun transitionResponse(value: JSONObject?): Any {
-        if (value == null) return JSONObject.NULL
+    private fun transitionId(value: JSONObject): String {
+        val transitionId = value.opt("transitionId") as? String
+        check(!transitionId.isNullOrEmpty()) {
+            "Transition identifier is missing"
+        }
+        return transitionId
+    }
+
+    private fun validateStoredLaunchTransition(value: JSONObject) {
         val kind = value.getString("kind")
         val from = CatalogPolicy.parseReceipt(value.getJSONObject("from"))
         val to = CatalogPolicy.parseReceipt(value.getJSONObject("to"))
-        check(to == running) { "Launch transition target is not running" }
-        check(!sameRelease(from, to)) { "Launch transition identity did not change" }
+        check(!sameRelease(from, to)) {
+            "Launch transition identity did not change"
+        }
         check(
             when (kind) {
                 "UPDATE_APPLIED" -> from.bundleId != to.bundleId
@@ -1325,6 +1349,37 @@ class LynxUpdaterController internal constructor(
                 else -> false
             },
         ) { "Invalid launch transition" }
+    }
+
+    private fun normalizeStoredLaunchTransition() {
+        val managedTransition = store.value.optJSONObject("managedTransition")
+        val managedTransitionId = managedTransition?.let(::transitionId)
+        val launchTransition = store.value.optJSONObject("launchTransition")
+            ?: return
+        validateStoredLaunchTransition(launchTransition)
+        val launchTransitionId = if (launchTransition.has("transitionId")) {
+            transitionId(launchTransition)
+        } else {
+            managedTransitionId ?: UUID.randomUUID().toString()
+        }
+        check(
+            managedTransitionId == null || managedTransitionId == launchTransitionId,
+        ) { "Launch and managed transition identifiers do not match" }
+        if (!launchTransition.has("transitionId")) {
+            mutate {
+                it.getJSONObject("launchTransition")
+                    .put("transitionId", launchTransitionId)
+            }
+        }
+    }
+
+    private fun transitionResponse(value: JSONObject?): Any {
+        if (value == null) return JSONObject.NULL
+        validateStoredLaunchTransition(value)
+        val kind = value.getString("kind")
+        val from = CatalogPolicy.parseReceipt(value.getJSONObject("from"))
+        val to = CatalogPolicy.parseReceipt(value.getJSONObject("to"))
+        check(to == running) { "Launch transition target is not running" }
         fun summary(receipt: CatalogPolicy.Receipt) = JSONObject()
             .put("kind", receipt.kind)
             .put("releaseId", receipt.releaseId ?: JSONObject.NULL)
@@ -1332,11 +1387,6 @@ class LynxUpdaterController internal constructor(
             .put("channel", receipt.channel)
         return JSONObject()
             .put("kind", kind)
-            .put(
-                "transitionId",
-                value.optString("transitionId")
-                    .takeIf(String::isNotEmpty) ?: JSONObject.NULL,
-            )
             .put(
                 "from",
                 summary(from),
@@ -1355,8 +1405,12 @@ class LynxUpdaterController internal constructor(
         }
         val transition = store.value.optJSONObject("launchTransition")
         val managedTransitionId = store.value.optJSONObject("managedTransition")
-            ?.optString("transitionId")
-            ?.takeIf(String::isNotEmpty)
+            ?.let(::transitionId)
+        val launchTransitionId = transition?.let(::transitionId)
+        check(
+            managedTransitionId == null || launchTransitionId == null ||
+                managedTransitionId == launchTransitionId,
+        ) { "Launch and managed transition identifiers do not match" }
         if (runningConfirmed) {
             if (transition != null || store.value.has("managedTransition")) {
                 mutate {
@@ -1366,7 +1420,7 @@ class LynxUpdaterController internal constructor(
             }
             return JSONObject()
                 .put("status", "ALREADY_CONFIRMED")
-                .put("transitionId", managedTransitionId ?: JSONObject.NULL)
+                .put("transitionId", launchTransitionId ?: JSONObject.NULL)
                 .put("transition", transitionResponse(transition))
         }
         val pending = store.value.optJSONObject("pending")
@@ -1382,7 +1436,7 @@ class LynxUpdaterController internal constructor(
         Log.i(TAG, "confirmed bundle=${running.bundleId} release=${running.releaseId} attempt=${session.id}")
         JSONObject()
             .put("status", "CONFIRMED")
-            .put("transitionId", managedTransitionId ?: JSONObject.NULL)
+            .put("transitionId", launchTransitionId ?: JSONObject.NULL)
             .put("transition", transitionResponse(transition))
     }
 

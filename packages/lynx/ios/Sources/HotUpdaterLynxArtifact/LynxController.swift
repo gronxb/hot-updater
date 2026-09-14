@@ -245,6 +245,13 @@ public final class LynxController {
         }
         var recovered = try journal.load()
         var recoveredChanged = false
+        if let launchTransition = recovered.launchTransition,
+           launchTransition.transitionId == nil {
+            recovered.launchTransition = try launchTransition.assigningTransitionId(
+                recovered.managedTransition?.transitionId ?? UUID().uuidString
+            )
+            recoveredChanged = true
+        }
         var recoveredPages: [LynxManagedLogicalPage] = []
         var embeddedPageInterruptionHasNoFallback = false
         if let cohort = recovered.selectionCohort, !cohort.isEmpty {
@@ -411,7 +418,16 @@ public final class LynxController {
             transition = Self.launchTransition(from: stable, to: runningSelection)
         }
         if let transition {
-            recovered.launchTransition = try LynxStoredLaunchTransition(transition)
+            recovered.launchTransition = try LynxStoredLaunchTransition(
+                transition,
+                transitionId: recovered.managedTransition?.transitionId
+                    ?? Self.inheritedTransitionId(
+                        for: transition,
+                        from: recovered.launchTransition,
+                        recovering: failedPendingSelection != nil
+                    )
+                    ?? UUID().uuidString
+            )
             recoveredChanged = true
         } else if let storedTransition = recovered.launchTransition {
             if (try? Self.sameIdentity(storedTransition.policy.to, runningSelection)) != true {
@@ -527,6 +543,47 @@ public final class LynxController {
         guard let fromRelease = from.releaseId, let toRelease = to.releaseId,
               fromRelease != toRelease else { return nil }
         return .init(kind: "UNCHANGED", from: from, to: to)
+    }
+    private static func inheritedTransitionId(
+        for transition: LynxLaunchTransition,
+        from stored: LynxStoredLaunchTransition?,
+        recovering: Bool
+    ) throws -> String? {
+        guard let stored, let transitionId = stored.transitionId else {
+            return nil
+        }
+        let previous = try stored.policy
+        let sameTransition = previous.kind == transition.kind
+            && sameIdentity(previous.from, transition.from)
+            && sameIdentity(previous.to, transition.to)
+        let reversesInterruptedTransition = recovering
+            && sameIdentity(previous.to, transition.from)
+        return sameTransition || reversesInterruptedTransition
+            ? transitionId
+            : nil
+    }
+    private func launchConfirmation(
+        from state: LynxControllerState
+    ) throws -> (LynxLaunchTransition?, String?) {
+        guard let stored = state.launchTransition else { return (nil, nil) }
+        let transition = try stored.policy
+        guard let transitionId = stored.transitionId, !transitionId.isEmpty else {
+            throw LynxArtifactError.invalid(
+                "Launch transition identifier is missing"
+            )
+        }
+        guard Self.sameIdentity(transition.to, runningSelection) else {
+            throw LynxArtifactError.invalid(
+                "Launch transition does not match the running selection"
+            )
+        }
+        if let managedTransitionId = state.managedTransition?.transitionId,
+           managedTransitionId != transitionId {
+            throw LynxArtifactError.invalid(
+                "Launch and managed transition identifiers do not match"
+            )
+        }
+        return (transition, transitionId)
     }
     private static func storedEligible(_ stored: LynxStoredSelection, state: LynxControllerState, snapshot: LynxPolicySnapshot) -> Bool {
         guard let receipt = try? stored.policy else { return false }
@@ -948,7 +1005,16 @@ public final class LynxController {
                 next.next = nil
                 next.confirmed = selection
                 if let transition = Self.launchTransition(from: runningSelection, to: value.receipt) {
-                    next.launchTransition = try LynxStoredLaunchTransition(transition)
+                    next.launchTransition = try LynxStoredLaunchTransition(
+                        transition,
+                        transitionId: next.managedTransition?.transitionId
+                            ?? Self.inheritedTransitionId(
+                                for: transition,
+                                from: next.launchTransition,
+                                recovering: false
+                            )
+                            ?? UUID().uuidString
+                    )
                 }
             } else {
                 next.next = selection
@@ -1054,11 +1120,9 @@ public final class LynxController {
         if runningConfirmed {
             do {
                 var next = state
-                let transition = try next.launchTransition?.policy
-                let managedTransitionId = next.managedTransition?.transitionId
-                guard transition.map({ Self.sameIdentity($0.to, runningSelection) }) ?? true else {
-                    throw LynxArtifactError.invalid("Launch transition does not match the running selection")
-                }
+                let (transition, transitionId) = try launchConfirmation(
+                    from: next
+                )
                 if next.launchTransition != nil || next.managedTransition != nil {
                     next.launchTransition = nil
                     next.managedTransition = nil
@@ -1068,7 +1132,7 @@ public final class LynxController {
                 completion(.success(.init(
                     status: "ALREADY_CONFIRMED",
                     transition: transition,
-                    transitionId: managedTransitionId
+                    transitionId: transitionId
                 )))
             } catch { completion(.failure(error)) }
             return
@@ -1094,11 +1158,7 @@ public final class LynxController {
         } else if runningSelection.kind != "BUILTIN", !Self.sameIdentity(runningSelection, try state.confirmed?.policy) {
             throw LynxArtifactError.invalid("No pending startup attempt")
         }
-        let transition = try next.launchTransition?.policy
-        let managedTransitionId = next.managedTransition?.transitionId
-        guard transition.map({ Self.sameIdentity($0.to, runningSelection) }) ?? true else {
-            throw LynxArtifactError.invalid("Launch transition does not match the running selection")
-        }
+        let (transition, transitionId) = try launchConfirmation(from: next)
         next.confirmed = running; next.pending = nil
         next.launchTransition = nil
         next.managedTransition = nil
@@ -1110,7 +1170,7 @@ public final class LynxController {
             $0.element(.success(.init(
                 status: $0.offset == 0 ? "CONFIRMED" : "ALREADY_CONFIRMED",
                 transition: $0.offset == 0 ? transition : nil,
-                transitionId: $0.offset == 0 ? managedTransitionId : nil
+                transitionId: $0.offset == 0 ? transitionId : nil
             )))
         }
         } catch {

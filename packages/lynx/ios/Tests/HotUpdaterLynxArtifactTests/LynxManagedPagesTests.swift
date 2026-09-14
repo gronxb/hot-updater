@@ -494,7 +494,8 @@ final class LynxManagedPagesTests: XCTestCase {
         reconstructed.notifyAppReady(nextPrimary) {
             confirmation = try? $0.get()
         }
-        XCTAssertEqual(confirmation?.transitionId, acceptance.transitionId)
+        XCTAssertNil(confirmation?.transition)
+        XCTAssertNil(confirmation?.transitionId)
     }
 
     func testFatalPersistenceFailureDoesNotPoisonInMemoryGeneration() throws {
