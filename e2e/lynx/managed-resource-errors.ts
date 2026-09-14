@@ -295,33 +295,43 @@ function isRecoveredFontDiagnostic(
   return false;
 }
 
+function recoverableAndroidFontPath(
+  record: LogRecord,
+  currentProcessId: string,
+): string | null {
+  const detailsMatch = record.envelope?.payload.match(ENGINE_ERROR_DETAILS);
+  if (
+    record.envelope?.processId !== currentProcessId ||
+    detailsMatch?.[1] !== "false" ||
+    detailsMatch[2] !== "302" ||
+    record.envelope.payload.match(/\bengine-error\b/g)?.length !== 1
+  ) {
+    return null;
+  }
+  const details = parseJsonObject(detailsMatch[3]);
+  if (
+    details?.error_code !== 302 ||
+    details.sub_code !== 30201 ||
+    details.type !== "font"
+  ) {
+    return null;
+  }
+  return managedRelativePath(details.src);
+}
+
 export function hasRecoverableAndroidFontDiagnostic(
   logs: string,
   currentProcessId: string,
 ): boolean {
-  return logs.split(/\r?\n/).some((line, index) => {
-    const record: LogRecord = {
+  const occurrences = logs.split(/\r?\n/).filter((line, index) => {
+    const record = {
       index,
       line,
       envelope: parseEnvelope(line),
     };
-    const detailsMatch = record.envelope?.payload.match(ENGINE_ERROR_DETAILS);
-    if (
-      record.envelope?.processId !== currentProcessId ||
-      detailsMatch?.[1] !== "false" ||
-      detailsMatch[2] !== "302" ||
-      record.envelope?.payload.match(/\bengine-error\b/g)?.length !== 1
-    ) {
-      return false;
-    }
-    const details = parseJsonObject(detailsMatch[3]);
-    return (
-      details?.error_code === 302 &&
-      details.sub_code === 30201 &&
-      details.type === "font" &&
-      managedRelativePath(details.src) !== null
-    );
+    return recoverableAndroidFontPath(record, currentProcessId) !== null;
   });
+  return occurrences.length === 1;
 }
 
 export function findManagedResourceEngineErrorCodes(
@@ -333,6 +343,18 @@ export function findManagedResourceEngineErrorCodes(
     line,
     envelope: parseEnvelope(line),
   }));
+  const journalOccurrenceIndexes = journalEvidence
+    ? records.flatMap((record) =>
+        recoverableAndroidFontPath(record, journalEvidence.currentProcessId) !==
+        null
+          ? [record.index]
+          : [],
+      )
+    : [];
+  const journalOccurrenceIndex =
+    journalOccurrenceIndexes.length === 1
+      ? journalOccurrenceIndexes[0]
+      : undefined;
   const codes: number[] = [];
   for (const record of records) {
     const codeMatch = record.line.match(ENGINE_ERROR_CODE);
@@ -343,6 +365,8 @@ export function findManagedResourceEngineErrorCodes(
       code === 302 &&
       detailsMatch?.[2] === "302" &&
       record.envelope?.payload.match(/\bengine-error\b/g)?.length === 1 &&
+      (journalEvidence === undefined ||
+        record.index === journalOccurrenceIndex) &&
       isRecoveredFontDiagnostic(
         records,
         record,

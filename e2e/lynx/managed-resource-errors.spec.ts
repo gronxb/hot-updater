@@ -6,6 +6,7 @@ import { describe, expect, it } from "vitest";
 import {
   assertNoManagedResourceEngineErrors,
   findManagedResourceEngineErrorCodes,
+  hasRecoverableAndroidFontDiagnostic,
 } from "./managed-resource-errors";
 
 const SHA = "a".repeat(64);
@@ -216,6 +217,29 @@ describe("managed Lynx resource engine errors", () => {
     ).toEqual([]);
   });
 
+  it("rejects duplicate eligible current-PID diagnostics", () => {
+    const logs = `${YNQB7P_LOG}\n${YNQB7P_LOG}`;
+
+    expect(hasRecoverableAndroidFontDiagnostic(logs, "7690")).toBe(false);
+    expect(
+      findManagedResourceEngineErrorCodes(logs, capturedEvidence()),
+    ).toEqual([302, 302]);
+  });
+
+  it("rejects a stale generation diagnostic before the successful current one", () => {
+    const stale = YNQB7P_LOG.replace("20:30:41.275", "20:29:40.100").replace(
+      "assets\\/probe.ttf",
+      "assets\\/stale.ttf",
+    );
+    const logs = `${stale}\n${YNQB7P_LOG}`;
+
+    expect(stale).toContain(String.raw`assets\/stale.ttf`);
+    expect(hasRecoverableAndroidFontDiagnostic(logs, "7690")).toBe(false);
+    expect(
+      findManagedResourceEngineErrorCodes(logs, capturedEvidence()),
+    ).toEqual([302, 302]);
+  });
+
   it.each([
     [
       "stale screen journal",
@@ -299,6 +323,39 @@ describe("managed Lynx resource engine errors", () => {
           journal.events.find((event) => event.name === "fontLoaded")!.details[
             field
           ] = value;
+        });
+        return capturedEvidence(runtimeJournalUtf8);
+      },
+    ]),
+    ...(["pageAttemptId", "transitionId"] as const).flatMap((field) =>
+      [
+        "generationWillEvaluate",
+        "generationStarted",
+        "engineDiagnostic",
+        "fontLoaded",
+        "jsReady",
+      ].map((name) => [
+        `${name} ${field} null/non-null mismatch`,
+        () => {
+          const runtimeJournalUtf8 = capturedJournal((journal) => {
+            journal.events.find((event) => event.name === name)!.details[
+              field
+            ] = `${field}-other`;
+          });
+          return capturedEvidence(runtimeJournalUtf8);
+        },
+      ]),
+    ),
+    ...(["pageAttemptId", "transitionId"] as const).map((field) => [
+      `${field} non-null/null mismatch`,
+      () => {
+        const runtimeJournalUtf8 = capturedJournal((journal) => {
+          for (const event of journal.events) {
+            event.details[field] = `${field}-current`;
+          }
+          journal.events.find(
+            (event) => event.name === "engineDiagnostic",
+          )!.details[field] = null;
         });
         return capturedEvidence(runtimeJournalUtf8);
       },
@@ -403,6 +460,21 @@ describe("managed Lynx resource engine errors", () => {
             (event) => event.name === "engineDiagnostic",
           );
           const [diagnostic] = journal.events.splice(diagnosticIndex, 1);
+          const startedIndex = journal.events.findIndex(
+            (event) => event.name === "generationStarted",
+          );
+          journal.events.splice(startedIndex, 0, diagnostic);
+        });
+        return capturedEvidence(runtimeJournalUtf8);
+      },
+    ],
+    [
+      "extra diagnostic before generation start",
+      () => {
+        const runtimeJournalUtf8 = capturedJournal((journal) => {
+          const diagnostic = structuredClone(
+            journal.events.find((event) => event.name === "engineDiagnostic")!,
+          );
           const startedIndex = journal.events.findIndex(
             (event) => event.name === "generationStarted",
           );

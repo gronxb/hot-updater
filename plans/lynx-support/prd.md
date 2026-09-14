@@ -1130,14 +1130,15 @@ never exposes `nextSequence`. This prevents persisted aliases such as
 `latestSequence`, `oldestSequence`, `rolledOver`, or `dropped`, numeric sequence
 values, and encoded details payloads.
 
-An Android font error 302 is recoverable in E2E validation only when the exact
-current-PID log diagnostic has one same-identity journal chain ordered as
-`generationWillEvaluate`, `generationStarted`, `engineDiagnostic`,
+An Android font error 302 is recoverable in E2E validation only when exactly
+one eligible current-PID log diagnostic has one same-identity journal chain
+ordered as `generationWillEvaluate`, `generationStarted`, `engineDiagnostic`,
 `fontLoaded`, and confirmed `jsReady`. The diagnostic must be nonfatal code 302,
 subcode 30201, type `font`, and have the same canonical path as the log; the
 font event must carry a lowercase SHA-256. Any fatal or retirement event, later
-generation boundary, missing or additional diagnostic, or identity mismatch
-fails closed. The screen action receipt must equal
+generation boundary, missing or additional diagnostic between evaluation and
+readiness, diagnostic before generation start, or identity mismatch fails
+closed. The screen action receipt must equal
 `generation-events -> <latestSequence>`, its marker must equal the marker the
 driver awaited, and its complete snapshot must match the canonical package
 journal events, truncation flag, bounds, and derived next sequence exactly.

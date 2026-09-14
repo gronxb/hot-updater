@@ -24,6 +24,8 @@ type ManagedIdentity = {
   readonly generationId: string;
   readonly contextId: string;
   readonly attemptId: string;
+  readonly pageAttemptId: string | null;
+  readonly transitionId: string | null;
   readonly bundleId: string;
   readonly releaseId: string | null;
 };
@@ -112,8 +114,11 @@ function managedIdentity(details: JsonRecord): ManagedIdentity | null {
       (key) => typeof details[key] !== "string" || details[key].length === 0,
     ) ||
     !POSITIVE_DECIMAL.test(String(details.processId)) ||
-    (details.releaseId !== null &&
-      (typeof details.releaseId !== "string" || details.releaseId.length === 0))
+    ["releaseId", "pageAttemptId", "transitionId"].some(
+      (key) =>
+        details[key] !== null &&
+        (typeof details[key] !== "string" || details[key].length === 0),
+    )
   ) {
     return null;
   }
@@ -123,6 +128,10 @@ function managedIdentity(details: JsonRecord): ManagedIdentity | null {
     generationId: String(details.generationId),
     contextId: String(details.contextId),
     attemptId: String(details.attemptId),
+    pageAttemptId:
+      details.pageAttemptId === null ? null : String(details.pageAttemptId),
+    transitionId:
+      details.transitionId === null ? null : String(details.transitionId),
     bundleId: String(details.bundleId),
     releaseId: details.releaseId === null ? null : String(details.releaseId),
   };
@@ -458,7 +467,11 @@ export function isFontDiagnosticRecoveredByAndroidJournal(
   if (evaluateIndex < 0 || startedIndex <= evaluateIndex) return false;
 
   const diagnosticIndexes = journalEvents.flatMap((event, index) =>
-    index > startedIndex && event.name === "engineDiagnostic" ? [index] : [],
+    index > evaluateIndex &&
+    index < readyIndex &&
+    event.name === "engineDiagnostic"
+      ? [index]
+      : [],
   );
   if (diagnosticIndexes.length !== 1) return false;
   const diagnosticIndex = diagnosticIndexes[0];
@@ -466,7 +479,7 @@ export function isFontDiagnosticRecoveredByAndroidJournal(
   const diagnostic = journalEvents[diagnosticIndex];
   const diagnosticIdentity = managedIdentity(diagnostic.details);
   if (
-    diagnosticIndex >= readyIndex ||
+    diagnosticIndex <= startedIndex ||
     diagnosticIdentity === null ||
     !sameIdentity(diagnosticIdentity, screen.identity) ||
     diagnostic.details.fatal !== false ||
