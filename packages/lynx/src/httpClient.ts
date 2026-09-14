@@ -37,22 +37,24 @@ const isIntegrityToken = (value: unknown): value is string =>
       value,
     ));
 
-function utf8ByteLength(value: string): number {
-  let bytes = 0;
-  for (const character of value) {
-    const code = character.codePointAt(0)!;
-    bytes += code <= 0x7f ? 1 : code <= 0x7ff ? 2 : code <= 0xffff ? 3 : 4;
-  }
-  return bytes;
-}
-
 function contentLength(response: Response): number | null {
-  const value =
-    response.headers?.get?.("content-length") ??
-    response.headers?.get?.("Content-Length") ??
-    null;
-  if (value === null) return null;
-  if (!/^\d+$/.test(value)) {
+  const values: unknown[] = [];
+  response.headers?.forEach?.((value, name) => {
+    if (name.toLowerCase() === "content-length") values.push(value);
+  });
+  if (values.length === 0) {
+    const lowerCase = response.headers?.get?.("content-length") ?? null;
+    const titleCase = response.headers?.get?.("Content-Length") ?? null;
+    if (lowerCase !== null) values.push(lowerCase);
+    if (titleCase !== null && titleCase !== lowerCase) values.push(titleCase);
+  }
+  if (values.length === 0) return null;
+  const value = values[0];
+  if (
+    values.length !== 1 ||
+    typeof value !== "string" ||
+    !/^(?:0|[1-9]\d*)$/.test(value)
+  ) {
     return invalidResponse("Invalid Content-Length response header.");
   }
   const parsed = Number(value);
@@ -83,6 +85,14 @@ async function decodeUtf8(content: Uint8Array): Promise<string> {
     return new TextDecoder().decode(content);
   }
   return new Response(content).text();
+}
+
+function normalizeBodyChunk(value: unknown): Uint8Array {
+  if (value instanceof ArrayBuffer) return new Uint8Array(value);
+  if (ArrayBuffer.isView(value)) {
+    return new Uint8Array(value.buffer, value.byteOffset, value.byteLength);
+  }
+  return invalidResponse("Update response returned an invalid body chunk.");
 }
 
 async function readBoundedBody(
@@ -124,11 +134,12 @@ async function readBoundedBody(
       while (true) {
         const chunk = await Promise.race([reader.read(), abortPromise]);
         if (chunk.done) break;
-        bytes += chunk.value.byteLength;
+        const value = normalizeBodyChunk(chunk.value);
+        bytes += value.byteLength;
         if (bytes > maxResponseBytes) {
           return invalidResponse("Update response exceeds the size limit.");
         }
-        chunks.push(chunk.value);
+        chunks.push(value);
       }
     } catch (error) {
       if (!signal.aborted) cancelReader(reader);
@@ -150,17 +161,8 @@ async function readBoundedBody(
     return decodeUtf8(content);
   }
 
-  if (declaredLength === null) {
-    cancelBody(body);
-    return invalidResponse(
-      "A bounded Content-Length header is required without response streaming.",
-    );
-  }
-  const text = await response.text();
-  if (utf8ByteLength(text) > maxResponseBytes) {
-    return invalidResponse("Update response exceeds the size limit.");
-  }
-  return text;
+  cancelBody(body);
+  return invalidResponse("A bounded response stream is required.");
 }
 
 function hasUnsafeUrlCharacter(value: string): boolean {

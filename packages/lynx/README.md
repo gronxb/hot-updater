@@ -28,12 +28,13 @@ if (update && (await update.updateBundle()) && update.shouldForceUpdate) {
 ```
 
 Importing the package and calling `init()` do not call native code, register a
-listener, or open a network connection. The background runtime must provide
-`fetch` and `AbortController`. The SDK requests response streaming through
-`lynxExtension.useStreaming`; streamed responses use `TextDecoder` and are
-bounded as bytes arrive. Without streaming support, the server must send a valid
-bounded `Content-Length` header. The packaged native integrations support Lynx
-3.9.
+listener, or open a network connection. The background runtime and native
+integration must provide `fetch`, `AbortController`, and a readable response
+stream through `response.body.getReader()`. The SDK requests that stream through
+`lynxExtension.useStreaming` and bounds bytes as they arrive. `Content-Length`
+can reject an oversized response before reading, but it cannot replace streaming
+because reading the whole response at once cannot enforce the allocation bound.
+The packaged native integrations support this contract on Lynx 3.9.
 
 `init()` accepts the update server URL, optional request headers and timeout, and
 an optional error callback. The public runtime surface is:
