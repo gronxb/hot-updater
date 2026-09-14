@@ -189,6 +189,7 @@ describe("Detox E2E harness contract", () => {
       "e2e/lynx/native-diagnostics-evidence.spec.ts",
       "e2e/lynx/native-diagnostics-evidence.ts",
       "e2e/lynx/native-launch-configuration.ts",
+      "e2e/lynx/native-public-key-integrity.spec.ts",
       "e2e/lynx/pending-action-poller.spec.ts",
       "e2e/lynx/public-matrix-contract.spec.ts",
       "e2e/lynx/public-matrix-contract.ts",
