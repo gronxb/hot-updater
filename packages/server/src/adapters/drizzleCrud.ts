@@ -100,6 +100,8 @@ export const recordDrizzleInsights = (
   db: DrizzleDB,
   provider: DrizzleProvider,
   { event }: InsightsRecordEventInput,
+  inTransaction = false,
+  onDuplicate: "ignore" | "error" = "ignore",
 ): void | Promise<void> => {
   const events = getDrizzleTable(db, "bundle_events");
   const heads = getDrizzleTable(db, "bundle_event_heads");
@@ -108,12 +110,12 @@ export const recordDrizzleInsights = (
   }
   const fields = Object.keys(getTableColumns(heads));
   if (provider === "mysql") {
-    if (!db.transaction) throw new DrizzleAdapterInvariantError();
-    return db.transaction(async (transaction) => {
-      const accepted = transaction
-        .insert(events)
-        .values(event)
-        .onDuplicateKeyUpdate?.({ set: { id: sql`id` } });
+    const write = async (transaction: DrizzleDB) => {
+      const insert = transaction.insert(events).values(event);
+      const accepted =
+        onDuplicate === "error"
+          ? insert
+          : insert.onDuplicateKeyUpdate?.({ set: { id: sql`id` } });
       if (!accepted || !transaction.execute)
         throw new DrizzleAdapterInvariantError();
       await accepted.execute();
@@ -141,12 +143,16 @@ export const recordDrizzleInsights = (
       await transaction.execute(
         sql`INSERT INTO bundle_event_heads (${columns}) SELECT ${columns} FROM bundle_events WHERE id = ${event.id} ON DUPLICATE KEY UPDATE ${assignments}`,
       );
-    });
+    };
+    if (inTransaction) return write(db);
+    if (!db.transaction) throw new DrizzleAdapterInvariantError();
+    return db.transaction(write);
   }
   const newer = sql`excluded.received_at_ms > bundle_event_heads.received_at_ms OR (excluded.received_at_ms = bundle_event_heads.received_at_ms AND excluded.id > bundle_event_heads.id)`;
   const mutations = (executor: DrizzleDB, fromInserted = false) => {
     const insert = executor.insert(events).values(event);
-    const accepted = insert.onConflictDoNothing?.();
+    const accepted =
+      onDuplicate === "error" ? insert : insert.onConflictDoNothing?.();
     // Read the immutable accepted row, never a possibly altered duplicate input.
     const select = fromInserted
       ? sql`SELECT ${sql.join(
@@ -182,6 +188,13 @@ export const recordDrizzleInsights = (
     return db
       .execute(sql`WITH inserted AS (${returning.getSQL()}) ${head.getSQL()}`)
       .then(() => undefined);
+  }
+  if (inTransaction && db.resultKind === "sync") {
+    const { accepted, head } = mutations(db);
+    if (!accepted.run || !head.run) throw new DrizzleAdapterInvariantError();
+    accepted.run();
+    head.run();
+    return;
   }
   if (db.batch !== undefined) {
     const { accepted, head } = mutations(db);

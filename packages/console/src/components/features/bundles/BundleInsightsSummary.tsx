@@ -3,9 +3,11 @@ import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import type { BundleActivityInput } from "@/lib/bundle-activity";
-import type { RecoveryReport } from "@/lib/insights-recovery";
-import { getRecoveryReportRpc } from "@/lib/insights-recovery-rpc";
+import type {
+  BundleActivityInput,
+  BundleActivityReport,
+} from "@/lib/bundle-activity";
+import { getReleaseActivityRpc } from "@/lib/insights-recovery-rpc";
 import { cn } from "@/lib/utils";
 
 import { BundleActivityChart } from "./BundleActivityChart";
@@ -13,8 +15,13 @@ import { BundleActivityChart } from "./BundleActivityChart";
 const activityStats = [
   { label: "Active", field: "activeInstallations", color: "text-success/85" },
   {
-    label: "Downloaded",
+    label: "Pending",
     field: "pendingInstallations",
+    color: "text-muted-foreground",
+  },
+  {
+    label: "Downloaded",
+    field: "downloadedInstallations",
     color: "text-primary/85",
   },
   {
@@ -28,7 +35,7 @@ export function BundleMovementSummary({
   report,
   loading = false,
 }: {
-  readonly report?: RecoveryReport;
+  readonly report?: BundleActivityReport;
   readonly loading?: boolean;
 }) {
   if (!report)
@@ -36,21 +43,19 @@ export function BundleMovementSummary({
       <Skeleton aria-label="Loading bundle activity" className="h-4 w-32" />
     ) : (
       <span
-        aria-label="30-day bundle activity unavailable"
+        aria-label="Bundle activity unavailable"
         className="text-sm text-muted-foreground"
       >
         —
       </span>
     );
-  const series = report.series[0];
+  const summary = report.summary;
   return (
     <div
       role="group"
-      aria-label="Bundle activity over 30 days"
+      aria-label="Bundle activity over collected history"
       title={
-        report.truncated
-          ? "Partial history. Counts include only the available reports."
-          : "Active: last observed running ID per installation. Downloaded: waiting to apply. Recovered: distinct installations recovered from this ID in 30 days."
+        "Active: last observed release per installation. Downloaded and Recovered: distinct installations over collected history."
       }
       className="flex min-w-[140px] items-baseline gap-3 whitespace-nowrap"
     >
@@ -60,14 +65,14 @@ export function BundleMovementSummary({
           <span
             className={cn(
               "text-sm font-medium tabular-nums",
-              (series?.[field] ?? 0) > 0 ? color : "text-muted-foreground",
+              summary[field] > 0 ? color : "text-muted-foreground",
             )}
           >
-            {series?.[field] ?? 0}
+            {summary[field]}
           </span>
         </span>
       ))}
-      {report.truncated ? (
+      {report.coverage.kind === "partial" ? (
         <span className="text-xs text-muted-foreground">Partial</span>
       ) : null}
     </div>
@@ -82,17 +87,15 @@ export function BundleInsightsSummary({
   const activityInput = { ...input, window: "24h" } as const;
   const query = useQuery({
     queryKey: ["rollout-activity", activityInput],
-    queryFn: () => getRecoveryReportRpc({ data: activityInput }),
+    queryFn: () => getReleaseActivityRpc({ data: activityInput }),
     staleTime: 30_000,
   });
   const report = query.data;
-  const series = report?.series[0];
+  const activity = report?.data[0];
   return (
     <Card>
       <CardHeader className="px-4 pt-4 pb-3">
-        <CardTitle className="text-sm font-medium">
-          Activity · 24 hours
-        </CardTitle>
+        <CardTitle className="text-sm font-medium">Release activity</CardTitle>
       </CardHeader>
       <CardContent className="flex flex-col gap-3 px-4 pb-4">
         {query.isPending ? (
@@ -113,25 +116,30 @@ export function BundleInsightsSummary({
           </div>
         ) : (
           <>
-            <dl className="grid grid-cols-3 gap-4">
+            <dl className="grid grid-cols-4 gap-4">
               {activityStats.map(({ label, field, color }) => (
                 <div key={field}>
                   <dt className="text-xs text-muted-foreground">{label}</dt>
                   <dd
                     className={cn(
                       "mt-1 text-xl font-semibold tabular-nums",
-                      (series?.[field] ?? 0) > 0
+                      (activity?.summary[field] ?? 0) > 0
                         ? color
                         : "text-muted-foreground",
                     )}
                   >
-                    {series?.[field] ?? 0}
+                    {activity?.summary[field] ?? 0}
                   </dd>
                 </div>
               ))}
             </dl>
-            <BundleActivityChart series={series} />
-            {report?.truncated ? (
+            <div>
+              <p className="mb-2 text-xs text-muted-foreground">
+                Reports · 24 hours · UTC
+              </p>
+              <BundleActivityChart series={activity?.series} />
+            </div>
+            {report?.coverage.kind === "partial" ? (
               <p className="text-xs text-muted-foreground">Partial history</p>
             ) : null}
           </>

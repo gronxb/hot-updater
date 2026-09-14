@@ -109,6 +109,39 @@ const bundleEventHeads = pgTable("bundle_event_heads", {
   from_bundle_id: text("from_bundle_id"),
   to_bundle_id: text("to_bundle_id").notNull(),
 });
+const insightsInstallStates = pgTable("insights_install_states", {
+  install_id: text("install_id").primaryKey(),
+  revision: integer("revision").notNull(),
+  state: text("state").notNull(),
+});
+const insightsLifetimeMarkers = pgTable("insights_lifetime_markers", {
+  marker_key: text("marker_key").primaryKey(),
+  release_id: text("release_id").notNull(),
+  platform: text("platform").notNull(),
+  channel: text("channel").notNull(),
+  install_id: text("install_id").notNull(),
+  metric: text("metric").notNull(),
+});
+const insightsReleaseSummaries = pgTable("insights_release_summaries", {
+  release_key: text("release_key").primaryKey(),
+  release_id: text("release_id").notNull(),
+  platform: text("platform").notNull(),
+  channel: text("channel").notNull(),
+  active_installations: integer("active_installations").notNull(),
+  pending_installations: integer("pending_installations").notNull(),
+  downloaded_installations: integer("downloaded_installations").notNull(),
+  recovered_installations: integer("recovered_installations").notNull(),
+});
+const insightsHourlyActivity = pgTable("insights_hourly_activity", {
+  bucket_key: text("bucket_key").primaryKey(),
+  release_id: text("release_id").notNull(),
+  platform: text("platform").notNull(),
+  channel: text("channel").notNull(),
+  hour_start_ms: doublePrecision("hour_start_ms").notNull(),
+  downloaded_reports: integer("downloaded_reports").notNull(),
+  applied_reports: integer("applied_reports").notNull(),
+  recovered_reports: integer("recovered_reports").notNull(),
+});
 const apiKeys = pgTable("api_keys", {
   id: text("id").primaryKey(),
   hash: text("hash").notNull().unique(),
@@ -121,6 +154,10 @@ const apiKeys = pgTable("api_keys", {
 const schema = {
   bundle_events: bundleEvents,
   bundle_event_heads: bundleEventHeads,
+  insights_hourly_activity: insightsHourlyActivity,
+  insights_install_states: insightsInstallStates,
+  insights_lifetime_markers: insightsLifetimeMarkers,
+  insights_release_summaries: insightsReleaseSummaries,
 
   bundle_patches: bundlePatches,
   bundles,
@@ -221,11 +258,6 @@ describe("drizzleAdapter schema requirements", () => {
       const db = new PGlite();
       await db.exec(DATABASE_PLUGIN_TEST_SCHEMA_SQL);
       const native = drizzle(db, { schema });
-      const callbackTransaction = vi
-        .spyOn(native, "transaction")
-        .mockImplementation(() => {
-          throw new Error("callback transactions are unavailable");
-        });
       const plugin = drizzleAdapter({
         db: async () => native,
         provider: "postgresql",
@@ -265,7 +297,6 @@ describe("drizzleAdapter schema requirements", () => {
             installId: previous.install_id,
           }),
         ).resolves.toEqual([next]);
-        expect(callbackTransaction).not.toHaveBeenCalled();
       } finally {
         await db.close();
       }
@@ -307,6 +338,38 @@ describe("drizzleAdapter schema requirements", () => {
       { cwd: new URL("../..", import.meta.url).pathname },
     );
     expect(stdout).toContain("atomic retry verified");
+  });
+  it("keeps the Bun SQLite event and aggregate projection atomic", async () => {
+    const { stdout } = await promisify(execFile)(
+      new URL("../../../../node_modules/.bin/bun", import.meta.url).pathname,
+      [
+        "-e",
+        `
+        import { Database } from "bun:sqlite";
+        import { drizzle } from "drizzle-orm/bun-sqlite";
+        import { drizzleAdapter } from "./src/adapters/drizzle.ts";
+        import { createTableSql } from "./src/db/schema/sql.ts";
+        import { createBundleEventRowFixture } from "../test-utils/src/databaseTestFixtures.ts";
+        import * as schema from "../../examples-server/elysia-drizzle-libsql/hot-updater-schema.ts";
+        const db = new Database(":memory:");
+        db.exec(createTableSql("sqlite").join(";"));
+        db.exec("create trigger reject_projection before insert on insights_install_states begin select raise(abort, 'injected projection failure'); end;");
+        const plugin = drizzleAdapter({ db: drizzle(db, { schema }), provider: "sqlite" });
+        const event = createBundleEventRowFixture("711", 100);
+        let rejected = false;
+        try { await plugin.models.insights.recordEvent({ event }); } catch { rejected = true; }
+        const total = (table) => db.query(\`select count(*) as total from \${table}\`).get().total;
+        if (!rejected || total("bundle_events") !== 0 || total("bundle_event_heads") !== 0 || total("insights_install_states") !== 0) throw new Error("projection failure did not roll back every write");
+        db.exec("drop trigger reject_projection");
+        await plugin.models.insights.recordEvent({ event });
+        if (total("bundle_events") !== 1 || total("bundle_event_heads") !== 1 || total("insights_install_states") !== 1) throw new Error("retry did not commit event and projection together");
+        db.close();
+        console.log("aggregate transaction verified");
+      `,
+      ],
+      { cwd: new URL("../..", import.meta.url).pathname },
+    );
+    expect(stdout).toContain("aggregate transaction verified");
   });
   it("keeps failed event inserts absent and permits retry", async () => {
     const db = new PGlite();

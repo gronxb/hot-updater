@@ -5,6 +5,7 @@ import {
   type DatabasePlugin,
 } from "@hot-updater/plugin-core";
 import {
+  createMemoryInsightsStorage,
   latestInsightsWhere,
   latestInsightsCountGroups,
 } from "@hot-updater/plugin-core/internal";
@@ -417,8 +418,13 @@ const createImplementation = (tables: Tables): DatabasePluginImplementation => {
     return result;
   };
 
+  const insightsStorage = createMemoryInsightsStorage({
+    onEvent: (event) => tables.bundle_events.rows.push(event),
+  });
+
   return {
     ...createCrudImplementation(tables),
+    insightsStorage,
     recordInsights: ({ event }) =>
       withMutationLock(() => {
         if (!tables.bundle_events.rows.some(({ id }) => id === event.id))
@@ -495,8 +501,11 @@ export const createInMemoryDatabasePlugin = (
 
 export const createInMemoryDatabaseHarness = () => {
   const tables = createTables();
+  let plugin = createInMemoryDatabasePlugin(tables);
   return {
-    plugin: createInMemoryDatabasePlugin(tables),
+    get plugin() {
+      return plugin;
+    },
     reset: (): void => {
       tables.bundles.rows = [];
       tables.bundle_patches.rows = [];
@@ -505,6 +514,7 @@ export const createInMemoryDatabaseHarness = () => {
       tables.channels.rows = [];
       tables.bundle_events.rows = [];
       tables.api_keys.rows = [];
+      plugin = createInMemoryDatabasePlugin(tables);
     },
   };
 };

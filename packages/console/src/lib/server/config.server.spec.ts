@@ -55,6 +55,10 @@ const createTestDatabasePlugin = (name: string) =>
         countEvents: vi.fn(async () => 0),
         findLatestEvents: vi.fn(async () => []),
         countLatestEvents: vi.fn(async () => 0),
+        getReleaseActivity: vi.fn(async () => ({
+          coverage: { kind: "complete" as const, sinceMs: 0 },
+          data: [],
+        })),
       },
       apiKeys: {
         create: vi.fn(async () => "created" as const),

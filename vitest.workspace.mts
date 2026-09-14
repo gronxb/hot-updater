@@ -1,3 +1,5 @@
+import { fileURLToPath } from "node:url";
+
 import { cloudflareTest } from "@cloudflare/vitest-pool-workers";
 import { defineConfig, defineProject } from "vitest/config";
 
@@ -54,6 +56,13 @@ export default defineConfig({
         },
       }),
       defineProject({
+        resolve: {
+          alias: {
+            "@": fileURLToPath(
+              new URL("./packages/console/src", import.meta.url),
+            ),
+          },
+        },
         test: {
           name: "unit:console",
           environment: "jsdom",

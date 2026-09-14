@@ -24,6 +24,9 @@ it("shows a single observed active value without inventing observations in earli
     recoveredInstallations: 0,
     points: [null, null, 2].map((active, index) => ({
       startMs: index * 3_600_000,
+      rangeStartMs: index * 3_600_000,
+      endMs: (index + 1) * 3_600_000,
+      partial: false,
       active,
       pendingInstallations: 0,
       downloadedInstallations: 0,

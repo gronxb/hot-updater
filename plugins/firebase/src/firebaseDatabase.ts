@@ -1,10 +1,16 @@
 import {
   compareInsightsText,
   createDatabasePlugin,
+  insightsHourlyBucketKey,
+  insightsLifetimeMarkerKey,
+  insightsReleaseKey,
+  recordProjectedInsightsEvent,
 } from "@hot-updater/plugin-core";
 import {
   latestInsightsWhere,
   latestInsightsCountGroups,
+  type InsightsStorageAdapter,
+  type PreparedInsightsEvent,
 } from "@hot-updater/plugin-core/internal";
 import {
   createDatabasePluginAdapter,
@@ -20,6 +26,7 @@ import {
 import {
   getFirestore,
   Filter,
+  FieldValue,
   type DocumentData,
   type Query,
   type WhereFilterOp,
@@ -51,6 +58,267 @@ import {
   FirebaseDatabaseConstraintError,
 } from "./firebaseDatabaseState";
 import { FIREBASE_V1_COLLECTION_NAMES } from "./firebaseInfrastructureNames";
+
+const firebaseInsightsDocumentId = (key: string): string =>
+  Buffer.from(key, "utf8").toString("base64url");
+
+const createFirebaseInsightsStorage = (
+  db: ReturnType<typeof getFirestore>,
+  collections: ReturnType<typeof createFirebaseDatabaseCollections>,
+): InsightsStorageAdapter => ({
+  async readRecordContext({ installId, lifetimeKey }) {
+    return db.runTransaction(async (transaction) => {
+      const stateReference = collections.insightsProjectionStates.doc(
+        firebaseInsightsDocumentId(installId),
+      );
+      const references = [
+        stateReference,
+        ...(lifetimeKey === null
+          ? []
+          : [
+              collections.insightsLifetimeMarkers.doc(
+                firebaseInsightsDocumentId(
+                  insightsLifetimeMarkerKey(lifetimeKey),
+                ),
+              ),
+            ]),
+      ];
+      const [state, marker] = await transaction.getAll(...references);
+      if (!state?.exists) {
+        return {
+          revision: "0",
+          state: null,
+          lifetimeExists: marker?.exists ?? false,
+        };
+      }
+      const data = state.data();
+      if (
+        typeof data?.revision !== "number" ||
+        !Number.isSafeInteger(data.revision) ||
+        data.revision < 1 ||
+        typeof data.state !== "string"
+      ) {
+        throw new FirebaseDatabaseConstraintError(
+          "insights_projection_states.invalid",
+        );
+      }
+      return {
+        revision: String(data.revision),
+        state: data.state,
+        lifetimeExists: marker?.exists ?? false,
+      };
+    });
+  },
+  async commitPreparedEvent(prepared: PreparedInsightsEvent) {
+    return db.runTransaction(async (transaction) => {
+      const event = prepared.event;
+      const eventReference = collections.bundleEvents.doc(event.id);
+      const installationReference = collections.insightsLatest.doc(
+        firebaseInstallationDocumentId(event.install_id),
+      );
+      const stateReference = collections.insightsProjectionStates.doc(
+        firebaseInsightsDocumentId(event.install_id),
+      );
+      const markerReference =
+        prepared.firstLifetime === null
+          ? null
+          : collections.insightsLifetimeMarkers.doc(
+              firebaseInsightsDocumentId(
+                insightsLifetimeMarkerKey(prepared.firstLifetime),
+              ),
+            );
+      const [storedEvent, storedInstallation, storedState, storedMarker] =
+        await transaction.getAll(
+          eventReference,
+          installationReference,
+          stateReference,
+          ...(markerReference === null ? [] : [markerReference]),
+        );
+      if (storedEvent.exists) return { status: "duplicate" as const };
+      const expectedRevision = Number(prepared.expectedRevision);
+      const actualRevision = storedState.exists
+        ? storedState.data()?.revision
+        : 0;
+      if (
+        !Number.isSafeInteger(expectedRevision) ||
+        expectedRevision < 0 ||
+        actualRevision !== expectedRevision ||
+        storedMarker?.exists
+      ) {
+        return { status: "conflict" as const };
+      }
+
+      transaction.create(eventReference, event);
+      const current = storedInstallation.exists
+        ? requireFirebaseDocumentKey(
+            "insights_latest",
+            storedInstallation.id,
+            parseFirebaseBundleEventRow(
+              storedInstallation.data(),
+              `insights_latest/${storedInstallation.id}`,
+            ),
+          )
+        : null;
+      if (
+        current === null ||
+        event.received_at_ms > current.received_at_ms ||
+        (event.received_at_ms === current.received_at_ms &&
+          compareInsightsText(event.id, current.id) > 0)
+      ) {
+        transaction.set(installationReference, event);
+      }
+      transaction.set(stateReference, {
+        revision: expectedRevision + 1,
+        state: prepared.nextState,
+      });
+
+      const deltas = new Map<
+        string,
+        {
+          release: (typeof prepared.currentDeltas)[number]["release"];
+          active: number;
+          pending: number;
+          downloaded: number;
+          recovered: number;
+        }
+      >();
+      const add = (
+        release: (typeof prepared.currentDeltas)[number]["release"],
+        metric: "active" | "pending" | "downloaded" | "recovered",
+        delta: number,
+      ) => {
+        const key = insightsReleaseKey(release);
+        const value = deltas.get(key) ?? {
+          release,
+          active: 0,
+          pending: 0,
+          downloaded: 0,
+          recovered: 0,
+        };
+        value[metric] += delta;
+        deltas.set(key, value);
+      };
+      for (const delta of prepared.currentDeltas) {
+        add(delta.release, delta.metric, delta.delta);
+      }
+      if (prepared.firstLifetime !== null) {
+        add(prepared.firstLifetime.release, prepared.firstLifetime.metric, 1);
+        transaction.create(markerReference!, prepared.firstLifetime);
+      }
+      for (const [key, delta] of deltas) {
+        transaction.set(
+          collections.insightsReleaseSummaries.doc(
+            firebaseInsightsDocumentId(key),
+          ),
+          {
+            release: delta.release,
+            active_installations: FieldValue.increment(delta.active),
+            pending_installations: FieldValue.increment(delta.pending),
+            downloaded_installations: FieldValue.increment(delta.downloaded),
+            recovered_installations: FieldValue.increment(delta.recovered),
+          },
+          { merge: true },
+        );
+      }
+      if (prepared.hourly !== null) {
+        const hourly = prepared.hourly;
+        transaction.set(
+          collections.insightsHourlyActivity.doc(
+            firebaseInsightsDocumentId(
+              insightsHourlyBucketKey(hourly.release, hourly.hourStartMs),
+            ),
+          ),
+          {
+            release_key: insightsReleaseKey(hourly.release),
+            release: hourly.release,
+            hour_start_ms: hourly.hourStartMs,
+            downloaded_reports: FieldValue.increment(
+              hourly.metric === "downloaded" ? 1 : 0,
+            ),
+            applied_reports: FieldValue.increment(
+              hourly.metric === "applied" ? 1 : 0,
+            ),
+            recovered_reports: FieldValue.increment(
+              hourly.metric === "recovered" ? 1 : 0,
+            ),
+          },
+          { merge: true },
+        );
+      }
+      return { status: "committed" as const };
+    });
+  },
+  async getReleaseActivity(input) {
+    const summaryDocuments = await db.getAll(
+      ...input.releases.map((release) =>
+        collections.insightsReleaseSummaries.doc(
+          firebaseInsightsDocumentId(insightsReleaseKey(release)),
+        ),
+      ),
+    );
+    const summaries = new Map(
+      summaryDocuments
+        .filter((document) => document.exists)
+        .map((document) => [document.id, document.data()!]),
+    );
+    const series =
+      input.timeRange === undefined
+        ? new Map<string, readonly DocumentData[]>()
+        : new Map(
+            await Promise.all(
+              input.releases.map(async (release) => {
+                const key = insightsReleaseKey(release);
+                const snapshot = await collections.insightsHourlyActivity
+                  .where("release_key", "==", key)
+                  .where("hour_start_ms", ">=", input.timeRange!.start)
+                  .where("hour_start_ms", "<", input.timeRange!.end)
+                  .orderBy("hour_start_ms", "asc")
+                  .get();
+                return [
+                  key,
+                  snapshot.docs.map((document) => document.data()),
+                ] as const;
+              }),
+            ),
+          );
+    const count = (value: unknown): number => {
+      const result = value ?? 0;
+      if (!Number.isSafeInteger(result) || (result as number) < 0) {
+        throw new FirebaseDatabaseConstraintError(
+          "insights_release_activity.invalid",
+        );
+      }
+      return result as number;
+    };
+    return {
+      coverage: { kind: "complete" as const, sinceMs: 0 },
+      data: input.releases.map((release, index) => {
+        const key = insightsReleaseKey(release);
+        const summary = summaries.get(summaryDocuments[index]!.id);
+        return {
+          release,
+          summary: {
+            activeInstallations: count(summary?.active_installations),
+            pendingInstallations: count(summary?.pending_installations),
+            downloadedInstallations: count(summary?.downloaded_installations),
+            recoveredInstallations: count(summary?.recovered_installations),
+          },
+          ...(input.timeRange === undefined
+            ? {}
+            : {
+                series: (series.get(key) ?? []).map((point) => ({
+                  startMs: count(point.hour_start_ms),
+                  downloadedReports: count(point.downloaded_reports),
+                  appliedReports: count(point.applied_reports),
+                  recoveredReports: count(point.recovered_reports),
+                })),
+              }),
+          measuredAtMs: Date.now(),
+        };
+      }),
+    };
+  },
+});
 
 type FirebaseMutation<TResult> = (
   database: TransactionDatabasePluginImplementation,
@@ -120,6 +388,10 @@ export const firebaseDatabase = (config: FirebaseDatabaseConfig) => {
     const app = getApps().length ? getApp() : initializeApp(config);
     const db = getFirestore(app);
     const collections = createFirebaseDatabaseCollections(db);
+    const nativeInsightsStorage = createFirebaseInsightsStorage(
+      db,
+      collections,
+    );
     let migration: Promise<void> | undefined;
 
     const ensureMigrated = (): Promise<void> => {
@@ -128,6 +400,20 @@ export const firebaseDatabase = (config: FirebaseDatabaseConfig) => {
         throw error;
       });
       return migration;
+    };
+    const insightsStorage: InsightsStorageAdapter = {
+      async readRecordContext(input) {
+        await ensureMigrated();
+        return nativeInsightsStorage.readRecordContext(input);
+      },
+      async commitPreparedEvent(input) {
+        await ensureMigrated();
+        return nativeInsightsStorage.commitPreparedEvent(input);
+      },
+      async getReleaseActivity(input) {
+        await ensureMigrated();
+        return nativeInsightsStorage.getReleaseActivity(input);
+      },
     };
 
     const mutate = async <TResult>(
@@ -161,39 +447,9 @@ export const firebaseDatabase = (config: FirebaseDatabaseConfig) => {
     };
 
     return {
-      recordInsights: async ({ event }) => {
-        await ensureMigrated();
-        await db.runTransaction(async (transaction) => {
-          const eventReference = collections.bundleEvents.doc(event.id);
-          const installationReference = collections.insightsLatest.doc(
-            firebaseInstallationDocumentId(event.install_id),
-          );
-          const [storedEvent, storedInstallation] = await transaction.getAll(
-            eventReference,
-            installationReference,
-          );
-          if (storedEvent.exists) return;
-          const current = storedInstallation.exists
-            ? requireFirebaseDocumentKey(
-                "insights_latest",
-                storedInstallation.id,
-                parseFirebaseBundleEventRow(
-                  storedInstallation.data(),
-                  `insights_latest/${storedInstallation.id}`,
-                ),
-              )
-            : null;
-          transaction.create(eventReference, event);
-          if (
-            current === null ||
-            event.received_at_ms > current.received_at_ms ||
-            (event.received_at_ms === current.received_at_ms &&
-              compareInsightsText(event.id, current.id) > 0)
-          ) {
-            transaction.set(installationReference, event);
-          }
-        });
-      },
+      recordInsights: (input) =>
+        recordProjectedInsightsEvent(insightsStorage, input),
+      insightsStorage,
       findLatestInsightsEvents: async (input) => {
         await ensureMigrated();
         if ("installId" in input) {

@@ -99,12 +99,12 @@ App Usage의 DAU/WAU/MAU와 기존 raw overview는 이번 설계에서 폐기하
 `install_id`이며, 고유 설치 수를 사용자 수나 물리적 기기 수로 표현하지 않는다.
 `bundle_id`는 파일 식별자이므로 같은 파일을 사용하는 여러 release를 합치지 않는다.
 
-| 반환 필드 | 의미 |
-| --- | --- |
-| `activeInstallations` | 마지막 관측 실행 상태가 대상 release에 귀속되는 설치 수 |
-| `pendingInstallations` | 마지막 관측이 해당 release를 받은 뒤 적용 대기인 설치 수 |
+| 반환 필드                 | 의미                                                                      |
+| ------------------------- | ------------------------------------------------------------------------- |
+| `activeInstallations`     | 마지막 관측 실행 상태가 대상 release에 귀속되는 설치 수                   |
+| `pendingInstallations`    | 마지막 관측이 해당 release를 받은 뒤 적용 대기인 설치 수                  |
 | `downloadedInstallations` | 수집된 전체 기간의 UPDATE_DOWNLOADED를 대상 release로 보고한 고유 설치 수 |
-| `recoveredInstallations` | 수집된 전체 기간의 RECOVERED를 대상 release에서 보고한 고유 설치 수 |
+| `recoveredInstallations`  | 수집된 전체 기간의 RECOVERED를 대상 release에서 보고한 고유 설치 수       |
 
 현재 상태는 **설치의 전역 최신 receipt tuple을 결정한 후** platform/channel을
 적용한다. scope가 바뀌었다고 이전 scope의 마지막 상태를 되살리지 않는다.
@@ -164,8 +164,12 @@ type ReleaseActivity = {
 interface InsightsModel {
   // Existing signatures and query semantics remain.
   recordEvent(input: InsightsRecordEventInput): Promise<void>;
-  listEvents(input: InsightsListEventsInput): Promise<readonly BundleEventRow[]>;
-  findLatestEvents(input: InsightsFindLatestEventsInput): Promise<readonly BundleEventRow[]>;
+  listEvents(
+    input: InsightsListEventsInput,
+  ): Promise<readonly BundleEventRow[]>;
+  findLatestEvents(
+    input: InsightsFindLatestEventsInput,
+  ): Promise<readonly BundleEventRow[]>;
   countLatestEvents(input: InsightsCountLatestEventsInput): Promise<number>;
   countEvents(input: InsightsCountEventsInput): Promise<number>;
 
@@ -258,9 +262,8 @@ await insights.getReleaseActivity({
   채운다. sinceMs=10:37이면 10:00 버킷도 partial이다. 경계 전/겹침 버킷은 관측값이
   있더라도 partial로 표시하며, 값이 없으면 unknown이다. 현재 열린 버킷은 관측 시점까지의
   값이다. coverage.sinceMs=null이면 어떤 누락 버킷에도 완전한 0을 부여하지 않는다.
-- 한 조회의 coverage와 데이터는 동일 projection generation에 속해야 한다.
-- 초기 집계/rebuild 진행 중이면 typed `InsightsAggregationNotReadyError`를 던진다.
-  메서드 미지원은 `InsightsAggregationUnsupportedError`. 두 경우를 0/빈 결과로 숨기지 않는다.
+- 메서드 미지원은 `InsightsAggregationUnsupportedError`로 반환하며 0/빈 결과나
+  raw event scan fallback으로 숨기지 않는다.
 - 실제 수치 타입은 기존과 같이 0 이상의 safe integer. overflow 시 명시적으로 실패한다.
 
 ## 5. 쓰기 계약: 논리 모델 6개, native adapter 7개
@@ -304,13 +307,15 @@ type InsightsStorageAdapter = Omit<InsightsModel, "recordEvent"> & {
     readonly installId: string;
     readonly lifetimeKey: LifetimeKey | null;
   }): Promise<{
-    // Opaque token includes generation and the install revision or absence.
+    // Opaque token identifies the install revision or its absence.
     readonly revision: string;
     readonly state: string | null;
     readonly lifetimeExists: boolean;
   }>;
 
-  commitPreparedEvent(input: PreparedInsightsEvent): Promise<
+  commitPreparedEvent(
+    input: PreparedInsightsEvent,
+  ): Promise<
     | { readonly status: "committed" }
     | { readonly status: "duplicate" }
     | { readonly status: "conflict" }
@@ -337,10 +342,9 @@ SQL fragment, 자유로운 delta 값, 일반 query DSL은 받지 않는다.
 context의 marker와 state는 같은 revision에 대응해야 한다. native snapshot 또는
 revision 재확인으로 보장한다. marker를 stale replica에서 읽고 최신 revision과
 결합해서는 안 된다. 모든 새 수락 이벤트는 오래된 tuple이어도 해당 설치 revision을
-전진시킨다. revision은 generation과 설치 revision/아직 없음 상태를 포함하는
-provider-owned opaque token이다. 설치 revision은 수락 event.id를 사용할 수 있고
-시간순일 필요는 없다. 신규 설치의 state=null도 generation이 담긴 토큰을 반환한다.
-commit은 활성 generation까지 검사하여 이전 generation의 in-flight write를 거부한다.
+전진시킨다. revision은 설치 revision/아직 없음 상태를 나타내는 provider-owned opaque
+token이다. 설치 revision은 수락 event.id를 사용할 수 있고 시간순일 필요는 없다.
+신규 설치의 state=null도 CAS에 사용할 token을 반환한다.
 
 ### commit의 원자성
 
@@ -361,7 +365,7 @@ duplicate로 판정해야 한다. conflict는 event append까지 포함해 아�
 신규 event 수락과 ingestion 재시도는 core wrapper를 반드시 통과한다. factory 없이
 raw adapter를 runtime에 그대로 주입하거나, 일부 ingestion 경로만 old recordEvent로
 저장하는 우회는 지원하지 않는다. optional wrapper는 아니다. 이미 수락된 event의
-offline projection rebuild는 신규 수락과 별개의 migration이며 §9의 절차를 따른다.
+이번 pre-GA `1.0.0`은 집계 테이블이 포함된 fresh schema에서 시작한다.
 
 ## 6. release 상속을 이력 재조회 없이 유지하는 방식
 
@@ -407,10 +411,10 @@ offline projection rebuild는 신규 수락과 별개의 migration이며 §9의 
 hour의 bucket만 읽는다. 수집 기간 전체에 해당하는 숫자는 이미 저장한 누적 counter다.
 조회할 때 lifetime marker나 설치 상태를 전부 세거나 시간별 bucket을 전부 더하지 않는다.
 
-| 요청 | 허용되는 읽기 | 이력이 늘 때 비용 |
-| --- | --- | --- |
-| `{ releases }` | 요청한 release들의 summary와 집계 준비/coverage 메타데이터 | release 수에 비례, 이벤트 수·이력 길이와 무관 |
-| `{ releases, timeRange }` | 같은 summary와 지정한 범위의 hour buckets | release 수 × 요청 hours에 비례 |
+| 요청                      | 허용되는 읽기                                              | 이력이 늘 때 비용                             |
+| ------------------------- | ---------------------------------------------------------- | --------------------------------------------- |
+| `{ releases }`            | 요청한 release들의 summary와 집계 준비/coverage 메타데이터 | release 수에 비례, 이벤트 수·이력 길이와 무관 |
+| `{ releases, timeRange }` | 같은 summary와 지정한 범위의 hour buckets                  | release 수 × 요청 hours에 비례                |
 
 번들 통계의 **100건 페이지 크기, 다음 페이지 탐색, 50,000건 스캔 상한을 제거한다.**
 기존의 100건 기준을 다른 숫자의 이벤트 페이지 크기로 대체하지 않는다.
@@ -457,8 +461,8 @@ dedup horizon을 도입해 오래된 동일 ID를 다시 수락하는 의미 변
 lifetime marker, 설치 귀속 state, summary도 함께 보존한다. marker만 TTL로
 없애면 재다운로드를 최초로 다시 셈한다. event-only 재구축을 약속하려면 원본 archive가
 필요하며, 없다면 projection checkpoint와 신규 이력을 함께 보존해야 한다.
-acceptance identity는 projection generation과 독립적이다. 삭제/retention 정책은
-idempotency와 복구 가능성까지 일관되게 정의한다.
+삭제/retention 정책은 acceptance identity, idempotency와 복구 가능성까지 일관되게
+정의한다.
 
 ## 8. Console 구성과 제거 범위
 
@@ -472,76 +476,64 @@ idempotency와 복구 가능성까지 일관되게 정의한다.
   몰래 무시하거나 speculative dimensions를 추가하지 않는다.
 - App Usage의 날짜 기반 동작은 유지한다. 그 경로의 원본 스캔 최적화는 별도 과제이며
   이번 작업 후 Insights 전체가 bounded해졌다고 주장하면 안 된다.
-- 이전 전체 release 다중 선 그래프, 번들 행의 30일 스캔/차트 points/Partial,
-  근거가 동일 집단의 장애율이 아닌 rate/spike 표시는 새 Bundle Activity에서 제거한다.
+- 여러 release의 기간별 Reports 비교 그래프는 유지하되, 합산값을 고유 설치 수로
+  표시하지 않는다. 근거가 동일 집단의 장애율이 아닌 rate/spike 표시는 제거한다.
 - `readInsightsHistory`는 App Usage에서 남으므로 전체 삭제하지 않는다.
   이 문서의 100건 기준 제거는 번들 통계 경로에 적용하며, App Usage의 기존 별도
   이벤트 이력 처리까지 개선한 것으로 간주하지 않는다.
 - `getReportingOverview`, `countLatestEvents`, `countEvents`, event history filters는 유지한다.
   raw report 건수/bundle 파일 식별자/기간 의미를 새 unique-release 통계로 대체하지 않는다.
 
-## 9. 초기화, backfill, 배포 순서
+## 9. 초기화와 배포 순서
 
 1. 정식 배포 전인 기존 `1.0.0` schema·migration과 factory/adapter 계약을 직접 갱신한다.
    최종 스펙은 required이다. 구 plugin에는 명시적 unsupported를 반환하고 scan으로 숨기지 않는다.
 2. fixed contract와 shared core reducer/CAS wrapper를 먼저 구현한다.
 3. native provider별 ingestion/read를 구현하고 native conformance를 통과시킨다.
-4. 기존 데이터는 **신규 수신을 차단하고 모든 in-flight context/commit을 drain한 뒤**
-   새로운 projection generation으로 rebuild하는 가장 단순한 운영 절차를 기본으로 한다.
-   이는 신규 event 수락이 아닌 provider별 **private offline migration**이다.
-   유지보수자가 제공하는 runner가 동일 core 순수 reducer로 raw events를 canonical
-   tuple 순서로 처리하고 새 namespace의 state/markers/summary/hourly를 구축한다.
-   일반 recordEvent/commitPreparedEvent의 canonical duplicate gate를 거치지 않는다.
-   원본 이벤트와 global acceptance identity는 변경하지 않는다.
-   첫 버전은 중단된 rebuild를 같은 namespace에서 재개하지 않는다. 미완료 generation을
-   폐기하고 새 빈 generation에서 시작하여 checkpoint/중복 replay의 암묵적 의미를 피한다.
-   단일 실행에서도 canonical event ID를 한 번씩만 처리하는 source traversal을 검증한다.
-   검증 완료 뒤 활성 generation을 전환한다. generation별 marker/context/counter
-   namespace는 분리하며, 읽기의 coverage/data와 commit fence도 generation에 묶는다.
-   이는 runtime plugin 메서드를 추가하는 generic rebuild API가 아니다. 기본 제공
-   provider의 migration은 maintainers가 제공하고, custom author에게는 같은 offline
-   절차와 fixture를 제공한다. native migration I/O 책임까지 core가 대신한다는 뜻은 아니다.
-5. 이미 유실된 보고는 복원했다고 표시하지 않는다. coverage를 partial로 보존한다.
-6. 집계 준비 완료 후 Console을 전환한다. online rebuild/outbox/CDC는 이번 기본 스펙에 넣지 않는다.
+4. 아직 정식 배포 전이므로 기존 `1.0.0` migration을 이미 적용한 RC 개발 DB의
+   자동 backfill 또는 in-place upgrade를 제공하지 않는다. 수정된 최종 migration으로
+   fresh schema를 만들고 검증한다.
+5. 보존해야 하는 RC 데이터가 있는 환경은 이번 변경을 자동 적용하지 않는다. 별도
+   export/rebuild가 필요한 운영 migration은 정식 호환 정책과 함께 후속 범위로 다룬다.
+6. native schema와 집계 기록 검증이 완료된 뒤 Console을 전환한다.
 
 공유 factory는 상태 format/version의 해석을 소유한다. provider는 opaque state를
-저장하지만, schema/generation upgrade를 wrapper가 알아서 무한 호환해 줄 것이라고
-가정하지 않는다. 불일치 시 명시적으로 준비/업그레이드 오류를 내야 한다.
+그대로 저장하며, 지원하지 않는 상태 버전은 명시적으로 실패한다.
 
 ## 10. 구현 시 통과해야 할 검증
 
-| 시나리오 | 반드시 성립할 결과 |
-| --- | --- |
-| R1 실행 → R2 다운로드 → R2 적용 → R1 복구 | current 이동, pending 해제, R2 lifetime download/recover 각각1 |
-| 같은 설치 R2 반복 다운로드/복구 | lifetime 각각1, 새 event ID별 Reports 증가 |
-| 같은 event ID 중복, commit timeout 후 재시도 | 원본·state·markers·모든 counter 추가 변화0 |
-| t20 null UNCHANGED 먼저, t10 explicit R1 나중 | canonical head=t20, Active R1=1 |
-| 위 상황에 t15 다른 파일/scope가 뒤늦게 삽입 | 상속 차단, R1 Active 감소, unknown으로 귀속 |
-| same-file R1→R2 selection UNCHANGED | Active 이동, 다운로드/적용 보고를 만들어내지 않음 |
-| channel/platform 변경, 동일 receipt timestamp와 ID tie-break | 전역 최신 후 scope 적용, 이전 scope 부활 없음 |
-| 동일 artifact를 쓰는 여러 release, 잘못된 scope의 같은 ID 보고 | release와 scope 숫자가 섞이지 않음 |
-| 서로 다른 설치가 동시에 같은 release 갱신 | summary/hour 증가 유실 없음 |
-| 같은 설치의 두 context 읽기 후 경쟁 commit | 하나 conflict, 전체 rollback, 재계산 후 정확 |
-| 첫 event/zero outcome/no marker, 삭제된 release | 유효 zero와 준비 안 됨을 구분, 집계 데이터 자동 삭제 없음 |
-| 정렬 hour 경계, current bucket, 늦은 old event | 범위/순서 정확, 허위 as-of/완료 watermark 없음 |
-| coverage 밖 조회, 중단된 rebuild | unknown/not-ready, 거짓0이나 완전한 all-time 표기 없음 |
-| 같은 release summary에 대응하는 원본 이력을 10배 늘림 | 요약 조회의 examined rows/items·왕복 수 증가 없음, raw event 조회0 |
-| 무관한 scope/release의 데이터만 늘림 | 요청한 summary/시간 범위의 조회량 증가 없음, 전체 집계 테이블 스캔 없음 |
-| `timeRange` 생략/지정 비교 | 생략 시 hourly 조회0·series 없음, 지정 시 summary 의미 유지·범위 내 series만 반환 |
-| 여러 release를 표시하는 번들 화면 | 한 API 호출로 요청, 100건 이벤트 페이지/전체 이력 순회 없음 |
-| 재보고와 rebuild | marker 유지로 중복 없음, 복구 가능한 source/checkpoint만 사용 |
-| payload 정리 기능을 제공하는 provider의 동일 old event ID 재입력 | acceptance receipt로 중복 확인, state/current/lifetime/hourly 변화0 |
-| generation 전환 후 이전 context로 commit | 오래된 token 거부, 이전 generation 쓰기/거짓 complete 응답 없음 |
+| 시나리오                                                         | 반드시 성립할 결과                                                                |
+| ---------------------------------------------------------------- | --------------------------------------------------------------------------------- |
+| R1 실행 → R2 다운로드 → R2 적용 → R1 복구                        | current 이동, pending 해제, R2 lifetime download/recover 각각1                    |
+| 같은 설치 R2 반복 다운로드/복구                                  | lifetime 각각1, 새 event ID별 Reports 증가                                        |
+| 같은 event ID 중복, commit timeout 후 재시도                     | 원본·state·markers·모든 counter 추가 변화0                                        |
+| t20 null UNCHANGED 먼저, t10 explicit R1 나중                    | canonical head=t20, Active R1=1                                                   |
+| 위 상황에 t15 다른 파일/scope가 뒤늦게 삽입                      | 상속 차단, R1 Active 감소, unknown으로 귀속                                       |
+| same-file R1→R2 selection UNCHANGED                              | Active 이동, 다운로드/적용 보고를 만들어내지 않음                                 |
+| channel/platform 변경, 동일 receipt timestamp와 ID tie-break     | 전역 최신 후 scope 적용, 이전 scope 부활 없음                                     |
+| 동일 artifact를 쓰는 여러 release, 잘못된 scope의 같은 ID 보고   | release와 scope 숫자가 섞이지 않음                                                |
+| 서로 다른 설치가 동시에 같은 release 갱신                        | summary/hour 증가 유실 없음                                                       |
+| 같은 설치의 두 context 읽기 후 경쟁 commit                       | 하나 conflict, 전체 rollback, 재계산 후 정확                                      |
+| 첫 event/zero outcome/no marker, 삭제된 release                  | 유효 zero와 준비 안 됨을 구분, 집계 데이터 자동 삭제 없음                         |
+| 정렬 hour 경계, current bucket, 늦은 old event                   | 범위/순서 정확, 허위 as-of/완료 watermark 없음                                    |
+| coverage 시작 전 범위를 포함한 조회                              | 알려진 연속 구간만 표시, 이전 누락을 거짓0으로 채우지 않음                        |
+| 같은 release summary에 대응하는 원본 이력을 10배 늘림            | 요약 조회의 examined rows/items·왕복 수 증가 없음, raw event 조회0                |
+| 무관한 scope/release의 데이터만 늘림                             | 요청한 summary/시간 범위의 조회량 증가 없음, 전체 집계 테이블 스캔 없음           |
+| `timeRange` 생략/지정 비교                                       | 생략 시 hourly 조회0·series 없음, 지정 시 summary 의미 유지·범위 내 series만 반환 |
+| 여러 release를 표시하는 번들 화면                                | 한 API 호출로 요청, 100건 이벤트 페이지/전체 이력 순회 없음                       |
+| 재보고                                                           | marker 유지로 lifetime 중복 없음                                                  |
+| payload 정리 기능을 제공하는 provider의 동일 old event ID 재입력 | acceptance receipt로 중복 확인, state/current/lifetime/hourly 변화0               |
 
 성능 실험은 다음 축을 별도로 바꾼다: 이력 깊이, 관련 설치 수, 무관한 scope의 크기,
 선택 release 수, 요청 hours, 한 release에 집중되는 쓰기량. query count뿐 아니라
 native rows/documents/items examined, 읽기/쓰기량, latency와 contention을 기록한다.
-기본 데이터는 1,000/10,000 installations × 10/100 events를 기존 benchmark와 맞춘다.
+기본 데이터는 1,000/10,000 installations에 대해 installation당 이력 깊이를 별도 축으로
+늘려, raw 이력 깊이가 요약 조회량에 영향을 주지 않는지 확인한다.
 
 기존 root 검증 명령: `pnpm -w build`, `pnpm -w test:type`, `pnpm -w lint`,
 `pnpm -w test`, `pnpm -w test:integration`. provider별 native conformance와
-대표 SDK OTA flow를 추가로 실행해야 한다. 이 문서 작성 과정에서는 이 구현 검증을
-실행하지 않았다. 소스 변경이 없고 구현도 아직 없기 때문이다.
+대표 SDK OTA flow를 추가로 실행해야 한다. 구현 PR에서는 아래 단계의 결과를 PR 검증
+항목에 기록한다.
 
 ## 11. 적대적 리뷰와 결론
 
@@ -552,28 +544,28 @@ API/author 비용, SQL·NoSQL 저장, 지표/UX 정확성 담당 3명이 독립 
 이벤트 페이지네이션을 새 번들 통계 경로에서 제거하도록 명시했다.
 이 API 수정은 재리뷰하지 않았다. 기존 합의도 native 구현 완료/성능 검증을 뜻하지 않는다.
 
-| 리뷰 관점 | 최종 표 | 남은 조건/선호 |
-| --- | --- | --- |
-| API·plugin author 부담 | YES | author 구현 최소화만 목표면 A+SDK 선호, 이번 귀속 보존 우선순위에서는 B 승인 |
-| SQL·NoSQL 저장/원자성 | YES | native atomicity와 실제 읽기·쓰기 경합 검증 필요 |
-| 지표·UX·시간 의미 | YES | provider/SDK conformance 필요, finite proof를 실측으로 표현하지 않음 |
+| 리뷰 관점              | 최종 표 | 남은 조건/선호                                                               |
+| ---------------------- | ------- | ---------------------------------------------------------------------------- |
+| API·plugin author 부담 | YES     | author 구현 최소화만 목표면 A+SDK 선호, 이번 귀속 보존 우선순위에서는 B 승인 |
+| SQL·NoSQL 저장/원자성  | YES     | native atomicity와 실제 읽기·쓰기 경합 검증 필요                             |
+| 지표·UX·시간 의미      | YES     | provider/SDK conformance 필요, finite proof를 실측으로 표현하지 않음         |
 
-| 쟁점 | 결정과 이유 |
-| --- | --- |
-| 기존5개를 없애고 stats로 통합 | 기각. 공개 raw overview와 설치/이력 기능의 의미가 다름 |
-| 조회 추가, recordEvent 책임은 설명 생략 | 기각. 실제 원자적 쓰기/상태 비용을 숨김 |
-| getReleaseStats와 getReleaseActivity 별도 제공 | 사용자 후속 요청으로 통합. 시간 범위 생략 시 summary만 반환 |
-| 최신 raw release만 인정 | 기각. 정상 SDK의 null no-change에서 Active 손실 |
-| SDK 수정+legacy unknown(A) | 대안으로 인정하나 이번 권고에서 제외. 정상/기존 보고의 귀속 보존 우선 |
-| 상속 유지(B)는 반드시 전체 history replay 필요 | 초기 반론 철회. head/anchor/barrier 유한 상태로 처리 가능 |
-| B의 core context-read/CAS-write 프로토콜 | 채택. state 계산은 core, 고정된 원자 I/O는 provider |
-| native COUNT=constant cost | 기각. summary/bucket 접근의 실제 examined rows를 검증 |
-| releaseIds만 받는 provider 계약 | 수정. releases에 명시 scope를 포함하여 기존 필터 의미 보존 |
-| 시간버킷별 unique를 더해 기간 unique 계산 | 기각. graph는 additive raw Reports, lifetime은 별도 unique |
-| async projection / arbitrary intervals / 새 generic DSL | 이번 범위에서 제외 |
+| 쟁점                                                    | 결정과 이유                                                           |
+| ------------------------------------------------------- | --------------------------------------------------------------------- |
+| 기존5개를 없애고 stats로 통합                           | 기각. 공개 raw overview와 설치/이력 기능의 의미가 다름                |
+| 조회 추가, recordEvent 책임은 설명 생략                 | 기각. 실제 원자적 쓰기/상태 비용을 숨김                               |
+| getReleaseStats와 getReleaseActivity 별도 제공          | 사용자 후속 요청으로 통합. 시간 범위 생략 시 summary만 반환           |
+| 최신 raw release만 인정                                 | 기각. 정상 SDK의 null no-change에서 Active 손실                       |
+| SDK 수정+legacy unknown(A)                              | 대안으로 인정하나 이번 권고에서 제외. 정상/기존 보고의 귀속 보존 우선 |
+| 상속 유지(B)는 반드시 전체 history replay 필요          | 초기 반론 철회. head/anchor/barrier 유한 상태로 처리 가능             |
+| B의 core context-read/CAS-write 프로토콜                | 채택. state 계산은 core, 고정된 원자 I/O는 provider                   |
+| native COUNT=constant cost                              | 기각. summary/bucket 접근의 실제 examined rows를 검증                 |
+| releaseIds만 받는 provider 계약                         | 수정. releases에 명시 scope를 포함하여 기존 필터 의미 보존            |
+| 시간버킷별 unique를 더해 기간 unique 계산               | 기각. graph는 additive raw Reports, lifetime은 별도 unique            |
+| async projection / arbitrary intervals / 새 generic DSL | 이번 범위에서 제외                                                    |
 
-남은 구현 검증은 native atomicity, hot-counter 쓰기 비용, factory 우회 방지,
-SDK/Console 회귀와 안전한 초기 rebuild다. 순수 reducer 검증을 이 증거의 대체물로 쓰지 않는다.
+남은 구현 검증은 native atomicity, hot-counter 쓰기 비용, factory 우회 방지와
+SDK/Console 회귀다. 순수 reducer 검증을 이 증거의 대체물로 쓰지 않는다.
 문서의 TypeScript 계약은 parser로 구문 검증한다. 제품 타입과의 통합 typecheck와
 provider 구현 검증은 아래 실행 단계의 완료 조건이다.
 
@@ -621,23 +613,23 @@ while (events.length < 50_000) {
 이 루프를 다른 크기나 `Promise.all`로 바꾸는 방식은 이 PRD의 구현으로 인정하지 않는다.
 새 번들 통계는 이 함수에 도달하지 않아야 한다. App Usage의 사용처는 별도로 유지한다.
 
-| 영역 | 기존 경로 / 변경 책임 |
-| --- | --- |
-| 공개 모델·검증 | `plugins/plugin-core/src/types/databasePlugin.ts`, `types/public.ts`, `types/internal.ts`, `types/index.ts`, `insightsContract.ts`, `createDatabasePlugin.ts`, `index.ts` |
-| core 저장 조정 | `plugins/plugin-core/src/`에 전용 reducer/context/CAS wrapper 모듈 추가; `recordEvent` 생성 경로에 필수로 연결 |
-| 기존 low-level 구현 연결 | `plugins/plugin-core/src/types/databaseOperations.ts` 등 현재 `DatabasePluginImplementation` 선언/호출부; 범용 CRUD DSL을 확장해 domain 연산을 노출하지 않음 |
-| 공통 테스트 계약 | `packages/test-utils/src/databasePluginInsightsTests.ts`, `setupDatabasePluginTestSuite.ts`, `databaseTestFixtures.ts`, `databasePluginTypes.spec.ts` |
-| D1 | `plugins/cloudflare/src/d1Implementation.ts`, `plugins/cloudflare/worker/migrations/`, `plugins/cloudflare/worker/src/insightsReadCost.integration.spec.ts` 및 native integration tests |
-| AWS | `plugins/aws/src/dynamoDB.ts`, 기존 bounds/concurrency integration fixtures, 필요 시 관련 IaC 접근 경로 |
-| Firebase | `plugins/firebase/src/firebaseDatabase.ts`, `firebaseDatabasePersistence.ts`, `firebaseDatabaseState.ts`, `plugins/firebase/firebase/public/firestore.indexes.json`, emulator integration tests |
-| Supabase | `plugins/supabase/src/supabaseDatabase.ts`, `plugins/supabase/supabase/migrations/`, migration 생성기와 tests; REST 다중 요청을 transaction이라고 간주하지 않음 |
-| ORM / MongoDB | `packages/server/src/adapters/kysely.ts`, `kyselyCrud.ts`, `drizzle.ts`, `drizzleCrud.ts`, `prisma.ts`, `prismaInsights.ts`, `mongodb.ts`, `mongodbWrites.ts`, `mongodbReads.ts` 및 인접 테스트 |
-| 공통 schema / tooling | `packages/server/src/schema/`, `packages/server/src/db/schema/`, `schemaGenerators.ts`, `schemaReadiness.ts`, `db/databasePluginCore.ts` |
-| Mock / 조합 provider | `plugins/mock/src/mockDatabase.ts` 및 상태·테스트; `plugins/standalone/`, `plugins/postgres/`의 위임 경로도 실제 지원 여부 확인 |
-| Console 호출 | `packages/console/src/lib/bundle-activity.ts`, `insights-recovery-rpc.ts`, `lib/server/bundleActivity.ts`, `lib/server/insightsRecovery.ts`와 관련 DTO/RPC 테스트 |
-| Console 표시 | `components/features/bundles/BundleInsightsSummary.tsx`, `components/features/insights/InsightsOverview.tsx`, `InsightsControls.tsx`, `routes/insights.tsx`, 번들 테이블의 activity 열 |
-| 인프라 안내 | `packages/hot-updater/src/commands/infrastructureUpdates.ts`, `packages/hot-updater/infrastructure-upgrades/`, provider scaffold/packaging에 직접 필요한 변경 |
-| 문서·릴리스 | 이 PRD, 기존 Insights architecture 문서, `docs/content/docs/(latest)/guides/insights.mdx`, `.changeset/`, `docs/architecture/measurements/` |
+| 영역                     | 기존 경로 / 변경 책임                                                                                                                                                                           |
+| ------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 공개 모델·검증           | `plugins/plugin-core/src/types/databasePlugin.ts`, `types/public.ts`, `types/internal.ts`, `types/index.ts`, `insightsContract.ts`, `createDatabasePlugin.ts`, `index.ts`                       |
+| core 저장 조정           | `plugins/plugin-core/src/`에 전용 reducer/context/CAS wrapper 모듈 추가; `recordEvent` 생성 경로에 필수로 연결                                                                                  |
+| 기존 low-level 구현 연결 | `plugins/plugin-core/src/types/databaseOperations.ts` 등 현재 `DatabasePluginImplementation` 선언/호출부; 범용 CRUD DSL을 확장해 domain 연산을 노출하지 않음                                    |
+| 공통 테스트 계약         | `packages/test-utils/src/databasePluginInsightsTests.ts`, `setupDatabasePluginTestSuite.ts`, `databaseTestFixtures.ts`, `databasePluginTypes.spec.ts`                                           |
+| D1                       | `plugins/cloudflare/src/d1Implementation.ts`, `plugins/cloudflare/worker/migrations/`, `plugins/cloudflare/worker/src/insightsReadCost.integration.spec.ts` 및 native integration tests         |
+| AWS                      | `plugins/aws/src/dynamoDB.ts`, 기존 bounds/concurrency integration fixtures, 필요 시 관련 IaC 접근 경로                                                                                         |
+| Firebase                 | `plugins/firebase/src/firebaseDatabase.ts`, `firebaseDatabasePersistence.ts`, `firebaseDatabaseState.ts`, `plugins/firebase/firebase/public/firestore.indexes.json`, emulator integration tests |
+| Supabase                 | `plugins/supabase/src/supabaseDatabase.ts`, `plugins/supabase/supabase/migrations/`, migration 생성기와 tests; REST 다중 요청을 transaction이라고 간주하지 않음                                 |
+| ORM / MongoDB            | `packages/server/src/adapters/kysely.ts`, `kyselyCrud.ts`, `drizzle.ts`, `drizzleCrud.ts`, `prisma.ts`, `prismaInsights.ts`, `mongodb.ts`, `mongodbWrites.ts`, `mongodbReads.ts` 및 인접 테스트 |
+| 공통 schema / tooling    | `packages/server/src/schema/`, `packages/server/src/db/schema/`, `schemaGenerators.ts`, `schemaReadiness.ts`, `db/databasePluginCore.ts`                                                        |
+| Mock / 조합 provider     | `plugins/mock/src/mockDatabase.ts` 및 상태·테스트; `plugins/standalone/`, `plugins/postgres/`의 위임 경로도 실제 지원 여부 확인                                                                 |
+| Console 호출             | `packages/console/src/lib/bundle-activity.ts`, `insights-recovery-rpc.ts`, `lib/server/bundleActivity.ts`, `lib/server/insightsRecovery.ts`와 관련 DTO/RPC 테스트                               |
+| Console 표시             | `components/features/bundles/BundleInsightsSummary.tsx`, `components/features/insights/InsightsOverview.tsx`, `InsightsControls.tsx`, `routes/insights.tsx`, 번들 테이블의 activity 열          |
+| 인프라 안내              | `packages/hot-updater/src/commands/infrastructureUpdates.ts`, `packages/hot-updater/infrastructure-upgrades/`, provider scaffold/packaging에 직접 필요한 변경                                   |
+| 문서·릴리스              | 이 PRD, 기존 Insights architecture 문서, `docs/content/docs/(latest)/guides/insights.mdx`, `.changeset/`, `docs/architecture/measurements/`                                                     |
 
 관련 기능을 정확하게 연결하기 위해 위 모듈의 직접 import/export, test fixture, 생성 schema와
 배포 scaffold를 변경할 수 있다. unrelated 리팩터링·포맷 변경·의존성 업그레이드는 하지 않는다.
@@ -691,10 +683,10 @@ React 변경 시 `vercel-react-best-practices`의 관련 data fetching 지침을
 
 ### 단계 3 — native provider 구현과 schema
 
-- provider별 summary, hourly, lifetime marker, install state/revision, generation/coverage
+- provider별 summary, hourly, lifetime marker, install state/revision, coverage
   접근 경로를 구현한다. 물리 schema는 각 provider에 맞추되 공개 계약은 동일하다.
 - 모든 수락 event는 §5의 atomic commit 조건을 만족한다. 같은 event ID, concurrent
-  install write, 같은 release의 여러 install write, stale generation을 실제 backend에서 검증한다.
+  install write, 같은 release의 여러 install write를 실제 backend에서 검증한다.
 - D1 conditional batch, DynamoDB conditional transaction, SQL/Firestore/MongoDB native
   transaction의 차이를 adapter 안에서 처리한다. 일반 read-modify-write 저장을 atomic
   transaction 대신 사용하지 않는다.
@@ -706,13 +698,9 @@ React 변경 시 `vercel-react-best-practices`의 관련 data fetching 지침을
 검증: `pnpm -w test`와 provider별 `pnpm -w test:integration -- <관련 integration 파일>`
 → §10 시나리오를 동일한 shared fixture로 통과. 전체 integration gate는 단계 6에서 실행한다.
 
-### 단계 4 — 기존 설치의 집계 준비와 migration
+### 단계 4 — pre-GA `1.0.0` schema와 migration
 
-- fresh DB는 생성한 generation에서 ready 상태가 된다. 기존 DB의 빈 summary를 complete
-  zero로 취급하지 않는다. schema upgrade와 projection backfill 완료 상태를 구분한다.
-- §9의 offline rebuild runner를 provider별 tooling으로 제공한다. 사용자 운영 DB에 실행하지
-  않고 native test 환경의 기존 데이터로 검증한다. 수신 중단/drain, 별도 generation 생성,
-  검증, 전환, 실패 시 이전 상태 유지와 새 generation으로 재시작 절차를 문서화한다.
+- fresh DB는 최종 `1.0.0` schema에서 즉시 기록 가능한 상태가 된다.
 - 사용자가 정식 배포 전임을 확인했으므로 **기존 `1.0.0` migration을 직접 수정한다.**
   `packages/server/src/schema/v1_0_0.ts`, 기존 D1/Supabase의 `1.0.0` migration,
   schema generators, provider scaffold와 native test fixtures를 동일한 최종 구조로 맞춘다.
@@ -722,11 +710,10 @@ React 변경 시 `vercel-react-best-practices`의 관련 data fetching 지침을
   Verification 섹션을 유지한다. package version을 임의로 일괄 bump하지 않는다.
 - 이전 RC migration을 이미 적용한 개발 DB가 수정된 파일만으로 자동 업그레이드된다고
   가정하지 않는다. 로컬 테스트 DB는 fresh schema로 검증하고, 보존할 기존 이벤트가 있는
-  환경은 명시적인 schema 준비와 위 offline projection rebuild 절차를 안내한다.
+  환경은 별도 운영 migration 범위가 필요하다고 안내한다.
   이 작업에서 사용자의 기존 데이터 삭제/reset은 실행하지 않는다.
 
-검증: 각 provider migration tests, schema generation/readiness tests, wrapper generation
-전환 tests 통과. 중단된 backfill의 거짓 ready와 이전 generation writer의 성공이 없어야 한다.
+검증: 각 provider migration tests, fresh schema 생성 tests, wrapper CAS tests 통과.
 
 ### 단계 5 — Console 전환과 불필요한 조회 제거
 
@@ -746,7 +733,8 @@ React 변경 시 `vercel-react-best-practices`의 관련 data fetching 지침을
 
 검증: Console server/RPC 테스트에 raw `listEvents`를 호출하면 실패하는 stub을 넣고
 summary-only와 range 호출 모두 정상 결과를 반환하는지 확인한다. 실제 route test에서
-visible release batch, 선택 기간, scope, partial/error 표시를 검증한다.
+제한된 release metadata 선택기, 선택 release 한 개의 기간 조회, UTC 구간 경계,
+scope, partial/error 표시를 검증한다.
 `pnpm -w test -- packages/console/src` 통과 후 브라우저에서 번들 목록·상세·Insights를
 확인하고 PR용 스크린샷을 남긴다. UI 테스트가 Vitest include에 실제 수집되는지도 확인한다.
 
@@ -776,16 +764,16 @@ visible release batch, 선택 기간, scope, partial/error 표시를 검증한�
 summary 읽기는 `O(R)`, 시계열 추가 읽기는 `O(R × H)`이어야 한다. 상수 크기의 준비/coverage
 metadata 조회는 허용한다. 이는 물리 쿼리 1회 약속이 아니라 실제 접근 데이터의 경계다.
 
-| 실험 | 조건 | 통과 기준 |
-| --- | --- | --- |
-| summary 이력 증가 | 같은 R, 같은 summary 결과, E만 10배 증가 | raw 조회0, hourly 조회0, materialized 조회량/왕복 수에 E 비례 증가 없음 |
-| summary 설치 수 증가 | 같은 R, install 수와 summary 값 증가 | install/marker 전수 count0, summary key 읽기량 유지 |
-| 무관 데이터 증가 | 다른 scope/release 및 범위 밖 hour 증가 | 요청 범위를 벗어난 scan/filter-after-read 없음 |
-| 시간 범위 변화 | 같은 R/E에서 H를 24→168→720 증가 | 해당 범위 buckets만 읽음; 전체 기간 읽고 메모리 필터 금지 |
-| visible batch | release 1개와 여러 개, metadata는 이미 준비 | Console API 호출1회, native key/batch 경로, release별 원본 조회0 |
-| 최대 허용 요청 | R=20, H=720 | 14,400 논리 버킷 한도 내; 정확한 결과와 실제 payload/latency 기록 |
-| counter 경합 | 여러 install의 같은 release/hour 병렬 write | 유실/중복 증가0; CAS retries, p50/p95 latency, write 비용 기록 |
-| null UNCHANGED 반복 | 현재 귀속 변동 없음 | raw/head/state 처리는 유지, summary의 불필요한 counter write0 |
+| 실험                 | 조건                                        | 통과 기준                                                               |
+| -------------------- | ------------------------------------------- | ----------------------------------------------------------------------- |
+| summary 이력 증가    | 같은 R, 같은 summary 결과, E만 10배 증가    | raw 조회0, hourly 조회0, materialized 조회량/왕복 수에 E 비례 증가 없음 |
+| summary 설치 수 증가 | 같은 R, install 수와 summary 값 증가        | install/marker 전수 count0, summary key 읽기량 유지                     |
+| 무관 데이터 증가     | 다른 scope/release 및 범위 밖 hour 증가     | 요청 범위를 벗어난 scan/filter-after-read 없음                          |
+| 시간 범위 변화       | 같은 R/E에서 H를 24→168→720 증가            | 해당 범위 buckets만 읽음; 전체 기간 읽고 메모리 필터 금지               |
+| visible batch        | release 1개와 여러 개, metadata는 이미 준비 | Console API 호출1회, native key/batch 경로, release별 원본 조회0        |
+| 최대 허용 요청       | R=20, H=720                                 | 14,400 논리 버킷 한도 내; 정확한 결과와 실제 payload/latency 기록       |
+| counter 경합         | 여러 install의 같은 release/hour 병렬 write | 유실/중복 증가0; CAS retries, p50/p95 latency, write 비용 기록          |
+| null UNCHANGED 반복  | 현재 귀속 변동 없음                         | raw/head/state 처리는 유지, summary의 불필요한 counter write0           |
 
 자료량 축은 1,000/10,000 installations × 10/100 events를 기본으로 한다. 이력/설치/무관
 scope를 한꺼번에 바꾸지 말고 축마다 비교하여 원인을 분리한다. 10배 실험만을 임의의 절대
@@ -808,8 +796,8 @@ count/consumed capacity 또는 동등한 실행계획 증거를 사용한다. in
 - [ ] range는 지정 release와 기간 bucket만 조회, summary 의미 유지.
 - [ ] 번들 통계의 100건 이벤트 페이지네이션·50,000건 제한·scan fallback 제거.
 - [ ] shared core reducer/필수 wrapper/native atomic commit과 모든 기본 provider 지원.
-- [ ] 중복·역순·동시성·null 상속·scope 변경·generation·coverage 시나리오 통과.
-- [ ] fresh install과 기존 데이터 offline migration/rebuild 검증 및 안내 완성.
+- [ ] 중복·역순·동시성·null 상속·scope 변경·coverage 시나리오 통과.
+- [ ] fresh install용 최종 `1.0.0` migration과 RC 개발 DB 제한 안내 완성.
 - [ ] Bundles/Insights 전환, App Usage/기존 공개 overview 회귀 확인, UI 스크린샷 확보.
 - [ ] native 조회 비용 측정으로 이력·무관 데이터 증가에 비례한 과조회가 없음을 확인.
 - [ ] required local checks 통과, 실제 실행하지 못한 검증을 완료로 표시하지 않음.

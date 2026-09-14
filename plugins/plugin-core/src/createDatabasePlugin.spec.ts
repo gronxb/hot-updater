@@ -119,10 +119,12 @@ describe("createDatabasePlugin", () => {
     expect(plugin.models.insights.findLatestEvents).toBeTypeOf("function");
     expect(plugin.models.insights.countEvents).toBeTypeOf("function");
     expect(plugin.models.insights.countLatestEvents).toBeTypeOf("function");
+    expect(plugin.models.insights.getReleaseActivity).toBeTypeOf("function");
     expect(Object.keys(plugin.models.insights).sort()).toEqual([
       "countEvents",
       "countLatestEvents",
       "findLatestEvents",
+      "getReleaseActivity",
       "listEvents",
       "recordEvent",
     ]);

@@ -324,7 +324,7 @@ export const createMongoMigrator = (client: MongoClient): Migrator => {
           backend: {
             ensureCollections: async () => {
               for (const table of hotUpdaterSchema.tables) {
-                if (table.internal) continue;
+                if (table.ormName === HOT_UPDATER_SETTINGS_TABLE) continue;
                 await db
                   .createCollection(table.ormName)
                   .catch(ignoreExistingCollection);
@@ -333,10 +333,11 @@ export const createMongoMigrator = (client: MongoClient): Migrator => {
             ensureIndexes: async () => {
               await ensureSettingsKeyIndex();
               for (const table of hotUpdaterSchema.tables) {
-                if (table.internal) continue;
+                if (table.ormName === HOT_UPDATER_SETTINGS_TABLE) continue;
                 const isInsights =
                   table.ormName === "bundle_events" ||
-                  table.ormName === "bundle_event_heads";
+                  table.ormName === "bundle_event_heads" ||
+                  table.ormName.startsWith("insights_");
                 const collection = db.collection(table.ormName);
                 const collation = isInsights ? { locale: "simple" } : undefined;
                 const primaryKey = table.columns.find(

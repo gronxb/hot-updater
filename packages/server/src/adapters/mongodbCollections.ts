@@ -6,6 +6,7 @@ import type {
   ApiKeyRow,
   ReleaseCatalogRow,
   ReleaseRow,
+  ReleaseReference,
 } from "@hot-updater/plugin-core";
 import type { ClientSession, Collection, MongoClient } from "mongodb";
 
@@ -51,6 +52,39 @@ export type MongoCollections = {
   readonly bundlePatches: Collection<BundlePatchRow>;
   readonly bundleEvents: Collection<BundleEventRow>;
   readonly bundleEventHeads: Collection<MongoBundleEventHead>;
+  readonly insightsInstallStates: Collection<{
+    install_id: string;
+    revision: number;
+    state: string;
+  }>;
+  readonly insightsLifetimeMarkers: Collection<{
+    marker_key: string;
+    release_id: string;
+    platform: ReleaseReference["platform"];
+    channel: string;
+    install_id: string;
+    metric: "downloaded" | "recovered";
+  }>;
+  readonly insightsReleaseSummaries: Collection<{
+    release_key: string;
+    release_id: string;
+    platform: ReleaseReference["platform"];
+    channel: string;
+    active_installations: number;
+    pending_installations: number;
+    downloaded_installations: number;
+    recovered_installations: number;
+  }>;
+  readonly insightsHourlyActivity: Collection<{
+    bucket_key: string;
+    release_id: string;
+    platform: ReleaseReference["platform"];
+    channel: string;
+    hour_start_ms: number;
+    downloaded_reports: number;
+    applied_reports: number;
+    recovered_reports: number;
+  }>;
   readonly channels: Collection<ChannelRow>;
   readonly apiKeys: Collection<ApiKeyRow>;
   readonly releases: Collection<ReleaseRow>;
@@ -67,6 +101,10 @@ export const createMongoCollections = (
     bundleEvents: database.collection<BundleEventRow>("bundle_events"),
     bundleEventHeads:
       database.collection<MongoBundleEventHead>("bundle_event_heads"),
+    insightsInstallStates: database.collection("insights_install_states"),
+    insightsLifetimeMarkers: database.collection("insights_lifetime_markers"),
+    insightsReleaseSummaries: database.collection("insights_release_summaries"),
+    insightsHourlyActivity: database.collection("insights_hourly_activity"),
     channels: database.collection<ChannelRow>("channels"),
     apiKeys: database.collection<ApiKeyRow>("api_keys"),
     releases: database.collection<ReleaseRow>("releases"),

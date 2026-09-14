@@ -14,6 +14,7 @@ export type InsightsSearch = {
   appVersion?: string;
   window?: InsightsWindow;
   bundleWindow?: InsightsWindow;
+  bundleReleaseId?: string;
 };
 
 export function validateInsightsSearch(
@@ -30,6 +31,7 @@ export function validateInsightsSearch(
     appVersion: readText(search.appVersion),
     window: readWindow(search.window),
     bundleWindow: readWindow(search.bundleWindow),
+    bundleReleaseId: readText(search.bundleReleaseId),
   };
 }
 

@@ -570,7 +570,7 @@ function BundlesPage() {
                             </div>
                             <div className="col-span-2 rounded-md bg-muted/40 p-3">
                               <dt className="mb-2 text-muted-foreground">
-                                Activity · 30d
+                                Activity · collected history
                               </dt>
                               <dd>
                                 <BundleMovementSummary
@@ -641,7 +641,7 @@ function BundlesPage() {
                     <TableHead>Enabled</TableHead>
                     <TableHead>Force update</TableHead>
                     <TableHead>Rollout</TableHead>
-                    <TableHead>Activity · 30d</TableHead>
+                    <TableHead>Activity · collected history</TableHead>
                     <TableHead>Message</TableHead>
                     <TableHead>Created</TableHead>
                   </TableRow>

@@ -32,6 +32,10 @@ export interface FirebaseDatabaseCollections {
   readonly bundlePatches: CollectionReference<DocumentData>;
   readonly bundleEvents: CollectionReference<DocumentData>;
   readonly insightsLatest: CollectionReference<DocumentData>;
+  readonly insightsProjectionStates: CollectionReference<DocumentData>;
+  readonly insightsLifetimeMarkers: CollectionReference<DocumentData>;
+  readonly insightsReleaseSummaries: CollectionReference<DocumentData>;
+  readonly insightsHourlyActivity: CollectionReference<DocumentData>;
   readonly channels: CollectionReference<DocumentData>;
   readonly apiKeys: CollectionReference<DocumentData>;
   readonly releaseCatalogs: CollectionReference<DocumentData>;
@@ -54,6 +58,18 @@ export const createFirebaseDatabaseCollections = (
   bundlePatches: db.collection(FIREBASE_V1_COLLECTION_NAMES.bundlePatches),
   bundleEvents: db.collection(FIREBASE_V1_COLLECTION_NAMES.bundleEvents),
   insightsLatest: db.collection(FIREBASE_V1_COLLECTION_NAMES.insightsLatest),
+  insightsProjectionStates: db.collection(
+    FIREBASE_V1_COLLECTION_NAMES.insightsProjectionStates,
+  ),
+  insightsLifetimeMarkers: db.collection(
+    FIREBASE_V1_COLLECTION_NAMES.insightsLifetimeMarkers,
+  ),
+  insightsReleaseSummaries: db.collection(
+    FIREBASE_V1_COLLECTION_NAMES.insightsReleaseSummaries,
+  ),
+  insightsHourlyActivity: db.collection(
+    FIREBASE_V1_COLLECTION_NAMES.insightsHourlyActivity,
+  ),
   channels: db.collection(FIREBASE_V1_COLLECTION_NAMES.channels),
   apiKeys: db.collection(FIREBASE_V1_COLLECTION_NAMES.apiKeys),
   releaseCatalogs: db.collection(FIREBASE_V1_COLLECTION_NAMES.releaseCatalogs),

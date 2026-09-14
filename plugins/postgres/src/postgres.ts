@@ -1,5 +1,8 @@
 import type { BundleEventRow } from "@hot-updater/plugin-core";
-import { createDatabasePlugin } from "@hot-updater/plugin-core";
+import {
+  createDatabasePlugin,
+  recordProjectedInsightsEvent,
+} from "@hot-updater/plugin-core";
 import {
   latestInsightsWhere,
   latestInsightsCountGroups,
@@ -26,6 +29,7 @@ import {
 } from "kysely";
 import pg, { type PoolConfig } from "pg";
 
+import { createPostgresInsightsStorage } from "./postgresInsights";
 import { countPostgresRows, findManyPostgresRows } from "./postgresQuery";
 import type { Database } from "./types";
 
@@ -144,257 +148,245 @@ const buildWhere = (
 
 const createPostgresImplementation = (
   db: Kysely<Database>,
-): DatabasePluginImplementation => ({
-  async recordInsights({ event }) {
-    await db.transaction().execute(async (transaction) => {
-      await transaction
-        .insertInto("bundle_events")
-        .values(event)
-        .onConflict((oc) => oc.column("id").doNothing())
-        .execute();
-      await sql`INSERT INTO bundle_event_heads (install_id, id, received_at_ms, user_id, platform, channel, type, from_bundle_id, to_bundle_id)
-SELECT install_id, id, received_at_ms, user_id, platform, channel, type, from_bundle_id, to_bundle_id
-FROM bundle_events WHERE id = ${event.id}
-ON CONFLICT(install_id) DO UPDATE SET
-  id = excluded.id, received_at_ms = excluded.received_at_ms, user_id = excluded.user_id,
-  platform = excluded.platform, channel = excluded.channel, type = excluded.type,
-  from_bundle_id = excluded.from_bundle_id, to_bundle_id = excluded.to_bundle_id
-WHERE (excluded.received_at_ms, excluded.id) > (bundle_event_heads.received_at_ms, bundle_event_heads.id)`.execute(
-        transaction,
-      );
-    });
-  },
-  async findLatestInsightsEvents(input) {
-    const where = buildWhere(latestInsightsWhere(input));
-    const result =
-      await sql<BundleEventRow>`SELECT event.* FROM (SELECT id, install_id FROM bundle_event_heads WHERE ${where} ORDER BY install_id ASC LIMIT ${"installId" in input ? 1 : input.limit}) AS head JOIN bundle_events AS event ON event.id = head.id ORDER BY head.install_id ASC`.execute(
+): DatabasePluginImplementation => {
+  const insightsStorage = createPostgresInsightsStorage(db);
+  return {
+    recordInsights: (input) =>
+      recordProjectedInsightsEvent(insightsStorage, input),
+    insightsStorage,
+    async findLatestInsightsEvents(input) {
+      const where = buildWhere(latestInsightsWhere(input));
+      const result =
+        await sql<BundleEventRow>`SELECT event.* FROM (SELECT id, install_id FROM bundle_event_heads WHERE ${where} ORDER BY install_id ASC LIMIT ${"installId" in input ? 1 : input.limit}) AS head JOIN bundle_events AS event ON event.id = head.id ORDER BY head.install_id ASC`.execute(
+          db,
+        );
+      return result.rows;
+    },
+    async countLatestInsightsEvents(input) {
+      const where = sql`(${sql.join(
+        latestInsightsCountGroups(input).map(
+          (where) => sql`(${buildWhere(where)})`,
+        ),
+        sql` OR `,
+      )})`;
+      const result = await sql<{
+        count: string | number;
+      }>`SELECT COUNT(*) AS count FROM bundle_event_heads WHERE ${where}`.execute(
         db,
       );
-    return result.rows;
-  },
-  async countLatestInsightsEvents(input) {
-    const where = sql`(${sql.join(
-      latestInsightsCountGroups(input).map(
-        (where) => sql`(${buildWhere(where)})`,
-      ),
-      sql` OR `,
-    )})`;
-    const result = await sql<{
-      count: string | number;
-    }>`SELECT COUNT(*) AS count FROM bundle_event_heads WHERE ${where}`.execute(
-      db,
-    );
-    return Number(result.rows[0]?.count ?? 0);
-  },
-  async create(input: CreateDatabaseImplementationInput) {
-    switch (input.model) {
-      case "bundles":
-        return db
-          .insertInto("bundles")
-          .values(input.data)
-          .returningAll()
-          .executeTakeFirstOrThrow();
-      case "bundle_patches":
-        return db
-          .insertInto("bundle_patches")
-          .values(input.data)
-          .returningAll()
-          .executeTakeFirstOrThrow();
-      case "bundle_events":
-        return db
-          .insertInto("bundle_events")
-          .values(input.data)
-          .returningAll()
-          .executeTakeFirstOrThrow();
+      return Number(result.rows[0]?.count ?? 0);
+    },
+    async create(input: CreateDatabaseImplementationInput) {
+      switch (input.model) {
+        case "bundles":
+          return db
+            .insertInto("bundles")
+            .values(input.data)
+            .returningAll()
+            .executeTakeFirstOrThrow();
+        case "bundle_patches":
+          return db
+            .insertInto("bundle_patches")
+            .values(input.data)
+            .returningAll()
+            .executeTakeFirstOrThrow();
+        case "bundle_events":
+          return db
+            .insertInto("bundle_events")
+            .values(input.data)
+            .returningAll()
+            .executeTakeFirstOrThrow();
 
-      case "releases":
-        return db
-          .insertInto("releases")
-          .values(input.data)
-          .returningAll()
-          .executeTakeFirstOrThrow();
-      case "release_catalogs":
-        return db
-          .insertInto("release_catalogs")
-          .values(input.data)
-          .returningAll()
-          .executeTakeFirstOrThrow();
-      case "channels": {
-        const query = db.insertInto("channels").values(input.data);
-        const row = await (
-          input.onConflict === "ignore"
-            ? query.onConflict((conflict) =>
-                conflict.column("name").doNothing(),
-              )
-            : query
-        )
-          .returningAll()
-          .executeTakeFirst();
-        return (
-          row ??
-          (await db
-            .selectFrom("channels")
-            .selectAll()
-            .where("name", "=", input.data.name)
-            .executeTakeFirstOrThrow())
-        );
+        case "releases":
+          return db
+            .insertInto("releases")
+            .values(input.data)
+            .returningAll()
+            .executeTakeFirstOrThrow();
+        case "release_catalogs":
+          return db
+            .insertInto("release_catalogs")
+            .values(input.data)
+            .returningAll()
+            .executeTakeFirstOrThrow();
+        case "channels": {
+          const query = db.insertInto("channels").values(input.data);
+          const row = await (
+            input.onConflict === "ignore"
+              ? query.onConflict((conflict) =>
+                  conflict.column("name").doNothing(),
+                )
+              : query
+          )
+            .returningAll()
+            .executeTakeFirst();
+          return (
+            row ??
+            (await db
+              .selectFrom("channels")
+              .selectAll()
+              .where("name", "=", input.data.name)
+              .executeTakeFirstOrThrow())
+          );
+        }
+        case "api_keys":
+          const row = await (
+            input.onConflict === "ignore"
+              ? db
+                  .insertInto("api_keys")
+                  .values(input.data)
+                  .onConflict((conflict) => conflict.column("hash").doNothing())
+              : db.insertInto("api_keys").values(input.data)
+          )
+            .returningAll()
+            .executeTakeFirst();
+          return (
+            row ??
+            (await db
+              .selectFrom("api_keys")
+              .selectAll()
+              .where("hash", "=", input.data.hash)
+              .executeTakeFirstOrThrow())
+          );
       }
-      case "api_keys":
-        const row = await (
-          input.onConflict === "ignore"
-            ? db
-                .insertInto("api_keys")
-                .values(input.data)
-                .onConflict((conflict) => conflict.column("hash").doNothing())
-            : db.insertInto("api_keys").values(input.data)
-        )
-          .returningAll()
-          .executeTakeFirst();
-        return (
-          row ??
-          (await db
-            .selectFrom("api_keys")
-            .selectAll()
-            .where("hash", "=", input.data.hash)
-            .executeTakeFirstOrThrow())
-        );
-    }
-  },
-  async update(input: UpdateDatabaseImplementationInput) {
-    const where = buildWhere(input.where);
-    if (input.model === "api_keys") {
-      let query = db.updateTable("api_keys").set(input.update);
-      if (where !== undefined) query = query.where(where);
-      return (await query.returningAll().executeTakeFirst()) ?? null;
-    }
-    if (input.model === "releases") {
-      let query = db.updateTable("releases").set(input.update);
-      if (where !== undefined) query = query.where(where);
-      return (await query.returningAll().executeTakeFirst()) ?? null;
-    }
-    if (input.model === "release_catalogs") {
-      let query = db.updateTable("release_catalogs").set(input.update);
-      if (where !== undefined) query = query.where(where);
-      return (await query.returningAll().executeTakeFirst()) ?? null;
-    }
+    },
+    async update(input: UpdateDatabaseImplementationInput) {
+      const where = buildWhere(input.where);
+      if (input.model === "api_keys") {
+        let query = db.updateTable("api_keys").set(input.update);
+        if (where !== undefined) query = query.where(where);
+        return (await query.returningAll().executeTakeFirst()) ?? null;
+      }
+      if (input.model === "releases") {
+        let query = db.updateTable("releases").set(input.update);
+        if (where !== undefined) query = query.where(where);
+        return (await query.returningAll().executeTakeFirst()) ?? null;
+      }
+      if (input.model === "release_catalogs") {
+        let query = db.updateTable("release_catalogs").set(input.update);
+        if (where !== undefined) query = query.where(where);
+        return (await query.returningAll().executeTakeFirst()) ?? null;
+      }
 
-    let query = db.updateTable("bundles").set(input.update);
-    if (where !== undefined) {
-      query = query.where(where);
-    }
-    return (await query.returningAll().executeTakeFirst()) ?? null;
-  },
-  async delete(input: DeleteDatabaseImplementationInput) {
-    const where = buildWhere(input.where);
-    switch (input.model) {
-      case "bundles": {
-        let query = db.deleteFrom("bundles");
-        if (where !== undefined) query = query.where(where);
-        await query.execute();
-        return;
+      let query = db.updateTable("bundles").set(input.update);
+      if (where !== undefined) {
+        query = query.where(where);
       }
-      case "bundle_patches": {
-        let query = db.deleteFrom("bundle_patches");
-        if (where !== undefined) query = query.where(where);
-        await query.execute();
-        return;
-      }
-      case "channels": {
-        let query = db.deleteFrom("channels");
-        if (where !== undefined) query = query.where(where);
-        try {
+      return (await query.returningAll().executeTakeFirst()) ?? null;
+    },
+    async delete(input: DeleteDatabaseImplementationInput) {
+      const where = buildWhere(input.where);
+      switch (input.model) {
+        case "bundles": {
+          let query = db.deleteFrom("bundles");
+          if (where !== undefined) query = query.where(where);
           await query.execute();
-        } catch (error) {
-          if (isForeignKeyViolation(error)) {
-            throw new DatabaseRowReferencedError();
+          return;
+        }
+        case "bundle_patches": {
+          let query = db.deleteFrom("bundle_patches");
+          if (where !== undefined) query = query.where(where);
+          await query.execute();
+          return;
+        }
+        case "channels": {
+          let query = db.deleteFrom("channels");
+          if (where !== undefined) query = query.where(where);
+          try {
+            await query.execute();
+          } catch (error) {
+            if (isForeignKeyViolation(error)) {
+              throw new DatabaseRowReferencedError();
+            }
+            throw error;
           }
-          throw error;
+        }
+        case "releases": {
+          let query = db.deleteFrom("releases");
+          if (where !== undefined) query = query.where(where);
+          await query.execute();
         }
       }
-      case "releases": {
-        let query = db.deleteFrom("releases");
-        if (where !== undefined) query = query.where(where);
-        await query.execute();
+    },
+    count: (input) => countPostgresRows(db, input, buildWhere(input.where)),
+    async findOne(input: FindOneDatabaseImplementationInput) {
+      const where = buildWhere(input.where);
+      switch (input.model) {
+        case "bundles": {
+          let query = db.selectFrom("bundles").selectAll();
+          if (where !== undefined) query = query.where(where);
+          return (await query.executeTakeFirst()) ?? null;
+        }
+        case "api_keys": {
+          let query = db.selectFrom("api_keys").selectAll();
+          if (where !== undefined) query = query.where(where);
+          return (await query.executeTakeFirst()) ?? null;
+        }
+        case "bundle_patches": {
+          let query = db.selectFrom("bundle_patches").selectAll();
+          if (where !== undefined) query = query.where(where);
+          return (await query.executeTakeFirst()) ?? null;
+        }
+        case "channels": {
+          let query = db.selectFrom("channels").selectAll();
+          if (where !== undefined) query = query.where(where);
+          return (await query.executeTakeFirst()) ?? null;
+        }
+        case "releases": {
+          let query = db.selectFrom("releases").selectAll();
+          if (where !== undefined) query = query.where(where);
+          return (await query.executeTakeFirst()) ?? null;
+        }
+        case "release_catalogs": {
+          let query = db.selectFrom("release_catalogs").selectAll();
+          if (where !== undefined) query = query.where(where);
+          return (await query.executeTakeFirst()) ?? null;
+        }
       }
-    }
-  },
-  count: (input) => countPostgresRows(db, input, buildWhere(input.where)),
-  async findOne(input: FindOneDatabaseImplementationInput) {
-    const where = buildWhere(input.where);
-    switch (input.model) {
-      case "bundles": {
-        let query = db.selectFrom("bundles").selectAll();
-        if (where !== undefined) query = query.where(where);
-        return (await query.executeTakeFirst()) ?? null;
-      }
-      case "api_keys": {
-        let query = db.selectFrom("api_keys").selectAll();
-        if (where !== undefined) query = query.where(where);
-        return (await query.executeTakeFirst()) ?? null;
-      }
-      case "bundle_patches": {
-        let query = db.selectFrom("bundle_patches").selectAll();
-        if (where !== undefined) query = query.where(where);
-        return (await query.executeTakeFirst()) ?? null;
-      }
-      case "channels": {
-        let query = db.selectFrom("channels").selectAll();
-        if (where !== undefined) query = query.where(where);
-        return (await query.executeTakeFirst()) ?? null;
-      }
-      case "releases": {
-        let query = db.selectFrom("releases").selectAll();
-        if (where !== undefined) query = query.where(where);
-        return (await query.executeTakeFirst()) ?? null;
-      }
-      case "release_catalogs": {
-        let query = db.selectFrom("release_catalogs").selectAll();
-        if (where !== undefined) query = query.where(where);
-        return (await query.executeTakeFirst()) ?? null;
-      }
-    }
-  },
-  findMany: (input) => findManyPostgresRows(db, input, buildWhere(input.where)),
-  async insertChannel({ row }) {
-    const inserted = await db
-      .insertInto("channels")
-      .values(row)
-      .onConflict((conflict) => conflict.column("name").doNothing())
-      .returningAll()
-      .executeTakeFirst();
-    if (inserted !== undefined) return { row: inserted, inserted: true };
-    const existing = await db
-      .selectFrom("channels")
-      .selectAll()
-      .where("name", "=", row.name)
-      .executeTakeFirstOrThrow();
-    return { row: existing, inserted: false };
-  },
-  async deleteChannel({ id }) {
-    try {
-      const deleted = await db
-        .deleteFrom("channels")
-        .where("id", "=", id)
-        .returning("id")
+    },
+    findMany: (input) =>
+      findManyPostgresRows(db, input, buildWhere(input.where)),
+    async insertChannel({ row }) {
+      const inserted = await db
+        .insertInto("channels")
+        .values(row)
+        .onConflict((conflict) => conflict.column("name").doNothing())
+        .returningAll()
         .executeTakeFirst();
-      return deleted === undefined
-        ? { deleted: false, reason: "not_found" }
-        : { deleted: true };
-    } catch (error) {
-      if (isForeignKeyViolation(error)) {
-        return { deleted: false, reason: "not_empty" };
+      if (inserted !== undefined) return { row: inserted, inserted: true };
+      const existing = await db
+        .selectFrom("channels")
+        .selectAll()
+        .where("name", "=", row.name)
+        .executeTakeFirstOrThrow();
+      return { row: existing, inserted: false };
+    },
+    async deleteChannel({ id }) {
+      try {
+        const deleted = await db
+          .deleteFrom("channels")
+          .where("id", "=", id)
+          .returning("id")
+          .executeTakeFirst();
+        return deleted === undefined
+          ? { deleted: false, reason: "not_found" }
+          : { deleted: true };
+      } catch (error) {
+        if (isForeignKeyViolation(error)) {
+          return { deleted: false, reason: "not_empty" };
+        }
+        throw error;
       }
-      throw error;
-    }
-  },
-  transaction: (callback) =>
-    db
-      .transaction()
-      .execute((transaction) =>
-        callback(createPostgresImplementation(transaction)),
-      ),
-  dispose: () => db.destroy(),
-});
+    },
+    transaction: (callback) =>
+      db
+        .transaction()
+        .execute((transaction) =>
+          callback(createPostgresImplementation(transaction)),
+        ),
+    dispose: () => db.destroy(),
+  };
+};
 
 export const postgres = (config: PostgresConfig) => {
   const { dialect, ...poolConfig } = config;

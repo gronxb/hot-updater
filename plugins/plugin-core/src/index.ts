@@ -7,6 +7,8 @@ export {
   createDatabasePlugin,
   DatabaseAtomicCommitUnsupportedError,
   DatabasePluginInputError,
+  InsightsAggregationUnsupportedError,
+  InsightsAggregationNotReadyError,
   type CreateDatabasePluginOptions,
   type DatabasePluginInputErrorCode,
 } from "./createDatabasePlugin";
@@ -24,6 +26,14 @@ export {
   compareInsightsText,
   isInsightsMovementEvent,
 } from "./insightsContract";
+export {
+  insightsHourlyBucketKey,
+  insightsLifetimeMarkerKey,
+  insightsReleaseKey,
+  prepareInsightsEvent,
+  recordProjectedInsightsEvent,
+  reduceInsightsProjection,
+} from "./insightsProjection";
 export * from "./parseStorageUri";
 export * from "./paginateBundles";
 export * from "./queryBundles";

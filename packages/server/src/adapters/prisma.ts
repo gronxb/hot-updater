@@ -33,6 +33,7 @@ import {
   updatePrismaEventHead,
 } from "./prismaInsights";
 import { createPrismaOrderBy, createPrismaWhere } from "./prismaQuery";
+import { createPrismaInsightsStorage } from "./prismaReleaseActivity";
 import {
   getPrismaDelegate,
   parsePrismaBundleEventRow,
@@ -374,6 +375,9 @@ const createPrismaImplementation = (
   const crud = createCrudImplementation(client, provider, relationMode);
   const implementation: DatabasePluginImplementation = {
     ...crud,
+    ...(hasCallbackTransaction(client) && provider !== "mssql"
+      ? { insightsStorage: createPrismaInsightsStorage(client, provider) }
+      : {}),
     async recordInsights({ event }) {
       if (!hasCallbackTransaction(client)) {
         return recordPrismaEventWithCte(client, provider, event);
@@ -513,6 +517,7 @@ export const prismaAdapter = (
           findLatestEvents: unsupportedMssqlInsights,
           countLatestEvents: unsupportedMssqlInsights,
           countEvents: unsupportedMssqlInsights,
+          getReleaseActivity: unsupportedMssqlInsights,
         }
       : adapter.models.insights;
   return Object.assign(

@@ -19,7 +19,11 @@ import {
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import type { RecoveryInput, RecoveryReport } from "@/lib/insights-recovery";
+import type {
+  RecoveryInput,
+  RecoveryPoint,
+  RecoveryReport,
+} from "@/lib/insights-recovery";
 import { cn } from "@/lib/utils";
 
 import { InsightsErrorAlert } from "./InsightsErrorAlert";
@@ -36,6 +40,10 @@ const times = new Intl.DateTimeFormat("en", {
   hour: "numeric",
   timeZone: "UTC",
 });
+export const formatActivityRange = (point: RecoveryPoint) =>
+  `${times.format(point.rangeStartMs)}–${times.format(point.endMs)} · UTC${
+    point.partial ? " · Partial" : ""
+  }`;
 const colors = [
   "var(--chart-2)",
   "var(--foreground)",
@@ -46,35 +54,33 @@ const colors = [
 const dashes = [undefined, "6 3", "2 3"];
 
 const activityMetrics = {
-  active: {
-    label: "Active",
-    summary: "Active installations",
-    point: "active",
-    total: "activeInstallations",
+  applied: {
+    label: "Applied",
+    summary: "Applied reports in this period",
+    point: "applied",
     color: "text-success/85",
   },
   downloaded: {
     label: "Downloaded",
-    summary: "Installations waiting to apply",
-    point: "pendingInstallations",
-    total: "pendingInstallations",
+    summary: "Downloaded reports in this period",
+    point: "downloadedInstallations",
     color: "text-primary/85",
   },
   recovered: {
     label: "Recovered",
-    summary: "Crashed bundle recovery",
-    point: "recoveredInstallations",
-    total: "recoveredInstallations",
+    summary: "Recovered reports in this period",
+    point: "recovered",
     color: "text-warning/85",
   },
 } as const;
 
 export function ActivityChart({ report }: { readonly report: RecoveryReport }) {
-  const [metric, setMetric] = useState<keyof typeof activityMetrics>("active");
+  const [metric, setMetric] = useState<keyof typeof activityMetrics>("applied");
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const effectiveSelectedId = selectedId ?? report.series[0]?.releaseId ?? null;
   const metricInfo = activityMetrics[metric];
   const selected = report.series.find(
-    (series) => series.releaseId === selectedId,
+    (series) => series.releaseId === effectiveSelectedId,
   );
   const config = Object.fromEntries(
     report.series.map((series, index) => [
@@ -87,6 +93,9 @@ export function ActivityChart({ report }: { readonly report: RecoveryReport }) {
   );
   const data = (report.series[0]?.points ?? []).map((point, pointIndex) => ({
     startMs: point.startMs,
+    rangeStartMs: point.rangeStartMs,
+    endMs: point.endMs,
+    partial: point.partial,
     ...Object.fromEntries(
       report.series.map((series, index) => [
         `bundle${index}`,
@@ -100,14 +109,30 @@ export function ActivityChart({ report }: { readonly report: RecoveryReport }) {
     ? [...selected.points].reverse().find((point) => point.spike)
     : undefined;
   const totals = {
-    active: report.series.reduce(
-      (sum, series) => sum + series.activeInstallations,
+    applied: report.series.reduce(
+      (sum, series) =>
+        sum +
+        series.points.reduce((total, point) => total + (point.applied ?? 0), 0),
       0,
     ),
-    downloaded: report.pendingInstallations,
-    recovered: report.series.filter(
-      (series) => series.recoveredInstallations > 0,
-    ).length,
+    downloaded: report.series.reduce(
+      (sum, series) =>
+        sum +
+        series.points.reduce(
+          (total, point) => total + (point.downloadedInstallations ?? 0),
+          0,
+        ),
+      0,
+    ),
+    recovered: report.series.reduce(
+      (sum, series) =>
+        sum +
+        series.points.reduce(
+          (total, point) => total + (point.recovered ?? 0),
+          0,
+        ),
+      0,
+    ),
   };
   return (
     <Tabs
@@ -164,10 +189,7 @@ export function ActivityChart({ report }: { readonly report: RecoveryReport }) {
           <>
             <div>
               <p className="mb-2 text-right text-xs text-muted-foreground">
-                {metric !== "recovered"
-                  ? "Installations"
-                  : `${metricInfo.label} installations per interval`}{" "}
-                · UTC
+                Reports per interval · UTC
               </p>
               <ChartContainer
                 aria-label={`${metricInfo.label} trend for all reported bundle IDs`}
@@ -200,7 +222,7 @@ export function ActivityChart({ report }: { readonly report: RecoveryReport }) {
                       <ChartTooltipContent
                         className="max-h-64 max-w-[calc(100vw-3rem)] overflow-auto"
                         labelFormatter={(_, payload) =>
-                          `${times.format(payload[0]?.payload.startMs)} · UTC`
+                          formatActivityRange(payload[0]?.payload)
                         }
                       />
                     }
@@ -211,7 +233,9 @@ export function ActivityChart({ report }: { readonly report: RecoveryReport }) {
                       dataKey={`bundle${index}`}
                       type="linear"
                       stroke={`var(--color-bundle${index})`}
-                      strokeWidth={selectedId === series.releaseId ? 3 : 2}
+                      strokeWidth={
+                        effectiveSelectedId === series.releaseId ? 3 : 2
+                      }
                       strokeOpacity={!selected || selected === series ? 1 : 0.4}
                       strokeDasharray={
                         dashes[
@@ -241,11 +265,11 @@ export function ActivityChart({ report }: { readonly report: RecoveryReport }) {
                     type="button"
                     key={series.releaseId}
                     aria-label={`Highlight bundle ${series.releaseId}`}
-                    aria-pressed={selectedId === series.releaseId}
+                    aria-pressed={effectiveSelectedId === series.releaseId}
                     title={series.releaseId}
                     onClick={() =>
                       setSelectedId(
-                        selectedId === series.releaseId
+                        effectiveSelectedId === series.releaseId
                           ? null
                           : series.releaseId,
                       )
@@ -282,7 +306,12 @@ export function ActivityChart({ report }: { readonly report: RecoveryReport }) {
                       />
                     ) : null}
                     <span className="ml-auto tabular-nums">
-                      {series[metricInfo.total].toLocaleString()}
+                      {series.points
+                        .reduce(
+                          (sum, point) => sum + (point[metricInfo.point] ?? 0),
+                          0,
+                        )
+                        .toLocaleString()}
                     </span>
                   </button>
                 ))}
@@ -296,10 +325,11 @@ export function ActivityChart({ report }: { readonly report: RecoveryReport }) {
                   </p>
                   <p className="mt-1 text-xs text-muted-foreground">
                     Active {selected.activeInstallations.toLocaleString()} ·
-                    Downloaded {selected.pendingInstallations.toLocaleString()}{" "}
-                    waiting to apply · Recovered{" "}
-                    {selected.recoveredInstallations.toLocaleString()} in this
-                    period
+                    Pending {selected.pendingInstallations.toLocaleString()} ·
+                    Downloaded{" "}
+                    {selected.downloadedInstallations.toLocaleString()} ·
+                    Recovered {selected.recoveredInstallations.toLocaleString()}{" "}
+                    over collected history
                   </p>
                   {metric === "recovered" && lastSpike ? (
                     <p className="mt-2 flex items-center gap-2 text-xs">
@@ -381,6 +411,7 @@ export function ActivityChart({ report }: { readonly report: RecoveryReport }) {
 export function InsightsOverview({
   input,
   onWindowChange,
+  onReleaseChange,
   query,
   onRefresh,
 }: {
@@ -393,6 +424,7 @@ export function InsightsOverview({
   };
   readonly onRefresh: () => void;
   readonly onWindowChange: (window: RecoveryInput["window"]) => void;
+  readonly onReleaseChange: (releaseId: string) => void;
 }) {
   return (
     <Card
@@ -401,7 +433,26 @@ export function InsightsOverview({
       role="region"
     >
       <CardHeader className="flex-row flex-wrap items-center justify-between gap-4 p-6">
-        <CardTitle>Bundle activity</CardTitle>
+        <div className="flex min-w-0 flex-col gap-2">
+          <CardTitle>Bundle activity</CardTitle>
+          {query.data?.availableReleaseIds.length ? (
+            <label className="flex min-w-0 items-center gap-2 text-xs text-muted-foreground">
+              Bundle
+              <select
+                aria-label="Bundle"
+                className="h-8 min-w-0 max-w-72 rounded-md border bg-background px-2 font-mono text-foreground"
+                value={query.data.series[0]?.releaseId ?? ""}
+                onChange={(event) => onReleaseChange(event.target.value)}
+              >
+                {query.data.availableReleaseIds.map((releaseId) => (
+                  <option key={releaseId} value={releaseId}>
+                    {releaseId}
+                  </option>
+                ))}
+              </select>
+            </label>
+          ) : null}
+        </div>
         <div className="flex w-full items-center justify-between gap-4 sm:w-auto">
           <InsightsPeriodSelector
             window={input.window}

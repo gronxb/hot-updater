@@ -41,6 +41,7 @@ const report: RecoveryReport = {
   unattributedInstallations: 0,
   pendingInstallations: 0,
   downloadedInstallations: 0,
+  availableReleaseIds: ["new-id", "old-id"],
   series: ["new-id", "old-id"].map((releaseId, index) => ({
     releaseId,
     firstAppliedAtMs: 0,
@@ -50,6 +51,9 @@ const report: RecoveryReport = {
     recoveredInstallations: index === 0 ? 3 : 0,
     points: [10, 50, 90].map((active, i) => ({
       startMs: i * DAY,
+      rangeStartMs: i * DAY,
+      endMs: (i + 1) * DAY,
+      partial: false,
       active: index === 0 ? active : 100 - active,
       pendingInstallations: 0,
       downloadedInstallations: 0,
@@ -67,6 +71,30 @@ afterEach(() => {
 });
 
 describe("bundle trends", () => {
+  it("requests a new aggregate when the selected bundle changes", () => {
+    const onReleaseChange = vi.fn();
+    render(
+      <InsightsOverview
+        input={{ platform: "ios", channel: "production", window: "30d" }}
+        onReleaseChange={onReleaseChange}
+        onWindowChange={vi.fn()}
+        onRefresh={vi.fn()}
+        query={{
+          data: { ...report, series: [report.series[0]!] },
+          error: null,
+          isFetching: false,
+          isPending: false,
+        }}
+      />,
+    );
+
+    fireEvent.change(screen.getByRole("combobox", { name: "Bundle" }), {
+      target: { value: "old-id" },
+    });
+
+    expect(onReleaseChange).toHaveBeenCalledWith("old-id");
+  });
+
   it("shows every ID together and preserves all lines when highlighting a bundle or filtering recoveries", () => {
     const { container } = render(<ActivityChart report={report} />);
     expect(container.querySelectorAll(".recharts-line-curve")).toHaveLength(2);
@@ -175,6 +203,7 @@ describe("bundle trends", () => {
     } as const;
     const refetch = vi.fn();
     const onWindowChange = vi.fn();
+    const onReleaseChange = vi.fn();
     let query = {
       data: undefined as RecoveryReport | undefined,
       error: null as Error | null,
@@ -184,6 +213,7 @@ describe("bundle trends", () => {
     const view = render(
       <InsightsOverview
         input={input}
+        onReleaseChange={onReleaseChange}
         onWindowChange={onWindowChange}
         query={query}
         onRefresh={refetch}
@@ -206,6 +236,7 @@ describe("bundle trends", () => {
     view.rerender(
       <InsightsOverview
         input={input}
+        onReleaseChange={onReleaseChange}
         onWindowChange={onWindowChange}
         query={query}
         onRefresh={refetch}
@@ -221,6 +252,7 @@ describe("bundle trends", () => {
       error: null,
       data: {
         ...report,
+        availableReleaseIds: [],
         series: [],
         truncated: true,
         unattributedInstallations: 4,
@@ -229,6 +261,7 @@ describe("bundle trends", () => {
     view.rerender(
       <InsightsOverview
         input={input}
+        onReleaseChange={onReleaseChange}
         onWindowChange={onWindowChange}
         query={query}
         onRefresh={refetch}

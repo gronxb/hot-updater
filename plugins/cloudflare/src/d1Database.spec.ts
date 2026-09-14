@@ -200,7 +200,7 @@ it("sends parameterized commits through the D1 batch body", async () => {
   expect(state.batches[0]?.[1]?.params.length).toBeGreaterThan(0);
 });
 
-it("sends the immutable event and canonical head update in one parameterized REST batch", async () => {
+it("commits the projection, immutable event, and canonical head atomically", async () => {
   const plugin = d1Database({
     accountId: "account",
     cloudflareApiToken: "token",
@@ -211,12 +211,18 @@ it("sends the immutable event and canonical head update in one parameterized RES
       event: eventD1Row,
     }),
   ).resolves.toBeUndefined();
-  expect(state.queries).toHaveLength(0);
-  expect(state.batches).toHaveLength(1);
-  expect(state.batches[0]).toHaveLength(2);
-  const [insert, head] = state.batches[0]!;
+  expect(state.queries).toHaveLength(1);
+  expect(state.queries[0]?.sql).toContain("SELECT id FROM bundle_events");
+  expect(state.batches).toHaveLength(2);
+  const commit = state.batches[1]!;
+  const insert = commit.find(({ sql }) =>
+    sql.includes("INSERT INTO bundle_events"),
+  );
+  const head = commit.find(({ sql }) =>
+    sql.includes("INSERT INTO bundle_event_heads"),
+  );
   expect(insert?.sql).toContain("INSERT INTO bundle_events");
-  expect(insert?.sql).toContain("ON CONFLICT(id) DO NOTHING");
+  expect(insert?.sql).toContain("RETURNING *");
   expect(insert?.params).toEqual(
     Object.values(eventD1Row).map((value) => JSON.stringify(value)),
   );

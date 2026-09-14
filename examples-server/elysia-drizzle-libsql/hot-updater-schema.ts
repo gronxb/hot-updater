@@ -1,22 +1,39 @@
-import { blob, customType, foreignKey, index, integer, real, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core"
+import { relations } from "drizzle-orm";
+import {
+  blob,
+  customType,
+  foreignKey,
+  index,
+  integer,
+  real,
+  sqliteTable,
+  text,
+  uniqueIndex,
+} from "drizzle-orm/sqlite-core";
 
-import { relations } from "drizzle-orm"
-
-export const channels = sqliteTable("channels", {
-  id: customType<{ data: string }>({ dataType: () => "text collate binary" })("id").primaryKey().notNull(),
-  name: customType<{ data: string }>({ dataType: () => "text collate binary" })("name").notNull()
-}, (table) => [
-  uniqueIndex("channels_name_key").on(table.name)
-])
+export const channels = sqliteTable(
+  "channels",
+  {
+    id: customType<{ data: string }>({ dataType: () => "text collate binary" })(
+      "id",
+    )
+      .primaryKey()
+      .notNull(),
+    name: customType<{ data: string }>({
+      dataType: () => "text collate binary",
+    })("name").notNull(),
+  },
+  (table) => [uniqueIndex("channels_name_key").on(table.name)],
+);
 
 export const channelsRelations = relations(channels, ({ many }) => ({
   releases: many(releases, {
-    relationName: "releases_channels"
+    relationName: "releases_channels",
   }),
   releaseCatalogs: many(release_catalogs, {
-    relationName: "release_catalogs_channels"
-  })
-}))
+    relationName: "release_catalogs_channels",
+  }),
+}));
 
 export const bundles = sqliteTable("bundles", {
   id: text("id").primaryKey().notNull(),
@@ -28,206 +45,367 @@ export const bundles = sqliteTable("bundles", {
   metadata: blob("metadata", { mode: "json" }).notNull().default({}),
   manifest_storage_uri: text("manifest_storage_uri"),
   manifest_file_hash: text("manifest_file_hash"),
-  asset_base_storage_uri: text("asset_base_storage_uri")
-})
+  asset_base_storage_uri: text("asset_base_storage_uri"),
+});
 
 export const bundlesRelations = relations(bundles, ({ many }) => ({
   patches: many(bundle_patches, {
-    relationName: "bundle_patches_bundles_patches"
+    relationName: "bundle_patches_bundles_patches",
   }),
   baseForPatches: many(bundle_patches, {
-    relationName: "bundle_patches_bundles_baseForPatches"
+    relationName: "bundle_patches_bundles_baseForPatches",
   }),
   releases: many(releases, {
-    relationName: "releases_bundles"
-  })
-}))
+    relationName: "releases_bundles",
+  }),
+}));
 
-export const bundle_patches = sqliteTable("bundle_patches", {
-  id: text("id", { length: 255 }).primaryKey().notNull(),
-  bundle_id: text("bundle_id").notNull(),
-  base_bundle_id: text("base_bundle_id").notNull(),
-  base_file_hash: text("base_file_hash").notNull(),
-  patch_file_hash: text("patch_file_hash").notNull(),
-  patch_storage_uri: text("patch_storage_uri").notNull(),
-  byte_size: real("byte_size").notNull(),
-  order_index: integer("order_index").notNull().default(0)
-}, (table) => [
-  foreignKey({
-    columns: [table.bundle_id],
-    foreignColumns: [bundles.id],
-    name: "bundle_patches_bundle_id_fk"
-  }).onUpdate("restrict").onDelete("cascade"),
-  foreignKey({
-    columns: [table.base_bundle_id],
-    foreignColumns: [bundles.id],
-    name: "bundle_patches_base_bundle_id_fk"
-  }).onUpdate("restrict").onDelete("cascade"),
-  index("bundle_patches_bundle_id_idx").on(table.bundle_id),
-  index("bundle_patches_base_bundle_id_idx").on(table.base_bundle_id)
-])
+export const bundle_patches = sqliteTable(
+  "bundle_patches",
+  {
+    id: text("id", { length: 255 }).primaryKey().notNull(),
+    bundle_id: text("bundle_id").notNull(),
+    base_bundle_id: text("base_bundle_id").notNull(),
+    base_file_hash: text("base_file_hash").notNull(),
+    patch_file_hash: text("patch_file_hash").notNull(),
+    patch_storage_uri: text("patch_storage_uri").notNull(),
+    byte_size: real("byte_size").notNull(),
+    order_index: integer("order_index").notNull().default(0),
+  },
+  (table) => [
+    foreignKey({
+      columns: [table.bundle_id],
+      foreignColumns: [bundles.id],
+      name: "bundle_patches_bundle_id_fk",
+    })
+      .onUpdate("restrict")
+      .onDelete("cascade"),
+    foreignKey({
+      columns: [table.base_bundle_id],
+      foreignColumns: [bundles.id],
+      name: "bundle_patches_base_bundle_id_fk",
+    })
+      .onUpdate("restrict")
+      .onDelete("cascade"),
+    index("bundle_patches_bundle_id_idx").on(table.bundle_id),
+    index("bundle_patches_base_bundle_id_idx").on(table.base_bundle_id),
+  ],
+);
 
 export const bundle_patchesRelations = relations(bundle_patches, ({ one }) => ({
   bundle: one(bundles, {
     relationName: "bundle_patches_bundles_patches",
     fields: [bundle_patches.bundle_id],
-    references: [bundles.id]
+    references: [bundles.id],
   }),
   baseBundle: one(bundles, {
     relationName: "bundle_patches_bundles_baseForPatches",
     fields: [bundle_patches.base_bundle_id],
-    references: [bundles.id]
-  })
-}))
+    references: [bundles.id],
+  }),
+}));
 
-export const releases = sqliteTable("releases", {
-  id: text("id").primaryKey().notNull(),
-  revision: integer("revision").notNull(),
-  scope_key: customType<{ data: string }>({ dataType: () => "text collate binary" })("scope_key").notNull(),
-  channel_id: customType<{ data: string }>({ dataType: () => "text collate binary" })("channel_id").notNull(),
-  platform: text("platform").notNull(),
-  kind: text("kind").notNull(),
-  bundle_id: text("bundle_id"),
-  strategy: text("strategy").notNull(),
-  target_app_version: text("target_app_version"),
-  fingerprint_hash: text("fingerprint_hash"),
-  enabled: integer("enabled", { mode: "boolean" }).notNull(),
-  should_force_update: integer("should_force_update", { mode: "boolean" }).notNull(),
-  message: text("message"),
-  rollout_cohort_count: integer("rollout_cohort_count").notNull().default(1000),
-  target_cohorts: blob("target_cohorts", { mode: "json" }).notNull().default([]),
-  operation: text("operation").notNull(),
-  source_release_id: text("source_release_id"),
-  created_at_ms: real("created_at_ms").notNull(),
-  updated_at_ms: real("updated_at_ms").notNull()
-}, (table) => [
-  foreignKey({
-    columns: [table.channel_id],
-    foreignColumns: [channels.id],
-    name: "releases_channel_id_fk"
-  }).onUpdate("restrict").onDelete("restrict"),
-  foreignKey({
-    columns: [table.bundle_id],
-    foreignColumns: [bundles.id],
-    name: "releases_bundle_id_fk"
-  }).onUpdate("restrict").onDelete("restrict"),
-  foreignKey({
-    columns: [table.source_release_id],
-    foreignColumns: [table.id],
-    name: "releases_source_release_id_fk"
-  }).onUpdate("restrict").onDelete("set null"),
-  index("releases_scope_order_idx").on(table.scope_key, table.id),
-  index("releases_channel_platform_order_idx").on(table.channel_id, table.platform, table.id),
-  index("releases_bundle_id_idx").on(table.bundle_id),
-  index("releases_fingerprint_hash_idx").on(table.fingerprint_hash),
-  index("releases_enabled_idx").on(table.enabled)
-])
+export const releases = sqliteTable(
+  "releases",
+  {
+    id: text("id").primaryKey().notNull(),
+    revision: integer("revision").notNull(),
+    scope_key: customType<{ data: string }>({
+      dataType: () => "text collate binary",
+    })("scope_key").notNull(),
+    channel_id: customType<{ data: string }>({
+      dataType: () => "text collate binary",
+    })("channel_id").notNull(),
+    platform: text("platform").notNull(),
+    kind: text("kind").notNull(),
+    bundle_id: text("bundle_id"),
+    strategy: text("strategy").notNull(),
+    target_app_version: text("target_app_version"),
+    fingerprint_hash: text("fingerprint_hash"),
+    enabled: integer("enabled", { mode: "boolean" }).notNull(),
+    should_force_update: integer("should_force_update", {
+      mode: "boolean",
+    }).notNull(),
+    message: text("message"),
+    rollout_cohort_count: integer("rollout_cohort_count")
+      .notNull()
+      .default(1000),
+    target_cohorts: blob("target_cohorts", { mode: "json" })
+      .notNull()
+      .default([]),
+    operation: text("operation").notNull(),
+    source_release_id: text("source_release_id"),
+    created_at_ms: real("created_at_ms").notNull(),
+    updated_at_ms: real("updated_at_ms").notNull(),
+  },
+  (table) => [
+    foreignKey({
+      columns: [table.channel_id],
+      foreignColumns: [channels.id],
+      name: "releases_channel_id_fk",
+    })
+      .onUpdate("restrict")
+      .onDelete("restrict"),
+    foreignKey({
+      columns: [table.bundle_id],
+      foreignColumns: [bundles.id],
+      name: "releases_bundle_id_fk",
+    })
+      .onUpdate("restrict")
+      .onDelete("restrict"),
+    foreignKey({
+      columns: [table.source_release_id],
+      foreignColumns: [table.id],
+      name: "releases_source_release_id_fk",
+    })
+      .onUpdate("restrict")
+      .onDelete("set null"),
+    index("releases_scope_order_idx").on(table.scope_key, table.id),
+    index("releases_channel_platform_order_idx").on(
+      table.channel_id,
+      table.platform,
+      table.id,
+    ),
+    index("releases_bundle_id_idx").on(table.bundle_id),
+    index("releases_fingerprint_hash_idx").on(table.fingerprint_hash),
+    index("releases_enabled_idx").on(table.enabled),
+  ],
+);
 
 export const releasesRelations = relations(releases, ({ one, many }) => ({
   channelRecord: one(channels, {
     relationName: "releases_channels",
     fields: [releases.channel_id],
-    references: [channels.id]
+    references: [channels.id],
   }),
   bundle: one(bundles, {
     relationName: "releases_bundles",
     fields: [releases.bundle_id],
-    references: [bundles.id]
+    references: [bundles.id],
   }),
   sourceRelease: one(releases, {
     relationName: "releases_source_release",
     fields: [releases.source_release_id],
-    references: [releases.id]
+    references: [releases.id],
   }),
   derivedReleases: many(releases, {
-    relationName: "releases_source_release"
-  })
-}))
+    relationName: "releases_source_release",
+  }),
+}));
 
-export const release_catalogs = sqliteTable("release_catalogs", {
-  scope_key: customType<{ data: string }>({ dataType: () => "text collate binary" })("scope_key").primaryKey().notNull(),
-  catalog_id: text("catalog_id", { length: 255 }).notNull(),
-  strategy: text("strategy").notNull(),
-  channel_id: customType<{ data: string }>({ dataType: () => "text collate binary" })("channel_id").notNull(),
-  channel_key: customType<{ data: string }>({ dataType: () => "text collate binary" })("channel_key").notNull(),
-  platform: text("platform").notNull(),
-  fingerprint_hash: text("fingerprint_hash"),
-  generation: real("generation").notNull(),
-  payload: text("payload").notNull(),
-  catalog_hash: text("catalog_hash", { length: 71 }).notNull(),
-  byte_size: integer("byte_size").notNull(),
-  is_tombstone: integer("is_tombstone", { mode: "boolean" }).notNull(),
-  updated_at_ms: real("updated_at_ms").notNull()
-}, (table) => [
-  foreignKey({
-    columns: [table.channel_id],
-    foreignColumns: [channels.id],
-    name: "release_catalogs_channel_id_fk"
-  }).onUpdate("restrict").onDelete("restrict"),
-  index("release_catalogs_channel_idx").on(table.channel_id)
-])
+export const release_catalogs = sqliteTable(
+  "release_catalogs",
+  {
+    scope_key: customType<{ data: string }>({
+      dataType: () => "text collate binary",
+    })("scope_key")
+      .primaryKey()
+      .notNull(),
+    catalog_id: text("catalog_id", { length: 255 }).notNull(),
+    strategy: text("strategy").notNull(),
+    channel_id: customType<{ data: string }>({
+      dataType: () => "text collate binary",
+    })("channel_id").notNull(),
+    channel_key: customType<{ data: string }>({
+      dataType: () => "text collate binary",
+    })("channel_key").notNull(),
+    platform: text("platform").notNull(),
+    fingerprint_hash: text("fingerprint_hash"),
+    generation: real("generation").notNull(),
+    payload: text("payload").notNull(),
+    catalog_hash: text("catalog_hash", { length: 71 }).notNull(),
+    byte_size: integer("byte_size").notNull(),
+    is_tombstone: integer("is_tombstone", { mode: "boolean" }).notNull(),
+    updated_at_ms: real("updated_at_ms").notNull(),
+  },
+  (table) => [
+    foreignKey({
+      columns: [table.channel_id],
+      foreignColumns: [channels.id],
+      name: "release_catalogs_channel_id_fk",
+    })
+      .onUpdate("restrict")
+      .onDelete("restrict"),
+    index("release_catalogs_channel_idx").on(table.channel_id),
+  ],
+);
 
-export const release_catalogsRelations = relations(release_catalogs, ({ one }) => ({
-  channelRecord: one(channels, {
-    relationName: "release_catalogs_channels",
-    fields: [release_catalogs.channel_id],
-    references: [channels.id]
-  })
-}))
+export const release_catalogsRelations = relations(
+  release_catalogs,
+  ({ one }) => ({
+    channelRecord: one(channels, {
+      relationName: "release_catalogs_channels",
+      fields: [release_catalogs.channel_id],
+      references: [channels.id],
+    }),
+  }),
+);
 
-export const bundle_events = sqliteTable("bundle_events", {
-  id: text("id").primaryKey().notNull(),
-  type: text("type", { length: 32 }).notNull(),
-  install_id: text("install_id", { length: 255 }).notNull(),
-  user_id: text("user_id", { length: 255 }),
-  from_release_id: text("from_release_id"),
-  from_bundle_id: text("from_bundle_id"),
-  to_release_id: text("to_release_id"),
-  to_bundle_id: text("to_bundle_id").notNull(),
-  platform: text("platform").notNull(),
-  app_version: text("app_version").notNull(),
-  channel: text("channel").notNull(),
-  metadata: blob("metadata", { mode: "json" }).notNull(),
-  received_at_ms: real("received_at_ms").notNull()
-}, (table) => [
-  index("bundle_events_received_at_idx").on(table.received_at_ms, table.id),
-  index("bundle_events_latest_idx").on(table.install_id, table.received_at_ms, table.id),
-  index("bundle_events_install_idx").on(table.install_id, table.type, table.received_at_ms, table.id),
-  index("bundle_events_from_bundle_idx").on(table.type, table.platform, table.channel, table.from_bundle_id, table.received_at_ms, table.id),
-  index("bundle_events_to_bundle_idx").on(table.type, table.platform, table.channel, table.to_bundle_id, table.received_at_ms, table.id)
-])
+export const bundle_events = sqliteTable(
+  "bundle_events",
+  {
+    id: text("id").primaryKey().notNull(),
+    type: text("type", { length: 32 }).notNull(),
+    install_id: text("install_id", { length: 255 }).notNull(),
+    user_id: text("user_id", { length: 255 }),
+    from_release_id: text("from_release_id"),
+    from_bundle_id: text("from_bundle_id"),
+    to_release_id: text("to_release_id"),
+    to_bundle_id: text("to_bundle_id").notNull(),
+    platform: text("platform").notNull(),
+    app_version: text("app_version").notNull(),
+    channel: text("channel").notNull(),
+    metadata: blob("metadata", { mode: "json" }).notNull(),
+    received_at_ms: real("received_at_ms").notNull(),
+  },
+  (table) => [
+    index("bundle_events_received_at_idx").on(table.received_at_ms, table.id),
+    index("bundle_events_latest_idx").on(
+      table.install_id,
+      table.received_at_ms,
+      table.id,
+    ),
+    index("bundle_events_install_idx").on(
+      table.install_id,
+      table.type,
+      table.received_at_ms,
+      table.id,
+    ),
+    index("bundle_events_from_bundle_idx").on(
+      table.type,
+      table.platform,
+      table.channel,
+      table.from_bundle_id,
+      table.received_at_ms,
+      table.id,
+    ),
+    index("bundle_events_to_bundle_idx").on(
+      table.type,
+      table.platform,
+      table.channel,
+      table.to_bundle_id,
+      table.received_at_ms,
+      table.id,
+    ),
+  ],
+);
 
-export const bundle_event_heads = sqliteTable("bundle_event_heads", {
+export const bundle_event_heads = sqliteTable(
+  "bundle_event_heads",
+  {
+    install_id: text("install_id", { length: 255 }).primaryKey().notNull(),
+    id: text("id").notNull(),
+    received_at_ms: real("received_at_ms").notNull(),
+    user_id: text("user_id", { length: 255 }),
+    platform: text("platform").notNull(),
+    channel: text("channel").notNull(),
+    type: text("type", { length: 32 }).notNull(),
+    from_bundle_id: text("from_bundle_id"),
+    to_bundle_id: text("to_bundle_id").notNull(),
+  },
+  (table) => [
+    index("bundle_event_heads_user_idx").on(table.user_id, table.install_id),
+    index("bundle_event_heads_scope_idx").on(
+      table.platform,
+      table.channel,
+      table.received_at_ms,
+    ),
+    index("bundle_event_heads_from_idx").on(
+      table.type,
+      table.platform,
+      table.channel,
+      table.from_bundle_id,
+      table.received_at_ms,
+    ),
+    index("bundle_event_heads_to_idx").on(
+      table.type,
+      table.platform,
+      table.channel,
+      table.to_bundle_id,
+      table.received_at_ms,
+    ),
+  ],
+);
+
+export const insights_install_states = sqliteTable("insights_install_states", {
   install_id: text("install_id", { length: 255 }).primaryKey().notNull(),
-  id: text("id").notNull(),
-  received_at_ms: real("received_at_ms").notNull(),
-  user_id: text("user_id", { length: 255 }),
-  platform: text("platform").notNull(),
-  channel: text("channel").notNull(),
-  type: text("type", { length: 32 }).notNull(),
-  from_bundle_id: text("from_bundle_id"),
-  to_bundle_id: text("to_bundle_id").notNull()
-}, (table) => [
-  index("bundle_event_heads_user_idx").on(table.user_id, table.install_id),
-  index("bundle_event_heads_scope_idx").on(table.platform, table.channel, table.received_at_ms),
-  index("bundle_event_heads_from_idx").on(table.type, table.platform, table.channel, table.from_bundle_id, table.received_at_ms),
-  index("bundle_event_heads_to_idx").on(table.type, table.platform, table.channel, table.to_bundle_id, table.received_at_ms)
-])
+  revision: real("revision").notNull(),
+  state: text("state").notNull(),
+});
 
-export const api_keys = sqliteTable("api_keys", {
-  id: text("id", { length: 255 }).primaryKey().notNull(),
-  hash: text("hash").notNull(),
-  name: text("name").notNull(),
-  prefix: text("prefix").notNull(),
-  role: text("role").notNull(),
-  created_at_ms: real("created_at_ms").notNull(),
-  revoked_at_ms: real("revoked_at_ms")
-}, (table) => [
-  uniqueIndex("api_keys_hash_key").on(table.hash),
-  index("api_keys_created_at_idx").on(table.created_at_ms, table.id)
-])
+export const insights_lifetime_markers = sqliteTable(
+  "insights_lifetime_markers",
+  {
+    marker_key: text("marker_key", { length: 2048 }).primaryKey().notNull(),
+    release_id: text("release_id").notNull(),
+    platform: text("platform").notNull(),
+    channel: text("channel").notNull(),
+    install_id: text("install_id", { length: 255 }).notNull(),
+    metric: text("metric", { length: 32 }).notNull(),
+  },
+);
 
-export const private_hot_updater_settings = sqliteTable("private_hot_updater_settings", {
-  id: text("id", { length: 255 }).primaryKey().notNull(),
-  version: text("version", { length: 255 }).notNull().default("1.0.0")
-})
+export const insights_release_summaries = sqliteTable(
+  "insights_release_summaries",
+  {
+    release_key: text("release_key", { length: 2048 }).primaryKey().notNull(),
+    release_id: text("release_id").notNull(),
+    platform: text("platform").notNull(),
+    channel: text("channel").notNull(),
+    active_installations: real("active_installations").notNull().default(0),
+    pending_installations: real("pending_installations").notNull().default(0),
+    downloaded_installations: real("downloaded_installations")
+      .notNull()
+      .default(0),
+    recovered_installations: real("recovered_installations")
+      .notNull()
+      .default(0),
+  },
+);
+
+export const insights_hourly_activity = sqliteTable(
+  "insights_hourly_activity",
+  {
+    bucket_key: text("bucket_key", { length: 2048 }).primaryKey().notNull(),
+    release_id: text("release_id").notNull(),
+    platform: text("platform").notNull(),
+    channel: text("channel").notNull(),
+    hour_start_ms: real("hour_start_ms").notNull(),
+    downloaded_reports: real("downloaded_reports").notNull().default(0),
+    applied_reports: real("applied_reports").notNull().default(0),
+    recovered_reports: real("recovered_reports").notNull().default(0),
+  },
+  (table) => [
+    index("insights_hourly_activity_release_idx").on(
+      table.platform,
+      table.channel,
+      table.release_id,
+      table.hour_start_ms,
+    ),
+  ],
+);
+
+export const api_keys = sqliteTable(
+  "api_keys",
+  {
+    id: text("id", { length: 255 }).primaryKey().notNull(),
+    hash: text("hash").notNull(),
+    name: text("name").notNull(),
+    prefix: text("prefix").notNull(),
+    role: text("role").notNull(),
+    created_at_ms: real("created_at_ms").notNull(),
+    revoked_at_ms: real("revoked_at_ms"),
+  },
+  (table) => [
+    uniqueIndex("api_keys_hash_key").on(table.hash),
+    index("api_keys_created_at_idx").on(table.created_at_ms, table.id),
+  ],
+);
+
+export const private_hot_updater_settings = sqliteTable(
+  "private_hot_updater_settings",
+  {
+    id: text("id", { length: 255 }).primaryKey().notNull(),
+    version: text("version", { length: 255 }).notNull().default("1.0.0"),
+  },
+);

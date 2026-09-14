@@ -92,12 +92,12 @@ export const registerDatabasePluginInsightsTests = (
           installId: download.install_id,
         }),
       ).resolves.toEqual([replacement]);
-      const applied: BundleEventRow = {
+      const applied = {
         ...replacement,
         type: "UPDATE_APPLIED",
         id: createBundleEventRowFixture("982", 120).id,
         received_at_ms: 120,
-      };
+      } as BundleEventRow;
       await record(plugin, applied);
       await record(plugin, {
         ...download,
@@ -134,7 +134,10 @@ export const registerDatabasePluginInsightsTests = (
 
     it("treats duplicate IDs as complete no-ops, including changed retry payloads", async () => {
       const plugin = state.getPlugin();
-      const event = createBundleEventRowFixture("901", 100);
+      const event = {
+        ...createBundleEventRowFixture("901", 100),
+        to_release_id: "00000000-0000-7000-8000-000000009901",
+      } satisfies BundleEventRow;
       await Promise.all([
         record(plugin, event),
         record(plugin, event),
@@ -168,6 +171,28 @@ export const registerDatabasePluginInsightsTests = (
           }),
         [event],
       );
+      await expect(
+        plugin.models.insights.getReleaseActivity({
+          releases: [
+            {
+              releaseId: event.to_release_id,
+              platform: event.platform,
+              channel: event.channel,
+            },
+          ],
+        }),
+      ).resolves.toMatchObject({
+        data: [
+          {
+            summary: {
+              activeInstallations: 1,
+              pendingInstallations: 0,
+              downloadedInstallations: 0,
+              recoveredInstallations: 0,
+            },
+          },
+        ],
+      });
     });
 
     it("keeps all concurrent events and the greatest timestamp/ID state, including logout", async () => {
@@ -247,8 +272,8 @@ export const registerDatabasePluginInsightsTests = (
         ...createBundleEventRowFixture("930", 100),
         install_id: "target",
         to_bundle_id: bundleB,
-      };
-      const recovered: BundleEventRow = {
+      } as BundleEventRow;
+      const recovered = {
         ...createBundleEventRowFixture("931", 120),
         install_id: "target",
         type: "RECOVERED",
@@ -258,7 +283,7 @@ export const registerDatabasePluginInsightsTests = (
           ...createBundleEventRowFixture("931", 120).metadata,
           update_strategy: "appVersion",
         },
-      };
+      } as BundleEventRow;
       const unchanged: BundleEventRow = {
         ...createBundleEventRowFixture("932", 130),
         type: "UNCHANGED",
@@ -269,7 +294,7 @@ export const registerDatabasePluginInsightsTests = (
           update_strategy: null,
         },
       };
-      const excluded = [
+      const excluded: BundleEventRow[] = [
         {
           ...applied,
           id: createBundleEventRowFixture("933", 99).id,
@@ -300,7 +325,7 @@ export const registerDatabasePluginInsightsTests = (
           install_id: "other-source",
           from_bundle_id: bundleC,
           to_bundle_id: bundleB,
-        },
+        } as BundleEventRow,
       ];
       for (const row of [applied, recovered, unchanged, ...excluded])
         await record(plugin, row);
@@ -505,6 +530,102 @@ export const registerDatabasePluginInsightsTests = (
           beforeReceivedAtMs: 100,
         }),
       ).resolves.toBe(0);
+    });
+
+    it("reads current, lifetime, and bounded hourly release activity without scanning events", async () => {
+      const plugin = state.getPlugin();
+      const hour = 3_600_000;
+      const releaseA = "00000000-0000-7000-8000-000000008001";
+      const releaseB = "00000000-0000-7000-8000-000000008002";
+      const base = createBundleEventRowFixture("8001", hour + 1);
+      const download = (suffix: string, installId: string): BundleEventRow => ({
+        ...base,
+        id: createBundleEventRowFixture(suffix, hour + 1).id,
+        type: "UPDATE_DOWNLOADED",
+        install_id: installId,
+        from_release_id: releaseB,
+        to_release_id: releaseA,
+        received_at_ms: hour + 1,
+      });
+      const first = download("8001", "release-activity-1");
+      const second = download("8002", "release-activity-2");
+      const applied = {
+        ...first,
+        id: createBundleEventRowFixture("8003", hour + 2).id,
+        type: "UPDATE_APPLIED",
+        received_at_ms: hour + 2,
+      } as BundleEventRow;
+      const recovered: BundleEventRow = {
+        ...first,
+        id: createBundleEventRowFixture("8004", hour + 3_600_001).id,
+        type: "RECOVERED",
+        from_release_id: releaseA,
+        to_release_id: releaseB,
+        from_bundle_id: first.to_bundle_id,
+        received_at_ms: hour + 3_600_001,
+      };
+      await record(plugin, first);
+      await record(plugin, second);
+      await record(plugin, applied);
+      await record(plugin, recovered);
+      await record(plugin, recovered);
+      await record(plugin, {
+        ...first,
+        id: createBundleEventRowFixture("8005", hour + 500).id,
+        received_at_ms: hour + 500,
+      });
+
+      const releases = [
+        {
+          releaseId: releaseA,
+          platform: "ios" as const,
+          channel: "production",
+        },
+        {
+          releaseId: releaseB,
+          platform: "ios" as const,
+          channel: "production",
+        },
+      ];
+      const result = await plugin.models.insights.getReleaseActivity({
+        releases,
+        timeRange: { start: hour, end: hour + 7_200_000 },
+      });
+
+      expect(result.coverage).toEqual({ kind: "complete", sinceMs: 0 });
+      expect(result.data.map(({ release }) => release)).toEqual(releases);
+      expect(result.data[0]?.summary).toEqual({
+        activeInstallations: 0,
+        pendingInstallations: 1,
+        downloadedInstallations: 2,
+        recoveredInstallations: 1,
+      });
+      expect(result.data[1]?.summary).toEqual({
+        activeInstallations: 2,
+        pendingInstallations: 0,
+        downloadedInstallations: 0,
+        recoveredInstallations: 0,
+      });
+      expect(result.data[0]?.series).toEqual([
+        {
+          startMs: hour,
+          downloadedReports: 3,
+          appliedReports: 1,
+          recoveredReports: 0,
+        },
+        {
+          startMs: hour + 3_600_000,
+          downloadedReports: 0,
+          appliedReports: 0,
+          recoveredReports: 1,
+        },
+      ]);
+      const summaryOnly = await plugin.models.insights.getReleaseActivity({
+        releases,
+      });
+      expect(
+        summaryOnly.data.every((activity) => !("series" in activity)),
+      ).toBe(true);
     });
   });
 };

@@ -6,6 +6,7 @@ import {
   GetInvalidationCommand,
 } from "@aws-sdk/client-cloudfront";
 import {
+  BatchGetCommand,
   DynamoDBDocumentClient,
   GetCommand,
   PutCommand,
@@ -96,6 +97,7 @@ describe("dynamoDB CloudFront lifecycle", () => {
     documentClient.reset();
     cloudFront.on(CreateInvalidationCommand).resolves({});
     documentClient.on(GetCommand).resolves({});
+    documentClient.on(BatchGetCommand).resolves({ Responses: {} });
     documentClient.on(PutCommand).resolves({});
     documentClient.on(QueryCommand).resolves({ Items: [] });
     documentClient.on(ScanCommand).resolves({ Items: [] });
@@ -522,7 +524,7 @@ describe("dynamoDB CloudFront lifecycle", () => {
     const transaction =
       documentClient.commandCalls(TransactWriteCommand)[0]?.args[0].input
         .TransactItems;
-    expect(transaction).toHaveLength(7);
+    expect(transaction).toHaveLength(8);
     expect(
       transaction?.find((item) =>
         String(item.Put?.Item?.pk).startsWith("_hot-updater#insights-scope#"),
@@ -734,6 +736,7 @@ describe("dynamoDB CloudFront lifecycle", () => {
       { pk: DYNAMODB_INSIGHTS_EVENT_IDS_PARTITION, sk: event.id },
       { pk: DYNAMODB_INSIGHTS_INSTALLATIONS_PARTITION, sk: event.install_id },
     ]);
+    expect(documentClient.commandCalls(BatchGetCommand)).toHaveLength(1);
     expect(documentClient.commandCalls(QueryCommand)).toHaveLength(0);
     expect(documentClient.commandCalls(PutCommand)).toHaveLength(0);
     expect(documentClient.commandCalls(TransactWriteCommand)).toHaveLength(1);

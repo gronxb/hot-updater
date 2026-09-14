@@ -13,6 +13,10 @@ type Tables = {
   bundles: MongoTestRow[];
   bundle_events: MongoTestRow[];
   bundle_event_heads: MongoTestRow[];
+  insights_install_states: MongoTestRow[];
+  insights_lifetime_markers: MongoTestRow[];
+  insights_release_summaries: MongoTestRow[];
+  insights_hourly_activity: MongoTestRow[];
 
   channels: MongoTestRow[];
   api_keys: MongoTestRow[];
@@ -21,9 +25,11 @@ type Tables = {
 };
 
 type FindOptions = { readonly projection?: unknown };
-type UpdateInput =
-  | { readonly $set: Readonly<Record<string, unknown>> }
-  | { readonly $setOnInsert: MongoTestRow };
+type UpdateInput = {
+  readonly $set?: Readonly<Record<string, unknown>>;
+  readonly $setOnInsert?: MongoTestRow;
+  readonly $inc?: Readonly<Record<string, number>>;
+};
 type MongoTestHooks = {
   beforeBundlePatchInsert?: () => Promise<void>;
   failNextBundleTombstone: boolean;
@@ -203,7 +209,7 @@ const createCollection = (
     );
     const current = tables[model][index];
     if (current === undefined) return null;
-    if (!("$set" in update)) {
+    if (!update.$set) {
       throw new MongoTestConstraintError("findOneAndUpdate requires $set");
     }
     const updated = { ...current, ...update.$set } as MongoTestRow;
@@ -217,10 +223,22 @@ const createCollection = (
       throw new MongoTestConstraintError("injected event write failure");
     }
     if (model === "bundle_patches") await hooks.beforeBundlePatchInsert?.();
-    const key = "id" in row ? row.id : row.scope_key;
+    const keyField =
+      model === "bundle_event_heads" || model === "insights_install_states"
+        ? "install_id"
+        : model === "insights_lifetime_markers"
+          ? "marker_key"
+          : model === "insights_release_summaries"
+            ? "release_key"
+            : model === "insights_hourly_activity"
+              ? "bucket_key"
+              : "id" in row
+                ? "id"
+                : "scope_key";
+    const key = Reflect.get(row, keyField);
     if (
-      tables[model].some((candidate) =>
-        "id" in candidate ? candidate.id === key : candidate.scope_key === key,
+      tables[model].some(
+        (candidate) => Reflect.get(candidate, keyField) === key,
       )
     ) {
       throw new MongoTestConstraintError("duplicate id");
@@ -247,7 +265,7 @@ const createCollection = (
   },
   updateMany: async (filter: unknown, update: UpdateInput): Promise<void> => {
     hooks.operationCount += 1;
-    const values = "$set" in update ? update.$set : {};
+    const values = update.$set ?? {};
     tables[model] = tables[model].map((row) =>
       matchesMongoTestFilter(row, filter)
         ? ({ ...row, ...values } as MongoTestRow)
@@ -276,33 +294,41 @@ const createCollection = (
       matchesMongoTestFilter(row, filter),
     );
     if (index >= 0) {
-      if ("$set" in update) {
-        tables[model][index] = {
-          ...tables[model][index],
-          ...update.$set,
-        } as MongoTestRow;
+      const current = { ...tables[model][index], ...update.$set };
+      for (const [field, value] of Object.entries(update.$inc ?? {})) {
+        Reflect.set(
+          current,
+          field,
+          Number(Reflect.get(current, field) ?? 0) + value,
+        );
       }
+      tables[model][index] = current as MongoTestRow;
       return { matchedCount: 1, upsertedCount: 0 };
     }
     if (options?.upsert === true) {
-      const values = (
-        "$setOnInsert" in update ? update.$setOnInsert : update.$set
-      ) as MongoTestRow;
-      const key =
-        model === "bundle_event_heads"
-          ? Reflect.get(values, "install_id")
-          : "id" in values
-            ? values.id
-            : values.scope_key;
-      if (
-        tables[model].some((row) =>
-          model === "bundle_event_heads"
-            ? Reflect.get(row, "install_id") === key
-            : "id" in row
-              ? row.id === key
-              : row.scope_key === key,
-        )
-      ) {
+      const values = {
+        ...update.$setOnInsert,
+        ...update.$set,
+      } as MongoTestRow;
+      for (const [field, value] of Object.entries(update.$inc ?? {})) {
+        Reflect.set(
+          values,
+          field,
+          Number(Reflect.get(values, field) ?? 0) + value,
+        );
+      }
+      const keyField =
+        model === "bundle_event_heads" || model === "insights_install_states"
+          ? "install_id"
+          : model === "insights_release_summaries"
+            ? "release_key"
+            : model === "insights_hourly_activity"
+              ? "bucket_key"
+              : "id" in values
+                ? "id"
+                : "scope_key";
+      const key = Reflect.get(values, keyField);
+      if (tables[model].some((row) => Reflect.get(row, keyField) === key)) {
         throw new MongoTestConstraintError("duplicate id");
       }
       tables[model].push(structuredClone(values));
@@ -323,6 +349,14 @@ const createDatabase = (tables: Tables, hooks: MongoTestHooks) => ({
         return createCollection(tables, "bundle_events", hooks);
       case "bundle_event_heads":
         return createCollection(tables, "bundle_event_heads", hooks);
+      case "insights_install_states":
+        return createCollection(tables, "insights_install_states", hooks);
+      case "insights_lifetime_markers":
+        return createCollection(tables, "insights_lifetime_markers", hooks);
+      case "insights_release_summaries":
+        return createCollection(tables, "insights_release_summaries", hooks);
+      case "insights_hourly_activity":
+        return createCollection(tables, "insights_hourly_activity", hooks);
 
       case "channels":
         return createCollection(tables, "channels", hooks);
@@ -344,6 +378,10 @@ export const createMongoTestHarness = () => {
     bundles: [],
     bundle_events: [],
     bundle_event_heads: [],
+    insights_install_states: [],
+    insights_lifetime_markers: [],
+    insights_release_summaries: [],
+    insights_hourly_activity: [],
 
     channels: [],
     api_keys: [],
@@ -382,6 +420,11 @@ export const createMongoTestHarness = () => {
             tables.bundles = staged.bundles;
             tables.bundle_events = staged.bundle_events;
             tables.bundle_event_heads = staged.bundle_event_heads;
+            tables.insights_install_states = staged.insights_install_states;
+            tables.insights_lifetime_markers = staged.insights_lifetime_markers;
+            tables.insights_release_summaries =
+              staged.insights_release_summaries;
+            tables.insights_hourly_activity = staged.insights_hourly_activity;
             tables.channels = staged.channels;
             tables.api_keys = staged.api_keys;
             tables.releases = staged.releases;

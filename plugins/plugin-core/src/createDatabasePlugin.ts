@@ -15,6 +15,7 @@ import {
   compareInsightsText,
   createValidatedInsightsModel,
 } from "./insightsContract";
+import { recordProjectedInsightsEvent } from "./insightsProjection";
 import type {
   BundleEventRow,
   BundlePatchRow,
@@ -43,6 +44,23 @@ export {
   DatabasePluginInputError,
   type DatabasePluginInputErrorCode,
 } from "./databasePluginCrud";
+
+export class InsightsAggregationUnsupportedError extends Error {
+  constructor(name: string) {
+    super(
+      `Database plugin ${name} does not support release activity aggregation.`,
+    );
+    this.name = "InsightsAggregationUnsupportedError";
+  }
+}
+
+export class InsightsAggregationNotReadyError extends Error {
+  readonly name = "InsightsAggregationNotReadyError";
+
+  constructor() {
+    super("Release activity aggregation is not ready.");
+  }
+}
 
 const PAGE_SIZE = 100;
 
@@ -921,7 +939,13 @@ export const createDatabasePluginAdapter = (
         },
       },
       insights: {
-        recordEvent: (input) => implementation.recordInsights(input),
+        recordEvent: (input) =>
+          implementation.insightsStorage
+            ? recordProjectedInsightsEvent(
+                implementation.insightsStorage,
+                input,
+              )
+            : implementation.recordInsights(input),
         async listEvents(input) {
           const ranges = await Promise.all(
             toInsightsEventRanges(input.filter).map((where) =>
@@ -962,6 +986,10 @@ export const createDatabasePluginAdapter = (
             ],
           });
         },
+        getReleaseActivity: (input) =>
+          implementation.insightsStorage
+            ? implementation.insightsStorage.getReleaseActivity(input)
+            : Promise.reject(new InsightsAggregationUnsupportedError(name)),
       },
       apiKeys: {
         async create(row) {

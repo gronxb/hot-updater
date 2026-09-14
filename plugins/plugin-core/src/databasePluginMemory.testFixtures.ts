@@ -3,6 +3,8 @@ import {
   compareInsightsText,
   matchesInsightsEventFilter,
 } from "./insightsContract";
+import { createMemoryInsightsStorage } from "./insightsMemoryStorage";
+import { recordProjectedInsightsEvent } from "./insightsProjection";
 import type {
   BundleEventRow,
   BundlePatchRow,
@@ -51,6 +53,9 @@ export const createMemoryDatabasePlugin = (): DatabasePlugin => {
   const bundles = new Map<string, BundleRow>();
   const patches = new Map<string, BundlePatchRow>();
   const events = new Map<string, BundleEventRow>();
+  const insightsStorage = createMemoryInsightsStorage({
+    onEvent: (event) => events.set(event.id, event),
+  });
   const latest = () => {
     const installations = new Map<string, BundleEventRow>();
     for (const event of events.values()) {
@@ -377,10 +382,8 @@ export const createMemoryDatabasePlugin = (): DatabasePlugin => {
         },
       },
       insights: {
-        async recordEvent({ event }) {
-          if (!events.has(event.id))
-            events.set(event.id, structuredClone(event));
-        },
+        recordEvent: (input) =>
+          recordProjectedInsightsEvent(insightsStorage, input),
         async listEvents(input) {
           return structuredClone(
             [...events.values()]
@@ -447,6 +450,8 @@ export const createMemoryDatabasePlugin = (): DatabasePlugin => {
               }),
           ).length;
         },
+        getReleaseActivity: (input) =>
+          insightsStorage.getReleaseActivity(input),
       },
       apiKeys: {
         async create(row) {

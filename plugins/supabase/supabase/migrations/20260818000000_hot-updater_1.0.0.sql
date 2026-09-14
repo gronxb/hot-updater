@@ -556,6 +556,43 @@ CREATE TABLE public.hot_updater_v1_bundle_event_heads (
   from_bundle_id uuid,
   to_bundle_id uuid NOT NULL
 );
+CREATE TABLE public.hot_updater_v1_insights_install_states (
+  install_id text COLLATE "C" PRIMARY KEY NOT NULL,
+  revision double precision NOT NULL CHECK (revision BETWEEN 1 AND 9007199254740991),
+  state text NOT NULL
+);
+CREATE TABLE public.hot_updater_v1_insights_lifetime_markers (
+  marker_key text COLLATE "C" PRIMARY KEY NOT NULL,
+  release_key text COLLATE "C" NOT NULL,
+  install_id text COLLATE "C" NOT NULL,
+  metric text NOT NULL CHECK (metric IN ('downloaded', 'recovered'))
+);
+CREATE TABLE public.hot_updater_v1_insights_release_summaries (
+  release_key text COLLATE "C" PRIMARY KEY NOT NULL,
+  platform text COLLATE "C" NOT NULL,
+  channel text COLLATE "C" NOT NULL,
+  release_id uuid NOT NULL,
+  active_installations double precision NOT NULL DEFAULT 0,
+  pending_installations double precision NOT NULL DEFAULT 0,
+  downloaded_installations double precision NOT NULL DEFAULT 0,
+  recovered_installations double precision NOT NULL DEFAULT 0,
+  CHECK (active_installations >= 0 AND pending_installations >= 0
+    AND downloaded_installations >= 0 AND recovered_installations >= 0)
+);
+CREATE TABLE public.hot_updater_v1_insights_hourly_activity (
+  bucket_key text COLLATE "C" PRIMARY KEY NOT NULL,
+  release_key text COLLATE "C" NOT NULL,
+  platform text COLLATE "C" NOT NULL,
+  channel text COLLATE "C" NOT NULL,
+  release_id uuid NOT NULL,
+  hour_start_ms double precision NOT NULL CHECK (hour_start_ms >= 0),
+  downloaded_reports double precision NOT NULL DEFAULT 0,
+  applied_reports double precision NOT NULL DEFAULT 0,
+  recovered_reports double precision NOT NULL DEFAULT 0,
+  CHECK (downloaded_reports >= 0 AND applied_reports >= 0 AND recovered_reports >= 0)
+);
+CREATE INDEX hot_updater_v1_insights_hourly_release_hour_idx
+  ON public.hot_updater_v1_insights_hourly_activity(release_key, hour_start_ms);
 CREATE INDEX hot_updater_v1_bundle_event_heads_user_idx
   ON public.hot_updater_v1_bundle_event_heads(user_id, install_id);
 CREATE INDEX hot_updater_v1_bundle_event_heads_scope_idx
@@ -565,8 +602,20 @@ CREATE INDEX hot_updater_v1_bundle_event_heads_from_idx
 CREATE INDEX hot_updater_v1_bundle_event_heads_to_idx
   ON public.hot_updater_v1_bundle_event_heads(type, platform, channel, to_bundle_id, received_at_ms);
 ALTER TABLE public.hot_updater_v1_bundle_event_heads ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.hot_updater_v1_insights_install_states ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.hot_updater_v1_insights_lifetime_markers ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.hot_updater_v1_insights_release_summaries ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.hot_updater_v1_insights_hourly_activity ENABLE ROW LEVEL SECURITY;
 REVOKE ALL ON public.hot_updater_v1_bundle_event_heads FROM PUBLIC, anon, authenticated;
 GRANT SELECT, INSERT, UPDATE ON public.hot_updater_v1_bundle_event_heads TO service_role;
+REVOKE ALL ON public.hot_updater_v1_insights_install_states,
+  public.hot_updater_v1_insights_lifetime_markers,
+  public.hot_updater_v1_insights_release_summaries,
+  public.hot_updater_v1_insights_hourly_activity FROM PUBLIC, anon, authenticated;
+GRANT SELECT, INSERT, UPDATE ON public.hot_updater_v1_insights_install_states,
+  public.hot_updater_v1_insights_lifetime_markers,
+  public.hot_updater_v1_insights_release_summaries,
+  public.hot_updater_v1_insights_hourly_activity TO service_role;
 
 CREATE FUNCTION public.hot_updater_v1_record_event(p_event jsonb)
 RETURNS void
@@ -603,4 +652,150 @@ REVOKE EXECUTE ON FUNCTION public.hot_updater_v1_record_event(jsonb)
   FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.hot_updater_v1_record_event(jsonb)
   TO service_role;
+
+CREATE FUNCTION public.hot_updater_v1_record_prepared_event(p_prepared jsonb)
+RETURNS text
+LANGUAGE plpgsql
+SECURITY INVOKER
+SET search_path = pg_catalog
+AS $$
+DECLARE
+  v_event public.hot_updater_v1_bundle_events;
+  v_delta jsonb;
+  v_lifetime jsonb;
+  v_hourly jsonb;
+  v_actual double precision;
+  v_expected double precision;
+BEGIN
+  v_event := pg_catalog.jsonb_populate_record(
+    NULL::public.hot_updater_v1_bundle_events,
+    p_prepared->'event'
+  );
+  PERFORM pg_catalog.pg_advisory_xact_lock(
+    pg_catalog.hashtextextended('hot_updater_v1:insights:' || v_event.install_id, 0)
+  );
+  IF EXISTS (
+    SELECT 1 FROM public.hot_updater_v1_bundle_events WHERE id = v_event.id
+  ) THEN
+    RETURN 'duplicate';
+  END IF;
+  SELECT revision INTO v_actual
+  FROM public.hot_updater_v1_insights_install_states
+  WHERE install_id = v_event.install_id FOR UPDATE;
+  v_actual := COALESCE(v_actual, 0);
+  v_expected := (p_prepared->>'expectedRevision')::double precision;
+  IF v_actual <> v_expected THEN RETURN 'conflict'; END IF;
+  v_lifetime := p_prepared->'firstLifetime';
+  IF v_lifetime <> 'null'::jsonb AND EXISTS (
+    SELECT 1 FROM public.hot_updater_v1_insights_lifetime_markers
+    WHERE marker_key = v_lifetime->>'markerKey'
+  ) THEN
+    RETURN 'conflict';
+  END IF;
+
+  INSERT INTO public.hot_updater_v1_bundle_events SELECT v_event.*;
+  INSERT INTO public.hot_updater_v1_bundle_event_heads (
+    install_id, id, received_at_ms, user_id, platform, channel, type,
+    from_bundle_id, to_bundle_id
+  ) VALUES (
+    v_event.install_id, v_event.id, v_event.received_at_ms, v_event.user_id,
+    v_event.platform, v_event.channel, v_event.type, v_event.from_bundle_id,
+    v_event.to_bundle_id
+  ) ON CONFLICT (install_id) DO UPDATE SET
+    id = excluded.id, received_at_ms = excluded.received_at_ms,
+    user_id = excluded.user_id, platform = excluded.platform,
+    channel = excluded.channel, type = excluded.type,
+    from_bundle_id = excluded.from_bundle_id, to_bundle_id = excluded.to_bundle_id
+  WHERE (excluded.received_at_ms, excluded.id) >
+    (hot_updater_v1_bundle_event_heads.received_at_ms,
+      hot_updater_v1_bundle_event_heads.id);
+  INSERT INTO public.hot_updater_v1_insights_install_states (
+    install_id, revision, state
+  ) VALUES (v_event.install_id, v_actual + 1, p_prepared->>'nextState')
+  ON CONFLICT (install_id) DO UPDATE SET
+    revision = excluded.revision, state = excluded.state;
+
+  FOR v_delta IN SELECT value FROM pg_catalog.jsonb_array_elements(
+    p_prepared->'summaryDeltas'
+  ) AS item(value) LOOP
+    INSERT INTO public.hot_updater_v1_insights_release_summaries (
+      release_key, platform, channel, release_id
+    ) VALUES (
+      v_delta->>'releaseKey', v_delta->'release'->>'platform',
+      v_delta->'release'->>'channel', (v_delta->'release'->>'releaseId')::uuid
+    ) ON CONFLICT (release_key) DO NOTHING;
+    UPDATE public.hot_updater_v1_insights_release_summaries SET
+      active_installations = active_installations + (v_delta->>'active')::double precision,
+      pending_installations = pending_installations + (v_delta->>'pending')::double precision,
+      downloaded_installations = downloaded_installations + (v_delta->>'downloaded')::double precision,
+      recovered_installations = recovered_installations + (v_delta->>'recovered')::double precision
+    WHERE release_key = v_delta->>'releaseKey';
+  END LOOP;
+  IF v_lifetime <> 'null'::jsonb THEN
+    INSERT INTO public.hot_updater_v1_insights_lifetime_markers (
+      marker_key, release_key, install_id, metric
+    ) VALUES (
+      v_lifetime->>'markerKey', v_lifetime->>'releaseKey',
+      v_lifetime->>'installId', v_lifetime->>'metric'
+    );
+  END IF;
+  v_hourly := p_prepared->'hourly';
+  IF v_hourly <> 'null'::jsonb THEN
+    INSERT INTO public.hot_updater_v1_insights_hourly_activity (
+      bucket_key, release_key, platform, channel, release_id, hour_start_ms,
+      downloaded_reports, applied_reports, recovered_reports
+    ) VALUES (
+      v_hourly->>'bucketKey', v_hourly->>'releaseKey',
+      v_hourly->'release'->>'platform', v_hourly->'release'->>'channel',
+      (v_hourly->'release'->>'releaseId')::uuid,
+      (v_hourly->>'hourStartMs')::double precision,
+      CASE WHEN v_hourly->>'metric' = 'downloaded' THEN 1 ELSE 0 END,
+      CASE WHEN v_hourly->>'metric' = 'applied' THEN 1 ELSE 0 END,
+      CASE WHEN v_hourly->>'metric' = 'recovered' THEN 1 ELSE 0 END
+    ) ON CONFLICT (bucket_key) DO UPDATE SET
+      downloaded_reports = hot_updater_v1_insights_hourly_activity.downloaded_reports + excluded.downloaded_reports,
+      applied_reports = hot_updater_v1_insights_hourly_activity.applied_reports + excluded.applied_reports,
+      recovered_reports = hot_updater_v1_insights_hourly_activity.recovered_reports + excluded.recovered_reports;
+  END IF;
+  RETURN 'committed';
+END;
+$$;
+REVOKE EXECUTE ON FUNCTION public.hot_updater_v1_record_prepared_event(jsonb)
+  FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.hot_updater_v1_record_prepared_event(jsonb)
+  TO service_role;
+
+CREATE FUNCTION public.hot_updater_v1_get_release_activity(
+  p_release_keys text[],
+  p_start double precision DEFAULT NULL,
+  p_end double precision DEFAULT NULL
+)
+RETURNS jsonb
+LANGUAGE sql
+STABLE
+SECURITY INVOKER
+SET search_path = pg_catalog
+AS $$
+  SELECT pg_catalog.jsonb_build_object(
+    'summaries', COALESCE((
+      SELECT pg_catalog.jsonb_agg(pg_catalog.to_jsonb(summary))
+      FROM public.hot_updater_v1_insights_release_summaries AS summary
+      WHERE summary.release_key = ANY(p_release_keys)
+    ), '[]'::jsonb),
+    'hourly', CASE WHEN p_start IS NULL THEN '[]'::jsonb ELSE COALESCE((
+      SELECT pg_catalog.jsonb_agg(pg_catalog.to_jsonb(hourly)
+        ORDER BY hourly.release_key, hourly.hour_start_ms)
+      FROM public.hot_updater_v1_insights_hourly_activity AS hourly
+      WHERE hourly.release_key = ANY(p_release_keys)
+        AND hourly.hour_start_ms >= p_start
+        AND hourly.hour_start_ms < p_end
+    ), '[]'::jsonb) END
+  )
+$$;
+REVOKE EXECUTE ON FUNCTION public.hot_updater_v1_get_release_activity(
+  text[], double precision, double precision
+) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.hot_updater_v1_get_release_activity(
+  text[], double precision, double precision
+) TO service_role;
 NOTIFY pgrst, 'reload schema';

@@ -124,6 +124,96 @@ export interface InsightsCountEventsInput {
   readonly beforeReceivedAtMs: number;
 }
 
+export interface ReleaseReference {
+  readonly releaseId: string;
+  readonly platform: "ios" | "android";
+  readonly channel: string;
+}
+
+export interface ReleaseActivityTimeRange {
+  /** Inclusive UTC Unix timestamp in milliseconds, aligned to an hour. */
+  readonly start: number;
+  /** Exclusive UTC Unix timestamp in milliseconds, aligned to an hour. */
+  readonly end: number;
+}
+
+export type InsightsHistoryCoverage =
+  | { readonly kind: "complete"; readonly sinceMs: number }
+  | { readonly kind: "partial"; readonly sinceMs: number | null };
+
+export interface ReleaseActivity {
+  readonly release: ReleaseReference;
+  readonly summary: {
+    readonly activeInstallations: number;
+    readonly pendingInstallations: number;
+    readonly downloadedInstallations: number;
+    readonly recoveredInstallations: number;
+  };
+  readonly series?: readonly {
+    readonly startMs: number;
+    readonly downloadedReports: number;
+    readonly appliedReports: number;
+    readonly recoveredReports: number;
+  }[];
+  readonly measuredAtMs: number;
+}
+
+export interface InsightsGetReleaseActivityInput {
+  readonly releases: readonly ReleaseReference[];
+  readonly timeRange?: ReleaseActivityTimeRange;
+}
+
+export interface InsightsGetReleaseActivityResult {
+  readonly coverage: InsightsHistoryCoverage;
+  readonly data: readonly ReleaseActivity[];
+}
+
+export interface InsightsLifetimeKey {
+  readonly release: ReleaseReference;
+  readonly installId: string;
+  readonly metric: "downloaded" | "recovered";
+}
+
+export interface InsightsCurrentDelta {
+  readonly release: ReleaseReference;
+  readonly metric: "active" | "pending";
+  readonly delta: -1 | 1;
+}
+
+export interface PreparedInsightsEvent {
+  readonly event: BundleEventRow;
+  readonly expectedRevision: string;
+  readonly nextState: string;
+  readonly currentDeltas: readonly InsightsCurrentDelta[];
+  readonly firstLifetime: InsightsLifetimeKey | null;
+  readonly hourly: {
+    readonly release: ReleaseReference;
+    readonly hourStartMs: number;
+    readonly metric: "downloaded" | "applied" | "recovered";
+  } | null;
+}
+
+export interface InsightsRecordContext {
+  readonly revision: string;
+  readonly state: string | null;
+  readonly lifetimeExists: boolean;
+}
+
+export interface InsightsStorageAdapter {
+  readRecordContext(input: {
+    readonly installId: string;
+    readonly lifetimeKey: InsightsLifetimeKey | null;
+  }): Promise<InsightsRecordContext>;
+  commitPreparedEvent(
+    input: PreparedInsightsEvent,
+  ): Promise<
+    | { readonly status: "committed" }
+    | { readonly status: "duplicate" }
+    | { readonly status: "conflict" }
+  >;
+  getReleaseActivity: InsightsModel["getReleaseActivity"];
+}
+
 export interface InsightsModel {
   /**
    * Persist the immutable event once. A private latest-event index, if used,
@@ -154,6 +244,13 @@ export interface InsightsModel {
   countLatestEvents(input: InsightsCountLatestEventsInput): Promise<number>;
   /** Count accepted reports in [sinceMs, beforeReceivedAtMs), across all pages. */
   countEvents(input: InsightsCountEventsInput): Promise<number>;
+  /**
+   * Read materialized release summaries and optional hourly report buckets.
+   * This method must never scan raw events to complete the result.
+   */
+  getReleaseActivity(
+    input: InsightsGetReleaseActivityInput,
+  ): Promise<InsightsGetReleaseActivityResult>;
 }
 
 export interface ApiKeyModel {

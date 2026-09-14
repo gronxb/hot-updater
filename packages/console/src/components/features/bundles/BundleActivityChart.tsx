@@ -10,10 +10,10 @@ import {
 import type { RecoverySeries } from "@/lib/insights-recovery";
 
 const config = {
-  active: { label: "Active", color: "var(--success)" },
-  pendingInstallations: { label: "Downloaded", color: "var(--primary)" },
-  recoveredInstallations: {
-    label: "Recovered",
+  downloadedReports: { label: "Downloaded reports", color: "var(--primary)" },
+  appliedReports: { label: "Applied reports", color: "var(--success)" },
+  recoveredReports: {
+    label: "Recovered reports",
     color: "var(--warning)",
   },
 };
@@ -28,7 +28,14 @@ const formatDate = (ms: number) =>
 export function BundleActivityChart({
   series,
 }: {
-  readonly series?: RecoverySeries;
+  readonly series?:
+    | readonly {
+        readonly startMs: number;
+        readonly downloadedReports: number | null;
+        readonly appliedReports: number | null;
+        readonly recoveredReports: number | null;
+      }[]
+    | RecoverySeries;
 }) {
   if (!series)
     return (
@@ -36,6 +43,17 @@ export function BundleActivityChart({
         No reports in 24 hours. Check again after the app reports activity.
       </p>
     );
+  const points = "points" in series ? series.points : series;
+  const data = points.map((point) =>
+    "downloadedReports" in point
+      ? point
+      : {
+          startMs: point.startMs,
+          downloadedReports: point.downloadedInstallations,
+          appliedReports: point.applied,
+          recoveredReports: point.recovered,
+        },
+  );
   return (
     <div className="border-t pt-3">
       <ChartContainer
@@ -45,7 +63,7 @@ export function BundleActivityChart({
       >
         <AreaChart
           accessibilityLayer
-          data={series.points}
+          data={data}
           margin={{ left: -16, right: 4, top: 4 }}
         >
           <CartesianGrid vertical={false} />
@@ -73,30 +91,33 @@ export function BundleActivityChart({
             }
           />
           <Area
-            dataKey="active"
+            connectNulls={false}
+            dataKey="downloadedReports"
             dot={{ r: 2 }}
-            fill="var(--color-active)"
+            fill="var(--color-downloadedReports)"
             fillOpacity={0.12}
             isAnimationActive={false}
-            stroke="var(--color-active)"
+            stroke="var(--color-downloadedReports)"
             strokeWidth={2}
             type="linear"
           />
           <Area
-            dataKey="pendingInstallations"
-            fill="var(--color-pendingInstallations)"
+            connectNulls={false}
+            dataKey="appliedReports"
+            fill="var(--color-appliedReports)"
             fillOpacity={0.04}
-            stroke="var(--color-pendingInstallations)"
+            stroke="var(--color-appliedReports)"
             strokeDasharray="4 3"
             isAnimationActive={false}
             type="linear"
           />
           <Area
-            dataKey="recoveredInstallations"
-            fill="var(--color-recoveredInstallations)"
+            connectNulls={false}
+            dataKey="recoveredReports"
+            fill="var(--color-recoveredReports)"
             fillOpacity={0.04}
             isAnimationActive={false}
-            stroke="var(--color-recoveredInstallations)"
+            stroke="var(--color-recoveredReports)"
             strokeWidth={1.5}
             type="linear"
           />

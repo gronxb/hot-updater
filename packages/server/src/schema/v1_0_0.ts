@@ -494,6 +494,139 @@ export const bundleEventHeadsV100 = table(
   },
 );
 
+export const insightsInstallStatesV100 = table(
+  "insights_install_states",
+  {
+    install_id: idColumn("install_id", varchar(255)).collate(
+      insightsTextCollations,
+    ),
+    revision: float("revision"),
+    state: largeString("state"),
+  },
+  {
+    checks: [
+      check({
+        name: "insights_install_states_revision_check",
+        expression: "revision >= 1 and revision <= 9007199254740991",
+        sqliteInline: true,
+      }),
+    ],
+  },
+);
+
+export const insightsLifetimeMarkersV100 = table(
+  "insights_lifetime_markers",
+  {
+    marker_key: idColumn("marker_key", varchar(2048)).collate(
+      insightsTextCollations,
+    ),
+    release_id: uuid("release_id"),
+    platform: stringColumn("platform").collate(insightsTextCollations),
+    channel: stringColumn("channel").collate(insightsTextCollations),
+    install_id: column("install_id", varchar(255)).collate(
+      insightsTextCollations,
+    ),
+    metric: column("metric", varchar(32)),
+  },
+  {
+    checks: [
+      check({
+        name: "insights_lifetime_markers_metric_check",
+        expression: "metric in ('downloaded', 'recovered')",
+        sqliteInline: true,
+      }),
+      check({
+        name: "insights_lifetime_markers_platform_check",
+        expression: "platform in ('ios', 'android')",
+        sqliteInline: true,
+      }),
+    ],
+  },
+);
+
+export const insightsReleaseSummariesV100 = table(
+  "insights_release_summaries",
+  {
+    release_key: idColumn("release_key", varchar(2048)).collate(
+      insightsTextCollations,
+    ),
+    release_id: uuid("release_id"),
+    platform: stringColumn("platform").collate(insightsTextCollations),
+    channel: stringColumn("channel").collate(insightsTextCollations),
+    active_installations: float("active_installations").defaultTo(0),
+    pending_installations: float("pending_installations").defaultTo(0),
+    downloaded_installations: float("downloaded_installations").defaultTo(0),
+    recovered_installations: float("recovered_installations").defaultTo(0),
+  },
+  {
+    checks: [
+      check({
+        name: "insights_release_summaries_platform_check",
+        expression: "platform in ('ios', 'android')",
+        sqliteInline: true,
+      }),
+      check({
+        name: "insights_release_summaries_counts_check",
+        expression:
+          "active_installations >= 0 and pending_installations >= 0 and downloaded_installations >= 0 and recovered_installations >= 0",
+        sqliteInline: true,
+      }),
+    ],
+  },
+);
+
+export const insightsHourlyActivityV100 = table(
+  "insights_hourly_activity",
+  {
+    bucket_key: idColumn("bucket_key", varchar(2048)).collate(
+      insightsTextCollations,
+    ),
+    release_id: uuid("release_id"),
+    platform: stringColumn("platform").collate(insightsTextCollations),
+    channel: stringColumn("channel").collate(insightsTextCollations),
+    hour_start_ms: float("hour_start_ms"),
+    downloaded_reports: float("downloaded_reports").defaultTo(0),
+    applied_reports: float("applied_reports").defaultTo(0),
+    recovered_reports: float("recovered_reports").defaultTo(0),
+  },
+  {
+    indexes: [
+      index("insights_hourly_activity_release_idx", [
+        "platform",
+        "channel",
+        "release_id",
+        "hour_start_ms",
+      ]),
+    ],
+    checks: [
+      check({
+        name: "insights_hourly_activity_platform_check",
+        expression: "platform in ('ios', 'android')",
+        sqliteInline: true,
+      }),
+      check({
+        name: "insights_hourly_activity_hour_check",
+        expression: "hour_start_ms >= 0 and mod(hour_start_ms, 3600000) = 0",
+        providerExpressions: {
+          cockroachdb:
+            "hour_start_ms >= 0 and mod(cast(hour_start_ms as decimal), 3600000) = 0",
+          mssql: "hour_start_ms >= 0 and hour_start_ms % 3600000 = 0",
+          postgresql:
+            "hour_start_ms >= 0 and mod(cast(hour_start_ms as numeric), 3600000) = 0",
+          sqlite: "hour_start_ms >= 0 and hour_start_ms % 3600000 = 0",
+        },
+        sqliteInline: true,
+      }),
+      check({
+        name: "insights_hourly_activity_counts_check",
+        expression:
+          "downloaded_reports >= 0 and applied_reports >= 0 and recovered_reports >= 0",
+        sqliteInline: true,
+      }),
+    ],
+  },
+);
+
 export const v1_0_0 = schema({
   version: "1.0.0",
   settingsTable: HOT_UPDATER_SETTINGS_TABLE,
@@ -505,6 +638,10 @@ export const v1_0_0 = schema({
     releaseCatalogsV100,
     bundleEventsV100,
     bundleEventHeadsV100,
+    insightsInstallStatesV100,
+    insightsLifetimeMarkersV100,
+    insightsReleaseSummariesV100,
+    insightsHourlyActivityV100,
     apiKeysV100,
     createSettingsTable("1.0.0"),
   ],
