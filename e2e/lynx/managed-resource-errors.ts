@@ -1,3 +1,8 @@
+import {
+  type AndroidRuntimeJournalEvidence,
+  isFontDiagnosticRecoveredByAndroidJournal,
+} from "./android-runtime-journal.ts";
+
 const ENGINE_ERROR_CODE = /\bengine-error\b[^\r\n]*?\bcode=(301|302)\b/;
 const ENGINE_ERROR_DETAILS =
   /^engine-error fatal=(true|false) code=(301|302) message=(\{.*\})$/;
@@ -212,6 +217,7 @@ function isRecoveredFontDiagnostic(
   engineError: LogRecord,
   fatal: string,
   message: string,
+  journalEvidence?: AndroidRuntimeJournalEvidence | null,
 ): boolean {
   if (fatal !== "false") return false;
   const details = parseJsonObject(message);
@@ -224,6 +230,13 @@ function isRecoveredFontDiagnostic(
   }
   const relativePath = managedRelativePath(details.src);
   if (relativePath === null) return false;
+  if (journalEvidence === null) return false;
+  if (journalEvidence !== undefined) {
+    return (
+      engineError.envelope?.processId === journalEvidence.currentProcessId &&
+      isFontDiagnosticRecoveredByAndroidJournal(relativePath, journalEvidence)
+    );
+  }
   const boundIdentity = precedingIdentity(records, engineError);
   if (boundIdentity === null) return false;
   const laterRecords = records.slice(engineError.index + 1);
@@ -282,7 +295,39 @@ function isRecoveredFontDiagnostic(
   return false;
 }
 
-export function findManagedResourceEngineErrorCodes(logs: string): number[] {
+export function hasRecoverableAndroidFontDiagnostic(
+  logs: string,
+  currentProcessId: string,
+): boolean {
+  return logs.split(/\r?\n/).some((line, index) => {
+    const record: LogRecord = {
+      index,
+      line,
+      envelope: parseEnvelope(line),
+    };
+    const detailsMatch = record.envelope?.payload.match(ENGINE_ERROR_DETAILS);
+    if (
+      record.envelope?.processId !== currentProcessId ||
+      detailsMatch?.[1] !== "false" ||
+      detailsMatch[2] !== "302" ||
+      record.envelope?.payload.match(/\bengine-error\b/g)?.length !== 1
+    ) {
+      return false;
+    }
+    const details = parseJsonObject(detailsMatch[3]);
+    return (
+      details?.error_code === 302 &&
+      details.sub_code === 30201 &&
+      details.type === "font" &&
+      managedRelativePath(details.src) !== null
+    );
+  });
+}
+
+export function findManagedResourceEngineErrorCodes(
+  logs: string,
+  journalEvidence?: AndroidRuntimeJournalEvidence | null,
+): number[] {
   const records = logs.split(/\r?\n/).map((line, index) => ({
     index,
     line,
@@ -303,6 +348,7 @@ export function findManagedResourceEngineErrorCodes(logs: string): number[] {
         record,
         detailsMatch[1],
         detailsMatch[3],
+        journalEvidence,
       )
     ) {
       continue;
@@ -312,8 +358,11 @@ export function findManagedResourceEngineErrorCodes(logs: string): number[] {
   return codes;
 }
 
-export function assertNoManagedResourceEngineErrors(logs: string): void {
-  const codes = findManagedResourceEngineErrorCodes(logs);
+export function assertNoManagedResourceEngineErrors(
+  logs: string,
+  journalEvidence?: AndroidRuntimeJournalEvidence | null,
+): void {
+  const codes = findManagedResourceEngineErrorCodes(logs, journalEvidence);
   if (codes.length > 0) {
     throw new Error(
       `Managed Lynx resources emitted engine errors: ${codes.join(", ")}`,

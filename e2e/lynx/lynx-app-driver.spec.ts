@@ -20,7 +20,10 @@ function createDriver(readScreenState: () => Record<string, unknown>) {
   return { driver: new LynxAppDriver(client, "ios", {}), fetch };
 }
 
-function mockAndroidCommands(logsSinceLaunch: string | (() => string) = "") {
+function mockAndroidCommands(
+  logsSinceLaunch: string | (() => string) = "",
+  runtimeJournal = "",
+) {
   let launchLogMarker = "";
   vi.mocked(spawnSync).mockImplementation((_command, args) => {
     if (args.includes("HotUpdaterE2E")) {
@@ -30,60 +33,111 @@ function mockAndroidCommands(logsSinceLaunch: string | (() => string) = "") {
       status: 0,
       stdout: args.includes("pidof")
         ? "456\n"
-        : args.includes("-d")
-          ? `${launchLogMarker}\n${typeof logsSinceLaunch === "function" ? logsSinceLaunch() : logsSinceLaunch}`
-          : "",
+        : args.includes("run-as")
+          ? runtimeJournal
+          : args.includes("-d")
+            ? `${launchLogMarker}\n${typeof logsSinceLaunch === "function" ? logsSinceLaunch() : logsSinceLaunch}`
+            : "",
       stderr: "",
     } as ReturnType<typeof spawnSync>;
   });
 }
 
-function recoveredFontDiagnosticLogs(): string {
+function canonical(value: unknown): string {
+  if (value === null || typeof value !== "object") return JSON.stringify(value);
+  if (Array.isArray(value)) return `[${value.map(canonical).join(",")}]`;
+  const object = value as Record<string, unknown>;
+  return `{${Object.keys(object)
+    .sort()
+    .map((key) => `${JSON.stringify(key)}:${canonical(object[key])}`)
+    .join(",")}}`;
+}
+
+function androidJournalFixture() {
   const identity = {
-    runtimeId: "runtime-A",
-    processId: "1234",
-    generationId: "generation-A",
-    contextId: "context-A",
     attemptId: "attempt-A",
     bundleId: "bundle-A",
-    releaseId: "release-A",
+    contextId: "context-A",
+    generationId: "generation-A",
     pageAttemptId: null,
+    processId: "456",
+    releaseId: "release-A",
+    runtimeId: "runtime-A",
     transitionId: null,
   };
-  const log = (message: string) =>
-    `09-14 12:34:56.789  1234  1234 I HotUpdaterLynx: ${message}`;
-  return [
-    log(
-      `HOT_UPDATER_MATRIX_EVENT ${JSON.stringify({
+  const events = [
+    { details: { ...identity, primary: true }, name: "generationWillEvaluate" },
+    { details: identity, name: "generationStarted" },
+    {
+      details: {
         ...identity,
-        event: "generationWillEvaluate",
-      })}`,
-    ),
-    log(
-      `engine-error fatal=false code=302 message=${JSON.stringify({
-        error_code: 302,
-        sub_code: 30201,
-        error: "Src format is incorrect",
-        type: "font",
-        src: "hot-updater:///assets/probe.ttf",
-      })}`,
-    ),
-    log(
-      `HOT_UPDATER_MATRIX_EVENT ${JSON.stringify({
-        ...identity,
-        event: "fontLoaded",
         path: "assets/probe.ttf",
         sha256: "a".repeat(64),
-      })}`,
-    ),
-    log(
-      `HOT_UPDATER_MATRIX_EVENT ${JSON.stringify({
-        ...identity,
-        event: "jsReady",
-        confirmation: { status: "CONFIRMED" },
-      })}`,
-    ),
-  ].join("\n");
+      },
+      name: "fontLoaded",
+    },
+    {
+      details: { ...identity, confirmation: { status: "CONFIRMED" } },
+      name: "jsReady",
+    },
+  ].map((event, index) => ({ ...event, sequence: String(index + 1) }));
+  return {
+    events,
+    journal: canonical({
+      events,
+      nextSequence: "5",
+      schemaVersion: 1,
+      truncated: false,
+    }),
+    snapshot: JSON.stringify({
+      events,
+      latestSequence: "4",
+      oldestSequence: "1",
+      schemaVersion: 1,
+      truncated: false,
+    }),
+  };
+}
+
+function androidJournalFetch(snapshot: string) {
+  let launchGeneration: string | null = null;
+  let evidenceReady = false;
+  return vi.fn(async (url: string, init?: RequestInit) => {
+    const body =
+      typeof init?.body === "string"
+        ? (JSON.parse(init.body) as Record<string, unknown>)
+        : {};
+    if (url.endsWith("/e2e/prepare-app-launch")) {
+      launchGeneration = String(body.launchGeneration);
+    }
+    if (
+      url.endsWith("/e2e/pending-action") &&
+      body.testID === "action-capture-generation-events"
+    ) {
+      evidenceReady = true;
+    }
+    const screenState = {
+      currentBundleId: "bundle-A",
+      currentReleaseId: "release-A",
+      generationEvents: evidenceReady ? snapshot : null,
+      launchStatus: "Current Launch Status: CONFIRMED",
+      runtimeScenarioMarker: "bundle-A-marker",
+      updateActionResult: evidenceReady ? "captured" : "idle",
+    };
+    return {
+      ok: true,
+      status: 200,
+      text: async () =>
+        JSON.stringify(
+          url.endsWith("/e2e/runtime-config")
+            ? { screenState }
+            : url.endsWith("/e2e/screen-state") &&
+                Object.keys(body).length === 0
+              ? { launchGeneration, screenState }
+              : {},
+        ),
+    };
+  });
 }
 
 describe("Lynx app text assertions", () => {
@@ -448,37 +502,51 @@ describe("Lynx app installation", () => {
     },
   );
 
-  it("accepts a recovered font diagnostic after overlay readiness", async () => {
-    let overlayReady = false;
-    mockAndroidCommands(() => {
-      expect(overlayReady).toBe(true);
-      return recoveredFontDiagnosticLogs();
-    });
-    const fetch = vi.fn(async (url: string) => {
-      if (url.endsWith("/e2e/runtime-config")) overlayReady = true;
-      return {
-        ok: true,
-        status: 200,
-        text: async () =>
-          JSON.stringify(
-            url.endsWith("/e2e/runtime-config")
-              ? { screenState: { runtimeScenarioMarker: "bundle-A-marker" } }
-              : {},
-          ),
-      };
-    });
-    const client = createControlClient({
-      baseUrl: "http://control.test",
-      fetch,
-    });
-    const driver = new LynxAppDriver(client, "android", {
-      HOT_UPDATER_E2E_ANDROID_SERIAL: "emulator-5554",
-    });
+  it("reads screen identity and the durable journal for a real Android 302", async () => {
+    const fixture = androidJournalFixture();
+    const diagnostic = String.raw`09-14 20:30:41.275  456  7719 I HotUpdaterLynx: engine-error fatal=false code=302 message={"error_code":302,"sub_code":30201,"error":"Src format is incorrect","src":"hot-updater:\/\/\/assets\/probe.ttf","type":"font"}`;
+    mockAndroidCommands(diagnostic, fixture.journal);
+    const driver = new LynxAppDriver(
+      createControlClient({
+        baseUrl: "http://control.test",
+        fetch: androidJournalFetch(fixture.snapshot),
+      }),
+      "android",
+      { HOT_UPDATER_E2E_ANDROID_SERIAL: "emulator-5554" },
+    );
 
-    await expect(
-      driver.launch("recovered font launch"),
-    ).resolves.toBeUndefined();
-    expect(overlayReady).toBe(true);
+    await expect(driver.launch("journal recovery")).resolves.toBeUndefined();
+    expect(vi.mocked(spawnSync)).toHaveBeenCalledWith(
+      "adb",
+      [
+        "-s",
+        "emulator-5554",
+        "shell",
+        "run-as",
+        "com.hotupdater.lynxexample",
+        "cat",
+        "files/hot-updater-lynx/runtime-events/events.json",
+      ],
+      expect.objectContaining({ maxBuffer: 20 * 1024 * 1024 }),
+    );
+  });
+
+  it("fails closed when run-as cannot read the Android runtime journal", async () => {
+    const fixture = androidJournalFixture();
+    const diagnostic = String.raw`09-14 20:30:41.275  456  7719 I HotUpdaterLynx: engine-error fatal=false code=302 message={"error_code":302,"sub_code":30201,"error":"Src format is incorrect","src":"hot-updater:\/\/\/assets\/probe.ttf","type":"font"}`;
+    mockAndroidCommands(diagnostic);
+    const driver = new LynxAppDriver(
+      createControlClient({
+        baseUrl: "http://control.test",
+        fetch: androidJournalFetch(fixture.snapshot),
+      }),
+      "android",
+      { HOT_UPDATER_E2E_ANDROID_SERIAL: "emulator-5554" },
+    );
+
+    await expect(driver.launch("missing journal")).rejects.toThrow(
+      "Could not inspect managed Lynx runtime journal",
+    );
   });
 
   it("checks managed-resource errors before an allow-disconnect launch returns", async () => {

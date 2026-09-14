@@ -18,11 +18,16 @@ import {
   resolveAppBaseUrl,
   resolveRuntimeConfigUrl,
 } from "../detox/scripts/control-server-env.ts";
+import type { AndroidRuntimeJournalEvidence } from "./android-runtime-journal.ts";
 import {
   GenerationEventLedger,
   type GenerationEventLedgerReceipt,
 } from "./generation-event-ledger.ts";
-import { assertNoManagedResourceEngineErrors } from "./managed-resource-errors.ts";
+import {
+  assertNoManagedResourceEngineErrors,
+  findManagedResourceEngineErrorCodes,
+  hasRecoverableAndroidFontDiagnostic,
+} from "./managed-resource-errors.ts";
 import {
   createLynxAndroidLaunchConfigurationArguments,
   createLynxNativeLaunchConfiguration,
@@ -86,6 +91,7 @@ export class LynxAppDriver implements DetoxAppDriver {
   private readonly platform: DetoxPlatform;
   private readonly env: NodeJS.ProcessEnv;
   private androidLaunchLogMarker: string | null = null;
+  private activeLaunchGeneration: string | null = null;
   private iosLaunchProcessId: string | null = null;
   private readonly generationEventLedger = new GenerationEventLedger();
   private stageValues: Record<string, unknown>;
@@ -167,7 +173,7 @@ export class LynxAppDriver implements DetoxAppDriver {
         this.platform === "android" &&
         pathName === "/e2e/jobs/wait-for-android-restart"
       ) {
-        this.assertNoManagedResourceErrors();
+        await this.assertNoManagedResourceErrors(stage);
       }
       this.saveControlResult(options, result as Record<string, unknown>);
     });
@@ -191,7 +197,7 @@ export class LynxAppDriver implements DetoxAppDriver {
         await this.launchApp({ launchGeneration });
       }
       await this.waitForOverlayReady(stage);
-      this.assertNoManagedResourceErrors();
+      await this.assertNoManagedResourceErrors(stage);
     });
   }
 
@@ -207,7 +213,7 @@ export class LynxAppDriver implements DetoxAppDriver {
       await this.clearOverlayMarker(stage, launchGeneration);
       await this.launchApp({ launchGeneration });
       await this.waitForOverlayReady(stage);
-      this.assertNoManagedResourceErrors();
+      await this.assertNoManagedResourceErrors(stage);
     });
   }
 
@@ -386,7 +392,7 @@ export class LynxAppDriver implements DetoxAppDriver {
         "runtimeScenarioMarker",
         { expectedValue: expectedMarker },
       );
-      this.assertNoManagedResourceErrors();
+      await this.assertNoManagedResourceErrors(stage);
     });
   }
 
@@ -566,6 +572,7 @@ export class LynxAppDriver implements DetoxAppDriver {
     options: { expectCrash?: boolean; launchGeneration?: string } = {},
   ): Promise<void> {
     this.terminateApp();
+    this.activeLaunchGeneration = options.launchGeneration ?? null;
     if (this.platform === "android") this.beginAndroidLaunchLogCapture();
     const launchConfiguration = serializeLynxNativeLaunchConfiguration(
       createLynxNativeLaunchConfiguration({
@@ -732,7 +739,7 @@ export class LynxAppDriver implements DetoxAppDriver {
     );
   }
 
-  private assertNoManagedResourceErrors(): void {
+  private async assertNoManagedResourceErrors(stage: string): Promise<void> {
     if (this.platform !== "android") return;
     const logResult = this.captureAndroidLaunchLogs();
     if (logResult.status !== 0) {
@@ -740,7 +747,102 @@ export class LynxAppDriver implements DetoxAppDriver {
         `Could not inspect managed Lynx resources: ${logResult.text}`,
       );
     }
-    assertNoManagedResourceEngineErrors(logResult.logsSinceLaunch);
+    const preliminaryCodes = findManagedResourceEngineErrorCodes(
+      logResult.logsSinceLaunch,
+      null,
+    );
+    if (!preliminaryCodes.includes(302) || preliminaryCodes.includes(301)) {
+      assertNoManagedResourceEngineErrors(logResult.logsSinceLaunch, null);
+      return;
+    }
+    const processId = this.readAndroidProcessId();
+    if (
+      !hasRecoverableAndroidFontDiagnostic(logResult.logsSinceLaunch, processId)
+    ) {
+      assertNoManagedResourceEngineErrors(logResult.logsSinceLaunch, null);
+      return;
+    }
+    const journalEvidence = await this.captureAndroidRuntimeJournalEvidence(
+      stage,
+      processId,
+    );
+    if (this.readAndroidProcessId() !== processId) {
+      throw new Error(
+        "Could not inspect managed Lynx resources: Android process changed while reading runtime evidence",
+      );
+    }
+    assertNoManagedResourceEngineErrors(
+      logResult.logsSinceLaunch,
+      journalEvidence,
+    );
+  }
+
+  private readAndroidProcessId(): string {
+    const result = this.captureCommand("android-pid", "adb", [
+      "-s",
+      this.deviceId(),
+      "shell",
+      "pidof",
+      this.appId(),
+    ]);
+    const processId = result.stdout.trim();
+    if (result.status !== 0 || !/^[1-9][0-9]*$/.test(processId)) {
+      throw new Error(
+        `Could not inspect managed Lynx resources: ${result.text}`,
+      );
+    }
+    return processId;
+  }
+
+  private async captureAndroidRuntimeJournalEvidence(
+    stage: string,
+    currentProcessId: string,
+  ): Promise<AndroidRuntimeJournalEvidence> {
+    await this.controlClient.postJson(
+      `${stage}: reset runtime journal evidence`,
+      "/e2e/screen-state",
+      { generationEvents: null, updateActionResult: "idle" },
+    );
+    await this.controlClient.postJson(
+      `${stage}: request runtime journal evidence`,
+      "/e2e/pending-action",
+      { testID: "action-capture-generation-events" },
+    );
+    await this.controlClient.waitForScreenStateField(
+      `${stage}: wait for runtime journal evidence`,
+      "updateActionResult",
+      { rejectSubstrings: [" -> error"], rejectValues: ["idle"] },
+    );
+    const screenStateResponse = await this.controlClient.postJson(
+      `${stage}: read runtime journal evidence`,
+      "/e2e/screen-state",
+      {},
+    );
+    const journal = this.captureCommand(
+      "android-runtime-journal",
+      "adb",
+      [
+        "-s",
+        this.deviceId(),
+        "shell",
+        "run-as",
+        this.appId(),
+        "cat",
+        "files/hot-updater-lynx/runtime-events/events.json",
+      ],
+      20 * 1024 * 1024,
+    );
+    if (journal.status !== 0 || journal.stdout.length === 0) {
+      throw new Error(
+        `Could not inspect managed Lynx runtime journal: ${journal.text}`,
+      );
+    }
+    return {
+      currentProcessId,
+      expectedLaunchGeneration: this.activeLaunchGeneration,
+      runtimeJournalUtf8: journal.stdout,
+      screenStateResponse,
+    };
   }
 
   private beginAndroidLaunchLogCapture(): void {
@@ -808,6 +910,7 @@ export class LynxAppDriver implements DetoxAppDriver {
     label: string,
     command: string,
     args: readonly string[],
+    maxBuffer = 512 * 1024,
   ): {
     readonly status: number | null;
     readonly stdout: string;
@@ -817,7 +920,7 @@ export class LynxAppDriver implements DetoxAppDriver {
       const result = spawnSync(command, args, {
         encoding: "utf8",
         env: this.env,
-        maxBuffer: 512 * 1024,
+        maxBuffer,
         timeout: 5000,
       });
       const stdout = result.stdout ?? "";

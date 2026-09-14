@@ -178,6 +178,7 @@ describe("Detox E2E harness contract", () => {
       "e2e/detox/scripts/run.ts",
       "e2e/detox/control-server/pending-action.spec.ts",
       "e2e/detox/control-server/pending-action.ts",
+      "e2e/lynx/android-runtime-journal.ts",
       "e2e/lynx/default-scenario-names.json",
       "e2e/lynx/embedded-bundle.spec.ts",
       "e2e/lynx/embedded-bundle.ts",
