@@ -837,6 +837,9 @@ importers:
       '@vue/compiler-sfc':
         specifier: 3.5.42
         version: 3.5.42
+      fast-xml-parser:
+        specifier: 5.7.2
+        version: 5.7.2
       typescript:
         specifier: 5.9.3
         version: 5.9.3

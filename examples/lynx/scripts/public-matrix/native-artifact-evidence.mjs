@@ -3,6 +3,8 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 
+import { XMLParser, XMLValidator } from "fast-xml-parser";
+
 const hash = (bytes) => crypto.createHash("sha256").update(bytes).digest("hex");
 
 function frame(value) {
@@ -50,15 +52,95 @@ export function deterministicArtifactSha256(artifactPath) {
   return digest.digest("hex");
 }
 
-export function iosArtifactAppId(appPath) {
-  const infoPlistPath = path.join(appPath, "Info.plist");
-  const xmlAppId =
-    /<key>\s*CFBundleIdentifier\s*<\/key>\s*<string>\s*([^<]+?)\s*<\/string>/.exec(
-      fs.readFileSync(infoPlistPath, "utf8"),
-    )?.[1];
-  if (xmlAppId) return xmlAppId;
+function significantNodes(nodes) {
+  return nodes.filter((node) => {
+    const name = Object.keys(node).find((key) => key !== ":@");
+    if (
+      !name ||
+      name === "#comment" ||
+      name === "?xml" ||
+      name === "!DOCTYPE"
+    ) {
+      return false;
+    }
+    return name !== "#text" || String(node[name]).trim();
+  });
+}
 
-  const result = spawnSync(
+function elementText(node, name) {
+  const children = node[name];
+  if (!Array.isArray(children)) return null;
+  if (
+    children.some((child) =>
+      Object.keys(child).some(
+        (key) => key !== "#text" && key !== "#comment" && key !== ":@",
+      ),
+    )
+  ) {
+    return null;
+  }
+  const text = children
+    .map((child) => child["#text"])
+    .filter((value) => typeof value === "string")
+    .join("")
+    .trim();
+  return text || null;
+}
+
+export function parseXmlPlistAppId(xml) {
+  const validation = XMLValidator.validate(xml);
+  if (validation !== true) {
+    throw new Error(`Invalid XML Info.plist: ${validation.err.msg}`);
+  }
+  const document = significantNodes(
+    new XMLParser({
+      commentPropName: "#comment",
+      ignoreAttributes: false,
+      preserveOrder: true,
+      trimValues: false,
+    }).parse(xml),
+  );
+  if (document.length !== 1 || !Array.isArray(document[0].plist)) {
+    throw new Error("Info.plist must contain one plist root");
+  }
+  const plist = significantNodes(document[0].plist);
+  if (plist.length !== 1 || !Array.isArray(plist[0].dict)) {
+    throw new Error("Info.plist root must contain one dictionary");
+  }
+
+  const entries = significantNodes(plist[0].dict);
+  if (entries.length % 2 !== 0) {
+    throw new Error("Info.plist dictionary is malformed");
+  }
+  const appIds = [];
+  for (let index = 0; index < entries.length; index += 2) {
+    const key = elementText(entries[index], "key");
+    const value = entries[index + 1];
+    if (!key || !value) throw new Error("Info.plist dictionary is malformed");
+    if (key === "CFBundleIdentifier") {
+      const appId = elementText(value, "string");
+      if (!appId) {
+        throw new Error("CFBundleIdentifier must be a non-empty string");
+      }
+      appIds.push(appId);
+    }
+  }
+  if (appIds.length !== 1) {
+    throw new Error("Info.plist must contain one top-level CFBundleIdentifier");
+  }
+  return appIds[0];
+}
+
+export function iosArtifactAppId(appPath, run = spawnSync) {
+  const infoPlistPath = path.join(appPath, "Info.plist");
+  const bytes = fs.readFileSync(infoPlistPath);
+  const text = bytes
+    .toString("utf8")
+    .replace(/^\uFEFF/, "")
+    .trimStart();
+  if (text.startsWith("<")) return parseXmlPlistAppId(text);
+
+  const result = run(
     "plutil",
     ["-extract", "CFBundleIdentifier", "raw", infoPlistPath],
     { encoding: "utf8" },

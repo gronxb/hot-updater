@@ -153,6 +153,21 @@ function buildNative(args: readonly string[]) {
   });
 }
 
+function withInfoPlist<T>(
+  contents: string | Buffer,
+  assertion: (app: string) => T,
+) {
+  const temporary = fs.mkdtempSync(path.join(os.tmpdir(), "lynx-plist-"));
+  const app = path.join(temporary, "Fixture.app");
+  fs.mkdirSync(app);
+  fs.writeFileSync(path.join(app, "Info.plist"), contents);
+  try {
+    return assertion(app);
+  } finally {
+    fs.rmSync(temporary, { recursive: true, force: true });
+  }
+}
+
 describe("Lynx public matrix runner", () => {
   it("hashes the complete deterministic iOS app tree and derives artifact IDs", () => {
     const temporary = fs.mkdtempSync(path.join(os.tmpdir(), "lynx-app-hash-"));
@@ -175,6 +190,78 @@ describe("Lynx public matrix runner", () => {
       parseAndroidApplicationId("package: name='com.hotupdater.lynxmatrix'"),
     ).toBe("com.hotupdater.lynxmatrix");
     fs.rmSync(temporary, { recursive: true, force: true });
+  });
+
+  it("reads the single top-level identifier from a valid XML plist", () => {
+    withInfoPlist(
+      "<plist><dict><key>CFBundleIdentifier</key><string>com.hotupdater.valid</string></dict></plist>",
+      (app) => expect(iosArtifactAppId(app)).toBe("com.hotupdater.valid"),
+    );
+  });
+
+  it("does not accept an identifier embedded in an XML comment", () => {
+    withInfoPlist(
+      "<plist><!-- <key>CFBundleIdentifier</key><string>com.hotupdater.bait</string> --><dict><key>Name</key><string>Fixture</string></dict></plist>",
+      (app) =>
+        expect(() => iosArtifactAppId(app)).toThrow(
+          "one top-level CFBundleIdentifier",
+        ),
+    );
+  });
+
+  it("ignores a nested identifier before the top-level identifier", () => {
+    withInfoPlist(
+      "<plist><dict><key>Nested</key><dict><key>CFBundleIdentifier</key><string>com.hotupdater.bait</string></dict><key>CFBundleIdentifier</key><string>com.hotupdater.real</string></dict></plist>",
+      (app) => expect(iosArtifactAppId(app)).toBe("com.hotupdater.real"),
+    );
+  });
+
+  it("rejects duplicate top-level identifiers", () => {
+    withInfoPlist(
+      "<plist><dict><key>CFBundleIdentifier</key><string>com.hotupdater.first</string><key>CFBundleIdentifier</key><string>com.hotupdater.second</string></dict></plist>",
+      (app) =>
+        expect(() => iosArtifactAppId(app)).toThrow(
+          "one top-level CFBundleIdentifier",
+        ),
+    );
+  });
+
+  it("rejects malformed XML without falling back to plutil", () => {
+    const plutil = vi.fn();
+    withInfoPlist(
+      "<plist><dict><key>CFBundleIdentifier</key><string>com.hotupdater.invalid</dict></plist>",
+      (app) =>
+        expect(() => iosArtifactAppId(app, plutil)).toThrow(
+          "Invalid XML Info.plist",
+        ),
+    );
+    expect(plutil).not.toHaveBeenCalled();
+  });
+
+  it("rejects a dictionary with a trailing key", () => {
+    withInfoPlist(
+      "<plist><dict><key>CFBundleIdentifier</key><string>com.hotupdater.valid</string><key>Trailing</key></dict></plist>",
+      (app) =>
+        expect(() => iosArtifactAppId(app)).toThrow(
+          "Info.plist dictionary is malformed",
+        ),
+    );
+  });
+
+  it("uses plutil for a binary plist", () => {
+    const plutil = vi.fn().mockReturnValue({
+      status: 0,
+      stderr: "",
+      stdout: "com.hotupdater.binary\n",
+    });
+    withInfoPlist(Buffer.from("bplist00fixture"), (app) => {
+      expect(iosArtifactAppId(app, plutil)).toBe("com.hotupdater.binary");
+      expect(plutil).toHaveBeenCalledWith(
+        "plutil",
+        ["-extract", "CFBundleIdentifier", "raw", path.join(app, "Info.plist")],
+        { encoding: "utf8" },
+      );
+    });
   });
 
   it("rejects a runnable native receipt build from dirty tracked source", () => {
