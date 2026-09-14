@@ -52,18 +52,22 @@ type ManagedIdentity = {
   readonly releaseId: string | null;
 };
 
+const ANDROID_FONT_DIAGNOSTIC_ELIGIBILITY_REJECTION_CODES = [
+  "log.envelope",
+  "log.current-process-id",
+  "log.payload-shape",
+  "log.fatal",
+  "log.outer-code",
+  "log.engine-error-count",
+  "log.details-json",
+  "log.details-error-code",
+  "log.details-subcode",
+  "log.details-type",
+  "log.managed-source",
+] as const;
+
 export type AndroidFontDiagnosticEligibilityRejectionCode =
-  | "log.envelope"
-  | "log.current-process-id"
-  | "log.payload-shape"
-  | "log.fatal"
-  | "log.outer-code"
-  | "log.engine-error-count"
-  | "log.details-json"
-  | "log.details-error-code"
-  | "log.details-subcode"
-  | "log.details-type"
-  | "log.managed-source";
+  (typeof ANDROID_FONT_DIAGNOSTIC_ELIGIBILITY_REJECTION_CODES)[number];
 
 type AndroidFontDiagnosticCandidateResult =
   | { readonly eligible: true; readonly relativePath: string }
@@ -72,17 +76,21 @@ type AndroidFontDiagnosticCandidateResult =
       readonly code: AndroidFontDiagnosticEligibilityRejectionCode;
     };
 
+type AndroidFontDiagnosticEligibilitySummary = {
+  readonly eligibleCount: number;
+  readonly raw302Count: number;
+  readonly rejections: ReadonlyArray<{
+    readonly code: AndroidFontDiagnosticEligibilityRejectionCode;
+    readonly count: number;
+  }>;
+};
+
 export type AndroidFontDiagnosticEligibilityResult =
-  | { readonly eligible: true; readonly relativePath: string }
-  | {
-      readonly eligible: false;
-      readonly eligibleCount: number;
-      readonly raw302Count: number;
-      readonly rejections: ReadonlyArray<{
-        readonly code: AndroidFontDiagnosticEligibilityRejectionCode;
-        readonly count: number;
-      }>;
-    };
+  AndroidFontDiagnosticEligibilitySummary &
+    (
+      | { readonly eligible: true; readonly relativePath: string }
+      | { readonly eligible: false }
+    );
 
 function parseEnvelope(line: string): LogRecord["envelope"] {
   const match = line.match(THREADTIME_ENVELOPE) ?? line.match(BRIEF_ENVELOPE);
@@ -401,7 +409,6 @@ export function evaluateRecoverableAndroidFontDiagnosticEligibility(
       { eligible: true }
     > => candidate.eligible,
   );
-  if (eligible.length === 1) return eligible[0];
   const counts = new Map<
     AndroidFontDiagnosticEligibilityRejectionCode,
     number
@@ -410,14 +417,19 @@ export function evaluateRecoverableAndroidFontDiagnosticEligibility(
     if (candidate.eligible) continue;
     counts.set(candidate.code, (counts.get(candidate.code) ?? 0) + 1);
   }
-  return {
-    eligible: false,
+  const summary = {
     eligibleCount: eligible.length,
     raw302Count: candidates.length,
-    rejections: [...counts]
-      .sort(([left], [right]) => left.localeCompare(right))
-      .map(([code, count]) => ({ code, count })),
+    rejections: ANDROID_FONT_DIAGNOSTIC_ELIGIBILITY_REJECTION_CODES.flatMap(
+      (code) => {
+        const count = counts.get(code);
+        return count === undefined ? [] : [{ code, count }];
+      },
+    ),
   };
+  return eligible.length === 1
+    ? { ...summary, ...eligible[0] }
+    : { ...summary, eligible: false };
 }
 
 export function hasRecoverableAndroidFontDiagnostic(
@@ -431,7 +443,7 @@ export function hasRecoverableAndroidFontDiagnostic(
 }
 
 export function formatAndroidFontDiagnosticEligibilityRejection(
-  result: Exclude<AndroidFontDiagnosticEligibilityResult, { eligible: true }>,
+  result: AndroidFontDiagnosticEligibilityResult,
 ): string {
   const gates = result.rejections
     .map(({ code, count }) => `${code}:${count}`)
@@ -439,10 +451,8 @@ export function formatAndroidFontDiagnosticEligibilityRejection(
   const reason =
     result.eligibleCount > 1
       ? "log.eligible-diagnostic-count"
-      : result.rejections.length === 1
-        ? result.rejections[0]?.code
-        : "log.pre-eligibility-gates";
-  return `reason=${reason ?? "log.pre-eligibility-gates"} raw302=${result.raw302Count} eligible=${result.eligibleCount} gates=[${gates}]`;
+      : (result.rejections[0]?.code ?? "log.pre-eligibility-gates");
+  return `reason=${reason} raw302=${result.raw302Count} eligible=${result.eligibleCount} gates=[${gates}]`;
 }
 
 export function findManagedResourceEngineErrorCodes(
@@ -496,10 +506,7 @@ export function findManagedResourceEngineErrorCodes(
 export function assertNoManagedResourceEngineErrors(
   logs: string,
   journalEvidence?: AndroidRuntimeJournalEvidence | null,
-  eligibilityRejection?: Exclude<
-    AndroidFontDiagnosticEligibilityResult,
-    { eligible: true }
-  >,
+  eligibility?: AndroidFontDiagnosticEligibilityResult,
 ): void {
   const codes = findManagedResourceEngineErrorCodes(logs, journalEvidence);
   if (codes.length > 0) {
@@ -528,17 +535,23 @@ export function assertNoManagedResourceEngineErrors(
       evaluatedRecovery?.recovered === true
         ? {
             recovered: false as const,
-            rejection: { code: "log.unmatched-engine-error" },
+            rejection: { code: "log.unmatched-engine-error" as const },
           }
         : evaluatedRecovery;
+    const recoveredWithRejectedCandidates =
+      evaluatedRecovery?.recovered === true &&
+      eligibility !== undefined &&
+      eligibility.rejections.length > 0;
     const diagnostic =
-      journalEvidence && recoveryResult
-        ? `; Android journal recovery: ${formatAndroidRuntimeJournalRecoveryDiagnostic(journalEvidence, recoveryResult)}`
-        : journalEvidence && codes.includes(302)
-          ? `; Android journal recovery: reason=log.eligible-diagnostic-count count=${eligiblePaths.length}`
-          : eligibilityRejection && codes.includes(302)
-            ? `; Android journal recovery: ${formatAndroidFontDiagnosticEligibilityRejection(eligibilityRejection)}`
-            : "";
+      journalEvidence && recoveredWithRejectedCandidates
+        ? `; Android journal recovery: ${formatAndroidFontDiagnosticEligibilityRejection(eligibility)}`
+        : journalEvidence && recoveryResult
+          ? `; Android journal recovery: ${formatAndroidRuntimeJournalRecoveryDiagnostic(journalEvidence, recoveryResult)}`
+          : journalEvidence && codes.includes(302)
+            ? `; Android journal recovery: reason=log.eligible-diagnostic-count count=${eligiblePaths.length}`
+            : eligibility && codes.includes(302)
+              ? `; Android journal recovery: ${formatAndroidFontDiagnosticEligibilityRejection(eligibility)}`
+              : "";
     throw new Error(
       `Managed Lynx resources emitted engine errors: ${codes.join(", ")}${diagnostic}`,
     );

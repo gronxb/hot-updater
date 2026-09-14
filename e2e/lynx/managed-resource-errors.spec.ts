@@ -5,6 +5,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   assertNoManagedResourceEngineErrors,
+  evaluateRecoverableAndroidFontDiagnosticEligibility,
   findManagedResourceEngineErrorCodes,
   hasRecoverableAndroidFontDiagnostic,
 } from "./managed-resource-errors";
@@ -238,6 +239,39 @@ describe("managed Lynx resource engine errors", () => {
     expect(
       findManagedResourceEngineErrorCodes(logs, capturedEvidence()),
     ).toEqual([302, 302]);
+  });
+
+  it("uses fixed gate order for rejected candidates beside one eligible 302", () => {
+    const wrongProcess = YNQB7P_LOG.replace("  7690  7719 ", "  9999  7719 ");
+    const malformedEnvelope = YNQB7P_LOG.replace(
+      /^09-14 .*? I HotUpdaterLynx: /,
+      "HotUpdaterLynx: ",
+    );
+    const logs = `${YNQB7P_LOG}\n${wrongProcess}\n${malformedEnvelope}`;
+    const eligibility = evaluateRecoverableAndroidFontDiagnosticEligibility(
+      logs,
+      "7690",
+    );
+
+    expect(eligibility).toEqual({
+      eligible: true,
+      eligibleCount: 1,
+      raw302Count: 3,
+      rejections: [
+        { code: "log.envelope", count: 1 },
+        { code: "log.current-process-id", count: 1 },
+      ],
+      relativePath: "assets/probe.ttf",
+    });
+    expect(() =>
+      assertNoManagedResourceEngineErrors(
+        logs,
+        capturedEvidence(),
+        eligibility,
+      ),
+    ).toThrow(
+      /Android journal recovery: reason=log\.envelope raw302=3 eligible=1 gates=\[log\.envelope:1,log\.current-process-id:1\]/,
+    );
   });
 
   it.each([

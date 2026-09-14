@@ -161,6 +161,47 @@ function androidJournalFetch(snapshot: string) {
   });
 }
 
+type AndroidJournalAcquisitionFailure =
+  | "reset"
+  | "request"
+  | "receipt"
+  | "read";
+
+function failingAndroidJournalFetch(
+  snapshot: string,
+  failure: AndroidJournalAcquisitionFailure,
+  thrownValue: unknown,
+) {
+  const fetch = androidJournalFetch(snapshot);
+  let evidenceRequested = false;
+  return vi.fn(async (url: string, init?: RequestInit) => {
+    const body =
+      typeof init?.body === "string"
+        ? (JSON.parse(init.body) as Record<string, unknown>)
+        : {};
+    const isReset =
+      url.endsWith("/e2e/screen-state") && body.generationEvents === null;
+    const isRequest =
+      url.endsWith("/e2e/pending-action") &&
+      body.testID === "action-capture-generation-events";
+    const isReceipt = evidenceRequested && url.endsWith("/e2e/runtime-config");
+    const isRead =
+      evidenceRequested &&
+      url.endsWith("/e2e/screen-state") &&
+      Object.keys(body).length === 0;
+    if (
+      (failure === "reset" && isReset) ||
+      (failure === "request" && isRequest) ||
+      (failure === "receipt" && isReceipt) ||
+      (failure === "read" && isRead)
+    ) {
+      throw thrownValue;
+    }
+    if (isRequest) evidenceRequested = true;
+    return fetch(url, init);
+  });
+}
+
 describe("Lynx app text assertions", () => {
   beforeEach(() => {
     vi.useFakeTimers();
@@ -689,6 +730,79 @@ describe("Lynx app installation", () => {
     );
   });
 
+  it.each([
+    ["reset", "screen.reset-request-unavailable"],
+    ["request", "screen.evidence-request-unavailable"],
+    ["receipt", "screen.evidence-receipt-unavailable"],
+    ["read", "screen.evidence-read-unavailable"],
+  ] as const)(
+    "reports and redacts an Android journal %s acquisition failure",
+    async (failure, reason) => {
+      const fixture = androidJournalFixture();
+      const privateDiagnostic = `private-${failure}-${"x".repeat(4096)}`;
+      mockAndroidCommands(ANDROID_302_DIAGNOSTIC, fixture.journal);
+      const driver = new LynxAppDriver(
+        createControlClient({
+          baseUrl: "http://control.test",
+          fetch: failingAndroidJournalFetch(
+            fixture.snapshot,
+            failure,
+            privateDiagnostic,
+          ),
+        }),
+        "android",
+        { HOT_UPDATER_E2E_ANDROID_SERIAL: "emulator-5554" },
+      );
+
+      const rejection = await driver.launch(`journal ${failure} failure`).then(
+        () => null,
+        (error: unknown) => error,
+      );
+
+      expect(rejection).toBeInstanceOf(Error);
+      expect((rejection as Error).message).toContain(
+        `Android journal recovery: reason=${reason}`,
+      );
+      expect((rejection as Error).message).not.toContain(privateDiagnostic);
+      expect((rejection as Error).message.length).toBeLessThan(256);
+    },
+  );
+
+  it("rejects a recovered eligible 302 with the exact extra-candidate gate", async () => {
+    const fixture = androidJournalFixture();
+    const malformedDiagnostic = ANDROID_302_DIAGNOSTIC.replace(
+      /^09-14 .*? I HotUpdaterLynx: /,
+      "HotUpdaterLynx: ",
+    );
+    mockAndroidCommands(
+      `${ANDROID_302_DIAGNOSTIC}\n${malformedDiagnostic}`,
+      fixture.journal,
+    );
+    const driver = new LynxAppDriver(
+      createControlClient({
+        baseUrl: "http://control.test",
+        fetch: androidJournalFetch(fixture.snapshot),
+      }),
+      "android",
+      { HOT_UPDATER_E2E_ANDROID_SERIAL: "emulator-5554" },
+    );
+
+    const rejection = await driver
+      .launch("mixed eligible and malformed diagnostics")
+      .then(
+        () => null,
+        (error: unknown) => error,
+      );
+
+    expect(rejection).toBeInstanceOf(Error);
+    expect((rejection as Error).message).toContain(
+      "Android journal recovery: reason=log.envelope",
+    );
+    expect((rejection as Error).message).not.toContain(
+      "reason=log.unmatched-engine-error",
+    );
+  });
+
   it("reports the exact redacted Android journal rejection gate", async () => {
     const fixture = androidJournalFixture();
     const snapshot = JSON.parse(fixture.snapshot) as {
@@ -749,6 +863,37 @@ describe("Lynx app installation", () => {
     await expect(driver.launch("process changed")).rejects.toThrow(
       "Android journal recovery: reason=screen.current-process-id-changed",
     );
+  });
+
+  it("reports and redacts an unavailable PID after journal capture", async () => {
+    const fixture = androidJournalFixture();
+    const privateDiagnostic = `private-pid-${"x".repeat(4096)}`;
+    const processIds = ["456\n", `${privateDiagnostic}\n`];
+    mockAndroidCommands(
+      ANDROID_302_DIAGNOSTIC,
+      fixture.journal,
+      () => processIds.shift() ?? `${privateDiagnostic}\n`,
+    );
+    const driver = new LynxAppDriver(
+      createControlClient({
+        baseUrl: "http://control.test",
+        fetch: androidJournalFetch(fixture.snapshot),
+      }),
+      "android",
+      { HOT_UPDATER_E2E_ANDROID_SERIAL: "emulator-5554" },
+    );
+
+    const rejection = await driver.launch("post-capture PID unavailable").then(
+      () => null,
+      (error: unknown) => error,
+    );
+
+    expect(rejection).toBeInstanceOf(Error);
+    expect((rejection as Error).message).toContain(
+      "Android journal recovery: reason=screen.current-process-id-unavailable",
+    );
+    expect((rejection as Error).message).not.toContain(privateDiagnostic);
+    expect((rejection as Error).message.length).toBeLessThan(256);
   });
 
   it("checks managed-resource errors before an allow-disconnect launch returns", async () => {

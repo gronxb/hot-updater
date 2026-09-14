@@ -42,6 +42,12 @@ type ControlOptions = {
   readonly saveResultFieldsAs?: Readonly<Record<string, string>>;
 };
 
+type AndroidRuntimeJournalAcquisitionFailureReason =
+  | "screen.reset-request-unavailable"
+  | "screen.evidence-request-unavailable"
+  | "screen.evidence-receipt-unavailable"
+  | "screen.evidence-read-unavailable";
+
 const ACTION_RESULT_FIELDS: Record<string, string> = {
   "action-arm-next-detail-fatal": "updateActionResult",
   "action-arm-next-detail-pending": "updateActionResult",
@@ -810,7 +816,15 @@ export class LynxAppDriver implements DetoxAppDriver {
       processId,
       expectedRuntimeScenarioMarker,
     );
-    if (this.readAndroidProcessId() !== processId) {
+    let evidenceProcessId: string;
+    try {
+      evidenceProcessId = this.readAndroidProcessId();
+    } catch {
+      throw new Error(
+        "Could not inspect managed Lynx resources after reading runtime evidence; Android journal recovery: reason=screen.current-process-id-unavailable",
+      );
+    }
+    if (evidenceProcessId !== processId) {
       throw new Error(
         "Could not inspect managed Lynx resources: Android process changed while reading runtime evidence; Android journal recovery: reason=screen.current-process-id-changed",
       );
@@ -818,6 +832,7 @@ export class LynxAppDriver implements DetoxAppDriver {
     assertNoManagedResourceEngineErrors(
       logResult.logsSinceLaunch,
       journalEvidence,
+      eligibility,
     );
   }
 
@@ -843,27 +858,44 @@ export class LynxAppDriver implements DetoxAppDriver {
     currentProcessId: string,
     expectedRuntimeScenarioMarker: string,
   ): Promise<AndroidRuntimeJournalEvidence> {
-    await this.controlClient.postJson(
-      `${stage}: reset runtime journal evidence`,
-      "/e2e/screen-state",
-      { generationEvents: null, updateActionResult: "idle" },
+    await this.captureAndroidRuntimeJournalAcquisitionStep(
+      "screen.reset-request-unavailable",
+      () =>
+        this.controlClient.postJson(
+          `${stage}: reset runtime journal evidence`,
+          "/e2e/screen-state",
+          { generationEvents: null, updateActionResult: "idle" },
+        ),
     );
-    await this.controlClient.postJson(
-      `${stage}: request runtime journal evidence`,
-      "/e2e/pending-action",
-      { testID: "action-capture-generation-events" },
+    await this.captureAndroidRuntimeJournalAcquisitionStep(
+      "screen.evidence-request-unavailable",
+      () =>
+        this.controlClient.postJson(
+          `${stage}: request runtime journal evidence`,
+          "/e2e/pending-action",
+          { testID: "action-capture-generation-events" },
+        ),
     );
     const actionResultResponse =
-      await this.controlClient.waitForScreenStateField(
-        `${stage}: wait for runtime journal evidence`,
-        "updateActionResult",
-        { rejectSubstrings: [" -> error"], rejectValues: ["idle"] },
+      await this.captureAndroidRuntimeJournalAcquisitionStep(
+        "screen.evidence-receipt-unavailable",
+        () =>
+          this.controlClient.waitForScreenStateField(
+            `${stage}: wait for runtime journal evidence`,
+            "updateActionResult",
+            { rejectSubstrings: [" -> error"], rejectValues: ["idle"] },
+          ),
       );
-    const screenStateResponse = await this.controlClient.postJson(
-      `${stage}: read runtime journal evidence`,
-      "/e2e/screen-state",
-      {},
-    );
+    const screenStateResponse =
+      await this.captureAndroidRuntimeJournalAcquisitionStep(
+        "screen.evidence-read-unavailable",
+        () =>
+          this.controlClient.postJson(
+            `${stage}: read runtime journal evidence`,
+            "/e2e/screen-state",
+            {},
+          ),
+      );
     const journal = this.captureCommand(
       "android-runtime-journal",
       "adb",
@@ -880,7 +912,7 @@ export class LynxAppDriver implements DetoxAppDriver {
     );
     if (journal.status !== 0 || journal.stdout.length === 0) {
       throw new Error(
-        `Could not inspect managed Lynx runtime journal: ${journal.text}; Android journal recovery: reason=journal.read-unavailable`,
+        "Could not inspect managed Lynx runtime journal; Android journal recovery: reason=journal.read-unavailable",
       );
     }
     return {
@@ -891,6 +923,19 @@ export class LynxAppDriver implements DetoxAppDriver {
       runtimeJournalUtf8: journal.stdout,
       screenStateResponse,
     };
+  }
+
+  private async captureAndroidRuntimeJournalAcquisitionStep<T>(
+    reason: AndroidRuntimeJournalAcquisitionFailureReason,
+    operation: () => Promise<T>,
+  ): Promise<T> {
+    try {
+      return await operation();
+    } catch {
+      throw new Error(
+        `Could not acquire managed Lynx runtime journal evidence; Android journal recovery: reason=${reason}`,
+      );
+    }
   }
 
   private beginAndroidLaunchLogCapture(): void {
