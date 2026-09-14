@@ -178,6 +178,121 @@ class LynxUpdaterController internal constructor(
         }
         return null
     }
+
+    private data class StoredFallback(
+        val receipt: CatalogPolicy.Receipt,
+        val files: VerifiedLynxInstallation,
+        val confirmed: CatalogPolicy.Receipt?,
+    )
+
+    private fun eligibleStored(
+        candidate: CatalogPolicy.Receipt,
+        crashed: List<String>,
+        unconfirmed: List<String>,
+        failedEmbedded: CatalogPolicy.Receipt?,
+    ): Boolean {
+        if (
+            candidate.releaseId in unconfirmed ||
+            candidate.bundleId in crashed ||
+            failedEmbedded != null && sameRelease(candidate, failedEmbedded)
+        ) {
+            return false
+        }
+        if (candidate.kind == "BUILTIN" && candidate.catalogId == null) {
+            return true
+        }
+        val catalogId = candidate.catalogId ?: return false
+        val scope = candidate.scopeKey ?: return false
+        val key = catalogKey(catalogId, scope)
+        val raw = store.value.optJSONObject("catalogs")?.optString(key)
+            ?.takeIf(String::isNotEmpty)
+            ?: store.value.optString("catalog").takeIf { value ->
+                if (value.isEmpty()) return@takeIf false
+                val stored = JSONObject(value)
+                stored.optString("catalogId") == catalogId &&
+                    stored.optString("scopeKey") == scope
+            }
+            ?: return false
+        val candidateSnapshot = CatalogPolicy.NativeSnapshot(
+            store.value.getString("revision"),
+            configuration.appVersion,
+            candidate.channel,
+            configuration.runtimeId,
+            embedded.bundleId,
+            configuration.minimumBundleId,
+            store.value.optString("cohort").ifEmpty { configuration.cohort },
+            candidate,
+            null,
+            crashed,
+            unconfirmed,
+            configuration.fingerprintHash ?: binaryId,
+        )
+        val catalog = runCatching {
+            CatalogPolicy.accept(
+                raw,
+                candidateSnapshot,
+                candidateSnapshot.revision,
+                CatalogPolicy.selectionContextHash(candidateSnapshot, scope),
+                highWater(catalogId, scope),
+            )
+        }.getOrNull() ?: return false
+        val mark = highWater(catalog.guard.catalogId, catalog.guard.scopeKey)
+            ?: return false
+        val proof = store.value.optJSONObject("rollbackProofs")
+            ?.optJSONObject(receiptKey(candidate))?.let {
+                CatalogPolicy.RollbackAuthorization(
+                    CatalogPolicy.parseReceipt(it.getJSONObject("receipt")),
+                    CatalogPolicy.parseReceipt(
+                        it.getJSONObject("fromSelection"),
+                    ),
+                )
+            }
+        return CatalogPolicy.isStoredSelectionEligible(
+            catalog,
+            candidateSnapshot,
+            candidate,
+            mark,
+            proof,
+        )
+    }
+
+    private fun storedFallback(
+        stack: List<LynxLogicalPage>,
+        crashed: List<String>,
+        unconfirmed: List<String>,
+        failedEmbedded: CatalogPolicy.Receipt?,
+    ): StoredFallback? {
+        fun eligible(candidate: CatalogPolicy.Receipt) = eligibleStored(
+            candidate,
+            crashed,
+            unconfirmed,
+            failedEmbedded,
+        )
+        val confirmed = receipt("confirmed")?.takeIf(::eligible)
+        val atCapacity = unconfirmed.size >= CAPACITY || crashed.size >= CAPACITY
+        val candidates = listOfNotNull(
+            receipt("next"),
+            receipt("active"),
+            confirmed,
+            builtin(),
+        ).distinct()
+        for (candidate in candidates) {
+            if (
+                !eligible(candidate) ||
+                atCapacity && candidate != confirmed && candidate.kind != "BUILTIN"
+            ) {
+                continue
+            }
+            val files = runCatching { installed(candidate) }.getOrNull()
+                ?: continue
+            if (runCatching { requireCompleteStack(files, stack) }.isFailure) {
+                continue
+            }
+            return StoredFallback(candidate, files, confirmed)
+        }
+        return null
+    }
+
     private fun recover() {
         replayPageAttemptTerminals()
         val pendingPage = store.value.optJSONObject("pageAttempt")
@@ -203,15 +318,47 @@ class LynxUpdaterController internal constructor(
             }
         }
         val recoveredTransitionId = pendingTransitionId
-            ?: managedTransitionId?.takeIf { pending != null }
-        val wasConfirmedManagedReload = recoveredTransitionId != null &&
-            sameRelease(selected, stable)
-        val recoveryTransition = if (sameRelease(selected, stable)) {
+            ?: managedTransitionId?.takeIf {
+                pending != null || pendingPage != null ||
+                    generationFailure != null
+            }
+        val benignConfirmedManagedReload =
+            pending != null && pendingPage == null && generationFailure == null &&
+                pendingTransitionId != null &&
+                pendingTransitionId == managedTransitionId &&
+                sameRelease(selected, stable)
+        val fatal = pendingPage?.optBoolean("fatal") == true ||
+            pending?.optBoolean("fatal") == true ||
+            generationFailure?.optBoolean("fatal") == true
+        val nextUnconfirmed = exclusions("unconfirmed").toMutableSet()
+        val nextCrashed = exclusions("crashed").toMutableSet()
+        if (!benignConfirmedManagedReload && selected.releaseId != null) {
+            nextUnconfirmed.add(checkNotNull(selected.releaseId))
+        }
+        if (fatal && selected.bundleId != embedded.bundleId) {
+            nextCrashed.add(selected.bundleId)
+        }
+        val failedEmbedded = selected.takeIf {
+            !benignConfirmedManagedReload &&
+                it.bundleId == embedded.bundleId &&
+                (pendingPage != null || generationFailure != null)
+        }
+        val fallback = if (benignConfirmedManagedReload) {
             null
         } else {
-            launchTransition(selected, stable, recovery = true)
+            storedFallback(
+                retainedStack(),
+                nextCrashed.toList(),
+                nextUnconfirmed.toList(),
+                failedEmbedded,
+            )
         }
-        val fallbackChannel = stable.channel
+        val recoveryTransition = fallback?.receipt?.let {
+            launchTransition(selected, it, recovery = true)
+        }
+        val recoveryTransitionId = recoveredTransitionId
+            ?: recoveryTransition?.let(::transitionId)
+        val fallbackChannel = fallback?.receipt?.channel ?: stable.channel
         mutate { next ->
             pendingPage?.let { pageAttempt ->
                 appendPageAttemptTerminal(
@@ -220,37 +367,28 @@ class LynxUpdaterController internal constructor(
                     terminal = "process-interruption",
                     stack = retainedStack(),
                     reason = "processRecovery",
-                    transitionId = recoveredTransitionId,
+                    transitionId = recoveryTransitionId,
                     topContextId = null,
                 )
             }
-            if (!wasConfirmedManagedReload && selected.releaseId != null) {
-                val unconfirmed = exclusions("unconfirmed").toMutableSet().also {
-                    it.add(checkNotNull(selected.releaseId))
-                }
-                next.put("unconfirmed", JSONArray(unconfirmed.toList()))
+            if (!benignConfirmedManagedReload && selected.releaseId != null) {
+                next.put("unconfirmed", JSONArray(nextUnconfirmed.toList()))
             }
-            val fatal = pendingPage?.optBoolean("fatal") == true ||
-                pending?.optBoolean("fatal") == true ||
-                generationFailure?.optBoolean("fatal") == true
             if (fatal && selected.bundleId != embedded.bundleId) {
-                val crashed = exclusions("crashed").toMutableSet().also {
-                    it.add(selected.bundleId)
-                }
-                next.put("crashed", JSONArray(crashed.toList()))
+                next.put("crashed", JSONArray(nextCrashed.toList()))
             }
-            if (
-                selected.bundleId == embedded.bundleId &&
-                (pendingPage != null || generationFailure != null)
-            ) {
-                next.put("failedEmbedded", selected.toJson())
+            if (failedEmbedded != null) {
+                next.put("failedEmbedded", failedEmbedded.toJson())
             }
             next.remove("pending")
             next.remove("pageAttempt")
             next.remove("generationFailure")
             if (recoveryTransition != null) {
                 next.put("launchTransition", recoveryTransition)
-            } else if (wasConfirmedManagedReload) {
+            } else if (
+                benignConfirmedManagedReload || recoveredTransitionId != null ||
+                fallback == null
+            ) {
                 next.remove("launchTransition")
             }
             if (recoveredTransitionId != null) {
@@ -532,75 +670,6 @@ class LynxUpdaterController internal constructor(
             check(primary == null) {
                 "A new controller generation is required"
             }
-            val startupSnapshot = snapshot()
-            fun eligibleStored(candidate: CatalogPolicy.Receipt): Boolean {
-                if (!eligible(candidate)) return false
-                val failedEmbedded = store.value.optJSONObject("failedEmbedded")
-                    ?.let(CatalogPolicy::parseReceipt)
-                if (
-                    failedEmbedded != null &&
-                    sameRelease(candidate, failedEmbedded)
-                ) {
-                    return false
-                }
-                if (candidate.kind == "BUILTIN" && candidate.catalogId == null) return true
-                val catalogId = candidate.catalogId ?: return false
-                val scope = candidate.scopeKey ?: return false
-                val key = catalogKey(catalogId, scope)
-                val raw = store.value.optJSONObject("catalogs")?.optString(key)
-                    ?.takeIf(String::isNotEmpty)
-                    ?: store.value.optString("catalog").takeIf { value ->
-                        if (value.isEmpty()) return@takeIf false
-                        val stored = JSONObject(value)
-                        stored.optString("catalogId") == catalogId &&
-                            stored.optString("scopeKey") == scope
-                    }
-                    ?: return false
-                val candidateSnapshot = CatalogPolicy.NativeSnapshot(
-                    startupSnapshot.revision,
-                    configuration.appVersion,
-                    candidate.channel,
-                    configuration.runtimeId,
-                    embedded.bundleId,
-                    configuration.minimumBundleId,
-                    runtimeCohort,
-                    candidate,
-                    null,
-                    exclusions("crashed"),
-                    exclusions("unconfirmed"),
-                    configuration.fingerprintHash ?: binaryId,
-                )
-                val catalog = runCatching {
-                    CatalogPolicy.accept(
-                        raw,
-                        candidateSnapshot,
-                        candidateSnapshot.revision,
-                        CatalogPolicy.selectionContextHash(candidateSnapshot, scope),
-                        highWater(catalogId, scope),
-                    )
-                }.getOrNull() ?: return false
-                val mark = highWater(catalog.guard.catalogId, catalog.guard.scopeKey)
-                    ?: return false
-                val proof = store.value.optJSONObject("rollbackProofs")
-                    ?.optJSONObject(receiptKey(candidate))?.let {
-                        CatalogPolicy.RollbackAuthorization(
-                            CatalogPolicy.parseReceipt(it.getJSONObject("receipt")),
-                            CatalogPolicy.parseReceipt(
-                                it.getJSONObject("fromSelection"),
-                            ),
-                        )
-                    }
-                return CatalogPolicy.isStoredSelectionEligible(
-                    catalog,
-                    candidateSnapshot,
-                    candidate,
-                    mark,
-                    proof,
-                )
-            }
-            val confirmed = receipt("confirmed")?.takeIf(::eligibleStored)
-            val atCapacity = exclusions("unconfirmed").size >= CAPACITY ||
-                exclusions("crashed").size >= CAPACITY
             val stack = retainedStack().let { retained ->
                 if (
                     store.value.has("logicalStack") ||
@@ -611,42 +680,26 @@ class LynxUpdaterController internal constructor(
                     listOf(LynxLogicalPage(embedded.entry, parameters))
                 }
             }
-            val candidates = listOfNotNull(
-                receipt("next"),
-                receipt("active"),
-                confirmed,
-                builtin(),
-            ).distinct()
-            var chosen: CatalogPolicy.Receipt? = null
-            var files: VerifiedLynxInstallation? = null
-            for (candidate in candidates) {
-                if (
-                    !eligibleStored(candidate) ||
-                    atCapacity && candidate != confirmed &&
-                    candidate.kind != "BUILTIN"
-                ) {
-                    continue
-                }
-                val verified = runCatching { installed(candidate) }.getOrNull()
-                    ?: continue
-                if (runCatching { requireCompleteStack(verified, stack) }.isFailure) {
-                    continue
-                }
-                chosen = candidate
-                files = verified
-                break
-            }
-            val selected = checkNotNull(chosen) {
+            val fallback = checkNotNull(
+                storedFallback(
+                    stack,
+                    exclusions("crashed"),
+                    exclusions("unconfirmed"),
+                    store.value.optJSONObject("failedEmbedded")
+                        ?.let(CatalogPolicy::parseReceipt),
+                ),
+            ) {
                 "No eligible complete Lynx page generation can be reconstructed"
             }
-            val selectedFiles = checkNotNull(files)
-            val stable = confirmed ?: builtin()
+            val selected = fallback.receipt
+            val selectedFiles = checkNotNull(fallback.files)
+            val stable = fallback.confirmed ?: builtin()
             val transition = launchTransition(stable, selected)
             LaunchPlan(
                 store.value.getString("revision"),
                 selected,
                 selectedFiles,
-                selected == confirmed,
+                selected == fallback.confirmed,
                 transition,
                 stack,
             )

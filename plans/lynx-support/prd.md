@@ -907,6 +907,14 @@ accepted transition, and any launch receipt. The strict JavaScript result is
 then `transition: null` and `transitionId: null`; native must never return an ID
 with a null transition. Exact-identity process recovery likewise consumes the
 internal attempt and transition without exposing a synthetic launch movement.
+That exception applies only when the transition-bound primary startup attempt
+is the sole interrupted record. A pending page attempt or generation failure is
+a real generation interruption even when the primary target still equals the
+confirmed Release. Native suppresses the failed Release, selects the final
+eligible installed artifact that can reconstruct the complete retained stack,
+and atomically persists `RECOVERED` from the failed selection to that fallback.
+The receipt reuses the accepted transition ID and must survive another process
+exit before the fallback is pinned.
 Persisted launch and managed transition IDs must use canonical UUID syntax.
 Legacy launch receipts without an ID are backfilled atomically before exposure,
 while malformed or conflicting IDs fail closed.

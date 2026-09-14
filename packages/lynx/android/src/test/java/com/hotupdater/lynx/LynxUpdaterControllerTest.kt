@@ -110,42 +110,47 @@ class LynxUpdaterControllerTest {
             .put("rollbackReleases", JSONArray().put(JSONObject(descriptor.toString())))
     }
 
-    private fun writeTree(payload: File, bundleId: String, marker: String): String {
+    private fun writeTree(
+        payload: File,
+        bundleId: String,
+        marker: String,
+        includeDetailPage: Boolean = true,
+    ): String {
         val root = payload.canonicalFile
         root.mkdirs()
-        val files = mapOf(
-            "detail.lynx.bundle" to "detail-$marker".toByteArray(),
+        val pageEntries = JSONArray()
+        val pageEssentialResources = JSONArray()
+        val files = mutableMapOf(
             "main.lynx.bundle" to "entry-$marker".toByteArray(),
             "assets/probe.png" to byteArrayOf(0x89.toByte(), 0x50, 0x4E, 0x47),
-            "hot-updater-lynx.json" to JSONObject()
-                .put("schemaVersion", 1).put("bundleId", bundleId).put("platform", "android")
-                .put("entry", "main.lynx.bundle").put("runtimeId", runtime)
-                .put(
-                    "pageEntries",
-                    JSONArray().put("detail.lynx.bundle").put("main.lynx.bundle"),
-                )
-                .put(
-                    "pageEssentialResources",
-                    JSONArray()
-                        .put(
-                            JSONObject()
-                                .put("entry", "detail.lynx.bundle")
-                                .put(
-                                    "resources",
-                                    JSONArray().put("detail.lynx.bundle"),
-                                ),
-                        )
-                        .put(
-                            JSONObject()
-                                .put("entry", "main.lynx.bundle")
-                                .put(
-                                    "resources",
-                                    JSONArray().put("main.lynx.bundle"),
-                                ),
-                        ),
-                )
-                .toString().toByteArray(),
         )
+        if (includeDetailPage) {
+            files["detail.lynx.bundle"] = "detail-$marker".toByteArray()
+            pageEntries.put("detail.lynx.bundle")
+            pageEssentialResources.put(
+                JSONObject()
+                    .put("entry", "detail.lynx.bundle")
+                    .put(
+                        "resources",
+                        JSONArray().put("detail.lynx.bundle"),
+                    ),
+            )
+        }
+        pageEntries.put("main.lynx.bundle")
+        pageEssentialResources.put(
+            JSONObject()
+                .put("entry", "main.lynx.bundle")
+                .put(
+                    "resources",
+                    JSONArray().put("main.lynx.bundle"),
+                ),
+        )
+        files["hot-updater-lynx.json"] = JSONObject()
+            .put("schemaVersion", 1).put("bundleId", bundleId).put("platform", "android")
+            .put("entry", "main.lynx.bundle").put("runtimeId", runtime)
+            .put("pageEntries", pageEntries)
+            .put("pageEssentialResources", pageEssentialResources)
+            .toString().toByteArray()
         val assets = JSONObject()
         files.forEach { (name, bytes) ->
             val file = File(root, name)
@@ -168,11 +173,12 @@ class LynxUpdaterControllerTest {
         selectionScope: String = scopeKey,
         generation: Long = 2,
         hash: String = catalogHash,
+        includeDetailPage: Boolean = true,
     ) {
         val home = store(root)
         val install = File(home, "artifacts/installations/$bundleId").canonicalFile
         val payload = File(install, "payload")
-        val digest = writeTree(payload, bundleId, marker)
+        val digest = writeTree(payload, bundleId, marker, includeDetailPage)
         val archive = File(install, "archive")
         val fileHash = if (manifestBacked) null else {
             archive.writeText("archive-$marker")
@@ -1593,6 +1599,207 @@ class LynxUpdaterControllerTest {
             } finally {
                 root.deleteRecursively()
             }
+        }
+    }
+
+    @Test fun confirmedOtaPageInterruptionPersistsExactRecoveryBeforePin() {
+        val root = temp()
+        try {
+            withController(root) { initial ->
+                initial.pinPrimary().also {
+                    it.firstScreen = true
+                    initial.confirm(it)
+                }
+            }
+            plantNext(root, releaseB, bundleB, "B")
+            val interrupted = controller(root)
+            val primary = interrupted.pinPrimary(
+                generationId = "generation-b",
+            ).also { it.firstScreen = true }
+            interrupted.confirm(primary)
+            val pendingPage = interrupted.pinSecondary(
+                "detail.lynx.bundle",
+                mapOf("case" to "confirmed-interruption"),
+                1,
+                "generation-b",
+            )
+            interrupted.close()
+
+            val recoveredBeforePin = controller(root)
+            val firstRecovery = journal(root).getJSONObject("launchTransition")
+            val transitionId = firstRecovery.getString("transitionId")
+            assertEquals("RECOVERED", firstRecovery.getString("kind"))
+            assertEquals(
+                bundleB,
+                firstRecovery.getJSONObject("from").getString("bundleId"),
+            )
+            assertEquals(
+                releaseB,
+                firstRecovery.getJSONObject("from").getString("releaseId"),
+            )
+            assertEquals(
+                embeddedId,
+                firstRecovery.getJSONObject("to").getString("bundleId"),
+            )
+            assertEquals(
+                transitionId,
+                journal(root).getJSONObject("lastPageAttempt")
+                    .getString("transitionId"),
+            )
+            assertEquals(
+                pendingPage.id,
+                journal(root).getJSONObject("lastPageAttempt")
+                    .getString("attemptId"),
+            )
+            recoveredBeforePin.close()
+
+            val recovered = controller(root)
+            assertEquals(
+                firstRecovery.toString(),
+                journal(root).getJSONObject("launchTransition").toString(),
+            )
+            val recoveredPrimary = recovered.pinPrimary(
+                generationId = "generation-recovered",
+            ).also { it.firstScreen = true }
+            assertEquals(embeddedId, recovered.diagnostics(recoveredPrimary).bundleId)
+            val detail = recovered.pinSecondary(
+                "detail.lynx.bundle",
+                mapOf("case" to "confirmed-interruption"),
+                1,
+                "generation-recovered",
+                reconstructing = true,
+            ).also { it.firstScreen = true }
+            recovered.admitSecondary(detail)
+            val confirmation = recovered.confirm(recoveredPrimary)
+            val transition = confirmation.getJSONObject("transition")
+            assertEquals("RECOVERED", transition.getString("kind"))
+            assertEquals(transitionId, confirmation.getString("transitionId"))
+            assertEquals(bundleB, transition.getJSONObject("from").getString("bundleId"))
+            assertEquals(embeddedId, transition.getJSONObject("to").getString("bundleId"))
+            val repeated = recovered.confirm(recoveredPrimary)
+            assertEquals(JSONObject.NULL, repeated.opt("transition"))
+            assertEquals(JSONObject.NULL, repeated.opt("transitionId"))
+            assertFalse(journal(root).has("launchTransition"))
+            recovered.close()
+        } finally {
+            root.deleteRecursively()
+        }
+    }
+
+    @Test fun managedMultiPageInterruptionRecoversWithAcceptedIdAndCompleteStack() {
+        val root = temp()
+        try {
+            withController(root) { initial ->
+                initial.pinPrimary().also {
+                    it.firstScreen = true
+                    initial.confirm(it)
+                }
+            }
+            plantNext(root, releaseB, bundleB, "B")
+            val source = controller(root)
+            val sourcePrimary = source.pinPrimary(
+                generationId = "generation-b",
+            ).also { it.firstScreen = true }
+            source.confirm(sourcePrimary)
+            source.pinSecondary(
+                "detail.lynx.bundle",
+                mapOf("case" to "managed-interruption"),
+                1,
+                "generation-b",
+            ).also {
+                it.firstScreen = true
+                source.admitSecondary(it)
+            }
+            val acceptance = source.acceptManagedTransition(
+                sourcePrimary,
+                "generation-b",
+                source.retainedLogicalStack(sourcePrimary),
+                "reload",
+            )
+            val transitionId = acceptance.getString("transitionId")
+            source.close()
+
+            val replacement = controller(root)
+            replacement.pinPrimary(
+                generationId = "generation-replacement",
+            )
+            val interruptedPage = replacement.pinSecondary(
+                "detail.lynx.bundle",
+                mapOf("case" to "managed-interruption"),
+                1,
+                "generation-replacement",
+                reconstructing = true,
+            )
+            assertEquals(
+                transitionId,
+                journal(root).getJSONObject("pending").getString("transitionId"),
+            )
+            replacement.close()
+
+            plantNext(
+                root,
+                releaseC,
+                bundleC,
+                "C",
+                includeDetailPage = false,
+            )
+
+            val recoveredBeforePin = controller(root)
+            val recovery = journal(root).getJSONObject("launchTransition")
+            assertEquals("RECOVERED", recovery.getString("kind"))
+            assertEquals(transitionId, recovery.getString("transitionId"))
+            assertEquals(bundleB, recovery.getJSONObject("from").getString("bundleId"))
+            assertEquals(releaseB, recovery.getJSONObject("from").getString("releaseId"))
+            assertEquals(embeddedId, recovery.getJSONObject("to").getString("bundleId"))
+            assertEquals(
+                transitionId,
+                journal(root).getJSONObject("lastPageAttempt")
+                    .getString("transitionId"),
+            )
+            assertEquals(
+                interruptedPage.id,
+                journal(root).getJSONObject("lastPageAttempt")
+                    .getString("attemptId"),
+            )
+            assertFalse(journal(root).has("pending"))
+            assertFalse(journal(root).has("pageAttempt"))
+            assertFalse(journal(root).has("managedTransition"))
+            assertEquals(
+                listOf(releaseB),
+                jsonStrings(journal(root).getJSONArray("unconfirmed")),
+            )
+            recoveredBeforePin.close()
+
+            val recovered = controller(root)
+            assertEquals(
+                recovery.toString(),
+                journal(root).getJSONObject("launchTransition").toString(),
+            )
+            val recoveredPrimary = recovered.pinPrimary(
+                generationId = "generation-fallback",
+            ).also { it.firstScreen = true }
+            assertEquals(embeddedId, recovered.diagnostics(recoveredPrimary).bundleId)
+            val detail = recovered.pinSecondary(
+                "detail.lynx.bundle",
+                mapOf("case" to "managed-interruption"),
+                1,
+                "generation-fallback",
+                reconstructing = true,
+            ).also { it.firstScreen = true }
+            recovered.admitSecondary(detail)
+            val confirmation = recovered.confirm(recoveredPrimary)
+            val transition = confirmation.getJSONObject("transition")
+            assertEquals("RECOVERED", transition.getString("kind"))
+            assertEquals(transitionId, confirmation.getString("transitionId"))
+            assertEquals(bundleB, transition.getJSONObject("from").getString("bundleId"))
+            assertEquals(embeddedId, transition.getJSONObject("to").getString("bundleId"))
+            val repeated = recovered.confirm(recoveredPrimary)
+            assertEquals(JSONObject.NULL, repeated.opt("transition"))
+            assertEquals(JSONObject.NULL, repeated.opt("transitionId"))
+            assertFalse(journal(root).has("launchTransition"))
+            recovered.close()
+        } finally {
+            root.deleteRecursively()
         }
     }
 
