@@ -6,6 +6,8 @@ import {
   classifyArtifactSelection,
   classifyArtifactSelectionHistory,
   collectManifestDiffLogs,
+  hasLynxFirstOtaArchiveEvidence,
+  isExactLynxFirstOtaArchiveSelection,
 } from "./manifest-diff-assertion.ts";
 
 const archivePayload = {
@@ -231,6 +233,113 @@ describe("manifest diff assertion", () => {
         capture(renewed),
       ]),
     ).toBe("manifest-diff");
+  });
+
+  it("accepts only one exact immutable archive history for a first Lynx OTA", () => {
+    const builtInBundleId = "00000000-0000-7000-8000-000000000000";
+    const targetBundleId = "019f0000-0000-7000-8000-000000000001";
+    const selection = {
+      ...capture(archivePayload),
+      currentBundleId: builtInBundleId,
+      targetBundleId,
+    };
+    const renewed = {
+      ...capture({
+        ...archivePayload,
+        fileUrl: "https://storage.example.com/archive.zip?signature=two",
+      }),
+      currentBundleId: builtInBundleId,
+      targetBundleId,
+    };
+
+    expect(
+      isExactLynxFirstOtaArchiveSelection({
+        builtInBundleId,
+        selections: [selection, renewed],
+        targetBundleId,
+      }),
+    ).toBe(true);
+
+    for (const selections of [
+      [],
+      [{ ...selection, currentBundleId: "wrong-current" }],
+      [{ ...selection, targetBundleId: "wrong-target" }],
+      [
+        selection,
+        {
+          ...selection,
+          ...capture({ ...archivePayload, fileHash: "changed-hash" }),
+        },
+      ],
+      [
+        selection,
+        {
+          ...capture(manifestPayload),
+          currentBundleId: builtInBundleId,
+          targetBundleId,
+        },
+      ],
+    ]) {
+      expect(
+        isExactLynxFirstOtaArchiveSelection({
+          builtInBundleId,
+          selections,
+          targetBundleId,
+        }),
+      ).toBe(false);
+    }
+  });
+
+  it("requires pending native store proof for the exact Lynx archive target", () => {
+    const builtInBundleId = "00000000-0000-7000-8000-000000000000";
+    const targetBundleId = "019f0000-0000-7000-8000-000000000001";
+    const selection = {
+      ...capture(archivePayload),
+      currentBundleId: builtInBundleId,
+      targetBundleId,
+    };
+    const evidence = {
+      builtInBundleId,
+      bundleFileExists: true,
+      selections: [selection],
+      stableBundleId: null,
+      stagingBundleId: targetBundleId,
+      stagingSelectionBundleId: targetBundleId,
+      targetBundleId,
+      verificationPending: true,
+    };
+
+    expect(hasLynxFirstOtaArchiveEvidence(evidence)).toBe(true);
+    expect(
+      hasLynxFirstOtaArchiveEvidence({
+        ...evidence,
+        bundleFileExists: false,
+      }),
+    ).toBe(false);
+    expect(
+      hasLynxFirstOtaArchiveEvidence({
+        ...evidence,
+        stableBundleId: targetBundleId,
+      }),
+    ).toBe(false);
+    expect(
+      hasLynxFirstOtaArchiveEvidence({
+        ...evidence,
+        stagingBundleId: "wrong-target",
+      }),
+    ).toBe(false);
+    expect(
+      hasLynxFirstOtaArchiveEvidence({
+        ...evidence,
+        stagingSelectionBundleId: "wrong-target",
+      }),
+    ).toBe(false);
+    expect(
+      hasLynxFirstOtaArchiveEvidence({
+        ...evidence,
+        verificationPending: false,
+      }),
+    ).toBe(false);
   });
 
   it("normalizes object key order while preserving ordered selection fields", () => {

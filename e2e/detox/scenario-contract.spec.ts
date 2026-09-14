@@ -619,22 +619,18 @@ describe("Detox scenario contract", () => {
     }
   });
 
-  it("captures the built-in bundle id with the minimum-id suffix contract", async () => {
-    // Given: the running manifest can expose a platform-generated UUID with
-    // the built-in minimum id suffix.
+  it("captures the built-in bundle id through the app-context contract", async () => {
+    // Given: Lynx uses one canonical full built-in UUID while the shared RN
+    // suite continues to expose the platform minimum-id suffix.
     const controllerSource = await fs.readFile(
       path.join(repoDir, "e2e/detox/control-server/controller.ts"),
       "utf8",
     );
 
     // When: scenarios capture the built-in bundle id for later UI assertions.
-    // Then: Detox must preserve the minimum-id suffix contract instead of requiring
-    // a hard-coded full UUID that iOS does not expose.
+    // Then: the controller dispatches through the tested app-context helper.
     expect(controllerSource).toContain(
-      "const builtInBundleId = BUILT_IN_MIN_BUNDLE_ID_SUFFIX;",
-    );
-    expect(controllerSource).not.toContain(
-      "const builtInBundleId = E2E_MIN_BUNDLE_ID;",
+      "const builtInBundleId = e2eBuiltInBundleId(fixtureSession.appId);",
     );
   });
 

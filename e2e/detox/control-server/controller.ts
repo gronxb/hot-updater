@@ -77,7 +77,9 @@ import {
   resetFixtureReleases,
 } from "./fixture-release-reset.ts";
 import {
+  e2eBuiltInBundleId,
   isLynxE2eAppId,
+  LYNX_E2E_BUILTIN_BUNDLE_ID,
   lynxAndroidInstalledManifestPaths,
   lynxCrashedBundleIds,
   lynxReceipt,
@@ -91,6 +93,8 @@ import {
   classifyArtifactSelection,
   classifyArtifactSelectionHistory,
   collectManifestDiffLogs,
+  hasLynxFirstOtaArchiveEvidence,
+  isExactLynxFirstOtaArchiveSelection,
   type ArtifactSelectionEvidence,
 } from "./manifest-diff-assertion.ts";
 import { hasNativeInstallEvent } from "./native-install-log.ts";
@@ -1681,8 +1685,6 @@ function updateTrackedReleaseRecord(
     record.targetCohorts = patch.targetCohorts;
   }
 }
-
-const LYNX_E2E_BUILTIN_BUNDLE_ID = "00000000-0000-7000-8000-000000000000";
 
 function isLynxE2eApp() {
   return isLynxE2eAppId(fixtureSession.appId);
@@ -5599,7 +5601,7 @@ async function bootstrap() {
 }
 
 async function captureBuiltInBundleId() {
-  const builtInBundleId = BUILT_IN_MIN_BUNDLE_ID_SUFFIX;
+  const builtInBundleId = e2eBuiltInBundleId(fixtureSession.appId);
 
   fixtureSession.builtInBundleId = builtInBundleId;
 
@@ -6908,26 +6910,99 @@ async function assertManifestDiffApplied(args: {
   );
 }
 
-async function assertFirstOtaUsesArchive(args: { bundleId: string }) {
-  const expectedFragments = isLynxE2eApp()
-    ? ["HotUpdaterArchiveInstalled", `bundleId=${args.bundleId}`]
-    : [
-        "Skipping manifest-driven install",
-        `for ${args.bundleId}`,
-        "no active OTA manifest is available",
-        "Using archive",
-      ];
+async function assertFirstOtaUsesArchive(args: {
+  bundleId: string;
+  signal?: AbortSignal;
+}) {
+  throwIfAborted(args.signal);
+  if (isLynxE2eApp()) {
+    if (
+      !isExactLynxFirstOtaArchiveSelection({
+        builtInBundleId: LYNX_E2E_BUILTIN_BUNDLE_ID,
+        selections: capturedArtifactSelections,
+        targetBundleId: args.bundleId,
+      })
+    ) {
+      throw createEndpointError("Unexpected first OTA artifact selection", {
+        expected: {
+          currentBundleId: LYNX_E2E_BUILTIN_BUNDLE_ID,
+          selection: "archive-only",
+          targetBundleId: args.bundleId,
+        },
+        observed: [...capturedArtifactSelections],
+      });
+    }
+
+    for (let attempt = 0; attempt < 40; attempt += 1) {
+      throwIfAborted(args.signal);
+      const state = readFirstOtaArchiveState(args.bundleId);
+      if (
+        hasLynxFirstOtaArchiveEvidence({
+          builtInBundleId: LYNX_E2E_BUILTIN_BUNDLE_ID,
+          bundleFileExists: state.bundleFile.exists,
+          selections: capturedArtifactSelections,
+          stableBundleId: state.metadataState.stableBundleId,
+          stagingBundleId: state.metadataState.stagingBundleId,
+          stagingSelectionBundleId:
+            state.metadataState.stagingSelection?.bundleId ?? null,
+          targetBundleId: args.bundleId,
+          verificationPending: state.metadataState.verificationPending,
+        })
+      ) {
+        logDetoxFixture("first OTA used archive install path", {
+          bundleId: args.bundleId,
+          bundleFilePath: state.bundleFile.path,
+          evidence: "artifact-selection-and-bundle-store",
+          metadataPath: state.diagnostics.metadata.path,
+          platform: fixtureSession.platform,
+        });
+        return {};
+      }
+
+      await abortableSleep(E2E_POLL_INTERVAL_MS, args.signal);
+    }
+
+    throwIfAborted(args.signal);
+    const state = readFirstOtaArchiveState(args.bundleId);
+    throw createEndpointError(
+      "Timed out waiting for first OTA archive install evidence.",
+      {
+        bundleId: args.bundleId,
+        expectedSelection: {
+          currentBundleId: LYNX_E2E_BUILTIN_BUNDLE_ID,
+          selection: "archive-only",
+          targetBundleId: args.bundleId,
+        },
+        expectedState: {
+          bundleFileExists: true,
+          stableBundleId: "different from the staging Bundle",
+          stagingBundleId: args.bundleId,
+          stagingSelectionBundleId: args.bundleId,
+          verificationPending: true,
+        },
+        observedSelection: [...capturedArtifactSelections],
+        observedState: {
+          bundleFile: state.bundleFile,
+          metadata: state.diagnostics.metadata,
+          metadataState: state.metadataState,
+        },
+        platform: fixtureSession.platform,
+      },
+    );
+  }
+
+  const expectedFragments = [
+    "Skipping manifest-driven install",
+    `for ${args.bundleId}`,
+    "no active OTA manifest is available",
+    "Using archive",
+  ];
 
   for (let attempt = 0; attempt < 40; attempt += 1) {
+    throwIfAborted(args.signal);
     const state = readFirstOtaArchiveState(args.bundleId);
     const logs = readFirstOtaArchiveInstallLogs();
-    const hasArchiveEvent = isLynxE2eApp()
-      ? hasNativeInstallEvent(logs, "HotUpdaterArchiveInstalled", {
-          bundleId: args.bundleId,
-        })
-      : true;
     if (
-      hasArchiveEvent &&
       state.metadataState.stagingBundleId === args.bundleId &&
       state.metadataState.stagingSelection?.bundleId === args.bundleId &&
       state.metadataState.verificationPending === true &&
@@ -6937,9 +7012,7 @@ async function assertFirstOtaUsesArchive(args: { bundleId: string }) {
       logDetoxFixture("first OTA used archive install path", {
         bundleId: args.bundleId,
         bundleFilePath: state.bundleFile.path,
-        evidence: isLynxE2eApp()
-          ? "bundle-store-and-native-log"
-          : "bundle-store",
+        evidence: "bundle-store",
         metadataPath: state.diagnostics.metadata.path,
         platform: fixtureSession.platform,
       });
@@ -6947,7 +7020,6 @@ async function assertFirstOtaUsesArchive(args: { bundleId: string }) {
     }
 
     if (
-      !isLynxE2eApp() &&
       state.metadataState.stagingBundleId === args.bundleId &&
       state.metadataState.verificationPending === false &&
       state.bundleFile.exists
@@ -6962,7 +7034,7 @@ async function assertFirstOtaUsesArchive(args: { bundleId: string }) {
       return {};
     }
 
-    if (!isLynxE2eApp() && includesAllFragments(logs, expectedFragments)) {
+    if (includesAllFragments(logs, expectedFragments)) {
       logDetoxFixture("first OTA used archive install path", {
         bundleId: args.bundleId,
         evidence: "native-log",
@@ -6971,9 +7043,10 @@ async function assertFirstOtaUsesArchive(args: { bundleId: string }) {
       return {};
     }
 
-    await sleep(E2E_POLL_INTERVAL_MS);
+    await abortableSleep(E2E_POLL_INTERVAL_MS, args.signal);
   }
 
+  throwIfAborted(args.signal);
   const logs = readFirstOtaArchiveInstallLogs();
   const state = readFirstOtaArchiveState(args.bundleId);
   throw createEndpointError(
@@ -7587,8 +7660,11 @@ export async function handleAssertBsdiffPatchApplied(args: {
   return assertBsdiffPatchApplied(args);
 }
 
-export async function handleAssertFirstOtaUsesArchive(bundleId: string) {
-  return assertFirstOtaUsesArchive({ bundleId });
+export async function handleAssertFirstOtaUsesArchive(
+  bundleId: string,
+  options: { signal?: AbortSignal } = {},
+) {
+  return assertFirstOtaUsesArchive({ bundleId, signal: options.signal });
 }
 
 export function handleAssertLynxPageInterruptionState(input: {

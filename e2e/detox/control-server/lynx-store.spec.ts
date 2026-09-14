@@ -2,9 +2,12 @@ import { describe, expect, it } from "vitest";
 
 import {
   decodeLynxIosStoredSelection,
+  e2eBuiltInBundleId,
   isLynxE2eAppId,
+  LYNX_E2E_BUILTIN_BUNDLE_ID,
   lynxAndroidInstalledManifestPaths,
   lynxCrashedBundleIds,
+  RN_E2E_BUILTIN_BUNDLE_ID,
   synthesizeLynxCrashHistory,
   synthesizeLynxLaunchReport,
   synthesizeLynxMetadata,
@@ -26,6 +29,15 @@ describe("Lynx E2E store projection", () => {
   it("recognizes the Lynx example app id", () => {
     expect(isLynxE2eAppId("com.hotupdater.lynxexample")).toBe(true);
     expect(isLynxE2eAppId("com.hotupdater.example")).toBe(false);
+  });
+
+  it("returns the full Lynx built-in identity without changing the RN contract", () => {
+    expect(e2eBuiltInBundleId("com.hotupdater.lynxexample")).toBe(
+      LYNX_E2E_BUILTIN_BUNDLE_ID,
+    );
+    expect(e2eBuiltInBundleId("com.hotupdater.example")).toBe(
+      RN_E2E_BUILTIN_BUNDLE_ID,
+    );
   });
 
   it("decodes an iOS stored receipt from base64 JSON", () => {

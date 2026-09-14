@@ -19,6 +19,11 @@ export type ArtifactSelectionEvidence = {
 
 export type ManifestDiffSelectionEvidence = ArtifactSelectionEvidence;
 
+export type CapturedArtifactSelectionEvidence = ArtifactSelectionEvidence & {
+  readonly currentBundleId: string;
+  readonly targetBundleId: string;
+};
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === "object" && !Array.isArray(value);
 }
@@ -181,6 +186,42 @@ export function classifyArtifactSelectionHistory(
   return evidence.every((entry) => entry.immutableFingerprint === fingerprint)
     ? selection
     : null;
+}
+
+export function isExactLynxFirstOtaArchiveSelection(input: {
+  readonly builtInBundleId: string;
+  readonly selections: readonly CapturedArtifactSelectionEvidence[];
+  readonly targetBundleId: string;
+}): boolean {
+  return (
+    input.selections.length > 0 &&
+    input.selections.every(
+      (entry) =>
+        entry.currentBundleId === input.builtInBundleId &&
+        entry.targetBundleId === input.targetBundleId,
+    ) &&
+    classifyArtifactSelectionHistory(input.selections) === "archive-only"
+  );
+}
+
+export function hasLynxFirstOtaArchiveEvidence(input: {
+  readonly builtInBundleId: string;
+  readonly bundleFileExists: boolean;
+  readonly selections: readonly CapturedArtifactSelectionEvidence[];
+  readonly stableBundleId: string | null;
+  readonly stagingBundleId: string | null;
+  readonly stagingSelectionBundleId: string | null;
+  readonly targetBundleId: string;
+  readonly verificationPending: boolean | null;
+}): boolean {
+  return (
+    isExactLynxFirstOtaArchiveSelection(input) &&
+    input.stagingBundleId === input.targetBundleId &&
+    input.stagingSelectionBundleId === input.targetBundleId &&
+    input.verificationPending === true &&
+    input.stableBundleId !== input.targetBundleId &&
+    input.bundleFileExists
+  );
 }
 
 export async function collectManifestDiffLogs(input: {

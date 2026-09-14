@@ -1,7 +1,17 @@
 const LYNX_E2E_APP_ID = "com.hotupdater.lynxexample";
 
+export const LYNX_E2E_BUILTIN_BUNDLE_ID =
+  "00000000-0000-7000-8000-000000000000";
+export const RN_E2E_BUILTIN_BUNDLE_ID = "7000-8000-000000000000";
+
 export function isLynxE2eAppId(appId: string): boolean {
   return appId === LYNX_E2E_APP_ID;
+}
+
+export function e2eBuiltInBundleId(appId: string): string {
+  return isLynxE2eAppId(appId)
+    ? LYNX_E2E_BUILTIN_BUNDLE_ID
+    : RN_E2E_BUILTIN_BUNDLE_ID;
 }
 
 export function lynxAndroidInstalledManifestPaths(

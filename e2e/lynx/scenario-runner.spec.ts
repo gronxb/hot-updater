@@ -103,4 +103,39 @@ describe("Lynx E2E scenario runner", () => {
       "third failed",
     ]);
   });
+
+  it("stops the batch when failed scenario cleanup also fails", async () => {
+    const events: string[] = [];
+    const executeScenario = vi.fn(async ({ scenarioName }) => {
+      events.push(`execute:${scenarioName}`);
+      throw new Error("scenario failed");
+    });
+    const startControlServer = vi.fn(async () => ({
+      baseUrl: "http://control.test",
+      stop: async () => {
+        events.push("stop:first");
+        throw new Error("cleanup failed");
+      },
+    }));
+
+    await expect(
+      runScenarioBatch(
+        {
+          env: {},
+          platform: "ios",
+          resultsRoot: "/repo/e2e/results/detox",
+          scenarios: ["first", "second"],
+        },
+        {
+          error: vi.fn(),
+          executeScenario,
+          log: vi.fn(),
+          startControlServer,
+        },
+      ),
+    ).rejects.toThrow("cleanup failed");
+    expect(events).toEqual(["execute:first", "stop:first"]);
+    expect(executeScenario).toHaveBeenCalledOnce();
+    expect(startControlServer).toHaveBeenCalledOnce();
+  });
 });

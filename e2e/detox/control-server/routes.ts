@@ -579,7 +579,11 @@ app.post("/e2e/assert-first-ota-uses-archive", async (c) => {
     return c.json({ error: "bundleId is required" }, 400);
   }
 
-  return c.json(await handleAssertFirstOtaUsesArchive(payload.bundleId));
+  return c.json(
+    await handleAssertFirstOtaUsesArchive(payload.bundleId, {
+      signal: c.req.raw.signal,
+    }),
+  );
 });
 
 app.post("/e2e/assert-lynx-page-interruption-state", async (c) => {
