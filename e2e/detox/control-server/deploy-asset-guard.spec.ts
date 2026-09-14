@@ -158,11 +158,16 @@ describe("Detox deploy asset guard", () => {
         path.join(testDir, "keep.txt"),
         "not a deploy fixture",
       );
-      const e2eAssetsUrl = pathToFileURL(
-        path.join(repoDir, "examples/lynx/scripts/e2e-assets.mjs"),
+      const spikeAssetsUrl = pathToFileURL(
+        path.join(repoDir, "examples/lynx/scripts/spike-assets.mjs"),
       ).href;
-      const { finishLynxE2eBundle } = (await import(e2eAssetsUrl)) as {
-        finishLynxE2eBundle: (outDir: string) => Promise<{
+      const { finishSpike } = (await import(spikeAssetsUrl)) as {
+        finishSpike: (
+          outDir: string,
+          framework: string,
+          variant: string,
+          provenance: object,
+        ) => Promise<{
           pageEssentialResources: readonly unknown[];
         }>;
       };
@@ -180,7 +185,12 @@ describe("Detox deploy asset guard", () => {
           ),
         );
         await writeValidCompilerOutput(profileOutDir);
-        const compilerResult = await finishLynxE2eBundle(profileOutDir);
+        const compilerResult = await finishSpike(
+          profileOutDir,
+          "react",
+          "A",
+          {},
+        );
 
         expect(compilerResult.pageEssentialResources).toHaveLength(2);
         await copyE2eFixtures(exampleDir, profileOutDir);
@@ -202,7 +212,7 @@ describe("Detox deploy asset guard", () => {
         expect(await fs.readdir(testDir)).toEqual(["keep.txt"]);
 
         await writeValidCompilerOutput(defaultOutDir);
-        await finishLynxE2eBundle(defaultOutDir);
+        await finishSpike(defaultOutDir, "react", "A", {});
         await copyE2eFixtures(exampleDir, defaultOutDir);
         expect(
           await fs.readdir(path.join(defaultOutDir, "assets/src/test")),
