@@ -24,8 +24,8 @@ import {
 } from "./generation-event-ledger.ts";
 import { assertNoManagedResourceEngineErrors } from "./managed-resource-errors.ts";
 import {
+  createLynxAndroidLaunchConfigurationArguments,
   createLynxNativeLaunchConfiguration,
-  HOT_UPDATER_LYNX_ANDROID_LAUNCH_CONFIGURATION_EXTRA,
   HOT_UPDATER_LYNX_IOS_LAUNCH_CONFIGURATION_PREFIX,
   serializeLynxNativeLaunchConfiguration,
 } from "./native-launch-configuration.ts";
@@ -80,10 +80,6 @@ const INPUT_TEXT_FIELDS: Record<string, string> = {
   "cohort-input": "cohortInput",
   "runtime-channel-input": "runtimeChannelInput",
 };
-
-function androidShellQuote(value: string): string {
-  return `'${value.replaceAll("'", `'"'"'`)}'`;
-}
 
 export class LynxAppDriver implements DetoxAppDriver {
   private readonly controlClient: ControlClient;
@@ -614,9 +610,7 @@ export class LynxAppDriver implements DetoxAppDriver {
         "-S",
         "-n",
         `${this.appId()}/.OtaActivity`,
-        "--es",
-        HOT_UPDATER_LYNX_ANDROID_LAUNCH_CONFIGURATION_EXTRA,
-        androidShellQuote(launchConfiguration),
+        ...createLynxAndroidLaunchConfigurationArguments(launchConfiguration),
       ],
       options.expectCrash === true,
     );

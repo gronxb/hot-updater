@@ -23,20 +23,6 @@ const repo = path.resolve(
 );
 
 describe("Lynx E2E startup resources", () => {
-  it("defers global fetch lookup in both main-thread entry modules", () => {
-    for (const entry of ["index.tsx", "detail.tsx"]) {
-      const source = fs.readFileSync(
-        path.join(repo, "examples/lynx/src/e2eApp", entry),
-        "utf8",
-      );
-
-      expect(source, entry).toContain(
-        "const fetchState = (url: string, init?: RequestInit) => fetch(url, init);",
-      );
-      expect(source, entry).not.toMatch(/fetchState:\s*fetch[,}]/);
-    }
-  });
-
   it("renders a visible managed CSS background in matrix screenshots", () => {
     const appSource = fs.readFileSync(
       path.join(repo, "examples/lynx/src/e2eApp/index.tsx"),

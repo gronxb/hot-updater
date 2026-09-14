@@ -5,6 +5,20 @@ export const HOT_UPDATER_LYNX_IOS_LAUNCH_CONFIGURATION_PREFIX =
 
 export type LynxNativeLaunchConfiguration = Readonly<Record<string, string>>;
 
+export function quoteAndroidShellArgument(value: string): string {
+  return `'${value.replaceAll("'", `'"'"'`)}'`;
+}
+
+export function createLynxAndroidLaunchConfigurationArguments(
+  serializedConfiguration: string,
+): readonly string[] {
+  return [
+    "--es",
+    HOT_UPDATER_LYNX_ANDROID_LAUNCH_CONFIGURATION_EXTRA,
+    quoteAndroidShellArgument(serializedConfiguration),
+  ];
+}
+
 function absoluteHttpUrl(value: string, name: string): string {
   const url = new URL(value);
   if (url.protocol !== "http:" && url.protocol !== "https:") {

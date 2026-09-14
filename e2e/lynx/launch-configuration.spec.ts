@@ -1,3 +1,4 @@
+import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -13,6 +14,7 @@ import {
   resolveRuntimeConfigUrl,
 } from "../detox/scripts/control-server-env.ts";
 import {
+  createLynxAndroidLaunchConfigurationArguments,
   createLynxNativeLaunchConfiguration,
   serializeLynxNativeLaunchConfiguration,
 } from "./native-launch-configuration.ts";
@@ -128,6 +130,27 @@ describe("Lynx E2E launch configuration", () => {
     ).toBe(
       '{"appBaseURL":"http://127.0.0.1:3014/hot-updater","channel":"production","runtimeConfigURL":"http://localhost:3114/e2e/runtime-config"}',
     );
+  });
+
+  it("preserves the Android launch payload through adb shell argument parsing", () => {
+    const serialized = serializeLynxNativeLaunchConfiguration(
+      createLynxNativeLaunchConfiguration({
+        appBaseURL: "http://127.0.0.1:3014/hot-updater",
+        channel: "production",
+        runtimeConfigURL: "http://localhost:3114/e2e/runtime-config",
+      }),
+    );
+    const args = createLynxAndroidLaunchConfigurationArguments(serialized);
+    const parsed = execFileSync("sh", ["-c", `printf %s ${args[2]}`], {
+      encoding: "utf8",
+    });
+
+    expect(args.slice(0, 2)).toEqual(["--es", "hotUpdaterLaunchConfiguration"]);
+    expect(JSON.parse(parsed)).toEqual({
+      appBaseURL: "http://127.0.0.1:3014/hot-updater",
+      channel: "production",
+      runtimeConfigURL: "http://localhost:3114/e2e/runtime-config",
+    });
   });
 
   it("carries the launch generation from the native driver into E2E JS", () => {

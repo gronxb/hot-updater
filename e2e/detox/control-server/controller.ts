@@ -35,8 +35,8 @@ import {
 } from "../../../plugins/plugin-core/dist/index.mjs";
 import { lynxE2eRuntimeId } from "../../lynx/embedded-bundle.ts";
 import {
+  createLynxAndroidLaunchConfigurationArguments,
   createLynxNativeLaunchConfiguration,
-  HOT_UPDATER_LYNX_ANDROID_LAUNCH_CONFIGURATION_EXTRA,
   HOT_UPDATER_LYNX_IOS_LAUNCH_CONFIGURATION_PREFIX,
   serializeLynxNativeLaunchConfiguration,
 } from "../../lynx/native-launch-configuration.ts";
@@ -4931,9 +4931,9 @@ function launchAndroidApp({
         "-S",
         "-n",
         `${fixtureSession.appId}/.OtaActivity`,
-        "--es",
-        HOT_UPDATER_LYNX_ANDROID_LAUNCH_CONFIGURATION_EXTRA,
-        lynxLaunchConfiguration(),
+        ...createLynxAndroidLaunchConfigurationArguments(
+          lynxLaunchConfiguration(),
+        ),
       ]
     : explicitActivity
       ? [
