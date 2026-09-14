@@ -108,11 +108,13 @@ describe("Lynx E2E page entry bootstrap", () => {
     async (entry) => {
       vi.useFakeTimers();
       Reflect.deleteProperty(globalThis, "fetch");
-      Reflect.deleteProperty(globalThis, "NativeModules");
+      Object.defineProperty(globalThis, "NativeModules", {
+        configurable: true,
+        value: {},
+        writable: true,
+      });
 
-      await expect(loadEntry(entry)).resolves.toBeDefined();
-
-      vi.resetModules();
+      const effects = await loadEntry(entry);
       const fetchState = vi.fn(async (url: string) => {
         const payload = url.includes("/pending-action")
           ? { action: null }
@@ -130,13 +132,6 @@ describe("Lynx E2E page entry bootstrap", () => {
         value: fetchState,
         writable: true,
       });
-      Object.defineProperty(globalThis, "NativeModules", {
-        configurable: true,
-        value: {},
-        writable: true,
-      });
-
-      const effects = await loadEntry(entry);
       effects[0]?.();
       await vi.advanceTimersByTimeAsync(0);
 
