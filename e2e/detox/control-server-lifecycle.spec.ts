@@ -5,6 +5,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
   monitorControlServerChild,
   stopControlServerChild,
+  stopManagedControlServer,
   waitForControlServer,
 } from "./scripts/control-server-lifecycle";
 
@@ -106,5 +107,75 @@ describe("Detox control server lifecycle", () => {
       }),
     ).rejects.toThrow("did not close after SIGKILL");
     expect(child.signals).toEqual(["SIGTERM", "SIGKILL"]);
+  });
+
+  it("surfaces cleanup failure after confirming child closure", async () => {
+    const child = new FakeChild();
+    const monitor = monitorControlServerChild(childProcess(child));
+    child.onKill = (signal) => child.emit("close", 0, signal);
+    const fetch = vi.fn(async (input: string | URL | Request) => {
+      const url = String(input);
+      if (url.endsWith("/e2e/cleanup")) {
+        return new Response("fixture restoration failed", { status: 500 });
+      }
+      return Response.json({ status: "shutting down" });
+    });
+
+    await expect(
+      stopManagedControlServer(
+        "http://127.0.0.1:3107",
+        childProcess(child),
+        monitor,
+        { delay: async () => {}, fetch },
+      ),
+    ).rejects.toThrow("cleanup failed: HTTP 500: fixture restoration failed");
+    expect(fetch.mock.calls.map(([input]) => String(input))).toEqual([
+      "http://127.0.0.1:3107/e2e/cleanup",
+      "http://127.0.0.1:3107/shutdown",
+    ]);
+    expect(child.signals).toEqual(["SIGTERM"]);
+    expect(monitor.isClosed()).toBe(true);
+  });
+
+  it("completes managed cleanup and confirmed closure on success", async () => {
+    const child = new FakeChild();
+    const monitor = monitorControlServerChild(childProcess(child));
+    child.onKill = (signal) => child.emit("close", 0, signal);
+    const fetch = vi.fn(async () => Response.json({ status: "ok" }));
+
+    await expect(
+      stopManagedControlServer(
+        "http://127.0.0.1:3107",
+        childProcess(child),
+        monitor,
+        { delay: async () => {}, fetch },
+      ),
+    ).resolves.toBeUndefined();
+    expect(fetch).toHaveBeenCalledTimes(2);
+    expect(child.signals).toEqual(["SIGTERM"]);
+    expect(monitor.isClosed()).toBe(true);
+  });
+
+  it("reports cleanup network errors after confirmed closure", async () => {
+    const child = new FakeChild();
+    const monitor = monitorControlServerChild(childProcess(child));
+    child.onKill = (signal) => child.emit("close", 0, signal);
+    let request = 0;
+    const fetch = vi.fn(async () => {
+      request += 1;
+      if (request === 1) throw new Error("connection reset");
+      return Response.json({ status: "shutting down" });
+    });
+
+    await expect(
+      stopManagedControlServer(
+        "http://127.0.0.1:3107",
+        childProcess(child),
+        monitor,
+        { delay: async () => {}, fetch },
+      ),
+    ).rejects.toThrow("cleanup request failed: connection reset");
+    expect(child.signals).toEqual(["SIGTERM"]);
+    expect(monitor.isClosed()).toBe(true);
   });
 });

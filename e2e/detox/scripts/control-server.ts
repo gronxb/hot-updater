@@ -13,6 +13,7 @@ import {
 import {
   monitorControlServerChild,
   stopControlServerChild,
+  stopManagedControlServer,
   waitForControlServer,
 } from "./control-server-lifecycle.ts";
 
@@ -32,18 +33,6 @@ const repoDir = path.resolve(
   "../../..",
 );
 const resultsRoot = path.join(repoDir, "e2e/results/detox");
-
-async function fetchIgnoringFailure(
-  url: string,
-  init?: RequestInit,
-): Promise<void> {
-  try {
-    await fetch(url, { ...init, signal: AbortSignal.timeout(5000) });
-  } catch (error) {
-    if (error instanceof Error) return;
-    throw error;
-  }
-}
 
 export async function startDetoxControlServer(
   platform: DetoxPlatform,
@@ -95,13 +84,7 @@ export async function startDetoxControlServer(
   return {
     baseUrl: controlBaseUrl,
     stop: async () => {
-      await fetchIgnoringFailure(`${controlBaseUrl}/e2e/cleanup`, {
-        method: "POST",
-      });
-      await fetchIgnoringFailure(`${controlBaseUrl}/shutdown`, {
-        method: "POST",
-      });
-      await stopControlServerChild(child, childMonitor);
+      await stopManagedControlServer(controlBaseUrl, child, childMonitor);
     },
   };
 }

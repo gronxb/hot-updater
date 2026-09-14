@@ -29,6 +29,11 @@ type StopControlServerOptions = {
   readonly graceTimeoutMs?: number;
 };
 
+type StopManagedControlServerOptions = StopControlServerOptions & {
+  readonly fetch?: typeof globalThis.fetch;
+  readonly requestTimeoutMs?: number;
+};
+
 export function monitorControlServerChild(
   child: ChildProcess,
 ): ControlServerChildMonitor {
@@ -175,4 +180,90 @@ export async function stopControlServerChild(
   if (await waitForClose(monitor, forceTimeoutMs, delay)) return;
 
   throw new Error("Detox control server did not close after SIGKILL");
+}
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+async function requireControlServerCleanup(
+  baseUrl: string,
+  fetchImplementation: typeof globalThis.fetch,
+  requestTimeoutMs: number,
+): Promise<void> {
+  let response: Response;
+  try {
+    response = await fetchImplementation(`${baseUrl}/e2e/cleanup`, {
+      method: "POST",
+      signal: AbortSignal.timeout(requestTimeoutMs),
+    });
+  } catch (error) {
+    throw new Error(
+      `Detox control server cleanup request failed: ${errorMessage(error)}`,
+    );
+  }
+
+  if (response.ok) return;
+  let body = "";
+  try {
+    body = (await response.text()).trim().slice(0, 1000);
+  } catch {
+    body = "";
+  }
+  throw new Error(
+    `Detox control server cleanup failed: HTTP ${response.status}${body ? `: ${body}` : ""}`,
+  );
+}
+
+async function requestShutdown(
+  baseUrl: string,
+  fetchImplementation: typeof globalThis.fetch,
+  requestTimeoutMs: number,
+): Promise<void> {
+  try {
+    await fetchImplementation(`${baseUrl}/shutdown`, {
+      method: "POST",
+      signal: AbortSignal.timeout(requestTimeoutMs),
+    });
+  } catch {
+    // Process signals below remain authoritative for confirmed shutdown.
+  }
+}
+
+export async function stopManagedControlServer(
+  baseUrl: string,
+  child: ChildProcess,
+  monitor: ControlServerChildMonitor,
+  options: StopManagedControlServerOptions = {},
+): Promise<void> {
+  const fetchImplementation = options.fetch ?? globalThis.fetch;
+  const requestTimeoutMs = options.requestTimeoutMs ?? 5000;
+  let cleanupFailure: unknown;
+  let stopFailure: unknown;
+
+  try {
+    await requireControlServerCleanup(
+      baseUrl,
+      fetchImplementation,
+      requestTimeoutMs,
+    );
+  } catch (error) {
+    cleanupFailure = error;
+  } finally {
+    await requestShutdown(baseUrl, fetchImplementation, requestTimeoutMs);
+    try {
+      await stopControlServerChild(child, monitor, options);
+    } catch (error) {
+      stopFailure = error;
+    }
+  }
+
+  if (cleanupFailure && stopFailure) {
+    throw new AggregateError(
+      [cleanupFailure, stopFailure],
+      "Detox control server cleanup and closure failed",
+    );
+  }
+  if (stopFailure) throw stopFailure;
+  if (cleanupFailure) throw cleanupFailure;
 }
