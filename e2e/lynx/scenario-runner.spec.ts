@@ -16,7 +16,11 @@ describe("Lynx E2E scenario runner", () => {
 
     const status = await runScenarioBatch(
       {
-        env: { FIXTURE: "preserved" },
+        env: {
+          CONTROL_URL: "http://stale-control.test",
+          FIXTURE: "preserved",
+          HOT_UPDATER_E2E_CONTROL_BASE_URL: "http://stale-base.test",
+        },
         platform: "android",
         resultsRoot: "/repo/e2e/results/detox",
         scenarios: ["first", "second", "third"],
@@ -36,6 +40,8 @@ describe("Lynx E2E scenario runner", () => {
         },
         log: (message) => logs.push(message),
         startControlServer: async (_platform, env) => {
+          expect(env.CONTROL_URL).toBeUndefined();
+          expect(env.HOT_UPDATER_E2E_CONTROL_BASE_URL).toBeUndefined();
           const resultsDir = env.HOT_UPDATER_E2E_RESULTS_DIR;
           expect(resultsDir).toBeTypeOf("string");
           const scenario = path.basename(resultsDir!);

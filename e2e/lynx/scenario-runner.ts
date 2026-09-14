@@ -43,7 +43,7 @@ export async function runScenarioBatch(
 
   for (const scenarioName of options.scenarios) {
     dependencies.log(`Start ${options.platform}/${scenarioName}`);
-    const env = {
+    const env: NodeJS.ProcessEnv = {
       ...options.env,
       HOT_UPDATER_E2E_RESULTS_DIR: path.join(
         options.resultsRoot,
@@ -51,6 +51,8 @@ export async function runScenarioBatch(
         scenarioName,
       ),
     };
+    delete env.CONTROL_URL;
+    delete env.HOT_UPDATER_E2E_CONTROL_BASE_URL;
     const controlServer = await dependencies.startControlServer(
       options.platform,
       env,
