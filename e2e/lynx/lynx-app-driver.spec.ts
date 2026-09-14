@@ -38,6 +38,48 @@ function mockAndroidCommands(logsSinceLaunch: string | (() => string) = "") {
   });
 }
 
+function recoveredFontDiagnosticLogs(): string {
+  const identity = {
+    runtimeId: "runtime-A",
+    processId: "1234",
+    generationId: "generation-A",
+    contextId: "context-A",
+    attemptId: "attempt-A",
+    bundleId: "bundle-A",
+    releaseId: "release-A",
+    pageAttemptId: null,
+    transitionId: null,
+  };
+  const log = (message: string) =>
+    `09-14 12:34:56.789  1234  1234 I HotUpdaterLynx: ${message}`;
+  return [
+    log(
+      `engine-error fatal=false code=302 message=${JSON.stringify({
+        error_code: 302,
+        sub_code: 30201,
+        error: "Src format is incorrect",
+        type: "font",
+        src: "hot-updater:///assets/probe.ttf",
+      })}`,
+    ),
+    log(
+      `HOT_UPDATER_MATRIX_EVENT ${JSON.stringify({
+        ...identity,
+        event: "fontLoaded",
+        path: "assets/probe.ttf",
+        sha256: "a".repeat(64),
+      })}`,
+    ),
+    log(
+      `HOT_UPDATER_MATRIX_EVENT ${JSON.stringify({
+        ...identity,
+        event: "jsReady",
+        confirmation: { status: "CONFIRMED" },
+      })}`,
+    ),
+  ].join("\n");
+}
+
 describe("Lynx app text assertions", () => {
   beforeEach(() => {
     vi.useFakeTimers();
@@ -399,6 +441,39 @@ describe("Lynx app installation", () => {
       );
     },
   );
+
+  it("accepts a recovered font diagnostic after overlay readiness", async () => {
+    let overlayReady = false;
+    mockAndroidCommands(() => {
+      expect(overlayReady).toBe(true);
+      return recoveredFontDiagnosticLogs();
+    });
+    const fetch = vi.fn(async (url: string) => {
+      if (url.endsWith("/e2e/runtime-config")) overlayReady = true;
+      return {
+        ok: true,
+        status: 200,
+        text: async () =>
+          JSON.stringify(
+            url.endsWith("/e2e/runtime-config")
+              ? { screenState: { runtimeScenarioMarker: "bundle-A-marker" } }
+              : {},
+          ),
+      };
+    });
+    const client = createControlClient({
+      baseUrl: "http://control.test",
+      fetch,
+    });
+    const driver = new LynxAppDriver(client, "android", {
+      HOT_UPDATER_E2E_ANDROID_SERIAL: "emulator-5554",
+    });
+
+    await expect(
+      driver.launch("recovered font launch"),
+    ).resolves.toBeUndefined();
+    expect(overlayReady).toBe(true);
+  });
 
   it("checks managed-resource errors before an allow-disconnect launch returns", async () => {
     mockAndroidCommands(
