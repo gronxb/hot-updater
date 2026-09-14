@@ -601,7 +601,8 @@ describe("Lynx delivery HTTP contract", () => {
     expect(text).not.toHaveBeenCalled();
   });
 
-  it("cancels a chunked body that exceeds its small declared Content-Length", async () => {
+  it("cancels an oversized Lynx stream without TextDecoder or Content-Length", async () => {
+    vi.stubGlobal("TextDecoder", undefined);
     const chunks = [new Uint8Array(maxResponseBytes), new Uint8Array(1)];
     const read = vi.fn(async () => {
       const value = chunks.shift();
@@ -617,7 +618,7 @@ describe("Lynx delivery HTTP contract", () => {
       vi.fn(async () =>
         Promise.resolve({
           status: 200,
-          headers: { get: () => "1" },
+          headers: { get: () => null },
           body: {
             getReader: () => ({ read, cancel, releaseLock }),
           },
@@ -637,9 +638,15 @@ describe("Lynx delivery HTTP contract", () => {
     expect(text).not.toHaveBeenCalled();
   });
 
-  it("reads a Lynx stream without Content-Length or releaseLock", async () => {
-    const bytes = new TextEncoder().encode(JSON.stringify(catalog));
-    const chunks = [bytes.subarray(0, 7), bytes.subarray(7)];
+  it("decodes split UTF-8 from a Lynx stream without TextDecoder", async () => {
+    const streamedCatalog = { ...catalog, catalogId: "가" };
+    const bytes = new TextEncoder().encode(JSON.stringify(streamedCatalog));
+    const multibyteStart = bytes.indexOf(0xea);
+    expect(multibyteStart).toBeGreaterThanOrEqual(0);
+    const chunks = [
+      bytes.subarray(0, multibyteStart + 1),
+      bytes.subarray(multibyteStart + 1),
+    ];
     const read = vi.fn(async () => {
       const value = chunks.shift();
       return value === undefined
@@ -648,6 +655,8 @@ describe("Lynx delivery HTTP contract", () => {
     });
     const cancel = vi.fn(async () => undefined);
     const text = vi.fn();
+    void Response;
+    vi.stubGlobal("TextDecoder", undefined);
     vi.stubGlobal(
       "fetch",
       vi.fn(async () =>
@@ -662,7 +671,7 @@ describe("Lynx delivery HTTP contract", () => {
 
     await expect(
       createHttpClient({ baseURL: "https://updates.test" }).fetchCatalog(state),
-    ).resolves.toEqual(catalog);
+    ).resolves.toEqual(streamedCatalog);
     expect(cancel).not.toHaveBeenCalled();
     expect(text).not.toHaveBeenCalled();
   });
@@ -754,6 +763,30 @@ describe("Lynx delivery HTTP contract", () => {
         Promise.resolve({
           status: 200,
           headers: { get: () => String(body.length) },
+          body: null,
+          text,
+        } as unknown as Response),
+      ),
+    );
+
+    await expect(
+      createHttpClient({ baseURL: "https://updates.test" }).fetchCatalog(state),
+    ).resolves.toEqual(catalog);
+    expect(text).toHaveBeenCalledOnce();
+  });
+
+  it("finds Content-Length in a case-sensitive Headers polyfill", async () => {
+    const body = JSON.stringify(catalog);
+    const text = vi.fn(async () => body);
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        Promise.resolve({
+          status: 200,
+          headers: {
+            get: (name: string) =>
+              name === "Content-Length" ? String(body.length) : null,
+          },
           body: null,
           text,
         } as unknown as Response),

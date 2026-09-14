@@ -47,7 +47,10 @@ function utf8ByteLength(value: string): number {
 }
 
 function contentLength(response: Response): number | null {
-  const value = response.headers?.get?.("content-length") ?? null;
+  const value =
+    response.headers?.get?.("content-length") ??
+    response.headers?.get?.("Content-Length") ??
+    null;
   if (value === null) return null;
   if (!/^\d+$/.test(value)) {
     return invalidResponse("Invalid Content-Length response header.");
@@ -75,6 +78,13 @@ function cancelReader(reader: ReadableStreamDefaultReader<Uint8Array>): void {
   }
 }
 
+async function decodeUtf8(content: Uint8Array): Promise<string> {
+  if (typeof TextDecoder === "function") {
+    return new TextDecoder().decode(content);
+  }
+  return new Response(content).text();
+}
+
 async function readBoundedBody(
   response: Response,
   maxResponseBytes: number,
@@ -96,8 +106,7 @@ async function readBoundedBody(
   if (
     body !== null &&
     body !== undefined &&
-    typeof body.getReader === "function" &&
-    typeof TextDecoder === "function"
+    typeof body.getReader === "function"
   ) {
     const reader = body.getReader();
     const chunks: Uint8Array[] = [];
@@ -138,7 +147,7 @@ async function readBoundedBody(
       content.set(chunk, offset);
       offset += chunk.byteLength;
     }
-    return new TextDecoder().decode(content);
+    return decodeUtf8(content);
   }
 
   if (declaredLength === null) {
