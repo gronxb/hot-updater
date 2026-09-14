@@ -1,3 +1,4 @@
+import { pluginLynxConfig } from "@lynx-js/config-rsbuild-plugin";
 import { defineConfig } from "@lynx-js/rspeedy";
 import { pluginVueLynx } from "vue-lynx/plugin";
 
@@ -46,6 +47,7 @@ export default defineConfig({
   },
   plugins: [
     pluginVueLynx({ enableIFR: true }),
+    pluginLynxConfig({ enableFetchAPIStandardStreaming: true }),
     compilerPageGraphPlugin({
       resourceEntries: compilerPageResourceEntries(resourceSet),
     }),

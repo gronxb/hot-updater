@@ -84,7 +84,7 @@ function artifactResponseBody(byteLength: number): string {
 }
 
 describe("Lynx delivery HTTP contract", () => {
-  it("uses the encoded catalog route and requests a bounded Lynx response stream", async () => {
+  it("uses the encoded catalog route without the deprecated Lynx request extension", async () => {
     const fetch = respond(catalog);
     const client = createHttpClient({
       baseURL: "https://updates.test/api/",
@@ -95,9 +95,12 @@ describe("Lynx delivery HTTP contract", () => {
       "https://updates.test/api/release-catalogs/app-version/ios/cHJvZHVjdGlvbg/1.2.3%2B4",
       expect.objectContaining({
         headers: { Authorization: "test-header" },
-        lynxExtension: { useStreaming: true },
       }),
     );
+    const request = (
+      fetch.mock.calls as unknown as [string, RequestInit][]
+    )[0]![1];
+    expect(request).not.toHaveProperty("lynxExtension");
   });
 
   it("uses a native Unicode channel key when the runtime has no String.normalize", async () => {

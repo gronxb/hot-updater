@@ -71,9 +71,16 @@ try {
   await fs.mkdir(path.join(fixture, "node_modules/@hot-updater"), {
     recursive: true,
   });
+  await fs.mkdir(path.join(fixture, "node_modules/@lynx-js"), {
+    recursive: true,
+  });
   await fs.symlink(
     path.join(cwd, "node_modules/@hot-updater/lynx"),
     path.join(fixture, "node_modules/@hot-updater/lynx"),
+  );
+  await fs.symlink(
+    path.join(cwd, "node_modules/@lynx-js/config-rsbuild-plugin"),
+    path.join(fixture, "node_modules/@lynx-js/config-rsbuild-plugin"),
   );
   if (isSdk) {
     await fs.copyFile(

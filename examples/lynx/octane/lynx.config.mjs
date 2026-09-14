@@ -1,3 +1,4 @@
+import { pluginLynxConfig } from "@lynx-js/config-rsbuild-plugin";
 import { defineConfig } from "@lynx-js/rspeedy";
 import { pluginOctane } from "@octanejs/rspeedy-plugin";
 
@@ -49,6 +50,7 @@ export default defineConfig({
   },
   plugins: [
     pluginOctane({ dev: false, hmr: false }),
+    pluginLynxConfig({ enableFetchAPIStandardStreaming: true }),
     compilerPageGraphPlugin({
       resourceEntries: compilerPageResourceEntries(resourceSet),
     }),

@@ -383,12 +383,9 @@ export function createHttpClient(options: HotUpdaterOptions) {
       }, timeout);
     });
     try {
-      const request: RequestInit & {
-        lynxExtension: { useStreaming: true };
-      } = {
+      const request: RequestInit = {
         headers: options.requestHeaders,
         signal: controller.signal,
-        lynxExtension: { useStreaming: true },
       };
       const response = await Promise.race([
         fetch(`${baseURL()}${path}`, request),
