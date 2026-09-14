@@ -87,9 +87,11 @@ import {
 } from "./lynx-store.ts";
 import {
   captureCommandWithDeadline,
+  captureArtifactSelectionEvidence,
   classifyArtifactSelection,
   classifyArtifactSelectionHistory,
   collectManifestDiffLogs,
+  type ArtifactSelectionEvidence,
 } from "./manifest-diff-assertion.ts";
 import { hasNativeInstallEvent } from "./native-install-log.ts";
 import { inferPatchAssetPathFromStorageUri } from "./patch-storage-path.ts";
@@ -541,19 +543,8 @@ type CapturedProxyResponse = {
   readonly status: number;
   readonly statusText: string;
 };
-type CapturedArtifactSelection = {
-  readonly changedAssetCount: number;
-  readonly changedAssetFileCount: number;
-  readonly changedAssetFilePaths: readonly string[];
-  readonly changedAssetPatchCount: number;
-  readonly changedAssetPatchPaths: readonly string[];
-  readonly changedAssetsPresent: boolean;
+type CapturedArtifactSelection = ArtifactSelectionEvidence & {
   readonly currentBundleId: string;
-  readonly fileHashPresent: boolean;
-  readonly fileUrlPresent: boolean;
-  readonly manifestFileHashPresent: boolean;
-  readonly manifestUrlPresent: boolean;
-  readonly rawChangedAssetPaths: readonly string[];
   readonly targetBundleId: string;
 };
 const proxyRequestCounts = {
@@ -3849,47 +3840,12 @@ function captureArtifactSelection(pathname: string, payload: unknown) {
     return;
   }
 
-  const artifact = payload as {
-    changedAssets?: unknown;
-    fileHash?: unknown;
-    fileUrl?: unknown;
-    manifestFileHash?: unknown;
-    manifestUrl?: unknown;
-  };
-  const changedAssetsPresent =
-    artifact.changedAssets !== undefined && artifact.changedAssets !== null;
-  const changedAssetEntries =
-    changedAssetsPresent &&
-    typeof artifact.changedAssets === "object" &&
-    !Array.isArray(artifact.changedAssets)
-      ? Object.entries(artifact.changedAssets as Record<string, unknown>)
-      : [];
-  const hasField = (entry: unknown, field: string) =>
-    entry !== null &&
-    typeof entry === "object" &&
-    Reflect.get(entry, field) !== undefined;
-  const changedAssetFilePaths = changedAssetEntries.flatMap(([path, entry]) =>
-    hasField(entry, "file") ? [path] : [],
-  );
-  const changedAssetPatchPaths = changedAssetEntries.flatMap(([path, entry]) =>
-    hasField(entry, "patch") ? [path] : [],
-  );
+  const evidence = captureArtifactSelectionEvidence(payload);
+  if (!evidence) return;
 
   capturedArtifactSelections.push({
-    changedAssetCount: changedAssetEntries.length,
-    changedAssetFileCount: changedAssetFilePaths.length,
-    changedAssetFilePaths,
-    changedAssetPatchCount: changedAssetPatchPaths.length,
-    changedAssetPatchPaths,
-    changedAssetsPresent,
     currentBundleId,
-    fileHashPresent: typeof artifact.fileHash === "string",
-    fileUrlPresent: typeof artifact.fileUrl === "string",
-    manifestFileHashPresent: typeof artifact.manifestFileHash === "string",
-    manifestUrlPresent: typeof artifact.manifestUrl === "string",
-    rawChangedAssetPaths: changedAssetFilePaths.filter(
-      (path) => !changedAssetPatchPaths.includes(path),
-    ),
+    ...evidence,
     targetBundleId,
   });
 }

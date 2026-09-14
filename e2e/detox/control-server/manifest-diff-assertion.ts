@@ -1,21 +1,147 @@
 import { spawn } from "node:child_process";
+import { createHash } from "node:crypto";
 
 export type ArtifactSelectionEvidence = {
   readonly changedAssetCount: number;
-  readonly changedAssetsPresent: boolean;
-  readonly fileHashPresent: boolean;
-  readonly fileUrlPresent: boolean;
-  readonly manifestFileHashPresent: boolean;
-  readonly manifestUrlPresent: boolean;
-};
-
-export type ManifestDiffSelectionEvidence = ArtifactSelectionEvidence & {
+  readonly changedAssetDescriptorsComplete: boolean;
   readonly changedAssetFileCount: number;
   readonly changedAssetFilePaths: readonly string[];
   readonly changedAssetPatchCount: number;
   readonly changedAssetPatchPaths: readonly string[];
+  readonly changedAssetsPresent: boolean;
+  readonly fileHashPresent: boolean;
+  readonly fileUrlPresent: boolean;
+  readonly immutableFingerprint: string;
+  readonly manifestFileHashPresent: boolean;
+  readonly manifestUrlPresent: boolean;
   readonly rawChangedAssetPaths: readonly string[];
 };
+
+export type ManifestDiffSelectionEvidence = ArtifactSelectionEvidence;
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+function isNonEmptyString(value: unknown): value is string {
+  return typeof value === "string" && value.trim().length > 0;
+}
+
+function isRenewableUrl(path: readonly string[], key: string) {
+  if (path.length === 0) {
+    return key === "fileUrl" || key === "manifestUrl";
+  }
+  if (path.length === 3 && path[0] === "changedAssets" && path[2] === "file") {
+    return key === "url";
+  }
+  return (
+    path.length === 3 &&
+    path[0] === "changedAssets" &&
+    path[2] === "patch" &&
+    key === "patchUrl"
+  );
+}
+
+function canonicalizeImmutableSelection(
+  value: unknown,
+  path: readonly string[] = [],
+): unknown {
+  if (Array.isArray(value)) {
+    return value.map((entry) => canonicalizeImmutableSelection(entry, path));
+  }
+  if (!isRecord(value)) {
+    return value;
+  }
+
+  return Object.fromEntries(
+    Object.keys(value)
+      .sort()
+      .flatMap((key) => {
+        const entry = value[key];
+        if (entry === undefined) return [];
+        return [
+          [
+            key,
+            isRenewableUrl(path, key) && typeof entry === "string"
+              ? "<renewable-url>"
+              : canonicalizeImmutableSelection(entry, [...path, key]),
+          ],
+        ];
+      }),
+  );
+}
+
+function readChangedAsset(entry: unknown) {
+  if (!isRecord(entry) || !isNonEmptyString(entry.fileHash)) {
+    return { complete: false, file: false, patch: false };
+  }
+
+  const fileAbsent = entry.file === undefined || entry.file === null;
+  const file =
+    isRecord(entry.file) &&
+    isNonEmptyString(entry.file.url) &&
+    (entry.file.compression === undefined ||
+      entry.file.compression === null ||
+      entry.file.compression === "br");
+  const patchAbsent = entry.patch === undefined || entry.patch === null;
+  const patch =
+    isRecord(entry.patch) &&
+    entry.patch.algorithm === "bsdiff" &&
+    isNonEmptyString(entry.patch.baseBundleId) &&
+    isNonEmptyString(entry.patch.baseFileHash) &&
+    isNonEmptyString(entry.patch.patchFileHash) &&
+    isNonEmptyString(entry.patch.patchUrl);
+
+  return {
+    complete: (fileAbsent || file) && (patchAbsent || patch) && (file || patch),
+    file,
+    patch,
+  };
+}
+
+export function captureArtifactSelectionEvidence(
+  payload: unknown,
+): ManifestDiffSelectionEvidence | null {
+  if (!isRecord(payload)) return null;
+
+  const changedAssetsPresent =
+    payload.changedAssets !== undefined && payload.changedAssets !== null;
+  const changedAssets = isRecord(payload.changedAssets)
+    ? Object.entries(payload.changedAssets)
+    : [];
+  const descriptors = changedAssets.map(([path, entry]) => ({
+    path,
+    ...readChangedAsset(entry),
+  }));
+  const changedAssetFilePaths = descriptors.flatMap((entry) =>
+    entry.file ? [entry.path] : [],
+  );
+  const changedAssetPatchPaths = descriptors.flatMap((entry) =>
+    entry.patch ? [entry.path] : [],
+  );
+
+  return {
+    changedAssetCount: changedAssets.length,
+    changedAssetDescriptorsComplete:
+      (!changedAssetsPresent || isRecord(payload.changedAssets)) &&
+      descriptors.every((entry) => entry.complete),
+    changedAssetFileCount: changedAssetFilePaths.length,
+    changedAssetFilePaths,
+    changedAssetPatchCount: changedAssetPatchPaths.length,
+    changedAssetPatchPaths,
+    changedAssetsPresent,
+    fileHashPresent: isNonEmptyString(payload.fileHash),
+    fileUrlPresent: isNonEmptyString(payload.fileUrl),
+    immutableFingerprint: createHash("sha256")
+      .update(JSON.stringify(canonicalizeImmutableSelection(payload)))
+      .digest("hex"),
+    manifestFileHashPresent: isNonEmptyString(payload.manifestFileHash),
+    manifestUrlPresent: isNonEmptyString(payload.manifestUrl),
+    rawChangedAssetPaths: changedAssetFilePaths.filter(
+      (path) => !changedAssetPatchPaths.includes(path),
+    ),
+  };
+}
 
 export function classifyArtifactSelection(
   evidence: ArtifactSelectionEvidence,
@@ -23,6 +149,7 @@ export function classifyArtifactSelection(
   if (
     evidence.changedAssetsPresent &&
     evidence.changedAssetCount > 0 &&
+    evidence.changedAssetDescriptorsComplete &&
     evidence.manifestFileHashPresent &&
     evidence.manifestUrlPresent
   ) {
@@ -40,21 +167,6 @@ export function classifyArtifactSelection(
   return null;
 }
 
-function manifestDiffSelectionFingerprint(
-  evidence: ManifestDiffSelectionEvidence,
-) {
-  return JSON.stringify({
-    changedAssetCount: evidence.changedAssetCount,
-    changedAssetFileCount: evidence.changedAssetFileCount,
-    changedAssetFilePaths: evidence.changedAssetFilePaths.toSorted(),
-    changedAssetPatchCount: evidence.changedAssetPatchCount,
-    changedAssetPatchPaths: evidence.changedAssetPatchPaths.toSorted(),
-    fileHashPresent: evidence.fileHashPresent,
-    fileUrlPresent: evidence.fileUrlPresent,
-    rawChangedAssetPaths: evidence.rawChangedAssetPaths.toSorted(),
-  });
-}
-
 export function classifyArtifactSelectionHistory(
   evidence: readonly ManifestDiffSelectionEvidence[],
 ): "archive-only" | "manifest-diff" | null {
@@ -65,14 +177,8 @@ export function classifyArtifactSelectionHistory(
   ) {
     return null;
   }
-  if (selection === "archive-only") {
-    return selection;
-  }
-
-  const fingerprint = manifestDiffSelectionFingerprint(evidence[0]!);
-  return evidence.every(
-    (entry) => manifestDiffSelectionFingerprint(entry) === fingerprint,
-  )
+  const fingerprint = evidence[0]!.immutableFingerprint;
+  return evidence.every((entry) => entry.immutableFingerprint === fingerprint)
     ? selection
     : null;
 }

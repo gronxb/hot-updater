@@ -118,9 +118,12 @@ describe("Detox remote asset proxy URLs", () => {
             changedAssets: {
               "assets/example.bmp": {
                 file: { url: signedBundleUrl },
+                fileHash: "asset-target-hash",
                 patch: {
                   algorithm: "bsdiff",
                   baseBundleId: "019ea44a-0000-7000-8000-000000000000",
+                  baseFileHash: "asset-base-hash",
+                  patchFileHash: "asset-patch-hash",
                   patchUrl: signedPatchUrl,
                 },
               },
@@ -588,11 +591,30 @@ describe("Detox remote asset proxy URLs", () => {
     const manifestDiff = {
       changedAssets: {
         "main.bundle": {
-          file: { url: "https://storage.example.com/main.bundle" },
+          file: null,
+          fileHash: "main-target-hash",
+          patch: {
+            algorithm: "bsdiff",
+            baseBundleId: "base-bundle",
+            baseFileHash: "main-base-hash",
+            patchFileHash: "main-patch-hash",
+            patchUrl: "https://storage.example.com/main.patch?token=one",
+          },
+        },
+        "metadata.json": {
+          file: {
+            compression: null,
+            url: "https://storage.example.com/metadata.json?token=one",
+          },
+          fileHash: "metadata-target-hash",
+          patch: null,
         },
       },
+      fileHash: "archive-hash",
+      fileUrl: "https://storage.example.com/archive.zip?token=one",
       manifestFileHash: "manifest-hash",
-      manifestUrl: "https://storage.example.com/manifest.json",
+      manifestUrl: "https://storage.example.com/manifest.json?token=one",
+      patchAssetPath: "main.bundle",
     };
 
     vi.resetModules();
@@ -623,6 +645,16 @@ describe("Detox remote asset proxy URLs", () => {
           bundleId: "target",
           previousBundleId: "current",
         });
+      const assertManifestConflict = async (mutate: (payload: any) => void) => {
+        const changed = structuredClone(manifestDiff);
+        mutate(changed);
+        controller.handleConfigureProxy({ reset: true });
+        await capture(manifestDiff);
+        await capture(changed);
+        await expect(assertManifestDiff()).rejects.toThrow(
+          "Unexpected Bundle artifact selection",
+        );
+      };
 
       for (const captures of [
         [archiveOnly, manifestDiff],
@@ -648,6 +680,92 @@ describe("Detox remote asset proxy URLs", () => {
       await capture(manifestDiff);
       const strictPath = new AbortController();
       strictPath.abort(new Error("strict manifest assertion reached"));
+      await expect(
+        controller.handleAssertManifestDiffApplied({
+          bundleId: "target",
+          previousBundleId: "current",
+          signal: strictPath.signal,
+        }),
+      ).rejects.toThrow(
+        "Control job cancelled: strict manifest assertion reached",
+      );
+
+      for (const mutate of [
+        (payload: any) => (payload.manifestFileHash = "other-manifest-hash"),
+        (payload: any) =>
+          (payload.changedAssets["metadata.json"].fileHash =
+            "other-asset-hash"),
+        (payload: any) =>
+          (payload.changedAssets["main.bundle"].patch.patchFileHash =
+            "other-patch-hash"),
+        (payload: any) =>
+          (payload.changedAssets["main.bundle"].patch.algorithm = "other"),
+        (payload: any) =>
+          (payload.changedAssets["main.bundle"].patch.baseBundleId =
+            "other-base-bundle"),
+      ]) {
+        await assertManifestConflict(mutate);
+      }
+
+      controller.handleConfigureProxy({ reset: true });
+      await capture(archiveOnly);
+      await capture({ ...archiveOnly, fileHash: "other-archive-hash" });
+      await expect(assertManifestDiff()).rejects.toThrow(
+        "Unexpected Bundle artifact selection",
+      );
+
+      for (const changedAssets of [
+        {
+          "main.bundle": {
+            file: {},
+            fileHash: "main-target-hash",
+            patch: null,
+          },
+        },
+        {
+          "main.bundle": {
+            file: null,
+            fileHash: "main-target-hash",
+            patch: {
+              algorithm: "bsdiff",
+              baseBundleId: "base-bundle",
+              baseFileHash: "main-base-hash",
+              patchUrl: "https://storage.example.com/main.patch",
+            },
+          },
+        },
+      ]) {
+        controller.handleConfigureProxy({ reset: true });
+        await capture({ ...manifestDiff, changedAssets });
+        await expect(assertManifestDiff()).rejects.toThrow(
+          "Unexpected Bundle artifact selection",
+        );
+      }
+
+      controller.handleConfigureProxy({ reset: true });
+      await capture(manifestDiff);
+      await capture({
+        ...manifestDiff,
+        changedAssets: {
+          ...manifestDiff.changedAssets,
+          "main.bundle": {
+            ...manifestDiff.changedAssets["main.bundle"],
+            patch: {
+              ...manifestDiff.changedAssets["main.bundle"].patch,
+              patchUrl: "https://renewed.example.com/main.patch?token=two",
+            },
+          },
+          "metadata.json": {
+            ...manifestDiff.changedAssets["metadata.json"],
+            file: {
+              ...manifestDiff.changedAssets["metadata.json"].file,
+              url: "https://renewed.example.com/metadata.json?token=two",
+            },
+          },
+        },
+        fileUrl: "https://renewed.example.com/archive.zip?token=two",
+        manifestUrl: "https://renewed.example.com/manifest.json?token=two",
+      });
       await expect(
         controller.handleAssertManifestDiffApplied({
           bundleId: "target",
