@@ -575,6 +575,105 @@ describe("Detox remote asset proxy URLs", () => {
     }
   });
 
+  it("requires consistent artifact captures before skipping manifest reuse", async () => {
+    const resultsDir = await fs.mkdtemp(
+      path.join(os.tmpdir(), "hot-updater-selection-history-"),
+    );
+    let artifactPayload: unknown;
+    const fetchMock = vi.fn(async () => Response.json(artifactPayload));
+    const archiveOnly = {
+      fileHash: "archive-hash",
+      fileUrl: "https://storage.example.com/bundle.zip",
+    };
+    const manifestDiff = {
+      changedAssets: {
+        "main.bundle": {
+          file: { url: "https://storage.example.com/main.bundle" },
+        },
+      },
+      manifestFileHash: "manifest-hash",
+      manifestUrl: "https://storage.example.com/manifest.json",
+    };
+
+    vi.resetModules();
+    vi.stubEnv(
+      "HOT_UPDATER_E2E_APP_BASE_URL",
+      "https://provider.example.com/hot-updater",
+    );
+    vi.stubEnv("HOT_UPDATER_E2E_APP_ID", "com.hotupdater.example");
+    vi.stubEnv("HOT_UPDATER_E2E_DEVICE_ID", "booted");
+    vi.stubEnv("HOT_UPDATER_E2E_PLATFORM", "ios");
+    vi.stubEnv("HOT_UPDATER_E2E_RESULTS_DIR", resultsDir);
+    vi.stubEnv("PORT", "3107");
+    vi.stubGlobal("fetch", fetchMock);
+
+    try {
+      const controller = await import("./control-server/controller.ts");
+      const artifactUrl =
+        "http://localhost:3107/hot-updater/artifacts/target/from/current";
+      const capture = async (payload: unknown) => {
+        artifactPayload = payload;
+        const response = await controller.handleProxyUpdateRequest(
+          new Request(artifactUrl),
+        );
+        expect(response.status).toBe(200);
+      };
+      const assertManifestDiff = () =>
+        controller.handleAssertManifestDiffApplied({
+          bundleId: "target",
+          previousBundleId: "current",
+        });
+
+      for (const captures of [
+        [archiveOnly, manifestDiff],
+        [manifestDiff, archiveOnly],
+      ]) {
+        controller.handleConfigureProxy({ reset: true });
+        for (const payload of captures) await capture(payload);
+        await expect(assertManifestDiff()).rejects.toThrow(
+          "Unexpected Bundle artifact selection",
+        );
+      }
+
+      controller.handleConfigureProxy({ reset: true });
+      await capture(archiveOnly);
+      await capture(archiveOnly);
+      await expect(assertManifestDiff()).resolves.toEqual({
+        selection: "archive-only",
+        skipped: true,
+      });
+
+      controller.handleConfigureProxy({ reset: true });
+      await capture(manifestDiff);
+      await capture(manifestDiff);
+      const strictPath = new AbortController();
+      strictPath.abort(new Error("strict manifest assertion reached"));
+      await expect(
+        controller.handleAssertManifestDiffApplied({
+          bundleId: "target",
+          previousBundleId: "current",
+          signal: strictPath.signal,
+        }),
+      ).rejects.toThrow(
+        "Control job cancelled: strict manifest assertion reached",
+      );
+
+      controller.handleConfigureProxy({ reset: true });
+      await capture({
+        changedAssets: {},
+        manifestFileHash: "manifest-hash",
+        manifestUrl: "https://storage.example.com/manifest.json",
+      });
+      await expect(assertManifestDiff()).rejects.toThrow(
+        "Unexpected Bundle artifact selection",
+      );
+    } finally {
+      vi.unstubAllEnvs();
+      vi.unstubAllGlobals();
+      await fs.rm(resultsDir, { force: true, recursive: true });
+    }
+  });
+
   it("uses the API key for direct and proxied update requests", async () => {
     const resultsDir = await fs.mkdtemp(
       path.join(os.tmpdir(), "hot-updater-api-key-proxy-"),

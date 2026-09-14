@@ -88,6 +88,7 @@ import {
 import {
   captureCommandWithDeadline,
   classifyArtifactSelection,
+  classifyArtifactSelectionHistory,
   collectManifestDiffLogs,
 } from "./manifest-diff-assertion.ts";
 import { hasNativeInstallEvent } from "./native-install-log.ts";
@@ -6883,12 +6884,12 @@ async function assertManifestDiffApplied(args: {
   previousBundleId: string;
   signal?: AbortSignal;
 }) {
-  const observed = capturedArtifactSelections.findLast(
+  const observed = capturedArtifactSelections.filter(
     (entry) =>
       entry.currentBundleId === args.previousBundleId &&
       entry.targetBundleId === args.bundleId,
   );
-  if (!observed) {
+  if (observed.length === 0) {
     throw createEndpointError("Bundle artifact request was not observed", {
       expected: {
         currentBundleId: args.previousBundleId,
@@ -6897,7 +6898,7 @@ async function assertManifestDiffApplied(args: {
       observed: [...capturedArtifactSelections],
     });
   }
-  const selection = classifyArtifactSelection(observed);
+  const selection = classifyArtifactSelectionHistory(observed);
   if (selection === "archive-only") {
     logDetoxFixture("manifest diff assertion skipped for archive selection", {
       bundleId: args.bundleId,

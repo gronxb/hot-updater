@@ -3,25 +3,36 @@ import { describe, expect, it, vi } from "vitest";
 import {
   captureCommandWithDeadline,
   classifyArtifactSelection,
+  classifyArtifactSelectionHistory,
   collectManifestDiffLogs,
 } from "./manifest-diff-assertion.ts";
 
 const archiveOnly = {
   changedAssetCount: 0,
+  changedAssetFileCount: 0,
+  changedAssetFilePaths: [],
+  changedAssetPatchCount: 0,
+  changedAssetPatchPaths: [],
   changedAssetsPresent: false,
   fileHashPresent: true,
   fileUrlPresent: true,
   manifestFileHashPresent: false,
   manifestUrlPresent: false,
+  rawChangedAssetPaths: [],
 };
 
 const manifestDiff = {
   changedAssetCount: 2,
+  changedAssetFileCount: 2,
+  changedAssetFilePaths: ["main.bundle", "metadata.json"],
+  changedAssetPatchCount: 1,
+  changedAssetPatchPaths: ["main.bundle"],
   changedAssetsPresent: true,
   fileHashPresent: true,
   fileUrlPresent: true,
   manifestFileHashPresent: true,
   manifestUrlPresent: true,
+  rawChangedAssetPaths: ["metadata.json"],
 };
 
 describe("manifest diff assertion", () => {
@@ -39,6 +50,33 @@ describe("manifest diff assertion", () => {
     ]) {
       expect(classifyArtifactSelection(incomplete)).toBeNull();
     }
+  });
+
+  it("requires every repeated capture to have one consistent complete selection", () => {
+    expect(classifyArtifactSelectionHistory([archiveOnly, archiveOnly])).toBe(
+      "archive-only",
+    );
+    expect(classifyArtifactSelectionHistory([manifestDiff, manifestDiff])).toBe(
+      "manifest-diff",
+    );
+    expect(
+      classifyArtifactSelectionHistory([archiveOnly, manifestDiff]),
+    ).toBeNull();
+    expect(
+      classifyArtifactSelectionHistory([manifestDiff, archiveOnly]),
+    ).toBeNull();
+    expect(
+      classifyArtifactSelectionHistory([
+        manifestDiff,
+        { ...manifestDiff, changedAssetPatchPaths: ["metadata.json"] },
+      ]),
+    ).toBeNull();
+    expect(
+      classifyArtifactSelectionHistory([
+        archiveOnly,
+        { ...archiveOnly, fileHashPresent: false },
+      ]),
+    ).toBeNull();
   });
 
   it("reuses one bounded iOS log snapshot for every manifest assertion check", async () => {

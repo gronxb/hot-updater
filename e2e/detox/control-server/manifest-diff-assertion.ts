@@ -9,6 +9,14 @@ export type ArtifactSelectionEvidence = {
   readonly manifestUrlPresent: boolean;
 };
 
+export type ManifestDiffSelectionEvidence = ArtifactSelectionEvidence & {
+  readonly changedAssetFileCount: number;
+  readonly changedAssetFilePaths: readonly string[];
+  readonly changedAssetPatchCount: number;
+  readonly changedAssetPatchPaths: readonly string[];
+  readonly rawChangedAssetPaths: readonly string[];
+};
+
 export function classifyArtifactSelection(
   evidence: ArtifactSelectionEvidence,
 ): "archive-only" | "manifest-diff" | null {
@@ -30,6 +38,43 @@ export function classifyArtifactSelection(
     return "archive-only";
   }
   return null;
+}
+
+function manifestDiffSelectionFingerprint(
+  evidence: ManifestDiffSelectionEvidence,
+) {
+  return JSON.stringify({
+    changedAssetCount: evidence.changedAssetCount,
+    changedAssetFileCount: evidence.changedAssetFileCount,
+    changedAssetFilePaths: evidence.changedAssetFilePaths.toSorted(),
+    changedAssetPatchCount: evidence.changedAssetPatchCount,
+    changedAssetPatchPaths: evidence.changedAssetPatchPaths.toSorted(),
+    fileHashPresent: evidence.fileHashPresent,
+    fileUrlPresent: evidence.fileUrlPresent,
+    rawChangedAssetPaths: evidence.rawChangedAssetPaths.toSorted(),
+  });
+}
+
+export function classifyArtifactSelectionHistory(
+  evidence: readonly ManifestDiffSelectionEvidence[],
+): "archive-only" | "manifest-diff" | null {
+  const selection = evidence[0] ? classifyArtifactSelection(evidence[0]) : null;
+  if (
+    selection === null ||
+    evidence.some((entry) => classifyArtifactSelection(entry) !== selection)
+  ) {
+    return null;
+  }
+  if (selection === "archive-only") {
+    return selection;
+  }
+
+  const fingerprint = manifestDiffSelectionFingerprint(evidence[0]!);
+  return evidence.every(
+    (entry) => manifestDiffSelectionFingerprint(entry) === fingerprint,
+  )
+    ? selection
+    : null;
 }
 
 export async function collectManifestDiffLogs(input: {
