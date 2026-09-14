@@ -25,8 +25,8 @@ import {
 } from "./generation-event-ledger.ts";
 import {
   assertNoManagedResourceEngineErrors,
+  evaluateRecoverableAndroidFontDiagnosticEligibility,
   findManagedResourceEngineErrorCodes,
-  hasRecoverableAndroidFontDiagnostic,
 } from "./managed-resource-errors.ts";
 import {
   createLynxAndroidLaunchConfigurationArguments,
@@ -761,19 +761,48 @@ export class LynxAppDriver implements DetoxAppDriver {
       null,
     );
     if (!preliminaryCodes.includes(302) || preliminaryCodes.includes(301)) {
-      assertNoManagedResourceEngineErrors(logResult.logsSinceLaunch, null);
+      try {
+        assertNoManagedResourceEngineErrors(logResult.logsSinceLaunch, null);
+      } catch (error) {
+        if (
+          preliminaryCodes.includes(302) &&
+          preliminaryCodes.includes(301) &&
+          error instanceof Error
+        ) {
+          throw new Error(
+            `${error.message}; Android journal recovery: reason=log.code-301-present`,
+          );
+        }
+        throw error;
+      }
       return;
     }
-    const processId = this.readAndroidProcessId();
-    if (
-      !hasRecoverableAndroidFontDiagnostic(logResult.logsSinceLaunch, processId)
-    ) {
-      assertNoManagedResourceEngineErrors(logResult.logsSinceLaunch, null);
+    let processId: string;
+    try {
+      processId = this.readAndroidProcessId();
+    } catch (error) {
+      if (error instanceof Error) {
+        throw new Error(
+          `${error.message}; Android journal recovery: reason=log.current-process-id-unavailable`,
+        );
+      }
+      throw error;
+    }
+    const eligibility = evaluateRecoverableAndroidFontDiagnosticEligibility(
+      logResult.logsSinceLaunch,
+      processId,
+    );
+    if (!eligibility.eligible) {
+      assertNoManagedResourceEngineErrors(
+        logResult.logsSinceLaunch,
+        null,
+        eligibility,
+      );
       return;
     }
     if (!expectedRuntimeScenarioMarker) {
       throw new Error(
-        "Could not inspect managed Lynx resources: expected runtime marker is unavailable",
+        "Could not inspect managed Lynx resources: expected runtime marker is unavailable; Android journal recovery: reason=screen.expected-runtime-marker",
       );
     }
     const journalEvidence = await this.captureAndroidRuntimeJournalEvidence(
@@ -783,7 +812,7 @@ export class LynxAppDriver implements DetoxAppDriver {
     );
     if (this.readAndroidProcessId() !== processId) {
       throw new Error(
-        "Could not inspect managed Lynx resources: Android process changed while reading runtime evidence",
+        "Could not inspect managed Lynx resources: Android process changed while reading runtime evidence; Android journal recovery: reason=screen.current-process-id-changed",
       );
     }
     assertNoManagedResourceEngineErrors(
@@ -851,7 +880,7 @@ export class LynxAppDriver implements DetoxAppDriver {
     );
     if (journal.status !== 0 || journal.stdout.length === 0) {
       throw new Error(
-        `Could not inspect managed Lynx runtime journal: ${journal.text}`,
+        `Could not inspect managed Lynx runtime journal: ${journal.text}; Android journal recovery: reason=journal.read-unavailable`,
       );
     }
     return {

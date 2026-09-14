@@ -8,6 +8,8 @@ const MAX_JOURNAL_BYTES = LYNX_RUNTIME_EVENT_LIMITS.journalUtf8Bytes;
 const MAX_EVENT_NAME_BYTES = LYNX_RUNTIME_EVENT_LIMITS.nameUtf8Bytes;
 const MAX_EVENT_DETAILS_BYTES = LYNX_RUNTIME_EVENT_LIMITS.detailsUtf8Bytes;
 const MAX_EVENTS = LYNX_RUNTIME_EVENT_LIMITS.retainedEvents;
+const MAX_DIAGNOSTIC_CHARACTERS = 4096;
+const MAX_PRINTED_DECIMAL_DIGITS = 32;
 
 type JsonRecord = Record<string, unknown>;
 
@@ -51,72 +53,111 @@ type ScreenEvidence = {
   readonly truncated: boolean;
 };
 
+const RECOVERY_REJECTION_CODE_VALUES = [
+  "journal.empty",
+  "journal.byte-limit",
+  "journal.invalid-json",
+  "journal.not-object",
+  "journal.keys",
+  "journal.schema-version",
+  "journal.truncated-type",
+  "journal.next-sequence-format",
+  "journal.noncanonical-json",
+  "journal.events-invalid",
+  "journal.empty-next-sequence",
+  "journal.events-unavailable",
+  "journal.untruncated-first-sequence",
+  "journal.next-sequence-event-mismatch",
+  "screen.current-process-id",
+  "screen.expected-launch-generation",
+  "screen.expected-runtime-marker",
+  "screen.response-not-object",
+  "screen.action-not-object",
+  "screen.action-keys",
+  "screen.state-not-object",
+  "screen.launch-generation-mismatch",
+  "screen.runtime-marker-mismatch",
+  "screen.launch-status",
+  "screen.bundle-id",
+  "screen.release-id",
+  "screen.generation-events-type",
+  "screen.snapshot-invalid-json",
+  "screen.snapshot-not-object",
+  "screen.snapshot-keys",
+  "screen.snapshot-schema-version",
+  "screen.snapshot-truncated-type",
+  "screen.snapshot-events-invalid",
+  "screen.snapshot-empty-events",
+  "screen.snapshot-oldest-sequence",
+  "screen.snapshot-latest-sequence",
+  "screen.state-action-receipt",
+  "screen.wait-action-receipt",
+  "screen.confirmed-ready-identity",
+  "evidence.truncated-mismatch",
+  "evidence.next-sequence-mismatch",
+  "evidence.canonical-events-mismatch",
+  "ready.missing",
+  "order.fatal-before-ready",
+  "boundary.identity-invalid",
+  "boundary.identity-mismatch",
+  "order.evaluate-missing",
+  "order.started-missing",
+  "order.started-before-evaluate",
+  "diagnostic.missing",
+  "diagnostic.count",
+  "order.diagnostic-before-started",
+  "diagnostic.identity-invalid",
+  "diagnostic.identity-mismatch",
+  "diagnostic.field-mismatch",
+  "font.missing",
+  "font.identity-invalid",
+  "font.identity-mismatch",
+  "font.path-mismatch",
+  "font.sha256-invalid",
+  "order.fatal-boundary",
+  "order.generation-boundary-after-ready",
+  "post-ready.identity-invalid",
+  "post-ready.identity-mismatch",
+  "log.unmatched-engine-error",
+] as const;
+
 export type AndroidRuntimeJournalRecoveryRejectionCode =
-  | "journal.empty"
-  | "journal.byte-limit"
-  | "journal.invalid-json"
-  | "journal.not-object"
-  | "journal.keys"
-  | "journal.schema-version"
-  | "journal.truncated-type"
-  | "journal.next-sequence-format"
-  | "journal.noncanonical-json"
-  | "journal.events-invalid"
-  | "journal.empty-next-sequence"
-  | "journal.events-unavailable"
-  | "journal.untruncated-first-sequence"
-  | "journal.next-sequence-event-mismatch"
-  | "screen.current-process-id"
-  | "screen.expected-launch-generation"
-  | "screen.expected-runtime-marker"
-  | "screen.response-not-object"
-  | "screen.action-not-object"
-  | "screen.action-keys"
-  | "screen.state-not-object"
-  | "screen.launch-generation-mismatch"
-  | "screen.runtime-marker-mismatch"
-  | "screen.launch-status"
-  | "screen.bundle-id"
-  | "screen.release-id"
-  | "screen.generation-events-type"
-  | "screen.snapshot-invalid-json"
-  | "screen.snapshot-not-object"
-  | "screen.snapshot-keys"
-  | "screen.snapshot-schema-version"
-  | "screen.snapshot-truncated-type"
-  | "screen.snapshot-events-invalid"
-  | "screen.snapshot-empty-events"
-  | "screen.snapshot-oldest-sequence"
-  | "screen.snapshot-latest-sequence"
-  | "screen.state-action-receipt"
-  | "screen.wait-action-receipt"
-  | "screen.confirmed-ready-identity"
-  | "evidence.truncated-mismatch"
-  | "evidence.next-sequence-mismatch"
-  | "evidence.canonical-events-mismatch"
-  | "ready.missing"
-  | "order.fatal-before-ready"
-  | "boundary.identity-invalid"
-  | "boundary.identity-mismatch"
-  | "order.evaluate-missing"
-  | "order.started-missing"
-  | "order.started-before-evaluate"
-  | "diagnostic.missing"
-  | "diagnostic.count"
-  | "order.diagnostic-before-started"
-  | "diagnostic.identity-invalid"
-  | "diagnostic.identity-mismatch"
-  | "diagnostic.field-mismatch"
-  | "font.missing"
-  | "font.identity-invalid"
-  | "font.identity-mismatch"
-  | "font.path-mismatch"
-  | "font.sha256-invalid"
-  | "order.fatal-boundary"
-  | "order.generation-boundary-after-ready"
-  | "post-ready.identity-invalid"
-  | "post-ready.identity-mismatch"
-  | "log.unmatched-engine-error";
+  (typeof RECOVERY_REJECTION_CODE_VALUES)[number];
+
+const RECOVERY_REJECTION_CODES = new Set<string>(
+  RECOVERY_REJECTION_CODE_VALUES,
+);
+
+const RECOVERY_REJECTION_FIELDS = new Set<string>([
+  "attemptId",
+  "bundleId",
+  "code",
+  "contextId",
+  "fatal",
+  "generationId",
+  "pageAttemptId",
+  "path",
+  "processId",
+  "releaseId",
+  "runtimeId",
+  "subcode",
+  "transitionId",
+  "type",
+]);
+
+const DIAGNOSTIC_OBJECT_KEYS = new Set<string>([
+  "currentBundleId",
+  "currentReleaseId",
+  "generationEvents",
+  "launchGeneration",
+  "launchStatus",
+  "runtimeScenarioMarker",
+  "screenState",
+  "updateActionResult",
+]);
+const DIAGNOSTIC_LAUNCH_STATUSES = new Set<string>([
+  "Current Launch Status: CONFIRMED",
+]);
 
 export type AndroidRuntimeJournalRecoveryRejection = {
   readonly code: AndroidRuntimeJournalRecoveryRejectionCode;
@@ -815,25 +856,73 @@ function sha256(value: string): string {
   return crypto.createHash("sha256").update(value).digest("hex");
 }
 
-function safeScalar(value: unknown): string {
-  if (value === null) return "null";
-  if (typeof value === "boolean" || typeof value === "number") {
-    return String(value);
-  }
-  if (typeof value !== "string") return typeof value;
-  if (/^[A-Za-z0-9._:-]{1,96}$/.test(value)) return value;
+function hashedString(value: string): string {
   return `sha256:${sha256(value)}`;
 }
 
+function safeIdentifier(value: unknown): string {
+  if (value === null) return "null";
+  if (typeof value !== "string") return typeof value;
+  return hashedString(value);
+}
+
+function safeAllowedString(
+  value: unknown,
+  allowed: ReadonlySet<string>,
+): string {
+  if (typeof value !== "string") return `type=${typeof value}`;
+  return allowed.has(value) ? value : hashedString(value);
+}
+
+function safeStructuralScalar(value: unknown): string {
+  if (value === null) return "null";
+  if (typeof value === "boolean") return String(value);
+  if (typeof value === "number") {
+    return Number.isFinite(value) ? String(value) : "number:invalid";
+  }
+  if (typeof value === "string") return hashedString(value);
+  return `type=${Array.isArray(value) ? "array" : typeof value}`;
+}
+
+function safeSequence(value: unknown): string {
+  if (
+    typeof value === "string" &&
+    value.length <= MAX_PRINTED_DECIMAL_DIGITS &&
+    POSITIVE_DECIMAL.test(value)
+  ) {
+    return value;
+  }
+  return safeStructuralScalar(value);
+}
+
+function property(value: JsonRecord | null, key: string): unknown {
+  if (value === null) return undefined;
+  try {
+    return value[key];
+  } catch {
+    return undefined;
+  }
+}
+
 function summarizeKeys(value: unknown): string {
-  const object = record(value);
+  let object: JsonRecord | null;
+  try {
+    object = record(value);
+  } catch {
+    return "type=uninspectable";
+  }
   if (object === null)
     return `type=${Array.isArray(value) ? "array" : typeof value}`;
-  const keys = Object.keys(object).sort();
+  let keys: string[];
+  try {
+    keys = Object.keys(object).sort();
+  } catch {
+    return "type=object keys=uninspectable";
+  }
   const shown = keys
     .slice(0, 24)
     .map((key) =>
-      /^[A-Za-z0-9._:-]{1,64}$/.test(key)
+      DIAGNOSTIC_OBJECT_KEYS.has(key)
         ? key
         : `sha256:${sha256(key).slice(0, 12)}`,
     );
@@ -844,14 +933,15 @@ function summarizeReceipt(value: unknown): string {
   if (typeof value !== "string") return `type=${typeof value}`;
   const match = value.match(/^generation-events -> ([1-9][0-9]*)$/);
   return match
-    ? `generation-events:${match[1]}`
-    : `unrecognized:sha256:${sha256(value)}`;
+    ? `generation-events:${safeSequence(match[1])}`
+    : `unrecognized:${hashedString(value)}`;
 }
 
 function summarizeEventCollection(value: unknown): string {
-  const events = parseEvents(value);
-  if (events === null) return "events=invalid";
-  return `events=${events.length} first=${events[0]?.sequence ?? "none"} last=${events.at(-1)?.sequence ?? "none"}`;
+  if (!Array.isArray(value)) return "events=invalid";
+  const first = record(value[0]);
+  const last = record(value.at(-1));
+  return `events=${value.length} first=${value.length === 0 ? "none" : safeSequence(property(first, "sequence"))} last=${value.length === 0 ? "none" : safeSequence(property(last, "sequence"))}`;
 }
 
 function summarizeSnapshot(value: unknown): string {
@@ -865,37 +955,81 @@ function summarizeSnapshot(value: unknown): string {
   }
   const snapshot = record(parsed);
   if (snapshot === null) return `${prefix} parse=not-object`;
-  return `${prefix} ${summarizeEventCollection(snapshot.events)} oldest=${safeScalar(snapshot.oldestSequence)} latest=${safeScalar(snapshot.latestSequence)} truncated=${safeScalar(snapshot.truncated)}`;
+  return `${prefix} ${summarizeEventCollection(property(snapshot, "events"))} oldest=${safeSequence(property(snapshot, "oldestSequence"))} latest=${safeSequence(property(snapshot, "latestSequence"))} truncated=${safeStructuralScalar(property(snapshot, "truncated"))}`;
 }
 
-function summarizeJournal(value: string): string {
+function summarizeJournal(value: unknown): string {
+  if (typeof value !== "string") return `type=${typeof value}`;
   const prefix = `bytes=${Buffer.byteLength(value, "utf8")} sha256=${sha256(value)}`;
-  const parsed = parseJournal(value);
+  let parsed: ParseResult<RuntimeJournal>;
+  try {
+    parsed = parseJournal(value);
+  } catch {
+    return `${prefix} parse=uninspectable`;
+  }
   if (!parsed.ok) return `${prefix} parse=${parsed.rejection.code}`;
-  return `${prefix} events=${parsed.value.events.length} first=${parsed.value.events[0]?.sequence ?? "none"} last=${parsed.value.events.at(-1)?.sequence ?? "none"} next=${parsed.value.nextSequence} truncated=${parsed.value.truncated}`;
+  return `${prefix} events=${parsed.value.events.length} first=${parsed.value.events.length === 0 ? "none" : safeSequence(parsed.value.events[0]?.sequence)} last=${parsed.value.events.length === 0 ? "none" : safeSequence(parsed.value.events.at(-1)?.sequence)} next=${safeSequence(parsed.value.nextSequence)} truncated=${parsed.value.truncated}`;
+}
+
+function summarizeRecoveryReason(result: unknown): string {
+  try {
+    const resultRecord = record(result);
+    const recovered = property(resultRecord, "recovered");
+    if (recovered === true) return "recovered";
+    if (recovered !== false) return "result.malformed";
+    const rejection = record(property(resultRecord, "rejection"));
+    if (rejection === null) return "rejection.malformed";
+    const code = safeAllowedString(
+      property(rejection, "code"),
+      RECOVERY_REJECTION_CODES,
+    );
+    const field = property(rejection, "field");
+    const sequence = property(rejection, "sequence");
+    return [
+      code,
+      field === undefined
+        ? null
+        : `field=${safeAllowedString(field, RECOVERY_REJECTION_FIELDS)}`,
+      sequence === undefined ? null : `sequence=${safeSequence(sequence)}`,
+    ]
+      .filter((part): part is string => part !== null)
+      .join(" ");
+  } catch {
+    return "result.uninspectable";
+  }
+}
+
+function boundedDiagnostic(value: string): string {
+  if (value.length <= MAX_DIAGNOSTIC_CHARACTERS) return value;
+  const suffix = " diagnostic=truncated";
+  return `${value.slice(0, MAX_DIAGNOSTIC_CHARACTERS - suffix.length)}${suffix}`;
 }
 
 export function formatAndroidRuntimeJournalRecoveryDiagnostic(
   evidence: AndroidRuntimeJournalEvidence,
   result: AndroidRuntimeJournalRecoveryResult,
 ): string {
-  const action = record(evidence.actionResultResponse);
-  const response = record(evidence.screenStateResponse);
-  const screen = response && record(response.screenState);
-  const reason = result.recovered
-    ? "recovered"
-    : [
-        result.rejection.code,
-        result.rejection.field && `field=${result.rejection.field}`,
-        result.rejection.sequence && `sequence=${result.rejection.sequence}`,
-      ]
-        .filter(Boolean)
-        .join(" ");
-  return [
-    `reason=${reason}`,
-    `expected={processId=${safeScalar(evidence.currentProcessId)} launchGeneration=${safeScalar(evidence.expectedLaunchGeneration)} runtimeMarker=${safeScalar(evidence.expectedRuntimeScenarioMarker)}}`,
-    `action={${summarizeKeys(evidence.actionResultResponse)} receipt=${summarizeReceipt(action?.updateActionResult)}}`,
-    `screen={${summarizeKeys(evidence.screenStateResponse)} launchGeneration=${safeScalar(response?.launchGeneration)} state={${summarizeKeys(screen)} runtimeMarker=${safeScalar(screen?.runtimeScenarioMarker)} launchStatus=${safeScalar(screen?.launchStatus)} bundleId=${safeScalar(screen?.currentBundleId)} releaseId=${safeScalar(screen?.currentReleaseId)} receipt=${summarizeReceipt(screen?.updateActionResult)} snapshot={${summarizeSnapshot(screen?.generationEvents)}}}}`,
-    `journal={${summarizeJournal(evidence.runtimeJournalUtf8)}}`,
-  ].join(" ");
+  const reason = summarizeRecoveryReason(result);
+  try {
+    const evidenceRecord = record(evidence);
+    const actionResultResponse = property(
+      evidenceRecord,
+      "actionResultResponse",
+    );
+    const screenStateResponse = property(evidenceRecord, "screenStateResponse");
+    const action = record(actionResultResponse);
+    const response = record(screenStateResponse);
+    const screen = record(property(response, "screenState"));
+    return boundedDiagnostic(
+      [
+        `reason=${reason}`,
+        `expected={processId=${safeIdentifier(property(evidenceRecord, "currentProcessId"))} launchGeneration=${safeIdentifier(property(evidenceRecord, "expectedLaunchGeneration"))} runtimeMarker=${safeIdentifier(property(evidenceRecord, "expectedRuntimeScenarioMarker"))}}`,
+        `action={${summarizeKeys(actionResultResponse)} receipt=${summarizeReceipt(property(action, "updateActionResult"))}}`,
+        `screen={${summarizeKeys(screenStateResponse)} launchGeneration=${safeIdentifier(property(response, "launchGeneration"))} state={${summarizeKeys(screen)} runtimeMarker=${safeIdentifier(property(screen, "runtimeScenarioMarker"))} launchStatus=${safeAllowedString(property(screen, "launchStatus"), DIAGNOSTIC_LAUNCH_STATUSES)} bundleId=${safeIdentifier(property(screen, "currentBundleId"))} releaseId=${safeIdentifier(property(screen, "currentReleaseId"))} receipt=${summarizeReceipt(property(screen, "updateActionResult"))} snapshot={${summarizeSnapshot(property(screen, "generationEvents"))}}}}`,
+        `journal={${summarizeJournal(property(evidenceRecord, "runtimeJournalUtf8"))}}`,
+      ].join(" "),
+    );
+  } catch {
+    return `reason=${reason} diagnostic=unavailable`;
+  }
 }

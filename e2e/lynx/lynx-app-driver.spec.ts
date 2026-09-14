@@ -23,6 +23,7 @@ function createDriver(readScreenState: () => Record<string, unknown>) {
 function mockAndroidCommands(
   logsSinceLaunch: string | (() => string) = "",
   runtimeJournal = "",
+  processId: string | (() => string) = "456\n",
 ) {
   let launchLogMarker = "";
   vi.mocked(spawnSync).mockImplementation((_command, args) => {
@@ -32,7 +33,9 @@ function mockAndroidCommands(
     return {
       status: 0,
       stdout: args.includes("pidof")
-        ? "456\n"
+        ? typeof processId === "function"
+          ? processId()
+          : processId
         : args.includes("run-as")
           ? runtimeJournal
           : args.includes("-d")
@@ -42,6 +45,8 @@ function mockAndroidCommands(
     } as ReturnType<typeof spawnSync>;
   });
 }
+
+const ANDROID_302_DIAGNOSTIC = String.raw`09-14 20:30:41.275  456  7719 I HotUpdaterLynx: engine-error fatal=false code=302 message={"error_code":302,"sub_code":30201,"error":"Src format is incorrect","src":"hot-updater:\/\/\/assets\/probe.ttf","type":"font"}`;
 
 function canonical(value: unknown): string {
   if (value === null || typeof value !== "object") return JSON.stringify(value);
@@ -518,6 +523,143 @@ describe("Lynx app installation", () => {
     },
   );
 
+  it.each([
+    [
+      "log.envelope",
+      ANDROID_302_DIAGNOSTIC.replace(
+        /^09-14 .*? I HotUpdaterLynx: /,
+        "HotUpdaterLynx: ",
+      ),
+    ],
+    [
+      "log.current-process-id",
+      ANDROID_302_DIAGNOSTIC.replace("  456  7719 ", "  999  7719 "),
+    ],
+    ["log.payload-shape", `${ANDROID_302_DIAGNOSTIC} trailing`],
+    ["log.fatal", ANDROID_302_DIAGNOSTIC.replace("fatal=false", "fatal=true")],
+    [
+      "log.engine-error-count",
+      ANDROID_302_DIAGNOSTIC.replace(
+        "Src format is incorrect",
+        "nested engine-error",
+      ),
+    ],
+    [
+      "log.details-json",
+      ANDROID_302_DIAGNOSTIC.replace(/message=\{.*\}$/, "message={bad}"),
+    ],
+    [
+      "log.details-error-code",
+      ANDROID_302_DIAGNOSTIC.replace('"error_code":302', '"error_code":301'),
+    ],
+    [
+      "log.details-subcode",
+      ANDROID_302_DIAGNOSTIC.replace('"sub_code":30201', '"sub_code":30202'),
+    ],
+    [
+      "log.details-type",
+      ANDROID_302_DIAGNOSTIC.replace('"type":"font"', '"type":"image"'),
+    ],
+    [
+      "log.managed-source",
+      ANDROID_302_DIAGNOSTIC.replace("hot-updater:", "https:"),
+    ],
+    [
+      "log.eligible-diagnostic-count",
+      `${ANDROID_302_DIAGNOSTIC}\n${ANDROID_302_DIAGNOSTIC}`,
+    ],
+  ])(
+    "reports the exact Android 302 pre-eligibility gate %s",
+    async (reason, diagnostic) => {
+      mockAndroidCommands(diagnostic);
+      const driver = new LynxAppDriver(
+        createControlClient({
+          baseUrl: "http://control.test",
+          fetch: vi.fn(async (url: string) => ({
+            ok: true,
+            status: 200,
+            text: async () =>
+              JSON.stringify(
+                url.endsWith("/e2e/runtime-config")
+                  ? {
+                      screenState: {
+                        runtimeScenarioMarker: "bundle-A-marker",
+                      },
+                    }
+                  : {},
+              ),
+          })),
+        }),
+        "android",
+        { HOT_UPDATER_E2E_ANDROID_SERIAL: "emulator-5554" },
+      );
+
+      await expect(driver.launch(`pre-gate ${reason}`)).rejects.toThrow(
+        `Android journal recovery: reason=${reason}`,
+      );
+    },
+  );
+
+  it("reports an unavailable PID before evaluating a raw Android 302", async () => {
+    mockAndroidCommands(ANDROID_302_DIAGNOSTIC, "", "invalid-pid\n");
+    const driver = new LynxAppDriver(
+      createControlClient({
+        baseUrl: "http://control.test",
+        fetch: vi.fn(async (url: string) => ({
+          ok: true,
+          status: 200,
+          text: async () =>
+            JSON.stringify(
+              url.endsWith("/e2e/runtime-config")
+                ? {
+                    screenState: {
+                      runtimeScenarioMarker: "bundle-A-marker",
+                    },
+                  }
+                : {},
+            ),
+        })),
+      }),
+      "android",
+      { HOT_UPDATER_E2E_ANDROID_SERIAL: "emulator-5554" },
+    );
+
+    await expect(driver.launch("invalid PID")).rejects.toThrow(
+      "Android journal recovery: reason=log.current-process-id-unavailable",
+    );
+  });
+
+  it("reports code 301 blocking recovery when the logs also contain 302", async () => {
+    mockAndroidCommands(
+      `${ANDROID_302_DIAGNOSTIC}\nHotUpdaterLynx: engine-error code=301`,
+    );
+    const driver = new LynxAppDriver(
+      createControlClient({
+        baseUrl: "http://control.test",
+        fetch: vi.fn(async (url: string) => ({
+          ok: true,
+          status: 200,
+          text: async () =>
+            JSON.stringify(
+              url.endsWith("/e2e/runtime-config")
+                ? {
+                    screenState: {
+                      runtimeScenarioMarker: "bundle-A-marker",
+                    },
+                  }
+                : {},
+            ),
+        })),
+      }),
+      "android",
+      { HOT_UPDATER_E2E_ANDROID_SERIAL: "emulator-5554" },
+    );
+
+    await expect(driver.launch("mixed resource failures")).rejects.toThrow(
+      "Android journal recovery: reason=log.code-301-present",
+    );
+  });
+
   it("reads screen identity and the durable journal for a real Android 302", async () => {
     const fixture = androidJournalFixture();
     const diagnostic = String.raw`09-14 20:30:41.275  456  7719 I HotUpdaterLynx: engine-error fatal=false code=302 message={"error_code":302,"sub_code":30201,"error":"Src format is incorrect","src":"hot-updater:\/\/\/assets\/probe.ttf","type":"font"}`;
@@ -583,7 +725,29 @@ describe("Lynx app installation", () => {
     );
 
     await expect(driver.launch("missing journal")).rejects.toThrow(
-      "Could not inspect managed Lynx runtime journal",
+      "Android journal recovery: reason=journal.read-unavailable",
+    );
+  });
+
+  it("reports a process change before accepting Android journal evidence", async () => {
+    const fixture = androidJournalFixture();
+    const processIds = ["456\n", "789\n"];
+    mockAndroidCommands(
+      ANDROID_302_DIAGNOSTIC,
+      fixture.journal,
+      () => processIds.shift() ?? "789\n",
+    );
+    const driver = new LynxAppDriver(
+      createControlClient({
+        baseUrl: "http://control.test",
+        fetch: androidJournalFetch(fixture.snapshot),
+      }),
+      "android",
+      { HOT_UPDATER_E2E_ANDROID_SERIAL: "emulator-5554" },
+    );
+
+    await expect(driver.launch("process changed")).rejects.toThrow(
+      "Android journal recovery: reason=screen.current-process-id-changed",
     );
   });
 

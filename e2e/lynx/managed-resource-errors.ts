@@ -52,6 +52,38 @@ type ManagedIdentity = {
   readonly releaseId: string | null;
 };
 
+export type AndroidFontDiagnosticEligibilityRejectionCode =
+  | "log.envelope"
+  | "log.current-process-id"
+  | "log.payload-shape"
+  | "log.fatal"
+  | "log.outer-code"
+  | "log.engine-error-count"
+  | "log.details-json"
+  | "log.details-error-code"
+  | "log.details-subcode"
+  | "log.details-type"
+  | "log.managed-source";
+
+type AndroidFontDiagnosticCandidateResult =
+  | { readonly eligible: true; readonly relativePath: string }
+  | {
+      readonly eligible: false;
+      readonly code: AndroidFontDiagnosticEligibilityRejectionCode;
+    };
+
+export type AndroidFontDiagnosticEligibilityResult =
+  | { readonly eligible: true; readonly relativePath: string }
+  | {
+      readonly eligible: false;
+      readonly eligibleCount: number;
+      readonly raw302Count: number;
+      readonly rejections: ReadonlyArray<{
+        readonly code: AndroidFontDiagnosticEligibilityRejectionCode;
+        readonly count: number;
+      }>;
+    };
+
 function parseEnvelope(line: string): LogRecord["envelope"] {
   const match = line.match(THREADTIME_ENVELOPE) ?? line.match(BRIEF_ENVELOPE);
   return match ? { processId: match[1], payload: match[2] } : null;
@@ -299,43 +331,118 @@ function isRecoveredFontDiagnostic(
   return false;
 }
 
+function evaluateAndroidFontDiagnosticCandidate(
+  record: LogRecord,
+  currentProcessId: string,
+): AndroidFontDiagnosticCandidateResult {
+  if (record.envelope === null) {
+    return { eligible: false, code: "log.envelope" };
+  }
+  if (record.envelope.processId !== currentProcessId) {
+    return { eligible: false, code: "log.current-process-id" };
+  }
+  const detailsMatch = record.envelope?.payload.match(ENGINE_ERROR_DETAILS);
+  if (!detailsMatch) {
+    return { eligible: false, code: "log.payload-shape" };
+  }
+  if (detailsMatch[1] !== "false") {
+    return { eligible: false, code: "log.fatal" };
+  }
+  if (detailsMatch[2] !== "302") {
+    return { eligible: false, code: "log.outer-code" };
+  }
+  if (record.envelope.payload.match(/\bengine-error\b/g)?.length !== 1) {
+    return { eligible: false, code: "log.engine-error-count" };
+  }
+  const details = parseJsonObject(detailsMatch[3]);
+  if (details === null) {
+    return { eligible: false, code: "log.details-json" };
+  }
+  if (details.error_code !== 302) {
+    return { eligible: false, code: "log.details-error-code" };
+  }
+  if (details.sub_code !== 30201) {
+    return { eligible: false, code: "log.details-subcode" };
+  }
+  if (details.type !== "font") {
+    return { eligible: false, code: "log.details-type" };
+  }
+  const relativePath = managedRelativePath(details.src);
+  return relativePath === null
+    ? { eligible: false, code: "log.managed-source" }
+    : { eligible: true, relativePath };
+}
+
 function recoverableAndroidFontPath(
   record: LogRecord,
   currentProcessId: string,
 ): string | null {
-  const detailsMatch = record.envelope?.payload.match(ENGINE_ERROR_DETAILS);
-  if (
-    record.envelope?.processId !== currentProcessId ||
-    detailsMatch?.[1] !== "false" ||
-    detailsMatch[2] !== "302" ||
-    record.envelope.payload.match(/\bengine-error\b/g)?.length !== 1
-  ) {
-    return null;
+  const result = evaluateAndroidFontDiagnosticCandidate(
+    record,
+    currentProcessId,
+  );
+  return result.eligible ? result.relativePath : null;
+}
+
+export function evaluateRecoverableAndroidFontDiagnosticEligibility(
+  logs: string,
+  currentProcessId: string,
+): AndroidFontDiagnosticEligibilityResult {
+  const candidates = logs.split(/\r?\n/).flatMap((line, index) => {
+    if (Number(line.match(ENGINE_ERROR_CODE)?.[1]) !== 302) return [];
+    const record = { index, line, envelope: parseEnvelope(line) };
+    return [evaluateAndroidFontDiagnosticCandidate(record, currentProcessId)];
+  });
+  const eligible = candidates.filter(
+    (
+      candidate,
+    ): candidate is Extract<
+      AndroidFontDiagnosticCandidateResult,
+      { eligible: true }
+    > => candidate.eligible,
+  );
+  if (eligible.length === 1) return eligible[0];
+  const counts = new Map<
+    AndroidFontDiagnosticEligibilityRejectionCode,
+    number
+  >();
+  for (const candidate of candidates) {
+    if (candidate.eligible) continue;
+    counts.set(candidate.code, (counts.get(candidate.code) ?? 0) + 1);
   }
-  const details = parseJsonObject(detailsMatch[3]);
-  if (
-    details?.error_code !== 302 ||
-    details.sub_code !== 30201 ||
-    details.type !== "font"
-  ) {
-    return null;
-  }
-  return managedRelativePath(details.src);
+  return {
+    eligible: false,
+    eligibleCount: eligible.length,
+    raw302Count: candidates.length,
+    rejections: [...counts]
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([code, count]) => ({ code, count })),
+  };
 }
 
 export function hasRecoverableAndroidFontDiagnostic(
   logs: string,
   currentProcessId: string,
 ): boolean {
-  const occurrences = logs.split(/\r?\n/).filter((line, index) => {
-    const record = {
-      index,
-      line,
-      envelope: parseEnvelope(line),
-    };
-    return recoverableAndroidFontPath(record, currentProcessId) !== null;
-  });
-  return occurrences.length === 1;
+  return evaluateRecoverableAndroidFontDiagnosticEligibility(
+    logs,
+    currentProcessId,
+  ).eligible;
+}
+
+export function formatAndroidFontDiagnosticEligibilityRejection(
+  result: Exclude<AndroidFontDiagnosticEligibilityResult, { eligible: true }>,
+): string {
+  const gates = result.rejections
+    .map(({ code, count }) => `${code}:${count}`)
+    .join(",");
+  const reason =
+    result.eligibleCount > 1
+      ? "log.eligible-diagnostic-count"
+      : result.rejections.length === 1
+        ? result.rejections[0]?.code
+        : "log.pre-eligibility-gates";
+  return `reason=${reason ?? "log.pre-eligibility-gates"} raw302=${result.raw302Count} eligible=${result.eligibleCount} gates=[${gates}]`;
 }
 
 export function findManagedResourceEngineErrorCodes(
@@ -389,6 +496,10 @@ export function findManagedResourceEngineErrorCodes(
 export function assertNoManagedResourceEngineErrors(
   logs: string,
   journalEvidence?: AndroidRuntimeJournalEvidence | null,
+  eligibilityRejection?: Exclude<
+    AndroidFontDiagnosticEligibilityResult,
+    { eligible: true }
+  >,
 ): void {
   const codes = findManagedResourceEngineErrorCodes(logs, journalEvidence);
   if (codes.length > 0) {
@@ -425,7 +536,9 @@ export function assertNoManagedResourceEngineErrors(
         ? `; Android journal recovery: ${formatAndroidRuntimeJournalRecoveryDiagnostic(journalEvidence, recoveryResult)}`
         : journalEvidence && codes.includes(302)
           ? `; Android journal recovery: reason=log.eligible-diagnostic-count count=${eligiblePaths.length}`
-          : "";
+          : eligibilityRejection && codes.includes(302)
+            ? `; Android journal recovery: ${formatAndroidFontDiagnosticEligibilityRejection(eligibilityRejection)}`
+            : "";
     throw new Error(
       `Managed Lynx resources emitted engine errors: ${codes.join(", ")}${diagnostic}`,
     );

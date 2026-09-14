@@ -443,11 +443,142 @@ describe("Android runtime journal recovery diagnostics", () => {
       result,
     );
     expect(diagnostic).toContain("reason=screen.action-keys");
-    expect(diagnostic).toContain("keys=[secret,updateActionResult]");
+    expect(diagnostic).toContain("keys=[sha256:");
+    expect(diagnostic).toContain("updateActionResult");
     expect(diagnostic).toContain("journal={bytes=");
     expect(diagnostic).toContain("events=16 first=1 last=16 next=17");
     expect(diagnostic).not.toContain("credentials.example");
     expect(diagnostic).not.toContain("do-not-print");
     expect(diagnostic).not.toContain("unexpected private response body");
+  });
+
+  it("never discloses token-like identifiers, markers, rejection fields, or codes", () => {
+    const secret = "BearerSecretABC123";
+    const evidence = contractEnvelope(
+      fixture("android-s1-runtime-events.json"),
+      {
+        actionResultResponse: {
+          [secret]: secret,
+          updateActionResult: secret,
+        },
+        currentProcessId: secret,
+        expectedLaunchGeneration: secret,
+        expectedRuntimeScenarioMarker: secret,
+        screenStateResponse: {
+          launchGeneration: secret,
+          screenState: {
+            currentBundleId: secret,
+            currentReleaseId: secret,
+            generationEvents: secret,
+            launchStatus: secret,
+            runtimeScenarioMarker: secret,
+            updateActionResult: secret,
+          },
+        },
+      },
+    );
+    const result = {
+      recovered: false,
+      rejection: { code: secret, field: secret, sequence: secret },
+    } as unknown as Parameters<
+      typeof formatAndroidRuntimeJournalRecoveryDiagnostic
+    >[1];
+
+    const diagnostic = formatAndroidRuntimeJournalRecoveryDiagnostic(
+      evidence,
+      result,
+    );
+
+    expect(diagnostic).not.toContain(secret);
+    expect(diagnostic).toMatch(/reason=sha256:[0-9a-f]{64}/);
+    expect(diagnostic.length).toBeLessThanOrEqual(4096);
+  });
+
+  it.each([
+    ["missing rejection", { recovered: false }, "rejection.malformed"],
+    [
+      "null rejection",
+      { recovered: false, rejection: null },
+      "rejection.malformed",
+    ],
+    ["invalid discriminator", { recovered: "false" }, "result.malformed"],
+  ])(
+    "does not throw for a malformed %s result",
+    (_label, malformed, reason) => {
+      const evidence = contractEnvelope(
+        fixture("android-s1-runtime-events.json"),
+        { runtimeJournalUtf8: undefined as unknown as string },
+      );
+
+      let diagnostic = "";
+      expect(() => {
+        diagnostic = formatAndroidRuntimeJournalRecoveryDiagnostic(
+          evidence,
+          malformed as unknown as Parameters<
+            typeof formatAndroidRuntimeJournalRecoveryDiagnostic
+          >[1],
+        );
+      }).not.toThrow();
+      expect(diagnostic).toContain(`reason=${reason}`);
+      expect(diagnostic).toContain("journal={type=undefined}");
+    },
+  );
+
+  it("summarizes cyclic objects and unbounded sequence values without throwing", () => {
+    const hugeSequence = "9".repeat(20_000);
+    const journal = JSON.parse(
+      fixture("android-s1-runtime-events.json"),
+    ) as CapturedJournal;
+    const firstJournalSequence = BigInt("9".repeat(64));
+    journal.events.forEach((event, index) => {
+      event.sequence = (firstJournalSequence + BigInt(index)).toString();
+    });
+    journal.nextSequence = (
+      firstJournalSequence + BigInt(journal.events.length)
+    ).toString();
+    journal.truncated = true;
+    const cyclic: Record<string, unknown> = {
+      generationEvents: JSON.stringify({
+        events: [
+          { sequence: hugeSequence },
+          { sequence: `invalid-${hugeSequence}` },
+        ],
+        latestSequence: hugeSequence,
+        oldestSequence: `invalid-${hugeSequence}`,
+        truncated: false,
+      }),
+      updateActionResult: `generation-events -> ${hugeSequence}`,
+    };
+    cyclic.screenState = cyclic;
+    const evidence = {
+      actionResultResponse: cyclic,
+      currentProcessId: "BearerSecretABC123",
+      expectedLaunchGeneration: "BearerSecretABC123",
+      expectedRuntimeScenarioMarker: "BearerSecretABC123",
+      runtimeJournalUtf8: canonical(journal),
+      screenStateResponse: cyclic,
+    } as unknown as AndroidRuntimeJournalEvidence;
+    const result = {
+      recovered: false,
+      rejection: {
+        code: "diagnostic.identity-mismatch",
+        sequence: hugeSequence,
+      },
+    } as const;
+
+    let diagnostic = "";
+    expect(() => {
+      diagnostic = formatAndroidRuntimeJournalRecoveryDiagnostic(
+        evidence,
+        result,
+      );
+    }).not.toThrow();
+    expect(diagnostic).toContain("reason=diagnostic.identity-mismatch");
+    expect(diagnostic).toMatch(
+      /journal=\{bytes=.+ events=16 first=sha256:[0-9a-f]{64} last=sha256:[0-9a-f]{64} next=sha256:[0-9a-f]{64}/,
+    );
+    expect(diagnostic).not.toContain(hugeSequence);
+    expect(diagnostic).not.toContain(firstJournalSequence.toString());
+    expect(diagnostic.length).toBeLessThanOrEqual(4096);
   });
 });
