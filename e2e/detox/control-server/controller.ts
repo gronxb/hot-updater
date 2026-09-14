@@ -4883,6 +4883,7 @@ function lynxLaunchConfiguration() {
   return serializeLynxNativeLaunchConfiguration(
     createLynxNativeLaunchConfiguration({
       appBaseURL: fixtureSession.appBaseUrl,
+      channel: "production",
       runtimeConfigURL: getRuntimeConfigUrl(),
     }),
   );

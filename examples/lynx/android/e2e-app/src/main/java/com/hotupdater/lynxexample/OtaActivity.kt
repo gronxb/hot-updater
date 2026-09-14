@@ -5,6 +5,7 @@ import android.os.Bundle
 import com.hotupdater.lynx.LynxHostConfiguration
 import com.hotupdater.lynx.sparkling.HotUpdaterSparklingConfiguration
 import com.hotupdater.lynx.sparkling.HotUpdaterSparklingHost
+import com.hotupdater.lynx.sparkling.HotUpdaterSparklingLaunchConfiguration
 import org.json.JSONObject
 
 /** Nonproduction shell for the shipped end-to-end scenario. */
@@ -18,6 +19,7 @@ class OtaActivity : Activity() {
             setContentView(host.reattachPrimary(this))
             return
         }
+        val launchConfiguration = HotUpdaterSparklingLaunchConfiguration.from(this)
         val embedded = JSONObject(BuildConfig.LYNX_EMBEDDED_DESCRIPTOR)
         val metadata = packageManager.getApplicationInfo(
             packageName,
@@ -26,7 +28,7 @@ class OtaActivity : Activity() {
         val configuration = HotUpdaterSparklingConfiguration(
             lynx = LynxHostConfiguration(
                 runtimeId = BuildConfig.LYNX_OTA_COMPATIBILITY_ID,
-                channel = intent.getStringExtra("channel") ?: "ota-react",
+                channel = launchConfiguration["channel"] ?: "ota-react",
                 appVersion = "1.0.0",
                 cohort = getSharedPreferences("native-ota-config", MODE_PRIVATE)
                     .getString("cohort", "1")!!,

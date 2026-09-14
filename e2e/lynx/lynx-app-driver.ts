@@ -11,6 +11,7 @@ import type { JsonObject } from "../detox/control-protocol.ts";
 import type {
   DetoxAppDriver,
   DetoxLaunchOptions,
+  DetoxTapOptions,
 } from "../detox/scenarios/types.ts";
 import {
   type DetoxPlatform,
@@ -225,7 +226,11 @@ export class LynxAppDriver implements DetoxAppDriver {
     });
   }
 
-  async tap(stage: string, testID: string): Promise<void> {
+  async tap(
+    stage: string,
+    testID: string,
+    options: DetoxTapOptions = {},
+  ): Promise<void> {
     await this.runStage(stage, async () => {
       const actionResultField = ACTION_RESULT_FIELDS[testID];
       if (actionResultField) {
@@ -247,6 +252,10 @@ export class LynxAppDriver implements DetoxAppDriver {
           `${stage}: wait ${actionResultField}`,
           actionResultField,
           {
+            ...(actionResultField === "updateActionResult" &&
+            options.allowErrorResult !== true
+              ? { failSubstrings: [" -> error"] }
+              : {}),
             rejectSubstrings: [" -> checking"],
             rejectValues: ["idle"],
           },
@@ -565,6 +574,7 @@ export class LynxAppDriver implements DetoxAppDriver {
     const launchConfiguration = serializeLynxNativeLaunchConfiguration(
       createLynxNativeLaunchConfiguration({
         appBaseURL: resolveAppBaseUrl(this.env),
+        channel: "production",
         launchGeneration: options.launchGeneration,
         runtimeConfigURL: resolveRuntimeConfigUrl(this.platform, this.env),
       }),

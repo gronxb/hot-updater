@@ -64,13 +64,14 @@ final class SparklingReloadContractTests: XCTestCase {
         let value = try HotUpdaterSparklingLaunchConfiguration.parse(
             arguments: [
                 "app",
-                "--hot-updater-launch-configuration={\"runtimeConfigURL\":\"http://localhost:3111/e2e/runtime-config\",\"appBaseURL\":\"http://localhost:3011/hot-updater\"}"
+                "--hot-updater-launch-configuration={\"runtimeConfigURL\":\"http://localhost:3111/e2e/runtime-config\",\"appBaseURL\":\"http://localhost:3011/hot-updater\",\"channel\":\"production\"}"
             ]
         )
         XCTAssertEqual(
             value["runtimeConfigURL"],
             "http://localhost:3111/e2e/runtime-config"
         )
+        XCTAssertEqual(value["channel"], "production")
         XCTAssertThrowsError(try HotUpdaterSparklingLaunchConfiguration.parse(
             arguments: [
                 "--hot-updater-launch-configuration={\"runtimeConfigURL\":3111}"

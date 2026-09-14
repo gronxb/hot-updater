@@ -12,8 +12,12 @@ let screenStateURL = "http://localhost:3107/e2e/screen-state";
 let pendingActionURL = "http://localhost:3107/e2e/pending-action";
 let launchGeneration: string | null = null;
 
+const fetchState = (url: string, init?: RequestInit) => fetch(url, init);
+
 const patchScreenState = (patch: Record<string, unknown>) =>
-  publishScreenStatePatch(fetch, screenStateURL, patch, { launchGeneration });
+  publishScreenStatePatch(fetchState, screenStateURL, patch, {
+    launchGeneration,
+  });
 
 const closeDetailPage = () =>
   new Promise<void>((resolve, reject) => {
@@ -37,7 +41,7 @@ const actionHandlers: Record<string, (text?: string) => Promise<void>> = {
 };
 
 const poller = createPendingActionPoller({
-  fetchState: fetch,
+  fetchState,
   getActionHandlers: () => actionHandlers,
   getPendingActionURL: () => pendingActionURL,
   markHandled: () => undefined,

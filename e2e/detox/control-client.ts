@@ -40,6 +40,7 @@ type ControlClientOptions = {
 
 type ScreenStateWaitOptions = {
   readonly expectedValue?: string;
+  readonly failSubstrings?: readonly string[];
   readonly pollGuard?: () => void;
   readonly rejectSubstrings?: readonly string[];
   readonly rejectValues?: readonly string[];
@@ -225,6 +226,14 @@ export class ControlClient {
       }
       const value = readStringField(screenState, fieldName);
       lastObserved = value;
+      if (
+        value !== undefined &&
+        options.failSubstrings?.some((substring) => value.includes(substring))
+      ) {
+        throw new ControlProtocolError(
+          `${stage} observed failed ${fieldName}: ${JSON.stringify(value)}`,
+        );
+      }
       if (value !== undefined && isAcceptedScreenStateValue(value, options)) {
         return { [fieldName]: value };
       }

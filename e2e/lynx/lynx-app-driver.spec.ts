@@ -240,6 +240,32 @@ describe("Lynx managed page evidence actions", () => {
   });
 });
 
+describe("Lynx update actions", () => {
+  it("rejects an update action error by default", async () => {
+    const { driver } = createDriver(() => ({
+      updateActionResult: "current-channel -> error download failed",
+    }));
+
+    await expect(
+      driver.tap("install update", "action-install-current-channel-update"),
+    ).rejects.toThrow(
+      'install update: wait updateActionResult observed failed updateActionResult: "current-channel -> error download failed"',
+    );
+  });
+
+  it("allows an intentional update failure to be asserted by the scenario", async () => {
+    const { driver } = createDriver(() => ({
+      updateActionResult: "current-channel -> error download failed",
+    }));
+
+    await expect(
+      driver.tap("install update", "action-install-current-channel-update", {
+        allowErrorResult: true,
+      }),
+    ).resolves.toBeUndefined();
+  });
+});
+
 describe("Lynx app installation", () => {
   beforeEach(() => {
     vi.mocked(spawnSync).mockReset();
@@ -334,7 +360,7 @@ describe("Lynx app installation", () => {
         "--es",
         "hotUpdaterLaunchConfiguration",
         expect.stringMatching(
-          /^'\{"appBaseURL":"http:\/\/127\.0\.0\.1:3008\/hot-updater","launchGeneration":"[0-9a-f-]+","runtimeConfigURL":"http:\/\/localhost:3107\/e2e\/runtime-config"\}'$/,
+          /^'\{"appBaseURL":"http:\/\/127\.0\.0\.1:3008\/hot-updater","channel":"production","launchGeneration":"[0-9a-f-]+","runtimeConfigURL":"http:\/\/localhost:3107\/e2e\/runtime-config"\}'$/,
         ),
       ],
       expect.objectContaining({ encoding: "utf8" }),

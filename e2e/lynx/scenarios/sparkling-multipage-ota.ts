@@ -282,6 +282,7 @@ async function rejectInvalidDetailTarget(
   await app.tap(
     `${label} ${mode} detail: reject atomic install`,
     "action-install-current-channel-update",
+    { allowErrorResult: true },
   );
   await app.assertText(
     `${label} ${mode} detail: require install rejection`,

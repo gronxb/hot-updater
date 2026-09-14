@@ -107,9 +107,10 @@ class HotUpdaterSparklingLaunchConfigurationTest {
             mapOf(
                 "runtimeConfigURL" to "http://localhost:3111/e2e/runtime-config",
                 "appBaseURL" to "http://localhost:3011/hot-updater",
+                "channel" to "production",
             ),
             HotUpdaterSparklingLaunchConfiguration.parse(
-                """{"runtimeConfigURL":"http://localhost:3111/e2e/runtime-config","appBaseURL":"http://localhost:3011/hot-updater"}""",
+                """{"runtimeConfigURL":"http://localhost:3111/e2e/runtime-config","appBaseURL":"http://localhost:3011/hot-updater","channel":"production"}""",
             ),
         )
         assertThrows(IllegalArgumentException::class.java) {

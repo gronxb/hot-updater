@@ -92,10 +92,12 @@ let pendingActionURL = screenStateURL.replace(
   "/pending-action",
 );
 
+const fetchState = (url: string, init?: RequestInit) => fetch(url, init);
+
 async function resolveAppBaseURL(): Promise<string> {
   try {
     const response = await Promise.race([
-      fetch(runtimeConfigURL).catch(() => null),
+      fetchState(runtimeConfigURL).catch(() => null),
       new Promise<null>((resolve) => {
         setTimeout(() => resolve(null), 2000);
       }),
@@ -114,7 +116,7 @@ async function resolveAppBaseURL(): Promise<string> {
 }
 
 const patchScreenState = async (patch: Partial<ScreenState>) => {
-  await publishScreenStatePatch(fetch, screenStateURL, patch, {
+  await publishScreenStatePatch(fetchState, screenStateURL, patch, {
     launchGeneration,
   });
 };
@@ -674,7 +676,7 @@ const navigateToTestId: { current: (testID: string) => void } = {
 
 let handledScenarioAction = false;
 const pendingActionPoller = createPendingActionPoller({
-  fetchState: fetch,
+  fetchState,
   getActionHandlers: () => actionHandlers.current,
   getPendingActionURL: () => pendingActionURL,
   markHandled: () => {

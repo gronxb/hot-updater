@@ -27,6 +27,7 @@ export const failedDownloadSameGenerationRetryScenario: DetoxScenarioDefinition 
       await app.tap(
         "attempt failing download",
         "action-install-current-channel-update",
+        { allowErrorResult: true },
       );
       await app.assertText(
         "assert first download failed",

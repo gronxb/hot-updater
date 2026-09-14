@@ -630,17 +630,27 @@ describe("production native update endpoint", () => {
       'buildConfigField("String", "HOT_UPDATER_APP_BASE_URL"',
     );
     expect(androidApp).toContain('mapOf("appBaseURL" to it)');
+    expect(androidApp).toContain('channel = "ota-react"');
     expect(androidApp).not.toContain(
       "allowDiagnosticIntentLaunchConfiguration",
     );
     expect(androidE2eApp).toContain(
       "allowDiagnosticIntentLaunchConfiguration = true",
     );
+    expect(androidE2eApp).toContain(
+      "HotUpdaterSparklingLaunchConfiguration.from(this)",
+    );
+    expect(androidE2eApp).toContain(
+      'channel = launchConfiguration["channel"] ?: "ota-react"',
+    );
     expect(androidMatrixApp).toContain(
       "allowDiagnosticIntentLaunchConfiguration = true",
     );
     expect(iosPlist).toContain("$(HOT_UPDATER_APP_BASE_URL)");
     expect(iosHost).toContain('return ["appBaseURL": value]');
+    expect(iosHost).toContain(
+      'channel: launchConfiguration["channel"] ?? "ota-react"',
+    );
   });
 });
 

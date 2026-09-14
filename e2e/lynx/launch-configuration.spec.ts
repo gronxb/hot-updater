@@ -121,11 +121,12 @@ describe("Lynx E2E launch configuration", () => {
       serializeLynxNativeLaunchConfiguration(
         createLynxNativeLaunchConfiguration({
           appBaseURL: "http://127.0.0.1:3014/hot-updater",
+          channel: "production",
           runtimeConfigURL: "http://localhost:3114/e2e/runtime-config",
         }),
       ),
     ).toBe(
-      '{"appBaseURL":"http://127.0.0.1:3014/hot-updater","runtimeConfigURL":"http://localhost:3114/e2e/runtime-config"}',
+      '{"appBaseURL":"http://127.0.0.1:3014/hot-updater","channel":"production","runtimeConfigURL":"http://localhost:3114/e2e/runtime-config"}',
     );
   });
 

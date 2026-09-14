@@ -34,6 +34,12 @@ final class PublicHost {
     }
 
     init() throws {
+        #if HOT_UPDATER_LYNX_DIAGNOSTICS
+        let launchConfiguration = try HotUpdaterSparklingLaunchConfiguration
+            .parse(arguments: ProcessInfo.processInfo.arguments)
+        #else
+        let launchConfiguration = Self.productionLaunchConfiguration()
+        #endif
         let home = FileManager.default.urls(
             for: .applicationSupportDirectory,
             in: .userDomainMask
@@ -67,7 +73,7 @@ final class PublicHost {
             embeddedManifestDigest: native.manifestDigest,
             minimumBundleId: native.minimumBundleId,
             appVersion: "1.0.0",
-            channel: "ota-react",
+            channel: launchConfiguration["channel"] ?? "ota-react",
             cohort: "1",
             publicKeyPEM: Bundle.main.object(
                 forInfoDictionaryKey: "HOT_UPDATER_PUBLIC_KEY"
@@ -76,12 +82,6 @@ final class PublicHost {
                 forInfoDictionaryKey: "HOT_UPDATER_FINGERPRINT_HASH"
             ) as? String
         )
-#if HOT_UPDATER_LYNX_DIAGNOSTICS
-        let launchConfiguration = try HotUpdaterSparklingLaunchConfiguration
-            .parse(arguments: ProcessInfo.processInfo.arguments)
-#else
-        let launchConfiguration = Self.productionLaunchConfiguration()
-#endif
         managed = try HotUpdaterSparklingHost(
             configuration: configuration,
             launchConfiguration: launchConfiguration

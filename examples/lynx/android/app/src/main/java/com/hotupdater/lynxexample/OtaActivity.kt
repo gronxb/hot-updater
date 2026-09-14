@@ -27,7 +27,7 @@ class OtaActivity : Activity() {
         val configuration = HotUpdaterSparklingConfiguration(
             lynx = LynxHostConfiguration(
                 runtimeId = BuildConfig.LYNX_OTA_COMPATIBILITY_ID,
-                channel = "production",
+                channel = "ota-react",
                 appVersion = "1.0.0",
                 cohort = getSharedPreferences("native-ota-config", MODE_PRIVATE)
                     .getString("cohort", "1")!!,
