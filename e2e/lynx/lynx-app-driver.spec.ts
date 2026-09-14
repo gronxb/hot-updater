@@ -54,6 +54,12 @@ function recoveredFontDiagnosticLogs(): string {
     `09-14 12:34:56.789  1234  1234 I HotUpdaterLynx: ${message}`;
   return [
     log(
+      `HOT_UPDATER_MATRIX_EVENT ${JSON.stringify({
+        ...identity,
+        event: "generationWillEvaluate",
+      })}`,
+    ),
+    log(
       `engine-error fatal=false code=302 message=${JSON.stringify({
         error_code: 302,
         sub_code: 30201,

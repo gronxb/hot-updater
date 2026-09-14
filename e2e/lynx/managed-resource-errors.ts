@@ -1,15 +1,31 @@
-const ENGINE_ERROR_CODE = /\bengine-error\b[^\r\n]*\bcode=(301|302)\b/;
+const ENGINE_ERROR_CODE = /\bengine-error\b[^\r\n]*?\bcode=(301|302)\b/;
 const ENGINE_ERROR_DETAILS =
-  /\bengine-error\b\s+fatal=(true|false)\s+code=(301|302)\s+message=(.*)$/;
+  /^engine-error fatal=(true|false) code=(301|302) message=(\{.*\})$/;
 const MATRIX_EVENT_MARKER = "HOT_UPDATER_MATRIX_EVENT ";
 const MANAGED_RESOURCE_PREFIX = "hot-updater:///";
 const SHA256 = /^[0-9a-f]{64}$/;
 const POSITIVE_DECIMAL = /^[1-9][0-9]*$/;
+const THREADTIME_ENVELOPE =
+  /^\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{3}[ ]+(\d+)[ ]+\d+ I HotUpdaterLynx: (.*)$/;
+const BRIEF_ENVELOPE = /^I\/HotUpdaterLynx\([ ]*(\d+)\): (.*)$/;
+const ACTIVE_GENERATION_BOUNDARIES = new Set([
+  "generationWillEvaluate",
+  "generationStarted",
+]);
+const GENERATION_BOUNDARIES = new Set([
+  "generationWillEvaluate",
+  "generationStarted",
+  "generationWillRetire",
+  "generationRetired",
+]);
 
 type LogRecord = {
   readonly index: number;
   readonly line: string;
-  readonly processId: string | null;
+  readonly envelope: {
+    readonly processId: string;
+    readonly payload: string;
+  } | null;
 };
 
 type MatrixEvent = Record<string, unknown> & {
@@ -26,12 +42,9 @@ type ManagedIdentity = {
   readonly releaseId: string | null;
 };
 
-function logcatProcessId(line: string): string | null {
-  return (
-    line.match(/^\S+\s+\S+\s+(\d+)\s+\d+\s+[VDIWEF]\s+/)?.[1] ??
-    line.match(/^[VDIWEF]\/[^\s(]+\(\s*(\d+)\):/)?.[1] ??
-    null
-  );
+function parseEnvelope(line: string): LogRecord["envelope"] {
+  const match = line.match(THREADTIME_ENVELOPE) ?? line.match(BRIEF_ENVELOPE);
+  return match ? { processId: match[1], payload: match[2] } : null;
 }
 
 function parseJsonObject(value: string): Record<string, unknown> | null {
@@ -55,11 +68,31 @@ function managedRelativePath(source: unknown): string | null {
     return null;
   }
   const relative = source.slice(MANAGED_RESOURCE_PREFIX.length);
+  let parsed: URL;
+  let decodedPath: string;
+  try {
+    parsed = new URL(source);
+    decodedPath = decodeURIComponent(parsed.pathname.slice(1));
+  } catch {
+    return null;
+  }
+  const hasForbiddenCharacter = Array.from(relative).some((character) => {
+    const codePoint = character.codePointAt(0) ?? 0;
+    return codePoint <= 0x1f || codePoint === 0x7f || character === ":";
+  });
   if (
-    relative.length === 0 ||
-    relative.normalize("NFC") !== relative ||
-    relative.includes("\0") ||
+    parsed.protocol !== "hot-updater:" ||
+    parsed.host !== "" ||
+    decodedPath !== relative ||
+    parsed.search !== "" ||
+    parsed.hash !== "" ||
+    source !== `${MANAGED_RESOURCE_PREFIX}${relative}` ||
+    relative.trim().length === 0 ||
+    new TextEncoder().encode(relative).length > 1024 ||
     /[\\%?#]/.test(relative) ||
+    hasForbiddenCharacter ||
+    relative.startsWith("/") ||
+    relative.endsWith("/") ||
     relative
       .split("/")
       .some((part) => part === "" || part === "." || part === "..")
@@ -70,11 +103,11 @@ function managedRelativePath(source: unknown): string | null {
 }
 
 function parseMatrixEvent(record: LogRecord): MatrixEvent | null {
-  const markerIndex = record.line.indexOf(MATRIX_EVENT_MARKER);
-  if (markerIndex < 0) return null;
-  const event = parseJsonObject(
-    record.line.slice(markerIndex + MATRIX_EVENT_MARKER.length).trim(),
+  const match = record.envelope?.payload.match(
+    /^HOT_UPDATER_MATRIX_EVENT (\{.*\})$/,
   );
+  if (!match) return null;
+  const event = parseJsonObject(match[1]);
   return event && typeof event.event === "string"
     ? (event as MatrixEvent)
     : null;
@@ -118,6 +151,41 @@ function sameIdentity(left: ManagedIdentity, right: ManagedIdentity): boolean {
   );
 }
 
+function precedingIdentity(
+  records: readonly LogRecord[],
+  engineError: LogRecord,
+): ManagedIdentity | null {
+  const processId = engineError.envelope?.processId;
+  if (!processId) return null;
+  let boundIdentity: ManagedIdentity | null = null;
+  for (let index = engineError.index - 1; index >= 0; index -= 1) {
+    const record = records[index];
+    if (
+      record.envelope?.processId !== processId ||
+      !record.envelope.payload.startsWith(MATRIX_EVENT_MARKER)
+    ) {
+      continue;
+    }
+    const event = parseMatrixEvent(record);
+    const identity = event && managedIdentity(event);
+    if (
+      event === null ||
+      identity === null ||
+      identity.processId !== processId ||
+      (boundIdentity !== null && !sameIdentity(boundIdentity, identity))
+    ) {
+      return null;
+    }
+    boundIdentity = identity;
+    if (GENERATION_BOUNDARIES.has(event.event)) {
+      return ACTIVE_GENERATION_BOUNDARIES.has(event.event)
+        ? boundIdentity
+        : null;
+    }
+  }
+  return null;
+}
+
 function isRecoveredFontDiagnostic(
   records: readonly LogRecord[],
   engineError: LogRecord,
@@ -135,11 +203,14 @@ function isRecoveredFontDiagnostic(
   }
   const relativePath = managedRelativePath(details.src);
   if (relativePath === null) return false;
+  const boundIdentity = precedingIdentity(records, engineError);
+  if (boundIdentity === null) return false;
   const laterRecords = records.slice(engineError.index + 1);
   if (
     laterRecords.some(
       (record) =>
-        record.line.includes(MATRIX_EVENT_MARKER) &&
+        record.envelope?.processId === boundIdentity.processId &&
+        record.envelope.payload.startsWith(MATRIX_EVENT_MARKER) &&
         parseMatrixEvent(record) === null,
     )
   ) {
@@ -148,6 +219,16 @@ function isRecoveredFontDiagnostic(
 
   for (const fontRecord of laterRecords) {
     const fontEvent = parseMatrixEvent(fontRecord);
+    const identity = fontEvent && managedIdentity(fontEvent);
+    if (
+      fontEvent &&
+      identity &&
+      identity.processId === boundIdentity.processId &&
+      GENERATION_BOUNDARIES.has(fontEvent.event) &&
+      !sameIdentity(boundIdentity, identity)
+    ) {
+      return false;
+    }
     if (
       fontEvent?.event !== "fontLoaded" ||
       fontEvent.path !== relativePath ||
@@ -156,19 +237,25 @@ function isRecoveredFontDiagnostic(
     ) {
       continue;
     }
-    const identity = managedIdentity(fontEvent);
     if (
       identity === null ||
-      (engineError.processId !== null &&
-        engineError.processId !== identity.processId) ||
-      (fontRecord.processId !== null &&
-        fontRecord.processId !== identity.processId)
+      !sameIdentity(boundIdentity, identity) ||
+      fontRecord.envelope?.processId !== identity.processId
     ) {
       continue;
     }
     for (const readyRecord of records.slice(fontRecord.index + 1)) {
       const readyEvent = parseMatrixEvent(readyRecord);
       const readyIdentity = readyEvent && managedIdentity(readyEvent);
+      if (
+        readyEvent &&
+        readyIdentity &&
+        readyIdentity.processId === boundIdentity.processId &&
+        GENERATION_BOUNDARIES.has(readyEvent.event) &&
+        !sameIdentity(boundIdentity, readyIdentity)
+      ) {
+        return false;
+      }
       if (
         readyEvent?.event === "jsReady" &&
         readyIdentity !== null &&
@@ -177,8 +264,7 @@ function isRecoveredFontDiagnostic(
         typeof readyEvent.confirmation === "object" &&
         (readyEvent.confirmation as Record<string, unknown>).status ===
           "CONFIRMED" &&
-        (readyRecord.processId === null ||
-          readyRecord.processId === identity.processId)
+        readyRecord.envelope?.processId === identity.processId
       ) {
         return true;
       }
@@ -191,17 +277,18 @@ export function findManagedResourceEngineErrorCodes(logs: string): number[] {
   const records = logs.split(/\r?\n/).map((line, index) => ({
     index,
     line,
-    processId: logcatProcessId(line),
+    envelope: parseEnvelope(line),
   }));
   const codes: number[] = [];
   for (const record of records) {
     const codeMatch = record.line.match(ENGINE_ERROR_CODE);
     if (!codeMatch) continue;
     const code = Number(codeMatch[1]);
-    const detailsMatch = record.line.match(ENGINE_ERROR_DETAILS);
+    const detailsMatch = record.envelope?.payload.match(ENGINE_ERROR_DETAILS);
     if (
       code === 302 &&
       detailsMatch?.[2] === "302" &&
+      record.envelope?.payload.match(/\bengine-error\b/g)?.length === 1 &&
       isRecoveredFontDiagnostic(
         records,
         record,
