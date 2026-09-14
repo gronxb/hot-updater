@@ -16,6 +16,14 @@
       "import": "./dist/build.mjs",
       "require": "./dist/build.cjs"
     },
+    "./navigation": {
+      "import": "./dist/navigation.mjs",
+      "require": "./dist/navigation.cjs"
+    },
+    "./navigationProvenance": {
+      "import": "./dist/navigationProvenance.mjs",
+      "require": "./dist/navigationProvenance.cjs"
+    },
     "./package.json": "./package.json"
   },
   "files": [
@@ -33,7 +41,9 @@
   ],
   "license": "MIT",
   "repository": "https://github.com/gronxb/hot-updater",
-  "publishConfig": { "access": "public" },
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
     "build": "tsdown",
     "test:type": "tsc --noEmit"
@@ -43,7 +53,16 @@
     "@hot-updater/plugin-core": "workspace:*",
     "uuidv7": "catalog:"
   },
+  "peerDependencies": {
+    "sparkling-navigation": "2.1.0-rc.12"
+  },
+  "peerDependenciesMeta": {
+    "sparkling-navigation": {
+      "optional": true
+    }
+  },
   "devDependencies": {
-    "@types/node": "catalog:"
+    "@types/node": "catalog:",
+    "sparkling-navigation": "2.1.0-rc.12"
   }
 }

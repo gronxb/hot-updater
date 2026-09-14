@@ -2,17 +2,25 @@ import { describe, expect, it } from "vitest";
 
 import {
   collectDeltaDelivery,
+  collectFatalPendingDetailLaunch,
   collectInvalidatedContexts,
+  collectPendingDetailLaunch,
+  collectProcessInterruption,
   collectReadyLaunch,
   collectSecondaryFatalFailure,
-  collectUnconfirmedLaunch,
+  hasCompleteAlreadyRunningDetailEvents,
   hasCompleteReadyEvents,
-  hasCompleteUnconfirmedEvents,
+  hasCompletePendingDetailEvents,
+  normalizeBuild,
+  pageEntries,
+  pageEssentialResources,
   resourcePaths,
   validateAttributedDiagnostics,
 } from "../../examples/lynx/scripts/public-matrix/evidence.mjs";
+import { SPARKLING_NAVIGATION_PROVENANCE } from "../../packages/lynx/src/navigationProvenance";
 
 const identity = {
+  runtimeId: "runtime",
   processId: "101",
   generationId: "generation-b",
   contextId: "context-b",
@@ -35,40 +43,43 @@ const build = {
 };
 
 function event(event: string, details: Record<string, unknown> = {}) {
-  return { event, ...identity, ...details };
+  return {
+    event,
+    ...identity,
+    pageAttemptId: null,
+    transitionId: null,
+    ...details,
+  };
 }
 
 function evidenceEvents() {
+  const mainPaths = resourcePaths.filter(
+    (path) => path !== "detail.lynx.bundle",
+  );
   return [
     event("generationWillEvaluate", { primary: true }),
-    event("generationWillEvaluate", {
-      contextId: secondaryContextId,
-      primary: false,
-    }),
     event("generationStarted", {
-      contextIds: [identity.contextId, secondaryContextId],
+      contextIds: [identity.contextId],
       primaryContextId: identity.contextId,
+      orderedPageEntries: ["main.lynx.bundle"],
+      topPageEntry: "main.lynx.bundle",
       reason: "initial",
     }),
-    ...resourcePaths.flatMap((path) =>
-      [identity.contextId, secondaryContextId].flatMap((contextId) => [
-        event("resourceLeaseAcquired", {
-          contextId,
-          path,
-          sha256: files[path].sha256,
-        }),
-        event(
-          path === "assets/probe.png"
-            ? "imageLoaded"
-            : path === "assets/probe.ttf"
-              ? "fontLoaded"
-              : "resourceLoaded",
-          { contextId, path, sha256: files[path].sha256 },
-        ),
-      ]),
-    ),
+    ...mainPaths.flatMap((path) => [
+      event("resourceLeaseAcquired", {
+        path,
+        sha256: files[path].sha256,
+      }),
+      event(
+        path === "assets/probe.png"
+          ? "imageLoaded"
+          : path === "assets/probe.ttf"
+            ? "fontLoaded"
+            : "resourceLoaded",
+        { path, sha256: files[path].sha256 },
+      ),
+    ]),
     event("firstContent"),
-    event("firstContent", { contextId: secondaryContextId }),
     event("jsReady", {
       confirmation: {
         status: "CONFIRMED",
@@ -89,19 +100,54 @@ function evidenceEvents() {
         },
       },
     }),
+    event("routeOpened", {
+      contextId: secondaryContextId,
+      pageAttemptId: "page-attempt-b",
+      sourceContextId: identity.contextId,
+      pageEntry: "detail.lynx.bundle",
+      pageParameters: { title: "Second Page" },
+      orderedPageEntries: ["main.lynx.bundle", "detail.lynx.bundle"],
+      topPageEntry: "detail.lynx.bundle",
+      nativePageClass:
+        "com.hotupdater.lynx.sparkling.HotUpdaterSparklingPageActivity",
+      outcome: "opened",
+    }),
+    event("resourceLeaseAcquired", {
+      contextId: secondaryContextId,
+      path: "detail.lynx.bundle",
+      sha256: files["detail.lynx.bundle"].sha256,
+    }),
+    event("resourceLoaded", {
+      contextId: secondaryContextId,
+      path: "detail.lynx.bundle",
+      sha256: files["detail.lynx.bundle"].sha256,
+    }),
+    event("firstContent", { contextId: secondaryContextId }),
+    event("pageAdmitted", {
+      contextId: secondaryContextId,
+      pageAttemptId: "page-attempt-b",
+      confirmation: { status: "PAGE_ADMITTED" },
+    }),
+    event("pageAttemptTerminal", {
+      contextId: secondaryContextId,
+      pageAttemptId: "page-attempt-b",
+      terminal: "admitted",
+    }),
     event("generationWillRetire", {
       contextIds: [identity.contextId, secondaryContextId],
       reason: "reload",
     }),
-    ...resourcePaths.flatMap((path) =>
-      [identity.contextId, secondaryContextId].map((contextId) =>
-        event("resourceLeaseReleased", {
-          contextId,
-          path,
-          sha256: files[path].sha256,
-        }),
-      ),
+    ...mainPaths.map((path) =>
+      event("resourceLeaseReleased", {
+        path,
+        sha256: files[path].sha256,
+      }),
     ),
+    event("resourceLeaseReleased", {
+      contextId: secondaryContextId,
+      path: "detail.lynx.bundle",
+      sha256: files["detail.lynx.bundle"].sha256,
+    }),
     event("generationRetired", {
       contextIds: [identity.contextId, secondaryContextId],
       inFlightResourceCount: 0,
@@ -116,6 +162,75 @@ function evidenceEvents() {
 }
 
 describe("Lynx public matrix native event evidence", () => {
+  it("accepts a detail admission slice captured after generation start", () => {
+    const postStart = evidenceEvents().filter(
+      (item) =>
+        !["generationWillEvaluate", "generationStarted", "jsReady"].includes(
+          item.event,
+        ) && item.contextId === secondaryContextId,
+    );
+    const opened = evidenceEvents().find((item) =>
+      ["pageOpened", "routeOpened"].includes(item.event),
+    );
+    expect(opened).toBeDefined();
+    postStart.unshift(opened!);
+
+    expect(hasCompleteReadyEvents(postStart, build, identity.processId)).toBe(
+      false,
+    );
+    expect(
+      hasCompleteAlreadyRunningDetailEvents(
+        postStart,
+        build,
+        identity.processId,
+      ),
+    ).toBe(true);
+  });
+
+  it("preserves the compiler-authored page graph and navigation provenance", () => {
+    const compilerReceipt = {
+      files: resourcePaths.map((path, index) => ({
+        path,
+        sha256: String(index + 1).repeat(64),
+        bytes: index + 1,
+      })),
+      pageEntries,
+      pageEssentialResources,
+      provenance: {
+        framework: "ReactLynx",
+        rspeedy: "0.116.5",
+        sparklingNavigation: SPARKLING_NAVIGATION_PROVENANCE,
+      },
+    };
+    expect(
+      normalizeBuild({
+        role: "B",
+        compilerReceipt,
+        deploymentReceipt: {
+          bundleId: "bundle-b",
+          releaseId: "release-b",
+          persistedManifestFileHash: "a".repeat(64),
+        },
+        runtimeId: "runtime",
+      }),
+    ).toMatchObject({
+      pageEntries,
+      pageEssentialResources,
+      sparklingNavigation: SPARKLING_NAVIGATION_PROVENANCE,
+    });
+    expect(() =>
+      normalizeBuild({
+        role: "B",
+        compilerReceipt: {
+          ...compilerReceipt,
+          pageEntries: ["main.lynx.bundle"],
+        },
+        deploymentReceipt: { bundleId: "bundle-b", releaseId: "release-b" },
+        runtimeId: "runtime",
+      }),
+    ).toThrow("invalid page entry set");
+  });
+
   it("fails closed when an iOS event file contains no host callbacks", () => {
     expect(() =>
       collectReadyLaunch({
@@ -144,15 +259,27 @@ describe("Lynx public matrix native event evidence", () => {
     const deployment = {
       bundleId: "bundle-c",
       releaseId: "release-c",
+      deliveryArtifactUrl:
+        "https://example.test/artifacts/bundle-c/from/bundle-b",
       deliveryArtifactResponse: {
+        fileHash: null,
+        fileUrl: null,
+        manifestUrl: "https://example.test/manifest",
+        manifestFileHash: "d".repeat(64),
         changedAssets: {
+          "detail.lynx.bundle": {
+            file: { url: "https://example.test/detail" },
+            fileHash: build.files["detail.lynx.bundle"].sha256,
+          },
           "main.lynx.bundle": {
+            file: { url: "https://example.test/main" },
             fileHash: targetHash,
             patch: {
               algorithm: "bsdiff",
               baseBundleId: "bundle-b",
               baseFileHash: "c".repeat(64),
               patchFileHash: patchHash,
+              patchUrl: "https://example.test/main.patch",
             },
           },
         },
@@ -160,6 +287,17 @@ describe("Lynx public matrix native event evidence", () => {
     };
     const marker = "HotUpdaterLynxEvent=";
     const nativeLogs = [
+      {
+        schemaVersion: 1,
+        event: "HotUpdaterBsdiffPatchApplied",
+        transactionId: "transaction-rejected-detail",
+        bundleId: "bundle-c",
+        releaseId: "release-c",
+        baseBundleId: "bundle-b",
+        asset: "main.lynx.bundle",
+        patchFileHash: patchHash,
+        reconstructedFileHash: targetHash,
+      },
       {
         schemaVersion: 1,
         event: "HotUpdaterBsdiffPatchApplied",
@@ -183,6 +321,8 @@ describe("Lynx public matrix native event evidence", () => {
       .map((value) => `${marker}${JSON.stringify(value)}`)
       .join("\n");
     expect(collectDeltaDelivery(deployment, nativeLogs)).toMatchObject({
+      rawDetailAssetPath: "detail.lynx.bundle",
+      rawDetailSha256: build.files["detail.lynx.bundle"].sha256,
       transactionId: "transaction-c",
       patchSha256: patchHash,
       reconstructedSha256: targetHash,
@@ -190,7 +330,22 @@ describe("Lynx public matrix native event evidence", () => {
     expect(() =>
       collectDeltaDelivery(
         deployment,
-        nativeLogs.replace(targetHash, "d".repeat(64)),
+        nativeLogs.replaceAll(targetHash, "d".repeat(64)),
+      ),
+    ).toThrow();
+    expect(() =>
+      collectDeltaDelivery(
+        {
+          ...deployment,
+          deliveryArtifactResponse: {
+            ...deployment.deliveryArtifactResponse,
+            changedAssets: {
+              ...deployment.deliveryArtifactResponse.changedAssets,
+              "detail.lynx.bundle": undefined,
+            },
+          },
+        },
+        nativeLogs,
       ),
     ).toThrow();
   });
@@ -208,14 +363,14 @@ describe("Lynx public matrix native event evidence", () => {
       status: "CONFIRMED",
       transition: { kind: "UPDATE_APPLIED" },
     });
-    expect(ready.resources).toHaveLength(resourcePaths.length);
+    expect(ready.resources).toHaveLength(resourcePaths.length - 1);
     expect(
       ready.resources.every((resource: any) => resource.leaseReleased),
     ).toBe(true);
     expect(collectInvalidatedContexts(events, ready)).toMatchObject({
       contextIds: [identity.contextId, secondaryContextId],
       leaseScope: "context",
-      expectedLeaseCount: resourcePaths.length * 2,
+      expectedLeaseCount: resourcePaths.length,
       inFlightResourceCount: 0,
       allLeasesBalanced: true,
       oldContextsInvalidated: true,
@@ -254,6 +409,127 @@ describe("Lynx public matrix native event evidence", () => {
     expect(
       hasCompleteReadyEvents(launchEvents, build, identity.processId),
     ).toBe(true);
+  });
+
+  it("proves a real pending detail without fabricating admission", () => {
+    const events = evidenceEvents().filter(
+      (candidate) =>
+        candidate.event !== "pageAdmitted" &&
+        candidate.event !== "pageAttemptTerminal",
+    );
+    expect(
+      hasCompletePendingDetailEvents(events, build, identity.processId, true),
+    ).toBe(true);
+    expect(
+      collectPendingDetailLaunch({
+        phaseEvents: events,
+        allEvents: events,
+        build,
+        processId: identity.processId,
+        primaryReady: true,
+      }),
+    ).toMatchObject({
+      detailReadinessWithheld: true,
+      members: [
+        { primary: true },
+        { primary: false, pageAdmitted: null, pageAttemptTerminal: null },
+      ],
+    });
+  });
+
+  it("records process death as interruption without fatal classification", () => {
+    const events = evidenceEvents().filter(
+      (candidate) =>
+        candidate.event !== "pageAdmitted" &&
+        candidate.event !== "pageAttemptTerminal" &&
+        !candidate.event.startsWith("generationRetir") &&
+        candidate.event !== "resourceLeaseReleased" &&
+        candidate.event !== "staleContextRejected",
+    );
+    const launch = collectPendingDetailLaunch({
+      phaseEvents: events,
+      allEvents: events,
+      build,
+      processId: identity.processId,
+      primaryReady: true,
+    });
+    const interrupted = event("pageAttemptTerminal", {
+      contextId: secondaryContextId,
+      pageAttemptId: "page-attempt-b",
+      terminal: "process-interruption",
+    });
+    expect(
+      collectProcessInterruption([...events, interrupted], launch),
+    ).toMatchObject({
+      contextId: secondaryContextId,
+      pageAttemptId: "page-attempt-b",
+      terminal: "process-interruption",
+    });
+    expect(() =>
+      collectProcessInterruption([...events, interrupted, interrupted], launch),
+    ).toThrow("exactly one durable terminal");
+  });
+
+  it("proves fatal classification after real detail content but before admission", () => {
+    const source = evidenceEvents().filter(
+      (candidate) =>
+        candidate.event !== "pageAdmitted" &&
+        candidate.event !== "pageAttemptTerminal",
+    );
+    const retirementAt = source.findIndex(
+      (candidate) => candidate.event === "generationWillRetire",
+    );
+    const events = [
+      ...source.slice(0, retirementAt),
+      event("runtimeFailed", {
+        contextId: secondaryContextId,
+        pageAttemptId: "page-attempt-b",
+      }),
+      event("pageAttemptTerminal", {
+        contextId: secondaryContextId,
+        pageAttemptId: "page-attempt-b",
+        terminal: "verified-fatal",
+      }),
+      event("generationFailed", { contextId: secondaryContextId }),
+      ...source
+        .slice(retirementAt)
+        .map((candidate) =>
+          candidate.event === "generationWillRetire" ||
+          candidate.event === "generationRetired"
+            ? { ...candidate, reason: "recovery" }
+            : candidate,
+        ),
+    ];
+    const launch = collectFatalPendingDetailLaunch({
+      phaseEvents: events,
+      allEvents: events,
+      build,
+      processId: identity.processId,
+      primaryReady: true,
+    });
+    expect(launch).toMatchObject({
+      detailReadinessWithheld: true,
+      detailFailedBeforeAdmission: true,
+      members: [
+        { primary: true },
+        {
+          primary: false,
+          firstContent: { contextId: secondaryContextId },
+          pageAdmitted: null,
+        },
+      ],
+    });
+    expect(collectSecondaryFatalFailure(events, launch)).toMatchObject({
+      pageAttemptTerminal: { terminal: "verified-fatal" },
+    });
+  });
+
+  it("rejects obsolete page-attempt terminal vocabulary", () => {
+    expect(() =>
+      validateAttributedDiagnostics([
+        event("pageAttemptTerminal", { terminal: "fatal" }),
+      ]),
+    ).toThrow("Invalid page-attempt terminal state");
   });
 
   it("rejects an old-generation lease released after generationRetired", () => {
@@ -318,13 +594,23 @@ describe("Lynx public matrix native event evidence", () => {
     );
     const startup = source
       .slice(0, retirementAt)
-      .filter((candidate) => candidate.event !== "jsReady");
-    expect(
-      hasCompleteUnconfirmedEvents(startup, build, identity.processId),
-    ).toBe(true);
+      .filter(
+        (candidate) =>
+          candidate.event !== "jsReady" &&
+          candidate.event !== "pageAdmitted" &&
+          candidate.event !== "pageAttemptTerminal",
+      );
     const events = [
       ...startup,
-      event("runtimeFailed", { contextId: secondaryContextId }),
+      event("runtimeFailed", {
+        contextId: secondaryContextId,
+        pageAttemptId: "page-attempt-b",
+      }),
+      event("pageAttemptTerminal", {
+        contextId: secondaryContextId,
+        pageAttemptId: "page-attempt-b",
+        terminal: "verified-fatal",
+      }),
       event("generationFailed", { contextId: secondaryContextId }),
       event("generationWillRetire", {
         contextIds: [identity.contextId, secondaryContextId],
@@ -337,11 +623,12 @@ describe("Lynx public matrix native event evidence", () => {
         reason: "recovery",
       }),
     ];
-    const ready = collectUnconfirmedLaunch({
+    const ready = collectFatalPendingDetailLaunch({
       phaseEvents: events,
       allEvents: events,
       build,
       processId: identity.processId,
+      primaryReady: false,
     });
     expect(collectSecondaryFatalFailure(events, ready)).toMatchObject({
       event: "runtimeFailed",

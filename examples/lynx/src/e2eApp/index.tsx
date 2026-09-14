@@ -1,4 +1,5 @@
 import { HotUpdater } from "@hot-updater/lynx";
+import { navigate } from "@hot-updater/lynx/navigation";
 import { root, useEffect, useRef, useState } from "@lynx-js/react";
 
 import {
@@ -6,6 +7,15 @@ import {
   loadExternalBootstrap,
   loadProbeFont,
 } from "../../spike/native";
+import { verifyNavigationBoundary } from "../../spike/navigation-boundary";
+import {
+  callE2eDiagnostic,
+  callE2eDiagnosticWithOptions,
+  type NavigationStackBoundaryReceipt,
+  type RuntimeEventFieldBoundaryReceipt,
+  type RuntimeJournalFixtureMode,
+  type RuntimeJournalFixtureReceipt,
+} from "./diagnostics";
 import {
   NAV_ITEMS,
   SCREEN_PATHS,
@@ -13,6 +23,7 @@ import {
   styles,
   type ScreenName,
 } from "./e2eStack";
+import { readGenerationEvents } from "./generationEvents";
 import { readE2eLaunchConfiguration } from "./launchConfiguration";
 import {
   E2E_SCENARIO_MARKER,
@@ -22,6 +33,7 @@ import {
   markE2EStartupImageLoaded,
   maybeCrashForE2E,
 } from "./patchSurface";
+import { createPendingActionPoller } from "./pendingActionPoller";
 import {
   applyForcedUpdate,
   bootstrapRuntimeReady,
@@ -30,6 +42,7 @@ import {
   readRuntimeSnapshot,
   type RuntimeSnapshot,
 } from "./runtimeObservation";
+import { publishScreenStatePatch } from "./screenStatePublication";
 
 declare const __E2E_OVERLAY_MARKER__: string;
 declare const NativeModules: unknown;
@@ -52,6 +65,10 @@ type ScreenState = {
   crashHistoryCount: string | null;
   currentChannel: string | null;
   defaultChannel: string | null;
+  detailPageMarker: string | null;
+  detailPageTitle: string | null;
+  diagnosticReceipt: string | null;
+  generationEvents: string | null;
   channelSwitched: string | null;
   launchStatus: string;
   runtimeChannelInput: string;
@@ -66,6 +83,7 @@ type ScreenState = {
 
 let runtimeConfigURL = "http://localhost:3107/e2e/runtime-config";
 let appBaseURL = "http://localhost:3007/hot-updater";
+let launchGeneration: string | null = null;
 let screenStateURL = runtimeConfigURL.endsWith("/runtime-config")
   ? runtimeConfigURL.replace(/\/runtime-config$/, "/screen-state")
   : `${runtimeConfigURL.replace(/\/+$/, "")}/screen-state`;
@@ -96,12 +114,9 @@ async function resolveAppBaseURL(): Promise<string> {
 }
 
 const patchScreenState = async (patch: Partial<ScreenState>) => {
-  const response = await fetch(screenStateURL, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify(patch),
+  await publishScreenStatePatch(fetch, screenStateURL, patch, {
+    launchGeneration,
   });
-  if (!response.ok) throw new Error(`Screen state HTTP ${response.status}`);
 };
 
 function App() {
@@ -201,9 +216,8 @@ function App() {
       });
     },
     "action-reset-runtime-channel": async () => {
-      const didReset = await HotUpdater.resetChannel();
-      await publishRuntimeSnapshot();
-      await setChannelActionResult(`reset -> ${String(didReset)}`);
+      await setChannelActionResult("reset -> requesting transition");
+      await HotUpdater.resetChannel();
     },
     "action-apply-cohort-input": () => applyCohortValue(cohortInput),
     "action-set-cohort-qa": () => applyCohortValue("qa"),
@@ -219,6 +233,136 @@ function App() {
     },
     "action-reload-app": async () => {
       await HotUpdater.reload();
+    },
+    "action-open-detail-page": () =>
+      new Promise<void>((resolve, reject) => {
+        navigate(
+          {
+            path: "detail.lynx.bundle",
+            options: { params: { title: "Second Page" } },
+          },
+          (result) => {
+            if (result.code === 1) resolve();
+            else reject(new Error(result.msg));
+          },
+        );
+      }),
+    "action-verify-managed-navigation-boundary": async () => {
+      await verifyNavigationBoundary((status) => {
+        void setUpdateActionResult(status);
+      });
+    },
+    "action-exercise-navigation-stack-boundary": async () => {
+      const receipt = await callE2eDiagnostic<NavigationStackBoundaryReceipt>(
+        "exerciseNavigationStackBoundary",
+      );
+      await patchScreenState({ diagnosticReceipt: JSON.stringify(receipt) });
+      await setUpdateActionResult(
+        `navigation-stack-boundary -> ${receipt.rejectionCode}`,
+      );
+    },
+    "action-exercise-runtime-journal": async () => {
+      const modes: readonly RuntimeJournalFixtureMode[] = [
+        "retention-limit",
+        "count-plus-one",
+        "byte-plus-one",
+        "corrupt-json",
+        "noncanonical",
+        "already-oversized",
+      ];
+      const receipts: Partial<
+        Record<RuntimeJournalFixtureMode, RuntimeJournalFixtureReceipt>
+      > = {};
+      try {
+        for (const mode of modes) {
+          await callE2eDiagnosticWithOptions<{
+            mode: RuntimeJournalFixtureMode;
+          }>("installRuntimeJournalFixture", { mode });
+          await callE2eDiagnostic<{ reopened: true }>(
+            "reopenRuntimeJournalFixture",
+          );
+          receipts[mode] =
+            await callE2eDiagnostic<RuntimeJournalFixtureReceipt>(
+              "getRuntimeJournalFixtureReceipt",
+            );
+        }
+        await callE2eDiagnosticWithOptions<{ mode: RuntimeJournalFixtureMode }>(
+          "installRuntimeJournalFixture",
+          { mode: "retention-limit" },
+        );
+        await callE2eDiagnostic<{ appended: true }>(
+          "appendRuntimeJournalFixtureEvent",
+        );
+        await callE2eDiagnostic<{ reopened: true }>(
+          "reopenRuntimeJournalFixture",
+        );
+        const appended = await callE2eDiagnostic<RuntimeJournalFixtureReceipt>(
+          "getRuntimeJournalFixtureReceipt",
+        );
+        const eventFields =
+          await callE2eDiagnostic<RuntimeEventFieldBoundaryReceipt>(
+            "exerciseRuntimeEventFieldBoundaries",
+          );
+        await patchScreenState({
+          diagnosticReceipt: JSON.stringify({
+            appended,
+            eventFields,
+            fixtures: receipts,
+          }),
+        });
+        await setUpdateActionResult("runtime-journal -> verified");
+      } finally {
+        await callE2eDiagnostic<{ restored: true }>(
+          "restoreRuntimeJournalFixture",
+        );
+      }
+    },
+    "action-arm-next-detail-pending": async () => {
+      await callE2eDiagnostic<{ armed: true }>("armNextPageAdmissionPending");
+      await setUpdateActionResult("detail-diagnostic -> pending armed");
+    },
+    "action-arm-next-detail-fatal": async () => {
+      await callE2eDiagnostic<{ armed: true }>("armNextPageFatalFailure");
+      await setUpdateActionResult("detail-diagnostic -> fatal armed");
+    },
+    "action-fail-pending-detail": async () => {
+      const result = await callE2eDiagnostic<{ triggered: boolean }>(
+        "triggerTopPendingAdmissionFailure",
+      );
+      if (!result.triggered) throw new Error("No pending detail was failed");
+      await setUpdateActionResult("detail-diagnostic -> pending failed");
+    },
+    "action-reload-with-pending-detail": async () => {
+      const result = await callE2eDiagnostic<{
+        status: "TRANSITION_ACCEPTED";
+        transitionId: string;
+      }>("triggerReload");
+      await setUpdateActionResult(
+        `detail-diagnostic -> ${result.status} ${result.transitionId}`,
+      );
+    },
+    "action-capture-stale-authorities": async () => {
+      await callE2eDiagnostic<{ captured: true }>("captureStaleAuthorities");
+      await setUpdateActionResult("stale-authorities -> captured");
+    },
+    "action-verify-stale-authorities": async () => {
+      const result = await callE2eDiagnostic<{
+        rejectedCount: number;
+        verified: true;
+      }>("verifyStaleAuthorities");
+      if (result.rejectedCount < 2) {
+        throw new Error("Old main and detail authorities were not rejected");
+      }
+      await setUpdateActionResult("stale-authorities -> verified rejected");
+    },
+    "action-capture-generation-events": async () => {
+      const snapshot = await readGenerationEvents(HotUpdater, {
+        allowTruncated: true,
+      });
+      await patchScreenState({ generationEvents: JSON.stringify(snapshot) });
+      await setUpdateActionResult(
+        `generation-events -> ${snapshot.latestSequence}`,
+      );
     },
     "action-refresh-runtime-snapshot": async () => {
       await publishRuntimeSnapshot();
@@ -327,7 +471,6 @@ function App() {
         await bootstrapRuntimeReady(
           runtimeConfigurationReady,
           async () => {
-            ensurePendingActionPoller();
             await loadE2EStartupResources({
               loadFont: async (url) => {
                 await loadProbeFont(url);
@@ -342,6 +485,7 @@ function App() {
               setLaunchStatus(status);
               await publishRuntimeSnapshot(status);
             }),
+          ensurePendingActionPoller,
         );
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
@@ -362,9 +506,7 @@ function App() {
           void applyForcedUpdate(
             HotUpdater,
             () => !active || handledScenarioAction,
-          )
-            .then(() => (active ? publishRuntimeSnapshot() : undefined))
-            .catch((error) => reportActionError("force-update", error));
+          ).catch((error) => reportActionError("force-update", error));
         }, 2500);
       })
       .catch((error) => {
@@ -494,10 +636,25 @@ function App() {
           </view>
         ) : null}
         <text style={styles.resultText}>{SCREEN_PATHS[currentScreen]}</text>
+        {currentScreen === "Ready" ? (
+          <view
+            style={styles.button}
+            bindtap={() => void actions["action-open-detail-page"]?.()}
+          >
+            <text style={styles.buttonText}>Open detail page</text>
+          </view>
+        ) : null}
         <image
           style={{ height: "8px", width: "8px" }}
           src={E2E_STARTUP_IMAGE_URL}
           bindload={markE2EStartupImageLoaded}
+        />
+        <view
+          style={{
+            backgroundImage: `url("${E2E_STARTUP_IMAGE_URL}")`,
+            height: "32px",
+            width: "32px",
+          }}
         />
         {startupFontReady ? (
           <text style={{ fontFamily: "ReleaseProbe" }}>E2E</text>
@@ -515,72 +672,22 @@ const navigateToTestId: { current: (testID: string) => void } = {
   current: () => undefined,
 };
 
-let pollerStarted = false;
-let takingPendingAction = false;
 let handledScenarioAction = false;
-
-const fetchJsonWithTimeout = async (
-  url: string,
-  init?: RequestInit,
-): Promise<unknown> => {
-  const response = await Promise.race([
-    fetch(url, init).catch(() => null),
-    new Promise<null>((resolve) => {
-      setTimeout(() => resolve(null), 5000);
-    }),
-  ]);
-  if (!response) return null;
-  return response.json();
-};
-
-const pollPendingActionOnce = async () => {
-  if (takingPendingAction || Object.keys(actionHandlers.current).length === 0) {
-    return;
-  }
-  const peeked = (await fetchJsonWithTimeout(pendingActionURL)) as {
-    action?: { testID?: string; text?: string } | null;
-  } | null;
-  const queued = peeked?.action;
-  if (!queued?.testID) return;
-  takingPendingAction = true;
-  try {
-    const taken = (await fetch(`${pendingActionURL}?take=1`).then(
-      (response) => response.json(),
-      () => null,
-    )) as { action?: { testID?: string; text?: string } | null } | null;
-    const testID = taken?.action?.testID;
-    if (!testID) return;
-    const handler = actionHandlers.current[testID];
-    if (!handler) return;
+const pendingActionPoller = createPendingActionPoller({
+  fetchState: fetch,
+  getActionHandlers: () => actionHandlers.current,
+  getPendingActionURL: () => pendingActionURL,
+  markHandled: () => {
     handledScenarioAction = true;
-    navigateToTestId.current(testID);
-    const timedOut = await Promise.race([
-      handler(taken.action?.text).then(() => false),
-      new Promise<boolean>((resolve) => {
-        setTimeout(() => resolve(true), 20_000);
-      }),
-    ]);
-    if (timedOut) {
-      await patchScreenState({
-        updateActionResult: "current-channel -> error timeout",
-      });
-    }
-  } finally {
-    takingPendingAction = false;
-  }
-};
+  },
+  navigateToTestId: (testID) => navigateToTestId.current(testID),
+  onActionTimeout: () =>
+    patchScreenState({
+      updateActionResult: "current-channel -> error timeout",
+    }),
+});
 
-const ensurePendingActionPoller = () => {
-  if (pollerStarted) {
-    return;
-  }
-  pollerStarted = true;
-  const tick = () => {
-    void pollPendingActionOnce().catch(() => undefined);
-    setTimeout(tick, 200);
-  };
-  tick();
-};
+const ensurePendingActionPoller = () => pendingActionPoller.start();
 
 loadE2EDeployBundleAssets();
 maybeCrashForE2E();
@@ -593,6 +700,7 @@ const configureE2eRuntime = async (): Promise<boolean> => {
   if (!resolved) return false;
   runtimeConfigURL = resolved.runtimeConfigURL;
   appBaseURL = resolved.appBaseURL;
+  launchGeneration = resolved.launchGeneration ?? null;
   screenStateURL = runtimeConfigURL.endsWith("/runtime-config")
     ? runtimeConfigURL.replace(/\/runtime-config$/, "/screen-state")
     : `${runtimeConfigURL.replace(/\/+$/, "")}/screen-state`;

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { navigate } from "@hot-updater/lynx/navigation";
 import { onMounted, ref } from "vue-lynx";
 
 import {
@@ -6,7 +7,9 @@ import {
   loadExternalBootstrap,
   loadProbeFont,
 } from "../../spike/native";
+import { verifyNavigationBoundary } from "../../spike/navigation-boundary";
 import {
+  captureRuntimeEvents,
   checkSdkUpdate,
   imageUrl,
   installSdkUpdate,
@@ -22,6 +25,14 @@ import "../../style.css";
 const status = ref(`Bundle ${variant}: starting`);
 const canInstall = ref(false);
 const fontReady = ref(false);
+const openDetail = () =>
+  navigate(
+    {
+      path: "detail.lynx.bundle",
+      options: { params: { title: "Second Page" } },
+    },
+    (result) => console.log("HOT_UPDATER_PAGE_OPEN", result),
+  );
 function setStatus(value: string) {
   status.value = value;
 }
@@ -48,6 +59,15 @@ onMounted(() => {
     <image class="probe" :src="imageUrl" @load="sdkImageLoaded" />
     <text v-if="resources && fontReady" class="font-probe">RELEASE FONT</text>
     <text class="description">{{ status }}</text>
+    <view class="action" @tap="openDetail">
+      <text class="action-label">Open detail page</text>
+    </view>
+    <view class="action" @tap="verifyNavigationBoundary(setStatus)">
+      <text class="action-label">Verify navigation boundary</text>
+    </view>
+    <view class="action" @tap="captureRuntimeEvents(setStatus)">
+      <text class="action-label">Capture runtime events</text>
+    </view>
     <view class="action" @tap="checkSdkUpdate(setStatus, setCanInstall)">
       <text class="action-label">Check update</text>
     </view>

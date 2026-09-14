@@ -13,6 +13,7 @@ import {
   parseStorageUri,
 } from "../../plugins/plugin-core/dist/index.mjs";
 import { standaloneRepository } from "../../plugins/standalone/dist/index.mjs";
+import { resolveE2eBuildRuntimeId } from "./src/e2eBuildRuntimeId";
 
 const run = promisify(execFile);
 
@@ -113,11 +114,6 @@ function resolveStorage() {
   return localFsStorage({ directory, signingKey });
 }
 
-const runtimeId = (platform: "ios" | "android") =>
-  platform === "ios"
-    ? "sparkling-c4ce8d2-lynx-3.9.0-primjs-3.8.0-alpha.6-ios-ota-v2"
-    : "android-sparkling-2.1.0-rc.12-lynx-3.9.0-primjs-3.8.0-alpha.6-ota-v2";
-
 async function copyE2eFixtures(cwd: string, outDir: string) {
   const srcDir = path.join(cwd, "src/test");
   let names: string[];
@@ -147,8 +143,44 @@ async function copyE2eFixtures(cwd: string, outDir: string) {
 
 export default {
   updateStrategy: "appVersion",
+  platform: {
+    ios: {
+      infoPlistPaths: [
+        "ios/Info.plist",
+        "ios/MatrixHarness/NonProductionInfo.plist",
+      ],
+    },
+  },
   fingerprint: {
     debug: true,
+    ignorePaths: [
+      "android/.probe-results/**",
+      "android/e2e-app/**",
+      "android/local.properties",
+      "android/matrix-app/**",
+      "android/run-public-probes.mjs",
+      "android/scripts/**",
+      "ios/.fixtures/**",
+      "ios/.g1-preserved/**",
+      "ios/.g2-preserved/**",
+      "ios/.probe-results/**",
+      "ios/.public-v1-preserved/**",
+      "ios/.upstream/**",
+      "ios/Embedded/**",
+      "ios/MatrixHarness/**",
+      "ios/ProductionEmbedded/**",
+      "ios/SparklingGo.xcodeproj/xcshareddata/xcschemes/SparklingGoE2E.xcscheme",
+      "ios/SparklingGo.xcodeproj/xcshareddata/xcschemes/SparklingMatrixHarness.xcscheme",
+      "ios/generated/**",
+      "ios/make-artifact-negative-fixtures.py",
+      "ios/place-fixture.mjs",
+      "ios/prepare-fixtures.mjs",
+      "ios/prepare-public-fixtures.mjs",
+      "ios/run-artifact-probes.mjs",
+      "ios/run-g1-probes.mjs",
+      "ios/run-public-probes.mjs",
+      "ios/run-recovery-probes.mjs",
+    ],
   },
   compressStrategy: "zip",
   signing: {
@@ -169,6 +201,7 @@ export default {
       ),
     }),
     build: async ({ cwd, outDir, platform }) => {
+      const selectedRuntimeId = resolveE2eBuildRuntimeId(platform);
       for (const cacheDir of [
         ".rspeedy",
         "node_modules/.cache",
@@ -201,11 +234,14 @@ export default {
         },
       );
       const { finishLynxE2eBundle } = await import("./scripts/e2e-assets.mjs");
-      await finishLynxE2eBundle(outDir);
+      const { pageEntries, pageEssentialResources } =
+        await finishLynxE2eBundle(outDir);
       await copyE2eFixtures(cwd, outDir);
       return {
         entry: "main.lynx.bundle",
-        runtimeId: runtimeId(platform),
+        pageEntries,
+        pageEssentialResources,
+        runtimeId: selectedRuntimeId,
       };
     },
   }),

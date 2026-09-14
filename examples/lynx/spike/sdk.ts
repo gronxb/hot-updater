@@ -1,4 +1,8 @@
-import { HotUpdater, type CheckForUpdateResult } from "@hot-updater/lynx";
+import {
+  HotUpdater,
+  LynxUpdaterError,
+  type CheckForUpdateResult,
+} from "@hot-updater/lynx";
 
 declare const __SPIKE_VARIANT__: string;
 declare const __SPIKE_BEHAVIOR__: string;
@@ -14,6 +18,7 @@ let completeImage: (() => void) | undefined;
 let prepared: CheckForUpdateResult | null = null;
 let busy = false;
 let ready = false;
+let evidenceOrigin: string | null = null;
 
 export function sdkImageLoaded() {
   imageReady = true;
@@ -30,6 +35,9 @@ export async function startSdk(
   try {
     if (!initialized) {
       const launchConfiguration = await HotUpdater.getLaunchConfiguration();
+      evidenceOrigin = new URL(
+        launchConfiguration.appBaseURL ?? "http://localhost:3007/hot-updater",
+      ).origin;
       HotUpdater.init({
         baseURL:
           launchConfiguration.appBaseURL ?? "http://localhost:3007/hot-updater",
@@ -129,6 +137,46 @@ export async function checkSdkUpdate(
   }
 }
 
+export async function captureRuntimeEvents(
+  status: (value: string) => void,
+): Promise<void> {
+  try {
+    const snapshot = await HotUpdater.getRuntimeEvents();
+    if (
+      snapshot.schemaVersion !== 1 ||
+      (snapshot.latestSequence !== null &&
+        typeof snapshot.latestSequence !== "string") ||
+      (snapshot.oldestSequence !== null &&
+        typeof snapshot.oldestSequence !== "string") ||
+      !Array.isArray(snapshot.events)
+    ) {
+      throw new Error("Invalid runtime event snapshot");
+    }
+    const appBaseURL = (await HotUpdater.getLaunchConfiguration()).appBaseURL;
+    if (typeof appBaseURL !== "string") {
+      throw new Error("Missing runtime snapshot endpoint");
+    }
+    const response = await fetch(
+      `${new URL(appBaseURL).origin}/matrix-runtime-snapshot`,
+      {
+        body: JSON.stringify({ snapshot }),
+        headers: { "content-type": "application/json" },
+        method: "POST",
+      },
+    );
+    if (!response.ok) {
+      throw new Error(`Runtime snapshot endpoint returned ${response.status}`);
+    }
+    console.log(`HOT_UPDATER_RUNTIME_SNAPSHOT ${JSON.stringify(snapshot)}`);
+    status(
+      `Runtime events captured: ${snapshot.events.length} events, truncated ${snapshot.truncated}`,
+    );
+  } catch (error) {
+    status(`Runtime event capture failed: ${String(error)}`);
+    console.error("HOT_UPDATER_RUNTIME_SNAPSHOT_FAILURE", String(error));
+  }
+}
+
 export async function installSdkUpdate(
   status: (value: string) => void,
   canInstall: (value: boolean) => void,
@@ -156,8 +204,36 @@ export async function installSdkUpdate(
           : "Installation skipped.",
     );
   } catch (error) {
-    status(`Installation failed: ${String(error)}`);
-    console.error("HOT_UPDATER_SDK_INSTALL_FAILURE", String(error));
+    const failure = {
+      bundleId: prepared?.bundleId ?? null,
+      code: error instanceof LynxUpdaterError ? error.code : "UNEXPECTED_ERROR",
+      message: error instanceof Error ? error.message : String(error),
+      releaseId: prepared?.releaseId ?? null,
+    };
+    if (evidenceOrigin !== null) {
+      try {
+        const response = await fetch(
+          `${evidenceOrigin}/matrix-install-failure`,
+          {
+            body: JSON.stringify({ failure }),
+            headers: { "content-type": "application/json" },
+            method: "POST",
+          },
+        );
+        if (!response.ok) {
+          throw new Error(
+            `Install failure evidence endpoint returned ${response.status}`,
+          );
+        }
+      } catch (publishError) {
+        console.error(
+          "HOT_UPDATER_SDK_INSTALL_FAILURE_EVIDENCE_FAILURE",
+          String(publishError),
+        );
+      }
+    }
+    status(`Installation failed: [${failure.code}] ${failure.message}`);
+    console.error("HOT_UPDATER_SDK_INSTALL_FAILURE", JSON.stringify(failure));
   } finally {
     busy = false;
   }
@@ -187,12 +263,16 @@ export async function installSdkUpdateAndReload(
         transitionKind: update.transitionKind,
       }),
     );
-    await HotUpdater.reload();
   } catch (error) {
+    busy = false;
     status(`Install and reload failed: ${String(error)}`);
     console.error("HOT_UPDATER_SDK_RELOAD_FAILURE", String(error));
     throw error;
-  } finally {
-    busy = false;
   }
+  busy = false;
+  return HotUpdater.reload().catch((error) => {
+    status(`Install and reload failed: ${String(error)}`);
+    console.error("HOT_UPDATER_SDK_RELOAD_FAILURE", String(error));
+    throw error;
+  });
 }

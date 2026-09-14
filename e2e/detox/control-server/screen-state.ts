@@ -8,6 +8,10 @@ export type E2eScreenState = {
   readonly currentCohort: string | null;
   readonly crashHistoryCount: string | null;
   readonly defaultChannel: string | null;
+  readonly detailPageMarker: string | null;
+  readonly detailPageTitle: string | null;
+  readonly diagnosticReceipt: string | null;
+  readonly generationEvents: string | null;
   readonly channelSwitched: string | null;
   readonly launchStatus: string;
   readonly runtimeChannelInput: string;
@@ -32,6 +36,10 @@ const defaultE2eScreenState = {
   currentCohort: null,
   crashHistoryCount: null,
   defaultChannel: null,
+  detailPageMarker: null,
+  detailPageTitle: null,
+  diagnosticReceipt: null,
+  generationEvents: null,
   channelSwitched: null,
   launchStatus: "Current Launch Status: null",
   runtimeChannelInput: "beta",
@@ -45,6 +53,7 @@ const defaultE2eScreenState = {
 } as const satisfies E2eScreenState;
 
 let e2eScreenState: E2eScreenState = defaultE2eScreenState;
+let e2eScreenStateLaunchGeneration: string | null = null;
 
 const createScreenStateError = (message: string, details?: unknown) =>
   Object.assign(new Error(message), { details });
@@ -137,6 +146,22 @@ const parseScreenStatePatch = (payload: unknown): E2eScreenStatePatch => {
     "crashHistoryCount",
   );
   const defaultChannel = parseOptionalNullableString(payload, "defaultChannel");
+  const detailPageMarker = parseOptionalNullableString(
+    payload,
+    "detailPageMarker",
+  );
+  const detailPageTitle = parseOptionalNullableString(
+    payload,
+    "detailPageTitle",
+  );
+  const generationEvents = parseOptionalNullableString(
+    payload,
+    "generationEvents",
+  );
+  const diagnosticReceipt = parseOptionalNullableString(
+    payload,
+    "diagnosticReceipt",
+  );
   const channelSwitched = parseOptionalNullableString(
     payload,
     "channelSwitched",
@@ -173,6 +198,10 @@ const parseScreenStatePatch = (payload: unknown): E2eScreenStatePatch => {
     ...(currentCohort === undefined ? {} : { currentCohort }),
     ...(crashHistoryCount === undefined ? {} : { crashHistoryCount }),
     ...(defaultChannel === undefined ? {} : { defaultChannel }),
+    ...(detailPageMarker === undefined ? {} : { detailPageMarker }),
+    ...(detailPageTitle === undefined ? {} : { detailPageTitle }),
+    ...(diagnosticReceipt === undefined ? {} : { diagnosticReceipt }),
+    ...(generationEvents === undefined ? {} : { generationEvents }),
     ...(channelSwitched === undefined ? {} : { channelSwitched }),
     ...(launchStatus === undefined ? {} : { launchStatus }),
     ...(runtimeChannelInput === undefined ? {} : { runtimeChannelInput }),
@@ -190,13 +219,41 @@ export const readE2eScreenStateSnapshot = () => e2eScreenState;
 
 export const resetE2eScreenState = () => {
   e2eScreenState = defaultE2eScreenState;
+  e2eScreenStateLaunchGeneration = null;
   return { screenState: readE2eScreenStateSnapshot() };
 };
 
+export const beginE2eScreenStateLaunch = (launchGeneration: string | null) => {
+  const result = resetE2eScreenState();
+  e2eScreenStateLaunchGeneration = launchGeneration;
+  return result;
+};
+
+export const setE2eScreenStateLaunchGeneration = (
+  launchGeneration: string | null,
+) => {
+  e2eScreenStateLaunchGeneration = launchGeneration;
+};
+
 export const handlePatchE2eScreenState = (payload: unknown) => {
+  const publishesRuntimeMarker =
+    isRecord(payload) && typeof payload.runtimeScenarioMarker === "string";
+  if (
+    publishesRuntimeMarker &&
+    e2eScreenStateLaunchGeneration !== null &&
+    payload.launchGeneration !== e2eScreenStateLaunchGeneration
+  ) {
+    throw createScreenStateError("stale screen state launch generation", {
+      expected: e2eScreenStateLaunchGeneration,
+      received: payload.launchGeneration,
+    });
+  }
   e2eScreenState = {
     ...e2eScreenState,
     ...parseScreenStatePatch(payload),
   };
-  return { screenState: readE2eScreenStateSnapshot() };
+  return {
+    launchGeneration: e2eScreenStateLaunchGeneration,
+    screenState: readE2eScreenStateSnapshot(),
+  };
 };

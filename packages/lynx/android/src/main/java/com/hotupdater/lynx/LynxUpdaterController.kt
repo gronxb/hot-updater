@@ -1,6 +1,7 @@
 package com.hotupdater.lynx
 
 import android.content.Context
+import android.os.Process
 import android.util.Log
 import com.hotupdater.lynx.internal.ArchiveIntegrity
 import com.hotupdater.lynx.internal.HashUtils
@@ -17,14 +18,20 @@ data class LynxLaunchDiagnostics(
     val startupAttemptId: String,
     val bundleId: String,
     val releaseId: String?,
+    val generationId: String,
+    val pageEntry: String,
+    val pageAttemptId: String?,
 )
 
 /** Native policy, scoped persistence and immutable process selection. */
 class LynxUpdaterController internal constructor(
-    filesDir: File,
+    private val filesDir: File,
     packageCodePath: File,
     private val embedded: VerifiedLynxInstallation,
     val configuration: LynxHostConfiguration,
+    private val processIdentity: () -> String = {
+        Process.myPid().toString()
+    },
 ) {
     constructor(context: Context, configuration: LynxHostConfiguration) : this(
         context.filesDir,
@@ -38,6 +45,7 @@ class LynxUpdaterController internal constructor(
     private val namespace = digestString(listOf(binaryId, configuration.runtimeId, configuration.channel,
         configuration.appVersion, embedded.bundleId, embedded.manifestHash, keyIdentity).joinToString("\n"))
     private val directory = File(filesDir, "hot-updater-lynx/scopes/$namespace").canonicalFile
+    private val generationEventJournal = LynxGenerationEventJournal(filesDir)
     private val store = LynxStateStore(directory)
     private val installer = LynxArtifactInstaller(File(directory, "artifacts"), LynxInstallConfiguration(configuration.runtimeId, configuration.publicKeyPem))
     private var running = builtin()
@@ -45,6 +53,7 @@ class LynxUpdaterController internal constructor(
     private var runningConfirmed = false
     private var closed = false
     private var primary: LynxLaunchSession? = null
+    private val members = linkedSetOf<LynxLaunchSession>()
     private var accepted: CatalogPolicy.AcceptedCatalog? = null
     private var acceptedScopeSwitch = false
     private var recoveredFrom: CatalogPolicy.Receipt? = null
@@ -56,11 +65,22 @@ class LynxUpdaterController internal constructor(
         val files: VerifiedLynxInstallation,
         val confirmed: Boolean,
         val transition: JSONObject?,
+        val logicalStack: List<LynxLogicalPage>,
+    )
+    private data class SecondaryPlan(
+        val files: VerifiedLynxInstallation,
+        val receipt: CatalogPolicy.Receipt,
+        val primary: LynxLaunchSession,
+        val stack: List<LynxLogicalPage>,
+        val page: LynxLogicalPage,
     )
     private val preparations = mutableMapOf<String, Preparation>()
     private val preparing = mutableMapOf<String, String>()
 
     init {
+        LynxReleaseResources.cleanOrphanedSnapshots(
+            File(directory, "resource-snapshots"),
+        )
         synchronized(stateLock) {
             if (!store.value.has("revision")) store.update { it.put("revision", UUID.randomUUID().toString()) }
             recover()
@@ -159,23 +179,275 @@ class LynxUpdaterController internal constructor(
         return null
     }
     private fun recover() {
-        val pending = store.value.optJSONObject("pending") ?: return
-        val selected = CatalogPolicy.parseReceipt(pending.getJSONObject("selection"))
+        replayPageAttemptTerminals()
+        val pendingPage = store.value.optJSONObject("pageAttempt")
+        val pending = store.value.optJSONObject("pending")
+        val generationFailure = store.value.optJSONObject("generationFailure")
+        if (pendingPage == null && pending == null && generationFailure == null) {
+            return
+        }
+        val selected = CatalogPolicy.parseReceipt(
+            (pendingPage ?: pending ?: checkNotNull(generationFailure))
+                .getJSONObject("selection"),
+        )
         recoveredFrom = selected
         val fallbackChannel = receipt("confirmed")?.channel ?: configuration.channel
         mutate { next ->
+            pendingPage?.let { pageAttempt ->
+                appendPageAttemptTerminal(
+                    next = next,
+                    attempt = pageAttempt,
+                    terminal = "process-interruption",
+                    stack = retainedStack(),
+                    reason = "processRecovery",
+                    transitionId = activeManagedTransitionId(),
+                    topContextId = null,
+                )
+            }
             if (selected.releaseId != null) {
-                val key = if (pending.optBoolean("fatal") && selected.bundleId != embedded.bundleId) "crashed" else "unconfirmed"
-                val id = if (key == "crashed") selected.bundleId else checkNotNull(selected.releaseId)
-                val values = exclusions(key).toMutableSet().also { it.add(id) }
-                next.put(key, JSONArray(values.toList()))
+                val unconfirmed = exclusions("unconfirmed").toMutableSet().also {
+                    it.add(checkNotNull(selected.releaseId))
+                }
+                next.put("unconfirmed", JSONArray(unconfirmed.toList()))
+            }
+            val fatal = pendingPage?.optBoolean("fatal") == true ||
+                pending?.optBoolean("fatal") == true ||
+                generationFailure?.optBoolean("fatal") == true
+            if (fatal && selected.bundleId != embedded.bundleId) {
+                val crashed = exclusions("crashed").toMutableSet().also {
+                    it.add(selected.bundleId)
+                }
+                next.put("crashed", JSONArray(crashed.toList()))
+            }
+            if (
+                selected.bundleId == embedded.bundleId &&
+                (pendingPage != null || generationFailure != null)
+            ) {
+                next.put("failedEmbedded", selected.toJson())
             }
             next.remove("pending")
+            next.remove("pageAttempt")
+            next.remove("generationFailure")
             next.put("channel", fallbackChannel)
         }
-        Log.i(TAG, "recovered release=${selected.releaseId} fatal=${pending.optBoolean("fatal")}")
+        replayPageAttemptTerminals()
+        Log.i(
+            TAG,
+            "recovered release=${selected.releaseId} fatal=" +
+                (pendingPage?.optBoolean("fatal") == true ||
+                    pending?.optBoolean("fatal") == true ||
+                    generationFailure?.optBoolean("fatal") == true),
+        )
+    }
+
+    private fun replayPageAttemptTerminals() {
+        val terminals = store.value.optJSONArray("pageAttemptTerminals") ?: return
+        for (index in 0 until terminals.length()) {
+            val terminal = terminals.getJSONObject(index)
+            if (terminal.optBoolean("runtimeEventEmitted", false)) continue
+            val pageAttemptId = terminal.getString("attemptId")
+            val selection = CatalogPolicy.parseReceipt(
+                terminal.getJSONObject("selection"),
+            )
+            val stack = parseStack(terminal.getJSONArray("stack"))
+            val details = mutableMapOf<String, Any?>(
+                "runtimeId" to configuration.runtimeId,
+                "processId" to terminal.getString("processId"),
+                "generationId" to terminal.getString("generationId"),
+                "contextId" to terminal.getString("contextId"),
+                "attemptId" to terminal.getString("startupAttemptId"),
+                "pageAttemptId" to pageAttemptId,
+                "bundleId" to selection.bundleId,
+                "releaseId" to selection.releaseId,
+                "pageEntry" to terminal.getString("entry"),
+                "pageParameters" to terminal.getJSONObject("parameters").let {
+                    parameters -> parameters.keys().asSequence().associateWith {
+                        key -> parameters.getString(key)
+                    }
+                },
+                "nativePageClass" to terminal.optString("nativePageClass")
+                    .takeIf(String::isNotEmpty),
+                "sourceContextId" to terminal.getString("sourceContextId"),
+                "orderedPageEntries" to stack.map(LynxLogicalPage::entry),
+                "orderedPageParameters" to stack.map(LynxLogicalPage::parameters),
+                "topPageEntry" to terminalTopPage(terminal, stack)?.entry,
+                "topContextId" to terminal.optString("topContextId")
+                    .takeIf(String::isNotEmpty),
+                "transitionId" to terminal.optString("transitionId")
+                    .takeIf(String::isNotEmpty),
+                "terminal" to terminal.getString("terminal"),
+            )
+            terminal.optString("reason").takeIf(String::isNotEmpty)
+                ?.let { details["reason"] = it }
+            terminal.opt("failureCode")?.takeUnless { it == JSONObject.NULL }
+                ?.let { details["failureCode"] = it }
+            terminal.optString("failureResourcePath").takeIf(String::isNotEmpty)
+                ?.let { details["failureResourcePath"] = it }
+            val recorded = runCatching {
+                generationEventJournal.appendOnce(
+                    "pageAttemptTerminal",
+                    "pageAttemptId",
+                    pageAttemptId,
+                    details,
+                )
+            }
+            if (recorded.isFailure) {
+                Log.e(TAG, "Deferred page terminal runtime event recording", recorded.exceptionOrNull())
+                return
+            }
+            if (runCatching { markPageAttemptTerminalEventEmitted(pageAttemptId) }.isFailure) {
+                Log.e(TAG, "Deferred page terminal emission marker")
+                return
+            }
+        }
     }
     private fun artifact(value: JSONObject) = LynxArtifactRequest.fromJson(value)
+
+    private fun pageJson(value: LynxLogicalPage) = JSONObject()
+        .put("entry", value.entry)
+        .put("parameters", JSONObject(value.parameters))
+
+    private fun stackJson(value: List<LynxLogicalPage>) = JSONArray(
+        value.map(::pageJson),
+    )
+
+    private fun appendPageAttemptTerminal(
+        next: JSONObject,
+        attempt: JSONObject,
+        terminal: String,
+        stack: List<LynxLogicalPage>,
+        reason: String? = null,
+        transitionId: String? = null,
+        topContextId: String?,
+        message: String? = null,
+        failureCode: Int? = null,
+        failureResourcePath: String? = null,
+    ) {
+        val attemptId = attempt.getString("attemptId")
+        val terminals = next.optJSONArray("pageAttemptTerminals") ?: JSONArray()
+        check((0 until terminals.length()).none { index ->
+            terminals.getJSONObject(index).getString("attemptId") == attemptId
+        }) { "Page attempt already has a terminal record" }
+        val record = JSONObject(attempt.toString())
+            .put("contextId", attemptId)
+            .put("processId", attempt.getString("processId"))
+            .put("stack", stackJson(stack))
+            .put("terminal", terminal)
+            .put("topContextId", topContextId ?: JSONObject.NULL)
+            .put("transitionId", transitionId ?: JSONObject.NULL)
+            .put("runtimeEventEmitted", false)
+        reason?.let { record.put("reason", it) }
+        message?.let { record.put("message", it) }
+        failureCode?.let { record.put("failureCode", it) }
+        failureResourcePath?.let { record.put("failureResourcePath", it) }
+        terminals.put(record)
+        while (terminals.length() > PAGE_ATTEMPT_TERMINAL_CAPACITY) {
+            terminals.remove(0)
+        }
+        next.put("pageAttemptTerminals", terminals)
+        next.put(
+            "pageAttemptTerminalCount",
+            next.optLong("pageAttemptTerminalCount", 0L) + 1L,
+        )
+        next.put("lastPageAttempt", JSONObject(record.toString()))
+    }
+
+    private fun liveTopContextId(
+        stack: List<LynxLogicalPage>,
+        excludingAttemptId: String,
+    ): String? {
+        val top = stack.lastOrNull() ?: return null
+        return members.toList().asReversed().firstOrNull { session ->
+            session.id != excludingAttemptId && session.live && !session.failed &&
+                session.generationId == primary?.generationId &&
+                session.pageEntry == top.entry &&
+                session.pageParameters == top.parameters
+        }?.id
+    }
+
+    private fun stackBeforeAttempt(
+        stack: List<LynxLogicalPage>,
+        attempt: JSONObject,
+    ): List<LynxLogicalPage> = stack.take(
+        attempt.getInt("position").coerceIn(0, stack.size),
+    )
+
+    private fun terminalTopPage(
+        terminal: JSONObject,
+        stack: List<LynxLogicalPage>,
+    ): LynxLogicalPage? = if (
+        terminal.getString("terminal") == "authorized-cancel"
+    ) {
+        stack.lastOrNull()
+    } else {
+        stack.getOrNull(terminal.getInt("position")) ?: stack.lastOrNull()
+    }
+
+    fun markPageAttemptTerminalEventEmitted(pageAttemptId: String): Boolean =
+        synchronized(stateLock) {
+            val terminals = store.value.optJSONArray("pageAttemptTerminals")
+                ?: return@synchronized false
+            val index = (0 until terminals.length()).firstOrNull { index ->
+                terminals.getJSONObject(index).getString("attemptId") == pageAttemptId
+            } ?: return@synchronized false
+            if (terminals.getJSONObject(index).optBoolean("runtimeEventEmitted")) {
+                return@synchronized true
+            }
+            mutate { next ->
+                val stored = next.getJSONArray("pageAttemptTerminals")
+                    .getJSONObject(index)
+                check(stored.getString("attemptId") == pageAttemptId)
+                stored.put("runtimeEventEmitted", true)
+                next.optJSONObject("lastPageAttempt")?.takeIf {
+                    it.optString("attemptId") == pageAttemptId
+                }?.put("runtimeEventEmitted", true)
+            }
+            true
+        }
+
+    private fun parseStack(value: JSONArray): List<LynxLogicalPage> =
+        (0 until value.length()).map { index ->
+            val page = value.optJSONObject(index)
+                ?: error("Invalid managed logical page")
+            require(page.keys().asSequence().toSet() == setOf("entry", "parameters")) {
+                "Invalid managed logical page keys"
+            }
+            val parameters = page.optJSONObject("parameters")
+                ?: error("Invalid managed page parameters")
+            val values = parameters.keys().asSequence().associateWith { key ->
+                require(key.isNotEmpty()) { "Invalid managed page parameter" }
+                parameters.opt(key) as? String
+                    ?: error("Managed page parameters must be strings")
+            }
+            LynxLogicalPage(page.getString("entry"), values)
+        }.also { stack ->
+            require(stack.isNotEmpty() && stack.size <= MAX_MANAGED_PAGES) {
+                "Invalid managed logical stack size"
+            }
+        }
+
+    private fun retainedStack(): List<LynxLogicalPage> {
+        val transition = store.value.optJSONObject("managedTransition")
+        val stored = store.value.optJSONArray("logicalStack")
+            ?: transition?.optJSONArray("stack")
+        return stored?.let(::parseStack) ?: listOf(
+            LynxLogicalPage(embedded.entry),
+        )
+    }
+
+    private fun requireCompleteStack(
+        installation: VerifiedLynxInstallation,
+        stack: List<LynxLogicalPage>,
+    ) {
+        require(stack.first().entry == installation.entry) {
+            "Managed logical stack does not begin with the artifact main entry"
+        }
+        stack.forEach { page ->
+            require(page.entry in installation.pageEntries) {
+                "Selected artifact cannot reconstruct the complete page stack"
+            }
+        }
+    }
     private fun artifactJson(
         value: LynxArtifactRequest,
         verified: VerifiedLynxInstallation,
@@ -223,7 +495,10 @@ class LynxUpdaterController internal constructor(
     }
 
     /** Call before creating/evaluating the designated primary Lynx view. */
-    fun pinPrimary(): LynxLaunchSession {
+    fun pinPrimary(
+        generationId: String = UUID.randomUUID().toString(),
+        parameters: Map<String, String> = emptyMap(),
+    ): LynxLaunchSession {
         val plan = synchronized(stateLock) {
             check(!closed) { "The controller is closed" }
             check(primary == null) {
@@ -232,6 +507,14 @@ class LynxUpdaterController internal constructor(
             val startupSnapshot = snapshot()
             fun eligibleStored(candidate: CatalogPolicy.Receipt): Boolean {
                 if (!eligible(candidate)) return false
+                val failedEmbedded = store.value.optJSONObject("failedEmbedded")
+                    ?.let(CatalogPolicy::parseReceipt)
+                if (
+                    failedEmbedded != null &&
+                    sameRelease(candidate, failedEmbedded)
+                ) {
+                    return false
+                }
                 if (candidate.kind == "BUILTIN" && candidate.catalogId == null) return true
                 val catalogId = candidate.catalogId ?: return false
                 val scope = candidate.scopeKey ?: return false
@@ -290,14 +573,24 @@ class LynxUpdaterController internal constructor(
             val confirmed = receipt("confirmed")?.takeIf(::eligibleStored)
             val atCapacity = exclusions("unconfirmed").size >= CAPACITY ||
                 exclusions("crashed").size >= CAPACITY
+            val stack = retainedStack().let { retained ->
+                if (
+                    store.value.has("logicalStack") ||
+                    store.value.has("managedTransition")
+                ) {
+                    retained
+                } else {
+                    listOf(LynxLogicalPage(embedded.entry, parameters))
+                }
+            }
             val candidates = listOfNotNull(
                 receipt("next"),
                 receipt("active"),
                 confirmed,
                 builtin(),
             ).distinct()
-            var chosen = builtin()
-            var files = embedded
+            var chosen: CatalogPolicy.Receipt? = null
+            var files: VerifiedLynxInstallation? = null
             for (candidate in candidates) {
                 if (
                     !eligibleStored(candidate) ||
@@ -308,23 +601,31 @@ class LynxUpdaterController internal constructor(
                 }
                 val verified = runCatching { installed(candidate) }.getOrNull()
                     ?: continue
+                if (runCatching { requireCompleteStack(verified, stack) }.isFailure) {
+                    continue
+                }
                 chosen = candidate
                 files = verified
                 break
             }
+            val selected = checkNotNull(chosen) {
+                "No eligible complete Lynx page generation can be reconstructed"
+            }
+            val selectedFiles = checkNotNull(files)
             val failed = recoveredFrom
             val stable = confirmed ?: builtin()
             val transition = if (failed != null) {
-                launchTransition(failed, chosen, recovery = true)
+                launchTransition(failed, selected, recovery = true)
             } else {
-                launchTransition(stable, chosen)
+                launchTransition(stable, selected)
             }
             LaunchPlan(
                 store.value.getString("revision"),
-                chosen,
-                files,
-                chosen == confirmed,
+                selected,
+                selectedFiles,
+                selected == confirmed,
                 transition,
+                stack,
             )
         }
         val lease = installer.retain(plan.files)
@@ -343,6 +644,8 @@ class LynxUpdaterController internal constructor(
                     true,
                     plan.receipt.releaseId,
                     lease,
+                    page = plan.logicalStack.first(),
+                    generationId = generationId,
                 )
                 mutate { next ->
                     check(!next.has("pending")) {
@@ -350,6 +653,12 @@ class LynxUpdaterController internal constructor(
                     }
                     next.put("active", plan.receipt.toJson())
                     next.remove("next")
+                    next.put("logicalStack", stackJson(plan.logicalStack))
+                    if (plan.logicalStack.size > 1) {
+                        next.put("reconstructionPosition", 1)
+                    } else {
+                        next.remove("reconstructionPosition")
+                    }
                     if (plan.transition != null) {
                         next.put("launchTransition", plan.transition)
                     } else {
@@ -374,6 +683,7 @@ class LynxUpdaterController internal constructor(
                 }
                 recoveredFrom = null
                 primary = session
+                members.add(session)
                 Log.i(
                     TAG,
                     "attempt-before-evaluation bundle=${plan.receipt.bundleId} release=${plan.receipt.releaseId} confirmed=$runningConfirmed attempt=${session.id}",
@@ -386,27 +696,112 @@ class LynxUpdaterController internal constructor(
         }
     }
 
+    @Deprecated("Pass an allowlisted page entry and logical stack identity")
     fun pinSecondary(): LynxLaunchSession {
+        val source = synchronized(stateLock) {
+            checkNotNull(primary) { "Secondary context must wait for primary selection" }
+        }
+        return pinSecondary(
+            pageEntry = source.pageEntry,
+            parameters = emptyMap(),
+            stackPosition = retainedLogicalStack(source).size,
+            generationId = source.generationId,
+        )
+    }
+
+    fun pinSecondary(
+        pageEntry: String,
+        parameters: Map<String, String>,
+        stackPosition: Int,
+        generationId: String,
+        reconstructing: Boolean = false,
+        nativePageClass: String? = null,
+        sourceContextId: String? = null,
+    ): LynxLaunchSession {
         val plan = synchronized(stateLock) {
             check(!closed) { "The controller is closed" }
-            check(primary != null) {
+            val currentPrimary = checkNotNull(primary) {
                 "Secondary context must wait for primary selection"
             }
-            Triple(runningFiles, running, checkNotNull(primary))
+            rejectFailedGeneration()
+            require(generationId == currentPrimary.generationId) {
+                "Secondary context belongs to another generation"
+            }
+            require(pageEntry in runningFiles.pageEntries) {
+                "Unknown managed page entry"
+            }
+            require(parameters.keys.none(String::isEmpty)) {
+                "Managed page parameter names must not be empty"
+            }
+            val logical = retainedStack().toMutableList()
+            require(logical.size <= MAX_MANAGED_PAGES) {
+                "Invalid managed logical stack size"
+            }
+            val page = LynxLogicalPage(pageEntry, parameters.toMap())
+            if (reconstructing) {
+                require(
+                    store.value.optInt("reconstructionPosition", -1) ==
+                        stackPosition,
+                ) { "Reconstructed page is not the current stack position" }
+                require(stackPosition in 1 until logical.size && logical[stackPosition] == page) {
+                    "Reconstructed page does not match the retained stack"
+                }
+            } else {
+                require(logical.size < MAX_MANAGED_PAGES) {
+                    "Managed logical stack is full"
+                }
+                require(stackPosition == logical.size) {
+                    "Managed page must be appended at the top of the stack"
+                }
+                logical.add(page)
+            }
+            require(!store.value.has("pageAttempt")) {
+                "A secondary page admission is already pending"
+            }
+            SecondaryPlan(runningFiles, running, currentPrimary, logical, page)
         }
-        val lease = installer.retain(plan.first)
+        val lease = installer.retain(plan.files)
         try {
             return synchronized(stateLock) {
                 check(
-                    !closed && primary === plan.third &&
-                        running == plan.second && runningFiles === plan.first,
+                    !closed && primary === plan.primary &&
+                        running == plan.receipt && runningFiles === plan.files,
                 ) { "Primary selection changed during resource retention" }
-                launchSession(
-                    plan.first,
+                rejectFailedGeneration()
+                val openingSourceContextId = sourceContextId ?: plan.primary.id
+                val session = launchSession(
+                    plan.files,
                     false,
-                    plan.second.releaseId,
+                    plan.receipt.releaseId,
                     lease,
+                    plan.page,
+                    generationId,
+                    openingSourceContextId,
                 )
+                mutate { next ->
+                    next.put("logicalStack", stackJson(plan.stack))
+                    next.put(
+                        "pageAttempt",
+                        JSONObject()
+                            .put("attemptId", session.id)
+                            .put("startupAttemptId", plan.primary.id)
+                            .put("sourceContextId", openingSourceContextId)
+                            .put("processId", currentProcessId())
+                            .put("generationId", generationId)
+                            .put("position", stackPosition)
+                            .put("reconstructing", reconstructing)
+                            .put("entry", plan.page.entry)
+                            .put("parameters", JSONObject(plan.page.parameters))
+                            .put("selection", plan.receipt.toJson())
+                            .put(
+                                "nativePageClass",
+                                nativePageClass ?: JSONObject.NULL,
+                            )
+                            .put("fatal", false),
+                    )
+                }
+                members.add(session)
+                session
             }
         } catch (error: Throwable) {
             lease.close()
@@ -419,6 +814,9 @@ class LynxUpdaterController internal constructor(
         isPrimary: Boolean,
         releaseId: String?,
         lease: InstallationLease,
+        page: LynxLogicalPage = LynxLogicalPage(files.entry),
+        generationId: String = UUID.randomUUID().toString(),
+        openingSourceContextId: String? = null,
     ): LynxLaunchSession {
         val id = UUID.randomUUID().toString()
         return LynxLaunchSession(
@@ -429,6 +827,10 @@ class LynxUpdaterController internal constructor(
             releaseId,
             File(directory, "resource-snapshots/$id"),
             lease,
+            page.entry,
+            page.parameters,
+            generationId,
+            openingSourceContextId,
         )
     }
 
@@ -440,7 +842,22 @@ class LynxUpdaterController internal constructor(
                 startupAttemptId = checkNotNull(primary).id,
                 bundleId = session.installation.bundleId,
                 releaseId = session.launchReleaseId,
+                generationId = session.generationId,
+                pageEntry = session.pageEntry,
+                pageAttemptId = session.id.takeUnless { session.isPrimary },
             )
+        }
+
+    fun runtimeEvents(session: LynxLaunchSession): JSONObject =
+        synchronized(stateLock) {
+            requireLive(session, false)
+            generationEventJournal.snapshot()
+        }
+
+    fun retainedLogicalStack(session: LynxLaunchSession): List<LynxLogicalPage> =
+        synchronized(stateLock) {
+            requireLive(session, false)
+            retainedStack().map { it.copy(parameters = it.parameters.toMap()) }
         }
 
     fun setCohort(cohort: String) {
@@ -456,6 +873,135 @@ class LynxUpdaterController internal constructor(
         runtimeChannel = channel
         mutate { it.put("channel", channel) }
     }
+
+    fun acceptManagedTransition(
+        session: LynxLaunchSession,
+        sourceGenerationId: String,
+        stack: List<LynxLogicalPage>,
+        trigger: String,
+    ): JSONObject = synchronized(stateLock) {
+        if (store.value.has("managedTransition")) {
+            throw CatalogPolicy.Rejected(
+                "TRANSITION_IN_PROGRESS",
+                "A managed Lynx transition is already accepted",
+            )
+        }
+        requireLive(session)
+        rejectFailedGeneration()
+        require(sourceGenerationId == session.generationId) {
+            "Managed transition source generation is stale"
+        }
+        require(stack.isNotEmpty() && stack.size <= MAX_MANAGED_PAGES) {
+            "Invalid managed transition stack size"
+        }
+        require(
+            trigger == "reload" || trigger == "reset" ||
+                trigger == "forcedActivation",
+        ) {
+            "Unsupported managed transition trigger"
+        }
+        require(stack == retainedStack()) {
+            "Managed transition stack differs from the live native stack"
+        }
+        val targetReceipt = if (trigger == "reset") {
+            builtin()
+        } else {
+            receipt("next") ?: running
+        }
+        val targetFiles = installed(targetReceipt)
+        requireCompleteStack(targetFiles, stack)
+        val transitionId = UUID.randomUUID().toString()
+        val transition = JSONObject()
+            .put("transitionId", transitionId)
+            .put("trigger", trigger)
+            .put("sourceGenerationId", sourceGenerationId)
+            .put("source", running.toJson())
+            .put("target", targetReceipt.toJson())
+            .put("stack", stackJson(stack))
+        mutate { next ->
+            next.optJSONObject("pageAttempt")?.let { pageAttempt ->
+                appendPageAttemptTerminal(
+                    next = next,
+                    attempt = pageAttempt,
+                    terminal = "authorized-cancel",
+                    stack = stack,
+                    reason = "managedTransition",
+                    transitionId = transitionId,
+                    topContextId = liveTopContextId(
+                        stackBeforeAttempt(stack, pageAttempt),
+                        pageAttempt.getString("attemptId"),
+                    ),
+                )
+            }
+            if (trigger == "reset") {
+                next.put("channel", configuration.channel)
+                next.put("active", targetReceipt.toJson())
+                next.remove("next")
+                next.remove("confirmed")
+                next.remove("launchTransition")
+                next.remove("catalog")
+                next.remove("catalogs")
+            } else {
+                next.put("next", targetReceipt.toJson())
+            }
+            next.remove("pending")
+            next.remove("pageAttempt")
+            next.remove("generationFailure")
+            next.put("managedTransition", transition)
+        }
+        if (trigger == "reset") {
+            runtimeChannel = configuration.channel
+            accepted = null
+            acceptedScopeSwitch = false
+            preparations.values.forEach { preparation ->
+                preparation.bytes?.let { bytes ->
+                    runCatching { installer.discard(bytes) }
+                }
+            }
+            preparations.clear()
+            preparing.clear()
+        }
+        JSONObject()
+            .put("status", "TRANSITION_ACCEPTED")
+            .put("transitionId", transitionId)
+    }
+
+    private fun rejectFailedGeneration() {
+        if (store.value.has("generationFailure")) {
+            throw CatalogPolicy.Rejected(
+                "STALE_CONTEXT",
+                "The managed Lynx generation has already failed",
+            )
+        }
+    }
+
+    private fun currentProcessId(): String {
+        val processId = processIdentity()
+        check(processId.matches(Regex("^[1-9][0-9]*$"))) {
+            "The managed Lynx process identity is invalid"
+        }
+        return processId
+    }
+
+    private fun activeManagedTransitionId(): String? = store.value
+        .optJSONObject("managedTransition")
+        ?.optString("transitionId")
+        ?.takeIf(String::isNotEmpty)
+
+    fun pendingManagedTransition(
+        session: LynxLaunchSession,
+    ): LynxManagedTransition? = synchronized(stateLock) {
+        requireLive(session, false)
+        store.value.optJSONObject("managedTransition")?.let { transition ->
+            LynxManagedTransition(
+                transitionId = transition.getString("transitionId"),
+                trigger = transition.getString("trigger"),
+                sourceGenerationId = transition.getString("sourceGenerationId"),
+                stack = parseStack(transition.getJSONArray("stack")),
+            )
+        }
+    }
+
     fun resetChannel(): Boolean {
         val discarded = synchronized(stateLock) {
             check(!closed) { "The controller is closed" }
@@ -721,7 +1267,16 @@ class LynxUpdaterController internal constructor(
         )
     }
     private fun requireLive(session: LynxLaunchSession, primaryOnly: Boolean = true) {
-        if (closed || !session.live || session.controller !== this || (primaryOnly && session !== primary)) throw CatalogPolicy.Rejected("STALE_CONTEXT", "The calling native context is not eligible")
+        val acceptedSourceGeneration = store.value
+            .optJSONObject("managedTransition")
+            ?.optString("sourceGenerationId")
+            ?.takeIf(String::isNotEmpty)
+        if (
+            closed || !session.live || session.failed ||
+            session.controller !== this || session !in members ||
+            (primaryOnly && session !== primary) ||
+            acceptedSourceGeneration == session.generationId
+        ) throw CatalogPolicy.Rejected("STALE_CONTEXT", "The calling native context is not eligible")
     }
     private fun sameRelease(
         first: CatalogPolicy.Receipt,
@@ -745,6 +1300,12 @@ class LynxUpdaterController internal constructor(
             .put("kind", kind)
             .put("from", from.toJson())
             .put("to", to.toJson())
+            .also { transition ->
+                store.value.optJSONObject("managedTransition")
+                    ?.optString("transitionId")
+                    ?.takeIf(String::isNotEmpty)
+                    ?.let { transition.put("transitionId", it) }
+            }
     }
 
     private fun transitionResponse(value: JSONObject?): Any {
@@ -772,6 +1333,11 @@ class LynxUpdaterController internal constructor(
         return JSONObject()
             .put("kind", kind)
             .put(
+                "transitionId",
+                value.optString("transitionId")
+                    .takeIf(String::isNotEmpty) ?: JSONObject.NULL,
+            )
+            .put(
                 "from",
                 summary(from),
             )
@@ -784,11 +1350,23 @@ class LynxUpdaterController internal constructor(
     internal fun confirm(session: LynxLaunchSession): JSONObject = synchronized(stateLock) {
         requireLive(session)
         check(session.firstScreen && !session.failed) { "Primary content is not ready" }
+        check(!store.value.has("pageAttempt")) {
+            "A secondary page is still awaiting admission"
+        }
         val transition = store.value.optJSONObject("launchTransition")
+        val managedTransitionId = store.value.optJSONObject("managedTransition")
+            ?.optString("transitionId")
+            ?.takeIf(String::isNotEmpty)
         if (runningConfirmed) {
-            if (transition != null) mutate { it.remove("launchTransition") }
+            if (transition != null || store.value.has("managedTransition")) {
+                mutate {
+                    it.remove("launchTransition")
+                    it.remove("managedTransition")
+                }
+            }
             return JSONObject()
                 .put("status", "ALREADY_CONFIRMED")
+                .put("transitionId", managedTransitionId ?: JSONObject.NULL)
                 .put("transition", transitionResponse(transition))
         }
         val pending = store.value.optJSONObject("pending")
@@ -798,41 +1376,251 @@ class LynxUpdaterController internal constructor(
             it.remove("pending")
             it.put("confirmed", running.toJson())
             it.remove("launchTransition")
+            it.remove("managedTransition")
         }
         runningConfirmed = true
         Log.i(TAG, "confirmed bundle=${running.bundleId} release=${running.releaseId} attempt=${session.id}")
         JSONObject()
             .put("status", "CONFIRMED")
+            .put("transitionId", managedTransitionId ?: JSONObject.NULL)
             .put("transition", transitionResponse(transition))
     }
+
+    internal fun primaryAdmissionReady(session: LynxLaunchSession): Boolean =
+        synchronized(stateLock) {
+            requireLive(session)
+            !store.value.has("pageAttempt") &&
+                !store.value.has("reconstructionPosition") &&
+                !store.value.has("generationFailure")
+        }
+
+    internal fun admitSecondary(
+        session: LynxLaunchSession,
+        deferPrimaryFlush: Boolean = false,
+    ): JSONObject {
+        val primaryToFlush = synchronized(stateLock) {
+            requireLive(session, false)
+            check(!session.isPrimary && session.firstScreen && !session.failed) {
+                "Secondary page content is not ready"
+            }
+            val attempt = store.value.optJSONObject("pageAttempt")
+            if (attempt == null) {
+                val terminal = store.value.optJSONObject("lastPageAttempt")
+                check(
+                    terminal?.optString("attemptId") == session.id &&
+                        terminal.optString("generationId") == session.generationId &&
+                        terminal.optString("entry") == session.pageEntry &&
+                        terminal.optString("terminal") == "admitted",
+                ) { "Secondary page has no pending admission" }
+                return@synchronized null
+            }
+            check(
+                attempt.optString("attemptId") == session.id &&
+                    attempt.optString("generationId") == session.generationId &&
+                    attempt.optString("entry") == session.pageEntry,
+            ) { "Secondary page admission authority is stale" }
+            mutate { next ->
+                appendPageAttemptTerminal(
+                    next = next,
+                    attempt = attempt,
+                    terminal = "admitted",
+                    stack = retainedStack(),
+                    transitionId = activeManagedTransitionId(),
+                    topContextId = session.id,
+                )
+                next.remove("pageAttempt")
+                if (attempt.optBoolean("reconstructing")) {
+                    val nextPosition = attempt.getInt("position") + 1
+                    if (nextPosition < retainedStack().size) {
+                        next.put("reconstructionPosition", nextPosition)
+                    } else {
+                        next.remove("reconstructionPosition")
+                    }
+                }
+            }
+            primary
+        }
+        if (!deferPrimaryFlush) primaryToFlush?.flushReady()
+        return JSONObject()
+            .put("status", "PAGE_ADMITTED")
+            .put("pageAttemptId", session.id)
+    }
+
+    fun cancelSecondary(
+        session: LynxLaunchSession,
+        reason: LynxPageCancelReason,
+    ): Boolean = cancelSecondary(session, reason, deferPrimaryFlush = false)
+
+    @JvmSynthetic
+    fun cancelSecondaryForHost(
+        session: LynxLaunchSession,
+        reason: LynxPageCancelReason,
+    ): Boolean = cancelSecondary(session, reason, deferPrimaryFlush = true)
+
+    private fun cancelSecondary(
+        session: LynxLaunchSession,
+        reason: LynxPageCancelReason,
+        deferPrimaryFlush: Boolean,
+    ): Boolean {
+        val primaryToFlush = synchronized(stateLock) {
+            requireLive(session, false)
+            check(!session.isPrimary) { "The primary page cannot be popped" }
+            val stack = retainedStack().toMutableList()
+            val attempt = store.value.optJSONObject("pageAttempt")
+            if (attempt != null) {
+                check(attempt.optString("attemptId") == session.id) {
+                    "Another page admission is pending"
+                }
+                val position = attempt.getInt("position")
+                check(
+                    position in 1 until stack.size &&
+                        stack[position] == LynxLogicalPage(
+                            session.pageEntry,
+                            session.pageParameters,
+                        ),
+                ) { "Only the live top page can be popped" }
+                while (stack.size > position) stack.removeAt(stack.lastIndex)
+            } else {
+                check(stack.size > 1 && stack.last() == LynxLogicalPage(
+                    session.pageEntry,
+                    session.pageParameters,
+                )) { "Only the live top page can be popped" }
+                stack.removeAt(stack.lastIndex)
+            }
+            mutate { next ->
+                if (attempt != null) {
+                    appendPageAttemptTerminal(
+                        next = next,
+                        attempt = attempt,
+                        terminal = "authorized-cancel",
+                        stack = stack,
+                        reason = reason.wireValue,
+                        topContextId = liveTopContextId(stack, session.id),
+                    )
+                    next.remove("pageAttempt")
+                }
+                next.remove("reconstructionPosition")
+                next.put("logicalStack", stackJson(stack))
+            }
+            primary
+        }
+        if (!deferPrimaryFlush) primaryToFlush?.flushReady()
+        return true
+    }
+
+    @JvmSynthetic
+    fun flushPrimaryReadinessAfterHostEvent() {
+        val primaryToFlush = synchronized(stateLock) { primary }
+        primaryToFlush?.flushReady()
+    }
+
+    fun rollbackSecondary(session: LynxLaunchSession): Boolean =
+        synchronized(stateLock) {
+            requireLive(session, false)
+            check(!session.isPrimary) { "The primary page cannot be rolled back" }
+            val attempt = store.value.optJSONObject("pageAttempt")
+                ?: return@synchronized false
+            if (attempt.optString("attemptId") != session.id) {
+                return@synchronized false
+            }
+            val stack = retainedStack().toMutableList()
+            val position = attempt.getInt("position")
+            check(
+                position in 1 until stack.size &&
+                    stack[position] == LynxLogicalPage(
+                        session.pageEntry,
+                        session.pageParameters,
+                    ),
+            ) { "Only the unlaunched top page can be rolled back" }
+            mutate { next ->
+                next.remove("pageAttempt")
+                if (attempt.optBoolean("reconstructing")) {
+                    next.put("reconstructionPosition", position)
+                } else {
+                    stack.removeAt(stack.lastIndex)
+                    next.remove("reconstructionPosition")
+                    next.put("logicalStack", stackJson(stack))
+                }
+            }
+            true
+        }
     internal fun fail(
         session: LynxLaunchSession,
         message: String,
         allowConfirmed: Boolean = false,
+        failureCode: Int? = null,
+        failureResourcePath: String? = null,
     ): Boolean {
         return synchronized(stateLock) {
-            if (closed || session !== primary || !session.live || runningConfirmed && !allowConfirmed) return@synchronized false
-            if (session.failed) return@synchronized true
+            if (
+                closed || session !in members || !session.live ||
+                session.isPrimary && session !== primary ||
+                session.isPrimary && runningConfirmed && !allowConfirmed
+            ) return@synchronized false
+            if (session.failed) return@synchronized false
             val pending = store.value.optJSONObject("pending")
-            if (!runningConfirmed &&
+            val pageAttempt = store.value.optJSONObject("pageAttempt")
+            if (!session.isPrimary && (
+                pageAttempt == null ||
+                    pageAttempt.optString("attemptId") != session.id ||
+                    pageAttempt.optString("generationId") != session.generationId
+            )) {
+                return@synchronized false
+            }
+            if (session.isPrimary && !runningConfirmed &&
                 pending?.optString("attemptId") != session.id) {
                 return@synchronized false
             }
-            if (pending?.optBoolean("fatal") == true) {
+            if (
+                session.isPrimary && pending?.optBoolean("fatal") == true ||
+                !session.isPrimary && pageAttempt?.optBoolean("fatal") == true
+            ) {
                 session.failed = true
-                return@synchronized true
+                return@synchronized false
             }
             mutate { next ->
-                if (pending != null) {
+                if (session.isPrimary && pending != null) {
                     next.put("pending", JSONObject(pending.toString()).put("fatal", true).put("message", message))
                 }
-                if (running.kind == "BUNDLE") {
+                if (!session.isPrimary && pageAttempt != null) {
+                    appendPageAttemptTerminal(
+                        next = next,
+                        attempt = pageAttempt,
+                        terminal = "verified-fatal",
+                        stack = retainedStack(),
+                        transitionId = activeManagedTransitionId(),
+                        topContextId = liveTopContextId(
+                            stackBeforeAttempt(
+                                retainedStack(),
+                                pageAttempt,
+                            ),
+                            session.id,
+                        ),
+                        message = message,
+                        failureCode = failureCode,
+                        failureResourcePath = failureResourcePath,
+                    )
+                    next.remove("pageAttempt")
+                }
+                if (runningConfirmed || !session.isPrimary) {
+                    next.put(
+                        "generationFailure",
+                        JSONObject()
+                            .put("selection", running.toJson())
+                            .put("fatal", true)
+                            .put("message", message)
+                            .put("pageAttemptId", session.id)
+                            .put("pageEntry", session.pageEntry),
+                    )
+                }
+                if (running.bundleId != embedded.bundleId) {
                     val crashed = exclusions("crashed").toMutableList()
                     crashed.removeAll { it == running.bundleId }
                     crashed.add(running.bundleId)
                     while (crashed.size > 10) crashed.removeAt(0)
                     next.put("crashed", JSONArray(crashed))
-                } else if (running.releaseId != null) {
+                }
+                if (running.releaseId != null) {
                     val unconfirmed = exclusions("unconfirmed").toMutableList()
                     if (running.releaseId !in unconfirmed) unconfirmed.add(running.releaseId!!)
                     next.put("unconfirmed", JSONArray(unconfirmed))
@@ -845,6 +1633,7 @@ class LynxUpdaterController internal constructor(
     internal fun destroy(session: LynxLaunchSession) {
         val (discarded, shouldPrune) = synchronized(stateLock) {
             session.live = false
+            members.remove(session)
             if (closed) return@synchronized emptyList<PreparedLynxArtifact>() to false
             val ids = preparations.filterValues { it.contextId == session.id }.keys.toList()
             ids.mapNotNull { preparations.remove(it)?.bytes } to true
@@ -873,6 +1662,8 @@ class LynxUpdaterController internal constructor(
             if (closed) return
             closed = true
             primary?.live = false
+            members.forEach { it.live = false }
+            members.clear()
             preparations.values.mapNotNull(Preparation::bytes).also {
                 preparations.clear()
                 preparing.clear()
@@ -886,5 +1677,10 @@ class LynxUpdaterController internal constructor(
             store.close()
         }
     }
-    companion object { private const val TAG = "HotUpdaterLynx"; private const val CAPACITY = 128 }
+    companion object {
+        private const val TAG = "HotUpdaterLynx"
+        private const val CAPACITY = 128
+        private const val MAX_MANAGED_PAGES = 16
+        private const val PAGE_ATTEMPT_TERMINAL_CAPACITY = 256
+    }
 }

@@ -4,19 +4,24 @@ import { fileURLToPath } from "node:url";
 
 import { lynx } from "@hot-updater/lynx/build";
 
-const [platform, source, entry, runtimeId] = process.argv.slice(2);
+const [platform, source, entry, runtimeId, pageContractPath] =
+  process.argv.slice(2);
 if (
   !["ios", "android"].includes(platform) ||
   !source ||
   !entry ||
-  !runtimeId?.trim()
+  !runtimeId?.trim() ||
+  !pageContractPath
 ) {
   throw new Error(
-    "Usage: pnpm build:prebuilt <ios|android> <absolute-native-output-dir> <relative-entry> <native-runtime-id>",
+    "Usage: pnpm build:prebuilt <ios|android> <absolute-native-output-dir> <relative-entry> <native-runtime-id> <absolute-page-contract-json>",
   );
 }
 if (!path.isAbsolute(source))
   throw new Error("The native output directory must be absolute.");
+if (!path.isAbsolute(pageContractPath))
+  throw new Error("The page contract path must be absolute.");
+const pageContract = JSON.parse(await fs.readFile(pageContractPath, "utf8"));
 const cwd = fileURLToPath(new URL("..", import.meta.url));
 const sourceRoot = await fs.realpath(source);
 const outputRoot = path.join(await fs.realpath(cwd), ".hot-updater/lynx");
@@ -35,7 +40,12 @@ if (
 const result = await lynx({
   build: async ({ outDir }) => {
     await fs.cp(sourceRoot, outDir, { recursive: true });
-    return { entry, runtimeId };
+    return {
+      entry,
+      pageEntries: pageContract.pageEntries,
+      pageEssentialResources: pageContract.pageEssentialResources,
+      runtimeId,
+    };
   },
 })({ cwd }).build({ platform });
 console.log(JSON.stringify(result, null, 2));

@@ -17,9 +17,7 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
         SPKServiceRegister.registerAll()
         SPKExecuteAllPrepareBootTask()
         do {
-            PublicHost.shared = try PublicHost(
-                framework: PublicHost.requestedFramework ?? "react"
-            )
+            PublicHost.shared = try PublicHost()
             return true
         } catch {
             NSLog("Public Lynx host failed: %@", error.localizedDescription)

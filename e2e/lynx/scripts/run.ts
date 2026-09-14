@@ -6,8 +6,6 @@ import { fileURLToPath } from "node:url";
 
 import { createControlClient } from "../../detox/control-client.ts";
 import {
-  getDetoxScenarioDefinition,
-  listDetoxScenarioNames,
   listDetoxSuiteNames,
   resolveDetoxSuiteScenarioNames,
 } from "../../detox/scenarios.ts";
@@ -16,6 +14,10 @@ import {
   startDetoxControlServer,
 } from "../../detox/scripts/control-server.ts";
 import { LynxAppDriver } from "../lynx-app-driver.ts";
+import {
+  getLynxScenarioDefinition,
+  listLynxScenarioNames,
+} from "../scenarios.ts";
 import { readLynxDefaultScenarioNames } from "../suite-manifest.ts";
 
 const repoDir = path.resolve(
@@ -149,7 +151,7 @@ function printCatalog(): void {
       ...defaultSuite.map((scenario, index) => `  ${index + 1}. ${scenario}`),
       "",
       "Available scenarios:",
-      ...listDetoxScenarioNames().map((scenario) => `  - ${scenario}`),
+      ...listLynxScenarioNames().map((scenario) => `  - ${scenario}`),
     ].join("\n"),
   );
 }
@@ -162,7 +164,7 @@ function resolveScenarioNames(options: RunOptions): readonly string[] {
     return resolveDetoxSuiteScenarioNames(options.suiteName);
   }
 
-  const availableScenarios = new Set(listDetoxScenarioNames());
+  const availableScenarios = new Set(listLynxScenarioNames());
   for (const scenario of options.scenarioInputs) {
     if (!availableScenarios.has(scenario)) {
       throw new Error(`Unknown Lynx scenario: ${scenario}`);
@@ -238,8 +240,11 @@ async function runScenarios(
       );
       app.uninstallApp();
       app.ensureInstalled();
-      const scenario = getDetoxScenarioDefinition(scenarioName);
+      const scenario = getLynxScenarioDefinition(scenarioName);
       await scenario.run(app);
+      console.log(
+        `[lynx-generation-ledger:final] ${JSON.stringify(app.runtimeEventLedgerReceipt())}`,
+      );
       console.log(`Scenario passed: ${platform}/${scenarioName}`);
     }
   } finally {

@@ -1,17 +1,36 @@
+import java.io.File
 import java.security.MessageDigest
 
 plugins { id("com.android.application"); id("org.jetbrains.kotlin.android") }
 
+val matrixFrameworks = listOf("react", "vue", "octane")
+val matrixEmbeddedRoot = file("../.hot-updater/embedded/ota")
+
 fun embeddedDescriptors(): String {
-  val root = file("../.hot-updater/embedded/ota")
-  return listOf("react", "vue", "octane").joinToString(",", "{", "}") { framework ->
-    val manifest = root.resolve("$framework/A/manifest.json").readBytes()
+  return matrixFrameworks.joinToString(",", "{", "}") { framework ->
+    val manifestFile = matrixEmbeddedRoot.resolve("$framework/A/manifest.json")
+    if (!manifestFile.isFile) {
+      return@joinToString "\\\"$framework\\\":{\\\"bundleId\\\":\\\"missing\\\",\\\"manifestHash\\\":\\\"missing\\\",\\\"minimumBundleId\\\":\\\"missing\\\"}"
+    }
+    val manifest = manifestFile.readBytes()
     val bundleId = Regex("\\\"bundleId\\\"\\s*:\\s*\\\"([^\\\"]+)\\\"")
       .find(String(manifest))?.groupValues?.get(1)
       ?: error("Missing embedded bundleId for $framework")
     val digest = MessageDigest.getInstance("SHA-256").digest(manifest)
       .joinToString("") { "%02x".format(it) }
     "\\\"$framework\\\":{\\\"bundleId\\\":\\\"$bundleId\\\",\\\"manifestHash\\\":\\\"$digest\\\",\\\"minimumBundleId\\\":\\\"$bundleId\\\"}"
+  }
+}
+
+val verifyMatrixEmbedded by tasks.registering {
+  val manifests = matrixFrameworks.map {
+    matrixEmbeddedRoot.resolve("$it/A/manifest.json")
+  }
+  inputs.files(manifests)
+  doLast {
+    check(manifests.all(File::isFile)) {
+      "Generate all React, Vue, and Octane matrix embedded releases before assembling :matrix-app"
+    }
   }
 }
 android {
@@ -22,7 +41,7 @@ android {
     applicationId = "com.hotupdater.lynxmatrix"
     minSdk = 24
     targetSdk = 34
-    buildConfigField("String", "LYNX_OTA_COMPATIBILITY_ID", "\"android-sparkling-2.1.0-rc.12-lynx-3.9.0-primjs-3.8.0-alpha.6-ota-v2\"")
+    buildConfigField("String", "LYNX_OTA_COMPATIBILITY_ID", "\"android-sparkling-2.1.0-rc.12-navsrc-937f70d7c3012a5a-lynx-3.9.0-primjs-3.8.0-alpha.6-managed-pages-v1\"")
     buildConfigField("String", "LYNX_EMBEDDED_DESCRIPTORS", "\"${embeddedDescriptors()}\"")
     versionCode = 1
     versionName = "0.0.1"
@@ -41,6 +60,7 @@ android {
 dependencies {
   implementation(project(":hot-updater-lynx"))
   implementation(project(":hot-updater-lynx-sparkling"))
+  implementation(project(":hot-updater-lynx-sparkling-diagnostics"))
   implementation("org.lynxsdk.lynx:lynx:3.9.0")
   implementation("org.lynxsdk.lynx:lynx-jssdk:3.9.0")
   implementation("org.lynxsdk.lynx:lynx-service-image:3.9.0")
@@ -56,3 +76,5 @@ dependencies {
   implementation("com.tiktok.sparkling:sparkling-method:2.1.0-rc.12")
   implementation("com.facebook.fresco:fresco:2.3.0")
 }
+
+tasks.named("preBuild").configure { dependsOn(verifyMatrixEmbedded) }

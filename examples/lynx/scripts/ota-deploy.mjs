@@ -14,6 +14,19 @@ import {
 } from "../../../packages/core/dist/index.mjs";
 import { createDatabaseClient } from "../../../plugins/plugin-core/dist/index.mjs";
 import { standaloneRepository } from "../../../plugins/standalone/dist/index.mjs";
+import { readSpikePageContract } from "./spike-assets.mjs";
+
+const runtimeIds = {
+  ios: "sparkling-c4ce8d2-navigation-2.1.0-rc.12-lynx-3.9.0-primjs-3.8.0-alpha.6-ios-managed-pages-v1",
+  android:
+    "android-sparkling-2.1.0-rc.12-navsrc-937f70d7c3012a5a-lynx-3.9.0-primjs-3.8.0-alpha.6-managed-pages-v1",
+};
+const incompatibleRuntimeIds = Object.fromEntries(
+  Object.entries(runtimeIds).map(([platform, runtimeId]) => [
+    platform,
+    `${runtimeId}-cross-provenance-rejected`,
+  ]),
+);
 
 const { positionals, values: options } = parseArgs({
   allowPositionals: true,
@@ -23,6 +36,7 @@ const { positionals, values: options } = parseArgs({
     channel: { type: "string" },
     "from-bundle-id": { type: "string" },
     "runtime-id": { type: "string" },
+    "allow-incompatible-runtime": { type: "boolean" },
   },
 });
 const [framework, platform, format = "zip", fixture = "B-external2-managed"] =
@@ -35,7 +49,7 @@ if (
   positionals.length > 4
 ) {
   throw new Error(
-    "Usage: node scripts/ota-deploy.mjs <react|vue|octane> <ios|android> [zip|tar.gz|tar.br] [frozen-fixture-name] [--signed] [--patch] [--from-bundle-id <verified-base>] [--channel <native-channel>] [--runtime-id <native-profile>]",
+    "Usage: node scripts/ota-deploy.mjs <react|vue|octane> <ios|android> [zip|tar.gz|tar.br] [frozen-fixture-name] [--signed] [--patch] [--from-bundle-id <verified-base>] [--channel <native-channel>] [--runtime-id <native-profile>] [--allow-incompatible-runtime]",
   );
 }
 const example = fileURLToPath(new URL("../", import.meta.url));
@@ -48,17 +62,30 @@ if (options["from-bundle-id"] && !patchEnabled) {
 }
 if (
   /sdk\d/.test(fixture) &&
-  (!options["runtime-id"]?.trim() ||
-    !options.channel?.trim() ||
-    options["runtime-id"].includes("-spike"))
+  (!options["runtime-id"]?.trim() || !options.channel?.trim())
 ) {
   throw new Error(
     "SDK fixtures require explicit --runtime-id and --channel matching the new native OTA configuration.",
   );
 }
-if (/sdk3/.test(fixture) && !options["runtime-id"]?.endsWith("-ota-v2")) {
+const incompatibleRuntimeAllowed =
+  options["allow-incompatible-runtime"] === true;
+if (
+  options["runtime-id"] &&
+  options["runtime-id"] !== runtimeIds[platform] &&
+  (!incompatibleRuntimeAllowed ||
+    options["runtime-id"] !== incompatibleRuntimeIds[platform])
+) {
   throw new Error(
-    "SDK3 fixtures require the native ota-v2 compatibility profile.",
+    `The runtime ID must match the ${platform} managed-pages-v1 host.`,
+  );
+}
+if (
+  incompatibleRuntimeAllowed &&
+  options["runtime-id"] !== incompatibleRuntimeIds[platform]
+) {
+  throw new Error(
+    `--allow-incompatible-runtime requires the fixed ${platform} cross-provenance fixture runtime ID.`,
   );
 }
 const privateKeyPath = path.join(root, "signing/private-key.pem");
@@ -100,11 +127,7 @@ const buildRoot = fixture.startsWith("matrix-")
 const source = await fs.realpath(
   path.join(example, buildRoot, framework, fixture),
 );
-const runtimeId =
-  options["runtime-id"] ??
-  (platform === "ios"
-    ? "sparkling-c4ce8d2-lynx-3.9.0-primjs-3.8.0-alpha.6-ios-spike-v2"
-    : "android-sparkling-2.1.0-rc.12-lynx-3.9.0-primjs-3.8.0-alpha.6-spike1");
+const runtimeId = options["runtime-id"] ?? runtimeIds[platform];
 const label = `${framework}-${platform}-${fixture}-${format.replaceAll(".", "-")}${signed ? "-signed" : ""}`;
 const channel = options.channel ?? `lynx-${label}`;
 const project = path.join(root, "projects", `${label}-${crypto.randomUUID()}`);
@@ -169,6 +192,11 @@ const collect = async (directory) => {
   return files;
 };
 const sourceFiles = await collect(source);
+const {
+  pageEntries,
+  pageEssentialResources: essentialResources,
+  sparklingNavigation,
+} = await readSpikePageContract(source);
 const config = `import fs from "node:fs/promises";
 import path from "node:path";
 import { lynx } from ${JSON.stringify(moduleUrl("packages/lynx/dist/build.mjs"))};
@@ -185,7 +213,12 @@ export default {
       ${signed ? `getBundleSigningPublicKey: async () => ({ publicKey: await fs.readFile(${JSON.stringify(publicKeyPath)}, "utf8") }),` : ""}
       build: async ({ outDir }) => {
       await fs.cp(${JSON.stringify(source)}, outDir, { recursive: true });
-      return { entry: "main.lynx.bundle", runtimeId: ${JSON.stringify(runtimeId)} };
+      return {
+        entry: "main.lynx.bundle",
+        pageEntries: ${JSON.stringify(pageEntries)},
+        pageEssentialResources: ${JSON.stringify(essentialResources)},
+        runtimeId: ${JSON.stringify(runtimeId)}
+      };
     } })({ cwd });
     return { ...plugin,
       build: async (args) => {
@@ -314,6 +347,8 @@ assert.deepEqual(metadata, {
   bundleId: bundle.id,
   platform,
   entry: "main.lynx.bundle",
+  pageEntries,
+  pageEssentialResources: essentialResources,
   runtimeId,
 });
 verifyToken(archive["manifest.json"], bundle.manifestFileHash);
@@ -339,6 +374,8 @@ const deliveryArtifact = options["from-bundle-id"]
   ? await getJson(deliveryArtifactUrl)
   : artifact;
 if (options["from-bundle-id"]) {
+  assert.equal(deliveryArtifact.fileUrl, null);
+  assert.equal(deliveryArtifact.fileHash, null);
   assert.equal(deliveryArtifact.manifestFileHash, bundle.manifestFileHash);
   assert.ok(deliveryArtifact.manifestUrl, "Delta delivery needs a manifest");
   const changedAssets = Object.entries(deliveryArtifact.changedAssets ?? {});
@@ -350,6 +387,23 @@ if (options["from-bundle-id"]) {
         changed.patch.baseBundleId === options["from-bundle-id"],
     ),
     "Delta delivery needs a real BSDIFF patch from the requested base",
+  );
+  const main = deliveryArtifact.changedAssets?.["main.lynx.bundle"];
+  const detail = deliveryArtifact.changedAssets?.["detail.lynx.bundle"];
+  assert.equal(main?.patch?.algorithm, "bsdiff");
+  assert.equal(main.patch.baseBundleId, options["from-bundle-id"]);
+  assert.ok(
+    main.file?.url,
+    "Delta delivery needs complete main fallback bytes",
+  );
+  assert.ok(
+    detail?.file?.url,
+    "Delta delivery needs complete raw detail bytes",
+  );
+  assert.equal(
+    detail.patch,
+    undefined,
+    "Detail must be delivered raw in the mixed multi-page transaction",
   );
 }
 const receipt = {
@@ -364,6 +418,8 @@ const receipt = {
   bundleId: bundle.id,
   releaseId: release.id,
   runtimeId,
+  incompatibleRuntimeAllowed,
+  sparklingNavigation,
   channel,
   fileUrl: artifact.fileUrl,
   fileHash: artifact.fileHash,

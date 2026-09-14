@@ -9,6 +9,153 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class SparklingGenerationEventsTest {
+    private val identity = mapOf<String, Any?>(
+        "runtimeId" to "runtime-a",
+        "processId" to "1234",
+        "generationId" to "generation-a",
+        "bundleId" to "bundle-a",
+        "releaseId" to null,
+        "contextId" to "context-a",
+        "pageAttemptId" to null,
+        "transitionId" to null,
+    )
+
+    @Test
+    fun terminalEmissionIsAcknowledgedOnlyAfterDurableAppend() {
+        val observed = mutableListOf<String>()
+        val sink = SparklingRuntimeEventSink(
+            record = { _, _ -> Unit },
+            recordOnce = { _, _, _, _ -> error("injected journal failure") },
+            listener = HotUpdaterSparklingEventListener { name, _ ->
+                observed += name
+            },
+        )
+        val generation = SparklingGenerationEvents(sink, id = "generation-a")
+
+        assertFalse(generation.emitTerminal(
+            identity + mapOf(
+                "pageAttemptId" to "page-a",
+                "terminal" to "admitted",
+            ),
+        ))
+        assertEquals(listOf("pageAttemptTerminal"), observed)
+    }
+
+    @Test
+    fun throwingOptionalObserverCannotInterruptNormalOrTerminalEmission() {
+        val persisted = mutableListOf<String>()
+        val sink = SparklingRuntimeEventSink(
+            record = { name, _ -> persisted += name },
+            recordOnce = { name, _, _, _ -> persisted += name; true },
+            listener = HotUpdaterSparklingEventListener { _, _ ->
+                error("injected observer failure")
+            },
+        )
+        val generation = SparklingGenerationEvents(sink, id = "generation-a")
+
+        assertTrue(generation.emit("routeClosed", identity))
+        assertTrue(generation.emitTerminal(
+            identity + mapOf(
+                "pageAttemptId" to "page-a",
+                "terminal" to "authorized-cancel",
+            ),
+        ))
+        assertEquals(listOf("routeClosed", "pageAttemptTerminal"), persisted)
+    }
+
+    @Test
+    fun throwingDirectListenerCannotInterruptAcceptedLifecycleProgress() {
+        val observed = mutableListOf<String>()
+        val generation = SparklingGenerationEvents(
+            HotUpdaterSparklingEventListener { name, _ ->
+                observed += name
+                error("injected observer failure")
+            },
+            id = "generation-a",
+        )
+        val resource = mapOf<String, Any?>(
+            "contextId" to "context-a",
+            "path" to "assets/bootstrap.js",
+        )
+
+        assertTrue(generation.emit("pageAdmitted", emptyMap()))
+        assertTrue(generation.resourceLoaded("resourceLoaded", resource))
+        assertTrue(generation.emit("routeClosed", emptyMap()))
+        assertTrue(generation.emitTerminal(
+            mapOf(
+                "pageAttemptId" to "page-a",
+                "terminal" to "authorized-cancel",
+            ),
+        ))
+        generation.beginRetirement(mapOf("reason" to "reload"))
+        generation.finishRetirement(mapOf("reason" to "reload"))
+
+        assertEquals(
+            listOf(
+                "pageAdmitted",
+                "resourceLeaseAcquired",
+                "resourceLoaded",
+                "routeClosed",
+                "pageAttemptTerminal",
+                "generationWillRetire",
+                "resourceLeaseReleased",
+                "generationRetired",
+            ),
+            observed,
+        )
+        assertFalse(generation.emit("late", emptyMap()))
+    }
+
+    @Test
+    fun nilExternalListenerStillPersistsNativeGenerationEvidence() {
+        val recorded = mutableListOf<Pair<String, Map<String, Any?>>>()
+        val generation = SparklingGenerationEvents(
+            SparklingRuntimeEventSink(
+                { name, details -> recorded += name to details },
+                null,
+            ),
+            id = "generation-a",
+        )
+
+        assertTrue(generation.emit(
+            "generationStarted",
+            identity + mapOf(
+                "nativePageClass" to
+                    "com.hotupdater.lynx.sparkling.HotUpdaterSparklingPageActivity",
+                "orderedPageEntries" to listOf(
+                    "main.lynx.bundle",
+                    "detail.lynx.bundle",
+                ),
+                "topPageEntry" to "detail.lynx.bundle",
+            ),
+        ))
+
+        assertEquals(listOf("generationStarted"), recorded.map { it.first })
+        assertEquals(
+            "generation-a",
+            recorded.single().second["generationId"],
+        )
+        assertEquals(
+            "detail.lynx.bundle",
+            recorded.single().second["topPageEntry"],
+        )
+    }
+
+    @Test
+    fun runtimeSinkPersistsOnlyTheExactStringIdentityDomain() {
+        val recorded = mutableListOf<String>()
+        val sink = SparklingRuntimeEventSink(
+            record = { name, _ -> recorded += name },
+            listener = null,
+        )
+
+        sink.onEvent("valid", identity)
+        sink.onEvent("numericProcess", identity + ("processId" to 1234))
+        sink.onEvent("missingTransition", identity - "transitionId")
+
+        assertEquals(listOf("valid"), recorded)
+    }
+
     @Test
     fun retirementWaitsForTheRealResourceConsumerToFinish() {
         val events = mutableListOf<Pair<String, Map<String, Any?>>>()

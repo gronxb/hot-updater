@@ -4,7 +4,6 @@
 
 import Foundation
 import SparklingMethod
-import Sparkling_Router
 #if canImport(Sparkling_Storage)
 import Sparkling_Storage
 #endif
@@ -15,9 +14,6 @@ enum SPKServiceRegister {
         // or manually inject your own implementation of DIContainer before using SPK services.
         DefaultDIContainerProvider.inject()
 
-        DIProviderRegistry.provider.pipeShared().register(RouterService.self) {
-            RouterServiceImpl()
-        }
         #if canImport(Sparkling_Storage)
         DIProviderRegistry.provider.pipeShared().register(StorageService.self) {
             StorageServiceImpl()

@@ -23,6 +23,27 @@ const repo = path.resolve(
 );
 
 describe("Lynx E2E startup resources", () => {
+  it("renders a visible managed CSS background in matrix screenshots", () => {
+    const appSource = fs.readFileSync(
+      path.join(repo, "examples/lynx/src/e2eApp/index.tsx"),
+      "utf8",
+    );
+    const matrixSource = fs.readFileSync(
+      path.join(repo, "e2e/lynx/scripts/run-public-matrix.ts"),
+      "utf8",
+    );
+
+    expect(appSource).toContain(
+      'backgroundImage: `url("${E2E_STARTUP_IMAGE_URL}")`',
+    );
+    expect(matrixSource).toContain(
+      "assertNoManagedResourceEngineErrors(allLogs)",
+    );
+    expect(matrixSource).toContain(
+      "adapter.screenshot(`${cellId}-embedded-A`)",
+    );
+  });
+
   it("registers the managed iOS provider for external scripts and fonts", () => {
     const source = fs.readFileSync(
       path.join(
@@ -85,6 +106,7 @@ describe("Lynx E2E startup resources", () => {
     const dynamic = deferred<string>();
     const notifyAppReady = vi.fn(async () => ({ status: "READY" as const }));
     const publishMarker = vi.fn(async () => undefined);
+    const startControlPolling = vi.fn();
     const bootstrap = bootstrapRuntimeReady(
       configuration.promise,
       () =>
@@ -94,6 +116,7 @@ describe("Lynx E2E startup resources", () => {
           loadDynamic: () => dynamic.promise,
         }),
       () => confirmRuntimeReady({ notifyAppReady }, publishMarker),
+      startControlPolling,
     );
 
     markE2EStartupImageLoaded();
@@ -114,6 +137,26 @@ describe("Lynx E2E startup resources", () => {
     await expect(bootstrap).resolves.toBe(true);
     expect(notifyAppReady).toHaveBeenCalledOnce();
     expect(publishMarker).toHaveBeenCalledOnce();
+    expect(startControlPolling).toHaveBeenCalledOnce();
+    expect(publishMarker.mock.invocationCallOrder[0]).toBeLessThan(
+      startControlPolling.mock.invocationCallOrder[0],
+    );
+  });
+
+  it("does not start pending-action polling when marker publication fails", async () => {
+    const startControlPolling = vi.fn();
+
+    await expect(
+      bootstrapRuntimeReady(
+        Promise.resolve(true),
+        async () => undefined,
+        async () => {
+          throw new Error("marker was not acknowledged");
+        },
+        startControlPolling,
+      ),
+    ).rejects.toThrow("marker was not acknowledged");
+    expect(startControlPolling).not.toHaveBeenCalled();
   });
 
   it("never confirms or publishes when startup resources are mixed", async () => {

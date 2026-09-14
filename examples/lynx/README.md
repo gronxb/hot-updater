@@ -4,11 +4,12 @@ This example starts from the official Sparkling application structure and uses
 the packaged `@hot-updater/lynx` host integration. ReactLynx, VueLynx, and
 OctaneLynx are equal Lynx-engine targets on iOS and Android.
 
-The repository keeps two native targets per platform:
+The repository keeps three native targets per platform:
 
 | Purpose                      | iOS                      | Android                                     |
 | ---------------------------- | ------------------------ | ------------------------------------------- |
 | Production scaffold          | `SparklingGo`            | `:app` (`com.hotupdater.lynxexample`)       |
+| Shipped E2E application      | `SparklingGoE2E`         | `:e2e-app` (`com.hotupdater.lynxexample`)   |
 | Nonproduction matrix harness | `SparklingMatrixHarness` | `:matrix-app` (`com.hotupdater.lynxmatrix`) |
 
 The production scaffold contains native identity and embedded-release
@@ -31,20 +32,28 @@ tree. It is shared by ordinary builds and the Hot Updater build callback.
 ```sh
 pnpm --filter @hot-updater/example-lynx build:public react A
 pnpm --filter @hot-updater/example-lynx build:public vue A
-pnpm --filter @hot-updater/example-lynx build:public \
-  octane A /absolute/path/to/pinned/octane
+pnpm --filter @hot-updater/example-lynx prepare:octane
+pnpm --filter @hot-updater/example-lynx build:public octane A
 ```
 
-The Octane path must point to the pinned source checkout at commit
-`c31f629185f7d768c821557f6fb49dc46daf671c`. The build script rejects a wrong
-commit or tracked source changes. It invokes the real Octane compiler without
-patching the upstream renderer.
+The preparation command fetches commit
+`c31f629185f7d768c821557f6fb49dc46daf671c`, installs its frozen pnpm lock, and
+keeps the clean checkout under `.hot-updater`. The build script rejects a wrong
+commit or tracked source changes and invokes the real Octane compiler without
+patching the upstream renderer. An absolute prepared checkout path remains an
+optional third argument.
 
 The application compiler owns framework details. The shared
 `@hot-updater/lynx/build` adapter receives only the selected output tree, entry,
 platform, and native runtime identity. It preserves portable relative names and
 bytes, creates `hot-updater-lynx.json`, and declares the entry as the manifest's
 delta patch asset.
+
+The main compiler entry owns the image, font, external module, and dynamic
+component as compiler resource modules. Its build receipt records the exact
+Rspack version and the entry, chunk, module, and emitted-asset edges used to
+derive each page's essential-resource closure. An output asset without that
+compiler path fails finalization.
 
 Managed application files use `hot-updater:///` URLs. The packaged host resolves
 the entry, image, font, external JavaScript, and dynamic component against one
@@ -69,14 +78,27 @@ pnpm --filter @hot-updater/example-lynx test:type
 Build the production Sparkling scaffold on both platforms:
 
 ```sh
-pnpm validate:lynx:scaffold-native
+HOT_UPDATER_APP_BASE_URL=https://updates.your-domain.com/hot-updater \
+  pnpm validate:lynx:scaffold-native
 ```
 
-Scaffold validation deterministically compiles, validates, and embeds the React
-SDK3 A tree from a clean checkout. An explicit matrix build instead consumes the
-prevalidated React, Vue, and Octane SDK3 A trees created by the public acceptance
-workflow. These trees are generated evidence and are not committed application
-source.
+Scaffold validation deterministically compiles, validates, and embeds the
+ordinary React SDK3 A tree in the production embedded directory, assembles
+`SparklingGo` and `:app`, and scans both products for diagnostics code. The
+HTTPS endpoint is supplied through the native build configuration and exposed
+to the bundle as `getLaunchConfiguration().appBaseURL`; it is not compiled into
+the Lynx bundle. Omitting it still produces a usable embedded scaffold that
+shows a configuration message, but update checks remain disabled. The
+separate shipped E2E build compiles the E2E main/detail pages and includes the
+diagnostics module:
+
+```sh
+pnpm build:lynx:e2e-native
+```
+
+An explicit matrix build consumes the prevalidated React, Vue, and Octane SDK3
+A trees created by the public acceptance workflow. These trees are generated
+evidence and are not committed application source.
 
 Build one matrix binary per OS. Each binary is reused for ReactLynx, VueLynx,
 and OctaneLynx cells:
@@ -85,11 +107,11 @@ and OctaneLynx cells:
 pnpm build:lynx:matrix-native
 ```
 
-The build writes native artifact receipts below
+The three commands write `scaffold-native-artifacts.json`,
+`e2e-native-artifacts.json`, and `matrix-native-artifacts.json` below
 `.hot-updater/public-matrix/`. See the [iOS](./ios/README.md) and
-[Android](./android/README.md) guides for the production integration boundary.
-Both production and matrix iOS schemes and Android applications currently build;
-that is native build verification rather than device acceptance.
+[Android](./android/README.md) guides for exact product paths. Native builds are
+build verification rather than device acceptance.
 
 ## Run the public six-cell matrix
 

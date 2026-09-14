@@ -30,7 +30,7 @@ internal object DurableFiles {
             Os.rename(from.path, to.path)
             if (!from.exists() && to.exists()) return
         } catch (error: RuntimeException) {
-            if (error.message != "Stub!") throw error
+            if (!isAndroidStub(error)) throw error
         }
         // java.nio is used only by local JVM tests where android.system.Os is a stub.
         java.nio.file.Files.move(
@@ -46,7 +46,7 @@ internal object DurableFiles {
         } catch (_: AndroidOsStubException) {
             syncDirectoryWithNio(directory)
         } catch (error: RuntimeException) {
-            if (error.message != "Stub!") throw error
+            if (!isAndroidStub(error)) throw error
             syncDirectoryWithNio(directory)
         }
     }
@@ -86,6 +86,9 @@ internal object DurableFiles {
             it.force(true)
         }
     }
+
+    private fun isAndroidStub(error: RuntimeException) =
+        error.message == "Stub!" || error.message?.contains("not mocked") == true
 
     private class AndroidOsStubException : RuntimeException()
 }

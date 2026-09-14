@@ -1,7 +1,13 @@
 import { pluginReactLynx } from "@lynx-js/react-rsbuild-plugin";
 import { defineConfig } from "@lynx-js/rspeedy";
 
+import {
+  compilerPageGraphPlugin,
+  compilerPageResourceEntries,
+} from "../spike/compiler-page-graph.mjs";
+
 const isPublic = process.env.HOT_UPDATER_SPIKE_SDK !== "0";
+const isProduction = process.env.HOT_UPDATER_SPIKE_PROFILE === "production";
 const resourceSet =
   process.env.HOT_UPDATER_SPIKE_RESOURCES ?? (isPublic ? "sdk3" : "basic");
 
@@ -9,7 +15,14 @@ export default defineConfig({
   environments: { lynx: {} },
   source: {
     entry: {
-      main: isPublic ? "./react/src/sdk.tsx" : "./react/src/index.tsx",
+      detail: isProduction
+        ? "./react/src/production-detail.tsx"
+        : "./react/src/detail.tsx",
+      main: isProduction
+        ? "./react/src/production.tsx"
+        : isPublic
+          ? "./react/src/sdk.tsx"
+          : "./react/src/index.tsx",
     },
     define: {
       __SDK_RESOURCES__: JSON.stringify(["sdk2", "sdk3"].includes(resourceSet)),
@@ -38,5 +51,10 @@ export default defineConfig({
     filenameHash: false,
     filename: { bundle: "[name].lynx.bundle" },
   },
-  plugins: [pluginReactLynx()],
+  plugins: [
+    pluginReactLynx(),
+    compilerPageGraphPlugin({
+      resourceEntries: compilerPageResourceEntries(resourceSet),
+    }),
+  ],
 });

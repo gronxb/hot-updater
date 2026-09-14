@@ -1,3 +1,4 @@
+import { navigate } from "@hot-updater/lynx/navigation";
 import { root, useEffect, useState } from "@lynx-js/react";
 
 import {
@@ -5,7 +6,9 @@ import {
   loadExternalBootstrap,
   loadProbeFont,
 } from "../../spike/native";
+import { verifyNavigationBoundary } from "../../spike/navigation-boundary";
 import {
+  captureRuntimeEvents,
   checkSdkUpdate,
   imageUrl,
   installSdkUpdate,
@@ -41,6 +44,32 @@ function App() {
         <text className="font-probe">RELEASE FONT</text>
       ) : null}
       <text className="description">{status}</text>
+      <view
+        className="action"
+        bindtap={() =>
+          navigate(
+            {
+              path: "detail.lynx.bundle",
+              options: { params: { title: "Second Page" } },
+            },
+            (result) => console.log("HOT_UPDATER_PAGE_OPEN", result),
+          )
+        }
+      >
+        <text className="action-label">Open detail page</text>
+      </view>
+      <view
+        className="action"
+        bindtap={() => void verifyNavigationBoundary(setStatus)}
+      >
+        <text className="action-label">Verify navigation boundary</text>
+      </view>
+      <view
+        className="action"
+        bindtap={() => void captureRuntimeEvents(setStatus)}
+      >
+        <text className="action-label">Capture runtime events</text>
+      </view>
       <view
         className="action"
         bindtap={() => void checkSdkUpdate(setStatus, setCanInstall)}

@@ -15,10 +15,14 @@ function absoluteHttpUrl(value: string, name: string): string {
 
 export function createLynxNativeLaunchConfiguration(options: {
   readonly appBaseURL: string;
+  readonly launchGeneration?: string;
   readonly runtimeConfigURL?: string;
 }): LynxNativeLaunchConfiguration {
   return {
     appBaseURL: absoluteHttpUrl(options.appBaseURL, "appBaseURL"),
+    ...(options.launchGeneration
+      ? { launchGeneration: options.launchGeneration }
+      : {}),
     ...(options.runtimeConfigURL
       ? {
           runtimeConfigURL: absoluteHttpUrl(

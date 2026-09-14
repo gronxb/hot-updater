@@ -129,6 +129,21 @@ describe("Lynx E2E launch configuration", () => {
     );
   });
 
+  it("carries the launch generation from the native driver into E2E JS", () => {
+    const nativeConfiguration = createLynxNativeLaunchConfiguration({
+      appBaseURL: "http://127.0.0.1:3014/hot-updater",
+      launchGeneration: "launch-123",
+      runtimeConfigURL: "http://localhost:3114/e2e/runtime-config",
+    });
+
+    expect(resolveE2eLaunchConfiguration(nativeConfiguration)).toMatchObject({
+      launchGeneration: "launch-123",
+    });
+    expect(
+      serializeLynxNativeLaunchConfiguration(nativeConfiguration),
+    ).toContain('"launchGeneration":"launch-123"');
+  });
+
   it("keeps every public framework bundle independent of shard endpoints", () => {
     const files = [
       "examples/lynx/e2e.lynx.config.ts",

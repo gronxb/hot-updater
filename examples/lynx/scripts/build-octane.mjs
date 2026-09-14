@@ -2,8 +2,10 @@ import { execFile } from "node:child_process";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { pathToFileURL } from "node:url";
 import { promisify } from "node:util";
 
+import { octaneCommit, octaneRepository } from "./prepare-octane.mjs";
 import { finishSpike } from "./spike-assets.mjs";
 
 const [source, variant, behavior = "normal", resourceSet = "basic"] =
@@ -12,7 +14,13 @@ if (
   !source ||
   !path.isAbsolute(source) ||
   !["A", "B", "C"].includes(variant) ||
-  !["normal", "unconfirmed", "fatal", "double-ready"].includes(behavior) ||
+  ![
+    "normal",
+    "unconfirmed",
+    "detail-unconfirmed",
+    "fatal",
+    "double-ready",
+  ].includes(behavior) ||
   ![
     "basic",
     "fonts",
@@ -29,11 +37,11 @@ if (
   ].includes(resourceSet)
 ) {
   throw new Error(
-    "Usage: node scripts/build-octane.mjs <absolute-pinned-octane-checkout> <A|B|C> [normal|unconfirmed|fatal|double-ready] [basic|fonts|dynamic|sdk1|sdk2|sdk3|http|external|external2|resources|resources2|resources3]",
+    "Usage: node scripts/build-octane.mjs <absolute-pinned-octane-checkout> <A|B|C> [normal|unconfirmed|detail-unconfirmed|fatal|double-ready] [basic|fonts|dynamic|sdk1|sdk2|sdk3|http|external|external2|resources|resources2|resources3]",
   );
 }
 const run = promisify(execFile);
-const pin = "c31f629185f7d768c821557f6fb49dc46daf671c";
+const pin = octaneCommit;
 const { stdout: head } = await run("git", ["rev-parse", "HEAD"], {
   cwd: source,
 });
@@ -49,8 +57,8 @@ if (changed.trim())
 const isSdk = resourceSet.startsWith("sdk");
 const cwd = fileURLToPath(new URL("..", import.meta.url));
 const plugin = path.join(source, "packages/rspeedy-plugin-octane");
-const fixture = await fs.mkdtemp(path.join(plugin, "examples/hot-updater-g1-"));
 const name = `${variant}${behavior === "normal" ? "" : `-${behavior}`}${resourceSet === "basic" ? "" : `-${resourceSet}`}-managed`;
+const fixture = path.join(plugin, "examples", `hot-updater-g1-${name}`);
 const exampleOutDir = process.env.HOT_UPDATER_EXAMPLE_OUT_DIR;
 if (exampleOutDir && (!isSdk || !path.isAbsolute(exampleOutDir)))
   throw new Error(
@@ -58,18 +66,23 @@ if (exampleOutDir && (!isSdk || !path.isAbsolute(exampleOutDir)))
   );
 const outDir = exampleOutDir ?? path.join(cwd, ".hot-updater/g1/octane", name);
 try {
+  await fs.rm(fixture, { recursive: true, force: true });
   await fs.cp(path.join(cwd, "octane"), fixture, { recursive: true });
+  await fs.mkdir(path.join(fixture, "node_modules/@hot-updater"), {
+    recursive: true,
+  });
+  await fs.symlink(
+    path.join(cwd, "node_modules/@hot-updater/lynx"),
+    path.join(fixture, "node_modules/@hot-updater/lynx"),
+  );
   if (isSdk) {
     await fs.copyFile(
       path.join(cwd, "spike/sdk.ts"),
       path.join(fixture, "src/sdk-shared.ts"),
     );
-    await fs.mkdir(path.join(fixture, "node_modules/@hot-updater"), {
-      recursive: true,
-    });
-    await fs.symlink(
-      path.join(cwd, "node_modules/@hot-updater/lynx"),
-      path.join(fixture, "node_modules/@hot-updater/lynx"),
+    await fs.copyFile(
+      path.join(cwd, "spike/navigation-boundary.ts"),
+      path.join(fixture, "src/navigation-boundary.ts"),
     );
   } else {
     await fs.rm(path.join(fixture, "src/Sdk.lynx.tsrx"));
@@ -117,6 +130,9 @@ try {
             ? "resources"
             : resourceSet,
         HOT_UPDATER_SPIKE_ASSET_PREFIX: "hot-updater:///",
+        HOT_UPDATER_COMPILER_GRAPH_PLUGIN: pathToFileURL(
+          path.join(cwd, "spike/compiler-page-graph.mjs"),
+        ).href,
       },
       maxBuffer: 10 * 1024 * 1024,
     },
@@ -126,7 +142,7 @@ try {
   console.log(
     JSON.stringify(
       await finishSpike(outDir, "octane", variant, {
-        repository: "https://github.com/octanejs/octane",
+        repository: octaneRepository.replace(/\.git$/, ""),
         commit: pin,
         rspeedy: "0.16.0",
         behavior,

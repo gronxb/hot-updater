@@ -77,7 +77,7 @@ final class ArchiveEntryGuard {
         total += size
     }
 
-    private static func portableKey(_ path: String) -> String {
+    static func portableKey(_ path: String) -> String {
         path.precomposedStringWithCanonicalMapping
             .uppercased(with: portableCaseLocale)
             .lowercased(with: portableCaseLocale)

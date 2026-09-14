@@ -86,6 +86,7 @@ fastlane/test_output/
 .build/
 
 Embedded/
+ProductionEmbedded/
 .fixtures/
 
 .probe-results/

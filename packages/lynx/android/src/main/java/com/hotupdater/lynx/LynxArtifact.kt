@@ -167,6 +167,23 @@ data class LynxArtifactRequest(
 
 class LynxIncompatibleArtifactException(message: String) : Exception(message)
 
+data class LynxPageEssentialResources internal constructor(
+    val entry: String,
+    val resources: List<String>,
+)
+
+data class LynxLogicalPage(
+    val entry: String,
+    val parameters: Map<String, String> = emptyMap(),
+)
+
+data class LynxManagedTransition internal constructor(
+    val transitionId: String,
+    val trigger: String,
+    val sourceGenerationId: String,
+    val stack: List<LynxLogicalPage>,
+)
+
 /** An immutable managed-file snapshot. Only the installer can create one. */
 class VerifiedLynxInstallation internal constructor(
     val bundleId: String,
@@ -176,8 +193,27 @@ class VerifiedLynxInstallation internal constructor(
     val manifestHash: String,
     managedFileHashes: Map<String, String>,
     internal val manifestBacked: Boolean = false,
+    pageEntries: List<String> = listOf(entry),
+    pageEssentialResources: List<LynxPageEssentialResources> = listOf(
+        LynxPageEssentialResources(entry, listOf(entry)),
+    ),
 ) {
+    val pageEntries: List<String> =
+        java.util.Collections.unmodifiableList(ArrayList(pageEntries))
+    val pageEssentialResources: List<LynxPageEssentialResources> =
+        java.util.Collections.unmodifiableList(
+            pageEssentialResources.map {
+                LynxPageEssentialResources(
+                    it.entry,
+                    java.util.Collections.unmodifiableList(ArrayList(it.resources)),
+                )
+            },
+        )
     val managedFileHashes: Map<String, String> =
         java.util.Collections.unmodifiableMap(HashMap(managedFileHashes))
     val managedPaths: Set<String> get() = managedFileHashes.keys
+
+    fun essentialResources(pageEntry: String): List<String> =
+        pageEssentialResources.singleOrNull { it.entry == pageEntry }?.resources
+            ?: throw IllegalArgumentException("Unknown managed page entry")
 }

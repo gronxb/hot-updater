@@ -1,6 +1,11 @@
 import { defineConfig } from "@lynx-js/rspeedy";
 import { pluginOctane } from "@octanejs/rspeedy-plugin";
 
+const { compilerPageGraphPlugin, compilerPageResourceEntries } = await import(
+  process.env.HOT_UPDATER_COMPILER_GRAPH_PLUGIN ??
+    new URL("../spike/compiler-page-graph.mjs", import.meta.url).href
+);
+
 const isPublic = process.env.HOT_UPDATER_SPIKE_SDK !== "0";
 const resourceSet =
   process.env.HOT_UPDATER_SPIKE_RESOURCES ?? (isPublic ? "sdk3" : "basic");
@@ -10,6 +15,7 @@ export default defineConfig({
   environments: { lynx: {} },
   source: {
     entry: {
+      detail: "./src/detail.ts",
       main: isPublic ? "./src/sdk.ts" : "./src/index.ts",
     },
     define: {
@@ -38,8 +44,13 @@ export default defineConfig({
     assetPrefix:
       process.env.HOT_UPDATER_SPIKE_ASSET_PREFIX ?? "hot-updater:///",
     filenameHash: false,
-    filename: { bundle: "[name].[platform].bundle" },
+    filename: { bundle: "[name].lynx.bundle" },
     sourceMap: { js: false, css: false },
   },
-  plugins: [pluginOctane({ dev: false, hmr: false })],
+  plugins: [
+    pluginOctane({ dev: false, hmr: false }),
+    compilerPageGraphPlugin({
+      resourceEntries: compilerPageResourceEntries(resourceSet),
+    }),
+  ],
 });

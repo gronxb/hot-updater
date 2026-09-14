@@ -4,6 +4,7 @@ import path from "node:path";
 export const LYNX_EXCLUDED_DEFAULT_SCENARIOS = [
   "metadata-v1-migration",
 ] as const;
+export const LYNX_REQUIRED_SCENARIO = "sparkling-multipage-ota" as const;
 
 function parseScenarioNames(value: unknown, label: string): string[] {
   if (
@@ -27,9 +28,12 @@ export function validateLynxScenarioManifest(
   const shared = parseScenarioNames(sharedValue, "Shared default manifest");
   const lynx = parseScenarioNames(lynxValue, "Lynx default manifest");
   const excluded = new Set<string>(LYNX_EXCLUDED_DEFAULT_SCENARIOS);
-  const expected = shared.filter((name) => !excluded.has(name));
+  const expected = [
+    ...shared.filter((name) => !excluded.has(name)),
+    LYNX_REQUIRED_SCENARIO,
+  ];
 
-  if (expected.length === shared.length) {
+  if (!shared.includes(LYNX_EXCLUDED_DEFAULT_SCENARIOS[0])) {
     throw new Error(
       "Shared default manifest no longer contains metadata-v1-migration",
     );
@@ -39,7 +43,7 @@ export function validateLynxScenarioManifest(
     lynx.some((name, index) => name !== expected[index])
   ) {
     throw new Error(
-      "Lynx default manifest must equal the shared default manifest minus only metadata-v1-migration, in the same order",
+      "Lynx default manifest must equal the shared default manifest minus only metadata-v1-migration, followed by sparkling-multipage-ota",
     );
   }
   return lynx;

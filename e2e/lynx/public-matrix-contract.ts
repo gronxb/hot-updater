@@ -1,15 +1,89 @@
+import {
+  expectedRawDetailNativeFailure,
+  MISSING_ASSET_RESPONSE_SHA256,
+} from "../../examples/lynx/scripts/public-matrix/raw-detail-rejection.mjs";
+import { SPARKLING_NAVIGATION_PROVENANCE } from "../../packages/lynx/src/navigationProvenance.ts";
+import {
+  validateMatrixRuntimeJournalDiagnostics,
+  validateNavigationStackBoundary,
+  validateRuntimeEventFieldBoundaryDiagnostics,
+} from "./native-diagnostics-evidence.ts";
+
 export const LYNX_MATRIX_FRAMEWORKS = ["react", "vue", "octane"] as const;
 export const LYNX_MATRIX_PLATFORMS = ["ios", "android"] as const;
 export const LYNX_MATRIX_RESOURCE_PATHS = [
   "main.lynx.bundle",
+  "detail.lynx.bundle",
   "assets/probe.png",
   "assets/probe.ttf",
   "assets/bootstrap.js",
   "dynamic/component.lynx.bundle",
 ] as const;
+export const LYNX_MATRIX_PAGE_ENTRIES = [
+  "detail.lynx.bundle",
+  "main.lynx.bundle",
+] as const;
+export const LYNX_MATRIX_PAGE_ESSENTIAL_RESOURCES = [
+  { entry: "detail.lynx.bundle", resources: ["detail.lynx.bundle"] },
+  {
+    entry: "main.lynx.bundle",
+    resources: LYNX_MATRIX_RESOURCE_PATHS.filter(
+      (path) => path !== "detail.lynx.bundle",
+    ),
+  },
+] as const;
 
 export type LynxMatrixFramework = (typeof LYNX_MATRIX_FRAMEWORKS)[number];
 export type LynxMatrixPlatform = (typeof LYNX_MATRIX_PLATFORMS)[number];
+
+export const LYNX_MATRIX_RUNTIME_IDS = {
+  ios: "sparkling-c4ce8d2-navigation-2.1.0-rc.12-lynx-3.9.0-primjs-3.8.0-alpha.6-ios-managed-pages-v1",
+  android:
+    "android-sparkling-2.1.0-rc.12-navsrc-937f70d7c3012a5a-lynx-3.9.0-primjs-3.8.0-alpha.6-managed-pages-v1",
+} as const;
+
+export const LYNX_MATRIX_INCOMPATIBLE_RUNTIME_IDS = {
+  ios: `${LYNX_MATRIX_RUNTIME_IDS.ios}-cross-provenance-rejected`,
+  android: `${LYNX_MATRIX_RUNTIME_IDS.android}-cross-provenance-rejected`,
+} as const;
+
+export const LYNX_MATRIX_NATIVE_VERSIONS = {
+  sparkling: "2.1.0-rc.12",
+  lynx: "3.9.0",
+  primjs: "3.8.0-alpha.6",
+  hotUpdaterLynx: "1.0.0-rc.14",
+} as const;
+
+export const LYNX_MATRIX_IOS_SPARKLING_CHECKOUT = {
+  path: "ios/.upstream/sparkling",
+  commit: "c4ce8d25c5ea277e13752d68ff1f2a66f5704240",
+  archiveSha256:
+    "98939fa2d30710cb1b1071a0eb37521a3a8ebd4c2f6a9d81e7828eafe8299337",
+} as const;
+
+export const LYNX_MATRIX_ANDROID_SPARKLING_ARTIFACTS = {
+  "com.tiktok.sparkling:sparkling:2.1.0-rc.12@aar":
+    "3f565f3a1e44ccc3c33d8a53e7ebd1af5e348e1aac3f4a8de83676e0080d64ea",
+  "com.tiktok.sparkling:sparkling:2.1.0-rc.12@pom":
+    "852ddb134a4f8534b648416594d8d4babb30ac43584e3423d4d1f8d3baf90880",
+  "com.tiktok.sparkling:sparkling:2.1.0-rc.12@module":
+    "7fd65ca2ef77deaa67102e3cfbf67a376ba95c35c5cdbc225e3ffd9cfa08b8c5",
+  "com.tiktok.sparkling:sparkling-method:2.1.0-rc.12@aar":
+    "2b5114e07640ff86ee43fc5ae0cd84cf98a53d2c40a19d432bf501496cc54b7a",
+  "com.tiktok.sparkling:sparkling-method:2.1.0-rc.12@pom":
+    "5d42601a13e3ffcf92fc973248e50b342ad78aa72fc297c051707fca8f207a06",
+  "com.tiktok.sparkling:sparkling-method:2.1.0-rc.12@module":
+    "01fd39296eddb16f3ab50ed5efd0880737d29d98900d1d7564e9e18637599e17",
+} as const;
+
+const LYNX_NATIVE_ALLOWED_PREEXISTING_TRACKED_PATHS = [
+  "examples-server/hono-kysely-pglite/hot-updater_migrations/migration_2026-09-11T14-30-47.sql",
+  "examples-server/hono-kysely-pglite/src/db.ts",
+  "examples-server/hono-kysely-pglite/src/localFsStorage.mjs",
+  "examples-server/hono-kysely-pglite/src/localFsStorage.ts",
+  "examples/lynx/.gitignore",
+  "examples/lynx/scripts/e2e-kysely-deploy.mjs",
+] as const;
 
 type JsonRecord = Record<string, unknown>;
 
@@ -60,6 +134,161 @@ function hash(value: unknown, at: string): string {
   const result = string(value, at);
   if (!/^[a-f0-9]{64}$/.test(result)) fail(at, "expected a SHA-256 hash");
   return result;
+}
+
+function absoluteUrl(value: unknown, at: string): string {
+  const result = string(value, at);
+  let parsed: URL;
+  try {
+    parsed = new URL(result);
+  } catch {
+    return fail(at, "expected an absolute URL");
+  }
+  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+    fail(at, "expected an HTTP(S) URL");
+  }
+  return result;
+}
+
+export function validateLynxNativeArtifactsReceipt(
+  value: unknown,
+  options: {
+    readonly appId: string;
+    readonly commit?: string;
+    readonly platforms: readonly LynxMatrixPlatform[];
+    readonly target: "e2e" | "matrix" | "scaffold";
+  },
+): JsonRecord {
+  const receipt = record(value, "nativeArtifacts");
+  exactString(
+    receipt.schemaVersion,
+    "lynx-native-artifacts-v2",
+    "nativeArtifacts.schemaVersion",
+  );
+  exactString(receipt.target, options.target, "nativeArtifacts.target");
+  exactString(receipt.appId, options.appId, "nativeArtifacts.appId");
+  const sourceCommit = string(
+    receipt.sourceCommit,
+    "nativeArtifacts.sourceCommit",
+  );
+  if (!/^[a-f0-9]{40}$/.test(sourceCommit)) {
+    fail("nativeArtifacts.sourceCommit", "expected a full Git commit");
+  }
+  if (options.commit !== undefined && sourceCommit !== options.commit) {
+    fail("nativeArtifacts.sourceCommit", "does not match the matrix commit");
+  }
+  const sourceIntegrity = record(
+    receipt.sourceIntegrity,
+    "nativeArtifacts.sourceIntegrity",
+  );
+  exactString(
+    sourceIntegrity.checkedCommit,
+    sourceCommit,
+    "nativeArtifacts.sourceIntegrity.checkedCommit",
+  );
+  boolean(sourceIntegrity.clean, true, "nativeArtifacts.sourceIntegrity.clean");
+  if (
+    !Array.isArray(sourceIntegrity.trackedChanges) ||
+    sourceIntegrity.trackedChanges.length !== 0
+  ) {
+    fail(
+      "nativeArtifacts.sourceIntegrity.trackedChanges",
+      "expected no tracked source changes",
+    );
+  }
+  if (
+    JSON.stringify(sourceIntegrity.allowedTrackedChanges) !==
+    JSON.stringify(LYNX_NATIVE_ALLOWED_PREEXISTING_TRACKED_PATHS)
+  ) {
+    fail(
+      "nativeArtifacts.sourceIntegrity.allowedTrackedChanges",
+      "expected only the preserved preexisting staged paths",
+    );
+  }
+  if (
+    JSON.stringify(receipt.versions) !==
+    JSON.stringify(LYNX_MATRIX_NATIVE_VERSIONS)
+  ) {
+    fail("nativeArtifacts.versions", "expected exact native module versions");
+  }
+  if (
+    JSON.stringify(receipt.sparklingNavigation) !==
+    JSON.stringify(SPARKLING_NAVIGATION_PROVENANCE)
+  ) {
+    fail(
+      "nativeArtifacts.sparklingNavigation",
+      "expected exact Sparkling navigation provenance",
+    );
+  }
+  const artifacts = record(receipt.artifacts, "nativeArtifacts.artifacts");
+  for (const platform of options.platforms) {
+    const at = `nativeArtifacts.artifacts.${platform}`;
+    const artifact = record(artifacts[platform], at);
+    const artifactPath = string(artifact.path, `${at}.path`);
+    if (!artifactPath.startsWith("/")) fail(`${at}.path`, "must be absolute");
+    exactString(artifact.sourceCommit, sourceCommit, `${at}.sourceCommit`);
+    exactString(artifact.appId, options.appId, `${at}.appId`);
+    exactString(
+      artifact.runtimeId,
+      LYNX_MATRIX_RUNTIME_IDS[platform],
+      `${at}.runtimeId`,
+    );
+    hash(artifact.binarySha256, `${at}.binarySha256`);
+    exactString(
+      artifact.artifactHashKind,
+      platform === "ios" ? "deterministic-full-app-tree-v1" : "full-apk-bytes",
+      `${at}.artifactHashKind`,
+    );
+    hash(artifact.nativeFingerprintSha256, `${at}.nativeFingerprintSha256`);
+    const nativeConfig = record(artifact.nativeConfig, `${at}.nativeConfig`);
+    hash(nativeConfig.sha256, `${at}.nativeConfig.sha256`);
+    const files = record(nativeConfig.files, `${at}.nativeConfig.files`);
+    if (Object.keys(files).length < 5) {
+      fail(
+        `${at}.nativeConfig.files`,
+        "expected complete native config inputs",
+      );
+    }
+    for (const [file, digest] of Object.entries(files)) {
+      if (!file || file.startsWith("/") || file.split("/").includes("..")) {
+        fail(
+          `${at}.nativeConfig.files`,
+          "paths must be qualified and relative",
+        );
+      }
+      hash(digest, `${at}.nativeConfig.files.${file}`);
+    }
+    if (platform === "ios") {
+      if (
+        JSON.stringify(artifact.sparklingCheckout) !==
+        JSON.stringify(LYNX_MATRIX_IOS_SPARKLING_CHECKOUT)
+      ) {
+        fail(`${at}.sparklingCheckout`, "expected the resolved iOS checkout");
+      }
+      string(artifact.scheme, `${at}.scheme`);
+      string(artifact.arch, `${at}.arch`);
+    } else {
+      if (
+        JSON.stringify(artifact.sparklingArtifacts) !==
+        JSON.stringify(LYNX_MATRIX_ANDROID_SPARKLING_ARTIFACTS)
+      ) {
+        fail(
+          `${at}.sparklingArtifacts`,
+          "expected exact Android AAR/POM/module checksums",
+        );
+      }
+      exactString(
+        artifact.sparklingDependencyGraphSha256,
+        "c68329c1968de962c8574f298ba46f43db016195bbbf4422b5e01145278aebe3",
+        `${at}.sparklingDependencyGraphSha256`,
+      );
+      string(artifact.task, `${at}.task`);
+      if (!Array.isArray(artifact.abis) || artifact.abis.length !== 1) {
+        fail(`${at}.abis`, "expected one exact build ABI");
+      }
+    }
+  }
+  return receipt;
 }
 
 function stringArray(value: unknown, at: string): string[] {
@@ -158,8 +387,13 @@ function nativeConfirmation(
 
 function identity(value: unknown, at: string) {
   const item = record(value, at);
+  const processId = string(item.processId, `${at}.processId`);
+  if (!/^[1-9][0-9]*$/.test(processId)) {
+    fail(`${at}.processId`, "expected a canonical positive decimal string");
+  }
   return {
-    processId: string(item.processId, `${at}.processId`),
+    runtimeId: string(item.runtimeId, `${at}.runtimeId`),
+    processId,
     generationId: string(item.generationId, `${at}.generationId`),
     contextId: string(item.contextId, `${at}.contextId`),
     attemptId: string(item.attemptId, `${at}.attemptId`),
@@ -168,7 +402,12 @@ function identity(value: unknown, at: string) {
   };
 }
 
-function resources(value: unknown, expected: JsonRecord, at: string) {
+function resources(
+  value: unknown,
+  expected: JsonRecord,
+  at: string,
+  expectedPaths: readonly string[] = LYNX_MATRIX_RESOURCE_PATHS,
+) {
   if (!Array.isArray(value)) fail(at, "expected an array");
   const paths = value.map((raw, index) => {
     const itemAt = `${at}[${index}]`;
@@ -212,7 +451,7 @@ function resources(value: unknown, expected: JsonRecord, at: string) {
     }
     return resourcePath;
   });
-  sameMembers(paths, LYNX_MATRIX_RESOURCE_PATHS, at);
+  sameMembers(paths, expectedPaths, at);
 }
 
 function launchMembers(
@@ -222,6 +461,7 @@ function launchMembers(
   expectedBuild: JsonRecord,
   at: string,
   requireReady: boolean,
+  requireDetailReady: boolean,
   confirmation: unknown,
 ) {
   if (!Array.isArray(value)) fail(at, "expected an array");
@@ -245,10 +485,20 @@ function launchMembers(
       `${memberAt}.primary`,
     );
     if (member.primary === true) primaryMember = member;
+    const pageEntry = string(member.pageEntry, `${memberAt}.pageEntry`);
+    exactString(
+      pageEntry,
+      member.primary === true ? "main.lynx.bundle" : "detail.lynx.bundle",
+      `${memberAt}.pageEntry`,
+    );
     boolean(
       member.readinessAuthority,
       memberIdentity.contextId === primaryIdentity.contextId,
       `${memberAt}.readinessAuthority`,
+    );
+    const evaluationSequence = sequence(
+      member.evaluationSequence,
+      `${memberAt}.evaluationSequence`,
     );
     const firstContent = identity(
       member.firstContent,
@@ -257,10 +507,6 @@ function launchMembers(
     if (JSON.stringify(firstContent) !== JSON.stringify(memberIdentity)) {
       fail(`${memberAt}.firstContent`, "must match the member identity");
     }
-    const evaluationSequence = sequence(
-      member.evaluationSequence,
-      `${memberAt}.evaluationSequence`,
-    );
     const firstContentSequence = sequence(
       member.firstContentSequence,
       `${memberAt}.firstContentSequence`,
@@ -272,6 +518,11 @@ function launchMembers(
       member.resources,
       record(expectedBuild.files, "build.files"),
       `${memberAt}.resources`,
+      member.primary === true
+        ? LYNX_MATRIX_RESOURCE_PATHS.filter(
+            (path) => path !== "detail.lynx.bundle",
+          )
+        : ["detail.lynx.bundle"],
     );
     if (requireReady && member.primary === true) {
       record(member.confirmation, `${memberAt}.confirmation`);
@@ -299,14 +550,88 @@ function launchMembers(
           fail(memberAt, "required resources must complete before jsReady");
         }
       }
-    } else if (
-      member.jsReady !== null ||
-      member.jsReadySequence !== null ||
-      member.confirmation !== null
-    ) {
-      fail(
-        memberAt,
-        "non-authoritative member must not contain jsReady evidence",
+    } else if (member.primary === true) {
+      if (
+        member.jsReady !== null ||
+        member.jsReadySequence !== null ||
+        member.confirmation !== null
+      ) {
+        fail(memberAt, "unconfirmed primary must not contain jsReady evidence");
+      }
+    } else if (requireDetailReady) {
+      if (member.jsReady !== null || member.jsReadySequence !== null) {
+        fail(memberAt, "detail page must not claim primary jsReady authority");
+      }
+      const admitted = identity(
+        member.pageAdmitted,
+        `${memberAt}.pageAdmitted`,
+      );
+      if (JSON.stringify(admitted) !== JSON.stringify(memberIdentity)) {
+        fail(`${memberAt}.pageAdmitted`, "must match the detail identity");
+      }
+      const admission = record(member.confirmation, `${memberAt}.confirmation`);
+      exactString(
+        admission.status,
+        "PAGE_ADMITTED",
+        `${memberAt}.confirmation.status`,
+      );
+      string(member.nativePageClass, `${memberAt}.nativePageClass`);
+      exactString(
+        member.sourceContextId,
+        primaryIdentity.contextId,
+        `${memberAt}.sourceContextId`,
+      );
+      const parameters = record(member.parameters, `${memberAt}.parameters`);
+      exactString(
+        parameters.title,
+        "Second Page",
+        `${memberAt}.parameters.title`,
+      );
+      const terminal = record(
+        member.pageAttemptTerminal,
+        `${memberAt}.pageAttemptTerminal`,
+      );
+      const terminalIdentity = identity(
+        terminal,
+        `${memberAt}.pageAttemptTerminal`,
+      );
+      if (JSON.stringify(terminalIdentity) !== JSON.stringify(memberIdentity)) {
+        fail(
+          `${memberAt}.pageAttemptTerminal`,
+          "must match the detail identity",
+        );
+      }
+      string(
+        terminal.pageAttemptId,
+        `${memberAt}.pageAttemptTerminal.pageAttemptId`,
+      );
+      exactString(
+        terminal.terminal,
+        "admitted",
+        `${memberAt}.pageAttemptTerminal.terminal`,
+      );
+    } else {
+      if (
+        member.pageAdmitted !== null ||
+        member.pageAttemptTerminal !== null ||
+        member.confirmation !== null
+      ) {
+        fail(
+          memberAt,
+          "pending detail must not contain admission or terminal evidence",
+        );
+      }
+      string(member.nativePageClass, `${memberAt}.nativePageClass`);
+      exactString(
+        member.sourceContextId,
+        primaryIdentity.contextId,
+        `${memberAt}.sourceContextId`,
+      );
+      const parameters = record(member.parameters, `${memberAt}.parameters`);
+      exactString(
+        parameters.title,
+        "Second Page",
+        `${memberAt}.parameters.title`,
       );
     }
     return memberIdentity.contextId;
@@ -323,6 +648,7 @@ function readyLaunch(
   expectedSelection?: { bundleId: string; releaseId: string | null },
 ) {
   const item = record(value, at);
+  booleanValue(item.reconstructedStack, `${at}.reconstructedStack`);
   const launchIdentity = identity(item.identity, `${at}.identity`);
   const firstContent = identity(item.firstContent, `${at}.firstContent`);
   const jsReady = identity(item.jsReady, `${at}.jsReady`);
@@ -339,6 +665,12 @@ function readyLaunch(
       nullableString(expectedBuild.releaseId, "build.releaseId")
   ) {
     fail(`${at}.identity`, "does not match the expected release");
+  }
+  if (
+    launchIdentity.runtimeId !==
+    string(expectedBuild.runtimeId, "build.runtimeId")
+  ) {
+    fail(`${at}.identity.runtimeId`, "does not match the expected runtime");
   }
   if (
     expectedSelection &&
@@ -362,6 +694,7 @@ function readyLaunch(
     item.resources,
     record(expectedBuild.files, "build.files"),
     `${at}.resources`,
+    LYNX_MATRIX_RESOURCE_PATHS.filter((path) => path !== "detail.lynx.bundle"),
   );
   const primaryMember = launchMembers(
     item.members,
@@ -369,6 +702,7 @@ function readyLaunch(
     launchIdentity,
     expectedBuild,
     `${at}.members`,
+    true,
     true,
     item.confirmation,
   );
@@ -425,6 +759,7 @@ function readyLaunch(
     resources: item.resources as JsonRecord[],
     members: item.members as JsonRecord[],
     confirmation: item.confirmation,
+    reconstructedStack: item.reconstructedStack as boolean,
   };
 }
 
@@ -433,6 +768,7 @@ function unconfirmedLaunch(
   expectedBuild: JsonRecord,
   at: string,
   expectedSelection: { bundleId: string; releaseId: string | null },
+  primaryReady = false,
 ) {
   const item = record(value, at);
   const launchIdentity = identity(item.identity, `${at}.identity`);
@@ -462,6 +798,7 @@ function unconfirmedLaunch(
     item.resources,
     record(expectedBuild.files, "build.files"),
     `${at}.resources`,
+    LYNX_MATRIX_RESOURCE_PATHS.filter((path) => path !== "detail.lynx.bundle"),
   );
   const primaryMember = launchMembers(
     item.members,
@@ -469,6 +806,7 @@ function unconfirmedLaunch(
     launchIdentity,
     expectedBuild,
     `${at}.members`,
+    primaryReady,
     false,
     item.confirmation,
   );
@@ -496,11 +834,13 @@ function unconfirmedLaunch(
   if (evaluationSequence >= firstContentSequence) {
     fail(`${at}.firstContentSequence`, "must follow generationWillEvaluate");
   }
-  boolean(item.readinessWithheld, true, `${at}.readinessWithheld`);
+  boolean(item.readinessWithheld, !primaryReady, `${at}.readinessWithheld`);
+  boolean(item.detailReadinessWithheld, true, `${at}.detailReadinessWithheld`);
   if (
-    item.jsReady !== null ||
-    item.jsReadySequence !== null ||
-    item.confirmation !== null
+    !primaryReady &&
+    (item.jsReady !== null ||
+      item.jsReadySequence !== null ||
+      item.confirmation !== null)
   ) {
     fail(at, "unconfirmed candidate must not contain jsReady evidence");
   }
@@ -509,6 +849,73 @@ function unconfirmedLaunch(
     contextIds,
     resources: item.resources as JsonRecord[],
     members: item.members as JsonRecord[],
+    confirmation: item.confirmation,
+  };
+}
+
+function fatalPendingLaunch(
+  value: unknown,
+  expectedBuild: JsonRecord,
+  at: string,
+  expectedSelection: { bundleId: string; releaseId: string | null },
+  primaryReady: boolean,
+) {
+  const item = record(value, at);
+  const launchIdentity = identity(item.identity, `${at}.identity`);
+  if (
+    launchIdentity.bundleId !==
+      string(expectedBuild.bundleId, "build.bundleId") ||
+    launchIdentity.releaseId !==
+      nullableString(expectedBuild.releaseId, "build.releaseId") ||
+    launchIdentity.bundleId !== expectedSelection.bundleId ||
+    launchIdentity.releaseId !== expectedSelection.releaseId
+  ) {
+    fail(`${at}.identity`, "does not match the fatal candidate selection");
+  }
+  const contextIds = stringArray(item.contextIds, `${at}.contextIds`);
+  if (
+    contextIds.length !== 2 ||
+    contextIds.length !== new Set(contextIds).size ||
+    !contextIds.includes(launchIdentity.contextId)
+  ) {
+    fail(`${at}.contextIds`, "must contain one primary and one pending detail");
+  }
+  const primaryMember = launchMembers(
+    item.members,
+    contextIds,
+    launchIdentity,
+    expectedBuild,
+    `${at}.members`,
+    primaryReady,
+    false,
+    item.confirmation,
+  );
+  for (const key of [
+    "evaluationSequence",
+    "firstContentSequence",
+    "jsReadySequence",
+    "firstContent",
+    "jsReady",
+    "confirmation",
+    "resources",
+  ]) {
+    if (JSON.stringify(item[key]) !== JSON.stringify(primaryMember[key])) {
+      fail(`${at}.${key}`, "must equal the authoritative primary member");
+    }
+  }
+  boolean(item.readinessWithheld, !primaryReady, `${at}.readinessWithheld`);
+  boolean(item.detailReadinessWithheld, true, `${at}.detailReadinessWithheld`);
+  boolean(
+    item.detailFailedBeforeAdmission,
+    true,
+    `${at}.detailFailedBeforeAdmission`,
+  );
+  return {
+    identity: launchIdentity,
+    contextIds,
+    resources: item.resources as JsonRecord[],
+    members: item.members as JsonRecord[],
+    confirmation: item.confirmation,
   };
 }
 
@@ -524,7 +931,14 @@ function generationRetirement(
   sameMembers(contextIds, before.contextIds, `${at}.contextIds`);
   if (
     item.expectedLeaseCount !==
-    before.contextIds.length * LYNX_MATRIX_RESOURCE_PATHS.length
+    before.members.reduce(
+      (count, member) =>
+        count +
+        (Array.isArray((member as JsonRecord).resources)
+          ? ((member as JsonRecord).resources as unknown[]).length
+          : 0),
+      0,
+    )
   ) {
     fail(
       `${at}.expectedLeaseCount`,
@@ -632,9 +1046,56 @@ function build(
   string(item.compilerVersion, `${at}.compilerVersion`);
   string(item.runtimeId, `${at}.runtimeId`);
   string(item.bundleId, `${at}.bundleId`);
+  const source = string(item.source, `${at}.source`);
+  if (!source.startsWith("/"))
+    fail(`${at}.source`, "expected an absolute path");
+  const provenance = record(item.provenance, `${at}.provenance`);
+  exactString(
+    provenance.framework,
+    string(item.compiler, `${at}.compiler`),
+    `${at}.provenance.framework`,
+  );
+  exactString(
+    provenance.rspeedy,
+    string(item.compilerVersion, `${at}.compilerVersion`),
+    `${at}.provenance.rspeedy`,
+  );
+  if (
+    JSON.stringify(provenance.sparklingNavigation) !==
+    JSON.stringify(SPARKLING_NAVIGATION_PROVENANCE)
+  ) {
+    fail(
+      `${at}.provenance.sparklingNavigation`,
+      "expected the locked compiler Sparkling provenance",
+    );
+  }
   if (allowEmbeddedRelease) nullableString(item.releaseId, `${at}.releaseId`);
   else string(item.releaseId, `${at}.releaseId`);
   hash(item.manifestSha256, `${at}.manifestSha256`);
+  const pageEntries = stringArray(item.pageEntries, `${at}.pageEntries`);
+  if (
+    JSON.stringify(pageEntries) !== JSON.stringify(LYNX_MATRIX_PAGE_ENTRIES)
+  ) {
+    fail(`${at}.pageEntries`, "expected the exact ordered compiler page set");
+  }
+  if (
+    JSON.stringify(item.pageEssentialResources) !==
+    JSON.stringify(LYNX_MATRIX_PAGE_ESSENTIAL_RESOURCES)
+  ) {
+    fail(
+      `${at}.pageEssentialResources`,
+      "expected the exact compiler-authored per-page resource graph",
+    );
+  }
+  if (
+    JSON.stringify(item.sparklingNavigation) !==
+    JSON.stringify(SPARKLING_NAVIGATION_PROVENANCE)
+  ) {
+    fail(
+      `${at}.sparklingNavigation`,
+      "expected the locked Sparkling navigation provenance",
+    );
+  }
   const files = record(item.files, `${at}.files`);
   sameMembers(Object.keys(files), LYNX_MATRIX_RESOURCE_PATHS, `${at}.files`);
   for (const path of LYNX_MATRIX_RESOURCE_PATHS) {
@@ -650,9 +1111,376 @@ function build(
   return item;
 }
 
+function deltaDelivery(
+  value: unknown,
+  expectedBaseBundleId: string,
+  expectedTarget: JsonRecord,
+  at: string,
+) {
+  const delivery = record(value, at);
+  exactString(delivery.transport, "bsdiff", `${at}.transport`);
+  exactString(delivery.algorithm, "bsdiff", `${at}.algorithm`);
+  string(delivery.transactionId, `${at}.transactionId`);
+  exactString(
+    delivery.baseBundleId,
+    expectedBaseBundleId,
+    `${at}.baseBundleId`,
+  );
+  exactString(
+    delivery.targetBundleId,
+    string(expectedTarget.bundleId, `${at}.expectedTarget.bundleId`),
+    `${at}.targetBundleId`,
+  );
+  boolean(delivery.archiveFallbackUsed, false, `${at}.archiveFallbackUsed`);
+  if (delivery.archiveFileUrl !== null || delivery.archiveFileHash !== null) {
+    fail(at, "manifest delta must not retain an archive URL or hash");
+  }
+  const absoluteUrl = (value: unknown, path: string) => {
+    const candidate = string(value, path);
+    let parsed: URL;
+    try {
+      parsed = new URL(candidate);
+    } catch {
+      return fail(path, "expected an absolute immutable artifact URL");
+    }
+    if (!["http:", "https:"].includes(parsed.protocol) || parsed.hash) {
+      fail(path, "expected an HTTP(S) artifact URL without a fragment");
+    }
+    return candidate;
+  };
+  absoluteUrl(delivery.deliveryArtifactUrl, `${at}.deliveryArtifactUrl`);
+  absoluteUrl(delivery.manifestUrl, `${at}.manifestUrl`);
+  const manifestSha256 = hash(delivery.manifestSha256, `${at}.manifestSha256`);
+  if (manifestSha256 !== expectedTarget.manifestSha256) {
+    fail(`${at}.manifestSha256`, "must match the target compiler manifest");
+  }
+  exactString(
+    delivery.mainAssetPath,
+    "main.lynx.bundle",
+    `${at}.mainAssetPath`,
+  );
+  absoluteUrl(delivery.mainFileUrl, `${at}.mainFileUrl`);
+  absoluteUrl(delivery.patchUrl, `${at}.patchUrl`);
+  const patchSha256 = hash(delivery.patchSha256, `${at}.patchSha256`);
+  const baseSha256 = hash(delivery.baseSha256, `${at}.baseSha256`);
+  const targetSha256 = hash(delivery.targetSha256, `${at}.targetSha256`);
+  const reconstructedSha256 = hash(
+    delivery.reconstructedSha256,
+    `${at}.reconstructedSha256`,
+  );
+  if (reconstructedSha256 !== targetSha256) {
+    fail(`${at}.reconstructedSha256`, "must equal targetSha256");
+  }
+  exactString(
+    delivery.rawDetailAssetPath,
+    "detail.lynx.bundle",
+    `${at}.rawDetailAssetPath`,
+  );
+  absoluteUrl(delivery.rawDetailFileUrl, `${at}.rawDetailFileUrl`);
+  const rawDetailSha256 = hash(
+    delivery.rawDetailSha256,
+    `${at}.rawDetailSha256`,
+  );
+  const targetFiles = record(
+    expectedTarget.files,
+    `${at}.expectedTarget.files`,
+  );
+  const targetDetail = record(
+    targetFiles["detail.lynx.bundle"],
+    `${at}.expectedTarget.files.detail.lynx.bundle`,
+  );
+  if (rawDetailSha256 !== targetDetail.sha256) {
+    fail(
+      `${at}.rawDetailSha256`,
+      "must match the target compiler detail bytes",
+    );
+  }
+  return {
+    baseSha256,
+    patchSha256,
+    reconstructedSha256,
+    targetSha256,
+  };
+}
+
+function rawDetailRejections(
+  value: unknown,
+  expectedTarget: JsonRecord,
+  expectedRunning: JsonRecord,
+  platform: LynxMatrixPlatform,
+  at: string,
+) {
+  if (!Array.isArray(value) || value.length !== 2) {
+    fail(at, "expected missing and corrupt raw-detail rejection receipts");
+  }
+  const modes = value.map((raw, index) => {
+    const itemAt = `${at}[${index}]`;
+    const item = record(raw, itemAt);
+    const mode = string(item.mode, `${itemAt}.mode`);
+    if (mode !== "missing" && mode !== "corrupt") {
+      fail(`${itemAt}.mode`, "expected missing or corrupt");
+    }
+    exactString(
+      item.targetBundleId,
+      string(expectedTarget.bundleId, `${itemAt}.expectedTarget.bundleId`),
+      `${itemAt}.targetBundleId`,
+    );
+    exactString(
+      item.targetReleaseId,
+      string(expectedTarget.releaseId, `${itemAt}.expectedTarget.releaseId`),
+      `${itemAt}.targetReleaseId`,
+    );
+    exactString(
+      item.runningBundleId,
+      string(expectedRunning.bundleId, `${itemAt}.expectedRunning.bundleId`),
+      `${itemAt}.runningBundleId`,
+    );
+    if (item.runningReleaseId !== expectedRunning.releaseId) {
+      fail(`${itemAt}.runningReleaseId`, "must retain the running Release");
+    }
+    exactString(
+      item.rawDetailAssetPath,
+      "detail.lynx.bundle",
+      `${itemAt}.rawDetailAssetPath`,
+    );
+    const rawUrl = string(item.rawDetailFileUrl, `${itemAt}.rawDetailFileUrl`);
+    try {
+      new URL(rawUrl);
+    } catch {
+      fail(`${itemAt}.rawDetailFileUrl`, "expected an immutable asset URL");
+    }
+    const expectedFiles = record(
+      expectedTarget.files,
+      `${itemAt}.target.files`,
+    );
+    const detail = record(
+      expectedFiles["detail.lynx.bundle"],
+      `${itemAt}.target.files.detail`,
+    );
+    exactString(
+      item.expectedSha256,
+      string(detail.sha256, `${itemAt}.target.detail.sha256`),
+      `${itemAt}.expectedSha256`,
+    );
+    exactString(item.requestUrl, rawUrl, `${itemAt}.requestUrl`);
+    let expectedPath: string;
+    try {
+      expectedPath = new URL(rawUrl).pathname;
+    } catch {
+      fail(`${itemAt}.rawDetailFileUrl`, "expected an immutable asset URL");
+    }
+    exactString(item.requestPath, expectedPath, `${itemAt}.requestPath`);
+    const requestCountBefore = item.requestCountBefore;
+    const requestCountAfter = item.requestCountAfter;
+    const consumedRequestCount = item.consumedRequestCount;
+    for (const [name, observed] of [
+      ["requestCountBefore", requestCountBefore],
+      ["requestCountAfter", requestCountAfter],
+      ["consumedRequestCount", consumedRequestCount],
+    ] as const) {
+      if (!Number.isInteger(observed) || Number(observed) < 0) {
+        fail(`${itemAt}.${name}`, "expected a non-negative integer");
+      }
+    }
+    if (Number(consumedRequestCount) < 1) {
+      fail(`${itemAt}.consumedRequestCount`, "expected a consumed request");
+    }
+    if (
+      Number(requestCountAfter) !==
+      Number(requestCountBefore) + Number(consumedRequestCount)
+    ) {
+      fail(
+        `${itemAt}.requestCountAfter`,
+        "does not bind the consumed requests",
+      );
+    }
+    hash(item.responseSha256, `${itemAt}.responseSha256`);
+    const expectedFailure = expectedRawDetailNativeFailure(platform, mode);
+    exactString(
+      item.nativeInstallErrorCode,
+      expectedFailure.code,
+      `${itemAt}.nativeInstallErrorCode`,
+    );
+    exactString(
+      item.nativeInstallErrorMessage,
+      expectedFailure.message,
+      `${itemAt}.nativeInstallErrorMessage`,
+    );
+    exactString(
+      item.nativeInstallErrorTransport,
+      "matrix-control-http",
+      `${itemAt}.nativeInstallErrorTransport`,
+    );
+    const receivedAt = string(
+      item.nativeInstallErrorReceivedAt,
+      `${itemAt}.nativeInstallErrorReceivedAt`,
+    );
+    if (!Number.isFinite(Date.parse(receivedAt))) {
+      fail(
+        `${itemAt}.nativeInstallErrorReceivedAt`,
+        "expected the persisted control receipt timestamp",
+      );
+    }
+    const nativeInstallError = string(
+      item.nativeInstallError,
+      `${itemAt}.nativeInstallError`,
+    );
+    exactString(
+      nativeInstallError,
+      `Installation failed: [${expectedFailure.code}] ${expectedFailure.message}`,
+      `${itemAt}.nativeInstallError`,
+    );
+    if (mode === "corrupt") {
+      const actual = hash(
+        item.actualAssetSha256,
+        `${itemAt}.actualAssetSha256`,
+      );
+      if (actual === item.expectedSha256 || actual !== item.responseSha256) {
+        fail(
+          `${itemAt}.actualAssetSha256`,
+          "must bind the mismatched bytes returned by the asset request",
+        );
+      }
+      if (item.responseStatus !== 200 || item.responseErrorCode !== null) {
+        fail(
+          `${itemAt}.responseStatus`,
+          "expected a corrupt HTTP 200 response",
+        );
+      }
+    } else {
+      if (item.actualAssetSha256 !== null) {
+        fail(`${itemAt}.actualAssetSha256`, "expected no missing asset bytes");
+      }
+      if (
+        item.responseStatus !== 404 ||
+        item.responseErrorCode !== "HTTP_404"
+      ) {
+        fail(
+          `${itemAt}.responseStatus`,
+          "expected an observed HTTP_404 response",
+        );
+      }
+      exactString(
+        item.responseSha256,
+        MISSING_ASSET_RESPONSE_SHA256,
+        `${itemAt}.responseSha256`,
+      );
+    }
+    if (item.archiveFileUrl !== null || item.archiveFileHash !== null) {
+      fail(`${itemAt}.archiveFileUrl`, "expected no archive descriptor");
+    }
+    boolean(item.archiveFallbackUsed, false, `${itemAt}.archiveFallbackUsed`);
+    boolean(
+      item.rejectedBeforeTransition,
+      true,
+      `${itemAt}.rejectedBeforeTransition`,
+    );
+    string(item.processId, `${itemAt}.processId`);
+    const generationId = string(item.generationId, `${itemAt}.generationId`);
+    exactString(
+      item.generationIdAfter,
+      generationId,
+      `${itemAt}.generationIdAfter`,
+    );
+    exactString(
+      item.bundleIdAfter,
+      string(expectedRunning.bundleId, `${itemAt}.expectedRunning.bundleId`),
+      `${itemAt}.bundleIdAfter`,
+    );
+    if (item.releaseIdAfter !== expectedRunning.releaseId) {
+      fail(`${itemAt}.releaseIdAfter`, "must retain the running Release");
+    }
+    if (
+      item.fallbackMarkerCountBefore !== item.fallbackMarkerCountAfter ||
+      !Number.isInteger(item.fallbackMarkerCountBefore)
+    ) {
+      fail(
+        `${itemAt}.fallbackMarkerCountAfter`,
+        "archive fallback was observed",
+      );
+    }
+    return mode;
+  });
+  sameMembers(modes, ["missing", "corrupt"], `${at}.modes`);
+}
+
+function navigationBoundaryParameters(vector: string) {
+  if (vector === "canonical-options") {
+    return { title: "Second Page", value: "a+b" };
+  }
+  if (vector === "parameter-count") {
+    return Object.fromEntries(
+      Array.from({ length: 32 }, (_, index) => [`p${index}`, String(index)]),
+    );
+  }
+  if (vector === "key-bytes") return { ["é".repeat(64)]: "ok" };
+  if (vector === "value-bytes") return { value: "é".repeat(512) };
+  if (vector === "decoded-query-bytes") {
+    return { a: "a".repeat(1_024), b: "b".repeat(998) };
+  }
+  return { a: "é".repeat(512), b: "b".repeat(970) };
+}
+
+function navigationBoundaries(
+  value: unknown,
+  platform: string,
+  mainContextId: string,
+  at: string,
+) {
+  const vectors = [
+    "canonical-options",
+    "parameter-count",
+    "key-bytes",
+    "value-bytes",
+    "decoded-query-bytes",
+    "raw-route-bytes",
+  ];
+  if (!Array.isArray(value) || value.length !== vectors.length) {
+    fail(at, "expected all six navigation boundary vectors");
+  }
+  const contexts = value.map((raw, index) => {
+    const itemAt = `${at}[${index}]`;
+    const item = record(raw, itemAt);
+    exactString(item.vector, vectors[index]!, `${itemAt}.vector`);
+    exactString(
+      item.sourceContextId,
+      mainContextId,
+      `${itemAt}.sourceContextId`,
+    );
+    if (
+      JSON.stringify(item.parameters) !==
+      JSON.stringify(navigationBoundaryParameters(vectors[index]!))
+    ) {
+      fail(`${itemAt}.parameters`, "did not preserve exact decoded parameters");
+    }
+    const nativePageClass = string(
+      item.nativePageClass,
+      `${itemAt}.nativePageClass`,
+    );
+    if (
+      (platform === "ios" && !nativePageClass.includes("SPKViewController")) ||
+      (platform === "android" &&
+        !nativePageClass.endsWith("HotUpdaterSparklingPageActivity"))
+    ) {
+      fail(
+        `${itemAt}.nativePageClass`,
+        "expected the managed native page class",
+      );
+    }
+    if (item.acceptedOpenCount !== 1 || item.overflowNativeOpenCount !== 0) {
+      fail(itemAt, "overflow reached the native open boundary");
+    }
+    boolean(item.closedToMain, true, `${itemAt}.closedToMain`);
+    return string(item.acceptedContextId, `${itemAt}.acceptedContextId`);
+  });
+  if (new Set(contexts).size !== contexts.length) {
+    fail(at, "accepted pages must use distinct managed contexts");
+  }
+}
+
 function recovery(
   value: unknown,
-  kind: "fatal" | "unconfirmed",
+  kind: "confirmed-interruption" | "fatal" | "unconfirmed",
   candidateBuild: JsonRecord,
   stableBuild: JsonRecord,
   at: string,
@@ -675,19 +1503,48 @@ function recovery(
   ) {
     fail(`${at}.failureEvent`, "must identify the failed candidate attempt");
   }
-  const candidateLaunch = unconfirmedLaunch(
-    item.candidateLaunch,
-    candidateBuild,
-    `${at}.candidateLaunch`,
-    candidate,
-  );
+  const candidateLaunch =
+    kind === "fatal"
+      ? fatalPendingLaunch(
+          item.candidateLaunch,
+          candidateBuild,
+          `${at}.candidateLaunch`,
+          candidate,
+          false,
+        )
+      : unconfirmedLaunch(
+          item.candidateLaunch,
+          candidateBuild,
+          `${at}.candidateLaunch`,
+          candidate,
+          kind === "confirmed-interruption",
+        );
   if (
+    failureEvent.runtimeId !== candidateLaunch.identity.runtimeId ||
     failureEvent.processId !== candidateLaunch.identity.processId ||
     failureEvent.generationId !== candidateLaunch.identity.generationId ||
     failureEvent.attemptId !== candidateLaunch.identity.attemptId ||
     !candidateLaunch.contextIds.includes(failureEvent.contextId)
   ) {
     fail(`${at}.failureEvent`, "must belong to the candidate generation");
+  }
+  if (kind === "confirmed-interruption") {
+    nativeConfirmation(
+      candidateLaunch.confirmation,
+      "CONFIRMED",
+      {
+        kind: "UPDATE_APPLIED",
+        from: {
+          bundleId: string(stableBuild.bundleId, "stableBuild.bundleId"),
+          releaseId: nullableString(
+            stableBuild.releaseId,
+            "stableBuild.releaseId",
+          ),
+        },
+        to: candidate,
+      },
+      `${at}.candidateLaunch.confirmation`,
+    );
   }
   if (kind === "fatal") {
     exactString(
@@ -703,10 +1560,44 @@ function recovery(
       item.failureEvent.generationFailedSequence,
       `${at}.failureEvent.generationFailedSequence`,
     );
-    if (runtimeFailedSequence >= generationFailedSequence) {
-      fail(`${at}.failureEvent`, "runtimeFailed must precede generationFailed");
-    }
+    const pageAttemptTerminalSequence = sequence(
+      item.failureEvent.pageAttemptTerminalSequence,
+      `${at}.failureEvent.pageAttemptTerminalSequence`,
+    );
     if (
+      runtimeFailedSequence >= pageAttemptTerminalSequence ||
+      pageAttemptTerminalSequence >= generationFailedSequence
+    ) {
+      fail(
+        `${at}.failureEvent`,
+        "runtimeFailed, verified-fatal terminal, and generationFailed are out of order",
+      );
+    }
+    const terminal = record(
+      item.failureEvent.pageAttemptTerminal,
+      `${at}.failureEvent.pageAttemptTerminal`,
+    );
+    const terminalIdentity = identity(
+      terminal,
+      `${at}.failureEvent.pageAttemptTerminal`,
+    );
+    if (JSON.stringify(terminalIdentity) !== JSON.stringify(failureEvent)) {
+      fail(
+        `${at}.failureEvent.pageAttemptTerminal`,
+        "must match the failed detail identity",
+      );
+    }
+    exactString(
+      terminal.terminal,
+      "verified-fatal",
+      `${at}.failureEvent.pageAttemptTerminal.terminal`,
+    );
+    string(
+      terminal.pageAttemptId,
+      `${at}.failureEvent.pageAttemptTerminal.pageAttemptId`,
+    );
+    if (
+      failureEvent.runtimeId !== candidateLaunch.identity.runtimeId ||
       failureEvent.processId !== candidateLaunch.identity.processId ||
       failureEvent.generationId !== candidateLaunch.identity.generationId ||
       failureEvent.attemptId !== candidateLaunch.identity.attemptId ||
@@ -727,11 +1618,56 @@ function recovery(
   } else {
     exactString(
       item.failureEvent.event,
-      "generationWillEvaluate",
+      "pageAttemptTerminal",
       `${at}.failureEvent.event`,
     );
+    exactString(
+      item.failureEvent.terminal,
+      "process-interruption",
+      `${at}.failureEvent.terminal`,
+    );
+    string(item.failureEvent.pageAttemptId, `${at}.failureEvent.pageAttemptId`);
+    sequence(
+      item.failureEvent.terminalSequence,
+      `${at}.failureEvent.terminalSequence`,
+    );
+    if (failureEvent.contextId === candidateLaunch.identity.contextId) {
+      fail(
+        `${at}.failureEvent.contextId`,
+        "process interruption must identify the pending detail context",
+      );
+    }
+    const pendingMember = candidateLaunch.members.find(
+      (member) => member.primary !== true,
+    );
+    if (
+      !pendingMember ||
+      record(pendingMember, `${at}.candidateLaunch.members`).pageAttemptId !==
+        item.failureEvent.pageAttemptId
+    ) {
+      fail(
+        `${at}.failureEvent.pageAttemptId`,
+        "must match the pending detail attempt",
+      );
+    }
   }
   const recovered = readyLaunch(item.recovered, stableBuild, `${at}.recovered`);
+  if (
+    kind !== "fatal" &&
+    sequence(
+      item.failureEvent.terminalSequence,
+      `${at}.failureEvent.terminalSequence`,
+    ) >=
+      sequence(
+        record(item.recovered, `${at}.recovered`).evaluationSequence,
+        `${at}.recovered.evaluationSequence`,
+      )
+  ) {
+    fail(
+      `${at}.recovered.evaluationSequence`,
+      "recovery evaluation must follow the durable process interruption",
+    );
+  }
   nativeConfirmation(
     recovered.confirmation,
     "ALREADY_CONFIRMED",
@@ -776,6 +1712,18 @@ function recovery(
   if (!excluded.includes(excludedId)) {
     fail(`${at}.persistedExclusions`, `must contain ${excludedId}`);
   }
+  if (kind === "confirmed-interruption") {
+    const crashedBundleIds = stringArray(
+      item.crashedBundleIds,
+      `${at}.crashedBundleIds`,
+    );
+    if (crashedBundleIds.includes(candidate.bundleId)) {
+      fail(
+        `${at}.crashedBundleIds`,
+        "process interruption must not enter verified Bundle crash history",
+      );
+    }
+  }
   boolean(item.candidateRetried, false, `${at}.candidateRetried`);
   return recovered;
 }
@@ -784,7 +1732,7 @@ export function validateLynxMatrixCell(value: unknown): void {
   const cell = record(value, "cell");
   exactString(
     cell.schemaVersion,
-    "lynx-public-matrix-v1",
+    "lynx-public-matrix-v2",
     "cell.schemaVersion",
   );
   const framework = string(cell.framework, "cell.framework");
@@ -796,7 +1744,25 @@ export function validateLynxMatrixCell(value: unknown): void {
     fail("cell.platform", "expected ios or android");
   }
   exactString(cell.cellId, `${framework}-${platform}`, "cell.cellId");
-  string(cell.commit, "cell.commit");
+  const commit = string(cell.commit, "cell.commit");
+  if (!/^[a-f0-9]{40}$/.test(commit)) {
+    fail("cell.commit", "expected a full Git commit");
+  }
+  const nativeArtifacts = validateLynxNativeArtifactsReceipt(
+    cell.nativeArtifacts,
+    {
+      appId: "com.hotupdater.lynxmatrix",
+      commit,
+      platforms: [platform as LynxMatrixPlatform],
+      target: "matrix",
+    },
+  );
+  const nativeArtifact = record(
+    record(nativeArtifacts.artifacts, "cell.nativeArtifacts.artifacts")[
+      platform
+    ],
+    `cell.nativeArtifacts.artifacts.${platform}`,
+  );
   const binary = record(cell.binary, "cell.binary");
   string(binary.path, "cell.binary.path");
   const installedHash = hash(
@@ -810,35 +1776,214 @@ export function validateLynxMatrixCell(value: unknown): void {
       "native binary changed during the scenario",
     );
   }
+  exactString(
+    installedHash,
+    hash(
+      nativeArtifact.binarySha256,
+      `cell.nativeArtifacts.artifacts.${platform}.binarySha256`,
+    ),
+    "cell.binary.installedSha256",
+  );
 
   const builds = record(cell.builds, "cell.builds");
   const a = build(builds.A, "A", "cell.builds.A", true);
   if (a.releaseId !== null) {
     fail("cell.builds.A.releaseId", "embedded BUILTIN releaseId must be null");
   }
+  const serverA = build(builds.serverA, "A", "cell.builds.serverA");
+  if (
+    serverA.bundleId !== a.bundleId ||
+    serverA.manifestSha256 !== a.manifestSha256 ||
+    JSON.stringify(serverA.files) !== JSON.stringify(a.files)
+  ) {
+    fail(
+      "cell.builds.serverA",
+      "must register the exact embedded compiler Bundle A with a server Release",
+    );
+  }
   const b = build(builds.B, "B", "cell.builds.B");
   const c = build(builds.C, "C", "cell.builds.C");
+  const confirmedInterruption = build(
+    builds.confirmedInterruption,
+    "CONFIRMED_INTERRUPTION",
+    "cell.builds.confirmedInterruption",
+  );
   const fatal = build(builds.fatal, "FATAL", "cell.builds.fatal");
   const unconfirmed = build(
     builds.unconfirmed,
     "UNCONFIRMED",
     "cell.builds.unconfirmed",
   );
-  const runtimeIds = [a, b, c, fatal, unconfirmed].map(
-    (item) => item.runtimeId,
-  );
+  const runtimeIds = [
+    a,
+    serverA,
+    b,
+    c,
+    confirmedInterruption,
+    fatal,
+    unconfirmed,
+  ].map((item) => item.runtimeId);
   if (new Set(runtimeIds).size !== 1) {
     fail("cell.builds", "all artifacts must use the same runtimeId");
   }
+  exactString(
+    runtimeIds[0],
+    string(
+      nativeArtifact.runtimeId,
+      `cell.nativeArtifacts.artifacts.${platform}.runtimeId`,
+    ),
+    "cell.builds.A.runtimeId",
+  );
   if (
-    new Set([c.bundleId, fatal.bundleId, unconfirmed.bundleId]).size !== 3 ||
-    new Set([c.releaseId, fatal.releaseId, unconfirmed.releaseId]).size !== 3
+    new Set([
+      c.bundleId,
+      confirmedInterruption.bundleId,
+      fatal.bundleId,
+      unconfirmed.bundleId,
+    ]).size !== 4 ||
+    new Set([
+      c.releaseId,
+      confirmedInterruption.releaseId,
+      fatal.releaseId,
+      unconfirmed.releaseId,
+    ]).size !== 4
   ) {
     fail(
       "cell.builds",
-      "C, fatal, and unconfirmed candidates must have distinct real identities",
+      "C and every recovery candidate must have distinct real identities",
     );
   }
+
+  const diagnostics = record(cell.diagnostics, "cell.diagnostics");
+  const diagnosticsProcessId = string(
+    record(
+      record(
+        record(cell.phases, "cell.phases").embeddedA,
+        "cell.phases.embeddedA",
+      ).identity,
+      "cell.phases.embeddedA.identity",
+    ).processId,
+    "cell.phases.embeddedA.identity.processId",
+  );
+  for (const name of [
+    "navigationStackBoundary",
+    "runtimeEventFieldBoundaries",
+    "runtimeJournalFixtures",
+  ]) {
+    exactString(
+      record(diagnostics[name], `cell.diagnostics.${name}`).processId,
+      diagnosticsProcessId,
+      `cell.diagnostics.${name}.processId`,
+    );
+  }
+  if (
+    !Array.isArray(diagnostics.managedResourceEngineErrorCodes) ||
+    diagnostics.managedResourceEngineErrorCodes.length !== 0
+  ) {
+    fail(
+      "cell.diagnostics.managedResourceEngineErrorCodes",
+      "expected no managed-resource engine codes",
+    );
+  }
+  try {
+    validateNavigationStackBoundary(diagnostics.navigationStackBoundary);
+    validateRuntimeEventFieldBoundaryDiagnostics(
+      diagnostics.runtimeEventFieldBoundaries,
+    );
+    validateMatrixRuntimeJournalDiagnostics(diagnostics.runtimeJournalFixtures);
+  } catch (error) {
+    fail(
+      "cell.diagnostics",
+      error instanceof Error ? error.message : String(error),
+    );
+  }
+  const ledger = record(
+    diagnostics.runtimeEventLedger,
+    "cell.diagnostics.runtimeEventLedger",
+  );
+  exactString(
+    ledger.schemaVersion,
+    "lynx-generation-event-ledger-v1",
+    "cell.diagnostics.runtimeEventLedger.schemaVersion",
+  );
+  exactString(
+    ledger.oldestSequence,
+    "1",
+    "cell.diagnostics.runtimeEventLedger.oldestSequence",
+  );
+  const ledgerLatest = string(
+    ledger.latestSequence,
+    "cell.diagnostics.runtimeEventLedger.latestSequence",
+  );
+  if (!/^[1-9][0-9]*$/.test(ledgerLatest)) {
+    fail(
+      "cell.diagnostics.runtimeEventLedger.latestSequence",
+      "expected a canonical decimal sequence",
+    );
+  }
+  if (
+    !Number.isSafeInteger(ledger.eventCount) ||
+    BigInt(ledger.eventCount as number) !== BigInt(ledgerLatest)
+  ) {
+    fail(
+      "cell.diagnostics.runtimeEventLedger.eventCount",
+      "must prove contiguous external coverage from sequence 1",
+    );
+  }
+  const ledgerHash = hash(
+    ledger.sha256,
+    "cell.diagnostics.runtimeEventLedger.sha256",
+  );
+  if (!Array.isArray(ledger.checkpoints) || ledger.checkpoints.length < 8) {
+    fail(
+      "cell.diagnostics.runtimeEventLedger.checkpoints",
+      "expected package snapshots after every matrix lifecycle phase",
+    );
+  }
+  let priorLatest: bigint | null = null;
+  for (const [index, rawCheckpoint] of ledger.checkpoints.entries()) {
+    const checkpointAt = `cell.diagnostics.runtimeEventLedger.checkpoints[${index}]`;
+    const checkpoint = record(rawCheckpoint, checkpointAt);
+    string(checkpoint.stage, `${checkpointAt}.stage`);
+    const oldest = string(
+      checkpoint.oldestSequence,
+      `${checkpointAt}.oldestSequence`,
+    );
+    const latest = string(
+      checkpoint.latestSequence,
+      `${checkpointAt}.latestSequence`,
+    );
+    if (!/^[1-9][0-9]*$/.test(oldest) || !/^[1-9][0-9]*$/.test(latest)) {
+      fail(checkpointAt, "expected canonical decimal sequence bounds");
+    }
+    const truncated = checkpoint.truncated;
+    if (typeof truncated !== "boolean") {
+      fail(`${checkpointAt}.truncated`, "expected a boolean");
+    }
+    if (
+      truncated === true &&
+      (priorLatest === null || BigInt(oldest) > priorLatest + 1n)
+    ) {
+      fail(checkpointAt, "truncation may have hidden required native evidence");
+    }
+    hash(checkpoint.snapshotSha256, `${checkpointAt}.snapshotSha256`);
+    hash(checkpoint.ledgerSha256, `${checkpointAt}.ledgerSha256`);
+    priorLatest = BigInt(latest);
+  }
+  const finalCheckpoint = record(
+    ledger.checkpoints.at(-1),
+    "cell.diagnostics.runtimeEventLedger.checkpoints[last]",
+  );
+  exactString(
+    finalCheckpoint.latestSequence,
+    ledgerLatest,
+    "cell.diagnostics.runtimeEventLedger.checkpoints[last].latestSequence",
+  );
+  exactString(
+    finalCheckpoint.ledgerSha256,
+    ledgerHash,
+    "cell.diagnostics.runtimeEventLedger.checkpoints[last].ledgerSha256",
+  );
 
   const phases = record(cell.phases, "cell.phases");
   const embeddedA = readyLaunch(phases.embeddedA, a, "cell.phases.embeddedA");
@@ -848,20 +1993,32 @@ export function validateLynxMatrixCell(value: unknown): void {
     null,
     "cell.phases.embeddedA.confirmation",
   );
-  const archive = record(phases.archiveB, "cell.phases.archiveB");
-  exactString(archive.transport, "archive", "cell.phases.archiveB.transport");
-  boolean(
-    archive.archiveFallbackUsed,
-    false,
-    "cell.phases.archiveB.archiveFallbackUsed",
+  navigationBoundaries(
+    phases.navigationBoundaries,
+    platform,
+    embeddedA.identity.contextId,
+    "cell.phases.navigationBoundaries",
   );
-  hash(archive.archiveSha256, "cell.phases.archiveB.archiveSha256");
+  const deltaB = record(phases.deltaB, "cell.phases.deltaB");
+  deltaDelivery(
+    deltaB.delivery,
+    string(a.bundleId, "cell.builds.A.bundleId"),
+    b,
+    "cell.phases.deltaB.delivery",
+  );
+  rawDetailRejections(
+    deltaB.rawDetailRejections,
+    b,
+    a,
+    platform,
+    "cell.phases.deltaB.rawDetailRejections",
+  );
   const stagedB = selection(
-    archive.stagedSelection,
-    "cell.phases.archiveB.stagedSelection",
+    deltaB.stagedSelection,
+    "cell.phases.deltaB.stagedSelection",
   );
   if (stagedB.bundleId !== b.bundleId || stagedB.releaseId !== b.releaseId) {
-    fail("cell.phases.archiveB.stagedSelection", "must identify build B");
+    fail("cell.phases.deltaB.stagedSelection", "must identify build B");
   }
 
   const offline = record(phases.offline, "cell.phases.offline");
@@ -914,46 +2071,19 @@ export function validateLynxMatrixCell(value: unknown): void {
   );
 
   const delta = record(phases.deltaC, "cell.phases.deltaC");
-  const delivery = record(delta.delivery, "cell.phases.deltaC.delivery");
-  exactString(
-    delivery.transport,
-    "bsdiff",
-    "cell.phases.deltaC.delivery.transport",
-  );
-  exactString(
-    delivery.algorithm,
-    "bsdiff",
-    "cell.phases.deltaC.delivery.algorithm",
-  );
-  string(delivery.transactionId, "cell.phases.deltaC.delivery.transactionId");
-  exactString(
-    delivery.baseBundleId,
+  deltaDelivery(
+    delta.delivery,
     string(b.bundleId, "cell.builds.B.bundleId"),
-    "cell.phases.deltaC.delivery.baseBundleId",
+    c,
+    "cell.phases.deltaC.delivery",
   );
-  exactString(
-    delivery.targetBundleId,
-    string(c.bundleId, "cell.builds.C.bundleId"),
-    "cell.phases.deltaC.delivery.targetBundleId",
+  rawDetailRejections(
+    delta.rawDetailRejections,
+    c,
+    b,
+    platform,
+    "cell.phases.deltaC.rawDetailRejections",
   );
-  boolean(
-    delivery.archiveFallbackUsed,
-    false,
-    "cell.phases.deltaC.delivery.archiveFallbackUsed",
-  );
-  hash(delivery.patchSha256, "cell.phases.deltaC.delivery.patchSha256");
-  hash(delivery.baseSha256, "cell.phases.deltaC.delivery.baseSha256");
-  hash(delivery.targetSha256, "cell.phases.deltaC.delivery.targetSha256");
-  hash(
-    delivery.reconstructedSha256,
-    "cell.phases.deltaC.delivery.reconstructedSha256",
-  );
-  if (delivery.reconstructedSha256 !== delivery.targetSha256) {
-    fail(
-      "cell.phases.deltaC.delivery.reconstructedSha256",
-      "must equal targetSha256",
-    );
-  }
   const before = readyLaunch(
     delta.beforeReload,
     b,
@@ -965,6 +2095,15 @@ export function validateLynxMatrixCell(value: unknown): void {
     c,
     "cell.phases.deltaC.afterReload",
   );
+  if (
+    before.reconstructedStack !== false ||
+    after.reconstructedStack !== true
+  ) {
+    fail(
+      "cell.phases.deltaC",
+      "B detail must stay open and be reconstructed by the C generation",
+    );
+  }
   nativeConfirmation(
     after.confirmation,
     "CONFIRMED",
@@ -1010,6 +2149,105 @@ export function validateLynxMatrixCell(value: unknown): void {
     "cell.phases.deltaC.generationRetirement",
     true,
   );
+  const crossProvenance = record(
+    phases.crossProvenance,
+    "cell.phases.crossProvenance",
+  );
+  const incompatible = build(
+    crossProvenance.build,
+    "INCOMPATIBLE",
+    "cell.phases.crossProvenance.build",
+  );
+  exactString(
+    incompatible.runtimeId,
+    LYNX_MATRIX_INCOMPATIBLE_RUNTIME_IDS[platform as LynxMatrixPlatform],
+    "cell.phases.crossProvenance.build.runtimeId",
+  );
+  const provenanceRejection = record(
+    crossProvenance.rejection,
+    "cell.phases.crossProvenance.rejection",
+  );
+  const rejectedCandidate = record(
+    provenanceRejection.candidate,
+    "cell.phases.crossProvenance.rejection.candidate",
+  );
+  for (const key of ["bundleId", "releaseId", "runtimeId"]) {
+    exactString(
+      rejectedCandidate[key],
+      string(incompatible[key], `cell.phases.crossProvenance.build.${key}`),
+      `cell.phases.crossProvenance.rejection.candidate.${key}`,
+    );
+  }
+  exactString(
+    rejectedCandidate.manifestSha256,
+    hash(
+      incompatible.manifestSha256,
+      "cell.phases.crossProvenance.build.manifestSha256",
+    ),
+    "cell.phases.crossProvenance.rejection.candidate.manifestSha256",
+  );
+  absoluteUrl(
+    rejectedCandidate.artifactUrl,
+    "cell.phases.crossProvenance.rejection.candidate.artifactUrl",
+  );
+  const provenanceRunning = record(
+    provenanceRejection.running,
+    "cell.phases.crossProvenance.rejection.running",
+  );
+  exactString(
+    provenanceRunning.bundleId,
+    string(c.bundleId, "cell.builds.C.bundleId"),
+    "cell.phases.crossProvenance.rejection.running.bundleId",
+  );
+  exactString(
+    provenanceRunning.releaseId,
+    string(c.releaseId, "cell.builds.C.releaseId"),
+    "cell.phases.crossProvenance.rejection.running.releaseId",
+  );
+  exactString(
+    provenanceRunning.runtimeId,
+    string(c.runtimeId, "cell.builds.C.runtimeId"),
+    "cell.phases.crossProvenance.rejection.running.runtimeId",
+  );
+  const provenanceProcessId = string(
+    provenanceRunning.processId,
+    "cell.phases.crossProvenance.rejection.running.processId",
+  );
+  if (!/^[1-9][0-9]*$/.test(provenanceProcessId)) {
+    fail(
+      "cell.phases.crossProvenance.rejection.running.processId",
+      "expected a canonical positive decimal process ID",
+    );
+  }
+  exactString(
+    provenanceProcessId,
+    after.identity.processId,
+    "cell.phases.crossProvenance.rejection.running.processId",
+  );
+  exactString(
+    provenanceRunning.generationId,
+    after.identity.generationId,
+    "cell.phases.crossProvenance.rejection.running.generationId",
+  );
+  exactString(
+    provenanceRejection.nativeErrorCode,
+    "INCOMPATIBLE",
+    "cell.phases.crossProvenance.rejection.nativeErrorCode",
+  );
+  boolean(
+    provenanceRejection.rejectedBeforeGenerationEvaluation,
+    true,
+    "cell.phases.crossProvenance.rejection.rejectedBeforeGenerationEvaluation",
+  );
+  if (
+    provenanceRejection.firstArtifactRequestCount !== 1 ||
+    provenanceRejection.cachedArtifactRequestCount !== 0
+  ) {
+    fail(
+      "cell.phases.crossProvenance.rejection",
+      "expected one initial artifact request and no cached redownload",
+    );
+  }
   const primaryLifecycle = record(
     phases.primaryLifecycle,
     "cell.phases.primaryLifecycle",
@@ -1061,6 +2299,232 @@ export function validateLynxMatrixCell(value: unknown): void {
       "must recreate a fresh primary and secondary in the same process",
     );
   }
+  const pendingTransition = record(
+    phases.pendingManagedTransition,
+    "cell.phases.pendingManagedTransition",
+  );
+  const pendingBefore = readyLaunch(
+    pendingTransition.before,
+    c,
+    "cell.phases.pendingManagedTransition.before",
+  );
+  const pendingAfter = readyLaunch(
+    pendingTransition.after,
+    c,
+    "cell.phases.pendingManagedTransition.after",
+  );
+  if (
+    JSON.stringify(pendingBefore.identity) !==
+      JSON.stringify(afterPrimaryReplacement.identity) ||
+    pendingBefore.identity.processId !== pendingAfter.identity.processId ||
+    pendingBefore.identity.generationId ===
+      pendingAfter.identity.generationId ||
+    pendingAfter.reconstructedStack !== true
+  ) {
+    fail(
+      "cell.phases.pendingManagedTransition",
+      "must reconstruct the pending stack in a fresh same-process generation",
+    );
+  }
+  const pendingReceipt = record(
+    pendingTransition.receipt,
+    "cell.phases.pendingManagedTransition.receipt",
+  );
+  exactString(
+    pendingReceipt.processId,
+    pendingBefore.identity.processId,
+    "cell.phases.pendingManagedTransition.receipt.processId",
+  );
+  exactString(
+    pendingReceipt.bundleId,
+    string(c.bundleId, "cell.builds.C.bundleId"),
+    "cell.phases.pendingManagedTransition.receipt.bundleId",
+  );
+  if (pendingReceipt.releaseId !== c.releaseId) {
+    fail(
+      "cell.phases.pendingManagedTransition.receipt.releaseId",
+      "must retain Release C",
+    );
+  }
+  exactString(
+    pendingReceipt.sourceGenerationId,
+    pendingBefore.identity.generationId,
+    "cell.phases.pendingManagedTransition.receipt.sourceGenerationId",
+  );
+  exactString(
+    pendingReceipt.targetGenerationId,
+    pendingAfter.identity.generationId,
+    "cell.phases.pendingManagedTransition.receipt.targetGenerationId",
+  );
+  exactString(
+    pendingReceipt.terminal,
+    "authorized-cancel",
+    "cell.phases.pendingManagedTransition.receipt.terminal",
+  );
+  exactString(
+    pendingReceipt.reason,
+    "managedTransition",
+    "cell.phases.pendingManagedTransition.receipt.reason",
+  );
+  string(
+    pendingReceipt.transitionId,
+    "cell.phases.pendingManagedTransition.receipt.transitionId",
+  );
+  const pendingAttemptId = string(
+    pendingReceipt.pendingPageAttemptId,
+    "cell.phases.pendingManagedTransition.receipt.pendingPageAttemptId",
+  );
+  if (
+    string(
+      pendingReceipt.reconstructedPageAttemptId,
+      "cell.phases.pendingManagedTransition.receipt.reconstructedPageAttemptId",
+    ) === pendingAttemptId
+  ) {
+    fail(
+      "cell.phases.pendingManagedTransition.receipt.reconstructedPageAttemptId",
+      "must use a fresh page attempt",
+    );
+  }
+  if (
+    JSON.stringify(pendingReceipt.orderedPageEntries) !==
+      JSON.stringify(["main.lynx.bundle", "detail.lynx.bundle"]) ||
+    pendingReceipt.topPageEntry !== "detail.lynx.bundle"
+  ) {
+    fail(
+      "cell.phases.pendingManagedTransition.receipt",
+      "must retain the ordered main/detail stack",
+    );
+  }
+  const confirmedFatal = record(
+    phases.confirmedDetailFatal,
+    "cell.phases.confirmedDetailFatal",
+  );
+  const beforeConfirmedFatal = fatalPendingLaunch(
+    confirmedFatal.beforeFailure,
+    c,
+    "cell.phases.confirmedDetailFatal.beforeFailure",
+    {
+      bundleId: string(c.bundleId, "cell.builds.C.bundleId"),
+      releaseId: nullableString(c.releaseId, "cell.builds.C.releaseId"),
+    },
+    true,
+  );
+  if (
+    JSON.stringify(beforeConfirmedFatal.identity) !==
+      JSON.stringify(pendingAfter.identity) ||
+    beforeConfirmedFatal.contextIds[0] !== pendingAfter.identity.contextId
+  ) {
+    fail(
+      "cell.phases.confirmedDetailFatal.beforeFailure",
+      "must be the confirmed post-pending-transition generation",
+    );
+  }
+  const confirmedFailure = identity(
+    confirmedFatal.failureEvent,
+    "cell.phases.confirmedDetailFatal.failureEvent",
+  );
+  exactString(
+    record(
+      confirmedFatal.failureEvent,
+      "cell.phases.confirmedDetailFatal.failureEvent",
+    ).event,
+    "runtimeFailed",
+    "cell.phases.confirmedDetailFatal.failureEvent.event",
+  );
+  const confirmedRuntimeFailedSequence = sequence(
+    confirmedFatal.failureEvent.runtimeFailedSequence,
+    "cell.phases.confirmedDetailFatal.failureEvent.runtimeFailedSequence",
+  );
+  const confirmedTerminalSequence = sequence(
+    confirmedFatal.failureEvent.pageAttemptTerminalSequence,
+    "cell.phases.confirmedDetailFatal.failureEvent.pageAttemptTerminalSequence",
+  );
+  const confirmedGenerationFailedSequence = sequence(
+    confirmedFatal.failureEvent.generationFailedSequence,
+    "cell.phases.confirmedDetailFatal.failureEvent.generationFailedSequence",
+  );
+  if (
+    confirmedRuntimeFailedSequence >= confirmedTerminalSequence ||
+    confirmedTerminalSequence >= confirmedGenerationFailedSequence
+  ) {
+    fail(
+      "cell.phases.confirmedDetailFatal.failureEvent",
+      "runtimeFailed, verified-fatal terminal, and generationFailed are out of order",
+    );
+  }
+  const confirmedTerminal = record(
+    confirmedFatal.failureEvent.pageAttemptTerminal,
+    "cell.phases.confirmedDetailFatal.failureEvent.pageAttemptTerminal",
+  );
+  exactString(
+    confirmedTerminal.terminal,
+    "verified-fatal",
+    "cell.phases.confirmedDetailFatal.failureEvent.pageAttemptTerminal.terminal",
+  );
+  if (
+    JSON.stringify(
+      identity(
+        confirmedTerminal,
+        "cell.phases.confirmedDetailFatal.failureEvent.pageAttemptTerminal",
+      ),
+    ) !== JSON.stringify(confirmedFailure)
+  ) {
+    fail(
+      "cell.phases.confirmedDetailFatal.failureEvent.pageAttemptTerminal",
+      "must match the failed detail identity",
+    );
+  }
+  if (
+    confirmedFailure.contextId === beforeConfirmedFatal.identity.contextId ||
+    !beforeConfirmedFatal.contextIds.includes(confirmedFailure.contextId) ||
+    confirmedFailure.generationId !==
+      beforeConfirmedFatal.identity.generationId ||
+    confirmedFailure.bundleId !== c.bundleId ||
+    confirmedFailure.releaseId !== c.releaseId
+  ) {
+    fail(
+      "cell.phases.confirmedDetailFatal.failureEvent",
+      "must identify the admitted detail page in confirmed C",
+    );
+  }
+  generationRetirement(
+    confirmedFatal.generationRetirement,
+    beforeConfirmedFatal,
+    "cell.phases.confirmedDetailFatal.generationRetirement",
+    false,
+  );
+  const confirmedFatalRecovered = readyLaunch(
+    confirmedFatal.recovered,
+    c,
+    "cell.phases.confirmedDetailFatal.recovered",
+  );
+  nativeConfirmation(
+    confirmedFatalRecovered.confirmation,
+    "ALREADY_CONFIRMED",
+    null,
+    "cell.phases.confirmedDetailFatal.recovered.confirmation",
+  );
+  if (
+    confirmedFatalRecovered.identity.processId !==
+      beforeConfirmedFatal.identity.processId ||
+    confirmedFatalRecovered.identity.generationId ===
+      beforeConfirmedFatal.identity.generationId ||
+    beforeConfirmedFatal.contextIds.some((contextId) =>
+      confirmedFatalRecovered.contextIds.includes(contextId),
+    )
+  ) {
+    fail(
+      "cell.phases.confirmedDetailFatal.recovered",
+      "must replace both failed C page contexts in the same process",
+    );
+  }
+  recovery(
+    phases.confirmedInterruptionRecovery,
+    "confirmed-interruption",
+    confirmedInterruption,
+    c,
+    "cell.phases.confirmedInterruptionRecovery",
+  );
   recovery(
     phases.fatalRecovery,
     "fatal",
@@ -1075,6 +2539,92 @@ export function validateLynxMatrixCell(value: unknown): void {
     c,
     "cell.phases.unconfirmedRecovery",
   );
+  const reverse = record(phases.reverseRollback, "cell.phases.reverseRollback");
+  const cToB = record(reverse.cToB, "cell.phases.reverseRollback.cToB");
+  deltaDelivery(
+    cToB.delivery,
+    string(c.bundleId, "cell.builds.C.bundleId"),
+    b,
+    "cell.phases.reverseRollback.cToB.delivery",
+  );
+  rawDetailRejections(
+    cToB.rawDetailRejections,
+    b,
+    c,
+    platform,
+    "cell.phases.reverseRollback.cToB.rawDetailRejections",
+  );
+  const rollbackB = readyLaunch(
+    cToB.launch,
+    b,
+    "cell.phases.reverseRollback.cToB.launch",
+  );
+  nativeConfirmation(
+    rollbackB.confirmation,
+    "CONFIRMED",
+    {
+      kind: "UPDATE_APPLIED",
+      from: {
+        bundleId: string(c.bundleId, "cell.builds.C.bundleId"),
+        releaseId: nullableString(c.releaseId, "cell.builds.C.releaseId"),
+      },
+      to: {
+        bundleId: string(b.bundleId, "cell.builds.B.bundleId"),
+        releaseId: nullableString(b.releaseId, "cell.builds.B.releaseId"),
+      },
+    },
+    "cell.phases.reverseRollback.cToB.launch.confirmation",
+  );
+  const bToA = record(reverse.bToA, "cell.phases.reverseRollback.bToA");
+  deltaDelivery(
+    bToA.delivery,
+    string(b.bundleId, "cell.builds.B.bundleId"),
+    serverA,
+    "cell.phases.reverseRollback.bToA.delivery",
+  );
+  rawDetailRejections(
+    bToA.rawDetailRejections,
+    serverA,
+    b,
+    platform,
+    "cell.phases.reverseRollback.bToA.rawDetailRejections",
+  );
+  const rollbackA = readyLaunch(
+    bToA.launch,
+    serverA,
+    "cell.phases.reverseRollback.bToA.launch",
+  );
+  nativeConfirmation(
+    rollbackA.confirmation,
+    "CONFIRMED",
+    {
+      kind: "UPDATE_APPLIED",
+      from: {
+        bundleId: string(b.bundleId, "cell.builds.B.bundleId"),
+        releaseId: nullableString(b.releaseId, "cell.builds.B.releaseId"),
+      },
+      to: {
+        bundleId: string(serverA.bundleId, "cell.builds.serverA.bundleId"),
+        releaseId: nullableString(
+          serverA.releaseId,
+          "cell.builds.serverA.releaseId",
+        ),
+      },
+    },
+    "cell.phases.reverseRollback.bToA.launch.confirmation",
+  );
+  if (
+    rollbackB.identity.processId !== rollbackA.identity.processId ||
+    rollbackB.identity.generationId === rollbackA.identity.generationId ||
+    rollbackB.contextIds.some((contextId) =>
+      rollbackA.contextIds.includes(contextId),
+    )
+  ) {
+    fail(
+      "cell.phases.reverseRollback",
+      "reverse rollback must replace both managed pages in one OS process",
+    );
+  }
   boolean(cell.passed, true, "cell.passed");
 }
 
@@ -1094,12 +2644,16 @@ export function validateLynxMatrixSummary(
   const summary = record(value, "summary");
   exactString(
     summary.schemaVersion,
-    "lynx-public-matrix-summary-v1",
+    "lynx-public-matrix-summary-v2",
     "summary.schemaVersion",
   );
   const cells = summary.cells;
   if (!Array.isArray(cells)) fail("summary.cells", "expected an array");
   cells.forEach(validateLynxMatrixCell);
+  const summaryCommit = string(summary.commit, "summary.commit");
+  if (!/^[a-f0-9]{40}$/.test(summaryCommit)) {
+    fail("summary.commit", "expected a full Git commit");
+  }
   const ids = cells.map((cell, index) =>
     string(
       record(cell, `summary.cells[${index}]`).cellId,
@@ -1107,5 +2661,34 @@ export function validateLynxMatrixSummary(
     ),
   );
   sameMembers(ids, expectedCellIds, "summary.cells");
+  const platforms = [
+    ...new Set(
+      cells.map((cell, index) =>
+        string(
+          record(cell, `summary.cells[${index}]`).platform,
+          `summary.cells[${index}].platform`,
+        ),
+      ),
+    ),
+  ] as LynxMatrixPlatform[];
+  validateLynxNativeArtifactsReceipt(summary.nativeArtifacts, {
+    appId: "com.hotupdater.lynxmatrix",
+    commit: summaryCommit,
+    platforms,
+    target: "matrix",
+  });
+  cells.forEach((cell, index) => {
+    const item = record(cell, `summary.cells[${index}]`);
+    exactString(item.commit, summaryCommit, `summary.cells[${index}].commit`);
+    if (
+      JSON.stringify(item.nativeArtifacts) !==
+      JSON.stringify(summary.nativeArtifacts)
+    ) {
+      fail(
+        `summary.cells[${index}].nativeArtifacts`,
+        "must equal the summary native artifact receipt",
+      );
+    }
+  });
   boolean(summary.passed, true, "summary.passed");
 }

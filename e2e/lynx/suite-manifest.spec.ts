@@ -7,6 +7,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   LYNX_EXCLUDED_DEFAULT_SCENARIOS,
+  LYNX_REQUIRED_SCENARIO,
   readLynxDefaultScenarioNames,
   validateLynxScenarioManifest,
 } from "./suite-manifest";
@@ -46,7 +47,10 @@ function plannedScenarios(stdout: string): string[] {
 describe("Lynx E2E suite manifest", () => {
   it("equals the shared default in order minus only RN metadata migration", () => {
     const excluded = new Set<string>(LYNX_EXCLUDED_DEFAULT_SCENARIOS);
-    const expected = sharedDefault.filter((name) => !excluded.has(name));
+    const expected = [
+      ...sharedDefault.filter((name) => !excluded.has(name)),
+      LYNX_REQUIRED_SCENARIO,
+    ];
     const actual = readLynxDefaultScenarioNames(repoDir);
 
     expect(actual).toEqual(expected);
@@ -76,6 +80,7 @@ describe("Lynx E2E suite manifest", () => {
         ...sharedDefault.filter(
           (scenario) => scenario !== "metadata-v1-migration",
         ),
+        LYNX_REQUIRED_SCENARIO,
         "lynx-only-shortcut",
       ],
     },
@@ -91,7 +96,7 @@ describe("Lynx E2E suite manifest", () => {
     },
   ])("rejects $name", ({ manifest }) => {
     expect(() => validateLynxScenarioManifest(sharedDefault, manifest)).toThrow(
-      "Lynx default manifest must equal the shared default manifest minus only metadata-v1-migration",
+      "Lynx default manifest must equal the shared default manifest minus only metadata-v1-migration, followed by sparkling-multipage-ota",
     );
   });
 
@@ -108,15 +113,14 @@ describe("Lynx E2E suite manifest", () => {
   });
 
   it("fails if the shared suite stops declaring the explicit exclusion", () => {
+    const sharedWithoutMigration = sharedDefault.filter(
+      (scenario) => scenario !== "metadata-v1-migration",
+    );
     expect(() =>
-      validateLynxScenarioManifest(
-        sharedDefault.filter(
-          (scenario) => scenario !== "metadata-v1-migration",
-        ),
-        sharedDefault.filter(
-          (scenario) => scenario !== "metadata-v1-migration",
-        ),
-      ),
+      validateLynxScenarioManifest(sharedWithoutMigration, [
+        ...sharedWithoutMigration,
+        LYNX_REQUIRED_SCENARIO,
+      ]),
     ).toThrow(
       "Shared default manifest no longer contains metadata-v1-migration",
     );

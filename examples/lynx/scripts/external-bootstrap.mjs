@@ -17,11 +17,15 @@ const { RuntimeWrapperWebpackPlugin } = await import(
 );
 
 export async function buildExternalBootstrap(outDir, variant) {
+  const entry =
+    process.env.HOT_UPDATER_SPIKE_PROFILE === "production"
+      ? "production-external-bootstrap.ts"
+      : "external-bootstrap.ts";
   const compiler = rspack({
     mode: "production",
     context: cwd,
     target: "web",
-    entry: { bootstrap: path.join(cwd, "spike/external-bootstrap.ts") },
+    entry: { bootstrap: path.join(cwd, "spike", entry) },
     devtool: false,
     // Lynx consumes the wrapper's evaluated return value (.init). Generic JS
     // minification treats that completion value as unused and may negate it.

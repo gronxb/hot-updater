@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { navigate } from "@hot-updater/lynx/navigation";
 import { onMounted, ref } from "vue-lynx";
 
 import {
@@ -22,6 +23,14 @@ declare const __SPIKE_LAZY__: boolean;
 
 const status = ref(`Bundle ${variant}: initial content`);
 const fontReady = ref(false);
+const openDetail = () =>
+  navigate(
+    {
+      path: "detail.lynx.bundle",
+      options: { params: { title: "Second Page" } },
+    },
+    (result) => console.log("HOT_UPDATER_PAGE_OPEN", result),
+  );
 onMounted(() => {
   void startSpike(
     (message) => {
@@ -49,5 +58,8 @@ onMounted(() => {
     <image class="probe" :src="imageUrl" @load="imageLoaded" />
     <text v-if="resources && fontReady" class="font-probe">RELEASE FONT</text>
     <text class="description">{{ status }}</text>
+    <view class="action" @tap="openDetail">
+      <text class="action-label">Open detail page</text>
+    </view>
   </view>
 </template>

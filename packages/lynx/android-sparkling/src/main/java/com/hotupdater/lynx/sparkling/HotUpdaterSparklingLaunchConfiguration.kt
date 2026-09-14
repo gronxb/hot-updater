@@ -30,4 +30,21 @@ object HotUpdaterSparklingLaunchConfiguration {
             objectValue.getString(key)
         }
     }
+
+    internal fun merge(
+        host: Map<String, String>,
+        diagnostics: Map<String, String>,
+        page: Map<String, String>,
+    ): Map<String, String> = host + diagnostics + page
+
+    internal fun resolve(
+        host: Map<String, String>,
+        allowDiagnosticIntent: Boolean,
+        context: Context,
+        page: Map<String, String>,
+    ): Map<String, String> = merge(
+        host,
+        if (allowDiagnosticIntent) from(context) else emptyMap(),
+        page,
+    )
 }

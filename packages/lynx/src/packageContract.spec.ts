@@ -13,6 +13,7 @@ describe("framework-independent Lynx package contract", () => {
     ) as {
       dependencies?: Record<string, string>;
       peerDependencies?: Record<string, string>;
+      peerDependenciesMeta?: Record<string, { optional?: boolean }>;
       optionalDependencies?: Record<string, string>;
       exports: Record<string, unknown>;
     };
@@ -25,17 +26,49 @@ describe("framework-independent Lynx package contract", () => {
       "@hot-updater/core",
       "@hot-updater/plugin-core",
       "uuidv7",
+      "sparkling-navigation",
     ]);
+    expect(manifest.peerDependencies).toEqual({
+      "sparkling-navigation": "2.1.0-rc.12",
+    });
+    expect(manifest.peerDependenciesMeta).toEqual({
+      "sparkling-navigation": { optional: true },
+    });
     expect(names.join(" ")).not.toMatch(/react|vue|octane/i);
     expect(manifest.exports).toHaveProperty(".");
     expect(manifest.exports).toHaveProperty("./build");
+    expect(manifest.exports).toHaveProperty("./navigation");
+    expect(manifest.exports).toHaveProperty("./navigationProvenance");
   });
 
   it("keeps runtime import inert and reports native-absent failure from the built entry", async () => {
     const runtime = path.join(packageRoot, "dist/index.mjs");
     const build = path.join(packageRoot, "dist/build.mjs");
+    const navigation = path.join(packageRoot, "dist/navigation.mjs");
+    const navigationProvenance = path.join(
+      packageRoot,
+      "dist/navigationProvenance.mjs",
+    );
     expect(await fs.stat(runtime).then((value) => value.isFile())).toBe(true);
     expect(await fs.stat(build).then((value) => value.isFile())).toBe(true);
+    expect(await fs.stat(navigation).then((value) => value.isFile())).toBe(
+      true,
+    );
+    expect(
+      await fs.stat(navigationProvenance).then((value) => value.isFile()),
+    ).toBe(true);
+    expect(await fs.readFile(runtime, "utf8")).not.toContain(
+      "sparkling-navigation",
+    );
+    expect(await fs.readFile(build, "utf8")).not.toContain(
+      "sparkling-navigation",
+    );
+    expect(await fs.readFile(navigation, "utf8")).toContain(
+      "sparkling-navigation",
+    );
+    expect(await fs.readFile(navigationProvenance, "utf8")).not.toContain(
+      'from "sparkling-navigation"',
+    );
     const { HotUpdater } = await import(runtime);
     HotUpdater.init({ baseURL: "https://updates.test" });
     await expect(HotUpdater.getLaunchInfo()).rejects.toMatchObject({

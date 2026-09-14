@@ -1,3 +1,4 @@
+@testable import HotUpdaterLynxSparklingCore
 @testable import HotUpdaterLynxSparklingDiagnostics
 import XCTest
 
@@ -14,18 +15,21 @@ final class SparklingReloadContractTests: XCTestCase {
             (false, false, false, "CONTEXT_REJECTED"),
         ].forEach { closed, replacing, current, code in
             var started = false
-            let result = SparklingReloadContract.run(
+            var result: Result<SparklingTransitionAcceptance, Error>?
+            SparklingReloadContract.run(
                 closed: closed,
                 replacing: replacing,
                 current: current,
-                error: { Failure(code: $0, message: $1) }
-            ) {
+                error: { Failure(code: $0, message: $1) },
+                authorize: {
                 started = true
-                return .success(())
-            }
+                return .success(.init(transitionId: "transition"))
+                },
+                completion: { result = $0 },
+                retire: { XCTFail("A rejected reload retired its generation") }
+            )
             XCTAssertFalse(started)
-            XCTAssertEqual((try? result.get()) == nil, true)
-            if case .failure(let error) = result {
+            if case .failure(let error) = result! {
                 XCTAssertEqual((error as? Failure)?.code, code)
             } else {
                 XCTFail("A rejected reload unexpectedly succeeded")
@@ -33,29 +37,27 @@ final class SparklingReloadContractTests: XCTestCase {
         }
     }
 
-    func testReplacementResultIsTheReloadResult() throws {
-        let failure = Failure(code: "RECONSTRUCTION_FAILED", message: "attach failed")
-        let failed = SparklingReloadContract.run(
+    func testAcceptanceReplyPrecedesOldGenerationRetirement() throws {
+        var order: [String] = []
+        var reply: SparklingTransitionAcceptance?
+        SparklingReloadContract.run(
             closed: false,
             replacing: false,
             current: true,
             error: { Failure(code: $0, message: $1) },
-            replacement: { .failure(failure) }
+            authorize: {
+                order.append("authorized")
+                return .success(.init(transitionId: "transition-1"))
+            },
+            completion: {
+                order.append("replied")
+                reply = try? $0.get()
+            },
+            retire: { order.append("retired") }
         )
-        if case .failure(let error) = failed {
-            XCTAssertEqual(error as? Failure, failure)
-        } else {
-            XCTFail("A failed reconstruction unexpectedly succeeded")
-        }
-
-        let succeeded = SparklingReloadContract.run(
-            closed: false,
-            replacing: false,
-            current: true,
-            error: { Failure(code: $0, message: $1) },
-            replacement: { .success(()) }
-        )
-        XCTAssertNoThrow(try succeeded.get())
+        XCTAssertEqual(order, ["authorized", "replied", "retired"])
+        XCTAssertEqual(reply?.status, "TRANSITION_ACCEPTED")
+        XCTAssertEqual(reply?.transitionId, "transition-1")
     }
 
     func testLaunchConfigurationAcceptsOnlyAStringMap() throws {

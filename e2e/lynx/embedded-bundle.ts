@@ -11,14 +11,37 @@ export const LYNX_E2E_SDK3_FILES = [
   "assets/bootstrap.js",
   "assets/probe.png",
   "assets/probe.ttf",
+  "detail.lynx.bundle",
   "dynamic/component.lynx.bundle",
   "main.lynx.bundle",
 ] as const;
 
+export const LYNX_E2E_PAGE_ENTRIES = [
+  "detail.lynx.bundle",
+  "main.lynx.bundle",
+] as const;
+
+export const LYNX_E2E_PAGE_ESSENTIAL_RESOURCES = [
+  {
+    entry: "detail.lynx.bundle",
+    resources: ["detail.lynx.bundle"],
+  },
+  {
+    entry: "main.lynx.bundle",
+    resources: [
+      "assets/bootstrap.js",
+      "assets/probe.png",
+      "assets/probe.ttf",
+      "dynamic/component.lynx.bundle",
+      "main.lynx.bundle",
+    ],
+  },
+] as const;
+
 export function lynxE2eRuntimeId(platform: "ios" | "android"): string {
   return platform === "ios"
-    ? "sparkling-c4ce8d2-lynx-3.9.0-primjs-3.8.0-alpha.6-ios-ota-v2"
-    : "android-sparkling-2.1.0-rc.12-lynx-3.9.0-primjs-3.8.0-alpha.6-ota-v2";
+    ? "sparkling-c4ce8d2-navigation-2.1.0-rc.12-lynx-3.9.0-primjs-3.8.0-alpha.6-ios-managed-pages-v1"
+    : "android-sparkling-2.1.0-rc.12-navsrc-937f70d7c3012a5a-lynx-3.9.0-primjs-3.8.0-alpha.6-managed-pages-v1";
 }
 
 export function lynxE2eEmbeddedDir(
@@ -62,10 +85,16 @@ export async function packageLynxEmbeddedDirectory(options: {
   readonly entry?: string;
 }): Promise<{ readonly manifestDigest: string }> {
   const entry = options.entry ?? "main.lynx.bundle";
-  const entryPath = path.join(options.root, entry);
-  const entryStat = await fs.stat(entryPath);
-  if (!entryStat.isFile() || entryStat.size === 0) {
-    throw new Error(`Lynx embedded entry missing: ${entry}`);
+  const pageEntries = LYNX_E2E_PAGE_ENTRIES;
+  const pageEssentialResources = LYNX_E2E_PAGE_ESSENTIAL_RESOURCES;
+  if (!pageEntries.includes(entry)) {
+    throw new Error(`Lynx embedded main entry is not a page: ${entry}`);
+  }
+  for (const pageEntry of pageEntries) {
+    const pageStat = await fs.stat(path.join(options.root, pageEntry));
+    if (!pageStat.isFile() || pageStat.size === 0) {
+      throw new Error(`Lynx embedded page entry missing: ${pageEntry}`);
+    }
   }
 
   await fs.writeFile(
@@ -76,6 +105,8 @@ export async function packageLynxEmbeddedDirectory(options: {
         bundleId: options.bundleId,
         platform: options.platform,
         entry,
+        pageEntries,
+        pageEssentialResources,
         runtimeId: options.runtimeId,
       },
       null,
@@ -114,6 +145,11 @@ export async function validateLynxEmbeddedDirectory(options: {
 }): Promise<{
   readonly bundleId: string;
   readonly entry: string;
+  readonly pageEntries: readonly string[];
+  readonly pageEssentialResources: readonly {
+    readonly entry: string;
+    readonly resources: readonly string[];
+  }[];
   readonly runtimeId: string;
   readonly manifestDigest: string;
 }> {
@@ -126,6 +162,8 @@ export async function validateLynxEmbeddedDirectory(options: {
   const metadata = JSON.parse(metadataBytes.toString("utf8")) as {
     bundleId?: string;
     entry?: string;
+    pageEntries?: string[];
+    pageEssentialResources?: { entry: string; resources: string[] }[];
     platform?: string;
     runtimeId?: string;
   };
@@ -139,6 +177,10 @@ export async function validateLynxEmbeddedDirectory(options: {
     metadata.platform !== options.platform ||
     !metadata.runtimeId ||
     !metadata.entry ||
+    JSON.stringify(metadata.pageEntries) !==
+      JSON.stringify(LYNX_E2E_PAGE_ENTRIES) ||
+    JSON.stringify(metadata.pageEssentialResources) !==
+      JSON.stringify(LYNX_E2E_PAGE_ESSENTIAL_RESOURCES) ||
     (options.expectedBundleId &&
       metadata.bundleId !== options.expectedBundleId) ||
     (options.expectedRuntimeId &&
@@ -162,6 +204,15 @@ export async function validateLynxEmbeddedDirectory(options: {
       throw new Error(`Generated Lynx embedded resource is missing: ${name}`);
     }
   }
+  for (const descriptor of metadata.pageEssentialResources ?? []) {
+    for (const name of descriptor.resources) {
+      if (!payloadFiles.includes(name)) {
+        throw new Error(
+          `Generated Lynx embedded essential resource is missing: ${name}`,
+        );
+      }
+    }
+  }
   for (const name of payloadFiles) {
     const expected = manifest.assets?.[name]?.fileHash;
     const actual = sha256File(await fs.readFile(path.join(options.root, name)));
@@ -172,6 +223,8 @@ export async function validateLynxEmbeddedDirectory(options: {
   return {
     bundleId: metadata.bundleId,
     entry: metadata.entry,
+    pageEntries: metadata.pageEntries,
+    pageEssentialResources: metadata.pageEssentialResources,
     runtimeId: metadata.runtimeId,
     manifestDigest: sha256File(manifestBytes),
   };
@@ -227,9 +280,12 @@ export async function materializeLynxNativeEmbedded(options: {
         minimumBundleId: embedded.bundleId,
         manifestDigest: embedded.manifestDigest,
         entry: embedded.entry,
+        pageEntries: embedded.pageEntries,
+        pageEssentialResources: embedded.pageEssentialResources,
       })}\n`,
     );
     return [
+      path.join(destination, "detail.lynx.bundle"),
       path.join(destination, "main.lynx.bundle"),
       path.join(destination, "manifest.json"),
       descriptorPath,
@@ -249,6 +305,7 @@ export async function materializeLynxNativeEmbedded(options: {
   await fs.mkdir(path.dirname(destination), { recursive: true });
   await fs.cp(options.source, destination, { recursive: true });
   return [
+    path.join(destination, "detail.lynx.bundle"),
     path.join(destination, "main.lynx.bundle"),
     path.join(destination, "manifest.json"),
   ];
@@ -302,13 +359,18 @@ export async function compileLynxE2eEmbedded(options: {
     runtimeId: lynxE2eRuntimeId(options.platform),
   });
   const bundle = await fs.readFile(path.join(outDir, "main.lynx.bundle"));
-  const bundleText = bundle.toString("utf8");
-  if (!bundleText.includes("targeted-qa-detox")) {
+  const detailBundle = await fs.readFile(
+    path.join(outDir, "detail.lynx.bundle"),
+  );
+  const bundleTexts = [bundle, detailBundle].map((bytes) =>
+    bytes.toString("utf8"),
+  );
+  if (bundleTexts.some((text) => !text.includes("targeted-qa-detox"))) {
     throw new Error(
-      "Lynx overlay bundle is missing scenario marker targeted-qa-detox",
+      "A Lynx page bundle is missing scenario marker targeted-qa-detox",
     );
   }
-  if (bundleText.includes("E2E_SAFE_BUNDLE_IDS")) {
+  if (bundleTexts.some((text) => text.includes("E2E_SAFE_BUNDLE_IDS"))) {
     throw new Error("Lynx overlay bundle contains the E2E crash guard");
   }
   return outDir;

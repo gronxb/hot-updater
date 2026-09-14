@@ -20,13 +20,20 @@ const cwd = fileURLToPath(new URL("..", import.meta.url));
 const result = await lynx({
   outDir: `.hot-updater/lynx/${framework}`,
   build: async ({ outDir }) => {
-    const { entry, stdout } = await buildPublic({
-      framework,
-      outDir,
-      variant,
-      octaneSource,
-    });
-    return { entry, runtimeId, stdout };
+    const { entry, pageEntries, pageEssentialResources, stdout } =
+      await buildPublic({
+        framework,
+        outDir,
+        variant,
+        octaneSource,
+      });
+    return {
+      entry,
+      pageEntries,
+      pageEssentialResources,
+      runtimeId,
+      stdout,
+    };
   },
 })({ cwd }).build({ platform });
 console.log(JSON.stringify(result, null, 2));

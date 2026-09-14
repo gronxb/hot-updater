@@ -20,6 +20,24 @@ function createDriver(readScreenState: () => Record<string, unknown>) {
   return { driver: new LynxAppDriver(client, "ios", {}), fetch };
 }
 
+function mockAndroidCommands(logsSinceLaunch: string | (() => string) = "") {
+  let launchLogMarker = "";
+  vi.mocked(spawnSync).mockImplementation((_command, args) => {
+    if (args.includes("HotUpdaterE2E")) {
+      launchLogMarker = String(args.at(-1));
+    }
+    return {
+      status: 0,
+      stdout: args.includes("pidof")
+        ? "456\n"
+        : args.includes("-d")
+          ? `${launchLogMarker}\n${typeof logsSinceLaunch === "function" ? logsSinceLaunch() : logsSinceLaunch}`
+          : "",
+      stderr: "",
+    } as ReturnType<typeof spawnSync>;
+  });
+}
+
 describe("Lynx app text assertions", () => {
   beforeEach(() => {
     vi.useFakeTimers();
@@ -143,6 +161,85 @@ describe("Lynx app text assertions", () => {
   });
 });
 
+describe("Lynx managed page evidence actions", () => {
+  it("captures the package-owned runtime journal through the real page action", async () => {
+    const snapshot = {
+      schemaVersion: 1,
+      oldestSequence: "1",
+      latestSequence: "1",
+      truncated: false,
+      events: [
+        {
+          sequence: "1",
+          name: "pageAdmitted",
+          details: {
+            runtimeId: "runtime-b",
+            processId: "123",
+            generationId: "generation-b",
+            bundleId: "bundle-b",
+            releaseId: "release-b",
+            contextId: "detail-b",
+            pageAttemptId: "page-attempt-b",
+            transitionId: null,
+          },
+        },
+      ],
+    };
+    const fetch = vi.fn(async (url: string) => ({
+      ok: true,
+      status: 200,
+      text: async () =>
+        JSON.stringify(
+          url.endsWith("/e2e/screen-state") ||
+            url.endsWith("/e2e/runtime-config")
+            ? {
+                screenState: {
+                  generationEvents: JSON.stringify(snapshot),
+                  updateActionResult: "generation-events -> 1",
+                },
+              }
+            : {},
+        ),
+    }));
+    const driver = new LynxAppDriver(
+      createControlClient({ baseUrl: "http://control.test", fetch }),
+      "ios",
+      {},
+    );
+
+    await expect(driver.captureGenerationEvents("capture")).resolves.toEqual(
+      snapshot,
+    );
+    const requests = fetch.mock.calls.map(([, init]) =>
+      init?.body ? JSON.parse(String(init.body)) : null,
+    );
+    expect(requests).toContainEqual({
+      testID: "action-capture-generation-events",
+    });
+  });
+
+  it("uses the platform-native back operation for a managed detail page", async () => {
+    vi.mocked(spawnSync).mockReturnValue({ status: 0 } as ReturnType<
+      typeof spawnSync
+    >);
+    const client = createControlClient({
+      baseUrl: "http://control.test",
+      fetch: vi.fn(),
+    });
+    const android = new LynxAppDriver(client, "android", {
+      HOT_UPDATER_E2E_ANDROID_SERIAL: "emulator-5554",
+    });
+
+    await android.nativeBack("native back");
+
+    expect(vi.mocked(spawnSync)).toHaveBeenCalledWith(
+      "adb",
+      ["-s", "emulator-5554", "shell", "input", "keyevent", "BACK"],
+      expect.objectContaining({ encoding: "utf8" }),
+    );
+  });
+});
+
 describe("Lynx app installation", () => {
   beforeEach(() => {
     vi.mocked(spawnSync).mockReset();
@@ -201,9 +298,7 @@ describe("Lynx app installation", () => {
   });
 
   it("preserves Android launch configuration JSON through adb shell", async () => {
-    vi.mocked(spawnSync).mockReturnValue({ status: 0 } as ReturnType<
-      typeof spawnSync
-    >);
+    mockAndroidCommands();
     const fetch = vi.fn(async (url: string) => ({
       ok: true,
       status: 200,
@@ -237,17 +332,120 @@ describe("Lynx app installation", () => {
         "-n",
         "com.hotupdater.lynxexample/.OtaActivity",
         "--es",
-        "framework",
-        "react",
-        "--es",
-        "channel",
-        "production",
-        "--es",
         "hotUpdaterLaunchConfiguration",
-        `'{"appBaseURL":"http://127.0.0.1:3008/hot-updater","runtimeConfigURL":"http://localhost:3107/e2e/runtime-config"}'`,
+        expect.stringMatching(
+          /^'\{"appBaseURL":"http:\/\/127\.0\.0\.1:3008\/hot-updater","launchGeneration":"[0-9a-f-]+","runtimeConfigURL":"http:\/\/localhost:3107\/e2e\/runtime-config"\}'$/,
+        ),
       ],
       expect.objectContaining({ encoding: "utf8" }),
     );
+  });
+
+  it.each([301, 302])(
+    "fails an Android launch with managed-resource engine code %s after native confirmation",
+    async (code) => {
+      mockAndroidCommands(
+        [
+          "HotUpdaterLynx: confirmed bundle=bundle-A release=null attempt=attempt-A",
+          `HotUpdaterLynx: engine-error fatal=false code=${code} message=resource failed`,
+        ].join("\n"),
+      );
+      const fetch = vi.fn(async (url: string) => ({
+        ok: true,
+        status: 200,
+        text: async () =>
+          JSON.stringify(
+            url.endsWith("/e2e/runtime-config")
+              ? { screenState: { runtimeScenarioMarker: "bundle-A-marker" } }
+              : {},
+          ),
+      }));
+      const client = createControlClient({
+        baseUrl: "http://control.test",
+        fetch,
+      });
+      const driver = new LynxAppDriver(client, "android", {
+        HOT_UPDATER_E2E_ANDROID_SERIAL: "emulator-5554",
+      });
+
+      await expect(driver.launch("confirmed launch")).rejects.toThrow(
+        `Managed Lynx resources emitted engine errors: ${code}`,
+      );
+    },
+  );
+
+  it("checks managed-resource errors before an allow-disconnect launch returns", async () => {
+    mockAndroidCommands(
+      [
+        "HotUpdaterLynx: engine-error fatal=false code=301 message=image failed",
+        ...Array.from({ length: 600 }, (_, index) => `later log ${index}`),
+      ].join("\n"),
+    );
+    const client = createControlClient({
+      baseUrl: "http://control.test",
+      fetch: vi.fn(async (url: string) => ({
+        ok: true,
+        status: 200,
+        text: async () =>
+          JSON.stringify(
+            url.endsWith("/e2e/runtime-config")
+              ? { screenState: { runtimeScenarioMarker: "ready" } }
+              : {},
+          ),
+      })),
+    });
+    const driver = new LynxAppDriver(client, "android", {
+      HOT_UPDATER_E2E_ANDROID_SERIAL: "emulator-5554",
+    });
+
+    await expect(
+      driver.launch("force-update launch", { allowDisconnect: true }),
+    ).rejects.toThrow("Managed Lynx resources emitted engine errors: 301");
+  });
+
+  it("checks the replacement process after a delayed automatic restart", async () => {
+    let replacementLogs = "initial process clean";
+    mockAndroidCommands(() => replacementLogs);
+    const fetch = vi.fn(async (url: string) => ({
+      ok: true,
+      status: 200,
+      text: async () => {
+        if (url.endsWith("/e2e/runtime-config")) {
+          return JSON.stringify({
+            screenState: { runtimeScenarioMarker: "initial-marker" },
+          });
+        }
+        if (url.includes("/e2e/jobs/restart-job")) {
+          return JSON.stringify({ status: "succeeded", result: {} });
+        }
+        if (url.endsWith("/e2e/jobs/wait-for-android-restart")) {
+          return JSON.stringify({ jobId: "restart-job" });
+        }
+        return "{}";
+      },
+    }));
+    const client = createControlClient({
+      baseUrl: "http://control.test",
+      fetch,
+    });
+    const driver = new LynxAppDriver(client, "android", {
+      HOT_UPDATER_E2E_ANDROID_SERIAL: "emulator-5554",
+    });
+
+    await driver.launch("force-update launch", { allowDisconnect: true });
+    replacementLogs = [
+      "replacement process started",
+      "HotUpdaterLynx: confirmed bundle=bundle-B release=release-B attempt=attempt-B",
+      "HotUpdaterLynx: engine-error fatal=false code=301 message=replacement image failed",
+    ].join("\n");
+
+    await expect(
+      driver.control(
+        "prove automatic restart",
+        "/e2e/jobs/wait-for-android-restart",
+        { bundleId: "bundle-B" },
+      ),
+    ).rejects.toThrow("Managed Lynx resources emitted engine errors: 301");
   });
 });
 
@@ -371,7 +569,7 @@ describe("Lynx startup failure diagnostics", () => {
     );
   });
 
-  it("captures Android process-specific logcat output with a trimmed pid", async () => {
+  it("captures Android logs from the explicit launch marker", async () => {
     let screenStatePosts = 0;
     const fetch = vi.fn(async (url: string) => {
       if (url.endsWith("/e2e/runtime-config")) {
@@ -393,18 +591,7 @@ describe("Lynx startup failure diagnostics", () => {
           ),
       };
     });
-    vi.mocked(spawnSync).mockImplementation(
-      (_command, args) =>
-        ({
-          status: 0,
-          stdout: args.includes("pidof")
-            ? "\n  456  \n"
-            : args.includes("logcat")
-              ? "android bootstrap error"
-              : "",
-          stderr: "",
-        }) as ReturnType<typeof spawnSync>,
-    );
+    mockAndroidCommands("android bootstrap error");
     const client = createControlClient({
       baseUrl: "http://control.test",
       fetch,
@@ -419,7 +606,7 @@ describe("Lynx startup failure diagnostics", () => {
     );
     expect(vi.mocked(spawnSync)).toHaveBeenCalledWith(
       "adb",
-      ["-s", "emulator-5554", "logcat", "-d", "-t", "500", "--pid", "456"],
+      ["-s", "emulator-5554", "logcat", "-d"],
       expect.objectContaining({ timeout: 5000 }),
     );
   });

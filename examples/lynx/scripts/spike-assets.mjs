@@ -1,99 +1,18 @@
-import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
-import { promisify } from "node:util";
-import { deflateSync } from "node:zlib";
 
-function chunk(name, bytes) {
-  const body = Buffer.concat([Buffer.from(name), bytes]);
-  let crc = 0xffffffff;
-  for (const byte of body) {
-    crc ^= byte;
-    for (let bit = 0; bit < 8; bit++)
-      crc = (crc >>> 1) ^ (0xedb88320 & -(crc & 1));
-  }
-  const length = Buffer.alloc(4);
-  length.writeUInt32BE(bytes.length);
-  const checksum = Buffer.alloc(4);
-  checksum.writeUInt32BE((crc ^ 0xffffffff) >>> 0);
-  return Buffer.concat([length, body, checksum]);
-}
+import { SPARKLING_NAVIGATION_PROVENANCE } from "@hot-updater/lynx/navigationProvenance";
 
-export async function finishSpike(outDir, framework, variant, provenance) {
-  const header = Buffer.alloc(13);
-  header.writeUInt32BE(8, 0);
-  header.writeUInt32BE(8, 4);
-  header[8] = 8;
-  header[9] = 2;
-  const pixel = variant === "A" ? [30, 104, 220] : [224, 66, 45];
-  const pixels = Buffer.from(
-    Array.from({ length: 8 }, () => [
-      0,
-      ...Array.from({ length: 8 }, () => pixel).flat(),
-    ]).flat(),
-  );
-  const png = Buffer.concat([
-    Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]),
-    chunk("IHDR", header),
-    chunk("IDAT", deflateSync(pixels)),
-    chunk("IEND", Buffer.alloc(0)),
-  ]);
-  await fs.mkdir(path.join(outDir, "assets"), { recursive: true });
-  await fs.writeFile(path.join(outDir, "assets/probe.png"), png);
-  if (["dynamic", "sdk2", "sdk3"].includes(provenance.resourceSet)) {
-    const { stdout, stderr } = await promisify(execFile)(
-      "pnpm",
-      [
-        "exec",
-        "rspeedy",
-        "build",
-        "--config",
-        "spike/dynamic.config.ts",
-        "--environment",
-        "lynx",
-      ],
-      {
-        cwd: fileURLToPath(new URL("..", import.meta.url)),
-        env: {
-          ...process.env,
-          HOT_UPDATER_SPIKE_VARIANT: variant,
-          HOT_UPDATER_DYNAMIC_DIR: path.join(outDir, "dynamic"),
-        },
-        maxBuffer: 10 * 1024 * 1024,
-      },
-    );
-    process.stdout.write(stdout);
-    process.stderr.write(stderr);
-  }
-  if (
-    provenance.resourceSet === "external" ||
-    provenance.resourceSet === "external2" ||
-    provenance.resourceSet === "sdk2" ||
-    provenance.resourceSet === "sdk3"
-  ) {
-    const { buildExternalBootstrap } = await import("./external-bootstrap.mjs");
-    await buildExternalBootstrap(outDir, variant);
-  }
-  if (
-    provenance.resourceSet !== "basic" &&
-    provenance.resourceSet !== "http" &&
-    provenance.resourceSet !== "sdk1"
-  ) {
-    const fonts = fileURLToPath(new URL("../spike/fonts/", import.meta.url));
-    await fs.copyFile(
-      path.join(
-        fonts,
-        variant === "A" ? "Inter-Regular.ttf" : "Inter-Black.ttf",
-      ),
-      path.join(outDir, "assets/probe.ttf"),
-    );
-    await fs.copyFile(
-      path.join(fonts, "OFL.txt"),
-      path.join(outDir, "assets/OFL.txt"),
-    );
-  }
+export const pageEntries = ["detail.lynx.bundle", "main.lynx.bundle"];
+
+const compilerGraphSource = "@rspack/core:chunkGraph";
+const compilerVersions = { octane: "2.1.4", react: "1.7.11", vue: "1.7.11" };
+const comparePaths = (left, right) =>
+  left < right ? -1 : left > right ? 1 : 0;
+const safePath = /^(?!\/)(?!.*(?:^|\/)\.\.(?:\/|$))[A-Za-z0-9._/-]+$/;
+
+async function collectFiles(directory) {
   const files = [];
   async function visit(dir) {
     for (const entry of await fs.readdir(dir, { withFileTypes: true })) {
@@ -102,25 +21,338 @@ export async function finishSpike(outDir, framework, variant, provenance) {
       else {
         const bytes = await fs.readFile(absolute);
         files.push({
-          path: path.relative(outDir, absolute),
+          path: path.relative(directory, absolute).split(path.sep).join("/"),
           bytes: bytes.length,
           sha256: createHash("sha256").update(bytes).digest("hex"),
         });
       }
     }
   }
-  await visit(outDir);
-  // Evidence is outside the artifact: it cannot accidentally be shipped as metadata.
+  await visit(directory);
+  return files.sort((left, right) => comparePaths(left.path, right.path));
+}
+
+const exactKeys = (value, keys) =>
+  value !== null &&
+  typeof value === "object" &&
+  !Array.isArray(value) &&
+  JSON.stringify(Object.keys(value).sort(comparePaths)) ===
+    JSON.stringify([...keys].sort(comparePaths));
+
+function validateCompilerGraph(graph, files, { requireNonempty }) {
+  if (
+    !exactKeys(graph, [
+      "schemaVersion",
+      "source",
+      "compilerVersion",
+      "entries",
+      "auxiliaryAssets",
+      "edges",
+      "nodes",
+    ]) ||
+    graph.schemaVersion !== 1 ||
+    graph.source !== compilerGraphSource ||
+    !/^\d+\.\d+\.\d+$/.test(graph.compilerVersion) ||
+    !Array.isArray(graph.entries) ||
+    !Array.isArray(graph.auxiliaryAssets) ||
+    !Array.isArray(graph.edges) ||
+    !Array.isArray(graph.nodes)
+  ) {
+    throw new Error("Compiler did not emit a valid Lynx page graph");
+  }
+  if (
+    JSON.stringify(
+      [...graph.nodes].sort((left, right) => comparePaths(left.id, right.id)),
+    ) !== JSON.stringify(graph.nodes) ||
+    new Set(graph.nodes.map((node) => node.id)).size !== graph.nodes.length ||
+    JSON.stringify(
+      [...graph.edges].sort((left, right) =>
+        comparePaths(JSON.stringify(left), JSON.stringify(right)),
+      ),
+    ) !== JSON.stringify(graph.edges) ||
+    new Set(graph.edges.map((edge) => JSON.stringify(edge))).size !==
+      graph.edges.length
+  ) {
+    throw new Error("Compiler emitted a nondeterministic Lynx page graph");
+  }
+  const nodes = new Map();
+  for (const node of graph.nodes) {
+    const commonValid =
+      node !== null &&
+      typeof node === "object" &&
+      !Array.isArray(node) &&
+      typeof node.id === "string" &&
+      typeof node.kind === "string";
+    const shapeValid =
+      (node.kind === "page" &&
+        exactKeys(node, ["id", "kind", "path"]) &&
+        node.id === `page:${node.path}` &&
+        safePath.test(node.path)) ||
+      ((node.kind === "entry" || node.kind === "chunk") &&
+        exactKeys(node, ["id", "kind", "name"]) &&
+        node.id === `${node.kind}:${node.name}` &&
+        typeof node.name === "string" &&
+        node.name.length > 0) ||
+      (node.kind === "module" &&
+        exactKeys(node, ["id", "kind", "name"]) &&
+        node.id === `module:${node.name}` &&
+        /^spike\/compiler-page-resources\/[a-z]+\.page-resource$/.test(
+          node.name,
+        )) ||
+      (node.kind === "asset" &&
+        exactKeys(node, ["essential", "id", "kind", "path", "source"]) &&
+        node.id === `asset:${node.path}` &&
+        typeof node.essential === "boolean" &&
+        safePath.test(node.path) &&
+        /^spike\/compiler-page-resources\/[a-z]+\.page-resource$/.test(
+          node.source,
+        ));
+    if (!commonValid || !shapeValid) {
+      throw new Error("Compiler emitted an invalid Lynx graph node");
+    }
+    nodes.set(node.id, node);
+  }
+  const edges = graph.edges.map((edge) => {
+    if (
+      !exactKeys(edge, ["from", "kind", "to"]) ||
+      typeof edge.from !== "string" ||
+      typeof edge.to !== "string" ||
+      !["compiledBy", "contains", "emits", "requires"].includes(edge.kind) ||
+      !nodes.has(edge.from) ||
+      !nodes.has(edge.to)
+    ) {
+      throw new Error("Compiler emitted an invalid Lynx graph edge");
+    }
+    const fromKind = nodes.get(edge.from).kind;
+    const toKind = nodes.get(edge.to).kind;
+    if (
+      (edge.kind === "compiledBy" &&
+        (fromKind !== "page" || toKind !== "entry")) ||
+      (edge.kind === "contains" &&
+        !(
+          (fromKind === "entry" && toKind === "chunk") ||
+          (fromKind === "chunk" && toKind === "module")
+        )) ||
+      (edge.kind === "emits" &&
+        (fromKind !== "module" || toKind !== "asset")) ||
+      (edge.kind === "requires" &&
+        (fromKind !== "page" ||
+          toKind !== "asset" ||
+          !nodes.get(edge.to).essential))
+    ) {
+      throw new Error("Compiler emitted a type-invalid Lynx graph edge");
+    }
+    return edge;
+  });
+  const hasEdge = (from, kind, to) =>
+    edges.some(
+      (edge) => edge.from === from && edge.kind === kind && edge.to === to,
+    );
+  for (const node of nodes.values()) {
+    if (node.kind !== "asset") continue;
+    const moduleId = `module:${node.source}`;
+    if (!hasEdge(moduleId, "emits", node.id)) {
+      throw new Error("Compiler asset has no module emission edge");
+    }
+    const chunks = edges
+      .filter((edge) => edge.kind === "contains" && edge.to === moduleId)
+      .map((edge) => edge.from);
+    if (chunks.length === 0) {
+      throw new Error("Compiler asset module has no chunk edge");
+    }
+  }
+  const owned = new Set();
+  const entries = graph.entries.map((descriptor, index) => {
+    const entry = pageEntries[index];
+    const page = entry?.replace(/\.lynx\.bundle$/, "");
+    const validCompilerEntries = [
+      [page, `${page}__main-thread`].sort(comparePaths),
+      [page, `${page}__octane_main_thread`].sort(comparePaths),
+    ];
+    if (
+      !entry ||
+      !exactKeys(descriptor, ["entry", "compilerEntries", "resources"]) ||
+      descriptor.entry !== entry ||
+      !validCompilerEntries.some(
+        (entries) =>
+          JSON.stringify(descriptor.compilerEntries) ===
+          JSON.stringify(entries),
+      ) ||
+      !Array.isArray(descriptor.resources) ||
+      !descriptor.resources.includes(entry) ||
+      JSON.stringify([...descriptor.resources].sort(comparePaths)) !==
+        JSON.stringify(descriptor.resources) ||
+      new Set(descriptor.resources).size !== descriptor.resources.length ||
+      descriptor.resources.some(
+        (resource) => typeof resource !== "string" || !safePath.test(resource),
+      )
+    ) {
+      throw new Error("Compiler emitted an ambiguous Lynx page graph");
+    }
+    const required = graph.edges
+      .filter(
+        (edge) => edge.from === `page:${entry}` && edge.kind === "requires",
+      )
+      .map((edge) => nodes.get(edge.to)?.path)
+      .filter((resource) => typeof resource === "string")
+      .sort(comparePaths);
+    for (const resource of required) {
+      const assetNode = nodes.get(`asset:${resource}`);
+      const moduleId = `module:${assetNode.source}`;
+      const pageEntries = edges
+        .filter(
+          (edge) => edge.from === `page:${entry}` && edge.kind === "compiledBy",
+        )
+        .map((edge) => edge.to);
+      const pageChunks = edges
+        .filter(
+          (edge) => pageEntries.includes(edge.from) && edge.kind === "contains",
+        )
+        .map((edge) => edge.to);
+      if (
+        !edges.some(
+          (edge) =>
+            pageChunks.includes(edge.from) &&
+            edge.kind === "contains" &&
+            edge.to === moduleId,
+        )
+      ) {
+        throw new Error(
+          "Compiler page dependency is not reachable from its entry graph",
+        );
+      }
+    }
+    const derivedResources = [entry, ...required].sort(comparePaths);
+    if (
+      JSON.stringify(derivedResources) !== JSON.stringify(descriptor.resources)
+    ) {
+      throw new Error(
+        "Compiler page resources do not match its dependency graph",
+      );
+    }
+    for (const resource of descriptor.resources) owned.add(resource);
+    return { entry, resources: descriptor.resources };
+  });
+  if (entries.length !== pageEntries.length) {
+    throw new Error("Compiler page graph is missing a Lynx page output");
+  }
+  if (
+    JSON.stringify([...graph.auxiliaryAssets].sort(comparePaths)) !==
+      JSON.stringify(graph.auxiliaryAssets) ||
+    new Set(graph.auxiliaryAssets).size !== graph.auxiliaryAssets.length ||
+    graph.auxiliaryAssets.some(
+      (resource) =>
+        typeof resource !== "string" ||
+        !safePath.test(resource) ||
+        owned.has(resource),
+    )
+  ) {
+    throw new Error("Compiler emitted an ambiguous Lynx auxiliary graph");
+  }
+  const derivedAuxiliary = [...nodes.values()]
+    .filter((node) => node.kind === "asset" && !node.essential)
+    .map((node) => node.path)
+    .sort(comparePaths);
+  if (
+    JSON.stringify(derivedAuxiliary) !== JSON.stringify(graph.auxiliaryAssets)
+  ) {
+    throw new Error("Compiler auxiliary assets do not match its graph");
+  }
+  const expectedFiles = [...owned, ...graph.auxiliaryAssets].sort(comparePaths);
+  if (
+    JSON.stringify(files.map((file) => file.path)) !==
+    JSON.stringify(expectedFiles)
+  ) {
+    throw new Error("Compiler page graph has missing or unowned output");
+  }
+  for (const entry of pageEntries) {
+    if (!files.some((file) => file.path === entry && file.bytes > 0)) {
+      throw new Error("Compiler emitted an empty Lynx page bundle");
+    }
+  }
+  if (requireNonempty && files.some((file) => file.bytes === 0)) {
+    throw new Error("Compiler emitted an empty page dependency");
+  }
+  return entries;
+}
+
+async function readCompilerGraph(directory) {
+  let graph;
+  try {
+    graph = JSON.parse(
+      await fs.readFile(`${directory}.page-graph.json`, "utf8"),
+    );
+  } catch (error) {
+    throw new Error("Compiler did not emit a Lynx page graph", {
+      cause: error,
+    });
+  }
+  return graph;
+}
+
+export async function readSpikePageContract(directory) {
+  const report = JSON.parse(
+    await fs.readFile(`${directory}.build.json`, "utf8"),
+  );
+  const files = await collectFiles(directory);
+  if (JSON.stringify(report.files) !== JSON.stringify(files)) {
+    throw new Error("Compiler receipt does not match the frozen build output");
+  }
+  if (
+    JSON.stringify(report.pageEntries) !== JSON.stringify(pageEntries) ||
+    report.compilerGraph?.compilerVersion !==
+      compilerVersions[report.framework] ||
+    JSON.stringify(report.provenance?.sparklingNavigation) !==
+      JSON.stringify(SPARKLING_NAVIGATION_PROVENANCE)
+  ) {
+    throw new Error(
+      "Compiler receipt has invalid page or navigation provenance",
+    );
+  }
+  const pageEssentialResources = validateCompilerGraph(
+    report.compilerGraph,
+    files,
+    { requireNonempty: true },
+  );
+  if (
+    JSON.stringify(report.pageEssentialResources) !==
+    JSON.stringify(pageEssentialResources)
+  ) {
+    throw new Error("Compiler receipt has an invalid page dependency closure");
+  }
+  return {
+    pageEntries: report.pageEntries,
+    pageEssentialResources: report.pageEssentialResources,
+    sparklingNavigation: report.provenance.sparklingNavigation,
+  };
+}
+
+export async function finishSpike(outDir, framework, variant, provenance) {
+  const compilerGraph = await readCompilerGraph(outDir);
+  if (compilerGraph.compilerVersion !== compilerVersions[framework]) {
+    throw new Error("Compiler page graph came from an unpinned Rspack version");
+  }
+  const files = await collectFiles(outDir);
+  const pageEssentialResources = validateCompilerGraph(compilerGraph, files, {
+    requireNonempty: true,
+  });
   const report = {
     framework,
     variant,
     entry: "main.lynx.bundle",
-    provenance,
+    pageEntries,
+    pageEssentialResources,
+    compilerGraph,
+    provenance: {
+      ...provenance,
+      sparklingNavigation: SPARKLING_NAVIGATION_PROVENANCE,
+    },
     files,
   };
   await fs.writeFile(
     `${outDir}.build.json`,
     `${JSON.stringify(report, null, 2)}\n`,
   );
+  await fs.rm(`${outDir}.page-graph.json`);
   return report;
 }

@@ -236,7 +236,7 @@ final class LynxControllerLocalTests: XCTestCase {
         XCTAssertEqual(controller!.runningSelection.kind, "BUILTIN")
     }
 
-    func testSecondaryCannotEvaluateBeforePrimaryAndCannotConfirm() throws {
+    func testSecondaryRequiresAnExplicitManagedPageEntry() throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent("lynx-local-\(UUID().uuidString)")
         defer { try? FileManager.default.removeItem(at: root) }
         let embedded = root.appendingPathComponent("embedded")
@@ -246,11 +246,7 @@ final class LynxControllerLocalTests: XCTestCase {
         XCTAssertThrowsError(try controller.begin(secondary))
         let primary = controller.createContext(primary: true)
         _ = try controller.begin(primary)
-        _ = try controller.begin(secondary)
-        var rejected = false
-        controller.notifyAppReady(secondary) { if case .failure = $0 { rejected = true } }
-        XCTAssertTrue(rejected)
-        XCTAssertThrowsError(try controller.observedContent(secondary))
+        XCTAssertThrowsError(try controller.begin(secondary))
     }
 
     func testManagedResourceMissFailsClosedWithoutReadingEmbeddedFallback() throws {
@@ -388,7 +384,7 @@ final class LynxControllerLocalTests: XCTestCase {
         XCTAssertEqual(String(data: try controller!.resource("hot-updater:///main.lynx.bundle", context: context), encoding: .utf8), "entry-B")
     }
 
-    func testFatalBundleFailureIsDistinctFromUnconfirmedExclusion() throws {
+    func testFatalBundleFailureRecordsCrashAndReleaseSuppression() throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent("lynx-local-\(UUID().uuidString)")
         defer { try? FileManager.default.removeItem(at: root) }
         let embedded = root.appendingPathComponent("embedded")
@@ -411,7 +407,10 @@ final class LynxControllerLocalTests: XCTestCase {
         let recovered = try controller!.getState(context)
         XCTAssertEqual(controller!.runningSelection.bundleId, embeddedId)
         XCTAssertEqual(recovered["crashedBundleIds"] as? [String], [bundleB])
-        XCTAssertEqual(recovered["unconfirmedReleaseIds"] as? [String], [])
+        XCTAssertEqual(
+            recovered["unconfirmedReleaseIds"] as? [String],
+            [releaseB]
+        )
     }
 
     func testFailedConfirmedFallbackAdvancesToEmbeddedRecovery() throws {

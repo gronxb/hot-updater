@@ -3,9 +3,12 @@ package com.hotupdater.lynx.internal
 import com.hotupdater.lynx.LynxArtifactRequest
 import com.hotupdater.lynx.LynxIncompatibleArtifactException
 import com.hotupdater.lynx.LynxInstallConfiguration
+import com.hotupdater.lynx.LynxPageEssentialResources
 import com.hotupdater.lynx.VerifiedLynxInstallation
 import java.io.File
 import java.math.BigDecimal
+import org.json.JSONArray
+import org.json.JSONObject
 
 internal class LynxArtifactVerifier(private val config: LynxInstallConfiguration, private val integrity: ArchiveIntegrity) {
     /** Archive installations require an authenticated archive; delta installations authenticate their manifest here. */
@@ -60,17 +63,129 @@ internal class LynxArtifactVerifier(private val config: LynxInstallConfiguration
         val entry = StrictJson.string(metadata, "entry")
         require(bundleId == request.bundleId && entry in paths && ManagedPaths.normalize(entry) == entry) { "Invalid Lynx Bundle identity or entry" }
         require(ManagedPaths.resolve(trustedRoot, entry).let { it.isFile && it.length() > 0 }) { "Lynx entry must be a nonempty regular file" }
+        val pages = pages(metadata, entry, paths, trustedRoot)
         if (platform != config.platform || runtime != config.runtimeId) throw LynxIncompatibleArtifactException("Native Lynx compatibility mismatch")
         return VerifiedLynxInstallation(
-            bundleId,
-            trustedRoot,
-            entry,
-            runtime,
-            HashUtils.calculateSHA256(manifestFile),
-            fileHashes,
-            manifestBacked,
+            bundleId = bundleId,
+            directory = trustedRoot,
+            entry = entry,
+            runtimeId = runtime,
+            manifestHash = HashUtils.calculateSHA256(manifestFile),
+            managedFileHashes = fileHashes,
+            manifestBacked = manifestBacked,
+            pageEntries = pages.first,
+            pageEssentialResources = pages.second,
         )
         } catch (error: LynxIncompatibleArtifactException) { throw error }
         catch (error: Exception) { throw LynxIncompatibleArtifactException(error.message ?: "Invalid Lynx metadata") }
+    }
+
+    private fun pages(
+        metadata: JSONObject,
+        mainEntry: String,
+        manifestPaths: Set<String>,
+        root: File,
+    ): Pair<List<String>, List<LynxPageEssentialResources>> {
+        val hasEntries = metadata.has("pageEntries")
+        val hasResources = metadata.has("pageEssentialResources")
+        require(hasEntries == hasResources) {
+            "Lynx page entries and essential resources must be supplied together"
+        }
+        if (!hasEntries) {
+            requirePageEntry(mainEntry, manifestPaths, root)
+            return listOf(mainEntry) to listOf(
+                LynxPageEssentialResources(mainEntry, listOf(mainEntry)),
+            )
+        }
+
+        val entries = stringArray(
+            metadata.opt("pageEntries"),
+            "pageEntries",
+        )
+        require(entries.isNotEmpty()) { "Lynx page entries must not be empty" }
+        require(entries == entries.sortedWith(UTF16_COMPARATOR)) {
+            "Lynx page entries must use canonical UTF-16 order"
+        }
+        val entryNamespace = ManagedPathNamespace()
+        entries.forEach { page ->
+            entryNamespace.file(page)
+            requirePageEntry(page, manifestPaths, root)
+        }
+        require(entries.count { it == mainEntry } == 1) {
+            "Lynx main entry must occur exactly once in page entries"
+        }
+
+        val descriptors = metadata.opt("pageEssentialResources") as? JSONArray
+            ?: error("Invalid pageEssentialResources")
+        require(descriptors.length() == entries.size && descriptors.length() > 0) {
+            "Lynx page resource descriptors must match page entries"
+        }
+        val parsed = (0 until descriptors.length()).map { index ->
+            val descriptor = descriptors.opt(index) as? JSONObject
+                ?: error("Invalid Lynx page resource descriptor")
+            require(descriptor.keys().asSequence().toSet() == setOf("entry", "resources")) {
+                "Invalid Lynx page resource descriptor keys"
+            }
+            val page = StrictJson.string(descriptor, "entry")
+            require(page == entries[index]) {
+                "Lynx page resource descriptors must match page entry order"
+            }
+            val resources = stringArray(
+                descriptor.opt("resources"),
+                "pageEssentialResources.resources",
+            )
+            require(resources.isNotEmpty() && resources == resources.sortedWith(UTF16_COMPARATOR)) {
+                "Lynx page essential resources must be nonempty and sorted"
+            }
+            val resourceNamespace = ManagedPathNamespace()
+            resources.forEach { path ->
+                resourceNamespace.file(path)
+                require(path in manifestPaths && ManagedPaths.normalize(path) == path) {
+                    "Lynx page essential resource is not a managed manifest asset"
+                }
+            }
+            require(page in resources) {
+                "Lynx page essential resources must contain the page entry"
+            }
+            LynxPageEssentialResources(page, resources)
+        }
+        return entries to parsed
+    }
+
+    private fun stringArray(value: Any?, name: String): List<String> {
+        val array = value as? JSONArray ?: error("Invalid $name")
+        return (0 until array.length()).map { index ->
+            (array.opt(index) as? String)?.takeIf(String::isNotEmpty)
+                ?: error("Invalid $name value")
+        }
+    }
+
+    private fun requirePageEntry(
+        entry: String,
+        manifestPaths: Set<String>,
+        root: File,
+    ) {
+        require(ManagedPaths.normalize(entry) == entry && PAGE_ENTRY.matches(entry)) {
+            "Invalid Lynx page entry"
+        }
+        require(entry in manifestPaths) { "Lynx page entry is not a manifest asset" }
+        require(ManagedPaths.resolve(root, entry).let { it.isFile && it.length() > 0 }) {
+            "Lynx page entry must be a nonempty regular file"
+        }
+    }
+
+    private companion object {
+        val PAGE_ENTRY = Regex(
+            "^(?:[a-z0-9](?:[a-z0-9_-]*[a-z0-9])?/)*" +
+                "[a-z0-9](?:[a-z0-9._-]*[a-z0-9])?\\.lynx\\.bundle$",
+        )
+        val UTF16_COMPARATOR = Comparator<String> { first, second ->
+            val limit = minOf(first.length, second.length)
+            for (index in 0 until limit) {
+                val difference = first[index].code - second[index].code
+                if (difference != 0) return@Comparator difference
+            }
+            first.length - second.length
+        }
     }
 }

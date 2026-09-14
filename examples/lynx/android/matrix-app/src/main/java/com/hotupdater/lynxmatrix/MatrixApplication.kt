@@ -5,6 +5,7 @@ import com.facebook.drawee.backends.pipeline.Fresco
 import com.facebook.imagepipeline.core.ImagePipelineConfig
 import com.facebook.imagepipeline.core.MemoryChunkType
 import com.hotupdater.lynx.sparkling.HotUpdaterSparklingModules
+import com.hotupdater.lynx.sparkling.HotUpdaterSparklingDiagnostics
 import com.tiktok.sparkling.hybridkit.HybridKit
 import com.tiktok.sparkling.hybridkit.config.BaseInfoConfig
 import com.tiktok.sparkling.hybridkit.config.SparklingHybridConfig
@@ -22,6 +23,7 @@ class MatrixApplication : Application() {
         HybridKit.init(this)
         val lynx = SparklingLynxConfig.build(this) {
             addLynxModules(HotUpdaterSparklingModules.modules())
+            addLynxModules(HotUpdaterSparklingDiagnostics.modules())
         }
         HybridKit.setHybridConfig(
             SparklingHybridConfig.build(BaseInfoConfig(isDebug = false)) {
@@ -29,6 +31,7 @@ class MatrixApplication : Application() {
             },
             this,
         )
+        HotUpdaterSparklingModules.registerNavigation()
         HybridKit.initLynxKit()
     }
 }

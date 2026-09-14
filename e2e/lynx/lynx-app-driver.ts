@@ -1,6 +1,11 @@
 import { spawnSync } from "node:child_process";
+import { randomUUID } from "node:crypto";
 import path from "node:path";
 
+import {
+  type GenerationEventsSnapshot,
+  validateGenerationEventsSnapshot,
+} from "../../examples/lynx/src/e2eApp/generationEvents.ts";
 import { createControlClient } from "../detox/control-client.ts";
 import type { JsonObject } from "../detox/control-protocol.ts";
 import type {
@@ -12,6 +17,11 @@ import {
   resolveAppBaseUrl,
   resolveRuntimeConfigUrl,
 } from "../detox/scripts/control-server-env.ts";
+import {
+  GenerationEventLedger,
+  type GenerationEventLedgerReceipt,
+} from "./generation-event-ledger.ts";
+import { assertNoManagedResourceEngineErrors } from "./managed-resource-errors.ts";
 import {
   createLynxNativeLaunchConfiguration,
   HOT_UPDATER_LYNX_ANDROID_LAUNCH_CONFIGURATION_EXTRA,
@@ -27,12 +37,21 @@ type ControlOptions = {
 };
 
 const ACTION_RESULT_FIELDS: Record<string, string> = {
+  "action-arm-next-detail-fatal": "updateActionResult",
+  "action-arm-next-detail-pending": "updateActionResult",
+  "action-capture-stale-authorities": "updateActionResult",
   "action-apply-captured-update": "updateActionResult",
   "action-apply-cohort-input": "cohortActionResult",
   "action-capture-current-channel-update": "updateActionResult",
   "action-install-current-channel-update": "updateActionResult",
   "action-install-fingerprint-update": "updateActionResult",
   "action-install-runtime-channel-update": "updateActionResult",
+  "action-fail-pending-detail": "updateActionResult",
+  "action-reload-with-pending-detail": "updateActionResult",
+  "action-verify-stale-authorities": "updateActionResult",
+  "action-verify-managed-navigation-boundary": "updateActionResult",
+  "action-exercise-navigation-stack-boundary": "updateActionResult",
+  "action-exercise-runtime-journal": "updateActionResult",
   "action-reset-runtime-channel": "channelActionResult",
   "action-restore-initial-cohort": "cohortActionResult",
   "action-set-cohort-qa": "cohortActionResult",
@@ -45,6 +64,9 @@ const SCREEN_TEXT_FIELDS: Record<string, string> = {
   "update-action-result": "updateActionResult",
   "runtime-current-channel": "currentChannel",
   "runtime-default-channel": "defaultChannel",
+  "runtime-generation-events": "generationEvents",
+  "runtime-detail-page-marker": "detailPageMarker",
+  "runtime-detail-page-title": "detailPageTitle",
   "runtime-channel-switched": "channelSwitched",
   "runtime-bundle-id": "currentBundleId",
   "runtime-release-state": "currentReleaseId",
@@ -66,6 +88,8 @@ export class LynxAppDriver implements DetoxAppDriver {
   private readonly controlClient: ControlClient;
   private readonly platform: DetoxPlatform;
   private readonly env: NodeJS.ProcessEnv;
+  private androidLaunchLogMarker: string | null = null;
+  private readonly generationEventLedger = new GenerationEventLedger();
   private stageValues: Record<string, unknown>;
 
   constructor(
@@ -141,41 +165,51 @@ export class LynxAppDriver implements DetoxAppDriver {
         ? this.controlClient.runJob.bind(this.controlClient)
         : this.controlClient.postJson.bind(this.controlClient);
       const result = await runner(stage, pathName, resolvedBody);
+      if (
+        this.platform === "android" &&
+        pathName === "/e2e/jobs/wait-for-android-restart"
+      ) {
+        this.assertNoManagedResourceErrors();
+      }
       this.saveControlResult(options, result as Record<string, unknown>);
     });
   }
 
   async launch(stage: string, options: DetoxLaunchOptions = {}): Promise<void> {
     await this.runStage(stage, async () => {
+      const launchGeneration = randomUUID();
       await this.controlClient.postJson(
         `${stage}: prepare launch`,
         "/e2e/prepare-app-launch",
-        {},
+        { launchGeneration },
       );
-      await this.clearOverlayMarker(stage);
-      await this.launchApp({ expectCrash: options.expectCrash === true });
+      await this.clearOverlayMarker(stage, launchGeneration);
+      await this.launchApp({
+        expectCrash: options.expectCrash === true,
+        launchGeneration,
+      });
       if (options.expectCrash === true) {
         await new Promise((resolve) => setTimeout(resolve, 2000));
-        await this.launchApp();
-      }
-      if (options.allowDisconnect === true) {
-        return;
+        await this.launchApp({ launchGeneration });
       }
       await this.waitForOverlayReady(stage);
+      this.assertNoManagedResourceErrors();
     });
   }
 
   async reload(stage: string): Promise<void> {
     await this.runStage(stage, async () => {
+      const launchGeneration = randomUUID();
       this.terminateApp();
       await this.controlClient.postJson(
         `${stage}: prepare launch`,
         "/e2e/prepare-app-launch",
-        {},
+        { launchGeneration },
       );
-      await this.clearOverlayMarker(stage);
-      await this.launchApp();
+      await this.clearOverlayMarker(stage, launchGeneration);
+      await this.launchApp({ launchGeneration });
       await this.waitForOverlayReady(stage);
+      this.assertNoManagedResourceErrors();
     });
   }
 
@@ -223,6 +257,202 @@ export class LynxAppDriver implements DetoxAppDriver {
   async terminate(stage: string): Promise<void> {
     await this.runStage(stage, async () => {
       this.terminateApp();
+    });
+  }
+
+  async captureGenerationEvents(
+    stage: string,
+  ): Promise<GenerationEventsSnapshot> {
+    let snapshot!: GenerationEventsSnapshot;
+    await this.runStage(stage, async () => {
+      await this.controlClient.postJson(
+        `${stage}: reset generation evidence`,
+        "/e2e/screen-state",
+        { generationEvents: null, updateActionResult: "idle" },
+      );
+      await this.controlClient.postJson(
+        `${stage}: request generation evidence`,
+        "/e2e/pending-action",
+        {
+          testID: "action-capture-generation-events",
+        },
+      );
+      await this.controlClient.waitForScreenStateField(
+        `${stage}: wait for generation evidence`,
+        "updateActionResult",
+        {
+          rejectSubstrings: [" -> error"],
+          rejectValues: ["idle"],
+        },
+      );
+      const response = (await this.controlClient.postJson(
+        `${stage}: read generation evidence`,
+        "/e2e/screen-state",
+        {},
+      )) as Record<string, unknown>;
+      const screenState =
+        response.screenState && typeof response.screenState === "object"
+          ? (response.screenState as Record<string, unknown>)
+          : response;
+      if (typeof screenState.generationEvents !== "string") {
+        throw new Error("The native generation evidence snapshot is missing");
+      }
+      snapshot = validateGenerationEventsSnapshot(
+        JSON.parse(screenState.generationEvents),
+        { allowTruncated: true },
+      );
+      this.generationEventLedger.merge(stage, snapshot);
+      console.log(
+        `[lynx-generation-ledger:checkpoint] ${JSON.stringify(this.generationEventLedger.receipt())}`,
+      );
+    });
+    return snapshot;
+  }
+
+  runtimeEventLedgerReceipt(): GenerationEventLedgerReceipt {
+    return this.generationEventLedger.receipt();
+  }
+
+  async captureDiagnosticReceipt<T>(stage: string, testID: string): Promise<T> {
+    let receipt!: T;
+    await this.runStage(stage, async () => {
+      await this.controlClient.postJson(
+        `${stage}: reset diagnostic receipt`,
+        "/e2e/screen-state",
+        { diagnosticReceipt: null, updateActionResult: "idle" },
+      );
+      await this.controlClient.postJson(
+        `${stage}: request diagnostic receipt`,
+        "/e2e/pending-action",
+        { testID },
+      );
+      await this.controlClient.waitForScreenStateField(
+        `${stage}: wait for diagnostic receipt`,
+        "updateActionResult",
+        { rejectSubstrings: [" -> error"], rejectValues: ["idle"] },
+      );
+      const response = (await this.controlClient.postJson(
+        `${stage}: read diagnostic receipt`,
+        "/e2e/screen-state",
+        {},
+      )) as Record<string, unknown>;
+      const screenState =
+        response.screenState && typeof response.screenState === "object"
+          ? (response.screenState as Record<string, unknown>)
+          : response;
+      if (typeof screenState.diagnosticReceipt !== "string") {
+        throw new Error("The native diagnostics receipt is missing");
+      }
+      receipt = JSON.parse(screenState.diagnosticReceipt) as T;
+    });
+    return receipt;
+  }
+
+  get platformName(): DetoxPlatform {
+    return this.platform;
+  }
+
+  readScenarioString(key: string): string {
+    const value = this.readStageValue(key);
+    if (typeof value !== "string" || value.length === 0) {
+      throw new Error(`Lynx scenario value ${key} must be a non-empty string`);
+    }
+    return value;
+  }
+
+  async reloadManagedGeneration(
+    stage: string,
+    expectedMarker: string,
+  ): Promise<void> {
+    await this.runStage(stage, async () => {
+      await this.controlClient.postJson(
+        `${stage}: reset runtime marker`,
+        "/e2e/screen-state",
+        { runtimeScenarioMarker: null },
+      );
+      await this.controlClient.postJson(
+        `${stage}: request managed reload`,
+        "/e2e/pending-action",
+        { testID: "action-reload-app" },
+      );
+      await this.controlClient.waitForScreenStateField(
+        `${stage}: wait for replacement generation`,
+        "runtimeScenarioMarker",
+        { expectedValue: expectedMarker },
+      );
+      this.assertNoManagedResourceErrors();
+    });
+  }
+
+  async openDetailPage(stage: string, expectedMarker: string): Promise<void> {
+    await this.runStage(stage, async () => {
+      await this.controlClient.postJson(
+        `${stage}: reset detail observation`,
+        "/e2e/screen-state",
+        { detailPageMarker: null, detailPageTitle: null },
+      );
+      await this.controlClient.postJson(
+        `${stage}: request detail page`,
+        "/e2e/pending-action",
+        { testID: "action-open-detail-page" },
+      );
+      await this.controlClient.waitForScreenStateField(
+        `${stage}: wait for detail marker`,
+        "detailPageMarker",
+        { expectedValue: expectedMarker },
+      );
+      await this.controlClient.waitForScreenStateField(
+        `${stage}: wait for detail params`,
+        "detailPageTitle",
+        { expectedValue: "Second Page" },
+      );
+    });
+  }
+
+  async closeDetailPage(stage: string): Promise<void> {
+    await this.runStage(stage, async () => {
+      await this.controlClient.postJson(
+        `${stage}: request detail close`,
+        "/e2e/pending-action",
+        { testID: "action-close-detail-page" },
+      );
+    });
+  }
+
+  async nativeBack(stage: string): Promise<void> {
+    await this.runStage(stage, async () => {
+      if (this.platform === "android") {
+        this.runOrThrow("adb", [
+          "-s",
+          this.deviceId(),
+          "shell",
+          "input",
+          "keyevent",
+          "BACK",
+        ]);
+        return;
+      }
+      const session = `lynx-e2e-${process.pid}`;
+      this.runOrThrow("agent-device", [
+        "open",
+        this.appId(),
+        "--platform",
+        "ios",
+        "--udid",
+        this.deviceId(),
+        "--foreground",
+        "--session",
+        session,
+        "--json",
+      ]);
+      this.runOrThrow("agent-device", [
+        "gesture",
+        "swipe",
+        "right-edge",
+        "--session",
+        session,
+        "--json",
+      ]);
     });
   }
 
@@ -327,12 +557,14 @@ export class LynxAppDriver implements DetoxAppDriver {
   }
 
   private async launchApp(
-    options: { expectCrash?: boolean } = {},
+    options: { expectCrash?: boolean; launchGeneration?: string } = {},
   ): Promise<void> {
     this.terminateApp();
+    if (this.platform === "android") this.beginAndroidLaunchLogCapture();
     const launchConfiguration = serializeLynxNativeLaunchConfiguration(
       createLynxNativeLaunchConfiguration({
         appBaseURL: resolveAppBaseUrl(this.env),
+        launchGeneration: options.launchGeneration,
         runtimeConfigURL: resolveRuntimeConfigUrl(this.platform, this.env),
       }),
     );
@@ -365,12 +597,6 @@ export class LynxAppDriver implements DetoxAppDriver {
         "-n",
         `${this.appId()}/.OtaActivity`,
         "--es",
-        "framework",
-        "react",
-        "--es",
-        "channel",
-        "production",
-        "--es",
         HOT_UPDATER_LYNX_ANDROID_LAUNCH_CONFIGURATION_EXTRA,
         androidShellQuote(launchConfiguration),
       ],
@@ -378,11 +604,14 @@ export class LynxAppDriver implements DetoxAppDriver {
     );
   }
 
-  private async clearOverlayMarker(stage: string): Promise<void> {
+  private async clearOverlayMarker(
+    stage: string,
+    launchGeneration: string,
+  ): Promise<void> {
     await this.controlClient.postJson(
       `${stage}: clear overlay marker`,
       "/e2e/screen-state",
-      { runtimeScenarioMarker: null },
+      { launchGeneration, runtimeScenarioMarker: null },
     );
   }
 
@@ -418,7 +647,7 @@ export class LynxAppDriver implements DetoxAppDriver {
     }
     if (this.platform === "ios") {
       const processName = path.basename(
-        this.env.HOT_UPDATER_E2E_IOS_BINARY_PATH ?? "SparklingGo.app",
+        this.env.HOT_UPDATER_E2E_IOS_BINARY_PATH ?? "SparklingGoE2E.app",
         ".app",
       );
       sections.push(
@@ -452,8 +681,6 @@ export class LynxAppDriver implements DetoxAppDriver {
         "pidof",
         this.appId(),
       ]);
-      const pidOutput = pid.stdout.trim();
-      const pidValue = /^\d+$/.test(pidOutput) ? pidOutput : undefined;
       sections.push(
         pid.text,
         this.captureCommand("android-process", "adb", [
@@ -465,25 +692,93 @@ export class LynxAppDriver implements DetoxAppDriver {
           "processes",
           this.appId(),
         ]).text,
-        this.captureCommand("android-logcat", "adb", [
-          "-s",
-          this.deviceId(),
-          "logcat",
-          "-d",
-          "-t",
-          "500",
-          ...(pidValue ? ["--pid", pidValue] : []),
-        ]).text,
+        this.captureAndroidLaunchLogs().text,
       );
     }
     return sections.join("\n");
+  }
+
+  private assertNoManagedResourceErrors(): void {
+    if (this.platform !== "android") return;
+    const logResult = this.captureAndroidLaunchLogs();
+    if (logResult.status !== 0) {
+      throw new Error(
+        `Could not inspect managed Lynx resources: ${logResult.text}`,
+      );
+    }
+    assertNoManagedResourceEngineErrors(logResult.logsSinceLaunch);
+  }
+
+  private beginAndroidLaunchLogCapture(): void {
+    const clearResult = this.captureCommand("android-logcat-clear", "adb", [
+      "-s",
+      this.deviceId(),
+      "logcat",
+      "-c",
+    ]);
+    if (clearResult.status !== 0) {
+      throw new Error(
+        `Could not establish Android launch logs: ${clearResult.text}`,
+      );
+    }
+    const marker = `HotUpdaterE2ELaunch:${randomUUID()}`;
+    const markerResult = this.captureCommand("android-logcat-marker", "adb", [
+      "-s",
+      this.deviceId(),
+      "shell",
+      "log",
+      "-t",
+      "HotUpdaterE2E",
+      marker,
+    ]);
+    if (markerResult.status !== 0) {
+      throw new Error(
+        `Could not establish Android launch logs: ${markerResult.text}`,
+      );
+    }
+    this.androidLaunchLogMarker = marker;
+  }
+
+  private captureAndroidLaunchLogs(): ReturnType<
+    LynxAppDriver["captureCommand"]
+  > & { readonly logsSinceLaunch: string } {
+    const marker = this.androidLaunchLogMarker;
+    if (!marker) {
+      throw new Error(
+        "Could not inspect managed Lynx resources: no launch marker",
+      );
+    }
+    const result = this.captureCommand("android-logcat", "adb", [
+      "-s",
+      this.deviceId(),
+      "logcat",
+      "-d",
+    ]);
+    const markerIndex = result.stdout.indexOf(marker);
+    if (result.status === 0 && markerIndex < 0) {
+      return {
+        ...result,
+        status: 1,
+        logsSinceLaunch: "",
+        text: `${result.text}\nAndroid launch log marker was not found`,
+      };
+    }
+    return {
+      ...result,
+      logsSinceLaunch:
+        markerIndex < 0 ? "" : result.stdout.slice(markerIndex + marker.length),
+    };
   }
 
   private captureCommand(
     label: string,
     command: string,
     args: readonly string[],
-  ): { readonly stdout: string; readonly text: string } {
+  ): {
+    readonly status: number | null;
+    readonly stdout: string;
+    readonly text: string;
+  } {
     try {
       const result = spawnSync(command, args, {
         encoding: "utf8",
@@ -495,11 +790,13 @@ export class LynxAppDriver implements DetoxAppDriver {
       const commandError = result.error ? `\n${String(result.error)}` : "";
       const output = `${stdout}${result.stderr ?? ""}${commandError}`;
       return {
+        status: result.status,
         stdout,
         text: `${label} (status ${String(result.status)}): ${output.slice(-64 * 1024)}`,
       };
     } catch (error) {
       return {
+        status: null,
         stdout: "",
         text: `${label} unavailable: ${String(error)}`,
       };

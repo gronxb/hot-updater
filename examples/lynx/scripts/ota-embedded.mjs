@@ -7,26 +7,42 @@ import { fileURLToPath } from "node:url";
 
 import { LYNX_E2E_BUILTIN_BUNDLE_ID } from "../../../e2e/lynx/embedded-bundle.ts";
 import { lynx } from "../../../packages/lynx/dist/build.mjs";
+import { readSpikePageContract } from "./spike-assets.mjs";
 
-const [framework, platform, fixture, runtimeId, ...extra] =
+const runtimeIds = {
+  ios: "sparkling-c4ce8d2-navigation-2.1.0-rc.12-lynx-3.9.0-primjs-3.8.0-alpha.6-ios-managed-pages-v1",
+  android:
+    "android-sparkling-2.1.0-rc.12-navsrc-937f70d7c3012a5a-lynx-3.9.0-primjs-3.8.0-alpha.6-managed-pages-v1",
+};
+
+const [framework, platform, fixture, runtimeId, profile = "fixture", ...extra] =
   process.argv.slice(2);
 if (
   !["react", "vue", "octane"].includes(framework) ||
   !["ios", "android"].includes(platform) ||
   !/^A-sdk\d+-managed$/.test(fixture) ||
-  !/-ota-v[12]$/.test(runtimeId ?? "") ||
-  (fixture?.includes("sdk3") && !runtimeId?.endsWith("-ota-v2")) ||
+  runtimeId !== runtimeIds[platform] ||
+  !["fixture", "production"].includes(profile) ||
+  (profile === "production" &&
+    (framework !== "react" || fixture !== "A-sdk3-managed")) ||
   extra.length
 ) {
   throw new Error(
-    "Usage: node scripts/ota-embedded.mjs <react|vue|octane> <ios|android> <A-sdkN-managed> <native-ota-runtime-id>; SDK3 requires ota-v2",
+    "Usage: node scripts/ota-embedded.mjs <react|vue|octane> <ios|android> <A-sdkN-managed> <managed-pages-v1-runtime-id> [fixture|production]",
   );
 }
 const example = fileURLToPath(new URL("../", import.meta.url));
 const root = path.join(example, ".hot-updater/ota");
 const source = await fs.realpath(
-  path.join(example, ".hot-updater/g1", framework, fixture),
+  path.join(
+    example,
+    profile === "production" ? ".hot-updater/production" : ".hot-updater/g1",
+    framework,
+    fixture,
+  ),
 );
+const { pageEntries, pageEssentialResources, sparklingNavigation } =
+  await readSpikePageContract(source);
 const cliRequire = createRequire(
   new URL("../../../packages/hot-updater/package.json", import.meta.url),
 );
@@ -55,11 +71,16 @@ const validation = await lynx({
   outDir: ".hot-updater/ota/embedded-build",
   build: async ({ outDir }) => {
     await fs.cp(source, outDir, { recursive: true });
-    return { entry: "main.lynx.bundle", runtimeId };
+    return {
+      entry: "main.lynx.bundle",
+      pageEntries,
+      pageEssentialResources,
+      runtimeId,
+    };
   },
 })({ cwd: example }).build({ platform });
 const validatedFiles = await collect(validation.buildPath);
-const label = `${framework}-${platform}-${fixture}`;
+const label = `${framework}-${platform}-${fixture}${profile === "production" ? "-production" : ""}`;
 const outputPath = path.join(
   root,
   "embedded",
@@ -115,7 +136,9 @@ const receipt = {
   framework,
   platform,
   fixture,
+  profile,
   runtimeId,
+  sparklingNavigation,
   source,
   validationBundleId: validation.bundleId,
   validatedBuildPath: validation.buildPath,

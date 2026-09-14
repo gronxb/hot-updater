@@ -5,68 +5,35 @@ import SwiftUI
 /** Native scaffold configuration for the packaged Sparkling integration. */
 final class PublicHost {
     static let runtimeId =
-        "sparkling-c4ce8d2-lynx-3.9.0-primjs-3.8.0-alpha.6-ios-ota-v2"
+        "sparkling-c4ce8d2-navigation-2.1.0-rc.12-lynx-3.9.0-primjs-3.8.0-alpha.6-ios-managed-pages-v1"
     static var shared: PublicHost?
-
-    static var requestedFramework: String? {
-        let argument = ProcessInfo.processInfo.arguments.first {
-            $0.hasPrefix("--ota-framework=")
-        }
-        guard let name = argument.map({
-            String($0.dropFirst("--ota-framework=".count))
-        }), ["react", "vue", "octane"].contains(name) else { return nil }
-        return name
-    }
-
-    static var requestedChannel: String? {
-        let argument = ProcessInfo.processInfo.arguments.first {
-            $0.hasPrefix("--ota-channel=")
-        }
-        guard let channel = argument.map({
-            String($0.dropFirst("--ota-channel=".count))
-        }), !channel.isEmpty else { return nil }
-        return channel
-    }
-
-    static var requestedEmbeddedDir: URL? {
-        let argument = ProcessInfo.processInfo.arguments.first {
-            $0.hasPrefix("--ota-embedded-dir=")
-        }
-        guard let path = argument.map({
-            String($0.dropFirst("--ota-embedded-dir=".count))
-        }), !path.isEmpty else { return nil }
-        return URL(fileURLWithPath: path)
-    }
-
-    static var requestedResourceSet: String? {
-        ProcessInfo.processInfo.arguments.first {
-            $0.hasPrefix("--ota-resource-set=")
-        }.map { String($0.dropFirst("--ota-resource-set=".count)) }
-    }
-
-    static func startupResources(for resourceSet: String) throws -> Set<String> {
-        switch resourceSet {
-        case "sdk1": return ["main.lynx.bundle", "assets/probe.png"]
-        case "sdk2": return [
-            "main.lynx.bundle", "assets/probe.png", "assets/probe.ttf",
-            "assets/bootstrap.js",
-            "dynamic/component.lynx.bundle",
-        ]
-        case "sdk3": return [
-            "main.lynx.bundle", "assets/probe.png", "assets/probe.ttf",
-            "assets/bootstrap.js",
-            "dynamic/component.lynx.bundle",
-        ]
-        default: throw HotUpdaterSparklingError.invalidEmbeddedArtifact
-        }
-    }
 
     let managed: HotUpdaterSparklingHost
 
-    init(
-        framework: String,
-        events: HotUpdaterSparklingEventHandler? = nil
-    ) throws {
+    private static func productionLaunchConfiguration() -> [String: String] {
+        guard let value = Bundle.main.object(
+            forInfoDictionaryKey: "HOT_UPDATER_APP_BASE_URL"
+        ) as? String, !value.isEmpty else {
+            return [:]
+        }
+        let components = URLComponents(string: value)
+        let host = components?.host?.lowercased() ?? ""
+        let reservedSuffixes = [
+            ".localhost", ".local", ".test", ".example", ".invalid",
+        ]
+        guard value == value.trimmingCharacters(in: .whitespacesAndNewlines),
+              components?.scheme == "https", !host.isEmpty,
+              components?.user == nil, components?.password == nil,
+              components?.fragment == nil, host != "localhost",
+              host != "0.0.0.0", !host.hasPrefix("127."), host != "::1",
+              !reservedSuffixes.contains(where: host.hasSuffix) else {
+            NSLog("HOT_UPDATER_APP_BASE_URL must be a nonlocal HTTPS URL without credentials or a fragment")
+            return [:]
+        }
+        return ["appBaseURL": value]
+    }
+
+    init() throws {
         let home = FileManager.default.urls(
             for: .applicationSupportDirectory,
             in: .userDomainMask
@@ -75,25 +42,26 @@ final class PublicHost {
             at: home,
             withIntermediateDirectories: true
         )
-        let embeddedRoot = Bundle.main.resourceURL!
-            .appendingPathComponent("Embedded/Public")
-        let embeddedDirectory = Self.requestedEmbeddedDir
-            ?? embeddedRoot.appendingPathComponent(framework)
+        let productionEmbedded = Bundle.main.resourceURL!
+            .appendingPathComponent("ProductionEmbedded")
+        let embeddedRoot = (FileManager.default.fileExists(
+            atPath: productionEmbedded.path
+        ) ? productionEmbedded : Bundle.main.resourceURL!
+            .appendingPathComponent("Embedded"))
+            .appendingPathComponent("Public")
+        let embeddedDirectory = embeddedRoot.appendingPathComponent("react")
         let native = try JSONSerialization.jsonObject(
             with: Data(contentsOf: embeddedRoot.appendingPathComponent(
-                framework + "-native.json"
+                "react-native.json"
             ))
         ) as! [String: String]
         guard native["runtimeId"] == Self.runtimeId,
-              let packagedResourceSet = native["variant"],
+              native["variant"] == "sdk3",
               let embeddedBundleId = native["bundleId"],
               let minimumBundleId = native["minimumBundleId"],
               let embeddedManifestDigest = native["manifestDigest"] else {
             throw HotUpdaterSparklingError.invalidEmbeddedArtifact
         }
-        let startupResources = try Self.startupResources(
-            for: Self.requestedResourceSet ?? packagedResourceSet
-        )
         let configuration = try HotUpdaterSparklingConfiguration(
             storeURL: home.appendingPathComponent("stores"),
             runtimeId: Self.runtimeId,
@@ -102,19 +70,24 @@ final class PublicHost {
             embeddedManifestDigest: embeddedManifestDigest,
             minimumBundleId: minimumBundleId,
             appVersion: "1.0.0",
-            channel: Self.requestedChannel ?? "ota-\(framework)",
+            channel: "ota-react",
             cohort: "1",
             publicKeyPEM: Bundle.main.object(
                 forInfoDictionaryKey: "HOT_UPDATER_PUBLIC_KEY"
             ) as? String,
-            startupResourcePaths: startupResources,
             fingerprintHash: Bundle.main.object(
                 forInfoDictionaryKey: "HOT_UPDATER_FINGERPRINT_HASH"
             ) as? String
         )
+#if HOT_UPDATER_LYNX_DIAGNOSTICS
+        let launchConfiguration = try HotUpdaterSparklingLaunchConfiguration
+            .parse(arguments: ProcessInfo.processInfo.arguments)
+#else
+        let launchConfiguration = Self.productionLaunchConfiguration()
+#endif
         managed = try HotUpdaterSparklingHost(
             configuration: configuration,
-            events: events
+            launchConfiguration: launchConfiguration
         )
     }
 }

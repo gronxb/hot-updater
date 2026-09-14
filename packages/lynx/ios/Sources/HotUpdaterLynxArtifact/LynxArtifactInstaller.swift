@@ -130,12 +130,51 @@ public enum LynxArtifactError: Error, LocalizedError {
     }
 }
 
+public struct LynxPageEssentialResources: Equatable {
+    public let entry: String
+    public let resources: [String]
+
+    public init(entry: String, resources: [String]) {
+        self.entry = entry
+        self.resources = resources
+    }
+}
+
 public struct LynxInstalledArtifact {
     public let bundleId: String
     public let directory: URL
     public let entry: String
+    public let hasManagedPageMetadata: Bool
+    public let pageEntries: [String]
+    public let pageEssentialResources: [LynxPageEssentialResources]
     public let manifestDigest: String
     public let files: [String: String]
+
+    public init(
+        bundleId: String,
+        directory: URL,
+        entry: String,
+        hasManagedPageMetadata: Bool = false,
+        pageEntries: [String]? = nil,
+        pageEssentialResources: [LynxPageEssentialResources]? = nil,
+        manifestDigest: String,
+        files: [String: String]
+    ) {
+        self.bundleId = bundleId
+        self.directory = directory
+        self.entry = entry
+        self.hasManagedPageMetadata = hasManagedPageMetadata
+        self.pageEntries = pageEntries ?? [entry]
+        self.pageEssentialResources = pageEssentialResources ?? [
+            .init(entry: entry, resources: [entry]),
+        ]
+        self.manifestDigest = manifestDigest
+        self.files = files
+    }
+
+    public func essentialResources(for pageEntry: String) -> [String]? {
+        pageEssentialResources.first { $0.entry == pageEntry }?.resources
+    }
 }
 
 public final class LynxPreparedArtifact {
@@ -228,6 +267,9 @@ struct LynxManifest: Decodable {
 
 struct VerifiedLynxTree {
     let entry: String
+    let hasManagedPageMetadata: Bool
+    let pageEntries: [String]
+    let pageEssentialResources: [LynxPageEssentialResources]
     let digest: String
     let files: [String: String]
     static func verify(at root: URL, bundleId: String, manifestToken: String?, configuration: LynxArtifactConfiguration, expectedDigest: String? = nil) throws -> Self {
@@ -274,12 +316,167 @@ struct VerifiedLynxTree {
             let name = String(filePath.dropFirst(rootPath.count + 1))
             guard values.isRegularFile == true, name == "manifest.json" || files[name] != nil else { throw LynxArtifactError.invalid("Unlisted extracted file: \(name)") }
         }
-        let metadata = try JSONDecoder().decode(LynxMetadata.self, from: StrictMetadataJSON.read(root.appendingPathComponent("hot-updater-lynx.json"), limit: 16 * 1024))
+        let metadataBytes = try StrictMetadataJSON.read(
+            root.appendingPathComponent("hot-updater-lynx.json"),
+            limit: 16 * 1024
+        )
+        let metadata = try JSONDecoder().decode(
+            LynxMetadata.self,
+            from: metadataBytes
+        )
         guard metadata.schemaVersion == 1, metadata.bundleId == bundleId,
               files[metadata.entry] != nil, ArchiveExtractionUtilities.normalizedRelativePath(from: metadata.entry) == metadata.entry,
               let size = try root.appendingPathComponent(metadata.entry).resourceValues(forKeys: [.fileSizeKey]).fileSize, size > 0 else { throw LynxArtifactError.invalid("Lynx metadata/entry mismatch") }
         guard metadata.platform == configuration.platform, metadata.runtimeId == configuration.runtimeId else { throw LynxArtifactError.incompatible }
-        return Self(entry: metadata.entry, digest: digest, files: files)
+        let pages = try LynxPageMetadata.parse(
+            metadataBytes,
+            mainEntry: metadata.entry,
+            files: files,
+            root: root
+        )
+        return Self(
+            entry: metadata.entry,
+            hasManagedPageMetadata: pages.isPresent,
+            pageEntries: pages.entries,
+            pageEssentialResources: pages.essentialResources,
+            digest: digest,
+            files: files
+        )
+    }
+}
+
+private enum LynxPageMetadata {
+    struct Parsed {
+        let isPresent: Bool
+        let entries: [String]
+        let essentialResources: [LynxPageEssentialResources]
+    }
+
+    private static let pageEntryPattern =
+        "^(?:[a-z0-9](?:[a-z0-9_-]*[a-z0-9])?/)*" +
+        "[a-z0-9](?:[a-z0-9._-]*[a-z0-9])?\\.lynx\\.bundle$"
+
+    static func parse(
+        _ bytes: Data,
+        mainEntry: String,
+        files: [String: String],
+        root: URL
+    ) throws -> Parsed {
+        guard let object = try JSONSerialization.jsonObject(with: bytes)
+            as? [String: Any] else {
+            throw LynxArtifactError.invalid("Invalid Lynx metadata object")
+        }
+        let hasEntries = object.keys.contains("pageEntries")
+        let hasResources = object.keys.contains("pageEssentialResources")
+        guard hasEntries == hasResources else {
+            throw LynxArtifactError.invalid(
+                "pageEntries and pageEssentialResources must appear together"
+            )
+        }
+        guard hasEntries else {
+            try validatePageEntry(mainEntry, files: files, root: root)
+            return Parsed(
+                isPresent: false,
+                entries: [mainEntry],
+                essentialResources: [
+                    .init(entry: mainEntry, resources: [mainEntry]),
+                ]
+            )
+        }
+        guard let rawEntries = object["pageEntries"] as? [Any],
+              !rawEntries.isEmpty,
+              rawEntries.allSatisfy({ $0 is String }) else {
+            throw LynxArtifactError.invalid("Invalid pageEntries metadata")
+        }
+        let entries = rawEntries.map { $0 as! String }
+        guard !entries.contains(where: \.isEmpty),
+              Set(entries).count == entries.count,
+              entries.filter({ $0 == mainEntry }).count == 1 else {
+            throw LynxArtifactError.invalid("Invalid pageEntries membership")
+        }
+        var collisionKeys = Set<String>()
+        for entry in entries {
+            try validatePageEntry(entry, files: files, root: root)
+            guard collisionKeys.insert(ArchiveEntryGuard.portableKey(entry))
+                .inserted else {
+                throw LynxArtifactError.invalid("Colliding pageEntries metadata")
+            }
+        }
+        guard entries == entries.sorted(by: utf16Precedes) else {
+            throw LynxArtifactError.invalid("pageEntries metadata is not sorted")
+        }
+
+        guard let rawDescriptors = object["pageEssentialResources"] as? [Any],
+              rawDescriptors.count == entries.count,
+              !rawDescriptors.isEmpty else {
+            throw LynxArtifactError.invalid(
+                "Invalid pageEssentialResources metadata"
+            )
+        }
+        var descriptors: [LynxPageEssentialResources] = []
+        for (index, rawDescriptor) in rawDescriptors.enumerated() {
+            guard let descriptor = rawDescriptor as? [String: Any],
+                  Set(descriptor.keys) == Set(["entry", "resources"]),
+                  let entry = descriptor["entry"] as? String,
+                  entry == entries[index],
+                  let rawResources = descriptor["resources"] as? [Any],
+                  !rawResources.isEmpty,
+                  rawResources.allSatisfy({ $0 is String }) else {
+                throw LynxArtifactError.invalid(
+                    "Invalid pageEssentialResources descriptor"
+                )
+            }
+            let resources = rawResources.map { $0 as! String }
+            guard !resources.contains(where: \.isEmpty),
+                  Set(resources).count == resources.count,
+                  resources.contains(entry),
+                  resources == resources.sorted(by: utf16Precedes) else {
+                throw LynxArtifactError.invalid(
+                    "Invalid page essential resource list"
+                )
+            }
+            var resourceCollisionKeys = Set<String>()
+            for resource in resources {
+                guard ArchiveExtractionUtilities.normalizedRelativePath(
+                    from: resource
+                ) == resource,
+                files[resource] != nil,
+                resourceCollisionKeys.insert(
+                    ArchiveEntryGuard.portableKey(resource)
+                ).inserted else {
+                    throw LynxArtifactError.invalid(
+                        "Unsafe, colliding or unverified page resource"
+                    )
+                }
+            }
+            descriptors.append(.init(entry: entry, resources: resources))
+        }
+        return Parsed(
+            isPresent: true,
+            entries: entries,
+            essentialResources: descriptors
+        )
+    }
+
+    private static func validatePageEntry(
+        _ entry: String,
+        files: [String: String],
+        root: URL
+    ) throws {
+        guard ArchiveExtractionUtilities.normalizedRelativePath(from: entry)
+                == entry,
+              entry.range(of: pageEntryPattern, options: .regularExpression)
+                != nil,
+              files[entry] != nil,
+              let size = try root.appendingPathComponent(entry)
+                .resourceValues(forKeys: [.fileSizeKey]).fileSize,
+              size > 0 else {
+            throw LynxArtifactError.invalid("Invalid managed page entry")
+        }
+    }
+
+    private static func utf16Precedes(_ lhs: String, _ rhs: String) -> Bool {
+        lhs.utf16.lexicographicallyPrecedes(rhs.utf16)
     }
 }
 
@@ -422,7 +619,16 @@ public final class LynxArtifactInstaller {
         guard UUID(uuidString: bundleId) != nil else { throw LynxArtifactError.invalid("Invalid Bundle ID") }
         let directory = root.appendingPathComponent("bundles/\(bundleId)")
         let tree = try VerifiedLynxTree.verify(at: directory, bundleId: bundleId, manifestToken: nil, configuration: configuration, expectedDigest: expectedManifestDigest)
-        return LynxInstalledArtifact(bundleId: bundleId, directory: directory, entry: tree.entry, manifestDigest: tree.digest, files: tree.files)
+        return LynxInstalledArtifact(
+            bundleId: bundleId,
+            directory: directory,
+            entry: tree.entry,
+            hasManagedPageMetadata: tree.hasManagedPageMetadata,
+            pageEntries: tree.pageEntries,
+            pageEssentialResources: tree.pageEssentialResources,
+            manifestDigest: tree.digest,
+            files: tree.files
+        )
     }
 
     public func discard(_ token: LynxPreparedArtifact) throws {
@@ -474,7 +680,16 @@ public final class LynxArtifactInstaller {
         prepared.removeValue(forKey: token.id)
         try? FileManager.default.removeItem(at: token.stage)
         token.closeStageLease()
-        return LynxInstalledArtifact(bundleId: token.bundleId, directory: destination, entry: tree.entry, manifestDigest: tree.digest, files: tree.files)
+        return LynxInstalledArtifact(
+            bundleId: token.bundleId,
+            directory: destination,
+            entry: tree.entry,
+            hasManagedPageMetadata: tree.hasManagedPageMetadata,
+            pageEntries: tree.pageEntries,
+            pageEssentialResources: tree.pageEssentialResources,
+            manifestDigest: tree.digest,
+            files: tree.files
+        )
     }
 
     private func logPublished(_ token: LynxPreparedArtifact) {

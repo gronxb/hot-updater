@@ -1,10 +1,18 @@
 import { pluginReactLynx } from "@lynx-js/react-rsbuild-plugin";
 import { defineConfig } from "@lynx-js/rspeedy";
 
+import {
+  compilerPageGraphPlugin,
+  compilerPageResourceEntries,
+} from "./spike/compiler-page-graph.mjs";
+
 export default defineConfig({
   environments: { lynx: {} },
   source: {
-    entry: { main: "./src/e2eApp/index.tsx" },
+    entry: {
+      detail: "./src/e2eApp/detail.tsx",
+      main: "./src/e2eApp/index.tsx",
+    },
     define: {
       __E2E_OVERLAY_MARKER__: JSON.stringify(
         process.env.HOT_UPDATER_E2E_OVERLAY_MARKER ?? "",
@@ -16,5 +24,10 @@ export default defineConfig({
     filenameHash: false,
     filename: { bundle: "[name].lynx.bundle" },
   },
-  plugins: [pluginReactLynx()],
+  plugins: [
+    pluginReactLynx(),
+    compilerPageGraphPlugin({
+      resourceEntries: compilerPageResourceEntries("sdk3"),
+    }),
+  ],
 });

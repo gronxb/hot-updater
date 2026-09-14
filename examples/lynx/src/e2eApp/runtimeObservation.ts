@@ -56,10 +56,12 @@ export async function bootstrapRuntimeReady(
   configurationReady: Promise<boolean>,
   loadStartupResources: () => Promise<void>,
   confirmReady: () => Promise<unknown>,
+  startControlPolling: () => void = () => undefined,
 ): Promise<boolean> {
   if (!(await configurationReady)) return false;
   await loadStartupResources();
   await confirmReady();
+  startControlPolling();
   return true;
 }
 
@@ -108,5 +110,5 @@ export async function applyForcedUpdate(
     return;
   }
   if (!(await update.updateBundle())) return;
-  await client.reload();
+  return client.reload();
 }

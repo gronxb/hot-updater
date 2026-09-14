@@ -5,10 +5,10 @@ The `SparklingGo` scheme is the production Sparkling scaffold for
 at commit `c4ce8d25c5ea277e13752d68ff1f2a66f5704240` and uses the locked Lynx
 3.9.0 and PrimJS 3.8.0-alpha.6 dependencies.
 
-Run `./bootstrap.sh` from this directory to fetch the pinned Sparkling source,
-install `cocoapods-lynx-library`, and resolve the CocoaPods workspace. The local
-Sparkling source dependency is intentional because the template's router pod is
-not published by the CDN.
+Run `mise exec -- sh bootstrap.sh` from this directory to fetch the pinned
+Sparkling source, install `cocoapods-lynx-library`, and resolve the CocoaPods
+workspace. The local Sparkling source dependency is intentional because the
+template's router pod is not published by the CDN.
 
 The production application's native code only starts Sparkling, supplies native
 identity and embedded-release configuration, and mounts the packaged
@@ -27,14 +27,27 @@ pnpm validate:lynx:scaffold-native -- --platform ios
 ```
 
 The scaffold validation command deterministically generates, validates, and
-embeds the React SDK3 A tree under `Embedded/Public` from a clean checkout. The
-explicit matrix build consumes the prevalidated React, Vue, and Octane SDK3 A
-trees produced by the public acceptance workflow. They are generated compiler
-output and are not application-owned OTA logic.
+embeds the ordinary React SDK3 A tree under `ProductionEmbedded/Public`, builds
+`SparklingGo`, scans it for diagnostics code, and writes
+`scaffold-native-artifacts.json`.
 
 The result is under
 `ios/build/Build/Products/Release-iphonesimulator/SparklingGo.app`.
 It embeds the production scaffold's compatible ReactLynx A artifact.
+
+## Shipped E2E application
+
+`SparklingGoE2E` contains the shipped E2E main/detail bundles and diagnostics
+module:
+
+```sh
+pnpm build:lynx:e2e-native -- --platform ios
+```
+
+The application is written to
+`ios/build/e2e/Build/Products/Release-iphonesimulator/SparklingGoE2E.app` and
+the command writes `e2e-native-artifacts.json`. Its generated React SDK3 A tree
+lives under `Embedded/Public`.
 
 ## Nonproduction matrix target
 
@@ -54,6 +67,10 @@ root `pnpm e2e:lynx:matrix` command so the unchanged binary hash, process and
 generation identities, release resources, origin-off restart, BSDIFF, readiness,
 and recovery evidence are validated together. A successful Xcode build alone is
 not device acceptance.
+
+The matrix build consumes the prevalidated React, Vue, and Octane SDK3 A trees
+produced by the public acceptance workflow. They are generated compiler output
+and are not application-owned OTA logic.
 
 The production and matrix iOS simulator schemes currently build successfully.
 The real six-cell device matrix and the current full `hot-updater-agent` run

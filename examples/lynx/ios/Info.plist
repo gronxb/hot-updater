@@ -1,13 +1,10 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
-<dict>
-	<key>HOT_UPDATER_FINGERPRINT_HASH</key>
-	<string>da39a3ee5e6b4b0d3255bfef95601890afd80709</string>
-	<key>NSAppTransportSecurity</key>
 	<dict>
-		<key>NSAllowsLocalNetworking</key>
-		<true/>
+		<key>HOT_UPDATER_APP_BASE_URL</key>
+		<string>$(HOT_UPDATER_APP_BASE_URL)</string>
+		<key>HOT_UPDATER_FINGERPRINT_HASH</key>
+		<string>dd5a9a3e7eb507c92ff0e12005d1cd8b90ebc21d8461c0739580c87af8765e3c</string>
 	</dict>
-</dict>
 </plist>

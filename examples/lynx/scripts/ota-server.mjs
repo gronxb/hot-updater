@@ -14,6 +14,10 @@ import {
   createStorageUri,
   parseStorageUri,
 } from "../../../plugins/plugin-core/dist/index.mjs";
+import {
+  appendSdkInstallFailureEvidence,
+  MISSING_ASSET_RESPONSE_BODY,
+} from "./public-matrix/raw-detail-rejection.mjs";
 
 // Task-local service: real persisted PostgreSQL-compatible state and filesystem
 // objects, exposed through the existing Hot Updater repository/client handlers.
@@ -28,6 +32,8 @@ const objects = path.join(root, "objects");
 const port = 18791;
 const origin = `http://127.0.0.1:${port}`;
 const protocol = "lynx-local";
+const runtimeSnapshotsPath = path.join(root, "matrix-runtime-snapshots.jsonl");
+const installFailuresPath = path.join(root, "matrix-install-failures.jsonl");
 await fs.mkdir(objects, { recursive: true });
 const tokenPath = path.join(root, "admin-token");
 try {
@@ -126,6 +132,41 @@ const route = async (request) => {
       storage: "filesystem",
     });
   if (
+    url.pathname === "/matrix-runtime-snapshot" &&
+    request.method === "POST"
+  ) {
+    const body = await request.json();
+    if (
+      !body ||
+      typeof body !== "object" ||
+      !body.snapshot ||
+      typeof body.snapshot !== "object"
+    ) {
+      return new Response("Invalid runtime snapshot", { status: 400 });
+    }
+    await fs.appendFile(
+      runtimeSnapshotsPath,
+      `${JSON.stringify({ receivedAt: new Date().toISOString(), snapshot: body.snapshot })}\n`,
+    );
+    return Response.json({ stored: true });
+  }
+  if (url.pathname === "/matrix-install-failure" && request.method === "POST") {
+    try {
+      const body = await request.json();
+      const record = await appendSdkInstallFailureEvidence(
+        installFailuresPath,
+        body?.failure,
+      );
+      return Response.json({
+        stored: true,
+        receivedAt: record.receivedAt,
+        transport: record.transport,
+      });
+    } catch {
+      return new Response("Invalid install failure", { status: 400 });
+    }
+  }
+  if (
     /^\/receipts\/[A-Za-z0-9-]+\.json$/.test(url.pathname) &&
     request.method === "GET"
   ) {
@@ -143,7 +184,7 @@ const route = async (request) => {
       );
     } catch (error) {
       if (error.code === "ENOENT")
-        return new Response("Not found", { status: 404 });
+        return new Response(MISSING_ASSET_RESPONSE_BODY, { status: 404 });
       throw error;
     }
   }
@@ -158,7 +199,7 @@ const route = async (request) => {
       .join("/");
     return (
       (await readObject(storageUri(key))) ??
-      new Response("Not found", { status: 404 })
+      new Response(MISSING_ASSET_RESPONSE_BODY, { status: 404 })
     );
   }
   const admin = url.pathname.startsWith("/hot-updater/admin/");
@@ -191,7 +232,7 @@ const route = async (request) => {
     if (url.pathname === "/storage/get" && request.method === "POST")
       return (
         (await storage.get(input)).response ??
-        new Response("Not found", { status: 404 })
+        new Response(MISSING_ASSET_RESPONSE_BODY, { status: 404 })
       );
     if (url.pathname === "/storage/delete" && request.method === "DELETE")
       return Response.json(await storage.delete(input));
@@ -203,7 +244,7 @@ const route = async (request) => {
       new Request(url, request),
     );
   }
-  return new Response("Not found", { status: 404 });
+  return new Response(MISSING_ASSET_RESPONSE_BODY, { status: 404 });
 };
 
 const server = http.createServer(async (incoming, outgoing) => {
@@ -216,18 +257,25 @@ const server = http.createServer(async (incoming, outgoing) => {
         : { body: Readable.toWeb(incoming), duplex: "half" }),
     });
     const response = await route(request);
-    outgoing.writeHead(response.status, Object.fromEntries(response.headers));
-    outgoing.end(
+    const responseBody =
       incoming.method === "HEAD"
-        ? undefined
-        : Buffer.from(await response.arrayBuffer()),
-    );
+        ? null
+        : Buffer.from(await response.arrayBuffer());
+    outgoing.writeHead(response.status, Object.fromEntries(response.headers));
+    outgoing.end(responseBody ?? undefined);
     console.log(
       JSON.stringify({
         time: new Date().toISOString(),
         method: incoming.method,
+        requestUrl: request.url,
         path: new URL(request.url).pathname,
         status: response.status,
+        responseErrorCode:
+          response.status >= 400 ? `HTTP_${response.status}` : null,
+        responseByteLength: responseBody?.length ?? null,
+        responseSha256: responseBody
+          ? crypto.createHash("sha256").update(responseBody).digest("hex")
+          : null,
       }),
     );
   } catch (error) {

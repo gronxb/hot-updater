@@ -803,6 +803,9 @@ importers:
       '@tanstack/react-router':
         specifier: 1.167.0
         version: 1.167.0(react-dom@19.2.6(react@19.2.6))(react@19.2.6)
+      sparkling-navigation:
+        specifier: 2.1.0-rc.12
+        version: 2.1.0-rc.12
       url-search-params-polyfill:
         specifier: 8.2.5
         version: 8.2.5
@@ -1833,6 +1836,9 @@ importers:
       '@types/node':
         specifier: 'catalog:'
         version: 20.19.43
+      sparkling-navigation:
+        specifier: 2.1.0-rc.12
+        version: 2.1.0-rc.12
 
   packages/react-native:
     dependencies:
@@ -18504,6 +18510,12 @@ packages:
 
   space-separated-tokens@2.0.2:
     resolution: {integrity: sha512-PEGlAwrG8yXGXRjW32fGbg66JAlOAwbObuqVoJpv/mRgoWDQfgH1wDPvtzWyUSNAXBGSk8h755YDbbcEy3SH2Q==}
+
+  sparkling-method@2.1.0-rc.12:
+    resolution: {integrity: sha512-TfSMzFS66MYJWZG4Drn5gNCMtDqkJIvVNHhVu6DIyVxjFhIgdRiXqYsDwLh8VIQlHnTQnuNmONVEtHPzsEWaFw==}
+
+  sparkling-navigation@2.1.0-rc.12:
+    resolution: {integrity: sha512-kAQ5jZsjAixrQuoCBiiojY4jNxyilrhP/ZAjg9DvCmqdOQME73rC1+BR8zax1cyxLeAaa0fxcztAS6exA78qnA==}
 
   sparse-bitfield@3.0.3:
     resolution: {integrity: sha512-kvzhi7vqKTfkh0PZU+2D2PIllw2ymqJKujUcyPMd9Y75Nv4nPbGJZXNhxsgdQab2BmlDct1YnfQCguEvHr7VsQ==}
@@ -42711,6 +42723,12 @@ snapshots:
   source-map@0.7.6: {}
 
   space-separated-tokens@2.0.2: {}
+
+  sparkling-method@2.1.0-rc.12: {}
+
+  sparkling-navigation@2.1.0-rc.12:
+    dependencies:
+      sparkling-method: 2.1.0-rc.12
 
   sparse-bitfield@3.0.3:
     dependencies:

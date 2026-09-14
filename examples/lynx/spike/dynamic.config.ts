@@ -4,7 +4,12 @@ import { defineConfig } from "@lynx-js/rspeedy";
 export default defineConfig({
   environments: { lynx: {} },
   source: {
-    entry: { component: "./spike/dynamic-component.ts" },
+    entry: {
+      component:
+        process.env.HOT_UPDATER_SPIKE_PROFILE === "production"
+          ? "./spike/production-dynamic-component.ts"
+          : "./spike/dynamic-component.ts",
+    },
     define: {
       __SPIKE_VARIANT__: JSON.stringify(process.env.HOT_UPDATER_SPIKE_VARIANT),
     },

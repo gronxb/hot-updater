@@ -1,6 +1,11 @@
 import { defineConfig } from "@lynx-js/rspeedy";
 import { pluginVueLynx } from "vue-lynx/plugin";
 
+import {
+  compilerPageGraphPlugin,
+  compilerPageResourceEntries,
+} from "../spike/compiler-page-graph.mjs";
+
 const isPublic = process.env.HOT_UPDATER_SPIKE_SDK !== "0";
 const resourceSet =
   process.env.HOT_UPDATER_SPIKE_RESOURCES ?? (isPublic ? "sdk3" : "basic");
@@ -9,6 +14,7 @@ export default defineConfig({
   environments: { lynx: {}, web: {} },
   source: {
     entry: {
+      detail: "./vue/src/detail.ts",
       main: isPublic ? "./vue/src/sdk.ts" : "./vue/src/index.ts",
     },
     define: {
@@ -38,5 +44,10 @@ export default defineConfig({
     filenameHash: false,
     filename: { bundle: "[name].lynx.bundle" },
   },
-  plugins: [pluginVueLynx({ enableIFR: true })],
+  plugins: [
+    pluginVueLynx({ enableIFR: true }),
+    compilerPageGraphPlugin({
+      resourceEntries: compilerPageResourceEntries(resourceSet),
+    }),
+  ],
 });

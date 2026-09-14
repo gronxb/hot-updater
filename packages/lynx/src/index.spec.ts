@@ -1,6 +1,11 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import type { ConfirmationResult, NativeReply, NativeState } from "./types";
+import {
+  LYNX_RUNTIME_EVENT_LIMITS,
+  type ConfirmationResult,
+  type NativeReply,
+  type NativeState,
+} from "./types";
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -52,6 +57,262 @@ describe("Lynx public controller", () => {
     },
   );
 
+  it("returns a strictly validated callback-only runtime event snapshot", async () => {
+    const getRuntimeEvents = vi.fn(
+      (callback: (reply: NativeReply<unknown>) => void) =>
+        callback({
+          ok: true,
+          data: {
+            schemaVersion: 1,
+            latestSequence: "10000000000000000",
+            oldestSequence: "9999999999999999",
+            truncated: true,
+            events: [
+              {
+                sequence: "9999999999999999",
+                name: "launch",
+                details: { bundleId: "A" },
+              },
+              {
+                sequence: "10000000000000000",
+                name: "ready",
+                details: {},
+              },
+            ],
+          },
+        }),
+    );
+    vi.stubGlobal("NativeModules", { HotUpdaterLynx: { getRuntimeEvents } });
+    const { HotUpdater } = await import("./index");
+    await expect(HotUpdater.getRuntimeEvents()).resolves.toEqual({
+      schemaVersion: 1,
+      latestSequence: "10000000000000000",
+      oldestSequence: "9999999999999999",
+      truncated: true,
+      events: [
+        {
+          sequence: "9999999999999999",
+          name: "launch",
+          details: { bundleId: "A" },
+        },
+        {
+          sequence: "10000000000000000",
+          name: "ready",
+          details: {},
+        },
+      ],
+    });
+    expect(getRuntimeEvents.mock.calls[0]).toHaveLength(1);
+  });
+
+  it("accepts the exact runtime event name and canonical details bounds", async () => {
+    const detailsOverhead = Buffer.byteLength('{"payload":""}');
+    const data = {
+      schemaVersion: 1,
+      latestSequence: "1",
+      oldestSequence: "1",
+      truncated: false,
+      events: [
+        {
+          sequence: "1",
+          name: "é".repeat(LYNX_RUNTIME_EVENT_LIMITS.nameUtf8Bytes / 2),
+          details: {
+            payload: "x".repeat(
+              LYNX_RUNTIME_EVENT_LIMITS.detailsUtf8Bytes - detailsOverhead,
+            ),
+          },
+        },
+      ],
+    };
+    vi.stubGlobal("NativeModules", {
+      HotUpdaterLynx: {
+        getRuntimeEvents: (callback: (reply: NativeReply<unknown>) => void) =>
+          callback({ ok: true, data }),
+      },
+    });
+    const { HotUpdater, LYNX_RUNTIME_EVENT_LIMITS: publicLimits } =
+      await import("./index");
+    expect(publicLimits).toEqual(LYNX_RUNTIME_EVENT_LIMITS);
+    await expect(HotUpdater.getRuntimeEvents()).resolves.toEqual(data);
+  });
+
+  it.each([
+    {
+      name: `${"é".repeat(LYNX_RUNTIME_EVENT_LIMITS.nameUtf8Bytes / 2)}a`,
+      details: {},
+    },
+    {
+      name: "event",
+      details: {
+        payload: "x".repeat(
+          LYNX_RUNTIME_EVENT_LIMITS.detailsUtf8Bytes -
+            Buffer.byteLength('{"payload":""}') +
+            1,
+        ),
+      },
+    },
+    { name: "event", details: { invalid: undefined } },
+  ])("rejects an over-limit or non-JSON runtime event %#", async (event) => {
+    vi.stubGlobal("NativeModules", {
+      HotUpdaterLynx: {
+        getRuntimeEvents: (callback: (reply: NativeReply<unknown>) => void) =>
+          callback({
+            ok: true,
+            data: {
+              schemaVersion: 1,
+              latestSequence: "1",
+              oldestSequence: "1",
+              truncated: false,
+              events: [{ sequence: "1", ...event }],
+            },
+          }),
+      },
+    });
+    const { HotUpdater } = await import("./index");
+    await expect(HotUpdater.getRuntimeEvents()).rejects.toMatchObject({
+      code: "INVALID_NATIVE_REPLY",
+    });
+  });
+
+  it("accepts a fail-closed repaired empty runtime journal", async () => {
+    const data = {
+      schemaVersion: 1,
+      latestSequence: null,
+      oldestSequence: null,
+      truncated: true,
+      events: [],
+    } as const;
+    vi.stubGlobal("NativeModules", {
+      HotUpdaterLynx: {
+        getRuntimeEvents: (callback: (reply: NativeReply<unknown>) => void) =>
+          callback({ ok: true, data }),
+      },
+    });
+    const { HotUpdater } = await import("./index");
+    await expect(HotUpdater.getRuntimeEvents()).resolves.toEqual(data);
+  });
+
+  it("rejects a native snapshot above the canonical journal byte bound", async () => {
+    const details = {
+      payload: "x".repeat(
+        LYNX_RUNTIME_EVENT_LIMITS.detailsUtf8Bytes -
+          Buffer.byteLength('{"payload":""}'),
+      ),
+    };
+    const events = Array.from(
+      { length: LYNX_RUNTIME_EVENT_LIMITS.retainedEvents },
+      (_, index) => ({
+        sequence: String(index + 1),
+        name: "event",
+        details,
+      }),
+    );
+    vi.stubGlobal("NativeModules", {
+      HotUpdaterLynx: {
+        getRuntimeEvents: (callback: (reply: NativeReply<unknown>) => void) =>
+          callback({
+            ok: true,
+            data: {
+              schemaVersion: 1,
+              latestSequence: String(events.length),
+              oldestSequence: "1",
+              truncated: true,
+              events,
+            },
+          }),
+      },
+    });
+    const { HotUpdater } = await import("./index");
+    await expect(HotUpdater.getRuntimeEvents()).rejects.toMatchObject({
+      code: "INVALID_NATIVE_REPLY",
+    });
+  });
+
+  it.each([
+    null,
+    {
+      schemaVersion: 1,
+      latestSequence: null,
+      oldestSequence: null,
+      truncated: false,
+      events: [],
+      extra: true,
+    },
+    {
+      schemaVersion: 1,
+      latestSequence: "01",
+      oldestSequence: "01",
+      truncated: false,
+      events: [{ sequence: "01", name: "launch", details: {} }],
+    },
+    {
+      schemaVersion: 1,
+      latestSequence: "0",
+      oldestSequence: "0",
+      truncated: false,
+      events: [{ sequence: "0", name: "launch", details: {} }],
+    },
+    {
+      schemaVersion: 1,
+      latestSequence: "2",
+      oldestSequence: "1",
+      truncated: false,
+      events: [
+        { sequence: "2", name: "ready", details: {} },
+        { sequence: "1", name: "launch", details: {} },
+      ],
+    },
+    {
+      schemaVersion: 1,
+      latestSequence: "3",
+      oldestSequence: "1",
+      truncated: false,
+      events: [
+        { sequence: "1", name: "launch", details: {} },
+        { sequence: "3", name: "ready", details: {} },
+      ],
+    },
+    {
+      schemaVersion: 1,
+      latestSequence: "3",
+      oldestSequence: "2",
+      truncated: false,
+      events: [
+        { sequence: "2", name: "launch", details: {} },
+        { sequence: "3", name: "ready", details: {} },
+      ],
+    },
+    {
+      schemaVersion: 1,
+      latestSequence: "2",
+      oldestSequence: "1",
+      truncated: false,
+      events: [{ sequence: "1", name: "launch", details: [] }],
+    },
+    {
+      schemaVersion: 1,
+      latestSequence: "257",
+      oldestSequence: "1",
+      truncated: true,
+      events: Array.from({ length: 257 }, (_, index) => ({
+        sequence: String(index + 1),
+        name: "event",
+        details: {},
+      })),
+    },
+  ])("rejects malformed native runtime event reply %#", async (data) => {
+    vi.stubGlobal("NativeModules", {
+      HotUpdaterLynx: {
+        getRuntimeEvents: (callback: (reply: NativeReply<unknown>) => void) =>
+          callback({ ok: true, data }),
+      },
+    });
+    const { HotUpdater } = await import("./index");
+    await expect(HotUpdater.getRuntimeEvents()).rejects.toMatchObject({
+      code: "INVALID_NATIVE_REPLY",
+    });
+  });
+
   it("omits public APIs without truthful native behavior", async () => {
     const { HotUpdater } = await import("./index");
     expect("getManifest" in HotUpdater).toBe(false);
@@ -65,6 +326,39 @@ describe("Lynx public controller", () => {
     const { HotUpdater } = await import("./index");
     await expect(HotUpdater.reload()).rejects.toMatchObject({
       code: "NATIVE_MODULE_UNAVAILABLE",
+    });
+  });
+
+  it("returns only durable transition acceptance from default reload", async () => {
+    vi.stubGlobal("NativeModules", {
+      HotUpdaterLynx: {
+        reload: (callback: (reply: NativeReply<unknown>) => void) =>
+          callback({
+            ok: true,
+            data: {
+              status: "TRANSITION_ACCEPTED",
+              transitionId: "transition-reload",
+            },
+          }),
+      },
+    });
+    const { HotUpdater } = await import("./index");
+    await expect(HotUpdater.reload()).resolves.toEqual({
+      status: "TRANSITION_ACCEPTED",
+      transitionId: "transition-reload",
+    });
+  });
+
+  it("rejects a reload reply that claims reconstruction success", async () => {
+    vi.stubGlobal("NativeModules", {
+      HotUpdaterLynx: {
+        reload: (callback: (reply: NativeReply<unknown>) => void) =>
+          callback({ ok: true, data: { status: "RELOADED" } }),
+      },
+    });
+    const { HotUpdater } = await import("./index");
+    await expect(HotUpdater.reload()).rejects.toMatchObject({
+      code: "INVALID_NATIVE_REPLY",
     });
   });
 
@@ -183,11 +477,16 @@ describe("Lynx public controller", () => {
     vi.stubGlobal("NativeModules", {
       HotUpdaterLynx: {
         getState,
-        resetChannel: (
-          callback: (reply: NativeReply<{ reset: boolean }>) => void,
-        ) => {
+        resetChannel: (callback: (reply: NativeReply<unknown>) => void) => {
           state.nextSelection = null;
-          callback({ ok: true, data: { reset: true } });
+          callback({
+            ok: true,
+            data: {
+              reset: true,
+              status: "TRANSITION_ACCEPTED",
+              transitionId: "transition-reset",
+            },
+          });
         },
       },
     });
@@ -196,7 +495,11 @@ describe("Lynx public controller", () => {
 
     await HotUpdater.getLaunchInfo();
     expect(HotUpdater.isUpdateDownloaded()).toBe(true);
-    await expect(HotUpdater.resetChannel()).resolves.toBe(true);
+    await expect(HotUpdater.resetChannel()).resolves.toEqual({
+      reset: true,
+      status: "TRANSITION_ACCEPTED",
+      transitionId: "transition-reset",
+    });
     expect(getState).toHaveBeenCalledOnce();
     expect(() => HotUpdater.isUpdateDownloaded()).toThrow(
       "Call HotUpdater.notifyAppReady() or HotUpdater.checkForUpdate()",
@@ -228,9 +531,7 @@ describe("Lynx public controller", () => {
     vi.stubGlobal("NativeModules", {
       HotUpdaterLynx: {
         getState,
-        resetChannel: (
-          callback: (reply: NativeReply<{ reset: boolean }>) => void,
-        ) =>
+        resetChannel: (callback: (reply: NativeReply<unknown>) => void) =>
           callback({
             ok: false,
             error: {
@@ -271,6 +572,10 @@ describe("Lynx public controller", () => {
           ok: true,
           data: {
             status: "ALREADY_CONFIRMED",
+            transitionId:
+              notifyAppReady.mock.calls.length === 1
+                ? "transition-recovery"
+                : null,
             transition:
               notifyAppReady.mock.calls.length === 1
                 ? {
@@ -310,6 +615,7 @@ describe("Lynx public controller", () => {
     HotUpdater.init({ baseURL: "https://updates.test" });
     await expect(HotUpdater.notifyAppReady()).resolves.toEqual({
       status: "RECOVERED",
+      transitionId: "transition-recovery",
       fromBundleId: "crash",
       toBundleId: "stable",
       fromReleaseId: "release-crash",
@@ -353,7 +659,11 @@ describe("Lynx public controller", () => {
         ) =>
           callback({
             ok: true,
-            data: { status: "ALREADY_CONFIRMED", transition: null },
+            data: {
+              status: "ALREADY_CONFIRMED",
+              transitionId: null,
+              transition: null,
+            },
           }),
       },
     });
@@ -364,6 +674,69 @@ describe("Lynx public controller", () => {
     });
     expect(HotUpdater.getCrashHistory()).toEqual(["crash"]);
   });
+
+  it.each([
+    { transitionId: "unexpected", transition: null },
+    {
+      transitionId: null,
+      transition: {
+        kind: "UPDATE_APPLIED",
+        from: {
+          kind: "BUNDLE",
+          bundleId: "bundle-A",
+          releaseId: "release-A",
+          channel: "production",
+        },
+        to: {
+          kind: "BUNDLE",
+          bundleId: "bundle-B",
+          releaseId: "release-B",
+          channel: "production",
+        },
+      },
+    },
+  ])(
+    "rejects inconsistent readiness transition identity %#",
+    async ({ transitionId, transition }) => {
+      const running = {
+        kind: "BUNDLE" as const,
+        bundleId: "bundle-B",
+        releaseId: "release-B",
+        channel: "production",
+      };
+      vi.stubGlobal("NativeModules", {
+        HotUpdaterLynx: {
+          getState: (
+            callback: (reply: NativeReply<Partial<NativeState>>) => void,
+          ) =>
+            callback({
+              ok: true,
+              data: {
+                platform: "ios",
+                runtimeId: "runtime",
+                runningSelection: running as NativeState["runningSelection"],
+                runningConfirmed: true,
+                crashedBundleIds: [],
+              },
+            }),
+          notifyAppReady: (callback: (reply: NativeReply<unknown>) => void) =>
+            callback({
+              ok: true,
+              data: {
+                status: "ALREADY_CONFIRMED",
+                transitionId,
+                transition,
+              },
+            }),
+        },
+      });
+      const { HotUpdater } = await import("./index");
+      HotUpdater.init({ baseURL: "https://updates.test" });
+      await expect(HotUpdater.notifyAppReady()).rejects.toMatchObject({
+        code: "INVALID_NATIVE_REPLY",
+      });
+    },
+  );
 
   it.each([
     {
@@ -415,7 +788,12 @@ describe("Lynx public controller", () => {
               ok: true,
               data: {
                 status: "CONFIRMED",
-                transition: { kind: "UPDATE_APPLIED", from, to: running },
+                transitionId: "transition-update",
+                transition: {
+                  kind: "UPDATE_APPLIED",
+                  from,
+                  to: running,
+                },
               },
             }),
         },
@@ -424,6 +802,7 @@ describe("Lynx public controller", () => {
       HotUpdater.init({ baseURL: "https://updates.test" });
       await expect(HotUpdater.notifyAppReady()).resolves.toEqual({
         status: "UPDATE_APPLIED",
+        transitionId: "transition-update",
         fromBundleId: from.bundleId,
         toBundleId: "bundle-B",
         ...(from.releaseId === null ? {} : { fromReleaseId: from.releaseId }),
@@ -461,6 +840,7 @@ describe("Lynx public controller", () => {
             ok: true,
             data: {
               status: "ALREADY_CONFIRMED",
+              transitionId: "transition-adopt",
               transition: {
                 kind: "UNCHANGED",
                 from: { ...running, releaseId: "release-old" },
@@ -474,6 +854,7 @@ describe("Lynx public controller", () => {
     HotUpdater.init({ baseURL: "https://updates.test" });
     await expect(HotUpdater.notifyAppReady()).resolves.toEqual({
       status: "UNCHANGED",
+      transitionId: "transition-adopt",
       fromReleaseId: "release-old",
       toReleaseId: "release-new",
     });
@@ -508,6 +889,7 @@ describe("Lynx public controller", () => {
             ok: true,
             data: {
               status: "CONFIRMED",
+              transitionId: "invalid-transition",
               transition: {
                 kind: "UPDATE_APPLIED",
                 from: { ...running, releaseId: "release-old" },
@@ -553,6 +935,7 @@ describe("Lynx public controller", () => {
             ok: true,
             data: {
               status: "CONFIRMED",
+              transitionId: "invalid-transition",
               transition: {
                 kind: "UPDATE_APPLIED",
                 from: running,

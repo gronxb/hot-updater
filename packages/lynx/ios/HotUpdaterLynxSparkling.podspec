@@ -10,14 +10,28 @@ Pod::Spec.new do |s|
   s.author = 'Hot Updater'
   s.source = { :git => 'https://github.com/gronxb/hot-updater.git', :tag => s.version }
   s.platforms = { :ios => '15.0' }
-  s.source_files = [
-    'Sources/HotUpdaterLynxSparkling/**/*.swift',
-    'Sources/HotUpdaterLynxSparklingDiagnostics/**/*.swift'
-  ]
+  s.default_subspec = 'Core'
   s.swift_version = '5.0'
-  s.dependency 'HotUpdaterLynxArtifact', s.version.to_s
-  s.dependency 'Sparkling'
-  s.dependency 'SparklingMethod/DIProvider'
-  s.dependency 'Lynx/Framework', '3.9.0'
   s.frameworks = 'Foundation', 'CryptoKit', 'UIKit'
+
+  s.subspec 'Core' do |core|
+    core.source_files = [
+      'Sources/HotUpdaterLynxSparkling/**/*.swift',
+      'Sources/HotUpdaterLynxSparklingCore/**/*.swift'
+    ]
+    core.dependency 'HotUpdaterLynxArtifact', s.version.to_s
+    core.dependency 'Sparkling'
+    core.dependency 'SparklingMethod/DIProvider'
+    core.dependency 'Sparkling-Router'
+    core.dependency 'Lynx/Framework', '3.9.0'
+  end
+
+  s.subspec 'Diagnostics' do |diagnostics|
+    diagnostics.source_files =
+      'Sources/HotUpdaterLynxSparklingDiagnostics/**/*.swift'
+    diagnostics.dependency 'HotUpdaterLynxSparkling/Core'
+    diagnostics.pod_target_xcconfig = {
+      'OTHER_SWIFT_FLAGS' => '$(inherited) -DHOT_UPDATER_LYNX_DIAGNOSTICS'
+    }
+  end
 end

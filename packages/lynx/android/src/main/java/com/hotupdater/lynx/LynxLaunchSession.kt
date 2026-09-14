@@ -3,12 +3,10 @@ package com.hotupdater.lynx
 import android.content.Context
 import android.os.Handler
 import android.os.Looper
-import com.lynx.tasm.LynxBooleanOption
 import com.lynx.tasm.LynxError
 import com.lynx.tasm.LynxView
 import com.lynx.tasm.LynxViewBuilder
 import com.lynx.tasm.LynxViewClient
-import com.lynx.tasm.provider.AbsTemplateProvider
 import java.io.File
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlinx.coroutines.CoroutineScope
@@ -29,6 +27,10 @@ class LynxLaunchSession internal constructor(
         ".hot-updater-resource-$id",
     ),
     private val installationLease: InstallationLease = InstallationLease.none,
+    val pageEntry: String = installation.entry,
+    val pageParameters: Map<String, String> = emptyMap(),
+    val generationId: String = "legacy",
+    val openingSourceContextId: String? = null,
 ) {
     private val closed = AtomicBoolean()
     @Volatile internal var live = true
@@ -37,29 +39,51 @@ class LynxLaunchSession internal constructor(
     internal val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private val handler = Handler(Looper.getMainLooper())
     private val ready = mutableListOf<(Result<JSONObject>) -> Unit>()
-    private val bridgeReplies = LynxBridgeReplies()
+    private var secondaryAdmission: JSONObject? = null
+    private var bridgeReplies = LynxBridgeReplies()
     private var context: Context? = null
+    private var bindingEpoch = 0L
     private val requiredResources = mutableSetOf<String>()
     private val loadedResources = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
-    private var reloadHandler: (((Result<Unit>) -> Unit) -> Unit)? = null
-    private var failureHandler: ((String) -> Unit)? = null
+    private var reloadHandler:
+        ((String, (Result<JSONObject>) -> Unit) -> Unit)? = null
+    private var failureHandler: ((String, Int?, String?) -> Unit)? = null
     private var firstContentHandler: (() -> Unit)? = null
     private var confirmedHandler: ((JSONObject) -> Unit)? = null
+    private var readinessGate: (() -> Boolean)? = null
     val resources = LynxReleaseResources(
         installation.directory,
         installation.bundleId,
         installation.managedFileHashes,
         snapshotDirectory,
     )
-    val entryUrl = "hot-updater:///" + installation.entry
+    val entryUrl = "hot-updater:///" + pageEntry
     init {
         resources.isLive = { live }
-        resources.onFailure = ::notifyFailure
+        resources.onFailure = { message -> notifyFailure(message) }
     }
-    private fun notifyFailure(message: String) {
-        runCatching { controller.fail(this, message) }
+    private fun notifyFailure(
+        message: String,
+        failureCode: Int? = null,
+        failureResourcePath: String? = null,
+    ) {
+        val accepted = runCatching {
+            controller.fail(
+                this,
+                message,
+                failureCode = failureCode,
+                failureResourcePath = failureResourcePath,
+            )
+        }
+            .getOrDefault(false)
         handler.post {
-            failureHandler?.invoke(message)
+            if (accepted) {
+                failureHandler?.invoke(
+                    message,
+                    failureCode,
+                    failureResourcePath,
+                )
+            }
             flushReady()
         }
     }
@@ -69,12 +93,14 @@ class LynxLaunchSession internal constructor(
         requiredResources.add(path)
     }
     /** Installed by a packaged host that can replace the complete Lynx generation. */
-    fun setReloadHandler(handler: ((Result<Unit>) -> Unit) -> Unit) {
+    fun setReloadHandler(
+        handler: (String, (Result<JSONObject>) -> Unit) -> Unit,
+    ) {
         check(live && reloadHandler == null) { "Reload handler is already configured" }
         reloadHandler = handler
     }
     /** Installed by a packaged host that can reconstruct a failed generation. */
-    fun setFailureHandler(handler: (String) -> Unit) {
+    fun setFailureHandler(handler: (String, Int?, String?) -> Unit) {
         check(live && failureHandler == null) { "Failure handler is already configured" }
         failureHandler = handler
     }
@@ -85,7 +111,12 @@ class LynxLaunchSession internal constructor(
     ) {
         check(live && firstContentHandler == null && confirmedHandler == null)
         firstContentHandler = firstContent
-        if (isPrimary) confirmedHandler = confirmed
+        confirmedHandler = confirmed
+    }
+    /** Adds host-owned readiness state without inventing a managed resource path. */
+    fun setReadinessGate(gate: () -> Boolean) {
+        check(live && context == null && readinessGate == null)
+        readinessGate = gate
     }
     /** Serializes complete verified loads with generation retirement. */
     fun setResourceGate(gate: ((() -> Unit)) -> Unit) {
@@ -101,7 +132,8 @@ class LynxLaunchSession internal constructor(
             handler.post { flushReady() }
         }
     }
-    internal fun reloadAction(): ((Result<Unit>) -> Unit) -> Unit {
+    internal fun reloadAction():
+        (String, (Result<JSONObject>) -> Unit) -> Unit {
         check(live && isPrimary) { "Only the live primary context can reload" }
         return checkNotNull(reloadHandler) {
             "The native host does not support managed Lynx generation reload"
@@ -120,6 +152,11 @@ class LynxLaunchSession internal constructor(
         check(live && isPrimary)
         return controller.fail(this, message, allowConfirmed = true)
     }
+    /** Records a fatal failure for this exact live generation member. */
+    fun recordFatalFailure(message: String): Boolean {
+        check(live)
+        return controller.fail(this, message, allowConfirmed = true)
+    }
     /** Configure every resource boundary before constructing the view. */
     fun configure(
         builder: LynxViewBuilder,
@@ -129,23 +166,7 @@ class LynxLaunchSession internal constructor(
         check(live)
         resources.unmanagedGeneric = unmanagedGeneric
         resources.unmanagedTemplate = unmanagedTemplate
-        builder.setTemplateProvider(object : AbsTemplateProvider() {
-            override fun loadTemplate(uri: String, callback: Callback) {
-                try {
-                    check(live)
-                    resources.loadBytes(uri, callback::onSuccess)
-                }
-                catch (error: Exception) {
-                    notifyFailure(error.message ?: "Template failure")
-                    callback.onFailed(error.message)
-                }
-            }
-        })
-        builder.setMediaResourceFetcher(resources.media)
-        builder.setFontLoader(resources.font)
-        builder.setGenericResourceFetcher(resources.generic)
-        builder.setTemplateResourceFetcher(resources.template)
-        builder.setEnableGenericResourceFetcher(LynxBooleanOption.TRUE)
+        resources.configure(builder)
     }
     /** Bind before load/evaluation so module construction sees the exact native context. */
     fun bind(
@@ -153,7 +174,9 @@ class LynxLaunchSession internal constructor(
         launchConfiguration: Map<String, String> = emptyMap(),
     ) {
         check(context == null && live)
+        val epoch = ++bindingEpoch
         context = view.lynxContext
+        resources.bindImageContext(view.lynxContext)
         HotUpdaterLynxModule.bind(
             view.lynxContext,
             this,
@@ -161,7 +184,7 @@ class LynxLaunchSession internal constructor(
         )
         view.addLynxViewClient(object : LynxViewClient() {
             override fun onFirstScreen() { handler.post {
-                if (live) {
+                if (live && epoch == bindingEpoch) {
                     val first = !firstScreen
                     firstScreen = true
                     if (first) firstContentHandler?.invoke()
@@ -170,29 +193,69 @@ class LynxLaunchSession internal constructor(
             } }
             override fun onReceivedError(error: LynxError) {
                 android.util.Log.i("HotUpdaterLynx", "engine-error fatal=${error.isFatal} code=${error.errorCode} message=${error.msg}")
-                if (error.isFatal) {
-                    notifyFailure(error.msg)
+                if (error.isFatal && epoch == bindingEpoch) {
+                    notifyFailure(error.msg, error.errorCode)
                 }
             }
             override fun onLoadFailed(message: String) {
-                notifyFailure(message)
+                if (epoch == bindingEpoch) notifyFailure(message)
             }
         })
     }
+    fun prepareForRebind(): Context? {
+        check(live && context != null)
+        bindingEpoch += 1
+        val previous = context
+        previous?.let(HotUpdaterLynxModule::unbind)
+        context = null
+        ready.clear()
+        firstScreen = false
+        loadedResources.clear()
+        bridgeReplies.close()
+        bridgeReplies = LynxBridgeReplies()
+        resources.prepareForRebind()
+        reloadHandler = null
+        firstContentHandler = null
+        confirmedHandler = null
+        resources.onFailure = { message -> notifyFailure(message) }
+        return previous
+    }
     internal fun notifyReady(callback: (Result<JSONObject>) -> Unit) {
-        if (!live || !isPrimary || failed) { callback(Result.failure(CatalogPolicy.Rejected("STALE_CONTEXT", "Context cannot confirm startup"))); return }
+        if (!live || failed) { callback(Result.failure(CatalogPolicy.Rejected("STALE_CONTEXT", "Context cannot confirm startup"))); return }
+        secondaryAdmission?.let {
+            callback(Result.success(JSONObject(it.toString())))
+            return
+        }
         ready.add(callback); flushReady()
     }
-    private fun flushReady() {
+    internal fun flushReady() {
         if (ready.isEmpty()) return
-        if (live && !failed && (!firstScreen || !loadedResources.containsAll(requiredResources))) return
+        if (
+            live && !failed && (
+                !firstScreen || !loadedResources.containsAll(requiredResources) ||
+                    readinessGate?.invoke() == false
+            )
+        ) return
+        if (isPrimary && live && !failed && !controller.primaryAdmissionReady(this)) {
+            return
+        }
         val callbacks = ready.toList().also { ready.clear() }
-        callbacks.forEachIndexed { index, callback ->
-            val confirmation = runCatching { controller.confirm(this) }
-            if (index == 0) {
-                confirmation.getOrNull()?.let { confirmedHandler?.invoke(it) }
+        val confirmation = runCatching {
+            if (isPrimary) controller.confirm(this)
+            else controller.admitSecondary(
+                this,
+                deferPrimaryFlush = true,
+            ).also {
+                secondaryAdmission = JSONObject(it.toString())
             }
-            callback(confirmation)
+        }
+        try {
+            confirmation.getOrNull()?.let { confirmedHandler?.invoke(it) }
+            callbacks.forEach { callback -> callback(confirmation) }
+        } finally {
+            if (!isPrimary && confirmation.isSuccess) {
+                controller.flushPrimaryReadinessAfterHostEvent()
+            }
         }
     }
     fun close() {
@@ -209,6 +272,7 @@ class LynxLaunchSession internal constructor(
         failureHandler = null
         firstContentHandler = null
         confirmedHandler = null
+        readinessGate = null
         resources.onFailure = null
         resources.onLoaded = null
         resources.resourceGate = null

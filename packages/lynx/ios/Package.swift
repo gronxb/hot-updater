@@ -8,8 +8,18 @@ let package = Package(
     targets: [
         .target(name: "HotUpdaterLynxBsdiff", linkerSettings: [.linkedLibrary("bz2"), .linkedLibrary("c++")]),
         .target(name: "HotUpdaterLynxArtifact", dependencies: ["HotUpdaterLynxBsdiff"], linkerSettings: [.linkedLibrary("z")]),
-        .target(name: "HotUpdaterLynxSparklingDiagnostics"),
+        .target(name: "HotUpdaterLynxSparklingCore"),
+        .target(
+            name: "HotUpdaterLynxSparklingDiagnostics",
+            dependencies: ["HotUpdaterLynxSparklingCore"]
+        ),
         .testTarget(name: "HotUpdaterLynxArtifactTests", dependencies: ["HotUpdaterLynxArtifact"]),
-        .testTarget(name: "HotUpdaterLynxSparklingDiagnosticsTests", dependencies: ["HotUpdaterLynxSparklingDiagnostics"]),
+        .testTarget(
+            name: "HotUpdaterLynxSparklingDiagnosticsTests",
+            dependencies: [
+                "HotUpdaterLynxSparklingCore",
+                "HotUpdaterLynxSparklingDiagnostics",
+            ]
+        ),
     ]
 )

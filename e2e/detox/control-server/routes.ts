@@ -9,6 +9,7 @@ import {
   handleAssertBundlePatchBases,
   handleAssertCrashHistory,
   handleAssertFirstOtaUsesArchive,
+  handleAssertLynxPageInterruptionState,
   handleAssertLaunchReport,
   handleAssertManifestDiffApplied,
   handleAssertMetadataActive,
@@ -145,6 +146,11 @@ app.post("/e2e/proxy-control", async (c) => {
     artifactFailures?: number;
     catalogDelayMs?: number;
     catalogMode?: "freeze" | "live" | "replay";
+    changedAssetMutation?: {
+      assetPath?: string;
+      mode?: "corrupt" | "missing";
+      remaining?: number;
+    } | null;
     replayGeneration?: number | null;
     reset?: boolean;
   };
@@ -163,7 +169,40 @@ app.post("/e2e/proxy-control", async (c) => {
       400,
     );
   }
-  return c.json(handleConfigureProxy(payload));
+  if (
+    payload.changedAssetMutation !== undefined &&
+    payload.changedAssetMutation !== null &&
+    (payload.changedAssetMutation.assetPath !== "detail.lynx.bundle" ||
+      (payload.changedAssetMutation.mode !== "corrupt" &&
+        payload.changedAssetMutation.mode !== "missing") ||
+      !Number.isSafeInteger(payload.changedAssetMutation.remaining) ||
+      payload.changedAssetMutation.remaining! < 1)
+  ) {
+    return c.json(
+      {
+        error:
+          "changedAssetMutation must target detail.lynx.bundle with corrupt or missing mode and a positive integer remaining",
+      },
+      400,
+    );
+  }
+  const changedAssetMutation = payload.changedAssetMutation;
+  return c.json(
+    handleConfigureProxy({
+      ...payload,
+      ...(changedAssetMutation
+        ? {
+            changedAssetMutation: {
+              assetPath: changedAssetMutation.assetPath!,
+              mode: changedAssetMutation.mode!,
+              remaining: changedAssetMutation.remaining!,
+            },
+          }
+        : changedAssetMutation === null
+          ? { changedAssetMutation: null }
+          : {}),
+    }),
+  );
 });
 
 app.post("/e2e/proxy-state", (c) => c.json(handleProxyState()));
@@ -173,6 +212,8 @@ app.post("/e2e/assert-proxy", async (c) => {
     artifactFailuresRemaining?: number;
     artifactRequests?: number;
     catalogRequests?: number;
+    changedAssetMutationMode?: "corrupt" | "missing" | null;
+    changedAssetMutationRemaining?: number;
     maxPathCardinality?: number;
   };
   return c.json(handleAssertProxy(payload));
@@ -181,6 +222,9 @@ app.post("/e2e/assert-proxy", async (c) => {
 app.post("/e2e/assert-bundle-artifact-selection", async (c) => {
   const payload = (await c.req.json()) as {
     currentBundleId?: string;
+    requireArchiveAbsent?: boolean;
+    requiredPatchAssetPaths?: string[];
+    requiredRawAssetPaths?: string[];
     selection?: "archive-only" | "manifest-diff";
     targetBundleId?: string;
   };
@@ -201,6 +245,9 @@ app.post("/e2e/assert-bundle-artifact-selection", async (c) => {
   return c.json(
     handleAssertBundleArtifactSelection({
       currentBundleId: payload.currentBundleId,
+      requireArchiveAbsent: payload.requireArchiveAbsent,
+      requiredPatchAssetPaths: payload.requiredPatchAssetPaths,
+      requiredRawAssetPaths: payload.requiredRawAssetPaths,
       selection: payload.selection,
       targetBundleId: payload.targetBundleId,
     }),
@@ -216,6 +263,7 @@ app.post("/e2e/jobs/deploy-bundle", async (c) => {
       | "sizeAwareLargeDiff";
     channel?: string;
     compressStrategy?: "tar.br" | "tar.gz" | "zip";
+    crossProvenance?: boolean;
     disabled?: boolean;
     diffBaseBundleId?: string;
     forceUpdate?: boolean;
@@ -269,6 +317,12 @@ app.post("/e2e/jobs/deploy-bundle", async (c) => {
     return c.json({ error: "targetAppVersion is required" }, 400);
   }
   if (
+    payload.crossProvenance !== undefined &&
+    typeof payload.crossProvenance !== "boolean"
+  ) {
+    return c.json({ error: "crossProvenance must be a boolean" }, 400);
+  }
+  if (
     payload.patchMaxBaseBundles !== undefined &&
     (!Number.isInteger(payload.patchMaxBaseBundles) ||
       payload.patchMaxBaseBundles < 1 ||
@@ -285,6 +339,7 @@ app.post("/e2e/jobs/deploy-bundle", async (c) => {
       bundleProfile: payload.bundleProfile,
       channel: payload.channel,
       compressStrategy: payload.compressStrategy,
+      crossProvenance: payload.crossProvenance,
       disabled: payload.disabled,
       diffBaseBundleId: payload.diffBaseBundleId,
       forceUpdate: payload.forceUpdate,
@@ -527,6 +582,22 @@ app.post("/e2e/assert-first-ota-uses-archive", async (c) => {
   return c.json(await handleAssertFirstOtaUsesArchive(payload.bundleId));
 });
 
+app.post("/e2e/assert-lynx-page-interruption-state", async (c) => {
+  const payload = (await c.req.json()) as {
+    bundleId?: string;
+    releaseId?: string;
+  };
+  if (!payload.bundleId || !payload.releaseId) {
+    return c.json({ error: "bundleId and releaseId are required" }, 400);
+  }
+  return c.json(
+    handleAssertLynxPageInterruptionState({
+      bundleId: payload.bundleId,
+      releaseId: payload.releaseId,
+    }),
+  );
+});
+
 app.post("/e2e/reset-remote-bundles", async (c) => {
   return c.json(await handleResetRemoteBundles());
 });
@@ -673,7 +744,7 @@ app.post("/e2e/assert-crash-history", async (c) => {
 });
 
 app.post("/e2e/prepare-app-launch", async (c) => {
-  return c.json(await handlePrepareAppLaunch());
+  return c.json(await handlePrepareAppLaunch(await c.req.json()));
 });
 
 app.post("/e2e/launch-android-crash-app", async (c) => {

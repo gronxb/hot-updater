@@ -30,11 +30,13 @@ export type ReleaseTransitionKind =
 export type NotifyAppReadyResult =
   | {
       status: "UNCHANGED";
+      transitionId?: string;
       fromReleaseId?: string;
       toReleaseId?: string;
     }
   | {
       status: "UPDATE_APPLIED";
+      transitionId: string;
       fromBundleId: string;
       toBundleId: string;
       fromReleaseId?: string;
@@ -42,6 +44,7 @@ export type NotifyAppReadyResult =
     }
   | {
       status: "RECOVERED";
+      transitionId: string;
       fromBundleId: string;
       toBundleId: string;
       fromReleaseId?: string;
@@ -83,6 +86,15 @@ export interface InstallResult {
   requiresRestart: boolean;
 }
 
+export interface TransitionAcceptance {
+  status: "TRANSITION_ACCEPTED";
+  transitionId: string;
+}
+
+export interface ResetChannelResult extends TransitionAcceptance {
+  reset: true;
+}
+
 export interface LaunchTransitionReceipt {
   kind: "UPDATE_APPLIED" | "RECOVERED" | "UNCHANGED";
   from: SelectionSummary;
@@ -91,7 +103,29 @@ export interface LaunchTransitionReceipt {
 
 export interface ConfirmationResult {
   status: "CONFIRMED" | "ALREADY_CONFIRMED";
+  transitionId: string | null;
   transition: LaunchTransitionReceipt | null;
+}
+
+export interface RuntimeEvent {
+  readonly sequence: string;
+  readonly name: string;
+  readonly details: Readonly<Record<string, unknown>>;
+}
+
+export const LYNX_RUNTIME_EVENT_LIMITS = {
+  detailsUtf8Bytes: 65_536,
+  journalUtf8Bytes: 16_777_216,
+  nameUtf8Bytes: 128,
+  retainedEvents: 256,
+} as const;
+
+export interface RuntimeEventsSnapshot {
+  readonly schemaVersion: 1;
+  readonly latestSequence: string | null;
+  readonly oldestSequence: string | null;
+  readonly truncated: boolean;
+  readonly events: readonly RuntimeEvent[];
 }
 
 export interface CheckForUpdateResult {
@@ -211,6 +245,7 @@ type Callback<T> = (reply: NativeReply<T>) => void;
 export interface HotUpdaterLynxNative {
   getState(callback: Callback<NativeState>): void;
   getLaunchConfiguration(callback: Callback<LaunchConfiguration>): void;
+  getRuntimeEvents(callback: Callback<RuntimeEventsSnapshot>): void;
   acceptCatalog(
     params: AcceptCatalogParams,
     callback: Callback<SelectionGuard>,
@@ -228,8 +263,8 @@ export interface HotUpdaterLynxNative {
     callback: Callback<InstallResult>,
   ): void;
   notifyAppReady(callback: Callback<ConfirmationResult>): void;
-  reload?(callback: Callback<void>): void;
+  reload?(callback: Callback<TransitionAcceptance>): void;
   setCohort?(params: { cohort: string }, callback: Callback<NativeState>): void;
-  resetChannel?(callback: Callback<{ reset: boolean }>): void;
+  resetChannel?(callback: Callback<ResetChannelResult>): void;
   clearCrashHistory?(callback: Callback<NativeState>): void;
 }

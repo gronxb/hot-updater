@@ -35,8 +35,55 @@ public final class LynxLaunchContext {
     public let primary: Bool
     fileprivate var active = true
     fileprivate var started = false
+    fileprivate var pageEntry: String?
+    fileprivate var requiredResources = Set<String>()
+    fileprivate var loadedResources = Set<String>()
+    fileprivate var pageContentObserved = false
+    fileprivate var pageReadyRequested = false
+    fileprivate var pageAdmitted = false
     fileprivate let owner: UUID
     fileprivate init(primary: Bool, owner: UUID) { self.primary = primary; self.owner = owner }
+}
+
+public struct LynxManagedPageParameter: Codable, Equatable {
+    public let name: String
+    public let value: String
+
+    public init(name: String, value: String) {
+        self.name = name
+        self.value = value
+    }
+}
+
+public struct LynxManagedLogicalPage: Codable, Equatable {
+    public let entry: String
+    public let parameters: [LynxManagedPageParameter]
+
+    public init(
+        entry: String,
+        parameters: [LynxManagedPageParameter] = []
+    ) {
+        self.entry = entry
+        self.parameters = parameters
+    }
+}
+
+public enum LynxPageCancellationReason: String {
+    case nativeBack
+    case sparklingClose
+}
+
+public struct LynxManagedTransitionAcceptance: Equatable {
+    public let status = "TRANSITION_ACCEPTED"
+    public let transitionId: String
+
+    public init(transitionId: String) {
+        self.transitionId = transitionId
+    }
+
+    public var dictionary: [String: Any] {
+        ["status": status, "transitionId": transitionId]
+    }
 }
 
 private struct LynxSelectionPreparation {
@@ -63,22 +110,42 @@ public struct LynxLaunchTransition {
 public struct LynxConfirmationResult {
     public let status: String
     public let transition: LynxLaunchTransition?
+    public let transitionId: String?
+
+    public init(
+        status: String,
+        transition: LynxLaunchTransition?,
+        transitionId: String? = nil
+    ) {
+        self.status = status
+        self.transition = transition
+        self.transitionId = transitionId
+    }
+
     public var dictionary: [String: Any] {
-        ["status": status, "transition": transition?.dictionary as Any? ?? NSNull()]
+        [
+            "status": status,
+            "transition": transition?.dictionary as Any? ?? NSNull(),
+            "transitionId": transitionId as Any? ?? NSNull(),
+        ]
     }
 }
 
 /// One controller owns one managed runtime generation and one native storage/scope lease.
 public final class LynxController {
     public let configuration: LynxControllerConfiguration
+    public let generationEventJournalURL: URL
     public let runningArtifact: LynxInstalledArtifact
     public private(set) var runningSelection: LynxPolicyReceipt
     public let attemptId = UUID().uuidString
+    public private(set) var recoveryPages: [LynxManagedLogicalPage] = []
+    public private(set) var recoveredPageAttemptTerminals: [[String: Any]] = []
     private let identity = UUID()
     private let lock = NSRecursiveLock()
     private let installer: LynxArtifactInstaller
     private let journal: LynxControllerJournal
     private let builtin: LynxStoredSelection
+    private let embeddedArtifact: LynxInstalledArtifact
     private var running: LynxStoredSelection
     private var state: LynxControllerState
     private var primary: LynxLaunchContext?
@@ -87,11 +154,15 @@ public final class LynxController {
     private var loadedStartupResources: Set<String> = []
     private var contentObserved = false
     private var fatal = false
+    private var readinessAuthorityRevoked = false
     private var preparations: [String: LynxSelectionPreparation] = [:]
     private var inFlight = 0
     private var inFlightBundles: [String: Int] = [:]
     private var readyCallbacks: [(Result<LynxConfirmationResult, Error>) -> Void] = []
     private var readyRequested = false
+    private var pageReadyCallbacks: [
+        ObjectIdentifier: [(Result<LynxConfirmationResult, Error>) -> Void]
+    ] = [:]
     private var closed = false
     private var runtimeCohort: String
     private var runtimeChannel: String
@@ -122,7 +193,28 @@ public final class LynxController {
         let embeddedRoot = config.embeddedDirectory.standardizedFileURL.resolvingSymlinksInPath()
         let embedded = try VerifiedLynxTree.verify(at: embeddedRoot, bundleId: config.embeddedBundleId, manifestToken: nil,
             configuration: .init(runtimeId: config.runtimeId), expectedDigest: config.embeddedManifestDigest)
-        guard config.startupResourcePaths.isSubset(of: Set(embedded.files.keys)) else { throw LynxArtifactError.invalid("Native required startup resource is missing from embedded artifact") }
+        let embeddedArtifactValue = LynxInstalledArtifact(
+            bundleId: config.embeddedBundleId,
+            directory: embeddedRoot,
+            entry: embedded.entry,
+            hasManagedPageMetadata: embedded.hasManagedPageMetadata,
+            pageEntries: embedded.pageEntries,
+            pageEssentialResources: embedded.pageEssentialResources,
+            manifestDigest: embedded.digest,
+            files: embedded.files
+        )
+        embeddedArtifact = embeddedArtifactValue
+        guard let embeddedMainResources = embeddedArtifactValue.essentialResources(
+            for: embedded.entry
+        ),
+        config.startupResourcePaths.isEmpty || config.startupResourcePaths
+            .isSubset(of: Set(embedded.hasManagedPageMetadata
+                ? embeddedMainResources
+                : Array(embedded.files.keys))) else {
+            throw LynxArtifactError.invalid(
+                "Native startup resources must be declared by the embedded page"
+            )
+        }
         let builtinPolicy = LynxPolicyReceipt(kind: "BUILTIN", releaseId: nil, bundleId: config.embeddedBundleId,
             catalogId: nil, scopeKey: nil, generation: nil, catalogHash: nil, channel: config.channel, selectionContextHash: nil)
         builtin = try LynxStoredSelection(builtinPolicy, manifestDigest: embedded.digest)
@@ -130,6 +222,9 @@ public final class LynxController {
             config.embeddedBundleId, embedded.digest, config.appVersion, config.channel,
             config.minimumBundleId, Self.hash(Data((config.publicKeyPEM ?? "unsigned").utf8))]))
         let home = config.root.appendingPathComponent(scope)
+        generationEventJournalURL = home.appendingPathComponent(
+            "generation-events.json"
+        )
         if let artifactFetch {
             installer = try LynxArtifactInstaller(
                 root: home,
@@ -150,6 +245,8 @@ public final class LynxController {
         }
         var recovered = try journal.load()
         var recoveredChanged = false
+        var recoveredPages: [LynxManagedLogicalPage] = []
+        var embeddedPageInterruptionHasNoFallback = false
         if let cohort = recovered.selectionCohort, !cohort.isEmpty {
             let normalized = try LynxCatalogPolicy.normalizedCohort(cohort)
             runtimeCohort = normalized
@@ -159,6 +256,7 @@ public final class LynxController {
             }
         }
         var failedPendingSelection: LynxStoredSelection?
+        var interruptedPageSelection: LynxStoredSelection?
         if let pending = recovered.pending {
             failedPendingSelection = pending.selection
             let receipt = try pending.selection.policy
@@ -168,6 +266,52 @@ public final class LynxController {
             }
             recovered.pending = nil
             recoveredChanged = true
+        }
+        let interruptedAttempts = recovered.pendingPages ?? []
+        if let interrupted = interruptedAttempts.last {
+            guard interrupted.stack.last?.entry != nil else {
+                throw LynxArtifactError.invalid("Invalid pending page attempt")
+            }
+            failedPendingSelection = interrupted.selection
+            interruptedPageSelection = interrupted.selection
+            let receipt = try interrupted.selection.policy
+            if let releaseId = receipt.releaseId,
+               !recovered.unconfirmedReleaseIds.contains(releaseId) {
+                guard recovered.unconfirmedReleaseIds.count < 128 else {
+                    throw LynxArtifactError.invalid(
+                        "Missing reserved page recovery capacity"
+                    )
+                }
+                recovered.unconfirmedReleaseIds.append(releaseId)
+            }
+            recoveredPages = interrupted.stack.map {
+                LynxManagedLogicalPage(
+                    entry: $0.entry,
+                    parameters: $0.parameters.map {
+                        .init(name: $0.name, value: $0.value)
+                    }
+                )
+            }
+            for pending in interruptedAttempts {
+                _ = try Self.terminalizePageAttempt(
+                    pending,
+                    as: "process-interruption",
+                    reason: "processInterruption",
+                    in: &recovered
+                )
+            }
+            recoveredChanged = true
+        }
+        if recoveredPages.isEmpty,
+           let transition = recovered.managedTransition {
+            recoveredPages = transition.stack.map {
+                LynxManagedLogicalPage(
+                    entry: $0.entry,
+                    parameters: $0.parameters.map {
+                        .init(name: $0.name, value: $0.value)
+                    }
+                )
+            }
         }
         if recovered.selectionChannel == nil || recovered.selectionChannel?.isEmpty == true {
             recovered.selectionChannel = config.channel
@@ -187,23 +331,66 @@ public final class LynxController {
         var selected: (LynxStoredSelection, LynxInstalledArtifact)?
         for candidate in [recovered.next, recovered.confirmed].compactMap({ $0 }) {
             guard let receipt = try? candidate.policy else { continue }
+            if let interrupted = try? interruptedPageSelection?.policy,
+               Self.sameIdentity(receipt, interrupted) {
+                continue
+            }
             let snapshot = nativeSnapshot(receipt)
             guard Self.storedEligible(candidate, state: recovered, snapshot: snapshot),
                   try (recovered.unconfirmedReleaseIds.count < 128 || Self.sameIdentity(receipt, recovered.confirmed?.policy)) else { continue }
             let tree: LynxInstalledArtifact?
             if receipt.bundleId == config.embeddedBundleId {
-                tree = .init(bundleId: config.embeddedBundleId, directory: embeddedRoot, entry: embedded.entry, manifestDigest: embedded.digest, files: embedded.files)
+                tree = .init(
+                    bundleId: config.embeddedBundleId,
+                    directory: embeddedRoot,
+                    entry: embedded.entry,
+                    hasManagedPageMetadata: embedded.hasManagedPageMetadata,
+                    pageEntries: embedded.pageEntries,
+                    pageEssentialResources: embedded.pageEssentialResources,
+                    manifestDigest: embedded.digest,
+                    files: embedded.files
+                )
             } else {
                 tree = try? installer.inspectInstalled(bundleId: receipt.bundleId, expectedManifestDigest: candidate.manifestDigest)
             }
-            if let tree, config.startupResourcePaths.isSubset(of: Set(tree.files.keys)) { selected = (candidate, tree); break }
+            if let tree,
+               let mainResources = tree.essentialResources(for: tree.entry),
+               (config.startupResourcePaths.isEmpty || config.startupResourcePaths
+                   .isSubset(of: Set(tree.hasManagedPageMetadata
+                       ? mainResources
+                       : Array(tree.files.keys)))),
+               recoveredPages.allSatisfy({ tree.pageEntries.contains($0.entry) }) {
+                selected = (candidate, tree)
+                break
+            }
         }
         if let selected {
             running = selected.0; runningArtifact = selected.1; runningSelection = try selected.0.policy
         } else {
             running = builtin; runningSelection = builtinPolicy
-            runningArtifact = .init(bundleId: config.embeddedBundleId, directory: embeddedRoot, entry: embedded.entry, manifestDigest: embedded.digest, files: embedded.files)
+            runningArtifact = embeddedArtifactValue
+            if let interrupted = try interruptedPageSelection?.policy,
+               Self.sameIdentity(interrupted, builtinPolicy) {
+                embeddedPageInterruptionHasNoFallback = true
+            }
+            guard !embeddedPageInterruptionHasNoFallback,
+                  recoveredPages.isEmpty || recoveredPages.allSatisfy({
+                      embeddedArtifactValue.pageEntries.contains($0.entry)
+                  }) else {
+                recoveredPages = []
+                if recoveredChanged {
+                    recovered.revision = UUID().uuidString
+                    try journal.save(recovered)
+                }
+                state = recovered
+                throw LynxArtifactError.invalid(
+                    embeddedPageInterruptionHasNoFallback
+                        ? "Embedded page interruption has no different complete fallback"
+                        : "No eligible complete selection can recover the page stack"
+                )
+            }
         }
+        recoveryPages = recoveredPages
         // A rejected staged selection is not retained as the policy base. Preserve only an eligible selected receipt.
         if recovered.next != nil, !Self.sameIdentity(try recovered.next?.policy, runningSelection) {
             recovered.next = nil
@@ -237,6 +424,12 @@ public final class LynxController {
             try journal.save(recovered)
         }
         state = recovered
+        recoveredPageAttemptTerminals = try (recovered.pageAttemptTerminals ?? [])
+            .filter {
+                $0.terminal == "process-interruption"
+                    && $0.runtimeEventEmitted != true
+            }
+            .map { try $0.dictionary }
         runningConfirmed = Self.sameIdentity(runningSelection, try recovered.confirmed?.policy)
         try? cleanupUnusedArtifacts()
     }
@@ -249,6 +442,80 @@ public final class LynxController {
     }
     private static func sameReleaseIdentity(_ a: LynxPolicyReceipt, _ b: LynxPolicyReceipt) -> Bool {
         a.bundleId == b.bundleId && a.releaseId == b.releaseId
+    }
+    @discardableResult
+    private static func terminalizePageAttempt(
+        _ pending: LynxControllerPendingPage,
+        as terminal: String,
+        reason: String,
+        transitionId: String? = nil,
+        failureCode: Int? = nil,
+        failureResourcePath: String? = nil,
+        in state: inout LynxControllerState
+    ) throws -> LynxControllerPageTerminal {
+        guard ["admitted", "verified-fatal", "authorized-cancel", "process-interruption"]
+                .contains(terminal),
+              !reason.isEmpty,
+              state.pageAttemptTerminals?.contains(where: {
+                  $0.attemptId == pending.attemptId
+              }) != true,
+              state.pendingPages?.contains(where: {
+                  $0.attemptId == pending.attemptId
+                      && $0.contextId == pending.contextId
+              }) == true else {
+            throw LynxArtifactError.invalid(
+                "Page attempt already has a terminal state"
+            )
+        }
+        let record = LynxControllerPageTerminal(
+            attemptId: pending.attemptId,
+            contextId: pending.contextId,
+            generationId: pending.generationId,
+            processId: pending.processId,
+            startupAttemptId: pending.startupAttemptId,
+            selection: pending.selection,
+            stack: pending.stack,
+            terminal: terminal,
+            reason: reason,
+            transitionId: transitionId,
+            failureCode: failureCode,
+            failureResourcePath: failureResourcePath,
+            runtimeEventEmitted: false
+        )
+        var records = state.pageAttemptTerminals ?? []
+        records.append(record)
+        if records.count > lynxPageAttemptTerminalCapacity {
+            records.removeFirst(
+                records.count - lynxPageAttemptTerminalCapacity
+            )
+        }
+        state.pageAttemptTerminals = records
+        state.pageAttemptTerminalCount =
+            (state.pageAttemptTerminalCount ?? 0) + 1
+        state.pendingPages?.removeAll {
+            $0.attemptId == pending.attemptId
+        }
+        if state.pendingPages?.isEmpty == true {
+            state.pendingPages = nil
+        }
+        return record
+    }
+
+    private static func terminalizePendingPages(
+        as terminal: String,
+        reason: String,
+        transitionId: String? = nil,
+        in state: inout LynxControllerState
+    ) throws {
+        for pending in state.pendingPages ?? [] {
+            _ = try terminalizePageAttempt(
+                pending,
+                as: terminal,
+                reason: reason,
+                transitionId: transitionId,
+                in: &state
+            )
+        }
     }
     private static func launchTransition(from: LynxPolicyReceipt, to: LynxPolicyReceipt,
                                          recovery: Bool = false) -> LynxLaunchTransition? {
@@ -311,7 +578,8 @@ public final class LynxController {
     private func save(_ next: LynxControllerState) throws { try journal.save(next); state = next }
     private func validate(_ context: LynxLaunchContext, primaryRequired: Bool = false) throws {
         guard context.owner == identity, contexts[ObjectIdentifier(context)] === context, context.active, context.started, !fatal,
-              !closed, !primaryRequired || primary === context else { throw LynxArtifactError.invalid("STALE_CONTEXT: Native launch context has no authority") }
+              !closed, !readinessAuthorityRevoked,
+              !primaryRequired || primary === context else { throw LynxArtifactError.invalid("STALE_CONTEXT: Native launch context has no authority") }
     }
     public func createContext(primary: Bool) -> LynxLaunchContext {
         lock.lock(); defer { lock.unlock() }
@@ -322,10 +590,46 @@ public final class LynxController {
     }
     /// Call before loading the first template byte. A second primary cannot replace this generation.
     public func begin(_ context: LynxLaunchContext) throws -> LynxInstalledArtifact {
+        guard context.primary else {
+            throw LynxArtifactError.invalid(
+                "Secondary pages require an explicit managed page entry"
+            )
+        }
+        return try begin(
+            context,
+            pageEntry: runningArtifact.entry,
+            generationId: attemptId,
+            stack: [.init(entry: runningArtifact.entry)]
+        )
+    }
+
+    /// Records page identity and secondary admission before template evaluation.
+    public func begin(
+        _ context: LynxLaunchContext,
+        pageEntry: String,
+        generationId: String,
+        stack: [LynxManagedLogicalPage]
+    ) throws -> LynxInstalledArtifact {
         lock.lock(); defer { lock.unlock() }
-        guard context.owner == identity, contexts[ObjectIdentifier(context)] === context, context.active, !context.started, !fatal else { throw LynxArtifactError.invalid("Invalid launch context") }
+        guard context.owner == identity,
+              contexts[ObjectIdentifier(context)] === context,
+              context.active, !context.started, !fatal,
+              !readinessAuthorityRevoked,
+              !generationId.isEmpty,
+              stack.last?.entry == pageEntry,
+              stack.count <= lynxManagedPageStackCapacity,
+              runningArtifact.pageEntries.contains(pageEntry),
+              let declaredResources = runningArtifact.essentialResources(
+                  for: pageEntry
+              ) else {
+            throw LynxArtifactError.invalid("Invalid managed page launch context")
+        }
         if context.primary {
-            guard primary == nil else { throw LynxArtifactError.invalid("A native primary already owns this generation") }
+            guard primary == nil, pageEntry == runningArtifact.entry else {
+                throw LynxArtifactError.invalid(
+                    "A native primary already owns this generation"
+                )
+            }
             var next = state
             if runningSelection.kind != "BUILTIN", !Self.sameIdentity(runningSelection, try state.confirmed?.policy) {
                 guard next.pending == nil, next.unconfirmedReleaseIds.count < 128 else { throw LynxArtifactError.invalid("Startup trial capacity exhausted") }
@@ -333,7 +637,40 @@ public final class LynxController {
                 try save(next)
             }
             primary = context
-        } else if primary?.started != true { throw LynxArtifactError.invalid("Secondary context must wait for the primary") }
+        } else {
+            guard primary?.started == true else {
+                throw LynxArtifactError.invalid(
+                    "Secondary context must wait for the primary"
+                )
+            }
+            var next = state
+            var pendingPages = next.pendingPages ?? []
+            pendingPages.append(.init(
+                    attemptId: UUID().uuidString,
+                    contextId: context.id,
+                    generationId: generationId,
+                    processId: String(ProcessInfo.processInfo.processIdentifier),
+                    startupAttemptId: attemptId,
+                    selection: running,
+                    stack: stack.map {
+                        .init(
+                            entry: $0.entry,
+                            parameters: $0.parameters.map {
+                                .init(name: $0.name, value: $0.value)
+                            }
+                        )
+                    }
+                ))
+            next.pendingPages = pendingPages
+            next.revision = UUID().uuidString
+            try save(next)
+        }
+        context.pageEntry = pageEntry
+        context.requiredResources = Set(
+            runningArtifact.hasManagedPageMetadata
+                ? declaredResources
+                : Array(configuration.startupResourcePaths)
+        )
         context.started = true
         return runningArtifact
     }
@@ -346,6 +683,14 @@ public final class LynxController {
             preparations.removeValue(forKey: id)
         }
         contexts.removeValue(forKey: ObjectIdentifier(context))
+        let pageCallbacks = pageReadyCallbacks.removeValue(
+            forKey: ObjectIdentifier(context)
+        ) ?? []
+        pageCallbacks.forEach {
+            $0(.failure(LynxArtifactError.invalid(
+                "STALE_CONTEXT: Page was destroyed"
+            )))
+        }
         if primary === context {
             let callbacks = readyCallbacks; readyCallbacks = []
             callbacks.forEach { $0(.failure(LynxArtifactError.invalid("STALE_CONTEXT: Primary was destroyed"))) }
@@ -366,10 +711,15 @@ public final class LynxController {
         inFlightBundles.removeAll()
         let callbacks = readyCallbacks
         readyCallbacks.removeAll()
+        let pageCallbacks = pageReadyCallbacks.values.flatMap { $0 }
+        pageReadyCallbacks.removeAll()
         lock.unlock()
         discarded.forEach { try? installer.discard($0) }
         installer.close()
         callbacks.forEach {
+            $0(.failure(LynxArtifactError.invalid("STALE_CONTEXT: Generation closed")))
+        }
+        pageCallbacks.forEach {
             $0(.failure(LynxArtifactError.invalid("STALE_CONTEXT: Generation closed")))
         }
     }
@@ -384,11 +734,18 @@ public final class LynxController {
     }
     public func resetChannel(_ context: LynxLaunchContext) throws -> Bool {
         lock.lock(); defer { lock.unlock() }; try validate(context)
+        guard state.pendingPages?.isEmpty != false else {
+            throw LynxPolicyError(
+                code: "INVALID_TRANSITION",
+                message: "Reset with a pending page requires a managed transition"
+            )
+        }
         var next = state
         next.selectionChannel = configuration.channel
         next.confirmed = nil
         next.next = nil
         next.pending = nil
+        next.managedTransition = nil
         next.launchTransition = nil
         next.catalogAcceptances = nil
         next.revision = UUID().uuidString
@@ -412,6 +769,13 @@ public final class LynxController {
                 "runningConfirmed": runningConfirmed,
                 "confirmedSelection": try state.confirmed?.policy.dictionary as Any? ?? NSNull(),
                 "nextSelection": try state.next?.policy.dictionary as Any? ?? NSNull(),
+                "managedTransitionId": state.managedTransition?.transitionId
+                    as Any? ?? NSNull(),
+            "pageAttemptTerminals": try (state.pageAttemptTerminals ?? [])
+                .map { try $0.dictionary },
+                "pageAttemptTerminalCount": state.pageAttemptTerminalCount ?? 0,
+                "managedTerminalFailure": try state.managedTerminalFailure?
+                    .dictionary as Any? ?? NSNull(),
                 "crashedBundleIds": state.crashedBundleIds, "unconfirmedReleaseIds": state.unconfirmedReleaseIds,
                 "fingerprintHash": configuration.fingerprintHash]
     }
@@ -624,34 +988,88 @@ public final class LynxController {
 
     /// The host calls this only after its native media/font/script loader succeeds.
     public func observedResource(_ path: String, context: LynxLaunchContext) throws {
-        lock.lock(); defer { lock.unlock() }; try validate(context, primaryRequired: true)
-        guard runningArtifact.files[path] != nil else { throw LynxArtifactError.invalid("Unlisted startup resource") }
-        loadedStartupResources.insert(path)
-        try confirmIfReady()
+        lock.lock(); defer { lock.unlock() }; try validate(context)
+        guard !readinessAuthorityRevoked else {
+            throw LynxArtifactError.invalid(
+                "STALE_CONTEXT: Managed transition already accepted"
+            )
+        }
+        guard runningArtifact.files[path] != nil else {
+            throw LynxArtifactError.invalid("Unlisted startup resource")
+        }
+        context.loadedResources.insert(path)
+        if context.primary {
+            loadedStartupResources.insert(path)
+            try confirmIfReady()
+        } else {
+            try admitPageIfReady(context)
+        }
     }
     public func observedContent(_ context: LynxLaunchContext) throws {
-        lock.lock(); defer { lock.unlock() }; try validate(context, primaryRequired: true)
-        contentObserved = true
-        try confirmIfReady()
+        lock.lock(); defer { lock.unlock() }; try validate(context)
+        guard !readinessAuthorityRevoked else {
+            throw LynxArtifactError.invalid(
+                "STALE_CONTEXT: Managed transition already accepted"
+            )
+        }
+        context.pageContentObserved = true
+        if context.primary {
+            contentObserved = true
+            try confirmIfReady()
+        } else {
+            try admitPageIfReady(context)
+        }
     }
     public func notifyAppReady(_ context: LynxLaunchContext,
                                completion: @escaping (Result<LynxConfirmationResult, Error>) -> Void) {
         lock.lock(); defer { lock.unlock() }
-        do { try validate(context, primaryRequired: true) }
+        do { try validate(context) }
         catch { completion(.failure(error)); return }
+        guard !readinessAuthorityRevoked else {
+            completion(.failure(LynxArtifactError.invalid(
+                "STALE_CONTEXT: Managed transition already accepted"
+            )))
+            return
+        }
+        if !context.primary {
+            if context.pageAdmitted {
+                completion(.success(.init(
+                    status: "PAGE_ALREADY_ADMITTED",
+                    transition: nil
+                )))
+                return
+            }
+            pageReadyCallbacks[ObjectIdentifier(context), default: []]
+                .append(completion)
+            context.pageReadyRequested = true
+            do { try admitPageIfReady(context) }
+            catch {
+                let callbacks = pageReadyCallbacks.removeValue(
+                    forKey: ObjectIdentifier(context)
+                ) ?? []
+                callbacks.forEach { $0(.failure(error)) }
+            }
+            return
+        }
         if runningConfirmed {
             do {
                 var next = state
                 let transition = try next.launchTransition?.policy
+                let managedTransitionId = next.managedTransition?.transitionId
                 guard transition.map({ Self.sameIdentity($0.to, runningSelection) }) ?? true else {
                     throw LynxArtifactError.invalid("Launch transition does not match the running selection")
                 }
-                if next.launchTransition != nil {
+                if next.launchTransition != nil || next.managedTransition != nil {
                     next.launchTransition = nil
+                    next.managedTransition = nil
                     next.revision = UUID().uuidString
                     try save(next)
                 }
-                completion(.success(.init(status: "ALREADY_CONFIRMED", transition: transition)))
+                completion(.success(.init(
+                    status: "ALREADY_CONFIRMED",
+                    transition: transition,
+                    transitionId: managedTransitionId
+                )))
             } catch { completion(.failure(error)) }
             return
         }
@@ -663,7 +1081,10 @@ public final class LynxController {
         }
     }
     private func confirmIfReady() throws {
-        guard !runningConfirmed, contentObserved, readyRequested, configuration.startupResourcePaths.isSubset(of: loadedStartupResources), let primary else { return }
+        guard !runningConfirmed, contentObserved, readyRequested, let primary,
+              primary.requiredResources.isSubset(of: primary.loadedResources),
+              state.pendingPages?.isEmpty != false
+        else { return }
         do {
         try validate(primary, primaryRequired: true)
         var next = state
@@ -674,11 +1095,13 @@ public final class LynxController {
             throw LynxArtifactError.invalid("No pending startup attempt")
         }
         let transition = try next.launchTransition?.policy
+        let managedTransitionId = next.managedTransition?.transitionId
         guard transition.map({ Self.sameIdentity($0.to, runningSelection) }) ?? true else {
             throw LynxArtifactError.invalid("Launch transition does not match the running selection")
         }
         next.confirmed = running; next.pending = nil
         next.launchTransition = nil
+        next.managedTransition = nil
         next.revision = UUID().uuidString
         try save(next)
         runningConfirmed = true
@@ -686,7 +1109,8 @@ public final class LynxController {
         callbacks.enumerated().forEach {
             $0.element(.success(.init(
                 status: $0.offset == 0 ? "CONFIRMED" : "ALREADY_CONFIRMED",
-                transition: $0.offset == 0 ? transition : nil
+                transition: $0.offset == 0 ? transition : nil,
+                transitionId: $0.offset == 0 ? managedTransitionId : nil
             )))
         }
         } catch {
@@ -694,6 +1118,324 @@ public final class LynxController {
             let callbacks = readyCallbacks; readyCallbacks = []
             callbacks.forEach { $0(.failure(error)) }
             throw error
+        }
+    }
+
+    private func admitPageIfReady(_ context: LynxLaunchContext) throws {
+        guard !context.primary, !context.pageAdmitted,
+              context.pageContentObserved, context.pageReadyRequested,
+              context.requiredResources.isSubset(of: context.loadedResources)
+        else { return }
+        try validate(context)
+        guard let pending = state.pendingPages?.first(where: {
+            $0.contextId == context.id
+        }) else {
+            throw LynxArtifactError.invalid(
+                "STALE_CONTEXT: Page admission attempt changed"
+            )
+        }
+        var next = state
+        _ = try Self.terminalizePageAttempt(
+            pending,
+            as: "admitted",
+            reason: "admission",
+            in: &next
+        )
+        next.revision = UUID().uuidString
+        try save(next)
+        context.pageAdmitted = true
+        let callbacks = pageReadyCallbacks.removeValue(
+            forKey: ObjectIdentifier(context)
+        ) ?? []
+        callbacks.enumerated().forEach {
+            $0.element(.success(.init(
+                status: $0.offset == 0
+                    ? "PAGE_ADMITTED"
+                    : "PAGE_ALREADY_ADMITTED",
+                transition: nil
+            )))
+        }
+        try confirmIfReady()
+    }
+
+    public func pendingPageAttemptId(
+        _ context: LynxLaunchContext
+    ) throws -> String? {
+        lock.lock(); defer { lock.unlock() }
+        try validate(context)
+        guard !context.primary else { return nil }
+        return state.pendingPages?.first(where: {
+            $0.contextId == context.id
+        })?.attemptId
+    }
+
+    @discardableResult
+    public func cancelPage(
+        _ context: LynxLaunchContext,
+        reason: LynxPageCancellationReason
+    ) throws -> Bool {
+        lock.lock(); defer { lock.unlock() }
+        try validate(context)
+        guard !context.primary, !context.pageAdmitted,
+              let pending = state.pendingPages?.first(where: {
+                  $0.contextId == context.id
+              }) else {
+            return false
+        }
+        var next = state
+        _ = try Self.terminalizePageAttempt(
+            pending,
+            as: "authorized-cancel",
+            reason: reason.rawValue,
+            in: &next
+        )
+        next.revision = UUID().uuidString
+        try save(next)
+        let callbacks = pageReadyCallbacks.removeValue(
+            forKey: ObjectIdentifier(context)
+        ) ?? []
+        callbacks.forEach {
+            $0(.failure(LynxPolicyError(
+                code: "PAGE_CANCELLED",
+                message: "Managed page admission was cancelled"
+            )))
+        }
+        try confirmIfReady()
+        return true
+    }
+
+    @discardableResult
+    public func reportPageFailure(_ context: LynxLaunchContext) throws -> Bool {
+        try reportPageFailure(
+            context,
+            failureCode: nil,
+            failureResourcePath: nil
+        )
+    }
+
+    @discardableResult
+    public func reportPageFailure(
+        _ context: LynxLaunchContext,
+        failureCode: Int?,
+        failureResourcePath: String?
+    ) throws -> Bool {
+        lock.lock(); defer { lock.unlock() }
+        try validate(context)
+        guard !context.primary, !context.pageAdmitted,
+              let failedPending = state.pendingPages?.first(where: {
+                  $0.contextId == context.id
+              }) else {
+            return false
+        }
+        var next = state
+        try recordFatalSelectionFailure(in: &next)
+        for pending in next.pendingPages ?? [] {
+            _ = try Self.terminalizePageAttempt(
+                pending,
+                as: "verified-fatal",
+                reason: "verifiedFatal",
+                failureCode: pending.attemptId == failedPending.attemptId
+                    ? failureCode
+                    : nil,
+                failureResourcePath:
+                    pending.attemptId == failedPending.attemptId
+                        ? failureResourcePath
+                        : nil,
+                in: &next
+            )
+        }
+        if next.pending?.attemptId == attemptId { next.pending = nil }
+        next.revision = UUID().uuidString
+        try save(next)
+        fatal = true
+        let callbacks = pageReadyCallbacks.removeValue(
+            forKey: ObjectIdentifier(context)
+        ) ?? []
+        callbacks.forEach {
+            $0(.failure(LynxArtifactError.invalid(
+                "Native managed page admission failed"
+            )))
+        }
+        let primaryCallbacks = readyCallbacks
+        readyCallbacks = []
+        primaryCallbacks.forEach {
+            $0(.failure(LynxArtifactError.invalid(
+                "Native managed page admission failed"
+            )))
+        }
+        return true
+    }
+
+    public func acceptManagedTransition(
+        _ context: LynxLaunchContext,
+        trigger: String,
+        stack: [LynxManagedLogicalPage]
+    ) throws -> LynxManagedTransitionAcceptance {
+        lock.lock(); defer { lock.unlock() }
+        try validate(context, primaryRequired: true)
+        guard ["reload", "reset", "forcedActivation"].contains(trigger),
+              state.managedTransition == nil,
+              !stack.isEmpty,
+              stack.first?.entry == runningArtifact.entry,
+              stack.count <= lynxManagedPageStackCapacity else {
+            throw LynxPolicyError(
+                code: state.managedTransition == nil
+                    ? "INVALID_TRANSITION"
+                    : "TRANSITION_IN_PROGRESS",
+                message: "A managed transition cannot be accepted"
+            )
+        }
+
+        var next = state
+        let target: LynxStoredSelection
+        let targetArtifact: LynxInstalledArtifact
+        if trigger == "reset" {
+            target = builtin
+            targetArtifact = embeddedArtifact
+            next.selectionChannel = configuration.channel
+            next.confirmed = nil
+            next.next = nil
+            next.pending = nil
+            next.launchTransition = nil
+            next.catalogAcceptances = nil
+        } else {
+            target = next.next ?? running
+            next.next = target
+            let receipt = try target.policy
+            if receipt.bundleId == configuration.embeddedBundleId {
+                targetArtifact = embeddedArtifact
+            } else {
+                targetArtifact = try installer.inspectInstalled(
+                    bundleId: receipt.bundleId,
+                    expectedManifestDigest: target.manifestDigest
+                )
+            }
+        }
+        guard stack.allSatisfy({
+            targetArtifact.pageEntries.contains($0.entry)
+        }) else {
+            throw LynxPolicyError(
+                code: "RECONSTRUCTION_FAILED",
+                message: "The selected release cannot reconstruct the page stack"
+            )
+        }
+        let transitionId = UUID().uuidString
+        try Self.terminalizePendingPages(
+            as: "authorized-cancel",
+            reason: "managedTransition",
+            transitionId: transitionId,
+            in: &next
+        )
+        next.managedTransition = .init(
+            transitionId: transitionId,
+            trigger: trigger,
+            source: running,
+            target: target,
+            stack: stack.map {
+                .init(
+                    entry: $0.entry,
+                    parameters: $0.parameters.map {
+                        .init(name: $0.name, value: $0.value)
+                    }
+                )
+            }
+        )
+        next.revision = UUID().uuidString
+        try save(next)
+        readinessAuthorityRevoked = true
+        if trigger == "reset" {
+            runtimeChannel = configuration.channel
+        }
+        return .init(transitionId: transitionId)
+    }
+
+    public var managedTransitionId: String? {
+        lock.lock(); defer { lock.unlock() }
+        return state.managedTransition?.transitionId
+    }
+
+    public func markRecoveredPageAttemptTerminalEmitted(
+        _ attemptId: String
+    ) throws {
+        lock.lock(); defer { lock.unlock() }
+        guard let index = state.pageAttemptTerminals?.firstIndex(where: {
+            $0.attemptId == attemptId && $0.terminal == "process-interruption"
+        }), state.pageAttemptTerminals?[index].runtimeEventEmitted != true else {
+            return
+        }
+        var next = state
+        next.pageAttemptTerminals?[index].runtimeEventEmitted = true
+        next.revision = UUID().uuidString
+        try save(next)
+        recoveredPageAttemptTerminals.removeAll {
+            $0["pageAttemptId"] as? String == attemptId
+        }
+    }
+
+    public func recordManagedFailClosed(
+        reason: String,
+        message: String,
+        stack: [LynxManagedLogicalPage]
+    ) throws -> [String: Any] {
+        lock.lock(); defer { lock.unlock() }
+        guard !reason.isEmpty, !message.isEmpty,
+              !stack.isEmpty,
+              stack.count <= lynxManagedPageStackCapacity else {
+            throw LynxArtifactError.invalid(
+                "Invalid managed fail-closed record"
+            )
+        }
+        var next = state
+        let record = LynxControllerManagedFailure(
+            failureId: UUID().uuidString,
+            reason: reason,
+            message: message,
+            transitionId: next.managedTransition?.transitionId,
+            processId: String(ProcessInfo.processInfo.processIdentifier),
+            selection: running,
+            stack: stack.map {
+                .init(
+                    entry: $0.entry,
+                    parameters: $0.parameters.map {
+                        .init(name: $0.name, value: $0.value)
+                    }
+                )
+            }
+        )
+        next.managedTerminalFailure = record
+        try Self.terminalizePendingPages(
+            as: "verified-fatal",
+            reason: "failClosed",
+            transitionId: next.managedTransition?.transitionId,
+            in: &next
+        )
+        next.revision = UUID().uuidString
+        try save(next)
+        return try record.dictionary
+    }
+
+    private func recordFatalSelectionFailure(
+        in next: inout LynxControllerState
+    ) throws {
+        if runningSelection.bundleId != configuration.embeddedBundleId {
+            next.crashedBundleIds.removeAll {
+                $0 == runningSelection.bundleId
+            }
+            next.crashedBundleIds.append(runningSelection.bundleId)
+            if next.crashedBundleIds.count > 10 {
+                next.crashedBundleIds.removeFirst(
+                    next.crashedBundleIds.count - 10
+                )
+            }
+        }
+        if let releaseId = runningSelection.releaseId,
+           !next.unconfirmedReleaseIds.contains(releaseId) {
+            guard next.unconfirmedReleaseIds.count < 128 else {
+                throw LynxArtifactError.invalid(
+                    "Startup suppression capacity exhausted"
+                )
+            }
+            next.unconfirmedReleaseIds.append(releaseId)
         }
     }
     @discardableResult
@@ -705,22 +1447,19 @@ public final class LynxController {
         lock.lock(); defer { lock.unlock() }; try validate(context, primaryRequired: true)
         // Errors after startup confirmation are outside the initial rollback window.
         guard knownFatal, !runningConfirmed || allowConfirmed else { return false }
-        fatal = true // A storage failure cannot restore a context already observed to fail.
         let callbacks = readyCallbacks; readyCallbacks = []
         defer { callbacks.forEach { $0(.failure(LynxArtifactError.invalid("Native startup failed"))) } }
         var next = state
-        if runningSelection.kind == "BUNDLE" {
-            next.crashedBundleIds.removeAll { $0 == runningSelection.bundleId }
-            next.crashedBundleIds.append(runningSelection.bundleId)
-            if next.crashedBundleIds.count > 10 { next.crashedBundleIds.removeFirst(next.crashedBundleIds.count - 10) }
-        } else if let releaseId = runningSelection.releaseId, !next.unconfirmedReleaseIds.contains(releaseId) {
-            // Explicit EMBEDDED is a Release trial. Its failure must not blacklist native builtin bytes.
-            guard next.unconfirmedReleaseIds.count < 128 else { throw LynxArtifactError.invalid("Startup suppression capacity exhausted") }
-            next.unconfirmedReleaseIds.append(releaseId)
-        }
+        try recordFatalSelectionFailure(in: &next)
+        try Self.terminalizePendingPages(
+            as: "verified-fatal",
+            reason: "generationFatal",
+            in: &next
+        )
         if next.pending?.attemptId == attemptId { next.pending = nil }
         next.revision = UUID().uuidString
         try save(next)
+        fatal = true
         return true
     }
     /// All contexts retain the same generation-pinned immutable tree; no resource uses next selection.

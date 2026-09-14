@@ -18,20 +18,36 @@ describe("framework-independent Lynx artifacts", () => {
   const binary = Buffer.from([0xff, 0x00, 0x80, 0x42]);
   const build =
     vi.fn<(context: LynxBuildContext) => Promise<LynxBuildOutput>>();
+  const singlePageOutput = (
+    entry = "main.lynx.bundle",
+    profile = runtimeId,
+  ): LynxBuildOutput => ({
+    entry,
+    pageEntries: [entry],
+    pageEssentialResources: [{ entry, resources: [entry] }],
+    runtimeId: profile,
+  });
 
   beforeEach(async () => {
     build.mockReset();
     cwd = await fs.mkdtemp(path.join(os.tmpdir(), "hot-updater-lynx-"));
     build.mockImplementation(async ({ outDir }) => {
-      await fs.mkdir(path.join(outDir, "templates"));
-      await fs.writeFile(path.join(outDir, "templates/main.bin"), binary);
-      await fs.writeFile(
-        path.join(outDir, "templates/lazy.bundle"),
-        "lazy chunk",
-      );
+      await fs.writeFile(path.join(outDir, "main.lynx.bundle"), binary);
+      await fs.writeFile(path.join(outDir, "detail.lynx.bundle"), "detail");
       await fs.writeFile(path.join(outDir, "icon.png"), "image");
       return {
-        entry: "templates/main.bin",
+        entry: "main.lynx.bundle",
+        pageEntries: ["detail.lynx.bundle", "main.lynx.bundle"],
+        pageEssentialResources: [
+          {
+            entry: "detail.lynx.bundle",
+            resources: ["detail.lynx.bundle"],
+          },
+          {
+            entry: "main.lynx.bundle",
+            resources: ["icon.png", "main.lynx.bundle"],
+          },
+        ],
         runtimeId,
         stdout: "compiler output",
       };
@@ -53,30 +69,45 @@ describe("framework-independent Lynx artifacts", () => {
       [android, "android"],
     ] as const) {
       expect(
-        JSON.parse(
-          await fs.readFile(
-            path.join(result.buildPath, "hot-updater-lynx.json"),
-            "utf8",
-          ),
+        await fs.readFile(
+          path.join(result.buildPath, "hot-updater-lynx.json"),
+          "utf8",
         ),
-      ).toEqual({
-        schemaVersion: 1,
-        bundleId: result.bundleId,
-        platform,
-        entry: "templates/main.bin",
-        runtimeId,
-      });
-      expect(result.patchAssetPath).toBe("templates/main.bin");
+      ).toBe(
+        `${JSON.stringify(
+          {
+            schemaVersion: 1,
+            bundleId: result.bundleId,
+            platform,
+            entry: "main.lynx.bundle",
+            pageEntries: ["detail.lynx.bundle", "main.lynx.bundle"],
+            pageEssentialResources: [
+              {
+                entry: "detail.lynx.bundle",
+                resources: ["detail.lynx.bundle"],
+              },
+              {
+                entry: "main.lynx.bundle",
+                resources: ["icon.png", "main.lynx.bundle"],
+              },
+            ],
+            runtimeId,
+          },
+          null,
+          2,
+        )}\n`,
+      );
+      expect(result.patchAssetPath).toBe("main.lynx.bundle");
       expect(result.artifacts).toEqual(
         expect.arrayContaining([
           {
-            path: path.join(result.buildPath, "templates/main.bin"),
-            name: "templates/main.bin",
+            path: path.join(result.buildPath, "main.lynx.bundle"),
+            name: "main.lynx.bundle",
             downloadCompression: "br",
           },
           {
-            path: path.join(result.buildPath, "templates/lazy.bundle"),
-            name: "templates/lazy.bundle",
+            path: path.join(result.buildPath, "detail.lynx.bundle"),
+            name: "detail.lynx.bundle",
             downloadCompression: null,
           },
           {
@@ -92,14 +123,14 @@ describe("framework-independent Lynx artifacts", () => {
         ]),
       );
       expect(
-        await fs.readFile(path.join(result.buildPath, "templates/main.bin")),
+        await fs.readFile(path.join(result.buildPath, "main.lynx.bundle")),
       ).toEqual(binary);
       expect(
         await fs.readFile(
-          path.join(result.buildPath, "templates/lazy.bundle"),
+          path.join(result.buildPath, "detail.lynx.bundle"),
           "utf8",
         ),
-      ).toBe("lazy chunk");
+      ).toBe("detail");
       expect(
         await fs.readFile(path.join(result.buildPath, "icon.png"), "utf8"),
       ).toBe("image");
@@ -118,9 +149,9 @@ describe("framework-independent Lynx artifacts", () => {
       await Promise.all([
         fs.writeFile(path.join(outDir, "Z.asset"), "upper"),
         fs.writeFile(path.join(outDir, "ä.asset"), "non-ascii"),
-        fs.writeFile(path.join(outDir, "main.bundle"), binary),
+        fs.writeFile(path.join(outDir, "main.lynx.bundle"), binary),
       ]);
-      return { entry: "main.bundle", runtimeId };
+      return singlePageOutput();
     });
 
     const result = await lynx({ build })({ cwd }).build({ platform: "ios" });
@@ -128,7 +159,7 @@ describe("framework-independent Lynx artifacts", () => {
     expect(result.artifacts.map(({ name }) => name)).toEqual([
       "Z.asset",
       "hot-updater-lynx.json",
-      "main.bundle",
+      "main.lynx.bundle",
       "ä.asset",
     ]);
   });
@@ -199,7 +230,7 @@ describe("framework-independent Lynx artifacts", () => {
       const previous = await lynx({ build })({ cwd }).build({
         platform: "ios",
       });
-      build.mockResolvedValue({ entry, runtimeId });
+      build.mockResolvedValue(singlePageOutput(entry));
       await expect(
         lynx({ build })({ cwd }).build({ platform: "ios" }),
       ).rejects.toThrow("relative file path");
@@ -209,15 +240,174 @@ describe("framework-independent Lynx artifacts", () => {
     },
   );
 
+  it.each([
+    "Main.lynx.bundle",
+    "máin.lynx.bundle",
+    "main%20.lynx.bundle",
+    "./main.lynx.bundle",
+    "/main.lynx.bundle",
+    "main.bundle",
+    "-main.lynx.bundle",
+    "pages/-detail.lynx.bundle",
+  ])("rejects noncanonical page route %j", async (pageEntry) => {
+    build.mockImplementation(async ({ outDir }) => {
+      await fs.writeFile(path.join(outDir, "main.lynx.bundle"), binary);
+      return {
+        ...singlePageOutput(),
+        pageEntries: [pageEntry, "main.lynx.bundle"],
+        pageEssentialResources: [],
+      };
+    });
+    await expect(
+      lynx({ build })({ cwd }).build({ platform: "ios" }),
+    ).rejects.toThrow();
+  });
+
+  it.each([
+    {
+      name: "missing page entries",
+      output: {
+        pageEntries: undefined,
+        pageEssentialResources: undefined,
+      },
+    },
+    {
+      name: "unsorted page entries",
+      output: {
+        pageEntries: ["main.lynx.bundle", "detail.lynx.bundle"],
+        pageEssentialResources: [],
+      },
+    },
+    {
+      name: "missing main page",
+      output: {
+        pageEntries: ["detail.lynx.bundle"],
+        pageEssentialResources: [
+          {
+            entry: "detail.lynx.bundle",
+            resources: ["detail.lynx.bundle"],
+          },
+        ],
+      },
+    },
+    {
+      name: "duplicate page",
+      output: {
+        pageEntries: [
+          "detail.lynx.bundle",
+          "detail.lynx.bundle",
+          "main.lynx.bundle",
+        ],
+        pageEssentialResources: [],
+      },
+    },
+  ])("rejects $name", async ({ output }) => {
+    build.mockImplementation(async ({ outDir }) => {
+      await fs.writeFile(path.join(outDir, "main.lynx.bundle"), binary);
+      await fs.writeFile(path.join(outDir, "detail.lynx.bundle"), "detail");
+      return { ...singlePageOutput(), ...output } as LynxBuildOutput;
+    });
+    await expect(
+      lynx({ build })({ cwd }).build({ platform: "ios" }),
+    ).rejects.toThrow();
+  });
+
+  it.each([
+    {
+      name: "descriptor order mismatch",
+      descriptors: [
+        { entry: "main.lynx.bundle", resources: ["main.lynx.bundle"] },
+        {
+          entry: "detail.lynx.bundle",
+          resources: ["detail.lynx.bundle"],
+        },
+      ],
+    },
+    {
+      name: "extra descriptor property",
+      descriptors: [
+        {
+          entry: "detail.lynx.bundle",
+          resources: ["detail.lynx.bundle"],
+          optional: true,
+        },
+        { entry: "main.lynx.bundle", resources: ["main.lynx.bundle"] },
+      ],
+    },
+    {
+      name: "missing page entry resource",
+      descriptors: [
+        { entry: "detail.lynx.bundle", resources: ["shared.js"] },
+        { entry: "main.lynx.bundle", resources: ["main.lynx.bundle"] },
+      ],
+    },
+    {
+      name: "unsorted resources",
+      descriptors: [
+        {
+          entry: "detail.lynx.bundle",
+          resources: ["shared.js", "detail.lynx.bundle"],
+        },
+        { entry: "main.lynx.bundle", resources: ["main.lynx.bundle"] },
+      ],
+    },
+    {
+      name: "duplicate resource",
+      descriptors: [
+        {
+          entry: "detail.lynx.bundle",
+          resources: ["detail.lynx.bundle", "detail.lynx.bundle"],
+        },
+        { entry: "main.lynx.bundle", resources: ["main.lynx.bundle"] },
+      ],
+    },
+    {
+      name: "resource absent from compiler output",
+      descriptors: [
+        {
+          entry: "detail.lynx.bundle",
+          resources: ["detail.lynx.bundle", "missing.js"],
+        },
+        { entry: "main.lynx.bundle", resources: ["main.lynx.bundle"] },
+      ],
+    },
+  ])("rejects $name", async ({ descriptors }) => {
+    build.mockImplementation(async ({ outDir }) => {
+      await fs.writeFile(path.join(outDir, "main.lynx.bundle"), binary);
+      await fs.writeFile(path.join(outDir, "detail.lynx.bundle"), "detail");
+      await fs.writeFile(path.join(outDir, "shared.js"), "shared");
+      return {
+        entry: "main.lynx.bundle",
+        pageEntries: ["detail.lynx.bundle", "main.lynx.bundle"],
+        pageEssentialResources: descriptors,
+        runtimeId,
+      } as LynxBuildOutput;
+    });
+    await expect(
+      lynx({ build })({ cwd }).build({ platform: "ios" }),
+    ).rejects.toThrow();
+  });
+
+  it("rejects a portable reserved metadata alias", async () => {
+    build.mockImplementation(async ({ outDir }) => {
+      await fs.writeFile(path.join(outDir, "main.lynx.bundle"), binary);
+      await fs.writeFile(path.join(outDir, "manifeſt.json"), "reserved");
+      return singlePageOutput();
+    });
+    await expect(
+      lynx({ build })({ cwd }).build({ platform: "ios" }),
+    ).rejects.toThrow("reserved");
+  });
+
   it.each(["missing", "empty", "directory"])(
     "rejects a %s entry",
     async (kind) => {
       build.mockImplementation(async ({ outDir }) => {
         if (kind === "empty")
-          await fs.writeFile(path.join(outDir, "main.bundle"), "");
+          await fs.writeFile(path.join(outDir, "main.lynx.bundle"), "");
         if (kind === "directory")
-          await fs.mkdir(path.join(outDir, "main.bundle"));
-        return { entry: "main.bundle", runtimeId };
+          await fs.mkdir(path.join(outDir, "main.lynx.bundle"));
+        return singlePageOutput();
       });
       await expect(
         lynx({ build })({ cwd }).build({ platform: "ios" }),
@@ -229,12 +419,12 @@ describe("framework-independent Lynx artifacts", () => {
   it("rejects linked assets that could include files outside the artifact", async () => {
     await fs.writeFile(path.join(cwd, "outside.txt"), "private");
     build.mockImplementation(async ({ outDir }) => {
-      await fs.writeFile(path.join(outDir, "main.bundle"), binary);
+      await fs.writeFile(path.join(outDir, "main.lynx.bundle"), binary);
       await fs.symlink(
         path.join(cwd, "outside.txt"),
         path.join(outDir, "linked.txt"),
       );
-      return { entry: "main.bundle", runtimeId };
+      return singlePageOutput();
     });
     await expect(
       lynx({ build })({ cwd }).build({ platform: "ios" }),
@@ -265,8 +455,11 @@ describe("framework-independent Lynx artifacts", () => {
     "rejects an absent or invalid native profile %j",
     async (invalid) => {
       build.mockImplementation(async ({ outDir }) => {
-        await fs.writeFile(path.join(outDir, "main.bundle"), binary);
-        return { entry: "main.bundle", runtimeId: invalid } as LynxBuildOutput;
+        await fs.writeFile(path.join(outDir, "main.lynx.bundle"), binary);
+        return {
+          ...singlePageOutput(),
+          runtimeId: invalid,
+        } as LynxBuildOutput;
       });
       await expect(
         lynx({ build })({ cwd }).build({ platform: "ios" }),
@@ -277,9 +470,9 @@ describe("framework-independent Lynx artifacts", () => {
 
   it("accepts the runtime identity boundary within the native sidecar cap", async () => {
     build.mockImplementation(async ({ outDir }) => {
-      await fs.writeFile(path.join(outDir, "main.bundle"), binary);
+      await fs.writeFile(path.join(outDir, "main.lynx.bundle"), binary);
       return {
-        entry: "main.bundle",
+        ...singlePageOutput(),
         runtimeId: "\0".repeat(MAX_LYNX_RUNTIME_ID_UTF8_BYTES),
       };
     });
@@ -293,9 +486,9 @@ describe("framework-independent Lynx artifacts", () => {
 
   it("rejects a runtime identity one byte above the sidecar-safe boundary", async () => {
     build.mockImplementation(async ({ outDir }) => {
-      await fs.writeFile(path.join(outDir, "main.bundle"), binary);
+      await fs.writeFile(path.join(outDir, "main.lynx.bundle"), binary);
       return {
-        entry: "main.bundle",
+        ...singlePageOutput(),
         runtimeId: "r".repeat(MAX_LYNX_RUNTIME_ID_UTF8_BYTES + 1),
       };
     });
@@ -319,10 +512,10 @@ describe("framework-independent Lynx artifacts", () => {
         platform: "ios",
       });
       build.mockImplementation(async ({ outDir }) => {
-        await fs.writeFile(path.join(outDir, "main.bundle"), binary);
+        await fs.writeFile(path.join(outDir, "main.lynx.bundle"), binary);
         if (kind === "directory") await fs.mkdir(path.join(outDir, name));
         else await fs.writeFile(path.join(outDir, name), "producer metadata");
-        return { entry: "main.bundle", runtimeId };
+        return singlePageOutput();
       });
       await expect(
         lynx({ build })({ cwd }).build({ platform: "ios" }),
@@ -331,7 +524,7 @@ describe("framework-independent Lynx artifacts", () => {
         path.basename(previous.buildPath),
       ]);
       expect(
-        await fs.readFile(path.join(previous.buildPath, "templates/main.bin")),
+        await fs.readFile(path.join(previous.buildPath, "main.lynx.bundle")),
       ).toEqual(binary);
     },
   );

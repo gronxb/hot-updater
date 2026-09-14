@@ -1,15 +1,98 @@
+import java.security.MessageDigest
+
 apply plugin: 'com.android.library'
 apply plugin: 'kotlin-android'
+
+def navigationPackage = providers.gradleProperty('sparklingNavigationPackageDir')
+    .orElse(providers.environmentVariable('SPARKLING_NAVIGATION_PACKAGE_DIR'))
+    .orNull
+def navigationRoot = navigationPackage == null
+    ? new File(rootProject.projectDir, '../node_modules/sparkling-navigation')
+    : file(navigationPackage)
+if (!navigationRoot.isDirectory()) {
+    throw new GradleException(
+        'sparkling-navigation@2.1.0-rc.12 is required. Install it in the app workspace or set sparklingNavigationPackageDir.',
+    )
+}
+navigationRoot = navigationRoot.canonicalFile
+
+def navigationSourceDigest = {
+    def digest = MessageDigest.getInstance('SHA-256')
+    def sourceRoot = new File(navigationRoot, 'android/src/main')
+    def files = fileTree(sourceRoot).files.sort { first, second ->
+        sourceRoot.toPath().relativize(first.toPath()).toString() <=>
+            sourceRoot.toPath().relativize(second.toPath()).toString()
+    }
+    files.each { source ->
+        def relative = sourceRoot.toPath().relativize(source.toPath())
+            .toString().replace(File.separatorChar, '/' as char)
+        digest.update(relative.getBytes('UTF-8'))
+        digest.update((byte) 0)
+        digest.update(source.bytes)
+    }
+    digest.digest().collect { String.format('%02x', it & 0xff) }.join()
+}
+
+def sha256 = { File input ->
+    def digest = MessageDigest.getInstance('SHA-256')
+    input.withInputStream { stream ->
+        def buffer = new byte[8192]
+        for (def count = stream.read(buffer); count >= 0; count = stream.read(buffer)) {
+            if (count > 0) digest.update(buffer, 0, count)
+        }
+    }
+    digest.digest().collect { String.format('%02x', it & 0xff) }.join()
+}
+
+def verifySparklingNavigationSource = tasks.register(
+    'verifySparklingNavigationSource',
+) {
+    inputs.dir(navigationRoot)
+    doLast {
+        def packageJson = new groovy.json.JsonSlurper().parse(
+            new File(navigationRoot, 'package.json'),
+        )
+        if (
+            packageJson.name != 'sparkling-navigation' ||
+            packageJson.version != '2.1.0-rc.12'
+        ) {
+            throw new GradleException(
+                'The Android router source must come from sparkling-navigation@2.1.0-rc.12.',
+            )
+        }
+        def actual = navigationSourceDigest()
+        def expected = '937f70d7c3012a5a498a3984f94d269c01d7ba4fd5eed5cbc87410ba6fa94463'
+        if (actual != expected) {
+            throw new GradleException(
+                "sparkling-navigation Android source integrity mismatch: ${actual}",
+            )
+        }
+        def navigate = new File(navigationRoot, 'src/navigate/navigate.ts')
+        def navigateDigest = sha256(navigate)
+        if (navigateDigest != 'a5e2dd1926904acddffde4e6d5c673a4ed49a5bf1b9d3050f6b77b2ffc6a3305') {
+            throw new GradleException(
+                "sparkling-navigation navigate.ts integrity mismatch: ${navigateDigest}",
+            )
+        }
+    }
+}
 
 android {
     namespace 'com.hotupdater.lynx.sparkling'
     compileSdkVersion rootProject.ext.has('compileSdkVersion') ? rootProject.ext.compileSdkVersion : 34
-    defaultConfig { minSdkVersion 24 }
+    defaultConfig {
+        minSdkVersion 24
+        testInstrumentationRunner 'androidx.test.runner.AndroidJUnitRunner'
+    }
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_1_8
         targetCompatibility JavaVersion.VERSION_1_8
     }
     kotlinOptions { jvmTarget = '1.8' }
+    testOptions { unitTests.includeAndroidResources = true }
+    sourceSets.main.java.srcDir(
+        new File(navigationRoot, 'android/src/main/java'),
+    )
 }
 
 dependencies {
@@ -21,6 +104,107 @@ dependencies {
         exclude group: 'org.lynxsdk.lynx', module: 'debug-router'
         exclude group: 'org.lynxsdk.lynx', module: 'base-devtool'
     }
+    compileOnly 'com.tiktok.sparkling:sparkling-method:2.1.0-rc.12'
+    compileOnly 'androidx.appcompat:appcompat:1.6.1'
     testImplementation 'junit:junit:4.13.2'
     testImplementation 'org.json:json:20240303'
+    testImplementation 'com.tiktok.sparkling:sparkling-method:2.1.0-rc.12'
+    testImplementation 'androidx.appcompat:appcompat:1.6.1'
+    testImplementation 'org.robolectric:robolectric:4.12.2'
+    androidTestImplementation 'androidx.test.ext:junit:1.1.5'
+    androidTestImplementation 'androidx.test:runner:1.5.2'
+    androidTestImplementation 'com.tiktok.sparkling:sparkling-method:2.1.0-rc.12'
+}
+
+def sparklingProvenanceReceipts = [
+    [name: 'sparkling', extension: 'aar', sha256: '3f565f3a1e44ccc3c33d8a53e7ebd1af5e348e1aac3f4a8de83676e0080d64ea'],
+    [name: 'sparkling', extension: 'pom', sha256: '852ddb134a4f8534b648416594d8d4babb30ac43584e3423d4d1f8d3baf90880'],
+    [name: 'sparkling', extension: 'module', sha256: '7fd65ca2ef77deaa67102e3cfbf67a376ba95c35c5cdbc225e3ffd9cfa08b8c5'],
+    [name: 'sparkling-method', extension: 'aar', sha256: '2b5114e07640ff86ee43fc5ae0cd84cf98a53d2c40a19d432bf501496cc54b7a'],
+    [name: 'sparkling-method', extension: 'pom', sha256: '5d42601a13e3ffcf92fc973248e50b342ad78aa72fc297c051707fca8f207a06'],
+    [name: 'sparkling-method', extension: 'module', sha256: '01fd39296eddb16f3ab50ed5efd0880737d29d98900d1d7564e9e18637599e17'],
+].collect { receipt ->
+    def configuration = configurations.detachedConfiguration(
+        dependencies.create(
+            "com.tiktok.sparkling:${receipt.name}:2.1.0-rc.12@${receipt.extension}",
+        ),
+    )
+    configuration.transitive = false
+    receipt + [configuration: configuration]
+}
+
+def sparklingTransitiveGraph = configurations.detachedConfiguration(
+    dependencies.create('com.tiktok.sparkling:sparkling:2.1.0-rc.12') {
+        exclude group: 'org.lynxsdk.lynx', module: 'lynx-service-devtool'
+        exclude group: 'org.lynxsdk.lynx', module: 'lynx-devtool'
+        exclude group: 'org.lynxsdk.lynx', module: 'debug-router'
+        exclude group: 'org.lynxsdk.lynx', module: 'base-devtool'
+    },
+    dependencies.create('com.tiktok.sparkling:sparkling-method:2.1.0-rc.12'),
+)
+
+tasks.withType(org.jetbrains.kotlin.gradle.tasks.KotlinCompile).configureEach {
+    dependsOn(verifySparklingNavigationSource)
+}
+
+def verifySparklingAndroidArtifacts = tasks.register(
+    'verifySparklingAndroidArtifacts',
+) {
+    dependsOn(verifySparklingNavigationSource)
+    doLast {
+        sparklingProvenanceReceipts.each { receipt ->
+            def files = receipt.configuration.resolve()
+            if (files.size() != 1) {
+                throw new GradleException(
+                    "Missing exact ${receipt.name} 2.1.0-rc.12 ${receipt.extension}",
+                )
+            }
+            def actual = sha256(files.iterator().next())
+            if (actual != receipt.sha256) {
+                throw new GradleException(
+                    "${receipt.name} 2.1.0-rc.12 ${receipt.extension} " +
+                        "integrity mismatch: ${actual}",
+                )
+            }
+        }
+        def graphEdges = []
+        sparklingTransitiveGraph.incoming.resolutionResult.allComponents.each {
+            component ->
+            component.dependencies.each { dependency ->
+                if (!(dependency instanceof org.gradle.api.artifacts.result.ResolvedDependencyResult)) {
+                    throw new GradleException(
+                        "Unresolved Sparkling Android dependency: ${dependency.requested}",
+                    )
+                }
+                graphEdges << (
+                    "${component.id.displayName} -> ${dependency.requested.displayName} " +
+                        "=> ${dependency.selected.id.displayName}"
+                )
+            }
+        }
+        graphEdges.sort()
+        def graphDigest = MessageDigest.getInstance('SHA-256')
+            .digest((graphEdges.join('\n') + '\n').getBytes('UTF-8'))
+            .collect { String.format('%02x', it & 0xff) }.join()
+        if (
+            graphEdges.size() != 207 ||
+            graphDigest != 'c68329c1968de962c8574f298ba46f43db016195bbbf4422b5e01145278aebe3'
+        ) {
+            throw new GradleException(
+                "Sparkling 2.1.0-rc.12 transitive graph integrity mismatch: " +
+                    "edges=${graphEdges.size()} sha256=${graphDigest}",
+            )
+        }
+        logger.lifecycle(
+            'Sparkling Android provenance: npm=2.1.0-rc.12 ' +
+                'tag=bb066d6b45189fa123b8494d789429605ca1337e ' +
+                'androidSourceSha256=937f70d7c3012a5a498a3984f94d269c01d7ba4fd5eed5cbc87410ba6fa94463 ' +
+                'navigateSha256=a5e2dd1926904acddffde4e6d5c673a4ed49a5bf1b9d3050f6b77b2ffc6a3305 ' +
+                'graphSha256=c68329c1968de962c8574f298ba46f43db016195bbbf4422b5e01145278aebe3',
+        )
+    }
+}
+
+tasks.withType(org.jetbrains.kotlin.gradle.tasks.KotlinCompile).configureEach {
+    dependsOn(verifySparklingAndroidArtifacts)
 }

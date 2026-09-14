@@ -6,18 +6,38 @@ import Lynx
 public final class HotUpdaterLynxModuleContext {
     public let controller: LynxController
     public let launch: LynxLaunchContext
-    public let reload: (((@escaping (Result<Void, Error>) -> Void)) -> Void)?
+    public let transition: ((
+        _ trigger: String,
+        _ completion: @escaping (
+            Result<LynxManagedTransitionAcceptance, Error>
+        ) -> Void
+    ) -> Void)?
     public let didConfirm: ((LynxConfirmationResult) -> Void)?
+    public let appReady: ((
+        @escaping (Result<LynxConfirmationResult, Error>) -> Void
+    ) -> Void)
+    public let runtimeEvents: (() throws -> [String: Any])?
     public let launchConfiguration: [String: String]
     private let bridgeReplies = LynxBridgeReplies()
     public init(controller: LynxController, launch: LynxLaunchContext,
-                reload: (((@escaping (Result<Void, Error>) -> Void)) -> Void)? = nil,
+                transition: ((
+                    _ trigger: String,
+                    _ completion: @escaping (
+                        Result<LynxManagedTransitionAcceptance, Error>
+                    ) -> Void
+                ) -> Void)? = nil,
                 didConfirm: ((LynxConfirmationResult) -> Void)? = nil,
+                appReady: @escaping ((
+                    @escaping (Result<LynxConfirmationResult, Error>) -> Void
+                ) -> Void),
+                runtimeEvents: (() throws -> [String: Any])? = nil,
                 launchConfiguration: [String: String] = [:]) {
         self.controller = controller
         self.launch = launch
-        self.reload = reload
+        self.transition = transition
         self.didConfirm = didConfirm
+        self.appReady = appReady
+        self.runtimeEvents = runtimeEvents
         self.launchConfiguration = launchConfiguration
     }
 
@@ -49,6 +69,7 @@ public final class HotUpdaterLynxModuleContext {
     public static var methodLookup: [String: String] {
         ["getState": NSStringFromSelector(#selector(getState(_:))),
          "getLaunchConfiguration": NSStringFromSelector(#selector(getLaunchConfiguration(_:))),
+         "getRuntimeEvents": NSStringFromSelector(#selector(getRuntimeEvents(_:))),
          "acceptCatalog": NSStringFromSelector(#selector(acceptCatalog(_:callback:))),
          "validateSelection": NSStringFromSelector(#selector(validateSelection(_:callback:))),
          "prepareSelection": NSStringFromSelector(#selector(prepareSelection(_:callback:))),
@@ -107,6 +128,18 @@ public final class HotUpdaterLynxModuleContext {
         do {
             let value = try bound()
             callback?(["ok": true, "data": value.launchConfiguration])
+        } catch { failure(error, callback) }
+    }
+    @objc public func getRuntimeEvents(_ callback: LynxCallbackBlock?) {
+        do {
+            let value = try bound()
+            guard let runtimeEvents = value.runtimeEvents else {
+                throw LynxArtifactError.invalid("Runtime events unavailable")
+            }
+            callback?([
+                "ok": true,
+                "data": try runtimeEvents(),
+            ])
         } catch { failure(error, callback) }
     }
     @objc public func acceptCatalog(_ params: [String: Any], callback: LynxCallbackBlock?) {
@@ -201,28 +234,29 @@ public final class HotUpdaterLynxModuleContext {
     @objc public func resetChannel(_ callback: LynxCallbackBlock?) {
         do {
             let value = try bound()
-            guard value.launch.primary, let reload = value.reload else {
+            guard value.launch.primary, let transition = value.transition else {
                 throw LynxArtifactError.invalid("The native host does not support managed Lynx generation reload")
             }
             guard let reply = value.beginReply({ self.failure($0, callback) }) else {
                 return
             }
-            do {
-                let reset = try value.controller.resetChannel(value.launch)
-                DispatchQueue.main.async {
-                    guard value.claimReply(reply) else { return }
-                    let once = LynxOnceReply<Void> { result in
-                        switch result {
-                        case .success:
-                            callback?(["ok": true, "data": ["reset": reset]])
-                        case .failure(let error):
-                            self.failure(error, callback)
-                        }
+            DispatchQueue.main.async {
+                guard value.claimReply(reply) else { return }
+                let once = LynxOnceReply<LynxManagedTransitionAcceptance> {
+                    result in
+                    switch result {
+                    case .success(let acceptance):
+                        callback?([
+                            "ok": true,
+                            "data": acceptance.dictionary.merging([
+                                "reset": true,
+                            ]) { old, _ in old },
+                        ])
+                    case .failure(let error):
+                        self.failure(error, callback)
                     }
-                    reload(once.settle)
                 }
-            } catch {
-                value.finishReply(reply) { self.failure(error, callback) }
+                transition("reset", once.settle)
             }
         } catch { failure(error, callback) }
     }
@@ -239,11 +273,13 @@ public final class HotUpdaterLynxModuleContext {
             guard let reply = value.beginReply({ self.failure($0, callback) }) else {
                 return
             }
-            value.controller.notifyAppReady(value.launch) { result in
+            value.appReady { result in
                 value.finishReply(reply) {
                     switch result {
                     case .success(let confirmation):
-                        value.didConfirm?(confirmation)
+                        if confirmation.status != "PAGE_ALREADY_ADMITTED" {
+                            value.didConfirm?(confirmation)
+                        }
                         callback?(["ok": true, "data": confirmation.dictionary])
                     case .failure(let error): self.failure(error, callback)
                     }
@@ -254,7 +290,7 @@ public final class HotUpdaterLynxModuleContext {
     @objc public func reload(_ callback: LynxCallbackBlock?) {
         do {
             let value = try bound()
-            guard value.launch.primary, let reload = value.reload else {
+            guard value.launch.primary, let transition = value.transition else {
                 throw LynxArtifactError.invalid("The native host does not support managed Lynx generation reload")
             }
             guard let reply = value.beginReply({ self.failure($0, callback) }) else {
@@ -262,15 +298,19 @@ public final class HotUpdaterLynxModuleContext {
             }
             DispatchQueue.main.async {
                 guard value.claimReply(reply) else { return }
-                let once = LynxOnceReply<Void> { result in
+                let once = LynxOnceReply<LynxManagedTransitionAcceptance> {
+                    result in
                     switch result {
-                    case .success:
-                        callback?(["ok": true, "data": NSNull()])
+                    case .success(let acceptance):
+                        callback?([
+                            "ok": true,
+                            "data": acceptance.dictionary,
+                        ])
                     case .failure(let error):
                         self.failure(error, callback)
                     }
                 }
-                reload(once.settle)
+                transition("reload", once.settle)
             }
         } catch { failure(error, callback) }
     }

@@ -1,3 +1,4 @@
+import { navigate } from "@hot-updater/lynx/navigation";
 import { root, useEffect, useState } from "@lynx-js/react";
 
 import {
@@ -46,6 +47,20 @@ function App() {
         <text className="font-probe">RELEASE FONT</text>
       ) : null}
       <text className="description">{status}</text>
+      <view
+        className="action"
+        bindtap={() =>
+          navigate(
+            {
+              path: "detail.lynx.bundle",
+              options: { params: { title: "Second Page" } },
+            },
+            (result) => console.log("HOT_UPDATER_PAGE_OPEN", result),
+          )
+        }
+      >
+        <text className="action-label">Open detail page</text>
+      </view>
     </view>
   );
 }

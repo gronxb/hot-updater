@@ -1,7 +1,5 @@
 import { execFileSync, spawnSync } from "node:child_process";
-import { createHash } from "node:crypto";
 import fs from "node:fs";
-import fsp from "node:fs/promises";
 import path from "node:path";
 
 import {
@@ -10,9 +8,15 @@ import {
   HOT_UPDATER_LYNX_IOS_LAUNCH_CONFIGURATION_PREFIX,
   serializeLynxNativeLaunchConfiguration,
 } from "../../../../e2e/lynx/native-launch-configuration.ts";
+import {
+  androidArtifactAppId,
+  deterministicArtifactSha256,
+  iosArtifactAppId,
+} from "./native-artifact-evidence.mjs";
 
 const APP_ID = "com.hotupdater.lynxmatrix";
 const EVENT_MARKER = "HOT_UPDATER_MATRIX_EVENT ";
+const DIAGNOSTIC_MARKER = "HOT_UPDATER_MATRIX_DIAGNOSTIC ";
 
 const wait = (milliseconds) =>
   new Promise((resolve) => setTimeout(resolve, milliseconds));
@@ -29,12 +33,6 @@ function run(command, args, options = {}) {
     );
   }
   return result.stdout.trim();
-}
-
-async function sha256(file) {
-  return createHash("sha256")
-    .update(await fsp.readFile(file))
-    .digest("hex");
 }
 
 function parseEvents(text) {
@@ -65,6 +63,39 @@ function parseEvents(text) {
     events.push(event);
   }
   return events;
+}
+
+function parseDiagnostics(text) {
+  const records = [];
+  for (const line of text.split(/\r?\n/)) {
+    const marker = line.indexOf(DIAGNOSTIC_MARKER);
+    const trimmed = line.trim();
+    const encoded =
+      marker >= 0
+        ? line.slice(marker + DIAGNOSTIC_MARKER.length).trim()
+        : trimmed.startsWith("{")
+          ? trimmed
+          : "";
+    if (!encoded) continue;
+    let record;
+    try {
+      record = JSON.parse(encoded);
+    } catch {
+      throw new Error(`Malformed matrix diagnostic JSON: ${encoded}`);
+    }
+    if (
+      !record ||
+      typeof record !== "object" ||
+      typeof record.action !== "string" ||
+      typeof record.ok !== "boolean" ||
+      typeof record.processId !== "string" ||
+      !/^[1-9][0-9]*$/.test(record.processId)
+    ) {
+      throw new Error(`Invalid matrix diagnostic: ${encoded}`);
+    }
+    records.push(record);
+  }
+  return records;
 }
 
 export function iosMatrixLaunchArguments(framework, channel, appBaseURL) {
@@ -102,26 +133,24 @@ class IOSAdapter {
   }
 
   async sourceBinaryHash() {
-    const info = JSON.parse(
-      run("plutil", [
-        "-convert",
-        "json",
-        "-o",
-        "-",
-        path.join(this.binaryPath, "Info.plist"),
-      ]),
-    );
-    return sha256(path.join(this.binaryPath, info.CFBundleExecutable));
+    if (iosArtifactAppId(this.binaryPath) !== APP_ID) {
+      throw new Error("The iOS artifact application ID does not match Matrix");
+    }
+    return deterministicArtifactSha256(this.binaryPath);
   }
 
-  installedExecutable() {
-    const installed = run("xcrun", [
+  installedApp() {
+    return run("xcrun", [
       "simctl",
       "get_app_container",
       this.deviceId,
       APP_ID,
       "app",
     ]);
+  }
+
+  installedExecutable() {
+    const installed = this.installedApp();
     const info = JSON.parse(
       run("plutil", [
         "-convert",
@@ -135,7 +164,11 @@ class IOSAdapter {
   }
 
   async installedBinaryHash() {
-    return sha256(this.installedExecutable());
+    const installed = this.installedApp();
+    if (iosArtifactAppId(installed) !== APP_ID) {
+      throw new Error("The installed iOS application ID does not match Matrix");
+    }
+    return deterministicArtifactSha256(installed);
   }
 
   install() {
@@ -197,7 +230,7 @@ class IOSAdapter {
     ]);
     const row = output.split("\n").find((line) => line.includes(executable));
     const processId = row?.trim().split(/\s+/)[0];
-    if (!processId || !/^\d+$/.test(processId)) {
+    if (!processId || !/^[1-9][0-9]*$/.test(processId)) {
       throw new Error(`Could not find the running iOS process for ${APP_ID}`);
     }
     return processId;
@@ -229,8 +262,42 @@ class IOSAdapter {
     throw new Error(`Missing iOS text ${expected}: ${JSON.stringify(last)}`);
   }
 
+  async waitForTextValue(expected, timeoutMs = 30_000) {
+    const deadline = Date.now() + timeoutMs;
+    let last;
+    while (Date.now() < deadline) {
+      last = this.device(["snapshot", "-i"]);
+      const match = last.data.nodes
+        .map((node) => String(node.label ?? ""))
+        .find((label) => label.includes(expected));
+      if (match) return match;
+      await wait(250);
+    }
+    throw new Error(`Missing iOS text ${expected}: ${JSON.stringify(last)}`);
+  }
+
+  async waitForEitherText(expected, timeoutMs = 30_000) {
+    const deadline = Date.now() + timeoutMs;
+    let last;
+    while (Date.now() < deadline) {
+      last = this.device(["snapshot", "-i"]);
+      const match = expected.find((text) =>
+        last.data.nodes.some((node) => String(node.label ?? "").includes(text)),
+      );
+      if (match) return match;
+      await wait(250);
+    }
+    throw new Error(
+      `Missing iOS text ${expected.join(" or ")}: ${JSON.stringify(last)}`,
+    );
+  }
+
   clickText(text) {
     this.device(["find", text, "click"]);
+  }
+
+  nativeBack() {
+    this.device(["gesture", "swipe", "right-edge"]);
   }
 
   screenshot(name) {
@@ -278,6 +345,16 @@ class IOSAdapter {
       'eventMessage CONTAINS "HotUpdater"',
     ]);
   }
+
+  readDiagnostics() {
+    const file = path.join(
+      this.dataContainer(),
+      "Library/Application Support/HotUpdaterLynxPublic/matrix-diagnostics.jsonl",
+    );
+    return fs.existsSync(file)
+      ? parseDiagnostics(fs.readFileSync(file, "utf8"))
+      : parseDiagnostics(this.readNativeLogs());
+  }
 }
 
 class AndroidAdapter {
@@ -293,7 +370,12 @@ class AndroidAdapter {
   }
 
   sourceBinaryHash() {
-    return sha256(this.binaryPath);
+    if (androidArtifactAppId(this.binaryPath) !== APP_ID) {
+      throw new Error(
+        "The Android artifact application ID does not match Matrix",
+      );
+    }
+    return deterministicArtifactSha256(this.binaryPath);
   }
 
   async installedBinaryHash() {
@@ -306,6 +388,7 @@ class AndroidAdapter {
   }
 
   install() {
+    this.adb(["reverse", "tcp:18791", "tcp:18791"]);
     this.adb(["install", "-r", this.binaryPath]);
   }
 
@@ -334,7 +417,7 @@ class AndroidAdapter {
 
   processId() {
     const processId = this.adb(["shell", "pidof", APP_ID]).split(/\s+/)[0];
-    if (!/^\d+$/.test(processId)) {
+    if (!/^[1-9][0-9]*$/.test(processId)) {
       throw new Error(
         `Could not find the running Android process for ${APP_ID}`,
       );
@@ -359,6 +442,35 @@ class AndroidAdapter {
     throw new Error(`Missing Android text ${expected}: ${last.slice(-4000)}`);
   }
 
+  async waitForTextValue(expected, timeoutMs = 30_000) {
+    const deadline = Date.now() + timeoutMs;
+    let last = "";
+    while (Date.now() < deadline) {
+      last = this.hierarchy();
+      const values = [...last.matchAll(/(?:text|content-desc)=\"([^\"]*)\"/g)];
+      const match = values
+        .map((item) => item[1])
+        .find((text) => text.includes(expected));
+      if (match) return match;
+      await wait(250);
+    }
+    throw new Error(`Missing Android text ${expected}: ${last.slice(-4000)}`);
+  }
+
+  async waitForEitherText(expected, timeoutMs = 30_000) {
+    const deadline = Date.now() + timeoutMs;
+    let last = "";
+    while (Date.now() < deadline) {
+      last = this.hierarchy();
+      const match = expected.find((text) => last.includes(text));
+      if (match) return match;
+      await wait(250);
+    }
+    throw new Error(
+      `Missing Android text ${expected.join(" or ")}: ${last.slice(-4000)}`,
+    );
+  }
+
   clickText(text) {
     const xml = this.hierarchy();
     const escaped = text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -371,6 +483,10 @@ class AndroidAdapter {
     const x = Math.floor((Number(node[1]) + Number(node[3])) / 2);
     const y = Math.floor((Number(node[2]) + Number(node[4])) / 2);
     this.adb(["shell", "input", "tap", String(x), String(y)]);
+  }
+
+  nativeBack() {
+    this.adb(["shell", "input", "keyevent", "BACK"]);
   }
 
   screenshot(name) {
@@ -416,6 +532,25 @@ class AndroidAdapter {
   readNativeLogs() {
     return this.adb(["logcat", "-d", "-s", "HotUpdaterLynx:I"]);
   }
+
+  readDiagnostics() {
+    const result = spawnSync(
+      "adb",
+      [
+        "-s",
+        this.deviceId,
+        "shell",
+        "run-as",
+        APP_ID,
+        "cat",
+        "files/matrix-diagnostics.jsonl",
+      ],
+      { encoding: "utf8" },
+    );
+    return result.status === 0
+      ? parseDiagnostics(result.stdout)
+      : parseDiagnostics(this.readNativeLogs());
+  }
 }
 
 export function createDeviceAdapter(platform, options) {
@@ -424,4 +559,4 @@ export function createDeviceAdapter(platform, options) {
   throw new Error(`Unsupported Lynx matrix platform: ${platform}`);
 }
 
-export { EVENT_MARKER, parseEvents };
+export { DIAGNOSTIC_MARKER, EVENT_MARKER, parseDiagnostics, parseEvents };

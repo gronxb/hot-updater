@@ -1,5 +1,6 @@
 import { spawnSync } from "node:child_process";
 import fs from "node:fs";
+import http from "node:http";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -8,10 +9,29 @@ import { describe, expect, it, vi } from "vitest";
 
 import {
   androidMatrixLaunchArguments,
+  DIAGNOSTIC_MARKER,
   EVENT_MARKER,
   iosMatrixLaunchArguments,
+  parseDiagnostics,
   parseEvents,
 } from "../../examples/lynx/scripts/public-matrix/device-adapters.mjs";
+import {
+  assertTrackedSourceClean,
+  deterministicArtifactSha256,
+  iosArtifactAppId,
+  parseAndroidApplicationId,
+} from "../../examples/lynx/scripts/public-matrix/native-artifact-evidence.mjs";
+import {
+  appendSdkInstallFailureEvidence,
+  readSdkInstallFailureEvidence,
+} from "../../examples/lynx/scripts/public-matrix/raw-detail-rejection.mjs";
+import { SPARKLING_NAVIGATION_PROVENANCE } from "../../packages/lynx/src/navigationProvenance";
+import {
+  LYNX_MATRIX_ANDROID_SPARKLING_ARTIFACTS,
+  LYNX_MATRIX_IOS_SPARKLING_CHECKOUT,
+  LYNX_MATRIX_NATIVE_VERSIONS,
+  LYNX_MATRIX_RUNTIME_IDS,
+} from "./public-matrix-contract";
 
 const native = vi.hoisted(() => ({
   checkForUpdate: vi.fn(),
@@ -23,8 +43,23 @@ const native = vi.hoisted(() => ({
   notifyAppReady: vi.fn(),
   reload: vi.fn(),
 }));
+const TestLynxUpdaterError = vi.hoisted(
+  () =>
+    class LynxUpdaterError extends Error {
+      constructor(
+        readonly code: string,
+        message: string,
+      ) {
+        super(message);
+        this.name = "LynxUpdaterError";
+      }
+    },
+);
 
-vi.mock("../../packages/lynx/dist/index.mjs", () => ({ HotUpdater: native }));
+vi.mock("../../packages/lynx/dist/index.mjs", () => ({
+  HotUpdater: native,
+  LynxUpdaterError: TestLynxUpdaterError,
+}));
 
 const repo = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -35,6 +70,73 @@ const nativeBuilder = path.join(
   repo,
   "examples/lynx/scripts/build-e2e-native.mjs",
 );
+const hash = (value: string) => value.repeat(64).slice(0, 64);
+
+function nativeReceipt(sourceCommit: string) {
+  const nativeConfig = {
+    sha256: hash("c"),
+    files: Object.fromEntries(
+      [
+        "fingerprint.json",
+        "native/project",
+        "native/lock",
+        "native/target",
+        "native/config",
+      ].map((file, index) => [file, hash(String(index + 1))]),
+    ),
+  };
+  return {
+    schemaVersion: "lynx-native-artifacts-v2",
+    target: "matrix",
+    appId: "com.hotupdater.lynxmatrix",
+    sourceCommit,
+    sourceIntegrity: {
+      checkedCommit: sourceCommit,
+      clean: true,
+      trackedChanges: [],
+      allowedTrackedChanges: [
+        "examples-server/hono-kysely-pglite/hot-updater_migrations/migration_2026-09-11T14-30-47.sql",
+        "examples-server/hono-kysely-pglite/src/db.ts",
+        "examples-server/hono-kysely-pglite/src/localFsStorage.mjs",
+        "examples-server/hono-kysely-pglite/src/localFsStorage.ts",
+        "examples/lynx/.gitignore",
+        "examples/lynx/scripts/e2e-kysely-deploy.mjs",
+      ],
+    },
+    versions: { ...LYNX_MATRIX_NATIVE_VERSIONS },
+    sparklingNavigation: { ...SPARKLING_NAVIGATION_PROVENANCE },
+    artifacts: {
+      ios: {
+        path: "/tmp/SparklingMatrixHarness.app",
+        appId: "com.hotupdater.lynxmatrix",
+        sourceCommit,
+        runtimeId: LYNX_MATRIX_RUNTIME_IDS.ios,
+        binarySha256: hash("b"),
+        artifactHashKind: "deterministic-full-app-tree-v1",
+        nativeFingerprintSha256: hash("d"),
+        nativeConfig,
+        scheme: "SparklingMatrixHarness",
+        arch: "arm64",
+        sparklingCheckout: { ...LYNX_MATRIX_IOS_SPARKLING_CHECKOUT },
+      },
+      android: {
+        path: "/tmp/matrix-app-release.apk",
+        appId: "com.hotupdater.lynxmatrix",
+        sourceCommit,
+        runtimeId: LYNX_MATRIX_RUNTIME_IDS.android,
+        binarySha256: hash("a"),
+        artifactHashKind: "full-apk-bytes",
+        nativeFingerprintSha256: hash("d"),
+        nativeConfig,
+        task: ":matrix-app:assembleRelease",
+        abis: ["arm64-v8a"],
+        sparklingArtifacts: { ...LYNX_MATRIX_ANDROID_SPARKLING_ARTIFACTS },
+        sparklingDependencyGraphSha256:
+          "c68329c1968de962c8574f298ba46f43db016195bbbf4422b5e01145278aebe3",
+      },
+    },
+  };
+}
 
 function run(args: readonly string[]) {
   return spawnSync(
@@ -52,6 +154,47 @@ function buildNative(args: readonly string[]) {
 }
 
 describe("Lynx public matrix runner", () => {
+  it("hashes the complete deterministic iOS app tree and derives artifact IDs", () => {
+    const temporary = fs.mkdtempSync(path.join(os.tmpdir(), "lynx-app-hash-"));
+    const app = path.join(temporary, "Matrix.app");
+    fs.mkdirSync(path.join(app, "Frameworks"), { recursive: true });
+    fs.writeFileSync(
+      path.join(app, "Info.plist"),
+      `<?xml version="1.0" encoding="UTF-8"?>
+<plist version="1.0"><dict><key>CFBundleIdentifier</key><string>com.hotupdater.lynxmatrix</string></dict></plist>`,
+    );
+    fs.writeFileSync(path.join(app, "Matrix"), "executable");
+    fs.chmodSync(path.join(app, "Matrix"), 0o755);
+    fs.writeFileSync(path.join(app, "Frameworks", "Sparkling"), "framework");
+    fs.writeFileSync(path.join(app, "asset.txt"), "A");
+    const before = deterministicArtifactSha256(app);
+    expect(iosArtifactAppId(app)).toBe("com.hotupdater.lynxmatrix");
+    fs.writeFileSync(path.join(app, "asset.txt"), "B");
+    expect(deterministicArtifactSha256(app)).not.toBe(before);
+    expect(
+      parseAndroidApplicationId("package: name='com.hotupdater.lynxmatrix'"),
+    ).toBe("com.hotupdater.lynxmatrix");
+    fs.rmSync(temporary, { recursive: true, force: true });
+  });
+
+  it("rejects a runnable native receipt build from dirty tracked source", () => {
+    const temporary = fs.mkdtempSync(path.join(os.tmpdir(), "lynx-source-"));
+    spawnSync("git", ["init", "-q"], { cwd: temporary });
+    spawnSync("git", ["config", "user.email", "e2e@example.invalid"], {
+      cwd: temporary,
+    });
+    spawnSync("git", ["config", "user.name", "E2E"], { cwd: temporary });
+    fs.writeFileSync(path.join(temporary, "native.txt"), "clean");
+    spawnSync("git", ["add", "native.txt"], { cwd: temporary });
+    spawnSync("git", ["commit", "-qm", "fixture"], { cwd: temporary });
+    expect(assertTrackedSourceClean(temporary)).toMatchObject({ clean: true });
+    fs.writeFileSync(path.join(temporary, "native.txt"), "dirty");
+    expect(() => assertTrackedSourceClean(temporary)).toThrow(
+      "require clean tracked source",
+    );
+    fs.rmSync(temporary, { recursive: true, force: true });
+  });
+
   it.each(["react", "vue", "octane"])(
     "passes runtime endpoints to every %s matrix launch on both platforms",
     (framework) => {
@@ -83,7 +226,7 @@ describe("Lynx public matrix runner", () => {
     expect(encoded).toBeTruthy();
     const receipt = JSON.parse(encoded!.split("=").slice(1).join("="));
     expect(receipt).toMatchObject({
-      schemaVersion: "lynx-native-artifacts-v1",
+      schemaVersion: "lynx-native-artifacts-v2",
       target: "matrix",
       appId: "com.hotupdater.lynxmatrix",
       artifacts: {
@@ -111,20 +254,27 @@ describe("Lynx public matrix runner", () => {
     );
   });
 
+  it("builds shipped E2E in its dedicated nonproduction targets", () => {
+    const result = buildNative(["--dry-run", "--target", "e2e"]);
+    expect(result.status).toBe(0);
+    expect(result.stdout).toContain('"target":"e2e"');
+    expect(result.stdout).toContain('"scheme":"SparklingGoE2E"');
+    expect(result.stdout).toContain('"task":":e2e-app:assembleRelease"');
+    expect(result.stdout).toContain(
+      "/ios/build/e2e/Build/Products/Release-iphonesimulator/SparklingGoE2E.app",
+    );
+  });
+
   it("validates the matrix artifact receipt before a dry run", () => {
     const temporary = fs.mkdtempSync(
       path.join(os.tmpdir(), "lynx-native-artifacts-"),
     );
     const receiptPath = path.join(temporary, "artifacts.json");
-    const receipt = {
-      schemaVersion: "lynx-native-artifacts-v1",
-      target: "matrix",
-      appId: "com.hotupdater.lynxmatrix",
-      artifacts: {
-        ios: { path: "/tmp/SparklingMatrixHarness.app" },
-        android: { path: "/tmp/matrix-app-release.apk" },
-      },
-    };
+    const sourceCommit = spawnSync("git", ["rev-parse", "HEAD"], {
+      cwd: repo,
+      encoding: "utf8",
+    }).stdout.trim();
+    const receipt = nativeReceipt(sourceCommit);
     fs.writeFileSync(receiptPath, JSON.stringify(receipt));
     expect(run(["--dry-run", "--native-artifacts", receiptPath]).status).toBe(
       0,
@@ -172,6 +322,82 @@ describe("Lynx public matrix runner", () => {
     );
   });
 
+  it("publishes the exact native updater code and message for install evidence", async () => {
+    vi.resetModules();
+    vi.stubGlobal("__SPIKE_VARIANT__", "B");
+    vi.stubGlobal("__SPIKE_BEHAVIOR__", "normal");
+    vi.stubGlobal("__SPIKE_ASSET_PREFIX__", "hu://");
+    vi.stubGlobal("__SDK_RESOURCES__", false);
+    const temporary = fs.mkdtempSync(
+      path.join(os.tmpdir(), "lynx-install-failure-"),
+    );
+    const evidenceFile = path.join(temporary, "failures.jsonl");
+    const server = http.createServer(async (request, response) => {
+      const chunks: Buffer[] = [];
+      for await (const chunk of request) chunks.push(Buffer.from(chunk));
+      if (request.url !== "/matrix-install-failure") {
+        response.writeHead(404).end();
+        return;
+      }
+      const body = JSON.parse(Buffer.concat(chunks).toString("utf8"));
+      await appendSdkInstallFailureEvidence(evidenceFile, body.failure);
+      response
+        .writeHead(200, { "content-type": "application/json" })
+        .end(JSON.stringify({ stored: true }));
+    });
+    await new Promise<void>((resolve) =>
+      server.listen(0, "127.0.0.1", resolve),
+    );
+    const address = server.address();
+    if (!address || typeof address === "string") throw new Error("No server");
+    native.getLaunchConfiguration.mockResolvedValue({
+      appBaseURL: `http://127.0.0.1:${address.port}/hot-updater`,
+    });
+    native.getLaunchInfo.mockResolvedValue({
+      running: { bundleId: "bundle-b", releaseId: "release-b" },
+    });
+    native.notifyAppReady.mockResolvedValue({ status: "UNCHANGED" });
+    native.checkForUpdate.mockResolvedValue({
+      id: "release-c",
+      bundleId: "bundle-c",
+      releaseId: "release-c",
+      transitionKind: "INSTALL",
+      updateBundle: vi
+        .fn()
+        .mockRejectedValue(
+          new TestLynxUpdaterError(
+            "FILE_HASH_MISMATCH",
+            "File hash verification failed",
+          ),
+        ),
+    });
+    const sdk = await import("../../examples/lynx/spike/sdk");
+    const setStatus = vi.fn();
+    sdk.sdkImageLoaded();
+    await sdk.startSdk(setStatus, vi.fn(), vi.fn(), vi.fn(), vi.fn());
+    await sdk.checkSdkUpdate(setStatus, vi.fn());
+    await sdk.installSdkUpdate(setStatus, vi.fn());
+
+    expect(setStatus).toHaveBeenLastCalledWith(
+      "Installation failed: [FILE_HASH_MISMATCH] File hash verification failed",
+    );
+    expect(readSdkInstallFailureEvidence(evidenceFile)).toMatchObject([
+      {
+        transport: "matrix-control-http",
+        failure: {
+          bundleId: "bundle-c",
+          code: "FILE_HASH_MISMATCH",
+          message: "File hash verification failed",
+          releaseId: "release-c",
+        },
+      },
+    ]);
+    await new Promise<void>((resolve, reject) =>
+      server.close((error) => (error ? reject(error) : resolve())),
+    );
+    fs.rmSync(temporary, { recursive: true, force: true });
+  });
+
   it("parses the iOS bare JSONL sink and Android marked log lines", () => {
     const event = {
       event: "generationStarted",
@@ -184,6 +410,23 @@ describe("Lynx public matrix runner", () => {
         `09-13 I/HotUpdaterLynx: ${EVENT_MARKER}${JSON.stringify(event)}`,
       ),
     ).toEqual([event]);
+    const diagnostic = {
+      action: "navigationStackBoundary",
+      ok: true,
+      processId: "101",
+      data: { rejectionCode: "STACK_LIMIT_EXCEEDED" },
+    };
+    expect(
+      parseDiagnostics(
+        `09-13 I/HotUpdaterLynx: ${DIAGNOSTIC_MARKER}${JSON.stringify(diagnostic)}`,
+      ),
+    ).toEqual([diagnostic]);
+    expect(parseDiagnostics(`${JSON.stringify(diagnostic)}\n`)).toEqual([
+      diagnostic,
+    ]);
+    expect(() =>
+      parseDiagnostics(`${DIAGNOSTIC_MARKER}{"action":"broken"}`),
+    ).toThrow("Invalid matrix diagnostic");
   });
 
   it("plans all six framework and OS cells with every required phase", () => {
@@ -201,14 +444,17 @@ describe("Lynx public matrix runner", () => {
     }
     for (const phase of [
       "embedded A with exact resources and readiness",
-      "full archive A to B",
+      "real A to B BSDIFF plus raw detail staged for offline activation",
       "origin-off B activation",
       "origin-off B retained launch",
       "real B to C BSDIFF and same-process generation reload",
       "retained old-context rejection after reload",
       "primary removal and full generation recreation",
-      "secondary fatal candidate and full generation recovery",
-      "unconfirmed candidate recovery",
+      "fatal detail after primary confirmation and full generation recovery",
+      "fatal detail before primary confirmation and full generation recovery",
+      "pending detail process death after confirmation and full-stack recovery",
+      "pending detail process death before confirmation and full-stack recovery",
+      "reverse C to B and B to server A BSDIFF rollback",
     ]) {
       expect(result.stdout).toContain(phase);
     }
@@ -252,7 +498,7 @@ describe("Lynx public matrix runner", () => {
   it("fails a normal run before reporting success when required evidence targets are missing", () => {
     const result = run([]);
     expect(result.status).toBe(1);
-    expect(result.stderr).toContain("--results-dir is required");
+    expect(result.stderr).toContain("--native-artifacts is required");
     expect(result.stdout).not.toContain("[lynx-matrix:passed]");
   });
 });

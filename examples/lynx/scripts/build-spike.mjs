@@ -5,12 +5,23 @@ import { promisify } from "node:util";
 
 import { finishSpike } from "./spike-assets.mjs";
 
-const [framework, variant, behavior = "normal", resourceSet = "basic"] =
-  process.argv.slice(2);
+const [
+  framework,
+  variant,
+  behavior = "normal",
+  resourceSet = "basic",
+  profile = "fixture",
+] = process.argv.slice(2);
 if (
   !["react", "vue"].includes(framework) ||
   !["A", "B", "C"].includes(variant) ||
-  !["normal", "unconfirmed", "fatal", "double-ready"].includes(behavior) ||
+  ![
+    "normal",
+    "unconfirmed",
+    "detail-unconfirmed",
+    "fatal",
+    "double-ready",
+  ].includes(behavior) ||
   ![
     "basic",
     "fonts",
@@ -24,16 +35,27 @@ if (
     "resources",
     "resources2",
     "resources3",
-  ].includes(resourceSet)
+  ].includes(resourceSet) ||
+  !["fixture", "production"].includes(profile) ||
+  (profile === "production" &&
+    (framework !== "react" ||
+      variant !== "A" ||
+      behavior !== "normal" ||
+      resourceSet !== "sdk3"))
 ) {
   throw new Error(
-    "Usage: node scripts/build-spike.mjs <react|vue> <A|B|C> [normal|unconfirmed|fatal|double-ready] [basic|fonts|dynamic|sdk1|sdk2|sdk3|http|external|external2|resources|resources2|resources3]",
+    "Usage: node scripts/build-spike.mjs <react|vue> <A|B|C> [normal|unconfirmed|detail-unconfirmed|fatal|double-ready] [basic|fonts|dynamic|sdk1|sdk2|sdk3|http|external|external2|resources|resources2|resources3] [fixture|production]",
   );
 }
 const isSdk = resourceSet.startsWith("sdk");
 const cwd = fileURLToPath(new URL("..", import.meta.url));
 const name = `${variant}${behavior === "normal" ? "" : `-${behavior}`}${resourceSet === "basic" ? "" : `-${resourceSet}`}-managed`;
-const outDir = path.join(cwd, ".hot-updater/g1", framework, name);
+const outDir = path.join(
+  cwd,
+  profile === "production" ? ".hot-updater/production" : ".hot-updater/g1",
+  framework,
+  name,
+);
 const { stdout, stderr } = await promisify(execFile)(
   "pnpm",
   [
@@ -53,6 +75,7 @@ const { stdout, stderr } = await promisify(execFile)(
       HOT_UPDATER_SPIKE_VARIANT: variant,
       HOT_UPDATER_SPIKE_SDK: isSdk ? "1" : "0",
       HOT_UPDATER_SPIKE_BEHAVIOR: behavior,
+      HOT_UPDATER_SPIKE_PROFILE: profile,
       HOT_UPDATER_SPIKE_RESOURCES: resourceSet.startsWith("external")
         ? "external"
         : resourceSet.startsWith("resources")
@@ -74,6 +97,7 @@ console.log(
       behavior,
       resourceSet,
       assetPrefix: "hot-updater:///",
+      profile,
     }),
     null,
     2,

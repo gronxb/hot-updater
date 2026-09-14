@@ -29,9 +29,11 @@ if (update && (await update.updateBundle()) && update.shouldForceUpdate) {
 
 Importing the package and calling `init()` do not call native code, register a
 listener, or open a network connection. The background runtime must provide
-`fetch` and `AbortController`. Response streams use `TextDecoder` and are bounded
-as bytes arrive. Without streaming support, the server must send a valid bounded
-`Content-Length` header.
+`fetch` and `AbortController`. The SDK requests response streaming through
+`lynxExtension.useStreaming`; streamed responses use `TextDecoder` and are
+bounded as bytes arrive. Without streaming support, the server must send a valid
+bounded `Content-Length` header. The packaged native integrations support Lynx
+3.9.
 
 `init()` accepts the update server URL, optional request headers and timeout, and
 an optional error callback. The public runtime surface is:
@@ -149,15 +151,22 @@ the empty attempt directory:
 ```ts
 import { readFile } from "node:fs/promises";
 import path from "node:path";
-import { lynx } from "@hot-updater/lynx/build";
+import { lynx, type LynxBuildOutput } from "@hot-updater/lynx/build";
 
 const build = lynx({
   build: async ({ cwd, platform, bundleId, outDir }) => {
-    await buildNativeLynxFiles({ cwd, platform, bundleId, outDir });
+    const { pageEntries, pageEssentialResources } = await buildNativeLynxFiles({
+      cwd,
+      platform,
+      bundleId,
+      outDir,
+    });
     return {
       entry: "main.lynx.bundle",
+      pageEntries,
+      pageEssentialResources,
       runtimeId: nativeRuntimeIdentity,
-    };
+    } satisfies LynxBuildOutput;
   },
   getBundleSigningPublicKey: async ({ cwd }) => ({
     publicKey: await readFile(path.join(cwd, "native/public-key.pem"), "utf8"),
@@ -165,8 +174,34 @@ const build = lynx({
 });
 ```
 
-The callback returns a portable relative entry path and the exact compatibility
-identity embedded by the native binary. The adapter adds
+The compiler output must contain `main.lynx.bundle` and
+`detail.lynx.bundle`. Its dependency graph returns the deterministic page
+allowlist and exact resource closure. For the basic example, that graph is:
+
+```ts
+const pageEntries = ["detail.lynx.bundle", "main.lynx.bundle"] as const;
+const pageEssentialResources = [
+  {
+    entry: "detail.lynx.bundle",
+    resources: ["detail.lynx.bundle"],
+  },
+  {
+    entry: "main.lynx.bundle",
+    resources: [
+      "assets/bootstrap.js",
+      "assets/probe.png",
+      "assets/probe.ttf",
+      "dynamic/component.lynx.bundle",
+      "main.lynx.bundle",
+    ],
+  },
+] as const;
+```
+
+These values come from the compiler's module, chunk, and asset relations; do
+not infer them from bundle text or maintain a separate resource list. The
+callback also returns the exact compatibility identity embedded by the native
+binary. The adapter adds
 `hot-updater-lynx.json`, declares every selected file as a build artifact,
 declares the entry as `patchAssetPath`, Brotli-compresses that entry for
 download, and preserves the other files as raw bytes. It rejects reserved paths,

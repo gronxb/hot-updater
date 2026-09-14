@@ -33,6 +33,7 @@ import {
   type ReleaseRow,
   updateReleasePolicy,
 } from "../../../plugins/plugin-core/dist/index.mjs";
+import { lynxE2eRuntimeId } from "../../lynx/embedded-bundle.ts";
 import {
   createLynxNativeLaunchConfiguration,
   HOT_UPDATER_LYNX_ANDROID_LAUNCH_CONFIGURATION_EXTRA,
@@ -88,6 +89,7 @@ import { buildReleaseCatalogUrl } from "./release-catalog-url.ts";
 import {
   readE2eScreenStateSnapshot,
   resetE2eScreenState,
+  setE2eScreenStateLaunchGeneration,
 } from "./screen-state.ts";
 import { readPaxPaths } from "./tar-pax.ts";
 import {
@@ -122,6 +124,7 @@ type DeployedBundleRecord = {
   bundleId: string;
   bundleProfile: BundleProfile;
   channel: string;
+  crossProvenance: boolean;
   diffBaseBundleId: string | null;
   diffPatchAssetPath: string | null;
   enabled: boolean;
@@ -129,6 +132,7 @@ type DeployedBundleRecord = {
   mode: DeployMode;
   patchBaseBundleIds: string[];
   releaseId: string;
+  runtimeId: string | null;
   rolloutCohortCount: number | null;
   scopeKey: string;
   shouldForceUpdate: boolean;
@@ -166,6 +170,7 @@ type DeployBundleRequest = {
   bundleProfile?: BundleProfile;
   channel: string;
   compressStrategy?: CompressionStrategy;
+  crossProvenance?: boolean;
   disabled?: boolean;
   diffBaseBundleId?: string;
   forceUpdate?: boolean;
@@ -527,7 +532,11 @@ function getFixtureResetChannels() {
 
 const jobs = new Map<string, JobState>();
 const jobAbortControllers = new Map<string, AbortController>();
-const remoteAssetProxyTargets = new Map<string, string>();
+type RemoteAssetProxyTarget = {
+  readonly assetPath: string | null;
+  readonly url: string;
+};
+const remoteAssetProxyTargets = new Map<string, RemoteAssetProxyTarget>();
 type CapturedProxyResponse = {
   readonly body: string;
   readonly headers: readonly [string, string][];
@@ -537,12 +546,16 @@ type CapturedProxyResponse = {
 type CapturedArtifactSelection = {
   readonly changedAssetCount: number;
   readonly changedAssetFileCount: number;
+  readonly changedAssetFilePaths: readonly string[];
   readonly changedAssetPatchCount: number;
+  readonly changedAssetPatchPaths: readonly string[];
   readonly changedAssetsPresent: boolean;
   readonly currentBundleId: string;
+  readonly fileHashPresent: boolean;
   readonly fileUrlPresent: boolean;
   readonly manifestFileHashPresent: boolean;
   readonly manifestUrlPresent: boolean;
+  readonly rawChangedAssetPaths: readonly string[];
   readonly targetBundleId: string;
 };
 const proxyRequestCounts = {
@@ -552,6 +565,11 @@ const proxyRequestCounts = {
 };
 const capturedArtifactSelections: CapturedArtifactSelection[] = [];
 let artifactFailuresRemaining = 0;
+let changedAssetMutation: {
+  assetPath: string;
+  mode: "corrupt" | "missing";
+  remaining: number;
+} | null = null;
 const proxyPathCounts = new Map<string, number>();
 const capturedCatalogResponses = new Map<
   string,
@@ -3655,24 +3673,28 @@ export function handleRuntimeConfig() {
   };
 }
 
-function toAppReachableProxyUrl(url: string) {
+function toAppReachableProxyUrl(url: string, assetPath: string | null = null) {
   const targetId = randomUUID();
-  remoteAssetProxyTargets.set(targetId, url);
+  remoteAssetProxyTargets.set(targetId, { assetPath, url });
   return `${getAppReachableControlBaseUrl()}/e2e/proxy-url/${targetId}`;
 }
 
-function rewriteRemoteAssetUrl(value: unknown): unknown {
+function rewriteRemoteAssetUrl(
+  value: unknown,
+  assetPath: string | null = null,
+): unknown {
   if (typeof value !== "string") {
     return value;
   }
 
   if (/^https?:\/\//.test(value)) {
-    return toAppReachableProxyUrl(value);
+    return toAppReachableProxyUrl(value, assetPath);
   }
 
   if (value.startsWith("/storage/")) {
     return toAppReachableProxyUrl(
       `${getControllerReachableAppBaseUrl()}/${value.slice(1)}`,
+      assetPath,
     );
   }
 
@@ -3714,7 +3736,7 @@ function rewriteUpdateInfoAssetUrls(payload: unknown): unknown {
           assetInfo.file && typeof assetInfo.file === "object"
             ? {
                 ...assetInfo.file,
-                url: rewriteRemoteAssetUrl(assetInfo.file.url),
+                url: rewriteRemoteAssetUrl(assetInfo.file.url, assetPath),
               }
             : assetInfo.file;
         const patch =
@@ -3846,6 +3868,7 @@ function captureArtifactSelection(pathname: string, payload: unknown) {
 
   const artifact = payload as {
     changedAssets?: unknown;
+    fileHash?: unknown;
     fileUrl?: unknown;
     manifestFileHash?: unknown;
     manifestUrl?: unknown;
@@ -3856,28 +3879,34 @@ function captureArtifactSelection(pathname: string, payload: unknown) {
     changedAssetsPresent &&
     typeof artifact.changedAssets === "object" &&
     !Array.isArray(artifact.changedAssets)
-      ? Object.values(artifact.changedAssets as Record<string, unknown>)
+      ? Object.entries(artifact.changedAssets as Record<string, unknown>)
       : [];
+  const hasField = (entry: unknown, field: string) =>
+    entry !== null &&
+    typeof entry === "object" &&
+    Reflect.get(entry, field) !== undefined;
+  const changedAssetFilePaths = changedAssetEntries.flatMap(([path, entry]) =>
+    hasField(entry, "file") ? [path] : [],
+  );
+  const changedAssetPatchPaths = changedAssetEntries.flatMap(([path, entry]) =>
+    hasField(entry, "patch") ? [path] : [],
+  );
 
   capturedArtifactSelections.push({
     changedAssetCount: changedAssetEntries.length,
-    changedAssetFileCount: changedAssetEntries.filter(
-      (entry) =>
-        entry !== null &&
-        typeof entry === "object" &&
-        Reflect.get(entry, "file") !== undefined,
-    ).length,
-    changedAssetPatchCount: changedAssetEntries.filter(
-      (entry) =>
-        entry !== null &&
-        typeof entry === "object" &&
-        Reflect.get(entry, "patch") !== undefined,
-    ).length,
+    changedAssetFileCount: changedAssetFilePaths.length,
+    changedAssetFilePaths,
+    changedAssetPatchCount: changedAssetPatchPaths.length,
+    changedAssetPatchPaths,
     changedAssetsPresent,
     currentBundleId,
+    fileHashPresent: typeof artifact.fileHash === "string",
     fileUrlPresent: typeof artifact.fileUrl === "string",
     manifestFileHashPresent: typeof artifact.manifestFileHash === "string",
     manifestUrlPresent: typeof artifact.manifestUrl === "string",
+    rawChangedAssetPaths: changedAssetFilePaths.filter(
+      (path) => !changedAssetPatchPaths.includes(path),
+    ),
     targetBundleId,
   });
 }
@@ -3951,6 +3980,7 @@ function captureCatalogResponse(
 export function handleProxyState() {
   return {
     artifactFailuresRemaining,
+    changedAssetMutation,
     capturedArtifactSelections: [...capturedArtifactSelections],
     capturedCatalogGenerations: Object.fromEntries(
       [...capturedCatalogResponses].map(([pathname, generations]) => [
@@ -3975,6 +4005,11 @@ export function handleConfigureProxy(input: {
   artifactFailures?: number;
   catalogDelayMs?: number;
   catalogMode?: "freeze" | "live" | "replay";
+  changedAssetMutation?: {
+    assetPath: string;
+    mode: "corrupt" | "missing";
+    remaining: number;
+  } | null;
   replayGeneration?: number | null;
   reset?: boolean;
 }) {
@@ -3986,6 +4021,7 @@ export function handleConfigureProxy(input: {
     capturedArtifactSelections.length = 0;
     capturedCatalogResponses.clear();
     artifactFailuresRemaining = 0;
+    changedAssetMutation = null;
   }
   if (input.catalogMode !== undefined) catalogProxyMode = input.catalogMode;
   if (input.replayGeneration !== undefined) {
@@ -4000,11 +4036,17 @@ export function handleConfigureProxy(input: {
   if (input.artifactFailures !== undefined) {
     artifactFailuresRemaining = input.artifactFailures;
   }
+  if (input.changedAssetMutation !== undefined) {
+    changedAssetMutation = input.changedAssetMutation;
+  }
   return handleProxyState();
 }
 
 export function handleAssertBundleArtifactSelection(input: {
   currentBundleId: string;
+  requireArchiveAbsent?: boolean;
+  requiredPatchAssetPaths?: readonly string[];
+  requiredRawAssetPaths?: readonly string[];
   selection: "archive-only" | "manifest-diff";
   targetBundleId: string;
 }) {
@@ -4036,6 +4078,31 @@ export function handleAssertBundleArtifactSelection(input: {
       observed,
     });
   }
+  if (
+    input.requireArchiveAbsent === true &&
+    (observed.fileUrlPresent || observed.fileHashPresent)
+  ) {
+    throw createEndpointError("Delta selection retained an archive fallback", {
+      expected: input,
+      observed,
+    });
+  }
+  for (const path of input.requiredPatchAssetPaths ?? []) {
+    if (!observed.changedAssetPatchPaths.includes(path)) {
+      throw createEndpointError("Required patched asset was not observed", {
+        expected: input,
+        observed,
+      });
+    }
+  }
+  for (const path of input.requiredRawAssetPaths ?? []) {
+    if (!observed.rawChangedAssetPaths.includes(path)) {
+      throw createEndpointError("Required raw-only asset was not observed", {
+        expected: input,
+        observed,
+      });
+    }
+  }
 
   logDetoxFixture("Bundle artifact selection verified", {
     ...observed,
@@ -4049,6 +4116,8 @@ export function handleAssertProxy(input: {
   artifactFailuresRemaining?: number;
   artifactRequests?: number;
   catalogRequests?: number;
+  changedAssetMutationMode?: "corrupt" | "missing" | null;
+  changedAssetMutationRemaining?: number;
   maxPathCardinality?: number;
 }) {
   const observed = handleProxyState();
@@ -4067,6 +4136,24 @@ export function handleAssertProxy(input: {
   ) {
     throw createEndpointError("Unexpected artifact request count", {
       expected: input.artifactRequests,
+      observed,
+    });
+  }
+  if (
+    input.changedAssetMutationMode !== undefined &&
+    changedAssetMutation?.mode !== input.changedAssetMutationMode
+  ) {
+    throw createEndpointError("Unexpected changed asset mutation mode", {
+      expected: input.changedAssetMutationMode,
+      observed,
+    });
+  }
+  if (
+    input.changedAssetMutationRemaining !== undefined &&
+    changedAssetMutation?.remaining !== input.changedAssetMutationRemaining
+  ) {
+    throw createEndpointError("Unexpected remaining changed asset mutations", {
+      expected: input.changedAssetMutationRemaining,
       observed,
     });
   }
@@ -4230,7 +4317,21 @@ export async function handleProxyRemoteAssetRequest(request: Request) {
     });
   }
 
-  const targetUrl = new URL(target);
+  if (
+    changedAssetMutation &&
+    changedAssetMutation.remaining > 0 &&
+    target.assetPath === changedAssetMutation.assetPath
+  ) {
+    changedAssetMutation.remaining -= 1;
+    return changedAssetMutation.mode === "missing"
+      ? new Response("Injected missing changed asset", { status: 404 })
+      : new Response("corrupt changed asset bytes", {
+          headers: { "content-type": "application/octet-stream" },
+          status: 200,
+        });
+  }
+
+  const targetUrl = new URL(target.url);
   if (targetUrl.protocol !== "https:" && targetUrl.protocol !== "http:") {
     return new Response("Unsupported url protocol", { status: 400 });
   }
@@ -4857,12 +4958,6 @@ function launchAndroidApp({
         "-S",
         "-n",
         `${fixtureSession.appId}/.OtaActivity`,
-        "--es",
-        "framework",
-        "react",
-        "--es",
-        "channel",
-        "production",
         "--es",
         HOT_UPDATER_LYNX_ANDROID_LAUNCH_CONFIGURATION_EXTRA,
         lynxLaunchConfiguration(),
@@ -5606,6 +5701,7 @@ function bareBuildCacheEnv({
       bundleProfile,
       cacheVersion: BARE_BUILD_CACHE_VERSION,
       configHash: bareBuildConfigFingerprint(),
+      crossProvenance: request.crossProvenance === true,
       inputHash: hashBareBuildInputs(),
       marker: request.marker,
       mode: request.mode,
@@ -5813,6 +5909,16 @@ async function deployFixtureBundle(
     targetAppVersion: request.targetAppVersion,
   });
   const cacheEnv = bareBuildCacheEnv({ bundleProfile, request });
+  if (request.crossProvenance && !isLynxE2eApp()) {
+    throw new Error("crossProvenance is only supported by the Lynx E2E app");
+  }
+  const deployEnv = request.crossProvenance
+    ? {
+        ...cacheEnv,
+        HOT_UPDATER_E2E_BUILD_MODE: "cross-provenance",
+        HOT_UPDATER_E2E_RUNTIME_ID_OVERRIDE: `${lynxE2eRuntimeId(fixtureSession.platform)}-cross-provenance-rejected`,
+      }
+    : cacheEnv;
   const deployProcessLock = await acquireFairFileLock({
     capacity: DEPLOY_LOCK_CAPACITY,
     lockRoot: deployProcessLockRoot(),
@@ -5845,11 +5951,11 @@ async function deployFixtureBundle(
   let deployDurationMs = 0;
   const deployOutput = await (async () => {
     try {
-      bareBuildLockPath = await acquireBareBuildCacheLock(cacheEnv, signal);
+      bareBuildLockPath = await acquireBareBuildCacheLock(deployEnv, signal);
       const deployStartedAt = Date.now();
       const output = await runLoggedCommand("node", args, {
         cwd: fixtureSession.exampleDir,
-        env: getHotUpdaterControlEnv(cacheEnv),
+        env: getHotUpdaterControlEnv(deployEnv),
         logPath: deployLogPath,
         signal,
       });
@@ -5974,12 +6080,18 @@ async function deployFixtureBundle(
       : null;
   bundle = await fetchProviderBundleById(bundleId);
   const patchBaseBundleIds = getBundlePatchBaseBundleIds(bundle);
+  const deployedRuntimeId = isLynxE2eApp()
+    ? request.crossProvenance
+      ? `${lynxE2eRuntimeId(fixtureSession.platform)}-cross-provenance-rejected`
+      : lynxE2eRuntimeId(fixtureSession.platform)
+    : null;
 
   fixtureSession.deployedBundles.push({
     archiveSizeBytes: archiveDetails.sizeBytes,
     bundleId,
     bundleProfile,
     channel: remoteChannel,
+    crossProvenance: request.crossProvenance === true,
     diffBaseBundleId: diff?.baseBundleId ?? null,
     diffPatchAssetPath: diff?.patchAssetPath ?? null,
     enabled: deployed.release.enabled,
@@ -5987,6 +6099,7 @@ async function deployFixtureBundle(
     mode: request.mode,
     patchBaseBundleIds,
     releaseId: deployed.release.id,
+    runtimeId: deployedRuntimeId,
     rolloutCohortCount: deployed.release.rollout_cohort_count,
     scopeKey: deployed.release.scope_key,
     shouldForceUpdate: deployed.release.should_force_update,
@@ -6015,6 +6128,11 @@ async function deployFixtureBundle(
     patchBaseBundleIds,
     primaryBundleAssetPath: getPrimaryBundleAssetPath(),
     releaseId: deployed.release.id,
+    ...(deployedRuntimeId
+      ? {
+          runtimeId: deployedRuntimeId,
+        }
+      : {}),
     rolloutCohortCount: deployed.release.rollout_cohort_count,
     scopeKey: deployed.release.scope_key,
     shouldForceUpdate: deployed.release.should_force_update,
@@ -7488,6 +7606,39 @@ export async function handleAssertFirstOtaUsesArchive(bundleId: string) {
   return assertFirstOtaUsesArchive({ bundleId });
 }
 
+export function handleAssertLynxPageInterruptionState(input: {
+  bundleId: string;
+  releaseId: string;
+}) {
+  if (!isLynxE2eApp()) {
+    throw new Error("Page interruption state is only available for Lynx E2E");
+  }
+  const state = readLynxJournalValue();
+  if (!state) throw new Error("Lynx native state is missing");
+  const unconfirmedReleaseIds = state.unconfirmedReleaseIds;
+  const crashedBundleIds = state.crashedBundleIds;
+  if (
+    !Array.isArray(unconfirmedReleaseIds) ||
+    unconfirmedReleaseIds.filter((value) => value === input.releaseId)
+      .length !== 1
+  ) {
+    throw createEndpointError(
+      "Interrupted page Release was not classified unconfirmed exactly once",
+      { expected: input.releaseId, observed: unconfirmedReleaseIds },
+    );
+  }
+  if (
+    !Array.isArray(crashedBundleIds) ||
+    crashedBundleIds.includes(input.bundleId)
+  ) {
+    throw createEndpointError(
+      "Interrupted page Bundle was incorrectly classified as crashed",
+      { rejected: input.bundleId, observed: crashedBundleIds },
+    );
+  }
+  return { crashedBundleIds, unconfirmedReleaseIds };
+}
+
 export async function handleCaptureState(prefix: string) {
   return captureState(prefix);
 }
@@ -7565,8 +7716,17 @@ export async function handleWaitForCrashRecovery(
   return waitForCrashRecovery(stableBundleId, crashedBundleId, options);
 }
 
-export async function handlePrepareAppLaunch() {
-  return prepareAppLaunch();
+export async function handlePrepareAppLaunch(options?: {
+  launchGeneration?: unknown;
+}) {
+  const result = await prepareAppLaunch();
+  const launchGeneration =
+    typeof options?.launchGeneration === "string" &&
+    options.launchGeneration.length > 0
+      ? options.launchGeneration
+      : null;
+  setE2eScreenStateLaunchGeneration(launchGeneration);
+  return result;
 }
 
 export async function handleLaunchAndroidCrashApp() {

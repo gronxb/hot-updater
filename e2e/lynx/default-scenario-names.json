@@ -23,5 +23,6 @@
   "republished-crashed-bundle-skipped",
   "crash-then-next-safe-update",
   "runtime-channel-crash-restore",
-  "ten-crash-history-safe-bundle"
+  "ten-crash-history-safe-bundle",
+  "sparkling-multipage-ota"
 ]

@@ -59,52 +59,78 @@ function contentLength(response: Response): number | null {
   return parsed;
 }
 
-async function cancelBody(
-  body: ReadableStream<Uint8Array> | null,
-): Promise<void> {
+function cancelBody(body: ReadableStream<Uint8Array> | null | undefined): void {
   try {
-    await body?.cancel();
+    void body?.cancel().catch(() => undefined);
   } catch {
-    // The size violation remains the authoritative failure.
+    // The response failure remains authoritative.
+  }
+}
+
+function cancelReader(reader: ReadableStreamDefaultReader<Uint8Array>): void {
+  try {
+    void reader.cancel().catch(() => undefined);
+  } catch {
+    // The request failure remains authoritative.
   }
 }
 
 async function readBoundedBody(
   response: Response,
   maxResponseBytes: number,
+  signal: AbortSignal,
 ): Promise<string> {
-  const declaredLength = contentLength(response);
+  let declaredLength: number | null;
+  try {
+    declaredLength = contentLength(response);
+  } catch (error) {
+    cancelBody(response.body);
+    throw error;
+  }
   if (declaredLength !== null && declaredLength > maxResponseBytes) {
-    await cancelBody(response.body);
+    cancelBody(response.body);
     return invalidResponse("Update response exceeds the size limit.");
   }
 
   const body = response.body;
   if (
     body !== null &&
+    body !== undefined &&
     typeof body.getReader === "function" &&
     typeof TextDecoder === "function"
   ) {
     const reader = body.getReader();
     const chunks: Uint8Array[] = [];
     let bytes = 0;
+    let handleAbort: (() => void) | undefined;
+    const abortPromise = new Promise<never>((_, reject) => {
+      handleAbort = () => {
+        cancelReader(reader);
+        reject(signal.reason ?? new Error("Update request aborted."));
+      };
+      if (signal.aborted) handleAbort();
+      else signal.addEventListener("abort", handleAbort, { once: true });
+    });
     try {
       while (true) {
-        const chunk = await reader.read();
+        const chunk = await Promise.race([reader.read(), abortPromise]);
         if (chunk.done) break;
         bytes += chunk.value.byteLength;
         if (bytes > maxResponseBytes) {
-          try {
-            await reader.cancel();
-          } catch {
-            // The size violation remains the authoritative failure.
-          }
           return invalidResponse("Update response exceeds the size limit.");
         }
         chunks.push(chunk.value);
       }
+    } catch (error) {
+      if (!signal.aborted) cancelReader(reader);
+      throw error;
     } finally {
-      reader.releaseLock();
+      if (handleAbort) signal.removeEventListener("abort", handleAbort);
+      try {
+        reader.releaseLock?.();
+      } catch {
+        // Cleanup must not replace the response or timeout result.
+      }
     }
     const content = new Uint8Array(bytes);
     let offset = 0;
@@ -116,7 +142,7 @@ async function readBoundedBody(
   }
 
   if (declaredLength === null) {
-    await cancelBody(body);
+    cancelBody(body);
     return invalidResponse(
       "A bounded Content-Length header is required without response streaming.",
     );
@@ -346,26 +372,40 @@ export function createHttpClient(options: HotUpdaterOptions) {
       }, timeout);
     });
     try {
+      const request: RequestInit & {
+        lynxExtension: { useStreaming: true };
+      } = {
+        headers: options.requestHeaders,
+        signal: controller.signal,
+        lynxExtension: { useStreaming: true },
+      };
       const response = await Promise.race([
-        fetch(`${baseURL()}${path}`, {
-          headers: options.requestHeaders,
-          signal: controller.signal,
-        }),
+        fetch(`${baseURL()}${path}`, request),
         timeoutPromise,
       ]);
       if (response.status !== 200) {
+        cancelBody(response.body);
         throw new LynxUpdaterError(
           "HTTP_ERROR",
           `Update request returned HTTP ${response.status}.`,
         );
       }
-      const body = await readBoundedBody(response, maxResponseBytes);
+      const body = await Promise.race([
+        readBoundedBody(response, maxResponseBytes, controller.signal),
+        timeoutPromise,
+      ]);
       try {
         return JSON.parse(body) as unknown;
       } catch {
         return invalidResponse("Update response is not valid JSON.");
       }
     } catch (error) {
+      if (
+        error instanceof LynxUpdaterError &&
+        error.code === "INVALID_RESPONSE"
+      ) {
+        throw error;
+      }
       if (timedOut || controller.signal.aborted) {
         throw timeoutError();
       }

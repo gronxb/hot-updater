@@ -12,12 +12,12 @@ class OtaActivity : Activity() {
 
     override fun onCreate(state: Bundle?) {
         super.onCreate(state)
-        val framework = intent.getStringExtra("framework") ?: "react"
-        require(framework in setOf("react", "vue", "octane"))
-        val embeddedDir = intent.getStringExtra("embeddedDir")
-            ?: "ota/$framework/A"
-        val embedded = org.json.JSONObject(BuildConfig.LYNX_EMBEDDED_DESCRIPTORS)
-            .getJSONObject(framework)
+        (lastNonConfigurationInstance as? HotUpdaterSparklingHost)?.let { host ->
+            hotUpdaterHost = host
+            setContentView(host.reattachPrimary(this))
+            return
+        }
+        val embedded = org.json.JSONObject(BuildConfig.LYNX_EMBEDDED_DESCRIPTOR)
         val embeddedBundleId = embedded.getString("bundleId")
         val embeddedManifestHash = embedded.getString("manifestHash")
         val metadata = packageManager.getApplicationInfo(
@@ -27,11 +27,11 @@ class OtaActivity : Activity() {
         val configuration = HotUpdaterSparklingConfiguration(
             lynx = LynxHostConfiguration(
                 runtimeId = BuildConfig.LYNX_OTA_COMPATIBILITY_ID,
-                channel = intent.getStringExtra("channel") ?: "ota-$framework",
+                channel = "production",
                 appVersion = "1.0.0",
                 cohort = getSharedPreferences("native-ota-config", MODE_PRIVATE)
                     .getString("cohort", "1")!!,
-                embeddedAssetDirectory = embeddedDir,
+                embeddedAssetDirectory = "ota/react/A",
                 embeddedBundleId = embeddedBundleId,
                 embeddedManifestHash = embeddedManifestHash,
                 minimumBundleId = embedded.getString("minimumBundleId"),
@@ -42,9 +42,10 @@ class OtaActivity : Activity() {
                     "com.hotupdater.FINGERPRINT_HASH",
                 ),
             ),
-            requiredStartupResourcePaths = startupResources(
-                intent.getStringExtra("resourceSet") ?: "sdk3",
-            ),
+            launchConfiguration = BuildConfig.HOT_UPDATER_APP_BASE_URL
+                .takeIf { it.isNotEmpty() }
+                ?.let { mapOf("appBaseURL" to it) }
+                .orEmpty(),
         )
         val host = HotUpdaterSparklingHost(
             applicationContext,
@@ -55,26 +56,14 @@ class OtaActivity : Activity() {
     }
 
     override fun onDestroy() {
-        hotUpdaterHost?.close()
+        if (isChangingConfigurations) {
+            hotUpdaterHost?.primaryActivityDetachedForRecreation(this)
+        } else {
+            hotUpdaterHost?.close()
+        }
         hotUpdaterHost = null
         super.onDestroy()
     }
-    private fun startupResources(resourceSet: String): Set<String> = when (resourceSet) {
-        "sdk1" -> setOf("main.lynx.bundle", "assets/probe.png")
-        "sdk2" -> setOf(
-            "main.lynx.bundle",
-            "assets/probe.png",
-            "assets/probe.ttf",
-            "assets/bootstrap.js",
-            "dynamic/component.lynx.bundle",
-        )
-        "sdk3" -> setOf(
-            "main.lynx.bundle",
-            "assets/probe.png",
-            "assets/probe.ttf",
-            "assets/bootstrap.js",
-            "dynamic/component.lynx.bundle",
-        )
-        else -> error("Unknown OTA resource set: $resourceSet")
-    }
+
+    override fun onRetainNonConfigurationInstance(): Any? = hotUpdaterHost
 }

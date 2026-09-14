@@ -6,9 +6,9 @@ import android.os.Looper
 import com.lynx.jsbridge.LynxMethod
 import com.lynx.jsbridge.LynxModule
 import com.lynx.react.bridge.Callback
-import com.lynx.react.bridge.ReadableMap
-import com.lynx.react.bridge.JavaOnlyMap
 import com.lynx.react.bridge.JavaOnlyArray
+import com.lynx.react.bridge.JavaOnlyMap
+import com.lynx.react.bridge.ReadableMap
 import java.util.IdentityHashMap
 import kotlinx.coroutines.launch
 import org.json.JSONObject
@@ -31,6 +31,9 @@ class HotUpdaterLynxModule(context: Context) : LynxModule(context) {
             }
         }
     }
+    @LynxMethod fun getRuntimeEvents(callback: Callback) = call(callback) {
+        session -> session.controller.runtimeEvents(session)
+    }
     @LynxMethod fun acceptCatalog(params: ReadableMap, callback: Callback) = call(callback) { session -> session.controller.accept(session, json(params)) }
     @LynxMethod fun validateSelection(params: ReadableMap, callback: Callback) = call(callback) { session -> session.controller.validate(session, json(params)) }
     @LynxMethod fun prepareSelection(params: ReadableMap, callback: Callback) = call(callback) { session -> session.controller.prepare(session, json(params)) }
@@ -48,10 +51,9 @@ class HotUpdaterLynxModule(context: Context) : LynxModule(context) {
                     "No registered native context",
                 )
                 val reload = session.reloadAction()
-                val reset = session.controller.resetChannel()
-                reload { reloadResult ->
-                    once.settle(reloadResult.map {
-                        JSONObject().put("reset", reset)
+                reload("reset") { reloadResult ->
+                    once.settle(reloadResult.map { acceptance ->
+                        JSONObject(acceptance.toString()).put("reset", true)
                     })
                 }
             }
@@ -73,7 +75,7 @@ class HotUpdaterLynxModule(context: Context) : LynxModule(context) {
                     "No registered native context",
                 )
                 val reload = session.reloadAction()
-                reload { result -> once.settle(result.map { JSONObject() }) }
+                reload("reload") { result -> once.settle(result) }
             }
             result.exceptionOrNull()?.let {
                 once.settle(Result.failure(it))

@@ -1,6 +1,10 @@
 package com.hotupdater.lynx.sparkling
 
+import android.app.Activity
 import android.content.Context
+import android.content.ContextWrapper
+import android.content.Intent
+import android.os.Handler
 import android.os.Looper
 import android.os.Process
 import android.util.Log
@@ -10,7 +14,9 @@ import com.hotupdater.lynx.HotUpdaterLynxModule
 import com.hotupdater.lynx.LynxHostConfiguration
 import com.hotupdater.lynx.LynxLaunchDiagnostics
 import com.hotupdater.lynx.LynxLaunchSession
+import com.hotupdater.lynx.LynxLogicalPage
 import com.hotupdater.lynx.LynxNativeOperationException
+import com.hotupdater.lynx.LynxPageCancelReason
 import com.hotupdater.lynx.LynxUpdaterController
 import com.lynx.tasm.LynxViewBuilder
 import com.tiktok.sparkling.SparklingContext
@@ -18,17 +24,48 @@ import com.tiktok.sparkling.hybridkit.base.HybridKitType
 import com.tiktok.sparkling.hybridkit.lynx.SimpleLynxKitView
 import com.tiktok.sparkling.hybridkit.lynx.SparklingLynxModuleWrapper
 import com.tiktok.sparkling.hybridkit.scheme.HybridSchemeParam
+import com.tiktok.sparkling.method.registry.api.SparklingBridge
+import com.tiktok.sparkling.method.registry.core.IBridgeContext
+import java.lang.ref.WeakReference
 import java.util.UUID
+import org.json.JSONObject
 
 data class HotUpdaterSparklingConfiguration(
     val lynx: LynxHostConfiguration,
+    val launchConfiguration: Map<String, String> = emptyMap(),
+    /** Enables nonproduction launch overrides supplied through an Activity intent. */
+    val allowDiagnosticIntentLaunchConfiguration: Boolean = false,
+    @Deprecated(
+        "Page resources are declared by pageEssentialResources metadata",
+    )
     val requiredStartupResourcePaths: Set<String> = emptySet(),
-)
+) {
+    init {
+        require(requiredStartupResourcePaths.isEmpty()) {
+            "Use manifest-covered pageEssentialResources for readiness"
+        }
+    }
+}
 
 fun interface HotUpdaterSparklingEventListener {
     fun onEvent(name: String, details: Map<String, Any?>)
 }
 
+internal interface ManagedSparklingRouteAuthority {
+    fun open(
+        sourceBridgeContext: IBridgeContext?,
+        scheme: String,
+        animated: Boolean,
+    ): Boolean
+
+    fun close(
+        sourceBridgeContext: IBridgeContext?,
+        requestedContainerId: String?,
+        animated: Boolean,
+    ): Boolean
+}
+
+/** Registration called by the application while configuring Sparkling. */
 object HotUpdaterSparklingModules {
     @JvmStatic
     fun modules() = mapOf(
@@ -36,411 +73,728 @@ object HotUpdaterSparklingModules {
             HotUpdaterLynxModule::class.java,
         ),
     )
+
+    @JvmStatic
+    fun registerNavigation() = ManagedSparklingBridge.register()
 }
 
-/** Owns every Sparkling/Lynx view in one replaceable native generation. */
+/**
+ * Owns one ordered full-page Activity stack and one immutable release per
+ * generation. An application Activity mounts the primary; every pushed route
+ * is hosted by [HotUpdaterSparklingPageActivity].
+ */
 class HotUpdaterSparklingHost(
     context: Context,
     internal val configuration: HotUpdaterSparklingConfiguration,
     private val events: HotUpdaterSparklingEventListener? = null,
-) : AutoCloseable {
+) : AutoCloseable, ManagedSparklingPageAuthority, ManagedSparklingRouteAuthority {
     private val applicationContext = context.applicationContext
-    private val containers = linkedSetOf<HotUpdaterSparklingView>()
-    private var controller = newController()
-    private var generationEvents = SparklingGenerationEvents(events)
+    private val mainHandler = Handler(Looper.getMainLooper())
+    private val hostId = UUID.randomUUID().toString()
+    internal val eventSink = SparklingRuntimeEventSink(applicationContext, events)
+    internal val pages = mutableListOf<ManagedPage>()
+    internal var controller = newController()
+    internal var generationEvents = SparklingGenerationEvents(eventSink)
+    internal var pageCreatedObserver: ((ManagedPage) -> Unit)? = null
+    internal var pageProgressObserver: ((ManagedPage) -> Unit)? = null
     private var closed = false
-    private var replacing = false
+    private var transitioning = false
+    private var pendingReconstruction = emptyList<LynxLogicalPage>()
 
-    fun createView(context: Context, primary: Boolean = containers.isEmpty()): HotUpdaterSparklingView =
-        createViews(context, count = 1, firstPrimary = primary).single()
+    init {
+        ManagedSparklingHostRegistry.add(hostId, this)
+    }
 
-    /** Atomically attaches a primary and its secondaries before publishing membership. */
-    fun createViews(
+    fun createView(
         context: Context,
-        count: Int,
-        firstPrimary: Boolean = containers.isEmpty(),
-    ): List<HotUpdaterSparklingView> {
+        primary: Boolean = pages.isEmpty(),
+    ): HotUpdaterSparklingView {
         requireMainThread()
+        check(primary && pages.isEmpty()) {
+            "Only the host-designated primary is mounted by the application"
+        }
         check(!closed) { "The managed Lynx host is closed" }
-        require(count > 0) { "At least one managed view is required" }
-        check(firstPrimary == containers.isEmpty()) {
-            "Create exactly one primary before managed secondary views"
+        val activity = checkNotNull(context.activity()) {
+            "A managed full-page Lynx container requires an Activity"
         }
-        val created = (0 until count).map { index ->
-            HotUpdaterSparklingView(context, this, firstPrimary && index == 0)
+        val session = controller.pinPrimary(
+            generationId = generationEvents.id,
+            parameters = emptyMap(),
+        )
+        val logicalStack = controller.retainedLogicalStack(session)
+        val page = ManagedPage(
+            id = UUID.randomUUID().toString(),
+            containerId = UUID.randomUUID().toString(),
+            logical = logicalStack.first(),
+            primary = true,
+            session = session,
+            activity = WeakReference(activity),
+        )
+        pages += page
+        val view = attach(page, activity)
+        pendingReconstruction = logicalStack.drop(1)
+        openNextReconstructedPage()
+        emitGenerationStarted("initial")
+        return view
+    }
+
+    override fun attachPage(
+        pageId: String,
+        activity: HotUpdaterSparklingPageActivity,
+    ): HotUpdaterSparklingView? {
+        requireMainThread()
+        val page = pages.singleOrNull { it.id == pageId } ?: return null
+        if (page.activity.get() != null && page.activity.get() !== activity) {
+            return null
         }
-        containers.addAll(created)
-        try {
-            created.forEach { it.attach(controller, generationEvents) }
-            if (firstPrimary) emitGenerationStarted("initial")
-            return created
-        } catch (error: Exception) {
-            if (!recordGenerationFailure(created, error.message)) {
-                failClosed(
-                    created,
-                    "failureClassificationFailed",
-                    error.message,
-                )
-                throw error
+        return attachRecreatedPage(page, activity)
+    }
+
+    /** Reuses the host while rebuilding the root Activity after OS recreation. */
+    fun reattachPrimary(activity: Activity): HotUpdaterSparklingView {
+        requireMainThread()
+        check(!closed && !transitioning)
+        val primary = pages.firstOrNull()?.takeIf { it.primary && it.recreating }
+            ?: error("The managed primary page is not awaiting reattachment")
+        return attachRecreatedPage(primary, activity)
+    }
+
+    /** Retires Activity-bound objects while retaining the durable generation. */
+    fun primaryActivityDetachedForRecreation(activity: Activity) {
+        requireMainThread()
+        val primary = pages.firstOrNull()?.takeIf {
+            it.primary && it.activity.get() === activity
+        } ?: return
+        if (closed || transitioning) return
+        detachForRecreation(primary)
+    }
+
+    override fun requestBack(activity: Activity): Boolean {
+        requireMainThread()
+        if (closed || transitioning) return true
+        val source = pages.singleOrNull { it.activity.get() === activity }
+            ?: return false
+        return closePage(
+            source,
+            animated = true,
+            reason = LynxPageCancelReason.NATIVE_BACK,
+        )
+    }
+
+    override fun activityDetached(activity: Activity) {
+        requireMainThread()
+        val page = pages.singleOrNull { it.activity.get() === activity }
+            ?: return
+        if (page.closing || transitioning || closed) return
+        if (!activity.isChangingConfigurations) {
+            val message = "Managed page Activity was destroyed before close"
+            if (page.session.recordFatalFailure(message)) {
+                recover(message, page, generationEvents)
             }
-            val replacement = replaceGeneration(
-                "initialAttachFailed",
-                retry = true,
+            return
+        }
+        detachForRecreation(page)
+    }
+
+    override fun pageAttachFailed(
+        pageId: String,
+        activity: HotUpdaterSparklingPageActivity,
+        error: Throwable,
+    ) {
+        requireMainThread()
+        val page = pages.singleOrNull { it.id == pageId } ?: return
+        if (
+            page.activity.get() !== activity || page.attachFailureReported ||
+            closed || transitioning
+        ) return
+        page.attachFailureReported = true
+        val message = error.message ?: "Managed page attachment failed"
+        val accepted = if (!page.admitted) {
+            page.session.recordFatalFailure(message)
+        } else {
+            pages.firstOrNull()?.session?.recordGenerationFailure(message) == true
+        }
+        if (accepted) recover(message, page, generationEvents)
+    }
+
+    private fun detachForRecreation(page: ManagedPage) {
+        page.failureGate.beginRebind()
+        (page.view?.parent as? ViewGroup)?.removeView(page.view)
+        page.session.prepareForRebind()?.let { context ->
+            ManagedSparklingHostRegistry.unbindContext(context, this)
+        }
+        page.sourceBridgeContext?.let { context ->
+            ManagedSparklingHostRegistry.unbindBridgeContext(context, this)
+        }
+        page.view?.retire()
+        page.sparklingBridge?.release()
+        page.view = null
+        page.sourceContext = null
+        page.sourceBridgeContext = null
+        page.sparklingBridge = null
+        page.firstContentObserved = false
+        page.observedEssentialResources.clear()
+        page.recreating = true
+        generationEvents.emit(
+            "pageContainerDetached",
+            details(page) + mapOf(
+                "orderedPageEntries" to pages.map { it.logical.entry },
+                "topPageEntry" to pages.last().logical.entry,
+            ),
+        )
+        page.activity = WeakReference(null)
+    }
+
+    private fun attachRecreatedPage(
+        page: ManagedPage,
+        activity: Activity,
+    ): HotUpdaterSparklingView {
+        val reattaching = page.recreating
+        page.activity = WeakReference(activity)
+        val view = try {
+            page.view ?: attach(page, activity)
+        } finally {
+            page.recreating = false
+            page.failureGate.completeRebind()
+        }
+        if (reattaching && !transitioning) {
+            generationEvents.emit(
+                "pageContainerReattached",
+                details(page) + mapOf(
+                    "orderedPageEntries" to pages.map { it.logical.entry },
+                    "topPageEntry" to pages.last().logical.entry,
+                ),
             )
-            if (created.all { it.session != null }) return created
-            throw replacement.exceptionOrNull() ?: error
+        }
+        return view
+    }
+
+    override fun open(
+        sourceBridgeContext: IBridgeContext?,
+        scheme: String,
+        animated: Boolean,
+    ): Boolean {
+        requireMainThread()
+        if (closed || transitioning) return false
+        val sourceContainerId = sourceBridgeContext?.containerID
+        val source = pages.singleOrNull {
+            it.containerId == sourceContainerId &&
+                runCatching { controller.diagnostics(it.session) }.isSuccess &&
+                it.session.generationId == generationEvents.id
+        } ?: return false
+        val activity = source.activity.get() ?: return false
+        if (!authorizedSourceBridgeContext(
+                sourceBridgeContext,
+                source.sourceBridgeContext,
+                activity,
+                sourceBridgeContext?.let(
+                    ManagedSparklingHostRegistry::hostForBridgeContext
+                ) ===
+                    this,
+                source.containerId,
+            )
+        ) {
+            return false
+        }
+        val route = ManagedSparklingRoute.parse(
+            scheme,
+            source.session.installation.pageEntries.toSet(),
+        )
+        return openPage(
+            activity,
+            LynxLogicalPage(route.pageEntry, route.parameters),
+            animated,
+            reconstructing = false,
+            sourceContextId = checkNotNull(source.diagnostics).contextId,
+        )
+    }
+
+    override fun close(
+        sourceBridgeContext: IBridgeContext?,
+        requestedContainerId: String?,
+        animated: Boolean,
+    ): Boolean {
+        requireMainThread()
+        if (closed || transitioning) return false
+        val sourceContainerId = sourceBridgeContext?.containerID
+        val source = pages.singleOrNull {
+            it.containerId == sourceContainerId &&
+                runCatching { controller.diagnostics(it.session) }.isSuccess &&
+                it.session.generationId == generationEvents.id
+        } ?: return false
+        val activity = source.activity.get() ?: return false
+        if (!authorizedSourceBridgeContext(
+                sourceBridgeContext,
+                source.sourceBridgeContext,
+                activity,
+                sourceBridgeContext?.let(
+                    ManagedSparklingHostRegistry::hostForBridgeContext
+                ) ===
+                    this,
+                source.containerId,
+            )
+        ) {
+            return false
+        }
+        if (requestedContainerId != null && requestedContainerId != source.containerId) {
+            return false
+        }
+        return closePage(
+            source,
+            animated,
+            reason = LynxPageCancelReason.SPARKLING_CLOSE,
+        )
+    }
+
+    internal fun openPage(
+        sourceActivity: Activity,
+        logical: LynxLogicalPage,
+        animated: Boolean,
+        reconstructing: Boolean,
+        sourceContextId: String,
+    ): Boolean {
+        check(logical.entry in pages.first().session.installation.pageEntries) {
+            "Unknown managed page entry"
+        }
+        val position = if (reconstructing) {
+            val retained = controller.retainedLogicalStack(pages.first().session)
+            pages.size.takeIf {
+                it in 1 until retained.size && retained[it] == logical
+            } ?: return false
+        } else {
+            pages.size
+        }
+        val session = controller.pinSecondary(
+            pageEntry = logical.entry,
+            parameters = logical.parameters,
+            stackPosition = position,
+            generationId = generationEvents.id,
+            reconstructing = reconstructing,
+            nativePageClass = HotUpdaterSparklingPageActivity::class.java.name,
+            sourceContextId = sourceContextId,
+        )
+        val page = ManagedPage(
+            id = UUID.randomUUID().toString(),
+            containerId = UUID.randomUUID().toString(),
+            logical = logical,
+            primary = false,
+            session = session,
+            activity = WeakReference<Activity>(null),
+            diagnostics = controller.diagnostics(session),
+        )
+        pages += page
+        var activityStarted = false
+        return try {
+            pageCreatedObserver?.invoke(page)
+            val intent = Intent(
+                sourceActivity,
+                HotUpdaterSparklingPageActivity::class.java,
+            )
+                .putExtra(HotUpdaterSparklingPageActivity.EXTRA_HOST_ID, hostId)
+                .putExtra(HotUpdaterSparklingPageActivity.EXTRA_PAGE_ID, page.id)
+                .putExtra(HotUpdaterSparklingPageActivity.EXTRA_ANIMATED, animated)
+            sourceActivity.startActivity(intent)
+            activityStarted = true
+            if (!animated) sourceActivity.overridePendingTransition(0, 0)
+            check(generationEvents.emit(
+                "routeOpened",
+                details(page) + mapOf(
+                    "sourceContextId" to sourceContextId,
+                    "orderedPageEntries" to pages.map { it.logical.entry },
+                    "orderedPageParameters" to pages.map { it.logical.parameters },
+                    "topPageEntry" to logical.entry,
+                    "animated" to animated,
+                    "outcome" to "opened",
+                    "cause" to if (reconstructing) {
+                        "reconstruction"
+                    } else {
+                        "router.open"
+                    },
+                ),
+            )) { "Managed generation retired while opening a page" }
+            true
+        } catch (error: Throwable) {
+            if (!activityStarted && runCatching {
+                    controller.rollbackSecondary(session)
+                }.getOrDefault(false)
+            ) {
+                pages.remove(page)
+                session.close()
+            } else if (runCatching {
+                    session.recordFatalFailure(
+                        error.message ?: "Managed page launch failed",
+                    )
+                }.getOrDefault(false)
+            ) {
+                recover(
+                    error.message ?: "Managed page launch failed",
+                    page,
+                    generationEvents,
+                )
+            }
+            throw error
         }
     }
 
-    /** Nonproduction integration evidence retaining only stale session authorities. */
-    fun captureDiagnosticAuthorities() = HotUpdaterSparklingStaleProbe(
-        containers.mapNotNull { view ->
-            val session = view.session ?: return@mapNotNull null
-            val identity = view.diagnostics ?: return@mapNotNull null
-            Triple(controller, session, identity)
-        },
-        events,
-        generationEvents.id,
-    )
-
-    internal fun remove(container: HotUpdaterSparklingView) {
-        requireMainThread()
-        if (container !in containers) return
-        if (container.primary) {
-            vacateGeneration("primaryRemoved")
-        } else {
-            containers.remove(container)
-            container.retire()
+    internal fun closePage(
+        page: ManagedPage,
+        animated: Boolean,
+        finishActivity: Boolean = true,
+        reason: LynxPageCancelReason,
+    ): Boolean {
+        if (page.primary || pages.lastOrNull() !== page || page.closing) {
+            return false
         }
+        if (!controller.cancelSecondaryForHost(page.session, reason)) return false
+        page.closing = true
+        val pendingAttempt = !page.admitted
+        if (pendingAttempt) pendingReconstruction = emptyList()
+        pages.removeAt(pages.lastIndex)
+        val activity = page.activity.get()
+        if (pendingAttempt) {
+            emitPageAttemptTerminal(
+                page,
+                terminal = "authorized-cancel",
+                reason = reason.wireValue,
+                topContextId = pages.lastOrNull()?.diagnostics?.contextId,
+            )
+        }
+        retirePage(page)
+        generationEvents.emit(
+            "routeClosed",
+            details(page) + mapOf(
+                "sourceContextId" to checkNotNull(page.diagnostics).contextId,
+                "orderedPageEntries" to pages.map { it.logical.entry },
+                "orderedPageParameters" to pages.map { it.logical.parameters },
+                "topPageEntry" to pages.last().logical.entry,
+                "animated" to animated,
+                "outcome" to "closed",
+                "cause" to routeCloseCause(reason),
+            ),
+        )
+        if (finishActivity) {
+            activity?.finish()
+            if (!animated) activity?.overridePendingTransition(0, 0)
+        }
+        controller.flushPrimaryReadinessAfterHostEvent()
+        return true
     }
 
     internal fun reload(
         generation: SparklingGenerationEvents,
-        completion: (Result<Unit>) -> Unit,
+        trigger: String,
+        completion: (Result<JSONObject>) -> Unit,
     ) {
         requireMainThread()
-        completion(SparklingReloadContract.run(
-            closed = closed,
-            replacing = replacing,
-            current = generation === generationEvents,
-        ) { replaceGeneration("reload", retry = true) })
+        val rejection = when {
+            closed -> transitionError("HOST_CLOSED", "The managed Lynx host is closed")
+            transitioning -> transitionError(
+                "TRANSITION_IN_PROGRESS",
+                "A managed Lynx transition is already accepted",
+            )
+            generation !== generationEvents -> transitionError(
+                "STALE_CONTEXT",
+                "The requesting Lynx generation is no longer current",
+            )
+            else -> null
+        }
+        if (rejection != null) {
+            completion(Result.failure(rejection))
+            return
+        }
+        val primary = pages.firstOrNull()?.takeIf { it.primary }
+        if (primary == null) {
+            completion(Result.failure(transitionError(
+                "STALE_CONTEXT",
+                "The managed primary page is unavailable",
+            )))
+            return
+        }
+        val accepted = runCatching {
+            controller.acceptManagedTransition(
+                primary.session,
+                generationEvents.id,
+                pages.map { it.logical },
+                trigger,
+            )
+        }
+        val result = accepted.getOrNull()
+        if (result == null) {
+            completion(Result.failure(checkNotNull(accepted.exceptionOrNull())))
+            return
+        }
+        transitioning = true
+        pages.filter { !it.primary && !it.admitted }.forEach { page ->
+            emitPageAttemptTerminal(
+                page,
+                terminal = "authorized-cancel",
+                reason = "managedTransition",
+                transitionId = result.getString("transitionId"),
+                topContextId = pages.lastOrNull { it.primary || it.admitted }
+                    ?.diagnostics?.contextId,
+            )
+        }
+        generationEvents.emit(
+            "transitionAccepted",
+            details(primary) + mapOf(
+                "status" to "TRANSITION_ACCEPTED",
+                "transitionId" to result.getString("transitionId"),
+                "trigger" to trigger,
+                "sourceContextId" to checkNotNull(primary.diagnostics).contextId,
+                "orderedPageEntries" to pages.map { it.logical.entry },
+                "orderedPageParameters" to pages.map { it.logical.parameters },
+                "topPageEntry" to pages.last().logical.entry,
+            ),
+        )
+        // Deliver acceptance while the source bridge and context are live. The
+        // queued replacement cannot settle the old Promise a second time.
+        deliverTransitionAcceptance(
+            result,
+            completion,
+        ) { mainHandler.post { replaceGeneration(trigger) } }
     }
 
     internal fun recover(
         message: String,
-        identity: LynxLaunchDiagnostics,
+        page: ManagedPage,
         generation: SparklingGenerationEvents,
+        failureCode: Int? = null,
+        failureResourcePath: String? = null,
     ) {
-        if (generation !== generationEvents || replacing || closed) return
+        if (generation !== generationEvents || transitioning || closed) return
+        val failureDetails = details(page).toMutableMap().apply {
+            put("message", message)
+            failureCode?.let { put("failureCode", it) }
+            failureResourcePath?.let { put("failureResourcePath", it) }
+        }
+        generation.emit("runtimeFailed", failureDetails)
+        if (!page.primary && !page.admitted) {
+            emitPageAttemptTerminal(
+                page,
+                terminal = "verified-fatal",
+                transitionId = page.transitionAttribution.id,
+                topContextId = pages.lastOrNull { it !== page }
+                    ?.diagnostics?.contextId,
+                failureCode = failureCode,
+                failureResourcePath = failureResourcePath,
+            )
+        }
         generation.emit(
             "generationFailed",
-            details(identity, generation) + ("message" to message),
+            details(page) + ("message" to message),
         )
-        if (!recordGenerationFailure(
-            containers.toList(),
-            message,
-        )) {
-            failClosed(
-                containers.toList(),
-                "failureClassificationFailed",
-                message,
-            )
-            return
-        }
-        replaceGeneration("recovery", retry = true)
+        transitioning = true
+        mainHandler.post { replaceGeneration("recovery") }
     }
 
-    private fun replaceGeneration(
-        reason: String,
-        retry: Boolean,
-    ): Result<Unit> {
-        requireMainThread()
-        if (closed) return Result.failure(reloadError(
-            "HOST_CLOSED",
-            "The managed Lynx host is closed",
-        ))
-        if (replacing) return Result.failure(reloadError(
-            "RELOAD_BUSY",
-            "A managed Lynx generation replacement is already running",
-        ))
-        replacing = true
-        return try {
-            val current = containers.toList()
-            val retired = retirementDetails(current, reason)
-            generationEvents.beginRetirement(retired)
-            current.forEach(HotUpdaterSparklingView::retire)
-            controller.close()
-            generationEvents.finishRetirement(retired)
-            startGeneration()
-            try {
-                current.sortedByDescending { it.primary }.forEach {
-                    it.attach(controller, generationEvents)
-                }
-            } catch (error: Exception) {
-                val classified = recordGenerationFailure(
-                    current,
-                    error.message,
-                )
-                val retryRetired = retirementDetails(
-                    current,
-                    "reconstructionRetry",
-                )
-                generationEvents.beginRetirement(retryRetired)
-                current.forEach(HotUpdaterSparklingView::retire)
-                controller.close()
-                generationEvents.finishRetirement(retryRetired)
-                if (!classified) {
-                    containers.clear()
-                    closed = true
-                    emitReconstructionFailed(
-                        retryRetired,
-                        "failureClassificationFailed",
-                        error.message,
-                    )
-                    return Result.failure(reloadError(
-                        "RECONSTRUCTION_FAILED",
-                        error.message ?: "Could not classify the failed Lynx generation",
-                        error,
-                    ))
-                }
-                if (!retry) throw error
-                startGeneration()
-                current.sortedByDescending { it.primary }.forEach {
-                    it.attach(controller, generationEvents)
-                }
-            }
-            emitGenerationStarted(reason)
-            Result.success(Unit)
-        } catch (error: Exception) {
-            val current = containers.toList()
-            recordGenerationFailure(current, error.message)
-            val retired = retirementDetails(current, "reconstructionFailed")
-            generationEvents.beginRetirement(retired)
-            current.forEach(HotUpdaterSparklingView::retire)
-            controller.close()
-            generationEvents.finishRetirement(retired)
-            containers.clear()
-            closed = true
-            Log.e(TAG, "Could not reconstruct managed Lynx generation", error)
-            emitReconstructionFailed(retired, reason, error.message)
-            Result.failure(reloadError(
-                "RECONSTRUCTION_FAILED",
-                error.message ?: "Could not reconstruct managed Lynx generation",
-                error,
-            ))
-        } finally {
-            replacing = false
-        }
-    }
-
-    private fun reloadError(
-        code: String,
-        message: String,
-        cause: Throwable? = null,
-    ) = LynxNativeOperationException(code, message, cause)
-
-    override fun close() {
+    private fun replaceGeneration(reason: String) {
         requireMainThread()
         if (closed) return
-        closed = true
-        val current = containers.toList()
-        val retired = retirementDetails(current, "close")
-        generationEvents.beginRetirement(retired)
-        current.forEach(HotUpdaterSparklingView::retire)
-        containers.clear()
-        controller.close()
-        generationEvents.finishRetirement(retired)
-    }
-
-    private fun newController() = LynxUpdaterController(
-        applicationContext,
-        configuration.lynx,
-    )
-
-    private fun startGeneration() {
-        controller = newController()
-        generationEvents = SparklingGenerationEvents(events)
-    }
-
-    private fun vacateGeneration(reason: String) {
-        if (closed || replacing) return
-        replacing = true
+        pageCreatedObserver = null
+        pageProgressObserver = null
+        val retained = pages.firstOrNull()?.let { primary ->
+            controller.retainedLogicalStack(primary.session)
+        } ?: emptyList()
+        val primaryActivity = pages.firstOrNull()?.activity?.get()
+        val secondaryActivities = pages.drop(1).mapNotNull {
+            it.activity.get() as? HotUpdaterSparklingPageActivity
+        }
+        val retired = retirementDetails(reason)
+        var terminalFailureDetails = retired
         try {
-            val current = containers.toList()
-            val retired = retirementDetails(current, reason)
             generationEvents.beginRetirement(retired)
-            current.forEach(HotUpdaterSparklingView::retire)
-            containers.clear()
+            pages.drop(1).forEach { it.closing = true }
+            pages.forEach(::retirePage)
+            pages.clear()
+            secondaryActivities.forEach(Activity::finish)
             controller.close()
             generationEvents.finishRetirement(retired)
-            try {
-                startGeneration()
-            } catch (error: Exception) {
-                closed = true
-                emitReconstructionFailed(retired, reason, error.message)
+            val rootActivity = checkNotNull(primaryActivity) {
+                "The primary Activity cannot be reconstructed"
             }
-        } finally {
-            replacing = false
-        }
-    }
-
-    private fun emitGenerationStarted(reason: String) {
-        val current = containers.toList()
-        val primary = current.first { it.primary }.diagnostics ?: return
-        generationEvents.emit(
-            "generationStarted",
-            details(primary, generationEvents) + mapOf(
-                "contextIds" to current.mapNotNull { it.diagnostics?.contextId },
-                "primaryContextId" to primary.contextId,
-                "reason" to reason,
-            ),
-        )
-    }
-
-    private fun recordGenerationFailure(
-        current: List<HotUpdaterSparklingView>,
-        message: String?,
-    ): Boolean {
-        val primary = current.firstOrNull { it.primary }?.session
-            ?: return false
-        return runCatching {
-            primary.recordGenerationFailure(
-                message ?: "Managed view attach failed",
+            var launchReason = reason
+            repeat(MAX_RECONSTRUCTION_ATTEMPTS) {
+                controller = newController()
+                generationEvents = SparklingGenerationEvents(eventSink)
+                var primarySession: LynxLaunchSession? = null
+                try {
+                    primarySession = controller.pinPrimary(
+                        generationEvents.id,
+                        retained.first().parameters,
+                    )
+                    val rebuiltStack = controller.retainedLogicalStack(
+                        primarySession,
+                    )
+                    check(rebuiltStack == retained) {
+                        "The selected release changed the retained logical stack"
+                    }
+                    val primary = ManagedPage(
+                        id = UUID.randomUUID().toString(),
+                        containerId = UUID.randomUUID().toString(),
+                        logical = rebuiltStack.first(),
+                        primary = true,
+                        session = primarySession,
+                        activity = WeakReference(rootActivity),
+                    )
+                    pages += primary
+                    rootActivity.setContentView(attach(primary, rootActivity))
+                    pendingReconstruction = rebuiltStack.drop(1)
+                    openNextReconstructedPage()
+                    transitioning = false
+                    emitGenerationStarted(launchReason)
+                    return
+                } catch (error: Throwable) {
+                    Log.e(
+                        TAG,
+                        "Could not reconstruct managed Lynx generation",
+                        error,
+                    )
+                    val failedBundle = primarySession?.installation?.bundleId
+                    val failedDetails = reconstructionFailureDetails(
+                        primarySession,
+                        retained,
+                        retired["transitionId"] as? String,
+                        "reconstructionRecovery",
+                    )
+                    primarySession?.let { session ->
+                        runCatching {
+                            session.recordGenerationFailure(
+                                error.message ?: "Managed generation reconstruction failed",
+                            )
+                        }
+                    }
+                    if (primarySession != null) {
+                        terminalFailureDetails = failedDetails
+                    }
+                    runCatching {
+                        generationEvents.beginRetirement(failedDetails)
+                        pages.drop(1).forEach { it.closing = true }
+                        pages.forEach(::retirePage)
+                        pages.mapNotNull { it.activity.get() }
+                            .filterIsInstance<HotUpdaterSparklingPageActivity>()
+                            .forEach(Activity::finish)
+                        primarySession.takeIf { session ->
+                            pages.none { it.session === session }
+                        }?.close()
+                        pages.clear()
+                        controller.close()
+                        generationEvents.finishRetirement(failedDetails)
+                    }
+                    if (
+                        primarySession == null ||
+                        failedBundle == configuration.lynx.embeddedBundleId
+                    ) {
+                        throw error
+                    }
+                    launchReason = "recovery"
+                }
+            }
+            error("Managed generation recovery capacity exhausted")
+        } catch (error: Throwable) {
+            Log.e(TAG, "Managed Lynx generation failed closed", error)
+            pages.forEach(::retirePage)
+            pages.clear()
+            runCatching { controller.close() }
+            closed = true
+            transitioning = false
+            ManagedSparklingHostRegistry.remove(hostId, this)
+            eventSink.onEvent(
+                "generationReconstructionFailed",
+                terminalFailureDetails + mapOf(
+                    "reason" to reason,
+                    "message" to (error.message ?: "Managed generation failed closed"),
+                ),
             )
-        }.getOrElse { persistenceError ->
-            Log.e(TAG, "Could not persist managed generation failure", persistenceError)
-            false
+            primaryActivity?.finish()
         }
     }
 
-    private fun failClosed(
-        current: List<HotUpdaterSparklingView>,
-        reason: String,
-        message: String?,
-    ) {
-        val retired = retirementDetails(current, reason)
-        generationEvents.beginRetirement(retired)
-        current.forEach(HotUpdaterSparklingView::retire)
-        controller.close()
-        generationEvents.finishRetirement(retired)
-        containers.clear()
-        closed = true
-        emitReconstructionFailed(retired, reason, message)
-    }
-
-    private fun emitReconstructionFailed(
-        retired: Map<String, Any?>,
-        reason: String,
-        message: String?,
-    ) {
-        events?.onEvent("generationReconstructionFailed", retired + mapOf(
-            "reason" to reason,
-            "message" to (message ?: "Managed generation reconstruction failed"),
-        ))
-    }
-
-    private fun retirementDetails(
-        current: List<HotUpdaterSparklingView>,
-        reason: String,
-    ): Map<String, Any?> {
-        val primary = current.firstOrNull { it.primary }?.diagnostics
-        return (primary?.let { details(it, generationEvents) } ?: mapOf(
-            "processId" to Process.myPid(),
-            "generationId" to generationEvents.id,
-        )) + mapOf(
-            "contextIds" to current.mapNotNull { it.diagnostics?.contextId },
-            "reason" to reason,
-        )
-    }
-
-    internal fun details(
-        identity: LynxLaunchDiagnostics,
-        generation: SparklingGenerationEvents,
-    ) = mapOf(
-        "processId" to Process.myPid(),
-        "generationId" to generation.id,
-        "contextId" to identity.contextId,
-        "attemptId" to identity.startupAttemptId,
-        "bundleId" to identity.bundleId,
-        "releaseId" to identity.releaseId,
-    )
-
-    private fun requireMainThread() {
-        check(Looper.myLooper() == Looper.getMainLooper()) {
-            "Managed Lynx generations must be changed on the main thread"
+    private fun openNextReconstructedPage() {
+        if (pendingReconstruction.isEmpty() || closed) return
+        if (pages.any { !it.primary && !it.admitted }) return
+        val logical = pendingReconstruction.first()
+        val source = pages.last().activity.get() ?: pages.first().activity.get()
+            ?: error("No live Activity can reconstruct the managed stack")
+        try {
+            check(openPage(
+                source,
+                logical,
+                animated = false,
+                reconstructing = true,
+                sourceContextId = checkNotNull(pages.last().diagnostics).contextId,
+            )) { "The retained managed page could not be reconstructed" }
+            pendingReconstruction = pendingReconstruction.drop(1)
+        } catch (error: Throwable) {
+            if (transitioning) throw error
+            val primary = pages.firstOrNull()?.takeIf { it.primary }
+                ?: throw error
+            val message = error.message ?: "Managed page reconstruction failed"
+            if (primary.session.recordGenerationFailure(message)) {
+                recover(message, primary, generationEvents)
+            }
         }
     }
 
-    companion object {
-        private const val TAG = "HotUpdaterSparkling"
-    }
-}
-
-class HotUpdaterSparklingStaleProbe internal constructor(
-    private val authorities: List<Triple<LynxUpdaterController, LynxLaunchSession, LynxLaunchDiagnostics>>,
-    private val events: HotUpdaterSparklingEventListener?,
-    private val generationId: String,
-) {
-    fun verifyStaleAuthorities() {
-        authorities.forEach { (controller, session, identity) ->
-            val rejected = runCatching { controller.diagnostics(session) }.isFailure
-            check(rejected) { "A retired Lynx context retained live authority" }
-            events?.onEvent("staleContextRejected", mapOf(
-                "processId" to Process.myPid(),
-                "generationId" to generationId,
-                "contextId" to identity.contextId,
-                "attemptId" to identity.startupAttemptId,
-                "bundleId" to identity.bundleId,
-                "releaseId" to identity.releaseId,
-                "code" to "STALE_CONTEXT",
-            ))
+    private fun attach(
+        page: ManagedPage,
+        activity: Activity,
+    ): HotUpdaterSparklingView {
+        check(page.view == null) { "Managed page is already attached" }
+        val generation = generationEvents
+        val identity = controller.diagnostics(page.session)
+        page.diagnostics = identity
+        page.transitionAttribution.id = runCatching {
+            controller.pendingManagedTransition(page.session)?.transitionId
+        }.getOrNull()
+        val launch = page.session
+        if (!page.failureHandlerInstalled) {
+            launch.setFailureHandler { message, failureCode, resourcePath ->
+                page.failureGate.deliver {
+                    recover(
+                        message,
+                        page,
+                        generation,
+                        failureCode,
+                        resourcePath,
+                    )
+                }
+            }
+            page.failureHandlerInstalled = true
         }
-    }
-}
-
-class HotUpdaterSparklingView internal constructor(
-    context: Context,
-    private val host: HotUpdaterSparklingHost,
-    internal val primary: Boolean,
-) : FrameLayout(context), AutoCloseable {
-    internal var session: LynxLaunchSession? = null
-        private set
-    internal var diagnostics: LynxLaunchDiagnostics? = null
-        private set
-    private var kit: SimpleLynxKitView? = null
-    private var generation: SparklingGenerationEvents? = null
-
-    internal fun attach(
-        controller: LynxUpdaterController,
-        generation: SparklingGenerationEvents,
-    ) {
-        check(session == null && kit == null) { "Managed Lynx view is already attached" }
-        val launch = if (primary) controller.pinPrimary() else controller.pinSecondary()
-        session = launch
-        this.generation = generation
-        val identity = controller.diagnostics(launch)
-        diagnostics = identity
-        launch.setFailureHandler { message ->
-            host.recover(message, identity, generation)
-        }
-        if (primary) {
-            launch.setReloadHandler { completion ->
-                host.reload(generation, completion)
+        if (page.primary) {
+            launch.setReloadHandler { trigger, completion ->
+                reload(generation, trigger, completion)
             }
         }
         launch.setReadinessHandlers(
             firstContent = {
                 generation.emit(
                     "firstContent",
-                    host.details(identity, generation),
+                    details(page),
                 )
+                page.firstContentObserved = true
+                pageProgressObserver?.invoke(page)
             },
             confirmed = { confirmation ->
-                generation.emit(
-                    "jsReady",
-                    host.details(identity, generation) +
-                        ("confirmation" to confirmation),
+                val accepted = generation.emit(
+                    if (page.primary) "jsReady" else "pageAdmitted",
+                    details(page) + ("confirmation" to confirmation),
                 )
+                if (accepted) {
+                    page.admitted = true
+                    if (!page.primary) {
+                        emitPageAttemptTerminal(
+                            page,
+                            terminal = "admitted",
+                            transitionId = page.transitionAttribution.id,
+                            topContextId = page.diagnostics?.contextId,
+                        )
+                    }
+                    if (!page.primary) openNextReconstructedPage()
+                }
+                if (page.primary) {
+                    pages.forEach { it.transitionAttribution.complete() }
+                }
             },
         )
         launch.setResourceGate { operation ->
@@ -449,22 +803,18 @@ class HotUpdaterSparklingView internal constructor(
             }
         }
         launch.setResourceObserver { event, path, sha256 ->
-            val details = host.details(identity, generation) + mapOf(
-                "path" to path,
-                "sha256" to sha256,
-            )
-            check(generation.resourceLoaded(event, details)) {
-                "Managed resource belongs to a retired generation"
+            check(generation.resourceLoaded(
+                event,
+                details(page) + mapOf("path" to path, "sha256" to sha256),
+            )) { "Managed resource belongs to a retired generation" }
+            if (path in page.expectedEssentialResources) {
+                page.observedEssentialResources += path
+                pageProgressObserver?.invoke(page)
             }
         }
-        require(
-            launch.installation.managedPaths.containsAll(
-                host.configuration.requiredStartupResourcePaths,
-            ),
-        ) { "A required startup resource is not in the verified release" }
-        host.configuration.requiredStartupResourcePaths.forEach(
-            launch::requireResourceBeforeReady,
-        )
+        page.expectedEssentialResources =
+            launch.installation.essentialResources(page.logical.entry).toSet()
+        page.expectedEssentialResources.forEach(launch::requireResourceBeforeReady)
 
         val entry = launch.entryUrl
         val sparkling = SparklingContext().apply {
@@ -473,58 +823,465 @@ class HotUpdaterSparklingView internal constructor(
                 bundle = entry,
             )
             scheme = "hybrid://lynxview_page?bundle=$entry"
-            containerId = UUID.randomUUID().toString()
+            containerId = page.containerId
         }
         val builder = LynxViewBuilder().also(launch::configure)
-        val nextKit = SimpleLynxKitView(context, sparkling, builder, null, null)
-        launch.bind(
-            nextKit,
-            HotUpdaterSparklingLaunchConfiguration.from(context),
+        val bridge = SparklingBridge()
+        var constructedKit: SimpleLynxKitView? = null
+        val kit = try {
+            bridge.registerLynxModule(builder, page.containerId)
+            SimpleLynxKitView(activity, sparkling, builder, null, null).also {
+                constructedKit = it
+                bridge.init(it, page.containerId, SPARKLING_LYNX_PLATFORM)
+                sparkling.bridge = bridge
+                launch.bind(
+                    it,
+                    HotUpdaterSparklingLaunchConfiguration.resolve(
+                        configuration.launchConfiguration,
+                        configuration.allowDiagnosticIntentLaunchConfiguration,
+                        activity,
+                        page.logical.parameters,
+                    ),
+                )
+            }
+        } catch (error: Throwable) {
+            runCatching { launch.prepareForRebind() }
+            runCatching { constructedKit?.destroy(true) }
+            runCatching { bridge.release() }
+            throw error
+        }
+        val bridgeContext = bridge.getBridgeSDKContext()
+        ManagedSparklingHostRegistry.bindContext(kit.lynxContext, this)
+        ManagedSparklingHostRegistry.bindBridgeContext(bridgeContext, this)
+        page.sourceContext = kit.lynxContext
+        page.sourceBridgeContext = bridgeContext
+        page.sparklingBridge = bridge
+        val view = HotUpdaterSparklingView(activity, kit)
+        page.view = view
+        generation.emit(
+            "generationWillEvaluate",
+            details(page) + ("primary" to page.primary),
         )
-        kit = nextKit
+        kit.load()
+        return view
+    }
+
+    override fun close() {
+        requireMainThread()
+        if (closed) return
+        closed = true
+        pageCreatedObserver = null
+        pageProgressObserver = null
+        val retired = retirementDetails("close")
+        generationEvents.beginRetirement(retired)
+        pages.forEach(::retirePage)
+        pages.clear()
+        controller.close()
+        generationEvents.finishRetirement(retired)
+        ManagedSparklingHostRegistry.remove(hostId, this)
+    }
+
+    private fun emitGenerationStarted(reason: String) {
+        val primary = pages.firstOrNull() ?: return
+        val logicalStack = controller.retainedLogicalStack(primary.session)
+        val transitionId = runCatching {
+            controller.pendingManagedTransition(primary.session)?.transitionId
+        }.getOrNull()
+        generationEvents.emit(
+            "generationStarted",
+            details(primary) + mapOf(
+                "contextIds" to pages.mapNotNull { it.diagnostics?.contextId },
+                "primaryContextId" to primary.diagnostics?.contextId,
+                "reason" to reason,
+                "orderedPageEntries" to logicalStack.map { it.entry },
+                "orderedPageParameters" to logicalStack.map { it.parameters },
+                "topPageEntry" to logicalStack.last().entry,
+                "transitionId" to transitionId,
+            ),
+        )
+    }
+
+    private fun retirePage(page: ManagedPage) {
+        page.sourceContext?.let { context ->
+            ManagedSparklingHostRegistry.unbindContext(context, this)
+        }
+        page.sourceBridgeContext?.let { context ->
+            ManagedSparklingHostRegistry.unbindBridgeContext(context, this)
+        }
+        page.retire()
+    }
+
+    private fun retirementDetails(reason: String): Map<String, Any?> {
+        val primary = pages.firstOrNull()
+        val identity = primary?.diagnostics
+        val logicalStack = primary?.let { page ->
+            runCatching {
+                controller.retainedLogicalStack(page.session)
+            }.getOrNull()
+        } ?: pages.map { it.logical }
+        val transitionId = primary?.let { page ->
+            runCatching {
+                controller.pendingManagedTransition(page.session)?.transitionId
+            }.getOrNull()
+        }
+        return mapOf(
+            "runtimeId" to configuration.lynx.runtimeId,
+            "processId" to currentProcessId(),
+            "generationId" to generationEvents.id,
+            "contextId" to identity?.contextId,
+            "pageAttemptId" to null,
+            "contextIds" to pages.mapNotNull { it.diagnostics?.contextId },
+            "primaryContextId" to identity?.contextId,
+            "attemptId" to identity?.startupAttemptId,
+            "bundleId" to (
+                identity?.bundleId ?: configuration.lynx.embeddedBundleId
+            ),
+            "releaseId" to identity?.releaseId,
+            "orderedPageEntries" to logicalStack.map { it.entry },
+            "orderedPageParameters" to logicalStack.map { it.parameters },
+            "topPageEntry" to logicalStack.lastOrNull()?.entry,
+            "reason" to reason,
+            "transitionId" to transitionId,
+        )
+    }
+
+    private fun reconstructionFailureDetails(
+        session: LynxLaunchSession?,
+        retained: List<LynxLogicalPage>,
+        transitionId: String?,
+        reason: String,
+    ): Map<String, Any?> {
+        val live = session ?: return retirementDetails(reason)
+        val identity = pages.firstOrNull()?.diagnostics
+            ?: controller.diagnostics(live)
+        return mapOf(
+            "runtimeId" to configuration.lynx.runtimeId,
+            "processId" to currentProcessId(),
+            "generationId" to generationEvents.id,
+            "contextId" to identity.contextId,
+            "pageAttemptId" to null,
+            "contextIds" to pages.mapNotNull { it.diagnostics?.contextId },
+            "primaryContextId" to identity.contextId,
+            "attemptId" to identity.startupAttemptId,
+            "bundleId" to identity.bundleId,
+            "releaseId" to identity.releaseId,
+            "orderedPageEntries" to retained.map { it.entry },
+            "orderedPageParameters" to retained.map { it.parameters },
+            "topPageEntry" to retained.lastOrNull()?.entry,
+            "reason" to reason,
+            "transitionId" to transitionId,
+        )
+    }
+
+    private fun emitPageAttemptTerminal(
+        page: ManagedPage,
+        terminal: String,
+        reason: String? = null,
+        transitionId: String? = null,
+        topContextId: String?,
+        failureCode: Int? = null,
+        failureResourcePath: String? = null,
+    ) {
+        if (page.primary || page.terminalEmitted) return
+        val logicalStack = pages.firstOrNull()?.let { primary ->
+            runCatching {
+                controller.retainedLogicalStack(primary.session)
+            }.getOrNull()
+        } ?: pages.map { it.logical }
+        val terminalDetails = details(page).toMutableMap().apply {
+            put(
+                "sourceContextId",
+                checkNotNull(page.session.openingSourceContextId),
+            )
+            put("orderedPageEntries", logicalStack.map { it.entry })
+            put("orderedPageParameters", logicalStack.map { it.parameters })
+            put(
+                "topPageEntry",
+                if (terminal == "authorized-cancel") {
+                    logicalStack.lastOrNull()?.entry
+                } else {
+                    page.logical.entry
+                },
+            )
+            put("topContextId", topContextId)
+            put("transitionId", transitionId)
+            put("terminal", terminal)
+            reason?.let { put("reason", it) }
+            failureCode?.let { put("failureCode", it) }
+            failureResourcePath?.let { put("failureResourcePath", it) }
+        }
+        if (generationEvents.emitTerminal(terminalDetails)) {
+            runCatching {
+                controller.markPageAttemptTerminalEventEmitted(identityId(page))
+            }.onFailure { error ->
+                Log.e(TAG, "Deferred page terminal emission marker", error)
+            }
+            page.terminalEmitted = true
+        }
+    }
+
+    private fun identityId(page: ManagedPage) =
+        checkNotNull(page.diagnostics).pageAttemptId
+            ?: error("A secondary page attempt identity is required")
+
+    private fun details(page: ManagedPage): Map<String, Any?> {
+        val identity = page.diagnostics
+        return mapOf(
+            "runtimeId" to configuration.lynx.runtimeId,
+            "processId" to currentProcessId(),
+            "generationId" to generationEvents.id,
+            "contextId" to identity?.contextId,
+            "attemptId" to identity?.startupAttemptId,
+            "pageAttemptId" to identity?.pageAttemptId,
+            "transitionId" to page.transitionAttribution.id,
+            "containerId" to page.containerId,
+            "nativePageClass" to (
+                page.activity.get()?.javaClass?.name ?: if (page.primary) {
+                    null
+                } else {
+                    HotUpdaterSparklingPageActivity::class.java.name
+                }
+            ),
+            "pageEntry" to page.logical.entry,
+            "pageParameters" to page.logical.parameters,
+            "bundleId" to identity?.bundleId,
+            "releaseId" to identity?.releaseId,
+        )
+    }
+
+    private fun newController() = LynxUpdaterController(
+        applicationContext,
+        configuration.lynx,
+    )
+
+    private fun transitionError(code: String, message: String) =
+        LynxNativeOperationException(code, message)
+
+    private fun requireMainThread() {
+        check(Looper.myLooper() == Looper.getMainLooper()) {
+            "Managed Lynx generations must be changed on the main thread"
+        }
+    }
+
+    private fun currentProcessId(): String {
+        val processId = Process.myPid()
+        check(processId > 0) { "The managed Lynx process identity is invalid" }
+        return processId.toString()
+    }
+
+    internal data class ManagedPage(
+        val id: String,
+        val containerId: String,
+        val logical: LynxLogicalPage,
+        val primary: Boolean,
+        val session: LynxLaunchSession,
+        var activity: WeakReference<Activity>,
+        var diagnostics: LynxLaunchDiagnostics? = null,
+        val transitionAttribution: ManagedTransitionAttribution =
+            ManagedTransitionAttribution(),
+        var sourceContext: Context? = null,
+        var sourceBridgeContext: IBridgeContext? = null,
+        var sparklingBridge: SparklingBridge? = null,
+        var view: HotUpdaterSparklingView? = null,
+        var admitted: Boolean = false,
+        var firstContentObserved: Boolean = false,
+        var expectedEssentialResources: Set<String> = emptySet(),
+        val observedEssentialResources: MutableSet<String> = mutableSetOf(),
+        var terminalEmitted: Boolean = false,
+        var closing: Boolean = false,
+        var recreating: Boolean = false,
+        var attachFailureReported: Boolean = false,
+        var failureHandlerInstalled: Boolean = false,
+        val failureGate: RebindFailureGate = RebindFailureGate(),
+    ) {
+        fun retire() {
+            failureGate.close()
+            view?.retire()
+            view = null
+            sourceContext = null
+            sourceBridgeContext = null
+            sparklingBridge?.release()
+            sparklingBridge = null
+            session.close()
+        }
+    }
+
+    companion object {
+        private const val TAG = "HotUpdaterSparkling"
+        private const val MAX_RECONSTRUCTION_ATTEMPTS = 128
+        private const val SPARKLING_LYNX_PLATFORM = 16
+    }
+}
+
+internal class RebindFailureGate {
+    private var rebinding = false
+    private var deferred: (() -> Unit)? = null
+
+    fun beginRebind() {
+        check(!rebinding)
+        rebinding = true
+    }
+
+    fun deliver(action: () -> Unit) {
+        if (rebinding) {
+            check(deferred == null)
+            deferred = action
+        } else {
+            action()
+        }
+    }
+
+    fun completeRebind() {
+        if (!rebinding) return
+        rebinding = false
+        deferred.also { deferred = null }?.invoke()
+    }
+
+    fun close() {
+        rebinding = false
+        deferred = null
+    }
+}
+
+internal class ManagedTransitionAttribution {
+    var id: String? = null
+
+    fun complete() {
+        id = null
+    }
+}
+
+internal fun routeCloseCause(reason: LynxPageCancelReason) = when (reason) {
+    LynxPageCancelReason.NATIVE_BACK -> "back"
+    LynxPageCancelReason.SPARKLING_CLOSE -> "router.close"
+}
+
+internal fun authorizedSourceBridgeContext(
+    supplied: IBridgeContext?,
+    bound: IBridgeContext?,
+    activity: Activity,
+    registeredForHost: Boolean,
+    containerId: String,
+) = supplied != null && supplied === bound &&
+    supplied.containerID == containerId && supplied.ownerActivity === activity &&
+    supplied.context?.activity() === activity && registeredForHost
+
+internal fun deliverTransitionAcceptance(
+    result: JSONObject,
+    completion: (Result<JSONObject>) -> Unit,
+    scheduleReplacement: () -> Unit,
+) {
+    try {
+        completion(Result.success(result))
+    } finally {
+        scheduleReplacement()
+    }
+}
+
+class HotUpdaterSparklingView internal constructor(
+    context: Context,
+    private var kit: SimpleLynxKitView?,
+) : FrameLayout(context), AutoCloseable {
+    init {
         addView(
-            nextKit,
+            checkNotNull(kit),
             LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.MATCH_PARENT,
             ),
         )
-        generation.emit(
-            "generationWillEvaluate",
-            host.details(identity, generation) + ("primary" to primary),
-        )
-        nextKit.load()
     }
 
     internal fun retire() {
-        val oldSession = session
-        val oldKit = kit
-        session = null
-        diagnostics = null
-        generation = null
+        val old = kit ?: return
         kit = null
-        oldKit?.destroy(true)
-        oldKit?.let(::removeView)
-        oldSession?.close()
+        old.destroy(true)
+        removeView(old)
     }
 
-    /** Nonproduction integration hook exercising the packaged fatal path. */
-    fun triggerFatalFailureForDiagnostics(
-        message: String = "diagnostic fatal failure",
+    override fun close() = retire()
+}
+
+internal object ManagedSparklingHostRegistry {
+    private val hosts = mutableMapOf<String, WeakReference<HotUpdaterSparklingHost>>()
+    private val pageAuthorities =
+        mutableMapOf<String, WeakReference<ManagedSparklingPageAuthority>>()
+    private val contextAuthorities =
+        java.util.IdentityHashMap<Context, WeakReference<HotUpdaterSparklingHost>>()
+    private val bridgeAuthorities =
+        java.util.IdentityHashMap<
+            IBridgeContext,
+            WeakReference<ManagedSparklingRouteAuthority>,
+        >()
+
+    fun add(id: String, host: HotUpdaterSparklingHost) {
+        hosts[id] = WeakReference(host)
+        pageAuthorities[id] = WeakReference(host)
+    }
+
+    fun remove(id: String, host: HotUpdaterSparklingHost) {
+        if (hosts[id]?.get() === host) hosts.remove(id)
+        if (pageAuthorities[id]?.get() === host) pageAuthorities.remove(id)
+        contextAuthorities.entries.removeAll { it.value.get().let { owner ->
+            owner == null || owner === host
+        } }
+        bridgeAuthorities.entries.removeAll { it.value.get().let { owner ->
+            owner == null || owner === host
+        } }
+    }
+
+    fun host(id: String?) = id?.let { hosts[it]?.get() }
+
+    fun pageAuthority(id: String?) = id?.let { pageAuthorities[it]?.get() }
+
+    fun addPageAuthorityForTest(
+        id: String,
+        authority: ManagedSparklingPageAuthority,
     ) {
-        val identity = checkNotNull(diagnostics) {
-            "The managed Lynx context is detached"
-        }
-        checkNotNull(session) { "The managed Lynx context is detached" }
-        val activeGeneration = checkNotNull(generation) {
-            "The managed Lynx context is detached"
-        }
-        activeGeneration.emit(
-            "runtimeFailed",
-            host.details(identity, activeGeneration) + ("message" to message),
-        )
-        host.recover(message, identity, activeGeneration)
+        pageAuthorities[id] = WeakReference(authority)
     }
 
-    override fun close() = host.remove(this)
+    fun removePageAuthorityForTest(id: String) {
+        pageAuthorities.remove(id)
+    }
+
+    fun bindContext(context: Context, host: HotUpdaterSparklingHost) {
+        contextAuthorities[context] = WeakReference(host)
+    }
+
+    fun unbindContext(context: Context, host: HotUpdaterSparklingHost) {
+        if (contextAuthorities[context]?.get() === host) {
+            contextAuthorities.remove(context)
+        }
+    }
+
+    fun hostForContext(context: Context?) = context?.let {
+        contextAuthorities[it]?.get()
+    }
+
+    fun bindBridgeContext(
+        context: IBridgeContext,
+        host: ManagedSparklingRouteAuthority,
+    ) {
+        bridgeAuthorities[context] = WeakReference(host)
+    }
+
+    fun unbindBridgeContext(
+        context: IBridgeContext,
+        host: ManagedSparklingRouteAuthority,
+    ) {
+        if (bridgeAuthorities[context]?.get() === host) {
+            bridgeAuthorities.remove(context)
+        }
+    }
+
+    fun hostForBridgeContext(context: IBridgeContext?) = context?.let {
+        bridgeAuthorities[it]?.get()
+    }
+}
+
+private tailrec fun Context.activity(): Activity? = when (this) {
+    is Activity -> this
+    is ContextWrapper -> baseContext.activity()
+    else -> null
 }
