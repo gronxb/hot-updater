@@ -454,6 +454,258 @@ describe("Lynx startup failure diagnostics", () => {
     vi.mocked(spawnSync).mockReset();
   });
 
+  it("rejects a successful iOS launch that does not report a process ID", async () => {
+    const fetch = vi.fn(async () => ({
+      ok: true,
+      status: 200,
+      text: async () => "{}",
+    }));
+    vi.mocked(spawnSync).mockImplementation((_command, args) =>
+      args?.includes("launch")
+        ? ({
+            status: 0,
+            stdout: "unexpected simctl output\n",
+            stderr: "",
+          } as ReturnType<typeof spawnSync>)
+        : ({ status: 0, stdout: "", stderr: "" } as ReturnType<
+            typeof spawnSync
+          >),
+    );
+    const client = createControlClient({
+      baseUrl: "http://control.test",
+      fetch,
+    });
+    const driver = new LynxAppDriver(client, "ios", {
+      HOT_UPDATER_E2E_IOS_BINARY_PATH: "/tmp/SparklingGo.app",
+      HOT_UPDATER_E2E_IOS_SIMULATOR_NAME: "iPhone 17 Pro",
+    });
+
+    await expect(driver.launch("initial launch")).rejects.toThrow(
+      'xcrun simctl launch succeeded without a process ID: "unexpected simctl output\\n"',
+    );
+    expect(fetch).not.toHaveBeenCalledWith(
+      "http://control.test/e2e/runtime-config",
+      expect.anything(),
+    );
+  });
+
+  it("allows an expected crash launch to omit a process ID", async () => {
+    vi.useFakeTimers();
+    try {
+      let launches = 0;
+      const fetch = vi.fn(async (url: string) => ({
+        ok: true,
+        status: 200,
+        text: async () =>
+          JSON.stringify(
+            url.endsWith("/e2e/runtime-config")
+              ? { screenState: { runtimeScenarioMarker: "ready" } }
+              : {},
+          ),
+      }));
+      vi.mocked(spawnSync).mockImplementation((_command, args) => {
+        if (args?.includes("launch")) {
+          launches += 1;
+          return {
+            status: 0,
+            stdout: launches === 1 ? "" : "com.hotupdater.lynxexample: 4321\n",
+            stderr: "",
+          } as ReturnType<typeof spawnSync>;
+        }
+        return { status: 0, stdout: "", stderr: "" } as ReturnType<
+          typeof spawnSync
+        >;
+      });
+      const client = createControlClient({
+        baseUrl: "http://control.test",
+        fetch,
+      });
+      const driver = new LynxAppDriver(client, "ios", {
+        HOT_UPDATER_E2E_IOS_BINARY_PATH: "/tmp/SparklingGo.app",
+        HOT_UPDATER_E2E_IOS_SIMULATOR_NAME: "iPhone 17 Pro",
+      });
+
+      const launch = driver.launch("expected crash launch", {
+        expectCrash: true,
+      });
+      await vi.advanceTimersByTimeAsync(2_000);
+
+      await expect(launch).resolves.toBeUndefined();
+      expect(launches).toBe(2);
+      expect(vi.mocked(spawnSync)).toHaveBeenCalledWith(
+        "xcrun",
+        ["simctl", "spawn", "iPhone 17 Pro", "/bin/kill", "-0", "4321"],
+        expect.objectContaining({ timeout: 5000 }),
+      );
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("fails immediately with native evidence when the launched iOS process dies", async () => {
+    const fetch = vi.fn(async () => ({
+      ok: true,
+      status: 200,
+      text: async () => "{}",
+    }));
+    vi.mocked(spawnSync).mockImplementation((_command, args) => {
+      if (args?.includes("launch")) {
+        return {
+          status: 0,
+          stdout: "com.hotupdater.lynxexample: 4321\n",
+          stderr: "",
+        } as ReturnType<typeof spawnSync>;
+      }
+      if (args?.includes("/bin/kill")) {
+        return {
+          status: 1,
+          stdout: "",
+          stderr: "kill: 4321: No such process",
+        } as ReturnType<typeof spawnSync>;
+      }
+      return {
+        status: 0,
+        stdout: args?.includes("log") ? "fatal descriptor startup failure" : "",
+        stderr: "",
+      } as ReturnType<typeof spawnSync>;
+    });
+    const client = createControlClient({
+      baseUrl: "http://control.test",
+      fetch,
+      screenStateTimeoutMs: 60_000,
+    });
+    const driver = new LynxAppDriver(client, "ios", {
+      HOT_UPDATER_E2E_IOS_BINARY_PATH: "/tmp/SparklingGo.app",
+      HOT_UPDATER_E2E_IOS_SIMULATOR_NAME: "iPhone 17 Pro",
+    });
+
+    await expect(driver.launch("initial launch")).rejects.toThrow(
+      /iOS app process 4321 exited while waiting for runtimeScenarioMarker[\s\S]*No such process[\s\S]*fatal descriptor startup failure/,
+    );
+    expect(fetch).not.toHaveBeenCalledWith(
+      "http://control.test/e2e/runtime-config",
+      expect.anything(),
+    );
+    expect(vi.mocked(spawnSync)).toHaveBeenCalledWith(
+      "xcrun",
+      ["simctl", "spawn", "iPhone 17 Pro", "/bin/kill", "-0", "4321"],
+      expect.objectContaining({ timeout: 5000 }),
+    );
+    expect(vi.mocked(spawnSync)).toHaveBeenCalledWith(
+      "xcrun",
+      [
+        "simctl",
+        "spawn",
+        "iPhone 17 Pro",
+        "/bin/ps",
+        "-axo",
+        "pid=,state=,command=",
+      ],
+      expect.objectContaining({ timeout: 5000 }),
+    );
+  });
+
+  it("detects an iOS process that dies after the first marker poll", async () => {
+    let processProbes = 0;
+    const fetch = vi.fn(async (url: string) => ({
+      ok: true,
+      status: 200,
+      text: async () =>
+        JSON.stringify(
+          url.endsWith("/e2e/runtime-config") ? { screenState: {} } : {},
+        ),
+    }));
+    vi.mocked(spawnSync).mockImplementation((_command, args) => {
+      if (args?.includes("launch")) {
+        return {
+          status: 0,
+          stdout: "com.hotupdater.lynxexample: 4321\n",
+          stderr: "",
+        } as ReturnType<typeof spawnSync>;
+      }
+      if (args?.includes("/bin/kill")) {
+        processProbes += 1;
+        return {
+          status: processProbes === 1 ? 0 : 1,
+          stdout: "",
+          stderr: processProbes === 1 ? "" : "kill: 4321: No such process",
+        } as ReturnType<typeof spawnSync>;
+      }
+      return { status: 0, stdout: "", stderr: "" } as ReturnType<
+        typeof spawnSync
+      >;
+    });
+    const client = createControlClient({
+      baseUrl: "http://control.test",
+      fetch,
+      pollDelayMs: async () => {},
+      screenStateTimeoutMs: 60_000,
+    });
+    const driver = new LynxAppDriver(client, "ios", {
+      HOT_UPDATER_E2E_IOS_BINARY_PATH: "/tmp/SparklingGo.app",
+      HOT_UPDATER_E2E_IOS_SIMULATOR_NAME: "iPhone 17 Pro",
+    });
+
+    await expect(driver.launch("initial launch")).rejects.toThrow(
+      /iOS app process 4321 exited while waiting for runtimeScenarioMarker[\s\S]*No such process/,
+    );
+    expect(processProbes).toBe(2);
+    expect(
+      fetch.mock.calls.filter(([url]) =>
+        String(url).endsWith("/e2e/runtime-config"),
+      ),
+    ).toHaveLength(1);
+  });
+
+  it("reports an unavailable iOS process probe as an inspection failure", async () => {
+    const fetch = vi.fn(async () => ({
+      ok: true,
+      status: 200,
+      text: async () => "{}",
+    }));
+    vi.mocked(spawnSync).mockImplementation((_command, args) => {
+      if (args?.includes("launch")) {
+        return {
+          status: 0,
+          stdout: "com.hotupdater.lynxexample: 4321\n",
+          stderr: "",
+        } as ReturnType<typeof spawnSync>;
+      }
+      if (args?.includes("/bin/kill")) {
+        return {
+          error: new Error("spawnSync ENOENT"),
+          status: null,
+          stdout: "",
+          stderr: "",
+        } as ReturnType<typeof spawnSync>;
+      }
+      return { status: 0, stdout: "", stderr: "" } as ReturnType<
+        typeof spawnSync
+      >;
+    });
+    const client = createControlClient({
+      baseUrl: "http://control.test",
+      fetch,
+      screenStateTimeoutMs: 60_000,
+    });
+    const driver = new LynxAppDriver(client, "ios", {
+      HOT_UPDATER_E2E_IOS_BINARY_PATH: "/tmp/SparklingGo.app",
+      HOT_UPDATER_E2E_IOS_SIMULATOR_NAME: "iPhone 17 Pro",
+    });
+
+    const launch = driver.launch("initial launch");
+    await expect(launch).rejects.toThrow(
+      /Could not inspect iOS app process 4321 while waiting for runtimeScenarioMarker[\s\S]*spawnSync ENOENT/,
+    );
+    await expect(launch).rejects.not.toThrow(
+      "exited while waiting for runtimeScenarioMarker",
+    );
+    expect(fetch).not.toHaveBeenCalledWith(
+      "http://control.test/e2e/runtime-config",
+      expect.anything(),
+    );
+  });
+
   it("adds failed screen state and bounded iOS native output to a marker timeout", async () => {
     let screenStatePosts = 0;
     const fetch = vi.fn(async (url: string, init?: RequestInit) => {
@@ -487,7 +739,11 @@ describe("Lynx startup failure diagnostics", () => {
       (_command, args) =>
         ({
           status: 0,
-          stdout: args.includes("log") ? "native bootstrap error" : "123 R app",
+          stdout: args.includes("launch")
+            ? "com.hotupdater.lynxexample: 4321\n"
+            : args.includes("log")
+              ? "native bootstrap error"
+              : "123 R app",
           stderr: "",
         }) as ReturnType<typeof spawnSync>,
     );
@@ -547,7 +803,9 @@ describe("Lynx startup failure diagnostics", () => {
       (_command, args) =>
         ({
           status: args.includes("log") ? null : 0,
-          stdout: "",
+          stdout: args.includes("launch")
+            ? "com.hotupdater.lynxexample: 4321\n"
+            : "",
           stderr: "",
           ...(args.includes("log")
             ? { error: new Error("spawnSync ENOBUFS") }
@@ -632,6 +890,18 @@ describe("Lynx startup failure diagnostics", () => {
       };
     });
     vi.mocked(spawnSync).mockImplementation((_command, args) => {
+      if (args.includes("launch")) {
+        return {
+          status: 0,
+          stdout: "com.hotupdater.lynxexample: 4321\n",
+          stderr: "",
+        } as ReturnType<typeof spawnSync>;
+      }
+      if (args.includes("/bin/kill")) {
+        return { status: 0, stdout: "", stderr: "" } as ReturnType<
+          typeof spawnSync
+        >;
+      }
       if (args.includes("spawn")) throw new Error("simctl unavailable");
       return { status: 0, stdout: "", stderr: "" } as ReturnType<
         typeof spawnSync

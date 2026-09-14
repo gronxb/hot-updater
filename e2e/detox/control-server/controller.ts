@@ -52,7 +52,6 @@ import {
   PAX_LONG_ASSET_ANDROID_MANIFEST_PATH,
   PAX_LONG_ASSET_MANIFEST_PATH,
   PAX_LONG_ASSET_RELATIVE_PATH,
-  PAX_LONG_ASSET_REQUIRE_PATH,
 } from "../pax-long-path-fixture.ts";
 import { hasActiveInstrumentationForPackage } from "./android-instrumentation.ts";
 import {
@@ -67,6 +66,11 @@ import {
   waitForCrashRecoveryState,
 } from "./crash-recovery-wait.ts";
 import type { CrashRecoveryArtifactNames } from "./crash-recovery-wait.ts";
+import {
+  type BundleProfile,
+  createDeployAssetGuardSource,
+} from "./deploy-asset-guard.ts";
+import { restoreDeployFixtures } from "./deploy-fixture-reset.ts";
 import { acquireFairFileLock, DEPLOY_LOCK_CAPACITY } from "./fair-file-lock.ts";
 import {
   getFixtureResetChannels as resolveFixtureResetChannels,
@@ -98,11 +102,6 @@ import {
 } from "./update-check-visibility.ts";
 
 type Platform = "ios" | "android";
-type BundleProfile =
-  | "archive300mb"
-  | "default"
-  | "multiAssetReplacement"
-  | "sizeAwareLargeDiff";
 type CompressionStrategy = "tar.br" | "tar.gz" | "zip";
 
 type JobResult = Record<string, unknown>;
@@ -256,8 +255,6 @@ const CRASH_GUARD_START = "/* E2E_CRASH_GUARD_START */";
 const CRASH_GUARD_END = "/* E2E_CRASH_GUARD_END */";
 const CRASH_GUARD_PATTERN =
   /\/\* E2E_CRASH_GUARD_START \*\/[\s\S]*?\/\* E2E_CRASH_GUARD_END \*\//;
-const DEPLOY_ASSET_GUARD_START = "/* E2E_DEPLOY_ASSET_GUARD_START */";
-const DEPLOY_ASSET_GUARD_END = "/* E2E_DEPLOY_ASSET_GUARD_END */";
 const DEPLOY_ASSET_GUARD_PATTERN =
   /\/\* E2E_DEPLOY_ASSET_GUARD_START \*\/[\s\S]*?\/\* E2E_DEPLOY_ASSET_GUARD_END \*\//;
 const AUTO_PATCH_CONFIG_GUARD_START = "/* E2E_AUTO_PATCH_CONFIG_START */";
@@ -291,8 +288,6 @@ const NODE_MAX_OLD_SPACE_SIZE_PATTERN = /^--max-old-space-size(?:=|$)/;
 const NIL_UUID = "00000000-0000-0000-0000-000000000000";
 const LARGE_ARCHIVE_ASSET_RELATIVE_PATH =
   "src/test/_fixture-archive-300mb-random.bmp";
-const LARGE_ARCHIVE_ASSET_REQUIRE_PATH =
-  "../test/_fixture-archive-300mb-random.bmp";
 const LARGE_ARCHIVE_BMP_WIDTH = 4096;
 const LARGE_ARCHIVE_BMP_HEIGHT = 25600;
 const LARGE_ARCHIVE_BMP_HEADER_SIZE = 54;
@@ -303,8 +298,6 @@ const LARGE_ARCHIVE_ASSET_SIZE_BYTES =
 const LARGE_ARCHIVE_MIN_EXPECTED_SIZE_BYTES = 280 * 1024 * 1024;
 const SIZE_AWARE_LARGE_ASSET_RELATIVE_PATH =
   "src/test/_fixture-size-aware-large-compressible.bmp";
-const SIZE_AWARE_LARGE_ASSET_REQUIRE_PATH =
-  "../test/_fixture-size-aware-large-compressible.bmp";
 const SIZE_AWARE_LARGE_BMP_WIDTH = 4096;
 const SIZE_AWARE_LARGE_BMP_HEIGHT = 4096;
 const SIZE_AWARE_LARGE_BMP_HEADER_SIZE = 54;
@@ -317,25 +310,21 @@ const MULTI_ASSET_FIXTURES = [
     androidManifestPath: "raw/src_test__fixturemultiasseta.bmp",
     manifestPath: "assets/src/test/_fixture-multi-asset-a.bmp",
     relativePath: "src/test/_fixture-multi-asset-a.bmp",
-    requirePath: "../test/_fixture-multi-asset-a.bmp",
   },
   {
     androidManifestPath: "raw/src_test__fixturemultiassetb.bmp",
     manifestPath: "assets/src/test/_fixture-multi-asset-b.bmp",
     relativePath: "src/test/_fixture-multi-asset-b.bmp",
-    requirePath: "../test/_fixture-multi-asset-b.bmp",
   },
   {
     androidManifestPath: "raw/src_test__fixturemultiassetc.bmp",
     manifestPath: "assets/src/test/_fixture-multi-asset-c.bmp",
     relativePath: "src/test/_fixture-multi-asset-c.bmp",
-    requirePath: "../test/_fixture-multi-asset-c.bmp",
   },
   {
     androidManifestPath: PAX_LONG_ASSET_ANDROID_MANIFEST_PATH,
     manifestPath: PAX_LONG_ASSET_MANIFEST_PATH,
     relativePath: PAX_LONG_ASSET_RELATIVE_PATH,
-    requirePath: PAX_LONG_ASSET_REQUIRE_PATH,
   },
 ] as const;
 const MULTI_ASSET_BMP_WIDTH = 64;
@@ -1026,13 +1015,22 @@ async function ensureMultiAssetFixtures(marker: string) {
   });
 }
 
-async function restoreMultiAssetFixtures() {
-  for (const fixture of MULTI_ASSET_FIXTURES) {
-    await restoreFile(
-      fixtureSession.multiAssetBackupPaths[fixture.relativePath] ?? null,
-      path.join(EXAMPLE_DIR, fixture.relativePath),
-    );
-  }
+async function restoreGeneratedDeployFixtures() {
+  await restoreDeployFixtures([
+    {
+      backupPath: fixtureSession.largeArchiveAssetBackupPath,
+      targetPath: fixtureSession.largeArchiveAssetPath,
+    },
+    {
+      backupPath: fixtureSession.sizeAwareLargeAssetBackupPath,
+      targetPath: fixtureSession.sizeAwareLargeAssetPath,
+    },
+    ...MULTI_ASSET_FIXTURES.map((fixture) => ({
+      backupPath:
+        fixtureSession.multiAssetBackupPaths[fixture.relativePath] ?? null,
+      targetPath: path.join(EXAMPLE_DIR, fixture.relativePath),
+    })),
+  ]);
 }
 
 async function ensureLargeArchiveAsset() {
@@ -1181,36 +1179,10 @@ async function applyAppScenario({
           `  ${CRASH_GUARD_END}`,
         ].join("\n")
       : `${CRASH_GUARD_START}\n  ${CRASH_GUARD_END}`;
-  const deployAssetSource = (() => {
-    if (bundleProfile === "archive300mb") {
-      return [
-        DEPLOY_ASSET_GUARD_START,
-        `  void Image.resolveAssetSource(require(${JSON.stringify(LARGE_ARCHIVE_ASSET_REQUIRE_PATH)}));`,
-        `  ${DEPLOY_ASSET_GUARD_END}`,
-      ].join("\n");
-    }
-
-    if (bundleProfile === "multiAssetReplacement") {
-      return [
-        DEPLOY_ASSET_GUARD_START,
-        ...MULTI_ASSET_FIXTURES.map(
-          (fixture) =>
-            `  void Image.resolveAssetSource(require(${JSON.stringify(fixture.requirePath)}));`,
-        ),
-        `  ${DEPLOY_ASSET_GUARD_END}`,
-      ].join("\n");
-    }
-
-    if (bundleProfile === "sizeAwareLargeDiff") {
-      return [
-        DEPLOY_ASSET_GUARD_START,
-        `  void Image.resolveAssetSource(require(${JSON.stringify(SIZE_AWARE_LARGE_ASSET_REQUIRE_PATH)}));`,
-        `  ${DEPLOY_ASSET_GUARD_END}`,
-      ].join("\n");
-    }
-
-    return `${DEPLOY_ASSET_GUARD_START}\n  ${DEPLOY_ASSET_GUARD_END}`;
-  })();
+  const deployAssetSource = createDeployAssetGuardSource(
+    bundleProfile,
+    fixtureSession.appId,
+  );
 
   const nextSource = source
     .replace(
@@ -5585,7 +5557,7 @@ async function resetBootstrappedAppSource() {
     fixtureSession.configSourceFile,
   );
   await restoreFile(fixtureSession.appBackupPath, fixtureSession.appSourceFile);
-  await restoreMultiAssetFixtures();
+  await restoreGeneratedDeployFixtures();
   await applyAppScenario({
     bundleProfile: "default",
     marker: fixtureSession.initialMarker,
@@ -5647,15 +5619,7 @@ async function bootstrap() {
 
   await waitForLocalProviderReady();
   await clearProviderReleasesAfterReadiness();
-  await restoreFile(
-    fixtureSession.largeArchiveAssetBackupPath,
-    fixtureSession.largeArchiveAssetPath,
-  );
-  await restoreFile(
-    fixtureSession.sizeAwareLargeAssetBackupPath,
-    fixtureSession.sizeAwareLargeAssetPath,
-  );
-  await restoreMultiAssetFixtures();
+  await restoreGeneratedDeployFixtures();
   await restoreFile(
     fixtureSession.configBackupPath,
     fixtureSession.configSourceFile,
@@ -7429,15 +7393,7 @@ async function cleanup() {
       fixtureSession.envSourceFile,
     );
   }
-  await restoreFile(
-    fixtureSession.largeArchiveAssetBackupPath,
-    fixtureSession.largeArchiveAssetPath,
-  );
-  await restoreFile(
-    fixtureSession.sizeAwareLargeAssetBackupPath,
-    fixtureSession.sizeAwareLargeAssetPath,
-  );
-  await restoreMultiAssetFixtures();
+  await restoreGeneratedDeployFixtures();
 
   fixtureSession.appBackupPath = null;
   fixtureSession.configBackupPath = null;

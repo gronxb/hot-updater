@@ -89,6 +89,7 @@ export class LynxAppDriver implements DetoxAppDriver {
   private readonly platform: DetoxPlatform;
   private readonly env: NodeJS.ProcessEnv;
   private androidLaunchLogMarker: string | null = null;
+  private iosLaunchProcessId: string | null = null;
   private readonly generationEventLedger = new GenerationEventLedger();
   private stageValues: Record<string, unknown>;
 
@@ -569,7 +570,7 @@ export class LynxAppDriver implements DetoxAppDriver {
       }),
     );
     if (this.platform === "ios") {
-      this.runLaunch(
+      const output = this.runLaunch(
         "xcrun",
         [
           "simctl",
@@ -582,6 +583,13 @@ export class LynxAppDriver implements DetoxAppDriver {
         ],
         options.expectCrash === true,
       );
+      const processId = output.match(/:\s*(\d+)\s*$/)?.[1] ?? null;
+      this.iosLaunchProcessId = processId;
+      if (processId === null && options.expectCrash !== true) {
+        throw new Error(
+          `xcrun simctl launch succeeded without a process ID: ${JSON.stringify(output)}`,
+        );
+      }
       return;
     }
     spawnSync("sleep", ["1"]);
@@ -621,6 +629,7 @@ export class LynxAppDriver implements DetoxAppDriver {
         `${stage}: wait overlay ready`,
         "runtimeScenarioMarker",
         {
+          pollGuard: () => this.assertIOSLaunchProcessAlive(),
           rejectValues: [""],
         },
       );
@@ -655,7 +664,7 @@ export class LynxAppDriver implements DetoxAppDriver {
           "simctl",
           "spawn",
           this.deviceId(),
-          "ps",
+          "/bin/ps",
           "-axo",
           "pid=,state=,command=",
         ]).text,
@@ -696,6 +705,27 @@ export class LynxAppDriver implements DetoxAppDriver {
       );
     }
     return sections.join("\n");
+  }
+
+  private assertIOSLaunchProcessAlive(): void {
+    if (this.platform !== "ios" || this.iosLaunchProcessId === null) return;
+    const result = this.captureCommand("ios-launch-process", "xcrun", [
+      "simctl",
+      "spawn",
+      this.deviceId(),
+      "/bin/kill",
+      "-0",
+      this.iosLaunchProcessId,
+    ]);
+    if (result.status === 0) return;
+    if (/No such process/i.test(result.text)) {
+      throw new Error(
+        `iOS app process ${this.iosLaunchProcessId} exited while waiting for runtimeScenarioMarker\n${result.text}`,
+      );
+    }
+    throw new Error(
+      `Could not inspect iOS app process ${this.iosLaunchProcessId} while waiting for runtimeScenarioMarker\n${result.text}`,
+    );
   }
 
   private assertNoManagedResourceErrors(): void {
@@ -823,18 +853,18 @@ export class LynxAppDriver implements DetoxAppDriver {
     command: string,
     args: readonly string[],
     expectCrash: boolean,
-  ): void {
+  ): string {
     if (expectCrash) {
-      spawnSync(command, args, {
+      const result = spawnSync(command, args, {
         encoding: "utf8",
         env: this.env,
       });
-      return;
+      return result.stdout ?? "";
     }
-    this.runOrThrow(command, args);
+    return this.runOrThrow(command, args);
   }
 
-  private runOrThrow(command: string, args: readonly string[]): void {
+  private runOrThrow(command: string, args: readonly string[]): string {
     const result = spawnSync(command, args, {
       encoding: "utf8",
       env: this.env,
@@ -844,6 +874,7 @@ export class LynxAppDriver implements DetoxAppDriver {
         `${command} ${args.join(" ")} failed: ${result.stderr || result.stdout || result.status}`,
       );
     }
+    return result.stdout ?? "";
   }
 
   private readStageValue(key: string): unknown {

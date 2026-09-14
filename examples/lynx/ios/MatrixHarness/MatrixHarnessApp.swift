@@ -86,25 +86,21 @@ private final class MatrixHost {
             .appendingPathComponent("Embedded/Public")
         let embeddedDirectory = Self.requestedEmbeddedDir
             ?? embeddedRoot.appendingPathComponent(framework)
-        let native = try JSONSerialization.jsonObject(
-            with: Data(contentsOf: embeddedRoot.appendingPathComponent(
+        let native = try HotUpdaterSparklingEmbeddedDescriptor(
+            data: Data(contentsOf: embeddedRoot.appendingPathComponent(
                 framework + "-native.json"
             ))
-        ) as! [String: String]
-        guard native["runtimeId"] == Self.runtimeId,
-              native["variant"] != nil,
-              let embeddedBundleId = native["bundleId"],
-              let minimumBundleId = native["minimumBundleId"],
-              let embeddedManifestDigest = native["manifestDigest"] else {
+        )
+        guard native.runtimeId == Self.runtimeId else {
             throw HotUpdaterSparklingError.invalidEmbeddedArtifact
         }
         let configuration = try HotUpdaterSparklingConfiguration(
             storeURL: home.appendingPathComponent("stores"),
             runtimeId: Self.runtimeId,
             embeddedDirectory: embeddedDirectory,
-            embeddedBundleId: embeddedBundleId,
-            embeddedManifestDigest: embeddedManifestDigest,
-            minimumBundleId: minimumBundleId,
+            embeddedBundleId: native.bundleId,
+            embeddedManifestDigest: native.manifestDigest,
+            minimumBundleId: native.minimumBundleId,
             appVersion: "1.0.0",
             channel: Self.requestedChannel ?? "ota-\(framework)",
             cohort: "1",

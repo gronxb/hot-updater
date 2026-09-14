@@ -13,6 +13,7 @@ import {
   parseStorageUri,
 } from "../../plugins/plugin-core/dist/index.mjs";
 import { standaloneRepository } from "../../plugins/standalone/dist/index.mjs";
+import { copyE2eFixtures } from "./scripts/copy-e2e-fixtures";
 import { resolveE2eBuildRuntimeId } from "./src/e2eBuildRuntimeId";
 
 const run = promisify(execFile);
@@ -112,33 +113,6 @@ function resolveStorage() {
     );
   }
   return localFsStorage({ directory, signingKey });
-}
-
-async function copyE2eFixtures(cwd: string, outDir: string) {
-  const srcDir = path.join(cwd, "src/test");
-  let names: string[];
-  try {
-    names = await fsp.readdir(srcDir);
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
-      return;
-    }
-    throw error;
-  }
-  const destDir = path.join(outDir, "assets/src/test");
-  const androidRawDir = path.join(outDir, "raw");
-  await fsp.mkdir(destDir, { recursive: true });
-  await fsp.mkdir(androidRawDir, { recursive: true });
-  for (const name of names) {
-    if (!name.startsWith("_fixture-")) {
-      continue;
-    }
-    await fsp.copyFile(path.join(srcDir, name), path.join(destDir, name));
-    await fsp.copyFile(
-      path.join(srcDir, name),
-      path.join(androidRawDir, `src_test_${name.replaceAll("-", "")}`),
-    );
-  }
 }
 
 export default {

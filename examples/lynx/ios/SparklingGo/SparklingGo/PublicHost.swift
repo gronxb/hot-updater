@@ -50,25 +50,22 @@ final class PublicHost {
             .appendingPathComponent("Embedded"))
             .appendingPathComponent("Public")
         let embeddedDirectory = embeddedRoot.appendingPathComponent("react")
-        let native = try JSONSerialization.jsonObject(
-            with: Data(contentsOf: embeddedRoot.appendingPathComponent(
+        let native = try HotUpdaterSparklingEmbeddedDescriptor(
+            data: Data(contentsOf: embeddedRoot.appendingPathComponent(
                 "react-native.json"
             ))
-        ) as! [String: String]
-        guard native["runtimeId"] == Self.runtimeId,
-              native["variant"] == "sdk3",
-              let embeddedBundleId = native["bundleId"],
-              let minimumBundleId = native["minimumBundleId"],
-              let embeddedManifestDigest = native["manifestDigest"] else {
+        )
+        guard native.runtimeId == Self.runtimeId,
+              native.variant == "sdk3" else {
             throw HotUpdaterSparklingError.invalidEmbeddedArtifact
         }
         let configuration = try HotUpdaterSparklingConfiguration(
             storeURL: home.appendingPathComponent("stores"),
             runtimeId: Self.runtimeId,
             embeddedDirectory: embeddedDirectory,
-            embeddedBundleId: embeddedBundleId,
-            embeddedManifestDigest: embeddedManifestDigest,
-            minimumBundleId: minimumBundleId,
+            embeddedBundleId: native.bundleId,
+            embeddedManifestDigest: native.manifestDigest,
+            minimumBundleId: native.minimumBundleId,
             appVersion: "1.0.0",
             channel: "ota-react",
             cohort: "1",
