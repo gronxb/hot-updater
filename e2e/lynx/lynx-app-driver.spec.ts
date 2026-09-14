@@ -71,6 +71,17 @@ function androidJournalFixture() {
     {
       details: {
         ...identity,
+        code: 302,
+        fatal: false,
+        path: "assets/probe.ttf",
+        subcode: 30201,
+        type: "font",
+      },
+      name: "engineDiagnostic",
+    },
+    {
+      details: {
+        ...identity,
         path: "assets/probe.ttf",
         sha256: "a".repeat(64),
       },
@@ -85,13 +96,13 @@ function androidJournalFixture() {
     events,
     journal: canonical({
       events,
-      nextSequence: "5",
+      nextSequence: "6",
       schemaVersion: 1,
       truncated: false,
     }),
     snapshot: JSON.stringify({
       events,
-      latestSequence: "4",
+      latestSequence: "5",
       oldestSequence: "1",
       schemaVersion: 1,
       truncated: false,
@@ -100,6 +111,9 @@ function androidJournalFixture() {
 }
 
 function androidJournalFetch(snapshot: string) {
+  const latestSequence = String(
+    (JSON.parse(snapshot) as { latestSequence: unknown }).latestSequence,
+  );
   let launchGeneration: string | null = null;
   let evidenceReady = false;
   return vi.fn(async (url: string, init?: RequestInit) => {
@@ -122,7 +136,9 @@ function androidJournalFetch(snapshot: string) {
       generationEvents: evidenceReady ? snapshot : null,
       launchStatus: "Current Launch Status: CONFIRMED",
       runtimeScenarioMarker: "bundle-A-marker",
-      updateActionResult: evidenceReady ? "captured" : "idle",
+      updateActionResult: evidenceReady
+        ? `generation-events -> ${latestSequence}`
+        : "idle",
     };
     return {
       ok: true,

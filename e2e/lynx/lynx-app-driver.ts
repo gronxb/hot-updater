@@ -173,7 +173,12 @@ export class LynxAppDriver implements DetoxAppDriver {
         this.platform === "android" &&
         pathName === "/e2e/jobs/wait-for-android-restart"
       ) {
-        await this.assertNoManagedResourceErrors(stage);
+        await this.assertNoManagedResourceErrors(
+          stage,
+          typeof resolvedBody.runtimeScenarioMarker === "string"
+            ? resolvedBody.runtimeScenarioMarker
+            : null,
+        );
       }
       this.saveControlResult(options, result as Record<string, unknown>);
     });
@@ -196,8 +201,8 @@ export class LynxAppDriver implements DetoxAppDriver {
         await new Promise((resolve) => setTimeout(resolve, 2000));
         await this.launchApp({ launchGeneration });
       }
-      await this.waitForOverlayReady(stage);
-      await this.assertNoManagedResourceErrors(stage);
+      const runtimeScenarioMarker = await this.waitForOverlayReady(stage);
+      await this.assertNoManagedResourceErrors(stage, runtimeScenarioMarker);
     });
   }
 
@@ -212,8 +217,8 @@ export class LynxAppDriver implements DetoxAppDriver {
       );
       await this.clearOverlayMarker(stage, launchGeneration);
       await this.launchApp({ launchGeneration });
-      await this.waitForOverlayReady(stage);
-      await this.assertNoManagedResourceErrors(stage);
+      const runtimeScenarioMarker = await this.waitForOverlayReady(stage);
+      await this.assertNoManagedResourceErrors(stage, runtimeScenarioMarker);
     });
   }
 
@@ -392,7 +397,7 @@ export class LynxAppDriver implements DetoxAppDriver {
         "runtimeScenarioMarker",
         { expectedValue: expectedMarker },
       );
-      await this.assertNoManagedResourceErrors(stage);
+      await this.assertNoManagedResourceErrors(stage, expectedMarker);
     });
   }
 
@@ -634,9 +639,9 @@ export class LynxAppDriver implements DetoxAppDriver {
     );
   }
 
-  private async waitForOverlayReady(stage: string): Promise<void> {
+  private async waitForOverlayReady(stage: string): Promise<string> {
     try {
-      await this.controlClient.waitForScreenStateField(
+      const result = await this.controlClient.waitForScreenStateField(
         `${stage}: wait overlay ready`,
         "runtimeScenarioMarker",
         {
@@ -644,6 +649,7 @@ export class LynxAppDriver implements DetoxAppDriver {
           rejectValues: [""],
         },
       );
+      return String(result.runtimeScenarioMarker);
     } catch (error) {
       const diagnostics = await this.captureStartupDiagnostics(stage);
       const message = error instanceof Error ? error.message : String(error);
@@ -739,7 +745,10 @@ export class LynxAppDriver implements DetoxAppDriver {
     );
   }
 
-  private async assertNoManagedResourceErrors(stage: string): Promise<void> {
+  private async assertNoManagedResourceErrors(
+    stage: string,
+    expectedRuntimeScenarioMarker: string | null,
+  ): Promise<void> {
     if (this.platform !== "android") return;
     const logResult = this.captureAndroidLaunchLogs();
     if (logResult.status !== 0) {
@@ -762,9 +771,15 @@ export class LynxAppDriver implements DetoxAppDriver {
       assertNoManagedResourceEngineErrors(logResult.logsSinceLaunch, null);
       return;
     }
+    if (!expectedRuntimeScenarioMarker) {
+      throw new Error(
+        "Could not inspect managed Lynx resources: expected runtime marker is unavailable",
+      );
+    }
     const journalEvidence = await this.captureAndroidRuntimeJournalEvidence(
       stage,
       processId,
+      expectedRuntimeScenarioMarker,
     );
     if (this.readAndroidProcessId() !== processId) {
       throw new Error(
@@ -797,6 +812,7 @@ export class LynxAppDriver implements DetoxAppDriver {
   private async captureAndroidRuntimeJournalEvidence(
     stage: string,
     currentProcessId: string,
+    expectedRuntimeScenarioMarker: string,
   ): Promise<AndroidRuntimeJournalEvidence> {
     await this.controlClient.postJson(
       `${stage}: reset runtime journal evidence`,
@@ -808,11 +824,12 @@ export class LynxAppDriver implements DetoxAppDriver {
       "/e2e/pending-action",
       { testID: "action-capture-generation-events" },
     );
-    await this.controlClient.waitForScreenStateField(
-      `${stage}: wait for runtime journal evidence`,
-      "updateActionResult",
-      { rejectSubstrings: [" -> error"], rejectValues: ["idle"] },
-    );
+    const actionResultResponse =
+      await this.controlClient.waitForScreenStateField(
+        `${stage}: wait for runtime journal evidence`,
+        "updateActionResult",
+        { rejectSubstrings: [" -> error"], rejectValues: ["idle"] },
+      );
     const screenStateResponse = await this.controlClient.postJson(
       `${stage}: read runtime journal evidence`,
       "/e2e/screen-state",
@@ -838,8 +855,10 @@ export class LynxAppDriver implements DetoxAppDriver {
       );
     }
     return {
+      actionResultResponse,
       currentProcessId,
       expectedLaunchGeneration: this.activeLaunchGeneration,
+      expectedRuntimeScenarioMarker,
       runtimeJournalUtf8: journal.stdout,
       screenStateResponse,
     };

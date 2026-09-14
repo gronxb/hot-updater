@@ -8,6 +8,7 @@ import com.lynx.tasm.LynxView
 import com.lynx.tasm.LynxViewBuilder
 import com.lynx.tasm.LynxViewClient
 import java.io.File
+import java.net.URI
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -50,6 +51,7 @@ class LynxLaunchSession internal constructor(
     private var failureHandler: ((String, Int?, String?) -> Unit)? = null
     private var firstContentHandler: (() -> Unit)? = null
     private var confirmedHandler: ((JSONObject) -> Unit)? = null
+    private var engineDiagnosticHandler: ((Map<String, Any?>) -> Unit)? = null
     private var readinessGate: (() -> Boolean)? = null
     val resources = LynxReleaseResources(
         installation.directory,
@@ -112,6 +114,11 @@ class LynxLaunchSession internal constructor(
         check(live && firstContentHandler == null && confirmedHandler == null)
         firstContentHandler = firstContent
         confirmedHandler = confirmed
+    }
+    /** Records an engine diagnostic against this exact managed context. */
+    fun setEngineDiagnosticHandler(handler: (Map<String, Any?>) -> Unit) {
+        check(live && engineDiagnosticHandler == null)
+        engineDiagnosticHandler = handler
     }
     /** Adds host-owned readiness state without inventing a managed resource path. */
     fun setReadinessGate(gate: () -> Boolean) {
@@ -193,8 +200,16 @@ class LynxLaunchSession internal constructor(
             } }
             override fun onReceivedError(error: LynxError) {
                 android.util.Log.i("HotUpdaterLynx", "engine-error fatal=${error.isFatal} code=${error.errorCode} message=${error.msg}")
-                if (error.isFatal && epoch == bindingEpoch) {
-                    notifyFailure(error.msg, error.errorCode)
+                if (epoch == bindingEpoch) {
+                    managedEngineDiagnostic(
+                        error.isFatal,
+                        error.errorCode,
+                        error.msg,
+                        installation.managedPaths,
+                    )?.let { engineDiagnosticHandler?.invoke(it) }
+                    if (error.isFatal) {
+                        notifyFailure(error.msg, error.errorCode)
+                    }
                 }
             }
             override fun onLoadFailed(message: String) {
@@ -217,6 +232,7 @@ class LynxLaunchSession internal constructor(
         reloadHandler = null
         firstContentHandler = null
         confirmedHandler = null
+        engineDiagnosticHandler = null
         resources.onFailure = { message -> notifyFailure(message) }
         return previous
     }
@@ -272,9 +288,48 @@ class LynxLaunchSession internal constructor(
         failureHandler = null
         firstContentHandler = null
         confirmedHandler = null
+        engineDiagnosticHandler = null
         readinessGate = null
         resources.onFailure = null
         resources.onLoaded = null
         resources.resourceGate = null
     }
+}
+
+internal fun managedEngineDiagnostic(
+    fatal: Boolean,
+    code: Int,
+    message: String,
+    managedPaths: Set<String>,
+): Map<String, Any?>? {
+    val payload = runCatching { JSONObject(message) }.getOrNull() ?: return null
+    if (payload.opt("error_code") != code) return null
+    val subcode = payload.opt("sub_code") as? Int ?: return null
+    val type = payload.opt("type") as? String ?: return null
+    if (type.isEmpty()) return null
+    val source = payload.opt("src") as? String ?: return null
+    if (!source.startsWith("hot-updater:///")) return null
+    val uri = runCatching { URI(source) }.getOrNull() ?: return null
+    if (
+        uri.scheme != "hot-updater" ||
+        !uri.authority.isNullOrEmpty() ||
+        uri.query != null ||
+        uri.fragment != null
+    ) return null
+    val path = uri.path?.removePrefix("/") ?: return null
+    val canonical = runCatching {
+        com.hotupdater.lynx.internal.ManagedPaths.normalize(path)
+    }.getOrNull() ?: return null
+    if (
+        canonical != path ||
+        source != "hot-updater:///$path" ||
+        path !in managedPaths
+    ) return null
+    return linkedMapOf(
+        "fatal" to fatal,
+        "code" to code,
+        "subcode" to subcode,
+        "type" to type,
+        "path" to path,
+    )
 }

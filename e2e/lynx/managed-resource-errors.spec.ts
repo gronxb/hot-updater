@@ -133,6 +133,23 @@ type CapturedJournal = {
 
 function capturedJournal(mutate?: (journal: CapturedJournal) => void): string {
   const journal = JSON.parse(YNQB7P_JOURNAL) as CapturedJournal;
+  const fontIndex = journal.events.findIndex(
+    (event) => event.name === "fontLoaded",
+  );
+  const diagnosticDetails = structuredClone(journal.events[fontIndex].details);
+  delete diagnosticDetails.sha256;
+  Object.assign(diagnosticDetails, {
+    code: 302,
+    fatal: false,
+    path: "assets/probe.ttf",
+    subcode: 30201,
+    type: "font",
+  });
+  journal.events.splice(fontIndex, 0, {
+    details: diagnosticDetails,
+    name: "engineDiagnostic",
+    sequence: "14",
+  });
   mutate?.(journal);
   journal.events.forEach((event, index) => {
     event.sequence = String(index + 1);
@@ -141,21 +158,26 @@ function capturedJournal(mutate?: (journal: CapturedJournal) => void): string {
   return canonical(journal);
 }
 
+const YNQB7P_ADAPTED_JOURNAL = capturedJournal();
+
 function capturedEvidence(
-  runtimeJournalUtf8 = YNQB7P_JOURNAL,
+  runtimeJournalUtf8 = YNQB7P_ADAPTED_JOURNAL,
   overrides: Record<string, unknown> = {},
 ) {
   let journal: CapturedJournal;
   try {
     journal = JSON.parse(runtimeJournalUtf8) as CapturedJournal;
   } catch {
-    journal = JSON.parse(YNQB7P_JOURNAL) as CapturedJournal;
+    journal = JSON.parse(YNQB7P_ADAPTED_JOURNAL) as CapturedJournal;
   }
   const first = journal.events[0];
   const last = journal.events.at(-1);
+  const updateActionResult = `generation-events -> ${last?.sequence}`;
   return {
+    actionResultResponse: { updateActionResult },
     currentProcessId: "7690",
     expectedLaunchGeneration: "launch-ynqb7p",
+    expectedRuntimeScenarioMarker: "targeted-qa-detox",
     runtimeJournalUtf8,
     screenStateResponse: {
       launchGeneration: "launch-ynqb7p",
@@ -171,6 +193,7 @@ function capturedEvidence(
         }),
         launchStatus: "Current Launch Status: CONFIRMED",
         runtimeScenarioMarker: "targeted-qa-detox",
+        updateActionResult,
       },
     },
     ...overrides,
@@ -178,11 +201,16 @@ function capturedEvidence(
 }
 
 describe("managed Lynx resource engine errors", () => {
-  it("accepts the captured ynqb7p Android journal and exact PID-scoped diagnostic", () => {
+  it("accepts the ynqb7p Android shape with its exact PID-scoped diagnostic journaled", () => {
     expect(
       crypto.createHash("sha256").update(YNQB7P_JOURNAL).digest("hex"),
     ).toBe("54dad8d20acf69241f7ebf775cdc66177bb63db922519b9a4f13d07836abfd7b");
     expect(YNQB7P_LOG).not.toContain("HOT_UPDATER_MATRIX_EVENT");
+    expect(
+      (JSON.parse(YNQB7P_ADAPTED_JOURNAL) as CapturedJournal).events
+        .slice(-3)
+        .map((event) => event.name),
+    ).toEqual(["engineDiagnostic", "fontLoaded", "jsReady"]);
     expect(
       findManagedResourceEngineErrorCodes(YNQB7P_LOG, capturedEvidence()),
     ).toEqual([]);
@@ -212,6 +240,52 @@ describe("managed Lynx resource engine errors", () => {
         return capturedEvidence(runtimeJournalUtf8);
       },
     ],
+    [
+      "later successful generation without its own diagnostic",
+      () => {
+        const runtimeJournalUtf8 = capturedJournal((journal) => {
+          const ready = structuredClone(journal.events.at(-1)!.details);
+          const nextIdentity = {
+            attemptId: "later-attempt",
+            contextId: "later-context",
+            generationId: "later-generation",
+          };
+          const base = { ...ready, ...nextIdentity };
+          delete base.confirmation;
+          journal.events.push(
+            {
+              details: { ...base, primary: true },
+              name: "generationWillEvaluate",
+              sequence: "17",
+            },
+            {
+              details: base,
+              name: "generationStarted",
+              sequence: "18",
+            },
+            {
+              details: {
+                ...base,
+                path: "assets/probe.ttf",
+                sha256:
+                  "1b08e7fc267a5c7e1d614100f604b83e7e8a0be241f0f288faa2b3ac93a683ba",
+              },
+              name: "fontLoaded",
+              sequence: "19",
+            },
+            {
+              details: {
+                ...base,
+                confirmation: { status: "CONFIRMED" },
+              },
+              name: "jsReady",
+              sequence: "20",
+            },
+          );
+        });
+        return capturedEvidence(runtimeJournalUtf8);
+      },
+    ],
     ...[
       ["runtimeId", "other-runtime"],
       ["contextId", "other-context"],
@@ -231,7 +305,10 @@ describe("managed Lynx resource engine errors", () => {
     ]),
     [
       "wrong current PID",
-      () => capturedEvidence(YNQB7P_JOURNAL, { currentProcessId: "7691" }),
+      () =>
+        capturedEvidence(YNQB7P_ADAPTED_JOURNAL, {
+          currentProcessId: "7691",
+        }),
     ],
     [
       "wrong font path",
@@ -240,6 +317,45 @@ describe("managed Lynx resource engine errors", () => {
           journal.events.find(
             (event) => event.name === "fontLoaded",
           )!.details.path = "assets/other.ttf";
+        });
+        return capturedEvidence(runtimeJournalUtf8);
+      },
+    ],
+    ...[
+      ["fatal diagnostic", "fatal", true],
+      ["wrong diagnostic code", "code", 301],
+      ["wrong diagnostic subcode", "subcode", 30202],
+      ["wrong diagnostic type", "type", "image"],
+      ["wrong diagnostic path", "path", "assets/other.ttf"],
+    ].map(([label, field, value]) => [
+      label,
+      () => {
+        const runtimeJournalUtf8 = capturedJournal((journal) => {
+          journal.events.find(
+            (event) => event.name === "engineDiagnostic",
+          )!.details[field as string] = value;
+        });
+        return capturedEvidence(runtimeJournalUtf8);
+      },
+    ]),
+    [
+      "missing diagnostic",
+      () => {
+        const runtimeJournalUtf8 = capturedJournal((journal) => {
+          journal.events = journal.events.filter(
+            (event) => event.name !== "engineDiagnostic",
+          );
+        });
+        return capturedEvidence(runtimeJournalUtf8);
+      },
+    ],
+    [
+      "malformed diagnostic",
+      () => {
+        const runtimeJournalUtf8 = capturedJournal((journal) => {
+          delete journal.events.find(
+            (event) => event.name === "engineDiagnostic",
+          )!.details.path;
         });
         return capturedEvidence(runtimeJournalUtf8);
       },
@@ -264,6 +380,33 @@ describe("managed Lynx resource engine errors", () => {
           );
           const [font] = journal.events.splice(fontIndex, 1);
           journal.events.push(font);
+        });
+        return capturedEvidence(runtimeJournalUtf8);
+      },
+    ],
+    [
+      "missing generation start",
+      () => {
+        const runtimeJournalUtf8 = capturedJournal((journal) => {
+          journal.events = journal.events.filter(
+            (event) => event.name !== "generationStarted",
+          );
+        });
+        return capturedEvidence(runtimeJournalUtf8);
+      },
+    ],
+    [
+      "diagnostic before generation start",
+      () => {
+        const runtimeJournalUtf8 = capturedJournal((journal) => {
+          const diagnosticIndex = journal.events.findIndex(
+            (event) => event.name === "engineDiagnostic",
+          );
+          const [diagnostic] = journal.events.splice(diagnosticIndex, 1);
+          const startedIndex = journal.events.findIndex(
+            (event) => event.name === "generationStarted",
+          );
+          journal.events.splice(startedIndex, 0, diagnostic);
         });
         return capturedEvidence(runtimeJournalUtf8);
       },
@@ -311,6 +454,52 @@ describe("managed Lynx resource engine errors", () => {
     ],
     ["malformed journal", () => capturedEvidence("{")],
     ["missing journal", () => capturedEvidence("")],
+    [
+      "stale runtime marker",
+      () =>
+        capturedEvidence(YNQB7P_ADAPTED_JOURNAL, {
+          expectedRuntimeScenarioMarker: "stale-marker",
+        }),
+    ],
+    [
+      "truncated snapshot mismatch",
+      () => {
+        const evidence = capturedEvidence();
+        const screen = evidence.screenStateResponse.screenState;
+        screen.generationEvents = JSON.stringify({
+          ...(JSON.parse(screen.generationEvents) as Record<string, unknown>),
+          truncated: true,
+        });
+        return evidence;
+      },
+    ],
+    [
+      "action receipt mismatch",
+      () =>
+        capturedEvidence(YNQB7P_ADAPTED_JOURNAL, {
+          actionResultResponse: {
+            updateActionResult: "generation-events -> 15",
+          },
+        }),
+    ],
+    [
+      "journal append after the action snapshot",
+      () => {
+        const runtimeJournalUtf8 = capturedJournal((journal) => {
+          journal.events.push({
+            details: structuredClone(journal.events.at(-1)!.details),
+            name: "routeClosed",
+            sequence: "17",
+          });
+        });
+        const current = capturedEvidence();
+        return {
+          ...capturedEvidence(runtimeJournalUtf8),
+          actionResultResponse: current.actionResultResponse,
+          screenStateResponse: current.screenStateResponse,
+        };
+      },
+    ],
     [
       "missing screen identity",
       () => {

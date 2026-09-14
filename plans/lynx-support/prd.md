@@ -1037,6 +1037,15 @@ only nonempty strings and do not replace the scalar contract. Native API results
 outside managed runtime evidence carry only the identity fields defined by their
 own result schema, but any such field obeys the same type and null meaning.
 
+Android Sparkling records an `engineDiagnostic` runtime event synchronously from
+the actual live `LynxViewClient.onReceivedError` callback through that
+generation's event sink. Its details contain the full runtime identity, nonempty
+`contextId` and `attemptId`, Boolean `fatal`, integer `code` and `subcode`,
+nonempty `type`, and `path` as the exact canonical managed relative path of at
+most 1,024 UTF-8 bytes. The path is derived from the exact
+`hot-updater:///` source and must belong to the current managed installation.
+Malformed, unowned, or retired-generation diagnostics are not trusted.
+
 The cross-platform runtime evidence event contract bounds each event name to
 128 UTF-8 bytes and its serialized `details` JSON value to 64 KiB (65,536 UTF-8
 bytes). The canonical persisted journal is one compact RFC 8785 JSON
@@ -1120,6 +1129,18 @@ first/last retained sequence strings or returns null for an empty array, and
 never exposes `nextSequence`. This prevents persisted aliases such as
 `latestSequence`, `oldestSequence`, `rolledOver`, or `dropped`, numeric sequence
 values, and encoded details payloads.
+
+An Android font error 302 is recoverable in E2E validation only when the exact
+current-PID log diagnostic has one same-identity journal chain ordered as
+`generationWillEvaluate`, `generationStarted`, `engineDiagnostic`,
+`fontLoaded`, and confirmed `jsReady`. The diagnostic must be nonfatal code 302,
+subcode 30201, type `font`, and have the same canonical path as the log; the
+font event must carry a lowercase SHA-256. Any fatal or retirement event, later
+generation boundary, missing or additional diagnostic, or identity mismatch
+fails closed. The screen action receipt must equal
+`generation-events -> <latestSequence>`, its marker must equal the marker the
+driver awaited, and its complete snapshot must match the canonical package
+journal events, truncation flag, bounds, and derived next sequence exactly.
 
 E2E records `TRANSITION_ACCEPTED` plus its transition ID from the native
 acceptance log in the nonproduction harness, then stops using the old Promise as

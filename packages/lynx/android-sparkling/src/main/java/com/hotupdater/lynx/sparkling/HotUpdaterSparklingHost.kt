@@ -766,6 +766,12 @@ class HotUpdaterSparklingHost(
                 reload(generation, trigger, completion)
             }
         }
+        launch.setEngineDiagnosticHandler { diagnostic ->
+            generation.emit(
+                "engineDiagnostic",
+                details(page) + diagnostic,
+            )
+        }
         launch.setReadinessHandlers(
             firstContent = {
                 generation.emit(

@@ -81,6 +81,58 @@ class LynxGenerationEventJournalTest {
     }
 
     @Test
+    fun persistsOnlyCompleteCanonicalEngineDiagnosticDetails() {
+        val root = Files.createTempDirectory("lynx-events-").toFile()
+        try {
+            val journal = LynxGenerationEventJournal(root)
+            val diagnostic = identity(mapOf(
+                "attemptId" to "attempt-a",
+                "fatal" to false,
+                "code" to 302,
+                "subcode" to 30201,
+                "type" to "font",
+                "path" to "assets/probe.ttf",
+            ))
+            journal.append("engineDiagnostic", diagnostic)
+            listOf(
+                diagnostic + ("contextId" to null),
+                diagnostic - "attemptId",
+                diagnostic + ("fatal" to "false"),
+                diagnostic + ("code" to 302L),
+                diagnostic + ("subcode" to "30201"),
+                diagnostic + ("type" to ""),
+            ).forEach { invalid ->
+                assertThrows(IllegalStateException::class.java) {
+                    journal.append("engineDiagnostic", invalid)
+                }
+            }
+            assertThrows(IllegalArgumentException::class.java) {
+                journal.append(
+                    "engineDiagnostic",
+                    diagnostic + ("path" to "assets/../probe.ttf"),
+                )
+            }
+            assertThrows(IllegalStateException::class.java) {
+                journal.append(
+                    "engineDiagnostic",
+                    diagnostic + ("path" to "assets/probe%2Ettf"),
+                )
+            }
+
+            val snapshot = journal.snapshot()
+            assertEquals("1", snapshot.getString("latestSequence"))
+            val event = snapshot.getJSONArray("events").getJSONObject(0)
+            assertEquals("engineDiagnostic", event.getString("name"))
+            assertEquals(
+                "assets/probe.ttf",
+                event.getJSONObject("details").getString("path"),
+            )
+        } finally {
+            root.deleteRecursively()
+        }
+    }
+
+    @Test
     fun canonicalizesRecursiveDetailsWithRfc8785NumberAndStringForms() {
         val root = Files.createTempDirectory("lynx-events-").toFile()
         try {

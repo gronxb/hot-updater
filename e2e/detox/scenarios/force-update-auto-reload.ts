@@ -28,6 +28,7 @@ export const forceUpdateAutoReloadScenario: DetoxScenarioDefinition = {
       {
         bundleId: "$forceBundleId",
         releaseId: "$forceReleaseId",
+        runtimeScenarioMarker: "force-update-detox",
       },
     );
     await app.control(

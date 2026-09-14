@@ -105,6 +105,92 @@ describe("Lynx public controller", () => {
     expect(getRuntimeEvents.mock.calls[0]).toHaveLength(1);
   });
 
+  it("accepts the exact engine diagnostic runtime event schema", async () => {
+    const event = {
+      sequence: "1",
+      name: "engineDiagnostic",
+      details: {
+        runtimeId: "runtime-a",
+        processId: "1234",
+        generationId: "generation-a",
+        bundleId: "bundle-a",
+        releaseId: null,
+        contextId: "context-a",
+        attemptId: "attempt-a",
+        pageAttemptId: null,
+        transitionId: null,
+        fatal: false,
+        code: 302,
+        subcode: 30201,
+        type: "font",
+        path: "assets/probe.ttf",
+      },
+    };
+    const data = {
+      schemaVersion: 1,
+      latestSequence: "1",
+      oldestSequence: "1",
+      truncated: false,
+      events: [event],
+    } as const;
+    vi.stubGlobal("NativeModules", {
+      HotUpdaterLynx: {
+        getRuntimeEvents: (callback: (reply: NativeReply<unknown>) => void) =>
+          callback({ ok: true, data }),
+      },
+    });
+    const { HotUpdater } = await import("./index");
+
+    await expect(HotUpdater.getRuntimeEvents()).resolves.toEqual(data);
+  });
+
+  it.each([
+    { attemptId: null },
+    { fatal: "false" },
+    { code: 302.5 },
+    { subcode: "30201" },
+    { path: "assets/../probe.ttf" },
+    { path: "a".repeat(LYNX_RUNTIME_EVENT_LIMITS.managedPathUtf8Bytes + 1) },
+  ])("rejects malformed engine diagnostic details %#", async (mutation) => {
+    const details = {
+      runtimeId: "runtime-a",
+      processId: "1234",
+      generationId: "generation-a",
+      bundleId: "bundle-a",
+      releaseId: null,
+      contextId: "context-a",
+      attemptId: "attempt-a",
+      pageAttemptId: null,
+      transitionId: null,
+      fatal: false,
+      code: 302,
+      subcode: 30201,
+      type: "font",
+      path: "assets/probe.ttf",
+      ...mutation,
+    };
+    vi.stubGlobal("NativeModules", {
+      HotUpdaterLynx: {
+        getRuntimeEvents: (callback: (reply: NativeReply<unknown>) => void) =>
+          callback({
+            ok: true,
+            data: {
+              schemaVersion: 1,
+              latestSequence: "1",
+              oldestSequence: "1",
+              truncated: false,
+              events: [{ sequence: "1", name: "engineDiagnostic", details }],
+            },
+          }),
+      },
+    });
+    const { HotUpdater } = await import("./index");
+
+    await expect(HotUpdater.getRuntimeEvents()).rejects.toMatchObject({
+      code: "INVALID_NATIVE_REPLY",
+    });
+  });
+
   it("accepts the exact runtime event name and canonical details bounds", async () => {
     const detailsOverhead = Buffer.byteLength('{"payload":""}');
     const data = {

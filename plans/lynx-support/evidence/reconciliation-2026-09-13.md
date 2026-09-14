@@ -94,6 +94,14 @@ context. This is a source and focused-test result until the rebuilt host proves
 the behavior on a device. The matrix contract also requires stale primary and
 secondary authorities to fail with their original full identity after reload.
 
+Android source now projects a canonical `engineDiagnostic` from the actual live
+Lynx error callback through the owning Sparkling generation event sink. The E2E
+validator binds that event to the current PID, awaited marker, action receipt,
+screen snapshot, and package journal before accepting the known font 302. Native
+and E2E unit regressions cover its schema and stale-generation rejection. This
+is source and unit-test evidence; no current device run has established the new
+diagnostic chain.
+
 The final client surface does not claim native manifest or filesystem
 install-identity access, user mutation, event listeners, or init-time insights.
 It does not accept inert reload-mode or process-restart values. These removals

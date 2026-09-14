@@ -116,6 +116,7 @@ export interface RuntimeEvent {
 export const LYNX_RUNTIME_EVENT_LIMITS = {
   detailsUtf8Bytes: 65_536,
   journalUtf8Bytes: 16_777_216,
+  managedPathUtf8Bytes: 1_024,
   nameUtf8Bytes: 128,
   retainedEvents: 256,
 } as const;

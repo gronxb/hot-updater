@@ -1,15 +1,19 @@
+import { LYNX_RUNTIME_EVENT_LIMITS } from "../../packages/lynx/src/types.ts";
+
 const POSITIVE_DECIMAL = /^[1-9][0-9]*$/;
 const SHA256 = /^[0-9a-f]{64}$/;
-const MAX_JOURNAL_BYTES = 16 * 1024 * 1024;
-const MAX_EVENT_NAME_BYTES = 128;
-const MAX_EVENT_DETAILS_BYTES = 64 * 1024;
-const MAX_EVENTS = 256;
+const MAX_JOURNAL_BYTES = LYNX_RUNTIME_EVENT_LIMITS.journalUtf8Bytes;
+const MAX_EVENT_NAME_BYTES = LYNX_RUNTIME_EVENT_LIMITS.nameUtf8Bytes;
+const MAX_EVENT_DETAILS_BYTES = LYNX_RUNTIME_EVENT_LIMITS.detailsUtf8Bytes;
+const MAX_EVENTS = LYNX_RUNTIME_EVENT_LIMITS.retainedEvents;
 
 type JsonRecord = Record<string, unknown>;
 
 export type AndroidRuntimeJournalEvidence = {
+  readonly actionResultResponse: unknown;
   readonly currentProcessId: string;
   readonly expectedLaunchGeneration: string | null;
+  readonly expectedRuntimeScenarioMarker: string;
   readonly runtimeJournalUtf8: string;
   readonly screenStateResponse: unknown;
 };
@@ -28,6 +32,19 @@ type RuntimeEvent = {
   readonly sequence: string;
   readonly name: string;
   readonly details: JsonRecord;
+};
+
+type RuntimeJournal = {
+  readonly events: RuntimeEvent[];
+  readonly nextSequence: string;
+  readonly truncated: boolean;
+};
+
+type ScreenEvidence = {
+  readonly events: RuntimeEvent[];
+  readonly identity: ManagedIdentity;
+  readonly latestSequence: string;
+  readonly truncated: boolean;
 };
 
 const record = (value: unknown): JsonRecord | null =>
@@ -119,6 +136,41 @@ function sameIdentity(left: ManagedIdentity, right: ManagedIdentity): boolean {
   );
 }
 
+function isCanonicalManagedPath(value: unknown): value is string {
+  if (
+    typeof value !== "string" ||
+    value.trim().length === 0 ||
+    Buffer.byteLength(value, "utf8") >
+      LYNX_RUNTIME_EVENT_LIMITS.managedPathUtf8Bytes ||
+    value.startsWith("/") ||
+    value.endsWith("/") ||
+    /[\\%?#:]/.test(value)
+  ) {
+    return false;
+  }
+  return (
+    !Array.from(value).some((character) => {
+      const codePoint = character.codePointAt(0) ?? 0;
+      return codePoint <= 0x1f || codePoint === 0x7f;
+    }) &&
+    value
+      .split("/")
+      .every((part) => part !== "" && part !== "." && part !== "..")
+  );
+}
+
+function isValidEngineDiagnostic(details: JsonRecord): boolean {
+  return (
+    managedIdentity(details) !== null &&
+    typeof details.fatal === "boolean" &&
+    Number.isSafeInteger(details.code) &&
+    Number.isSafeInteger(details.subcode) &&
+    typeof details.type === "string" &&
+    details.type.length > 0 &&
+    isCanonicalManagedPath(details.path)
+  );
+}
+
 function parseEvents(value: unknown): RuntimeEvent[] | null {
   if (!Array.isArray(value) || value.length > MAX_EVENTS) return null;
   const events: RuntimeEvent[] = [];
@@ -176,6 +228,12 @@ function parseEvents(value: unknown): RuntimeEvent[] | null {
     ) {
       return null;
     }
+    if (
+      event.name === "engineDiagnostic" &&
+      !isValidEngineDiagnostic(details)
+    ) {
+      return null;
+    }
     events.push({
       sequence: event.sequence,
       name: event.name,
@@ -186,7 +244,7 @@ function parseEvents(value: unknown): RuntimeEvent[] | null {
   return events;
 }
 
-function parseJournal(source: string): RuntimeEvent[] | null {
+function parseJournal(source: string): RuntimeJournal | null {
   if (
     Buffer.byteLength(source, "utf8") > MAX_JOURNAL_BYTES ||
     source.length === 0
@@ -219,7 +277,9 @@ function parseJournal(source: string): RuntimeEvent[] | null {
   const events = parseEvents(journal.events);
   if (events === null) return null;
   if (events.length === 0) {
-    return journal.nextSequence === "1" ? events : null;
+    return journal.nextSequence === "1"
+      ? { events, nextSequence: "1", truncated: journal.truncated }
+      : null;
   }
   const first = events[0];
   const last = events.at(-1);
@@ -231,22 +291,35 @@ function parseJournal(source: string): RuntimeEvent[] | null {
   ) {
     return null;
   }
-  return events;
+  return {
+    events,
+    nextSequence: journal.nextSequence,
+    truncated: journal.truncated,
+  };
 }
 
-function parseScreenEvidence(evidence: AndroidRuntimeJournalEvidence): {
-  readonly events: RuntimeEvent[];
-  readonly identity: ManagedIdentity;
-} | null {
-  if (!POSITIVE_DECIMAL.test(evidence.currentProcessId)) return null;
+function parseScreenEvidence(
+  evidence: AndroidRuntimeJournalEvidence,
+): ScreenEvidence | null {
+  if (
+    !POSITIVE_DECIMAL.test(evidence.currentProcessId) ||
+    typeof evidence.expectedLaunchGeneration !== "string" ||
+    evidence.expectedLaunchGeneration.length === 0 ||
+    evidence.expectedRuntimeScenarioMarker.length === 0
+  ) {
+    return null;
+  }
   const response = record(evidence.screenStateResponse);
+  const actionResult = record(evidence.actionResultResponse);
   const screenState = response && record(response.screenState);
   if (
     response === null ||
+    actionResult === null ||
+    !hasExactKeys(actionResult, ["updateActionResult"]) ||
     screenState === null ||
     response.launchGeneration !== evidence.expectedLaunchGeneration ||
-    typeof screenState.runtimeScenarioMarker !== "string" ||
-    screenState.runtimeScenarioMarker.length === 0 ||
+    screenState.runtimeScenarioMarker !==
+      evidence.expectedRuntimeScenarioMarker ||
     screenState.launchStatus !== "Current Launch Status: CONFIRMED" ||
     typeof screenState.currentBundleId !== "string" ||
     screenState.currentBundleId.length === 0 ||
@@ -281,10 +354,15 @@ function parseScreenEvidence(evidence: AndroidRuntimeJournalEvidence): {
   const events = parseEvents(snapshot.events);
   const first = events?.[0];
   const last = events?.at(-1);
+  const latestSequence = last?.sequence;
+  const expectedActionResult = `generation-events -> ${latestSequence}`;
   if (
     events === null ||
+    latestSequence === undefined ||
     snapshot.oldestSequence !== (first?.sequence ?? null) ||
-    snapshot.latestSequence !== (last?.sequence ?? null)
+    snapshot.latestSequence !== latestSequence ||
+    screenState.updateActionResult !== expectedActionResult ||
+    actionResult.updateActionResult !== expectedActionResult
   ) {
     return null;
   }
@@ -300,7 +378,12 @@ function parseScreenEvidence(evidence: AndroidRuntimeJournalEvidence): {
       identity.releaseId === screenState.currentReleaseId &&
       confirmation?.status === "CONFIRMED"
     ) {
-      return { events, identity };
+      return {
+        events,
+        identity,
+        latestSequence,
+        truncated: snapshot.truncated,
+      };
     }
   }
   return null;
@@ -330,15 +413,18 @@ export function isFontDiagnosticRecoveredByAndroidJournal(
   relativePath: string,
   evidence: AndroidRuntimeJournalEvidence,
 ): boolean {
-  const journalEvents = parseJournal(evidence.runtimeJournalUtf8);
+  const journal = parseJournal(evidence.runtimeJournalUtf8);
   const screen = parseScreenEvidence(evidence);
   if (
-    journalEvents === null ||
+    journal === null ||
     screen === null ||
-    canonicalJson(journalEvents) !== canonicalJson(screen.events)
+    journal.truncated !== screen.truncated ||
+    journal.nextSequence !== (BigInt(screen.latestSequence) + 1n).toString() ||
+    canonicalJson(journal.events) !== canonicalJson(screen.events)
   ) {
     return false;
   }
+  const journalEvents = journal.events;
   const readyIndex = journalEvents.findLastIndex((event) => {
     const identity = managedIdentity(event.details);
     return (
@@ -350,7 +436,8 @@ export function isFontDiagnosticRecoveredByAndroidJournal(
   });
   if (readyIndex < 0) return false;
 
-  let startIndex = -1;
+  let evaluateIndex = -1;
+  let startedIndex = -1;
   for (let index = readyIndex; index >= 0; index -= 1) {
     const event = journalEvents[index];
     const identity = managedIdentity(event.details);
@@ -359,16 +446,40 @@ export function isFontDiagnosticRecoveredByAndroidJournal(
       if (identity === null || !sameIdentity(identity, screen.identity)) {
         return false;
       }
+      if (event.name === "generationStarted" && startedIndex < 0) {
+        startedIndex = index;
+      }
       if (event.name === "generationWillEvaluate") {
-        startIndex = index;
+        evaluateIndex = index;
         break;
       }
     }
   }
-  if (startIndex < 0) return false;
+  if (evaluateIndex < 0 || startedIndex <= evaluateIndex) return false;
+
+  const diagnosticIndexes = journalEvents.flatMap((event, index) =>
+    index > startedIndex && event.name === "engineDiagnostic" ? [index] : [],
+  );
+  if (diagnosticIndexes.length !== 1) return false;
+  const diagnosticIndex = diagnosticIndexes[0];
+  if (diagnosticIndex === undefined) return false;
+  const diagnostic = journalEvents[diagnosticIndex];
+  const diagnosticIdentity = managedIdentity(diagnostic.details);
+  if (
+    diagnosticIndex >= readyIndex ||
+    diagnosticIdentity === null ||
+    !sameIdentity(diagnosticIdentity, screen.identity) ||
+    diagnostic.details.fatal !== false ||
+    diagnostic.details.code !== 302 ||
+    diagnostic.details.subcode !== 30201 ||
+    diagnostic.details.type !== "font" ||
+    diagnostic.details.path !== relativePath
+  ) {
+    return false;
+  }
 
   const fontIndex = journalEvents.findIndex((event, index) => {
-    if (index <= startIndex || index >= readyIndex) return false;
+    if (index <= diagnosticIndex || index >= readyIndex) return false;
     const identity = managedIdentity(event.details);
     return (
       event.name === "fontLoaded" &&
@@ -381,13 +492,19 @@ export function isFontDiagnosticRecoveredByAndroidJournal(
   });
   if (fontIndex < 0) return false;
 
-  for (let index = startIndex + 1; index < journalEvents.length; index += 1) {
+  for (
+    let index = evaluateIndex + 1;
+    index < journalEvents.length;
+    index += 1
+  ) {
     const event = journalEvents[index];
     const identity = managedIdentity(event.details);
     if (isFatalBoundary(event)) return false;
     if (
       generationBoundaries.has(event.name) &&
-      (identity === null || !sameIdentity(identity, screen.identity))
+      (index > readyIndex ||
+        identity === null ||
+        !sameIdentity(identity, screen.identity))
     ) {
       return false;
     }

@@ -7,6 +7,8 @@ type GenerationEventsClient = {
   readonly getRuntimeEvents: () => Promise<RuntimeEventsSnapshot>;
 };
 
+const MAX_MANAGED_PATH_UTF8_BYTES = 1_024;
+
 const record = (value: unknown, label: string): Record<string, unknown> => {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     throw new Error(`${label} must be an object`);
@@ -74,6 +76,21 @@ const pageAttemptTerminals = new Set([
   "authorized-cancel",
   "process-interruption",
 ]);
+
+const isCanonicalManagedPath = (value: unknown): value is string =>
+  typeof value === "string" &&
+  value.trim().length > 0 &&
+  new TextEncoder().encode(value).length <= MAX_MANAGED_PATH_UTF8_BYTES &&
+  !value.startsWith("/") &&
+  !value.endsWith("/") &&
+  !/[\\%?#:]/.test(value) &&
+  !Array.from(value).some((character) => {
+    const codePoint = character.codePointAt(0)!;
+    return codePoint <= 0x1f || codePoint === 0x7f;
+  }) &&
+  value
+    .split("/")
+    .every((part) => part !== "" && part !== "." && part !== "..");
 
 export function compareGenerationEventSequence(
   left: string,
@@ -152,6 +169,23 @@ export function validateGenerationEventsSnapshot(
       `generation events[${index}].details`,
     );
     validateManagedIdentity(details, `generation events[${index}].details`);
+    if (
+      name === "engineDiagnostic" &&
+      (typeof details.attemptId !== "string" ||
+        details.attemptId.length === 0 ||
+        typeof details.contextId !== "string" ||
+        details.contextId.length === 0 ||
+        typeof details.fatal !== "boolean" ||
+        !Number.isSafeInteger(details.code) ||
+        !Number.isSafeInteger(details.subcode) ||
+        typeof details.type !== "string" ||
+        details.type.length === 0 ||
+        !isCanonicalManagedPath(details.path))
+    ) {
+      throw new Error(
+        `generation events[${index}].details is an invalid engine diagnostic`,
+      );
+    }
     if (
       name === "pageAttemptTerminal" &&
       (typeof details.terminal !== "string" ||

@@ -3,6 +3,7 @@ package com.hotupdater.lynx
 import android.content.Context
 import android.util.Log
 import com.hotupdater.lynx.internal.DurableFiles
+import com.hotupdater.lynx.internal.ManagedPaths
 import java.io.File
 import java.io.FileOutputStream
 import java.math.BigInteger
@@ -29,7 +30,7 @@ class LynxGenerationEventJournal internal constructor(
         val jsonDetails = JSONObject().also { output ->
             details.forEach { (key, value) -> output.put(key, normalize(value)) }
         }
-        validateRuntimeIdentity(jsonDetails)
+        validateDetails(name, jsonDetails)
         val canonicalDetails = canonical(jsonDetails)
         require(canonicalDetails.toByteArray(Charsets.UTF_8).size <= limits.detailBytes) {
             "Runtime event details exceed the byte limit"
@@ -50,7 +51,7 @@ class LynxGenerationEventJournal internal constructor(
         val jsonDetails = JSONObject().also { output ->
             details.forEach { (key, value) -> output.put(key, normalize(value)) }
         }
-        validateRuntimeIdentity(jsonDetails)
+        validateDetails(name, jsonDetails)
         val canonicalDetails = canonical(jsonDetails)
         require(canonicalDetails.toByteArray(Charsets.UTF_8).size <= limits.detailBytes) {
             "Runtime event details exceed the byte limit"
@@ -145,9 +146,10 @@ class LynxGenerationEventJournal internal constructor(
             val sequence = BigInteger(sequenceText)
             expected?.let { check(sequence == it) }
             expected = sequence + BigInteger.ONE
-            validateName(event.get("name") as? String ?: error("Invalid event name"))
+            val name = event.get("name") as? String ?: error("Invalid event name")
+            validateName(name)
             val details = event.get("details") as? JSONObject ?: error("Invalid details")
-            validateRuntimeIdentity(details)
+            validateDetails(name, details)
             check(canonical(details).toByteArray(Charsets.UTF_8).size <= limits.detailBytes)
         }
         if (events.length() == 0) {
@@ -188,6 +190,37 @@ class LynxGenerationEventJournal internal constructor(
                     "Runtime event $key is invalid"
                 }
             }
+    }
+
+    private fun validateDetails(name: String, details: JSONObject) {
+        validateRuntimeIdentity(details)
+        if (name != ENGINE_DIAGNOSTIC_EVENT) return
+        check((details.opt("contextId") as? String)?.isNotEmpty() == true) {
+            "Engine diagnostic contextId is invalid"
+        }
+        check((details.opt("attemptId") as? String)?.isNotEmpty() == true) {
+            "Engine diagnostic attemptId is invalid"
+        }
+        check(details.opt("fatal") is Boolean) {
+            "Engine diagnostic fatal is invalid"
+        }
+        check(details.opt("code") is Int) {
+            "Engine diagnostic code is invalid"
+        }
+        check(details.opt("subcode") is Int) {
+            "Engine diagnostic subcode is invalid"
+        }
+        check((details.opt("type") as? String)?.isNotEmpty() == true) {
+            "Engine diagnostic type is invalid"
+        }
+        val path = details.opt("path") as? String
+            ?: error("Engine diagnostic path is invalid")
+        check(
+            ManagedPaths.normalize(path) == path &&
+                path.none { it == '%' || it == '?' || it == '#' },
+        ) {
+            "Engine diagnostic path is not canonical"
+        }
     }
 
     private fun state(
@@ -324,6 +357,7 @@ class LynxGenerationEventJournal internal constructor(
         const val MAX_EVENT_DETAILS_BYTES = 64 * 1024
         const val MAX_JOURNAL_BYTES = 16 * 1024 * 1024
         private const val SCHEMA_VERSION = 1
+        private const val ENGINE_DIAGNOSTIC_EVENT = "engineDiagnostic"
         private const val TAG = "HotUpdaterLynxEvents"
         private val SEQUENCE = Regex("^[1-9][0-9]*$")
         private val ENVELOPE_KEYS = setOf("events", "nextSequence", "schemaVersion", "truncated")

@@ -198,6 +198,62 @@ const canonicalJsonUtf8Bytes = (value: unknown): number | null => {
   }
 };
 
+const isCanonicalManagedPath = (value: unknown): value is string =>
+  typeof value === "string" &&
+  value.trim().length > 0 &&
+  utf8ByteLength(value) <= LYNX_RUNTIME_EVENT_LIMITS.managedPathUtf8Bytes &&
+  !value.startsWith("/") &&
+  !value.endsWith("/") &&
+  !/[\\%?#:]/.test(value) &&
+  !Array.from(value).some((character) => {
+    const codePoint = character.codePointAt(0)!;
+    return codePoint <= 0x1f || codePoint === 0x7f;
+  }) &&
+  value
+    .split("/")
+    .every((part) => part !== "" && part !== "." && part !== "..");
+
+const isEngineDiagnosticDetails = (
+  details: Record<string, unknown>,
+): boolean => {
+  for (const key of [
+    "runtimeId",
+    "processId",
+    "generationId",
+    "bundleId",
+    "releaseId",
+    "contextId",
+    "attemptId",
+    "pageAttemptId",
+    "transitionId",
+  ]) {
+    if (!Object.hasOwn(details, key)) return false;
+  }
+  return (
+    [
+      details.runtimeId,
+      details.generationId,
+      details.contextId,
+      details.attemptId,
+      details.bundleId,
+    ].every((item) => typeof item === "string" && item.length > 0) &&
+    typeof details.processId === "string" &&
+    isSequence(details.processId) &&
+    (details.releaseId === null ||
+      (typeof details.releaseId === "string" &&
+        details.releaseId.length > 0)) &&
+    [details.pageAttemptId, details.transitionId].every(
+      (item) => item === null || (typeof item === "string" && item.length > 0),
+    ) &&
+    typeof details.fatal === "boolean" &&
+    Number.isSafeInteger(details.code) &&
+    Number.isSafeInteger(details.subcode) &&
+    typeof details.type === "string" &&
+    details.type.length > 0 &&
+    isCanonicalManagedPath(details.path)
+  );
+};
+
 const validateRuntimeEvents = (value: unknown): RuntimeEventsSnapshot => {
   if (
     !isRecord(value) ||
@@ -238,6 +294,15 @@ const validateRuntimeEvents = (value: unknown): RuntimeEventsSnapshot => {
       throw new LynxUpdaterError(
         "INVALID_NATIVE_REPLY",
         "Native runtime events returned an invalid event.",
+      );
+    }
+    if (
+      item.name === "engineDiagnostic" &&
+      !isEngineDiagnosticDetails(item.details)
+    ) {
+      throw new LynxUpdaterError(
+        "INVALID_NATIVE_REPLY",
+        "Native runtime events returned an invalid engine diagnostic.",
       );
     }
     previous = item.sequence;

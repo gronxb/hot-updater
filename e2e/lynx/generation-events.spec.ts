@@ -87,6 +87,37 @@ describe("Lynx generation event snapshots", () => {
     }
   });
 
+  it("requires the complete canonical engine diagnostic projection", () => {
+    const diagnostic = {
+      ...event("4"),
+      name: "engineDiagnostic",
+      details: {
+        ...event("4").details,
+        attemptId: "attempt-b",
+        fatal: false,
+        code: 302,
+        subcode: 30201,
+        type: "font",
+        path: "assets/probe.ttf",
+      },
+    };
+    expect(() =>
+      validateGenerationEventsSnapshot(snapshot([diagnostic])),
+    ).not.toThrow();
+    for (const details of [
+      { ...diagnostic.details, attemptId: null },
+      { ...diagnostic.details, code: 302.5 },
+      { ...diagnostic.details, path: "assets/../probe.ttf" },
+      { ...diagnostic.details, path: "a".repeat(1_025) },
+    ]) {
+      expect(() =>
+        validateGenerationEventsSnapshot(
+          snapshot([{ ...diagnostic, details }]),
+        ),
+      ).toThrow("invalid engine diagnostic");
+    }
+  });
+
   it("rejects truncated or incompatible journal shapes instead of guessing", () => {
     expect(() =>
       validateGenerationEventsSnapshot({ ...snapshot(), truncated: true }),
