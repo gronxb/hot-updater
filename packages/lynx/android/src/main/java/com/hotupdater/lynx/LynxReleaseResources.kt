@@ -61,6 +61,7 @@ class LynxReleaseResources(
     internal var isLive: () -> Boolean = { true }
     internal var unmanagedGeneric: LynxGenericResourceFetcher? = null
     internal var unmanagedTemplate: LynxTemplateResourceFetcher? = null
+    private var unmanagedMedia: LynxMediaResourceFetcher? = null
     private var unmanagedFontPath: LynxResourceProvider<Any, String>? = null
     private var unmanagedExternalScript: LynxResourceProvider<Any, ByteArray>? = null
     var onFailure: ((String) -> Unit)? = null
@@ -442,17 +443,19 @@ class LynxReleaseResources(
             when {
                 isManaged(url) -> OptionalBool.FALSE
                 snapshotForUrl(url) != null -> OptionalBool.TRUE
-                else -> OptionalBool.UNDEFINED
+                else -> unmanagedMedia?.isLocalResource(url) ?: OptionalBool.UNDEFINED
             }
 
         override fun shouldRedirectUrl(request: LynxResourceRequest): String = try {
-            if (isRemote(request.url)) {
-                request.url
+            if (!owns(request.url)) {
+                unmanagedMedia?.shouldRedirectUrl(request) ?: request.url
             } else {
                 tracked {
                     val snapshot = snapshotForUrl(request.url)
                         ?: snapshot(request.url, "image")
-                    snapshot.file.toURI().toString()
+                    snapshot.file.toLynxFileUri().also {
+                        loaded("resourceLoaded", snapshot)
+                    }
                 }
             }
         } catch (error: Exception) {
@@ -473,7 +476,7 @@ class LynxReleaseResources(
             request: LynxResourceRequest,
             callback: LynxResourceCallback<TemplateProviderResult>,
         ) {
-            if (isRemote(request.url)) {
+            if (!owns(request.url)) {
                 val delegate = unmanagedTemplate
                 if (delegate != null) delegate.fetchTemplate(request, callback)
                 else callback.onResponse(
@@ -518,7 +521,7 @@ class LynxReleaseResources(
             request: LynxResourceRequest,
             callback: LynxResourceCallback<ByteArray>,
         ) {
-            if (isRemote(request.url)) {
+            if (!owns(request.url)) {
                 val delegate = unmanagedGeneric
                 if (delegate != null) delegate.fetchResource(request, callback)
                 else callback.onResponse(
@@ -548,7 +551,7 @@ class LynxReleaseResources(
             request: LynxResourceRequest,
             callback: LynxResourceCallback<String>,
         ) {
-            if (isRemote(request.url)) {
+            if (!owns(request.url)) {
                 val delegate = unmanagedGeneric
                 if (delegate != null) delegate.fetchResourcePath(request, callback)
                 else callback.onResponse(
@@ -647,13 +650,17 @@ class LynxReleaseResources(
     }
 
     internal fun configureBuilder(builder: LynxViewBuilder) {
+        val runtimeOptions = builder.lynxRuntimeOptions
+        unmanagedGeneric = unmanagedGeneric ?: builder.lynxGenericResourceFetcher
+        unmanagedMedia = builder.lynxMediaResourceFetcher
+        unmanagedTemplate = unmanagedTemplate ?: builder.lynxTemplateResourceFetcher
         @Suppress("UNCHECKED_CAST")
-        unmanagedExternalScript = builder.lynxRuntimeOptions
+        unmanagedExternalScript = runtimeOptions
             .getResourceProvidersByKey(
                 LynxProviderRegistry.LYNX_PROVIDER_TYPE_EXTERNAL_JS,
             ) as? LynxResourceProvider<Any, ByteArray>
         @Suppress("UNCHECKED_CAST")
-        unmanagedFontPath = builder.lynxRuntimeOptions.getResourceProvidersByKey(
+        unmanagedFontPath = runtimeOptions.getResourceProvidersByKey(
             LynxProviderRegistry.LYNX_PROVIDER_TYPE_FONT,
         ) as? LynxResourceProvider<Any, String>
         builder.setTemplateProvider(object :
@@ -668,6 +675,8 @@ class LynxReleaseResources(
             }
         })
         builder.setEnableGenericResourceFetcher(LynxBooleanOption.TRUE)
+        builder.setGenericResourceFetcher(generic)
+        builder.setMediaResourceFetcher(media)
         builder.setTemplateResourceFetcher(template)
         builder.setResourceProvider(
             LynxProviderRegistry.LYNX_PROVIDER_TYPE_EXTERNAL_JS,
