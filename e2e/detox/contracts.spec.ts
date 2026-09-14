@@ -179,6 +179,7 @@ describe("Detox E2E harness contract", () => {
       "e2e/lynx/default-scenario-names.json",
       "e2e/lynx/embedded-bundle.spec.ts",
       "e2e/lynx/embedded-bundle.ts",
+      "e2e/lynx/entry-bootstrap.spec.ts",
       "e2e/lynx/generation-event-ledger.spec.ts",
       "e2e/lynx/generation-event-ledger.ts",
       "e2e/lynx/generation-events.spec.ts",
