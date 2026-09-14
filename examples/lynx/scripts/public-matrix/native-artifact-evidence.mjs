@@ -51,14 +51,23 @@ export function deterministicArtifactSha256(artifactPath) {
 }
 
 export function iosArtifactAppId(appPath) {
+  const infoPlistPath = path.join(appPath, "Info.plist");
+  const xmlAppId =
+    /<key>\s*CFBundleIdentifier\s*<\/key>\s*<string>\s*([^<]+?)\s*<\/string>/.exec(
+      fs.readFileSync(infoPlistPath, "utf8"),
+    )?.[1];
+  if (xmlAppId) return xmlAppId;
+
   const result = spawnSync(
     "plutil",
-    ["-extract", "CFBundleIdentifier", "raw", path.join(appPath, "Info.plist")],
+    ["-extract", "CFBundleIdentifier", "raw", infoPlistPath],
     { encoding: "utf8" },
   );
-  const appId = result.stdout.trim();
+  const appId = result.stdout?.trim();
   if (result.status !== 0 || !appId) {
-    throw new Error(`Could not derive iOS application ID: ${result.stderr}`);
+    throw new Error(
+      `Could not derive iOS application ID: ${result.error?.message ?? result.stderr ?? result.status}`,
+    );
   }
   return appId;
 }

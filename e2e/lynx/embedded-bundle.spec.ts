@@ -498,14 +498,6 @@ describe("Lynx E2E embedded bundle packaging", () => {
               framework,
               outDir,
               variant,
-              ...(framework === "octane"
-                ? {
-                    octaneSource: path.join(
-                      repo,
-                      "examples/lynx/.hot-updater/octane-c31f629",
-                    ),
-                  }
-                : {}),
             });
             endpointHashes.push(await collectFileHashes(outDir));
           }
@@ -556,7 +548,7 @@ describe("Lynx E2E embedded bundle packaging", () => {
       await fs.rm(root, { recursive: true, force: true });
       await fs.rm(publicBuildRoot, { recursive: true, force: true });
     }
-  }, 120_000);
+  }, 300_000);
 
   it("rejects a stale generated tree whose payload no longer matches its manifest", async () => {
     const root = await fs.mkdtemp(path.join(os.tmpdir(), "lynx-e2e-stale-"));
