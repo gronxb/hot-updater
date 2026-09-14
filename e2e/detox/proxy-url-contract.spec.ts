@@ -367,6 +367,12 @@ describe("Detox remote asset proxy URLs", () => {
         manifestUrlPresent: false,
         targetBundleId: "archive-target",
       });
+      await expect(
+        controller.handleAssertManifestDiffApplied({
+          bundleId: "archive-target",
+          previousBundleId: "current",
+        }),
+      ).resolves.toEqual({ selection: "archive-only", skipped: true });
 
       controller.handleConfigureProxy({ reset: true });
       expect(() =>

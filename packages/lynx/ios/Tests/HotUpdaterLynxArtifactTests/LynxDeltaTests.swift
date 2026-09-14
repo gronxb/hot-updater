@@ -114,6 +114,98 @@ final class LynxDeltaTests: XCTestCase {
         }
     }
 
+    private func decodeBridgeRequest(_ value: [String: Any]) throws -> LynxArtifactRequest {
+        try JSONDecoder().decode(
+            LynxArtifactRequest.self,
+            from: JSONSerialization.data(withJSONObject: value, options: [.sortedKeys])
+        )
+    }
+
+    func testBridgeShapedDescriptorsAllowMissingOptionalKeysAndPrepare() async throws {
+        let root = temporaryRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let base = try makeTree(
+            at: root.appendingPathComponent("base"),
+            bundleId: baseBundleId,
+            files: ["main.lynx.bundle": Data("console.log(\"base bundle\");\n".utf8)]
+        )
+        let target = try makeTree(
+            at: root.appendingPathComponent("target"),
+            bundleId: targetBundleId,
+            files: ["main.lynx.bundle": Data("console.log(\"patched bundle\");\n".utf8)]
+        )
+        let manifestURL = url("bridge-manifest")
+        let patchURL = url("bridge-main.patch")
+        let metadataURL = url("bridge-metadata")
+        let request = try decodeBridgeRequest([
+            "bundleId": targetBundleId,
+            "manifestFileHash": target.digest,
+            "manifestUrl": manifestURL.absoluteString,
+            "changedAssets": [
+                "main.lynx.bundle": [
+                    "fileHash": hash(target.files["main.lynx.bundle"]!),
+                    "patch": [
+                        "algorithm": "bsdiff",
+                        "baseBundleId": baseBundleId,
+                        "baseFileHash": hash(base.files["main.lynx.bundle"]!),
+                        "patchFileHash": hash(patchBytes),
+                        "patchUrl": patchURL.absoluteString,
+                    ],
+                ],
+                "hot-updater-lynx.json": [
+                    "fileHash": hash(target.files["hot-updater-lynx.json"]!),
+                    "file": ["url": metadataURL.absoluteString],
+                ],
+            ],
+        ])
+
+        XCTAssertNil(request.changedAssets?["main.lynx.bundle"]?.file)
+        XCTAssertNil(request.changedAssets?["hot-updater-lynx.json"]?.patch)
+        XCTAssertNil(request.changedAssets?["hot-updater-lynx.json"]?.file?.compression)
+        XCTAssertNoThrow(try request.validate())
+
+        let recorder = FetchRecorder()
+        let stage = root.appendingPathComponent("stage")
+        try FileManager.default.createDirectory(at: stage, withIntermediateDirectories: true)
+        let result = try await LynxDelta.prepare(
+            request,
+            base: base.installed,
+            stage: stage,
+            configuration: .init(runtimeId: runtimeId),
+            fetch: fetcher([
+                manifestURL: target.manifest,
+                patchURL: patchBytes,
+                metadataURL: target.files["hot-updater-lynx.json"]!,
+            ], recorder: recorder)
+        )
+
+        XCTAssertTrue(recorder.contains(patchURL))
+        XCTAssertTrue(recorder.contains(metadataURL))
+        XCTAssertEqual(result.patchedAssets.map(\.path), ["main.lynx.bundle"])
+    }
+
+    func testBridgeShapedDescriptorWithoutFileOrPatchFailsSemanticValidation() throws {
+        let request = try decodeBridgeRequest([
+            "bundleId": targetBundleId,
+            "manifestFileHash": String(repeating: "a", count: 64),
+            "manifestUrl": url("bridge-manifest").absoluteString,
+            "changedAssets": [
+                "main.lynx.bundle": [
+                    "fileHash": String(repeating: "b", count: 64),
+                ],
+            ],
+        ])
+
+        XCTAssertNil(request.changedAssets?["main.lynx.bundle"]?.file)
+        XCTAssertNil(request.changedAssets?["main.lynx.bundle"]?.patch)
+        XCTAssertThrowsError(try request.validate()) { error in
+            XCTAssertEqual(
+                error.localizedDescription,
+                "Invalid changed asset descriptor"
+            )
+        }
+    }
+
     func testTargetManifestRejectsImplicitParentDirectoryAlias() async throws {
         let root = temporaryRoot()
         defer { try? FileManager.default.removeItem(at: root) }
@@ -620,9 +712,9 @@ final class LynxDeltaTests: XCTestCase {
         ).validate())
     }
 
-    func testWireDescriptorRequiresExplicitNullableCompressionFileAndPatch() throws {
+    func testWireDescriptorStillRequiresFileHashAndNestedFileURL() throws {
         let hash = String(repeating: "a", count: 64)
-        let missingCompression = """
+        let complete = """
         {
           "bundleId":"\(targetBundleId)",
           "fileUrl":null,
@@ -638,33 +730,36 @@ final class LynxDeltaTests: XCTestCase {
           }
         }
         """
-        XCTAssertThrowsError(try JSONDecoder().decode(
-            LynxArtifactRequest.self,
-            from: Data(missingCompression.utf8)
-        ))
-
-        let complete = missingCompression.replacingOccurrences(
-            of: "\"url\":\"https://artifacts.test/main\"",
-            with: "\"url\":\"https://artifacts.test/main\",\"compression\":null"
-        )
         let decoded = try JSONDecoder().decode(
             LynxArtifactRequest.self,
             from: Data(complete.utf8)
         )
         XCTAssertNoThrow(try decoded.validate())
 
-        var missingPatchObject = try XCTUnwrap(
+        var missingFileHashObject = try XCTUnwrap(
             JSONSerialization.jsonObject(with: Data(complete.utf8)) as? [String: Any]
         )
-        var changedAssets = missingPatchObject["changedAssets"] as! [String: Any]
+        var changedAssets = missingFileHashObject["changedAssets"] as! [String: Any]
         var main = changedAssets["main.lynx.bundle"] as! [String: Any]
-        main.removeValue(forKey: "patch")
+        main.removeValue(forKey: "fileHash")
         changedAssets["main.lynx.bundle"] = main
-        missingPatchObject["changedAssets"] = changedAssets
-        let missingPatch = try JSONSerialization.data(withJSONObject: missingPatchObject)
+        missingFileHashObject["changedAssets"] = changedAssets
         XCTAssertThrowsError(try JSONDecoder().decode(
             LynxArtifactRequest.self,
-            from: missingPatch
+            from: JSONSerialization.data(withJSONObject: missingFileHashObject)
+        ))
+
+        var missingURLObject = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: Data(complete.utf8)) as? [String: Any]
+        )
+        changedAssets = missingURLObject["changedAssets"] as! [String: Any]
+        main = changedAssets["main.lynx.bundle"] as! [String: Any]
+        main["file"] = [:]
+        changedAssets["main.lynx.bundle"] = main
+        missingURLObject["changedAssets"] = changedAssets
+        XCTAssertThrowsError(try JSONDecoder().decode(
+            LynxArtifactRequest.self,
+            from: JSONSerialization.data(withJSONObject: missingURLObject)
         ))
     }
 }

@@ -24,13 +24,6 @@ public struct LynxChangedAsset: Codable, Equatable {
         private enum CodingKeys: String, CodingKey { case url, compression }
         public init(from decoder: Decoder) throws {
             let values = try decoder.container(keyedBy: CodingKeys.self)
-            guard values.contains(.url), values.contains(.compression) else {
-                throw DecodingError.dataCorruptedError(
-                    forKey: .compression,
-                    in: values,
-                    debugDescription: "Changed file requires explicit url and compression"
-                )
-            }
             url = try values.decode(URL.self, forKey: .url)
             compression = try values.decodeIfPresent(String.self, forKey: .compression)
         }
@@ -62,13 +55,6 @@ public struct LynxChangedAsset: Codable, Equatable {
     private enum CodingKeys: String, CodingKey { case fileHash, file, patch }
     public init(from decoder: Decoder) throws {
         let values = try decoder.container(keyedBy: CodingKeys.self)
-        guard values.contains(.fileHash), values.contains(.file), values.contains(.patch) else {
-            throw DecodingError.dataCorruptedError(
-                forKey: .fileHash,
-                in: values,
-                debugDescription: "Changed asset requires explicit file and patch descriptors"
-            )
-        }
         fileHash = try values.decode(String.self, forKey: .fileHash)
         file = try values.decodeIfPresent(File.self, forKey: .file)
         patch = try values.decodeIfPresent(Patch.self, forKey: .patch)

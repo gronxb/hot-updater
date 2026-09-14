@@ -649,6 +649,7 @@ app.post("/e2e/assert-manifest-diff-applied", async (c) => {
       allowBsdiff: payload.allowBsdiff,
       bundleId: payload.bundleId,
       previousBundleId: payload.previousBundleId,
+      signal: c.req.raw.signal,
     }),
   );
 });

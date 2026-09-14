@@ -85,6 +85,11 @@ import {
   synthesizeLynxLaunchReport,
   synthesizeLynxMetadata,
 } from "./lynx-store.ts";
+import {
+  captureCommandWithDeadline,
+  classifyArtifactSelection,
+  collectManifestDiffLogs,
+} from "./manifest-diff-assertion.ts";
 import { hasNativeInstallEvent } from "./native-install-log.ts";
 import { inferPatchAssetPathFromStorageUri } from "./patch-storage-path.ts";
 import { resetPendingE2eAction } from "./pending-action.ts";
@@ -363,6 +368,9 @@ const AUTO_PATCH_METADATA_WAIT_DELAY_MS = Number(
 );
 const E2E_POLL_INTERVAL_MS = Number(
   process.env.HOT_UPDATER_E2E_POLL_INTERVAL_MS || 250,
+);
+const E2E_IOS_LOG_SHOW_TIMEOUT_MS = Number(
+  process.env.HOT_UPDATER_E2E_IOS_LOG_SHOW_TIMEOUT_MS || 2_000,
 );
 const E2E_ANDROID_LAUNCH_SETTLE_MS = Number(
   process.env.HOT_UPDATER_E2E_ANDROID_LAUNCH_SETTLE_MS || 1000,
@@ -4036,17 +4044,7 @@ export function handleAssertBundleArtifactSelection(input: {
     });
   }
 
-  const matches =
-    input.selection === "manifest-diff"
-      ? observed.changedAssetsPresent &&
-        observed.changedAssetCount > 0 &&
-        observed.manifestFileHashPresent &&
-        observed.manifestUrlPresent
-      : observed.fileUrlPresent &&
-        !observed.changedAssetsPresent &&
-        !observed.manifestFileHashPresent &&
-        !observed.manifestUrlPresent;
-  if (!matches) {
+  if (classifyArtifactSelection(observed) !== input.selection) {
     throw createEndpointError("Unexpected Bundle artifact selection", {
       expected: input,
       observed,
@@ -6533,6 +6531,45 @@ function readHotUpdaterNativeLogs() {
   );
 }
 
+async function readManifestDiffInstallLogs(signal?: AbortSignal) {
+  return collectManifestDiffLogs({
+    platform: fixtureSession.platform,
+    readAndroidArchiveLogs: readFirstOtaArchiveInstallLogs,
+    readAndroidBsdiffLogs: readBsdiffPatchLogs,
+    readAndroidNativeLogs: readHotUpdaterNativeLogs,
+    readIosLogs: () =>
+      captureCommandWithDeadline(
+        "xcrun",
+        [
+          "simctl",
+          "spawn",
+          deviceId as string,
+          "log",
+          "show",
+          "--style",
+          "compact",
+          "--last",
+          "10m",
+          "--predicate",
+          [
+            'eventMessage CONTAINS "HotUpdaterArchiveInstalled"',
+            'eventMessage CONTAINS "Skipping manifest-driven install"',
+            'eventMessage CONTAINS "HotUpdaterArchiveFallbackApplied"',
+            'eventMessage CONTAINS "Manifest-driven install failed"',
+            'eventMessage CONTAINS "HotUpdaterBsdiffPatchApplied"',
+            'eventMessage CONTAINS "HotUpdaterManifestDiffApplied"',
+          ].join(" OR "),
+        ],
+        {
+          allowFailure: true,
+          maxBuffer: 8 * 1024 * 1024,
+          signal,
+          timeoutMs: E2E_IOS_LOG_SHOW_TIMEOUT_MS,
+        },
+      ),
+  });
+}
+
 function includesAllFragments(logs: string, fragments: string[]) {
   return fragments.every((fragment) => logs.includes(fragment));
 }
@@ -6635,6 +6672,7 @@ async function readManifestDiffState(args: {
   allowBsdiff?: boolean;
   bundleId: string;
   previousBundleId: string;
+  signal?: AbortSignal;
 }) {
   const diagnostics = readWaitForMetadataDiagnostics();
   const metadataState = getMetadataState(diagnostics.metadata.value);
@@ -6643,9 +6681,8 @@ async function readManifestDiffState(args: {
   const assetPath = getPrimaryBundleAssetPath();
   const expectedHash = getManifestAssetFileHash(manifest, assetPath);
   const assetFile = readBundleAssetFileHash(args.bundleId, assetPath);
-  const archiveLogs = readFirstOtaArchiveInstallLogs();
-  const nativeLogs = readHotUpdaterNativeLogs();
-  const bsdiffLogs = readBsdiffPatchLogs();
+  const { archiveLogs, bsdiffLogs, nativeLogs } =
+    await readManifestDiffInstallLogs(args.signal);
   const archiveFragments = isLynxE2eApp()
     ? ["HotUpdaterArchiveInstalled", `bundleId=${args.bundleId}`]
     : [
@@ -6844,8 +6881,40 @@ async function assertManifestDiffApplied(args: {
   allowBsdiff?: boolean;
   bundleId: string;
   previousBundleId: string;
+  signal?: AbortSignal;
 }) {
+  const observed = capturedArtifactSelections.findLast(
+    (entry) =>
+      entry.currentBundleId === args.previousBundleId &&
+      entry.targetBundleId === args.bundleId,
+  );
+  if (!observed) {
+    throw createEndpointError("Bundle artifact request was not observed", {
+      expected: {
+        currentBundleId: args.previousBundleId,
+        targetBundleId: args.bundleId,
+      },
+      observed: [...capturedArtifactSelections],
+    });
+  }
+  const selection = classifyArtifactSelection(observed);
+  if (selection === "archive-only") {
+    logDetoxFixture("manifest diff assertion skipped for archive selection", {
+      bundleId: args.bundleId,
+      platform: fixtureSession.platform,
+      previousBundleId: args.previousBundleId,
+    });
+    return { selection, skipped: true };
+  }
+  if (selection !== "manifest-diff") {
+    throw createEndpointError("Unexpected Bundle artifact selection", {
+      expected: "archive-only or manifest-diff",
+      observed,
+    });
+  }
+
   for (let attempt = 0; attempt < 40; attempt += 1) {
+    throwIfAborted(args.signal);
     const state = await readManifestDiffState(args);
     if (state.ok) {
       logDetoxFixture("manifest diff applied without bsdiff patch", {
@@ -6857,7 +6926,7 @@ async function assertManifestDiffApplied(args: {
       return {};
     }
 
-    await sleep(E2E_POLL_INTERVAL_MS);
+    await abortableSleep(E2E_POLL_INTERVAL_MS, args.signal);
   }
 
   const state = await readManifestDiffState(args);
@@ -7622,6 +7691,7 @@ export async function handleAssertManifestDiffApplied(args: {
   allowBsdiff?: boolean;
   bundleId: string;
   previousBundleId: string;
+  signal?: AbortSignal;
 }) {
   return assertManifestDiffApplied(args);
 }

@@ -95,6 +95,8 @@ describe("Detox E2E harness contract", () => {
       "e2e/detox/control-server/index.ts",
       "e2e/detox/control-server/lynx-store.spec.ts",
       "e2e/detox/control-server/lynx-store.ts",
+      "e2e/detox/control-server/manifest-diff-assertion.spec.ts",
+      "e2e/detox/control-server/manifest-diff-assertion.ts",
       "e2e/detox/control-server/native-install-log.spec.ts",
       "e2e/detox/control-server/native-install-log.ts",
       "e2e/detox/control-server/patch-storage-path.spec.ts",
