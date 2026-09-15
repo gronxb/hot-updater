@@ -11,6 +11,7 @@ import com.lynx.react.bridge.JavaOnlyMap
 import com.lynx.react.bridge.ReadableMap
 import java.util.IdentityHashMap
 import kotlinx.coroutines.launch
+import org.json.JSONArray
 import org.json.JSONObject
 
 /** Framework-independent background native bridge; never accepts context or attempt IDs. */
@@ -111,7 +112,7 @@ class HotUpdaterLynxModule(context: Context) : LynxModule(context) {
             }
         }
     }
-    private fun json(map: ReadableMap) = JSONObject(map.asHashMap())
+    private fun json(map: ReadableMap) = lynxBridgeJson(map.asHashMap())
     private fun reply(callback: Callback, result: Result<JSONObject>) {
         val envelope = result.fold(
             { JSONObject().put("ok", true).put("data", it) },
@@ -145,4 +146,23 @@ class HotUpdaterLynxModule(context: Context) : LynxModule(context) {
             launchConfigurations.remove(context)
         }
     }
+}
+
+internal fun lynxBridgeJson(value: Map<String, Any?>): JSONObject =
+    JSONObject().also { output ->
+        value.forEach { (key, item) -> output.put(key, lynxBridgeJsonValue(item)) }
+    }
+
+private fun lynxBridgeJsonValue(value: Any?): Any = when (value) {
+    null, JSONObject.NULL -> JSONObject.NULL
+    is Map<*, *> -> JSONObject().also { output ->
+        value.forEach { (key, item) ->
+            require(key is String) { "Bridge object keys must be strings" }
+            output.put(key, lynxBridgeJsonValue(item))
+        }
+    }
+    is Iterable<*> -> JSONArray().also { output ->
+        value.forEach { output.put(lynxBridgeJsonValue(it)) }
+    }
+    else -> value
 }

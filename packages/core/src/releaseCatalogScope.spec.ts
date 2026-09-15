@@ -26,6 +26,29 @@ describe("Release catalog scope identity", () => {
     expect(() => encodeChannelKey("Cafe\u0301")).toThrow("NFC-normalized");
   });
 
+  it("supports ASCII channels when the runtime lacks String.normalize", () => {
+    const normalizeDescriptor = Object.getOwnPropertyDescriptor(
+      String.prototype,
+      "normalize",
+    );
+    try {
+      Object.defineProperty(String.prototype, "normalize", {
+        configurable: true,
+        value: undefined,
+      });
+      expect(normalizeChannelName("  beta  ")).toBe("beta");
+      expect(() => normalizeChannelName("프로덕션")).toThrow(
+        "require NFC normalization support",
+      );
+    } finally {
+      Object.defineProperty(
+        String.prototype,
+        "normalize",
+        normalizeDescriptor!,
+      );
+    }
+  });
+
   it("derives exact scope keys without a channel lookup", () => {
     const channelKey = encodeChannelKey("production");
 
