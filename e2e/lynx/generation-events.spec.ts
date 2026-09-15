@@ -152,6 +152,35 @@ describe("Lynx generation event snapshots", () => {
     }
   });
 
+  it("enforces the managed path limit in UTF-8 bytes", () => {
+    const diagnostic = {
+      ...event("4"),
+      name: "engineDiagnostic",
+      details: {
+        ...event("4").details,
+        attemptId: "attempt-b",
+        fatal: false,
+        code: 302,
+        subcode: 30201,
+        type: "font",
+        path: "é".repeat(512),
+      },
+    };
+    expect(() =>
+      validateGenerationEventsSnapshot(snapshot([diagnostic])),
+    ).not.toThrow();
+    expect(() =>
+      validateGenerationEventsSnapshot(
+        snapshot([
+          {
+            ...diagnostic,
+            details: { ...diagnostic.details, path: "é".repeat(513) },
+          },
+        ]),
+      ),
+    ).toThrow("invalid engine diagnostic");
+  });
+
   it("rejects truncated or incompatible journal shapes instead of guessing", () => {
     expect(() =>
       validateGenerationEventsSnapshot({ ...snapshot(), truncated: true }),
