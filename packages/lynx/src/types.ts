@@ -101,11 +101,18 @@ export interface LaunchTransitionReceipt {
   to: SelectionSummary;
 }
 
-export interface ConfirmationResult {
-  status: "CONFIRMED" | "ALREADY_CONFIRMED";
-  transitionId: string | null;
-  transition: LaunchTransitionReceipt | null;
-}
+export type ConfirmationResult =
+  | {
+      status: "CONFIRMED" | "ALREADY_CONFIRMED";
+      transitionId: string | null;
+      transition: LaunchTransitionReceipt | null;
+    }
+  | {
+      status: "PAGE_ADMITTED" | "PAGE_ALREADY_ADMITTED";
+      pageAttemptId?: string;
+      transitionId?: null;
+      transition?: null;
+    };
 
 export interface RuntimeEvent {
   readonly sequence: string;

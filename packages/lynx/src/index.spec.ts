@@ -772,6 +772,92 @@ describe("Lynx public controller", () => {
   });
 
   it.each([
+    {
+      status: "PAGE_ADMITTED" as const,
+      pageAttemptId: "page-attempt",
+    },
+    {
+      status: "PAGE_ALREADY_ADMITTED" as const,
+      transitionId: null,
+      transition: null,
+    },
+  ])("maps native page admission $status to unchanged", async (admission) => {
+    const running = {
+      kind: "BUNDLE" as const,
+      bundleId: "bundle-B",
+      releaseId: "release-B",
+      channel: "production",
+    };
+    vi.stubGlobal("NativeModules", {
+      HotUpdaterLynx: {
+        getState: (
+          callback: (reply: NativeReply<Partial<NativeState>>) => void,
+        ) =>
+          callback({
+            ok: true,
+            data: {
+              platform: "android",
+              runtimeId: "runtime",
+              runningSelection: running as NativeState["runningSelection"],
+              runningConfirmed: true,
+              crashedBundleIds: [],
+              embeddedBundleId: "embedded",
+            },
+          }),
+        notifyAppReady: (
+          callback: (reply: NativeReply<ConfirmationResult>) => void,
+        ) => callback({ ok: true, data: admission }),
+      },
+    });
+    const { HotUpdater } = await import("./index");
+    HotUpdater.init({ baseURL: "https://updates.test" });
+    await expect(HotUpdater.notifyAppReady()).resolves.toEqual({
+      status: "UNCHANGED",
+    });
+  });
+
+  it("rejects a page admission carrying a launch transition", async () => {
+    const running = {
+      kind: "BUNDLE" as const,
+      bundleId: "bundle-B",
+      releaseId: "release-B",
+      channel: "production",
+    };
+    vi.stubGlobal("NativeModules", {
+      HotUpdaterLynx: {
+        getState: (
+          callback: (reply: NativeReply<Partial<NativeState>>) => void,
+        ) =>
+          callback({
+            ok: true,
+            data: {
+              platform: "android",
+              runtimeId: "runtime",
+              runningSelection: running as NativeState["runningSelection"],
+              runningConfirmed: true,
+              crashedBundleIds: [],
+              embeddedBundleId: "embedded",
+            },
+          }),
+        notifyAppReady: (callback: (reply: NativeReply<unknown>) => void) =>
+          callback({
+            ok: true,
+            data: {
+              status: "PAGE_ADMITTED",
+              pageAttemptId: "page-attempt",
+              transitionId: "transition",
+            },
+          }),
+      },
+    });
+    const { HotUpdater } = await import("./index");
+    HotUpdater.init({ baseURL: "https://updates.test" });
+    await expect(HotUpdater.notifyAppReady()).rejects.toMatchObject({
+      code: "INVALID_NATIVE_REPLY",
+    });
+  });
+
+  it.each([
     { transitionId: "unexpected", transition: null },
     {
       transitionId: null,

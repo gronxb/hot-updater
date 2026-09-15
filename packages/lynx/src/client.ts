@@ -489,6 +489,24 @@ function createHotUpdaterClient() {
       const transition = confirmation?.transition;
       const transitionId = confirmation?.transitionId;
       if (
+        confirmation?.status === "PAGE_ADMITTED" ||
+        confirmation?.status === "PAGE_ALREADY_ADMITTED"
+      ) {
+        if (
+          transition != null ||
+          transitionId != null ||
+          ("pageAttemptId" in confirmation &&
+            (typeof confirmation.pageAttemptId !== "string" ||
+              confirmation.pageAttemptId.length === 0))
+        ) {
+          throw new LynxUpdaterError(
+            "INVALID_NATIVE_REPLY",
+            "Native readiness returned an invalid page admission receipt.",
+          );
+        }
+        return { status: "UNCHANGED" };
+      }
+      if (
         (confirmation?.status !== "CONFIRMED" &&
           confirmation?.status !== "ALREADY_CONFIRMED") ||
         !("transition" in confirmation) ||
