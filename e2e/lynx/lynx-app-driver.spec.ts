@@ -642,7 +642,8 @@ describe("Lynx app installation", () => {
   );
 
   it("reports an unavailable PID before evaluating a raw Android 302", async () => {
-    mockAndroidCommands(ANDROID_302_DIAGNOSTIC, "", "invalid-pid\n");
+    const privateDiagnostic = `private-initial-pid-${"x".repeat(4096)}`;
+    mockAndroidCommands(ANDROID_302_DIAGNOSTIC, "", `${privateDiagnostic}\n`);
     const driver = new LynxAppDriver(
       createControlClient({
         baseUrl: "http://control.test",
@@ -665,9 +666,17 @@ describe("Lynx app installation", () => {
       { HOT_UPDATER_E2E_ANDROID_SERIAL: "emulator-5554" },
     );
 
-    await expect(driver.launch("invalid PID")).rejects.toThrow(
+    const rejection = await driver.launch("invalid PID").then(
+      () => null,
+      (error: unknown) => error,
+    );
+
+    expect(rejection).toBeInstanceOf(Error);
+    expect((rejection as Error).message).toContain(
       "Android journal recovery: reason=log.current-process-id-unavailable",
     );
+    expect((rejection as Error).message).not.toContain(privateDiagnostic);
+    expect((rejection as Error).message.length).toBeLessThan(256);
   });
 
   it("reports code 301 blocking recovery when the logs also contain 302", async () => {

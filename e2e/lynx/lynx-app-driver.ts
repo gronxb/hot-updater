@@ -786,13 +786,10 @@ export class LynxAppDriver implements DetoxAppDriver {
     let processId: string;
     try {
       processId = this.readAndroidProcessId();
-    } catch (error) {
-      if (error instanceof Error) {
-        throw new Error(
-          `${error.message}; Android journal recovery: reason=log.current-process-id-unavailable`,
-        );
-      }
-      throw error;
+    } catch {
+      throw new Error(
+        "Could not inspect managed Lynx resources before reading runtime evidence; Android journal recovery: reason=log.current-process-id-unavailable",
+      );
     }
     const eligibility = evaluateRecoverableAndroidFontDiagnosticEligibility(
       logResult.logsSinceLaunch,
