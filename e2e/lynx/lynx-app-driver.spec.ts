@@ -1425,7 +1425,7 @@ describe("Lynx startup failure diagnostics", () => {
     );
   });
 
-  it("captures Android logs from the explicit launch marker", async () => {
+  it("captures Android launch logs without clearing install evidence", async () => {
     let screenStatePosts = 0;
     const fetch = vi.fn(async (url: string) => {
       if (url.endsWith("/e2e/runtime-config")) {
@@ -1464,6 +1464,11 @@ describe("Lynx startup failure diagnostics", () => {
       "adb",
       ["-s", "emulator-5554", "logcat", "-d"],
       expect.objectContaining({ timeout: 5000 }),
+    );
+    expect(vi.mocked(spawnSync)).not.toHaveBeenCalledWith(
+      "adb",
+      ["-s", "emulator-5554", "logcat", "-c"],
+      expect.anything(),
     );
   });
 

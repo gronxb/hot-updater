@@ -956,17 +956,6 @@ export class LynxAppDriver implements DetoxAppDriver {
   }
 
   private beginAndroidLaunchLogCapture(): void {
-    const clearResult = this.captureCommand("android-logcat-clear", "adb", [
-      "-s",
-      this.deviceId(),
-      "logcat",
-      "-c",
-    ]);
-    if (clearResult.status !== 0) {
-      throw new Error(
-        `Could not establish Android launch logs: ${clearResult.text}`,
-      );
-    }
     const marker = `HotUpdaterE2ELaunch:${randomUUID()}`;
     const markerResult = this.captureCommand("android-logcat-marker", "adb", [
       "-s",
