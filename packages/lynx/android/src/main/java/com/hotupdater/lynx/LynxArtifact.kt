@@ -132,9 +132,6 @@ data class LynxArtifactRequest(
                 require(assets.length() <= ArchiveLimits.MAX_ENTRIES) { "Too many changed assets" }
                 assets.keys().asSequence().associateWith { path ->
                     val asset = assets.getJSONObject(path)
-                    require(asset.has("file") && asset.has("patch")) {
-                        "Changed asset delivery fields are required"
-                    }
                     val file = optionalObject(asset, "file")?.let {
                         require(it.has("compression")) {
                             "Changed asset compression must be explicit"

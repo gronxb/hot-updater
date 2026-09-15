@@ -6,6 +6,7 @@ import java.lang.reflect.Proxy
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -24,15 +25,14 @@ class LynxBridgeRepliesTest {
                 "patchUrl" to "https://example.test/patch",
             ),
         )
-        val changedAsset = JavaOnlyMap.from(
+        val bridgeChangedAsset = JavaOnlyMap.from(
             mapOf(
                 "fileHash" to hash,
-                "file" to null,
                 "patch" to patch,
             ),
         )
         val changedAssets = JavaOnlyMap.from(
-            mapOf("main.lynx.bundle" to changedAsset),
+            mapOf("main.lynx.bundle" to bridgeChangedAsset),
         )
         val params = JavaOnlyMap.from(
             mapOf(
@@ -55,9 +55,19 @@ class LynxBridgeRepliesTest {
 
         val changed = json.getJSONObject("changedAssets")
             .getJSONObject("main.lynx.bundle")
-        assertTrue(changed.has("file"))
-        assertTrue(changed.isNull("file"))
-        assertEquals(bundleId, LynxArtifactRequest.fromJson(json).bundleId)
+        assertTrue(!changed.has("file"))
+        val parsed = LynxArtifactRequest.fromJson(json)
+        assertEquals(bundleId, parsed.bundleId)
+        assertNull(parsed.changedAssets?.get("main.lynx.bundle")?.file)
+        assertEquals(
+            baseBundleId,
+            parsed.changedAssets?.get("main.lynx.bundle")?.patch?.baseBundleId,
+        )
+
+        changed.remove("patch")
+        assertThrows(IllegalArgumentException::class.java) {
+            LynxArtifactRequest.fromJson(json)
+        }
     }
 
     @Test
