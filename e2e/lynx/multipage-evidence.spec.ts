@@ -62,7 +62,12 @@ describe("managed Lynx multi-page evidence", () => {
       releaseId: main.releaseId,
     });
     const opened = snapshot([
-      event("4", "pageOpened", {
+      event("4", "resourceLoaded", {
+        ...detail,
+        path: "detail.lynx.bundle",
+        sha256: "a".repeat(64),
+      }),
+      event("5", "pageOpened", {
         ...detail,
         nativePageClass: "Sparkling.SPKViewController",
         sourceContextId: main.contextId,
@@ -70,11 +75,6 @@ describe("managed Lynx multi-page evidence", () => {
         orderedPageEntries: ["main.lynx.bundle", "detail.lynx.bundle"],
         topPageEntry: "detail.lynx.bundle",
         outcome: "opened",
-      }),
-      event("5", "resourceLoaded", {
-        ...detail,
-        path: "detail.lynx.bundle",
-        sha256: "a".repeat(64),
       }),
       event("6", "firstContent", detail),
       event("7", "pageAttemptTerminal", {

@@ -266,7 +266,10 @@ export function assertManagedDetailOpened(
     "verified detail resource",
   );
   if (
-    compareGenerationEventSequence(opened.sequence, resource.sequence) >= 0 ||
+    (options.platform === "ios"
+      ? compareGenerationEventSequence(resource.sequence, opened.sequence) >= 0
+      : compareGenerationEventSequence(opened.sequence, resource.sequence) >=
+        0) ||
     compareGenerationEventSequence(resource.sequence, firstContent.sequence) >=
       0 ||
     compareGenerationEventSequence(firstContent.sequence, admitted.sequence) >=
