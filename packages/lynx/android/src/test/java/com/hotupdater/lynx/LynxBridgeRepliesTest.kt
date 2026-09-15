@@ -68,6 +68,15 @@ class LynxBridgeRepliesTest {
         assertThrows(IllegalArgumentException::class.java) {
             LynxArtifactRequest.fromJson(json)
         }
+
+        val rawChanged = JSONObject()
+            .put("fileHash", hash)
+            .put("file", JSONObject().put("url", "https://example.test/file"))
+        json.getJSONObject("changedAssets").put("main.lynx.bundle", rawChanged)
+        val rawParsed = LynxArtifactRequest.fromJson(json)
+            .changedAssets?.get("main.lynx.bundle")
+        assertNull(rawParsed?.file?.compression)
+        assertNull(rawParsed?.patch)
     }
 
     @Test

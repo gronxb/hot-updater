@@ -189,7 +189,7 @@ class LynxArtifactInstallerDeltaTest {
             LynxArtifactRequest.fromJson(partialArchive)
         }
         partialArchive.put("fileHash", validHash)
-        changed.getJSONObject("file").remove("compression")
+        changed.getJSONObject("file").put("compression", "gzip")
         assertThrows(IllegalArgumentException::class.java) {
             LynxArtifactRequest.fromJson(partialArchive)
         }

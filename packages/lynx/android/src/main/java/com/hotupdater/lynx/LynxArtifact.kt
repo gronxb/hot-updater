@@ -133,9 +133,6 @@ data class LynxArtifactRequest(
                 assets.keys().asSequence().associateWith { path ->
                     val asset = assets.getJSONObject(path)
                     val file = optionalObject(asset, "file")?.let {
-                        require(it.has("compression")) {
-                            "Changed asset compression must be explicit"
-                        }
                         LynxChangedFile(requiredString(it, "url"), optionalString(it, "compression"))
                     }
                     val patch = optionalObject(asset, "patch")?.let {
