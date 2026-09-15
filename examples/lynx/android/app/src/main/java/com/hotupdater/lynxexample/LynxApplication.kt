@@ -29,7 +29,6 @@ class LynxApplication : Application() {
             },
             this,
         )
-        HotUpdaterSparklingModules.registerNavigation()
         HybridKit.initLynxKit()
     }
 }

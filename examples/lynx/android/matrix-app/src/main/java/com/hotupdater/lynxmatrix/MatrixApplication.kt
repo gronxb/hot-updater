@@ -31,7 +31,6 @@ class MatrixApplication : Application() {
             },
             this,
         )
-        HotUpdaterSparklingModules.registerNavigation()
         HybridKit.initLynxKit()
     }
 }

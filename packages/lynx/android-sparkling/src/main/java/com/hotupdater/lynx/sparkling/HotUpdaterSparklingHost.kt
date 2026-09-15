@@ -102,6 +102,7 @@ class HotUpdaterSparklingHost(
     private var pendingReconstruction = emptyList<LynxLogicalPage>()
 
     init {
+        ManagedSparklingBridge.register()
         ManagedSparklingHostRegistry.add(hostId, this)
     }
 
