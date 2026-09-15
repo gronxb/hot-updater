@@ -23,8 +23,8 @@ const event = (sequence: string) => ({
 
 const snapshot = (events = [event("4"), event("5")]) => ({
   schemaVersion: 1,
-  oldestSequence: events.at(0)?.sequence ?? null,
-  latestSequence: events.at(-1)?.sequence ?? null,
+  oldestSequence: events[0]?.sequence ?? null,
+  latestSequence: events[events.length - 1]?.sequence ?? null,
   truncated: false,
   events,
 });
@@ -41,14 +41,17 @@ describe("Lynx generation event snapshots", () => {
     expect(getRuntimeEvents).toHaveBeenCalledWith();
   });
 
-  it("validates snapshots in PrimJS without Object.hasOwn", () => {
+  it("validates snapshots without unsupported PrimJS built-ins", () => {
     const originalHasOwn = Object.hasOwn;
+    const originalAt = Array.prototype.at;
     let result: ReturnType<typeof validateGenerationEventsSnapshot>;
     Object.hasOwn = undefined as never;
+    Array.prototype.at = undefined as never;
     try {
       result = validateGenerationEventsSnapshot(snapshot());
     } finally {
       Object.hasOwn = originalHasOwn;
+      Array.prototype.at = originalAt;
     }
     expect(result).toMatchObject({ latestSequence: "5" });
   });

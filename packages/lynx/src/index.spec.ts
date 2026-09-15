@@ -105,7 +105,7 @@ describe("Lynx public controller", () => {
     expect(getRuntimeEvents.mock.calls[0]).toHaveLength(1);
   });
 
-  it("accepts engine diagnostics without Object.hasOwn", async () => {
+  it("accepts engine diagnostics without unsupported PrimJS built-ins", async () => {
     const event = {
       sequence: "1",
       name: "engineDiagnostic",
@@ -139,14 +139,17 @@ describe("Lynx public controller", () => {
           callback({ ok: true, data }),
       },
     });
+    const { HotUpdater } = await import("./index");
     const originalHasOwn = Object.hasOwn;
+    const originalAt = Array.prototype.at;
     let result: unknown;
     Object.hasOwn = undefined as never;
+    Array.prototype.at = undefined as never;
     try {
-      const { HotUpdater } = await import("./index");
       result = await HotUpdater.getRuntimeEvents();
     } finally {
       Object.hasOwn = originalHasOwn;
+      Array.prototype.at = originalAt;
     }
     expect(result).toEqual(data);
   });

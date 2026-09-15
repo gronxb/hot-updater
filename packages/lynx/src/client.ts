@@ -322,7 +322,7 @@ const validateRuntimeEvents = (value: unknown): RuntimeEventsSnapshot => {
       (oldestSequence !== null || latestSequence !== null)) ||
     (events.length > 0 &&
       (oldestSequence !== events[0]?.sequence ||
-        latestSequence !== events.at(-1)?.sequence ||
+        latestSequence !== events[events.length - 1]?.sequence ||
         (!value.truncated && oldestSequence !== "1")))
   ) {
     throw new LynxUpdaterError(
