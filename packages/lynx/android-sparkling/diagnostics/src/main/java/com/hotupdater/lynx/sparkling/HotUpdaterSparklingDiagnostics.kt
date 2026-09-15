@@ -342,13 +342,19 @@ class HotUpdaterLynxDiagnosticsModule(context: Context) : LynxModule(context) {
 
     private fun envelope(result: Result<JSONObject>) = JavaOnlyMap.from(
         result.fold(
-            onSuccess = { mapOf("ok" to true, "data" to jsonMap(it)) },
+            onSuccess = {
+                mapOf("ok" to true, "data" to JavaOnlyMap.from(jsonMap(it)))
+            },
             onFailure = { error ->
                 mapOf(
                     "ok" to false,
-                    "error" to mapOf(
-                        "code" to "DIAGNOSTIC_REJECTED",
-                        "message" to (error.message ?: "Diagnostic action rejected"),
+                    "error" to JavaOnlyMap.from(
+                        mapOf(
+                            "code" to "DIAGNOSTIC_REJECTED",
+                            "message" to (
+                                error.message ?: "Diagnostic action rejected"
+                            ),
+                        ),
                     ),
                 )
             },
