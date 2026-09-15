@@ -44,16 +44,35 @@ describe("Lynx generation event snapshots", () => {
   it("validates snapshots without unsupported PrimJS built-ins", () => {
     const originalHasOwn = Object.hasOwn;
     const originalAt = Array.prototype.at;
+    const originalTextEncoder = globalThis.TextEncoder;
     let result: ReturnType<typeof validateGenerationEventsSnapshot>;
     Object.hasOwn = undefined as never;
     Array.prototype.at = undefined as never;
+    globalThis.TextEncoder = undefined as never;
     try {
-      result = validateGenerationEventsSnapshot(snapshot());
+      result = validateGenerationEventsSnapshot(
+        snapshot([
+          {
+            ...event("4"),
+            name: "engineDiagnostic",
+            details: {
+              ...event("4").details,
+              attemptId: "attempt-b",
+              fatal: false,
+              code: 302,
+              subcode: 30201,
+              type: "font",
+              path: "assets/probe.ttf",
+            },
+          },
+        ]),
+      );
     } finally {
       Object.hasOwn = originalHasOwn;
       Array.prototype.at = originalAt;
+      globalThis.TextEncoder = originalTextEncoder;
     }
-    expect(result).toMatchObject({ latestSequence: "5" });
+    expect(result).toMatchObject({ latestSequence: "4" });
   });
 
   it("rejects replayed, unordered, or fabricated event identities", () => {
