@@ -514,6 +514,7 @@ public final class LynxController {
         let record = LynxControllerPageTerminal(
             attemptId: pending.attemptId,
             contextId: pending.contextId,
+            sourceContextId: pending.sourceContextId,
             generationId: pending.generationId,
             processId: pending.processId,
             startupAttemptId: pending.startupAttemptId,
@@ -693,7 +694,8 @@ public final class LynxController {
         _ context: LynxLaunchContext,
         pageEntry: String,
         generationId: String,
-        stack: [LynxManagedLogicalPage]
+        stack: [LynxManagedLogicalPage],
+        sourceContextId: String? = nil
     ) throws -> LynxInstalledArtifact {
         lock.lock(); defer { lock.unlock() }
         guard context.owner == identity,
@@ -742,9 +744,18 @@ public final class LynxController {
             }
             var next = state
             var pendingPages = next.pendingPages ?? []
+            let openingSourceContextId = sourceContextId ?? primary!.id
+            guard contexts.values.contains(where: {
+                $0.id == openingSourceContextId && $0.active && $0.started
+            }) else {
+                throw LynxArtifactError.invalid(
+                    "Secondary page source context has no authority"
+                )
+            }
             pendingPages.append(.init(
                     attemptId: UUID().uuidString,
                     contextId: context.id,
+                    sourceContextId: openingSourceContextId,
                     generationId: generationId,
                     processId: String(ProcessInfo.processInfo.processIdentifier),
                     startupAttemptId: attemptId,

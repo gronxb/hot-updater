@@ -35,11 +35,19 @@ final class LynxManagedPagesTests: XCTestCase {
                 parameters: [.init(name: "id", value: "42")]
             ),
         ]
+        XCTAssertThrowsError(try controller.begin(
+            detail,
+            pageEntry: "detail.lynx.bundle",
+            generationId: "generation-1",
+            stack: stack,
+            sourceContextId: "retired-context"
+        ))
         _ = try controller.begin(
             detail,
             pageEntry: "detail.lynx.bundle",
             generationId: "generation-1",
-            stack: stack
+            stack: stack,
+            sourceContextId: primary.id
         )
         XCTAssertNotNil(try controller.pendingPageAttemptId(detail))
         var result: LynxConfirmationResult?
@@ -60,6 +68,10 @@ final class LynxManagedPagesTests: XCTestCase {
         let terminals = try pageTerminals(controller, primary)
         XCTAssertEqual(terminals.count, 1)
         XCTAssertEqual(terminals.first?["terminal"] as? String, "admitted")
+        XCTAssertEqual(
+            terminals.first?["sourceContextId"] as? String,
+            primary.id
+        )
     }
 
     func testCancellationMakesLatePageSignalsStaleWithoutFailureHistory() throws {
@@ -154,7 +166,8 @@ final class LynxManagedPagesTests: XCTestCase {
             detail,
             pageEntry: "detail.lynx.bundle",
             generationId: "generation-before-death",
-            stack: stack
+            stack: stack,
+            sourceContextId: primary.id
         )
         controller = nil
 
@@ -170,6 +183,10 @@ final class LynxManagedPagesTests: XCTestCase {
             nextLaunch.recoveredPageAttemptTerminals.first
         )
         XCTAssertEqual(recoveredTerminal["terminal"] as? String, "process-interruption")
+        XCTAssertEqual(
+            recoveredTerminal["sourceContextId"] as? String,
+            primary.id
+        )
         let recoveredAttemptId = try XCTUnwrap(
             recoveredTerminal["pageAttemptId"] as? String
         )
@@ -351,6 +368,7 @@ final class LynxManagedPagesTests: XCTestCase {
             state.pendingPages = [.init(
                 attemptId: "pending",
                 contextId: "pending-context",
+                sourceContextId: "source-context",
                 generationId: "generation",
                 processId: "1",
                 startupAttemptId: "startup",
@@ -360,6 +378,7 @@ final class LynxManagedPagesTests: XCTestCase {
             state.pageAttemptTerminals = [.init(
                 attemptId: "terminal",
                 contextId: "terminal-context",
+                sourceContextId: "source-context",
                 generationId: "generation",
                 processId: "1",
                 startupAttemptId: "startup",

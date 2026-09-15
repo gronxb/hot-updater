@@ -451,7 +451,8 @@ public final class HotUpdaterSparklingHost: NSObject,
             page = try buildPage(
                 logical,
                 primary: false,
-                stack: stack
+                stack: stack,
+                sourceContextId: sourcePage.generation.context.id
             )
         } catch let error as ManagedPageConstructionError {
             recoverReconstruction(
@@ -726,7 +727,8 @@ public final class HotUpdaterSparklingHost: NSObject,
             let managed = try buildPage(
                 page,
                 primary: index == 0,
-                stack: Array(logical.prefix(index + 1))
+                stack: Array(logical.prefix(index + 1)),
+                sourceContextId: pages.last?.generation.context.id
             )
             pages.append(managed)
             do {
@@ -784,7 +786,8 @@ public final class HotUpdaterSparklingHost: NSObject,
     private func buildPage(
         _ logical: LynxManagedLogicalPage,
         primary: Bool,
-        stack: [LynxManagedLogicalPage]
+        stack: [LynxManagedLogicalPage],
+        sourceContextId: String?
     ) throws -> ManagedPage {
         let generationController = controller
         let generation = generationEvents
@@ -793,7 +796,8 @@ public final class HotUpdaterSparklingHost: NSObject,
             context,
             pageEntry: logical.entry,
             generationId: generation.id,
-            stack: stack
+            stack: stack,
+            sourceContextId: sourceContextId
         )
         let pageAttemptId = try generationController.pendingPageAttemptId(
             context
@@ -977,7 +981,7 @@ public final class HotUpdaterSparklingHost: NSObject,
                         pageEntry: logical.entry,
                         pageAttemptId: pageAttemptId
                     ).merging([
-                        "sourceContextId": context.id,
+                        "sourceContextId": hotUpdaterJSONValue(sourceContextId),
                         "orderedPageEntries": stack.map(\.entry),
                         "orderedPageParameters": orderedParameters(stack),
                         "topPageEntry": hotUpdaterJSONValue(stack.last?.entry),
@@ -1005,7 +1009,7 @@ public final class HotUpdaterSparklingHost: NSObject,
             "pageClass": NSStringFromClass(type(of: container)),
             "nativePageClass": NSStringFromClass(type(of: container)),
             "containerClass": NSStringFromClass(type(of: container)),
-            "sourceContextId": context.id,
+            "sourceContextId": hotUpdaterJSONValue(sourceContextId),
             "orderedPageEntries": stack.map(\.entry),
             "orderedPageParameters": orderedParameters(stack),
             "topPageEntry": hotUpdaterJSONValue(stack.last?.entry),
@@ -1017,6 +1021,7 @@ public final class HotUpdaterSparklingHost: NSObject,
             logical: logical,
             primary: primary,
             pageAttemptId: pageAttemptId,
+            sourceContextId: sourceContextId,
             container: container,
             generation: .init(
                 controller: generationController,
@@ -1163,7 +1168,7 @@ public final class HotUpdaterSparklingHost: NSObject,
             "nativePageClass": nativePageClass,
             "containerClass": nativePageClass,
             "containerId": page.container.containerID,
-            "sourceContextId": page.generation.context.id,
+            "sourceContextId": hotUpdaterJSONValue(page.sourceContextId),
             "parameters": Dictionary(
                 uniqueKeysWithValues: page.logical.parameters.map {
                     ($0.name, $0.value)
@@ -1234,7 +1239,8 @@ public final class HotUpdaterSparklingHost: NSObject,
             recoveredTerminalEventsEmitted = true
             controller.recoveredPageAttemptTerminals.forEach { record in
                 var details = record
-                details["sourceContextId"] = record["contextId"] ?? NSNull()
+                details["sourceContextId"] = record["sourceContextId"]
+                    ?? NSNull()
                 details["topContextId"] = record["contextId"] ?? NSNull()
                 details["topPageEntry"] = record["pageEntry"] ?? NSNull()
                 guard let pageAttemptId = record["pageAttemptId"] as? String
@@ -1404,6 +1410,7 @@ final class ManagedPage {
     let logical: LynxManagedLogicalPage
     let primary: Bool
     let pageAttemptId: String?
+    let sourceContextId: String?
     let container: SPKViewController
     let generation: ContainerGeneration
 
@@ -1411,12 +1418,14 @@ final class ManagedPage {
         logical: LynxManagedLogicalPage,
         primary: Bool,
         pageAttemptId: String?,
+        sourceContextId: String?,
         container: SPKViewController,
         generation: ContainerGeneration
     ) {
         self.logical = logical
         self.primary = primary
         self.pageAttemptId = pageAttemptId
+        self.sourceContextId = sourceContextId
         self.container = container
         self.generation = generation
     }

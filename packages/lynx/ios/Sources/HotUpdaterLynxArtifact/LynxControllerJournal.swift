@@ -54,6 +54,7 @@ struct LynxStoredLogicalPage: Codable, Equatable {
 struct LynxControllerPendingPage: Codable {
     let attemptId: String
     let contextId: String
+    let sourceContextId: String?
     let generationId: String
     let processId: String?
     let startupAttemptId: String?
@@ -63,6 +64,7 @@ struct LynxControllerPendingPage: Codable {
 struct LynxControllerPageTerminal: Codable {
     let attemptId: String
     let contextId: String
+    let sourceContextId: String?
     let generationId: String
     let processId: String?
     let startupAttemptId: String?
@@ -81,6 +83,7 @@ struct LynxControllerPageTerminal: Codable {
             return [
                 "pageAttemptId": attemptId,
                 "contextId": contextId,
+                "sourceContextId": sourceContextId as Any? ?? NSNull(),
                 "generationId": generationId,
                 "processId": processId as Any? ?? NSNull(),
                 "attemptId": startupAttemptId as Any? ?? NSNull(),
@@ -272,12 +275,14 @@ final class LynxControllerJournal {
                   !$0.stack.isEmpty
                       && $0.stack.count <= lynxManagedPageStackCapacity
                       && lynxValidProcessId($0.processId)
+                      && $0.sourceContextId?.isEmpty != true
               }),
               (state.pageAttemptTerminals ?? []).allSatisfy({
                   !$0.attemptId.isEmpty && !$0.contextId.isEmpty
                       && !$0.generationId.isEmpty && !$0.stack.isEmpty
                       && $0.stack.count <= lynxManagedPageStackCapacity
                       && lynxValidProcessId($0.processId)
+                      && $0.sourceContextId?.isEmpty != true
                       && !$0.reason.isEmpty
                       && ["admitted", "verified-fatal", "authorized-cancel",
                           "process-interruption"].contains($0.terminal)
