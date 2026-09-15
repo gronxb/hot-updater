@@ -1,5 +1,7 @@
 package com.hotupdater.lynx.sparkling
 
+import android.os.Handler
+import android.os.Looper
 import com.tiktok.sparkling.method.registry.core.BridgePlatformType
 import com.tiktok.sparkling.method.registry.core.IBridgeContext
 import com.tiktok.sparkling.method.registry.core.IDLBridgeMethod
@@ -267,6 +269,14 @@ internal abstract class ManagedRouterMethod : IDLBridgeMethod {
 
     protected fun context() = bridgeContext
 
+    protected fun runOnMainThread(block: () -> Unit) {
+        if (Looper.myLooper() == Looper.getMainLooper()) {
+            block()
+        } else {
+            mainHandler.post(block)
+        }
+    }
+
     override fun setBridgeContext(bridgeContext: IBridgeContext) {
         this.bridgeContext = bridgeContext
     }
@@ -289,6 +299,10 @@ internal abstract class ManagedRouterMethod : IDLBridgeMethod {
                 "msg" to (error?.message ?: "Managed navigation rejected"),
             ),
         )
+    }
+
+    private companion object {
+        val mainHandler = Handler(Looper.getMainLooper())
     }
 }
 
@@ -315,23 +329,26 @@ internal class ManagedRouterOpenMethod : ManagedRouterOpenMethodBase() {
         callback: IDLBridgeMethod.Callback,
         type: BridgePlatformType,
     ) {
-        runCatching {
-            require(type == BridgePlatformType.LYNX) {
-                "Managed pages require a Lynx source"
-            }
-            val bridge = checkNotNull(context()) {
-                "Managed router source context is unavailable"
-            }
-            val (scheme, options) = ManagedOpenOptions.parse(params)
-            val host = ManagedSparklingHostRegistry.hostForBridgeContext(bridge)
-                ?: error("Managed router source is stale")
-            host.open(bridge, scheme, options.animated)
-        }.fold(
-            onSuccess = { accepted ->
-                if (accepted) success(callback) else failure(callback)
-            },
-            onFailure = { error -> failure(callback, error) },
-        )
+        runOnMainThread {
+            runCatching {
+                require(type == BridgePlatformType.LYNX) {
+                    "Managed pages require a Lynx source"
+                }
+                val bridge = checkNotNull(context()) {
+                    "Managed router source context is unavailable"
+                }
+                val (scheme, options) = ManagedOpenOptions.parse(params)
+                val host =
+                    ManagedSparklingHostRegistry.hostForBridgeContext(bridge)
+                        ?: error("Managed router source is stale")
+                host.open(bridge, scheme, options.animated)
+            }.fold(
+                onSuccess = { accepted ->
+                    if (accepted) success(callback) else failure(callback)
+                },
+                onFailure = { error -> failure(callback, error) },
+            )
+        }
     }
 }
 
@@ -350,26 +367,29 @@ internal class ManagedRouterCloseMethod : ManagedRouterCloseMethodBase() {
         callback: IDLBridgeMethod.Callback,
         type: BridgePlatformType,
     ) {
-        runCatching {
-            require(type == BridgePlatformType.LYNX) {
-                "Managed pages require a Lynx source"
-            }
-            val options = ManagedCloseOptions.parse(params)
-            val bridge = checkNotNull(context()) {
-                "Managed router source context is unavailable"
-            }
-            val host = ManagedSparklingHostRegistry.hostForBridgeContext(bridge)
-                ?: error("Managed router source is stale")
-            host.close(
-                bridge,
-                options.containerId,
-                options.animated,
+        runOnMainThread {
+            runCatching {
+                require(type == BridgePlatformType.LYNX) {
+                    "Managed pages require a Lynx source"
+                }
+                val options = ManagedCloseOptions.parse(params)
+                val bridge = checkNotNull(context()) {
+                    "Managed router source context is unavailable"
+                }
+                val host =
+                    ManagedSparklingHostRegistry.hostForBridgeContext(bridge)
+                        ?: error("Managed router source is stale")
+                host.close(
+                    bridge,
+                    options.containerId,
+                    options.animated,
+                )
+            }.fold(
+                onSuccess = { accepted ->
+                    if (accepted) success(callback) else failure(callback)
+                },
+                onFailure = { error -> failure(callback, error) },
             )
-        }.fold(
-            onSuccess = { accepted ->
-                if (accepted) success(callback) else failure(callback)
-            },
-            onFailure = { error -> failure(callback, error) },
-        )
+        }
     }
 }

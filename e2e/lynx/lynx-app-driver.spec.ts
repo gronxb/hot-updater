@@ -337,6 +337,40 @@ describe("Lynx app text assertions", () => {
 });
 
 describe("Lynx managed page evidence actions", () => {
+  it("waits for the detail page close receipt before returning", async () => {
+    let screenReads = 0;
+    const fetch = vi.fn(async (_url: string, init?: RequestInit) => ({
+      ok: true,
+      status: 200,
+      text: async () =>
+        JSON.stringify({
+          screenState: {
+            detailPageMarker:
+              init?.method === "POST" || screenReads++ === 0
+                ? "E2E_SCENARIO_MARKER"
+                : "closed",
+          },
+        }),
+    }));
+    const client = createControlClient({
+      baseUrl: "http://control.test",
+      fetch,
+      pollDelayMs: async () => undefined,
+    });
+    const driver = new LynxAppDriver(client, "ios", {});
+
+    await driver.closeDetailPage("close detail");
+
+    expect(screenReads).toBe(2);
+    expect(fetch.mock.calls[0]).toEqual([
+      "http://control.test/e2e/pending-action",
+      expect.objectContaining({
+        body: JSON.stringify({ testID: "action-close-detail-page" }),
+        method: "POST",
+      }),
+    ]);
+  });
+
   it("captures the package-owned runtime journal through the real page action", async () => {
     const snapshot = {
       schemaVersion: 1,

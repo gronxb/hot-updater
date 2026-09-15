@@ -3,6 +3,7 @@ package com.hotupdater.lynx.sparkling
 import android.content.ComponentName
 import android.content.Intent
 import android.content.pm.ActivityInfo
+import android.os.Looper
 import android.view.View
 import com.hotupdater.lynx.LynxPageCancelReason
 import com.lynx.jsbridge.ParamWrapper
@@ -14,6 +15,7 @@ import com.tiktok.sparkling.method.registry.core.IDLBridgeMethod
 import com.tiktok.sparkling.method.registry.core.SparklingBridgeManager
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertSame
 import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
@@ -23,7 +25,10 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.Robolectric
 import org.robolectric.RuntimeEnvironment
 import org.robolectric.annotation.Config
+import org.robolectric.annotation.LooperMode
+import org.robolectric.Shadows.shadowOf
 import org.json.JSONObject
+import java.util.concurrent.atomic.AtomicReference
 
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [34])
@@ -519,6 +524,56 @@ class ManagedSparklingNavigationTest {
         }
     }
 
+    @Test
+    @LooperMode(LooperMode.Mode.PAUSED)
+    fun routerCallsFromBridgeThreadsRunOnTheMainLooper() {
+        val activity = Robolectric.buildActivity(android.app.Activity::class.java)
+            .setup().get()
+        val bridge = SparklingBridge()
+        val authority = RecordingRouteAuthority()
+        try {
+            bridge.registerLynxModule(LynxViewBuilder(), "main-container")
+            bridge.init(View(activity), "main-container", 16)
+            val context = bridge.getBridgeSDKContext()
+            ManagedSparklingHostRegistry.bindBridgeContext(context, authority)
+            val callbackResult = AtomicReference<Map<String, Any?>?>()
+            val method = ManagedRouterOpenMethod().apply {
+                setBridgeContext(context)
+            }
+
+            Thread {
+                method.realHandle(
+                    mapOf(
+                        "scheme" to
+                            "hybrid://lynxview_page?bundle=detail.lynx.bundle",
+                    ),
+                    object : IDLBridgeMethod.Callback {
+                        override fun invoke(data: Map<String, Any?>) {
+                            callbackResult.set(data)
+                        }
+                    },
+                    BridgePlatformType.LYNX,
+                )
+            }.apply {
+                start()
+                join()
+            }
+
+            assertNull(callbackResult.get())
+            shadowOf(Looper.getMainLooper()).idle()
+            assertEquals(IDLBridgeMethod.SUCCESS, callbackResult.get()?.get("code"))
+            assertSame(Looper.getMainLooper(), authority.openLooper)
+        } finally {
+            runCatching {
+                ManagedSparklingHostRegistry.unbindBridgeContext(
+                    bridge.getBridgeSDKContext(),
+                    authority,
+                )
+            }
+            bridge.release()
+        }
+    }
+
     private fun registeredModuleNames(builder: LynxViewBuilder): List<String> {
         val wrappers = builder.lynxRuntimeOptions.javaClass
             .getDeclaredField("mWrappers")
@@ -549,6 +604,7 @@ class ManagedSparklingNavigationTest {
     private class RecordingRouteAuthority : ManagedSparklingRouteAuthority {
         var openSource: IBridgeContext? = null
         var openAnimated: Boolean? = null
+        var openLooper: Looper? = null
         var closeSource: IBridgeContext? = null
         var closeContainerId: String? = null
         var closeAnimated: Boolean? = null
@@ -560,6 +616,7 @@ class ManagedSparklingNavigationTest {
         ): Boolean {
             openSource = sourceBridgeContext
             openAnimated = animated
+            openLooper = Looper.myLooper()
             return true
         }
 

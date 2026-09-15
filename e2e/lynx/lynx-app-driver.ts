@@ -439,6 +439,11 @@ export class LynxAppDriver implements DetoxAppDriver {
         "/e2e/pending-action",
         { testID: "action-close-detail-page" },
       );
+      await this.controlClient.waitForScreenStateField(
+        `${stage}: wait for detail close`,
+        "detailPageMarker",
+        { expectedValue: "closed" },
+      );
     });
   }
 
