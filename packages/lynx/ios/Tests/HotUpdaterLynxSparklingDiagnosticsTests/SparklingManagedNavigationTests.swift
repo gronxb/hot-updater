@@ -6,6 +6,23 @@ final class SparklingManagedNavigationTests: XCTestCase {
         "detail.lynx.bundle", "main.lynx.bundle",
     ]
 
+    func testPageParametersAreExposedAsLaunchConfiguration() {
+        XCTAssertEqual(
+            HotUpdaterSparklingPageLaunchConfiguration.merge(
+                host: ["runtimeConfigURL": "http://localhost", "title": "Host"],
+                page: [
+                    .init(name: "title", value: "Second Page"),
+                    .init(name: "item", value: "42"),
+                ]
+            ),
+            [
+                "runtimeConfigURL": "http://localhost",
+                "title": "Second Page",
+                "item": "42",
+            ]
+        )
+    }
+
     func testCanonicalRoutePreservesOrderedParameters() throws {
         let route = try HotUpdaterSparklingRouteParser.parse(
             "hybrid://lynxview_page?bundle=detail.lynx.bundle&message=hello+world&emoji=%F0%9F%8C%9F",

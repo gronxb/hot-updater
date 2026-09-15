@@ -917,7 +917,11 @@ public final class HotUpdaterSparklingHost: NSObject,
             runtimeEvents: { [eventJournal] in
                 try eventJournal.snapshot()
             },
-            launchConfiguration: launchConfiguration
+            launchConfiguration: HotUpdaterSparklingPageLaunchConfiguration
+                .merge(
+                    host: launchConfiguration,
+                    page: logical.parameters
+                )
         )
         let sparkling = SPKContext()
         sparkling.containerLifecycleDelegate = lifecycle

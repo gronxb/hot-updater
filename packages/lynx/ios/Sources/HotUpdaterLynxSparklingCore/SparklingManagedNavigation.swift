@@ -46,6 +46,19 @@ public struct HotUpdaterSparklingParameter: Codable, Equatable {
     }
 }
 
+enum HotUpdaterSparklingPageLaunchConfiguration {
+    static func merge(
+        host: [String: String],
+        page: [HotUpdaterSparklingParameter]
+    ) -> [String: String] {
+        host.merging(
+            Dictionary(uniqueKeysWithValues: page.map {
+                ($0.name, $0.value)
+            })
+        ) { _, pageValue in pageValue }
+    }
+}
+
 public enum HotUpdaterSparklingRouteParser {
     public static let maximumRawRouteBytes = 4_096
     public static let maximumCustomParameters = 32
