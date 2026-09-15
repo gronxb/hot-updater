@@ -2,12 +2,9 @@ import {
   insightsHourlyBucketKey,
   insightsLifetimeMarkerKey,
   insightsReleaseKey,
+  type InsightsProjectionBackend,
 } from "./insightsProjection";
-import type {
-  BundleEventRow,
-  InsightsStorageAdapter,
-  ReleaseReference,
-} from "./types/internal";
+import type { BundleEventRow, ReleaseReference } from "./types/internal";
 
 type Summary = {
   active: number;
@@ -16,9 +13,9 @@ type Summary = {
   recovered: number;
 };
 
-export const createMemoryInsightsStorage = (options?: {
+export const createMemoryInsightsProjection = (options?: {
   readonly onEvent?: (event: BundleEventRow) => void;
-}): InsightsStorageAdapter => {
+}): InsightsProjectionBackend => {
   const events = new Set<string>();
   const states = new Map<string, { revision: number; state: string }>();
   const markers = new Set<string>();

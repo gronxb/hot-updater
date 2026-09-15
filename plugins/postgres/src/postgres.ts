@@ -1,11 +1,9 @@
 import type { BundleEventRow } from "@hot-updater/plugin-core";
-import {
-  createDatabasePlugin,
-  recordProjectedInsightsEvent,
-} from "@hot-updater/plugin-core";
+import { createDatabasePlugin } from "@hot-updater/plugin-core";
 import {
   latestInsightsWhere,
   latestInsightsCountGroups,
+  recordProjectedInsightsEvent,
 } from "@hot-updater/plugin-core/internal";
 import type {
   CreateDatabaseImplementationInput,
@@ -29,7 +27,7 @@ import {
 } from "kysely";
 import pg, { type PoolConfig } from "pg";
 
-import { createPostgresInsightsStorage } from "./postgresInsights";
+import { createPostgresInsightsProjection } from "./postgresInsights";
 import { countPostgresRows, findManyPostgresRows } from "./postgresQuery";
 import type { Database } from "./types";
 
@@ -149,11 +147,11 @@ const buildWhere = (
 const createPostgresImplementation = (
   db: Kysely<Database>,
 ): DatabasePluginImplementation => {
-  const insightsStorage = createPostgresInsightsStorage(db);
+  const insightsProjection = createPostgresInsightsProjection(db);
   return {
     recordInsights: (input) =>
-      recordProjectedInsightsEvent(insightsStorage, input),
-    insightsStorage,
+      recordProjectedInsightsEvent(insightsProjection, input),
+    getReleaseActivity: (input) => insightsProjection.getReleaseActivity(input),
     async findLatestInsightsEvents(input) {
       const where = buildWhere(latestInsightsWhere(input));
       const result =

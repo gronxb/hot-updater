@@ -1,12 +1,55 @@
 import type {
   BundleEventRow,
-  InsightsCurrentDelta,
-  InsightsLifetimeKey,
   InsightsRecordEventInput,
-  InsightsStorageAdapter,
-  PreparedInsightsEvent,
+  InsightsModel,
   ReleaseReference,
 } from "./types/internal";
+
+export interface InsightsLifetimeKey {
+  readonly release: ReleaseReference;
+  readonly installId: string;
+  readonly metric: "downloaded" | "recovered";
+}
+
+export interface InsightsCurrentDelta {
+  readonly release: ReleaseReference;
+  readonly metric: "active" | "pending";
+  readonly delta: -1 | 1;
+}
+
+export interface PreparedInsightsEvent {
+  readonly event: BundleEventRow;
+  readonly expectedRevision: string;
+  readonly nextState: string;
+  readonly currentDeltas: readonly InsightsCurrentDelta[];
+  readonly firstLifetime: InsightsLifetimeKey | null;
+  readonly hourly: {
+    readonly release: ReleaseReference;
+    readonly hourStartMs: number;
+    readonly metric: "downloaded" | "applied" | "recovered";
+  } | null;
+}
+
+export interface InsightsRecordContext {
+  readonly revision: string;
+  readonly state: string | null;
+  readonly lifetimeExists: boolean;
+}
+
+export interface InsightsProjectionBackend {
+  readRecordContext(input: {
+    readonly installId: string;
+    readonly lifetimeKey: InsightsLifetimeKey | null;
+  }): Promise<InsightsRecordContext>;
+  commitPreparedEvent(
+    input: PreparedInsightsEvent,
+  ): Promise<
+    | { readonly status: "committed" }
+    | { readonly status: "duplicate" }
+    | { readonly status: "conflict" }
+  >;
+  getReleaseActivity: InsightsModel["getReleaseActivity"];
+}
 
 type ReceiptTuple = {
   readonly receivedAtMs: number;
@@ -287,7 +330,7 @@ export const prepareInsightsEvent = (
 };
 
 export const recordProjectedInsightsEvent = async (
-  storage: InsightsStorageAdapter,
+  storage: InsightsProjectionBackend,
   input: InsightsRecordEventInput,
 ): Promise<void> => {
   const key = lifetimeKey(input.event);

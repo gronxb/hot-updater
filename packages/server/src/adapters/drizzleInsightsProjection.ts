@@ -1,11 +1,11 @@
+import type { ReleaseReference } from "@hot-updater/plugin-core";
 import {
   insightsHourlyBucketKey,
   insightsLifetimeMarkerKey,
   insightsReleaseKey,
-  type ReleaseReference,
-} from "@hot-updater/plugin-core";
+} from "@hot-updater/plugin-core/internal";
 import type {
-  InsightsStorageAdapter,
+  InsightsProjectionBackend,
   PreparedInsightsEvent,
 } from "@hot-updater/plugin-core/internal";
 import { and, asc, eq, gte, inArray, lt, or, sql } from "drizzle-orm";
@@ -273,10 +273,10 @@ const commitSynchronousSqliteEvent = (
   return { status: "committed" as const };
 };
 
-export const createDrizzleInsightsStorage = (
+export const createDrizzleInsightsProjection = (
   db: DrizzleDB,
   provider: DrizzleProvider,
-): InsightsStorageAdapter => ({
+): InsightsProjectionBackend => ({
   async readRecordContext({ installId, lifetimeKey }) {
     const states = getDrizzleTable(db, "insights_install_states");
     const markers = getDrizzleTable(db, "insights_lifetime_markers");

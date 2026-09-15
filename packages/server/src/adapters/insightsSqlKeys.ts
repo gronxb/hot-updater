@@ -2,7 +2,7 @@ import {
   insightsHourlyBucketKey,
   insightsLifetimeMarkerKey,
   insightsReleaseKey,
-} from "@hot-updater/plugin-core";
+} from "@hot-updater/plugin-core/internal";
 import type { PreparedInsightsEvent } from "@hot-updater/plugin-core/internal";
 
 /** Bound SQL index sizes without truncating escaped or Unicode identities. */

@@ -15,7 +15,6 @@ import {
   compareInsightsText,
   createValidatedInsightsModel,
 } from "./insightsContract";
-import { recordProjectedInsightsEvent } from "./insightsProjection";
 import type {
   BundleEventRow,
   BundlePatchRow,
@@ -939,13 +938,7 @@ export const createDatabasePluginAdapter = (
         },
       },
       insights: {
-        recordEvent: (input) =>
-          implementation.insightsStorage
-            ? recordProjectedInsightsEvent(
-                implementation.insightsStorage,
-                input,
-              )
-            : implementation.recordInsights(input),
+        recordEvent: (input) => implementation.recordInsights(input),
         async listEvents(input) {
           const ranges = await Promise.all(
             toInsightsEventRanges(input.filter).map((where) =>
@@ -987,8 +980,8 @@ export const createDatabasePluginAdapter = (
           });
         },
         getReleaseActivity: (input) =>
-          implementation.insightsStorage
-            ? implementation.insightsStorage.getReleaseActivity(input)
+          implementation.getReleaseActivity
+            ? implementation.getReleaseActivity(input)
             : Promise.reject(new InsightsAggregationUnsupportedError(name)),
       },
       apiKeys: {

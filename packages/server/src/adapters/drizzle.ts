@@ -3,7 +3,7 @@ import {
   createDatabasePluginAdapter,
   recordProjectedInsightsEvent,
   type DatabasePluginImplementation,
-  type InsightsStorageAdapter,
+  type InsightsProjectionBackend,
   type TransactionDatabasePluginImplementation,
 } from "@hot-updater/plugin-core/internal";
 
@@ -18,7 +18,7 @@ import type {
   SchemaGenerator,
 } from "../db/types";
 import { createDrizzleCrud } from "./drizzleCrud";
-import { createDrizzleInsightsStorage } from "./drizzleInsightsStorage";
+import { createDrizzleInsightsProjection } from "./drizzleInsightsProjection";
 import { createLazyDB } from "./drizzleLazyDB";
 
 export type DrizzleProvider = Exclude<
@@ -38,25 +38,25 @@ const createImplementation = (
 ): DatabasePluginImplementation => {
   const db = createLazyDB(config);
   const crud = createDrizzleCrud(db, config.provider);
-  const resolveInsightsStorage = async () =>
-    createDrizzleInsightsStorage(
+  const resolveInsightsProjection = async () =>
+    createDrizzleInsightsProjection(
       db.resolve === undefined ? db : await db.resolve(),
       config.provider,
     );
-  const insightsStorage: InsightsStorageAdapter = {
+  const insightsProjection: InsightsProjectionBackend = {
     readRecordContext: async (input) =>
-      (await resolveInsightsStorage()).readRecordContext(input),
+      (await resolveInsightsProjection()).readRecordContext(input),
     commitPreparedEvent: async (input) =>
-      (await resolveInsightsStorage()).commitPreparedEvent(input),
+      (await resolveInsightsProjection()).commitPreparedEvent(input),
     getReleaseActivity: async (input) =>
-      (await resolveInsightsStorage()).getReleaseActivity(input),
+      (await resolveInsightsProjection()).getReleaseActivity(input),
   };
   const transaction = db.transaction?.bind(db);
   return {
     ...crud,
     recordInsights: (input) =>
-      recordProjectedInsightsEvent(insightsStorage, input),
-    insightsStorage,
+      recordProjectedInsightsEvent(insightsProjection, input),
+    getReleaseActivity: (input) => insightsProjection.getReleaseActivity(input),
     deleteChannel: (input) => {
       if (transaction === undefined) {
         throw new Error(

@@ -1,16 +1,18 @@
 import {
   createDatabasePlugin,
+  type ReleaseReference,
+} from "@hot-updater/plugin-core";
+import {
   insightsHourlyBucketKey,
   insightsLifetimeMarkerKey,
   insightsReleaseKey,
   recordProjectedInsightsEvent,
-  type ReleaseReference,
-} from "@hot-updater/plugin-core";
+} from "@hot-updater/plugin-core/internal";
 import {
   createDatabasePluginAdapter,
   type DatabasePluginImplementation,
   type TransactionDatabasePluginImplementation,
-  type InsightsStorageAdapter,
+  type InsightsProjectionBackend,
   type PreparedInsightsEvent,
 } from "@hot-updater/plugin-core/internal";
 import {
@@ -25,9 +27,9 @@ import { createMongoCollections } from "./mongodbCollections";
 import { createMongoReads } from "./mongodbReads";
 import { createMongoWrites } from "./mongodbWrites";
 
-const createMongoInsightsStorage = (
+const createMongoInsightsProjection = (
   client: MongoClient,
-): InsightsStorageAdapter => {
+): InsightsProjectionBackend => {
   const collections = createMongoCollections(client);
   return {
     async readRecordContext({ installId, lifetimeKey }) {
@@ -316,11 +318,11 @@ const createMongoImplementation = (
   session?: ClientSession,
 ): DatabasePluginImplementation => {
   const collections = createMongoCollections(client);
-  const insightsStorage = createMongoInsightsStorage(client);
+  const insightsProjection = createMongoInsightsProjection(client);
   return {
     recordInsights: (input) =>
-      recordProjectedInsightsEvent(insightsStorage, input),
-    insightsStorage,
+      recordProjectedInsightsEvent(insightsProjection, input),
+    getReleaseActivity: (input) => insightsProjection.getReleaseActivity(input),
     ...createMongoWrites(collections, session),
     ...createMongoReads(collections, session),
   };

@@ -18,4 +18,11 @@ export {
   recordProjectedInsightsEvent,
   reduceInsightsProjection,
 } from "./insightsProjection";
-export { createMemoryInsightsStorage } from "./insightsMemoryStorage";
+export type {
+  InsightsCurrentDelta,
+  InsightsLifetimeKey,
+  InsightsRecordContext,
+  InsightsProjectionBackend,
+  PreparedInsightsEvent,
+} from "./insightsProjection";
+export { createMemoryInsightsProjection } from "./insightsMemoryProjection";

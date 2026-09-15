@@ -1,15 +1,17 @@
 import {
   compareInsightsText,
   createDatabasePlugin,
+} from "@hot-updater/plugin-core";
+import {
   insightsHourlyBucketKey,
   insightsLifetimeMarkerKey,
   insightsReleaseKey,
   recordProjectedInsightsEvent,
-} from "@hot-updater/plugin-core";
+} from "@hot-updater/plugin-core/internal";
 import {
   latestInsightsWhere,
   latestInsightsCountGroups,
-  type InsightsStorageAdapter,
+  type InsightsProjectionBackend,
   type PreparedInsightsEvent,
 } from "@hot-updater/plugin-core/internal";
 import {
@@ -62,10 +64,10 @@ import { FIREBASE_V1_COLLECTION_NAMES } from "./firebaseInfrastructureNames";
 const firebaseInsightsDocumentId = (key: string): string =>
   Buffer.from(key, "utf8").toString("base64url");
 
-const createFirebaseInsightsStorage = (
+const createFirebaseInsightsProjection = (
   db: ReturnType<typeof getFirestore>,
   collections: ReturnType<typeof createFirebaseDatabaseCollections>,
-): InsightsStorageAdapter => ({
+): InsightsProjectionBackend => ({
   async readRecordContext({ installId, lifetimeKey }) {
     return db.runTransaction(async (transaction) => {
       const stateReference = collections.insightsProjectionStates.doc(
@@ -388,7 +390,7 @@ export const firebaseDatabase = (config: FirebaseDatabaseConfig) => {
     const app = getApps().length ? getApp() : initializeApp(config);
     const db = getFirestore(app);
     const collections = createFirebaseDatabaseCollections(db);
-    const nativeInsightsStorage = createFirebaseInsightsStorage(
+    const nativeInsightsProjection = createFirebaseInsightsProjection(
       db,
       collections,
     );
@@ -401,18 +403,18 @@ export const firebaseDatabase = (config: FirebaseDatabaseConfig) => {
       });
       return migration;
     };
-    const insightsStorage: InsightsStorageAdapter = {
+    const insightsProjection: InsightsProjectionBackend = {
       async readRecordContext(input) {
         await ensureMigrated();
-        return nativeInsightsStorage.readRecordContext(input);
+        return nativeInsightsProjection.readRecordContext(input);
       },
       async commitPreparedEvent(input) {
         await ensureMigrated();
-        return nativeInsightsStorage.commitPreparedEvent(input);
+        return nativeInsightsProjection.commitPreparedEvent(input);
       },
       async getReleaseActivity(input) {
         await ensureMigrated();
-        return nativeInsightsStorage.getReleaseActivity(input);
+        return nativeInsightsProjection.getReleaseActivity(input);
       },
     };
 
@@ -448,8 +450,9 @@ export const firebaseDatabase = (config: FirebaseDatabaseConfig) => {
 
     return {
       recordInsights: (input) =>
-        recordProjectedInsightsEvent(insightsStorage, input),
-      insightsStorage,
+        recordProjectedInsightsEvent(insightsProjection, input),
+      getReleaseActivity: (input) =>
+        insightsProjection.getReleaseActivity(input),
       findLatestInsightsEvents: async (input) => {
         await ensureMigrated();
         if ("installId" in input) {

@@ -1,11 +1,11 @@
+import type { ReleaseReference } from "@hot-updater/plugin-core";
 import {
   insightsHourlyBucketKey,
   insightsLifetimeMarkerKey,
   insightsReleaseKey,
-  type ReleaseReference,
-} from "@hot-updater/plugin-core";
+} from "@hot-updater/plugin-core/internal";
 import type {
-  InsightsStorageAdapter,
+  InsightsProjectionBackend,
   PreparedInsightsEvent,
 } from "@hot-updater/plugin-core/internal";
 import { type Kysely, sql } from "kysely";
@@ -192,9 +192,9 @@ const commit = async (
     return "committed";
   });
 
-export const createPostgresInsightsStorage = (
+export const createPostgresInsightsProjection = (
   db: Kysely<Database>,
-): InsightsStorageAdapter => ({
+): InsightsProjectionBackend => ({
   async readRecordContext({ installId, lifetimeKey }) {
     const state = await sql<{
       revision: number | string;

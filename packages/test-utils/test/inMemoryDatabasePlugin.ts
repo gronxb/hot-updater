@@ -5,9 +5,10 @@ import {
   type DatabasePlugin,
 } from "@hot-updater/plugin-core";
 import {
-  createMemoryInsightsStorage,
+  createMemoryInsightsProjection,
   latestInsightsWhere,
   latestInsightsCountGroups,
+  recordProjectedInsightsEvent,
 } from "@hot-updater/plugin-core/internal";
 import {
   createDatabasePluginAdapter,
@@ -418,18 +419,17 @@ const createImplementation = (tables: Tables): DatabasePluginImplementation => {
     return result;
   };
 
-  const insightsStorage = createMemoryInsightsStorage({
+  const insightsProjection = createMemoryInsightsProjection({
     onEvent: (event) => tables.bundle_events.rows.push(event),
   });
 
   return {
     ...createCrudImplementation(tables),
-    insightsStorage,
-    recordInsights: ({ event }) =>
-      withMutationLock(() => {
-        if (!tables.bundle_events.rows.some(({ id }) => id === event.id))
-          tables.bundle_events.rows.push(structuredClone(event));
-      }),
+    recordInsights: (input) =>
+      withMutationLock(() =>
+        recordProjectedInsightsEvent(insightsProjection, input),
+      ),
+    getReleaseActivity: (input) => insightsProjection.getReleaseActivity(input),
     findLatestInsightsEvents: async (input) =>
       latestEvents(tables.bundle_events.rows)
         .filter((row) => matchesAll(row, latestInsightsWhere(input)))

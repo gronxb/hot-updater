@@ -1,13 +1,13 @@
 import {
   createDatabasePlugin,
   compareInsightsText,
-  recordProjectedInsightsEvent,
   type BundleEventRow,
 } from "@hot-updater/plugin-core";
 import {
   latestInsightsWhere,
   latestInsightsCountGroups,
-  createMemoryInsightsStorage,
+  createMemoryInsightsProjection,
+  recordProjectedInsightsEvent,
 } from "@hot-updater/plugin-core/internal";
 import {
   createDatabasePluginAdapter,
@@ -36,7 +36,7 @@ export const mockDatabase = (config: MockDatabaseConfig) => {
   const implementation: DatabasePluginImplementation = (() => {
     const data = config.data ?? createMockDatabaseData();
     const state = createMockDatabaseState(data);
-    const insightsStorage = createMemoryInsightsStorage({
+    const insightsProjection = createMemoryInsightsProjection({
       onEvent: (event) => data.bundleEvents.set(event.id, event),
     });
     let operationQueue: Promise<void> = Promise.resolve();
@@ -70,8 +70,9 @@ export const mockDatabase = (config: MockDatabaseConfig) => {
       findOne: (input) => read(() => state.findOne(input)),
       findMany: (input) => read(() => state.findMany(input)),
       recordInsights: (input) =>
-        mutate(() => recordProjectedInsightsEvent(insightsStorage, input)),
-      insightsStorage,
+        mutate(() => recordProjectedInsightsEvent(insightsProjection, input)),
+      getReleaseActivity: (input) =>
+        insightsProjection.getReleaseActivity(input),
       findLatestInsightsEvents: (input) =>
         read(async () => {
           const rows = latestEvents(data.bundleEvents.values()).filter((row) =>

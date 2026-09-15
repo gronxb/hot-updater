@@ -17,12 +17,14 @@ import {
   insightsReleaseKey,
   latestInsightsWhere,
   latestInsightsCountGroups,
+  recordProjectedInsightsEvent,
 } from "@hot-updater/plugin-core/internal";
 import type {
   CreateDatabaseImplementationInput,
   DatabasePluginImplementation,
   DeleteDatabaseImplementationInput,
   FindOneDatabaseImplementationInput,
+  InsightsProjectionBackend,
   PreparedInsightsEvent,
   ReleaseReference,
   UpdateDatabaseImplementationInput,
@@ -752,28 +754,8 @@ ON CONFLICT(bucket_key) DO UPDATE SET
 
 export const createD1Implementation = (
   executor: D1Executor,
-): DatabasePluginImplementation => ({
-  async recordInsights({ event }) {
-    const query = insertQuery({ model: "bundle_events", data: event });
-    await executor.batch([
-      {
-        sql: query.sql.replace(" RETURNING *", " ON CONFLICT(id) DO NOTHING"),
-        params: query.params,
-      },
-      {
-        sql: `INSERT INTO bundle_event_heads (install_id, id, received_at_ms, user_id, platform, channel, type, from_bundle_id, to_bundle_id)
-SELECT install_id, id, received_at_ms, user_id, platform, channel, type, from_bundle_id, to_bundle_id
-FROM bundle_events WHERE id = json_extract(?, '$')
-ON CONFLICT(install_id) DO UPDATE SET
-  id = excluded.id, received_at_ms = excluded.received_at_ms, user_id = excluded.user_id,
-  platform = excluded.platform, channel = excluded.channel, type = excluded.type,
-  from_bundle_id = excluded.from_bundle_id, to_bundle_id = excluded.to_bundle_id
-WHERE (excluded.received_at_ms, excluded.id) > (bundle_event_heads.received_at_ms, bundle_event_heads.id)`,
-        params: encodeD1Values([event.id]),
-      },
-    ]);
-  },
-  insightsStorage: {
+): DatabasePluginImplementation => {
+  const releaseActivityProjection: InsightsProjectionBackend = {
     async readRecordContext({ installId, lifetimeKey }) {
       const [states = [], markers = []] = await executor.batch([
         {
@@ -994,137 +976,143 @@ ORDER BY platform ASC, channel ASC, release_id ASC, hour_start_ms ASC`,
         }),
       };
     },
-  },
-  async findLatestInsightsEvents(input) {
-    const where = buildD1Where(latestInsightsWhere(input));
-    const rows = await executor.query(
-      `SELECT event.* FROM (SELECT id, install_id FROM bundle_event_heads${where.sql} ORDER BY install_id ASC LIMIT json_extract(?, '$')) AS head JOIN bundle_events AS event ON event.id = head.id ORDER BY head.install_id ASC`,
-      [
-        ...where.params,
-        ...encodeD1Values(["installId" in input ? 1 : input.limit]),
-      ],
-    );
-    return rows.map((row) => parseD1Row("bundle_events", row));
-  },
-  async countLatestInsightsEvents(input) {
-    const groups = latestInsightsCountGroups(input).map(buildD1Where);
-    const where = {
-      sql: ` WHERE (${groups.map((group) => `(${group.sql.replace(/^ WHERE /, "")})`).join(" OR ")})`,
-      params: groups.flatMap((group) => group.params),
-    };
-    const rows = await executor.query(
-      `SELECT COUNT(*) AS count FROM bundle_event_heads${where.sql}`,
-      where.params,
-    );
-    const first = rows[0];
-    const count =
-      typeof first === "object" && first !== null
-        ? Reflect.get(first, "count")
-        : undefined;
-    if (typeof count !== "number")
-      throw new Error("Invalid Insights count result.");
-    return count;
-  },
-  async create(input) {
-    const query = insertQuery(input);
-    const rows = await executor.query(query.sql, query.params);
-    switch (input.model) {
-      case "bundles":
-        return parseD1Row("bundles", rows[0]);
-      case "bundle_patches":
-        return parseD1Row("bundle_patches", rows[0]);
-      case "channels":
-        return parseD1Row("channels", rows[0]);
-      case "bundle_events":
-        return parseD1Row("bundle_events", rows[0]);
-
-      case "api_keys":
-        return parseD1Row("api_keys", rows[0]);
-      case "releases":
-        return parseD1Row("releases", rows[0]);
-      case "release_catalogs":
-        return parseD1Row("release_catalogs", rows[0]);
-    }
-  },
-  async update(input) {
-    const query = updateQuery(input);
-    const rows = await executor.query(query.sql, query.params);
-    if (rows[0] === undefined) return null;
-    switch (input.model) {
-      case "bundles":
-        return parseD1Row("bundles", rows[0]);
-      case "api_keys":
-        return parseD1Row("api_keys", rows[0]);
-      case "releases":
-        return parseD1Row("releases", rows[0]);
-      case "release_catalogs":
-        return parseD1Row("release_catalogs", rows[0]);
-    }
-  },
-  async delete(input) {
-    const query = deleteQuery(input);
-    await executor.query(query.sql, query.params);
-  },
-  count: (input) => countD1Rows(executor, input),
-  async findOne(input: FindOneDatabaseImplementationInput) {
-    const where = buildD1Where(input.where);
-    const rows = await executor.query(
-      `SELECT * FROM ${d1TableNames[input.model]}${where.sql} LIMIT 1`,
-      where.params,
-    );
-    if (rows[0] === undefined) return null;
-    switch (input.model) {
-      case "bundles":
-        return parseD1Row("bundles", rows[0]);
-      case "bundle_patches":
-        return parseD1Row("bundle_patches", rows[0]);
-      case "channels":
-        return parseD1Row("channels", rows[0]);
-      case "api_keys":
-        return parseD1Row("api_keys", rows[0]);
-      case "releases":
-        return parseD1Row("releases", rows[0]);
-      case "release_catalogs":
-        return parseD1Row("release_catalogs", rows[0]);
-    }
-  },
-  findMany: (input) => findManyD1Rows(executor, input),
-  insertChannel: (input) => insertChannel(executor, input),
-  deleteChannel: (input) => deleteChannel(executor, input),
-  async commit(input) {
-    if (input.changes.length === 0) return { committed: true };
-    const expectations = input.expectations ?? [];
-    const conflict = await expectationConflict(executor, expectations);
-    if (conflict !== null) return conflict;
-    const plan = createCommitPlan(input);
-    try {
-      return resultForPlan(plan, await executor.batch(plan.statements));
-    } catch (error) {
-      if (expectations.length === 0 || !isExpectationConflictError(error)) {
-        throw error;
-      }
-      return (
-        (await expectationConflict(executor, expectations)) ?? {
-          committed: false,
-          conflict: {
-            actualVersion:
-              expectations[0].model === "releases"
-                ? expectations[0].revision
-                : expectations[0].generation,
-            changeIndex: -1,
-            expectedVersion:
-              expectations[0].model === "releases"
-                ? expectations[0].revision
-                : expectations[0].generation,
-            key:
-              expectations[0].model === "releases"
-                ? expectations[0].id
-                : expectations[0].scopeKey,
-            model: expectations[0].model,
-            reason: "version_conflict",
-          },
-        }
+  };
+  return {
+    recordInsights: (input) =>
+      recordProjectedInsightsEvent(releaseActivityProjection, input),
+    getReleaseActivity: (input) =>
+      releaseActivityProjection.getReleaseActivity(input),
+    async findLatestInsightsEvents(input) {
+      const where = buildD1Where(latestInsightsWhere(input));
+      const rows = await executor.query(
+        `SELECT event.* FROM (SELECT id, install_id FROM bundle_event_heads${where.sql} ORDER BY install_id ASC LIMIT json_extract(?, '$')) AS head JOIN bundle_events AS event ON event.id = head.id ORDER BY head.install_id ASC`,
+        [
+          ...where.params,
+          ...encodeD1Values(["installId" in input ? 1 : input.limit]),
+        ],
       );
-    }
-  },
-});
+      return rows.map((row) => parseD1Row("bundle_events", row));
+    },
+    async countLatestInsightsEvents(input) {
+      const groups = latestInsightsCountGroups(input).map(buildD1Where);
+      const where = {
+        sql: ` WHERE (${groups.map((group) => `(${group.sql.replace(/^ WHERE /, "")})`).join(" OR ")})`,
+        params: groups.flatMap((group) => group.params),
+      };
+      const rows = await executor.query(
+        `SELECT COUNT(*) AS count FROM bundle_event_heads${where.sql}`,
+        where.params,
+      );
+      const first = rows[0];
+      const count =
+        typeof first === "object" && first !== null
+          ? Reflect.get(first, "count")
+          : undefined;
+      if (typeof count !== "number")
+        throw new Error("Invalid Insights count result.");
+      return count;
+    },
+    async create(input) {
+      const query = insertQuery(input);
+      const rows = await executor.query(query.sql, query.params);
+      switch (input.model) {
+        case "bundles":
+          return parseD1Row("bundles", rows[0]);
+        case "bundle_patches":
+          return parseD1Row("bundle_patches", rows[0]);
+        case "channels":
+          return parseD1Row("channels", rows[0]);
+        case "bundle_events":
+          return parseD1Row("bundle_events", rows[0]);
+
+        case "api_keys":
+          return parseD1Row("api_keys", rows[0]);
+        case "releases":
+          return parseD1Row("releases", rows[0]);
+        case "release_catalogs":
+          return parseD1Row("release_catalogs", rows[0]);
+      }
+    },
+    async update(input) {
+      const query = updateQuery(input);
+      const rows = await executor.query(query.sql, query.params);
+      if (rows[0] === undefined) return null;
+      switch (input.model) {
+        case "bundles":
+          return parseD1Row("bundles", rows[0]);
+        case "api_keys":
+          return parseD1Row("api_keys", rows[0]);
+        case "releases":
+          return parseD1Row("releases", rows[0]);
+        case "release_catalogs":
+          return parseD1Row("release_catalogs", rows[0]);
+      }
+    },
+    async delete(input) {
+      const query = deleteQuery(input);
+      await executor.query(query.sql, query.params);
+    },
+    count: (input) => countD1Rows(executor, input),
+    async findOne(input: FindOneDatabaseImplementationInput) {
+      const where = buildD1Where(input.where);
+      const rows = await executor.query(
+        `SELECT * FROM ${d1TableNames[input.model]}${where.sql} LIMIT 1`,
+        where.params,
+      );
+      if (rows[0] === undefined) return null;
+      switch (input.model) {
+        case "bundles":
+          return parseD1Row("bundles", rows[0]);
+        case "bundle_patches":
+          return parseD1Row("bundle_patches", rows[0]);
+        case "channels":
+          return parseD1Row("channels", rows[0]);
+        case "api_keys":
+          return parseD1Row("api_keys", rows[0]);
+        case "releases":
+          return parseD1Row("releases", rows[0]);
+        case "release_catalogs":
+          return parseD1Row("release_catalogs", rows[0]);
+      }
+    },
+    findMany: (input) => findManyD1Rows(executor, input),
+    insertChannel: (input) => insertChannel(executor, input),
+    deleteChannel: (input) => deleteChannel(executor, input),
+    async commit(input) {
+      if (input.changes.length === 0) return { committed: true };
+      const expectations = input.expectations ?? [];
+      const conflict = await expectationConflict(executor, expectations);
+      if (conflict !== null) return conflict;
+      const plan = createCommitPlan(input);
+      try {
+        return resultForPlan(plan, await executor.batch(plan.statements));
+      } catch (error) {
+        if (expectations.length === 0 || !isExpectationConflictError(error)) {
+          throw error;
+        }
+        return (
+          (await expectationConflict(executor, expectations)) ?? {
+            committed: false,
+            conflict: {
+              actualVersion:
+                expectations[0].model === "releases"
+                  ? expectations[0].revision
+                  : expectations[0].generation,
+              changeIndex: -1,
+              expectedVersion:
+                expectations[0].model === "releases"
+                  ? expectations[0].revision
+                  : expectations[0].generation,
+              key:
+                expectations[0].model === "releases"
+                  ? expectations[0].id
+                  : expectations[0].scopeKey,
+              model: expectations[0].model,
+              reason: "version_conflict",
+            },
+          }
+        );
+      }
+    },
+  };
+};

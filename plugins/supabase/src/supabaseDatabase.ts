@@ -2,11 +2,13 @@ import type { BundleEventRow } from "@hot-updater/plugin-core";
 import {
   createDatabasePlugin,
   DatabasePluginInputError,
+} from "@hot-updater/plugin-core";
+import {
   insightsHourlyBucketKey,
   insightsLifetimeMarkerKey,
   insightsReleaseKey,
   recordProjectedInsightsEvent,
-} from "@hot-updater/plugin-core";
+} from "@hot-updater/plugin-core/internal";
 import {
   latestInsightsWhere,
   latestInsightsCountGroups,
@@ -19,7 +21,7 @@ import type {
   DatabaseImplementationResult,
   FindManyDatabaseImplementationInput,
   FindOneDatabaseImplementationInput,
-  InsightsStorageAdapter,
+  InsightsProjectionBackend,
   PreparedInsightsEvent,
   UpdateDatabaseImplementationInput,
 } from "@hot-updater/plugin-core/internal";
@@ -48,9 +50,9 @@ const isForeignKeyViolation = (error: unknown): boolean =>
   error !== null &&
   Reflect.get(error, "code") === "23503";
 
-const createSupabaseInsightsStorage = (
+const createSupabaseInsightsProjection = (
   supabase: SupabaseClient<Database>,
-): InsightsStorageAdapter => ({
+): InsightsProjectionBackend => ({
   async readRecordContext({ installId, lifetimeKey }) {
     const [stateResult, markerResult] = await Promise.all([
       supabase
@@ -209,11 +211,11 @@ const createSupabaseInsightsStorage = (
 const createSupabaseImplementation = (
   supabase: SupabaseClient<Database>,
 ): DatabasePluginImplementation => {
-  const insightsStorage = createSupabaseInsightsStorage(supabase);
+  const insightsProjection = createSupabaseInsightsProjection(supabase);
   const implementation: DatabasePluginImplementation = {
     recordInsights: (input) =>
-      recordProjectedInsightsEvent(insightsStorage, input),
-    insightsStorage,
+      recordProjectedInsightsEvent(insightsProjection, input),
+    getReleaseActivity: (input) => insightsProjection.getReleaseActivity(input),
     async findLatestInsightsEvents(input) {
       const limit = "installId" in input ? 1 : input.limit;
       const heads: Pick<BundleEventRow, "id" | "install_id">[] = [];

@@ -1,11 +1,11 @@
+import type { ReleaseReference } from "@hot-updater/plugin-core";
 import {
   insightsHourlyBucketKey,
   insightsLifetimeMarkerKey,
   insightsReleaseKey,
-  type ReleaseReference,
-} from "@hot-updater/plugin-core";
+} from "@hot-updater/plugin-core/internal";
 import type {
-  InsightsStorageAdapter,
+  InsightsProjectionBackend,
   PreparedInsightsEvent,
 } from "@hot-updater/plugin-core/internal";
 
@@ -219,10 +219,10 @@ const isRetryable = (error: unknown): boolean => {
   return code === "P2010" && isRecord(metadata) && metadata["code"] === "40001";
 };
 
-export const createPrismaInsightsStorage = (
+export const createPrismaInsightsProjection = (
   client: TransactionClient,
   provider: ORMSQLProvider,
-): InsightsStorageAdapter => ({
+): InsightsProjectionBackend => ({
   async readRecordContext({ installId, lifetimeKey }) {
     const markerKey =
       lifetimeKey === null

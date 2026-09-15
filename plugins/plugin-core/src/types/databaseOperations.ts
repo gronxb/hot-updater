@@ -300,12 +300,12 @@ export interface TransactionDatabasePluginImplementation {
 export interface DatabasePluginImplementation {
   findLatestInsightsEvents: import("./databasePlugin").InsightsModel["findLatestEvents"];
   countLatestInsightsEvents: import("./databasePlugin").InsightsModel["countLatestEvents"];
-  /** Native immutable event insert used by legacy/custom implementations. */
+  /** Persist an Insights event. The public input remains `{ event }`. */
   recordInsights(
     input: import("./databasePlugin").InsightsRecordEventInput,
   ): Promise<void>;
-  /** Required for bounded release activity in bundled providers. */
-  readonly insightsStorage?: import("./databasePlugin").InsightsStorageAdapter;
+  /** Optional bounded release activity capability. Raw-scan fallbacks are forbidden. */
+  getReleaseActivity?: import("./databasePlugin").InsightsModel["getReleaseActivity"];
   create(
     input: CreateDatabaseImplementationInput,
   ): Promise<DatabaseImplementationResult>;

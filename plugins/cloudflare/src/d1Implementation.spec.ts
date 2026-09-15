@@ -252,23 +252,33 @@ it("guards a generic Channel delete and reports a referenced conflict", async ()
   expect(recorded[1]?.sql).toContain("NOT EXISTS");
 });
 
-it("records the event and advances its head in one atomic batch", async () => {
-  let statements: readonly D1Statement[] = [];
+it("records the event, head, and projection state in one atomic batch", async () => {
+  const batches: (readonly D1Statement[])[] = [];
   const implementation = createD1Implementation({
-    query: () => Promise.reject(new Error("unexpected standalone query")),
+    query: () => Promise.resolve([]),
     async batch(input) {
-      statements = input;
+      batches.push(input);
       return [];
     },
   });
   const event = createBundleEventRowFixture("1", 100);
   await implementation.recordInsights({ event });
-  expect(statements).toHaveLength(2);
-  expect(statements[0]?.sql).toContain("INSERT INTO bundle_events");
-  expect(statements[0]?.sql).toContain("ON CONFLICT(id) DO NOTHING");
-  expect(statements[1]?.sql).toContain("INSERT INTO bundle_event_heads");
-  expect(statements[1]?.sql).toContain(
+  expect(batches).toHaveLength(2);
+  const commit = batches[1] ?? [];
+  expect(commit[0]?.sql).toContain("insights_guard");
+  expect(
+    commit.some(({ sql }) => sql.includes("INSERT INTO bundle_events")),
+  ).toBe(true);
+  const head = commit.find(({ sql }) =>
+    sql.includes("INSERT INTO bundle_event_heads"),
+  );
+  expect(head?.sql).toContain(
     "FROM bundle_events WHERE id = json_extract(?, '$')",
   );
-  expect(statements[1]?.params).toEqual([JSON.stringify(event.id)]);
+  expect(head?.params).toEqual([JSON.stringify(event.id)]);
+  expect(
+    commit.some(({ sql }) =>
+      sql.includes("INSERT INTO insights_install_states"),
+    ),
+  ).toBe(true);
 });

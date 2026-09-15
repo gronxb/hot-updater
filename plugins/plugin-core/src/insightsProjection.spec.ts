@@ -3,12 +3,10 @@ import { describe, expect, it, vi } from "vitest";
 import {
   prepareInsightsEvent,
   recordProjectedInsightsEvent,
+  type InsightsProjectionBackend,
+  type PreparedInsightsEvent,
 } from "./insightsProjection";
-import type {
-  BundleEventRow,
-  InsightsStorageAdapter,
-  PreparedInsightsEvent,
-} from "./types/internal";
+import type { BundleEventRow } from "./types/internal";
 
 const RELEASE_1 = "00000000-0000-7000-8000-000000000101";
 const RELEASE_2 = "00000000-0000-7000-8000-000000000102";
@@ -169,7 +167,7 @@ describe("Insights release projection", () => {
   it("retries conflicts with the same event and exits on duplicate", async () => {
     const commits: PreparedInsightsEvent[] = [];
     let revision = 0;
-    const storage: InsightsStorageAdapter = {
+    const storage: InsightsProjectionBackend = {
       readRecordContext: async () => ({
         revision: String(revision),
         state: null,
@@ -200,7 +198,7 @@ describe("Insights release projection", () => {
     let revision = 0;
     let state: string | null = null;
     const accepted = new Set<string>();
-    const storage: InsightsStorageAdapter = {
+    const storage: InsightsProjectionBackend = {
       readRecordContext: async () => ({
         revision: String(revision),
         state,

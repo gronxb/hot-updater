@@ -36,15 +36,15 @@ import {
   type DatabaseCommit,
   type DatabaseCommitResult,
   isDatabaseMetadataObject,
-  insightsLifetimeMarkerKey,
-  insightsReleaseKey,
-  recordProjectedInsightsEvent,
   type ReleaseReference,
   type ReleaseCatalogRow,
   type ReleaseRow,
 } from "@hot-updater/plugin-core";
 import {
   createDatabasePluginAdapter,
+  insightsLifetimeMarkerKey,
+  insightsReleaseKey,
+  recordProjectedInsightsEvent,
   type DatabaseDistinctOn,
   type DatabaseImplementationResult,
   type DatabaseModel,
@@ -52,7 +52,7 @@ import {
   type DatabasePluginImplementation,
   type DatabaseRow,
   type DatabaseWhere,
-  type InsightsStorageAdapter,
+  type InsightsProjectionBackend,
   type PreparedInsightsEvent,
 } from "@hot-updater/plugin-core/internal";
 
@@ -1634,8 +1634,12 @@ export const createDynamoDBCrud = (
   updateIndexName: string,
 ): DatabasePluginImplementation => ({
   recordInsights: (input) =>
-    recordProjectedInsightsEvent(createDynamoDBInsightsStorage(store), input),
-  insightsStorage: createDynamoDBInsightsStorage(store),
+    recordProjectedInsightsEvent(
+      createDynamoDBInsightsProjection(store),
+      input,
+    ),
+  getReleaseActivity: (input) =>
+    createDynamoDBInsightsProjection(store).getReleaseActivity(input),
   findLatestInsightsEvents: (input) =>
     createDynamoDBInsightsTable(store).findLatestEvents(input),
   countLatestInsightsEvents: (input) =>
@@ -3418,9 +3422,9 @@ const commitDynamoDBInsightsEvent = async (
   }
 };
 
-const createDynamoDBInsightsStorage = (
+const createDynamoDBInsightsProjection = (
   store: DynamoDBStore,
-): InsightsStorageAdapter => ({
+): InsightsProjectionBackend => ({
   async readRecordContext({ installId, lifetimeKey }) {
     const keys = [
       {
@@ -3598,7 +3602,7 @@ const insightsEventRange = (input: InsightsListEventsInput) => {
 export const createDynamoDBInsightsTable = (
   store: DynamoDBStore,
 ): InsightsModel => {
-  const storage = createDynamoDBInsightsStorage(store);
+  const storage = createDynamoDBInsightsProjection(store);
   return {
     recordEvent: (input) => recordProjectedInsightsEvent(storage, input),
     async listEvents(input) {

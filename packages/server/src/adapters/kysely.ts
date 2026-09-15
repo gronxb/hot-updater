@@ -1,9 +1,7 @@
-import {
-  createDatabasePlugin,
-  recordProjectedInsightsEvent,
-} from "@hot-updater/plugin-core";
+import { createDatabasePlugin } from "@hot-updater/plugin-core";
 import {
   createDatabasePluginAdapter,
+  recordProjectedInsightsEvent,
   type DatabasePluginImplementation,
 } from "@hot-updater/plugin-core/internal";
 import type { Kysely } from "kysely";
@@ -15,7 +13,7 @@ import type {
   RelationMode,
 } from "../db/types";
 import { createKyselyCrud } from "./kyselyCrud";
-import { createKyselyInsightsStorage } from "./kyselyInsightsStorage";
+import { createKyselyInsightsProjection } from "./kyselyInsightsProjection";
 
 type KyselySQLProvider = Exclude<ORMSQLProvider, "mssql">;
 
@@ -33,12 +31,15 @@ const createImplementation = <TDatabase extends object>(
   const db = config.db;
   const relationMode = config.relationMode ?? "foreign-keys";
   const crud = createKyselyCrud(db, config.provider, relationMode);
-  const insightsStorage = createKyselyInsightsStorage(db, config.provider);
+  const insightsProjection = createKyselyInsightsProjection(
+    db,
+    config.provider,
+  );
   return {
     ...crud,
     recordInsights: (input) =>
-      recordProjectedInsightsEvent(insightsStorage, input),
-    insightsStorage,
+      recordProjectedInsightsEvent(insightsProjection, input),
+    getReleaseActivity: (input) => insightsProjection.getReleaseActivity(input),
     deleteChannel: (input) =>
       db
         .transaction()

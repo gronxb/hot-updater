@@ -5,6 +5,7 @@ import {
 } from "@hot-updater/plugin-core";
 import {
   createDatabasePluginAdapter,
+  recordProjectedInsightsEvent,
   type DatabaseImplementationResult,
   type DatabasePluginImplementation,
   type FindManyDatabaseImplementationInput,
@@ -30,10 +31,9 @@ import { hasNullOrderOverrides, sortRowsByOrder } from "./databasePluginUtils";
 import {
   queryPrismaLatestEvents,
   recordPrismaEventWithCte,
-  updatePrismaEventHead,
 } from "./prismaInsights";
 import { createPrismaOrderBy, createPrismaWhere } from "./prismaQuery";
-import { createPrismaInsightsStorage } from "./prismaReleaseActivity";
+import { createPrismaInsightsProjection } from "./prismaReleaseActivity";
 import {
   getPrismaDelegate,
   parsePrismaBundleEventRow,
@@ -376,35 +376,25 @@ const createPrismaImplementation = (
   const implementation: DatabasePluginImplementation = {
     ...crud,
     ...(hasCallbackTransaction(client) && provider !== "mssql"
-      ? { insightsStorage: createPrismaInsightsStorage(client, provider) }
+      ? {
+          getReleaseActivity: (
+            input: Parameters<
+              NonNullable<DatabasePluginImplementation["getReleaseActivity"]>
+            >[0],
+          ) =>
+            createPrismaInsightsProjection(client, provider).getReleaseActivity(
+              input,
+            ),
+        }
       : {}),
     async recordInsights({ event }) {
       if (!hasCallbackTransaction(client)) {
         return recordPrismaEventWithCte(client, provider, event);
       }
-      const events = getPrismaDelegate(client, "bundle_events");
-      try {
-        await runPrismaTransaction(
-          client,
-          provider === "cockroachdb" ? "serializable" : "default",
-          async (transaction) => {
-            await getPrismaDelegate(transaction, "bundle_events").create({
-              data: event,
-            });
-            await updatePrismaEventHead(transaction, provider, event);
-          },
-        );
-      } catch (error) {
-        if (
-          typeof error !== "object" ||
-          error === null ||
-          !("code" in error) ||
-          error.code !== "P2002"
-        )
-          throw error;
-        if ((await events.findFirst({ where: { id: event.id } })) === null)
-          throw error;
-      }
+      return recordProjectedInsightsEvent(
+        createPrismaInsightsProjection(client, provider),
+        { event },
+      );
     },
     async findLatestInsightsEvents(input) {
       const rows = await queryPrismaLatestEvents(client, provider, input);
