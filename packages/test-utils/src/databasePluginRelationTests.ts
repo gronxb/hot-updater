@@ -70,7 +70,7 @@ export const registerDatabasePluginRelationTests = (
       ).resolves.toBeNull();
     });
 
-    it("cascades patch deletion from either referenced bundle", async () => {
+    it("rejects deleting a referenced base and cascades from the owner", async () => {
       const plugin = state.getPlugin();
       const base = await insertRow(plugin, "91");
       const owner = createBundleRowFixture("92");
@@ -81,18 +81,34 @@ export const registerDatabasePluginRelationTests = (
         { model: "bundlePatches", operation: "insert", row: patch },
       );
 
-      await commit(plugin, {
-        model: "bundles",
-        operation: "delete",
-        where: { id: base.id },
+      await expect(
+        commit(plugin, {
+          model: "bundles",
+          operation: "delete",
+          where: { id: base.id },
+        }),
+      ).resolves.toEqual({
+        committed: false,
+        conflict: { changeIndex: 0, reason: "referenced" },
       });
 
       await expect(
         plugin.models.bundlePatches.findByBundleIds([owner.id]),
-      ).resolves.toEqual([]);
+      ).resolves.toEqual([patch]);
       await expect(plugin.models.bundles.findById(owner.id)).resolves.toEqual(
         owner,
       );
+
+      await expect(
+        commit(plugin, {
+          model: "bundles",
+          operation: "delete",
+          where: { id: owner.id },
+        }),
+      ).resolves.toEqual({ committed: true });
+      await expect(
+        plugin.models.bundlePatches.findByBundleIds([owner.id]),
+      ).resolves.toEqual([]);
     });
   });
 };

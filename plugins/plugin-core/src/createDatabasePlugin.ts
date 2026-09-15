@@ -1,3 +1,6 @@
+import { MAX_BUNDLE_ARTIFACT_BYTES } from "./bundlePackagingLimits";
+import { MAX_BUNDLE_PATCHES } from "./bundlePatchLimits";
+import { isContentAddressedAssetFileHash } from "./contentAddressedAssets";
 import { createDatabasePluginCrud } from "./databasePluginCrud";
 import { DatabasePluginInputError } from "./databasePluginCrudValidation";
 import { isChannelText, isRecord } from "./databasePluginCrudValidationFields";
@@ -18,6 +21,8 @@ import {
 import type {
   BundleEventRow,
   BundlePatchRow,
+  BundlePatchPublishInput,
+  BundlePatchPublishResult,
   BundleRow,
   ChannelInsertInput,
   ChannelInsertResult,
@@ -128,6 +133,16 @@ export class DatabaseAtomicCommitUnsupportedError extends Error {
   }
 }
 
+export class DatabasePatchPublishUnsupportedError extends Error {
+  readonly name = "DatabasePatchPublishUnsupportedError";
+
+  constructor(readonly pluginName: string) {
+    super(
+      `Database plugin "${pluginName}" cannot atomically publish bundle patches.`,
+    );
+  }
+}
+
 /**
  * Internal provider signal for a delete rejected by a live reference.
  *
@@ -175,6 +190,110 @@ const toBundleWhere = (
   if (where.id?.in !== undefined)
     filters.push({ field: "id", operator: "in", value: where.id.in });
   return filters;
+};
+
+const validateBundlePatchPublishInput = (
+  input: BundlePatchPublishInput,
+): BundlePatchRow => {
+  const row = { ...input.row, order_index: 0 } satisfies BundlePatchRow;
+  validateCreateData("bundle_patches", row);
+  if (input.position !== "primary" && input.position !== "last") {
+    throw new DatabasePluginInputError("invalid-data");
+  }
+  if (row.id !== `${row.bundle_id}:${row.base_bundle_id}`) {
+    throw new DatabasePluginInputError("invalid-data");
+  }
+  if (row.bundle_id === row.base_bundle_id) {
+    throw new DatabasePluginInputError("invalid-data");
+  }
+  if (row.byte_size > MAX_BUNDLE_ARTIFACT_BYTES) {
+    throw new DatabasePluginInputError("invalid-data");
+  }
+  if (
+    !isContentAddressedAssetFileHash(row.base_file_hash) ||
+    !isContentAddressedAssetFileHash(row.patch_file_hash)
+  ) {
+    throw new DatabasePluginInputError("invalid-data");
+  }
+  return row;
+};
+
+export const publishBundlePatchInTransaction = async (
+  database: DatabasePluginCrud,
+  input: BundlePatchPublishInput,
+): Promise<BundlePatchPublishResult> => {
+  const row = validateBundlePatchPublishInput(input);
+
+  const [owner, base] = await Promise.all([
+    database.findOne({
+      model: "bundles",
+      where: [{ field: "id", value: row.bundle_id }],
+    }),
+    database.findOne({
+      model: "bundles",
+      where: [{ field: "id", value: row.base_bundle_id }],
+    }),
+  ]);
+  if (owner === null || base === null) {
+    return { published: false, reason: "not_found" };
+  }
+
+  const existing: BundlePatchRow[] = [];
+  for (let offset = 0; ; offset += PAGE_SIZE) {
+    const page = await database.findMany({
+      model: "bundle_patches",
+      where: [{ field: "bundle_id", value: row.bundle_id }],
+      limit: PAGE_SIZE,
+      offset,
+      orderBy: [
+        { field: "order_index", direction: "asc" },
+        { field: "id", direction: "asc" },
+      ],
+    });
+    existing.push(...(page as readonly BundlePatchRow[]));
+    if (page.length < PAGE_SIZE) break;
+  }
+
+  const touched = await database.update({
+    model: "bundles",
+    where: [{ field: "id", value: row.bundle_id }],
+    update: { file_hash: owner.file_hash },
+  });
+  if (touched === null) {
+    return { published: false, reason: "not_found" };
+  }
+
+  const previous = existing.find(({ id }) => id === row.id) ?? null;
+  if (previous === null && existing.length >= MAX_BUNDLE_PATCHES) {
+    return { published: false, reason: "limit_exceeded" };
+  }
+  const touchedBase = await database.update({
+    model: "bundles",
+    where: [{ field: "id", value: row.base_bundle_id }],
+    update: { file_hash: base.file_hash },
+  });
+  if (touchedBase === null) {
+    return { published: false, reason: "not_found" };
+  }
+  const remaining = existing.filter(({ id }) => id !== row.id);
+  const ordered =
+    input.position === "primary" ? [row, ...remaining] : [...remaining, row];
+  const patches = ordered.map(
+    (patch, orderIndex): BundlePatchRow => ({
+      ...patch,
+      order_index: orderIndex,
+    }),
+  );
+
+  await database.delete({
+    model: "bundle_patches",
+    where: [{ field: "bundle_id", value: row.bundle_id }],
+  });
+  for (const patch of patches) {
+    await database.create({ model: "bundle_patches", data: patch });
+  }
+
+  return { patches, previous, published: true };
 };
 
 const assertReleaseReferences = async (
@@ -229,6 +348,24 @@ const applyChange = async (
             (await database.count({
               model: "releases",
               where: [{ field: "bundle_id", value: change.where.id }],
+            })) > 0
+          ) {
+            throw new DatabaseCommitConflictError({
+              committed: false,
+              conflict: { changeIndex, reason: "referenced" },
+            });
+          }
+          if (
+            (await database.count({
+              model: "bundle_patches",
+              where: [
+                { field: "base_bundle_id", value: change.where.id },
+                {
+                  field: "bundle_id",
+                  operator: "ne",
+                  value: change.where.id,
+                },
+              ],
             })) > 0
           ) {
             throw new DatabaseCommitConflictError({
@@ -421,11 +558,69 @@ const applyChanges = async (
   database: DatabasePluginCrud,
   input: DatabaseCommit,
 ): Promise<DatabaseCommitResult> => {
+  await assertBundlePatchCommitLimit(database, input);
   await applyExpectations(database, input.expectations ?? []);
   for (const [changeIndex, change] of input.changes.entries()) {
     await applyChange(database, change, changeIndex);
   }
   return { committed: true };
+};
+
+const assertBundlePatchCommitLimit = async (
+  database: DatabasePluginCrud,
+  input: DatabaseCommit,
+): Promise<void> => {
+  const ownerIds = new Set<string>();
+  for (const change of input.changes) {
+    if (change.model === "bundlePatches") {
+      ownerIds.add(
+        change.operation === "insert"
+          ? change.row.bundle_id
+          : change.where.bundleId,
+      );
+    } else if (change.model === "bundles" && change.operation === "delete") {
+      ownerIds.add(change.where.id);
+    }
+  }
+  if (ownerIds.size === 0) return;
+
+  const patches = new Map<string, Set<string>>(
+    [...ownerIds].map((ownerId) => [ownerId, new Set<string>()]),
+  );
+  for (let offset = 0; ; offset += PAGE_SIZE) {
+    const page = (await database.findMany({
+      model: "bundle_patches",
+      where: [
+        {
+          field: "bundle_id",
+          operator: "in",
+          value: [...ownerIds],
+        },
+      ],
+      limit: PAGE_SIZE,
+      offset,
+      orderBy: [{ field: "id", direction: "asc" }],
+    })) as readonly BundlePatchRow[];
+    for (const patch of page) patches.get(patch.bundle_id)?.add(patch.id);
+    if (page.length < PAGE_SIZE) break;
+  }
+
+  for (const change of input.changes) {
+    if (change.model === "bundlePatches") {
+      const ownerId =
+        change.operation === "insert"
+          ? change.row.bundle_id
+          : change.where.bundleId;
+      const ownerPatches = patches.get(ownerId)!;
+      if (change.operation === "insert") ownerPatches.add(change.row.id);
+      else ownerPatches.clear();
+    } else if (change.model === "bundles" && change.operation === "delete") {
+      patches.get(change.where.id)?.clear();
+    }
+  }
+  if ([...patches.values()].some((owner) => owner.size > MAX_BUNDLE_PATCHES)) {
+    throw new DatabasePluginInputError("invalid-data");
+  }
 };
 
 const hasOnlyKeys = (
@@ -490,6 +685,23 @@ const validateDatabaseChange = (change: unknown): void => {
             throw new DatabasePluginInputError("invalid-data");
           }
           validateCreateData("bundle_patches", change.row);
+          if (
+            !isRecord(change.row) ||
+            Reflect.get(change.row, "bundle_id") ===
+              Reflect.get(change.row, "base_bundle_id") ||
+            Reflect.get(change.row, "id") !==
+              `${Reflect.get(change.row, "bundle_id")}:${Reflect.get(change.row, "base_bundle_id")}` ||
+            (Reflect.get(change.row, "byte_size") as number) >
+              MAX_BUNDLE_ARTIFACT_BYTES ||
+            !isContentAddressedAssetFileHash(
+              Reflect.get(change.row, "base_file_hash"),
+            ) ||
+            !isContentAddressedAssetFileHash(
+              Reflect.get(change.row, "patch_file_hash"),
+            )
+          ) {
+            throw new DatabasePluginInputError("invalid-data");
+          }
           return;
         case "delete":
           if (!hasOnlyKeys(change, ["model", "operation", "where"])) {
@@ -710,6 +922,16 @@ export const createDatabasePluginAdapter = (
     validateDatabaseCommit(input);
     return executeCommit(input);
   };
+  const executeBundlePatchPublish = implementation.publishBundlePatch;
+  const publishPatch = async (
+    input: BundlePatchPublishInput,
+  ): Promise<BundlePatchPublishResult> => {
+    validateBundlePatchPublishInput(input);
+    if (!executeBundlePatchPublish) {
+      throw new DatabasePatchPublishUnsupportedError(name);
+    }
+    return executeBundlePatchPublish(input);
+  };
 
   const findApiKeyByHash = (
     database: DatabasePluginCrud,
@@ -755,6 +977,7 @@ export const createDatabasePluginAdapter = (
             if (page.length < PAGE_SIZE) return rows;
           }
         },
+        publish: publishPatch,
       },
       releases: {
         findById: (id): Promise<ReleaseRow | null> =>

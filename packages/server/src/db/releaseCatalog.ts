@@ -1,5 +1,7 @@
 import {
   createReleaseCatalogScopeKey,
+  isArtifactIntegrityToken,
+  MAX_UPDATE_ARTIFACT_RESPONSE_BYTES,
   NIL_UUID,
   RELEASE_CATALOG_FALLBACK_POLICY,
   RELEASE_CATALOG_SCHEMA_VERSION,
@@ -8,8 +10,10 @@ import {
 } from "@hot-updater/core";
 import {
   createDatabaseClient,
+  MAX_BUNDLE_ARCHIVE_BYTES,
   projectCompiledCatalog,
   projectCompiledRollbackCatalog,
+  rowToBundle,
   type CompiledReleaseCatalog,
   type DatabasePlugin,
 } from "@hot-updater/plugin-core";
@@ -18,6 +22,9 @@ import { resolveManifestArtifacts } from "./updateArtifacts";
 
 type ResolveFileUrl = (storageUri: string | null) => Promise<string | null>;
 type ReadStorageText = (storageUri: string) => Promise<string | null>;
+
+const getUtf8ByteSize = (value: string) =>
+  new TextEncoder().encode(value).byteLength;
 
 export type ReleaseCatalogRequest =
   | {
@@ -118,31 +125,63 @@ export const createArtifactResolver = (input: {
   readonly resolveFileUrl: ResolveFileUrl;
 }) => {
   const databaseClient = createDatabaseClient(input.database);
+  const getBundleForArtifact = async (bundleId: string) => {
+    try {
+      return await databaseClient.getBundleById(bundleId);
+    } catch {
+      const row = await input.database.models.bundles.findById(bundleId);
+      return row ? rowToBundle(row) : null;
+    }
+  };
 
   return async (
     targetBundleId: string,
     currentBundleId: string,
   ): Promise<ArtifactInfo | null> => {
     const [targetBundle, currentBundle] = await Promise.all([
-      databaseClient.getBundleById(targetBundleId),
+      getBundleForArtifact(targetBundleId),
       currentBundleId === NIL_UUID
         ? null
-        : databaseClient.getBundleById(currentBundleId),
+        : getBundleForArtifact(currentBundleId),
     ]);
     if (targetBundle === null) return null;
-    const fileUrl = await input.resolveFileUrl(targetBundle.storageUri);
+    const archiveMetadataValid =
+      Number.isSafeInteger(targetBundle.archiveByteSize) &&
+      targetBundle.archiveByteSize >= 0 &&
+      targetBundle.archiveByteSize <= MAX_BUNDLE_ARCHIVE_BYTES;
+    const archiveFileHash =
+      archiveMetadataValid && isArtifactIntegrityToken(targetBundle.fileHash)
+        ? targetBundle.fileHash
+        : null;
+    let archiveFileUrl: string | null = null;
+    if (archiveFileHash !== null) {
+      try {
+        archiveFileUrl = await input.resolveFileUrl(targetBundle.storageUri);
+      } catch {
+        archiveFileUrl = null;
+      }
+    }
     const base: ArtifactInfo = {
-      fileHash: targetBundle.fileHash,
-      fileUrl,
+      fileHash: archiveFileUrl === null ? null : archiveFileHash,
+      fileUrl: archiveFileUrl,
     };
-    if (input.readStorageText === undefined) return base;
+    if (input.readStorageText === undefined) {
+      return archiveFileUrl === null ? null : base;
+    }
     const manifest = await resolveManifestArtifacts({
-      archiveUrlUsable: fileUrl !== null,
+      archiveUrlUsable: archiveFileUrl !== null,
       currentBundle,
       readStorageText: input.readStorageText,
       resolveFileUrl: input.resolveFileUrl,
       targetBundle,
     });
-    return manifest === null ? base : { ...base, ...manifest };
+    if (manifest === null) return archiveFileUrl === null ? null : base;
+    const artifact = { ...base, ...manifest };
+    return getUtf8ByteSize(JSON.stringify(artifact)) <=
+      MAX_UPDATE_ARTIFACT_RESPONSE_BYTES
+      ? artifact
+      : archiveFileUrl === null
+        ? null
+        : base;
   };
 };

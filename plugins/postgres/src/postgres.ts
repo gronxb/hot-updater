@@ -15,7 +15,9 @@ import type {
 } from "@hot-updater/plugin-core/internal";
 import {
   createDatabasePluginAdapter,
+  createTransactionDatabasePlugin,
   DatabaseRowReferencedError,
+  publishBundlePatchInTransaction,
 } from "@hot-updater/plugin-core/internal";
 import {
   Kysely,
@@ -392,6 +394,18 @@ WHERE (excluded.received_at_ms, excluded.id) > (bundle_event_heads.received_at_m
       .transaction()
       .execute((transaction) =>
         callback(createPostgresImplementation(transaction)),
+      ),
+  publishBundlePatch: (input) =>
+    db
+      .transaction()
+      .setIsolationLevel("serializable")
+      .execute((transaction) =>
+        publishBundlePatchInTransaction(
+          createTransactionDatabasePlugin(
+            createPostgresImplementation(transaction),
+          ),
+          input,
+        ),
       ),
   dispose: () => db.destroy(),
 });

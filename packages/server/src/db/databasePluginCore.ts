@@ -120,6 +120,17 @@ export function createDatabasePluginCore(
       return database.commit(input);
     },
 
+    async publishBundlePatch(input) {
+      await beforeOperation?.();
+      const publish = database.models.bundlePatches.publish;
+      if (!publish) {
+        throw new Error(
+          `Database plugin "${database.name}" cannot atomically publish bundle patches.`,
+        );
+      }
+      return publish(input);
+    },
+
     async getChannels(): Promise<readonly ChannelRow[]> {
       await beforeOperation?.();
       return client.getChannels();

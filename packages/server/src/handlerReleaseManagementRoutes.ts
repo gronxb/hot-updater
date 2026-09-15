@@ -1,6 +1,7 @@
 import {
   ReleaseCatalogMutationError,
   ReleaseManagementError,
+  type BundlePatchPublishInput,
   type DatabaseCommit,
   type ReleasePolicyPatch,
 } from "@hot-updater/plugin-core";
@@ -209,5 +210,11 @@ export const createReleaseManagementRouteHandlers = (): Record<
     if (api.commitDatabase === undefined) return unavailable();
     const input = (await request.json()) as DatabaseCommit;
     return Response.json({ data: await api.commitDatabase(input) });
+  },
+
+  publishBundlePatch: async (_params, request, api) => {
+    if (api.publishBundlePatch === undefined) return unavailable();
+    const input = (await request.json()) as BundlePatchPublishInput;
+    return Response.json({ data: await api.publishBundlePatch(input) });
   },
 });

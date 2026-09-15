@@ -356,13 +356,13 @@ describe("prismaAdapter capabilities", () => {
     const base = bundleRow("bundle-base");
     const owner = bundleRow("bundle-target");
     const patch = {
-      id: "patch-1",
+      id: `${owner.id}:${base.id}`,
       bundle_id: owner.id,
       base_bundle_id: base.id,
-      base_file_hash: "base-hash",
-      patch_file_hash: "patch-hash",
+      base_file_hash: "a".repeat(64),
+      patch_file_hash: "b".repeat(64),
       patch_storage_uri: "storage://patch",
-      byte_size: 3_000_000_002,
+      byte_size: 3_000_002,
       order_index: 0,
     };
 
@@ -420,13 +420,13 @@ describe("prismaAdapter capabilities", () => {
     const base = bundleRow("bundle-base");
     const owner = bundleRow("bundle-target");
     const patch = {
-      id: "patch-1",
+      id: `${owner.id}:${base.id}`,
       bundle_id: owner.id,
       base_bundle_id: base.id,
-      base_file_hash: "base-hash",
-      patch_file_hash: "patch-hash",
+      base_file_hash: "a".repeat(64),
+      patch_file_hash: "b".repeat(64),
       patch_storage_uri: "storage://patch",
-      byte_size: 3_000_000_002,
+      byte_size: 3_000_002,
       order_index: 0,
     };
     await plugin.models.channels.insert({

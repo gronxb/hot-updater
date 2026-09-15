@@ -2,7 +2,7 @@
   "name": "@hot-updater/core",
   "version": "1.0.0-rc.14",
   "type": "module",
-  "description": "React Native OTA solution for self-hosted",
+  "description": "Engine-neutral contracts for Hot Updater",
   "sideEffects": false,
   "main": "./dist/index.cjs",
   "module": "./dist/index.mjs",
@@ -18,16 +18,7 @@
     "dist",
     "package.json"
   ],
-  "keywords": [
-    "react-native",
-    "react-native-code-push",
-    "code-push",
-    "eas",
-    "eas-update",
-    "expo",
-    "expo-update",
-    "self-hosted"
-  ],
+  "keywords": ["ota", "over-the-air", "self-hosted"],
   "license": "MIT",
   "scripts": {
     "build": "tsdown",

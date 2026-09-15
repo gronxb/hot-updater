@@ -19,13 +19,17 @@ import {
 import { isDatabaseBundleEventMetadata } from "@hot-updater/plugin-core";
 import {
   type BundleEventRow,
+  type BundlePatchPublishInput,
+  type BundlePatchPublishResult,
   type BundlePatchRow,
   type BundleRow,
   type InsightsModel,
   type InsightsRecordEventInput,
   type InsightsBundleEventFilter,
   type InsightsListEventsInput,
+  isContentAddressedAssetFileHash,
   isInsightsMovementEvent,
+  MAX_BUNDLE_PATCHES,
   type ChannelDeleteInput,
   type ChannelDeleteResult,
   type ChannelInsertInput,
@@ -34,9 +38,11 @@ import {
   type ApiKeyRow,
   type ApiKeyModel,
   createDatabasePlugin,
+  DatabasePluginInputError,
   type DatabaseCommit,
   type DatabaseCommitResult,
   isDatabaseMetadataObject,
+  MAX_BUNDLE_ARTIFACT_BYTES,
   type ReleaseCatalogRow,
   type ReleaseRow,
 } from "@hot-updater/plugin-core";
@@ -1222,7 +1228,9 @@ export const queryCompleteOwnersPatches = async (
         ids.some((id) => patchesById.get(id)?.row.bundle_id !== owner.sk)
       );
     });
-    if (!mismatchedOwner) return patches.map(({ row }) => row);
+    if (!mismatchedOwner) {
+      return candidateIds.map((id) => patchesById.get(id)!.row);
+    }
     failedOwner = mismatchedOwner;
     if (attempt < 2) await waitForIndex(attempt);
   }
@@ -1240,6 +1248,60 @@ const createDynamoDBBundlePatchTable = (
     bundleIds.length === 0
       ? Promise.resolve([])
       : queryCompleteOwnersPatches(store, indexName, bundleIds),
+  async publish(
+    input: BundlePatchPublishInput,
+  ): Promise<BundlePatchPublishResult> {
+    if (
+      input.row.bundle_id === input.row.base_bundle_id ||
+      input.row.id !== `${input.row.bundle_id}:${input.row.base_bundle_id}` ||
+      input.row.byte_size > MAX_BUNDLE_ARTIFACT_BYTES ||
+      !isContentAddressedAssetFileHash(input.row.base_file_hash) ||
+      !isContentAddressedAssetFileHash(input.row.patch_file_hash)
+    ) {
+      throw new DatabasePluginInputError("invalid-data");
+    }
+    for (let attempt = 0; ; attempt += 1) {
+      const [owner, base] = await Promise.all([
+        loadBundleItem(store, input.row.bundle_id),
+        loadBundleItem(store, input.row.base_bundle_id),
+      ]);
+      if (!owner || !base) {
+        return { published: false, reason: "not_found" };
+      }
+      const existing = await queryCompleteOwnersPatches(store, indexName, [
+        input.row.bundle_id,
+      ]);
+      const previous = existing.find(({ id }) => id === input.row.id) ?? null;
+      if (previous === null && existing.length >= MAX_BUNDLE_PATCHES) {
+        return { published: false, reason: "limit_exceeded" };
+      }
+      const remaining = existing.filter(({ id }) => id !== input.row.id);
+      const ordered =
+        input.position === "primary"
+          ? [input.row, ...remaining]
+          : [...remaining, input.row];
+      const patches = ordered.map((row, order_index) => ({
+        ...row,
+        order_index,
+      }));
+      try {
+        const updated = await createDynamoDBAggregateMutations(
+          store,
+        ).updateBundleWithPatches({
+          bundleId: input.row.bundle_id,
+          patches,
+          update: {},
+        });
+        return updated
+          ? { patches, previous, published: true }
+          : { published: false, reason: "not_found" };
+      } catch (error) {
+        if (!isDynamoDBTransactionConflict(error) || attempt === 2) {
+          throw error;
+        }
+      }
+    }
+  },
 });
 
 const compare = (left: unknown, right: unknown): number => {
@@ -2022,10 +2084,26 @@ class DynamoDBDuplicatePatchError extends Error {
   }
 }
 
-const assertUniquePatches = (patches: readonly BundlePatchRow[]): void => {
+const assertValidAggregatePatches = (
+  ownerBundleId: string,
+  patches: readonly BundlePatchRow[],
+): void => {
+  if (patches.length > MAX_BUNDLE_PATCHES) {
+    throw new DatabasePluginInputError("invalid-data");
+  }
   const seen = new Set<string>();
   for (const patch of patches) {
-    if (seen.has(patch.id)) throw new DynamoDBDuplicatePatchError(patch.id);
+    if (
+      seen.has(patch.id) ||
+      patch.bundle_id !== ownerBundleId ||
+      patch.bundle_id === patch.base_bundle_id ||
+      patch.id !== `${ownerBundleId}:${patch.base_bundle_id}` ||
+      patch.byte_size > MAX_BUNDLE_ARTIFACT_BYTES ||
+      !isContentAddressedAssetFileHash(patch.base_file_hash) ||
+      !isContentAddressedAssetFileHash(patch.patch_file_hash)
+    ) {
+      throw new DatabasePluginInputError("invalid-data");
+    }
     seen.add(patch.id);
   }
 };
@@ -2150,7 +2228,7 @@ export const createDynamoDBAggregateMutations = (
   store: DynamoDBStore,
 ): DynamoDBAggregateMutations => ({
   async insertBundleWithPatches({ bundle, patches }): Promise<void> {
-    assertUniquePatches(patches);
+    assertValidAggregatePatches(bundle.id, patches);
     const counter = metadataUpdate(store, {
       bundles: 1,
       bundle_patches: patches.length,
@@ -2168,7 +2246,7 @@ export const createDynamoDBAggregateMutations = (
     update,
     patches,
   }): Promise<boolean> {
-    assertUniquePatches(patches);
+    assertValidAggregatePatches(bundleId, patches);
     const bundle = await loadBundleItem(store, bundleId);
     if (!bundle) return false;
     const currentPatches = (await loadPatchItems(store)).filter(
@@ -2477,6 +2555,18 @@ const compileAndCommitDynamoDBChanges = async (
                 conflict: { changeIndex, reason: "referenced" },
               };
             }
+            if (
+              [...patches.values()].some(
+                (patch) =>
+                  patch.base_bundle_id === change.where.id &&
+                  patch.bundle_id !== change.where.id,
+              )
+            ) {
+              return {
+                committed: false,
+                conflict: { changeIndex, reason: "referenced" },
+              };
+            }
             bundles.delete(change.where.id);
             for (const [id, patch] of patches) {
               if (
@@ -2591,6 +2681,13 @@ const compileAndCommitDynamoDBChanges = async (
     ownedPatchCounts.set(
       patch.bundle_id,
       (ownedPatchCounts.get(patch.bundle_id) ?? 0) + 1,
+    );
+  }
+  if (
+    [...ownedPatchCounts.values()].some((count) => count > MAX_BUNDLE_PATCHES)
+  ) {
+    throw new DynamoDBCommitStateError(
+      `A bundle cannot own more than ${MAX_BUNDLE_PATCHES} patches`,
     );
   }
   const channelReferenceCounts = new Map<string, number>();

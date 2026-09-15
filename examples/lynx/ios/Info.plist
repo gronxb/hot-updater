@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+	<dict>
+		<key>HOT_UPDATER_APP_BASE_URL</key>
+		<string>$(HOT_UPDATER_APP_BASE_URL)</string>
+		<key>HOT_UPDATER_FINGERPRINT_HASH</key>
+		<string>e680dd3f53e238e9a404d4f6d72f0502c116bc15634891f6649586e89d968913</string>
+	</dict>
+</plist>

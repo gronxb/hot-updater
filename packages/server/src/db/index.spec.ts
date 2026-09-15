@@ -1,7 +1,10 @@
 import { PGlite } from "@electric-sql/pglite";
 import type { Bundle } from "@hot-updater/core";
 import { NIL_UUID } from "@hot-updater/core";
-import { createStoragePlugin } from "@hot-updater/plugin-core";
+import {
+  createStoragePlugin,
+  MAX_BUNDLE_ARTIFACT_BYTES,
+} from "@hot-updater/plugin-core";
 import { sql } from "drizzle-orm";
 import { Kysely } from "kysely";
 import { PGliteDialect } from "kysely-pglite-dialect";
@@ -26,6 +29,7 @@ import {
   createHotUpdater as createRuntimeHotUpdater,
   type CreateHotUpdaterOptions,
 } from "../index";
+import { getSha256 } from "./bundleManifestValidation";
 import { bundleToRow } from "./bundleRows";
 import { createTableSql, hotUpdaterSchemaVersions } from "./hotUpdaterSchema";
 import { createMigrator, generateSchema } from "./index";
@@ -1093,7 +1097,7 @@ describe("server/db hotUpdater (PGlite + Kysely)", async () => {
         archiveByteSize: 1_024,
         id: "00000000-0000-0000-0000-000000000001",
         platform: "ios",
-        fileHash: "hash123",
+        fileHash: "a".repeat(64),
         gitCommitHash: null,
         storageUri: "s3://test-bucket/bundles/bundle.zip",
       };
@@ -1108,16 +1112,108 @@ describe("server/db hotUpdater (PGlite + Kysely)", async () => {
       );
     });
 
-    it("returns manifest metadata and hbc patch descriptors", async () => {
+    it("keeps archive delivery when stored optional patch rows are corrupt", async () => {
+      const baseBundle: Bundle = {
+        archiveByteSize: 1_024,
+        fileHash: "a".repeat(64),
+        gitCommitHash: null,
+        id: "00000000-0000-0000-0000-000000000010",
+        platform: "ios",
+        storageUri: "s3://test-bucket/bundles/base.zip",
+      };
+      const targetBundle: Bundle = {
+        ...baseBundle,
+        fileHash: "b".repeat(64),
+        id: "00000000-0000-0000-0000-000000000011",
+        storageUri: "s3://test-bucket/bundles/target.zip",
+      };
+      await hotUpdater.insertBundle(baseBundle);
+      await hotUpdater.insertBundle(targetBundle);
+      await db.exec(`
+        INSERT INTO bundle_patches (
+          id,
+          bundle_id,
+          base_bundle_id,
+          base_file_hash,
+          patch_file_hash,
+          patch_storage_uri,
+          byte_size,
+          order_index
+        ) VALUES (
+          '${targetBundle.id}:${baseBundle.id}',
+          '${targetBundle.id}',
+          '${baseBundle.id}',
+          '${"c".repeat(64)}',
+          '${"d".repeat(64)}',
+          's3://test-bucket/bundles/target.patch',
+          ${MAX_BUNDLE_ARTIFACT_BYTES + 1},
+          -1
+        )
+      `);
+
+      await expect(hotUpdater.getBundleById(targetBundle.id)).rejects.toThrow(
+        "Invalid database plugin input: invalid-result",
+      );
+      await expect(
+        hotUpdater.getArtifactInfo(targetBundle.id, NIL_UUID),
+      ).resolves.toEqual({
+        fileHash: targetBundle.fileHash,
+        fileUrl: "https://s3.example.com/test-bucket/bundles/target.zip",
+      });
+    });
+
+    it("returns manifest metadata and an explicitly selected patch descriptor", async () => {
       const currentManifestStorageUri =
         "s3://test-bucket/releases/bundles/00000000-0000-0000-0000-000000000101/manifest.json";
       const nextManifestStorageUri =
         "s3://test-bucket/releases/bundles/00000000-0000-0000-0000-000000000102/manifest.json";
+      const logoHash = "a".repeat(64);
+      const currentAssetHash = "b".repeat(64);
+      const nextAssetHash = "c".repeat(64);
+      const currentDownloadHash = "d".repeat(64);
+      const nextDownloadHash = "e".repeat(64);
+      const patchHash = "f".repeat(64);
+      const currentManifestText = JSON.stringify({
+        assets: {
+          "assets/logo.png": {
+            downloadByteSize: 100,
+            downloadCompression: null,
+            downloadFileHash: logoHash,
+            fileHash: logoHash,
+          },
+          "runtime/entry.lynxbc": {
+            downloadByteSize: 80,
+            downloadCompression: "br",
+            downloadFileHash: currentDownloadHash,
+            fileHash: currentAssetHash,
+          },
+        },
+        bundleId: "00000000-0000-0000-0000-000000000101",
+        patchAssetPath: "runtime/entry.lynxbc",
+      });
+      const nextManifestText = JSON.stringify({
+        assets: {
+          "assets/logo.png": {
+            downloadByteSize: 100,
+            downloadCompression: null,
+            downloadFileHash: logoHash,
+            fileHash: logoHash,
+          },
+          "runtime/entry.lynxbc": {
+            downloadByteSize: 80,
+            downloadCompression: "br",
+            downloadFileHash: nextDownloadHash,
+            fileHash: nextAssetHash,
+          },
+        },
+        bundleId: "00000000-0000-0000-0000-000000000102",
+        patchAssetPath: "runtime/entry.lynxbc",
+      });
       const olderBundle: Bundle = {
         archiveByteSize: 1_024,
         id: "00000000-0000-0000-0000-000000000100",
         platform: "ios",
-        fileHash: "hash-older-zip",
+        fileHash: "3".repeat(64),
         gitCommitHash: null,
         storageUri:
           "s3://test-bucket/releases/bundles/00000000-0000-0000-0000-000000000100/bundle.zip",
@@ -1126,72 +1222,46 @@ describe("server/db hotUpdater (PGlite + Kysely)", async () => {
         archiveByteSize: 1_024,
         id: "00000000-0000-0000-0000-000000000101",
         platform: "ios",
-        fileHash: "hash-current-zip",
+        fileHash: "4".repeat(64),
         gitCommitHash: null,
         storageUri:
           "s3://test-bucket/releases/bundles/00000000-0000-0000-0000-000000000101/bundle.zip",
         assetBaseStorageUri: "s3://test-bucket/releases/assets",
-        manifestFileHash: "sig:manifest-current",
+        manifestFileHash: getSha256(currentManifestText),
         manifestStorageUri: currentManifestStorageUri,
       };
       const nextBundle: Bundle = {
         archiveByteSize: 1_024,
         id: "00000000-0000-0000-0000-000000000102",
         platform: "ios",
-        fileHash: "hash-next-zip",
+        fileHash: "5".repeat(64),
         gitCommitHash: null,
         storageUri:
           "s3://test-bucket/releases/bundles/00000000-0000-0000-0000-000000000102/bundle.zip",
         assetBaseStorageUri: "s3://test-bucket/releases/assets",
-        manifestFileHash: "sig:manifest-next",
+        manifestFileHash: getSha256(nextManifestText),
         manifestStorageUri: nextManifestStorageUri,
         patches: [
           {
             baseBundleId: "00000000-0000-0000-0000-000000000100",
-            baseFileHash: "hash-older-bundle",
+            baseFileHash: "1".repeat(64),
             byteSize: 48,
-            patchFileHash: "hash-older-bsdiff",
+            patchFileHash: "2".repeat(64),
             patchStorageUri:
-              "s3://test-bucket/releases/bundles/00000000-0000-0000-0000-000000000102/patches/00000000-0000-0000-0000-000000000100/index.ios.bundle.bsdiff",
+              "s3://test-bucket/releases/bundles/00000000-0000-0000-0000-000000000102/patches/00000000-0000-0000-0000-000000000100/runtime/entry.lynxbc.bsdiff",
           },
           {
             baseBundleId: currentBundle.id,
-            baseFileHash: "hash-old-bundle",
+            baseFileHash: currentAssetHash,
             byteSize: 48,
-            patchFileHash: "hash-bsdiff",
+            patchFileHash: patchHash,
             patchStorageUri:
-              "s3://test-bucket/releases/bundles/00000000-0000-0000-0000-000000000102/patches/00000000-0000-0000-0000-000000000101/index.ios.bundle.bsdiff",
+              "s3://test-bucket/releases/bundles/00000000-0000-0000-0000-000000000102/patches/00000000-0000-0000-0000-000000000101/runtime/entry.lynxbc.bsdiff",
           },
         ],
       };
-      storageTexts.set(
-        currentManifestStorageUri,
-        JSON.stringify({
-          assets: {
-            "assets/logo.png": {
-              fileHash: "hash-logo",
-            },
-            "index.ios.bundle": {
-              fileHash: "hash-old-bundle",
-            },
-          },
-          bundleId: currentBundle.id,
-        }),
-      );
-      storageTexts.set(
-        nextManifestStorageUri,
-        JSON.stringify({
-          assets: {
-            "assets/logo.png": {
-              fileHash: "hash-logo",
-            },
-            "index.ios.bundle": {
-              fileHash: "hash-new-bundle",
-            },
-          },
-          bundleId: nextBundle.id,
-        }),
-      );
+      storageTexts.set(currentManifestStorageUri, currentManifestText);
+      storageTexts.set(nextManifestStorageUri, nextManifestText);
       const fetchMock = vi.fn<typeof fetch>(async () => {
         return new Response("manifest fetch should not be used", {
           status: 500,
@@ -1208,26 +1278,26 @@ describe("server/db hotUpdater (PGlite + Kysely)", async () => {
           hotUpdater.getArtifactInfo(nextBundle.id, currentBundle.id),
         ).resolves.toEqual({
           changedAssets: {
-            "index.ios.bundle": {
+            "runtime/entry.lynxbc": {
               file: {
                 compression: "br",
-                url: "https://s3.example.com/test-bucket/releases/assets/sha256/ha/hash-new-bundle.br",
+                url: `https://s3.example.com/test-bucket/releases/assets/sha256/ee/${nextDownloadHash}.br`,
               },
-              fileHash: "hash-new-bundle",
+              fileHash: nextAssetHash,
               patch: {
                 algorithm: "bsdiff",
                 baseBundleId: currentBundle.id,
-                baseFileHash: "hash-old-bundle",
-                patchFileHash: "hash-bsdiff",
+                baseFileHash: currentAssetHash,
+                patchFileHash: patchHash,
                 patchUrl:
-                  "https://s3.example.com/test-bucket/releases/bundles/00000000-0000-0000-0000-000000000102/patches/00000000-0000-0000-0000-000000000101/index.ios.bundle.bsdiff",
+                  "https://s3.example.com/test-bucket/releases/bundles/00000000-0000-0000-0000-000000000102/patches/00000000-0000-0000-0000-000000000101/runtime/entry.lynxbc.bsdiff",
               },
             },
           },
-          fileHash: "hash-next-zip",
+          fileHash: "5".repeat(64),
           fileUrl:
             "https://s3.example.com/test-bucket/releases/bundles/00000000-0000-0000-0000-000000000102/bundle.zip",
-          manifestFileHash: "sig:manifest-next",
+          manifestFileHash: getSha256(nextManifestText),
           manifestUrl:
             "https://s3.example.com/test-bucket/releases/bundles/00000000-0000-0000-0000-000000000102/manifest.json",
         });
@@ -1237,19 +1307,19 @@ describe("server/db hotUpdater (PGlite + Kysely)", async () => {
       }
     });
 
-    it("propagates manifest storage read failures", async () => {
+    it("uses archive fallback when manifest storage reads fail", async () => {
       const nextManifestStorageUri =
         "s3://test-bucket/releases/bundles/00000000-0000-0000-0000-000000000109/manifest.json";
       const nextBundle: Bundle = {
         archiveByteSize: 1_024,
         id: "00000000-0000-0000-0000-000000000109",
         platform: "ios",
-        fileHash: "hash-next-zip",
+        fileHash: "6".repeat(64),
         gitCommitHash: null,
         storageUri:
           "s3://test-bucket/releases/bundles/00000000-0000-0000-0000-000000000109/bundle.zip",
         assetBaseStorageUri: "s3://test-bucket/releases/assets",
-        manifestFileHash: "sig:manifest-next",
+        manifestFileHash: "0".repeat(64),
         manifestStorageUri: nextManifestStorageUri,
       };
 
@@ -1261,7 +1331,11 @@ describe("server/db hotUpdater (PGlite + Kysely)", async () => {
 
       await expect(
         hotUpdater.getArtifactInfo(nextBundle.id, NIL_UUID),
-      ).rejects.toThrow("storage read failed");
+      ).resolves.toEqual({
+        fileHash: nextBundle.fileHash,
+        fileUrl:
+          "https://s3.example.com/test-bucket/releases/bundles/00000000-0000-0000-0000-000000000109/bundle.zip",
+      });
     });
   });
 });

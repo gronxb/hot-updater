@@ -346,6 +346,14 @@ BEGIN
               WHERE id = v_bundle.id;
             WHEN 'delete' THEN
               BEGIN
+                IF EXISTS (
+                  SELECT 1
+                  FROM public.hot_updater_v1_bundle_patches
+                  WHERE base_bundle_id = (v_change->'where'->>'id')::uuid
+                    AND bundle_id <> (v_change->'where'->>'id')::uuid
+                ) THEN
+                  RAISE SQLSTATE 'HU001';
+                END IF;
                 DELETE FROM public.hot_updater_v1_bundles
                 WHERE id = (v_change->'where'->>'id')::uuid;
                 IF NOT FOUND THEN RAISE no_data_found; END IF;
@@ -364,6 +372,16 @@ BEGIN
                 NULL::public.hot_updater_v1_bundle_patches,
                 v_change->'row'
               );
+              IF v_patch.bundle_id IS NOT DISTINCT FROM v_patch.base_bundle_id
+                OR v_patch.id IS DISTINCT FROM
+                  v_patch.bundle_id || ':' || v_patch.base_bundle_id
+                OR v_patch.byte_size > 134217728
+                OR v_patch.base_file_hash !~ '^[0-9a-f]{64}$'
+                OR v_patch.patch_file_hash !~ '^[0-9a-f]{64}$'
+              THEN
+                RAISE EXCEPTION 'Hot Updater bundle patch id is invalid'
+                  USING ERRCODE = '22023';
+              END IF;
               INSERT INTO public.hot_updater_v1_bundle_patches (
                 id, bundle_id, base_bundle_id, base_file_hash,
                 patch_file_hash, patch_storage_uri, byte_size, order_index
@@ -480,6 +498,22 @@ BEGIN
             USING ERRCODE = '22023';
       END CASE;
     END LOOP;
+
+    IF EXISTS (
+      SELECT patch.bundle_id
+      FROM public.hot_updater_v1_bundle_patches AS patch
+      WHERE patch.bundle_id IN (
+        SELECT (change.value->'row'->>'bundle_id')::uuid
+        FROM pg_catalog.jsonb_array_elements(p_commit->'changes') AS change(value)
+        WHERE change.value->>'model' = 'bundlePatches'
+          AND change.value->>'operation' = 'insert'
+      )
+      GROUP BY patch.bundle_id
+      HAVING pg_catalog.count(*) > 24
+    ) THEN
+      RAISE EXCEPTION 'Hot Updater bundle patch limit exceeded'
+        USING ERRCODE = '22023';
+    END IF;
   EXCEPTION
     WHEN no_data_found THEN
       RETURN pg_catalog.jsonb_build_object(
@@ -506,6 +540,144 @@ $$;
 REVOKE EXECUTE ON FUNCTION public.hot_updater_v1_commit(jsonb)
   FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.hot_updater_v1_commit(jsonb)
+  TO service_role;
+
+CREATE FUNCTION public.hot_updater_v1_publish_bundle_patch(p_input jsonb)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY INVOKER
+SET search_path = pg_catalog
+AS $$
+DECLARE
+  v_row public.hot_updater_v1_bundle_patches;
+  v_previous jsonb := NULL;
+  v_patches jsonb;
+  v_position text;
+  v_order_index integer;
+  v_reference_count integer;
+BEGIN
+  IF pg_catalog.jsonb_typeof(p_input) IS DISTINCT FROM 'object'
+    OR pg_catalog.jsonb_typeof(p_input->'row') IS DISTINCT FROM 'object'
+    OR p_input->>'position' NOT IN ('primary', 'last')
+  THEN
+    RAISE EXCEPTION 'Hot Updater bundle patch publication is invalid'
+      USING ERRCODE = '22023';
+  END IF;
+
+  v_position := p_input->>'position';
+  v_row := pg_catalog.jsonb_populate_record(
+    NULL::public.hot_updater_v1_bundle_patches,
+    p_input->'row' || pg_catalog.jsonb_build_object('order_index', 0)
+  );
+  IF v_row.id IS DISTINCT FROM v_row.bundle_id || ':' || v_row.base_bundle_id
+    OR v_row.bundle_id IS NOT DISTINCT FROM v_row.base_bundle_id
+    OR v_row.byte_size > 134217728
+    OR v_row.base_file_hash !~ '^[0-9a-f]{64}$'
+    OR v_row.patch_file_hash !~ '^[0-9a-f]{64}$'
+  THEN
+    RAISE EXCEPTION 'Hot Updater bundle patch id is invalid'
+      USING ERRCODE = '22023';
+  END IF;
+
+  SELECT pg_catalog.count(*)
+  INTO v_reference_count
+  FROM (
+    SELECT id
+    FROM public.hot_updater_v1_bundles
+    WHERE id IN (v_row.bundle_id, v_row.base_bundle_id)
+    ORDER BY id
+    FOR UPDATE
+  ) AS locked_bundles;
+  IF v_reference_count <> 2 THEN
+    RETURN pg_catalog.jsonb_build_object(
+      'published', false,
+      'reason', 'not_found'
+    );
+  END IF;
+
+  SELECT pg_catalog.to_jsonb(patch)
+  INTO v_previous
+  FROM public.hot_updater_v1_bundle_patches AS patch
+  WHERE patch.id = v_row.id;
+
+  IF v_previous IS NULL AND (
+    SELECT pg_catalog.count(*)
+    FROM public.hot_updater_v1_bundle_patches
+    WHERE bundle_id = v_row.bundle_id
+  ) >= 24 THEN
+    RETURN pg_catalog.jsonb_build_object(
+      'published', false,
+      'reason', 'limit_exceeded'
+    );
+  END IF;
+
+  DELETE FROM public.hot_updater_v1_bundle_patches
+  WHERE id = v_row.id;
+
+  IF v_position = 'primary' THEN
+    SELECT COALESCE(MIN(order_index) - 1, 0)
+    INTO v_order_index
+    FROM public.hot_updater_v1_bundle_patches
+    WHERE bundle_id = v_row.bundle_id;
+  ELSE
+    SELECT COALESCE(MAX(order_index) + 1, 0)
+    INTO v_order_index
+    FROM public.hot_updater_v1_bundle_patches
+    WHERE bundle_id = v_row.bundle_id;
+  END IF;
+
+  INSERT INTO public.hot_updater_v1_bundle_patches (
+    id,
+    bundle_id,
+    base_bundle_id,
+    base_file_hash,
+    patch_file_hash,
+    patch_storage_uri,
+    byte_size,
+    order_index
+  ) VALUES (
+    v_row.id,
+    v_row.bundle_id,
+    v_row.base_bundle_id,
+    v_row.base_file_hash,
+    v_row.patch_file_hash,
+    v_row.patch_storage_uri,
+    v_row.byte_size,
+    v_order_index
+  );
+
+  WITH ranked AS (
+    SELECT
+      id,
+      pg_catalog.row_number() OVER (ORDER BY order_index, id) - 1
+        AS next_order_index
+    FROM public.hot_updater_v1_bundle_patches
+    WHERE bundle_id = v_row.bundle_id
+  )
+  UPDATE public.hot_updater_v1_bundle_patches AS patch
+  SET order_index = ranked.next_order_index
+  FROM ranked
+  WHERE patch.id = ranked.id;
+
+  SELECT pg_catalog.jsonb_agg(
+    pg_catalog.to_jsonb(patch)
+    ORDER BY patch.order_index, patch.id
+  )
+  INTO v_patches
+  FROM public.hot_updater_v1_bundle_patches AS patch
+  WHERE patch.bundle_id = v_row.bundle_id;
+
+  RETURN pg_catalog.jsonb_build_object(
+    'published', true,
+    'previous', v_previous,
+    'patches', COALESCE(v_patches, '[]'::jsonb)
+  );
+END;
+$$;
+
+REVOKE EXECUTE ON FUNCTION public.hot_updater_v1_publish_bundle_patch(jsonb)
+  FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.hot_updater_v1_publish_bundle_patch(jsonb)
   TO service_role;
 
 CREATE FUNCTION public.hot_updater_v1_delete_channel(p_id text)

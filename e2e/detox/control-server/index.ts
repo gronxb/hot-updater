@@ -13,6 +13,7 @@ app.use("*", cors());
 app.get("/", (c) => {
   return c.json({
     service: "Hot Updater E2E Control Server",
+    startupNonce: process.env.HOT_UPDATER_E2E_CONTROL_SERVER_NONCE ?? null,
     status: "ok",
     version: "1.0.0",
   });

@@ -73,13 +73,13 @@ const bundleRow = {
 };
 
 const patchRow = {
-  id: "patch-1",
+  id: `${bundleRow.id}:base-1`,
   bundle_id: bundleRow.id,
   base_bundle_id: "base-1",
-  base_file_hash: "base-hash",
-  patch_file_hash: "patch-hash",
+  base_file_hash: "a".repeat(64),
+  patch_file_hash: "b".repeat(64),
   patch_storage_uri: "storage://patch-1",
-  byte_size: 3_000_000_002,
+  byte_size: 3_000_002,
   order_index: 0,
 } as const;
 
@@ -369,7 +369,12 @@ describe("createDatabasePlugin", () => {
       input.model === "channels" ? channelRow : null,
     );
     const transaction = vi.fn(async (callback) =>
-      callback({ ...createTransactionMethods(), create, findOne }),
+      callback({
+        ...createTransactionMethods(),
+        create,
+        findMany: async () => [],
+        findOne,
+      }),
     );
     const plugin = createTestPlugin("transactional", {
       ...createMethods(),

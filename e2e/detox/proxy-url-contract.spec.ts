@@ -18,6 +18,74 @@ describe("Detox remote asset proxy URLs", () => {
     expect(controllerSource).toContain("/e2e/proxy-url/");
   });
 
+  it("omits stale Content-Length from rewritten catalog and artifact JSON", async () => {
+    const resultsDir = await fs.mkdtemp(
+      path.join(os.tmpdir(), "hot-updater-proxy-length-"),
+    );
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = input instanceof URL ? input.toString() : String(input);
+      const payload = url.includes("/release-catalogs/")
+        ? {
+            catalogId: "provider-project",
+            catalogHash: `sha256:${"a".repeat(64)}`,
+            fallbackPolicy: "BUILTIN_IF_ACTIVE_INELIGIBLE",
+            generation: 1,
+            releases: [],
+            schemaVersion: 1,
+            scopeKey: "provider-scope",
+          }
+        : {
+            fileHash: "archive-hash",
+            fileUrl: "https://storage.example.com/bundle.zip",
+          };
+      return new Response(JSON.stringify(payload), {
+        headers: {
+          "content-length": "1",
+          "content-type": "application/json",
+        },
+      });
+    });
+
+    vi.resetModules();
+    vi.stubEnv(
+      "HOT_UPDATER_E2E_APP_BASE_URL",
+      "https://provider.example.com/hot-updater",
+    );
+    vi.stubEnv("HOT_UPDATER_E2E_APP_ID", "com.hotupdater.example");
+    vi.stubEnv("HOT_UPDATER_E2E_DEVICE_ID", "booted");
+    vi.stubEnv("HOT_UPDATER_E2E_PLATFORM", "ios");
+    vi.stubEnv("HOT_UPDATER_E2E_RESULTS_DIR", resultsDir);
+    vi.stubEnv("PORT", "3107");
+    vi.stubGlobal("fetch", fetchMock);
+
+    try {
+      const controller = await import("./control-server/controller.ts");
+      const catalogResponse = await controller.handleProxyUpdateRequest(
+        new Request(
+          "http://localhost:3107/hot-updater/release-catalogs/app-version/ios/cHJvZHVjdGlvbg/1.0.0",
+        ),
+      );
+      const artifactResponse = await controller.handleProxyUpdateRequest(
+        new Request(
+          "http://localhost:3107/hot-updater/artifacts/target/from/current",
+        ),
+      );
+
+      expect(catalogResponse.headers.get("content-length")).toBeNull();
+      expect(artifactResponse.headers.get("content-length")).toBeNull();
+      await expect(catalogResponse.json()).resolves.toMatchObject({
+        scopeKey: "v1:app-version:ios:cHJvZHVjdGlvbg",
+      });
+      await expect(artifactResponse.json()).resolves.toMatchObject({
+        fileUrl: expect.stringContaining("/e2e/proxy-url/"),
+      });
+    } finally {
+      vi.unstubAllEnvs();
+      vi.unstubAllGlobals();
+      await fs.rm(resultsDir, { force: true, recursive: true });
+    }
+  });
+
   it("rewrites update asset URLs to opaque paths that resolve server-side", async () => {
     const resultsDir = await fs.mkdtemp(
       path.join(os.tmpdir(), "hot-updater-proxy-url-"),
@@ -50,9 +118,12 @@ describe("Detox remote asset proxy URLs", () => {
             changedAssets: {
               "assets/example.bmp": {
                 file: { url: signedBundleUrl },
+                fileHash: "asset-target-hash",
                 patch: {
                   algorithm: "bsdiff",
                   baseBundleId: "019ea44a-0000-7000-8000-000000000000",
+                  baseFileHash: "asset-base-hash",
+                  patchFileHash: "asset-patch-hash",
                   patchUrl: signedPatchUrl,
                 },
               },
@@ -135,16 +206,35 @@ describe("Detox remote asset proxy URLs", () => {
       expect(
         controller.handleAssertBundleArtifactSelection({
           currentBundleId: "current",
+          requiredPatchAssetPaths: ["assets/example.bmp"],
           selection: "manifest-diff",
           targetBundleId: "target",
         }),
       ).toMatchObject({
         changedAssetCount: 1,
+        changedAssetFilePaths: ["assets/example.bmp"],
+        changedAssetPatchPaths: ["assets/example.bmp"],
         changedAssetsPresent: true,
         currentBundleId: "current",
         manifestUrlPresent: true,
         targetBundleId: "target",
       });
+      expect(() =>
+        controller.handleAssertBundleArtifactSelection({
+          currentBundleId: "current",
+          requiredRawAssetPaths: ["assets/example.bmp"],
+          selection: "manifest-diff",
+          targetBundleId: "target",
+        }),
+      ).toThrow("Required raw-only asset was not observed");
+      expect(() =>
+        controller.handleAssertBundleArtifactSelection({
+          currentBundleId: "current",
+          requireArchiveAbsent: true,
+          selection: "manifest-diff",
+          targetBundleId: "target",
+        }),
+      ).toThrow("Delta selection retained an archive fallback");
       expect(() =>
         controller.handleAssertBundleArtifactSelection({
           currentBundleId: "current",
@@ -171,6 +261,43 @@ describe("Detox remote asset proxy URLs", () => {
         currentBundleId: "current",
         targetBundleId: "target",
       });
+      const changedAssetMutation = await controlRoutes.request(
+        "/e2e/proxy-control",
+        {
+          body: JSON.stringify({
+            changedAssetMutation: {
+              assetPath: "detail.lynx.bundle",
+              mode: "corrupt",
+              remaining: 1,
+            },
+          }),
+          headers: { "content-type": "application/json" },
+          method: "POST",
+        },
+      );
+      expect(changedAssetMutation.status).toBe(200);
+      expect(await changedAssetMutation.json()).toMatchObject({
+        changedAssetMutation: {
+          assetPath: "detail.lynx.bundle",
+          mode: "corrupt",
+          remaining: 1,
+        },
+      });
+      const invalidChangedAssetMutation = await controlRoutes.request(
+        "/e2e/proxy-control",
+        {
+          body: JSON.stringify({
+            changedAssetMutation: {
+              assetPath: "main.lynx.bundle",
+              mode: "corrupt",
+              remaining: 1,
+            },
+          }),
+          headers: { "content-type": "application/json" },
+          method: "POST",
+        },
+      );
+      expect(invalidChangedAssetMutation.status).toBe(400);
       const invalidRouteAssertion = await controlRoutes.request(
         "/e2e/assert-bundle-artifact-selection",
         {
@@ -204,6 +331,25 @@ describe("Detox remote asset proxy URLs", () => {
       expect(await sizeAwareProfileValidation.json()).toEqual({
         error: "patchMaxBaseBundles must be an integer between 1 and 5",
       });
+      const crossProvenanceValidation = await controlRoutes.request(
+        "/e2e/jobs/deploy-bundle",
+        {
+          body: JSON.stringify({
+            channel: "production",
+            crossProvenance: "arbitrary-runtime-id",
+            marker: "cross-provenance-route-contract",
+            mode: "reset",
+            safeBundleIds: [],
+            targetAppVersion: "1.0.x",
+          }),
+          headers: { "content-type": "application/json" },
+          method: "POST",
+        },
+      );
+      expect(crossProvenanceValidation.status).toBe(400);
+      expect(await crossProvenanceValidation.json()).toEqual({
+        error: "crossProvenance must be a boolean",
+      });
 
       await controller.handleProxyUpdateRequest(
         new Request(
@@ -224,6 +370,12 @@ describe("Detox remote asset proxy URLs", () => {
         manifestUrlPresent: false,
         targetBundleId: "archive-target",
       });
+      await expect(
+        controller.handleAssertManifestDiffApplied({
+          bundleId: "archive-target",
+          previousBundleId: "current",
+        }),
+      ).resolves.toEqual({ selection: "archive-only", skipped: true });
 
       controller.handleConfigureProxy({ reset: true });
       expect(() =>
@@ -283,7 +435,7 @@ describe("Detox remote asset proxy URLs", () => {
       if (url === `${baseUrl}/artifacts/target/from/current`) {
         return Response.json({
           changedAssets: {
-            "assets/example.bmp": {
+            "detail.lynx.bundle": {
               file: { url: assetPath },
               patch: {
                 algorithm: "bsdiff",
@@ -339,9 +491,9 @@ describe("Detox remote asset proxy URLs", () => {
         fileUrl: string;
         manifestUrl: string;
       };
-      const assetUrl = payload.changedAssets["assets/example.bmp"]!.file.url;
+      const assetUrl = payload.changedAssets["detail.lynx.bundle"]!.file.url;
       const patchUrl =
-        payload.changedAssets["assets/example.bmp"]!.patch.patchUrl;
+        payload.changedAssets["detail.lynx.bundle"]!.patch.patchUrl;
       for (const url of [
         payload.fileUrl,
         payload.manifestUrl,
@@ -383,6 +535,34 @@ describe("Detox remote asset proxy URLs", () => {
         ).text(),
       ).toBe("patch-bytes");
 
+      controller.handleConfigureProxy({
+        changedAssetMutation: {
+          assetPath: "detail.lynx.bundle",
+          mode: "corrupt",
+          remaining: 1,
+        },
+      });
+      expect(
+        await (
+          await controller.handleProxyRemoteAssetRequest(new Request(assetUrl))
+        ).text(),
+      ).toBe("corrupt changed asset bytes");
+      expect(controller.handleProxyState().changedAssetMutation).toMatchObject({
+        remaining: 0,
+      });
+
+      controller.handleConfigureProxy({
+        changedAssetMutation: {
+          assetPath: "detail.lynx.bundle",
+          mode: "missing",
+          remaining: 1,
+        },
+      });
+      const missingDetail = await controller.handleProxyRemoteAssetRequest(
+        new Request(assetUrl),
+      );
+      expect(missingDetail.status).toBe(404);
+
       expect(fetchTargets).toEqual(
         expect.arrayContaining([
           `${baseUrl}${bundlePath}`,
@@ -390,6 +570,220 @@ describe("Detox remote asset proxy URLs", () => {
           `${baseUrl}${assetPath}`,
           `${baseUrl}${patchPath}`,
         ]),
+      );
+    } finally {
+      vi.unstubAllEnvs();
+      vi.unstubAllGlobals();
+      await fs.rm(resultsDir, { force: true, recursive: true });
+    }
+  });
+
+  it("requires consistent artifact captures before skipping manifest reuse", async () => {
+    const resultsDir = await fs.mkdtemp(
+      path.join(os.tmpdir(), "hot-updater-selection-history-"),
+    );
+    let artifactPayload: unknown;
+    const fetchMock = vi.fn(async () => Response.json(artifactPayload));
+    const archiveOnly = {
+      fileHash: "archive-hash",
+      fileUrl: "https://storage.example.com/bundle.zip",
+    };
+    const manifestDiff = {
+      changedAssets: {
+        "main.bundle": {
+          file: null,
+          fileHash: "main-target-hash",
+          patch: {
+            algorithm: "bsdiff",
+            baseBundleId: "base-bundle",
+            baseFileHash: "main-base-hash",
+            patchFileHash: "main-patch-hash",
+            patchUrl: "https://storage.example.com/main.patch?token=one",
+          },
+        },
+        "metadata.json": {
+          file: {
+            compression: null,
+            url: "https://storage.example.com/metadata.json?token=one",
+          },
+          fileHash: "metadata-target-hash",
+          patch: null,
+        },
+      },
+      fileHash: "archive-hash",
+      fileUrl: "https://storage.example.com/archive.zip?token=one",
+      manifestFileHash: "manifest-hash",
+      manifestUrl: "https://storage.example.com/manifest.json?token=one",
+      patchAssetPath: "main.bundle",
+    };
+
+    vi.resetModules();
+    vi.stubEnv(
+      "HOT_UPDATER_E2E_APP_BASE_URL",
+      "https://provider.example.com/hot-updater",
+    );
+    vi.stubEnv("HOT_UPDATER_E2E_APP_ID", "com.hotupdater.example");
+    vi.stubEnv("HOT_UPDATER_E2E_DEVICE_ID", "booted");
+    vi.stubEnv("HOT_UPDATER_E2E_PLATFORM", "ios");
+    vi.stubEnv("HOT_UPDATER_E2E_RESULTS_DIR", resultsDir);
+    vi.stubEnv("PORT", "3107");
+    vi.stubGlobal("fetch", fetchMock);
+
+    try {
+      const controller = await import("./control-server/controller.ts");
+      const artifactUrl =
+        "http://localhost:3107/hot-updater/artifacts/target/from/current";
+      const capture = async (payload: unknown) => {
+        artifactPayload = payload;
+        const response = await controller.handleProxyUpdateRequest(
+          new Request(artifactUrl),
+        );
+        expect(response.status).toBe(200);
+      };
+      const assertManifestDiff = () =>
+        controller.handleAssertManifestDiffApplied({
+          bundleId: "target",
+          previousBundleId: "current",
+        });
+      const assertManifestConflict = async (mutate: (payload: any) => void) => {
+        const changed = structuredClone(manifestDiff);
+        mutate(changed);
+        controller.handleConfigureProxy({ reset: true });
+        await capture(manifestDiff);
+        await capture(changed);
+        await expect(assertManifestDiff()).rejects.toThrow(
+          "Unexpected Bundle artifact selection",
+        );
+      };
+
+      for (const captures of [
+        [archiveOnly, manifestDiff],
+        [manifestDiff, archiveOnly],
+      ]) {
+        controller.handleConfigureProxy({ reset: true });
+        for (const payload of captures) await capture(payload);
+        await expect(assertManifestDiff()).rejects.toThrow(
+          "Unexpected Bundle artifact selection",
+        );
+      }
+
+      controller.handleConfigureProxy({ reset: true });
+      await capture(archiveOnly);
+      await capture(archiveOnly);
+      await expect(assertManifestDiff()).resolves.toEqual({
+        selection: "archive-only",
+        skipped: true,
+      });
+
+      controller.handleConfigureProxy({ reset: true });
+      await capture(manifestDiff);
+      await capture(manifestDiff);
+      const strictPath = new AbortController();
+      strictPath.abort(new Error("strict manifest assertion reached"));
+      await expect(
+        controller.handleAssertManifestDiffApplied({
+          bundleId: "target",
+          previousBundleId: "current",
+          signal: strictPath.signal,
+        }),
+      ).rejects.toThrow(
+        "Control job cancelled: strict manifest assertion reached",
+      );
+
+      for (const mutate of [
+        (payload: any) => (payload.manifestFileHash = "other-manifest-hash"),
+        (payload: any) =>
+          (payload.changedAssets["metadata.json"].fileHash =
+            "other-asset-hash"),
+        (payload: any) =>
+          (payload.changedAssets["main.bundle"].patch.patchFileHash =
+            "other-patch-hash"),
+        (payload: any) =>
+          (payload.changedAssets["main.bundle"].patch.algorithm = "other"),
+        (payload: any) =>
+          (payload.changedAssets["main.bundle"].patch.baseBundleId =
+            "other-base-bundle"),
+      ]) {
+        await assertManifestConflict(mutate);
+      }
+
+      controller.handleConfigureProxy({ reset: true });
+      await capture(archiveOnly);
+      await capture({ ...archiveOnly, fileHash: "other-archive-hash" });
+      await expect(assertManifestDiff()).rejects.toThrow(
+        "Unexpected Bundle artifact selection",
+      );
+
+      for (const changedAssets of [
+        {
+          "main.bundle": {
+            file: {},
+            fileHash: "main-target-hash",
+            patch: null,
+          },
+        },
+        {
+          "main.bundle": {
+            file: null,
+            fileHash: "main-target-hash",
+            patch: {
+              algorithm: "bsdiff",
+              baseBundleId: "base-bundle",
+              baseFileHash: "main-base-hash",
+              patchUrl: "https://storage.example.com/main.patch",
+            },
+          },
+        },
+      ]) {
+        controller.handleConfigureProxy({ reset: true });
+        await capture({ ...manifestDiff, changedAssets });
+        await expect(assertManifestDiff()).rejects.toThrow(
+          "Unexpected Bundle artifact selection",
+        );
+      }
+
+      controller.handleConfigureProxy({ reset: true });
+      await capture(manifestDiff);
+      await capture({
+        ...manifestDiff,
+        changedAssets: {
+          ...manifestDiff.changedAssets,
+          "main.bundle": {
+            ...manifestDiff.changedAssets["main.bundle"],
+            patch: {
+              ...manifestDiff.changedAssets["main.bundle"].patch,
+              patchUrl: "https://renewed.example.com/main.patch?token=two",
+            },
+          },
+          "metadata.json": {
+            ...manifestDiff.changedAssets["metadata.json"],
+            file: {
+              ...manifestDiff.changedAssets["metadata.json"].file,
+              url: "https://renewed.example.com/metadata.json?token=two",
+            },
+          },
+        },
+        fileUrl: "https://renewed.example.com/archive.zip?token=two",
+        manifestUrl: "https://renewed.example.com/manifest.json?token=two",
+      });
+      await expect(
+        controller.handleAssertManifestDiffApplied({
+          bundleId: "target",
+          previousBundleId: "current",
+          signal: strictPath.signal,
+        }),
+      ).rejects.toThrow(
+        "Control job cancelled: strict manifest assertion reached",
+      );
+
+      controller.handleConfigureProxy({ reset: true });
+      await capture({
+        changedAssets: {},
+        manifestFileHash: "manifest-hash",
+        manifestUrl: "https://storage.example.com/manifest.json",
+      });
+      await expect(assertManifestDiff()).rejects.toThrow(
+        "Unexpected Bundle artifact selection",
       );
     } finally {
       vi.unstubAllEnvs();

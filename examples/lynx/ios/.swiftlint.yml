@@ -1,0 +1,52 @@
+disabled_rules:
+  - todo
+  - trailing_whitespace
+
+opt_in_rules:
+  - empty_count
+  - explicit_init
+  - force_unwrapping
+  - closure_body_length
+
+included:
+  - SparklingGo
+  - SparklingGoTests
+  - SparklingGoUITests
+  - SparklingMethodsTests
+
+excluded:
+  - Pods
+
+line_length:
+  warning: 110
+  error: 130
+
+identifier_name:
+  min_length:
+    warning: 2
+    error: 1
+  max_length:
+    warning: 40
+    error: 50
+
+type_name:
+  max_length:
+    warning: 50
+    error: 60
+
+function_body_length:
+  warning: 50
+  error: 80
+
+cyclomatic_complexity:
+  warning: 10
+  error: 15
+
+indentation:
+  spaces: 4
+  indent_width: 4
+
+trailing_comma:
+  mandatory_comma: true
+
+reporter: "xcode"

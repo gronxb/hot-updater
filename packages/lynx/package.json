@@ -1,0 +1,68 @@
+{
+  "name": "@hot-updater/lynx",
+  "version": "1.0.0-rc.14",
+  "type": "module",
+  "description": "OTA updates for Lynx apps",
+  "sideEffects": false,
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.mjs",
+  "types": "./dist/index.d.cts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.mjs",
+      "require": "./dist/index.cjs"
+    },
+    "./build": {
+      "import": "./dist/build.mjs",
+      "require": "./dist/build.cjs"
+    },
+    "./navigation": {
+      "import": "./dist/navigation.mjs",
+      "require": "./dist/navigation.cjs"
+    },
+    "./navigationProvenance": {
+      "import": "./dist/navigationProvenance.mjs",
+      "require": "./dist/navigationProvenance.cjs"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist",
+    "android",
+    "android-sparkling",
+    "ios",
+    "fixtures/catalog-policy.json",
+    "*.podspec",
+    "README.md",
+    "!**/build",
+    "!**/.build",
+    "!**/.gradle",
+    "!**/local.properties"
+  ],
+  "license": "MIT",
+  "repository": "https://github.com/gronxb/hot-updater",
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "tsdown",
+    "test:type": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@hot-updater/core": "workspace:*",
+    "@hot-updater/plugin-core": "workspace:*",
+    "uuidv7": "catalog:"
+  },
+  "peerDependencies": {
+    "sparkling-navigation": "2.1.0-rc.12"
+  },
+  "peerDependenciesMeta": {
+    "sparkling-navigation": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@types/node": "catalog:",
+    "sparkling-navigation": "2.1.0-rc.12"
+  }
+}

@@ -3,6 +3,7 @@ import fs from "fs/promises";
 import os from "os";
 import path from "path";
 
+import { MAX_BUNDLE_MANIFEST_BYTES } from "@hot-updater/plugin-core";
 import { afterEach, describe, expect, it } from "vitest";
 
 import {
@@ -42,19 +43,31 @@ describe("bundleManifest", () => {
 
     const manifest = await createBundleManifest({
       bundleId: "bundle-123",
+      patchAssetPath: "runtime/main.opaque",
       targetFiles: [
-        { path: assetPath, name: "assets/logo.png" },
-        { path: bundlePath, name: "index.android.bundle" },
+        {
+          path: assetPath,
+          name: "assets/logo.png",
+          downloadCompression: null,
+        },
+        {
+          path: bundlePath,
+          name: "runtime/main.opaque",
+          downloadCompression: "br",
+        },
       ],
     });
 
     expect(manifest).toEqual({
       bundleId: "bundle-123",
+      patchAssetPath: "runtime/main.opaque",
       assets: {
         "assets/logo.png": {
+          downloadCompression: null,
           fileHash: hash("logo-content"),
         },
-        "index.android.bundle": {
+        "runtime/main.opaque": {
+          downloadCompression: "br",
           fileHash: hash("bundle-content"),
         },
       },
@@ -73,7 +86,14 @@ describe("bundleManifest", () => {
     const { manifest, manifestPath } = await writeBundleManifest({
       buildPath,
       bundleId: "bundle-456",
-      targetFiles: [{ path: bundlePath, name: "index.android.bundle" }],
+      patchAssetPath: "index.android.bundle",
+      targetFiles: [
+        {
+          path: bundlePath,
+          name: "index.android.bundle",
+          downloadCompression: "br",
+        },
+      ],
     });
 
     const writtenManifest = JSON.parse(
@@ -83,8 +103,10 @@ describe("bundleManifest", () => {
     expect(manifest).toEqual(writtenManifest);
     expect(writtenManifest).toEqual({
       bundleId: "bundle-456",
+      patchAssetPath: "index.android.bundle",
       assets: {
         "index.android.bundle": {
+          downloadCompression: "br",
           fileHash: hash("bundle-content"),
         },
       },
@@ -105,8 +127,15 @@ describe("bundleManifest", () => {
     const { manifest, manifestPath } = await writeBundleManifest({
       buildPath,
       bundleId: "bundle-signed",
+      patchAssetPath: "index.ios.bundle",
       signFileHash,
-      targetFiles: [{ path: bundlePath, name: "index.ios.bundle" }],
+      targetFiles: [
+        {
+          path: bundlePath,
+          name: "index.ios.bundle",
+          downloadCompression: "br",
+        },
+      ],
     });
 
     const expectedHash = hash("bundle-content");
@@ -116,6 +145,7 @@ describe("bundleManifest", () => {
 
     expect(manifest).toEqual(writtenManifest);
     expect(writtenManifest.assets["index.ios.bundle"]).toEqual({
+      downloadCompression: "br",
       fileHash: expectedHash,
       signature: `signed:${expectedHash}`,
     });
@@ -129,8 +159,10 @@ describe("bundleManifest", () => {
     const downloadFileHash = "b".repeat(64);
     const manifest = {
       bundleId: "bundle-sized",
+      patchAssetPath: "index.ios.bundle",
       assets: {
         "index.ios.bundle": {
+          downloadCompression: "br" as const,
           downloadByteSize: 123,
           downloadFileHash,
           fileHash: "a".repeat(64),
@@ -148,6 +180,55 @@ describe("bundleManifest", () => {
     );
   });
 
+  it("uses locale-independent Unicode ordering for manifest assets", async () => {
+    const buildPath = await fs.mkdtemp(
+      path.join(os.tmpdir(), "hot-updater-manifest-"),
+    );
+    createdDirectories.push(buildPath);
+    const upper = path.join(buildPath, "upper");
+    const nonAscii = path.join(buildPath, "non-ascii");
+    await Promise.all([
+      fs.writeFile(upper, "upper"),
+      fs.writeFile(nonAscii, "non-ascii"),
+    ]);
+
+    const manifest = await createBundleManifest({
+      bundleId: "bundle-order",
+      patchAssetPath: "Z.asset",
+      targetFiles: [
+        { path: nonAscii, name: "ä.asset", downloadCompression: null },
+        { path: upper, name: "Z.asset", downloadCompression: null },
+      ],
+    });
+
+    expect(Object.keys(manifest.assets)).toEqual(["Z.asset", "ä.asset"]);
+  });
+
+  it("rejects generated manifest metadata above the native limit", async () => {
+    const buildPath = await fs.mkdtemp(
+      path.join(os.tmpdir(), "hot-updater-manifest-"),
+    );
+    createdDirectories.push(buildPath);
+    const manifest = {
+      bundleId: "bundle-oversized",
+      patchAssetPath: "entry.bin",
+      assets: {
+        "entry.bin": {
+          downloadCompression: null,
+          fileHash: "a".repeat(64),
+          signature: "s".repeat(MAX_BUNDLE_MANIFEST_BYTES),
+        },
+      },
+    };
+
+    await expect(
+      writeBundleManifestFile({ buildPath, manifest }),
+    ).rejects.toThrow(`exceeds ${MAX_BUNDLE_MANIFEST_BYTES} bytes`);
+    await expect(
+      fs.stat(path.join(buildPath, "manifest.json")),
+    ).rejects.toMatchObject({ code: "ENOENT" });
+  });
+
   it("limits concurrent file hash and signing work", async () => {
     const buildPath = await fs.mkdtemp(
       path.join(os.tmpdir(), "hot-updater-manifest-"),
@@ -161,6 +242,7 @@ describe("bundleManifest", () => {
         return {
           path: filePath,
           name: `asset-${index}.txt`,
+          downloadCompression: null,
         };
       }),
     );
@@ -178,6 +260,7 @@ describe("bundleManifest", () => {
     await createBundleManifest({
       bundleId: "bundle-concurrency",
       hashConcurrency: 2,
+      patchAssetPath: "asset-0.txt",
       signFileHash,
       targetFiles,
     });

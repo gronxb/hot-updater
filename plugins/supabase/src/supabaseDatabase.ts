@@ -562,6 +562,22 @@ const createSupabaseImplementation = (
       }
       return data;
     },
+    async publishBundlePatch(input) {
+      const { data, error } = await supabase.rpc(
+        SUPABASE_V1_FUNCTION_NAMES.publishBundlePatch,
+        { p_input: input },
+      );
+      throwSupabaseError("publish bundle patch", error);
+      if (
+        data === null ||
+        typeof data !== "object" ||
+        !("published" in data) ||
+        typeof data.published !== "boolean"
+      ) {
+        throw new SupabaseMissingDataError("publish bundle patch");
+      }
+      return data;
+    },
   };
   implementation.commit = async (input) => {
     const { data, error } = await supabase.rpc(

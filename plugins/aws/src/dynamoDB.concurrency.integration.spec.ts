@@ -12,11 +12,13 @@ import { DynamoDBIntegrationFixture } from "./dynamoDB.integration-fixture";
 
 const fixture = new DynamoDBIntegrationFixture();
 const productionChannelId = "00000000-0000-0000-0000-000000000100";
+const contentHash = (sequence: number, fill: "a" | "b" | "c") =>
+  sequence.toString(16).padStart(64, fill);
 
 const bundle = (sequence: number): Bundle => ({
   id: `00000000-0000-0000-0000-${sequence.toString().padStart(12, "0")}`,
   platform: "ios",
-  fileHash: `hash-${sequence}`,
+  fileHash: contentHash(sequence, "a"),
   gitCommitHash: null,
   storageUri: `storage://bundle-${sequence}.zip`,
   archiveByteSize: 3_000_000_001 + sequence,
@@ -28,9 +30,9 @@ const patchRow = (owner: Bundle, base: Bundle) => ({
   bundle_id: owner.id,
   base_bundle_id: base.id,
   base_file_hash: base.fileHash,
-  patch_file_hash: `patch-${base.id}`,
+  patch_file_hash: contentHash(Number(base.id.slice(-12)), "b"),
   patch_storage_uri: `storage://patch-${base.id}`,
-  byte_size: 3_000_000_002,
+  byte_size: 3_000_002,
   order_index: 0,
 });
 
@@ -105,37 +107,48 @@ describe("DynamoDB metadata concurrency and delete serialization", () => {
     ).resolves.toMatchObject({ Item: { bundles: 1_001 } });
   });
 
-  it("allows more than 24 relationships per bundle", async () => {
+  it("accepts 24 owner patches and rejects the 25th", async () => {
     const database = createDatabaseClient(fixture.createPlugin());
     const bases = Array.from({ length: 25 }, (_, index) => bundle(index + 1));
     for (const base of bases) await database.insertBundle(base);
     const owner = {
       ...bundle(100),
-      patches: bases.map((base) => ({
+      patches: bases.slice(0, 24).map((base, index) => ({
         baseBundleId: base.id,
         baseFileHash: base.fileHash,
-        patchFileHash: `patch-${base.id}`,
+        patchFileHash: contentHash(index, "b"),
         patchStorageUri: `storage://patch-${base.id}`,
-        byteSize: 3_000_000_002,
+        byteSize: 3_000_002,
       })),
     };
 
     await database.insertBundle(owner);
     await database.updateBundleById(owner.id, {
-      patches: bases.map((base) => ({
+      patches: bases.slice(0, 24).map((base, index) => ({
         baseBundleId: base.id,
         baseFileHash: base.fileHash,
-        patchFileHash: `updated-patch-${base.id}`,
+        patchFileHash: contentHash(index, "c"),
         patchStorageUri: `storage://updated-patch-${base.id}`,
-        byteSize: 3_000_000_003,
+        byteSize: 3_000_003,
       })),
     });
     await expect(database.getBundleById(owner.id)).resolves.toMatchObject({
-      patches: { length: 25 },
+      patches: { length: 24 },
     });
+    await expect(
+      database.updateBundleById(owner.id, {
+        patches: bases.map((base, index) => ({
+          baseBundleId: base.id,
+          baseFileHash: base.fileHash,
+          patchFileHash: contentHash(index, "c"),
+          patchStorageUri: `storage://updated-patch-${base.id}`,
+          byteSize: 3_000_003,
+        })),
+      }),
+    ).rejects.toThrow("invalid-data");
   });
 
-  it("reports DynamoDB's physical transaction action limit", async () => {
+  it("rejects internal aggregates above the shared patch cap", async () => {
     await expect(
       createDynamoDBAggregateMutations({
         client: fixture.client,
@@ -146,7 +159,7 @@ describe("DynamoDB metadata concurrency and delete serialization", () => {
           patchRow(bundle(200), bundle(index + 300)),
         ),
       }),
-    ).rejects.toMatchObject({ name: "DynamoDBTransactionLimitError" });
+    ).rejects.toThrow("invalid-data");
   });
 
   it("allows a base bundle to be referenced by more than 24 patches", async () => {
@@ -161,9 +174,9 @@ describe("DynamoDB metadata concurrency and delete serialization", () => {
           {
             baseBundleId: base.id,
             baseFileHash: base.fileHash,
-            patchFileHash: `patch-${sequence}`,
+            patchFileHash: contentHash(sequence, "b"),
             patchStorageUri: `storage://patch-${sequence}`,
-            byteSize: 3_000_000_002 + sequence,
+            byteSize: 3_000_002 + sequence,
           },
         ],
       });
@@ -175,9 +188,9 @@ describe("DynamoDB metadata concurrency and delete serialization", () => {
         {
           baseBundleId: base.id,
           baseFileHash: base.fileHash,
-          patchFileHash: "patch-26",
+          patchFileHash: contentHash(26, "b"),
           patchStorageUri: "storage://patch-26",
-          byteSize: 3_000_000_028,
+          byteSize: 3_000_028,
         },
       ],
     });

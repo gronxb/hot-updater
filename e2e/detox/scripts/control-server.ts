@@ -1,8 +1,8 @@
-import { spawn, type ChildProcess } from "node:child_process";
+import { spawn } from "node:child_process";
+import { randomUUID } from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
 import process from "node:process";
-import { setTimeout as sleep } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
 
 import {
@@ -10,6 +10,12 @@ import {
   resolveControlBaseUrl,
   type DetoxPlatform,
 } from "./control-server-env.ts";
+import {
+  monitorControlServerChild,
+  stopControlServerChild,
+  stopManagedControlServer,
+  waitForControlServer,
+} from "./control-server-lifecycle.ts";
 
 export {
   buildDetoxChildEnv,
@@ -28,45 +34,6 @@ const repoDir = path.resolve(
 );
 const resultsRoot = path.join(repoDir, "e2e/results/detox");
 
-async function fetchIgnoringFailure(
-  url: string,
-  init?: RequestInit,
-): Promise<void> {
-  try {
-    await fetch(url, { ...init, signal: AbortSignal.timeout(5000) });
-  } catch (error) {
-    if (error instanceof Error) return;
-    throw error;
-  }
-}
-
-async function waitForControlServer(baseUrl: string): Promise<void> {
-  let lastError = "unknown";
-  for (let attempt = 1; attempt <= 90; attempt += 1) {
-    try {
-      const response = await fetch(baseUrl, {
-        signal: AbortSignal.timeout(5000),
-      });
-      if (response.ok) return;
-      lastError = `HTTP ${response.status}`;
-    } catch (error) {
-      lastError = error instanceof Error ? error.message : String(error);
-    }
-    await sleep(1000);
-  }
-  throw new Error(
-    `Timed out waiting for Detox control server ${baseUrl}: ${lastError}`,
-  );
-}
-
-async function stopChild(child: ChildProcess): Promise<void> {
-  child.kill("SIGTERM");
-  await new Promise<void>((resolve) => {
-    child.once("close", () => resolve());
-    setTimeout(() => resolve(), 3000);
-  });
-}
-
 export async function startDetoxControlServer(
   platform: DetoxPlatform,
   env: NodeJS.ProcessEnv = process.env,
@@ -79,6 +46,8 @@ export async function startDetoxControlServer(
   }
 
   const serverEnv = buildDetoxControlServerEnv(platform, env);
+  const startupNonce = randomUUID();
+  serverEnv.HOT_UPDATER_E2E_CONTROL_SERVER_NONCE = startupNonce;
   const controlBaseUrl = `http://${serverEnv.HOT_UPDATER_E2E_SERVER_HOST}:${serverEnv.PORT}`;
   await fs.mkdir(serverEnv.HOT_UPDATER_E2E_RESULTS_DIR ?? resultsRoot, {
     recursive: true,
@@ -96,19 +65,26 @@ export async function startDetoxControlServer(
       stdio: "inherit",
     },
   );
+  const childMonitor = monitorControlServerChild(child);
 
-  await waitForControlServer(controlBaseUrl);
+  try {
+    await waitForControlServer(controlBaseUrl, startupNonce, childMonitor);
+  } catch (error) {
+    try {
+      await stopControlServerChild(child, childMonitor);
+    } catch (stopError) {
+      throw new AggregateError(
+        [error, stopError],
+        "Detox control server failed to start and close",
+      );
+    }
+    throw error;
+  }
 
   return {
     baseUrl: controlBaseUrl,
     stop: async () => {
-      await fetchIgnoringFailure(`${controlBaseUrl}/e2e/cleanup`, {
-        method: "POST",
-      });
-      await fetchIgnoringFailure(`${controlBaseUrl}/shutdown`, {
-        method: "POST",
-      });
-      await stopChild(child);
+      await stopManagedControlServer(controlBaseUrl, child, childMonitor);
     },
   };
 }

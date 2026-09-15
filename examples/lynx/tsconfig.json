@@ -1,0 +1,9 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "jsx": "react-jsx",
+    "jsxImportSource": "@lynx-js/react",
+    "types": ["node", "@lynx-js/types", "@lynx-js/rspeedy/client"]
+  },
+  "include": ["react", "src", "app.config.ts", "e2e.lynx.config.ts"]
+}

@@ -3,6 +3,7 @@ import {
   compareInsightsText,
   type BundleEventRow,
   type DatabasePlugin,
+  MAX_BUNDLE_PATCHES,
 } from "@hot-updater/plugin-core";
 import {
   latestInsightsWhere,
@@ -461,6 +462,48 @@ const createImplementation = (tables: Tables): DatabasePluginImplementation => {
         tables.channels.rows.splice(index, 1);
         return { deleted: true as const };
       }),
+    publishBundlePatch: (input) =>
+      withMutationLock(() => {
+        if (input.row.bundle_id === input.row.base_bundle_id) {
+          throw new Error("A bundle patch cannot reference its owner as base");
+        }
+        if (
+          !tables.bundles.rows.some(({ id }) => id === input.row.bundle_id) ||
+          !tables.bundles.rows.some(({ id }) => id === input.row.base_bundle_id)
+        ) {
+          return { published: false as const, reason: "not_found" as const };
+        }
+        const existing = tables.bundle_patches.rows
+          .filter(({ bundle_id }) => bundle_id === input.row.bundle_id)
+          .sort(
+            (left, right) =>
+              left.order_index - right.order_index ||
+              left.id.localeCompare(right.id),
+          );
+        const previous = existing.find(({ id }) => id === input.row.id) ?? null;
+        if (previous === null && existing.length >= MAX_BUNDLE_PATCHES) {
+          return {
+            published: false as const,
+            reason: "limit_exceeded" as const,
+          };
+        }
+        const remaining = existing.filter(({ id }) => id !== input.row.id);
+        const ordered =
+          input.position === "primary"
+            ? [input.row, ...remaining]
+            : [...remaining, input.row];
+        const patches = ordered.map((row, order_index) => ({
+          ...row,
+          order_index,
+        }));
+        tables.bundle_patches.rows = [
+          ...tables.bundle_patches.rows.filter(
+            ({ bundle_id }) => bundle_id !== input.row.bundle_id,
+          ),
+          ...patches,
+        ];
+        return structuredClone({ patches, previous, published: true as const });
+      }),
     transaction: (callback) =>
       withMutationLock(async () => {
         const transactionTables = structuredClone(tables);
@@ -497,6 +540,7 @@ export const createInMemoryDatabaseHarness = () => {
   const tables = createTables();
   return {
     plugin: createInMemoryDatabasePlugin(tables),
+    createPlugin: () => createInMemoryDatabasePlugin(tables),
     reset: (): void => {
       tables.bundles.rows = [];
       tables.bundle_patches.rows = [];

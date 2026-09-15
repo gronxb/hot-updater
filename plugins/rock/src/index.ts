@@ -6,7 +6,12 @@ import type {
   BasePluginArgs,
   BuildPlugin,
   BuildPluginConfig,
+  NativeFingerprintProvider,
 } from "@hot-updater/plugin-core";
+import {
+  createReactNativeFingerprint,
+  selectReactNativeArtifacts,
+} from "@hot-updater/react-native/build";
 import { ExecaError, execa } from "execa";
 import { uuidv7 } from "uuidv7";
 
@@ -70,6 +75,8 @@ const runBundle = async ({
 };
 
 export interface RockPluginConfig extends BuildPluginConfig {
+  /** Native fingerprint implementation for the selected Rock host. */
+  fingerprint?: NativeFingerprintProvider;
   /**
    * @default "index.js"
    * The entry file to bundle.
@@ -103,8 +110,15 @@ export const rock =
       sourcemap = false,
       entryFile = "index.js",
       hermes = true,
+      fingerprint,
     } = config;
     return {
+      nativeBuild: {
+        fingerprint: (options) =>
+          fingerprint
+            ? fingerprint(options)
+            : createReactNativeFingerprint(cwd, options),
+      },
       build: async ({ platform }) => {
         const buildPath = path.join(cwd, outDir);
 
@@ -119,10 +133,16 @@ export const rock =
           sourcemap,
           hermes,
         });
+        const { artifacts, patchAssetPath } = await selectReactNativeArtifacts({
+          buildPath,
+          platform,
+        });
 
         return {
+          artifacts,
           buildPath,
           bundleId,
+          patchAssetPath,
           stdout,
         };
       },

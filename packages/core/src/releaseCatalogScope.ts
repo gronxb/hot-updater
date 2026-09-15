@@ -136,7 +136,18 @@ function base64UrlDecode(value: string): number[] {
 }
 
 export function normalizeChannelName(channel: string): string {
-  return channel.trim().normalize("NFC");
+  const trimmed = channel.trim();
+  if (typeof trimmed.normalize === "function") {
+    return trimmed.normalize("NFC");
+  }
+  for (let index = 0; index < trimmed.length; index += 1) {
+    if (trimmed.charCodeAt(index) > 0x7f) {
+      throw new Error(
+        "Unicode channel names require NFC normalization support",
+      );
+    }
+  }
+  return trimmed;
 }
 
 export function assertCanonicalChannelName(channel: string): void {

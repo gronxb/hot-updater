@@ -1,6 +1,8 @@
 import { createDatabasePlugin } from "@hot-updater/plugin-core";
 import {
   createDatabasePluginAdapter,
+  createTransactionDatabasePlugin,
+  publishBundlePatchInTransaction,
   type DatabasePluginImplementation,
 } from "@hot-updater/plugin-core/internal";
 import type { Kysely } from "kysely";
@@ -71,6 +73,21 @@ const createImplementation = <TDatabase extends object>(
             input,
           ),
         ),
+    publishBundlePatch: (input) => {
+      const transaction = db.transaction();
+      return (
+        config.provider === "sqlite"
+          ? transaction
+          : transaction.setIsolationLevel("serializable")
+      ).execute((transaction) =>
+        publishBundlePatchInTransaction(
+          createTransactionDatabasePlugin(
+            createKyselyCrud(transaction, config.provider, relationMode),
+          ),
+          input,
+        ),
+      );
+    },
     transaction: (callback) =>
       db
         .transaction()

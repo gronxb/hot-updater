@@ -1,4 +1,6 @@
 import type {
+  BundlePatchPublishInput,
+  BundlePatchPublishResult,
   BundlePatchRow,
   BundleRow,
   BundleEventRow,
@@ -91,6 +93,12 @@ export type Database = {
           p_id: string;
         };
         Returns: ChannelDeleteResult;
+      };
+      [SUPABASE_V1_FUNCTION_NAMES.publishBundlePatch]: {
+        Args: {
+          p_input: BundlePatchPublishInput;
+        };
+        Returns: BundlePatchPublishResult;
       };
     };
   };

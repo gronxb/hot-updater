@@ -23,6 +23,49 @@ setupDatabasePluginTestSuite({
 });
 
 describe("mongoAdapter capabilities", () => {
+  it("does not leave a dangling patch when base deletion races publication", async () => {
+    harness.reset();
+    const firstRepository = mongoAdapter({
+      client: harness.client,
+      transactions: true,
+    });
+    const secondRepository = mongoAdapter({
+      client: harness.client,
+      transactions: true,
+    });
+    const database = createDatabaseClient(firstRepository);
+    const base = createBundleRowFixture("970");
+    const owner = createBundleRowFixture("971");
+    await firstRepository.commit({
+      changes: [base, owner].map((row) => ({
+        model: "bundles" as const,
+        operation: "insert" as const,
+        row,
+      })),
+    });
+    const { order_index: _orderIndex, ...fixture } =
+      createBundlePatchRowFixture("970", owner.id, base.id);
+    const publish = secondRepository.models.bundlePatches.publish!;
+
+    await Promise.allSettled([
+      publish({
+        position: "primary",
+        row: { ...fixture, id: `${owner.id}:${base.id}` },
+      }),
+      database.deleteBundleById(base.id),
+    ]);
+
+    const [persistedBase, persistedOwner] = await Promise.all([
+      database.getBundleById(base.id),
+      database.getBundleById(owner.id),
+    ]);
+    if (
+      persistedOwner?.patches?.some((patch) => patch.baseBundleId === base.id)
+    ) {
+      expect(persistedBase).not.toBeNull();
+    }
+  });
+
   it("records Insights atomically even without legacy catalog transactions enabled", async () => {
     harness.reset();
     const insights = mongoAdapter({ client: harness.client }).models.insights;

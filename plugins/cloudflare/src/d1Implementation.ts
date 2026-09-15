@@ -1,4 +1,6 @@
 import type {
+  BundlePatchPublishInput,
+  BundlePatchPublishResult,
   BundlePatchRow,
   BundleRow,
   ChannelInsertInput,
@@ -10,6 +12,12 @@ import type {
   DatabaseCommit,
   DatabaseCommitExpectation,
   DatabaseCommitResult,
+} from "@hot-updater/plugin-core";
+import {
+  DatabasePluginInputError,
+  isContentAddressedAssetFileHash,
+  MAX_BUNDLE_ARTIFACT_BYTES,
+  MAX_BUNDLE_PATCHES,
 } from "@hot-updater/plugin-core";
 import {
   latestInsightsWhere,
@@ -52,6 +60,7 @@ type D1Guard = {
 };
 
 const EXPECTATION_CONFLICT_MARKER = "HOT_UPDATER_COMMIT_EXPECTATION_CONFLICT";
+const PATCH_LIMIT_MARKER = "HOT_UPDATER_COMMIT_PATCH_LIMIT";
 
 const expectationGuard = (
   expectations: readonly DatabaseCommitExpectation[],
@@ -339,6 +348,49 @@ type D1ChannelDeletePrecondition = {
   readonly addedReferenceReleaseIds: readonly string[];
 };
 
+type D1BundleDeletePrecondition = {
+  readonly id: string;
+  readonly excludedOwnerIds: readonly string[];
+  readonly addedReferencePatchIds: readonly string[];
+};
+
+const bundleDeletePrecondition = (
+  changes: readonly DatabaseChange[],
+  changeIndex: number,
+  bundleId: string,
+): D1BundleDeletePrecondition => {
+  const excludedOwnerIds = new Set<string>();
+  const addedPatches = new Map<string, BundlePatchRow>();
+  for (const change of changes.slice(0, changeIndex)) {
+    if (change.model === "bundlePatches") {
+      if (change.operation === "insert") {
+        addedPatches.set(change.row.id, change.row);
+      } else {
+        excludedOwnerIds.add(change.where.bundleId);
+        for (const [id, patch] of addedPatches) {
+          if (patch.bundle_id === change.where.bundleId)
+            addedPatches.delete(id);
+        }
+      }
+    } else if (change.model === "bundles" && change.operation === "delete") {
+      excludedOwnerIds.add(change.where.id);
+      for (const [id, patch] of addedPatches) {
+        if (patch.bundle_id === change.where.id) addedPatches.delete(id);
+      }
+    }
+  }
+  return {
+    id: bundleId,
+    excludedOwnerIds: [...excludedOwnerIds],
+    addedReferencePatchIds: [...addedPatches.values()]
+      .filter(
+        (patch) =>
+          patch.base_bundle_id === bundleId && patch.bundle_id !== bundleId,
+      )
+      .map(({ id }) => id),
+  };
+};
+
 const channelDeletePrecondition = (
   changes: readonly DatabaseChange[],
   changeIndex: number,
@@ -486,6 +538,7 @@ const createCommitPlan = (input: DatabaseCommit): D1CommitPlan => {
   }
   const requiredRows: D1RequiredRow[] = [];
   const channelDeletes: D1ChannelDeletePrecondition[] = [];
+  const bundleDeletes: D1BundleDeletePrecondition[] = [];
   const inserted = new Set<string>();
   for (const [changeIndex, change] of input.changes.entries()) {
     const required = requiredRow(change, changeIndex);
@@ -523,6 +576,29 @@ const createCommitPlan = (input: DatabaseCommit): D1CommitPlan => {
           precondition.id,
           precondition.excludedReleaseIds,
           precondition.addedReferenceReleaseIds,
+        ]),
+      });
+    }
+    if (change.model === "bundles" && change.operation === "delete") {
+      const precondition = bundleDeletePrecondition(
+        input.changes,
+        changeIndex,
+        change.where.id,
+      );
+      bundleDeletes.push(precondition);
+      checks.push({
+        changeIndex,
+        resultIndex: statements.length,
+        conflictWhen: "nonempty",
+        reason: "referenced",
+      });
+      statements.push({
+        sql: "SELECT id FROM bundle_patches WHERE base_bundle_id = json_extract(?, '$') AND bundle_id <> json_extract(?, '$') AND bundle_id NOT IN (SELECT value FROM json_each(?)) UNION ALL SELECT value AS id FROM json_each(?) LIMIT 1",
+        params: encodeD1Values([
+          precondition.id,
+          precondition.id,
+          precondition.excludedOwnerIds,
+          precondition.addedReferencePatchIds,
         ]),
       });
     }
@@ -565,14 +641,51 @@ const createCommitPlan = (input: DatabaseCommit): D1CommitPlan => {
           json_extract(channel_delete.value, '$.addedReferenceReleaseIds')
         )
       )
+    ) AND NOT EXISTS (
+      SELECT 1 FROM json_each(?) AS bundle_delete
+      WHERE EXISTS (
+        SELECT 1 FROM bundle_patches
+        WHERE bundle_patches.base_bundle_id = json_extract(bundle_delete.value, '$.id')
+          AND bundle_patches.bundle_id <> json_extract(bundle_delete.value, '$.id')
+          AND bundle_patches.bundle_id NOT IN (
+            SELECT value FROM json_each(
+              json_extract(bundle_delete.value, '$.excludedOwnerIds')
+            )
+          )
+        UNION ALL
+        SELECT value FROM json_each(
+          json_extract(bundle_delete.value, '$.addedReferencePatchIds')
+        )
+      )
     )`,
     params: encodeD1Values([
       requiredRows.map(({ model, id }) => ({ model, id })),
       channelDeletes,
+      bundleDeletes,
     ]),
   };
 
   statements.push(...input.changes.map((change) => changeQuery(change, guard)));
+  const patchOwnerIds = [
+    ...new Set(
+      input.changes.flatMap((change) =>
+        change.model === "bundlePatches" && change.operation === "insert"
+          ? [change.row.bundle_id]
+          : [],
+      ),
+    ),
+  ];
+  if (patchOwnerIds.length > 0) {
+    statements.push({
+      sql: `SELECT CASE WHEN NOT EXISTS (
+        SELECT bundle_id FROM bundle_patches
+        WHERE bundle_id IN (SELECT value FROM json_each(?))
+        GROUP BY bundle_id
+        HAVING COUNT(*) > json_extract(?, '$')
+      ) THEN 1 ELSE json_extract('${PATCH_LIMIT_MARKER}', '$') END AS patch_limit_guard`,
+      params: encodeD1Values([patchOwnerIds, MAX_BUNDLE_PATCHES]),
+    });
+  }
   return { checks, statements };
 };
 
@@ -643,6 +756,115 @@ const deleteChannel = async (
   return deletedRows.length > 0
     ? { deleted: true }
     : { deleted: false, reason: "not_empty" };
+};
+
+const publishD1BundlePatch = async (
+  executor: D1Executor,
+  input: BundlePatchPublishInput,
+): Promise<BundlePatchPublishResult> => {
+  const row = input.row;
+  if (
+    row.bundle_id === row.base_bundle_id ||
+    row.id !== `${row.bundle_id}:${row.base_bundle_id}` ||
+    row.byte_size > MAX_BUNDLE_ARTIFACT_BYTES ||
+    !isContentAddressedAssetFileHash(row.base_file_hash) ||
+    !isContentAddressedAssetFileHash(row.patch_file_hash)
+  ) {
+    throw new DatabasePluginInputError("invalid-data");
+  }
+  const referencesExist =
+    "EXISTS (SELECT 1 FROM bundles WHERE id = json_extract(?, '$')) AND " +
+    "EXISTS (SELECT 1 FROM bundles WHERE id = json_extract(?, '$'))";
+  const referenceParams = encodeD1Values([row.bundle_id, row.base_bundle_id]);
+  const publicationAllowed =
+    `(EXISTS (SELECT 1 FROM bundle_patches WHERE id = json_extract(?, '$')) OR ` +
+    `(SELECT COUNT(*) FROM bundle_patches WHERE bundle_id = json_extract(?, '$')) < json_extract(?, '$'))`;
+  const publicationParams = encodeD1Values([
+    row.id,
+    row.bundle_id,
+    MAX_BUNDLE_PATCHES,
+  ]);
+  const orderAggregate = input.position === "primary" ? "MIN" : "MAX";
+  const orderOffset = input.position === "primary" ? "- 1" : "+ 1";
+  const insertFields = [
+    "id",
+    "bundle_id",
+    "base_bundle_id",
+    "base_file_hash",
+    "patch_file_hash",
+    "patch_storage_uri",
+    "byte_size",
+  ] as const;
+  const insertValues = insertFields.map((field) => row[field]);
+  const [ownerRows = [], previousRows = [], , , , publishedRows = []] =
+    await executor.batch([
+      {
+        sql: `UPDATE bundles SET file_hash = file_hash WHERE id = json_extract(?, '$') AND ${referencesExist} AND ${publicationAllowed} RETURNING id`,
+        params: encodeD1Values([
+          row.bundle_id,
+          row.bundle_id,
+          row.base_bundle_id,
+          row.id,
+          row.bundle_id,
+          MAX_BUNDLE_PATCHES,
+        ]),
+      },
+      {
+        sql: "SELECT * FROM bundle_patches WHERE id = json_extract(?, '$') LIMIT 1",
+        params: encodeD1Values([row.id]),
+      },
+      {
+        sql: `DELETE FROM bundle_patches WHERE id = json_extract(?, '$') AND ${referencesExist} AND ${publicationAllowed}`,
+        params: [
+          ...encodeD1Values([row.id]),
+          ...referenceParams,
+          ...publicationParams,
+        ],
+      },
+      {
+        sql: `INSERT INTO bundle_patches (${insertFields.join(", ")}, order_index) SELECT ${d1Placeholders(insertValues.length)}, COALESCE((SELECT ${orderAggregate}(order_index) ${orderOffset} FROM bundle_patches WHERE bundle_id = json_extract(?, '$')), 0) WHERE ${referencesExist} AND ${publicationAllowed}`,
+        params: encodeD1Values([
+          ...insertValues,
+          row.bundle_id,
+          row.bundle_id,
+          row.base_bundle_id,
+          row.id,
+          row.bundle_id,
+          MAX_BUNDLE_PATCHES,
+        ]),
+      },
+      {
+        sql: `WITH ranked AS (SELECT id, ROW_NUMBER() OVER (ORDER BY order_index, id) - 1 AS next_order_index FROM bundle_patches WHERE bundle_id = json_extract(?, '$')) UPDATE bundle_patches SET order_index = (SELECT next_order_index FROM ranked WHERE ranked.id = bundle_patches.id) WHERE bundle_id = json_extract(?, '$') AND ${referencesExist}`,
+        params: encodeD1Values([
+          row.bundle_id,
+          row.bundle_id,
+          row.bundle_id,
+          row.base_bundle_id,
+        ]),
+      },
+      {
+        sql: "SELECT * FROM bundle_patches WHERE bundle_id = json_extract(?, '$') ORDER BY order_index, id",
+        params: encodeD1Values([row.bundle_id]),
+      },
+    ]);
+
+  if (ownerRows.length === 0) {
+    return {
+      published: false,
+      reason:
+        publishedRows.length >= MAX_BUNDLE_PATCHES
+          ? "limit_exceeded"
+          : "not_found",
+    };
+  }
+  return {
+    patches: publishedRows.map((value) => parseD1Row("bundle_patches", value)),
+    previous:
+      previousRows[0] === undefined
+        ? null
+        : parseD1Row("bundle_patches", previousRows[0]),
+    published: true,
+  };
 };
 
 export const createD1Implementation = (
@@ -764,8 +986,23 @@ WHERE (excluded.received_at_ms, excluded.id) > (bundle_event_heads.received_at_m
   findMany: (input) => findManyD1Rows(executor, input),
   insertChannel: (input) => insertChannel(executor, input),
   deleteChannel: (input) => deleteChannel(executor, input),
+  publishBundlePatch: (input) => publishD1BundlePatch(executor, input),
   async commit(input) {
     if (input.changes.length === 0) return { committed: true };
+    for (const change of input.changes) {
+      if (
+        change.model === "bundlePatches" &&
+        change.operation === "insert" &&
+        (change.row.bundle_id === change.row.base_bundle_id ||
+          change.row.id !==
+            `${change.row.bundle_id}:${change.row.base_bundle_id}` ||
+          change.row.byte_size > MAX_BUNDLE_ARTIFACT_BYTES ||
+          !isContentAddressedAssetFileHash(change.row.base_file_hash) ||
+          !isContentAddressedAssetFileHash(change.row.patch_file_hash))
+      ) {
+        throw new DatabasePluginInputError("invalid-data");
+      }
+    }
     const expectations = input.expectations ?? [];
     const conflict = await expectationConflict(executor, expectations);
     if (conflict !== null) return conflict;
@@ -773,11 +1010,25 @@ WHERE (excluded.received_at_ms, excluded.id) > (bundle_event_heads.received_at_m
     try {
       return resultForPlan(plan, await executor.batch(plan.statements));
     } catch (error) {
-      if (expectations.length === 0 || !isExpectationConflictError(error)) {
+      if (!isExpectationConflictError(error)) {
         throw error;
       }
+      const conflict =
+        expectations.length === 0
+          ? null
+          : await expectationConflict(executor, expectations);
+      if (conflict !== null) return conflict;
+      if (
+        input.changes.some(
+          (change) =>
+            change.model === "bundlePatches" && change.operation === "insert",
+        )
+      ) {
+        throw new DatabasePluginInputError("invalid-data");
+      }
+      if (expectations.length === 0) throw error;
       return (
-        (await expectationConflict(executor, expectations)) ?? {
+        conflict ?? {
           committed: false,
           conflict: {
             actualVersion:
