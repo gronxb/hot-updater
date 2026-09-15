@@ -71,7 +71,7 @@ describe("managed Lynx multi-page evidence", () => {
         ...detail,
         nativePageClass: "Sparkling.SPKViewController",
         sourceContextId: main.contextId,
-        parameters: { title: "Second Page" },
+        parameters: { value: "a+b", title: "Second Page" },
         orderedPageEntries: ["main.lynx.bundle", "detail.lynx.bundle"],
         topPageEntry: "detail.lynx.bundle",
         outcome: "opened",
@@ -94,6 +94,7 @@ describe("managed Lynx multi-page evidence", () => {
       platform: "ios",
       main: mainIdentity,
       detailSha256: "a".repeat(64),
+      expectedParameters: { title: "Second Page", value: "a+b" },
     });
     assertManagedDetailClosed(
       snapshot([

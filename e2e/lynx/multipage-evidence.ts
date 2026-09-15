@@ -213,7 +213,12 @@ export function assertManagedDetailOpened(
   const expectedParameters = options.expectedParameters ?? {
     title: "Second Page",
   };
-  if (JSON.stringify(params) !== JSON.stringify(expectedParameters)) {
+  const parameterKeys = Object.keys(params);
+  const expectedParameterKeys = Object.keys(expectedParameters);
+  if (
+    parameterKeys.length !== expectedParameterKeys.length ||
+    expectedParameterKeys.some((key) => params[key] !== expectedParameters[key])
+  ) {
     throw new Error("Detail navigation params were not forwarded exactly");
   }
   const firstContent = requireEvent(
