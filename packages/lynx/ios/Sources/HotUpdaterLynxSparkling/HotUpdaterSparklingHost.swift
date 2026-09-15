@@ -920,7 +920,8 @@ public final class HotUpdaterSparklingHost: NSObject,
             launchConfiguration: HotUpdaterSparklingPageLaunchConfiguration
                 .merge(
                     host: launchConfiguration,
-                    page: logical.parameters
+                    page: Dictionary(uniqueKeysWithValues:
+                        logical.parameters.map { ($0.name, $0.value) })
                 )
         )
         let sparkling = SPKContext()

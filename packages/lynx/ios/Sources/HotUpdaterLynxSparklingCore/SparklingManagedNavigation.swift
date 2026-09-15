@@ -49,13 +49,9 @@ public struct HotUpdaterSparklingParameter: Codable, Equatable {
 enum HotUpdaterSparklingPageLaunchConfiguration {
     static func merge(
         host: [String: String],
-        page: [HotUpdaterSparklingParameter]
+        page: [String: String]
     ) -> [String: String] {
-        host.merging(
-            Dictionary(uniqueKeysWithValues: page.map {
-                ($0.name, $0.value)
-            })
-        ) { _, pageValue in pageValue }
+        host.merging(page) { _, pageValue in pageValue }
     }
 }
 
