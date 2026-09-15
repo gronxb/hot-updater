@@ -8,7 +8,9 @@ import com.lynx.jsbridge.LynxModule
 import com.lynx.react.bridge.Callback
 import com.lynx.react.bridge.JavaOnlyArray
 import com.lynx.react.bridge.JavaOnlyMap
+import com.lynx.react.bridge.ReadableArray
 import com.lynx.react.bridge.ReadableMap
+import com.lynx.react.bridge.ReadableType
 import java.util.IdentityHashMap
 import kotlinx.coroutines.launch
 import org.json.JSONArray
@@ -112,7 +114,7 @@ class HotUpdaterLynxModule(context: Context) : LynxModule(context) {
             }
         }
     }
-    private fun json(map: ReadableMap) = lynxBridgeJson(map.asHashMap())
+    private fun json(map: ReadableMap) = lynxBridgeJson(map)
     private fun reply(callback: Callback, result: Result<JSONObject>) {
         val envelope = result.fold(
             { JSONObject().put("ok", true).put("data", it) },
@@ -147,6 +149,47 @@ class HotUpdaterLynxModule(context: Context) : LynxModule(context) {
         }
     }
 }
+
+internal fun lynxBridgeJson(value: ReadableMap): JSONObject =
+    JSONObject().also { output ->
+        val keys = value.keySetIterator()
+        while (keys.hasNextKey()) {
+            val key = keys.nextKey()
+            output.put(key, lynxBridgeJsonValue(value, key))
+        }
+    }
+
+private fun lynxBridgeJsonValue(value: ReadableMap, key: String): Any =
+    when (value.getType(key)) {
+        ReadableType.Null -> JSONObject.NULL
+        ReadableType.Boolean -> value.getBoolean(key)
+        ReadableType.Int -> value.getInt(key)
+        ReadableType.Long -> value.getLong(key)
+        ReadableType.Number -> value.getDouble(key)
+        ReadableType.String -> value.getString(key)
+        ReadableType.Map -> lynxBridgeJson(value.getMap(key))
+        ReadableType.Array -> lynxBridgeJson(value.getArray(key))
+        else -> error("Unsupported bridge value for $key")
+    }
+
+private fun lynxBridgeJson(value: ReadableArray): JSONArray =
+    JSONArray().also { output ->
+        repeat(value.size()) { index ->
+            output.put(
+                when (value.getType(index)) {
+                    ReadableType.Null -> JSONObject.NULL
+                    ReadableType.Boolean -> value.getBoolean(index)
+                    ReadableType.Int -> value.getInt(index)
+                    ReadableType.Long -> value.getLong(index)
+                    ReadableType.Number -> value.getDouble(index)
+                    ReadableType.String -> value.getString(index)
+                    ReadableType.Map -> lynxBridgeJson(value.getMap(index))
+                    ReadableType.Array -> lynxBridgeJson(value.getArray(index))
+                    else -> error("Unsupported bridge value at $index")
+                },
+            )
+        }
+    }
 
 internal fun lynxBridgeJson(value: Map<String, Any?>): JSONObject =
     JSONObject().also { output ->

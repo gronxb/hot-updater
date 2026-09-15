@@ -1,5 +1,8 @@
 package com.hotupdater.lynx
 
+import com.lynx.react.bridge.JavaOnlyMap
+import com.lynx.react.bridge.ReadableMap
+import java.lang.reflect.Proxy
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
@@ -12,28 +15,43 @@ class LynxBridgeRepliesTest {
         val hash = "a".repeat(64)
         val bundleId = "018f0000-0000-7000-8000-000000000001"
         val baseBundleId = "018f0000-0000-7000-8000-000000000002"
-        val json = lynxBridgeJson(
+        val patch = JavaOnlyMap.from(
+            mapOf(
+                "algorithm" to "bsdiff",
+                "baseBundleId" to baseBundleId,
+                "baseFileHash" to hash,
+                "patchFileHash" to hash,
+                "patchUrl" to "https://example.test/patch",
+            ),
+        )
+        val changedAsset = JavaOnlyMap.from(
+            mapOf(
+                "fileHash" to hash,
+                "file" to null,
+                "patch" to patch,
+            ),
+        )
+        val changedAssets = JavaOnlyMap.from(
+            mapOf("main.lynx.bundle" to changedAsset),
+        )
+        val params = JavaOnlyMap.from(
             mapOf(
                 "bundleId" to bundleId,
                 "fileUrl" to null,
                 "fileHash" to null,
                 "manifestUrl" to "https://example.test/manifest",
                 "manifestFileHash" to hash,
-                "changedAssets" to mapOf(
-                    "main.lynx.bundle" to mapOf(
-                        "fileHash" to hash,
-                        "file" to null,
-                        "patch" to mapOf(
-                            "algorithm" to "bsdiff",
-                            "baseBundleId" to baseBundleId,
-                            "baseFileHash" to hash,
-                            "patchFileHash" to hash,
-                            "patchUrl" to "https://example.test/patch",
-                        ),
-                    ),
-                ),
+                "changedAssets" to changedAssets,
             ),
         )
+        val lossyParams = Proxy.newProxyInstance(
+            ReadableMap::class.java.classLoader,
+            arrayOf(ReadableMap::class.java),
+        ) { _, method, args ->
+            if (method.name == "asHashMap") hashMapOf<String, Any>()
+            else method.invoke(params, *(args ?: emptyArray()))
+        } as ReadableMap
+        val json = lynxBridgeJson(lossyParams)
 
         val changed = json.getJSONObject("changedAssets")
             .getJSONObject("main.lynx.bundle")
