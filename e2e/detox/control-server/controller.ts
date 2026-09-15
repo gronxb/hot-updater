@@ -1134,6 +1134,7 @@ async function applyAppScenario({
   bundleProfile,
   marker,
   mode,
+  safeBundleIds,
 }: {
   bundleProfile: BundleProfile;
   marker: string;
