@@ -694,6 +694,26 @@ describe("Lynx catalog controller (mock native transport)", () => {
     expect(fetch).toHaveBeenCalledOnce();
   });
 
+  it("treats a replayed older catalog as no update", async () => {
+    const { updater, native, fetch } = setup();
+    native.acceptCatalog.mockImplementation((_params, callback) =>
+      callback({
+        ok: false,
+        error: {
+          code: "STALE_GENERATION",
+          message: "Catalog generation regressed",
+        },
+      }),
+    );
+
+    await expect(
+      updater.checkForUpdate({ updateStrategy: "appVersion" }),
+    ).resolves.toBeNull();
+    expect(native.validateSelection).not.toHaveBeenCalled();
+    expect(native.prepareSelection).not.toHaveBeenCalled();
+    expect(fetch).toHaveBeenCalledOnce();
+  });
+
   it("rejects INCOMPATIBLE during check without retaining a preparation", async () => {
     const { updater, native } = setup();
     native.validateSelection.mockImplementation((_params, callback) =>

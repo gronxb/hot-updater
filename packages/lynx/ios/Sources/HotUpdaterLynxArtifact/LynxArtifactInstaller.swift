@@ -1,6 +1,7 @@
 import CryptoKit
 import Darwin
 import Foundation
+import os.log
 
 public struct LynxArtifactConfiguration {
     public let platform = "ios"
@@ -695,9 +696,12 @@ public final class LynxArtifactInstaller {
     private func logPublished(_ token: LynxPreparedArtifact) {
         switch token.delivery {
         case .archive(let fallbackBaseBundleId):
-            NSLog("HotUpdaterArchiveInstalled bundleId=%@", token.bundleId)
+            os_log("%{public}@", "HotUpdaterArchiveInstalled bundleId=\(token.bundleId)")
             if let fallbackBaseBundleId {
-                NSLog("HotUpdaterArchiveFallbackApplied bundleId=%@ baseBundleId=%@", token.bundleId, fallbackBaseBundleId)
+                os_log(
+                    "%{public}@",
+                    "HotUpdaterArchiveFallbackApplied bundleId=\(token.bundleId) baseBundleId=\(fallbackBaseBundleId)"
+                )
             }
         case .manifest(let baseBundleId, let releaseId, let patchedAssets):
             for asset in patchedAssets {
@@ -709,12 +713,9 @@ public final class LynxArtifactInstaller {
                     baseBundleId: baseBundleId,
                     patchedAsset: asset
                 )
-                NSLog(
-                    "HotUpdaterBsdiffPatchApplied asset=%@ baseBundleId=%@ bundleId=%@ HotUpdaterLynxEvent=%@",
-                    asset.path,
-                    baseBundleId,
-                    token.bundleId,
-                    event
+                os_log(
+                    "%{public}@",
+                    "HotUpdaterBsdiffPatchApplied asset=\(asset.path) baseBundleId=\(baseBundleId) bundleId=\(token.bundleId) HotUpdaterLynxEvent=\(event)"
                 )
             }
             let event = LynxInstallEvent.json(
@@ -724,11 +725,9 @@ public final class LynxArtifactInstaller {
                 releaseId: releaseId,
                 baseBundleId: baseBundleId
             )
-            NSLog(
-                "HotUpdaterManifestDiffApplied bundleId=%@ baseBundleId=%@ HotUpdaterLynxEvent=%@",
-                token.bundleId,
-                baseBundleId,
-                event
+            os_log(
+                "%{public}@",
+                "HotUpdaterManifestDiffApplied bundleId=\(token.bundleId) baseBundleId=\(baseBundleId) HotUpdaterLynxEvent=\(event)"
             )
         }
     }

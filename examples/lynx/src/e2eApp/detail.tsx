@@ -72,18 +72,18 @@ function Detail() {
     void configure()
       .then(async (pageTitle) => {
         const launch = await HotUpdater.getLaunchInfo();
-        const confirmation = await HotUpdater.notifyAppReady();
         setTitle(pageTitle);
         await patchScreenState({
           detailPageMarker: E2E_SCENARIO_MARKER,
           detailPageTitle: pageTitle,
         });
+        poller.start();
+        const confirmation = await HotUpdater.notifyAppReady();
         console.log(
           "HOT_UPDATER_E2E_DETAIL_READY",
           JSON.stringify({ launch, confirmation, pageTitle }),
         );
         setStatus(`Detail ready ${launch.running.bundleId}`);
-        poller.start();
       })
       .catch((error) => setStatus(`Detail failed: ${String(error)}`));
   }, []);

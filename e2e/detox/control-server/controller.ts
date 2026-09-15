@@ -377,7 +377,7 @@ const E2E_POLL_INTERVAL_MS = Number(
   process.env.HOT_UPDATER_E2E_POLL_INTERVAL_MS || 250,
 );
 const E2E_IOS_LOG_SHOW_TIMEOUT_MS = Number(
-  process.env.HOT_UPDATER_E2E_IOS_LOG_SHOW_TIMEOUT_MS || 2_000,
+  process.env.HOT_UPDATER_E2E_IOS_LOG_SHOW_TIMEOUT_MS || 10_000,
 );
 const E2E_ANDROID_LAUNCH_SETTLE_MS = Number(
   process.env.HOT_UPDATER_E2E_ANDROID_LAUNCH_SETTLE_MS || 1000,
@@ -2285,9 +2285,67 @@ function writeDeviceStoreJson(
   }
 }
 
-function seedDeviceCrashHistory(bundleIds: readonly string[]) {
+async function seedDeviceCrashHistory(bundleIds: readonly string[]) {
   terminateFixtureApp();
   const clamped = bundleIds.slice(-10);
+  if (isLynxE2eApp()) {
+    if (!ensureLynxScopePath()) {
+      if (fixtureSession.platform === "ios") {
+        launchIosApp();
+      } else {
+        launchAndroidApp();
+      }
+      for (let attempt = 0; attempt < 40; attempt += 1) {
+        if (ensureLynxScopePath()) break;
+        await sleep(E2E_POLL_INTERVAL_MS);
+      }
+      terminateFixtureApp();
+    }
+    const scopePath = ensureLynxScopePath();
+    if (!scopePath) {
+      throw new Error("Lynx state store was not initialized by the app launch");
+    }
+    const state = readLynxJournalValue();
+    if (!state) {
+      throw new Error("Lynx state journal is unavailable");
+    }
+    state.revision = randomUUID();
+    if (fixtureSession.platform === "ios") {
+      state.crashedBundleIds = clamped;
+      const statePath = path.join(scopePath, "state.json");
+      const temporaryPath = path.join(scopePath, `.e2e-state-${randomUUID()}`);
+      fs.writeFileSync(temporaryPath, `${JSON.stringify(state)}\n`);
+      fs.renameSync(temporaryPath, statePath);
+    } else {
+      state.crashed = clamped;
+      const statePath = androidRunAsReadablePath(`${scopePath}/state.json`);
+      const temporaryPath = `${statePath}.e2e-${randomUUID()}`;
+      const command = `cat > ${temporaryPath} && mv ${temporaryPath} ${statePath}`;
+      const result = spawnSync(
+        "adb",
+        [
+          "-s",
+          deviceId as string,
+          "shell",
+          "run-as",
+          fixtureSession.appId,
+          "sh",
+          "-c",
+          shellSingleQuote(command),
+        ],
+        {
+          input: `${JSON.stringify(state)}\n`,
+          stdio: ["pipe", "pipe", "pipe"],
+        },
+      );
+      if (result.status !== 0) {
+        throw new Error(
+          `Failed to write Android Lynx state: ${result.stderr.toString()}`,
+        );
+      }
+    }
+    return { bundleIds: clamped, count: clamped.length };
+  }
   writeDeviceStoreJson("crashed-history.json", {
     bundles: clamped.map((bundleId, index) => ({
       bundleId,
@@ -6373,7 +6431,7 @@ function readBsdiffPatchLogs() {
         "--last",
         "10m",
         "--predicate",
-        'eventMessage CONTAINS "HotUpdaterBsdiffPatchApplied"',
+        'eventMessage CONTAINS "HotUpdaterBsdiffPatchApplied" AND process != "log"',
       ],
       { allowFailure: true },
     );
@@ -7765,7 +7823,7 @@ export async function handleAssertCrashHistory(bundleId: string) {
   return assertCrashHistory(bundleId);
 }
 
-export function handleSeedCrashHistory(bundleIds: readonly string[]) {
+export async function handleSeedCrashHistory(bundleIds: readonly string[]) {
   return seedDeviceCrashHistory(bundleIds);
 }
 

@@ -94,27 +94,44 @@ const normalizeInjectedFingerprint = (filePath: string, bytes: Buffer) => {
     filePath.endsWith("AndroidManifest.xml")
   ) {
     return Buffer.from(
-      source.replace(/<meta-data\b[^>]*>/gs, (element) => {
-        if (
-          !/\bandroid:name\s*=\s*(["'])com\.hotupdater\.FINGERPRINT_HASH\1/.test(
-            element,
-          )
-        ) {
-          return element;
-        }
-        return element.replace(
-          /(\bandroid:value\s*=\s*)(["'])[^"']*\2/,
-          `$1$2${FINGERPRINT_PLACEHOLDER}$2`,
-        );
-      }),
+      source
+        .replace(/<meta-data\b[^>]*>/gs, (element) => {
+          if (
+            /\bandroid:name\s*=\s*(["'])com\.hotupdater\.PUBLIC_KEY\1/.test(
+              element,
+            )
+          ) {
+            return "";
+          }
+          if (
+            !/\bandroid:name\s*=\s*(["'])com\.hotupdater\.FINGERPRINT_HASH\1/.test(
+              element,
+            )
+          ) {
+            return element;
+          }
+          return element.replace(
+            /(\bandroid:value\s*=\s*)(["'])[^"']*\2/,
+            `$1$2${FINGERPRINT_PLACEHOLDER}$2`,
+          );
+        })
+        .replace(/>\s+</g, "><")
+        .trim(),
     );
   }
   if (filePath.startsWith("ios/") && filePath.endsWith(".plist")) {
     return Buffer.from(
-      source.replace(
-        /(<key>\s*HOT_UPDATER_FINGERPRINT_HASH\s*<\/key>\s*<string>)[\s\S]*?(<\/string>)/g,
-        `$1${FINGERPRINT_PLACEHOLDER}$2`,
-      ),
+      source
+        .replace(
+          /(<key>\s*HOT_UPDATER_FINGERPRINT_HASH\s*<\/key>\s*<string>)[\s\S]*?(<\/string>)/g,
+          `$1${FINGERPRINT_PLACEHOLDER}$2`,
+        )
+        .replace(
+          /<key>\s*HOT_UPDATER_PUBLIC_KEY\s*<\/key>\s*<string>[\s\S]*?<\/string>/g,
+          "",
+        )
+        .replace(/>\s+</g, "><")
+        .trim(),
     );
   }
   return bytes;
@@ -137,11 +154,10 @@ const hashLynxFingerprintSource = async (
   if (initial.hash !== final.hash || initial.byteSize !== final.byteSize) {
     throw new Error(`Fingerprint source changed: ${source.filePath}`);
   }
+  const normalized = normalizeInjectedFingerprint(source.filePath, bytes);
   return {
-    byteSize: initial.byteSize,
-    hash: createHash("sha256")
-      .update(normalizeInjectedFingerprint(source.filePath, bytes))
-      .digest("hex"),
+    byteSize: normalized.byteLength,
+    hash: createHash("sha256").update(normalized).digest("hex"),
   };
 };
 

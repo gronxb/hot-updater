@@ -143,6 +143,7 @@ export default {
       "ios/Embedded/**",
       "ios/MatrixHarness/**",
       "ios/ProductionEmbedded/**",
+      "ios/SparklingGo.xcodeproj/project.xcworkspace/**",
       "ios/SparklingGo.xcodeproj/xcshareddata/xcschemes/SparklingGoE2E.xcscheme",
       "ios/SparklingGo.xcodeproj/xcshareddata/xcschemes/SparklingMatrixHarness.xcscheme",
       "ios/generated/**",

@@ -115,12 +115,19 @@ function androidJournalFixture() {
   };
 }
 
-function androidJournalFetch(snapshot: string) {
+function androidJournalFetch(
+  snapshot: string,
+  options: {
+    readonly evidenceDelayPolls?: number;
+    readonly initialActionResult?: string;
+  } = {},
+) {
   const latestSequence = String(
     (JSON.parse(snapshot) as { latestSequence: unknown }).latestSequence,
   );
   let launchGeneration: string | null = null;
-  let evidenceReady = false;
+  let evidenceRequested = false;
+  let evidencePolls = 0;
   return vi.fn(async (url: string, init?: RequestInit) => {
     const body =
       typeof init?.body === "string"
@@ -133,8 +140,12 @@ function androidJournalFetch(snapshot: string) {
       url.endsWith("/e2e/pending-action") &&
       body.testID === "action-capture-generation-events"
     ) {
-      evidenceReady = true;
+      evidenceRequested = true;
     }
+    const evidenceReady =
+      evidenceRequested &&
+      (!url.endsWith("/e2e/runtime-config") ||
+        evidencePolls++ >= (options.evidenceDelayPolls ?? 0));
     const screenState = {
       currentBundleId: "bundle-A",
       currentReleaseId: "release-A",
@@ -143,7 +154,7 @@ function androidJournalFetch(snapshot: string) {
       runtimeScenarioMarker: "bundle-A-marker",
       updateActionResult: evidenceReady
         ? `generation-events -> ${latestSequence}`
-        : "idle",
+        : (options.initialActionResult ?? "idle"),
     };
     return {
       ok: true,
@@ -737,6 +748,28 @@ describe("Lynx app installation", () => {
       ],
       expect.objectContaining({ maxBuffer: 20 * 1024 * 1024 }),
     );
+  });
+
+  it("waits for the Android generation snapshot instead of accepting a stale action receipt", async () => {
+    const fixture = androidJournalFixture();
+    mockAndroidCommands(ANDROID_302_DIAGNOSTIC, fixture.journal);
+    const fetch = androidJournalFetch(fixture.snapshot, {
+      evidenceDelayPolls: 1,
+      initialActionResult: "current-channel -> installed ID stale-release",
+    });
+    const driver = new LynxAppDriver(
+      createControlClient({
+        baseUrl: "http://control.test",
+        fetch,
+        pollDelayMs: async () => undefined,
+      }),
+      "android",
+      { HOT_UPDATER_E2E_ANDROID_SERIAL: "emulator-5554" },
+    );
+
+    await expect(
+      driver.launch("journal receipt race"),
+    ).resolves.toBeUndefined();
   });
 
   it.each([

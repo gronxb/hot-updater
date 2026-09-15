@@ -387,13 +387,18 @@ function App() {
         await setUpdateActionResult("captured-update -> missing");
         return;
       }
-      const installed = await updateInfo.updateBundle();
-      await publishRuntimeSnapshot();
-      await setUpdateActionResult(
-        installed
-          ? `captured-update -> installed Release ${updateInfo.releaseId ?? "legacy"}`
-          : "captured-update -> skipped",
-      );
+      try {
+        const installed = await updateInfo.updateBundle();
+        await publishRuntimeSnapshot();
+        await setUpdateActionResult(
+          installed
+            ? `captured-update -> installed Release ${updateInfo.releaseId ?? "legacy"}`
+            : "captured-update -> skipped",
+        );
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        await setUpdateActionResult(`captured-update -> error ${message}`);
+      }
     },
     "cohort-input": async (text) => {
       if (text === undefined) return;

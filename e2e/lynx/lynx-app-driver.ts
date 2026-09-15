@@ -873,14 +873,29 @@ export class LynxAppDriver implements DetoxAppDriver {
           { testID: "action-capture-generation-events" },
         ),
     );
-    const actionResultResponse =
+    const generationEventsResponse =
       await this.captureAndroidRuntimeJournalAcquisitionStep(
         "screen.evidence-receipt-unavailable",
         () =>
           this.controlClient.waitForScreenStateField(
             `${stage}: wait for runtime journal evidence`,
+            "generationEvents",
+          ),
+      );
+    const snapshot = validateGenerationEventsSnapshot(
+      JSON.parse(String(generationEventsResponse.generationEvents)),
+      { allowTruncated: true },
+    );
+    const actionResultResponse =
+      await this.captureAndroidRuntimeJournalAcquisitionStep(
+        "screen.evidence-receipt-unavailable",
+        () =>
+          this.controlClient.waitForScreenStateField(
+            `${stage}: wait for runtime journal receipt`,
             "updateActionResult",
-            { rejectSubstrings: [" -> error"], rejectValues: ["idle"] },
+            {
+              expectedValue: `generation-events -> ${snapshot.latestSequence}`,
+            },
           ),
       );
     const screenStateResponse =

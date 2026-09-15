@@ -113,13 +113,24 @@ export async function checkForUpdate(
     crashedBundleIds: state.crashedBundleIds,
     unconfirmedReleaseIds: state.unconfirmedReleaseIds,
   });
-  const guard = await callNative<SelectionGuard>("acceptCatalog", {
-    catalog,
-    expectedRevision: state.revision,
-    explicitScopeSwitch,
-    selectionContextHash,
-    targetChannel,
-  } satisfies AcceptCatalogParams);
+  let guard: SelectionGuard;
+  try {
+    guard = await callNative<SelectionGuard>("acceptCatalog", {
+      catalog,
+      expectedRevision: state.revision,
+      explicitScopeSwitch,
+      selectionContextHash,
+      targetChannel,
+    } satisfies AcceptCatalogParams);
+  } catch (error) {
+    if (
+      error instanceof LynxUpdaterError &&
+      error.code === "STALE_GENERATION"
+    ) {
+      return null;
+    }
+    throw error;
+  }
   const desired = selectDesiredRelease(catalog, {
     activeReleaseId: activeInTargetScope?.releaseId ?? null,
     builtInBundleId: state.embeddedBundleId,

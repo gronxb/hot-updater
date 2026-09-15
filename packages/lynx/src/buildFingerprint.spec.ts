@@ -138,6 +138,49 @@ describe("Lynx native fingerprint", () => {
     expect(changed.hash).not.toBe(before.hash);
   });
 
+  it("normalizes the post-fingerprint native trust-anchor injection", async () => {
+    const iosPlist = path.join(cwd, "ios", "Info.plist");
+    const androidManifest = path.join(
+      cwd,
+      "android",
+      "app",
+      "src",
+      "main",
+      "AndroidManifest.xml",
+    );
+    await fs.mkdir(path.dirname(androidManifest), { recursive: true });
+    await Promise.all([
+      fs.writeFile(
+        iosPlist,
+        "<plist><dict><key>HOT_UPDATER_FINGERPRINT_HASH</key><string>hash</string></dict></plist>",
+      ),
+      fs.writeFile(
+        androidManifest,
+        '<manifest><application><meta-data android:name="com.hotupdater.FINGERPRINT_HASH" android:value="hash"/></application></manifest>',
+      ),
+    ]);
+    const iosBefore = await createFingerprint({ platform: "ios" });
+    const androidBefore = await createFingerprint({ platform: "android" });
+
+    await Promise.all([
+      fs.writeFile(
+        iosPlist,
+        "<plist>\n  <dict>\n    <key>HOT_UPDATER_FINGERPRINT_HASH</key><string>hash</string>\n    <key>HOT_UPDATER_PUBLIC_KEY</key><string>key-b</string>\n  </dict>\n</plist>\n",
+      ),
+      fs.writeFile(
+        androidManifest,
+        '<manifest>\n  <application>\n    <meta-data android:name="com.hotupdater.FINGERPRINT_HASH" android:value="hash"/>\n    <meta-data android:name="com.hotupdater.PUBLIC_KEY" android:value="key-b"/>\n  </application>\n</manifest>\n',
+      ),
+    ]);
+
+    await expect(createFingerprint({ platform: "ios" })).resolves.toEqual(
+      iosBefore,
+    );
+    await expect(createFingerprint({ platform: "android" })).resolves.toEqual(
+      androidBefore,
+    );
+  });
+
   it("does not include the other platform or generated dependency trees", async () => {
     const before = await createFingerprint({
       platform: "android",

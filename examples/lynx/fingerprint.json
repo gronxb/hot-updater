@@ -1,6 +1,6 @@
 {
   "ios": {
-    "hash": "ba930b510ab775d8ef98db5283fe7ffc5be49452cd7db3b9a5bfde8669b72777",
+    "hash": "dadc86336905cccbdae63a3c9bb3eead45f8109ca44792eda3620999b87819c8",
     "sources": [
       {
         "type": "file",
@@ -129,9 +129,9 @@
         "reasons": [
           "lynx-native-input"
         ],
-        "hash": "f99848731606814173fe73c26f87575db20867a73ca15aaa2fbd573484ea4ec1",
+        "hash": "3f649047dc6e14d248695bbbfd3d9b47cc5080d31b60ae8e000f15529929b3eb",
         "debugInfo": {
-          "byteSize": 36525
+          "byteSize": 36555
         }
       },
       {
@@ -371,9 +371,9 @@
         "reasons": [
           "lynx-native-input"
         ],
-        "hash": "188e80db4f62d2ed7e5b11f860b400f8ade7754bc536220647827a1fd86b2bfc",
+        "hash": "58fea8fdf0310f2b0f8ac302ed3bf19608dbf8f0fd2c6daf7bf3fc43a3371569",
         "debugInfo": {
-          "byteSize": 400
+          "byteSize": 349
         }
       },
       {
@@ -407,17 +407,6 @@
         "hash": "6a5b1079326494d1eadc12da7ffc25460461ba65632e97a809d9f636e2f949f6",
         "debugInfo": {
           "byteSize": 45568
-        }
-      },
-      {
-        "type": "file",
-        "filePath": "ios/SparklingGo.xcodeproj/project.xcworkspace/contents.xcworkspacedata",
-        "reasons": [
-          "lynx-native-input"
-        ],
-        "hash": "7f3b00b5c3fdb45242d7b87e1e5c4e25d1fa8129a16c94295ecc4e8ea2235c5f",
-        "debugInfo": {
-          "byteSize": 135
         }
       },
       {
@@ -533,7 +522,7 @@
     ]
   },
   "android": {
-    "hash": "14b425b27f6507cf172a18c8d43d5f01a4be24886aba497ba1e23ad02143d160",
+    "hash": "7f9fa2a481f22057500ca867132960550d04eb53a70a8d9bf7686c1d794adaf4",
     "sources": [
       {
         "type": "file",
@@ -937,9 +926,9 @@
         "reasons": [
           "lynx-native-input"
         ],
-        "hash": "75eef7065463fa662995536bd9d067afe9fe324f93062ad42bf3dbe93cef80f4",
+        "hash": "bfeae2d04a8a59b123bc8ca64376e9e0d24ab52b2e0d10a7e57b9242cebdea19",
         "debugInfo": {
-          "byteSize": 916
+          "byteSize": 785
         }
       },
       {
