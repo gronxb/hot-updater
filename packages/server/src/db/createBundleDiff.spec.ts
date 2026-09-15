@@ -1,6 +1,6 @@
 import { brotliCompressSync } from "node:zlib";
 
-import { hdiff } from "@hot-updater/bsdiff";
+import { bsdiff } from "@hot-updater/bsdiff";
 import type { Bundle, BundleManifest } from "@hot-updater/core";
 import type {
   DatabasePlugin,
@@ -27,7 +27,7 @@ import { createBundleDiff, decompressBrotliBytes } from "./createBundleDiff";
 import { hasCanonicalManifestAssetPaths } from "./manifestAssetPath";
 
 vi.mock("@hot-updater/bsdiff", () => ({
-  hdiff: vi.fn(async () => new Uint8Array([1, 2, 3, 4])),
+  bsdiff: vi.fn(async () => new Uint8Array([1, 2, 3, 4])),
 }));
 
 const BASE_ID = "00000000-0000-0000-0000-000000000001";
@@ -196,7 +196,7 @@ describe("createBundleDiff", () => {
       { databasePlugin, storagePlugin: storage.plugin },
     );
 
-    expect(hdiff).toHaveBeenCalledWith(
+    expect(bsdiff).toHaveBeenCalledWith(
       new Uint8Array([1, 2, 3]),
       new Uint8Array([1, 9, 3]),
     );
@@ -278,7 +278,7 @@ describe("createBundleDiff", () => {
       { databasePlugin, storagePlugin: storage.plugin },
     );
 
-    expect(hdiff).toHaveBeenCalledWith(
+    expect(bsdiff).toHaveBeenCalledWith(
       new Uint8Array([4, 5, 6]),
       new Uint8Array([4, 8, 6]),
     );
@@ -436,7 +436,7 @@ describe("createBundleDiff", () => {
         ),
       ).rejects.toThrow(`Invalid manifest payload for bundle ${TARGET_ID}`);
       expect(storage.get).toHaveBeenCalledTimes(2);
-      expect(hdiff).not.toHaveBeenCalled();
+      expect(bsdiff).not.toHaveBeenCalled();
       expect(storage.put).not.toHaveBeenCalled();
       expect(publish).not.toHaveBeenCalled();
     },
@@ -527,7 +527,7 @@ describe("createBundleDiff", () => {
           { databasePlugin, storagePlugin: storage.plugin },
         ),
       ).rejects.toThrow("Invalid download representation");
-      expect(hdiff).not.toHaveBeenCalled();
+      expect(bsdiff).not.toHaveBeenCalled();
       expect(storage.put).not.toHaveBeenCalled();
       expect(publish).not.toHaveBeenCalled();
     },
@@ -1029,7 +1029,7 @@ describe("createBundleDiff", () => {
         ),
       ).rejects.toThrow("byte limit");
       expect(cancel).toHaveBeenCalledOnce();
-      expect(hdiff).not.toHaveBeenCalled();
+      expect(bsdiff).not.toHaveBeenCalled();
       expect(storage.put).not.toHaveBeenCalled();
       expect(publish).not.toHaveBeenCalled();
     },
@@ -1043,7 +1043,7 @@ describe("createBundleDiff", () => {
     await expect(decompressBrotliBytes(compressed, 1_024)).rejects.toThrow(
       "byte limit",
     );
-    expect(hdiff).not.toHaveBeenCalled();
+    expect(bsdiff).not.toHaveBeenCalled();
   });
 
   it("rejects an oversized generated patch before upload or publication", async () => {
@@ -1061,9 +1061,9 @@ describe("createBundleDiff", () => {
     ]);
     const publish = vi.spyOn(databasePlugin.models.bundlePatches, "publish");
     const storage = createStorage(mergeObjects(base, target));
-    vi.mocked(hdiff).mockResolvedValueOnce({
+    vi.mocked(bsdiff).mockResolvedValueOnce({
       byteLength: MAX_BUNDLE_ARTIFACT_BYTES + 1,
-    } as unknown as Awaited<ReturnType<typeof hdiff>>);
+    } as unknown as Awaited<ReturnType<typeof bsdiff>>);
 
     await expect(
       createBundleDiff(

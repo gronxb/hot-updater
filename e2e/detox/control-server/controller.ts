@@ -3909,9 +3909,12 @@ function captureCatalogResponse(
   const generations =
     capturedCatalogResponses.get(pathname) ??
     new Map<number, CapturedProxyResponse>();
+  const headers = new Headers(response.headers);
+  headers.delete("content-encoding");
+  headers.delete("content-length");
   generations.set(generation, {
     body,
-    headers: [...response.headers.entries()],
+    headers: [...headers.entries()],
     status: response.status,
     statusText: response.statusText,
   });

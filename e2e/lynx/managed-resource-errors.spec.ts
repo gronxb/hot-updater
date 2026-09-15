@@ -193,7 +193,7 @@ function capturedEvidence(
           schemaVersion: 1,
           truncated: journal.truncated,
         }),
-        launchStatus: "Current Launch Status: CONFIRMED",
+        launchStatus: "Current Launch Status: UNCHANGED",
         runtimeScenarioMarker: "targeted-qa-detox",
         updateActionResult,
       },

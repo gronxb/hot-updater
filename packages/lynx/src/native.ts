@@ -15,6 +15,11 @@ export class LynxUpdaterError extends Error {
   }
 }
 
+const nativeErrorMessage = (code: string, message: string): string =>
+  code === "STALE_SELECTION"
+    ? "Release catalog selection became stale before it was committed"
+    : message;
+
 function asStringList(value: unknown): string[] {
   if (Array.isArray(value)) {
     return value.filter((item): item is string => typeof item === "string");
@@ -69,7 +74,12 @@ export function callNative<T>(
         typeof reply.error?.code === "string" &&
         typeof reply.error?.message === "string"
       ) {
-        reject(new LynxUpdaterError(reply.error.code, reply.error.message));
+        reject(
+          new LynxUpdaterError(
+            reply.error.code,
+            nativeErrorMessage(reply.error.code, reply.error.message),
+          ),
+        );
       } else {
         reject(
           new LynxUpdaterError(

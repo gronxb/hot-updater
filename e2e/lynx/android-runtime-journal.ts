@@ -156,7 +156,9 @@ const DIAGNOSTIC_OBJECT_KEYS = new Set<string>([
   "updateActionResult",
 ]);
 const DIAGNOSTIC_LAUNCH_STATUSES = new Set<string>([
-  "Current Launch Status: CONFIRMED",
+  "Current Launch Status: RECOVERED",
+  "Current Launch Status: UNCHANGED",
+  "Current Launch Status: UPDATE_APPLIED",
 ]);
 
 export type AndroidRuntimeJournalRecoveryRejection = {
@@ -502,7 +504,10 @@ function parseScreenEvidence(
   ) {
     return rejected("screen.runtime-marker-mismatch");
   }
-  if (screenState.launchStatus !== "Current Launch Status: CONFIRMED") {
+  if (
+    typeof screenState.launchStatus !== "string" ||
+    !DIAGNOSTIC_LAUNCH_STATUSES.has(screenState.launchStatus)
+  ) {
     return rejected("screen.launch-status");
   }
   if (

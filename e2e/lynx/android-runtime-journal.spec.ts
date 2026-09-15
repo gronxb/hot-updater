@@ -72,7 +72,7 @@ function contractEnvelope(
           schemaVersion: 1,
           truncated: journal.truncated,
         }),
-        launchStatus: "Current Launch Status: CONFIRMED",
+        launchStatus: "Current Launch Status: UNCHANGED",
         runtimeScenarioMarker: "fixture-contract-marker",
         updateActionResult: receipt,
       },
@@ -110,6 +110,39 @@ function rejectionCode(
 }
 
 describe("Android runtime journal recovery diagnostics", () => {
+  it.each(["UNCHANGED", "UPDATE_APPLIED", "RECOVERED"])(
+    "accepts the public readiness status %s when the native journal confirms the running generation",
+    (status) => {
+      const evidence = contractEnvelope(
+        fixture("android-s1-runtime-events.json"),
+      );
+      const screenStateResponse = evidence.screenStateResponse as {
+        screenState: Record<string, unknown>;
+      };
+      screenStateResponse.screenState.launchStatus = `Current Launch Status: ${status}`;
+
+      expect(
+        evaluateFontDiagnosticRecoveryByAndroidJournal(
+          "assets/probe.ttf",
+          evidence,
+        ),
+      ).toEqual({ recovered: true });
+    },
+  );
+
+  it("rejects a nonterminal public readiness status", () => {
+    const evidence = contractEnvelope(
+      fixture("android-s1-runtime-events.json"),
+    );
+    const screenStateResponse = evidence.screenStateResponse as {
+      screenState: Record<string, unknown>;
+    };
+    screenStateResponse.screenState.launchStatus =
+      "Current Launch Status: PENDING";
+
+    expect(rejectionCode(evidence)).toBe("screen.launch-status");
+  });
+
   it.each([
     [
       "android-s1",

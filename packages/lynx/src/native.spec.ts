@@ -5,6 +5,28 @@ import { callNative, LynxUpdaterError } from "./native";
 afterEach(() => vi.unstubAllGlobals());
 
 describe("Lynx native callback transport", () => {
+  it("normalizes stale native finalization into the public race error", async () => {
+    vi.stubGlobal("NativeModules", {
+      HotUpdaterLynx: {
+        stageSelection: (_params: object, callback: (reply: unknown) => void) =>
+          callback({
+            ok: false,
+            error: {
+              code: "STALE_SELECTION",
+              message: "Native finalization did not authorize publication",
+            },
+          }),
+      },
+    });
+
+    await expect(
+      callNative("stageSelection", { preparedId: "prepared-a" }),
+    ).rejects.toMatchObject({
+      code: "STALE_SELECTION",
+      message: "Release catalog selection became stale before it was committed",
+    });
+  });
+
   it("preserves asynchronous native readiness rejection instead of reporting confirmation", async () => {
     vi.stubGlobal("NativeModules", {
       HotUpdaterLynx: {

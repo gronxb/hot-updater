@@ -1,6 +1,6 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <application android:name=".LynxApplication" android:theme="@style/AppTheme" android:label="Hot Updater Lynx E2E" android:allowBackup="false" android:usesCleartextTraffic="true" android:networkSecurityConfig="@xml/lynx_network_security_config">
-        <meta-data android:name="com.hotupdater.FINGERPRINT_HASH" android:value="4fcd17e1e5c70ac2a469feb4ae9687c34955097208b8069bd63bf748247d711d"/>
+        <meta-data android:name="com.hotupdater.FINGERPRINT_HASH" android:value="14b425b27f6507cf172a18c8d43d5f01a4be24886aba497ba1e23ad02143d160"/>
         <activity android:name=".OtaActivity" android:configChanges="colorMode|density|fontScale|fontWeightAdjustment|grammaticalGender|keyboard|keyboardHidden|layoutDirection|locale|mcc|mnc|navigation|orientation|screenLayout|screenSize|smallestScreenSize|touchscreen|uiMode" android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN"/>

@@ -1,6 +1,6 @@
 {
   "ios": {
-    "hash": "dd5a9a3e7eb507c92ff0e12005d1cd8b90ebc21d8461c0739580c87af8765e3c",
+    "hash": "ba930b510ab775d8ef98db5283fe7ffc5be49452cd7db3b9a5bfde8669b72777",
     "sources": [
       {
         "type": "file",
@@ -30,9 +30,9 @@
         "reasons": [
           "lynx-native-input"
         ],
-        "hash": "0ca12625da3182540e5b1748ebff8d662ee1a51f052a707b4d79206850034fa0",
+        "hash": "1ec1856590a30e5599f31ba8ea53694cbc36f664c57da3ba317e41e56b3141b9",
         "debugInfo": {
-          "byteSize": 1060
+          "byteSize": 1240
         }
       },
       {
@@ -151,9 +151,9 @@
         "reasons": [
           "lynx-native-input"
         ],
-        "hash": "23e4ceaa963b2f8c66f8e6689b0ba937e865b1ef70882a5204f598f11f41b243",
+        "hash": "d36f83a3ef78fe0ede050be501190c659259d44d5dbfc4b4f8200b24f36cf0a5",
         "debugInfo": {
-          "byteSize": 67695
+          "byteSize": 72674
         }
       },
       {
@@ -162,9 +162,9 @@
         "reasons": [
           "lynx-native-input"
         ],
-        "hash": "dffab843292996f6b8da0e99ba0464e1eee0e2bfe67e92f7e262c84f99f5fdb3",
+        "hash": "544219c5a0f65ef6de2d42c917fb70ecbd2eafe22481f9d9543347732c9d129d",
         "debugInfo": {
-          "byteSize": 13383
+          "byteSize": 15000
         }
       },
       {
@@ -173,9 +173,9 @@
         "reasons": [
           "lynx-native-input"
         ],
-        "hash": "f84a47383a8435d4727228b97fc81f9c9983d97d39d334ef4a186aafd0bfbf85",
+        "hash": "40e1018573d0dfd3368c8d57121f2787644b04c8bd3db76c5dffd3f7acd6563d",
         "debugInfo": {
-          "byteSize": 12500
+          "byteSize": 11838
         }
       },
       {
@@ -294,9 +294,9 @@
         "reasons": [
           "lynx-native-input"
         ],
-        "hash": "a35b2f69761d7e37240658263a523fa19d4942c40a1e917b340f70fa4fa63b2f",
+        "hash": "ff707310dd1d69a249fccd7c72d3ca29c40dda2aa0000662debf4d7d97190855",
         "debugInfo": {
-          "byteSize": 73669
+          "byteSize": 73830
         }
       },
       {
@@ -319,6 +319,17 @@
         "hash": "7a68085b1463fd1513e509aa576d5dd1a18795211ad5af5526904f505a937550",
         "debugInfo": {
           "byteSize": 29701
+        }
+      },
+      {
+        "type": "file",
+        "filePath": "@hot-updater/lynx/ios/Sources/HotUpdaterLynxSparklingCore/SparklingEmbeddedDescriptor.swift",
+        "reasons": [
+          "lynx-native-input"
+        ],
+        "hash": "9d1ee852056e4403fef13c80376d7d72d0c678f9487370e75d1331347e57a83b",
+        "debugInfo": {
+          "byteSize": 1705
         }
       },
       {
@@ -492,9 +503,9 @@
         "reasons": [
           "lynx-native-input"
         ],
-        "hash": "d25180c33d8455c3fdae5dee2d82c0549a76111ce787e21454ebd2deab6bd6c4",
+        "hash": "3a14ff8acee8813219b3fb16f9aac5266b4e538304e2c4ad1d7e2a0d54a10de5",
         "debugInfo": {
-          "byteSize": 4423
+          "byteSize": 4279
         }
       },
       {
@@ -514,15 +525,15 @@
         "reasons": [
           "lynx-native-input"
         ],
-        "hash": "601d328cdeaebcc36a7cbdee71bb7c9c4a2e30bce053880a0ed5814821e091d2",
+        "hash": "e7bb829c2cd7c05ac8ab7998b0ab71646364ee7a7aeac5b991719a724b712099",
         "debugInfo": {
-          "byteSize": 1614
+          "byteSize": 1746
         }
       }
     ]
   },
   "android": {
-    "hash": "4fcd17e1e5c70ac2a469feb4ae9687c34955097208b8069bd63bf748247d711d",
+    "hash": "14b425b27f6507cf172a18c8d43d5f01a4be24886aba497ba1e23ad02143d160",
     "sources": [
       {
         "type": "file",
@@ -552,9 +563,9 @@
         "reasons": [
           "lynx-native-input"
         ],
-        "hash": "c317a61c3407cf8c5d6f89b6121e50795499da78e99637c37054585685e4eeb0",
+        "hash": "67456cb6661d87cdab6c3d4da510be5a12e2780c7a1ebc1d4e25f7ac8b840f22",
         "debugInfo": {
-          "byteSize": 48460
+          "byteSize": 48651
         }
       },
       {
@@ -695,9 +706,9 @@
         "reasons": [
           "lynx-native-input"
         ],
-        "hash": "d98ce0e112f029ae6cae3fccbc8277428c72d2e9a225ee82f32dfe2731bc9c85",
+        "hash": "24d0e3a2119d3a669db52a82e18cb4273aad4561f493ceb11368f6dec382a28b",
         "debugInfo": {
-          "byteSize": 14299
+          "byteSize": 15656
         }
       },
       {
@@ -717,9 +728,9 @@
         "reasons": [
           "lynx-native-input"
         ],
-        "hash": "b34c9b6101f6ae2aa0ebbcd967565d7a0671941c8b330dc68ff640304080451f",
+        "hash": "6acd76d24979c4feafa9db2782d5e3f59e06e799385480f6c97c36fd4e683141",
         "debugInfo": {
-          "byteSize": 11124
+          "byteSize": 13168
         }
       },
       {
@@ -739,9 +750,9 @@
         "reasons": [
           "lynx-native-input"
         ],
-        "hash": "d8dbf881694d44f99f8c5832f89a22d7130f8d81b1fc2faea868dba35f76f258",
+        "hash": "8ea8648ae3dfcca05eb501497bac0acf3322500dd55877b1cb9a74d53028c5d3",
         "debugInfo": {
-          "byteSize": 28053
+          "byteSize": 29777
         }
       },
       {
@@ -761,9 +772,9 @@
         "reasons": [
           "lynx-native-input"
         ],
-        "hash": "a7bc82a151d2bddcfd9b3455b4d91b83ee1e6bd787e3d06740df9a224db80139",
+        "hash": "32ab69997c2f01bce619fae1ab7091e472b169017ffb73a252526db8911377b7",
         "debugInfo": {
-          "byteSize": 74265
+          "byteSize": 80349
         }
       },
       {
@@ -948,9 +959,9 @@
         "reasons": [
           "lynx-native-input"
         ],
-        "hash": "39c01a3979980999e08cf21c521c5b870f16a3c1c69b48eed5409a6fd06fcaf3",
+        "hash": "f1815b2f83a172f11b62e3d87338c395dbc3e7f8b7cad9e27793c75d6572238e",
         "debugInfo": {
-          "byteSize": 2754
+          "byteSize": 2753
         }
       },
       {
@@ -1014,9 +1025,9 @@
         "reasons": [
           "lynx-native-input"
         ],
-        "hash": "601d328cdeaebcc36a7cbdee71bb7c9c4a2e30bce053880a0ed5814821e091d2",
+        "hash": "e7bb829c2cd7c05ac8ab7998b0ab71646364ee7a7aeac5b991719a724b712099",
         "debugInfo": {
-          "byteSize": 1614
+          "byteSize": 1746
         }
       }
     ]

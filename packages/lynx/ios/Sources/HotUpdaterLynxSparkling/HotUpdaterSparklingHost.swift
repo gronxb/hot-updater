@@ -1244,7 +1244,10 @@ public final class HotUpdaterSparklingHost: NSObject,
                 }
             }
         }
-        generationEvents.emit("generationStarted", currentStackDetails().merging([
+        guard let primary = pages.first else { return }
+        generationEvents.emit("generationStarted", details(for: primary).merging(
+            currentStackDetails()
+        ) { _, new in new }.merging([
             "processId": String(ProcessInfo.processInfo.processIdentifier),
             "generationId": generationId,
             "contextIds": pages.map { $0.generation.context.id },
@@ -2025,7 +2028,8 @@ private final class HotUpdaterSparklingLifecycle: NSObject,
         _ container: SPKContainerProtocol,
         didRecieveError error: Error?
     ) {
-        guard let lynx = error as? LynxError, lynx.isFatal else {
+        guard let lynx = error as? LynxError,
+              lynx.isFatal || lynx.isJSError() else {
             generation.emit("runtimeWarning", [
                 "generationId": generation.id,
                 "contextId": context.id,

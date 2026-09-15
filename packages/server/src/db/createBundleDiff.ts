@@ -3,7 +3,7 @@ import path from "node:path";
 import { Readable } from "node:stream";
 import { createBrotliDecompress } from "node:zlib";
 
-import { hdiff } from "@hot-updater/bsdiff";
+import { bsdiff } from "@hot-updater/bsdiff";
 import {
   getAssetBaseStorageUri,
   getBundlePatch,
@@ -288,7 +288,7 @@ export async function createBundleDiff(
     ),
   ]);
 
-  const patchBytes = await hdiff(baseBytes, targetBytes);
+  const patchBytes = await bsdiff(baseBytes, targetBytes);
   const patchFilename = `${path.posix.basename(targetAssetPath)}.bsdiff`;
   assertBundleArtifactByteSize(patchBytes.byteLength, patchFilename);
   const patchFileHash = crypto

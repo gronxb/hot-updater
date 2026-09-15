@@ -139,7 +139,7 @@ function androidJournalFetch(snapshot: string) {
       currentBundleId: "bundle-A",
       currentReleaseId: "release-A",
       generationEvents: evidenceReady ? snapshot : null,
-      launchStatus: "Current Launch Status: CONFIRMED",
+      launchStatus: "Current Launch Status: UNCHANGED",
       runtimeScenarioMarker: "bundle-A-marker",
       updateActionResult: evidenceReady
         ? `generation-events -> ${latestSequence}`
