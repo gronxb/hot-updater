@@ -1,7 +1,4 @@
-import {
-  createDatabasePlugin,
-  type ReleaseReference,
-} from "@hot-updater/plugin-core";
+import { createDatabasePlugin } from "@hot-updater/plugin-core";
 import {
   insightsHourlyBucketKey,
   insightsLifetimeMarkerKey,
@@ -122,33 +119,6 @@ const createMongoInsightsProjection = (
               },
               { ...options, upsert: true },
             );
-            type Delta = {
-              release: ReleaseReference;
-              active: number;
-              pending: number;
-              downloaded: number;
-              recovered: number;
-            };
-            const deltas = new Map<string, Delta>();
-            const add = (
-              release: ReleaseReference,
-              metric: "active" | "pending" | "downloaded" | "recovered",
-              delta: number,
-            ) => {
-              const key = insightsReleaseKey(release);
-              const value = deltas.get(key) ?? {
-                release,
-                active: 0,
-                pending: 0,
-                downloaded: 0,
-                recovered: 0,
-              };
-              value[metric] += delta;
-              deltas.set(key, value);
-            };
-            for (const delta of prepared.currentDeltas) {
-              add(delta.release, delta.metric, delta.delta);
-            }
             if (prepared.firstLifetime !== null) {
               await collections.insightsLifetimeMarkers.insertOne(
                 {
@@ -161,13 +131,9 @@ const createMongoInsightsProjection = (
                 },
                 options,
               );
-              add(
-                prepared.firstLifetime.release,
-                prepared.firstLifetime.metric,
-                1,
-              );
             }
-            for (const [key, delta] of deltas) {
+            for (const delta of prepared.summaryDeltas) {
+              const key = insightsReleaseKey(delta.release);
               await collections.insightsReleaseSummaries.updateOne(
                 { release_key: key },
                 {
@@ -176,17 +142,7 @@ const createMongoInsightsProjection = (
                     release_id: delta.release.releaseId,
                     platform: delta.release.platform,
                     channel: delta.release.channel,
-                    active_installations: 0,
-                    pending_installations: 0,
-                    downloaded_installations: 0,
-                    recovered_installations: 0,
                   },
-                },
-                { ...options, upsert: true },
-              );
-              await collections.insightsReleaseSummaries.updateOne(
-                { release_key: key },
-                {
                   $inc: {
                     active_installations: delta.active,
                     pending_installations: delta.pending,
@@ -194,7 +150,7 @@ const createMongoInsightsProjection = (
                     recovered_installations: delta.recovered,
                   },
                 },
-                options,
+                { ...options, upsert: true },
               );
             }
             if (prepared.hourly !== null) {

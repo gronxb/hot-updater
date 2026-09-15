@@ -83,12 +83,18 @@ export const createMemoryInsightsProjection = (options?: {
           if (summary[metric] < 0) throw new Error("Invalid Insights counter");
           summaries.set(key, summary);
         };
-        for (const delta of prepared.currentDeltas) {
-          add(delta.release, delta.metric, delta.delta);
+        for (const delta of prepared.summaryDeltas) {
+          for (const metric of [
+            "active",
+            "pending",
+            "downloaded",
+            "recovered",
+          ] as const) {
+            add(delta.release, metric, delta[metric]);
+          }
         }
         if (prepared.firstLifetime !== null) {
           markers.add(markerKey!);
-          add(prepared.firstLifetime.release, prepared.firstLifetime.metric, 1);
         }
         if (prepared.hourly !== null) {
           const value = prepared.hourly;

@@ -127,35 +127,6 @@ const commit = async (
       }
     }
 
-    const deltas = new Map<
-      string,
-      {
-        release: ReleaseReference;
-        active: number;
-        pending: number;
-        downloaded: number;
-        recovered: number;
-      }
-    >();
-    const add = (
-      release: ReleaseReference,
-      metric: "active" | "pending" | "downloaded" | "recovered",
-      value: number,
-    ) => {
-      const key = insightsReleaseKey(release);
-      const delta = deltas.get(key) ?? {
-        release,
-        active: 0,
-        pending: 0,
-        downloaded: 0,
-        recovered: 0,
-      };
-      delta[metric] += value;
-      deltas.set(key, delta);
-    };
-    for (const delta of prepared.currentDeltas) {
-      add(delta.release, delta.metric, delta.delta);
-    }
     if (prepared.firstLifetime !== null) {
       const lifetime = prepared.firstLifetime;
       await sql`INSERT INTO insights_lifetime_markers (
@@ -165,9 +136,8 @@ const commit = async (
         ${insightsReleaseKey(lifetime.release)}, ${lifetime.installId},
         ${lifetime.metric}
       )`.execute(transaction);
-      add(lifetime.release, lifetime.metric, 1);
     }
-    for (const delta of deltas.values()) {
+    for (const delta of prepared.summaryDeltas) {
       await insertSummaryDelta(transaction, delta.release, delta);
     }
     if (prepared.hourly !== null) {

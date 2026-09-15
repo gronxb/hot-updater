@@ -11,17 +11,25 @@ export interface InsightsLifetimeKey {
   readonly metric: "downloaded" | "recovered";
 }
 
-export interface InsightsCurrentDelta {
+interface InsightsCurrentDelta {
   readonly release: ReleaseReference;
   readonly metric: "active" | "pending";
   readonly delta: -1 | 1;
 }
 
+type SummaryDelta = {
+  release: ReleaseReference;
+  active: number;
+  pending: number;
+  downloaded: number;
+  recovered: number;
+};
+
 export interface PreparedInsightsEvent {
   readonly event: BundleEventRow;
   readonly expectedRevision: string;
   readonly nextState: string;
-  readonly currentDeltas: readonly InsightsCurrentDelta[];
+  readonly summaryDeltas: readonly Readonly<SummaryDelta>[];
   readonly firstLifetime: InsightsLifetimeKey | null;
   readonly hourly: {
     readonly release: ReleaseReference;
@@ -308,6 +316,36 @@ const hourly = (event: BundleEventRow): PreparedInsightsEvent["hourly"] => {
       };
 };
 
+const summaryDeltas = (
+  current: readonly InsightsCurrentDelta[],
+  lifetime: InsightsLifetimeKey | null,
+): PreparedInsightsEvent["summaryDeltas"] => {
+  const deltas = new Map<string, SummaryDelta>();
+  const add = (
+    release: ReleaseReference,
+    metric: "active" | "pending" | "downloaded" | "recovered",
+    value: number,
+  ) => {
+    const key = insightsReleaseKey(release);
+    const delta = deltas.get(key) ?? {
+      release,
+      active: 0,
+      pending: 0,
+      downloaded: 0,
+      recovered: 0,
+    };
+    delta[metric] += value;
+    deltas.set(key, delta);
+  };
+  for (const delta of current) add(delta.release, delta.metric, delta.delta);
+  if (lifetime !== null) add(lifetime.release, lifetime.metric, 1);
+  // Every SQL writer acquires summary locks in the same order, including
+  // installations moving between the same two releases in opposite directions.
+  return [...deltas]
+    .sort(([left], [right]) => (left < right ? -1 : left > right ? 1 : 0))
+    .map(([, delta]) => delta);
+};
+
 export const prepareInsightsEvent = (
   input: InsightsRecordEventInput,
   context: {
@@ -319,12 +357,13 @@ export const prepareInsightsEvent = (
   const previous = parseState(context.state);
   const next = reduceInsightsProjection(previous, input.event);
   const key = lifetimeKey(input.event);
+  const firstLifetime = key !== null && !context.lifetimeExists ? key : null;
   return {
     event: input.event,
     expectedRevision: context.revision,
     nextState: JSON.stringify(next),
-    currentDeltas: currentDeltas(previous, next),
-    firstLifetime: key !== null && !context.lifetimeExists ? key : null,
+    summaryDeltas: summaryDeltas(currentDeltas(previous, next), firstLifetime),
+    firstLifetime,
     hourly: hourly(input.event),
   };
 };

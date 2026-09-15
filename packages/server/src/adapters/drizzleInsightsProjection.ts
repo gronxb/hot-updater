@@ -1,4 +1,3 @@
-import type { ReleaseReference } from "@hot-updater/plugin-core";
 import {
   insightsHourlyBucketKey,
   insightsLifetimeMarkerKey,
@@ -83,41 +82,6 @@ const run = (mutation: { readonly run?: () => unknown }): unknown => {
     throw new Error("Synchronous Drizzle Insights mutation unsupported.");
   }
   return mutation.run();
-};
-
-type Delta = {
-  release: ReleaseReference;
-  active: number;
-  pending: number;
-  downloaded: number;
-  recovered: number;
-};
-
-const releaseDeltas = (prepared: PreparedInsightsEvent) => {
-  const deltas = new Map<string, Delta>();
-  const add = (
-    release: ReleaseReference,
-    metric: "active" | "pending" | "downloaded" | "recovered",
-    value: number,
-  ) => {
-    const key = insightsReleaseKey(release);
-    const delta = deltas.get(key) ?? {
-      release,
-      active: 0,
-      pending: 0,
-      downloaded: 0,
-      recovered: 0,
-    };
-    delta[metric] += value;
-    deltas.set(key, delta);
-  };
-  for (const delta of prepared.currentDeltas) {
-    add(delta.release, delta.metric, delta.delta);
-  }
-  if (prepared.firstLifetime !== null) {
-    add(prepared.firstLifetime.release, prepared.firstLifetime.metric, 1);
-  }
-  return deltas;
 };
 
 const commitSynchronousSqliteEvent = (
@@ -208,7 +172,8 @@ const commitSynchronousSqliteEvent = (
   }
 
   const summaries = getDrizzleTable(transaction, "insights_release_summaries");
-  for (const [logicalKey, delta] of releaseDeltas(prepared)) {
+  for (const delta of prepared.summaryDeltas) {
+    const logicalKey = insightsReleaseKey(delta.release);
     const key = keys.get(logicalKey)!;
     const ignored = transaction
       .insert(summaries)
@@ -402,7 +367,6 @@ export const createDrizzleInsightsProjection = (
             })
             .execute();
         }
-        const deltas = releaseDeltas(prepared);
         if (prepared.firstLifetime !== null) {
           const lifetime = prepared.firstLifetime;
           await transaction
@@ -421,7 +385,8 @@ export const createDrizzleInsightsProjection = (
           transaction,
           "insights_release_summaries",
         );
-        for (const [logicalKey, delta] of deltas) {
+        for (const delta of prepared.summaryDeltas) {
+          const logicalKey = insightsReleaseKey(delta.release);
           const key = keys.get(logicalKey)!;
           const insert = transaction.insert(summaries).values({
             release_key: key,

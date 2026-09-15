@@ -20,7 +20,7 @@ export const insightsSqlKey = async (key: string): Promise<string> => {
 export const prepareInsightsSqlKeys = async (
   prepared: PreparedInsightsEvent,
 ): Promise<ReadonlyMap<string, string>> => {
-  const logicalKeys = prepared.currentDeltas.map(({ release }) =>
+  const logicalKeys = prepared.summaryDeltas.map(({ release }) =>
     insightsReleaseKey(release),
   );
   if (prepared.firstLifetime !== null) {

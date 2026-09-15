@@ -3288,41 +3288,7 @@ const commitDynamoDBInsightsEvent = async (
     },
   });
 
-  const summaryDeltas = new Map<
-    string,
-    {
-      readonly release: ReleaseReference;
-      active: number;
-      pending: number;
-      downloaded: number;
-      recovered: number;
-    }
-  >();
-  const addSummary = (
-    release: ReleaseReference,
-    field: "active" | "pending" | "downloaded" | "recovered",
-    delta: number,
-  ) => {
-    const key = insightsReleaseKey(release);
-    const value = summaryDeltas.get(key) ?? {
-      release,
-      active: 0,
-      pending: 0,
-      downloaded: 0,
-      recovered: 0,
-    };
-    value[field] += delta;
-    summaryDeltas.set(key, value);
-  };
-  for (const delta of prepared.currentDeltas) {
-    addSummary(delta.release, delta.metric, delta.delta);
-  }
   if (prepared.firstLifetime !== null) {
-    addSummary(
-      prepared.firstLifetime.release,
-      prepared.firstLifetime.metric,
-      1,
-    );
     actions.push({
       Put: {
         TableName: store.tableName,
@@ -3335,7 +3301,8 @@ const commitDynamoDBInsightsEvent = async (
       },
     });
   }
-  for (const [key, delta] of summaryDeltas) {
+  for (const delta of prepared.summaryDeltas) {
+    const key = insightsReleaseKey(delta.release);
     actions.push({
       Update: {
         TableName: store.tableName,

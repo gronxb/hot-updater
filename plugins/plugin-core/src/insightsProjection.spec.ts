@@ -71,7 +71,7 @@ describe("Insights release projection", () => {
       },
       { revision: "1", state: applied.nextState, lifetimeExists: false },
     );
-    expect(unchanged.currentDeltas).toEqual([]);
+    expect(unchanged.summaryDeltas).toEqual([]);
   });
 
   it("lets a delayed barrier invalidate an inherited release", () => {
@@ -100,15 +100,17 @@ describe("Insights release projection", () => {
       },
       { revision: "2", state: unchanged.nextState, lifetimeExists: false },
     );
-    expect(barrier.currentDeltas).toEqual([
+    expect(barrier.summaryDeltas).toEqual([
       {
         release: {
           releaseId: RELEASE_1,
           platform: "ios",
           channel: "production",
         },
-        metric: "active",
-        delta: -1,
+        active: -1,
+        pending: 0,
+        downloaded: 0,
+        recovered: 0,
       },
     ]);
   });
@@ -129,9 +131,9 @@ describe("Insights release projection", () => {
       { revision: "1", state: first.nextState, lifetimeExists: false },
     );
     expect(
-      selected.currentDeltas.map(({ release, delta }) => [
+      selected.summaryDeltas.map(({ release, active }) => [
         release.releaseId,
-        delta,
+        active,
       ]),
     ).toEqual([
       [RELEASE_1, -1],
@@ -157,11 +159,51 @@ describe("Insights release projection", () => {
       { revision: "1", state: first.nextState, lifetimeExists: true },
     );
     expect(first.firstLifetime?.metric).toBe("downloaded");
+    expect(first.summaryDeltas).toMatchObject([
+      {
+        release: { releaseId: RELEASE_1 },
+        active: 1,
+        downloaded: 0,
+        pending: 0,
+      },
+      {
+        release: { releaseId: RELEASE_2 },
+        active: 0,
+        downloaded: 1,
+        pending: 1,
+      },
+    ]);
     expect(repeated.firstLifetime).toBeNull();
+    expect(repeated.summaryDeltas).toEqual([]);
     expect(repeated.hourly).toMatchObject({
       metric: "downloaded",
       hourStartMs: 3_600_000,
     });
+  });
+
+  it("uses one summary lock order for installations moving in opposite directions", () => {
+    const move = (from: string, to: string) => {
+      const previous = prepareInsightsEvent(
+        { event: event("1", 1, { to_release_id: from }) },
+        { revision: "0", state: null, lifetimeExists: false },
+      );
+      return prepareInsightsEvent(
+        { event: event("2", 2, { to_release_id: to }) },
+        { revision: "1", state: previous.nextState, lifetimeExists: false },
+      ).summaryDeltas;
+    };
+    const forward = move(RELEASE_1, RELEASE_2);
+    const backward = move(RELEASE_2, RELEASE_1);
+    expect(forward.map(({ release }) => release.releaseId)).toEqual([
+      RELEASE_1,
+      RELEASE_2,
+    ]);
+    expect(backward.map(({ release }) => release.releaseId)).toEqual([
+      RELEASE_1,
+      RELEASE_2,
+    ]);
+    expect(forward.map(({ active }) => active)).toEqual([-1, 1]);
+    expect(backward.map(({ active }) => active)).toEqual([1, -1]);
   });
 
   it("retries conflicts with the same event and exits on duplicate", async () => {

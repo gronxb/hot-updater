@@ -282,3 +282,27 @@ it("records the event, head, and projection state in one atomic batch", async ()
     ),
   ).toBe(true);
 });
+
+it("combines pending and lifetime download increments into one summary update", async () => {
+  const batches: (readonly D1Statement[])[] = [];
+  const implementation = createD1Implementation({
+    query: () => Promise.resolve([]),
+    async batch(input) {
+      batches.push(input);
+      return [];
+    },
+  });
+  const event = {
+    ...createBundleEventRowFixture("2", 100),
+    type: "UPDATE_DOWNLOADED" as const,
+    from_bundle_id: "previous-bundle",
+    to_release_id: "release",
+  };
+  await implementation.recordInsights({ event });
+  const commit = batches[1] ?? [];
+  const updates = commit.filter(({ sql }) =>
+    sql.includes("UPDATE insights_release_summaries SET"),
+  );
+  expect(updates).toHaveLength(1);
+  expect(updates[0]?.params.slice(0, 4)).toEqual(["0", "1", "1", "0"]);
+});

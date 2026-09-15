@@ -1,4 +1,3 @@
-import type { ReleaseReference } from "@hot-updater/plugin-core";
 import {
   insightsHourlyBucketKey,
   insightsLifetimeMarkerKey,
@@ -50,42 +49,7 @@ const count = (value: unknown): number => {
   return result;
 };
 
-type SummaryDelta = {
-  readonly release: ReleaseReference;
-  active: number;
-  pending: number;
-  downloaded: number;
-  recovered: number;
-};
-
 class ProjectionConflictError extends Error {}
-
-const summaryDeltas = (prepared: PreparedInsightsEvent) => {
-  const deltas = new Map<string, SummaryDelta>();
-  const add = (
-    release: ReleaseReference,
-    metric: "active" | "pending" | "downloaded" | "recovered",
-    value: number,
-  ) => {
-    const key = insightsReleaseKey(release);
-    const delta = deltas.get(key) ?? {
-      release,
-      active: 0,
-      pending: 0,
-      downloaded: 0,
-      recovered: 0,
-    };
-    delta[metric] += value;
-    deltas.set(key, delta);
-  };
-  for (const delta of prepared.currentDeltas) {
-    add(delta.release, delta.metric, delta.delta);
-  }
-  if (prepared.firstLifetime !== null) {
-    add(prepared.firstLifetime.release, prepared.firstLifetime.metric, 1);
-  }
-  return deltas;
-};
 
 const commit = async (
   client: object,
@@ -154,7 +118,8 @@ const commit = async (
   }
 
   const summaries = delegate(client, "insights_release_summaries");
-  for (const [logicalKey, delta] of summaryDeltas(prepared)) {
+  for (const delta of prepared.summaryDeltas) {
+    const logicalKey = insightsReleaseKey(delta.release);
     const releaseKey = keys.get(logicalKey)!;
     await summaries.upsert({
       where: { release_key: releaseKey },

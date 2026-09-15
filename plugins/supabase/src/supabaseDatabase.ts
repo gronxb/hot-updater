@@ -77,41 +77,11 @@ const createSupabaseInsightsProjection = (
     };
   },
   async commitPreparedEvent(prepared: PreparedInsightsEvent) {
-    type Delta = {
-      release: (typeof prepared.currentDeltas)[number]["release"];
-      active: number;
-      pending: number;
-      downloaded: number;
-      recovered: number;
-    };
-    const summaries = new Map<string, Delta>();
-    const add = (
-      release: Delta["release"],
-      metric: "active" | "pending" | "downloaded" | "recovered",
-      delta: number,
-    ) => {
-      const releaseKey = insightsReleaseKey(release);
-      const value = summaries.get(releaseKey) ?? {
-        release,
-        active: 0,
-        pending: 0,
-        downloaded: 0,
-        recovered: 0,
-      };
-      value[metric] += delta;
-      summaries.set(releaseKey, value);
-    };
-    for (const delta of prepared.currentDeltas) {
-      add(delta.release, delta.metric, delta.delta);
-    }
-    if (prepared.firstLifetime !== null) {
-      add(prepared.firstLifetime.release, prepared.firstLifetime.metric, 1);
-    }
     const payload = {
       ...prepared,
-      summaryDeltas: [...summaries].map(([releaseKey, value]) => ({
-        releaseKey,
-        ...value,
+      summaryDeltas: prepared.summaryDeltas.map((delta) => ({
+        releaseKey: insightsReleaseKey(delta.release),
+        ...delta,
       })),
       firstLifetime:
         prepared.firstLifetime === null

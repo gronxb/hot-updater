@@ -532,6 +532,73 @@ export const registerDatabasePluginInsightsTests = (
       ).resolves.toBe(0);
     });
 
+    it("preserves hot counters when installations move between releases concurrently", async () => {
+      const plugin = state.getPlugin();
+      const hour = 3_600_000;
+      const releases = [
+        "00000000-0000-7000-8000-000000008101",
+        "00000000-0000-7000-8000-000000008102",
+      ];
+      const initial = Array.from(
+        { length: 4 },
+        (_, index): BundleEventRow => ({
+          ...createBundleEventRowFixture(String(81_100 + index), hour + 1),
+          install_id: `hot-release-${index}`,
+          type: "UPDATE_APPLIED",
+          to_release_id: releases[index % 2]!,
+        }),
+      );
+      await Promise.all(initial.map((event) => record(plugin, event)));
+      const downloads = initial.map(
+        (event, index): BundleEventRow => ({
+          ...event,
+          id: createBundleEventRowFixture(String(81_200 + index), hour + 2).id,
+          type: "UPDATE_DOWNLOADED",
+          from_bundle_id: event.to_bundle_id,
+          from_release_id: event.to_release_id,
+          to_release_id: releases[(index + 1) % 2]!,
+          received_at_ms: hour + 2,
+        }),
+      );
+      await Promise.all(downloads.map((event) => record(plugin, event)));
+      await Promise.all(
+        downloads.flatMap((event, index) => [
+          record(plugin, event),
+          record(plugin, {
+            ...event,
+            id: createBundleEventRowFixture(String(81_300 + index), hour + 3)
+              .id,
+            type: "UPDATE_APPLIED",
+            received_at_ms: hour + 3,
+          } as BundleEventRow),
+        ]),
+      );
+      const activity = await plugin.models.insights.getReleaseActivity({
+        releases: releases.map((releaseId) => ({
+          releaseId,
+          platform: "ios",
+          channel: "production",
+        })),
+        timeRange: { start: hour, end: hour * 2 },
+      });
+      for (const item of activity.data) {
+        expect(item.summary).toEqual({
+          activeInstallations: 2,
+          pendingInstallations: 0,
+          downloadedInstallations: 2,
+          recoveredInstallations: 0,
+        });
+        expect(item.series).toEqual([
+          {
+            startMs: hour,
+            downloadedReports: 2,
+            appliedReports: 4,
+            recoveredReports: 0,
+          },
+        ]);
+      }
+    });
+
     it("reads current, lifetime, and bounded hourly release activity without scanning events", async () => {
       const plugin = state.getPlugin();
       const hour = 3_600_000;

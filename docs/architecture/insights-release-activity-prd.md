@@ -90,10 +90,10 @@ Its argument and calling convention do not change. At the lower-level database
 implementation boundary, `recordInsights({ event })` also retains its existing
 input.
 
-The only new feature capability visible at that boundary is the optional
-`getReleaseActivity` read. `createDatabasePluginAdapter` exposes the method on
-the resulting model and returns `InsightsAggregationUnsupportedError` when a
-legacy implementation does not support it.
+`getReleaseActivity` is a required method in the public `InsightsModel`
+contract. `createDatabasePlugin` requires it alongside the five existing
+methods. This pre-GA specification does not add an optional-capability or legacy
+compatibility layer to the public factory.
 
 Built-in provider projection state, CAS retries, native transactions, key
 encoding, and materialized counters are Hot Updater implementation details.
@@ -106,10 +106,16 @@ and wire revision state, lifetime markers, current deltas, hourly counters, and
 transaction ordering merely relocates the complexity. Projection orchestration
 helpers and their prepared-write types remain internal and unsupported.
 
-Custom/legacy plugins retain their existing `recordEvent` implementation and do
-not need to adopt a new storage adapter. If they do not implement bounded release
-activity, that capability fails explicitly; core must not synthesize it by
-scanning their raw events.
+The private event preparation step merges summary increments once per release
+and orders them consistently before provider persistence. Built-in providers
+must not reimplement metric arithmetic or choose their own summary lock order.
+This avoids duplicate updates and opposing-release SQL deadlocks without adding
+another plugin-author helper or protocol.
+
+Custom plugins must implement bounded release activity without adopting a new
+public storage adapter or changing the ingestion argument. Core must not
+synthesize missing support by scanning raw events. Built-in aggregation
+maintenance remains Hot Updater's responsibility.
 
 ## 3. Metrics and Identity
 
@@ -453,6 +459,30 @@ D1 records `result.meta.rows_read`. Other providers use query counts and native
 evidence such as examined rows/documents/items, scan count, consumed capacity, or
 execution plans. Mock call counts alone do not prove native read bounds. Record
 unavailable measurements as unavailable, never zero.
+
+### Provider implementation review
+
+Metric arithmetic belongs to the existing private preparation step. It emits
+one merged summary delta per release in a consistent order. This removes
+duplicated calculations from eight native providers and keeps that CPU work
+outside their write transactions.
+
+- SQL providers apply summaries in the same release order for opposing
+  installation movements, avoiding the corresponding lock-order deadlock.
+- D1 combines Pending and first Downloaded increments for the same release into
+  one summary update within its atomic batch.
+- MongoDB initializes and increments summary fields in one native upsert using
+  disjoint `$setOnInsert` and `$inc` fields.
+- DynamoDB and Firebase continue using native atomic increments without reading
+  existing release counters. Their summary reads use requested document keys.
+- Supabase keeps native RPC writes and bounded aggregate RPC reads; no raw
+  event pagination is introduced.
+
+Write-time materialization adds persistence work compared with raw-event-only
+ingestion. Bounded read cost and reduced duplicate operations do not establish
+unchanged production latency under every workload. Concurrent report tests,
+native command counts, and end-to-end ingestion checks verify the implemented
+paths; production throughput claims require representative load measurements.
 
 ## 14. Completion Checklist
 

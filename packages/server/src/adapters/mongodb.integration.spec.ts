@@ -137,6 +137,57 @@ describe("MongoDB native Insights storage", () => {
     ).resolves.toEqual([failed]);
   });
 
+  it("creates and increments a release summary with one native upsert", async () => {
+    const event: BundleEventRow = {
+      ...createBundleEventRowFixture("1180", 3_600_001),
+      type: "UPDATE_DOWNLOADED",
+      from_bundle_id: "previous-bundle",
+      to_release_id: "00000000-0000-7000-8000-000000001180",
+    };
+    const updates: Document[] = [];
+    const capture = ({ command }: CommandStartedEvent) => {
+      if (command.update === "insights_release_summaries") {
+        updates.push(...command.updates);
+      }
+    };
+    client.on("commandStarted", capture);
+    try {
+      await record(event);
+    } finally {
+      client.off("commandStarted", capture);
+    }
+    expect(updates).toHaveLength(1);
+    expect(updates[0]?.upsert).toBe(true);
+    await record({
+      ...event,
+      id: createBundleEventRowFixture("1181", 3_600_002).id,
+    });
+    const activity = await insights().getReleaseActivity({
+      releases: [
+        {
+          releaseId: event.to_release_id!,
+          platform: "ios",
+          channel: "production",
+        },
+      ],
+      timeRange: { start: 3_600_000, end: 7_200_000 },
+    });
+    expect(activity.data[0]?.summary).toEqual({
+      activeInstallations: 0,
+      pendingInstallations: 1,
+      downloadedInstallations: 1,
+      recoveredInstallations: 0,
+    });
+    expect(activity.data[0]?.series).toEqual([
+      {
+        startMs: 3_600_000,
+        downloadedReports: 2,
+        appliedReports: 0,
+        recoveredReports: 0,
+      },
+    ]);
+  });
+
   it("retries native conflicts without dropping events or letting duplicate IDs rewrite state", async () => {
     const events = Array.from({ length: 12 }, (_, index) => ({
       ...createBundleEventRowFixture(String(810 + index), 100),

@@ -174,40 +174,11 @@ const createFirebaseInsightsProjection = (
         state: prepared.nextState,
       });
 
-      const deltas = new Map<
-        string,
-        {
-          release: (typeof prepared.currentDeltas)[number]["release"];
-          active: number;
-          pending: number;
-          downloaded: number;
-          recovered: number;
-        }
-      >();
-      const add = (
-        release: (typeof prepared.currentDeltas)[number]["release"],
-        metric: "active" | "pending" | "downloaded" | "recovered",
-        delta: number,
-      ) => {
-        const key = insightsReleaseKey(release);
-        const value = deltas.get(key) ?? {
-          release,
-          active: 0,
-          pending: 0,
-          downloaded: 0,
-          recovered: 0,
-        };
-        value[metric] += delta;
-        deltas.set(key, value);
-      };
-      for (const delta of prepared.currentDeltas) {
-        add(delta.release, delta.metric, delta.delta);
-      }
       if (prepared.firstLifetime !== null) {
-        add(prepared.firstLifetime.release, prepared.firstLifetime.metric, 1);
         transaction.create(markerReference!, prepared.firstLifetime);
       }
-      for (const [key, delta] of deltas) {
+      for (const delta of prepared.summaryDeltas) {
+        const key = insightsReleaseKey(delta.release);
         transaction.set(
           collections.insightsReleaseSummaries.doc(
             firebaseInsightsDocumentId(key),

@@ -19,7 +19,6 @@ export {
   reduceInsightsProjection,
 } from "./insightsProjection";
 export type {
-  InsightsCurrentDelta,
   InsightsLifetimeKey,
   InsightsRecordContext,
   InsightsProjectionBackend,

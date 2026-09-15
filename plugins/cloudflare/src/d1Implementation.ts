@@ -695,37 +695,31 @@ const d1ProjectionStatements = (
   prepared: PreparedInsightsEvent,
 ): readonly D1Statement[] => {
   const statements: D1Statement[] = [];
-  for (const delta of prepared.currentDeltas) {
+  for (const delta of prepared.summaryDeltas) {
     statements.push(
-      ...summaryStatement(
-        delta.release,
-        delta.metric === "active"
-          ? [delta.delta, 0, 0, 0]
-          : [0, delta.delta, 0, 0],
-      ),
+      ...summaryStatement(delta.release, [
+        delta.active,
+        delta.pending,
+        delta.downloaded,
+        delta.recovered,
+      ]),
     );
   }
   if (prepared.firstLifetime !== null) {
     const key = prepared.firstLifetime;
-    statements.push(
-      ...summaryStatement(
-        key.release,
-        key.metric === "downloaded" ? [0, 0, 1, 0] : [0, 0, 0, 1],
-      ),
-      {
-        sql: `INSERT INTO insights_lifetime_markers
+    statements.push({
+      sql: `INSERT INTO insights_lifetime_markers
           (marker_key, release_id, platform, channel, install_id, metric)
 VALUES (json_extract(?, '$'), json_extract(?, '$'), json_extract(?, '$'), json_extract(?, '$'), json_extract(?, '$'), json_extract(?, '$'))`,
-        params: encodeD1Values([
-          insightsLifetimeMarkerKey(key),
-          key.release.releaseId,
-          key.release.platform,
-          key.release.channel,
-          key.installId,
-          key.metric,
-        ]),
-      },
-    );
+      params: encodeD1Values([
+        insightsLifetimeMarkerKey(key),
+        key.release.releaseId,
+        key.release.platform,
+        key.release.channel,
+        key.installId,
+        key.metric,
+      ]),
+    });
   }
   if (prepared.hourly !== null) {
     const hourly = prepared.hourly;
