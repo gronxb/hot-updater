@@ -684,8 +684,10 @@ const pendingActionPoller = createPendingActionPoller({
   fetchState,
   getActionHandlers: () => actionHandlers.current,
   getPendingActionURL: () => pendingActionURL,
-  markHandled: () => {
-    handledScenarioAction = true;
+  markHandled: (testID) => {
+    if (testID !== "action-capture-generation-events") {
+      handledScenarioAction = true;
+    }
   },
   navigateToTestId: (testID) => navigateToTestId.current(testID),
   onActionTimeout: () =>

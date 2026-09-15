@@ -23,6 +23,7 @@ describe("Lynx pending-action poller", () => {
   it("serializes concurrent polls before the slow peek resolves", async () => {
     const peek = deferred<ReturnType<typeof response>>();
     const handler = vi.fn(async () => undefined);
+    const markHandled = vi.fn();
     const fetchState = vi
       .fn()
       .mockImplementationOnce(() => peek.promise)
@@ -31,7 +32,7 @@ describe("Lynx pending-action poller", () => {
       fetchState,
       getActionHandlers: () => ({ "action-update": handler }),
       getPendingActionURL: () => "http://control.test/e2e/pending-action",
-      markHandled: vi.fn(),
+      markHandled,
       navigateToTestId: vi.fn(),
       onActionTimeout: vi.fn(async () => undefined),
     });
@@ -47,6 +48,7 @@ describe("Lynx pending-action poller", () => {
       "http://control.test/e2e/pending-action?take=1",
     );
     expect(handler).toHaveBeenCalledOnce();
+    expect(markHandled).toHaveBeenCalledExactlyOnceWith("action-update");
   });
 
   it("aborts a hung destructive take without running the action", async () => {

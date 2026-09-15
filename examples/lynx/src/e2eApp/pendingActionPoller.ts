@@ -40,7 +40,7 @@ export function createPendingActionPoller(options: {
   readonly fetchTimeoutMs?: number;
   readonly getActionHandlers: () => Record<string, ActionHandler>;
   readonly getPendingActionURL: () => string;
-  readonly markHandled: () => void;
+  readonly markHandled: (testID: string) => void;
   readonly navigateToTestId: (testID: string) => void;
   readonly onActionTimeout: () => Promise<void>;
   readonly pollIntervalMs?: number;
@@ -76,7 +76,7 @@ export function createPendingActionPoller(options: {
     const handler = handlers[testID];
     if (!handler) return;
 
-    options.markHandled();
+    options.markHandled(testID);
     options.navigateToTestId(testID);
     let actionTimeout: ReturnType<typeof setTimeout> | undefined;
     const timedOut = await Promise.race([
