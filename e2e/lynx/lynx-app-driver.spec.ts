@@ -1462,7 +1462,16 @@ describe("Lynx startup failure diagnostics", () => {
     );
     expect(vi.mocked(spawnSync)).toHaveBeenCalledWith(
       "adb",
-      ["-s", "emulator-5554", "logcat", "-d"],
+      [
+        "-s",
+        "emulator-5554",
+        "logcat",
+        "-d",
+        "HotUpdaterE2E:I",
+        "HotUpdaterLynx:D",
+        "AndroidRuntime:E",
+        "*:S",
+      ],
       expect.objectContaining({ timeout: 5000 }),
     );
     expect(vi.mocked(spawnSync)).not.toHaveBeenCalledWith(

@@ -988,6 +988,10 @@ export class LynxAppDriver implements DetoxAppDriver {
       this.deviceId(),
       "logcat",
       "-d",
+      "HotUpdaterE2E:I",
+      "HotUpdaterLynx:D",
+      "AndroidRuntime:E",
+      "*:S",
     ]);
     const markerIndex = result.stdout.indexOf(marker);
     if (result.status === 0 && markerIndex < 0) {
