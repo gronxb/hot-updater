@@ -130,6 +130,37 @@ describe("Android runtime journal recovery diagnostics", () => {
     },
   );
 
+  it("accepts ALREADY_CONFIRMED readiness for a previously confirmed running generation", () => {
+    const evidence = mutatedEvidence(
+      fixture("android-s1-runtime-events.json"),
+      (journal) => {
+        const ready = journal.events.find((event) => event.name === "jsReady");
+        if (!ready) throw new Error("fixture is missing jsReady");
+        ready.details.confirmation = { status: "ALREADY_CONFIRMED" };
+      },
+    );
+
+    expect(
+      evaluateFontDiagnosticRecoveryByAndroidJournal(
+        "assets/probe.ttf",
+        evidence,
+      ),
+    ).toEqual({ recovered: true });
+  });
+
+  it("rejects readiness that is not durably confirmed", () => {
+    const evidence = mutatedEvidence(
+      fixture("android-s1-runtime-events.json"),
+      (journal) => {
+        const ready = journal.events.find((event) => event.name === "jsReady");
+        if (!ready) throw new Error("fixture is missing jsReady");
+        ready.details.confirmation = { status: "PAGE_ADMITTED" };
+      },
+    );
+
+    expect(rejectionCode(evidence)).toBe("screen.confirmed-ready-identity");
+  });
+
   it("rejects a nonterminal public readiness status", () => {
     const evidence = contractEnvelope(
       fixture("android-s1-runtime-events.json"),

@@ -582,7 +582,7 @@ function parseScreenEvidence(
       identity.processId === evidence.currentProcessId &&
       identity.bundleId === screenState.currentBundleId &&
       identity.releaseId === screenState.currentReleaseId &&
-      confirmation?.status === "CONFIRMED"
+      isConfirmedReadinessStatus(confirmation?.status)
     ) {
       return accepted({
         events,
@@ -606,6 +606,10 @@ const terminalBoundaries = new Set([
   "generationFailed",
   "generationReconstructionFailed",
 ]);
+
+function isConfirmedReadinessStatus(value: unknown): boolean {
+  return value === "CONFIRMED" || value === "ALREADY_CONFIRMED";
+}
 
 function isFatalBoundary(event: RuntimeEvent): boolean {
   if (terminalBoundaries.has(event.name)) return true;
@@ -647,7 +651,7 @@ export function evaluateFontDiagnosticRecoveryByAndroidJournal(
       event.name === "jsReady" &&
       identity !== null &&
       sameIdentity(identity, screen.identity) &&
-      record(event.details.confirmation)?.status === "CONFIRMED"
+      isConfirmedReadinessStatus(record(event.details.confirmation)?.status)
     );
   });
   if (readyIndex < 0) return recoveryRejected("ready.missing");
