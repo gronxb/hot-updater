@@ -23,7 +23,7 @@ export const forceUpdateAutoReloadScenario: DetoxScenarioDefinition = {
     );
     await app.launch("launch force update app", { allowDisconnect: true });
     await app.control(
-      "prove force update native reload",
+      "prove force update runtime replacement",
       "/e2e/jobs/wait-for-android-restart",
       {
         bundleId: "$forceBundleId",

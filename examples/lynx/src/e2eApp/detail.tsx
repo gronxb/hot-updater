@@ -29,8 +29,8 @@ const closeDetailPage = () =>
 
 const actionHandlers: Record<string, (text?: string) => Promise<void>> = {
   "action-close-detail-page": async () => {
+    await patchScreenState({ detailPageMarker: "close-requested" });
     await closeDetailPage();
-    await patchScreenState({ detailPageMarker: "closed" });
   },
   "action-capture-generation-events": async () => {
     const snapshot = await readGenerationEvents(HotUpdater, {

@@ -492,13 +492,18 @@ app.post("/e2e/jobs/wait-for-android-restart", async (c) => {
   const payload = (await c.req.json()) as {
     bundleId?: string;
     releaseId?: string;
+    runtimeScenarioMarker?: string;
   };
   if (!payload.bundleId || !payload.releaseId) {
     return c.json({ error: "bundleId and releaseId are required" }, 400);
   }
 
   return c.json({
-    jobId: startWaitForAndroidRestartJob(payload.bundleId, payload.releaseId),
+    jobId: startWaitForAndroidRestartJob(
+      payload.bundleId,
+      payload.releaseId,
+      payload.runtimeScenarioMarker,
+    ),
   });
 });
 

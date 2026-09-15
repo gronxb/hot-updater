@@ -1,4 +1,5 @@
 import crypto from "node:crypto";
+import { isDeepStrictEqual } from "node:util";
 
 type JsonRecord = Record<string, unknown>;
 
@@ -362,8 +363,7 @@ export function validateNavigationStackBoundary(value: unknown): void {
   if (
     receipt.nativeDepthBeforeRejected !== 16 ||
     receipt.nativeDepthAfterRejected !== 16 ||
-    JSON.stringify(receipt.beforeRejected) !==
-      JSON.stringify(receipt.afterRejected)
+    !isDeepStrictEqual(receipt.beforeRejected, receipt.afterRejected)
   ) {
     throw new Error("rejected depth 17 mutated the logical or native stack");
   }

@@ -699,7 +699,6 @@ const pendingActionPoller = createPendingActionPoller({
 const ensurePendingActionPoller = () => pendingActionPoller.start();
 
 loadE2EDeployBundleAssets();
-maybeCrashForE2E();
 
 const configureE2eRuntime = async (): Promise<boolean> => {
   const resolved = await readE2eLaunchConfiguration(
@@ -731,6 +730,9 @@ const configureE2eRuntime = async (): Promise<boolean> => {
   return true;
 };
 
-const runtimeConfigurationReady = configureE2eRuntime();
+const runtimeConfigurationReady = configureE2eRuntime().then(async (ready) => {
+  if (ready) await maybeCrashForE2E();
+  return ready;
+});
 
 root.render(<App />);

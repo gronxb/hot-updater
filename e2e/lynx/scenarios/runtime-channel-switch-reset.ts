@@ -112,6 +112,11 @@ export const lynxRuntimeChannelSwitchResetScenario = {
       },
     );
     await app.tap("reset runtime channel", "action-reset-runtime-channel");
+    await app.assertText(
+      "wait for replacement runtime after channel reset",
+      "runtime-scenario-marker",
+      "$initialMarker",
+    );
     assertManagedTransition(
       await app.captureGenerationEvents(
         "capture replacement generation after channel reset",

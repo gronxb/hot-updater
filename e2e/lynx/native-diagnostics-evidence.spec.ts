@@ -129,7 +129,14 @@ describe("native Lynx diagnostics evidence", () => {
       nativeDepthBeforeRejected: 16,
       nativeDepthAfterRejected: 16,
     };
-    stack.afterRejected = structuredClone(stack.beforeRejected);
+    stack.afterRejected = {
+      topContextId: "context-14",
+      topPageEntry: "detail.lynx.bundle",
+      orderedPageParameters: Array.from({ length: 16 }, () => []),
+      orderedPageEntries: Array.from({ length: 16 }, (_, index) =>
+        index === 0 ? "main.lynx.bundle" : "detail.lynx.bundle",
+      ),
+    };
     expect(() => validateNavigationStackBoundary(stack)).not.toThrow();
     stack.nativeDepthAfterRejected = 17;
     expect(() => validateNavigationStackBoundary(stack)).toThrow("mutated");

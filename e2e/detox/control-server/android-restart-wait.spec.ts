@@ -5,6 +5,7 @@ import {
   hasLynxNativeRestartEvidence,
   hasNativeRestartEvidenceAfterMarker,
   isAndroidRecoveryProcessReady,
+  isLynxManagedRuntimeReplacementReady,
 } from "./android-restart-wait.ts";
 
 describe("Android automatic restart wait", () => {
@@ -115,4 +116,33 @@ describe("Android automatic restart wait", () => {
 
     expect(state).toEqual({ clearedObservations: 0 });
   });
+
+  it.each([
+    {},
+    { bundleId: "old-bundle" },
+    { releaseId: "old-release" },
+    { runtimeScenarioMarker: "old-marker" },
+    { verificationPending: true },
+    { processId: "" },
+    { focusedPackage: "launcher" },
+  ])(
+    "requires the confirmed foreground Lynx replacement runtime: %j",
+    (overrides) => {
+      expect(
+        isLynxManagedRuntimeReplacementReady({
+          appId: "app.example",
+          bundleId: "target-bundle",
+          expectedBundleId: "target-bundle",
+          expectedReleaseId: "target-release",
+          expectedRuntimeScenarioMarker: "target-marker",
+          focusedPackage: "app.example",
+          processId: "1234",
+          releaseId: "target-release",
+          runtimeScenarioMarker: "target-marker",
+          verificationPending: false,
+          ...overrides,
+        }),
+      ).toBe(Object.keys(overrides).length === 0);
+    },
+  );
 });

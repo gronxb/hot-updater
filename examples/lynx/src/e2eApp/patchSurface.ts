@@ -1,4 +1,7 @@
 import { HotUpdater } from "@hot-updater/lynx";
+import { navigate } from "@hot-updater/lynx/navigation";
+
+import { callE2eDiagnostic } from "./diagnostics";
 
 export const E2E_SCENARIO_MARKER = "targeted-qa-detox";
 export const E2E_STARTUP_IMAGE_URL = "hot-updater:///assets/probe.png";
@@ -12,6 +15,8 @@ const Image = {
 
 void HotUpdater;
 void Image;
+void callE2eDiagnostic;
+void navigate;
 
 export function markE2EStartupImageLoaded(): void {
   startupImageReady = true;
@@ -38,23 +43,9 @@ export async function loadE2EStartupResources(loaders: {
   }
 }
 
-export function maybeCrashForE2E(): void {
-  try {
-    /* E2E_CRASH_GUARD_START */
-    /* E2E_CRASH_GUARD_END */
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    if (message.includes("hot-updater e2e crash")) {
-      throw error;
-    }
-    if (
-      message.includes("notifyAppReady") ||
-      message.includes("NATIVE_STATE")
-    ) {
-      throw new Error("hot-updater e2e crash bundle");
-    }
-    throw error;
-  }
+export async function maybeCrashForE2E(): Promise<void> {
+  /* E2E_CRASH_GUARD_START */
+  /* E2E_CRASH_GUARD_END */
 }
 
 export function loadE2EDeployBundleAssets(): void {

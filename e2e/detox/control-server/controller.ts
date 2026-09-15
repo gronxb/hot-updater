@@ -59,6 +59,7 @@ import {
   hasLynxNativeRestartEvidence,
   hasNativeRestartEvidenceAfterMarker,
   isAndroidRecoveryProcessReady,
+  isLynxManagedRuntimeReplacementReady,
 } from "./android-restart-wait.ts";
 import {
   createCrashRecoveryArtifactNames,
@@ -257,7 +258,6 @@ const BARE_BUILD_CACHE_INPUT_PATHS = [
   "packages/hot-updater/src/utils/bundleManifest.ts",
   "packages/react-native",
 ];
-const BUILT_IN_MIN_BUNDLE_ID_SUFFIX = "7000-8000-000000000000";
 const SIGNING_PRIVATE_KEY_RELATIVE_PATH = "keys/private-key.pem";
 const EMPTY_CRASH_HISTORY = {
   bundles: [],
@@ -1134,7 +1134,6 @@ async function applyAppScenario({
   bundleProfile,
   marker,
   mode,
-  safeBundleIds,
 }: {
   bundleProfile: BundleProfile;
   marker: string;
@@ -1170,16 +1169,16 @@ async function applyAppScenario({
     mode === "crash"
       ? [
           CRASH_GUARD_START,
-          `  const E2E_SAFE_BUNDLE_IDS = new Set(${JSON.stringify(safeBundleIds, null, 2)});`,
-          `  const E2E_BUILT_IN_MIN_BUNDLE_ID_SUFFIX = ${JSON.stringify(BUILT_IN_MIN_BUNDLE_ID_SUFFIX)};`,
-          "  const E2E_CURRENT_BUNDLE_ID = HotUpdater.getManifest().bundleId;",
-          "  const E2E_IS_BUILT_IN_BUNDLE =",
-          '    typeof E2E_CURRENT_BUNDLE_ID === "string" &&',
-          "    E2E_CURRENT_BUNDLE_ID.endsWith(E2E_BUILT_IN_MIN_BUNDLE_ID_SUFFIX);",
-          "",
-          "  if (!E2E_IS_BUILT_IN_BUNDLE && !E2E_SAFE_BUNDLE_IDS.has(E2E_CURRENT_BUNDLE_ID)) {",
-          '    throw new Error("hot-updater e2e crash bundle");',
-          "  }",
+          '  await callE2eDiagnostic("armNextPageFatalFailure");',
+          "  await new Promise<void>((resolve, reject) => {",
+          "    navigate(",
+          '      { path: "detail.lynx.bundle" },',
+          "      (result) =>",
+          "        result.code === 1",
+          "          ? resolve()",
+          "          : reject(new Error(`fatal detail rejected: ${result.msg}`)),",
+          "    );",
+          "  });",
           `  ${CRASH_GUARD_END}`,
         ].join("\n")
       : `${CRASH_GUARD_START}\n  ${CRASH_GUARD_END}`;
@@ -5085,6 +5084,7 @@ function readAndroidAutomaticRestartLogs() {
 async function waitForAndroidRestart(
   bundleId: string,
   releaseId: string,
+  runtimeScenarioMarker: string | undefined,
   signal?: AbortSignal,
 ) {
   if (fixtureSession.platform !== "android") {
@@ -5105,6 +5105,56 @@ async function waitForAndroidRestart(
   );
   let lastNativeLogs = "";
   let waitState = { clearedObservations: 0 };
+
+  if (isLynxE2eApp()) {
+    if (!runtimeScenarioMarker) {
+      throw new Error("Lynx runtime replacement marker is required");
+    }
+    for (
+      let attempt = 1;
+      attempt <= E2E_ANDROID_RESTART_WAIT_ATTEMPTS;
+      attempt += 1
+    ) {
+      throwIfAborted(signal);
+      const screen = readE2eScreenStateSnapshot();
+      const processId = getAndroidProcessId().trim();
+      const focusedPackage = getAndroidFocusedPackage();
+      if (
+        isLynxManagedRuntimeReplacementReady({
+          appId: fixtureSession.appId,
+          bundleId: screen.currentBundleId,
+          expectedBundleId: bundleId,
+          expectedReleaseId: releaseId,
+          expectedRuntimeScenarioMarker: runtimeScenarioMarker,
+          focusedPackage,
+          processId,
+          releaseId: screen.currentReleaseId,
+          runtimeScenarioMarker: screen.runtimeScenarioMarker,
+          verificationPending: screen.verificationPending,
+        })
+      ) {
+        logDetoxFixture("android managed runtime replacement observed", {
+          attempt,
+          bundleId,
+          focusedPackage,
+          processId,
+          releaseId,
+          runtimeScenarioMarker,
+        });
+        androidLaunchLogMarker = null;
+        return { bundleId, focusedPackage, processId, releaseId };
+      }
+      await abortableSleep(E2E_ANDROID_FOREGROUND_POLL_MS, signal);
+    }
+    const screen = readE2eScreenStateSnapshot();
+    throw createEndpointError(
+      "Timed out waiting for the Android managed Lynx runtime replacement",
+      {
+        expected: { bundleId, releaseId, runtimeScenarioMarker },
+        observed: { screen },
+      },
+    );
+  }
 
   for (
     let attempt = 1;
@@ -7671,9 +7721,15 @@ export function startWaitForMetadataJob(
 export function startWaitForAndroidRestartJob(
   bundleId: string,
   releaseId: string,
+  runtimeScenarioMarker?: string,
 ) {
   return createJob((context) =>
-    waitForAndroidRestart(bundleId, releaseId, context.signal),
+    waitForAndroidRestart(
+      bundleId,
+      releaseId,
+      runtimeScenarioMarker,
+      context.signal,
+    ),
   );
 }
 

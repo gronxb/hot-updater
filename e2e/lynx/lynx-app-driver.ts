@@ -442,7 +442,7 @@ export class LynxAppDriver implements DetoxAppDriver {
       await this.controlClient.waitForScreenStateField(
         `${stage}: wait for detail close`,
         "detailPageMarker",
-        { expectedValue: "closed" },
+        { expectedValue: "close-requested" },
       );
     });
   }

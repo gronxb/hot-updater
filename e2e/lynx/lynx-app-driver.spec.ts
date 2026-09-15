@@ -337,7 +337,7 @@ describe("Lynx app text assertions", () => {
 });
 
 describe("Lynx managed page evidence actions", () => {
-  it("waits for the detail page close receipt before returning", async () => {
+  it("waits for the detail page close request before returning", async () => {
     let screenReads = 0;
     const fetch = vi.fn(async (_url: string, init?: RequestInit) => ({
       ok: true,
@@ -348,7 +348,7 @@ describe("Lynx managed page evidence actions", () => {
             detailPageMarker:
               init?.method === "POST" || screenReads++ === 0
                 ? "E2E_SCENARIO_MARKER"
-                : "closed",
+                : "close-requested",
           },
         }),
     }));
