@@ -99,6 +99,7 @@ export class LynxAppDriver implements DetoxAppDriver {
   private androidLaunchLogMarker: string | null = null;
   private activeLaunchGeneration: string | null = null;
   private iosLaunchProcessId: string | null = null;
+  private iosAgentDeviceUdid: string | null = null;
   private readonly generationEventLedger = new GenerationEventLedger();
   private stageValues: Record<string, unknown>;
 
@@ -467,7 +468,7 @@ export class LynxAppDriver implements DetoxAppDriver {
         "--platform",
         "ios",
         "--udid",
-        this.deviceId(),
+        this.resolveIosAgentDeviceUdid(),
         "--foreground",
         "--session",
         session,
@@ -538,6 +539,36 @@ export class LynxAppDriver implements DetoxAppDriver {
       this.env.HOT_UPDATER_E2E_DEVICE_ID ??
       "emulator-5554"
     );
+  }
+
+  private resolveIosAgentDeviceUdid(): string {
+    if (this.iosAgentDeviceUdid) return this.iosAgentDeviceUdid;
+    const selector = this.deviceId();
+    if (/^[0-9A-F]{8}(?:-[0-9A-F]{4}){3}-[0-9A-F]{12}$/i.test(selector)) {
+      this.iosAgentDeviceUdid = selector;
+      return selector;
+    }
+    const payload = JSON.parse(
+      this.runOrThrow("xcrun", ["simctl", "list", "devices", "booted", "-j"]),
+    ) as {
+      devices?: Record<
+        string,
+        readonly { name?: string; state?: string; udid?: string }[]
+      >;
+    };
+    const match = Object.values(payload.devices ?? {})
+      .flat()
+      .find(
+        (device) =>
+          device.state === "Booted" &&
+          typeof device.udid === "string" &&
+          (selector === "booted" || device.name === selector),
+      );
+    if (!match?.udid) {
+      throw new Error(`No booted iOS simulator matched ${selector}`);
+    }
+    this.iosAgentDeviceUdid = match.udid;
+    return match.udid;
   }
 
   ensureInstalled(): void {

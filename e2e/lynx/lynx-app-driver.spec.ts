@@ -447,6 +447,47 @@ describe("Lynx managed page evidence actions", () => {
       expect.objectContaining({ encoding: "utf8" }),
     );
   });
+
+  it("resolves an iOS simulator name before using agent-device", async () => {
+    vi.mocked(spawnSync).mockImplementation(
+      (command, args) =>
+        ({
+          status: 0,
+          stdout:
+            command === "xcrun" && args.includes("devices")
+              ? JSON.stringify({
+                  devices: {
+                    "com.apple.CoreSimulator.SimRuntime.iOS-26-0": [
+                      {
+                        name: "iPhone 17 Pro",
+                        state: "Booted",
+                        udid: "10AB9405-035A-4243-8D85-154B641AA009",
+                      },
+                    ],
+                  },
+                })
+              : "",
+        }) as ReturnType<typeof spawnSync>,
+    );
+    const client = createControlClient({
+      baseUrl: "http://control.test",
+      fetch: vi.fn(),
+    });
+    const ios = new LynxAppDriver(client, "ios", {
+      HOT_UPDATER_E2E_IOS_SIMULATOR_NAME: "iPhone 17 Pro",
+    });
+
+    await ios.nativeBack("native back");
+
+    expect(vi.mocked(spawnSync)).toHaveBeenCalledWith(
+      "agent-device",
+      expect.arrayContaining([
+        "--udid",
+        "10AB9405-035A-4243-8D85-154B641AA009",
+      ]),
+      expect.objectContaining({ encoding: "utf8" }),
+    );
+  });
 });
 
 describe("Lynx update actions", () => {
