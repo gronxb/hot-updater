@@ -1,7 +1,9 @@
 # PRD: Aggregated Release Activity Without Over-fetching
 
-- Status: **Implemented and validated** on
-  `feature/insights-release-activity` in a pull request based on `next`.
+- Status: **Implementation validated; physical storage simplification pending**
+  on `feature/insights-release-activity` in a pull request based on `next`.
+  The table proliferation constraint below is an additional acceptance
+  requirement; existing test results do not establish compliance with it.
 - Written: 2026-09-15.
 - Baseline: `origin/next` at `ec78756926cac3b23ca32c1d3acefe28d2ebb7ab`.
 - Migration policy: this feature is pre-GA, so update the existing `1.0.0`
@@ -43,6 +45,11 @@ event history.
    idempotency, and late or out-of-order ingestion.
 5. Every built-in provider, the Console, shared conformance tests, and the final
    pre-GA `1.0.0` schemas are updated in a pull request whose base is `next`.
+6. Minimize physical schema growth as well as reads. Reuse or consolidate
+   existing storage where practical, justify each remaining added table or
+   collection, and verify its read, write, index, and operational costs. The
+   current four-table SQL expansion requires a consolidation review before
+   this criterion can be marked complete.
 
 ## Out of Scope
 
@@ -322,13 +329,52 @@ transactions and performance still require separate integration evidence.
 
 ## 7. Physical Storage and Read Bounds
 
-Each built-in provider needs indexed private storage for:
+Each built-in provider needs indexed private storage for the following logical
+data. This list does not prescribe a separate table or collection per item:
 
 - raw events and canonical latest-event records;
 - bounded attribution state and revision per installation;
 - unique `(scope, release, install, metric)` lifetime markers;
 - current/lifetime summaries per release; and
 - report buckets keyed by `(scope, release, hour)`.
+
+### Physical Schema Constraint
+
+Release activity must not broadly expand the database schema to solve
+over-fetching. Keep the physical table/collection footprint minimal. Bounded
+reads, correct counts, and a small operational footprint are joint acceptance
+requirements.
+
+- Evaluate extending existing records or consolidating related state before
+  adding a table or collection. A separate reducer, metric, or internal module
+  is not sufficient reason for a separate physical store.
+- Do not create separate tables or collections per release, metric, or time
+  window. Store those dimensions in indexed keys or columns.
+- Each retained physical separation needs a concrete justification based on
+  identity, uniqueness, access patterns, contention, or lifecycle. Document why
+  reuse or consolidation cannot meet the same requirements at lower total cost.
+- Follow each provider's native data model. A common logical contract does not
+  require identical physical layouts across SQL, document, and key-value
+  providers. Do not force unrelated SQL entities into an opaque generic table
+  merely to reduce the reported table count.
+- Consolidation must preserve indexed summary/range reads, atomic ingestion,
+  lifetime uniqueness, and bounded installation state. It must not introduce
+  raw scans, unbounded arrays/documents, or greater write contention merely to
+  hide schema growth.
+- Review tables/collections and indexes together with per-event mutations,
+  transaction round trips, and setup, migration, and cleanup work. Moving that
+  work into a public storage adapter or shared helper remains prohibited by
+  Section 2.
+
+The current SQL implementation adds `insights_install_states`,
+`insights_lifetime_markers`, `insights_release_summaries`, and
+`insights_hourly_activity` alongside the existing event/head tables. That
+four-table expansion is a review baseline, not an accepted physical schema.
+Reassess reuse and consolidation across built-in providers before declaring
+this new constraint satisfied. Record the resulting per-provider layout and
+cost comparison; this requirement update alone does not reduce table counts.
+
+### Read Bounds
 
 Lifetime totals are materialized counters. They are never recomputed by counting
 all markers/states or summing all historical buckets during a read.
@@ -423,6 +469,9 @@ Native integration tests exercise actual transaction paths where available.
   RC development databases.
 - A new public storage adapter or shared helper would delegate internal
   projection complexity to plugin authors and is therefore rejected.
+- Logical projection roles do not justify one physical table each. The current
+  schema needs consolidation review under the added footprint constraint;
+  bounded reads and passing E2E tests alone do not close that review.
 
 ## 12. Implementation Areas
 
@@ -456,6 +505,13 @@ readiness/coverage metadata is allowed.
 | Maximum request | R=20, H=720 | Correct result within 14,400 logical buckets |
 | Counter contention | Concurrent writes to one release/hour | No lost or duplicate increments |
 | Null UNCHANGED | Current attribution remains unchanged | No unnecessary release-summary counter write |
+| Physical footprint | Compare baseline, current, and consolidated provider layouts | Minimal table/collection growth with each retained addition justified; bounded reads and atomicity preserved |
+
+For the physical-footprint review, record table/collection and index counts,
+rows/items read, per-event mutations, and transaction round trips for each
+provider. Compare the current layout with viable reuse/consolidation options,
+including contention and schema maintenance costs. Correctness tests and E2E
+passes alone do not establish that the physical schema is sufficiently small.
 
 D1 records `result.meta.rows_read`. Other providers use query counts and native
 evidence such as examined rows/documents/items, scan count, consumed capacity, or
@@ -504,6 +560,10 @@ paths; production throughput claims require representative load measurements.
 - [x] Migrate Bundles and Insights while preserving App Usage/raw overview.
 - [x] Pass required build, type, lint, unit, and integration checks.
 - [x] Push a `next`-based branch and open a `next`-based pull request.
+- [ ] Reassess and consolidate physical storage under Section 7; document
+  per-provider schema counts and costs and justify any retained additions.
+- [ ] Verify the resulting layout preserves bounded reads and atomic ingestion
+  without increasing plugin-author or operational complexity.
 
 Completion requires implementation, validation, and a reviewable PR. If a native
 guarantee proves impossible or data loss is found, report the counterexample and
