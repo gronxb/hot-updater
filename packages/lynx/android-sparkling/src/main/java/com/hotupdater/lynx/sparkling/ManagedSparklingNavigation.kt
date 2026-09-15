@@ -3,11 +3,13 @@ package com.hotupdater.lynx.sparkling
 import android.os.Handler
 import android.os.Looper
 import com.tiktok.sparkling.method.registry.core.BridgePlatformType
-import com.tiktok.sparkling.method.registry.core.IBridgeContext
 import com.tiktok.sparkling.method.registry.core.IDLBridgeMethod
 import com.tiktok.sparkling.method.registry.core.SparklingBridgeManager
-import com.tiktok.sparkling.method.registry.core.annotation.IDLMethodName
-import com.tiktok.sparkling.method.registry.core.model.context.ContextProviderFactory
+import com.tiktok.sparkling.method.registry.core.model.idl.CompletionBlock
+import com.tiktok.sparkling.method.registry.core.model.idl.IDLMethodBaseParamModel
+import com.tiktok.sparkling.method.registry.core.utils.createXModel
+import com.tiktok.sparkling.method.router.close.AbsRouterCloseMethodIDL
+import com.tiktok.sparkling.method.router.open.AbsRouterOpenMethodIDL
 import java.io.ByteArrayOutputStream
 import java.nio.ByteBuffer
 import java.nio.charset.CodingErrorAction
@@ -264,116 +266,85 @@ internal object ManagedSparklingBridge {
     }
 }
 
-internal abstract class ManagedRouterMethod : IDLBridgeMethod {
-    private var bridgeContext: IBridgeContext? = null
+private val managedRouterMainHandler = Handler(Looper.getMainLooper())
 
-    protected fun context() = bridgeContext
-
-    protected fun runOnMainThread(block: () -> Unit) {
-        if (Looper.myLooper() == Looper.getMainLooper()) {
-            block()
-        } else {
-            mainHandler.post(block)
-        }
-    }
-
-    override fun setBridgeContext(bridgeContext: IBridgeContext) {
-        this.bridgeContext = bridgeContext
-    }
-
-    override fun setProviderFactory(
-        contextProviderFactory: ContextProviderFactory?,
-    ) = Unit
-
-    protected fun success(callback: IDLBridgeMethod.Callback) {
-        callback.invoke(mapOf("code" to IDLBridgeMethod.SUCCESS, "msg" to "ok"))
-    }
-
-    protected fun failure(
-        callback: IDLBridgeMethod.Callback,
-        error: Throwable? = null,
-    ) {
-        callback.invoke(
-            mapOf(
-                "code" to IDLBridgeMethod.INVALID_PARAM,
-                "msg" to (error?.message ?: "Managed navigation rejected"),
-            ),
-        )
-    }
-
-    private companion object {
-        val mainHandler = Handler(Looper.getMainLooper())
+private fun runManagedRouterOnMainThread(block: () -> Unit) {
+    if (Looper.myLooper() == Looper.getMainLooper()) {
+        block()
+    } else {
+        managedRouterMainHandler.post(block)
     }
 }
 
-internal abstract class ManagedRouterOpenMethodBase : ManagedRouterMethod() {
-    @IDLMethodName(
-        name = "router.open",
-        params = [
-            "scheme",
-            "replace",
-            "replaceType",
-            "useSysBrowser",
-            "animated",
-            "interceptor",
-            "extra",
-        ],
-    )
-    final override val name = "router.open"
+private fun IDLMethodBaseParamModel.asManagedParams(): Map<String, Any?> {
+    val json = toJSON()
+    return json.keys().asSequence().associateWith(json::get)
 }
 
-internal class ManagedRouterOpenMethod : ManagedRouterOpenMethodBase() {
-
-    override fun realHandle(
-        params: Map<String, Any?>,
-        callback: IDLBridgeMethod.Callback,
+internal class ManagedRouterOpenMethod : AbsRouterOpenMethodIDL() {
+    override fun handle(
+        params: IDLMethodOpenParamModel,
+        callback: CompletionBlock<IDLMethodOpenResultModel>,
         type: BridgePlatformType,
     ) {
-        runOnMainThread {
+        runManagedRouterOnMainThread {
             runCatching {
                 require(type == BridgePlatformType.LYNX) {
                     "Managed pages require a Lynx source"
                 }
-                val bridge = checkNotNull(context()) {
+                val bridge = checkNotNull(getSDKContext()) {
                     "Managed router source context is unavailable"
                 }
-                val (scheme, options) = ManagedOpenOptions.parse(params)
+                val (scheme, options) = ManagedOpenOptions.parse(
+                    params.asManagedParams(),
+                )
                 val host =
                     ManagedSparklingHostRegistry.hostForBridgeContext(bridge)
                         ?: error("Managed router source is stale")
                 host.open(bridge, scheme, options.animated)
             }.fold(
                 onSuccess = { accepted ->
-                    if (accepted) success(callback) else failure(callback)
+                    if (accepted) {
+                        callback.onSuccess(
+                            IDLMethodOpenResultModel::class.java.createXModel(
+                                getSDKContext()?.containerID,
+                            ),
+                        )
+                    } else {
+                        callback.onFailure(
+                            IDLBridgeMethod.INVALID_PARAM,
+                            "Managed navigation rejected",
+                            null,
+                        )
+                    }
                 },
-                onFailure = { error -> failure(callback, error) },
+                onFailure = { error ->
+                    callback.onFailure(
+                        IDLBridgeMethod.INVALID_PARAM,
+                        error.message ?: "Managed navigation rejected",
+                        null,
+                    )
+                },
             )
         }
     }
 }
 
-internal abstract class ManagedRouterCloseMethodBase : ManagedRouterMethod() {
-    @IDLMethodName(
-        name = "router.close",
-        params = ["containerID", "animated"],
-    )
-    final override val name = "router.close"
-}
-
-internal class ManagedRouterCloseMethod : ManagedRouterCloseMethodBase() {
-
-    override fun realHandle(
-        params: Map<String, Any?>,
-        callback: IDLBridgeMethod.Callback,
+internal class ManagedRouterCloseMethod : AbsRouterCloseMethodIDL() {
+    override fun handle(
+        params: IDLMethodCloseParamModel,
+        callback: CompletionBlock<IDLMethodCloseResultModel>,
         type: BridgePlatformType,
     ) {
-        runOnMainThread {
+        runManagedRouterOnMainThread {
             runCatching {
                 require(type == BridgePlatformType.LYNX) {
                     "Managed pages require a Lynx source"
                 }
-                val options = ManagedCloseOptions.parse(params)
-                val bridge = checkNotNull(context()) {
+                val options = ManagedCloseOptions.parse(
+                    params.asManagedParams(),
+                )
+                val bridge = checkNotNull(getSDKContext()) {
                     "Managed router source context is unavailable"
                 }
                 val host =
@@ -386,9 +357,27 @@ internal class ManagedRouterCloseMethod : ManagedRouterCloseMethodBase() {
                 )
             }.fold(
                 onSuccess = { accepted ->
-                    if (accepted) success(callback) else failure(callback)
+                    if (accepted) {
+                        callback.onSuccess(
+                            IDLMethodCloseResultModel::class.java.createXModel(
+                                getSDKContext()?.containerID,
+                            ),
+                        )
+                    } else {
+                        callback.onFailure(
+                            IDLBridgeMethod.INVALID_PARAM,
+                            "Managed navigation rejected",
+                            null,
+                        )
+                    }
                 },
-                onFailure = { error -> failure(callback, error) },
+                onFailure = { error ->
+                    callback.onFailure(
+                        IDLBridgeMethod.INVALID_PARAM,
+                        error.message ?: "Managed navigation rejected",
+                        null,
+                    )
+                },
             )
         }
     }

@@ -583,7 +583,7 @@ class ManagedSparklingNavigationTest {
     }
 
     private fun invokeRouter(
-        method: ManagedRouterMethod,
+        method: IDLBridgeMethod,
         context: IBridgeContext,
         params: Map<String, Any?>,
     ): Map<String, Any?> {
