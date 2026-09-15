@@ -60,7 +60,7 @@ is best effort: a network failure produces a warning and does not block app
 startup or trigger rollback. `onNotifyAppReady` receives local native state;
 it is not confirmation that the server received an event.
 
-The overview keeps all status totals above the tabs; switching tabs changes the chart. **Downloaded** is one state: the bundle has downloaded and is waiting to apply. Its count and trend follow the latest reported waiting state. **Active** uses the running Release ID, so downloading a bundle does not increase its Active count. Applying, recovering, or a newer no-change report clears the pending snapshot. Historical `UNCHANGED` events cannot tell whether a download completed with an older SDK; they are not backfilled.
+Bundle activity keeps release summaries above the report chart. **Active** counts installations whose latest observed running state belongs to the release. **Pending** counts installations waiting to apply it. **Downloaded** and **Recovered** count unique installations across collected history; recovery belongs to the failed source release. Downloading does not increase Active. Applying, recovering, or a newer no-change report clears Pending. Historical `UNCHANGED` events do not establish a completed download.
 
 ![Completed downloads and the remaining pending installation](/docs/console/insights-download-pending.png)
 
@@ -126,9 +126,10 @@ Use [the local or deployed Console](/docs/guides/console). Insights views need a
 direct database plugin; `standaloneRepository` does not currently proxy the
 Insights models.
 
-The Bundles list shows compact **Active**, **Downloaded**, and **Recovered** counts over the last
-30 days. Bundle Detail keeps these counts and a small activity graph above
-Delivery settings.
+The Bundles list and Bundle Detail show **Active**, **Downloaded**, and
+**Recovered** for each release across collected history. Active is the latest
+observed state and has no 30-day expiry; inactivity or an uninstall cannot be
+inferred from silence. Summary reads do not scan event history.
 
 Insights opens with **All platforms** and a 24-hour period. Select **7d** or
 **30d** in App usage to update its metric, chart, and distributions. Bundle
@@ -160,17 +161,20 @@ Period and filter selections survive navigation back to the overview.
 
 ![Bundle distribution by app version with sample data](/docs/console/insights-distribution.png)
 
-The bundle chart includes every bundle ID observed with the selected filters.
-**Active** follows each installation’s last reported ID
-within that period, so moving to a new bundle reduces the old bundle’s count.
-Select **Recovered** to compare installations recovered from each bundle per
-interval. Highlighting an ID keeps the other lines visible.
+Bundle activity shows one selected release. Its **24h**, **7d**, or **30d**
+selector affects the report graph; the current and lifetime summaries stay the
+same. The graph counts downloaded, applied, and recovered reports per interval,
+so repeated reports from one installation can contribute more than once. Two
+releases using the same bundle file remain separate. App version filtering
+applies to App usage.
 
 Open **All events** on the activity card to browse reports from newest to oldest,
 20 per page.
 
 These counts reflect received reports, not the full installed population.
-Reports without a known bundle ID are excluded from the per-ID chart. History
-reads are capped at 50,000 events for each reporting period. Partial
-history is labeled in the UI; the active-user total is shown as a lower bound
-with **≥**, and unavailable usage intervals are shown as gaps.
+Release activity requires known release attribution and uses materialized
+summaries and bounded hourly buckets; it has no raw-event pagination or
+50,000-event ceiling. App usage still caps its history reader at 50,000 events
+per reporting period. Partial App usage history is labeled in the UI, its total
+is shown as a lower bound with **≥**, and unavailable usage intervals appear
+as gaps.

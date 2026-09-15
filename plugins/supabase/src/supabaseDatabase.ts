@@ -4,6 +4,12 @@ import {
   DatabasePluginInputError,
 } from "@hot-updater/plugin-core";
 import {
+  insightsHourlyBucketKey,
+  insightsLifetimeMarkerKey,
+  insightsReleaseKey,
+  recordProjectedInsightsEvent,
+} from "@hot-updater/plugin-core/internal";
+import {
   latestInsightsWhere,
   latestInsightsCountGroups,
 } from "@hot-updater/plugin-core/internal";
@@ -15,6 +21,8 @@ import type {
   DatabaseImplementationResult,
   FindManyDatabaseImplementationInput,
   FindOneDatabaseImplementationInput,
+  InsightsProjectionBackend,
+  PreparedInsightsEvent,
   UpdateDatabaseImplementationInput,
 } from "@hot-updater/plugin-core/internal";
 import {
@@ -42,17 +50,142 @@ const isForeignKeyViolation = (error: unknown): boolean =>
   error !== null &&
   Reflect.get(error, "code") === "23503";
 
+const createSupabaseInsightsProjection = (
+  supabase: SupabaseClient<Database>,
+): InsightsProjectionBackend => ({
+  async readRecordContext({ installId, lifetimeKey }) {
+    const [stateResult, markerResult] = await Promise.all([
+      supabase
+        .from(SUPABASE_V1_TABLE_NAMES.insightsInstallStates)
+        .select("revision,state")
+        .eq("install_id", installId)
+        .maybeSingle(),
+      lifetimeKey === null
+        ? Promise.resolve({ data: null, error: null })
+        : supabase
+            .from(SUPABASE_V1_TABLE_NAMES.insightsLifetimeMarkers)
+            .select("marker_key")
+            .eq("marker_key", insightsLifetimeMarkerKey(lifetimeKey))
+            .maybeSingle(),
+    ]);
+    throwSupabaseError("read insights state", stateResult.error);
+    throwSupabaseError("read insights lifetime marker", markerResult.error);
+    return {
+      revision: String(stateResult.data?.revision ?? 0),
+      state: stateResult.data?.state ?? null,
+      lifetimeExists: markerResult.data !== null,
+    };
+  },
+  async commitPreparedEvent(prepared: PreparedInsightsEvent) {
+    const payload = {
+      ...prepared,
+      summaryDeltas: prepared.summaryDeltas.map((delta) => ({
+        releaseKey: insightsReleaseKey(delta.release),
+        ...delta,
+      })),
+      firstLifetime:
+        prepared.firstLifetime === null
+          ? null
+          : {
+              ...prepared.firstLifetime,
+              markerKey: insightsLifetimeMarkerKey(prepared.firstLifetime),
+              releaseKey: insightsReleaseKey(prepared.firstLifetime.release),
+            },
+      hourly:
+        prepared.hourly === null
+          ? null
+          : {
+              ...prepared.hourly,
+              bucketKey: insightsHourlyBucketKey(
+                prepared.hourly.release,
+                prepared.hourly.hourStartMs,
+              ),
+              releaseKey: insightsReleaseKey(prepared.hourly.release),
+            },
+    };
+    const { data, error } = await supabase.rpc(
+      SUPABASE_V1_FUNCTION_NAMES.recordPreparedEvent,
+      { p_prepared: payload },
+    );
+    throwSupabaseError("record prepared insights", error);
+    if (data !== "committed" && data !== "duplicate" && data !== "conflict") {
+      throw new SupabaseMissingDataError("record prepared insights");
+    }
+    return { status: data };
+  },
+  async getReleaseActivity(input) {
+    const keys = input.releases.map(insightsReleaseKey);
+    const { data, error } = await supabase.rpc(
+      SUPABASE_V1_FUNCTION_NAMES.getReleaseActivity,
+      {
+        p_release_keys: keys,
+        p_start: input.timeRange?.start ?? null,
+        p_end: input.timeRange?.end ?? null,
+      },
+    );
+    throwSupabaseError("get release activity", error);
+    if (!data || typeof data !== "object" || Array.isArray(data)) {
+      throw new SupabaseMissingDataError("get release activity");
+    }
+    const result = data as {
+      summaries?: Record<string, unknown>[];
+      hourly?: Record<string, unknown>[];
+    };
+    const summaries = new Map(
+      (result.summaries ?? []).map((row) => [String(row.release_key), row]),
+    );
+    const hourly = new Map<string, Record<string, unknown>[]>();
+    for (const row of result.hourly ?? []) {
+      const key = String(row.release_key);
+      const points = hourly.get(key) ?? [];
+      points.push(row);
+      hourly.set(key, points);
+    }
+    const count = (value: unknown) => {
+      const number = Number(value ?? 0);
+      if (!Number.isSafeInteger(number) || number < 0) {
+        throw new SupabaseMissingDataError("get release activity");
+      }
+      return number;
+    };
+    return {
+      coverage: { kind: "complete" as const, sinceMs: 0 },
+      data: input.releases.map((release) => {
+        const key = insightsReleaseKey(release);
+        const summary = summaries.get(key);
+        return {
+          release,
+          summary: {
+            activeInstallations: count(summary?.active_installations),
+            pendingInstallations: count(summary?.pending_installations),
+            downloadedInstallations: count(summary?.downloaded_installations),
+            recoveredInstallations: count(summary?.recovered_installations),
+          },
+          ...(input.timeRange === undefined
+            ? {}
+            : {
+                series: (hourly.get(key) ?? []).map((row) => ({
+                  startMs: count(row.hour_start_ms),
+                  downloadedReports: count(row.downloaded_reports),
+                  appliedReports: count(row.applied_reports),
+                  recoveredReports: count(row.recovered_reports),
+                })),
+              }),
+          measuredAtMs: Date.now(),
+        };
+      }),
+    };
+  },
+});
+
 const createSupabaseImplementation = (
   supabase: SupabaseClient<Database>,
 ): DatabasePluginImplementation => {
+  const insightsProjection = createSupabaseInsightsProjection(supabase);
   const implementation: DatabasePluginImplementation = {
-    async recordInsights({ event }) {
-      const { error } = await supabase.rpc(
-        SUPABASE_V1_FUNCTION_NAMES.recordEvent,
-        { p_event: event },
-      );
-      throwSupabaseError("record insights", error);
-    },
+    recordInsights: (input) =>
+      recordProjectedInsightsEvent(insightsProjection, input),
+    getReleaseActivity: (input) => insightsProjection.getReleaseActivity(input),
     async findLatestInsightsEvents(input) {
       const limit = "installId" in input ? 1 : input.limit;
       const heads: Pick<BundleEventRow, "id" | "install_id">[] = [];

@@ -175,8 +175,10 @@ by hash; revocation updates only `revoked_at_ms`.
 
 ### Insights
 
-Implement `InsightsModel` with these five exported input types. Every call takes
-an object; custom providers do not implement the bundled internal CRUD adapter.
+The model returned by `createDatabasePlugin` has the following methods. Every
+call takes an object; custom providers do not implement the bundled internal
+CRUD adapter. All six methods, including `getReleaseActivity`, are required
+by the public plugin contract.
 
 ```ts
 interface InsightsModel {
@@ -189,8 +191,30 @@ interface InsightsModel {
   ): Promise<readonly BundleEventRow[]>;
   countLatestEvents(input: InsightsCountLatestEventsInput): Promise<number>;
   countEvents(input: InsightsCountEventsInput): Promise<number>;
+  getReleaseActivity(
+    input: InsightsGetReleaseActivityInput,
+  ): Promise<InsightsGetReleaseActivityResult>;
 }
 ```
+
+`getReleaseActivity({ releases, timeRange? })` reads summaries keyed by
+`{ releaseId, platform, channel }`. Without a range, read only the requested
+summaries. A range `{ start, end }` adds hourly report counts in the UTC
+hour-aligned interval `[start, end)`; it does not change summary semantics.
+Requests contain 1–20 distinct releases and at most 720 hours.
+
+Summary fields are `activeInstallations` and `pendingInstallations` for the
+latest observed state, and `downloadedInstallations` and `recoveredInstallations`
+for unique installations during collected history. Series fields count accepted
+reports: `downloadedReports`, `appliedReports`, and `recoveredReports`.
+Reads must remain bounded by requested releases and hours. Missing support must
+never fall back to scanning raw history.
+
+Supporting this read does not introduce a public storage adapter,
+prepared-event input, or required shared helper. Hot Updater owns the built-in
+providers' private aggregation and transactions; `recordEvent({ event })` keeps
+its existing argument. A shared helper that asks plugin authors to manage those
+internals would still impose the same implementation burden.
 
 `recordEvent({ event })` receives one validated, immutable `BundleEventRow`. Store
 it once by `id`; the first accepted payload wins, even if a retry carries different

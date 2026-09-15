@@ -44,6 +44,14 @@ export {
   type DatabasePluginInputErrorCode,
 } from "./databasePluginCrud";
 
+export class InsightsAggregationNotReadyError extends Error {
+  readonly name = "InsightsAggregationNotReadyError";
+
+  constructor() {
+    super("Release activity aggregation is not ready.");
+  }
+}
+
 const PAGE_SIZE = 100;
 
 const compareChannelRows = (left: ChannelRow, right: ChannelRow): number =>
@@ -962,6 +970,7 @@ export const createDatabasePluginAdapter = (
             ],
           });
         },
+        getReleaseActivity: (input) => implementation.getReleaseActivity(input),
       },
       apiKeys: {
         async create(row) {

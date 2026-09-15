@@ -20,6 +20,9 @@ const unimplemented = async (): Promise<never> => {
 };
 
 const createMethods = (): DatabasePluginImplementation => ({
+  getReleaseActivity: async () => {
+    throw new Error("Unexpected release activity read");
+  },
   findLatestInsightsEvents: async () => {
     throw new Error("Unexpected Insights read");
   },
@@ -119,10 +122,12 @@ describe("createDatabasePlugin", () => {
     expect(plugin.models.insights.findLatestEvents).toBeTypeOf("function");
     expect(plugin.models.insights.countEvents).toBeTypeOf("function");
     expect(plugin.models.insights.countLatestEvents).toBeTypeOf("function");
+    expect(plugin.models.insights.getReleaseActivity).toBeTypeOf("function");
     expect(Object.keys(plugin.models.insights).sort()).toEqual([
       "countEvents",
       "countLatestEvents",
       "findLatestEvents",
+      "getReleaseActivity",
       "listEvents",
       "recordEvent",
     ]);

@@ -1,10 +1,12 @@
 // @vitest-environment node
 
-import type { BundleEventRow, InsightsModel } from "@hot-updater/plugin-core";
+import type {
+  DatabaseModels,
+  ReleaseReference,
+} from "@hot-updater/plugin-core";
 import { describe, expect, it, vi } from "vitest";
 
-import { getBundleActivity } from "./bundleActivity";
-import { getRecoveryReport } from "./insightsRecovery";
+import { getAggregatedRecoveryReport } from "./insightsRecovery";
 
 const HOUR = 3_600_000;
 const now = 48 * HOUR;
@@ -13,372 +15,181 @@ const input = {
   channel: "production",
   window: "24h",
 } as const;
-let sequence = 0;
-const event = (
-  type: BundleEventRow["type"],
-  hour: number,
-  releaseId = "release-a",
-  overrides: Partial<BundleEventRow> = {},
-): BundleEventRow =>
+
+const models = () =>
   ({
-    id: String(++sequence).padStart(10, "0"),
-    install_id: `install-${sequence}`,
-    type,
-    received_at_ms: hour * HOUR,
-    from_bundle_id: type === "UNCHANGED" ? null : "same-file",
-    to_bundle_id: "same-file",
-    from_release_id: type === "RECOVERED" ? releaseId : null,
-    to_release_id: type === "RECOVERED" ? "stable-release" : releaseId,
-    platform: "ios",
-    channel: "production",
-    user_id: null,
-    metadata: {
-      username: null,
-      cohort: "default",
-      fingerprint_hash: null,
-      sdk_version: null,
-      update_strategy: type === "UNCHANGED" ? null : "appVersion",
+    channels: {
+      list: vi.fn(async () => ({
+        channels: [{ id: "production-id", name: "production" }],
+      })),
     },
-    app_version: "1.0.0",
-
-    ...overrides,
-  }) as BundleEventRow;
-const reports = (
-  applied: number,
-  recovered: number,
-  hour: number,
-  id = "release-a",
-) => [
-  ...Array.from({ length: applied }, () => event("UPDATE_APPLIED", hour, id)),
-  ...Array.from({ length: recovered }, () =>
-    event("RECOVERED", hour + 0.001, id),
-  ),
-];
-function modelFor(events: BundleEventRow[]): InsightsModel {
-  const ordered = [...events].sort(
-    (a, b) => b.received_at_ms - a.received_at_ms || b.id.localeCompare(a.id),
-  );
-  return {
-    listEvents: vi.fn(
-      async ({ after, sinceMs = 0, beforeReceivedAtMs, limit }) =>
-        ordered
-          .filter(
-            (row) =>
-              row.received_at_ms >= sinceMs &&
-              row.received_at_ms < beforeReceivedAtMs &&
-              (!after ||
-                row.received_at_ms < after.receivedAtMs ||
-                (row.received_at_ms === after.receivedAtMs &&
-                  row.id < after.id)),
-          )
-          .slice(0, limit),
-    ),
-  } as unknown as InsightsModel;
-}
-const seriesFor = (
-  report: Awaited<ReturnType<typeof getRecoveryReport>>,
-  id = "release-a",
-) => report.series.find((s) => s.releaseId === id)!;
-const pointAt = (
-  report: Awaited<ReturnType<typeof getRecoveryReport>>,
-  hour: number,
-  id = "release-a",
-) => seriesFor(report, id).points.find((p) => p.startMs === hour * HOUR)!;
-
-describe("observed bundle activity", () => {
-  it("keeps an unattributed download visible in overall pending and downloaded counts", async () => {
-    const report = await getRecoveryReport(
-      modelFor([
-        event("UPDATE_DOWNLOADED", 26, "unknown", {
-          from_bundle_id: "built-in",
-          to_bundle_id: "downloaded-file",
-          from_release_id: null,
-          to_release_id: null,
-        }),
+    releases: {
+      findMany: vi.fn(async () => [
+        {
+          id: "00000000-0000-7000-8000-000000000001",
+          channel_id: "production-id",
+          platform: "ios",
+        },
       ]),
-      input,
-      now,
-    );
-    expect(report).toMatchObject({
-      pendingInstallations: 1,
-      downloadedInstallations: 1,
-      unattributedInstallations: 1,
-      series: [],
-    });
-  });
+      findById: vi.fn(),
+    },
+    insights: {
+      getReleaseActivity: vi.fn(async ({ releases }) => ({
+        coverage: { kind: "complete" as const, sinceMs: 0 },
+        data: releases.map((release: ReleaseReference) => ({
+          release,
+          summary: {
+            activeInstallations: 789,
+            pendingInstallations: 4,
+            downloadedInstallations: 107,
+            recoveredInstallations: 3,
+          },
+          series: [
+            {
+              startMs: 47 * HOUR,
+              downloadedReports: 5,
+              appliedReports: 4,
+              recoveredReports: 1,
+            },
+          ],
+          measuredAtMs: now,
+        })),
+      })),
+    },
+  }) as unknown as Pick<DatabaseModels, "channels" | "releases" | "insights">;
 
-  it("separates downloads from running and pending state across repeated reports, supersession, and apply", async () => {
-    const rows = [
-      event("UNCHANGED", 25, "release-a", {
-        install_id: "phone",
-        to_bundle_id: "file-a",
-      }),
-      event("UPDATE_DOWNLOADED", 26, "release-b", {
-        install_id: "phone",
-        from_bundle_id: "file-a",
-        to_bundle_id: "file-b",
-      }),
-      event("UPDATE_DOWNLOADED", 27, "release-b", {
-        install_id: "phone",
-        from_bundle_id: "file-a",
-        to_bundle_id: "file-b",
-      }),
-      event("UPDATE_DOWNLOADED", 28, "release-c", {
-        install_id: "phone",
-        from_bundle_id: "file-a",
-        to_bundle_id: "file-c",
-      }),
-    ];
-    const report = await getRecoveryReport(modelFor(rows), input, now);
-    expect(report.downloadedInstallations).toBe(1);
-    expect(seriesFor(report, "release-a").activeInstallations).toBe(1);
-    expect(seriesFor(report, "release-b")).toMatchObject({
-      activeInstallations: 0,
-      pendingInstallations: 0,
-      downloadedInstallations: 1,
-    });
-    expect(seriesFor(report, "release-c")).toMatchObject({
-      activeInstallations: 0,
-      pendingInstallations: 1,
-      downloadedInstallations: 1,
-    });
-    expect(pointAt(report, 26, "release-b")).toMatchObject({
-      active: 0,
-      pendingInstallations: 1,
-      downloadedInstallations: 1,
-      applied: 0,
-    });
-    rows.push(
-      event("UPDATE_APPLIED", 29, "release-c", {
-        install_id: "phone",
-        from_bundle_id: "file-a",
-        to_bundle_id: "file-c",
-      }),
-    );
-    const applied = await getRecoveryReport(modelFor(rows), input, now);
-    expect(seriesFor(applied, "release-c")).toMatchObject({
-      activeInstallations: 1,
-      pendingInstallations: 0,
-      downloadedInstallations: 1,
-    });
-    expect(seriesFor(applied, "release-a").activeInstallations).toBe(0);
-  });
+describe("aggregated Bundle Activity", () => {
+  it("uses one bounded aggregate query and preserves lifetime/current summary", async () => {
+    const database = models();
+    const report = await getAggregatedRecoveryReport(database, input, now);
 
-  it("charts all 30-day IDs and transfers installations between same-file promotions, producing a crossover", async () => {
-    const events = [
-      ...Array.from({ length: 10 }, (_, i) =>
-        event("UPDATE_APPLIED", 25, "old-id", { install_id: `device-${i}` }),
-      ),
-      ...Array.from({ length: 5 }, (_, i) =>
-        event("UNCHANGED", 26, "new-id", {
-          install_id: `device-${i}`,
-          from_release_id: "old-id",
-        }),
-      ),
-      ...Array.from({ length: 4 }, (_, i) =>
-        event("UNCHANGED", 27, "new-id", {
-          install_id: `device-${i + 5}`,
-          from_release_id: "old-id",
-        }),
-      ),
-      event("UNCHANGED", 27.5, "new-id", { install_id: "device-0" }),
-      event("UNCHANGED", 2, "early-id", { install_id: "early-device" }),
-    ];
-    const report = await getRecoveryReport(
-      modelFor(events),
-      { ...input, window: "30d" },
-      31 * 24 * HOUR,
-    );
-    // Reports before the rolling 30-day boundary (hour 24) are excluded.
-    expect(report.series.map((s) => s.releaseId)).toEqual(["old-id", "new-id"]);
-    const hourly = await getRecoveryReport(modelFor(events), input, now);
-    expect(
-      [25, 26, 27].map((hour) => pointAt(hourly, hour, "old-id").active),
-    ).toEqual([10, 5, 1]);
-    expect(
-      [25, 26, 27].map((hour) => pointAt(hourly, hour, "new-id").active),
-    ).toEqual([0, 5, 9]);
-    // Same-file selection reports move Active counts without counting a new update.
-    expect(pointAt(hourly, 26, "new-id").applied).toBe(0);
-    expect(seriesFor(hourly, "new-id").firstAppliedAtMs).toBeNull();
-    expect(pointAt(hourly, 24, "new-id").active).toBeNull();
-    expect(pointAt(hourly, 28, "old-id").active).toBe(1);
-    const detail = await getRecoveryReport(
-      modelFor(events),
-      { ...input, releaseId: "new-id" },
-      now,
-    );
-    expect(detail.series).toHaveLength(1);
-    expect(seriesFor(detail, "new-id").activeInstallations).toBe(9);
-  });
-
-  it("retains IDs on unchanged reports only for the same observed file and excludes unknown IDs", async () => {
-    const report = await getRecoveryReport(
-      modelFor([
-        event("UPDATE_APPLIED", 25, "release-a", { install_id: "one" }),
-        event("UNCHANGED", 26, "release-a", {
-          install_id: "one",
-          to_release_id: null,
-        }),
-        event("UNCHANGED", 26, "legacy", {
-          install_id: "two",
-          to_release_id: null,
-        }),
-        event("UNCHANGED", 27, "release-a", {
-          install_id: "one",
-          to_bundle_id: "different-file",
-          to_release_id: null,
-        }),
-        event("UNCHANGED", 28, "only-unchanged-id"),
-      ]),
-      input,
-      now,
-    );
-    expect(pointAt(report, 26).active).toBe(1);
-    expect(pointAt(report, 27).active).toBe(0);
-    expect(report.unattributedInstallations).toBe(2);
-    expect(seriesFor(report, "only-unchanged-id").activeInstallations).toBe(1);
-    expect(report.series.some((s) => s.releaseId === "legacy")).toBe(false);
-  });
-
-  it("removes a device that reports a different channel or platform", async () => {
-    const report = await getRecoveryReport(
-      modelFor([
-        event("UPDATE_APPLIED", 25, "release-a", { install_id: "one" }),
-        event("UNCHANGED", 26, "release-a", {
-          install_id: "one",
-          channel: "staging",
-        }),
-        event("UPDATE_APPLIED", 25, "release-a", { install_id: "two" }),
-        event("UNCHANGED", 27, "release-a", {
-          install_id: "two",
-          platform: "android",
-        }),
-      ]),
-      input,
-      now,
-    );
-    expect([25, 26, 27].map((hour) => pointAt(report, hour).active)).toEqual([
-      2, 1, 0,
-    ]);
-  });
-
-  it("attributes rollbacks to the source ID and counts unique installations per interval and window", async () => {
-    const report = await getRecoveryReport(
-      modelFor([
-        event("UPDATE_APPLIED", 25, "release-a", { install_id: "one" }),
-        event("RECOVERED", 26, "release-a", { install_id: "one" }),
-        event("RECOVERED", 26.5, "release-a", { install_id: "one" }),
-        event("RECOVERED", 27, "release-a", { install_id: "one" }),
-      ]),
-      input,
-      now,
-    );
-    expect(pointAt(report, 26)).toMatchObject({
-      active: 0,
-      recovered: 2,
-      recoveredInstallations: 1,
-    });
-    expect(seriesFor(report).recoveredInstallations).toBe(1);
-    expect(seriesFor(report, "stable-release").activeInstallations).toBe(1);
-    expect(seriesFor(report, "stable-release").recoveredInstallations).toBe(0);
-  });
-
-  it("uses the agreed sample, rate and increase across gaps for both apply and adoption reports", async () => {
-    const report = await getRecoveryReport(
-      modelFor([
-        ...reports(7, 2, 25),
-        ...reports(97, 3, 26),
-        ...reports(7, 3, 28),
-        ...reports(7, 3, 29),
-        ...reports(5, 5, 30),
-        event("UNCHANGED", 28, "other-id"),
-      ]),
-      input,
-      now,
-    );
-    expect(
-      seriesFor(report)
-        .points.filter((p) => p.spike)
-        .map((p) => p.startMs),
-    ).toEqual([28 * HOUR, 30 * HOUR]);
-    expect(pointAt(report, 27).rate).toBeNull();
-    expect(pointAt(report, 28)).toMatchObject({
-      applied: 7,
-      recovered: 3,
-      rate: 30,
-    });
-    const first = await getRecoveryReport(
-      modelFor(reports(7, 3, 25)),
-      input,
-      now,
-    );
-    expect(pointAt(first, 25).spike).toBe(true);
-    const recoveryOnly = await getRecoveryReport(
-      modelFor(reports(0, 10, 25)),
-      input,
-      now,
-    );
-    expect(pointAt(recoveryOnly, 25).spike).toBe(false);
-  });
-
-  it("does not flag recoveries before the first successful application", async () => {
-    const report = await getRecoveryReport(
-      modelFor([...reports(0, 3, 25), ...reports(7, 0, 25.5)]),
-      input,
-      now,
-    );
-    expect(pointAt(report, 25)).toMatchObject({ rate: 30, spike: false });
-  });
-
-  it("reads timestamp ties once and batches visible bundles without one scan per row", async () => {
-    const model = modelFor([
-      ...reports(198, 3, 25),
-      ...Array.from({ length: 105 }, () => event("UNCHANGED", 25, "other-id")),
-    ]);
-    const batch = await getBundleActivity(
-      model,
-      [
-        { platform: "ios", channel: "production", releaseId: "release-a" },
-        { platform: "ios", channel: "production", releaseId: "other-id" },
-        { platform: "android", channel: "production", releaseId: "android-id" },
+    expect(database.insights.getReleaseActivity).toHaveBeenCalledOnce();
+    expect(database.insights.getReleaseActivity).toHaveBeenCalledWith({
+      releases: [
+        {
+          releaseId: "00000000-0000-7000-8000-000000000001",
+          platform: "ios",
+          channel: "production",
+        },
       ],
+      timeRange: { start: 24 * HOUR, end: 48 * HOUR },
+    });
+    expect(report.series[0]).toMatchObject({
+      activeInstallations: 789,
+      pendingInstallations: 4,
+      downloadedInstallations: 107,
+      recoveredInstallations: 3,
+    });
+    expect(report.series[0]?.points.at(-1)).toMatchObject({
+      downloadedInstallations: 5,
+      applied: 4,
+      recovered: 1,
+    });
+  });
+
+  it("does not query aggregate buckets when the scope has no releases", async () => {
+    const database = models();
+    database.releases.findMany = vi.fn(async () => []);
+
+    const report = await getAggregatedRecoveryReport(database, input, now);
+
+    expect(database.insights.getReleaseActivity).not.toHaveBeenCalled();
+    expect(report.series).toEqual([]);
+  });
+
+  it("reads hourly buckets only for the selected release", async () => {
+    const database = models();
+    const [baseRelease] = await database.releases.findMany({ limit: 1 });
+    if (!baseRelease) throw new Error("Missing release fixture");
+    database.releases.findMany = vi.fn(async () => [
+      {
+        ...baseRelease,
+        id: "00000000-0000-7000-8000-000000000002",
+      },
+      {
+        ...baseRelease,
+        id: "00000000-0000-7000-8000-000000000001",
+      },
+    ]);
+
+    const report = await getAggregatedRecoveryReport(
+      database,
+      { ...input, releaseId: "00000000-0000-7000-8000-000000000001" },
       now,
     );
-    expect(model.listEvents).toHaveBeenCalledTimes(4);
-    expect(batch["release-a"].series[0]).toMatchObject({
-      activeInstallations: 198,
-      recoveredInstallations: 3,
-    });
-    expect(batch["other-id"].series[0].activeInstallations).toBe(105);
-    expect(batch["android-id"].series).toEqual([]);
-  });
 
-  it("omits the partially scanned boundary interval at 50,000 rows and suppresses unsupported spikes", async () => {
-    const model = modelFor([
-      ...reports(7, 3, 47),
-      ...Array.from({ length: 49_991 }, () => event("RECOVERED", 46)),
+    expect(database.releases.findById).not.toHaveBeenCalled();
+    expect(report.availableReleaseIds).toEqual([
+      "00000000-0000-7000-8000-000000000002",
+      "00000000-0000-7000-8000-000000000001",
     ]);
-    const report = await getRecoveryReport(model, input, now);
-    expect(model.listEvents).toHaveBeenCalledTimes(500);
-    expect(report.truncated).toBe(true);
-    expect(report.sinceMs).toBe(47 * HOUR);
-    expect(seriesFor(report).points).toHaveLength(1);
-    expect(pointAt(report, 47)).toMatchObject({
-      active: 7,
-      applied: 7,
-      recovered: 3,
-      recoveredInstallations: 3,
-      rate: 30,
-      spike: false,
+    expect(database.insights.getReleaseActivity).toHaveBeenCalledWith({
+      releases: [
+        {
+          releaseId: "00000000-0000-7000-8000-000000000001",
+          platform: "ios",
+          channel: "production",
+        },
+      ],
+      timeRange: { start: 24 * HOUR, end: 48 * HOUR },
     });
   });
 
-  it("validates scope before reading events", async () => {
-    const model = modelFor([]);
-    await expect(
-      getRecoveryReport(model, { ...input, channel: "" }, now),
-    ).rejects.toThrow("Choose a platform");
-    expect(model.listEvents).not.toHaveBeenCalled();
+  it("groups daily reports on UTC boundaries and marks clipped intervals", async () => {
+    const database = models();
+    const midday = 48 * HOUR + HOUR / 2;
+
+    const report = await getAggregatedRecoveryReport(
+      database,
+      { ...input, window: "30d" },
+      midday,
+    );
+
+    expect(report.series[0]?.points[0]).toMatchObject({
+      startMs: -28 * 24 * HOUR,
+      rangeStartMs: -28 * 24 * HOUR + HOUR,
+      partial: true,
+    });
+    expect(report.series[0]?.points.at(-1)).toMatchObject({
+      startMs: 2 * 24 * HOUR,
+      endMs: midday,
+      partial: true,
+    });
+  });
+
+  it("preserves observed reports and leaves unknown partial intervals empty", async () => {
+    const database = models();
+    database.insights.getReleaseActivity = vi.fn(async ({ releases }) => ({
+      coverage: { kind: "partial" as const, sinceMs: null },
+      data: releases.map((release: ReleaseReference) => ({
+        release,
+        summary: {
+          activeInstallations: 1,
+          pendingInstallations: 0,
+          downloadedInstallations: 1,
+          recoveredInstallations: 0,
+        },
+        series: [
+          {
+            startMs: 47 * HOUR,
+            downloadedReports: 1,
+            appliedReports: 1,
+            recoveredReports: 0,
+          },
+        ],
+        measuredAtMs: now,
+      })),
+    }));
+
+    const report = await getAggregatedRecoveryReport(database, input, now);
+
+    expect(report.truncated).toBe(true);
+    expect(report.sinceMs).toBe(24 * HOUR);
+    expect(report.series[0]?.points[0]?.applied).toBeNull();
+    expect(report.series[0]?.points.at(-1)).toMatchObject({
+      downloadedInstallations: 1,
+      applied: 1,
+      recovered: 0,
+    });
   });
 });

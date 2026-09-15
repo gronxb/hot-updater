@@ -80,6 +80,14 @@
         { "fieldPath": "type", "order": "ASCENDING" },
         { "fieldPath": "received_at_ms", "order": "ASCENDING" }
       ]
+    },
+    {
+      "collectionGroup": "hot_updater_v1_insights_hourly_activity",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "release_key", "order": "ASCENDING" },
+        { "fieldPath": "hour_start_ms", "order": "ASCENDING" }
+      ]
     }
   ],
   "fieldOverrides": [

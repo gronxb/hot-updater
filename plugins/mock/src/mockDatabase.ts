@@ -6,6 +6,8 @@ import {
 import {
   latestInsightsWhere,
   latestInsightsCountGroups,
+  createMemoryInsightsProjection,
+  recordProjectedInsightsEvent,
 } from "@hot-updater/plugin-core/internal";
 import {
   createDatabasePluginAdapter,
@@ -34,6 +36,9 @@ export const mockDatabase = (config: MockDatabaseConfig) => {
   const implementation: DatabasePluginImplementation = (() => {
     const data = config.data ?? createMockDatabaseData();
     const state = createMockDatabaseState(data);
+    const insightsProjection = createMemoryInsightsProjection({
+      onEvent: (event) => data.bundleEvents.set(event.id, event),
+    });
     let operationQueue: Promise<void> = Promise.resolve();
 
     const waitForLatency = (): Promise<void> =>
@@ -64,11 +69,10 @@ export const mockDatabase = (config: MockDatabaseConfig) => {
       count: (input) => read(() => state.count(input)),
       findOne: (input) => read(() => state.findOne(input)),
       findMany: (input) => read(() => state.findMany(input)),
-      recordInsights: ({ event }) =>
-        mutate(async () => {
-          if (!data.bundleEvents.has(event.id))
-            data.bundleEvents.set(event.id, structuredClone(event));
-        }),
+      recordInsights: (input) =>
+        mutate(() => recordProjectedInsightsEvent(insightsProjection, input)),
+      getReleaseActivity: (input) =>
+        insightsProjection.getReleaseActivity(input),
       findLatestInsightsEvents: (input) =>
         read(async () => {
           const rows = latestEvents(data.bundleEvents.values()).filter((row) =>

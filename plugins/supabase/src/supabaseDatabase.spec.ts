@@ -10,6 +10,10 @@ const supabaseMock = vi.hoisted(() => {
   type TableName =
     | "bundle_events"
     | "bundle_event_heads"
+    | "insights_install_states"
+    | "insights_lifetime_markers"
+    | "insights_release_summaries"
+    | "insights_hourly_activity"
     | "bundle_patches"
     | "bundles"
     | "channels"
@@ -26,6 +30,10 @@ const supabaseMock = vi.hoisted(() => {
     hot_updater_v1_api_keys: "api_keys",
     hot_updater_v1_bundle_events: "bundle_events",
     hot_updater_v1_bundle_event_heads: "bundle_event_heads",
+    hot_updater_v1_insights_install_states: "insights_install_states",
+    hot_updater_v1_insights_lifetime_markers: "insights_lifetime_markers",
+    hot_updater_v1_insights_release_summaries: "insights_release_summaries",
+    hot_updater_v1_insights_hourly_activity: "insights_hourly_activity",
     hot_updater_v1_bundle_patches: "bundle_patches",
     hot_updater_v1_bundles: "bundles",
     hot_updater_v1_channels: "channels",
@@ -36,6 +44,10 @@ const supabaseMock = vi.hoisted(() => {
   const rows: Record<TableName, Map<string, Row>> = {
     bundle_events: new Map(),
     bundle_event_heads: new Map(),
+    insights_install_states: new Map(),
+    insights_lifetime_markers: new Map(),
+    insights_release_summaries: new Map(),
+    insights_hourly_activity: new Map(),
 
     bundle_patches: new Map(),
     bundles: new Map(),
@@ -47,6 +59,10 @@ const supabaseMock = vi.hoisted(() => {
   const tableReadCounts: Record<TableName, number> = {
     bundle_events: 0,
     bundle_event_heads: 0,
+    insights_install_states: 0,
+    insights_lifetime_markers: 0,
+    insights_release_summaries: 0,
+    insights_hourly_activity: 0,
 
     bundle_patches: 0,
     bundles: 0,
@@ -439,6 +455,105 @@ const supabaseMock = vi.hoisted(() => {
       },
       rpc: async (name: string, args?: Record<string, unknown>) => {
         const bundles = [...rows.bundles.values()];
+        if (name === "hot_updater_v1_record_prepared_event") {
+          const prepared = args?.p_prepared as Row;
+          const event = prepared.event as Row;
+          const id = String(event.id);
+          if (rows.bundle_events.has(id)) {
+            return { data: "duplicate", error: null };
+          }
+          const installId = String(event.install_id);
+          const state = rows.insights_install_states.get(installId);
+          if (String(state?.revision ?? 0) !== prepared.expectedRevision) {
+            return { data: "conflict", error: null };
+          }
+          rows.bundle_events.set(id, event);
+          rows.insights_install_states.set(installId, {
+            install_id: installId,
+            revision: Number(state?.revision ?? 0) + 1,
+            state: prepared.nextState,
+          });
+          const current = rows.bundle_event_heads.get(installId);
+          if (
+            current === undefined ||
+            Number(event.received_at_ms) > Number(current.received_at_ms) ||
+            (event.received_at_ms === current.received_at_ms &&
+              String(event.id) > String(current.id))
+          ) {
+            rows.bundle_event_heads.set(installId, event);
+          }
+          for (const delta of prepared.summaryDeltas as Row[]) {
+            const key = String(delta.releaseKey);
+            const currentSummary = rows.insights_release_summaries.get(key) ?? {
+              release_key: key,
+              active_installations: 0,
+              pending_installations: 0,
+              downloaded_installations: 0,
+              recovered_installations: 0,
+            };
+            for (const [field, source] of [
+              ["active_installations", "active"],
+              ["pending_installations", "pending"],
+              ["downloaded_installations", "downloaded"],
+              ["recovered_installations", "recovered"],
+            ] as const) {
+              currentSummary[field] =
+                Number(currentSummary[field]) + Number(delta[source]);
+            }
+            rows.insights_release_summaries.set(key, currentSummary);
+          }
+          const lifetime = prepared.firstLifetime as Row | null;
+          if (lifetime) {
+            rows.insights_lifetime_markers.set(String(lifetime.markerKey), {
+              marker_key: lifetime.markerKey,
+            });
+          }
+          const hourly = prepared.hourly as Row | null;
+          if (hourly) {
+            const key = String(hourly.bucketKey);
+            const point = rows.insights_hourly_activity.get(key) ?? {
+              bucket_key: key,
+              release_key: hourly.releaseKey,
+              hour_start_ms: hourly.hourStartMs,
+              downloaded_reports: 0,
+              applied_reports: 0,
+              recovered_reports: 0,
+            };
+            const field = `${String(hourly.metric)}_reports`;
+            point[field] = Number(point[field]) + 1;
+            rows.insights_hourly_activity.set(key, point);
+          }
+          return { data: "committed", error: null };
+        }
+        if (name === "hot_updater_v1_get_release_activity") {
+          const keys = args?.p_release_keys as string[];
+          const start = args?.p_start;
+          const end = args?.p_end;
+          return {
+            data: {
+              summaries: keys.flatMap((key) => {
+                const row = rows.insights_release_summaries.get(key);
+                return row ? [row] : [];
+              }),
+              hourly:
+                typeof start === "number" && typeof end === "number"
+                  ? [...rows.insights_hourly_activity.values()]
+                      .filter(
+                        (point) =>
+                          keys.includes(String(point.release_key)) &&
+                          Number(point.hour_start_ms) >= start &&
+                          Number(point.hour_start_ms) < end,
+                      )
+                      .sort(
+                        (left, right) =>
+                          Number(left.hour_start_ms) -
+                          Number(right.hour_start_ms),
+                      )
+                  : [],
+            },
+            error: null,
+          };
+        }
         if (name === "hot_updater_v1_record_event") {
           const input = args?.p_event as Row;
           const id = String(input.id);
@@ -768,6 +883,10 @@ const supabaseMock = vi.hoisted(() => {
     resetMockClient: () => {
       rows.bundle_events.clear();
       rows.bundle_event_heads.clear();
+      rows.insights_install_states.clear();
+      rows.insights_lifetime_markers.clear();
+      rows.insights_release_summaries.clear();
+      rows.insights_hourly_activity.clear();
       rows.bundle_patches.clear();
       rows.bundles.clear();
       rows.channels.clear();

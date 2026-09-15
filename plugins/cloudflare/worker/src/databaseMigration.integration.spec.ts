@@ -51,6 +51,10 @@ it("creates the current schema with required artifact sizes", async () => {
     expect.arrayContaining([
       "bundle_events",
       "bundle_event_heads",
+      "insights_install_states",
+      "insights_lifetime_markers",
+      "insights_release_summaries",
+      "insights_hourly_activity",
       "bundle_patches",
       "bundles",
       "channels",

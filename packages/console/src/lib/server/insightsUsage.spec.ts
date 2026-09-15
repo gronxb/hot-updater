@@ -2,7 +2,6 @@
 import type { BundleEventRow, InsightsModel } from "@hot-updater/plugin-core";
 import { describe, expect, it, vi } from "vitest";
 
-import { getRecoveryReport } from "./insightsRecovery";
 import { getAppUsageReport } from "./insightsUsage";
 
 const HOUR = 3_600_000;
@@ -174,7 +173,7 @@ describe("app usage", () => {
     expect(reports.every((report) => !report.truncated)).toBe(true);
   });
 
-  it("applies app-version and platform filters to both usage and bundle state without losing version choices", async () => {
+  it("applies app-version and platform filters without losing version choices", async () => {
     const model = modelFor([
       event("phone", now - 2 * HOUR),
       event("phone", now - HOUR, {
@@ -192,19 +191,6 @@ describe("app usage", () => {
     expect(report.platforms).toEqual([{ name: "ios", installations: 1 }]);
     expect(report.versions).toEqual([{ name: "1.0.0", installations: 1 }]);
     expect(report.appVersions).toEqual(["2.0.0", "1.0.0"]);
-    const bundles = await getRecoveryReport(
-      model,
-      { ...input, platform: "ios", appVersion: "1.0.0" },
-      now,
-    );
-    // The device used v1 in this period, then left it; v1 is no longer its current bundle state.
-    expect(
-      bundles.series.find((series) => series.releaseId === "bundle-a")
-        ?.activeInstallations,
-    ).toBe(0);
-    expect(
-      bundles.series.some((series) => series.releaseId === "bundle-b"),
-    ).toBe(false);
   });
 
   it("distinguishes a fully observed empty period from history beyond the read limit", async () => {

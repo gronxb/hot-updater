@@ -186,6 +186,10 @@ export function createHotUpdaterCore(
       await assertSchemaReady();
       return plugin.models.insights.countLatestEvents(input);
     },
+    async getReleaseActivity(input) {
+      await assertSchemaReady();
+      return plugin.models.insights.getReleaseActivity(input);
+    },
     async countEvents(input) {
       await assertSchemaReady();
       return plugin.models.insights.countEvents(input);

@@ -25,6 +25,7 @@ describe("firebase firestore index template", () => {
     const indexFile = JSON.parse(await readFile(indexFilePath, "utf8"));
     const events = FIREBASE_V1_COLLECTION_NAMES.bundleEvents;
     const installations = FIREBASE_V1_COLLECTION_NAMES.insightsLatest;
+    const hourly = FIREBASE_V1_COLLECTION_NAMES.insightsHourlyActivity;
     const asc = "ASCENDING" as const;
     const desc = "DESCENDING" as const;
 
@@ -74,6 +75,10 @@ describe("firebase firestore index template", () => {
             ["received_at_ms", asc],
           ]),
         ),
+        index(hourly, [
+          ["release_key", asc],
+          ["hour_start_ms", asc],
+        ]),
       ],
       fieldOverrides: [events, installations].map((collectionGroup) => ({
         collectionGroup,

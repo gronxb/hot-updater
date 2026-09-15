@@ -1,12 +1,15 @@
 import { createDatabasePluginAdapter } from "@hot-updater/plugin-core/internal";
 import { env } from "cloudflare:test";
-import { expect, inject, it } from "vitest";
+import { beforeAll, expect, inject, it } from "vitest";
 
 import { createBundleEventRowFixture } from "../../../../packages/test-utils/src/databaseTestFixtures";
 import { createD1Implementation } from "../../src/d1Implementation";
 
-it("keeps current-state reads independent of history and unrelated scopes", async () => {
+beforeAll(async () => {
   await env.DB.prepare(inject("d1Migrations")[0]!.sql).run();
+});
+
+it("keeps current-state reads independent of history and unrelated scopes", async () => {
   let reads = 0;
   const model = createDatabasePluginAdapter(
     "measured-d1",
@@ -105,4 +108,88 @@ it("keeps current-state reads independent of history and unrelated scopes", asyn
   // An index range may read its first nonmatching entry at the scope boundary.
   expect(expanded.scopeReads).toBeLessThanOrEqual(initial.scopeReads + 1);
   expect(expanded.bundleReads).toBeLessThanOrEqual(initial.bundleReads + 1);
+}, 60_000);
+
+it("reads release summaries without paging raw event history", async () => {
+  let reads = 0;
+  const model = createDatabasePluginAdapter(
+    "measured-release-activity",
+    createD1Implementation({
+      async query(sql, params) {
+        const result = await env.DB.prepare(sql)
+          .bind(...params)
+          .all();
+        reads += result.meta.rows_read;
+        return result.results;
+      },
+      async batch(statements) {
+        const results = await env.DB.batch(
+          statements.map(({ sql, params }) =>
+            env.DB.prepare(sql).bind(...params),
+          ),
+        );
+        return results.map(({ results }) => results);
+      },
+    }),
+  ).models.insights;
+  const release = {
+    releaseId: "00000000-0000-7000-8000-000000000501",
+    platform: "ios" as const,
+    channel: "production",
+  };
+  const applied = {
+    ...createBundleEventRowFixture("501", 3_600_001),
+    install_id: "measured-install",
+    to_release_id: release.releaseId,
+    to_bundle_id: "00000000-0000-7000-8000-000000000601",
+  };
+  await model.recordEvent({ event: applied });
+
+  const measure = async () => {
+    reads = 0;
+    const result = await model.getReleaseActivity({ releases: [release] });
+    return { reads, result };
+  };
+  const initial = await measure();
+  expect(initial.result.data[0]).toMatchObject({
+    release,
+    summary: {
+      activeInstallations: 1,
+      pendingInstallations: 0,
+      downloadedInstallations: 0,
+      recoveredInstallations: 0,
+    },
+  });
+  expect(initial.result.data[0]).not.toHaveProperty("series");
+
+  const ranged = await model.getReleaseActivity({
+    releases: [release],
+    timeRange: { start: 3_600_000, end: 7_200_000 },
+  });
+  expect(ranged.data[0]?.series).toEqual([
+    {
+      startMs: 3_600_000,
+      downloadedReports: 0,
+      appliedReports: 1,
+      recoveredReports: 0,
+    },
+  ]);
+
+  for (let index = 0; index < 250; index += 1) {
+    await model.recordEvent({
+      event: {
+        ...applied,
+        id: createBundleEventRowFixture(String(10_000 + index), index).id,
+        type: "UNCHANGED",
+        from_bundle_id: null,
+        to_release_id: null,
+        received_at_ms: index,
+      },
+    });
+  }
+  const expanded = await measure();
+  expect(expanded.result.data[0]?.summary).toEqual(
+    initial.result.data[0]?.summary,
+  );
+  expect(expanded.reads).toBe(initial.reads);
 }, 60_000);

@@ -26,13 +26,72 @@ export const getBundleActivityRpc = createServerFn({ method: "GET" })
     return getBundleActivity(config.database.models.insights, data);
   });
 
+export const getReleaseActivityRpc = createServerFn({ method: "GET" })
+  .validator(
+    (
+      input: BundleActivityInput & { readonly window: "24h" | "7d" | "30d" },
+    ) => {
+      readBundleActivityInput([input]);
+      readRecoveryInput(input);
+      return input;
+    },
+  )
+  .handler(async ({ data }) => {
+    const { prepareConfig } = await import("./server/config.server");
+    const { config } = await prepareConfig();
+    const hours = data.window === "24h" ? 24 : data.window === "7d" ? 168 : 720;
+    const end = Math.ceil(Date.now() / 3_600_000) * 3_600_000;
+    const start = end - hours * 3_600_000;
+    const activity = await config.database.models.insights.getReleaseActivity({
+      releases: [
+        {
+          releaseId: data.releaseId,
+          platform: data.platform,
+          channel: data.channel,
+        },
+      ],
+      timeRange: { start, end },
+    });
+    const knownStart =
+      activity.coverage.sinceMs === null
+        ? null
+        : Math.max(
+            start,
+            Math.ceil(activity.coverage.sinceMs / 3_600_000) * 3_600_000,
+          );
+    return {
+      ...activity,
+      data: activity.data.map((item) => {
+        const byHour = new Map(
+          item.series?.map((point) => [point.startMs, point]),
+        );
+        const series = [];
+        for (let startMs = start; startMs < end; startMs += 3_600_000) {
+          series.push(
+            byHour.get(startMs) ?? {
+              startMs,
+              downloadedReports:
+                knownStart !== null && startMs >= knownStart ? 0 : null,
+              appliedReports:
+                knownStart !== null && startMs >= knownStart ? 0 : null,
+              recoveredReports:
+                knownStart !== null && startMs >= knownStart ? 0 : null,
+            },
+          );
+        }
+        return { ...item, series };
+      }),
+    };
+  });
+
 export const getRecoveryReportRpc = createServerFn({ method: "GET" })
   .validator(readRecoveryInput)
   .handler(async ({ data }) => {
-    const [{ prepareConfig }, { getRecoveryReport }] = await Promise.all([
-      import("./server/config.server"),
-      import("./server/insightsRecovery"),
-    ]);
+    const [{ prepareConfig }, { getAggregatedRecoveryReport }] =
+      await Promise.all([
+        import("./server/config.server"),
+        import("./server/insightsRecovery"),
+      ]);
     const { config } = await prepareConfig();
-    return getRecoveryReport(config.database.models.insights, data);
+    return getAggregatedRecoveryReport(config.database.models, data);
   });

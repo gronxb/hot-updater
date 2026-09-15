@@ -129,13 +129,16 @@ export const recordKyselyInsights = async (
   executor: QueryExecutorProvider,
   provider: Exclude<ORMSQLProvider, "mssql">,
   { event }: InsightsRecordEventInput,
+  onDuplicate: "ignore" | "error" = "ignore",
 ): Promise<void> => {
   const entries = Object.entries(toStoredBundleEventRow(event, provider));
   const insert = sql`insert into bundle_events (${sql.join(entries.map(([field]) => sql.ref(field)))}) values (${sql.join(entries.map(([, value]) => value))})`;
   await (
-    provider === "mysql"
-      ? sql`${insert} on duplicate key update id = id`
-      : sql`${insert} on conflict (id) do nothing`
+    onDuplicate === "error"
+      ? insert
+      : provider === "mysql"
+        ? sql`${insert} on duplicate key update id = id`
+        : sql`${insert} on conflict (id) do nothing`
   ).execute(executor);
 
   const fields = [

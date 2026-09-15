@@ -18,6 +18,12 @@ import type { DatabasePluginAdapter as PublicDatabasePluginAdapter } from "../in
 import type { DatabasePluginCore as PublicDatabasePluginCore } from "../index";
 // @ts-expect-error Redundant public Core aliases are intentionally absent.
 import type { BundleRepositoryCore as PublicBundleRepositoryCore } from "../index";
+// @ts-expect-error Projection coordination is an internal implementation detail.
+import type { InsightsProjectionBackend as PublicInsightsProjectionBackend } from "../index";
+// @ts-expect-error Prepared projection writes are not a plugin-author contract.
+import type { PreparedInsightsEvent as PublicPreparedInsightsEvent } from "../index";
+// @ts-expect-error Projection orchestration is not a public helper API.
+import { recordProjectedInsightsEvent as publicRecordProjectedInsightsEvent } from "../index";
 import type { DatabaseBundleCursor, DatabaseBundleQueryOptions } from "./index";
 
 type PublicDatabaseWhere = PublicDatabaseWhereGeneric<"bundles">;
@@ -39,6 +45,9 @@ void publicDatabaseFields;
 void (0 as unknown as PublicDatabasePluginAdapter);
 void (0 as unknown as PublicDatabasePluginCore);
 void (0 as unknown as PublicBundleRepositoryCore);
+void (0 as unknown as PublicInsightsProjectionBackend);
+void (0 as unknown as PublicPreparedInsightsEvent);
+void publicRecordProjectedInsightsEvent;
 void (0 as unknown as InternalDatabaseImplementation);
 void (0 as unknown as InternalDatabaseCrud);
 void (0 as unknown as InternalDatabaseCapability);
@@ -46,6 +55,16 @@ void (0 as unknown as InternalDatabaseWhere);
 void (0 as unknown as InternalDatabasePluginAdapter);
 
 describe("database bundle pagination types", () => {
+  it("requires release activity at both model and provider boundaries", () => {
+    type InsightsModel = import("./databasePlugin").InsightsModel;
+    expectTypeOf<
+      Omit<InsightsModel, "getReleaseActivity">
+    >().not.toMatchTypeOf<InsightsModel>();
+    expectTypeOf<
+      Omit<InternalDatabaseImplementation, "getReleaseActivity">
+    >().not.toMatchTypeOf<InternalDatabaseImplementation>();
+  });
+
   it("excludes competing cursor directions", () => {
     expectTypeOf<{
       readonly after: "004";

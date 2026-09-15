@@ -1,7 +1,9 @@
 import { createDatabasePlugin } from "@hot-updater/plugin-core";
 import {
   createDatabasePluginAdapter,
+  recordProjectedInsightsEvent,
   type DatabasePluginImplementation,
+  type InsightsProjectionBackend,
   type TransactionDatabasePluginImplementation,
 } from "@hot-updater/plugin-core/internal";
 
@@ -15,7 +17,8 @@ import type {
   ORMProvider,
   SchemaGenerator,
 } from "../db/types";
-import { createDrizzleCrud, recordDrizzleInsights } from "./drizzleCrud";
+import { createDrizzleCrud } from "./drizzleCrud";
+import { createDrizzleInsightsProjection } from "./drizzleInsightsProjection";
 import { createLazyDB } from "./drizzleLazyDB";
 
 export type DrizzleProvider = Exclude<
@@ -35,16 +38,25 @@ const createImplementation = (
 ): DatabasePluginImplementation => {
   const db = createLazyDB(config);
   const crud = createDrizzleCrud(db, config.provider);
+  const resolveInsightsProjection = async () =>
+    createDrizzleInsightsProjection(
+      db.resolve === undefined ? db : await db.resolve(),
+      config.provider,
+    );
+  const insightsProjection: InsightsProjectionBackend = {
+    readRecordContext: async (input) =>
+      (await resolveInsightsProjection()).readRecordContext(input),
+    commitPreparedEvent: async (input) =>
+      (await resolveInsightsProjection()).commitPreparedEvent(input),
+    getReleaseActivity: async (input) =>
+      (await resolveInsightsProjection()).getReleaseActivity(input),
+  };
   const transaction = db.transaction?.bind(db);
   return {
     ...crud,
-    recordInsights: async (input) => {
-      await recordDrizzleInsights(
-        db.resolve === undefined ? db : await db.resolve(),
-        config.provider,
-        input,
-      );
-    },
+    recordInsights: (input) =>
+      recordProjectedInsightsEvent(insightsProjection, input),
+    getReleaseActivity: (input) => insightsProjection.getReleaseActivity(input),
     deleteChannel: (input) => {
       if (transaction === undefined) {
         throw new Error(
@@ -130,6 +142,8 @@ export const drizzleAdapter = (
         countLatestEvents: (input) =>
           getAdapter().models.insights.countLatestEvents(input),
         countEvents: (input) => getAdapter().models.insights.countEvents(input),
+        getReleaseActivity: (input) =>
+          getAdapter().models.insights.getReleaseActivity(input),
       },
       apiKeys: {
         create: (row) => getAdapter().models.apiKeys.create(row),

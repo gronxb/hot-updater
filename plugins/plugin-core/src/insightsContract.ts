@@ -5,6 +5,7 @@ import type {
   BundleEventRow,
   InsightsEventFilter,
   InsightsModel,
+  ReleaseReference,
 } from "./types";
 import { isUUIDv7 } from "./uuidv7";
 
@@ -136,6 +137,92 @@ const invalidResult = (): never => {
 };
 const validateCount = (count: number): number =>
   isTimestamp(count) ? count : invalidResult();
+
+const isReleaseReference = (value: unknown): value is ReleaseReference =>
+  isRecord(value) &&
+  hasOnlyKeys(value, ["releaseId", "platform", "channel"]) &&
+  isIdentity(value.releaseId) &&
+  hasScope(value);
+
+const releaseKey = (value: ReleaseReference): string =>
+  JSON.stringify([value.platform, value.channel, value.releaseId]);
+
+const validateReleaseActivityResult = (
+  result: Awaited<ReturnType<InsightsModel["getReleaseActivity"]>>,
+  releases: readonly ReleaseReference[],
+  timeRange: { readonly start: number; readonly end: number } | undefined,
+) => {
+  if (
+    !isRecord(result) ||
+    !hasOnlyKeys(result, ["coverage", "data"]) ||
+    !isRecord(result.coverage) ||
+    !hasOnlyKeys(result.coverage, ["kind", "sinceMs"]) ||
+    (result.coverage.kind !== "complete" &&
+      result.coverage.kind !== "partial") ||
+    (result.coverage.kind === "complete"
+      ? !isTimestamp(result.coverage.sinceMs)
+      : result.coverage.sinceMs !== null &&
+        !isTimestamp(result.coverage.sinceMs)) ||
+    !Array.isArray(result.data) ||
+    result.data.length !== releases.length
+  ) {
+    invalidResult();
+  }
+  for (const [index, item] of result.data.entries()) {
+    if (
+      !isRecord(item) ||
+      !hasOnlyKeys(item, ["release", "summary", "series", "measuredAtMs"]) ||
+      !isReleaseReference(item.release) ||
+      releaseKey(item.release) !== releaseKey(releases[index]!) ||
+      !isTimestamp(item.measuredAtMs) ||
+      !isRecord(item.summary) ||
+      !hasOnlyKeys(item.summary, [
+        "activeInstallations",
+        "pendingInstallations",
+        "downloadedInstallations",
+        "recoveredInstallations",
+      ]) ||
+      [
+        item.summary.activeInstallations,
+        item.summary.pendingInstallations,
+        item.summary.downloadedInstallations,
+        item.summary.recoveredInstallations,
+      ].some((value) => !isTimestamp(value)) ||
+      (timeRange !== undefined
+        ? !Array.isArray(item.series)
+        : item.series !== undefined)
+    ) {
+      invalidResult();
+    }
+    let previousStart = -1;
+    for (const point of item.series ?? []) {
+      if (
+        !isRecord(point) ||
+        !hasOnlyKeys(point, [
+          "startMs",
+          "downloadedReports",
+          "appliedReports",
+          "recoveredReports",
+        ]) ||
+        !isTimestamp(point.startMs) ||
+        point.startMs % 3_600_000 !== 0 ||
+        (timeRange !== undefined &&
+          (point.startMs < timeRange.start ||
+            point.startMs >= timeRange.end)) ||
+        point.startMs <= previousStart ||
+        [
+          point.downloadedReports,
+          point.appliedReports,
+          point.recoveredReports,
+        ].some((value) => !isTimestamp(value))
+      ) {
+        invalidResult();
+      }
+      previousStart = point.startMs;
+    }
+  }
+  return result;
+};
 
 /** Validate custom and bundled providers at the same public boundary. */
 export const createValidatedInsightsModel = (
@@ -273,5 +360,41 @@ export const createValidatedInsightsModel = (
     )
       invalidQuery();
     return validateCount(await model.countEvents(input));
+  },
+  async getReleaseActivity(input) {
+    if (
+      !isRecord(input) ||
+      !hasOnlyKeys(input, ["releases", "timeRange"]) ||
+      !Array.isArray(input.releases) ||
+      input.releases.length < 1 ||
+      input.releases.length > 20 ||
+      input.releases.some((value) => !isReleaseReference(value)) ||
+      new Set(input.releases.map(releaseKey)).size !== input.releases.length
+    ) {
+      invalidQuery();
+    }
+    if (input.timeRange !== undefined) {
+      const range = input.timeRange;
+      if (
+        !isRecord(range) ||
+        !hasOnlyKeys(range, ["start", "end"]) ||
+        !isTimestamp(range.start) ||
+        !isTimestamp(range.end) ||
+        range.start % 3_600_000 !== 0 ||
+        range.end % 3_600_000 !== 0 ||
+        range.start >= range.end ||
+        range.start >= Date.now() ||
+        range.end > Math.ceil(Date.now() / 3_600_000) * 3_600_000 ||
+        (range.end - range.start) / 3_600_000 > 720 ||
+        (input.releases.length * (range.end - range.start)) / 3_600_000 > 14_400
+      ) {
+        invalidQuery();
+      }
+    }
+    return validateReleaseActivityResult(
+      await model.getReleaseActivity(input),
+      input.releases,
+      input.timeRange,
+    );
   },
 });

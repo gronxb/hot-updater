@@ -155,6 +155,72 @@ CREATE TABLE bundle_event_heads (
   to_bundle_id TEXT NOT NULL
 );
 
+CREATE TABLE insights_install_states (
+  install_id TEXT PRIMARY KEY NOT NULL,
+  revision REAL NOT NULL,
+  state TEXT NOT NULL,
+  CONSTRAINT insights_install_states_revision_check CHECK (
+    revision BETWEEN 1 AND 9007199254740991
+  )
+);
+
+CREATE TABLE insights_lifetime_markers (
+  marker_key TEXT PRIMARY KEY NOT NULL,
+  release_id TEXT NOT NULL,
+  platform TEXT NOT NULL,
+  channel TEXT NOT NULL,
+  install_id TEXT NOT NULL,
+  metric TEXT NOT NULL,
+  CONSTRAINT insights_lifetime_markers_metric_check CHECK (
+    metric IN ('downloaded', 'recovered')
+  ),
+  CONSTRAINT insights_lifetime_markers_platform_check CHECK (
+    platform IN ('ios', 'android')
+  )
+);
+
+CREATE TABLE insights_release_summaries (
+  release_key TEXT PRIMARY KEY NOT NULL,
+  release_id TEXT NOT NULL,
+  platform TEXT NOT NULL,
+  channel TEXT NOT NULL,
+  active_installations REAL NOT NULL DEFAULT 0,
+  pending_installations REAL NOT NULL DEFAULT 0,
+  downloaded_installations REAL NOT NULL DEFAULT 0,
+  recovered_installations REAL NOT NULL DEFAULT 0,
+  CONSTRAINT insights_release_summaries_platform_check CHECK (
+    platform IN ('ios', 'android')
+  ),
+  CONSTRAINT insights_release_summaries_counts_check CHECK (
+    active_installations >= 0
+    AND pending_installations >= 0
+    AND downloaded_installations >= 0
+    AND recovered_installations >= 0
+  )
+);
+
+CREATE TABLE insights_hourly_activity (
+  bucket_key TEXT PRIMARY KEY NOT NULL,
+  release_id TEXT NOT NULL,
+  platform TEXT NOT NULL,
+  channel TEXT NOT NULL,
+  hour_start_ms REAL NOT NULL,
+  downloaded_reports REAL NOT NULL DEFAULT 0,
+  applied_reports REAL NOT NULL DEFAULT 0,
+  recovered_reports REAL NOT NULL DEFAULT 0,
+  CONSTRAINT insights_hourly_activity_platform_check CHECK (
+    platform IN ('ios', 'android')
+  ),
+  CONSTRAINT insights_hourly_activity_hour_check CHECK (
+    hour_start_ms >= 0 AND hour_start_ms % 3600000 = 0
+  ),
+  CONSTRAINT insights_hourly_activity_counts_check CHECK (
+    downloaded_reports >= 0
+    AND applied_reports >= 0
+    AND recovered_reports >= 0
+  )
+);
+
 CREATE TABLE api_keys (
   id TEXT PRIMARY KEY NOT NULL,
   hash TEXT NOT NULL,
@@ -197,3 +263,4 @@ CREATE INDEX bundle_event_heads_user_idx ON bundle_event_heads(user_id, install_
 CREATE INDEX bundle_event_heads_scope_idx ON bundle_event_heads(platform, channel, received_at_ms);
 CREATE INDEX bundle_event_heads_from_idx ON bundle_event_heads(type, platform, channel, from_bundle_id, received_at_ms);
 CREATE INDEX bundle_event_heads_to_idx ON bundle_event_heads(type, platform, channel, to_bundle_id, received_at_ms);
+CREATE INDEX insights_hourly_activity_release_idx ON insights_hourly_activity(platform, channel, release_id, hour_start_ms);

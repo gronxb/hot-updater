@@ -93,6 +93,27 @@ export const DATABASE_PLUGIN_TEST_SCHEMA_SQL = `
   );
   create index bundle_event_heads_user_idx on bundle_event_heads(user_id, install_id);
   create index bundle_event_heads_scope_idx on bundle_event_heads(platform, channel, received_at_ms);
+  create table insights_install_states (
+    install_id text primary key, revision integer not null, state text not null
+  );
+  create table insights_lifetime_markers (
+    marker_key text primary key, release_id text not null, platform text not null,
+    channel text not null, install_id text not null, metric text not null
+  );
+  create table insights_release_summaries (
+    release_key text primary key, release_id text not null, platform text not null,
+    channel text not null, active_installations integer not null default 0,
+    pending_installations integer not null default 0,
+    downloaded_installations integer not null default 0,
+    recovered_installations integer not null default 0
+  );
+  create table insights_hourly_activity (
+    bucket_key text primary key, release_id text not null, platform text not null,
+    channel text not null, hour_start_ms integer not null,
+    downloaded_reports integer not null default 0,
+    applied_reports integer not null default 0,
+    recovered_reports integer not null default 0
+  );
   create table api_keys (
     id text primary key,
     hash text not null unique,
@@ -105,6 +126,10 @@ export const DATABASE_PLUGIN_TEST_SCHEMA_SQL = `
 `;
 
 export const DATABASE_PLUGIN_TEST_RESET_SQL = `
+  delete from insights_hourly_activity;
+  delete from insights_release_summaries;
+  delete from insights_lifetime_markers;
+  delete from insights_install_states;
   delete from bundle_event_heads;
   delete from bundle_events;
   delete from api_keys;

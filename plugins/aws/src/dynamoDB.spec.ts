@@ -6,12 +6,14 @@ import {
   GetInvalidationCommand,
 } from "@aws-sdk/client-cloudfront";
 import {
+  BatchGetCommand,
   DynamoDBDocumentClient,
   GetCommand,
   PutCommand,
   QueryCommand,
   ScanCommand,
   TransactWriteCommand,
+  type TransactWriteCommandInput,
 } from "@aws-sdk/lib-dynamodb";
 import { bundleToRow, type BundleEventRow } from "@hot-updater/plugin-core";
 import { mockClient } from "aws-sdk-client-mock";
@@ -96,6 +98,7 @@ describe("dynamoDB CloudFront lifecycle", () => {
     documentClient.reset();
     cloudFront.on(CreateInvalidationCommand).resolves({});
     documentClient.on(GetCommand).resolves({});
+    documentClient.on(BatchGetCommand).resolves({ Responses: {} });
     documentClient.on(PutCommand).resolves({});
     documentClient.on(QueryCommand).resolves({ Items: [] });
     documentClient.on(ScanCommand).resolves({ Items: [] });
@@ -104,6 +107,59 @@ describe("dynamoDB CloudFront lifecycle", () => {
 
   afterEach(() => {
     vi.useRealTimers();
+  });
+
+  it.each(["ConditionalCheckFailed", "TransactionConflict"])(
+    "retries a native Insights %s cancellation",
+    async (code) => {
+      let attempts = 0;
+      documentClient
+        .on(TransactWriteCommand)
+        .callsFake(async (input: TransactWriteCommandInput) => {
+          attempts += 1;
+          if (attempts === 1) {
+            throw Object.assign(new Error("transaction conflict"), {
+              name: "TransactionCanceledException",
+              CancellationReasons: (input.TransactItems ?? []).map(
+                (_, index) => ({
+                  Code: index === 0 ? code : "None",
+                }),
+              ),
+            });
+          }
+          return {};
+        });
+      const plugin = dynamoDB({ region: "us-east-1", tableName: "metadata" });
+
+      await plugin.models.insights.recordEvent({ event: insightsEvent(1) });
+
+      expect(attempts).toBe(2);
+      await plugin.dispose?.();
+    },
+  );
+
+  it("preserves a native Insights validation failure without retrying", async () => {
+    const failure = Object.assign(new Error("invalid transaction value"), {
+      name: "TransactionCanceledException",
+      CancellationReasons: [] as { Code: string }[],
+    });
+    documentClient
+      .on(TransactWriteCommand)
+      .callsFake(async (input: TransactWriteCommandInput) => {
+        failure.CancellationReasons = (input.TransactItems ?? []).map(
+          (_, index) => ({
+            Code: index === 0 ? "ValidationError" : "None",
+          }),
+        );
+        throw failure;
+      });
+    const plugin = dynamoDB({ region: "us-east-1", tableName: "metadata" });
+
+    await expect(
+      plugin.models.insights.recordEvent({ event: insightsEvent(1) }),
+    ).rejects.toBe(failure);
+    expect(documentClient.commandCalls(TransactWriteCommand)).toHaveLength(1);
+    await plugin.dispose?.();
   });
 
   it("invalidates cached update checks after a successful commit", async () => {
@@ -522,7 +578,7 @@ describe("dynamoDB CloudFront lifecycle", () => {
     const transaction =
       documentClient.commandCalls(TransactWriteCommand)[0]?.args[0].input
         .TransactItems;
-    expect(transaction).toHaveLength(7);
+    expect(transaction).toHaveLength(8);
     expect(
       transaction?.find((item) =>
         String(item.Put?.Item?.pk).startsWith("_hot-updater#insights-scope#"),
@@ -734,6 +790,7 @@ describe("dynamoDB CloudFront lifecycle", () => {
       { pk: DYNAMODB_INSIGHTS_EVENT_IDS_PARTITION, sk: event.id },
       { pk: DYNAMODB_INSIGHTS_INSTALLATIONS_PARTITION, sk: event.install_id },
     ]);
+    expect(documentClient.commandCalls(BatchGetCommand)).toHaveLength(1);
     expect(documentClient.commandCalls(QueryCommand)).toHaveLength(0);
     expect(documentClient.commandCalls(PutCommand)).toHaveLength(0);
     expect(documentClient.commandCalls(TransactWriteCommand)).toHaveLength(1);

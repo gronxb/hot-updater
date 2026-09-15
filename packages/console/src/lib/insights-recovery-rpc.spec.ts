@@ -19,7 +19,7 @@ vi.mock("@tanstack/react-start", () => ({
 }));
 vi.mock("./server/config.server", () => ({ prepareConfig: mocks.prepare }));
 vi.mock("./server/insightsRecovery", () => ({
-  getRecoveryReport: mocks.report,
+  getAggregatedRecoveryReport: mocks.report,
 }));
 
 vi.mock("./server/bundleActivity", () => ({
@@ -43,15 +43,15 @@ describe("recovery report access", () => {
   } as const;
 
   it("uses the authenticated console database and preserves the requested ID", async () => {
-    const model = {};
+    const models = { insights: {} };
     mocks.prepare.mockResolvedValue({
-      config: { database: { models: { insights: model } } },
+      config: { database: { models } },
     });
     mocks.report.mockResolvedValue({ series: [] });
     await expect(getRecoveryReportRpc({ data })).resolves.toEqual({
       series: [],
     });
-    expect(mocks.report).toHaveBeenCalledWith(model, data);
+    expect(mocks.report).toHaveBeenCalledWith(models, data);
   });
 
   it("does not read report history when console access is denied", async () => {

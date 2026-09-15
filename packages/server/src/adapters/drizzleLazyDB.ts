@@ -22,6 +22,10 @@ type DrizzleMutation = {
   readonly run?: () => unknown;
 };
 
+type DrizzleQueryResult<TRow> = Promise<TRow> & {
+  readonly sync?: () => TRow;
+};
+
 export type DrizzleInsertMutation = DrizzleMutation & {
   readonly onDuplicateKeyUpdate?: (config: { set: object }) => DrizzleMutation;
   readonly onConflictDoNothing?: () => DrizzleInsertMutation;
@@ -40,8 +44,8 @@ type DrizzleInsertBuilder = {
 };
 
 type DrizzleQuery<TRow> = {
-  readonly findFirst: (args?: unknown) => Promise<TRow | undefined>;
-  readonly findMany: (args?: unknown) => Promise<TRow[]>;
+  readonly findFirst: (args?: unknown) => DrizzleQueryResult<TRow | undefined>;
+  readonly findMany: (args?: unknown) => DrizzleQueryResult<TRow[]>;
 };
 
 export type DrizzleDB = {
@@ -65,6 +69,10 @@ export type DrizzleDB = {
     readonly channels: DrizzleQuery<ChannelRow>;
     readonly bundle_patches: DrizzleQuery<BundlePatchRow>;
     readonly bundle_events: DrizzleQuery<StoredBundleEventRow>;
+    readonly insights_install_states?: DrizzleQuery<Record<string, unknown>>;
+    readonly insights_lifetime_markers?: DrizzleQuery<Record<string, unknown>>;
+    readonly insights_release_summaries?: DrizzleQuery<Record<string, unknown>>;
+    readonly insights_hourly_activity?: DrizzleQuery<Record<string, unknown>>;
 
     readonly api_keys: DrizzleQuery<ApiKeyRow>;
     readonly releases: DrizzleQuery<StoredReleaseRow>;

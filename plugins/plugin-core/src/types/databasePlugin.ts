@@ -124,6 +124,50 @@ export interface InsightsCountEventsInput {
   readonly beforeReceivedAtMs: number;
 }
 
+export interface ReleaseReference {
+  readonly releaseId: string;
+  readonly platform: "ios" | "android";
+  readonly channel: string;
+}
+
+export interface ReleaseActivityTimeRange {
+  /** Inclusive UTC Unix timestamp in milliseconds, aligned to an hour. */
+  readonly start: number;
+  /** Exclusive UTC Unix timestamp in milliseconds, aligned to an hour. */
+  readonly end: number;
+}
+
+export type InsightsHistoryCoverage =
+  | { readonly kind: "complete"; readonly sinceMs: number }
+  | { readonly kind: "partial"; readonly sinceMs: number | null };
+
+export interface ReleaseActivity {
+  readonly release: ReleaseReference;
+  readonly summary: {
+    readonly activeInstallations: number;
+    readonly pendingInstallations: number;
+    readonly downloadedInstallations: number;
+    readonly recoveredInstallations: number;
+  };
+  readonly series?: readonly {
+    readonly startMs: number;
+    readonly downloadedReports: number;
+    readonly appliedReports: number;
+    readonly recoveredReports: number;
+  }[];
+  readonly measuredAtMs: number;
+}
+
+export interface InsightsGetReleaseActivityInput {
+  readonly releases: readonly ReleaseReference[];
+  readonly timeRange?: ReleaseActivityTimeRange;
+}
+
+export interface InsightsGetReleaseActivityResult {
+  readonly coverage: InsightsHistoryCoverage;
+  readonly data: readonly ReleaseActivity[];
+}
+
 export interface InsightsModel {
   /**
    * Persist the immutable event once. A private latest-event index, if used,
@@ -154,6 +198,13 @@ export interface InsightsModel {
   countLatestEvents(input: InsightsCountLatestEventsInput): Promise<number>;
   /** Count accepted reports in [sinceMs, beforeReceivedAtMs), across all pages. */
   countEvents(input: InsightsCountEventsInput): Promise<number>;
+  /**
+   * Read materialized release summaries and optional hourly report buckets.
+   * This method must never scan raw events to complete the result.
+   */
+  getReleaseActivity(
+    input: InsightsGetReleaseActivityInput,
+  ): Promise<InsightsGetReleaseActivityResult>;
 }
 
 export interface ApiKeyModel {

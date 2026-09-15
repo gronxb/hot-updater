@@ -10,12 +10,15 @@ export type RecoveryInput = {
 
 export type RecoveryPoint = {
   readonly startMs: number;
+  readonly rangeStartMs: number;
+  readonly endMs: number;
+  readonly partial: boolean;
   readonly active: number | null;
   readonly pendingInstallations: number | null;
-  readonly downloadedInstallations: number;
-  readonly recoveredInstallations: number;
-  readonly applied: number;
-  readonly recovered: number;
+  readonly downloadedInstallations: number | null;
+  readonly recoveredInstallations: number | null;
+  readonly applied: number | null;
+  readonly recovered: number | null;
   readonly rate: number | null;
   readonly spike: boolean;
 };
@@ -38,6 +41,7 @@ export type RecoveryReport = {
   readonly unattributedInstallations: number;
   readonly pendingInstallations: number;
   readonly downloadedInstallations: number;
+  readonly availableReleaseIds: readonly string[];
   readonly series: readonly RecoverySeries[];
 };
 

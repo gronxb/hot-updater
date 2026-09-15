@@ -7,7 +7,7 @@ export const createMongoMigrationOperations = (
 ): MigrationOperation[] => [
   ...hotUpdaterCreateTableOperations,
   ...hotUpdaterSchema.tables
-    .filter((table) => !table.internal)
+    .filter((table) => table.ormName !== hotUpdaterSchema.settingsTable)
     .map((table): MigrationOperation => {
       const primaryKey = table.columns.find((column) => column.primaryKey);
       if (!primaryKey) {

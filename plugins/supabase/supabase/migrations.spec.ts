@@ -230,6 +230,14 @@ describe("Supabase v1 schema", () => {
     expect(sql).toContain(
       "CREATE TABLE public.hot_updater_v1_bundle_event_heads",
     );
+    for (const table of [
+      "insights_install_states",
+      "insights_lifetime_markers",
+      "insights_release_summaries",
+      "insights_hourly_activity",
+    ]) {
+      expect(sql).toContain(`CREATE TABLE public.hot_updater_v1_${table}`);
+    }
     expect(sql).toContain(
       "hot_updater_v1_bundle_event_heads(user_id, install_id)",
     );
@@ -238,6 +246,12 @@ describe("Supabase v1 schema", () => {
     );
     expect(sql).toContain(
       "CREATE FUNCTION public.hot_updater_v1_record_event(p_event jsonb)",
+    );
+    expect(sql).toContain(
+      "CREATE FUNCTION public.hot_updater_v1_record_prepared_event(p_prepared jsonb)",
+    );
+    expect(sql).toContain(
+      "CREATE FUNCTION public.hot_updater_v1_get_release_activity(",
     );
     expect(sql).toContain(
       "hot_updater_v1_bundle_events(install_id, type, received_at_ms, id)",
@@ -270,7 +284,7 @@ describe("Supabase v1 schema", () => {
     expect(sql).not.toContain("get_update_info");
     expect(sql).not.toContain("ALTER TABLE public.bundles ADD COLUMN");
     expect(sql).not.toContain("WHEN 'insights'");
-    expect(sql).not.toContain("v_event public.hot_updater_v1_bundle_events");
+    expect(sql).toContain("v_event public.hot_updater_v1_bundle_events");
   });
 
   it("applies beside a v0 schema without modifying v0 data", async () => {

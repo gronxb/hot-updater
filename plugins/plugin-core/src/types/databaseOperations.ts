@@ -300,10 +300,12 @@ export interface TransactionDatabasePluginImplementation {
 export interface DatabasePluginImplementation {
   findLatestInsightsEvents: import("./databasePlugin").InsightsModel["findLatestEvents"];
   countLatestInsightsEvents: import("./databasePlugin").InsightsModel["countLatestEvents"];
-  /** Native immutable event insert; any private index is advanced atomically. */
+  /** Persist an Insights event. The public input remains `{ event }`. */
   recordInsights(
     input: import("./databasePlugin").InsightsRecordEventInput,
   ): Promise<void>;
+  /** Read bounded release activity. Raw-scan fallbacks are forbidden. */
+  getReleaseActivity: import("./databasePlugin").InsightsModel["getReleaseActivity"];
   create(
     input: CreateDatabaseImplementationInput,
   ): Promise<DatabaseImplementationResult>;

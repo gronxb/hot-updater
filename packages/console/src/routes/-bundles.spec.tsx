@@ -138,7 +138,7 @@ describe("BundlesPage", () => {
       mocks.isMobile.mockReturnValue(mobile);
       render(<BundlesPage />);
       const summary = screen.getByRole("group", {
-        name: "Bundle activity over 30 days",
+        name: "Bundle activity over collected history",
       });
       expect(within(summary).getByText("42")).toBeDefined();
       expect(within(summary).getByText("3")).toBeDefined();
@@ -154,9 +154,7 @@ describe("BundlesPage", () => {
   it("keeps bundle management usable when activity is unavailable", () => {
     mocks.activity.mockReturnValue({ error: new Error("Offline") });
     render(<BundlesPage />);
-    expect(
-      screen.getByLabelText("30-day bundle activity unavailable"),
-    ).toBeDefined();
+    expect(screen.getByLabelText("Bundle activity unavailable")).toBeDefined();
     expect(
       screen.getByRole("button", { name: "Open details for ID release-1" }),
     ).toBeDefined();

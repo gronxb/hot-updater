@@ -31,12 +31,28 @@ function InsightsPage() {
     void navigate({ search: { ...search, window } });
   const setBundleWindow = (bundleWindow: InsightsWindow) =>
     void navigate({ search: { ...search, bundleWindow } });
-  const setScope = (scope: AppUsageScope) =>
+  const setBundleRelease = (bundleReleaseId: string) =>
+    void navigate({ search: { ...search, bundleReleaseId } });
+  const setScope = (nextScope: AppUsageScope) =>
     void navigate({
-      search: { ...search, ...scope, appVersion: scope.appVersion },
+      search: {
+        ...search,
+        ...nextScope,
+        appVersion: nextScope.appVersion,
+        bundleReleaseId:
+          nextScope.platform === scope.platform &&
+          nextScope.channel === scope.channel
+            ? search.bundleReleaseId
+            : undefined,
+      },
     });
   const input = { ...scope, window: usageWindow };
-  const bundleInput = { ...scope, window: bundleWindow };
+  const bundleInput = {
+    platform: scope.platform,
+    channel: scope.channel,
+    window: bundleWindow,
+    ...(search.bundleReleaseId ? { releaseId: search.bundleReleaseId } : {}),
+  };
   const query = useQuery({
     queryKey: ["insights", "app-usage", input],
     queryFn: () => getAppUsageReportRpc({ data: input }),
@@ -81,6 +97,7 @@ function InsightsPage() {
             input={bundleInput}
             query={bundleQuery}
             onWindowChange={setBundleWindow}
+            onReleaseChange={setBundleRelease}
             onRefresh={() => void bundleQuery.refetch()}
           />
         </div>

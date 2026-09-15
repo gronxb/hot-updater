@@ -5,8 +5,10 @@ import {
   type DatabasePlugin,
 } from "@hot-updater/plugin-core";
 import {
+  createMemoryInsightsProjection,
   latestInsightsWhere,
   latestInsightsCountGroups,
+  recordProjectedInsightsEvent,
 } from "@hot-updater/plugin-core/internal";
 import {
   createDatabasePluginAdapter,
@@ -417,13 +419,17 @@ const createImplementation = (tables: Tables): DatabasePluginImplementation => {
     return result;
   };
 
+  const insightsProjection = createMemoryInsightsProjection({
+    onEvent: (event) => tables.bundle_events.rows.push(event),
+  });
+
   return {
     ...createCrudImplementation(tables),
-    recordInsights: ({ event }) =>
-      withMutationLock(() => {
-        if (!tables.bundle_events.rows.some(({ id }) => id === event.id))
-          tables.bundle_events.rows.push(structuredClone(event));
-      }),
+    recordInsights: (input) =>
+      withMutationLock(() =>
+        recordProjectedInsightsEvent(insightsProjection, input),
+      ),
+    getReleaseActivity: (input) => insightsProjection.getReleaseActivity(input),
     findLatestInsightsEvents: async (input) =>
       latestEvents(tables.bundle_events.rows)
         .filter((row) => matchesAll(row, latestInsightsWhere(input)))
@@ -495,8 +501,11 @@ export const createInMemoryDatabasePlugin = (
 
 export const createInMemoryDatabaseHarness = () => {
   const tables = createTables();
+  let plugin = createInMemoryDatabasePlugin(tables);
   return {
-    plugin: createInMemoryDatabasePlugin(tables),
+    get plugin() {
+      return plugin;
+    },
     reset: (): void => {
       tables.bundles.rows = [];
       tables.bundle_patches.rows = [];
@@ -505,6 +514,7 @@ export const createInMemoryDatabaseHarness = () => {
       tables.channels.rows = [];
       tables.bundle_events.rows = [];
       tables.api_keys.rows = [];
+      plugin = createInMemoryDatabasePlugin(tables);
     },
   };
 };

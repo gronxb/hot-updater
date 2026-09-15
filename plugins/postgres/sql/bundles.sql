@@ -96,6 +96,42 @@ create table bundle_event_heads (
   to_bundle_id uuid not null
 );
 
+create table insights_install_states (
+  install_id text collate "C" primary key not null,
+  revision double precision not null,
+  state text not null
+);
+
+create table insights_lifetime_markers (
+  marker_key text collate "C" primary key not null,
+  release_key text collate "C" not null,
+  install_id text collate "C" not null,
+  metric text not null
+);
+
+create table insights_release_summaries (
+  release_key text collate "C" primary key not null,
+  platform text collate "C" not null,
+  channel text collate "C" not null,
+  release_id uuid not null,
+  active_installations double precision not null default 0,
+  pending_installations double precision not null default 0,
+  downloaded_installations double precision not null default 0,
+  recovered_installations double precision not null default 0
+);
+
+create table insights_hourly_activity (
+  bucket_key text collate "C" primary key not null,
+  release_key text collate "C" not null,
+  platform text collate "C" not null,
+  channel text collate "C" not null,
+  release_id uuid not null,
+  hour_start_ms double precision not null,
+  downloaded_reports double precision not null default 0,
+  applied_reports double precision not null default 0,
+  recovered_reports double precision not null default 0
+);
+
 create table api_keys (
   id varchar(255) primary key not null,
   hash text not null,
@@ -124,6 +160,7 @@ create index bundle_events_received_at_idx on bundle_events(received_at_ms, id);
 create index bundle_events_install_idx on bundle_events(install_id, type, received_at_ms, id);
 create index bundle_events_from_bundle_idx on bundle_events(type, platform, channel, from_bundle_id, received_at_ms, id);
 create index bundle_events_to_bundle_idx on bundle_events(type, platform, channel, to_bundle_id, received_at_ms, id);
+create index insights_hourly_activity_release_hour_idx on insights_hourly_activity(release_key, hour_start_ms);
 create unique index api_keys_hash_key on api_keys(hash);
 create index api_keys_created_at_idx on api_keys(created_at_ms, id);
 
@@ -159,6 +196,14 @@ alter table bundle_events add constraint bundle_events_shape_check
   check (((type in ('UPDATE_DOWNLOADED', 'UPDATE_APPLIED', 'RECOVERED')) and from_bundle_id is not null) or (type = 'UNCHANGED' and from_bundle_id is null));
 alter table bundle_events add constraint bundle_events_received_at_check
   check (received_at_ms >= 0);
+alter table insights_install_states add constraint insights_install_states_revision_check
+  check (revision >= 1 and revision <= 9007199254740991);
+alter table insights_lifetime_markers add constraint insights_lifetime_markers_metric_check
+  check (metric in ('downloaded', 'recovered'));
+alter table insights_release_summaries add constraint insights_release_summaries_counts_check
+  check (active_installations >= 0 and pending_installations >= 0 and downloaded_installations >= 0 and recovered_installations >= 0);
+alter table insights_hourly_activity add constraint insights_hourly_activity_counts_check
+  check (hour_start_ms >= 0 and downloaded_reports >= 0 and applied_reports >= 0 and recovered_reports >= 0);
 alter table api_keys add constraint api_keys_role_check
   check (role = 'client');
 alter table api_keys add constraint api_keys_created_at_check

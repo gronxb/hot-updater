@@ -10,3 +10,18 @@ export {
   latestInsightsWhere,
   latestInsightsCountGroups,
 } from "./insightsLatestQueries";
+export {
+  insightsHourlyBucketKey,
+  insightsLifetimeMarkerKey,
+  insightsReleaseKey,
+  prepareInsightsEvent,
+  recordProjectedInsightsEvent,
+  reduceInsightsProjection,
+} from "./insightsProjection";
+export type {
+  InsightsLifetimeKey,
+  InsightsRecordContext,
+  InsightsProjectionBackend,
+  PreparedInsightsEvent,
+} from "./insightsProjection";
+export { createMemoryInsightsProjection } from "./insightsMemoryProjection";

@@ -30,13 +30,18 @@ type Row =
   | ChannelRow
   | ApiKeyRow
   | ReleaseRow
-  | ReleaseCatalogRow;
+  | ReleaseCatalogRow
+  | Record<string, unknown>;
 type Table = Row[];
 type Tables = {
   bundle_patches: Table;
   bundles: Table;
   bundle_events: Table;
   bundle_event_heads: Table;
+  insights_install_states: Table;
+  insights_lifetime_markers: Table;
+  insights_release_summaries: Table;
+  insights_hourly_activity: Table;
 
   channels: Table;
   api_keys: Table;
@@ -88,8 +93,17 @@ const normalize = (value: unknown, insensitive: boolean): unknown =>
 const readField = (row: Row, field: string): unknown =>
   Object.entries(row).find(([key]) => key === field)?.[1];
 
-const rowKey = (model: keyof Tables, row: Row): string =>
-  "id" in row ? row.id : row.scope_key;
+const rowKey = (model: keyof Tables, row: Row): string => {
+  const fields: Partial<Record<keyof Tables, string>> = {
+    bundle_event_heads: "install_id",
+    insights_install_states: "install_id",
+    insights_lifetime_markers: "marker_key",
+    insights_release_summaries: "release_key",
+    insights_hourly_activity: "bucket_key",
+    release_catalogs: "scope_key",
+  };
+  return String(readField(row, fields[model] ?? "id"));
+};
 
 const matchesCondition = (current: unknown, condition: unknown): boolean => {
   if (!isRecord(condition)) return Object.is(current, condition);
@@ -139,17 +153,15 @@ const matchesCondition = (current: unknown, condition: unknown): boolean => {
 
 const matchesWhere = (row: Row, where: unknown): boolean => {
   if (!isRecord(where)) return true;
-  const conjunction = where["AND"];
-  if (Array.isArray(conjunction)) {
-    return conjunction.every((item) => matchesWhere(row, item));
-  }
-  const disjunction = where["OR"];
-  if (Array.isArray(disjunction)) {
-    return disjunction.some((item) => matchesWhere(row, item));
-  }
-  return Object.entries(where).every(([field, condition]) =>
-    matchesCondition(readField(row, field), condition),
-  );
+  return Object.entries(where).every(([field, condition]) => {
+    if (field === "AND" && Array.isArray(condition)) {
+      return condition.every((item) => matchesWhere(row, item));
+    }
+    if (field === "OR" && Array.isArray(condition)) {
+      return condition.some((item) => matchesWhere(row, item));
+    }
+    return matchesCondition(readField(row, field), condition);
+  });
 };
 
 const sortRows = (rows: Row[], orderBy: unknown): Row[] => {
@@ -247,7 +259,7 @@ const createDelegate = (tables: Tables, model: keyof Tables, hooks: Hooks) => ({
         tables.releases.some(
           (row) =>
             "bundle_id" in row &&
-            row.bundle_id !== null &&
+            typeof row.bundle_id === "string" &&
             ids.has(row.bundle_id),
         )
       ) {
@@ -256,6 +268,8 @@ const createDelegate = (tables: Tables, model: keyof Tables, hooks: Hooks) => ({
       tables.bundle_patches = tables.bundle_patches.filter(
         (row) =>
           !("base_bundle_id" in row) ||
+          typeof row.bundle_id !== "string" ||
+          typeof row.base_bundle_id !== "string" ||
           (!ids.has(row.bundle_id) && !ids.has(row.base_bundle_id)),
       );
     }
@@ -282,7 +296,7 @@ const createDelegate = (tables: Tables, model: keyof Tables, hooks: Hooks) => ({
     if (current === undefined) {
       throw new PrismaTestConstraintError("missing update row");
     }
-    const updated = { ...current, ...data } as Row;
+    const updated = { ...current, ...applyUpdate(current, data) } as Row;
     assertReferences(tables, model, updated);
     tables[model][index] = updated;
     return structuredClone(updated);
@@ -299,7 +313,7 @@ const createDelegate = (tables: Tables, model: keyof Tables, hooks: Hooks) => ({
     let count = 0;
     tables[model] = tables[model].map((row) => {
       if (!matchesWhere(row, where)) return row;
-      const updated = { ...row, ...data } as Row;
+      const updated = { ...row, ...applyUpdate(row, data) } as Row;
       assertReferences(tables, model, updated);
       count += 1;
       return updated;
@@ -310,7 +324,7 @@ const createDelegate = (tables: Tables, model: keyof Tables, hooks: Hooks) => ({
     const index = tables[model].findIndex((row) => matchesWhere(row, where));
     const current = tables[model][index];
     if (current !== undefined) {
-      const updated = { ...current, ...update } as Row;
+      const updated = { ...current, ...applyUpdate(current, update) } as Row;
       assertReferences(tables, model, updated);
       tables[model][index] = updated;
       return structuredClone(updated);
@@ -327,6 +341,22 @@ const createDelegate = (tables: Tables, model: keyof Tables, hooks: Hooks) => ({
     return structuredClone(create);
   },
 });
+
+const applyUpdate = (
+  current: Row,
+  update: Readonly<Record<string, unknown>>,
+): Record<string, unknown> =>
+  Object.fromEntries(
+    Object.entries(update).map(([field, value]) => {
+      if (isRecord(value) && typeof value["increment"] === "number") {
+        return [
+          field,
+          Number(readField(current, field) ?? 0) + value["increment"],
+        ];
+      }
+      return [field, value];
+    }),
+  );
 
 const querySqlite = (
   tables: Tables,
@@ -381,6 +411,26 @@ const createClient = (tables: Tables, hooks: Hooks) => ({
   $executeRawUnsafe: async (query: string, ...values: SqliteValue[]) =>
     querySqlite(tables, query, values, true),
   bundle_events: createDelegate(tables, "bundle_events", hooks),
+  insights_install_states: createDelegate(
+    tables,
+    "insights_install_states",
+    hooks,
+  ),
+  insights_lifetime_markers: createDelegate(
+    tables,
+    "insights_lifetime_markers",
+    hooks,
+  ),
+  insights_release_summaries: createDelegate(
+    tables,
+    "insights_release_summaries",
+    hooks,
+  ),
+  insights_hourly_activity: createDelegate(
+    tables,
+    "insights_hourly_activity",
+    hooks,
+  ),
 
   bundle_patches: createDelegate(tables, "bundle_patches", hooks),
   bundles: createDelegate(tables, "bundles", hooks),
@@ -396,6 +446,10 @@ export const createPrismaTestHarness = () => {
     bundles: [],
     bundle_events: [],
     bundle_event_heads: [],
+    insights_install_states: [],
+    insights_lifetime_markers: [],
+    insights_release_summaries: [],
+    insights_hourly_activity: [],
 
     channels: [],
     api_keys: [],
@@ -428,6 +482,14 @@ export const createPrismaTestHarness = () => {
         tables.bundles = transactionTables.bundles;
         tables.bundle_events = transactionTables.bundle_events;
         tables.bundle_event_heads = transactionTables.bundle_event_heads;
+        tables.insights_install_states =
+          transactionTables.insights_install_states;
+        tables.insights_lifetime_markers =
+          transactionTables.insights_lifetime_markers;
+        tables.insights_release_summaries =
+          transactionTables.insights_release_summaries;
+        tables.insights_hourly_activity =
+          transactionTables.insights_hourly_activity;
         tables.channels = transactionTables.channels;
         tables.api_keys = transactionTables.api_keys;
         tables.releases = transactionTables.releases;
@@ -469,6 +531,10 @@ export const createPrismaTestHarness = () => {
       tables.bundles = [];
       tables.bundle_events = [];
       tables.bundle_event_heads = [];
+      tables.insights_install_states = [];
+      tables.insights_lifetime_markers = [];
+      tables.insights_release_summaries = [];
+      tables.insights_hourly_activity = [];
       tables.channels = [];
       tables.api_keys = [];
       tables.releases = [];
