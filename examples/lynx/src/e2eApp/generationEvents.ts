@@ -37,6 +37,9 @@ const nullableSequence = (value: unknown, label: string): string | null =>
 const nullableIdentity = (value: unknown, label: string): string | null =>
   value === null ? null : string(value, label);
 
+const hasOwn = (value: object, key: PropertyKey): boolean =>
+  Object.prototype.hasOwnProperty.call(value, key);
+
 const validateManagedIdentity = (
   details: Record<string, unknown>,
   label: string,
@@ -51,7 +54,7 @@ const validateManagedIdentity = (
     "pageAttemptId",
     "transitionId",
   ]) {
-    if (!Object.hasOwn(details, key)) {
+    if (!hasOwn(details, key)) {
       throw new Error(`${label}.${key} must be present`);
     }
   }

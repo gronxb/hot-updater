@@ -105,7 +105,7 @@ describe("Lynx public controller", () => {
     expect(getRuntimeEvents.mock.calls[0]).toHaveLength(1);
   });
 
-  it("accepts the exact engine diagnostic runtime event schema", async () => {
+  it("accepts engine diagnostics without Object.hasOwn", async () => {
     const event = {
       sequence: "1",
       name: "engineDiagnostic",
@@ -139,9 +139,16 @@ describe("Lynx public controller", () => {
           callback({ ok: true, data }),
       },
     });
-    const { HotUpdater } = await import("./index");
-
-    await expect(HotUpdater.getRuntimeEvents()).resolves.toEqual(data);
+    const originalHasOwn = Object.hasOwn;
+    let result: unknown;
+    Object.hasOwn = undefined as never;
+    try {
+      const { HotUpdater } = await import("./index");
+      result = await HotUpdater.getRuntimeEvents();
+    } finally {
+      Object.hasOwn = originalHasOwn;
+    }
+    expect(result).toEqual(data);
   });
 
   it.each([

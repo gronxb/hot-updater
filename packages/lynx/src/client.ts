@@ -198,6 +198,9 @@ const canonicalJsonUtf8Bytes = (value: unknown): number | null => {
   }
 };
 
+const hasOwn = (value: object, key: PropertyKey): boolean =>
+  Object.prototype.hasOwnProperty.call(value, key);
+
 const isCanonicalManagedPath = (value: unknown): value is string =>
   typeof value === "string" &&
   value.trim().length > 0 &&
@@ -227,7 +230,7 @@ const isEngineDiagnosticDetails = (
     "pageAttemptId",
     "transitionId",
   ]) {
-    if (!Object.hasOwn(details, key)) return false;
+    if (!hasOwn(details, key)) return false;
   }
   return (
     [

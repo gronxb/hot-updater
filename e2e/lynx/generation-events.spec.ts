@@ -41,6 +41,18 @@ describe("Lynx generation event snapshots", () => {
     expect(getRuntimeEvents).toHaveBeenCalledWith();
   });
 
+  it("validates snapshots in PrimJS without Object.hasOwn", () => {
+    const originalHasOwn = Object.hasOwn;
+    let result: ReturnType<typeof validateGenerationEventsSnapshot>;
+    Object.hasOwn = undefined as never;
+    try {
+      result = validateGenerationEventsSnapshot(snapshot());
+    } finally {
+      Object.hasOwn = originalHasOwn;
+    }
+    expect(result).toMatchObject({ latestSequence: "5" });
+  });
+
   it("rejects replayed, unordered, or fabricated event identities", () => {
     expect(() =>
       validateGenerationEventsSnapshot(snapshot([event("4"), event("4")])),
