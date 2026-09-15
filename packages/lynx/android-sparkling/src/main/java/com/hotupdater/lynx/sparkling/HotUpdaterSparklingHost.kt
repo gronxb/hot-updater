@@ -593,9 +593,7 @@ class HotUpdaterSparklingHost(
         if (closed) return
         pageCreatedObserver = null
         pageProgressObserver = null
-        val retained = pages.firstOrNull()?.let { primary ->
-            controller.retainedLogicalStack(primary.session)
-        } ?: emptyList()
+        val retained = pages.map { it.logical }
         val primaryActivity = pages.firstOrNull()?.activity?.get()
         val secondaryActivities = pages.drop(1).mapNotNull {
             it.activity.get() as? HotUpdaterSparklingPageActivity

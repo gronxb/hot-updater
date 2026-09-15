@@ -486,6 +486,7 @@ function App() {
               loadExternal: loadExternalBootstrap,
               loadDynamic: loadDynamicProbe,
             });
+            await maybeCrashForE2E();
           },
           () =>
             confirmRuntimeReady(HotUpdater, async (status) => {
@@ -730,9 +731,6 @@ const configureE2eRuntime = async (): Promise<boolean> => {
   return true;
 };
 
-const runtimeConfigurationReady = configureE2eRuntime().then(async (ready) => {
-  if (ready) await maybeCrashForE2E();
-  return ready;
-});
+const runtimeConfigurationReady = configureE2eRuntime();
 
 root.render(<App />);
