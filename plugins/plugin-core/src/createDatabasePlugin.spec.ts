@@ -20,6 +20,9 @@ const unimplemented = async (): Promise<never> => {
 };
 
 const createMethods = (): DatabasePluginImplementation => ({
+  getReleaseActivity: async () => {
+    throw new Error("Unexpected release activity read");
+  },
   findLatestInsightsEvents: async () => {
     throw new Error("Unexpected Insights read");
   },

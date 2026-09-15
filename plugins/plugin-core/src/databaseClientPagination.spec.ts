@@ -24,6 +24,9 @@ describe("database client pagination", () => {
     const row = bundlesRow(createBundle("001"));
     const findMany = vi.fn(async () => [row]);
     const adapter = createDatabasePluginAdapter("finite-id-memory", {
+      getReleaseActivity: async () => {
+        throw new Error("Unexpected release activity read");
+      },
       findLatestInsightsEvents: async () => {
         throw new Error("Unexpected Insights read");
       },
@@ -103,6 +106,9 @@ describe("database client pagination", () => {
     const plugin = createDatabasePlugin({
       name,
       ...createDatabasePluginAdapter(name, {
+        getReleaseActivity: async () => {
+          throw new Error("Unexpected release activity read");
+        },
         findLatestInsightsEvents: async () => {
           throw new Error("Unexpected Insights read");
         },
@@ -161,6 +167,9 @@ describe("database client pagination", () => {
     const plugin = createDatabasePlugin({
       name,
       ...createDatabasePluginAdapter(name, {
+        getReleaseActivity: async () => {
+          throw new Error("Unexpected release activity read");
+        },
         findLatestInsightsEvents: async () => {
           throw new Error("Unexpected Insights read");
         },

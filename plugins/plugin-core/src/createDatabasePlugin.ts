@@ -44,15 +44,6 @@ export {
   type DatabasePluginInputErrorCode,
 } from "./databasePluginCrud";
 
-export class InsightsAggregationUnsupportedError extends Error {
-  constructor(name: string) {
-    super(
-      `Database plugin ${name} does not support release activity aggregation.`,
-    );
-    this.name = "InsightsAggregationUnsupportedError";
-  }
-}
-
 export class InsightsAggregationNotReadyError extends Error {
   readonly name = "InsightsAggregationNotReadyError";
 
@@ -979,10 +970,7 @@ export const createDatabasePluginAdapter = (
             ],
           });
         },
-        getReleaseActivity: (input) =>
-          implementation.getReleaseActivity
-            ? implementation.getReleaseActivity(input)
-            : Promise.reject(new InsightsAggregationUnsupportedError(name)),
+        getReleaseActivity: (input) => implementation.getReleaseActivity(input),
       },
       apiKeys: {
         async create(row) {

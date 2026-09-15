@@ -7,7 +7,6 @@ export {
   createDatabasePlugin,
   DatabaseAtomicCommitUnsupportedError,
   DatabasePluginInputError,
-  InsightsAggregationUnsupportedError,
   InsightsAggregationNotReadyError,
   type CreateDatabasePluginOptions,
   type DatabasePluginInputErrorCode,

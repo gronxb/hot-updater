@@ -32,6 +32,9 @@ const createFixture = (expectedUpdates: number) => {
   const plugin = createDatabasePlugin({
     name,
     ...createDatabasePluginAdapter(name, {
+      getReleaseActivity: async () => {
+        throw new Error("Unexpected release activity read");
+      },
       findLatestInsightsEvents: async () => {
         throw new Error("Unexpected Insights read");
       },

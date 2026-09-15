@@ -54,6 +54,9 @@ class BenchmarkMutationError extends Error {
 
 const name = "release-catalog-benchmark";
 const adapter = createDatabasePluginAdapter(name, {
+  getReleaseActivity: async () => {
+    throw new Error("Unexpected release activity read");
+  },
   findLatestInsightsEvents: async () => {
     throw new Error("Unexpected Insights read");
   },

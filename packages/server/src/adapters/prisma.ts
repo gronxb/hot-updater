@@ -375,18 +375,17 @@ const createPrismaImplementation = (
   const crud = createCrudImplementation(client, provider, relationMode);
   const implementation: DatabasePluginImplementation = {
     ...crud,
-    ...(hasCallbackTransaction(client) && provider !== "mssql"
-      ? {
-          getReleaseActivity: (
-            input: Parameters<
-              NonNullable<DatabasePluginImplementation["getReleaseActivity"]>
-            >[0],
-          ) =>
-            createPrismaInsightsProjection(client, provider).getReleaseActivity(
-              input,
-            ),
-        }
-      : {}),
+    async getReleaseActivity(input) {
+      if (!hasCallbackTransaction(client)) {
+        throw new PrismaAdapterError(
+          "Release activity requires a Prisma client with callback transactions",
+        );
+      }
+      return createPrismaInsightsProjection(
+        client,
+        provider,
+      ).getReleaseActivity(input);
+    },
     async recordInsights({ event }) {
       if (!hasCallbackTransaction(client)) {
         return recordPrismaEventWithCte(client, provider, event);

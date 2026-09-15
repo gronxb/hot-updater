@@ -273,6 +273,9 @@ describe("Insights CRUD adapter", () => {
     const model = createDatabasePlugin({
       name: "indexed-memory",
       ...createDatabasePluginAdapter("indexed-memory", {
+        getReleaseActivity: async () => {
+          throw new Error("Unexpected release activity read");
+        },
         findLatestInsightsEvents: async () => {
           throw new Error("Unexpected Insights read");
         },
@@ -326,6 +329,9 @@ describe("Insights CRUD adapter", () => {
     const plugin = createDatabasePlugin({
       name: "adapter",
       ...createDatabasePluginAdapter("adapter", {
+        getReleaseActivity: async () => {
+          throw new Error("Unexpected release activity read");
+        },
         findLatestInsightsEvents: async () => {
           throw new Error("Unexpected Insights read");
         },
@@ -386,6 +392,9 @@ describe("Insights CRUD adapter", () => {
     const plugin = createDatabasePlugin({
       name: "adapter",
       ...createDatabasePluginAdapter("adapter", {
+        getReleaseActivity: async () => {
+          throw new Error("Unexpected release activity read");
+        },
         findLatestInsightsEvents: async () => {
           throw new Error("Unexpected Insights read");
         },

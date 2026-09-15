@@ -55,6 +55,16 @@ void (0 as unknown as InternalDatabaseWhere);
 void (0 as unknown as InternalDatabasePluginAdapter);
 
 describe("database bundle pagination types", () => {
+  it("requires release activity at both model and provider boundaries", () => {
+    type InsightsModel = import("./databasePlugin").InsightsModel;
+    expectTypeOf<
+      Omit<InsightsModel, "getReleaseActivity">
+    >().not.toMatchTypeOf<InsightsModel>();
+    expectTypeOf<
+      Omit<InternalDatabaseImplementation, "getReleaseActivity">
+    >().not.toMatchTypeOf<InternalDatabaseImplementation>();
+  });
+
   it("excludes competing cursor directions", () => {
     expectTypeOf<{
       readonly after: "004";

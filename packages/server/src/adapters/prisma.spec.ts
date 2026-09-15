@@ -73,9 +73,29 @@ describe("prismaAdapter capabilities", () => {
         sinceMs: 0,
         beforeReceivedAtMs: 101,
       }),
+      plugin.models.insights.getReleaseActivity({
+        releases: [
+          { releaseId: event.id, platform: "ios", channel: "production" },
+        ],
+      }),
     ];
     for (const call of calls)
       await expect(call).rejects.toThrow("SQL Server Insights is unsupported");
+  });
+  it("rejects release activity on a raw-only Prisma client before querying", async () => {
+    const insights = prismaAdapter({ prisma: {}, provider: "postgresql" })
+      .models.insights;
+    const event = createBundleEventRowFixture("708", 100);
+
+    await expect(
+      insights.getReleaseActivity({
+        releases: [
+          { releaseId: event.id, platform: "ios", channel: "production" },
+        ],
+      }),
+    ).rejects.toThrow(
+      "Release activity requires a Prisma client with callback transactions",
+    );
   });
   it("atomically records Insights without callback transactions using Prisma text-bound UUIDs", async () => {
     const db = new PGlite();

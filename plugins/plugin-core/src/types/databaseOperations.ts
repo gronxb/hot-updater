@@ -304,8 +304,8 @@ export interface DatabasePluginImplementation {
   recordInsights(
     input: import("./databasePlugin").InsightsRecordEventInput,
   ): Promise<void>;
-  /** Optional bounded release activity capability. Raw-scan fallbacks are forbidden. */
-  getReleaseActivity?: import("./databasePlugin").InsightsModel["getReleaseActivity"];
+  /** Read bounded release activity. Raw-scan fallbacks are forbidden. */
+  getReleaseActivity: import("./databasePlugin").InsightsModel["getReleaseActivity"];
   create(
     input: CreateDatabaseImplementationInput,
   ): Promise<DatabaseImplementationResult>;

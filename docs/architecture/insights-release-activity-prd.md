@@ -266,7 +266,9 @@ The grouped `timeRange` makes the paired bounds explicit. Existing APIs that use
 - Fill a sparse missing bucket with zero only when its entire interval is inside
   verified continuous coverage. Boundary buckets remain partial; uncovered empty
   buckets are unknown.
-- Unsupported aggregation throws `InsightsAggregationUnsupportedError`.
+- Both the public model and internal database implementation require
+  `getReleaseActivity`; there is no missing-capability fallback or error type.
+  Unsupported provider configurations fail with the provider's existing error.
   Unprepared schema throws `InsightsAggregationNotReadyError`. Neither condition
   may fall back to raw events.
 - Counts are non-negative safe integers and fail explicitly on overflow.
