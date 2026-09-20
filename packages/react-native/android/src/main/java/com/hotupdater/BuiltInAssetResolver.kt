@@ -252,11 +252,15 @@ internal class AndroidBuiltInAssetResolver(
     private fun writeIndex(index: CachedIndex) {
         try {
             cacheFile.parentFile?.mkdirs()
+            val locatorsJson = JSONObject()
+            index.locators.toSortedMap().forEach { (path, locator) ->
+                locatorsJson.put(path, locator)
+            }
             val json =
                 JSONObject()
                     .put("schemaVersion", SCHEMA_VERSION)
                     .put("packageIdentity", index.packageIdentity)
-                    .put("locators", JSONObject(index.locators.toSortedMap()))
+                    .put("locators", locatorsJson)
             val tempFile = File(cacheFile.parentFile, "${cacheFile.name}.tmp")
             tempFile.writeText("$json\n")
             if (cacheFile.exists()) cacheFile.delete()
