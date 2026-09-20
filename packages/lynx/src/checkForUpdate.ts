@@ -45,7 +45,7 @@ export async function checkForUpdate(
       lastError = error;
       if (
         !(error instanceof LynxUpdaterError) ||
-        error.code !== "STALE_STATE"
+        (error.code !== "STALE_STATE" && error.code !== "STALE_CONTEXT")
       ) {
         throw error;
       }

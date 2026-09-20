@@ -818,7 +818,7 @@ describe("Detox scenario contract", () => {
       'await callE2eDiagnostic("armNextPageFatalFailure")',
     );
     expect(guardFactory).toContain('path: "detail.lynx.bundle"');
-    expect(guardFactory).toContain("result.code === 1");
+    expect(guardFactory).not.toContain("await new Promise");
     expect(guardFactory).not.toContain("getManifest");
   });
 

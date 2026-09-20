@@ -1171,15 +1171,10 @@ async function applyAppScenario({
       ? [
           CRASH_GUARD_START,
           '  await callE2eDiagnostic("armNextPageFatalFailure");',
-          "  await new Promise<void>((resolve, reject) => {",
-          "    navigate(",
-          '      { path: "detail.lynx.bundle" },',
-          "      (result) =>",
-          "        result.code === 1",
-          "          ? resolve()",
-          "          : reject(new Error(`fatal detail rejected: ${result.msg}`)),",
-          "    );",
-          "  });",
+          "  navigate(",
+          '    { path: "detail.lynx.bundle" },',
+          "    () => undefined,",
+          "  );",
           `  ${CRASH_GUARD_END}`,
         ].join("\n")
       : `${CRASH_GUARD_START}\n  ${CRASH_GUARD_END}`;

@@ -221,8 +221,8 @@ function App() {
     },
     "action-reset-runtime-channel": async () => {
       await patchScreenState({ runtimeScenarioMarker: null });
-      await setChannelActionResult("reset -> requesting transition");
       await HotUpdater.resetChannel();
+      await setChannelActionResult("reset -> accepted");
     },
     "action-apply-cohort-input": () => applyCohortValue(cohortInput),
     "action-set-cohort-qa": () => applyCohortValue("qa"),
@@ -511,7 +511,10 @@ function App() {
         const message = error instanceof Error ? error.message : String(error);
         const status = `Current Launch Status: ERROR ${message}`;
         setLaunchStatus(status);
-        await patchScreenState({ launchStatus: status });
+        await patchScreenState({
+          launchStatus: status,
+          runtimeScenarioMarker: scenarioMarker,
+        });
       }
     })();
     return () => {

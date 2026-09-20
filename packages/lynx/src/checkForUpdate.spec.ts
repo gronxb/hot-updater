@@ -714,6 +714,24 @@ describe("Lynx catalog controller (mock native transport)", () => {
     expect(fetch).toHaveBeenCalledOnce();
   });
 
+  it("retries catalog acceptance after a native context becomes stale", async () => {
+    const { updater, native } = setup();
+    native.acceptCatalog.mockImplementationOnce((_params, callback) =>
+      callback({
+        ok: false,
+        error: {
+          code: "STALE_CONTEXT",
+          message: "Native launch context has no authority",
+        },
+      }),
+    );
+    const update = await updater.checkForUpdate({
+      updateStrategy: "appVersion",
+    });
+    expect(update?.releaseId).toBe(releaseB);
+    expect(native.acceptCatalog).toHaveBeenCalledTimes(2);
+  });
+
   it("retries catalog acceptance after a native revision change", async () => {
     const { updater, native, fetch } = setup();
     native.acceptCatalog.mockImplementationOnce((_params, callback) =>
