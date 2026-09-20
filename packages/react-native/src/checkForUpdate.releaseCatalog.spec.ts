@@ -1,6 +1,7 @@
 import {
   createReleaseCatalogScopeKey,
   encodeChannelKey,
+  type ArtifactInfo,
   type PersistedSelectionReceipt,
   type ReleaseCatalog,
 } from "@hot-updater/core";
@@ -77,12 +78,13 @@ const createCatalog = (
 
 const createClient = (catalog = createCatalog()) => {
   const fetchReleaseCatalog = vi.fn(async () => catalog);
-  const resolveArtifact = vi.fn(async () => ({
+  const artifact: ArtifactInfo = {
     artifactProtocolVersion: 1,
     assets: {},
     manifestFileHash: "manifest-hash",
     manifestUrl: "https://updates.example.com/manifest.json",
-  }));
+  };
+  const resolveArtifact = vi.fn(async () => artifact);
   const sendInsightsEvent = vi.fn(async () => undefined);
   const session = {
     fetchReleaseCatalog,
