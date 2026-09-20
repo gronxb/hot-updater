@@ -488,6 +488,65 @@ describe("Lynx managed page evidence actions", () => {
       expect.objectContaining({ encoding: "utf8" }),
     );
   });
+
+  it("steals a leftover agent-device session during iOS native back", async () => {
+    let openCount = 0;
+    vi.mocked(spawnSync).mockImplementation((command, args) => {
+      const argv = args as string[];
+      if (command === "xcrun") {
+        return {
+          status: 0,
+          stdout: JSON.stringify({
+            devices: {
+              "com.apple.CoreSimulator.SimRuntime.iOS-26-0": [
+                {
+                  name: "iPhone 17 Pro",
+                  state: "Booted",
+                  udid: "10AB9405-035A-4243-8D85-154B641AA009",
+                },
+              ],
+            },
+          }),
+        } as ReturnType<typeof spawnSync>;
+      }
+      if (command === "agent-device" && argv[0] === "open") {
+        openCount += 1;
+        if (openCount === 1) {
+          return {
+            status: 1,
+            stdout: JSON.stringify({
+              success: false,
+              error: {
+                code: "DEVICE_IN_USE",
+                message:
+                  'Device is already in use by session "lynx-e2e-1082".',
+              },
+            }),
+          } as ReturnType<typeof spawnSync>;
+        }
+      }
+      return {
+        status: 0,
+        stdout: JSON.stringify({ success: true, data: { sessions: [] } }),
+      } as ReturnType<typeof spawnSync>;
+    });
+    const client = createControlClient({
+      baseUrl: "http://control.test",
+      fetch: vi.fn(),
+    });
+    const ios = new LynxAppDriver(client, "ios", {
+      HOT_UPDATER_E2E_IOS_SIMULATOR_NAME: "iPhone 17 Pro",
+    });
+
+    await ios.nativeBack("native back");
+
+    expect(openCount).toBe(2);
+    expect(vi.mocked(spawnSync)).toHaveBeenCalledWith(
+      "agent-device",
+      ["close", "--session", "lynx-e2e-1082", "--json"],
+      expect.objectContaining({ encoding: "utf8" }),
+    );
+  });
 });
 
 describe("Lynx update actions", () => {

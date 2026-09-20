@@ -433,6 +433,19 @@ export class LynxAppDriver implements DetoxAppDriver {
     });
   }
 
+  async waitForDetailAdmission(
+    stage: string,
+    expectedMarker: string,
+  ): Promise<void> {
+    await this.runStage(stage, async () => {
+      await this.controlClient.waitForScreenStateField(
+        `${stage}: wait for detail marker`,
+        "detailPageMarker",
+        { expectedValue: expectedMarker },
+      );
+    });
+  }
+
   async closeDetailPage(stage: string): Promise<void> {
     await this.runStage(stage, async () => {
       await this.controlClient.postJson(
@@ -471,19 +484,7 @@ export class LynxAppDriver implements DetoxAppDriver {
       };
       this.releaseIosAgentDeviceSessions();
       try {
-        this.runOrThrow("agent-device", [
-          "open",
-          this.appId(),
-          "--platform",
-          "ios",
-          "--udid",
-          this.resolveIosAgentDeviceUdid(),
-          "--foreground",
-          "--force",
-          "--session",
-          session,
-          "--json",
-        ]);
+        this.openIosAgentDeviceSession(session);
         this.runOrThrow("agent-device", [
           "gesture",
           "swipe",
@@ -1133,6 +1134,48 @@ Android launch log marker was not found`,
     return this.runOrThrow(command, args);
   }
 
+  private leftoverAgentDeviceSession(error: unknown): string | null {
+    const text = error instanceof Error ? error.message : String(error);
+    return (
+      text.match(/in use by session .*?(lynx-e2e-[0-9]+)/)?.[1] ??
+      null
+    );
+  }
+
+  private closeIosAgentDeviceSession(session: string): void {
+    spawnSync(
+      "agent-device",
+      ["close", "--session", session, "--json"],
+      { encoding: "utf8", env: this.env },
+    );
+  }
+
+  private openIosAgentDeviceSession(session: string): void {
+    const open = () =>
+      this.runOrThrow("agent-device", [
+        "open",
+        this.appId(),
+        "--platform",
+        "ios",
+        "--udid",
+        this.resolveIosAgentDeviceUdid(),
+        "--foreground",
+        "--force",
+        "--session",
+        session,
+        "--json",
+      ]);
+    try {
+      open();
+    } catch (error) {
+      const leftover = this.leftoverAgentDeviceSession(error);
+      if (leftover === null) throw error;
+      this.closeIosAgentDeviceSession(leftover);
+      this.releaseIosAgentDeviceSessions();
+      open();
+    }
+  }
+
   private releaseIosAgentDeviceSessions(): void {
     const listed = spawnSync(
       "agent-device",
@@ -1145,6 +1188,10 @@ Android launch log marker was not found`,
       const sessions = parsed?.data?.sessions ?? parsed?.sessions ?? [];
       if (Array.isArray(sessions)) {
         for (const session of sessions) {
+          if (typeof session === "string" && session.length > 0) {
+            names.push(session);
+            continue;
+          }
           const name =
             session && typeof session === "object"
               ? (session as { name?: unknown; session?: unknown; id?: unknown })

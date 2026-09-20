@@ -67,6 +67,30 @@ const navigationBoundaryParameters = (
   return { a: "é".repeat(512), b: "b".repeat(970) };
 };
 
+async function waitForManagedDetailOpened(
+  app: LynxAppDriver,
+  stage: string,
+  options: {
+    readonly platform: "ios" | "android";
+    readonly main: ManagedPageIdentity;
+    readonly expectedParameters: Readonly<Record<string, string>>;
+  },
+): Promise<ManagedPageIdentity> {
+  let lastError: unknown;
+  for (let attempt = 1; attempt <= 20; attempt += 1) {
+    const snapshot = await app.captureGenerationEvents(
+      attempt === 1 ? stage : `${stage} retry ${attempt}`,
+    );
+    try {
+      return assertManagedDetailOpened(snapshot, options);
+    } catch (error) {
+      lastError = error;
+      await new Promise((resolve) => setTimeout(resolve, 500));
+    }
+  }
+  throw lastError;
+}
+
 async function resetAndInstallServerA(
   app: LynxAppDriver,
   marker: string,
@@ -365,6 +389,11 @@ export const sparklingMultipageOtaScenario = {
       "decoded-query-bytes",
       "raw-route-bytes",
     ] as const) {
+      await app.control(
+        `multi-page navigation ${vector}: reset detail observation`,
+        "/e2e/screen-state",
+        { detailPageMarker: null, detailPageTitle: null },
+      );
       await app.tap(
         `multi-page navigation ${vector}: accept exact max and reject overflow`,
         "action-verify-managed-navigation-boundary",
@@ -375,14 +404,19 @@ export const sparklingMultipageOtaScenario = {
         `Navigation boundary ${vector}: max accepted, plus one rejected`,
         { exactText: true },
       );
-      const boundaryEvents = await app.captureGenerationEvents(
-        `multi-page navigation ${vector}: capture native page evidence`,
+      await app.waitForDetailAdmission(
+        `multi-page navigation ${vector}: wait for native detail`,
+        markerA,
       );
-      const boundaryDetail = assertManagedDetailOpened(boundaryEvents, {
-        platform: app.platformName,
-        main: mainA,
-        expectedParameters: navigationBoundaryParameters(vector),
-      });
+      const boundaryDetail = await waitForManagedDetailOpened(
+        app,
+        `multi-page navigation ${vector}: capture native page evidence`,
+        {
+          platform: app.platformName,
+          main: mainA,
+          expectedParameters: navigationBoundaryParameters(vector),
+        },
+      );
       await app.closeDetailPage(
         `multi-page navigation ${vector}: close accepted page`,
       );

@@ -491,13 +491,14 @@ function App() {
               loadExternal: loadExternalBootstrap,
               loadDynamic: loadDynamicProbe,
             });
-            await maybeCrashForE2E();
           },
-          () =>
-            confirmRuntimeReady(HotUpdater, async (status) => {
+          async () => {
+            await confirmRuntimeReady(HotUpdater, async (status) => {
               setLaunchStatus(status);
               await publishRuntimeSnapshot(status);
-            }),
+            });
+            await maybeCrashForE2E();
+          },
           ensurePendingActionPoller,
         );
         if (!active || !ready) return;
