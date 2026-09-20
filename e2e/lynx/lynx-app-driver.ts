@@ -479,6 +479,7 @@ export class LynxAppDriver implements DetoxAppDriver {
           "--udid",
           this.resolveIosAgentDeviceUdid(),
           "--foreground",
+          "--force",
           "--session",
           session,
           "--json",
