@@ -520,7 +520,7 @@ export const sparklingMultipageOtaScenario = {
     await app.assertText(
       "multi-page cross-provenance: require native incompatibility rejection",
       "update-action-result",
-      ["INCOMPATIBLE", "incompatible"],
+      ["INCOMPATIBLE", "incompatible", "compatibility mismatch"],
     );
     await app.assertText(
       "multi-page cross-provenance: preserve embedded Bundle",
