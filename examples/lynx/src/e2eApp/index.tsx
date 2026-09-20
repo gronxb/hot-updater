@@ -483,6 +483,7 @@ function App() {
         const ready = await bootstrapRuntimeReady(
           runtimeConfigurationReady,
           async () => {
+            await maybeCrashForE2E();
             await loadE2EStartupResources({
               loadFont: async (url) => {
                 await loadProbeFont(url);
@@ -491,7 +492,6 @@ function App() {
               loadExternal: loadExternalBootstrap,
               loadDynamic: loadDynamicProbe,
             });
-            await maybeCrashForE2E();
           },
           () =>
             confirmRuntimeReady(HotUpdater, async (status) => {

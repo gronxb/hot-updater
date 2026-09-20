@@ -29,8 +29,14 @@ export async function loadE2EStartupResources(loaders: {
   loadDynamic: (url: string) => Promise<string>;
 }): Promise<void> {
   if (!startupImageReady) {
-    await new Promise<void>((resolve) => {
-      resolveStartupImage = resolve;
+    await new Promise<void>((resolve, reject) => {
+      const timer = setTimeout(() => {
+        reject(new Error("E2E startup image did not load"));
+      }, 10_000);
+      resolveStartupImage = () => {
+        clearTimeout(timer);
+        resolve();
+      };
     });
   }
   await loaders.loadFont("hot-updater:///assets/probe.ttf");
