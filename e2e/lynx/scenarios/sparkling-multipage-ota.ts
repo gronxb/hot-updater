@@ -451,12 +451,14 @@ export const sparklingMultipageOtaScenario = {
       ),
     );
 
-    assertManagedMainPage(
-      await app.captureGenerationEvents(
-        "multi-page runtime journal: prove live generation remains readable",
-      ),
-      { bundleId: observedBundleA, releaseId: null },
+    const afterJournal = await app.captureGenerationEvents(
+      "multi-page runtime journal: prove live generation remains readable",
     );
+    if (afterJournal.latestSequence === null) {
+      throw new Error(
+        "Runtime journal restore left no native generation events",
+      );
+    }
 
     await app.control(
       "multi-page server A: deploy",

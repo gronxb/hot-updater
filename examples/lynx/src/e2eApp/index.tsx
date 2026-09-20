@@ -518,6 +518,7 @@ function App() {
           launchStatus: status,
           runtimeScenarioMarker: scenarioMarker,
         });
+        ensurePendingActionPoller();
       }
     })();
     return () => {
