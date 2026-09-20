@@ -145,13 +145,20 @@ final class IOSBuiltInAssetResolver: BuiltInAssetResolver {
 
     private func packageIdentity(for bundle: Bundle) -> String {
         let values = try? bundle.bundleURL.resourceValues(forKeys: [.contentModificationDateKey, .fileSizeKey])
+        let bundleIdentifier = bundle.bundleIdentifier ?? ""
+        let shortVersion = bundle.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? ""
+        let bundleVersion = bundle.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? ""
+        let bundlePath = bundle.bundleURL.standardizedFileURL.path
+        let fileSize = String(values?.fileSize ?? -1)
+        let modificationTime = String(values?.contentModificationDate?.timeIntervalSince1970 ?? -1)
+
         return [
-            bundle.bundleIdentifier ?? "",
-            bundle.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "",
-            bundle.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "",
-            bundle.bundleURL.standardizedFileURL.path,
-            String(values?.fileSize ?? -1),
-            String(values?.contentModificationDate?.timeIntervalSince1970 ?? -1),
+            bundleIdentifier,
+            shortVersion,
+            bundleVersion,
+            bundlePath,
+            fileSize,
+            modificationTime,
         ].joined(separator: "|")
     }
 
