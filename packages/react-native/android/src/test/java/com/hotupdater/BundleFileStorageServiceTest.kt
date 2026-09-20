@@ -832,8 +832,9 @@ class BundleFileStorageServiceTest {
             progressCallback: (DownloadProgress) -> Unit,
         ): DownloadResult {
             calls += fileUrl.toString()
-            val content = contents[fileUrl.toString()]
-                ?: return DownloadResult.Error(IllegalArgumentException("Unexpected URL: $fileUrl"))
+            val content =
+                contents[fileUrl.toString()]
+                    ?: return DownloadResult.Error(IllegalArgumentException("Unexpected URL: $fileUrl"))
             destination.parentFile?.mkdirs()
             destination.writeText(content)
             fileSizeCallback?.invoke(destination.length())

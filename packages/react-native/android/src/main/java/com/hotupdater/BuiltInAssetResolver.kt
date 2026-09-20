@@ -10,7 +10,11 @@ import java.security.MessageDigest
 import java.util.zip.ZipFile
 
 interface BuiltInAssetResolver {
-    fun copyIfMatches(assetPath: String, expectedHash: String, destination: File): Boolean
+    fun copyIfMatches(
+        assetPath: String,
+        expectedHash: String,
+        destination: File,
+    ): Boolean
 }
 
 internal class AndroidBuiltInAssetResolver(
@@ -132,11 +136,12 @@ internal class AndroidBuiltInAssetResolver(
                 false
             } else {
                 if (destination.exists()) destination.delete()
-                tempFile.renameTo(destination) || run {
-                    tempFile.copyTo(destination, overwrite = true)
-                    tempFile.delete()
-                    true
-                }
+                tempFile.renameTo(destination) ||
+                    run {
+                        tempFile.copyTo(destination, overwrite = true)
+                        tempFile.delete()
+                        true
+                    }
             }
         } catch (_: Exception) {
             tempFile.delete()
@@ -147,22 +152,30 @@ internal class AndroidBuiltInAssetResolver(
     private fun openLocator(locator: String): InputStream? {
         return try {
             when {
-                locator.startsWith("asset:") -> context.assets.open(locator.removePrefix("asset:"))
+                locator.startsWith("asset:") -> {
+                    context.assets.open(locator.removePrefix("asset:"))
+                }
+
                 locator.startsWith("zip:") -> {
                     val separator = locator.indexOf('!', startIndex = 4)
                     if (separator < 0) return null
                     val apk = File(locator.substring(4, separator))
                     if (installedApks().none { it.absolutePath == apk.absolutePath }) return null
                     val zip = ZipFile(apk)
-                    val entry = zip.getEntry(locator.substring(separator + 1)) ?: run {
-                        zip.close()
-                        return null
-                    }
+                    val entry =
+                        zip.getEntry(locator.substring(separator + 1)) ?: run {
+                            zip.close()
+                            return null
+                        }
                     val stream = zip.getInputStream(entry)
                     object : InputStream() {
                         override fun read(): Int = stream.read()
-                        override fun read(buffer: ByteArray, offset: Int, length: Int): Int =
-                            stream.read(buffer, offset, length)
+
+                        override fun read(
+                            buffer: ByteArray,
+                            offset: Int,
+                            length: Int,
+                        ): Int = stream.read(buffer, offset, length)
 
                         override fun close() {
                             stream.close()
@@ -170,7 +183,10 @@ internal class AndroidBuiltInAssetResolver(
                         }
                     }
                 }
-                else -> null
+
+                else -> {
+                    null
+                }
             }
         } catch (_: Exception) {
             null
