@@ -1,6 +1,7 @@
 export type E2eLaunchConfiguration = {
   readonly appBaseURL: string;
   readonly launchGeneration?: string;
+  readonly runtimeGenerationEpoch?: string;
   readonly runtimeConfigURL: string;
 };
 
@@ -42,6 +43,10 @@ export function resolveE2eLaunchConfiguration(
     ...(typeof value.launchGeneration === "string" &&
     value.launchGeneration.length > 0
       ? { launchGeneration: value.launchGeneration }
+      : {}),
+    ...(typeof value.runtimeGenerationEpoch === "string" &&
+    /^[1-9][0-9]*$/.test(value.runtimeGenerationEpoch)
+      ? { runtimeGenerationEpoch: value.runtimeGenerationEpoch }
       : {}),
     runtimeConfigURL: httpURL(
       value.runtimeConfigURL,

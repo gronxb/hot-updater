@@ -120,6 +120,30 @@ describe("E2E screen state control boundary", () => {
     });
   });
 
+  it("rejects a marker from an older in-process runtime generation", () => {
+    beginE2eScreenStateLaunch("launch-active");
+    expect(
+      handlePatchE2eScreenState({
+        launchGeneration: "launch-active",
+        runtimeGenerationEpoch: "2",
+        runtimeScenarioMarker: "replacement-marker",
+      }),
+    ).toMatchObject({
+      runtimeGenerationEpoch: "2",
+      screenState: { runtimeScenarioMarker: "replacement-marker" },
+    });
+    expect(() =>
+      handlePatchE2eScreenState({
+        launchGeneration: "launch-active",
+        runtimeGenerationEpoch: "1",
+        runtimeScenarioMarker: "stale-marker",
+      }),
+    ).toThrow("stale screen state runtime generation");
+    expect(readE2eScreenStateSnapshot().runtimeScenarioMarker).toBe(
+      "replacement-marker",
+    );
+  });
+
   it("allows control-driver action resets after a generated launch", () => {
     beginE2eScreenStateLaunch("launch-active");
 

@@ -54,6 +54,7 @@ const defaultE2eScreenState = {
 
 let e2eScreenState: E2eScreenState = defaultE2eScreenState;
 let e2eScreenStateLaunchGeneration: string | null = null;
+let e2eScreenStateRuntimeGenerationEpoch: string | null = null;
 
 const createScreenStateError = (message: string, details?: unknown) =>
   Object.assign(new Error(message), { details });
@@ -220,6 +221,7 @@ export const readE2eScreenStateSnapshot = () => e2eScreenState;
 export const resetE2eScreenState = () => {
   e2eScreenState = defaultE2eScreenState;
   e2eScreenStateLaunchGeneration = null;
+  e2eScreenStateRuntimeGenerationEpoch = null;
   return { screenState: readE2eScreenStateSnapshot() };
 };
 
@@ -235,18 +237,36 @@ export const setE2eScreenStateLaunchGeneration = (
   e2eScreenStateLaunchGeneration = launchGeneration;
 };
 
+const canonicalEpoch = (value: unknown): string | null =>
+  typeof value === "string" && /^[1-9][0-9]*$/.test(value) ? value : null;
+
 export const handlePatchE2eScreenState = (payload: unknown) => {
+  const recordPayload = isRecord(payload) ? payload : null;
   const publishesRuntimeMarker =
-    isRecord(payload) && typeof payload.runtimeScenarioMarker === "string";
+    recordPayload !== null &&
+    typeof recordPayload.runtimeScenarioMarker === "string";
+  const incomingEpoch = canonicalEpoch(recordPayload?.runtimeGenerationEpoch);
   if (
     publishesRuntimeMarker &&
     e2eScreenStateLaunchGeneration !== null &&
-    payload.launchGeneration !== e2eScreenStateLaunchGeneration
+    recordPayload?.launchGeneration !== e2eScreenStateLaunchGeneration
   ) {
     throw createScreenStateError("stale screen state launch generation", {
       expected: e2eScreenStateLaunchGeneration,
-      received: payload.launchGeneration,
+      received: recordPayload?.launchGeneration,
     });
+  }
+  if (publishesRuntimeMarker && incomingEpoch !== null) {
+    if (
+      e2eScreenStateRuntimeGenerationEpoch !== null &&
+      BigInt(incomingEpoch) < BigInt(e2eScreenStateRuntimeGenerationEpoch)
+    ) {
+      throw createScreenStateError("stale screen state runtime generation", {
+        expected: e2eScreenStateRuntimeGenerationEpoch,
+        received: incomingEpoch,
+      });
+    }
+    e2eScreenStateRuntimeGenerationEpoch = incomingEpoch;
   }
   e2eScreenState = {
     ...e2eScreenState,
@@ -254,6 +274,7 @@ export const handlePatchE2eScreenState = (payload: unknown) => {
   };
   return {
     launchGeneration: e2eScreenStateLaunchGeneration,
+    runtimeGenerationEpoch: e2eScreenStateRuntimeGenerationEpoch,
     screenState: readE2eScreenStateSnapshot(),
   };
 };

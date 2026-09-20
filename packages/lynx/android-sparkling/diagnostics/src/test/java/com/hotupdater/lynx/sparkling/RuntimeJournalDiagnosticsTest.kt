@@ -33,11 +33,16 @@ class RuntimeJournalDiagnosticsTest {
             )
 
             diagnostics.install("count-plus-one")
-            diagnostics.append()
-            val evicted = diagnostics.receipt().getJSONObject("snapshot")
+            var evicted = diagnostics.receipt().getJSONObject("snapshot")
             assertEquals("2", evicted.getString("oldestSequence"))
             assertEquals("257", evicted.getString("latestSequence"))
             assertTrue(evicted.getBoolean("truncated"))
+            assertEquals(256, evicted.getJSONArray("events").length())
+
+            diagnostics.append()
+            evicted = diagnostics.receipt().getJSONObject("snapshot")
+            assertEquals("3", evicted.getString("oldestSequence"))
+            assertEquals("258", evicted.getString("latestSequence"))
             assertEquals(256, evicted.getJSONArray("events").length())
         } finally {
             root.deleteRecursively()
@@ -50,14 +55,19 @@ class RuntimeJournalDiagnosticsTest {
         try {
             val diagnostics = diagnostics(root)
             diagnostics.install("byte-plus-one")
+            var receipt = diagnostics.receipt()
+            var snapshot = receipt.getJSONObject("snapshot")
+            assertEquals("2", snapshot.getString("oldestSequence"))
+            assertEquals("256", snapshot.getString("latestSequence"))
+            assertEquals(255, snapshot.getJSONArray("events").length())
+            assertTrue(snapshot.getBoolean("truncated"))
+
             diagnostics.append()
-            val receipt = diagnostics.receipt()
+            receipt = diagnostics.receipt()
+            snapshot = receipt.getJSONObject("snapshot")
             assertTrue(receipt.getInt("byteLength") <= 16 * 1024 * 1024)
-            assertTrue(receipt.getJSONObject("snapshot").getBoolean("truncated"))
-            assertEquals(
-                "257",
-                receipt.getJSONObject("snapshot").getString("latestSequence"),
-            )
+            assertTrue(snapshot.getBoolean("truncated"))
+            assertEquals("257", snapshot.getString("latestSequence"))
             assertEquals(JSONObject.NULL, receipt.get("canonicalUtf8"))
         } finally {
             root.deleteRecursively()

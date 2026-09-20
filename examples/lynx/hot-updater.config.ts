@@ -4,6 +4,7 @@ import fsp from "node:fs/promises";
 import path from "node:path";
 import { promisify } from "node:util";
 
+import { LYNX_E2E_BUILTIN_BUNDLE_ID } from "../../e2e/lynx/embedded-bundle.ts";
 import { lynx } from "../../packages/lynx/dist/build.mjs";
 import { s3Storage } from "../../plugins/aws/dist/index.mjs";
 import {
@@ -175,7 +176,7 @@ export default {
         "utf8",
       ),
     }),
-    build: async ({ cwd, outDir, platform }) => {
+    build: async ({ cwd, outDir, platform, bundleId }) => {
       const selectedRuntimeId = resolveE2eBuildRuntimeId(platform);
       for (const cacheDir of [
         ".rspeedy",
@@ -212,11 +213,23 @@ export default {
       const { pageEntries, pageEssentialResources } =
         await finishLynxE2eBundle(outDir);
       await copyE2eFixtures(cwd, outDir);
+      const patchSurface = await fsp.readFile(
+        path.join(cwd, "src/e2eApp/patchSurface.ts"),
+        "utf8",
+      );
+      const scenarioMarker =
+        /export const E2E_SCENARIO_MARKER = "([^"]+)";/.exec(patchSurface)?.[1];
+      const reuseEmbeddedIdentity =
+        process.env.HOT_UPDATER_E2E_BUILD_MODE !== "cross-provenance" &&
+        scenarioMarker === "targeted-qa-detox";
       return {
         entry: "main.lynx.bundle",
         pageEntries,
         pageEssentialResources,
         runtimeId: selectedRuntimeId,
+        ...(reuseEmbeddedIdentity
+          ? { bundleId: LYNX_E2E_BUILTIN_BUNDLE_ID }
+          : { bundleId }),
       };
     },
   }),

@@ -10,12 +10,14 @@ final class SparklingManagedNavigationTests: XCTestCase {
         XCTAssertEqual(
             HotUpdaterSparklingPageLaunchConfiguration.merge(
                 host: ["runtimeConfigURL": "http://localhost", "title": "Host"],
-                page: ["title": "Second Page", "item": "42"]
+                page: ["title": "Second Page", "item": "42"],
+                runtimeGenerationEpoch: "7"
             ),
             [
                 "runtimeConfigURL": "http://localhost",
                 "title": "Second Page",
                 "item": "42",
+                "runtimeGenerationEpoch": "7",
             ]
         )
     }

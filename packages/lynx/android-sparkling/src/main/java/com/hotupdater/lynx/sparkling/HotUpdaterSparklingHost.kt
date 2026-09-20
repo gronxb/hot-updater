@@ -100,6 +100,7 @@ class HotUpdaterSparklingHost(
     private var closed = false
     private var transitioning = false
     private var pendingReconstruction = emptyList<LynxLogicalPage>()
+    private var runtimeGenerationEpoch = 1
 
     init {
         ManagedSparklingBridge.register()
@@ -614,6 +615,7 @@ class HotUpdaterSparklingHost(
             var launchReason = reason
             repeat(MAX_RECONSTRUCTION_ATTEMPTS) {
                 controller = newController()
+                runtimeGenerationEpoch += 1
                 generationEvents = SparklingGenerationEvents(eventSink)
                 var primarySession: LynxLaunchSession? = null
                 try {
@@ -846,6 +848,7 @@ class HotUpdaterSparklingHost(
                         configuration.allowDiagnosticIntentLaunchConfiguration,
                         activity,
                         page.logical.parameters,
+                        runtimeGenerationEpoch.toString(),
                     ),
                 )
             }

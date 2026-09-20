@@ -39,6 +39,8 @@ export interface LynxBuildOutput {
   readonly pageEssentialResources: readonly LynxPageEssentialResources[];
   /** Exact compatibility identity embedded by the target native binary. */
   readonly runtimeId: string;
+  /** Optional identity that must match a native embedded Bundle. */
+  readonly bundleId?: string;
   readonly stdout?: string | null;
 }
 
@@ -132,7 +134,7 @@ export const lynx =
         throw new Error("Lynx outDir must be a subdirectory of the app.");
       }
 
-      const bundleId = uuidv7();
+      let bundleId = uuidv7();
       await fs.mkdir(outputRoot, { recursive: true });
       if (
         !isSubdirectory(await fs.realpath(cwd), await fs.realpath(outputRoot))
@@ -141,18 +143,28 @@ export const lynx =
       }
       const buildPath = await fs.mkdtemp(path.join(outputRoot, `${platform}-`));
       try {
+        const compiled = await build({
+          cwd,
+          platform,
+          bundleId,
+          outDir: buildPath,
+        });
         const {
           entry,
           pageEntries,
           pageEssentialResources,
           runtimeId,
           stdout = null,
-        } = await build({
-          cwd,
-          platform,
-          bundleId,
-          outDir: buildPath,
-        });
+        } = compiled;
+        if (compiled.bundleId !== undefined && compiled.bundleId !== bundleId) {
+          if (
+            typeof compiled.bundleId !== "string" ||
+            compiled.bundleId.length === 0
+          ) {
+            throw new Error("Lynx output bundle identity is invalid.");
+          }
+          bundleId = compiled.bundleId;
+        }
         assertPortablePath(entry, "Lynx entry");
         if (typeof runtimeId !== "string" || !runtimeId.trim()) {
           throw new Error(

@@ -189,12 +189,7 @@ private fun HotUpdaterSparklingHost.armFatalFailure(
     val generation = generationEvents
     pageProgressObserver = progress@{ candidate ->
         if (candidate !== page) return@progress
-        if (
-            page.admitted || !page.firstContentObserved ||
-            !page.observedEssentialResources.containsAll(
-                page.expectedEssentialResources,
-            )
-        ) return@progress
+        if (page.admitted || !page.firstContentObserved) return@progress
         pageProgressObserver = null
         check(page.session.recordFatalFailure(message)) {
             "The pending diagnostic page rejected fatal classification"

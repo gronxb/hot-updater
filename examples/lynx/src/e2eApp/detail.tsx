@@ -11,12 +11,14 @@ import { publishScreenStatePatch } from "./screenStatePublication";
 let screenStateURL = "http://localhost:3107/e2e/screen-state";
 let pendingActionURL = "http://localhost:3107/e2e/pending-action";
 let launchGeneration: string | null = null;
+let runtimeGenerationEpoch: string | null = null;
 
 const fetchState = (url: string, init?: RequestInit) => fetch(url, init);
 
 const patchScreenState = (patch: Record<string, unknown>) =>
   publishScreenStatePatch(fetchState, screenStateURL, patch, {
     launchGeneration,
+    runtimeGenerationEpoch,
   });
 
 const closeDetailPage = () =>
@@ -57,6 +59,7 @@ const configure = async () => {
   const native = await HotUpdater.getLaunchConfiguration();
   const endpoints = resolveE2eLaunchConfiguration(native);
   launchGeneration = endpoints.launchGeneration ?? null;
+  runtimeGenerationEpoch = endpoints.runtimeGenerationEpoch ?? null;
   screenStateURL = endpoints.runtimeConfigURL.endsWith("/runtime-config")
     ? endpoints.runtimeConfigURL.replace(/\/runtime-config$/, "/screen-state")
     : `${endpoints.runtimeConfigURL.replace(/\/+$/, "")}/screen-state`;

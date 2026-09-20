@@ -35,16 +35,25 @@ object HotUpdaterSparklingLaunchConfiguration {
         host: Map<String, String>,
         diagnostics: Map<String, String>,
         page: Map<String, String>,
-    ): Map<String, String> = host + diagnostics + page
+        runtimeGenerationEpoch: String,
+    ): Map<String, String> {
+        require(runtimeGenerationEpoch.matches(Regex("^[1-9][0-9]*$"))) {
+            "Lynx runtime generation epoch must be a canonical decimal"
+        }
+        return host + diagnostics + page +
+            ("runtimeGenerationEpoch" to runtimeGenerationEpoch)
+    }
 
     internal fun resolve(
         host: Map<String, String>,
         allowDiagnosticIntent: Boolean,
         context: Context,
         page: Map<String, String>,
+        runtimeGenerationEpoch: String,
     ): Map<String, String> = merge(
         host,
         if (allowDiagnosticIntent) from(context) else emptyMap(),
         page,
+        runtimeGenerationEpoch,
     )
 }

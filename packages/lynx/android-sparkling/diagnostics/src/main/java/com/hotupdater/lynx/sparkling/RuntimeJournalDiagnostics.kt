@@ -17,8 +17,8 @@ class RuntimeJournalDiagnostics(
     fun install(mode: String) {
         val bytes = when (mode) {
             "retention-limit" -> retentionEnvelope("retention")
-            "count-plus-one" -> retentionEnvelope("count")
-            "byte-plus-one" -> byteBoundaryEnvelope(includeAppend = false)
+            "count-plus-one" -> countPlusOneEnvelope()
+            "byte-plus-one" -> bytePlusOneEnvelope()
             "corrupt-json" -> "{".toByteArray()
             "noncanonical" -> (
                 "{ \"schemaVersion\": 1, \"events\": [], " +
@@ -109,6 +109,64 @@ class RuntimeJournalDiagnostics(
             )
         }
         return envelope(events, 257, false).toByteArray()
+    }
+
+    private fun countPlusOneEnvelope(): ByteArray {
+        val events = (2..LynxGenerationEventJournal.CAPACITY + 1).map {
+            sequence ->
+            event(sequence, "retentionFixture", detailsWithFixture("count"))
+        }
+        return envelope(
+            events,
+            LynxGenerationEventJournal.CAPACITY + 2,
+            true,
+        ).toByteArray()
+    }
+
+    private fun bytePlusOneEnvelope(): ByteArray {
+        val payloadBytes = MutableList(LynxGenerationEventJournal.CAPACITY) {
+            MAX_PAYLOAD_BYTES
+        }
+        fun candidate(): ByteArray = envelope(
+            payloadBytes.mapIndexed { index, count ->
+                event(
+                    index + 1,
+                    "byteFixture",
+                    detailsWithPayload("x".repeat(count)),
+                )
+            },
+            LynxGenerationEventJournal.CAPACITY + 1,
+            false,
+        ).toByteArray()
+
+        var excess = candidate().size -
+            (LynxGenerationEventJournal.MAX_JOURNAL_BYTES + 1)
+        check(excess >= 0) { "Could not construct the journal byte boundary" }
+        for (index in payloadBytes.indices.reversed()) {
+            if (excess == 0) break
+            val reduction = minOf(payloadBytes[index], excess)
+            payloadBytes[index] -= reduction
+            excess -= reduction
+        }
+        check(excess == 0) { "Could not construct the journal byte boundary" }
+        check(
+            candidate().size == LynxGenerationEventJournal.MAX_JOURNAL_BYTES + 1,
+        ) { "Could not construct the journal byte boundary" }
+
+        val retained = payloadBytes.drop(1).mapIndexed { index, count ->
+            event(
+                index + 2,
+                "byteFixture",
+                detailsWithPayload("x".repeat(count)),
+            )
+        }
+        return envelope(
+            retained,
+            LynxGenerationEventJournal.CAPACITY + 1,
+            true,
+        ).toByteArray().also { bytes ->
+            check(bytes.size <= LynxGenerationEventJournal.MAX_JOURNAL_BYTES)
+        }
     }
 
     private fun byteBoundaryEnvelope(includeAppend: Boolean): ByteArray {

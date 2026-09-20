@@ -41,12 +41,21 @@ const acknowledgedLaunchGeneration = (payload: unknown): unknown => {
   return (payload as { launchGeneration?: unknown }).launchGeneration;
 };
 
+const acknowledgedRuntimeGenerationEpoch = (payload: unknown): unknown => {
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+    return undefined;
+  }
+  return (payload as { runtimeGenerationEpoch?: unknown })
+    .runtimeGenerationEpoch;
+};
+
 export async function publishScreenStatePatch(
   fetchState: ScreenStateFetch,
   url: string,
   patch: ScreenStatePatch,
   options: {
     readonly launchGeneration?: string | null;
+    readonly runtimeGenerationEpoch?: string | null;
     readonly markerAttempts?: number;
     readonly retryDelayMs?: number;
   } = {},
@@ -68,6 +77,9 @@ export async function publishScreenStatePatch(
           ...(options.launchGeneration
             ? { launchGeneration: options.launchGeneration }
             : {}),
+          ...(options.runtimeGenerationEpoch
+            ? { runtimeGenerationEpoch: options.runtimeGenerationEpoch }
+            : {}),
         }),
       });
       if (!response.ok) {
@@ -81,7 +93,11 @@ export async function publishScreenStatePatch(
         if (
           acknowledgedMarker(payload) !== expectedMarker ||
           (options.launchGeneration &&
-            acknowledgedLaunchGeneration(payload) !== options.launchGeneration)
+            acknowledgedLaunchGeneration(payload) !==
+              options.launchGeneration) ||
+          (options.runtimeGenerationEpoch &&
+            acknowledgedRuntimeGenerationEpoch(payload) !==
+              options.runtimeGenerationEpoch)
         ) {
           throw new Error("Screen state marker was not acknowledged");
         }

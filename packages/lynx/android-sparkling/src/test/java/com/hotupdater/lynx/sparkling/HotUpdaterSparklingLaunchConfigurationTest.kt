@@ -21,6 +21,7 @@ class HotUpdaterSparklingLaunchConfigurationTest {
                 "diagnosticOnly" to "diagnostic",
                 "pageOnly" to "page",
                 "shared" to "page",
+                "runtimeGenerationEpoch" to "3",
             ),
             HotUpdaterSparklingLaunchConfiguration.merge(
                 host = mapOf("hostOnly" to "host", "shared" to "host"),
@@ -29,6 +30,7 @@ class HotUpdaterSparklingLaunchConfigurationTest {
                     "shared" to "diagnostic",
                 ),
                 page = mapOf("pageOnly" to "page", "shared" to "page"),
+                runtimeGenerationEpoch = "3",
             ),
         )
     }
@@ -63,6 +65,7 @@ class HotUpdaterSparklingLaunchConfigurationTest {
             mapOf(
                 "appBaseURL" to "https://updates.company.com/hot-updater",
                 "title" to "Detail",
+                "runtimeGenerationEpoch" to "1",
             ),
             HotUpdaterSparklingLaunchConfiguration.resolve(
                 host = configuration.launchConfiguration,
@@ -70,6 +73,7 @@ class HotUpdaterSparklingLaunchConfigurationTest {
                     configuration.allowDiagnosticIntentLaunchConfiguration,
                 context = activity,
                 page = mapOf("title" to "Detail"),
+                runtimeGenerationEpoch = "1",
             ),
         )
     }
@@ -88,6 +92,7 @@ class HotUpdaterSparklingLaunchConfigurationTest {
             mapOf(
                 "appBaseURL" to "http://diagnostics.test/hot-updater",
                 "title" to "Page",
+                "runtimeGenerationEpoch" to "4",
             ),
             HotUpdaterSparklingLaunchConfiguration.resolve(
                 host = mapOf(
@@ -97,6 +102,7 @@ class HotUpdaterSparklingLaunchConfigurationTest {
                 allowDiagnosticIntent = true,
                 context = activity,
                 page = mapOf("title" to "Page"),
+                runtimeGenerationEpoch = "4",
             ),
         )
     }

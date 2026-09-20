@@ -7,12 +7,14 @@ const response = (
   marker?: string,
   launchGeneration?: string,
   statusText = "",
+  runtimeGenerationEpoch?: string,
 ) => ({
   ok: status >= 200 && status < 300,
   status,
   statusText,
   json: async () => ({
     launchGeneration,
+    runtimeGenerationEpoch,
     screenState: { runtimeScenarioMarker: marker },
   }),
 });
@@ -62,21 +64,48 @@ describe("Lynx E2E screen-state publication", () => {
     const fetchState = vi
       .fn()
       .mockResolvedValue(
-        response(200, "actual-bundle-marker", "launch-current"),
+        response(200, "actual-bundle-marker", "launch-current", "", "2"),
       );
 
     await publishScreenStatePatch(
       fetchState,
       "http://127.0.0.1:3107/e2e/screen-state",
       { runtimeScenarioMarker: "actual-bundle-marker" },
-      { launchGeneration: "launch-current", retryDelayMs: 0 },
+      {
+        launchGeneration: "launch-current",
+        runtimeGenerationEpoch: "2",
+        retryDelayMs: 0,
+      },
     );
 
     expect(fetchState).toHaveBeenCalledOnce();
     expect(JSON.parse(fetchState.mock.calls[0]![1].body as string)).toEqual({
       launchGeneration: "launch-current",
+      runtimeGenerationEpoch: "2",
       runtimeScenarioMarker: "actual-bundle-marker",
     });
+  });
+
+  it("rejects a marker from an older runtime generation epoch", async () => {
+    const fetchState = vi
+      .fn()
+      .mockResolvedValue(
+        response(200, "actual-bundle-marker", "launch-current", "", "1"),
+      );
+
+    await expect(
+      publishScreenStatePatch(
+        fetchState,
+        "http://control.test/e2e/screen-state",
+        { runtimeScenarioMarker: "actual-bundle-marker" },
+        {
+          launchGeneration: "launch-current",
+          runtimeGenerationEpoch: "2",
+          markerAttempts: 1,
+          retryDelayMs: 0,
+        },
+      ),
+    ).rejects.toThrow("Screen state marker was not acknowledged");
   });
 
   it("rejects success responses that do not acknowledge the actual bundle marker", async () => {

@@ -49,9 +49,19 @@ public struct HotUpdaterSparklingParameter: Codable, Equatable {
 enum HotUpdaterSparklingPageLaunchConfiguration {
     static func merge(
         host: [String: String],
-        page: [String: String]
+        page: [String: String],
+        runtimeGenerationEpoch: String
     ) -> [String: String] {
-        host.merging(page) { _, pageValue in pageValue }
+        precondition(
+            runtimeGenerationEpoch.range(
+                of: "^[1-9][0-9]*$",
+                options: .regularExpression
+            ) != nil,
+            "Lynx runtime generation epoch must be a canonical decimal"
+        )
+        var merged = host.merging(page) { _, pageValue in pageValue }
+        merged["runtimeGenerationEpoch"] = runtimeGenerationEpoch
+        return merged
     }
 }
 

@@ -130,6 +130,7 @@ public final class HotUpdaterSparklingHost: NSObject,
     private var recoveredTerminalEventsEmitted = false
     private var closed = false
     private let launchConfiguration: [String: String]
+    private var runtimeGenerationEpoch = 1
 #if HOT_UPDATER_LYNX_DIAGNOSTICS
     var failNextSecondaryAdmissionForDiagnostics = false
     var holdNextSecondaryAdmissionForDiagnostics = false
@@ -925,7 +926,8 @@ public final class HotUpdaterSparklingHost: NSObject,
                 .merge(
                     host: launchConfiguration,
                     page: Dictionary(uniqueKeysWithValues:
-                        logical.parameters.map { ($0.name, $0.value) })
+                        logical.parameters.map { ($0.name, $0.value) }),
+                    runtimeGenerationEpoch: String(runtimeGenerationEpoch)
                 )
         )
         let sparkling = SPKContext()
@@ -1114,6 +1116,7 @@ public final class HotUpdaterSparklingHost: NSObject,
     private func startGeneration() throws {
         controller = try LynxController(configuration: configuration.controller)
         recoveredTerminalEventsEmitted = false
+        runtimeGenerationEpoch += 1
         generationEvents = SparklingGenerationEvents(
             journal: eventJournal,
             runtimeId: configuration.controller.runtimeId,

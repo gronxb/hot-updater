@@ -144,6 +144,26 @@ describe("framework-independent Lynx artifacts", () => {
     }
   });
 
+  it("uses a compiler-supplied bundle identity for an exact embedded replay", async () => {
+    const embeddedId = "00000000-0000-7000-8000-000000000000";
+    build.mockImplementation(async ({ outDir, bundleId }) => {
+      expect(bundleId).not.toBe(embeddedId);
+      await fs.writeFile(path.join(outDir, "main.lynx.bundle"), binary);
+      return { ...singlePageOutput(), bundleId: embeddedId };
+    });
+
+    const result = await lynx({ build })({ cwd }).build({ platform: "ios" });
+    expect(result.bundleId).toBe(embeddedId);
+    expect(
+      JSON.parse(
+        await fs.readFile(
+          path.join(result.buildPath, "hot-updater-lynx.json"),
+          "utf8",
+        ),
+      ).bundleId,
+    ).toBe(embeddedId);
+  });
+
   it("orders artifact names by locale-independent UTF-16 code units", async () => {
     build.mockImplementation(async ({ outDir }) => {
       await Promise.all([
