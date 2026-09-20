@@ -451,6 +451,13 @@ export const sparklingMultipageOtaScenario = {
       ),
     );
 
+    assertManagedMainPage(
+      await app.captureGenerationEvents(
+        "multi-page runtime journal: prove live generation remains readable",
+      ),
+      { bundleId: observedBundleA, releaseId: null },
+    );
+
     await app.control(
       "multi-page server A: deploy",
       "/e2e/jobs/deploy-bundle",

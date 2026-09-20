@@ -49,8 +49,9 @@ export async function loadE2EStartupResources(loaders: {
   }
 }
 
-export async function maybeCrashForE2E(): Promise<void> {
+export async function maybeCrashForE2E(): Promise<boolean> {
   /* E2E_CRASH_GUARD_START */
+  return false;
   /* E2E_CRASH_GUARD_END */
 }
 

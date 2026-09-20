@@ -493,11 +493,13 @@ function App() {
             });
           },
           async () => {
+            setLaunchStatus("Current Launch Status: STARTING");
+            await publishRuntimeSnapshot("Current Launch Status: STARTING");
+            if (await maybeCrashForE2E()) return;
             await confirmRuntimeReady(HotUpdater, async (status) => {
               setLaunchStatus(status);
               await publishRuntimeSnapshot(status);
             });
-            await maybeCrashForE2E();
           },
           ensurePendingActionPoller,
         );

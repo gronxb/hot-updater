@@ -1175,9 +1175,10 @@ async function applyAppScenario({
           '    { path: "detail.lynx.bundle" },',
           "    () => undefined,",
           "  );",
+          "  return true;",
           `  ${CRASH_GUARD_END}`,
         ].join("\n")
-      : `${CRASH_GUARD_START}\n  ${CRASH_GUARD_END}`;
+      : `${CRASH_GUARD_START}\n  return false;\n  ${CRASH_GUARD_END}`;
   const deployAssetSource = createDeployAssetGuardSource(
     bundleProfile,
     fixtureSession.appId,
