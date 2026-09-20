@@ -344,18 +344,18 @@ server public entry 경계는 `packages/server/AGENTS.md`를 따른다. CLI 출�
 
 ## 10. 완료 조건
 
-- [ ] M0 실측으로 두 플랫폼의 실제 내장 파일 대응과 재사용·fallback 한계를 기록했다.
-- [ ] 필수 빌드 manifest 삽입 없이 첫 OTA 동일 파일 재사용이 작동한다.
-- [ ] 내장 인덱스는 비동기·부분적·재생성 가능하고 native package identity 변화에 안전하다.
-- [ ] 모든 목표 파일의 원본을 얻을 수 있어 base/cache/patch 없이 설치된다.
-- [ ] 로컬 손상·patch 실패가 파일 단위로 복구된다.
-- [ ] signing/hash/path/atomic staging/catalog/recovery 불변식이 유지된다.
-- [ ] 새 OTA에는 zip/tar.gz/tar.br 아카이브 생성·업로드·다운로드·설치 경로가 없다.
-- [ ] `compressStrategy`가 공개 surface에서 제거되고 예전 설정은 명확히 거부된다.
-- [ ] 1.0.0 schema/migration과 versioned protocol을 직접 갱신하고 테스트했다.
-- [ ] 작은 변경과 전체 변경의 bytes/requests/time/disk/memory 비교 결과를 남겼다.
+- [x] M0 실측으로 두 플랫폼의 실제 내장 파일 대응과 재사용·fallback 한계를 기록했다.
+- [x] 필수 빌드 manifest 삽입 없이 첫 OTA 동일 파일 재사용이 작동한다.
+- [x] 내장 인덱스는 비동기·부분적·재생성 가능하고 native package identity 변화에 안전하다.
+- [x] 모든 목표 파일의 원본을 얻을 수 있어 base/cache/patch 없이 설치된다.
+- [x] 로컬 손상·patch 실패가 파일 단위로 복구된다.
+- [x] signing/hash/path/atomic staging/catalog/recovery 불변식이 유지된다.
+- [x] 새 OTA에는 zip/tar.gz/tar.br 아카이브 생성·업로드·다운로드·설치 경로가 없다.
+- [x] `compressStrategy`가 공개 surface에서 제거되고 예전 설정은 명확히 거부된다.
+- [x] 1.0.0 schema/migration과 versioned protocol을 직접 갱신하고 테스트했다.
+- [x] 작은 변경과 전체 변경의 bytes/requests/time/disk/memory 비교 결과를 남겼다.
 - [ ] 의미 있는 unit/integration/native/iOS·Android E2E와 required repo checks가 통과했다.
-- [ ] 첫 내장 Hermes patch가 base 등록 없이 지원된다고 주장하지 않는다.
+- [x] 첫 내장 Hermes patch가 base 등록 없이 지원된다고 주장하지 않는다.
 - [ ] 문서·예제·changeset·실행 상태를 갱신하고 사용자에게 검토 가능한 결과를 전달했다.
 
 ## 11. 진행을 제한하는 조건
@@ -380,3 +380,12 @@ M0 실측 결과는 `plans/evidence/builtin-packaging.md`와 JSON에 기록했�
 native package cache identity는 iOS app bundle identity와 Android package/split
 identity로 구현했다. artifact 경계는 versioned v1 endpoint만 지원하며, v1 초기
 schema와 최초 migration을 archive 없는 계약으로 직접 수정했다.
+
+M3 실측은 `plans/evidence/manifest-transfer.md`와 JSON에 기록했다. Android
+Release fixture에서 첫 OTA는 1,048,299 → 830,077 bytes, 실제 HBC patch OTA는
+1,048,348 → 115,353 bytes였다. 1,000개 파일 전체 변경은 1,001 requests와 ZIP
+대비 35.5% 느린 로컬 설치 시간을 보여, 개별 파일 프로토콜의 확장성 한계로
+명시했다. 이 결과를 모든 workload의 성능 향상으로 해석하지 않는다.
+
+iOS Release simulator의 `bspatch-builtin-to-diff-ota`는 통과했다. Android
+Release E2E는 공유 agent lease 대기 때문에 아직 완료 조건으로 표시하지 않는다.

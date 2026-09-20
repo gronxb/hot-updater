@@ -279,7 +279,7 @@ The v0 `/app-version/...` and `/fingerprint/...` decision endpoints and
 `Hot-Updater-SDK-Version` header contract are removed. The client reads
 `/release-catalogs/app-version/:platform/:channelKey/:appVersion` or
 `/release-catalogs/fingerprint/:platform/:channelKey/:fingerprintHash`, selects
-locally, then resolves `/artifacts/:targetBundleId/from/:currentBundleId`.
+locally, then resolves `/artifacts/v1/:targetBundleId/from/:currentBundleId`.
 Channel names are encoded into `channelKey`; neither Catalog path includes an
 installation identity. Do not add an API-version prefix to these routes.
 Persistent Channel management uses the authenticated admin root's

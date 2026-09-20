@@ -375,7 +375,7 @@ describe("Detox remote asset proxy URLs", () => {
     try {
       const controller = await import("./control-server/controller.ts");
       const url =
-        "http://localhost:3107/hot-updater/artifacts/target/from/current";
+        "http://localhost:3107/hot-updater/artifacts/v1/target/from/current";
 
       expect(
         controller.getHotUpdaterClientRequestHeaders().get("x-api-key"),
