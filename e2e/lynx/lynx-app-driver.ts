@@ -462,26 +462,38 @@ export class LynxAppDriver implements DetoxAppDriver {
         return;
       }
       const session = `lynx-e2e-${process.pid}`;
-      this.runOrThrow("agent-device", [
-        "open",
-        this.appId(),
-        "--platform",
-        "ios",
-        "--udid",
-        this.resolveIosAgentDeviceUdid(),
-        "--foreground",
-        "--session",
-        session,
-        "--json",
-      ]);
-      this.runOrThrow("agent-device", [
-        "gesture",
-        "swipe",
-        "right-edge",
-        "--session",
-        session,
-        "--json",
-      ]);
+      const closeSession = () => {
+        spawnSync(
+          "agent-device",
+          ["close", "--session", session, "--json"],
+          { encoding: "utf8", env: this.env },
+        );
+      };
+      closeSession();
+      try {
+        this.runOrThrow("agent-device", [
+          "open",
+          this.appId(),
+          "--platform",
+          "ios",
+          "--udid",
+          this.resolveIosAgentDeviceUdid(),
+          "--foreground",
+          "--session",
+          session,
+          "--json",
+        ]);
+        this.runOrThrow("agent-device", [
+          "gesture",
+          "swipe",
+          "right-edge",
+          "--session",
+          session,
+          "--json",
+        ]);
+      } finally {
+        closeSession();
+      }
     });
   }
 
