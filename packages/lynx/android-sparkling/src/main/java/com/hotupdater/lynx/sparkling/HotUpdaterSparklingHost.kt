@@ -879,11 +879,7 @@ class HotUpdaterSparklingHost(
         if (page.logical.entry in page.expectedEssentialResources) {
             launch.resolveEssential(page.logical.entry)
         }
-        view.post {
-            if (page.view === view && !closed) {
-                kit.load()
-            }
-        }
+        kit.load()
         return view
     }
 
