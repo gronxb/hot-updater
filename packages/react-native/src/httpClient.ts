@@ -102,44 +102,27 @@ const resolveArtifactUrls = (
   info: ArtifactInfo,
 ): ArtifactInfo => ({
   ...info,
-  ...(info.manifestUrl === undefined
-    ? {}
-    : {
-        manifestUrl:
-          info.manifestUrl === null
-            ? null
-            : resolveArtifactUrl(baseURL, info.manifestUrl),
-      }),
-  ...(info.assets === undefined
-    ? {}
-    : {
-        assets:
-          info.assets === null
-            ? null
-            : Object.fromEntries(
-                Object.entries(info.assets).map(([path, asset]) => [
-                  path,
-                  {
-                    ...asset,
-                    file: {
-                      ...asset.file,
-                      url: resolveArtifactUrl(baseURL, asset.file.url),
-                    },
-                    ...(asset.patch
-                      ? {
-                          patch: {
-                            ...asset.patch,
-                            patchUrl: resolveArtifactUrl(
-                              baseURL,
-                              asset.patch.patchUrl,
-                            ),
-                          },
-                        }
-                      : {}),
-                  },
-                ]),
-              ),
-      }),
+  manifestUrl: resolveArtifactUrl(baseURL, info.manifestUrl),
+  assets: Object.fromEntries(
+    Object.entries(info.assets).map(([path, asset]) => [
+      path,
+      {
+        ...asset,
+        file: {
+          ...asset.file,
+          url: resolveArtifactUrl(baseURL, asset.file.url),
+        },
+        ...(asset.patch
+          ? {
+              patch: {
+                ...asset.patch,
+                patchUrl: resolveArtifactUrl(baseURL, asset.patch.patchUrl),
+              },
+            }
+          : {}),
+      },
+    ]),
+  ),
 });
 
 const requireArtifactProtocolV1 = (info: ArtifactInfo): ArtifactInfo => {

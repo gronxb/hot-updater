@@ -3,7 +3,6 @@ import {
   createReleaseSelectionContextHash,
   encodeChannelKey,
   selectDesiredRelease,
-  type ArtifactInfo,
   type PersistedSelectionReceipt,
   type ReleaseCatalog,
 } from "@hot-updater/core";
@@ -61,7 +60,7 @@ export interface CheckForUpdateOptions {
   requestTimeout?: number;
 }
 
-export type CheckForUpdateResult = ArtifactInfo & {
+export type CheckForUpdateResult = {
   readonly id: string;
   readonly message: string | null;
   readonly rolloutCohortCount: number;
@@ -365,11 +364,11 @@ async function checkForReleaseCatalogUpdate(input: {
       throw new StaleReleaseCatalogError();
     }
     const downloaded = await updateBundle({
-      assets: artifact.assets!,
+      assets: artifact.assets,
       bundleId: desired.bundleId,
       channel: input.targetChannel,
-      manifestFileHash: artifact.manifestFileHash!,
-      manifestUrl: artifact.manifestUrl!,
+      manifestFileHash: artifact.manifestFileHash,
+      manifestUrl: artifact.manifestUrl,
       selection: receipt,
       shouldSkipCurrentBundleIdCheck: true,
       status: desired.status,
