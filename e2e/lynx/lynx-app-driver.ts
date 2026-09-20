@@ -469,7 +469,7 @@ export class LynxAppDriver implements DetoxAppDriver {
           { encoding: "utf8", env: this.env },
         );
       };
-      closeSession();
+      this.releaseIosAgentDeviceSessions();
       try {
         this.runOrThrow("agent-device", [
           "open",
@@ -643,6 +643,7 @@ export class LynxAppDriver implements DetoxAppDriver {
       }),
     );
     if (this.platform === "ios") {
+      this.releaseIosAgentDeviceSessions();
       const output = this.runLaunch(
         "xcrun",
         [
@@ -1116,6 +1117,38 @@ export class LynxAppDriver implements DetoxAppDriver {
       return result.stdout ?? "";
     }
     return this.runOrThrow(command, args);
+  }
+
+  private releaseIosAgentDeviceSessions(): void {
+    const listed = spawnSync(
+      "agent-device",
+      ["session", "list", "--json"],
+      { encoding: "utf8", env: this.env },
+    );
+    const names: string[] = [];
+    try {
+      const parsed = JSON.parse(String(listed.stdout ?? "{}"));
+      const sessions = parsed?.data?.sessions ?? parsed?.sessions ?? [];
+      if (Array.isArray(sessions)) {
+        for (const session of sessions) {
+          const name =
+            session && typeof session === "object"
+              ? (session as { name?: unknown; session?: unknown; id?: unknown })
+              : null;
+          const value = name?.name ?? name?.session ?? name?.id;
+          if (typeof value === "string" && value.length > 0) names.push(value);
+        }
+      }
+    } catch {
+      // A leftover session list is best-effort cleanup.
+    }
+    for (const name of names) {
+      spawnSync(
+        "agent-device",
+        ["close", "--session", name, "--json"],
+        { encoding: "utf8", env: this.env },
+      );
+    }
   }
 
   private runOrThrow(command: string, args: readonly string[]): string {
