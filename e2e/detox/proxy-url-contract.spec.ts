@@ -86,6 +86,54 @@ describe("Detox remote asset proxy URLs", () => {
     }
   });
 
+  it("injects configured artifact failures on the update artifact path", async () => {
+    const resultsDir = await fs.mkdtemp(
+      path.join(os.tmpdir(), "hot-updater-e2e-proxy-artifact-fail-"),
+    );
+    const fetchMock = vi.fn(async () => {
+      return new Response("bundle-bytes", {
+        headers: { "content-type": "application/octet-stream" },
+      });
+    });
+
+    vi.resetModules();
+    vi.stubEnv(
+      "HOT_UPDATER_E2E_APP_BASE_URL",
+      "https://provider.example.com/hot-updater",
+    );
+    vi.stubEnv("HOT_UPDATER_E2E_APP_ID", "com.hotupdater.example");
+    vi.stubEnv("HOT_UPDATER_E2E_DEVICE_ID", "booted");
+    vi.stubEnv("HOT_UPDATER_E2E_PLATFORM", "ios");
+    vi.stubEnv("HOT_UPDATER_E2E_RESULTS_DIR", resultsDir);
+    vi.stubEnv("PORT", "3107");
+    vi.stubGlobal("fetch", fetchMock);
+
+    try {
+      const controller = await import("./control-server/controller.ts");
+      const artifactUrl =
+        "http://localhost:3107/hot-updater/artifacts/target/from/current";
+      controller.handleConfigureProxy({ artifactFailures: 1, reset: true });
+      const failed = await controller.handleProxyUpdateRequest(
+        new Request(artifactUrl),
+      );
+      expect(failed.status).toBe(503);
+      expect(controller.handleProxyState().artifactFailuresRemaining).toBe(0);
+      expect(controller.handleProxyState().requestCounts.artifact).toBe(1);
+      expect(fetchMock).not.toHaveBeenCalled();
+
+      const recovered = await controller.handleProxyUpdateRequest(
+        new Request(artifactUrl),
+      );
+      expect(recovered.status).toBe(200);
+      expect(await recovered.text()).toBe("bundle-bytes");
+      expect(controller.handleProxyState().requestCounts.artifact).toBe(2);
+    } finally {
+      vi.unstubAllEnvs();
+      vi.unstubAllGlobals();
+      await fs.rm(resultsDir, { force: true, recursive: true });
+    }
+  });
+
   it("rewrites update asset URLs to opaque paths that resolve server-side", async () => {
     const resultsDir = await fs.mkdtemp(
       path.join(os.tmpdir(), "hot-updater-proxy-url-"),

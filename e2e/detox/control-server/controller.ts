@@ -4174,6 +4174,12 @@ export async function handleProxyUpdateRequest(request: Request) {
   const requestUrl = new URL(request.url);
   const requestKind = classifyProxiedUpdatePath(requestUrl.pathname);
   recordProxyRequest(requestKind, requestUrl.pathname);
+  if (requestKind === "artifact" && artifactFailuresRemaining > 0) {
+    artifactFailuresRemaining -= 1;
+    return new Response("Injected E2E artifact download failure", {
+      status: 503,
+    });
+  }
   if (requestKind === "catalog") {
     const replay = selectCapturedCatalog(requestUrl.pathname);
     if (replay !== null) {

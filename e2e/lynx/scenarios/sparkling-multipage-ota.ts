@@ -472,6 +472,7 @@ export const sparklingMultipageOtaScenario = {
     await app.tap(
       "multi-page cross-provenance: invoke ordinary updater install",
       "action-install-current-channel-update",
+      { allowErrorResult: true },
     );
     await app.assertText(
       "multi-page cross-provenance: require native incompatibility rejection",
