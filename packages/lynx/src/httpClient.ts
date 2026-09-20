@@ -498,19 +498,6 @@ export function createHttpClient(options: HotUpdaterOptions) {
         if (manifestFileHash === null || changedAssets === null) {
           return invalidResponse("Incomplete manifest update.");
         }
-        if (fileUrl !== null) {
-          if (fileHash === null) {
-            return invalidResponse("Incomplete archive update.");
-          }
-          return {
-            bundleId,
-            fileUrl,
-            fileHash,
-            manifestUrl,
-            manifestFileHash,
-            changedAssets,
-          };
-        }
         return {
           bundleId,
           fileUrl: null,

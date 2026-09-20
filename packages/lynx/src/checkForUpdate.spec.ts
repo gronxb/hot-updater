@@ -294,8 +294,8 @@ describe("Lynx catalog controller (mock native transport)", () => {
     expect(native.prepareSelection).not.toHaveBeenCalled();
     expect(validated().artifact).toEqual({
       bundleId: B,
-      fileUrl: "https://updates.test/storage/archive.tar.gz",
-      fileHash: "d".repeat(64),
+      fileUrl: null,
+      fileHash: null,
       manifestUrl: "https://updates.test/storage/manifest.json",
       manifestFileHash,
       changedAssets: {

@@ -207,7 +207,7 @@ describe("Lynx delivery HTTP contract", () => {
       baseURL: "https://updates.test",
     }).resolveArtifact("target", baseBundleId);
 
-    expect(result.fileUrl).toBe("https://updates.test/storage/archive.zip");
+    expect(result.fileUrl).toBeNull();
     expect(result.manifestUrl).toBe(
       "https://updates.test/storage/manifest.json",
     );
@@ -266,7 +266,7 @@ describe("Lynx delivery HTTP contract", () => {
   });
 
   it.each([false, true])(
-    "preserves manifest files and binary patches with archive fallback=%s",
+    "drops archive fallback when a complete changed-asset update is present (archive=%s)",
     async (withArchive) => {
       respond({
         ...manifestArtifact,
@@ -282,10 +282,8 @@ describe("Lynx delivery HTTP contract", () => {
         }).resolveArtifact("target", baseBundleId),
       ).resolves.toEqual({
         bundleId: "target",
-        fileUrl: withArchive
-          ? "https://updates.test/api/storage/archive.zip"
-          : null,
-        fileHash: withArchive ? archiveSignature : null,
+        fileUrl: null,
+        fileHash: null,
         manifestUrl: "https://updates.test/api/storage/manifest.json",
         manifestFileHash: manifestSignature,
         changedAssets: {
