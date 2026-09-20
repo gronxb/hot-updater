@@ -27,6 +27,12 @@ import {
   validateSigningConfig,
 } from "../utils/signing/validateSigningConfig";
 import {
+  hasVerificationOptions,
+  verifyInfrastructure,
+  type DoctorVerification,
+  type VerificationOptions,
+} from "./doctor/verification";
+import {
   checkInfrastructureStatus,
   createInfrastructureRemediation,
   getRequiredUpdateTarget,
@@ -100,6 +106,7 @@ interface LocalFingerprint {
 }
 
 interface DoctorDetails {
+  verification?: DoctorVerification;
   // Version related
   hotUpdaterVersion?: string;
   versionMismatches?: VersionMismatch[];
@@ -121,13 +128,13 @@ interface DoctorResult {
   details?: DoctorDetails;
 }
 
-interface DoctorOptions {
+interface DoctorOptions extends VerificationOptions {
   cwd?: string;
   serverBaseUrl?: string;
   fetch?: typeof fetch;
 }
 
-interface HandleDoctorOptions {
+interface HandleDoctorOptions extends VerificationOptions {
   serverBaseUrl?: string;
   json?: boolean;
 }
@@ -664,6 +671,16 @@ export async function doctor(
   try {
     const { cwd = getCwd(), serverBaseUrl, fetch: fetchImpl } = options;
 
+    if (hasVerificationOptions(options)) {
+      const verification = await verifyInfrastructure({ ...options, cwd });
+      return {
+        success:
+          verification.checks.length > 0 &&
+          verification.checks.every((check) => check.status === "pass"),
+        details: { verification },
+      };
+    }
+
     // Read package.json
     const packageResult = await readPackageUp<PackageJson>(cwd);
 
@@ -837,9 +854,12 @@ const promptServerBaseUrl = async () => {
 export const handleDoctor = async ({
   serverBaseUrl,
   json = false,
+  ...verificationOptions
 }: HandleDoctorOptions = {}) => {
   if (json) {
-    const result = normalizeDoctorResult(await doctor({ serverBaseUrl }));
+    const result = normalizeDoctorResult(
+      await doctor({ serverBaseUrl, ...verificationOptions }),
+    );
     console.log(JSON.stringify(result, null, 2));
     if (!result.success) {
       process.exit(1);
@@ -849,8 +869,13 @@ export const handleDoctor = async ({
 
   p.intro("Hot Updater doctor");
 
-  const resolvedServerBaseUrl = serverBaseUrl ?? (await promptServerBaseUrl());
-  const result = await doctor({ serverBaseUrl: resolvedServerBaseUrl });
+  const resolvedServerBaseUrl = hasVerificationOptions(verificationOptions)
+    ? serverBaseUrl
+    : (serverBaseUrl ?? (await promptServerBaseUrl()));
+  const result = await doctor({
+    serverBaseUrl: resolvedServerBaseUrl,
+    ...verificationOptions,
+  });
 
   if (result === true) {
     p.log.success("All checks passed.");
@@ -869,6 +894,23 @@ export const handleDoctor = async ({
   // Handle issues with details
   const { details } = result;
   let shouldExitWithFailure = !result.success;
+
+  if (details?.verification) {
+    const { scope, checks, notChecked } = details.verification;
+    p.log.message(ui.block("Verification", [ui.kv("Scope", scope)]));
+    for (const check of checks) {
+      const message = ui.line([check.status, check.code, check.message]);
+      if (check.status === "pass") p.log.success(message);
+      else p.log.error(message);
+      if (check.paths?.length)
+        p.log.info(check.paths.map((file) => ui.path(file)).join(", "));
+      if (check.resolution) p.log.info(check.resolution);
+    }
+    p.log.info(`Not checked: ${notChecked.join(", ")}`);
+    if (!result.success) process.exit(1);
+    p.outro(`${scope} checks passed.`);
+    return;
+  }
 
   if (details?.hotUpdaterVersion) {
     p.log.message(

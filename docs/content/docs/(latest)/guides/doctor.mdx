@@ -37,6 +37,68 @@ npx hot-updater doctor --json
 `--json` does not prompt for the server URL. Pass `--server-base-url` when you
 want the infrastructure check included.
 
+## Verify infrastructure scaffolding
+
+Use an explicit scope when an agent or CI needs a completion gate. These checks
+run without evaluating the app config and do not require a React Native app in
+the current directory.
+
+```bash
+npx hot-updater doctor --scope scaffold --infra-dir ./infra --json
+```
+
+`scaffold` checks the selected directory against the templates packaged with the
+invoked CLI: supported manifest identity and versions, required files and safe
+paths, unresolved deployment placeholders, JSON syntax, and provider settings.
+Provider checks cover Cloudflare DB/BUCKET bindings and runtime entry point,
+Supabase Function authentication configuration, AWS catalog/artifact/version
+routes and API-key cache separation, and Firebase project/functions selection.
+Use the CLI version that generated the scaffold. An older scaffold requires its
+matching CLI or a fresh upgrade scaffold; editing its version fields is not an
+upgrade.
+
+A newly extracted scaffold normally fails until resource placeholders are filled.
+Doctor preserves custom settings and does not demand unchanged template hashes.
+It derives required files from the installed CLI, so deleting a manifest entry
+cannot hide a missing file. It never runs scripts from the scaffold.
+
+After deployment, require the live server checks too:
+
+```bash
+npx hot-updater doctor --scope infrastructure --infra-dir ./infra --json \
+  --server-base-url https://updates.example.com \
+  --platform ios --channel production --app-version 1.0.0
+```
+
+For fingerprint projects, replace `--app-version` with `--fingerprint`. Provide
+all target inputs explicitly. The client key is read privately from
+`HOT_UPDATER_API_KEY`, the app directory's `.env.hotupdater`, or scaffold
+`app/api-key.local`. Conflicting saved keys block verification.
+
+`infrastructure` reruns scaffold checks, rejects unresolved deployment records,
+and verifies `/version` against the scaffold target. It checks the same Release
+Catalog URL without a key (401) and with the saved key (valid catalog 200 or the
+exact private, non-cacheable empty-catalog 404). An arbitrary 404 is a failure.
+An agent-written `verifiedSteps` entry never replaces a live check.
+
+Both scopes return `details.verification` with `schemaVersion: 1`, `scope`,
+`checks`, and `notChecked`. Each check has a stable `code`, a `status` of `pass`,
+`fail`, or `blocked`, and actionable `paths`, `fixability`, and `resolution` when
+available. Exit code 0 and `success: true` require every check in the selected
+scope to pass. A failed prerequisite leaves dependent checks blocked.
+
+`fixability` describes remediation; it does not grant or revoke provider access.
+Agents may continue already authorized repairs and then rerun doctor. CI should
+use the exit code as the gate, rather than parsing human-readable output or
+accepting a recorded completion claim.
+
+These scopes do not verify actual remote resource bindings or migration history,
+local storage credentials/write access, artifact downloads, JS/native integration,
+or native OTA execution. These boundaries appear in `notChecked`; a scope pass
+must not be reported as native OTA success. Run the ordinary doctor for its
+existing package/native checks and complete the provider checklist for the
+remaining checks.
+
 ## Check Native Setup
 
 When `@hot-updater/react-native` is installed and native iOS or Android
@@ -251,3 +313,9 @@ then redeploy your server and verify it with doctor.
 | ------------------------- | ------------------------------------------------------- |
 | `--server-base-url <url>` | Check deployed infrastructure at `<url>/version`.       |
 | `--json`                  | Print a machine-readable result for agents and scripts. |
+| `--scope <scope>` | Require `scaffold` or `infrastructure` verification. |
+| `--infra-dir <directory>` | Exact directory returned by infrastructure scaffolding. |
+| `--platform <platform>` | `ios` or `android` for a live catalog check. |
+| `--channel <channel>` | Actual app channel for a live catalog check. |
+| `--app-version <version>` | App-version catalog target; exclusive with fingerprint. |
+| `--fingerprint <hash>` | Fingerprint catalog target; exclusive with app version. |

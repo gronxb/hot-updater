@@ -1680,6 +1680,9 @@ importers:
       '@hot-updater/server':
         specifier: workspace:*
         version: link:../server
+      '@iarna/toml':
+        specifier: 2.2.5
+        version: 2.2.5
       jiti:
         specifier: 2.6.1
         version: 2.6.1
