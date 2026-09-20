@@ -101,6 +101,7 @@ class HotUpdaterSparklingHost(
     private var transitioning = false
     private var pendingReconstruction = emptyList<LynxLogicalPage>()
     private var runtimeGenerationEpoch = 1
+    private var pendingGenerationStartReason = "initial"
 
     init {
         ManagedSparklingBridge.register()
@@ -133,10 +134,10 @@ class HotUpdaterSparklingHost(
             activity = WeakReference(activity),
         )
         pages += page
+        pendingGenerationStartReason = "initial"
         val view = attach(page, activity)
         pendingReconstruction = logicalStack.drop(1)
         openNextReconstructedPage()
-        emitGenerationStarted("initial")
         return view
     }
 
@@ -619,6 +620,7 @@ class HotUpdaterSparklingHost(
                 generationEvents = SparklingGenerationEvents(eventSink)
                 var primarySession: LynxLaunchSession? = null
                 try {
+                    pendingGenerationStartReason = launchReason
                     primarySession = controller.pinPrimary(
                         generationEvents.id,
                         retained.first().parameters,
@@ -642,7 +644,6 @@ class HotUpdaterSparklingHost(
                     pendingReconstruction = rebuiltStack.drop(1)
                     openNextReconstructedPage()
                     transitioning = false
-                    emitGenerationStarted(launchReason)
                     return
                 } catch (error: Throwable) {
                     Log.e(
@@ -870,6 +871,9 @@ class HotUpdaterSparklingHost(
             "generationWillEvaluate",
             details(page) + ("primary" to page.primary),
         )
+        if (page.primary && !page.recreating) {
+            emitGenerationStarted(pendingGenerationStartReason)
+        }
         kit.load()
         return view
     }
