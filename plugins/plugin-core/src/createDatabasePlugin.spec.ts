@@ -34,6 +34,8 @@ const createMethods = (): DatabasePluginImplementation => ({
   findOne: unimplemented,
   findMany: unimplemented,
   recordInsights: unimplemented,
+  getReleaseActivity: unimplemented,
+  getAppUsage: unimplemented,
   insertChannel: unimplemented,
   deleteChannel: unimplemented,
 });
@@ -119,10 +121,14 @@ describe("createDatabasePlugin", () => {
     expect(plugin.models.insights.findLatestEvents).toBeTypeOf("function");
     expect(plugin.models.insights.countEvents).toBeTypeOf("function");
     expect(plugin.models.insights.countLatestEvents).toBeTypeOf("function");
+    expect(plugin.models.insights.getReleaseActivity).toBeTypeOf("function");
+    expect(plugin.models.insights.getAppUsage).toBeTypeOf("function");
     expect(Object.keys(plugin.models.insights).sort()).toEqual([
       "countEvents",
       "countLatestEvents",
       "findLatestEvents",
+      "getAppUsage",
+      "getReleaseActivity",
       "listEvents",
       "recordEvent",
     ]);

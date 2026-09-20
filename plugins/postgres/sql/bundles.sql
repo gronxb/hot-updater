@@ -93,7 +93,28 @@ create table bundle_event_heads (
   channel text collate "C" not null,
   type text not null,
   from_bundle_id uuid,
-  to_bundle_id uuid not null
+  to_bundle_id uuid not null,
+  current_release_id uuid,
+  app_version text not null
+);
+
+create table insights_overview (
+  id varchar(64) collate "C" primary key not null,
+  scope_kind varchar(16) not null,
+  release_kind varchar(8) not null,
+  release_id varchar(36) not null default '',
+  channel text collate "C" not null,
+  platform varchar(8) collate "C" not null,
+  app_version_kind varchar(8) not null,
+  app_version text not null default '',
+  period_kind varchar(16) not null,
+  bucket_start_ms double precision not null default 0,
+  downloads bigint not null default 0,
+  launches bigint not null default 0,
+  failed_launches bigint not null default 0,
+  latest_installations bigint not null default 0,
+  launch_users text,
+  activity_users text
 );
 
 create table api_keys (
@@ -159,6 +180,14 @@ alter table bundle_events add constraint bundle_events_shape_check
   check (((type in ('UPDATE_DOWNLOADED', 'UPDATE_APPLIED', 'RECOVERED')) and from_bundle_id is not null) or (type = 'UNCHANGED' and from_bundle_id is null));
 alter table bundle_events add constraint bundle_events_received_at_check
   check (received_at_ms >= 0);
+alter table insights_overview add constraint insights_overview_scope_kind_check
+  check (scope_kind in ('release', 'channel', 'usage', 'distribution'));
+alter table insights_overview add constraint insights_overview_period_kind_check
+  check (period_kind in ('lifetime', 'hour', 'latest'));
+alter table insights_overview add constraint insights_overview_bucket_check
+  check ((period_kind = 'lifetime' and bucket_start_ms = 0) or (period_kind in ('hour', 'latest') and bucket_start_ms >= 0 and mod(cast(bucket_start_ms as numeric), 3600000) = 0));
+alter table insights_overview add constraint insights_overview_counts_check
+  check (downloads >= 0 and launches >= 0 and failed_launches >= 0 and latest_installations >= 0);
 alter table api_keys add constraint api_keys_role_check
   check (role = 'client');
 alter table api_keys add constraint api_keys_created_at_check
@@ -189,3 +218,6 @@ CREATE INDEX bundle_event_heads_user_idx ON bundle_event_heads(user_id, install_
 CREATE INDEX bundle_event_heads_scope_idx ON bundle_event_heads(platform, channel, received_at_ms);
 CREATE INDEX bundle_event_heads_from_idx ON bundle_event_heads(type, platform, channel, from_bundle_id, received_at_ms);
 CREATE INDEX bundle_event_heads_to_idx ON bundle_event_heads(type, platform, channel, to_bundle_id, received_at_ms);
+CREATE INDEX insights_overview_release_time_idx ON insights_overview(scope_kind, release_id, platform, channel, period_kind, bucket_start_ms);
+CREATE INDEX insights_overview_scope_time_idx ON insights_overview(scope_kind, channel, platform, app_version_kind, app_version, period_kind, bucket_start_ms);
+CREATE INDEX insights_overview_distribution_time_idx ON insights_overview(scope_kind, channel, period_kind, bucket_start_ms, platform, app_version);

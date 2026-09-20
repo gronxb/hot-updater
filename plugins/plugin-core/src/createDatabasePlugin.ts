@@ -962,6 +962,8 @@ export const createDatabasePluginAdapter = (
             ],
           });
         },
+        getReleaseActivity: (input) => implementation.getReleaseActivity(input),
+        getAppUsage: (input) => implementation.getAppUsage(input),
       },
       apiKeys: {
         async create(row) {

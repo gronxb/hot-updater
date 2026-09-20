@@ -9,6 +9,7 @@ import type {
 } from "@hot-updater/plugin-core";
 import type {
   DatabaseImplementationResult,
+  InsightsOverviewIdentity,
   TransactionDatabasePluginImplementation,
 } from "@hot-updater/plugin-core/internal";
 
@@ -25,6 +26,26 @@ export interface MockDatabaseData {
   readonly apiKeys: Map<string, ApiKeyRow>;
   readonly releaseCatalogs: Map<string, ReleaseCatalogRow>;
   readonly releases: Map<string, ReleaseRow>;
+  readonly bundleEventHeads: Map<string, MockBundleEventHead>;
+  readonly insightsOverview: Map<string, MockInsightsOverviewRow>;
+}
+
+export interface MockBundleEventHead {
+  readonly id: string;
+  readonly receivedAtMs: number;
+  readonly platform: "ios" | "android";
+  readonly channel: string;
+  readonly appVersion: string;
+  readonly currentReleaseId: string | null;
+}
+
+export interface MockInsightsOverviewRow extends InsightsOverviewIdentity {
+  readonly downloads: number;
+  readonly launches: number;
+  readonly failedLaunches: number;
+  readonly latestInstallations: number;
+  readonly launchUsers: string | null;
+  readonly activityUsers: string | null;
 }
 
 export class MockDatabaseConstraintError extends Error {
@@ -43,6 +64,8 @@ export const createMockDatabaseData = (): MockDatabaseData => ({
   apiKeys: new Map(),
   releaseCatalogs: new Map(),
   releases: new Map(),
+  bundleEventHeads: new Map(),
+  insightsOverview: new Map(),
 });
 
 export const cloneMockDatabaseData = (
@@ -55,6 +78,8 @@ export const cloneMockDatabaseData = (
   apiKeys: new Map(data.apiKeys),
   releaseCatalogs: new Map(data.releaseCatalogs),
   releases: new Map(data.releases),
+  bundleEventHeads: new Map(data.bundleEventHeads),
+  insightsOverview: new Map(data.insightsOverview),
 });
 
 export const replaceMockDatabaseData = (
@@ -68,6 +93,8 @@ export const replaceMockDatabaseData = (
   target.apiKeys.clear();
   target.releaseCatalogs.clear();
   target.releases.clear();
+  target.bundleEventHeads.clear();
+  target.insightsOverview.clear();
   for (const [id, row] of source.bundles) target.bundles.set(id, row);
   for (const [id, row] of source.bundlePatches) {
     target.bundlePatches.set(id, row);
@@ -85,6 +112,12 @@ export const replaceMockDatabaseData = (
     target.releaseCatalogs.set(scopeKey, row);
   }
   for (const [id, row] of source.releases) target.releases.set(id, row);
+  for (const [installId, row] of source.bundleEventHeads) {
+    target.bundleEventHeads.set(installId, row);
+  }
+  for (const [id, row] of source.insightsOverview) {
+    target.insightsOverview.set(id, row);
+  }
 };
 
 const requireUnique = (

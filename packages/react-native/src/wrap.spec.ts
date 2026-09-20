@@ -5,6 +5,7 @@ import { createElement, type ComponentType } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type {
+  ActiveUpdateState,
   NotifyAppReadyInsightsEvent,
   NotifyAppReadyResult,
 } from "./native";
@@ -37,6 +38,7 @@ const mocks = vi.hoisted(() => ({
   getBundleId: vi.fn(() => "bundle-id"),
   getUpdateId: vi.fn(() => "release-id"),
   getChannel: vi.fn(() => "production"),
+  getActiveUpdateState: vi.fn<() => ActiveUpdateState>(),
   getCohort: vi.fn(() => "123"),
   getFingerprintHash: vi.fn(() => "fingerprint-hash"),
   getInstallId: vi.fn(() => "install-id"),
@@ -61,6 +63,7 @@ vi.mock("./native", () => ({
   getBundleId: mocks.getBundleId,
   getUpdateId: mocks.getUpdateId,
   getChannel: mocks.getChannel,
+  getActiveUpdateState: mocks.getActiveUpdateState,
   getCohort: mocks.getCohort,
   getFingerprintHash: mocks.getFingerprintHash,
   getInstallId: mocks.getInstallId,
@@ -99,6 +102,11 @@ describe("HotUpdater wrap initialization", () => {
     mocks.getBundleId.mockReturnValue("bundle-id");
     mocks.getUpdateId.mockReturnValue("release-id");
     mocks.getChannel.mockReturnValue("production");
+    mocks.getActiveUpdateState.mockReturnValue({
+      activeSelection: null,
+      stableSelection: null,
+      verificationPending: false,
+    });
     mocks.getCohort.mockReturnValue("123");
     mocks.getFingerprintHash.mockReturnValue("fingerprint-hash");
     mocks.getInstallId.mockReturnValue("install-id");

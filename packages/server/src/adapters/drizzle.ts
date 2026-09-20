@@ -16,6 +16,10 @@ import type {
   SchemaGenerator,
 } from "../db/types";
 import { createDrizzleCrud, recordDrizzleInsights } from "./drizzleCrud";
+import {
+  getDrizzleAppUsage,
+  getDrizzleReleaseActivity,
+} from "./drizzleInsightsOverview";
 import { createLazyDB } from "./drizzleLazyDB";
 
 export type DrizzleProvider = Exclude<
@@ -45,6 +49,16 @@ const createImplementation = (
         input,
       );
     },
+    getReleaseActivity: async (input) =>
+      getDrizzleReleaseActivity(
+        db.resolve === undefined ? db : await db.resolve(),
+        input,
+      ),
+    getAppUsage: async (input) =>
+      getDrizzleAppUsage(
+        db.resolve === undefined ? db : await db.resolve(),
+        input,
+      ),
     deleteChannel: (input) => {
       if (transaction === undefined) {
         throw new Error(
@@ -130,6 +144,9 @@ export const drizzleAdapter = (
         countLatestEvents: (input) =>
           getAdapter().models.insights.countLatestEvents(input),
         countEvents: (input) => getAdapter().models.insights.countEvents(input),
+        getReleaseActivity: (input) =>
+          getAdapter().models.insights.getReleaseActivity(input),
+        getAppUsage: (input) => getAdapter().models.insights.getAppUsage(input),
       },
       apiKeys: {
         create: (row) => getAdapter().models.apiKeys.create(row),

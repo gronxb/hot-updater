@@ -506,5 +506,87 @@ export const registerDatabasePluginInsightsTests = (
         }),
       ).resolves.toBe(0);
     });
+
+    it("maintains idempotent release, scope, usage, and latest-distribution summaries", async () => {
+      const plugin = state.getPlugin();
+      const releaseA = "00000000-0000-7000-8000-000000008001";
+      const releaseB = "00000000-0000-7000-8000-000000008002";
+      const base = createBundleEventRowFixture("9801", 1_000);
+      const download: BundleEventRow = {
+        ...base,
+        type: "UPDATE_DOWNLOADED",
+        install_id: "summary-install-a",
+        from_release_id: releaseA,
+        to_release_id: releaseB,
+      };
+      const appliedA: BundleEventRow = {
+        ...download,
+        id: createBundleEventRowFixture("9802", 2_000).id,
+        type: "UPDATE_APPLIED",
+        received_at_ms: 2_000,
+      };
+      const appliedB: BundleEventRow = {
+        ...appliedA,
+        id: createBundleEventRowFixture("9803", 2_100).id,
+        install_id: "summary-install-b",
+        received_at_ms: 2_100,
+      };
+      const recovered: BundleEventRow = {
+        ...appliedA,
+        id: createBundleEventRowFixture("9804", 3_000).id,
+        type: "RECOVERED",
+        from_release_id: releaseB,
+        to_release_id: releaseA,
+        received_at_ms: 3_000,
+      };
+      for (const event of [download, appliedA, appliedB, appliedB, recovered]) {
+        await record(plugin, event);
+      }
+      const releases = [
+        { releaseId: releaseA, platform: "ios", channel: "production" },
+        { releaseId: releaseB, platform: "ios", channel: "production" },
+      ] as const;
+      const lifetime = await plugin.models.insights.getReleaseActivity({
+        releases,
+      });
+      expect(lifetime.data.map(({ metrics }) => metrics)).toEqual([
+        { downloads: 0, launches: 1, failedLaunches: 0 },
+        { downloads: 1, launches: 2, failedLaunches: 1 },
+      ]);
+      const scope = await plugin.models.insights.getReleaseActivity({
+        scope: { platform: "ios", channel: "production" },
+        timeRange: { start: 0, end: 3_600_000 },
+      });
+      expect(scope.data[0]?.metrics).toMatchObject({
+        downloads: 1,
+        launches: 3,
+        failedLaunches: 1,
+        uniqueUsers: 2,
+      });
+      const usage = await plugin.models.insights.getAppUsage({
+        channel: "production",
+        platform: "all",
+        timeRange: { start: 0, end: 3_600_000 },
+        intervalMs: 3_600_000,
+      });
+      expect(usage.activeInstallations).toBe(2);
+      expect(usage.points).toEqual([{ startMs: 0, installations: 2 }]);
+      expect(usage.bundleDistribution).toEqual(
+        expect.arrayContaining([
+          {
+            appVersion: "1.0.0",
+            platform: "ios",
+            releaseId: releaseA,
+            installations: 1,
+          },
+          {
+            appVersion: "1.0.0",
+            platform: "ios",
+            releaseId: releaseB,
+            installations: 1,
+          },
+        ]),
+      );
+    });
   });
 };

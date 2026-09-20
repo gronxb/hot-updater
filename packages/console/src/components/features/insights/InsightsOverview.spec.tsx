@@ -1,240 +1,104 @@
-import {
-  cleanup,
-  fireEvent,
-  render,
-  screen,
-  within,
-} from "@testing-library/react";
-import { cloneElement, type ReactElement, type ReactNode } from "react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { type ReactNode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { RecoveryReport } from "@/lib/insights-recovery";
 
-import { InsightsOverview, ActivityChart } from "./InsightsOverview";
+import { InsightsOverview } from "./InsightsOverview";
 
 vi.mock("@tanstack/react-router", () => ({
-  Link: ({
-    children,
-    search,
-    to,
-  }: {
-    children: ReactNode;
-    search?: { releaseId: string };
-    to: string;
-  }) => (
-    <a href={search?.releaseId ? `/?releaseId=${search.releaseId}` : to}>
-      {children}
-    </a>
-  ),
+  Link: ({ children }: { children: ReactNode }) => <a href="/">{children}</a>,
 }));
-vi.mock("recharts", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("recharts")>()),
-  ResponsiveContainer: ({ children }: { children: ReactElement }) =>
-    cloneElement(children, { width: 600, height: 224 } as object),
-}));
-const DAY = 86_400_000;
+
 const report: RecoveryReport = {
-  sinceMs: 0,
-  beforeReceivedAtMs: 3 * DAY,
-  intervalMs: DAY,
-  truncated: false,
-  unattributedInstallations: 0,
-  pendingInstallations: 0,
-  downloadedInstallations: 0,
-  series: ["new-id", "old-id"].map((releaseId, index) => ({
-    releaseId,
-    firstAppliedAtMs: 0,
-    activeInstallations: index === 0 ? 90 : 10,
-    pendingInstallations: 0,
-    downloadedInstallations: 0,
-    recoveredInstallations: index === 0 ? 3 : 0,
-    points: [10, 50, 90].map((active, i) => ({
-      startMs: i * DAY,
-      active: index === 0 ? active : 100 - active,
-      pendingInstallations: 0,
-      downloadedInstallations: 0,
-      recoveredInstallations: index === 0 && i === 2 ? 3 : 0,
-      applied: 7,
-      recovered: index === 0 && i === 2 ? 3 : 0,
-      rate: index === 0 && i === 2 ? 30 : 0,
-      spike: index === 0 && i === 2,
-    })),
-  })),
+  downloads: 8,
+  uniqueUsers: 5,
+  launches: 20,
+  failedLaunches: 2,
+  points: [{ startMs: 0, launches: 20, failedLaunches: 2 }],
+  startMs: 0,
+  endMs: 86_400_000,
+  measuredAtMs: 86_400_000,
+  coverage: { kind: "complete", sinceMs: 0 },
 };
-afterEach(() => {
-  cleanup();
-  vi.clearAllMocks();
-});
 
-describe("bundle trends", () => {
-  it("shows every ID together and preserves all lines when highlighting a bundle or filtering recoveries", () => {
-    const { container } = render(<ActivityChart report={report} />);
-    expect(container.querySelectorAll(".recharts-line-curve")).toHaveLength(2);
-    expect(
-      screen.getByLabelText("Active trend for all reported bundle IDs"),
-    ).toBeDefined();
-    expect(screen.queryByRole("combobox")).toBeNull();
-    fireEvent.click(
-      screen.getByRole("button", { name: "Highlight bundle new-id" }),
-    );
-    expect(container.querySelectorAll(".recharts-line-curve")).toHaveLength(2);
-    expect(
-      screen.getByRole("link", { name: "Review bundle" }).getAttribute("href"),
-    ).toBe("/?releaseId=new-id");
-    fireEvent.click(screen.getByRole("tab", { name: "Recovered" }));
-    expect(
-      screen.getByLabelText("Recovered trend for all reported bundle IDs"),
-    ).toBeDefined();
-    expect(container.querySelectorAll(".recharts-line-curve")).toHaveLength(2);
-    expect(screen.getByText(/Recovery spike on/)).toBeDefined();
-    expect(
-      screen
-        .getByRole("button", { name: "Highlight bundle new-id" })
-        .getAttribute("aria-pressed"),
-    ).toBe("true");
-    const rows = within(
-      screen.getByRole("table", { hidden: true }),
-    ).getAllByRole("row", { hidden: true });
-    expect(rows.at(-1)?.textContent).toContain("30");
-    fireEvent.click(
-      screen.getByRole("button", { name: "Highlight bundle old-id" }),
-    );
-    expect(screen.queryByText(/Recovery spike on/)).toBeNull();
-  });
+const input = {
+  platform: "ios",
+  channel: "production",
+  window: "7d",
+} as const;
 
-  it("keeps all status totals visible while tabs only switch the chart", () => {
-    const downloads: RecoveryReport = {
-      ...report,
-      downloadedInstallations: 5,
-      pendingInstallations: 2,
-      series: report.series.map((series) => ({
-        ...series,
-        downloadedInstallations: 4,
-        pendingInstallations: 1,
-        points: series.points.map((point) => ({
-          ...point,
-          downloadedInstallations: 4,
-          pendingInstallations: 1,
-        })),
-      })),
-    };
-    render(<ActivityChart report={downloads} />);
-    const overview = screen.getByLabelText("Bundle activity overview");
-    const initialOverview = overview.textContent;
-    expect(within(overview).getByText("Active")).toBeDefined();
-    expect(within(overview).getByText("100")).toBeDefined();
-    expect(within(overview).getByText("Downloaded")).toBeDefined();
-    expect(within(overview).getByText("2")).toBeDefined();
-    expect(within(overview).getByText("Recovered")).toBeDefined();
-    expect(within(overview).getByText("1")).toBeDefined();
-    fireEvent.click(screen.getByRole("tab", { name: "Downloaded" }));
+afterEach(cleanup);
+
+describe("Release health", () => {
+  it("shows the agreed metrics and derives crash rate from launch attempts", () => {
+    render(
+      <InsightsOverview
+        input={input}
+        onInputChange={vi.fn()}
+        onRefresh={vi.fn()}
+        query={{
+          data: report,
+          error: null,
+          isPending: false,
+          isFetching: false,
+        }}
+      />,
+    );
+    expect(screen.getByText("Unique users")).toBeDefined();
+    expect(screen.getByText("Launches")).toBeDefined();
+    expect(screen.getByText("Failed launches")).toBeDefined();
+    expect(screen.getByText("9.09%")).toBeDefined();
     expect(
-      screen.getByLabelText("Downloaded trend for all reported bundle IDs"),
-    ).toBeDefined();
-    expect(screen.queryByRole("tab", { name: "Pending apply" })).toBeNull();
-    expect(overview.textContent).toBe(initialOverview);
-    const rows = within(
-      screen.getByRole("table", { hidden: true }),
-    ).getAllByRole("row", { hidden: true });
-    expect(
-      within(rows.at(-1)!)
-        .getAllByRole("cell", { hidden: true })
-        .map((cell) => cell.textContent),
-    ).toEqual(["1", "1"]);
-    fireEvent.click(screen.getByRole("tab", { name: "Recovered" }));
-    expect(overview.textContent).toBe(initialOverview);
-    expect(
-      screen.getByLabelText("Recovered trend for all reported bundle IDs"),
+      screen.getByLabelText("Daily launches and failed launches"),
     ).toBeDefined();
   });
 
-  it("keeps IDs beyond a top-five list and exposes exact values without requiring chart interaction", () => {
-    const many = {
-      ...report,
-      series: Array.from({ length: 8 }, (_, i) => ({
-        ...report.series[0],
-        releaseId: `bundle-${i}`,
-      })),
-    };
-    const { container } = render(<ActivityChart report={many} />);
-    expect(container.querySelectorAll(".recharts-line-curve")).toHaveLength(8);
-    expect(
-      screen.getByRole("button", { name: "Highlight bundle bundle-7" }),
-    ).toBeDefined();
-    expect(screen.getByText("View chart data")).toBeDefined();
-    expect(screen.getAllByRole("columnheader", { hidden: true })).toHaveLength(
-      9,
+  it("shows the no-launch state instead of a zero crash rate", () => {
+    render(
+      <InsightsOverview
+        input={input}
+        onInputChange={vi.fn()}
+        onRefresh={vi.fn()}
+        query={{
+          data: { ...report, launches: 0, failedLaunches: 0, points: [] },
+          error: null,
+          isPending: false,
+          isFetching: false,
+        }}
+      />,
     );
+    expect(screen.getByText("— / No launch reports")).toBeDefined();
+    expect(screen.getByText("No launch reports in this period.")).toBeDefined();
   });
 
-  it("handles loading, errors, empty history and partial results with a refresh action", () => {
-    const input = {
+  it("submits platform, channel, and optional release filters", () => {
+    const onInputChange = vi.fn();
+    render(
+      <InsightsOverview
+        input={input}
+        onInputChange={onInputChange}
+        onRefresh={vi.fn()}
+        query={{
+          data: report,
+          error: null,
+          isPending: false,
+          isFetching: false,
+        }}
+      />,
+    );
+    fireEvent.change(screen.getByLabelText("Release health channel"), {
+      target: { value: "preview" },
+    });
+    fireEvent.change(screen.getByLabelText("Release ID optional"), {
+      target: { value: "release-a" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Apply" }));
+    expect(onInputChange).toHaveBeenCalledWith({
       platform: "ios",
-      channel: "production",
-      window: "30d",
-    } as const;
-    const refetch = vi.fn();
-    const onWindowChange = vi.fn();
-    let query = {
-      data: undefined as RecoveryReport | undefined,
-      error: null as Error | null,
-      isPending: true,
-      isFetching: false,
-    };
-    const view = render(
-      <InsightsOverview
-        input={input}
-        onWindowChange={onWindowChange}
-        query={query}
-        onRefresh={refetch}
-      />,
-    );
-    expect(screen.getByLabelText("Loading bundle activity")).toBeDefined();
-    expect(
-      screen
-        .getByRole("tab", { name: "30 days" })
-        .getAttribute("aria-selected"),
-    ).toBe("true");
-    fireEvent.click(screen.getByRole("tab", { name: "7 days" }));
-    expect(onWindowChange).toHaveBeenCalledWith("7d");
-    expect(
-      within(screen.getByRole("region", { name: "Bundle activity" }))
-        .getByRole("link", { name: "All events" })
-        .getAttribute("href"),
-    ).toBe("/installations");
-    query = { ...query, isPending: false, error: new Error("Offline") };
-    view.rerender(
-      <InsightsOverview
-        input={input}
-        onWindowChange={onWindowChange}
-        query={query}
-        onRefresh={refetch}
-      />,
-    );
-    expect(screen.getByText("Bundle activity unavailable")).toBeDefined();
-    fireEvent.click(
-      screen.getByRole("button", { name: "Refresh bundle activity" }),
-    );
-    expect(refetch).toHaveBeenCalledOnce();
-    query = {
-      ...query,
-      error: null,
-      data: {
-        ...report,
-        series: [],
-        truncated: true,
-        unattributedInstallations: 4,
-      },
-    };
-    view.rerender(
-      <InsightsOverview
-        input={input}
-        onWindowChange={onWindowChange}
-        query={query}
-        onRefresh={refetch}
-      />,
-    );
-    expect(screen.getByText(/No bundle reports in this period/)).toBeDefined();
-    expect(screen.getByText(/Partial history/)).toBeDefined();
+      channel: "preview",
+      window: "7d",
+      releaseId: "release-a",
+    });
   });
 });

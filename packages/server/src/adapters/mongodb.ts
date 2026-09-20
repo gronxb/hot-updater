@@ -13,6 +13,11 @@ import {
 import { createMongoMigrator } from "../db/fixedMigrator";
 import type { DatabaseAdapterWithCapabilities } from "../db/types";
 import { createMongoCollections } from "./mongodbCollections";
+import {
+  getMongoAppUsage,
+  getMongoReleaseActivity,
+  recordMongoInsightsOverview,
+} from "./mongodbInsightsOverview";
 import { createMongoReads } from "./mongodbReads";
 import { createMongoWrites } from "./mongodbWrites";
 
@@ -28,6 +33,8 @@ const createMongoImplementation = (
 ): DatabasePluginImplementation => {
   const collections = createMongoCollections(client);
   return {
+    getReleaseActivity: (input) => getMongoReleaseActivity(collections, input),
+    getAppUsage: (input) => getMongoAppUsage(collections, input),
     recordInsights: async ({ event }) => {
       const record = () =>
         client.withSession((insightsSession) =>
@@ -46,6 +53,12 @@ const createMongoImplementation = (
             const current = await insights.bundleEventHeads.findOne(
               { install_id: event.install_id },
               options,
+            );
+            await recordMongoInsightsOverview(
+              insights,
+              insightsSession,
+              event,
+              current,
             );
             if (
               current !== null &&
@@ -67,6 +80,11 @@ const createMongoImplementation = (
                   type: event.type,
                   from_bundle_id: event.from_bundle_id,
                   to_bundle_id: event.to_bundle_id,
+                  current_release_id:
+                    event.type === "UPDATE_DOWNLOADED"
+                      ? event.from_release_id
+                      : event.to_release_id,
+                  app_version: event.app_version,
                 },
               },
               { ...options, upsert: true },

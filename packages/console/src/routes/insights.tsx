@@ -21,7 +21,7 @@ function InsightsPage() {
   const search = Route.useSearch();
   const navigate = Route.useNavigate();
   const usageWindow = search.window ?? "24h";
-  const bundleWindow = search.bundleWindow ?? "24h";
+  const bundleWindow = search.bundleWindow ?? "7d";
   const scope: AppUsageScope = {
     platform: search.platform ?? "all",
     channel: search.channel ?? "production",
@@ -29,14 +29,17 @@ function InsightsPage() {
   };
   const setUsageWindow = (window: InsightsWindow) =>
     void navigate({ search: { ...search, window } });
-  const setBundleWindow = (bundleWindow: InsightsWindow) =>
-    void navigate({ search: { ...search, bundleWindow } });
   const setScope = (scope: AppUsageScope) =>
     void navigate({
       search: { ...search, ...scope, appVersion: scope.appVersion },
     });
   const input = { ...scope, window: usageWindow };
-  const bundleInput = { ...scope, window: bundleWindow };
+  const bundleInput = {
+    platform: search.healthPlatform ?? "ios",
+    channel: search.healthChannel ?? search.channel ?? "production",
+    window: bundleWindow,
+    ...(search.releaseId === undefined ? {} : { releaseId: search.releaseId }),
+  } as const;
   const query = useQuery({
     queryKey: ["insights", "app-usage", input],
     queryFn: () => getAppUsageReportRpc({ data: input }),
@@ -80,7 +83,17 @@ function InsightsPage() {
           <InsightsOverview
             input={bundleInput}
             query={bundleQuery}
-            onWindowChange={setBundleWindow}
+            onInputChange={(input) =>
+              void navigate({
+                search: {
+                  ...search,
+                  bundleWindow: input.window,
+                  healthPlatform: input.platform,
+                  healthChannel: input.channel,
+                  releaseId: input.releaseId,
+                },
+              })
+            }
             onRefresh={() => void bundleQuery.refetch()}
           />
         </div>

@@ -1,5 +1,5 @@
 import { Link } from "@tanstack/react-router";
-import { ArrowUpRight, ListIcon, RotateCw, TriangleAlert } from "lucide-react";
+import { ListIcon, RotateCw } from "lucide-react";
 import { useState } from "react";
 import { CartesianGrid, Line, LineChart, XAxis, YAxis } from "recharts";
 
@@ -16,13 +16,19 @@ import {
   ChartTooltip,
   ChartTooltipContent,
 } from "@/components/ui/chart";
-import { ScrollArea } from "@/components/ui/scroll-area";
+import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import type { RecoveryInput, RecoveryReport } from "@/lib/insights-recovery";
-import { cn } from "@/lib/utils";
 
 import { InsightsErrorAlert } from "./InsightsErrorAlert";
+import { InsightsInfo } from "./InsightsInfo";
 import { InsightsPeriodSelector } from "./InsightsPeriodSelector";
 
 const dates = new Intl.DateTimeFormat("en", {
@@ -30,357 +36,103 @@ const dates = new Intl.DateTimeFormat("en", {
   day: "numeric",
   timeZone: "UTC",
 });
-const times = new Intl.DateTimeFormat("en", {
-  month: "short",
-  day: "numeric",
-  hour: "numeric",
-  timeZone: "UTC",
-});
-const colors = [
-  "var(--chart-2)",
-  "var(--foreground)",
-  "var(--chart-1)",
-  "var(--muted-foreground)",
-  "var(--chart-4)",
-];
-const dashes = [undefined, "6 3", "2 3"];
 
-const activityMetrics = {
-  active: {
-    label: "Active",
-    summary: "Active installations",
-    point: "active",
-    total: "activeInstallations",
-    color: "text-success/85",
-  },
-  downloaded: {
-    label: "Downloaded",
-    summary: "Installations waiting to apply",
-    point: "pendingInstallations",
-    total: "pendingInstallations",
-    color: "text-primary/85",
-  },
-  recovered: {
-    label: "Recovered",
-    summary: "Crashed bundle recovery",
-    point: "recoveredInstallations",
-    total: "recoveredInstallations",
-    color: "text-warning/85",
-  },
-} as const;
+const rate = (report: RecoveryReport): string => {
+  const attempts = report.launches + report.failedLaunches;
+  return attempts === 0
+    ? "—"
+    : `${((report.failedLaunches / attempts) * 100).toFixed(2)}%`;
+};
 
-export function ActivityChart({ report }: { readonly report: RecoveryReport }) {
-  const [metric, setMetric] = useState<keyof typeof activityMetrics>("active");
-  const [selectedId, setSelectedId] = useState<string | null>(null);
-  const metricInfo = activityMetrics[metric];
-  const selected = report.series.find(
-    (series) => series.releaseId === selectedId,
-  );
-  const config = Object.fromEntries(
-    report.series.map((series, index) => [
-      `bundle${index}`,
-      {
-        label: series.releaseId,
-        color: colors[index % colors.length],
-      },
-    ]),
-  );
-  const data = (report.series[0]?.points ?? []).map((point, pointIndex) => ({
-    startMs: point.startMs,
-    ...Object.fromEntries(
-      report.series.map((series, index) => [
-        `bundle${index}`,
-        series.points[pointIndex][metricInfo.point],
-      ]),
-    ),
-  }));
-  const formatTick = (ms: number) =>
-    (report.intervalMs < 86_400_000 ? times : dates).format(ms);
-  const lastSpike = selected
-    ? [...selected.points].reverse().find((point) => point.spike)
-    : undefined;
-  const totals = {
-    active: report.series.reduce(
-      (sum, series) => sum + series.activeInstallations,
-      0,
-    ),
-    downloaded: report.pendingInstallations,
-    recovered: report.series.filter(
-      (series) => series.recoveredInstallations > 0,
-    ).length,
-  };
+function ReleaseHealth({ report }: { readonly report: RecoveryReport }) {
+  const attempts = report.launches + report.failedLaunches;
+  const metrics = [
+    ["Unique users", report.uniqueUsers.toLocaleString()],
+    ["Launches", report.launches.toLocaleString()],
+    ["Failed launches", report.failedLaunches.toLocaleString()],
+    ["Crash rate", attempts === 0 ? "— / No launch reports" : rate(report)],
+  ] as const;
   return (
-    <Tabs
-      value={metric}
-      onValueChange={(value) => {
-        if (Object.hasOwn(activityMetrics, value))
-          setMetric(value as keyof typeof activityMetrics);
-      }}
-      className="gap-6"
-    >
-      <dl
-        aria-label="Bundle activity overview"
-        className="grid grid-cols-1 gap-5 sm:grid-cols-3 sm:gap-6"
-      >
-        {Object.entries(activityMetrics).map(
-          ([value, { label, summary, color }]) => (
-            <div key={value} className="flex flex-col gap-2">
-              <dt className="text-sm font-medium">{label}</dt>
-              <dd className="flex flex-col gap-1">
-                <span
-                  className={cn(
-                    "text-4xl font-semibold tracking-tight tabular-nums",
-                    totals[value as keyof typeof totals] > 0
-                      ? color
-                      : "text-muted-foreground",
-                  )}
-                >
-                  {totals[value as keyof typeof totals].toLocaleString()}
-                </span>
-                <span className="text-xs text-muted-foreground">{summary}</span>
-              </dd>
-            </div>
-          ),
-        )}
-      </dl>
-      <TabsList
-        aria-label="Activity metric"
-        variant="line"
-        className="min-h-11 sm:min-h-9"
-      >
-        {Object.entries(activityMetrics).map(([value, { label }]) => (
-          <TabsTrigger key={value} className="px-3" value={value}>
-            {label}
-          </TabsTrigger>
-        ))}
-      </TabsList>
-      <TabsContent value={metric} className="flex flex-col gap-4">
-        {report.series.length === 0 ? (
-          <div className="flex h-48 items-center justify-center text-center text-sm text-muted-foreground">
-            No bundle reports in this period. Try another channel or check again
-            after the app reports activity.
+    <div className="flex flex-col gap-8">
+      <dl className="grid grid-cols-2 gap-5 lg:grid-cols-4">
+        {metrics.map(([label, value]) => (
+          <div key={label} className="flex flex-col gap-1">
+            <dt className="flex items-center gap-1 text-sm text-muted-foreground">
+              {label}
+              {label === "Unique users" ? (
+                <InsightsInfo label="About unique users">
+                  Distinct installations with a reported successful launch in
+                  this scope and period.
+                </InsightsInfo>
+              ) : label === "Crash rate" ? (
+                <InsightsInfo label="About crash rate">
+                  Reported OTA launch failures divided by successful launches
+                  plus failed launches for the same scope and period.
+                </InsightsInfo>
+              ) : null}
+            </dt>
+            <dd className="text-3xl font-semibold tracking-tight tabular-nums">
+              {value}
+            </dd>
           </div>
-        ) : (
-          <>
-            <div>
-              <p className="mb-2 text-right text-xs text-muted-foreground">
-                {metric !== "recovered"
-                  ? "Installations"
-                  : `${metricInfo.label} installations per interval`}{" "}
-                · UTC
-              </p>
-              <ChartContainer
-                aria-label={`${metricInfo.label} trend for all reported bundle IDs`}
-                className="h-56 w-full aspect-auto sm:h-64"
-                config={config}
-              >
-                <LineChart
-                  accessibilityLayer
-                  data={data}
-                  margin={{ left: -12, right: 12, top: 8 }}
-                >
-                  <CartesianGrid vertical={false} />
-                  <XAxis
-                    tick={{ fill: "var(--muted-foreground)" }}
-                    axisLine={false}
-                    dataKey="startMs"
-                    minTickGap={40}
-                    tickFormatter={formatTick}
-                    tickLine={false}
-                  />
-                  <YAxis
-                    tick={{ fill: "var(--muted-foreground)" }}
-                    allowDecimals={false}
-                    axisLine={false}
-                    tickLine={false}
-                    width={48}
-                  />
-                  <ChartTooltip
-                    content={
-                      <ChartTooltipContent
-                        className="max-h-64 max-w-[calc(100vw-3rem)] overflow-auto"
-                        labelFormatter={(_, payload) =>
-                          `${times.format(payload[0]?.payload.startMs)} · UTC`
-                        }
-                      />
-                    }
-                  />
-                  {report.series.map((series, index) => (
-                    <Line
-                      key={series.releaseId}
-                      dataKey={`bundle${index}`}
-                      type="linear"
-                      stroke={`var(--color-bundle${index})`}
-                      strokeWidth={selectedId === series.releaseId ? 3 : 2}
-                      strokeOpacity={!selected || selected === series ? 1 : 0.4}
-                      strokeDasharray={
-                        dashes[
-                          Math.floor(index / colors.length) % dashes.length
-                        ]
-                      }
-                      dot={{ r: 2 }}
-                      activeDot={{ r: 4 }}
-                      isAnimationActive={false}
-                    />
-                  ))}
-                </LineChart>
-              </ChartContainer>
-            </div>
-            <ScrollArea
-              aria-label="Reported bundles"
-              className="min-w-0 [&_[data-slot=scroll-area-viewport]]:max-h-48"
-            >
-              <div
-                className={cn(
-                  "grid grid-cols-1 gap-1 pr-3",
-                  report.series.length > 1 && "xl:grid-cols-2",
-                )}
-              >
-                {report.series.map((series, index) => (
-                  <button
-                    type="button"
-                    key={series.releaseId}
-                    aria-label={`Highlight bundle ${series.releaseId}`}
-                    aria-pressed={selectedId === series.releaseId}
-                    title={series.releaseId}
-                    onClick={() =>
-                      setSelectedId(
-                        selectedId === series.releaseId
-                          ? null
-                          : series.releaseId,
-                      )
-                    }
-                    className="flex min-w-0 items-center gap-2 rounded-md px-2 py-2 text-left text-xs hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring aria-pressed:bg-muted"
-                  >
-                    <svg
-                      aria-hidden="true"
-                      width="20"
-                      height="8"
-                      className="shrink-0"
-                    >
-                      <line
-                        x1="0"
-                        x2="20"
-                        y1="4"
-                        y2="4"
-                        stroke={colors[index % colors.length]}
-                        strokeWidth="2"
-                        strokeDasharray={
-                          dashes[
-                            Math.floor(index / colors.length) % dashes.length
-                          ]
-                        }
-                      />
-                    </svg>
-                    <span className="min-w-0 truncate font-mono">
-                      {series.releaseId}
-                    </span>
-                    {series.points.some((point) => point.spike) ? (
-                      <TriangleAlert
-                        aria-label="Recovery spike"
-                        className="size-3 shrink-0"
-                      />
-                    ) : null}
-                    <span className="ml-auto tabular-nums">
-                      {series[metricInfo.total].toLocaleString()}
-                    </span>
-                  </button>
-                ))}
-              </div>
-            </ScrollArea>
-            {selected ? (
-              <div className="flex flex-wrap items-center justify-between gap-3 border-t pt-3">
-                <div className="min-w-0 flex-1">
-                  <p className="break-all font-mono text-xs">
-                    {selected.releaseId}
-                  </p>
-                  <p className="mt-1 text-xs text-muted-foreground">
-                    Active {selected.activeInstallations.toLocaleString()} ·
-                    Downloaded {selected.pendingInstallations.toLocaleString()}{" "}
-                    waiting to apply · Recovered{" "}
-                    {selected.recoveredInstallations.toLocaleString()} in this
-                    period
-                  </p>
-                  {metric === "recovered" && lastSpike ? (
-                    <p className="mt-2 flex items-center gap-2 text-xs">
-                      <TriangleAlert
-                        className="size-3 shrink-0"
-                        aria-hidden="true"
-                      />
-                      Recovery spike on {dates.format(lastSpike.startMs)}.
-                      Review this bundle’s delivery settings.
-                    </p>
-                  ) : null}
-                </div>
-                <Link
-                  className={buttonVariants({ variant: "outline", size: "sm" })}
-                  to="/"
-                  search={{ releaseId: selected.releaseId }}
-                >
-                  Review bundle
-                  <ArrowUpRight aria-hidden="true" />
-                </Link>
-              </div>
-            ) : null}
-            <details className="text-xs text-muted-foreground">
-              <summary className="cursor-pointer">View chart data</summary>
-              <div className="mt-2 max-h-64 overflow-auto">
-                <table className="w-full text-left">
-                  <caption className="sr-only">
-                    {metric === "recovered"
-                      ? "Recovered installations"
-                      : metricInfo.summary}{" "}
-                    by bundle ID, UTC
-                  </caption>
-                  <thead>
-                    <tr>
-                      <th scope="col" className="pr-4">
-                        Date (UTC)
-                      </th>
-                      {report.series.map((series) => (
-                        <th
-                          scope="col"
-                          className="px-2 font-mono"
-                          key={series.releaseId}
-                        >
-                          {series.releaseId}
-                        </th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {data.map((point, i) => (
-                      <tr key={point.startMs}>
-                        <th
-                          scope="row"
-                          className="whitespace-nowrap pr-4 font-normal"
-                        >
-                          {times.format(point.startMs)}
-                        </th>
-                        {report.series.map((series) => (
-                          <td
-                            className="px-2 tabular-nums"
-                            key={series.releaseId}
-                          >
-                            {series.points[i][metricInfo.point] ?? "—"}
-                          </td>
-                        ))}
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </details>
-          </>
-        )}
-      </TabsContent>
-    </Tabs>
+        ))}
+      </dl>
+      {report.points.length === 0 ? (
+        <div className="flex h-56 items-center justify-center text-sm text-muted-foreground">
+          No launch reports in this period.
+        </div>
+      ) : (
+        <ChartContainer
+          aria-label="Daily launches and failed launches"
+          className="h-64 w-full aspect-auto"
+          config={{
+            launches: { label: "Launches", color: "var(--chart-2)" },
+            failedLaunches: {
+              label: "Failed launches",
+              color: "var(--chart-1)",
+            },
+          }}
+        >
+          <LineChart data={report.points} margin={{ left: -12, right: 12 }}>
+            <CartesianGrid vertical={false} />
+            <XAxis
+              axisLine={false}
+              dataKey="startMs"
+              tickFormatter={(value) => dates.format(value)}
+              tickLine={false}
+            />
+            <YAxis allowDecimals={false} axisLine={false} tickLine={false} />
+            <ChartTooltip
+              content={
+                <ChartTooltipContent
+                  labelFormatter={(_, payload) =>
+                    `${dates.format(payload[0]?.payload.startMs)} · UTC`
+                  }
+                />
+              }
+            />
+            <Line
+              dataKey="launches"
+              stroke="var(--color-launches)"
+              strokeWidth={2}
+              isAnimationActive={false}
+            />
+            <Line
+              dataKey="failedLaunches"
+              stroke="var(--color-failedLaunches)"
+              strokeWidth={2}
+              isAnimationActive={false}
+            />
+          </LineChart>
+        </ChartContainer>
+      )}
+    </div>
   );
 }
 
 export function InsightsOverview({
   input,
-  onWindowChange,
+  onInputChange,
   query,
   onRefresh,
 }: {
@@ -392,64 +144,105 @@ export function InsightsOverview({
     readonly isFetching: boolean;
   };
   readonly onRefresh: () => void;
-  readonly onWindowChange: (window: RecoveryInput["window"]) => void;
+  readonly onInputChange: (input: RecoveryInput) => void;
 }) {
+  const [platform, setPlatform] = useState(input.platform);
+  const [channel, setChannel] = useState(input.channel);
+  const [releaseId, setReleaseId] = useState(input.releaseId ?? "");
   return (
     <Card
-      aria-label="Bundle activity"
+      aria-label="Release health"
       className="min-w-0 overflow-hidden shadow-sm"
       role="region"
     >
-      <CardHeader className="flex-row flex-wrap items-center justify-between gap-4 p-6">
-        <CardTitle>Bundle activity</CardTitle>
-        <div className="flex w-full items-center justify-between gap-4 sm:w-auto">
-          <InsightsPeriodSelector
-            window={input.window}
-            onWindowChange={onWindowChange}
-          />
-          <Button
-            aria-label="Refresh bundle activity"
-            className="size-11 sm:size-9"
-            variant="ghost"
-            size="icon-lg"
-            disabled={query.isFetching}
-            onClick={onRefresh}
-          >
-            <RotateCw aria-hidden="true" />
-          </Button>
+      <CardHeader className="flex flex-col gap-4 p-6">
+        <div className="flex flex-wrap items-center justify-between gap-4">
+          <CardTitle>Release health</CardTitle>
+          <div className="flex items-center gap-2">
+            <InsightsPeriodSelector
+              window={input.window}
+              onWindowChange={(window) => onInputChange({ ...input, window })}
+            />
+            <Button
+              aria-label="Refresh release health"
+              variant="ghost"
+              size="icon-lg"
+              disabled={query.isFetching}
+              onClick={onRefresh}
+            >
+              <RotateCw aria-hidden="true" />
+            </Button>
+          </div>
         </div>
+        <form
+          className="grid gap-3 sm:grid-cols-[9rem_1fr_1fr_auto]"
+          aria-label="Release health filters"
+          onSubmit={(event) => {
+            event.preventDefault();
+            onInputChange({
+              platform,
+              channel,
+              window: input.window,
+              ...(releaseId.trim() ? { releaseId: releaseId.trim() } : {}),
+            });
+          }}
+        >
+          <Select
+            value={platform}
+            onValueChange={(value) => {
+              if (value === "ios" || value === "android") setPlatform(value);
+            }}
+          >
+            <SelectTrigger aria-label="Release health platform">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="ios">iOS</SelectItem>
+              <SelectItem value="android">Android</SelectItem>
+            </SelectContent>
+          </Select>
+          <Input
+            aria-label="Release health channel"
+            maxLength={1024}
+            value={channel}
+            onChange={(event) => setChannel(event.target.value)}
+          />
+          <Input
+            aria-label="Release ID optional"
+            maxLength={1024}
+            placeholder="All releases"
+            value={releaseId}
+            onChange={(event) => setReleaseId(event.target.value)}
+          />
+          <Button type="submit" variant="outline">
+            Apply
+          </Button>
+        </form>
       </CardHeader>
       <CardContent className="px-6 pb-6">
         {query.isPending ? (
-          <Skeleton
-            aria-label="Loading bundle activity"
-            className="h-80 w-full"
-          />
+          <Skeleton aria-label="Loading release health" className="h-80" />
         ) : query.error ? (
           <InsightsErrorAlert
             error={query.error}
-            fallbackTitle="Bundle activity unavailable"
+            fallbackTitle="Release health unavailable"
           />
         ) : query.data ? (
-          <ActivityChart key={JSON.stringify(input)} report={query.data} />
+          <ReleaseHealth report={query.data} />
         ) : null}
       </CardContent>
-      <CardFooter className="flex-wrap items-center justify-between gap-4 border-t px-6 py-5">
-        {query.data?.truncated && !query.error ? (
-          <p className="text-xs text-muted-foreground">Partial history</p>
-        ) : null}
+      <CardFooter className="flex items-center justify-between border-t px-6 py-5">
+        {query.data?.coverage.kind === "partial" ? (
+          <span className="text-xs text-muted-foreground">Partial</span>
+        ) : (
+          <span />
+        )}
         <Link
-          className={cn(
-            buttonVariants({
-              className: "ml-auto h-11 px-4 sm:h-9",
-              size: "lg",
-              variant: "outline",
-            }),
-          )}
+          className={buttonVariants({ variant: "outline", size: "sm" })}
           to="/installations"
         >
-          <ListIcon aria-hidden="true" data-icon="inline-start" />
-          All events
+          <ListIcon aria-hidden="true" />
+          Event history
         </Link>
       </CardFooter>
     </Card>

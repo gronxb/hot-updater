@@ -38,7 +38,8 @@ export const getSqlType = (
   provider: ORMSQLProvider,
 ): string => {
   if (provider === "sqlite") {
-    if (type === "bool" || type === "integer") return "integer";
+    if (type === "bool" || type === "integer" || type === "bigint")
+      return "integer";
     if (type === "float") return "real";
     return "text";
   }
@@ -46,6 +47,7 @@ export const getSqlType = (
     if (type === "uuid") return "char(36)";
     if (type === "bool") return "boolean";
     if (type === "integer") return "integer";
+    if (type === "bigint") return "bigint";
     if (type === "float") return "double";
     if (type === "json") return "json";
     if (type === "large-string") return "mediumtext";
@@ -56,6 +58,7 @@ export const getSqlType = (
     if (type === "uuid") return "uniqueidentifier";
     if (type === "bool") return "bit";
     if (type === "integer") return "int";
+    if (type === "bigint") return "bigint";
     if (type === "float") return "float";
     if (type.startsWith("varchar")) return type.replace("varchar", "nvarchar");
     return "nvarchar(max)";
@@ -63,6 +66,7 @@ export const getSqlType = (
   if (type === "uuid") return "uuid";
   if (type === "bool") return "boolean";
   if (type === "integer") return "integer";
+  if (type === "bigint") return "bigint";
   if (type === "float") return "double precision";
   if (type === "json") return "json";
   if (type.startsWith("varchar")) return type;

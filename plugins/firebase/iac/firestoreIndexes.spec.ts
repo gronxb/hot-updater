@@ -25,6 +25,7 @@ describe("firebase firestore index template", () => {
     const indexFile = JSON.parse(await readFile(indexFilePath, "utf8"));
     const events = FIREBASE_V1_COLLECTION_NAMES.bundleEvents;
     const installations = FIREBASE_V1_COLLECTION_NAMES.insightsLatest;
+    const overview = FIREBASE_V1_COLLECTION_NAMES.insightsOverview;
     const asc = "ASCENDING" as const;
     const desc = "DESCENDING" as const;
 
@@ -74,12 +75,47 @@ describe("firebase firestore index template", () => {
             ["received_at_ms", asc],
           ]),
         ),
+        index(overview, [
+          ["scope_kind", asc],
+          ["channel", asc],
+          ["period_kind", asc],
+          ["bucket_start_ms", asc],
+        ]),
+        index(overview, [
+          ["scope_kind", asc],
+          ["channel", asc],
+          ["period_kind", asc],
+          ["platform", asc],
+          ["bucket_start_ms", asc],
+        ]),
+        index(overview, [
+          ["scope_kind", asc],
+          ["channel", asc],
+          ["period_kind", asc],
+          ["app_version", asc],
+          ["bucket_start_ms", asc],
+        ]),
+        index(overview, [
+          ["scope_kind", asc],
+          ["channel", asc],
+          ["period_kind", asc],
+          ["platform", asc],
+          ["app_version", asc],
+          ["bucket_start_ms", asc],
+        ]),
       ],
-      fieldOverrides: [events, installations].map((collectionGroup) => ({
-        collectionGroup,
-        fieldPath: "metadata",
-        indexes: [],
-      })),
+      fieldOverrides: [
+        ...[events, installations].map((collectionGroup) => ({
+          collectionGroup,
+          fieldPath: "metadata",
+          indexes: [],
+        })),
+        ...["launch_users", "activity_users"].map((fieldPath) => ({
+          collectionGroup: overview,
+          fieldPath,
+          indexes: [],
+        })),
+      ],
     });
   });
 });
