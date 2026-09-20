@@ -46,6 +46,8 @@ infrastructure generation, resource inputs and original file hashes.
 `upgrades/<version>.md` records each required infrastructure release, and
 `upgrades/README.md` lists the files in the order also used by doctor.
 Runtime dependency manifests live in each deployment project.
+JSON output also includes `doctor.command` and `doctor.args` for verifying the
+selected scaffold after configuring its resource inputs.
 
 Repeating the command preserves compatible output, including manual edits.
 An incompatible or incomplete directory produces an error without replacing
@@ -63,7 +65,10 @@ deployment.
    releases. Replace all
    `__HOT_UPDATER_*__` and `%%BUCKET_NAME%%` placeholders with verified values,
    preserving string/SQL escaping. Inspect and apply pending schema/index changes.
-3. Install the supplied deployment project's dependencies where applicable and
+3. Run the [scaffold check](#verify-the-scaffold) after configuring resource inputs
+   and repair any failures. Fresh templates contain unresolved placeholders and
+   are not expected to pass yet.
+4. Install the supplied deployment project's dependencies where applicable and
    deploy with your provider tooling. AWS `reference/` files document the current
    infrastructure specifications; they are not standalone executable scripts.
    For AWS, `dynamodb/*.json` are full CLI requests (`--cli-input-json`), while
@@ -73,9 +78,44 @@ deployment.
    files are full requests. The IAM SSM path placeholder excludes the leading
    slash; the Lambda SSM name includes it.
    Preserve resource identities, secrets, custom settings and migration history.
-4. Verify the real endpoint's `/version`, authenticated client requests and
-   stored artifact access. App configuration and client-key provisioning remain
-   separate work; extraction alone does not configure a mobile app.
+5. Run the [infrastructure check](#verify-the-scaffold) against the real endpoint
+   with a registered client key. Verify provider state and stored artifact access
+   separately. App configuration and client-key provisioning remain separate
+   work; extraction alone does not configure a mobile app.
+
+## Verify the scaffold
+
+Use the same CLI version that extracted the files. These scopes work in a
+server-only directory without a React Native app or Hot Updater app config:
+
+```bash
+npx hot-updater doctor --scope scaffold --infra-dir ./server --json
+```
+
+Doctor checks the manifest, required files, unresolved placeholders, syntax and
+provider settings. Intended customizations are allowed; changing the manifest's
+file list cannot hide a missing required file.
+
+After deployment and client-key registration, verify the live server too:
+
+```bash
+npx hot-updater doctor --scope infrastructure --infra-dir ./server --json \
+  --server-base-url https://updates.example.com \
+  --platform ios --channel production --app-version 1.0.0
+```
+
+Replace the example directory, URL, platform, channel and compatibility target
+with your actual values. Use `--fingerprint <fingerprint>` instead of
+`--app-version` for fingerprint updates. Provide the client key privately through
+`HOT_UPDATER_API_KEY` or `.env.hotupdater` in the command's working directory;
+never put it in command arguments.
+
+Require exit code 0 and `success: true` for the requested
+`details.verification.scope`. Read `checks` for failures and `notChecked` for
+what remains: remote resource bindings/migrations, local storage access,
+artifact downloads and app/native OTA verification. See
+[Doctor](/docs/guides/doctor#verify-infrastructure-scaffolding) for the full
+contract. Passing these scopes does not certify a native OTA update.
 
 ## Agent setup and upgrades
 

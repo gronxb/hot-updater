@@ -29,7 +29,11 @@ to install `hot-updater`, `@hot-updater/react-native` and the selected
 build/provider packages. Record the installed versions and keep the lockfile.
 
 The installed CLI must advertise `agent infra setup` and `agent infra upgrade`.
-The skill does not add commands to older versions.
+The agent also checks `doctor --help` for the `scaffold` and `infrastructure`
+scopes, `--infra-dir` and live target options before provisioning. If missing,
+it needs a compatible CLI/package upgrade to complete verification. The skill
+does not add commands to older versions or substitute checklist claims for a
+doctor result.
 
 ## What the setup command produces
 

@@ -17,9 +17,11 @@ work:
 - Your deployed infrastructure server is not outdated
 
 Run it during setup, after upgrading Hot Updater, or when OTA updates behave
-differently after a package update. It validates local configuration and server
-version; complete [Test an OTA update](/docs/get-started/test-ota) to verify
-actual device delivery and client authentication.
+differently after a package update. The ordinary command validates local
+configuration and server version. The [scoped infrastructure checks](#verify-infrastructure-scaffolding)
+also verify scaffold files and authenticated server access. Complete
+[Test an OTA update](/docs/get-started/test-ota) to verify actual device delivery
+and that the installed app sends its client key.
 
 ```package-install
 npx hot-updater doctor
@@ -136,7 +138,7 @@ Each native issue includes:
 - `fixability`: whether the issue is suitable for an agent loop
 - `commands`: safe local commands when the fix is command-driven
 
-Use `fixability` as the automation boundary:
+Read `fixability` as the repair prerequisite, within the user's authorized work:
 
 | Fixability | Meaning                                                                                            |
 | ---------- | -------------------------------------------------------------------------------------------------- |
@@ -311,7 +313,7 @@ then redeploy your server and verify it with doctor.
 
 | Option                    | Description                                             |
 | ------------------------- | ------------------------------------------------------- |
-| `--server-base-url <url>` | Check deployed infrastructure at `<url>/version`.       |
+| `--server-base-url <url>` | Server base URL for version checks and scoped live catalog checks. |
 | `--json`                  | Print a machine-readable result for agents and scripts. |
 | `--scope <scope>` | Require `scaffold` or `infrastructure` verification. |
 | `--infra-dir <directory>` | Exact directory returned by infrastructure scaffolding. |
