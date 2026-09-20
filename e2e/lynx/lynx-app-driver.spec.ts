@@ -1513,7 +1513,7 @@ describe("Lynx startup failure diagnostics", () => {
         "AndroidRuntime:E",
         "*:S",
       ],
-      expect.objectContaining({ timeout: 5000 }),
+      expect.objectContaining({ timeout: 15000 }),
     );
     expect(vi.mocked(spawnSync)).not.toHaveBeenCalledWith(
       "adb",

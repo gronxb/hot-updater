@@ -1028,29 +1028,42 @@ export class LynxAppDriver implements DetoxAppDriver {
         "Could not inspect managed Lynx resources: no launch marker",
       );
     }
-    const result = this.captureCommand("android-logcat", "adb", [
-      "-s",
-      this.deviceId(),
-      "logcat",
-      "-d",
-      "HotUpdaterE2E:I",
-      "HotUpdaterLynx:D",
-      "AndroidRuntime:E",
-      "*:S",
-    ]);
-    const markerIndex = result.stdout.indexOf(marker);
-    if (result.status === 0 && markerIndex < 0) {
+    const dumpLogs = () =>
+      this.captureCommand(
+        "android-logcat",
+        "adb",
+        [
+          "-s",
+          this.deviceId(),
+          "logcat",
+          "-d",
+          "HotUpdaterE2E:I",
+          "HotUpdaterLynx:D",
+          "AndroidRuntime:E",
+          "*:S",
+        ],
+        2 * 1024 * 1024,
+        15_000,
+      );
+    let result = dumpLogs();
+    let markerIndex = result.stdout.indexOf(marker);
+    if (markerIndex < 0) {
+      result = dumpLogs();
+      markerIndex = result.stdout.indexOf(marker);
+    }
+    if (markerIndex < 0) {
       return {
         ...result,
-        status: 1,
+        status: result.status === 0 ? 1 : result.status,
         logsSinceLaunch: "",
-        text: `${result.text}\nAndroid launch log marker was not found`,
+        text: `${result.text}
+Android launch log marker was not found`,
       };
     }
     return {
       ...result,
-      logsSinceLaunch:
-        markerIndex < 0 ? "" : result.stdout.slice(markerIndex + marker.length),
+      status: 0,
+      logsSinceLaunch: result.stdout.slice(markerIndex + marker.length),
     };
   }
 
@@ -1059,6 +1072,7 @@ export class LynxAppDriver implements DetoxAppDriver {
     command: string,
     args: readonly string[],
     maxBuffer = 512 * 1024,
+    timeout = 5000,
   ): {
     readonly status: number | null;
     readonly stdout: string;
@@ -1069,7 +1083,7 @@ export class LynxAppDriver implements DetoxAppDriver {
         encoding: "utf8",
         env: this.env,
         maxBuffer,
-        timeout: 5000,
+        timeout,
       });
       const stdout = result.stdout ?? "";
       const commandError = result.error ? `\n${String(result.error)}` : "";
