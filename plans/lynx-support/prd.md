@@ -696,10 +696,10 @@ Every newly opened secondary page has a first-load admission window bound to its
 source generation, ordered stack position, page entry, Bundle, Release, and a
 native page-attempt identity recorded before its template evaluates. Admission
 requires native first content, successful loads of that page's declared
-essential resources, and the page's application-ready signal. The packaged
-Sparkling host records every declared essential resource, including the page's
-own entry, through the managed loader before template evaluation. Sparkling
-`kit.load()` / `renderTemplateUrl` is not itself a managed-resource observation.
+essential resources, and the page's application-ready signal. The packaged Sparkling host records the page's own entry through the managed
+loader before template evaluation, because Sparkling `kit.load()` /
+`renderTemplateUrl` is not itself a managed-resource observation. Other declared
+essential resources still have to be observed from actual engine loads.
 A secondary may
 use the same readiness bridge as the primary, but native interprets it only as
 page readiness: it cannot consume the primary launch transition or confirm a

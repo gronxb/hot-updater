@@ -874,7 +874,11 @@ class HotUpdaterSparklingHost(
         if (page.primary && !page.recreating) {
             emitGenerationStarted(pendingGenerationStartReason)
         }
-        page.expectedEssentialResources.forEach(launch::resolveEssential)
+        // Sparkling template evaluation does not observe the page entry.
+        // Other essentials still come from actual engine loads.
+        if (page.logical.entry in page.expectedEssentialResources) {
+            launch.resolveEssential(page.logical.entry)
+        }
         kit.load()
         return view
     }
