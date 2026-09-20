@@ -94,6 +94,17 @@ class LynxLaunchSession internal constructor(
         check(context == null && path in installation.managedPaths) { "Declare a verified resource before binding the context" }
         requiredResources.add(path)
     }
+    /**
+     * Records a declared essential resource through the managed loader.
+     * Sparkling template evaluation is not itself a managed-resource observation.
+     */
+    fun resolveEssential(path: String) {
+        check(live && path in requiredResources) {
+            "Resolve a required essential resource after declaring it"
+        }
+        resources.loadBytes("hot-updater:///$path") {}
+        flushReady()
+    }
     /** Installed by a packaged host that can replace the complete Lynx generation. */
     fun setReloadHandler(
         handler: (String, (Result<JSONObject>) -> Unit) -> Unit,

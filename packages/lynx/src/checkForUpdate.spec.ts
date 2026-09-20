@@ -714,6 +714,45 @@ describe("Lynx catalog controller (mock native transport)", () => {
     expect(fetch).toHaveBeenCalledOnce();
   });
 
+  it("retries catalog acceptance after a native revision change", async () => {
+    const { updater, native, fetch } = setup();
+    native.acceptCatalog.mockImplementationOnce((_params, callback) =>
+      callback({
+        ok: false,
+        error: {
+          code: "STALE_STATE",
+          message: "Native revision changed",
+        },
+      }),
+    );
+    const update = await updater.checkForUpdate({
+      updateStrategy: "appVersion",
+    });
+    expect(update?.releaseId).toBe(releaseB);
+    expect(native.getState.mock.calls.length).toBeGreaterThanOrEqual(2);
+    expect(native.acceptCatalog).toHaveBeenCalledTimes(2);
+    expect(fetch.mock.calls.length).toBeGreaterThanOrEqual(2);
+  });
+
+  it("gives up after repeated native revision changes", async () => {
+    const { updater, native } = setup();
+    native.acceptCatalog.mockImplementation((_params, callback) =>
+      callback({
+        ok: false,
+        error: {
+          code: "STALE_STATE",
+          message: "Native revision changed",
+        },
+      }),
+    );
+    await expect(
+      updater.checkForUpdate({ updateStrategy: "appVersion" }),
+    ).rejects.toMatchObject({
+      code: "STALE_STATE",
+    });
+    expect(native.acceptCatalog).toHaveBeenCalledTimes(3);
+  });
+
   it("rejects INCOMPATIBLE during check without retaining a preparation", async () => {
     const { updater, native } = setup();
     native.validateSelection.mockImplementation((_params, callback) =>

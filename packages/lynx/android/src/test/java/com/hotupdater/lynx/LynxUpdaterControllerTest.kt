@@ -1161,6 +1161,36 @@ class LynxUpdaterControllerTest {
         }
     }
 
+    @Test fun secondaryAdmissionWaitsForResolvedEssentialPageEntry() {
+        val root = temp()
+        try {
+            withController(root) { controller ->
+                val primary = controller.pinPrimary(generationId = "generation-entry")
+                primary.firstScreen = true
+                primary.notifyReady { }
+                val secondary = controller.pinSecondary(
+                    "detail.lynx.bundle",
+                    mapOf("title" to "Second Page"),
+                    1,
+                    "generation-entry",
+                )
+                secondary.setResourceObserver { _, _, _ -> }
+                secondary.requireResourceBeforeReady("detail.lynx.bundle")
+                var admitted: Result<JSONObject>? = null
+                secondary.firstScreen = true
+                secondary.notifyReady { admitted = it }
+                assertEquals(null, admitted)
+                secondary.resolveEssential("detail.lynx.bundle")
+                assertEquals(
+                    "PAGE_ADMITTED",
+                    checkNotNull(admitted).getOrThrow().getString("status"),
+                )
+            }
+        } finally {
+            root.deleteRecursively()
+        }
+    }
+
     @Test fun pendingIntermediateReconstructionCanBeCancelledWithoutFutureSuffix() {
         listOf(
             LynxPageCancelReason.NATIVE_BACK,

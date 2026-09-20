@@ -220,6 +220,7 @@ function App() {
       });
     },
     "action-reset-runtime-channel": async () => {
+      await patchScreenState({ runtimeScenarioMarker: null });
       await setChannelActionResult("reset -> requesting transition");
       await HotUpdater.resetChannel();
     },
@@ -475,9 +476,11 @@ function App() {
   };
 
   useEffect(() => {
+    let active = true;
+    let timer: ReturnType<typeof setTimeout> | null = null;
     void (async () => {
       try {
-        await bootstrapRuntimeReady(
+        const ready = await bootstrapRuntimeReady(
           runtimeConfigurationReady,
           async () => {
             await loadE2EStartupResources({
@@ -497,20 +500,6 @@ function App() {
             }),
           ensurePendingActionPoller,
         );
-      } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
-        const status = `Current Launch Status: ERROR ${message}`;
-        setLaunchStatus(status);
-        await patchScreenState({ launchStatus: status });
-      }
-    })();
-  }, []);
-
-  useEffect(() => {
-    let active = true;
-    let timer: ReturnType<typeof setTimeout> | null = null;
-    void runtimeConfigurationReady
-      .then((ready) => {
         if (!active || !ready) return;
         timer = setTimeout(() => {
           void applyForcedUpdate(
@@ -518,10 +507,13 @@ function App() {
             () => !active || handledScenarioAction,
           ).catch((error) => reportActionError("force-update", error));
         }, 2500);
-      })
-      .catch((error) => {
-        if (active) void reportActionError("force-update", error);
-      });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        const status = `Current Launch Status: ERROR ${message}`;
+        setLaunchStatus(status);
+        await patchScreenState({ launchStatus: status });
+      }
+    })();
     return () => {
       active = false;
       if (timer !== null) clearTimeout(timer);

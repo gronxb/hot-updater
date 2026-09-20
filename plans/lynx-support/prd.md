@@ -696,7 +696,11 @@ Every newly opened secondary page has a first-load admission window bound to its
 source generation, ordered stack position, page entry, Bundle, Release, and a
 native page-attempt identity recorded before its template evaluates. Admission
 requires native first content, successful loads of that page's declared
-essential resources, and the page's application-ready signal. A secondary may
+essential resources, and the page's application-ready signal. The packaged
+Sparkling host records every declared essential resource, including the page's
+own entry, through the managed loader before template evaluation. Sparkling
+`kit.load()` / `renderTemplateUrl` is not itself a managed-resource observation.
+A secondary may
 use the same readiness bridge as the primary, but native interprets it only as
 page readiness: it cannot consume the primary launch transition or confirm a
 Release. Repeated page readiness is idempotent, and stale or different-page
@@ -1473,7 +1477,11 @@ the contract and evidence in this PRD.
 The final prerelease public client has no `getManifest`, `getInstallId`,
 `addListener`, `setUser`, or init-time insights surface. `init()` accepts only
 transport configuration and an error callback. Update bytes are prepared only
-through the update returned by `checkForUpdate()`. `isUpdateDownloaded()` derives
+through the update returned by `checkForUpdate()`. If native confirmation or
+recovery changes the snapshot revision between `getState` and `acceptCatalog`,
+`checkForUpdate()` retries that catalog attempt instead of surfacing `STALE_STATE`
+to the application. Repeated revision races still fail after three attempts.
+`isUpdateDownloaded()` derives
 its answer from the latest authoritative native `nextSelection`, rather than a
 JS-local installation latch. Default reload validation/persistence failures are
 observable to the old caller before retirement; accepted-transition reconstruction

@@ -36,6 +36,29 @@ export interface InternalCheckForUpdateOptions extends CheckForUpdateOptions {
 export async function checkForUpdate(
   options: InternalCheckForUpdateOptions,
 ): Promise<CheckForUpdateResult | null> {
+  const maxAttempts = 3;
+  let lastError: unknown;
+  for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+    try {
+      return await checkForUpdateAttempt(options);
+    } catch (error) {
+      lastError = error;
+      if (
+        !(error instanceof LynxUpdaterError) ||
+        error.code !== "STALE_STATE"
+      ) {
+        throw error;
+      }
+    }
+  }
+  throw lastError instanceof Error
+    ? lastError
+    : new LynxUpdaterError("STALE_STATE", "Native revision changed");
+}
+
+async function checkForUpdateAttempt(
+  options: InternalCheckForUpdateOptions,
+): Promise<CheckForUpdateResult | null> {
   if (
     options.updateStrategy !== "appVersion" &&
     options.updateStrategy !== "fingerprint"

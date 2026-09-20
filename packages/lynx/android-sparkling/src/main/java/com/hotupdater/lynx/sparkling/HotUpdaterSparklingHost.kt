@@ -874,6 +874,7 @@ class HotUpdaterSparklingHost(
         if (page.primary && !page.recreating) {
             emitGenerationStarted(pendingGenerationStartReason)
         }
+        page.expectedEssentialResources.forEach(launch::resolveEssential)
         kit.load()
         return view
     }
