@@ -613,7 +613,44 @@ class HotUpdaterSparklingHost(
             val rootActivity = checkNotNull(primaryActivity) {
                 "The primary Activity cannot be reconstructed"
             }
-            var launchReason = reason
+            mainHandler.post {
+                reconstructGeneration(
+                    rootActivity,
+                    reason,
+                    retained,
+                    retired,
+                )
+            }
+        } catch (error: Throwable) {
+            Log.e(TAG, "Managed Lynx generation failed closed", error)
+            pages.forEach(::retirePage)
+            pages.clear()
+            runCatching { controller.close() }
+            closed = true
+            transitioning = false
+            ManagedSparklingHostRegistry.remove(hostId, this)
+            eventSink.onEvent(
+                "generationReconstructionFailed",
+                terminalFailureDetails + mapOf(
+                    "reason" to reason,
+                    "message" to (error.message ?: "Managed generation failed closed"),
+                ),
+            )
+            primaryActivity?.finish()
+        }
+    }
+
+    private fun reconstructGeneration(
+        rootActivity: Activity,
+        reason: String,
+        retained: List<LynxLogicalPage>,
+        retired: Map<String, Any?>,
+    ) {
+        requireMainThread()
+        if (closed) return
+        var launchReason = reason
+        var terminalFailureDetails = retired
+        try {
             repeat(MAX_RECONSTRUCTION_ATTEMPTS) {
                 controller = newController()
                 runtimeGenerationEpoch += 1
@@ -661,7 +698,8 @@ class HotUpdaterSparklingHost(
                     primarySession?.let { session ->
                         runCatching {
                             session.recordGenerationFailure(
-                                error.message ?: "Managed generation reconstruction failed",
+                                error.message
+                                    ?: "Managed generation reconstruction failed",
                             )
                         }
                     }
@@ -704,10 +742,12 @@ class HotUpdaterSparklingHost(
                 "generationReconstructionFailed",
                 terminalFailureDetails + mapOf(
                     "reason" to reason,
-                    "message" to (error.message ?: "Managed generation failed closed"),
+                    "message" to (
+                        error.message ?: "Managed generation failed closed"
+                    ),
                 ),
             )
-            primaryActivity?.finish()
+            rootActivity.finish()
         }
     }
 
