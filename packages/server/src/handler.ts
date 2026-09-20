@@ -193,8 +193,8 @@ export function createHotUpdaterHandlers(
   );
   addClientRoute(
     "GET",
-    "/artifacts/:targetBundleId/from/:currentBundleId",
-    "artifact",
+    "/artifacts/v1/:targetBundleId/from/:currentBundleId",
+    "artifactV1",
   );
   if (insights !== undefined) {
     registerInsightsClientRoutes(addClientRoute);

@@ -36,7 +36,7 @@ class HotUpdater {
          * Updates the bundle using the default singleton instance
          * @param context Application context
          * @param bundleId ID of the bundle to update
-         * @param fileUrl URL of the bundle file to download (or null to reset)
+         * @param params Manifest and asset descriptors for the target bundle
          * @param fileHash Combined hash string for verification (sig:<signature> or <hex_hash>)
          * @param progressCallback Callback for download progress updates
          * @throws HotUpdaterException if the update fails
@@ -44,21 +44,17 @@ class HotUpdater {
         suspend fun updateBundle(
             context: Context,
             bundleId: String,
-            fileUrl: String?,
-            fileHash: String?,
-            manifestUrl: String?,
-            manifestFileHash: String?,
-            changedAssets: Map<String, ChangedAssetDescriptor>?,
+            manifestUrl: String,
+            manifestFileHash: String,
+            assets: Map<String, ChangedAssetDescriptor>,
             channel: String?,
             progressCallback: (UpdateProgressPayload) -> Unit,
         ) {
             getInstance(context).updateBundle(
                 bundleId,
-                fileUrl,
-                fileHash,
                 manifestUrl,
                 manifestFileHash,
-                changedAssets,
+                assets,
                 channel,
                 progressCallback = progressCallback,
             )

@@ -37,12 +37,17 @@ class HotUpdaterModule internal constructor(
      */
     private fun getInstance(): HotUpdaterImpl = HotUpdater.getInstance(mReactApplicationContext)
 
-    private fun parseChangedAssets(params: ReadableMap): Map<String, ChangedAssetDescriptor>? {
-        if (!params.hasKey("changedAssets") || params.isNull("changedAssets")) {
+    private fun parseAssets(params: ReadableMap): Map<String, ChangedAssetDescriptor>? {
+        val key =
+            when {
+                params.hasKey("assets") && !params.isNull("assets") -> "assets"
+                else -> return null
+            }
+        if (!params.hasKey(key) || params.isNull(key)) {
             return null
         }
 
-        val changedAssetsMap = params.getMap("changedAssets") ?: return null
+        val changedAssetsMap = params.getMap(key) ?: return null
         val parsedAssets = linkedMapOf<String, ChangedAssetDescriptor>()
         val iterator = changedAssetsMap.keySetIterator()
 
@@ -170,22 +175,19 @@ class HotUpdaterModule internal constructor(
                     return@launch
                 }
 
-                val fileUrl = params.getString("fileUrl")
-
-                // Validate fileUrl format if provided
-                if (fileUrl != null && fileUrl.isNotEmpty()) {
-                    try {
-                        java.net.URL(fileUrl)
-                    } catch (e: java.net.MalformedURLException) {
-                        promise.reject("INVALID_FILE_URL", "Invalid 'fileUrl' provided: $fileUrl")
-                        return@launch
-                    }
-                }
-
-                val fileHash = params.getString("fileHash")
                 val manifestUrl = params.getString("manifestUrl")
                 val manifestFileHash = params.getString("manifestFileHash")
-                val changedAssets = parseChangedAssets(params)
+                val assets = parseAssets(params)
+                if (manifestUrl.isNullOrEmpty() || manifestFileHash.isNullOrEmpty() || assets == null) {
+                    promise.reject("INVALID_MANIFEST", "Manifest URL, hash, and assets are required")
+                    return@launch
+                }
+                try {
+                    java.net.URL(manifestUrl)
+                } catch (e: java.net.MalformedURLException) {
+                    promise.reject("INVALID_FILE_URL", "Invalid 'manifestUrl' provided: $manifestUrl")
+                    return@launch
+                }
                 val channel = params.getString("channel")
                 val selection = parseSelection(params)
 
@@ -193,11 +195,9 @@ class HotUpdaterModule internal constructor(
 
                 impl.updateBundle(
                     bundleId,
-                    fileUrl,
-                    fileHash,
                     manifestUrl,
                     manifestFileHash,
-                    changedAssets,
+                    assets,
                     channel,
                     selection,
                 ) { progress ->

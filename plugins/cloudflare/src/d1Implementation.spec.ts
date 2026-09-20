@@ -124,7 +124,7 @@ it("maps idempotent Channel inserts to the normalized table", async () => {
   expect(recorded[0]?.sql).toContain("ON CONFLICT(name) DO NOTHING");
 });
 
-it("persists required archive and patch byte sizes", async () => {
+it("persists required manifest fields and patch byte sizes", async () => {
   let recorded: readonly D1Statement[] = [];
   const implementation = createD1Implementation({
     query: () => Promise.reject(new Error("unexpected standalone query")),
@@ -136,14 +136,11 @@ it("persists required archive and patch byte sizes", async () => {
   const bundle = {
     id: "bundle-1",
     platform: "ios" as const,
-    file_hash: "bundle-hash",
     git_commit_hash: null,
-    storage_uri: "storage://bundle",
-    archive_byte_size: 3_000_000_001,
     metadata: {},
-    manifest_storage_uri: null,
-    manifest_file_hash: null,
-    asset_base_storage_uri: null,
+    manifest_storage_uri: "storage://bundle/manifest.json",
+    manifest_file_hash: "manifest-hash",
+    asset_base_storage_uri: "storage://assets",
   };
 
   await expect(
@@ -168,8 +165,8 @@ it("persists required archive and patch byte sizes", async () => {
     }),
   ).resolves.toEqual({ committed: true });
 
-  expect(recorded[0]?.sql).toContain("archive_byte_size");
-  expect(recorded[0]?.params).toContain("3000000001");
+  expect(recorded[0]?.sql).toContain("manifest_file_hash");
+  expect(recorded[0]?.params).toContain('"manifest-hash"');
   expect(recorded[1]?.sql).toContain("byte_size");
   expect(recorded[1]?.params).toContain("3000000002");
 });

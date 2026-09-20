@@ -42,16 +42,11 @@ function App() {
 |----------------------|-----------------------|--------------------------------------------------|
 | `progress`           | `number`              | Overall update progress from `0` to `1`.          |
 | `isUpdateDownloaded` | `boolean`             | `true` when `progress` reaches `1`.               |
-| `artifactType`       | `"archive" \| "diff" \| null` | Current download type, or `null` before progress starts. |
-| `downloadedBytes`    | `number \| undefined` | Downloaded bytes for archive updates.             |
-| `totalBytes`         | `number \| undefined` | Total bytes for archive updates when known.       |
+| `artifactType`       | `"diff" \| null` | Current download type, or `null` before progress starts. |
 | `details`            | `object \| null`      | Per-file progress for bundle diffing updates.     |
 
-When `artifactType` is `"archive"`, the app is downloading the normal
-compressed OTA archive.
-
 When `artifactType` is `"diff"`, Hot Updater is reusing unchanged files from
-the current OTA bundle and downloading only the files that changed. In this
+the current OTA or built-in app and downloading only the files that changed. In this
 case, `details` contains `totalFilesCount`, `completedFilesCount`, and `files`.
 
 ```tsx

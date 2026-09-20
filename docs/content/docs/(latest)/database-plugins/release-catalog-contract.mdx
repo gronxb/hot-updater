@@ -61,14 +61,11 @@ implementation, but those details are not public.
 ## Artifact models
 
 `BundleModel.findMany` applies filtering and ordering before offset and limit.
-Bundle rows contain only artifact fields: ID, platform, hashes, storage URIs,
-manifest/asset information, Git commit, and artifact metadata.
-
-Every Bundle row has a required `archive_byte_size`, and every Bundle-patch row
-has a required `byte_size`. Both values are immutable non-negative
-integers no larger than `Number.MAX_SAFE_INTEGER`. Provider CRUD hydration must
-reject a missing, fractional, negative, or out-of-range value instead of
-constructing a partial Bundle.
+Bundle rows contain only artifact fields: ID, platform, required manifest and
+asset storage information, Git commit, and artifact metadata. Every
+Bundle-patch row has a required `byte_size`, an immutable non-negative integer
+no larger than `Number.MAX_SAFE_INTEGER`. Provider CRUD hydration must reject a
+missing, fractional, negative, or out-of-range patch size.
 
 `BundlePatchModel.findByBundleIds` returns all patch rows owned by the requested
 Bundle IDs. It returns immediately for an empty owner list.
@@ -88,23 +85,12 @@ size comparison unknown; it does not invalidate the Bundle row.
 A Bundle referenced by any Release cannot be deleted. Release policy changes
 never mutate a Bundle.
 
-### Artifact route selection
+### Artifact response
 
-The server computes the normal manifest route as the exact UTF-8 byte length of
-the stored target manifest text plus the primary download size of every changed
-asset. Unchanged assets cost zero. A usable patch is primary only when it is
-strictly smaller than a usable complete file when both sizes are known; a tie
-uses the file. A retained patch remains primary when its required size is known
-and the optional file size is unknown.
-
-When the archive URL, archive size, and every primary size are known, a total
-diff size equal to or larger than `archive_byte_size` produces the archive-only
-response. Missing or invalid optional manifest metadata, or safe-integer sum
-overflow, preserves the existing manifest-first response. No request-time
-`HEAD` or storage metadata lookup is used, and this server-side decision does
-not change native routes or public artifact response types. Exceptional patch
-failure retains the existing patch-to-file-to-archive fallback and is not
-included in the normal-path total.
+Protocol v1 returns the manifest URL and hash plus an original descriptor for
+every target file. A changed Hermes file may also include a patch when it is
+strictly smaller than the original transfer. The original remains mandatory so
+the client can recover from a missing base file, corrupt base, or patch failure.
 
 ## Release model
 

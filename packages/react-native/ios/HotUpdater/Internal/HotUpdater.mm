@@ -594,20 +594,14 @@ RCT_EXPORT_MODULE();
     if (params.bundleId()) {
         paramDict[@"bundleId"] = params.bundleId();
     }
-    if (params.fileUrl()) {
-        paramDict[@"fileUrl"] = params.fileUrl();
-    }
-    if (params.fileHash()) {
-        paramDict[@"fileHash"] = params.fileHash();
-    }
     if (params.manifestUrl()) {
         paramDict[@"manifestUrl"] = params.manifestUrl();
     }
     if (params.manifestFileHash()) {
         paramDict[@"manifestFileHash"] = params.manifestFileHash();
     }
-    if (params.changedAssets()) {
-        paramDict[@"changedAssets"] = params.changedAssets();
+    if (params.assets()) {
+        paramDict[@"assets"] = params.assets();
     }
     if (params.channel()) {
         paramDict[@"channel"] = params.channel();

@@ -83,14 +83,12 @@ class HotUpdaterImpl {
             val fileSystem = FileManagerService(appContext)
             val preferences = createPreferences(appContext)
             val downloadService = OkHttpDownloadService()
-            val decompressService = DecompressService()
             val isolationKey = getIsolationKey(appContext)
 
             return BundleFileStorageService(
                 appContext,
                 fileSystem,
                 downloadService,
-                decompressService,
                 preferences,
                 isolationKey,
             )
@@ -277,11 +275,9 @@ class HotUpdaterImpl {
      */
     suspend fun updateBundle(
         bundleId: String,
-        fileUrl: String?,
-        fileHash: String?,
-        manifestUrl: String?,
-        manifestFileHash: String?,
-        changedAssets: Map<String, ChangedAssetDescriptor>?,
+        manifestUrl: String,
+        manifestFileHash: String,
+        assets: Map<String, ChangedAssetDescriptor>,
         channel: String?,
         selection: PersistedSelection? = null,
         progressCallback: (UpdateProgressPayload) -> Unit,
@@ -291,11 +287,9 @@ class HotUpdaterImpl {
         }
         bundleStorage.updateBundle(
             bundleId,
-            fileUrl,
-            fileHash,
             manifestUrl,
             manifestFileHash,
-            changedAssets,
+            assets,
             progressCallback,
         )
 

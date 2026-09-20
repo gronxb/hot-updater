@@ -11,10 +11,10 @@ import { createInMemoryDatabasePlugin } from "./inMemoryDatabasePlugin";
 const createBundle = (id: string, overrides: Partial<Bundle> = {}): Bundle => ({
   id,
   platform: "ios",
-  fileHash: `hash-${id}`,
   gitCommitHash: null,
-  storageUri: `storage://${id}`,
-  archiveByteSize: 3_000_000_001,
+  manifestStorageUri: `storage://${id}/manifest.json`,
+  manifestFileHash: `manifest-hash-${id}`,
+  assetBaseStorageUri: "storage://assets",
   ...overrides,
 });
 
@@ -33,14 +33,14 @@ describe("database client", () => {
       patches: [
         {
           baseBundleId: firstBase.id,
-          baseFileHash: firstBase.fileHash,
+          baseFileHash: `asset-hash-${firstBase.id}`,
           patchFileHash: "patch-1",
           patchStorageUri: "storage://patch-1",
           byteSize: 3_000_000_002,
         },
         {
           baseBundleId: secondBase.id,
-          baseFileHash: secondBase.fileHash,
+          baseFileHash: `asset-hash-${secondBase.id}`,
           patchFileHash: "patch-2",
           patchStorageUri: "storage://patch-2",
           byteSize: 3_000_000_003,
@@ -82,7 +82,7 @@ describe("database client", () => {
       patches: [
         {
           baseBundleId: firstBase.id,
-          baseFileHash: firstBase.fileHash,
+          baseFileHash: `asset-hash-${firstBase.id}`,
           patchFileHash: "old",
           patchStorageUri: "storage://old",
           byteSize: 3_000_000_002,
@@ -97,7 +97,7 @@ describe("database client", () => {
       patches: [
         {
           baseBundleId: secondBase.id,
-          baseFileHash: secondBase.fileHash,
+          baseFileHash: `asset-hash-${secondBase.id}`,
           patchFileHash: "new",
           patchStorageUri: "storage://new",
           byteSize: 3_000_000_003,
@@ -123,7 +123,7 @@ describe("database client", () => {
       patches: [
         {
           baseBundleId: base.id,
-          baseFileHash: base.fileHash,
+          baseFileHash: `asset-hash-${base.id}`,
           patchFileHash: "safe-owner",
           patchStorageUri: "storage://safe-owner",
           byteSize: 3_000_000_002,

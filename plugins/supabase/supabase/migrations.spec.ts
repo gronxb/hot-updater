@@ -260,9 +260,10 @@ describe("Supabase v1 schema", () => {
     );
     expect(sql).toContain("REVOKE EXECUTE ON FUNCTION");
     expect(sql).toContain("TO service_role;");
-    expect(sql).toContain("archive_byte_size double precision NOT NULL CHECK");
     expect(sql).toContain("byte_size double precision NOT NULL CHECK");
-    expect(sql).toContain("archive_byte_size = v_bundle.archive_byte_size");
+    expect(sql).toContain(
+      "manifest_storage_uri = v_bundle.manifest_storage_uri",
+    );
     expect(sql).toContain(
       "patch_file_hash, patch_storage_uri, byte_size, order_index",
     );
@@ -316,10 +317,11 @@ describe("Supabase v1 schema", () => {
         INSERT INTO public.hot_updater_v1_channels (id, name)
           VALUES ('channel-1', 'production');
         INSERT INTO public.hot_updater_v1_bundles (
-          id, platform, file_hash, storage_uri, archive_byte_size, metadata
+          id, platform, metadata, manifest_storage_uri, manifest_file_hash,
+          asset_base_storage_uri
         ) VALUES (
-          '00000000-0000-0000-0000-000000000001', 'ios', 'hash',
-          'storage://bundle', 3000000001, '{}'::jsonb
+          '00000000-0000-0000-0000-000000000001', 'ios', '{}'::jsonb,
+          'storage://bundle/manifest.json', 'manifest-hash', 'storage://assets'
         );
         INSERT INTO public.hot_updater_v1_bundle_patches (
           id, bundle_id, base_bundle_id, base_file_hash, patch_file_hash,
@@ -338,18 +340,13 @@ describe("Supabase v1 schema", () => {
         "SELECT name FROM public.channels",
       );
       expect(legacyChannels.rows).toEqual([{ name: "legacy" }]);
-      const sizes = await database.query<{
-        archive_byte_size: number;
-        byte_size: number;
-      }>(`
-        SELECT bundle.archive_byte_size, patch.byte_size
+      const sizes = await database.query<{ byte_size: number }>(`
+        SELECT patch.byte_size
         FROM public.hot_updater_v1_bundles AS bundle
         JOIN public.hot_updater_v1_bundle_patches AS patch
           ON patch.bundle_id = bundle.id
       `);
-      expect(sizes.rows).toEqual([
-        { archive_byte_size: 3_000_000_001, byte_size: 3_000_000_002 },
-      ]);
+      expect(sizes.rows).toEqual([{ byte_size: 3_000_000_002 }]);
     } finally {
       await database.close();
     }

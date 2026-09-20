@@ -16,8 +16,6 @@ import java.io.File
 import java.net.URL
 import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.Executors
-import java.util.zip.ZipEntry
-import java.util.zip.ZipOutputStream
 
 class BundleFileStorageServiceTest {
     @get:Rule
@@ -340,40 +338,107 @@ class BundleFileStorageServiceTest {
     }
 
     @Test
-    fun `manifest driven install is disabled before first OTA`() {
-        val rootDir = temporaryFolder.newFolder("first-ota-manifest-disabled")
-        val service = createService(rootDir)
+    fun `manifest driven install reuses matching built in asset before first OTA`() =
+        runBlocking {
+            val rootDir = temporaryFolder.newFolder("first-ota-manifest-install")
+            val bundleContent = "target-bundle"
+            val imageContent = "target-image"
+            val assets =
+                linkedMapOf(
+                    "index.android.bundle" to sha256(rootDir, bundleContent),
+                    "assets/image.png" to sha256(rootDir, imageContent),
+                )
+            val manifest = manifestJson("target-bundle", assets)
+            val downloads =
+                MappingDownloadService(
+                    mapOf(
+                        "https://example.com/manifest.json" to manifest,
+                        "https://example.com/index.android.bundle" to bundleContent,
+                    ),
+                )
+            val service =
+                createService(
+                    rootDir,
+                    downloadService = downloads,
+                    builtInAssetResolver =
+                        MappingBuiltInAssetResolver(
+                            mapOf("assets/image.png" to imageContent),
+                        ),
+                )
 
-        assertFalse(invokeCanUseManifestDrivenInstall(service))
-    }
+            service.updateBundle(
+                bundleId = "target-bundle",
+                manifestUrl = "https://example.com/manifest.json",
+                manifestFileHash = sha256(rootDir, manifest),
+                assets =
+                    assets.mapValues { (path, hash) ->
+                        ChangedAssetDescriptor(
+                            fileUrl = "https://example.com/$path",
+                            fileHash = hash,
+                        )
+                    },
+                progressCallback = {},
+            )
+
+            val targetDir = File(bundleStoreDir(rootDir), "target-bundle")
+            assertEquals(bundleContent, File(targetDir, "index.android.bundle").readText())
+            assertEquals(imageContent, File(targetDir, "assets/image.png").readText())
+            assertEquals("target-bundle", loadMetadata(rootDir)?.stagingBundleId)
+            assertEquals(
+                listOf(
+                    "https://example.com/manifest.json",
+                    "https://example.com/index.android.bundle",
+                ),
+                downloads.calls,
+            )
+        }
 
     @Test
-    fun `manifest driven install is enabled for active OTA bundle with manifest`() {
-        val rootDir = temporaryFolder.newFolder("active-ota-manifest-enabled")
-        val preferences = InMemoryPreferencesService()
-        val service = createService(rootDir, preferences)
-        val activeDir = createBundleDir(rootDir, "active-bundle")
-        val activeBundleFile = writeFile(activeDir, "index.android.bundle")
-        writeManifest(activeDir, listOf("index.android.bundle"))
+    fun `manifest driven install downloads original when matching current asset is corrupt`() =
+        runBlocking {
+            val rootDir = temporaryFolder.newFolder("corrupt-current-asset")
+            val preferences = InMemoryPreferencesService()
+            val targetContent = "verified-target-bundle"
+            val targetHash = sha256(rootDir, targetContent)
+            val activeDir = createBundleDir(rootDir, "active-bundle")
+            val activeBundleFile = writeFile(activeDir, "index.android.bundle", "corrupt")
+            File(activeDir, "manifest.json").writeText(
+                manifestJson("active-bundle", mapOf("index.android.bundle" to targetHash)),
+            )
+            preferences.setItem("HotUpdaterBundleURL", activeBundleFile.absolutePath)
 
-        preferences.setItem("HotUpdaterBundleURL", activeBundleFile.absolutePath)
+            val targetManifest =
+                manifestJson("target-bundle", mapOf("index.android.bundle" to targetHash))
+            val downloads =
+                MappingDownloadService(
+                    mapOf(
+                        "https://example.com/manifest.json" to targetManifest,
+                        "https://example.com/index.android.bundle" to targetContent,
+                    ),
+                )
+            val service = createService(rootDir, preferences, downloads)
 
-        assertTrue(invokeCanUseManifestDrivenInstall(service))
-    }
+            service.updateBundle(
+                bundleId = "target-bundle",
+                manifestUrl = "https://example.com/manifest.json",
+                manifestFileHash = sha256(rootDir, targetManifest),
+                assets =
+                    mapOf(
+                        "index.android.bundle" to
+                            ChangedAssetDescriptor(
+                                fileUrl = "https://example.com/index.android.bundle",
+                                fileHash = targetHash,
+                            ),
+                    ),
+                progressCallback = {},
+            )
 
-    @Test
-    fun `manifest driven install rejects unsafe asset paths`() {
-        val rootDir = temporaryFolder.newFolder("active-ota-unsafe-manifest")
-        val preferences = InMemoryPreferencesService()
-        val service = createService(rootDir, preferences)
-        val activeDir = createBundleDir(rootDir, "active-bundle")
-        val activeBundleFile = writeFile(activeDir, "index.android.bundle")
-        writeManifest(activeDir, listOf("../active-bundle_evil/index.android.bundle"))
-
-        preferences.setItem("HotUpdaterBundleURL", activeBundleFile.absolutePath)
-
-        assertFalse(invokeCanUseManifestDrivenInstall(service))
-    }
+            assertEquals(
+                targetContent,
+                File(bundleStoreDir(rootDir), "target-bundle/index.android.bundle").readText(),
+            )
+            assertTrue(downloads.calls.contains("https://example.com/index.android.bundle"))
+        }
 
     @Test
     fun `catalog high water rejects replay and survives channel reset`() =
@@ -554,11 +619,9 @@ class BundleFileStorageServiceTest {
                         runCatching {
                             service.updateBundle(
                                 bundleId = "target-bundle",
-                                fileUrl = "https://example.com/bundle.zip",
-                                fileHash = null,
                                 manifestUrl = "https://example.com/manifest.json",
                                 manifestFileHash = "manifest-hash",
-                                changedAssets = emptyMap(),
+                                assets = emptyMap(),
                                 progressCallback = {},
                             )
                         }
@@ -574,40 +637,20 @@ class BundleFileStorageServiceTest {
         )
     }
 
-    @Test
-    fun `zip decompression does not write sibling prefix traversal entries`() {
-        val rootDir = temporaryFolder.newFolder("zip-sibling-prefix")
-        val zipFile = File(rootDir, "bundle.zip")
-        ZipOutputStream(zipFile.outputStream()).use { zip ->
-            writeZipEntry(zip, "../bundle-temp_evil/escape.txt", "blocked")
-            writeZipEntry(zip, "safe/kept.txt", "kept")
-        }
-
-        val destinationDir = File(rootDir, "bundle-temp")
-        val extracted =
-            ZipDecompressionStrategy().decompress(
-                zipFile.absolutePath,
-                destinationDir.absolutePath,
-            ) {}
-
-        assertTrue(extracted)
-        assertTrue(File(destinationDir, "safe/kept.txt").isFile)
-        assertFalse(File(rootDir, "bundle-temp_evil/escape.txt").exists())
-    }
-
     private fun createService(
         rootDir: File,
         preferences: InMemoryPreferencesService = InMemoryPreferencesService(),
         downloadService: DownloadService = UnusedDownloadService,
+        builtInAssetResolver: BuiltInAssetResolver? = null,
     ): BundleFileStorageService =
         BundleFileStorageService(
-            ContextWrapper(null),
-            TestFileSystemService(rootDir),
-            downloadService,
-            DecompressService(),
-            preferences,
-            TEST_ISOLATION_KEY,
-            { "production" },
+            context = ContextWrapper(null),
+            fileSystem = TestFileSystemService(rootDir),
+            downloadService = downloadService,
+            preferences = preferences,
+            isolationKey = TEST_ISOLATION_KEY,
+            defaultChannelProvider = { "production" },
+            builtInAssetResolver = builtInAssetResolver,
         )
 
     private fun releaseSelection(
@@ -681,16 +724,6 @@ class BundleFileStorageServiceTest {
             writeText(content)
         }
 
-    private fun writeZipEntry(
-        zip: ZipOutputStream,
-        path: String,
-        content: String,
-    ) {
-        zip.putNextEntry(ZipEntry(path))
-        zip.write(content.toByteArray())
-        zip.closeEntry()
-    }
-
     private fun bundleStoreDir(rootDir: File): File = File(rootDir, "bundle-store").apply { mkdirs() }
 
     private fun invokeResolveBundleFile(
@@ -705,12 +738,6 @@ class BundleFileStorageServiceTest {
             )
         method.isAccessible = true
         return method.invoke(service, bundleDir, bundleDir.name) as File?
-    }
-
-    private fun invokeCanUseManifestDrivenInstall(service: BundleFileStorageService): Boolean {
-        val method = BundleFileStorageService::class.java.getDeclaredMethod("canUseManifestDrivenInstall")
-        method.isAccessible = true
-        return method.invoke(service) as Boolean
     }
 
     private fun assertResolvedBundlePath(
@@ -790,6 +817,75 @@ class BundleFileStorageServiceTest {
         ): DownloadResult {
             calls += fileUrl.toString() to Thread.currentThread().name
             return DownloadResult.Error(IllegalStateException("expected download failure"))
+        }
+    }
+
+    private class MappingDownloadService(
+        private val contents: Map<String, String>,
+    ) : DownloadService {
+        val calls = CopyOnWriteArrayList<String>()
+
+        override suspend fun downloadFile(
+            fileUrl: URL,
+            destination: File,
+            fileSizeCallback: ((Long) -> Unit)?,
+            progressCallback: (DownloadProgress) -> Unit,
+        ): DownloadResult {
+            calls += fileUrl.toString()
+            val content = contents[fileUrl.toString()]
+                ?: return DownloadResult.Error(IllegalArgumentException("Unexpected URL: $fileUrl"))
+            destination.parentFile?.mkdirs()
+            destination.writeText(content)
+            fileSizeCallback?.invoke(destination.length())
+            progressCallback(DownloadProgress(1.0, destination.length(), destination.length()))
+            return DownloadResult.Success(destination)
+        }
+    }
+
+    private class MappingBuiltInAssetResolver(
+        private val contents: Map<String, String>,
+    ) : BuiltInAssetResolver {
+        override fun copyIfMatches(
+            assetPath: String,
+            expectedHash: String,
+            destination: File,
+        ): Boolean {
+            val content = contents[assetPath] ?: return false
+            destination.parentFile?.mkdirs()
+            destination.writeText(content)
+            if (!HashUtils.verifyHash(destination, expectedHash)) {
+                destination.delete()
+                return false
+            }
+            return true
+        }
+    }
+
+    private fun manifestJson(
+        bundleId: String,
+        assets: Map<String, String>,
+    ): String =
+        JSONObject()
+            .put("bundleId", bundleId)
+            .put(
+                "assets",
+                JSONObject().apply {
+                    assets.forEach { (path, hash) ->
+                        put(path, JSONObject().put("fileHash", hash))
+                    }
+                },
+            ).toString()
+
+    private fun sha256(
+        rootDir: File,
+        content: String,
+    ): String {
+        val file = File.createTempFile("hash-", null, rootDir)
+        return try {
+            file.writeText(content)
+            HashUtils.calculateSHA256(file)
+        } finally {
+            file.delete()
         }
     }
 

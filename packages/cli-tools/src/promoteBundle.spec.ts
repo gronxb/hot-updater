@@ -1,866 +1,299 @@
 // @vitest-environment node
 
 import crypto from "node:crypto";
-import fs from "node:fs/promises";
-import os from "node:os";
-import path from "node:path";
-import { brotliDecompressSync } from "node:zlib";
+import { brotliCompressSync, brotliDecompressSync } from "node:zlib";
 
 import type { Bundle } from "@hot-updater/plugin-core";
-import { createStoragePlugin } from "@hot-updater/plugin-core";
-import JSZip from "jszip";
-import * as tar from "tar";
+import {
+  createStoragePlugin,
+  getManifestAssetStoragePath,
+} from "@hot-updater/plugin-core";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { ConfigResponse } from "./loadConfig";
-import {
-  createCopiedBundleArchive,
-  LEGACY_BUNDLE_ERROR,
-} from "./promoteBundle";
+import { createCopiedBundleArtifacts } from "./promoteBundle";
 
-const baseBundle: Bundle = {
-  id: "0195a408-8f13-7d9b-8df4-123456789abc",
-  platform: "ios",
-  fileHash: "abc123",
-  storageUri: "https://example.com/bundle.zip",
-  archiveByteSize: 3_000_000_001,
-  gitCommitHash: "deadbeef",
+const sha256 = (bytes: string | Uint8Array) =>
+  crypto.createHash("sha256").update(bytes).digest("hex");
+
+type ManifestAsset = {
+  downloadByteSize?: number;
+  downloadFileHash?: string;
+  fileHash: string;
+  signature?: string;
 };
 
-const config = {} as ConfigResponse;
-
-interface TestBundleManifest {
-  assets: Record<
-    string,
-    {
-      downloadByteSize?: number;
-      downloadFileHash?: string;
-      fileHash: string;
-    }
-  >;
+type Manifest = {
+  assets: Record<string, ManifestAsset>;
   bundleId: string;
-}
+};
 
-async function createZipArchive(
-  archivePath: string,
-  files: Record<string, string>,
-) {
-  const zip = new JSZip();
+const encodeManifest = (manifest: Manifest) =>
+  Buffer.from(`${JSON.stringify(manifest, null, 2)}\n`);
 
-  for (const [name, content] of Object.entries(files)) {
-    zip.file(name, content);
-  }
+const sourceBundle = (manifestBytes: Uint8Array): Bundle => ({
+  id: "0195a408-8f13-7d9b-8df4-123456789abc",
+  platform: "ios",
+  gitCommitHash: "deadbeef",
+  manifestStorageUri: "s3://bucket/source/manifest.json",
+  manifestFileHash: sha256(manifestBytes),
+  assetBaseStorageUri: "s3://bucket/assets",
+});
 
-  await fs.writeFile(
-    archivePath,
-    await zip.generateAsync({ type: "nodebuffer", compression: "DEFLATE" }),
-  );
-}
+const createStorageFixture = (sourceObjects: Map<string, Uint8Array>) => {
+  const uploaded = new Map<string, Buffer>();
+  const plugin = createStoragePlugin({
+    name: "mock-storage",
+    protocol: "s3",
+    get: vi.fn(async ({ storageUri }) => ({
+      response: sourceObjects.has(storageUri)
+        ? new Response(sourceObjects.get(storageUri))
+        : null,
+    })),
+    put: vi.fn(async ({ key, body }) => {
+      uploaded.set(key, Buffer.from(await new Response(body).arrayBuffer()));
+      return { storageUri: `s3://bucket/${key}` };
+    }),
+    exists: vi.fn(async ({ storageUri }) => ({
+      exists: uploaded.has(new URL(storageUri).pathname.slice(1)),
+    })),
+    delete: vi.fn(async () => ({ deleted: true as const })),
+  });
+  return { plugin, uploaded };
+};
 
-async function createTarGzArchive(
-  archivePath: string,
-  files: Record<string, string>,
-) {
-  const dir = await fs.mkdtemp(path.join(os.tmpdir(), "promote-tar-gz-"));
-
-  try {
-    for (const [name, content] of Object.entries(files)) {
-      const filePath = path.join(dir, name);
-      await fs.mkdir(path.dirname(filePath), { recursive: true });
-      await fs.writeFile(filePath, content);
-    }
-
-    const entries = await fs.readdir(dir);
-    entries.sort((left, right) => left.localeCompare(right));
-
-    await tar.create(
-      {
-        file: archivePath,
-        cwd: dir,
-        gzip: true,
-      },
-      entries,
-    );
-  } finally {
-    await fs.rm(dir, { recursive: true, force: true });
-  }
-}
-
-async function createTarBrArchive(
-  archivePath: string,
-  files: Record<string, string>,
-) {
-  const { brotliCompressSync } = await import("node:zlib");
-  const tarPath = archivePath.replace(/\.br$/, "");
-  const dir = await fs.mkdtemp(path.join(os.tmpdir(), "promote-tar-br-"));
-
-  try {
-    for (const [name, content] of Object.entries(files)) {
-      const filePath = path.join(dir, name);
-      await fs.mkdir(path.dirname(filePath), { recursive: true });
-      await fs.writeFile(filePath, content);
-    }
-
-    const entries = await fs.readdir(dir);
-    entries.sort((left, right) => left.localeCompare(right));
-
-    await tar.create(
-      {
-        file: tarPath,
-        cwd: dir,
-        gzip: false,
-      },
-      entries,
-    );
-
-    await fs.writeFile(
-      archivePath,
-      brotliCompressSync(await fs.readFile(tarPath)),
-    );
-  } finally {
-    await fs.rm(tarPath, { force: true });
-    await fs.rm(dir, { recursive: true, force: true });
-  }
-}
-
-async function readZipManifest(archivePath: string) {
-  const zip = await JSZip.loadAsync(await fs.readFile(archivePath));
-  const manifest = zip.file("manifest.json");
-  if (!manifest) {
-    throw new Error("manifest.json not found");
-  }
-
-  return JSON.parse(await manifest.async("text")) as TestBundleManifest;
-}
-
-async function readTarManifest(archivePath: string, gzip: boolean) {
-  const dir = await fs.mkdtemp(path.join(os.tmpdir(), "promote-read-tar-"));
-
-  try {
-    await tar.extract({
-      file: archivePath,
-      cwd: dir,
-      gzip,
-      strict: true,
-    });
-
-    return JSON.parse(
-      await fs.readFile(path.join(dir, "manifest.json"), "utf8"),
-    ) as TestBundleManifest;
-  } finally {
-    await fs.rm(dir, { recursive: true, force: true });
-  }
-}
-
-async function readTarBrManifest(archivePath: string) {
-  const { brotliDecompressSync } = await import("node:zlib");
-  const dir = await fs.mkdtemp(path.join(os.tmpdir(), "promote-read-br-"));
-  const tarPath = path.join(dir, "bundle.tar");
-
-  try {
-    await fs.writeFile(
-      tarPath,
-      brotliDecompressSync(await fs.readFile(archivePath)),
-    );
-    await tar.extract({
-      file: tarPath,
-      cwd: dir,
-      gzip: false,
-      strict: true,
-    });
-
-    return JSON.parse(
-      await fs.readFile(path.join(dir, "manifest.json"), "utf8"),
-    ) as TestBundleManifest;
-  } finally {
-    await fs.rm(dir, { recursive: true, force: true });
-  }
-}
-
-async function createSourceArchive(
-  format: "zip" | "tar.gz" | "tar.br",
-  files: Record<string, string>,
-) {
-  const dir = await fs.mkdtemp(path.join(os.tmpdir(), "promote-source-"));
-  const archivePath = path.join(dir, `bundle.${format}`);
-
-  switch (format) {
-    case "zip":
-      await createZipArchive(archivePath, files);
-      break;
-    case "tar.gz":
-      await createTarGzArchive(archivePath, files);
-      break;
-    case "tar.br":
-      await createTarBrArchive(archivePath, files);
-      break;
-  }
-
-  return {
-    archivePath,
-    cleanup: () => fs.rm(dir, { recursive: true, force: true }),
-    fileHash: crypto
-      .createHash("sha256")
-      .update(await fs.readFile(archivePath))
-      .digest("hex"),
-  };
-}
+const addSourceAsset = ({
+  assetPath,
+  body,
+  manifest,
+  sourceObjects,
+}: {
+  assetPath: string;
+  body: Uint8Array;
+  manifest: Manifest;
+  sourceObjects: Map<string, Uint8Array>;
+}) => {
+  const asset = manifest.assets[assetPath]!;
+  const storagePath = getManifestAssetStoragePath({
+    assetPath: assetPath.endsWith(".bundle") ? `${assetPath}.br` : assetPath,
+    downloadFileHash: asset.downloadFileHash,
+    fileHash: asset.fileHash,
+  });
+  sourceObjects.set(`s3://bucket/assets/${storagePath}`, body);
+};
 
 afterEach(() => {
-  vi.unstubAllGlobals();
   vi.restoreAllMocks();
 });
 
-describe("createCopiedBundleArchive", () => {
-  it.each([
-    ["zip", readZipManifest],
-    ["tar.gz", (archivePath: string) => readTarManifest(archivePath, true)],
-    ["tar.br", readTarBrManifest],
-  ] as const)(
-    "rewrites manifest.json and uploads a %s archive",
-    async (format, readManifest) => {
-      const {
-        archivePath,
-        cleanup,
-        fileHash: sourceFileHash,
-      } = await createSourceArchive(format, {
-        "assets/logo.png": "logo",
-        "index.js": "console.log('hello');",
-        "manifest.json": JSON.stringify({
-          bundleId: baseBundle.id,
-          assets: {
-            "assets/logo.png": {
-              downloadByteSize: 999,
-              downloadFileHash: "stale-transfer-hash",
-              fileHash: "logo-hash",
-            },
-            "index.js": {
-              fileHash: "asset-hash",
-            },
-          },
-        }),
-      });
-      const uploadedFiles = new Map<string, string>();
-      const storagePlugin = createStoragePlugin({
-        name: "mockStorage",
-        protocol: "s3",
-        delete: vi.fn(async () => ({ deleted: true as const })),
-        exists: vi.fn(async () => ({ exists: false })),
-        get: vi.fn(async () => ({ response: null })),
-        put: vi.fn(async ({ key, body }) => {
-          const finalPath = path.join(
-            path.dirname(archivePath),
-            "uploads",
-            key,
-          );
-          await fs.mkdir(path.dirname(finalPath), { recursive: true });
-          await fs.writeFile(
-            finalPath,
-            new Uint8Array(await new Response(body).arrayBuffer()),
-          );
-          uploadedFiles.set(key, finalPath);
-          return {
-            storageUri: `s3://bucket/${path
-              .relative(
-                path.join(path.dirname(archivePath), "uploads"),
-                finalPath,
-              )
-              .split(path.sep)
-              .join("/")}`,
-          };
-        }),
-      });
+describe("createCopiedBundleArtifacts", () => {
+  it("copies manifest files without creating an archive", async () => {
+    const logo = Buffer.from("logo");
+    const hbc = Buffer.from("hermes bytecode");
+    const compressedHbc = brotliCompressSync(hbc);
+    const manifest: Manifest = {
+      bundleId: "source",
+      assets: {
+        "assets/logo.png": {
+          downloadByteSize: logo.byteLength,
+          fileHash: sha256(logo),
+        },
+        "index.ios.bundle": {
+          downloadByteSize: compressedHbc.byteLength,
+          downloadFileHash: sha256(compressedHbc),
+          fileHash: sha256(hbc),
+        },
+      },
+    };
+    const manifestBytes = encodeManifest(manifest);
+    const sourceObjects = new Map<string, Uint8Array>([
+      ["s3://bucket/source/manifest.json", manifestBytes],
+    ]);
+    addSourceAsset({
+      assetPath: "assets/logo.png",
+      body: logo,
+      manifest,
+      sourceObjects,
+    });
+    addSourceAsset({
+      assetPath: "index.ios.bundle",
+      body: compressedHbc,
+      manifest,
+      sourceObjects,
+    });
+    const { plugin, uploaded } = createStorageFixture(sourceObjects);
 
-      vi.stubGlobal(
-        "fetch",
-        vi.fn(async () => {
-          const response = new Response(await fs.readFile(archivePath));
-          vi.spyOn(response, "arrayBuffer").mockRejectedValue(
-            new Error("arrayBuffer must not be used"),
-          );
-          return response;
-        }),
-      );
+    const result = await createCopiedBundleArtifacts({
+      bundle: sourceBundle(manifestBytes),
+      config: {} as ConfigResponse,
+      nextBundleId: "copy",
+      storagePlugin: plugin,
+    });
 
-      try {
-        const { bundle: copiedBundle, uploadedStorageUris } =
-          await createCopiedBundleArchive({
-            bundle: {
-              ...baseBundle,
-              fileHash: sourceFileHash,
-              storageUri: `https://example.com/bundle.${format}`,
-            },
-            config,
-            nextBundleId: "bundle-copy-id",
-            storagePlugin,
-          });
+    expect(result.bundle).toMatchObject({
+      id: "copy",
+      manifestStorageUri: "s3://bucket/bundles/copy/manifest.json",
+      assetBaseStorageUri: "s3://bucket/assets",
+      patches: [],
+    });
+    expect(result.uploadedStorageUris).toEqual([
+      "s3://bucket/bundles/copy/manifest.json",
+    ]);
+    expect([...uploaded.keys()]).not.toEqual(
+      expect.arrayContaining([expect.stringMatching(/bundle\.(zip|tar)/)]),
+    );
 
-        expect(copiedBundle.id).toBe("bundle-copy-id");
-        expect(copiedBundle.storageUri).toBe(
-          `s3://bucket/bundles/bundle-copy-id/bundle.${format}`,
-        );
-        expect(copiedBundle.fileHash).not.toBe(baseBundle.fileHash);
-        expect(copiedBundle).toMatchObject({
-          assetBaseStorageUri: "s3://bucket/assets",
-          manifestStorageUri:
-            "s3://bucket/bundles/bundle-copy-id/manifest.json",
-          patches: [],
-        });
-        expect(copiedBundle.manifestFileHash).toMatch(/^[a-f0-9]{64}$/);
-        expect(copiedBundle.metadata ?? {}).not.toHaveProperty(
-          "manifest_storage_uri",
-        );
-        expect(uploadedStorageUris).toEqual(
-          expect.arrayContaining([
-            `s3://bucket/bundles/bundle-copy-id/bundle.${format}`,
-            "s3://bucket/bundles/bundle-copy-id/manifest.json",
-          ]),
-        );
-        expect(uploadedStorageUris).toHaveLength(2);
-        expect(uploadedFiles.has("assets/sha256/lo/logo-hash.png")).toBe(true);
-        expect(uploadedFiles.has("assets/sha256/as/asset-hash.js")).toBe(true);
+    const copiedManifest = JSON.parse(
+      uploaded.get("bundles/copy/manifest.json")!.toString("utf8"),
+    ) as Manifest;
+    expect(copiedManifest.bundleId).toBe("copy");
+    const copiedHbc = copiedManifest.assets["index.ios.bundle"]!;
+    const copiedTransfer = uploaded.get(
+      `assets/${getManifestAssetStoragePath({
+        assetPath: "index.ios.bundle.br",
+        downloadFileHash: copiedHbc.downloadFileHash,
+        fileHash: copiedHbc.fileHash,
+      })}`,
+    );
+    expect(copiedTransfer).toBeDefined();
+    expect(brotliDecompressSync(copiedTransfer!)).toEqual(hbc);
+  });
 
-        const uploadedArchivePath = uploadedFiles.get(
-          path.posix.join("bundles", "bundle-copy-id", `bundle.${format}`),
-        );
-        expect(uploadedArchivePath).toBeDefined();
-        await expect(
-          fs.stat(uploadedArchivePath as string),
-        ).resolves.toMatchObject({ size: copiedBundle.archiveByteSize });
-
-        const manifest = await readManifest(uploadedArchivePath as string);
-        expect(manifest.bundleId).toBe("bundle-copy-id");
-        const uploadedManifestPath = uploadedFiles.get(
-          "bundles/bundle-copy-id/manifest.json",
-        );
-        expect(uploadedManifestPath).toBeDefined();
-        const uploadedManifest = JSON.parse(
-          await fs.readFile(uploadedManifestPath as string, "utf8"),
-        ) as TestBundleManifest;
-        expect(uploadedManifest).toMatchObject({
-          assets: {
-            "assets/logo.png": {
-              downloadByteSize: Buffer.byteLength("logo"),
-              fileHash: "logo-hash",
-            },
-            "index.js": {
-              downloadByteSize: Buffer.byteLength("console.log('hello');"),
-              fileHash: "asset-hash",
-            },
-          },
-          bundleId: "bundle-copy-id",
-        });
-        expect(uploadedManifest.assets["assets/logo.png"]).not.toHaveProperty(
-          "downloadFileHash",
-        );
-        expect(manifest).toEqual(uploadedManifest);
-      } finally {
-        await cleanup();
-      }
-    },
-  );
-
-  it("re-signs copied assets with bounded provider concurrency", async () => {
-    const oldKeys = crypto.generateKeyPairSync("rsa", {
+  it("re-signs manifest and assets with bounded provider concurrency", async () => {
+    const keys = crypto.generateKeyPairSync("rsa", {
       modulusLength: 2048,
       publicKeyEncoding: { type: "spki", format: "pem" },
       privateKeyEncoding: { type: "pkcs8", format: "pem" },
     });
-    const nextKeys = crypto.generateKeyPairSync("rsa", {
-      modulusLength: 2048,
-      publicKeyEncoding: { type: "spki", format: "pem" },
-      privateKeyEncoding: { type: "pkcs8", format: "pem" },
-    });
-    const sourceAssets = Array.from({ length: 12 }, (_, index) => {
-      const assetPath = `assets/asset-${index}.txt`;
-      const content = `signed asset ${index}`;
-      const fileHash = crypto
-        .createHash("sha256")
-        .update(content)
-        .digest("hex");
-      const signature = crypto
-        .sign("RSA-SHA256", Buffer.from(fileHash, "hex"), oldKeys.privateKey)
-        .toString("base64");
-      return { assetPath, content, fileHash, signature };
-    });
-    const firstAsset = sourceAssets[0]!;
-    const {
-      archivePath,
-      cleanup,
-      fileHash: sourceFileHash,
-    } = await createSourceArchive("zip", {
-      ...Object.fromEntries(
-        sourceAssets.map(({ assetPath, content }) => [assetPath, content]),
-      ),
-      "manifest.json": JSON.stringify({
-        bundleId: baseBundle.id,
-        assets: Object.fromEntries(
-          sourceAssets.map(({ assetPath, fileHash, signature }) => [
-            assetPath,
-            { fileHash, signature },
-          ]),
-        ),
-      }),
-    });
-    const signedSourceFileHash = `sig:${crypto
-      .sign(
-        "RSA-SHA256",
-        Buffer.from(sourceFileHash, "hex"),
-        nextKeys.privateKey,
-      )
-      .toString("base64")}`;
-    let activeSignCalls = 0;
-    let maxActiveSignCalls = 0;
-    const providerSign = vi.fn(async ({ message }: { message: Uint8Array }) => {
-      activeSignCalls += 1;
-      maxActiveSignCalls = Math.max(maxActiveSignCalls, activeSignCalls);
+    const manifest: Manifest = { bundleId: "source", assets: {} };
+    const sourceObjects = new Map<string, Uint8Array>();
+    for (let index = 0; index < 12; index += 1) {
+      const assetPath = `assets/${index}.txt`;
+      const body = Buffer.from(`asset-${index}`);
+      manifest.assets[assetPath] = { fileHash: sha256(body) };
+      addSourceAsset({ assetPath, body, manifest, sourceObjects });
+    }
+    const manifestBytes = encodeManifest(manifest);
+    sourceObjects.set("s3://bucket/source/manifest.json", manifestBytes);
+    let active = 0;
+    let maxActive = 0;
+    const sign = vi.fn(async ({ message }: { message: Uint8Array }) => {
+      active += 1;
+      maxActive = Math.max(maxActive, active);
       await new Promise((resolve) => setTimeout(resolve, 5));
       try {
         return {
-          signature: crypto.sign("RSA-SHA256", message, nextKeys.privateKey),
+          signature: crypto.sign("RSA-SHA256", message, keys.privateKey),
         };
       } finally {
-        activeSignCalls -= 1;
+        active -= 1;
       }
     });
-    const uploadedFiles = new Map<string, string>();
-    const storagePlugin = createStoragePlugin({
-      name: "mockStorage",
-      protocol: "s3",
-      delete: vi.fn(async () => ({ deleted: true as const })),
-      exists: vi.fn(async () => ({ exists: false })),
-      get: vi.fn(async () => ({ response: null })),
-      put: vi.fn(async ({ key, body }) => {
-        const finalPath = path.join(path.dirname(archivePath), "uploads", key);
-        await fs.mkdir(path.dirname(finalPath), { recursive: true });
-        await fs.writeFile(
-          finalPath,
-          new Uint8Array(await new Response(body).arrayBuffer()),
-        );
-        uploadedFiles.set(key, finalPath);
-        return { storageUri: `s3://bucket/${key}` };
-      }),
-    });
-    const signedConfig = {
-      ...config,
+    const config = {
       signing: {
-        name: "test-provider",
-        getPublicKey: async () => ({ publicKey: nextKeys.publicKey }),
-        sign: providerSign,
+        name: "test-signer",
+        getPublicKey: async () => ({ publicKey: keys.publicKey }),
+        sign,
       },
-    } satisfies ConfigResponse;
-
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async () => new Response(await fs.readFile(archivePath))),
-    );
-
-    try {
-      const { bundle } = await createCopiedBundleArchive({
-        bundle: { ...baseBundle, fileHash: signedSourceFileHash },
-        config: signedConfig,
-        nextBundleId: "signed-copy-id",
-        storagePlugin,
-      });
-      const uploadedManifestPath = uploadedFiles.get(
-        "bundles/signed-copy-id/manifest.json",
-      );
-      const uploadedArchivePath = uploadedFiles.get(
-        "bundles/signed-copy-id/bundle.zip",
-      );
-      expect(uploadedManifestPath).toBeDefined();
-      expect(uploadedArchivePath).toBeDefined();
-      const manifest = JSON.parse(
-        await fs.readFile(uploadedManifestPath as string, "utf8"),
-      ) as {
-        assets?: Record<string, { fileHash: string; signature?: string }>;
-      };
-      const copiedAssetSignature =
-        manifest.assets?.[firstAsset.assetPath]?.signature;
-
-      expect(copiedAssetSignature).toBeDefined();
-      expect(copiedAssetSignature).not.toBe(firstAsset.signature);
-      expect(
-        crypto.verify(
-          "RSA-SHA256",
-          Buffer.from(firstAsset.fileHash, "hex"),
-          nextKeys.publicKey,
-          Buffer.from(copiedAssetSignature as string, "base64"),
-        ),
-      ).toBe(true);
-
-      const verifySignedHash = async (signedHash: string, filePath: string) => {
-        const fileHash = crypto
-          .createHash("sha256")
-          .update(await fs.readFile(filePath))
-          .digest();
-        return crypto.verify(
-          "RSA-SHA256",
-          fileHash,
-          nextKeys.publicKey,
-          Buffer.from(signedHash.slice("sig:".length), "base64"),
-        );
-      };
-      await expect(
-        verifySignedHash(bundle.fileHash, uploadedArchivePath as string),
-      ).resolves.toBe(true);
-      await expect(
-        verifySignedHash(
-          bundle.manifestFileHash as string,
-          uploadedManifestPath as string,
-        ),
-      ).resolves.toBe(true);
-      expect(providerSign).toHaveBeenCalledTimes(sourceAssets.length + 2);
-      expect(maxActiveSignCalls).toBeGreaterThan(1);
-      expect(maxActiveSignCalls).toBeLessThanOrEqual(8);
-    } finally {
-      await cleanup();
-    }
-  });
-
-  it("rejects a signed self-consistent replacement before signing or upload", async () => {
-    const originalContent = "reviewed source";
-    const originalFileHash = crypto
-      .createHash("sha256")
-      .update(originalContent)
-      .digest("hex");
-    const {
-      archivePath,
-      cleanup,
-      fileHash: sourceFileHash,
-    } = await createSourceArchive("zip", {
-      "index.js": originalContent,
-      "manifest.json": JSON.stringify({
-        bundleId: baseBundle.id,
-        assets: { "index.js": { fileHash: originalFileHash } },
-      }),
-    });
-    const replacementContent = "unreviewed replacement";
-    const replacementFileHash = crypto
-      .createHash("sha256")
-      .update(replacementContent)
-      .digest("hex");
-    await createZipArchive(archivePath, {
-      "index.js": replacementContent,
-      "manifest.json": JSON.stringify({
-        bundleId: baseBundle.id,
-        assets: { "index.js": { fileHash: replacementFileHash } },
-      }),
-    });
-
-    const keys = crypto.generateKeyPairSync("rsa", {
-      modulusLength: 2048,
-      publicKeyEncoding: { type: "spki", format: "pem" },
-      privateKeyEncoding: { type: "pkcs8", format: "pem" },
-    });
-    const signedSourceFileHash = `sig:${crypto
-      .sign("RSA-SHA256", Buffer.from(sourceFileHash, "hex"), keys.privateKey)
+    } as unknown as ConfigResponse;
+    const source = sourceBundle(manifestBytes);
+    source.manifestFileHash = `sig:${crypto
+      .sign(
+        "RSA-SHA256",
+        Buffer.from(sha256(manifestBytes), "hex"),
+        keys.privateKey,
+      )
       .toString("base64")}`;
-    const sign = vi.fn(async ({ message }: { message: Uint8Array }) => ({
-      signature: crypto.sign("RSA-SHA256", message, keys.privateKey),
-    }));
-    const storagePlugin = createStoragePlugin({
-      name: "mockStorage",
-      protocol: "s3",
-      delete: vi.fn(async () => ({ deleted: true as const })),
-      exists: vi.fn(async () => ({ exists: false })),
-      get: vi.fn(async () => ({ response: null })),
-      put: vi.fn(async () => ({ storageUri: "s3://bucket/unreachable" })),
+    const { plugin, uploaded } = createStorageFixture(sourceObjects);
+
+    const { bundle } = await createCopiedBundleArtifacts({
+      bundle: source,
+      config,
+      nextBundleId: "signed-copy",
+      storagePlugin: plugin,
     });
-    const signedConfig = {
-      ...config,
-      signing: {
-        name: "test-provider",
-        getPublicKey: async () => ({ publicKey: keys.publicKey }),
-        sign,
-      },
-    } satisfies ConfigResponse;
 
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async () => new Response(await fs.readFile(archivePath))),
-    );
-
-    try {
-      await expect(
-        createCopiedBundleArchive({
-          bundle: { ...baseBundle, fileHash: signedSourceFileHash },
-          config: signedConfig,
-          nextBundleId: "bundle-copy-id",
-          storagePlugin,
-        }),
-      ).rejects.toThrow("Source bundle signature verification failed.");
-      expect(sign).not.toHaveBeenCalled();
-      expect(storagePlugin.put).not.toHaveBeenCalled();
-    } finally {
-      await cleanup();
-    }
+    const copiedManifestBytes = uploaded.get(
+      "bundles/signed-copy/manifest.json",
+    )!;
+    const copiedManifest = JSON.parse(
+      copiedManifestBytes.toString("utf8"),
+    ) as Manifest;
+    expect(
+      Object.values(copiedManifest.assets).every((asset) => asset.signature),
+    ).toBe(true);
+    expect(
+      crypto.verify(
+        "RSA-SHA256",
+        Buffer.from(sha256(copiedManifestBytes), "hex"),
+        keys.publicKey,
+        Buffer.from(bundle.manifestFileHash.slice(4), "base64"),
+      ),
+    ).toBe(true);
+    expect(sign).toHaveBeenCalledTimes(13);
+    expect(maxActive).toBeGreaterThan(1);
+    expect(maxActive).toBeLessThanOrEqual(8);
   });
 
-  it("rejects signed manifest assets before uploading without a signer", async () => {
-    const assetFileHash = "ab".repeat(32);
-    const {
-      archivePath,
-      cleanup,
-      fileHash: sourceFileHash,
-    } = await createSourceArchive("zip", {
-      "index.js": "signed asset",
-      "manifest.json": JSON.stringify({
-        bundleId: baseBundle.id,
-        assets: {
-          "index.js": {
-            fileHash: assetFileHash,
-            signature: "existing-signature",
-          },
-        },
-      }),
-    });
-    const storagePlugin = createStoragePlugin({
-      name: "mockStorage",
-      protocol: "s3",
-      delete: vi.fn(async () => ({ deleted: true as const })),
-      exists: vi.fn(async () => ({ exists: false })),
-      get: vi.fn(async () => ({ response: null })),
-      put: vi.fn(async () => ({ storageUri: "s3://bucket/unreachable" })),
-    });
-
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async () => new Response(await fs.readFile(archivePath))),
-    );
-
-    try {
-      await expect(
-        createCopiedBundleArchive({
-          bundle: { ...baseBundle, fileHash: sourceFileHash },
-          config,
-          nextBundleId: "bundle-copy-id",
-          storagePlugin,
-        }),
-      ).rejects.toThrow(
-        "Cannot copy a signed bundle without enabled bundle signing configuration.",
-      );
-      expect(storagePlugin.put).not.toHaveBeenCalled();
-    } finally {
-      await cleanup();
-    }
-  });
-
-  it("does not sign or upload a copied asset whose bytes do not match the manifest", async () => {
-    const {
-      archivePath,
-      cleanup,
-      fileHash: sourceFileHash,
-    } = await createSourceArchive("zip", {
-      "index.js": "tampered asset bytes",
-      "manifest.json": JSON.stringify({
-        bundleId: baseBundle.id,
-        assets: {
-          "index.js": { fileHash: "ab".repeat(32) },
-        },
-      }),
-    });
+  it("rejects a manifest whose signed bytes were replaced", async () => {
     const keys = crypto.generateKeyPairSync("rsa", {
       modulusLength: 2048,
       publicKeyEncoding: { type: "spki", format: "pem" },
       privateKeyEncoding: { type: "pkcs8", format: "pem" },
     });
-    const sign = vi.fn(async ({ message }: { message: Uint8Array }) => ({
-      signature: crypto.sign("RSA-SHA256", message, keys.privateKey),
-    }));
-    const storagePlugin = createStoragePlugin({
-      name: "mockStorage",
-      protocol: "s3",
-      delete: vi.fn(async () => ({ deleted: true as const })),
-      exists: vi.fn(async () => ({ exists: false })),
-      get: vi.fn(async () => ({ response: null })),
-      put: vi.fn(async () => ({ storageUri: "s3://bucket/unreachable" })),
-    });
-    const signedConfig = {
-      ...config,
-      signing: {
-        name: "test-provider",
-        getPublicKey: async () => ({ publicKey: keys.publicKey }),
-        sign,
-      },
-    } satisfies ConfigResponse;
-
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async () => new Response(await fs.readFile(archivePath))),
+    const original = encodeManifest({ bundleId: "source", assets: {} });
+    const replacement = encodeManifest({ bundleId: "tampered", assets: {} });
+    const source = sourceBundle(original);
+    source.manifestFileHash = `sig:${crypto
+      .sign("RSA-SHA256", Buffer.from(sha256(original), "hex"), keys.privateKey)
+      .toString("base64")}`;
+    const { plugin } = createStorageFixture(
+      new Map([["s3://bucket/source/manifest.json", replacement]]),
     );
 
-    try {
-      await expect(
-        createCopiedBundleArchive({
-          bundle: { ...baseBundle, fileHash: sourceFileHash },
-          config: signedConfig,
-          nextBundleId: "bundle-copy-id",
-          storagePlugin,
-        }),
-      ).rejects.toThrow("Manifest file hash mismatch for index.js");
-      expect(sign).not.toHaveBeenCalled();
-      expect(storagePlugin.put).not.toHaveBeenCalled();
-    } finally {
-      await cleanup();
-    }
+    await expect(
+      createCopiedBundleArtifacts({
+        bundle: source,
+        config: {
+          signing: {
+            name: "test-signer",
+            getPublicKey: async () => ({ publicKey: keys.publicKey }),
+            sign: vi.fn(),
+          },
+        } as unknown as ConfigResponse,
+        nextBundleId: "copy",
+        storagePlugin: plugin,
+      }),
+    ).rejects.toThrow("Source manifest signature verification failed.");
+    expect(plugin.put).not.toHaveBeenCalled();
   });
 
-  it("throws a legacy bundle error when manifest.json is missing", async () => {
-    const {
-      archivePath,
-      cleanup,
-      fileHash: sourceFileHash,
-    } = await createSourceArchive("zip", {
-      "index.js": "console.log('hello');",
+  it("rejects source bytes that do not match the manifest", async () => {
+    const expected = Buffer.from("expected");
+    const manifest: Manifest = {
+      bundleId: "source",
+      assets: { "index.js": { fileHash: sha256(expected) } },
+    };
+    const manifestBytes = encodeManifest(manifest);
+    const sourceObjects = new Map<string, Uint8Array>([
+      ["s3://bucket/source/manifest.json", manifestBytes],
+    ]);
+    addSourceAsset({
+      assetPath: "index.js",
+      body: Buffer.from("tampered"),
+      manifest,
+      sourceObjects,
     });
-    const storagePlugin = createStoragePlugin({
-      name: "mockStorage",
-      protocol: "s3",
-      delete: vi.fn(async () => ({ deleted: true as const })),
-      exists: vi.fn(async () => ({ exists: false })),
-      get: vi.fn(async () => ({ response: null })),
-      put: vi.fn(async () => ({ storageUri: "s3://bucket/unreachable" })),
-    });
+    const { plugin } = createStorageFixture(sourceObjects);
 
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async () => {
-        return new Response(await fs.readFile(archivePath));
+    await expect(
+      createCopiedBundleArtifacts({
+        bundle: sourceBundle(manifestBytes),
+        config: {} as ConfigResponse,
+        nextBundleId: "copy",
+        storagePlugin: plugin,
       }),
-    );
-
-    try {
-      await expect(
-        createCopiedBundleArchive({
-          bundle: { ...baseBundle, fileHash: sourceFileHash },
-          config,
-          nextBundleId: "bundle-copy-id",
-          storagePlugin,
-        }),
-      ).rejects.toThrow(LEGACY_BUNDLE_ERROR);
-    } finally {
-      await cleanup();
-    }
-  });
-
-  it("uploads copied Hermes bundle assets with the brotli artifact name", async () => {
-    const {
-      archivePath,
-      cleanup,
-      fileHash: sourceFileHash,
-    } = await createSourceArchive("zip", {
-      "assets/logo.png": "logo",
-      "index.ios.bundle": "hermes bytecode",
-      "manifest.json": JSON.stringify({
-        bundleId: baseBundle.id,
-        assets: {
-          "assets/logo.png": {
-            fileHash: "logo-hash",
-          },
-          "index.ios.bundle": {
-            downloadByteSize: 999,
-            downloadFileHash: "c".repeat(64),
-            fileHash: "bundle-hash",
-          },
-        },
-      }),
-    });
-    const uploadedFiles = new Map<string, string>();
-    const storagePlugin = createStoragePlugin({
-      name: "mockStorage",
-      protocol: "s3",
-      delete: vi.fn(async () => ({ deleted: true as const })),
-      exists: vi.fn(async () => ({ exists: false })),
-      get: vi.fn(async () => ({ response: null })),
-      put: vi.fn(async ({ key, body }) => {
-        const finalPath = path.join(path.dirname(archivePath), "uploads", key);
-        await fs.mkdir(path.dirname(finalPath), { recursive: true });
-        await fs.writeFile(
-          finalPath,
-          new Uint8Array(await new Response(body).arrayBuffer()),
-        );
-        uploadedFiles.set(key, finalPath);
-        return {
-          storageUri: `s3://bucket/${path
-            .relative(
-              path.join(path.dirname(archivePath), "uploads"),
-              finalPath,
-            )
-            .split(path.sep)
-            .join("/")}`,
-        };
-      }),
-    });
-
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async () => {
-        return new Response(await fs.readFile(archivePath));
-      }),
-    );
-
-    try {
-      const { bundle: copiedBundle, uploadedStorageUris } =
-        await createCopiedBundleArchive({
-          bundle: { ...baseBundle, fileHash: sourceFileHash },
-          config,
-          nextBundleId: "bundle-copy-id",
-          storagePlugin,
-        });
-
-      expect(uploadedStorageUris).toEqual(
-        expect.arrayContaining([
-          "s3://bucket/bundles/bundle-copy-id/bundle.zip",
-          "s3://bucket/bundles/bundle-copy-id/manifest.json",
-        ]),
-      );
-      expect(uploadedStorageUris).not.toContain(
-        "s3://bucket/assets/sha256/bu/bundle-hash.br",
-      );
-
-      const uploadedManifestPath = uploadedFiles.get(
-        "bundles/bundle-copy-id/manifest.json",
-      );
-      expect(uploadedManifestPath).toBeDefined();
-      const uploadedManifest = JSON.parse(
-        await fs.readFile(uploadedManifestPath as string, "utf8"),
-      ) as TestBundleManifest;
-      const bundleAsset = uploadedManifest.assets["index.ios.bundle"]!;
-      expect(bundleAsset.downloadFileHash).toMatch(/^[a-f0-9]{64}$/);
-
-      const transferredFileHash = bundleAsset.downloadFileHash!;
-      const transferredStorageKey = `assets/sha256/${transferredFileHash.slice(
-        0,
-        2,
-      )}/${transferredFileHash}.br`;
-      const uploadedBundlePath = uploadedFiles.get(transferredStorageKey);
-      expect(uploadedBundlePath).toBeDefined();
-      expect(uploadedFiles.has("assets/sha256/bu/bundle-hash.br")).toBe(false);
-      const transferredBody = await fs.readFile(uploadedBundlePath as string);
-      expect(brotliDecompressSync(transferredBody).toString("utf8")).toBe(
-        "hermes bytecode",
-      );
-      expect(bundleAsset.downloadByteSize).toBe(transferredBody.byteLength);
-      expect(
-        crypto.createHash("sha256").update(transferredBody).digest("hex"),
-      ).toBe(transferredFileHash);
-      expect(storagePlugin.exists).toHaveBeenCalledWith({
-        storageUri: `s3://bucket/${transferredStorageKey}`,
-      });
-
-      const uploadedArchivePath = uploadedFiles.get(
-        "bundles/bundle-copy-id/bundle.zip",
-      );
-      expect(uploadedArchivePath).toBeDefined();
-      expect((await fs.stat(uploadedArchivePath as string)).size).toBe(
-        copiedBundle.archiveByteSize,
-      );
-      expect(await readZipManifest(uploadedArchivePath as string)).toEqual(
-        uploadedManifest,
-      );
-    } finally {
-      await cleanup();
-    }
+    ).rejects.toThrow("Manifest file hash mismatch for index.js");
+    expect(plugin.put).not.toHaveBeenCalled();
   });
 });

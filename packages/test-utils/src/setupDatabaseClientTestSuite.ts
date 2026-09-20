@@ -63,7 +63,7 @@ export const setupDatabaseClientTestSuite = <TPlugin>(
           patches: [
             {
               baseBundleId: base.id,
-              baseFileHash: base.fileHash,
+              baseFileHash: `asset-hash-${base.id}`,
               patchFileHash: "patch-hash-102",
               patchStorageUri: "storage://patches/102.patch",
               byteSize: 3_000_000_002,
@@ -126,7 +126,7 @@ export const setupDatabaseClientTestSuite = <TPlugin>(
             patches: [
               {
                 baseBundleId: secondBase.id,
-                baseFileHash: secondBase.fileHash,
+                baseFileHash: `asset-hash-${secondBase.id}`,
                 patchFileHash: "replacement-hash",
                 patchStorageUri: "storage://patches/replacement.patch",
                 byteSize: 3_000_000_003,
@@ -149,7 +149,7 @@ export const setupDatabaseClientTestSuite = <TPlugin>(
         expect(updated?.patches).toEqual([
           {
             baseBundleId: secondBase.id,
-            baseFileHash: secondBase.fileHash,
+            baseFileHash: `asset-hash-${secondBase.id}`,
             patchFileHash: "replacement-hash",
             patchStorageUri: "storage://patches/replacement.patch",
             byteSize: 3_000_000_003,

@@ -2,10 +2,7 @@ export const databaseFields = {
   bundles: [
     "id",
     "platform",
-    "file_hash",
     "git_commit_hash",
-    "storage_uri",
-    "archive_byte_size",
     "metadata",
     "manifest_storage_uri",
     "manifest_file_hash",

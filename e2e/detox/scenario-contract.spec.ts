@@ -87,7 +87,7 @@ const runtimeConfigPath = path.join(
 const defaultDetoxScenarioNames = [
   "release-ota-recovery",
   "multi-asset-replacement",
-  "bspatch-archive-to-diff-ota",
+  "bspatch-builtin-to-diff-ota",
   "bspatch-consecutive-diff-ota",
   "bspatch-disabled-chain-rollback",
   "bspatch-manifest-diff-fallback",
@@ -647,22 +647,23 @@ describe("Detox scenario contract", () => {
       await import("../../plugins/plugin-core/dist/index.mjs");
     const harness = createDatabasePluginHarness();
     const base = {
-      archiveByteSize: 100,
-      fileHash: "base-hash",
+      assetBaseStorageUri: "storage://assets",
       gitCommitHash: null,
       id: "01900000-0000-7000-8000-000000000001",
+      manifestFileHash: "base-hash",
+      manifestStorageUri: "storage://artifacts/base/manifest.json",
+      metadata: {},
       platform: "ios" as const,
-      storageUri: "storage://artifacts/base.zip",
     };
     const file = {
       ...base,
-      fileHash: "target-hash",
       id: "01900000-0000-7000-8000-000000000002",
-      storageUri: "storage://artifacts/target.zip",
+      manifestFileHash: "target-hash",
+      manifestStorageUri: "storage://artifacts/target/manifest.json",
       patches: [
         {
           baseBundleId: base.id,
-          baseFileHash: base.fileHash,
+          baseFileHash: base.manifestFileHash,
           byteSize: 10,
           patchFileHash: "patch-hash",
           patchStorageUri: "storage://patches/target.patch",
@@ -1103,8 +1104,8 @@ describe("Detox scenario contract", () => {
       "multi-asset-replacement: install first multi-asset update",
       "multi-asset-replacement: install second multi-asset update",
       "runtime-channel-switch-reset: install runtime channel update",
-      "bspatch-archive-to-diff-ota: install archive base update",
-      "bspatch-archive-to-diff-ota: install archive diff update",
+      "bspatch-builtin-to-diff-ota: install built-in base update",
+      "bspatch-builtin-to-diff-ota: install built-in diff update",
       "bspatch-consecutive-diff-ota: install diff bundle A",
       "bspatch-consecutive-diff-ota: install diff bundle B",
       "bspatch-consecutive-diff-ota: install diff bundle C",
@@ -1187,9 +1188,9 @@ describe("Detox scenario contract", () => {
 
   it("drives bsdiff and manifest installs through focused action pages", async () => {
     const installStagePairsByScenario = {
-      "bspatch-archive-to-diff-ota": [
-        ["install archive base update", "wait archive base metadata pending"],
-        ["install archive diff update", "wait archive diff metadata pending"],
+      "bspatch-builtin-to-diff-ota": [
+        ["install built-in base update", "wait built-in base metadata pending"],
+        ["install built-in diff update", "wait built-in diff metadata pending"],
       ],
       "bspatch-consecutive-diff-ota": [
         ["install diff bundle A", "wait diff bundle A metadata pending"],
@@ -2019,45 +2020,37 @@ describe("Detox scenario contract", () => {
     expect(calls.some((call) => call.kind === "reload")).toBe(false);
   });
 
-  it("models archive-to-diff OTA install and metadata verification sequence", async () => {
-    const stages = await scenarioStages("bspatch-archive-to-diff-ota");
+  it("models built-in-to-diff OTA install and metadata verification sequence", async () => {
+    const stages = await scenarioStages("bspatch-builtin-to-diff-ota");
 
     // When: the Detox scenario is inspected.
-    // Then: both archive and diff phases include restart, pending, reload, and stable checks.
+    // Then: both manifest phases include restart, pending, reload, and stable checks.
     expect(stages).toEqual([
-      "deploy archive base bundle",
-      "launch archive base app",
-      "install archive base update",
-      "wait archive base metadata pending",
-      "assert first ota uses archive",
-      "reload archive base update",
-      "wait archive base metadata stable",
-      "assert archive base bundle id",
-      "assert archive base marker",
-      "assert archive base stable launch",
+      "deploy built-in base bundle",
+      "launch built-in base app",
+      "install built-in base update",
+      "wait built-in base metadata pending",
+      "assert first ota uses built-in manifest",
+      "reload built-in base update",
+      "wait built-in base metadata stable",
+      "assert built-in base bundle id",
+      "assert built-in base marker",
+      "assert built-in base stable launch",
       "deploy diff bundle",
-      "assert archive diff bases",
-      "launch archive diff app",
-      "install archive diff update",
-      "wait archive diff metadata pending",
-      "reload archive diff update",
-      "wait archive diff metadata stable",
-      "assert archive diff patch",
-      "assert archive diff bundle id",
-      "assert archive diff marker",
-      "assert archive diff stable launch",
+      "assert built-in diff bases",
+      "launch built-in diff app",
+      "install built-in diff update",
+      "wait built-in diff metadata pending",
+      "reload built-in diff update",
+      "wait built-in diff metadata stable",
+      "assert built-in diff patch",
+      "assert built-in diff bundle id",
+      "assert built-in diff marker",
+      "assert built-in diff stable launch",
     ]);
-    expect(
-      (
-        await controlStepBody(
-          "bspatch-archive-to-diff-ota",
-          "deploy archive base bundle",
-        )
-      ).compressStrategy,
-    ).toBe("tar.gz");
   });
 
-  it("proves size-aware choices at separate Release and Bundle identity layers", async () => {
+  it("keeps manifest v1 selection independent of patch size", async () => {
     const scenarioName = "size-aware-artifact-selection";
     const calls = await recordScenarioCalls(scenarioName);
     const deployCalls = calls.filter(
@@ -2072,7 +2065,6 @@ describe("Detox scenario contract", () => {
         "deploy size-aware small diff bundle",
       ),
     ).toMatchObject({
-      compressStrategy: "tar.br",
       diffBaseBundleId: "$sizeAwareBaseBundleId",
       patchMaxBaseBundles: 1,
     });
@@ -2083,7 +2075,6 @@ describe("Detox scenario contract", () => {
       ),
     ).toMatchObject({
       bundleProfile: "sizeAwareLargeDiff",
-      compressStrategy: "tar.br",
       diffBaseBundleId: "$sizeAwareSmallBundleId",
       patchMaxBaseBundles: 1,
     });
@@ -2095,7 +2086,7 @@ describe("Detox scenario contract", () => {
     ).toMatchObject({
       body: {
         currentBundleId: "$sizeAwareBaseBundleId",
-        selection: "manifest-diff",
+        selection: "manifest-v1",
         targetBundleId: "$sizeAwareSmallBundleId",
       },
       pathName: "/e2e/assert-bundle-artifact-selection",
@@ -2103,12 +2094,12 @@ describe("Detox scenario contract", () => {
     expect(
       await controlStepDefinition(
         scenarioName,
-        "assert size-aware large archive selection",
+        "assert size-aware large manifest selection",
       ),
     ).toMatchObject({
       body: {
         currentBundleId: "$sizeAwareSmallBundleId",
-        selection: "archive-only",
+        selection: "manifest-v1",
         targetBundleId: "$sizeAwareLargeBundleId",
       },
       pathName: "/e2e/assert-bundle-artifact-selection",
@@ -2126,7 +2117,7 @@ describe("Detox scenario contract", () => {
         (call) =>
           call.kind === "control" &&
           call.stage ===
-            `assert size-aware ${phase} ${phase === "small" ? "manifest" : "archive"} selection`,
+            `assert size-aware ${phase} manifest selection`,
       );
       const proxyResetIndex = calls.findIndex(
         (call) =>
@@ -2143,7 +2134,7 @@ describe("Detox scenario contract", () => {
 
   it("keeps bsdiff install phases aligned with Maestro metadata-first assertions", async () => {
     expect(
-      await updateActionResultAssertStages("bspatch-archive-to-diff-ota"),
+      await updateActionResultAssertStages("bspatch-builtin-to-diff-ota"),
     ).toEqual([]);
     expect(
       await updateActionResultAssertStages("bspatch-consecutive-diff-ota"),
@@ -2169,10 +2160,10 @@ describe("Detox scenario contract", () => {
     ).toEqual([]);
   });
 
-  it("keeps archive-to-diff on the Detox default bundle profile", async () => {
+  it("keeps built-in-to-diff on the Detox default bundle profile", async () => {
     const deployBody = await controlStepBody(
-      "bspatch-archive-to-diff-ota",
-      "deploy archive base bundle",
+      "bspatch-builtin-to-diff-ota",
+      "deploy built-in base bundle",
     );
     expect(deployBody.bundleProfile).toBeUndefined();
   });
@@ -2207,8 +2198,6 @@ describe("Detox scenario contract", () => {
       "multi-asset-replacement",
       "deploy second multi-asset bundle",
     );
-    expect(firstDeploy.compressStrategy).toBe("tar.br");
-    expect(secondDeploy.compressStrategy).toBe("tar.br");
     expect(
       (
         await controlStepBody(
@@ -2333,7 +2322,7 @@ describe("Detox scenario contract", () => {
       "launch diff bundle A app",
       "install diff bundle A",
       "wait diff bundle A metadata pending",
-      "assert diff bundle A uses archive",
+      "assert diff bundle A uses built-in manifest",
       "reload diff bundle A",
       "wait diff bundle A metadata stable",
       "assert diff bundle A launch",
@@ -2667,18 +2656,18 @@ describe("Detox scenario contract", () => {
       detoxControlServerControllerPath,
       "utf8",
     );
-    const archiveAssertionBody = controllerSource.slice(
-      controllerSource.indexOf("async function assertFirstOtaUsesArchive"),
+    const manifestAssertionBody = controllerSource.slice(
+      controllerSource.indexOf("async function assertFirstOtaUsesBuiltInManifest"),
       controllerSource.indexOf("async function assertCrashHistory"),
     );
 
-    expect(archiveAssertionBody).toContain(
+    expect(manifestAssertionBody).toContain(
       "state.metadataState.stagingSelection?.bundleId === args.bundleId",
     );
-    expect(archiveAssertionBody).toContain(
-      "state.metadataState.stableBundleId !== args.bundleId",
+    expect(manifestAssertionBody).toContain(
+      "hasManifestBackedBundleEvidence(state)",
     );
-    expect(archiveAssertionBody).not.toContain(
+    expect(manifestAssertionBody).not.toContain(
       "state.metadataState.stableBundleId === null",
     );
   });
@@ -3019,7 +3008,7 @@ describe("Detox scenario contract", () => {
       "launch chain bundle A app",
       "install chain bundle A",
       "wait chain bundle A metadata pending",
-      "assert chain bundle A uses archive",
+      "assert chain bundle A uses built-in manifest",
       "reload chain bundle A",
       "wait chain bundle A metadata stable",
       "assert chain bundle A marker",

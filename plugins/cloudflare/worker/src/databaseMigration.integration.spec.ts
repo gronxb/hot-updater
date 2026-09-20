@@ -19,15 +19,16 @@ it("ships a single 1.0.0 initialization migration", () => {
   ]);
 });
 
-it("creates the current schema with required artifact sizes", async () => {
+it("creates the current manifest schema with required patch sizes", async () => {
   const [createMigration] = inject("d1Migrations");
   await env.DB.prepare(createMigration!.sql).run();
   await env.DB.prepare(`
     INSERT INTO bundles (
-      id, platform, file_hash, storage_uri, archive_byte_size, metadata
+      id, platform, metadata, manifest_storage_uri, manifest_file_hash,
+      asset_base_storage_uri
     ) VALUES (
-      '00000000-0000-0000-0000-000000000001', 'ios', 'hash',
-      'storage://bundle', 3000000001, '{}'
+      '00000000-0000-0000-0000-000000000001', 'ios', '{}',
+      'storage://bundle/manifest.json', 'manifest-hash', 'storage://assets'
     )
   `).run();
   await env.DB.prepare(`
@@ -91,12 +92,11 @@ it("creates the current schema with required artifact sizes", async () => {
     bundle_id: "00000000-0000-0000-0000-000000000001",
   });
   const sizes = await env.DB.prepare(`
-    SELECT bundle.archive_byte_size, patch.byte_size
+    SELECT patch.byte_size
     FROM bundles AS bundle
     JOIN bundle_patches AS patch ON patch.bundle_id = bundle.id
   `).first();
   expect(sizes).toEqual({
-    archive_byte_size: 3_000_000_001,
     byte_size: 3_000_000_002,
   });
 
@@ -166,11 +166,6 @@ it("creates the current schema with required artifact sizes", async () => {
 
   for (const size of [-1, Number.MAX_SAFE_INTEGER + 1, null]) {
     await expect(
-      env.DB.prepare("UPDATE bundles SET archive_byte_size = ?")
-        .bind(size)
-        .run(),
-    ).rejects.toThrow(/constraint failed/);
-    await expect(
       env.DB.prepare("UPDATE bundle_patches SET byte_size = ?")
         .bind(size)
         .run(),
@@ -179,8 +174,8 @@ it("creates the current schema with required artifact sizes", async () => {
 
   await expect(
     env.DB.prepare(`
-      INSERT INTO bundles (id, platform, file_hash, storage_uri)
-      VALUES ('missing-size', 'ios', 'hash', 'storage://bundle')
+      INSERT INTO bundles (id, platform, metadata)
+      VALUES ('missing-manifest', 'ios', '{}')
     `).run(),
   ).rejects.toThrow(/NOT NULL constraint failed/);
   await expect(

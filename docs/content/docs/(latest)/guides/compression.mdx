@@ -1,41 +1,25 @@
 ---
-title: "Compression Strategy"
-description: "Choose a compression format for your bundle distribution."
+title: "Artifact Compression"
+description: "How Hot Updater compresses manifest assets."
 icon: FileArchive
 ---
 
-## Supported Formats
+Hot Updater v1 distributes OTA updates as a manifest and individual files. It
+does not create or download ZIP, `tar.gz`, or `tar.br` bundle archives.
 
-- **`zip`** - Standard ZIP format (DEFLATE algorithm). Fast compression and decompression.
-- **`tar.gz`** - TAR archive with GZIP compression (LZ77 algorithm). ~10-15% smaller than ZIP.
-- **`tar.br`** - TAR archive with [Brotli](https://github.com/google/brotli) compression. ~20-30% smaller than GZIP. Developed by Google for web compression.
+Deploy automatically compresses eligible individual files with Brotli. The
+manifest records the logical installed-file hash and, when the served bytes are
+compressed, the download hash and byte size. Native clients decompress and
+verify each file before staging the update.
 
-## Configuration
-
-Set `compressStrategy` in your `hot-updater.config.ts`:
-
-```ts title="hot-updater.config.ts"
-import { defineConfig } from 'hot-updater';
-
-export default defineConfig({
-  // ... other options
-  compressStrategy: 'tar.gz', // 'zip' | 'tar.gz' | 'tar.br' // [!code ++]
-});
-```
-
-## Usage
-
-After setting the compression strategy, deploy your bundle:
+There is no compression setting. Remove `compressStrategy` from
+`hot-updater.config.ts`; v1 rejects the removed option so stale configuration
+cannot silently change deployment behavior.
 
 ```bash
 npx hot-updater deploy -p ios
 npx hot-updater deploy -p android
 ```
 
-Deploy compresses the bundle in the specified format. The client detects ZIP,
-GZIP, or Brotli and decompresses it automatically. Users download the compressed
-bundle, so a better compression ratio reduces bandwidth usage.
-
-<Callout title="Recommendation">
-Choose `tar.br` or `tar.gz` for a better compression ratio and smaller downloads.
-</Callout>
+Per-file compression lets the client skip files already present in the current
+OTA or built-in app and download only the files it needs.

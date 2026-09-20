@@ -120,7 +120,7 @@ class URLSessionDownloadService: NSObject, DownloadService {
             fileSizeHandlers[task] = handler
         }
 
-        // Extract bundleId from destination path (e.g., "bundle-store/{bundleId}/bundle.zip")
+        // Extract bundleId from destination path (e.g., "bundle-store/{bundleId}/index.ios.bundle")
         let bundleId = (destination as NSString).pathComponents
             .dropFirst()
             .first(where: { $0 != "bundle-store" }) ?? "unknown"

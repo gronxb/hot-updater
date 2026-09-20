@@ -35,11 +35,21 @@ type DemoReleaseFields = Pick<
   readonly channel: string;
 };
 
-type DemoDeployment = Bundle & DemoReleaseFields;
+type DemoDeployment = Bundle &
+  DemoReleaseFields & { readonly demoFileHash: string };
 
-type DemoDeploymentSeed = Omit<Bundle, "archiveByteSize" | "storageUri"> &
-  Partial<Pick<Bundle, "archiveByteSize" | "storageUri">> &
-  Omit<DemoReleaseFields, "rolloutCohortCount" | "targetCohorts"> &
+type DemoDeploymentSeed = Omit<
+  Bundle,
+  "assetBaseStorageUri" | "manifestFileHash" | "manifestStorageUri"
+> &
+  Partial<
+    Pick<
+      Bundle,
+      "assetBaseStorageUri" | "manifestFileHash" | "manifestStorageUri"
+    >
+  > & {
+    readonly fileHash: string;
+  } & Omit<DemoReleaseFields, "rolloutCohortCount" | "targetCohorts"> &
   Partial<Pick<DemoReleaseFields, "rolloutCohortCount" | "targetCohorts">>;
 
 const SHA256_HEX_RE = /^[a-f0-9]{64}$/i;
@@ -62,9 +72,6 @@ const toSeedHash = (kind: string, value: string) => {
 const createReleaseRootUri = (bundleId: string) =>
   `storage://my-app/releases/${bundleId}`;
 
-const createBundleUri = (bundleId: string) =>
-  `${createReleaseRootUri(bundleId)}/bundle.zip`;
-
 const createManifestUri = (bundleId: string) =>
   `${createReleaseRootUri(bundleId)}/manifest.json`;
 
@@ -77,7 +84,7 @@ const createPatchArtifact = (
   patchKey: string,
 ): NonNullable<Bundle["patches"]>[number] => ({
   baseBundleId: baseBundle.id,
-  baseFileHash: baseBundle.fileHash,
+  baseFileHash: (baseBundle as DemoDeployment).demoFileHash,
   patchFileHash: toSeedHash("patch", patchKey),
   byteSize: 350_000,
   patchStorageUri:
@@ -94,22 +101,21 @@ const normalizePatchArtifact = (
 });
 
 const createBundle = (bundle: DemoDeploymentSeed): DemoDeployment => {
-  const fileHash = toSeedHash("file", bundle.fileHash);
+  const { fileHash, ...bundleFields } = bundle;
+  const demoFileHash = toSeedHash("file", fileHash);
   const patches = bundle.patches?.map(normalizePatchArtifact) ?? null;
 
   return {
     rolloutCohortCount: 1000,
     targetCohorts: [],
     metadata: undefined,
-    ...bundle,
-    storageUri: bundle.storageUri ?? createBundleUri(bundle.id),
-    archiveByteSize: bundle.archiveByteSize ?? 8_000_000,
+    ...bundleFields,
     manifestStorageUri:
       bundle.manifestStorageUri ?? createManifestUri(bundle.id),
     assetBaseStorageUri:
       bundle.assetBaseStorageUri ?? createAssetBaseUri(bundle.id),
     patches,
-    fileHash,
+    demoFileHash,
     manifestFileHash: bundle.manifestFileHash
       ? toSeedHash("manifest", bundle.manifestFileHash)
       : toSeedHash("manifest", bundle.id),

@@ -21,7 +21,7 @@ deploy → ID → bundle show/update/enable/disable/delete/promote
 
 ## Infrastructure
 
-- **Storage** holds immutable archives, manifests, assets, and patch objects.
+- **Storage** holds immutable manifests, assets, and patch objects.
 - **Database** holds Bundle delivery settings and internal catalog rows.
 - **Server** serves a shared, cacheable Release Catalog for an app's channel,
   platform, and app-version or fingerprint scope.
@@ -35,7 +35,7 @@ Start with [agent setup](/docs/guides/ai-agents) or
 
 Internally, Hot Updater can reuse one immutable artifact across multiple public
 Bundle IDs. This avoids copying uploaded bytes during promotion and lets policy changes
-recompile the delivery catalog without rebuilding the archive. The internal
+recompile the delivery catalog without rebuilding artifact files. The internal
 artifact identity is shown only as **Artifact ID** in Advanced diagnostics and
 artifact commands.
 

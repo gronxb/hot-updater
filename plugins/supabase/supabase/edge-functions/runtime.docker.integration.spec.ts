@@ -101,17 +101,20 @@ const ensureBuiltArtifacts = async (
 const toRuntimeBundle = (bundle: Bundle): Bundle => {
   return {
     ...bundle,
-    storageUri: `supabase-storage://${BUCKET_NAME}/${bundle.id}/bundle.zip`,
+    manifestStorageUri: `supabase-storage://${BUCKET_NAME}/${bundle.id}/manifest.json`,
+    assetBaseStorageUri: `supabase-storage://${BUCKET_NAME}/assets`,
   };
 };
+
+const assetHashForBundle = (bundleId: string) => `asset-hash-${bundleId}`;
 
 const runtimeBundle = (id: string, overrides: Partial<Bundle> = {}): Bundle =>
   toRuntimeBundle({
     platform: "ios",
-    fileHash: `hash-${id}`,
     gitCommitHash: null,
-    storageUri: "storage://unused",
-    archiveByteSize: 3_000_000_001,
+    manifestStorageUri: "storage://unused/manifest.json",
+    manifestFileHash: `manifest-hash-${id}`,
+    assetBaseStorageUri: "storage://unused/assets",
     ...overrides,
     id,
   });
@@ -463,11 +466,11 @@ describe.sequential("supabase edge runtime acceptance", () => {
     const owner = {
       ...base,
       id: "00000000-0000-0000-0000-000000000102",
-      fileHash: "hash-owner",
+      manifestFileHash: "manifest-hash-owner",
       patches: [
         {
           baseBundleId: base.id,
-          baseFileHash: base.fileHash,
+          baseFileHash: assetHashForBundle(base.id),
           patchFileHash: "hash-valid-patch",
           patchStorageUri: "storage://valid-patch",
           byteSize: 3_000_000_002,
@@ -507,7 +510,7 @@ describe.sequential("supabase edge runtime acceptance", () => {
       [
         "ALTER TABLE public.hot_updater_v1_bundles",
         "ADD COLUMN tenant_tag text NOT NULL DEFAULT 'default-tenant',",
-        "ADD COLUMN file_hash_upper text GENERATED ALWAYS AS (upper(file_hash)) STORED",
+        "ADD COLUMN manifest_file_hash_upper text GENERATED ALWAYS AS (upper(manifest_file_hash)) STORED",
       ].join(" "),
     );
 
@@ -516,11 +519,11 @@ describe.sequential("supabase edge runtime acceptance", () => {
       const owner = {
         ...base,
         id: "00000000-0000-0000-0000-000000000152",
-        fileHash: "hash-owner",
+        manifestFileHash: "manifest-hash-owner",
         patches: [
           {
             baseBundleId: base.id,
-            baseFileHash: base.fileHash,
+            baseFileHash: assetHashForBundle(base.id),
             patchFileHash: "hash-patch",
             patchStorageUri: "storage://patch",
             byteSize: 3_000_000_002,
@@ -533,17 +536,17 @@ describe.sequential("supabase edge runtime acceptance", () => {
 
       const result = await supabaseAdmin
         .from("hot_updater_v1_bundles")
-        .select("tenant_tag, file_hash_upper")
+        .select("tenant_tag, manifest_file_hash_upper")
         .eq("id", owner.id)
         .single();
       if (result.error) throw result.error;
       expect(result.data).toEqual({
         tenant_tag: "default-tenant",
-        file_hash_upper: "HASH-OWNER",
+        manifest_file_hash_upper: "MANIFEST-HASH-OWNER",
       });
     } finally {
       runDatabaseSql(
-        "ALTER TABLE public.hot_updater_v1_bundles DROP COLUMN tenant_tag, DROP COLUMN file_hash_upper",
+        "ALTER TABLE public.hot_updater_v1_bundles DROP COLUMN tenant_tag, DROP COLUMN manifest_file_hash_upper",
       );
     }
   });
@@ -565,11 +568,11 @@ describe.sequential("supabase edge runtime acceptance", () => {
       const owner = {
         ...base,
         id: "00000000-0000-0000-0000-000000000552",
-        fileHash: "hash-owner",
+        manifestFileHash: "manifest-hash-owner",
         patches: [
           {
             baseBundleId: base.id,
-            baseFileHash: base.fileHash,
+            baseFileHash: assetHashForBundle(base.id),
             patchFileHash: "hash-patch",
             patchStorageUri: "storage://patch",
             byteSize: 3_000_000_002,
@@ -595,12 +598,12 @@ describe.sequential("supabase edge runtime acceptance", () => {
     const owner = {
       ...base,
       id: "00000000-0000-0000-0000-000000000202",
-      fileHash: "hash-owner",
+      manifestFileHash: "manifest-hash-owner",
       gitCommitHash: "before",
       patches: [
         {
           baseBundleId: base.id,
-          baseFileHash: base.fileHash,
+          baseFileHash: assetHashForBundle(base.id),
           patchFileHash: "hash-old-patch",
           patchStorageUri: "storage://old-patch",
           byteSize: 3_000_000_002,
@@ -640,12 +643,12 @@ describe.sequential("supabase edge runtime acceptance", () => {
     const owner = {
       ...base,
       id: "00000000-0000-0000-0000-000000000302",
-      fileHash: "hash-owner",
+      manifestFileHash: "manifest-hash-owner",
       gitCommitHash: "before",
       patches: [
         {
           baseBundleId: base.id,
-          baseFileHash: base.fileHash,
+          baseFileHash: assetHashForBundle(base.id),
           patchFileHash: "hash-old-patch",
           patchStorageUri: "storage://old-patch",
           byteSize: 3_000_000_002,
@@ -703,10 +706,10 @@ describe.sequential("supabase edge runtime acceptance", () => {
     const bundle = toRuntimeBundle({
       id: "00000000-0000-0000-0000-000000000001",
       platform: "ios",
-      fileHash: "hash",
       gitCommitHash: null,
-      storageUri: "storage://unused",
-      archiveByteSize: 3_000_000_001,
+      manifestStorageUri: "storage://unused/manifest.json",
+      manifestFileHash: "manifest-hash",
+      assetBaseStorageUri: "storage://unused/assets",
     });
 
     await uploadBundleObject(supabaseAdmin, bundle.id);
@@ -861,9 +864,9 @@ const uploadBundleObject = async (
 ) => {
   await uploadStorageObject(
     supabaseAdmin,
-    `${bundleId}/bundle.zip`,
-    Buffer.from("zip"),
-    "application/zip",
+    `${bundleId}/manifest.json`,
+    JSON.stringify({ bundleId, assets: {} }),
+    "application/json",
   );
 };
 

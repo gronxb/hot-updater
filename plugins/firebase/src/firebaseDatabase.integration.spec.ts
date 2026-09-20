@@ -67,21 +67,21 @@ setupDatabaseClientTestSuite({
 const storedBundleRow = (id: string) => ({
   id,
   platform: "ios",
-  file_hash: `hash-${id}`,
   git_commit_hash: null,
-  storage_uri: `gs://bucket/${id}.zip`,
-  archive_byte_size: 3_000_000_001,
   metadata: {},
+  manifest_storage_uri: `gs://bucket/${id}/manifest.json`,
+  manifest_file_hash: `manifest-hash-${id}`,
+  asset_base_storage_uri: "gs://bucket/assets",
 });
 
 const bundleFixture = (suffix: string) => ({
   id: `00000000-0000-0000-0000-${suffix.padStart(12, "0")}`,
   platform: "ios" as const,
-  fileHash: `hash-${suffix}`,
   gitCommitHash: null,
-  storageUri: `storage://bundles/${suffix}.zip`,
-  archiveByteSize: 3_000_000_001,
   metadata: { app_version: suffix },
+  manifestStorageUri: `storage://bundles/${suffix}/manifest.json`,
+  manifestFileHash: `manifest-hash-${suffix}`,
+  assetBaseStorageUri: "storage://assets",
 });
 
 describe("firebase fixed-model document updates", () => {

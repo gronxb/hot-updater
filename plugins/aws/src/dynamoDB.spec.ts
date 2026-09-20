@@ -42,11 +42,11 @@ const cloudFrontInvalidation = (status: string) => ({
 const bundleRow = bundleToRow({
   id: "00000000-0000-0000-0000-000000000001",
   platform: "ios",
-  fileHash: "hash",
   gitCommitHash: null,
-  storageUri: "storage://bundle",
-  archiveByteSize: 3_000_000_001,
   metadata: {},
+  manifestStorageUri: "storage://bundle/manifest.json",
+  manifestFileHash: "manifest-hash",
+  assetBaseStorageUri: "storage://assets",
 });
 
 const commitBundle = (plugin: ReturnType<typeof dynamoDB>) =>

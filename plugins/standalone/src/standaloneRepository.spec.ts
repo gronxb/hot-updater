@@ -42,10 +42,10 @@ const bundle = (id: string, overrides: Partial<Bundle> = {}): Bundle => {
   const value: Bundle = {
     id,
     platform: "ios",
-    fileHash: `hash-${id}`,
     gitCommitHash: null,
-    storageUri: `storage://${id}`,
-    archiveByteSize: 3_000_000_001,
+    manifestStorageUri: `storage://${id}/manifest.json`,
+    manifestFileHash: `manifest-hash-${id}`,
+    assetBaseStorageUri: "storage://assets",
     ...overrides,
   };
   return value;
@@ -263,7 +263,7 @@ describe("standaloneRepository", () => {
       patches: [
         {
           baseBundleId: base.id,
-          baseFileHash: base.fileHash,
+          baseFileHash: `asset-hash-${base.id}`,
           patchFileHash: "patch-hash",
           patchStorageUri: "storage://patch",
           byteSize: 3_000_000_002,
@@ -301,7 +301,7 @@ describe("standaloneRepository", () => {
       patches: [
         {
           baseBundleId: base.id,
-          baseFileHash: base.fileHash,
+          baseFileHash: `asset-hash-${base.id}`,
           patchFileHash: "replacement-patch-hash",
           patchStorageUri: "storage://replacement-patch",
           byteSize: 3_000_000_002,
@@ -326,14 +326,14 @@ describe("standaloneRepository", () => {
 
     const mutation = client.mutate(async (transaction) => {
       await transaction.updateBundleById(target.id, {
-        storageUri: "storage://staged",
+        manifestStorageUri: "storage://staged/manifest.json",
       });
       throw new Error("reject transaction");
     });
 
     await expect(mutation).rejects.toThrow("reject transaction");
     await expect(client.getBundleById(target.id)).resolves.toMatchObject({
-      storageUri: target.storageUri,
+      manifestStorageUri: target.manifestStorageUri,
     });
   });
 
@@ -490,7 +490,7 @@ describe("standaloneRepository", () => {
 
   it("keeps aggregate artifact fields", async () => {
     const value = bundle("00000000-0000-0000-0000-000000000021", {
-      storageUri: "storage://preview-artifact",
+      manifestStorageUri: "storage://preview-artifact/manifest.json",
     });
     bundles.set(value.id, value);
 
@@ -498,7 +498,7 @@ describe("standaloneRepository", () => {
       createRepository().models.bundles.findById(value.id),
     ).resolves.toMatchObject({
       id: value.id,
-      storage_uri: "storage://preview-artifact",
+      manifest_storage_uri: "storage://preview-artifact/manifest.json",
     });
   });
 
@@ -529,7 +529,7 @@ describe("standaloneRepository", () => {
       repository.models.bundles.findById(value.id),
     ).resolves.toMatchObject({
       id: value.id,
-      storage_uri: value.storageUri,
+      manifest_storage_uri: value.manifestStorageUri,
     });
     expect(retrieveCalls).toBe(1);
   });
@@ -643,7 +643,7 @@ describe("standaloneRepository", () => {
       platform: "android",
     });
     const previewIos = bundle("00000000-0000-0000-0000-000000000046", {
-      storageUri: "storage://preview",
+      manifestStorageUri: "storage://preview/manifest.json",
     });
     bundles.set(productionIos.id, productionIos);
     bundles.set(productionAndroid.id, productionAndroid);
@@ -660,7 +660,7 @@ describe("standaloneRepository", () => {
       patches: [
         {
           baseBundleId: base.id,
-          baseFileHash: base.fileHash,
+          baseFileHash: `asset-hash-${base.id}`,
           patchFileHash: "patch-hash",
           patchStorageUri: "storage://patch",
           byteSize: 3_000_000_002,
@@ -803,7 +803,7 @@ describe("standaloneRepository", () => {
       patches: [
         {
           baseBundleId: base.id,
-          baseFileHash: base.fileHash,
+          baseFileHash: `asset-hash-${base.id}`,
           patchFileHash: "patch-hash",
           patchStorageUri: "storage://patch",
           byteSize: 3_000_000_002,

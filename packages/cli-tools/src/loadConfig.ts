@@ -179,7 +179,6 @@ const getDefaultConfig = (): ConfigInput => {
   return {
     cacheDir: path.join("node_modules", ".hot-updater"),
     updateStrategy: "appVersion",
-    compressStrategy: "zip",
     // `extraSources` is intentionally absent: the deep merge would let this
     // default array clobber a user-supplied platform-scoped object.
     fingerprint: {},
@@ -264,6 +263,12 @@ export const loadConfig = async (
         `Remove ${key} from hot-updater.config. Catalog identity is managed internally.`,
       );
     }
+  }
+
+  if (config && Object.hasOwn(config, "compressStrategy")) {
+    throw new Error(
+      "Remove compressStrategy from hot-updater.config. OTA artifacts use manifest files with per-file Brotli compression.",
+    );
   }
 
   const mergedConfig = mergeConfigSources(config, getDefaultConfig());

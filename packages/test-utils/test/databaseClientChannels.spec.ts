@@ -6,10 +6,10 @@ import { createInMemoryDatabasePlugin } from "./inMemoryDatabasePlugin";
 const artifact = (id: string) => ({
   id,
   platform: "ios" as const,
-  fileHash: `hash-${id}`,
   gitCommitHash: null,
-  storageUri: `storage://${id}`,
-  archiveByteSize: 3_000_000_001,
+  manifestStorageUri: `storage://${id}/manifest.json`,
+  manifestFileHash: `manifest-hash-${id}`,
+  assetBaseStorageUri: "storage://assets",
 });
 
 it("manages canonical Channels independently from Bundle artifacts", async () => {

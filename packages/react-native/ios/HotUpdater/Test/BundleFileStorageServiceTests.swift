@@ -2,7 +2,7 @@
 import Foundation
 import Testing
 
-@testable import HotUpdaterArchive
+@testable import HotUpdaterCore
 
 @_silgen_name("HotUpdaterApplyBsdiffPatch")
 private func hotUpdaterApplyBsdiffPatchForTest(
@@ -284,75 +284,190 @@ struct BundleFileStorageServiceTests {
     }
 
     @Test
-    func manifestDrivenInstallIsDisabledBeforeFirstOTA() throws {
+    func manifestDrivenInstallReusesMatchingBuiltInAssetBeforeFirstOTA() throws {
         let workingDirectory = try makeWorkingDirectory()
         defer {
             cleanupWorkingDirectory(workingDirectory)
         }
+        let bundleData = Data("target-bundle".utf8)
+        let imageData = Data("target-image".utf8)
+        let assets = [
+            "index.ios.bundle": try #require(sha256(bundleData, in: workingDirectory)),
+            "assets/image.png": try #require(sha256(imageData, in: workingDirectory)),
+        ]
+        let manifestData = try makeManifestData(bundleId: "target-bundle", assets: assets)
+        let manifestURL = try #require(URL(string: "https://example.com/manifest.json"))
+        let bundleURL = try #require(URL(string: "https://example.com/index.ios.bundle"))
+        let imageURL = try #require(URL(string: "https://example.com/assets/image.png"))
+        let downloads = MappingDownloadService(contents: [
+            manifestURL: manifestData,
+            bundleURL: bundleData,
+        ])
+        let service = makeStorageService(
+            documentsDirectory: workingDirectory,
+            downloadService: downloads,
+            builtInAssetResolver: MappingBuiltInAssetResolver(contents: [
+                "assets/image.png": imageData,
+            ])
+        )
+        let result = updateBundle(
+            service,
+            bundleId: "target-bundle",
+            manifestURL: manifestURL,
+            manifestHash: try #require(sha256(manifestData, in: workingDirectory)),
+            assets: [
+                "index.ios.bundle": ChangedAssetDescriptor(
+                    fileUrl: bundleURL,
+                    fileHash: assets["index.ios.bundle"]!
+                ),
+                "assets/image.png": ChangedAssetDescriptor(
+                    fileUrl: imageURL,
+                    fileHash: assets["assets/image.png"]!
+                ),
+            ]
+        )
 
-        let service = makeStorageService(documentsDirectory: workingDirectory)
-
-        #expect(service.canUseManifestDrivenInstall() == false)
+        if case .failure(let error) = result {
+            Issue.record("Manifest install failed: \(error)")
+        }
+        let targetDirectory = workingDirectory
+            .appendingPathComponent("bundle-store/target-bundle", isDirectory: true)
+        #expect(try Data(contentsOf: targetDirectory.appendingPathComponent("index.ios.bundle")) == bundleData)
+        #expect(try Data(contentsOf: targetDirectory.appendingPathComponent("assets/image.png")) == imageData)
+        #expect(loadMetadata(documentsDirectory: workingDirectory)?.stagingBundleId == "target-bundle")
+        #expect(downloads.requestedURLs == [manifestURL, bundleURL])
     }
 
     @Test
-    func manifestDrivenInstallIsEnabledForActiveOTABundleWithManifest() throws {
+    func manifestDrivenInstallDownloadsOriginalWhenMatchingCurrentAssetIsCorrupt() throws {
         let workingDirectory = try makeWorkingDirectory()
         defer {
             cleanupWorkingDirectory(workingDirectory)
         }
-
         let preferences = InMemoryPreferencesService()
-        let service = makeStorageService(
-            documentsDirectory: workingDirectory,
-            preferences: preferences
-        )
+        let targetData = Data("verified-target-bundle".utf8)
+        let targetHash = try #require(sha256(targetData, in: workingDirectory))
         let activeDirectory = try createBundleDirectory(
             documentsDirectory: workingDirectory,
             bundleId: "active-bundle"
         )
-        try writeBundle(in: activeDirectory, bundleFileName: "index.ios.bundle")
-        try writeManifest(in: activeDirectory, bundleId: "active-bundle")
-        try preferences.setItem(
-            activeDirectory
-                .appendingPathComponent("index.ios.bundle")
-                .absoluteString,
-            forKey: "HotUpdaterBundleURL"
-        )
-
-        #expect(service.canUseManifestDrivenInstall())
-    }
-
-    @Test
-    func manifestDrivenInstallRejectsUnsafeAssetPaths() throws {
-        let workingDirectory = try makeWorkingDirectory()
-        defer {
-            cleanupWorkingDirectory(workingDirectory)
-        }
-
-        let preferences = InMemoryPreferencesService()
-        let service = makeStorageService(
-            documentsDirectory: workingDirectory,
-            preferences: preferences
-        )
-        let activeDirectory = try createBundleDirectory(
-            documentsDirectory: workingDirectory,
-            bundleId: "active-bundle"
-        )
-        try writeBundle(in: activeDirectory, bundleFileName: "index.ios.bundle")
-        try writeManifest(
-            in: activeDirectory,
+        try Data("corrupt".utf8).write(to: activeDirectory.appendingPathComponent("index.ios.bundle"))
+        try makeManifestData(
             bundleId: "active-bundle",
-            assetPaths: ["../active-bundle_evil/index.ios.bundle"]
-        )
+            assets: ["index.ios.bundle": targetHash]
+        ).write(to: activeDirectory.appendingPathComponent("manifest.json"))
         try preferences.setItem(
-            activeDirectory
-                .appendingPathComponent("index.ios.bundle")
-                .absoluteString,
+            activeDirectory.appendingPathComponent("index.ios.bundle").path,
             forKey: "HotUpdaterBundleURL"
         )
+        let manifestURL = try #require(URL(string: "https://example.com/manifest.json"))
+        let assetURL = try #require(URL(string: "https://example.com/index.ios.bundle"))
+        let targetManifest = try makeManifestData(
+            bundleId: "target-bundle",
+            assets: ["index.ios.bundle": targetHash]
+        )
+        let downloads = MappingDownloadService(contents: [
+            manifestURL: targetManifest,
+            assetURL: targetData,
+        ])
+        let service = makeStorageService(
+            documentsDirectory: workingDirectory,
+            preferences: preferences,
+            downloadService: downloads
+        )
 
-        #expect(service.canUseManifestDrivenInstall() == false)
+        let result = updateBundle(
+            service,
+            bundleId: "target-bundle",
+            manifestURL: manifestURL,
+            manifestHash: try #require(sha256(targetManifest, in: workingDirectory)),
+            assets: [
+                "index.ios.bundle": ChangedAssetDescriptor(
+                    fileUrl: assetURL,
+                    fileHash: targetHash
+                ),
+            ]
+        )
+
+        if case .failure(let error) = result {
+            Issue.record("Manifest install failed: \(error)")
+        }
+        let installedBundle = workingDirectory
+            .appendingPathComponent("bundle-store/target-bundle/index.ios.bundle")
+        #expect(try Data(contentsOf: installedBundle) == targetData)
+        #expect(downloads.requestedURLs.contains(assetURL))
+    }
+
+    @Test
+    func builtInResolverRecoversFromCorruptCacheAndInvalidatesOnBundleReplacement() throws {
+        let workingDirectory = try makeWorkingDirectory()
+        defer { cleanupWorkingDirectory(workingDirectory) }
+        let cacheURL = workingDirectory.appendingPathComponent("builtin-index-v1.json")
+        let firstData = Data("first-built-in-image".utf8)
+        let firstBundle = try makeFixtureBundle(
+            in: workingDirectory,
+            name: "First.bundle",
+            version: "1",
+            assetData: firstData
+        )
+        let resolver = IOSBuiltInAssetResolver(cacheURL: cacheURL)
+        resolver.use(bundle: firstBundle)
+        let firstDestination = workingDirectory.appendingPathComponent("first.png")
+
+        #expect(resolver.copyIfMatches(
+            assetPath: "assets/image.png",
+            expectedHash: try #require(sha256(firstData, in: workingDirectory)),
+            destination: firstDestination.path
+        ))
+        try Data("{".utf8).write(to: cacheURL)
+        let secondDestination = workingDirectory.appendingPathComponent("second.png")
+        #expect(resolver.copyIfMatches(
+            assetPath: "assets/image.png",
+            expectedHash: try #require(sha256(firstData, in: workingDirectory)),
+            destination: secondDestination.path
+        ))
+
+        let replacementData = Data("replacement-built-in-image".utf8)
+        let replacementBundle = try makeFixtureBundle(
+            in: workingDirectory,
+            name: "Replacement.bundle",
+            version: "2",
+            assetData: replacementData
+        )
+        resolver.use(bundle: replacementBundle)
+        let replacementDestination = workingDirectory.appendingPathComponent("replacement.png")
+        #expect(resolver.copyIfMatches(
+            assetPath: "assets/image.png",
+            expectedHash: try #require(sha256(replacementData, in: workingDirectory)),
+            destination: replacementDestination.path
+        ))
+        #expect(try Data(contentsOf: replacementDestination) == replacementData)
+        let cachedPayload = try #require(
+            JSONSerialization.jsonObject(with: Data(contentsOf: cacheURL)) as? [String: Any]
+        )
+        #expect((cachedPayload["packageIdentity"] as? String)?.contains("|2|") == true)
+    }
+
+    @Test
+    func builtInResolverRejectsEscapingLogicalPath() throws {
+        let workingDirectory = try makeWorkingDirectory()
+        defer { cleanupWorkingDirectory(workingDirectory) }
+        let fixtureBundle = try makeFixtureBundle(
+            in: workingDirectory,
+            name: "Fixture.bundle",
+            version: "1",
+            assetData: Data("image".utf8)
+        )
+        let resolver = IOSBuiltInAssetResolver(
+            cacheURL: workingDirectory.appendingPathComponent("builtin-index-v1.json")
+        )
+        resolver.use(bundle: fixtureBundle)
+
+        #expect(resolver.copyIfMatches(
+            assetPath: "../outside.png",
+            expectedHash: "unused",
+            destination: workingDirectory.appendingPathComponent("destination.png").path
+        ) == false)
     }
 
     @Test
@@ -428,7 +543,6 @@ struct BundleFileStorageServiceTests {
 
         #expect(service.getCachedBundleURL() == bundleURL)
         #expect(service.getBundleId() == "nested-bundle")
-        #expect(service.canUseManifestDrivenInstall())
     }
 
     @Test
@@ -713,15 +827,17 @@ private func cleanupWorkingDirectory(_ workingDirectory: URL) {
 private func makeStorageService(
     documentsDirectory: URL,
     preferences: PreferencesService = InMemoryPreferencesService(),
+    downloadService: DownloadService = UnusedDownloadService(),
+    builtInAssetResolver: BuiltInAssetResolver? = nil,
     builtInBundleId: String = "builtin-bundle"
 ) -> BundleFileStorageService {
     BundleFileStorageService(
         fileSystem: TestFileSystemService(documentsDirectory: documentsDirectory),
-        downloadService: UnusedDownloadService(),
-        decompressService: DecompressService(),
+        downloadService: downloadService,
         preferences: preferences,
         isolationKey: testIsolationKey,
-        builtInBundleIdProvider: { builtInBundleId }
+        builtInBundleIdProvider: { builtInBundleId },
+        builtInAssetResolver: builtInAssetResolver
     )
 }
 
@@ -773,6 +889,36 @@ private func writeMetadata(
         .appendingPathComponent("bundle-store", isDirectory: true)
         .appendingPathComponent(BundleMetadata.metadataFilename)
     #expect(metadata.save(to: metadataURL))
+}
+
+private func makeFixtureBundle(
+    in directory: URL,
+    name: String,
+    version: String,
+    assetData: Data
+) throws -> Bundle {
+    let bundleURL = directory.appendingPathComponent(name, isDirectory: true)
+    let assetURL = bundleURL.appendingPathComponent("assets/image.png")
+    try FileManager.default.createDirectory(
+        at: assetURL.deletingLastPathComponent(),
+        withIntermediateDirectories: true
+    )
+    try assetData.write(to: assetURL)
+    try Data("fixture-bundle".utf8).write(
+        to: bundleURL.appendingPathComponent("main.jsbundle")
+    )
+    let info: [String: Any] = [
+        "CFBundleIdentifier": "com.hotupdater.fixture",
+        "CFBundlePackageType": "BNDL",
+        "CFBundleShortVersionString": "1.0",
+        "CFBundleVersion": version,
+    ]
+    try PropertyListSerialization.data(
+        fromPropertyList: info,
+        format: .xml,
+        options: 0
+    ).write(to: bundleURL.appendingPathComponent("Info.plist"))
+    return try #require(Bundle(url: bundleURL))
 }
 
 private func loadMetadata(documentsDirectory: URL) -> BundleMetadata? {
@@ -876,5 +1022,142 @@ private final class UnusedDownloadService: DownloadService {
         Issue.record("downloadFile should not be called")
         return nil
     }
+}
+
+private final class MappingDownloadService: DownloadService {
+    private let contents: [URL: Data]
+    private let lock = NSLock()
+    private var urls: [URL] = []
+
+    init(contents: [URL: Data]) {
+        self.contents = contents
+    }
+
+    var requestedURLs: [URL] {
+        lock.lock()
+        defer { lock.unlock() }
+        return urls
+    }
+
+    func downloadFile(
+        from url: URL,
+        to destination: String,
+        fileSizeHandler: ((Int64) -> Void)?,
+        progressHandler: @escaping (DownloadProgress) -> Void,
+        completion: @escaping (Result<URL, Error>) -> Void
+    ) -> URLSessionDownloadTask? {
+        lock.lock()
+        urls.append(url)
+        lock.unlock()
+        guard let data = contents[url] else {
+            completion(.failure(NSError(
+                domain: "MappingDownloadService",
+                code: 1,
+                userInfo: [NSLocalizedDescriptionKey: "Unexpected URL: \(url)"]
+            )))
+            return nil
+        }
+        do {
+            let destinationURL = URL(fileURLWithPath: destination)
+            try FileManager.default.createDirectory(
+                at: destinationURL.deletingLastPathComponent(),
+                withIntermediateDirectories: true
+            )
+            try data.write(to: destinationURL)
+            fileSizeHandler?(Int64(data.count))
+            progressHandler(DownloadProgress(
+                progress: 1,
+                downloadedBytes: Int64(data.count),
+                totalBytes: Int64(data.count)
+            ))
+            completion(.success(destinationURL))
+        } catch {
+            completion(.failure(error))
+        }
+        return nil
+    }
+}
+
+private final class MappingBuiltInAssetResolver: BuiltInAssetResolver {
+    private let contents: [String: Data]
+
+    init(contents: [String: Data]) {
+        self.contents = contents
+    }
+
+    func use(bundle _: Bundle) {}
+
+    func copyIfMatches(
+        assetPath: String,
+        expectedHash: String,
+        destination: String
+    ) -> Bool {
+        guard let data = contents[assetPath] else { return false }
+        let destinationURL = URL(fileURLWithPath: destination)
+        do {
+            try FileManager.default.createDirectory(
+                at: destinationURL.deletingLastPathComponent(),
+                withIntermediateDirectories: true
+            )
+            try data.write(to: destinationURL)
+            guard HashUtils.verifyHash(fileURL: destinationURL, expectedHash: expectedHash) else {
+                try? FileManager.default.removeItem(at: destinationURL)
+                return false
+            }
+            return true
+        } catch {
+            return false
+        }
+    }
+}
+
+private func makeManifestData(
+    bundleId: String,
+    assets: [String: String]
+) throws -> Data {
+    try JSONSerialization.data(withJSONObject: [
+        "bundleId": bundleId,
+        "assets": assets.mapValues { ["fileHash": $0] },
+    ])
+}
+
+private func sha256(_ data: Data, in directory: URL) -> String? {
+    let fileURL = directory.appendingPathComponent(UUID().uuidString)
+    defer { try? FileManager.default.removeItem(at: fileURL) }
+    do {
+        try data.write(to: fileURL)
+        return HashUtils.calculateSHA256(fileURL: fileURL)
+    } catch {
+        return nil
+    }
+}
+
+private func updateBundle(
+    _ service: BundleFileStorageService,
+    bundleId: String,
+    manifestURL: URL,
+    manifestHash: String,
+    assets: [String: ChangedAssetDescriptor]
+) -> Result<Bool, Error> {
+    let completed = DispatchSemaphore(value: 0)
+    var result: Result<Bool, Error> = .failure(BundleStorageError.unknown(nil))
+    service.updateBundle(
+        bundleId: bundleId,
+        manifestUrl: manifestURL,
+        manifestFileHash: manifestHash,
+        assets: assets,
+        progressHandler: { _ in }
+    ) {
+        result = $0
+        completed.signal()
+    }
+    if completed.wait(timeout: .now() + 5) == .timedOut {
+        return .failure(NSError(
+            domain: "BundleFileStorageServiceTests",
+            code: 1,
+            userInfo: [NSLocalizedDescriptionKey: "Timed out waiting for update"]
+        ))
+    }
+    return result
 }
 #endif

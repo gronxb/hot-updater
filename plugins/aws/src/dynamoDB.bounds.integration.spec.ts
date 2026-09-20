@@ -31,11 +31,11 @@ describe("DynamoDB reads beyond the former metadata ceiling", () => {
       bundleToRow({
         id: `10000000-0000-0000-0000-${index.toString().padStart(12, "0")}`,
         platform: "ios",
-        fileHash: `hash-${index}`,
         gitCommitHash: null,
-        storageUri: `storage://bundle-${index}.zip`,
-        archiveByteSize: 3_000_000_001 + index,
         metadata: {},
+        manifestStorageUri: `storage://bundle-${index}/manifest.json`,
+        manifestFileHash: `manifest-hash-${index}`,
+        assetBaseStorageUri: "storage://assets",
       }),
     );
     const relationCounts = new Map<string, number>();
@@ -51,7 +51,7 @@ describe("DynamoDB reads beyond the former metadata ceiling", () => {
         id: `patch-${index.toString().padStart(4, "0")}`,
         bundle_id: owner.id,
         base_bundle_id: base.id,
-        base_file_hash: base.file_hash,
+        base_file_hash: base.manifest_file_hash,
         patch_file_hash: `patch-hash-${index}`,
         patch_storage_uri: "",
         byte_size: 3_000_000_002 + index,

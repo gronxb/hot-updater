@@ -8,14 +8,11 @@ create table channels (
 create table bundles (
   id uuid primary key not null,
   platform text not null,
-  file_hash text not null,
   git_commit_hash text,
-  storage_uri text not null,
-  archive_byte_size double precision not null,
   metadata json not null default '{}'::json,
-  manifest_storage_uri text,
-  manifest_file_hash text,
-  asset_base_storage_uri text
+  manifest_storage_uri text not null,
+  manifest_file_hash text not null,
+  asset_base_storage_uri text not null
 );
 
 create table bundle_patches (
@@ -131,8 +128,6 @@ alter table channels add constraint channels_id_length_check
   check (char_length(id) between 1 and 255);
 alter table channels add constraint channels_name_length_check
   check (char_length(name) between 1 and 255);
-alter table bundles add constraint bundles_archive_byte_size_check
-  check (archive_byte_size >= 0 and archive_byte_size <= 9007199254740991);
 alter table bundle_patches add constraint bundle_patches_byte_size_check
   check (byte_size >= 0 and byte_size <= 9007199254740991);
 alter table releases add constraint releases_revision_check

@@ -538,9 +538,10 @@ describe("notifyAppReady", () => {
     expect(getBaseURL()).toBe("file:///bundle-123");
 
     await updateBundle({
+      assets: {},
       bundleId: "bundle-456",
-      fileHash: null,
-      fileUrl: "https://example.com/bundle.zip",
+      manifestFileHash: "manifest-hash",
+      manifestUrl: "https://example.com/manifest.json",
       status: "UPDATE",
     });
 
@@ -571,9 +572,10 @@ describe("notifyAppReady", () => {
     const { getBundleId, updateBundle } = await import("./native");
 
     await updateBundle({
+      assets: {},
       bundleId: "00000000-0000-0000-0000-000000000003",
-      fileHash: null,
-      fileUrl: "https://example.com/bundle.zip",
+      manifestFileHash: "manifest-hash",
+      manifestUrl: "https://example.com/manifest.json",
       status: "UPDATE",
     });
 
@@ -586,9 +588,10 @@ describe("notifyAppReady", () => {
 
     await expect(
       updateBundle({
+        assets: {},
         bundleId: "00000000-0000-0000-0000-000000000003",
-        fileHash: null,
-        fileUrl: "https://example.com/bundle.zip",
+        manifestFileHash: "manifest-hash",
+        manifestUrl: "https://example.com/manifest.json",
         status: "UPDATE",
       }),
     ).resolves.toBe(true);
@@ -612,9 +615,10 @@ describe("notifyAppReady", () => {
     const { updateBundle } = await import("./native");
 
     await updateBundle({
+      assets: {},
       bundleId: "00000000-0000-0000-0000-000000000003",
-      fileHash: null,
-      fileUrl: "https://example.com/bundle.zip",
+      manifestFileHash: "manifest-hash",
+      manifestUrl: "https://example.com/manifest.json",
       status: "UPDATE",
     });
 
@@ -624,9 +628,10 @@ describe("notifyAppReady", () => {
 
     await expect(
       updateBundle({
+        assets: {},
         bundleId: "00000000-0000-0000-0000-000000000003",
-        fileHash: null,
-        fileUrl: "https://example.com/bundle.zip",
+        manifestFileHash: "manifest-hash",
+        manifestUrl: "https://example.com/manifest.json",
         status: "UPDATE",
       }),
     ).resolves.toBe(true);
@@ -642,7 +647,7 @@ describe("notifyAppReady", () => {
 
     await updateBundle({
       bundleId: "bundle-789",
-      changedAssets: {
+      assets: {
         "index.ios.bundle": {
           file: {
             compression: "br",
@@ -658,8 +663,6 @@ describe("notifyAppReady", () => {
           },
         },
       },
-      fileHash: "sig:archive",
-      fileUrl: "https://example.com/bundle.zip",
       manifestFileHash: "sig:manifest",
       manifestUrl: "https://example.com/manifest.json",
       status: "UPDATE",
@@ -667,7 +670,7 @@ describe("notifyAppReady", () => {
 
     expect(nativeModuleMock.updateBundle).toHaveBeenCalledWith({
       bundleId: "bundle-789",
-      changedAssets: {
+      assets: {
         "index.ios.bundle": {
           file: {
             compression: "br",
@@ -684,8 +687,6 @@ describe("notifyAppReady", () => {
         },
       },
       channel: undefined,
-      fileHash: "sig:archive",
-      fileUrl: "https://example.com/bundle.zip",
       manifestFileHash: "sig:manifest",
       manifestUrl: "https://example.com/manifest.json",
     });

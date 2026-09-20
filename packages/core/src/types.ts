@@ -20,16 +20,18 @@ export interface ChangedAssetPatch {
   patchUrl: string;
 }
 
-export interface ChangedAssetFile {
+export interface ArtifactAssetFile {
   compression?: "br" | null;
   url: string;
 }
 
-export interface ChangedAsset {
-  file?: ChangedAssetFile | null;
+export interface ArtifactAsset {
+  file: ArtifactAssetFile;
   fileHash: string;
   patch?: ChangedAssetPatch | null;
 }
+
+export const ARTIFACT_PROTOCOL_VERSION = 1 as const;
 
 export interface Bundle {
   /**
@@ -40,22 +42,6 @@ export interface Bundle {
    * The platform the bundle is for.
    */
   platform: Platform;
-  /**
-   * The hash of the bundle.
-   */
-  fileHash: string;
-  /**
-   * The storage key of the bundle.
-   * @example "s3://my-bucket/my-app/00000000-0000-0000-0000-000000000000/bundle.zip"
-   * @example "r2://my-bucket/my-app/00000000-0000-0000-0000-000000000000/bundle.zip"
-   * @example "firebase-storage://my-bucket/my-app/00000000-0000-0000-0000-000000000000/bundle.zip"
-   * @example "storage://my-app/00000000-0000-0000-0000-000000000000/bundle.zip"
-   */
-  storageUri: string;
-  /**
-   * Byte length of the stored bundle archive.
-   */
-  archiveByteSize: number;
   /**
    * The git commit hash of the bundle.
    */
@@ -68,17 +54,17 @@ export interface Bundle {
   /**
    * Storage URI for the bundle manifest artifact.
    */
-  manifestStorageUri?: string | null;
+  manifestStorageUri: string;
 
   /**
    * SHA256 hash of the manifest artifact, optionally signed as sig:<signature>.
    */
-  manifestFileHash?: string | null;
+  manifestFileHash: string;
 
   /**
    * Storage URI prefix for manifest assets.
    */
-  assetBaseStorageUri?: string | null;
+  assetBaseStorageUri: string;
 
   /**
    * Binary patch artifacts keyed by base bundle in array order.
@@ -90,30 +76,20 @@ export interface Bundle {
 export type UpdateStatus = "ROLLBACK" | "UPDATE";
 
 export interface ArtifactInfo {
-  fileUrl: string | null;
+  /** Manifest-only artifact protocol used by current native clients. */
+  artifactProtocolVersion: typeof ARTIFACT_PROTOCOL_VERSION;
   /**
-   * SHA256 hash of the bundle file, optionally with embedded signature.
-   * Format when signed: "sig:<base64_signature>"
-   * Format when unsigned: "<hex_hash>" (64-character lowercase hex)
-   * The client parses this to extract signature for native verification.
+   * Manifest artifact for protocol v1 updates.
    */
-  fileHash: string | null;
-  /**
-   * Optional manifest artifact for manifest-driven updates.
-   * When present with `changedAssets`, native can download and verify a signed
-   * manifest, then assemble the next bundle directory from reused and changed
-   * files while keeping archive fallback available through `fileUrl`.
-   */
-  manifestUrl?: string | null;
+  manifestUrl: string;
   /**
    * SHA256 hash of the manifest file, optionally with embedded signature.
-   * Follows the same `sig:<base64_signature>` or plain hex format as `fileHash`.
+   * Uses `sig:<base64_signature>` or a plain SHA256 hash.
    */
-  manifestFileHash?: string | null;
+  manifestFileHash: string;
   /**
-   * Per-file descriptors for assets whose hash differs from the client's
-   * current manifest, or for all assets when the server cannot reuse a base
-   * manifest. Keys are manifest-relative file paths.
+   * Full target manifest file map. Protocol v1 requires one original file
+   * descriptor for every target asset; patches are optional optimizations.
    */
-  changedAssets?: Record<string, ChangedAsset> | null;
+  assets: Record<string, ArtifactAsset>;
 }

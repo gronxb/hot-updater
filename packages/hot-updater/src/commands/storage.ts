@@ -375,7 +375,6 @@ function collectBundleStorageReferences(
   };
 
   for (const bundle of bundles) {
-    addExactUri(bundle.storageUri);
     addExactUri(getManifestStorageUri(bundle));
     addExactUri(getPatchStorageUri(bundle));
     for (const patch of getBundlePatches(bundle)) {

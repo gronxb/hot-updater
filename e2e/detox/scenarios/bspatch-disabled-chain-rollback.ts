@@ -52,8 +52,8 @@ export const bspatchDisabledChainRollbackScenario: DetoxScenarioDefinition = {
       },
     );
     await app.control(
-      "assert chain bundle A uses archive",
-      "/e2e/assert-first-ota-uses-archive",
+      "assert chain bundle A uses built-in manifest",
+      "/e2e/assert-first-ota-uses-built-in-manifest",
       {
         bundleId: "$bundleA",
       },

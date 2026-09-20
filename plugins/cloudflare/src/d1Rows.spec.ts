@@ -15,14 +15,11 @@ const eventD1Fixture = {
 const bundleD1Row = {
   id: "bundle-1",
   platform: "android",
-  file_hash: "hash",
   git_commit_hash: null,
-  storage_uri: "storage://bundle",
-  archive_byte_size: 3_000_000_001,
   metadata: '{"build":1}',
-  manifest_storage_uri: null,
-  manifest_file_hash: null,
-  asset_base_storage_uri: null,
+  manifest_storage_uri: "storage://bundle/manifest.json",
+  manifest_file_hash: "manifest-hash",
+  asset_base_storage_uri: "storage://assets",
 } as const;
 
 it("parses SQLite JSON into an artifact-only Bundle row", () => {
@@ -33,13 +30,13 @@ it("parses SQLite JSON into an artifact-only Bundle row", () => {
   });
 });
 
-it("defaults a legacy bundle's missing archive byte size", () => {
+it("rejects a row without required manifest storage", () => {
   const row: Record<string, unknown> = { ...bundleD1Row };
-  delete row["archive_byte_size"];
+  delete row["manifest_storage_uri"];
 
-  expect(parseD1Row("bundles", row)).toMatchObject({
-    archive_byte_size: 0,
-  });
+  expect(() => parseD1Row("bundles", row)).toThrow(
+    "D1 returned an invalid bundles row",
+  );
 });
 
 it("rejects an invalid artifact platform", () => {
@@ -53,18 +50,6 @@ it("rejects corrupt SQLite metadata JSON", () => {
     parseD1Row("bundles", { ...bundleD1Row, metadata: "{" }),
   ).toThrow("D1 returned an invalid bundles row");
 });
-
-it.each([-1, 1.5, Number.MAX_SAFE_INTEGER + 1, Number.NaN])(
-  "rejects invalid SQLite archive size %s",
-  (archiveByteSize) => {
-    expect(() =>
-      parseD1Row("bundles", {
-        ...bundleD1Row,
-        archive_byte_size: archiveByteSize,
-      }),
-    ).toThrow("D1 returned an invalid bundles row");
-  },
-);
 
 it("preserves SQLite patch sizes above 2 GiB", () => {
   const patch = createBundlePatchRowFixture("large", "bundle", "base");

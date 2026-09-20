@@ -1,4 +1,5 @@
 import {
+  ARTIFACT_PROTOCOL_VERSION,
   createReleaseCatalogScopeKey,
   NIL_UUID,
   RELEASE_CATALOG_FALLBACK_POLICY,
@@ -122,6 +123,7 @@ export const createArtifactResolver = (input: {
   return async (
     targetBundleId: string,
     currentBundleId: string,
+    artifactProtocolVersion: 1,
   ): Promise<ArtifactInfo | null> => {
     const [targetBundle, currentBundle] = await Promise.all([
       databaseClient.getBundleById(targetBundleId),
@@ -130,19 +132,19 @@ export const createArtifactResolver = (input: {
         : databaseClient.getBundleById(currentBundleId),
     ]);
     if (targetBundle === null) return null;
-    const fileUrl = await input.resolveFileUrl(targetBundle.storageUri);
-    const base: ArtifactInfo = {
-      fileHash: targetBundle.fileHash,
-      fileUrl,
-    };
-    if (input.readStorageText === undefined) return base;
+    if (artifactProtocolVersion !== ARTIFACT_PROTOCOL_VERSION) {
+      return null;
+    }
+    if (input.readStorageText === undefined) {
+      return null;
+    }
     const manifest = await resolveManifestArtifacts({
-      archiveUrlUsable: fileUrl !== null,
       currentBundle,
       readStorageText: input.readStorageText,
       resolveFileUrl: input.resolveFileUrl,
       targetBundle,
     });
-    return manifest === null ? base : { ...base, ...manifest };
+    if (manifest === null) return null;
+    return manifest;
   };
 };

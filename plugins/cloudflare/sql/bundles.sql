@@ -8,17 +8,11 @@ CREATE TABLE channels (
 CREATE TABLE bundles (
   id TEXT PRIMARY KEY NOT NULL,
   platform TEXT NOT NULL,
-  file_hash TEXT NOT NULL,
   git_commit_hash TEXT,
-  storage_uri TEXT NOT NULL,
-  archive_byte_size REAL NOT NULL,
   metadata TEXT NOT NULL DEFAULT '{}',
-  manifest_storage_uri TEXT,
-  manifest_file_hash TEXT,
-  asset_base_storage_uri TEXT,
-  CONSTRAINT bundles_archive_byte_size_check CHECK (
-    archive_byte_size >= 0 AND archive_byte_size <= 9007199254740991
-  )
+  manifest_storage_uri TEXT NOT NULL,
+  manifest_file_hash TEXT NOT NULL,
+  asset_base_storage_uri TEXT NOT NULL
 );
 
 CREATE TABLE bundle_patches (

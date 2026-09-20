@@ -1481,9 +1481,6 @@ importers:
       picocolors:
         specifier: 1.1.1
         version: 1.1.1
-      tar:
-        specifier: ^7.5.16
-        version: 7.5.16
       verkit:
         specifier: 'catalog:'
         version: 0.4.0
@@ -42603,6 +42600,7 @@ snapshots:
     dependencies:
       sax: 1.6.0
       xmlbuilder: 11.0.1
+    optional: true
 
   xmlbuilder2@4.0.3:
     dependencies:

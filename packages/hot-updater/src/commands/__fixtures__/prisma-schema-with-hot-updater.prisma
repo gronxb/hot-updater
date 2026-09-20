@@ -21,17 +21,15 @@ model bundles {
   platform String
   should_force_update Boolean
   enabled Boolean
-  file_hash String
   git_commit_hash String?
   message String?
   channel String @default("production")
-  storage_uri String
   target_app_version String?
   fingerprint_hash String?
   metadata Json @default("{}")
-  manifest_storage_uri String?
-  manifest_file_hash String?
-  asset_base_storage_uri String?
+  manifest_storage_uri String
+  manifest_file_hash String
+  asset_base_storage_uri String
   rollout_cohort_count Int @default(1000)
   target_cohorts Json?
   patches bundle_patches[] @relation("bundle_patches_bundles_patches")
@@ -48,6 +46,7 @@ model bundle_patches {
   base_file_hash String
   patch_file_hash String
   patch_storage_uri String
+  byte_size Float
   order_index Int @default(0)
   bundle bundles @relation("bundle_patches_bundles_patches", fields: [bundle_id], references: [id], onUpdate: Restrict, onDelete: Cascade)
   baseBundle bundles @relation("bundle_patches_bundles_baseForPatches", fields: [base_bundle_id], references: [id], onUpdate: Restrict, onDelete: Cascade)

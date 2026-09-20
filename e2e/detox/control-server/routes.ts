@@ -8,7 +8,7 @@ import {
   handleAssertBundleAssetsStored,
   handleAssertBundlePatchBases,
   handleAssertCrashHistory,
-  handleAssertFirstOtaUsesArchive,
+  handleAssertFirstOtaUsesBuiltInManifest,
   handleAssertLaunchReport,
   handleAssertManifestDiffApplied,
   handleAssertMetadataActive,
@@ -153,14 +153,13 @@ app.post("/e2e/assert-proxy", async (c) => {
 app.post("/e2e/assert-bundle-artifact-selection", async (c) => {
   const payload = (await c.req.json()) as {
     currentBundleId?: string;
-    selection?: "archive-only" | "manifest-diff";
+    selection?: "manifest-v1";
     targetBundleId?: string;
   };
   if (
     !payload.currentBundleId ||
     !payload.targetBundleId ||
-    (payload.selection !== "archive-only" &&
-      payload.selection !== "manifest-diff")
+    payload.selection !== "manifest-v1"
   ) {
     return c.json(
       {
@@ -182,12 +181,10 @@ app.post("/e2e/assert-bundle-artifact-selection", async (c) => {
 app.post("/e2e/jobs/deploy-bundle", async (c) => {
   const payload = (await c.req.json()) as {
     bundleProfile?:
-      | "archive300mb"
       | "default"
       | "multiAssetReplacement"
       | "sizeAwareLargeDiff";
     channel?: string;
-    compressStrategy?: "tar.br" | "tar.gz" | "zip";
     disabled?: boolean;
     diffBaseBundleId?: string;
     forceUpdate?: boolean;
@@ -214,26 +211,14 @@ app.post("/e2e/jobs/deploy-bundle", async (c) => {
   if (
     payload.bundleProfile !== undefined &&
     payload.bundleProfile !== "default" &&
-    payload.bundleProfile !== "archive300mb" &&
     payload.bundleProfile !== "multiAssetReplacement" &&
     payload.bundleProfile !== "sizeAwareLargeDiff"
   ) {
     return c.json(
       {
         error:
-          "bundleProfile must be default, archive300mb, multiAssetReplacement, or sizeAwareLargeDiff",
+          "bundleProfile must be default, multiAssetReplacement, or sizeAwareLargeDiff",
       },
-      400,
-    );
-  }
-  if (
-    payload.compressStrategy !== undefined &&
-    payload.compressStrategy !== "tar.br" &&
-    payload.compressStrategy !== "tar.gz" &&
-    payload.compressStrategy !== "zip"
-  ) {
-    return c.json(
-      { error: "compressStrategy must be tar.br, tar.gz, or zip" },
       400,
     );
   }
@@ -256,7 +241,6 @@ app.post("/e2e/jobs/deploy-bundle", async (c) => {
     jobId: startDeployBundleJob({
       bundleProfile: payload.bundleProfile,
       channel: payload.channel,
-      compressStrategy: payload.compressStrategy,
       disabled: payload.disabled,
       diffBaseBundleId: payload.diffBaseBundleId,
       forceUpdate: payload.forceUpdate,
@@ -477,13 +461,13 @@ app.post("/e2e/assert-bsdiff-patch-applied", async (c) => {
   );
 });
 
-app.post("/e2e/assert-first-ota-uses-archive", async (c) => {
+app.post("/e2e/assert-first-ota-uses-built-in-manifest", async (c) => {
   const payload = (await c.req.json()) as { bundleId?: string };
   if (!payload.bundleId) {
     return c.json({ error: "bundleId is required" }, 400);
   }
 
-  return c.json(await handleAssertFirstOtaUsesArchive(payload.bundleId));
+  return c.json(await handleAssertFirstOtaUsesBuiltInManifest(payload.bundleId));
 });
 
 app.post("/e2e/reset-remote-bundles", async (c) => {

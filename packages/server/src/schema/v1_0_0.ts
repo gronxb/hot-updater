@@ -164,25 +164,14 @@ export const bundlesV100 = table(
   {
     id: idColumn("id", "uuid"),
     platform: stringColumn("platform"),
-    file_hash: stringColumn("file_hash"),
     git_commit_hash: stringColumn("git_commit_hash").nullable(),
-    storage_uri: stringColumn("storage_uri"),
-    archive_byte_size: float("archive_byte_size"),
     metadata: json("metadata").defaultTo({}),
-    manifest_storage_uri: stringColumn("manifest_storage_uri").nullable(),
-    manifest_file_hash: stringColumn("manifest_file_hash").nullable(),
-    asset_base_storage_uri: stringColumn("asset_base_storage_uri").nullable(),
+    manifest_storage_uri: stringColumn("manifest_storage_uri"),
+    manifest_file_hash: stringColumn("manifest_file_hash"),
+    asset_base_storage_uri: stringColumn("asset_base_storage_uri"),
   },
   {
     indexes: [index("bundles_platform_idx", ["platform"], ["mongodb"])],
-    checks: [
-      check({
-        name: "bundles_archive_byte_size_check",
-        expression:
-          "archive_byte_size >= 0 and archive_byte_size <= 9007199254740991",
-        sqliteInline: true,
-      }),
-    ],
   },
 );
 

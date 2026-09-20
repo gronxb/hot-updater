@@ -4,109 +4,58 @@ description: "Stage a selected transition without reloading the current React Na
 icon: Download
 ---
 
-## Usage
-
-Use `updateBundle` to stage the selected transition, downloading and verifying
-a bundle when needed. Normally, call the pre-filled helper returned by
-`checkForUpdate()`. The function does not reload the React Native runtime
-currently in use.
+Use the pre-filled `updateBundle()` helper returned by `checkForUpdate()`. It
+resolves the protocol v1 manifest artifact, stages the selected transition, and
+does not reload the currently running React Native runtime.
 
 ```tsx
 import { HotUpdater } from "@hot-updater/react-native";
 
 HotUpdater.init({
   baseURL: "<your-update-server-url>",
-  requestHeaders: {
-    "x-api-key": "<client-api-key>",
-  },
+  requestHeaders: { "x-api-key": "<client-api-key>" },
   onError: (error) => console.error("Hot Updater:", error),
 });
 
 async function stageAppUpdate() {
-  try {
-    const updateInfo = await HotUpdater.checkForUpdate({
-      updateStrategy: "appVersion", // or "fingerprint"
-    });
+  const updateInfo = await HotUpdater.checkForUpdate({
+    updateStrategy: "appVersion",
+  });
 
-    if (!updateInfo) {
-      return;
-    }
+  if (!updateInfo) return;
 
-    // Recommended: let the helper resolve the artifact and stage the selection.
-    const didUpdate = await updateInfo.updateBundle();
-
-    if (!didUpdate) {
-      console.warn("Update transition was not staged");
-      return;
-    }
-
-    console.log("Bundle transition staged successfully");
-
-    if (updateInfo.shouldForceUpdate) {
-      await HotUpdater.reload();
-    }
-  } catch (error) {
-    console.error("Failed to stage update:", error);
+  const didUpdate = await updateInfo.updateBundle();
+  if (didUpdate && updateInfo.shouldForceUpdate) {
+    await HotUpdater.reload();
   }
 }
 ```
 
-## Parameters
+## Direct parameters
 
-`updateBundle` accepts these parameters:
+Most apps should not construct these parameters. The selected update helper
+supplies them after resolving the artifact endpoint.
 
-| Parameter  | Type                     | Required | Description                                       |
-| ---------- | ------------------------ | -------- | ------------------------------------------------- |
-| `bundleId` | `string`                 | ✅       | Unique identifier of the update bundle.           |
-| `fileUrl`  | `string \| null`         | ✅       | Bundle archive URL, or `null` to reset to the built-in bundle. |
-| `fileHash` | `string \| null`         | ✅       | SHA256 hash or `sig:<base64_signature>` for downloads; `null` for a built-in reset. |
-| `status`   | `"UPDATE" \| "ROLLBACK"` | ✅       | Update transition to apply.                       |
+| Parameter | Type | Required | Description |
+| --- | --- | --- | --- |
+| `bundleId` | `string` | Yes | Target artifact ID. |
+| `status` | `"UPDATE" \| "ROLLBACK"` | Yes | Transition direction. |
+| `manifestUrl` | `string` | Yes | Target manifest URL. |
+| `manifestFileHash` | `string` | Yes | SHA256 hash or `sig:<base64_signature>` for the manifest. |
+| `assets` | `Record<string, ArtifactAsset>` | Yes | Original descriptor for every target file, with optional Hermes patches. |
+| `channel` | `string` | No | Channel committed with the staged selection. |
+| `selection` | `object \| null` | No | Release Catalog selection receipt. |
 
-Passing `fileUrl: null` resets to the built-in bundle; it does not roll back to
-the OTA bundle named by `bundleId`. For a catalog-selected rollback, call the
-returned `updateInfo.updateBundle()` helper so the selected release and artifact
-are preserved.
+The runtime downloads and verifies the manifest, then resolves each target path
+in this order: current OTA file, matching built-in file, optional Hermes patch,
+and complete original file. A patch failure falls back to the original file.
+The staged directory is committed atomically only after every target hash is
+verified.
 
-### Behavior
+`updateBundle` never reloads the app by itself. Call `HotUpdater.reload()` to
+start the staged transition immediately. The automatic `HotUpdater.wrap` flow
+handles force updates separately.
 
-- Downloads the specified bundle when `fileUrl` is not `null`.
-- A download with a missing or empty `fileHash` is rejected.
-- Without a configured signing public key, verifies a hexadecimal SHA256 hash
-  and rejects signed artifacts. With a configured public key, requires a `sig:`
-  RSA-SHA256 signature and rejects unsigned artifacts. A failed verification
-  aborts the update and deletes the download. See
-  [bundle signing](/docs/guides/bundle-signing) for key configuration.
-- A `null` URL resets the native bundle selection to the built-in bundle and
-  runs downloaded-bundle cleanup. The nullable properties must still be present
-  in the object.
-- Stages the selected bundle transition for the next React Native runtime start
-  without replacing the code already running.
-- Never reloads the app by itself. Call `HotUpdater.reload()` explicitly to
-  start the staged transition immediately; the automatic `HotUpdater.wrap` flow
-  handles force updates separately.
-- An in-progress download is not guaranteed to finish after the app is
-  force-quit.
-
-### Security recommendation
-
-Use `updateInfo.updateBundle()` to resolve the artifact and pass its verification
-hash to the native updater. The `fileUrl` and `fileHash` fields returned by
-`checkForUpdate()` are `null` and must not be copied into a direct call.
-A plain SHA256 hash checks integrity but does not authenticate the publisher;
-a `sig:` value also verifies publisher authenticity with the configured public key.
-
-#### Recommended approach
-
-Use `updateInfo.updateBundle()` whenever possible. The helper resolves the
-artifact when needed and preserves the complete update context selected by
-`checkForUpdate()` without manual copying.
-
-```tsx
-const updateInfo = await HotUpdater.checkForUpdate({
-  updateStrategy: "appVersion",
-});
-
-if (updateInfo) {
-  await updateInfo.updateBundle();
-}
-```
+For built-in or embedded Catalog transitions, use the helper returned by
+`checkForUpdate()`; those transitions do not require a fabricated manifest
+request.

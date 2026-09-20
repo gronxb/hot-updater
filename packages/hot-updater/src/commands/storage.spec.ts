@@ -87,14 +87,12 @@ const DOWNLOAD_HASH = "e".repeat(64);
 const ORPHAN_PATCH_KEY = `bundles/${LIVE_BUNDLE_ID}/patches/${DEAD_BUNDLE_ID}/index.ios.bundle.bsdiff`;
 
 const liveBundle: Bundle = {
-  archiveByteSize: 100,
   assetBaseStorageUri: "s3://bucket/assets",
-  fileHash: "archive-hash",
   gitCommitHash: null,
   id: LIVE_BUNDLE_ID,
+  manifestFileHash: "manifest-hash",
   manifestStorageUri: `s3://bucket/bundles/${LIVE_BUNDLE_ID}/manifest.json`,
   platform: "ios",
-  storageUri: `s3://bucket/bundles/${LIVE_BUNDLE_ID}/bundle.zip`,
 };
 
 const object = (

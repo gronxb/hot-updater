@@ -22,8 +22,8 @@ describe("Detox remote asset proxy URLs", () => {
     const resultsDir = await fs.mkdtemp(
       path.join(os.tmpdir(), "hot-updater-proxy-url-"),
     );
-    const signedBundleUrl =
-      "https://storage.example.com/bundles/bundle.zip?Signature=a%2Fb%2B1&Expires=1780876479";
+    const signedAssetUrl =
+      "https://storage.example.com/assets/example.bmp?Signature=a%2Fb%2B1&Expires=1780876479";
     const signedManifestUrl =
       "https://storage.example.com/bundles/manifest.json?token=abc.def";
     const signedPatchUrl =
@@ -39,17 +39,13 @@ describe("Detox remote asset proxy URLs", () => {
       fetchTargets.push(url);
 
       if (url.startsWith("https://provider.example.com/hot-updater/")) {
-        if (url.endsWith("/artifacts/archive-target/from/current")) {
-          return Response.json({
-            fileHash: "archive-hash",
-            fileUrl: signedBundleUrl,
-          });
-        }
         return new Response(
           JSON.stringify({
-            changedAssets: {
+            artifactProtocolVersion: 1,
+            assets: {
               "assets/example.bmp": {
-                file: { url: signedBundleUrl },
+                file: { url: signedAssetUrl },
+                fileHash: "asset-hash",
                 patch: {
                   algorithm: "bsdiff",
                   baseBundleId: "019ea44a-0000-7000-8000-000000000000",
@@ -57,7 +53,6 @@ describe("Detox remote asset proxy URLs", () => {
                 },
               },
             },
-            fileUrl: signedBundleUrl,
             manifestFileHash: "manifest-hash",
             manifestUrl: signedManifestUrl,
           }),
@@ -68,14 +63,14 @@ describe("Detox remote asset proxy URLs", () => {
         );
       }
 
-      if (url === signedBundleUrl || url === signedPatchUrl) {
+      if (url === signedAssetUrl || url === signedPatchUrl) {
         return new Response(
-          url === signedPatchUrl ? "patch-bytes" : "bundle-bytes",
+          url === signedPatchUrl ? "patch-bytes" : "asset-bytes",
           {
             headers: {
               "content-encoding": "br",
               "content-length": "999",
-              "content-type": "application/zip",
+              "content-type": "application/octet-stream",
             },
             status: 200,
           },
@@ -101,57 +96,43 @@ describe("Detox remote asset proxy URLs", () => {
       const controller = await import("./control-server/controller.ts");
       const updateResponse = await controller.handleProxyUpdateRequest(
         new Request(
-          "http://localhost:3107/hot-updater/artifacts/target/from/current",
+          "http://localhost:3107/hot-updater/artifacts/v1/target/from/current",
         ),
       );
       const payload = (await updateResponse.json()) as {
-        changedAssets: Record<
+        assets: Record<
           string,
           { file: { url: string }; patch: { patchUrl: string } }
         >;
-        fileUrl: string;
         manifestUrl: string;
       };
 
-      expect(payload.fileUrl).toMatch(
-        /^http:\/\/localhost:3107\/e2e\/proxy-url\/[-0-9a-f]+$/,
-      );
       expect(payload.manifestUrl).toMatch(
         /^http:\/\/localhost:3107\/e2e\/proxy-url\/[-0-9a-f]+$/,
       );
-      expect(payload.fileUrl).not.toContain("?url=");
-      expect(payload.fileUrl).not.toContain("Signature");
-      expect(payload.fileUrl).not.toContain("storage.example.com");
-
-      const assetUrl = payload.changedAssets["assets/example.bmp"]?.file.url;
+      const assetUrl = payload.assets["assets/example.bmp"]?.file.url;
       expect(assetUrl).toMatch(
         /^http:\/\/localhost:3107\/e2e\/proxy-url\/[-0-9a-f]+$/,
       );
       const patchUrl =
-        payload.changedAssets["assets/example.bmp"]?.patch.patchUrl;
+        payload.assets["assets/example.bmp"]?.patch.patchUrl;
       expect(patchUrl).toMatch(
         /^http:\/\/localhost:3107\/e2e\/proxy-url\/[-0-9a-f]+$/,
       );
       expect(
         controller.handleAssertBundleArtifactSelection({
           currentBundleId: "current",
-          selection: "manifest-diff",
+          selection: "manifest-v1",
           targetBundleId: "target",
         }),
       ).toMatchObject({
-        changedAssetCount: 1,
-        changedAssetsPresent: true,
+        artifactProtocolVersion: 1,
+        assetCount: 1,
+        assetsPresent: true,
         currentBundleId: "current",
         manifestUrlPresent: true,
         targetBundleId: "target",
       });
-      expect(() =>
-        controller.handleAssertBundleArtifactSelection({
-          currentBundleId: "current",
-          selection: "archive-only",
-          targetBundleId: "target",
-        }),
-      ).toThrow("Unexpected Bundle artifact selection");
       const controlRoutes = (await import("./control-server/routes.ts"))
         .default;
       const routeAssertion = await controlRoutes.request(
@@ -159,7 +140,7 @@ describe("Detox remote asset proxy URLs", () => {
         {
           body: JSON.stringify({
             currentBundleId: "current",
-            selection: "manifest-diff",
+            selection: "manifest-v1",
             targetBundleId: "target",
           }),
           headers: { "content-type": "application/json" },
@@ -205,45 +186,27 @@ describe("Detox remote asset proxy URLs", () => {
         error: "patchMaxBaseBundles must be an integer between 1 and 5",
       });
 
-      await controller.handleProxyUpdateRequest(
-        new Request(
-          "http://localhost:3107/hot-updater/artifacts/archive-target/from/current",
-        ),
-      );
-      expect(
-        controller.handleAssertBundleArtifactSelection({
-          currentBundleId: "current",
-          selection: "archive-only",
-          targetBundleId: "archive-target",
-        }),
-      ).toMatchObject({
-        changedAssetsPresent: false,
-        currentBundleId: "current",
-        fileUrlPresent: true,
-        manifestFileHashPresent: false,
-        manifestUrlPresent: false,
-        targetBundleId: "archive-target",
-      });
-
       controller.handleConfigureProxy({ reset: true });
       expect(() =>
         controller.handleAssertBundleArtifactSelection({
           currentBundleId: "current",
-          selection: "archive-only",
-          targetBundleId: "archive-target",
+          selection: "manifest-v1",
+          targetBundleId: "target",
         }),
       ).toThrow("Bundle artifact request was not observed");
 
       const assetResponse = await controller.handleProxyRemoteAssetRequest(
-        new Request(payload.fileUrl),
+        new Request(assetUrl),
       );
 
       expect(assetResponse.status).toBe(200);
       expect(assetResponse.headers.get("content-encoding")).toBeNull();
       expect(assetResponse.headers.get("content-length")).toBeNull();
-      expect(assetResponse.headers.get("content-type")).toBe("application/zip");
-      expect(await assetResponse.text()).toBe("bundle-bytes");
-      expect(fetchTargets).toContain(signedBundleUrl);
+      expect(assetResponse.headers.get("content-type")).toBe(
+        "application/octet-stream",
+      );
+      expect(await assetResponse.text()).toBe("asset-bytes");
+      expect(fetchTargets).toContain(signedAssetUrl);
 
       const patchResponse = await controller.handleProxyRemoteAssetRequest(
         new Request(patchUrl),
@@ -264,7 +227,6 @@ describe("Detox remote asset proxy URLs", () => {
       path.join(os.tmpdir(), "hot-updater-relative-proxy-url-"),
     );
     const baseUrl = "https://provider.example.com/hot-updater";
-    const bundlePath = "/storage/bundles/bundle.zip?token=bundle";
     const manifestPath = "/storage/bundles/manifest.json?token=manifest";
     const assetPath = "/storage/assets/sha256/asset?token=asset";
     const patchPath = "/storage/bundles/bundle.bsdiff?token=patch";
@@ -280,11 +242,13 @@ describe("Detox remote asset proxy URLs", () => {
             : input;
       fetchTargets.push(url);
 
-      if (url === `${baseUrl}/artifacts/target/from/current`) {
+      if (url === `${baseUrl}/artifacts/v1/target/from/current`) {
         return Response.json({
-          changedAssets: {
+          artifactProtocolVersion: 1,
+          assets: {
             "assets/example.bmp": {
               file: { url: assetPath },
+              fileHash: "asset-hash",
               patch: {
                 algorithm: "bsdiff",
                 baseBundleId: "019ea44a-0000-7000-8000-000000000000",
@@ -292,7 +256,7 @@ describe("Detox remote asset proxy URLs", () => {
               },
             },
           },
-          fileUrl: bundlePath,
+          manifestFileHash: "manifest-hash",
           manifestUrl: manifestPath,
         });
       }
@@ -301,9 +265,6 @@ describe("Detox remote asset proxy URLs", () => {
         return new Response(manifestBytes, {
           headers: { "content-type": "application/json" },
         });
-      }
-      if (url === `${baseUrl}${bundlePath}`) {
-        return new Response("bundle-bytes");
       }
       if (url === `${baseUrl}${assetPath}`) {
         return new Response("asset-bytes");
@@ -328,26 +289,20 @@ describe("Detox remote asset proxy URLs", () => {
       const controller = await import("./control-server/controller.ts");
       const updateResponse = await controller.handleProxyUpdateRequest(
         new Request(
-          "http://localhost:3107/hot-updater/artifacts/target/from/current",
+          "http://localhost:3107/hot-updater/artifacts/v1/target/from/current",
         ),
       );
       const payload = (await updateResponse.json()) as {
-        changedAssets: Record<
+        assets: Record<
           string,
           { file: { url: string }; patch: { patchUrl: string } }
         >;
-        fileUrl: string;
         manifestUrl: string;
       };
-      const assetUrl = payload.changedAssets["assets/example.bmp"]!.file.url;
+      const assetUrl = payload.assets["assets/example.bmp"]!.file.url;
       const patchUrl =
-        payload.changedAssets["assets/example.bmp"]!.patch.patchUrl;
-      for (const url of [
-        payload.fileUrl,
-        payload.manifestUrl,
-        assetUrl,
-        patchUrl,
-      ]) {
+        payload.assets["assets/example.bmp"]!.patch.patchUrl;
+      for (const url of [payload.manifestUrl, assetUrl, patchUrl]) {
         expect(url).toMatch(
           /^http:\/\/localhost:3107\/e2e\/proxy-url\/[-0-9a-f]+$/,
         );
@@ -359,22 +314,17 @@ describe("Detox remote asset proxy URLs", () => {
       expect(await manifestResponse.text()).toBe(manifestBytes);
 
       controller.handleConfigureProxy({ artifactFailures: 1 });
-      const failedBundleResponse =
+      const failedAssetResponse =
         await controller.handleProxyRemoteAssetRequest(
-          new Request(payload.fileUrl),
+          new Request(assetUrl),
         );
-      expect(failedBundleResponse.status).toBe(503);
+      expect(failedAssetResponse.status).toBe(503);
       expect(controller.handleProxyState().artifactFailuresRemaining).toBe(0);
       expect(
         await (
           await controller.handleProxyRemoteAssetRequest(
-            new Request(payload.fileUrl),
+            new Request(assetUrl),
           )
-        ).text(),
-      ).toBe("bundle-bytes");
-      expect(
-        await (
-          await controller.handleProxyRemoteAssetRequest(new Request(assetUrl))
         ).text(),
       ).toBe("asset-bytes");
       expect(
@@ -385,7 +335,6 @@ describe("Detox remote asset proxy URLs", () => {
 
       expect(fetchTargets).toEqual(
         expect.arrayContaining([
-          `${baseUrl}${bundlePath}`,
           `${baseUrl}${manifestPath}`,
           `${baseUrl}${assetPath}`,
           `${baseUrl}${patchPath}`,

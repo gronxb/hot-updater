@@ -12,10 +12,10 @@ import type { BundleRow, BundleRowUpdate } from "./types";
 const createBundle = (): Bundle => ({
   id: "bundle-1",
   platform: "ios",
-  fileHash: "hash-1",
   gitCommitHash: null,
-  storageUri: "storage://bundle-1",
-  archiveByteSize: 3_000_000_001,
+  manifestStorageUri: "storage://bundle-1/manifest.json",
+  manifestFileHash: "manifest-hash-1",
+  assetBaseStorageUri: "storage://assets",
 });
 
 const createFixture = (expectedUpdates: number) => {
@@ -81,12 +81,14 @@ describe("database client partial updates", () => {
     const fixture = createFixture(2);
 
     await Promise.all([
-      fixture.client.updateBundleById("bundle-1", { fileHash: "new-hash" }),
+      fixture.client.updateBundleById("bundle-1", {
+        manifestFileHash: "new-manifest-hash",
+      }),
       fixture.client.updateBundleById("bundle-1", { gitCommitHash: "new" }),
     ]);
 
     expect(fixture.getRow()).toMatchObject({
-      file_hash: "new-hash",
+      manifest_file_hash: "new-manifest-hash",
       git_commit_hash: "new",
     });
   });
@@ -97,7 +99,7 @@ describe("database client partial updates", () => {
     await fixture.client.updateBundleById("bundle-1", { gitCommitHash: null });
 
     expect(fixture.updateInputs).toEqual([{ git_commit_hash: null }]);
-    expect(fixture.getRow().file_hash).toBe("hash-1");
+    expect(fixture.getRow().manifest_file_hash).toBe("manifest-hash-1");
     expect(fixture.getPatchDeleteCount()).toBe(0);
     expect(fixture.getPatchCreateCount()).toBe(0);
   });

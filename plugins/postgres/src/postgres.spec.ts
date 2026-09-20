@@ -68,14 +68,11 @@ const channelFixture = (name: string, id: string): ChannelRow => ({ id, name });
 const bundleFixture = (): BundleRow => ({
   id: "00000000-0000-0000-0000-000000000701",
   platform: "ios",
-  file_hash: "file-hash",
   git_commit_hash: null,
-  storage_uri: "storage://bundles/701.zip",
-  archive_byte_size: 3_000_000_001,
   metadata: {},
-  manifest_storage_uri: null,
-  manifest_file_hash: null,
-  asset_base_storage_uri: null,
+  manifest_storage_uri: "storage://bundles/701/manifest.json",
+  manifest_file_hash: "manifest-hash",
+  asset_base_storage_uri: "storage://assets",
 });
 
 const releaseFixture = (
@@ -141,22 +138,12 @@ const insightsEventFixture = (input: {
   received_at_ms: input.receivedAtMs,
 });
 
-describe("PostgreSQL artifact byte-size constraints", () => {
-  it("rejects negative archive and patch sizes at the database boundary", async () => {
+describe("PostgreSQL patch byte-size constraints", () => {
+  it("rejects a negative patch size at the database boundary", async () => {
     const { database, plugin } = await createPostgresTestPlugin();
     const bundle = bundleFixture();
 
     try {
-      await expect(
-        database.exec(`
-          INSERT INTO bundles (
-            id, platform, file_hash, storage_uri, archive_byte_size, metadata
-          ) VALUES (
-            '${bundle.id}', 'ios', 'hash', 'storage://bundle', -1, '{}'
-          )
-        `),
-      ).rejects.toThrow();
-
       await plugin.commit({
         changes: [{ model: "bundles", operation: "insert", row: bundle }],
       });

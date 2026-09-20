@@ -8,7 +8,6 @@ export const sizeAwareArtifactSelectionScenario: DetoxScenarioDefinition = {
       "/e2e/jobs/deploy-bundle",
       {
         channel: "production",
-        compressStrategy: "tar.br",
         marker: "size-aware-base-detox",
         mode: "reset",
         safeBundleIds: [],
@@ -67,7 +66,6 @@ export const sizeAwareArtifactSelectionScenario: DetoxScenarioDefinition = {
       "/e2e/jobs/deploy-bundle",
       {
         channel: "production",
-        compressStrategy: "tar.br",
         diffBaseBundleId: "$sizeAwareBaseBundleId",
         marker: "size-aware-small-diff-detox",
         mode: "reset",
@@ -111,7 +109,7 @@ export const sizeAwareArtifactSelectionScenario: DetoxScenarioDefinition = {
       "/e2e/assert-bundle-artifact-selection",
       {
         currentBundleId: "$sizeAwareBaseBundleId",
-        selection: "manifest-diff",
+        selection: "manifest-v1",
         targetBundleId: "$sizeAwareSmallBundleId",
       },
     );
@@ -156,7 +154,6 @@ export const sizeAwareArtifactSelectionScenario: DetoxScenarioDefinition = {
       {
         bundleProfile: "sizeAwareLargeDiff",
         channel: "production",
-        compressStrategy: "tar.br",
         diffBaseBundleId: "$sizeAwareSmallBundleId",
         marker: "size-aware-large-diff-detox",
         mode: "reset",
@@ -196,11 +193,11 @@ export const sizeAwareArtifactSelectionScenario: DetoxScenarioDefinition = {
       { exactText: true },
     );
     await app.control(
-      "assert size-aware large archive selection",
+      "assert size-aware large manifest selection",
       "/e2e/assert-bundle-artifact-selection",
       {
         currentBundleId: "$sizeAwareSmallBundleId",
-        selection: "archive-only",
+        selection: "manifest-v1",
         targetBundleId: "$sizeAwareLargeBundleId",
       },
     );

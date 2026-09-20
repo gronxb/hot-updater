@@ -34,8 +34,8 @@ export const bspatchConsecutiveDiffOtaScenario: DetoxScenarioDefinition = {
       },
     );
     await app.control(
-      "assert diff bundle A uses archive",
-      "/e2e/assert-first-ota-uses-archive",
+      "assert diff bundle A uses built-in manifest",
+      "/e2e/assert-first-ota-uses-built-in-manifest",
       {
         bundleId: "$bundleA",
       },

@@ -106,14 +106,11 @@ const createChannelRow = (name: string): ChannelRow => ({
 const createBundleRow = (): BundleRow => ({
   id: "00000000-0000-0000-0000-000000000902",
   platform: "ios",
-  file_hash: "hash",
   git_commit_hash: null,
-  storage_uri: "storage://bundle",
-  archive_byte_size: 3_000_000_001,
   metadata: {},
-  manifest_storage_uri: null,
-  manifest_file_hash: null,
-  asset_base_storage_uri: null,
+  manifest_storage_uri: "storage://bundle/manifest.json",
+  manifest_file_hash: "manifest-hash",
+  asset_base_storage_uri: "storage://assets",
 });
 
 const createReleaseRow = (

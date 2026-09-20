@@ -101,9 +101,9 @@ and an empty patch owner list return no rows without I/O. Bundle rows contain
 artifact identity and storage fields only; rollout, channel, compatibility,
 force-update, and message fields belong to Releases.
 
-`BundleRow.archive_byte_size` and `BundlePatchRow.byte_size` are required
-immutable non-negative safe integers. Reject missing, fractional, negative, or
-out-of-range values on every read and write. Optional manifest asset
+`BundlePatchRow.byte_size` is a required immutable non-negative safe integer.
+Reject missing, fractional, negative, or out-of-range values on every read and
+write. Bundle manifest storage fields are required. Optional manifest asset
 `downloadByteSize` and `downloadFileHash` values live in manifest JSON and are
 not additional database columns.
 
@@ -430,8 +430,8 @@ database. Unsupported populated storage is rejected without deleting its data.
 
 1. Remove `queries`, `getUpdateInfo`, provider decision SQL/RPCs, and any
    desired-state cache owned by the provider.
-2. Keep Bundle rows as immutable artifacts, including required archive and
-   patch byte sizes. Store rollout and compatibility policy on Releases.
+2. Keep Bundle rows as immutable manifest artifacts and validate patch byte
+   sizes. Store rollout and compatibility policy on Releases.
 3. Add Channel, Release, and Release-catalog storage, indexes, and references.
 4. Implement exact catalog reads and strongly consistent, keyset-paged Release
    scope reads.

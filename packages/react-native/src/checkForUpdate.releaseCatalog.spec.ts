@@ -78,8 +78,10 @@ const createCatalog = (
 const createClient = (catalog = createCatalog()) => {
   const fetchReleaseCatalog = vi.fn(async () => catalog);
   const resolveArtifact = vi.fn(async () => ({
-    fileHash: "bundle-hash",
-    fileUrl: "https://updates.example.com/bundle.zip",
+    artifactProtocolVersion: 1,
+    assets: {},
+    manifestFileHash: "manifest-hash",
+    manifestUrl: "https://updates.example.com/manifest.json",
   }));
   const sendInsightsEvent = vi.fn(async () => undefined);
   const session = {

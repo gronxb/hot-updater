@@ -18,20 +18,13 @@ import type { Bundle, StoragePluginWith } from "@hot-updater/plugin-core";
 import {
   createBundleStorageKey,
   createStorageRootUriWithPath,
-  detectCompressionFormat,
   getManifestAssetDownloadPath,
   getManifestAssetStoragePath,
   isContentAddressedAssetFileHash,
-  parseStorageUri,
   resolveManifestAssetStorageUri,
 } from "@hot-updater/plugin-core";
-import JSZip from "jszip";
-import * as tar from "tar";
 
 import { prepareBundleSigning } from "./bundleSigning";
-import { createTarBrTargetFiles } from "./createTarBr";
-import { createTarGzTargetFiles } from "./createTarGz";
-import { createZipTargetFiles } from "./createZip";
 import type { ConfigResponse } from "./loadConfig";
 import {
   getStorageFileByteSize,
@@ -116,13 +109,6 @@ function verifySignedFileHash({
   } catch {
     return false;
   }
-}
-
-function getArchiveFilename(storageUri: string) {
-  const protocol = new URL(storageUri).protocol.replace(":", "");
-  const { key } = parseStorageUri(storageUri, protocol);
-  const filename = path.posix.basename(key);
-  return filename || "bundle.zip";
 }
 
 const getRelativeStorageDir = (relativePath: string) => {
@@ -286,26 +272,26 @@ function resolveExtractedPath(rootDir: string, entryName: string) {
     path.isAbsolute(relativePath) ||
     normalizedEntryName.startsWith("/")
   ) {
-    throw new Error(`Invalid archive entry path: ${entryName}`);
+    throw new Error(`Invalid manifest asset path: ${entryName}`);
   }
 
   return entryPath;
 }
 
-async function downloadArchive(
+async function downloadStorageObject(
   storageUri: string,
   storagePlugin: PromoteStoragePlugin | null,
-  archivePath: string,
+  outputPath: string,
 ) {
   const protocol = new URL(storageUri).protocol.replace(":", "");
 
   if (storagePlugin?.protocol === protocol) {
-    await writeStorageFile(storagePlugin, storageUri, archivePath);
+    await writeStorageFile(storagePlugin, storageUri, outputPath);
     return;
   }
 
   if (protocol === "http" || protocol === "https") {
-    await downloadFromUrl(storageUri, archivePath);
+    await downloadFromUrl(storageUri, outputPath);
     return;
   }
 
@@ -316,136 +302,79 @@ async function downloadFromUrl(fileUrl: string, filePath: string) {
   const response = await fetch(fileUrl);
   if (!response.ok) {
     throw new Error(
-      `Failed to download bundle archive: ${response.statusText}`,
+      `Failed to download storage object: ${response.statusText}`,
     );
   }
 
   await writeStorageResponseFile(response, filePath);
 }
 
-async function extractZipArchive(archivePath: string, extractDir: string) {
-  const zip = await JSZip.loadAsync(await fs.readFile(archivePath));
-  const entries = Object.values(zip.files).sort((left, right) =>
-    left.name.localeCompare(right.name),
+async function downloadManifestAssets({
+  bundle,
+  manifest,
+  outputDir,
+  storagePlugin,
+  workDir,
+}: {
+  bundle: Bundle;
+  manifest: BundleManifest;
+  outputDir: string;
+  storagePlugin: PromoteStoragePlugin;
+  workDir: string;
+}) {
+  const assetPaths = Object.keys(manifest.assets ?? {}).sort((left, right) =>
+    left.localeCompare(right),
   );
 
-  for (const entry of entries) {
-    const outputPath = resolveExtractedPath(extractDir, entry.name);
-
-    if (entry.dir) {
-      await fs.mkdir(outputPath, { recursive: true });
-      continue;
-    }
-
-    await fs.mkdir(path.dirname(outputPath), { recursive: true });
-    await fs.writeFile(outputPath, await entry.async("nodebuffer"));
-  }
-}
-
-async function extractTarBrArchive(archivePath: string, extractDir: string) {
-  const tarPath = path.join(extractDir, "bundle.tar");
-  const compressedBuffer = await fs.readFile(archivePath);
-  const tarBuffer = brotliDecompressSync(compressedBuffer);
-
-  await fs.writeFile(tarPath, tarBuffer);
-
-  try {
-    await tar.extract({
-      file: tarPath,
-      cwd: extractDir,
-      gzip: false,
-      strict: true,
-    });
-  } finally {
-    await fs.rm(tarPath, { force: true });
-  }
-}
-
-async function extractArchive(archivePath: string, extractDir: string) {
-  const { format } = detectCompressionFormat(path.basename(archivePath));
-
-  switch (format) {
-    case "zip":
-      await extractZipArchive(archivePath, extractDir);
-      return format;
-    case "tar.gz":
-      await tar.extract({
-        file: archivePath,
-        cwd: extractDir,
-        gzip: true,
-        strict: true,
+  await runWithConcurrency(
+    assetPaths,
+    PROMOTE_ASSET_CONCURRENCY,
+    async (assetPath) => {
+      const asset = manifest.assets?.[assetPath];
+      if (!asset?.fileHash) {
+        throw new Error(`Manifest file hash not found for ${assetPath}`);
+      }
+      const downloadPath = getManifestAssetDownloadPath(assetPath);
+      const storageUri = resolveManifestAssetStorageUri({
+        assetBaseStorageUri: bundle.assetBaseStorageUri,
+        assetPath: downloadPath,
+        downloadFileHash: asset.downloadFileHash,
+        fileHash: asset.fileHash,
       });
-      return format;
-    case "tar.br":
-      await extractTarBrArchive(archivePath, extractDir);
-      return format;
-  }
+      const transferPath = resolveExtractedPath(
+        workDir,
+        `downloads/${downloadPath}`,
+      );
+      await fs.mkdir(path.dirname(transferPath), { recursive: true });
+      await downloadStorageObject(storageUri, storagePlugin, transferPath);
+
+      if (asset.downloadFileHash) {
+        const actualDownloadHash = await getFileHash(transferPath);
+        if (actualDownloadHash !== asset.downloadFileHash.toLowerCase()) {
+          throw new Error(`Manifest download hash mismatch for ${assetPath}`);
+        }
+      }
+
+      const outputPath = resolveExtractedPath(outputDir, assetPath);
+      await fs.mkdir(path.dirname(outputPath), { recursive: true });
+      if (downloadPath === assetPath) {
+        await fs.copyFile(transferPath, outputPath);
+      } else {
+        await fs.writeFile(
+          outputPath,
+          brotliDecompressSync(await fs.readFile(transferPath)),
+        );
+      }
+
+      const actualFileHash = await getFileHash(outputPath);
+      if (actualFileHash !== asset.fileHash.toLowerCase()) {
+        throw new Error(`Manifest file hash mismatch for ${assetPath}`);
+      }
+    },
+  );
 }
 
-async function getArchiveTargetFiles(bundleDir: string) {
-  const entries = await fs.readdir(bundleDir, { withFileTypes: true });
-  entries.sort((left, right) => left.name.localeCompare(right.name));
-
-  return entries.map((entry) => ({
-    path: path.join(bundleDir, entry.name),
-    name: entry.name,
-  }));
-}
-
-async function createArchiveFromDirectory(
-  sourceDir: string,
-  archivePath: string,
-  format: ReturnType<typeof detectCompressionFormat>["format"],
-) {
-  const targetFiles = await getArchiveTargetFiles(sourceDir);
-
-  switch (format) {
-    case "zip":
-      await createZipTargetFiles({
-        outfile: archivePath,
-        targetFiles,
-      });
-      return;
-    case "tar.gz":
-      await createTarGzTargetFiles({
-        outfile: archivePath,
-        targetFiles,
-      });
-      return;
-    case "tar.br":
-      await createTarBrTargetFiles({
-        outfile: archivePath,
-        targetFiles,
-      });
-      return;
-  }
-}
-
-async function readCopiedBundleManifest(
-  extractDir: string,
-  nextBundleId: string,
-) {
-  const manifestPath = path.join(extractDir, "manifest.json");
-
-  try {
-    await fs.access(manifestPath);
-  } catch {
-    throw new Error(LEGACY_BUNDLE_ERROR);
-  }
-
-  const manifest = JSON.parse(
-    await fs.readFile(manifestPath, "utf8"),
-  ) as BundleManifest;
-
-  manifest.bundleId = nextBundleId;
-
-  return {
-    manifest,
-    manifestPath,
-  };
-}
-
-export async function createCopiedBundleArchive({
+export async function createCopiedBundleArtifacts({
   bundle,
   config,
   nextBundleId,
@@ -456,24 +385,26 @@ export async function createCopiedBundleArchive({
   nextBundleId: string;
   storagePlugin: PromoteStoragePlugin;
 }) {
-  // Re-upload follows deploy.ts after build: repackage, hash/sign, upload.
-  const archiveFilename = getArchiveFilename(bundle.storageUri);
   const workDir = await fs.mkdtemp(
     path.join(os.tmpdir(), "hot-updater-console-promote-"),
   );
-  const sourceArchivePath = path.join(workDir, archiveFilename);
   const extractDir = path.join(workDir, "bundle");
-  const outputArchivePath = path.join(workDir, archiveFilename);
+  const sourceManifestPath = path.join(workDir, "source-manifest.json");
+  const manifestPath = path.join(extractDir, "manifest.json");
   const uploadedStorageUris: string[] = [];
 
   await fs.mkdir(extractDir, { recursive: true });
 
   try {
-    await downloadArchive(bundle.storageUri, storagePlugin, sourceArchivePath);
-    const actualSourceFileHash = await getFileHash(sourceArchivePath);
+    await downloadStorageObject(
+      bundle.manifestStorageUri,
+      storagePlugin,
+      sourceManifestPath,
+    );
+    const actualManifestHash = await getFileHash(sourceManifestPath);
     const signingSession = await prepareBundleSigning(config.signing);
 
-    if (isSignedFileHash(bundle.fileHash)) {
+    if (isSignedFileHash(bundle.manifestFileHash)) {
       if (!signingSession) {
         throw new Error(
           "Cannot copy a signed bundle without enabled bundle signing configuration.",
@@ -481,29 +412,35 @@ export async function createCopiedBundleArchive({
       }
       if (
         !verifySignedFileHash({
-          actualFileHash: actualSourceFileHash,
+          actualFileHash: actualManifestHash,
           publicKey: signingSession.publicKey,
-          signedFileHash: bundle.fileHash,
+          signedFileHash: bundle.manifestFileHash,
         })
       ) {
-        throw new Error("Source bundle signature verification failed.");
+        throw new Error("Source manifest signature verification failed.");
       }
-    } else if (actualSourceFileHash !== bundle.fileHash.toLowerCase()) {
-      throw new Error("Source bundle file hash verification failed.");
+    } else if (actualManifestHash !== bundle.manifestFileHash.toLowerCase()) {
+      throw new Error("Source manifest file hash verification failed.");
     }
 
-    const format = await extractArchive(sourceArchivePath, extractDir);
-
-    const { manifest, manifestPath } = await readCopiedBundleManifest(
-      extractDir,
-      nextBundleId,
-    );
+    const manifest = JSON.parse(
+      await fs.readFile(sourceManifestPath, "utf8"),
+    ) as BundleManifest;
+    if (!manifest.assets || typeof manifest.assets !== "object") {
+      throw new Error(LEGACY_BUNDLE_ERROR);
+    }
+    await downloadManifestAssets({
+      bundle,
+      manifest,
+      outputDir: extractDir,
+      storagePlugin,
+      workDir,
+    });
+    manifest.bundleId = nextBundleId;
     const assetPaths = Object.keys(manifest.assets ?? {}).sort((left, right) =>
       left.localeCompare(right),
     );
-    const sourceIsSigned = [bundle.fileHash, getManifestFileHash(bundle)]
-      .filter((hash): hash is string => Boolean(hash))
-      .some((hash) => isSignedFileHash(hash));
+    const sourceIsSigned = isSignedFileHash(getManifestFileHash(bundle));
     const manifestHasSignatures = assetPaths.some((assetPath) =>
       Boolean(manifest.assets?.[assetPath]?.signature),
     );
@@ -549,26 +486,20 @@ export async function createCopiedBundleArchive({
       workDir,
     });
     await fs.writeFile(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
-    await fs.rm(sourceArchivePath, { force: true });
-    await createArchiveFromDirectory(extractDir, outputArchivePath, format);
 
-    const fileHash = await getFileHash(outputArchivePath);
     const manifestHash = await getFileHash(manifestPath);
-    const nextFileHash = signingSession
-      ? `${SIGNED_HASH_PREFIX}${await signingSession.signFileHash(fileHash)}`
-      : fileHash;
     const nextManifestFileHash = signingSession
       ? `${SIGNED_HASH_PREFIX}${await signingSession.signFileHash(manifestHash)}`
       : manifestHash;
 
-    const archiveUpload = await putStorageFile(
+    const manifestUpload = await putStorageFile(
       storagePlugin,
       createBundleStorageKey(nextBundleId),
-      outputArchivePath,
+      manifestPath,
     );
-    uploadedStorageUris.push(archiveUpload.storageUri);
+    uploadedStorageUris.push(manifestUpload.storageUri);
     const assetBaseStorageUri = createStorageRootUriWithPath(
-      archiveUpload.storageUri,
+      manifestUpload.storageUri,
       nextBundleId,
       "assets",
     );
@@ -593,20 +524,10 @@ export async function createCopiedBundleArchive({
       }
     }
 
-    const manifestUpload = await putStorageFile(
-      storagePlugin,
-      createBundleStorageKey(nextBundleId),
-      manifestPath,
-    );
-    uploadedStorageUris.push(manifestUpload.storageUri);
-
     return {
       bundle: {
         ...bundle,
         id: nextBundleId,
-        archiveByteSize: archiveUpload.byteSize,
-        storageUri: archiveUpload.storageUri,
-        fileHash: nextFileHash,
         metadata: stripBundleArtifactMetadata(bundle.metadata),
         assetBaseStorageUri,
         patches: [],

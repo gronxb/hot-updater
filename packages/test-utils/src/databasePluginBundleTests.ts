@@ -55,7 +55,7 @@ export const registerDatabasePluginBundleTests = (
         git_commit_hash: null,
         manifest_storage_uri: "storage://manifests/2.json",
         metadata: { flags: [] },
-        file_hash: row.file_hash,
+        manifest_file_hash: row.manifest_file_hash,
       });
     });
 
@@ -93,7 +93,7 @@ export const registerDatabasePluginBundleTests = (
           model: "bundles",
           operation: "update",
           where: { id: "ffffffff-ffff-ffff-ffff-ffffffffffff" },
-          update: { storage_uri: "storage://missing.zip" },
+          update: { manifest_storage_uri: "storage://missing/manifest.json" },
         }),
       ).resolves.toEqual({
         committed: false,

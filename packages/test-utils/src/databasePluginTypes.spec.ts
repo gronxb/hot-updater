@@ -78,8 +78,8 @@ describe("database plugin operation matrix", () => {
 
   it("narrows selected result fields", () => {
     expectTypeOf<
-      SelectedDatabaseRow<"bundles", readonly ["id", "storage_uri"]>
-    >().toEqualTypeOf<Pick<BundleRow, "id" | "storage_uri">>();
+      SelectedDatabaseRow<"bundles", readonly ["id", "manifest_storage_uri"]>
+    >().toEqualTypeOf<Pick<BundleRow, "id" | "manifest_storage_uri">>();
   });
 
   it("uses normalized channel rows", () => {
@@ -91,7 +91,7 @@ describe("database plugin operation matrix", () => {
 
   it("limits Bundle updates to artifact fields", () => {
     expectTypeOf<{
-      readonly storage_uri: string;
+      readonly manifest_storage_uri: string;
     }>().toMatchTypeOf<BundleRowUpdate>();
     expectTypeOf<{
       readonly channel: string;

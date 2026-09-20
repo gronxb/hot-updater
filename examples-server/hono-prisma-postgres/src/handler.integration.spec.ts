@@ -290,12 +290,12 @@ describe("Hot Updater Handler Integration Tests (Hono + Prisma + PostgreSQL)", (
       })
     ).row;
     await hotUpdater.insertBundle({
+      assetBaseStorageUri: "storage://assets",
       id,
       platform: "ios",
-      fileHash: "concurrent-target-hash",
       gitCommitHash: null,
-      storageUri: "storage://concurrent-target",
-      archiveByteSize: 3_000_000_001,
+      manifestFileHash: "concurrent-target-manifest-hash",
+      manifestStorageUri: "storage://concurrent-target/manifest.json",
     });
     const now = Date.now();
     await commitReleaseCatalogMutations({
@@ -403,14 +403,11 @@ describe("Hot Updater Handler Integration Tests (Hono + Prisma + PostgreSQL)", (
     const patchId = "prisma-rollback-patch";
     const bundle = {
       platform: "ios" as const,
-      file_hash: "rollback-hash",
       git_commit_hash: null,
-      storage_uri: "storage://rollback",
-      archive_byte_size: 3_000_000_001,
       metadata: {},
-      manifest_storage_uri: null,
-      manifest_file_hash: null,
-      asset_base_storage_uri: null,
+      manifest_storage_uri: "storage://rollback/manifest.json",
+      manifest_file_hash: "rollback-manifest-hash",
+      asset_base_storage_uri: "storage://assets",
     };
     for (const id of [baseId, targetId]) {
       const row = { ...bundle, id };

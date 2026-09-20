@@ -35,7 +35,8 @@ const API_KEY = "AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE";
 const toRuntimeBundle = (bundle: Bundle): Bundle => {
   return {
     ...bundle,
-    storageUri: `r2://${env.BUCKET_NAME}/${bundle.id}/bundle.zip`,
+    manifestStorageUri: `r2://${env.BUCKET_NAME}/${bundle.id}/manifest.json`,
+    assetBaseStorageUri: `r2://${env.BUCKET_NAME}/assets`,
   };
 };
 
@@ -135,10 +136,10 @@ describe.sequential("cloudflare worker runtime acceptance", () => {
       {
         id: "00000000-0000-0000-0000-000000000001",
         platform: "ios",
-        fileHash: "hash",
         gitCommitHash: null,
-        storageUri: "storage://unused",
-        archiveByteSize: 3_000_000_001,
+        manifestStorageUri: "storage://unused/manifest.json",
+        manifestFileHash: "manifest-hash",
+        assetBaseStorageUri: "storage://assets",
       },
     ]);
 

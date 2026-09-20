@@ -194,7 +194,7 @@ const assertReferences = (
       (row.bundle_id !== null &&
         !tables.bundles.some(
           (bundle) =>
-            "file_hash" in bundle &&
+            "manifest_file_hash" in bundle &&
             bundle.id === row.bundle_id &&
             bundle.platform === row.platform,
         ))
