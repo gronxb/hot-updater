@@ -81,6 +81,7 @@ final class SparklingGenerationEventJournal {
     private let lock = NSLock()
     private var state = StoredJournal()
     private var unavailable: Unavailable?
+    private var diagnosticsBackup: Data?
 
     init(
         file: URL? = nil,
@@ -205,6 +206,7 @@ final class SparklingGenerationEventJournal {
 
 #if HOT_UPDATER_LYNX_DIAGNOSTICS
     func installDiagnosticsFixture(_ mode: String) throws {
+        try captureDiagnosticsBackupIfNeeded()
         switch mode {
         case "corrupt-json":
             try installRawDiagnosticsFixture(Data("{".utf8))
@@ -269,6 +271,25 @@ final class SparklingGenerationEventJournal {
     func restoreDiagnosticsFixture() throws {
         lock.lock()
         defer { lock.unlock() }
+        let bytes = diagnosticsBackup ?? (try Self.encode(StoredJournal()))
+        diagnosticsBackup = nil
+        guard persist(bytes) else { throw Unavailable.persistenceFailed }
+        state = (try? Self.decode(bytes)) ?? StoredJournal()
+        unavailable = nil
+    }
+
+    private func captureDiagnosticsBackupIfNeeded() throws {
+        guard diagnosticsBackup == nil else { return }
+        if let file, FileManager.default.fileExists(atPath: file.path) {
+            diagnosticsBackup = try Data(contentsOf: file)
+        } else {
+            diagnosticsBackup = try Self.encode(StoredJournal())
+        }
+    }
+
+    private func resetDiagnosticsJournalPreservingBackup() throws {
+        lock.lock()
+        defer { lock.unlock() }
         let clean = StoredJournal()
         let bytes = try Self.encode(clean)
         guard persist(bytes) else { throw Unavailable.persistenceFailed }
@@ -306,7 +327,7 @@ final class SparklingGenerationEventJournal {
     }
 
     private func installDiagnosticsEvents(count: Int, fixture: String) throws {
-        try restoreDiagnosticsFixture()
+        try resetDiagnosticsJournalPreservingBackup()
         for _ in 1...count {
             guard append(
                 name: "retentionFixture",

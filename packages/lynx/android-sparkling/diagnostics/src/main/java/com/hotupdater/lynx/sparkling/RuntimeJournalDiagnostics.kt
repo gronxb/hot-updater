@@ -13,8 +13,12 @@ class RuntimeJournalDiagnostics(
     private val directory = File(filesDir, "hot-updater-lynx/runtime-events")
     private val file = File(directory, "events.json")
     private var journal = LynxGenerationEventJournal(filesDir)
+    private var backup: ByteArray? = null
 
     fun install(mode: String) {
+        if (backup == null) {
+            backup = if (file.exists()) file.readBytes() else EMPTY_JOURNAL.toByteArray()
+        }
         val bytes = when (mode) {
             "retention-limit" -> retentionEnvelope("retention")
             "count-plus-one" -> countPlusOneEnvelope()
@@ -65,7 +69,8 @@ class RuntimeJournalDiagnostics(
     }
 
     fun restore() {
-        write(EMPTY_JOURNAL.toByteArray())
+        write(backup ?: EMPTY_JOURNAL.toByteArray())
+        backup = null
         journal = LynxGenerationEventJournal(filesDir)
     }
 

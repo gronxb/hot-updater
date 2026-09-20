@@ -127,3 +127,40 @@ class RuntimeJournalDiagnosticsTest {
         }
     }
 }
+
+    @Test
+    fun restorePutsLiveEventsBack() {
+        val root = Files.createTempDirectory("journal-diagnostics-").toFile()
+        try {
+            LynxGenerationEventJournal(root).append(
+                "generationStarted",
+                linkedMapOf(
+                    "runtimeId" to "runtime-a",
+                    "processId" to "1234",
+                    "generationId" to "generation-a",
+                    "bundleId" to "bundle-a",
+                    "releaseId" to JSONObject.NULL,
+                    "contextId" to "context-a",
+                    "pageAttemptId" to JSONObject.NULL,
+                    "transitionId" to JSONObject.NULL,
+                ),
+            )
+            val diagnostics = diagnostics(root)
+            diagnostics.install("retention-limit")
+            val during = diagnostics.receipt().getJSONObject("snapshot")
+            assertEquals(
+                "retentionFixture",
+                during.getJSONArray("events").getJSONObject(0).getString("name"),
+            )
+            diagnostics.restore()
+            val restored = diagnostics.receipt().getJSONObject("snapshot")
+            assertEquals(
+                "generationStarted",
+                restored.getJSONArray("events").getJSONObject(0).getString("name"),
+            )
+            assertEquals("1", restored.getString("latestSequence"))
+        } finally {
+            root.deleteRecursively()
+        }
+    }
+}
