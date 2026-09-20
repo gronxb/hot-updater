@@ -9,6 +9,7 @@ import {
   transformEnv,
 } from "@hot-updater/cli-tools";
 import { HOT_UPDATER_INFRASTRUCTURE_GENERATION } from "@hot-updater/server";
+import { build as buildHelper } from "tsdown";
 
 import {
   readInfrastructureUpgradeFiles,
@@ -75,6 +76,15 @@ const runtimeDependencies = async (directory, provider) => {
   return dependencies;
 };
 
+await buildHelper({
+  config: false,
+  entry: { "verify-server": path.join(packageRoot, "agent/verify-server.mjs") },
+  outDir: path.join(packageRoot, "dist/agent"),
+  format: ["esm"],
+  dts: false,
+  exports: false,
+  deps: { onlyBundle: false },
+});
 await rm(outputRoot, { recursive: true, force: true });
 for (const provider of providers) {
   const root = pluginRoot(provider);
@@ -123,7 +133,7 @@ for (const provider of providers) {
   );
 
   await cp(
-    path.join(packageRoot, "agent/verify-server.mjs"),
+    path.join(packageRoot, "dist/agent/verify-server.mjs"),
     path.join(output, "app/verify-server.mjs"),
   );
 

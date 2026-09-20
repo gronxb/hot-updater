@@ -49,10 +49,24 @@ to specify the desired app behavior and outcome.
 | Phase | Evidence to report |
 | --- | --- |
 | Inspect and install | App workspace, build system, provider and resolved package versions |
-| Provision infrastructure | Actual resource identifiers, deployed base URL, server version and authenticated client request |
+| Provision infrastructure | Actual resource identifiers, deployed base URL, passing scaffold/infrastructure doctor results and remaining checks outside their scope |
 | Connect the app | Top-level init, explicit check/download/reload flow, native loading, client key, matching strategy/channel and signing key when enabled |
 | Test OTA | Release app launch, visible JavaScript and asset changes after application, matching deployment ID and rollback result |
 | Observe and hand off | Ready-to-copy HotUpdater.init configuration with the verified base URL and registered client x-api-key; received Insights when enabled; remaining store/native release steps and any specific blockers |
+
+The agent uses [doctor's scoped checks](/docs/guides/doctor#verify-infrastructure-scaffolding)
+as completion gates: `scaffold` after filling deployment inputs, then
+`infrastructure` after deployment. Both target the exact generated directory.
+Each must exit with code 0 and return `success: true` for the requested scope;
+failed or blocked checks require repair and a rerun. The agent verifies these
+capabilities in the installed CLI's help before provisioning. If they are
+unavailable, it identifies the compatible CLI upgrade needed and reports
+verification as incomplete.
+
+Doctor observes the files and server directly; an agent-written checklist does
+not supply a pass. Its `notChecked` field identifies remaining provider, storage,
+artifact and app checks. The agent completes the applicable checks separately
+and reports any outstanding work.
 
 [Connect your app](/docs/get-started/app-setup) is the canonical integration
 procedure. Prefer its custom `init` flow so check timing and reload behavior
