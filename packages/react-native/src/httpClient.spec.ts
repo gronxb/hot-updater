@@ -40,6 +40,7 @@ const artifact: ArtifactInfo = {
   },
   manifestFileHash: "manifest-hash",
   manifestUrl: "/storage/manifest.json",
+  archiveUrl: "/storage/bundle.tar.br",
 };
 
 const catalog: ReleaseCatalog = {
@@ -119,6 +120,7 @@ describe("private HotUpdater HTTP client", () => {
       },
       manifestUrl:
         "https://first.example.com/hot-updater/storage/manifest.json",
+      archiveUrl: "https://first.example.com/hot-updater/storage/bundle.tar.br",
     });
 
     expect(resolveBaseURL).toHaveBeenCalledOnce();

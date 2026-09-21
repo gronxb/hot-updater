@@ -14,6 +14,7 @@ export interface ChangedAsset {
     baseFileHash: string;
     patchFileHash: string;
     patchUrl: string;
+    byteSize?: number;
   } | null;
 }
 
@@ -28,6 +29,8 @@ export interface UpdateBundleParams {
    * File hash/signature for the manifest file itself.
    */
   manifestFileHash: string;
+  /** Optional tar.br URL; integrity and sizes come from the verified manifest. */
+  archiveUrl?: string | null;
   /**
    * Per-file URLs for assets that must be downloaded instead of reused from
    * the currently active bundle.

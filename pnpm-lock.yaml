@@ -1429,6 +1429,9 @@ importers:
       picocolors:
         specifier: 1.1.1
         version: 1.1.1
+      tar:
+        specifier: ^7.5.16
+        version: 7.5.16
       verkit:
         specifier: 'catalog:'
         version: 0.4.0

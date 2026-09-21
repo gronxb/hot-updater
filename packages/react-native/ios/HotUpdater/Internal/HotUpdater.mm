@@ -600,6 +600,9 @@ RCT_EXPORT_MODULE();
     if (params.manifestFileHash()) {
         paramDict[@"manifestFileHash"] = params.manifestFileHash();
     }
+    if (params.archiveUrl()) {
+        paramDict[@"archiveUrl"] = params.archiveUrl();
+    }
     if (params.assets()) {
         paramDict[@"assets"] = params.assets();
     }

@@ -30,6 +30,12 @@ with this model.
 Do not deliver v1 `@hot-updater/react-native` JavaScript to a v0 native binary
 by OTA. Receipt and rollback behavior requires the v1 native module.
 
+Remove `compressStrategy` and `HOT_UPDATER_BUNDLE_MODE` from v1 configuration.
+The updater chooses between individual manifest files and one `tar.br` bulk
+download after checking local reuse. ZIP and gzip OTA archives are not supported.
+`updateStrategy` still selects app-version or fingerprint compatibility; it is
+unrelated to compression. See [Artifact Compression](/docs/guides/compression).
+
 ## Ask your agent to migrate
 
 Install the [Hot Updater skill](/docs/guides/ai-agents) from your project:

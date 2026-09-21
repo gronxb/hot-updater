@@ -12,6 +12,7 @@ import {
 
 import {
   getManifestFileHash,
+  type ManifestArchive,
   stripBundleArtifactMetadata,
 } from "@hot-updater/core";
 import type { Bundle, StoragePluginWith } from "@hot-updater/plugin-core";
@@ -25,6 +26,7 @@ import {
 } from "@hot-updater/plugin-core";
 
 import { prepareBundleSigning } from "./bundleSigning";
+import { createTarBrTargetFiles } from "./createTarBr";
 import type { ConfigResponse } from "./loadConfig";
 import {
   getStorageFileByteSize,
@@ -45,9 +47,11 @@ const PROMOTE_ASSET_CONCURRENCY = 8;
 interface BundleManifest {
   bundleId?: string;
   assets?: Record<string, BundleManifestAsset>;
+  archive?: ManifestArchive;
 }
 
 interface BundleManifestAsset {
+  byteSize?: number;
   downloadByteSize?: number;
   downloadFileHash?: string;
   fileHash: string;
@@ -232,6 +236,7 @@ async function prepareManifestAssetUploadTargets({
 
     const nextAsset: BundleManifestAsset = {
       ...asset,
+      byteSize: (await fs.stat(sourcePath)).size,
       downloadByteSize,
     };
     delete nextAsset.downloadFileHash;
@@ -485,6 +490,14 @@ export async function createCopiedBundleArtifacts({
       manifest,
       workDir,
     });
+    const archivePath = path.join(workDir, "bundle.tar.br");
+    manifest.archive = await createTarBrTargetFiles({
+      outfile: archivePath,
+      targetFiles: assetPaths.map((name) => ({
+        name,
+        path: resolveExtractedPath(extractDir, name),
+      })),
+    });
     await fs.writeFile(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
 
     const manifestHash = await getFileHash(manifestPath);
@@ -492,6 +505,12 @@ export async function createCopiedBundleArtifacts({
       ? `${SIGNED_HASH_PREFIX}${await signingSession.signFileHash(manifestHash)}`
       : manifestHash;
 
+    const archiveUpload = await putStorageFile(
+      storagePlugin,
+      createBundleStorageKey(nextBundleId),
+      archivePath,
+    );
+    uploadedStorageUris.push(archiveUpload.storageUri);
     const manifestUpload = await putStorageFile(
       storagePlugin,
       createBundleStorageKey(nextBundleId),

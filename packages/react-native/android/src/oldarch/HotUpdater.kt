@@ -47,6 +47,7 @@ class HotUpdater {
             manifestFileHash: String,
             assets: Map<String, ChangedAssetDescriptor>,
             channel: String?,
+            archiveUrl: String? = null,
             progressCallback: (UpdateProgressPayload) -> Unit,
         ) {
             getInstance(context).updateBundle(
@@ -55,6 +56,7 @@ class HotUpdater {
                 manifestFileHash,
                 assets,
                 channel,
+                archiveUrl = archiveUrl,
                 progressCallback = progressCallback,
             )
         }

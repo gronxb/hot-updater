@@ -472,6 +472,7 @@ export async function updateBundle(params: UpdateParams): Promise<boolean> {
         assets: targetAssets as Record<string, ArtifactAsset>,
         manifestFileHash: targetManifestFileHash,
         manifestUrl: targetManifestUrl,
+        ...(params.archiveUrl ? { archiveUrl: params.archiveUrl } : {}),
         ...(selection === undefined ? {} : { selection }),
       });
       if (ok) {

@@ -26,6 +26,16 @@ class HotUpdaterModule internal constructor(
 
     override fun getName(): String = NAME
 
+    private fun readSafeInteger(
+        map: ReadableMap,
+        key: String,
+    ): Long? {
+        if (!map.hasKey(key) || map.isNull(key)) return null
+        val value = runCatching { map.getDouble(key) }.getOrNull() ?: return null
+        if (!value.isFinite() || value % 1.0 != 0.0) return null
+        return value.toLong().takeIf { it in 0..9_007_199_254_740_991L }
+    }
+
     override fun onCatalystInstanceDestroy() {
         super.onCatalystInstanceDestroy()
         // Cancel all ongoing coroutines when module is destroyed
@@ -63,6 +73,7 @@ class HotUpdaterModule internal constructor(
                     val baseFileHash = patchMap.getString("baseFileHash")
                     val patchFileHash = patchMap.getString("patchFileHash")
                     val patchUrl = patchMap.getString("patchUrl")
+                    val byteSize = readSafeInteger(patchMap, "byteSize")
 
                     if (
                         algorithm != null &&
@@ -77,6 +88,7 @@ class HotUpdaterModule internal constructor(
                             baseFileHash = baseFileHash,
                             patchFileHash = patchFileHash,
                             patchUrl = patchUrl,
+                            byteSize = byteSize,
                         )
                     } else {
                         null
@@ -189,6 +201,20 @@ class HotUpdaterModule internal constructor(
                     return@launch
                 }
                 val channel = params.getString("channel")
+                val archiveUrl =
+                    if (params.hasKey("archiveUrl") && !params.isNull("archiveUrl")) {
+                        params.getString("archiveUrl")
+                    } else {
+                        null
+                    }
+                if (archiveUrl != null) {
+                    try {
+                        java.net.URL(archiveUrl)
+                    } catch (e: java.net.MalformedURLException) {
+                        promise.reject("INVALID_FILE_URL", "Invalid 'archiveUrl' provided: $archiveUrl")
+                        return@launch
+                    }
+                }
                 val selection = parseSelection(params)
 
                 val impl = getInstance()
@@ -200,6 +226,7 @@ class HotUpdaterModule internal constructor(
                     assets,
                     channel,
                     selection,
+                    archiveUrl,
                 ) { progress ->
                     // Post to Main thread for React Native event emission
                     Handler(Looper.getMainLooper()).post {

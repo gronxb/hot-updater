@@ -5,6 +5,7 @@ import {
   getJob,
   handleAssertBsdiffPatchApplied,
   handleAssertBundleArtifactSelection,
+  handleAssertBundleArtifactTransfers,
   handleAssertBundleAssetsStored,
   handleAssertBundlePatchBases,
   handleAssertCrashHistory,
@@ -115,6 +116,9 @@ app.all("/e2e/proxy-url/:targetId", async (c) => {
 
 app.post("/e2e/proxy-control", async (c) => {
   const payload = (await c.req.json()) as {
+    archiveAvailable?: boolean;
+    archiveFailureMode?: "corrupt" | "not-found" | null;
+    archiveFailures?: number;
     artifactDelayMs?: number;
     artifactFailures?: number;
     catalogDelayMs?: number;
@@ -122,6 +126,12 @@ app.post("/e2e/proxy-control", async (c) => {
     replayGeneration?: number | null;
     reset?: boolean;
   };
+  if (
+    payload.archiveAvailable !== undefined &&
+    typeof payload.archiveAvailable !== "boolean"
+  ) {
+    return c.json({ error: "archiveAvailable must be a boolean" }, 400);
+  }
   for (const value of [payload.artifactDelayMs, payload.catalogDelayMs]) {
     if (value !== undefined && (!Number.isFinite(value) || value < 0)) {
       return c.json({ error: "proxy delays must be non-negative" }, 400);
@@ -134,6 +144,27 @@ app.post("/e2e/proxy-control", async (c) => {
   ) {
     return c.json(
       { error: "artifactFailures must be a non-negative integer" },
+      400,
+    );
+  }
+  if (
+    payload.archiveFailures !== undefined &&
+    (!Number.isSafeInteger(payload.archiveFailures) ||
+      payload.archiveFailures < 0)
+  ) {
+    return c.json(
+      { error: "archiveFailures must be a non-negative integer" },
+      400,
+    );
+  }
+  if (
+    payload.archiveFailureMode !== undefined &&
+    payload.archiveFailureMode !== null &&
+    payload.archiveFailureMode !== "corrupt" &&
+    payload.archiveFailureMode !== "not-found"
+  ) {
+    return c.json(
+      { error: "archiveFailureMode must be corrupt, not-found, or null" },
       400,
     );
   }
@@ -176,6 +207,58 @@ app.post("/e2e/assert-bundle-artifact-selection", async (c) => {
       currentBundleId: payload.currentBundleId,
       selection: payload.selection,
       targetBundleId: payload.targetBundleId,
+    }),
+  );
+});
+
+app.post("/e2e/assert-bundle-artifact-transfers", async (c) => {
+  const payload = (await c.req.json()) as {
+    archiveRequests?: number;
+    currentBundleId?: string;
+    fileRequests?: number;
+    maxRequestsPerAsset?: number;
+    minNetworkAssets?: number;
+    patchRequests?: number;
+    targetBundleId?: string;
+    verifyAllAssetHashes?: boolean;
+  };
+  const counts = [
+    payload.archiveRequests,
+    payload.fileRequests,
+    payload.patchRequests,
+  ];
+  if (
+    !payload.currentBundleId ||
+    !payload.targetBundleId ||
+    counts.some(
+      (value) =>
+        !Number.isSafeInteger(value) || (value !== undefined && value < 0),
+    ) ||
+    (payload.maxRequestsPerAsset !== undefined &&
+      (!Number.isSafeInteger(payload.maxRequestsPerAsset) ||
+        payload.maxRequestsPerAsset < 1)) ||
+    (payload.minNetworkAssets !== undefined &&
+      (!Number.isSafeInteger(payload.minNetworkAssets) ||
+        payload.minNetworkAssets < 0))
+  ) {
+    return c.json(
+      {
+        error:
+          "bundle ids and non-negative archive, file, and patch request counts are required",
+      },
+      400,
+    );
+  }
+  return c.json(
+    handleAssertBundleArtifactTransfers({
+      archiveRequests: payload.archiveRequests!,
+      currentBundleId: payload.currentBundleId,
+      fileRequests: payload.fileRequests!,
+      maxRequestsPerAsset: payload.maxRequestsPerAsset,
+      minNetworkAssets: payload.minNetworkAssets,
+      patchRequests: payload.patchRequests!,
+      targetBundleId: payload.targetBundleId,
+      verifyAllAssetHashes: payload.verifyAllAssetHashes,
     }),
   );
 });

@@ -38,6 +38,11 @@ export const bspatchDisabledChainRollbackScenario: DetoxScenarioDefinition = {
         },
       },
     );
+    await app.control(
+      "make optional archive unavailable for built-in reuse evidence",
+      "/e2e/proxy-control",
+      { archiveAvailable: false },
+    );
     await app.launch("launch chain bundle A app");
     await app.tap(
       "install chain bundle A",
@@ -57,6 +62,11 @@ export const bspatchDisabledChainRollbackScenario: DetoxScenarioDefinition = {
       {
         bundleId: "$bundleA",
       },
+    );
+    await app.control(
+      "restore optional archive availability",
+      "/e2e/proxy-control",
+      { archiveAvailable: true },
     );
     await app.reload("reload chain bundle A");
     await app.control(

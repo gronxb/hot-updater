@@ -2028,10 +2028,12 @@ describe("Detox scenario contract", () => {
     // Then: both manifest phases include restart, pending, reload, and stable checks.
     expect(stages).toEqual([
       "deploy built-in base bundle",
+      "make optional archive unavailable for built-in reuse evidence",
       "launch built-in base app",
       "install built-in base update",
       "wait built-in base metadata pending",
       "assert first ota uses built-in manifest",
+      "restore optional archive availability",
       "reload built-in base update",
       "wait built-in base metadata stable",
       "assert built-in base bundle id",
@@ -2051,7 +2053,7 @@ describe("Detox scenario contract", () => {
     ]);
   });
 
-  it("keeps manifest v1 selection independent of patch size", async () => {
+  it("proves small-patch selection and bounded corrupt-archive fallback", async () => {
     const scenarioName = "size-aware-artifact-selection";
     const calls = await recordScenarioCalls(scenarioName);
     const deployCalls = calls.filter(
@@ -2059,7 +2061,7 @@ describe("Detox scenario contract", () => {
         call.kind === "control" && call.pathName === "/e2e/jobs/deploy-bundle",
     );
 
-    expect(deployCalls).toHaveLength(3);
+    expect(deployCalls).toHaveLength(4);
     expect(
       await controlStepBody(
         scenarioName,
@@ -2072,11 +2074,21 @@ describe("Detox scenario contract", () => {
     expect(
       await controlStepBody(
         scenarioName,
-        "deploy size-aware large diff bundle",
+        "deploy size-aware large success bundle",
       ),
     ).toMatchObject({
       bundleProfile: "sizeAwareLargeDiff",
       diffBaseBundleId: "$sizeAwareSmallBundleId",
+      patchMaxBaseBundles: 1,
+    });
+    expect(
+      await controlStepBody(
+        scenarioName,
+        "deploy size-aware large fallback bundle",
+      ),
+    ).toMatchObject({
+      bundleProfile: "sizeAwareLargeDiff",
+      diffBaseBundleId: "$sizeAwareLargeSuccessBundleId",
       patchMaxBaseBundles: 1,
     });
     expect(
@@ -2095,18 +2107,88 @@ describe("Detox scenario contract", () => {
     expect(
       await controlStepDefinition(
         scenarioName,
-        "assert size-aware large manifest selection",
+        "assert size-aware small patch transfer",
+      ),
+    ).toMatchObject({
+      body: {
+        archiveRequests: 0,
+        fileRequests: 0,
+        maxRequestsPerAsset: 1,
+        minNetworkAssets: 1,
+        patchRequests: 1,
+        verifyAllAssetHashes: true,
+      },
+      pathName: "/e2e/assert-bundle-artifact-transfers",
+    });
+    expect(
+      await controlStepBody(
+        scenarioName,
+        "reset size-aware large fallback artifact evidence",
+      ),
+    ).toMatchObject({
+      archiveFailureMode: "corrupt",
+      archiveFailures: 1,
+      reset: true,
+    });
+    expect(
+      await controlStepDefinition(
+        scenarioName,
+        "assert successful archive avoids per-file transfers",
+      ),
+    ).toMatchObject({
+      body: {
+        archiveRequests: 1,
+        fileRequests: 0,
+        maxRequestsPerAsset: 1,
+        patchRequests: 0,
+        verifyAllAssetHashes: true,
+      },
+      pathName: "/e2e/assert-bundle-artifact-transfers",
+    });
+    expect(
+      await controlStepDefinition(
+        scenarioName,
+        "assert corrupt archive falls back once per file",
+      ),
+    ).toMatchObject({
+      body: {
+        archiveRequests: 1,
+        fileRequests: 1,
+        maxRequestsPerAsset: 1,
+        minNetworkAssets: 2,
+        patchRequests: 1,
+        verifyAllAssetHashes: true,
+      },
+      pathName: "/e2e/assert-bundle-artifact-transfers",
+    });
+    expect(
+      await controlStepDefinition(
+        scenarioName,
+        "assert size-aware large success manifest selection",
       ),
     ).toMatchObject({
       body: {
         currentBundleId: "$sizeAwareSmallBundleId",
         selection: "manifest-v1",
-        targetBundleId: "$sizeAwareLargeBundleId",
+        targetBundleId: "$sizeAwareLargeSuccessBundleId",
+      },
+      pathName: "/e2e/assert-bundle-artifact-selection",
+    });
+    expect(
+      await controlStepDefinition(
+        scenarioName,
+        "assert size-aware large fallback manifest selection",
+      ),
+    ).toMatchObject({
+      body: {
+        currentBundleId: "$sizeAwareLargeSuccessBundleId",
+        selection: "manifest-v1",
+        targetBundleId: "$sizeAwareLargeFallbackBundleId",
       },
       pathName: "/e2e/assert-bundle-artifact-selection",
     });
 
-    for (const phase of ["small", "large"] as const) {
+    for (const phase of ["small", "large success", "large fallback"] as const) {
       const releaseAssertionIndex = calls.findIndex(
         (call) =>
           call.kind === "assertText" &&
@@ -2320,10 +2402,12 @@ describe("Detox scenario contract", () => {
     // Then: C and D are both installed as bsdiff updates against stable bases.
     expect(stages).toEqual([
       "deploy diff bundle A",
+      "make optional archive unavailable for built-in reuse evidence",
       "launch diff bundle A app",
       "install diff bundle A",
       "wait diff bundle A metadata pending",
       "assert diff bundle A uses built-in manifest",
+      "restore optional archive availability",
       "reload diff bundle A",
       "wait diff bundle A metadata stable",
       "assert diff bundle A launch",
@@ -3006,10 +3090,12 @@ describe("Detox scenario contract", () => {
       "assert chain built-in marker",
       "reset chain local app state",
       "deploy chain bundle A",
+      "make optional archive unavailable for built-in reuse evidence",
       "launch chain bundle A app",
       "install chain bundle A",
       "wait chain bundle A metadata pending",
       "assert chain bundle A uses built-in manifest",
+      "restore optional archive availability",
       "reload chain bundle A",
       "wait chain bundle A metadata stable",
       "assert chain bundle A marker",

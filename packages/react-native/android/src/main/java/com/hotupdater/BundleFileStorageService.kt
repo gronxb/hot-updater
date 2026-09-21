@@ -31,6 +31,7 @@ data class BsdiffPatchDescriptor(
     val baseFileHash: String,
     val patchFileHash: String,
     val patchUrl: String,
+    val byteSize: Long? = null,
 )
 
 data class UpdateProgressPayload(
@@ -100,6 +101,7 @@ interface BundleStorageService {
         manifestUrl: String,
         manifestFileHash: String,
         assets: Map<String, ChangedAssetDescriptor>,
+        archiveUrl: String? = null,
         progressCallback: (UpdateProgressPayload) -> Unit,
     )
 
@@ -224,6 +226,8 @@ class BundleFileStorageService(
 ) : BundleStorageService {
     companion object {
         private const val TAG = "BundleStorage"
+        private const val MAX_SAFE_INTEGER = 9_007_199_254_740_991L
+        private val SHA256_PATTERN = Regex("^[0-9a-f]{64}$")
     }
 
     private val releaseStateLock = Any()
@@ -511,11 +515,20 @@ class BundleFileStorageService(
     private data class ParsedBundleManifest(
         val bundleId: String,
         val assets: Map<String, ParsedManifestAsset>,
+        val archive: ParsedArchive?,
     )
 
     private data class ParsedManifestAsset(
         val fileHash: String,
         val signature: String?,
+        val byteSize: Long?,
+        val downloadByteSize: Long?,
+    )
+
+    private data class ParsedArchive(
+        val downloadFileHash: String,
+        val downloadByteSize: Long,
+        val tarByteSize: Long,
     )
 
     private data class ActiveBundleMetadataSnapshot(
@@ -805,6 +818,33 @@ class BundleFileStorageService(
             else -> value
         }
 
+    private fun parseSafeInteger(value: Any?): Long? {
+        val parsed =
+            when (value) {
+                is Byte -> value.toLong()
+                is Short -> value.toLong()
+                is Int -> value.toLong()
+                is Long -> value
+                is Float -> value.toDouble().takeIf { it.isFinite() && it % 1.0 == 0.0 }?.toLong()
+                is Double -> value.takeIf { it.isFinite() && it % 1.0 == 0.0 }?.toLong()
+                else -> null
+            } ?: return null
+        return parsed.takeIf { it in 0..MAX_SAFE_INTEGER }
+    }
+
+    private fun parseArchive(value: Any?): ParsedArchive? {
+        val archive = value as? Map<*, *> ?: return null
+        val downloadFileHash = archive["downloadFileHash"] as? String ?: return null
+        if (!SHA256_PATTERN.matches(downloadFileHash)) return null
+        val downloadByteSize = parseSafeInteger(archive["downloadByteSize"])?.takeIf { it > 0 } ?: return null
+        val tarByteSize = parseSafeInteger(archive["tarByteSize"])?.takeIf { it >= 1024 } ?: return null
+        return ParsedArchive(
+            downloadFileHash = downloadFileHash,
+            downloadByteSize = downloadByteSize,
+            tarByteSize = tarByteSize,
+        )
+    }
+
     private fun parseBundleManifestFromMap(manifest: Map<String, Any?>): ParsedBundleManifest? {
         val manifestBundleId =
             (manifest["bundleId"] as? String)
@@ -830,12 +870,15 @@ class BundleFileStorageService(
                 ParsedManifestAsset(
                     fileHash = fileHash,
                     signature = signature?.takeIf { it.isNotBlank() },
+                    byteSize = parseSafeInteger(assetMap["byteSize"]),
+                    downloadByteSize = parseSafeInteger(assetMap["downloadByteSize"]),
                 )
         }
 
         return ParsedBundleManifest(
             bundleId = manifestBundleId,
             assets = assets,
+            archive = parseArchive(manifest["archive"]),
         )
     }
 
@@ -851,32 +894,6 @@ class BundleFileStorageService(
             Log.w(TAG, "Failed to parse manifest ${manifestFile.absolutePath}: ${e.message}")
             null
         }
-    }
-
-    private fun writeBundleManifestFile(
-        destination: File,
-        manifest: ParsedBundleManifest,
-    ) {
-        destination.parentFile?.mkdirs()
-        val assetsObject = JSONObject()
-
-        manifest.assets.toSortedMap().forEach { (assetPath, asset) ->
-            val assetObject = JSONObject().put("fileHash", asset.fileHash)
-            if (!asset.signature.isNullOrBlank()) {
-                assetObject.put("signature", asset.signature)
-            }
-            assetsObject.put(
-                assetPath,
-                assetObject,
-            )
-        }
-
-        val manifestObject =
-            JSONObject()
-                .put("bundleId", manifest.bundleId)
-                .put("assets", assetsObject)
-
-        destination.writeText("${manifestObject}\n")
     }
 
     private fun getActiveBundleDir(): File? {
@@ -1461,6 +1478,7 @@ class BundleFileStorageService(
         manifestUrl: String,
         manifestFileHash: String,
         assets: Map<String, ChangedAssetDescriptor>,
+        archiveUrl: String?,
         progressCallback: (UpdateProgressPayload) -> Unit,
     ) = updateMutex.withLock {
         updateBundleSerialized(
@@ -1468,6 +1486,7 @@ class BundleFileStorageService(
             manifestUrl = manifestUrl,
             manifestFileHash = manifestFileHash,
             changedAssets = assets,
+            archiveUrl = archiveUrl,
             progressCallback = progressCallback,
         )
     }
@@ -1477,6 +1496,7 @@ class BundleFileStorageService(
         manifestUrl: String,
         manifestFileHash: String,
         changedAssets: Map<String, ChangedAssetDescriptor>,
+        archiveUrl: String?,
         progressCallback: (UpdateProgressPayload) -> Unit,
     ) {
         Log.d(
@@ -1510,6 +1530,7 @@ class BundleFileStorageService(
                 manifestUrl = manifestUrl,
                 manifestFileHash = manifestFileHash,
                 changedAssets = changedAssets,
+                archiveUrl = archiveUrl,
                 bundleStoreDir = bundleStoreDir,
                 finalBundleDir = finalBundleDir,
                 progressCallback = progressCallback,
@@ -1703,11 +1724,158 @@ class BundleFileStorageService(
         }
     }
 
+    private fun selectArchive(
+        manifest: ParsedBundleManifest,
+        downloads: Map<String, ChangedAssetDescriptor>,
+        archiveUrl: String?,
+    ): ParsedArchive? {
+        if (archiveUrl.isNullOrBlank() || downloads.size < 2) return null
+        val archive = manifest.archive ?: return null
+        if (manifest.assets.values.any { it.byteSize == null }) return null
+
+        var individualBytes = 0L
+        for ((assetPath, descriptor) in downloads) {
+            val originalBytes = manifest.assets.getValue(assetPath).downloadByteSize ?: return null
+            val expectedBytes =
+                descriptor.patch?.let { patch ->
+                    val patchBytes = patch.byteSize?.takeIf { it in 0..MAX_SAFE_INTEGER } ?: return null
+                    minOf(originalBytes, patchBytes)
+                } ?: originalBytes
+            if (individualBytes > MAX_SAFE_INTEGER - expectedBytes) return null
+            individualBytes += expectedBytes
+        }
+        var logicalBytes = 0L
+        for (asset in manifest.assets.values) {
+            val byteSize = asset.byteSize ?: return null
+            if (logicalBytes > MAX_SAFE_INTEGER - byteSize) return null
+            logicalBytes += byteSize
+        }
+        if (archive.tarByteSize < logicalBytes) return null
+        val tarFramingBytes = archive.tarByteSize - logicalBytes
+        if (individualBytes > MAX_SAFE_INTEGER - tarFramingBytes) return null
+        val framedByteLimit = individualBytes + tarFramingBytes
+
+        if (archive.downloadByteSize <= individualBytes) return archive
+        if (downloads.size != manifest.assets.size || downloads.values.any { it.patch != null }) return null
+        return archive.takeIf { it.downloadByteSize <= framedByteLimit }
+    }
+
+    private suspend fun tryInstallArchive(
+        archiveUrl: String,
+        archive: ParsedArchive,
+        manifest: ParsedBundleManifest,
+        tempDir: File,
+        bundleStoreDir: File,
+        tmpDir: File,
+        bundleId: String,
+        progressCallback: (UpdateProgressPayload) -> Unit,
+    ): MutableList<DiffProgressFileSnapshot>? {
+        val archiveScratch = File(tempDir, "archive")
+        val archiveFile = File(archiveScratch, "bundle.tar.br")
+        val extractedDir = File(bundleStoreDir, "$bundleId.archive.tmp")
+        val localBackupDir = File(bundleStoreDir, "$bundleId.local.tmp")
+        archiveScratch.deleteRecursively()
+        extractedDir.deleteRecursively()
+        localBackupDir.deleteRecursively()
+        archiveScratch.mkdirs()
+
+        val progressFiles =
+            mutableListOf(
+                DiffProgressFileSnapshot(
+                    path = "bundle.tar.br",
+                    downloadPath = "bundle.tar.br",
+                    status = "pending",
+                    progress = 0.0,
+                    order = 0,
+                ),
+            )
+        emitDiffProgress(progressCallback, "downloading", progressFiles)
+
+        return try {
+            when (
+                val result =
+                    downloadService.downloadFileOnce(
+                        URL(archiveUrl),
+                        archiveFile,
+                    ) { progress ->
+                        updateDiffProgressFile(
+                            files = progressFiles,
+                            assetPath = "bundle.tar.br",
+                            status = "downloading",
+                            progress = progress.progress,
+                            downloadPath = "bundle.tar.br",
+                            downloadedBytes = progress.downloadedBytes,
+                            totalBytes = progress.totalBytes,
+                        )
+                        emitDiffProgress(progressCallback, "downloading", progressFiles)
+                    }
+            ) {
+                is DownloadResult.Error -> throw result.exception
+                is DownloadResult.Success -> Unit
+            }
+
+            if (archiveFile.length() != archive.downloadByteSize) {
+                throw IllegalStateException("Archive compressed size mismatch")
+            }
+            if (!HashUtils.verifyHash(archiveFile, archive.downloadFileHash)) {
+                throw IllegalStateException("Archive compressed hash mismatch")
+            }
+
+            TarBrArchiveExtractor.extract(
+                archiveFile = archiveFile,
+                destination = extractedDir,
+                expectedTarByteSize = archive.tarByteSize,
+                expectedFiles = manifest.assets.mapValues { it.value.byteSize!! },
+            )
+            manifest.assets.forEach { (assetPath, expectedAsset) ->
+                val extractedFile =
+                    RelativePathResolver.resolveInside(extractedDir, assetPath)
+                        ?: throw IllegalStateException("Archive output path is invalid")
+                verifyManifestAssetFileOrThrow(extractedFile, expectedAsset)
+            }
+
+            if (!tmpDir.renameTo(localBackupDir)) {
+                throw IllegalStateException("Cannot preserve locally prepared staging directory")
+            }
+            if (!extractedDir.renameTo(tmpDir)) {
+                check(localBackupDir.renameTo(tmpDir)) { "Cannot restore locally prepared staging directory" }
+                throw IllegalStateException("Cannot promote verified archive extraction")
+            }
+            localBackupDir.deleteRecursively()
+
+            updateDiffProgressFile(
+                files = progressFiles,
+                assetPath = "bundle.tar.br",
+                status = "downloaded",
+                progress = 1.0,
+                downloadedBytes = archive.downloadByteSize,
+                totalBytes = archive.downloadByteSize,
+            )
+            emitDiffProgress(progressCallback, "finalizing", progressFiles)
+            progressFiles
+        } catch (error: Exception) {
+            Log.w(TAG, "Archive optimization failed; using individual files: ${error.message}")
+            val canUseIndividualPlan =
+                tmpDir.exists() ||
+                    (localBackupDir.exists() && localBackupDir.renameTo(tmpDir))
+            if (!canUseIndividualPlan) {
+                throw error
+            }
+            extractedDir.deleteRecursively()
+            null
+        } finally {
+            archiveScratch.deleteRecursively()
+            extractedDir.deleteRecursively()
+            if (tmpDir.exists()) localBackupDir.deleteRecursively()
+        }
+    }
+
     private suspend fun updateBundleFromManifest(
         bundleId: String,
         manifestUrl: String,
         manifestFileHash: String,
         changedAssets: Map<String, ChangedAssetDescriptor>,
+        archiveUrl: String?,
         bundleStoreDir: File,
         finalBundleDir: File,
         progressCallback: (UpdateProgressPayload) -> Unit,
@@ -1828,42 +1996,64 @@ class BundleFileStorageService(
                 }
                 downloads[assetPath] = changedAssets.getValue(assetPath)
             }
-            diffFiles = createDiffProgressFiles(downloads)
-            emitDiffProgress(progressCallback, "downloading", diffFiles)
-            val progressLock = Any()
-            coroutineScope {
-                val permits = Semaphore(4)
-                diffFiles
-                    .toList()
-                    .map { progressFile ->
-                        async {
-                            permits.withPermit {
-                                val path = progressFile.path
-                                val workerTemp =
-                                    File(tempDir, progressFile.order.toString()).apply { mkdirs() }
-                                downloadManifestAsset(
-                                    assetPath = path,
-                                    expectedAsset = targetManifest.assets.getValue(path),
-                                    changedAsset = downloads.getValue(path),
-                                    currentBundleId = currentBundleId,
-                                    activeBundleDir = activeBundleDir,
-                                    targetFile =
-                                        RelativePathResolver.resolveInside(tmpDir, path) ?: throw HotUpdaterException.invalidBundle(),
-                                    tempDir = workerTemp,
-                                    progressFile = progressFile,
-                                    progressCallback = { payload ->
-                                        synchronized(progressLock) {
-                                            payload.details?.files?.firstOrNull()?.let { snapshot ->
-                                                val index = diffFiles.indexOfFirst { it.path == path }
-                                                diffFiles[index] = snapshot
+            val selectedArchive = selectArchive(targetManifest, downloads, archiveUrl)
+            val archiveProgress =
+                if (selectedArchive != null) {
+                    tryInstallArchive(
+                        archiveUrl = archiveUrl!!,
+                        archive = selectedArchive,
+                        manifest = targetManifest,
+                        tempDir = tempDir,
+                        bundleStoreDir = bundleStoreDir,
+                        tmpDir = tmpDir,
+                        bundleId = bundleId,
+                        progressCallback = progressCallback,
+                    )
+                } else {
+                    null
+                }
+
+            if (archiveProgress != null) {
+                diffFiles = archiveProgress
+            } else {
+                diffFiles = createDiffProgressFiles(downloads)
+                emitDiffProgress(progressCallback, "downloading", diffFiles)
+                val progressLock = Any()
+                coroutineScope {
+                    val permits = Semaphore(4)
+                    diffFiles
+                        .toList()
+                        .map { progressFile ->
+                            async {
+                                permits.withPermit {
+                                    val path = progressFile.path
+                                    val workerTemp =
+                                        File(tempDir, progressFile.order.toString()).apply { mkdirs() }
+                                    downloadManifestAsset(
+                                        assetPath = path,
+                                        expectedAsset = targetManifest.assets.getValue(path),
+                                        changedAsset = downloads.getValue(path),
+                                        currentBundleId = currentBundleId,
+                                        activeBundleDir = activeBundleDir,
+                                        targetFile =
+                                            RelativePathResolver.resolveInside(tmpDir, path)
+                                                ?: throw HotUpdaterException.invalidBundle(),
+                                        tempDir = workerTemp,
+                                        progressFile = progressFile,
+                                        progressCallback = { payload ->
+                                            synchronized(progressLock) {
+                                                payload.details?.files?.firstOrNull()?.let { snapshot ->
+                                                    val index = diffFiles.indexOfFirst { it.path == path }
+                                                    diffFiles[index] = snapshot
+                                                }
+                                                emitDiffProgress(progressCallback, "downloading", diffFiles)
                                             }
-                                            emitDiffProgress(progressCallback, "downloading", diffFiles)
-                                        }
-                                    },
-                                )
+                                        },
+                                    )
+                                }
                             }
-                        }
-                    }.awaitAll()
+                        }.awaitAll()
+                }
             }
 
             emitDiffProgress(
@@ -1872,7 +2062,7 @@ class BundleFileStorageService(
                 files = diffFiles,
             )
 
-            writeBundleManifestFile(File(tmpDir, "manifest.json"), targetManifest)
+            manifestFile.copyTo(File(tmpDir, "manifest.json"), overwrite = true)
 
             val extractedIndex = tmpDir.walk().find { it.name == "index.android.bundle" }
             if (extractedIndex == null) {

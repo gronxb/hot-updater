@@ -4,6 +4,7 @@ import { pipeline } from "stream/promises";
 import { createBrotliCompress, constants as zlibConstants } from "zlib";
 
 import {
+  createTarBrTargetFiles,
   getCwd,
   getStorageFileByteSize,
   HotUpdateDirUtil,
@@ -912,12 +913,14 @@ const deployPlatform = async ({
       } | null;
       assetUploadTargets: PreparedAssetUploadTarget[];
       manifestPath: string | null;
+      archivePath: string | null;
       manifestStorageUri: string | null;
       assetBaseStorageUri: string | null;
     } = {
       buildResult: null,
       assetUploadTargets: [],
       manifestPath: null,
+      archivePath: null,
       manifestStorageUri: null,
       assetBaseStorageUri: null,
     };
@@ -963,6 +966,11 @@ const deployPlatform = async ({
               outputPath: outputRoot,
               targetFiles,
             });
+          const archivePath = path.join(outputRoot, "bundle.tar.br");
+          manifest.archive = await createTarBrTargetFiles({
+            outfile: archivePath,
+            targetFiles,
+          });
           const manifestPath = await writeBundleManifestFile({
             buildPath,
             manifest,
@@ -970,6 +978,7 @@ const deployPlatform = async ({
 
           taskRef.assetUploadTargets = assetUploadTargets;
           taskRef.manifestPath = manifestPath;
+          taskRef.archivePath = archivePath;
 
           manifestFileHash = await getFileHashFromFile(manifestPath);
           if (signingSession) {
@@ -1001,14 +1010,14 @@ const deployPlatform = async ({
           if (!bundleId) {
             throw new Error("Build did not return an artifact ID");
           }
-          if (!taskRef.manifestPath) {
+          if (!taskRef.manifestPath || !taskRef.archivePath) {
             throw new Error("Manifest path not found");
           }
 
           try {
             const assetUploadTargets = taskRef.assetUploadTargets;
 
-            const uploadStepCount = assetUploadTargets.length + 1;
+            const uploadStepCount = assetUploadTargets.length + 2;
             let uploadedStepCount = 0;
             let skippedUploadCount = 0;
             const updateUploadProgress = () => {
@@ -1021,6 +1030,13 @@ const deployPlatform = async ({
               );
             };
 
+            updateUploadProgress();
+            await putStorageFile(
+              storagePlugin,
+              createBundleStorageKey(bundleId),
+              taskRef.archivePath,
+            );
+            uploadedStepCount += 1;
             updateUploadProgress();
             const manifestUpload = await putStorageFile(
               storagePlugin,

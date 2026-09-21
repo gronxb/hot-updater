@@ -29,12 +29,14 @@ const runScenario = async ({
   targetHash = "target-hash",
   targetDownloadByteSize = 10,
   resolveUrl,
+  archive,
 }: {
   currentHash?: string;
   patchByteSize?: number;
   targetHash?: string;
   targetDownloadByteSize?: number;
   resolveUrl?: (storageUri: string) => string | null;
+  archive?: unknown;
 } = {}) => {
   const currentBundle = createBundle(CURRENT_ID);
   const targetBundle = createBundle(TARGET_ID, {
@@ -63,6 +65,7 @@ const runScenario = async ({
       TARGET_MANIFEST_URI,
       JSON.stringify({
         bundleId: TARGET_ID,
+        ...(archive === undefined ? {} : { archive }),
         assets: {
           "index.ios.bundle": {
             downloadByteSize: targetDownloadByteSize,
@@ -90,6 +93,41 @@ const runScenario = async ({
 };
 
 describe("resolveManifestArtifacts", () => {
+  const archive = {
+    downloadFileHash: "d".repeat(64),
+    downloadByteSize: 100,
+    tarByteSize: 2048,
+  };
+  it("offers the canonical archive URL while preserving every original and patch cost", async () => {
+    const { result } = await runScenario({ archive, patchByteSize: 3 });
+    expect(result?.archiveUrl).toBe(
+      `https://download.test/${encodeURIComponent(`s3://bucket/bundles/${TARGET_ID}/bundle.tar.br`)}`,
+    );
+    expect(result?.assets["index.ios.bundle"]?.file.url).toBeTruthy();
+    expect(result?.assets["index.ios.bundle"]?.patch?.byteSize).toBe(3);
+  });
+  it("keeps originals when optional archive URL resolution fails", async () => {
+    const { result } = await runScenario({
+      archive,
+      resolveUrl(uri) {
+        if (uri.endsWith("bundle.tar.br")) throw new Error("unavailable");
+        return `https://download.test/${encodeURIComponent(uri)}`;
+      },
+    });
+    expect(result?.archiveUrl).toBeUndefined();
+    expect(result?.assets["index.ios.bundle"]?.file.url).toBeTruthy();
+  });
+  it.each([
+    { ...archive, downloadByteSize: -1 },
+    { ...archive, tarByteSize: Number.MAX_SAFE_INTEGER + 1 },
+    { ...archive, downloadFileHash: "not-a-hash" },
+  ])("declines malformed optional archive metadata %o", async (archive) => {
+    const { result, resolveFileUrl } = await runScenario({ archive });
+    expect(result?.archiveUrl).toBeUndefined();
+    expect(
+      resolveFileUrl.mock.calls.some(([uri]) => uri?.endsWith("bundle.tar.br")),
+    ).toBe(false);
+  });
   it("returns an original descriptor for every target file, including unchanged files", async () => {
     const { result } = await runScenario({
       currentHash: "same-hash",

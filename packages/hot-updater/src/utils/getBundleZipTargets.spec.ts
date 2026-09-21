@@ -3,6 +3,20 @@ import { describe, expect, it } from "vitest";
 import { getBundleZipTargets } from "./getBundleZipTargets";
 
 describe("getBundleZipTargets", () => {
+  it("keeps a repeated deploy's transport artifacts out of the target manifest", async () => {
+    expect(
+      await getBundleZipTargets("/build", [
+        "/build/index.ios.bundle",
+        "/build/manifest.json",
+        "/build/bundle.tar.br",
+        "/build/assets/manifest.json",
+      ]),
+    ).toEqual([
+      { path: "/build/assets/manifest.json", name: "assets/manifest.json" },
+      { path: "/build/index.ios.bundle", name: "index.ios.bundle" },
+    ]);
+  });
+
   it("should select only HBC bundle files and remove the extension when HBC bundles are present (iOS)", async () => {
     const files = [
       "/path/to/assets/src/logo.png",

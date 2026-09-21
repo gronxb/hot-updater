@@ -470,7 +470,13 @@ function getFixtureResetChannels() {
 
 const jobs = new Map<string, JobState>();
 const jobAbortControllers = new Map<string, AbortController>();
-const remoteAssetProxyTargets = new Map<string, string>();
+type RemoteAssetKind = "archive" | "file" | "manifest" | "patch";
+type RemoteAssetProxyTarget = {
+  readonly assetPath?: string;
+  readonly kind: RemoteAssetKind;
+  readonly url: string;
+};
+const remoteAssetProxyTargets = new Map<string, RemoteAssetProxyTarget>();
 type CapturedProxyResponse = {
   readonly body: string;
   readonly headers: readonly [string, string][];
@@ -478,7 +484,12 @@ type CapturedProxyResponse = {
   readonly statusText: string;
 };
 type CapturedArtifactSelection = {
-  readonly assets: ReadonlyArray<{ path: string; url: string }>;
+  readonly archiveUrl: string | null;
+  readonly assets: ReadonlyArray<{
+    fileUrl: string;
+    patchUrl: string | null;
+    path: string;
+  }>;
   readonly artifactProtocolVersion: number | null;
   readonly assetCount: number;
   readonly assetFileCount: number;
@@ -500,6 +511,9 @@ const remoteAssetTransfers = new Map<
   { requests: number; bytes: number }
 >();
 let artifactFailuresRemaining = 0;
+let archiveAvailable = true;
+let archiveFailureMode: "corrupt" | "not-found" | null = null;
+let archiveFailuresRemaining = 0;
 const proxyPathCounts = new Map<string, number>();
 const capturedCatalogResponses = new Map<
   string,
@@ -933,7 +947,7 @@ function createSizeAwareLargeBmpHeader() {
   return header;
 }
 
-async function ensureSizeAwareLargeAsset() {
+async function ensureSizeAwareLargeAsset(marker: string) {
   if (!fixtureSession.sizeAwareLargeAssetBackupCaptured) {
     fixtureSession.sizeAwareLargeAssetBackupPath = await backupFile(
       fixtureSession.sizeAwareLargeAssetPath,
@@ -952,11 +966,19 @@ async function ensureSizeAwareLargeAsset() {
     const header = createSizeAwareLargeBmpHeader();
     await handle.write(header, 0, header.length);
     await handle.truncate(SIZE_AWARE_LARGE_ASSET_SIZE_BYTES);
+    const variantBytes = createHash("sha256").update(marker).digest();
+    await handle.write(
+      variantBytes,
+      0,
+      variantBytes.length,
+      SIZE_AWARE_LARGE_BMP_HEADER_SIZE,
+    );
   } finally {
     await handle.close();
   }
 
   logDetoxFixture("size-aware compressible asset ready", {
+    marker,
     path: path.relative(REPO_DIR, fixtureSession.sizeAwareLargeAssetPath),
     sizeBytes: SIZE_AWARE_LARGE_ASSET_SIZE_BYTES,
   });
@@ -3050,24 +3072,31 @@ export function handleRuntimeConfig() {
   };
 }
 
-function toAppReachableProxyUrl(url: string) {
+function toAppReachableProxyUrl(
+  url: string,
+  metadata: Omit<RemoteAssetProxyTarget, "url">,
+) {
   const targetId = randomUUID();
-  remoteAssetProxyTargets.set(targetId, url);
+  remoteAssetProxyTargets.set(targetId, { ...metadata, url });
   return `${getAppReachableControlBaseUrl()}/e2e/proxy-url/${targetId}`;
 }
 
-function rewriteRemoteAssetUrl(value: unknown): unknown {
+function rewriteRemoteAssetUrl(
+  value: unknown,
+  metadata: Omit<RemoteAssetProxyTarget, "url">,
+): unknown {
   if (typeof value !== "string") {
     return value;
   }
 
   if (/^https?:\/\//.test(value)) {
-    return toAppReachableProxyUrl(value);
+    return toAppReachableProxyUrl(value, metadata);
   }
 
   if (value.startsWith("/storage/")) {
     return toAppReachableProxyUrl(
       `${getControllerReachableAppBaseUrl()}/${value.slice(1)}`,
+      metadata,
     );
   }
 
@@ -3080,13 +3109,19 @@ function rewriteUpdateInfoAssetUrls(payload: unknown): unknown {
   }
 
   const updateInfo = payload as {
+    archiveUrl?: unknown;
     assets?: Record<string, unknown>;
     manifestUrl?: unknown;
   };
 
   const rewritten: typeof updateInfo = {
     ...updateInfo,
-    manifestUrl: rewriteRemoteAssetUrl(updateInfo.manifestUrl),
+    archiveUrl: rewriteRemoteAssetUrl(updateInfo.archiveUrl, {
+      kind: "archive",
+    }),
+    manifestUrl: rewriteRemoteAssetUrl(updateInfo.manifestUrl, {
+      kind: "manifest",
+    }),
   };
 
   if (updateInfo.assets && typeof updateInfo.assets === "object") {
@@ -3104,20 +3139,29 @@ function rewriteUpdateInfoAssetUrls(payload: unknown): unknown {
           assetInfo.file && typeof assetInfo.file === "object"
             ? {
                 ...assetInfo.file,
-                url: rewriteRemoteAssetUrl(assetInfo.file.url),
+                url: rewriteRemoteAssetUrl(assetInfo.file.url, {
+                  assetPath,
+                  kind: "file",
+                }),
               }
             : assetInfo.file;
         const patch =
           assetInfo.patch && typeof assetInfo.patch === "object"
             ? {
                 ...assetInfo.patch,
-                patchUrl: rewriteRemoteAssetUrl(assetInfo.patch.patchUrl),
+                patchUrl: rewriteRemoteAssetUrl(assetInfo.patch.patchUrl, {
+                  assetPath,
+                  kind: "patch",
+                }),
               }
             : assetInfo.patch;
 
         return [assetPath, { ...assetInfo, file, patch }];
       }),
     );
+  }
+  if (!archiveAvailable) {
+    delete rewritten.archiveUrl;
   }
 
   return rewritten;
@@ -3171,6 +3215,7 @@ function summarizeUpdateInfoPayload(payload: unknown) {
   }
 
   const updateInfo = payload as {
+    archiveUrl?: unknown;
     artifactProtocolVersion?: unknown;
     assets?: Record<string, unknown> | null;
     id?: unknown;
@@ -3202,6 +3247,10 @@ function summarizeUpdateInfoPayload(payload: unknown) {
   }).length;
 
   return {
+    archiveUrlPresent: typeof updateInfo.archiveUrl === "string",
+    archiveUrlProxied:
+      typeof updateInfo.archiveUrl === "string" &&
+      updateInfo.archiveUrl.startsWith(appReachableBaseUrl),
     artifactProtocolVersion: updateInfo.artifactProtocolVersion ?? null,
     assetUrlCount,
     id: typeof updateInfo.id === "string" ? updateInfo.id : null,
@@ -3232,6 +3281,7 @@ function captureArtifactSelection(pathname: string, payload: unknown) {
   }
 
   const artifact = payload as {
+    archiveUrl?: unknown;
     artifactProtocolVersion?: unknown;
     assets?: unknown;
     manifestFileHash?: unknown;
@@ -3247,13 +3297,29 @@ function captureArtifactSelection(pathname: string, payload: unknown) {
       : [];
 
   capturedArtifactSelections.push({
+    archiveUrl:
+      typeof artifact.archiveUrl === "string" ? artifact.archiveUrl : null,
     assets: Object.entries(
-      (artifact.assets ?? {}) as Record<string, { file?: { url?: unknown } }>,
-    ).flatMap(([path, asset]) =>
-      typeof asset?.file?.url === "string"
-        ? [{ path, url: asset.file.url }]
-        : [],
-    ),
+      (artifact.assets ?? {}) as Record<
+        string,
+        {
+          file?: { url?: unknown };
+          patch?: { patchUrl?: unknown };
+        }
+      >,
+    ).flatMap(([path, asset]) => {
+      if (typeof asset?.file?.url !== "string") return [];
+      return [
+        {
+          fileUrl: asset.file.url,
+          patchUrl:
+            typeof asset.patch?.patchUrl === "string"
+              ? asset.patch.patchUrl
+              : null,
+          path,
+        },
+      ];
+    }),
     artifactProtocolVersion:
       typeof artifact.artifactProtocolVersion === "number"
         ? artifact.artifactProtocolVersion
@@ -3347,6 +3413,9 @@ function captureCatalogResponse(
 
 export function handleProxyState() {
   return {
+    archiveAvailable,
+    archiveFailureMode,
+    archiveFailuresRemaining,
     artifactFailuresRemaining,
     capturedArtifactSelections: [...capturedArtifactSelections],
     capturedCatalogGenerations: Object.fromEntries(
@@ -3363,12 +3432,27 @@ export function handleProxyState() {
     pathCardinality: proxyPathCounts.size,
     pathCounts: Object.fromEntries(proxyPathCounts),
     requestCounts: { ...proxyRequestCounts },
+    remoteTransfers: [...remoteAssetProxyTargets].map(([targetId, target]) => {
+      const proxyPath = `/e2e/proxy-url/${targetId}`;
+      return {
+        assetPath: target.assetPath ?? null,
+        kind: target.kind,
+        proxyPath,
+        ...(remoteAssetTransfers.get(proxyPath) ?? {
+          bytes: 0,
+          requests: 0,
+        }),
+      };
+    }),
     assetTransfers: Object.fromEntries(remoteAssetTransfers),
     replayCatalogGeneration,
   };
 }
 
 export function handleConfigureProxy(input: {
+  archiveAvailable?: boolean;
+  archiveFailureMode?: "corrupt" | "not-found" | null;
+  archiveFailures?: number;
   artifactDelayMs?: number;
   artifactFailures?: number;
   catalogDelayMs?: number;
@@ -3385,6 +3469,9 @@ export function handleConfigureProxy(input: {
     remoteAssetTransfers.clear();
     capturedCatalogResponses.clear();
     artifactFailuresRemaining = 0;
+    archiveAvailable = true;
+    archiveFailureMode = null;
+    archiveFailuresRemaining = 0;
   }
   if (input.catalogMode !== undefined) catalogProxyMode = input.catalogMode;
   if (input.replayGeneration !== undefined) {
@@ -3398,6 +3485,15 @@ export function handleConfigureProxy(input: {
   }
   if (input.artifactFailures !== undefined) {
     artifactFailuresRemaining = input.artifactFailures;
+  }
+  if (input.archiveFailureMode !== undefined) {
+    archiveFailureMode = input.archiveFailureMode;
+  }
+  if (input.archiveFailures !== undefined) {
+    archiveFailuresRemaining = input.archiveFailures;
+  }
+  if (input.archiveAvailable !== undefined) {
+    archiveAvailable = input.archiveAvailable;
   }
   return handleProxyState();
 }
@@ -3437,6 +3533,123 @@ export function handleAssertBundleArtifactSelection(input: {
     ...observed,
     platform: fixtureSession.platform,
     selection: input.selection,
+  });
+  return observed;
+}
+
+function getRemoteTransfer(url: string | null) {
+  if (url === null) return { bytes: 0, requests: 0 };
+  const pathname = new URL(url).pathname;
+  return remoteAssetTransfers.get(pathname) ?? { bytes: 0, requests: 0 };
+}
+
+export function handleAssertBundleArtifactTransfers(input: {
+  archiveRequests: number;
+  currentBundleId: string;
+  fileRequests: number;
+  maxRequestsPerAsset?: number;
+  minNetworkAssets?: number;
+  patchRequests: number;
+  targetBundleId: string;
+  verifyAllAssetHashes?: boolean;
+}) {
+  const artifact = capturedArtifactSelections.findLast(
+    (entry) =>
+      entry.currentBundleId === input.currentBundleId &&
+      entry.targetBundleId === input.targetBundleId,
+  );
+  if (!artifact) {
+    throw createEndpointError("Bundle artifact request was not observed", {
+      expected: input,
+      observed: [...capturedArtifactSelections],
+    });
+  }
+
+  const archive = getRemoteTransfer(artifact.archiveUrl);
+  const assets = artifact.assets.map((asset) => ({
+    file: getRemoteTransfer(asset.fileUrl),
+    patch: getRemoteTransfer(asset.patchUrl),
+    path: asset.path,
+  }));
+  const fileRequests = assets.reduce(
+    (total, asset) => total + asset.file.requests,
+    0,
+  );
+  const patchRequests = assets.reduce(
+    (total, asset) => total + asset.patch.requests,
+    0,
+  );
+  const networkAssets = assets.filter(
+    (asset) => asset.file.requests + asset.patch.requests > 0,
+  );
+  const finalFiles =
+    input.verifyAllAssetHashes === true
+      ? readBundleAssetsStoredEvidence({
+          assetPaths: artifact.assets.map((asset) => asset.path),
+          bundleId: input.targetBundleId,
+        })
+      : null;
+  const observed = {
+    archive,
+    archiveFailureMode,
+    archiveFailuresRemaining,
+    assets,
+    fileRequests,
+    finalFiles,
+    networkAssetCount: networkAssets.length,
+    patchRequests,
+  };
+  const requestsAreBounded =
+    input.maxRequestsPerAsset === undefined ||
+    networkAssets.every(
+      (asset) =>
+        asset.file.requests + asset.patch.requests <=
+        input.maxRequestsPerAsset!,
+    );
+  const transferBytesPresent =
+    (archive.requests === 0 || archive.bytes > 0) &&
+    networkAssets.every(
+      (asset) =>
+        (asset.file.requests === 0 || asset.file.bytes > 0) &&
+        (asset.patch.requests === 0 || asset.patch.bytes > 0),
+    );
+  const matches =
+    archive.requests === input.archiveRequests &&
+    fileRequests === input.fileRequests &&
+    patchRequests === input.patchRequests &&
+    archiveFailuresRemaining === 0 &&
+    (input.minNetworkAssets === undefined ||
+      networkAssets.length >= input.minNetworkAssets) &&
+    requestsAreBounded &&
+    transferBytesPresent &&
+    (finalFiles === null || finalFiles.ok);
+  if (!matches) {
+    throw createEndpointError("Unexpected Bundle artifact transfers", {
+      expected: input,
+      observed,
+    });
+  }
+
+  fs.writeFileSync(
+    path.join(
+      fixtureSession.resultsDir,
+      `artifact-transfers-${input.targetBundleId}.json`,
+    ),
+    JSON.stringify(
+      {
+        currentBundleId: input.currentBundleId,
+        expected: input,
+        observed,
+        platform: fixtureSession.platform,
+        targetBundleId: input.targetBundleId,
+      },
+      null,
+      2,
+    ),
+  );
+  logDetoxFixture("Bundle artifact transfers verified", {
+    ...observed,
+    platform: fixtureSession.platform,
   });
   return observed;
 }
@@ -3632,7 +3845,7 @@ export async function handleProxyRemoteAssetRequest(request: Request) {
     });
   }
 
-  const targetUrl = new URL(target);
+  const targetUrl = new URL(target.url);
   if (targetUrl.protocol !== "https:" && targetUrl.protocol !== "http:") {
     return new Response("Unsupported url protocol", { status: 400 });
   }
@@ -3640,14 +3853,30 @@ export async function handleProxyRemoteAssetRequest(request: Request) {
   const headers = new Headers(request.headers);
   headers.delete("host");
 
-  const response = await fetch(targetUrl, {
-    body:
-      request.method === "GET" || request.method === "HEAD"
-        ? undefined
-        : await request.arrayBuffer(),
-    headers,
-    method: request.method,
-  });
+  let response: Response;
+  if (
+    target.kind === "archive" &&
+    archiveFailureMode !== null &&
+    archiveFailuresRemaining > 0
+  ) {
+    archiveFailuresRemaining -= 1;
+    response =
+      archiveFailureMode === "not-found"
+        ? new Response("Injected E2E archive 404", { status: 404 })
+        : new Response("corrupt tar.br bytes", {
+            headers: { "content-type": "application/octet-stream" },
+            status: 200,
+          });
+  } else {
+    response = await fetch(targetUrl, {
+      body:
+        request.method === "GET" || request.method === "HEAD"
+          ? undefined
+          : await request.arrayBuffer(),
+      headers,
+      method: request.method,
+    });
+  }
 
   if (artifactResponseDelayMs > 0) await sleep(artifactResponseDelayMs);
 
@@ -3686,7 +3915,10 @@ function getRemoteAssetProxyTarget(requestUrl: URL) {
     return remoteAssetProxyTargets.get(targetId) ?? null;
   }
 
-  return requestUrl.searchParams.get("url");
+  const legacyTarget = requestUrl.searchParams.get("url");
+  return legacyTarget === null
+    ? null
+    : ({ kind: "file", url: legacyTarget } satisfies RemoteAssetProxyTarget);
 }
 
 function buildCatalogUrl(args: {
@@ -5070,7 +5302,7 @@ async function deployFixtureBundle(
   }
   if (bundleProfile === "sizeAwareLargeDiff") {
     throwIfAborted(signal);
-    await ensureSizeAwareLargeAsset();
+    await ensureSizeAwareLargeAsset(request.marker);
   }
 
   throwIfAborted(signal);
@@ -5968,6 +6200,7 @@ function readFirstOtaReuseEvidence(bundleId: string) {
     (entry) => entry.targetBundleId === bundleId,
   );
   const assets = artifact?.assets ?? [];
+  const archive = getRemoteTransfer(artifact?.archiveUrl ?? null);
   // App-local paths stay identical when E2E shards share a symlinked node_modules.
   const imageSuffix = "builtin_reuse.png";
   // A font fixture is required too, so an empty resolver cannot satisfy this assertion.
@@ -5978,8 +6211,8 @@ function readFirstOtaReuseEvidence(bundleId: string) {
   const reused = assets.filter(
     ({ path }) => typeof locators?.[path] === "string",
   );
-  const evidence = assets.map(({ path: assetPath, url }) => {
-    const proxyPath = new URL(url).pathname;
+  const evidence = assets.map(({ fileUrl, path: assetPath }) => {
+    const proxyPath = new URL(fileUrl).pathname;
     const transfer = remoteAssetTransfers.get(proxyPath) ?? {
       requests: 0,
       bytes: 0,
@@ -5996,6 +6229,7 @@ function readFirstOtaReuseEvidence(bundleId: string) {
     assetPaths: assets.map(({ path }) => path),
   });
   return {
+    archive,
     bundleId,
     platform: fixtureSession.platform,
     required: required.map(({ path }) => path),
@@ -6004,6 +6238,8 @@ function readFirstOtaReuseEvidence(bundleId: string) {
     ok:
       index.exists &&
       index.readError === null &&
+      archive.requests === 0 &&
+      archive.bytes === 0 &&
       finalFiles.ok &&
       required.some(({ path }) => path.endsWith(imageSuffix)) &&
       required.some(({ path }) => path.endsWith("builtin_reuse.ttf")) &&

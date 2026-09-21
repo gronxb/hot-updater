@@ -1,5 +1,6 @@
 #if canImport(Testing)
 import Foundation
+import Compression
 import Testing
 
 @testable import HotUpdaterCore
@@ -1009,6 +1010,704 @@ struct BundleFileStorageServiceTests {
         #expect(downloads.maximumConcurrentAssets > 1,
             "Independent downloads must overlap within the fixed concurrency limit")
     }
+
+    @Test
+    func installsArchiveWithinFullNetworkTarOverheadAllowance() throws {
+        let root = try makeWorkingDirectory()
+        defer { cleanupWorkingDirectory(root) }
+        let longPath = "assets/" + String(repeating: "nested/", count: 15) + "image.png"
+        let files = [
+            "index.ios.bundle": Data("archive bundle".utf8),
+            longPath: Data("archive image".utf8),
+        ]
+        let tar = try makeTar(files: files)
+        let archive = try brotliCompress(tar)
+        let archiveHash = try #require(sha256(archive, in: root))
+        let manifest = try makeArchiveManifestData(
+            bundleId: "target",
+            files: files,
+            archiveHash: archiveHash,
+            archiveByteSize: archive.count,
+            tarByteSize: tar.count,
+            originalDownloadByteSize: max(0, (archive.count - 1) / files.count)
+        )
+        let manifestURL = URL(string: "https://example.com/manifest.json")!
+        let archiveURL = URL(string: "https://example.com/bundle.tar.br")!
+        let fileURLs = Dictionary(uniqueKeysWithValues: files.keys.map {
+            ($0, URL(string: "https://example.com/files/\($0)")!)
+        })
+        let downloads = MappingDownloadService(contents: [
+            manifestURL: manifest,
+            archiveURL: archive,
+        ])
+        let service = makeStorageService(
+            documentsDirectory: root,
+            downloadService: downloads,
+            builtInAssetResolver: MappingBuiltInAssetResolver(contents: [:])
+        )
+        let completed = DispatchSemaphore(value: 0)
+        var result: Result<Bool, Error> = .failure(BundleStorageError.unknown(nil))
+        var payloads: [UpdateProgressPayload] = []
+        service.updateBundle(
+            bundleId: "target",
+            manifestUrl: manifestURL,
+            manifestFileHash: try #require(sha256(manifest, in: root)),
+            archiveUrl: archiveURL,
+            assets: Dictionary(uniqueKeysWithValues: files.map { path, data in
+                (path, ChangedAssetDescriptor(
+                    fileUrl: fileURLs[path]!,
+                    fileHash: try! #require(sha256(data, in: root))
+                ))
+            }),
+            progressHandler: { payloads.append($0) },
+            completion: { value in result = value; completed.signal() }
+        )
+        #expect(completed.wait(timeout: .now() + 5) == .success)
+        if case .failure(let error) = result { Issue.record("archive install failed: \(error)") }
+        #expect(downloads.requestedURLs == [manifestURL, archiveURL])
+        let installed = root.appendingPathComponent("bundle-store/target")
+        for (path, data) in files {
+            #expect(try Data(contentsOf: installed.appendingPathComponent(path)) == data)
+        }
+        #expect(try Data(contentsOf: installed.appendingPathComponent("manifest.json")) == manifest)
+        #expect(payloads.last?.details?.totalFilesCount == 1)
+        #expect(payloads.last?.details?.completedFilesCount == 1)
+        #expect(payloads.last?.details?.files.first?.path == "bundle.tar.br")
+    }
+
+    @Test
+    func archiveBackupCleanupFailureKeepsPromotedArchive() throws {
+        let root = try makeWorkingDirectory()
+        defer { cleanupWorkingDirectory(root) }
+        let files = [
+            "index.ios.bundle": Data("archive bundle".utf8),
+            "assets/image.png": Data("archive image".utf8),
+        ]
+        let tar = try makeTar(files: files)
+        let archive = try brotliCompress(tar)
+        let manifest = try makeArchiveManifestData(
+            bundleId: "target",
+            files: files,
+            archiveHash: try #require(sha256(archive, in: root)),
+            archiveByteSize: archive.count,
+            tarByteSize: tar.count,
+            originalDownloadByteSize: 4096
+        )
+        let manifestURL = URL(string: "https://example.com/manifest.json")!
+        let archiveURL = URL(string: "https://example.com/bundle.tar.br")!
+        let downloads = MappingDownloadService(contents: [
+            manifestURL: manifest,
+            archiveURL: archive,
+        ])
+        let service = makeStorageService(
+            documentsDirectory: root,
+            fileSystem: FailingArchiveBackupRemovalFileSystemService(
+                documentsDirectory: root
+            ),
+            downloadService: downloads
+        )
+        let result = updateBundle(
+            service,
+            bundleId: "target",
+            manifestURL: manifestURL,
+            manifestHash: try #require(sha256(manifest, in: root)),
+            archiveURL: archiveURL,
+            assets: Dictionary(uniqueKeysWithValues: files.map { path, data in
+                (path, ChangedAssetDescriptor(
+                    fileUrl: URL(string: "https://example.com/files/\(path)")!,
+                    fileHash: try! #require(sha256(data, in: root))
+                ))
+            })
+        )
+        if case .failure(let error) = result { Issue.record("archive install failed: \(error)") }
+        #expect(downloads.requestedURLs == [manifestURL, archiveURL])
+        let installed = root.appendingPathComponent("bundle-store/target")
+        for (path, data) in files {
+            #expect(try Data(contentsOf: installed.appendingPathComponent(path)) == data)
+        }
+        #expect(FileManager.default.fileExists(
+            atPath: root.appendingPathComponent("bundle-store/target.tmp.archive-backup").path
+        ))
+    }
+
+    @Test
+    func declinesFullNetworkArchiveBeyondTarOverheadAllowance() throws {
+        let root = try makeWorkingDirectory()
+        defer { cleanupWorkingDirectory(root) }
+        let files = [
+            "index.ios.bundle": deterministicNoise(count: 4096, seed: 1),
+            "assets/image.png": deterministicNoise(count: 4096, seed: 2),
+        ]
+        let tar = try makeTar(files: files)
+        let archive = try brotliCompress(tar)
+        let logicalByteSize = files.values.reduce(0) { $0 + $1.count }
+        #expect(archive.count > tar.count - logicalByteSize + files.count)
+        let manifest = try makeArchiveManifestData(
+            bundleId: "target",
+            files: files,
+            archiveHash: try #require(sha256(archive, in: root)),
+            archiveByteSize: archive.count,
+            tarByteSize: tar.count,
+            originalDownloadByteSize: 1
+        )
+        let manifestURL = URL(string: "https://example.com/manifest.json")!
+        let archiveURL = URL(string: "https://example.com/bundle.tar.br")!
+        let bundleURL = URL(string: "https://example.com/index.ios.bundle")!
+        let imageURL = URL(string: "https://example.com/assets/image.png")!
+        let downloads = MappingDownloadService(contents: [
+            manifestURL: manifest,
+            bundleURL: files["index.ios.bundle"]!,
+            imageURL: files["assets/image.png"]!,
+        ])
+        let service = makeStorageService(documentsDirectory: root, downloadService: downloads)
+        let result = updateBundle(
+            service,
+            bundleId: "target",
+            manifestURL: manifestURL,
+            manifestHash: try #require(sha256(manifest, in: root)),
+            archiveURL: archiveURL,
+            assets: [
+                "index.ios.bundle": ChangedAssetDescriptor(
+                    fileUrl: bundleURL,
+                    fileHash: try #require(sha256(files["index.ios.bundle"]!, in: root))
+                ),
+                "assets/image.png": ChangedAssetDescriptor(
+                    fileUrl: imageURL,
+                    fileHash: try #require(sha256(files["assets/image.png"]!, in: root))
+                ),
+            ]
+        )
+        if case .failure(let error) = result { Issue.record("per-file install failed: \(error)") }
+        #expect(downloads.requestedURLs.contains(archiveURL) == false)
+        #expect(Set(downloads.requestedURLs.dropFirst()) == Set([bundleURL, imageURL]))
+    }
+
+    @Test
+    func partialLocalReuseRetainsStrictArchiveByteComparison() throws {
+        let root = try makeWorkingDirectory()
+        defer { cleanupWorkingDirectory(root) }
+        let files = [
+            "index.ios.bundle": Data("remote bundle".utf8),
+            "assets/remote.png": Data("remote image".utf8),
+            "assets/local.png": Data("local image".utf8),
+        ]
+        let tar = try makeTar(files: files)
+        let archive = try brotliCompress(tar)
+        let logicalByteSize = files.values.reduce(0) { $0 + $1.count }
+        #expect(archive.count <= 2 + tar.count - logicalByteSize)
+        let manifest = try makeArchiveManifestData(
+            bundleId: "target",
+            files: files,
+            archiveHash: try #require(sha256(archive, in: root)),
+            archiveByteSize: archive.count,
+            tarByteSize: tar.count,
+            originalDownloadByteSize: 1
+        )
+        let manifestURL = URL(string: "https://example.com/manifest.json")!
+        let archiveURL = URL(string: "https://example.com/bundle.tar.br")!
+        let bundleURL = URL(string: "https://example.com/index.ios.bundle")!
+        let remoteURL = URL(string: "https://example.com/assets/remote.png")!
+        let localURL = URL(string: "https://example.com/assets/local.png")!
+        let downloads = MappingDownloadService(contents: [
+            manifestURL: manifest,
+            bundleURL: files["index.ios.bundle"]!,
+            remoteURL: files["assets/remote.png"]!,
+        ])
+        let service = makeStorageService(
+            documentsDirectory: root,
+            downloadService: downloads,
+            builtInAssetResolver: MappingBuiltInAssetResolver(contents: [
+                "assets/local.png": files["assets/local.png"]!,
+            ])
+        )
+        let result = updateBundle(
+            service,
+            bundleId: "target",
+            manifestURL: manifestURL,
+            manifestHash: try #require(sha256(manifest, in: root)),
+            archiveURL: archiveURL,
+            assets: [
+                "index.ios.bundle": ChangedAssetDescriptor(
+                    fileUrl: bundleURL,
+                    fileHash: try #require(sha256(files["index.ios.bundle"]!, in: root))
+                ),
+                "assets/remote.png": ChangedAssetDescriptor(
+                    fileUrl: remoteURL,
+                    fileHash: try #require(sha256(files["assets/remote.png"]!, in: root))
+                ),
+                "assets/local.png": ChangedAssetDescriptor(
+                    fileUrl: localURL,
+                    fileHash: try #require(sha256(files["assets/local.png"]!, in: root))
+                ),
+            ]
+        )
+        if case .failure(let error) = result { Issue.record("per-file install failed: \(error)") }
+        #expect(downloads.requestedURLs.contains(archiveURL) == false)
+        #expect(Set(downloads.requestedURLs.dropFirst()) == Set([bundleURL, remoteURL]))
+        #expect(downloads.requestedURLs.contains(localURL) == false)
+    }
+
+    @Test
+    func archiveHashFailureFallsBackOnceAndKeepsLocalReuse() throws {
+        let root = try makeWorkingDirectory()
+        defer { cleanupWorkingDirectory(root) }
+        let files = [
+            "index.ios.bundle": Data("fallback bundle".utf8),
+            "assets/remote.png": Data("fallback remote".utf8),
+            "assets/local.png": Data("verified local".utf8),
+        ]
+        let tar = try makeTar(files: files)
+        let archive = try brotliCompress(tar)
+        let manifest = try makeArchiveManifestData(
+            bundleId: "target",
+            files: files,
+            archiveHash: String(repeating: "0", count: 64),
+            archiveByteSize: archive.count,
+            tarByteSize: tar.count,
+            originalDownloadByteSize: 4096
+        )
+        let manifestURL = URL(string: "https://example.com/manifest.json")!
+        let archiveURL = URL(string: "https://example.com/bundle.tar.br")!
+        let bundleURL = URL(string: "https://example.com/index.ios.bundle")!
+        let remoteURL = URL(string: "https://example.com/assets/remote.png")!
+        let localURL = URL(string: "https://example.com/assets/local.png")!
+        let downloads = MappingDownloadService(contents: [
+            manifestURL: manifest,
+            archiveURL: archive,
+            bundleURL: files["index.ios.bundle"]!,
+            remoteURL: files["assets/remote.png"]!,
+        ])
+        let service = makeStorageService(
+            documentsDirectory: root,
+            downloadService: downloads,
+            builtInAssetResolver: MappingBuiltInAssetResolver(contents: [
+                "assets/local.png": files["assets/local.png"]!,
+            ])
+        )
+        let result = updateBundle(
+            service,
+            bundleId: "target",
+            manifestURL: manifestURL,
+            manifestHash: try #require(sha256(manifest, in: root)),
+            archiveURL: archiveURL,
+            assets: [
+                "index.ios.bundle": ChangedAssetDescriptor(
+                    fileUrl: bundleURL,
+                    fileHash: try #require(sha256(files["index.ios.bundle"]!, in: root))
+                ),
+                "assets/remote.png": ChangedAssetDescriptor(
+                    fileUrl: remoteURL,
+                    fileHash: try #require(sha256(files["assets/remote.png"]!, in: root))
+                ),
+                "assets/local.png": ChangedAssetDescriptor(
+                    fileUrl: localURL,
+                    fileHash: try #require(sha256(files["assets/local.png"]!, in: root))
+                ),
+            ]
+        )
+        if case .failure(let error) = result { Issue.record("fallback failed: \(error)") }
+        #expect(downloads.requestedURLs.first == manifestURL)
+        #expect(downloads.requestedURLs.dropFirst().first == archiveURL)
+        #expect(downloads.requestedURLs.filter { $0 == archiveURL }.count == 1)
+        #expect(Set(downloads.requestedURLs.dropFirst(2)) == Set([bundleURL, remoteURL]))
+        #expect(downloads.requestedURLs.contains(localURL) == false)
+    }
+
+    @Test
+    func archivePromotionFailureRestoresPreparedFilesBeforeFallback() throws {
+        let root = try makeWorkingDirectory()
+        defer { cleanupWorkingDirectory(root) }
+        let files = [
+            "index.ios.bundle": Data("fallback bundle".utf8),
+            "assets/remote.png": Data("fallback remote".utf8),
+            "assets/local.png": Data("verified local".utf8),
+        ]
+        let tar = try makeTar(files: files)
+        let archive = try brotliCompress(tar)
+        let manifest = try makeArchiveManifestData(
+            bundleId: "target",
+            files: files,
+            archiveHash: try #require(sha256(archive, in: root)),
+            archiveByteSize: archive.count,
+            tarByteSize: tar.count,
+            originalDownloadByteSize: 4096
+        )
+        let manifestURL = URL(string: "https://example.com/manifest.json")!
+        let archiveURL = URL(string: "https://example.com/bundle.tar.br")!
+        let bundleURL = URL(string: "https://example.com/index.ios.bundle")!
+        let remoteURL = URL(string: "https://example.com/assets/remote.png")!
+        let localURL = URL(string: "https://example.com/assets/local.png")!
+        let downloads = MappingDownloadService(contents: [
+            manifestURL: manifest,
+            archiveURL: archive,
+            bundleURL: files["index.ios.bundle"]!,
+            remoteURL: files["assets/remote.png"]!,
+        ])
+        let fileSystem = FailingArchivePromotionFileSystemService(
+            documentsDirectory: root
+        )
+        let service = makeStorageService(
+            documentsDirectory: root,
+            fileSystem: fileSystem,
+            downloadService: downloads,
+            builtInAssetResolver: MappingBuiltInAssetResolver(contents: [
+                "assets/local.png": files["assets/local.png"]!,
+            ])
+        )
+        let result = updateBundle(
+            service,
+            bundleId: "target",
+            manifestURL: manifestURL,
+            manifestHash: try #require(sha256(manifest, in: root)),
+            archiveURL: archiveURL,
+            assets: [
+                "index.ios.bundle": ChangedAssetDescriptor(
+                    fileUrl: bundleURL,
+                    fileHash: try #require(sha256(files["index.ios.bundle"]!, in: root))
+                ),
+                "assets/remote.png": ChangedAssetDescriptor(
+                    fileUrl: remoteURL,
+                    fileHash: try #require(sha256(files["assets/remote.png"]!, in: root))
+                ),
+                "assets/local.png": ChangedAssetDescriptor(
+                    fileUrl: localURL,
+                    fileHash: try #require(sha256(files["assets/local.png"]!, in: root))
+                ),
+            ]
+        )
+        if case .failure(let error) = result { Issue.record("fallback failed: \(error)") }
+        #expect(downloads.requestedURLs.first == manifestURL)
+        #expect(downloads.requestedURLs.dropFirst().first == archiveURL)
+        #expect(Set(downloads.requestedURLs.dropFirst(2)) == Set([bundleURL, remoteURL]))
+        #expect(downloads.requestedURLs.contains(localURL) == false)
+        let installed = root.appendingPathComponent("bundle-store/target")
+        #expect(try Data(contentsOf: installed.appendingPathComponent("assets/local.png")) == files["assets/local.png"])
+        #expect(FileManager.default.fileExists(
+            atPath: root.appendingPathComponent("bundle-store/target.tmp.archive-backup").path
+        ) == false)
+    }
+
+    @Test
+    func archivePromotionAndRestoreFailureAbortsWithoutPerFileFallback() throws {
+        let root = try makeWorkingDirectory()
+        defer { cleanupWorkingDirectory(root) }
+        let stableDirectory = root.appendingPathComponent("bundle-store/stable")
+        try FileManager.default.createDirectory(
+            at: stableDirectory,
+            withIntermediateDirectories: true
+        )
+        let stableSentinel = stableDirectory.appendingPathComponent("sentinel")
+        try Data("stable".utf8).write(to: stableSentinel)
+        let files = [
+            "index.ios.bundle": Data("archive bundle".utf8),
+            "assets/image.png": Data("archive image".utf8),
+        ]
+        let tar = try makeTar(files: files)
+        let archive = try brotliCompress(tar)
+        let manifest = try makeArchiveManifestData(
+            bundleId: "target",
+            files: files,
+            archiveHash: try #require(sha256(archive, in: root)),
+            archiveByteSize: archive.count,
+            tarByteSize: tar.count,
+            originalDownloadByteSize: 4096
+        )
+        let manifestURL = URL(string: "https://example.com/manifest.json")!
+        let archiveURL = URL(string: "https://example.com/bundle.tar.br")!
+        let downloads = MappingDownloadService(contents: [
+            manifestURL: manifest,
+            archiveURL: archive,
+        ])
+        let service = makeStorageService(
+            documentsDirectory: root,
+            fileSystem: FailingArchivePromotionAndRestoreFileSystemService(
+                documentsDirectory: root
+            ),
+            downloadService: downloads
+        )
+        let result = updateBundle(
+            service,
+            bundleId: "target",
+            manifestURL: manifestURL,
+            manifestHash: try #require(sha256(manifest, in: root)),
+            archiveURL: archiveURL,
+            assets: Dictionary(uniqueKeysWithValues: files.map { path, data in
+                (path, ChangedAssetDescriptor(
+                    fileUrl: URL(string: "https://example.com/files/\(path)")!,
+                    fileHash: try! #require(sha256(data, in: root))
+                ))
+            })
+        )
+        #expect(result.failureError != nil)
+        #expect(downloads.requestedURLs == [manifestURL, archiveURL])
+        #expect(try Data(contentsOf: stableSentinel) == Data("stable".utf8))
+    }
+
+    @Test(arguments: [
+        Int64?.none,
+        Int64?.some(9_007_199_254_740_992),
+        Int64?.some(1),
+    ])
+    func declinesArchiveWhenPatchCannotBeatStrictByteCost(
+        patchByteSize: Int64?
+    ) throws {
+        let root = try makeWorkingDirectory()
+        defer { cleanupWorkingDirectory(root) }
+        let files = [
+            "index.ios.bundle": Data("original one".utf8),
+            "assets/image.png": Data("original two".utf8),
+        ]
+        let tar = try makeTar(files: files)
+        let archive = try brotliCompress(tar)
+        let manifest = try makeArchiveManifestData(
+            bundleId: "target",
+            files: files,
+            archiveHash: try #require(sha256(archive, in: root)),
+            archiveByteSize: archive.count,
+            tarByteSize: tar.count,
+            originalDownloadByteSize: 1
+        )
+        let manifestURL = URL(string: "https://example.com/manifest.json")!
+        let archiveURL = URL(string: "https://example.com/bundle.tar.br")!
+        let bundleURL = URL(string: "https://example.com/index.ios.bundle")!
+        let imageURL = URL(string: "https://example.com/assets/image.png")!
+        let downloads = MappingDownloadService(contents: [
+            manifestURL: manifest,
+            bundleURL: files["index.ios.bundle"]!,
+            imageURL: files["assets/image.png"]!,
+        ])
+        let service = makeStorageService(documentsDirectory: root, downloadService: downloads)
+        let result = updateBundle(
+            service,
+            bundleId: "target",
+            manifestURL: manifestURL,
+            manifestHash: try #require(sha256(manifest, in: root)),
+            archiveURL: archiveURL,
+            assets: [
+                "index.ios.bundle": ChangedAssetDescriptor(
+                    fileUrl: bundleURL,
+                    fileHash: try #require(sha256(files["index.ios.bundle"]!, in: root)),
+                    patch: BsdiffPatchDescriptor(
+                        algorithm: "bsdiff",
+                        baseBundleId: "unavailable-base",
+                        baseFileHash: String(repeating: "0", count: 64),
+                        patchFileHash: String(repeating: "1", count: 64),
+                        patchUrl: URL(string: "https://example.com/index.ios.bundle.patch")!,
+                        byteSize: patchByteSize
+                    )
+                ),
+                "assets/image.png": ChangedAssetDescriptor(
+                    fileUrl: imageURL,
+                    fileHash: try #require(sha256(files["assets/image.png"]!, in: root))
+                ),
+            ]
+        )
+        if case .failure(let error) = result { Issue.record("per-file install failed: \(error)") }
+        #expect(downloads.requestedURLs.contains(archiveURL) == false)
+        #expect(Set(downloads.requestedURLs.dropFirst()) == Set([bundleURL, imageURL]))
+    }
+
+    @Test
+    func declinesArchiveWhenIndividualCostSumExceedsMaximumSafeInteger() throws {
+        let root = try makeWorkingDirectory()
+        defer { cleanupWorkingDirectory(root) }
+        let files = [
+            "index.ios.bundle": Data("original one".utf8),
+            "assets/image.png": Data("original two".utf8),
+        ]
+        let tar = try makeTar(files: files)
+        let archive = try brotliCompress(tar)
+        let manifest = try makeArchiveManifestData(
+            bundleId: "target",
+            files: files,
+            archiveHash: try #require(sha256(archive, in: root)),
+            archiveByteSize: archive.count,
+            tarByteSize: tar.count,
+            originalDownloadByteSize: 4_503_599_627_370_496
+        )
+        let manifestURL = URL(string: "https://example.com/manifest.json")!
+        let archiveURL = URL(string: "https://example.com/bundle.tar.br")!
+        let bundleURL = URL(string: "https://example.com/index.ios.bundle")!
+        let imageURL = URL(string: "https://example.com/assets/image.png")!
+        let downloads = MappingDownloadService(contents: [
+            manifestURL: manifest,
+            bundleURL: files["index.ios.bundle"]!,
+            imageURL: files["assets/image.png"]!,
+        ])
+        let service = makeStorageService(documentsDirectory: root, downloadService: downloads)
+        let result = updateBundle(
+            service,
+            bundleId: "target",
+            manifestURL: manifestURL,
+            manifestHash: try #require(sha256(manifest, in: root)),
+            archiveURL: archiveURL,
+            assets: [
+                "index.ios.bundle": ChangedAssetDescriptor(
+                    fileUrl: bundleURL,
+                    fileHash: try #require(sha256(files["index.ios.bundle"]!, in: root))
+                ),
+                "assets/image.png": ChangedAssetDescriptor(
+                    fileUrl: imageURL,
+                    fileHash: try #require(sha256(files["assets/image.png"]!, in: root))
+                ),
+            ]
+        )
+        if case .failure(let error) = result { Issue.record("per-file install failed: \(error)") }
+        #expect(downloads.requestedURLs.contains(archiveURL) == false)
+        #expect(Set(downloads.requestedURLs.dropFirst()) == Set([bundleURL, imageURL]))
+    }
+
+    @Test
+    func strictByteWinStillDeclinesArchiveWithNegativeTarFraming() throws {
+        let root = try makeWorkingDirectory()
+        defer { cleanupWorkingDirectory(root) }
+        let files = [
+            "index.ios.bundle": Data(repeating: 1, count: 1024),
+            "assets/image.png": Data(repeating: 2, count: 1024),
+        ]
+        let tar = try makeTar(files: files)
+        let archive = try brotliCompress(tar)
+        let manifest = try makeArchiveManifestData(
+            bundleId: "target",
+            files: files,
+            archiveHash: try #require(sha256(archive, in: root)),
+            archiveByteSize: 1,
+            tarByteSize: 1024,
+            originalDownloadByteSize: 100
+        )
+        let manifestURL = URL(string: "https://example.com/manifest.json")!
+        let archiveURL = URL(string: "https://example.com/bundle.tar.br")!
+        let bundleURL = URL(string: "https://example.com/index.ios.bundle")!
+        let imageURL = URL(string: "https://example.com/assets/image.png")!
+        let downloads = MappingDownloadService(contents: [
+            manifestURL: manifest,
+            bundleURL: files["index.ios.bundle"]!,
+            imageURL: files["assets/image.png"]!,
+        ])
+        let service = makeStorageService(documentsDirectory: root, downloadService: downloads)
+        let result = updateBundle(
+            service,
+            bundleId: "target",
+            manifestURL: manifestURL,
+            manifestHash: try #require(sha256(manifest, in: root)),
+            archiveURL: archiveURL,
+            assets: [
+                "index.ios.bundle": ChangedAssetDescriptor(
+                    fileUrl: bundleURL,
+                    fileHash: try #require(sha256(files["index.ios.bundle"]!, in: root))
+                ),
+                "assets/image.png": ChangedAssetDescriptor(
+                    fileUrl: imageURL,
+                    fileHash: try #require(sha256(files["assets/image.png"]!, in: root))
+                ),
+            ]
+        )
+        if case .failure(let error) = result { Issue.record("per-file install failed: \(error)") }
+        #expect(downloads.requestedURLs.contains(archiveURL) == false)
+    }
+
+    @Test
+    func strictByteWinStillDeclinesArchiveWhenLogicalSumExceedsMaximumSafeInteger() throws {
+        let root = try makeWorkingDirectory()
+        defer { cleanupWorkingDirectory(root) }
+        let files = [
+            "index.ios.bundle": Data("bundle".utf8),
+            "assets/image.png": Data("image".utf8),
+        ]
+        let tar = try makeTar(files: files)
+        let archive = try brotliCompress(tar)
+        let manifest = try makeArchiveManifestData(
+            bundleId: "target",
+            files: files,
+            archiveHash: try #require(sha256(archive, in: root)),
+            archiveByteSize: 1,
+            tarByteSize: tar.count,
+            originalDownloadByteSize: 100,
+            logicalByteSizeOverride: 4_503_599_627_370_496
+        )
+        let manifestURL = URL(string: "https://example.com/manifest.json")!
+        let archiveURL = URL(string: "https://example.com/bundle.tar.br")!
+        let bundleURL = URL(string: "https://example.com/index.ios.bundle")!
+        let imageURL = URL(string: "https://example.com/assets/image.png")!
+        let downloads = MappingDownloadService(contents: [
+            manifestURL: manifest,
+            bundleURL: files["index.ios.bundle"]!,
+            imageURL: files["assets/image.png"]!,
+        ])
+        let service = makeStorageService(documentsDirectory: root, downloadService: downloads)
+        let result = updateBundle(
+            service,
+            bundleId: "target",
+            manifestURL: manifestURL,
+            manifestHash: try #require(sha256(manifest, in: root)),
+            archiveURL: archiveURL,
+            assets: [
+                "index.ios.bundle": ChangedAssetDescriptor(
+                    fileUrl: bundleURL,
+                    fileHash: try #require(sha256(files["index.ios.bundle"]!, in: root))
+                ),
+                "assets/image.png": ChangedAssetDescriptor(
+                    fileUrl: imageURL,
+                    fileHash: try #require(sha256(files["assets/image.png"]!, in: root))
+                ),
+            ]
+        )
+        #expect(result.failureError != nil)
+        #expect(downloads.requestedURLs.contains(archiveURL) == false)
+    }
+
+    @Test
+    func tarExtractorRejectsUnsafePathsAndWrongLogicalSizes() throws {
+        let root = try makeWorkingDirectory()
+        defer { cleanupWorkingDirectory(root) }
+        let unsafeTar = try makeTar(files: ["../escape": Data("x".utf8)])
+        let unsafeURL = root.appendingPathComponent("unsafe.tar")
+        try unsafeTar.write(to: unsafeURL)
+        #expect(throws: Error.self) {
+            try TarArchiveExtractor.extract(
+                from: unsafeURL.path,
+                to: root.appendingPathComponent("unsafe-output").path,
+                expectedFiles: ["index.ios.bundle": 1]
+            )
+        }
+
+        let sizeTar = try makeTar(files: ["index.ios.bundle": Data("bytes".utf8)])
+        let sizeURL = root.appendingPathComponent("size.tar")
+        try sizeTar.write(to: sizeURL)
+        #expect(throws: Error.self) {
+            try TarArchiveExtractor.extract(
+                from: sizeURL.path,
+                to: root.appendingPathComponent("size-output").path,
+                expectedFiles: ["index.ios.bundle": 4]
+            )
+        }
+
+        let invalidMagicTar = try makeTar(
+            files: ["index.ios.bundle": Data("bytes".utf8)],
+            headerMagic: "badbad"
+        )
+        let invalidMagicURL = root.appendingPathComponent("invalid-magic.tar")
+        try invalidMagicTar.write(to: invalidMagicURL)
+        #expect(throws: Error.self) {
+            try TarArchiveExtractor.extract(
+                from: invalidMagicURL.path,
+                to: root.appendingPathComponent("invalid-magic-output").path,
+                expectedFiles: ["index.ios.bundle": 5]
+            )
+        }
+
+        var partialTrailingBlockTar = sizeTar
+        partialTrailingBlockTar.append(0)
+        let partialTrailingBlockURL = root.appendingPathComponent("partial-trailing-block.tar")
+        try partialTrailingBlockTar.write(to: partialTrailingBlockURL)
+        #expect(throws: Error.self) {
+            try TarArchiveExtractor.extract(
+                from: partialTrailingBlockURL.path,
+                to: root.appendingPathComponent("partial-trailing-output").path,
+                expectedFiles: ["index.ios.bundle": 5]
+            )
+        }
+    }
 }
 
 private let testIsolationKey = "test-isolation-key"
@@ -1030,13 +1729,16 @@ private func cleanupWorkingDirectory(_ workingDirectory: URL) {
 
 private func makeStorageService(
     documentsDirectory: URL,
+    fileSystem: FileSystemService? = nil,
     preferences: PreferencesService = InMemoryPreferencesService(),
     downloadService: DownloadService = UnusedDownloadService(),
     builtInAssetResolver: BuiltInAssetResolver? = nil,
     builtInBundleId: String = "builtin-bundle"
 ) -> BundleFileStorageService {
     BundleFileStorageService(
-        fileSystem: TestFileSystemService(documentsDirectory: documentsDirectory),
+        fileSystem: fileSystem ?? TestFileSystemService(
+            documentsDirectory: documentsDirectory
+        ),
         downloadService: downloadService,
         preferences: preferences,
         isolationKey: testIsolationKey,
@@ -1155,7 +1857,7 @@ private func releaseSelection(
     )
 }
 
-private final class TestFileSystemService: FileSystemService {
+private class TestFileSystemService: FileSystemService {
     private let documentsDirectory: URL
 
     init(documentsDirectory: URL) {
@@ -1200,6 +1902,59 @@ private final class TestFileSystemService: FileSystemService {
 
     func documentsPath() -> String {
         documentsDirectory.path
+    }
+}
+
+private final class FailingArchivePromotionFileSystemService:
+    TestFileSystemService
+{
+    private var shouldFailArchivePromotion = true
+
+    override func moveItem(atPath srcPath: String, toPath dstPath: String) throws {
+        if shouldFailArchivePromotion,
+           srcPath.hasSuffix("archive/extracted"),
+           dstPath.hasSuffix("target.tmp") {
+            shouldFailArchivePromotion = false
+            throw NSError(
+                domain: "FailingArchivePromotionFileSystemService",
+                code: 1
+            )
+        }
+        try super.moveItem(atPath: srcPath, toPath: dstPath)
+    }
+}
+
+private final class FailingArchiveBackupRemovalFileSystemService:
+    TestFileSystemService
+{
+    private var shouldFailBackupRemoval = true
+
+    override func removeItem(atPath path: String) throws {
+        if shouldFailBackupRemoval,
+           path.hasSuffix(".archive-backup"),
+           FileManager.default.fileExists(atPath: path) {
+            shouldFailBackupRemoval = false
+            throw NSError(
+                domain: "FailingArchiveBackupRemovalFileSystemService",
+                code: 1
+            )
+        }
+        try super.removeItem(atPath: path)
+    }
+}
+
+private final class FailingArchivePromotionAndRestoreFileSystemService:
+    TestFileSystemService
+{
+    override func moveItem(atPath srcPath: String, toPath dstPath: String) throws {
+        if srcPath.hasSuffix("archive/extracted") ||
+            srcPath.hasSuffix("target.tmp.archive-backup") {
+            throw NSError(
+                domain: "FailingArchivePromotionAndRestoreFileSystemService",
+                code: 1
+            )
+        }
+        try super.moveItem(atPath: srcPath, toPath: dstPath)
     }
 }
 
@@ -1325,6 +2080,158 @@ private func makeManifestData(
     ])
 }
 
+private func makeArchiveManifestData(
+    bundleId: String,
+    files: [String: Data],
+    archiveHash: String,
+    archiveByteSize: Int,
+    tarByteSize: Int,
+    originalDownloadByteSize: Int?,
+    logicalByteSizeOverride: Int? = nil
+) throws -> Data {
+    let scratch = try makeWorkingDirectory()
+    defer { cleanupWorkingDirectory(scratch) }
+    let assets = try files.reduce(into: [String: [String: Any]]()) { result, entry in
+        var asset: [String: Any] = [
+            "fileHash": try #require(sha256(entry.value, in: scratch)),
+            "byteSize": logicalByteSizeOverride ?? entry.value.count,
+        ]
+        if let originalDownloadByteSize {
+            asset["downloadByteSize"] = originalDownloadByteSize
+        }
+        result[entry.key] = asset
+    }
+    return try JSONSerialization.data(withJSONObject: [
+        "bundleId": bundleId,
+        "assets": assets,
+        "archive": [
+            "downloadFileHash": archiveHash,
+            "downloadByteSize": archiveByteSize,
+            "tarByteSize": tarByteSize,
+        ],
+    ])
+}
+
+private func makeTar(
+    files: [String: Data],
+    headerMagic: String = "ustar\0"
+) throws -> Data {
+    var tar = Data()
+    for (index, entry) in files.sorted(by: { $0.key < $1.key }).enumerated() {
+        let pathBytes = Data(entry.key.utf8)
+        let headerPath: String
+        if pathBytes.count > 100 {
+            let pax = makePaxRecord(key: "path", value: entry.key)
+            tar.append(try makeTarHeader(
+                path: "PaxHeader/\(index)",
+                size: pax.count,
+                type: 120,
+                magic: headerMagic
+            ))
+            tar.append(pax)
+            appendTarPadding(to: &tar, payloadSize: pax.count)
+            headerPath = "PaxFile/\(index)"
+        } else {
+            headerPath = entry.key
+        }
+        tar.append(try makeTarHeader(
+            path: headerPath,
+            size: entry.value.count,
+            type: 48,
+            magic: headerMagic
+        ))
+        tar.append(entry.value)
+        appendTarPadding(to: &tar, payloadSize: entry.value.count)
+    }
+    tar.append(Data(repeating: 0, count: 1024))
+    return tar
+}
+
+private func makeTarHeader(
+    path: String,
+    size: Int,
+    type: UInt8,
+    magic: String
+) throws -> Data {
+    let pathBytes = Data(path.utf8)
+    let magicBytes = Data(magic.utf8)
+    guard pathBytes.count <= 100, magicBytes.count == 6 else {
+        throw NSError(domain: "TarTest", code: 1)
+    }
+    var header = Data(repeating: 0, count: 512)
+    header.replaceSubrange(0..<pathBytes.count, with: pathBytes)
+    writeTarOctal(0o644, to: &header, range: 100..<108)
+    writeTarOctal(0, to: &header, range: 108..<116)
+    writeTarOctal(0, to: &header, range: 116..<124)
+    writeTarOctal(size, to: &header, range: 124..<136)
+    writeTarOctal(0, to: &header, range: 136..<148)
+    header.replaceSubrange(148..<156, with: Data(repeating: 32, count: 8))
+    header[156] = type
+    header.replaceSubrange(257..<263, with: magicBytes)
+    header.replaceSubrange(263..<265, with: Data("00".utf8))
+    let checksum = header.reduce(0) { $0 + Int($1) }
+    let checksumText = String(format: "%06o\0 ", checksum)
+    header.replaceSubrange(148..<156, with: Data(checksumText.utf8))
+    return header
+}
+
+private func writeTarOctal(_ value: Int, to header: inout Data, range: Range<Int>) {
+    let digits = String(value, radix: 8)
+    let payload = String(repeating: "0", count: range.count - digits.count - 1) + digits + "\0"
+    header.replaceSubrange(range, with: Data(payload.utf8))
+}
+
+private func appendTarPadding(to tar: inout Data, payloadSize: Int) {
+    let padding = (512 - payloadSize % 512) % 512
+    if padding > 0 {
+        tar.append(Data(repeating: 0, count: padding))
+    }
+}
+
+private func makePaxRecord(key: String, value: String) -> Data {
+    let body = "\(key)=\(value)\n"
+    var length = body.utf8.count + 2
+    while true {
+        let record = "\(length) \(body)"
+        let actualLength = record.utf8.count
+        if actualLength == length { return Data(record.utf8) }
+        length = actualLength
+    }
+}
+
+private func brotliCompress(_ input: Data) throws -> Data {
+    var capacity = max(1024, input.count * 2)
+    while capacity <= max(1024, input.count * 32) {
+        var output = Data(count: capacity)
+        let encoded = output.withUnsafeMutableBytes { outputBytes in
+            input.withUnsafeBytes { inputBytes in
+                compression_encode_buffer(
+                    outputBytes.bindMemory(to: UInt8.self).baseAddress!,
+                    capacity,
+                    inputBytes.bindMemory(to: UInt8.self).baseAddress!,
+                    input.count,
+                    nil,
+                    COMPRESSION_BROTLI
+                )
+            }
+        }
+        if encoded > 0 {
+            output.count = encoded
+            return output
+        }
+        capacity *= 2
+    }
+    throw NSError(domain: "BrotliTest", code: 1)
+}
+
+private func deterministicNoise(count: Int, seed: UInt64) -> Data {
+    var state = seed
+    return Data((0..<count).map { _ in
+        state = state &* 6_364_136_223_846_793_005 &+ 1
+        return UInt8(truncatingIfNeeded: state >> 32)
+    })
+}
+
 private func sha256(_ data: Data, in directory: URL) -> String? {
     let fileURL = directory.appendingPathComponent(UUID().uuidString)
     defer { try? FileManager.default.removeItem(at: fileURL) }
@@ -1341,6 +2248,7 @@ private func updateBundle(
     bundleId: String,
     manifestURL: URL,
     manifestHash: String,
+    archiveURL: URL? = nil,
     assets: [String: ChangedAssetDescriptor]
 ) -> Result<Bool, Error> {
     let completed = DispatchSemaphore(value: 0)
@@ -1349,6 +2257,7 @@ private func updateBundle(
         bundleId: bundleId,
         manifestUrl: manifestURL,
         manifestFileHash: manifestHash,
+        archiveUrl: archiveURL,
         assets: assets,
         progressHandler: { _ in }
     ) {

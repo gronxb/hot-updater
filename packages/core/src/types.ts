@@ -18,6 +18,15 @@ export interface ChangedAssetPatch {
   baseFileHash: string;
   patchFileHash: string;
   patchUrl: string;
+  /** Transferred patch bytes, used as a conservative installation cost hint. */
+  byteSize?: number;
+}
+
+/** Authenticated by the target manifest; always describes bundle.tar.br. */
+export interface ManifestArchive {
+  downloadFileHash: string;
+  downloadByteSize: number;
+  tarByteSize: number;
 }
 
 export interface ArtifactAssetFile {
@@ -76,7 +85,7 @@ export interface Bundle {
 export type UpdateStatus = "ROLLBACK" | "UPDATE";
 
 export interface ArtifactInfo {
-  /** Manifest-only artifact protocol used by current native clients. */
+  /** Manifest artifact protocol used by current native clients. */
   artifactProtocolVersion: typeof ARTIFACT_PROTOCOL_VERSION;
   /**
    * Manifest artifact for protocol v1 updates.
@@ -87,6 +96,8 @@ export interface ArtifactInfo {
    * Uses `sig:<base64_signature>` or a plain SHA256 hash.
    */
   manifestFileHash: string;
+  /** Optional bulk transport. Hash and sizes come from the verified manifest. */
+  archiveUrl?: string;
   /**
    * Full target manifest file map. Protocol v1 requires one original file
    * descriptor for every target asset; patches are optional optimizations.

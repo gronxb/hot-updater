@@ -61,6 +61,21 @@ private func hotUpdaterGetMinBundleId() -> String {
     private static let DEFAULT_CHANNEL = "production"
     private static let CHANNEL_STORAGE_KEY = "HotUpdaterChannel"
 
+    private static func parseSafeByteSize(_ value: Any?) -> Int64? {
+        guard let number = value as? NSNumber,
+              String(cString: number.objCType) != "c" else {
+            return nil
+        }
+        let doubleValue = number.doubleValue
+        guard doubleValue.isFinite,
+              doubleValue >= 0,
+              doubleValue <= 9_007_199_254_740_991,
+              doubleValue.rounded(.towardZero) == doubleValue else {
+            return nil
+        }
+        return Int64(doubleValue)
+    }
+
     // MARK: - Initialization
 
     /**
@@ -267,6 +282,18 @@ private func hotUpdaterGetMinBundleId() -> String {
                 reject("INVALID_FILE_URL", error.localizedDescription, error)
                 return
             }
+            let archiveUrl: URL?
+            if let archiveUrlString = data["archiveUrl"] as? String {
+                guard let parsedArchiveUrl = URL(string: archiveUrlString) else {
+                    let error = NSError(domain: "HotUpdater", code: 0,
+                                       userInfo: [NSLocalizedDescriptionKey: "Invalid 'archiveUrl' provided: \(archiveUrlString)"])
+                    reject("INVALID_FILE_URL", error.localizedDescription, error)
+                    return
+                }
+                archiveUrl = parsedArchiveUrl
+            } else {
+                archiveUrl = nil
+            }
             guard let assetsPayload = data["assets"] as? [String: [String: Any]] else {
                 let error = NSError(domain: "HotUpdater", code: 0,
                                    userInfo: [NSLocalizedDescriptionKey: "Missing manifest assets"])
@@ -297,7 +324,8 @@ private func hotUpdaterGetMinBundleId() -> String {
                         baseBundleId: baseBundleId,
                         baseFileHash: baseFileHash,
                         patchFileHash: patchFileHash,
-                        patchUrl: patchUrl
+                        patchUrl: patchUrl,
+                        byteSize: Self.parseSafeByteSize(payload["byteSize"])
                     )
                 }
                 let filePayload = entry.value["file"] as? [String: Any]
@@ -331,7 +359,7 @@ private func hotUpdaterGetMinBundleId() -> String {
             NSLog("[HotUpdaterImpl] updateBundle called with bundleId: \(bundleId), manifestUrl: \(manifestUrl.absoluteString)")
 
             // Heavy work is delegated to bundle storage service with safe error handling
-            bundleStorage.updateBundle(bundleId: bundleId, manifestUrl: manifestUrl, manifestFileHash: manifestFileHash, assets: assets, progressHandler: { payload in
+            bundleStorage.updateBundle(bundleId: bundleId, manifestUrl: manifestUrl, manifestFileHash: manifestFileHash, archiveUrl: archiveUrl, assets: assets, progressHandler: { payload in
                 DispatchQueue.main.async {
                     NotificationCenter.default.post(
                         name: .updateProgressDidChange,

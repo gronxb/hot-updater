@@ -4,7 +4,14 @@ import Foundation
 enum BrotliFileDecompressor {
     private static let bufferSize = 64 * 1024
 
-    static func decompress(from sourcePath: String, to outputPath: String) throws {
+    static func decompress(
+        from sourcePath: String,
+        to outputPath: String,
+        expectedOutputByteSize: Int64? = nil
+    ) throws {
+        if let expectedOutputByteSize, expectedOutputByteSize < 0 {
+            throw error(6, "Invalid expected Brotli output size")
+        }
         let fileManager = FileManager.default
         let parentDirectory = (outputPath as NSString).deletingLastPathComponent
         try fileManager.createDirectory(
@@ -47,6 +54,8 @@ enum BrotliFileDecompressor {
         defer { outputBuffer.deallocate() }
 
         var reachedEnd = false
+        var totalOutputByteSize: UInt64 = 0
+        let maximumOutputByteSize = expectedOutputByteSize.map(UInt64.init)
         while !reachedEnd {
             let chunk = try FileUtilities.readUpToCount(
                 from: input,
@@ -60,7 +69,9 @@ enum BrotliFileDecompressor {
                     &stream,
                     output: output,
                     outputBuffer: outputBuffer,
-                    finalize: true
+                    finalize: true,
+                    totalOutputByteSize: &totalOutputByteSize,
+                    maximumOutputByteSize: maximumOutputByteSize
                 )
             } else {
                 status = try chunk.withUnsafeBytes { bytes in
@@ -74,16 +85,33 @@ enum BrotliFileDecompressor {
                         &stream,
                         output: output,
                         outputBuffer: outputBuffer,
-                        finalize: false
+                        finalize: false,
+                        totalOutputByteSize: &totalOutputByteSize,
+                        maximumOutputByteSize: maximumOutputByteSize
                     )
                 }
             }
 
             if status == COMPRESSION_STATUS_END {
+                guard stream.src_size == 0 else {
+                    throw error(7, "Brotli stream contains trailing compressed bytes")
+                }
+                let trailing = try FileUtilities.readUpToCount(from: input, count: 1)
+                guard trailing?.isEmpty != false else {
+                    throw error(7, "Brotli stream contains trailing compressed bytes")
+                }
                 reachedEnd = true
             } else if chunk.isEmpty {
                 throw error(3, "Brotli input ended before the stream completed")
             }
+        }
+
+        if let maximumOutputByteSize,
+           totalOutputByteSize != maximumOutputByteSize {
+            throw error(
+                8,
+                "Brotli output size mismatch: expected \(maximumOutputByteSize), got \(totalOutputByteSize)"
+            )
         }
     }
 
@@ -91,7 +119,9 @@ enum BrotliFileDecompressor {
         _ stream: inout compression_stream,
         output: FileHandle,
         outputBuffer: UnsafeMutablePointer<UInt8>,
-        finalize: Bool
+        finalize: Bool,
+        totalOutputByteSize: inout UInt64,
+        maximumOutputByteSize: UInt64?
     ) throws -> compression_status {
         let flags = finalize ? Int32(COMPRESSION_STREAM_FINALIZE.rawValue) : 0
         var status = COMPRESSION_STATUS_OK
@@ -107,7 +137,14 @@ enum BrotliFileDecompressor {
             }
             let produced = bufferSize - stream.dst_size
             if produced > 0 {
+                let (nextOutputByteSize, overflowed) = totalOutputByteSize
+                    .addingReportingOverflow(UInt64(produced))
+                guard !overflowed,
+                      maximumOutputByteSize.map({ nextOutputByteSize <= $0 }) ?? true else {
+                    throw error(6, "Brotli output exceeds expected size")
+                }
                 output.write(Data(bytes: outputBuffer, count: produced))
+                totalOutputByteSize = nextOutputByteSize
             }
             if finalize,
                status == COMPRESSION_STATUS_OK,

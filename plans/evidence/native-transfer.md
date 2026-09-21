@@ -1,5 +1,7 @@
 # Native installer transfer evidence
 
+This is the historical manifest-only measurement. The subsequent tar.br implementation and 80-run comparison are recorded in [native-tar-br-transfer.md](native-tar-br-transfer.md); the results below remain unchanged.
+
 Measured on 2026-09-21 using the production Swift installer and
 URLSession downloader on an iPhone 17 / iOS 26.4.1 simulator.
 The archive baseline is `ec78756926ca`, the sequential manifest baseline

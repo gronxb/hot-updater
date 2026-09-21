@@ -103,6 +103,9 @@ const resolveArtifactUrls = (
 ): ArtifactInfo => ({
   ...info,
   manifestUrl: resolveArtifactUrl(baseURL, info.manifestUrl),
+  ...(info.archiveUrl
+    ? { archiveUrl: resolveArtifactUrl(baseURL, info.archiveUrl) }
+    : {}),
   assets: Object.fromEntries(
     Object.entries(info.assets).map(([path, asset]) => [
       path,
@@ -130,7 +133,8 @@ const requireArtifactProtocolV1 = (info: ArtifactInfo): ArtifactInfo => {
     info.artifactProtocolVersion !== ARTIFACT_PROTOCOL_VERSION ||
     !info.assets ||
     !info.manifestUrl ||
-    !info.manifestFileHash
+    !info.manifestFileHash ||
+    (info.archiveUrl !== undefined && typeof info.archiveUrl !== "string")
   ) {
     throw new Error(
       `Server does not support artifact protocol ${ARTIFACT_PROTOCOL_VERSION}.`,

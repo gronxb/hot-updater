@@ -3,15 +3,15 @@
 ## 1. 상태와 실행 계약
 
 - 작성일: 2026-09-20
-- 상태: PRD 확정. 2026-09-21 감사에서 구현 완료 판정을 정정했고, 사용자가 6개 누락 수정과 최신 next 병합을 승인했다. 새 검증이 끝날 때까지 아래 이전 완료 체크는 인수 근거가 아니다.
-- 기준: `origin/next`, `ec78756926cac3b23ca32c1d3acefe28d2ebb7ab`.
+- 상태: 2026-09-21 사용자가 tar.br 단일 보조 경로와 네이티브 압축 로직 단순화를 승인했다. 두 서브에이전트의 적대적 검토와 반박 후 아래 계약에 합의했다. 구현·성능·최종 E2E 재검증 진행 중이다.
+- 현재 병합 기준: `origin/next`의 `333188ab939769609913529004d6c0d15474ad03`, 병합 revision `1aa201bbd`. 4절의 과거 코드 근거는 최초 기준 `ec78756926cac3b23ca32c1d3acefe28d2ebb7ab`다.
 - 작업 디렉터리: `/Users/gronxb/.codex/worktrees/builtin-manifest-v1/hot-updater`.
 - 브랜치: `feature/builtin-manifest-v1`.
-- 실행 모델: `gpt-5.6-sol`, reasoning effort `medium`.
+- 서브에이전트 모델: `gpt-5.6-sol`, reasoning effort `medium`.
 - 이 문서와 `plans/README.md`가 후속 실행의 기준이다. 대화 내용을 몰라도 실행할 수 있어야 한다.
 - 기존 main checkout 및 별도 Insights worktree는 수정하지 않는다.
-- 서브에이전트는 사용하지 않는다. 사용자는 현재 작업을 같은 task에서 이어가도록 요청했다.
-- 구현과 로컬 검증은 승인됐다. GitHub/Linear 댓글 게시, 배포 인프라 변경, 패키지 배포, merge는 이 요청에 포함되지 않는다.
+- 사용자가 서브에이전트 적대적 합의를 명시적으로 요청했다. Sol Medium 두 검토자의 찬성·반대 검토 및 반박 결과는 `evidence/tar-br-consensus.md`에 기록한다.
+- 구현·로컬 검증·PR push/갱신·standalone E2E 요청은 승인됐다. 별도 GitHub/Linear 대화 게시, 운영 인프라 변경, 패키지 배포, merge는 포함되지 않는다.
 - 작업 결과는 검증 가능한 코드 diff, 변경사항 문서, 실측·테스트 증거로 남긴다.
 
 ### 관련 요구
@@ -26,7 +26,7 @@
 
 현재 첫 OTA는 내장 파일을 재사용하지 않고 전체 아카이브를 다운로드한다. 이후 OTA에서는 manifest 파일 재사용과 Hermes binary patch를 사용할 수 있지만, 로컬 파일 손상 등 일부 실패의 복구가 전체 아카이브에 의존한다.
 
-목표는 내장 manifest를 빌드 때 반드시 삽입하지 않아도, 실제 설치된 내장 파일 중 목표 바이트와 같은 파일을 안전하게 재사용하는 것이다. 그 뒤 설치·복구를 manifest와 개별 원본 파일만으로 완결하고, OTA 아카이브와 `compressStrategy`를 제거한다.
+목표는 내장 manifest를 빌드 때 반드시 삽입하지 않아도, 실제 설치된 내장 파일 중 목표 바이트와 같은 파일을 안전하게 재사용하는 것이다. 설치·복구는 manifest와 개별 원본 파일만으로도 완결된다. 큰 변경의 요청 비용을 줄이기 위해 tar.br 하나만 선택적 전체 전송 경로로 제공하며 `compressStrategy`는 제거한다.
 
 핵심 불변식:
 
@@ -52,7 +52,7 @@
 - 기존 OTA 간 Hermes patch 유지 및 patch 실패 시 원본 파일 복구.
 - 안전한 staging, 재시도, 설치 도중 중단 및 crash rollback 보존.
 - 실제 Release 산출물 기반 재사용·성능 검증.
-- 검증 조건 통과 후 아카이브 생성·전송·설치 경로와 `compressStrategy` 제거.
+- tar.br 단일 보조 경로의 생성·전송·설치 및 선택·실패 복구 검증. ZIP/tar.gz/tar.bz, 자동 감지와 `compressStrategy`는 제거한다.
 - 필요한 SDK/CLI/server/provider schema, 문서, 예제, E2E, changeset 갱신.
 
 ### 후속 최적화로 분리
@@ -66,8 +66,8 @@
 - `updateStrategy`, runtime 호환성, cohort, channel, Release chronology, catalog 선택 정책 변경.
 - native asset resolver를 전역 교체하거나 이미지 의미적 동일성으로 검증을 우회하는 일.
 - 내장 이미지 전체를 별도 디렉터리에 중복 탑재하거나 전부 앱 저장소로 복사하는 일.
-- APK/IPA 자체의 압축 형식 제거. 이 문서에서 제거하는 것은 OTA 아카이브다.
-- 새 archive/pack 프로토콜, 범용 캐시 프레임워크, 모든 bundler를 위한 새 plugin API.
+- APK/IPA 자체의 압축 형식 제거. OTA 전체 전송 형식은 tar.br 하나로 제한한다.
+- tar.br 이외의 새 archive/pack 형식, 범용 캐시 프레임워크, 모든 bundler를 위한 새 plugin API.
 - 전송하는 모든 파일에 무조건 brotli 재압축. 이득 없는 이미지 등은 raw 전송 가능.
 - 선택한 diff 알고리즘 변경. `bsdiff` 내부 압축이나 `bz2` 의존성을 OTA tar 제거와 혼동하지 않는다.
 - 기존 운영 Storage의 아카이브나 DB 데이터를 일괄 삭제하는 일.
@@ -183,7 +183,7 @@ M1에서 확정한 wire 경계는 다음과 같다.
 
 - 새 SDK는 `/artifacts/v1/:targetBundleId/from/:currentBundleId`만 호출한다.
 - 응답은 `artifactProtocolVersion: 1`, 목표 manifest URL/hash, 모든 목표 파일의
-  필수 원본 descriptor를 담은 `assets`를 제공한다. archive URL/hash 필드는 없다.
+  필수 원본 descriptor를 담은 `assets`를 제공한다. 선택적 `archiveUrl`은 고정 tar.br 객체 URL이며 hash/크기는 검증된 manifest만 권위를 갖는다. `patch.byteSize`는 비용 비교 힌트다.
 - unversioned `/artifacts/:targetBundleId/from/:currentBundleId` endpoint는 지원하지
   않는다. 서버와 SDK는 versioned v1 endpoint만 제공·호출한다.
 - manifest 읽기 기능이 없는 서버는 v1 artifact를 만들지 않는다.
@@ -209,22 +209,72 @@ M1에서 확정한 wire 경계는 다음과 같다.
 
 후속 등록 기능은 최종 native build의 HBC 원본을 보관해야 한다. 동일 appVersion/fingerprint를 동일 파일의 증거로 쓰지 않으며, builtin base 등록을 OTA Release 발행으로 취급하지 않는다. 이미 배포한 앱에서 hash만 보내서 서버가 patch를 만들 수 있다고 문서화하지 않는다.
 
-### 5.7 아카이브 제거와 v1 계약 확정
+### 5.7 tar.br 단일 보조 경로와 v1 계약 확정
 
-M0–M2가 검증되기 전에는 기존 archive fallback을 삭제하지 않는다. 최종 구현에서는 새 deploy가 manifest와 content-addressed files, 선택적 patch만 생성한다.
+manifest는 설치 결과의 유일한 기준이다. 새 deploy 및 Bundle copy는 모든
+content-addressed 원본, 선택적 patch와 함께 `bundle.tar.br`를 생성한다.
+아카이브에는 정렬된 목표 일반 파일만 포함하고 `manifest.json`은 포함하지 않는다.
+archive를 생성한 뒤 다음 정보를 최종 manifest에 넣고 전체 manifest를 서명한다.
 
-- `compressStrategy`를 public config/types/examples/docs에서 제거하고 이전 설정은 명확히 거부한다.
-- archive hash/URI/size를 manifest로 대충 대체하거나 빈 문자열·0을 넣어 schema를 속이지 않는다.
-- canonical Bundle/DB 계약을 manifest 필수·archive 비의존으로 변경한다. adapter와 provider CRUD, schema generation, transaction publication을 함께 갱신한다.
-- v1은 정식 배포 전이므로 기존 1.0.0 schema와 최초 migration을 직접 수정한다.
-  archive 필드를 위한 호환 default, forward migration, legacy row 읽기 경로를
-  추가하지 않는다.
-- manifest가 없는 artifact와 unversioned artifact endpoint는 지원하지 않는다.
-  완전한 manifest와 모든 원본 파일이 있는 artifact만 설치할 수 있다.
-- Storage URL/root 계산, 파일 삭제·참조 추적, signing, bundle inspection도 archive URI를 기준으로 동작하지 않아야 한다.
-- 파일·manifest·patch 업로드와 검증이 준비된 뒤 Bundle/Release를 공개한다. partial upload는 catalog에 노출하지 않는다.
-- 서명 정책과 key rotation을 약화하지 않는다. 설정된 signing을 optional optimization으로 취급하지 않는다.
-- OTA archive extractor와 그 전용 의존성·fixtures/tests만 제거한다. builtin APK reader, brotli 파일 해제, bsdiff의 내부 압축은 필요할 수 있다.
+```ts
+archive?: {
+  downloadFileHash: string; // 압축된 bundle.tar.br의 SHA-256
+  downloadByteSize: number; // 압축 전송 크기
+  tarByteSize: number;      // 해제된 TAR 스트림의 정확한 크기
+};
+// 각 assets[path]에는 논리 파일의 byteSize도 기록한다.
+```
+
+- archive는 `bundles/<id>/manifest.json`의 고정 sibling `bundle.tar.br`다.
+  서버가 canonical Storage URI를 검증해 URL을 해석하며 native가 signed URL을
+  문자열 가공해 추측하지 않는다. URL 해석 실패 시 archiveUrl을 생략할 수 있다.
+- Bundle/DB/provider 계약은 manifest 중심으로 유지한다. archive 전용 DB 컬럼,
+  metadata 우회 저장, 이전 row 호환 경로를 복원하지 않는다. 기존 1.0.0 초기
+  schema/migration 수정 원칙은 유지하며 이 보조 경로 자체에는 추가 DB 변경이 없다.
+- 사용자 config의 `compressStrategy`와 archive/diff 선택은 없다. 이전 옵션은 거부한다.
+- TAR 메타데이터(mtime/mode/uid/gid)와 파일 순서를 고정한다. 아카이브와 모든
+  원본 업로드가 끝난 뒤 Bundle/Release를 공개하며 archive 생성/업로드 실패는
+  배포 실패다. 생성 CPU/임시 디스크와 릴리스마다 전체 압축 객체 하나의 저장 비용을 기록한다.
+- Storage prune/delete는 canonical Bundle prefix 아래 archive까지 처리한다.
+
+**전송 선택**은 native의 manifest/전체 descriptor 검증 및 기존 staging·OTA·builtin
+재사용 후, 개별 파일 다운로드 시작 전에 한 번만 한다.
+
+1. 남은 네트워크 파일이 2개 미만이면 개별 전송한다.
+2. 각 파일의 서명된 `downloadByteSize`와, patch가 있으면 `patch.byteSize`를 읽는다.
+3. 각 예상 전송량은 `min(원본 크기, 제공된 patch 크기)`다. patch base가 실제로
+   사용 불가해도 이는 낙관적인 하한이므로 archive 선택을 보수적으로 만든다.
+4. 필요한 크기 또는 archive/논리 파일 경계가 없거나 잘못됐거나 합산이 overflow하면
+   개별 전송한다. 임의 RTT·대역폭·파일 수 가중치·사용자 임계값은 추가하지 않는다.
+5. `archive.downloadByteSize <= 예상 개별 전송량 합`일 때만 archive를 선택한다.
+6. 모든 목표 파일이 네트워크 대상이고 제공된 patch가 하나도 없을 때만 예외를 둔다.
+   `TAR framing = tarByteSize - Σ asset.byteSize`가 음수가 아니고,
+   `archive.downloadByteSize <= 예상 개별 전송량 합 + TAR framing`이면 archive를 선택한다.
+   모든 값·합산은 JavaScript safe integer 범위여야 한다. 이 예외는 압축되지 않는
+   다수 파일에서 TAR 포맷 자체의 오버헤드 때문에 요청이 폭증하는 것을 막는다.
+   재사용 또는 patch가 있는 경우에는 5번의 엄격한 크기 비교만 적용한다.
+7. 추가 전송 허용량은 서명된 실제 TAR framing으로 한정한다. 항상 최소 지연 시간을
+   보장하거나 모든 정상 경로에서 payload가 줄어든다고 주장하지 않는다. 같은 입력으로
+   대역폭 제한 유무를 나눠 실제 native installer를 측정한다.
+
+**설치와 실패:** archive를 별도 scratch에 한 번 다운로드하고 압축 크기와 SHA-256을
+검증한 뒤 Brotli 해제 및 TAR 추출을 수행한다. `tarByteSize`와 파일별 `byteSize`
+경계를 강제하고, 정규화된 상대 경로·중복 없음·정확한 파일 집합·정상 스트림 종료를
+검증한다. symlink/hardlink/device/미지원 entry 및 path traversal는 조용히 건너뛰지
+않고 거부한다. 모든 추출 파일에 기존 manifest hash/signature 검증을 적용한 뒤
+staging에 반영한다. 검증된 manifest는 별도로 저장하고 기존 atomic promotion,
+catalog guard, stable/crash recovery 규칙을 유지한다.
+
+archive 다운로드/해시/해제/파일 검증 실패 시 archive scratch를 전부 버리고,
+앞서 계산한 개별 파일 계획을 한 번 실행한다. 실패한 부분 추출 파일은 재사용하지
+않으며 이미 검증한 로컬 재사용은 보존한다. archive로 되돌아가는 루프나 두 경로의
+동시 실행은 없다. manifest 또는 descriptor 계약 검증 실패는 즉시 실패한다.
+이 복구 경로에서는 전송량 중복이 발생할 수 있으며 정상 경로의 크기 상한을 주장하지 않는다.
+patch 실패는 계속 해당 파일의 원본으로만 복구한다.
+
+**네이티브 단순화:** 기존 개별 Brotli decoder를 공유하는 직접 tar.br 경로만 둔다.
+ZIP/gzip/bzip2 OTA 추출, 형식 자동 감지, DecompressionStrategy/registry/factory,
+압축 협상은 복원하지 않는다. bsdiff 내부 bzip2와 builtin APK reader는 유지한다.
 
 ## 6. 구현 순서와 검증 게이트
 
@@ -262,16 +312,22 @@ M0–M2가 검증되기 전에는 기존 archive fallback을 삭제하지 않는
 
 **gate:** 첫 OTA의 동일 내장 파일에 대해 network request/bytes가 0이며, 최종 파일 해시와 앱 화면·Bundle ID가 목표와 일치해야 한다. 단순 로그 메시지는 증거로 충분하지 않다.
 
-### M3 — 전송 비용 검증 후 archive와 압축 선택 제거
+Release E2E의 shard 의존성 symlink는 native build와 OTA의 dependency asset 경로를
+다르게 만들 수 있다. 앱 로컬 PNG/font 재사용 시나리오는 선택적 `archiveUrl`을
+명시적으로 생략하고 archive 요청도 0인지 확인한다. 이는 재사용 기능의 분리 검증이며
+기본 자동 선택의 증거로 보고하지 않는다. 자동 선택은 archive URL이 있는 native
+JS-only/patch 벤치마크 및 정상 archive·손상 fallback Release 시나리오로 검증한다.
+
+### M3 — tar.br 보조 경로와 전송 비용 검증
 
 1. baseline archive 버전과 새 installer를 같은 산출물·네트워크 조건으로 비교한다.
 2. 비교 항목은 JS-only 첫 OTA, 작은 OTA→OTA, 빈 base, 많은 작은 파일의 전체 변경이다.
 3. 다운로드 바이트·요청 수, 준비/해싱/설치 시간, peak 임시 디스크와 메모리를 기록한다. 반복 횟수·기기·네트워크 조건을 명시하고 소수 실행을 p95라고 부르지 않는다.
 4. 제한된 병렬화·검증된 파일 재사용·개별 retry로 전체 변경 경로의 피할 수 있는 병목을 해결한다. 측정 근거 없이 새 pack 형식을 만들지 않는다.
-5. gate를 통과하면 deploy/config, Bundle/DB/provider 계약, 네이티브 archive path와 소비자를 함께 제거한다.
+5. 5.7의 단일 tar.br 계약을 deploy/copy/server/SDK/native에 구현하고 ZIP/gzip/압축 선택의 부활을 막는다.
 6. 문서·예제·progress·E2E의 archive 전제를 변경하고 changeset을 작성한다.
 
-**gate:** correctness 시나리오는 모두 통과해야 한다. JS-only fixture는 재사용 대상의 다운로드가 정확히 제거돼야 한다. 전체 변경 시나리오가 반복적으로 baseline보다 느리면 크기/요청 수에 따른 원인을 보고서에 적고 병목 개선 후 다시 측정한다. unresolved 심각한 성능 회귀나 프로토콜 문제가 있으면 삭제 완료로 판정하지 않는다. 관측하지 않은 수치나 임의 SLO로 성공을 선언하지 않는다.
+**gate:** correctness 시나리오는 모두 통과해야 한다. JS-only fixture는 재사용 대상의 다운로드가 정확히 제거돼야 한다. 전체 변경 시나리오가 반복적으로 baseline보다 느리면 크기/요청 수에 따른 원인을 보고서에 적고 병목 개선 후 다시 측정한다. unresolved 심각한 성능 회귀나 프로토콜 문제가 있으면 전송 계약의 인수 완료로 판정하지 않는다. 관측하지 않은 수치나 임의 SLO로 성공을 선언하지 않는다.
 
 ### M4 — 통합 검증과 인수
 
@@ -291,7 +347,7 @@ M0–M2가 검증되기 전에는 기존 archive fallback을 삭제하지 않는
 | A06 | 서버는 unchanged라 판단하지만 로컬 파일 손상 | 전체 descriptor로 해당 파일 복구; archive 요청 없음 |
 | A07 | patch 없음/404/손상/base 불일치/적용 실패 | 같은 target 원본 다운로드, 최종 검증 성공 |
 | A08 | patch가 원본 전송보다 큼 | 원본 선택 |
-| A09 | 전체 파일 변경, 여러 작은 파일 | 제한된 병렬 다운로드, 완료·성능 증거 |
+| A09 | 전체 파일 변경, 여러 작은 파일 | 조건에 맞으면 tar.br 1회, 개별 파일 요청 없음, 모든 최종 hash·성능 증거 |
 | A10 | 설치 중 종료 후 재시도 | stable 보존, 검증된 완료 파일 재사용, partial 신뢰 금지 |
 | A11 | 새 OTA 시작 시 crash | 기존 stable 또는 builtin 복구, crashed Bundle 재선택 방지 |
 | A12 | 앱 native 업데이트/동일 version 재빌드 | 오래된 인덱스로 잘못 재사용하지 않음 |
@@ -301,6 +357,10 @@ M0–M2가 검증되기 전에는 기존 archive fallback을 삭제하지 않는
 | A16 | unversioned endpoint 또는 manifest 없는 artifact | 미지원 오류; reset/빈 성공 아님 |
 | A17 | 디스크 부족/인덱스 쓰기 실패 | stable 보존; 인덱스 최적화 실패만이면 다운로드 가능 |
 | A18 | `getManifest()`를 초기화 전에 호출 | 빈 session cache 때문에 첫 OTA 재사용이 막히지 않음 |
+| A19 | 남은 파일 0/1/2, 동률, framing 경계·초과, 재사용/patch, 크기 누락·overflow | 전체 원본 요청만 framing allowance; 나머지는 엄격한 비용 비교 |
+| A20 | archive 404·손상·truncation·TAR 경로/중복/링크/집합·크기 위반 | scratch 제거 후 개별 원본 한 번, stable 보존, 반복 전환 없음 |
+| A21 | 정상 tar.br 및 긴 PAX 경로 | 정확한 파일 집합·크기·hash/signature, manifest 별도 보존 |
+| A22 | deploy/copy 및 Storage 정리 | archive 메타데이터 서명, 공개 전 업로드 완료, live 보존/dead 삭제 |
 
 ## 8. 파일 경계
 
@@ -350,13 +410,13 @@ server public entry 경계는 `packages/server/AGENTS.md`를 따른다. CLI 출�
 - [x] 모든 목표 파일의 원본을 얻을 수 있어 base/cache/patch 없이 설치된다.
 - [x] 로컬 손상·patch 실패가 파일 단위로 복구된다.
 - [x] signing/hash/path/atomic staging/catalog/recovery 불변식이 유지된다.
-- [x] 새 OTA에는 zip/tar.gz/tar.br 아카이브 생성·업로드·다운로드·설치 경로가 없다.
+- [x] tar.br 단일 보조 경로와 결정적 선택·실패 복구가 구현됐고 ZIP/gzip/자동 감지/전략 분기가 없다.
 - [x] `compressStrategy`가 공개 surface에서 제거되고 예전 설정은 명확히 거부된다.
 - [x] 1.0.0 schema/migration과 versioned protocol을 직접 갱신하고 테스트했다.
-- [x] 작은 변경과 전체 변경의 bytes/requests/time/disk/memory 비교 결과를 남겼다.
-- [x] 의미 있는 unit/integration/native/iOS·Android E2E와 required repo checks가 통과했다.
+- [x] 실제 tar.br로 작은 변경과 전체 변경의 bytes/requests/time/disk/memory를 비교하고 많은 파일의 요청 병목을 해결했다. 80회 결과와 대역폭 제한 시 거의 동률인 한계는 `evidence/native-tar-br-transfer.{md,json}`에 기록했다.
+- [ ] 최종 구현 revision의 unit/integration/native와 standalone-* 5개 full E2E 및 required checks가 통과했다.
 - [x] 첫 내장 Hermes patch가 base 등록 없이 지원된다고 주장하지 않는다.
-- [x] 문서·예제·changeset·실행 상태를 갱신하고 사용자에게 검토 가능한 결과를 전달했다.
+- [ ] tar.br 합의 기준으로 문서·예제·changeset·실행 상태와 실제 검증 증거를 갱신했다.
 
 ## 11. 진행을 제한하는 조건
 
@@ -398,3 +458,13 @@ profile은 iOS 15/15 + 11/11과 Android 26/26을 실행했으며
 1,000-file 설치는 71.1% 개선됐지만 ZIP 대비 9.3배 걸렸으므로 M3는 아직
 인수되지 않았다. 이전 Node microbenchmark와 이전 revision E2E 결과를
 현재 구현의 전체 인수 근거로 사용하지 않는다.
+
+2026-09-21 사용자가 tar.br 단일 보조 경로를 승인했다. 위 5.7과 적대적 합의 기록이
+이전의 아카이브 완전 제거 결정을 대체한다. 이전 측정과 E2E는 이전 구현 증거로
+보존하며, 새 tar.br 구현의 성공으로 재사용하지 않는다.
+
+2026-09-21 tar.br 후속 구현과 최신 native 성능 증거는
+`evidence/native-tar-br-transfer.{md,json}`에 기록했다. 기존 archive 삭제만으로
+남았던 1,000-file 요청 병목은 해결됐다. 512 KiB/s 제한에서는 속도 개선을
+주장하지 않으며 추가 framing bytes와 임시 디스크 비용을 명시한다.
+최종 standalone full E2E와 required checks는 별도 잔여 gate다.

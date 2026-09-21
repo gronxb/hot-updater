@@ -540,12 +540,18 @@ describe("notifyAppReady", () => {
     await updateBundle({
       assets: {},
       bundleId: "bundle-456",
+      archiveUrl: "https://example.com/bundle.tar.br",
       manifestFileHash: "manifest-hash",
       manifestUrl: "https://example.com/manifest.json",
       status: "UPDATE",
     });
 
     expect(getBundleId()).toBe("bundle-123");
+    expect(nativeModuleMock.updateBundle).toHaveBeenCalledWith(
+      expect.objectContaining({
+        archiveUrl: "https://example.com/bundle.tar.br",
+      }),
+    );
     expect(getManifest()).toEqual({
       assets: {},
       bundleId: "bundle-123",

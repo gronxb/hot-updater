@@ -65,6 +65,13 @@ interface DownloadService {
         fileSizeCallback: ((Long) -> Unit)? = null,
         progressCallback: (DownloadProgress) -> Unit,
     ): DownloadResult
+
+    suspend fun downloadFileOnce(
+        fileUrl: URL,
+        destination: File,
+        fileSizeCallback: ((Long) -> Unit)? = null,
+        progressCallback: (DownloadProgress) -> Unit,
+    ): DownloadResult = downloadFile(fileUrl, destination, fileSizeCallback, progressCallback)
 }
 
 /**
@@ -183,6 +190,18 @@ class OkHttpDownloadService : DownloadService {
             }
 
             DownloadResult.Error(lastException ?: Exception("Download failed after $MAX_RETRIES attempts"))
+        }
+
+    override suspend fun downloadFileOnce(
+        fileUrl: URL,
+        destination: File,
+        fileSizeCallback: ((Long) -> Unit)?,
+        progressCallback: (DownloadProgress) -> Unit,
+    ): DownloadResult =
+        try {
+            attemptDownload(fileUrl, destination, fileSizeCallback, progressCallback)
+        } catch (error: Exception) {
+            DownloadResult.Error(error)
         }
 
     private suspend fun attemptDownload(

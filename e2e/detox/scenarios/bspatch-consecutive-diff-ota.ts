@@ -20,6 +20,11 @@ export const bspatchConsecutiveDiffOtaScenario: DetoxScenarioDefinition = {
         },
       },
     );
+    await app.control(
+      "make optional archive unavailable for built-in reuse evidence",
+      "/e2e/proxy-control",
+      { archiveAvailable: false },
+    );
     await app.launch("launch diff bundle A app");
     await app.tap(
       "install diff bundle A",
@@ -39,6 +44,11 @@ export const bspatchConsecutiveDiffOtaScenario: DetoxScenarioDefinition = {
       {
         bundleId: "$bundleA",
       },
+    );
+    await app.control(
+      "restore optional archive availability",
+      "/e2e/proxy-control",
+      { archiveAvailable: true },
     );
     await app.reload("reload diff bundle A");
     await app.control(

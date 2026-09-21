@@ -20,6 +20,11 @@ export const bspatchBuiltinToDiffOtaScenario: DetoxScenarioDefinition = {
         },
       },
     );
+    await app.control(
+      "make optional archive unavailable for built-in reuse evidence",
+      "/e2e/proxy-control",
+      { archiveAvailable: false },
+    );
     await app.launch("launch built-in base app");
     await app.tap(
       "install built-in base update",
@@ -39,6 +44,11 @@ export const bspatchBuiltinToDiffOtaScenario: DetoxScenarioDefinition = {
       {
         bundleId: "$builtinBundleId",
       },
+    );
+    await app.control(
+      "restore optional archive availability",
+      "/e2e/proxy-control",
+      { archiveAvailable: true },
     );
     await app.reload("reload built-in base update");
     await app.control(

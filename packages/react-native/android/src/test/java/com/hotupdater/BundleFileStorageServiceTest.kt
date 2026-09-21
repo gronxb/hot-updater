@@ -15,6 +15,7 @@ import org.junit.Test
 import org.junit.rules.TemporaryFolder
 import java.io.File
 import java.net.URL
+import java.util.Base64
 import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicInteger
@@ -861,11 +862,444 @@ class BundleFileStorageServiceTest {
                 "https://example.com/manifest.json",
                 sha256(root, manifest),
                 paths.associateWith { ChangedAssetDescriptor("https://example.com/$it", hash) },
-                progress::add,
+                progressCallback = progress::add,
             )
             assertTrue("Expected concurrent requests, observed ${maximum.get()}", maximum.get() > 1)
             assertTrue("Concurrency must be bounded", maximum.get() <= 4)
             assertEquals(paths.size, progress.last().details?.completedFilesCount)
+        }
+
+    @Test
+    fun `archive installs as one actual network file at equal planned bytes`() =
+        runBlocking {
+            val root = temporaryFolder.newFolder("archive-selected")
+            val archiveBytes = Base64.getDecoder().decode(TarBrArchiveExtractorTest.VALID)
+            val contents = mapOf("assets/image.png" to "image", "index.android.bundle" to "bundle")
+            val hashes = contents.mapValues { sha256(root, it.value) }
+            val manifest =
+                manifestJson(
+                    bundleId = "target",
+                    assets = hashes,
+                    byteSizes =
+                        contents.mapValues {
+                            it.value
+                                .toByteArray()
+                                .size
+                                .toLong()
+                        },
+                    downloadByteSizes = mapOf("assets/image.png" to 50, "index.android.bundle" to 55),
+                    archive = archiveJson(root, archiveBytes, tarByteSize = 3072),
+                )
+            val downloads =
+                BinaryMappingDownloadService(
+                    mapOf(
+                        MANIFEST_URL to manifest.toByteArray(),
+                        ARCHIVE_URL to archiveBytes,
+                    ),
+                )
+            val service = createService(root, downloadService = downloads, builtInAssetResolver = MappingBuiltInAssetResolver(emptyMap()))
+            val progress = CopyOnWriteArrayList<UpdateProgressPayload>()
+
+            service.updateBundle(
+                bundleId = "target",
+                manifestUrl = MANIFEST_URL,
+                manifestFileHash = sha256(root, manifest),
+                assets = hashes.mapValues { (path, hash) -> ChangedAssetDescriptor("https://example.com/$path", hash) },
+                archiveUrl = ARCHIVE_URL,
+                progressCallback = progress::add,
+            )
+
+            assertEquals(listOf(MANIFEST_URL, ARCHIVE_URL), downloads.calls)
+            assertEquals(
+                listOf("bundle.tar.br"),
+                progress
+                    .last()
+                    .details
+                    ?.files
+                    ?.map { it.path },
+            )
+            assertEquals(
+                archiveBytes.size.toLong(),
+                progress
+                    .last()
+                    .details
+                    ?.files
+                    ?.single()
+                    ?.downloadedBytes,
+            )
+            val installed = File(bundleStoreDir(root), "target")
+            assertEquals("bundle", File(installed, "index.android.bundle").readText())
+            assertEquals("image", File(installed, "assets/image.png").readText())
+            val installedManifest = JSONObject(File(installed, "manifest.json").readText())
+            assertEquals(archiveBytes.size.toLong(), installedManifest.getJSONObject("archive").getLong("downloadByteSize"))
+            assertEquals(6, installedManifest.getJSONObject("assets").getJSONObject("index.android.bundle").getLong("byteSize"))
+        }
+
+    @Test
+    fun `full network plan accepts only bounded TAR framing overhead`() =
+        runBlocking {
+            val contents = mapOf("assets/image.png" to "image", "index.android.bundle" to "bundle")
+            val logicalBytes = contents.values.sumOf { it.toByteArray().size.toLong() }
+            val archiveBytes = Base64.getDecoder().decode(TarBrArchiveExtractorTest.VALID)
+            val individualBytes = archiveBytes.size.toLong() - 1
+            val downloadByteSizes =
+                mapOf(
+                    "assets/image.png" to individualBytes / 2,
+                    "index.android.bundle" to individualBytes - individualBytes / 2,
+                )
+
+            val selectedRoot = temporaryFolder.newFolder("archive-framing-selected")
+            val selectedHashes = contents.mapValues { sha256(selectedRoot, it.value) }
+            val selectedManifest =
+                manifestJson(
+                    bundleId = "target",
+                    assets = selectedHashes,
+                    byteSizes =
+                        contents.mapValues {
+                            it.value
+                                .toByteArray()
+                                .size
+                                .toLong()
+                        },
+                    downloadByteSizes = downloadByteSizes,
+                    archive = archiveJson(selectedRoot, archiveBytes, tarByteSize = 3072),
+                )
+            val selectedDownloads =
+                BinaryMappingDownloadService(
+                    mapOf(MANIFEST_URL to selectedManifest.toByteArray(), ARCHIVE_URL to archiveBytes),
+                )
+            createService(
+                selectedRoot,
+                downloadService = selectedDownloads,
+                builtInAssetResolver = MappingBuiltInAssetResolver(emptyMap()),
+            ).updateBundle(
+                bundleId = "target",
+                manifestUrl = MANIFEST_URL,
+                manifestFileHash = sha256(selectedRoot, selectedManifest),
+                assets = selectedHashes.mapValues { (path, hash) -> ChangedAssetDescriptor("https://example.com/$path", hash) },
+                archiveUrl = ARCHIVE_URL,
+                progressCallback = {},
+            )
+            assertEquals(listOf(MANIFEST_URL, ARCHIVE_URL), selectedDownloads.calls)
+
+            val declinedRoot = temporaryFolder.newFolder("archive-framing-declined")
+            val declinedHashes = contents.mapValues { sha256(declinedRoot, it.value) }
+            val minimumTarBytes = 1024L
+            val firstByteOutsideBound = individualBytes + (minimumTarBytes - logicalBytes) + 1
+            val declinedManifest =
+                manifestJson(
+                    bundleId = "target",
+                    assets = declinedHashes,
+                    byteSizes =
+                        contents.mapValues {
+                            it.value
+                                .toByteArray()
+                                .size
+                                .toLong()
+                        },
+                    downloadByteSizes = downloadByteSizes,
+                    archive =
+                        archiveJson(declinedRoot, archiveBytes, tarByteSize = minimumTarBytes)
+                            .put("downloadByteSize", firstByteOutsideBound),
+                )
+            val declinedDownloads =
+                BinaryMappingDownloadService(
+                    mapOf(MANIFEST_URL to declinedManifest.toByteArray()) +
+                        contents.mapKeys { "https://example.com/${it.key}" }.mapValues { it.value.toByteArray() },
+                )
+            createService(
+                declinedRoot,
+                downloadService = declinedDownloads,
+                builtInAssetResolver = MappingBuiltInAssetResolver(emptyMap()),
+            ).updateBundle(
+                bundleId = "target",
+                manifestUrl = MANIFEST_URL,
+                manifestFileHash = sha256(declinedRoot, declinedManifest),
+                assets = declinedHashes.mapValues { (path, hash) -> ChangedAssetDescriptor("https://example.com/$path", hash) },
+                archiveUrl = ARCHIVE_URL,
+                progressCallback = {},
+            )
+            assertFalse(declinedDownloads.calls.contains(ARCHIVE_URL))
+        }
+
+    @Test
+    fun `corrupt archive is discarded before exactly one ordinary file pass`() =
+        runBlocking {
+            val root = temporaryFolder.newFolder("archive-fallback")
+            val archiveBytes = Base64.getDecoder().decode(TarBrArchiveExtractorTest.VALID)
+            val corruptArchive = archiveBytes.clone().apply { this[lastIndex] = (this[lastIndex].toInt() xor 1).toByte() }
+            val contents = mapOf("assets/image.png" to "image", "index.android.bundle" to "bundle")
+            val hashes = contents.mapValues { sha256(root, it.value) }
+            val manifest =
+                manifestJson(
+                    bundleId = "target",
+                    assets = hashes,
+                    byteSizes =
+                        contents.mapValues {
+                            it.value
+                                .toByteArray()
+                                .size
+                                .toLong()
+                        },
+                    downloadByteSizes = contents.mapValues { 100L },
+                    archive = archiveJson(root, archiveBytes, tarByteSize = 3072),
+                )
+            val downloads =
+                BinaryMappingDownloadService(
+                    mapOf(MANIFEST_URL to manifest.toByteArray(), ARCHIVE_URL to corruptArchive) +
+                        contents.mapKeys { "https://example.com/${it.key}" }.mapValues { it.value.toByteArray() },
+                )
+            val service = createService(root, downloadService = downloads, builtInAssetResolver = MappingBuiltInAssetResolver(emptyMap()))
+            val progress = CopyOnWriteArrayList<UpdateProgressPayload>()
+
+            service.updateBundle(
+                bundleId = "target",
+                manifestUrl = MANIFEST_URL,
+                manifestFileHash = sha256(root, manifest),
+                assets = hashes.mapValues { (path, hash) -> ChangedAssetDescriptor("https://example.com/$path", hash) },
+                archiveUrl = ARCHIVE_URL,
+                progressCallback = progress::add,
+            )
+
+            assertEquals(1, downloads.calls.count { it == ARCHIVE_URL })
+            assertEquals(1, downloads.calls.count { it == "https://example.com/index.android.bundle" })
+            assertEquals(1, downloads.calls.count { it == "https://example.com/assets/image.png" })
+            assertEquals(
+                hashes.keys.sorted(),
+                progress
+                    .last()
+                    .details
+                    ?.files
+                    ?.map { it.path },
+            )
+            assertFalse(File(bundleStoreDir(root), "target.archive.tmp").exists())
+            assertFalse(File(bundleStoreDir(root), "target.local.tmp").exists())
+        }
+
+    @Test
+    fun `partial local reuse keeps strict cost comparison with two network files`() =
+        runBlocking {
+            val root = temporaryFolder.newFolder("archive-one-remaining")
+            val archiveBytes = Base64.getDecoder().decode(TarBrArchiveExtractorTest.VALID)
+            val contents =
+                mapOf(
+                    "assets/image.png" to "image",
+                    "assets/other.png" to "other",
+                    "index.android.bundle" to "bundle",
+                )
+            val hashes = contents.mapValues { sha256(root, it.value) }
+            val manifest =
+                manifestJson(
+                    bundleId = "target",
+                    assets = hashes,
+                    byteSizes =
+                        contents.mapValues {
+                            it.value
+                                .toByteArray()
+                                .size
+                                .toLong()
+                        },
+                    downloadByteSizes = contents.mapValues { 1L },
+                    archive = archiveJson(root, archiveBytes, tarByteSize = 3072),
+                )
+            val bundleUrl = "https://example.com/index.android.bundle"
+            val otherUrl = "https://example.com/assets/other.png"
+            val downloads =
+                BinaryMappingDownloadService(
+                    mapOf(
+                        MANIFEST_URL to manifest.toByteArray(),
+                        bundleUrl to "bundle".toByteArray(),
+                        otherUrl to "other".toByteArray(),
+                    ),
+                )
+            val service =
+                createService(
+                    rootDir = root,
+                    downloadService = downloads,
+                    builtInAssetResolver = MappingBuiltInAssetResolver(mapOf("assets/image.png" to "image")),
+                )
+
+            service.updateBundle(
+                bundleId = "target",
+                manifestUrl = MANIFEST_URL,
+                manifestFileHash = sha256(root, manifest),
+                assets = hashes.mapValues { (path, hash) -> ChangedAssetDescriptor("https://example.com/$path", hash) },
+                archiveUrl = ARCHIVE_URL,
+                progressCallback = {},
+            )
+
+            assertFalse(downloads.calls.contains(ARCHIVE_URL))
+            assertEquals(1, downloads.calls.count { it == bundleUrl })
+            assertEquals(1, downloads.calls.count { it == otherUrl })
+        }
+
+    @Test
+    fun `archive selection declines incomplete expensive and overflowing cost plans`() =
+        runBlocking {
+            data class CostCase(
+                val name: String,
+                val downloadSizes: Map<String, Long>,
+                val archiveSize: Long,
+                val tarSize: Long = 3072,
+                val logicalSizes: (Map<String, String>) -> Map<String, Long> = { contents ->
+                    contents.mapValues {
+                        it.value
+                            .toByteArray()
+                            .size
+                            .toLong()
+                    }
+                },
+                val descriptors: (Map<String, String>) -> Map<String, ChangedAssetDescriptor>,
+            )
+
+            val cases =
+                listOf(
+                    CostCase("missing", mapOf("index.android.bundle" to 100), 1) { hashes ->
+                        hashes.mapValues { (path, hash) -> ChangedAssetDescriptor("https://example.com/$path", hash) }
+                    },
+                    CostCase("larger", mapOf("index.android.bundle" to 50, "assets/image.png" to 50), 4000) { hashes ->
+                        hashes.mapValues { (path, hash) -> ChangedAssetDescriptor("https://example.com/$path", hash) }
+                    },
+                    CostCase("zero-archive", mapOf("index.android.bundle" to 100, "assets/image.png" to 100), 0) { hashes ->
+                        hashes.mapValues { (path, hash) -> ChangedAssetDescriptor("https://example.com/$path", hash) }
+                    },
+                    CostCase("short-tar", mapOf("index.android.bundle" to 100, "assets/image.png" to 100), 1, tarSize = 1023) { hashes ->
+                        hashes.mapValues { (path, hash) -> ChangedAssetDescriptor("https://example.com/$path", hash) }
+                    },
+                    CostCase(
+                        "negative-framing",
+                        mapOf("index.android.bundle" to 100, "assets/image.png" to 100),
+                        1,
+                        tarSize = 1024,
+                        logicalSizes = { contents -> contents.mapValues { 600L } },
+                    ) { hashes ->
+                        hashes.mapValues { (path, hash) -> ChangedAssetDescriptor("https://example.com/$path", hash) }
+                    },
+                    CostCase(
+                        "logical-overflow",
+                        mapOf("index.android.bundle" to 100, "assets/image.png" to 100),
+                        1,
+                        tarSize = 9_007_199_254_740_991,
+                        logicalSizes = {
+                            mapOf(
+                                "index.android.bundle" to 9_007_199_254_740_991,
+                                "assets/image.png" to 1,
+                            )
+                        },
+                    ) { hashes ->
+                        hashes.mapValues { (path, hash) -> ChangedAssetDescriptor("https://example.com/$path", hash) }
+                    },
+                    CostCase(
+                        "framed-limit-overflow",
+                        mapOf("index.android.bundle" to 9_007_199_254_740_991, "assets/image.png" to 0),
+                        1,
+                    ) { hashes ->
+                        hashes.mapValues { (path, hash) -> ChangedAssetDescriptor("https://example.com/$path", hash) }
+                    },
+                    CostCase("unknown-patch", mapOf("index.android.bundle" to 100, "assets/image.png" to 100), 1) { hashes ->
+                        hashes.mapValues { (path, hash) ->
+                            ChangedAssetDescriptor(
+                                fileUrl = "https://example.com/$path",
+                                fileHash = hash,
+                                patch =
+                                    if (path == "index.android.bundle") {
+                                        BsdiffPatchDescriptor("bsdiff", "base", "a", "b", "https://example.com/patch")
+                                    } else {
+                                        null
+                                    },
+                            )
+                        }
+                    },
+                    CostCase("known-patch", mapOf("index.android.bundle" to 100, "assets/image.png" to 1), 3) { hashes ->
+                        hashes.mapValues { (path, hash) ->
+                            ChangedAssetDescriptor(
+                                fileUrl = "https://example.com/$path",
+                                fileHash = hash,
+                                patch =
+                                    if (path == "index.android.bundle") {
+                                        BsdiffPatchDescriptor("bsdiff", "base", "a", "b", "https://example.com/patch", byteSize = 1)
+                                    } else {
+                                        null
+                                    },
+                            )
+                        }
+                    },
+                    CostCase("negative-patch", mapOf("index.android.bundle" to 100, "assets/image.png" to 100), 1) { hashes ->
+                        hashes.mapValues { (path, hash) ->
+                            ChangedAssetDescriptor(
+                                fileUrl = "https://example.com/$path",
+                                fileHash = hash,
+                                patch =
+                                    if (path == "index.android.bundle") {
+                                        BsdiffPatchDescriptor("bsdiff", "base", "a", "b", "https://example.com/patch", byteSize = -1)
+                                    } else {
+                                        null
+                                    },
+                            )
+                        }
+                    },
+                    CostCase("overflowing-patch", mapOf("index.android.bundle" to 100, "assets/image.png" to 100), 1) { hashes ->
+                        hashes.mapValues { (path, hash) ->
+                            ChangedAssetDescriptor(
+                                fileUrl = "https://example.com/$path",
+                                fileHash = hash,
+                                patch =
+                                    if (path == "index.android.bundle") {
+                                        BsdiffPatchDescriptor(
+                                            "bsdiff",
+                                            "base",
+                                            "a",
+                                            "b",
+                                            "https://example.com/patch",
+                                            byteSize = Long.MAX_VALUE,
+                                        )
+                                    } else {
+                                        null
+                                    },
+                            )
+                        }
+                    },
+                    CostCase(
+                        "overflow",
+                        mapOf("index.android.bundle" to 9_007_199_254_740_991, "assets/image.png" to 1),
+                        1,
+                    ) { hashes ->
+                        hashes.mapValues { (path, hash) -> ChangedAssetDescriptor("https://example.com/$path", hash) }
+                    },
+                )
+
+            for (case in cases) {
+                val root = temporaryFolder.newFolder("archive-decline-${case.name}")
+                val archiveBytes = Base64.getDecoder().decode(TarBrArchiveExtractorTest.VALID)
+                val contents = mapOf("assets/image.png" to "image", "index.android.bundle" to "bundle")
+                val hashes = contents.mapValues { sha256(root, it.value) }
+                val manifest =
+                    manifestJson(
+                        bundleId = "target",
+                        assets = hashes,
+                        byteSizes = case.logicalSizes(contents),
+                        downloadByteSizes = case.downloadSizes,
+                        archive = archiveJson(root, archiveBytes, tarByteSize = case.tarSize).put("downloadByteSize", case.archiveSize),
+                    )
+                val downloads =
+                    BinaryMappingDownloadService(
+                        mapOf(MANIFEST_URL to manifest.toByteArray()) +
+                            contents.mapKeys { "https://example.com/${it.key}" }.mapValues { it.value.toByteArray() },
+                    )
+                val service =
+                    createService(root, downloadService = downloads, builtInAssetResolver = MappingBuiltInAssetResolver(emptyMap()))
+
+                service.updateBundle(
+                    bundleId = "target",
+                    manifestUrl = MANIFEST_URL,
+                    manifestFileHash = sha256(root, manifest),
+                    assets = case.descriptors(hashes),
+                    archiveUrl = ARCHIVE_URL,
+                    progressCallback = {},
+                )
+
+                assertFalse("${case.name} must decline archive", downloads.calls.contains(ARCHIVE_URL))
+            }
         }
 
     private fun createService(
@@ -1074,6 +1508,41 @@ class BundleFileStorageServiceTest {
         }
     }
 
+    private class BinaryMappingDownloadService(
+        private val contents: Map<String, ByteArray>,
+    ) : DownloadService {
+        val calls = CopyOnWriteArrayList<String>()
+
+        override suspend fun downloadFile(
+            fileUrl: URL,
+            destination: File,
+            fileSizeCallback: ((Long) -> Unit)?,
+            progressCallback: (DownloadProgress) -> Unit,
+        ): DownloadResult = download(fileUrl, destination, fileSizeCallback, progressCallback)
+
+        override suspend fun downloadFileOnce(
+            fileUrl: URL,
+            destination: File,
+            fileSizeCallback: ((Long) -> Unit)?,
+            progressCallback: (DownloadProgress) -> Unit,
+        ): DownloadResult = download(fileUrl, destination, fileSizeCallback, progressCallback)
+
+        private fun download(
+            fileUrl: URL,
+            destination: File,
+            fileSizeCallback: ((Long) -> Unit)?,
+            progressCallback: (DownloadProgress) -> Unit,
+        ): DownloadResult {
+            calls += fileUrl.toString()
+            val bytes = contents[fileUrl.toString()] ?: return DownloadResult.Error(IllegalArgumentException("Unexpected URL: $fileUrl"))
+            destination.parentFile?.mkdirs()
+            destination.writeBytes(bytes)
+            fileSizeCallback?.invoke(bytes.size.toLong())
+            progressCallback(DownloadProgress(1.0, bytes.size.toLong(), bytes.size.toLong()))
+            return DownloadResult.Success(destination)
+        }
+    }
+
     private class MappingBuiltInAssetResolver(
         private val contents: Map<String, String>,
     ) : BuiltInAssetResolver {
@@ -1096,6 +1565,9 @@ class BundleFileStorageServiceTest {
     private fun manifestJson(
         bundleId: String,
         assets: Map<String, String>,
+        byteSizes: Map<String, Long> = emptyMap(),
+        downloadByteSizes: Map<String, Long> = emptyMap(),
+        archive: JSONObject? = null,
     ): String =
         JSONObject()
             .put("bundleId", bundleId)
@@ -1103,10 +1575,30 @@ class BundleFileStorageServiceTest {
                 "assets",
                 JSONObject().apply {
                     assets.forEach { (path, hash) ->
-                        put(path, JSONObject().put("fileHash", hash))
+                        put(
+                            path,
+                            JSONObject()
+                                .put("fileHash", hash)
+                                .apply {
+                                    byteSizes[path]?.let { put("byteSize", it) }
+                                    downloadByteSizes[path]?.let { put("downloadByteSize", it) }
+                                },
+                        )
                     }
                 },
-            ).toString()
+            ).apply {
+                archive?.let { put("archive", it) }
+            }.toString()
+
+    private fun archiveJson(
+        rootDir: File,
+        bytes: ByteArray,
+        tarByteSize: Long,
+    ): JSONObject =
+        JSONObject()
+            .put("downloadFileHash", sha256(rootDir, bytes))
+            .put("downloadByteSize", bytes.size)
+            .put("tarByteSize", tarByteSize)
 
     private fun sha256(
         rootDir: File,
@@ -1121,7 +1613,22 @@ class BundleFileStorageServiceTest {
         }
     }
 
+    private fun sha256(
+        rootDir: File,
+        bytes: ByteArray,
+    ): String {
+        val file = File.createTempFile("hash-", null, rootDir)
+        return try {
+            file.writeBytes(bytes)
+            HashUtils.calculateSHA256(file)
+        } finally {
+            file.delete()
+        }
+    }
+
     companion object {
         private const val TEST_ISOLATION_KEY = "test-isolation-key"
+        private const val MANIFEST_URL = "https://example.com/manifest.json"
+        private const val ARCHIVE_URL = "https://example.com/bundle.tar.br"
     }
 }

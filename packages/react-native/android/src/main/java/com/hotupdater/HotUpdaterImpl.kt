@@ -280,6 +280,7 @@ class HotUpdaterImpl {
         assets: Map<String, ChangedAssetDescriptor>,
         channel: String?,
         selection: PersistedSelection? = null,
+        archiveUrl: String? = null,
         progressCallback: (UpdateProgressPayload) -> Unit,
     ) {
         if (selection != null && !bundleStorage.stageReleaseSelection(selection)) {
@@ -290,6 +291,7 @@ class HotUpdaterImpl {
             manifestUrl,
             manifestFileHash,
             assets,
+            archiveUrl,
             progressCallback,
         )
 

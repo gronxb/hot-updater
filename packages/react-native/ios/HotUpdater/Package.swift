@@ -4,6 +4,7 @@ import PackageDescription
 let coreSources = [
     "FileUtilities.swift",
     "BrotliFileDecompressor.swift",
+    "TarArchiveExtractor.swift",
     "BundleFileStorageService.swift",
     "BuiltInAssetResolver.swift",
     "BundleMetadata.swift",

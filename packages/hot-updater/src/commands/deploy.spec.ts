@@ -26,6 +26,7 @@ const { mockBuildPlugin, mockCli, mockServer, mockStoragePlugin } = vi.hoisted(
       createBundleDiff: vi.fn(),
     };
     const mockCli = {
+      createTarBrTargetFiles: vi.fn(),
       appendToProjectRootGitignore: vi.fn(),
       getCwd: vi.fn(),
       getStorageFileByteSize: vi.fn(),
@@ -65,6 +66,7 @@ vi.mock("@hot-updater/cli-tools", async (importOriginal) => {
 
   return {
     ...actual,
+    createTarBrTargetFiles: mockCli.createTarBrTargetFiles,
     HotUpdateDirUtil: {
       getDefaultOutputPath: vi.fn(() => ".hot-updater/output"),
       outputGitignorePath: ".hot-updater/output",
@@ -390,6 +392,11 @@ describe("deploy rollout wiring", () => {
       id: "bundle-123",
     });
     mockCli.prepareBundleSigning.mockResolvedValue(null);
+    mockCli.createTarBrTargetFiles.mockReset().mockResolvedValue({
+      downloadFileHash: "d".repeat(64),
+      downloadByteSize: 100,
+      tarByteSize: 2048,
+    });
 
     mockCli.loadConfig.mockResolvedValue({
       build: async () => mockBuildPlugin,
@@ -862,7 +869,7 @@ describe("deploy rollout wiring", () => {
 
     expect(commitAttemptCount).toBe(2);
     expect(mockBuildPlugin.build).toHaveBeenCalledTimes(2);
-    expect(mockStoragePlugin.put).toHaveBeenCalledTimes(4);
+    expect(mockStoragePlugin.put).toHaveBeenCalledTimes(6);
     expect(mockCli.p.log.message).not.toHaveBeenCalled();
     expect(mockCli.p.outro).toHaveBeenCalledTimes(1);
     expect(mockCli.p.outro).toHaveBeenCalledWith(
@@ -906,7 +913,14 @@ describe("deploy rollout wiring", () => {
       targetAppVersion: "1.0.x",
     });
 
-    expect(mockStoragePlugin.put).toHaveBeenCalledTimes(2);
+    expect(mockStoragePlugin.put).toHaveBeenCalledTimes(3);
+    expect(mockStoragePlugin.put.mock.calls[0]?.[0].key).toBe(
+      "bundles/bundle-123/bundle.tar.br",
+    );
+    expect(mockCli.createTarBrTargetFiles).toHaveBeenCalledWith({
+      outfile: "/mock/cwd/.hot-updater/output/bundle.tar.br",
+      targetFiles: [{ path: "/mock/build/index.bundle", name: "index.bundle" }],
+    });
     expect((await databaseHarness.bundles())[0]).toMatchObject({
       assetBaseStorageUri: "s3://bundles/assets",
       manifestFileHash: TRANSFER_FILE_HASH,
@@ -916,6 +930,35 @@ describe("deploy rollout wiring", () => {
       }),
     });
   });
+
+  it.each(["generation", "upload"])(
+    "does not publish a Bundle when archive %s fails",
+    async (phase) => {
+      if (phase === "generation") {
+        mockCli.createTarBrTargetFiles.mockRejectedValueOnce(
+          new Error("archive generation failed"),
+        );
+      } else {
+        mockStoragePlugin.put.mockImplementation(async ({ key }) => {
+          if (key.endsWith("bundle.tar.br"))
+            throw new Error("archive upload failed");
+          return { storageUri: `s3://bundles/${key}` };
+        });
+      }
+      await expect(
+        deploy({
+          channel: "production",
+          forceUpdate: false,
+          interactive: false,
+          platform: "ios",
+          targetAppVersion: "1.0.x",
+        }),
+      ).rejects.toThrow("process.exit unexpectedly called");
+      expect(await databaseHarness.bundles()).toEqual([]);
+      expect(databaseHarness.commit).not.toHaveBeenCalled();
+      expect(mockServer.createBundleDiff).not.toHaveBeenCalled();
+    },
+  );
 
   it("preserves canonical special-character base segments in derived asset URIs", async () => {
     mockStoragePlugin.put.mockImplementation(async ({ key }) => ({
@@ -990,7 +1033,7 @@ describe("deploy rollout wiring", () => {
       targetAppVersion: "1.0.x",
     });
 
-    expect(mockStoragePlugin.put).toHaveBeenCalledTimes(21);
+    expect(mockStoragePlugin.put).toHaveBeenCalledTimes(22);
     expect(maxActiveAssetUploads).toBeGreaterThan(1);
     expect(maxActiveAssetUploads).toBeLessThanOrEqual(8);
   });
@@ -1019,7 +1062,7 @@ describe("deploy rollout wiring", () => {
     expect(mockStoragePlugin.exists).toHaveBeenCalledWith({
       storageUri: `s3://bundles/assets/sha256/aa/${LOGICAL_FILE_HASH}.png`,
     });
-    expect(mockStoragePlugin.put).toHaveBeenCalledTimes(2);
+    expect(mockStoragePlugin.put).toHaveBeenCalledTimes(3);
     expect(mockStoragePlugin.put).toHaveBeenCalledWith(
       expect.objectContaining({
         key: `assets/sha256/aa/${LOGICAL_FILE_HASH}.png`,
@@ -1050,7 +1093,7 @@ describe("deploy rollout wiring", () => {
     expect(mockStoragePlugin.exists).toHaveBeenCalledWith({
       storageUri: `s3://bundles/assets/sha256/aa/${LOGICAL_FILE_HASH}.png`,
     });
-    expect(mockStoragePlugin.put).toHaveBeenCalledTimes(1);
+    expect(mockStoragePlugin.put).toHaveBeenCalledTimes(2);
     expect(mockStoragePlugin.put).not.toHaveBeenCalledWith(
       expect.objectContaining({
         key: `assets/sha256/aa/${LOGICAL_FILE_HASH}.png`,
@@ -1161,10 +1204,10 @@ describe("deploy rollout wiring", () => {
       targetAppVersion: "1.0.x",
     });
 
-    expect(uploadMessages).toContain("Uploading 0% (0/3)");
-    expect(uploadMessages).toContain("Uploading 33% (1/3)");
-    expect(uploadMessages).toContain("Uploading 67% (2/3)");
-    expect(uploadMessages).toContain("Uploading 100% (3/3)");
+    expect(uploadMessages).toContain("Uploading 0% (0/4)");
+    expect(uploadMessages).toContain("Uploading 25% (1/4)");
+    expect(uploadMessages).toContain("Uploading 50% (2/4)");
+    expect(uploadMessages).toContain("Uploading 100% (4/4)");
   });
 
   it("uploads hermes bundle artifacts using the manifest filename", async () => {
@@ -1201,6 +1244,11 @@ describe("deploy rollout wiring", () => {
     expect(writeBundleManifestFile).toHaveBeenCalledWith({
       buildPath: "/mock/build",
       manifest: {
+        archive: {
+          downloadFileHash: "d".repeat(64),
+          downloadByteSize: 100,
+          tarByteSize: 2048,
+        },
         assets: {
           "assets/src/logo.png": {
             downloadByteSize: 4,

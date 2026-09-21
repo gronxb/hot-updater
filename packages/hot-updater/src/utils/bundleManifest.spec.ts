@@ -52,9 +52,11 @@ describe("bundleManifest", () => {
       bundleId: "bundle-123",
       assets: {
         "assets/logo.png": {
+          byteSize: 12,
           fileHash: hash("logo-content"),
         },
         "index.android.bundle": {
+          byteSize: 14,
           fileHash: hash("bundle-content"),
         },
       },
@@ -85,6 +87,7 @@ describe("bundleManifest", () => {
       bundleId: "bundle-456",
       assets: {
         "index.android.bundle": {
+          byteSize: 14,
           fileHash: hash("bundle-content"),
         },
       },
@@ -116,6 +119,7 @@ describe("bundleManifest", () => {
 
     expect(manifest).toEqual(writtenManifest);
     expect(writtenManifest.assets["index.ios.bundle"]).toEqual({
+      byteSize: 14,
       fileHash: expectedHash,
       signature: `signed:${expectedHash}`,
     });

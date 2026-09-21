@@ -219,6 +219,7 @@ class HotUpdaterImplTest {
             manifestUrl: String,
             manifestFileHash: String,
             assets: Map<String, ChangedAssetDescriptor>,
+            archiveUrl: String?,
             progressCallback: (UpdateProgressPayload) -> Unit,
         ) = Unit
 

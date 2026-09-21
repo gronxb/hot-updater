@@ -10,6 +10,7 @@ import {
   type Bundle,
 } from "@hot-updater/core";
 import {
+  getBundleArchiveStorageUri,
   getManifestAssetDownloadPath,
   isContentAddressedAssetFileHash,
   resolveManifestAssetStorageUri,
@@ -25,6 +26,11 @@ type BundleManifestAsset = {
 type BundleManifest = {
   bundleId: string;
   assets: Record<string, BundleManifestAsset>;
+  archive?: {
+    downloadFileHash?: unknown;
+    downloadByteSize?: unknown;
+    tarByteSize?: unknown;
+  };
 };
 
 type PlannedFile = {
@@ -305,6 +311,9 @@ async function resolveAssets(
           baseFileHash: patchAsset.patch.baseFileHash,
           patchFileHash: patchAsset.patch.patchFileHash,
           patchUrl,
+          ...(patchAsset.patch.byteSize === null
+            ? {}
+            : { byteSize: patchAsset.patch.byteSize }),
         },
       };
     }
@@ -383,7 +392,11 @@ export async function resolveManifestArtifacts({
   targetBundle: Bundle | null;
 }): Promise<Pick<
   ArtifactInfo,
-  "artifactProtocolVersion" | "assets" | "manifestFileHash" | "manifestUrl"
+  | "artifactProtocolVersion"
+  | "assets"
+  | "manifestFileHash"
+  | "manifestUrl"
+  | "archiveUrl"
 > | null> {
   const manifestStorageUri = targetBundle
     ? getManifestStorageUri(targetBundle)
@@ -430,10 +443,31 @@ export async function resolveManifestArtifacts({
     return null;
   }
 
+  let archiveUrl: string | null = null;
+  const archive = targetManifest.archive;
+  if (
+    archive &&
+    isContentAddressedAssetFileHash(archive.downloadFileHash) &&
+    (asByteSize(archive.downloadByteSize) ?? 0) > 0 &&
+    (asByteSize(archive.tarByteSize) ?? 0) > 0
+  ) {
+    try {
+      archiveUrl = await resolveFileUrl(
+        getBundleArchiveStorageUri({
+          manifestStorageUri,
+          bundleId: targetBundle.id,
+        }),
+      );
+    } catch {
+      // Bulk transport is optional; all original URLs remain available.
+    }
+  }
+
   return {
     artifactProtocolVersion: ARTIFACT_PROTOCOL_VERSION,
     assets: resolved.assets,
     manifestFileHash,
     manifestUrl,
+    ...(archiveUrl ? { archiveUrl } : {}),
   };
 }

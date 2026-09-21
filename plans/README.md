@@ -1,10 +1,10 @@
 # 내장 파일 재사용과 manifest OTA 구현
 
-기준: `origin/next` / `f5fffea9f`를 `585d529f6`에서 병합했다. 충돌은 생성된 fingerprint 5곳이며 네이티브 수정 후 재생성했다.
-작업: `feature/builtin-manifest-v1`, GPT-5.6 Sol / Medium.
+기준: `origin/next` / `333188ab9`를 `1aa201bbd`에서 병합했다. 앞선 fingerprint 충돌 5곳을 해결했고 #1322 네이티브 변경 후 다시 생성했다.
+작업: `feature/builtin-manifest-v1`. 적대적 검토·구현 서브에이전트: GPT-5.6 Sol / Medium.
 
 [PRD](001-builtin-manifest-v1-prd.md)를 전부 읽고 순서대로 실행한다.
-서브에이전트는 사용하지 않는다. 기존 main 및 Insights worktree는 수정하지 않는다.
+사용자가 요청한 두 서브에이전트의 적대적 합의에 따라 tar.br 단일 보조 경로를 구현한다. 기존 main 및 Insights worktree는 수정하지 않는다.
 
 | 단계 | 범위 | 의존 | 상태 | 증거 |
 | --- | --- | --- | --- | --- |
@@ -12,8 +12,8 @@
 | M0 | Release 패키징 실측·재사용 검증 | PRD | DONE | `evidence/builtin-packaging.{md,json}` |
 | M1 | 전체 파일 descriptor·base 없는 설치 | M0 조사 | DONE | server/SDK 34 tests, Android storage, Swift 36 tests, iOS Release Pod target |
 | M2 | 내장 resolver·lazy 인덱스 | M0, M1 | REVERIFY | Android unit, Swift 28 tests, five full Release E2E profiles on iOS and Android |
-| M3 | 전송 비용 검증·아카이브 제거 | M0–M2 gate | NOT ACCEPTED | `evidence/native-transfer.{md,json}`; 4-way download improves sequential time, but 1,000-file full install remains 9.3x ZIP |
-| M4 | 통합 검증·문서·changeset | M3 | REVERIFY | required checks and five exact-head standalone profiles pass; changeset added |
+| M3 | tar.br 단일 보조 경로·전송 비용 검증 | M0–M2 gate | DONE | `evidence/native-tar-br-transfer.{md,json}`; 80 native runs, 1,000-file uncapped 9.174s → 0.905s, 1,001 → 2 requests; 512 KiB/s에서는 거의 동률 |
+| M4 | 통합 검증·문서·changeset | M3 | REVERIFY | tar.br 구현 후 최종 revision의 required checks 및 다섯 full standalone profile 재실행 |
 
 2026-09-21 PRD 재검증에서 이전 완료 판정을 정정했다. cached target 무결성,
 descriptor 전체 검증, 중단 후 완료 파일 재사용, 제한된 병렬 다운로드,
@@ -54,3 +54,11 @@ descriptor 전체 검증, 중단 후 완료 파일 재사용, 제한된 병렬 �
 - 2026-09-21: `standalone-drizzle` full Release E2E도 같은 revision에서 iOS 15/15 + 11/11, Android 26/26으로 통과했다. 다섯 `standalone-*` 프로필의 exact-head 검증이 모두 완료됐다.
 
 - 2026-09-21: 감사 수정 `8081720c0`의 build/type/lint, unit 2,727, integration 388, Swift 31, Android native unit을 통과했다. CI의 ktlint 1.3.1에 맞춰 조건식 줄바꿈을 수정했다. 실제 Swift installer 60회 측정은 `evidence/native-transfer.md`에 기록했다. M3 성능 게이트는 통과로 표시하지 않는다.
+
+- 2026-09-21: tar.br 유지 찬성/반대 서브에이전트가 manifest 내 archive descriptor, 재사용 후 결정적 선택, 단 한 번의 원본 fallback, 단일 native 추출 경로에 합의했다. `evidence/tar-br-consensus.md`와 PRD 5.7을 새 구현 기준으로 한다. 이전 revision의 대기 E2E는 취소하고 구현 완료 후 다시 제출한다.
+
+- 2026-09-21: Sol Medium 찬반 검토와 실제 압축 크기 반례를 반영해 tar.br 계약을 확정했다. 전체 파일이 네트워크 대상이고 patch가 없을 때만 서명된 TAR framing 크기까지 추가 전송을 허용한다. 재사용/patch가 있으면 엄격한 크기 비교를 유지한다.
+- 2026-09-21: deterministic tar.br 생성·서명·업로드, canonical sibling URL, native 선택/안전 추출/단일 복구를 구현했다. iOS의 불필요한 복사·재해싱을 atomic rename으로 제거했고 복구 실패 시 설치를 중단한다. ZIP/gzip OTA decoder와 전략 계층은 없다.
+- 2026-09-21: 최종 native 구현 Swift 44 cases + XCTest 3, Android 64 tests, 양 architecture 컴파일, ktlint 통과. build 26 projects, type 34 projects, lint, unit 2,747 tests, integration 388 tests 통과. E2E 지원 259 tests도 통과했다.
+- 2026-09-21: 원본과 동일한 fixture로 80회 native 설치를 측정했다. 1,000-file uncapped 9.174s → 0.905s, 1,001 → 2 requests, +4,434 bytes; 512 KiB/s에서는 9.108s → 9.032s로 거의 동률이다. sampled peak disk는 4.36 → 12.95 MB. 모든 결과 해시를 검증했고 작은 delta는 동일 전송량/요청 수를 유지한다.
+- 최종 Release E2E는 아직 인수하지 않았다. builtin PNG/font 재사용 시나리오에서는 optional archive URL 생략을 명시하며, 정상 archive 및 corrupt fallback의 요청 수와 모든 파일 해시는 별도 시나리오로 검증한다. 동일 최종 PR 구현을 push한 뒤 standalone 5개 full profile을 실행한다.

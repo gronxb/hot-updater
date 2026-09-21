@@ -87,7 +87,7 @@ afterEach(() => {
 });
 
 describe("createCopiedBundleArtifacts", () => {
-  it("copies manifest files without creating an archive", async () => {
+  it("copies original files and authenticates a new tar.br sibling", async () => {
     const logo = Buffer.from("logo");
     const hbc = Buffer.from("hermes bytecode");
     const compressedHbc = brotliCompressSync(hbc);
@@ -137,16 +137,28 @@ describe("createCopiedBundleArtifacts", () => {
       patches: [],
     });
     expect(result.uploadedStorageUris).toEqual([
+      "s3://bucket/bundles/copy/bundle.tar.br",
       "s3://bucket/bundles/copy/manifest.json",
     ]);
     expect([...uploaded.keys()]).not.toEqual(
-      expect.arrayContaining([expect.stringMatching(/bundle\.(zip|tar)/)]),
+      expect.arrayContaining([expect.stringMatching(/bundle\.(zip|tar\.gz)/)]),
     );
 
     const copiedManifest = JSON.parse(
       uploaded.get("bundles/copy/manifest.json")!.toString("utf8"),
     ) as Manifest;
     expect(copiedManifest.bundleId).toBe("copy");
+    const archive = uploaded.get("bundles/copy/bundle.tar.br")!;
+    expect((copiedManifest as Manifest & { archive: unknown }).archive).toEqual(
+      {
+        downloadFileHash: sha256(archive),
+        downloadByteSize: archive.length,
+        tarByteSize: brotliDecompressSync(archive).length,
+      },
+    );
+    expect(result.bundle.manifestFileHash).toBe(
+      sha256(uploaded.get("bundles/copy/manifest.json")!),
+    );
     const copiedHbc = copiedManifest.assets["index.ios.bundle"]!;
     const copiedTransfer = uploaded.get(
       `assets/${getManifestAssetStoragePath({
