@@ -22,6 +22,8 @@ import com.lynx.jsbridge.RuntimeLifecycleListener
 import com.lynx.tasm.LynxViewBuilder
 import com.tiktok.sparkling.SparklingContext
 import com.tiktok.sparkling.hybridkit.base.HybridKitType
+import com.tiktok.sparkling.hybridkit.base.IHybridKitLifeCycle
+import com.tiktok.sparkling.hybridkit.base.IKitView
 import com.tiktok.sparkling.hybridkit.lynx.SimpleLynxKitView
 import com.tiktok.sparkling.hybridkit.lynx.SparklingLynxModuleWrapper
 import com.tiktok.sparkling.hybridkit.scheme.HybridSchemeParam
@@ -903,7 +905,12 @@ class HotUpdaterSparklingHost(
         var constructedKit: SimpleLynxKitView? = null
         val kit = try {
             bridge.registerLynxModule(builder, page.containerId)
-            SimpleLynxKitView(activity, sparkling, builder, null, null).also {
+            val lifecycle = object : IHybridKitLifeCycle() {
+                override fun onDestroy(kitView: IKitView) {
+                    runtimeLifecycle.onViewDestroyed()
+                }
+            }
+            SimpleLynxKitView(activity, sparkling, builder, null, lifecycle).also {
                 constructedKit = it
                 bridge.init(it, page.containerId, SPARKLING_LYNX_PLATFORM)
                 sparkling.bridge = bridge
@@ -1285,7 +1292,6 @@ class HotUpdaterSparklingView internal constructor(
         onRuntimeDetached?.let(runtimeLifecycle::whenDetached)
         old.destroy(true)
         removeView(old)
-        runtimeLifecycle.onViewDestroyed()
     }
 
     override fun close() = retire()
