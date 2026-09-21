@@ -231,6 +231,11 @@ private final class MatrixHarnessViewController: UIViewController {
         staleProbe = host.captureDiagnosticAuthorities()
     }
 
+    override func viewDidLayoutSubviews() {
+        super.viewDidLayoutSubviews()
+        content.frame = view.safeAreaLayoutGuide.layoutFrame
+    }
+
     @objc private func replacePrimary() {
         staleProbe = host.captureDiagnosticAuthorities()
         host.triggerReloadForDiagnostics { result in
