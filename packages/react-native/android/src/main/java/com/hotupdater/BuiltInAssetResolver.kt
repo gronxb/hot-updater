@@ -65,14 +65,22 @@ internal class AndroidBuiltInAssetResolver(
         val directory = assetPath.substring(0, firstSlash)
         val filename = assetPath.substring(firstSlash + 1)
         val resourceType = directory.substringBefore('-')
-        if (resourceType != "drawable" && resourceType != "raw") return null
+        if (resourceType != "drawable" && resourceType != "raw" && resourceType != "font") return null
         val resourceName = filename.substringBeforeLast('.')
         if (resourceName.isEmpty() || resourceName.any { !(it == '_' || it.isLowerCase() || it.isDigit()) }) {
             return null
         }
 
         return try {
-            val resourceId = context.resources.getIdentifier(resourceName, resourceType, context.packageName)
+            var resourceId = context.resources.getIdentifier(resourceName, resourceType, context.packageName)
+            // Metro emits fonts in raw/, while Re.Pack emits the same bytes in font/.
+            if (resourceId == 0 &&
+                (resourceType == "raw" || resourceType == "font") &&
+                filename.substringAfterLast('.') in setOf("ttf", "otf", "ttc")
+            ) {
+                val alternateType = if (resourceType == "raw") "font" else "raw"
+                resourceId = context.resources.getIdentifier(resourceName, alternateType, context.packageName)
+            }
             if (resourceId == 0) return null
             val value = TypedValue()
             val density = densityFor(directory)
