@@ -52,9 +52,14 @@ export default HotUpdater.wrap({
 
 ```tsx
 import { defineConfig } from "hot-updater";
-import { config } from "dotenv";
 
-config({ path: ".env.hotupdater" });
+try {
+  process.loadEnvFile(".env.hotupdater");
+} catch (error) {
+  if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
+    throw error;
+  }
+}
 
 export default defineConfig({
   releaseChannel: "dev", // Specifying the release channel

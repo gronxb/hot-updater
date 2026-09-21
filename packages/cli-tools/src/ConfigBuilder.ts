@@ -140,7 +140,6 @@ export class ConfigBuilder implements IConfigBuilder {
 
   constructor() {
     // Add common imports needed by almost all configurations by default
-    this.addImport({ pkg: "dotenv", named: ["config"] });
     this.addImport({ pkg: "hot-updater", named: ["defineConfig"] });
   }
 
@@ -270,7 +269,13 @@ export class ConfigBuilder implements IConfigBuilder {
     const text = `
 ${importStatements}
 
-config({ path: ".env.hotupdater" });
+try {
+  process.loadEnvFile(".env.hotupdater");
+} catch (error) {
+  if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
+    throw error;
+  }
+}
 
 ${this.intermediateCode ? `${this.intermediateCode}\n` : ""}
 export default defineConfig({

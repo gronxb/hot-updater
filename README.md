@@ -84,10 +84,15 @@
   ```tsx
   import { bare } from "@hot-updater/bare";
   import { supabaseDatabase, supabaseStorage } from "@hot-updater/supabase";
-  import { config } from "dotenv";
   import { defineConfig } from "hot-updater";
 
-  config({ path: ".env.hotupdater" });
+  try {
+    process.loadEnvFile(".env.hotupdater");
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
+      throw error;
+    }
+  }
 
   export default defineConfig({
     build: bare({ enableHermes: true }),
@@ -108,10 +113,15 @@
 ```tsx
 import { bare } from "@hot-updater/bare";
 import { d1Database, r2Storage } from "@hot-updater/cloudflare";
-import { config } from "dotenv";
 import { defineConfig } from "hot-updater";
 
-config({ path: ".env.hotupdater" });
+try {
+  process.loadEnvFile(".env.hotupdater");
+} catch (error) {
+  if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
+    throw error;
+  }
+}
 
 export default defineConfig({
   build: bare({ enableHermes: true }),
@@ -136,10 +146,15 @@ export default defineConfig({
 ```tsx
 import { bare } from "@hot-updater/bare";
 import { s3Storage, s3Database } from "@hot-updater/aws";
-import { config } from "dotenv";
 import { defineConfig } from "hot-updater";
 
-config({ path: ".env.hotupdater" });
+try {
+  process.loadEnvFile(".env.hotupdater");
+} catch (error) {
+  if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
+    throw error;
+  }
+}
 
 const options = {
   bucketName: process.env.HOT_UPDATER_S3_BUCKET_NAME!,
@@ -163,10 +178,15 @@ export default defineConfig({
 import { bare } from '@hot-updater/bare';
 import {firebaseStorage, firebaseDatabase} from '@hot-updater/firebase';
 import { applicationDefault } from 'firebase-admin/app';
-import { config } from "dotenv";
 import { defineConfig } from "hot-updater";
 
-config({ path: ".env.hotupdater" });
+try {
+  process.loadEnvFile(".env.hotupdater");
+} catch (error) {
+  if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
+    throw error;
+  }
+}
 
 // https://firebase.google.com/docs/admin/setup?hl=en#initialize_the_sdk_in_non-google_environments
 // Check your .env.hotupdater file and add the credentials
