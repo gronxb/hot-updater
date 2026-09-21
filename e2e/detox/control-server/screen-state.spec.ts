@@ -144,6 +144,37 @@ describe("E2E screen state control boundary", () => {
     );
   });
 
+  it("rejects ordinary evidence from a retired launch or runtime generation", () => {
+    beginE2eScreenStateLaunch("launch-active");
+    handlePatchE2eScreenState({
+      launchGeneration: "launch-active",
+      runtimeGenerationEpoch: "2",
+      runtimeScenarioMarker: "replacement-marker",
+    });
+
+    expect(() =>
+      handlePatchE2eScreenState({
+        generationEvents: '{"latestSequence":"56"}',
+        launchGeneration: "launch-retired",
+        runtimeGenerationEpoch: "1",
+        updateActionResult: "generation-events -> 56",
+      }),
+    ).toThrow("stale screen state launch generation");
+    expect(() =>
+      handlePatchE2eScreenState({
+        generationEvents: '{"latestSequence":"56"}',
+        launchGeneration: "launch-active",
+        runtimeGenerationEpoch: "1",
+        updateActionResult: "generation-events -> 56",
+      }),
+    ).toThrow("stale screen state runtime generation");
+    expect(readE2eScreenStateSnapshot()).toMatchObject({
+      generationEvents: null,
+      runtimeScenarioMarker: "replacement-marker",
+      updateActionResult: "idle",
+    });
+  });
+
   it("allows control-driver action resets after a generated launch", () => {
     beginE2eScreenStateLaunch("launch-active");
 

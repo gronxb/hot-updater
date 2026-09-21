@@ -1806,19 +1806,52 @@ class LynxUpdaterController internal constructor(
     }
     private fun pruneUnused() {
         synchronized(stateLock) { if (closed) return }
-        runCatching { installer.prune { removeUnused -> synchronized(stateLock) {
-            if (closed) return@synchronized
-            val receipts = listOfNotNull(running, receipt("active"), receipt("confirmed"), receipt("next")) + preparations.values.map { it.receipt }
-            // runningFiles remains protected for the whole process, including asynchronous
-            // image work dispatched before a context closes. Every secondary shares it.
-            val retained = receipts.map { it.bundleId }.toSet() + preparing.values + runningFiles.bundleId
-            val existing = removeUnused(retained)
-            val proofKeys = receipts.map(::receiptKey).toSet()
-            store.update { next ->
-                next.optJSONObject("artifacts")?.let { records -> records.keys().asSequence().toList().filter { it !in existing }.forEach(records::remove) }
-                next.optJSONObject("rollbackProofs")?.let { proofs -> proofs.keys().asSequence().toList().filter { it !in proofKeys }.forEach(proofs::remove) }
+        runCatching {
+            var existing: Set<String>? = null
+            installer.prune { removeUnused ->
+                var active = false
+                val retained = synchronized(stateLock) {
+                    if (closed) return@synchronized emptySet()
+                    active = true
+                    val receipts = listOfNotNull(
+                        running,
+                        receipt("active"),
+                        receipt("confirmed"),
+                        receipt("next"),
+                    ) + preparations.values.map { it.receipt }
+                    // runningFiles remains protected for the whole process,
+                    // including asynchronous image work dispatched before a
+                    // context closes. Every secondary shares it.
+                    receipts.map { it.bundleId }.toSet() +
+                        preparing.values + runningFiles.bundleId
+                }
+                if (active) existing = removeUnused(retained)
             }
-        } } }.onFailure { Log.e(TAG, "Unused cache cleanup deferred", it) }
+            existing?.let { installed ->
+                synchronized(stateLock) {
+                    if (closed) return@synchronized
+                    val receipts = listOfNotNull(
+                        running,
+                        receipt("active"),
+                        receipt("confirmed"),
+                        receipt("next"),
+                    ) + preparations.values.map { it.receipt }
+                    val proofKeys = receipts.map(::receiptKey).toSet()
+                    store.update { next ->
+                        next.optJSONObject("artifacts")?.let { records ->
+                            records.keys().asSequence().toList()
+                                .filter { it !in installed }
+                                .forEach(records::remove)
+                        }
+                        next.optJSONObject("rollbackProofs")?.let { proofs ->
+                            proofs.keys().asSequence().toList()
+                                .filter { it !in proofKeys }
+                                .forEach(proofs::remove)
+                        }
+                    }
+                }
+            }
+        }.onFailure { Log.e(TAG, "Unused cache cleanup deferred", it) }
     }
     fun close() {
         val prepared = synchronized(stateLock) {

@@ -245,9 +245,11 @@ export const handlePatchE2eScreenState = (payload: unknown) => {
   const publishesRuntimeMarker =
     recordPayload !== null &&
     typeof recordPayload.runtimeScenarioMarker === "string";
+  const carriesLaunchGeneration =
+    recordPayload !== null && "launchGeneration" in recordPayload;
   const incomingEpoch = canonicalEpoch(recordPayload?.runtimeGenerationEpoch);
   if (
-    publishesRuntimeMarker &&
+    (publishesRuntimeMarker || carriesLaunchGeneration) &&
     e2eScreenStateLaunchGeneration !== null &&
     recordPayload?.launchGeneration !== e2eScreenStateLaunchGeneration
   ) {
@@ -256,7 +258,7 @@ export const handlePatchE2eScreenState = (payload: unknown) => {
       received: recordPayload?.launchGeneration,
     });
   }
-  if (publishesRuntimeMarker && incomingEpoch !== null) {
+  if (incomingEpoch !== null) {
     if (
       e2eScreenStateRuntimeGenerationEpoch !== null &&
       BigInt(incomingEpoch) < BigInt(e2eScreenStateRuntimeGenerationEpoch)
