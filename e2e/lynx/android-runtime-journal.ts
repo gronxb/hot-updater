@@ -916,19 +916,57 @@ export function evaluateFontDiagnosticRecoveriesByAndroidJournal(
   }
 
   const events = journal.events;
-  const diagnosticIndexes = events.flatMap((event, index) => {
+  const currentProcessDiagnosticIndexes = events.flatMap((event, index) => {
     const identity = managedIdentity(event.details);
     return event.name === "engineDiagnostic" &&
       identity?.processId === evidence.currentProcessId
       ? [index]
       : [];
   });
-  if (diagnosticIndexes.length !== relativePaths.length) {
+  if (currentProcessDiagnosticIndexes.length < relativePaths.length) {
     return recoveryRejected(
-      diagnosticIndexes.length === 0
+      currentProcessDiagnosticIndexes.length === 0
         ? "diagnostic.missing"
         : "diagnostic.count",
     );
+  }
+  const diagnosticIndexes = currentProcessDiagnosticIndexes.slice(
+    -relativePaths.length,
+  );
+  const ignoredDiagnosticIndex = currentProcessDiagnosticIndexes.at(
+    -(relativePaths.length + 1),
+  );
+  const firstDiagnosticIndex = diagnosticIndexes[0];
+  if (
+    ignoredDiagnosticIndex !== undefined &&
+    firstDiagnosticIndex !== undefined
+  ) {
+    const ignoredIdentity = managedIdentity(
+      events[ignoredDiagnosticIndex].details,
+    );
+    const firstIdentity = managedIdentity(events[firstDiagnosticIndex].details);
+    const ignoredGenerationCompleted = events
+      .slice(ignoredDiagnosticIndex + 1, firstDiagnosticIndex)
+      .some((event) => {
+        const identity = managedIdentity(event.details);
+        return (
+          event.name === "jsReady" &&
+          identity !== null &&
+          ignoredIdentity !== null &&
+          sameIdentity(identity, ignoredIdentity) &&
+          isConfirmedReadinessStatus(
+            record(event.details.confirmation)?.status,
+          )
+        );
+      });
+    if (
+      ignoredIdentity === null ||
+      firstIdentity === null ||
+      sameIdentity(ignoredIdentity, firstIdentity) ||
+      !ignoredGenerationCompleted
+    ) {
+      return recoveryRejected("diagnostic.count");
+    }
   }
 
   let lastReadyIndex = -1;

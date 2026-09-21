@@ -7,6 +7,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   type AndroidRuntimeJournalEvidence,
+  evaluateFontDiagnosticRecoveriesByAndroidJournal,
   evaluateFontDiagnosticRecoveryByAndroidJournal,
   formatAndroidRuntimeJournalRecoveryDiagnostic,
   isFontDiagnosticRecoveredByAndroidJournal,
@@ -129,6 +130,43 @@ describe("Android runtime journal recovery diagnostics", () => {
       ).toEqual({ recovered: true });
     },
   );
+
+  it("recovers diagnostics captured after a log checkpoint from a cumulative process journal", () => {
+    const source = JSON.parse(
+      fixture("android-s1-runtime-events.json"),
+    ) as CapturedJournal;
+    const nextGeneration = structuredClone(source.events);
+    for (const event of nextGeneration) {
+      for (const field of [
+        "attemptId",
+        "containerId",
+        "contextId",
+        "generationId",
+        "primaryContextId",
+      ]) {
+        if (typeof event.details[field] === "string") {
+          event.details[field] = `${event.details[field]}-next`;
+        }
+      }
+      if (Array.isArray(event.details.contextIds)) {
+        event.details.contextIds = event.details.contextIds.map(
+          (value) => `${value}-next`,
+        );
+      }
+    }
+    source.events.push(...nextGeneration);
+    source.events.forEach((event, index) => {
+      event.sequence = String(index + 1);
+    });
+    source.nextSequence = String(source.events.length + 1);
+
+    expect(
+      evaluateFontDiagnosticRecoveriesByAndroidJournal(
+        ["assets/probe.ttf"],
+        contractEnvelope(canonical(source)),
+      ),
+    ).toEqual({ recovered: true });
+  });
 
   it("accepts a stale STARTING screen value when the native journal confirms readiness", () => {
     const evidence = contractEnvelope(
