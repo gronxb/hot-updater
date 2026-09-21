@@ -1,7 +1,8 @@
 import fs from "fs";
 import path from "path";
 
-import { getCwd, getReactNativeMetadatas, p } from "@hot-updater/cli-tools";
+import { getCwd, p } from "@hot-updater/cli-tools";
+import { getReactNativeMetadatas } from "@hot-updater/react-native/build";
 import { execa } from "execa";
 
 export const installPodsIfNeeded = async (sourceDir: string): Promise<void> => {

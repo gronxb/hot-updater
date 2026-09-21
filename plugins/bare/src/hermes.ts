@@ -1,7 +1,7 @@
 import fs from "fs";
 import path from "path";
 
-import { getReactNativeMetadatas } from "@hot-updater/cli-tools";
+import { getReactNativeMetadatas } from "@hot-updater/react-native/build";
 import { execa } from "execa";
 
 /**

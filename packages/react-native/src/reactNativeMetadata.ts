@@ -1,11 +1,8 @@
-import fs from "fs";
+import fs from "node:fs";
 import { createRequire } from "node:module";
-import path from "path";
+import path from "node:path";
 
 import { getMajor, getMinor, getPatch } from "verkit";
-
-import { getCwd } from "./cwd";
-import { p } from "./prompts";
 
 export interface ReactNativeMetadata {
   packagePath: string;
@@ -16,8 +13,10 @@ export interface ReactNativeMetadata {
     patch?: number;
   };
 }
-export const getReactNativeMetadatas = (cwd?: string): ReactNativeMetadata => {
-  if (!cwd) cwd = getCwd();
+
+export const getReactNativeMetadatas = (
+  cwd = process.cwd(),
+): ReactNativeMetadata => {
   try {
     const require = createRequire(import.meta.url);
     const packagePath = path.join(
@@ -28,27 +27,23 @@ export const getReactNativeMetadatas = (cwd?: string): ReactNativeMetadata => {
       fs.readFileSync(path.join(packagePath, "package.json"), "utf-8"),
     );
     const versionRaw: string = packageJson.version;
-    const major = getMajor(versionRaw);
-    const minor = getMinor(versionRaw);
-    const patch = getPatch(versionRaw);
-
     return {
       packagePath,
       versionRaw,
-      version: { major, minor, patch },
+      version: {
+        major: getMajor(versionRaw),
+        minor: getMinor(versionRaw),
+        patch: getPatch(versionRaw),
+      },
     };
-  } catch (e) {
-    p.log.warn(
-      `Failed to parse react-native dependency path. Default values will be returned. This can cause fatal issue in this process.\n${e}`,
+  } catch (error) {
+    console.warn(
+      `Failed to parse react-native dependency path. Default values will be returned. This can cause a fatal issue in this process.\n${error}`,
     );
     return {
       packagePath: path.join(cwd, "node_modules", "react-native"),
       versionRaw: "0.0.0",
-      version: {
-        major: 0,
-        minor: 0,
-        patch: 0,
-      },
+      version: { major: 0, minor: 0, patch: 0 },
     };
   }
 };

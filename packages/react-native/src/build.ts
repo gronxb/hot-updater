@@ -8,6 +8,10 @@ import {
 } from "@hot-updater/plugin-core";
 
 export { createReactNativeFingerprint } from "./buildFingerprint";
+export {
+  getReactNativeMetadatas,
+  type ReactNativeMetadata,
+} from "./reactNativeMetadata";
 
 export interface ReactNativeArtifactSelection {
   artifacts: BuildArtifact[];
