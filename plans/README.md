@@ -11,16 +11,16 @@
 | PRD | 요구·구현 계약·검증 기준 | — | DONE | `001-builtin-manifest-v1-prd.md` |
 | M0 | Release 패키징 실측·재사용 검증 | PRD | DONE | `evidence/builtin-packaging.{md,json}` |
 | M1 | 전체 파일 descriptor·base 없는 설치 | M0 조사 | DONE | server/SDK 34 tests, Android storage, Swift 36 tests, iOS Release Pod target |
-| M2 | 내장 resolver·lazy 인덱스 | M0, M1 | REVERIFY | Android unit, Swift 28 tests, five full Release E2E profiles on iOS and Android |
+| M2 | 내장 resolver·lazy 인덱스 | M0, M1 | DONE | `evidence/standalone-tar-br.{md,json}`; 5 profiles × 2 platforms의 내장 PNG/font 0요청·0바이트, 전체 파일 해시 일치 |
 | M3 | tar.br 단일 보조 경로·전송 비용 검증 | M0–M2 gate | DONE | `evidence/native-tar-br-transfer.{md,json}`; 80 native runs, 1,000-file uncapped 9.174s → 0.905s, 1,001 → 2 requests; 512 KiB/s에서는 거의 동률 |
-| M4 | 통합 검증·문서·changeset | M3 | REVERIFY | tar.br 구현 후 최종 revision의 required checks 및 다섯 full standalone profile 재실행 |
+| M4 | 통합 검증·문서·changeset | M3 | DONE | `797338cd0`의 GitHub checks 및 5 profiles × 2 platforms × 27 scenarios = 270 tests 통과 |
 
 2026-09-21 PRD 재검증에서 이전 완료 판정을 정정했다. cached target 무결성,
 descriptor 전체 검증, 중단 후 완료 파일 재사용, 제한된 병렬 다운로드,
 실제 내장 PNG/font의 0-download E2E, download-only progress를 보강한다.
 기존 standalone 성공 기록은 아래의 이전 revision 결과이며, 새 수정의 성공으로
-재사용하지 않는다. 실제 native installer 성능과 새 PR revision의 E2E를 기록한 뒤
-위 상태를 갱신한다.
+재사용하지 않는다. 2026-09-22 `797338cd0`의 다섯 full E2E와 CI가 모두 통과해
+위 상태를 갱신했다. 최신 인수 증거는 `evidence/standalone-tar-br.{md,json}`다.
 
 ## 제외한 대안
 
@@ -61,6 +61,9 @@ descriptor 전체 검증, 중단 후 완료 파일 재사용, 제한된 병렬 �
 - 2026-09-21: deterministic tar.br 생성·서명·업로드, canonical sibling URL, native 선택/안전 추출/단일 복구를 구현했다. iOS의 불필요한 복사·재해싱을 atomic rename으로 제거했고 복구 실패 시 설치를 중단한다. ZIP/gzip OTA decoder와 전략 계층은 없다.
 - 2026-09-21: 최종 native 구현 Swift 44 cases + XCTest 3, Android 64 tests, 양 architecture 컴파일, ktlint 통과. build 26 projects, type 34 projects, lint, unit 2,747 tests, integration 388 tests 통과. E2E 지원 259 tests도 통과했다.
 - 2026-09-21: 원본과 동일한 fixture로 80회 native 설치를 측정했다. 1,000-file uncapped 9.174s → 0.905s, 1,001 → 2 requests, +4,434 bytes; 512 KiB/s에서는 9.108s → 9.032s로 거의 동률이다. sampled peak disk는 4.36 → 12.95 MB. 모든 결과 해시를 검증했고 작은 delta는 동일 전송량/요청 수를 유지한다.
-- 최종 Release E2E는 아직 인수하지 않았다. builtin PNG/font 재사용 시나리오에서는 optional archive URL 생략을 명시하며, 정상 archive 및 corrupt fallback의 요청 수와 모든 파일 해시는 별도 시나리오로 검증한다. 동일 최종 PR 구현을 push한 뒤 standalone 5개 full profile을 실행한다.
+- 이 시점에는 최종 Release E2E를 아직 인수하지 않았다. builtin PNG/font 재사용 시나리오에서는 optional archive URL 생략을 명시하며, 정상 archive 및 corrupt fallback의 요청 수와 모든 파일 해시는 별도 시나리오로 검증한다. 동일 최종 PR 구현을 push한 뒤 standalone 5개 full profile을 실행한다.
 
 - 2026-09-21: 최초 tar.br E2E 큐 5건은 코드 checkout 전 `emulator-5554/5556/5558` 부재로 실패했다. 기존 전용 Pixel AVD 3대를 복구하고 부팅 완료를 확인했다. CI의 Android 신 아키텍처 실패는 Gradle 다운로드 timeout이며, iOS 구 아키텍처 실패는 백업 정리 테스트가 비동기 cleanup 후 파일 잔존을 기대한 경합이었다. 삭제 실패 주입 여부와 설치 결과로 assertion을 수정했고 Swift 전체 및 해당 사례 10회 반복을 통과했다. 프로덕션 native 코드는 성능 측정본과 동일하다. 최종 fingerprint를 다시 생성하고 E2E/CI 대상을 갱신한다.
+
+- 2026-09-22: 최종 구현 `797338cd0a4daab9cac93383154a961820b9c563`에서 Kysely, Prisma, MongoDB, DynamoDB, Drizzle의 full Release E2E가 모두 exit 0으로 종료됐다. 각 프로필은 iOS 27/27 + Android 27/27, 총 270개 시나리오를 통과했다. 10개 내장 재사용 기록과 30개 전송·전체 해시 검증 기록을 `evidence/standalone-tar-br.{md,json}`에 보존했다.
+- 2026-09-22: 같은 구현 revision의 GitHub checks도 모두 성공했다. Gradle 다운로드 및 CocoaPods 설치의 환경 오류는 재실행에서 통과했다. M2/M4를 완료로 갱신하며 후속 commit은 검증 문서와 증거만 변경한다. PR은 draft 상태로 유지하고 merge하지 않는다.

@@ -3,7 +3,7 @@
 ## 1. 상태와 실행 계약
 
 - 작성일: 2026-09-20
-- 상태: 2026-09-21 사용자가 tar.br 단일 보조 경로와 네이티브 압축 로직 단순화를 승인했다. 두 서브에이전트의 적대적 검토와 반박 후 아래 계약에 합의했다. 구현·성능·최종 E2E 재검증 진행 중이다.
+- 상태: 2026-09-21 사용자가 tar.br 단일 보조 경로와 네이티브 압축 로직 단순화를 승인했다. 두 서브에이전트의 적대적 검토와 반박 후 아래 계약에 합의했다. 2026-09-22 구현·성능·최종 E2E와 CI 검증을 완료했다. 검증 revision은 `797338cd0`이며 `evidence/standalone-tar-br.{md,json}`에 결과를 보존한다.
 - 현재 병합 기준: `origin/next`의 `333188ab939769609913529004d6c0d15474ad03`, 병합 revision `1aa201bbd`. 4절의 과거 코드 근거는 최초 기준 `ec78756926cac3b23ca32c1d3acefe28d2ebb7ab`다.
 - 작업 디렉터리: `/Users/gronxb/.codex/worktrees/builtin-manifest-v1/hot-updater`.
 - 브랜치: `feature/builtin-manifest-v1`.
@@ -414,16 +414,16 @@ server public entry 경계는 `packages/server/AGENTS.md`를 따른다. CLI 출�
 - [x] `compressStrategy`가 공개 surface에서 제거되고 예전 설정은 명확히 거부된다.
 - [x] 1.0.0 schema/migration과 versioned protocol을 직접 갱신하고 테스트했다.
 - [x] 실제 tar.br로 작은 변경과 전체 변경의 bytes/requests/time/disk/memory를 비교하고 많은 파일의 요청 병목을 해결했다. 80회 결과와 대역폭 제한 시 거의 동률인 한계는 `evidence/native-tar-br-transfer.{md,json}`에 기록했다.
-- [ ] 최종 구현 revision의 unit/integration/native와 standalone-* 5개 full E2E 및 required checks가 통과했다.
+- [x] 최종 구현 revision의 unit/integration/native와 standalone-* 5개 full E2E 및 required checks가 통과했다.
 - [x] 첫 내장 Hermes patch가 base 등록 없이 지원된다고 주장하지 않는다.
-- [ ] tar.br 합의 기준으로 문서·예제·changeset·실행 상태와 실제 검증 증거를 갱신했다.
+- [x] tar.br 합의 기준으로 문서·예제·changeset·실행 상태와 실제 검증 증거를 갱신했다.
 
 ## 11. 진행을 제한하는 조건
 
 다음은 자동 승인 요청 조건이 아니라 구현 방향을 함부로 바꾸지 않기 위한 경계다. 관련 없는 구현·검증은 계속한다.
 
 - byte equality가 성립하지 않는 포맷을 의미적 동일성으로 우회해야만 재사용할 수 있으면 그 재사용은 하지 않는다.
-- stock Release에서 요구한 재사용 효과가 실증되지 않으면 아카이브 삭제 gate를 통과한 것으로 처리하지 않는다. 실제 차이와 최소 대안을 보고한다.
+- stock Release에서 요구한 재사용 효과가 실증되지 않으면 내장 파일 재사용 gate를 통과한 것으로 처리하지 않는다. 실제 차이와 최소 대안을 보고한다.
 - 첫 Hermes patch 때문에 필수 CI 업로드/새 Release 정책이 필요해지면 이번 범위를 확장하지 않는다.
 - credential 사용 범위 확대가 필요하면 이미 승인된 범위인지 확인하고 경계를 넘지 않는다.
 - 외부 device/build/signing 환경이 부족하면 가능한 소스·로컬 테스트를 진행하되 실제 Release 검증을 완료로 표시하지 않는다.
@@ -455,7 +455,7 @@ profile은 iOS 15/15 + 11/11과 Android 26/26을 실행했으며
 
 2026-09-21 감사 수정 이후 실제 Swift installer 비교는
 `plans/evidence/native-transfer.md`와 JSON을 기준으로 한다. 순차 처리 대비
-1,000-file 설치는 71.1% 개선됐지만 ZIP 대비 9.3배 걸렸으므로 M3는 아직
+1,000-file 설치는 71.1% 개선됐지만 ZIP 대비 9.3배 걸렸으므로 당시 M3는
 인수되지 않았다. 이전 Node microbenchmark와 이전 revision E2E 결과를
 현재 구현의 전체 인수 근거로 사용하지 않는다.
 
@@ -467,4 +467,9 @@ profile은 iOS 15/15 + 11/11과 Android 26/26을 실행했으며
 `evidence/native-tar-br-transfer.{md,json}`에 기록했다. 기존 archive 삭제만으로
 남았던 1,000-file 요청 병목은 해결됐다. 512 KiB/s 제한에서는 속도 개선을
 주장하지 않으며 추가 framing bytes와 임시 디스크 비용을 명시한다.
-최종 standalone full E2E와 required checks는 별도 잔여 gate다.
+2026-09-22 최종 구현 `797338cd0a4daab9cac93383154a961820b9c563`의
+standalone full E2E 5개 프로필이 각각 iOS 27/27 + Android 27/27로
+통과했다. 같은 revision의 GitHub checks도 모두 성공했다.
+`evidence/standalone-tar-br.{md,json}`은 270개 시나리오 결과, 10개 내장
+재사용 기록과 30개 실제 전송·전체 파일 해시 기록을 보존한다. 이 후속
+검증 문서 commit은 프로덕션 코드나 native fingerprint를 변경하지 않는다.
