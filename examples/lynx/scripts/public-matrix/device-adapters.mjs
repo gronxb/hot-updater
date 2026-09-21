@@ -36,11 +36,21 @@ function run(command, args, options = {}) {
 }
 
 export function isRetryableAgentDeviceFailure(value) {
-  return (
+  const runnerBusy =
     value?.success === false &&
     value.error?.code === "RUNNER_BUSY" &&
-    value.error?.retriable === true
-  );
+    value.error?.retriable === true;
+  const details = value?.error?.details;
+  const simulatorScreenshot =
+    value?.success === false &&
+    value.error?.code === "COMMAND_FAILED" &&
+    details?.cmd === "xcrun" &&
+    details?.processExitError === true &&
+    details.args?.[0] === "simctl" &&
+    details.args?.[1] === "io" &&
+    details.args?.[3] === "screenshot" &&
+    details.stderr?.includes("An error was encountered processing the command");
+  return runnerBusy || simulatorScreenshot;
 }
 
 function parseEvents(text) {
@@ -338,8 +348,16 @@ class IOSAdapter {
     this.device(["gesture", "swipe", "right-edge"]);
   }
 
-  screenshot(name) {
-    this.device(["screenshot", path.join(this.resultsDir, `${name}.png`)]);
+  async screenshot(name) {
+    const target = path.join(this.resultsDir, `${name}.png`);
+    for (let attempt = 1; attempt <= 5; attempt += 1) {
+      const result = this.device(["screenshot", target], {
+        allowRetryableFailure: true,
+      });
+      if (result) return;
+      if (attempt < 5) await wait(500);
+    }
+    throw new Error(`iOS simulator screenshot remained unavailable: ${target}`);
   }
 
   readEvents() {

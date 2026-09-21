@@ -601,7 +601,7 @@ async function exerciseDetailPage(
   adapter.clickText("Open detail page");
   await adapter.waitForText(`Detail bundle ${displayVariant} ready`);
   await waitForReadyEvents(adapter, cursor, build, processId);
-  adapter.screenshot(`detail-${displayVariant}-${closeWith}`);
+  await adapter.screenshot(`detail-${displayVariant}-${closeWith}`);
   if (closeWith === "back") adapter.nativeBack();
   else adapter.clickText("Close detail page");
   await adapter.waitForText(`Bundle ${displayVariant} ready`);
@@ -1399,7 +1399,7 @@ async function runCell(
     runtimeEventLedger,
     `${cellId}: after native boundaries`,
   );
-  adapter.screenshot(`${cellId}-embedded-A`);
+  await adapter.screenshot(`${cellId}-embedded-A`);
 
   const bRejections = [];
   for (const mode of ["missing", "corrupt"] as const) {
@@ -1436,7 +1436,7 @@ async function runCell(
     "B",
     "back",
   );
-  adapter.screenshot(`${cellId}-offline-B-activation`);
+  await adapter.screenshot(`${cellId}-offline-B-activation`);
   await assertOriginUnused();
 
   cursor = eventCursor(adapter);
@@ -1449,7 +1449,7 @@ async function runCell(
     processBRetain,
     "B",
   );
-  adapter.screenshot(`${cellId}-offline-B-retain`);
+  await adapter.screenshot(`${cellId}-offline-B-retain`);
   await assertOriginUnused();
   await startServer();
 
@@ -1511,7 +1511,7 @@ async function runCell(
   adapter.clickText("Verify stale after reload");
   await waitForStaleContextRejections(adapter, cursor, B.bundleId);
   const deltaLogs = adapter.readNativeLogs();
-  adapter.screenshot(`${cellId}-delta-C-reload`);
+  await adapter.screenshot(`${cellId}-delta-C-reload`);
 
   const incompatibleDeployment = await deploy({
     framework,
@@ -1564,7 +1564,7 @@ async function runCell(
     runtimeEventLedger,
     `${cellId}: primary replacement`,
   );
-  adapter.screenshot(`${cellId}-primary-replacement`);
+  await adapter.screenshot(`${cellId}-primary-replacement`);
 
   const pendingManagedTransitionEvents = await exercisePendingManagedTransition(
     adapter,
