@@ -1,4 +1,5 @@
 [
+  "startup-hang-recovery",
   "release-ota-recovery",
   "multi-asset-replacement",
   "bspatch-archive-to-diff-ota",

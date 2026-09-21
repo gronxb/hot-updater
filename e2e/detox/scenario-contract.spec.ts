@@ -85,6 +85,7 @@ const runtimeConfigPath = path.join(
   "examples/v0.85.0/src/e2eRuntimeConfig.ts",
 );
 const defaultDetoxScenarioNames = [
+  "startup-hang-recovery",
   "release-ota-recovery",
   "multi-asset-replacement",
   "bspatch-archive-to-diff-ota",
@@ -281,7 +282,7 @@ describe("Detox scenario contract", () => {
 
     expect(detoxScenarios).toEqual(defaultDetoxScenarioNames);
     expect(listDetoxScenarioNames()).toEqual(defaultDetoxScenarioNames);
-    expect(new Set(listDetoxScenarioNames()).size).toBe(26);
+    expect(new Set(listDetoxScenarioNames()).size).toBe(27);
   });
 
   it("keeps repeated catalog checks as no-ops while already built-in", async () => {
