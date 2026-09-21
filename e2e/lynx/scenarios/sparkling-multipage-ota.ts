@@ -132,11 +132,12 @@ async function provePageCycle(
   marker: string,
   selection: ManagedSelection,
   closeWith: "back" | "close",
+  knownMain?: ManagedPageIdentity,
 ): Promise<ManagedPageIdentity> {
   const beforeOpen = await app.captureGenerationEvents(
     `${label}: capture main native evidence`,
   );
-  const main = assertManagedMainPage(beforeOpen, selection);
+  const main = knownMain ?? assertManagedMainPage(beforeOpen, selection);
   await app.openDetailPage(`${label}: open managed detail`, marker);
   const opened = await app.captureGenerationEvents(
     `${label}: capture detail native evidence`,
@@ -577,13 +578,17 @@ export const sparklingMultipageOtaScenario = {
     const evidenceB = await app.captureGenerationEvents(
       "multi-page B: capture replacement evidence",
     );
-    assertManagedTransition(evidenceB, { before: mainA, after: selectionB });
-    const mainB = await provePageCycle(
+    const mainB = assertManagedTransition(evidenceB, {
+      before: mainA,
+      after: selectionB,
+    });
+    await provePageCycle(
       app,
       "multi-page B",
       "sparkling-multipage-b",
       selectionB,
       "back",
+      mainB,
     );
     await app.openDetailPage(
       "multi-page B to C: keep managed detail open",
@@ -724,18 +729,19 @@ export const sparklingMultipageOtaScenario = {
         diffPatchAssetPathKey: "patchCToB",
       },
     );
-    assertManagedTransition(
+    const rollbackB = assertManagedTransition(
       await app.captureGenerationEvents(
         "multi-page rollback B: capture replacement evidence",
       ),
       { before: mainC, after: selectionB },
     );
-    const rollbackB = await provePageCycle(
+    await provePageCycle(
       app,
       "multi-page rollback B",
       "sparkling-multipage-b",
       selectionB,
       "back",
+      rollbackB,
     );
 
     await app.control("multi-page: disable B", "/e2e/jobs/patch-release", {
@@ -776,16 +782,17 @@ export const sparklingMultipageOtaScenario = {
     const evidenceA = await app.captureGenerationEvents(
       "multi-page rollback server A: capture replacement evidence",
     );
-    assertManagedTransition(evidenceA, {
+    const serverAMain = assertManagedTransition(evidenceA, {
       before: rollbackB,
       after: selectionA,
     });
-    const serverAMain = await provePageCycle(
+    await provePageCycle(
       app,
       "multi-page rollback server A",
       markerA,
       selectionA,
       "close",
+      serverAMain,
     );
 
     const pendingClose = await openPendingDetail(
