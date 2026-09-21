@@ -8,6 +8,14 @@ export type BundleActivityInput = Pick<
   "platform" | "channel"
 > & { readonly releaseId: string };
 
+export type BundleActivityReport = {
+  readonly downloads: number;
+  readonly launches: number;
+  readonly failedLaunches: number;
+  readonly measuredAtMs: number;
+  readonly coverage: import("@hot-updater/plugin-core").InsightsCoverage;
+};
+
 export function useBundleActivityQuery(inputs: readonly BundleActivityInput[]) {
   const sorted = [...inputs].sort((a, b) =>
     a.releaseId.localeCompare(b.releaseId),

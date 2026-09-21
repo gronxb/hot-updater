@@ -71,6 +71,18 @@ export function AppUsage({
   const report = query.error ? undefined : query.data;
   const formatTime = (ms: number) =>
     (window === "30d" ? dates : times).format(ms);
+  const distributionTotals = report
+    ? {
+        versions: report.versions.reduce(
+          (sum, row) => sum + row.installations,
+          0,
+        ),
+        platforms: report.platforms.reduce(
+          (sum, row) => sum + row.installations,
+          0,
+        ),
+      }
+    : undefined;
   return (
     <div className="grid min-w-0 gap-6 xl:grid-cols-[minmax(0,2fr)_minmax(16rem,1fr)]">
       <Card aria-label="App usage" role="region" className="min-w-0 shadow-sm">
@@ -259,7 +271,8 @@ export function AppUsage({
                               : "Android"
                             : row.name;
                         const share =
-                          (row.installations / report.activeInstallations) *
+                          (row.installations /
+                            (distributionTotals?.[dimension] ?? 1)) *
                           100;
                         return (
                           <div

@@ -13,6 +13,7 @@ type Tables = {
   bundles: MongoTestRow[];
   bundle_events: MongoTestRow[];
   bundle_event_heads: MongoTestRow[];
+  insights_overview: MongoTestRow[];
 
   channels: MongoTestRow[];
   api_keys: MongoTestRow[];
@@ -310,6 +311,25 @@ const createCollection = (
     }
     return { matchedCount: 0, upsertedCount: 0 };
   },
+  replaceOne: async (
+    filter: unknown,
+    replacement: MongoTestRow,
+    options?: { readonly upsert?: boolean },
+  ): Promise<{ matchedCount: number; upsertedCount: number }> => {
+    hooks.operationCount += 1;
+    const index = tables[model].findIndex((row) =>
+      matchesMongoTestFilter(row, filter),
+    );
+    if (index >= 0) {
+      tables[model][index] = structuredClone(replacement);
+      return { matchedCount: 1, upsertedCount: 0 };
+    }
+    if (options?.upsert === true) {
+      tables[model].push(structuredClone(replacement));
+      return { matchedCount: 0, upsertedCount: 1 };
+    }
+    return { matchedCount: 0, upsertedCount: 0 };
+  },
 });
 
 const createDatabase = (tables: Tables, hooks: MongoTestHooks) => ({
@@ -323,6 +343,8 @@ const createDatabase = (tables: Tables, hooks: MongoTestHooks) => ({
         return createCollection(tables, "bundle_events", hooks);
       case "bundle_event_heads":
         return createCollection(tables, "bundle_event_heads", hooks);
+      case "insights_overview":
+        return createCollection(tables, "insights_overview", hooks);
 
       case "channels":
         return createCollection(tables, "channels", hooks);
@@ -344,6 +366,7 @@ export const createMongoTestHarness = () => {
     bundles: [],
     bundle_events: [],
     bundle_event_heads: [],
+    insights_overview: [],
 
     channels: [],
     api_keys: [],
@@ -382,6 +405,7 @@ export const createMongoTestHarness = () => {
             tables.bundles = staged.bundles;
             tables.bundle_events = staged.bundle_events;
             tables.bundle_event_heads = staged.bundle_event_heads;
+            tables.insights_overview = staged.insights_overview;
             tables.channels = staged.channels;
             tables.api_keys = staged.api_keys;
             tables.releases = staged.releases;
@@ -409,6 +433,7 @@ export const createMongoTestHarness = () => {
       tables.bundles = [];
       tables.bundle_events = [];
       tables.bundle_event_heads = [];
+      tables.insights_overview = [];
       tables.channels = [];
       tables.api_keys = [];
       tables.releases = [];

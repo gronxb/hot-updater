@@ -53,6 +53,11 @@ import {
   FirebaseDatabaseConstraintError,
 } from "./firebaseDatabaseState";
 import { FIREBASE_V1_COLLECTION_NAMES } from "./firebaseInfrastructureNames";
+import {
+  getFirebaseAppUsage,
+  getFirebaseReleaseActivity,
+  recordFirebaseInsightsOverview,
+} from "./firebaseInsightsOverview";
 
 type FirebaseMutation<TResult> = (
   database: TransactionDatabasePluginImplementation,
@@ -185,6 +190,12 @@ export const firebaseDatabase = (config: FirebaseDatabaseConfig) => {
                 ),
               )
             : null;
+          await recordFirebaseInsightsOverview({
+            transaction,
+            collections,
+            event,
+            current,
+          });
           transaction.create(eventReference, event);
           if (
             current === null ||
@@ -195,6 +206,14 @@ export const firebaseDatabase = (config: FirebaseDatabaseConfig) => {
             transaction.set(installationReference, event);
           }
         });
+      },
+      getReleaseActivity: async (input) => {
+        await ensureMigrated();
+        return getFirebaseReleaseActivity(db, collections, input);
+      },
+      getAppUsage: async (input) => {
+        await ensureMigrated();
+        return getFirebaseAppUsage(db, collections, input);
       },
       findLatestInsightsEvents: async (input) => {
         await ensureMigrated();

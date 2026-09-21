@@ -1,11 +1,10 @@
 import { createServerFn } from "@tanstack/react-start";
 
-import { readRecoveryInput } from "./insights-recovery";
-import type { AppUsageInput } from "./insights-usage";
+import { readAppUsageInput, type AppUsageInput } from "./insights-usage";
 
 export const getAppUsageReportRpc = createServerFn({ method: "GET" })
   .validator((input: AppUsageInput) => {
-    readRecoveryInput(input);
+    readAppUsageInput(input);
     return {
       platform: input.platform,
       channel: input.channel,

@@ -137,6 +137,32 @@ const invalidResult = (): never => {
 const validateCount = (count: number): number =>
   isTimestamp(count) ? count : invalidResult();
 
+const isTimeRange = (value: unknown): value is { start: number; end: number } =>
+  isRecord(value) &&
+  hasOnlyKeys(value, ["start", "end"]) &&
+  isTimestamp(value.start) &&
+  isTimestamp(value.end) &&
+  (value.start as number) < (value.end as number);
+
+const isReleaseReference = (value: unknown): boolean =>
+  isRecord(value) &&
+  hasOnlyKeys(value, ["releaseId", "platform", "channel"]) &&
+  isIdentity(value.releaseId) &&
+  hasScope(value);
+
+const validateAggregateResult = (value: unknown): void => {
+  const result = isRecord(value) ? value : invalidResult();
+  if (!isTimestamp(result.measuredAtMs)) invalidResult();
+  const coverage = result.coverage;
+  if (
+    !isRecord(coverage) ||
+    (coverage.kind !== "complete" && coverage.kind !== "partial") ||
+    (coverage.sinceMs !== null && !isTimestamp(coverage.sinceMs))
+  ) {
+    invalidResult();
+  }
+};
+
 /** Validate custom and bundled providers at the same public boundary. */
 export const createValidatedInsightsModel = (
   model: InsightsModel,
@@ -273,5 +299,67 @@ export const createValidatedInsightsModel = (
     )
       invalidQuery();
     return validateCount(await model.countEvents(input));
+  },
+  async getReleaseActivity(input) {
+    if (
+      !isRecord(input) ||
+      !hasOnlyKeys(input, ["releases", "scope", "timeRange"])
+    ) {
+      invalidQuery();
+    }
+    const releases = input.releases;
+    const scope = input.scope;
+    const timeRange = input.timeRange;
+    const releaseQuery =
+      Array.isArray(releases) &&
+      releases.length > 0 &&
+      releases.length <= 100 &&
+      releases.every(isReleaseReference) &&
+      scope === undefined &&
+      (timeRange === undefined || isTimeRange(timeRange));
+    const scopeQuery =
+      releases === undefined &&
+      isRecord(scope) &&
+      hasOnlyKeys(scope, ["platform", "channel"]) &&
+      hasScope(scope) &&
+      isTimeRange(timeRange);
+    if (!releaseQuery && !scopeQuery) invalidQuery();
+    const result = await model.getReleaseActivity(input);
+    validateAggregateResult(result);
+    if (!Array.isArray(result.data)) invalidResult();
+    return result;
+  },
+  async getAppUsage(input) {
+    if (
+      !isRecord(input) ||
+      !hasOnlyKeys(input, [
+        "channel",
+        "platform",
+        "appVersion",
+        "timeRange",
+        "intervalMs",
+      ]) ||
+      !isText(input.channel) ||
+      !["all", "ios", "android"].includes(input.platform) ||
+      (input.appVersion !== undefined && !isText(input.appVersion)) ||
+      !isTimeRange(input.timeRange) ||
+      !isTimestamp(input.intervalMs) ||
+      input.intervalMs < 3_600_000
+    ) {
+      invalidQuery();
+    }
+    const result = await model.getAppUsage(input);
+    validateAggregateResult(result);
+    if (
+      !isTimestamp(result.activeInstallations) ||
+      !Array.isArray(result.points) ||
+      !Array.isArray(result.appVersions) ||
+      !Array.isArray(result.versions) ||
+      !Array.isArray(result.platforms) ||
+      !Array.isArray(result.bundleDistribution)
+    ) {
+      invalidResult();
+    }
+    return result;
   },
 });

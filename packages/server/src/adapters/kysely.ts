@@ -14,6 +14,10 @@ import type {
   RelationMode,
 } from "../db/types";
 import { createKyselyCrud, recordKyselyInsights } from "./kyselyCrud";
+import {
+  getKyselyAppUsage,
+  getKyselyReleaseActivity,
+} from "./kyselyInsightsOverview";
 
 type KyselySQLProvider = Exclude<ORMSQLProvider, "mssql">;
 
@@ -39,6 +43,8 @@ const createImplementation = <TDatabase extends object>(
         .execute((transaction) =>
           recordKyselyInsights(transaction, config.provider, input),
         ),
+    getReleaseActivity: (input) => getKyselyReleaseActivity(db, input),
+    getAppUsage: (input) => getKyselyAppUsage(db, input),
     deleteChannel: (input) =>
       db
         .transaction()

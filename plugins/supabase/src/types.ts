@@ -44,6 +44,25 @@ export type SupabaseReleaseCatalogRow = {
   [TField in keyof ReleaseCatalogRow]: ReleaseCatalogRow[TField];
 };
 
+export type SupabaseInsightsOverviewRow = {
+  readonly id: string;
+  readonly scope_kind: "release" | "channel" | "usage" | "distribution";
+  readonly release_kind: "all" | "specific" | "embedded";
+  readonly release_id: string;
+  readonly channel: string;
+  readonly platform: "all" | "ios" | "android";
+  readonly app_version_kind: "all" | "specific";
+  readonly app_version: string;
+  readonly period_kind: "lifetime" | "hour" | "latest";
+  readonly bucket_start_ms: number;
+  readonly downloads: number;
+  readonly launches: number;
+  readonly failed_launches: number;
+  readonly latest_installations: number;
+  readonly launch_users: string | null;
+  readonly activity_users: string | null;
+};
+
 type Table<TRow> = {
   Row: TRow;
   Insert: TRow;
@@ -70,8 +89,12 @@ export type Database = {
           | "type"
           | "from_bundle_id"
           | "to_bundle_id"
-        >
+        > & {
+          readonly current_release_id: string | null;
+          readonly app_version: string;
+        }
       >;
+      [SUPABASE_V1_TABLE_NAMES.insightsOverview]: Table<SupabaseInsightsOverviewRow>;
       [SUPABASE_V1_TABLE_NAMES.apiKeys]: Table<SupabaseApiKeyRow>;
       [SUPABASE_V1_TABLE_NAMES.releaseCatalogs]: Table<SupabaseReleaseCatalogRow>;
       [SUPABASE_V1_TABLE_NAMES.releases]: Table<SupabaseReleaseRow>;
@@ -79,7 +102,7 @@ export type Database = {
     Views: Record<never, never>;
     Functions: {
       [SUPABASE_V1_FUNCTION_NAMES.recordEvent]: {
-        Args: { p_event: BundleEventRow };
+        Args: { p_event: BundleEventRow; p_overview: unknown };
         Returns: undefined;
       };
       [SUPABASE_V1_FUNCTION_NAMES.commit]: {

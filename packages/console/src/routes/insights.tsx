@@ -21,22 +21,22 @@ function InsightsPage() {
   const search = Route.useSearch();
   const navigate = Route.useNavigate();
   const usageWindow = search.window ?? "24h";
-  const bundleWindow = search.bundleWindow ?? "24h";
+  const bundleWindow = search.bundleWindow ?? "7d";
+  const channel = search.channel ?? search.healthChannel ?? "production";
   const scope: AppUsageScope = {
     platform: search.platform ?? "all",
-    channel: search.channel ?? "production",
+    channel,
     appVersion: search.appVersion,
   };
   const setUsageWindow = (window: InsightsWindow) =>
     void navigate({ search: { ...search, window } });
-  const setBundleWindow = (bundleWindow: InsightsWindow) =>
-    void navigate({ search: { ...search, bundleWindow } });
-  const setScope = (scope: AppUsageScope) =>
-    void navigate({
-      search: { ...search, ...scope, appVersion: scope.appVersion },
-    });
   const input = { ...scope, window: usageWindow };
-  const bundleInput = { ...scope, window: bundleWindow };
+  const bundleInput = {
+    platform: search.healthPlatform ?? "ios",
+    channel,
+    window: bundleWindow,
+    ...(search.releaseId === undefined ? {} : { releaseId: search.releaseId }),
+  } as const;
   const query = useQuery({
     queryKey: ["insights", "app-usage", input],
     queryFn: () => getAppUsageReportRpc({ data: input }),
@@ -53,10 +53,22 @@ function InsightsPage() {
       <div className="min-h-0 min-w-0 flex-1 overflow-y-auto bg-muted/5 px-4 py-6 sm:p-8">
         <div className="mx-auto flex w-full max-w-6xl flex-col gap-6">
           <InsightsControls
-            key={JSON.stringify(scope)}
+            key={JSON.stringify({ scope, bundleInput })}
             scope={scope}
+            releaseScope={bundleInput}
             appVersions={query.data?.appVersions ?? []}
-            onScopeChange={setScope}
+            onFiltersChange={({ scope, releaseScope }) =>
+              void navigate({
+                search: {
+                  ...search,
+                  ...scope,
+                  appVersion: scope.appVersion,
+                  healthPlatform: releaseScope.platform,
+                  healthChannel: undefined,
+                  releaseId: releaseScope.releaseId,
+                },
+              })
+            }
           />
           {query.data?.truncated && !query.error ? (
             <Alert>
@@ -80,7 +92,14 @@ function InsightsPage() {
           <InsightsOverview
             input={bundleInput}
             query={bundleQuery}
-            onWindowChange={setBundleWindow}
+            onWindowChange={(window) =>
+              void navigate({
+                search: {
+                  ...search,
+                  bundleWindow: window,
+                },
+              })
+            }
             onRefresh={() => void bundleQuery.refetch()}
           />
         </div>

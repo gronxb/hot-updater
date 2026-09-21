@@ -3,6 +3,7 @@ import { Platform } from "react-native";
 import type { HotUpdaterError } from "./error";
 import type { InsightsEventParams, HotUpdaterHttpClient } from "./httpClient";
 import {
+  getActiveUpdateState,
   getAppVersion,
   getBundleId,
   getChannel,
@@ -101,10 +102,21 @@ const buildNotifyAppReadyInsightsParams = (
         );
       }
 
+      const state = getActiveUpdateState();
+      const runningSelection = [
+        state.activeSelection,
+        state.stableSelection,
+      ].find(
+        (selection) =>
+          selection?.bundleId === bundleId &&
+          selection.channel === commonParams.channel,
+      );
+
       return {
         ...commonParams,
         fromBundleId: null,
         toBundleId: bundleId,
+        toReleaseId: runningSelection?.releaseId ?? null,
         type: "UNCHANGED",
         updateStrategy: null,
       };

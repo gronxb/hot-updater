@@ -595,7 +595,14 @@ describe("dynamoDB CloudFront lifecycle", () => {
     const transaction =
       documentClient.commandCalls(TransactWriteCommand)[0]?.args[0].input
         .TransactItems;
-    expect(transaction).toHaveLength(7);
+    expect(transaction).toHaveLength(12);
+    expect(
+      transaction?.filter((item) =>
+        String(item.Put?.Item?.pk).startsWith(
+          "_hot-updater#insights-overview#",
+        ),
+      ),
+    ).toHaveLength(5);
     expect(
       transaction?.find((item) =>
         String(item.Put?.Item?.pk).startsWith("_hot-updater#insights-scope#"),

@@ -206,12 +206,37 @@ export const bundle_event_heads = sqliteTable("bundle_event_heads", {
   channel: text("channel").notNull(),
   type: text("type", { length: 32 }).notNull(),
   from_bundle_id: text("from_bundle_id"),
-  to_bundle_id: text("to_bundle_id").notNull()
+  to_bundle_id: text("to_bundle_id").notNull(),
+  current_release_id: text("current_release_id"),
+  app_version: text("app_version").notNull()
 }, (table) => [
   index("bundle_event_heads_user_idx").on(table.user_id, table.install_id),
   index("bundle_event_heads_scope_idx").on(table.platform, table.channel, table.received_at_ms),
   index("bundle_event_heads_from_idx").on(table.type, table.platform, table.channel, table.from_bundle_id, table.received_at_ms),
   index("bundle_event_heads_to_idx").on(table.type, table.platform, table.channel, table.to_bundle_id, table.received_at_ms)
+])
+
+export const insights_overview = sqliteTable("insights_overview", {
+  id: customType<{ data: string }>({ dataType: () => "text collate binary" })("id").primaryKey().notNull(),
+  scope_kind: text("scope_kind", { length: 16 }).notNull(),
+  release_kind: text("release_kind", { length: 8 }).notNull(),
+  release_id: text("release_id", { length: 36 }).notNull().default(""),
+  channel: text("channel").notNull(),
+  platform: text("platform", { length: 8 }).notNull(),
+  app_version_kind: text("app_version_kind", { length: 8 }).notNull(),
+  app_version: text("app_version").notNull().default(""),
+  period_kind: text("period_kind", { length: 16 }).notNull(),
+  bucket_start_ms: real("bucket_start_ms").notNull().default(0),
+  downloads: integer("downloads", { mode: "number" }).notNull().default(0),
+  launches: integer("launches", { mode: "number" }).notNull().default(0),
+  failed_launches: integer("failed_launches", { mode: "number" }).notNull().default(0),
+  latest_installations: integer("latest_installations", { mode: "number" }).notNull().default(0),
+  launch_users: text("launch_users"),
+  activity_users: text("activity_users")
+}, (table) => [
+  index("insights_overview_release_time_idx").on(table.scope_kind, table.release_id, table.platform, table.channel, table.period_kind, table.bucket_start_ms),
+  index("insights_overview_scope_time_idx").on(table.scope_kind, table.channel, table.platform, table.app_version_kind, table.app_version, table.period_kind, table.bucket_start_ms),
+  index("insights_overview_distribution_time_idx").on(table.scope_kind, table.channel, table.period_kind, table.bucket_start_ms, table.platform, table.app_version)
 ])
 
 export const api_keys = sqliteTable("api_keys", {

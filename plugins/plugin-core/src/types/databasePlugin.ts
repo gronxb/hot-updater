@@ -141,6 +141,92 @@ export interface InsightsCountEventsInput {
   readonly beforeReceivedAtMs: number;
 }
 
+export interface ReleaseReference {
+  readonly releaseId: string;
+  readonly platform: "ios" | "android";
+  readonly channel: string;
+}
+
+export interface InsightsTimeRange {
+  /** Inclusive UTC Unix timestamp in milliseconds. */
+  readonly start: number;
+  /** Exclusive UTC Unix timestamp in milliseconds. */
+  readonly end: number;
+}
+
+export type InsightsCoverage =
+  | { readonly kind: "complete"; readonly sinceMs: number }
+  | { readonly kind: "partial"; readonly sinceMs: number | null };
+
+export interface ReleaseActivityMetrics {
+  readonly downloads: number;
+  readonly launches: number;
+  readonly failedLaunches: number;
+  /** Omitted for lifetime-only bundle-row reads. */
+  readonly uniqueUsers?: number;
+  /** Daily points, present only for period reads. */
+  readonly series?: readonly {
+    readonly startMs: number;
+    readonly launches: number;
+    readonly failedLaunches: number;
+  }[];
+}
+
+export type InsightsGetReleaseActivityInput =
+  | {
+      readonly releases: readonly ReleaseReference[];
+      readonly timeRange?: InsightsTimeRange;
+      readonly scope?: never;
+    }
+  | {
+      readonly scope: InsightsScope;
+      readonly timeRange: InsightsTimeRange;
+      readonly releases?: never;
+    };
+
+export interface InsightsGetReleaseActivityResult {
+  readonly coverage: InsightsCoverage;
+  readonly data: readonly {
+    readonly release?: ReleaseReference;
+    readonly scope?: InsightsScope;
+    readonly metrics: ReleaseActivityMetrics;
+  }[];
+  readonly measuredAtMs: number;
+}
+
+export interface InsightsGetAppUsageInput {
+  readonly channel: string;
+  readonly platform: "all" | "ios" | "android";
+  readonly appVersion?: string;
+  readonly timeRange: InsightsTimeRange;
+  readonly intervalMs: number;
+}
+
+export interface InsightsGetAppUsageResult {
+  readonly coverage: InsightsCoverage;
+  readonly activeInstallations: number;
+  readonly points: readonly {
+    readonly startMs: number;
+    readonly installations: number;
+  }[];
+  readonly appVersions: readonly string[];
+  readonly versions: readonly {
+    readonly name: string;
+    readonly installations: number;
+  }[];
+  readonly platforms: readonly {
+    readonly name: string;
+    readonly installations: number;
+  }[];
+  readonly bundleDistribution: readonly {
+    readonly appVersion: string;
+    readonly platform: "ios" | "android";
+    readonly releaseId: string | null;
+    readonly installations: number;
+  }[];
+  readonly measuredAtMs: number;
+}
+
 export interface InsightsModel {
   /**
    * Persist the immutable event once. A private latest-event index, if used,
@@ -171,6 +257,14 @@ export interface InsightsModel {
   countLatestEvents(input: InsightsCountLatestEventsInput): Promise<number>;
   /** Count accepted reports in [sinceMs, beforeReceivedAtMs), across all pages. */
   countEvents(input: InsightsCountEventsInput): Promise<number>;
+  /** Read maintained release/scope summaries without scanning raw events. */
+  getReleaseActivity(
+    input: InsightsGetReleaseActivityInput,
+  ): Promise<InsightsGetReleaseActivityResult>;
+  /** Read maintained App usage summaries and latest-report distribution. */
+  getAppUsage(
+    input: InsightsGetAppUsageInput,
+  ): Promise<InsightsGetAppUsageResult>;
 }
 
 export interface ApiKeyModel {

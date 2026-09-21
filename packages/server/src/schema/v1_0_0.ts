@@ -1,4 +1,5 @@
 import {
+  bigInteger,
   bool,
   check,
   column,
@@ -471,6 +472,8 @@ export const bundleEventHeadsV100 = table(
     type: column("type", varchar(32)),
     from_bundle_id: uuid("from_bundle_id").nullable(),
     to_bundle_id: uuid("to_bundle_id"),
+    current_release_id: uuid("current_release_id").nullable(),
+    app_version: stringColumn("app_version"),
   },
   {
     indexes: [
@@ -494,6 +497,92 @@ export const bundleEventHeadsV100 = table(
   },
 );
 
+export const insightsOverviewV100 = table(
+  "insights_overview",
+  {
+    id: idColumn("id", varchar(64)).collate(catalogKeyCollations),
+    scope_kind: column("scope_kind", varchar(16)),
+    release_kind: column("release_kind", varchar(8)),
+    release_id: column("release_id", varchar(36)).defaultTo(""),
+    channel: stringColumn("channel").collate(insightsTextCollations),
+    platform: column("platform", varchar(8)).collate(insightsTextCollations),
+    app_version_kind: column("app_version_kind", varchar(8)),
+    app_version: stringColumn("app_version").defaultTo(""),
+    period_kind: column("period_kind", varchar(16)),
+    bucket_start_ms: float("bucket_start_ms").defaultTo(0),
+    downloads: bigInteger("downloads").defaultTo(0),
+    launches: bigInteger("launches").defaultTo(0),
+    failed_launches: bigInteger("failed_launches").defaultTo(0),
+    latest_installations: bigInteger("latest_installations").defaultTo(0),
+    launch_users: largeString("launch_users").nullable(),
+    activity_users: largeString("activity_users").nullable(),
+  },
+  {
+    indexes: [
+      index("insights_overview_release_time_idx", [
+        "scope_kind",
+        "release_id",
+        "platform",
+        "channel",
+        "period_kind",
+        "bucket_start_ms",
+      ]),
+      index("insights_overview_scope_time_idx", [
+        "scope_kind",
+        "channel",
+        "platform",
+        "app_version_kind",
+        "app_version",
+        "period_kind",
+        "bucket_start_ms",
+      ]),
+      index("insights_overview_distribution_time_idx", [
+        "scope_kind",
+        "channel",
+        "period_kind",
+        "bucket_start_ms",
+        "platform",
+        "app_version",
+      ]),
+    ],
+    checks: [
+      check({
+        name: "insights_overview_scope_kind_check",
+        expression:
+          "scope_kind in ('release', 'channel', 'usage', 'distribution')",
+        sqliteInline: true,
+      }),
+      check({
+        name: "insights_overview_period_kind_check",
+        expression: "period_kind in ('lifetime', 'hour', 'latest')",
+        sqliteInline: true,
+      }),
+      check({
+        name: "insights_overview_bucket_check",
+        expression:
+          "(period_kind = 'lifetime' and bucket_start_ms = 0) or (period_kind in ('hour', 'latest') and bucket_start_ms >= 0 and mod(bucket_start_ms, 3600000) = 0)",
+        providerExpressions: {
+          cockroachdb:
+            "(period_kind = 'lifetime' and bucket_start_ms = 0) or (period_kind in ('hour', 'latest') and bucket_start_ms >= 0 and mod(cast(bucket_start_ms as decimal), 3600000) = 0)",
+          mssql:
+            "(period_kind = 'lifetime' and bucket_start_ms = 0) or (period_kind in ('hour', 'latest') and bucket_start_ms >= 0 and bucket_start_ms % 3600000 = 0)",
+          postgresql:
+            "(period_kind = 'lifetime' and bucket_start_ms = 0) or (period_kind in ('hour', 'latest') and bucket_start_ms >= 0 and mod(cast(bucket_start_ms as numeric), 3600000) = 0)",
+          sqlite:
+            "(period_kind = 'lifetime' and bucket_start_ms = 0) or (period_kind in ('hour', 'latest') and bucket_start_ms >= 0 and bucket_start_ms % 3600000 = 0)",
+        },
+        sqliteInline: true,
+      }),
+      check({
+        name: "insights_overview_counts_check",
+        expression:
+          "downloads >= 0 and launches >= 0 and failed_launches >= 0 and latest_installations >= 0",
+        sqliteInline: true,
+      }),
+    ],
+  },
+);
+
 export const v1_0_0 = schema({
   version: "1.0.0",
   settingsTable: HOT_UPDATER_SETTINGS_TABLE,
@@ -505,6 +594,7 @@ export const v1_0_0 = schema({
     releaseCatalogsV100,
     bundleEventsV100,
     bundleEventHeadsV100,
+    insightsOverviewV100,
     apiKeysV100,
     createSettingsTable("1.0.0"),
   ],

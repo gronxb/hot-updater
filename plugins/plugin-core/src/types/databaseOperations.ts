@@ -304,6 +304,8 @@ export interface DatabasePluginImplementation {
   recordInsights(
     input: import("./databasePlugin").InsightsRecordEventInput,
   ): Promise<void>;
+  getReleaseActivity: import("./databasePlugin").InsightsModel["getReleaseActivity"];
+  getAppUsage: import("./databasePlugin").InsightsModel["getAppUsage"];
   create(
     input: CreateDatabaseImplementationInput,
   ): Promise<DatabaseImplementationResult>;

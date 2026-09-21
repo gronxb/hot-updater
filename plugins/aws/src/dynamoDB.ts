@@ -58,6 +58,11 @@ import {
 } from "@hot-updater/plugin-core/internal";
 
 import { invalidateCloudFront } from "./cloudFrontInvalidation";
+import {
+  createDynamoDBOverviewActions,
+  getDynamoDBAppUsage,
+  getDynamoDBReleaseActivity,
+} from "./dynamoDBInsightsOverview";
 
 export const DYNAMODB_MAX_METADATA_ITEM_BYTES = 8 * 1_024;
 export const DYNAMODB_MAX_CATALOG_ITEM_BYTES = 400 * 1_024;
@@ -1691,6 +1696,8 @@ export const createDynamoDBCrud = (
   updateIndexName: string,
 ): DatabasePluginImplementation => ({
   recordInsights: (input) => recordDynamoDBInsightsEvent(store, input),
+  getReleaseActivity: (input) => getDynamoDBReleaseActivity(store, input),
+  getAppUsage: (input) => getDynamoDBAppUsage(store, input),
   findLatestInsightsEvents: (input) =>
     createDynamoDBInsightsTable(store).findLatestEvents(input),
   countLatestInsightsEvents: (input) =>
@@ -3036,7 +3043,7 @@ export const DYNAMODB_API_KEY_HASH_PARTITION = "_hot-updater#api-key-hashes";
 const DYNAMODB_INSIGHTS_MOVEMENT_PREFIX = "_hot-updater#insights-movement#";
 const DYNAMODB_INSIGHTS_USER_PREFIX = "_hot-updater#insights-user#";
 const DYNAMODB_INSIGHTS_SCOPE_PREFIX = "_hot-updater#insights-scope#";
-const DYNAMODB_INSIGHTS_RECORD_ATTEMPTS = 3;
+const DYNAMODB_INSIGHTS_RECORD_ATTEMPTS = 32;
 
 const hasValidBundleEventShape = (value: object): boolean => {
   const type = field(value, "type");
@@ -3269,6 +3276,11 @@ const recordDynamoDBInsightsEvent = async (
     );
     if (accepted !== undefined) return;
     const current = await loadInsightsInstallationItem(store, row.install_id);
+    const overviewActions = await createDynamoDBOverviewActions(
+      store,
+      row,
+      current?.row ?? null,
+    );
     const actions: DynamoDBTransactItem[] = [
       {
         Put: {
@@ -3280,6 +3292,7 @@ const recordDynamoDBInsightsEvent = async (
       },
       { Put: { TableName: store.tableName, Item: eventItem } },
       { Put: { TableName: store.tableName, Item: bundleItem } },
+      ...overviewActions,
     ];
     if (current === null || advancesInsightsInstallation(next, current.row)) {
       actions.push({
@@ -3357,6 +3370,9 @@ const recordDynamoDBInsightsEvent = async (
       );
       if (Item !== undefined) return;
       if (attempt === DYNAMODB_INSIGHTS_RECORD_ATTEMPTS - 1) throw error;
+      await new Promise((resolve) =>
+        setTimeout(resolve, Math.min(5 * 2 ** attempt, 100)),
+      );
     }
   }
 };
@@ -3401,6 +3417,8 @@ export const createDynamoDBInsightsTable = (
   store: DynamoDBStore,
 ): InsightsModel => ({
   recordEvent: (input) => recordDynamoDBInsightsEvent(store, input),
+  getReleaseActivity: (input) => getDynamoDBReleaseActivity(store, input),
+  getAppUsage: (input) => getDynamoDBAppUsage(store, input),
   async listEvents(input) {
     if ((input.sinceMs ?? 0) === input.beforeReceivedAtMs) return [];
     const range = insightsEventRange(input);

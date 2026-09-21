@@ -20,6 +20,10 @@ import {
 } from "@hot-updater/plugin-core/internal";
 
 import { matchesAll, queryRows } from "./inMemoryDatabaseQuery";
+import {
+  getInMemoryAppUsage,
+  getInMemoryReleaseActivity,
+} from "./inMemoryInsightsOverview";
 
 type Table<TModel extends DatabaseModel> = {
   rows: DatabaseModelMap[TModel][];
@@ -436,6 +440,10 @@ const createImplementation = (tables: Tables): DatabasePluginImplementation => {
           matchesAll(row, where),
         ),
       ).length,
+    getReleaseActivity: async (input) =>
+      getInMemoryReleaseActivity(tables.bundle_events.rows, input),
+    getAppUsage: async (input) =>
+      getInMemoryAppUsage(tables.bundle_events.rows, input),
     insertChannel: ({ row }) =>
       withMutationLock(() => {
         const existing = tables.channels.rows.find(

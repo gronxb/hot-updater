@@ -133,15 +133,17 @@ const BundlesPage = (Route as unknown as { readonly component: ComponentType })
 
 describe("BundlesPage", () => {
   it.each([false, true])(
-    "restores activity counts on desktop and mobile (%s)",
+    "shows release insights on desktop and mobile (%s)",
     (mobile) => {
       mocks.isMobile.mockReturnValue(mobile);
       render(<BundlesPage />);
-      const summary = screen.getByRole("group", {
-        name: "Bundle activity over 30 days",
+      const summary = screen.getByRole("link", {
+        name: /Downloads 107Known launches 789Known crashes 2/,
       });
-      expect(within(summary).getByText("42")).toBeDefined();
-      expect(within(summary).getByText("3")).toBeDefined();
+      expect(within(summary).getByText("Downloads 107")).toBeDefined();
+      expect(within(summary).getByText("Known launches 789")).toBeDefined();
+      expect(within(summary).getByText(/Known crashes 2/)).toBeDefined();
+      expect(within(summary).getByText(/0\.25%/)).toBeDefined();
       expect(mocks.activity).toHaveBeenCalledWith([
         {
           platform: "ios",
@@ -154,9 +156,7 @@ describe("BundlesPage", () => {
   it("keeps bundle management usable when activity is unavailable", () => {
     mocks.activity.mockReturnValue({ error: new Error("Offline") });
     render(<BundlesPage />);
-    expect(
-      screen.getByLabelText("30-day bundle activity unavailable"),
-    ).toBeDefined();
+    expect(screen.getByLabelText("Release insights unavailable")).toBeDefined();
     expect(
       screen.getByRole("button", { name: "Open details for ID release-1" }),
     ).toBeDefined();
@@ -165,8 +165,11 @@ describe("BundlesPage", () => {
     mocks.activity.mockReturnValue({
       data: {
         "release-1": {
-          series: [{ activeInstallations: 42, recoveredInstallations: 3 }],
-          truncated: false,
+          downloads: 107,
+          launches: 789,
+          failedLaunches: 2,
+          measuredAtMs: Date.UTC(2026, 6, 19),
+          coverage: { kind: "complete", sinceMs: 0 },
         },
       },
     });

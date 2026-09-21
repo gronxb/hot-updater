@@ -124,6 +124,8 @@ it("creates the current schema with required artifact sizes", async () => {
     "type",
     "from_bundle_id",
     "to_bundle_id",
+    "current_release_id",
+    "app_version",
   ]);
   const headScopeIndex = await env.DB.prepare(
     "PRAGMA index_info(bundle_event_heads_scope_idx)",
@@ -163,6 +165,16 @@ it("creates the current schema with required artifact sizes", async () => {
       "TEMP B-TREE",
     );
   }
+
+  const overviewPlan = await env.DB.prepare(`
+    EXPLAIN QUERY PLAN SELECT * FROM insights_overview
+    WHERE scope_kind = 'distribution' AND channel = 'production'
+      AND period_kind = 'latest'
+      AND bucket_start_ms >= 100 AND bucket_start_ms < 200
+  `).all<{ detail: string }>();
+  expect(overviewPlan.results.map(({ detail }) => detail).join("\n")).toContain(
+    "insights_overview_distribution_time_idx",
+  );
 
   for (const size of [-1, Number.MAX_SAFE_INTEGER + 1, null]) {
     await expect(

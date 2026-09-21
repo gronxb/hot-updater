@@ -67,6 +67,23 @@ const createModel = () => {
     findLatestEvents: vi.fn<InsightsModel["findLatestEvents"]>(async () => []),
     countLatestEvents: vi.fn<InsightsModel["countLatestEvents"]>(async () => 0),
     countEvents: vi.fn<InsightsModel["countEvents"]>(async () => 0),
+    getReleaseActivity: vi.fn<InsightsModel["getReleaseActivity"]>(
+      async () => ({
+        coverage: { kind: "complete", sinceMs: 0 },
+        data: [],
+        measuredAtMs: 0,
+      }),
+    ),
+    getAppUsage: vi.fn<InsightsModel["getAppUsage"]>(async () => ({
+      coverage: { kind: "complete", sinceMs: 0 },
+      activeInstallations: 0,
+      points: [],
+      appVersions: [],
+      versions: [],
+      platforms: [],
+      bundleDistribution: [],
+      measuredAtMs: 0,
+    })),
   } satisfies InsightsModel;
   return { ...model, model };
 };

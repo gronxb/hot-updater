@@ -4,6 +4,7 @@ export const SUPABASE_V1_TABLE_NAMES = {
   apiKeys: "hot_updater_v1_api_keys",
   bundleEvents: "hot_updater_v1_bundle_events",
   bundleEventHeads: "hot_updater_v1_bundle_event_heads",
+  insightsOverview: "hot_updater_v1_insights_overview",
   bundlePatches: "hot_updater_v1_bundle_patches",
   bundles: "hot_updater_v1_bundles",
   channels: "hot_updater_v1_channels",

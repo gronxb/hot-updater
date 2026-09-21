@@ -20,6 +20,12 @@ import {
   publishBundlePatchInTransaction,
 } from "@hot-updater/plugin-core/internal";
 import {
+  getKyselyAppUsage,
+  getKyselyReleaseActivity,
+  readKyselyInsightsHead,
+  recordKyselyInsightsOverview,
+} from "@hot-updater/server";
+import {
   Kysely,
   PostgresDialect,
   sql,
@@ -147,20 +153,36 @@ const buildWhere = (
 const createPostgresImplementation = (
   db: Kysely<Database>,
 ): DatabasePluginImplementation => ({
+  getReleaseActivity: (input) => getKyselyReleaseActivity(db, input),
+  getAppUsage: (input) => getKyselyAppUsage(db, input),
   async recordInsights({ event }) {
     await db.transaction().execute(async (transaction) => {
-      await transaction
+      const previousHead = await readKyselyInsightsHead(
+        transaction,
+        event.install_id,
+        "postgresql",
+      );
+      const accepted = await transaction
         .insertInto("bundle_events")
         .values(event)
         .onConflict((oc) => oc.column("id").doNothing())
-        .execute();
-      await sql`INSERT INTO bundle_event_heads (install_id, id, received_at_ms, user_id, platform, channel, type, from_bundle_id, to_bundle_id)
-SELECT install_id, id, received_at_ms, user_id, platform, channel, type, from_bundle_id, to_bundle_id
+        .returning("id")
+        .executeTakeFirst();
+      if (accepted === undefined) return;
+      await recordKyselyInsightsOverview(
+        transaction,
+        "postgresql",
+        event,
+        previousHead,
+      );
+      await sql`INSERT INTO bundle_event_heads (install_id, id, received_at_ms, user_id, platform, channel, type, from_bundle_id, to_bundle_id, current_release_id, app_version)
+SELECT install_id, id, received_at_ms, user_id, platform, channel, type, from_bundle_id, to_bundle_id, ${event.type === "UPDATE_DOWNLOADED" ? event.from_release_id : event.to_release_id}, app_version
 FROM bundle_events WHERE id = ${event.id}
 ON CONFLICT(install_id) DO UPDATE SET
   id = excluded.id, received_at_ms = excluded.received_at_ms, user_id = excluded.user_id,
   platform = excluded.platform, channel = excluded.channel, type = excluded.type,
-  from_bundle_id = excluded.from_bundle_id, to_bundle_id = excluded.to_bundle_id
+  from_bundle_id = excluded.from_bundle_id, to_bundle_id = excluded.to_bundle_id,
+  current_release_id = excluded.current_release_id, app_version = excluded.app_version
 WHERE (excluded.received_at_ms, excluded.id) > (bundle_event_heads.received_at_ms, bundle_event_heads.id)`.execute(
         transaction,
       );

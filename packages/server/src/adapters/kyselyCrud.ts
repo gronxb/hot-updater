@@ -38,6 +38,10 @@ import {
   toStoredReleaseRow,
   toStoredReleaseUpdate,
 } from "./databasePluginUtils";
+import {
+  readKyselyInsightsHead,
+  recordKyselyInsightsOverview,
+} from "./kyselyInsightsOverview";
 import { buildKyselyWhere } from "./kyselyQuery";
 
 class KyselyAdapterInvariantError extends Error {
@@ -130,13 +134,20 @@ export const recordKyselyInsights = async (
   provider: Exclude<ORMSQLProvider, "mssql">,
   { event }: InsightsRecordEventInput,
 ): Promise<void> => {
+  const previousHead = await readKyselyInsightsHead(
+    executor,
+    event.install_id,
+    provider,
+  );
   const entries = Object.entries(toStoredBundleEventRow(event, provider));
   const insert = sql`insert into bundle_events (${sql.join(entries.map(([field]) => sql.ref(field)))}) values (${sql.join(entries.map(([, value]) => value))})`;
-  await (
+  const accepted = await (
     provider === "mysql"
-      ? sql`${insert} on duplicate key update id = id`
+      ? sql`insert ignore into bundle_events (${sql.join(entries.map(([field]) => sql.ref(field)))}) values (${sql.join(entries.map(([, value]) => value))})`
       : sql`${insert} on conflict (id) do nothing`
   ).execute(executor);
+  if (Number(accepted.numAffectedRows ?? 0) === 0) return;
+  await recordKyselyInsightsOverview(executor, provider, event, previousHead);
 
   const fields = [
     "install_id",
@@ -146,11 +157,28 @@ export const recordKyselyInsights = async (
     "type",
     "from_bundle_id",
     "to_bundle_id",
+    "current_release_id",
+    "app_version",
     "id",
     "received_at_ms",
   ];
   const columns = sql.join(fields.map((field) => sql.ref(field)));
-  const headInsert = sql`insert into bundle_event_heads (${columns}) select ${columns} from bundle_events where id = ${event.id}`;
+  const values = sql.join([
+    event.install_id,
+    event.user_id,
+    event.platform,
+    event.channel,
+    event.type,
+    event.from_bundle_id,
+    event.to_bundle_id,
+    event.type === "UPDATE_DOWNLOADED"
+      ? event.from_release_id
+      : event.to_release_id,
+    event.app_version,
+    event.id,
+    event.received_at_ms,
+  ]);
+  const headInsert = sql`insert into bundle_event_heads (${columns}) values (${values})`;
   const newer =
     provider === "mysql"
       ? sql`(values(received_at_ms) > bundle_event_heads.received_at_ms or (values(received_at_ms) = bundle_event_heads.received_at_ms and values(id) > bundle_event_heads.id))`

@@ -5,7 +5,6 @@ import {
   LogOut,
   Moon,
   Package,
-  ShieldCheck,
   Sun,
 } from "lucide-react";
 import { useState } from "react";
@@ -43,7 +42,6 @@ export function AppSidebar({ canSignOut = false }: { canSignOut?: boolean }) {
     currentPath === "/insights/distribution" ||
     currentPath === "/installations";
   const isApiKeysActive = currentPath === "/api-keys";
-  const isSigningActive = currentPath === "/signing";
 
   const signOut = async () => {
     setSigningOut(true);
@@ -147,16 +145,6 @@ export function AppSidebar({ canSignOut = false }: { canSignOut?: boolean }) {
                   </SidebarMenuButton>
                 </SidebarMenuItem>
               ) : null}
-              <SidebarMenuItem>
-                <SidebarMenuButton
-                  isActive={isSigningActive}
-                  render={<Link to="/signing" onClick={closeMobileSidebar} />}
-                  tooltip="Bundle signing"
-                >
-                  <ShieldCheck />
-                  <span>Bundle signing</span>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>

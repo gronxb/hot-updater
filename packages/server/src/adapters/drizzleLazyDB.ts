@@ -12,6 +12,10 @@ import type {
   StoredReleaseRow,
 } from "./databasePluginUtils";
 import type { DrizzleConfig } from "./drizzle";
+import type {
+  DrizzleHeadRow,
+  DrizzleOverviewRow,
+} from "./drizzleInsightsOverview";
 
 export type DrizzleTable = Record<string, unknown>;
 
@@ -40,13 +44,18 @@ type DrizzleInsertBuilder = {
 };
 
 type DrizzleQuery<TRow> = {
-  readonly findFirst: (args?: unknown) => Promise<TRow | undefined>;
-  readonly findMany: (args?: unknown) => Promise<TRow[]>;
+  readonly findFirst: (args?: unknown) => Promise<TRow | undefined> & {
+    readonly sync?: () => TRow | undefined;
+  };
+  readonly findMany: (args?: unknown) => Promise<TRow[]> & {
+    readonly sync?: () => TRow[];
+  };
 };
 
 export type DrizzleDB = {
   readonly resolve?: () => Promise<DrizzleDB>;
   readonly execute?: (query: SQL) => Promise<unknown>;
+  readonly run?: (query: SQL) => unknown;
   readonly batch?: (queries: readonly DrizzleMutation[]) => Promise<unknown>;
   readonly select?: (fields: Record<string, SQL>) => {
     readonly from: (source: SQL) => {
@@ -65,6 +74,8 @@ export type DrizzleDB = {
     readonly channels: DrizzleQuery<ChannelRow>;
     readonly bundle_patches: DrizzleQuery<BundlePatchRow>;
     readonly bundle_events: DrizzleQuery<StoredBundleEventRow>;
+    readonly bundle_event_heads: DrizzleQuery<DrizzleHeadRow>;
+    readonly insights_overview: DrizzleQuery<DrizzleOverviewRow>;
 
     readonly api_keys: DrizzleQuery<ApiKeyRow>;
     readonly releases: DrizzleQuery<StoredReleaseRow>;
@@ -108,6 +119,8 @@ const isDrizzleDB = (value: unknown): value is DrizzleDB => {
   if (
     !isRecord(query) ||
     !isDrizzleQuery(query["bundle_events"]) ||
+    !isDrizzleQuery(query["bundle_event_heads"]) ||
+    !isDrizzleQuery(query["insights_overview"]) ||
     !isDrizzleQuery(query["bundle_patches"]) ||
     !isDrizzleQuery(query["bundles"]) ||
     !isDrizzleQuery(query["channels"]) ||
@@ -219,6 +232,18 @@ export const createLazyDB = (config: DrizzleConfig): DrizzleDB => {
           (await getDB()).query.bundle_events.findFirst(args),
         findMany: async (args) =>
           (await getDB()).query.bundle_events.findMany(args),
+      },
+      bundle_event_heads: {
+        findFirst: async (args) =>
+          (await getDB()).query.bundle_event_heads.findFirst(args),
+        findMany: async (args) =>
+          (await getDB()).query.bundle_event_heads.findMany(args),
+      },
+      insights_overview: {
+        findFirst: async (args) =>
+          (await getDB()).query.insights_overview.findFirst(args),
+        findMany: async (args) =>
+          (await getDB()).query.insights_overview.findMany(args),
       },
 
       bundle_patches: {

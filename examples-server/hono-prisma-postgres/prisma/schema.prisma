@@ -127,10 +127,33 @@ model bundle_event_heads {
   type String @db.VarChar(32)
   from_bundle_id String? @db.Uuid
   to_bundle_id String @db.Uuid
+  current_release_id String? @db.Uuid
+  app_version String
   @@index([user_id, install_id], map: "bundle_event_heads_user_idx")
   @@index([platform, channel, received_at_ms], map: "bundle_event_heads_scope_idx")
   @@index([type, platform, channel, from_bundle_id, received_at_ms], map: "bundle_event_heads_from_idx")
   @@index([type, platform, channel, to_bundle_id, received_at_ms], map: "bundle_event_heads_to_idx")
+}
+model insights_overview {
+  id String @db.VarChar(64) @id
+  scope_kind String @db.VarChar(16)
+  release_kind String @db.VarChar(8)
+  release_id String @db.VarChar(36) @default("")
+  channel String
+  platform String @db.VarChar(8)
+  app_version_kind String @db.VarChar(8)
+  app_version String @default("")
+  period_kind String @db.VarChar(16)
+  bucket_start_ms Float @default(0)
+  downloads BigInt @default(0)
+  launches BigInt @default(0)
+  failed_launches BigInt @default(0)
+  latest_installations BigInt @default(0)
+  launch_users String?
+  activity_users String?
+  @@index([scope_kind, release_id, platform, channel, period_kind, bucket_start_ms], map: "insights_overview_release_time_idx")
+  @@index([scope_kind, channel, platform, app_version_kind, app_version, period_kind, bucket_start_ms], map: "insights_overview_scope_time_idx")
+  @@index([scope_kind, channel, period_kind, bucket_start_ms, platform, app_version], map: "insights_overview_distribution_time_idx")
 }
 model api_keys {
   id String @db.VarChar(255) @id

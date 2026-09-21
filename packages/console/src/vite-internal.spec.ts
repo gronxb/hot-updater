@@ -85,7 +85,7 @@ describe("hosted console Vite modules", () => {
 });
 
 describe("local console Vite modules", () => {
-  it("passes signing only through the server-side config module", () => {
+  it("loads Console config without accessing the app signer", () => {
     const plugin = createLocalConsoleModulesPlugin();
     const resolveId = plugin.resolveId as (id: string) => string | undefined;
     const load = plugin.load as (id: string) => string | undefined;
@@ -93,7 +93,9 @@ describe("local console Vite modules", () => {
 
     const source = load(configId as string);
 
-    expect(source).toContain("signing: config.signing");
+    expect(source).toContain("database: config.database");
+    expect(source).toContain("storage: config.storage");
+    expect(source).not.toContain("config.signing");
     expect(source).not.toContain("privateKeyPath");
     expect(source).not.toContain("getPublicKey");
     expect(source).not.toContain("sign(");

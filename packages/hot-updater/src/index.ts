@@ -198,6 +198,22 @@ program
     "--server-base-url <url>",
     "server base URL used by update checks (doctor appends /version)",
   )
+  .addOption(
+    new Option("--scope <scope>", "required verification scope").choices([
+      "scaffold",
+      "infrastructure",
+    ]),
+  )
+  .option("--infra-dir <directory>", "exact scaffold directory to verify")
+  .addOption(
+    new Option("--platform <platform>", "catalog platform to verify").choices([
+      "ios",
+      "android",
+    ]),
+  )
+  .option("--channel <channel>", "catalog channel to verify")
+  .option("--app-version <version>", "app-version catalog target")
+  .option("--fingerprint <hash>", "fingerprint catalog target")
   .option("--json", "output machine-readable doctor result")
   .action(handleDoctor);
 
@@ -826,7 +842,9 @@ if (process.env["EXPERIMENTAL"]) {
 program.hook("preAction", (_command, actionCommand) => {
   if (
     actionCommand.parent === agentInfraCommand ||
-    actionCommand.parent === infraCommand
+    actionCommand.parent === infraCommand ||
+    (actionCommand.name() === "doctor" &&
+      actionCommand.opts()["scope"] !== undefined)
   )
     return;
   ensureNoConflicts();

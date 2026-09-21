@@ -491,6 +491,12 @@ export const createMemoryDatabasePlugin = (): DatabasePlugin => {
               }),
           ).length;
         },
+        async getReleaseActivity() {
+          throw new Error("Memory release activity is not configured");
+        },
+        async getAppUsage() {
+          throw new Error("Memory App usage is not configured");
+        },
       },
       apiKeys: {
         async create(row) {

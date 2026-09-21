@@ -14,6 +14,8 @@
 - Build all: `pnpm -w build` (Nx runs package and plugin builds; output in `dist/`).
 - Test all: `pnpm -w test` (Vitest workspace over `packages/*`, `plugins/*`).
 - Format/Lint: `pnpm -w lint:fix` (write) • `pnpm lint` (read-only).
+- Console design lint: `pnpm lint:design` loads `@shadcn/lint` with its
+  dedicated Oxlint-compatible configuration.
 - Clean: `pnpm clear` (removes `**/dist` and `.nx`).
 
 ## Skill Usage

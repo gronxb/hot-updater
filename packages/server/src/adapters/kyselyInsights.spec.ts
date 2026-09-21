@@ -161,8 +161,84 @@ describe.each(["postgresql", "sqlite"] as const)(
           type: newest.type,
           from_bundle_id: newest.from_bundle_id,
           to_bundle_id: newest.to_bundle_id,
+          current_release_id: newest.to_release_id,
+          app_version: newest.app_version,
         },
       ]);
+    });
+
+    it("maintains exact counters, merged users, scope rows, and latest-report distribution", async () => {
+      const insights = adapter.models.insights;
+      const first = createBundleEventRowFixture("831", 100);
+      const second = createBundleEventRowFixture("832", 200);
+      const recovery = createBundleEventRowFixture("833", 300);
+      const releaseA = first.to_bundle_id;
+      const releaseB = second.to_bundle_id;
+      const events = [
+        {
+          ...first,
+          type: "UPDATE_DOWNLOADED" as const,
+          to_release_id: releaseB,
+        },
+        {
+          ...first,
+          id: "00000000-0000-7000-8000-000000000834",
+          type: "UNCHANGED" as const,
+          from_bundle_id: null,
+          from_release_id: null,
+          to_release_id: releaseA,
+          metadata: { ...first.metadata, update_strategy: null },
+        },
+        { ...second, to_release_id: releaseB },
+        {
+          ...recovery,
+          type: "RECOVERED" as const,
+          from_release_id: releaseB,
+          to_release_id: releaseA,
+        },
+      ];
+      await Promise.all(events.map((event) => insights.recordEvent({ event })));
+      await insights.recordEvent({ event: events[3]! });
+
+      const references = [releaseA, releaseB].map((releaseId) => ({
+        releaseId,
+        platform: "ios" as const,
+        channel: "production",
+      }));
+      const lifetime = await insights.getReleaseActivity({
+        releases: references,
+      });
+      expect(lifetime.data.map(({ metrics }) => metrics)).toEqual([
+        { downloads: 0, launches: 2, failedLaunches: 0 },
+        { downloads: 1, launches: 1, failedLaunches: 1 },
+      ]);
+
+      const period = await insights.getReleaseActivity({
+        scope: { platform: "ios", channel: "production" },
+        timeRange: { start: 0, end: 3_600_000 },
+      });
+      expect(period.data[0]?.metrics).toMatchObject({
+        downloads: 1,
+        launches: 3,
+        failedLaunches: 1,
+        uniqueUsers: 3,
+        series: [{ startMs: 0, launches: 3, failedLaunches: 1 }],
+      });
+
+      const usage = await insights.getAppUsage({
+        channel: "production",
+        platform: "all",
+        timeRange: { start: 0, end: 3_600_000 },
+        intervalMs: 3_600_000,
+      });
+      expect(usage.activeInstallations).toBe(3);
+      expect(usage.points).toEqual([{ startMs: 0, installations: 3 }]);
+      expect(usage.bundleDistribution).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ releaseId: releaseA, installations: 2 }),
+          expect.objectContaining({ releaseId: releaseB, installations: 1 }),
+        ]),
+      );
     });
   },
 );

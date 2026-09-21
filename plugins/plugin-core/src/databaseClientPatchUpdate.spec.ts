@@ -33,6 +33,12 @@ const createNativePlugin = (
   return createDatabasePlugin({
     name,
     ...createDatabasePluginAdapter(name, {
+      getReleaseActivity: async () => {
+        throw new Error("Unexpected release activity read");
+      },
+      getAppUsage: async () => {
+        throw new Error("Unexpected App usage read");
+      },
       findLatestInsightsEvents: async () => {
         throw new Error("Unexpected Insights read");
       },
@@ -82,6 +88,12 @@ describe("database client patch updates", () => {
     const plugin = createDatabasePlugin({
       name,
       ...createDatabasePluginAdapter(name, {
+        getReleaseActivity: async () => {
+          throw new Error("Unexpected release activity read");
+        },
+        getAppUsage: async () => {
+          throw new Error("Unexpected App usage read");
+        },
         findLatestInsightsEvents: async () => {
           throw new Error("Unexpected Insights read");
         },
@@ -132,6 +144,12 @@ describe("database client patch updates", () => {
     const plugin = createDatabasePlugin({
       name,
       ...createDatabasePluginAdapter(name, {
+        getReleaseActivity: async () => {
+          throw new Error("Unexpected release activity read");
+        },
+        getAppUsage: async () => {
+          throw new Error("Unexpected App usage read");
+        },
         findLatestInsightsEvents: async () => {
           throw new Error("Unexpected Insights read");
         },

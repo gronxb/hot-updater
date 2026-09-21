@@ -10,17 +10,7 @@ import type {
   DatabasePluginImplementation,
   TransactionDatabasePluginImplementation,
 } from "@hot-updater/plugin-core/internal";
-import {
-  or,
-  asc,
-  desc,
-  eq,
-  sql,
-  getTableColumns,
-  is,
-  Table,
-  type SQLWrapper,
-} from "drizzle-orm";
+import { or, asc, desc, eq, sql, type SQLWrapper } from "drizzle-orm";
 
 import {
   isChannelDeleteReferencedError,
@@ -37,6 +27,10 @@ import {
   toStoredReleaseUpdate,
 } from "./databasePluginUtils";
 import type { DrizzleProvider } from "./drizzle";
+import {
+  recordDrizzleInsightsOverview,
+  recordDrizzleInsightsOverviewSync,
+} from "./drizzleInsightsOverview";
 import type { DrizzleDB, DrizzleTable } from "./drizzleLazyDB";
 import { buildDrizzleWhere } from "./drizzleQuery";
 
@@ -100,107 +94,149 @@ export const recordDrizzleInsights = (
   db: DrizzleDB,
   provider: DrizzleProvider,
   { event }: InsightsRecordEventInput,
-): void | Promise<void> => {
+): Promise<void> => {
   const events = getDrizzleTable(db, "bundle_events");
   const heads = getDrizzleTable(db, "bundle_event_heads");
-  if (!is(heads, Table) || !is(events, Table)) {
-    throw new DrizzleAdapterInvariantError();
+  if (db.transaction === undefined) throw new DrizzleAdapterInvariantError();
+  if (db.resultKind === "sync") {
+    return Promise.resolve(
+      db.transaction((transaction) => {
+        const query = transaction.query.bundle_event_heads.findFirst({
+          where: eq(getDrizzleColumn(heads, "install_id"), event.install_id),
+        });
+        if (query.sync === undefined) throw new DrizzleAdapterInvariantError();
+        const previousHead = query.sync();
+        const mutation = transaction
+          .insert(events)
+          .values(event)
+          .onConflictDoNothing?.()
+          .returning?.({ id: getDrizzleColumn(events, "id") });
+        if (mutation?.all === undefined)
+          throw new DrizzleAdapterInvariantError();
+        if (mutation.all().length === 0) return;
+        recordDrizzleInsightsOverviewSync(
+          transaction,
+          provider,
+          event,
+          previousHead,
+        );
+        if (
+          previousHead !== undefined &&
+          (event.received_at_ms < previousHead.received_at_ms ||
+            (event.received_at_ms === previousHead.received_at_ms &&
+              event.id <= previousHead.id))
+        ) {
+          return;
+        }
+        const head = drizzleHead(event);
+        const update = transaction
+          .insert(heads)
+          .values(head)
+          .onConflictDoUpdate?.({
+            target: getDrizzleColumn(heads, "install_id"),
+            set: Object.fromEntries(
+              Object.keys(head)
+                .filter((field) => field !== "install_id")
+                .map((field) => [
+                  field,
+                  sql`excluded.${sql.identifier(field)}`,
+                ]),
+            ),
+            setWhere: sql`excluded.received_at_ms > bundle_event_heads.received_at_ms OR (excluded.received_at_ms = bundle_event_heads.received_at_ms AND excluded.id > bundle_event_heads.id)`,
+          });
+        if (update?.run === undefined) throw new DrizzleAdapterInvariantError();
+        update.run();
+      }),
+    ).then(() => undefined);
   }
-  const fields = Object.keys(getTableColumns(heads));
-  if (provider === "mysql") {
-    if (!db.transaction) throw new DrizzleAdapterInvariantError();
-    return db.transaction(async (transaction) => {
-      const accepted = transaction
+  return db.transaction(async (transaction) => {
+    const previousHead = await transaction.query.bundle_event_heads.findFirst({
+      where: eq(getDrizzleColumn(heads, "install_id"), event.install_id),
+    });
+    let accepted = false;
+    if (provider === "mysql") {
+      const mutation = transaction.insert(events).ignore?.().values(event);
+      if (mutation === undefined) throw new DrizzleAdapterInvariantError();
+      accepted = affectedRows(await mutation.execute()) > 0;
+    } else {
+      const mutation = transaction
         .insert(events)
         .values(event)
-        .onDuplicateKeyUpdate?.({ set: { id: sql`id` } });
-      if (!accepted || !transaction.execute)
-        throw new DrizzleAdapterInvariantError();
-      await accepted.execute();
-      const wins = sql`VALUES(received_at_ms) > bundle_event_heads.received_at_ms OR (VALUES(received_at_ms) = bundle_event_heads.received_at_ms AND VALUES(id) > bundle_event_heads.id)`;
-      // Drizzle orders UPDATE assignments by schema columns. Emit these explicitly
-      // so MySQL compares against the old tuple until every payload field is set.
-      const ordered = [
-        ...fields.filter(
-          (field) => !["install_id", "id", "received_at_ms"].includes(field),
+        .onConflictDoNothing?.();
+      const returning = mutation?.returning?.({
+        id: getDrizzleColumn(events, "id"),
+      });
+      if (returning === undefined) throw new DrizzleAdapterInvariantError();
+      const rows = await returning.execute();
+      accepted = Array.isArray(rows) && rows.length > 0;
+    }
+    if (!accepted) return;
+    await recordDrizzleInsightsOverview(
+      transaction,
+      provider,
+      event,
+      previousHead,
+    );
+    if (
+      previousHead !== undefined &&
+      (event.received_at_ms < previousHead.received_at_ms ||
+        (event.received_at_ms === previousHead.received_at_ms &&
+          event.id <= previousHead.id))
+    ) {
+      return;
+    }
+    const head = drizzleHead(event);
+    const insert = transaction.insert(heads).values(head);
+    if (provider === "mysql") {
+      const update = insert.onDuplicateKeyUpdate?.({
+        set: Object.fromEntries(
+          Object.keys(head)
+            .filter((field) => field !== "install_id")
+            .map((field) => [field, sql`VALUES(${sql.identifier(field)})`]),
         ),
-        "id",
-        "received_at_ms",
-      ];
-      const columns = sql.join(
-        fields.map((field) => sql.identifier(field)),
-        sql`, `,
-      );
-      const assignments = sql.join(
-        ordered.map(
-          (field) =>
-            sql`${sql.identifier(field)} = CASE WHEN ${wins} THEN VALUES(${sql.identifier(field)}) ELSE bundle_event_heads.${sql.identifier(field)} END`,
-        ),
-        sql`, `,
-      );
-      await transaction.execute(
-        sql`INSERT INTO bundle_event_heads (${columns}) SELECT ${columns} FROM bundle_events WHERE id = ${event.id} ON DUPLICATE KEY UPDATE ${assignments}`,
-      );
-    });
-  }
-  const newer = sql`excluded.received_at_ms > bundle_event_heads.received_at_ms OR (excluded.received_at_ms = bundle_event_heads.received_at_ms AND excluded.id > bundle_event_heads.id)`;
-  const mutations = (executor: DrizzleDB, fromInserted = false) => {
-    const insert = executor.insert(events).values(event);
-    const accepted = insert.onConflictDoNothing?.();
-    // Read the immutable accepted row, never a possibly altered duplicate input.
-    const select = fromInserted
-      ? sql`SELECT ${sql.join(
-          fields.map((field) => sql.identifier(field)),
-          sql`, `,
-        )} FROM inserted`
-      : sql`SELECT ${sql.join(
-          fields.map((field) => sql.identifier(field)),
-          sql`, `,
-        )} FROM bundle_events WHERE id = ${event.id}`;
-    const headInsert = executor.insert(heads).select?.(select);
-    const head = headInsert?.onConflictDoUpdate?.({
+      });
+      if (update === undefined) throw new DrizzleAdapterInvariantError();
+      await update.execute();
+      return;
+    }
+    const update = insert.onConflictDoUpdate?.({
       target: getDrizzleColumn(heads, "install_id"),
       set: Object.fromEntries(
-        fields
+        Object.keys(head)
           .filter((field) => field !== "install_id")
           .map((field) => [field, sql`excluded.${sql.identifier(field)}`]),
       ),
-      setWhere: newer,
+      setWhere: sql`excluded.received_at_ms > bundle_event_heads.received_at_ms OR (excluded.received_at_ms = bundle_event_heads.received_at_ms AND excluded.id > bundle_event_heads.id)`,
     });
-    if (accepted === undefined || head === undefined)
-      throw new DrizzleAdapterInvariantError();
-    return { accepted, head };
-  };
-  if (provider === "postgresql") {
-    const { accepted, head } = mutations(db, true);
-    const returning =
-      "returning" in accepted && typeof accepted.returning === "function"
-        ? accepted.returning(getTableColumns(events))
-        : undefined;
-    if (!returning?.getSQL || !head.getSQL || !db.execute)
-      throw new DrizzleAdapterInvariantError();
-    return db
-      .execute(sql`WITH inserted AS (${returning.getSQL()}) ${head.getSQL()}`)
-      .then(() => undefined);
-  }
-  if (db.batch !== undefined) {
-    const { accepted, head } = mutations(db);
-    return db.batch([accepted, head]).then(() => undefined);
-  }
-  if (db.transaction === undefined) throw new DrizzleAdapterInvariantError();
-  return db.transaction((transaction) => {
-    const { accepted, head } = mutations(transaction);
-    if (db.resultKind === "sync") {
-      if (!accepted.run || !head.run) throw new DrizzleAdapterInvariantError();
-      accepted.run();
-      head.run();
-      return;
-    }
-    return accepted
-      .execute()
-      .then(() => head.execute())
-      .then(() => undefined);
+    if (update === undefined) throw new DrizzleAdapterInvariantError();
+    await update.execute();
   });
+};
+
+const drizzleHead = (event: InsightsRecordEventInput["event"]) => ({
+  install_id: event.install_id,
+  id: event.id,
+  received_at_ms: event.received_at_ms,
+  user_id: event.user_id,
+  platform: event.platform,
+  channel: event.channel,
+  type: event.type,
+  from_bundle_id: event.from_bundle_id,
+  to_bundle_id: event.to_bundle_id,
+  current_release_id:
+    event.type === "UPDATE_DOWNLOADED"
+      ? event.from_release_id
+      : event.to_release_id,
+  app_version: event.app_version,
+});
+
+const affectedRows = (value: unknown): number => {
+  if (typeof value !== "object" || value === null) return 0;
+  if (Array.isArray(value)) {
+    return value.reduce((sum, item) => sum + affectedRows(item), 0);
+  }
+  const count = Reflect.get(value, "affectedRows");
+  return typeof count === "number" ? count : 0;
 };
 
 const toOrderBy = (

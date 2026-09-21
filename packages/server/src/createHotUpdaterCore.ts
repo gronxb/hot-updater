@@ -190,6 +190,14 @@ export function createHotUpdaterCore(
       await assertSchemaReady();
       return plugin.models.insights.countEvents(input);
     },
+    async getReleaseActivity(input) {
+      await assertSchemaReady();
+      return plugin.models.insights.getReleaseActivity(input);
+    },
+    async getAppUsage(input) {
+      await assertSchemaReady();
+      return plugin.models.insights.getAppUsage(input);
+    },
   };
   const insights = createInsightsProvider(insightsModel);
   const apiKeys = createApiKeyManagement({

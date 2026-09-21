@@ -1,71 +1,49 @@
 // @vitest-environment node
 
+import { mockDatabase, mockStorage } from "@hot-updater/mock";
 import { describe, expect, it, vi } from "vitest";
 
-import { sanitizeConsoleSigningConfig } from "./console-runtime.server";
+import type { HotUpdaterConsoleConfigSource } from "../../index";
+import { resolveConsoleConfig } from "./console-runtime.server";
 
-describe("Console signing config sanitization", () => {
-  it("keeps only the provider display name", () => {
-    const sign = vi.fn();
-    const getPublicKey = vi.fn();
-    const sanitized = sanitizeConsoleSigningConfig({
-      getPublicKey,
-      keyRef: "provider-secret-reference",
-      name: "Managed signing",
-      sign,
-    });
+const configModule = vi.hoisted(() => ({
+  source: undefined as HotUpdaterConsoleConfigSource | undefined,
+}));
 
-    expect(sanitized).toEqual({
-      enabled: true,
-      provider: "Managed signing",
-    });
-    expect(sanitized).not.toHaveProperty("keyRef");
-    expect(sanitized).not.toHaveProperty("privateKeyPath");
-    expect(sanitized).not.toHaveProperty("sign");
-    expect(sanitized).not.toHaveProperty("getPublicKey");
-    expect(JSON.stringify(sanitized)).not.toContain(
-      "provider-secret-reference",
-    );
-    expect(sign).not.toHaveBeenCalled();
-    expect(getPublicKey).not.toHaveBeenCalled();
-  });
+vi.mock("virtual:hot-updater-console/config", () => ({
+  get default() {
+    return configModule.source;
+  },
+}));
 
-  it("labels raw local config without exposing its private path", () => {
-    const sanitized = sanitizeConsoleSigningConfig({
-      enabled: true,
-      privateKeyPath: "/secret/private-key-canary.pem",
-    });
+describe("Console config resolution", () => {
+  it.each(["object", "callback"])(
+    "resolves a %s config without reading or retaining signing settings",
+    async (sourceType) => {
+      const request = new Request("https://console.example.com/");
+      const expected = {
+        console: { gitUrl: "https://github.com/example/app" },
+        database: mockDatabase({ latency: { min: 0, max: 0 } }),
+        storage: mockStorage({}),
+      };
+      const readSigning = vi.fn(() => ({
+        enabled: true,
+        privateKeyPath: "/secret/private-key.pem",
+      }));
+      const config = {
+        ...expected,
+        get signing() {
+          return readSigning();
+        },
+      };
+      const source = vi.fn(async () => config);
+      configModule.source = sourceType === "object" ? config : source;
 
-    expect(sanitized).toEqual({
-      enabled: true,
-      provider: "localSigning",
-    });
-    expect(JSON.stringify(sanitized)).not.toContain("private-key-canary.pem");
-  });
-
-  it("uses omission to represent disabled signing", () => {
-    expect(sanitizeConsoleSigningConfig(undefined)).toBeUndefined();
-    expect(sanitizeConsoleSigningConfig({ enabled: false })).toBeUndefined();
-    expect(
-      sanitizeConsoleSigningConfig({
-        enabled: false,
-        privateKeyPath: "/secret/key.pem",
-      }),
-    ).toBeUndefined();
-    expect(
-      sanitizeConsoleSigningConfig({ privateKeyPath: "/secret/key.pem" }),
-    ).toBeUndefined();
-  });
-
-  it("does not expose a local private key path", () => {
-    const sanitized = sanitizeConsoleSigningConfig({
-      enabled: true,
-      privateKeyPath: "keys/private-canary.pem",
-    });
-    expect(sanitized).toEqual({
-      enabled: true,
-      provider: "localSigning",
-    });
-    expect(JSON.stringify(sanitized)).not.toContain("private-canary");
-  });
+      await expect(resolveConsoleConfig(request)).resolves.toEqual(expected);
+      expect(readSigning).not.toHaveBeenCalled();
+      if (sourceType === "callback") {
+        expect(source).toHaveBeenCalledWith(request);
+      }
+    },
+  );
 });

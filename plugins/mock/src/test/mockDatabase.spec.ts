@@ -26,6 +26,8 @@ const resetData = (): void => {
   data.apiKeys.clear();
   data.releaseCatalogs.clear();
   data.releases.clear();
+  data.bundleEventHeads.clear();
+  data.insightsOverview.clear();
 };
 
 const createPlugin = (): DatabasePlugin =>
