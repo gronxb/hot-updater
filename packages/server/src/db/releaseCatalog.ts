@@ -176,9 +176,7 @@ export const createArtifactResolver = (input: {
       targetBundle,
     });
     if (manifest === null) return archiveFileUrl === null ? null : base;
-    const artifact = manifest.changedAssets
-      ? { fileHash: null, fileUrl: null, ...manifest }
-      : { ...base, ...manifest };
+    const artifact = { ...base, ...manifest };
     return getUtf8ByteSize(JSON.stringify(artifact)) <=
       MAX_UPDATE_ARTIFACT_RESPONSE_BYTES
       ? artifact
