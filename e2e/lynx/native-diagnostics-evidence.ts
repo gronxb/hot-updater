@@ -342,7 +342,7 @@ export function validateRuntimeJournalDiagnostics(value: unknown): void {
   }
 }
 
-export function validateNavigationStackBoundary(value: unknown): void {
+export function validateNavigationStackBoundary(value: unknown): string {
   const receipt = record(value, "navigationStackBoundary");
   if (receipt.rejectionCode !== "STACK_LIMIT_EXCEEDED") {
     throw new Error("stack depth 17 was not rejected by the native boundary");
@@ -380,4 +380,5 @@ export function validateNavigationStackBoundary(value: unknown): void {
       "depth boundary receipt lacks the exact stack and top page",
     );
   }
+  return after.topContextId;
 }

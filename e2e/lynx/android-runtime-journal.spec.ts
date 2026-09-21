@@ -130,6 +130,24 @@ describe("Android runtime journal recovery diagnostics", () => {
     },
   );
 
+  it("accepts a stale STARTING screen value when the native journal confirms readiness", () => {
+    const evidence = contractEnvelope(
+      fixture("android-s1-runtime-events.json"),
+    );
+    const screenStateResponse = evidence.screenStateResponse as {
+      screenState: Record<string, unknown>;
+    };
+    screenStateResponse.screenState.launchStatus =
+      "Current Launch Status: STARTING";
+
+    expect(
+      evaluateFontDiagnosticRecoveryByAndroidJournal(
+        "assets/probe.ttf",
+        evidence,
+      ),
+    ).toEqual({ recovered: true });
+  });
+
   it("accepts ALREADY_CONFIRMED readiness for a previously confirmed running generation", () => {
     const evidence = mutatedEvidence(
       fixture("android-s1-runtime-events.json"),

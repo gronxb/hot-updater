@@ -10,7 +10,9 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
 import java.util.UUID
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.launch
 import kotlin.coroutines.coroutineContext
 
 data class LynxLaunchDiagnostics(
@@ -1299,16 +1301,17 @@ class LynxUpdaterController internal constructor(
             result = JSONObject().put("status", if (adoption) "ADOPTED" else "STAGED").put("requiresRestart", !adoption)
             Log.i(TAG, "selection-${if (adoption) "adopted" else "staged"} bundle=${selected.bundleId} release=${selected.releaseId} running=${running.bundleId}")
         }
-        try {
+        val staged = try {
             synchronized(stateLock) { requireLive(session) }
             if (prepared.bytes != null) installer.commitPrepared(prepared.bytes) { publish ->
                 synchronized(stateLock) { val authorization = authorize(session, prepared.guard, prepared.receipt); publish().also { publishSelection(authorization, it) } }
             } else synchronized(stateLock) { val authorization = authorize(session, prepared.guard, prepared.receipt); publishSelection(authorization) }
-            pruneUnused()
-            return checkNotNull(result)
+            checkNotNull(result)
         } finally {
             prepared.bytes?.let(installer::discard)
         }
+        session.scope.launch(Dispatchers.IO) { pruneUnused() }
+        return staged
     }
 
     internal suspend fun validate(

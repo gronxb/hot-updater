@@ -137,7 +137,7 @@ describe("native Lynx diagnostics evidence", () => {
         index === 0 ? "main.lynx.bundle" : "detail.lynx.bundle",
       ),
     };
-    expect(() => validateNavigationStackBoundary(stack)).not.toThrow();
+    expect(validateNavigationStackBoundary(stack)).toBe("context-14");
     stack.nativeDepthAfterRejected = 17;
     expect(() => validateNavigationStackBoundary(stack)).toThrow("mutated");
   });

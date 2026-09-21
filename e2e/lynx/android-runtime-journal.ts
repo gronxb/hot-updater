@@ -157,6 +157,7 @@ const DIAGNOSTIC_OBJECT_KEYS = new Set<string>([
 ]);
 const DIAGNOSTIC_LAUNCH_STATUSES = new Set<string>([
   "Current Launch Status: RECOVERED",
+  "Current Launch Status: STARTING",
   "Current Launch Status: UNCHANGED",
   "Current Launch Status: UPDATE_APPLIED",
 ]);

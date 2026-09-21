@@ -127,6 +127,33 @@ async function closeManagedStackToRoot(
   }
 }
 
+async function waitForPageAdmission(
+  app: LynxAppDriver,
+  contextId: string,
+): Promise<void> {
+  let lastError: Error | undefined;
+  for (let attempt = 1; attempt <= 20; attempt += 1) {
+    const snapshot = await app.captureGenerationEvents(
+      "multi-page navigation stack: wait for top page admission" +
+        (attempt === 1 ? "" : ` retry ${attempt}`),
+    );
+    if (
+      snapshot.events.some(
+        (event) =>
+          event.name === "pageAdmitted" &&
+          event.details.contextId === contextId,
+      )
+    ) {
+      return;
+    }
+    lastError = new Error(
+      `Top stack page ${contextId} was not admitted by the managed runtime`,
+    );
+    await new Promise((resolve) => setTimeout(resolve, 250));
+  }
+  throw lastError;
+}
+
 async function resetAndInstallServerA(
   app: LynxAppDriver,
   marker: string,
@@ -465,12 +492,13 @@ export const sparklingMultipageOtaScenario = {
       );
     }
 
-    validateNavigationStackBoundary(
+    const topStackContextId = validateNavigationStackBoundary(
       await app.captureDiagnosticReceipt(
         "multi-page navigation stack: accept depth 16 and reject depth 17",
         "action-exercise-navigation-stack-boundary",
       ),
     );
+    await waitForPageAdmission(app, topStackContextId);
     await closeManagedStackToRoot(app, 16);
     assertManagedMainPage(
       await app.captureGenerationEvents(

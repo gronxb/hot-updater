@@ -942,8 +942,8 @@ class HotUpdaterSparklingHost(
         if (page.logical.entry in page.expectedEssentialResources) {
             launch.resolveEssential(page.logical.entry)
         }
-        kit.load()
         kit.addRuntimeLifecycleListener(runtimeLifecycle)
+        kit.load()
         return view
     }
 
