@@ -1652,6 +1652,8 @@ function readAndroidFileBuffer(remotePath: string) {
 
   for (const args of readAttempts) {
     const result = spawnSync("adb", args, {
+      // Final-file assertions also read multi-megabyte Hermes bundles.
+      maxBuffer: 64 * 1024 * 1024,
       stdio: ["ignore", "pipe", "pipe"],
     });
     if (result.status === 0) {
@@ -5814,8 +5816,7 @@ async function assertBundleAssetsStored(args: {
       logDetoxFixture("bundle assets stored", {
         assetPaths: args.assetPaths,
         bundleId: args.bundleId,
-        evidence: "packaged-assets-zero-download-and-final-hashes",
-        reuse,
+        evidence: "manifest-and-bundle-store",
         platform: fixtureSession.platform,
       });
       return {};
@@ -5961,11 +5962,8 @@ function readFirstOtaReuseEvidence(bundleId: string) {
     (entry) => entry.targetBundleId === bundleId,
   );
   const assets = artifact?.assets ?? [];
-  // The navigator mask is byte-preserved; Android removes hyphens from resource names.
-  const imageSuffix =
-    fixtureSession.platform === "ios"
-      ? "back-icon-mask.png"
-      : "backiconmask.png";
+  // App-local paths stay identical when E2E shards share a symlinked node_modules.
+  const imageSuffix = "builtin_reuse.png";
   // A font fixture is required too, so an empty resolver cannot satisfy this assertion.
   const required = assets.filter(
     ({ path }) =>

@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -505,4 +506,76 @@ describe("Detox remote asset proxy URLs", () => {
       await fs.rm(resultsDir, { force: true, recursive: true });
     }
   });
+});
+
+describe("Detox installed asset evidence", () => {
+  it.each(["ios", "android"])(
+    "reports manifest-matching installed files on %s",
+    async (platform) => {
+      const root = await fs.mkdtemp(
+        path.join(os.tmpdir(), "hot-updater-installed-assets-"),
+      );
+      const bundleId = "installed-bundle";
+      const assetPath = "assets/image.png";
+      const bundleDir = path.join(
+        root,
+        platform === "ios" ? "Documents/bundle-store" : "bundle-store",
+        bundleId,
+      );
+      const bytes =
+        platform === "android"
+          ? Buffer.alloc(3 * 1024 * 1024, 42)
+          : Buffer.from("installed image bytes");
+      await fs.mkdir(path.join(bundleDir, "assets"), { recursive: true });
+      await fs.writeFile(path.join(bundleDir, assetPath), bytes);
+      await fs.writeFile(
+        path.join(bundleDir, "manifest.json"),
+        JSON.stringify({
+          bundleId,
+          assets: {
+            [assetPath]: {
+              fileHash: createHash("sha256").update(bytes).digest("hex"),
+            },
+          },
+        }),
+      );
+      const command = path.join(root, platform === "ios" ? "xcrun" : "adb");
+      const fakeDevice =
+        platform === "ios"
+          ? `process.stdout.write(${JSON.stringify(root)});`
+          : `const fs = require("fs"); const path = require("path");
+const args = process.argv.slice(2);
+const relative = args.at(-1).split("/files/").at(-1).replace("files/", "");
+const file = path.join(${JSON.stringify(root)}, relative);
+if (args.includes("cat")) process.stdout.write(fs.readFileSync(file));
+else process.exit(fs.existsSync(file) ? 0 : 1);`;
+      await fs.writeFile(command, `#!/usr/bin/env node\n${fakeDevice}\n`);
+      await fs.chmod(command, 0o755);
+
+      vi.resetModules();
+      vi.stubEnv(
+        "HOT_UPDATER_E2E_APP_BASE_URL",
+        "https://provider.example.com/hot-updater",
+      );
+      vi.stubEnv("HOT_UPDATER_E2E_APP_ID", "com.hotupdater.example");
+      vi.stubEnv("HOT_UPDATER_E2E_DEVICE_ID", "test-simulator");
+      vi.stubEnv("HOT_UPDATER_E2E_PLATFORM", platform);
+      vi.stubEnv("HOT_UPDATER_E2E_RESULTS_DIR", root);
+      vi.stubEnv("PATH", `${root}:${process.env.PATH ?? ""}`);
+      vi.stubEnv("PORT", "3107");
+      try {
+        const controller = await import("./control-server/controller.ts");
+        await expect(
+          controller.handleAssertBundleAssetsStored({
+            bundleId,
+            assetPaths: [assetPath],
+          }),
+        ).resolves.toEqual({});
+      } finally {
+        vi.unstubAllEnvs();
+        await fs.rm(root, { force: true, recursive: true });
+      }
+    },
+    30_000,
+  );
 });
