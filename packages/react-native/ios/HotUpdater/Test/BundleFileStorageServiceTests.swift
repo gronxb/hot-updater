@@ -12,6 +12,51 @@ private func hotUpdaterApplyBsdiffPatchForTest(
 ) -> ObjCBool
 
 struct BundleFileStorageServiceTests {
+    // Issue #1321: a hung JS thread never reports content appeared or a crash.
+    @Test(arguments: [false, true])
+    func unfinishedStagingLaunchRollsBackOnColdStart(hasStableBundle: Bool) throws {
+        let workingDirectory = try makeWorkingDirectory()
+        defer { cleanupWorkingDirectory(workingDirectory) }
+        let preferences = InMemoryPreferencesService()
+        let stableBundleId: String? = hasStableBundle ? "stable-bundle" : nil
+        if let stableBundleId {
+            let directory = try createBundleDirectory(
+                documentsDirectory: workingDirectory, bundleId: stableBundleId
+            )
+            try writeBundle(in: directory, bundleFileName: "index.ios.bundle")
+            try writeManifest(in: directory, bundleId: stableBundleId)
+        }
+        let stagingDirectory = try createBundleDirectory(
+            documentsDirectory: workingDirectory, bundleId: "hung-bundle"
+        )
+        try writeBundle(in: stagingDirectory, bundleFileName: "index.ios.bundle")
+        try writeManifest(in: stagingDirectory, bundleId: "hung-bundle")
+        try writeMetadata(
+            documentsDirectory: workingDirectory,
+            BundleMetadata(
+                isolationKey: testIsolationKey,
+                stableBundleId: stableBundleId,
+                stagingBundleId: "hung-bundle",
+                verificationPending: true
+            )
+        )
+        let firstProcess = makeStorageService(
+            documentsDirectory: workingDirectory, preferences: preferences
+        )
+        let firstLaunch = firstProcess.prepareLaunch(bundle: .main, pendingRecovery: nil)
+        try #require(firstLaunch.launchedBundleId == "hung-bundle")
+        try #require(firstLaunch.shouldRollbackOnCrash)
+
+        // Force-kill before CONTENT_APPEARED: no markLaunchCompleted or crash marker.
+        let secondProcess = makeStorageService(
+            documentsDirectory: workingDirectory, preferences: preferences
+        )
+        let nextLaunch = secondProcess.prepareLaunch(bundle: .main, pendingRecovery: nil)
+        #expect(nextLaunch.launchedBundleId == stableBundleId)
+        #expect(!nextLaunch.shouldRollbackOnCrash)
+        #expect(secondProcess.getCrashHistory().contains("hung-bundle"))
+    }
+
     @Test
     func getBundleIdFallsBackToBuiltInWhileStagingVerificationIsPending() throws {
         let workingDirectory = try makeWorkingDirectory()
