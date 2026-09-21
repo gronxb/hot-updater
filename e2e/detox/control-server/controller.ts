@@ -412,7 +412,7 @@ function hashText(value: string) {
 
 const platform = process.env.HOT_UPDATER_E2E_PLATFORM as Platform | undefined;
 const appId = process.env.HOT_UPDATER_E2E_APP_ID;
-const deviceId = process.env.HOT_UPDATER_E2E_DEVICE_ID;
+let deviceId = process.env.HOT_UPDATER_E2E_DEVICE_ID;
 const resultsDir = process.env.HOT_UPDATER_E2E_RESULTS_DIR;
 
 if (!platform || (platform !== "ios" && platform !== "android")) {
@@ -6466,7 +6466,15 @@ function createJob(task: (context: JobExecutionContext) => Promise<JobResult>) {
   return jobId;
 }
 
-export function startBootstrapJob() {
+export function startBootstrapJob(input: { deviceId?: string } = {}) {
+  if (input.deviceId && input.deviceId !== deviceId) {
+    if (bootstrapJobId) {
+      throw new Error("Cannot change the device after fixture bootstrap");
+    }
+    // Detox may allocate a clone instead of the configured simulator prototype.
+    deviceId = input.deviceId;
+    logDetoxFixture("using Detox allocated device", { deviceId });
+  }
   if (bootstrapJobId) {
     const job = jobs.get(bootstrapJobId);
     if (job?.status === "running" || job?.status === "succeeded") {

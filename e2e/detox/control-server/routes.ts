@@ -67,7 +67,7 @@ app.onError((error, c) => {
 });
 
 app.post("/e2e/jobs/bootstrap", async (c) => {
-  return c.json({ jobId: startBootstrapJob() });
+  return c.json({ jobId: startBootstrapJob(await c.req.json()) });
 });
 
 app.post("/e2e/jobs/reset-remote-bundles", async (c) => {
