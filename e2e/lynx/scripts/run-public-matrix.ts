@@ -353,6 +353,15 @@ async function stopServer() {
   });
 }
 
+async function resetServerState() {
+  await stopServer();
+  await Promise.all([
+    fsp.rm(path.join(otaRoot, "postgres"), { recursive: true, force: true }),
+    fsp.rm(path.join(otaRoot, "objects"), { recursive: true, force: true }),
+  ]);
+  await startServer();
+}
+
 function runtimeId(platform: LynxMatrixPlatform) {
   return lynxE2eRuntimeId(platform);
 }
@@ -396,6 +405,7 @@ async function deploy({
   channel,
   patch,
   fromBundleId,
+  bundleId,
   runtimeIdOverride,
   allowIncompatibleRuntime,
 }: {
@@ -405,6 +415,7 @@ async function deploy({
   channel: string;
   patch?: boolean;
   fromBundleId?: string;
+  bundleId?: string;
   runtimeIdOverride?: string;
   allowIncompatibleRuntime?: boolean;
 }) {
@@ -421,6 +432,7 @@ async function deploy({
   ];
   if (patch) args.push("--patch");
   if (fromBundleId) args.push("--from-bundle-id", fromBundleId);
+  if (bundleId) args.push("--bundle-id", bundleId);
   if (allowIncompatibleRuntime) args.push("--allow-incompatible-runtime");
   const stdout = command(process.execPath, args);
   const match = stdout.match(/"receiptPath"\s*:\s*"([^"]+)"/);
@@ -1329,6 +1341,7 @@ async function runCell(
     platform,
     fixture: aSource.fixture,
     channel,
+    bundleId: embeddedReceipt.embeddedBundleId,
   });
   assert.equal(
     aDeployment.bundleId,
@@ -2156,7 +2169,6 @@ if (platforms.includes("android")) {
 
 const receipts = [];
 try {
-  await startServer();
   for (const platform of platforms) {
     const adapter = adapters.get(platform);
     const sourceHash = await adapter.sourceBinaryHash();
@@ -2172,6 +2184,7 @@ try {
       "Installed native binary differs from the supplied artifact",
     );
     for (const framework of frameworks) {
+      await resetServerState();
       receipts.push(await runCell(adapter, framework, platform));
     }
   }

@@ -10,6 +10,7 @@ import { brotliDecompressSync } from "node:zlib";
 
 import {
   encodeChannelKey,
+  isUUIDv7,
   NIL_UUID,
 } from "../../../packages/core/dist/index.mjs";
 import { createDatabaseClient } from "../../../plugins/plugin-core/dist/index.mjs";
@@ -34,6 +35,7 @@ const { positionals, values: options } = parseArgs({
     signed: { type: "boolean" },
     patch: { type: "boolean" },
     channel: { type: "string" },
+    "bundle-id": { type: "string" },
     "from-bundle-id": { type: "string" },
     "runtime-id": { type: "string" },
     "allow-incompatible-runtime": { type: "boolean" },
@@ -49,8 +51,11 @@ if (
   positionals.length > 4
 ) {
   throw new Error(
-    "Usage: node scripts/ota-deploy.mjs <react|vue|octane> <ios|android> [zip|tar.gz|tar.br] [frozen-fixture-name] [--signed] [--patch] [--from-bundle-id <verified-base>] [--channel <native-channel>] [--runtime-id <native-profile>] [--allow-incompatible-runtime]",
+    "Usage: node scripts/ota-deploy.mjs <react|vue|octane> <ios|android> [zip|tar.gz|tar.br] [frozen-fixture-name] [--signed] [--patch] [--from-bundle-id <verified-base>] [--bundle-id <embedded-bundle-id>] [--channel <native-channel>] [--runtime-id <native-profile>] [--allow-incompatible-runtime]",
   );
+}
+if (options["bundle-id"] !== undefined && !isUUIDv7(options["bundle-id"])) {
+  throw new Error("--bundle-id must be a canonical UUIDv7.");
 }
 const example = fileURLToPath(new URL("../", import.meta.url));
 const workspace = fileURLToPath(new URL("../../../", import.meta.url));
@@ -214,6 +219,7 @@ export default {
       build: async ({ outDir }) => {
       await fs.cp(${JSON.stringify(source)}, outDir, { recursive: true });
       return {
+        ${options["bundle-id"] ? `bundleId: ${JSON.stringify(options["bundle-id"])},` : ""}
         entry: "main.lynx.bundle",
         pageEntries: ${JSON.stringify(pageEntries)},
         pageEssentialResources: ${JSON.stringify(essentialResources)},
