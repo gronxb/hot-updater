@@ -12,9 +12,9 @@ export const resourcePaths = [
 ];
 
 export const pageResourcePaths = {
-  "main.lynx.bundle": resourcePaths.filter(
-    (path) => path !== "detail.lynx.bundle",
-  ),
+  "main.lynx.bundle": resourcePaths
+    .filter((path) => path !== "detail.lynx.bundle")
+    .sort(),
   "detail.lynx.bundle": ["detail.lynx.bundle"],
 };
 export const pageEntries = ["detail.lynx.bundle", "main.lynx.bundle"];
