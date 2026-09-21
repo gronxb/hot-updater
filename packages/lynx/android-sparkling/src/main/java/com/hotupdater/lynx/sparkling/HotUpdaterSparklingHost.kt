@@ -1283,6 +1283,7 @@ class HotUpdaterSparklingView internal constructor(
         onRuntimeDetached?.let(runtimeLifecycle::whenDetached)
         old.destroy(true)
         removeView(old)
+        runtimeLifecycle.onViewDestroyed()
     }
 
     override fun close() = retire()
@@ -1297,6 +1298,11 @@ internal class ManagedRuntimeLifecycle(
     override fun onRuntimeAttach(runtimePtr: Long) = Unit
 
     override fun onRuntimeDetach() {
+        detached.set(true)
+        dispatchCompletion()
+    }
+
+    fun onViewDestroyed() {
         detached.set(true)
         dispatchCompletion()
     }
