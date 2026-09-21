@@ -30,7 +30,24 @@ export interface BundlePatchModel {
   findByBundleIds(
     bundleIds: readonly string[],
   ): Promise<readonly BundlePatchRow[]>;
+  publish?(input: BundlePatchPublishInput): Promise<BundlePatchPublishResult>;
 }
+
+export interface BundlePatchPublishInput {
+  readonly row: Omit<BundlePatchRow, "order_index">;
+  readonly position: "primary" | "last";
+}
+
+export type BundlePatchPublishResult =
+  | {
+      readonly published: true;
+      readonly previous: BundlePatchRow | null;
+      readonly patches: readonly BundlePatchRow[];
+    }
+  | {
+      readonly published: false;
+      readonly reason: "limit_exceeded" | "not_found";
+    };
 
 export interface ReleaseModel {
   findById(id: string): Promise<ReleaseRow | null>;

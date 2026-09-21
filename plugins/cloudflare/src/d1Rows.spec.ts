@@ -69,9 +69,12 @@ it.each([-1, 1.5, Number.MAX_SAFE_INTEGER + 1, Number.NaN])(
 it("preserves SQLite patch sizes above 2 GiB", () => {
   const patch = createBundlePatchRowFixture("large", "bundle", "base");
 
-  expect(parseD1Row("bundle_patches", patch)).toMatchObject({
-    byte_size: 3_000_000_002,
-  });
+  expect(
+    parseD1Row("bundle_patches", {
+      ...patch,
+      byte_size: 3_000_000_002,
+    }),
+  ).toMatchObject({ byte_size: 3_000_000_002 });
 });
 
 it.each(["null", "[]", "1", '"metadata"'])(

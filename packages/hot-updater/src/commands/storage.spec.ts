@@ -176,8 +176,14 @@ describe("handleStoragePrune", () => {
         JSON.stringify({
           bundleId: LIVE_BUNDLE_ID,
           assets: {
-            "images/logo.png": { fileHash: IMAGE_HASH },
-            "index.ios.bundle": { fileHash: BUNDLE_HASH },
+            "images/logo.png": {
+              downloadCompression: null,
+              fileHash: IMAGE_HASH,
+            },
+            "index.ios.bundle": {
+              downloadCompression: "br",
+              fileHash: BUNDLE_HASH,
+            },
           },
         }),
       ),
@@ -242,6 +248,7 @@ describe("handleStoragePrune", () => {
           bundleId: LIVE_BUNDLE_ID,
           assets: {
             "index.ios.bundle": {
+              downloadCompression: "br",
               downloadFileHash: DOWNLOAD_HASH,
               fileHash: BUNDLE_HASH,
             },
@@ -265,6 +272,27 @@ describe("handleStoragePrune", () => {
     ]);
   });
 
+  it("refuses to prune assets referenced by a legacy manifest", async () => {
+    mockStorageNode.get.mockImplementation(async () => ({
+      response: new Response(
+        JSON.stringify({
+          bundleId: LIVE_BUNDLE_ID,
+          assets: {
+            "opaque-runtime-entry": {
+              fileHash: BUNDLE_HASH,
+            },
+          },
+        }),
+      ),
+    }));
+    const { handleStoragePrune } = await import("./storage");
+
+    await expect(handleStoragePrune({ yes: true })).rejects.toThrow(
+      "legacy manifest without explicit download compression",
+    );
+    expect(mockStorageNode.deleteObjects).not.toHaveBeenCalled();
+  });
+
   it("falls back to the logical hash for a malformed downloadFileHash", async () => {
     mockStorageNode.get.mockImplementation(async () => ({
       response: new Response(
@@ -272,6 +300,7 @@ describe("handleStoragePrune", () => {
           bundleId: LIVE_BUNDLE_ID,
           assets: {
             "index.ios.bundle": {
+              downloadCompression: "br",
               downloadFileHash: "not-a-sha256",
               fileHash: BUNDLE_HASH,
             },
@@ -425,10 +454,21 @@ describe("handleStoragePrune", () => {
           JSON.stringify({
             bundleId: LIVE_BUNDLE_ID,
             assets: {
-              "images/logo.png": { fileHash: IMAGE_HASH },
-              "index.ios.bundle": { fileHash: BUNDLE_HASH },
+              "images/logo.png": {
+                downloadCompression: null,
+                fileHash: IMAGE_HASH,
+              },
+              "index.ios.bundle": {
+                downloadCompression: "br",
+                fileHash: BUNDLE_HASH,
+              },
               ...(manifestReadCount > 1
-                ? { "images/restored.png": { fileHash: ORPHAN_HASH } }
+                ? {
+                    "images/restored.png": {
+                      downloadCompression: null,
+                      fileHash: ORPHAN_HASH,
+                    },
+                  }
                 : {}),
             },
           }),
@@ -457,8 +497,14 @@ describe("handleStoragePrune", () => {
           JSON.stringify({
             bundleId: LIVE_BUNDLE_ID,
             assets: {
-              "images/logo.png": { fileHash: IMAGE_HASH },
-              "index.ios.bundle": { fileHash: BUNDLE_HASH },
+              "images/logo.png": {
+                downloadCompression: null,
+                fileHash: IMAGE_HASH,
+              },
+              "index.ios.bundle": {
+                downloadCompression: "br",
+                fileHash: BUNDLE_HASH,
+              },
             },
           }),
         ),
@@ -537,8 +583,14 @@ describe("handleStoragePrune", () => {
           JSON.stringify({
             bundleId: LIVE_BUNDLE_ID,
             assets: {
-              "images/logo.png": { fileHash: IMAGE_HASH },
-              "index.ios.bundle": { fileHash: BUNDLE_HASH },
+              "images/logo.png": {
+                downloadCompression: null,
+                fileHash: IMAGE_HASH,
+              },
+              "index.ios.bundle": {
+                downloadCompression: "br",
+                fileHash: BUNDLE_HASH,
+              },
             },
           }),
       })),

@@ -176,6 +176,7 @@ describe("DynamoDB reads beyond the former metadata ceiling", () => {
               "hot-updater-update-index",
               bundleIds,
             ),
+          publish: (input) => plugin.models.bundlePatches.publish!(input),
         },
       },
     });

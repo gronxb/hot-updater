@@ -59,35 +59,48 @@ export async function validateSigningConfig(
   options: {
     readonly expectedPublicKey?: string;
     readonly nativePublicKey?: string | null;
+    readonly signingConfigSource?: "build-plugin";
     readonly platform?: Platform;
   } = {},
 ): Promise<SigningValidationResult> {
   const signingEnabled = config.signing !== undefined;
 
-  const iosParser = new IosConfigParser(config.platform.ios.infoPlistPaths);
-  const androidParser = new AndroidConfigParser(
-    config.platform.android.androidManifestPaths ?? [],
-  );
-
-  const [iosExists, androidExists] = await Promise.all([
-    iosParser.exists(),
-    androidParser.exists(),
-  ]);
-
-  let [iosResult, androidResult] = await Promise.all([
-    iosExists
-      ? iosParser.get(IOS_KEY)
-      : Promise.resolve({ value: null, paths: [] }),
-    androidExists
-      ? androidParser.get(ANDROID_KEY)
-      : Promise.resolve({ value: null, paths: [] }),
-  ]);
-
-  const usesExternalNativeConfig = Object.hasOwn(options, "nativePublicKey");
-  if (!iosExists && !androidExists && usesExternalNativeConfig) {
+  const usesBuildPluginConfig = options.signingConfigSource === "build-plugin";
+  const usesExternalNativeConfig =
+    usesBuildPluginConfig || Object.hasOwn(options, "nativePublicKey");
+  let iosExists = false;
+  let androidExists = false;
+  let iosResult: { value: string | null; paths: string[] } = {
+    value: null,
+    paths: [],
+  };
+  let androidResult = iosResult;
+  if (!usesBuildPluginConfig) {
+    const iosParser = new IosConfigParser(config.platform.ios.infoPlistPaths);
+    const androidParser = new AndroidConfigParser(
+      config.platform.android.androidManifestPaths ?? [],
+    );
+    [iosExists, androidExists] = await Promise.all([
+      iosParser.exists(),
+      androidParser.exists(),
+    ]);
+    [iosResult, androidResult] = await Promise.all([
+      iosExists
+        ? iosParser.get(IOS_KEY)
+        : Promise.resolve({ value: null, paths: [] }),
+      androidExists
+        ? androidParser.get(ANDROID_KEY)
+        : Promise.resolve({ value: null, paths: [] }),
+    ]);
+  }
+  if (usesExternalNativeConfig && !iosExists && !androidExists) {
     const externalResult = {
       value: options.nativePublicKey ?? null,
-      paths: ["Expo app config"],
+      paths: [
+        usesBuildPluginConfig
+          ? "Build plugin native configuration"
+          : "Expo app config",
+      ],
     };
     iosResult = externalResult;
     androidResult = externalResult;
@@ -126,12 +139,16 @@ export async function validateSigningConfig(
         type: "error",
         platform: "ios",
         code: "MISSING_PUBLIC_KEY",
-        message: usesExternalNativeConfig
-          ? "Signing is enabled but @hot-updater/expo publicKeyPath is missing"
-          : "Signing is enabled but HOT_UPDATER_PUBLIC_KEY is missing from Info.plist",
-        resolution: usesExternalNativeConfig
-          ? "Run `npx hot-updater keys export-public --output <path>`, configure that path in the Expo app plugin, then rebuild your app."
-          : "Run `npx hot-updater keys export-public` to add the public key, then rebuild your iOS app.",
+        message: usesBuildPluginConfig
+          ? "Signing is enabled but the build plugin did not resolve a native public key"
+          : usesExternalNativeConfig
+            ? "Signing is enabled but @hot-updater/expo publicKeyPath is missing"
+            : "Signing is enabled but HOT_UPDATER_PUBLIC_KEY is missing from Info.plist",
+        resolution: usesBuildPluginConfig
+          ? "Configure the build plugin to resolve the public key embedded in the native app, then rebuild the app if the key changes."
+          : usesExternalNativeConfig
+            ? "Run `npx hot-updater keys export-public --output <path>`, configure that path in the Expo app plugin, then rebuild your app."
+            : "Run `npx hot-updater keys export-public` to add the public key, then rebuild your iOS app.",
       });
     }
     if (
@@ -143,12 +160,16 @@ export async function validateSigningConfig(
         type: "error",
         platform: "android",
         code: "MISSING_PUBLIC_KEY",
-        message: usesExternalNativeConfig
-          ? "Signing is enabled but @hot-updater/expo publicKeyPath is missing"
-          : "Signing is enabled but com.hotupdater.PUBLIC_KEY is missing from AndroidManifest.xml",
-        resolution: usesExternalNativeConfig
-          ? "Run `npx hot-updater keys export-public --output <path>`, configure that path in the Expo app plugin, then rebuild your app."
-          : "Run `npx hot-updater keys export-public` to add the public key, then rebuild your Android app.",
+        message: usesBuildPluginConfig
+          ? "Signing is enabled but the build plugin did not resolve a native public key"
+          : usesExternalNativeConfig
+            ? "Signing is enabled but @hot-updater/expo publicKeyPath is missing"
+            : "Signing is enabled but com.hotupdater.PUBLIC_KEY is missing from AndroidManifest.xml",
+        resolution: usesBuildPluginConfig
+          ? "Configure the build plugin to resolve the public key embedded in the native app, then rebuild the app if the key changes."
+          : usesExternalNativeConfig
+            ? "Run `npx hot-updater keys export-public --output <path>`, configure that path in the Expo app plugin, then rebuild your app."
+            : "Run `npx hot-updater keys export-public` to add the public key, then rebuild your Android app.",
       });
     }
     if (
@@ -190,10 +211,12 @@ export async function validateSigningConfig(
         type: "warning",
         platform: "ios",
         code: "ORPHAN_PUBLIC_KEY",
-        message:
-          "Signing is disabled but HOT_UPDATER_PUBLIC_KEY exists in Info.plist. This will cause OTA updates to be rejected.",
-        resolution:
-          "Run `npx hot-updater keys remove` to remove public keys, or enable signing in hot-updater.config.ts",
+        message: usesBuildPluginConfig
+          ? "Signing is disabled but the build plugin resolved a native public key. The native app will reject unsigned updates."
+          : "Signing is disabled but HOT_UPDATER_PUBLIC_KEY exists in Info.plist. This will cause OTA updates to be rejected.",
+        resolution: usesBuildPluginConfig
+          ? "Enable signing in hot-updater.config.ts, or remove the key from the native build configuration and rebuild the app."
+          : "Run `npx hot-updater keys remove` to remove public keys, or enable signing in hot-updater.config.ts",
       });
     }
     if (androidResult.value) {
@@ -201,10 +224,12 @@ export async function validateSigningConfig(
         type: "warning",
         platform: "android",
         code: "ORPHAN_PUBLIC_KEY",
-        message:
-          "Signing is disabled but com.hotupdater.PUBLIC_KEY exists in AndroidManifest.xml or legacy strings.xml. This will cause OTA updates to be rejected.",
-        resolution:
-          "Run `npx hot-updater keys remove` to remove public keys, or enable signing in hot-updater.config.ts",
+        message: usesBuildPluginConfig
+          ? "Signing is disabled but the build plugin resolved a native public key. The native app will reject unsigned updates."
+          : "Signing is disabled but com.hotupdater.PUBLIC_KEY exists in AndroidManifest.xml or legacy strings.xml. This will cause OTA updates to be rejected.",
+        resolution: usesBuildPluginConfig
+          ? "Enable signing in hot-updater.config.ts, or remove the key from the native build configuration and rebuild the app."
+          : "Run `npx hot-updater keys remove` to remove public keys, or enable signing in hot-updater.config.ts",
       });
     }
   }

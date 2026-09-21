@@ -1,6 +1,8 @@
 import { createDatabasePlugin } from "@hot-updater/plugin-core";
 import {
   createDatabasePluginAdapter,
+  createTransactionDatabasePlugin,
+  publishBundlePatchInTransaction,
   type DatabasePluginImplementation,
   type TransactionDatabasePluginImplementation,
 } from "@hot-updater/plugin-core/internal";
@@ -83,6 +85,23 @@ const createImplementation = (
       : {}),
     ...(transaction
       ? {
+          publishBundlePatch: (
+            input: Parameters<
+              NonNullable<DatabasePluginImplementation["publishBundlePatch"]>
+            >[0],
+          ) =>
+            transaction(
+              (transactionDatabase) =>
+                publishBundlePatchInTransaction(
+                  createTransactionDatabasePlugin(
+                    createDrizzleCrud(transactionDatabase, config.provider),
+                  ),
+                  input,
+                ),
+              config.provider === "sqlite"
+                ? undefined
+                : { isolationLevel: "serializable" },
+            ),
           transaction: async <TResult>(
             callback: (
               transaction: TransactionDatabasePluginImplementation,
@@ -118,6 +137,7 @@ export const drizzleAdapter = (
       bundlePatches: {
         findByBundleIds: (bundleIds) =>
           getAdapter().models.bundlePatches.findByBundleIds(bundleIds),
+        publish: (input) => getAdapter().models.bundlePatches.publish!(input),
       },
       releases: {
         findById: (id) => getAdapter().models.releases.findById(id),

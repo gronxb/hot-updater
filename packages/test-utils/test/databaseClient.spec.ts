@@ -11,7 +11,7 @@ import { createInMemoryDatabasePlugin } from "./inMemoryDatabasePlugin";
 const createBundle = (id: string, overrides: Partial<Bundle> = {}): Bundle => ({
   id,
   platform: "ios",
-  fileHash: `hash-${id}`,
+  fileHash: "a".repeat(64),
   gitCommitHash: null,
   storageUri: `storage://${id}`,
   archiveByteSize: 3_000_000_001,
@@ -34,16 +34,16 @@ describe("database client", () => {
         {
           baseBundleId: firstBase.id,
           baseFileHash: firstBase.fileHash,
-          patchFileHash: "patch-1",
+          patchFileHash: "1".repeat(64),
           patchStorageUri: "storage://patch-1",
-          byteSize: 3_000_000_002,
+          byteSize: 3_000_002,
         },
         {
           baseBundleId: secondBase.id,
           baseFileHash: secondBase.fileHash,
-          patchFileHash: "patch-2",
+          patchFileHash: "2".repeat(64),
           patchStorageUri: "storage://patch-2",
-          byteSize: 3_000_000_003,
+          byteSize: 3_000_003,
         },
       ],
     });
@@ -74,7 +74,7 @@ describe("database client", () => {
     await expect(client.getChannels()).resolves.toEqual([]);
   });
 
-  it("replaces patches and removes both incoming and outgoing patch rows", async () => {
+  it("replaces and explicitly clears patch rows before base deletion", async () => {
     const client = createDatabaseClient(plugin);
     const firstBase = createBundle("201");
     const secondBase = createBundle("202");
@@ -83,9 +83,9 @@ describe("database client", () => {
         {
           baseBundleId: firstBase.id,
           baseFileHash: firstBase.fileHash,
-          patchFileHash: "old",
+          patchFileHash: "3".repeat(64),
           patchStorageUri: "storage://old",
-          byteSize: 3_000_000_002,
+          byteSize: 3_000_002,
         },
       ],
     });
@@ -98,12 +98,16 @@ describe("database client", () => {
         {
           baseBundleId: secondBase.id,
           baseFileHash: secondBase.fileHash,
-          patchFileHash: "new",
+          patchFileHash: "4".repeat(64),
           patchStorageUri: "storage://new",
-          byteSize: 3_000_000_003,
+          byteSize: 3_000_003,
         },
       ],
     });
+    await expect(client.getBundleById(target.id)).resolves.toMatchObject({
+      patches: [expect.objectContaining({ patchFileHash: "4".repeat(64) })],
+    });
+    await client.updateBundleById(target.id, { patches: [] });
     await client.deleteBundleById(secondBase.id);
 
     await expect(client.getBundleById(target.id)).resolves.toMatchObject({
@@ -124,16 +128,16 @@ describe("database client", () => {
         {
           baseBundleId: base.id,
           baseFileHash: base.fileHash,
-          patchFileHash: "safe-owner",
+          patchFileHash: "5".repeat(64),
           patchStorageUri: "storage://safe-owner",
-          byteSize: 3_000_000_002,
+          byteSize: 3_000_002,
         },
       ],
     });
 
     await expect(client.getBundleById(target.id)).resolves.toMatchObject({
       id: target.id,
-      patches: [expect.objectContaining({ patchFileHash: "safe-owner" })],
+      patches: [expect.objectContaining({ patchFileHash: "5".repeat(64) })],
     });
     await expect(client.getBundleById("injected-id")).resolves.toBeNull();
   });
@@ -143,10 +147,10 @@ describe("database client", () => {
       patches: [
         {
           baseBundleId: "missing",
-          baseFileHash: "missing",
-          patchFileHash: "patch",
+          baseFileHash: "a".repeat(64),
+          patchFileHash: "6".repeat(64),
           patchStorageUri: "storage://patch",
-          byteSize: 3_000_000_002,
+          byteSize: 3_000_002,
         },
       ],
     });
@@ -163,10 +167,10 @@ describe("database client", () => {
       patches: [
         {
           baseBundleId: "missing",
-          baseFileHash: "missing",
-          patchFileHash: "patch",
+          baseFileHash: "a".repeat(64),
+          patchFileHash: "6".repeat(64),
           patchStorageUri: "storage://patch",
-          byteSize: 3_000_000_002,
+          byteSize: 3_000_002,
         },
       ],
     });
@@ -197,10 +201,10 @@ describe("database client", () => {
       patches: [
         {
           baseBundleId: "missing",
-          baseFileHash: "missing",
-          patchFileHash: "patch",
+          baseFileHash: "a".repeat(64),
+          patchFileHash: "6".repeat(64),
           patchStorageUri: "storage://patch",
-          byteSize: 3_000_000_002,
+          byteSize: 3_000_002,
         },
       ],
     });

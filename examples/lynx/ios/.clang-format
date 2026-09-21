@@ -1,0 +1,15 @@
+BasedOnStyle: LLVM
+Language: ObjC
+IndentWidth: 2
+TabWidth: 2
+UseTab: Never
+PointerAlignment: Left
+ColumnLimit: 100
+BreakBeforeBraces: Allman
+AllowShortFunctionsOnASingleLine: Empty
+AllowShortIfStatementsOnASingleLine: Never
+AlignTrailingComments: true
+IndentCaseLabels: false
+ObjCBinPackProtocolList: Never
+ObjCSpaceBeforeProtocolList: true
+SortIncludes: false

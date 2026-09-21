@@ -11,8 +11,12 @@ const repoDir = path.resolve(
   "../../..",
 );
 const resultsRoot = path.join(repoDir, "e2e/results/detox");
-const iosAppId = "org.reactjs.native.example.HotUpdaterExample";
-const androidAppId = "com.hotupdaterexample";
+const iosAppId =
+  process.env.HOT_UPDATER_E2E_IOS_APP_ID ??
+  process.env.HOT_UPDATER_E2E_APP_ID ??
+  "org.reactjs.native.example.HotUpdaterExample";
+const androidAppId =
+  process.env.HOT_UPDATER_E2E_APP_ID ?? "com.hotupdaterexample";
 const androidRuntimeConfigDevicePort = "3107";
 
 function parsePositivePort(value: string | undefined, name: string): string {
@@ -81,7 +85,7 @@ function readEnvTargetAppBaseUrl(env: NodeJS.ProcessEnv): string | undefined {
   }
 }
 
-function resolveAppBaseUrl(env: NodeJS.ProcessEnv): string {
+export function resolveAppBaseUrl(env: NodeJS.ProcessEnv): string {
   if (env.HOT_UPDATER_E2E_APP_BASE_URL) {
     return env.HOT_UPDATER_E2E_APP_BASE_URL;
   }
@@ -99,17 +103,17 @@ function resolveAppBaseUrl(env: NodeJS.ProcessEnv): string {
   return `http://127.0.0.1:${providerPort}/hot-updater`;
 }
 
-function resolveRuntimeConfigUrl(
+export function resolveRuntimeConfigUrl(
   platform: DetoxPlatform,
-  controlPort: string,
   env: NodeJS.ProcessEnv,
 ): string {
   if (env.HOT_UPDATER_E2E_RUNTIME_CONFIG_URL) {
     return env.HOT_UPDATER_E2E_RUNTIME_CONFIG_URL;
   }
   if (platform === "android") {
-    return `http://localhost:${androidRuntimeConfigDevicePort}/e2e/runtime-config`;
+    return `http://127.0.0.1:${androidRuntimeConfigDevicePort}/e2e/runtime-config`;
   }
+  const controlPort = resolveControlPort(env);
   return `http://localhost:${controlPort}/e2e/runtime-config`;
 }
 
@@ -288,11 +292,7 @@ export function buildDetoxControlServerEnv(
     HOT_UPDATER_E2E_PLATFORM: platform,
     HOT_UPDATER_E2E_RESULTS_DIR:
       env.HOT_UPDATER_E2E_RESULTS_DIR ?? path.join(resultsRoot, platform),
-    HOT_UPDATER_E2E_RUNTIME_CONFIG_URL: resolveRuntimeConfigUrl(
-      platform,
-      controlPort,
-      env,
-    ),
+    HOT_UPDATER_E2E_RUNTIME_CONFIG_URL: resolveRuntimeConfigUrl(platform, env),
     HOT_UPDATER_E2E_SERVER_HOST: env.HOT_UPDATER_E2E_SERVER_HOST ?? "127.0.0.1",
     PORT: controlPort,
   };

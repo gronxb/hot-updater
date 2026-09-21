@@ -11,6 +11,13 @@ import type {
 const fixtureId = (suffix: string): string =>
   `00000000-0000-7000-8000-${suffix.padStart(12, "0")}`;
 
+const fixtureHash = (suffix: string, fill: "a" | "b" | "c"): string =>
+  `${[...suffix]
+    .map((character) =>
+      (character.codePointAt(0) ?? 0).toString(16).padStart(6, "0"),
+    )
+    .join("")}${fill.repeat(64)}`.slice(0, 64);
+
 const channelFixtureSuffix = (name: string): string => {
   let hash = 0;
   for (const character of name) {
@@ -30,7 +37,7 @@ export const createBundleRowFixture = (
 ): BundleRow => ({
   id: fixtureId(suffix),
   platform: "ios",
-  file_hash: `hash-${suffix}`,
+  file_hash: fixtureHash(suffix, "a"),
   git_commit_hash: null,
   storage_uri: `storage://bundles/${suffix}.zip`,
   archive_byte_size: 3_000_000_001,
@@ -46,13 +53,13 @@ export const createBundlePatchRowFixture = (
   baseBundleId: string,
   orderIndex = 0,
 ): BundlePatchRow => ({
-  id: `patch-${suffix}`,
+  id: `${bundleId}:${baseBundleId}`,
   bundle_id: bundleId,
   base_bundle_id: baseBundleId,
-  base_file_hash: `base-hash-${suffix}`,
-  patch_file_hash: `patch-hash-${suffix}`,
+  base_file_hash: fixtureHash(suffix, "b"),
+  patch_file_hash: fixtureHash(suffix, "c"),
   patch_storage_uri: `storage://patches/${suffix}.patch`,
-  byte_size: 3_000_000_002,
+  byte_size: 3_000_002,
   order_index: orderIndex,
 });
 
@@ -127,7 +134,7 @@ export const createBundleFixture = (
 ): Bundle => ({
   id: fixtureId(suffix),
   platform: "ios",
-  fileHash: `hash-${suffix}`,
+  fileHash: fixtureHash(suffix, "a"),
   gitCommitHash: null,
   storageUri: `storage://bundles/${suffix}.zip`,
   archiveByteSize: 3_000_000_001,

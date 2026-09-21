@@ -28,8 +28,8 @@ export type RuntimeHotUpdaterAPI = DatabaseAPI & {
   readonly adapterName: string;
   /**
    * Built-in Insights provider. Client ingestion and admin query routes are
-   * always mounted; React Native clients report lifecycle events by default
-   * and can opt out with `HotUpdater.init({ insights: false })`.
+   * always mounted; client integrations decide whether and when to report
+   * lifecycle events.
    */
   readonly insights: InsightsProvider;
   /**

@@ -108,7 +108,7 @@ const toRuntimeBundle = (bundle: Bundle): Bundle => {
 const runtimeBundle = (id: string, overrides: Partial<Bundle> = {}): Bundle =>
   toRuntimeBundle({
     platform: "ios",
-    fileHash: `hash-${id}`,
+    fileHash: id.replaceAll("-", "").repeat(2),
     gitCommitHash: null,
     storageUri: "storage://unused",
     archiveByteSize: 3_000_000_001,
@@ -463,21 +463,21 @@ describe.sequential("supabase edge runtime acceptance", () => {
     const owner = {
       ...base,
       id: "00000000-0000-0000-0000-000000000102",
-      fileHash: "hash-owner",
+      fileHash: "a".repeat(64),
       patches: [
         {
           baseBundleId: base.id,
           baseFileHash: base.fileHash,
-          patchFileHash: "hash-valid-patch",
+          patchFileHash: "b".repeat(64),
           patchStorageUri: "storage://valid-patch",
-          byteSize: 3_000_000_002,
+          byteSize: 3_000_002,
         },
         {
           baseBundleId: "00000000-0000-0000-0000-000000000199",
-          baseFileHash: "hash-missing-base",
-          patchFileHash: "hash-invalid-patch",
+          baseFileHash: "c".repeat(64),
+          patchFileHash: "d".repeat(64),
           patchStorageUri: "storage://invalid-patch",
-          byteSize: 3_000_000_003,
+          byteSize: 3_000_003,
         },
       ],
     } satisfies Bundle;
@@ -516,14 +516,14 @@ describe.sequential("supabase edge runtime acceptance", () => {
       const owner = {
         ...base,
         id: "00000000-0000-0000-0000-000000000152",
-        fileHash: "hash-owner",
+        fileHash: "a".repeat(64),
         patches: [
           {
             baseBundleId: base.id,
             baseFileHash: base.fileHash,
-            patchFileHash: "hash-patch",
+            patchFileHash: "b".repeat(64),
             patchStorageUri: "storage://patch",
-            byteSize: 3_000_000_002,
+            byteSize: 3_000_002,
           },
         ],
       } satisfies Bundle;
@@ -539,7 +539,7 @@ describe.sequential("supabase edge runtime acceptance", () => {
       if (result.error) throw result.error;
       expect(result.data).toEqual({
         tenant_tag: "default-tenant",
-        file_hash_upper: "HASH-OWNER",
+        file_hash_upper: "A".repeat(64),
       });
     } finally {
       runDatabaseSql(
@@ -565,14 +565,14 @@ describe.sequential("supabase edge runtime acceptance", () => {
       const owner = {
         ...base,
         id: "00000000-0000-0000-0000-000000000552",
-        fileHash: "hash-owner",
+        fileHash: "a".repeat(64),
         patches: [
           {
             baseBundleId: base.id,
             baseFileHash: base.fileHash,
-            patchFileHash: "hash-patch",
+            patchFileHash: "b".repeat(64),
             patchStorageUri: "storage://patch",
-            byteSize: 3_000_000_002,
+            byteSize: 3_000_002,
           },
         ],
       } satisfies Bundle;
@@ -595,15 +595,15 @@ describe.sequential("supabase edge runtime acceptance", () => {
     const owner = {
       ...base,
       id: "00000000-0000-0000-0000-000000000202",
-      fileHash: "hash-owner",
+      fileHash: "a".repeat(64),
       gitCommitHash: "before",
       patches: [
         {
           baseBundleId: base.id,
           baseFileHash: base.fileHash,
-          patchFileHash: "hash-old-patch",
+          patchFileHash: "b".repeat(64),
           patchStorageUri: "storage://old-patch",
-          byteSize: 3_000_000_002,
+          byteSize: 3_000_002,
         },
       ],
     } satisfies Bundle;
@@ -617,10 +617,10 @@ describe.sequential("supabase edge runtime acceptance", () => {
           patches: [
             {
               baseBundleId: "00000000-0000-0000-0000-000000000299",
-              baseFileHash: "hash-missing-base",
-              patchFileHash: "hash-invalid-patch",
+              baseFileHash: "c".repeat(64),
+              patchFileHash: "d".repeat(64),
               patchStorageUri: "storage://invalid-patch",
-              byteSize: 3_000_000_003,
+              byteSize: 3_000_003,
             },
           ],
         }),
@@ -640,15 +640,15 @@ describe.sequential("supabase edge runtime acceptance", () => {
     const owner = {
       ...base,
       id: "00000000-0000-0000-0000-000000000302",
-      fileHash: "hash-owner",
+      fileHash: "a".repeat(64),
       gitCommitHash: "before",
       patches: [
         {
           baseBundleId: base.id,
           baseFileHash: base.fileHash,
-          patchFileHash: "hash-old-patch",
+          patchFileHash: "b".repeat(64),
           patchStorageUri: "storage://old-patch",
-          byteSize: 3_000_000_002,
+          byteSize: 3_000_002,
         },
       ],
     } satisfies Bundle;

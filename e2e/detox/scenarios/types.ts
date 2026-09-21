@@ -15,6 +15,10 @@ export type DetoxLaunchOptions = {
   readonly expectCrash?: boolean;
 };
 
+export type DetoxTapOptions = {
+  readonly allowErrorResult?: boolean;
+};
+
 export type DetoxAppDriver = {
   readonly assertText: (
     stage: string,
@@ -34,7 +38,11 @@ export type DetoxAppDriver = {
   ) => Promise<void>;
   readonly reload: (stage: string) => Promise<void>;
   readonly resetAppState: (stage: string) => Promise<void>;
-  readonly tap: (stage: string, testID: string) => Promise<void>;
+  readonly tap: (
+    stage: string,
+    testID: string,
+    options?: DetoxTapOptions,
+  ) => Promise<void>;
   readonly terminate: (stage: string) => Promise<void>;
   readonly typeText: (
     stage: string,

@@ -1,7 +1,7 @@
 {
   "name": "@hot-updater/bsdiff",
   "version": "1.0.0-rc.14",
-  "description": "Hot Updater BSdiff library that produces BSDIFF40 patches for RN bspatch flows",
+  "description": "Engine-neutral binary diff support for Hot Updater artifacts",
   "license": "MIT AND BSD-2-Clause AND bzip2-1.0.6",
   "type": "module",
   "main": "./dist/node.js",

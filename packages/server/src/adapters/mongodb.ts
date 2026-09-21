@@ -1,6 +1,8 @@
 import { createDatabasePlugin } from "@hot-updater/plugin-core";
 import {
   createDatabasePluginAdapter,
+  createTransactionDatabasePlugin,
+  publishBundlePatchInTransaction,
   type DatabasePluginImplementation,
   type TransactionDatabasePluginImplementation,
 } from "@hot-updater/plugin-core/internal";
@@ -112,6 +114,17 @@ const createTransactionalMongoImplementation = (
     client.withSession((session) =>
       session.withTransaction(() =>
         createMongoImplementation(client, session).deleteChannel(input),
+      ),
+    ),
+  publishBundlePatch: (input) =>
+    client.withSession((session) =>
+      session.withTransaction(() =>
+        publishBundlePatchInTransaction(
+          createTransactionDatabasePlugin(
+            createMongoImplementation(client, session),
+          ),
+          input,
+        ),
       ),
     ),
   transaction: <TResult>(

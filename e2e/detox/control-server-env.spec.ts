@@ -2,9 +2,35 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { buildDetoxControlServerEnv } from "./scripts/control-server.ts";
+
+async function loadController(platform: "android" | "ios") {
+  const resultsDir = await fs.mkdtemp(
+    path.join(os.tmpdir(), "hot-updater-control-transport-"),
+  );
+  vi.resetModules();
+  vi.stubEnv(
+    "HOT_UPDATER_E2E_APP_BASE_URL",
+    "https://updates.test/hot-updater",
+  );
+  vi.stubEnv("HOT_UPDATER_E2E_APP_ID", "com.hotupdater.lynxexample");
+  vi.stubEnv("HOT_UPDATER_E2E_DEVICE_ID", "booted");
+  vi.stubEnv("HOT_UPDATER_E2E_PLATFORM", platform);
+  vi.stubEnv("HOT_UPDATER_E2E_RESULTS_DIR", resultsDir);
+  vi.stubEnv("HOT_UPDATER_E2E_ANDROID_CONTROL_DEVICE_PORT", "3114");
+  vi.stubEnv("PORT", "3124");
+  return {
+    controller: await import("./control-server/controller.ts"),
+    resultsDir,
+  };
+}
+
+afterEach(() => {
+  vi.unstubAllEnvs();
+  vi.unstubAllGlobals();
+});
 
 describe("Detox control server environment", () => {
   it("uses a unique iOS DerivedData path for each split control server", () => {
@@ -127,11 +153,62 @@ describe("Detox control server environment", () => {
 
     expect(first.HOT_UPDATER_E2E_ANDROID_CONTROL_DEVICE_PORT).toBe("3107");
     expect(first.HOT_UPDATER_E2E_RUNTIME_CONFIG_URL).toBe(
-      "http://localhost:3107/e2e/runtime-config",
+      "http://127.0.0.1:3107/e2e/runtime-config",
     );
     expect(second.HOT_UPDATER_E2E_ANDROID_CONTROL_DEVICE_PORT).toBe("3107");
     expect(second.HOT_UPDATER_E2E_RUNTIME_CONFIG_URL).toBe(
-      "http://localhost:3107/e2e/runtime-config",
+      "http://127.0.0.1:3107/e2e/runtime-config",
     );
+  });
+
+  it("serializes Android recovery and runtime config over the IPv4 adb reverse", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        Response.json({ fileUrl: "https://storage.test/bundle.zip" }),
+      ),
+    );
+    const { controller, resultsDir } = await loadController("android");
+    try {
+      expect(
+        JSON.parse(controller.createLynxRecoveryLaunchConfiguration()),
+      ).toEqual({
+        appBaseURL: "https://updates.test/hot-updater",
+        channel: "production",
+        runtimeConfigURL: "http://127.0.0.1:3114/e2e/runtime-config",
+      });
+      expect(controller.handleRuntimeConfig()).toMatchObject({
+        baseURL: "http://127.0.0.1:3114/hot-updater",
+        updateServerBaseURL: "https://updates.test/hot-updater",
+      });
+      const artifactResponse = await controller.handleProxyUpdateRequest(
+        new Request(
+          "http://127.0.0.1:3114/hot-updater/artifacts/target/from/current",
+        ),
+      );
+      await expect(artifactResponse.json()).resolves.toMatchObject({
+        fileUrl: expect.stringMatching(
+          /^http:\/\/127\.0\.0\.1:3114\/e2e\/proxy-url\//,
+        ),
+      });
+    } finally {
+      await fs.rm(resultsDir, { force: true, recursive: true });
+    }
+  });
+
+  it("keeps iOS control URLs on localhost and the host control port", async () => {
+    const { controller, resultsDir } = await loadController("ios");
+    try {
+      expect(
+        JSON.parse(controller.createLynxRecoveryLaunchConfiguration()),
+      ).toMatchObject({
+        runtimeConfigURL: "http://localhost:3124/e2e/runtime-config",
+      });
+      expect(controller.handleRuntimeConfig()).toMatchObject({
+        baseURL: "http://localhost:3124/hot-updater",
+      });
+    } finally {
+      await fs.rm(resultsDir, { force: true, recursive: true });
+    }
   });
 });

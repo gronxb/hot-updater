@@ -1,7 +1,11 @@
 import type { Bundle } from "@hot-updater/core";
 
+import { MAX_BUNDLE_ARTIFACT_BYTES } from "./bundlePackagingLimits";
+import { MAX_BUNDLE_PATCHES } from "./bundlePatchLimits";
+import { isContentAddressedAssetFileHash } from "./contentAddressedAssets";
 import {
   DatabaseAtomicCommitUnsupportedError,
+  DatabasePluginInputError,
   DatabaseRowReferencedError,
 } from "./createDatabasePlugin";
 import { hydrateRows, responsePage } from "./databaseClientReads";
@@ -75,18 +79,25 @@ type CommitOperation = (
   changes: readonly BundleMutationChange[],
 ) => Promise<DatabaseCommitResult>;
 
-const insertChanges = (bundle: Bundle): readonly BundleMutationChange[] => [
-  {
-    model: "bundles",
-    operation: "insert",
-    row: bundleToRow(bundle),
-  },
-  ...bundleToPatchRows(bundle).map((row) => ({
-    model: "bundlePatches" as const,
-    operation: "insert" as const,
-    row,
-  })),
-];
+const assertAggregatePatchLimit = (
+  bundleId: string,
+  patches: readonly ReturnType<typeof bundleToPatchRows>[number][],
+): void => {
+  if (
+    patches.length > MAX_BUNDLE_PATCHES ||
+    patches.some(
+      (patch) =>
+        patch.bundle_id !== bundleId ||
+        patch.base_bundle_id === bundleId ||
+        patch.id !== `${bundleId}:${patch.base_bundle_id}` ||
+        patch.byte_size > MAX_BUNDLE_ARTIFACT_BYTES ||
+        !isContentAddressedAssetFileHash(patch.base_file_hash) ||
+        !isContentAddressedAssetFileHash(patch.patch_file_hash),
+    )
+  ) {
+    throw new DatabasePluginInputError("invalid-data");
+  }
+};
 
 const updateChanges = (
   bundleId: string,
@@ -144,8 +155,21 @@ export const createDatabaseClient = (
     },
     insertChannel,
     async insertBundle(bundle) {
+      const patches = bundleToPatchRows(bundle);
+      assertAggregatePatchLimit(bundle.id, patches);
       try {
-        await commit(insertChanges(bundle));
+        await commit([
+          {
+            model: "bundles",
+            operation: "insert",
+            row: bundleToRow(bundle),
+          },
+          ...patches.map((row) => ({
+            model: "bundlePatches" as const,
+            operation: "insert" as const,
+            row,
+          })),
+        ]);
       } catch (error) {
         if (
           error instanceof DatabaseAtomicCommitUnsupportedError &&
@@ -157,6 +181,12 @@ export const createDatabaseClient = (
       }
     },
     async updateBundleById(bundleId, update) {
+      if (Object.hasOwn(update, "patches")) {
+        assertAggregatePatchLimit(
+          bundleId,
+          bundleUpdateToPatchRows(bundleId, update),
+        );
+      }
       try {
         const result = await commit(updateChanges(bundleId, update));
         if (!result.committed) {

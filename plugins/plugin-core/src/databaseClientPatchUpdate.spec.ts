@@ -20,7 +20,7 @@ const channelRow = { id: "channel-production", name: "production" } as const;
 const createBundle = (id: string): Bundle => ({
   id,
   platform: "ios",
-  fileHash: `hash-${id}`,
+  fileHash: "a".repeat(64),
   gitCommitHash: null,
   storageUri: `storage://${id}`,
   archiveByteSize: 3_000_000_001,
@@ -70,8 +70,8 @@ const createMemoryFixture = async () => {
       {
         baseBundleId: base.id,
         baseFileHash: base.fileHash,
-        byteSize: 3_000_000_002,
-        patchFileHash: "patch-hash",
+        byteSize: 3_000_002,
+        patchFileHash: "b".repeat(64),
         patchStorageUri: "storage://patch",
       },
     ],
@@ -119,8 +119,8 @@ describe("database client patch updates", () => {
         {
           baseBundleId: base.id,
           baseFileHash: base.fileHash,
-          byteSize: 3_000_000_002,
-          patchFileHash: "patch-hash",
+          byteSize: 3_000_002,
+          patchFileHash: "b".repeat(64),
           patchStorageUri: "storage://patch",
         },
       ],
@@ -196,9 +196,9 @@ describe("database client patch updates", () => {
       patches: [
         {
           baseBundleId: "base",
-          baseFileHash: "base-hash",
-          byteSize: 3_000_000_002,
-          patchFileHash: "patch-hash",
+          baseFileHash: "a".repeat(64),
+          byteSize: 3_000_002,
+          patchFileHash: "b".repeat(64),
           patchStorageUri: "storage://patch",
         },
       ],
@@ -218,12 +218,12 @@ describe("database client patch updates", () => {
           operation: "insert",
           row: {
             base_bundle_id: "base",
-            base_file_hash: "base-hash",
+            base_file_hash: "a".repeat(64),
             bundle_id: "owner",
+            byte_size: 3_000_002,
             id: "owner:base",
             order_index: 0,
-            byte_size: 3_000_000_002,
-            patch_file_hash: "patch-hash",
+            patch_file_hash: "b".repeat(64),
             patch_storage_uri: "storage://patch",
           },
         },
@@ -254,9 +254,9 @@ describe("database client patch updates", () => {
       patches: [
         {
           baseBundleId: "base",
-          baseFileHash: "base-hash",
-          byteSize: 3_000_000_002,
-          patchFileHash: "patch-hash",
+          baseFileHash: "a".repeat(64),
+          byteSize: 3_000_002,
+          patchFileHash: "b".repeat(64),
           patchStorageUri: "storage://patch",
         },
       ],
@@ -324,9 +324,9 @@ describe("database client patch updates", () => {
       patches: [
         {
           baseBundleId: "base",
-          baseFileHash: "base-hash",
-          byteSize: 3_000_000_002,
-          patchFileHash: "patch-hash",
+          baseFileHash: "a".repeat(64),
+          byteSize: 3_000_002,
+          patchFileHash: "b".repeat(64),
           patchStorageUri: "storage://patch",
         },
       ],

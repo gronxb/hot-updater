@@ -25,6 +25,8 @@ export type {
   BundleModel,
   BundleModelQuery,
   BundlePatchModel,
+  BundlePatchPublishInput,
+  BundlePatchPublishResult,
   BundleRepository,
   BundleRepositoryChange,
   BundleRepositoryCommit,

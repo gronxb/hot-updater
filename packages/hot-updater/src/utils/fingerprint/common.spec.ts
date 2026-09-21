@@ -1,76 +1,61 @@
-import { getCwd } from "@hot-updater/cli-tools";
 import { describe, expect, it } from "vitest";
 
-import {
-  appendFingerprintExtraSources,
-  getOtaFingerprintOptions,
-} from "./common";
-
-const SHARED_SOURCE =
-  "packages/hot-updater/src/utils/fingerprint/processExtraSources.ts";
-const IOS_ONLY_SOURCE = "packages/hot-updater/src/utils/fingerprint/common.ts";
-
-const getExtraSourceIds = async (
-  platform: "ios" | "android",
-  extraSources: Parameters<typeof getOtaFingerprintOptions>[2]["extraSources"],
-) => {
-  const cwd = getCwd();
-  const { extraSources: processed } = await getOtaFingerprintOptions(
-    platform,
-    cwd,
-    { platform, extraSources },
-  );
-  return processed.map((source) =>
-    source.type === "dir" ? source.filePath : source.id,
-  );
-};
-
-describe("getOtaFingerprintOptions", () => {
-  it("applies array extraSources to both platforms", async () => {
-    await expect(getExtraSourceIds("ios", [SHARED_SOURCE])).resolves.toEqual([
-      SHARED_SOURCE,
-    ]);
-    await expect(
-      getExtraSourceIds("android", [SHARED_SOURCE]),
-    ).resolves.toEqual([SHARED_SOURCE]);
-  });
-
-  it("keeps platform-scoped extraSources out of the other platform", async () => {
-    const extraSources = {
-      ios: [IOS_ONLY_SOURCE],
-      android: [SHARED_SOURCE],
-    };
-
-    await expect(getExtraSourceIds("ios", extraSources)).resolves.toEqual([
-      IOS_ONLY_SOURCE,
-    ]);
-    await expect(getExtraSourceIds("android", extraSources)).resolves.toEqual([
-      SHARED_SOURCE,
-    ]);
-  });
-
-  it("adds no extra sources for a platform without entries", async () => {
-    await expect(
-      getExtraSourceIds("android", { ios: [IOS_ONLY_SOURCE] }),
-    ).resolves.toEqual([]);
-  });
-});
+import { appendFingerprintExtraSources } from "./common";
+import { getFingerprintDiff } from "./diff";
 
 describe("appendFingerprintExtraSources", () => {
-  it("adds native config sources to both platform fingerprints", () => {
+  it("appends integration inputs without crossing platform-specific sources", () => {
     expect(
-      appendFingerprintExtraSources({ ios: [IOS_ONLY_SOURCE], android: [] }, [
-        SHARED_SOURCE,
-      ]),
+      appendFingerprintExtraSources(
+        { ios: ["ios/private.xcconfig"], android: ["android/gradle.lockfile"] },
+        ["native-profile.json"],
+      ),
     ).toEqual({
-      ios: [IOS_ONLY_SOURCE, SHARED_SOURCE],
-      android: [SHARED_SOURCE],
+      ios: ["ios/private.xcconfig", "native-profile.json"],
+      android: ["android/gradle.lockfile", "native-profile.json"],
     });
   });
 
-  it("does not duplicate an existing native config source", () => {
+  it("deduplicates shared integration inputs", () => {
     expect(
-      appendFingerprintExtraSources([SHARED_SOURCE], [SHARED_SOURCE]),
-    ).toEqual([SHARED_SOURCE]);
+      appendFingerprintExtraSources(
+        ["native-profile.json"],
+        ["native-profile.json"],
+      ),
+    ).toEqual(["native-profile.json"]);
+  });
+});
+
+describe("getFingerprintDiff", () => {
+  it("compares provider-neutral source identities and hashes", () => {
+    const before = {
+      hash: "before",
+      sources: [
+        {
+          type: "file" as const,
+          filePath: "ios/Podfile.lock",
+          reasons: ["native"],
+          hash: "a",
+        },
+      ],
+    };
+    const after = {
+      hash: "after",
+      sources: [
+        {
+          type: "file" as const,
+          filePath: "ios/Podfile.lock",
+          reasons: ["native"],
+          hash: "b",
+        },
+      ],
+    };
+    expect(getFingerprintDiff(before, after)).toEqual([
+      {
+        op: "changed",
+        beforeSource: before.sources[0],
+        afterSource: after.sources[0],
+      },
+    ]);
   });
 });

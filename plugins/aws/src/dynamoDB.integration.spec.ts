@@ -108,7 +108,7 @@ describe("DynamoDB aggregate mutations", () => {
     const baseBundle = {
       id: "00000000-0000-0000-0000-000000000901",
       platform: "ios",
-      fileHash: "base-hash",
+      fileHash: "a".repeat(64),
       gitCommitHash: null,
       storageUri: "storage://base.zip",
       archiveByteSize: 3_000_000_001,
@@ -117,14 +117,14 @@ describe("DynamoDB aggregate mutations", () => {
     const bundle = {
       ...baseBundle,
       id: "00000000-0000-0000-0000-000000000902",
-      fileHash: "bundle-hash",
+      fileHash: "b".repeat(64),
       patches: [
         {
           baseBundleId: baseBundle.id,
           baseFileHash: baseBundle.fileHash,
-          patchFileHash: "first-patch-hash",
+          patchFileHash: "c".repeat(64),
           patchStorageUri: "storage://first.patch",
-          byteSize: 3_000_000_002,
+          byteSize: 3_000_002,
         },
       ],
     };
@@ -136,9 +136,9 @@ describe("DynamoDB aggregate mutations", () => {
         {
           baseBundleId: baseBundle.id,
           baseFileHash: baseBundle.fileHash,
-          patchFileHash: "replacement-patch-hash",
+          patchFileHash: "d".repeat(64),
           patchStorageUri: "storage://replacement.patch",
-          byteSize: 3_000_000_003,
+          byteSize: 3_000_003,
         },
       ],
     });
@@ -147,7 +147,7 @@ describe("DynamoDB aggregate mutations", () => {
       patches: [
         {
           baseBundleId: baseBundle.id,
-          patchFileHash: "replacement-patch-hash",
+          patchFileHash: "d".repeat(64),
         },
       ],
     });

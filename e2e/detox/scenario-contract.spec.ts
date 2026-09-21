@@ -619,22 +619,18 @@ describe("Detox scenario contract", () => {
     }
   });
 
-  it("captures the built-in bundle id with the minimum-id suffix contract", async () => {
-    // Given: the running manifest can expose a platform-generated UUID with
-    // the built-in minimum id suffix.
+  it("captures the built-in bundle id through the app-context contract", async () => {
+    // Given: Lynx uses one canonical full built-in UUID while the shared RN
+    // suite continues to expose the platform minimum-id suffix.
     const controllerSource = await fs.readFile(
       path.join(repoDir, "e2e/detox/control-server/controller.ts"),
       "utf8",
     );
 
     // When: scenarios capture the built-in bundle id for later UI assertions.
-    // Then: Detox must preserve the minimum-id suffix contract instead of requiring
-    // a hard-coded full UUID that iOS does not expose.
+    // Then: the controller dispatches through the tested app-context helper.
     expect(controllerSource).toContain(
-      "const builtInBundleId = BUILT_IN_MIN_BUNDLE_ID_SUFFIX;",
-    );
-    expect(controllerSource).not.toContain(
-      "const builtInBundleId = E2E_MIN_BUNDLE_ID;",
+      "const builtInBundleId = e2eBuiltInBundleId(fixtureSession.appId);",
     );
   });
 
@@ -648,7 +644,7 @@ describe("Detox scenario contract", () => {
     const harness = createDatabasePluginHarness();
     const base = {
       archiveByteSize: 100,
-      fileHash: "base-hash",
+      fileHash: "a".repeat(64),
       gitCommitHash: null,
       id: "01900000-0000-7000-8000-000000000001",
       platform: "ios" as const,
@@ -656,7 +652,7 @@ describe("Detox scenario contract", () => {
     };
     const file = {
       ...base,
-      fileHash: "target-hash",
+      fileHash: "b".repeat(64),
       id: "01900000-0000-7000-8000-000000000002",
       storageUri: "storage://artifacts/target.zip",
       patches: [
@@ -664,7 +660,7 @@ describe("Detox scenario contract", () => {
           baseBundleId: base.id,
           baseFileHash: base.fileHash,
           byteSize: 10,
-          patchFileHash: "patch-hash",
+          patchFileHash: "c".repeat(64),
           patchStorageUri: "storage://patches/target.patch",
         },
       ],
@@ -811,46 +807,20 @@ describe("Detox scenario contract", () => {
     },
   );
 
-  it.each([
-    ["safe-file", "promoted-update", false],
-    ["crash-file", "safe-file", true],
-    ["019f0000-0000-7000-8000-000000000000", "embedded-update", false],
-  ])(
-    "checks the crash guard against file %s independently of selected ID %s",
-    async (bundleId, updateId, shouldCrash) => {
-      const source = await fs.readFile(
-        detoxControlServerControllerPath,
-        "utf8",
-      );
-      const guardFactory = source.slice(
-        source.indexOf("  const crashGuardSource ="),
-        source.indexOf("  const deployAssetSource ="),
-      );
-      const guardSource = new Script(
-        `${guardFactory}\ncrashGuardSource;`,
-      ).runInNewContext({
-        mode: "crash",
-        safeBundleIds: ["safe-file"],
-        BUILT_IN_MIN_BUNDLE_ID_SUFFIX: "7000-8000-000000000000",
-        CRASH_GUARD_START: "/* E2E_CRASH_GUARD_START */",
-        CRASH_GUARD_END: "/* E2E_CRASH_GUARD_END */",
-      });
-      const guard = new Script(guardSource);
-      const runGuard = () =>
-        guard.runInNewContext({
-          HotUpdater: {
-            getBundleId: () => updateId,
-            getManifest: () => ({ bundleId }),
-          },
-        });
+  it("uses a real managed page fatal for the Lynx crash fixture", async () => {
+    const source = await fs.readFile(detoxControlServerControllerPath, "utf8");
+    const guardFactory = source.slice(
+      source.indexOf("  const crashGuardSource ="),
+      source.indexOf("  const deployAssetSource ="),
+    );
 
-      if (shouldCrash) {
-        expect(runGuard).toThrow("hot-updater e2e crash bundle");
-      } else {
-        expect(runGuard).not.toThrow();
-      }
-    },
-  );
+    expect(guardFactory).toContain(
+      'await callE2eDiagnostic("armNextPageFatalFailure")',
+    );
+    expect(guardFactory).toContain('path: "detail.lynx.bundle"');
+    expect(guardFactory).not.toContain("await new Promise");
+    expect(guardFactory).not.toContain("getManifest");
+  });
 
   it("seeds Detox scenario values from the bootstrap contract", async () => {
     // Given: Maestro exposes bootstrap outputs like output.initialMarker to every
@@ -1983,7 +1953,7 @@ describe("Detox scenario contract", () => {
     expect(stages).toEqual([
       "deploy force update bundle",
       "launch force update app",
-      "prove force update native reload",
+      "prove force update runtime replacement",
       "wait force update automatic reload",
       "assert force update Bundle",
       "assert force update Release",
@@ -2007,7 +1977,7 @@ describe("Detox scenario contract", () => {
     expect(
       await controlStepDefinition(
         "force-update-auto-reload",
-        "prove force update native reload",
+        "prove force update runtime replacement",
       ),
     ).toMatchObject({
       body: {
@@ -3036,6 +3006,8 @@ describe("Detox scenario contract", () => {
       "assert chain bundle B launch status",
       "deploy chain bundle C",
       "assert chain bundle C bases",
+      "create chain rollback patch C to B",
+      "create chain rollback patch B to A",
       "launch chain bundle C app",
       "install chain bundle C",
       "wait chain bundle C metadata pending",
@@ -3058,6 +3030,7 @@ describe("Detox scenario contract", () => {
       "assert chain bundle B rollback launch",
       "assert chain bundle B rollback launch status",
       "assert chain bundle B rollback active",
+      "assert chain bundle B rollback patch",
       "disable chain bundle B",
       "install rollback to chain bundle A",
       "assert chain bundle A rollback action result",
@@ -3068,6 +3041,7 @@ describe("Detox scenario contract", () => {
       "assert chain bundle A rollback launch",
       "assert chain bundle A rollback launch status",
       "assert chain bundle A rollback active",
+      "assert chain bundle A rollback patch",
       "disable chain bundle A",
       "install rollback to built-in chain",
       "assert chain built-in rollback action result",

@@ -1,4 +1,4 @@
-import { expect, it } from "vitest";
+import { expect, it, vi } from "vitest";
 
 import { createBundleEventRowFixture } from "../../../packages/test-utils/src/databaseTestFixtures";
 import { createD1Implementation, type D1Statement } from "./d1Implementation";
@@ -124,7 +124,7 @@ it("maps idempotent Channel inserts to the normalized table", async () => {
   expect(recorded[0]?.sql).toContain("ON CONFLICT(name) DO NOTHING");
 });
 
-it("persists required archive and patch byte sizes", async () => {
+it("persists required archive and bounded patch byte sizes", async () => {
   let recorded: readonly D1Statement[] = [];
   const implementation = createD1Implementation({
     query: () => Promise.reject(new Error("unexpected standalone query")),
@@ -145,22 +145,24 @@ it("persists required archive and patch byte sizes", async () => {
     manifest_file_hash: null,
     asset_base_storage_uri: null,
   };
+  const base = { ...bundle, id: "base-1" };
 
   await expect(
     implementation.commit?.({
       changes: [
+        { model: "bundles", operation: "insert", row: base },
         { model: "bundles", operation: "insert", row: bundle },
         {
           model: "bundlePatches",
           operation: "insert",
           row: {
-            id: "patch-1",
+            id: `${bundle.id}:${base.id}`,
             bundle_id: bundle.id,
-            base_bundle_id: bundle.id,
-            base_file_hash: "base-hash",
-            patch_file_hash: "patch-hash",
+            base_bundle_id: base.id,
+            base_file_hash: "a".repeat(64),
+            patch_file_hash: "b".repeat(64),
             patch_storage_uri: "storage://patch",
-            byte_size: 3_000_000_002,
+            byte_size: 3_000_002,
             order_index: 0,
           },
         },
@@ -168,10 +170,35 @@ it("persists required archive and patch byte sizes", async () => {
     }),
   ).resolves.toEqual({ committed: true });
 
-  expect(recorded[0]?.sql).toContain("archive_byte_size");
-  expect(recorded[0]?.params).toContain("3000000001");
-  expect(recorded[1]?.sql).toContain("byte_size");
-  expect(recorded[1]?.params).toContain("3000000002");
+  expect(recorded[1]?.sql).toContain("archive_byte_size");
+  expect(recorded[1]?.params).toContain("3000000001");
+  expect(recorded[2]?.sql).toContain("byte_size");
+  expect(recorded[2]?.params).toContain("3000002");
+});
+
+it("rejects malformed patch hashes before creating a commit batch", async () => {
+  const batch = vi.fn(async () => []);
+  const implementation = createD1Implementation({
+    query: () => Promise.reject(new Error("unexpected standalone query")),
+    batch,
+  });
+  const row = {
+    id: "owner:base",
+    bundle_id: "owner",
+    base_bundle_id: "base",
+    base_file_hash: "a".repeat(64),
+    patch_file_hash: "malformed",
+    patch_storage_uri: "storage://patch",
+    byte_size: 1,
+    order_index: 0,
+  } as const;
+
+  await expect(
+    implementation.commit?.({
+      changes: [{ model: "bundlePatches", operation: "insert", row }],
+    }),
+  ).rejects.toThrow("invalid-data");
+  expect(batch).not.toHaveBeenCalled();
 });
 
 it("returns the canonical Channel row after a concurrent name conflict", async () => {
