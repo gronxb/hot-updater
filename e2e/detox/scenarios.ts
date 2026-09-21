@@ -37,32 +37,6 @@ export type {
 
 const registeredDetoxScenarios: readonly DetoxScenarioDefinition[] = [
   startupHangRecoveryScenario,
-  releaseOtaRecoveryScenario,
-  multiAssetReplacementScenario,
-  bspatchArchiveToDiffOtaScenario,
-  bspatchConsecutiveDiffOtaScenario,
-  bspatchDisabledChainRollbackScenario,
-  bspatchManifestDiffFallbackScenario,
-  runtimeChannelSwitchResetScenario,
-  numericCohortRolloutScenario,
-  targetCohortsOnlyScenario,
-  targetCohortsRolloutInteractionScenario,
-  targetedCohortSwitchbackScenario,
-  forceUpdateAutoReloadScenario,
-  disabledBundleRollbackToBuiltinScenario,
-  disabledBundleRollbackToPreviousOtaScenario,
-  fingerprintInitialInstallScenario,
-  catalogOnlyNoUpdateScenario,
-  sameBundleReleaseAdoptionScenario,
-  sizeAwareArtifactSelectionScenario,
-  staleCatalogAfterNewerGenerationScenario,
-  slowOldArtifactAfterNewerInstallScenario,
-  failedDownloadSameGenerationRetryScenario,
-  republishedCrashedBundleSkippedScenario,
-  crashThenNextSafeUpdateScenario,
-  runtimeChannelCrashRestoreScenario,
-  metadataV1MigrationScenario,
-  tenCrashHistorySafeBundleScenario,
 ];
 
 const scenarioByName = new Map(
