@@ -292,6 +292,7 @@ describe("Detox scenario contract", () => {
         "--",
         "--scenario",
         "release-ota-recovery",
+      "startup-hang-recovery",
         "--dry-run",
       ],
       {

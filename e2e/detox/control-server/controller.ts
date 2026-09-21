@@ -46,7 +46,7 @@ type JobState = {
   status: "cancelled" | "failed" | "running" | "succeeded";
 };
 
-type DeployMode = "crash" | "reset";
+type DeployMode = "crash" | "hang" | "reset";
 
 type DeployedBundleRecord = {
   archiveSizeBytes: number | null;
@@ -1037,7 +1037,7 @@ async function applyAppScenario({
   }
 
   const crashGuardSource =
-    mode === "crash"
+    mode !== "reset"
       ? [
           CRASH_GUARD_START,
           `  const E2E_SAFE_BUNDLE_IDS = new Set(${JSON.stringify(safeBundleIds, null, 2)});`,
@@ -1048,7 +1048,13 @@ async function applyAppScenario({
           "    E2E_CURRENT_BUNDLE_ID.endsWith(E2E_BUILT_IN_MIN_BUNDLE_ID_SUFFIX);",
           "",
           "  if (!E2E_IS_BUILT_IN_BUNDLE && !E2E_SAFE_BUNDLE_IDS.has(E2E_CURRENT_BUNDLE_ID)) {",
-          '    throw new Error("hot-updater e2e crash bundle");',
+          ...(mode === "hang"
+            ? [
+                '    console.log("HotUpdaterE2EStartupHang:" + E2E_CURRENT_BUNDLE_ID);',
+                "    const hangUntil = Date.now() + 600_000;",
+                "    while (Date.now() < hangUntil) {}",
+              ]
+            : ['    throw new Error("hot-updater e2e crash bundle");']),
           "  }",
           `  ${CRASH_GUARD_END}`,
         ].join("\n")

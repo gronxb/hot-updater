@@ -33,6 +33,7 @@ const expectedScenarioModuleFiles = [
   "multi-asset-replacement.ts",
   "numeric-cohort-rollout.ts",
   "release-ota-recovery.ts",
+      "startup-hang-recovery.ts",
   "runtime-channel-switch-reset.ts",
   "target-cohorts-only.ts",
   "target-cohorts-rollout-interaction.ts",

@@ -1,3 +1,4 @@
+import { startupHangRecoveryScenario } from "./scenarios/startup-hang-recovery.ts";
 import { bspatchArchiveToDiffOtaScenario } from "./scenarios/bspatch-archive-to-diff-ota.ts";
 import { bspatchConsecutiveDiffOtaScenario } from "./scenarios/bspatch-consecutive-diff-ota.ts";
 import { bspatchDisabledChainRollbackScenario } from "./scenarios/bspatch-disabled-chain-rollback.ts";
@@ -21,6 +22,7 @@ export type {
 
 const detoxScenarios: readonly DetoxScenarioDefinition[] = [
   releaseOtaRecoveryScenario,
+  startupHangRecoveryScenario,
   multiAssetReplacementScenario,
   bspatchArchiveToDiffOtaScenario,
   bspatchConsecutiveDiffOtaScenario,
