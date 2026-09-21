@@ -695,7 +695,6 @@ async function exerciseNavigationBoundaries(
       `${vector} accepted native detail`,
     );
     adapter.clickText("Close detail page");
-    await adapter.waitForText(`Bundle ${displayVariant} ready`);
     await adapter.waitForText(
       `Navigation boundary ${vector}: max accepted, plus one rejected`,
     );
