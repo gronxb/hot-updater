@@ -124,12 +124,8 @@ for (const provider of providers) {
       }));
     await save(
       path.join(output, "app", `api-key.config.${build}.ts`),
-      `${renderImportStatements(imports)}\n\ntry {
+      `${renderImportStatements(imports)}\n\nif (existsSync(".env.hotupdater")) {
   process.loadEnvFile(".env.hotupdater");
-} catch (error) {
-  if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
-    throw error;
-  }
 }\n\n${config.helperStatements.map(({ code }) => code).join("\n\n")}\n\nexport const database = ${config.database.initializer};\n`,
     );
   }

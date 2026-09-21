@@ -35,6 +35,7 @@ store. The admin and storage tokens authenticate their respective services;
 neither belongs in the React Native app.
 
 ```typescript title="hot-updater.config.ts"
+import { existsSync } from "node:fs";
 import { bare } from "@hot-updater/bare";
 import {
   standaloneRepository,
@@ -42,12 +43,8 @@ import {
 } from "@hot-updater/standalone";
 import { defineConfig } from "hot-updater";
 
-try {
+if (existsSync(".env.hotupdater")) {
   process.loadEnvFile(".env.hotupdater");
-} catch (error) {
-  if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
-    throw error;
-  }
 }
 
 const adminToken = process.env.HOT_UPDATER_ADMIN_TOKEN;

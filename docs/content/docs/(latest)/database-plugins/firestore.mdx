@@ -48,16 +48,13 @@ FIREBASE_PROJECT_ID=your-project-id
 ## Usage
 
 ```typescript title="hot-updater.config.ts"
+import { existsSync } from "node:fs";
 import { firebaseDatabase } from '@hot-updater/firebase'; // [!code ++]
 import { applicationDefault } from 'firebase-admin/app';
 import { defineConfig } from 'hot-updater';
 
-try {
+if (existsSync('.env.hotupdater')) {
   process.loadEnvFile('.env.hotupdater');
-} catch (error) {
-  if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
-    throw error;
-  }
 }
 
 // Reuse the environment's application-default credentials.
@@ -77,16 +74,13 @@ export default defineConfig({
 Combined storage and database:
 
 ```typescript
+import { existsSync } from "node:fs";
 import { firebaseStorage, firebaseDatabase } from '@hot-updater/firebase';
 import { applicationDefault } from 'firebase-admin/app';
 import { defineConfig } from 'hot-updater';
 
-try {
+if (existsSync('.env.hotupdater')) {
   process.loadEnvFile('.env.hotupdater');
-} catch (error) {
-  if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
-    throw error;
-  }
 }
 const credential = applicationDefault();
 

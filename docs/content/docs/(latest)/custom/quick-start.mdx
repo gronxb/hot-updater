@@ -204,17 +204,14 @@ must contain the same `R2_*` storage values and `HOT_UPDATER_ADMIN_TOKEN` as the
 server, and must also be excluded from Git.
 
 ```typescript title="hot-updater.config.ts"
+import { existsSync } from "node:fs";
 import { bare } from "@hot-updater/bare";
 import { s3Storage } from "@hot-updater/aws";
 import { standaloneRepository } from "@hot-updater/standalone";
 import { defineConfig } from "hot-updater";
 
-try {
+if (existsSync(".env.hotupdater")) {
   process.loadEnvFile(".env.hotupdater");
-} catch (error) {
-  if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
-    throw error;
-  }
 }
 
 const adminToken = process.env.HOT_UPDATER_ADMIN_TOKEN;

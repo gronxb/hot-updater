@@ -104,16 +104,13 @@
 
   * [Supabase](https://hot-updater.dev/docs/managed/supabase)
   ```tsx
+  import { existsSync } from "node:fs";
   import { bare } from "@hot-updater/bare";
   import { supabaseDatabase, supabaseStorage } from "@hot-updater/supabase";
   import { defineConfig } from "hot-updater";
 
-  try {
+  if (existsSync(".env.hotupdater")) {
     process.loadEnvFile(".env.hotupdater");
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
-      throw error;
-    }
   }
 
   export default defineConfig({
@@ -133,16 +130,13 @@
 
 * [Cloudflare](https://hot-updater.dev/docs/managed/cloudflare)
 ```tsx
+import { existsSync } from "node:fs";
 import { bare } from "@hot-updater/bare";
 import { d1Database, r2Storage } from "@hot-updater/cloudflare";
 import { defineConfig } from "hot-updater";
 
-try {
+if (existsSync(".env.hotupdater")) {
   process.loadEnvFile(".env.hotupdater");
-} catch (error) {
-  if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
-    throw error;
-  }
 }
 
 export default defineConfig({
@@ -166,16 +160,13 @@ export default defineConfig({
 
 * [AWS S3 + Lambda@Edge](https://hot-updater.dev/docs/managed/aws)
 ```tsx
+import { existsSync } from "node:fs";
 import { bare } from "@hot-updater/bare";
 import { dynamoDB, s3Storage } from "@hot-updater/aws";
 import { defineConfig } from "hot-updater";
 
-try {
+if (existsSync(".env.hotupdater")) {
   process.loadEnvFile(".env.hotupdater");
-} catch (error) {
-  if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
-    throw error;
-  }
 }
 
 const awsOptions = {
@@ -202,17 +193,14 @@ export default defineConfig({
 
 * [Firebase](https://hot-updater.dev/docs/managed/firebase)
 ```tsx
+import { existsSync } from "node:fs";
 import { bare } from '@hot-updater/bare';
 import {firebaseStorage, firebaseDatabase} from '@hot-updater/firebase';
 import { applicationDefault } from 'firebase-admin/app';
 import { defineConfig } from "hot-updater";
 
-try {
+if (existsSync(".env.hotupdater")) {
   process.loadEnvFile(".env.hotupdater");
-} catch (error) {
-  if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
-    throw error;
-  }
 }
 
 // https://firebase.google.com/docs/admin/setup?hl=en#initialize_the_sdk_in_non-google_environments

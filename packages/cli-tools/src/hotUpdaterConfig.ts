@@ -673,6 +673,12 @@ const rebuildImportBlock = (
   source: ConfigSource,
   scaffold: HotUpdaterConfigScaffold,
 ): TextEdit => {
+  // Keep environment-loading imports under the existing config's control.
+  const imports = scaffold.imports.map((info) =>
+    info.pkg === "node:fs"
+      ? { ...info, named: info.named?.filter((name) => name !== "existsSync") }
+      : info,
+  );
   const importDeclarations = source.program.body.filter(
     (statement) => statement.type === "ImportDeclaration",
   );
@@ -682,7 +688,7 @@ const rebuildImportBlock = (
     return {
       start: 0,
       end: 0,
-      text: `${renderImportStatements(scaffold.imports)}\n\n`,
+      text: `${renderImportStatements(imports)}\n\n`,
     };
   }
 
@@ -695,7 +701,7 @@ const rebuildImportBlock = (
         .slice(getTopLevelFullStart(source, declaration), declaration.end)
         .trim(),
     );
-  const managedImportText = renderImportStatements(scaffold.imports);
+  const managedImportText = renderImportStatements(imports);
   const nextImportBlock = [...preservedImportTexts, managedImportText]
     .filter(Boolean)
     .join("\n");
