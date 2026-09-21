@@ -5961,11 +5961,15 @@ function readFirstOtaReuseEvidence(bundleId: string) {
     (entry) => entry.targetBundleId === bundleId,
   );
   const assets = artifact?.assets ?? [];
-  // backiconmask is an unchanged, byte-preserved PNG emitted by the example's navigator.
+  // The navigator mask is byte-preserved; Android removes hyphens from resource names.
+  const imageSuffix =
+    fixtureSession.platform === "ios"
+      ? "back-icon-mask.png"
+      : "backiconmask.png";
   // A font fixture is required too, so an empty resolver cannot satisfy this assertion.
   const required = assets.filter(
     ({ path }) =>
-      path.endsWith("backiconmask.png") || path.endsWith("builtin_reuse.ttf"),
+      path.endsWith(imageSuffix) || path.endsWith("builtin_reuse.ttf"),
   );
   const reused = assets.filter(
     ({ path }) => typeof locators?.[path] === "string",
@@ -5997,7 +6001,7 @@ function readFirstOtaReuseEvidence(bundleId: string) {
       index.exists &&
       index.readError === null &&
       finalFiles.ok &&
-      required.some(({ path }) => path.endsWith("backiconmask.png")) &&
+      required.some(({ path }) => path.endsWith(imageSuffix)) &&
       required.some(({ path }) => path.endsWith("builtin_reuse.ttf")) &&
       required.every(({ path }) =>
         reused.some((asset) => asset.path === path),
