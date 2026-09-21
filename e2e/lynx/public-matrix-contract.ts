@@ -1309,8 +1309,12 @@ function deltaDelivery(
     }
     return candidate;
   };
-  absoluteUrl(delivery.archiveFileUrl, `${at}.archiveFileUrl`);
-  hash(delivery.archiveFileHash, `${at}.archiveFileHash`);
+  if (delivery.archiveFileUrl !== null) {
+    fail(`${at}.archiveFileUrl`, "expected no archive descriptor");
+  }
+  if (delivery.archiveFileHash !== null) {
+    fail(`${at}.archiveFileHash`, "expected no archive descriptor");
+  }
   absoluteUrl(delivery.deliveryArtifactUrl, `${at}.deliveryArtifactUrl`);
   absoluteUrl(delivery.manifestUrl, `${at}.manifestUrl`);
   const manifestSha256 = hash(delivery.manifestSha256, `${at}.manifestSha256`);

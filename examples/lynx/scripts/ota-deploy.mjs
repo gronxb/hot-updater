@@ -401,8 +401,16 @@ const deliveryArtifact = options["from-bundle-id"]
   ? await getJson(deliveryArtifactUrl)
   : artifact;
 if (options["from-bundle-id"]) {
-  assert.equal(deliveryArtifact.fileUrl, artifact.fileUrl);
-  assert.equal(deliveryArtifact.fileHash, artifact.fileHash);
+  assert.equal(
+    deliveryArtifact.fileUrl,
+    null,
+    "Delta delivery must not retain an archive fallback URL",
+  );
+  assert.equal(
+    deliveryArtifact.fileHash,
+    null,
+    "Delta delivery must not retain an archive fallback hash",
+  );
   assert.equal(deliveryArtifact.manifestFileHash, bundle.manifestFileHash);
   assert.ok(deliveryArtifact.manifestUrl, "Delta delivery needs a manifest");
   const changedAssets = Object.entries(deliveryArtifact.changedAssets ?? {});

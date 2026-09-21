@@ -1203,14 +1203,8 @@ export function normalizeBuild({
 }
 
 export function collectDeltaDelivery(deploymentReceipt, nativeLogs) {
-  assert.match(
-    deploymentReceipt.deliveryArtifactResponse?.fileUrl,
-    /^https?:\/\//,
-  );
-  assert.match(
-    deploymentReceipt.deliveryArtifactResponse?.fileHash,
-    /^[a-f0-9]{64}$/,
-  );
+  assert.equal(deploymentReceipt.deliveryArtifactResponse?.fileUrl, null);
+  assert.equal(deploymentReceipt.deliveryArtifactResponse?.fileHash, null);
   const changed =
     deploymentReceipt.deliveryArtifactResponse?.changedAssets?.[
       "main.lynx.bundle"
@@ -1235,7 +1229,7 @@ export function collectDeltaDelivery(deploymentReceipt, nativeLogs) {
   assert.match(changed.fileHash, /^[a-f0-9]{64}$/);
   assert.ok(rawDetail?.file?.url);
   assert.match(rawDetail.fileHash, /^[a-f0-9]{64}$/);
-  assert.equal(rawDetail.patch, undefined);
+  assert.equal(rawDetail.patch, null);
   const events = nativeLogs.split(/\r?\n/).flatMap((line) => {
     const marker = "HotUpdaterLynxEvent=";
     const at = line.indexOf(marker);

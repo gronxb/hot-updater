@@ -325,8 +325,8 @@ function makeDelivery(
     baseBundleId: base.bundleId,
     targetBundleId: target.bundleId,
     archiveFallbackUsed: false,
-    archiveFileHash: hash("f"),
-    archiveFileUrl: `https://updates.test/files/${target.bundleId}/bundle.zip`,
+    archiveFileHash: null,
+    archiveFileUrl: null,
     deliveryArtifactUrl: `https://updates.test/artifacts/${target.bundleId}/from/${base.bundleId}`,
     manifestUrl: `https://updates.test/files/${target.bundleId}/manifest.json`,
     manifestSha256: target.manifestSha256,
@@ -1201,7 +1201,7 @@ describe("Lynx public matrix evidence contract", () => {
       },
     ],
     [
-      "a malformed archive fallback descriptor beside a delta",
+      "an archive fallback descriptor beside a delta",
       (cell: any) => {
         cell.phases.deltaB.delivery.archiveFileUrl = "/archive";
       },
