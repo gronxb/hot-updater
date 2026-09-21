@@ -271,7 +271,18 @@ try {
 const build = JSON.parse(
   await fs.readFile(path.join(project, "build-result.json"), "utf8"),
 );
-assert.equal(build.filePolicy, "preserve");
+assert.equal(build.patchAssetPath, "main.lynx.bundle");
+assert.deepEqual(
+  build.artifacts.map(({ name, downloadCompression }) => ({
+    name,
+    downloadCompression,
+  })),
+  [...Object.keys(sourceFiles), "hot-updater-lynx.json"].sort().map((name) => ({
+    name,
+    downloadCompression: name === "main.lynx.bundle" ? "br" : null,
+  })),
+  "Lynx build must declare the complete compiler artifact inventory",
+);
 const bundle = await database.getBundleById(build.bundleId);
 assert.ok(bundle, "CLI bundle must exist in persisted provider state");
 const releases = await repository.models.releases.findMany({
