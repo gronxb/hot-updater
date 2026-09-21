@@ -24,6 +24,71 @@ class BundleFileStorageServiceTest {
     val temporaryFolder = TemporaryFolder()
 
     @Test
+    fun `unfinished staging launch rolls back to stable on cold start`() {
+        assertStagingLaunchAcrossColdStart(hasStableBundle = true)
+    }
+
+    @Test
+    fun `unfinished staging launch rolls back to built in on cold start`() {
+        assertStagingLaunchAcrossColdStart(hasStableBundle = false)
+    }
+
+    @Test
+    fun `completed staging launch remains trusted on cold start`() {
+        assertStagingLaunchAcrossColdStart(hasStableBundle = true, completesLaunch = true)
+    }
+
+    @Test
+    fun `completed first OTA launch remains trusted on cold start`() {
+        assertStagingLaunchAcrossColdStart(hasStableBundle = false, completesLaunch = true)
+    }
+
+    private fun assertStagingLaunchAcrossColdStart(
+        hasStableBundle: Boolean,
+        completesLaunch: Boolean = false,
+    ) {
+        val rootDir = temporaryFolder.newFolder()
+        val preferences = InMemoryPreferencesService()
+        val stableBundleId = if (hasStableBundle) "stable-bundle" else null
+        listOfNotNull(stableBundleId, "hung-bundle").forEach { bundleId ->
+            val directory = createBundleDir(rootDir, bundleId)
+            writeFile(directory, "index.android.bundle")
+            writeManifest(directory, listOf("index.android.bundle"))
+        }
+        writeMetadata(
+            rootDir,
+            BundleMetadata(
+                isolationKey = TEST_ISOLATION_KEY,
+                stableBundleId = stableBundleId,
+                stagingBundleId = "hung-bundle",
+                verificationPending = true,
+            ),
+        )
+        val firstProcess = createService(rootDir, preferences)
+        val firstLaunch = firstProcess.prepareLaunch(null)
+        assertEquals("hung-bundle", firstLaunch.launchedBundleId)
+        assertTrue(firstLaunch.shouldRollbackOnCrash)
+
+        assertEquals("hung-bundle", firstProcess.prepareLaunch(null).launchedBundleId)
+        assertFalse(firstProcess.getCrashHistory().contains("hung-bundle"))
+        if (completesLaunch) {
+            firstProcess.markLaunchCompleted("hung-bundle")
+        }
+
+        // Issue #1321: simulate process termination without a crash marker.
+        val secondProcess = createService(rootDir, preferences)
+        val nextLaunch = secondProcess.prepareLaunch(null)
+        assertEquals(if (completesLaunch) "hung-bundle" else stableBundleId, nextLaunch.launchedBundleId)
+        assertFalse(nextLaunch.shouldRollbackOnCrash)
+        assertEquals(!completesLaunch, secondProcess.getCrashHistory().contains("hung-bundle"))
+        if (!completesLaunch) {
+            assertEquals("RECOVERED", secondProcess.notifyAppReady()["status"])
+        }
+        val thirdProcess = createService(rootDir, preferences)
+        assertEquals(nextLaunch.launchedBundleId, thirdProcess.prepareLaunch(null).launchedBundleId)
+    }
+
+    @Test
     fun `resolveBundleFile uses single manifest bundle at root`() {
         val rootDir = temporaryFolder.newFolder("root-manifest-bundle")
         val service = createService(rootDir)

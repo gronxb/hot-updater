@@ -13,6 +13,74 @@ private func hotUpdaterApplyBsdiffPatchForTest(
 
 struct BundleFileStorageServiceTests {
     @Test
+    func existingMetadataWithoutLaunchProgressStillDecodes() throws {
+        let json = #"{"schema":"metadata-v1","isolation_key":"legacy","stable_bundle_id":"stable","staging_bundle_id":"pending","verification_pending":true,"updated_at":123}"#
+        let metadata = try JSONDecoder().decode(BundleMetadata.self, from: Data(json.utf8))
+        #expect(metadata.stagingBundleId == "pending")
+        #expect(metadata.verificationPending)
+        #expect(!metadata.launchInProgress)
+    }
+
+    // Issue #1321: a hung JS thread never reports content appeared or a crash.
+    @Test(arguments: [false, true], [false, true])
+    func stagingLaunchRecoversOnlyWhenUnfinished(hasStableBundle: Bool, completesLaunch: Bool) throws {
+        let workingDirectory = try makeWorkingDirectory()
+        defer { cleanupWorkingDirectory(workingDirectory) }
+        let preferences = InMemoryPreferencesService()
+        let stableBundleId: String? = hasStableBundle ? "stable-bundle" : nil
+        if let stableBundleId {
+            let directory = try createBundleDirectory(
+                documentsDirectory: workingDirectory, bundleId: stableBundleId
+            )
+            try writeBundle(in: directory, bundleFileName: "index.ios.bundle")
+            try writeManifest(in: directory, bundleId: stableBundleId)
+        }
+        let stagingDirectory = try createBundleDirectory(
+            documentsDirectory: workingDirectory, bundleId: "hung-bundle"
+        )
+        try writeBundle(in: stagingDirectory, bundleFileName: "index.ios.bundle")
+        try writeManifest(in: stagingDirectory, bundleId: "hung-bundle")
+        try writeMetadata(
+            documentsDirectory: workingDirectory,
+            BundleMetadata(
+                isolationKey: testIsolationKey,
+                stableBundleId: stableBundleId,
+                stagingBundleId: "hung-bundle",
+                verificationPending: true
+            )
+        )
+        let firstProcess = makeStorageService(
+            documentsDirectory: workingDirectory, preferences: preferences
+        )
+        let firstLaunch = firstProcess.prepareLaunch(bundle: .main, pendingRecovery: nil)
+        try #require(firstLaunch.launchedBundleId == "hung-bundle")
+        try #require(firstLaunch.shouldRollbackOnCrash)
+
+        // Repeated lookups in the current process must not consume its own marker.
+        #expect(firstProcess.prepareLaunch(bundle: .main, pendingRecovery: nil).launchedBundleId == "hung-bundle")
+        #expect(!firstProcess.getCrashHistory().contains("hung-bundle"))
+        if completesLaunch {
+            firstProcess.markLaunchCompleted(bundleId: "hung-bundle")
+        }
+
+        // Simulate process termination without a crash marker.
+        let secondProcess = makeStorageService(
+            documentsDirectory: workingDirectory, preferences: preferences
+        )
+        let nextLaunch = secondProcess.prepareLaunch(bundle: .main, pendingRecovery: nil)
+        #expect(nextLaunch.launchedBundleId == (completesLaunch ? "hung-bundle" : stableBundleId))
+        #expect(!nextLaunch.shouldRollbackOnCrash)
+        #expect(secondProcess.getCrashHistory().contains("hung-bundle") == !completesLaunch)
+        if !completesLaunch {
+            #expect(secondProcess.notifyAppReady()["status"] as? String == "RECOVERED")
+        }
+        let thirdProcess = makeStorageService(
+            documentsDirectory: workingDirectory, preferences: preferences
+        )
+        #expect(thirdProcess.prepareLaunch(bundle: .main, pendingRecovery: nil).launchedBundleId == nextLaunch.launchedBundleId)
+    }
+
+    @Test
     func getBundleIdFallsBackToBuiltInWhileStagingVerificationIsPending() throws {
         let workingDirectory = try makeWorkingDirectory()
         defer {
