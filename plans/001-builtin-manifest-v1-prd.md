@@ -392,3 +392,9 @@ Kysely, MongoDB, DynamoDB, Drizzle의 full Release E2E가 모두 통과했다. �
 profile은 iOS 15/15 + 11/11과 Android 26/26을 실행했으며
 `fingerprint-initial-install`과 `bspatch-builtin-to-diff-ota`를 양 플랫폼에서
 검증했다. 상세 job ID와 결과는 `plans/evidence/device-e2e.md`에 기록했다.
+
+2026-09-21 감사 수정 이후 실제 Swift installer 비교는
+`plans/evidence/native-transfer.md`와 JSON을 기준으로 한다. 순차 처리 대비
+1,000-file 설치는 71.1% 개선됐지만 ZIP 대비 9.3배 걸렸으므로 M3는 아직
+인수되지 않았다. 이전 Node microbenchmark와 이전 revision E2E 결과를
+현재 구현의 전체 인수 근거로 사용하지 않는다.

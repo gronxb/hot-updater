@@ -1,6 +1,6 @@
 # 내장 파일 재사용과 manifest OTA 구현
 
-기준: `origin/next` / `f5fffea9f`를 `585d529f6`에서 병합했다. 충돌은 생성된 fingerprint 5곳이며 네이티브 수정 후 재생성한다.
+기준: `origin/next` / `f5fffea9f`를 `585d529f6`에서 병합했다. 충돌은 생성된 fingerprint 5곳이며 네이티브 수정 후 재생성했다.
 작업: `feature/builtin-manifest-v1`, GPT-5.6 Sol / Medium.
 
 [PRD](001-builtin-manifest-v1-prd.md)를 전부 읽고 순서대로 실행한다.
@@ -12,7 +12,7 @@
 | M0 | Release 패키징 실측·재사용 검증 | PRD | DONE | `evidence/builtin-packaging.{md,json}` |
 | M1 | 전체 파일 descriptor·base 없는 설치 | M0 조사 | DONE | server/SDK 34 tests, Android storage, Swift 36 tests, iOS Release Pod target |
 | M2 | 내장 resolver·lazy 인덱스 | M0, M1 | REVERIFY | Android unit, Swift 28 tests, five full Release E2E profiles on iOS and Android |
-| M3 | 전송 비용 검증·아카이브 제거 | M0–M2 gate | REVERIFY | `evidence/manifest-transfer.{md,json}`; archive code/schema removed |
+| M3 | 전송 비용 검증·아카이브 제거 | M0–M2 gate | NOT ACCEPTED | `evidence/native-transfer.{md,json}`; 4-way download improves sequential time, but 1,000-file full install remains 9.3x ZIP |
 | M4 | 통합 검증·문서·changeset | M3 | REVERIFY | required checks and five exact-head standalone profiles pass; changeset added |
 
 2026-09-21 PRD 재검증에서 이전 완료 판정을 정정했다. cached target 무결성,
@@ -52,3 +52,5 @@ descriptor 전체 검증, 중단 후 완료 파일 재사용, 제한된 병렬 �
 - 2026-09-21: `standalone-mongodb` full Release E2E도 iOS 15/15 + 11/11, Android 26/26으로 통과했다. 최신 revision 재검증은 DynamoDB와 Drizzle 프로필이 남았다.
 - 2026-09-21: `standalone-dynamodb` full Release E2E가 같은 revision에서 iOS 15/15 + 11/11, Android 26/26으로 통과했다. 마지막 `standalone-drizzle` exact-head run이 이어서 시작됐다.
 - 2026-09-21: `standalone-drizzle` full Release E2E도 같은 revision에서 iOS 15/15 + 11/11, Android 26/26으로 통과했다. 다섯 `standalone-*` 프로필의 exact-head 검증이 모두 완료됐다.
+
+- 2026-09-21: 감사 수정 `8081720c0`의 build/type/lint, unit 2,727, integration 388, Swift 31, Android native unit을 통과했다. CI의 ktlint 1.3.1에 맞춰 조건식 줄바꿈을 수정했다. 실제 Swift installer 60회 측정은 `evidence/native-transfer.md`에 기록했다. M3 성능 게이트는 통과로 표시하지 않는다.

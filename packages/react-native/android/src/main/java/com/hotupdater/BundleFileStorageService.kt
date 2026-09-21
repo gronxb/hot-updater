@@ -1760,8 +1760,10 @@ class BundleFileStorageService(
             if (targetManifest.assets.keys != changedAssets.keys) throw HotUpdaterException.invalidBundle()
             targetManifest.assets.forEach { (path, asset) ->
                 val descriptor = changedAssets.getValue(path)
-                if (RelativePathResolver.normalizeRelativePath(path) != path || path == "manifest.json" ||
-                    descriptor.fileUrl.isNullOrBlank() || !descriptor.fileHash.equals(asset.fileHash, ignoreCase = true) ||
+                if (RelativePathResolver.normalizeRelativePath(path) != path ||
+                    path == "manifest.json" ||
+                    descriptor.fileUrl.isNullOrBlank() ||
+                    !descriptor.fileHash.equals(asset.fileHash, ignoreCase = true) ||
                     RelativePathResolver.resolveInside(tmpDir, path) == null
                 ) {
                     throw HotUpdaterException.invalidBundle()

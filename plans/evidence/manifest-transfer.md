@@ -1,5 +1,8 @@
 # Manifest transfer evidence
 
+Historical Node microbenchmark only. The actual native installer measurement and
+current M3 decision are in [native-transfer.md](native-transfer.md).
+
 Measured on 2026-09-20 at revision
 `38d46c05df90e4f4c93e079d4aedacac9de0a111`.
 
@@ -15,9 +18,8 @@ The tradeoff is request count. The same paths use 14, 2, and 19 requests
 respectively, including the manifest, while an archive uses one. A synthetic
 1,000-file full replacement uses 1,001 requests and was 35.5% slower than ZIP
 in the local installation microbenchmark. This is a real scalability boundary
-for applications with very large numbers of changed files. The v1 design
-accepts it in exchange for removing the second archive protocol; it does not
-claim that manifest transfer always beats an archive.
+for applications with very large numbers of changed files. This measurement alone does not establish acceptance of the v1 performance
+gate; native installer results are required.
 
 | Scenario | Protocol | Bytes | Requests | Median install | Median peak temp disk | Median RSS delta |
 | --- | --- | ---: | ---: | ---: | ---: | ---: |
