@@ -62,3 +62,5 @@ descriptor 전체 검증, 중단 후 완료 파일 재사용, 제한된 병렬 �
 - 2026-09-21: 최종 native 구현 Swift 44 cases + XCTest 3, Android 64 tests, 양 architecture 컴파일, ktlint 통과. build 26 projects, type 34 projects, lint, unit 2,747 tests, integration 388 tests 통과. E2E 지원 259 tests도 통과했다.
 - 2026-09-21: 원본과 동일한 fixture로 80회 native 설치를 측정했다. 1,000-file uncapped 9.174s → 0.905s, 1,001 → 2 requests, +4,434 bytes; 512 KiB/s에서는 9.108s → 9.032s로 거의 동률이다. sampled peak disk는 4.36 → 12.95 MB. 모든 결과 해시를 검증했고 작은 delta는 동일 전송량/요청 수를 유지한다.
 - 최종 Release E2E는 아직 인수하지 않았다. builtin PNG/font 재사용 시나리오에서는 optional archive URL 생략을 명시하며, 정상 archive 및 corrupt fallback의 요청 수와 모든 파일 해시는 별도 시나리오로 검증한다. 동일 최종 PR 구현을 push한 뒤 standalone 5개 full profile을 실행한다.
+
+- 2026-09-21: 최초 tar.br E2E 큐 5건은 코드 checkout 전 `emulator-5554/5556/5558` 부재로 실패했다. 기존 전용 Pixel AVD 3대를 복구하고 부팅 완료를 확인했다. CI의 Android 신 아키텍처 실패는 Gradle 다운로드 timeout이며, iOS 구 아키텍처 실패는 백업 정리 테스트가 비동기 cleanup 후 파일 잔존을 기대한 경합이었다. 삭제 실패 주입 여부와 설치 결과로 assertion을 수정했고 Swift 전체 및 해당 사례 10회 반복을 통과했다. 프로덕션 native 코드는 성능 측정본과 동일하다. 최종 fingerprint를 다시 생성하고 E2E/CI 대상을 갱신한다.

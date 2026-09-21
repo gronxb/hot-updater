@@ -1099,11 +1099,12 @@ struct BundleFileStorageServiceTests {
             manifestURL: manifest,
             archiveURL: archive,
         ])
+        let fileSystem = FailingArchiveBackupRemovalFileSystemService(
+            documentsDirectory: root
+        )
         let service = makeStorageService(
             documentsDirectory: root,
-            fileSystem: FailingArchiveBackupRemovalFileSystemService(
-                documentsDirectory: root
-            ),
+            fileSystem: fileSystem,
             downloadService: downloads
         )
         let result = updateBundle(
@@ -1125,9 +1126,7 @@ struct BundleFileStorageServiceTests {
         for (path, data) in files {
             #expect(try Data(contentsOf: installed.appendingPathComponent(path)) == data)
         }
-        #expect(FileManager.default.fileExists(
-            atPath: root.appendingPathComponent("bundle-store/target.tmp.archive-backup").path
-        ))
+        #expect(fileSystem.didFailBackupRemoval)
     }
 
     @Test
@@ -1927,13 +1926,13 @@ private final class FailingArchivePromotionFileSystemService:
 private final class FailingArchiveBackupRemovalFileSystemService:
     TestFileSystemService
 {
-    private var shouldFailBackupRemoval = true
+    private(set) var didFailBackupRemoval = false
 
     override func removeItem(atPath path: String) throws {
-        if shouldFailBackupRemoval,
+        if !didFailBackupRemoval,
            path.hasSuffix(".archive-backup"),
            FileManager.default.fileExists(atPath: path) {
-            shouldFailBackupRemoval = false
+            didFailBackupRemoval = true
             throw NSError(
                 domain: "FailingArchiveBackupRemovalFileSystemService",
                 code: 1
