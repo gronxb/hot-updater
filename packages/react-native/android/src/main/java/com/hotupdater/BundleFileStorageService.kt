@@ -3,8 +3,13 @@ package com.hotupdater
 import android.util.Log
 import com.hotupdater.vendor.brotli.dec.BrotliInputStream
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
 import java.io.File
@@ -1480,32 +1485,6 @@ class BundleFileStorageService(
         }
 
         val finalBundleDir = File(bundleStoreDir, bundleId)
-        if (finalBundleDir.exists()) {
-            Log.d(TAG, "Bundle for bundleId $bundleId already exists. Using cached bundle.")
-            val existingBundleFile = resolveBundleFile(finalBundleDir, bundleId)
-            if (existingBundleFile != null) {
-                // Update last modified time
-                finalBundleDir.setLastModified(System.currentTimeMillis())
-
-                // Update metadata: set as staging
-                val currentMetadata = loadMetadataOrNull() ?: createInitialMetadata()
-                val updatedMetadata = prepareMetadataForNewStagingBundle(currentMetadata, bundleId)
-                saveMetadata(updatedMetadata)
-
-                // Set bundle URL for backwards compatibility
-                setBundleURL(existingBundleFile.absolutePath)
-
-                // Keep the current verified bundle as a fallback if one exists.
-                cleanupOldBundles(bundleStoreDir, updatedMetadata.stableBundleId, bundleId)
-
-                Log.d(TAG, "Existing bundle set as staging bundle for next launch")
-                return
-            } else {
-                // If index.android.bundle is missing, delete and re-download
-                finalBundleDir.deleteRecursively()
-            }
-        }
-
         withContext(Dispatchers.IO) {
             updateBundleFromManifest(
                 bundleId = bundleId,
@@ -1519,9 +1498,192 @@ class BundleFileStorageService(
         }
     }
 
-    /**
-     * Removes old bundles except for the specified bundle IDs, and any leftover .tmp directories
-     */
+    private suspend fun downloadManifestAsset(
+        assetPath: String,
+        expectedAsset: ParsedManifestAsset,
+        changedAsset: ChangedAssetDescriptor,
+        currentBundleId: String?,
+        activeBundleDir: File?,
+        targetFile: File,
+        tempDir: File,
+        progressFile: DiffProgressFileSnapshot,
+        progressCallback: (UpdateProgressPayload) -> Unit,
+    ) {
+        val expectedHash = expectedAsset.fileHash
+        val diffFiles = mutableListOf(progressFile)
+        val patched =
+            applyPatchAssetIfPossible(
+                assetPath = assetPath,
+                changedAsset = changedAsset,
+                currentBundleId = currentBundleId,
+                activeBundleDir = activeBundleDir,
+                targetFile = targetFile,
+                expectedHash = expectedHash,
+                tempDir = tempDir,
+                diffFiles = diffFiles,
+                progressCallback = progressCallback,
+            )
+        if (patched) {
+            verifyManifestAssetFileOrThrow(targetFile, expectedAsset)
+            updateDiffProgressFile(
+                files = diffFiles,
+                assetPath = assetPath,
+                status = "downloaded",
+                progress = 1.0,
+            )
+            emitDiffProgress(
+                progressCallback = progressCallback,
+                phase =
+                    if (diffFiles.all { it.status == "downloaded" }) {
+                        "finalizing"
+                    } else {
+                        "downloading"
+                    },
+                files = diffFiles,
+            )
+            return
+        }
+
+        val changedAssetFileUrl =
+            changedAsset.fileUrl
+                ?: run {
+                    updateDiffProgressFile(
+                        files = diffFiles,
+                        assetPath = assetPath,
+                        status = "failed",
+                        progress = 0.0,
+                    )
+                    emitDiffProgress(
+                        progressCallback = progressCallback,
+                        phase = "downloading",
+                        files = diffFiles,
+                    )
+                    throw HotUpdaterException.downloadFailed(
+                        IllegalStateException("Changed asset fileUrl missing and patch could not be applied: $assetPath"),
+                    )
+                }
+
+        val downloadPath = downloadPathForChangedAsset(assetPath, changedAsset)
+        val downloadedAssetFile =
+            if (changedAsset.fileCompression == "br") {
+                compressedTempFile(tempDir, assetPath, "br")
+            } else {
+                targetFile
+            }
+
+        when (
+            val assetDownloadResult =
+                downloadService.downloadFile(
+                    URL(changedAssetFileUrl),
+                    downloadedAssetFile,
+                ) { downloadProgress ->
+                    updateDiffProgressFile(
+                        files = diffFiles,
+                        assetPath = assetPath,
+                        status = "downloading",
+                        progress = downloadProgress.progress,
+                        downloadPath = downloadPath,
+                        downloadedBytes = downloadProgress.downloadedBytes,
+                        totalBytes = downloadProgress.totalBytes,
+                    )
+                    emitDiffProgress(
+                        progressCallback = progressCallback,
+                        phase = "downloading",
+                        files = diffFiles,
+                    )
+                }
+        ) {
+            is DownloadResult.Error -> {
+                updateDiffProgressFile(
+                    files = diffFiles,
+                    assetPath = assetPath,
+                    status = "failed",
+                    progress =
+                        diffFiles
+                            .firstOrNull { it.path == assetPath }
+                            ?.progress ?: 0.0,
+                )
+                emitDiffProgress(
+                    progressCallback = progressCallback,
+                    phase = "downloading",
+                    files = diffFiles,
+                )
+                if (assetDownloadResult.exception is IncompleteDownloadException) {
+                    val incompleteEx =
+                        assetDownloadResult.exception as IncompleteDownloadException
+                    throw HotUpdaterException.incompleteDownload(
+                        incompleteEx.expectedSize,
+                        incompleteEx.actualSize,
+                    )
+                }
+                throw HotUpdaterException.downloadFailed(assetDownloadResult.exception)
+            }
+
+            is DownloadResult.Success -> {
+                try {
+                    if (changedAsset.fileCompression == "br") {
+                        decompressBrotliFile(
+                            assetDownloadResult.file,
+                            targetFile,
+                        )
+                    }
+                    verifyManifestAssetFileOrThrow(
+                        targetFile,
+                        expectedAsset,
+                    )
+                } catch (e: Exception) {
+                    updateDiffProgressFile(
+                        files = diffFiles,
+                        assetPath = assetPath,
+                        status = "failed",
+                        progress = 1.0,
+                    )
+                    emitDiffProgress(
+                        progressCallback = progressCallback,
+                        phase = "downloading",
+                        files = diffFiles,
+                    )
+                    if (e is HotUpdaterException) {
+                        throw e
+                    }
+                    throw HotUpdaterException.downloadFailed(e)
+                } finally {
+                    if (changedAsset.fileCompression == "br") {
+                        assetDownloadResult.file.delete()
+                    }
+                }
+                updateDiffProgressFile(
+                    files = diffFiles,
+                    assetPath = assetPath,
+                    status = "downloaded",
+                    progress = 1.0,
+                )
+                emitDiffProgress(
+                    progressCallback = progressCallback,
+                    phase = if (diffFiles.all { it.status == "downloaded" }) "finalizing" else "downloading",
+                    files = diffFiles,
+                )
+            }
+        }
+    }
+
+    private fun pruneStagingDirectory(
+        directory: File,
+        assets: Set<String>,
+        prefix: String = "",
+    ) {
+        directory.listFiles()?.forEach { file ->
+            val relativePath = prefix + file.name
+            if (file.canonicalFile != File(directory.canonicalFile, file.name)) {
+                check(file.delete()) { "Cannot remove staging link: $relativePath" }
+            } else if (file.isDirectory && assets.any { it.startsWith("$relativePath/") }) {
+                pruneStagingDirectory(file, assets, "$relativePath/")
+            } else if (!file.isFile || relativePath !in assets) {
+                check(file.deleteRecursively()) { "Cannot remove stale staging file: $relativePath" }
+            }
+        }
+    }
+
     private suspend fun updateBundleFromManifest(
         bundleId: String,
         manifestUrl: String,
@@ -1533,8 +1695,6 @@ class BundleFileStorageService(
     ) {
         val activeBundleDir = getActiveBundleDir()
         val currentBundleId = getBundleId()
-        val currentManifest =
-            getActiveBundleMetadataSnapshot()?.manifest?.let(::parseBundleManifestFromMap)
         val baseDir =
             fileSystem.getInternalFilesDir() ?: bundleStoreDir.parentFile ?: bundleStoreDir
         val tempDir = File(baseDir, "bundle-manifest-temp")
@@ -1545,7 +1705,7 @@ class BundleFileStorageService(
         }
         tempDir.mkdirs()
 
-        val diffFiles = createDiffProgressFiles(changedAssets)
+        var diffFiles = mutableListOf<DiffProgressFileSnapshot>()
 
         try {
             val manifestFile = File(tempDir, "manifest.json")
@@ -1596,245 +1756,93 @@ class BundleFileStorageService(
             if (targetManifest.bundleId != bundleId) {
                 throw HotUpdaterException.invalidBundle()
             }
-            emitDiffProgress(
-                progressCallback = progressCallback,
-                phase = if (diffFiles.isEmpty()) "finalizing" else "downloading",
-                files = diffFiles,
-            )
-
-            if (tmpDir.exists()) {
-                tmpDir.deleteRecursively()
-            }
-            tmpDir.mkdirs()
-
-            val targetEntries = targetManifest.assets.entries.toList()
-            targetEntries.forEachIndexed { index, (assetPath, expectedAsset) ->
-                val expectedHash = expectedAsset.fileHash
-                val targetFile =
-                    RelativePathResolver.resolveInside(tmpDir, assetPath)
-                        ?: throw HotUpdaterException.invalidBundle()
-                val currentAsset = currentManifest?.assets?.get(assetPath)
-
-                if (currentAsset?.fileHash == expectedHash && activeBundleDir != null) {
-                    val sourceFile = RelativePathResolver.resolveInside(activeBundleDir, assetPath)
-                    if (
-                        sourceFile != null &&
-                        sourceFile.exists() &&
-                        HashUtils.verifyHash(sourceFile, expectedHash)
-                    ) {
-                        copyBundleFile(sourceFile, targetFile)
-                        verifyManifestAssetFileOrThrow(targetFile, expectedAsset)
-                        updateDiffProgressFile(
-                            files = diffFiles,
-                            assetPath = assetPath,
-                            status = "downloaded",
-                            progress = 1.0,
-                        )
-                        return@forEachIndexed
-                    }
-                }
-
-                if (builtInAssetResolver.copyIfMatches(assetPath, expectedHash, targetFile)) {
-                    verifyManifestAssetFileOrThrow(targetFile, expectedAsset)
-                    updateDiffProgressFile(
-                        files = diffFiles,
-                        assetPath = assetPath,
-                        status = "downloaded",
-                        progress = 1.0,
-                    )
-                    return@forEachIndexed
-                }
-
-                val changedAsset =
-                    changedAssets[assetPath]
-                        ?: run {
-                            updateDiffProgressFile(
-                                files = diffFiles,
-                                assetPath = assetPath,
-                                status = "failed",
-                                progress = 0.0,
-                            )
-                            emitDiffProgress(
-                                progressCallback = progressCallback,
-                                phase = "downloading",
-                                files = diffFiles,
-                            )
-                            throw HotUpdaterException.downloadFailed(
-                                IllegalStateException("Changed asset missing from update response: $assetPath"),
-                            )
-                        }
-
-                if (!changedAsset.fileHash.equals(expectedHash, ignoreCase = true)) {
-                    updateDiffProgressFile(
-                        files = diffFiles,
-                        assetPath = assetPath,
-                        status = "failed",
-                        progress = 0.0,
-                    )
-                    emitDiffProgress(
-                        progressCallback = progressCallback,
-                        phase = "downloading",
-                        files = diffFiles,
-                    )
-                    throw HotUpdaterException.signatureVerificationFailed(
-                        SignatureVerificationException.FileHashMismatch(),
-                    )
-                }
-
-                val patched =
-                    applyPatchAssetIfPossible(
-                        assetPath = assetPath,
-                        changedAsset = changedAsset,
-                        currentBundleId = currentBundleId,
-                        activeBundleDir = activeBundleDir,
-                        targetFile = targetFile,
-                        expectedHash = expectedHash,
-                        tempDir = tempDir,
-                        diffFiles = diffFiles,
-                        progressCallback = progressCallback,
-                    )
-                if (patched) {
-                    verifyManifestAssetFileOrThrow(targetFile, expectedAsset)
-                    updateDiffProgressFile(
-                        files = diffFiles,
-                        assetPath = assetPath,
-                        status = "downloaded",
-                        progress = 1.0,
-                    )
-                    emitDiffProgress(
-                        progressCallback = progressCallback,
-                        phase =
-                            if (diffFiles.all { it.status == "downloaded" }) {
-                                "finalizing"
-                            } else {
-                                "downloading"
-                            },
-                        files = diffFiles,
-                    )
-                    return@forEachIndexed
-                }
-
-                val changedAssetFileUrl =
-                    changedAsset.fileUrl
-                        ?: run {
-                            updateDiffProgressFile(
-                                files = diffFiles,
-                                assetPath = assetPath,
-                                status = "failed",
-                                progress = 0.0,
-                            )
-                            emitDiffProgress(
-                                progressCallback = progressCallback,
-                                phase = "downloading",
-                                files = diffFiles,
-                            )
-                            throw HotUpdaterException.downloadFailed(
-                                IllegalStateException("Changed asset fileUrl missing and patch could not be applied: $assetPath"),
-                            )
-                        }
-
-                val downloadPath = downloadPathForChangedAsset(assetPath, changedAsset)
-                val downloadedAssetFile =
-                    if (changedAsset.fileCompression == "br") {
-                        compressedTempFile(tempDir, assetPath, "br")
-                    } else {
-                        targetFile
-                    }
-
-                when (
-                    val assetDownloadResult =
-                        downloadService.downloadFile(
-                            URL(changedAssetFileUrl),
-                            downloadedAssetFile,
-                        ) { downloadProgress ->
-                            updateDiffProgressFile(
-                                files = diffFiles,
-                                assetPath = assetPath,
-                                status = "downloading",
-                                progress = downloadProgress.progress,
-                                downloadPath = downloadPath,
-                                downloadedBytes = downloadProgress.downloadedBytes,
-                                totalBytes = downloadProgress.totalBytes,
-                            )
-                            emitDiffProgress(
-                                progressCallback = progressCallback,
-                                phase = "downloading",
-                                files = diffFiles,
-                            )
-                        }
+            // Reuse never bypasses the complete artifact contract.
+            if (targetManifest.assets.keys != changedAssets.keys) throw HotUpdaterException.invalidBundle()
+            targetManifest.assets.forEach { (path, asset) ->
+                val descriptor = changedAssets.getValue(path)
+                if (RelativePathResolver.normalizeRelativePath(path) != path || path == "manifest.json" ||
+                    descriptor.fileUrl.isNullOrBlank() || !descriptor.fileHash.equals(asset.fileHash, ignoreCase = true) ||
+                    RelativePathResolver.resolveInside(tmpDir, path) == null
                 ) {
-                    is DownloadResult.Error -> {
-                        updateDiffProgressFile(
-                            files = diffFiles,
-                            assetPath = assetPath,
-                            status = "failed",
-                            progress =
-                                diffFiles
-                                    .firstOrNull { it.path == assetPath }
-                                    ?.progress ?: 0.0,
-                        )
-                        emitDiffProgress(
-                            progressCallback = progressCallback,
-                            phase = "downloading",
-                            files = diffFiles,
-                        )
-                        if (assetDownloadResult.exception is IncompleteDownloadException) {
-                            val incompleteEx =
-                                assetDownloadResult.exception as IncompleteDownloadException
-                            throw HotUpdaterException.incompleteDownload(
-                                incompleteEx.expectedSize,
-                                incompleteEx.actualSize,
-                            )
-                        }
-                        throw HotUpdaterException.downloadFailed(assetDownloadResult.exception)
+                    throw HotUpdaterException.invalidBundle()
+                }
+            }
+            if (!tmpDir.isDirectory && !tmpDir.mkdirs()) throw HotUpdaterException.directoryCreationFailed()
+            pruneStagingDirectory(tmpDir, targetManifest.assets.keys)
+            val targetEntries = targetManifest.assets.entries.sortedBy { it.key }
+            val localDirectories = listOfNotNull(activeBundleDir, finalBundleDir).distinct().filter { it.isDirectory }
+            val downloads = mutableMapOf<String, ChangedAssetDescriptor>()
+            targetEntries.forEachIndexed { index, (assetPath, expectedAsset) ->
+                progressCallback(
+                    UpdateProgressPayload(
+                        progress = 0.15 + 0.05 * index / targetEntries.size.coerceAtLeast(1),
+                        artifactType = "diff",
+                        details = DiffProgressDetails(totalFilesCount = 0, completedFilesCount = 0),
+                    ),
+                )
+                val targetFile = RelativePathResolver.resolveInside(tmpDir, assetPath) ?: throw HotUpdaterException.invalidBundle()
+                targetFile.parentFile?.mkdirs()
+                if (targetFile.isFile && runCatching { verifyManifestAssetFileOrThrow(targetFile, expectedAsset) }.isSuccess) {
+                    return@forEachIndexed
+                }
+                if (targetFile.exists()) targetFile.delete()
+                var reused = false
+                for (directory in localDirectories) {
+                    val sourceFile = RelativePathResolver.resolveInside(directory, assetPath) ?: continue
+                    if (!sourceFile.isFile || runCatching { verifyManifestAssetFileOrThrow(sourceFile, expectedAsset) }.isFailure) continue
+                    if (runCatching {
+                            copyBundleFile(sourceFile, targetFile)
+                            verifyManifestAssetFileOrThrow(targetFile, expectedAsset)
+                        }.isSuccess
+                    ) {
+                        reused = true
+                        break
                     }
-
-                    is DownloadResult.Success -> {
-                        try {
-                            if (changedAsset.fileCompression == "br") {
-                                decompressBrotliFile(
-                                    assetDownloadResult.file,
-                                    targetFile,
+                    targetFile.delete()
+                }
+                if (reused) return@forEachIndexed
+                if (builtInAssetResolver.copyIfMatches(assetPath, expectedAsset.fileHash, targetFile)) {
+                    verifyManifestAssetFileOrThrow(targetFile, expectedAsset)
+                    return@forEachIndexed
+                }
+                downloads[assetPath] = changedAssets.getValue(assetPath)
+            }
+            diffFiles = createDiffProgressFiles(downloads)
+            emitDiffProgress(progressCallback, "downloading", diffFiles)
+            val progressLock = Any()
+            coroutineScope {
+                val permits = Semaphore(4)
+                diffFiles
+                    .toList()
+                    .map { progressFile ->
+                        async {
+                            permits.withPermit {
+                                val path = progressFile.path
+                                val workerTemp =
+                                    File(tempDir, progressFile.order.toString()).apply { mkdirs() }
+                                downloadManifestAsset(
+                                    assetPath = path,
+                                    expectedAsset = targetManifest.assets.getValue(path),
+                                    changedAsset = downloads.getValue(path),
+                                    currentBundleId = currentBundleId,
+                                    activeBundleDir = activeBundleDir,
+                                    targetFile =
+                                        RelativePathResolver.resolveInside(tmpDir, path) ?: throw HotUpdaterException.invalidBundle(),
+                                    tempDir = workerTemp,
+                                    progressFile = progressFile,
+                                    progressCallback = { payload ->
+                                        synchronized(progressLock) {
+                                            payload.details?.files?.firstOrNull()?.let { snapshot ->
+                                                val index = diffFiles.indexOfFirst { it.path == path }
+                                                diffFiles[index] = snapshot
+                                            }
+                                            emitDiffProgress(progressCallback, "downloading", diffFiles)
+                                        }
+                                    },
                                 )
                             }
-                            verifyManifestAssetFileOrThrow(
-                                targetFile,
-                                expectedAsset,
-                            )
-                        } catch (e: Exception) {
-                            updateDiffProgressFile(
-                                files = diffFiles,
-                                assetPath = assetPath,
-                                status = "failed",
-                                progress = 1.0,
-                            )
-                            emitDiffProgress(
-                                progressCallback = progressCallback,
-                                phase = "downloading",
-                                files = diffFiles,
-                            )
-                            if (e is HotUpdaterException) {
-                                throw e
-                            }
-                            throw HotUpdaterException.downloadFailed(e)
-                        } finally {
-                            if (changedAsset.fileCompression == "br") {
-                                assetDownloadResult.file.delete()
-                            }
                         }
-                        updateDiffProgressFile(
-                            files = diffFiles,
-                            assetPath = assetPath,
-                            status = "downloaded",
-                            progress = 1.0,
-                        )
-                        emitDiffProgress(
-                            progressCallback = progressCallback,
-                            phase = if (diffFiles.all { it.status == "downloaded" }) "finalizing" else "downloading",
-                            files = diffFiles,
-                        )
-                    }
-                }
+                    }.awaitAll()
             }
 
             emitDiffProgress(
@@ -1893,7 +1901,7 @@ class BundleFileStorageService(
             )
         } catch (e: Exception) {
             tempDir.deleteRecursively()
-            tmpDir.deleteRecursively()
+            // A retry rehashes completed files and rejects partial bytes.
             throw e
         }
     }

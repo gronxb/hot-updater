@@ -1,6 +1,6 @@
 # 내장 파일 재사용과 manifest OTA 구현
 
-기준: `next` / `ec78756926cac3b23ca32c1d3acefe28d2ebb7ab`.
+기준: `origin/next` / `f5fffea9f`를 `585d529f6`에서 병합했다. 충돌은 생성된 fingerprint 5곳이며 네이티브 수정 후 재생성한다.
 작업: `feature/builtin-manifest-v1`, GPT-5.6 Sol / Medium.
 
 [PRD](001-builtin-manifest-v1-prd.md)를 전부 읽고 순서대로 실행한다.
@@ -11,9 +11,16 @@
 | PRD | 요구·구현 계약·검증 기준 | — | DONE | `001-builtin-manifest-v1-prd.md` |
 | M0 | Release 패키징 실측·재사용 검증 | PRD | DONE | `evidence/builtin-packaging.{md,json}` |
 | M1 | 전체 파일 descriptor·base 없는 설치 | M0 조사 | DONE | server/SDK 34 tests, Android storage, Swift 36 tests, iOS Release Pod target |
-| M2 | 내장 resolver·lazy 인덱스 | M0, M1 | DONE | Android unit, Swift 28 tests, five full Release E2E profiles on iOS and Android |
-| M3 | 전송 비용 검증·아카이브 제거 | M0–M2 gate | DONE | `evidence/manifest-transfer.{md,json}`; archive code/schema removed |
-| M4 | 통합 검증·문서·changeset | M3 | DONE | required checks and five exact-head standalone profiles pass; changeset added |
+| M2 | 내장 resolver·lazy 인덱스 | M0, M1 | REVERIFY | Android unit, Swift 28 tests, five full Release E2E profiles on iOS and Android |
+| M3 | 전송 비용 검증·아카이브 제거 | M0–M2 gate | REVERIFY | `evidence/manifest-transfer.{md,json}`; archive code/schema removed |
+| M4 | 통합 검증·문서·changeset | M3 | REVERIFY | required checks and five exact-head standalone profiles pass; changeset added |
+
+2026-09-21 PRD 재검증에서 이전 완료 판정을 정정했다. cached target 무결성,
+descriptor 전체 검증, 중단 후 완료 파일 재사용, 제한된 병렬 다운로드,
+실제 내장 PNG/font의 0-download E2E, download-only progress를 보강한다.
+기존 standalone 성공 기록은 아래의 이전 revision 결과이며, 새 수정의 성공으로
+재사용하지 않는다. 실제 native installer 성능과 새 PR revision의 E2E를 기록한 뒤
+위 상태를 갱신한다.
 
 ## 제외한 대안
 

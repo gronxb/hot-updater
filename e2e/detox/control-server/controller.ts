@@ -74,10 +74,7 @@ import {
 } from "./update-check-visibility.ts";
 
 type Platform = "ios" | "android";
-type BundleProfile =
-  | "default"
-  | "multiAssetReplacement"
-  | "sizeAwareLargeDiff";
+type BundleProfile = "default" | "multiAssetReplacement" | "sizeAwareLargeDiff";
 
 type JobResult = Record<string, unknown>;
 
@@ -481,6 +478,7 @@ type CapturedProxyResponse = {
   readonly statusText: string;
 };
 type CapturedArtifactSelection = {
+  readonly assets: ReadonlyArray<{ path: string; url: string }>;
   readonly artifactProtocolVersion: number | null;
   readonly assetCount: number;
   readonly assetFileCount: number;
@@ -497,6 +495,10 @@ const proxyRequestCounts = {
   legacy: 0,
 };
 const capturedArtifactSelections: CapturedArtifactSelection[] = [];
+const remoteAssetTransfers = new Map<
+  string,
+  { requests: number; bytes: number }
+>();
 let artifactFailuresRemaining = 0;
 const proxyPathCounts = new Map<string, number>();
 const capturedCatalogResponses = new Map<
@@ -3227,7 +3229,8 @@ function captureArtifactSelection(pathname: string, payload: unknown) {
     manifestFileHash?: unknown;
     manifestUrl?: unknown;
   };
-  const assetsPresent = artifact.assets !== undefined && artifact.assets !== null;
+  const assetsPresent =
+    artifact.assets !== undefined && artifact.assets !== null;
   const assetEntries =
     assetsPresent &&
     typeof artifact.assets === "object" &&
@@ -3236,6 +3239,13 @@ function captureArtifactSelection(pathname: string, payload: unknown) {
       : [];
 
   capturedArtifactSelections.push({
+    assets: Object.entries(
+      (artifact.assets ?? {}) as Record<string, { file?: { url?: unknown } }>,
+    ).flatMap(([path, asset]) =>
+      typeof asset?.file?.url === "string"
+        ? [{ path, url: asset.file.url }]
+        : [],
+    ),
     artifactProtocolVersion:
       typeof artifact.artifactProtocolVersion === "number"
         ? artifact.artifactProtocolVersion
@@ -3345,6 +3355,7 @@ export function handleProxyState() {
     pathCardinality: proxyPathCounts.size,
     pathCounts: Object.fromEntries(proxyPathCounts),
     requestCounts: { ...proxyRequestCounts },
+    assetTransfers: Object.fromEntries(remoteAssetTransfers),
     replayCatalogGeneration,
   };
 }
@@ -3363,6 +3374,7 @@ export function handleConfigureProxy(input: {
     proxyRequestCounts.legacy = 0;
     proxyPathCounts.clear();
     capturedArtifactSelections.length = 0;
+    remoteAssetTransfers.clear();
     capturedCatalogResponses.clear();
     artifactFailuresRemaining = 0;
   }
@@ -3549,9 +3561,6 @@ export async function handleProxyUpdateRequest(request: Request) {
     const body = await response.text();
     try {
       const payload = JSON.parse(body);
-      if (requestKind === "artifact" && response.ok) {
-        captureArtifactSelection(requestUrl.pathname, payload);
-      }
       const rewrittenPayload =
         requestKind === "catalog"
           ? rewriteReleaseCatalogScope(
@@ -3559,6 +3568,9 @@ export async function handleProxyUpdateRequest(request: Request) {
               requestUrl.pathname,
             )
           : rewriteUpdateInfoAssetUrls(payload);
+      if (requestKind === "artifact" && response.ok) {
+        captureArtifactSelection(requestUrl.pathname, rewrittenPayload);
+      }
       const rewrittenBody = JSON.stringify(rewrittenPayload);
       if (requestKind === "catalog" && response.ok) {
         captureCatalogResponse(requestUrl.pathname, response, rewrittenBody);
@@ -3599,6 +3611,12 @@ export async function handleProxyRemoteAssetRequest(request: Request) {
   if (!target) {
     return new Response("Missing url", { status: 400 });
   }
+  const transfer = remoteAssetTransfers.get(requestUrl.pathname) ?? {
+    requests: 0,
+    bytes: 0,
+  };
+  transfer.requests += 1;
+  remoteAssetTransfers.set(requestUrl.pathname, transfer);
   if (artifactFailuresRemaining > 0) {
     artifactFailuresRemaining -= 1;
     return new Response("Injected E2E artifact download failure", {
@@ -3636,7 +3654,15 @@ export async function handleProxyRemoteAssetRequest(request: Request) {
   headersToApp.delete("content-encoding");
   headersToApp.delete("content-length");
 
-  return new Response(response.body, {
+  const observedBody = response.body?.pipeThrough(
+    new TransformStream<Uint8Array, Uint8Array>({
+      transform(chunk, controller) {
+        transfer.bytes += chunk.byteLength;
+        controller.enqueue(chunk);
+      },
+    }),
+  );
+  return new Response(observedBody, {
     headers: headersToApp,
     status: response.status,
     statusText: response.statusText,
@@ -5788,7 +5814,8 @@ async function assertBundleAssetsStored(args: {
       logDetoxFixture("bundle assets stored", {
         assetPaths: args.assetPaths,
         bundleId: args.bundleId,
-        evidence: "manifest-and-bundle-store",
+        evidence: "packaged-assets-zero-download-and-final-hashes",
+        reuse,
         platform: fixtureSession.platform,
       });
       return {};
@@ -5919,6 +5946,72 @@ async function assertManifestDiffApplied(args: {
   );
 }
 
+function readFirstOtaReuseEvidence(bundleId: string) {
+  const index =
+    fixtureSession.platform === "ios"
+      ? readOptionalJsonSnapshot(
+          path.join(ensureStorePath(), "builtin-index-v1.json"),
+        )
+      : readAndroidStoreSnapshot(
+          "builtin-index-v1.json",
+          "builtin-index-v1.json",
+        );
+  const locators = index.value?.locators as Record<string, unknown> | undefined;
+  const artifact = capturedArtifactSelections.findLast(
+    (entry) => entry.targetBundleId === bundleId,
+  );
+  const assets = artifact?.assets ?? [];
+  // backiconmask is an unchanged, byte-preserved PNG emitted by the example's navigator.
+  // A font fixture is required too, so an empty resolver cannot satisfy this assertion.
+  const required = assets.filter(
+    ({ path }) =>
+      path.endsWith("backiconmask.png") || path.endsWith("builtin_reuse.ttf"),
+  );
+  const reused = assets.filter(
+    ({ path }) => typeof locators?.[path] === "string",
+  );
+  const evidence = assets.map(({ path: assetPath, url }) => {
+    const proxyPath = new URL(url).pathname;
+    const transfer = remoteAssetTransfers.get(proxyPath) ?? {
+      requests: 0,
+      bytes: 0,
+    };
+    return {
+      assetPath,
+      reused: typeof locators?.[assetPath] === "string",
+      observed: proxyPath.startsWith("/e2e/proxy-url/"),
+      ...transfer,
+    };
+  });
+  const finalFiles = readBundleAssetsStoredEvidence({
+    bundleId,
+    assetPaths: assets.map(({ path }) => path),
+  });
+  return {
+    bundleId,
+    platform: fixtureSession.platform,
+    required: required.map(({ path }) => path),
+    evidence,
+    finalFiles,
+    ok:
+      index.exists &&
+      index.readError === null &&
+      finalFiles.ok &&
+      required.some(({ path }) => path.endsWith("backiconmask.png")) &&
+      required.some(({ path }) => path.endsWith("builtin_reuse.ttf")) &&
+      required.every(({ path }) =>
+        reused.some((asset) => asset.path === path),
+      ) &&
+      evidence.every(
+        (asset) =>
+          asset.observed &&
+          (asset.reused
+            ? asset.requests === 0 && asset.bytes === 0
+            : asset.requests > 0 && asset.bytes > 0),
+      ),
+  };
+}
+
 async function assertFirstOtaUsesBuiltInManifest(args: { bundleId: string }) {
   for (let attempt = 0; attempt < 40; attempt += 1) {
     const state = readFirstOtaManifestState(args.bundleId);
@@ -5927,6 +6020,20 @@ async function assertFirstOtaUsesBuiltInManifest(args: { bundleId: string }) {
       state.metadataState.stagingSelection?.bundleId === args.bundleId &&
       hasManifestBackedBundleEvidence(state)
     ) {
+      const reuse = readFirstOtaReuseEvidence(args.bundleId);
+      if (!reuse.ok) {
+        throw createEndpointError(
+          "First OTA did not reuse byte-identical packaged image/font files without downloads",
+          reuse,
+        );
+      }
+      fs.writeFileSync(
+        path.join(
+          fixtureSession.resultsDir,
+          `builtin-reuse-${args.bundleId}.json`,
+        ),
+        JSON.stringify(reuse, null, 2),
+      );
       logDetoxFixture("first OTA used built-in manifest", {
         assetPath: state.assetPath,
         bundleId: args.bundleId,
@@ -6458,7 +6565,9 @@ export async function handleAssertBsdiffPatchApplied(args: {
   return assertBsdiffPatchApplied(args);
 }
 
-export async function handleAssertFirstOtaUsesBuiltInManifest(bundleId: string) {
+export async function handleAssertFirstOtaUsesBuiltInManifest(
+  bundleId: string,
+) {
   return assertFirstOtaUsesBuiltInManifest({ bundleId });
 }
 

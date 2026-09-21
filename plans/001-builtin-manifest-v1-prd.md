@@ -3,7 +3,7 @@
 ## 1. 상태와 실행 계약
 
 - 작성일: 2026-09-20
-- 상태: PRD 완료. 사용자 승인에 따라 구현·검증 진행.
+- 상태: PRD 확정. 2026-09-21 감사에서 구현 완료 판정을 정정했고, 사용자가 6개 누락 수정과 최신 next 병합을 승인했다. 새 검증이 끝날 때까지 아래 이전 완료 체크는 인수 근거가 아니다.
 - 기준: `origin/next`, `ec78756926cac3b23ca32c1d3acefe28d2ebb7ab`.
 - 작업 디렉터리: `/Users/gronxb/.codex/worktrees/builtin-manifest-v1/hot-updater`.
 - 브랜치: `feature/builtin-manifest-v1`.

@@ -114,8 +114,7 @@ describe("Detox remote asset proxy URLs", () => {
       expect(assetUrl).toMatch(
         /^http:\/\/localhost:3107\/e2e\/proxy-url\/[-0-9a-f]+$/,
       );
-      const patchUrl =
-        payload.assets["assets/example.bmp"]?.patch.patchUrl;
+      const patchUrl = payload.assets["assets/example.bmp"]?.patch.patchUrl;
       expect(patchUrl).toMatch(
         /^http:\/\/localhost:3107\/e2e\/proxy-url\/[-0-9a-f]+$/,
       );
@@ -206,6 +205,11 @@ describe("Detox remote asset proxy URLs", () => {
         "application/octet-stream",
       );
       expect(await assetResponse.text()).toBe("asset-bytes");
+      expect(
+        controller.handleProxyState().assetTransfers[
+          new URL(assetUrl).pathname
+        ],
+      ).toEqual({ requests: 1, bytes: 11 });
       expect(fetchTargets).toContain(signedAssetUrl);
 
       const patchResponse = await controller.handleProxyRemoteAssetRequest(
@@ -300,8 +304,7 @@ describe("Detox remote asset proxy URLs", () => {
         manifestUrl: string;
       };
       const assetUrl = payload.assets["assets/example.bmp"]!.file.url;
-      const patchUrl =
-        payload.assets["assets/example.bmp"]!.patch.patchUrl;
+      const patchUrl = payload.assets["assets/example.bmp"]!.patch.patchUrl;
       for (const url of [payload.manifestUrl, assetUrl, patchUrl]) {
         expect(url).toMatch(
           /^http:\/\/localhost:3107\/e2e\/proxy-url\/[-0-9a-f]+$/,
@@ -315,16 +318,17 @@ describe("Detox remote asset proxy URLs", () => {
 
       controller.handleConfigureProxy({ artifactFailures: 1 });
       const failedAssetResponse =
-        await controller.handleProxyRemoteAssetRequest(
-          new Request(assetUrl),
-        );
+        await controller.handleProxyRemoteAssetRequest(new Request(assetUrl));
       expect(failedAssetResponse.status).toBe(503);
       expect(controller.handleProxyState().artifactFailuresRemaining).toBe(0);
       expect(
+        controller.handleProxyState().assetTransfers[
+          new URL(assetUrl).pathname
+        ],
+      ).toEqual({ requests: 1, bytes: 0 });
+      expect(
         await (
-          await controller.handleProxyRemoteAssetRequest(
-            new Request(assetUrl),
-          )
+          await controller.handleProxyRemoteAssetRequest(new Request(assetUrl))
         ).text(),
       ).toBe("asset-bytes");
       expect(

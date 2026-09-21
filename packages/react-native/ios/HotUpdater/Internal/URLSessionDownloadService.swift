@@ -37,6 +37,7 @@ struct TaskState: Codable {
 }
 
 class URLSessionDownloadService: NSObject, DownloadService {
+    private let stateLock = NSRecursiveLock()
     private var session: URLSession!
     private var backgroundSession: URLSession!
     private var progressHandlers: [URLSessionTask: (DownloadProgress) -> Void] = [:]
@@ -98,14 +99,19 @@ class URLSessionDownloadService: NSObject, DownloadService {
     }
 
     func downloadFile(from url: URL, to destination: String, fileSizeHandler: ((Int64) -> Void)?, progressHandler: @escaping (DownloadProgress) -> Void, completion: @escaping (Result<URL, Error>) -> Void) -> URLSessionDownloadTask? {
+        // UIKit state is read on the main thread before taking the task-state lock.
         // Determine if we should use background session
         #if !os(macOS)
-        let appState = UIApplication.shared.applicationState
+        let appState = Thread.isMainThread
+            ? UIApplication.shared.applicationState
+            : DispatchQueue.main.sync { UIApplication.shared.applicationState }
         let useBackgroundSession = (appState == .background || appState == .inactive)
         #else
         let useBackgroundSession = false
         #endif
 
+        stateLock.lock()
+        defer { stateLock.unlock() }
         let selectedSession = useBackgroundSession ? backgroundSession : session
         let task = selectedSession?.downloadTask(with: url)
 
@@ -141,6 +147,8 @@ class URLSessionDownloadService: NSObject, DownloadService {
 
 extension URLSessionDownloadService: URLSessionDownloadDelegate {
     func urlSession(_ session: URLSession, downloadTask: URLSessionDownloadTask, didFinishDownloadingTo location: URL) {
+        stateLock.lock()
+        defer { stateLock.unlock() }
         let completion = completionHandlers[downloadTask]
         let destination = destinations[downloadTask]
 
@@ -197,6 +205,8 @@ extension URLSessionDownloadService: URLSessionDownloadDelegate {
     }
     
     func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: Error?) {
+        stateLock.lock()
+        defer { stateLock.unlock() }
         let completion = completionHandlers[task]
         defer {
             progressHandlers.removeValue(forKey: task)
@@ -214,6 +224,8 @@ extension URLSessionDownloadService: URLSessionDownloadDelegate {
     }
     
     func urlSession(_ session: URLSession, downloadTask: URLSessionDownloadTask, didWriteData bytesWritten: Int64, totalBytesWritten: Int64, totalBytesExpectedToWrite: Int64) {
+        stateLock.lock()
+        defer { stateLock.unlock() }
         let progressHandler = progressHandlers[downloadTask]
 
         // Call file size handler on first callback when size is known

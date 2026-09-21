@@ -2,6 +2,7 @@ package com.hotupdater
 
 import android.content.ContextWrapper
 import kotlinx.coroutines.asCoroutineDispatcher
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
@@ -16,6 +17,7 @@ import java.io.File
 import java.net.URL
 import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.Executors
+import java.util.concurrent.atomic.AtomicInteger
 
 class BundleFileStorageServiceTest {
     @get:Rule
@@ -366,6 +368,7 @@ class BundleFileStorageServiceTest {
                         ),
                 )
 
+            val progress = CopyOnWriteArrayList<UpdateProgressPayload>()
             service.updateBundle(
                 bundleId = "target-bundle",
                 manifestUrl = "https://example.com/manifest.json",
@@ -377,9 +380,19 @@ class BundleFileStorageServiceTest {
                             fileHash = hash,
                         )
                     },
-                progressCallback = {},
+                progressCallback = { progress.add(it) },
             )
 
+            assertEquals(1, progress.last().details?.totalFilesCount)
+            assertEquals(
+                listOf("index.android.bundle"),
+                progress
+                    .last()
+                    .details
+                    ?.files
+                    ?.map { it.path },
+            )
+            assertTrue(progress.any { it.progress in 0.15..0.2 && it.details?.totalFilesCount == 0 })
             val targetDir = File(bundleStoreDir(rootDir), "target-bundle")
             assertEquals(bundleContent, File(targetDir, "index.android.bundle").readText())
             assertEquals(imageContent, File(targetDir, "assets/image.png").readText())
@@ -636,6 +649,159 @@ class BundleFileStorageServiceTest {
             manifestCall.second.contains("manifest-caller"),
         )
     }
+
+    @Test
+    fun `reused bytes cannot bypass mismatched descriptor contracts`() =
+        runBlocking {
+            for (kind in listOf("missing", "mismatch", "extra", "missing-original")) {
+                val root = temporaryFolder.newFolder(kind)
+                val hash = sha256(root, "target")
+                val manifest = manifestJson("target", mapOf("index.android.bundle" to hash))
+                val downloads = MappingDownloadService(mapOf("https://example.com/manifest.json" to manifest))
+                val service =
+                    createService(
+                        root,
+                        downloadService = downloads,
+                        builtInAssetResolver = MappingBuiltInAssetResolver(mapOf("index.android.bundle" to "target")),
+                    )
+                val descriptors = mutableMapOf("index.android.bundle" to ChangedAssetDescriptor("https://example.com/bundle", hash))
+                when (kind) {
+                    "missing" -> {
+                        descriptors.clear()
+                    }
+
+                    "mismatch" -> {
+                        descriptors["index.android.bundle"] = ChangedAssetDescriptor("https://example.com/bundle", "wrong")
+                    }
+
+                    "extra" -> {
+                        descriptors["extra.png"] = ChangedAssetDescriptor("https://example.com/extra", hash)
+                    }
+
+                    "missing-original" -> {
+                        descriptors["index.android.bundle"] = ChangedAssetDescriptor(null, hash)
+                    }
+                }
+                val result =
+                    runCatching {
+                        service.updateBundle(
+                            "target",
+                            "https://example.com/manifest.json",
+                            sha256(root, manifest),
+                            descriptors,
+                        ) {}
+                    }
+                assertTrue("Contract $kind must fail closed", result.isFailure)
+                assertNull(loadMetadata(root)?.stagingBundleId)
+            }
+        }
+
+    @Test
+    fun `cached target is repaired before activation`() =
+        runBlocking {
+            val root = temporaryFolder.newFolder("corrupt-cached-target")
+            val hash = sha256(root, "correct")
+            val manifest = manifestJson("target", mapOf("index.android.bundle" to hash))
+            val cached = createBundleDir(root, "target")
+            writeFile(cached, "manifest.json", manifest)
+            writeFile(cached, "index.android.bundle", "CORRUPT")
+            val downloads =
+                MappingDownloadService(
+                    mapOf(
+                        "https://example.com/manifest.json" to manifest,
+                        "https://example.com/bundle" to "correct",
+                    ),
+                )
+            val service = createService(root, downloadService = downloads, builtInAssetResolver = MappingBuiltInAssetResolver(emptyMap()))
+            service.updateBundle(
+                "target",
+                "https://example.com/manifest.json",
+                sha256(root, manifest),
+                mapOf("index.android.bundle" to ChangedAssetDescriptor("https://example.com/bundle", hash)),
+            ) {}
+            assertEquals("correct", File(cached, "index.android.bundle").readText())
+            assertEquals("target", loadMetadata(root)?.stagingBundleId)
+            assertTrue(downloads.calls.contains("https://example.com/bundle"))
+        }
+
+    @Test
+    fun `retry reuses completed staging files and replaces partial files without stale assets`() =
+        runBlocking {
+            val root = temporaryFolder.newFolder("interrupted-retry")
+            val hashes = mapOf("index.android.bundle" to sha256(root, "correct"), "assets/image.png" to sha256(root, "image"))
+            val manifest = manifestJson("target", hashes)
+            val staging = createBundleDir(root, "target.tmp")
+            writeFile(staging, "index.android.bundle", "partial")
+            writeFile(staging, "assets/image.png", "image")
+            writeFile(staging, "assets/obsolete.png", "obsolete")
+            val downloads =
+                MappingDownloadService(
+                    mapOf(
+                        "https://example.com/manifest.json" to manifest,
+                        "https://example.com/index.android.bundle" to "correct",
+                    ),
+                )
+            val service = createService(root, downloadService = downloads, builtInAssetResolver = MappingBuiltInAssetResolver(emptyMap()))
+            service.updateBundle(
+                "target",
+                "https://example.com/manifest.json",
+                sha256(root, manifest),
+                hashes.mapValues { (path, hash) -> ChangedAssetDescriptor("https://example.com/$path", hash) },
+            ) {}
+            assertEquals(listOf("https://example.com/manifest.json", "https://example.com/index.android.bundle"), downloads.calls)
+            val target = File(bundleStoreDir(root), "target")
+            assertEquals("image", File(target, "assets/image.png").readText())
+            assertEquals("correct", File(target, "index.android.bundle").readText())
+            assertFalse(File(target, "assets/obsolete.png").exists())
+        }
+
+    @Test
+    fun `independent downloads overlap with at most four active requests`() =
+        runBlocking {
+            val root = temporaryFolder.newFolder("parallel-originals")
+            val paths = listOf("index.android.bundle") + (0..8).map { "assets/$it.png" }
+            val hash = sha256(root, "content")
+            val manifest = manifestJson("target", paths.associateWith { hash })
+            val mapping =
+                MappingDownloadService(
+                    mapOf("https://example.com/manifest.json" to manifest) + paths.associate { "https://example.com/$it" to "content" },
+                )
+            val active = AtomicInteger()
+            val maximum = AtomicInteger()
+            val downloader =
+                object : DownloadService {
+                    override suspend fun downloadFile(
+                        fileUrl: URL,
+                        destination: File,
+                        fileSizeCallback: ((Long) -> Unit)?,
+                        progressCallback: (DownloadProgress) -> Unit,
+                    ): DownloadResult {
+                        val isAsset = fileUrl.path != "/manifest.json"
+                        if (isAsset) {
+                            val count = active.incrementAndGet()
+                            maximum.updateAndGet { maxOf(it, count) }
+                        }
+                        try {
+                            delay(25)
+                            return mapping.downloadFile(fileUrl, destination, fileSizeCallback, progressCallback)
+                        } finally {
+                            if (isAsset) active.decrementAndGet()
+                        }
+                    }
+                }
+            val service = createService(root, downloadService = downloader, builtInAssetResolver = MappingBuiltInAssetResolver(emptyMap()))
+            val progress = CopyOnWriteArrayList<UpdateProgressPayload>()
+            service.updateBundle(
+                "target",
+                "https://example.com/manifest.json",
+                sha256(root, manifest),
+                paths.associateWith { ChangedAssetDescriptor("https://example.com/$it", hash) },
+                progress::add,
+            )
+            assertTrue("Expected concurrent requests, observed ${maximum.get()}", maximum.get() > 1)
+            assertTrue("Concurrency must be bounded", maximum.get() <= 4)
+            assertEquals(paths.size, progress.last().details?.completedFilesCount)
+        }
 
     private fun createService(
         rootDir: File,

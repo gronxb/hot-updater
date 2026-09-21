@@ -805,6 +805,151 @@ struct BundleFileStorageServiceTests {
         #expect(applied.boolValue == false)
         #expect(FileManager.default.fileExists(atPath: outputURL.path) == false)
     }
+    @Test(arguments: ["missing", "mismatch", "extra", "missing-original"])
+    func rejectsInconsistentDescriptorMapEvenWhenBuiltinMatches(kind: String) throws {
+        let root = try makeWorkingDirectory()
+        defer { cleanupWorkingDirectory(root) }
+        let bytes = Data("target hermes".utf8)
+        let hash = try #require(sha256(bytes, in: root))
+        let manifest = try makeManifestData(bundleId: "target", assets: ["index.ios.bundle": hash])
+        let manifestURL = URL(string: "https://example.com/manifest.json")!
+        let fileURL = URL(string: "https://example.com/index.ios.bundle")!
+        let downloads = MappingDownloadService(contents: [manifestURL: manifest])
+        let service = makeStorageService(documentsDirectory: root, downloadService: downloads,
+            builtInAssetResolver: MappingBuiltInAssetResolver(contents: ["index.ios.bundle": bytes]))
+        var descriptors = ["index.ios.bundle": ChangedAssetDescriptor(fileUrl: fileURL, fileHash: hash)]
+        switch kind {
+        case "missing": descriptors = [:]
+        case "mismatch": descriptors["index.ios.bundle"] = ChangedAssetDescriptor(fileUrl: fileURL, fileHash: String(repeating: "0", count: 64))
+        case "missing-original": descriptors["index.ios.bundle"] = ChangedAssetDescriptor(fileUrl: nil, fileHash: hash)
+        default: descriptors["extra.png"] = ChangedAssetDescriptor(fileUrl: fileURL, fileHash: hash)
+        }
+        let result = updateBundle(service, bundleId: "target", manifestURL: manifestURL,
+            manifestHash: try #require(sha256(manifest, in: root)), assets: descriptors)
+        #expect(result.failureError != nil, "inconsistent descriptor maps must fail closed")
+        #expect(loadMetadata(documentsDirectory: root)?.stagingBundleId == nil)
+    }
+
+    @Test
+    func resumesVerifiedStagingAssetAfterInterruption() throws {
+        let root = try makeWorkingDirectory()
+        defer { cleanupWorkingDirectory(root) }
+        let bytes = Data("completed before process termination".utf8)
+        let hash = try #require(sha256(bytes, in: root))
+        let manifest = try makeManifestData(bundleId: "target", assets: ["index.ios.bundle": hash])
+        let manifestURL = URL(string: "https://example.com/manifest.json")!
+        let fileURL = URL(string: "https://example.com/index.ios.bundle")!
+        let tmp = root.appendingPathComponent("bundle-store/target.tmp")
+        try FileManager.default.createDirectory(at: tmp, withIntermediateDirectories: true)
+        try bytes.write(to: tmp.appendingPathComponent("index.ios.bundle"))
+        // The retry can retrieve the manifest, but must reuse the already verified file.
+        let downloads = MappingDownloadService(contents: [manifestURL: manifest])
+        let service = makeStorageService(documentsDirectory: root, downloadService: downloads,
+            builtInAssetResolver: MappingBuiltInAssetResolver(contents: [:]))
+        let result = updateBundle(service, bundleId: "target", manifestURL: manifestURL,
+            manifestHash: try #require(sha256(manifest, in: root)),
+            assets: ["index.ios.bundle": ChangedAssetDescriptor(fileUrl: fileURL, fileHash: hash)])
+        #expect(result.failureError == nil, "reuse completed staging bytes after rechecking their target hash")
+        #expect(downloads.requestedURLs == [manifestURL])
+    }
+
+    @Test
+    func repairsCorruptPreviouslyInstalledTargetBeforeActivation() throws {
+        let root = try makeWorkingDirectory()
+        defer { cleanupWorkingDirectory(root) }
+        let bytes = Data("verified target".utf8)
+        let hash = try #require(sha256(bytes, in: root))
+        let manifest = try makeManifestData(bundleId: "target", assets: ["index.ios.bundle": hash])
+        let target = try createBundleDirectory(documentsDirectory: root, bundleId: "target")
+        try manifest.write(to: target.appendingPathComponent("manifest.json"))
+        try Data("CORRUPT".utf8).write(to: target.appendingPathComponent("index.ios.bundle"))
+        let manifestURL = URL(string: "https://example.com/manifest.json")!
+        let fileURL = URL(string: "https://example.com/index.ios.bundle")!
+        let downloads = MappingDownloadService(contents: [manifestURL: manifest, fileURL: bytes])
+        let service = makeStorageService(documentsDirectory: root, downloadService: downloads,
+            builtInAssetResolver: MappingBuiltInAssetResolver(contents: [:]))
+        let result = updateBundle(service, bundleId: "target", manifestURL: manifestURL,
+            manifestHash: try #require(sha256(manifest, in: root)),
+            assets: ["index.ios.bundle": ChangedAssetDescriptor(fileUrl: fileURL, fileHash: hash)])
+        #expect(result.failureError == nil)
+        #expect(try Data(contentsOf: target.appendingPathComponent("index.ios.bundle")) == bytes,
+            "cached target bytes must be verified/repaired before staging")
+    }
+
+    @Test
+    func progressCountsOnlyNetworkAssets() throws {
+        let root = try makeWorkingDirectory()
+        defer { cleanupWorkingDirectory(root) }
+        let bytes = Data("target hermes".utf8)
+        let image = Data("embedded image".utf8)
+        let hash = try #require(sha256(bytes, in: root))
+        let imageHash = try #require(sha256(image, in: root))
+        let manifest = try makeManifestData(bundleId: "target", assets: ["index.ios.bundle": hash, "assets/image.png": imageHash])
+        let manifestURL = URL(string: "https://example.com/manifest.json")!
+        let fileURL = URL(string: "https://example.com/index.ios.bundle")!
+        let imageURL = URL(string: "https://example.com/image.png")!
+        let downloads = MappingDownloadService(contents: [manifestURL: manifest, fileURL: bytes])
+        let service = makeStorageService(documentsDirectory: root, downloadService: downloads,
+            builtInAssetResolver: MappingBuiltInAssetResolver(contents: ["assets/image.png": image]))
+        let done = DispatchSemaphore(value: 0)
+        var payloads: [UpdateProgressPayload] = []
+        service.updateBundle(bundleId: "target", manifestUrl: manifestURL,
+            manifestFileHash: try #require(sha256(manifest, in: root)),
+            assets: ["index.ios.bundle": ChangedAssetDescriptor(fileUrl: fileURL, fileHash: hash),
+                     "assets/image.png": ChangedAssetDescriptor(fileUrl: imageURL, fileHash: imageHash)],
+            progressHandler: { payloads.append($0) }, completion: { result in
+                if case .failure(let error) = result { Issue.record("unexpected failure: \(error)") }
+                done.signal()
+            })
+        #expect(done.wait(timeout: .now() + 5) == .success)
+        #expect(downloads.requestedURLs == [manifestURL, fileURL])
+        #expect(payloads.last?.details?.totalFilesCount == 1,
+            "locally reused files must not count as downloads")
+    }
+
+    @Test
+    func freshOriginalInstallControl() throws {
+        let root = try makeWorkingDirectory()
+        defer { cleanupWorkingDirectory(root) }
+        let bytes = Data("fresh original".utf8)
+        let hash = try #require(sha256(bytes, in: root))
+        let manifest = try makeManifestData(bundleId: "target", assets: ["index.ios.bundle": hash])
+        let manifestURL = URL(string: "https://example.com/manifest.json")!
+        let fileURL = URL(string: "https://example.com/index.ios.bundle")!
+        let downloads = MappingDownloadService(contents: [manifestURL: manifest, fileURL: bytes])
+        let service = makeStorageService(documentsDirectory: root, downloadService: downloads,
+            builtInAssetResolver: MappingBuiltInAssetResolver(contents: [:]))
+        let result = updateBundle(service, bundleId: "target", manifestURL: manifestURL,
+            manifestHash: try #require(sha256(manifest, in: root)),
+            assets: ["index.ios.bundle": ChangedAssetDescriptor(fileUrl: fileURL, fileHash: hash)])
+        #expect(result.failureError == nil)
+        #expect(try Data(contentsOf: root.appendingPathComponent("bundle-store/target/index.ios.bundle")) == bytes)
+    }
+    @Test
+    func independentOriginalDownloadsOverlap() throws {
+        let root = try makeWorkingDirectory()
+        defer { cleanupWorkingDirectory(root) }
+        let paths = ["index.ios.bundle"] + (0..<9).map { "assets/\($0).png" }
+        let bytes = Data("target bytes".utf8)
+        let hash = try #require(sha256(bytes, in: root))
+        let hashes = Dictionary(uniqueKeysWithValues: paths.map { ($0, hash) })
+        let manifest = try makeManifestData(bundleId: "target", assets: hashes)
+        let manifestURL = URL(string: "https://example.com/manifest.json")!
+        var contents = Dictionary(uniqueKeysWithValues: paths.map { (URL(string: "https://example.com/\($0)")!, bytes) })
+        contents[manifestURL] = manifest
+        let downloads = DelayedAuditDownloadService(contents: contents)
+        let service = makeStorageService(documentsDirectory: root, downloadService: downloads,
+            builtInAssetResolver: MappingBuiltInAssetResolver(contents: [:]))
+        let result = updateBundle(service, bundleId: "target", manifestURL: manifestURL,
+            manifestHash: try #require(sha256(manifest, in: root)),
+            assets: Dictionary(uniqueKeysWithValues: paths.map { path in
+                (path, ChangedAssetDescriptor(fileUrl: URL(string: "https://example.com/\(path)")!, fileHash: hash))
+            }))
+        #expect(result.failureError == nil)
+        #expect(downloads.maximumConcurrentAssets <= 4)
+        #expect(downloads.maximumConcurrentAssets > 1,
+            "Independent downloads must overlap within the fixed concurrency limit")
+    }
 }
 
 private let testIsolationKey = "test-isolation-key"
@@ -1160,4 +1305,46 @@ private func updateBundle(
     }
     return result
 }
+private final class DelayedAuditDownloadService: DownloadService {
+    private let contents: [URL: Data]
+    private let lock = NSLock()
+    private var activeAssets = 0
+    private var maximum = 0
+    init(contents: [URL: Data]) { self.contents = contents }
+    var maximumConcurrentAssets: Int {
+        lock.lock()
+        defer { lock.unlock() }
+        return maximum
+    }
+    func downloadFile(from url: URL, to destination: String,
+        fileSizeHandler: ((Int64) -> Void)?,
+        progressHandler: @escaping (DownloadProgress) -> Void,
+        completion: @escaping (Result<URL, Error>) -> Void) -> URLSessionDownloadTask? {
+        let isAsset = url.lastPathComponent != "manifest.json"
+        lock.lock()
+        if isAsset {
+            activeAssets += 1
+            maximum = max(maximum, activeAssets)
+        }
+        lock.unlock()
+        DispatchQueue.global().asyncAfter(deadline: .now() + 0.1) {
+            let result: Result<URL, Error>
+            do {
+                guard let bytes = self.contents[url] else {
+                    throw NSError(domain: "audit", code: 1)
+                }
+                let target = URL(fileURLWithPath: destination)
+                try FileManager.default.createDirectory(at: target.deletingLastPathComponent(), withIntermediateDirectories: true)
+                try bytes.write(to: target)
+                result = .success(target)
+            } catch { result = .failure(error) }
+            self.lock.lock()
+            if isAsset { self.activeAssets -= 1 }
+            self.lock.unlock()
+            completion(result)
+        }
+        return nil
+    }
+}
+
 #endif

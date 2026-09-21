@@ -21,3 +21,7 @@ reuses byte-identical built-in assets and falls back to verified original files.
 Remove `compressStrategy` and archive fields from the v1 configuration, bundle,
 database, provider, and native contracts. The unreleased 1.0.0 schema and initial
 migrations now require manifest metadata directly.
+
+Validate complete descriptor sets before reuse, recheck cached target files,
+and retain hash-verified staging files across retries. Download remaining files
+with a fixed concurrency limit and report only network files in download progress.

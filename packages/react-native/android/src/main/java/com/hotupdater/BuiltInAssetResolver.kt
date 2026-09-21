@@ -80,6 +80,8 @@ internal class AndroidBuiltInAssetResolver(
                 context.resources.getValue(resourceId, value, true)
             } else {
                 context.resources.getValueForDensity(resourceId, density, value, true)
+                val actualDensity = if (value.density == TypedValue.DENSITY_DEFAULT) 160 else value.density
+                if (actualDensity != density) return null
             }
             val entry = value.string?.toString() ?: return null
             installedApks().firstNotNullOfOrNull { apk ->
