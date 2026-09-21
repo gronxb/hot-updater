@@ -245,24 +245,24 @@ class IOSAdapter {
   }
 
   device(args, { allowRetryableFailure = false } = {}) {
+    const commandArgs = [...args, "--session", this.session, "--json"];
+    const result = spawnSync("agent-device", commandArgs, {
+      encoding: "utf8",
+      maxBuffer: 16 * 1024 * 1024,
+    });
+    let response;
     try {
-      const output = execFileSync(
-        "agent-device",
-        [...args, "--session", this.session, "--json"],
-        { encoding: "utf8", maxBuffer: 16 * 1024 * 1024 },
-      );
-      return JSON.parse(output);
-    } catch (error) {
-      if (allowRetryableFailure && typeof error?.stdout === "string") {
-        try {
-          const response = JSON.parse(error.stdout);
-          if (isRetryableAgentDeviceFailure(response)) return null;
-        } catch {
-          // Preserve the original command failure and its diagnostics.
-        }
-      }
-      throw error;
+      response = JSON.parse(result.stdout);
+    } catch {
+      // Report the original command output below.
     }
+    if (result.status === 0) return response;
+    if (allowRetryableFailure && isRetryableAgentDeviceFailure(response)) {
+      return null;
+    }
+    throw new Error(
+      `agent-device ${commandArgs.join(" ")} failed: ${result.stderr || result.stdout || result.status}`,
+    );
   }
 
   snapshot() {
