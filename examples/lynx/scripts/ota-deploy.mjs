@@ -303,12 +303,22 @@ const getJson = async (url) => {
   assert.equal(response.status, 200, `HTTP ${url}`);
   return response.json();
 };
-const catalog = await getJson(catalogUrl);
-assert.ok(
-  catalog.releases.some(
-    (row) => row.releaseId === release.id && row.bundleId === bundle.id,
-  ),
-);
+const waitForCatalogRelease = async () => {
+  const deadline = Date.now() + 15_000;
+  while (Date.now() < deadline) {
+    const catalog = await getJson(catalogUrl);
+    if (
+      catalog.releases.some(
+        (row) => row.releaseId === release.id && row.bundleId === bundle.id,
+      )
+    ) {
+      return catalog;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+  throw new Error("Timed out waiting for the deployed Release in the catalog");
+};
+const catalog = await waitForCatalogRelease();
 const artifactUrl = `${origin}/hot-updater/artifacts/${bundle.id}/from/${NIL_UUID}`;
 const artifact = await getJson(artifactUrl);
 assert.equal(artifact.fileHash, bundle.fileHash);
