@@ -44,6 +44,13 @@ export function isRetryableAgentDeviceFailure(value) {
   );
 }
 
+export function formatAppleLogStart(value) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) throw new Error("Invalid Apple log start");
+  const pad = (part) => String(part).padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
+}
+
 function parseEvents(text) {
   const events = [];
   for (const line of text.split(/\r?\n/)) {
@@ -401,7 +408,7 @@ class IOSAdapter {
       "--style",
       "compact",
       "--start",
-      this.logStartedAt,
+      formatAppleLogStart(this.logStartedAt),
       "--predicate",
       'eventMessage CONTAINS "HotUpdater"',
     ]);

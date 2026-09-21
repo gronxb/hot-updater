@@ -12,6 +12,7 @@ import {
   androidMatrixLaunchArguments,
   DIAGNOSTIC_MARKER,
   EVENT_MARKER,
+  formatAppleLogStart,
   iosMatrixLaunchArguments,
   isRetryableAgentDeviceFailure,
   parseDiagnostics,
@@ -229,6 +230,12 @@ function withInfoPlist<T>(
 }
 
 describe("Lynx public matrix runner", () => {
+  it("formats simulator log boundaries for the Apple log CLI", () => {
+    expect(formatAppleLogStart(new Date(2026, 8, 21, 23, 30, 14))).toBe(
+      "2026-09-21 23:30:14",
+    );
+  });
+
   it("hashes the complete deterministic iOS app tree and derives artifact IDs", () => {
     const temporary = fs.mkdtempSync(path.join(os.tmpdir(), "lynx-app-hash-"));
     const app = path.join(temporary, "Matrix.app");
