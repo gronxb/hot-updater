@@ -84,6 +84,7 @@ public struct BundleMetadata: Codable {
     var stableSelection: PersistedSelection?
     var stagingSelection: PersistedSelection?
     var verificationPending: Bool
+    var launchInProgress: Bool
     var pendingTransition: PendingBundleTransition?
     var pendingSelectionTransition: PendingSelectionTransition?
     var highestSeenCatalogs: [String: CatalogHighWater]
@@ -98,6 +99,7 @@ public struct BundleMetadata: Codable {
         case stableSelection = "stable_selection"
         case stagingSelection = "staging_selection"
         case verificationPending = "verification_pending"
+        case launchInProgress = "launch_in_progress"
         case pendingTransition = "pending_transition"
         case pendingSelectionTransition = "pending_selection_transition"
         case highestSeenCatalogs = "highest_seen_catalogs"
@@ -113,6 +115,7 @@ public struct BundleMetadata: Codable {
         stableSelection: PersistedSelection? = nil,
         stagingSelection: PersistedSelection? = nil,
         verificationPending: Bool = false,
+        launchInProgress: Bool = false,
         pendingTransition: PendingBundleTransition? = nil,
         pendingSelectionTransition: PendingSelectionTransition? = nil,
         highestSeenCatalogs: [String: CatalogHighWater] = [:],
@@ -126,6 +129,7 @@ public struct BundleMetadata: Codable {
         self.stableSelection = stableSelection
         self.stagingSelection = stagingSelection
         self.verificationPending = verificationPending
+        self.launchInProgress = launchInProgress
         self.pendingTransition = pendingTransition
         self.pendingSelectionTransition = pendingSelectionTransition
         self.highestSeenCatalogs = highestSeenCatalogs
@@ -144,6 +148,7 @@ public struct BundleMetadata: Codable {
         stagingSelection = try values.decodeIfPresent(PersistedSelection.self, forKey: .stagingSelection)
             ?? stagingBundleId.map(PersistedSelection.legacyBundle)
         verificationPending = try values.decodeIfPresent(Bool.self, forKey: .verificationPending) ?? false
+        launchInProgress = try values.decodeIfPresent(Bool.self, forKey: .launchInProgress) ?? false
         pendingTransition = try values.decodeIfPresent(PendingBundleTransition.self, forKey: .pendingTransition)
         pendingSelectionTransition = try values.decodeIfPresent(PendingSelectionTransition.self, forKey: .pendingSelectionTransition)
         highestSeenCatalogs = try values.decodeIfPresent([String: CatalogHighWater].self, forKey: .highestSeenCatalogs) ?? [:]
