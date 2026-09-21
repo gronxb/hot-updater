@@ -35,7 +35,7 @@ describe("Release health", () => {
     render(
       <InsightsOverview
         input={input}
-        onInputChange={vi.fn()}
+        onWindowChange={vi.fn()}
         onRefresh={vi.fn()}
         query={{
           data: report,
@@ -58,7 +58,7 @@ describe("Release health", () => {
     render(
       <InsightsOverview
         input={input}
-        onInputChange={vi.fn()}
+        onWindowChange={vi.fn()}
         onRefresh={vi.fn()}
         query={{
           data: { ...report, launches: 0, failedLaunches: 0, points: [] },
@@ -72,12 +72,12 @@ describe("Release health", () => {
     expect(screen.getByText("No launch reports in this period.")).toBeDefined();
   });
 
-  it("submits platform, channel, and optional release filters", () => {
-    const onInputChange = vi.fn();
+  it("keeps only the report period and refresh actions in the card", () => {
+    const onWindowChange = vi.fn();
     render(
       <InsightsOverview
         input={input}
-        onInputChange={onInputChange}
+        onWindowChange={onWindowChange}
         onRefresh={vi.fn()}
         query={{
           data: report,
@@ -87,18 +87,10 @@ describe("Release health", () => {
         }}
       />,
     );
-    fireEvent.change(screen.getByLabelText("Release health channel"), {
-      target: { value: "preview" },
-    });
-    fireEvent.change(screen.getByLabelText("Release ID optional"), {
-      target: { value: "release-a" },
-    });
-    fireEvent.click(screen.getByRole("button", { name: "Apply" }));
-    expect(onInputChange).toHaveBeenCalledWith({
-      platform: "ios",
-      channel: "preview",
-      window: "7d",
-      releaseId: "release-a",
-    });
+    expect(
+      screen.queryByRole("form", { name: "Release health filters" }),
+    ).toBeNull();
+    fireEvent.click(screen.getByRole("tab", { name: "24 hours" }));
+    expect(onWindowChange).toHaveBeenCalledWith("24h");
   });
 });

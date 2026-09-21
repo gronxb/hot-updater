@@ -1,6 +1,5 @@
 import { Link } from "@tanstack/react-router";
 import { ListIcon, RotateCw } from "lucide-react";
-import { useState } from "react";
 import { CartesianGrid, Line, LineChart, XAxis, YAxis } from "recharts";
 
 import { Button, buttonVariants } from "@/components/ui/button";
@@ -16,14 +15,6 @@ import {
   ChartTooltip,
   ChartTooltipContent,
 } from "@/components/ui/chart";
-import { Input } from "@/components/ui/input";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import type { RecoveryInput, RecoveryReport } from "@/lib/insights-recovery";
 
@@ -132,7 +123,7 @@ function ReleaseHealth({ report }: { readonly report: RecoveryReport }) {
 
 export function InsightsOverview({
   input,
-  onInputChange,
+  onWindowChange,
   query,
   onRefresh,
 }: {
@@ -144,107 +135,58 @@ export function InsightsOverview({
     readonly isFetching: boolean;
   };
   readonly onRefresh: () => void;
-  readonly onInputChange: (input: RecoveryInput) => void;
+  readonly onWindowChange: (window: RecoveryInput["window"]) => void;
 }) {
-  const [platform, setPlatform] = useState(input.platform);
-  const [channel, setChannel] = useState(input.channel);
-  const [releaseId, setReleaseId] = useState(input.releaseId ?? "");
   return (
-    <Card
-      aria-label="Release health"
-      className="min-w-0 overflow-hidden shadow-sm"
-      role="region"
-    >
-      <CardHeader className="flex flex-col gap-4 p-6">
-        <div className="flex flex-wrap items-center justify-between gap-4">
-          <CardTitle>Release health</CardTitle>
-          <div className="flex items-center gap-2">
-            <InsightsPeriodSelector
-              window={input.window}
-              onWindowChange={(window) => onInputChange({ ...input, window })}
-            />
-            <Button
-              aria-label="Refresh release health"
-              variant="ghost"
-              size="icon-lg"
-              disabled={query.isFetching}
-              onClick={onRefresh}
-            >
-              <RotateCw aria-hidden="true" />
-            </Button>
+    <section aria-label="Release health">
+      <Card className="min-w-0 overflow-hidden shadow-sm">
+        <CardHeader className="flex flex-col gap-4 p-6">
+          <div className="flex flex-wrap items-center justify-between gap-4">
+            <CardTitle>Release health</CardTitle>
+            <div className="flex items-center gap-2">
+              <InsightsPeriodSelector
+                window={input.window}
+                onWindowChange={onWindowChange}
+              />
+              <Button
+                aria-label="Refresh release health"
+                variant="ghost"
+                size="icon-lg"
+                disabled={query.isFetching}
+                onClick={onRefresh}
+              >
+                <RotateCw aria-hidden="true" />
+              </Button>
+            </div>
           </div>
-        </div>
-        <form
-          className="grid gap-3 sm:grid-cols-[9rem_1fr_1fr_auto]"
-          aria-label="Release health filters"
-          onSubmit={(event) => {
-            event.preventDefault();
-            onInputChange({
-              platform,
-              channel,
-              window: input.window,
-              ...(releaseId.trim() ? { releaseId: releaseId.trim() } : {}),
-            });
-          }}
-        >
-          <Select
-            value={platform}
-            onValueChange={(value) => {
-              if (value === "ios" || value === "android") setPlatform(value);
-            }}
+        </CardHeader>
+        <CardContent className="px-6 pb-6">
+          {query.isPending ? (
+            <Skeleton aria-label="Loading release health" className="h-80" />
+          ) : query.error ? (
+            <InsightsErrorAlert
+              error={query.error}
+              fallbackTitle="Release health unavailable"
+            />
+          ) : query.data ? (
+            <ReleaseHealth report={query.data} />
+          ) : null}
+        </CardContent>
+        <CardFooter className="flex items-center justify-between border-t px-6 py-5">
+          {query.data?.coverage.kind === "partial" ? (
+            <span className="text-xs text-muted-foreground">Partial</span>
+          ) : (
+            <span />
+          )}
+          <Link
+            className={buttonVariants({ variant: "outline", size: "sm" })}
+            to="/installations"
           >
-            <SelectTrigger aria-label="Release health platform">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="ios">iOS</SelectItem>
-              <SelectItem value="android">Android</SelectItem>
-            </SelectContent>
-          </Select>
-          <Input
-            aria-label="Release health channel"
-            maxLength={1024}
-            value={channel}
-            onChange={(event) => setChannel(event.target.value)}
-          />
-          <Input
-            aria-label="Release ID optional"
-            maxLength={1024}
-            placeholder="All releases"
-            value={releaseId}
-            onChange={(event) => setReleaseId(event.target.value)}
-          />
-          <Button type="submit" variant="outline">
-            Apply
-          </Button>
-        </form>
-      </CardHeader>
-      <CardContent className="px-6 pb-6">
-        {query.isPending ? (
-          <Skeleton aria-label="Loading release health" className="h-80" />
-        ) : query.error ? (
-          <InsightsErrorAlert
-            error={query.error}
-            fallbackTitle="Release health unavailable"
-          />
-        ) : query.data ? (
-          <ReleaseHealth report={query.data} />
-        ) : null}
-      </CardContent>
-      <CardFooter className="flex items-center justify-between border-t px-6 py-5">
-        {query.data?.coverage.kind === "partial" ? (
-          <span className="text-xs text-muted-foreground">Partial</span>
-        ) : (
-          <span />
-        )}
-        <Link
-          className={buttonVariants({ variant: "outline", size: "sm" })}
-          to="/installations"
-        >
-          <ListIcon aria-hidden="true" />
-          Event history
-        </Link>
-      </CardFooter>
-    </Card>
+            <ListIcon aria-hidden="true" />
+            Event history
+          </Link>
+        </CardFooter>
+      </Card>
+    </section>
   );
 }

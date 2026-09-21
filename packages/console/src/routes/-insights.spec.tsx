@@ -124,7 +124,7 @@ async function selectOption(label: string, option: string) {
 }
 
 describe("Insights dashboard", () => {
-  it("keeps reporting periods independent while applying scope filters to both panels", async () => {
+  it("keeps reporting periods independent while applying one filter form to both panels", async () => {
     mocks.usage.mockImplementation(async ({ data }: { data: AppUsageInput }) =>
       reportFor(data),
     );
@@ -190,7 +190,7 @@ describe("Insights dashboard", () => {
     ).toContain("30 installations");
     const previousBundleCalls = mocks.bundles.mock.calls.length;
     const previousCalls = mocks.usage.mock.calls.length;
-    await selectOption("Platform", "Android");
+    await selectOption("Usage platform", "Android");
     await selectOption("App version", "1.0.0");
     act(() => screen.getByLabelText("Channel").focus());
     fireEvent.input(screen.getByLabelText("Channel"), {
@@ -201,6 +201,10 @@ describe("Insights dashboard", () => {
     await act(async () => {
       fireEvent.pointerDown(beta);
       fireEvent.click(beta);
+    });
+    await selectOption("Health platform", "Android");
+    fireEvent.change(screen.getByLabelText("Release ID (optional)"), {
+      target: { value: "release-a" },
     });
     expect(mocks.usage).toHaveBeenCalledTimes(previousCalls);
     expect(mocks.bundles).toHaveBeenCalledTimes(previousBundleCalls);
@@ -218,8 +222,9 @@ describe("Insights dashboard", () => {
     await waitFor(() =>
       expect(mocks.bundles).toHaveBeenLastCalledWith({
         data: {
-          platform: "ios",
-          channel: "production",
+          platform: "android",
+          channel: "beta",
+          releaseId: "release-a",
           window: "24h",
         },
       }),
@@ -241,6 +246,9 @@ describe("Insights dashboard", () => {
         .getByRole("link", { name: "Event history" })
         .getAttribute("href"),
     ).toBe("/installations");
+    expect(
+      screen.queryByRole("form", { name: "Release health filters" }),
+    ).toBeNull();
   }, 15_000);
 
   it("recovers from a failed query and distinguishes empty and partially read history", async () => {
