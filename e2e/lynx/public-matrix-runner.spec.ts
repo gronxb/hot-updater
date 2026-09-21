@@ -364,7 +364,7 @@ describe("Lynx public matrix runner", () => {
     },
   );
 
-  it("retries only explicit runner-busy and simulator screenshot failures", () => {
+  it("retries only the explicit agent-device runner-busy response", () => {
     expect(
       isRetryableAgentDeviceFailure({
         success: false,
@@ -381,34 +381,6 @@ describe("Lynx public matrix runner", () => {
       isRetryableAgentDeviceFailure({
         success: false,
         error: { code: "DEVICE_NOT_FOUND", retriable: true },
-      }),
-    ).toBe(false);
-    expect(
-      isRetryableAgentDeviceFailure({
-        success: false,
-        error: {
-          code: "COMMAND_FAILED",
-          details: {
-            cmd: "xcrun",
-            processExitError: true,
-            args: ["simctl", "io", "device", "screenshot", "result.png"],
-            stderr: "An error was encountered processing the command",
-          },
-        },
-      }),
-    ).toBe(true);
-    expect(
-      isRetryableAgentDeviceFailure({
-        success: false,
-        error: {
-          code: "COMMAND_FAILED",
-          details: {
-            cmd: "xcrun",
-            processExitError: true,
-            args: ["simctl", "install", "device", "app"],
-            stderr: "An error was encountered processing the command",
-          },
-        },
       }),
     ).toBe(false);
   });
