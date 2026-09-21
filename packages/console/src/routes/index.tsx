@@ -397,15 +397,17 @@ function BundlesPage() {
   const patchCountsQuery = useBundleChildCountsQuery(bundleIds);
   const patchCountsByBundleId = patchCountsQuery.data ?? {};
   const pagination = releasesQuery.data?.pagination;
-  const activityQuery = useBundleActivityQuery(
-    releases.flatMap((release) => {
-      const channel = channels.find(
-        (item) => item.id === release.channel_id,
-      )?.name;
-      return channel
-        ? [{ releaseId: release.id, platform: release.platform, channel }]
-        : [];
-    }),
+  const activityInputs = releases.flatMap((release) => {
+    const channel = channels.find(
+      (item) => item.id === release.channel_id,
+    )?.name;
+    return channel
+      ? [{ releaseId: release.id, platform: release.platform, channel }]
+      : [];
+  });
+  const activityQuery = useBundleActivityQuery(activityInputs);
+  const activityInputsByRelease = new Map(
+    activityInputs.map((input) => [input.releaseId, input]),
   );
   const channelNames = new Map(
     channels.map((channel) => [channel.id, channel.name]),
@@ -570,10 +572,13 @@ function BundlesPage() {
                             </div>
                             <div className="col-span-2 rounded-md bg-muted/40 p-3">
                               <dt className="mb-2 text-muted-foreground">
-                                Activity · 30d
+                                Insights
                               </dt>
                               <dd>
                                 <BundleMovementSummary
+                                  input={activityInputsByRelease.get(
+                                    release.id,
+                                  )}
                                   report={activityQuery.data?.[release.id]}
                                   loading={activityQuery.isFetching}
                                 />
@@ -641,7 +646,7 @@ function BundlesPage() {
                     <TableHead>Enabled</TableHead>
                     <TableHead>Force update</TableHead>
                     <TableHead>Rollout</TableHead>
-                    <TableHead>Activity · 30d</TableHead>
+                    <TableHead>Insights</TableHead>
                     <TableHead>Message</TableHead>
                     <TableHead>Created</TableHead>
                   </TableRow>
@@ -809,6 +814,9 @@ function BundlesPage() {
                               </TableCell>
                               <TableCell>
                                 <BundleMovementSummary
+                                  input={activityInputsByRelease.get(
+                                    release.id,
+                                  )}
                                   report={activityQuery.data?.[release.id]}
                                   loading={activityQuery.isFetching}
                                 />

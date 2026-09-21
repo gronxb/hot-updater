@@ -5,6 +5,7 @@ import { PGlite } from "@electric-sql/pglite";
 import { describe, expect, it } from "vitest";
 
 import { createBundleEventRowFixture } from "../../../packages/test-utils/src/databaseTestFixtures";
+import { supabaseOverviewPayload } from "../src/supabaseInsightsOverview";
 
 const migrationPath = path.resolve(
   "plugins/supabase/supabase/migrations/20260818000000_hot-updater_1.0.0.sql",
@@ -44,9 +45,10 @@ describe("Supabase v1 schema", () => {
         ).rows,
       ).toEqual([{ value: "1.0.0" }]);
       const record = (row: typeof event) =>
-        database.query("SELECT public.hot_updater_v1_record_event($1::jsonb)", [
-          JSON.stringify(row),
-        ]);
+        database.query(
+          "SELECT public.hot_updater_v1_record_event($1::jsonb, $2::jsonb)",
+          [JSON.stringify(row), JSON.stringify(supabaseOverviewPayload(row))],
+        );
       await record(event);
       const reusedId = {
         ...event,
@@ -165,9 +167,13 @@ describe("Supabase v1 schema", () => {
         metadata: { ...base.metadata, update_strategy: "appVersion" as const },
       };
       const record = (event: typeof base) =>
-        database.query("SELECT public.hot_updater_v1_record_event($1::jsonb)", [
-          JSON.stringify(event),
-        ]);
+        database.query(
+          "SELECT public.hot_updater_v1_record_event($1::jsonb, $2::jsonb)",
+          [
+            JSON.stringify(event),
+            JSON.stringify(supabaseOverviewPayload(event)),
+          ],
+        );
       await record(downloaded);
       await record(downloaded);
       expect(
@@ -237,7 +243,7 @@ describe("Supabase v1 schema", () => {
       "hot_updater_v1_bundle_event_heads(platform, channel, received_at_ms)",
     );
     expect(sql).toContain(
-      "CREATE FUNCTION public.hot_updater_v1_record_event(p_event jsonb)",
+      "CREATE FUNCTION public.hot_updater_v1_record_event(\n  p_event jsonb,\n  p_overview jsonb\n)",
     );
     expect(sql).toContain(
       "hot_updater_v1_bundle_events(install_id, type, received_at_ms, id)",
@@ -271,7 +277,9 @@ describe("Supabase v1 schema", () => {
     expect(sql).not.toContain("get_update_info");
     expect(sql).not.toContain("ALTER TABLE public.bundles ADD COLUMN");
     expect(sql).not.toContain("WHEN 'insights'");
-    expect(sql).not.toContain("v_event public.hot_updater_v1_bundle_events");
+    expect(sql).toContain(
+      "CREATE TABLE public.hot_updater_v1_insights_overview",
+    );
   });
 
   it("applies beside a v0 schema without modifying v0 data", async () => {

@@ -325,7 +325,8 @@ export const createMongoMigrator = (client: MongoClient): Migrator => {
                 if (table.internal) continue;
                 const isInsights =
                   table.ormName === "bundle_events" ||
-                  table.ormName === "bundle_event_heads";
+                  table.ormName === "bundle_event_heads" ||
+                  table.ormName === "insights_overview";
                 const collection = db.collection(table.ormName);
                 const collation = isInsights ? { locale: "simple" } : undefined;
                 const primaryKey = table.columns.find(

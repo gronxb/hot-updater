@@ -21,6 +21,8 @@ const headFields = [
   "type",
   "from_bundle_id",
   "to_bundle_id",
+  "current_release_id",
+  "app_version",
 ] as const;
 
 const parameter = (
@@ -87,43 +89,14 @@ export const updatePrismaEventHead = (
   executePrismaInsights(
     client,
     `INSERT INTO bundle_event_heads (${headFields.join(", ")}) VALUES (${headFields.map((field, index) => parameter(provider, index + 1, field)).join(", ")}) ${headConflict(provider)}`,
-    headFields.map((field) => event[field]),
-  );
-
-/** PostgreSQL clients without callback transactions can publish both rows atomically. */
-export const recordPrismaEventWithCte = (
-  client: object,
-  provider: ORMSQLProvider,
-  event: BundleEventRow,
-): Promise<void> => {
-  if (provider !== "postgresql" && provider !== "cockroachdb") {
-    throw new PrismaAdapterError(
-      "Insights writes require callback transactions",
-    );
-  }
-  const fields = [
-    "id",
-    "type",
-    "install_id",
-    "user_id",
-    "from_release_id",
-    "from_bundle_id",
-    "to_release_id",
-    "to_bundle_id",
-    "platform",
-    "app_version",
-    "channel",
-    "metadata",
-    "received_at_ms",
-  ] as const;
-  return executePrismaInsights(
-    client,
-    `WITH inserted AS (INSERT INTO bundle_events (${fields.join(", ")}) VALUES (${fields.map((field, index) => parameter(provider, index + 1, field)).join(", ")}) ON CONFLICT (id) DO NOTHING RETURNING ${headFields.join(", ")}) INSERT INTO bundle_event_heads (${headFields.join(", ")}) SELECT ${headFields.join(", ")} FROM inserted ${headConflict(provider)}`,
-    fields.map((field) =>
-      field === "metadata" ? JSON.stringify(event[field]) : event[field],
+    headFields.map((field) =>
+      field === "current_release_id"
+        ? event.type === "UPDATE_DOWNLOADED"
+          ? event.from_release_id
+          : event.to_release_id
+        : event[field],
     ),
   );
-};
 
 export const queryPrismaLatestEvents = async (
   client: object,

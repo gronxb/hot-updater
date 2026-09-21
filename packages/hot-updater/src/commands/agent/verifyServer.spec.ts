@@ -133,7 +133,7 @@ const createFixture = async (
     path.join(root, "node_modules/dotenv"),
   );
   await cp(
-    path.resolve(import.meta.dirname, "../../../agent/verify-server.mjs"),
+    path.resolve(import.meta.dirname, "../../../dist/agent/verify-server.mjs"),
     path.join(app, "verify-server.mjs"),
   );
   await writeFile(

@@ -61,6 +61,7 @@
     "@hot-updater/core": "workspace:*",
     "@hot-updater/plugin-core": "workspace:*",
     "@hot-updater/server": "workspace:*",
+    "@iarna/toml": "2.2.5",
     "jiti": "2.6.1"
   },
   "devDependencies": {
@@ -154,6 +155,7 @@
     "default-browser": "5.5.0",
     "default-browser-id": "5.0.1",
     "define-lazy-prop": "3.0.0",
+    "dotenv": "16.6.1",
     "es-toolkit": "1.47.0",
     "execa": "9.5.2",
     "fast-glob": "3.3.3",

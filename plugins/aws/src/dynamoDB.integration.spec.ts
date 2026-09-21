@@ -1,4 +1,7 @@
+import { createHash } from "node:crypto";
+
 import {
+  BatchWriteCommand,
   DeleteCommand,
   ScanCommand,
   GetCommand,
@@ -23,6 +26,23 @@ import { DynamoDBIntegrationFixture } from "./dynamoDB.integration-fixture";
 const fixture = new DynamoDBIntegrationFixture();
 const createPlugin = () => fixture.createPlugin();
 const clearTable = () => fixture.reset();
+
+const writeItems = async (items: readonly Record<string, unknown>[]) => {
+  for (let offset = 0; offset < items.length; offset += 25) {
+    await fixture.client.send(
+      new BatchWriteCommand({
+        RequestItems: {
+          [fixture.tableName]: items
+            .slice(offset, offset + 25)
+            .map((Item) => ({ PutRequest: { Item } })),
+        },
+      }),
+    );
+  }
+};
+
+const eventSortKey = (event: BundleEventRow) =>
+  `${String(event.received_at_ms).padStart(16, "0")}#${event.id}`;
 
 const insightsEvent = (
   index: number,
@@ -405,38 +425,55 @@ describe("DynamoDB Insights", () => {
     };
     try {
       const before = await measure();
-      for (let batch = 0; batch < 10; batch++) {
-        await Promise.all(
-          events.map((event, index) =>
-            insights.recordEvent({
-              event: {
-                ...event,
-                id: insightsEvent(20_000 + batch * events.length + index, {
-                  installId: event.install_id,
-                  receivedAtMs: batch,
-                }).id,
-                received_at_ms: batch,
-              },
-            }),
-          ),
-        );
-      }
+      const history = Array.from({ length: 240 }, (_, index) => {
+        const event = events[index % events.length]!;
+        return {
+          ...event,
+          id: insightsEvent(20_000 + index, {
+            installId: event.install_id,
+            receivedAtMs: index % 10,
+          }).id,
+          received_at_ms: index % 10,
+        };
+      });
+      await writeItems(
+        history.map((row) => ({
+          pk: "bundle_events",
+          sk: eventSortKey(row),
+          version: 1,
+          row,
+        })),
+      );
       const afterHistory = await measure();
-      for (let batch = 0; batch < 4; batch++) {
-        await Promise.all(
-          events.map((_, index) =>
-            insights.recordEvent({
-              event: {
-                ...insightsEvent(30_000 + batch * events.length + index, {
-                  installId: `other-${batch}-${index}`,
-                  receivedAtMs: 1000,
-                }),
-                channel: "other",
-              },
-            }),
-          ),
-        );
-      }
+      const unrelated = Array.from({ length: 96 }, (_, index) => ({
+        ...insightsEvent(30_000 + index, {
+          installId: `other-${index}`,
+          receivedAtMs: 1000,
+        }),
+        channel: "other",
+      }));
+      const unrelatedScope = `_hot-updater#insights-scope#${createHash("sha256")
+        .update(JSON.stringify(["ios", "other"]), "utf8")
+        .digest("hex")}`;
+      await writeItems(
+        unrelated.flatMap((row) => [
+          {
+            pk: DYNAMODB_INSIGHTS_INSTALLATIONS_PARTITION,
+            sk: row.install_id,
+            order_key: eventSortKey(row),
+            version: 1,
+            row,
+          },
+          {
+            pk: unrelatedScope,
+            sk: row.install_id,
+            received_at_ms: row.received_at_ms,
+            type: row.type,
+            from_bundle_id: row.from_bundle_id,
+            to_bundle_id: row.to_bundle_id,
+          },
+        ]),
+      );
       const afterScopes = await measure();
       expect(before).toEqual({
         count: events.length,

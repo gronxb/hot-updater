@@ -86,6 +86,12 @@ const missingDatabase = createDatabasePlugin({
       countEvents: async () => {
         throw new Error("database plugin is required");
       },
+      getReleaseActivity: async () => {
+        throw new Error("database plugin is required");
+      },
+      getAppUsage: async () => {
+        throw new Error("database plugin is required");
+      },
     },
     apiKeys: {
       create: async () => {

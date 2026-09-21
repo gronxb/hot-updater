@@ -29,7 +29,11 @@ to install `hot-updater`, `@hot-updater/react-native` and the selected
 build/provider packages. Record the installed versions and keep the lockfile.
 
 The installed CLI must advertise `agent infra setup` and `agent infra upgrade`.
-The skill does not add commands to older versions.
+The agent also checks `doctor --help` for the `scaffold` and `infrastructure`
+scopes, `--infra-dir` and live target options before provisioning. If missing,
+it needs a compatible CLI/package upgrade to complete verification. The skill
+does not add commands to older versions or substitute checklist claims for a
+doctor result.
 
 ## What the setup command produces
 
@@ -198,21 +202,43 @@ releases retain the context needed for upgrades across multiple versions.
 
 ## Verify completion
 
-The agent follows `COMMON.md` and runs the supplied read-only probe from the app
-directory, using its actual endpoint, platform, channel and update target:
+The agent follows `COMMON.md` and uses doctor as the scaffold and server
+verification gate. After configuring deployment inputs, run:
 
 ```bash
-node <scaffold-path>/app/verify-server.mjs --base-url https://updates.example.com --platform ios --channel production --app-version 1.0.0
+npx hot-updater doctor --scope scaffold --infra-dir <scaffold-path> --json
+```
+
+The scaffold command's JSON also provides this invocation as `doctor.command`
+and `doctor.args`. Fresh templates fail until placeholders are filled. The
+checks use the installed CLI's file requirements and provider rules, while
+allowing intended template customization.
+
+After deployment, resolve any pending operation and run from the app directory:
+
+```bash
+npx hot-updater doctor --scope infrastructure --infra-dir <scaffold-path> --json \
+  --server-base-url https://updates.example.com \
+  --platform ios --channel production --app-version 1.0.0
 ```
 
 For fingerprint updates, use `--fingerprint <fingerprint>` instead of
-`--app-version`. The probe checks the public server generation/version against
-the manifest and the same Release Catalog URL without a key (401) and with the
-saved key (valid 200, or the documented empty-catalog 404). It returns sanitized
-JSON and a nonzero exit code on failure. It loads keys from private local storage;
-keys are never command arguments or printed probe output. The probe does not test
-artifact downloads or native integration. The agent separately checks an existing
-artifact when available and runs:
+`--app-version`. Doctor checks the local scaffold and live server generation/version,
+then the same Release Catalog URL without a key (401) and with the saved key
+(valid 200, or the exact private, no-store empty-catalog 404). It reads keys from
+private local storage and returns sanitized JSON. The existing
+`app/verify-server.mjs` helper remains available and shares doctor's server probe.
+
+Require exit code 0, `success: true`, and the requested
+`details.verification.scope`. Repair `fail` and `blocked` checks, then rerun.
+Do not rewrite manifests or mark checklist entries complete to bypass a check.
+The CLI observes the filesystem and server directly; recorded `verifiedSteps`
+are not proof of completion.
+
+Read `details.verification.notChecked` before reporting completion. Provider
+resource bindings/migrations, local storage access and artifact downloads still
+need the provider checklist checks; native OTA requires a separate runtime test.
+For package/native configuration checks, also run:
 
 ```bash
 npx hot-updater doctor --json --server-base-url https://updates.example.com

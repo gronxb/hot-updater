@@ -4,6 +4,7 @@ export const FIREBASE_V1_COLLECTION_NAMES = {
   apiKeys: "hot_updater_v1_api_keys",
   bundleEvents: "hot_updater_v1_bundle_events",
   insightsLatest: "hot_updater_v1_insights_latest",
+  insightsOverview: "hot_updater_v1_insights_overview",
   bundlePatches: "hot_updater_v1_bundle_patches",
   bundles: "hot_updater_v1_bundles",
   channels: "hot_updater_v1_channels",

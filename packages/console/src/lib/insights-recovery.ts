@@ -1,44 +1,28 @@
+import type { InsightsCoverage } from "@hot-updater/plugin-core";
+
 import type { InsightsWindow } from "./insights-rpc";
 
 export type RecoveryInput = {
-  readonly platform: "all" | "ios" | "android";
+  readonly platform: "ios" | "android";
   readonly channel: string;
-  readonly appVersion?: string;
   readonly window: InsightsWindow;
   readonly releaseId?: string;
 };
 
-export type RecoveryPoint = {
-  readonly startMs: number;
-  readonly active: number | null;
-  readonly pendingInstallations: number | null;
-  readonly downloadedInstallations: number;
-  readonly recoveredInstallations: number;
-  readonly applied: number;
-  readonly recovered: number;
-  readonly rate: number | null;
-  readonly spike: boolean;
-};
-
-export type RecoverySeries = {
-  readonly releaseId: string;
-  readonly firstAppliedAtMs: number | null;
-  readonly activeInstallations: number;
-  readonly pendingInstallations: number;
-  readonly downloadedInstallations: number;
-  readonly recoveredInstallations: number;
-  readonly points: readonly RecoveryPoint[];
-};
-
 export type RecoveryReport = {
-  readonly sinceMs: number;
-  readonly beforeReceivedAtMs: number;
-  readonly intervalMs: number;
-  readonly truncated: boolean;
-  readonly unattributedInstallations: number;
-  readonly pendingInstallations: number;
-  readonly downloadedInstallations: number;
-  readonly series: readonly RecoverySeries[];
+  readonly downloads: number;
+  readonly uniqueUsers: number;
+  readonly launches: number;
+  readonly failedLaunches: number;
+  readonly points: readonly {
+    readonly startMs: number;
+    readonly launches: number;
+    readonly failedLaunches: number;
+  }[];
+  readonly startMs: number;
+  readonly endMs: number;
+  readonly measuredAtMs: number;
+  readonly coverage: InsightsCoverage;
 };
 
 export const recoveryWindows = {
@@ -50,17 +34,11 @@ export const recoveryWindows = {
 export function readRecoveryInput(input: RecoveryInput): RecoveryInput {
   if (
     !input ||
-    (input.platform !== "all" &&
-      input.platform !== "ios" &&
-      input.platform !== "android") ||
+    (input.platform !== "ios" && input.platform !== "android") ||
     typeof input.channel !== "string" ||
     !input.channel.trim() ||
     input.channel.length > 1_024 ||
     !Object.hasOwn(recoveryWindows, input.window) ||
-    (input.appVersion !== undefined &&
-      (typeof input.appVersion !== "string" ||
-        !input.appVersion.trim() ||
-        input.appVersion.length > 1_024)) ||
     (input.releaseId !== undefined &&
       (typeof input.releaseId !== "string" ||
         !input.releaseId.trim() ||

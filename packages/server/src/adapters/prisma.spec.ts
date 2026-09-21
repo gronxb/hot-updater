@@ -5,7 +5,6 @@ import { createBundleEventRowFixture } from "../../../test-utils/src/databaseTes
 import { setupDatabasePluginTestSuite } from "../../../test-utils/src/setupDatabasePluginTestSuite";
 import { createTableSql } from "../db/schema/sql";
 import { prismaAdapter, type PrismaConfig } from "./prisma";
-import { updatePrismaEventHead } from "./prismaInsights";
 import { createPrismaTestHarness } from "./prismaTestClient";
 
 const harness = createPrismaTestHarness();
@@ -74,7 +73,7 @@ describe("prismaAdapter capabilities", () => {
     for (const call of calls)
       await expect(call).rejects.toThrow("SQL Server Insights is unsupported");
   });
-  it("atomically records Insights without callback transactions using Prisma text-bound UUIDs", async () => {
+  it("requires callback transactions for atomic event and overview writes", async () => {
     const db = new PGlite();
     await db.exec(createTableSql("postgresql").join(";"));
     let statementId = 0;
@@ -104,57 +103,10 @@ describe("prismaAdapter capabilities", () => {
       .models.insights;
     const event = createBundleEventRowFixture("704", 100);
     try {
-      await insights.recordEvent({ event });
-      await updatePrismaEventHead(client, "postgresql", event);
-      await insights.recordEvent({
-        event: { ...event, install_id: "altered-install", received_at_ms: 300 },
-      });
-      await expect(
-        insights.findLatestEvents({ installId: event.install_id }),
-      ).resolves.toEqual([event]);
-      await expect(
-        insights.findLatestEvents({ installId: "altered-install" }),
-      ).resolves.toEqual([]);
-      expect((await db.query("SELECT id FROM bundle_events")).rows).toEqual([
-        { id: event.id },
-      ]);
-      await expect(
-        insights.countLatestEvents({
-          platform: event.platform,
-          channel: event.channel,
-          sinceMs: 0,
-          bundle: [
-            {
-              field: "to_bundle_id",
-              value: event.to_bundle_id,
-              types: [event.type],
-            },
-          ],
-        }),
-      ).resolves.toBe(1);
-
-      await db.exec(
-        "ALTER TABLE bundle_event_heads ADD CONSTRAINT reject_head CHECK (received_at_ms < 200)",
+      await expect(insights.recordEvent({ event })).rejects.toThrow(
+        "Insights writes require callback transactions",
       );
-      const rejected = {
-        ...event,
-        id: createBundleEventRowFixture("706", 200).id,
-        received_at_ms: 200,
-      };
-      await expect(insights.recordEvent({ event: rejected })).rejects.toThrow();
-      expect((await db.query("SELECT id FROM bundle_events")).rows).toEqual([
-        { id: event.id },
-      ]);
-      await expect(
-        insights.findLatestEvents({ installId: event.install_id }),
-      ).resolves.toEqual([event]);
-      await db.exec(
-        "ALTER TABLE bundle_event_heads DROP CONSTRAINT reject_head",
-      );
-      await insights.recordEvent({ event: rejected });
-      await expect(
-        insights.findLatestEvents({ installId: event.install_id }),
-      ).resolves.toEqual([rejected]);
+      expect((await db.query("SELECT id FROM bundle_events")).rows).toEqual([]);
     } finally {
       await db.close();
     }
@@ -189,10 +141,101 @@ describe("prismaAdapter capabilities", () => {
       working.models.insights.findLatestEvents({ installId: event.install_id }),
     ).resolves.toEqual([]);
     expect(await isolated.client.bundle_events.findMany()).toEqual([]);
+    await expect(
+      working.models.insights.getAppUsage({
+        channel: event.channel,
+        platform: "all",
+        timeRange: { start: 0, end: 3_600_000 },
+        intervalMs: 3_600_000,
+      }),
+    ).resolves.toMatchObject({ activeInstallations: 0 });
     await working.models.insights.recordEvent({ event });
     await expect(
       working.models.insights.findLatestEvents({ installId: event.install_id }),
     ).resolves.toEqual([event]);
+  });
+
+  it("maintains release, scope, user, and latest-distribution summaries", async () => {
+    const isolated = createPrismaTestHarness();
+    const insights = prismaAdapter({
+      prisma: isolated.client,
+      provider: "postgresql",
+    }).models.insights;
+    const first = createBundleEventRowFixture("731", 100);
+    const second = createBundleEventRowFixture("732", 200);
+    const recovery = createBundleEventRowFixture("733", 300);
+    const releaseA = first.to_bundle_id;
+    const releaseB = second.to_bundle_id;
+    const events = [
+      {
+        ...first,
+        type: "UPDATE_DOWNLOADED" as const,
+        to_release_id: releaseB,
+      },
+      {
+        ...first,
+        id: "00000000-0000-7000-8000-000000000734",
+        type: "UNCHANGED" as const,
+        from_bundle_id: null,
+        from_release_id: null,
+        to_release_id: releaseA,
+        metadata: { ...first.metadata, update_strategy: null },
+      },
+      { ...second, to_release_id: releaseB },
+      {
+        ...recovery,
+        type: "RECOVERED" as const,
+        from_release_id: releaseB,
+        to_release_id: releaseA,
+      },
+    ];
+    await Promise.all(events.map((event) => insights.recordEvent({ event })));
+    await insights.recordEvent({ event: events[3]! });
+    const references = [releaseA, releaseB].map((releaseId) => ({
+      releaseId,
+      platform: "ios" as const,
+      channel: "production",
+    }));
+    await expect(
+      insights.getReleaseActivity({ releases: references }),
+    ).resolves.toMatchObject({
+      data: [
+        { metrics: { downloads: 0, launches: 2, failedLaunches: 0 } },
+        { metrics: { downloads: 1, launches: 1, failedLaunches: 1 } },
+      ],
+    });
+    await expect(
+      insights.getReleaseActivity({
+        scope: { platform: "ios", channel: "production" },
+        timeRange: { start: 0, end: 3_600_000 },
+      }),
+    ).resolves.toMatchObject({
+      data: [
+        {
+          metrics: {
+            downloads: 1,
+            launches: 3,
+            failedLaunches: 1,
+            uniqueUsers: 3,
+          },
+        },
+      ],
+    });
+    await expect(
+      insights.getAppUsage({
+        channel: "production",
+        platform: "all",
+        timeRange: { start: 0, end: 3_600_000 },
+        intervalMs: 3_600_000,
+      }),
+    ).resolves.toMatchObject({
+      activeInstallations: 3,
+      points: [{ startMs: 0, installations: 3 }],
+      bundleDistribution: expect.arrayContaining([
+        expect.objectContaining({ releaseId: releaseA, installations: 2 }),
+        expect.objectContaining({ releaseId: releaseB, installations: 1 }),
+      ]),
+    });
   });
 
   it("retries CockroachDB raw serialization failures without duplicating the event", async () => {
@@ -236,6 +279,36 @@ describe("prismaAdapter capabilities", () => {
       { isolationLevel: "Serializable" },
       { isolationLevel: "Serializable" },
     ]);
+  });
+
+  it("retries sustained serializable write conflicts", async () => {
+    const isolated = createPrismaTestHarness();
+    const event = createBundleEventRowFixture("709", 100);
+    let attempts = 0;
+    const prisma = {
+      ...isolated.client,
+      $transaction: (
+        callback: (client: object) => Promise<unknown>,
+        options?: { readonly isolationLevel?: string },
+      ) => {
+        attempts += 1;
+        if (attempts < 5) {
+          return Promise.reject(
+            Object.assign(new Error("write conflict"), { code: "P2034" }),
+          );
+        }
+        return isolated.client.$transaction(callback, options);
+      },
+    };
+    const insights = prismaAdapter({ prisma, provider: "postgresql" }).models
+      .insights;
+
+    await insights.recordEvent({ event });
+
+    expect(attempts).toBe(5);
+    await expect(
+      insights.findLatestEvents({ installId: event.install_id }),
+    ).resolves.toEqual([event]);
   });
 
   it("counts MySQL overlapping bundle predicates once without dropping nullable source bundles", async () => {

@@ -1,5 +1,6 @@
 import { PGlite } from "@electric-sql/pglite";
 import {
+  bigint,
   boolean,
   doublePrecision,
   integer,
@@ -105,6 +106,28 @@ const bundleEventHeads = pgTable("bundle_event_heads", {
   type: text("type").notNull(),
   from_bundle_id: text("from_bundle_id"),
   to_bundle_id: text("to_bundle_id").notNull(),
+  current_release_id: text("current_release_id"),
+  app_version: text("app_version").notNull(),
+});
+const insightsOverview = pgTable("insights_overview", {
+  id: text("id").primaryKey(),
+  scope_kind: text("scope_kind").notNull(),
+  release_kind: text("release_kind").notNull(),
+  release_id: text("release_id").notNull(),
+  channel: text("channel").notNull(),
+  platform: text("platform").notNull(),
+  app_version_kind: text("app_version_kind").notNull(),
+  app_version: text("app_version").notNull(),
+  period_kind: text("period_kind").notNull(),
+  bucket_start_ms: doublePrecision("bucket_start_ms").notNull(),
+  downloads: bigint("downloads", { mode: "number" }).notNull(),
+  launches: bigint("launches", { mode: "number" }).notNull(),
+  failed_launches: bigint("failed_launches", { mode: "number" }).notNull(),
+  latest_installations: bigint("latest_installations", {
+    mode: "number",
+  }).notNull(),
+  launch_users: text("launch_users"),
+  activity_users: text("activity_users"),
 });
 const apiKeys = pgTable("api_keys", {
   id: text("id").primaryKey(),
@@ -118,6 +141,7 @@ const apiKeys = pgTable("api_keys", {
 const schema = {
   bundle_events: bundleEvents,
   bundle_event_heads: bundleEventHeads,
+  insights_overview: insightsOverview,
 
   bundle_patches: bundlePatches,
   bundles,
@@ -164,6 +188,83 @@ setupDatabasePluginTestSuite({
 });
 
 describe("drizzleAdapter schema requirements", () => {
+  it("maintains aggregate counters, recovered attribution, distinct users, and latest distribution", async () => {
+    const db = new PGlite();
+    await db.exec(DATABASE_PLUGIN_TEST_SCHEMA_SQL);
+    const insights = drizzleAdapter({
+      db: drizzle(db, { schema }),
+      provider: "postgresql",
+    }).models.insights;
+    const first = createBundleEventRowFixture("720", 100);
+    const second = createBundleEventRowFixture("721", 200);
+    const recovery = createBundleEventRowFixture("722", 300);
+    const releaseA = first.to_bundle_id;
+    const releaseB = second.to_bundle_id;
+    const events = [
+      {
+        ...first,
+        type: "UPDATE_DOWNLOADED" as const,
+        to_release_id: releaseB,
+      },
+      {
+        ...first,
+        id: createBundleEventRowFixture("723", 100).id,
+        type: "UNCHANGED" as const,
+        from_bundle_id: null,
+        from_release_id: null,
+        to_release_id: releaseA,
+        metadata: { ...first.metadata, update_strategy: null },
+      },
+      { ...second, to_release_id: releaseB },
+      {
+        ...recovery,
+        type: "RECOVERED" as const,
+        from_release_id: releaseB,
+        to_release_id: releaseA,
+      },
+    ];
+    try {
+      await Promise.all(events.map((event) => insights.recordEvent({ event })));
+      await insights.recordEvent({ event: events[3]! });
+      const lifetime = await insights.getReleaseActivity({
+        releases: [releaseA, releaseB].map((releaseId) => ({
+          releaseId,
+          platform: "ios" as const,
+          channel: "production",
+        })),
+      });
+      expect(lifetime.data.map(({ metrics }) => metrics)).toEqual([
+        { downloads: 0, launches: 2, failedLaunches: 0 },
+        { downloads: 1, launches: 1, failedLaunches: 1 },
+      ]);
+      const activity = await insights.getReleaseActivity({
+        scope: { platform: "ios", channel: "production" },
+        timeRange: { start: 0, end: 3_600_000 },
+      });
+      expect(activity.data[0]?.metrics).toMatchObject({
+        downloads: 1,
+        launches: 3,
+        failedLaunches: 1,
+        uniqueUsers: 3,
+      });
+      const usage = await insights.getAppUsage({
+        channel: "production",
+        platform: "all",
+        timeRange: { start: 0, end: 3_600_000 },
+        intervalMs: 3_600_000,
+      });
+      expect(usage.activeInstallations).toBe(3);
+      expect(usage.bundleDistribution).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ releaseId: releaseA, installations: 2 }),
+          expect.objectContaining({ releaseId: releaseB, installations: 1 }),
+        ]),
+      );
+    } finally {
+      await db.close();
+    }
+  });
+
   it("counts MySQL predicate overlap and nullable sources in one SQL snapshot", async () => {
     const db = new PGlite();
     await db.exec(DATABASE_PLUGIN_TEST_SCHEMA_SQL);
@@ -213,16 +314,12 @@ describe("drizzleAdapter schema requirements", () => {
     }
   });
   it.each([undefined, false])(
-    "keeps lazy Insights writes atomic with catalog transaction option %s",
+    "uses a native Insights transaction with catalog transaction option %s",
     async (transaction) => {
       const db = new PGlite();
       await db.exec(DATABASE_PLUGIN_TEST_SCHEMA_SQL);
       const native = drizzle(db, { schema });
-      const callbackTransaction = vi
-        .spyOn(native, "transaction")
-        .mockImplementation(() => {
-          throw new Error("callback transactions are unavailable");
-        });
+      const callbackTransaction = vi.spyOn(native, "transaction");
       const plugin = drizzleAdapter({
         db: async () => native,
         provider: "postgresql",
@@ -262,7 +359,7 @@ describe("drizzleAdapter schema requirements", () => {
             installId: previous.install_id,
           }),
         ).resolves.toEqual([next]);
-        expect(callbackTransaction).not.toHaveBeenCalled();
+        expect(callbackTransaction).toHaveBeenCalled();
       } finally {
         await db.close();
       }

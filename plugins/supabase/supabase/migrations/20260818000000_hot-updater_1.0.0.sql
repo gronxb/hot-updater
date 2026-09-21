@@ -544,7 +544,9 @@ CREATE TABLE public.hot_updater_v1_bundle_event_heads (
   channel text COLLATE "C" NOT NULL,
   type text NOT NULL,
   from_bundle_id uuid,
-  to_bundle_id uuid NOT NULL
+  to_bundle_id uuid NOT NULL,
+  current_release_id uuid,
+  app_version text NOT NULL
 );
 CREATE INDEX hot_updater_v1_bundle_event_heads_user_idx
   ON public.hot_updater_v1_bundle_event_heads(user_id, install_id);
@@ -558,24 +560,170 @@ ALTER TABLE public.hot_updater_v1_bundle_event_heads ENABLE ROW LEVEL SECURITY;
 REVOKE ALL ON public.hot_updater_v1_bundle_event_heads FROM PUBLIC, anon, authenticated;
 GRANT SELECT, INSERT, UPDATE ON public.hot_updater_v1_bundle_event_heads TO service_role;
 
-CREATE FUNCTION public.hot_updater_v1_record_event(p_event jsonb)
+CREATE TABLE public.hot_updater_v1_insights_overview (
+  id varchar(64) COLLATE "C" PRIMARY KEY NOT NULL,
+  scope_kind varchar(16) NOT NULL CHECK (
+    scope_kind IN ('release', 'channel', 'usage', 'distribution')
+  ),
+  release_kind varchar(8) NOT NULL,
+  release_id text NOT NULL DEFAULT '',
+  channel text COLLATE "C" NOT NULL,
+  platform varchar(8) COLLATE "C" NOT NULL,
+  app_version_kind varchar(8) NOT NULL,
+  app_version text NOT NULL DEFAULT '',
+  period_kind varchar(16) NOT NULL CHECK (
+    period_kind IN ('lifetime', 'hour', 'latest')
+  ),
+  bucket_start_ms double precision NOT NULL DEFAULT 0 CHECK (
+    (period_kind = 'lifetime' AND bucket_start_ms = 0)
+    OR (period_kind IN ('hour', 'latest') AND bucket_start_ms >= 0
+      AND mod(bucket_start_ms::numeric, 3600000) = 0)
+  ),
+  downloads bigint NOT NULL DEFAULT 0,
+  launches bigint NOT NULL DEFAULT 0,
+  failed_launches bigint NOT NULL DEFAULT 0,
+  latest_installations bigint NOT NULL DEFAULT 0,
+  launch_users text,
+  activity_users text,
+  CHECK (downloads >= 0 AND launches >= 0 AND failed_launches >= 0
+    AND latest_installations >= 0)
+);
+CREATE INDEX hot_updater_v1_insights_overview_release_time_idx
+  ON public.hot_updater_v1_insights_overview(
+    scope_kind, release_id, platform, channel, period_kind, bucket_start_ms
+  );
+CREATE INDEX hot_updater_v1_insights_overview_scope_time_idx
+  ON public.hot_updater_v1_insights_overview(
+    scope_kind, channel, platform, app_version_kind, app_version,
+    period_kind, bucket_start_ms
+  );
+CREATE INDEX hot_updater_v1_insights_overview_distribution_time_idx
+  ON public.hot_updater_v1_insights_overview(
+    scope_kind, channel, period_kind, bucket_start_ms, platform, app_version
+  );
+ALTER TABLE public.hot_updater_v1_insights_overview ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON public.hot_updater_v1_insights_overview FROM PUBLIC, anon, authenticated;
+GRANT SELECT, INSERT, UPDATE ON public.hot_updater_v1_insights_overview TO service_role;
+
+CREATE FUNCTION public.hot_updater_v1_record_event(
+  p_event jsonb,
+  p_overview jsonb
+)
 RETURNS void
 LANGUAGE plpgsql
 SECURITY INVOKER
 SET search_path = pg_catalog
 AS $$
+DECLARE
+  v_event public.hot_updater_v1_bundle_events%ROWTYPE;
+  v_head public.hot_updater_v1_bundle_event_heads%ROWTYPE;
+  v_delta jsonb;
+  v_distribution jsonb;
+  v_launch_position integer;
+  v_activity_position integer;
+  v_has_head boolean;
 BEGIN
   INSERT INTO public.hot_updater_v1_bundle_events
   SELECT * FROM pg_catalog.jsonb_populate_record(NULL::public.hot_updater_v1_bundle_events, p_event)
-  ON CONFLICT (id) DO NOTHING;
+  ON CONFLICT (id) DO NOTHING
+  RETURNING * INTO v_event;
+
+  IF NOT FOUND THEN RETURN; END IF;
+
+  SELECT * INTO v_head
+  FROM public.hot_updater_v1_bundle_event_heads
+  WHERE install_id = v_event.install_id
+  FOR UPDATE;
+  v_has_head := FOUND;
+
+  FOR v_delta IN SELECT value FROM pg_catalog.jsonb_array_elements(p_overview->'deltas')
+  LOOP
+    v_launch_position := NULLIF(v_delta->>'launch_position', '')::integer;
+    v_activity_position := NULLIF(v_delta->>'activity_position', '')::integer;
+    INSERT INTO public.hot_updater_v1_insights_overview (
+      id, scope_kind, release_kind, release_id, channel, platform,
+      app_version_kind, app_version, period_kind, bucket_start_ms,
+      downloads, launches, failed_launches, latest_installations,
+      launch_users, activity_users
+    ) VALUES (
+      v_delta->>'id', v_delta->>'scope_kind', v_delta->>'release_kind',
+      v_delta->>'release_id', v_delta->>'channel', v_delta->>'platform',
+      v_delta->>'app_version_kind', v_delta->>'app_version',
+      v_delta->>'period_kind', (v_delta->>'bucket_start_ms')::double precision,
+      (v_delta->>'downloads')::bigint, (v_delta->>'launches')::bigint,
+      (v_delta->>'failed_launches')::bigint, 0,
+      v_delta->>'launch_users', v_delta->>'activity_users'
+    )
+    ON CONFLICT (id) DO UPDATE SET
+      downloads = hot_updater_v1_insights_overview.downloads + EXCLUDED.downloads,
+      launches = hot_updater_v1_insights_overview.launches + EXCLUDED.launches,
+      failed_launches = hot_updater_v1_insights_overview.failed_launches + EXCLUDED.failed_launches,
+      launch_users = CASE WHEN v_launch_position IS NULL
+        THEN hot_updater_v1_insights_overview.launch_users
+        ELSE overlay(
+          coalesce(hot_updater_v1_insights_overview.launch_users, pg_catalog.repeat('!', 1024))
+          PLACING pg_catalog.chr(greatest(
+            pg_catalog.ascii(pg_catalog.substr(coalesce(hot_updater_v1_insights_overview.launch_users, pg_catalog.repeat('!', 1024)), v_launch_position, 1)),
+            pg_catalog.ascii(v_delta->>'launch_character')
+          )) FROM v_launch_position FOR 1
+        ) END,
+      activity_users = CASE WHEN v_activity_position IS NULL
+        THEN hot_updater_v1_insights_overview.activity_users
+        ELSE overlay(
+          coalesce(hot_updater_v1_insights_overview.activity_users, pg_catalog.repeat('!', 1024))
+          PLACING pg_catalog.chr(greatest(
+            pg_catalog.ascii(pg_catalog.substr(coalesce(hot_updater_v1_insights_overview.activity_users, pg_catalog.repeat('!', 1024)), v_activity_position, 1)),
+            pg_catalog.ascii(v_delta->>'activity_character')
+          )) FROM v_activity_position FOR 1
+        ) END;
+  END LOOP;
+
+  IF NOT v_has_head OR (v_event.received_at_ms, v_event.id) >
+    (v_head.received_at_ms, v_head.id) THEN
+    IF v_has_head THEN
+      UPDATE public.hot_updater_v1_insights_overview SET
+        latest_installations = latest_installations - 1
+      WHERE latest_installations > 0
+        AND scope_kind = 'distribution'
+        AND release_kind = CASE WHEN v_head.current_release_id IS NULL
+          THEN 'embedded' ELSE 'specific' END
+        AND release_id = coalesce(v_head.current_release_id::text, '')
+        AND channel = v_head.channel
+        AND platform = v_head.platform
+        AND app_version_kind = 'specific'
+        AND app_version = v_head.app_version
+        AND period_kind = 'latest'
+        AND bucket_start_ms = pg_catalog.floor(v_head.received_at_ms / 3600000) * 3600000;
+    END IF;
+
+    v_distribution := p_overview->'distribution';
+    INSERT INTO public.hot_updater_v1_insights_overview (
+      id, scope_kind, release_kind, release_id, channel, platform,
+      app_version_kind, app_version, period_kind, bucket_start_ms,
+      downloads, launches, failed_launches, latest_installations
+    ) VALUES (
+      v_distribution->>'id', v_distribution->>'scope_kind',
+      v_distribution->>'release_kind', v_distribution->>'release_id',
+      v_distribution->>'channel', v_distribution->>'platform',
+      v_distribution->>'app_version_kind', v_distribution->>'app_version',
+      v_distribution->>'period_kind',
+      (v_distribution->>'bucket_start_ms')::double precision, 0, 0, 0, 1
+    ) ON CONFLICT (id) DO UPDATE SET
+      latest_installations = hot_updater_v1_insights_overview.latest_installations + 1;
+  END IF;
 
   INSERT INTO public.hot_updater_v1_bundle_event_heads (
     install_id, id, received_at_ms, user_id, platform, channel, type,
-    from_bundle_id, to_bundle_id
+    from_bundle_id, to_bundle_id, current_release_id, app_version
   )
-  SELECT install_id, id, received_at_ms, user_id, platform, channel, type,
-    from_bundle_id, to_bundle_id
-  FROM public.hot_updater_v1_bundle_events WHERE id = (p_event->>'id')::uuid
+  VALUES (
+    v_event.install_id, v_event.id, v_event.received_at_ms, v_event.user_id,
+    v_event.platform, v_event.channel, v_event.type, v_event.from_bundle_id,
+    v_event.to_bundle_id,
+    CASE WHEN v_event.type = 'UPDATE_DOWNLOADED'
+      THEN v_event.from_release_id ELSE v_event.to_release_id END,
+    v_event.app_version
+  )
   ON CONFLICT (install_id) DO UPDATE SET
     id = excluded.id,
     received_at_ms = excluded.received_at_ms,
@@ -584,13 +732,15 @@ BEGIN
     channel = excluded.channel,
     type = excluded.type,
     from_bundle_id = excluded.from_bundle_id,
-    to_bundle_id = excluded.to_bundle_id
+    to_bundle_id = excluded.to_bundle_id,
+    current_release_id = excluded.current_release_id,
+    app_version = excluded.app_version
   WHERE (excluded.received_at_ms, excluded.id) >
     (hot_updater_v1_bundle_event_heads.received_at_ms, hot_updater_v1_bundle_event_heads.id);
 END;
 $$;
-REVOKE EXECUTE ON FUNCTION public.hot_updater_v1_record_event(jsonb)
+REVOKE EXECUTE ON FUNCTION public.hot_updater_v1_record_event(jsonb, jsonb)
   FROM PUBLIC, anon, authenticated;
-GRANT EXECUTE ON FUNCTION public.hot_updater_v1_record_event(jsonb)
+GRANT EXECUTE ON FUNCTION public.hot_updater_v1_record_event(jsonb, jsonb)
   TO service_role;
 NOTIFY pgrst, 'reload schema';

@@ -106,7 +106,11 @@ describe("v1.0.0 Release Catalog schema", () => {
       "type",
       "from_bundle_id",
       "to_bundle_id",
+      "current_release_id",
+      "app_version",
     ]);
+    expect(sql).toContain("downloads bigint not null default 0");
+    expect(sql).toContain("launches bigint not null default 0");
     for (const generated of [
       sql,
       generatePrismaSchema("postgresql", v1_0_0),

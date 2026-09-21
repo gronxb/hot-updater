@@ -41,7 +41,7 @@ setupDatabasePluginTestSuite({
   createPlugin: () => postgres({ dialect: new PGliteDialect(getClient()) }),
   reset: async () => {
     await getClient().exec(
-      "DELETE FROM bundle_event_heads; DELETE FROM bundle_events; DELETE FROM api_keys; DELETE FROM bundle_patches; DELETE FROM release_catalogs; DELETE FROM releases; DELETE FROM bundles; DELETE FROM channels;",
+      "DELETE FROM insights_overview; DELETE FROM bundle_event_heads; DELETE FROM bundle_events; DELETE FROM api_keys; DELETE FROM bundle_patches; DELETE FROM release_catalogs; DELETE FROM releases; DELETE FROM bundles; DELETE FROM channels;",
     );
   },
   dispose: async (plugin) => {
@@ -241,6 +241,16 @@ describe("PostgreSQL Insights projection", () => {
       `);
       expect(JSON.stringify(plan.rows)).toContain(
         "bundle_events_to_bundle_idx",
+      );
+      await database.exec("SET enable_seqscan = off");
+      const overviewPlan = await database.query(`
+        EXPLAIN (FORMAT JSON) SELECT * FROM insights_overview
+        WHERE scope_kind = 'distribution' AND channel = 'production'
+          AND period_kind = 'latest'
+          AND bucket_start_ms >= 0 AND bucket_start_ms < 50002
+      `);
+      expect(JSON.stringify(overviewPlan.rows)).toContain(
+        "insights_overview_distribution_time_idx",
       );
     } finally {
       await plugin.dispose?.();

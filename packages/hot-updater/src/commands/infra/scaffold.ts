@@ -30,7 +30,7 @@ export interface InfraOptions {
   json?: boolean;
 }
 
-interface InfraTemplate {
+export interface InfraTemplate {
   schemaVersion: 1;
   provider: InitProvider;
   cliVersion: string;
@@ -42,7 +42,7 @@ interface InfraTemplate {
   upgradeRequirements: string[];
 }
 
-interface InfraManifest extends Omit<InfraTemplate, "packages"> {
+export interface InfraManifest extends Omit<InfraTemplate, "packages"> {
   operation: InfraOperation;
   build?: BuildType;
   packages?: Record<string, string>;
@@ -84,17 +84,40 @@ const statIfPresent = (target: string) =>
 const readJson = async <T>(file: string): Promise<T> =>
   JSON.parse(await readFile(file, "utf8")) as T;
 
+export async function readInfraTemplate(provider: InitProvider) {
+  const packageRoot = path.dirname(require.resolve("hot-updater/package.json"));
+  const source = path.join(packageRoot, "dist/infra-templates", provider);
+  const template = await readJson<InfraTemplate>(
+    path.join(source, "template.json"),
+  );
+  return { source, template };
+}
+
+export async function getInfraFiles(
+  source: string,
+  operation: InfraOperation,
+  build?: BuildType,
+) {
+  const forAgent = operation !== "scaffold";
+  return (await listFiles(source))
+    .filter((file) => file !== "template.json")
+    .filter((file) => forAgent || !AGENT_FILES.includes(file.split("/")[0]!))
+    .filter(
+      (file) =>
+        !INFRA_BUILDS.some(
+          (choice) => choice !== build && file.endsWith(`.config.${choice}.ts`),
+        ),
+    )
+    .map((file) => file.replace(`.config.${build}.ts`, ".config.ts"));
+}
+
 export async function scaffoldInfra(
   operation: InfraOperation,
   options: Required<Pick<InfraOptions, "provider">> & InfraOptions,
 ) {
   const { provider, build } = options;
   const forAgent = operation !== "scaffold";
-  const packageRoot = path.dirname(require.resolve("hot-updater/package.json"));
-  const source = path.join(packageRoot, "dist/infra-templates", provider);
-  const template = await readJson<InfraTemplate>(
-    path.join(source, "template.json"),
-  );
+  const { source, template } = await readInfraTemplate(provider);
   const output = path.resolve(
     options.output ??
       path.join(
@@ -125,6 +148,10 @@ export async function scaffoldInfra(
       path: path.join(output, "upgrades", `${version}.md`),
     })),
     serverVersion: template.serverVersion,
+    doctor: {
+      command: "hot-updater",
+      args: ["doctor", "--scope", "scaffold", "--infra-dir", output, "--json"],
+    },
   });
 
   const existing = await statIfPresent(output);
@@ -157,17 +184,7 @@ export async function scaffoldInfra(
         `Destination belongs to a different scaffold. Choose another --output directory: ${output}`,
       );
     }
-    const expectedFiles = (await listFiles(source))
-      .filter((file) => file !== "template.json")
-      .filter((file) => forAgent || !AGENT_FILES.includes(file.split("/")[0]!))
-      .filter(
-        (file) =>
-          !INFRA_BUILDS.some(
-            (choice) =>
-              choice !== build && file.endsWith(`.config.${choice}.ts`),
-          ),
-      )
-      .map((file) => file.replace(`.config.${build}.ts`, ".config.ts"));
+    const expectedFiles = await getInfraFiles(source, operation, build);
     for (const file of [
       ...expectedFiles,
       ".gitignore",

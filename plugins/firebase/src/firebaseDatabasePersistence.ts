@@ -32,6 +32,7 @@ export interface FirebaseDatabaseCollections {
   readonly bundlePatches: CollectionReference<DocumentData>;
   readonly bundleEvents: CollectionReference<DocumentData>;
   readonly insightsLatest: CollectionReference<DocumentData>;
+  readonly insightsOverview: CollectionReference<DocumentData>;
   readonly channels: CollectionReference<DocumentData>;
   readonly apiKeys: CollectionReference<DocumentData>;
   readonly releaseCatalogs: CollectionReference<DocumentData>;
@@ -54,6 +55,9 @@ export const createFirebaseDatabaseCollections = (
   bundlePatches: db.collection(FIREBASE_V1_COLLECTION_NAMES.bundlePatches),
   bundleEvents: db.collection(FIREBASE_V1_COLLECTION_NAMES.bundleEvents),
   insightsLatest: db.collection(FIREBASE_V1_COLLECTION_NAMES.insightsLatest),
+  insightsOverview: db.collection(
+    FIREBASE_V1_COLLECTION_NAMES.insightsOverview,
+  ),
   channels: db.collection(FIREBASE_V1_COLLECTION_NAMES.channels),
   apiKeys: db.collection(FIREBASE_V1_COLLECTION_NAMES.apiKeys),
   releaseCatalogs: db.collection(FIREBASE_V1_COLLECTION_NAMES.releaseCatalogs),
@@ -412,6 +416,7 @@ export const migrateFirebaseDatabase = async (
     collections.releases.limit(1).get(),
     collections.releaseCatalogs.limit(1).get(),
     collections.insightsLatest.limit(1).get(),
+    collections.insightsOverview.limit(1).get(),
     collections.bundleEvents.limit(1).get(),
   ]);
   if (existingCollections.some((snapshot) => !snapshot.empty)) {

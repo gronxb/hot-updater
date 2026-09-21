@@ -210,12 +210,18 @@ it("sends the immutable event and canonical head update in one parameterized RES
   ).resolves.toBeUndefined();
   expect(state.queries).toHaveLength(0);
   expect(state.batches).toHaveLength(1);
-  expect(state.batches[0]).toHaveLength(2);
-  const [insert, head] = state.batches[0]!;
+  const [insert, ...remaining] = state.batches[0]!;
+  const summaries = remaining.slice(0, -2);
+  const head = remaining.at(-2);
+  const completed = remaining.at(-1);
   expect(insert?.sql).toContain("INSERT INTO bundle_events");
   expect(insert?.sql).toContain("ON CONFLICT(id) DO NOTHING");
   expect(insert?.params).toEqual(
     Object.values(eventD1Row).map((value) => JSON.stringify(value)),
+  );
+  expect(summaries.length).toBeGreaterThan(0);
+  expect(summaries.every(({ sql }) => sql.includes("insights_overview"))).toBe(
+    true,
   );
   expect(head?.sql).toContain("INSERT INTO bundle_event_heads");
   expect(head?.sql).toContain(
@@ -225,6 +231,8 @@ it("sends the immutable event and canonical head update in one parameterized RES
     "WHERE (excluded.received_at_ms, excluded.id) > (bundle_event_heads.received_at_ms, bundle_event_heads.id)",
   );
   expect(head?.params).toEqual([JSON.stringify(eventD1Row.id)]);
+  expect(completed?.sql).toContain("SET insights_processed = 1");
+  expect(completed?.params).toEqual([JSON.stringify(eventD1Row.id)]);
 });
 
 it("queries each movement type through a bounded descending range", async () => {

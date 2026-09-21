@@ -1,4 +1,4 @@
-import { boolean, customType, doublePrecision, foreignKey, index, integer, json, pgTable, text, uniqueIndex, uuid, varchar } from "drizzle-orm/pg-core"
+import { bigint, boolean, customType, doublePrecision, foreignKey, index, integer, json, pgTable, text, uniqueIndex, uuid, varchar } from "drizzle-orm/pg-core"
 
 import { relations } from "drizzle-orm"
 
@@ -203,12 +203,37 @@ export const bundle_event_heads = pgTable("bundle_event_heads", {
   channel: customType<{ data: string }>({ dataType: () => "text collate \"C\"" })("channel").notNull(),
   type: varchar("type", { length: 32 }).notNull(),
   from_bundle_id: uuid("from_bundle_id"),
-  to_bundle_id: uuid("to_bundle_id").notNull()
+  to_bundle_id: uuid("to_bundle_id").notNull(),
+  current_release_id: uuid("current_release_id"),
+  app_version: text("app_version").notNull()
 }, (table) => [
   index("bundle_event_heads_user_idx").on(table.user_id, table.install_id),
   index("bundle_event_heads_scope_idx").on(table.platform, table.channel, table.received_at_ms),
   index("bundle_event_heads_from_idx").on(table.type, table.platform, table.channel, table.from_bundle_id, table.received_at_ms),
   index("bundle_event_heads_to_idx").on(table.type, table.platform, table.channel, table.to_bundle_id, table.received_at_ms)
+])
+
+export const insights_overview = pgTable("insights_overview", {
+  id: varchar("id", { length: 64 }).primaryKey().notNull(),
+  scope_kind: varchar("scope_kind", { length: 16 }).notNull(),
+  release_kind: varchar("release_kind", { length: 8 }).notNull(),
+  release_id: varchar("release_id", { length: 36 }).notNull().default(""),
+  channel: customType<{ data: string }>({ dataType: () => "text collate \"C\"" })("channel").notNull(),
+  platform: customType<{ data: string }>({ dataType: () => "varchar(8) collate \"C\"" })("platform").notNull(),
+  app_version_kind: varchar("app_version_kind", { length: 8 }).notNull(),
+  app_version: text("app_version").notNull().default(""),
+  period_kind: varchar("period_kind", { length: 16 }).notNull(),
+  bucket_start_ms: doublePrecision("bucket_start_ms").notNull().default(0),
+  downloads: bigint("downloads", { mode: "number" }).notNull().default(0),
+  launches: bigint("launches", { mode: "number" }).notNull().default(0),
+  failed_launches: bigint("failed_launches", { mode: "number" }).notNull().default(0),
+  latest_installations: bigint("latest_installations", { mode: "number" }).notNull().default(0),
+  launch_users: text("launch_users"),
+  activity_users: text("activity_users")
+}, (table) => [
+  index("insights_overview_release_time_idx").on(table.scope_kind, table.release_id, table.platform, table.channel, table.period_kind, table.bucket_start_ms),
+  index("insights_overview_scope_time_idx").on(table.scope_kind, table.channel, table.platform, table.app_version_kind, table.app_version, table.period_kind, table.bucket_start_ms),
+  index("insights_overview_distribution_time_idx").on(table.scope_kind, table.channel, table.period_kind, table.bucket_start_ms, table.platform, table.app_version)
 ])
 
 export const api_keys = pgTable("api_keys", {

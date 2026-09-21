@@ -260,12 +260,21 @@ it("records the event and advances its head in one atomic batch", async () => {
   });
   const event = createBundleEventRowFixture("1", 100);
   await implementation.recordInsights({ event });
-  expect(statements).toHaveLength(2);
-  expect(statements[0]?.sql).toContain("INSERT INTO bundle_events");
-  expect(statements[0]?.sql).toContain("ON CONFLICT(id) DO NOTHING");
-  expect(statements[1]?.sql).toContain("INSERT INTO bundle_event_heads");
-  expect(statements[1]?.sql).toContain(
+  const [insert, ...remaining] = statements;
+  const summaries = remaining.slice(0, -2);
+  const head = remaining.at(-2);
+  const completed = remaining.at(-1);
+  expect(insert?.sql).toContain("INSERT INTO bundle_events");
+  expect(insert?.sql).toContain("ON CONFLICT(id) DO NOTHING");
+  expect(summaries.length).toBeGreaterThan(0);
+  expect(summaries.every(({ sql }) => sql.includes("insights_overview"))).toBe(
+    true,
+  );
+  expect(head?.sql).toContain("INSERT INTO bundle_event_heads");
+  expect(head?.sql).toContain(
     "FROM bundle_events WHERE id = json_extract(?, '$')",
   );
-  expect(statements[1]?.params).toEqual([JSON.stringify(event.id)]);
+  expect(head?.params).toEqual([JSON.stringify(event.id)]);
+  expect(completed?.sql).toContain("SET insights_processed = 1");
+  expect(completed?.params).toEqual([JSON.stringify(event.id)]);
 });

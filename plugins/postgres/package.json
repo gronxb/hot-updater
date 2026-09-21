@@ -35,6 +35,7 @@
   "dependencies": {
     "@hot-updater/core": "workspace:*",
     "@hot-updater/plugin-core": "workspace:*",
+    "@hot-updater/server": "workspace:*",
     "kysely": "catalog:db",
     "pg": "catalog:db"
   },

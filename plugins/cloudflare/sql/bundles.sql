@@ -118,6 +118,7 @@ CREATE TABLE bundle_events (
   channel TEXT NOT NULL,
   metadata TEXT NOT NULL,
   received_at_ms REAL NOT NULL,
+  insights_processed INTEGER NOT NULL DEFAULT 0,
   CONSTRAINT bundle_events_type_check CHECK (
     type IN ('UPDATE_DOWNLOADED', 'UPDATE_APPLIED', 'RECOVERED', 'UNCHANGED')
   ),
@@ -146,7 +147,41 @@ CREATE TABLE bundle_event_heads (
   channel TEXT NOT NULL,
   type TEXT NOT NULL,
   from_bundle_id TEXT,
-  to_bundle_id TEXT NOT NULL
+  to_bundle_id TEXT NOT NULL,
+  current_release_id TEXT,
+  app_version TEXT NOT NULL
+);
+
+CREATE TABLE insights_overview (
+  id TEXT COLLATE BINARY PRIMARY KEY NOT NULL,
+  scope_kind TEXT NOT NULL,
+  release_kind TEXT NOT NULL,
+  release_id TEXT NOT NULL DEFAULT '',
+  channel TEXT COLLATE BINARY NOT NULL,
+  platform TEXT COLLATE BINARY NOT NULL,
+  app_version_kind TEXT NOT NULL,
+  app_version TEXT NOT NULL DEFAULT '',
+  period_kind TEXT NOT NULL,
+  bucket_start_ms REAL NOT NULL DEFAULT 0,
+  downloads INTEGER NOT NULL DEFAULT 0,
+  launches INTEGER NOT NULL DEFAULT 0,
+  failed_launches INTEGER NOT NULL DEFAULT 0,
+  latest_installations INTEGER NOT NULL DEFAULT 0,
+  launch_users TEXT,
+  activity_users TEXT,
+  CONSTRAINT insights_overview_scope_kind_check CHECK (
+    scope_kind IN ('release', 'channel', 'usage', 'distribution')
+  ),
+  CONSTRAINT insights_overview_period_kind_check CHECK (
+    period_kind IN ('lifetime', 'hour', 'latest')
+  ),
+  CONSTRAINT insights_overview_bucket_check CHECK (
+    (period_kind = 'lifetime' AND bucket_start_ms = 0)
+    OR (period_kind IN ('hour', 'latest') AND bucket_start_ms >= 0 AND bucket_start_ms % 3600000 = 0)
+  ),
+  CONSTRAINT insights_overview_counts_check CHECK (
+    downloads >= 0 AND launches >= 0 AND failed_launches >= 0 AND latest_installations >= 0
+  )
 );
 
 CREATE TABLE api_keys (
@@ -191,3 +226,6 @@ CREATE INDEX bundle_event_heads_user_idx ON bundle_event_heads(user_id, install_
 CREATE INDEX bundle_event_heads_scope_idx ON bundle_event_heads(platform, channel, received_at_ms);
 CREATE INDEX bundle_event_heads_from_idx ON bundle_event_heads(type, platform, channel, from_bundle_id, received_at_ms);
 CREATE INDEX bundle_event_heads_to_idx ON bundle_event_heads(type, platform, channel, to_bundle_id, received_at_ms);
+CREATE INDEX insights_overview_release_time_idx ON insights_overview(scope_kind, release_id, platform, channel, period_kind, bucket_start_ms);
+CREATE INDEX insights_overview_scope_time_idx ON insights_overview(scope_kind, channel, platform, app_version_kind, app_version, period_kind, bucket_start_ms);
+CREATE INDEX insights_overview_distribution_time_idx ON insights_overview(scope_kind, channel, period_kind, bucket_start_ms, platform, app_version);

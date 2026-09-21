@@ -84,10 +84,42 @@ export const DATABASE_PLUGIN_TEST_SCHEMA_SQL = `
     channel text not null,
     type text not null,
     from_bundle_id text,
-    to_bundle_id text not null
+    to_bundle_id text not null,
+    current_release_id text,
+    app_version text not null
   );
   create index bundle_event_heads_user_idx on bundle_event_heads(user_id, install_id);
   create index bundle_event_heads_scope_idx on bundle_event_heads(platform, channel, received_at_ms);
+  create table insights_overview (
+    id text primary key,
+    scope_kind text not null,
+    release_kind text not null,
+    release_id text not null default '',
+    channel text not null,
+    platform text not null,
+    app_version_kind text not null,
+    app_version text not null default '',
+    period_kind text not null,
+    bucket_start_ms integer not null default 0,
+    downloads integer not null default 0,
+    launches integer not null default 0,
+    failed_launches integer not null default 0,
+    latest_installations integer not null default 0,
+    launch_users text,
+    activity_users text,
+    unique(scope_kind, release_kind, release_id, channel, platform,
+      app_version_kind, app_version, period_kind, bucket_start_ms)
+  );
+  create index insights_overview_release_time_idx on insights_overview(
+    scope_kind, release_id, platform, channel, period_kind, bucket_start_ms
+  );
+  create index insights_overview_scope_time_idx on insights_overview(
+    scope_kind, channel, platform, app_version_kind, app_version,
+    period_kind, bucket_start_ms
+  );
+  create index insights_overview_distribution_time_idx on insights_overview(
+    scope_kind, channel, period_kind, bucket_start_ms, platform, app_version
+  );
   create table api_keys (
     id text primary key,
     hash text not null unique,
@@ -100,6 +132,7 @@ export const DATABASE_PLUGIN_TEST_SCHEMA_SQL = `
 `;
 
 export const DATABASE_PLUGIN_TEST_RESET_SQL = `
+  delete from insights_overview;
   delete from bundle_event_heads;
   delete from bundle_events;
   delete from api_keys;

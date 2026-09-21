@@ -55,6 +55,7 @@ const prismaType = (
     if (column.type === "bool") return "Boolean";
     if (column.type === "float") return "Float";
     if (column.type === "integer") return "Int";
+    if (column.type === "bigint") return "BigInt";
     if (column.type === "json") return "Json";
     return "String";
   })();
@@ -228,6 +229,12 @@ const drizzleColumnFn = (
         imports: ["integer"],
       };
     }
+    if (column.type === "bigint") {
+      return {
+        code: `integer(${literal(column.ormName)}, { mode: "number" })`,
+        imports: ["integer"],
+      };
+    }
     if (column.type === "float") {
       return {
         code: `real(${literal(column.ormName)})`,
@@ -264,6 +271,12 @@ const drizzleColumnFn = (
     }
     if (column.type === "integer") {
       return { code: `int(${literal(column.ormName)})`, imports: ["int"] };
+    }
+    if (column.type === "bigint") {
+      return {
+        code: `bigint(${literal(column.ormName)}, { mode: "number" })`,
+        imports: ["bigint"],
+      };
     }
     if (column.type === "float") {
       return {
@@ -302,6 +315,12 @@ const drizzleColumnFn = (
     return {
       code: `integer(${literal(column.ormName)})`,
       imports: ["integer"],
+    };
+  }
+  if (column.type === "bigint") {
+    return {
+      code: `bigint(${literal(column.ormName)}, { mode: "number" })`,
+      imports: ["bigint"],
     };
   }
   if (column.type === "float") {

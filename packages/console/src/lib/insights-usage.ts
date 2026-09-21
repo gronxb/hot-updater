@@ -1,6 +1,11 @@
-import type { RecoveryInput } from "./insights-recovery";
+import type { InsightsWindow } from "./insights-api";
 
-export type AppUsageInput = Omit<RecoveryInput, "releaseId">;
+export type AppUsageInput = {
+  readonly platform: "all" | "ios" | "android";
+  readonly channel: string;
+  readonly appVersion?: string;
+  readonly window: InsightsWindow;
+};
 export type AppUsageScope = Omit<AppUsageInput, "window">;
 
 export type UsageDistribution = {
@@ -36,3 +41,23 @@ export const usageMetrics = {
   "7d": { label: "WAU", period: "7 days", interval: "6 hours" },
   "30d": { label: "MAU", period: "30 days", interval: "day" },
 } as const;
+
+export function readAppUsageInput(input: AppUsageInput): AppUsageInput {
+  if (
+    !input ||
+    (input.platform !== "all" &&
+      input.platform !== "ios" &&
+      input.platform !== "android") ||
+    typeof input.channel !== "string" ||
+    !input.channel.trim() ||
+    input.channel.length > 1_024 ||
+    !Object.hasOwn(usageMetrics, input.window) ||
+    (input.appVersion !== undefined &&
+      (typeof input.appVersion !== "string" ||
+        !input.appVersion.trim() ||
+        input.appVersion.length > 1_024))
+  ) {
+    throw new Error("Choose App usage filters and a time window.");
+  }
+  return input;
+}
