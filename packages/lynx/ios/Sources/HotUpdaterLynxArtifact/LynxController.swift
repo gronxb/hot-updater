@@ -133,6 +133,8 @@ public struct LynxConfirmationResult {
 
 /// One controller owns one managed runtime generation and one native storage/scope lease.
 public final class LynxController {
+    private typealias CallbackDelivery = () -> Void
+
     public let configuration: LynxControllerConfiguration
     public let generationEventJournalURL: URL
     public let runningArtifact: LynxInstalledArtifact
@@ -783,7 +785,12 @@ public final class LynxController {
         return runningArtifact
     }
     public func destroy(_ context: LynxLaunchContext) {
-        lock.lock(); defer { lock.unlock() }
+        var deliveries: [CallbackDelivery] = []
+        lock.lock()
+        defer {
+            lock.unlock()
+            deliveries.forEach { $0() }
+        }
         context.active = false
         let discarded = preparations.filter { $0.value.context === context }
         for (id, value) in discarded {
@@ -794,14 +801,20 @@ public final class LynxController {
         let pageCallbacks = pageReadyCallbacks.removeValue(
             forKey: ObjectIdentifier(context)
         ) ?? []
-        pageCallbacks.forEach {
-            $0(.failure(LynxArtifactError.invalid(
+        pageCallbacks.forEach { callback in
+            deliveries.append { callback(.failure(LynxArtifactError.invalid(
                 "STALE_CONTEXT: Page was destroyed"
-            )))
+            ))) }
         }
         if primary === context {
             let callbacks = readyCallbacks; readyCallbacks = []
-            callbacks.forEach { $0(.failure(LynxArtifactError.invalid("STALE_CONTEXT: Primary was destroyed"))) }
+            callbacks.forEach { callback in
+                deliveries.append { callback(.failure(
+                    LynxArtifactError.invalid(
+                        "STALE_CONTEXT: Primary was destroyed"
+                    )
+                )) }
+            }
         }
     }
 
@@ -1105,7 +1118,13 @@ public final class LynxController {
 
     /// The host calls this only after its native media/font/script loader succeeds.
     public func observedResource(_ path: String, context: LynxLaunchContext) throws {
-        lock.lock(); defer { lock.unlock() }; try validate(context)
+        var deliveries: [CallbackDelivery] = []
+        lock.lock()
+        defer {
+            lock.unlock()
+            deliveries.forEach { $0() }
+        }
+        try validate(context)
         guard !readinessAuthorityRevoked else {
             throw LynxArtifactError.invalid(
                 "STALE_CONTEXT: Managed transition already accepted"
@@ -1117,13 +1136,19 @@ public final class LynxController {
         context.loadedResources.insert(path)
         if context.primary {
             loadedStartupResources.insert(path)
-            try confirmIfReady()
+            try confirmIfReady(&deliveries)
         } else {
-            try admitPageIfReady(context)
+            try admitPageIfReady(context, deliveries: &deliveries)
         }
     }
     public func observedContent(_ context: LynxLaunchContext) throws {
-        lock.lock(); defer { lock.unlock() }; try validate(context)
+        var deliveries: [CallbackDelivery] = []
+        lock.lock()
+        defer {
+            lock.unlock()
+            deliveries.forEach { $0() }
+        }
+        try validate(context)
         guard !readinessAuthorityRevoked else {
             throw LynxArtifactError.invalid(
                 "STALE_CONTEXT: Managed transition already accepted"
@@ -1132,39 +1157,51 @@ public final class LynxController {
         context.pageContentObserved = true
         if context.primary {
             contentObserved = true
-            try confirmIfReady()
+            try confirmIfReady(&deliveries)
         } else {
-            try admitPageIfReady(context)
+            try admitPageIfReady(context, deliveries: &deliveries)
         }
     }
     public func notifyAppReady(_ context: LynxLaunchContext,
                                completion: @escaping (Result<LynxConfirmationResult, Error>) -> Void) {
-        lock.lock(); defer { lock.unlock() }
+        var deliveries: [CallbackDelivery] = []
+        lock.lock()
+        defer {
+            lock.unlock()
+            deliveries.forEach { $0() }
+        }
         do { try validate(context) }
-        catch { completion(.failure(error)); return }
+        catch {
+            deliveries.append { completion(.failure(error)) }
+            return
+        }
         guard !readinessAuthorityRevoked else {
-            completion(.failure(LynxArtifactError.invalid(
+            deliveries.append { completion(.failure(LynxArtifactError.invalid(
                 "STALE_CONTEXT: Managed transition already accepted"
-            )))
+            ))) }
             return
         }
         if !context.primary {
             if context.pageAdmitted {
-                completion(.success(.init(
+                deliveries.append { completion(.success(.init(
                     status: "PAGE_ALREADY_ADMITTED",
                     transition: nil
-                )))
+                ))) }
                 return
             }
             pageReadyCallbacks[ObjectIdentifier(context), default: []]
                 .append(completion)
             context.pageReadyRequested = true
-            do { try admitPageIfReady(context) }
+            do {
+                try admitPageIfReady(context, deliveries: &deliveries)
+            }
             catch {
                 let callbacks = pageReadyCallbacks.removeValue(
                     forKey: ObjectIdentifier(context)
                 ) ?? []
-                callbacks.forEach { $0(.failure(error)) }
+                callbacks.forEach { callback in
+                    deliveries.append { callback(.failure(error)) }
+                }
             }
             return
         }
@@ -1200,22 +1237,29 @@ public final class LynxController {
                     next.revision = UUID().uuidString
                     try save(next)
                 }
-                completion(.success(.init(
+                let confirmation = LynxConfirmationResult(
                     status: "ALREADY_CONFIRMED",
                     transition: transition,
                     transitionId: transitionId
-                )))
-            } catch { completion(.failure(error)) }
+                )
+                deliveries.append { completion(.success(confirmation)) }
+            } catch {
+                deliveries.append { completion(.failure(error)) }
+            }
             return
         }
         readyCallbacks.append(completion); readyRequested = true
-        do { try confirmIfReady() }
+        do { try confirmIfReady(&deliveries) }
         catch {
             let callbacks = readyCallbacks; readyCallbacks = []
-            callbacks.forEach { $0(.failure(error)) }
+            callbacks.forEach { callback in
+                deliveries.append { callback(.failure(error)) }
+            }
         }
     }
-    private func confirmIfReady() throws {
+    private func confirmIfReady(
+        _ deliveries: inout [CallbackDelivery]
+    ) throws {
         guard !runningConfirmed, contentObserved, readyRequested, let primary,
               primary.requiredResources.isSubset(of: primary.loadedResources),
               state.pendingPages?.isEmpty != false
@@ -1237,22 +1281,28 @@ public final class LynxController {
         try save(next)
         runningConfirmed = true
         let callbacks = readyCallbacks; readyCallbacks = []
-        callbacks.enumerated().forEach {
-            $0.element(.success(.init(
-                status: $0.offset == 0 ? "CONFIRMED" : "ALREADY_CONFIRMED",
-                transition: $0.offset == 0 ? transition : nil,
-                transitionId: $0.offset == 0 ? transitionId : nil
-            )))
+        callbacks.enumerated().forEach { offset, callback in
+            let confirmation = LynxConfirmationResult(
+                status: offset == 0 ? "CONFIRMED" : "ALREADY_CONFIRMED",
+                transition: offset == 0 ? transition : nil,
+                transitionId: offset == 0 ? transitionId : nil
+            )
+            deliveries.append { callback(.success(confirmation)) }
         }
         } catch {
             readyRequested = false
             let callbacks = readyCallbacks; readyCallbacks = []
-            callbacks.forEach { $0(.failure(error)) }
+            callbacks.forEach { callback in
+                deliveries.append { callback(.failure(error)) }
+            }
             throw error
         }
     }
 
-    private func admitPageIfReady(_ context: LynxLaunchContext) throws {
+    private func admitPageIfReady(
+        _ context: LynxLaunchContext,
+        deliveries: inout [CallbackDelivery]
+    ) throws {
         guard !context.primary, !context.pageAdmitted,
               context.pageContentObserved, context.pageReadyRequested,
               context.requiredResources.isSubset(of: context.loadedResources)
@@ -1278,15 +1328,16 @@ public final class LynxController {
         let callbacks = pageReadyCallbacks.removeValue(
             forKey: ObjectIdentifier(context)
         ) ?? []
-        callbacks.enumerated().forEach {
-            $0.element(.success(.init(
-                status: $0.offset == 0
+        callbacks.enumerated().forEach { offset, callback in
+            let confirmation = LynxConfirmationResult(
+                status: offset == 0
                     ? "PAGE_ADMITTED"
                     : "PAGE_ALREADY_ADMITTED",
                 transition: nil
-            )))
+            )
+            deliveries.append { callback(.success(confirmation)) }
         }
-        try confirmIfReady()
+        try confirmIfReady(&deliveries)
     }
 
     public func pendingPageAttemptId(
@@ -1305,7 +1356,12 @@ public final class LynxController {
         _ context: LynxLaunchContext,
         reason: LynxPageCancellationReason
     ) throws -> Bool {
-        lock.lock(); defer { lock.unlock() }
+        var deliveries: [CallbackDelivery] = []
+        lock.lock()
+        defer {
+            lock.unlock()
+            deliveries.forEach { $0() }
+        }
         try validate(context)
         guard !context.primary, !context.pageAdmitted,
               let pending = state.pendingPages?.first(where: {
@@ -1325,13 +1381,13 @@ public final class LynxController {
         let callbacks = pageReadyCallbacks.removeValue(
             forKey: ObjectIdentifier(context)
         ) ?? []
-        callbacks.forEach {
-            $0(.failure(LynxPolicyError(
+        callbacks.forEach { callback in
+            deliveries.append { callback(.failure(LynxPolicyError(
                 code: "PAGE_CANCELLED",
                 message: "Managed page admission was cancelled"
-            )))
+            ))) }
         }
-        try confirmIfReady()
+        try confirmIfReady(&deliveries)
         return true
     }
 
@@ -1350,7 +1406,12 @@ public final class LynxController {
         failureCode: Int?,
         failureResourcePath: String?
     ) throws -> Bool {
-        lock.lock(); defer { lock.unlock() }
+        var deliveries: [CallbackDelivery] = []
+        lock.lock()
+        defer {
+            lock.unlock()
+            deliveries.forEach { $0() }
+        }
         try validate(context)
         guard !context.primary, !context.pageAdmitted,
               let failedPending = state.pendingPages?.first(where: {
@@ -1382,17 +1443,17 @@ public final class LynxController {
         let callbacks = pageReadyCallbacks.removeValue(
             forKey: ObjectIdentifier(context)
         ) ?? []
-        callbacks.forEach {
-            $0(.failure(LynxArtifactError.invalid(
+        callbacks.forEach { callback in
+            deliveries.append { callback(.failure(LynxArtifactError.invalid(
                 "Native managed page admission failed"
-            )))
+            ))) }
         }
         let primaryCallbacks = readyCallbacks
         readyCallbacks = []
-        primaryCallbacks.forEach {
-            $0(.failure(LynxArtifactError.invalid(
+        primaryCallbacks.forEach { callback in
+            deliveries.append { callback(.failure(LynxArtifactError.invalid(
                 "Native managed page admission failed"
-            )))
+            ))) }
         }
         return true
     }
@@ -1575,14 +1636,24 @@ public final class LynxController {
         fatal knownFatal: Bool,
         allowConfirmed: Bool = false
     ) throws -> Bool {
-        lock.lock(); defer { lock.unlock() }; try validate(context, primaryRequired: true)
+        var deliveries: [CallbackDelivery] = []
+        lock.lock()
+        defer {
+            lock.unlock()
+            deliveries.forEach { $0() }
+        }
+        try validate(context, primaryRequired: true)
         // Errors after startup confirmation are outside the initial rollback window.
         let managedStartupPending = state.pending?.transitionId != nil
         guard knownFatal,
               !runningConfirmed || allowConfirmed || managedStartupPending
         else { return false }
         let callbacks = readyCallbacks; readyCallbacks = []
-        defer { callbacks.forEach { $0(.failure(LynxArtifactError.invalid("Native startup failed"))) } }
+        callbacks.forEach { callback in
+            deliveries.append { callback(.failure(
+                LynxArtifactError.invalid("Native startup failed")
+            )) }
+        }
         var next = state
         try recordFatalSelectionFailure(in: &next)
         try Self.terminalizePendingPages(

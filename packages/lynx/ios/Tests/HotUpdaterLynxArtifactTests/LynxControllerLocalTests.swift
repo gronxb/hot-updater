@@ -236,6 +236,44 @@ final class LynxControllerLocalTests: XCTestCase {
         XCTAssertEqual(controller!.runningSelection.kind, "BUILTIN")
     }
 
+    func testReadinessCallbackRunsAfterControllerUnlocks() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(
+            "lynx-local-\(UUID().uuidString)"
+        )
+        defer { try? FileManager.default.removeItem(at: root) }
+        let embedded = root.appendingPathComponent("embedded")
+        let digest = try writeTree(
+            at: embedded,
+            bundleId: embeddedId,
+            marker: "A"
+        )
+        let controller = try LynxController(configuration: configuration(
+            root: root.appendingPathComponent("store"),
+            embedded: embedded,
+            digest: digest
+        ))
+        let context = controller.createContext(primary: true)
+        _ = try controller.begin(context)
+        try controller.observedContent(context)
+
+        var concurrentReadFinished = false
+        var status: String?
+        controller.notifyAppReady(context) { result in
+            status = try? result.get().status
+            let finished = DispatchSemaphore(value: 0)
+            DispatchQueue.global().async {
+                _ = try? controller.getState(context)
+                finished.signal()
+            }
+            concurrentReadFinished = finished.wait(
+                timeout: .now() + 1
+            ) == .success
+        }
+
+        XCTAssertEqual(status, "CONFIRMED")
+        XCTAssertTrue(concurrentReadFinished)
+    }
+
     func testColdUpdatePersistsAndAtomicallyConsumesLaunchTransitionId() throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent("lynx-local-\(UUID().uuidString)")
         defer { try? FileManager.default.removeItem(at: root) }
