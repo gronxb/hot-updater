@@ -903,7 +903,6 @@ class HotUpdaterSparklingHost(
             bridge.registerLynxModule(builder, page.containerId)
             SimpleLynxKitView(activity, sparkling, builder, null, null).also {
                 constructedKit = it
-                it.addRuntimeLifecycleListener(runtimeLifecycle)
                 bridge.init(it, page.containerId, SPARKLING_LYNX_PLATFORM)
                 sparkling.bridge = bridge
                 launch.bind(
@@ -944,6 +943,7 @@ class HotUpdaterSparklingHost(
             launch.resolveEssential(page.logical.entry)
         }
         kit.load()
+        kit.addRuntimeLifecycleListener(runtimeLifecycle)
         return view
     }
 

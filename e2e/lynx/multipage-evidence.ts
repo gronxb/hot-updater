@@ -326,6 +326,28 @@ export function assertManagedDetailClosed(
   }
 }
 
+export function assertManagedStackDepthAfterBack(
+  snapshot: GenerationEventsSnapshot,
+  options: {
+    readonly platform: "ios" | "android";
+    readonly afterSequence: string;
+    readonly expectedDepth: number;
+  },
+): void {
+  requireEvent(
+    snapshot,
+    options.platform === "ios" ? ["nativeBack"] : ["routeClosed"],
+    (event) =>
+      compareGenerationEventSequence(event.sequence, options.afterSequence) >
+        0 &&
+      event.details.outcome ===
+        (options.platform === "ios" ? "nativeBack" : "closed") &&
+      Array.isArray(event.details.orderedPageEntries) &&
+      event.details.orderedPageEntries.length === options.expectedDepth,
+    `native back to stack depth ${options.expectedDepth}`,
+  );
+}
+
 export function assertManagedDetailPending(
   snapshot: GenerationEventsSnapshot,
   options: {

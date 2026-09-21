@@ -8,6 +8,7 @@ import {
   assertManagedInstallRejected,
   assertManagedMainPage,
   assertManagedPageTerminal,
+  assertManagedStackDepthAfterBack,
   assertManagedVerifiedFatalDetail,
 } from "./multipage-evidence";
 
@@ -45,6 +46,34 @@ const snapshot = (
 });
 
 describe("managed Lynx multi-page evidence", () => {
+  it("requires a new native-back event at the expected stack depth", () => {
+    const events = snapshot([
+      event("10", "nativeBack", {
+        outcome: "nativeBack",
+        orderedPageEntries: ["main.lynx.bundle", "detail.lynx.bundle"],
+      }),
+      event("12", "nativeBack", {
+        outcome: "nativeBack",
+        orderedPageEntries: ["main.lynx.bundle"],
+      }),
+    ]);
+
+    expect(() =>
+      assertManagedStackDepthAfterBack(events, {
+        platform: "ios",
+        afterSequence: "10",
+        expectedDepth: 1,
+      }),
+    ).not.toThrow();
+    expect(() =>
+      assertManagedStackDepthAfterBack(events, {
+        platform: "ios",
+        afterSequence: "12",
+        expectedDepth: 1,
+      }),
+    ).toThrow("Missing authentic native native back to stack depth 1 event");
+  });
+
   it("proves a real iOS detail page, its admission, params, and JS close", () => {
     const initial = snapshot([
       event("1", "generationStarted", {

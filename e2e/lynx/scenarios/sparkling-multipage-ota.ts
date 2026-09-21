@@ -13,6 +13,7 @@ import {
   assertManagedPageTerminal,
   assertManagedPendingTransition,
   assertManagedReconstructedStack,
+  assertManagedStackDepthAfterBack,
   assertManagedTransition,
   assertManagedTransitionCancellation,
   assertManagedVerifiedFatalDetail,
@@ -89,6 +90,41 @@ async function waitForManagedDetailOpened(
     }
   }
   throw lastError;
+}
+
+async function closeManagedStackToRoot(
+  app: LynxAppDriver,
+  startingDepth: number,
+): Promise<void> {
+  for (let depth = startingDepth; depth > 1; depth -= 1) {
+    const before = await app.captureGenerationEvents(
+      `multi-page navigation stack: capture depth ${depth}`,
+    );
+    if (before.latestSequence === null) {
+      throw new Error("Managed generation event sequence is unavailable");
+    }
+    await app.nativeBack(`multi-page navigation stack: close depth ${depth}`);
+    let lastError: unknown;
+    for (let attempt = 1; attempt <= 20; attempt += 1) {
+      const after = await app.captureGenerationEvents(
+        `multi-page navigation stack: verify depth ${depth - 1}` +
+          (attempt === 1 ? "" : ` retry ${attempt}`),
+      );
+      try {
+        assertManagedStackDepthAfterBack(after, {
+          platform: app.platformName,
+          afterSequence: before.latestSequence,
+          expectedDepth: depth - 1,
+        });
+        lastError = undefined;
+        break;
+      } catch (error) {
+        lastError = error;
+        await new Promise((resolve) => setTimeout(resolve, 250));
+      }
+    }
+    if (lastError !== undefined) throw lastError;
+  }
 }
 
 async function resetAndInstallServerA(
@@ -435,9 +471,7 @@ export const sparklingMultipageOtaScenario = {
         "action-exercise-navigation-stack-boundary",
       ),
     );
-    for (let depth = 16; depth > 1; depth -= 1) {
-      await app.nativeBack(`multi-page navigation stack: close depth ${depth}`);
-    }
+    await closeManagedStackToRoot(app, 16);
     assertManagedMainPage(
       await app.captureGenerationEvents(
         "multi-page navigation stack: prove original main remains top",
