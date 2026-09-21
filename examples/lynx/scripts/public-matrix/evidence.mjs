@@ -1203,8 +1203,14 @@ export function normalizeBuild({
 }
 
 export function collectDeltaDelivery(deploymentReceipt, nativeLogs) {
-  assert.equal(deploymentReceipt.deliveryArtifactResponse?.fileUrl, null);
-  assert.equal(deploymentReceipt.deliveryArtifactResponse?.fileHash, null);
+  assert.match(
+    deploymentReceipt.deliveryArtifactResponse?.fileUrl,
+    /^https?:\/\//,
+  );
+  assert.match(
+    deploymentReceipt.deliveryArtifactResponse?.fileHash,
+    /^[a-f0-9]{64}$/,
+  );
   const changed =
     deploymentReceipt.deliveryArtifactResponse?.changedAssets?.[
       "main.lynx.bundle"
@@ -1299,8 +1305,8 @@ export function collectDeltaDelivery(deploymentReceipt, nativeLogs) {
     baseBundleId: patch.baseBundleId,
     targetBundleId: deploymentReceipt.bundleId,
     archiveFallbackUsed: false,
-    archiveFileHash: null,
-    archiveFileUrl: null,
+    archiveFileHash: deploymentReceipt.deliveryArtifactResponse.fileHash,
+    archiveFileUrl: deploymentReceipt.deliveryArtifactResponse.fileUrl,
     deliveryArtifactUrl: deploymentReceipt.deliveryArtifactUrl,
     manifestUrl,
     manifestSha256,

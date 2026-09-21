@@ -262,8 +262,8 @@ describe("Lynx public matrix native event evidence", () => {
       deliveryArtifactUrl:
         "https://example.test/artifacts/bundle-c/from/bundle-b",
       deliveryArtifactResponse: {
-        fileHash: null,
-        fileUrl: null,
+        fileHash: "e".repeat(64),
+        fileUrl: "https://example.test/bundle.zip",
         manifestUrl: "https://example.test/manifest",
         manifestFileHash: "d".repeat(64),
         changedAssets: {

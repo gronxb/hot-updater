@@ -393,6 +393,7 @@ async function compile(
     outDir,
     variant,
     behavior,
+    matrixStableFont: true,
     octaneSource,
   });
   return { fixture, compilerReceipt };

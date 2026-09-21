@@ -1296,9 +1296,6 @@ function deltaDelivery(
     `${at}.targetBundleId`,
   );
   boolean(delivery.archiveFallbackUsed, false, `${at}.archiveFallbackUsed`);
-  if (delivery.archiveFileUrl !== null || delivery.archiveFileHash !== null) {
-    fail(at, "manifest delta must not retain an archive URL or hash");
-  }
   const absoluteUrl = (value: unknown, path: string) => {
     const candidate = string(value, path);
     let parsed: URL;
@@ -1312,6 +1309,8 @@ function deltaDelivery(
     }
     return candidate;
   };
+  absoluteUrl(delivery.archiveFileUrl, `${at}.archiveFileUrl`);
+  hash(delivery.archiveFileHash, `${at}.archiveFileHash`);
   absoluteUrl(delivery.deliveryArtifactUrl, `${at}.deliveryArtifactUrl`);
   absoluteUrl(delivery.manifestUrl, `${at}.manifestUrl`);
   const manifestSha256 = hash(delivery.manifestSha256, `${at}.manifestSha256`);

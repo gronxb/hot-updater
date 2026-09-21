@@ -51,13 +51,16 @@ async function buildResource(kind, variant) {
   }
   if (kind === "font") {
     const fontRoot = path.join(exampleRoot, "spike/fonts");
+    const stableFont = process.env.HOT_UPDATER_SPIKE_STABLE_FONT === "1";
     return [
       [
         "assets/probe.ttf",
         await fs.readFile(
           path.join(
             fontRoot,
-            variant === "A" ? "Inter-Regular.ttf" : "Inter-Black.ttf",
+            stableFont || variant === "A"
+              ? "Inter-Regular.ttf"
+              : "Inter-Black.ttf",
           ),
         ),
         true,

@@ -390,6 +390,7 @@ async function prepareMatrixEmbedded(platform) {
         framework,
         "A-sdk3-managed",
       ),
+      matrixStableFont: true,
       variant: "A",
     });
     run(

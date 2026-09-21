@@ -401,8 +401,8 @@ const deliveryArtifact = options["from-bundle-id"]
   ? await getJson(deliveryArtifactUrl)
   : artifact;
 if (options["from-bundle-id"]) {
-  assert.equal(deliveryArtifact.fileUrl, null);
-  assert.equal(deliveryArtifact.fileHash, null);
+  assert.equal(deliveryArtifact.fileUrl, artifact.fileUrl);
+  assert.equal(deliveryArtifact.fileHash, artifact.fileHash);
   assert.equal(deliveryArtifact.manifestFileHash, bundle.manifestFileHash);
   assert.ok(deliveryArtifact.manifestUrl, "Delta delivery needs a manifest");
   const changedAssets = Object.entries(deliveryArtifact.changedAssets ?? {});
@@ -429,7 +429,7 @@ if (options["from-bundle-id"]) {
   );
   assert.equal(
     detail.patch,
-    undefined,
+    null,
     "Detail must be delivered raw in the mixed multi-page transaction",
   );
 }

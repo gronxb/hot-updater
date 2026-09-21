@@ -75,6 +75,7 @@ export async function buildPublic({
   variant = "A",
   behavior = "normal",
   octaneSource,
+  matrixStableFont = false,
 }) {
   if (!["react", "vue", "octane"].includes(framework))
     throw new Error("Choose react, vue, or octane.");
@@ -110,6 +111,7 @@ export async function buildPublic({
     HOT_UPDATER_SPIKE_BEHAVIOR: behavior,
     HOT_UPDATER_SPIKE_SDK: "1",
     HOT_UPDATER_SPIKE_RESOURCES: "sdk3",
+    HOT_UPDATER_SPIKE_STABLE_FONT: matrixStableFont ? "1" : "0",
     HOT_UPDATER_SPIKE_ASSET_PREFIX: "hot-updater:///",
   };
   try {
