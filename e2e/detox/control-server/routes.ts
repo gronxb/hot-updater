@@ -21,6 +21,8 @@ import {
   handleComputeRolloutSample,
   handleConfigureProxy,
   handleLaunchAndroidCrashApp,
+  handleLaunchStartupHang,
+  handleLaunchUninstrumentedApp,
   handlePrepareAppLaunch,
   handleProxyRemoteAssetRequest,
   handleProxyState,
@@ -190,7 +192,7 @@ app.post("/e2e/jobs/deploy-bundle", async (c) => {
     forceUpdate?: boolean;
     marker?: string;
     message?: string;
-    mode?: "crash" | "reset";
+    mode?: "crash" | "hang" | "reset";
     patchMaxBaseBundles?: number;
     rollout?: number;
     safeBundleIds?: string[];
@@ -205,8 +207,12 @@ app.post("/e2e/jobs/deploy-bundle", async (c) => {
   if (!payload.marker) {
     return c.json({ error: "marker is required" }, 400);
   }
-  if (payload.mode !== "reset" && payload.mode !== "crash") {
-    return c.json({ error: "mode must be reset or crash" }, 400);
+  if (
+    payload.mode !== "reset" &&
+    payload.mode !== "crash" &&
+    payload.mode !== "hang"
+  ) {
+    return c.json({ error: "mode must be reset, crash, or hang" }, 400);
   }
   if (
     payload.bundleProfile !== undefined &&
@@ -617,6 +623,16 @@ app.post("/e2e/assert-crash-history", async (c) => {
 
 app.post("/e2e/prepare-app-launch", async (c) => {
   return c.json(await handlePrepareAppLaunch());
+});
+
+app.post("/e2e/launch-startup-hang", async (c) => {
+  const payload = (await c.req.json()) as { bundleId?: string };
+  if (!payload.bundleId) return c.json({ error: "bundleId is required" }, 400);
+  return c.json(await handleLaunchStartupHang(payload.bundleId));
+});
+
+app.post("/e2e/launch-uninstrumented-app", async (c) => {
+  return c.json(await handleLaunchUninstrumentedApp());
 });
 
 app.post("/e2e/launch-android-crash-app", async (c) => {

@@ -150,6 +150,7 @@ describe("Detox E2E harness contract", () => {
       "e2e/detox/scenarios/size-aware-artifact-selection.ts",
       "e2e/detox/scenarios/slow-old-artifact-after-newer-install.ts",
       "e2e/detox/scenarios/stale-catalog-after-newer-generation.ts",
+      "e2e/detox/scenarios/startup-hang-recovery.ts",
       "e2e/detox/scenarios/target-cohorts-only.ts",
       "e2e/detox/scenarios/target-cohorts-rollout-interaction.ts",
       "e2e/detox/scenarios/targeted-cohort-switchback.ts",
@@ -260,7 +261,7 @@ describe("Detox E2E harness contract", () => {
     );
   });
 
-  it("pins the iOS Detox build to the resolved simulator destination", () => {
+  it("pins the iOS Detox build and runtime to the resolved simulator", () => {
     // Given: dashboard split jobs resolve simulator names to UDIDs.
     const result = spawnSync(
       process.execPath,
@@ -270,6 +271,7 @@ describe("Detox E2E harness contract", () => {
           "process.env.HOT_UPDATER_E2E_DEVICE_ID = '0368C5D9-1111-2222-3333-444455556666';",
           "const config = require('./.detoxrc.js');",
           "console.log(config.apps['ios.release'].build);",
+          "console.log(JSON.stringify(config.devices.simulator.device));",
         ].join(""),
       ],
       {
@@ -284,6 +286,9 @@ describe("Detox E2E harness contract", () => {
     expect(result.status).toBe(0);
     expect(result.stdout).toContain(
       "-destination 'id=0368C5D9-1111-2222-3333-444455556666'",
+    );
+    expect(result.stdout).toContain(
+      '{"id":"0368C5D9-1111-2222-3333-444455556666"}',
     );
   });
 
@@ -497,7 +502,7 @@ describe("Detox E2E harness contract", () => {
     await fs.chmod(fakeXcrunPath, 0o755);
 
     try {
-      const { buildDetoxControlServerEnv } = await import(
+      const { buildDetoxChildEnv, buildDetoxControlServerEnv } = await import(
         detoxControlServerPath
       );
 
@@ -506,6 +511,14 @@ describe("Detox E2E harness contract", () => {
         HOT_UPDATER_E2E_IOS_SIMULATOR_NAME: "iPhone 16",
         PATH: `${tempDir}:${process.env.PATH ?? ""}`,
       });
+
+      const detoxEnv = buildDetoxChildEnv("ios", {
+        HOT_UPDATER_E2E_IOS_SIMULATOR_NAME: "iPhone 16",
+        PATH: `${tempDir}:${process.env.PATH ?? ""}`,
+      });
+      expect(detoxEnv.HOT_UPDATER_E2E_DEVICE_ID).toBe(
+        controlServerEnv.HOT_UPDATER_E2E_DEVICE_ID,
+      );
 
       // Then: xcodebuild receives the simulator UDID, not the display name.
       expect(controlServerEnv.HOT_UPDATER_E2E_DEVICE_ID).toBe(

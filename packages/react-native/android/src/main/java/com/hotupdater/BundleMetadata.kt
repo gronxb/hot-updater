@@ -21,6 +21,7 @@ data class BundleMetadata(
     val pendingUpdateStrategy: String? = null,
     val pendingTransition: PendingSelectionTransition? = null,
     val verificationPending: Boolean = false,
+    val launchInProgress: Boolean = false,
     val highestSeenCatalogs: Map<String, CatalogHighWater> = emptyMap(),
     val currentSelectionContexts: Map<String, String> = emptyMap(),
     val updatedAt: Long = System.currentTimeMillis(),
@@ -71,6 +72,7 @@ data class BundleMetadata(
                 pendingTransition =
                     json.optJSONObject("pendingTransition")?.let(PendingSelectionTransition::fromJson),
                 verificationPending = json.optBoolean("verificationPending", false),
+                launchInProgress = json.optBoolean("launchInProgress", false),
                 highestSeenCatalogs = highestSeenCatalogs,
                 currentSelectionContexts = currentSelectionContexts,
                 updatedAt = json.optLong("updatedAt", System.currentTimeMillis()),
@@ -121,6 +123,7 @@ data class BundleMetadata(
             put("pendingUpdateStrategy", pendingUpdateStrategy ?: JSONObject.NULL)
             put("pendingTransition", pendingTransition?.toJson() ?: JSONObject.NULL)
             put("verificationPending", verificationPending)
+            put("launchInProgress", launchInProgress)
             put(
                 "highestSeenCatalogs",
                 JSONObject().apply {

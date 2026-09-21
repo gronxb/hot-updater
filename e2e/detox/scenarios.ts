@@ -23,6 +23,7 @@ import { sameBundleReleaseAdoptionScenario } from "./scenarios/same-bundle-relea
 import { sizeAwareArtifactSelectionScenario } from "./scenarios/size-aware-artifact-selection.ts";
 import { slowOldArtifactAfterNewerInstallScenario } from "./scenarios/slow-old-artifact-after-newer-install.ts";
 import { staleCatalogAfterNewerGenerationScenario } from "./scenarios/stale-catalog-after-newer-generation.ts";
+import { startupHangRecoveryScenario } from "./scenarios/startup-hang-recovery.ts";
 import { targetCohortsOnlyScenario } from "./scenarios/target-cohorts-only.ts";
 import { targetCohortsRolloutInteractionScenario } from "./scenarios/target-cohorts-rollout-interaction.ts";
 import { targetedCohortSwitchbackScenario } from "./scenarios/targeted-cohort-switchback.ts";
@@ -35,6 +36,7 @@ export type {
 } from "./scenarios/types.ts";
 
 const registeredDetoxScenarios: readonly DetoxScenarioDefinition[] = [
+  startupHangRecoveryScenario,
   releaseOtaRecoveryScenario,
   multiAssetReplacementScenario,
   bspatchBuiltinToDiffOtaScenario,
