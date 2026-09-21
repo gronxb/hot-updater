@@ -152,6 +152,7 @@ describe("Detox E2E harness contract", () => {
       "e2e/detox/scenarios/size-aware-artifact-selection.ts",
       "e2e/detox/scenarios/slow-old-artifact-after-newer-install.ts",
       "e2e/detox/scenarios/stale-catalog-after-newer-generation.ts",
+      "e2e/detox/scenarios/startup-hang-recovery.ts",
       "e2e/detox/scenarios/target-cohorts-only.ts",
       "e2e/detox/scenarios/target-cohorts-rollout-interaction.ts",
       "e2e/detox/scenarios/targeted-cohort-switchback.ts",

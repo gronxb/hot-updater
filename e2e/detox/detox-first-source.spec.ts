@@ -46,6 +46,7 @@ const expectedScenarioModuleFiles = [
   "size-aware-artifact-selection.ts",
   "slow-old-artifact-after-newer-install.ts",
   "stale-catalog-after-newer-generation.ts",
+  "startup-hang-recovery.ts",
   "target-cohorts-only.ts",
   "target-cohorts-rollout-interaction.ts",
   "targeted-cohort-switchback.ts",
