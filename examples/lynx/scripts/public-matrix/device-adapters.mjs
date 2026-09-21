@@ -111,7 +111,11 @@ export function iosMatrixLaunchArguments(framework, channel, appBaseURL) {
   const configuration = serializeLynxNativeLaunchConfiguration(
     createLynxNativeLaunchConfiguration({ appBaseURL }),
   );
-  return `--launch-args=--ota-framework=${framework} --ota-channel=${channel} ${HOT_UPDATER_LYNX_IOS_LAUNCH_CONFIGURATION_PREFIX}${configuration}`;
+  return [
+    `--launch-args=--ota-framework=${framework}`,
+    `--launch-args=--ota-channel=${channel}`,
+    `--launch-args=${HOT_UPDATER_LYNX_IOS_LAUNCH_CONFIGURATION_PREFIX}${configuration}`,
+  ];
 }
 
 export function androidMatrixLaunchArguments(framework, channel, appBaseURL) {
@@ -222,7 +226,7 @@ class IOSAdapter {
       "--udid",
       this.deviceId,
       "--foreground",
-      iosMatrixLaunchArguments(framework, channel, this.appBaseURL),
+      ...iosMatrixLaunchArguments(framework, channel, this.appBaseURL),
     ]);
     return this.processId();
   }

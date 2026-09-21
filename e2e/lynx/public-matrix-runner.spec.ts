@@ -347,9 +347,11 @@ describe("Lynx public matrix runner", () => {
     (framework) => {
       const baseURL = "http://updates.test/hot-updater";
       const encoded = JSON.stringify({ appBaseURL: baseURL });
-      expect(iosMatrixLaunchArguments(framework, "qa", baseURL)).toContain(
-        `--hot-updater-launch-configuration=${encoded}`,
-      );
+      expect(iosMatrixLaunchArguments(framework, "qa", baseURL)).toEqual([
+        `--launch-args=--ota-framework=${framework}`,
+        "--launch-args=--ota-channel=qa",
+        `--launch-args=--hot-updater-launch-configuration=${encoded}`,
+      ]);
       expect(androidMatrixLaunchArguments(framework, "qa", baseURL)).toEqual([
         "--es",
         "framework",
