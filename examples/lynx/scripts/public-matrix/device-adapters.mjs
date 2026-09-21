@@ -224,7 +224,7 @@ class IOSAdapter {
       "simctl",
       "spawn",
       this.deviceId,
-      "ps",
+      "/bin/ps",
       "-axo",
       "pid=,command=",
     ]);
