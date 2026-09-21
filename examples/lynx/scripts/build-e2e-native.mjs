@@ -7,6 +7,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 
+import { buildPublic } from "./build-public.mjs";
 import {
   assertNativePublicKeyOnlySourceChanges,
   assertNativePublicKeySourceUnchanged,
@@ -381,6 +382,27 @@ async function prepareProductionEmbedded(platform) {
 
 async function prepareMatrixEmbedded(platform) {
   for (const [index, framework] of ["react", "vue", "octane"].entries()) {
+    await buildPublic({
+      framework,
+      outDir: path.join(
+        exampleDir,
+        ".hot-updater/g1",
+        framework,
+        "A-sdk3-managed",
+      ),
+      variant: "A",
+    });
+    run(
+      process.execPath,
+      [
+        "scripts/ota-embedded.mjs",
+        framework,
+        platform,
+        "A-sdk3-managed",
+        lynxE2eRuntimeId(platform),
+      ],
+      exampleDir,
+    );
     const receiptPath = path.join(
       exampleDir,
       ".hot-updater/ota/receipts",
