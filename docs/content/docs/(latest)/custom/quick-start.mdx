@@ -42,7 +42,7 @@ npm install @hot-updater/react-native
 ```
 
 ```package-install
-npm install --save-dev @hot-updater/bare @hot-updater/aws @hot-updater/standalone hot-updater dotenv
+npm install --save-dev @hot-updater/bare @hot-updater/aws @hot-updater/standalone hot-updater
 ```
 
 ## Database setup
@@ -208,9 +208,14 @@ import { bare } from "@hot-updater/bare";
 import { s3Storage } from "@hot-updater/aws";
 import { standaloneRepository } from "@hot-updater/standalone";
 import { defineConfig } from "hot-updater";
-import { config } from "dotenv";
 
-config({ path: ".env.hotupdater" });
+try {
+  process.loadEnvFile(".env.hotupdater");
+} catch (error) {
+  if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
+    throw error;
+  }
+}
 
 const adminToken = process.env.HOT_UPDATER_ADMIN_TOKEN;
 if (!adminToken) {

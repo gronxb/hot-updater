@@ -76,7 +76,6 @@ export type WriteHotUpdaterConfigResult = {
 const HOT_UPDATER_CONFIG_PATH = "hot-updater.config.ts";
 const CONFIG_FILE_NAME = "hot-updater.config.ts";
 const MANAGED_IMPORT_PACKAGES = new Set([
-  "dotenv",
   "firebase-admin",
   "firebase-admin/app",
   "hot-updater",
@@ -657,12 +656,6 @@ const updateManagedObject = (
   );
 };
 
-const isConfigCallStatement = (statement: TopLevelStatement) =>
-  statement.type === "ExpressionStatement" &&
-  statement.expression.type === "CallExpression" &&
-  statement.expression.callee.type === "Identifier" &&
-  statement.expression.callee.name === "config";
-
 const getManagedHelperName = (statement: TopLevelStatement) => {
   if (statement.type !== "VariableDeclaration") {
     return null;
@@ -728,14 +721,8 @@ const rebuildManagedBody = (
   );
   const emittedHelpers = new Set<string>();
   const bodyStatements: string[] = [];
-  const configStatements: string[] = [];
 
   for (const statement of statementsBeforeExport) {
-    if (isConfigCallStatement(statement)) {
-      configStatements.push(getStatementText(source, statement));
-      continue;
-    }
-
     const helperName = getManagedHelperName(statement);
     if (!helperName || !MANAGED_HELPER_NAMES.has(helperName)) {
       bodyStatements.push(getStatementText(source, statement));
@@ -767,11 +754,7 @@ const rebuildManagedBody = (
   }
 
   const bodyText = bodyStatements.filter(Boolean).join("\n\n");
-  const configStatement =
-    configStatements.join("\n\n") || `config({ path: ".env.hotupdater" });`;
-  const managedBody = bodyText
-    ? `\n\n${configStatement}\n\n${bodyText}\n\n`
-    : `\n\n${configStatement}\n\n`;
+  const managedBody = bodyText ? `\n\n${bodyText}\n\n` : "\n\n";
   const lastImport = source.program.body
     .filter((statement) => statement.type === "ImportDeclaration")
     .at(-1);

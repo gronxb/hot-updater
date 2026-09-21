@@ -67,9 +67,14 @@ Use `withSentry()` to wrap any compatible build plugin such as bare.
 import { bare } from "@hot-updater/bare";
 import { withSentry } from "@hot-updater/sentry-plugin"; // [!code ++]
 import { defineConfig } from "hot-updater";
-import { config } from "dotenv";
 
-config({ path: ".env.hotupdater" });
+try {
+  process.loadEnvFile(".env.hotupdater");
+} catch (error) {
+  if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
+    throw error;
+  }
+}
 
 export default defineConfig({
   build: withSentry( // [!code ++]

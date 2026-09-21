@@ -186,9 +186,14 @@ import { bare } from "@hot-updater/bare";
 import { firebaseStorage, firebaseDatabase } from "@hot-updater/firebase";
 import { applicationDefault } from "firebase-admin/app";
 import { defineConfig } from "hot-updater";
-import { config } from "dotenv";
 
-config({ path: ".env.hotupdater" });
+try {
+  process.loadEnvFile(".env.hotupdater");
+} catch (error) {
+  if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
+    throw error;
+  }
+}
 
 // https://firebase.google.com/docs/admin/setup?hl=en#initialize_the_sdk_in_non-google_environments
 // Reuse working application-default credentials (ADC).

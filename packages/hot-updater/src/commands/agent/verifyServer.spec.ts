@@ -1,12 +1,13 @@
 import { execFile } from "node:child_process";
-import { cp, mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
+import { cp, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
-import { createRequire } from "node:module";
 import os from "node:os";
 import path from "node:path";
 
 import type { ReleaseCatalog } from "@hot-updater/core";
 import { describe, expect, it, onTestFinished, vi } from "vitest";
+
+import { verifyServer } from "../doctor/server";
 
 vi.mock("../../../../react-native/src/catalogCacheNative", () => ({
   readNativeReleaseCatalogCache: async () => null,
@@ -26,7 +27,6 @@ const { fetchReleaseCatalogWithCache } = await vi.importActual<{
   ),
 );
 
-const require = createRequire(import.meta.url);
 const apiKey = "private-client-key-never-print";
 const serverVersion = "1.0.0-rc.2";
 const channel = "preview/한글";
@@ -127,11 +127,6 @@ const createFixture = async (
     await rm(root, { recursive: true, force: true });
   });
   await mkdir(app, { recursive: true });
-  await mkdir(path.join(root, "node_modules"));
-  await symlink(
-    path.dirname(require.resolve("dotenv/package.json")),
-    path.join(root, "node_modules/dotenv"),
-  );
   await cp(
     path.resolve(import.meta.dirname, "../../../dist/agent/verify-server.mjs"),
     path.join(app, "verify-server.mjs"),
@@ -194,6 +189,40 @@ const createFixture = async (
 };
 
 describe("agent server verification", () => {
+  it("reads BOM-prefixed env files without mutating the caller environment", async () => {
+    const { root, baseUrl, run, requests } = await createFixture();
+    await writeFile(
+      path.join(root, ".env.hotupdater"),
+      `\uFEFFHOT_UPDATER_API_KEY=${apiKey}\n`,
+    );
+    vi.stubEnv("HOT_UPDATER_API_KEY", undefined);
+    onTestFinished(() => {
+      vi.unstubAllEnvs();
+    });
+    const result = await verifyServer({
+      cwd: root,
+      infraDir: path.join(root, "scaffold"),
+      baseUrl,
+      platform: "ios",
+      channel,
+      appVersion: "1.0.0",
+      serverVersion,
+      infrastructureGeneration: 1,
+    });
+    expect(result.status).toBe("verified");
+    expect(process.env["HOT_UPDATER_API_KEY"]).toBeUndefined();
+    expect(requests.at(-1)?.key).toBe(apiKey);
+    const packaged = await run();
+    expect(packaged.code, packaged.stdout + packaged.stderr).toBe(0);
+  });
+
+  it("verifies without an env file using the persisted local key", async () => {
+    const { root, run } = await createFixture({ localKey: apiKey });
+    await rm(path.join(root, ".env.hotupdater"));
+    const result = await run();
+    expect(result.code, result.stdout + result.stderr).toBe(0);
+  });
+
   it("verifies an empty server using the private environment file and preserves the endpoint prefix", async () => {
     const { run, requests } = await createFixture();
     const result = await run();

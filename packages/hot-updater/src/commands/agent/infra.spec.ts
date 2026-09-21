@@ -86,6 +86,7 @@ describe("published agent infrastructure commands", () => {
           infrastructureGeneration: 1,
         });
         expect(manifest.packages[`@hot-updater/${build}`]).toBeTruthy();
+        expect(manifest.packages).not.toHaveProperty("dotenv");
         for (const other of builds.filter((candidate) => candidate !== build)) {
           expect(manifest.packages[`@hot-updater/${other}`]).toBeUndefined();
         }
@@ -302,7 +303,6 @@ describe("deployment artifacts", () => {
       const providerRoot = path.join(repoRoot, "plugins", provider);
       for (const name of [
         `@hot-updater/${provider}`,
-        "dotenv",
         ...(provider === "aws" ? ["@aws-sdk/credential-providers"] : []),
         ...(provider === "firebase" ? ["firebase-admin"] : []),
       ]) {
@@ -311,13 +311,7 @@ describe("deployment artifacts", () => {
         await symlink(
           name === `@hot-updater/${provider}`
             ? providerRoot
-            : path.join(
-                name === "dotenv"
-                  ? path.join(repoRoot, "packages/hot-updater")
-                  : providerRoot,
-                "node_modules",
-                name,
-              ),
+            : path.join(providerRoot, "node_modules", name),
           target,
         );
       }

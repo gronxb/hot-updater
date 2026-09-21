@@ -14,7 +14,7 @@ Your CLI configuration (`hot-updater.config.ts`) connects your React Native proj
 Install the CLI dependencies in your React Native project:
 
 ```package-install
-npm install --save-dev @hot-updater/bare @hot-updater/aws @hot-updater/standalone hot-updater dotenv
+npm install --save-dev @hot-updater/bare @hot-updater/aws @hot-updater/standalone hot-updater
 ```
 
 Create `.env.hotupdater` in that project with the server's `R2_*` storage values
@@ -26,9 +26,14 @@ import { bare } from "@hot-updater/bare";
 import { s3Storage } from "@hot-updater/aws";
 import { standaloneRepository } from "@hot-updater/standalone"; // [!code ++]
 import { defineConfig } from "hot-updater";
-import { config } from "dotenv";
 
-config({ path: ".env.hotupdater" });
+try {
+  process.loadEnvFile(".env.hotupdater");
+} catch (error) {
+  if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
+    throw error;
+  }
+}
 
 const adminToken = process.env.HOT_UPDATER_ADMIN_TOKEN;
 if (!adminToken) {
