@@ -1,5 +1,6 @@
 import { execFileSync, spawnSync } from "node:child_process";
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 
 import {
@@ -342,11 +343,18 @@ class IOSAdapter {
     const target = path.join(this.resultsDir, `${name}.png`);
     let failure;
     for (let attempt = 1; attempt <= 5; attempt += 1) {
+      const temporary = path.join(
+        os.tmpdir(),
+        `hot-updater-lynx-${process.pid}-${Date.now()}-${attempt}.png`,
+      );
       try {
-        run("xcrun", ["simctl", "io", this.deviceId, "screenshot", target]);
+        run("xcrun", ["simctl", "io", this.deviceId, "screenshot", temporary]);
+        fs.copyFileSync(temporary, target);
         return;
       } catch (error) {
         failure = error;
+      } finally {
+        fs.rmSync(temporary, { force: true });
       }
       if (attempt < 5) await wait(500);
     }
