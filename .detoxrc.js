@@ -44,9 +44,9 @@ module.exports = {
   devices: {
     simulator: {
       type: "ios.simulator",
-      device: {
-        type: iosSimulatorName,
-      },
+      device: process.env.HOT_UPDATER_E2E_DEVICE_ID
+        ? { id: process.env.HOT_UPDATER_E2E_DEVICE_ID }
+        : { type: iosSimulatorName },
     },
     androidAttached: {
       type: "android.attached",

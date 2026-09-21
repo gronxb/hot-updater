@@ -257,6 +257,7 @@ export function buildDetoxChildEnv(
     CONTROL_URL: controlBaseUrl,
     HOT_UPDATER_E2E_CONTROL_BASE_URL: controlBaseUrl,
     HOT_UPDATER_E2E_PLATFORM: platform,
+    HOT_UPDATER_E2E_DEVICE_ID: resolveDeviceId(platform, env),
     NODE_OPTIONS: nodeOptionsForDetox(env),
   };
 }
