@@ -6886,7 +6886,12 @@ export async function handlePrepareAppLaunch() {
 export async function handleLaunchUninstrumentedApp() {
   await prepareAppLaunch();
   if (fixtureSession.platform === "ios") {
-    launchIosApp();
+    captureCommand("xcrun", [
+      "simctl",
+      "launch",
+      deviceId as string,
+      fixtureSession.appId,
+    ]);
   } else {
     launchAndroidApp({ explicitActivity: true });
   }
