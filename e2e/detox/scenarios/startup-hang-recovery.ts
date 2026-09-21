@@ -25,7 +25,7 @@ export const startupHangRecoveryScenario: DetoxScenarioDefinition = {
     await app.assertText(
       "assert startup-hang stable installed",
       "update-action-result",
-      "current-channel -> installed ID $hangStableBundleId",
+      "current-channel -> installed $hangStableBundleId",
       { exactText: true },
     );
     await app.control(
@@ -73,7 +73,7 @@ export const startupHangRecoveryScenario: DetoxScenarioDefinition = {
     await app.assertText(
       "assert startup-hang bundle installed",
       "update-action-result",
-      "current-channel -> installed ID $hangBundleId",
+      "current-channel -> installed $hangBundleId",
       { exactText: true },
     );
     await app.control(

@@ -13,6 +13,8 @@ import {
   handleAssertMetadataActive,
   handleAssertMetadataReset,
   handleAssertMultipleAssetsReplaced,
+  handleLaunchStartupHang,
+  handleLaunchUninstrumentedApp,
   handlePrepareAppLaunch,
   handleProxyRemoteAssetRequest,
   handleProxyUpdateRequest,
@@ -106,7 +108,11 @@ app.post("/e2e/jobs/deploy-bundle", async (c) => {
   if (!payload.marker) {
     return c.json({ error: "marker is required" }, 400);
   }
-  if (payload.mode !== "reset" && payload.mode !== "crash" && payload.mode !== "hang") {
+  if (
+    payload.mode !== "reset" &&
+    payload.mode !== "crash" &&
+    payload.mode !== "hang"
+  ) {
     return c.json({ error: "mode must be reset, crash, or hang" }, 400);
   }
   if (
@@ -433,6 +439,16 @@ app.post("/e2e/assert-crash-history", async (c) => {
   }
 
   return c.json(await handleAssertCrashHistory(payload.bundleId));
+});
+
+app.post("/e2e/launch-startup-hang", async (c) => {
+  const payload = (await c.req.json()) as { bundleId?: string };
+  if (!payload.bundleId) return c.json({ error: "bundleId is required" }, 400);
+  return c.json(await handleLaunchStartupHang(payload.bundleId));
+});
+
+app.post("/e2e/launch-uninstrumented-app", async (c) => {
+  return c.json(await handleLaunchUninstrumentedApp());
 });
 
 app.post("/e2e/prepare-app-launch", async (c) => {

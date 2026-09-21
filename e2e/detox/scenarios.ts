@@ -1,4 +1,3 @@
-import { startupHangRecoveryScenario } from "./scenarios/startup-hang-recovery.ts";
 import { bspatchArchiveToDiffOtaScenario } from "./scenarios/bspatch-archive-to-diff-ota.ts";
 import { bspatchConsecutiveDiffOtaScenario } from "./scenarios/bspatch-consecutive-diff-ota.ts";
 import { bspatchDisabledChainRollbackScenario } from "./scenarios/bspatch-disabled-chain-rollback.ts";
@@ -10,6 +9,7 @@ import { multiAssetReplacementScenario } from "./scenarios/multi-asset-replaceme
 import { numericCohortRolloutScenario } from "./scenarios/numeric-cohort-rollout.ts";
 import { releaseOtaRecoveryScenario } from "./scenarios/release-ota-recovery.ts";
 import { runtimeChannelSwitchResetScenario } from "./scenarios/runtime-channel-switch-reset.ts";
+import { startupHangRecoveryScenario } from "./scenarios/startup-hang-recovery.ts";
 import { targetCohortsOnlyScenario } from "./scenarios/target-cohorts-only.ts";
 import { targetCohortsRolloutInteractionScenario } from "./scenarios/target-cohorts-rollout-interaction.ts";
 import { targetedCohortSwitchbackScenario } from "./scenarios/targeted-cohort-switchback.ts";

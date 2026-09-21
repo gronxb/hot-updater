@@ -12,6 +12,15 @@ private func hotUpdaterApplyBsdiffPatchForTest(
 ) -> ObjCBool
 
 struct BundleFileStorageServiceTests {
+    @Test
+    func existingMetadataWithoutLaunchProgressStillDecodes() throws {
+        let json = #"{"schema":"metadata-v1","isolation_key":"legacy","stable_bundle_id":"stable","staging_bundle_id":"pending","verification_pending":true,"updated_at":123}"#
+        let metadata = try JSONDecoder().decode(BundleMetadata.self, from: Data(json.utf8))
+        #expect(metadata.stagingBundleId == "pending")
+        #expect(metadata.verificationPending)
+        #expect(!metadata.launchInProgress)
+    }
+
     // Issue #1321: a hung JS thread never reports content appeared or a crash.
     @Test(arguments: [false, true], [false, true])
     func stagingLaunchRecoversOnlyWhenUnfinished(hasStableBundle: Bool, completesLaunch: Bool) throws {

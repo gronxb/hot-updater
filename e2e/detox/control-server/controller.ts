@@ -5936,6 +5936,105 @@ export async function handleWaitForCrashRecovery(
   return waitForCrashRecovery(stableBundleId, crashedBundleId, options);
 }
 
+// Launch without Detox waiting for a JS thread that deliberately never becomes idle.
+export async function handleLaunchUninstrumentedApp() {
+  await prepareAppLaunch();
+  if (fixtureSession.platform === "ios") {
+    captureCommand("xcrun", [
+      "simctl",
+      "launch",
+      deviceId as string,
+      fixtureSession.appId,
+    ]);
+  } else {
+    launchAndroidApp({ explicitActivity: true });
+  }
+  return {};
+}
+
+export async function handleLaunchStartupHang(bundleId: string) {
+  const marker = `HotUpdaterE2EStartupHang:${bundleId}`;
+  const ios = fixtureSession.platform === "ios";
+  const logs = spawn(
+    ios ? "xcrun" : "adb",
+    ios
+      ? [
+          "simctl",
+          "spawn",
+          deviceId as string,
+          "log",
+          "stream",
+          "--level",
+          "debug",
+          "--style",
+          "compact",
+          "--predicate",
+          'eventMessage CONTAINS "HotUpdaterE2EStartupHang:"',
+        ]
+      : [
+          "-s",
+          deviceId as string,
+          "logcat",
+          "-v",
+          "brief",
+          "ReactNativeJS:I",
+          "*:S",
+        ],
+    { stdio: ["ignore", "pipe", "pipe"] },
+  );
+  let output = "";
+  let logError: Error | undefined;
+  logs.on("error", (error) => {
+    logError = error;
+  });
+  logs.stdout.on("data", (chunk) => {
+    output += chunk.toString();
+  });
+  logs.stderr.on("data", (chunk) => {
+    output += chunk.toString();
+  });
+  try {
+    await handleLaunchUninstrumentedApp();
+    const deadline = Date.now() + 30_000;
+    while (!output.includes(marker) && Date.now() < deadline && !logError) {
+      await sleep(E2E_POLL_INTERVAL_MS);
+    }
+    if (logError) throw logError;
+    if (!output.includes(marker)) {
+      throw new Error(`Startup hang was not reached for ${bundleId}`);
+    }
+    const diagnostics = ios
+      ? readIosRecoveryDiagnostics()
+      : readAndroidRecoveryDiagnostics({
+          metadata: "startup-hang-metadata.json",
+          launchReport: "startup-hang-launch-report.json",
+          crashMarker: "startup-hang-crash-marker.json",
+          crashHistory: "startup-hang-crashed-history.json",
+        });
+    const metadata = getMetadataState(diagnostics.metadata.value);
+    if (
+      metadata.stagingBundleId !== bundleId ||
+      metadata.verificationPending !== true ||
+      diagnostics.crashMarker.exists ||
+      diagnostics.crashHistory.exists ||
+      diagnostics.launchReport.exists
+    ) {
+      throw createEndpointError(
+        "Expected an unverified startup hang without crash recovery",
+        diagnostics,
+      );
+    }
+    await captureState("startup-hang");
+    return {};
+  } finally {
+    logs.kill();
+    await fsPromises.writeFile(
+      path.join(fixtureSession.resultsDir, "startup-hang.log"),
+      output,
+    );
+  }
+}
+
 export async function handlePrepareAppLaunch() {
   return prepareAppLaunch();
 }
