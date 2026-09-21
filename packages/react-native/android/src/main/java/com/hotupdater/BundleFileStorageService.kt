@@ -538,6 +538,7 @@ class BundleFileStorageService(
         checkAndCleanupIfIsolationKeyChanged()
     }
 
+    private var hasPreparedLaunch = false
     private var currentLaunchReport: LaunchReport? = null
 
     @Volatile
@@ -1046,6 +1047,7 @@ class BundleFileStorageService(
                     toBundleId = stagingSelection.bundleId,
                 ),
             verificationPending = true,
+            launchInProgress = false,
             updatedAt = System.currentTimeMillis(),
         )
     }
@@ -1076,6 +1078,7 @@ class BundleFileStorageService(
                 pendingUpdateStrategy = null,
                 pendingTransition = null,
                 verificationPending = false,
+                launchInProgress = false,
                 updatedAt = System.currentTimeMillis(),
             )
 
@@ -1302,6 +1305,7 @@ class BundleFileStorageService(
                             pendingUpdateStrategy = null,
                             pendingTransition = null,
                             verificationPending = false,
+                            launchInProgress = false,
                             updatedAt = System.currentTimeMillis(),
                         )
                     }
@@ -1354,6 +1358,7 @@ class BundleFileStorageService(
                 pendingUpdateStrategy = null,
                 pendingTransition = null,
                 verificationPending = false,
+                launchInProgress = false,
                 updatedAt = System.currentTimeMillis(),
             ),
         )
@@ -1448,8 +1453,22 @@ class BundleFileStorageService(
     override fun prepareLaunch(pendingRecovery: PendingCrashRecovery?): LaunchSelection {
         saveLaunchReport(null)
         applyPendingRecoveryIfNeeded(pendingRecovery)
+        // Only a new storage instance consumes an unfinished launch. Repeated bundle
+        // lookups or bridge reloads in this process must not reject its own launch.
+        if (!hasPreparedLaunch) {
+            val metadata = loadMetadataOrNull()
+            if (metadata?.verificationPending == true && metadata.launchInProgress) {
+                metadata.stagingBundleId?.let { rollbackPendingBundle(it) }
+            }
+        }
+        hasPreparedLaunch = true
 
         val selection = selectLaunch()
+        if (selection.shouldRollbackOnCrash) {
+            loadMetadataOrNull()?.let { metadata ->
+                saveMetadata(metadata.copy(launchInProgress = true))
+            }
+        }
         Log.d(
             TAG,
             "prepareLaunch: bundleId=${selection.launchedBundleId} shouldRollback=${selection.shouldRollbackOnCrash} url=${selection.bundleUrl}",
@@ -2287,6 +2306,7 @@ class BundleFileStorageService(
                     pendingUpdateStrategy = null,
                     pendingTransition = null,
                     verificationPending = false,
+                    launchInProgress = false,
                     updatedAt = System.currentTimeMillis(),
                 )
 

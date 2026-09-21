@@ -13,8 +13,8 @@ private func hotUpdaterApplyBsdiffPatchForTest(
 
 struct BundleFileStorageServiceTests {
     // Issue #1321: a hung JS thread never reports content appeared or a crash.
-    @Test(arguments: [false, true])
-    func unfinishedStagingLaunchRollsBackOnColdStart(hasStableBundle: Bool) throws {
+    @Test(arguments: [false, true], [false, true])
+    func stagingLaunchRecoversOnlyWhenUnfinished(hasStableBundle: Bool, completesLaunch: Bool) throws {
         let workingDirectory = try makeWorkingDirectory()
         defer { cleanupWorkingDirectory(workingDirectory) }
         let preferences = InMemoryPreferencesService()
@@ -47,14 +47,28 @@ struct BundleFileStorageServiceTests {
         try #require(firstLaunch.launchedBundleId == "hung-bundle")
         try #require(firstLaunch.shouldRollbackOnCrash)
 
-        // Force-kill before CONTENT_APPEARED: no markLaunchCompleted or crash marker.
+        // Repeated lookups in the current process must not consume its own marker.
+        #expect(firstProcess.prepareLaunch(bundle: .main, pendingRecovery: nil).launchedBundleId == "hung-bundle")
+        #expect(!firstProcess.getCrashHistory().contains("hung-bundle"))
+        if completesLaunch {
+            firstProcess.markLaunchCompleted(bundleId: "hung-bundle")
+        }
+
+        // Simulate process termination without a crash marker.
         let secondProcess = makeStorageService(
             documentsDirectory: workingDirectory, preferences: preferences
         )
         let nextLaunch = secondProcess.prepareLaunch(bundle: .main, pendingRecovery: nil)
-        #expect(nextLaunch.launchedBundleId == stableBundleId)
+        #expect(nextLaunch.launchedBundleId == (completesLaunch ? "hung-bundle" : stableBundleId))
         #expect(!nextLaunch.shouldRollbackOnCrash)
-        #expect(secondProcess.getCrashHistory().contains("hung-bundle"))
+        #expect(secondProcess.getCrashHistory().contains("hung-bundle") == !completesLaunch)
+        if !completesLaunch {
+            #expect(secondProcess.notifyAppReady()["status"] as? String == "RECOVERED")
+        }
+        let thirdProcess = makeStorageService(
+            documentsDirectory: workingDirectory, preferences: preferences
+        )
+        #expect(thirdProcess.prepareLaunch(bundle: .main, pendingRecovery: nil).launchedBundleId == nextLaunch.launchedBundleId)
     }
 
     @Test
