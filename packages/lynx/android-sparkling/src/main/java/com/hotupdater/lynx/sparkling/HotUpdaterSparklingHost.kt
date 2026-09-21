@@ -897,7 +897,9 @@ class HotUpdaterSparklingHost(
         }
         val builder = LynxViewBuilder().also(launch::configure)
         val bridge = SparklingBridge()
-        val runtimeLifecycle = ManagedRuntimeLifecycle(mainHandler::post)
+        val runtimeLifecycle = ManagedRuntimeLifecycle { completion ->
+            mainHandler.post { completion() }
+        }
         var constructedKit: SimpleLynxKitView? = null
         val kit = try {
             bridge.registerLynxModule(builder, page.containerId)
