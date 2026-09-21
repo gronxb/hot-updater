@@ -1,6 +1,9 @@
 {
   "name": "@examples-server/hono-kysely-pglite",
   "private": true,
+  "engines": {
+    "node": ">=20.19.0"
+  },
   "type": "module",
   "scripts": {
     "dev": "tsx watch src/index.ts",
@@ -16,7 +19,6 @@
     "@hot-updater/core": "workspace:*",
     "@hot-updater/mock": "workspace:*",
     "@hot-updater/server": "workspace:*",
-    "dotenv": "^16.4.7",
     "hono": "catalog:hono",
     "kysely": "catalog:db",
     "kysely-pglite-dialect": "catalog:db"

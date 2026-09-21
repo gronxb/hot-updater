@@ -49,10 +49,11 @@ describe("standalone-s3 local S3 contract", () => {
     // When: the Hono S3 server starts from its package workdir.
     // Then: auth and MinIO settings come from that injected root-level file.
     expect(dbSource).toContain(
-      'config({ path: path.resolve(process.cwd(), ".env.hotupdater") })',
+      'const envFilePath = path.resolve(process.cwd(), ".env.hotupdater");',
     );
+    expect(dbSource).toContain("process.loadEnvFile(envFilePath)");
     expect(dbSource).not.toContain(
-      'config({ path: path.join(__dirname, ".env.hotupdater") })',
+      'path.join(__dirname, ".env.hotupdater")',
     );
   });
 });

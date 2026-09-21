@@ -5,6 +5,8 @@ icon: vercel
 version: "v0.22.0"
 ---
 
+The environment-loading examples below require Node.js 20.19 or later.
+
 ## Prerequisites
 
 - Vercel account at [vercel.com](https://vercel.com)
@@ -20,7 +22,7 @@ npm install @hot-updater/server @hot-updater/aws hono drizzle-orm pg
 ```
 
 ```package-install
-npm install @hot-updater/bare @hot-updater/standalone hot-updater drizzle-kit @types/pg dotenv --save-dev
+npm install @hot-updater/bare @hot-updater/standalone hot-updater drizzle-kit @types/pg --save-dev
 ```
 
 ## Connect Postgres
@@ -59,10 +61,12 @@ export const db = drizzle({ client: pool, schema, casing: "snake_case" });
 ```
 
 ```typescript title="drizzle.config.ts"
-import { config } from "dotenv";
+import { existsSync } from "node:fs";
 import { defineConfig } from "drizzle-kit";
 
-config({ path: ".env.local" });
+if (existsSync(".env.local")) {
+  process.loadEnvFile(".env.local");
+}
 
 export default defineConfig({
   schema: "./hot-updater-schema.ts",

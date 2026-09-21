@@ -1,12 +1,15 @@
+import { existsSync } from "node:fs";
 import path from "path";
 
 import { s3Database, s3Storage } from "@hot-updater/aws";
 import { mockStorage } from "@hot-updater/mock";
 import { createHotUpdater } from "@hot-updater/server";
-import { config } from "dotenv";
 
 // Load optional .env.hotupdater file for local development
-config({ path: path.resolve(process.cwd(), ".env.hotupdater") });
+const envFilePath = path.resolve(process.cwd(), ".env.hotupdater");
+if (existsSync(envFilePath)) {
+  process.loadEnvFile(envFilePath);
+}
 
 const providerNamespace = process.env.HOT_UPDATER_E2E_PROVIDER_NAMESPACE;
 

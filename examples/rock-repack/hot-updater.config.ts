@@ -1,9 +1,12 @@
+import { existsSync } from "node:fs";
+
 import { rock } from "@hot-updater/rock";
 import { supabaseDatabase, supabaseStorage } from "@hot-updater/supabase";
-import { config } from "dotenv";
 import { defineConfig } from "hot-updater";
 
-config({ path: ".env.hotupdater" });
+if (existsSync(".env.hotupdater")) {
+  process.loadEnvFile(".env.hotupdater");
+}
 
 export default defineConfig({
   build: rock(),

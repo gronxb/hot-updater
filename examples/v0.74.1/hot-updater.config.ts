@@ -1,10 +1,13 @@
+import { existsSync } from "node:fs";
+
 import { s3Storage } from "@hot-updater/aws";
 import { bare } from "@hot-updater/bare";
 import { standaloneRepository } from "@hot-updater/standalone";
-import { config } from "dotenv";
 import { defineConfig } from "hot-updater";
 
-config({ path: ".env.hotupdater" });
+if (existsSync(".env.hotupdater")) {
+  process.loadEnvFile(".env.hotupdater");
+}
 
 export default defineConfig({
   nativeBuild: {
