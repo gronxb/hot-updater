@@ -13,6 +13,7 @@ import {
   DIAGNOSTIC_MARKER,
   EVENT_MARKER,
   iosMatrixLaunchArguments,
+  isRetryableAgentDeviceFailure,
   parseDiagnostics,
   parseEvents,
 } from "../../examples/lynx/scripts/public-matrix/device-adapters.mjs";
@@ -362,6 +363,27 @@ describe("Lynx public matrix runner", () => {
       ]);
     },
   );
+
+  it("retries only the explicit agent-device runner-busy response", () => {
+    expect(
+      isRetryableAgentDeviceFailure({
+        success: false,
+        error: { code: "RUNNER_BUSY", retriable: true },
+      }),
+    ).toBe(true);
+    expect(
+      isRetryableAgentDeviceFailure({
+        success: false,
+        error: { code: "RUNNER_BUSY", retriable: false },
+      }),
+    ).toBe(false);
+    expect(
+      isRetryableAgentDeviceFailure({
+        success: false,
+        error: { code: "DEVICE_NOT_FOUND", retriable: true },
+      }),
+    ).toBe(false);
+  });
 
   it("builds the dedicated matrix targets and emits their exact artifact paths", () => {
     const result = buildNative(["--", "--dry-run", "--target", "matrix"]);

@@ -35,6 +35,14 @@ function run(command, args, options = {}) {
   return result.stdout.trim();
 }
 
+export function isRetryableAgentDeviceFailure(value) {
+  return (
+    value?.success === false &&
+    value.error?.code === "RUNNER_BUSY" &&
+    value.error?.retriable === true
+  );
+}
+
 function parseEvents(text) {
   const events = [];
   for (const line of text.split(/\r?\n/)) {
@@ -236,20 +244,42 @@ class IOSAdapter {
     return processId;
   }
 
-  device(args) {
-    const output = execFileSync(
-      "agent-device",
-      [...args, "--session", this.session, "--json"],
-      { encoding: "utf8", maxBuffer: 16 * 1024 * 1024 },
-    );
-    return JSON.parse(output);
+  device(args, { allowRetryableFailure = false } = {}) {
+    try {
+      const output = execFileSync(
+        "agent-device",
+        [...args, "--session", this.session, "--json"],
+        { encoding: "utf8", maxBuffer: 16 * 1024 * 1024 },
+      );
+      return JSON.parse(output);
+    } catch (error) {
+      if (allowRetryableFailure && typeof error?.stdout === "string") {
+        try {
+          const response = JSON.parse(error.stdout);
+          if (isRetryableAgentDeviceFailure(response)) return null;
+        } catch {
+          // Preserve the original command failure and its diagnostics.
+        }
+      }
+      throw error;
+    }
+  }
+
+  snapshot() {
+    return this.device(["snapshot", "-i"], {
+      allowRetryableFailure: true,
+    });
   }
 
   async waitForText(expected, timeoutMs = 30_000) {
     const deadline = Date.now() + timeoutMs;
     let last;
     while (Date.now() < deadline) {
-      last = this.device(["snapshot", "-i"]);
+      last = this.snapshot();
+      if (!last) {
+        await wait(250);
+        continue;
+      }
       if (
         last.data.nodes.some((node) =>
           String(node.label ?? "").includes(expected),
@@ -266,7 +296,11 @@ class IOSAdapter {
     const deadline = Date.now() + timeoutMs;
     let last;
     while (Date.now() < deadline) {
-      last = this.device(["snapshot", "-i"]);
+      last = this.snapshot();
+      if (!last) {
+        await wait(250);
+        continue;
+      }
       const match = last.data.nodes
         .map((node) => String(node.label ?? ""))
         .find((label) => label.includes(expected));
@@ -280,7 +314,11 @@ class IOSAdapter {
     const deadline = Date.now() + timeoutMs;
     let last;
     while (Date.now() < deadline) {
-      last = this.device(["snapshot", "-i"]);
+      last = this.snapshot();
+      if (!last) {
+        await wait(250);
+        continue;
+      }
       const match = expected.find((text) =>
         last.data.nodes.some((node) => String(node.label ?? "").includes(text)),
       );
