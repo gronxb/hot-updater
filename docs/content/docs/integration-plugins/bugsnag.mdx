@@ -26,16 +26,13 @@ Once wrapped, sourcemaps will automatically be uploaded to BugSnag when running 
   <Tab value="Bare">
 
 ```ts title="hot-updater.config.ts"
+import { existsSync } from "node:fs";
 import { bare } from "@hot-updater/bare";
 import { withBugsnag } from "@hot-updater/bugsnag-plugin";
 import { defineConfig } from "hot-updater";
 
-try {
+if (existsSync(".env.hotupdater")) {
   process.loadEnvFile(".env.hotupdater");
-} catch (error) {
-  if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
-    throw error;
-  }
 }
 
 export default defineConfig({

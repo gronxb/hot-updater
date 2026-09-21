@@ -51,14 +51,11 @@ export default HotUpdater.wrap({
 ## Configuration Example (`hot-updater.config.ts`)
 
 ```tsx
+import { existsSync } from "node:fs";
 import { defineConfig } from "hot-updater";
 
-try {
+if (existsSync(".env.hotupdater")) {
   process.loadEnvFile(".env.hotupdater");
-} catch (error) {
-  if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
-    throw error;
-  }
 }
 
 export default defineConfig({

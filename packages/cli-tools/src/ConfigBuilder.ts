@@ -141,6 +141,7 @@ export class ConfigBuilder implements IConfigBuilder {
   constructor() {
     // Add common imports needed by almost all configurations by default
     this.addImport({ pkg: "hot-updater", named: ["defineConfig"] });
+    this.addImport({ pkg: "node:fs", named: ["existsSync"] });
   }
 
   public addImport(info: ImportInfo): this {
@@ -269,12 +270,8 @@ export class ConfigBuilder implements IConfigBuilder {
     const text = `
 ${importStatements}
 
-try {
+if (existsSync(".env.hotupdater")) {
   process.loadEnvFile(".env.hotupdater");
-} catch (error) {
-  if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
-    throw error;
-  }
 }
 
 ${this.intermediateCode ? `${this.intermediateCode}\n` : ""}

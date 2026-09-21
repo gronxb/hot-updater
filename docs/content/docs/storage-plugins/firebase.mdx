@@ -51,16 +51,13 @@ FIREBASE_STORAGE_BUCKET=your-bucket-name
 ## Usage
 
 ```typescript
+import { existsSync } from "node:fs";
 import { firebaseStorage } from '@hot-updater/firebase';
 import { applicationDefault } from 'firebase-admin/app';
 import { defineConfig } from 'hot-updater';
 
-try {
+if (existsSync(".env.hotupdater")) {
   process.loadEnvFile(".env.hotupdater");
-} catch (error) {
-  if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
-    throw error;
-  }
 }
 
 // https://firebase.google.com/docs/admin/setup?hl=en#initialize_the_sdk_in_non-google_environments

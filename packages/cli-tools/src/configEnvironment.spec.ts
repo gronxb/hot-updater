@@ -135,6 +135,9 @@ export default defineConfig({
             .status,
         ).toBe("merged");
         expect(await project.run()).toBe(setup ? "custom" : "undefined");
+        expect(await readFile(project.configPath, "utf-8")).not.toContain(
+          "existsSync",
+        );
       }
     },
   );

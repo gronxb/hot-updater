@@ -154,13 +154,10 @@ describe("ConfigBuilder", () => {
     const expectedConfig = `import { s3Database, s3Storage } from "@hot-updater/aws";
 import { bare } from "@hot-updater/bare";
 import { defineConfig } from "hot-updater";
+import { existsSync } from "node:fs";
 
-try {
+if (existsSync(".env.hotupdater")) {
   process.loadEnvFile(".env.hotupdater");
-} catch (error) {
-  if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
-    throw error;
-  }
 }
 
 const commonOptions = {
@@ -195,13 +192,10 @@ export default defineConfig({
     const expectedConfig = `import { s3Database, s3Storage } from "@hot-updater/aws";
 import { bare } from "@hot-updater/bare";
 import { defineConfig } from "hot-updater";
+import { existsSync } from "node:fs";
 
-try {
+if (existsSync(".env.hotupdater")) {
   process.loadEnvFile(".env.hotupdater");
-} catch (error) {
-  if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
-    throw error;
-  }
 }
 
 const commonOptions = {
@@ -232,13 +226,10 @@ export default defineConfig({
     const expectedConfig = `import { bare } from "@hot-updater/bare";
 import { supabaseDatabase, supabaseStorage } from "@hot-updater/supabase";
 import { defineConfig } from "hot-updater";
+import { existsSync } from "node:fs";
 
-try {
+if (existsSync(".env.hotupdater")) {
   process.loadEnvFile(".env.hotupdater");
-} catch (error) {
-  if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
-    throw error;
-  }
 }
 
 
@@ -265,13 +256,10 @@ export default defineConfig({
     const expectedConfig = `import { bare } from "@hot-updater/bare";
 import { d1Database, r2Storage } from "@hot-updater/cloudflare";
 import { defineConfig } from "hot-updater";
+import { existsSync } from "node:fs";
 
-try {
+if (existsSync(".env.hotupdater")) {
   process.loadEnvFile(".env.hotupdater");
-} catch (error) {
-  if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
-    throw error;
-  }
 }
 
 
@@ -302,13 +290,10 @@ export default defineConfig({
     const expectedConfig = `import { d1Database, r2Storage } from "@hot-updater/cloudflare";
 import { rock } from "@hot-updater/rock";
 import { defineConfig } from "hot-updater";
+import { existsSync } from "node:fs";
 
-try {
+if (existsSync(".env.hotupdater")) {
   process.loadEnvFile(".env.hotupdater");
-} catch (error) {
-  if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
-    throw error;
-  }
 }
 
 
@@ -340,13 +325,10 @@ export default defineConfig({
 import { firebaseDatabase, firebaseStorage } from "@hot-updater/firebase";
 import { applicationDefault } from "firebase-admin/app";
 import { defineConfig } from "hot-updater";
+import { existsSync } from "node:fs";
 
-try {
+if (existsSync(".env.hotupdater")) {
   process.loadEnvFile(".env.hotupdater");
-} catch (error) {
-  if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
-    throw error;
-  }
 }
 
 // https://firebase.google.com/docs/admin/setup?hl=en#initialize_the_sdk_in_non-google_environments
