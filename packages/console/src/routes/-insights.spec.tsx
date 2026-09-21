@@ -89,14 +89,15 @@ const reportFor = (input: AppUsageInput): AppUsageReport => {
 };
 function renderPage() {
   mocks.bundles.mockResolvedValue({
-    sinceMs: 0,
-    beforeReceivedAtMs: 7_200_000,
-    intervalMs: 3_600_000,
-    truncated: false,
-    unattributedInstallations: 0,
-    pendingInstallations: 0,
-    downloadedInstallations: 0,
-    series: [],
+    downloads: 8,
+    uniqueUsers: 5,
+    launches: 12,
+    failedLaunches: 1,
+    points: [{ startMs: 0, launches: 12, failedLaunches: 1 }],
+    startMs: 0,
+    endMs: 7_200_000,
+    measuredAtMs: 7_200_000,
+    coverage: { kind: "complete", sinceMs: 0 },
   });
   if (!InsightsPage) throw new Error("Insights route component is required");
   const client = new QueryClient({
@@ -123,7 +124,7 @@ async function selectOption(label: string, option: string) {
 }
 
 describe("Insights dashboard", () => {
-  it("keeps reporting periods independent while applying scope filters to both panels", async () => {
+  it("keeps reporting periods independent while applying one filter form to both panels", async () => {
     mocks.usage.mockImplementation(async ({ data }: { data: AppUsageInput }) =>
       reportFor(data),
     );
@@ -140,16 +141,16 @@ describe("Insights dashboard", () => {
     );
     expect(
       screen.getAllByRole("tab", { name: "24 hours", selected: true }),
-    ).toHaveLength(2);
+    ).toHaveLength(1);
     fireEvent.click(
-      within(screen.getByRole("region", { name: "Bundle activity" })).getByRole(
+      within(screen.getByRole("region", { name: "Release health" })).getByRole(
         "tab",
-        { name: "7 days" },
+        { name: "24 hours" },
       ),
     );
     await waitFor(() =>
       expect(mocks.bundles).toHaveBeenLastCalledWith({
-        data: { platform: "all", channel: "production", window: "7d" },
+        data: { platform: "ios", channel: "production", window: "24h" },
       }),
     );
     expect(mocks.usage).toHaveBeenCalledTimes(1);
@@ -176,9 +177,9 @@ describe("Insights dashboard", () => {
       ).toBeDefined(),
     );
     expect(
-      within(screen.getByRole("region", { name: "Bundle activity" })).getByRole(
+      within(screen.getByRole("region", { name: "Release health" })).getByRole(
         "tab",
-        { name: "7 days", selected: true },
+        { name: "24 hours", selected: true },
       ),
     ).toBeDefined();
     expect(mocks.bundles).toHaveBeenCalledTimes(2);
@@ -189,7 +190,7 @@ describe("Insights dashboard", () => {
     ).toContain("30 installations");
     const previousBundleCalls = mocks.bundles.mock.calls.length;
     const previousCalls = mocks.usage.mock.calls.length;
-    await selectOption("Platform", "Android");
+    await selectOption("Usage platform", "Android");
     await selectOption("App version", "1.0.0");
     act(() => screen.getByLabelText("Channel").focus());
     fireEvent.input(screen.getByLabelText("Channel"), {
@@ -200,6 +201,10 @@ describe("Insights dashboard", () => {
     await act(async () => {
       fireEvent.pointerDown(beta);
       fireEvent.click(beta);
+    });
+    await selectOption("Health platform", "Android");
+    fireEvent.change(screen.getByLabelText("Release ID (optional)"), {
+      target: { value: "release-a" },
     });
     expect(mocks.usage).toHaveBeenCalledTimes(previousCalls);
     expect(mocks.bundles).toHaveBeenCalledTimes(previousBundleCalls);
@@ -219,8 +224,8 @@ describe("Insights dashboard", () => {
         data: {
           platform: "android",
           channel: "beta",
-          appVersion: "1.0.0",
-          window: "7d",
+          releaseId: "release-a",
+          window: "24h",
         },
       }),
     );
@@ -237,11 +242,14 @@ describe("Insights dashboard", () => {
         .getAttribute("aria-valuenow"),
     ).toBe("100");
     expect(
-      within(screen.getByRole("region", { name: "Bundle activity" }))
-        .getByRole("link", { name: "All events" })
+      within(screen.getByRole("region", { name: "Release health" }))
+        .getByRole("link", { name: "Event history" })
         .getAttribute("href"),
     ).toBe("/installations");
-  });
+    expect(
+      screen.queryByRole("form", { name: "Release health filters" }),
+    ).toBeNull();
+  }, 15_000);
 
   it("recovers from a failed query and distinguishes empty and partially read history", async () => {
     mocks.usage.mockRejectedValueOnce(new Error("Offline"));
@@ -255,7 +263,7 @@ describe("Insights dashboard", () => {
     expect(await screen.findByText("No activity reported")).toBeDefined();
     const usageCalls = mocks.usage.mock.calls.length;
     fireEvent.click(
-      screen.getByRole("button", { name: "Refresh bundle activity" }),
+      screen.getByRole("button", { name: "Refresh release health" }),
     );
     await waitFor(() => expect(mocks.bundles).toHaveBeenCalledTimes(2));
     expect(mocks.usage).toHaveBeenCalledTimes(usageCalls);
@@ -271,5 +279,26 @@ describe("Insights dashboard", () => {
     );
     expect(await screen.findByText("Partial history")).toBeDefined();
     expect(screen.getByText("≥3")).toBeDefined();
+  });
+
+  it("calculates distribution shares from exact distribution totals", async () => {
+    mocks.usage.mockResolvedValue({
+      ...reportFor({ platform: "all", channel: "production", window: "24h" }),
+      activeInstallations: 4,
+      versions: [{ name: "2.0.0", installations: 5 }],
+      platforms: [{ name: "ios", installations: 5 }],
+    });
+    renderPage();
+
+    expect(
+      (
+        await screen.findByRole("progressbar", { name: "2.0.0 share" })
+      ).getAttribute("aria-valuetext"),
+    ).toBe("5 installations, 100.0%");
+    expect(
+      screen
+        .getByRole("progressbar", { name: "iOS share" })
+        .getAttribute("aria-valuetext"),
+    ).toBe("5 installations, 100.0%");
   });
 });

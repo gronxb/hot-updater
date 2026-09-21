@@ -29,9 +29,14 @@ import {
 import { hasNullOrderOverrides, sortRowsByOrder } from "./databasePluginUtils";
 import {
   queryPrismaLatestEvents,
-  recordPrismaEventWithCte,
   updatePrismaEventHead,
 } from "./prismaInsights";
+import {
+  getPrismaAppUsage,
+  getPrismaReleaseActivity,
+  readPrismaInsightsHead,
+  recordPrismaInsightsOverview,
+} from "./prismaInsightsOverview";
 import { createPrismaOrderBy, createPrismaWhere } from "./prismaQuery";
 import {
   getPrismaDelegate,
@@ -89,7 +94,7 @@ const runPrismaTransaction = <TResult>(
         return await execute();
       } catch (error) {
         if (
-          attempt >= 2 ||
+          attempt >= 15 ||
           typeof error !== "object" ||
           error === null ||
           !("code" in error) ||
@@ -106,6 +111,9 @@ const runPrismaTransaction = <TResult>(
         ) {
           throw error;
         }
+        await new Promise((resolve) =>
+          setTimeout(resolve, Math.min(2 ** attempt, 32)),
+        );
       }
     }
   })();
@@ -374,21 +382,35 @@ const createPrismaImplementation = (
   const crud = createCrudImplementation(client, provider, relationMode);
   const implementation: DatabasePluginImplementation = {
     ...crud,
+    getReleaseActivity: (input) => getPrismaReleaseActivity(client, input),
+    getAppUsage: (input) => getPrismaAppUsage(client, input),
     async recordInsights({ event }) {
       if (!hasCallbackTransaction(client)) {
-        return recordPrismaEventWithCte(client, provider, event);
+        throw new PrismaAdapterError(
+          "Insights writes require callback transactions",
+        );
       }
       const events = getPrismaDelegate(client, "bundle_events");
       try {
         await runPrismaTransaction(
           client,
-          provider === "cockroachdb" ? "serializable" : "default",
+          "serializable",
           async (transaction) => {
+            const previousHead = await readPrismaInsightsHead(
+              transaction,
+              event.install_id,
+            );
             await getPrismaDelegate(transaction, "bundle_events").create({
               data: event,
             });
+            await recordPrismaInsightsOverview(
+              transaction,
+              event,
+              previousHead,
+            );
             await updatePrismaEventHead(transaction, provider, event);
           },
+          true,
         );
       } catch (error) {
         if (
@@ -513,6 +535,8 @@ export const prismaAdapter = (
           findLatestEvents: unsupportedMssqlInsights,
           countLatestEvents: unsupportedMssqlInsights,
           countEvents: unsupportedMssqlInsights,
+          getReleaseActivity: unsupportedMssqlInsights,
+          getAppUsage: unsupportedMssqlInsights,
         }
       : adapter.models.insights;
   return Object.assign(

@@ -7,6 +7,7 @@ import type {
   ReleaseCatalogRow,
   ReleaseRow,
 } from "@hot-updater/plugin-core";
+import type { InsightsOverviewIdentity } from "@hot-updater/plugin-core/internal";
 import type { ClientSession, Collection, MongoClient } from "mongodb";
 
 export class MongoAdapterConstraintError extends Error {
@@ -35,7 +36,29 @@ export type MongoBundleEventHead = Pick<
   | "type"
   | "from_bundle_id"
   | "to_bundle_id"
->;
+> & {
+  readonly current_release_id: string | null;
+  readonly app_version: string;
+};
+
+export type MongoInsightsOverview = {
+  readonly id: string;
+  readonly scope_kind: InsightsOverviewIdentity["scopeKind"];
+  readonly release_kind: InsightsOverviewIdentity["releaseKind"];
+  readonly release_id: string;
+  readonly channel: string;
+  readonly platform: InsightsOverviewIdentity["platform"];
+  readonly app_version_kind: InsightsOverviewIdentity["appVersionKind"];
+  readonly app_version: string;
+  readonly period_kind: InsightsOverviewIdentity["periodKind"];
+  readonly bucket_start_ms: number;
+  readonly downloads: number;
+  readonly launches: number;
+  readonly failed_launches: number;
+  readonly latest_installations: number;
+  readonly launch_users: string | null;
+  readonly activity_users: string | null;
+};
 
 export const WITHOUT_INTERNAL_FIELDS = {
   ...WITHOUT_MONGO_ID,
@@ -51,6 +74,7 @@ export type MongoCollections = {
   readonly bundlePatches: Collection<BundlePatchRow>;
   readonly bundleEvents: Collection<BundleEventRow>;
   readonly bundleEventHeads: Collection<MongoBundleEventHead>;
+  readonly insightsOverview: Collection<MongoInsightsOverview>;
   readonly channels: Collection<ChannelRow>;
   readonly apiKeys: Collection<ApiKeyRow>;
   readonly releases: Collection<ReleaseRow>;
@@ -67,6 +91,8 @@ export const createMongoCollections = (
     bundleEvents: database.collection<BundleEventRow>("bundle_events"),
     bundleEventHeads:
       database.collection<MongoBundleEventHead>("bundle_event_heads"),
+    insightsOverview:
+      database.collection<MongoInsightsOverview>("insights_overview"),
     channels: database.collection<ChannelRow>("channels"),
     apiKeys: database.collection<ApiKeyRow>("api_keys"),
     releases: database.collection<ReleaseRow>("releases"),

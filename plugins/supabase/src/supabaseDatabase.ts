@@ -32,6 +32,11 @@ import {
   SUPABASE_V1_FUNCTION_NAMES,
   SUPABASE_V1_TABLE_NAMES,
 } from "./supabaseInfrastructureNames";
+import {
+  getSupabaseAppUsage,
+  getSupabaseReleaseActivity,
+  supabaseOverviewPayload,
+} from "./supabaseInsightsOverview";
 import { SupabaseMissingDataError, throwSupabaseError } from "./supabaseResult";
 import type { Database } from "./types";
 
@@ -49,10 +54,12 @@ const createSupabaseImplementation = (
     async recordInsights({ event }) {
       const { error } = await supabase.rpc(
         SUPABASE_V1_FUNCTION_NAMES.recordEvent,
-        { p_event: event },
+        { p_event: event, p_overview: supabaseOverviewPayload(event) },
       );
       throwSupabaseError("record insights", error);
     },
+    getReleaseActivity: (input) => getSupabaseReleaseActivity(supabase, input),
+    getAppUsage: (input) => getSupabaseAppUsage(supabase, input),
     async findLatestInsightsEvents(input) {
       const limit = "installId" in input ? 1 : input.limit;
       const heads: Pick<BundleEventRow, "id" | "install_id">[] = [];

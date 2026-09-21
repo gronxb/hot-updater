@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type {
+  ActiveUpdateState,
   NotifyAppReadyInsightsEvent,
   NotifyAppReadyResult,
 } from "./native";
@@ -19,6 +20,7 @@ const mocks = vi.hoisted(() => ({
   getAppVersion: vi.fn(() => "1.0.0"),
   getBundleId: vi.fn(() => "bundle-id"),
   getChannel: vi.fn(() => "production"),
+  getActiveUpdateState: vi.fn<() => ActiveUpdateState>(),
   getCohort: vi.fn(() => "123"),
   getFingerprintHash: vi.fn(() => "fingerprint-hash"),
   getInstallId: vi.fn(() => "install-id"),
@@ -42,6 +44,7 @@ vi.mock("./native", () => ({
   getAppVersion: mocks.getAppVersion,
   getBundleId: mocks.getBundleId,
   getChannel: mocks.getChannel,
+  getActiveUpdateState: mocks.getActiveUpdateState,
   getCohort: mocks.getCohort,
   getFingerprintHash: mocks.getFingerprintHash,
   getInstallId: mocks.getInstallId,
@@ -78,12 +81,69 @@ describe("automatic notifyAppReady insights", () => {
     mocks.addListener.mockReturnValue(() => {});
     mocks.getBundleId.mockReturnValue("bundle-id");
     mocks.getChannel.mockReturnValue("production");
+    mocks.getActiveUpdateState.mockReturnValue({
+      activeSelection: null,
+      stableSelection: null,
+      verificationPending: false,
+    });
     mocks.getCohort.mockReturnValue("123");
     mocks.getFingerprintHash.mockReturnValue("fingerprint-hash");
     mocks.getInstallId.mockReturnValue("install-id");
     mocks.getPersistedUserIdentity.mockReturnValue({});
     mocks.readNotifyAppReady.mockReturnValue(createNotifyReadResult());
   });
+
+  it.each([
+    {
+      label: "running selection",
+      pending: false,
+      channel: "production",
+      expected: "release-running",
+    },
+    {
+      label: "staged selection",
+      pending: true,
+      channel: "production",
+      expected: "release-running",
+    },
+    {
+      label: "another channel",
+      pending: false,
+      channel: "preview",
+      expected: null,
+    },
+  ])(
+    "attributes an unchanged launch with $label",
+    async ({ pending, channel, expected }) => {
+      const running = {
+        kind: "BUNDLE" as const,
+        releaseId: "release-running",
+        bundleId: "bundle-id",
+        channel,
+      };
+      mocks.getActiveUpdateState.mockReturnValue({
+        activeSelection: pending
+          ? {
+              ...running,
+              releaseId: "release-pending",
+              bundleId: "bundle-pending",
+            }
+          : running,
+        stableSelection: pending ? running : null,
+        verificationPending: pending,
+      });
+      const { reportNoChange } = await import("./notifyAppReadyInsights");
+      const { client, sendInsightsEvent } = createClient();
+      await reportNoChange({ client, insights: true });
+      expect(sendInsightsEvent).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: "UNCHANGED",
+          toBundleId: "bundle-id",
+          toReleaseId: expected,
+        }),
+      );
+    },
+  );
 
   it("orders download after in-flight startup reporting and suppresses a later no-change report", async () => {
     const { handleNotifyAppReady, reportBundleDownloaded, reportNoChange } =

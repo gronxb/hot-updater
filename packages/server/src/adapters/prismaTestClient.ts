@@ -13,7 +13,7 @@ import { compareInsightsText } from "@hot-updater/plugin-core";
 
 type Row =
   | BundleEventRow
-  | Pick<
+  | (Pick<
       BundleEventRow,
       | "install_id"
       | "id"
@@ -24,7 +24,26 @@ type Row =
       | "type"
       | "from_bundle_id"
       | "to_bundle_id"
-    >
+      | "app_version"
+    > & { readonly current_release_id: string | null })
+  | {
+      readonly id: string;
+      readonly scope_kind: string;
+      readonly release_kind: string;
+      readonly release_id: string;
+      readonly channel: string;
+      readonly platform: string;
+      readonly app_version_kind: string;
+      readonly app_version: string;
+      readonly period_kind: string;
+      readonly bucket_start_ms: number;
+      readonly downloads: number;
+      readonly launches: number;
+      readonly failed_launches: number;
+      readonly latest_installations: number;
+      readonly launch_users: string | null;
+      readonly activity_users: string | null;
+    }
   | BundlePatchRow
   | BundleRow
   | ChannelRow
@@ -37,6 +56,7 @@ type Tables = {
   bundles: Table;
   bundle_events: Table;
   bundle_event_heads: Table;
+  insights_overview: Table;
 
   channels: Table;
   api_keys: Table;
@@ -340,7 +360,7 @@ const querySqlite = (
       "CREATE TABLE bundle_events (id TEXT PRIMARY KEY, type TEXT, install_id TEXT, user_id TEXT, from_bundle_id TEXT, from_release_id TEXT, to_bundle_id TEXT, to_release_id TEXT, platform TEXT, app_version TEXT, channel TEXT, metadata TEXT, received_at_ms REAL)",
     );
     database.exec(
-      "CREATE TABLE bundle_event_heads (install_id TEXT PRIMARY KEY, id TEXT, received_at_ms REAL, user_id TEXT, platform TEXT, channel TEXT, type TEXT, from_bundle_id TEXT, to_bundle_id TEXT)",
+      "CREATE TABLE bundle_event_heads (install_id TEXT PRIMARY KEY, id TEXT, received_at_ms REAL, user_id TEXT, platform TEXT, channel TEXT, type TEXT, from_bundle_id TEXT, to_bundle_id TEXT, current_release_id TEXT, app_version TEXT)",
     );
     for (const table of ["bundle_events", "bundle_event_heads"] as const) {
       for (const row of tables[table]) {
@@ -381,6 +401,8 @@ const createClient = (tables: Tables, hooks: Hooks) => ({
   $executeRawUnsafe: async (query: string, ...values: SqliteValue[]) =>
     querySqlite(tables, query, values, true),
   bundle_events: createDelegate(tables, "bundle_events", hooks),
+  bundle_event_heads: createDelegate(tables, "bundle_event_heads", hooks),
+  insights_overview: createDelegate(tables, "insights_overview", hooks),
 
   bundle_patches: createDelegate(tables, "bundle_patches", hooks),
   bundles: createDelegate(tables, "bundles", hooks),
@@ -396,6 +418,7 @@ export const createPrismaTestHarness = () => {
     bundles: [],
     bundle_events: [],
     bundle_event_heads: [],
+    insights_overview: [],
 
     channels: [],
     api_keys: [],
@@ -428,6 +451,7 @@ export const createPrismaTestHarness = () => {
         tables.bundles = transactionTables.bundles;
         tables.bundle_events = transactionTables.bundle_events;
         tables.bundle_event_heads = transactionTables.bundle_event_heads;
+        tables.insights_overview = transactionTables.insights_overview;
         tables.channels = transactionTables.channels;
         tables.api_keys = transactionTables.api_keys;
         tables.releases = transactionTables.releases;
@@ -469,6 +493,7 @@ export const createPrismaTestHarness = () => {
       tables.bundles = [];
       tables.bundle_events = [];
       tables.bundle_event_heads = [];
+      tables.insights_overview = [];
       tables.channels = [];
       tables.api_keys = [];
       tables.releases = [];

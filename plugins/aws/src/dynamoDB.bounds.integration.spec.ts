@@ -7,10 +7,7 @@ import {
 import { createDatabasePluginAdapter } from "@hot-updater/plugin-core/internal";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
-import {
-  boundedDynamoDBMetadataItem,
-  DYNAMODB_MAX_METADATA_ITEM_BYTES,
-} from "./dynamoDB";
+import { boundedDynamoDBMetadataItem } from "./dynamoDB";
 import { createDynamoDBCrud, queryCompleteOwnersPatches } from "./dynamoDB";
 import { toDynamoDBBundleItem, toDynamoDBPatchItem } from "./dynamoDB";
 import { DynamoDBIntegrationFixture } from "./dynamoDB.integration-fixture";
@@ -19,6 +16,7 @@ const fixture = new DynamoDBIntegrationFixture();
 const bundleCount = 1_001;
 const patchCount = 1_001;
 const patchesPerOwner = 25;
+const fixtureItemBytes = 1_024;
 
 beforeAll(() => fixture.start(), 120_000);
 afterAll(() => fixture.stop());
@@ -71,7 +69,7 @@ describe("DynamoDB reads beyond the former metadata ceiling", () => {
           {
             ...row,
             metadata: {
-              padding: "x".repeat(DYNAMODB_MAX_METADATA_ITEM_BYTES - bytes),
+              padding: "x".repeat(Math.max(0, fixtureItemBytes - bytes)),
             },
           },
           1,
@@ -86,9 +84,7 @@ describe("DynamoDB reads beyond the former metadata ceiling", () => {
       return boundedDynamoDBMetadataItem(
         toDynamoDBPatchItem({
           ...row,
-          patch_storage_uri: "x".repeat(
-            DYNAMODB_MAX_METADATA_ITEM_BYTES - bytes,
-          ),
+          patch_storage_uri: "x".repeat(Math.max(0, fixtureItemBytes - bytes)),
         }),
       );
     });

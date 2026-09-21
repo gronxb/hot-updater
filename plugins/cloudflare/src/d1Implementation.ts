@@ -23,6 +23,11 @@ import type {
   UpdateDatabaseImplementationInput,
 } from "@hot-updater/plugin-core/internal";
 
+import {
+  d1InsightsStatements,
+  getD1AppUsage,
+  getD1ReleaseActivity,
+} from "./d1InsightsOverview";
 import { countD1Rows, d1TableNames, findManyD1Rows } from "./d1Query";
 import { parseD1Row } from "./d1Rows";
 import { buildD1Where, d1Placeholders, encodeD1Values } from "./d1Sql";
@@ -655,19 +660,30 @@ export const createD1Implementation = (
         sql: query.sql.replace(" RETURNING *", " ON CONFLICT(id) DO NOTHING"),
         params: query.params,
       },
+      ...d1InsightsStatements(event),
       {
-        sql: `INSERT INTO bundle_event_heads (install_id, id, received_at_ms, user_id, platform, channel, type, from_bundle_id, to_bundle_id)
-SELECT install_id, id, received_at_ms, user_id, platform, channel, type, from_bundle_id, to_bundle_id
+        sql: `INSERT INTO bundle_event_heads (install_id, id, received_at_ms, user_id, platform, channel, type, from_bundle_id, to_bundle_id, current_release_id, app_version)
+SELECT install_id, id, received_at_ms, user_id, platform, channel, type, from_bundle_id, to_bundle_id,
+  CASE WHEN type = 'UPDATE_DOWNLOADED' THEN from_release_id ELSE to_release_id END,
+  app_version
 FROM bundle_events WHERE id = json_extract(?, '$')
+  AND insights_processed = 0
 ON CONFLICT(install_id) DO UPDATE SET
   id = excluded.id, received_at_ms = excluded.received_at_ms, user_id = excluded.user_id,
   platform = excluded.platform, channel = excluded.channel, type = excluded.type,
-  from_bundle_id = excluded.from_bundle_id, to_bundle_id = excluded.to_bundle_id
+  from_bundle_id = excluded.from_bundle_id, to_bundle_id = excluded.to_bundle_id,
+  current_release_id = excluded.current_release_id, app_version = excluded.app_version
 WHERE (excluded.received_at_ms, excluded.id) > (bundle_event_heads.received_at_ms, bundle_event_heads.id)`,
+        params: encodeD1Values([event.id]),
+      },
+      {
+        sql: "UPDATE bundle_events SET insights_processed = 1 WHERE id = json_extract(?, '$') AND insights_processed = 0",
         params: encodeD1Values([event.id]),
       },
     ]);
   },
+  getReleaseActivity: (input) => getD1ReleaseActivity(executor, input),
+  getAppUsage: (input) => getD1AppUsage(executor, input),
   async findLatestInsightsEvents(input) {
     const where = buildD1Where(latestInsightsWhere(input));
     const rows = await executor.query(

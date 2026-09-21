@@ -94,6 +94,7 @@ describe("MongoDB native Insights storage", () => {
   beforeEach(async () => {
     await client.db().collection("bundle_events").deleteMany({});
     await client.db().collection("bundle_event_heads").deleteMany({});
+    await client.db().collection("insights_overview").deleteMany({});
   });
 
   afterAll(async () => {
@@ -233,7 +234,9 @@ describe("MongoDB native Insights storage", () => {
         .filter((key) => key !== "_id")
         .sort(),
     ).toEqual([
+      "app_version",
       "channel",
+      "current_release_id",
       "from_bundle_id",
       "id",
       "install_id",
@@ -243,6 +246,76 @@ describe("MongoDB native Insights storage", () => {
       "type",
       "user_id",
     ]);
+  });
+
+  it("maintains release counters, recovered attribution, distinct users, and latest distribution", async () => {
+    const first = createBundleEventRowFixture("850", 100);
+    const second = createBundleEventRowFixture("851", 200);
+    const recovery = createBundleEventRowFixture("852", 300);
+    const releaseA = first.to_bundle_id;
+    const releaseB = second.to_bundle_id;
+    const events: BundleEventRow[] = [
+      {
+        ...first,
+        type: "UPDATE_DOWNLOADED",
+        to_release_id: releaseB,
+      },
+      {
+        ...first,
+        id: createBundleEventRowFixture("853", 100).id,
+        type: "UNCHANGED",
+        from_bundle_id: null,
+        from_release_id: null,
+        to_release_id: releaseA,
+        metadata: { ...first.metadata, update_strategy: null },
+      },
+      { ...second, to_release_id: releaseB },
+      {
+        ...recovery,
+        type: "RECOVERED",
+        from_release_id: releaseB,
+        to_release_id: releaseA,
+      },
+    ];
+    await Promise.all(events.map(record));
+    await record(events[3]!);
+
+    const lifetime = await insights().getReleaseActivity({
+      releases: [releaseA, releaseB].map((releaseId) => ({
+        releaseId,
+        platform: "ios",
+        channel: "production",
+      })),
+    });
+    expect(lifetime.data.map(({ metrics }) => metrics)).toEqual([
+      { downloads: 0, launches: 2, failedLaunches: 0 },
+      { downloads: 1, launches: 1, failedLaunches: 1 },
+    ]);
+
+    const activity = await insights().getReleaseActivity({
+      scope: { platform: "ios", channel: "production" },
+      timeRange: { start: 0, end: 3_600_000 },
+    });
+    expect(activity.data[0]?.metrics).toMatchObject({
+      downloads: 1,
+      launches: 3,
+      failedLaunches: 1,
+      uniqueUsers: 3,
+    });
+
+    const usage = await insights().getAppUsage({
+      channel: "production",
+      platform: "all",
+      timeRange: { start: 0, end: 3_600_000 },
+      intervalMs: 3_600_000,
+    });
+    expect(usage.activeInstallations).toBe(3);
+    expect(usage.bundleDistribution).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ releaseId: releaseA, installations: 2 }),
+        expect.objectContaining({ releaseId: releaseB, installations: 1 }),
+      ]),
+    );
   });
 
   it("keeps native latest reads bounded as history and unrelated scopes grow", async () => {
@@ -293,16 +366,31 @@ describe("MongoDB native Insights storage", () => {
         })),
       );
     const afterHistory = await reads();
-    await Promise.all(
-      Array.from({ length: 240 }, (_, index) =>
-        record({
-          ...createBundleEventRowFixture(String(30000 + index), 1000),
-          install_id: `other-${index}`,
-          user_id: "other",
-          channel: "other",
-        }),
-      ),
-    );
+    const unrelated = Array.from({ length: 240 }, (_, index) => ({
+      ...createBundleEventRowFixture(String(30000 + index), 1000),
+      install_id: `other-${index}`,
+      user_id: "other",
+      channel: "other",
+    }));
+    await client.db().collection("bundle_events").insertMany(unrelated);
+    await client
+      .db()
+      .collection("bundle_event_heads")
+      .insertMany(
+        unrelated.map((event) => ({
+          install_id: event.install_id,
+          id: event.id,
+          received_at_ms: event.received_at_ms,
+          user_id: event.user_id,
+          platform: event.platform,
+          channel: event.channel,
+          type: event.type,
+          from_bundle_id: event.from_bundle_id,
+          to_bundle_id: event.to_bundle_id,
+          current_release_id: event.to_release_id,
+          app_version: event.app_version,
+        })),
+      );
     const afterScopes = await reads();
     for (const sample of [before, afterHistory, afterScopes]) {
       expect(sample.user.result).toEqual(events.slice(0, 10));

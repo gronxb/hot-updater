@@ -107,6 +107,9 @@ export const uuid = (ormName: string): HotUpdaterColumnDsl =>
 export const integer = (ormName: string): HotUpdaterColumnDsl =>
   column(ormName, "integer");
 
+export const bigInteger = (ormName: string): HotUpdaterColumnDsl =>
+  column(ormName, "bigint");
+
 export const float = (ormName: string): HotUpdaterColumnDsl =>
   column(ormName, "float");
 

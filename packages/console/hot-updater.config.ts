@@ -1114,18 +1114,18 @@ const bundleEvents: readonly BundleEventRow[] = [
 
 // Keep the demo reporting windows useful regardless of the calendar date.
 const receiptOffsetMs = Date.now() - Date.UTC(2026, 6, 18, 10) - 60_000;
-for (const event of bundleEvents) {
-  const row = {
-    ...event,
-    received_at_ms: event.received_at_ms + receiptOffsetMs,
-  };
-  databaseData.bundleEvents.set(row.id, row);
-}
+const adjustedBundleEvents = bundleEvents.map((event) => ({
+  ...event,
+  received_at_ms: event.received_at_ms + receiptOffsetMs,
+}));
 
 const database = mockDatabase({
   latency: { min: 150, max: 320 },
   data: databaseData,
 });
+for (const event of adjustedBundleEvents) {
+  await database.models.insights.recordEvent({ event });
+}
 
 export default {
   projectPath: __dirname,

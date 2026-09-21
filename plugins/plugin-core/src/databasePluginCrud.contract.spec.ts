@@ -24,6 +24,8 @@ const createMethods = () => ({
   findOne: unimplemented,
   findMany: unimplemented,
   recordInsights: unimplemented,
+  getReleaseActivity: unimplemented,
+  getAppUsage: unimplemented,
   insertChannel: unimplemented,
   deleteChannel: unimplemented,
 });

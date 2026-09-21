@@ -60,6 +60,12 @@ const adapter = createDatabasePluginAdapter(name, {
   countLatestInsightsEvents: async () => {
     throw new Error("Unexpected Insights count");
   },
+  getReleaseActivity: async () => {
+    throw new Error("Unexpected release activity read");
+  },
+  getAppUsage: async () => {
+    throw new Error("Unexpected App usage read");
+  },
 
   async recordInsights() {
     throw new BenchmarkMutationError();

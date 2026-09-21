@@ -10,6 +10,7 @@ const supabaseMock = vi.hoisted(() => {
   type TableName =
     | "bundle_events"
     | "bundle_event_heads"
+    | "insights_overview"
     | "bundle_patches"
     | "bundles"
     | "channels"
@@ -26,6 +27,7 @@ const supabaseMock = vi.hoisted(() => {
     hot_updater_v1_api_keys: "api_keys",
     hot_updater_v1_bundle_events: "bundle_events",
     hot_updater_v1_bundle_event_heads: "bundle_event_heads",
+    hot_updater_v1_insights_overview: "insights_overview",
     hot_updater_v1_bundle_patches: "bundle_patches",
     hot_updater_v1_bundles: "bundles",
     hot_updater_v1_channels: "channels",
@@ -36,6 +38,7 @@ const supabaseMock = vi.hoisted(() => {
   const rows: Record<TableName, Map<string, Row>> = {
     bundle_events: new Map(),
     bundle_event_heads: new Map(),
+    insights_overview: new Map(),
 
     bundle_patches: new Map(),
     bundles: new Map(),
@@ -47,6 +50,7 @@ const supabaseMock = vi.hoisted(() => {
   const tableReadCounts: Record<TableName, number> = {
     bundle_events: 0,
     bundle_event_heads: 0,
+    insights_overview: 0,
 
     bundle_patches: 0,
     bundles: 0,
@@ -204,6 +208,12 @@ const supabaseMock = vi.hoisted(() => {
 
     constructor(private readonly table: TableName) {}
 
+    private addFilter(filter: string) {
+      this.filter =
+        this.filter === undefined ? filter : `and(${this.filter},${filter})`;
+      return this;
+    }
+
     insert(payload: Row) {
       this.mode = "insert";
       this.payload = payload;
@@ -235,20 +245,28 @@ const supabaseMock = vi.hoisted(() => {
       return this;
     }
     or(filter: string) {
-      this.filter = filter;
-      return this;
+      return this.addFilter(`or(${filter})`);
     }
     eq(field: string, value: unknown) {
       const encoded =
         typeof value === "string"
           ? `"${value.replaceAll("\\", "\\\\").replaceAll('"', '\\"')}"`
           : String(value);
-      this.filter = `${field}.eq.${encoded}`;
-      return this;
+      return this.addFilter(`${field}.eq.${encoded}`);
     }
     in(field: string, values: readonly string[]) {
-      this.filter = `${field}.in.(${values.map((value) => JSON.stringify(value)).join(",")})`;
-      return this;
+      return this.addFilter(
+        `${field}.in.(${values.map((value) => JSON.stringify(value)).join(",")})`,
+      );
+    }
+    gte(field: string, value: number) {
+      return this.addFilter(`${field}.gte.${value}`);
+    }
+    gt(field: string, value: number) {
+      return this.addFilter(`${field}.gt.${value}`);
+    }
+    lt(field: string, value: number) {
+      return this.addFilter(`${field}.lt.${value}`);
     }
     order(
       field: string,
@@ -442,19 +460,97 @@ const supabaseMock = vi.hoisted(() => {
         if (name === "hot_updater_v1_record_event") {
           const input = args?.p_event as Row;
           const id = String(input.id);
-          const event = rows.bundle_events.get(id) ?? input;
+          if (rows.bundle_events.has(id)) {
+            return { data: null, error: null };
+          }
+          const event = input;
           rows.bundle_events.set(id, event);
           const installId = String(event.install_id);
           const current = rows.bundle_event_heads.get(installId);
-          if (
+          const advancesHead =
             current === undefined ||
             Number(event.received_at_ms) > Number(current.received_at_ms) ||
             (event.received_at_ms === current.received_at_ms &&
-              String(event.id) > String(current.id))
-          ) {
-            rows.bundle_event_heads.set(
-              installId,
-              Object.fromEntries(
+              String(event.id) > String(current.id));
+          const overview = args?.p_overview as
+            | {
+                deltas?: readonly Row[];
+                distribution?: Row;
+              }
+            | undefined;
+          const mergeSummary = (left: unknown, right: unknown): string => {
+            const leftValue = String(left ?? "");
+            const rightValue = String(right ?? "");
+            const length = Math.max(leftValue.length, rightValue.length);
+            let merged = "";
+            for (let index = 0; index < length; index += 1) {
+              const leftCharacter = leftValue[index] ?? "!";
+              const rightCharacter = rightValue[index] ?? "!";
+              merged +=
+                leftCharacter > rightCharacter ? leftCharacter : rightCharacter;
+            }
+            return merged;
+          };
+          for (const delta of overview?.deltas ?? []) {
+            const overviewId = String(delta.id);
+            const previous = rows.insights_overview.get(overviewId);
+            rows.insights_overview.set(overviewId, {
+              ...delta,
+              downloads:
+                Number(previous?.downloads ?? 0) + Number(delta.downloads),
+              launches:
+                Number(previous?.launches ?? 0) + Number(delta.launches),
+              failed_launches:
+                Number(previous?.failed_launches ?? 0) +
+                Number(delta.failed_launches),
+              launch_users: mergeSummary(
+                previous?.launch_users,
+                delta.launch_users,
+              ),
+              activity_users: mergeSummary(
+                previous?.activity_users,
+                delta.activity_users,
+              ),
+              latest_installations: Number(previous?.latest_installations ?? 0),
+            });
+          }
+          if (advancesHead && overview?.distribution !== undefined) {
+            if (current !== undefined) {
+              const previousDistribution = [
+                ...rows.insights_overview.values(),
+              ].find(
+                (row) =>
+                  row.scope_kind === "distribution" &&
+                  row.channel === current.channel &&
+                  row.platform === current.platform &&
+                  row.app_version === current.app_version &&
+                  row.release_id === (current.current_release_id ?? "") &&
+                  row.bucket_start_ms ===
+                    Math.floor(Number(current.received_at_ms) / 3_600_000) *
+                      3_600_000,
+              );
+              if (previousDistribution !== undefined) {
+                previousDistribution.latest_installations =
+                  Number(previousDistribution.latest_installations) - 1;
+              }
+            }
+            const distribution = overview.distribution;
+            const distributionId = String(distribution.id);
+            const previous = rows.insights_overview.get(distributionId);
+            rows.insights_overview.set(distributionId, {
+              ...distribution,
+              downloads: Number(previous?.downloads ?? 0),
+              launches: Number(previous?.launches ?? 0),
+              failed_launches: Number(previous?.failed_launches ?? 0),
+              launch_users: String(previous?.launch_users ?? ""),
+              activity_users: String(previous?.activity_users ?? ""),
+              latest_installations:
+                Number(previous?.latest_installations ?? 0) + 1,
+            });
+          }
+          if (advancesHead) {
+            rows.bundle_event_heads.set(installId, {
+              ...Object.fromEntries(
                 [
                   "install_id",
                   "id",
@@ -465,9 +561,14 @@ const supabaseMock = vi.hoisted(() => {
                   "type",
                   "from_bundle_id",
                   "to_bundle_id",
+                  "app_version",
                 ].map((key) => [key, event[key]]),
               ),
-            );
+              current_release_id:
+                event.type === "UPDATE_DOWNLOADED"
+                  ? event.from_release_id
+                  : event.to_release_id,
+            });
           }
           return { data: null, error: null };
         }
@@ -768,6 +869,7 @@ const supabaseMock = vi.hoisted(() => {
     resetMockClient: () => {
       rows.bundle_events.clear();
       rows.bundle_event_heads.clear();
+      rows.insights_overview.clear();
       rows.bundle_patches.clear();
       rows.bundles.clear();
       rows.channels.clear();
