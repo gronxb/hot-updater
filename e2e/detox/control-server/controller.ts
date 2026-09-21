@@ -1876,6 +1876,14 @@ function releaseIdForBundle(bundleId: string | null) {
   );
 }
 
+function bundleIdForRelease(releaseId: string) {
+  return (
+    fixtureSession.deployedBundles.findLast(
+      (record) => record.releaseId === releaseId,
+    )?.bundleId ?? null
+  );
+}
+
 function readLynxJournalValue(): Record<string, unknown> | null {
   const scopePath = ensureLynxScopePath();
   if (!scopePath) {
@@ -1930,7 +1938,11 @@ function readLynxSynthesizedSnapshot(
       exists: true,
       path: journalPath,
       readError: null,
-      value: synthesizeLynxMetadata(journal, fixtureSession.platform),
+      value: synthesizeLynxMetadata(
+        journal,
+        fixtureSession.platform,
+        bundleIdForRelease,
+      ),
     };
   }
   if (fileName === "crashed-history.json") {
@@ -1938,20 +1950,27 @@ function readLynxSynthesizedSnapshot(
       exists: true,
       path: journalPath,
       readError: null,
-      value: synthesizeLynxCrashHistory(journal, fixtureSession.platform),
+      value: synthesizeLynxCrashHistory(
+        journal,
+        fixtureSession.platform,
+        bundleIdForRelease,
+      ),
     };
   }
   const confirmed = lynxReceipt(journal, fixtureSession.platform, "confirmed");
   const confirmedBundleId =
     typeof confirmed?.bundleId === "string" ? confirmed.bundleId : null;
+  const crashedBundleIds = lynxCrashedBundleIds(
+    journal,
+    fixtureSession.platform,
+    bundleIdForRelease,
+  );
   const report = synthesizeLynxLaunchReport({
-    crashedBundleIds: lynxCrashedBundleIds(journal, fixtureSession.platform),
+    crashedBundleIds,
     confirmedBundleId,
     confirmedReleaseId:
       typeof confirmed?.releaseId === "string" ? confirmed.releaseId : null,
-    fromReleaseId: releaseIdForBundle(
-      lynxCrashedBundleIds(journal, fixtureSession.platform).at(-1) ?? null,
-    ),
+    fromReleaseId: releaseIdForBundle(crashedBundleIds.at(-1) ?? null),
     toReleaseId:
       (typeof confirmed?.releaseId === "string" ? confirmed.releaseId : null) ??
       releaseIdForBundle(confirmedBundleId),

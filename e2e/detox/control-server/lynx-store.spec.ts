@@ -153,6 +153,24 @@ describe("Lynx E2E store projection", () => {
     });
   });
 
+  it("projects Android unconfirmed releases as crashed bundles", () => {
+    const journal = {
+      confirmed: receipt,
+      unconfirmed: ["release-crash"],
+    };
+    const bundleIdForRelease = (releaseId: string) =>
+      releaseId === "release-crash" ? "bundle-crash" : null;
+
+    expect(
+      lynxCrashedBundleIds(journal, "android", bundleIdForRelease),
+    ).toEqual(["bundle-crash"]);
+    expect(
+      synthesizeLynxCrashHistory(journal, "android", bundleIdForRelease),
+    ).toMatchObject({
+      bundles: [{ bundleId: "bundle-crash", crashCount: 1 }],
+    });
+  });
+
   it("projects crash history and recovery launch reports", () => {
     const journal = {
       crashedBundleIds: ["bundle-crash"],

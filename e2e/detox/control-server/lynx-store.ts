@@ -75,12 +75,20 @@ export function lynxReceipt(
 export function lynxCrashedBundleIds(
   journal: Record<string, unknown>,
   platform: "ios" | "android",
+  bundleIdForRelease: (releaseId: string) => string | null = () => null,
 ): string[] {
   const raw = platform === "ios" ? journal.crashedBundleIds : journal.crashed;
-  if (!Array.isArray(raw)) {
-    return [];
+  const crashed = Array.isArray(raw)
+    ? raw.filter((id): id is string => typeof id === "string")
+    : [];
+  if (platform === "android" && Array.isArray(journal.unconfirmed)) {
+    for (const releaseId of journal.unconfirmed) {
+      if (typeof releaseId !== "string") continue;
+      const bundleId = bundleIdForRelease(releaseId);
+      if (bundleId && !crashed.includes(bundleId)) crashed.push(bundleId);
+    }
   }
-  return raw.filter((id): id is string => typeof id === "string");
+  return crashed;
 }
 
 function selectionFromReceipt(receipt: Record<string, unknown> | null) {
@@ -123,11 +131,12 @@ function highWaterFromReceipt(
 export function synthesizeLynxMetadata(
   journal: Record<string, unknown>,
   platform: "ios" | "android",
+  bundleIdForRelease?: (releaseId: string) => string | null,
 ): Record<string, unknown> {
   const confirmed = lynxReceipt(journal, platform, "confirmed");
   const next = lynxReceipt(journal, platform, "next");
   const pending = asRecord(journal.pending);
-  const crashed = lynxCrashedBundleIds(journal, platform);
+  const crashed = lynxCrashedBundleIds(journal, platform, bundleIdForRelease);
   const nextBundleId = asString(next?.bundleId);
   const nextIsCrashed = nextBundleId !== null && crashed.includes(nextBundleId);
   const active = nextIsCrashed ? confirmed : (next ?? confirmed);
@@ -160,8 +169,9 @@ export function synthesizeLynxMetadata(
 export function synthesizeLynxCrashHistory(
   journal: Record<string, unknown>,
   platform: "ios" | "android",
+  bundleIdForRelease?: (releaseId: string) => string | null,
 ): Record<string, unknown> {
-  const bundleIds = lynxCrashedBundleIds(journal, platform);
+  const bundleIds = lynxCrashedBundleIds(journal, platform, bundleIdForRelease);
   return {
     bundles: bundleIds.map((bundleId, index) => ({
       bundleId,
