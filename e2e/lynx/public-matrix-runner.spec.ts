@@ -493,11 +493,15 @@ describe("Lynx public matrix runner", () => {
   });
 
   it("publishes the exact native updater code and message for install evidence", async () => {
+    const runtimeURL = URL;
     vi.resetModules();
     vi.stubGlobal("__SPIKE_VARIANT__", "B");
     vi.stubGlobal("__SPIKE_BEHAVIOR__", "normal");
     vi.stubGlobal("__SPIKE_ASSET_PREFIX__", "hu://");
     vi.stubGlobal("__SDK_RESOURCES__", false);
+    vi.stubGlobal("TextCodecHelper", {
+      encode: (value: string) => new TextEncoder().encode(value).buffer,
+    });
     const temporary = fs.mkdtempSync(
       path.join(os.tmpdir(), "lynx-install-failure-"),
     );
@@ -544,7 +548,14 @@ describe("Lynx public matrix runner", () => {
     const sdk = await import("../../examples/lynx/spike/sdk");
     const setStatus = vi.fn();
     sdk.sdkImageLoaded();
+    vi.stubGlobal(
+      "URL",
+      class LynxURLWithoutOrigin {
+        constructor(_value: string) {}
+      },
+    );
     await sdk.startSdk(setStatus, vi.fn(), vi.fn(), vi.fn(), vi.fn());
+    vi.stubGlobal("URL", runtimeURL);
     await sdk.checkSdkUpdate(setStatus, vi.fn());
     await sdk.installSdkUpdate(setStatus, vi.fn());
 

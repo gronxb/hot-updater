@@ -26,6 +26,12 @@ let evidenceOrigin: string | null = null;
 const jsonBody = (value: unknown) =>
   TextCodecHelper.encode(JSON.stringify(value));
 
+const evidenceOriginFrom = (appBaseURL: string): string => {
+  const match = /^(https?:\/\/[^/?#]+)/i.exec(appBaseURL);
+  if (!match) throw new Error("Invalid evidence endpoint");
+  return match[1];
+};
+
 export function sdkImageLoaded() {
   imageReady = true;
   completeImage?.();
@@ -41,9 +47,9 @@ export async function startSdk(
   try {
     if (!initialized) {
       const launchConfiguration = await HotUpdater.getLaunchConfiguration();
-      evidenceOrigin = new URL(
+      evidenceOrigin = evidenceOriginFrom(
         launchConfiguration.appBaseURL ?? "http://localhost:3007/hot-updater",
-      ).origin;
+      );
       HotUpdater.init({
         baseURL:
           launchConfiguration.appBaseURL ?? "http://localhost:3007/hot-updater",
@@ -163,7 +169,7 @@ export async function captureRuntimeEvents(
       throw new Error("Missing runtime snapshot endpoint");
     }
     const response = await fetch(
-      `${new URL(appBaseURL).origin}/matrix-runtime-snapshot`,
+      `${evidenceOriginFrom(appBaseURL)}/matrix-runtime-snapshot`,
       {
         body: jsonBody({ snapshot }),
         headers: { "content-type": "application/json" },
