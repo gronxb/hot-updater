@@ -86,9 +86,10 @@ initial scope. Every page in one artifact is deployed, selected, installed,
 activated, governed by one startup confirmation/recovery policy, rolled back,
 and retained as part of one complete Release; there is no independent per-page
 deployment, selection, version, or rollback.
-Arbitrary per-page delivery policies, analytics telemetry, and init/doctor
-integration remain follow-up scope. Runtime compatibility validation remains
-required. Existing fingerprint targeting must use a meaningful
+Arbitrary per-page delivery policies and new analytics telemetry remain
+follow-up scope. Runtime compatibility validation remains required. Lynx-only
+init and doctor operation through integration-owned hooks is part of the
+pure-core release gate. Existing fingerprint targeting must use a meaningful
 integration-owned native fingerprint when enabled.
 
 RN and Lynx use separate delivery projects initially. One deployed process,
@@ -1539,7 +1540,7 @@ cell.
 
 The PRD decision commit is `01bb61260b932e20d3e3f8a3e8e957369f887e17` on PR
 #1300. The current pushed implementation is
-`bfad8131abd8d3cef92fe1f08e3d41e3a6869f6a`. It includes the engine-independent
+`f54a3ae47`. It includes the engine-independent
 runtime and build API, strict archive and delta installers, engine-neutral
 delivery declarations, integration-owned React Native and Expo fingerprint
 policy, packaged Sparkling hosts, the production example, and the framework
@@ -1562,6 +1563,15 @@ times. `isUpdateDownloaded()` reads the authoritative native `nextSelection`.
 Default reload reports durable transition acceptance to the old caller and its
 completion through the replacement generation's durable receipt and readiness.
 Custom reload requires an explicit handler.
+
+Managed resource URLs carry the positive managed-runtime generation as an exact
+query parameter. Android and iOS accept only that strict optional parameter and
+resolve the underlying manifest path unchanged. This prevents process-scoped
+Lynx resource caches from reusing an earlier generation's font or other managed
+resource after immediate activation. Android recovery evidence associates every
+redirected resource diagnostic with the matching confirmed JavaScript generation
+in the current OS process; retained diagnostics from an earlier process cannot
+satisfy the assertion.
 
 The server limits serialized `ArtifactInfo` to 528,384 UTF-8 bytes, resolves
 changed-file URLs with at most 16 concurrent operations, and selects a bounded
@@ -1604,11 +1614,25 @@ Verification on the current implementation includes:
 - 17 focused Android crash projection and recovery tests; and
 - green GitHub Integration on the pushed implementation commit.
 
-Full job `job-20260921042318-sbf4lo` is queued with profile
-`standalone-kysely`, `examples/lynx/.env.hotupdater`, application ID
-`com.hotupdater.lynxexample`, and 26 scenarios per OS. Its intended commit is
-`bfad8131abd8d3cef92fe1f08e3d41e3a6869f6a`. A queued job is not acceptance; the
-result and every platform count must be recorded after completion.
+Focused device validation through `ba25ecd98` includes Android
+`force-update-auto-reload` in one process with a replaced managed generation and
+new Bundle, Release, marker, and `UPDATE_APPLIED` receipt. Android
+`bspatch-disabled-chain-rollback` also passes with actual forward and reverse
+BSDIFF chains. Swift `LynxControllerLocalTests` pass 32/32.
+
+Full job `job-20260921181047-umah90` ran with profile `standalone-kysely`,
+`examples/lynx/.env.hotupdater`, application ID
+`com.hotupdater.lynxexample`, and 26 scenarios per OS. It passed 51/52 on
+`f54a3ae47`: iOS passed 26/26 and Android passed 25/26. The sole failure was the
+final Android `sparkling-multipage-ota` generation. Its launch-wide log window
+still included three already observed font diagnostics after the bounded native
+journal had evicted an earlier page generation, so strict correlation rejected
+the count. Commit `348284787` creates a new Android log checkpoint after every
+successful managed-resource validation. This bounds subsequent checks to
+unverified diagnostics without weakening native identity, ordering, font-load,
+readiness, or fatal-boundary validation. Full job
+`job-20260921204853-cw3i89` is queued against that commit. The 51/52 result is
+not final acceptance.
 
 ## 10. Execution sequence and completion criteria
 

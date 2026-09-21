@@ -68,7 +68,7 @@ aggregate test counts that do not exercise its scenarios.
 
 ## Current implementation checkpoint
 
-The pushed implementation at `bfad8131abd8d3cef92fe1f08e3d41e3a6869f6a` implements the consolidated PRD contracts:
+The pushed implementation at `f54a3ae47` implements the consolidated PRD contracts:
 
 - `@hot-updater/lynx` targets the Lynx engine and has no React, Vue, or Octane
   runtime dependency. A check authorizes the catalog and performs nonretained
@@ -112,8 +112,10 @@ The pushed implementation at `bfad8131abd8d3cef92fe1f08e3d41e3a6869f6a` implemen
   atomic proof of ownership and absence of references before deletion.
 - React Native/Hermes selection and default native fingerprinting are owned by
   `@hot-updater/react-native`; bare and Rock consume that provider. Expo owns its
-  fingerprint discovery. The common CLI/server/storage paths remain
-  engine-neutral.
+  fingerprint discovery. Common packaging, server, and storage paths consume
+  explicit integration declarations. The common CLI is not yet neutral: init,
+  doctor, conflict detection, signing remediation, default app-version discovery,
+  and config scaffolding still encode RN or Expo policy.
 - The optional Sparkling host owns the bridge, all managed resource loaders,
   primary/secondary authority, startup observations, recovery, leases, and
   same-process replacement of every managed runtime and view. Production
@@ -124,18 +126,36 @@ The pushed implementation at `bfad8131abd8d3cef92fe1f08e3d41e3a6869f6a` implemen
   process, generation, context, attempt, release, resource, patch, and transition
   events; it does not infer success from screen text or old logs.
 - The Lynx default suite contains 26 scenarios: the shared default list minus
-  only `metadata-v1-migration`, plus `sparkling-multipage-ota`. All delta, channel, fingerprint, stale-catalog,
-  recovery, and crash-history scenarios remain enabled. The delta rollback chain
-  requires real A-to-B and B-to-C forward patches and C-to-B and B-to-A reverse
-  patches; archive fallback is not accepted as patch evidence.
+  only `metadata-v1-migration`, plus `sparkling-multipage-ota`. All delta,
+  channel, fingerprint, stale-catalog, recovery, and crash-history scenarios
+  remain enabled. The delta rollback chain requires real A-to-B and B-to-C
+  forward patches and C-to-B and B-to-A reverse patches; archive fallback is not
+  accepted as patch evidence.
 
 Current verification includes package and example type checks, Android
-Sparkling unit tests, workspace lint, 429 E2E unit tests in 22 files, 17 focused
-crash projection/recovery tests, and green GitHub Integration on
-`a1ea8133197d437904df21cab2a03721e4de9cb3`. The current matrix-fixture
-correction is awaiting GitHub Integration. These results close the previously configured
-aggregate CI gate but do not close G3: the full-platform agent job and current
-six-cell device run remain pending.
+Sparkling unit tests, Swift `LynxControllerLocalTests` at 32/32, workspace lint,
+429 E2E unit tests in 22 files, 17 focused crash projection/recovery tests, and
+green GitHub Integration through `ba25ecd98`. Focused Android
+`force-update-auto-reload` and the forward/reverse BSDIFF rollback chain pass.
+Full job `job-20260921181047-umah90` improved the best result to 51/52 on
+`f54a3ae47`, with iOS at 26/26 and Android at 25/26. Its sole failure was the
+final Android `sparkling-multipage-ota` generation: the launch-wide log window
+included three already observed font diagnostics after the bounded native
+journal had evicted an earlier page generation. Commit `348284787` starts a new
+Android log checkpoint after every successful managed-resource validation, so
+later checks contain only unverified diagnostics while all native journal gates
+remain strict. Its 207 focused recovery/driver E2E unit tests,
+package/example type checks, and workspace lint pass. Full job
+`job-20260921204853-cw3i89` still gates G3; the current six-cell device run also
+remains pending.
+
+The neutral-package source audit currently finds policy coupling in
+`ConfigBuilder.ts`, `hotUpdaterConfig.ts`, `init.ts`, `doctor.ts`,
+`infra/scaffold.ts`, `keys.ts`, `conflictDetection.ts`, `expoDetection.ts`,
+`validateSigningConfig.ts`, and `getDefaultTargetAppVersion.ts`, plus the
+React Native metadata helper exported by `@hot-updater/cli-tools`. Release work
+must replace these closed assumptions with integration hooks, then pass the
+neutral source boundary, a Lynx-only CLI fixture, and RN regression coverage.
 
 ## Execution observations
 

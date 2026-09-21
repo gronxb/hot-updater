@@ -59,9 +59,10 @@ The September 13 PRD contains the user's final decisions: three equal framework
 targets, real delta delivery, no Lynx migration of React Native's legacy metadata,
 ordinary Sparkling scaffold configuration with library-owned native behavior,
 engine-neutral common packages, and foreground managed-runtime recreation on
-both OSes. The implementation now covers the main contract and the known adversarial
-findings. GitHub Integration is green on the current pushed implementation; the
-full device run remains the acceptance gate.
+both OSes. The implementation now covers the main contract and the known
+adversarial findings. GitHub Integration is green through `ba25ecd98`; focused
+checks are green on `f54a3ae47`, and the full device run remains the acceptance
+gate.
 
 | Work area             | Current implementation                                                                                                                                                                                                                                                         | Remaining evidence                                                   |
 | --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------- |
@@ -122,18 +123,17 @@ The E2E bot reads `e2e/lynx/default-scenario-names.json` from the checked-out PR
 commit and routes Lynx jobs to `examples/lynx` with application ID
 `com.hotupdater.lynxexample`.
 
-The pushed implementation is `bfad8131abd8d3cef92fe1f08e3d41e3a6869f6a`.
-GitHub Integration is green on its parent and pending on the current commit;
-focused package, native, and E2E unit checks are green.
-Full job `job-20260921042318-sbf4lo` is queued on that commit. The active goal
-remains unfinished until both 26-scenario platform runs pass and the final
-records are reconciled.
+The pushed implementation is `348284787`. Focused package type checks,
+workspace lint, and 207 recovery/driver E2E unit tests are green. Full job
+`job-20260921204853-cw3i89` is queued on that commit. The active goal remains
+unfinished until both 26-scenario platform runs pass and the final records are
+reconciled.
 
 ## Current E2E campaign
 
-Historical runs established a best combined result of 43/52, with iOS at 25/26
-and Android at 19/26. Those runs exposed two concrete problems rather than an
-unsupported feature boundary:
+Full job `job-20260921154048-iwq7hq` established a new best combined result of
+46/52 on `ba25ecd98`, with iOS at 24/26 and Android at 22/26. It exposed four
+concrete causes rather than an unsupported feature boundary:
 
 - iOS native back gestures were issued faster than Sparkling navigation could
   commit them, so a retained depth-16 stack survived into the next multi-page
@@ -144,15 +144,45 @@ unsupported feature boundary:
   load, so detach completion can settle managed replacement. Android process
   recovery evidence now also maps durable unconfirmed Release IDs back to their
   Bundle IDs instead of requiring a React Native-style `crashed` array.
+- Native source changes left `examples/lynx/fingerprint.json` and the embedded
+  native hashes stale, so both fingerprint scenarios rejected deployment.
+- An expected-crash launch cleared the public runtime marker only before the
+  crashing process. The recovery process could therefore satisfy readiness with
+  the stale crash marker before publishing the recovered generation.
+- A long-lived Android process retained two legitimate font diagnostics while
+  the bounded journal had evicted the first generation boundary. Recovery now
+  accepts only an evicted prefix whose remaining native events all carry the
+  exact diagnostic identity; duplicate log sources and any mismatched or fatal
+  retained event still fail closed.
 
 The runtime fixes are committed in `b2929c66d`, `c7bbbf1f8`, and `a1ea81331`.
 Commit `bfad8131a` additionally rebuilds every framework's embedded A fixture
 before creating the matrix binaries, preventing stale compiler output from
-entering a current artifact. Focused
-unit, native, type, lint, and GitHub Integration checks pass. Full job
-`job-20260921042318-sbf4lo` is queued against implementation commit
-`bfad8131abd8d3cef92fe1f08e3d41e3a6869f6a`. It must finish with iOS 26/26 and
-Android 26/26 before this gate is closed.
+entering a current artifact. Focused unit, native, type, lint, and GitHub
+Integration checks pass through `ba25ecd98`.
+
+Commit `ba25ecd98` makes managed resource URLs generation-specific without
+changing the signed manifest path. Android and iOS accept only the strict
+positive generation query, and the Android evaluator requires redirected font
+evidence from the matching confirmed generation in the current OS process.
+Focused Android `force-update-auto-reload` and the actual forward/reverse BSDIFF
+rollback chain pass; Swift `LynxControllerLocalTests` pass 32/32.
+
+Commit `f54a3ae47` refreshes the native fingerprint, clears the runtime marker
+again before crash recovery, uses `agent-device back --system` for the iOS
+native-back proof, and correlates truncated Android journal prefixes without
+weakening identity or fatal-boundary checks. Targeted job
+`job-20260921181047-umah90` passed 51/52 on that commit: iOS passed 26/26 and
+Android passed 25/26. The only failure was the final Android
+`sparkling-multipage-ota` generation. The launch-wide log window still included
+three already observed font diagnostics while the bounded native journal had
+evicted an earlier page generation, so correlation failed closed with
+`diagnostic.count`. Commit `348284787` now creates a new Android log checkpoint
+after every successful managed-resource validation. Each later validation
+therefore sees only unverified diagnostics while retaining the strict native
+identity, ordering, font-load, readiness, and fatal-boundary checks. Full job
+`job-20260921204853-cw3i89` must finish with iOS 26/26 and Android 26/26 before
+this gate is closed.
 
 ## Preserve staged-only files
 
@@ -172,15 +202,15 @@ when required for the next job, without sweeping these files into a commit.
 
 ## Completion sequence
 
-1. Preserve the completed implementation and focused validation on commit
-   `bfad8131abd8d3cef92fe1f08e3d41e3a6869f6a`.
+1. Preserve the completed implementation and focused validation through commit
+   `348284787`.
 2. Build both production scaffold targets and both matrix targets. Run workspace
    build, types, lint, unit, and integration checks, then update the component
    evidence with exact commands and results.
 3. Commit explicit implementation paths without the six staged-only helpers,
    push the branch, and wait for Integration on that exact commit.
-4. Wait for full job `job-20260921042318-sbf4lo`, diagnose any reproducible
-   failure directly, and repeat on a corrected pushed implementation until green.
+4. Finish full job `job-20260921204853-cw3i89` on the corrected commit and
+   diagnose any reproducible failure directly until green.
 5. Run the separate public matrix with one unchanged binary per OS across React,
    Vue, and Octane. Require six strict receipts, then update the English PRD,
    evidence, and PR with the verified commit, binaries, job, and cell results.
