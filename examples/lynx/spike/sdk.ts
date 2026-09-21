@@ -20,6 +20,9 @@ let busy = false;
 let ready = false;
 let evidenceOrigin: string | null = null;
 
+const jsonBody = (value: unknown) =>
+  new TextEncoder().encode(JSON.stringify(value));
+
 export function sdkImageLoaded() {
   imageReady = true;
   completeImage?.();
@@ -159,7 +162,7 @@ export async function captureRuntimeEvents(
     const response = await fetch(
       `${new URL(appBaseURL).origin}/matrix-runtime-snapshot`,
       {
-        body: JSON.stringify({ snapshot }),
+        body: jsonBody({ snapshot }),
         headers: { "content-type": "application/json" },
         method: "POST",
       },
@@ -215,7 +218,7 @@ export async function installSdkUpdate(
         const response = await fetch(
           `${evidenceOrigin}/matrix-install-failure`,
           {
-            body: JSON.stringify({ failure }),
+            body: jsonBody({ failure }),
             headers: { "content-type": "application/json" },
             method: "POST",
           },
