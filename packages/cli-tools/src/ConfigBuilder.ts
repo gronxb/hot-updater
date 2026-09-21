@@ -6,7 +6,7 @@ export type ImportInfo = {
   pkg: string;
   named?: string[]; // e.g., ['defineConfig']
   defaultOrNamespace?: string; // e.g., '* as admin'
-  sideEffect?: boolean; // e.g., true for "dotenv/config"
+  sideEffect?: boolean;
 };
 
 export type ProviderConfig = {

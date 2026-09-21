@@ -1,6 +1,9 @@
 {
   "name": "@examples-server/hono-drizzle-pglite",
   "private": true,
+  "engines": {
+    "node": ">=20.19.0"
+  },
   "type": "module",
   "scripts": {
     "dev": "tsx watch src/index.ts",
@@ -20,7 +23,6 @@
     "@hot-updater/server": "workspace:*",
     "@hot-updater/test-utils": "workspace:*",
     "@types/node": "^20.11.17",
-    "dotenv": "^16.6.1",
     "drizzle-orm": "catalog:db",
     "drizzle-kit": "^0.31.6",
     "execa": "catalog:tools",

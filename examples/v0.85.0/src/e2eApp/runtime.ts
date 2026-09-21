@@ -1,4 +1,3 @@
-import { HOT_UPDATER_API_KEY } from "@env";
 import type {
   CatalogHighWater,
   PersistedSelectionReceipt,
@@ -7,6 +6,7 @@ import { HotUpdater } from "@hot-updater/react-native";
 import { TurboModuleRegistry, type TurboModule } from "react-native";
 import { proxy } from "valtio";
 
+import { HOT_UPDATER_API_KEY } from "../e2eBuildConfig";
 import {
   fallbackHotUpdaterBaseURL,
   resolveHotUpdaterBaseURL,

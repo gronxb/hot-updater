@@ -2,7 +2,7 @@
 
 # Setup
 
-Follow these steps to run [Elysia.js](https://elysiajs.com) under [Node.js](https://nodejs.org):
+Follow these steps to run [Elysia.js](https://elysiajs.com) under [Node.js](https://nodejs.org) 20.19 or later:
 
 1. Install the workspace dependencies and enter this package.
 

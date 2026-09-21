@@ -1,9 +1,10 @@
+import { existsSync } from "node:fs";
+
 import { registerApiKey } from "@hot-updater/server";
-import { config } from "dotenv";
 
 const envTargetPath = process.env.HOT_UPDATER_E2E_ENV_TARGET_PATH;
-if (envTargetPath) {
-  config({ path: envTargetPath });
+if (envTargetPath && existsSync(envTargetPath)) {
+  process.loadEnvFile(envTargetPath);
 }
 
 const { database } = await import("../src/db");

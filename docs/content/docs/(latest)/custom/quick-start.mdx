@@ -28,7 +28,7 @@ project before running Hot Updater commands.
 Install the server dependencies in your server project.
 
 ```package-install
-npm install @hot-updater/server @hot-updater/aws hono @hono/node-server kysely better-sqlite3 dotenv
+npm install @hot-updater/server @hot-updater/aws hono @hono/node-server kysely better-sqlite3
 ```
 
 ```package-install
@@ -69,13 +69,15 @@ export const db = new Kysely({
 Create the Hot Updater instance with your database adapter and storage plugin (see [Storage Plugins](/docs/custom/overview#storage-plugins)).
 
 ```typescript title="src/hotUpdater.ts"
+import { existsSync } from "node:fs";
 import { createHotUpdater } from "@hot-updater/server";
 import { kyselyAdapter } from "@hot-updater/server/adapters/kysely";
 import { s3Storage } from "@hot-updater/aws";
-import { config } from "dotenv";
 import { db } from "./kysely";
 
-config({ path: ".env.hotupdater" });
+if (existsSync(".env.hotupdater")) {
+  process.loadEnvFile(".env.hotupdater");
+}
 
 export const hotUpdater = createHotUpdater({
   database: kyselyAdapter({ db, provider: "sqlite" }),

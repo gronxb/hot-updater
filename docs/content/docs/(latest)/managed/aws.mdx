@@ -176,7 +176,9 @@ HOT_UPDATER_S3_SECRET_ACCESS_KEY=your-secret-access-key
 
 <Callout type="warn">
 
-If you're **not** using the `react-native-dotenv` solution, provider credentials from `.env.hotupdater` will not be included in your app bundle. The API key is the exception: add it explicitly to the app as shown below.
+Keep provider credentials from `.env.hotupdater` in the CLI, CI, or server environment.
+Configure the update server URL and client API key explicitly in the app as shown
+below. Treat both as extractable from the app bundle; never include provider credentials.
 
 See [Security](/docs/policy/security#plugin-token-protection).
 

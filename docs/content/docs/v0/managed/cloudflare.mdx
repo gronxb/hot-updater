@@ -78,7 +78,9 @@ HOT_UPDATER_CLOUDFLARE_R2_SECRET_ACCESS_KEY=your-r2-secret-access-key
 
 <Callout type="warn">
 
-Provider credentials from `.env.hotupdater` are not included in your app bundle unless you inject them with a tool such as `react-native-dotenv`. See
+Keep provider credentials from `.env.hotupdater` in the CLI, CI, or server environment.
+Configure only public values, such as the update server URL, explicitly in the app.
+Never copy provider credentials into app source or build configuration. See
 [Security](/docs/v0/policy/security#plugin-token-protection)
 
 </Callout>
@@ -90,12 +92,14 @@ Initialization generates:
 - `hot-updater.config.ts`: Configures Cloudflare integration for your project.
 
 ```ts title="hot-updater.config.ts"
+import { existsSync } from "node:fs";
 import { bare } from "@hot-updater/bare";
 import { d1Database, r2Storage } from "@hot-updater/cloudflare";
 import { defineConfig } from "hot-updater";
-import { config } from "dotenv";
 
-config({ path: ".env.hotupdater" });
+if (existsSync(".env.hotupdater")) {
+  process.loadEnvFile(".env.hotupdater");
+}
 
 export default defineConfig({
   build: bare({ enableHermes: true }),
