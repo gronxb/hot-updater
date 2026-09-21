@@ -18,6 +18,7 @@ import com.hotupdater.lynx.LynxLogicalPage
 import com.hotupdater.lynx.LynxNativeOperationException
 import com.hotupdater.lynx.LynxPageCancelReason
 import com.hotupdater.lynx.LynxUpdaterController
+import com.lynx.jsbridge.RuntimeLifecycleListener
 import com.lynx.tasm.LynxViewBuilder
 import com.tiktok.sparkling.SparklingContext
 import com.tiktok.sparkling.hybridkit.base.HybridKitType
@@ -28,6 +29,8 @@ import com.tiktok.sparkling.method.registry.api.SparklingBridge
 import com.tiktok.sparkling.method.registry.core.IBridgeContext
 import java.lang.ref.WeakReference
 import java.util.UUID
+import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicReference
 import org.json.JSONObject
 
 data class HotUpdaterSparklingConfiguration(
@@ -605,17 +608,36 @@ class HotUpdaterSparklingHost(
         try {
             generationEvents.beginRetirement(retired)
             pages.drop(1).forEach { it.closing = true }
-            pages.forEach(::retirePage)
+            val runtimePages = pages.filter { it.view != null }
+            var remainingRuntimes = runtimePages.size
+            val runtimeDetached = {
+                remainingRuntimes -= 1
+                if (remainingRuntimes == 0) {
+                    reconstructGeneration(
+                        checkNotNull(primaryActivity) {
+                            "The primary Activity cannot be reconstructed"
+                        },
+                        reason,
+                        retained,
+                        retired,
+                    )
+                }
+            }
+            pages.forEach { page ->
+                retirePage(
+                    page,
+                    runtimeDetached.takeIf { page.view != null },
+                )
+            }
             pages.clear()
             secondaryActivities.forEach(Activity::finish)
             controller.close()
             generationEvents.finishRetirement(retired)
-            val rootActivity = checkNotNull(primaryActivity) {
-                "The primary Activity cannot be reconstructed"
-            }
-            mainHandler.post {
+            if (runtimePages.isEmpty()) {
                 reconstructGeneration(
-                    rootActivity,
+                    checkNotNull(primaryActivity) {
+                        "The primary Activity cannot be reconstructed"
+                    },
                     reason,
                     retained,
                     retired,
@@ -875,11 +897,13 @@ class HotUpdaterSparklingHost(
         }
         val builder = LynxViewBuilder().also(launch::configure)
         val bridge = SparklingBridge()
+        val runtimeLifecycle = ManagedRuntimeLifecycle(mainHandler::post)
         var constructedKit: SimpleLynxKitView? = null
         val kit = try {
             bridge.registerLynxModule(builder, page.containerId)
             SimpleLynxKitView(activity, sparkling, builder, null, null).also {
                 constructedKit = it
+                it.addRuntimeLifecycleListener(runtimeLifecycle)
                 bridge.init(it, page.containerId, SPARKLING_LYNX_PLATFORM)
                 sparkling.bridge = bridge
                 launch.bind(
@@ -905,7 +929,7 @@ class HotUpdaterSparklingHost(
         page.sourceContext = kit.lynxContext
         page.sourceBridgeContext = bridgeContext
         page.sparklingBridge = bridge
-        val view = HotUpdaterSparklingView(activity, kit)
+        val view = HotUpdaterSparklingView(activity, kit, runtimeLifecycle)
         page.view = view
         generation.emit(
             "generationWillEvaluate",
@@ -958,14 +982,17 @@ class HotUpdaterSparklingHost(
         )
     }
 
-    private fun retirePage(page: ManagedPage) {
+    private fun retirePage(
+        page: ManagedPage,
+        onRuntimeDetached: (() -> Unit)? = null,
+    ) {
         page.sourceContext?.let { context ->
             ManagedSparklingHostRegistry.unbindContext(context, this)
         }
         page.sourceBridgeContext?.let { context ->
             ManagedSparklingHostRegistry.unbindBridgeContext(context, this)
         }
-        page.retire()
+        page.retire(onRuntimeDetached)
     }
 
     private fun retirementDetails(reason: String): Map<String, Any?> {
@@ -1151,9 +1178,9 @@ class HotUpdaterSparklingHost(
         var failureHandlerInstalled: Boolean = false,
         val failureGate: RebindFailureGate = RebindFailureGate(),
     ) {
-        fun retire() {
+        fun retire(onRuntimeDetached: (() -> Unit)? = null) {
             failureGate.close()
-            view?.retire()
+            view?.retire(onRuntimeDetached)
             view = null
             sourceContext = null
             sourceBridgeContext = null
@@ -1238,6 +1265,7 @@ internal fun deliverTransitionAcceptance(
 class HotUpdaterSparklingView internal constructor(
     context: Context,
     private var kit: SimpleLynxKitView?,
+    private val runtimeLifecycle: ManagedRuntimeLifecycle,
 ) : FrameLayout(context), AutoCloseable {
     init {
         addView(
@@ -1249,14 +1277,40 @@ class HotUpdaterSparklingView internal constructor(
         )
     }
 
-    internal fun retire() {
+    internal fun retire(onRuntimeDetached: (() -> Unit)? = null) {
         val old = kit ?: return
         kit = null
+        onRuntimeDetached?.let(runtimeLifecycle::whenDetached)
         old.destroy(true)
         removeView(old)
     }
 
     override fun close() = retire()
+}
+
+internal class ManagedRuntimeLifecycle(
+    private val dispatch: ((() -> Unit) -> Unit),
+) : RuntimeLifecycleListener {
+    private val detached = AtomicBoolean()
+    private val completion = AtomicReference<(() -> Unit)?>(null)
+
+    override fun onRuntimeAttach(runtimePtr: Long) = Unit
+
+    override fun onRuntimeDetach() {
+        detached.set(true)
+        dispatchCompletion()
+    }
+
+    fun whenDetached(callback: () -> Unit) {
+        check(completion.compareAndSet(null, callback)) {
+            "Runtime detach completion is already registered"
+        }
+        if (detached.get()) dispatchCompletion()
+    }
+
+    private fun dispatchCompletion() {
+        completion.getAndSet(null)?.let(dispatch)
+    }
 }
 
 internal object ManagedSparklingHostRegistry {

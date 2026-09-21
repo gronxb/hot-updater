@@ -36,6 +36,38 @@ class ManagedSparklingNavigationTest {
     private val pages = setOf("main.lynx.bundle", "detail.lynx.bundle")
 
     @Test
+    fun replacementWaitsForRuntimeDetachAndDispatchesCompletionOnce() {
+        val dispatched = ArrayDeque<() -> Unit>()
+        val lifecycle = ManagedRuntimeLifecycle(dispatched::addLast)
+        var completions = 0
+
+        lifecycle.whenDetached { completions += 1 }
+        lifecycle.onRuntimeDetach()
+
+        assertEquals(0, completions)
+        dispatched.removeFirst().invoke()
+        assertEquals(1, completions)
+
+        lifecycle.onRuntimeDetach()
+        assertTrue(dispatched.isEmpty())
+        assertEquals(1, completions)
+    }
+
+    @Test
+    fun runtimeDetachedBeforeRetirementStillDispatchesCompletion() {
+        val dispatched = ArrayDeque<() -> Unit>()
+        val lifecycle = ManagedRuntimeLifecycle(dispatched::addLast)
+        var completions = 0
+
+        lifecycle.onRuntimeDetach()
+        lifecycle.whenDetached { completions += 1 }
+
+        assertEquals(0, completions)
+        dispatched.removeFirst().invoke()
+        assertEquals(1, completions)
+    }
+
+    @Test
     fun resourceFailureDuringConfigurationRebindRecoversExactlyOnceAfterAttach() {
         val gate = RebindFailureGate()
         var recoveries = 0
