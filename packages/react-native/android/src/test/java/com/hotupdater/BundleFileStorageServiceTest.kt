@@ -25,15 +25,28 @@ class BundleFileStorageServiceTest {
 
     @Test
     fun `unfinished staging launch rolls back to stable on cold start`() {
-        assertUnfinishedLaunchRollsBack(hasStableBundle = true)
+        assertStagingLaunchAcrossColdStart(hasStableBundle = true)
     }
 
     @Test
     fun `unfinished staging launch rolls back to built in on cold start`() {
-        assertUnfinishedLaunchRollsBack(hasStableBundle = false)
+        assertStagingLaunchAcrossColdStart(hasStableBundle = false)
     }
 
-    private fun assertUnfinishedLaunchRollsBack(hasStableBundle: Boolean) {
+    @Test
+    fun `completed staging launch remains trusted on cold start`() {
+        assertStagingLaunchAcrossColdStart(hasStableBundle = true, completesLaunch = true)
+    }
+
+    @Test
+    fun `completed first OTA launch remains trusted on cold start`() {
+        assertStagingLaunchAcrossColdStart(hasStableBundle = false, completesLaunch = true)
+    }
+
+    private fun assertStagingLaunchAcrossColdStart(
+        hasStableBundle: Boolean,
+        completesLaunch: Boolean = false,
+    ) {
         val rootDir = temporaryFolder.newFolder()
         val preferences = InMemoryPreferencesService()
         val stableBundleId = if (hasStableBundle) "stable-bundle" else null
@@ -56,12 +69,23 @@ class BundleFileStorageServiceTest {
         assertEquals("hung-bundle", firstLaunch.launchedBundleId)
         assertTrue(firstLaunch.shouldRollbackOnCrash)
 
-        // Issue #1321: force-kill before content appeared, without a crash marker.
+        assertEquals("hung-bundle", firstProcess.prepareLaunch(null).launchedBundleId)
+        assertFalse(firstProcess.getCrashHistory().contains("hung-bundle"))
+        if (completesLaunch) {
+            firstProcess.markLaunchCompleted("hung-bundle")
+        }
+
+        // Issue #1321: simulate process termination without a crash marker.
         val secondProcess = createService(rootDir, preferences)
         val nextLaunch = secondProcess.prepareLaunch(null)
-        assertEquals(stableBundleId, nextLaunch.launchedBundleId)
+        assertEquals(if (completesLaunch) "hung-bundle" else stableBundleId, nextLaunch.launchedBundleId)
         assertFalse(nextLaunch.shouldRollbackOnCrash)
-        assertTrue(secondProcess.getCrashHistory().contains("hung-bundle"))
+        assertEquals(!completesLaunch, secondProcess.getCrashHistory().contains("hung-bundle"))
+        if (!completesLaunch) {
+            assertEquals("RECOVERED", secondProcess.notifyAppReady()["status"])
+        }
+        val thirdProcess = createService(rootDir, preferences)
+        assertEquals(nextLaunch.launchedBundleId, thirdProcess.prepareLaunch(null).launchedBundleId)
     }
 
     @Test

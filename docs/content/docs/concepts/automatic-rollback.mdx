@@ -47,10 +47,21 @@ Typical examples include:
 - a JavaScript error during startup
 - a native crash while the new bundle is loading
 - a fatal error before the first screen appears
+- a JavaScript thread hang followed by the user or OS killing the app before the first render
 
 This is why Hot Updater must be configured with `HotUpdater.wrap()` or
 `HotUpdater.init()` for rollback support. These APIs connect bundle verification
 to the app lifecycle.
+
+Before loading an unverified staging bundle, Hot Updater persists a launch-in-progress
+record. The first native content appearance clears it. If it remains on the next
+cold start, Hot Updater rolls back even when no crash marker was written. There is
+no timeout that interrupts a running JavaScript thread: recovery occurs after the
+app restarts. A user or OS termination before the first render also counts as a
+failed launch, even if the bundle would otherwise have finished loading.
+
+This protection requires a native app build containing the updated SDK; an OTA
+bundle alone cannot add it to an already installed native binary.
 
 ## What Happens During Rollback?
 

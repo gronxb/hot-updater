@@ -12,6 +12,7 @@ public struct BundleMetadata: Codable {
     var stableBundleId: String?
     var stagingBundleId: String?
     var verificationPending: Bool
+    var launchInProgress: Bool
     var updatedAt: Double
 
     enum CodingKeys: String, CodingKey {
@@ -20,6 +21,7 @@ public struct BundleMetadata: Codable {
         case stableBundleId = "stable_bundle_id"
         case stagingBundleId = "staging_bundle_id"
         case verificationPending = "verification_pending"
+        case launchInProgress = "launch_in_progress"
         case updatedAt = "updated_at"
     }
 
@@ -29,6 +31,7 @@ public struct BundleMetadata: Codable {
         stableBundleId: String? = nil,
         stagingBundleId: String? = nil,
         verificationPending: Bool = false,
+        launchInProgress: Bool = false,
         updatedAt: Double = Date().timeIntervalSince1970 * 1000
     ) {
         self.schema = schema
@@ -36,7 +39,19 @@ public struct BundleMetadata: Codable {
         self.stableBundleId = stableBundleId
         self.stagingBundleId = stagingBundleId
         self.verificationPending = verificationPending
+        self.launchInProgress = launchInProgress
         self.updatedAt = updatedAt
+    }
+
+    public init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        schema = try values.decode(String.self, forKey: .schema)
+        isolationKey = try values.decodeIfPresent(String.self, forKey: .isolationKey)
+        stableBundleId = try values.decodeIfPresent(String.self, forKey: .stableBundleId)
+        stagingBundleId = try values.decodeIfPresent(String.self, forKey: .stagingBundleId)
+        verificationPending = try values.decode(Bool.self, forKey: .verificationPending)
+        launchInProgress = try values.decodeIfPresent(Bool.self, forKey: .launchInProgress) ?? false
+        updatedAt = try values.decode(Double.self, forKey: .updatedAt)
     }
 
     static func load(from file: URL, expectedIsolationKey: String) -> BundleMetadata? {

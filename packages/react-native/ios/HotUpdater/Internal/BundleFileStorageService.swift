@@ -349,6 +349,7 @@ class BundleFileStorageService: BundleStorageService {
 
     private var activeTasks: [URLSessionTask] = []
 
+    private var hasPreparedLaunch = false
     private var currentLaunchReport: LaunchReport?
     private let activeBundleMetadataLock = NSLock()
     private var activeBundleMetadataSnapshot: ActiveBundleMetadataSnapshot?
@@ -1609,7 +1610,22 @@ class BundleFileStorageService: BundleStorageService {
     func prepareLaunch(bundle: Bundle, pendingRecovery: PendingCrashRecovery?) -> LaunchSelection {
         saveLaunchReport(nil)
         applyPendingRecoveryIfNeeded(pendingRecovery)
-        return selectLaunch(bundle: bundle)
+        // Only a new storage instance consumes an unfinished launch. Repeated bundle
+        // lookups or bridge reloads in this process must not reject its own launch.
+        if !hasPreparedLaunch,
+           let metadata = loadMetadataOrNull(),
+           metadata.verificationPending,
+           metadata.launchInProgress,
+           let stagingBundleId = metadata.stagingBundleId {
+            rollbackPendingBundle(stagingBundleId)
+        }
+        hasPreparedLaunch = true
+        let selection = selectLaunch(bundle: bundle)
+        if selection.shouldRollbackOnCrash, var metadata = loadMetadataOrNull() {
+            metadata.launchInProgress = true
+            _ = saveMetadata(metadata)
+        }
+        return selection
     }
     
     // MARK: - Bundle Update
@@ -2535,6 +2551,7 @@ class BundleFileStorageService: BundleStorageService {
         }
 
         metadata.verificationPending = false
+        metadata.launchInProgress = false
         metadata.updatedAt = Date().timeIntervalSince1970 * 1000
         let _ = saveMetadata(metadata)
     }

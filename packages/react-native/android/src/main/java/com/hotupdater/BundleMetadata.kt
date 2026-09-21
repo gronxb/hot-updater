@@ -14,6 +14,7 @@ data class BundleMetadata(
     val stableBundleId: String? = null,
     val stagingBundleId: String? = null,
     val verificationPending: Boolean = false,
+    val launchInProgress: Boolean = false,
     val updatedAt: Long = System.currentTimeMillis(),
 ) {
     companion object {
@@ -43,6 +44,7 @@ data class BundleMetadata(
                         null
                     },
                 verificationPending = json.optBoolean("verificationPending", false),
+                launchInProgress = json.optBoolean("launchInProgress", false),
                 updatedAt = json.optLong("updatedAt", System.currentTimeMillis()),
             )
 
@@ -86,6 +88,7 @@ data class BundleMetadata(
             put("stableBundleId", stableBundleId ?: JSONObject.NULL)
             put("stagingBundleId", stagingBundleId ?: JSONObject.NULL)
             put("verificationPending", verificationPending)
+            put("launchInProgress", launchInProgress)
             put("updatedAt", updatedAt)
         }
 
