@@ -1,5 +1,26 @@
 # Release device E2E evidence
 
+## Automated full-profile runs
+
+Test revision: `0e821f7fa8f365a7446c2ab41fbe92ee852ddb4e`.
+
+| Profile | Job | iOS shard 1 | iOS shard 2 | Android | Result |
+| --- | --- | ---: | ---: | ---: | --- |
+| `standalone-prisma` | `job-20260921005127-t6et2u` | 15/15 | 11/11 | 26/26 | PASS |
+| `standalone-kysely` | `job-20260921005128-ikedco` | 15/15 | 11/11 | 26/26 | PASS |
+| `standalone-mongodb` | `job-20260921005130-0se7j0` | 15/15 | 11/11 | 26/26 | PASS |
+| `standalone-dynamodb` | `job-20260921010855-0oxca7` | 15/15 | 11/11 | 26/26 | PASS |
+| `standalone-drizzle` | `job-20260921010857-55tk1y` | 15/15 | 11/11 | 26/26 | PASS |
+
+All five runs used the exact revision above and passed the complete Release
+suite on both platforms. In particular,
+`fingerprint-initial-install` and
+`bspatch-builtin-to-diff-ota` passed on iOS and Android, proving the refreshed
+native fingerprint fixtures and builtin-to-manifest OTA path on real packaged
+artifacts.
+
+## Focused manual run
+
 Test revision: `38d46c05df90e4f4c93e079d4aedacac9de0a111`.
 
 ## iOS simulator
@@ -31,4 +52,4 @@ These are one-run E2E observations, not latency benchmarks.
 
 ## Android emulator
 
-Pending while another repository E2E job holds the shared device lease.
+The automated full-profile runs above include the Android Release emulator.

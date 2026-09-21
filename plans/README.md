@@ -11,9 +11,9 @@
 | PRD | 요구·구현 계약·검증 기준 | — | DONE | `001-builtin-manifest-v1-prd.md` |
 | M0 | Release 패키징 실측·재사용 검증 | PRD | DONE | `evidence/builtin-packaging.{md,json}` |
 | M1 | 전체 파일 descriptor·base 없는 설치 | M0 조사 | DONE | server/SDK 34 tests, Android storage, Swift 36 tests, iOS Release Pod target |
-| M2 | 내장 resolver·lazy 인덱스 | M0, M1 | IN PROGRESS | Android unit, Swift 28 tests, iOS Release E2E pass; Android device E2E pending |
+| M2 | 내장 resolver·lazy 인덱스 | M0, M1 | DONE | Android unit, Swift 28 tests, five full Release E2E profiles on iOS and Android |
 | M3 | 전송 비용 검증·아카이브 제거 | M0–M2 gate | DONE | `evidence/manifest-transfer.{md,json}`; archive code/schema removed |
-| M4 | 통합 검증·문서·changeset | M3 | IN PROGRESS | build/type/lint/integration/native checks pass; changeset added |
+| M4 | 통합 검증·문서·changeset | M3 | DONE | required checks and five exact-head standalone profiles pass; changeset added |
 
 ## 제외한 대안
 
@@ -40,3 +40,8 @@
 - 2026-09-20: Detox default suite가 양 플랫폼에서 `bspatch-builtin-to-diff-ota`를 포함하는 dry-run을 통과했다.
 - 2026-09-20: iOS Release simulator에서 `bspatch-builtin-to-diff-ota`가 78.747초에 통과했다. 첫 OTA의 builtin manifest 사용, 연속 OTA의 실제 HBC bsdiff 적용, Bundle ID·화면 marker·stable relaunch를 확인했다. Android E2E는 공유 device lease가 열리는 즉시 실행한다.
 - 2026-09-20: 같은 Android Release 산출물을 7회 비교한 결과 첫 OTA는 1,048,299 → 830,077 bytes, OTA 간 HBC patch는 1,048,348 → 115,353 bytes로 줄었다. 1,000개 파일 전체 변경은 1,001 requests와 ZIP 대비 35.5% 느린 로컬 설치 시간을 보여 v1의 확장성 한계로 기록했다.
+- 2026-09-21: 최신 revision `0e821f7fa`의 `standalone-prisma` full Release E2E가 iOS 15/15 + 11/11, Android 26/26으로 통과했다. 양 플랫폼에서 `fingerprint-initial-install`과 `bspatch-builtin-to-diff-ota`를 포함해 native fingerprint와 builtin manifest OTA 경로를 검증했다. 나머지 standalone 프로필은 큐에서 계속 실행 중이다.
+- 2026-09-21: 같은 revision의 `standalone-kysely` full Release E2E도 iOS 15/15 + 11/11, Android 26/26으로 통과했다. `standalone-mongodb` 검증이 이어서 시작됐다.
+- 2026-09-21: `standalone-mongodb` full Release E2E도 iOS 15/15 + 11/11, Android 26/26으로 통과했다. 최신 revision 재검증은 DynamoDB와 Drizzle 프로필이 남았다.
+- 2026-09-21: `standalone-dynamodb` full Release E2E가 같은 revision에서 iOS 15/15 + 11/11, Android 26/26으로 통과했다. 마지막 `standalone-drizzle` exact-head run이 이어서 시작됐다.
+- 2026-09-21: `standalone-drizzle` full Release E2E도 같은 revision에서 iOS 15/15 + 11/11, Android 26/26으로 통과했다. 다섯 `standalone-*` 프로필의 exact-head 검증이 모두 완료됐다.

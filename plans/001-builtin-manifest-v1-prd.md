@@ -354,9 +354,9 @@ server public entry 경계는 `packages/server/AGENTS.md`를 따른다. CLI 출�
 - [x] `compressStrategy`가 공개 surface에서 제거되고 예전 설정은 명확히 거부된다.
 - [x] 1.0.0 schema/migration과 versioned protocol을 직접 갱신하고 테스트했다.
 - [x] 작은 변경과 전체 변경의 bytes/requests/time/disk/memory 비교 결과를 남겼다.
-- [ ] 의미 있는 unit/integration/native/iOS·Android E2E와 required repo checks가 통과했다.
+- [x] 의미 있는 unit/integration/native/iOS·Android E2E와 required repo checks가 통과했다.
 - [x] 첫 내장 Hermes patch가 base 등록 없이 지원된다고 주장하지 않는다.
-- [ ] 문서·예제·changeset·실행 상태를 갱신하고 사용자에게 검토 가능한 결과를 전달했다.
+- [x] 문서·예제·changeset·실행 상태를 갱신하고 사용자에게 검토 가능한 결과를 전달했다.
 
 ## 11. 진행을 제한하는 조건
 
@@ -387,5 +387,8 @@ Release fixture에서 첫 OTA는 1,048,299 → 830,077 bytes, 실제 HBC patch O
 대비 35.5% 느린 로컬 설치 시간을 보여, 개별 파일 프로토콜의 확장성 한계로
 명시했다. 이 결과를 모든 workload의 성능 향상으로 해석하지 않는다.
 
-iOS Release simulator의 `bspatch-builtin-to-diff-ota`는 통과했다. Android
-Release E2E는 공유 agent lease 대기 때문에 아직 완료 조건으로 표시하지 않는다.
+exact revision `0e821f7fa8f365a7446c2ab41fbe92ee852ddb4e`에서 Prisma,
+Kysely, MongoDB, DynamoDB, Drizzle의 full Release E2E가 모두 통과했다. 각
+profile은 iOS 15/15 + 11/11과 Android 26/26을 실행했으며
+`fingerprint-initial-install`과 `bspatch-builtin-to-diff-ota`를 양 플랫폼에서
+검증했다. 상세 job ID와 결과는 `plans/evidence/device-e2e.md`에 기록했다.
