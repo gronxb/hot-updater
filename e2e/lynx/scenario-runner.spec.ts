@@ -31,6 +31,7 @@ describe("Lynx E2E scenario runner", () => {
           events.push(`execute:${scenarioName}`);
           expect(currentScenario).toBe(scenarioName);
           expect(env.FIXTURE).toBe("preserved");
+          expect(env.HOT_UPDATER_E2E_SCENARIO_NAME).toBe(scenarioName);
           expect(env.HOT_UPDATER_E2E_RESULTS_DIR).toBe(
             path.join("/repo/e2e/results/detox", "android", scenarioName),
           );
@@ -45,6 +46,7 @@ describe("Lynx E2E scenario runner", () => {
           const resultsDir = env.HOT_UPDATER_E2E_RESULTS_DIR;
           expect(resultsDir).toBeTypeOf("string");
           const scenario = path.basename(resultsDir!);
+          expect(env.HOT_UPDATER_E2E_SCENARIO_NAME).toBe(scenario);
           currentScenario = scenario;
           starts.push({ resultsDir: resultsDir!, scenario });
           events.push(`start:${scenario}`);

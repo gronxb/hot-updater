@@ -45,6 +45,7 @@ export async function runScenarioBatch(
     dependencies.log(`Start ${options.platform}/${scenarioName}`);
     const env: NodeJS.ProcessEnv = {
       ...options.env,
+      HOT_UPDATER_E2E_SCENARIO_NAME: scenarioName,
       HOT_UPDATER_E2E_RESULTS_DIR: path.join(
         options.resultsRoot,
         options.platform,

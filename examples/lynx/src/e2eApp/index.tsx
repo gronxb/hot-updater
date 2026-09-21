@@ -85,6 +85,7 @@ let runtimeConfigURL = "http://localhost:3107/e2e/runtime-config";
 let appBaseURL = "http://localhost:3007/hot-updater";
 let launchGeneration: string | null = null;
 let runtimeGenerationEpoch: string | null = null;
+let automaticForceUpdate = false;
 let screenStateURL = runtimeConfigURL.endsWith("/runtime-config")
   ? runtimeConfigURL.replace(/\/runtime-config$/, "/screen-state")
   : `${runtimeConfigURL.replace(/\/+$/, "")}/screen-state`;
@@ -106,7 +107,11 @@ async function resolveAppBaseURL(): Promise<string> {
     if (!response) {
       return appBaseURL;
     }
-    const config = (await response.json()) as { baseURL?: string };
+    const config = (await response.json()) as {
+      automaticForceUpdate?: boolean;
+      baseURL?: string;
+    };
+    automaticForceUpdate = config.automaticForceUpdate === true;
     if (typeof config.baseURL === "string" && config.baseURL.length > 0) {
       return config.baseURL;
     }
@@ -185,8 +190,8 @@ function App() {
         },
         actionLabel,
       );
-      await publishRuntimeSnapshot();
       await setUpdateActionResult(result);
+      await publishRuntimeSnapshot();
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       await setUpdateActionResult(`${actionLabel} -> error ${message}`);
@@ -504,12 +509,14 @@ function App() {
           ensurePendingActionPoller,
         );
         if (!active || !ready) return;
-        timer = setTimeout(() => {
-          void applyForcedUpdate(
-            HotUpdater,
-            () => !active || handledScenarioAction,
-          ).catch((error) => reportActionError("force-update", error));
-        }, 2500);
+        if (automaticForceUpdate) {
+          timer = setTimeout(() => {
+            void applyForcedUpdate(
+              HotUpdater,
+              () => !active || handledScenarioAction,
+            ).catch((error) => reportActionError("force-update", error));
+          }, 2500);
+        }
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         const status = `Current Launch Status: ERROR ${message}`;

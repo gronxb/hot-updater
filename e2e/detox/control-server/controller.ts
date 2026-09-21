@@ -3715,6 +3715,8 @@ function rewriteProxiedUpdatePath(pathname: string) {
 
 export function handleRuntimeConfig() {
   return {
+    automaticForceUpdate:
+      process.env.HOT_UPDATER_E2E_SCENARIO_NAME === "force-update-auto-reload",
     baseURL: `${getAppReachableControlBaseUrl()}/hot-updater`,
     channelNamespace,
     screenState: readE2eScreenStateSnapshot(),

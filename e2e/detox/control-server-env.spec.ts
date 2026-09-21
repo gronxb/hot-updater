@@ -178,8 +178,13 @@ describe("Detox control server environment", () => {
         runtimeConfigURL: "http://127.0.0.1:3114/e2e/runtime-config",
       });
       expect(controller.handleRuntimeConfig()).toMatchObject({
+        automaticForceUpdate: false,
         baseURL: "http://127.0.0.1:3114/hot-updater",
         updateServerBaseURL: "https://updates.test/hot-updater",
+      });
+      vi.stubEnv("HOT_UPDATER_E2E_SCENARIO_NAME", "force-update-auto-reload");
+      expect(controller.handleRuntimeConfig()).toMatchObject({
+        automaticForceUpdate: true,
       });
       const artifactResponse = await controller.handleProxyUpdateRequest(
         new Request(
