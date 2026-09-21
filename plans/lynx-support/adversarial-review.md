@@ -14,11 +14,11 @@ The first PRD contained a single-agent examination of opposing viewpoints. That
 was not an independent adversarial review. After the user explicitly requested
 subagents, the following three agents performed separate read-only reviews:
 
-| Agent | Assigned position |
-| --- | --- |
-| `/root/lynx_design_proposal` | Defend and refine the smallest framework-independent design; challenge unnecessary abstractions and unsupported reuse claims |
-| `/root/lynx_native_adversary` | Challenge native execution, resource loading, bridge feasibility, startup confirmation and recovery |
-| `/root/lynx_delivery_adversary` | Challenge CLI/archive integration, catalog compatibility, metadata trust and Release/Bundle semantics |
+| Agent                           | Assigned position                                                                                                            |
+| ------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| `/root/lynx_design_proposal`    | Defend and refine the smallest framework-independent design; challenge unnecessary abstractions and unsupported reuse claims |
+| `/root/lynx_native_adversary`   | Challenge native execution, resource loading, bridge feasibility, startup confirmation and recovery                          |
+| `/root/lynx_delivery_adversary` | Challenge CLI/archive integration, catalog compatibility, metadata trust and Release/Bundle semantics                        |
 
 The primary agent inspected repository contracts, relayed findings between the
 reviewers, and edited the planning documents. Reviewers were instructed not to
@@ -42,17 +42,17 @@ All severity labels below concern risks in the proposed design. Source-confirmed
 behavior is distinguished from an inferred failure scenario; no Lynx device
 failure was reproduced during this review.
 
-| Finding | Reviewer and evidence | Required change |
-| --- | --- | --- |
-| P1: RN archive rules violate opaque artifact preservation | Design and delivery independently identified `.map` removal and `.bundle.hbc` replacement/renaming in `packages/hot-updater/src/utils/getBundleZipTargets.ts:27-60` | Separate artifact handling; validate the final CLI archive, including names and bytes |
-| P1: A prebuilt root manifest can be overwritten and duplicated | Delivery traced input hashing in `packages/hot-updater/src/commands/deploy.ts:968-1005` and overwriting in `packages/hot-updater/src/utils/bundleManifest.ts:27-29` | Reserve Hot Updater metadata paths and reject collisions before hashing/upload |
-| P1: OS/appVersion does not establish native ABI compatibility | Delivery checked `packages/core/src/releaseCatalogScope.ts:173-197` and `plugins/plugin-core/src/releaseCatalogCompiler.ts:727-737`; design agreed | Add native-owned, manifest-bound compatibility admission with explicit limits |
-| P1: File-tree preservation does not imply offline resource resolution | Native traced separate Sparkling loaders and Octane/Vue asset prefixes; delivery independently identified prebuilt URL assumptions | Require a supported release resource-addressing and cache contract |
-| P1: Plain JS imports do not establish valid native calls | Design checked Lynx background-only modules; native checked Octane's two execution graphs and unverified native paths | Safe imports, background calls, actual module/error/ready round trips in all six combinations |
-| P1: Ready, first content, fatal failure and unexplained exit were conflated | Native traced distinct OS startup/error observations; design challenged early-close and stale-context cases | Define native-attributed confirmation and separate failure outcomes |
-| P1: Cold start and multiple containers lacked one selection scope | Native traced container-specific identity and late callback risks | One selected release per process and one designated startup context |
-| P2: RN entry discovery and cleanup cannot be reused unchanged | Design and delivery checked RN-specific entry assumptions and native storage cleanup | Explicit entry selection; retain files used by active contexts and requests |
-| P2: Compiler, Bundle, Release and embedded identities were blurred | Delivery traced minimum-ID filtering and native identity ownership | Fresh Bundle identity at packaging, separate Release authorization, native-owned embedded/minimum identity |
+| Finding                                                                     | Reviewer and evidence                                                                                                                                               | Required change                                                                                            |
+| --------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
+| P1: RN archive rules violate opaque artifact preservation                   | Design and delivery independently identified `.map` removal and `.bundle.hbc` replacement/renaming in `packages/hot-updater/src/utils/getBundleZipTargets.ts:27-60` | Separate artifact handling; validate the final CLI archive, including names and bytes                      |
+| P1: A prebuilt root manifest can be overwritten and duplicated              | Delivery traced input hashing in `packages/hot-updater/src/commands/deploy.ts:968-1005` and overwriting in `packages/hot-updater/src/utils/bundleManifest.ts:27-29` | Reserve Hot Updater metadata paths and reject collisions before hashing/upload                             |
+| P1: OS/appVersion does not establish native ABI compatibility               | Delivery checked `packages/core/src/releaseCatalogScope.ts:173-197` and `plugins/plugin-core/src/releaseCatalogCompiler.ts:727-737`; design agreed                  | Add native-owned, manifest-bound compatibility admission with explicit limits                              |
+| P1: File-tree preservation does not imply offline resource resolution       | Native traced separate Sparkling loaders and Octane/Vue asset prefixes; delivery independently identified prebuilt URL assumptions                                  | Require a supported release resource-addressing and cache contract                                         |
+| P1: Plain JS imports do not establish valid native calls                    | Design checked Lynx background-only modules; native checked Octane's two execution graphs and unverified native paths                                               | Safe imports, background calls, actual module/error/ready round trips in all six combinations              |
+| P1: Ready, first content, fatal failure and unexplained exit were conflated | Native traced distinct OS startup/error observations; design challenged early-close and stale-context cases                                                         | Define native-attributed confirmation and separate failure outcomes                                        |
+| P1: Cold start and multiple containers lacked one selection scope           | Native traced container-specific identity and late callback risks                                                                                                   | One selected release per process and one designated startup context                                        |
+| P2: RN entry discovery and cleanup cannot be reused unchanged               | Design and delivery checked RN-specific entry assumptions and native storage cleanup                                                                                | Explicit entry selection; retain files used by active contexts and requests                                |
+| P2: Compiler, Bundle, Release and embedded identities were blurred          | Delivery traced minimum-ID filtering and native identity ownership                                                                                                  | Fresh Bundle identity at packaging, separate Release authorization, native-owned embedded/minimum identity |
 
 The design reviewer defended retaining the BuildPlugin integration and a thin
 Lynx/native boundary. The delivery reviewer objected to promising that the exact
@@ -227,14 +227,14 @@ first native installer tests: the native adversary reviewed Android, and the
 delivery adversary reviewed iOS. These reviews were read-only; their failure
 scenarios are source-derived unless a later evidence entry records reproduction.
 
-| Finding | Reviewer | Required correction |
-| --- | --- | --- |
-| P1: Tiny malformed PAX headers can create an invalid Swift range or overflow record-end arithmetic | Delivery adversary | Checked arithmetic and bounds, thrown rejection, reproducing strict-TAR tests |
-| P1: A compressed oversized manifest/sidecar can exhaust memory before JSON rejection | Delivery adversary | Metadata-specific size limits checked before allocation and during extraction |
-| P2: ZIP entry/path limits run after central-directory strings have been allocated | Delivery adversary | Apply count/name limits while reading descriptors |
-| P2: Coroutine cancellation can discard the Android preparation token outside its cleanup scope; blocking OkHttp is not promptly canceled | Native adversary | Outer transaction ownership, actual Job cancellation, OkHttp cancellation wiring and regressions |
-| Empty Android native entry lacks a nonempty admission check | Primary agent | Reject an authenticated zero-byte entry before native evaluation |
-| iOS manifest/sidecar JSON should reject conflicting duplicate keys consistently with Android | Primary agent | Bounded strict JSON validation before typed decoding |
+| Finding                                                                                                                                  | Reviewer           | Required correction                                                                              |
+| ---------------------------------------------------------------------------------------------------------------------------------------- | ------------------ | ------------------------------------------------------------------------------------------------ |
+| P1: Tiny malformed PAX headers can create an invalid Swift range or overflow record-end arithmetic                                       | Delivery adversary | Checked arithmetic and bounds, thrown rejection, reproducing strict-TAR tests                    |
+| P1: A compressed oversized manifest/sidecar can exhaust memory before JSON rejection                                                     | Delivery adversary | Metadata-specific size limits checked before allocation and during extraction                    |
+| P2: ZIP entry/path limits run after central-directory strings have been allocated                                                        | Delivery adversary | Apply count/name limits while reading descriptors                                                |
+| P2: Coroutine cancellation can discard the Android preparation token outside its cleanup scope; blocking OkHttp is not promptly canceled | Native adversary   | Outer transaction ownership, actual Job cancellation, OkHttp cancellation wiring and regressions |
+| Empty Android native entry lacks a nonempty admission check                                                                              | Primary agent      | Reject an authenticated zero-byte entry before native evaluation                                 |
+| iOS manifest/sidecar JSON should reject conflicting duplicate keys consistently with Android                                             | Primary agent      | Bounded strict JSON validation before typed decoding                                             |
 
 The reviews found no other concrete bypass in verification-before-extraction,
 nullable-manifest archive anchoring, configured signing, metadata/file binding,
@@ -253,17 +253,17 @@ controller, journal, module and resource lifecycle. Owners were implementing
 these components concurrently; the reviews distinguish concrete source defects
 from acknowledged unfinished acceptance work.
 
-| Finding | Required correction and evidence |
-| --- | --- |
-| Android `AtomicFile.finishWrite` can log a sync/rename failure without throwing, while the controller publishes success in memory | Use checked native write/sync/rename operations; exercise actual filesystem failures before claiming durable-before-evaluation |
-| Android queues failure latching behind a ready callback; iOS initially latched fatal state only after a journal write | Invalidate readiness synchronously when native observes failure, even if persistence fails; reproduce callback ordering and I/O failure |
-| Android startup verifies the archive but can lose its binding to a separately modified payload manifest when the transport manifest token is null | Persist the installer-produced manifest digest in native state and enforce it during restored-tree verification |
-| Cohort included in the durable journal namespace clears exclusion/high-water history when cohort changes | Keep cohort in selection context; preserve history within the same native binary/runtime/channel and test a cohort change after unknown termination |
-| Explicit EMBEDDED Release attempts bypass history/capacity rules because they use native embedded bytes | Distinguish Release authorization from BUILTIN identity; retain explicit Release outcomes and reserve capacity before evaluation |
-| iOS same-byte adoption can re-enter startup confirmation with no pending attempt | Make confirmed readiness/resource observations idempotent while preserving immutable running bytes |
-| iOS secondary/stale readiness validation drains primary callbacks or leaves observer-triggered failures unanswered | Isolate each caller's callback and complete or reject queued primary callbacks on confirmation persistence failure |
-| Android's missing-file sentinel is producer-controllable; iOS's unsupported local/asset URLs can reach embedded fallback | Use an impossible managed miss and reject unsupported local addressing; preserve explicitly unmanaged host HTTP resources |
-| Android admission counts retained tokens but not concurrent preparations | Reserve bounded capacity before starting asynchronous preparation and release it on every completion/cancellation path |
+| Finding                                                                                                                                           | Required correction and evidence                                                                                                                    |
+| ------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Android `AtomicFile.finishWrite` can log a sync/rename failure without throwing, while the controller publishes success in memory                 | Use checked native write/sync/rename operations; exercise actual filesystem failures before claiming durable-before-evaluation                      |
+| Android queues failure latching behind a ready callback; iOS initially latched fatal state only after a journal write                             | Invalidate readiness synchronously when native observes failure, even if persistence fails; reproduce callback ordering and I/O failure             |
+| Android startup verifies the archive but can lose its binding to a separately modified payload manifest when the transport manifest token is null | Persist the installer-produced manifest digest in native state and enforce it during restored-tree verification                                     |
+| Cohort included in the durable journal namespace clears exclusion/high-water history when cohort changes                                          | Keep cohort in selection context; preserve history within the same native binary/runtime/channel and test a cohort change after unknown termination |
+| Explicit EMBEDDED Release attempts bypass history/capacity rules because they use native embedded bytes                                           | Distinguish Release authorization from BUILTIN identity; retain explicit Release outcomes and reserve capacity before evaluation                    |
+| iOS same-byte adoption can re-enter startup confirmation with no pending attempt                                                                  | Make confirmed readiness/resource observations idempotent while preserving immutable running bytes                                                  |
+| iOS secondary/stale readiness validation drains primary callbacks or leaves observer-triggered failures unanswered                                | Isolate each caller's callback and complete or reject queued primary callbacks on confirmation persistence failure                                  |
+| Android's missing-file sentinel is producer-controllable; iOS's unsupported local/asset URLs can reach embedded fallback                          | Use an impossible managed miss and reject unsupported local addressing; preserve explicitly unmanaged host HTTP resources                           |
+| Android admission counts retained tokens but not concurrent preparations                                                                          | Reserve bounded capacity before starting asynchronous preparation and release it on every completion/cancellation path                              |
 
 The owners are applying fixes, and reviewers are re-inspecting each correction.
 Storage-fault, callback-race, payload-tamper, cohort-change, capacity and resource
@@ -286,3 +286,57 @@ and expected scope. This preserves Unicode semantics without weakening shared
 core validation or installing a global shim. The bridge requirement advances
 the declared native compatibility profiles to `ota-v2`; new SDK3 fixtures retain
 the failed SDK1/SDK2 evidence rather than overwriting it.
+
+## 2026-09-21 architecture, neutrality, and data-plane consensus
+
+At the user's request, three read-only subagents independently reviewed the
+current Lynx architecture, the framework-neutrality boundary, and whether RN and
+Lynx require a database change. All three reached the same release decision.
+
+The native design is acceptable in principle: one verified Release owns every
+page in a managed generation, Sparkling navigation opens independent page bundles
+in real native containers, and immediate activation retires and reconstructs the
+complete managed generation. This remains conditional on the current full E2E
+and six-cell device evidence.
+
+The existing database cannot safely mix RN and Lynx in one logical delivery
+project. Catalog identity contains targeting strategy, platform, channel and app
+version or fingerprint, but no project axis. Artifact and delta-base lookup,
+events, insights, API keys, and storage pruning likewise assume one ownership
+boundary. A native `runtimeId` rejects incompatible bytes after selection; it
+cannot prevent the wrong runtime's newest Release from occupying the catalog.
+
+The accepted initial topology therefore adds no engine column and no new
+migration. One deployed process or provider account may expose `/ota/rn` and
+`/ota/lynx`, but each route must mount a distinct `createHotUpdater` instance with
+separate database/schema state, API-key authority, and storage prefix. If one
+logical database becomes a product requirement, the schema and protocol need a
+generic `deliveryProjectId` across every identity, authorization, query, index,
+foreign key, event, insight, artifact, patch, and storage ownership boundary. An
+`RN | Lynx` enum would violate the neutral design and would not represent ABI
+compatibility.
+
+The reviewers also found that low-level core, server, and build contracts are
+largely neutral, while the common CLI and generic configuration tools still
+encode RN/Expo/Hermes policy. Examples include fixed Bare/Rock/Expo build choices,
+mandatory `@hot-updater/react-native` installation, Hermes defaults, Expo
+detection and conflict policy, `AppDelegate`/`MainApplication` doctor checks, and
+RN native remediation. These findings block a claim that Hot Updater is already a
+pure OTA engine. The PRD now requires integration-owned setup and diagnostic
+hooks, a Lynx-only CLI fixture, RN regression coverage, and a source/dependency
+boundary test for neutral packages.
+
+Production Sparkling native sources are within the intended boundary only when
+they perform ordinary registration, immutable configuration, packaged-host
+construction, mount/reattach, and close wiring. The review requires a structural
+test that rejects application-owned update selection, artifact-path resolution,
+loader/router/recovery logic, restart/exit calls, crash classification, and
+diagnostics imports. Nonproduction matrix and E2E targets may retain explicit
+diagnostic controls.
+
+Finally, the reviewers rejected an equal-framework release claim based on the
+ReactLynx default suite or historical receipts. ReactLynx, VueLynx, and
+OctaneLynx remain equal targets, but the current six framework/OS cells must pass.
+Framework-generated VueLynx and OctaneLynx `loadLazyBundle` output is a blocker
+where it appears in supported compiler output; core external JavaScript and
+native dynamic components do not satisfy that specific contract.

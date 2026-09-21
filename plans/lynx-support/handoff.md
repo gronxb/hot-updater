@@ -1,6 +1,6 @@
 # Lynx support handoff and completion plan
 
-Updated: 2026-09-13 (Asia/Seoul).
+Updated: 2026-09-21 (Asia/Seoul).
 
 ## Resume location
 
@@ -12,11 +12,10 @@ Updated: 2026-09-13 (Asia/Seoul).
 - The original checkout, `/Users/gronxb/workspace/hot-updater2`, contains earlier
   work and must be preserved. Run commands in the worktree above explicitly.
 
-The Grok session ended at an earlier handoff commit. The English PRD decisions
-were subsequently committed at the HEAD above; the Sol High implementation is
-currently uncommitted in this worktree. Git and live job results take precedence
-over either session summary. Do not start a second process against this worktree
-while the current execution is active.
+The Grok session ended at an earlier handoff commit. The English PRD and
+implementation were subsequently committed and pushed. Git and live job results
+take precedence over either session summary. Do not start a second process
+against this worktree while the current execution is active.
 
 ## Current goal
 
@@ -49,13 +48,10 @@ one selection per managed generation plus explicit serialized teardown and
 reconstruction. The app stays foregrounded; an exit, restart trampoline, or test
 driver relaunch does not implement immediate activation.
 
-After PRD consolidation, the user requires **GPT-5.6 Sol / High** for implementation.
-All previous-model agents were interrupted. Their partial files remain in the
-worktree. Do not resume those agents for implementation; use the requested model
-for the continuing primary task and any newly delegated subtasks.
-The subagent that launches and waits for the full E2E job must use **GPT-5.6 Sol /
-Low**. E2E failures return to Sol High implementation owners for diagnosis and
-correction.
+The user's latest execution instruction supersedes the earlier model and
+delegation notes: continue directly in the current task without subagents. The
+existing adversarial review remains an input to reconciliation, while all
+remaining implementation, diagnosis, and verification are performed here.
 
 ## Current implementation checkpoint
 
@@ -63,19 +59,20 @@ The September 13 PRD contains the user's final decisions: three equal framework
 targets, real delta delivery, no Lynx migration of React Native's legacy metadata,
 ordinary Sparkling scaffold configuration with library-owned native behavior,
 engine-neutral common packages, and foreground managed-runtime recreation on
-both OSes. Sol High agents implemented the main contract and are closing
-adversarial findings before aggregate validation.
+both OSes. The implementation now covers the main contract and the known adversarial
+findings. GitHub Integration is green on the current pushed implementation; the
+full device run remains the acceptance gate.
 
-| Work area | Current implementation | Remaining evidence |
-| --- | --- | --- |
-| JS runtime | Check-time catalog authorization and nonretained compatibility validation; prepare-and-stage starts only in `updateBundle()`; atomic channel switch/reset; one-shot transition receipts; reload resolves after all managed views recreate and propagates failures | Final workspace checks and device behavior |
-| Native artifacts | Strict archive and manifest verification, raw/Brotli changed files, real BSDIFF, verified fallback, cancellation, durable atomic publication, and later-launch verification on both OSes | Device delta receipts |
-| Neutral delivery | Mandatory BuildPlugin artifacts, portable names, `patchAssetPath`, and `downloadCompression`; deterministic no-follow packaging, promotion, and fingerprint inputs; bounded artifact responses and URL resolution; archive-only compatibility for ambiguous older publications | Full RN/provider/server regression suite and current real deployment |
-| Framework ownership | RN/Hermes build and fingerprint policy moved to `@hot-updater/react-native`; bare and Rock use it; Expo owns Expo fingerprint discovery | Final workspace regression checks |
-| Sparkling integration | Optional packaged iOS/Android hosts own bridge, resources, readiness, recovery, leases, and all-container generation replacement | Run the lifecycle matrix on devices |
-| Production examples | `SparklingGo` and Android `:app` contain configuration, registration, and packaged host/view attachment only; current native builds pass | Current device acceptance |
-| Matrix harness | Separate iOS scheme and Android module reuse one binary per OS across React, Vue, and Octane; strict correlated receipts reject synthetic patch or stale-context evidence | Real six-cell device execution |
-| Shared E2E | Explicit 25-scenario Lynx manifest equals the shared default minus only `metadata-v1-migration`; real delta scenarios remain | Commit runner/bot routing, restart the bot, and pass a new full job |
+| Work area             | Current implementation                                                                                                                                                                                                                                                         | Remaining evidence                                                   |
+| --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------- |
+| JS runtime            | Check-time catalog authorization and nonretained compatibility validation; prepare-and-stage starts only in `updateBundle()`; atomic channel switch/reset; one-shot transition receipts; reload resolves after all managed views recreate and propagates failures              | Final workspace checks and device behavior                           |
+| Native artifacts      | Strict archive and manifest verification, raw/Brotli changed files, real BSDIFF, verified fallback, cancellation, durable atomic publication, and later-launch verification on both OSes                                                                                       | Device delta receipts                                                |
+| Neutral delivery      | Mandatory BuildPlugin artifacts, portable names, `patchAssetPath`, and `downloadCompression`; deterministic no-follow packaging, promotion, and fingerprint inputs; bounded artifact responses and URL resolution; archive-only compatibility for ambiguous older publications | Full RN/provider/server regression suite and current real deployment |
+| Framework ownership   | RN/Hermes build and fingerprint policy moved to `@hot-updater/react-native`; bare and Rock use it; Expo owns Expo fingerprint discovery                                                                                                                                        | Final workspace regression checks                                    |
+| Sparkling integration | Optional packaged iOS/Android hosts own bridge, resources, readiness, recovery, leases, and all-container generation replacement                                                                                                                                               | Run the lifecycle matrix on devices                                  |
+| Production examples   | `SparklingGo` and Android `:app` contain configuration, registration, and packaged host/view attachment only; current native builds pass                                                                                                                                       | Current device acceptance                                            |
+| Matrix harness        | Separate iOS scheme and Android module reuse one binary per OS across React, Vue, and Octane; strict correlated receipts reject synthetic patch or stale-context evidence                                                                                                      | Real six-cell device execution                                       |
+| Shared E2E            | The 25 applicable shared scenarios exclude only `metadata-v1-migration`; `sparkling-multipage-ota` adds the page-based Sparkling scenario, for 26 scenarios per OS                                                                                                             | Pass the queued full job on both OSes                                |
 
 The final prerelease client omits manifest, filesystem install-identity, user,
 event-listener, and init-time insights APIs because the native integration has no
@@ -115,47 +112,47 @@ The server contract is still unreleased. Supabase atomic patch publication is
 part of the existing 1.0.0 initial migration; there is no 1.0.1 migration,
 doctor requirement, or separate infrastructure upgrade for this work.
 
-Focused checks passed for 141 Lynx JS tests, 10 CLI promotion tests, 66 Android
-controller/installer tests, two Android Sparkling tests, 63 Swift tests with 13
-environment-dependent skips, 308 E2E unit tests, and 65 matrix contract tests.
-Both iOS schemes and both Android applications build in debug/release as
-applicable. The server's 442 focused tests passed before the final 1.0.0 Supabase
-schema fold and require one final rerun. These results do not replace full
-workspace validation, the `hot-updater-agent` job, or the six device cells.
+Focused validation on the current implementation includes Lynx package and
+example type checks, Android Sparkling unit tests, workspace lint, 429 E2E unit
+tests in 22 files, and 17 focused crash projection/recovery tests. GitHub
+Integration passed on the pushed implementation in 14 minutes 20 seconds. These
+results do not replace the full `hot-updater-agent` job or the six device cells.
 
-The E2E bot checkout is `/Users/gronxb/workspace/hot-updater-e2e-bot`. Its local
-changes point the Lynx target at `e2e/lynx/default-scenario-names.json` and have
-focused Bun tests. Review and commit only those files, then restart the daemon
-before starting the next job. Verify that no job is running first.
+The E2E bot reads `e2e/lynx/default-scenario-names.json` from the checked-out PR
+commit and routes Lynx jobs to `examples/lynx` with application ID
+`com.hotupdater.lynxexample`.
 
-No implementation commit or push has been made after the PRD decision HEAD. No
-complete resumed E2E job or current six-cell matrix has passed. The active goal
-therefore remains unfinished.
+The pushed implementation is `bfad8131abd8d3cef92fe1f08e3d41e3a6869f6a`.
+GitHub Integration is green on its parent and pending on the current commit;
+focused package, native, and E2E unit checks are green.
+Full job `job-20260921042318-sbf4lo` is queued on that commit. The active goal
+remains unfinished until both 26-scenario platform runs pass and the final
+records are reconciled.
 
-## Last actual E2E failure
+## Current E2E campaign
 
-Job: `job-20260913015815-308xob`, full platform, `standalone-kysely`,
-`examples/lynx/.env.hotupdater`. Finished with failure on 2026-09-13 at 11:18:21
-KST. Its four child logs report:
+Historical runs established a best combined result of 43/52, with iOS at 25/26
+and Android at 19/26. Those runs exposed two concrete problems rather than an
+unsupported feature boundary:
 
-| Child | Failed stage | Concrete observation |
-| --- | --- | --- |
-| Android s1 | `seed metadata-v1 state` | The helper tried to parse a missing RN-style `metadata.json` |
-| iOS s1 | `seed metadata-v1 state` | The helper expected RN-style `bundles/metadata.json` in the Lynx store |
-| Android s2 | `assert size-aware small manifest selection` | Expected a manifest diff; observed a full archive |
-| iOS s2 | `wait force update automatic reload` | Target Bundle matched, but `verificationPending` remained true |
+- iOS native back gestures were issued faster than Sparkling navigation could
+  commit them, so a retained depth-16 stack survived into the next multi-page
+  phase. The scenario now waits for the exact native route-close depth after
+  every back action.
+- Android registered its runtime lifecycle listener before `LynxKit.load()`, when
+  no JavaScript proxy existed. The listener is now registered immediately after
+  load, so detach completion can settle managed replacement. Android process
+  recovery evidence now also maps durable unconfirmed Release IDs back to their
+  Bundle IDs instead of requiring a React Native-style `crashed` array.
 
-The dashboard's generic `ios-build` classification is not the diagnosis: child
-logs contain the runtime/scenario failures above. Logs are retained under
-`/Users/gronxb/.hot-updater-e2e-bot/logs/`; job checkout directories were removed
-by the previous session and must not be assumed available.
-
-The handoff commit attempted to address these failures. Independent native and
-E2E reviewers immediately found that its iOS host confirmed startup before Lynx
-view creation. A pre-existing 500 ms timer also invented content observation.
-Both violate the PRD's native content plus application readiness requirement.
-The first resumed job, `job-20260913030754-z5u7px`, was cancelled before accepting
-any result so these issues can be corrected first.
+The runtime fixes are committed in `b2929c66d`, `c7bbbf1f8`, and `a1ea81331`.
+Commit `bfad8131a` additionally rebuilds every framework's embedded A fixture
+before creating the matrix binaries, preventing stale compiler output from
+entering a current artifact. Focused
+unit, native, type, lint, and GitHub Integration checks pass. Full job
+`job-20260921042318-sbf4lo` is queued against implementation commit
+`bfad8131abd8d3cef92fe1f08e3d41e3a6869f6a`. It must finish with iOS 26/26 and
+Android 26/26 before this gate is closed.
 
 ## Preserve staged-only files
 
@@ -175,17 +172,15 @@ when required for the next job, without sweeping these files into a commit.
 
 ## Completion sequence
 
-1. Finish the final Sol High adversarial pass over the packaged host, delta,
-   delivery, and matrix changes. Resolve every actionable finding and rerun the
-   affected focused tests.
+1. Preserve the completed implementation and focused validation on commit
+   `bfad8131abd8d3cef92fe1f08e3d41e3a6869f6a`.
 2. Build both production scaffold targets and both matrix targets. Run workspace
    build, types, lint, unit, and integration checks, then update the component
    evidence with exact commands and results.
 3. Commit explicit implementation paths without the six staged-only helpers,
    push the branch, and wait for Integration on that exact commit.
-4. Review and commit the E2E bot's Lynx manifest routing, restart its daemon, and
-   assign a Sol Low subagent to launch and wait for the full job below. Return any
-   reproducible failure to a Sol High implementation owner and repeat until green.
+4. Wait for full job `job-20260921042318-sbf4lo`, diagnose any reproducible
+   failure directly, and repeat on a corrected pushed implementation until green.
 5. Run the separate public matrix with one unchanged binary per OS across React,
    Vue, and Octane. Require six strict receipts, then update the English PRD,
    evidence, and PR with the verified commit, binaries, job, and cell results.

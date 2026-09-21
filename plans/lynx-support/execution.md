@@ -1,7 +1,7 @@
 # Lynx implementation goal and execution ledger
 
-Status: active on 2026-09-13. The English PRD is finalized and Sol High
-implementation is in final adversarial review. Read the current
+Status: active on 2026-09-21. The English PRD is finalized, the implementation
+is pushed, and the final full-platform device gate is queued. Read the current
 [handoff and completion plan](./handoff.md) first. Historical G1/G2 observations
 below remain useful evidence but do not establish current acceptance.
 
@@ -37,40 +37,38 @@ approved PRD.
 
 ## Gates
 
-| Gate | State | Evidence needed |
-| --- | --- | --- |
-| G0: PRD review | Complete | Explicit user instruction to execute the PRD |
-| G1: Native feasibility | Native packages and hosts build; current device rerun pending | Retain current bridge/resource/startup receipts on both OSes |
-| G2: Package and examples | Implemented; aggregate validation pending | Final workspace checks and packaged consumer/deployment checks |
-| G3: OTA and recovery | Not complete | Green full agent job and every current six-cell receipt on unchanged native binaries |
+| Gate                     | State                                                        | Evidence needed                                                                          |
+| ------------------------ | ------------------------------------------------------------ | ---------------------------------------------------------------------------------------- |
+| G0: PRD review           | Complete                                                     | Explicit user instruction to execute the PRD                                             |
+| G1: Native feasibility   | Complete for the packaged host and retained framework probes | Current full-run and matrix receipts remain G3 evidence                                  |
+| G2: Package and examples | Implemented; parent Integration green, current run pending   | Preserve exact commit and release boundaries                                             |
+| G3: OTA and recovery     | Not complete                                                 | Green 52-scenario agent job and six current matrix receipts on unchanged native binaries |
 
 ## Coordination
 
-All agents must use this worktree explicitly. Native iOS, native Android and
-framework fixtures have separate ownership. Root package/lockfile changes,
-shared contracts, deployment integration and evidence reconciliation are owned
-by the primary agent. Historical spike APIs and placement probes are retained
-only as evidence and are not part of the production integration.
+All remaining work uses this worktree explicitly. Historical spike APIs and
+placement probes are retained only as evidence and are not part of the
+production integration.
 
-Implementation and adversarial correction use GPT-5.6 Sol with High reasoning.
-The subagent that launches and waits for the full E2E job uses GPT-5.6 Sol with
-Low reasoning; it reports failures back to Sol High implementation owners.
+The user's latest instruction supersedes earlier model and delegation notes.
+Continue the remaining implementation and verification directly in this task
+without subagents.
 
 ## Historical G1 evidence matrix
 
-| Framework | iOS | Android |
-| --- | --- | --- |
-| ReactLynx | G1 A/B, image, font, core external JS, bridge and confirmation pass | G1 A/B, image, font, core external JS, bridge, confirmation and offline restart pass |
-| VueLynx | Same core-resource G1 cases pass; generated async-template failure retained | Same core-resource G1 cases pass, including offline restart; generated async-template failure retained |
+| Framework  | iOS                                                                         | Android                                                                                                |
+| ---------- | --------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------ |
+| ReactLynx  | G1 A/B, image, font, core external JS, bridge and confirmation pass         | G1 A/B, image, font, core external JS, bridge, confirmation and offline restart pass                   |
+| VueLynx    | Same core-resource G1 cases pass; generated async-template failure retained | Same core-resource G1 cases pass, including offline restart; generated async-template failure retained |
 | OctaneLynx | Same core-resource G1 cases pass; generated async-template failure retained | Same core-resource G1 cases pass, including offline restart; generated async-template failure retained |
 
 Record exact commands, binary/runtime identities, logs and results as work
 completes. A missing result remains unverified. Never replace this matrix with
 aggregate test counts that do not exercise its scenarios.
 
-## September 13 Sol High implementation checkpoint
+## Current implementation checkpoint
 
-The current uncommitted worktree implements the consolidated PRD contracts:
+The pushed implementation at `bfad8131abd8d3cef92fe1f08e3d41e3a6869f6a` implements the consolidated PRD contracts:
 
 - `@hot-updater/lynx` targets the Lynx engine and has no React, Vue, or Octane
   runtime dependency. A check authorizes the catalog and performs nonretained
@@ -125,20 +123,19 @@ The current uncommitted worktree implements the consolidated PRD contracts:
   controls needed for strict six-cell evidence. The runner requires correlated
   process, generation, context, attempt, release, resource, patch, and transition
   events; it does not infer success from screen text or old logs.
-- The Lynx default suite contains 25 scenarios: the shared default list minus
-  only `metadata-v1-migration`. All delta, channel, fingerprint, stale-catalog,
+- The Lynx default suite contains 26 scenarios: the shared default list minus
+  only `metadata-v1-migration`, plus `sparkling-multipage-ota`. All delta, channel, fingerprint, stale-catalog,
   recovery, and crash-history scenarios remain enabled. The delta rollback chain
   requires real A-to-B and B-to-C forward patches and C-to-B and B-to-A reverse
   patches; archive fallback is not accepted as patch evidence.
 
-Focused checks completed during this phase: 141 Lynx JS tests, 10 CLI promotion
-tests, 66 Android controller/installer tests, two Android Sparkling tests, 63
-Swift tests with 13 environment-dependent skips, 308 E2E unit tests, and 65
-matrix contract tests. The server's 442 focused tests passed before the final
-1.0.0 Supabase schema fold and require one final rerun. Both iOS schemes and
-both Android applications build in debug/release as applicable. These results do
-not close G2 or G3: full workspace checks, the current full-platform agent job,
-and the real six-cell device run remain pending.
+Current verification includes package and example type checks, Android
+Sparkling unit tests, workspace lint, 429 E2E unit tests in 22 files, 17 focused
+crash projection/recovery tests, and green GitHub Integration on
+`a1ea8133197d437904df21cab2a03721e4de9cb3`. The current matrix-fixture
+correction is awaiting GitHub Integration. These results close the previously configured
+aggregate CI gate but do not close G3: the full-platform agent job and current
+six-cell device run remain pending.
 
 ## Execution observations
 
@@ -227,8 +224,9 @@ and the real six-cell device run remain pending.
   categories remain separate, unresolved evidence obligations. No framework was
   removed from the approved scope.
 - The public build adapter remains provisional. It now requires a native-owned
-  `runtimeId`, emits versioned manifest-bound metadata, and explicitly requests
-  `filePolicy: "preserve"`. Its 27 tests pass, including invalid compatibility
+  `runtimeId`, emits versioned manifest-bound metadata, declares the complete
+  ordered artifact inventory, and identifies the delta patch asset. Its 27 tests
+  pass, including invalid compatibility
   declarations, reserved metadata, symlink escapes, and prior-output retention.
   Package type checking and build also pass.
 - Six real prebuilt compiler-output runs passed independent comparison: 30 files
@@ -236,7 +234,7 @@ and the real six-cell device run remain pending.
   sidecar binds the correct Bundle, OS, entry and native compatibility identity.
   Receipt: `/tmp/hot-updater-lynx-real-prebuilt-verification.json`. This proves the
   package adapter, not final CLI archives or device OTA.
-- The CLI's explicit preserve path and archive-failure cleanup have 66 passing
+- The CLI's explicit artifact path and archive-failure cleanup have 66 passing
   targeted tests. Real ZIP, TAR.GZ and TAR.BR archive tests check bytes, manifest
   hashes and upload content; their synthetic file data is not compiler/native
   evidence. A compiler failure now preserves the previous successful CLI archive.

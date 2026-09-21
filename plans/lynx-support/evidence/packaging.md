@@ -29,7 +29,8 @@ The producer is [ota-deploy.mjs](../../../examples/lynx/scripts/ota-deploy.mjs).
 It creates an ignored task-local CLI project with a minimal private package.json
 and a real hot-updater.config.mjs, invokes `@hot-updater/lynx/build`, copies the
 selected frozen output into the adapter-owned directory, and returns the explicit
-native compatibility identity. The adapter returns `filePolicy: "preserve"`.
+native compatibility identity. The adapter returns the complete ordered artifact
+inventory and identifies `main.lynx.bundle` as the delta patch asset.
 
 The script spawns the built CLI executable as a child process. For example, the
 recorded React/iOS ZIP invocation was:
@@ -81,14 +82,14 @@ bytes, verified every manifest asset hash, verified the manifest's stored token,
 and checked sidecar schema, Bundle ID, OS, main entry and runtime identity.
 It re-read the frozen input after deployment to check that it was unchanged.
 
-| Framework / OS | Bundle ID | Release ID | Archive bytes | Archive SHA-256 |
-| --- | --- | --- | ---: | --- |
-| octane / android | `01a08ed4-97d1-7617-bdd7-4f0ed233e7fe` | `01a08ed4-98f2-7680-9d9d-7be03be41c2d` | 204844 | `a6c3a671582b8750cefc0255eeeb09206c5f31a18c417c54957c77cfafe63d33` |
-| octane / ios | `01a08ed4-97e5-7266-a5f8-9166bce6dc92` | `01a08ed4-990c-78c6-b742-627ffdcb079a` | 204843 | `c6faa159c17b74e604d039fa98e53aa7a3389c9ddddc924f113d3e93635578f2` |
-| react / android | `01a08ed4-97d0-7d13-a1a6-311f63f92265` | `01a08ed4-9895-7341-a100-85032af1fede` | 80252 | `36ac00b23e21f6fe5b84908c3ac80f6b5f1a1bcb09121eede8bdb22ec2f54ab7` |
-| react / ios | `01a08ed3-bc50-7946-9680-f78f69f4809f` | `01a08ed3-bca0-7ebb-8a13-8bcaec82f527` | 80248 | `fdda278d983d4769efc8297ab9dafd40d1cf91ce8497494448a163c56878cd5a` |
-| vue / android | `01a08ed4-97d0-7a45-9b59-ed70e313a7ef` | `01a08ed4-98c8-7cdd-9563-627508cd0bd5` | 127693 | `918d1e5399d915cd2912fe1906b5ecaaef6fbbded76ee07c6cfa28848c02c6fb` |
-| vue / ios | `01a08ed4-97d1-76b5-a897-a52c813ecf16` | `01a08ed4-9898-790a-aa53-e9eee08a9296` | 127689 | `1a7bd071048e6a2d573f389e8db32fac5043142cf8c2643dae83cc16e2a42e56` |
+| Framework / OS   | Bundle ID                              | Release ID                             | Archive bytes | Archive SHA-256                                                    |
+| ---------------- | -------------------------------------- | -------------------------------------- | ------------: | ------------------------------------------------------------------ |
+| octane / android | `01a08ed4-97d1-7617-bdd7-4f0ed233e7fe` | `01a08ed4-98f2-7680-9d9d-7be03be41c2d` |        204844 | `a6c3a671582b8750cefc0255eeeb09206c5f31a18c417c54957c77cfafe63d33` |
+| octane / ios     | `01a08ed4-97e5-7266-a5f8-9166bce6dc92` | `01a08ed4-990c-78c6-b742-627ffdcb079a` |        204843 | `c6faa159c17b74e604d039fa98e53aa7a3389c9ddddc924f113d3e93635578f2` |
+| react / android  | `01a08ed4-97d0-7d13-a1a6-311f63f92265` | `01a08ed4-9895-7341-a100-85032af1fede` |         80252 | `36ac00b23e21f6fe5b84908c3ac80f6b5f1a1bcb09121eede8bdb22ec2f54ab7` |
+| react / ios      | `01a08ed3-bc50-7946-9680-f78f69f4809f` | `01a08ed3-bca0-7ebb-8a13-8bcaec82f527` |         80248 | `fdda278d983d4769efc8297ab9dafd40d1cf91ce8497494448a163c56878cd5a` |
+| vue / android    | `01a08ed4-97d0-7a45-9b59-ed70e313a7ef` | `01a08ed4-98c8-7cdd-9563-627508cd0bd5` |        127693 | `918d1e5399d915cd2912fe1906b5ecaaef6fbbded76ee07c6cfa28848c02c6fb` |
+| vue / ios        | `01a08ed4-97d1-76b5-a897-a52c813ecf16` | `01a08ed4-9898-790a-aa53-e9eee08a9296` |        127689 | `1a7bd071048e6a2d573f389e8db32fac5043142cf8c2643dae83cc16e2a42e56` |
 
 Native compatibility identities supplied for these private-host artifacts:
 
@@ -102,18 +103,18 @@ archives remain under the ignored `receipts/` and `projects/` directories.
 
 ## Additional formats, multiple bundles and signing
 
-| Framework / OS | Frozen fixture | Format | Verification | Bundle ID | Archive SHA-256 |
-| --- | --- | --- | --- | --- | --- |
-| octane / android | B-resources2-managed | zip | SHA-256 | `01a08ed8-7625-7124-b6fa-8001a70d4963` | `6964d4e5521c7ad641fde6de461c48e343874bac27939bad284e76e29fba3cd4` |
-| react / android | B-external2-managed | tar.gz | RSA signed | `01a08ed7-7a43-7520-b30f-5f872e1c43a3` | `b2804cb268930de8f75f62e8b094310087ecd2a51d54b71093851a4bd93c7f5a` |
-| react / android | B-external2-managed | tar.gz | SHA-256 | `01a08ed5-ae54-7f1e-a29d-54c63e5017c1` | `875c4572ab80419f35bb6d1e683356885c7a48a1e175b9e4ab47ecd81c00dd7d` |
-| react / android | B-external2-managed | zip | RSA signed | `01a08ed7-2b52-7661-9c40-f70232cf33e8` | `eb226224de57c8790793e341e15661e5d87615ec87177b73812631c0b287eb46` |
-| react / ios | B-external2-managed | tar.br | RSA signed | `01a08edc-a276-77ba-8367-84694219bebf` | `f8b8820599d3b4b3050e07f74be4163b72eca29ded59b89e5c9575082edfddd3` |
-| react / ios | B-external2-managed | tar.br | SHA-256 | `01a08ed5-ae56-7ca3-b0e6-5364a58d1090` | `4a872697599bbd5df742e9c9eefef8032470bc0ac2ffaf20b08fbd3fe9035694` |
-| react / ios | B-external2-managed | tar.gz | RSA signed | `01a08edc-a276-7d23-ad7e-a4af6a67dec7` | `d8a5d00ae9a1dcb822d6e75e48b8a162549546c0474fb7bcb3e96dc2563bc3fe` |
-| react / ios | B-external2-managed | zip | RSA signed | `01a08ed7-7a43-7f6e-be29-417ed63edee2` | `c473b48bdc1782e7bf12a22dfa9ff1ebd5067621c497876607c264952a2c6da2` |
-| react / ios | B-resources2-managed | zip | SHA-256 | `01a08ed5-ae56-75b6-8387-a4acb94f5c1a` | `a36f78d1b11f3575c526e47bf55ca00f7ab44d902bd23fdce57e07151612e59e` |
-| vue / ios | B-resources2-managed | zip | SHA-256 | `01a08ed8-7627-7792-947f-a8f9145c63c4` | `72c64b2cd9d0a6bcc4acca3b8bec5e91b9670207f1eb1e38abcfa4f52edeba38` |
+| Framework / OS   | Frozen fixture       | Format | Verification | Bundle ID                              | Archive SHA-256                                                    |
+| ---------------- | -------------------- | ------ | ------------ | -------------------------------------- | ------------------------------------------------------------------ |
+| octane / android | B-resources2-managed | zip    | SHA-256      | `01a08ed8-7625-7124-b6fa-8001a70d4963` | `6964d4e5521c7ad641fde6de461c48e343874bac27939bad284e76e29fba3cd4` |
+| react / android  | B-external2-managed  | tar.gz | RSA signed   | `01a08ed7-7a43-7520-b30f-5f872e1c43a3` | `b2804cb268930de8f75f62e8b094310087ecd2a51d54b71093851a4bd93c7f5a` |
+| react / android  | B-external2-managed  | tar.gz | SHA-256      | `01a08ed5-ae54-7f1e-a29d-54c63e5017c1` | `875c4572ab80419f35bb6d1e683356885c7a48a1e175b9e4ab47ecd81c00dd7d` |
+| react / android  | B-external2-managed  | zip    | RSA signed   | `01a08ed7-2b52-7661-9c40-f70232cf33e8` | `eb226224de57c8790793e341e15661e5d87615ec87177b73812631c0b287eb46` |
+| react / ios      | B-external2-managed  | tar.br | RSA signed   | `01a08edc-a276-77ba-8367-84694219bebf` | `f8b8820599d3b4b3050e07f74be4163b72eca29ded59b89e5c9575082edfddd3` |
+| react / ios      | B-external2-managed  | tar.br | SHA-256      | `01a08ed5-ae56-7ca3-b0e6-5364a58d1090` | `4a872697599bbd5df742e9c9eefef8032470bc0ac2ffaf20b08fbd3fe9035694` |
+| react / ios      | B-external2-managed  | tar.gz | RSA signed   | `01a08edc-a276-7d23-ad7e-a4af6a67dec7` | `d8a5d00ae9a1dcb822d6e75e48b8a162549546c0474fb7bcb3e96dc2563bc3fe` |
+| react / ios      | B-external2-managed  | zip    | RSA signed   | `01a08ed7-7a43-7f6e-be29-417ed63edee2` | `c473b48bdc1782e7bf12a22dfa9ff1ebd5067621c497876607c264952a2c6da2` |
+| react / ios      | B-resources2-managed | zip    | SHA-256      | `01a08ed5-ae56-75b6-8387-a4acb94f5c1a` | `a36f78d1b11f3575c526e47bf55ca00f7ab44d902bd23fdce57e07151612e59e` |
+| vue / ios        | B-resources2-managed | zip    | SHA-256      | `01a08ed8-7627-7792-947f-a8f9145c63c4` | `72c64b2cd9d0a6bcc4acca3b8bec5e91b9670207f1eb1e38abcfa4f52edeba38` |
 
 The `B-resources2-managed` artifacts contain the genuine compiler-emitted
 `main.lynx.bundle` and `async/bootstrap.<compiler-hash>.bundle`, with the image,
@@ -161,10 +162,10 @@ host profiles and distinct delivery scopes preserve the public SDK1 catalog and
 all earlier native probe receipts. The rebuilt executable SHA-256 for these runs
 was `57ae52cb349419c9f524a4fec0c12880618e71daa678ee1ffeb36e912cabadca`.
 
-| OS / fixture / format | Bundle ID | Release ID | Archive SHA-256 |
-| --- | --- | --- | --- |
+| OS / fixture / format                  | Bundle ID                              | Release ID                             | Archive SHA-256                                                    |
+| -------------------------------------- | -------------------------------------- | -------------------------------------- | ------------------------------------------------------------------ |
 | Android / B-external2-managed / TAR.BR | `01a08efd-8a8a-7d24-a9f3-6a9d07a54c52` | `01a08efd-8bec-7660-b343-64deb7147f4d` | `35ecb81a4fd7b0e6b3ea5cc1d0f1fd26cfeec0bffe8817e5079e78332774561d` |
-| iOS / A-external2-managed / ZIP | `01a08efd-d987-77a3-9bcd-751f607fdf1d` | `01a08efd-db2e-7148-9d9c-2b21fc1730e9` | `58715ae490674fdd2eea934c20e93324034eedbc42b71fb81152af0a9d58ea52` |
+| iOS / A-external2-managed / ZIP        | `01a08efd-d987-77a3-9bcd-751f607fdf1d` | `01a08efd-db2e-7148-9d9c-2b21fc1730e9` | `58715ae490674fdd2eea934c20e93324034eedbc42b71fb81152af0a9d58ea52` |
 
 Exact invocations, native configuration paths and hashes are in
 `receipts/react-android-B-external2-managed-tar-br-signed.json` and
@@ -185,14 +186,14 @@ CLI deployments verified exact source preservation and metadata binding under
 those profiles. Native hosts must embed the matching profile before evaluating
 these artifacts. Expanded SDK2 resource scenarios are still required for G3.
 
-| Framework / OS | Channel | Bundle ID | Release ID | Archive SHA-256 |
-| --- | --- | --- | --- | --- |
+| Framework / OS   | Channel      | Bundle ID                              | Release ID                             | Archive SHA-256                                                    |
+| ---------------- | ------------ | -------------------------------------- | -------------------------------------- | ------------------------------------------------------------------ |
 | octane / android | `ota-octane` | `01a08edf-f7fe-7c94-b0a0-cf32b4470e8e` | `01a08edf-f935-73ff-be78-35b05bdefba5` | `5e368952126b7801182a92378a62a1bd6080295e012cd333852f194c6a3ed8ff` |
-| octane / ios | `ota-octane` | `01a08edf-f7ff-7ca9-a402-7b877e5506a8` | `01a08edf-f959-7101-8c49-7a6b324adbc2` | `024ce023a43b7e0d26c4b4fbf2764604f2be5e9851376a208655270dcc235ac2` |
-| react / android | `ota-react` | `01a08edf-f800-71d1-b7fe-15859987e390` | `01a08edf-f8cd-7f5f-8753-415ecefc6237` | `a060594155b5ce6c63e07c37104aa1da6a2e2548c08eb1e7e3a5898b9af8e79d` |
-| react / ios | `ota-react` | `01a08edf-f7fe-72c8-8862-b170c42ce884` | `01a08edf-f8d1-7033-b08c-f07c7d83be0e` | `2bb921cc5b678e2dae8056e87ddf39aef385ba0da93e3bdd53febd695693425d` |
-| vue / android | `ota-vue` | `01a08edf-f7fe-7cbd-a50b-f9214ed7961f` | `01a08edf-f914-79da-8eab-e925da03b0fa` | `64c456d205e50ecb3fd9355a19c0f76efe80459ad1c0f282945651a30e86564b` |
-| vue / ios | `ota-vue` | `01a08edf-f804-7dee-8de2-2d68c542d34b` | `01a08edf-f933-73a8-936b-b9c3a3135155` | `3d1138bed90a2f43cf7e3080c1854c9ca7df27b1b6a233596a84182fa54381b9` |
+| octane / ios     | `ota-octane` | `01a08edf-f7ff-7ca9-a402-7b877e5506a8` | `01a08edf-f959-7101-8c49-7a6b324adbc2` | `024ce023a43b7e0d26c4b4fbf2764604f2be5e9851376a208655270dcc235ac2` |
+| react / android  | `ota-react`  | `01a08edf-f800-71d1-b7fe-15859987e390` | `01a08edf-f8cd-7f5f-8753-415ecefc6237` | `a060594155b5ce6c63e07c37104aa1da6a2e2548c08eb1e7e3a5898b9af8e79d` |
+| react / ios      | `ota-react`  | `01a08edf-f7fe-72c8-8862-b170c42ce884` | `01a08edf-f8d1-7033-b08c-f07c7d83be0e` | `2bb921cc5b678e2dae8056e87ddf39aef385ba0da93e3bdd53febd695693425d` |
+| vue / android    | `ota-vue`    | `01a08edf-f7fe-7cbd-a50b-f9214ed7961f` | `01a08edf-f914-79da-8eab-e925da03b0fa` | `64c456d205e50ecb3fd9355a19c0f76efe80459ad1c0f282945651a30e86564b` |
+| vue / ios        | `ota-vue`    | `01a08edf-f804-7dee-8de2-2d68c542d34b` | `01a08edf-f933-73a8-936b-b9c3a3135155` | `3d1138bed90a2f43cf7e3080c1854c9ca7df27b1b6a233596a84182fa54381b9` |
 
 Receipts are `/receipts/<framework>-<platform>-B-sdk1-managed-zip.json`.
 The standard public catalog/artifact URLs in each receipt were fetched and
@@ -261,13 +262,13 @@ Every archive preserves these six genuine compiler files: `main.lynx.bundle`,
 Lynx sidecar and CLI manifest. SDK1/SDK2 frozen source and prior receipts were
 preserved. The harness rejects SDK3 attempts that declare an `ota-v1` profile.
 
-| Framework / OS | Bundle ID | Release ID | Archive SHA-256 |
-| --- | --- | --- | --- |
-| react / ios | `01a08f08-b893-7034-9cee-4bd3404cdcb7` | `01a08f08-bfed-7ff8-8c0f-41693ee30ef0` | `a9e494ba6e293c618979a18298d8db23087fbe046d354e9e1e58ce4f66cc151d` |
-| react / android | `01a08f08-58e2-7afa-b6d3-69693640f45f` | `01a08f08-5b01-7539-9a49-da3d596107d9` | `979e4e1a351a3decb9acd36cd51e569012e0ea98a6ce8fa7c9c6b00150ea818b` |
-| vue / ios | `01a08f09-aca2-7816-aa2a-608b77a2cfe8` | `01a08f09-adc2-7db3-8f21-1b1ae39bcc6a` | `745661d69a691ce0bcc4227927704bbf0c41d541107d555afa3f01d6c232789a` |
-| vue / android | `01a08f09-a76d-7cbf-9f2a-51ea33fa1421` | `01a08f09-a886-708b-8012-88eea186d2c9` | `5b2d2964722c1b5e5000691afe452c5c75b0c065d5bb62f5a92909d33bd42972` |
-| octane / ios | `01a08f09-b48e-7044-83fd-fd19de4bfd07` | `01a08f09-b59f-70fd-bb65-ee2f3f3ba9ab` | `c174f68727b121d3b7121e488112095c07fac8e2e27b53f0499c092effd1fc54` |
+| Framework / OS   | Bundle ID                              | Release ID                             | Archive SHA-256                                                    |
+| ---------------- | -------------------------------------- | -------------------------------------- | ------------------------------------------------------------------ |
+| react / ios      | `01a08f08-b893-7034-9cee-4bd3404cdcb7` | `01a08f08-bfed-7ff8-8c0f-41693ee30ef0` | `a9e494ba6e293c618979a18298d8db23087fbe046d354e9e1e58ce4f66cc151d` |
+| react / android  | `01a08f08-58e2-7afa-b6d3-69693640f45f` | `01a08f08-5b01-7539-9a49-da3d596107d9` | `979e4e1a351a3decb9acd36cd51e569012e0ea98a6ce8fa7c9c6b00150ea818b` |
+| vue / ios        | `01a08f09-aca2-7816-aa2a-608b77a2cfe8` | `01a08f09-adc2-7db3-8f21-1b1ae39bcc6a` | `745661d69a691ce0bcc4227927704bbf0c41d541107d555afa3f01d6c232789a` |
+| vue / android    | `01a08f09-a76d-7cbf-9f2a-51ea33fa1421` | `01a08f09-a886-708b-8012-88eea186d2c9` | `5b2d2964722c1b5e5000691afe452c5c75b0c065d5bb62f5a92909d33bd42972` |
+| octane / ios     | `01a08f09-b48e-7044-83fd-fd19de4bfd07` | `01a08f09-b59f-70fd-bb65-ee2f3f3ba9ab` | `c174f68727b121d3b7121e488112095c07fac8e2e27b53f0499c092effd1fc54` |
 | octane / android | `01a08f09-afe6-79ee-aea8-6cab981c2e26` | `01a08f09-b135-7b72-869c-4128d637cb82` | `215f9494bbe2c5c0de2cba53e8c296a391248393f57b403450a8ee8831a036a5` |
 
 Native A receipts are `receipts/<framework>-<platform>-A-sdk3-managed-embedded.json`;

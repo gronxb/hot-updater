@@ -1,6 +1,6 @@
 # PRD: Lynx runtime support
 
-Created: 2026-09-11. Decisions consolidated: 2026-09-14.
+Created: 2026-09-11. Decisions consolidated: 2026-09-21.
 
 **Status: approved for execution on 2026-09-11; implementation and acceptance
 reconciliation resumed on 2026-09-13; default page navigation was amended on
@@ -56,14 +56,14 @@ requirement.
 
 ## 2. Responsibilities and initial scope
 
-| Layer | Responsibility |
-| --- | --- |
-| ReactLynx / VueLynx / OctaneLynx | UI, application lifecycle, framework compilation and thread transitions |
-| Application build integration | Run its compiler or provide compatible prebuilt native files; identify the main entry, deterministic page-entry allowlist, and managed dependencies |
-| `@hot-updater/lynx` | Framework-independent JS runtime API, Node build integration, and the Lynx/native module boundary |
-| Native update integration | Verify and install files, select a release, bind resources and startup state, and recover safely |
-| Packaged Sparkling integration | Connect actual resource loaders, module and router registration, the native page stack, container identity, and startup observations |
-| Existing Hot Updater delivery infrastructure | Release/catalog selection, deployment policy, storage, manifests and configured signing |
+| Layer                                        | Responsibility                                                                                                                                      |
+| -------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
+| ReactLynx / VueLynx / OctaneLynx             | UI, application lifecycle, framework compilation and thread transitions                                                                             |
+| Application build integration                | Run its compiler or provide compatible prebuilt native files; identify the main entry, deterministic page-entry allowlist, and managed dependencies |
+| `@hot-updater/lynx`                          | Framework-independent JS runtime API, Node build integration, and the Lynx/native module boundary                                                   |
+| Native update integration                    | Verify and install files, select a release, bind resources and startup state, and recover safely                                                    |
+| Packaged Sparkling integration               | Connect actual resource loaders, module and router registration, the native page stack, container identity, and startup observations                |
+| Existing Hot Updater delivery infrastructure | Release/catalog selection, deployment policy, storage, manifests and configured signing                                                             |
 
 The OTA scope includes full archives and verified delta updates, app-version and
 native fingerprint targeting, next-launch activation, and explicit immediate
@@ -91,9 +91,17 @@ integration remain follow-up scope. Runtime compatibility validation remains
 required. Existing fingerprint targeting must use a meaningful
 integration-owned native fingerprint when enabled.
 
-RN and Lynx use separate delivery projects initially, including catalog/database
-state and storage configuration. Channels alone do not provide engine isolation.
-This operational separation does not replace native compatibility checks.
+RN and Lynx use separate delivery projects initially. One deployed process,
+provider account, and physical database service may host both, but each project
+must use a distinct `createHotUpdater` instance, base route, database or schema,
+API-key authority, and storage namespace. Channels, app versions, fingerprints,
+signing keys, and native `runtimeId` do not provide delivery-project isolation.
+Consequently this PR does not add an `RN | Lynx` database discriminator or a new
+migration. A future requirement to share one logical database namespace requires
+a generic `deliveryProjectId` across authorization, routes, catalog scopes,
+bundles, releases, patches, events, insights, and storage ownership. An engine or
+framework enum is not an acceptable substitute. This operational separation does
+not replace native compatibility checks.
 
 ### 2.1 Application integration requirements (2026-09-13 amendment)
 
@@ -140,10 +148,30 @@ merge launch configuration from an intent.
 
 ### 2.2 Engine-neutral delivery requirements (2026-09-13 amendment)
 
-The common Hot Updater CLI, catalog, artifact, and storage contracts must remain
-engine-neutral. React Native/Hermes file selection, `.hbc` renaming, and runtime
-configuration discovery belong to the React Native integration. Expo fingerprint
-implementation and dependency discovery belong to the Expo integration.
+The Hot Updater core is a pure runtime- and framework-neutral OTA engine. This
+boundary includes `@hot-updater/core`, `@hot-updater/server`,
+`@hot-updater/plugin-core`, the common `hot-updater` command layer, and generic
+configuration/scaffolding utilities. These packages may express opaque platforms,
+artifacts, catalogs, policies, signatures, storage, and integration hooks. They
+must not contain React Native, Hermes, Metro, Expo, Lynx, Sparkling, `.hbc`, or
+framework-specific artifact-selection and native-remediation policy.
+
+An integration descriptor owns setup, dependencies, build output declarations,
+fingerprinting, signing-key resolution, doctor checks, conflict detection, and
+native remediation. React Native and Hermes behavior belongs to
+`@hot-updater/react-native` and its Bare/Rock adapters. Expo behavior, including
+Expo dependency discovery and `@expo/fingerprint`, belongs to the Expo adapter.
+Lynx and optional Sparkling behavior belongs to `@hot-updater/lynx`. The common
+CLI invokes integration hooks and never enumerates a closed set of RN build types.
+The descriptor boundary must preserve the existing RN user flow while allowing a
+Lynx-only project with no RN or Expo dependency to initialize, diagnose,
+fingerprint, sign, deploy, and verify infrastructure.
+
+A dependency-boundary test must fail when production code in the neutral packages
+imports or embeds RN, Expo, Hermes, Metro, `.hbc`, `getJSBundleFile`,
+`HotUpdater.bundleURL()`, `AppDelegate`, or `MainApplication` policy. RN and Expo
+fixtures and checks remain in their integration packages. Package descriptions
+and public docs for neutral packages must also describe runtime-neutral OTA.
 
 Build integrations explicitly describe selected artifact paths, final names,
 patch entry, download compression, and native fingerprint production. Common
@@ -214,19 +242,53 @@ staged, pending, and stable state atomically.
 
 ### 2.3 Execution requirements
 
-All PRD text and decision records remain in English. Complete PRD drafting and
-decision consolidation before switching models. The user requires the subsequent
-implementation phase to use **GPT-5.6 Sol with High reasoning** (`gpt-5.6-sol`,
-`high`), including code changes, implementation verification, and delegated
-implementation work. Previous-model implementation agents were interrupted with
-their partial work preserved. Reassign bounded implementation work with the
-requested model; do not resume the old-model agents for implementation.
+All PRD text and decision records remain in English. PRD drafting and decision
+consolidation preceded implementation. The latest execution instruction supersedes
+the earlier model-selection instructions. The user subsequently requested bounded
+read-only subagents for a final adversarial architecture and data review; that
+review was completed on 2026-09-21. Implementation remains in the primary task.
+Model selection is an execution preference and does not change the product or
+acceptance contract.
 
 The execution worktree is `/Users/gronxb/workspace/hot-updater-lynx`, branch
 `codex/lynx-support`, PR #1300. Preserve the source checkout and the six staged-only
 local helper files listed in the handoff. The goal is implementation and verified
 acceptance, with an accurate reviewable PR. Merging and npm release publication
 are outside this task.
+
+### 2.4 Adversarial consensus (2026-09-21)
+
+Three independent reviewers examined the Lynx architecture, the neutral package
+boundary, and shared RN/Lynx infrastructure. They reached the following
+consensus, which is binding on this PR's release claim:
+
+1. The native generation, verified-resource, page-per-bundle, and one-Release
+   page-stack model is sound, subject to the required device evidence.
+2. No engine or framework database column is needed for the initial topology.
+   RN and Lynx may share one deployment only through the isolated delivery-project
+   instances defined above. Pointing both at one current table set, catalog route,
+   or storage prefix is unsafe because catalog and delta-base identity contains no
+   project axis.
+3. The low-level core, server, and build contracts are mostly neutral, but the
+   common CLI and generic configuration utilities still contain RN/Expo/Hermes
+   setup, doctor, conflict, fingerprint, and native-remediation assumptions.
+   Lynx support remains release-blocked until those policies are behind
+   integration-owned hooks and the boundary tests pass.
+4. Production Sparkling app sources may register, configure, mount, reattach, and
+   close the packaged host. They may not select updates, resolve artifact paths,
+   implement loaders or routers, classify crashes, restart the process, or import
+   diagnostics. A structural source test enforces this distinction; diagnostic
+   controls remain in nonproduction targets.
+5. Equal ReactLynx, VueLynx, and OctaneLynx support is not established by the
+   ReactLynx default suite or historical receipts. Current six-cell evidence is
+   required. Framework-generated VueLynx and OctaneLynx `loadLazyBundle` output
+   is a release blocker whenever it appears in supported production compiler
+   output; core external JavaScript and native dynamic-component probes cannot be
+   relabeled as that evidence.
+
+The detailed attack paths and source anchors are recorded in the
+[adversarial review](./adversarial-review.md). No source inspection result is a
+substitute for the acceptance runs in section 7.
 
 ## 3. Evidence and constraints
 
@@ -321,21 +383,21 @@ declarations alone are insufficient.
 The following recommendations incorporate both rounds of review and the targeted
 retry-policy rebuttal. Open implementation details remain in section 8.
 
-| ID | Challenged assumption | Proposed resolution |
-| --- | --- | --- |
-| D1 | A generic BuildPlugin makes the entire existing archive path generic | Reuse BuildPlugin integration; keep RN renaming/filtering out of Lynx handling and native entry discovery. Determine an explicit artifact-handling boundary before freezing the interface. Reject metadata collisions and inspect the actual CLI archive. |
-| D2 | Separate backend + OS/appVersion guarantees native compatibility | Native owns an immutable compatibility identity and requires an exact match with verified artifact metadata before execution. Server targeting is a separate constraint. |
-| D3 | Preserving a file tree guarantees offline prebuilt support | Require a proven host resource-addressing contract, release-aware caches and lifetime, and no fallback to another release for managed dependencies. |
-| D4 | Plain JS APIs can call native from any framework execution graph | Imports have no native-call side effects. Native calls originate from background JS; native binds readiness to the actual attempt and primary context. |
-| D5 | Missing readiness is equivalent to a crash, or one retry receipt suffices | Distinguish confirmed startup failures from unexplained exits. Preserve per-Release exclusions across subsequent attempts; a newer failed candidate must not make an older excluded candidate eligible again. |
-| D6 | Stabilize the package API before proving native loading and bridge behavior | Run native feasibility across all six combinations first. Internal adapters and manual local placement are allowed in that future spike; they do not count as OTA completion. |
-| D7 | Equal framework support requires one binary for all frameworks | Share the host integration and scenarios. Keep each scenario's native binary unchanged across A/B; record compatibility separately for each combination. |
-| D8 | Compiler output identity, bundle identity and Release identity are interchangeable | Native owns embedded/minimum IDs. Packaging assigns the OTA bundle ID. Catalog Release IDs identify authorization and remain separate from bytes and startup attempts. |
-| D9 | Native startup can be confirmed before rendering or after a timer | The resumed native and E2E reviewers independently reproduced premature confirmation; require actual first content plus application readiness for each generation. |
-| D10 | Identical scenario names establish equivalent E2E coverage | Assert observed native state and actual patch behavior; never synthesize expected results, search unrelated snapshot text, or treat transport timeouts as no-update. |
-| D11 | A bundle URL is sufficient for an ordinary Sparkling scaffold | The library must also supply verified resource loaders and lifecycle/bridge integration; use a packaged managed host where public builder hooks are unavailable. |
-| D12 | A framework-free dependency list makes delivery neutral | Explicit artifact/compression/fingerprint contracts must replace common RN filename and Expo-discovery assumptions. |
-| D13 | Any manifest-covered `.lynx.bundle` is safe to open as a page | Metadata declares a deterministic page-entry allowlist. The packaged router accepts only an exact canonical allowlisted path from the running installation, so background and dynamic-component bundles cannot become pages accidentally. |
+| ID  | Challenged assumption                                                              | Proposed resolution                                                                                                                                                                                                                                       |
+| --- | ---------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| D1  | A generic BuildPlugin makes the entire existing archive path generic               | Reuse BuildPlugin integration; keep RN renaming/filtering out of Lynx handling and native entry discovery. Determine an explicit artifact-handling boundary before freezing the interface. Reject metadata collisions and inspect the actual CLI archive. |
+| D2  | Separate backend + OS/appVersion guarantees native compatibility                   | Native owns an immutable compatibility identity and requires an exact match with verified artifact metadata before execution. Server targeting is a separate constraint.                                                                                  |
+| D3  | Preserving a file tree guarantees offline prebuilt support                         | Require a proven host resource-addressing contract, release-aware caches and lifetime, and no fallback to another release for managed dependencies.                                                                                                       |
+| D4  | Plain JS APIs can call native from any framework execution graph                   | Imports have no native-call side effects. Native calls originate from background JS; native binds readiness to the actual attempt and primary context.                                                                                                    |
+| D5  | Missing readiness is equivalent to a crash, or one retry receipt suffices          | Distinguish confirmed startup failures from unexplained exits. Preserve per-Release exclusions across subsequent attempts; a newer failed candidate must not make an older excluded candidate eligible again.                                             |
+| D6  | Stabilize the package API before proving native loading and bridge behavior        | Run native feasibility across all six combinations first. Internal adapters and manual local placement are allowed in that future spike; they do not count as OTA completion.                                                                             |
+| D7  | Equal framework support requires one binary for all frameworks                     | Share the host integration and scenarios. Keep each scenario's native binary unchanged across A/B; record compatibility separately for each combination.                                                                                                  |
+| D8  | Compiler output identity, bundle identity and Release identity are interchangeable | Native owns embedded/minimum IDs. Packaging assigns the OTA bundle ID. Catalog Release IDs identify authorization and remain separate from bytes and startup attempts.                                                                                    |
+| D9  | Native startup can be confirmed before rendering or after a timer                  | The resumed native and E2E reviewers independently reproduced premature confirmation; require actual first content plus application readiness for each generation.                                                                                        |
+| D10 | Identical scenario names establish equivalent E2E coverage                         | Assert observed native state and actual patch behavior; never synthesize expected results, search unrelated snapshot text, or treat transport timeouts as no-update.                                                                                      |
+| D11 | A bundle URL is sufficient for an ordinary Sparkling scaffold                      | The library must also supply verified resource loaders and lifecycle/bridge integration; use a packaged managed host where public builder hooks are unavailable.                                                                                          |
+| D12 | A framework-free dependency list makes delivery neutral                            | Explicit artifact/compression/fingerprint contracts must replace common RN filename and Expo-discovery assumptions.                                                                                                                                       |
+| D13 | Any manifest-covered `.lynx.bundle` is safe to open as a page                      | Metadata declares a deterministic page-entry allowlist. The packaged router accepts only an exact canonical allowlisted path from the running installation, so background and dynamic-component bundles cannot become pages accidentally.                 |
 
 ## 5. Required behavior
 
@@ -815,14 +877,14 @@ SDK-free prebuilt files may be packaged, but confirmed OTA operation also requir
 an application signal or a host that proves the same startup conditions. Merely
 installing such files is not evidence of full support.
 
-| Event | Durable outcome | Next startup behavior |
-| --- | --- | --- |
-| Installed but not evaluated | Installed candidate; no startup attempt | Candidate may be evaluated normally |
-| Primary candidate evaluation starts | Pending attempt bound to release, native binary and managed generation | Await confirmation or classify its outcome |
-| Valid native observation and ready signal | Confirmed release | Retain it while eligible and compatible |
-| Verified fatal template/JS/native startup failure | Failed attempt and existing crash-history semantics | Recover to an eligible confirmed release or compatible embedded release |
-| Pending attempt found without confirmation or recorded fatal failure | Unconfirmed termination, separate from crash history | Recover and suppress automatic restaging of that Release ID |
-| Error after Release confirmation and after every opened page completes admission | Outside the initial startup/page-admission rollback guarantee | Do not promise rollback of arbitrary later application errors |
+| Event                                                                            | Durable outcome                                                        | Next startup behavior                                                   |
+| -------------------------------------------------------------------------------- | ---------------------------------------------------------------------- | ----------------------------------------------------------------------- |
+| Installed but not evaluated                                                      | Installed candidate; no startup attempt                                | Candidate may be evaluated normally                                     |
+| Primary candidate evaluation starts                                              | Pending attempt bound to release, native binary and managed generation | Await confirmation or classify its outcome                              |
+| Valid native observation and ready signal                                        | Confirmed release                                                      | Retain it while eligible and compatible                                 |
+| Verified fatal template/JS/native startup failure                                | Failed attempt and existing crash-history semantics                    | Recover to an eligible confirmed release or compatible embedded release |
+| Pending attempt found without confirmation or recorded fatal failure             | Unconfirmed termination, separate from crash history                   | Recover and suppress automatic restaging of that Release ID             |
+| Error after Release confirmation and after every opened page completes admission | Outside the initial startup/page-admission rollback guarantee          | Do not promise rollback of arbitrary later application errors           |
 
 An unexplained exit may be a healthy application closed early by the user. The
 proposed conservative policy still falls back and holds that Release ID. A new
@@ -1020,15 +1082,15 @@ types. Receipts and replay use the same type and nullability whenever they carry
 the corresponding field; they may not coerce a number or substitute an empty
 string:
 
-| Field | JSON contract and identity semantics |
-| --- | --- |
-| `runtimeId` | Nonempty string identifying the exact native/artifact runtime compatibility contract; never null for managed-generation evidence. |
-| `generationId` | Nonempty string allocated once per managed generation; never null for managed-generation evidence, shared by every page in that generation, and changed by recreation or recovery. |
-| `contextId` | Nonempty string for an event or receipt attributed to one live or retired page context; explicit null for a generation-wide item with no single context. It is never inferred from `primaryContextId`. |
-| `pageAttemptId` | Nonempty string after a secondary page attempt is allocated and on every event/terminal receipt for that attempt; explicit null when the item does not describe a page attempt. A reconstructed page receives a new value. |
-| `transitionId` | Nonempty string for an accepted managed transition and every cancellation, completion, failure, recovery, or replay attributed to it; explicit null when no accepted transition applies. Rejection before acceptance cannot invent one. |
-| `bundleId` | Nonempty string for the selected embedded or OTA Bundle; never null for managed-generation evidence. |
-| `releaseId` | Nonempty string for an OTA Release, including promotion or rollback; explicit null only for the embedded selection. Empty string and omission are invalid. |
+| Field           | JSON contract and identity semantics                                                                                                                                                                                                    |
+| --------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `runtimeId`     | Nonempty string identifying the exact native/artifact runtime compatibility contract; never null for managed-generation evidence.                                                                                                       |
+| `generationId`  | Nonempty string allocated once per managed generation; never null for managed-generation evidence, shared by every page in that generation, and changed by recreation or recovery.                                                      |
+| `contextId`     | Nonempty string for an event or receipt attributed to one live or retired page context; explicit null for a generation-wide item with no single context. It is never inferred from `primaryContextId`.                                  |
+| `pageAttemptId` | Nonempty string after a secondary page attempt is allocated and on every event/terminal receipt for that attempt; explicit null when the item does not describe a page attempt. A reconstructed page receives a new value.              |
+| `transitionId`  | Nonempty string for an accepted managed transition and every cancellation, completion, failure, recovery, or replay attributed to it; explicit null when no accepted transition applies. Rejection before acceptance cannot invent one. |
+| `bundleId`      | Nonempty string for the selected embedded or OTA Bundle; never null for managed-generation evidence.                                                                                                                                    |
+| `releaseId`     | Nonempty string for an OTA Release, including promotion or rollback; explicit null only for the embedded selection. Empty string and omission are invalid.                                                                              |
 
 Except for the canonical decimal grammar of `processId`, identity strings are
 opaque and compared byte for byte. Producers and consumers do not trim,
@@ -1057,7 +1119,7 @@ Canonicalization Scheme document with exactly this logical envelope and no
 additional envelope fields:
 
 ```json
-{"events":[],"nextSequence":"1","schemaVersion":1,"truncated":false}
+{ "events": [], "nextSequence": "1", "schemaVersion": 1, "truncated": false }
 ```
 
 `schemaVersion` is the JSON number `1`. `nextSequence` is a base-10 positive
@@ -1116,7 +1178,7 @@ file corrupt. No event or sequence from a corrupt file is exposed. Native
 atomically replaces it before future use with these exact canonical bytes:
 
 ```json
-{"events":[],"nextSequence":"1","schemaVersion":1,"truncated":true}
+{ "events": [], "nextSequence": "1", "schemaVersion": 1, "truncated": true }
 ```
 
 The repaired public snapshot reports null oldest/latest sequences. If repair
@@ -1256,6 +1318,13 @@ uncompleted target; changing framework scope requires separate user review.
 Implement `@hot-updater/lynx` and `examples/lynx` against the G1 contracts.
 
 - Separate runtime and build exports without mandatory framework dependencies.
+- Replace the common CLI's fixed Bare/Rock/Expo build enum with an
+  integration-owned setup/doctor/fingerprint/remediation descriptor. A Lynx-only
+  fixture must complete the generic CLI flow without installing or inspecting
+  React Native or Expo.
+- Enforce the neutral-package dependency and source-policy boundary described in
+  section 2.2, while RN regression fixtures prove unchanged RN/Hermes behavior
+  through the RN integration.
 - Provide reproducible ReactLynx, VueLynx and pinned-source OctaneLynx entrypoints,
   each producing real `main.lynx.bundle` and `detail.lynx.bundle` A/B/C output,
   with shared host integration and documented native prerequisites.
@@ -1304,10 +1373,12 @@ binaries, without a development server.
 
 ### G4 — Subsequent proposals
 
-Use G3 evidence to propose analytics telemetry, CLI onboarding, independent
-per-page delivery policy, and additional navigation policies separately. The
-default two-page contract, delta delivery, and engine-neutral native fingerprint
-ownership are required initial scope.
+Use G3 evidence to propose analytics telemetry, independent per-page delivery
+policy, and additional navigation policies separately. Runtime-neutral CLI
+onboarding and doctor behavior are part of G2 because the common product boundary
+cannot claim Lynx support while requiring React Native. The default two-page
+contract, delta delivery, and engine-neutral native fingerprint ownership are
+required initial scope.
 
 ## 7. Acceptance evidence
 
@@ -1316,49 +1387,52 @@ versions, A/B/C bundle and Release IDs, both page/resource hashes, resource-load
 observations, and native activation/recovery logs. Web preview, compilation and
 archive inspection do not prove device OTA.
 
-| Scenario | Required result |
-| --- | --- |
-| Embedded A → installed B → offline process restart | B entry and all managed dependencies load from B |
-| Valid B confirmation → another restart | B remains confirmed |
-| Fatal startup error / unexplained pre-ready termination | Distinct history and exclusion outcomes; eligible confirmed or embedded fallback |
-| B exits unconfirmed, then C exits unconfirmed | Later selection cannot silently re-enable B |
-| New authorized Release ID references previously unconfirmed cached bytes | Fresh attempt; no inherited readiness or cached-install/adoption bypass |
-| Exclusion changes after an install was prepared | Stale selection authorization cannot install the excluded candidate |
-| Primary context never opens / stale or secondary ready arrives | No invented failed attempt; no unauthorized confirmation |
-| Secondary context requests candidate execution before primary startup | Defer/reject opening or explicitly designate it primary; no candidate execution before the durable attempt |
-| Primary ready arrives while a pre-confirm secondary is pending | Do not confirm until that page reaches one of the four terminal states or an accepted transition atomically writes terminal state `authorized-cancel`, exact reason `managedTransition`, and its transition ID |
-| Corrupt archive/hash, configured signature failure, traversal or metadata mismatch | Reject before candidate execution; preserve the current release |
-| Same appVersion but different native compatibility identity | Reject before execution with an incompatibility result; avoid repeated download loops |
-| Multi-page artifact presented to an older single-entry host identity | Reject before execution; the old schema-version-1 reader cannot ignore page fields |
-| Independently pinned Sparkling combination | Record every iOS source, npm tarball/tag and Android Maven/source checksum; pass cross-provenance bridge, router, loader, lifecycle and device tests without asserting content equivalence |
-| Interrupted installation or concurrent requests | No partial installation becomes active |
-| Multiple containers and in-flight resource requests | One process release; no mixed resources or premature cleanup |
-| `sparkling-navigation` main → detail | The packaged router opens the exact allowlisted `detail.lynx.bundle`; main and detail have different context IDs and the same process, generation, Bundle, Release and verified installation |
-| Noncanonical path or unsafe navigate/open option | Reject before upstream open or native stack mutation; only canonical ASCII page paths, push semantics and ownership-neutral animation are accepted |
-| Route, query or stack bound exceeded | Reject before upstream open, container creation or native/logical stack mutation; apply the 4,096-byte route, 32-custom-parameter, 128-byte key, 1,024-byte value, 2,048-byte decoded aggregate and 16-page limits identically on iOS and Android |
-| Manifest page resource descriptors | Every page uses its exact manifest-covered `pageEssentialResources`; missing, extra, unsafe or unverified descriptors reject the complete artifact |
-| Detail first load fails before primary confirmation | One durable generation/page failure prevents primary confirmation; OTA Release suppression and Bundle crash history apply, embedded identity is recorded without blacklisting, and the complete stack recovers or fails closed |
-| First detail load fails after Release confirmation | An OTA Release becomes durably ineligible and its Bundle enters crash history; embedded failure is recorded without blacklisting; the complete generation retires and the ordered stack recovers or fails closed |
-| Back/close while detail admission is pending | Only the live native top or same top source cancels once; no Release suppression or Bundle crash history, and every late signal is stale |
-| Managed transition while page admission is pending | Transition acceptance and every source-generation terminal state `authorized-cancel` record with exact reason `managedTransition` commit atomically with one transition ID; retained pages receive fresh attempts after recreation |
-| Process death while detail admission is pending | Before and after Release confirmation produce the specified durable interruption/suppression outcome, no false crash, one complete-stack recovery and no stale attempt resurrection |
-| Full-page native navigation and recreation | iOS uses real `SPKViewController` pages and Android uses packaged full-page Activity-equivalent Sparkling containers; route open, native back, close, ordered entries, params and top page remain correct across reload/recovery |
-| Native binary upgrade | Revalidate compatibility and binary-scoped state; use a safe fallback |
-| Native files resemble RN names or collide with reserved metadata | Preserve supported runtime files; reject metadata conflicts before upload |
-| Archive → forward delta → reverse delta and rollback | Apply actual A-to-B and B-to-C patches, then actual C-to-B and B-to-A patches against each verified active base; retain required bases and verify every target manifest asset before activation |
-| No-archive mixed multi-page delta | Apply main BSDIFF plus a raw complete changed detail file under one authenticated target manifest; corrupt or missing detail rejects the whole target and leaves the running Release unchanged, including on required reverse vectors |
-| Corrupt/missing patch, changed file, or stale base | Use an authorized verified fallback or reject safely; do not publish a partial target or change the running bytes |
-| Standard Sparkling scaffold integration | App native sources contain ordinary registration, configuration and mount wiring only; packaged integration supplies the real router/page stack, bridge, resources, lifecycle and update behavior |
-| Engine-neutral build and fingerprint | Opaque entries and explicit compression work without RN filename rules; native input changes alter the integration fingerprint; RN regressions stay green |
-| Default reload acceptance | Old-context Promise returns only durable `TRANSITION_ACCEPTED`; validation/persistence rejection leaves the old generation unchanged, and no old Promise reports reconstruction outcome |
-| Reset or forced activation | Reset scope mutation and transition acceptance are atomic; forced acceptance follows verified installation; rejection preserves the old generation and staged update/state as specified |
-| Immediate activation on both OSes | App remains in one OS process; all managed containers move together, and only matched new-generation content/readiness plus `UPDATE_APPLIED` or `RECOVERED` proves completion |
-| Concurrent reload, stale callback, or failed reconstruction | Exactly one transition ID is accepted; competitors reject, stale callbacks cannot mutate it, and reconstruction recovery is reported durably from the new generation |
-| Runtime identity field type or lifecycle mismatch | Reject numeric or noncanonical `processId`, missing identity keys, empty required strings, and invalid nulls; one OS process shares one process string, process replacement changes it, generation recreation changes `generationId`, and replay preserves original identities |
-| Runtime event field reaches or exceeds its bound | Accept an exact 128-byte name and exact 64-KiB serialized details; reject either field at one byte over without journal mutation |
-| Canonical runtime journal and public snapshot | The same valid ordered input events produce byte-identical RFC 8785 persisted bytes on iOS and Android with only the defined envelope/event keys and inline details; persistence contains no oldest/latest aliases, and the public snapshot derives those strings without exposing `nextSequence` |
-| Valid runtime journal append crosses a retention bound | Accept the append after minimum oldest-first eviction, retain at most 256 events and 16 MiB, and atomically persist sticky `truncated=true` |
-| Persisted runtime journal is corrupt or already oversized | Trust no old event or sequence; atomically repair to an empty `truncated=true` journal before future use, or keep the journal unavailable if durable repair fails |
+| Scenario                                                                           | Required result                                                                                                                                                                                                                                                                                        |
+| ---------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Embedded A → installed B → offline process restart                                 | B entry and all managed dependencies load from B                                                                                                                                                                                                                                                       |
+| Valid B confirmation → another restart                                             | B remains confirmed                                                                                                                                                                                                                                                                                    |
+| Fatal startup error / unexplained pre-ready termination                            | Distinct history and exclusion outcomes; eligible confirmed or embedded fallback                                                                                                                                                                                                                       |
+| B exits unconfirmed, then C exits unconfirmed                                      | Later selection cannot silently re-enable B                                                                                                                                                                                                                                                            |
+| New authorized Release ID references previously unconfirmed cached bytes           | Fresh attempt; no inherited readiness or cached-install/adoption bypass                                                                                                                                                                                                                                |
+| Exclusion changes after an install was prepared                                    | Stale selection authorization cannot install the excluded candidate                                                                                                                                                                                                                                    |
+| Primary context never opens / stale or secondary ready arrives                     | No invented failed attempt; no unauthorized confirmation                                                                                                                                                                                                                                               |
+| Secondary context requests candidate execution before primary startup              | Defer/reject opening or explicitly designate it primary; no candidate execution before the durable attempt                                                                                                                                                                                             |
+| Primary ready arrives while a pre-confirm secondary is pending                     | Do not confirm until that page reaches one of the four terminal states or an accepted transition atomically writes terminal state `authorized-cancel`, exact reason `managedTransition`, and its transition ID                                                                                         |
+| Corrupt archive/hash, configured signature failure, traversal or metadata mismatch | Reject before candidate execution; preserve the current release                                                                                                                                                                                                                                        |
+| Same appVersion but different native compatibility identity                        | Reject before execution with an incompatibility result; avoid repeated download loops                                                                                                                                                                                                                  |
+| Multi-page artifact presented to an older single-entry host identity               | Reject before execution; the old schema-version-1 reader cannot ignore page fields                                                                                                                                                                                                                     |
+| Independently pinned Sparkling combination                                         | Record every iOS source, npm tarball/tag and Android Maven/source checksum; pass cross-provenance bridge, router, loader, lifecycle and device tests without asserting content equivalence                                                                                                             |
+| Interrupted installation or concurrent requests                                    | No partial installation becomes active                                                                                                                                                                                                                                                                 |
+| Multiple containers and in-flight resource requests                                | One process release; no mixed resources or premature cleanup                                                                                                                                                                                                                                           |
+| `sparkling-navigation` main → detail                                               | The packaged router opens the exact allowlisted `detail.lynx.bundle`; main and detail have different context IDs and the same process, generation, Bundle, Release and verified installation                                                                                                           |
+| Noncanonical path or unsafe navigate/open option                                   | Reject before upstream open or native stack mutation; only canonical ASCII page paths, push semantics and ownership-neutral animation are accepted                                                                                                                                                     |
+| Route, query or stack bound exceeded                                               | Reject before upstream open, container creation or native/logical stack mutation; apply the 4,096-byte route, 32-custom-parameter, 128-byte key, 1,024-byte value, 2,048-byte decoded aggregate and 16-page limits identically on iOS and Android                                                      |
+| Manifest page resource descriptors                                                 | Every page uses its exact manifest-covered `pageEssentialResources`; missing, extra, unsafe or unverified descriptors reject the complete artifact                                                                                                                                                     |
+| Detail first load fails before primary confirmation                                | One durable generation/page failure prevents primary confirmation; OTA Release suppression and Bundle crash history apply, embedded identity is recorded without blacklisting, and the complete stack recovers or fails closed                                                                         |
+| First detail load fails after Release confirmation                                 | An OTA Release becomes durably ineligible and its Bundle enters crash history; embedded failure is recorded without blacklisting; the complete generation retires and the ordered stack recovers or fails closed                                                                                       |
+| Back/close while detail admission is pending                                       | Only the live native top or same top source cancels once; no Release suppression or Bundle crash history, and every late signal is stale                                                                                                                                                               |
+| Managed transition while page admission is pending                                 | Transition acceptance and every source-generation terminal state `authorized-cancel` record with exact reason `managedTransition` commit atomically with one transition ID; retained pages receive fresh attempts after recreation                                                                     |
+| Process death while detail admission is pending                                    | Before and after Release confirmation produce the specified durable interruption/suppression outcome, no false crash, one complete-stack recovery and no stale attempt resurrection                                                                                                                    |
+| Full-page native navigation and recreation                                         | iOS uses real `SPKViewController` pages and Android uses packaged full-page Activity-equivalent Sparkling containers; route open, native back, close, ordered entries, params and top page remain correct across reload/recovery                                                                       |
+| Native binary upgrade                                                              | Revalidate compatibility and binary-scoped state; use a safe fallback                                                                                                                                                                                                                                  |
+| Native files resemble RN names or collide with reserved metadata                   | Preserve supported runtime files; reject metadata conflicts before upload                                                                                                                                                                                                                              |
+| Archive → forward delta → reverse delta and rollback                               | Apply actual A-to-B and B-to-C patches, then actual C-to-B and B-to-A patches against each verified active base; retain required bases and verify every target manifest asset before activation                                                                                                        |
+| No-archive mixed multi-page delta                                                  | Apply main BSDIFF plus a raw complete changed detail file under one authenticated target manifest; corrupt or missing detail rejects the whole target and leaves the running Release unchanged, including on required reverse vectors                                                                  |
+| Corrupt/missing patch, changed file, or stale base                                 | Use an authorized verified fallback or reject safely; do not publish a partial target or change the running bytes                                                                                                                                                                                      |
+| Standard Sparkling scaffold integration                                            | App native sources contain ordinary registration, configuration and mount wiring only; packaged integration supplies the real router/page stack, bridge, resources, lifecycle and update behavior                                                                                                      |
+| Production native source boundary                                                  | Structural checks allow only normal Sparkling registration, immutable configuration, packaged-host construction, mount/reattach/close wiring; they reject application-owned update selection, artifact-path resolution, loaders, routers, recovery, restart/exit, crash classification and diagnostics |
+| Engine-neutral build and fingerprint                                               | Opaque entries and explicit compression work without RN filename rules; native input changes alter the integration fingerprint; RN regressions stay green                                                                                                                                              |
+| Pure OTA core and common CLI                                                       | Neutral production packages contain no RN, Expo, Hermes, Metro, `.hbc`, RN native-file inspection or engine-specific artifact policy; a Lynx-only fixture initializes, diagnoses, fingerprints, signs, deploys and verifies infrastructure through integration hooks                                   |
+| Shared deployment with isolated projects                                           | RN and Lynx use identical platform/channel/version/fingerprint values on distinct routes and stores in one process; catalog, artifact, admin, API-key, rollback, insight and storage reads cannot cross project boundaries                                                                             |
+| Default reload acceptance                                                          | Old-context Promise returns only durable `TRANSITION_ACCEPTED`; validation/persistence rejection leaves the old generation unchanged, and no old Promise reports reconstruction outcome                                                                                                                |
+| Reset or forced activation                                                         | Reset scope mutation and transition acceptance are atomic; forced acceptance follows verified installation; rejection preserves the old generation and staged update/state as specified                                                                                                                |
+| Immediate activation on both OSes                                                  | App remains in one OS process; all managed containers move together, and only matched new-generation content/readiness plus `UPDATE_APPLIED` or `RECOVERED` proves completion                                                                                                                          |
+| Concurrent reload, stale callback, or failed reconstruction                        | Exactly one transition ID is accepted; competitors reject, stale callbacks cannot mutate it, and reconstruction recovery is reported durably from the new generation                                                                                                                                   |
+| Runtime identity field type or lifecycle mismatch                                  | Reject numeric or noncanonical `processId`, missing identity keys, empty required strings, and invalid nulls; one OS process shares one process string, process replacement changes it, generation recreation changes `generationId`, and replay preserves original identities                         |
+| Runtime event field reaches or exceeds its bound                                   | Accept an exact 128-byte name and exact 64-KiB serialized details; reject either field at one byte over without journal mutation                                                                                                                                                                       |
+| Canonical runtime journal and public snapshot                                      | The same valid ordered input events produce byte-identical RFC 8785 persisted bytes on iOS and Android with only the defined envelope/event keys and inline details; persistence contains no oldest/latest aliases, and the public snapshot derives those strings without exposing `nextSequence`      |
+| Valid runtime journal append crosses a retention bound                             | Accept the append after minimum oldest-first eviction, retain at most 256 events and 16 MiB, and atomically persist sticky `truncated=true`                                                                                                                                                            |
+| Persisted runtime journal is corrupt or already oversized                          | Trust no old event or sequence; atomically repair to an empty `truncated=true` journal before future use, or keep the journal unavailable if durable repair fails                                                                                                                                      |
 
 Let `S` be the ordered shared default scenario manifest. The shipped Lynx default
 manifest is exactly `S` with only `metadata-v1-migration` removed, followed by
@@ -1413,11 +1487,11 @@ scenario list. A different app ID, direct ad hoc runner, matrix-only application
 single-platform job, non-standalone-kysely profile, or synthetic receipt does not
 satisfy this full-platform gate.
 
-| Framework | iOS: startup, bridge, navigation, OTA, recovery | Android: startup, bridge, navigation, OTA, recovery |
-| --- | --- | --- |
-| ReactLynx | Unverified | Unverified |
-| VueLynx | Unverified | Unverified |
-| OctaneLynx | Unverified | Unverified |
+| Framework  | iOS: startup, bridge, navigation, OTA, recovery | Android: startup, bridge, navigation, OTA, recovery |
+| ---------- | ----------------------------------------------- | --------------------------------------------------- |
+| ReactLynx  | Unverified                                      | Unverified                                          |
+| VueLynx    | Unverified                                      | Unverified                                          |
+| OctaneLynx | Unverified                                      | Unverified                                          |
 
 All six cells must pass before claiming the proposed support is complete.
 
@@ -1444,94 +1518,97 @@ cell.
 
 ## 8. Resolved design decisions
 
-| Area | Implemented contract | Evidence still required |
-| --- | --- | --- |
-| Host | The optional Sparkling integration owns its managed router/page stack, bridge, resources, lifecycle, recovery, and all managed containers; the default Sparkling example uses that complete integration | Final native build plus six current device cells |
-| Compatibility | Native supplies an exact runtime identity that includes the managed page/router/resource contract and independently pinned Sparkling provenance; check-time validation retains no preparation | Current device mismatch, old-host rejection, cross-provenance and no-redownload evidence |
-| Metadata | Manifest-covered schema-version-1 `hot-updater-lynx.json` binds Bundle, OS, main entry, deterministic `pageEntries`, authoritative `pageEssentialResources`, and runtime; the both-fields-absent compatibility form means one entry/resource | Final two-page packaged archive and launch receipts |
-| Resource addressing | The managed router accepts only an exact verified running-release page entry; `hot-updater:///` resolves it and dependencies through context-scoped leases without next/embedded/network fallback | Origin-off page navigation and in-flight retirement receipts |
-| Startup confirmation | Durable primary attempt plus real first content, required resource success, and app readiness | Current host recovery and stale-context device receipts |
-| Secondary admission | Every detail first load has one of exactly four terminal states; pre-confirm primary readiness waits for no pending secondary; top back/close and accepted managed transitions use distinct `authorized-cancel` reasons | Failure, interruption, cancellation, transition-ID and stale-signal evidence in the shipped E2E and six cells |
-| Immediate activation | Old-context Promise reports only durable transition acceptance; both OSes then replace every managed runtime/view in one foreground process, and new content/readiness plus the matched launch receipt proves completion | Acceptance/transition/process/generation/context identity receipts |
-| Navigation state | Reload and recovery preserve at most 16 bottom-to-top logical entries, bounded forwarded string params and the top page in real full-page native containers; route/query/stack overflow rejects before upstream or native mutation | Open/back/close, exact-boundary rejection and recreation receipts on both OSes |
-| Runtime evidence | Every event has canonical string/null runtime identities, including positive-decimal-string `processId`; the exact RFC 8785 envelope stores decimal-string `nextSequence` and inline events, while the public snapshot derives oldest/latest; field overflow rejects without mutation, retention overflow evicts oldest with sticky `truncated=true`, and corrupt persistence repairs or remains unavailable | Cross-platform identity-type/lifecycle, byte-identity, snapshot, field-boundary, retention, durable-repair and E2E completeness receipts |
-| Unconfirmed exits | Durable per-Release suppression remains separate from Bundle crash history | Current B/C recovery device receipts |
-| Native reuse | Lynx owns its native controller/installer; common delivery contracts stay engine-neutral | Mixed RN/Lynx regression and package checks |
-| CLI integration | Build plugins declare artifacts, portable names, compression, patch asset, fingerprint, and signing authority | Final workspace and real deployment validation |
+| Area                       | Implemented contract                                                                                                                                                                                                                                                                                                                                                                                         | Evidence still required                                                                                                                  |
+| -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| Host                       | The optional Sparkling integration owns its managed router/page stack, bridge, resources, lifecycle, recovery, and all managed containers; the default Sparkling example uses that complete integration                                                                                                                                                                                                      | Final native build plus six current device cells                                                                                         |
+| Compatibility              | Native supplies an exact runtime identity that includes the managed page/router/resource contract and independently pinned Sparkling provenance; check-time validation retains no preparation                                                                                                                                                                                                                | Current device mismatch, old-host rejection, cross-provenance and no-redownload evidence                                                 |
+| Metadata                   | Manifest-covered schema-version-1 `hot-updater-lynx.json` binds Bundle, OS, main entry, deterministic `pageEntries`, authoritative `pageEssentialResources`, and runtime; the both-fields-absent compatibility form means one entry/resource                                                                                                                                                                 | Final two-page packaged archive and launch receipts                                                                                      |
+| Resource addressing        | The managed router accepts only an exact verified running-release page entry; `hot-updater:///` resolves it and dependencies through context-scoped leases without next/embedded/network fallback                                                                                                                                                                                                            | Origin-off page navigation and in-flight retirement receipts                                                                             |
+| Startup confirmation       | Durable primary attempt plus real first content, required resource success, and app readiness                                                                                                                                                                                                                                                                                                                | Current host recovery and stale-context device receipts                                                                                  |
+| Secondary admission        | Every detail first load has one of exactly four terminal states; pre-confirm primary readiness waits for no pending secondary; top back/close and accepted managed transitions use distinct `authorized-cancel` reasons                                                                                                                                                                                      | Failure, interruption, cancellation, transition-ID and stale-signal evidence in the shipped E2E and six cells                            |
+| Immediate activation       | Old-context Promise reports only durable transition acceptance; both OSes then replace every managed runtime/view in one foreground process, and new content/readiness plus the matched launch receipt proves completion                                                                                                                                                                                     | Acceptance/transition/process/generation/context identity receipts                                                                       |
+| Navigation state           | Reload and recovery preserve at most 16 bottom-to-top logical entries, bounded forwarded string params and the top page in real full-page native containers; route/query/stack overflow rejects before upstream or native mutation                                                                                                                                                                           | Open/back/close, exact-boundary rejection and recreation receipts on both OSes                                                           |
+| Runtime evidence           | Every event has canonical string/null runtime identities, including positive-decimal-string `processId`; the exact RFC 8785 envelope stores decimal-string `nextSequence` and inline events, while the public snapshot derives oldest/latest; field overflow rejects without mutation, retention overflow evicts oldest with sticky `truncated=true`, and corrupt persistence repairs or remains unavailable | Cross-platform identity-type/lifecycle, byte-identity, snapshot, field-boundary, retention, durable-repair and E2E completeness receipts |
+| Unconfirmed exits          | Durable per-Release suppression remains separate from Bundle crash history                                                                                                                                                                                                                                                                                                                                   | Current B/C recovery device receipts                                                                                                     |
+| Native reuse               | Lynx owns its native controller/installer; common delivery contracts stay engine-neutral                                                                                                                                                                                                                                                                                                                     | Mixed RN/Lynx regression and package checks                                                                                              |
+| Core/CLI neutrality        | Common packages expose opaque OTA contracts and integration hooks; RN, Expo, Lynx, Hermes, Metro, Sparkling and native remediation policy stay in their integrations                                                                                                                                                                                                                                         | Remove remaining common CLI/config RN assumptions; pass source boundary, Lynx-only CLI and RN regression tests                           |
+| Delivery-project isolation | One deployment may mount RN and Lynx as separate `createHotUpdater` instances with distinct route, database/schema, API keys and storage namespace; no engine column is added                                                                                                                                                                                                                                | Cross-project catalog/artifact/admin/key/rollback/insight/storage isolation test                                                         |
+| CLI integration            | Build integrations declare setup, diagnostics, artifacts, portable names, compression, patch asset, fingerprint, signing authority and native remediation                                                                                                                                                                                                                                                    | Final workspace and real deployment validation                                                                                           |
 
 ## 9. Current implementation and remaining evidence
 
 The PRD decision commit is `01bb61260b932e20d3e3f8a3e8e957369f887e17` on PR
-#1300. The current worktree adds the engine-independent runtime/build API, strict
-archive and delta installers, engine-neutral delivery declarations, integration-
-owned RN/Expo fingerprint policy, optional packaged Sparkling hosts, a clean
-production scaffold, and a separate matrix harness. These implementation changes
-are not yet committed or attributed to a final acceptance commit.
+#1300. The current pushed implementation is
+`bfad8131abd8d3cef92fe1f08e3d41e3a6869f6a`. It includes the engine-independent
+runtime and build API, strict archive and delta installers, engine-neutral
+delivery declarations, integration-owned React Native and Expo fingerprint
+policy, packaged Sparkling hosts, the production example, and the framework
+matrix harness.
 
-The current implementation checkpoint predates the 2026-09-14 decision that
-two-entry page bundling and managed `sparkling-navigation` are the basic
-Sparkling architecture. Existing single-entry examples, bare native route
-services, or duplicate-main matrix containers are incomplete until replaced by
-the contract and evidence in this PRD.
+The production example uses the basic Sparkling page architecture: main and
+detail are separate compiler outputs, a button opens the detail route through
+`sparkling-navigation`, and native resolves both pages from the same verified
+Hot Updater selection. Immediate activation recreates every managed runtime and
+restores the bounded logical page stack on both OSes. Application-owned iOS and
+Android code is limited to ordinary library configuration, host registration,
+and view attachment; update, recovery, resource, routing, and generation logic
+lives in `@hot-updater/lynx`.
 
-The final prerelease public client has no `getManifest`, `getInstallId`,
-`addListener`, `setUser`, or init-time insights surface. `init()` accepts only
-transport configuration and an error callback. Update bytes are prepared only
-through the update returned by `checkForUpdate()`. If native confirmation or
-recovery changes the snapshot revision between `getState` and `acceptCatalog`,
-`checkForUpdate()` retries that catalog attempt instead of surfacing `STALE_STATE`
-to the application. Repeated revision races still fail after three attempts.
-`isUpdateDownloaded()` derives
-its answer from the latest authoritative native `nextSelection`, rather than a
-JS-local installation latch. Default reload validation/persistence failures are
-observable to the old caller before retirement; accepted-transition reconstruction
-outcomes are observable only through durable new-generation receipts and actual
-readiness. Custom reload requires an explicit handler.
+The public client has no `getManifest`, `getInstallId`, `addListener`, `setUser`,
+or init-time insights surface. `init()` accepts transport configuration and an
+error callback. Update bytes are prepared only through the update returned by
+`checkForUpdate()`. A catalog acceptance revision race is retried up to three
+times. `isUpdateDownloaded()` reads the authoritative native `nextSelection`.
+Default reload reports durable transition acceptance to the old caller and its
+completion through the replacement generation's durable receipt and readiness.
+Custom reload requires an explicit handler.
 
-The settled server path limits serialized `ArtifactInfo` to 528,384 UTF-8 bytes,
-resolves changed-file URLs with at most 16 concurrent operations, and selects a
-usable bounded manifest representation or verified archive fallback. Artifact
-lookup alone tolerates corrupt optional patch rows by omitting patch hydration;
-administrative Bundle hydration remains strict. Archive construction, promotion,
-and integration-owned fingerprinting apply the deterministic and mutation-safe
-rules above. Shared promotion assets and superseded patch objects are retained
-until a future cleanup operation can prove ownership and absence of references
-atomically. The shared rollback scenario now requires real C-to-B and B-to-A
-BSDIFF evidence in addition to the forward chain.
+The server limits serialized `ArtifactInfo` to 528,384 UTF-8 bytes, resolves
+changed-file URLs with at most 16 concurrent operations, and selects a bounded
+manifest representation or verified archive fallback. Artifact lookup may omit
+corrupt optional patch rows; administrative Bundle hydration remains strict.
+Archive construction, promotion, artifact ordering, and integration-owned
+fingerprinting are deterministic and mutation-safe. Shared promotion assets and
+superseded patch objects are retained until cleanup can prove ownership and the
+absence of references atomically. The rollback scenario requires actual forward
+A-to-B and B-to-C BSDIFF application and reverse C-to-B and B-to-A BSDIFF
+application; archive fallback cannot satisfy those assertions.
 
-Historical SDK3 receipts demonstrate A-to-B operation across all six framework/OS
-cells. They predate the current singleton API, native changes, delta support,
-and managed-generation contract. Android receipts include B retention; the
-retained iOS public receipts do not prove the second B restart. Neither public
-probe establishes restart with the delivery origin unavailable. See the dated
+Artifact packaging already places React Native and Hermes policy in
+`@hot-updater/react-native`, while Expo owns Expo fingerprint generation. The
+common delivery path uses explicit artifact, compression, patch-entry, and
+fingerprint contracts and does not infer a JavaScript engine from filenames.
+However, the common CLI and generic configuration utilities still enumerate RN
+build types and contain RN/Expo setup, doctor, conflict, signing-remediation and
+native-file assumptions. The pure-OTA-core requirement is therefore not complete,
+and this PR must not claim release readiness until that policy is moved behind
+integration hooks and the acceptance checks above pass.
+
+Historical SDK3 receipts demonstrate A-to-B operation across ReactLynx,
+VueLynx, and OctaneLynx on both OSes. They do not establish the current equal
+framework claim. VueLynx and OctaneLynx framework-generated `loadLazyBundle`
+output remains an unresolved release blocker whenever supported production output
+contains that path; verified core external JavaScript and native
+dynamic-component paths are distinct capabilities and are not framework-lazy
+evidence. See the dated
 [evidence reconciliation](./evidence/reconciliation-2026-09-13.md).
 
-VueLynx and OctaneLynx framework-generated `loadLazyBundle` remains an upstream
-runtime limitation. Successful core external-JS and native dynamic-component
-probes are distinct results. Keep all three frameworks in scope and explicitly
-describe that unsupported output category; do not relabel it as a passing lazy
-template scenario or substitute a mocked compiler.
+Verification on the current implementation includes:
 
-Focused implementation checks reported during the current Sol High phase are:
+- `pnpm --filter @hot-updater/lynx test:type` and
+  `pnpm --dir examples/lynx test:type`;
+- Android Sparkling `testDebugUnitTest`, including managed-runtime replacement;
+- `pnpm -w lint`;
+- 429 E2E unit tests in 22 files, including page-stack back synchronization,
+  delta evidence, crash recovery projection, and the explicit Lynx manifest;
+- 17 focused Android crash projection and recovery tests; and
+- green GitHub Integration on the pushed implementation commit.
 
-- 141 Lynx JS runtime/build tests, with package type checking, build, formatting,
-  and lint passing;
-- 442 server tests for manifest paths, download representations, delta
-  descriptions, and storage publication before the final 1.0.0 Supabase schema
-  fold;
-- 10 CLI promotion tests covering explicit compression and archive-only handling
-  for older manifests;
-- 66 Android controller/installer tests, two Android Sparkling tests, lint and
-  release assembly, plus debug and release APK assembly for both native targets;
-- 63 Swift tests with 13 environment-dependent skips and no failures, plus
-  successful simulator builds for both native schemes; and
-- 308 E2E unit tests, a 25-scenario Lynx manifest dry run, and 65 focused matrix
-  contract tests.
-
-These are component and native-build results, not final aggregate validation.
-Full workspace build, type, lint, unit, and integration checks are pending. The
-current full `hot-updater-agent` run and real six-cell iOS/Android device matrix
-are also pending, so no current native E2E success is claimed.
+Full job `job-20260921042318-sbf4lo` is queued with profile
+`standalone-kysely`, `examples/lynx/.env.hotupdater`, application ID
+`com.hotupdater.lynxexample`, and 26 scenarios per OS. Its intended commit is
+`bfad8131abd8d3cef92fe1f08e3d41e3a6869f6a`. A queued job is not acceptance; the
+result and every platform count must be recorded after completion.
 
 ## 10. Execution sequence and completion criteria
 
@@ -1585,10 +1662,12 @@ are also pending, so no current native E2E success is claimed.
    readiness/recovery, real main/detail navigation, forward and reverse delta,
    and logical-page generation replacement. The default agent
    ReactLynx run does not replace VueLynx/OctaneLynx evidence.
-9. Have Sol High subagents adversarially review the final implementation and
-   evidence, resolve actionable findings, and update English documentation and
-   the PR around the verified result. Report unsupported upstream categories
-   explicitly. Mark the goal complete only when every required gate is met.
+9. Reconcile the final implementation against the existing multi-agent
+   adversarial review, resolve actionable findings, and update English
+   documentation and the PR around the verified result. Perform the remaining
+   work directly in this task without subagents. Report unsupported upstream
+   categories explicitly. Mark the goal complete only when every required gate
+   is met.
 
 Each result must identify the source commit, native binary/runtime identity,
 framework, platform, command, and retained evidence. An aggregate test count,
