@@ -832,6 +832,7 @@ export class LynxAppDriver implements DetoxAppDriver {
         }
         throw error;
       }
+      this.beginAndroidLaunchLogCapture();
       return;
     }
     let processId: string;
@@ -852,6 +853,7 @@ export class LynxAppDriver implements DetoxAppDriver {
         null,
         eligibility,
       );
+      this.beginAndroidLaunchLogCapture();
       return;
     }
     if (!expectedRuntimeScenarioMarker) {
@@ -882,6 +884,7 @@ export class LynxAppDriver implements DetoxAppDriver {
       journalEvidence,
       eligibility,
     );
+    this.beginAndroidLaunchLogCapture();
   }
 
   private readAndroidProcessId(): string {

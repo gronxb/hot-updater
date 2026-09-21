@@ -880,6 +880,13 @@ describe("Lynx app installation", () => {
     );
 
     await expect(driver.launch("journal recovery")).resolves.toBeUndefined();
+    const logCheckpoints = vi.mocked(spawnSync).mock.calls.filter(
+      ([command, args]) =>
+        command === "adb" &&
+        args.includes("log") &&
+        args.includes("HotUpdaterE2E"),
+    );
+    expect(logCheckpoints).toHaveLength(2);
     expect(vi.mocked(spawnSync)).toHaveBeenCalledWith(
       "adb",
       [
