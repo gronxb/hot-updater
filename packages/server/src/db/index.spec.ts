@@ -1294,9 +1294,8 @@ describe("server/db hotUpdater (PGlite + Kysely)", async () => {
               },
             },
           },
-          fileHash: "5".repeat(64),
-          fileUrl:
-            "https://s3.example.com/test-bucket/releases/bundles/00000000-0000-0000-0000-000000000102/bundle.zip",
+          fileHash: null,
+          fileUrl: null,
           manifestFileHash: getSha256(nextManifestText),
           manifestUrl:
             "https://s3.example.com/test-bucket/releases/bundles/00000000-0000-0000-0000-000000000102/manifest.json",
