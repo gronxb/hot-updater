@@ -1,5 +1,15 @@
 # @hot-updater/react-native
 
+## 0.36.14
+
+### Patch Changes
+
+- 200aa10: Recover from an unverified OTA bundle that never reaches its first render after the app is killed. Persist native launch progress on iOS and Android and roll back on the next cold start even without a crash marker. Requires rebuilding the native app; terminating before first render counts as a failed launch.
+  - @hot-updater/cli-tools@0.36.14
+  - @hot-updater/core@0.36.14
+  - @hot-updater/js@0.36.14
+  - @hot-updater/plugin-core@0.36.14
+
 ## 0.36.13
 
 ### Patch Changes
