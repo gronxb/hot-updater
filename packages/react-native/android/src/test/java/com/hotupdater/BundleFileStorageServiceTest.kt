@@ -24,6 +24,47 @@ class BundleFileStorageServiceTest {
     val temporaryFolder = TemporaryFolder()
 
     @Test
+    fun `unfinished staging launch rolls back to stable on cold start`() {
+        assertUnfinishedLaunchRollsBack(hasStableBundle = true)
+    }
+
+    @Test
+    fun `unfinished staging launch rolls back to built in on cold start`() {
+        assertUnfinishedLaunchRollsBack(hasStableBundle = false)
+    }
+
+    private fun assertUnfinishedLaunchRollsBack(hasStableBundle: Boolean) {
+        val rootDir = temporaryFolder.newFolder()
+        val preferences = InMemoryPreferencesService()
+        val stableBundleId = if (hasStableBundle) "stable-bundle" else null
+        listOfNotNull(stableBundleId, "hung-bundle").forEach { bundleId ->
+            val directory = createBundleDir(rootDir, bundleId)
+            writeFile(directory, "index.android.bundle")
+            writeManifest(directory, listOf("index.android.bundle"))
+        }
+        writeMetadata(
+            rootDir,
+            BundleMetadata(
+                isolationKey = TEST_ISOLATION_KEY,
+                stableBundleId = stableBundleId,
+                stagingBundleId = "hung-bundle",
+                verificationPending = true,
+            ),
+        )
+        val firstProcess = createService(rootDir, preferences)
+        val firstLaunch = firstProcess.prepareLaunch(null)
+        assertEquals("hung-bundle", firstLaunch.launchedBundleId)
+        assertTrue(firstLaunch.shouldRollbackOnCrash)
+
+        // Issue #1321: force-kill before content appeared, without a crash marker.
+        val secondProcess = createService(rootDir, preferences)
+        val nextLaunch = secondProcess.prepareLaunch(null)
+        assertEquals(stableBundleId, nextLaunch.launchedBundleId)
+        assertFalse(nextLaunch.shouldRollbackOnCrash)
+        assertTrue(secondProcess.getCrashHistory().contains("hung-bundle"))
+    }
+
+    @Test
     fun `resolveBundleFile uses single manifest bundle at root`() {
         val rootDir = temporaryFolder.newFolder("root-manifest-bundle")
         val service = createService(rootDir)
