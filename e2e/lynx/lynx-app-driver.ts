@@ -206,6 +206,7 @@ export class LynxAppDriver implements DetoxAppDriver {
       });
       if (options.expectCrash === true) {
         await new Promise((resolve) => setTimeout(resolve, 2000));
+        await this.clearOverlayMarker(stage, launchGeneration);
         await this.launchApp({ launchGeneration });
       }
       const runtimeScenarioMarker = await this.waitForOverlayReady(stage);
@@ -486,9 +487,8 @@ export class LynxAppDriver implements DetoxAppDriver {
       try {
         this.openIosAgentDeviceSession(session);
         this.runOrThrow("agent-device", [
-          "gesture",
-          "swipe",
-          "right-edge",
+          "back",
+          "--system",
           "--session",
           session,
           "--json",

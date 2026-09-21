@@ -71,7 +71,11 @@ export type AndroidFontDiagnosticEligibilityRejectionCode =
   (typeof ANDROID_FONT_DIAGNOSTIC_ELIGIBILITY_REJECTION_CODES)[number];
 
 type AndroidFontDiagnosticCandidateResult =
-  | { readonly eligible: true; readonly relativePath: string }
+  | {
+      readonly eligible: true;
+      readonly relativePath: string;
+      readonly source: string;
+    }
   | {
       readonly eligible: false;
       readonly code: AndroidFontDiagnosticEligibilityRejectionCode;
@@ -387,7 +391,7 @@ function evaluateAndroidFontDiagnosticCandidate(
   const relativePath = managedRelativePath(details.src);
   return relativePath === null
     ? { eligible: false, code: "log.managed-source" }
-    : { eligible: true, relativePath };
+    : { eligible: true, relativePath, source: String(details.src) };
 }
 
 function recoverableAndroidFontPath(
@@ -436,7 +440,10 @@ export function evaluateRecoverableAndroidFontDiagnosticEligibility(
       },
     ),
   };
-  return eligible.length > 0
+  const hasDuplicateSource =
+    new Set(eligible.map((candidate) => candidate.source)).size !==
+    eligible.length;
+  return eligible.length > 0 && !hasDuplicateSource
     ? {
         ...summary,
         eligible: true,

@@ -620,6 +620,27 @@ function isFatalBoundary(event: RuntimeEvent): boolean {
   );
 }
 
+function hasTrustedTruncatedPrefix(
+  journal: RuntimeJournal,
+  beforeIndex: number,
+  identity: ManagedIdentity,
+): boolean {
+  const first = journal.events[0];
+  return (
+    journal.truncated &&
+    first !== undefined &&
+    BigInt(first.sequence) > 1n &&
+    journal.events.slice(0, beforeIndex).every((event) => {
+      const eventIdentity = managedIdentity(event.details);
+      return (
+        !isFatalBoundary(event) &&
+        eventIdentity !== null &&
+        sameIdentity(eventIdentity, identity)
+      );
+    })
+  );
+}
+
 export function evaluateFontDiagnosticRecoveryByAndroidJournal(
   relativePath: string,
   evidence: AndroidRuntimeJournalEvidence,
@@ -690,10 +711,21 @@ export function evaluateFontDiagnosticRecoveryByAndroidJournal(
     }
   }
   if (evaluateIndex < 0) {
-    return recoveryRejected("order.evaluate-missing");
+    if (!hasTrustedTruncatedPrefix(journal, readyIndex, screen.identity)) {
+      return recoveryRejected("order.evaluate-missing");
+    }
   }
-  if (startedIndex < 0) return recoveryRejected("order.started-missing");
-  if (startedIndex <= evaluateIndex) {
+  if (
+    startedIndex < 0 &&
+    !hasTrustedTruncatedPrefix(journal, readyIndex, screen.identity)
+  ) {
+    return recoveryRejected("order.started-missing");
+  }
+  if (
+    startedIndex >= 0 &&
+    evaluateIndex >= 0 &&
+    startedIndex <= evaluateIndex
+  ) {
     return recoveryRejected("order.started-before-evaluate");
   }
 
@@ -956,9 +988,23 @@ export function evaluateFontDiagnosticRecoveriesByAndroidJournal(
         break;
       }
     }
-    if (evaluateIndex < 0) return recoveryRejected("order.evaluate-missing");
-    if (startedIndex < 0) return recoveryRejected("order.started-missing");
-    if (startedIndex <= evaluateIndex || diagnosticIndex <= startedIndex) {
+    const trustedTruncatedPrefix = hasTrustedTruncatedPrefix(
+      journal,
+      diagnosticIndex,
+      identity,
+    );
+    if (evaluateIndex < 0 && !trustedTruncatedPrefix) {
+      return recoveryRejected("order.evaluate-missing");
+    }
+    if (startedIndex < 0 && !trustedTruncatedPrefix) {
+      return recoveryRejected("order.started-missing");
+    }
+    if (
+      (startedIndex >= 0 &&
+        evaluateIndex >= 0 &&
+        startedIndex <= evaluateIndex) ||
+      (startedIndex >= 0 && diagnosticIndex <= startedIndex)
+    ) {
       return recoveryRejected("order.diagnostic-before-started", {
         sequence: diagnostic.sequence,
       });

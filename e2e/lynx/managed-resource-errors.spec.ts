@@ -306,6 +306,25 @@ describe("managed Lynx resource engine errors", () => {
     ).toEqual([]);
   });
 
+  it("accepts a native-correlated recovery whose first generation boundary was evicted", () => {
+    const queried = YNQB7P_LOG.replace(
+      String.raw`assets\/probe.ttf`,
+      String.raw`assets\/probe.ttf?hot-updater-generation=2`,
+    );
+    const journal = JSON.parse(
+      capturedTwoGenerationJournal(),
+    ) as CapturedJournal;
+    journal.events = journal.events.slice(6);
+    journal.truncated = true;
+
+    expect(
+      findManagedResourceEngineErrorCodes(
+        `${YNQB7P_LOG}\n${queried}`,
+        capturedEvidence(canonical(journal)),
+      ),
+    ).toEqual([]);
+  });
+
   it("ignores a recovered diagnostic retained from an earlier OS process", () => {
     const journal = capturedTwoGenerationJournal((value) => {
       for (const event of value.events.slice(0, -5)) {

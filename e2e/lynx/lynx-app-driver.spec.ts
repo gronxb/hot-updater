@@ -481,6 +481,17 @@ describe("Lynx managed page evidence actions", () => {
 
     expect(vi.mocked(spawnSync)).toHaveBeenCalledWith(
       "agent-device",
+      [
+        "back",
+        "--system",
+        "--session",
+        expect.stringMatching(/^lynx-e2e-/),
+        "--json",
+      ],
+      expect.objectContaining({ encoding: "utf8" }),
+    );
+    expect(vi.mocked(spawnSync)).toHaveBeenCalledWith(
+      "agent-device",
       expect.arrayContaining([
         "--udid",
         "10AB9405-035A-4243-8D85-154B641AA009",
@@ -1230,6 +1241,14 @@ describe("Lynx startup failure diagnostics", () => {
 
       await expect(launch).resolves.toBeUndefined();
       expect(launches).toBe(2);
+      expect(
+        fetch.mock.calls.filter(
+          ([url, init]) =>
+            String(url).endsWith("/e2e/screen-state") &&
+            typeof init?.body === "string" &&
+            JSON.parse(init.body).runtimeScenarioMarker === null,
+        ),
+      ).toHaveLength(2);
       expect(vi.mocked(spawnSync)).toHaveBeenCalledWith(
         "xcrun",
         ["simctl", "spawn", "iPhone 17 Pro", "/bin/kill", "-0", "4321"],
