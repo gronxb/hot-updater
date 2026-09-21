@@ -1,5 +1,6 @@
 import {
   type AndroidRuntimeJournalEvidence,
+  evaluateFontDiagnosticRecoveriesByAndroidJournal,
   evaluateFontDiagnosticRecoveryByAndroidJournal,
   formatAndroidRuntimeJournalRecoveryDiagnostic,
 } from "./android-runtime-journal.ts";
@@ -88,7 +89,10 @@ type AndroidFontDiagnosticEligibilitySummary = {
 export type AndroidFontDiagnosticEligibilityResult =
   AndroidFontDiagnosticEligibilitySummary &
     (
-      | { readonly eligible: true; readonly relativePath: string }
+      | {
+          readonly eligible: true;
+          readonly relativePaths: readonly string[];
+        }
       | { readonly eligible: false }
     );
 
@@ -117,7 +121,6 @@ function managedRelativePath(source: unknown): string | null {
   ) {
     return null;
   }
-  const relative = source.slice(MANAGED_RESOURCE_PREFIX.length);
   let parsed: URL;
   let decodedPath: string;
   try {
@@ -126,30 +129,36 @@ function managedRelativePath(source: unknown): string | null {
   } catch {
     return null;
   }
-  const hasForbiddenCharacter = Array.from(relative).some((character) => {
+  const query = parsed.search.startsWith("?")
+    ? parsed.search.slice(1)
+    : parsed.search;
+  const hasManagedGenerationQuery =
+    query === "" ||
+    (query.startsWith("hot-updater-generation=") &&
+      POSITIVE_DECIMAL.test(query.slice("hot-updater-generation=".length)));
+  const hasForbiddenCharacter = Array.from(decodedPath).some((character) => {
     const codePoint = character.codePointAt(0) ?? 0;
     return codePoint <= 0x1f || codePoint === 0x7f || character === ":";
   });
   if (
     parsed.protocol !== "hot-updater:" ||
     parsed.host !== "" ||
-    decodedPath !== relative ||
-    parsed.search !== "" ||
+    !hasManagedGenerationQuery ||
     parsed.hash !== "" ||
-    source !== `${MANAGED_RESOURCE_PREFIX}${relative}` ||
-    relative.trim().length === 0 ||
-    new TextEncoder().encode(relative).length > 1024 ||
-    /[\\%?#]/.test(relative) ||
+    source !== `${MANAGED_RESOURCE_PREFIX}${decodedPath}${parsed.search}` ||
+    decodedPath.trim().length === 0 ||
+    new TextEncoder().encode(decodedPath).length > 1024 ||
+    /[\\%?#]/.test(decodedPath) ||
     hasForbiddenCharacter ||
-    relative.startsWith("/") ||
-    relative.endsWith("/") ||
-    relative
+    decodedPath.startsWith("/") ||
+    decodedPath.endsWith("/") ||
+    decodedPath
       .split("/")
       .some((part) => part === "" || part === "." || part === "..")
   ) {
     return null;
   }
-  return relative;
+  return decodedPath;
 }
 
 function parseMatrixEvent(record: LogRecord): MatrixEvent | null {
@@ -427,8 +436,12 @@ export function evaluateRecoverableAndroidFontDiagnosticEligibility(
       },
     ),
   };
-  return eligible.length === 1
-    ? { ...summary, ...eligible[0] }
+  return eligible.length > 0
+    ? {
+        ...summary,
+        eligible: true,
+        relativePaths: eligible.map((candidate) => candidate.relativePath),
+      }
     : { ...summary, eligible: false };
 }
 
@@ -436,10 +449,11 @@ export function hasRecoverableAndroidFontDiagnostic(
   logs: string,
   currentProcessId: string,
 ): boolean {
-  return evaluateRecoverableAndroidFontDiagnosticEligibility(
+  const result = evaluateRecoverableAndroidFontDiagnosticEligibility(
     logs,
     currentProcessId,
-  ).eligible;
+  );
+  return result.eligible && result.eligibleCount === 1;
 }
 
 export function formatAndroidFontDiagnosticEligibilityRejection(
@@ -472,10 +486,26 @@ export function findManagedResourceEngineErrorCodes(
           : [],
       )
     : [];
-  const journalOccurrenceIndex =
-    journalOccurrenceIndexes.length === 1
-      ? journalOccurrenceIndexes[0]
-      : undefined;
+  const journalRecoveredIndexes = new Set<number>();
+  if (journalEvidence && journalOccurrenceIndexes.length > 0) {
+    const relativePaths = journalOccurrenceIndexes.map((index) =>
+      recoverableAndroidFontPath(
+        records[index],
+        journalEvidence.currentProcessId,
+      ),
+    );
+    if (
+      relativePaths.every((path): path is string => path !== null) &&
+      evaluateFontDiagnosticRecoveriesByAndroidJournal(
+        relativePaths,
+        journalEvidence,
+      ).recovered
+    ) {
+      journalOccurrenceIndexes.forEach((index) =>
+        journalRecoveredIndexes.add(index),
+      );
+    }
+  }
   const codes: number[] = [];
   for (const record of records) {
     const codeMatch = record.line.match(ENGINE_ERROR_CODE);
@@ -486,15 +516,14 @@ export function findManagedResourceEngineErrorCodes(
       code === 302 &&
       detailsMatch?.[2] === "302" &&
       record.envelope?.payload.match(/\bengine-error\b/g)?.length === 1 &&
-      (journalEvidence === undefined ||
-        record.index === journalOccurrenceIndex) &&
-      isRecoveredFontDiagnostic(
-        records,
-        record,
-        detailsMatch[1],
-        detailsMatch[3],
-        journalEvidence,
-      )
+      (journalEvidence === undefined
+        ? isRecoveredFontDiagnostic(
+            records,
+            record,
+            detailsMatch[1],
+            detailsMatch[3],
+          )
+        : journalEvidence !== null && journalRecoveredIndexes.has(record.index))
     ) {
       continue;
     }
@@ -525,9 +554,9 @@ export function assertNoManagedResourceEngineErrors(
         })
       : [];
     const evaluatedRecovery =
-      journalEvidence && eligiblePaths.length === 1 && codes.includes(302)
-        ? evaluateFontDiagnosticRecoveryByAndroidJournal(
-            eligiblePaths[0],
+      journalEvidence && eligiblePaths.length > 0 && codes.includes(302)
+        ? evaluateFontDiagnosticRecoveriesByAndroidJournal(
+            eligiblePaths,
             journalEvidence,
           )
         : null;

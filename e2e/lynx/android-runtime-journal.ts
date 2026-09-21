@@ -854,6 +854,222 @@ export function evaluateFontDiagnosticRecoveryByAndroidJournal(
   return { recovered: true };
 }
 
+export function evaluateFontDiagnosticRecoveriesByAndroidJournal(
+  relativePaths: readonly string[],
+  evidence: AndroidRuntimeJournalEvidence,
+): AndroidRuntimeJournalRecoveryResult {
+  if (relativePaths.length === 0) {
+    return recoveryRejected("diagnostic.missing");
+  }
+  const journalResult = parseJournal(evidence.runtimeJournalUtf8);
+  if (!journalResult.ok) {
+    return { recovered: false, rejection: journalResult.rejection };
+  }
+  const screenResult = parseScreenEvidence(evidence);
+  if (!screenResult.ok) {
+    return { recovered: false, rejection: screenResult.rejection };
+  }
+  const journal = journalResult.value;
+  const screen = screenResult.value;
+  if (journal.truncated !== screen.truncated) {
+    return recoveryRejected("evidence.truncated-mismatch");
+  }
+  if (
+    journal.nextSequence !== (BigInt(screen.latestSequence) + 1n).toString()
+  ) {
+    return recoveryRejected("evidence.next-sequence-mismatch");
+  }
+  if (canonicalJson(journal.events) !== canonicalJson(screen.events)) {
+    return recoveryRejected("evidence.canonical-events-mismatch");
+  }
+
+  const events = journal.events;
+  const diagnosticIndexes = events.flatMap((event, index) => {
+    const identity = managedIdentity(event.details);
+    return event.name === "engineDiagnostic" &&
+      identity?.processId === evidence.currentProcessId
+      ? [index]
+      : [];
+  });
+  if (diagnosticIndexes.length !== relativePaths.length) {
+    return recoveryRejected(
+      diagnosticIndexes.length === 0
+        ? "diagnostic.missing"
+        : "diagnostic.count",
+    );
+  }
+
+  let lastReadyIndex = -1;
+  let lastIdentity: ManagedIdentity | null = null;
+  for (const [occurrence, diagnosticIndex] of diagnosticIndexes.entries()) {
+    const diagnostic = events[diagnosticIndex];
+    const identity = managedIdentity(diagnostic.details);
+    if (identity === null) {
+      return recoveryRejected("diagnostic.identity-invalid", {
+        sequence: diagnostic.sequence,
+      });
+    }
+    for (const [field, expected] of [
+      ["fatal", false],
+      ["code", 302],
+      ["subcode", 30201],
+      ["type", "font"],
+      ["path", relativePaths[occurrence]],
+    ] as const) {
+      if (diagnostic.details[field] !== expected) {
+        return recoveryRejected("diagnostic.field-mismatch", {
+          field,
+          sequence: diagnostic.sequence,
+        });
+      }
+    }
+
+    let evaluateIndex = -1;
+    let startedIndex = -1;
+    for (let index = diagnosticIndex - 1; index >= 0; index -= 1) {
+      const event = events[index];
+      if (isFatalBoundary(event)) {
+        return recoveryRejected("order.fatal-before-ready", {
+          sequence: event.sequence,
+        });
+      }
+      if (!generationBoundaries.has(event.name)) continue;
+      const boundaryIdentity = managedIdentity(event.details);
+      if (boundaryIdentity === null) {
+        return recoveryRejected("boundary.identity-invalid", {
+          sequence: event.sequence,
+        });
+      }
+      const field = identityMismatchField(boundaryIdentity, identity);
+      if (field !== null) {
+        return recoveryRejected("boundary.identity-mismatch", {
+          field,
+          sequence: event.sequence,
+        });
+      }
+      if (event.name === "generationStarted" && startedIndex < 0) {
+        startedIndex = index;
+        continue;
+      }
+      if (event.name === "generationWillEvaluate") {
+        evaluateIndex = index;
+        break;
+      }
+    }
+    if (evaluateIndex < 0) return recoveryRejected("order.evaluate-missing");
+    if (startedIndex < 0) return recoveryRejected("order.started-missing");
+    if (startedIndex <= evaluateIndex || diagnosticIndex <= startedIndex) {
+      return recoveryRejected("order.diagnostic-before-started", {
+        sequence: diagnostic.sequence,
+      });
+    }
+
+    let fontAccepted = false;
+    let readyIndex = -1;
+    for (let index = diagnosticIndex + 1; index < events.length; index += 1) {
+      const event = events[index];
+      if (isFatalBoundary(event)) {
+        return recoveryRejected("order.fatal-boundary", {
+          sequence: event.sequence,
+        });
+      }
+      if (generationBoundaries.has(event.name)) {
+        const boundaryIdentity = managedIdentity(event.details);
+        const field =
+          boundaryIdentity === null
+            ? "runtimeId"
+            : identityMismatchField(boundaryIdentity, identity);
+        if (field !== null) {
+          return recoveryRejected("boundary.identity-mismatch", {
+            field,
+            sequence: event.sequence,
+          });
+        }
+      }
+      const eventIdentity = managedIdentity(event.details);
+      if (event.name === "fontLoaded") {
+        if (eventIdentity === null) {
+          return recoveryRejected("font.identity-invalid", {
+            sequence: event.sequence,
+          });
+        }
+        const field = identityMismatchField(eventIdentity, identity);
+        if (field !== null) {
+          return recoveryRejected("font.identity-mismatch", {
+            field,
+            sequence: event.sequence,
+          });
+        }
+        if (event.details.path !== relativePaths[occurrence]) {
+          return recoveryRejected("font.path-mismatch", {
+            sequence: event.sequence,
+          });
+        }
+        if (
+          typeof event.details.sha256 !== "string" ||
+          !SHA256.test(event.details.sha256)
+        ) {
+          return recoveryRejected("font.sha256-invalid", {
+            sequence: event.sequence,
+          });
+        }
+        fontAccepted = true;
+      }
+      if (
+        event.name === "jsReady" &&
+        eventIdentity !== null &&
+        sameIdentity(eventIdentity, identity) &&
+        isConfirmedReadinessStatus(record(event.details.confirmation)?.status)
+      ) {
+        if (!fontAccepted) return recoveryRejected("font.missing");
+        readyIndex = index;
+        break;
+      }
+    }
+    if (readyIndex < 0) return recoveryRejected("ready.missing");
+    lastReadyIndex = readyIndex;
+    lastIdentity = identity;
+  }
+
+  if (lastIdentity === null || lastReadyIndex < 0) {
+    return recoveryRejected("ready.missing");
+  }
+  const screenField = identityMismatchField(lastIdentity, screen.identity);
+  if (screenField !== null) {
+    return recoveryRejected("diagnostic.identity-mismatch", {
+      field: screenField,
+      sequence: events[diagnosticIndexes.at(-1)!].sequence,
+    });
+  }
+  for (let index = lastReadyIndex + 1; index < events.length; index += 1) {
+    const event = events[index];
+    if (isFatalBoundary(event)) {
+      return recoveryRejected("order.fatal-boundary", {
+        sequence: event.sequence,
+      });
+    }
+    if (generationBoundaries.has(event.name)) {
+      return recoveryRejected("order.generation-boundary-after-ready", {
+        sequence: event.sequence,
+      });
+    }
+    const identity = managedIdentity(event.details);
+    if (identity === null) {
+      return recoveryRejected("post-ready.identity-invalid", {
+        sequence: event.sequence,
+      });
+    }
+    const field = identityMismatchField(identity, screen.identity);
+    if (field !== null) {
+      return recoveryRejected("post-ready.identity-mismatch", {
+        field,
+        sequence: event.sequence,
+      });
+    }
+  }
+  return { recovered: true };
+}
+
 export function isFontDiagnosticRecoveredByAndroidJournal(
   relativePath: string,
   evidence: AndroidRuntimeJournalEvidence,

@@ -1,4 +1,4 @@
-import { HotUpdater } from "@hot-updater/lynx";
+import { HotUpdater, managedResourceUrl } from "@hot-updater/lynx";
 import { navigate } from "@hot-updater/lynx/navigation";
 import { root, useEffect, useRef, useState } from "@lynx-js/react";
 
@@ -489,6 +489,14 @@ function App() {
           runtimeConfigurationReady,
           async () => {
             await loadE2EStartupResources({
+              ...(runtimeGenerationEpoch
+                ? {
+                    fontUrl: managedResourceUrl(
+                      "assets/probe.ttf",
+                      runtimeGenerationEpoch,
+                    ),
+                  }
+                : {}),
               loadFont: async (url) => {
                 await loadProbeFont(url);
                 setStartupFontReady(true);

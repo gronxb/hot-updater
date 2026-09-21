@@ -1599,7 +1599,8 @@ public final class LynxController {
     public func resource(_ rawURL: String, context: LynxLaunchContext) throws -> Data {
         lock.lock(); defer { lock.unlock() }; try validate(context)
         guard let url = URL(string: rawURL), url.scheme == "hot-updater", url.host == nil || url.host == "",
-              url.query == nil, url.fragment == nil, let decoded = url.path.removingPercentEncoding else { throw LynxArtifactError.invalid("Unsupported managed resource URL") }
+              Self.isManagedGenerationQuery(url.query), url.fragment == nil,
+              let decoded = url.path.removingPercentEncoding else { throw LynxArtifactError.invalid("Unsupported managed resource URL") }
         let name = String(decoded.drop(while: { $0 == "/" }))
         guard ArchiveExtractionUtilities.normalizedRelativePath(from: name) == name,
               let digest = runningArtifact.files[name] else { throw LynxArtifactError.invalid("Unlisted managed resource") }
@@ -1608,5 +1609,13 @@ public final class LynxController {
         let data = try Data(contentsOf: file)
         guard Self.hash(data) == digest else { throw LynxArtifactError.invalid("Managed resource integrity mismatch") }
         return data
+    }
+
+    private static func isManagedGenerationQuery(_ query: String?) -> Bool {
+        guard let query else { return true }
+        return query.range(
+            of: #"^hot-updater-generation=[1-9][0-9]*$"#,
+            options: .regularExpression
+        ) != nil
     }
 }

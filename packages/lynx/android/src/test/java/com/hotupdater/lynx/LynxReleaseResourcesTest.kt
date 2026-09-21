@@ -374,6 +374,17 @@ class LynxReleaseResourcesTest {
             val snapshot = resources.resolve("hot-updater:///assets/probe.txt")
             assertTrue(snapshot.canonicalFile != file.canonicalFile)
             assertEquals("verified resource", snapshot.readText())
+            assertEquals(
+                "verified resource",
+                resources.resolve(
+                    "hot-updater:///assets/probe.txt?hot-updater-generation=2",
+                ).readText(),
+            )
+            assertThrows(IllegalArgumentException::class.java) {
+                resources.resolve(
+                    "hot-updater:///assets/probe.txt?hot-updater-generation=0",
+                )
+            }
             val fileUrl = file.canonicalFile.toURI().toString()
             assertEquals(snapshot, resources.resolve(fileUrl))
 

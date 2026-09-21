@@ -1,4 +1,5 @@
 export { HotUpdater } from "./client";
+export { managedResourceUrl } from "./managedResource";
 export { LynxUpdaterError } from "./native";
 export { LYNX_RUNTIME_EVENT_LIMITS } from "./types";
 export type {

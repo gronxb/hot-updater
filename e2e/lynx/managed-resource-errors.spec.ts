@@ -162,6 +162,63 @@ function capturedJournal(mutate?: (journal: CapturedJournal) => void): string {
 
 const YNQB7P_ADAPTED_JOURNAL = capturedJournal();
 
+function capturedTwoGenerationJournal(
+  mutate?: (journal: CapturedJournal) => void,
+): string {
+  return capturedJournal((journal) => {
+    const previous = structuredClone(journal.events.at(-1)!.details);
+    delete previous.confirmation;
+    const current = {
+      ...previous,
+      attemptId: "attempt-generation-2",
+      contextId: "context-generation-2",
+      generationId: "generation-2",
+    };
+    journal.events.push(
+      {
+        details: { ...current, primary: true },
+        name: "generationWillEvaluate",
+        sequence: "0",
+      },
+      {
+        details: current,
+        name: "generationStarted",
+        sequence: "0",
+      },
+      {
+        details: {
+          ...current,
+          code: 302,
+          fatal: false,
+          path: "assets/probe.ttf",
+          subcode: 30201,
+          type: "font",
+        },
+        name: "engineDiagnostic",
+        sequence: "0",
+      },
+      {
+        details: {
+          ...current,
+          path: "assets/probe.ttf",
+          sha256: SHA,
+        },
+        name: "fontLoaded",
+        sequence: "0",
+      },
+      {
+        details: {
+          ...current,
+          confirmation: { status: "ALREADY_CONFIRMED" },
+        },
+        name: "jsReady",
+        sequence: "0",
+      },
+    );
+    mutate?.(journal);
+  });
+}
+
 function capturedEvidence(
   runtimeJournalUtf8 = YNQB7P_ADAPTED_JOURNAL,
   overrides: Record<string, unknown> = {},
@@ -227,6 +284,66 @@ describe("managed Lynx resource engine errors", () => {
     ).toEqual([302, 302]);
   });
 
+  it("accepts one recovered diagnostic for each managed generation in a process", () => {
+    const queried = YNQB7P_LOG.replace(
+      String.raw`assets\/probe.ttf`,
+      String.raw`assets\/probe.ttf?hot-updater-generation=2`,
+    );
+    const logs = `${YNQB7P_LOG}\n${queried}`;
+    const journal = capturedTwoGenerationJournal();
+
+    expect(
+      evaluateRecoverableAndroidFontDiagnosticEligibility(logs, "7690"),
+    ).toEqual({
+      eligible: true,
+      eligibleCount: 2,
+      raw302Count: 2,
+      rejections: [],
+      relativePaths: ["assets/probe.ttf", "assets/probe.ttf"],
+    });
+    expect(
+      findManagedResourceEngineErrorCodes(logs, capturedEvidence(journal)),
+    ).toEqual([]);
+  });
+
+  it("ignores a recovered diagnostic retained from an earlier OS process", () => {
+    const journal = capturedTwoGenerationJournal((value) => {
+      for (const event of value.events.slice(0, -5)) {
+        event.details.processId = "7000";
+      }
+    });
+
+    expect(
+      findManagedResourceEngineErrorCodes(
+        YNQB7P_LOG,
+        capturedEvidence(journal),
+      ),
+    ).toEqual([]);
+  });
+
+  it("rejects a generation whose diagnostic lacks its own font recovery", () => {
+    const queried = YNQB7P_LOG.replace(
+      String.raw`assets\/probe.ttf`,
+      String.raw`assets\/probe.ttf?hot-updater-generation=2`,
+    );
+    const journal = capturedTwoGenerationJournal((value) => {
+      const secondDiagnostic = value.events.findLastIndex(
+        (event) => event.name === "engineDiagnostic",
+      );
+      value.events = value.events.filter(
+        (event, index) =>
+          index <= secondDiagnostic || event.name !== "fontLoaded",
+      );
+    });
+
+    expect(
+      findManagedResourceEngineErrorCodes(
+        `${YNQB7P_LOG}\n${queried}`,
+        capturedEvidence(journal),
+      ),
+    ).toEqual([302, 302]);
+  });
+
   it("rejects a stale generation diagnostic before the successful current one", () => {
     const stale = YNQB7P_LOG.replace("20:30:41.275", "20:29:40.100").replace(
       "assets\\/probe.ttf",
@@ -261,7 +378,7 @@ describe("managed Lynx resource engine errors", () => {
         { code: "log.envelope", count: 1 },
         { code: "log.current-process-id", count: 1 },
       ],
-      relativePath: "assets/probe.ttf",
+      relativePaths: ["assets/probe.ttf"],
     });
     expect(() =>
       assertNoManagedResourceEngineErrors(

@@ -25,6 +25,18 @@ class LynxEngineDiagnosticTest {
                 managedPaths = setOf("assets/probe.ttf"),
             ),
         )
+        assertEquals(
+            "assets/probe.ttf",
+            managedEngineDiagnostic(
+                fatal = false,
+                code = 302,
+                message = message.replace(
+                    "probe.ttf",
+                    "probe.ttf?hot-updater-generation=2",
+                ),
+                managedPaths = setOf("assets/probe.ttf"),
+            )?.get("path"),
+        )
     }
 
     @Test
@@ -34,6 +46,14 @@ class LynxEngineDiagnosticTest {
             message.replace("\"font\"", "\"\""),
             message.replace("assets/probe.ttf", "assets/%70robe.ttf"),
             message.replace("assets/probe.ttf", "assets/probe.ttf?stale=1"),
+            message.replace(
+                "assets/probe.ttf",
+                "assets/probe.ttf?hot-updater-generation=0",
+            ),
+            message.replace(
+                "assets/probe.ttf",
+                "assets/probe.ttf?hot-updater-generation=2&stale=1",
+            ),
             message.replace("\"error_code\":302", "\"error_code\":301"),
             "not-json",
         ).forEach { invalid ->

@@ -441,6 +441,21 @@ final class LynxControllerLocalTests: XCTestCase {
         XCTAssertThrowsError(try controller.resource("file:///tmp/outside.png", context: context))
         let bytes = try controller.resource("hot-updater:///main.lynx.bundle", context: context)
         XCTAssertEqual(bytes, Data("entry-A".utf8))
+        XCTAssertEqual(
+            try controller.resource(
+                "hot-updater:///main.lynx.bundle?hot-updater-generation=2",
+                context: context
+            ),
+            Data("entry-A".utf8)
+        )
+        XCTAssertThrowsError(try controller.resource(
+            "hot-updater:///main.lynx.bundle?hot-updater-generation=0",
+            context: context
+        ))
+        XCTAssertThrowsError(try controller.resource(
+            "hot-updater:///main.lynx.bundle?stale=1",
+            context: context
+        ))
         try controller.observedResource("assets/probe.png", context: context)
         try confirm(controller, context, resource: nil)
         XCTAssertEqual(try controller.getState(context)["runningConfirmed"] as? Bool, true)

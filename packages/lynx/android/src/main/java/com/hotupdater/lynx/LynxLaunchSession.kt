@@ -324,7 +324,7 @@ internal fun managedEngineDiagnostic(
     if (
         uri.scheme != "hot-updater" ||
         !uri.authority.isNullOrEmpty() ||
-        uri.query != null ||
+        !managedGenerationQuery(uri.rawQuery) ||
         uri.fragment != null
     ) return null
     val path = uri.path?.removePrefix("/") ?: return null
@@ -333,7 +333,8 @@ internal fun managedEngineDiagnostic(
     }.getOrNull() ?: return null
     if (
         canonical != path ||
-        source != "hot-updater:///$path" ||
+        source != "hot-updater:///$path" +
+            (uri.rawQuery?.let { "?$it" } ?: "") ||
         path !in managedPaths
     ) return null
     return linkedMapOf(

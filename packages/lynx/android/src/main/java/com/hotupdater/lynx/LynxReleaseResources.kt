@@ -220,7 +220,11 @@ class LynxReleaseResources(
         check(isLive()) { "Native resource context is no longer live" }
         val relative = if (url.startsWith("hot-updater:///")) {
             val uri = URI(url)
-            require(uri.authority.isNullOrEmpty() && uri.query == null && uri.fragment == null) {
+            require(
+                uri.authority.isNullOrEmpty() &&
+                    managedGenerationQuery(uri.rawQuery) &&
+                    uri.fragment == null,
+            ) {
                 "Invalid managed URL"
             }
             requireNotNull(uri.path).removePrefix("/")
@@ -739,6 +743,9 @@ class LynxReleaseResources(
         if (delete) deleteSnapshots()
     }
 }
+
+internal fun managedGenerationQuery(query: String?): Boolean =
+    query == null || query.matches(Regex("^hot-updater-generation=[1-9][0-9]*$"))
 
 internal fun File.toLynxFileUri(): String =
     URI("file", "", absoluteFile.path, null, null).toASCIIString()

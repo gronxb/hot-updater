@@ -24,6 +24,7 @@ export function markE2EStartupImageLoaded(): void {
 }
 
 export async function loadE2EStartupResources(loaders: {
+  fontUrl?: string;
   loadFont: (url: string) => Promise<void>;
   loadExternal: (url: string) => Promise<{ lazyVariant: string }>;
   loadDynamic: (url: string) => Promise<string>;
@@ -39,7 +40,7 @@ export async function loadE2EStartupResources(loaders: {
       };
     });
   }
-  await loaders.loadFont("hot-updater:///assets/probe.ttf");
+  await loaders.loadFont(loaders.fontUrl ?? "hot-updater:///assets/probe.ttf");
   const [external, dynamic] = await Promise.all([
     loaders.loadExternal("hot-updater:///assets/bootstrap.js"),
     loaders.loadDynamic("hot-updater:///dynamic/component.lynx.bundle"),
