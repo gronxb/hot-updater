@@ -13,7 +13,7 @@ import type {
 } from "@hot-updater/plugin-core/internal";
 import type { ClientSession, Document, Collection } from "mongodb";
 
-import { hasNullOrderOverrides } from "./databasePluginUtils";
+import { getSchemaColumn, getSchemaTable } from "../db/schema/registry";
 import {
   activeBundleFilter,
   type MongoCollections,
@@ -32,6 +32,18 @@ import {
   createMongoReleaseWhere,
   createMongoSort,
 } from "./mongodbQuery";
+
+const readProjection = (
+  input: Pick<FindManyDatabaseImplementationInput, "model" | "select">,
+): Document =>
+  input.select === undefined
+    ? input.model === "bundles"
+      ? WITHOUT_INTERNAL_FIELDS
+      : WITHOUT_MONGO_ID
+    : Object.fromEntries([
+        ["_id", 0],
+        ...input.select.map((field) => [field, 1]),
+      ]);
 
 const findMongoRows = async (
   collections: MongoCollections,
@@ -59,26 +71,31 @@ const findMongoRows = async (
       : createMongoWhereDocument(input.where);
   const where =
     input.model === "bundles" ? activeBundleFilter(predicate) : predicate;
-  const projection =
-    input.model === "bundles" ? WITHOUT_INTERNAL_FIELDS : WITHOUT_MONGO_ID;
+  const projection = readProjection(input);
   const options = {
     ...mongoSessionOptions(session),
     ...(input.model === "bundle_events"
       ? { collation: { locale: "simple" }, readPreference: "primary" as const }
       : {}),
   };
-  if (hasNullOrderOverrides(input.orderBy)) {
+  const nullableOrder =
+    input.orderBy?.filter(
+      (clause) =>
+        clause.nulls !== undefined &&
+        getSchemaColumn(getSchemaTable(input.model), clause.field).nullable,
+    ) ?? [];
+  if (nullableOrder.length > 0) {
     const nullFields: Document = {};
     const sort: Record<string, 1 | -1> = {};
     const exclude: Document = { ...projection };
     for (const [index, clause] of (input.orderBy ?? []).entries()) {
-      if (clause.nulls !== undefined) {
+      if (nullableOrder.includes(clause)) {
         const key = `_hot_updater_null_${index}`;
         nullFields[key] = {
           $eq: [{ $ifNull: [`$${clause.field}`, null] }, null],
         };
         sort[key] = clause.nulls === "first" ? -1 : 1;
-        exclude[key] = 0;
+        if (input.select === undefined) exclude[key] = 0;
       }
       sort[clause.field] = clause.direction === "asc" ? 1 : -1;
     }
@@ -207,7 +224,7 @@ export const createMongoReads = (
         return collections.bundles.findOne(
           activeBundleFilter(createMongoBundleWhere(input.where)),
           {
-            projection: WITHOUT_INTERNAL_FIELDS,
+            projection: readProjection(input),
             ...mongoSessionOptions(session),
           },
         );
@@ -215,7 +232,7 @@ export const createMongoReads = (
         return collections.channels.findOne(
           createMongoChannelWhere(input.where),
           {
-            projection: WITHOUT_MONGO_ID,
+            projection: readProjection(input),
             ...mongoSessionOptions(session),
           },
         );
@@ -223,7 +240,7 @@ export const createMongoReads = (
         return collections.apiKeys.findOne(
           createMongoApiKeyWhere(input.where),
           {
-            projection: WITHOUT_MONGO_ID,
+            projection: readProjection(input),
             ...mongoSessionOptions(session),
           },
         );
@@ -231,7 +248,7 @@ export const createMongoReads = (
         return collections.bundlePatches.findOne(
           createMongoPatchWhere(input.where),
           {
-            projection: WITHOUT_MONGO_ID,
+            projection: readProjection(input),
             ...mongoSessionOptions(session),
           },
         );
@@ -239,7 +256,7 @@ export const createMongoReads = (
         return collections.releases.findOne(
           createMongoReleaseWhere(input.where),
           {
-            projection: WITHOUT_MONGO_ID,
+            projection: readProjection(input),
             ...mongoSessionOptions(session),
           },
         );
@@ -247,7 +264,7 @@ export const createMongoReads = (
         return collections.releaseCatalogs.findOne(
           createMongoReleaseCatalogWhere(input.where),
           {
-            projection: WITHOUT_MONGO_ID,
+            projection: readProjection(input),
             ...mongoSessionOptions(session),
           },
         );
