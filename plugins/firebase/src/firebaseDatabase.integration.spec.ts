@@ -180,10 +180,10 @@ describe("firebase bounded reads", () => {
     await bundlePatchesCollection
       .doc("unrelated-malformed")
       .set({ broken: true });
-    await client.updateBundleById(bundle.id, { fileHash: "updated" });
+    await client.updateBundleById(bundle.id, { manifestFileHash: "updated" });
     await expect(client.getBundleById(bundle.id)).resolves.toMatchObject({
       id: bundle.id,
-      fileHash: "updated",
+      manifestFileHash: "updated",
     });
   });
 
