@@ -401,3 +401,28 @@ neutral source boundary, a Lynx-only CLI fixture, and RN regression coverage.
   targeted native fault/race/recovery probes remain required. Cohort participates
   in selection context, not the durable journal namespace: changing it within
   one binary/runtime/channel cannot erase Release exclusions or catalog history.
+
+## 2026-09-22 neutral-core checkpoint
+
+- `0c76a3d71` replaces the common CLI's fixed application build list with
+  discoverable `./integration` descriptors. Bare, Rock, Expo, and Lynx declare
+  their own setup dependencies and opaque build configuration. Infrastructure
+  templates discover these exports and now include Lynx without a common-layer
+  framework branch.
+- `a18776c50` moves React Native native-wiring diagnosis into
+  `@hot-updater/react-native` and Expo conflict/CNG guidance into
+  `@hot-updater/expo`. Common commands invoke generic build-integration hooks;
+  common signing diagnostics no longer name a framework.
+- A mechanical boundary test scans neutral production source, infrastructure
+  build scripts, and public package descriptions for RN, Expo, Hermes, Metro,
+  Sparkling, `.hbc`, and RN native-wiring policy. It passes. The focused common
+  CLI suite passes 521/521, the React Native package suite passes 146/146, and
+  the Expo package suite passes 44/44.
+- The data decision remains no schema change and no engine discriminator in the
+  prerelease 1.0.0 migration. A shared deployed process is permitted only with
+  separate `createHotUpdater` instances, routes, database/schema state, API-key
+  authorities, and storage namespaces for each logical delivery project.
+- The best full-device record remains 51/52. Commit `338c75c3a` fixes the final
+  Android evaluator's same-generation sibling-page journal interleaving without
+  accepting different-generation or different-provenance evidence; the focused
+  evaluator suite passes 49/49. A new exact-HEAD full run is still required.

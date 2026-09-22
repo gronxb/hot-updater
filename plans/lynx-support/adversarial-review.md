@@ -340,3 +340,20 @@ OctaneLynx remain equal targets, but the current six framework/OS cells must pas
 Framework-generated VueLynx and OctaneLynx `loadLazyBundle` output is a blocker
 where it appears in supported compiler output; core external JavaScript and
 native dynamic components do not satisfy that specific contract.
+
+### Resolution status
+
+Commits `0c76a3d71` and `a18776c50` resolve the common-package neutrality finding.
+Application integrations are discovered through exported descriptors rather than
+a closed RN build list. Common commands invoke opaque build-integration hooks;
+React Native owns native bundle-provider diagnosis, and Expo owns conflict and
+generated-native-configuration guidance. A mechanical production-source and
+package-description boundary test covers core, server, plugin-core, cli-tools,
+the common CLI, and its infrastructure build scripts. Focused common CLI tests
+pass 521/521 and React Native package tests pass 146/146.
+
+The data-plane conclusion is unchanged: no database migration or engine column is
+added. One deployed process may mount multiple isolated `createHotUpdater`
+instances, but each delivery project requires its own route, database or schema,
+API-key authority, and storage namespace. Current six-cell device evidence and a
+real Lynx-only CLI fixture remain release gates.

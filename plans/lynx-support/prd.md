@@ -251,7 +251,7 @@ review was completed on 2026-09-21. Implementation remains in the primary task.
 Model selection is an execution preference and does not change the product or
 acceptance contract.
 
-The execution worktree is `/Users/gronxb/workspace/hot-updater-lynx`, branch
+The execution worktree is `/Volumes/SSD_2TB/workspace/hot-updater-lynx`, branch
 `codex/lynx-support`, PR #1300. Preserve the source checkout and the six staged-only
 local helper files listed in the handoff. The goal is implementation and verified
 acceptance, with an accurate reviewable PR. Merging and npm release publication
@@ -270,11 +270,13 @@ consensus, which is binding on this PR's release claim:
    instances defined above. Pointing both at one current table set, catalog route,
    or storage prefix is unsafe because catalog and delta-base identity contains no
    project axis.
-3. The low-level core, server, and build contracts are mostly neutral, but the
-   common CLI and generic configuration utilities still contain RN/Expo/Hermes
-   setup, doctor, conflict, fingerprint, and native-remediation assumptions.
-   Lynx support remains release-blocked until those policies are behind
-   integration-owned hooks and the boundary tests pass.
+3. The review found RN/Expo/Hermes setup, doctor, conflict, fingerprint, and
+   native-remediation assumptions in the common CLI and generic configuration
+   utilities. Commits `0c76a3d71` and `a18776c50` resolved that finding through
+   discoverable integration descriptors and integration-owned command and doctor
+   hooks. A source and package-description boundary test now rejects those
+   policies in neutral production packages. Release acceptance still requires
+   the Lynx-only command fixture and current device evidence.
 4. Production Sparkling app sources may register, configure, mount, reattach, and
    close the packaged host. They may not select updates, resolve artifact paths,
    implement loaders or routers, classify crashes, restart the process, or import
@@ -1584,15 +1586,20 @@ absence of references atomically. The rollback scenario requires actual forward
 A-to-B and B-to-C BSDIFF application and reverse C-to-B and B-to-A BSDIFF
 application; archive fallback cannot satisfy those assertions.
 
-Artifact packaging already places React Native and Hermes policy in
-`@hot-updater/react-native`, while Expo owns Expo fingerprint generation. The
-common delivery path uses explicit artifact, compression, patch-entry, and
-fingerprint contracts and does not infer a JavaScript engine from filenames.
-However, the common CLI and generic configuration utilities still enumerate RN
-build types and contain RN/Expo setup, doctor, conflict, signing-remediation and
-native-file assumptions. The pure-OTA-core requirement is therefore not complete,
-and this PR must not claim release readiness until that policy is moved behind
-integration hooks and the acceptance checks above pass.
+Artifact packaging places React Native and Hermes policy in
+`@hot-updater/react-native`, while Expo owns Expo fingerprint generation,
+conflict detection, and generated-native-configuration guidance. The common
+delivery path uses explicit artifact, compression, patch-entry, and fingerprint
+contracts and does not infer a JavaScript engine from filenames. The common CLI
+now discovers application integration descriptors instead of enumerating build
+types. Integration descriptors own setup dependencies and generated build
+configuration; build plugins own command validation and doctor checks. RN native
+wiring inspection moved to `@hot-updater/react-native`, and signing remediation
+uses integration-neutral language. The boundary test scans production source and
+package descriptions across core, server, plugin-core, cli-tools, and the common
+CLI, including infrastructure build scripts. It passed with the focused common
+CLI suite at 521/521 and RN package suite at 146/146. The separate Lynx-only CLI
+fixture remains required before release readiness can be claimed.
 
 Historical SDK3 receipts demonstrate A-to-B operation across ReactLynx,
 VueLynx, and OctaneLynx on both OSes. They do not establish the current equal
@@ -1631,8 +1638,13 @@ the count. Commit `348284787` creates a new Android log checkpoint after every
 successful managed-resource validation. This bounds subsequent checks to
 unverified diagnostics without weakening native identity, ordering, font-load,
 readiness, or fatal-boundary validation. Full job
-`job-20260921204853-cw3i89` is queued against that commit. The 51/52 result is
-not final acceptance.
+`job-20260921233538-pspvrq` later reproduced the same final Android scenario with
+an interleaved same-generation sibling-page boundary after journal truncation.
+Commit `338c75c3a` makes the evaluator ignore only sibling-page identities whose
+runtime, process, generation, attempt, Bundle, and Release provenance all match;
+different-generation and different-provenance boundaries still reject. The
+focused journal suite passes 49/49. A current full run has not yet verified that
+fix, so the 51/52 result remains the best record and is not final acceptance.
 
 ## 10. Execution sequence and completion criteria
 
