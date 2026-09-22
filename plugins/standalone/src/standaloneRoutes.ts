@@ -5,6 +5,7 @@ export interface RouteConfig {
 
 export interface Routes {
   readonly patchChildren?: (bundleId: string) => RouteConfig;
+  readonly count?: () => RouteConfig;
   readonly create?: () => RouteConfig;
   readonly update?: (bundleId: string) => RouteConfig;
   readonly list?: () => RouteConfig;
@@ -30,6 +31,10 @@ function channelPath(channelId: string): string {
 export const defaultRoutes = {
   patchChildren: (bundleId: string) => ({
     path: `${bundlePath(bundleId)}/patch-children`,
+  }),
+  count: () => ({
+    path: "/bundles/count",
+    headers: { "Cache-Control": "no-cache" },
   }),
   create: () => ({ path: "/bundles" }),
   update: (bundleId: string) => ({

@@ -208,6 +208,10 @@ export function createHotUpdaterCore(
   const handlers = createHotUpdaterHandlers(
     {
       ...core.api,
+      countBundles: async (where) => {
+        await assertSchemaReady();
+        return plugin.models.bundles.count(where);
+      },
       ...(plugin.models.bundlePatches.findByBaseBundleIds === undefined
         ? {}
         : {

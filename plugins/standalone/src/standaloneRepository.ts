@@ -29,8 +29,7 @@ export const standaloneRepository = (
       bundles: {
         findById: (id) => remote.loadBundleRow(id),
         findMany: async (query) => (await remote.loadBundleWindow(query)).rows,
-        count: async (where) =>
-          (await remote.loadBundleWindow({ where, limit: 1, offset: 0 })).total,
+        count: (where) => remote.countBundles(where),
       },
       bundlePatches: {
         findByBaseBundleIds: (ids) => remote.loadPatchChildren(ids),

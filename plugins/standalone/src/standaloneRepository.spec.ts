@@ -105,6 +105,14 @@ const server = setupServer(
     channelIds.delete(name);
     return new HttpResponse(null, { status: 204 });
   }),
+  http.get(`${BASE_URL}/bundles/count`, ({ request }) => {
+    requestPaths.push(new URL(request.url).pathname);
+    const platform = new URL(request.url).searchParams.get("platform");
+    const count = [...bundles.values()].filter(
+      (bundle) => platform === null || bundle.platform === platform,
+    ).length;
+    return HttpResponse.json({ data: { count } });
+  }),
   http.get(`${BASE_URL}/bundles/:id`, ({ params, request }) => {
     requestPaths.push(new URL(request.url).pathname);
     const value = bundles.get(String(params.id));
@@ -118,7 +126,7 @@ const server = setupServer(
     const limit = Number(url.searchParams.get("limit") ?? 100);
     const page = Number(url.searchParams.get("page") ?? 1);
     const all = [...bundles.values()];
-    const start = (page - 1) * limit;
+    const start = Number(url.searchParams.get("offset") ?? (page - 1) * limit);
     const data = all.slice(start, start + limit);
     return HttpResponse.json({
       data,
@@ -279,24 +287,30 @@ describe("standaloneRepository", () => {
     expect(requestPaths).not.toContain("/hot-updater/admin/bundles");
   });
 
-  it("fetches only the remote pages intersecting an unaligned large window", async () => {
+  it("fetches exactly the requested unaligned window without extra rows", async () => {
     const history = Array.from({ length: 350 }, (_, i) =>
       bundle(String(i).padStart(3, "0")),
     );
-    const pages: number[] = [];
+    const windows: { offset: number; limit: number }[] = [];
+    let transferredRows = 0;
     server.use(
       http.get(`${BASE_URL}/bundles`, ({ request }) => {
         const url = new URL(request.url);
-        const page = Number(url.searchParams.get("page"));
+        const page = Number(url.searchParams.get("page") ?? 1);
         const limit = Number(url.searchParams.get("limit"));
-        pages.push(page);
+        const offset = Number(
+          url.searchParams.get("offset") ?? (page - 1) * limit,
+        );
+        windows.push({ offset, limit });
+        const data = history.slice(offset, offset + limit);
+        transferredRows += data.length;
         return HttpResponse.json({
-          data: history.slice((page - 1) * limit, page * limit),
+          data,
           pagination: {
             currentPage: page,
             total: history.length,
             totalPages: Math.ceil(history.length / limit),
-            hasNextPage: page * limit < history.length,
+            hasNextPage: offset + data.length < history.length,
             hasPreviousPage: page > 1,
           },
         });
@@ -310,12 +324,22 @@ describe("standaloneRepository", () => {
     expect(result.map(({ id }) => id)).toEqual(
       history.slice(125, 275).map(({ id }) => id),
     );
-    expect(pages).toEqual([2, 3]);
+    expect(transferredRows).toBe(150);
+    expect(windows).toEqual([
+      { offset: 125, limit: 100 },
+      { offset: 225, limit: 50 },
+    ]);
   });
 
   it("keeps Channel routing canonical instead of exposing an override", () => {
     expectTypeOf<keyof Routes>().toEqualTypeOf<
-      "create" | "update" | "list" | "retrieve" | "delete" | "patchChildren"
+      | "create"
+      | "update"
+      | "list"
+      | "count"
+      | "retrieve"
+      | "delete"
+      | "patchChildren"
     >();
   });
 
@@ -596,7 +620,7 @@ describe("standaloneRepository", () => {
     expect(retrieveCalls).toBe(1);
   });
 
-  it("forwards supported bundle filters and page-aligned offsets", async () => {
+  it("forwards supported bundle filters and exact offsets", async () => {
     let requestedUrl: URL | undefined;
     server.use(
       http.get(`${BASE_URL}/bundles`, ({ request }) => {
@@ -629,7 +653,8 @@ describe("standaloneRepository", () => {
     expect(requestedUrl?.searchParams.has("enabled")).toBe(false);
     expect(requestedUrl?.searchParams.get("idGte")).toBe("bundle-20");
     expect(requestedUrl?.searchParams.get("limit")).toBe("10");
-    expect(requestedUrl?.searchParams.get("page")).toBe("3");
+    expect(requestedUrl?.searchParams.get("offset")).toBe("20");
+    expect(requestedUrl?.searchParams.has("page")).toBe(false);
     expect(requestedUrl?.searchParams.get("orderDirection")).toBe("desc");
   });
 
@@ -661,11 +686,11 @@ describe("standaloneRepository", () => {
       "00000000-0000-0000-0000-000000000031",
     ]);
     expect(requestedUrl?.searchParams.get("limit")).toBe("1");
-    expect(requestedUrl?.searchParams.get("page")).toBe("1");
+    expect(requestedUrl?.searchParams.get("offset")).toBe("0");
     expect(requestedUrl?.searchParams.get("orderDirection")).toBe("asc");
   });
 
-  it("counts filtered artifact values through the compatibility view", async () => {
+  it("counts filtered artifact values without loading a bundle", async () => {
     const first = bundle("00000000-0000-0000-0000-000000000041");
     const second = bundle("00000000-0000-0000-0000-000000000042");
     const preview = bundle("00000000-0000-0000-0000-000000000043", {
@@ -676,18 +701,9 @@ describe("standaloneRepository", () => {
     bundles.set(preview.id, preview);
     let requestedUrl: URL | undefined;
     server.use(
-      http.get(`${BASE_URL}/bundles`, ({ request }) => {
+      http.get(`${BASE_URL}/bundles/count`, ({ request }) => {
         requestedUrl = new URL(request.url);
-        return HttpResponse.json({
-          data: [first],
-          pagination: {
-            total: 2,
-            hasNextPage: true,
-            hasPreviousPage: false,
-            currentPage: 1,
-            totalPages: 2,
-          },
-        });
+        return HttpResponse.json({ data: { count: 2 } });
       }),
     );
 
