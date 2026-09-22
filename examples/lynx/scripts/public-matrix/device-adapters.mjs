@@ -77,6 +77,10 @@ export function iosActionTarget(snapshot, label) {
   };
 }
 
+export function iosNativeBackArguments() {
+  return ["back", "--system"];
+}
+
 function parseEvents(text) {
   const events = [];
   for (const line of text.split(/\r?\n/)) {
@@ -378,7 +382,7 @@ class IOSAdapter {
   }
 
   nativeBack() {
-    this.device(["gesture", "swipe", "right-edge"]);
+    this.device(iosNativeBackArguments());
   }
 
   async screenshot(name) {

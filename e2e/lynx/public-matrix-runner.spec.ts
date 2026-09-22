@@ -15,6 +15,7 @@ import {
   formatAppleLogStart,
   iosActionTarget,
   iosMatrixLaunchArguments,
+  iosNativeBackArguments,
   isRetryableAgentDeviceFailure,
   parseDiagnostics,
   parseEvents,
@@ -84,6 +85,12 @@ const nativeConfigSha256 = (files: Record<string, string>) =>
         .join(""),
     )
     .digest("hex");
+
+describe("public matrix device operations", () => {
+  it("uses the platform-native iOS back operation", () => {
+    expect(iosNativeBackArguments()).toEqual(["back", "--system"]);
+  });
+});
 
 function nativeReceipt(sourceCommit: string) {
   const nativePublicKeyFiles = {
