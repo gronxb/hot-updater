@@ -383,7 +383,7 @@ describe("drizzleAdapter schema requirements", () => {
   });
 
   it("requires all fixed table objects on first use", () => {
-    const incompleteSchema = { bundles };
+    const incompleteSchema = { bundles: schema.bundles };
     const plugin = drizzleAdapter({
       db: () => getDatabase(),
       provider: "postgresql",
