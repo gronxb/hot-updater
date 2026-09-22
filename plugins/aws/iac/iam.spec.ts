@@ -25,9 +25,53 @@ vi.mock("@aws-sdk/client-sts", () => ({
   }),
 }));
 
-import { IAMManager } from "./iam";
+import { metadataIndexItems } from "../src/dynamoDBMetadataIndexes";
+import { buildDynamoDBPolicy, IAMManager } from "./iam";
 
 describe("IAMManager DynamoDB access", () => {
+  it("permits all metadata projection keys without permitting arbitrary partitions", () => {
+    const policy = buildDynamoDBPolicy("us-east-1", "123456789012", "metadata");
+    const patterns =
+      policy.Statement[1]!.Condition!["ForAllValues:StringLike"][
+        "dynamodb:LeadingKeys"
+      ];
+    const permits = (key: string) =>
+      patterns.some((pattern) =>
+        pattern.endsWith("*")
+          ? key.startsWith(pattern.slice(0, -1))
+          : key === pattern,
+      );
+    const canonicalItems = [
+      { pk: "bundles", sk: "bundle", row: { id: "bundle", platform: "ios" } },
+      {
+        pk: "bundle_patches",
+        sk: "patch",
+        row: { id: "patch", base_bundle_id: "base" },
+      },
+      {
+        pk: "release-scope#channel#ios",
+        sk: "release",
+        row: {
+          id: "release",
+          bundle_id: null,
+          channel_id: "channel",
+          enabled: false,
+          platform: "ios",
+          target_app_version: null,
+        },
+      },
+    ];
+    const projections = canonicalItems.flatMap(metadataIndexItems);
+    expect(projections).toHaveLength(7);
+    for (const item of projections) {
+      expect(
+        permits(String(item.pk)),
+        `Lambda IAM must permit ${item.pk}`,
+      ).toBe(true);
+    }
+    expect(permits("_hot-updater#unrelated-private-data")).toBe(false);
+  });
+
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.getCallerIdentity.mockResolvedValue({ Account: "123456789012" });
@@ -93,6 +137,7 @@ describe("IAMManager DynamoDB access", () => {
           "ForAllValues:StringLike": {
             "dynamodb:LeadingKeys": [
               "_hot-updater",
+              "_hot-updater#index#*",
               "bundles",
               "bundle_patches",
               "release-scope#*",

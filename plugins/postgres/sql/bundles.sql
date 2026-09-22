@@ -130,8 +130,8 @@ create table private_hot_updater_settings (
 );
 
 create unique index channels_name_key on channels(name);
-create index bundle_patches_bundle_id_idx on bundle_patches(bundle_id);
-create index bundle_patches_base_bundle_id_idx on bundle_patches(base_bundle_id);
+create index bundle_patches_bundle_id_idx on bundle_patches(bundle_id, id);
+create index bundle_patches_base_bundle_id_idx on bundle_patches(base_bundle_id, id);
 create index releases_scope_order_idx on releases(scope_key, id);
 create index releases_channel_platform_order_idx on releases(channel_id, platform, id);
 create index releases_bundle_id_idx on releases(bundle_id);

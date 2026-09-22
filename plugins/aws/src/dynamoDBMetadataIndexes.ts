@@ -117,6 +117,7 @@ export const withMetadataIndexActions = async (
   if (changes.length === 0) return [...actions];
   await ensureMetadataIndexes(store);
   const projected = new Map<string, Action>();
+  const previous = new Map<string, Record<string, unknown>>();
   // Remove old keys first, then put new keys (including moves between release scopes).
   for (const change of changes) {
     const key = change.Put?.Item ?? change.Delete?.Key;
@@ -128,19 +129,28 @@ export const withMetadataIndexActions = async (
         ConsistentRead: true,
       }),
     );
-    for (const item of metadataIndexItems(Item))
-      projected.set(JSON.stringify([item.pk, item.sk]), {
+    for (const item of metadataIndexItems(Item)) {
+      const id = JSON.stringify([item.pk, item.sk]);
+      previous.set(id, item);
+      projected.set(id, {
         Delete: {
           TableName: store.tableName,
           Key: { pk: item.pk, sk: item.sk },
         },
       });
+    }
   }
   for (const change of changes) {
-    for (const item of metadataIndexItems(change.Put?.Item))
-      projected.set(JSON.stringify([item.pk, item.sk]), {
-        Put: { TableName: store.tableName, Item: item },
-      });
+    for (const item of metadataIndexItems(change.Put?.Item)) {
+      const id = JSON.stringify([item.pk, item.sk]);
+      // Compare the full residual row and target partition, not only the key.
+      if (JSON.stringify(previous.get(id)) === JSON.stringify(item))
+        projected.delete(id);
+      else
+        projected.set(id, {
+          Put: { TableName: store.tableName, Item: item },
+        });
+    }
   }
   return [...actions, ...projected.values()];
 };

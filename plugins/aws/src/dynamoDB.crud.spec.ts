@@ -12,6 +12,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 
 import {
   createDynamoDBCrud,
+  dynamoDB,
   parseDynamoDBItem,
   toDynamoDBBundleItem,
   toDynamoDBPatchItem,
@@ -163,7 +164,102 @@ describe("DynamoDB CRUD access patterns", () => {
 
     expect(result).toEqual([bundleRow]);
     expect(dynamodb.commandCalls(BatchGetCommand)).toHaveLength(1);
+    expect(
+      dynamodb.commandCalls(BatchGetCommand)[0]?.args[0].input.RequestItems?.[
+        "hot-updater-metadata"
+      ]?.Keys,
+    ).toEqual([{ pk: "bundles", sk: bundleId }]);
     expect(dynamodb.commandCalls(QueryCommand)).toHaveLength(0);
+  });
+
+  it.each(["asc", "desc"] as const)(
+    "hydrates only the finite-id cursor page in %s order",
+    async (direction) => {
+      const rows = Array.from({ length: 1_001 }, (_, index) => ({
+        ...bundleRow,
+        id: `bundle-${index.toString().padStart(4, "0")}`,
+      }));
+      dynamodb.on(BatchGetCommand).callsFake((input) => ({
+        Responses: {
+          "hot-updater-metadata": rows
+            .filter((row) =>
+              input.RequestItems["hot-updater-metadata"].Keys.some(
+                (key: { sk: string }) => key.sk === row.id,
+              ),
+            )
+            .reverse()
+            .map((row) => toDynamoDBBundleItem(row)),
+        },
+      }));
+      const result = await createCrud().findMany({
+        model: "bundles",
+        where: [
+          {
+            field: "id",
+            operator: "in",
+            value: [...rows.map(({ id }) => id), rows[501].id],
+          },
+          { field: "id", operator: "gt", value: rows[500].id },
+          { field: "id", operator: "lt", value: rows[510].id },
+        ],
+        limit: 3,
+        offset: 0,
+        orderBy: [{ field: "id", direction }],
+      });
+      const expected =
+        direction === "asc"
+          ? rows.slice(501, 504)
+          : rows.slice(507, 510).reverse();
+      expect(result).toEqual(expected);
+      expect(dynamodb.commandCalls(BatchGetCommand)).toHaveLength(1);
+      expect(
+        dynamodb.commandCalls(BatchGetCommand)[0]?.args[0].input.RequestItems?.[
+          "hot-updater-metadata"
+        ]?.Keys,
+      ).toEqual(expected.map(({ id }) => ({ pk: "bundles", sk: id })));
+      expect(dynamodb.commandCalls(QueryCommand)).toHaveLength(0);
+    },
+  );
+
+  it("refills a finite-id page across absent and filtered rows before applying the offset", async () => {
+    const rows = Array.from({ length: 10 }, (_, index) => ({
+      ...bundleRow,
+      id: `bundle-${index}`,
+      platform: index === 0 ? ("android" as const) : ("ios" as const),
+    }));
+    dynamodb.on(BatchGetCommand).callsFake((input) => ({
+      Responses: {
+        "hot-updater-metadata": rows
+          .filter(
+            (row, index) =>
+              index !== 1 &&
+              input.RequestItems["hot-updater-metadata"].Keys.some(
+                (key: { sk: string }) => key.sk === row.id,
+              ),
+          )
+          .reverse()
+          .map((row) => toDynamoDBBundleItem(row)),
+      },
+    }));
+    const result = await createCrud().findMany({
+      model: "bundles",
+      where: [
+        { field: "id", operator: "in", value: rows.map(({ id }) => id) },
+        { field: "platform", value: "ios" },
+      ],
+      limit: 2,
+      offset: 1,
+      orderBy: [{ field: "id", direction: "asc" }],
+    });
+    expect(result).toEqual(rows.slice(3, 5));
+    expect(
+      dynamodb
+        .commandCalls(BatchGetCommand)
+        .flatMap(
+          ({ args }) =>
+            args[0].input.RequestItems!["hot-updater-metadata"]!.Keys!,
+        ),
+    ).toEqual(rows.slice(0, 5).map(({ id }) => ({ pk: "bundles", sk: id })));
   });
 
   it("rejects an unindexed OR query instead of paging through all metadata", async () => {
@@ -181,6 +277,81 @@ describe("DynamoDB CRUD access patterns", () => {
     ).rejects.toThrow("unsupported");
     expect(dynamodb.commandCalls(QueryCommand)).toHaveLength(0);
   });
+
+  it("preserves all five public release equalities and the cursor in the native query", async () => {
+    const queryBundleId = "00000000-0000-7000-8000-000000000001";
+    const queryChannelId = "00000000-0000-7000-8000-000000000002";
+    dynamodb.on(QueryCommand).resolves({ Items: [] });
+    await dynamoDB({
+      tableName: "hot-updater-metadata",
+      region: "us-east-1",
+      credentials: { accessKeyId: "test", secretAccessKey: "test" },
+    }).models.releases.findMany({
+      bundleId: queryBundleId,
+      channelId: queryChannelId,
+      enabled: false,
+      platform: "ios",
+      targetAppVersion: "1.0.0",
+      beforeReleaseId: queryChannelId,
+      limit: 2,
+    });
+    const queries = dynamodb.commandCalls(QueryCommand);
+    expect(queries).toHaveLength(1);
+    const query = queries[0]?.args[0].input;
+    expect(query).toMatchObject({
+      ConsistentRead: true,
+      Limit: 2,
+      ScanIndexForward: false,
+      KeyConditionExpression: "#pk = :pk AND #sk < :upper",
+      ExpressionAttributeValues: {
+        ":pk": `_hot-updater#index#releases#bundle_id#${JSON.stringify(queryBundleId)}`,
+      },
+    });
+    for (const [field, value] of Object.entries({
+      id: queryChannelId,
+      bundle_id: queryBundleId,
+      channel_id: queryChannelId,
+      enabled: false,
+      platform: "ios",
+      target_app_version: "1.0.0",
+    })) {
+      const alias = Object.entries(query!.ExpressionAttributeNames!).find(
+        ([name, actual]) => name.startsWith("#f") && actual === field,
+      )?.[0];
+      expect(alias, `native filter must retain ${field}`).toBeDefined();
+      const valueAlias = `:v${alias!.slice(2)}`;
+      expect(query!.ExpressionAttributeValues![valueAlias]).toBe(value);
+      expect(query!.FilterExpression).toContain(
+        `${alias} ${field === "id" ? "<" : "="} ${valueAlias}`,
+      );
+    }
+  });
+
+  it.each(["OR", "insensitive"] as const)(
+    "rejects an indexed release predicate using %s instead of dropping it",
+    async (unsupported) => {
+      await expect(
+        createCrud().findMany({
+          model: "releases",
+          where: [
+            { field: "platform", value: "ios" },
+            {
+              field: "channel_id",
+              value: "production-id",
+              ...(unsupported === "OR"
+                ? { connector: "OR" as const }
+                : { mode: "insensitive" as const }),
+            },
+          ],
+          limit: 2,
+          offset: 0,
+          orderBy: [{ field: "id", direction: "desc" }],
+        }),
+      ).rejects.toThrow("unsupported");
+      expect(dynamodb.commandCalls(QueryCommand)).toHaveLength(0);
+      expect(dynamodb.commandCalls(BatchGetCommand)).toHaveLength(0);
+    },
+  );
 
   it("increments the metadata counter without imposing a ceiling", async () => {
     // Given

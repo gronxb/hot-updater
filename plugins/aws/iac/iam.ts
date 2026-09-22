@@ -45,6 +45,7 @@ export const buildDynamoDBPolicy = (
           "ForAllValues:StringLike": {
             "dynamodb:LeadingKeys": [
               "_hot-updater",
+              "_hot-updater#index#*",
               "bundles",
               "bundle_patches",
               "release-scope#*",
