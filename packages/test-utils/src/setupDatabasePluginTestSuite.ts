@@ -1,4 +1,5 @@
-import type { DatabasePlugin } from "@hot-updater/plugin-core";
+import type { DatabasePlugin, StoragePlugin } from "@hot-updater/plugin-core";
+import { afterEach, beforeEach, describe } from "vitest";
 
 import { registerDatabasePluginBundleTests } from "./databasePluginBundleTests";
 import { registerDatabasePluginCapabilityTests } from "./databasePluginCapabilityTests";
@@ -9,9 +10,20 @@ import { registerDatabasePluginRelationTests } from "./databasePluginRelationTes
 import { registerDatabasePluginReleaseCatalogTests } from "./databasePluginReleaseCatalogTests";
 import type { DatabasePluginTestLifecycle } from "./databasePluginTestRunner";
 import { setupDatabasePluginTestRunner } from "./databasePluginTestRunner";
+import type { HttpTestServer } from "./httpTestClient";
+import {
+  RELEASE_CATALOG_STORAGE_FIXTURES,
+  releaseCatalogDownloadUrl,
+} from "./releaseCatalogHttpFixtures";
+import { setupReleaseCatalogTestSuite } from "./setupReleaseCatalogTestSuite";
 
 export type DatabasePluginTestSuiteOptions =
-  DatabasePluginTestLifecycle<DatabasePlugin>;
+  DatabasePluginTestLifecycle<DatabasePlugin> & {
+    readonly createHttpClient: (options: {
+      readonly database: DatabasePlugin;
+      readonly storage: readonly StoragePlugin[];
+    }) => HttpTestServer | Promise<HttpTestServer>;
+  };
 
 export const setupDatabasePluginTestSuite = (
   options: DatabasePluginTestSuiteOptions,
@@ -24,5 +36,39 @@ export const setupDatabasePluginTestSuite = (
     registerDatabasePluginCapabilityTests(state);
     registerDatabasePluginOfficialDomainTests(state);
     registerDatabasePluginInsightsTests(state);
+    describe("server", () => {
+      let client: HttpTestServer | undefined;
+      beforeEach(async () => {
+        client = await options.createHttpClient({
+          database: state.getPlugin(),
+          storage: [
+            {
+              name: "catalog-test-storage",
+              protocol: "storage",
+              async get({ storageUri }) {
+                const body = RELEASE_CATALOG_STORAGE_FIXTURES[storageUri];
+                return {
+                  response: body === undefined ? null : new Response(body),
+                };
+              },
+              async getDownloadUrl({ storageUri }) {
+                return { url: releaseCatalogDownloadUrl(storageUri) };
+              },
+            },
+          ],
+        });
+      });
+      afterEach(async () => {
+        await client?.close();
+        client = undefined;
+      });
+      setupReleaseCatalogTestSuite({
+        getClient: () => {
+          if (client === undefined)
+            throw new Error("HTTP test server has not started");
+          return client;
+        },
+      });
+    });
   });
 };

@@ -13,6 +13,8 @@ import { setupDatabasePluginTestSuite } from "@hot-updater/test-utils";
 import { PGliteDialect } from "kysely-pglite-dialect";
 import { describe, expect, it } from "vitest";
 
+import { createHotUpdater } from "../../../packages/server/src/index";
+import { startHttpTestServer } from "../../../packages/test-utils/src/httpTestServer";
 import { postgres } from "./postgres";
 
 class PostgresTestStateError extends Error {
@@ -29,6 +31,11 @@ const getClient = (): PGlite => {
 };
 
 setupDatabasePluginTestSuite({
+  createHttpClient: (options) =>
+    startHttpTestServer(
+      createHotUpdater({ ...options, clientAccess: { type: "public" } })
+        .handlers,
+    ),
   name: "postgres fixed-model database plugin",
   migrate: async () => {
     client = new PGlite();

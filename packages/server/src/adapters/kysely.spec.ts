@@ -9,8 +9,10 @@ import {
   createBundleRowFixture,
   createChannelRowFixture,
 } from "../../../test-utils/src/databaseTestFixtures";
+import { startHttpTestServer } from "../../../test-utils/src/httpTestServer";
 import { setupDatabasePluginTestSuite } from "../../../test-utils/src/setupDatabasePluginTestSuite";
 import type { DatabaseAdapterWithCapabilities } from "../db/types";
+import { createHotUpdater } from "../index";
 import {
   DATABASE_PLUGIN_TEST_RESET_SQL,
   DATABASE_PLUGIN_TEST_SCHEMA_SQL,
@@ -35,6 +37,11 @@ const getDatabase = (): Kysely<object> => {
 };
 
 setupDatabasePluginTestSuite({
+  createHttpClient: (options) =>
+    startHttpTestServer(
+      createHotUpdater({ ...options, clientAccess: { type: "public" } })
+        .handlers,
+    ),
   name: "kyselyAdapter PostgreSQL",
   migrate: async () => {
     client = new PGlite();

@@ -16,6 +16,8 @@ import {
 import { setupDatabasePluginTestSuite } from "@hot-updater/test-utils";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
+import { createHotUpdater } from "../../../packages/server/src/index";
+import { startHttpTestServer } from "../../../packages/test-utils/src/httpTestServer";
 import {
   createDynamoDBInsightsTable,
   DYNAMODB_INSIGHTS_EVENT_IDS_PARTITION,
@@ -93,6 +95,11 @@ beforeAll(() => fixture.start(), 120_000);
 afterAll(() => fixture.stop());
 
 setupDatabasePluginTestSuite({
+  createHttpClient: (options) =>
+    startHttpTestServer(
+      createHotUpdater({ ...options, clientAccess: { type: "public" } })
+        .handlers,
+    ),
   name: "DynamoDB fixed-model database plugin",
   createPlugin,
   migrate: () => undefined,

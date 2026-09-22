@@ -6,7 +6,9 @@ import {
   createBundleRowFixture,
   createBundleEventRowFixture,
 } from "../../../test-utils/src/databaseTestFixtures";
+import { startHttpTestServer } from "../../../test-utils/src/httpTestServer";
 import { setupDatabasePluginTestSuite } from "../../../test-utils/src/setupDatabasePluginTestSuite";
+import { createHotUpdater } from "../index";
 import { mongoAdapter } from "./mongodb";
 import { createMongoBundleWhere } from "./mongodbQuery";
 import { createMongoTestHarness } from "./mongodbTestClient";
@@ -14,6 +16,11 @@ import { createMongoTestHarness } from "./mongodbTestClient";
 const harness = createMongoTestHarness();
 
 setupDatabasePluginTestSuite({
+  createHttpClient: (options) =>
+    startHttpTestServer(
+      createHotUpdater({ ...options, clientAccess: { type: "public" } })
+        .handlers,
+    ),
   name: "mongoAdapter v2",
   migrate: () => undefined,
   createPlugin: () =>

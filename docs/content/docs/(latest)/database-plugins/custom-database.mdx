@@ -509,17 +509,21 @@ For an external provider project, implement tests against the
 as reference for the scenarios and expected results.
 
 The following helper API is for provider packages developed inside a Hot Updater
-checkout. Declare `"@hot-updater/test-utils": "workspace:*"` in that provider's
-`devDependencies`, install the workspace dependencies and build the workspace
-packages before running it. Supply the provider-specific database creation,
-migration and reset functions used in this excerpt:
+checkout. Declare `@hot-updater/test-utils` and `@hot-updater/server` as
+`workspace:*` dependencies in that provider's `devDependencies`, install the
+workspace dependencies and build the workspace packages before running it.
+Supply the provider-specific database creation, migration and reset functions
+used in this excerpt:
 
 ```ts title="myDatabase.spec.ts (repository workspace excerpt)"
 import { createDatabaseClient } from "@hot-updater/plugin-core";
+import { createHotUpdater } from "@hot-updater/server";
 import {
   setupDatabaseClientTestSuite,
   setupDatabasePluginTestSuite,
 } from "@hot-updater/test-utils";
+
+import { startHttpTestServer } from "@hot-updater/test-utils/node";
 
 const lifecycle = {
   name: "my database",
@@ -529,7 +533,13 @@ const lifecycle = {
   dispose: (plugin: ReturnType<typeof myDatabase>) => plugin.dispose?.(),
 };
 
-setupDatabasePluginTestSuite(lifecycle);
+setupDatabasePluginTestSuite({
+  ...lifecycle,
+  createHttpClient: (options) =>
+    startHttpTestServer(
+      createHotUpdater({ ...options, clientAccess: { type: "public" } }).handlers,
+    ),
+});
 setupDatabaseClientTestSuite({
   ...lifecycle,
   createClient: createDatabaseClient,
@@ -547,8 +557,44 @@ pnpm -w test plugins/mock/src/test/mockDatabase.spec.ts
 The suites verify exact model semantics, strong Release paging, catalog point
 reads, Release/catalog CAS conflicts, all-model rollback, Channel safety,
 Insights duplicate/identity/count/filter semantics, ordering, and the absence
-of a public `queries` surface. Supplement these with native rollback, concurrent
-transaction, index-continuation, migration, and query-plan evidence.
+of a public `queries` surface. `createHttpClient` is required: the database suite
+also runs `setupReleaseCatalogTestSuite` through the server's admin and client
+HTTP APIs. Node providers use a loopback server and real `fetch` requests;
+Workers use `createHandlerHttpTestClient` at the Web Request/Response boundary.
+The suite itself only needs an HTTP client, so another server implementation can
+run the same scenarios without importing the database plugin or server runtime:
+
+```ts
+import {
+  createHttpTestClient,
+  setupReleaseCatalogTestSuite,
+} from "@hot-updater/test-utils";
+
+const client = createHttpTestClient({
+  clientBaseUrl: "http://127.0.0.1:3000/hot-updater",
+  adminBaseUrl: "http://127.0.0.1:3000/hot-updater/admin",
+  adminHeaders: { Authorization: `Bearer ${adminToken}` },
+});
+
+// The test harness starts/stops the server and resets its database before each test.
+setupReleaseCatalogTestSuite({ getClient: () => client });
+```
+
+Data preparation uses the Bundle, Channel, database commit, and Catalog rebuild
+HTTP APIs. Policy changes use `PATCH /releases/:id`. Assertions cover version and
+fingerprint projections, isolation, rollout metadata, rollback candidates,
+Catalog identity, real cache expiry and ETag revalidation, HTTP errors, and
+archive, manifest, and patch responses. No database, compiler, or client selector
+implementation is invoked by the HTTP suite.
+
+Install `RELEASE_CATALOG_STORAGE_FIXTURES` in the test server and resolve fixture
+URLs with `releaseCatalogDownloadUrl`; the database suite supplies these storage
+fixtures automatically. Actual provider storage access and native installation
+remain separate tests. Client selection, crash history, and minimum Bundle rules
+are covered by the core and React Native suites.
+
+Supplement these with concurrent transaction, index-continuation, migration,
+and query-plan evidence.
 
 ## Configure Hot Updater
 

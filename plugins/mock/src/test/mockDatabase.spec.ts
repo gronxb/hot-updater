@@ -4,6 +4,8 @@ import {
 } from "@hot-updater/plugin-core";
 import { beforeEach, describe, expect, it } from "vitest";
 
+import { createHotUpdater } from "../../../../packages/server/src/index";
+import { startHttpTestServer } from "../../../../packages/test-utils/src/httpTestServer";
 import {
   setupDatabasePluginTestSuite,
   setupDatabaseClientTestSuite,
@@ -40,6 +42,11 @@ beforeEach(() => {
 data = createMockDatabaseData();
 
 setupDatabasePluginTestSuite({
+  createHttpClient: (options) =>
+    startHttpTestServer(
+      createHotUpdater({ ...options, clientAccess: { type: "public" } })
+        .handlers,
+    ),
   name: "mock fixed-model database plugin",
   createPlugin,
   migrate: () => undefined,
