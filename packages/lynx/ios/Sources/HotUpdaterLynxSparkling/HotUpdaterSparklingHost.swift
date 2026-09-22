@@ -586,6 +586,8 @@ public final class HotUpdaterSparklingHost: NSObject,
         animated: Bool
     ) {
         requireMainThread()
+        navigationController.interactivePopGestureRecognizer?.isEnabled =
+            navigationController.viewControllers.count > 1
         guard !closed, transitionInFlight == nil else { return }
         let live = Set(
             navigationController.viewControllers.map(ObjectIdentifier.init)
@@ -1402,6 +1404,12 @@ public final class HotUpdaterSparklingViewController: UINavigationController {
 
     public required init?(coder: NSCoder) {
         fatalError("init(coder:) is unavailable")
+    }
+
+    public override func viewDidLoad() {
+        super.viewDidLoad()
+        interactivePopGestureRecognizer?.delegate = nil
+        interactivePopGestureRecognizer?.isEnabled = viewControllers.count > 1
     }
 
     public func close() {
