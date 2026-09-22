@@ -15,7 +15,7 @@ import {
   startHttpTestServer,
 } from "@hot-updater/test-utils";
 import { PGliteDialect } from "kysely-pglite-dialect";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { postgres } from "./postgres";
 
@@ -145,6 +145,46 @@ const insightsEventFixture = (input: {
   channel: "production",
 
   received_at_ms: input.receivedAtMs,
+});
+
+describe("PostgreSQL commit expectation reads", () => {
+  it("reads only the expected revision with a native one-row limit", async () => {
+    const { database, plugin } = await createPostgresTestPlugin();
+    const bundle = bundleFixture();
+    const channel = channelFixture("production", "channel-1");
+    const release = releaseFixture(channel, bundle);
+    try {
+      await plugin.commit({
+        changes: [
+          {
+            model: "channels",
+            operation: "insert",
+            row: channel,
+            onConflict: "ignore",
+          },
+          { model: "bundles", operation: "insert", row: bundle },
+          { model: "releases", operation: "insert", row: release },
+        ],
+      });
+      const query = vi.spyOn(database, "query");
+      await expect(
+        plugin.commit({
+          changes: [],
+          expectations: [{ model: "releases", id: release.id, revision: 1 }],
+        }),
+      ).resolves.toEqual({ committed: true });
+      expect(
+        query.mock.calls.filter(([sql]) => sql.startsWith("select")),
+      ).toEqual([
+        [
+          'select "revision" from "releases" where "id" = $1 limit $2',
+          [release.id, 1],
+        ],
+      ]);
+    } finally {
+      await plugin.dispose?.();
+    }
+  });
 });
 
 describe("PostgreSQL patch byte-size constraints", () => {

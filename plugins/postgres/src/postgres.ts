@@ -344,34 +344,52 @@ WHERE (excluded.received_at_ms, excluded.id) > (bundle_event_heads.received_at_m
     const where = buildWhere(input.where);
     switch (input.model) {
       case "bundles": {
-        let query = db.selectFrom("bundles").selectAll();
+        const table = db.selectFrom("bundles");
+        let query = input.select
+          ? table.select(input.select)
+          : table.selectAll();
         if (where !== undefined) query = query.where(where);
-        return (await query.executeTakeFirst()) ?? null;
+        return (await query.limit(1).executeTakeFirst()) ?? null;
       }
       case "api_keys": {
-        let query = db.selectFrom("api_keys").selectAll();
+        const table = db.selectFrom("api_keys");
+        let query = input.select
+          ? table.select(input.select)
+          : table.selectAll();
         if (where !== undefined) query = query.where(where);
-        return (await query.executeTakeFirst()) ?? null;
+        return (await query.limit(1).executeTakeFirst()) ?? null;
       }
       case "bundle_patches": {
-        let query = db.selectFrom("bundle_patches").selectAll();
+        const table = db.selectFrom("bundle_patches");
+        let query = input.select
+          ? table.select(input.select)
+          : table.selectAll();
         if (where !== undefined) query = query.where(where);
-        return (await query.executeTakeFirst()) ?? null;
+        return (await query.limit(1).executeTakeFirst()) ?? null;
       }
       case "channels": {
-        let query = db.selectFrom("channels").selectAll();
+        const table = db.selectFrom("channels");
+        let query = input.select
+          ? table.select(input.select)
+          : table.selectAll();
         if (where !== undefined) query = query.where(where);
-        return (await query.executeTakeFirst()) ?? null;
+        return (await query.limit(1).executeTakeFirst()) ?? null;
       }
       case "releases": {
-        let query = db.selectFrom("releases").selectAll();
+        const table = db.selectFrom("releases");
+        let query = input.select
+          ? table.select(input.select)
+          : table.selectAll();
         if (where !== undefined) query = query.where(where);
-        return (await query.executeTakeFirst()) ?? null;
+        return (await query.limit(1).executeTakeFirst()) ?? null;
       }
       case "release_catalogs": {
-        let query = db.selectFrom("release_catalogs").selectAll();
+        const table = db.selectFrom("release_catalogs");
+        let query = input.select
+          ? table.select(input.select)
+          : table.selectAll();
         if (where !== undefined) query = query.where(where);
-        return (await query.executeTakeFirst()) ?? null;
+        return (await query.limit(1).executeTakeFirst()) ?? null;
       }
     }
   },
