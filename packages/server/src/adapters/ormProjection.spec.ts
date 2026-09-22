@@ -4,7 +4,6 @@ import { Kysely } from "kysely";
 import { PGliteDialect } from "kysely-pglite-dialect";
 import { describe, expect, it, vi } from "vitest";
 
-import * as schema from "../../../../examples-server/hono-drizzle-pglite/hot-updater-schema";
 import {
   createBundleRowFixture,
   createChannelRowFixture,
@@ -13,6 +12,7 @@ import {
 import { createTableSql } from "../db/schema/sql";
 import { createDrizzleCrud } from "./drizzleCrud";
 import { createLazyDB } from "./drizzleLazyDB";
+import { schema } from "./drizzleTestSchema";
 import { createKyselyCrud } from "./kyselyCrud";
 import type { MongoCollections } from "./mongodbCollections";
 import { createMongoReads } from "./mongodbReads";
