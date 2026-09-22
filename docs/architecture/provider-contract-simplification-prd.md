@@ -1,6 +1,14 @@
 # Provider contract simplification
 
-Status: implemented and verified. Follow-up to #1330, targeting `next`.
+Status: the bundled-provider cleanup is implemented and verified. The broader
+plugin-authoring and no-overfetch goals are not complete. Follow-up to #1330,
+targeting `next`.
+
+The [adapter authoring review](./adapter-authoring-review.md) supersedes this
+document's completion criteria for those broader goals. It records remaining
+domain responsibilities in providers, read amplification in existing paths, and
+the proof required before publishing an authoring factory. Its proposed API and
+execution changes are not implemented by this PR.
 
 ## Problem and outcome
 
@@ -145,10 +153,10 @@ Storage/build plugins do not implement this database contract and need no change
 - Providers register implementations with `createDatabasePluginAdapter`; read
   planning and commit validation are private implementation details of the
   factory. The additional read-only type requires no fake write methods.
-- Firebase retains a small transaction-local row overlay, which is necessary
-  for Firestore's reads-before-writes rule. It has no generic sorting, filtering
-  or pagination engine. Native read queries and persistence still own indexes
-  and Firestore operations.
+- Firebase retains a transaction-local row overlay for Firestore's
+  reads-before-writes rule. It has no generic sorting, filtering or pagination
+  engine. Staging is necessary; requiring each plugin author to implement it is
+  not. Moving that responsibility behind the authoring factory remains open.
 - DynamoDB retains conditional transactions, keyed projections and aggregate
   maintenance. Removing these would lose atomicity or require scans; removing
   the duplicate CRUD writer reduces the number of mutation algorithms instead.
@@ -186,3 +194,8 @@ packed `@hot-updater/test-utils` artifact, and mutation tests verify that broken
 providers fail the public scenarios. These checks do not cover live cloud
 deployments or every supported external SQL engine/version. No production data
 or infrastructure was changed.
+
+These passing checks establish the tested behavior of the cleanup. They do not
+establish the stronger no-overfetch requirement: absence of `ScanCommand`, a
+bounded response, or a server-side `count()` does not by itself bound examined
+rows. See the follow-up review for concrete remaining paths and cost gates.
