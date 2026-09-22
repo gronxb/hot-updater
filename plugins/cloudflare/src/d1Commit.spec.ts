@@ -7,6 +7,7 @@ import type {
   ReleaseRow,
 } from "@hot-updater/plugin-core";
 import { DatabasePluginInputError } from "@hot-updater/plugin-core";
+import { APIError } from "cloudflare/error";
 import {
   afterAll,
   beforeAll,
@@ -37,7 +38,14 @@ vi.mock("cloudflare", () => ({
         ) => {
           const result = await transport.execute!(
             "batch" in input ? input.batch : [input],
-          );
+          ).catch((error: Error) => {
+            throw new APIError(
+              400,
+              { errors: [{ message: error.message }] },
+              undefined,
+              {},
+            );
+          });
           return {
             async *iterPages() {
               yield { result };
@@ -226,6 +234,85 @@ describe.each(["worker", "http"] as const)(
           model: "releases",
           reason: "version_conflict",
         },
+      });
+    });
+
+    it("rolls back earlier writes when an API key update is missing", async () => {
+      await expect(
+        plugin.commit({
+          changes: [
+            {
+              model: "bundles",
+              operation: "update",
+              where: { id: bundle.id },
+              update: { git_commit_hash: "next" },
+            },
+            {
+              model: "apiKeys",
+              operation: "update",
+              where: { id: "missing-key" },
+              update: { revokedAtMs: 1 },
+            },
+          ],
+        }),
+      ).resolves.toEqual({
+        committed: false,
+        conflict: { changeIndex: 1, reason: "not_found" },
+      });
+      await expect(plugin.models.bundles.findById(bundle.id)).resolves.toEqual(
+        bundle,
+      );
+    });
+
+    it("allows exactly one of two commits sharing a revision expectation", async () => {
+      await plugin.commit({
+        changes: [
+          {
+            model: "channels",
+            operation: "insert",
+            row: { id: "channel-1", name: "production" },
+            onConflict: "ignore",
+          },
+          { model: "releases", operation: "insert", row: release },
+        ],
+      });
+      const results = await Promise.all(
+        ["first", "second"].map((hash) =>
+          plugin.commit({
+            expectations: [{ model: "releases", id: release.id, revision: 1 }],
+            changes: [
+              {
+                model: "releases",
+                operation: "update",
+                where: { id: release.id },
+                update: { revision: 2 },
+              },
+              {
+                model: "bundles",
+                operation: "update",
+                where: { id: bundle.id },
+                update: { git_commit_hash: hash },
+              },
+            ],
+          }),
+        ),
+      );
+      expect(results.filter(({ committed }) => committed)).toHaveLength(1);
+      expect(results.find(({ committed }) => !committed)).toEqual({
+        committed: false,
+        conflict: {
+          actualVersion: 2,
+          expectedVersion: 1,
+          changeIndex: -1,
+          key: release.id,
+          model: "releases",
+          reason: "version_conflict",
+        },
+      });
+      await expect(
+        plugin.models.bundles.findById(bundle.id),
+      ).resolves.toMatchObject({
+        git_commit_hash: results[0]!.committed ? "first" : "second",
       });
     });
 

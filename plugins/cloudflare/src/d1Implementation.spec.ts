@@ -3,99 +3,6 @@ import { expect, it } from "vitest";
 import { createBundleEventRowFixture } from "../../../packages/test-utils/src/databaseTestFixtures";
 import { createD1Implementation, type D1Statement } from "./d1Implementation";
 
-it("guards every write and reports the missing change index", async () => {
-  let recorded: readonly D1Statement[] = [];
-  const implementation = createD1Implementation({
-    query: () => Promise.reject(new Error("unexpected standalone query")),
-    async batch(statements) {
-      recorded = statements;
-      return statements.map((_, index) =>
-        index === 0 ? [{ id: "bundle-1" }] : [],
-      );
-    },
-  });
-
-  const result = await implementation.commit?.({
-    changes: [
-      {
-        model: "bundles",
-        operation: "update",
-        where: { id: "bundle-1" },
-        update: { metadata: { app_version: "1.0.0" } },
-      },
-      {
-        model: "apiKeys",
-        operation: "update",
-        where: { id: "missing-key" },
-        update: { revokedAtMs: 1 },
-      },
-    ],
-  });
-
-  expect(result).toEqual({
-    committed: false,
-    conflict: { changeIndex: 1, reason: "not_found" },
-  });
-  expect(recorded.slice(0, 2).map(({ sql }) => sql)).toEqual([
-    "SELECT id FROM bundles WHERE id = json_extract(?, '$') LIMIT 1",
-    "SELECT id FROM api_keys WHERE id = json_extract(?, '$') LIMIT 1",
-  ]);
-  expect(recorded.slice(2)).toHaveLength(2);
-  for (const statement of recorded.slice(2)) {
-    expect(statement.sql).toContain("SELECT 1 FROM json_each(?) AS required");
-    expect(statement.params).toContain(
-      JSON.stringify([
-        { model: "bundles", id: "bundle-1" },
-        { model: "api_keys", id: "missing-key" },
-      ]),
-    );
-  }
-});
-
-it("aborts an atomic commit when a Release expectation changes after preflight", async () => {
-  let queryCount = 0;
-  const implementation = createD1Implementation({
-    async query(sql) {
-      expect(sql).toContain("SELECT revision FROM releases");
-      queryCount += 1;
-      return [{ revision: queryCount }];
-    },
-    async batch(statements) {
-      expect(statements[0]?.sql).toContain(
-        "HOT_UPDATER_COMMIT_EXPECTATION_CONFLICT",
-      );
-      expect(
-        statements.some(({ sql }) => sql.includes("UPDATE releases")),
-      ).toBe(true);
-      throw new Error("D1_ERROR: malformed JSON");
-    },
-  });
-
-  await expect(
-    implementation.commit?.({
-      changes: [
-        {
-          model: "releases",
-          operation: "update",
-          where: { id: "release-1" },
-          update: { revision: 2 },
-        },
-      ],
-      expectations: [{ id: "release-1", model: "releases", revision: 1 }],
-    }),
-  ).resolves.toEqual({
-    committed: false,
-    conflict: {
-      actualVersion: 2,
-      changeIndex: -1,
-      expectedVersion: 1,
-      key: "release-1",
-      model: "releases",
-      reason: "version_conflict",
-    },
-  });
-});
-
 it("maps idempotent Channel inserts to the normalized table", async () => {
   let recorded: readonly D1Statement[] = [];
   const implementation = createD1Implementation({
@@ -219,34 +126,6 @@ it("deletes an empty Channel and distinguishes missing and referenced rows", asy
   await expect(implementation.deleteChannel({ id: "active" })).resolves.toEqual(
     { deleted: false, reason: "not_empty" },
   );
-});
-
-it("guards a generic Channel delete and reports a referenced conflict", async () => {
-  let recorded: readonly D1Statement[] = [];
-  const implementation = createD1Implementation({
-    query: () => Promise.reject(new Error("unexpected standalone query")),
-    async batch(statements) {
-      recorded = statements;
-      return [[{ id: "bundle" }], []];
-    },
-  });
-
-  await expect(
-    implementation.commit?.({
-      changes: [
-        {
-          model: "channels",
-          operation: "delete",
-          where: { id: "active" },
-        },
-      ],
-    }),
-  ).resolves.toEqual({
-    committed: false,
-    conflict: { changeIndex: 0, reason: "referenced" },
-  });
-  expect(recorded[1]?.sql).toContain("DELETE FROM channels");
-  expect(recorded[1]?.sql).toContain("NOT EXISTS");
 });
 
 it("records the event and advances its head in one atomic batch", async () => {
