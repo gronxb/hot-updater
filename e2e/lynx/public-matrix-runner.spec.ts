@@ -13,6 +13,7 @@ import {
   DIAGNOSTIC_MARKER,
   EVENT_MARKER,
   formatAppleLogStart,
+  iosActionTarget,
   iosMatrixLaunchArguments,
   isRetryableAgentDeviceFailure,
   parseDiagnostics,
@@ -392,6 +393,57 @@ describe("Lynx public matrix runner", () => {
         error: { code: "DEVICE_NOT_FOUND", retriable: true },
       }),
     ).toBe(false);
+  });
+
+  it("uses exact valid bounds only for non-hittable Lynx actions on iOS", () => {
+    expect(
+      iosActionTarget(
+        {
+          data: {
+            nodes: [
+              {
+                label: "Open detail page",
+                hittable: false,
+                rect: { x: 24, y: 434, width: 354, height: 54 },
+              },
+            ],
+          },
+        },
+        "Open detail page",
+      ),
+    ).toEqual({ kind: "coordinates", x: 201, y: 461 });
+    expect(
+      iosActionTarget(
+        {
+          data: {
+            nodes: [
+              {
+                label: "Trigger diagnostic",
+                hittable: true,
+                rect: { x: 16, y: 62, width: 170, height: 30 },
+              },
+            ],
+          },
+        },
+        "Trigger diagnostic",
+      ),
+    ).toEqual({ kind: "semantic" });
+    expect(() =>
+      iosActionTarget(
+        {
+          data: {
+            nodes: [
+              {
+                label: "Open detail page",
+                hittable: false,
+                rect: { x: 24, y: 434, width: 0, height: 54 },
+              },
+            ],
+          },
+        },
+        "Open detail page",
+      ),
+    ).toThrow("no tappable bounds");
   });
 
   it("builds the dedicated matrix targets and emits their exact artifact paths", () => {

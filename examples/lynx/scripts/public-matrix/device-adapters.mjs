@@ -51,6 +51,32 @@ export function formatAppleLogStart(value) {
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
 }
 
+export function iosActionTarget(snapshot, label) {
+  const matches = snapshot?.data?.nodes?.filter(
+    (node) => String(node.label ?? "") === label,
+  );
+  if (!matches || matches.length !== 1) {
+    throw new Error(
+      `Expected exactly one iOS action ${label}, found ${matches?.length ?? 0}`,
+    );
+  }
+  const [node] = matches;
+  if (node.hittable === true) return { kind: "semantic" };
+  const { x, y, width, height } = node.rect ?? {};
+  if (
+    ![x, y, width, height].every(Number.isFinite) ||
+    width <= 0 ||
+    height <= 0
+  ) {
+    throw new Error(`iOS action ${label} has no tappable bounds`);
+  }
+  return {
+    kind: "coordinates",
+    x: Math.floor(x + width / 2),
+    y: Math.floor(y + height / 2),
+  };
+}
+
 function parseEvents(text) {
   const events = [];
   for (const line of text.split(/\r?\n/)) {
@@ -343,7 +369,12 @@ class IOSAdapter {
   }
 
   clickText(text) {
-    this.device(["find", text, "click"]);
+    const target = iosActionTarget(this.snapshot(), text);
+    if (target.kind === "semantic") {
+      this.device(["find", text, "click"]);
+      return;
+    }
+    this.device(["press", String(target.x), String(target.y)]);
   }
 
   nativeBack() {
