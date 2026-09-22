@@ -1,3 +1,4 @@
+import type { BundleRow } from "@hot-updater/plugin-core";
 import type { Transaction } from "firebase-admin/firestore";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -15,17 +16,14 @@ vi.mock("./firebaseDatabasePersistence", () => ({
   persistFirebaseDatabaseSnapshot: persist,
 }));
 
-const row = {
+const row: BundleRow = {
   id: "bundle",
-  platform: "ios" as const,
-  file_hash: "hash",
+  platform: "ios",
   git_commit_hash: null,
-  storage_uri: "storage://bundle",
-  archive_byte_size: 1,
   metadata: {},
-  manifest_storage_uri: null,
-  manifest_file_hash: null,
-  asset_base_storage_uri: null,
+  manifest_storage_uri: "storage://bundle/manifest.json",
+  manifest_file_hash: "hash",
+  asset_base_storage_uri: "storage://assets",
 };
 const open = () =>
   createFirebaseTransaction(
