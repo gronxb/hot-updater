@@ -2,12 +2,14 @@ import {
   createDatabaseClient,
   type DatabasePlugin,
 } from "@hot-updater/plugin-core";
-import { beforeEach, describe, expect, it } from "vitest";
-
+import { createHotUpdater } from "@hot-updater/server";
 import {
   setupDatabasePluginTestSuite,
-  setupDatabaseClientTestSuite,
-} from "../../../../packages/test-utils/src/index";
+  startHttpTestServer,
+} from "@hot-updater/test-utils";
+import { beforeEach, describe, expect, it } from "vitest";
+
+import { setupDatabaseClientTestSuite } from "../../../../packages/test-utils/src/index";
 import {
   createMockDatabaseData,
   mockDatabase,
@@ -40,6 +42,11 @@ beforeEach(() => {
 data = createMockDatabaseData();
 
 setupDatabasePluginTestSuite({
+  createHttpClient: (options) =>
+    startHttpTestServer(
+      createHotUpdater({ ...options, clientAccess: { type: "public" } })
+        .handlers,
+    ),
   name: "mock fixed-model database plugin",
   createPlugin,
   migrate: () => undefined,

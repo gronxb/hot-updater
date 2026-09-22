@@ -1,4 +1,16 @@
+import {
+  HOT_UPDATER_CORE_SCHEMA_KEY,
+  HOT_UPDATER_SCHEMA_VERSION,
+  HOT_UPDATER_SETTINGS_TABLE,
+} from "../schema/types";
+
 export const DATABASE_PLUGIN_TEST_SCHEMA_SQL = `
+  create table ${HOT_UPDATER_SETTINGS_TABLE} (
+    key text primary key,
+    value text not null
+  );
+  insert into ${HOT_UPDATER_SETTINGS_TABLE} (key, value)
+    values ('${HOT_UPDATER_CORE_SCHEMA_KEY}', '${HOT_UPDATER_SCHEMA_VERSION}');
   create table channels (
     id text primary key,
     name text not null unique
@@ -42,8 +54,8 @@ export const DATABASE_PLUGIN_TEST_SCHEMA_SQL = `
     target_cohorts jsonb not null default '[]'::jsonb,
     operation text not null,
     source_release_id text references releases(id) on delete set null,
-    created_at_ms integer not null,
-    updated_at_ms integer not null
+    created_at_ms double precision not null,
+    updated_at_ms double precision not null
   );
   create table release_catalogs (
     scope_key text primary key,
@@ -58,7 +70,7 @@ export const DATABASE_PLUGIN_TEST_SCHEMA_SQL = `
     catalog_hash text not null,
     byte_size integer not null,
     is_tombstone boolean not null,
-    updated_at_ms integer not null
+    updated_at_ms double precision not null
   );
   create table bundle_events (
     id text primary key,

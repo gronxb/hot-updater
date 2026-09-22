@@ -25,6 +25,10 @@ import {
 } from "@hot-updater/plugin-core";
 import { createApiKey, type HotUpdaterAPI } from "@hot-updater/server";
 import { standaloneRepository } from "@hot-updater/standalone";
+import {
+  createHttpTestClient,
+  setupReleaseCatalogTestSuite,
+} from "@hot-updater/test-utils";
 import { setupBundleMethodsTestSuite } from "@hot-updater/test-utils";
 import {
   assertDockerComposeAvailable,
@@ -211,6 +215,16 @@ describe("Hot Updater Handler Integration Tests (Hono + DynamoDB)", () => {
       hotUpdater.updateBundleById(bundleId, bundle),
     deleteBundleById: (bundleId: string) =>
       hotUpdater.deleteBundleById(bundleId),
+  });
+
+  setupReleaseCatalogTestSuite({
+    getClient: () =>
+      createHttpTestClient({
+        clientBaseUrl: `${baseUrl}/hot-updater`,
+        adminBaseUrl: `${baseUrl}/hot-updater/admin`,
+        adminHeaders: { Authorization: `Bearer ${TEST_ADMIN_AUTH_TOKEN}` },
+        clientHeaders: { "x-api-key": rawApiKey },
+      }),
   });
 
   it("accepts authenticated events without granting client query access", async () => {

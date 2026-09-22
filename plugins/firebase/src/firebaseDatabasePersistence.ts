@@ -319,7 +319,10 @@ const persistCollection = <TRow extends FixedRow>({
   }
   for (const [id, row] of after) {
     if (JSON.stringify(before.get(id)) !== JSON.stringify(row)) {
-      transaction.set(collection.doc(documentId(row)), row, { merge: true });
+      // Replace schema fields, including JSON maps, while retaining extensions.
+      transaction.set(collection.doc(documentId(row)), row, {
+        mergeFields: Object.keys(row),
+      });
     }
   }
 };

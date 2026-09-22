@@ -1,6 +1,5 @@
 {
   "name": "@hot-updater/test-utils",
-  "private": true,
   "version": "1.0.0-rc.14",
   "type": "module",
   "description": "Test utilities for Hot Updater packages",
@@ -37,10 +36,10 @@
   "repository": "https://github.com/gronxb/hot-updater",
   "author": "gronxb <gron1gh1@gmail.com> (https://github.com/gronxb)",
   "peerDependencies": {
-    "@hot-updater/core": "*",
-    "@hot-updater/plugin-core": "*",
+    "@hot-updater/core": "workspace:^",
+    "@hot-updater/plugin-core": "workspace:^",
     "execa": "*",
-    "vitest": "*"
+    "vitest": "^4.0.0"
   },
   "devDependencies": {
     "@hot-updater/core": "workspace:*",
@@ -82,5 +81,8 @@
     "run-parallel": "1.2.0",
     "to-regex-range": "5.0.1",
     "workspace-tools": "0.41.7"
+  },
+  "publishConfig": {
+    "access": "public"
   }
 }

@@ -154,3 +154,44 @@ These probes do not replace native signature verification or device E2E.
 Private reconciliation logs, deployment details and test logs remain in
 `/Users/gronxb/.hot-updater-e2e-bot/reconciliations/pr-1319/`; do not publish
 credentials or signed artifact URLs from those records.
+
+## Latest next conformance integration
+
+The CI run for `001dce7e2` checked GitHub's merge commit `fc17839f3`, combining
+this branch with `next` at `39f60f9dc` (#1329). Its new provider conformance
+suite still referenced the removed archive columns and pre-v1 artifact route.
+This was a merge compatibility failure; the standalone PR-head typecheck passed.
+
+The next changes are now incorporated, with the new tests adapted to required
+manifest fields, `/artifacts/v1`, complete original-file descriptors, optional
+patches, and optional tar.br metadata. Both small and large archives retain the
+complete file/patch plan because native clients make the size decision after
+local reuse. The nullable-field test now clears a previously populated Git hash
+instead of clearing required manifest metadata. The wrong-artifact mutation
+checks the manifest hash. The new Supabase commit RPC migration also uses only
+current v1 Bundle columns.
+
+The complete build/typecheck/lint sequence and 3,358 unit tests passed after
+these adaptations. Full integration verification is in progress under Java 21;
+an earlier attempt stopped because the default Java could not start Firebase.
+A focused HTTP conformance run passed all 121 scenarios.
+
+Next also changes Kysely transaction isolation/retries, Firebase structured-field
+replacement, and Supabase idempotent Channel deletion. Kysely's baseline job
+`job-20260922045916-qk1pf9` passed iOS 27/27 and Android 27/27, with all 12 builtin
+and transport receipts preserved, but requires a replacement run for that
+transaction change. Firebase and Supabase old jobs were canceled for refresh;
+AWS's CI waiter was stopped before creating a job. Other provider runtime paths,
+native code and Detox scenario code are unaffected and retain their actual SHAs.
+
+Firebase was redeployed from the merged workspace. Supabase's complete vendored
+function input was refreshed; its reachable bundle was unchanged. Migration
+`20260922000000_idempotent_channel_commit.sql` was applied with its original
+history name, preserving 664 existing Bundles and nine earlier migrations.
+A transaction under `service_role` verified a manifest-field update plus a
+missing Channel delete, then rolled back all probe data. Function permissions
+remain service-role-only. Both remote artifact probes returned 401 for missing
+or invalid keys, 200 for valid keys, and verified an asset hash. AWS Lambda 17
+and the Cloudflare runtime are byte-identical to their existing deployments
+(after established configuration substitutions); the AWS IAM correction remains
+applied. Private provenance is recorded in `workspace-provenance-post1329.json`.

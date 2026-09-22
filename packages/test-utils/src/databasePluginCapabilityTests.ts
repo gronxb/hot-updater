@@ -195,13 +195,35 @@ export const registerDatabasePluginCapabilityTests = (
     });
 
     it("treats a missing generic channel delete as idempotent", async () => {
+      const plugin = state.getPlugin();
+      const bundle = createBundleRowFixture("97");
+      await commit(plugin, {
+        model: "bundles",
+        operation: "insert",
+        row: bundle,
+      });
       await expect(
-        commit(state.getPlugin(), {
-          model: "channels",
-          operation: "delete",
-          where: { id: "ffffffff-ffff-ffff-ffff-ffffffffffff" },
-        }),
+        commit(
+          plugin,
+          {
+            model: "bundles",
+            operation: "update",
+            where: { id: bundle.id },
+            update: {
+              manifest_storage_uri: "storage://updated-before-missing-delete",
+            },
+          },
+          {
+            model: "channels",
+            operation: "delete",
+            where: { id: "ffffffff-ffff-ffff-ffff-ffffffffffff" },
+          },
+        ),
       ).resolves.toEqual({ committed: true });
+      await expect(plugin.models.bundles.findById(bundle.id)).resolves.toEqual({
+        ...bundle,
+        manifest_storage_uri: "storage://updated-before-missing-delete",
+      });
     });
 
     it("deletes an artifact and an independent empty channel atomically", async () => {

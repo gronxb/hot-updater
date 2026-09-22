@@ -2131,6 +2131,12 @@ importers:
         specifier: workspace:*
         version: link:../plugin-core
     devDependencies:
+      '@hot-updater/server':
+        specifier: workspace:*
+        version: link:../../packages/server
+      '@hot-updater/test-utils':
+        specifier: workspace:*
+        version: link:../../packages/test-utils
       '@types/node':
         specifier: 'catalog:'
         version: 20.19.43
