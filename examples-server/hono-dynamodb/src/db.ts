@@ -28,7 +28,11 @@ export const hotUpdater = createHotUpdater({
   database,
   clientAccess: { type: "api-key" },
   storage: [
-    mockStorage({}),
+    process.env.NODE_ENV === "test"
+      ? (
+          await import("@hot-updater/test-utils/node")
+        ).createReleaseCatalogTestStorage()
+      : mockStorage({}),
     s3Storage({
       region,
       endpoint: process.env.AWS_S3_ENDPOINT ?? "http://localhost:9000",

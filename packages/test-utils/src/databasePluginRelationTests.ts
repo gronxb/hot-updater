@@ -25,6 +25,44 @@ export const registerDatabasePluginRelationTests = (
   state: RelationTestState,
 ): void => {
   describe("bundle_patches table", () => {
+    it("hydrates multiple owners and deletes only the selected owner's patches", async () => {
+      const plugin = state.getPlugin();
+      const base = await insertRow(plugin, "51");
+      const first = await insertRow(plugin, "52");
+      const second = await insertRow(plugin, "53");
+      const firstPatch = createBundlePatchRowFixture("52", first.id, base.id);
+      const secondPatch = createBundlePatchRowFixture("53", second.id, base.id);
+      await commit(
+        plugin,
+        { model: "bundlePatches", operation: "insert", row: firstPatch },
+        { model: "bundlePatches", operation: "insert", row: secondPatch },
+      );
+      const patches = await plugin.models.bundlePatches.findByBundleIds([
+        first.id,
+        second.id,
+      ]);
+      expect([...patches].sort((a, b) => a.id.localeCompare(b.id))).toEqual([
+        firstPatch,
+        secondPatch,
+      ]);
+      await expect(
+        plugin.models.bundlePatches.findByBundleIds([]),
+      ).resolves.toEqual([]);
+      await expect(
+        commit(plugin, {
+          model: "bundlePatches",
+          operation: "delete",
+          where: { bundleId: first.id },
+        }),
+      ).resolves.toEqual({ committed: true });
+      await expect(
+        plugin.models.bundlePatches.findByBundleIds([first.id, second.id]),
+      ).resolves.toEqual([secondPatch]);
+      await expect(plugin.models.bundles.findById(first.id)).resolves.toEqual(
+        first,
+      );
+    });
+
     it("commits bundle and patch rows together but reads them separately", async () => {
       const plugin = state.getPlugin();
       const base = await insertRow(plugin, "61");

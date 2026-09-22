@@ -3,6 +3,8 @@ import type {
   ChannelRow,
   ReleaseRow,
 } from "@hot-updater/plugin-core";
+import { createHotUpdater } from "@hot-updater/server";
+import { createHandlerHttpTestClient } from "@hot-updater/test-utils";
 import { setupDatabasePluginTestSuite } from "@hot-updater/test-utils";
 import { env } from "cloudflare:test";
 import {
@@ -142,6 +144,11 @@ const createReleaseRow = (
 });
 
 setupDatabasePluginTestSuite({
+  createHttpClient: (options) =>
+    createHandlerHttpTestClient(
+      createHotUpdater({ ...options, clientAccess: { type: "public" } })
+        .handlers,
+    ),
   name: "cloudflare d1 http fixed-model database plugin",
   migrate: async () => {
     state.db = env.DB;
@@ -158,6 +165,11 @@ setupDatabasePluginTestSuite({
 });
 
 setupDatabasePluginTestSuite({
+  createHttpClient: (options) =>
+    createHandlerHttpTestClient(
+      createHotUpdater({ ...options, clientAccess: { type: "public" } })
+        .handlers,
+    ),
   name: "cloudflare worker d1 fixed-model database plugin",
   migrate: () => undefined,
   createPlugin: () => d1RuntimeDatabase(env.DB),

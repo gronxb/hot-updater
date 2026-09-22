@@ -3,6 +3,11 @@ import type { ClientSession } from "mongodb";
 import { MongoClient } from "mongodb";
 
 import {
+  HOT_UPDATER_CORE_SCHEMA_KEY,
+  HOT_UPDATER_SCHEMA_VERSION,
+  HOT_UPDATER_SETTINGS_TABLE,
+} from "../schema/types";
+import {
   matchesMongoTestFilter,
   type MongoTestRow,
   sortMongoTestRows,
@@ -335,6 +340,17 @@ const createCollection = (
 const createDatabase = (tables: Tables, hooks: MongoTestHooks) => ({
   collection: (name: string) => {
     switch (name) {
+      case HOT_UPDATER_SETTINGS_TABLE:
+        return {
+          find: ({ key }: { key: string }) => ({
+            limit: () => ({
+              toArray: async () =>
+                key === HOT_UPDATER_CORE_SCHEMA_KEY
+                  ? [{ key, value: HOT_UPDATER_SCHEMA_VERSION }]
+                  : [],
+            }),
+          }),
+        };
       case "bundles":
         return createCollection(tables, "bundles", hooks);
       case "bundle_patches":

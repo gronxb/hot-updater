@@ -346,6 +346,12 @@ export const registerDatabasePluginOfficialDomainTests = (
       await expect(
         plugin.models.apiKeys.findByHash(first.hash),
       ).resolves.toEqual(first);
+      await expect(
+        plugin.models.apiKeys.findByHash(second.hash),
+      ).resolves.toEqual(second);
+      await expect(
+        plugin.models.apiKeys.findByHash("unknown-key-hash"),
+      ).resolves.toBeNull();
       await expect(plugin.models.apiKeys.list()).resolves.toEqual([
         second,
         first,
@@ -356,6 +362,12 @@ export const registerDatabasePluginOfficialDomainTests = (
           revokedAtMs: 300,
         }),
       ).resolves.toEqual({ ...first, revoked_at_ms: 300 });
+      await expect(
+        plugin.models.apiKeys.revoke({ id: "missing-key", revokedAtMs: 400 }),
+      ).resolves.toBeNull();
+      await expect(
+        plugin.models.apiKeys.findByHash(second.hash),
+      ).resolves.toEqual(second);
     });
   });
 };

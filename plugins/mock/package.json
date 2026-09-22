@@ -37,6 +37,8 @@
   },
   "devDependencies": {
     "@types/node": "catalog:",
-    "vitest": "catalog:"
+    "vitest": "catalog:",
+    "@hot-updater/server": "workspace:*",
+    "@hot-updater/test-utils": "workspace:*"
   }
 }

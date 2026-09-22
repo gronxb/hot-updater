@@ -4,6 +4,10 @@ import { fileURLToPath } from "url";
 
 import type { Bundle } from "@hot-updater/core";
 import type { HotUpdaterAPI } from "@hot-updater/server";
+import {
+  createHttpTestClient,
+  setupReleaseCatalogTestSuite,
+} from "@hot-updater/test-utils";
 import { setupBundleMethodsTestSuite } from "@hot-updater/test-utils";
 import {
   cleanupServer,
@@ -119,6 +123,15 @@ describe("Hot Updater Handler Integration Tests (Express)", () => {
       hotUpdater.updateBundleById(bundleId, newBundle),
     deleteBundleById: (bundleId: string) =>
       hotUpdater.deleteBundleById(bundleId),
+  });
+
+  setupReleaseCatalogTestSuite({
+    getClient: () =>
+      createHttpTestClient({
+        clientBaseUrl: `${baseUrl}/hot-updater`,
+        adminBaseUrl: `${baseUrl}/hot-updater/admin`,
+        adminHeaders: { Authorization: `Bearer ${TEST_ADMIN_AUTH_TOKEN}` },
+      }),
   });
 
   it("keeps the client handler reachable without admin credentials", async () => {
