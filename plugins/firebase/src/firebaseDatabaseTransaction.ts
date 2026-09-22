@@ -73,7 +73,8 @@ export const createFirebaseTransaction = (
   ) => {
     const staged = await state.findOne(input);
     if (staged !== null) return staged;
-    remember(input.model, await reads.findOne(input));
+    // Staging must retain complete rows for later updates and persistence.
+    remember(input.model, await reads.findOne({ ...input, select: undefined }));
     return state.findOne(input);
   };
   const loadPatches = async (
