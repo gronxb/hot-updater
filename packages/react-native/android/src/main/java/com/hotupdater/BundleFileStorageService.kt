@@ -2133,7 +2133,9 @@ class BundleFileStorageService(
                         if (promoted && finalBundleDir.exists() && !finalBundleDir.deleteRecursively()) {
                             Log.e(TAG, "Failed to remove uncommitted bundle: ${finalBundleDir.absolutePath}")
                         }
-                        if (hadExistingFinal && !finalBundleDir.exists() && backupDir.exists() &&
+                        if (hadExistingFinal &&
+                            !finalBundleDir.exists() &&
+                            backupDir.exists() &&
                             !directoryRenamer(backupDir, finalBundleDir)
                         ) {
                             Log.e(TAG, "Failed to restore install backup: ${backupDir.absolutePath}")

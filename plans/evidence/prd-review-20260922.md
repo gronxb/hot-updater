@@ -78,7 +78,10 @@ demonstrated. The previously verified idempotent shared-asset upload fix remains
   local load. A serial rerun of that file passed all 57 tests with unchanged
   timeouts. No assertion failure remains.
 - Android: 69 Debug and 69 Release unit tests passed, with old-architecture
-  Debug/Release and new-architecture Debug Kotlin compilation. Ktlint passed.
+  Debug/Release and new-architecture Debug Kotlin compilation. Local ktlint
+  initially passed, but CI's pinned ktlint 1.3.1 rejected two condition-wrapping
+  positions. The formatting-only correction passes ktlint 1.3.1 across all
+  Android Kotlin sources; E2E fingerprints were regenerated afterward.
   Android lint passed with the installed React Native version's minSdk 24; the
   standalone lint configuration defaults to an incompatible minSdk 21.
 - The v0.85.0 Release E2E app fingerprints were regenerated from the final native
