@@ -1,7 +1,11 @@
 # Adapter authoring: adversarial design review
 
-Status: design decision and implementation gates; not an implemented SDK.
-Reviewed against #1331 at `c259b4a3e`, stacked on #1330 and targeting `next`.
+Status: requirements review; not an implemented SDK or API freeze.
+The original review used #1331 at `c259b4a3e`. Independent follow-up reviews on
+2026-09-22 used the refreshed cleanup stack including `next` at `79c3eea5a`
+and the separate authoring prototype at `670050811` / `2f4a51ddf`.
+The [target PRD](./provider-contract-simplification-prd.md) defines the delivery
+gates that follow from this review.
 
 ## Verdict
 
@@ -17,9 +21,10 @@ once. Preserve native atomicity and require bounded access paths as part of that
 contract. Do not approve the authoring work as complete until both developer
 effort and database work meet the gates below.
 
-This is a source-based adversarial review, not a new benchmark or an independent
-multi-reviewer sign-off. Previously passing tests do not cover every cost claim
-discussed here.
+The original review was source-based. The follow-up independently examined
+query/write cost, native execution feasibility, and intermediate stack boundaries.
+Source probes and passing conformance tests do not establish live-cloud query
+cost or certify the unfinished authoring SDK.
 
 ## Reference and limits
 
@@ -186,3 +191,57 @@ core and its shared scenarios without rewriting that rule in each provider.
 Physical schema/index changes can still require provider-specific work. Line
 count reduction alone is not acceptance, and the new SDK must not be presented
 as complete while the cost findings remain unresolved.
+
+
+## Independent follow-up and agreed requirements
+
+The native-execution review accepts the requirements boundary: four normalized
+read intents (`get`, `page`, `exists`, `count`), direct native transactions,
+selective staging, and private compilation to D1 batches / Supabase RPC. This is
+feasibility at the requirements level. Concrete guarded-write types, native
+compiler behavior and physical access layouts require the PRD's prototype gates
+before API freeze. Authors must not implement a public instruction interpreter.
+
+Core must define policy once, including ordered conflicts, Insights attribution
+and head transitions. Both JavaScript execution and generated SQL derive from
+that definition. Independently handwritten domain routines moved into a core
+directory do not satisfy the requirement. Native writes must include upsert,
+conditional match outcomes, counter deltas and HLL register maxima; simple SQL
+updates must not acquire universal before/after snapshots.
+
+The cost review rejects the current authoring prototype for shipment:
+
+| Finding | Evidence and required correction |
+| --- | --- |
+| Release index fanout | The prototype creates 31 projection items per Release. Three inserts sharing a Bundle and Channel expand to 101 DynamoDB actions before catalog publication. Measure the complete write envelope; ordinary operations must remain viable. |
+| Predicate loss | A recognized equality plus an unsupported equality can select a partition while the unsupported condition disappears. Core must validate exact query shapes, and lowering must consume every predicate or reject before I/O. |
+| Count contention | Time-keyed heads improve range selection, but a scope-wide version retry lets unrelated activity repeatedly invalidate the count. Define concurrency semantics and test sustained unrelated and matching writes. |
+| Deployment mismatch | The prototype's v2 Insights scope key family is absent from generated Lambda IAM. Exercise generated keys against policy and update the existing 1.0.0 setup path together. |
+| Pagination and RPC cost | Firestore advancing streams still accept deep offsets and can issue one serial request per emitted item; owner traversal serializes separate owners. Measure round trips as well as evaluated rows. |
+| Hidden aggregate work | Cursor Bundle pages still calculate full totals. Separate explicit exact counts from page reads and migrate consumers deliberately. |
+| Unnecessary hydration | Exact-document and DynamoDB canonical-row paths can ignore the required projection; metadata projection maintenance can reread already observed rows. Preserve intent and attempt-local state. |
+| Unfinished authoring | The new deferred interface remains unused by native registrations and still requires five Insights callbacks. It is not the public authoring SDK. |
+
+One smaller Release-index candidate fixes `platform` and `enabled` in each
+partition and indexes the eight subsets of Bundle, Channel and target app
+version. An omitted low-cardinality predicate would select at most four disjoint
+ordered streams. This is an unproven prototype candidate, not an accepted layout:
+null values, all filter combinations, cursor merging, action counts, bytes and
+consistency must be measured before choosing it. Posting-list intersection or
+choosing a small single-field partition can still examine unrelated records.
+
+The native review also identified source-derived counterexamples to reproduce:
+D1 `delete -> update` ordering, expectation-only commits, and failed-guard
+version diagnostics; PostgreSQL/Drizzle isolation and absent-key expectations;
+synchronous Drizzle transaction lifetimes; Prisma register-max execution; and
+MongoDB parent/child phantom protection. These are explicit test/prototype gates,
+not newly claimed runtime reproductions. Preserve approximate HLL user metrics.
+
+Intermediate stack checks independently found a stale Standalone field type
+that was hidden by a later test rewrite. It was corrected in the earlier layer
+and reverified. Such cut validation proves reviewability of the cleanup, not
+completion of the stronger authoring or no-overfetch requirements.
+
+Publish the requirements document first, then accurately scoped implementation
+PRs. Keep the rejected prototype outside those cleanup PRs. Physical schema,
+index and IAM corrections remain part of the single unreleased 1.0.0 baseline.
