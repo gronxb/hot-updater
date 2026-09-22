@@ -1,5 +1,5 @@
 import {
-  type BuildType,
+  type BuildConfig,
   ConfigBuilder,
   createHotUpdaterConfigScaffoldFromBuilder,
   type HotUpdaterConfigScaffold,
@@ -13,7 +13,7 @@ export type AwsConfigScaffoldAuthMode =
   | { mode: "sso"; profile: string };
 
 export const getConfigScaffold = (
-  build: BuildType,
+  build: BuildConfig,
   authMode: AwsConfigScaffoldAuthMode,
 ): HotUpdaterConfigScaffold => {
   const storageConfig: ProviderConfig = {
@@ -89,7 +89,7 @@ const awsOptions = {
   }
 
   const builder = new ConfigBuilder()
-    .setBuildType(build)
+    .setBuild(build)
     .setStorage(storageConfig)
     .setDatabase(databaseConfig)
     .setIntermediateCode(
@@ -119,7 +119,7 @@ const awsOptions = {
 };
 
 export const getConfigTemplate = (
-  build: BuildType,
+  build: BuildConfig,
   authMode: AwsConfigScaffoldAuthMode,
 ) => getConfigScaffold(build, authMode).text;
 

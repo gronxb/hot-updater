@@ -1,4 +1,4 @@
-import type { BuildType, RunInitOptions } from "@hot-updater/cli-tools";
+import type { BuildConfig, RunInitOptions } from "@hot-updater/cli-tools";
 import {
   getHotUpdaterEnvValue,
   getMissingInitInputs,
@@ -37,7 +37,7 @@ const REQUIRED_PACKAGES = {
 };
 
 interface BuildPluginChoice {
-  name: BuildType;
+  build: BuildConfig;
   label: string;
   hint?: string;
   dependencies: string[];
@@ -46,21 +46,30 @@ interface BuildPluginChoice {
 
 const BUILD_PLUGINS: Record<"bare" | "rock" | "expo", BuildPluginChoice> = {
   bare: {
-    name: "bare",
+    build: {
+      imports: [{ pkg: "@hot-updater/bare", named: ["bare"] }],
+      configString: "bare({ enableHermes: true })",
+    },
     label: "Bare",
     hint: "React Native CLI",
     dependencies: [],
     devDependencies: ["@hot-updater/bare"],
   },
   rock: {
-    name: "rock",
+    build: {
+      imports: [{ pkg: "@hot-updater/rock", named: ["rock"] }],
+      configString: "rock()",
+    },
     label: "Rock",
     hint: "React Native Enterprise Framework by Callstack",
     dependencies: [],
     devDependencies: ["@hot-updater/rock"],
   },
   expo: {
-    name: "expo",
+    build: {
+      imports: [{ pkg: "@hot-updater/expo", named: ["expo"] }],
+      configString: "expo()",
+    },
     label: "Expo",
     dependencies: [],
     devDependencies: ["@hot-updater/expo"],
@@ -236,7 +245,7 @@ export const init = async (options: InitOptions = {}) => {
     process.exit(1);
   }
 
-  const build = buildPluginPackage.name;
+  const build = buildPluginPackage.build;
   const runInitOptions = {
     build,
     envFile: options.envFile,

@@ -31,7 +31,7 @@ export const getConfigScaffold = (
 
   return createHotUpdaterConfigScaffoldFromBuilder(
     new ConfigBuilder()
-      .setBuildType(build)
+      .setBuild(build)
       .setStorage(storageConfig)
       .setDatabase(databaseConfig),
   );

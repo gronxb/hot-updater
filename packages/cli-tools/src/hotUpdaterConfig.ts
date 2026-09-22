@@ -15,7 +15,7 @@ import {
 } from "oxc-parser";
 
 import {
-  type BuildType,
+  type BuildConfig,
   ConfigBuilder,
   type ImportInfo,
   type ProviderConfig,
@@ -35,7 +35,7 @@ export type ManagedHelperStatement = {
 };
 
 export type CreateHotUpdaterConfigScaffoldOptions = {
-  build: BuildType;
+  build: BuildConfig;
   storage: ProviderConfig;
   database: ProviderConfig;
   extraImports?: ImportInfo[];
@@ -83,11 +83,8 @@ const MANAGED_IMPORT_PACKAGES = new Set([
   "@aws-sdk/credential-provider-sso",
   "@aws-sdk/credential-providers",
   "@hot-updater/aws",
-  "@hot-updater/bare",
   "@hot-updater/cloudflare",
-  "@hot-updater/expo",
   "@hot-updater/firebase",
-  "@hot-updater/rock",
   "@hot-updater/supabase",
 ]);
 const MANAGED_HELPER_NAMES = new Set([
@@ -96,8 +93,6 @@ const MANAGED_HELPER_NAMES = new Set([
   "credential",
   "storageOptions",
 ]);
-const KNOWN_BUILD_CALLEES = new Set(["bare", "expo", "rock"]);
-
 type ConfigSource = {
   readonly program: Program;
   readonly text: string;
@@ -276,6 +271,19 @@ const getObjectPropertyName = (property: ObjectPropertyKind): string | null => {
 
   return null;
 };
+
+const isImportedFromHotUpdaterIntegration = (
+  source: ConfigSource,
+  localName: string,
+) =>
+  source.program.body.some(
+    (statement) =>
+      statement.type === "ImportDeclaration" &&
+      statement.source.value.startsWith("@hot-updater/") &&
+      statement.specifiers.some(
+        (specifier) => specifier.local.name === localName,
+      ),
+  );
 
 const isDataProperty = (
   property: ObjectPropertyKind,
@@ -607,7 +615,9 @@ const updateManagedObject = (
         continue;
       }
 
-      if (!KNOWN_BUILD_CALLEES.has(existingCallee)) {
+      if (
+        !isImportedFromHotUpdaterIntegration(existing.source, existingCallee)
+      ) {
         return null;
       }
     } else if (existingCallee === nextCallee) {
@@ -694,9 +704,23 @@ const rebuildImportBlock = (
   }
 
   const preservedImportTexts = importDeclarations
-    .filter(
-      (declaration) => !MANAGED_IMPORT_PACKAGES.has(declaration.source.value),
-    )
+    .filter((declaration) => {
+      if (MANAGED_IMPORT_PACKAGES.has(declaration.source.value)) return false;
+      if (!declaration.source.value.startsWith("@hot-updater/")) return true;
+      const config = findDefineConfigObject(source);
+      if (!config) return true;
+      const managedCallees = new Set(
+        ["build", "storage", "database"]
+          .map((propertyName) =>
+            findManagedProperty(config.objectExpression, propertyName),
+          )
+          .map((property) => (property ? getCallCallee(property.value) : null))
+          .filter((callee): callee is string => callee !== null),
+      );
+      return !declaration.specifiers.some((specifier) =>
+        managedCallees.has(specifier.local.name),
+      );
+    })
     .map((declaration) =>
       source.text
         .slice(getTopLevelFullStart(source, declaration), declaration.end)
@@ -889,7 +913,7 @@ export const createHotUpdaterConfigScaffold = ({
     .join("\n\n");
 
   const builder = new ConfigBuilder()
-    .setBuildType(build)
+    .setBuild(build)
     .setStorage(storage)
     .setDatabase(database);
 

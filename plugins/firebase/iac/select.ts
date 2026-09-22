@@ -1,5 +1,5 @@
 import {
-  type BuildType,
+  type BuildConfig,
   getInitProviderTextPromptValues,
   link,
   makeEnv,
@@ -26,7 +26,7 @@ export const setEnv = async ({
   applicationCredentials?: string;
   projectId: string;
   storageBucket: string;
-  build: BuildType;
+  build: BuildConfig;
   region: string;
 }) => {
   await makeEnv(

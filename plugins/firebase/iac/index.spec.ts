@@ -189,6 +189,11 @@ import { initFirebaseUser } from "./select";
 
 const API_KEY = "AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE";
 
+const bareBuild = {
+  imports: [{ pkg: "@hot-updater/bare", named: ["bare"] }],
+  configString: "bare({ enableHermes: true })",
+};
+
 describe("Firebase project creation", () => {
   beforeEach(async () => {
     mocks.existingEnv = {};
@@ -220,7 +225,7 @@ describe("Firebase project creation", () => {
   });
 
   it("collects all inputs and consent before creating the project", async () => {
-    await runInit({ build: "bare" });
+    await runInit({ build: bareBuild });
 
     expect(mocks.events).toEqual([
       "project",
@@ -237,7 +242,7 @@ describe("Firebase project creation", () => {
       GOOGLE_APPLICATION_CREDENTIALS: "/tmp/firebase-credentials.json",
     };
 
-    await runInit({ build: "bare" });
+    await runInit({ build: bareBuild });
 
     const initCall = vi.mocked(initFirebaseUser).mock.calls[0];
     expect(initCall?.[3]).toBeUndefined();
@@ -262,7 +267,7 @@ describe("Firebase project creation", () => {
 
     // When
     await runInit({
-      build: "bare",
+      build: bareBuild,
       envFile: ".env.hotupdater",
     });
 
@@ -314,7 +319,7 @@ describe("Firebase project creation", () => {
     };
 
     // When
-    await runInit({ build: "bare" });
+    await runInit({ build: bareBuild });
 
     // Then
     expect(p.log.message).toHaveBeenCalledWith(
@@ -341,7 +346,7 @@ describe("Firebase project creation", () => {
       new Error("Firebase v0 infrastructure was detected"),
     );
 
-    await expect(runInit({ build: "bare" })).rejects.toThrow(
+    await expect(runInit({ build: bareBuild })).rejects.toThrow(
       "Firebase v0 infrastructure was detected",
     );
 
@@ -358,7 +363,7 @@ describe("Firebase project creation", () => {
       ),
     );
 
-    await expect(runInit({ build: "bare" })).rejects.toThrow(
+    await expect(runInit({ build: bareBuild })).rejects.toThrow(
       "Firebase v0 infrastructure was detected at Function hot-updater-v1",
     );
 
@@ -402,7 +407,7 @@ describe("Firebase project creation", () => {
     mocks.existingProject = true;
     mocks.functionsListError = new Error("Failed to list functions");
 
-    await expect(runInit({ build: "bare" })).rejects.toThrow(
+    await expect(runInit({ build: bareBuild })).rejects.toThrow(
       "Could not list Firebase Functions for project existing-project: Failed to list functions. Run npx firebase functions:list --project existing-project --debug for details.",
     );
 

@@ -1,13 +1,16 @@
 import { describe, expect, it } from "vitest";
 
-import {
-  type BuildType,
-  ConfigBuilder,
-  type ProviderConfig,
-} from "./ConfigBuilder"; // Adjust the import path as necessary
+import { ConfigBuilder, type ProviderConfig } from "./ConfigBuilder"; // Adjust the import path as necessary
+
+type TestBuildName = "bare" | "rock";
+
+const testBuildConfig = (name: TestBuildName): ProviderConfig => ({
+  imports: [{ pkg: `@hot-updater/${name}`, named: [name] }],
+  configString: name === "bare" ? "bare({ enableHermes: true })" : "rock()",
+});
 
 const getAwsConfigTemplate = (
-  build: BuildType,
+  build: TestBuildName,
   {
     sessionToken,
   }: {
@@ -53,14 +56,14 @@ const commonOptions = {
   }
 
   return new ConfigBuilder()
-    .setBuildType(build)
+    .setBuild(testBuildConfig(build))
     .setStorage(storageConfig)
     .setDatabase(databaseConfig)
     .setIntermediateCode(intermediate)
     .getResult();
 };
 
-const getSupabaseConfigTemplate = (build: BuildType) => {
+const getSupabaseConfigTemplate = (build: TestBuildName) => {
   const storageConfig: ProviderConfig = {
     imports: [{ pkg: "@hot-updater/supabase", named: ["supabaseStorage"] }],
     configString: `supabaseStorage({
@@ -78,13 +81,13 @@ const getSupabaseConfigTemplate = (build: BuildType) => {
   };
 
   return new ConfigBuilder()
-    .setBuildType(build)
+    .setBuild(testBuildConfig(build))
     .setStorage(storageConfig)
     .setDatabase(databaseConfig)
     .getResult();
 };
 
-const getCloudflareConfigTemplate = (build: BuildType) => {
+const getCloudflareConfigTemplate = (build: TestBuildName) => {
   const storageConfig: ProviderConfig = {
     imports: [{ pkg: "@hot-updater/cloudflare", named: ["r2Storage"] }],
     configString: `r2Storage({
@@ -106,13 +109,13 @@ const getCloudflareConfigTemplate = (build: BuildType) => {
   };
 
   return new ConfigBuilder()
-    .setBuildType(build)
+    .setBuild(testBuildConfig(build))
     .setStorage(storageConfig)
     .setDatabase(databaseConfig)
     .getResult();
 };
 
-const getFirebaseConfigTemplate = (build: BuildType) => {
+const getFirebaseConfigTemplate = (build: TestBuildName) => {
   const storageConfig: ProviderConfig = {
     imports: [{ pkg: "@hot-updater/firebase", named: ["firebaseStorage"] }],
     configString: `firebaseStorage({
@@ -137,7 +140,7 @@ const getFirebaseConfigTemplate = (build: BuildType) => {
 const credential = applicationDefault();`.trim();
 
   return new ConfigBuilder()
-    .setBuildType(build)
+    .setBuild(testBuildConfig(build))
     .setStorage(storageConfig)
     .setDatabase(databaseConfig)
     .addImport({ pkg: "firebase-admin/app", named: ["applicationDefault"] })

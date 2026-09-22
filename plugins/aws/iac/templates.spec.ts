@@ -20,6 +20,11 @@ afterEach(async () => {
   );
 });
 
+const bareBuild = {
+  imports: [{ pkg: "@hot-updater/bare", named: ["bare"] }],
+  configString: "bare({ enableHermes: true })",
+};
+
 describe("AWS managed config scaffold", () => {
   it("renders only client-owned network options in the app bootstrap", () => {
     const source = transformTemplate(SOURCE_TEMPLATE, {
@@ -38,7 +43,7 @@ describe("AWS managed config scaffold", () => {
   });
 
   it("renders DynamoDB as the managed metadata database", () => {
-    const scaffold = getConfigScaffold("bare", {
+    const scaffold = getConfigScaffold(bareBuild, {
       mode: "local",
       profile: null,
     });
@@ -93,7 +98,7 @@ export default defineConfig({
 `,
       "utf8",
     );
-    const scaffold = getConfigScaffold("bare", {
+    const scaffold = getConfigScaffold(bareBuild, {
       mode: "sso",
       profile: "hot-updater",
     });
@@ -117,7 +122,7 @@ export default defineConfig({
     await fs.writeFile(
       configPath,
       `${
-        getConfigScaffold("bare", {
+        getConfigScaffold(bareBuild, {
           mode: "sso",
           profile: "hot-updater",
         }).text
@@ -126,7 +131,7 @@ export default defineConfig({
     );
 
     await writeHotUpdaterConfig(
-      getConfigScaffold("bare", { mode: "local", profile: null }),
+      getConfigScaffold(bareBuild, { mode: "local", profile: null }),
       configPath,
     );
 
@@ -139,7 +144,7 @@ export default defineConfig({
   });
 
   it("renders access key credentials for account mode", () => {
-    const scaffold = getConfigScaffold("bare", { mode: "account" });
+    const scaffold = getConfigScaffold(bareBuild, { mode: "account" });
 
     expect(scaffold.text).toContain(
       "accessKeyId: process.env.HOT_UPDATER_S3_ACCESS_KEY_ID!",
@@ -153,7 +158,7 @@ export default defineConfig({
   });
 
   it("renders SSO credentials for sso mode", () => {
-    const scaffold = getConfigScaffold("bare", {
+    const scaffold = getConfigScaffold(bareBuild, {
       mode: "sso",
       profile: "default",
     });
@@ -167,7 +172,7 @@ export default defineConfig({
   });
 
   it("renders the default provider chain for local session mode", () => {
-    const scaffold = getConfigScaffold("bare", {
+    const scaffold = getConfigScaffold(bareBuild, {
       mode: "local",
       profile: null,
     });
@@ -180,7 +185,7 @@ export default defineConfig({
   });
 
   it("renders a shared profile lookup for local profile mode", () => {
-    const scaffold = getConfigScaffold("bare", {
+    const scaffold = getConfigScaffold(bareBuild, {
       mode: "local",
       profile: "work",
     });

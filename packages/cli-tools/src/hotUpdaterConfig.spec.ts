@@ -4,20 +4,23 @@ import path from "path";
 
 import { afterEach, describe, expect, it } from "vitest";
 
-import {
-  type BuildType,
-  ConfigBuilder,
-  type ProviderConfig,
-} from "./ConfigBuilder";
+import { ConfigBuilder, type ProviderConfig } from "./ConfigBuilder";
 import {
   createHotUpdaterConfigScaffoldFromBuilder,
   writeHotUpdaterConfig,
   type ManagedHelperStatement,
 } from "./hotUpdaterConfig";
 
+type TestBuildName = "bare" | "rock";
+
+const testBuildConfig = (name: TestBuildName): ProviderConfig => ({
+  imports: [{ pkg: `@hot-updater/${name}`, named: [name] }],
+  configString: name === "bare" ? "bare({ enableHermes: true })" : "rock()",
+});
+
 const tempDirs: string[] = [];
 
-const createSupabaseScaffold = (build: BuildType) => {
+const createSupabaseScaffold = (build: TestBuildName) => {
   const storage: ProviderConfig = {
     imports: [{ pkg: "@hot-updater/supabase", named: ["supabaseStorage"] }],
     configString: `supabaseStorage({
@@ -36,14 +39,14 @@ const createSupabaseScaffold = (build: BuildType) => {
 
   return createHotUpdaterConfigScaffoldFromBuilder(
     new ConfigBuilder()
-      .setBuildType(build)
+      .setBuild(testBuildConfig(build))
       .setStorage(storage)
       .setDatabase(database),
   );
 };
 
 const createAwsScaffold = (
-  build: BuildType,
+  build: TestBuildName,
   { profile }: { profile: string | null },
 ) => {
   const storage: ProviderConfig = {
@@ -86,7 +89,7 @@ const createAwsScaffold = (
       ];
 
   const builder = new ConfigBuilder()
-    .setBuildType(build)
+    .setBuild(testBuildConfig(build))
     .setStorage(storage)
     .setDatabase(database)
     .setIntermediateCode(

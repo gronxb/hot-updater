@@ -3,12 +3,12 @@ import {
   createHotUpdaterConfigScaffoldFromBuilder,
   type HotUpdaterConfigScaffold,
   type ProviderConfig,
-  type BuildType,
+  type BuildConfig,
   type ManagedHelperStatement,
 } from "@hot-updater/cli-tools";
 
 export const getConfigScaffold = (
-  build: BuildType,
+  build: BuildConfig,
 ): HotUpdaterConfigScaffold => {
   const storageConfig: ProviderConfig = {
     imports: [{ pkg: "@hot-updater/firebase", named: ["firebaseStorage"] }],
@@ -40,7 +40,7 @@ const credential = applicationDefault();`.trim(),
   ];
 
   const builder = new ConfigBuilder()
-    .setBuildType(build)
+    .setBuild(build)
     .setStorage(storageConfig)
     .setDatabase(databaseConfig)
     .addImport({ pkg: "firebase-admin/app", named: ["applicationDefault"] })

@@ -132,6 +132,11 @@ import {
 } from "./cloudflareInitErrors";
 import { runInit } from "./index";
 
+const bareBuild = {
+  imports: [{ pkg: "@hot-updater/bare", named: ["bare"] }],
+  configString: "bare({ enableHermes: true })",
+};
+
 describe("Cloudflare init discovery", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -207,7 +212,7 @@ describe("Cloudflare init discovery", () => {
 
     // When
     const initialization = runInit({
-      build: "bare",
+      build: bareBuild,
       envFile: ".env.hotupdater",
     });
 
@@ -233,7 +238,7 @@ describe("Cloudflare init discovery", () => {
     mocks.inputSecrets.mockRejectedValue(new Error("stop after login"));
 
     // When
-    const initialization = runInit({ build: "bare" });
+    const initialization = runInit({ build: bareBuild });
 
     // Then
     await expect(initialization).rejects.toThrow("stop after login");
@@ -272,7 +277,7 @@ describe("Cloudflare init discovery", () => {
 
     // When
     const initialization = runInit({
-      build: "bare",
+      build: bareBuild,
       envFile: ".env.hotupdater",
     });
 
@@ -293,7 +298,7 @@ describe("Cloudflare init discovery", () => {
     );
 
     // When
-    const initialization = runInit({ build: "bare" });
+    const initialization = runInit({ build: bareBuild });
 
     // Then
     await expect(initialization).rejects.toBeInstanceOf(
@@ -325,7 +330,7 @@ describe("Cloudflare init discovery", () => {
       },
     });
 
-    await expect(runInit({ build: "bare" })).rejects.toThrow(
+    await expect(runInit({ build: bareBuild })).rejects.toThrow(
       "Cloudflare v0 infrastructure was detected at D1 database ota",
     );
 
@@ -345,7 +350,7 @@ describe("Cloudflare init discovery", () => {
       .spyOn(globalThis, "fetch")
       .mockResolvedValue(new Response(null, { status: 404 }));
 
-    await expect(runInit({ build: "bare" })).rejects.toThrow(
+    await expect(runInit({ build: bareBuild })).rejects.toThrow(
       "Cloudflare v0 infrastructure was detected at Worker hot-updater",
     );
 
@@ -380,7 +385,7 @@ describe("Cloudflare init discovery", () => {
     );
 
     // When
-    const initialization = runInit({ build: "bare" });
+    const initialization = runInit({ build: bareBuild });
 
     // Then
     await expect(initialization).rejects.toBeInstanceOf(
@@ -425,7 +430,7 @@ describe("Cloudflare init discovery", () => {
     );
 
     // When
-    const initialization = runInit({ build: "bare" });
+    const initialization = runInit({ build: bareBuild });
 
     // Then
     await expect(initialization).rejects.toBeInstanceOf(
@@ -450,7 +455,7 @@ describe("Cloudflare init discovery", () => {
     );
 
     // When
-    const initialization = runInit({ build: "bare" });
+    const initialization = runInit({ build: bareBuild });
 
     // Then
     await expect(initialization).rejects.toBe(stopAtOAuthInfrastructureCall);
@@ -481,7 +486,7 @@ describe("Cloudflare init discovery", () => {
     );
 
     // When
-    const initialization = runInit({ build: "bare" });
+    const initialization = runInit({ build: bareBuild });
 
     // Then
     await expect(initialization).rejects.toBe(stopAfterTokenValidation);
@@ -502,7 +507,7 @@ describe("Cloudflare init discovery", () => {
     );
 
     // When
-    const initialization = runInit({ build: "bare" });
+    const initialization = runInit({ build: bareBuild });
 
     // Then
     await expect(initialization).rejects.toBeInstanceOf(
@@ -541,7 +546,7 @@ describe("Cloudflare init discovery", () => {
 
     // When
     const initialization = runInit({
-      build: "bare",
+      build: bareBuild,
       envFile: ".env.hotupdater",
     });
 

@@ -14,18 +14,17 @@ import {
 import { createRequire } from "node:module";
 import path from "node:path";
 
-import type { BuildType } from "@hot-updater/cli-tools";
-
 import { ui } from "../../utils/cli-ui";
 import { type InitProvider, INIT_PROVIDER_PACKAGES } from "../initProviders";
 
 const require = createRequire(import.meta.url);
 export const INFRA_BUILDS = ["bare", "rock", "expo"] as const;
+export type InfraBuild = (typeof INFRA_BUILDS)[number];
 export type InfraOperation = "scaffold" | "setup" | "upgrade";
 
 export interface InfraOptions {
   provider?: InitProvider;
-  build?: BuildType;
+  build?: InfraBuild;
   output?: string;
   json?: boolean;
 }
@@ -44,7 +43,7 @@ export interface InfraTemplate {
 
 export interface InfraManifest extends Omit<InfraTemplate, "packages"> {
   operation: InfraOperation;
-  build?: BuildType;
+  build?: InfraBuild;
   packages?: Record<string, string>;
   files: Record<string, string>;
 }
@@ -96,7 +95,7 @@ export async function readInfraTemplate(provider: InitProvider) {
 export async function getInfraFiles(
   source: string,
   operation: InfraOperation,
-  build?: BuildType,
+  build?: InfraBuild,
 ) {
   const forAgent = operation !== "scaffold";
   return (await listFiles(source))

@@ -1,7 +1,3 @@
-// types.ts (or place in the same file initially)
-
-export type BuildType = "bare" | "rock" | "expo";
-
 export type ImportInfo = {
   pkg: string;
   named?: string[]; // e.g., ['defineConfig']
@@ -13,6 +9,8 @@ export type ProviderConfig = {
   imports: ImportInfo[]; // Imports required specifically by this provider part
   configString: string; // The JS code string for storage: ..., database: ...
 };
+
+export type BuildConfig = ProviderConfig;
 
 export type ConfigBuilderScaffold = {
   imports: ImportInfo[];
@@ -110,8 +108,8 @@ export const renderImportStatements = (imports: ImportInfo[]) => {
 
 // Builder Interface
 export interface IConfigBuilder {
-  /** Sets the build type ('bare' or 'rock' or 'expo') and adds necessary build imports. */
-  setBuildType(buildType: BuildType): this;
+  /** Sets the opaque application integration build configuration. */
+  setBuild(buildConfig: BuildConfig): this;
 
   /** Sets the storage configuration and adds its required imports. */
   setStorage(storageConfig: ProviderConfig): this;
@@ -127,7 +125,7 @@ export interface IConfigBuilder {
 }
 
 export class ConfigBuilder implements IConfigBuilder {
-  private buildType: BuildType | null = null;
+  private buildInfo: BuildConfig | null = null;
   private storageInfo: ProviderConfig | null = null;
   private databaseInfo: ProviderConfig | null = null;
   private intermediateCode = "";
@@ -191,33 +189,21 @@ export class ConfigBuilder implements IConfigBuilder {
   }
 
   private generateBuildConfigString(): string {
-    if (!this.buildType)
-      throw new Error("Build type must be set using .setBuildType()");
-    switch (this.buildType) {
-      case "bare":
-        return "bare({ enableHermes: true })";
-      case "rock":
-        return "rock()";
-      case "expo":
-        return "expo()";
-      default:
-        // Should be caught by type system, but good practice
-        throw new Error(`Invalid build type: ${this.buildType}`);
-    }
+    if (!this.buildInfo)
+      throw new Error("Build config must be set using .setBuild()");
+    return this.buildInfo.configString;
   }
 
   // --- Public Builder Methods ---
 
-  setBuildType(buildType: BuildType): this {
-    if (this.buildType) {
-      // Handle resetting/changing build type if needed, e.g., remove old build import
-      // For simplicity now, assume it's set once. Error if called multiple times?
+  setBuild(buildConfig: BuildConfig): this {
+    if (this.buildInfo) {
       console.warn(
-        "Build type is being set multiple times. Overwriting previous value.",
+        "Build config is being set multiple times. Overwriting previous value.",
       );
     }
-    this.buildType = buildType;
-    this.addImport({ pkg: `@hot-updater/${buildType}`, named: [buildType] });
+    this.buildInfo = buildConfig;
+    this.addImports(buildConfig.imports);
     return this;
   }
 
@@ -255,8 +241,8 @@ export class ConfigBuilder implements IConfigBuilder {
 
   getScaffold(): ConfigBuilderScaffold {
     // Validate required parts are set
-    if (!this.buildType)
-      throw new Error("Build type must be set using .setBuildType()");
+    if (!this.buildInfo)
+      throw new Error("Build config must be set using .setBuild()");
     if (!this.storageInfo)
       throw new Error("Storage config must be set using .setStorage()");
     if (!this.databaseInfo)

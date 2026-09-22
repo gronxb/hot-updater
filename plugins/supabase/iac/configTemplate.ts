@@ -3,11 +3,11 @@ import {
   createHotUpdaterConfigScaffoldFromBuilder,
   type HotUpdaterConfigScaffold,
   type ProviderConfig,
-  type BuildType,
+  type BuildConfig,
 } from "@hot-updater/cli-tools";
 
 export const getConfigScaffold = (
-  build: BuildType,
+  build: BuildConfig,
 ): HotUpdaterConfigScaffold => {
   const storageConfig: ProviderConfig = {
     imports: [{ pkg: "@hot-updater/supabase", named: ["supabaseStorage"] }],
@@ -27,7 +27,7 @@ export const getConfigScaffold = (
 
   return createHotUpdaterConfigScaffoldFromBuilder(
     new ConfigBuilder()
-      .setBuildType(build)
+      .setBuild(build)
       .setStorage(storageConfig)
       .setDatabase(databaseConfig),
   );

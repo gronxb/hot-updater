@@ -50,12 +50,17 @@ vi.mock("@hot-updater/cli-tools", async () => {
 
 import { createFirebaseProject, initFirebaseUser, setEnv } from "./select";
 
+const bareBuild = {
+  imports: [{ pkg: "@hot-updater/bare", named: ["bare"] }],
+  configString: "bare({ enableHermes: true })",
+};
+
 describe("setEnv", () => {
   it("preserves GOOGLE_APPLICATION_CREDENTIALS when updating Firebase env vars", async () => {
     await setEnv({
       projectId: "demo-project",
       storageBucket: "demo-bucket",
-      build: "bare",
+      build: bareBuild,
       region: "asia-northeast3",
     });
 
