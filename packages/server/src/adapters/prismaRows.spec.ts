@@ -9,6 +9,7 @@ import {
   parsePrismaBundleEventRow,
   parsePrismaBundleRow,
   parsePrismaPatchRow,
+  parsePrismaSelectedRow,
 } from "./prismaRows";
 
 describe("parsePrismaBundleRow", () => {
@@ -45,6 +46,24 @@ describe("parsePrismaPatchRow", () => {
 });
 
 describe("parsePrismaBundleEventRow", () => {
+  it("decodes selected string metadata exactly as a full event read", () => {
+    const event = createBundleEventRowFixture("1", 1);
+    const stored = { ...event, metadata: JSON.stringify(event.metadata) };
+
+    expect(
+      parsePrismaSelectedRow(
+        { metadata: stored.metadata, from_release_id: null },
+        "bundle_events",
+      ),
+    ).toEqual({
+      metadata: parsePrismaBundleEventRow(stored).metadata,
+      from_release_id: null,
+    });
+    expect(parsePrismaSelectedRow({ id: event.id }, "bundle_events")).toEqual({
+      id: event.id,
+    });
+  });
+
   it("preserves explicit null Release ids", () => {
     expect(
       parsePrismaBundleEventRow(createBundleEventRowFixture("1", 1)),

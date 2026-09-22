@@ -1421,7 +1421,7 @@ const compareString = (
 };
 
 const matchesCondition = <TModel extends DatabaseModel>(
-  row: DatabaseRow<TModel>,
+  row: object,
   condition: DatabaseWhere<TModel>,
 ): boolean => {
   const actual = Reflect.get(row, condition.field);
@@ -1653,6 +1653,49 @@ export const replaceDynamoDBBundle = async (
       },
     },
   ]);
+};
+
+const queryBundleIdPage = async (
+  store: DynamoDBStore,
+  ids: readonly string[],
+  input: Extract<FindManyDatabaseImplementationInput, { model: "bundles" }>,
+): Promise<BundleRow[]> => {
+  const idConditions = input.where?.filter(({ field }) => field === "id") ?? [];
+  const candidates = [...new Set(ids)].filter((id) =>
+    idConditions.every((condition) => matchesCondition({ id }, condition)),
+  );
+  if (
+    input.distinctOn !== undefined ||
+    input.orderBy?.some(({ field }) => field !== "id")
+  ) {
+    return queryDynamoDBRows(
+      (await loadBundleItemsById(store, candidates)).map(({ row }) => row),
+      input,
+    );
+  }
+  const direction = input.orderBy?.[0]?.direction ?? "asc";
+  candidates.sort((left, right) =>
+    direction === "asc" ? compare(left, right) : compare(right, left),
+  );
+  const rows: BundleRow[] = [];
+  for (let offset = 0; offset < candidates.length; ) {
+    const remaining = input.limit + input.offset - rows.length;
+    if (remaining <= 0) break;
+    const page = candidates.slice(offset, offset + Math.min(100, remaining));
+    offset += page.length;
+    rows.push(
+      ...queryDynamoDBRows(
+        (await loadBundleItemsById(store, page)).map(({ row }) => row),
+        {
+          ...input,
+          offset: 0,
+          limit: page.length,
+          orderBy: [{ field: "id", direction }],
+        },
+      ),
+    );
+  }
+  return rows.slice(input.offset, input.offset + input.limit);
 };
 
 const deleteAction = (
@@ -2145,10 +2188,7 @@ export const createDynamoDBCrud = (
       case "bundles": {
         const ids = exactDynamoDBBundleIds(input.where);
         if (ids !== undefined) {
-          return queryDynamoDBRows(
-            (await loadBundleItemsById(store, ids)).map(({ row }) => row),
-            input,
-          );
+          return queryBundleIdPage(store, ids, input);
         }
         return queryMetadataPage(
           store,
