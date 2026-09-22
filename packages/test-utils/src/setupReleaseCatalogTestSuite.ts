@@ -1,5 +1,10 @@
 import type { ArtifactInfo, ReleaseCatalog } from "@hot-updater/core";
-import type { DatabaseChange, ReleaseRow } from "@hot-updater/plugin-core";
+import type {
+  DatabaseChange,
+  DatabaseCommitExpectation,
+  ReleaseCatalogRow,
+  ReleaseRow,
+} from "@hot-updater/plugin-core";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import {
@@ -240,6 +245,234 @@ export const setupReleaseCatalogTestSuite = (options: {
         const update = (releaseId: string, patch: Record<string, unknown>) =>
           adminJson(`/releases/${releaseId}`, jsonRequest("PATCH", { patch }));
 
+        it("pages all scoped Releases including disabled rows with an exclusive cursor", async () => {
+          const first = await publish("701");
+          const disabled = await publish("702", { enabled: false });
+          await publish("703", {}, scope("other"));
+          const path = `/releases?scopeKey=${encodeURIComponent(scope().key)}&limit=1`;
+          expect((await adminJson(path)).data).toEqual([first.release]);
+          expect(
+            (await adminJson(`${path}&afterReleaseId=${first.release.id}`))
+              .data,
+          ).toEqual([disabled.release]);
+          expect(
+            (await adminJson(`${path}&afterReleaseId=${disabled.release.id}`))
+              .data,
+          ).toEqual([]);
+        });
+
+        for (const model of ["releases", "releaseCatalogs"] as const) {
+          it.each(["stale", "absent", "missing"] as const)(
+            `rejects a %s ${model} expectation without changing any model`,
+            async (condition) => {
+              const current = await publish("711");
+              const catalog = (await adminJson(catalogRowPath()))
+                .data as ReleaseCatalogRow;
+              const releaseExpectation = {
+                model: "releases",
+                id: current.release.id,
+                revision: 1,
+              } as const;
+              const catalogExpectation = {
+                model: "releaseCatalogs",
+                scopeKey: catalog.scope_key,
+                generation: catalog.generation,
+              } as const;
+              const key =
+                model === "releases" ? current.release.id : catalog.scope_key;
+              const version = model === "releases" ? 1 : catalog.generation;
+              const expectedVersion =
+                condition === "absent" ? null : version + 1;
+              const expectedKey =
+                condition === "missing"
+                  ? model === "releases"
+                    ? "00000000-0000-7000-8000-000000009999"
+                    : `${key}:missing`
+                  : key;
+              const expectation: DatabaseCommitExpectation =
+                model === "releases"
+                  ? { model, id: expectedKey, revision: expectedVersion }
+                  : {
+                      model,
+                      scopeKey: expectedKey,
+                      generation: expectedVersion,
+                    };
+              const result = await adminJson(
+                "/database/commit",
+                jsonRequest("POST", {
+                  expectations: [
+                    model === "releases"
+                      ? catalogExpectation
+                      : releaseExpectation,
+                    expectation,
+                  ],
+                  changes: [
+                    {
+                      model: "bundles",
+                      operation: "update",
+                      where: { id: current.bundle.id },
+                      update: {
+                        storage_uri: "storage://should-not-be-written",
+                      },
+                    },
+                    {
+                      model: "releases",
+                      operation: "update",
+                      where: { id: current.release.id },
+                      update: { message: "should not be written", revision: 2 },
+                    },
+                    {
+                      model: "releaseCatalogs",
+                      operation: "put",
+                      row: { ...catalog, generation: catalog.generation + 1 },
+                    },
+                  ],
+                }),
+              );
+              expect(result.data).toEqual({
+                committed: false,
+                conflict: {
+                  changeIndex: -1,
+                  reason: "version_conflict",
+                  model,
+                  key: expectedKey,
+                  expectedVersion,
+                  actualVersion: condition === "missing" ? null : version,
+                },
+              });
+              expect(
+                (await adminJson(`/releases/${current.release.id}`)).data,
+              ).toEqual(current.release);
+              expect((await adminJson(catalogRowPath())).data).toEqual(catalog);
+              const artifact = await request(
+                `/artifacts/${current.bundle.id}/from/${NIL_UUID}`,
+              );
+              expect(artifact.status).toBe(200);
+              expect(await artifact.json()).toMatchObject({
+                fileUrl: downloadUrl(current.bundle.storage_uri),
+              });
+            },
+          );
+
+          it(`allows only one concurrent writer for a ${model} expectation`, async () => {
+            const current = await publish("721");
+            const catalog = (await adminJson(catalogRowPath()))
+              .data as ReleaseCatalogRow;
+            const expectation: DatabaseCommitExpectation =
+              model === "releases"
+                ? { model, id: current.release.id, revision: 1 }
+                : {
+                    model,
+                    scopeKey: catalog.scope_key,
+                    generation: catalog.generation,
+                  };
+            const results = await Promise.all(
+              ["first", "second"].map((message) =>
+                adminJson(
+                  "/database/commit",
+                  jsonRequest("POST", {
+                    expectations: [expectation],
+                    changes: [
+                      {
+                        model: "releases",
+                        operation: "update",
+                        where: { id: current.release.id },
+                        update: { message, revision: 2 },
+                      },
+                      {
+                        model: "releaseCatalogs",
+                        operation: "put",
+                        row: {
+                          ...catalog,
+                          generation: catalog.generation + 1,
+                          updated_at_ms: message === "first" ? 1 : 2,
+                        },
+                      },
+                    ],
+                  }),
+                ),
+              ),
+            );
+            const winners = results.flatMap((result, index) =>
+              result.data.committed ? [index] : [],
+            );
+            expect(winners).toHaveLength(1);
+            expect(results[1 - winners[0]!]!.data).toMatchObject({
+              committed: false,
+              conflict: {
+                changeIndex: -1,
+                reason: "version_conflict",
+                model,
+                expectedVersion: model === "releases" ? 1 : catalog.generation,
+                actualVersion:
+                  model === "releases" ? 2 : catalog.generation + 1,
+              },
+            });
+            expect(
+              (await adminJson(`/releases/${current.release.id}`)).data,
+            ).toMatchObject({
+              revision: 2,
+              message: ["first", "second"][winners[0]!],
+            });
+            expect((await adminJson(catalogRowPath())).data).toMatchObject({
+              generation: catalog.generation + 1,
+              updated_at_ms: winners[0]! + 1,
+            });
+          });
+        }
+
+        it("keeps legacy embedded rows readable while excluding them from compiled Catalogs", async () => {
+          const current = await publish("731");
+          const embedded = await publish("732", {
+            kind: "EMBEDDED",
+            bundle_id: null,
+            operation: "ROLLBACK",
+          });
+          expect(
+            (await readCatalog()).releases.map((row) => row.releaseId),
+          ).toEqual([current.release.id]);
+          expect(
+            (
+              await adminJson(
+                `/releases?scopeKey=${encodeURIComponent(scope().key)}&limit=10`,
+              )
+            ).data,
+          ).toEqual([current.release, embedded.release]);
+          expect(
+            (await adminJson(`/releases/${embedded.release.id}`)).data,
+          ).toEqual(embedded.release);
+        });
+
+        it("hard deletes a Release, rebuilds its Catalog, and retains Bundle bytes", async () => {
+          const current = await publish("741", { enabled: false });
+          await adminJson(
+            `/releases/${current.release.id}?confirm=${current.release.id}&expectedRevision=1`,
+            jsonRequest("DELETE"),
+          );
+          cleanup = cleanup.filter(
+            (change) =>
+              !(
+                change.model === "releases" &&
+                change.operation === "delete" &&
+                change.where.id === current.release.id
+              ),
+          );
+          expect((await admin(`/releases/${current.release.id}`)).status).toBe(
+            404,
+          );
+          expect(await readCatalog()).toMatchObject({
+            releases: [],
+            rollbackReleases: [],
+          });
+          const artifact = await request(
+            `/artifacts/${current.bundle.id}/from/${NIL_UUID}`,
+          );
+          expect(artifact.status).toBe(200);
+          expect(await artifact.json()).toMatchObject({
+            fileUrl: downloadUrl(current.bundle.storage_uri),
+          });
+        });
+
         it("serves enabled Releases newest first and resolves artifacts by Bundle identity", async () => {
           const first = await publish("101");
           const { bundle, release } = await publish("102", {
@@ -461,6 +694,71 @@ export const setupReleaseCatalogTestSuite = (options: {
         });
 
         if (strategy === "APP_VERSION") {
+          it.each([
+            "channelId",
+            "platform",
+            "enabled",
+            "bundleId",
+            "targetAppVersion",
+          ] as const)(
+            "applies the %s filter before limiting Release results",
+            async (filter) => {
+              const first = await publish("751", {
+                target_app_version: "1.0.0",
+                enabled: false,
+              });
+              const second = await publish("752", {
+                bundle_id: first.bundle.id,
+                target_app_version: "1.0.0",
+                enabled: false,
+              });
+              const target =
+                filter === "channelId"
+                  ? scope("other")
+                  : filter === "platform"
+                    ? scope("production", "android")
+                    : scope();
+              await publish(
+                "753",
+                {
+                  target_app_version:
+                    filter === "targetAppVersion" ? "2.0.0" : "1.0.0",
+                  enabled: filter === "enabled",
+                  ...(["channelId", "enabled", "targetAppVersion"].includes(
+                    filter,
+                  )
+                    ? { bundle_id: first.bundle.id }
+                    : {}),
+                },
+                target,
+              );
+              const value = {
+                channelId: scope().channelId,
+                platform: "ios",
+                enabled: "false",
+                bundleId: first.bundle.id,
+                targetAppVersion: "1.0.0",
+              }[filter];
+              const path = `/releases?${filter}=${encodeURIComponent(value)}&limit=1`;
+              expect((await adminJson(path)).data).toEqual([second.release]);
+              expect(
+                (
+                  await adminJson(
+                    `${path}&beforeReleaseId=${second.release.id}`,
+                  )
+                ).data,
+              ).toEqual([first.release]);
+              expect(
+                (await adminJson(`${path}&beforeReleaseId=${first.release.id}`))
+                  .data,
+              ).toEqual([]);
+              expect(
+                (await adminJson(`${path}&afterReleaseId=${first.release.id}`))
+                  .data,
+              ).toEqual([second.release]);
+            },
+          );
+
           it("serves the newest Release among 200 distinct compatible version ranges", async () => {
             const first = await publish("400", {
               target_app_version: ">=0.0.0",
@@ -552,6 +850,28 @@ export const setupReleaseCatalogTestSuite = (options: {
             }
           });
         } else {
+          it("pages Catalogs in scope order with an exclusive cursor and limit", async () => {
+            const first = scope("production", "ios", "paging-a");
+            const second = scope("production", "ios", "paging-b");
+            await publish("761", {}, second);
+            await publish("762", {}, first);
+            const prefix = first.key.slice(0, -1);
+            expect(
+              (
+                await adminJson(
+                  `/release-catalogs?limit=1&afterScopeKey=${encodeURIComponent(prefix)}`,
+                )
+              ).data,
+            ).toEqual([(await adminJson(catalogRowPath(first))).data]);
+            expect(
+              (
+                await adminJson(
+                  `/release-catalogs?limit=1&afterScopeKey=${encodeURIComponent(first.key)}`,
+                )
+              ).data,
+            ).toEqual([(await adminJson(catalogRowPath(second))).data]);
+          });
+
           it("isolates exact fingerprints", async () => {
             const first = await publish("221");
             const second = await publish(

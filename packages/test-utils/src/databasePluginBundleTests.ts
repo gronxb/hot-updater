@@ -57,6 +57,19 @@ export const registerDatabasePluginBundleTests = (
         metadata: { flags: [] },
         file_hash: row.file_hash,
       });
+
+      await expect(
+        commit(plugin, {
+          model: "bundles",
+          operation: "update",
+          where: { id: row.id },
+          update: { manifest_storage_uri: null },
+        }),
+      ).resolves.toEqual({ committed: true });
+      await expect(plugin.models.bundles.findById(row.id)).resolves.toEqual({
+        ...row,
+        metadata: { flags: [] },
+      });
     });
 
     it("filters, orders, offsets, limits, and counts bundle rows", async () => {

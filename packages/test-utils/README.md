@@ -36,7 +36,15 @@ all data before each scenario while retaining its schema and version settings.
 Passing the complete suite verifies the DatabasePlugin and Release Catalog
 HTTP contracts for the installed Hot Updater version: model semantics,
 transactions, pagination, relations, Insights, catalog projections and caching,
-and artifact responses. The HTTP scenarios use real `fetch` requests on Node.
+and artifact responses. The HTTP scenarios use real `fetch` requests on Node,
+including independent Release/Catalog expectations and competing conditional
+writes. Run the entire suite against your provider's actual test backend without
+skipping scenarios or replacing model methods with mocks.
+
+The repository also runs the public suite against deliberately broken providers
+to check that contract violations fail. This is a versioned compatibility gate;
+passing is evidence for the exercised contracts, not a proof of every possible
+execution or deployment condition.
 Add provider-specific migration, concurrency, storage, and deployment tests
 where those need separate verification.
 

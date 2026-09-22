@@ -558,7 +558,8 @@ provider must pass the complete suite. Passing establishes compatibility with th
 Catalog HTTP contracts for that Hot Updater version**:
 
 - Model reads and writes, pagination and ordering, relations, Channel safety,
-  atomic rollback, and Release/Catalog revision conflicts.
+  atomic rollback, independent Release/Catalog version and absence expectations,
+  and competing conditional writes with exactly one winner.
 - Insights event identity, deduplication, counts, filtering, and ordering.
 - Version and fingerprint projections, rollout metadata, rollback candidates,
   Catalog identity, cache expiry, ETag revalidation, and HTTP errors.
@@ -566,7 +567,13 @@ Catalog HTTP contracts for that Hot Updater version**:
 
 This is the acceptance gate used by the official providers. New contract
 scenarios are added centrally and run against every provider without changes to
-its setup. Provider-specific concurrency, migrations, real storage access, and
+its setup. Run the complete suite against your actual test backend without skipped
+scenarios or mocked model methods. Repository mutation tests also run deliberately
+broken providers through this public suite to verify that known contract violations
+fail. Passing certifies the exercised versioned contracts; it does not prove every
+possible execution or deployment condition.
+
+Provider-specific concurrency stress, migrations, real storage access, and
 native installation have their own integration tests; the conformance suite
 certifies the database and HTTP behavior above.
 
