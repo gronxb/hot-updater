@@ -17,6 +17,7 @@ export * from "./hotUpdaterConfig";
 export * from "./hotUpdaterEnv";
 export * from "./HotUpdateDirUtil";
 export * from "./infrastructureGeneration";
+export * from "./integrationDescriptor";
 export * from "./initProvider";
 export * from "./initOptions";
 export * from "./LogWriter";

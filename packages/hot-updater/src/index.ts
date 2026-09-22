@@ -153,11 +153,7 @@ for (const operation of ["setup", "upgrade"] as const) {
       ),
     )
     .addOption(
-      new Option("--build <plugin>", "app build plugin").choices([
-        "bare",
-        "rock",
-        "expo",
-      ]),
+      new Option("--build <integration>", "application integration package"),
     )
     .option(
       "--output <directory>",
@@ -178,9 +174,9 @@ program
   )
   .addOption(
     new Option(
-      "--build <plugin>",
-      "build plugin to use; skips the prompt",
-    ).choices(["bare", "rock", "expo"]),
+      "--build <integration>",
+      "application integration package or short name; skips the prompt",
+    ),
   )
   .option(
     "--from-env-file <path>",

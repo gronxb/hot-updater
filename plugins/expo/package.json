@@ -49,6 +49,10 @@
       "import": "./dist/index.mjs",
       "require": "./dist/index.cjs"
     },
+    "./integration": {
+      "import": "./dist/integration.mjs",
+      "require": "./dist/integration.cjs"
+    },
     "./babel-plugin": {
       "import": "./dist/babel-plugin.mjs",
       "require": "./dist/babel-plugin.cjs"

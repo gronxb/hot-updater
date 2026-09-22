@@ -18,13 +18,12 @@ import { ui } from "../../utils/cli-ui";
 import { type InitProvider, INIT_PROVIDER_PACKAGES } from "../initProviders";
 
 const require = createRequire(import.meta.url);
-export const INFRA_BUILDS = ["bare", "rock", "expo"] as const;
-export type InfraBuild = (typeof INFRA_BUILDS)[number];
+const CONFIG_VARIANT_PATTERN = /\.config\.([a-z0-9][a-z0-9._-]*)\.ts$/;
 export type InfraOperation = "scaffold" | "setup" | "upgrade";
 
 export interface InfraOptions {
   provider?: InitProvider;
-  build?: InfraBuild;
+  build?: string;
   output?: string;
   json?: boolean;
 }
@@ -43,7 +42,7 @@ export interface InfraTemplate {
 
 export interface InfraManifest extends Omit<InfraTemplate, "packages"> {
   operation: InfraOperation;
-  build?: InfraBuild;
+  build?: string;
   packages?: Record<string, string>;
   files: Record<string, string>;
 }
@@ -74,6 +73,17 @@ const listFiles = async (root: string, relative = ""): Promise<string[]> => {
   return files;
 };
 
+export async function getInfraBuildVariants(source: string): Promise<string[]> {
+  return [
+    ...new Set(
+      (await listFiles(source)).flatMap((file) => {
+        const variant = CONFIG_VARIANT_PATTERN.exec(file)?.[1];
+        return variant ? [variant] : [];
+      }),
+    ),
+  ].sort();
+}
+
 const statIfPresent = (target: string) =>
   lstat(target).catch((error: NodeJS.ErrnoException) => {
     if (error.code === "ENOENT") return undefined;
@@ -95,19 +105,17 @@ export async function readInfraTemplate(provider: InitProvider) {
 export async function getInfraFiles(
   source: string,
   operation: InfraOperation,
-  build?: InfraBuild,
+  build?: string,
 ) {
   const forAgent = operation !== "scaffold";
   return (await listFiles(source))
     .filter((file) => file !== "template.json")
     .filter((file) => forAgent || !AGENT_FILES.includes(file.split("/")[0]!))
-    .filter(
-      (file) =>
-        !INFRA_BUILDS.some(
-          (choice) => choice !== build && file.endsWith(`.config.${choice}.ts`),
-        ),
-    )
-    .map((file) => file.replace(`.config.${build}.ts`, ".config.ts"));
+    .filter((file) => {
+      const variant = CONFIG_VARIANT_PATTERN.exec(file)?.[1];
+      return variant === undefined || variant === build;
+    })
+    .map((file) => file.replace(CONFIG_VARIANT_PATTERN, ".config.ts"));
 }
 
 export async function scaffoldInfra(
@@ -117,6 +125,7 @@ export async function scaffoldInfra(
   const { provider, build } = options;
   const forAgent = operation !== "scaffold";
   const { source, template } = await readInfraTemplate(provider);
+  const buildVariants = await getInfraBuildVariants(source);
   const output = path.resolve(
     options.output ??
       path.join(
@@ -228,7 +237,7 @@ export async function scaffoldInfra(
   try {
     await cp(source, staging, { recursive: true });
     if (forAgent) {
-      for (const choice of INFRA_BUILDS) {
+      for (const choice of buildVariants) {
         for (const basename of ["hot-updater.config", "api-key.config"]) {
           const file = path.join(staging, "app", `${basename}.${choice}.ts`);
           if (choice === build)
@@ -294,7 +303,7 @@ export async function scaffoldInfra(
         ? Object.fromEntries(
             Object.entries(template.packages).filter(
               ([name]) =>
-                !INFRA_BUILDS.some(
+                !buildVariants.some(
                   (choice) =>
                     choice !== build && name === `@hot-updater/${choice}`,
                 ),

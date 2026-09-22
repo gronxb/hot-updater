@@ -39,6 +39,10 @@
       "import": "./dist/index.mjs",
       "require": "./dist/index.cjs"
     },
+    "./integration": {
+      "import": "./dist/integration.mjs",
+      "require": "./dist/integration.cjs"
+    },
     "./package.json": "./package.json"
   },
   "inlinedDependencies": {

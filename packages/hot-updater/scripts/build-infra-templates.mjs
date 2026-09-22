@@ -21,7 +21,6 @@ const packageRoot = fileURLToPath(new URL("..", import.meta.url));
 const repoRoot = path.resolve(packageRoot, "../..");
 const outputRoot = path.join(packageRoot, "dist/infra-templates");
 const providers = ["cloudflare", "supabase", "aws", "firebase"];
-const builds = ["bare", "rock", "expo"];
 const upgradeFiles = await readInfrastructureUpgradeFiles(
   path.join(packageRoot, "infrastructure-upgrades"),
   INFRASTRUCTURE_UPDATES,
@@ -37,12 +36,42 @@ const save = async (file, value) => {
 const pluginRoot = (provider) => path.join(repoRoot, "plugins", provider);
 const moduleAt = (file) => import(pathToFileURL(file).href);
 const placeholder = (name) => `__HOT_UPDATER_${name}__`;
+const discoverIntegrations = async () => {
+  const integrations = [];
+  for (const parent of ["packages", "plugins"]) {
+    const parentPath = path.join(repoRoot, parent);
+    for (const entry of await readdir(parentPath, { withFileTypes: true })) {
+      if (!entry.isDirectory()) continue;
+      const directory = path.join(parentPath, entry.name);
+      const manifestPath = path.join(directory, "package.json");
+      let manifest;
+      try {
+        manifest = await json(manifestPath);
+      } catch (error) {
+        if (error?.code === "ENOENT") continue;
+        throw error;
+      }
+      if (!manifest.exports?.["./integration"]) continue;
+      const source = path.join(directory, "src/integration.ts");
+      const { initIntegration } = await moduleAt(source);
+      integrations.push({
+        descriptor: initIntegration,
+        directory: path.relative(repoRoot, directory),
+        packageName: manifest.name,
+      });
+    }
+  }
+  return integrations.sort((left, right) =>
+    left.descriptor.id.localeCompare(right.descriptor.id),
+  );
+};
+const integrations = await discoverIntegrations();
 const versions = {};
 for (const directory of [
   "packages/hot-updater",
   "packages/server",
-  "packages/react-native",
-  ...[...providers, ...builds].map((name) => `plugins/${name}`),
+  ...providers.map((name) => `plugins/${name}`),
+  ...integrations.map(({ directory }) => directory),
 ]) {
   const pkg = await json(path.join(repoRoot, directory, "package.json"));
   versions[pkg.name] = pkg.version;
@@ -102,7 +131,9 @@ for (const provider of providers) {
       provider === "aws" ? "templates.ts" : "configTemplate.ts",
     ),
   );
-  for (const build of builds) {
+  for (const integration of integrations) {
+    const build = integration.descriptor.build;
+    const buildId = integration.descriptor.id;
     const config =
       provider === "aws"
         ? templateModule.getConfigScaffold(build, {
@@ -111,19 +142,18 @@ for (const provider of providers) {
           })
         : templateModule.getConfigScaffold(build);
     await save(
-      path.join(output, "app", `hot-updater.config.${build}.ts`),
+      path.join(output, "app", `hot-updater.config.${buildId}.ts`),
       `${config.text}\n`,
     );
+    const buildImports = new Set(build.imports.map(({ pkg }) => pkg));
     const imports = config.imports
-      .filter(
-        ({ pkg }) => pkg !== "hot-updater" && pkg !== `@hot-updater/${build}`,
-      )
+      .filter(({ pkg }) => pkg !== "hot-updater" && !buildImports.has(pkg))
       .map((info) => ({
         ...info,
         named: info.named?.filter((name) => name !== config.storage.callee),
       }));
     await save(
-      path.join(output, "app", `api-key.config.${build}.ts`),
+      path.join(output, "app", `api-key.config.${buildId}.ts`),
       `${renderImportStatements(imports)}\n\nconfig({ path: ".env.hotupdater" });\n\n${config.helperStatements.map(({ code }) => code).join("\n\n")}\n\nexport const database = ${config.database.initializer};\n`,
     );
   }

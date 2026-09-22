@@ -16,6 +16,10 @@
       "import": "./dist/build.mjs",
       "require": "./dist/build.cjs"
     },
+    "./integration": {
+      "import": "./dist/integration.mjs",
+      "require": "./dist/integration.cjs"
+    },
     "./navigation": {
       "import": "./dist/navigation.mjs",
       "require": "./dist/navigation.cjs"
@@ -62,6 +66,7 @@
     }
   },
   "devDependencies": {
+    "@hot-updater/cli-tools": "workspace:*",
     "@types/node": "catalog:",
     "sparkling-navigation": "2.1.0-rc.12"
   }

@@ -1,5 +1,5 @@
-import type { BuildConfig, RunInitOptions } from "@hot-updater/cli-tools";
 import {
+  assertInitIntegrationDescriptor,
   getHotUpdaterEnvValue,
   getMissingInitInputs,
   getMissingInitProviderInputs,
@@ -10,6 +10,7 @@ import {
   p,
   readHotUpdaterInitEnv,
   resolveInitProviderInputs,
+  type RunInitOptions,
 } from "@hot-updater/cli-tools";
 import { ExecaError } from "execa";
 
@@ -29,70 +30,24 @@ import {
 
 const INIT_BUILD_ENV_KEY = "HOT_UPDATER_INIT_BUILD";
 const INIT_PROVIDER_ENV_KEY = "HOT_UPDATER_INIT_PROVIDER";
-const BUILD_PLUGIN_KEYS = ["bare", "rock", "expo"] as const;
-
-const REQUIRED_PACKAGES = {
-  dependencies: ["@hot-updater/react-native"],
-  devDependencies: ["dotenv"],
-};
-
-interface BuildPluginChoice {
-  build: BuildConfig;
-  label: string;
-  hint?: string;
-  dependencies: string[];
-  devDependencies: string[];
-}
-
-const BUILD_PLUGINS: Record<"bare" | "rock" | "expo", BuildPluginChoice> = {
-  bare: {
-    build: {
-      imports: [{ pkg: "@hot-updater/bare", named: ["bare"] }],
-      configString: "bare({ enableHermes: true })",
-    },
-    label: "Bare",
-    hint: "React Native CLI",
-    dependencies: [],
-    devDependencies: ["@hot-updater/bare"],
-  },
-  rock: {
-    build: {
-      imports: [{ pkg: "@hot-updater/rock", named: ["rock"] }],
-      configString: "rock()",
-    },
-    label: "Rock",
-    hint: "React Native Enterprise Framework by Callstack",
-    dependencies: [],
-    devDependencies: ["@hot-updater/rock"],
-  },
-  expo: {
-    build: {
-      imports: [{ pkg: "@hot-updater/expo", named: ["expo"] }],
-      configString: "expo()",
-    },
-    label: "Expo",
-    dependencies: [],
-    devDependencies: ["@hot-updater/expo"],
-  },
-};
-
-type BuildPluginKey = keyof typeof BUILD_PLUGINS;
-
 export interface InitOptions {
-  readonly build?: BuildPluginKey;
+  readonly build?: string;
   readonly envFile?: string;
   readonly provider?: InitProvider;
 }
 
-const isBuildPluginKey = (
-  value: string | undefined,
-): value is BuildPluginKey => {
-  return value !== undefined && Object.keys(BUILD_PLUGINS).includes(value);
-};
+const isIntegrationName = (value: string | undefined): value is string =>
+  value !== undefined &&
+  /^(?:@[a-z0-9][a-z0-9._-]*\/[a-z0-9][a-z0-9._-]*|[a-z0-9][a-z0-9._-]*)$/.test(
+    value,
+  );
+
+export const integrationPackageName = (value: string): string =>
+  value.startsWith("@") ? value : `@hot-updater/${value}`;
 
 const collectInitChoices = async (
   options: InitOptions,
-): Promise<{ build: BuildPluginKey; provider: InitProvider }> => {
+): Promise<{ build: string; provider: InitProvider }> => {
   const { env: existingEnv } = await readHotUpdaterInitEnv(
     process.cwd(),
     options.envFile,
@@ -103,7 +58,7 @@ const collectInitChoices = async (
     INIT_PROVIDER_ENV_KEY,
   );
   const build =
-    options.build ?? (isBuildPluginKey(savedBuild) ? savedBuild : null);
+    options.build ?? (isIntegrationName(savedBuild) ? savedBuild : null);
   const provider =
     options.provider ?? (isInitProvider(savedProvider) ? savedProvider : null);
 
@@ -138,13 +93,13 @@ const collectInitChoices = async (
       build: () =>
         build
           ? Promise.resolve(build)
-          : p.select<BuildPluginKey>({
-              message: "Select a build plugin",
-              options: BUILD_PLUGIN_KEYS.map((value) => ({
-                value,
-                label: BUILD_PLUGINS[value].label,
-                hint: BUILD_PLUGINS[value].hint,
-              })),
+          : p.text({
+              message: "Enter an application integration package or short name",
+              placeholder: "@hot-updater/<integration>",
+              validate: (value) =>
+                isIntegrationName(value)
+                  ? undefined
+                  : "Use a package name or an unscoped short name.",
             }),
       provider: () =>
         provider
@@ -213,7 +168,7 @@ export const init = async (options: InitOptions = {}) => {
     p.log.info(".gitignore has been modified to include hot-updater entries");
   }
 
-  const buildPluginPackage = BUILD_PLUGINS[choices.build];
+  const integrationPackage = integrationPackageName(choices.build);
   const provider = choices.provider;
   const providerPackage = INIT_PROVIDER_PACKAGES[provider];
 
@@ -224,13 +179,9 @@ export const init = async (options: InitOptions = {}) => {
 
   try {
     await ensureInstallPackages({
-      dependencies: [
-        ...buildPluginPackage.dependencies,
-        ...REQUIRED_PACKAGES.dependencies,
-      ],
+      dependencies: [],
       devDependencies: [
-        ...buildPluginPackage.devDependencies,
-        ...REQUIRED_PACKAGES.devDependencies,
+        integrationPackage,
         ...providerPackage.devDependencies,
         providerPackage.packageName,
       ],
@@ -245,7 +196,20 @@ export const init = async (options: InitOptions = {}) => {
     process.exit(1);
   }
 
-  const build = buildPluginPackage.build;
+  const integrationModule = (await import(
+    `${integrationPackage}/integration`
+  )) as { initIntegration?: unknown };
+  assertInitIntegrationDescriptor(integrationModule.initIntegration);
+  const integration = integrationModule.initIntegration;
+  await ensureInstallPackages({
+    dependencies: [...integration.dependencies],
+    devDependencies: [...integration.devDependencies],
+  });
+  await integration.prepare?.({
+    cwd: process.cwd(),
+    envFile: options.envFile,
+  });
+  const build = integration.build;
   const runInitOptions = {
     build,
     envFile: options.envFile,

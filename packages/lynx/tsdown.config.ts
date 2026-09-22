@@ -4,6 +4,7 @@ export default defineConfig({
   entry: [
     "src/index.ts",
     "src/build.ts",
+    "src/integration.ts",
     "src/navigation.ts",
     "src/navigationProvenance.ts",
   ],

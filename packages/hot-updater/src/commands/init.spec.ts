@@ -13,6 +13,15 @@ const mocks = vi.hoisted(() => ({
   runSupabaseInit: vi.fn(),
 }));
 
+const bareBuild = {
+  imports: [{ pkg: "@hot-updater/bare", named: ["bare"] }],
+  configString: "bare({ enableHermes: true })",
+};
+const expoBuild = {
+  imports: [{ pkg: "@hot-updater/expo", named: ["expo"] }],
+  configString: "expo()",
+};
+
 vi.mock("@hot-updater/cli-tools", async (importOriginal) => {
   const actual =
     await importOriginal<typeof import("@hot-updater/cli-tools")>();
@@ -55,6 +64,28 @@ vi.mock("@hot-updater/aws/iac", () => ({
 
 vi.mock("@hot-updater/supabase/iac", () => ({
   runInit: mocks.runSupabaseInit,
+}));
+
+vi.mock("@hot-updater/bare/integration", () => ({
+  initIntegration: {
+    schemaVersion: 1,
+    id: "bare",
+    label: "Bare",
+    dependencies: ["@hot-updater/react-native"],
+    devDependencies: ["dotenv"],
+    build: bareBuild,
+  },
+}));
+
+vi.mock("@hot-updater/expo/integration", () => ({
+  initIntegration: {
+    schemaVersion: 1,
+    id: "expo",
+    label: "Expo",
+    dependencies: ["@hot-updater/react-native"],
+    devDependencies: ["dotenv"],
+    build: expoBuild,
+  },
 }));
 
 import { init } from "./init";
@@ -105,7 +136,7 @@ describe("init choices", () => {
       mocks.ensureInstallPackages.mock.invocationCallOrder[0] ?? Infinity,
     );
     expect(mocks.runAwsInit).toHaveBeenCalledWith({
-      build: "bare",
+      build: bareBuild,
       envFile: undefined,
     });
   });
@@ -130,7 +161,7 @@ describe("init choices", () => {
       HOT_UPDATER_INIT_PROVIDER: "aws",
     });
     expect(mocks.runAwsInit).toHaveBeenCalledWith({
-      build: "bare",
+      build: bareBuild,
       envFile: undefined,
     });
   });
@@ -179,7 +210,7 @@ describe("init choices", () => {
 
     expect(process.exitCode).toBeUndefined();
     expect(mocks.runSupabaseInit).toHaveBeenCalledWith({
-      build: "bare",
+      build: bareBuild,
       envFile: "init.env",
     });
   });
@@ -228,7 +259,7 @@ describe("init choices", () => {
     // Then
     expect(mocks.group).not.toHaveBeenCalled();
     expect(mocks.runAwsInit).toHaveBeenCalledWith({
-      build: "expo",
+      build: expoBuild,
       envFile: ".env.hotupdater",
     });
   });
