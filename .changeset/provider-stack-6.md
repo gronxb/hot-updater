@@ -8,3 +8,5 @@
 ---
 
 Centralize database commit, channel and Insights validation, read-model planning, and lazy lifecycle in the internal adapter factory. Preserve native and transactional execution paths and the existing public custom-provider contract.
+
+Execute D1 commit preconditions in order inside the atomic batch, including expectation-only commits, and report conflicts from that execution without separate snapshot reads. Roll back earlier changes when a later update or reference check fails.
