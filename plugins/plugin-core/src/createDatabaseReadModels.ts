@@ -90,18 +90,26 @@ export const createDatabaseReadModels = (
         return rows;
       },
       async findByBundleIds(bundleIds): Promise<readonly BundlePatchRow[]> {
-        if (bundleIds.length === 0) return [];
+        const uniqueBundleIds = [...new Set(bundleIds)];
+        if (uniqueBundleIds.length === 0) return [];
         const rows: BundlePatchRow[] = [];
-        for (let offset = 0; ; offset += PAGE_SIZE) {
+        let after: string | undefined;
+        while (true) {
+          const where: DatabaseWhere<"bundle_patches">[] = [
+            { field: "bundle_id", operator: "in", value: uniqueBundleIds },
+          ];
+          if (after !== undefined)
+            where.push({ field: "id", operator: "gt", value: after });
           const page = await crud.findMany({
             model: "bundle_patches",
-            where: [{ field: "bundle_id", operator: "in", value: bundleIds }],
+            where,
             limit: PAGE_SIZE,
-            offset,
+            offset: 0,
             orderBy: [{ field: "id", direction: "asc" }],
           });
           rows.push(...page);
           if (page.length < PAGE_SIZE) return rows;
+          after = page[page.length - 1].id;
         }
       },
     },
