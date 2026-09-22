@@ -11,18 +11,9 @@ import {
   type CollectionReference,
   type DocumentData,
   type Firestore,
-  type QuerySnapshot,
   type Transaction,
 } from "firebase-admin/firestore";
 
-import {
-  parseFirebaseBundleRow,
-  parseFirebaseApiKeyRow,
-  parseFirebaseChannelRow,
-  parseFirebasePatchRow,
-  parseFirebaseReleaseCatalogRow,
-  parseFirebaseReleaseRow,
-} from "./firebaseDatabaseParser";
 import type { FirebaseDatabaseSnapshot } from "./firebaseDatabaseState";
 import { FirebaseDatabaseConstraintError } from "./firebaseDatabaseState";
 import { FIREBASE_V1_COLLECTION_NAMES } from "./firebaseInfrastructureNames";
@@ -92,11 +83,6 @@ export const firebaseChannelIdDocumentId = (id: string): string =>
 export const firebaseInstallationDocumentId = (id: string): string =>
   `install_${Buffer.from(id, "utf8").toString("base64url")}`;
 
-type ParsedDocumentRow<TRow extends FixedRow> = {
-  readonly document: { readonly id: string };
-  readonly row: TRow;
-};
-
 export const requireFirebaseDocumentKey = <TRow extends FixedRow>(
   model: FixedModel,
   documentId: string,
@@ -112,191 +98,6 @@ export const requireFirebaseDocumentKey = <TRow extends FixedRow>(
     throw new FirebaseDatabaseConstraintError(`${model}.id.document-key`);
   }
   return row;
-};
-
-const documentMap = <TRow extends FixedRow>(
-  model: FixedModel,
-  documents: readonly ParsedDocumentRow<TRow>[],
-): Map<string, TRow> => {
-  const rows = new Map<string, TRow>();
-  for (const { row } of documents) {
-    const key =
-      model === "insights_latest"
-        ? (row as BundleEventRow).install_id
-        : "id" in row
-          ? row.id
-          : row.scope_key;
-    if (rows.has(key)) {
-      throw new FirebaseDatabaseConstraintError(`${model}.id.unique`);
-    }
-    rows.set(key, row);
-  }
-  for (const { document, row } of documents) {
-    requireFirebaseDocumentKey(model, document.id, row);
-  }
-  return rows;
-};
-
-const bundleMap = (
-  snapshot: QuerySnapshot<DocumentData>,
-): Map<string, BundleRow> =>
-  documentMap(
-    "bundles",
-    snapshot.docs.map((document) => ({
-      document,
-      row: parseFirebaseBundleRow(document.data(), `bundles/${document.id}`),
-    })),
-  );
-
-const patchMap = (
-  snapshot: QuerySnapshot<DocumentData>,
-): Map<string, BundlePatchRow> =>
-  documentMap(
-    "bundle_patches",
-    snapshot.docs.map((document) => ({
-      document,
-      row: parseFirebasePatchRow(
-        document.data(),
-        `bundle_patches/${document.id}`,
-      ),
-    })),
-  );
-
-const channelMap = (
-  snapshot: QuerySnapshot<DocumentData>,
-): Map<string, ChannelRow> => {
-  const rows = new Map<string, ChannelRow>();
-  const names = new Set<string>();
-  for (const document of snapshot.docs) {
-    const row = parseFirebaseChannelRow(
-      document.data(),
-      `channels/${document.id}`,
-    );
-    if (document.id !== firebaseChannelDocumentId(row.name)) {
-      throw new FirebaseDatabaseConstraintError("channels.name.document-key");
-    }
-    if (rows.has(row.id)) {
-      throw new FirebaseDatabaseConstraintError("channels.id.unique");
-    }
-    if (names.has(row.name)) {
-      throw new FirebaseDatabaseConstraintError("channels.name.unique");
-    }
-    rows.set(row.id, row);
-    names.add(row.name);
-  }
-  return rows;
-};
-
-export const loadFirebaseChannels = async (
-  collections: FirebaseDatabaseCollections,
-): Promise<readonly ChannelRow[]> => [
-  ...channelMap(await collections.channels.get()).values(),
-];
-
-const apiKeyMap = (
-  snapshot: QuerySnapshot<DocumentData>,
-): Map<string, ApiKeyRow> =>
-  documentMap(
-    "api_keys",
-    snapshot.docs.map((document) => ({
-      document,
-      row: parseFirebaseApiKeyRow(document.data(), `api_keys/${document.id}`),
-    })),
-  );
-
-const releaseMap = (
-  snapshot: QuerySnapshot<DocumentData>,
-): Map<string, ReleaseRow> =>
-  documentMap(
-    "releases",
-    snapshot.docs.map((document) => ({
-      document,
-      row: parseFirebaseReleaseRow(document.data(), `releases/${document.id}`),
-    })),
-  );
-
-const releaseCatalogMap = (
-  snapshot: QuerySnapshot<DocumentData>,
-): Map<string, ReleaseCatalogRow> =>
-  documentMap(
-    "release_catalogs",
-    snapshot.docs.map((document) => ({
-      document,
-      row: parseFirebaseReleaseCatalogRow(
-        document.data(),
-        `release_catalogs/${document.id}`,
-      ),
-    })),
-  );
-
-type CoreSnapshotDocuments = readonly [
-  QuerySnapshot<DocumentData>,
-  QuerySnapshot<DocumentData>,
-  QuerySnapshot<DocumentData>,
-  QuerySnapshot<DocumentData>,
-  QuerySnapshot<DocumentData>,
-  QuerySnapshot<DocumentData>,
-];
-
-const toSnapshot = (
-  documents: CoreSnapshotDocuments,
-): FirebaseDatabaseSnapshot => {
-  const snapshot: FirebaseDatabaseSnapshot = {
-    bundles: bundleMap(documents[0]),
-    bundlePatches: patchMap(documents[1]),
-    bundleEvents: new Map(),
-
-    channels: channelMap(documents[2]),
-    apiKeys: apiKeyMap(documents[3]),
-    releases: releaseMap(documents[4]),
-    releaseCatalogs: releaseCatalogMap(documents[5]),
-  };
-  return snapshot;
-};
-
-export const loadFirebaseDatabaseSnapshot = async (
-  collections: FirebaseDatabaseCollections,
-): Promise<FirebaseDatabaseSnapshot> => {
-  const [bundles, patches, channels, apiKeys, releases, releaseCatalogs] =
-    await Promise.all([
-      collections.bundles.get(),
-      collections.bundlePatches.get(),
-      collections.channels.get(),
-      collections.apiKeys.get(),
-      collections.releases.get(),
-      collections.releaseCatalogs.get(),
-    ]);
-  return toSnapshot([
-    bundles,
-    patches,
-    channels,
-    apiKeys,
-    releases,
-    releaseCatalogs,
-  ]);
-};
-
-export const loadFirebaseTransactionSnapshot = async (
-  transaction: Transaction,
-  collections: FirebaseDatabaseCollections,
-): Promise<FirebaseDatabaseSnapshot> => {
-  const [bundles, patches, channels, apiKeys, releases, releaseCatalogs] =
-    await Promise.all([
-      transaction.get(collections.bundles),
-      transaction.get(collections.bundlePatches),
-      transaction.get(collections.channels),
-      transaction.get(collections.apiKeys),
-      transaction.get(collections.releases),
-      transaction.get(collections.releaseCatalogs),
-    ]);
-  return toSnapshot([
-    bundles,
-    patches,
-    channels,
-    apiKeys,
-    releases,
-    releaseCatalogs,
-  ]);
 };
 
 type PersistCollectionInput<TRow extends FixedRow> = {
