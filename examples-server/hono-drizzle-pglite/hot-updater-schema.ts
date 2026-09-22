@@ -60,8 +60,8 @@ export const bundle_patches = pgTable("bundle_patches", {
     foreignColumns: [bundles.id],
     name: "bundle_patches_base_bundle_id_fk"
   }).onUpdate("restrict").onDelete("cascade"),
-  index("bundle_patches_bundle_id_idx").on(table.bundle_id),
-  index("bundle_patches_base_bundle_id_idx").on(table.base_bundle_id)
+  index("bundle_patches_bundle_id_idx").on(table.bundle_id, table.id),
+  index("bundle_patches_base_bundle_id_idx").on(table.base_bundle_id, table.id)
 ])
 
 export const bundle_patchesRelations = relations(bundle_patches, ({ one }) => ({

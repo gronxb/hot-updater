@@ -80,8 +80,8 @@ export const bundlePatchesV100 = table(
   },
   {
     indexes: [
-      index("bundle_patches_bundle_id_idx", ["bundle_id"]),
-      index("bundle_patches_base_bundle_id_idx", ["base_bundle_id"]),
+      index("bundle_patches_bundle_id_idx", ["bundle_id", "id"]),
+      index("bundle_patches_base_bundle_id_idx", ["base_bundle_id", "id"]),
     ],
     foreignKeys: [
       foreignKey("bundle_patches_bundle_id_fk", ["bundle_id"], "bundles", [

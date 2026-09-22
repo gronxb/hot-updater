@@ -146,9 +146,9 @@ CREATE INDEX hot_updater_v1_releases_channel_platform_order_idx
 CREATE INDEX hot_updater_v1_releases_bundle_id_idx ON public.hot_updater_v1_releases(bundle_id);
 CREATE INDEX hot_updater_v1_releases_enabled_idx ON public.hot_updater_v1_releases(enabled);
 CREATE INDEX hot_updater_v1_release_catalogs_channel_idx ON public.hot_updater_v1_release_catalogs(channel_id);
-CREATE INDEX hot_updater_v1_bundle_patches_bundle_id_idx ON public.hot_updater_v1_bundle_patches(bundle_id);
+CREATE INDEX hot_updater_v1_bundle_patches_bundle_id_idx ON public.hot_updater_v1_bundle_patches(bundle_id, id);
 CREATE INDEX hot_updater_v1_bundle_patches_base_bundle_id_idx
-  ON public.hot_updater_v1_bundle_patches(base_bundle_id);
+  ON public.hot_updater_v1_bundle_patches(base_bundle_id, id);
 CREATE INDEX hot_updater_v1_bundle_events_received_at_idx
   ON public.hot_updater_v1_bundle_events(received_at_ms, id);
 CREATE INDEX hot_updater_v1_bundle_events_install_idx
