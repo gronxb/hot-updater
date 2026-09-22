@@ -36,10 +36,14 @@ describe("Firebase native cursor and projection execution", () => {
       limit: 1001,
       offset: 7,
       select: ["id"],
+      where: [{ field: "manifest_file_hash", operator: "gt", value: "a" }],
       orderBy: [{ field: "id", direction: "asc" }],
     });
     expect(result).toEqual(
-      Array.from({ length: 1001 }, (_, i) => ({ id: bundle(i + 7).id })),
+      Array.from({ length: 1001 }, (_, i) => ({
+        id: bundle(i + 7).id,
+        manifest_file_hash: "hash",
+      })),
     );
   });
 

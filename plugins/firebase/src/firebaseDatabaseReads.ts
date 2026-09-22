@@ -189,6 +189,25 @@ export const createFirebaseReads = (
     }
     return transaction ? transaction.get(reference) : reference.get();
   };
+  // Snapshot cursors also need Firestore's implicit inequality ordering fields.
+  const cursorOrder = (input: {
+    orderBy?: readonly { field: string; direction: "asc" | "desc" }[];
+    where?: Where;
+  }) => {
+    const order = [...(input.orderBy ?? [])];
+    const direction = order.at(-1)?.direction ?? "asc";
+    const inequalities = new Set(
+      input.where
+        ?.filter(({ operator }) =>
+          ["gt", "gte", "lt", "lte", "ne", "not_in"].includes(operator ?? "eq"),
+        )
+        .map(({ field }) => field),
+    );
+    for (const field of [...inequalities].sort())
+      if (!order.some((clause) => clause.field === field))
+        order.push({ field, direction });
+    return order;
+  };
   const orderedQuery = (input: FindManyDatabaseImplementationInput): Query => {
     let query = filterQuery(sources[input.model], input.where);
     for (const clause of input.orderBy ?? []) {
@@ -196,7 +215,7 @@ export const createFirebaseReads = (
         throw new DatabasePluginInputError("invalid-operation");
       query = query.orderBy(clause.field, clause.direction);
     }
-    const select = fields(input.model, input.select, input.orderBy);
+    const select = fields(input.model, input.select, cursorOrder(input));
     return select === undefined ? query : query.select(...select);
   };
   const get = (query: Query) =>
@@ -303,6 +322,7 @@ export const createFirebaseReads = (
         const orderBy = input.orderBy?.length
           ? input.orderBy
           : [{ field: documentKey(input.model), direction: "asc" as const }];
+        const comparisonOrder = cursorOrder({ ...input, orderBy });
         const streams = await Promise.all(
           parts.map(async (part) => {
             const query = orderedQuery({
@@ -321,7 +341,7 @@ export const createFirebaseReads = (
           left: QueryDocumentSnapshot,
           right: QueryDocumentSnapshot,
         ) => {
-          for (const { field, direction } of orderBy) {
+          for (const { field, direction } of comparisonOrder) {
             const a = left.get(field),
               b = right.get(field);
             const comparison =
@@ -344,7 +364,7 @@ export const createFirebaseReads = (
             Buffer.from(left.id),
             Buffer.from(right.id),
           );
-          return orderBy.at(-1)?.direction === "desc"
+          return comparisonOrder.at(-1)?.direction === "desc"
             ? -comparison
             : comparison;
         };
