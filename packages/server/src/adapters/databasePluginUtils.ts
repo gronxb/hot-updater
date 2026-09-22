@@ -144,10 +144,19 @@ export const sortRowsByOrder = <TRow extends object>(
   });
 };
 
-export const fromStoredBundleRow = (row: StoredBundleRow): BundleRow => ({
-  ...row,
-  metadata: parseMetadata(row.metadata),
-});
+export function fromStoredBundleRow(row: StoredBundleRow): BundleRow;
+export function fromStoredBundleRow(
+  row: Partial<StoredBundleRow>,
+): Partial<BundleRow>;
+export function fromStoredBundleRow(
+  row: Partial<StoredBundleRow>,
+): Partial<BundleRow> {
+  const { metadata, ...fields } = row;
+  return {
+    ...fields,
+    ...("metadata" in row ? { metadata: parseMetadata(metadata) } : {}),
+  };
+}
 
 export const toStoredBundleRow = (
   row: BundleRow,
@@ -173,15 +182,32 @@ export const toStoredBundleUpdate = (
   };
 };
 
-export const fromStoredReleaseRow = (row: StoredReleaseRow): ReleaseRow => ({
-  ...row,
-  enabled: parseStoredBoolean(row.enabled, "enabled"),
-  should_force_update: parseStoredBoolean(
-    row.should_force_update,
-    "should_force_update",
-  ),
-  target_cohorts: parseTargetCohorts(row.target_cohorts) ?? [],
-});
+export function fromStoredReleaseRow(row: StoredReleaseRow): ReleaseRow;
+export function fromStoredReleaseRow(
+  row: Partial<StoredReleaseRow>,
+): Partial<ReleaseRow>;
+export function fromStoredReleaseRow(
+  row: Partial<StoredReleaseRow>,
+): Partial<ReleaseRow> {
+  const { enabled, should_force_update, target_cohorts, ...fields } = row;
+  return {
+    ...fields,
+    ...("enabled" in row
+      ? { enabled: parseStoredBoolean(enabled, "enabled") }
+      : {}),
+    ...("should_force_update" in row
+      ? {
+          should_force_update: parseStoredBoolean(
+            should_force_update,
+            "should_force_update",
+          ),
+        }
+      : {}),
+    ...("target_cohorts" in row
+      ? { target_cohorts: parseTargetCohorts(target_cohorts) ?? [] }
+      : {}),
+  };
+}
 
 export const toStoredReleaseRow = (
   row: ReleaseRow,
@@ -204,12 +230,25 @@ export const toStoredReleaseUpdate = (
   };
 };
 
-export const fromStoredReleaseCatalogRow = (
+export function fromStoredReleaseCatalogRow(
   row: StoredReleaseCatalogRow,
-): ReleaseCatalogRow => ({
-  ...row,
-  is_tombstone: parseStoredBoolean(row.is_tombstone, "is_tombstone"),
-});
+): ReleaseCatalogRow;
+export function fromStoredReleaseCatalogRow(
+  row: Partial<StoredReleaseCatalogRow>,
+): Partial<ReleaseCatalogRow>;
+export function fromStoredReleaseCatalogRow(
+  row: Partial<StoredReleaseCatalogRow>,
+): Partial<ReleaseCatalogRow> {
+  const { is_tombstone, ...fields } = row;
+  return {
+    ...fields,
+    ...("is_tombstone" in row
+      ? {
+          is_tombstone: parseStoredBoolean(is_tombstone, "is_tombstone"),
+        }
+      : {}),
+  };
+}
 
 export const escapeLikePattern = (value: string): string =>
   value.replaceAll("\\", "\\\\").replaceAll("%", "\\%").replaceAll("_", "\\_");
@@ -220,15 +259,25 @@ export const escapeGlobPattern = (value: string): string =>
 export type StoredBundleEventRow = Omit<BundleEventRow, "metadata"> & {
   readonly metadata: unknown;
 };
-export const fromStoredBundleEventRow = (
+export function fromStoredBundleEventRow(
   row: StoredBundleEventRow,
-): BundleEventRow => {
+): BundleEventRow;
+export function fromStoredBundleEventRow(
+  row: Partial<StoredBundleEventRow>,
+): Partial<BundleEventRow>;
+export function fromStoredBundleEventRow(
+  row: Partial<StoredBundleEventRow>,
+): Partial<BundleEventRow> {
+  const { metadata: storedMetadata, ...fields } = row;
+  if (!("metadata" in row)) return fields as Partial<BundleEventRow>;
   const metadata =
-    typeof row.metadata === "string" ? parseJson(row.metadata) : row.metadata;
+    typeof storedMetadata === "string"
+      ? parseJson(storedMetadata)
+      : storedMetadata;
   if (!isDatabaseBundleEventMetadata(metadata))
     throw new StoredBundleRowError("Invalid event metadata field.");
-  return { ...row, metadata } as BundleEventRow;
-};
+  return { ...fields, metadata } as Partial<BundleEventRow>;
+}
 export const toStoredBundleEventRow = (
   row: BundleEventRow,
   provider: ORMSQLProvider,

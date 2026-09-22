@@ -301,7 +301,7 @@ export const createDrizzleCrud = (
         orderBy: [asc(getDrizzleColumn(events, "install_id"))],
         limit: "installId" in input ? 1 : input.limit,
       });
-      return rows.map(fromStoredBundleEventRow);
+      return rows.map((row) => fromStoredBundleEventRow(row));
     },
     async countLatestInsightsEvents(input) {
       const groups = latestInsightsCountGroups(input).map((where) =>
@@ -538,9 +538,18 @@ export const createDrizzleCrud = (
       }
     },
     async findOne(input) {
+      const columns =
+        input.select === undefined
+          ? {}
+          : {
+              columns: Object.fromEntries(
+                input.select.map((field) => [field, true]),
+              ),
+            };
       switch (input.model) {
         case "bundles": {
           const row = await db.query.bundles.findFirst({
+            ...columns,
             where: buildDrizzleWhere(provider, bundles, input.where),
           });
           return row === undefined ? null : fromStoredBundleRow(row);
@@ -548,29 +557,34 @@ export const createDrizzleCrud = (
         case "bundle_patches":
           return (
             (await db.query.bundle_patches.findFirst({
+              ...columns,
               where: buildDrizzleWhere(provider, patches, input.where),
             })) ?? null
           );
         case "api_keys":
           return (
             (await db.query.api_keys.findFirst({
+              ...columns,
               where: buildDrizzleWhere(provider, apiKeys, input.where),
             })) ?? null
           );
         case "channels":
           return (
             (await db.query.channels.findFirst({
+              ...columns,
               where: buildDrizzleWhere(provider, channels, input.where),
             })) ?? null
           );
         case "releases": {
           const row = await db.query.releases.findFirst({
+            ...columns,
             where: buildDrizzleWhere(provider, releases, input.where),
           });
           return row === undefined ? null : fromStoredReleaseRow(row);
         }
         case "release_catalogs": {
           const row = await db.query.release_catalogs.findFirst({
+            ...columns,
             where: buildDrizzleWhere(provider, releaseCatalogs, input.where),
           });
           return row === undefined ? null : fromStoredReleaseCatalogRow(row);
@@ -578,31 +592,42 @@ export const createDrizzleCrud = (
       }
     },
     async findMany(input) {
+      const columns =
+        input.select === undefined
+          ? {}
+          : {
+              columns: Object.fromEntries(
+                input.select.map((field) => [field, true]),
+              ),
+            };
       if (input.distinctOn !== undefined) {
         throw new DatabasePluginInputError("invalid-operation");
       }
       switch (input.model) {
         case "bundles": {
           const rows = await db.query.bundles.findMany({
+            ...columns,
             where: buildDrizzleWhere(provider, bundles, input.where),
             orderBy: toOrderBy(bundles, input),
             limit: input.limit,
             offset: input.offset,
           });
-          return rows.map(fromStoredBundleRow);
+          return rows.map((row) => fromStoredBundleRow(row));
         }
         case "bundle_events":
           return (
             await db.query.bundle_events.findMany({
+              ...columns,
               where: buildDrizzleWhere(provider, events, input.where),
               orderBy: toOrderBy(events, input),
               limit: input.limit,
               offset: input.offset,
             })
-          ).map(fromStoredBundleEventRow);
+          ).map((row) => fromStoredBundleEventRow(row));
 
         case "api_keys":
           return db.query.api_keys.findMany({
+            ...columns,
             where: buildDrizzleWhere(provider, apiKeys, input.where),
             orderBy: toOrderBy(apiKeys, input),
             limit: input.limit,
@@ -610,6 +635,7 @@ export const createDrizzleCrud = (
           });
         case "bundle_patches":
           return db.query.bundle_patches.findMany({
+            ...columns,
             where: buildDrizzleWhere(provider, patches, input.where),
             orderBy: toOrderBy(patches, input),
             limit: input.limit,
@@ -617,6 +643,7 @@ export const createDrizzleCrud = (
           });
         case "channels":
           return db.query.channels.findMany({
+            ...columns,
             where: buildDrizzleWhere(provider, channels, input.where),
             orderBy: toOrderBy(channels, input),
             limit: input.limit,
@@ -624,21 +651,23 @@ export const createDrizzleCrud = (
           });
         case "releases": {
           const rows = await db.query.releases.findMany({
+            ...columns,
             where: buildDrizzleWhere(provider, releases, input.where),
             orderBy: toOrderBy(releases, input),
             limit: input.limit,
             offset: input.offset,
           });
-          return rows.map(fromStoredReleaseRow);
+          return rows.map((row) => fromStoredReleaseRow(row));
         }
         case "release_catalogs": {
           const rows = await db.query.release_catalogs.findMany({
+            ...columns,
             where: buildDrizzleWhere(provider, releaseCatalogs, input.where),
             orderBy: toOrderBy(releaseCatalogs, input),
             limit: input.limit,
             offset: input.offset,
           });
-          return rows.map(fromStoredReleaseCatalogRow);
+          return rows.map((row) => fromStoredReleaseCatalogRow(row));
         }
       }
     },

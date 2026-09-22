@@ -569,8 +569,7 @@ describe("createDatabasePlugin", () => {
       try {
         return await callback({
           ...createTransactionMethods(),
-          count: async (input: { readonly model: string }) =>
-            input.model === "releases" ? 1 : 0,
+          findOne: async () => ({ id: releaseRow.id }),
           delete: deleteRows,
         });
       } catch (error) {
@@ -599,6 +598,78 @@ describe("createDatabasePlugin", () => {
     });
     expect(rollback).toHaveBeenCalledOnce();
     expect(deleteRows).not.toHaveBeenCalled();
+  });
+
+  it.each(["bundles", "channels"] as const)(
+    "checks a single reference witness before deleting %s",
+    async (model) => {
+      const findOne = vi.fn(async () => ({ id: releaseRow.id }));
+      const count = vi.fn(unimplemented);
+      const deleteRows = vi.fn(unimplemented);
+      const plugin = createTestPlugin("bounded-references", {
+        ...createMethods(),
+        transaction: async (callback) =>
+          callback({
+            ...createTransactionMethods(),
+            findOne,
+            count,
+            delete: deleteRows,
+          }),
+      });
+      const id = model === "bundles" ? bundleRow.id : channelRow.id;
+      await expect(
+        plugin.commit({
+          changes: [{ model, operation: "delete", where: { id } }],
+        }),
+      ).resolves.toEqual({
+        committed: false,
+        conflict: { changeIndex: 0, reason: "referenced" },
+      });
+      expect(findOne).toHaveBeenCalledExactlyOnceWith({
+        model: "releases",
+        where: [
+          {
+            field: model === "bundles" ? "bundle_id" : "channel_id",
+            value: id,
+          },
+        ],
+        select: ["id"],
+      });
+      expect(count).not.toHaveBeenCalled();
+      expect(deleteRows).not.toHaveBeenCalled();
+    },
+  );
+
+  it("projects only identity and platform for release reference validation", async () => {
+    const findOne = vi.fn(async (input: { readonly model: string }) =>
+      input.model === "channels" ? channelRow : bundleRow,
+    );
+    const plugin = createTestPlugin("projected-references", {
+      ...createMethods(),
+      transaction: async (callback) =>
+        callback({
+          ...createTransactionMethods(),
+          findOne,
+          create: async () => releaseRow,
+        }),
+    });
+    await expect(
+      plugin.commit({
+        changes: [{ model: "releases", operation: "insert", row: releaseRow }],
+      }),
+    ).resolves.toEqual({ committed: true });
+    expect(findOne.mock.calls.map(([input]) => input)).toEqual([
+      {
+        model: "channels",
+        where: [{ field: "id", value: channelRow.id }],
+        select: ["id"],
+      },
+      {
+        model: "bundles",
+        where: [{ field: "id", value: bundleRow.id }],
+        select: ["platform"],
+      },
+    ]);
   });
 
   it("rejects a multi-change commit before a non-atomic adapter mutates", async () => {
