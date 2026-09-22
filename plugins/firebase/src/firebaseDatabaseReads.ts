@@ -24,6 +24,7 @@ import {
   parseFirebaseReleaseCatalogRow,
   parseFirebaseReleaseRow,
 } from "./firebaseDatabaseParser";
+import { nullableString } from "./firebaseDatabaseParserShared";
 import {
   firebaseChannelDocumentId,
   firebaseChannelIdDocumentId,
@@ -45,6 +46,23 @@ const operators: Record<string, WhereFilterOp> = {
   lte: "<=",
   in: "in",
   not_in: "not-in",
+};
+
+// Match the full parsers' optional nullable strings. Required nullable fields,
+// such as event from_bundle_id, must still fail validation when absent.
+const optionalNullableStrings: Partial<
+  Record<DatabaseModel, readonly string[]>
+> = {
+  bundles: ["git_commit_hash"],
+  bundle_events: ["user_id"],
+  releases: [
+    "bundle_id",
+    "target_app_version",
+    "fingerprint_hash",
+    "message",
+    "source_release_id",
+  ],
+  release_catalogs: ["fingerprint_hash"],
 };
 
 // Unsupported predicates must fail explicitly, never fetch a collection to filter it.
@@ -143,6 +161,16 @@ export const createFirebaseReads = (
           (model === "channels" ? firebaseChannelDocumentId(key) : key)
       )
         throw new FirebaseDatabaseConstraintError(`${model}.id.document-key`);
+      for (const field of select)
+        if (optionalNullableStrings[model]?.includes(field))
+          Reflect.set(
+            value,
+            field,
+            nullableString(
+              Reflect.get(value, field),
+              `${model}/${document.id}`,
+            ),
+          );
       // The factory validates selected fields. Retain the physical key invariant here.
       return value as DatabaseImplementationResult;
     }

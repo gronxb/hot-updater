@@ -2,6 +2,7 @@ import type { BundleRow } from "@hot-updater/plugin-core";
 import type { Transaction } from "firebase-admin/firestore";
 import { describe, expect, it } from "vitest";
 
+import { createDatabasePluginReads } from "../../plugin-core/src/databasePluginReads";
 import {
   firebaseChannelDocumentId,
   firebaseChannelIdDocumentId,
@@ -28,7 +29,11 @@ const fixture = (stored: Row[]) => {
     id: String(row.id),
     data: () =>
       fields
-        ? Object.fromEntries(fields.map((field) => [field, row[field]]))
+        ? Object.fromEntries(
+            fields
+              .filter((field) => field in row)
+              .map((field) => [field, row[field]]),
+          )
         : row,
     get: (field) => row[field],
   });
@@ -194,6 +199,39 @@ describe("Firebase physical read costs", () => {
       }),
     ).resolves.toEqual({ id: bundle(1).id, platform: "ios" });
     expect(gets).toEqual([{ id: bundle(1).id, fieldMask: ["platform", "id"] }]);
+  });
+
+  it("preserves absent nullable-field normalization through selected-read validation", async () => {
+    const { git_commit_hash: _hash, ...stored } = bundle(1);
+    const { reads, gets, calls } = fixture([stored]);
+    const validated = createDatabasePluginReads(reads);
+    const key = {
+      model: "bundles" as const,
+      where: [{ field: "id" as const, value: stored.id }],
+    };
+    await expect(validated.findOne(key)).resolves.toMatchObject({
+      git_commit_hash: null,
+    });
+    await expect(
+      validated.findOne({ ...key, select: ["git_commit_hash"] }),
+    ).resolves.toEqual({ git_commit_hash: null });
+    await expect(
+      validated.findMany({ ...key, limit: 1, select: ["git_commit_hash"] }),
+    ).resolves.toEqual([{ git_commit_hash: null }]);
+    expect(gets.at(-1)?.fieldMask).toEqual(["git_commit_hash", "id"]);
+    expect(calls[0].select).toEqual(["git_commit_hash", "id"]);
+  });
+
+  it("still rejects missing required fields in selected reads", async () => {
+    const { platform: _platform, ...stored } = bundle(1);
+    const { reads } = fixture([stored]);
+    await expect(
+      createDatabasePluginReads(reads).findOne({
+        model: "bundles",
+        where: [{ field: "id", value: stored.id }],
+        select: ["platform"],
+      }),
+    ).rejects.toMatchObject({ code: "invalid-result" });
   });
 
   it("reads a channel ID registry key even when absent, providing a transaction lock", async () => {

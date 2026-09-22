@@ -79,6 +79,47 @@ describe("Firebase native cursor and projection execution", () => {
     },
   );
 
+  it("merges by implicit inequality fields and retains them for shard cursors", async () => {
+    const rows = Array.from({ length: 31 }, (_, i) => ({
+      ...bundle(i),
+      git_commit_hash: i === 30 ? "a" : "z",
+    }));
+    const batch = firestore.batch();
+    for (const row of rows) batch.set(bundlesCollection.doc(row.id), row);
+    await batch.commit();
+    const input = {
+      model: "bundles" as const,
+      where: [
+        {
+          field: "id" as const,
+          operator: "in" as const,
+          value: rows.map(({ id }) => id),
+        },
+        {
+          field: "git_commit_hash" as const,
+          operator: "gt" as const,
+          value: "",
+        },
+      ],
+      orderBy: [
+        { field: "platform" as const, direction: "asc" as const },
+      ] as const,
+      offset: 0,
+    };
+    await expect(reads.findMany({ ...input, limit: 1 })).resolves.toEqual([
+      rows[30],
+    ]);
+    const native = await bundlesCollection
+      .where("git_commit_hash", ">", "")
+      .orderBy("platform", "asc")
+      .limit(2)
+      .select("id", "platform", "git_commit_hash")
+      .get();
+    await expect(
+      reads.findMany({ ...input, select: ["id"], limit: 2 }),
+    ).resolves.toEqual(native.docs.map((doc) => doc.data()));
+  });
+
   it("uses field masks for exact document reads inside and outside a transaction", async () => {
     const row = bundle(1);
     await bundlesCollection.doc(row.id).set(row);
