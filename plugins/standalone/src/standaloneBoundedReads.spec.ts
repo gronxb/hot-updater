@@ -38,7 +38,7 @@ describe("standalone bounded reads", () => {
     await expect(
       reader.findMany({
         model: "bundles",
-        where: [{ field: "file_hash", value: "hash" }],
+        where: [{ field: "manifest_file_hash", value: "hash" }],
         limit: 1,
         offset: 0,
       }),
