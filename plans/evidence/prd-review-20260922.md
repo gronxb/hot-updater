@@ -64,6 +64,29 @@ demonstrated. The previously verified idempotent shared-asset upload fix remains
 
 ## Verification
 
+### AWS Insights permission correction during device E2E
+
+AWS job `job-20260922045916-ppw3ci` at `303236ae0` failed all 27 iOS
+scenarios at the common Console Insights check. CloudWatch traced event HTTP 500
+responses to DynamoDB authorization: `BatchGetItem` was already allowed, but
+the policy's leading-key condition omitted `_hot-updater#insights-overview#*`.
+The same omission existed in the IAM generator. Android was interrupted after
+the shared cause was confirmed; this job is not a passing verification.
+
+The generator and current 1.0.0 infrastructure guide now include this reserved
+key range. The regression checks actual batch-read and transaction keys from
+an Insights event against the Lambda policy; it failed before the fix and
+passed afterward. All 2,765 workspace unit tests, AWS typecheck, workspace lint,
+and AWS/CLI builds passed after the correction.
+
+The rebuilt workspace scaffold was applied to the existing v1 table policy,
+preserving permissions for the other table and unrelated policies. A real
+authenticated event returned HTTP 204, and a consistent DynamoDB read verified
+its persisted installation head. The Lambda runtime matches the previous
+deployment after applying the existing configuration substitutions; Lambda
+version 17 and all native/server/scenario code remain unchanged. AWS full E2E
+must pass again with the corrected policy before acceptance.
+
 - Build: 26 workspace projects passed.
 - Typecheck: 34 workspace projects passed.
 - Lint and diff whitespace checks passed.
