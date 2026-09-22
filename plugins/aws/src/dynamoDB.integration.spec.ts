@@ -15,7 +15,10 @@ import {
 } from "@hot-updater/plugin-core";
 import { bundleToRow } from "@hot-updater/plugin-core";
 import { createHotUpdater } from "@hot-updater/server";
-import { setupDatabasePluginTestSuite, startHttpTestServer } from "@hot-updater/test-utils";
+import {
+  setupDatabasePluginTestSuite,
+  startHttpTestServer,
+} from "@hot-updater/test-utils";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
 import { migrateDynamoDBMetadataIndexes } from "../iac/migrateMetadataIndexes";

@@ -9,4 +9,4 @@ Serialize Kysely database commits and retry native serialization conflicts so co
 
 Replace Firebase row fields atomically instead of recursively merging JSON metadata, while preserving unrelated document extension fields.
 
-Apply Supabase migration `20260922000000_idempotent_channel_commit.sql` to existing generation 1 projects. It makes generic deletion of a missing Channel an atomic no-op, preserving table layouts, schema version, existing data, and RPC permissions.
+The single Supabase 1.0.0 initialization migration makes generic deletion of a missing Channel an atomic no-op. For older RC projects, replace only the commit RPC using the supplied definition and permissions; preserve table layouts, schema version, existing data and migration history.

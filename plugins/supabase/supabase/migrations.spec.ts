@@ -27,7 +27,7 @@ const readMigrations = async () => {
 };
 
 describe("Supabase v1 schema", () => {
-  it("upgrades the commit RPC while preserving existing data and service-role permissions", async () => {
+  it("initializes idempotent atomic channel deletion with service-role permissions", async () => {
     const database = new PGlite();
     try {
       await database.exec(
@@ -38,15 +38,38 @@ describe("Supabase v1 schema", () => {
       await database.exec(
         "INSERT INTO public.hot_updater_v1_channels (id, name) VALUES ('existing', 'production')",
       );
-      for (const migration of migrations.slice(1))
-        await database.exec(migration.sql);
+      expect(migrations).toHaveLength(1);
+      const result = await database.query<{ result: unknown }>(
+        "SELECT public.hot_updater_v1_commit($1::jsonb) AS result",
+        [
+          JSON.stringify({
+            changes: [
+              {
+                model: "channels",
+                operation: "insert",
+                row: { id: "added", name: "staging" },
+                onConflict: "ignore",
+              },
+              {
+                model: "channels",
+                operation: "delete",
+                where: { id: "missing" },
+              },
+            ],
+          }),
+        ],
+      );
+      expect(result.rows).toEqual([{ result: { committed: true } }]);
       expect(
         (
           await database.query(
-            "SELECT id, name FROM public.hot_updater_v1_channels",
+            "SELECT id, name FROM public.hot_updater_v1_channels ORDER BY id",
           )
         ).rows,
-      ).toEqual([{ id: "existing", name: "production" }]);
+      ).toEqual([
+        { id: "added", name: "staging" },
+        { id: "existing", name: "production" },
+      ]);
       expect(
         (
           await database.query(
@@ -247,11 +270,10 @@ describe("Supabase v1 schema", () => {
     }
   });
 
-  it("preserves the initialization migration and appends compatible RPC updates", async () => {
+  it("ships the final RC schema in the single 1.0.0 initialization migration", async () => {
     const migrations = await readMigrations();
     expect(migrations.map(({ file }) => file)).toEqual([
       "20260818000000_hot-updater_1.0.0.sql",
-      "20260922000000_idempotent_channel_commit.sql",
     ]);
   });
 
