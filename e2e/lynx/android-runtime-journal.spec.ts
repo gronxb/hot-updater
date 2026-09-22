@@ -168,6 +168,43 @@ describe("Android runtime journal recovery diagnostics", () => {
     ).toEqual({ recovered: true });
   });
 
+  it("ignores interleaved boundaries from sibling pages in the same generation", () => {
+    const evidence = mutatedEvidence(
+      fixture("android-s1-runtime-events.json"),
+      (journal) => {
+        const diagnosticIndex = journal.events.findIndex(
+          (event) => event.name === "engineDiagnostic",
+        );
+        const evaluate = structuredClone(
+          journal.events.find(
+            (event) => event.name === "generationWillEvaluate",
+          )!,
+        );
+        const started = structuredClone(
+          journal.events.find((event) => event.name === "generationStarted")!,
+        );
+        for (const event of [evaluate, started]) {
+          event.details.contextId = "sibling-page-context";
+          event.details.pageAttemptId = "sibling-page-attempt";
+        }
+        journal.events.splice(diagnosticIndex, 0, evaluate, started);
+      },
+    );
+
+    expect(
+      evaluateFontDiagnosticRecoveryByAndroidJournal(
+        "assets/probe.ttf",
+        evidence,
+      ),
+    ).toEqual({ recovered: true });
+    expect(
+      evaluateFontDiagnosticRecoveriesByAndroidJournal(
+        ["assets/probe.ttf"],
+        evidence,
+      ),
+    ).toEqual({ recovered: true });
+  });
+
   it("accepts a stale STARTING screen value when the native journal confirms readiness", () => {
     const evidence = contractEnvelope(
       fixture("android-s1-runtime-events.json"),

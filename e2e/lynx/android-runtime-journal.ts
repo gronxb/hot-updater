@@ -303,6 +303,30 @@ function identityMismatchField(
   return null;
 }
 
+function sameGenerationProvenance(
+  left: ManagedIdentity,
+  right: ManagedIdentity,
+): boolean {
+  return (
+    left.runtimeId === right.runtimeId &&
+    left.processId === right.processId &&
+    left.generationId === right.generationId &&
+    left.attemptId === right.attemptId &&
+    left.bundleId === right.bundleId &&
+    left.releaseId === right.releaseId
+  );
+}
+
+function isSiblingPageIdentity(
+  candidate: ManagedIdentity,
+  expected: ManagedIdentity,
+): boolean {
+  return (
+    candidate.contextId !== expected.contextId &&
+    sameGenerationProvenance(candidate, expected)
+  );
+}
+
 function isCanonicalManagedPath(value: unknown): value is string {
   if (
     typeof value !== "string" ||
@@ -696,6 +720,7 @@ export function evaluateFontDiagnosticRecoveryByAndroidJournal(
       }
       const field = identityMismatchField(identity, screen.identity);
       if (field !== null) {
+        if (isSiblingPageIdentity(identity, screen.identity)) continue;
         return recoveryRejected("boundary.identity-mismatch", {
           field,
           sequence: event.sequence,
@@ -850,6 +875,12 @@ export function evaluateFontDiagnosticRecoveryByAndroidJournal(
       });
     }
     if (generationBoundaries.has(event.name) && index > readyIndex) {
+      if (
+        identity !== null &&
+        isSiblingPageIdentity(identity, screen.identity)
+      ) {
+        continue;
+      }
       return recoveryRejected("order.generation-boundary-after-ready", {
         sequence: event.sequence,
       });
@@ -862,6 +893,7 @@ export function evaluateFontDiagnosticRecoveryByAndroidJournal(
     if (generationBoundaries.has(event.name) && identity !== null) {
       const field = identityMismatchField(identity, screen.identity);
       if (field !== null) {
+        if (isSiblingPageIdentity(identity, screen.identity)) continue;
         return recoveryRejected("boundary.identity-mismatch", {
           field,
           sequence: event.sequence,
@@ -876,6 +908,7 @@ export function evaluateFontDiagnosticRecoveryByAndroidJournal(
     if (index > readyIndex && identity !== null) {
       const field = identityMismatchField(identity, screen.identity);
       if (field !== null) {
+        if (isSiblingPageIdentity(identity, screen.identity)) continue;
         return recoveryRejected("post-ready.identity-mismatch", {
           field,
           sequence: event.sequence,
@@ -954,9 +987,7 @@ export function evaluateFontDiagnosticRecoveriesByAndroidJournal(
           identity !== null &&
           ignoredIdentity !== null &&
           sameIdentity(identity, ignoredIdentity) &&
-          isConfirmedReadinessStatus(
-            record(event.details.confirmation)?.status,
-          )
+          isConfirmedReadinessStatus(record(event.details.confirmation)?.status)
         );
       });
     if (
@@ -1012,6 +1043,7 @@ export function evaluateFontDiagnosticRecoveriesByAndroidJournal(
       }
       const field = identityMismatchField(boundaryIdentity, identity);
       if (field !== null) {
+        if (isSiblingPageIdentity(boundaryIdentity, identity)) continue;
         return recoveryRejected("boundary.identity-mismatch", {
           field,
           sequence: event.sequence,
@@ -1064,6 +1096,12 @@ export function evaluateFontDiagnosticRecoveriesByAndroidJournal(
             ? "runtimeId"
             : identityMismatchField(boundaryIdentity, identity);
         if (field !== null) {
+          if (
+            boundaryIdentity !== null &&
+            isSiblingPageIdentity(boundaryIdentity, identity)
+          ) {
+            continue;
+          }
           return recoveryRejected("boundary.identity-mismatch", {
             field,
             sequence: event.sequence,
@@ -1133,6 +1171,13 @@ export function evaluateFontDiagnosticRecoveriesByAndroidJournal(
       });
     }
     if (generationBoundaries.has(event.name)) {
+      const boundaryIdentity = managedIdentity(event.details);
+      if (
+        boundaryIdentity !== null &&
+        isSiblingPageIdentity(boundaryIdentity, screen.identity)
+      ) {
+        continue;
+      }
       return recoveryRejected("order.generation-boundary-after-ready", {
         sequence: event.sequence,
       });
@@ -1145,6 +1190,7 @@ export function evaluateFontDiagnosticRecoveriesByAndroidJournal(
     }
     const field = identityMismatchField(identity, screen.identity);
     if (field !== null) {
+      if (isSiblingPageIdentity(identity, screen.identity)) continue;
       return recoveryRejected("post-ready.identity-mismatch", {
         field,
         sequence: event.sequence,
