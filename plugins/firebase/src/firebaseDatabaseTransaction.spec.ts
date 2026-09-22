@@ -306,4 +306,54 @@ describe("Firebase transaction staging", () => {
     ).resolves.toBe(4);
     expect(reads.findMany).not.toHaveBeenCalled();
   });
+
+  it("excludes a persisted witness when its ID was deleted and reinserted under different parents", async () => {
+    const moved = {
+      ...release,
+      bundle_id: "new-bundle",
+      channel_id: "new-channel",
+    };
+    reads.findOne.mockImplementation(async ({ model }) =>
+      model === "releases"
+        ? release
+        : model === "bundles"
+          ? { ...row, id: moved.bundle_id }
+          : { id: moved.channel_id, name: "preview" },
+    );
+    reads.findMany.mockResolvedValue([{ id: release.id }]);
+    const { database } = open();
+    await database.delete({
+      model: "releases",
+      where: [{ field: "id", value: release.id }],
+    });
+    await database.create({ model: "releases", data: moved });
+    for (const field of ["bundle_id", "channel_id"] as const) {
+      await expect(
+        database.findOne({
+          model: "releases",
+          where: [
+            field === "bundle_id"
+              ? { field, value: release[field] }
+              : { field, value: release[field] },
+          ],
+          select: ["id"],
+        }),
+      ).resolves.toBeNull();
+      await expect(
+        database.findOne({
+          model: "releases",
+          where: [
+            field === "bundle_id"
+              ? { field, value: moved[field] }
+              : { field, value: moved[field] },
+          ],
+          select: ["id"],
+        }),
+      ).resolves.toEqual({ id: release.id });
+    }
+    expect(reads.findMany).toHaveBeenCalledTimes(2);
+    expect(
+      reads.findMany.mock.calls.every(([input]) => input.limit === 2),
+    ).toBe(true);
+  });
 });

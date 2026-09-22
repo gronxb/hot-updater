@@ -121,9 +121,9 @@ export const createFirebaseTransaction = (
       if (row[field] === value) return { id: row.id };
     const deleted = new Set<string>();
     for (const row of before.releases.values())
-      if (row[field] === value && !after.releases.has(row.id))
+      if (row[field] === value && after.releases.get(row.id)?.[field] !== value)
         deleted.add(row.id);
-    // At most the staged tombstones can precede the first surviving witness.
+    // Staged deletions/replacements can precede the first surviving witness.
     const witnesses = await reads.findMany({
       model: "releases",
       where: [field === "bundle_id" ? { field, value } : { field, value }],

@@ -268,4 +268,74 @@ describe("Firebase staged commit invariants", () => {
       plugin.models.releases.findById(release("c").id),
     ).resolves.toEqual(release("c"));
   });
+  it("allows old parent deletion after moving a release ID and protects its new parents", async () => {
+    const plugin = firebaseDatabase({});
+    const newChannel = { id: "replacement-channel", name: "preview" };
+    const newBundle = { ...bundle, id: "replacement-bundle" };
+    const original = release("a");
+    const moved = {
+      ...original,
+      bundle_id: newBundle.id,
+      channel_id: newChannel.id,
+      scope_key: "replacement-scope",
+    };
+    await expect(
+      plugin.commit({
+        changes: [
+          {
+            model: "channels",
+            operation: "insert",
+            row: channel,
+            onConflict: "ignore",
+          },
+          {
+            model: "channels",
+            operation: "insert",
+            row: newChannel,
+            onConflict: "ignore",
+          },
+          { model: "bundles", operation: "insert", row: bundle },
+          { model: "bundles", operation: "insert", row: newBundle },
+          { model: "releases", operation: "insert", row: original },
+        ],
+      }),
+    ).resolves.toEqual({ committed: true });
+    await expect(
+      plugin.commit({
+        changes: [
+          {
+            model: "releases",
+            operation: "delete",
+            where: { id: original.id },
+          },
+          { model: "releases", operation: "insert", row: moved },
+          { model: "bundles", operation: "delete", where: { id: bundle.id } },
+          { model: "channels", operation: "delete", where: { id: channel.id } },
+        ],
+      }),
+    ).resolves.toEqual({ committed: true });
+    await expect(plugin.models.bundles.findById(bundle.id)).resolves.toBeNull();
+    await expect(plugin.models.channels.list({})).resolves.toEqual({
+      channels: [newChannel],
+    });
+    await expect(plugin.models.releases.findById(original.id)).resolves.toEqual(
+      moved,
+    );
+    for (const change of [
+      {
+        model: "bundles" as const,
+        operation: "delete" as const,
+        where: { id: newBundle.id },
+      },
+      {
+        model: "channels" as const,
+        operation: "delete" as const,
+        where: { id: newChannel.id },
+      },
+    ])
+      await expect(plugin.commit({ changes: [change] })).resolves.toEqual({
+        committed: false,
+        conflict: { changeIndex: 0, reason: "referenced" },
+      });
+  });
 });
