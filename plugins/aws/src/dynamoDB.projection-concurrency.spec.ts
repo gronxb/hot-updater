@@ -33,14 +33,12 @@ it("retries a non-indexed bundle update after a competing indexed-field write wi
   const plugin = () => dynamoDB({ region: "us-east-1", tableName: "metadata" });
   let interleave = true;
   let conflicts = 0;
-  client
-    .on(GetCommand)
-    .callsFake(({ Key }) => ({
-      Item:
-        Key.sk === "metadata-indexes"
-          ? { version: 1 }
-          : structuredClone(items.get(key(Key))),
-    }));
+  client.on(GetCommand).callsFake(({ Key }) => ({
+    Item:
+      Key.sk === "metadata-indexes"
+        ? { version: 1 }
+        : structuredClone(items.get(key(Key))),
+  }));
   client.on(BatchGetCommand).callsFake(({ RequestItems }) => ({
     Responses: {
       metadata: RequestItems.metadata.Keys.flatMap(
