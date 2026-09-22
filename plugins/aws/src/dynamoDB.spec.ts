@@ -8,7 +8,6 @@ import {
 import {
   BatchGetCommand,
   DynamoDBDocumentClient,
-  BatchGetCommand,
   GetCommand,
   PutCommand,
   QueryCommand,
