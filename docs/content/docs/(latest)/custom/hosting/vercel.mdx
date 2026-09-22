@@ -5,6 +5,8 @@ icon: vercel
 version: "v0.22.0"
 ---
 
+The environment-loading examples below require Node.js 20.19 or later.
+
 ## Prerequisites
 
 - Vercel account at [vercel.com](https://vercel.com)
@@ -28,7 +30,7 @@ npm install drizzle-orm pg
 ```
 
 ```package-install
-npm install -D hot-updater drizzle-kit @types/pg dotenv
+npm install -D hot-updater drizzle-kit @types/pg
 ```
 
 ## Database setup
@@ -138,10 +140,12 @@ The command writes `hot-updater-schema.ts` at the project root. Configure
 Drizzle Kit to load Vercel's local environment and apply that schema:
 
 ```typescript title="drizzle.config.ts"
-import { config } from "dotenv";
+import { existsSync } from "node:fs";
 import { defineConfig } from "drizzle-kit";
 
-config({ path: ".env.local" });
+if (existsSync(".env.local")) {
+  process.loadEnvFile(".env.local");
+}
 
 export default defineConfig({
   schema: "./hot-updater-schema.ts", // [!code ++]

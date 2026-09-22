@@ -1,8 +1,8 @@
+import { existsSync } from "node:fs";
 import path from "path";
 import { fileURLToPath } from "url";
 
 import { createClient } from "@libsql/client";
-import { config } from "dotenv";
 import { drizzle } from "drizzle-orm/libsql";
 
 import * as schema from "../hot-updater-schema";
@@ -10,7 +10,10 @@ import * as schema from "../hot-updater-schema";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 // Load .env.hotupdater
-config({ path: path.join(__dirname, ".env.hotupdater") });
+const envFilePath = path.join(__dirname, ".env.hotupdater");
+if (existsSync(envFilePath)) {
+  process.loadEnvFile(envFilePath);
+}
 
 // Initialize SQLite with file-based storage for persistence
 // Use TEST_DB_PATH for testing, otherwise use default "data/hot-updater.db" file

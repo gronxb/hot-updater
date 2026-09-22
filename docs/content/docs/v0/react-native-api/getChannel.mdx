@@ -51,10 +51,12 @@ export default HotUpdater.wrap({
 ## Configuration Example (`hot-updater.config.ts`)
 
 ```tsx
+import { existsSync } from "node:fs";
 import { defineConfig } from "hot-updater";
-import { config } from "dotenv";
 
-config({ path: ".env.hotupdater" });
+if (existsSync(".env.hotupdater")) {
+  process.loadEnvFile(".env.hotupdater");
+}
 
 export default defineConfig({
   releaseChannel: "dev", // Specifying the release channel

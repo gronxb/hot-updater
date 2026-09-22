@@ -6,7 +6,7 @@ export type ImportInfo = {
   pkg: string;
   named?: string[]; // e.g., ['defineConfig']
   defaultOrNamespace?: string; // e.g., '* as admin'
-  sideEffect?: boolean; // e.g., true for "dotenv/config"
+  sideEffect?: boolean;
 };
 
 export type ProviderConfig = {
@@ -140,8 +140,8 @@ export class ConfigBuilder implements IConfigBuilder {
 
   constructor() {
     // Add common imports needed by almost all configurations by default
-    this.addImport({ pkg: "dotenv", named: ["config"] });
     this.addImport({ pkg: "hot-updater", named: ["defineConfig"] });
+    this.addImport({ pkg: "node:fs", named: ["existsSync"] });
   }
 
   public addImport(info: ImportInfo): this {
@@ -270,7 +270,9 @@ export class ConfigBuilder implements IConfigBuilder {
     const text = `
 ${importStatements}
 
-config({ path: ".env.hotupdater" });
+if (existsSync(".env.hotupdater")) {
+  process.loadEnvFile(".env.hotupdater");
+}
 
 ${this.intermediateCode ? `${this.intermediateCode}\n` : ""}
 export default defineConfig({

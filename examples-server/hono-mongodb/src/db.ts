@@ -1,3 +1,4 @@
+import { existsSync } from "node:fs";
 import path from "path";
 
 import { s3Storage } from "@hot-updater/aws";
@@ -6,12 +7,14 @@ import { s3Storage } from "@hot-updater/aws";
 import { mockStorage } from "@hot-updater/mock";
 import { createHotUpdater } from "@hot-updater/server";
 import { mongoAdapter } from "@hot-updater/server/adapters/mongodb";
-import { config } from "dotenv";
 
 import { client, closeDatabase as closeMongo, db } from "./mongodb";
 
 const __dirname = path.dirname(new URL(import.meta.url).pathname);
-config({ path: path.join(__dirname, ".env.hotupdater") });
+const envFilePath = path.join(__dirname, ".env.hotupdater");
+if (existsSync(envFilePath)) {
+  process.loadEnvFile(envFilePath);
+}
 
 // Create Hot Updater instance for CLI
 // Note: MongoDB connection must be established before using this instance

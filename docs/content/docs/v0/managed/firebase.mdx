@@ -66,7 +66,9 @@ GOOGLE_APPLICATION_CREDENTIALS=your-credentials.json
 
 <Callout type="warn">
 
-Tokens from `.env.hotupdater` are not included in your app bundle unless you inject them with a tool such as `react-native-dotenv`. See
+Keep provider credentials from `.env.hotupdater` in the CLI, CI, or server environment.
+Configure only public values, such as the update server URL, explicitly in the app.
+Never copy provider credentials into app source or build configuration. See
 [Security](/docs/v0/policy/security#plugin-token-protection)
 </Callout>
 
@@ -89,13 +91,15 @@ GOOGLE_APPLICATION_CREDENTIALS=your-credentials.json
 ```
 
 ```ts title="hot-updater.config.ts"
+import { existsSync } from "node:fs";
 import { bare } from '@hot-updater/bare';
 import {firebaseStorage, firebaseDatabase} from '@hot-updater/firebase';
 import { applicationDefault } from 'firebase-admin/app';
 import { defineConfig } from 'hot-updater';
-import { config } from 'dotenv';
 
-config({ path: ".env.hotupdater" });
+if (existsSync(".env.hotupdater")) {
+  process.loadEnvFile(".env.hotupdater");
+}
 
 // https://firebase.google.com/docs/admin/setup?hl=en#initialize_the_sdk_in_non-google_environments
 // Check your .env.hotupdater file and add the credentials

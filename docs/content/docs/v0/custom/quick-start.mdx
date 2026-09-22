@@ -5,12 +5,14 @@ icon: Rocket
 version: "v0.22.0"
 ---
 
+The environment-loading examples below require Node.js 20.19 or later.
+
 ## Installation
 
 Install all required dependencies at once.
 
 ```package-install
-npm install @hot-updater/server @hot-updater/aws hono @hono/node-server kysely better-sqlite3 dotenv
+npm install @hot-updater/server @hot-updater/aws hono @hono/node-server kysely better-sqlite3
 ```
 
 ```package-install
@@ -38,13 +40,15 @@ export const db = new Kysely({
 Create the Hot Updater instance with your database adapter and storage plugin (see [Storage Plugins](./overview#storage-plugins)).
 
 ```typescript title="src/hotUpdater.ts"
+import { existsSync } from "node:fs";
 import { createHotUpdater } from "@hot-updater/server";
 import { kyselyAdapter } from "@hot-updater/server/adapters/kysely";
 import { s3Storage } from "@hot-updater/aws";
-import { config } from "dotenv";
 import { db } from "./kysely";
 
-config({ path: ".env.hotupdater" });
+if (existsSync(".env.hotupdater")) {
+  process.loadEnvFile(".env.hotupdater");
+}
 
 export const hotUpdater = createHotUpdater({
   database: kyselyAdapter({ db, provider: "sqlite" }),
@@ -154,13 +158,15 @@ Your Hot Updater server runs at `http://localhost:3000/hot-updater`.
 Configure your Hot Updater CLI to connect to this self-hosted server.
 
 ```typescript title="hot-updater.config.ts"
+import { existsSync } from "node:fs";
 import { bare } from "@hot-updater/bare";
 import { s3Storage } from "@hot-updater/aws";
 import { standaloneRepository } from "@hot-updater/standalone";
-import { config } from "dotenv";
 import { defineConfig } from "hot-updater";
 
-config({ path: ".env.hotupdater" });
+if (existsSync(".env.hotupdater")) {
+  process.loadEnvFile(".env.hotupdater");
+}
 
 const managementToken = process.env.HOT_UPDATER_AUTH_TOKEN;
 if (!managementToken) {

@@ -55,12 +55,14 @@ HOT_UPDATER_SUPABASE_BUCKET_NAME=your-bucket-name
 The example below uses the Bare (React Native CLI) build plugin. If you selected Rock or Expo, only the `build` field changes as shown in the build configuration section below.
 
 ```ts title="hot-updater.config.ts"
+import { existsSync } from "node:fs";
 import { bare } from "@hot-updater/bare";
 import { supabaseStorage, supabaseDatabase } from "@hot-updater/supabase";
 import { defineConfig } from "hot-updater";
-import { config } from "dotenv";
 
-config({ path: ".env.hotupdater" });
+if (existsSync(".env.hotupdater")) {
+  process.loadEnvFile(".env.hotupdater");
+}
 
 export default defineConfig({
   build: bare({ enableHermes: true }),
@@ -84,7 +86,7 @@ For detailed provider-specific setup instructions, see the [Self-Hosting (Manage
 </Callout>
 
 <Callout type="warn">
-The environment variables in `.env.hotupdater` are used only during deployment, not in your app bundle. However, if you're using `react-native-dotenv`, review the [Security guidelines](/docs/v0/policy/security#plugin-token-protection).
+Keep deployment credentials from `.env.hotupdater` out of app source and build configuration. Configure public app values, such as the update server URL, explicitly. See the [Security guidelines](/docs/v0/policy/security#plugin-token-protection).
 </Callout>
 
 ### Step 4: Wrap Your Application

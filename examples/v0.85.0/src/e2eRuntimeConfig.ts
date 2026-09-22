@@ -1,8 +1,9 @@
+import { LaunchArguments } from "react-native-launch-arguments";
+
 import {
   HOT_UPDATER_APP_BASE_URL,
   HOT_UPDATER_E2E_RUNTIME_CONFIG_URL,
-} from "@env";
-import { LaunchArguments } from "react-native-launch-arguments";
+} from "./e2eBuildConfig";
 
 const DEFAULT_APP_BASE_URL = "http://localhost:3007/hot-updater";
 const DEFAULT_E2E_RUNTIME_CONFIG_URL =

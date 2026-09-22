@@ -111,6 +111,7 @@ describe("Detox E2E harness contract", () => {
       "e2e/detox/control-server-env.spec.ts",
       "e2e/detox/default-scenario-names.json",
       "e2e/detox/detox-assertion-contract.spec.ts",
+      "e2e/detox/e2e-environment.spec.ts",
       "e2e/detox/e2e-navigation-action-routes-contract.spec.ts",
       "e2e/detox/e2e-navigation-compact-contract.spec.ts",
       "e2e/detox/e2e-navigation-contract.spec.ts",
