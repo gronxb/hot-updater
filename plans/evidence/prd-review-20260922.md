@@ -89,6 +89,30 @@ demonstrated. The previously verified idempotent shared-asset upload fix remains
 - No new-revision full Release E2E success is claimed here. The nine jobs pinned
   to `162aaa843` were intentionally superseded after these source changes.
 
+## Release E2E service correction
+
+All GitHub checks passed at `303236ae0`. MongoDB job
+`job-20260922045913-lhmp7i` built the native apps successfully but failed all four
+shards during service boot, before any device scenario ran. Its script launched
+Bun 1.3.13, which lacks the `process.loadEnvFile` API used by the example server.
+The automated lint classification was incorrect; the service exception and
+timeline establish the runtime mismatch.
+
+The MongoDB service now uses the installed `tsx` executable under Node, matching
+the example's development command and the DynamoDB E2E service. A dedicated
+MongoDB replica-set smoke run migrated the schema and returned HTTP 200 with
+`status: ok`; its temporary container and volume were removed. Shell syntax,
+workspace lint and diff whitespace checks passed. The first smoke attempt
+omitted its required admin token; the successful retry used an ephemeral local
+token.
+
+This correction changes only the MongoDB E2E launch script and this record.
+Native code, fingerprints, provider runtimes and scenario assertions are
+unchanged from `303236ae0`. Other queued/running profiles retain that pinned
+revision; MongoDB must be rerun with the corrected script. Record each result's
+actual SHA rather than attributing all results to the later documentation and
+harness commit.
+
 ## Remote runtime reconciliation
 
 All four provider runtimes were extracted from the current locally built
