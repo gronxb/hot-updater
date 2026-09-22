@@ -639,6 +639,28 @@ G1–G7 block SDK API freeze, not PRD finalization or cleanup publication.
 | G6: Physical viability/deployment | Three Releases sharing parents plus actual catalog publication fit the ordinary workflow budget after native expansion. Test indexed updates/moves/deletes, oversize rejection, generated-key IAM coverage, schema/RPC compatibility and scaffolds in the single `1.0.0` baseline. |
 | G7: Counts/external authors | Prove selected count consistency under unrelated same-scope churn and sustained matching churn; record retry/failure behavior and union memory. Two packed external adapters, SQL and staged, use public exports and pass shared conformance without domain copies. |
 
+### External author journey
+
+A1 and G7 must exercise the published guide from an empty provider project, not
+only a preassembled adapter fixture. Use Better Auth's installation, public
+import, registration and shared-test progression as the comparison. The
+following checks are additional evidence for those gates, not a new SDK design:
+
+| Step | Required author-facing evidence |
+| --- | --- |
+| Install and import | The documented commands install compatible runtime/test packages and required peers. Guide examples typecheck against packed public exports outside the monorepo, without path aliases or `/internal` imports. |
+| Register and run | One SQL and one staged example include their actual storage bindings, schema/bootstrap instructions, first filtered read and atomic write. Every local helper is supplied; omitted domain implementations, dummy callbacks and type casts cannot make an example pass. |
+| Understand ownership | The guide separates author-supplied storage operations from factory-owned rules. A provider author never needs to infer latest-head transitions, summary attribution or relationship policy from a method name. Current `models + commit` examples remain labeled as the current contract until the factory ships. |
+| Own the lifecycle | Construction does not open a connection just to describe the adapter. Examples distinguish a borrowed client from an owned client, exercise optional disposal, and show test creation/reset/destruction without double-closing a client or leaking a database. |
+| Verify the backend | The guide registers the published conformance suite against the actual implementation, with all local test-fixture code available. Native rollback, concurrency and physical-cost checks remain explicit; passing HTTP tests alone is not proof of those guarantees. |
+| Handle native limits | A backend without the required atomic primitive has a documented error before writes. D1/RPC and synchronous-driver examples use their real execution binding, and supported filters survive it. No page/offset or native-count example claims constant physical work merely because the response is small. |
+
+Until the authoring factory is implemented, the public guide must candidly state
+that custom authors implement complete domain models and native commits. A
+composition-only snippet is labeled as wiring, not advertised as a working
+storage adapter. The future examples above must remove that remaining burden;
+renaming or exporting the internal factory is insufficient.
+
 ### Full delivery scenarios
 
 Each row requires a failing scenario or deliberately broken adapter before the
