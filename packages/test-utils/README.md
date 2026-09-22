@@ -36,7 +36,14 @@ all data before each scenario while retaining its schema and version settings.
 Passing the complete suite verifies the DatabasePlugin and Release Catalog
 HTTP contracts for the installed Hot Updater version: model semantics,
 transactions, pagination, relations, Insights, catalog projections and caching,
-and artifact responses. The HTTP scenarios use real `fetch` requests on Node,
+and artifact responses. Lifecycle scenarios feed those HTTP catalogs into the
+production client selector and advance the simulated device after checking the
+selected artifact: built-in → OTA A → OTA B → rollback A → built-in. They also
+exercise deleted Releases, the native minimum bundle, compatibility, cohort
+changes, and crash history. Native download, activation, and restart remain
+device E2E responsibilities.
+
+The HTTP scenarios use real `fetch` requests on Node,
 including independent Release/Catalog expectations and competing conditional
 writes. Run the entire suite against your provider's actual test backend without
 skipping scenarios or replacing model methods with mocks.

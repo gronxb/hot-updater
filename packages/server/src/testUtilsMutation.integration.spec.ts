@@ -79,7 +79,7 @@ return original.commit({changes:input.changes}); };`,
   },
   {
     name: "ignore-releases-delete",
-    scenario: "hard deletes a Release",
+    scenario: "rolls a deleted active Release back to older OTA bytes",
     implementation:
       'plugin.commit = input => original.commit({...input, changes:input.changes.filter(c => c.model !== "releases" || c.operation !== "delete")});',
   },
@@ -173,6 +173,31 @@ return original.commit({changes:input.changes}); };`,
     implementation:
       'plugin.models.releases.findManyByScope = async input => (await original.models.releases.findManyByScope(input)).filter(r => r.kind !== "EMBEDDED");',
   },
+  {
+    name: "ignore-release-disable",
+    scenario: "runs built-in → OTA A → OTA B → rollback A → built-in",
+    implementation:
+      'plugin.commit = input => original.commit({...input, changes:input.changes.map(c => c.model === "releases" && c.operation === "update" && c.update.enabled === false ? {...c, update:{...c.update, enabled:true}} : c)});',
+  },
+  {
+    name: "oldest-ota-first",
+    scenario: "rolls a deleted active Release back to older OTA bytes",
+    implementation: "",
+    responseMutation: "if (body.releases) body.releases.reverse();",
+  },
+  {
+    name: "missing-rollback-candidates",
+    scenario:
+      "re-evaluates cohort changes and rolls back even when the predecessor rollout is closed",
+    implementation: "",
+    responseMutation: "if (body.rollbackReleases) body.rollbackReleases = [];",
+  },
+  {
+    name: "wrong-ota-artifact",
+    scenario: "runs built-in → OTA A → OTA B → rollback A → built-in",
+    implementation: "",
+    responseMutation: 'if (body.fileHash) body.fileHash = "wrong-bundle-hash";',
+  },
 ] as const;
 
 it("rejects broken providers while the unmodified provider passes the public suite", async () => {
@@ -213,9 +238,23 @@ it("rejects broken providers while the unmodified provider passes the public sui
           migrate: () => undefined,
           reset: () => harness.reset(),
           dispose: () => undefined,
-          createHttpClient: options => startHttpTestServer(createHotUpdater({
-            ...options, clientAccess: { type: "public" },
-          }).handlers),
+          createHttpClient: options => {
+            const handlers = createHotUpdater({
+              ...options, clientAccess: { type: "public" },
+            }).handlers;
+            return startHttpTestServer({
+              ...handlers,
+              client: async request => {
+                const response = await handlers.client(request);
+                if (response.status !== 200) return response;
+                const body = await response.json();
+                ${"responseMutation" in variant ? variant.responseMutation : ""}
+                return new Response(JSON.stringify(body), {
+                  status: response.status, headers: response.headers,
+                });
+              },
+            });
+          },
         });
       `,
       );

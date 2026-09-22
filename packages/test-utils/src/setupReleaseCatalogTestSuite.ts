@@ -19,6 +19,7 @@ import {
   RELEASE_CATALOG_MANIFEST_URI,
   releaseCatalogDownloadUrl as downloadUrl,
 } from "./releaseCatalogHttpFixtures";
+import { setupReleaseCatalogLifecycleTests } from "./releaseCatalogLifecycleTests";
 
 const NIL_UUID = "00000000-0000-0000-0000-000000000000";
 const FALLBACK_POLICY = "BUILTIN_IF_ACTIVE_INELIGIBLE";
@@ -35,7 +36,8 @@ const jsonRequest = (method: string, body?: unknown): HttpTestRequestInit => ({
 
 /**
  * Server conformance through HTTP only. The caller owns server/database/storage
- * setup. No database, compiler, selector, or server implementation is invoked.
+ * setup. Lifecycle scenarios feed HTTP catalogs to the production client selector;
+ * no database, compiler, or server implementation is invoked directly.
  */
 export const setupReleaseCatalogTestSuite = (options: {
   readonly getClient: () => HttpTestClient;
@@ -244,6 +246,38 @@ export const setupReleaseCatalogTestSuite = (options: {
         };
         const update = (releaseId: string, patch: Record<string, unknown>) =>
           adminJson(`/releases/${releaseId}`, jsonRequest("PATCH", { patch }));
+
+        setupReleaseCatalogLifecycleTests({
+          readCatalog,
+          publish,
+          publishIncompatible: (suffix) =>
+            strategy === "APP_VERSION"
+              ? publish(suffix, { target_app_version: ">=1.2.4" })
+              : publish(
+                  suffix,
+                  {},
+                  scope("production", "ios", "fingerprint-b"),
+                ),
+          update,
+          remove: async (id) => {
+            // Public hard deletion requires disabling the Release first.
+            await update(id, { enabled: false });
+            await adminJson(
+              `/releases/${id}?confirm=${id}&expectedRevision=2`,
+              jsonRequest("DELETE"),
+            );
+            expect((await admin(`/releases/${id}`)).status).toBe(404);
+            cleanup = cleanup.filter(
+              (change) =>
+                !(
+                  change.model === "releases" &&
+                  change.operation === "delete" &&
+                  change.where.id === id
+                ),
+            );
+          },
+          request,
+        });
 
         it("pages all scoped Releases including disabled rows with an exclusive cursor", async () => {
           const first = await publish("701");
