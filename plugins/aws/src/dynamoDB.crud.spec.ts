@@ -11,7 +11,8 @@ import { mockClient } from "aws-sdk-client-mock";
 import { beforeEach, describe, expect, it } from "vitest";
 
 import {
-  createDynamoDBCrud,
+  createDynamoDBReads,
+  dynamoDB,
   parseDynamoDBItem,
   toDynamoDBBundleItem,
   toDynamoDBPatchItem,
@@ -50,13 +51,20 @@ const createCrud = () => {
       region: "us-east-1",
     }),
   );
-  return createDynamoDBCrud(
+  return createDynamoDBReads(
     { client, tableName: "hot-updater-metadata" },
     "hot-updater-update-index",
   );
 };
 
-describe("DynamoDB CRUD access patterns", () => {
+const createPlugin = () =>
+  dynamoDB({
+    tableName: "hot-updater-metadata",
+    region: "us-east-1",
+    credentials: { accessKeyId: "test", secretAccessKey: "test" },
+  });
+
+describe("DynamoDB native access patterns", () => {
   beforeEach(() => {
     dynamodb.reset();
     dynamodb
@@ -184,32 +192,51 @@ describe("DynamoDB CRUD access patterns", () => {
   it("increments the metadata counter without imposing a ceiling", async () => {
     // Given
     dynamodb.on(TransactWriteCommand).resolves({});
-    const crud = createCrud();
 
     // When
-    await crud.create({ model: "bundles", data: bundleRow });
+    dynamodb
+      .on(BatchGetCommand)
+      .resolves({ Responses: { "hot-updater-metadata": [] } });
+    await createPlugin().commit({
+      changes: [{ model: "bundles", operation: "insert", row: bundleRow }],
+    });
 
     // Then
     expect(
-      dynamodb.commandCalls(TransactWriteCommand)[0]?.args[0].input
-        .TransactItems?.[0]?.Update,
+      dynamodb
+        .commandCalls(TransactWriteCommand)[0]
+        ?.args[0].input.TransactItems?.find(
+          (item) => item.Update?.Key?.sk === "limits.metadata",
+        )?.Update,
     ).toMatchObject({
       Key: { pk: "_hot-updater", sk: "limits.metadata" },
       UpdateExpression: "ADD #bundles :bundleDelta",
     });
     expect(
-      dynamodb.commandCalls(TransactWriteCommand)[0]?.args[0].input
-        .TransactItems?.[0]?.Update,
+      dynamodb
+        .commandCalls(TransactWriteCommand)[0]
+        ?.args[0].input.TransactItems?.find(
+          (item) => item.Update?.Key?.sk === "limits.metadata",
+        )?.Update,
     ).not.toHaveProperty("ConditionExpression");
   });
 
   it("locks both referenced bundles when creating a patch", async () => {
     // Given
     dynamodb.on(TransactWriteCommand).resolves({});
-    const crud = createCrud();
 
     // When
-    await crud.create({ model: "bundle_patches", data: patchRow });
+    dynamodb.on(BatchGetCommand).resolves({
+      Responses: {
+        "hot-updater-metadata": [
+          toDynamoDBBundleItem(bundleRow),
+          toDynamoDBBundleItem({ ...bundleRow, id: baseBundleId }),
+        ],
+      },
+    });
+    await createPlugin().commit({
+      changes: [{ model: "bundlePatches", operation: "insert", row: patchRow }],
+    });
 
     // Then
     const transaction =
@@ -240,12 +267,33 @@ describe("DynamoDB CRUD access patterns", () => {
       .on(GetCommand, { Key: { pk: "bundle_patches", sk: patchRow.id } })
       .resolves({ Item: toDynamoDBPatchItem(patchRow, 7) });
     dynamodb.on(TransactWriteCommand).resolves({});
-    const crud = createCrud();
 
+    dynamodb
+      .on(GetCommand, { Key: { pk: "bundles", sk: bundleId } })
+      .resolves({ Item: toDynamoDBBundleItem(bundleRow, 1, 1, 1) });
     // When
-    await crud.delete({
-      model: "bundle_patches",
-      where: [{ field: "id", operator: "eq", value: patchRow.id }],
+    dynamodb
+      .on(QueryCommand)
+      .resolves({ Items: [toDynamoDBPatchItem(patchRow, 7)] });
+    const items = [
+      toDynamoDBPatchItem(patchRow, 7),
+      toDynamoDBBundleItem(bundleRow, 1, 1, 1),
+      toDynamoDBBundleItem({ ...bundleRow, id: baseBundleId }, 1, 1, 0),
+    ];
+    dynamodb.on(BatchGetCommand).callsFake((input) => ({
+      Responses: {
+        "hot-updater-metadata": items.filter((item) =>
+          input.RequestItems["hot-updater-metadata"].Keys.some(
+            (key: { pk: string; sk: string }) =>
+              key.pk === item.pk && key.sk === item.sk,
+          ),
+        ),
+      },
+    }));
+    await createPlugin().commit({
+      changes: [
+        { model: "bundlePatches", operation: "delete", where: { bundleId } },
+      ],
     });
 
     // Then

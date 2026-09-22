@@ -55,7 +55,6 @@ const createTestPlugin = (
   implementation: DatabasePluginImplementation,
 ) =>
   createDatabasePlugin({
-    name,
     ...createDatabasePluginAdapter(name, implementation),
   });
 
@@ -108,6 +107,131 @@ const releaseRow = {
 };
 
 describe("createDatabasePlugin", () => {
+  it("plans native reads without requiring unused CRUD mutation methods", async () => {
+    const read = {
+      findOne: vi.fn(async () => bundleRow),
+      findMany: vi.fn(async () => [bundleRow]),
+      count: vi.fn(async () => 1),
+    };
+    const commit = vi.fn(async () => ({ committed: true as const }));
+    const models = createTestPlugin("models", createMethods()).models;
+    const plugin = createDatabasePluginAdapter("native", {
+      read,
+      models: {
+        channels: models.channels,
+        insights: models.insights,
+        apiKeys: models.apiKeys,
+      },
+      commit,
+    });
+    await expect(
+      plugin.models.bundles.findMany({
+        where: {
+          platform: "ios",
+          id: { gt: "a", lte: "z", in: [bundleRow.id] },
+        },
+        limit: 2,
+        offset: 3,
+        orderBy: { field: "id", direction: "desc" },
+      }),
+    ).resolves.toEqual([bundleRow]);
+    expect(read.findMany).toHaveBeenCalledExactlyOnceWith({
+      model: "bundles",
+      limit: 2,
+      offset: 3,
+      orderBy: [{ field: "id", direction: "desc" }],
+      where: [
+        { field: "platform", value: "ios" },
+        { field: "id", operator: "gt", value: "a" },
+        { field: "id", operator: "lte", value: "z" },
+        { field: "id", operator: "in", value: [bundleRow.id] },
+      ],
+    });
+    await expect(
+      plugin.commit({
+        changes: [{ model: "bundles", operation: "insert", row: bundleRow }],
+      }),
+    ).resolves.toEqual({ committed: true });
+    expect(commit).toHaveBeenCalledTimes(1);
+    expect(read.findOne).not.toHaveBeenCalled();
+    expect(read.count).not.toHaveBeenCalled();
+  });
+
+  it("validates every change before a native commit can write anything", async () => {
+    const commit = vi.fn(async () => ({ committed: true as const }));
+    const plugin = createDatabasePlugin({
+      name: "native",
+      models: createTestPlugin("models", createMethods()).models,
+      commit,
+    });
+    await expect(
+      plugin.commit({
+        changes: [
+          { model: "bundles", operation: "insert", row: bundleRow },
+          {
+            model: "bundles",
+            operation: "update",
+            where: { id: bundleRow.id },
+            update: { archive_byte_size: -1 },
+          },
+        ],
+      }),
+    ).rejects.toThrow(DatabasePluginInputError);
+    expect(commit).not.toHaveBeenCalled();
+  });
+
+  it("preserves native expectations and conflict results without CRUD emulation", async () => {
+    const result = {
+      committed: false as const,
+      conflict: { changeIndex: 1, reason: "not_found" as const },
+    };
+    const commit = vi.fn(async () => result);
+    const plugin = createDatabasePlugin({
+      name: "native",
+      models: createTestPlugin("models", createMethods()).models,
+      commit,
+    });
+    const input: DatabaseCommit = {
+      expectations: [{ model: "releases", id: releaseRow.id, revision: 1 }],
+      changes: [
+        { model: "bundles", operation: "insert", row: bundleRow },
+        {
+          model: "bundles",
+          operation: "update",
+          where: { id: "missing" },
+          update: { metadata: {} },
+        },
+      ],
+    };
+    await expect(plugin.commit(input)).resolves.toEqual(result);
+    expect(commit).toHaveBeenCalledExactlyOnceWith(input);
+  });
+
+  it("validates native channel operations before calling the provider", async () => {
+    const insert = vi.fn();
+    const remove = vi.fn();
+    const models = createTestPlugin("models", createMethods()).models;
+    const plugin = createDatabasePlugin({
+      name: "native",
+      models: {
+        ...models,
+        channels: { ...models.channels, insert, delete: remove },
+      },
+      commit: vi.fn(),
+    });
+    await expect(
+      plugin.models.channels.insert({
+        row: { id: "", name: "production" },
+        onConflict: "returnExisting",
+      }),
+    ).rejects.toThrow(DatabasePluginInputError);
+    await expect(plugin.models.channels.delete({ id: "" })).rejects.toThrow(
+      DatabasePluginInputError,
+    );
+    expect(insert).not.toHaveBeenCalled();
+    expect(remove).not.toHaveBeenCalled();
+  });
+
   it("exposes only models, commit, and lifecycle", () => {
     const plugin = createTestPlugin("memory", createMethods());
 

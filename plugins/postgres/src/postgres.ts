@@ -1,5 +1,4 @@
 import type { BundleEventRow } from "@hot-updater/plugin-core";
-import { createDatabasePlugin } from "@hot-updater/plugin-core";
 import {
   latestInsightsWhere,
   latestInsightsCountGroups,
@@ -429,11 +428,5 @@ export const postgres = (config: PostgresConfig) => {
             new Kysely<Database>({ dialect: new PostgresDialect({ pool }) }),
           );
         })();
-  const adapter = createDatabasePluginAdapter("postgres", implementation);
-  return createDatabasePlugin({
-    name: "postgres",
-    models: adapter.models,
-    commit: adapter.commit,
-    dispose: adapter.dispose,
-  });
+  return createDatabasePluginAdapter("postgres", implementation);
 };

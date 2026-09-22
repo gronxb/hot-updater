@@ -32,7 +32,6 @@ import {
   type ChannelRow,
   type ApiKeyRow,
   type ApiKeyModel,
-  createDatabasePlugin,
   type DatabaseCommit,
   type DatabaseCommitResult,
   isDatabaseMetadataObject,
@@ -46,7 +45,7 @@ import {
   type DatabaseImplementationResult,
   type DatabaseModel,
   type DatabaseOrderBy,
-  type DatabasePluginImplementation,
+  type DatabaseReadImplementation,
   type DatabaseRow,
   type DatabaseWhere,
 } from "@hot-updater/plugin-core/internal";
@@ -846,6 +845,7 @@ export const updateBundleRelation = (
   bundleId: string,
   delta: number,
   ownedPatchDelta = 0,
+  expectedVersion?: number,
 ): DynamoDBTransactItem => {
   const names: Record<string, string> = {
     "#pk": "pk",
@@ -854,6 +854,10 @@ export const updateBundleRelation = (
   const values: Record<string, number> = { ":one": 1 };
   const additions: string[] = [];
   let condition = "attribute_exists(#pk)";
+  if (expectedVersion !== undefined) {
+    condition += " AND #version = :expectedVersion";
+    values[":expectedVersion"] = expectedVersion;
+  }
   let update = "SET #version = #version + :one";
   if (delta !== 0) {
     names["#relationCount"] = "relation_count";
@@ -1594,78 +1598,6 @@ export const countDistinctDynamoDBRows = <TModel extends DatabaseModel>(
   ).size;
 };
 
-export const createDynamoDBBundle = async (
-  store: DynamoDBStore,
-  row: BundleRow,
-): Promise<void> => {
-  const counter = metadataUpdate(store, { bundles: 1 });
-  if (!counter) return;
-  await commitDynamoDBTransaction(store, [
-    counter,
-    {
-      Put: {
-        TableName: store.tableName,
-        Item: boundedDynamoDBMetadataItem(toDynamoDBBundleItem(row)),
-        ConditionExpression: "attribute_not_exists(#pk)",
-        ExpressionAttributeNames: { "#pk": "pk" },
-      },
-    },
-  ]);
-};
-
-export const createDynamoDBPatch = async (
-  store: DynamoDBStore,
-  row: BundlePatchRow,
-): Promise<void> => {
-  const bundleIds = [...new Set([row.bundle_id, row.base_bundle_id])];
-  const counter = metadataUpdate(store, { bundle_patches: 1 });
-  if (!counter) return;
-  await commitDynamoDBTransaction(store, [
-    counter,
-    ...bundleIds.map((bundleId) =>
-      updateBundleRelation(
-        store,
-        bundleId,
-        1,
-        bundleId === row.bundle_id ? 1 : 0,
-      ),
-    ),
-    {
-      Put: {
-        TableName: store.tableName,
-        Item: boundedDynamoDBMetadataItem(toDynamoDBPatchItem(row)),
-        ConditionExpression: "attribute_not_exists(#pk)",
-        ExpressionAttributeNames: { "#pk": "pk" },
-      },
-    },
-  ]);
-};
-
-export const replaceDynamoDBBundle = async (
-  store: DynamoDBStore,
-  current: DynamoDBBundleItem,
-  row: BundleRow,
-): Promise<void> => {
-  await commitDynamoDBTransaction(store, [
-    {
-      Put: {
-        TableName: store.tableName,
-        Item: boundedDynamoDBMetadataItem(
-          toDynamoDBBundleItem(
-            row,
-            current.version + 1,
-            current.relation_count,
-            current.owned_patch_count,
-          ),
-        ),
-        ConditionExpression: "#version = :currentVersion",
-        ExpressionAttributeNames: { "#version": "version" },
-        ExpressionAttributeValues: { ":currentVersion": current.version },
-      },
-    },
-  ]);
-};
-
 const deleteAction = (
   store: DynamoDBStore,
   item: DynamoDBItem,
@@ -1678,90 +1610,6 @@ const deleteAction = (
     ExpressionAttributeValues: { ":currentVersion": item.version },
   },
 });
-
-export const deleteDynamoDBPatch = async (
-  store: DynamoDBStore,
-  item: DynamoDBPatchItem,
-): Promise<void> => {
-  const counter = metadataUpdate(store, { bundle_patches: -1 });
-  if (!counter) return;
-  const bundleIds = [...new Set([item.row.bundle_id, item.row.base_bundle_id])];
-  await commitDynamoDBTransaction(store, [
-    counter,
-    ...bundleIds.map((id) =>
-      updateBundleRelation(store, id, -1, id === item.row.bundle_id ? -1 : 0),
-    ),
-    deleteAction(store, item),
-  ]);
-};
-
-const deleteBundle = async (
-  store: DynamoDBStore,
-  bundle: DynamoDBBundleItem,
-  patches: readonly DynamoDBPatchItem[],
-): Promise<void> => {
-  const counter = metadataUpdate(store, {
-    bundles: -1,
-    bundle_patches: -patches.length,
-  });
-  if (!counter) return;
-  const otherEndpointCounts = new Map<
-    string,
-    { readonly owned: number; readonly relations: number }
-  >();
-  for (const { row } of patches) {
-    for (const id of new Set([row.bundle_id, row.base_bundle_id])) {
-      if (id === bundle.sk) continue;
-      const current = otherEndpointCounts.get(id) ?? {
-        owned: 0,
-        relations: 0,
-      };
-      otherEndpointCounts.set(id, {
-        owned: current.owned + (id === row.bundle_id ? 1 : 0),
-        relations: current.relations + 1,
-      });
-    }
-  }
-  await commitDynamoDBTransaction(store, [
-    counter,
-    ...[...otherEndpointCounts].map(([id, count]) =>
-      updateBundleRelation(store, id, -count.relations, -count.owned),
-    ),
-    ...patches.map((patch) => deleteAction(store, patch)),
-    deleteAction(store, bundle),
-  ]);
-};
-
-export const deleteDynamoDBBundles = async (
-  store: DynamoDBStore,
-  bundles: readonly DynamoDBBundleItem[],
-  allPatches: readonly DynamoDBPatchItem[],
-): Promise<void> => {
-  let patches = [...allPatches];
-  const versionIncrements = new Map<string, number>();
-  for (const originalBundle of bundles) {
-    const bundle = {
-      ...originalBundle,
-      version:
-        originalBundle.version +
-        (versionIncrements.get(originalBundle.sk) ?? 0),
-    };
-    const related = patches.filter(
-      ({ row }) =>
-        row.bundle_id === bundle.sk || row.base_bundle_id === bundle.sk,
-    );
-    await deleteBundle(store, bundle, related);
-    const updatedBundleIds = new Set(
-      related.flatMap(({ row }) => [row.bundle_id, row.base_bundle_id]),
-    );
-    updatedBundleIds.delete(bundle.sk);
-    for (const id of updatedBundleIds) {
-      versionIncrements.set(id, (versionIncrements.get(id) ?? 0) + 1);
-    }
-    const removedPatchIds = new Set(related.map(({ sk }) => sk));
-    patches = patches.filter(({ sk }) => !removedPatchIds.has(sk));
-  }
-};
 
 class DynamoDBUnsupportedModelError extends Error {
   readonly name = "DynamoDBUnsupportedModelError";
@@ -1790,227 +1638,10 @@ const exactDynamoDBField = (
   return typeof value === "string" ? value : undefined;
 };
 
-export const createDynamoDBCrud = (
+export const createDynamoDBReads = (
   store: DynamoDBStore,
   updateIndexName: string,
-): DatabasePluginImplementation => ({
-  recordInsights: (input) => recordDynamoDBInsightsEvent(store, input),
-  getReleaseActivity: (input) => getDynamoDBReleaseActivity(store, input),
-  getAppUsage: (input) => getDynamoDBAppUsage(store, input),
-  findLatestInsightsEvents: (input) =>
-    createDynamoDBInsightsTable(store).findLatestEvents(input),
-  countLatestInsightsEvents: (input) =>
-    createDynamoDBInsightsTable(store).countLatestEvents(input),
-  async create(input): Promise<DatabaseImplementationResult> {
-    switch (input.model) {
-      case "bundles":
-        await createDynamoDBBundle(store, input.data);
-        return input.data;
-      case "bundle_patches":
-        await createDynamoDBPatch(store, input.data);
-        return input.data;
-      case "releases": {
-        const channel = await loadChannelItem(store, input.data.channel_id);
-        if (channel === undefined) throw new DynamoDBStoredItemError();
-        await commitDynamoDBTransaction(store, [
-          updateChannelReferenceCount(store, channel, 1),
-          {
-            Put: {
-              TableName: store.tableName,
-              Item: boundedDynamoDBMetadataItem(
-                toDynamoDBReleaseItem(input.data),
-              ),
-              ConditionExpression: "attribute_not_exists(#pk)",
-              ExpressionAttributeNames: { "#pk": "pk" },
-            },
-          },
-          {
-            Put: {
-              TableName: store.tableName,
-              Item: releaseLocatorItem(input.data),
-              ConditionExpression: "attribute_not_exists(#pk)",
-              ExpressionAttributeNames: { "#pk": "pk" },
-            },
-          },
-        ]);
-        return input.data;
-      }
-      case "release_catalogs":
-        await store.client.send(
-          new PutCommand({
-            TableName: store.tableName,
-            Item: boundedDynamoDBCatalogItem(
-              toDynamoDBReleaseCatalogItem(input.data),
-            ),
-            ConditionExpression: "attribute_not_exists(#pk)",
-            ExpressionAttributeNames: { "#pk": "pk" },
-          }),
-        );
-        return input.data;
-      case "channels":
-        return (
-          await insertDynamoDBChannel(store, {
-            row: input.data,
-            onConflict: "returnExisting",
-          })
-        ).row;
-    }
-    throw new DynamoDBUnsupportedModelError();
-  },
-  async update(input): Promise<DatabaseImplementationResult | null> {
-    if (input.model === "releases") {
-      const id = exactDynamoDBId(input.where);
-      if (id === undefined) throw new DynamoDBUnsupportedModelError();
-      const current = await loadReleaseItem(store, id);
-      if (current === undefined) return null;
-      const updated = { ...current.row, ...input.update };
-      const nextPartition = releaseScopePartition(updated.scope_key);
-      const moved = current.pk !== nextPartition;
-      await commitDynamoDBTransaction(store, [
-        ...(moved
-          ? [
-              {
-                Delete: {
-                  TableName: store.tableName,
-                  Key: { pk: current.pk, sk: current.sk },
-                  ConditionExpression: "#version = :version",
-                  ExpressionAttributeNames: { "#version": "version" },
-                  ExpressionAttributeValues: { ":version": current.version },
-                },
-              } satisfies DynamoDBTransactItem,
-            ]
-          : []),
-        {
-          Put: {
-            TableName: store.tableName,
-            Item: boundedDynamoDBMetadataItem(
-              toDynamoDBReleaseItem(updated, current.version + 1),
-            ),
-            ConditionExpression: moved
-              ? "attribute_not_exists(#pk)"
-              : "#version = :version",
-            ExpressionAttributeNames: moved
-              ? { "#pk": "pk" }
-              : { "#version": "version" },
-            ...(moved
-              ? {}
-              : {
-                  ExpressionAttributeValues: { ":version": current.version },
-                }),
-          },
-        },
-        {
-          Put: {
-            TableName: store.tableName,
-            Item: releaseLocatorItem(updated),
-            ConditionExpression: "#scopeKey = :scopeKey",
-            ExpressionAttributeNames: { "#scopeKey": "scope_key" },
-            ExpressionAttributeValues: {
-              ":scopeKey": current.row.scope_key,
-            },
-          },
-        },
-      ]);
-      return updated;
-    }
-    if (input.model === "release_catalogs") {
-      const scopeKey = exactDynamoDBField(input.where, "scope_key");
-      if (scopeKey === undefined) throw new DynamoDBUnsupportedModelError();
-      const current = await loadReleaseCatalogItem(store, scopeKey);
-      if (current === undefined) return null;
-      const updated = { ...current.row, ...input.update };
-      await store.client.send(
-        new PutCommand({
-          TableName: store.tableName,
-          Item: boundedDynamoDBCatalogItem(
-            toDynamoDBReleaseCatalogItem(updated, current.version + 1),
-          ),
-          ConditionExpression: "#version = :version",
-          ExpressionAttributeNames: { "#version": "version" },
-          ExpressionAttributeValues: { ":version": current.version },
-        }),
-      );
-      return updated;
-    }
-    if (input.model !== "bundles") {
-      throw new DynamoDBUnsupportedModelError();
-    }
-    const id = exactDynamoDBId(input.where);
-    if (id === undefined) throw new DynamoDBUnsupportedModelError();
-    const current = await loadBundleItem(store, id);
-    if (!current) return null;
-    const updated = { ...current.row, ...input.update };
-    await replaceDynamoDBBundle(store, current, updated);
-    return updated;
-  },
-  async delete(input): Promise<void> {
-    if (input.model === "channels") {
-      const id = exactDynamoDBId(input.where);
-      if (id !== undefined) await deleteDynamoDBChannel(store, { id });
-      return;
-    }
-    if (input.model === "bundle_patches") {
-      const id = exactDynamoDBId(input.where);
-      const owner = exactDynamoDBPatchOwner(input.where);
-      if (id === undefined && owner === undefined)
-        throw new DynamoDBUnsupportedModelError();
-      const item =
-        id === undefined ? undefined : await loadPatchItem(store, id);
-      const items =
-        id === undefined
-          ? await loadIndexedPatches(store, "bundle_id", owner!)
-          : item === undefined
-            ? []
-            : [item];
-      for (const item of items) await deleteDynamoDBPatch(store, item);
-      return;
-    }
-    if (input.model === "releases") {
-      const id = exactDynamoDBId(input.where);
-      if (id === undefined) throw new DynamoDBUnsupportedModelError();
-      const current = await loadReleaseItem(store, id);
-      const items = current === undefined ? [] : [current];
-      for (const item of items) {
-        const channel = await loadChannelItem(store, item.row.channel_id);
-        if (channel === undefined) throw new DynamoDBStoredItemError();
-        await commitDynamoDBTransaction(store, [
-          updateChannelReferenceCount(store, channel, -1),
-          deleteAction(store, item),
-          {
-            Delete: {
-              TableName: store.tableName,
-              Key: { pk: DYNAMODB_RELEASE_ID_PARTITION, sk: item.sk },
-              ConditionExpression: "#scopeKey = :scopeKey",
-              ExpressionAttributeNames: { "#scopeKey": "scope_key" },
-              ExpressionAttributeValues: { ":scopeKey": item.row.scope_key },
-            },
-          },
-        ]);
-      }
-      return;
-    }
-    if (input.model !== "bundles") {
-      throw new DynamoDBUnsupportedModelError();
-    }
-    const ids = exactDynamoDBBundleIds(input.where);
-    const bundleItems =
-      ids === undefined
-        ? ((await queryMetadataItems(
-            store,
-            await metadataPartition(store, "bundles", input.where),
-            { ...input, limit: Number.MAX_SAFE_INTEGER, offset: 0 },
-          )) as DynamoDBBundleItem[])
-        : (await loadBundleItemsById(store, ids)).filter(({ row }) =>
-            matchesDynamoDBWhere(row, input.where),
-          );
-    const related = new Map<string, DynamoDBPatchItem>();
-    for (const bundle of bundleItems) {
-      for (const field of ["bundle_id", "base_bundle_id"] as const)
-        for (const item of await loadIndexedPatches(store, field, bundle.sk))
-          related.set(item.sk, item);
-    }
-    await deleteDynamoDBBundles(store, bundleItems, [...related.values()]);
-  },
+): DatabaseReadImplementation => ({
   async count(input): Promise<number> {
     if (
       (input.where === undefined || input.where.length === 0) &&
@@ -2200,25 +1831,14 @@ export const createDynamoDBCrud = (
     }
     throw new DynamoDBUnsupportedModelError();
   },
-  insertChannel: (input) => insertDynamoDBChannel(store, input),
-  deleteChannel: (input) => deleteDynamoDBChannel(store, input),
 });
 
 class DynamoDBDuplicatePatchError extends Error {
   readonly name = "DynamoDBDuplicatePatchError";
-
   constructor(readonly patchId: string) {
     super(`DynamoDB bundle mutation contains duplicate patch "${patchId}"`);
   }
 }
-
-const assertUniquePatches = (patches: readonly BundlePatchRow[]): void => {
-  const seen = new Set<string>();
-  for (const patch of patches) {
-    if (seen.has(patch.id)) throw new DynamoDBDuplicatePatchError(patch.id);
-    seen.add(patch.id);
-  }
-};
 
 const putNewBundle = (
   store: DynamoDBStore,
@@ -2291,113 +1911,6 @@ const deletePatch = (
     ConditionExpression: "#version = :currentVersion",
     ExpressionAttributeNames: { "#version": "version" },
     ExpressionAttributeValues: { ":currentVersion": item.version },
-  },
-});
-
-const baseReferenceChanges = (
-  store: DynamoDBStore,
-  ownerBundleId: string,
-  current: readonly BundlePatchRow[],
-  next: readonly BundlePatchRow[],
-): DynamoDBTransactItem[] => {
-  const changes = new Map<string, number>();
-  for (const patch of current) {
-    if (patch.base_bundle_id !== ownerBundleId) {
-      changes.set(
-        patch.base_bundle_id,
-        (changes.get(patch.base_bundle_id) ?? 0) - 1,
-      );
-    }
-  }
-  for (const patch of next) {
-    if (patch.base_bundle_id !== ownerBundleId) {
-      changes.set(
-        patch.base_bundle_id,
-        (changes.get(patch.base_bundle_id) ?? 0) + 1,
-      );
-    }
-  }
-  return [...changes]
-    .filter(([, delta]) => delta !== 0)
-    .map(([baseBundleId, delta]) =>
-      updateBundleRelation(store, baseBundleId, delta),
-    );
-};
-
-interface DynamoDBAggregateMutations {
-  insertBundleWithPatches(input: {
-    readonly bundle: BundleRow;
-    readonly patches: readonly BundlePatchRow[];
-  }): Promise<void>;
-  updateBundleWithPatches(input: {
-    readonly bundleId: string;
-    readonly update: Partial<Omit<BundleRow, "id">>;
-    readonly patches: readonly BundlePatchRow[];
-  }): Promise<boolean>;
-}
-
-export const createDynamoDBAggregateMutations = (
-  store: DynamoDBStore,
-): DynamoDBAggregateMutations => ({
-  async insertBundleWithPatches({ bundle, patches }): Promise<void> {
-    assertUniquePatches(patches);
-    const counter = metadataUpdate(store, {
-      bundles: 1,
-      bundle_patches: patches.length,
-    });
-    if (!counter) return;
-    await commitDynamoDBTransaction(store, [
-      counter,
-      ...baseReferenceChanges(store, bundle.id, [], patches),
-      putNewBundle(store, bundle, patches.length),
-      ...patches.map((patch) => putPatch(store, patch, undefined)),
-    ]);
-  },
-  async updateBundleWithPatches({
-    bundleId,
-    update,
-    patches,
-  }): Promise<boolean> {
-    assertUniquePatches(patches);
-    const bundle = await loadBundleItem(store, bundleId);
-    if (!bundle) return false;
-    const currentPatches = await loadIndexedPatches(
-      store,
-      "bundle_id",
-      bundleId,
-    );
-    const currentById = new Map(
-      currentPatches.map((patch) => [patch.sk, patch]),
-    );
-    const nextIds = new Set(patches.map(({ id }) => id));
-    const relationCount =
-      bundle.relation_count - currentPatches.length + patches.length;
-    const counter = metadataUpdate(store, {
-      bundle_patches: patches.length - currentPatches.length,
-    });
-    await commitDynamoDBTransaction(store, [
-      ...(counter ? [counter] : []),
-      ...baseReferenceChanges(
-        store,
-        bundleId,
-        currentPatches.map(({ row }) => row),
-        patches,
-      ),
-      putUpdatedBundle(
-        store,
-        bundle,
-        { ...bundle.row, ...update },
-        relationCount,
-        patches.length,
-      ),
-      ...currentPatches
-        .filter(({ sk }) => !nextIds.has(sk))
-        .map((patch) => deletePatch(store, patch)),
-      ...patches.map((patch) =>
-        putPatch(store, patch, currentById.get(patch.id)),
-      ),
-    ]);
-    return true;
   },
 });
 
@@ -2520,6 +2033,34 @@ const compileAndCommitDynamoDBChanges = async (
   store: DynamoDBStore,
   input: DatabaseCommit,
 ): Promise<DatabaseCommitResult> => {
+  // Snapshot parents before enumerating their relationships. A later parent
+  // read could absorb a concurrent writer's version while missing its children.
+  const patchOwnerIds = new Set(
+    input.changes.flatMap((change) =>
+      change.model === "bundlePatches" && change.operation === "delete"
+        ? [change.where.bundleId]
+        : [],
+    ),
+  );
+  const initialBundleIds = new Set([
+    ...patchOwnerIds,
+    ...input.changes.flatMap((change) =>
+      change.model === "bundles" && change.operation === "delete"
+        ? [change.where.id]
+        : [],
+    ),
+  ]);
+  const initialChannelIds = new Set(
+    input.changes.flatMap((change) =>
+      change.model === "channels" && change.operation === "delete"
+        ? [change.where.id]
+        : [],
+    ),
+  );
+  const [initialBundles, initialChannels] = await Promise.all([
+    loadBundleItemsById(store, [...initialBundleIds]),
+    Promise.all([...initialChannelIds].map((id) => loadChannelItem(store, id))),
+  ]);
   const bundleIds = new Set<string>();
   const patchIds = new Set<string>();
   const channelIds = new Set<string>();
@@ -2621,8 +2162,15 @@ const compileAndCommitDynamoDBChanges = async (
     if (row !== undefined) rememberReleases([row]);
   }
   const [originalBundleItems, channelItems, catalogItems] = await Promise.all([
-    loadBundleItemsById(store, [...bundleIds]),
-    Promise.all([...channelIds].map((id) => loadChannelItem(store, id))),
+    loadBundleItemsById(
+      store,
+      [...bundleIds].filter((id) => !initialBundleIds.has(id)),
+    ).then((items) => [...initialBundles, ...items]),
+    Promise.all(
+      [...channelIds]
+        .filter((id) => !initialChannelIds.has(id))
+        .map((id) => loadChannelItem(store, id)),
+    ).then((items) => [...initialChannels, ...items]),
     Promise.all(
       [...scopes].map((scope) => loadReleaseCatalogItem(store, scope)),
     ),
@@ -2911,6 +2459,15 @@ const compileAndCommitDynamoDBChanges = async (
       (channelReferenceCounts.get(row.channel_id) ?? 0) + 1,
     );
 
+  // A Release write must serialize with deletion/platform updates of its parent.
+  const guardedBundleIds = new Set(patchOwnerIds);
+  for (const change of input.changes) {
+    if (change.model !== "releases" || change.operation === "delete") continue;
+    const row = releases.get(
+      change.operation === "insert" ? change.row.id : change.where.id,
+    );
+    if (row?.bundle_id != null) guardedBundleIds.add(row.bundle_id);
+  }
   const actions: DynamoDBTransactItem[] = [];
   const originalChannels = new Map(
     originalChannelItems.map((item) => [item.sk, item] as const),
@@ -2967,9 +2524,19 @@ const compileAndCommitDynamoDBChanges = async (
     } else {
       const relationDelta = relationCount - original.relation_count;
       const ownedPatchDelta = ownedPatchCount - original.owned_patch_count;
-      if (relationDelta !== 0 || ownedPatchDelta !== 0) {
+      if (
+        relationDelta !== 0 ||
+        ownedPatchDelta !== 0 ||
+        guardedBundleIds.has(id)
+      ) {
         actions.push(
-          updateBundleRelation(store, id, relationDelta, ownedPatchDelta),
+          updateBundleRelation(
+            store,
+            id,
+            relationDelta,
+            ownedPatchDelta,
+            guardedBundleIds.has(id) ? original.version : undefined,
+          ),
         );
       }
     }
@@ -3227,7 +2794,7 @@ const isDynamoDBTransactionConflict = (error: unknown): boolean =>
   error !== null &&
   Reflect.get(error, "name") === "TransactionCanceledException";
 
-const createDynamoDBCommit =
+export const createDynamoDBCommit =
   (store: DynamoDBStore) =>
   async (input: DatabaseCommit): Promise<DatabaseCommitResult> => {
     try {
@@ -3954,7 +3521,7 @@ export const dynamoDB = (config: DynamoDBConfig) => {
       })
     : null;
   const store = { client, tableName };
-  const crud = createDynamoDBCrud(store, DYNAMODB_UPDATE_INDEX_NAME);
+
   const invalidateUpdateRoutes = async () => {
     if (!cloudFront || !cloudfrontDistributionId) return;
     try {
@@ -3974,18 +3541,21 @@ export const dynamoDB = (config: DynamoDBConfig) => {
       );
     }
   };
-  const adapter = createDatabasePluginAdapter("dynamoDB", {
-    ...crud,
-    commit: createDynamoDBCommit(store),
-    dispose: async () => {
-      client.destroy();
-      cloudFront?.destroy();
-    },
-  });
-  return createDatabasePlugin({
-    name: "dynamoDB",
+  const commit = createDynamoDBCommit(store);
+  return createDatabasePluginAdapter("dynamoDB", {
+    read: createDynamoDBReads(store, DYNAMODB_UPDATE_INDEX_NAME),
     models: {
-      ...adapter.models,
+      channels: {
+        insert: (input) => insertDynamoDBChannel(store, input),
+        delete: (input) => deleteDynamoDBChannel(store, input),
+        list: async () => ({
+          channels: (await loadChannelItems(store))
+            .map(({ row }) => row)
+            .sort((left, right) =>
+              left.name < right.name ? -1 : left.name > right.name ? 1 : 0,
+            ),
+        }),
+      },
       bundlePatches: createDynamoDBBundlePatchTable(
         store,
         DYNAMODB_UPDATE_INDEX_NAME,
@@ -3994,17 +3564,19 @@ export const dynamoDB = (config: DynamoDBConfig) => {
       apiKeys: createDynamoDBApiKeyTable(store),
     },
     async commit(input) {
-      const result = await adapter.commit(input);
+      const result = await commit(input);
       if (
         result.committed &&
         input.changes.some(
           ({ model }) => model === "bundles" || model === "bundlePatches",
         )
-      ) {
+      )
         await invalidateUpdateRoutes();
-      }
       return result;
     },
-    dispose: adapter.dispose,
+    dispose: async () => {
+      client.destroy();
+      cloudFront?.destroy();
+    },
   });
 };

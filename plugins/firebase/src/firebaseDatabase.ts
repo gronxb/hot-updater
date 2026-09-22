@@ -1,7 +1,4 @@
-import {
-  compareInsightsText,
-  createDatabasePlugin,
-} from "@hot-updater/plugin-core";
+import { compareInsightsText } from "@hot-updater/plugin-core";
 import {
   latestInsightsWhere,
   latestInsightsCountGroups,
@@ -322,13 +319,5 @@ export const firebaseDatabase = (config: FirebaseDatabaseConfig) => {
       transaction: (callback) => mutate(callback),
     };
   })();
-  const adapter = createDatabasePluginAdapter(
-    "firebaseDatabase",
-    implementation,
-  );
-  return createDatabasePlugin({
-    name: "firebaseDatabase",
-    models: adapter.models,
-    commit: adapter.commit,
-  });
+  return createDatabasePluginAdapter("firebaseDatabase", implementation);
 };

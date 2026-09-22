@@ -31,7 +31,6 @@ const createNativePlugin = (
 ) => {
   const name = "native-aggregate";
   return createDatabasePlugin({
-    name,
     ...createDatabasePluginAdapter(name, {
       getReleaseActivity: async () => {
         throw new Error("Unexpected release activity read");
@@ -86,7 +85,6 @@ describe("database client patch updates", () => {
     const create = vi.fn(async (input) => input.data);
     const name = "non-transaction";
     const plugin = createDatabasePlugin({
-      name,
       ...createDatabasePluginAdapter(name, {
         getReleaseActivity: async () => {
           throw new Error("Unexpected release activity read");
@@ -142,7 +140,6 @@ describe("database client patch updates", () => {
     let patchDeleteCount = 0;
     const name = "non-transaction";
     const plugin = createDatabasePlugin({
-      name,
       ...createDatabasePluginAdapter(name, {
         getReleaseActivity: async () => {
           throw new Error("Unexpected release activity read");

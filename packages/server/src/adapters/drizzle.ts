@@ -1,4 +1,3 @@
-import { createDatabasePlugin } from "@hot-updater/plugin-core";
 import {
   createDatabasePluginAdapter,
   type DatabasePluginImplementation,
@@ -99,66 +98,9 @@ const createImplementation = (
 export const drizzleAdapter = (
   config: DrizzleConfig,
 ): DatabaseAdapterWithCapabilities => {
-  let adapter: ReturnType<typeof createDatabasePluginAdapter> | undefined;
-  const getAdapter = () => {
-    adapter ??= createDatabasePluginAdapter(
-      "drizzle",
-      createImplementation(config),
-    );
-    return adapter;
-  };
-  const plugin = createDatabasePlugin({
-    name: "drizzle",
-    models: {
-      bundles: {
-        findById: (id) => getAdapter().models.bundles.findById(id),
-        findMany: (query) => getAdapter().models.bundles.findMany(query),
-        count: (where) => getAdapter().models.bundles.count(where),
-      },
-      bundlePatches: {
-        findByBaseBundleIds: (ids) =>
-          getAdapter().models.bundlePatches.findByBaseBundleIds!(ids),
-        findByBundleIds: (bundleIds) =>
-          getAdapter().models.bundlePatches.findByBundleIds(bundleIds),
-      },
-      releases: {
-        findById: (id) => getAdapter().models.releases.findById(id),
-        findMany: (input) => getAdapter().models.releases.findMany(input),
-        findManyByScope: (input) =>
-          getAdapter().models.releases.findManyByScope(input),
-      },
-      releaseCatalogs: {
-        findByScopeKey: (scopeKey) =>
-          getAdapter().models.releaseCatalogs.findByScopeKey(scopeKey),
-        findMany: (input) =>
-          getAdapter().models.releaseCatalogs.findMany(input),
-      },
-      channels: {
-        insert: (input) => getAdapter().models.channels.insert(input),
-        list: (input) => getAdapter().models.channels.list(input),
-        delete: (input) => getAdapter().models.channels.delete(input),
-      },
-      insights: {
-        recordEvent: (input) => getAdapter().models.insights.recordEvent(input),
-        listEvents: (input) => getAdapter().models.insights.listEvents(input),
-        findLatestEvents: (input) =>
-          getAdapter().models.insights.findLatestEvents(input),
-        countLatestEvents: (input) =>
-          getAdapter().models.insights.countLatestEvents(input),
-        countEvents: (input) => getAdapter().models.insights.countEvents(input),
-        getReleaseActivity: (input) =>
-          getAdapter().models.insights.getReleaseActivity(input),
-        getAppUsage: (input) => getAdapter().models.insights.getAppUsage(input),
-      },
-      apiKeys: {
-        create: (row) => getAdapter().models.apiKeys.create(row),
-        findByHash: (hash) => getAdapter().models.apiKeys.findByHash(hash),
-        list: () => getAdapter().models.apiKeys.list(),
-        revoke: (input) => getAdapter().models.apiKeys.revoke(input),
-      },
-    },
-    commit: (input) => getAdapter().commit(input),
-  });
+  const plugin = createDatabasePluginAdapter("drizzle", () =>
+    createImplementation(config),
+  );
   return Object.assign(plugin, {
     adapterName: "drizzle",
     provider: config.provider,

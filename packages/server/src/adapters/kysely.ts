@@ -1,4 +1,3 @@
-import { createDatabasePlugin } from "@hot-updater/plugin-core";
 import {
   createDatabasePluginAdapter,
   type DatabasePluginImplementation,
@@ -91,15 +90,11 @@ const createImplementation = <TDatabase extends object>(
 export const kyselyAdapter = <TDatabase extends object>(
   config: KyselyAdapterConfig<TDatabase>,
 ): DatabaseAdapterWithCapabilities => {
-  const adapter = createDatabasePluginAdapter(
+  const plugin = createDatabasePluginAdapter(
     "kysely",
     createImplementation<TDatabase>(config),
   );
-  const plugin = createDatabasePlugin({
-    name: "kysely",
-    models: adapter.models,
-    commit: adapter.commit,
-  });
+
   return Object.assign(plugin, {
     adapterName: "kysely",
     provider: config.provider,

@@ -30,7 +30,6 @@ const createFixture = (expectedUpdates: number) => {
   let patchCreateCount = 0;
   const name = "update-race";
   const plugin = createDatabasePlugin({
-    name,
     ...createDatabasePluginAdapter(name, {
       getReleaseActivity: async () => {
         throw new Error("Unexpected release activity read");

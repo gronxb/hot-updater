@@ -1,4 +1,3 @@
-import { createDatabasePlugin } from "@hot-updater/plugin-core";
 import { createDatabasePluginAdapter } from "@hot-updater/plugin-core/internal";
 
 import { createD1Implementation, D1ExecutionError } from "../d1Implementation";
@@ -50,11 +49,5 @@ export const d1Database = (database: D1Like) => {
       return results.map(({ results }) => results ?? []);
     },
   });
-  const adapter = createDatabasePluginAdapter("d1Database", implementation);
-  return createDatabasePlugin({
-    name: "d1Database",
-    models: adapter.models,
-    commit: adapter.commit,
-    ...(adapter.dispose ? { dispose: adapter.dispose } : {}),
-  });
+  return createDatabasePluginAdapter("d1Database", implementation);
 };

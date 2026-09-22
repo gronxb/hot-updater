@@ -14,7 +14,7 @@ import {
 import { createFirebaseReads } from "./firebaseDatabaseReads";
 import {
   cloneFirebaseDatabaseSnapshot,
-  createFirebaseDatabaseState,
+  FirebaseDatabaseConstraintError,
   type FirebaseDatabaseSnapshot,
 } from "./firebaseDatabaseState";
 
@@ -34,8 +34,6 @@ export const createFirebaseTransaction = (
     releaseCatalogs: new Map(),
   };
   const after = cloneFirebaseDatabaseSnapshot(before);
-  const previous = createFirebaseDatabaseState(before);
-  const state = createFirebaseDatabaseState(after);
   const reads = createFirebaseReads(collections, async () => {}, transaction);
   const maps = {
     bundles: "bundles",
@@ -46,35 +44,76 @@ export const createFirebaseTransaction = (
     releases: "releases",
     release_catalogs: "releaseCatalogs",
   } as const;
+  const rows = (snapshot: FirebaseDatabaseSnapshot, model: DatabaseModel) =>
+    snapshot[maps[model]] as Map<string, DatabaseImplementationResult>;
+  const rowKey = (row: DatabaseImplementationResult): string => {
+    const key = "id" in row ? row.id : Reflect.get(row, "scope_key");
+    if (typeof key !== "string")
+      throw new DatabasePluginInputError("invalid-result");
+    return key;
+  };
+  const loaded = new Set<string>();
+  const keyOf = (model: DatabaseModel, field: string, value: string) =>
+    JSON.stringify([model, field, value]);
+  const selector = (
+    model: DatabaseModel,
+    where: readonly object[] | undefined,
+  ) => {
+    const condition = where?.length === 1 ? where[0] : undefined;
+    const field = condition && Reflect.get(condition, "field");
+    const value = condition && Reflect.get(condition, "value");
+    const allowed =
+      model === "release_catalogs"
+        ? ["scope_key"]
+        : model === "channels"
+          ? ["id", "name"]
+          : model === "api_keys"
+            ? ["id", "hash"]
+            : ["id"];
+    if (
+      !condition ||
+      !allowed.includes(field) ||
+      typeof value !== "string" ||
+      (Reflect.get(condition, "operator") ?? "eq") !== "eq" ||
+      Reflect.get(condition, "mode") === "insensitive"
+    )
+      throw new DatabasePluginInputError("invalid-operation");
+    return { field: field as string, value };
+  };
+  const lookup = (model: DatabaseModel, field: string, value: string) => {
+    const current = rows(after, model);
+    return field === "id" || field === "scope_key"
+      ? (current.get(value) ?? null)
+      : ([...current.values()].find(
+          (row) => Reflect.get(row, field) === value,
+        ) ?? null);
+  };
   const remember = (
     model: DatabaseModel,
     row: DatabaseImplementationResult | null,
   ) => {
     if (row === null) return;
-    const key = "id" in row ? row.id : Reflect.get(row, "scope_key");
-    if (typeof key !== "string")
-      throw new DatabasePluginInputError("invalid-result");
-    const oldRows = before[maps[model]] as Map<
-      string,
-      DatabaseImplementationResult
-    >;
-    const newRows = after[maps[model]] as Map<
-      string,
-      DatabaseImplementationResult
-    >;
+    const key = rowKey(row);
+    loaded.add(
+      keyOf(model, model === "release_catalogs" ? "scope_key" : "id", key),
+    );
+    const oldRows = rows(before, model),
+      newRows = rows(after, model);
     if (!oldRows.has(key)) {
       oldRows.set(key, row);
-      // An insert staged earlier takes precedence over the persisted snapshot.
       if (!newRows.has(key)) newRows.set(key, row);
     }
   };
   const findOne: TransactionDatabasePluginImplementation["findOne"] = async (
     input,
   ) => {
-    const staged = await state.findOne(input);
-    if (staged !== null) return staged;
+    const { field, value } = selector(input.model, input.where);
+    const staged = lookup(input.model, field, value);
+    const key = keyOf(input.model, field, value);
+    if (staged !== null || loaded.has(key)) return staged;
     remember(input.model, await reads.findOne(input));
-    return state.findOne(input);
+    loaded.add(key);
+    return lookup(input.model, field, value);
   };
   const loadPatches = async (
     field: "bundle_id" | "base_bundle_id",
@@ -110,10 +149,21 @@ export const createFirebaseTransaction = (
       throw new DatabasePluginInputError("invalid-operation");
     },
     async count(input) {
-      const persisted = await reads.count(input);
-      return (
-        persisted - (await previous.count(input)) + (await state.count(input))
-      );
+      // Commit reference checks have exactly one relationship predicate.
+      const condition = input.where?.length === 1 ? input.where[0] : undefined;
+      if (
+        input.model !== "releases" ||
+        input.distinct !== undefined ||
+        !condition ||
+        !["bundle_id", "channel_id"].includes(condition.field) ||
+        (condition.operator ?? "eq") !== "eq"
+      )
+        throw new DatabasePluginInputError("invalid-operation");
+      const count = (snapshot: FirebaseDatabaseSnapshot) =>
+        [...snapshot.releases.values()].filter(
+          (row) => Reflect.get(row, condition.field) === condition.value,
+        ).length;
+      return (await reads.count(input)) - count(before) + count(after);
     },
     async create(input) {
       if (input.model === "release_catalogs") {
@@ -158,11 +208,42 @@ export const createFirebaseTransaction = (
             where: [{ field: "id", value: input.data.bundle_id }],
           });
       }
-      return state.create(input);
+      const current = rows(after, input.model);
+      if (input.model === "channels" || input.model === "api_keys") {
+        const field = input.model === "channels" ? "name" : "hash";
+        const value = Reflect.get(input.data, field);
+        const existing = lookup(input.model, field, value);
+        if (existing !== null && input.onConflict === "ignore") return existing;
+        if (existing !== null)
+          throw new FirebaseDatabaseConstraintError(
+            `${input.model}.${field}.unique`,
+          );
+      }
+      if (current.has(rowKey(input.data)))
+        throw new FirebaseDatabaseConstraintError(`${input.model}.id.unique`);
+      if (input.model === "bundle_patches") {
+        for (const id of [input.data.bundle_id, input.data.base_bundle_id])
+          if (!after.bundles.has(id))
+            throw new FirebaseDatabaseConstraintError(
+              "bundle_patches.bundle.foreign-key",
+            );
+      }
+      if (
+        input.model === "releases" &&
+        (!after.channels.has(input.data.channel_id) ||
+          (input.data.bundle_id !== null &&
+            !after.bundles.has(input.data.bundle_id)))
+      )
+        throw new FirebaseDatabaseConstraintError("releases.foreign-key");
+      current.set(rowKey(input.data), input.data);
+      return input.data;
     },
     async update(input) {
-      await findOne(input);
-      return state.update(input);
+      const current = await findOne(input);
+      if (current === null) return null;
+      const updated = { ...current, ...input.update };
+      rows(after, input.model).set(rowKey(current), updated);
+      return updated;
     },
     async delete(input) {
       if (input.model === "bundle_patches") {
@@ -186,7 +267,18 @@ export const createFirebaseTransaction = (
           await loadPatches("base_bundle_id", row.id);
         }
       }
-      await state.delete(input);
+      if (input.model === "bundle_patches") {
+        const owner = input.where![0].value;
+        for (const [id, row] of after.bundlePatches)
+          if (row.bundle_id === owner) after.bundlePatches.delete(id);
+      } else {
+        const { value: id } = selector(input.model, input.where);
+        rows(after, input.model).delete(id);
+        if (input.model === "bundles")
+          for (const [patchId, patch] of after.bundlePatches)
+            if (patch.bundle_id === id || patch.base_bundle_id === id)
+              after.bundlePatches.delete(patchId);
+      }
     },
   };
   return {

@@ -1,4 +1,3 @@
-import { createDatabasePlugin } from "@hot-updater/plugin-core";
 import { createDatabasePluginAdapter } from "@hot-updater/plugin-core/internal";
 import Cloudflare from "cloudflare";
 
@@ -53,7 +52,7 @@ export const d1Database = (config: D1DatabaseConfig) => {
     return results;
   };
 
-  const adapter = createDatabasePluginAdapter(
+  return createDatabasePluginAdapter(
     "d1Database",
     createD1Implementation({
       async query(sql, params) {
@@ -62,10 +61,4 @@ export const d1Database = (config: D1DatabaseConfig) => {
       batch: execute,
     }),
   );
-  return createDatabasePlugin({
-    name: "d1Database",
-    models: adapter.models,
-    commit: adapter.commit,
-    ...(adapter.dispose ? { dispose: adapter.dispose } : {}),
-  });
 };
