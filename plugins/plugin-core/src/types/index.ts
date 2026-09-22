@@ -74,6 +74,7 @@ type DatabaseBundlePaginationOptions =
        */
       page?: number;
       cursor?: never;
+      offset?: never;
     }
   | {
       page?: never;
@@ -81,6 +82,13 @@ type DatabaseBundlePaginationOptions =
        * Preferred cursor-based pagination for bundle-management queries.
        */
       cursor?: DatabaseBundleCursor;
+      offset?: never;
+    }
+  | {
+      page?: never;
+      cursor?: never;
+      /** Exact zero-based offset for management queries. */
+      offset: number;
     };
 
 export type DatabaseBundleQueryOptions = {

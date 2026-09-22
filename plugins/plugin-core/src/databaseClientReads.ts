@@ -109,7 +109,7 @@ export const responsePage = async (
   const direction = options.orderBy?.direction ?? "desc";
   const offset = options.page
     ? Math.max(0, options.page - 1) * options.limit
-    : 0;
+    : (options.offset ?? 0);
   const cursor = options.page ? undefined : options.cursor;
   const queryLimit = cursor ? options.limit + 1 : options.limit;
   if (

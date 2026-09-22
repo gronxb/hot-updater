@@ -63,4 +63,21 @@ describe("database bundle pagination types", () => {
       readonly cursor: { readonly after: "004" };
     }>().not.toMatchTypeOf<DatabaseBundleQueryOptions>();
   });
+
+  it("accepts an exact offset exclusively from page and cursor", () => {
+    expectTypeOf<{
+      limit: 2;
+      offset: 1;
+    }>().toMatchTypeOf<DatabaseBundleQueryOptions>();
+    expectTypeOf<{
+      limit: 2;
+      offset: 0;
+      page: 1;
+    }>().not.toMatchTypeOf<DatabaseBundleQueryOptions>();
+    expectTypeOf<{
+      limit: 2;
+      offset: 0;
+      cursor: { after: "004" };
+    }>().not.toMatchTypeOf<DatabaseBundleQueryOptions>();
+  });
 });
