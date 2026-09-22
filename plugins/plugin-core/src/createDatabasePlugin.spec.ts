@@ -169,7 +169,9 @@ describe("createDatabasePlugin", () => {
             model: "bundles",
             operation: "update",
             where: { id: bundleRow.id },
-            update: { archive_byte_size: -1 },
+            // An untyped native caller can send malformed manifest metadata.
+            // @ts-expect-error Validate the complete commit before invoking storage.
+            update: { manifest_file_hash: null },
           },
         ],
       }),
