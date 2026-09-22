@@ -1,5 +1,69 @@
 # hot-updater
 
+## 1.0.0-rc.17
+
+### Minor Changes
+
+- f5fffea: Add atomic Release Insights aggregates, direct release-health and app-usage
+  queries, and the redesigned Insights console without reconstructing metrics from
+  raw event history.
+- 88add06: Add deterministic doctor scopes for configured infrastructure scaffolds and live server verification. Agents can gate completion on structured checks and exit codes instead of deployment records. Reuse the server protocol probe in doctor and the packaged helper, and document which checks remain outside each scope.
+
+### Patch Changes
+
+- 79c3eea: Use the versioned manifest artifact protocol for every OTA install. Deploys
+  publish a manifest, content-addressed files and one tar.br bulk transport. The
+  native installer reuses byte-identical built-in assets and compares tar.br with
+  the remaining transfer cost. Complete downloads without patches may additionally
+  allow the signed TAR framing overhead to avoid request fanout. Failed archives
+  fall back once to verified original files; failed patches recover per file.
+
+  Remove `compressStrategy`, ZIP/gzip OTA extraction, format detection and archive
+  strategy branches. Archive identity and bounds belong to the signed manifest;
+  Bundle and provider rows stay manifest-based. The unreleased 1.0.0 schema and
+  initial migrations now require manifest metadata directly.
+
+  Validate complete descriptor sets before reuse, recheck cached target files,
+  and retain hash-verified staging files across retries. Download remaining files
+  with a fixed concurrency limit and report only network files in download progress.
+
+  Allow concurrent Supabase deploys to upload the same shared content-addressed
+  asset without failing on an already-existing object.
+
+  Authenticate the versioned artifact endpoint. Preserve installed bundles across
+  promotion failures and interrupted renames, and require durable metadata before
+  activating an OTA. Remove manifestless launch and BUNDLE_ID compatibility paths,
+  unused native progress fields, observers, and unused iOS task-state persistence.
+
+- d99530b: Stop installing dotenv during init. Generate configs with Node's built-in environment loader, allow CI to supply environment variables without a local env file, and preserve existing environment setup when merging configs.
+
+  Use Node's native environment parser for server verification and remove dotenv from generated infrastructure dependency lists and API-key configs.
+
+  Remove direct dotenv dependencies from examples and server examples, replace react-native-dotenv in mobile examples with explicit public configuration, and update the documentation. Preserve public E2E build settings for manual launches.
+
+- 39f60f9: Serialize Kysely database commits and retry native serialization conflicts so concurrent Release revision and Catalog generation expectations cannot both succeed with the same version.
+
+  Replace Firebase row fields atomically instead of recursively merging JSON metadata, while preserving unrelated document extension fields.
+
+  Apply Supabase migration `20260922000000_idempotent_channel_commit.sql` to existing generation 1 projects. It makes generic deletion of a missing Channel an atomic no-op, preserving table layouts, schema version, existing data, and RPC permissions.
+
+- Updated dependencies [f5fffea]
+- Updated dependencies [79c3eea]
+- Updated dependencies [d99530b]
+- Updated dependencies [79c3eea]
+- Updated dependencies [39f60f9]
+  - @hot-updater/aws@1.0.0-rc.15
+  - @hot-updater/cloudflare@1.0.0-rc.15
+  - @hot-updater/console@1.0.0-rc.17
+  - @hot-updater/firebase@1.0.0-rc.15
+  - @hot-updater/plugin-core@1.0.0-rc.15
+  - @hot-updater/server@1.0.0-rc.15
+  - @hot-updater/supabase@1.0.0-rc.15
+  - @hot-updater/cli-tools@1.0.0-rc.15
+  - @hot-updater/core@1.0.0-rc.15
+  - @hot-updater/android-helper@1.0.0-rc.15
+  - @hot-updater/apple-helper@1.0.0-rc.15
+
 ## 1.0.0-rc.16
 
 ### Patch Changes
