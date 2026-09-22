@@ -29,3 +29,6 @@ initial migrations now require manifest metadata directly.
 Validate complete descriptor sets before reuse, recheck cached target files,
 and retain hash-verified staging files across retries. Download remaining files
 with a fixed concurrency limit and report only network files in download progress.
+
+Allow concurrent Supabase deploys to upload the same shared content-addressed
+asset without failing on an already-existing object.
