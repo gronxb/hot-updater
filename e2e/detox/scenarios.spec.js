@@ -33,7 +33,7 @@ describe("HotUpdater Detox scenarios", () => {
     bootstrapResult = await controlClient.runJob(
       "bootstrap",
       "/e2e/jobs/bootstrap",
-      {},
+      { deviceId: device.id },
     );
     await controlClient.runJob(
       "reset remote bundles",

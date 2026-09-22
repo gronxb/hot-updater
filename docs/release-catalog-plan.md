@@ -694,10 +694,10 @@ warn about this at create/edit time.
 After local selection chooses a different Bundle:
 
 ```http
-GET /artifacts/:targetBundleId/from/:currentBundleId
+GET /artifacts/v1/:targetBundleId/from/:currentBundleId
 ```
 
-This reuses archive, signed URL, manifest diff, changed asset, and binary patch
+This reuses manifest resolution, signed URL, per-file asset, and binary patch
 logic. It remains Bundle-keyed. The first implementation is `private,
 no-store` because Storage-signed URL expiry is not represented by the current
 StoragePlugin contract.
@@ -1078,7 +1078,7 @@ disables the source. The new Release has an independent rollout seed and
 ### Patches, manifests, assets, signing
 
 All stay Bundle-based. Release selection precedes artifact resolution. Same
-Bundle reuse performs zero archive/manifest/patch request. Patch identity
+Bundle reuse performs zero manifest/asset/patch request. Patch identity
 remains `(targetBundleId, baseBundleId)`, signing and hash verification remain
 native-authoritative, and Release ID never affects artifact hashes.
 
@@ -1515,7 +1515,7 @@ The exact #1141 suite contains 14 scenarios. All remain in the one-PR gate:
 | ------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `release-ota-recovery`                     | Use the R1/B1 -> R2/B2 crash ledger; assert full receipt restore, retained G2 high-water, directional Release+Bundle report, then metadata-only G2 refresh.                              |
 | `multi-asset-replacement`                  | Select Release first; keep all asset/manifest byte assertions on Bundle IDs. Assert one catalog GET and artifact GET only on byte change.                                                |
-| `bspatch-archive-to-diff-ota`              | First B1 archive then B1->B2 patch. Add Release selection assertions without changing patch identity.                                                                                    |
+| `bspatch-builtin-to-diff-ota`              | Install B1 from the builtin manifest, then apply a B1->B2 patch. Add Release selection assertions without changing patch identity.                                                      |
 | `bspatch-consecutive-diff-ota`             | Preserve B1->B2->B3->B4 patch lineage; track the independent Release sequence.                                                                                                           |
 | `bspatch-disabled-chain-rollback`          | `/patch-release` disables RC, then RB, then RA; choose B, A, then catalog-authorized local BUILTIN. No crash-history additions.                                                          |
 | `bspatch-manifest-diff-fallback`           | Preserve manifest fallback by Bundle and prove Release ID never changes diff keys.                                                                                                       |
@@ -1628,8 +1628,7 @@ tests, not Detox loops.
 
 Run the migrated 14 scenarios and added protocol scenarios on iOS and Android
 release builds. Preserve every existing visible marker, asset, manifest,
-archive, patch, native-store, and recovery assertion at the correct identity
-layer.
+patch, native-store, and recovery assertion at the correct identity layer.
 
 ### Repository gates
 

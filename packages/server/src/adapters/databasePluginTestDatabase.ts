@@ -18,16 +18,11 @@ export const DATABASE_PLUGIN_TEST_SCHEMA_SQL = `
   create table bundles (
     id text primary key,
     platform text not null,
-    file_hash text not null,
     git_commit_hash text,
-    storage_uri text not null,
-    archive_byte_size double precision not null check (
-      archive_byte_size >= 0 and archive_byte_size <= 9007199254740991
-    ),
     metadata jsonb not null default '{}'::jsonb,
-    manifest_storage_uri text,
-    manifest_file_hash text,
-    asset_base_storage_uri text
+    manifest_storage_uri text not null,
+    manifest_file_hash text not null,
+    asset_base_storage_uri text not null
   );
   create table bundle_patches (
     id varchar(255) primary key,

@@ -140,10 +140,7 @@ const isExpectationConflictError = (error: unknown): boolean => {
 const bundleValues = (row: BundleRow): readonly unknown[] => [
   row.id,
   row.platform,
-  row.file_hash,
   row.git_commit_hash,
-  row.storage_uri,
-  row.archive_byte_size,
   row.metadata,
   row.manifest_storage_uri,
   row.manifest_file_hash,
@@ -178,10 +175,7 @@ const insertQuery = (
       columns = [
         "id",
         "platform",
-        "file_hash",
         "git_commit_hash",
-        "storage_uri",
-        "archive_byte_size",
         "metadata",
         "manifest_storage_uri",
         "manifest_file_hash",

@@ -23,11 +23,11 @@ const baseBundleId = "00000000-0000-0000-0000-000000000002";
 const bundleRow = bundleToRow({
   id: bundleId,
   platform: "ios",
-  fileHash: "hash",
   gitCommitHash: null,
-  storageUri: "storage://bundle.zip",
-  archiveByteSize: 3_000_000_001,
   metadata: {},
+  manifestStorageUri: "storage://bundle/manifest.json",
+  manifestFileHash: "manifest-hash",
+  assetBaseStorageUri: "storage://assets",
 });
 const patchRow = {
   id: `${bundleId}:${baseBundleId}`,
@@ -66,18 +66,23 @@ describe("DynamoDB CRUD access patterns", () => {
       );
   });
 
-  it("rejects stored rows with invalid required byte sizes", () => {
+  it("rejects invalid manifest rows and patch byte sizes", () => {
     expect(() =>
       parseDynamoDBItem(
-        toDynamoDBBundleItem({ ...bundleRow, archive_byte_size: 1.5 }),
+        toDynamoDBBundleItem({ ...bundleRow, manifest_file_hash: "" }),
       ),
-    ).toThrow("DynamoDB contains an invalid Hot Updater row");
+    ).not.toThrow();
+    const invalid = toDynamoDBBundleItem(structuredClone(bundleRow));
+    Reflect.deleteProperty(invalid.row, "manifest_file_hash");
+    expect(() => parseDynamoDBItem(invalid)).toThrow(
+      "DynamoDB contains an invalid Hot Updater row",
+    );
     expect(() =>
       parseDynamoDBItem(toDynamoDBPatchItem({ ...patchRow, byte_size: -1 })),
     ).toThrow("DynamoDB contains an invalid Hot Updater row");
   });
 
-  it("defaults a legacy stored bundle's missing archive byte size", () => {
+  it("ignores obsolete secondary-index fields on stored bundles", () => {
     const currentItem = toDynamoDBBundleItem(bundleRow);
     expect(currentItem).not.toHaveProperty("gsi1pk");
     expect(currentItem).not.toHaveProperty("gsi1sk");
@@ -86,11 +91,7 @@ describe("DynamoDB CRUD access patterns", () => {
       gsi1pk: "bundle#ios",
       gsi1sk: bundleRow.id,
     });
-    Reflect.deleteProperty(legacyItem.row, "archive_byte_size");
-
-    expect(parseDynamoDBItem(legacyItem)).toMatchObject({
-      row: { ...bundleRow, archive_byte_size: 0 },
-    });
+    expect(parseDynamoDBItem(legacyItem)).toMatchObject({ row: bundleRow });
   });
 
   it("uses a strongly consistent key read for an exact bundle id", async () => {

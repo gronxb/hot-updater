@@ -54,8 +54,7 @@ async function cleanupBundleStorage(
     if (resolvedStorageUri) cleanupUris.add(resolvedStorageUri);
   };
 
-  addCleanupUri(bundle.storageUri);
-  addCleanupUri(getManifestStorageUri(bundle) ?? undefined);
+  addCleanupUri(getManifestStorageUri(bundle));
   addCleanupUri(getPatchStorageUri(bundle) ?? undefined);
   for (const patch of getBundlePatches(bundle)) {
     addCleanupUri(patch.patchStorageUri);
@@ -96,7 +95,6 @@ export async function deleteBundles(
 
   for (const bundle of bundles) {
     const cleanupCandidates = [
-      bundle.storageUri,
       getManifestStorageUri(bundle),
       getPatchStorageUri(bundle),
       ...getBundlePatches(bundle).map((patch) => patch.patchStorageUri),

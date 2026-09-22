@@ -1,11 +1,12 @@
 import {
+  ARTIFACT_PROTOCOL_VERSION,
   encodeChannelKey,
   type ArtifactInfo,
   type ReleaseCatalog,
 } from "@hot-updater/core";
 import { canonicalizeAppVersion } from "@hot-updater/plugin-core";
 
-import { fetchJSON } from "./fetchJSON";
+import { fetchJSON, FetchJSONResponseError } from "./fetchJSON";
 import { fetchReleaseCatalogWithCache } from "./releaseCatalogCache";
 import { HOT_UPDATER_SDK_VERSION } from "./sdkVersion";
 import type { HotUpdaterBaseURL } from "./types";
@@ -101,51 +102,53 @@ const resolveArtifactUrls = (
   info: ArtifactInfo,
 ): ArtifactInfo => ({
   ...info,
-  fileUrl:
-    info.fileUrl === null ? null : resolveArtifactUrl(baseURL, info.fileUrl),
-  ...(info.manifestUrl === undefined
-    ? {}
-    : {
-        manifestUrl:
-          info.manifestUrl === null
-            ? null
-            : resolveArtifactUrl(baseURL, info.manifestUrl),
-      }),
-  ...(info.changedAssets === undefined
-    ? {}
-    : {
-        changedAssets:
-          info.changedAssets === null
-            ? null
-            : Object.fromEntries(
-                Object.entries(info.changedAssets).map(([path, asset]) => [
-                  path,
-                  {
-                    ...asset,
-                    ...(asset.file
-                      ? {
-                          file: {
-                            ...asset.file,
-                            url: resolveArtifactUrl(baseURL, asset.file.url),
-                          },
-                        }
-                      : {}),
-                    ...(asset.patch
-                      ? {
-                          patch: {
-                            ...asset.patch,
-                            patchUrl: resolveArtifactUrl(
-                              baseURL,
-                              asset.patch.patchUrl,
-                            ),
-                          },
-                        }
-                      : {}),
-                  },
-                ]),
-              ),
-      }),
+  manifestUrl: resolveArtifactUrl(baseURL, info.manifestUrl),
+  ...(info.archiveUrl
+    ? { archiveUrl: resolveArtifactUrl(baseURL, info.archiveUrl) }
+    : {}),
+  assets: Object.fromEntries(
+    Object.entries(info.assets).map(([path, asset]) => [
+      path,
+      {
+        ...asset,
+        file: {
+          ...asset.file,
+          url: resolveArtifactUrl(baseURL, asset.file.url),
+        },
+        ...(asset.patch
+          ? {
+              patch: {
+                ...asset.patch,
+                patchUrl: resolveArtifactUrl(baseURL, asset.patch.patchUrl),
+              },
+            }
+          : {}),
+      },
+    ]),
+  ),
 });
+
+const requireArtifactProtocolV1 = (info: ArtifactInfo): ArtifactInfo => {
+  if (
+    info.artifactProtocolVersion !== ARTIFACT_PROTOCOL_VERSION ||
+    !info.assets ||
+    !info.manifestUrl ||
+    !info.manifestFileHash ||
+    (info.archiveUrl !== undefined && typeof info.archiveUrl !== "string")
+  ) {
+    throw new Error(
+      `Server does not support artifact protocol ${ARTIFACT_PROTOCOL_VERSION}.`,
+    );
+  }
+  for (const asset of Object.values(info.assets)) {
+    if (!asset.file?.url || !asset.fileHash) {
+      throw new Error(
+        "Artifact protocol 1 requires an original file for every asset.",
+      );
+    }
+  }
+  return info;
+};
 
 const sendInsightsEvent = async (
   baseURL: string,
@@ -241,14 +244,25 @@ const createSession = (baseURL: string): HotUpdaterHttpSession => ({
     });
   },
   resolveArtifact: async (params): Promise<ArtifactInfo> => {
-    const info = await fetchJSON<ArtifactInfo>({
-      requestHeaders: params.requestHeaders,
-      requestTimeout: params.requestTimeout,
-      url: `${baseURL}/artifacts/${encodeURIComponent(
-        params.targetBundleId,
-      )}/from/${encodeURIComponent(params.currentBundleId)}`,
-    });
-    return resolveArtifactUrls(baseURL, info);
+    let info: ArtifactInfo;
+    try {
+      info = await fetchJSON<ArtifactInfo>({
+        requestHeaders: params.requestHeaders,
+        requestTimeout: params.requestTimeout,
+        url: `${baseURL}/artifacts/v1/${encodeURIComponent(
+          params.targetBundleId,
+        )}/from/${encodeURIComponent(params.currentBundleId)}`,
+      });
+    } catch (error) {
+      if (error instanceof FetchJSONResponseError && error.status === 404) {
+        throw new Error(
+          `Server does not support artifact protocol ${ARTIFACT_PROTOCOL_VERSION}.`,
+          { cause: error },
+        );
+      }
+      throw error;
+    }
+    return resolveArtifactUrls(baseURL, requireArtifactProtocolV1(info));
   },
   sendInsightsEvent: (params) => sendInsightsEvent(baseURL, params),
 });

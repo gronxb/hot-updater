@@ -30,14 +30,11 @@ export const createBundleRowFixture = (
 ): BundleRow => ({
   id: fixtureId(suffix),
   platform: "ios",
-  file_hash: `hash-${suffix}`,
   git_commit_hash: null,
-  storage_uri: `storage://bundles/${suffix}.zip`,
-  archive_byte_size: 3_000_000_001,
   metadata: { app_version: suffix },
-  manifest_storage_uri: null,
-  manifest_file_hash: null,
-  asset_base_storage_uri: null,
+  manifest_storage_uri: `storage://bundles/${suffix}/manifest.json`,
+  manifest_file_hash: `manifest-hash-${suffix}`,
+  asset_base_storage_uri: "storage://assets",
 });
 
 export const createBundlePatchRowFixture = (
@@ -127,9 +124,9 @@ export const createBundleFixture = (
 ): Bundle => ({
   id: fixtureId(suffix),
   platform: "ios",
-  fileHash: `hash-${suffix}`,
   gitCommitHash: null,
-  storageUri: `storage://bundles/${suffix}.zip`,
-  archiveByteSize: 3_000_000_001,
   metadata: { app_version: suffix },
+  manifestStorageUri: `storage://bundles/${suffix}/manifest.json`,
+  manifestFileHash: `manifest-hash-${suffix}`,
+  assetBaseStorageUri: "storage://assets",
 });

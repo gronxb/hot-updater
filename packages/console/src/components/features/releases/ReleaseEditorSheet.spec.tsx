@@ -48,11 +48,12 @@ const release = {
 } as ReleaseRow;
 
 const bundle = {
-  fileHash: "bundle-file-hash",
   gitCommitHash: "commit-hash",
   id: "bundle-1",
   platform: "ios",
-  storageUri: "s3://updates/bundle-1",
+  manifestStorageUri: "s3://updates/bundle-1/manifest.json",
+  manifestFileHash: "bundle-manifest-hash",
+  assetBaseStorageUri: "s3://updates/assets",
   patches: [
     {
       baseBundleId: "patch-base-file",
@@ -220,7 +221,7 @@ describe("ReleaseEditorSheet", () => {
       screen.getByRole("button", { name: "Promote to channel" }),
     ).toBeDefined();
     expect(
-      screen.getByRole("button", { name: "Download bundle" }),
+      screen.getByRole("button", { name: "Download manifest" }),
     ).toBeDefined();
     expect(screen.getByText("Metadata")).toBeDefined();
     expect(
@@ -255,7 +256,7 @@ describe("ReleaseEditorSheet", () => {
 
     for (const actionName of [
       "Promote to channel",
-      "Download bundle",
+      "Download manifest",
       "Remove from channel",
     ]) {
       expect(

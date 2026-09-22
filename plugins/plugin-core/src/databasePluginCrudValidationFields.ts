@@ -46,14 +46,10 @@ export const modelValidators: ValidatorMap = {
     platform: (value) => value === "ios" || value === "android",
     should_force_update: (value) => typeof value === "boolean",
     enabled: (value) => typeof value === "boolean",
-    file_hash: (value) => typeof value === "string",
     git_commit_hash: (value) => value === null || typeof value === "string",
     message: (value) => value === null || typeof value === "string",
     channel: isChannelText,
     channel_id: isChannelText,
-    storage_uri: (value) => typeof value === "string",
-    archive_byte_size: (value) =>
-      typeof value === "number" && Number.isSafeInteger(value) && value >= 0,
     target_app_version: (value) => value === null || typeof value === "string",
     fingerprint_hash: (value) => value === null || typeof value === "string",
     metadata: isDatabaseMetadataObject,
@@ -65,11 +61,9 @@ export const modelValidators: ValidatorMap = {
     target_cohorts: (value) =>
       value === null ||
       (Array.isArray(value) && value.every((item) => typeof item === "string")),
-    manifest_storage_uri: (value) =>
-      value === null || typeof value === "string",
-    manifest_file_hash: (value) => value === null || typeof value === "string",
-    asset_base_storage_uri: (value) =>
-      value === null || typeof value === "string",
+    manifest_storage_uri: (value) => typeof value === "string",
+    manifest_file_hash: (value) => typeof value === "string",
+    asset_base_storage_uri: (value) => typeof value === "string",
   },
   bundle_patches: {
     id: (value) => typeof value === "string",
@@ -173,12 +167,10 @@ export const modelValidators: ValidatorMap = {
 export const stringFields = new Set<string>([
   "id",
   "platform",
-  "file_hash",
   "git_commit_hash",
   "message",
   "channel",
   "channel_id",
-  "storage_uri",
   "target_app_version",
   "fingerprint_hash",
   "bundle_id",
@@ -213,7 +205,6 @@ export const stringFields = new Set<string>([
 ]);
 
 export const numberFields = new Set<string>([
-  "archive_byte_size",
   "byte_size",
   "rollout_cohort_count",
   "order_index",
@@ -236,13 +227,10 @@ export const sortableFields: Record<DatabaseModel, ReadonlySet<string>> = {
   bundles: new Set([
     "id",
     "platform",
-    "file_hash",
     "git_commit_hash",
     "message",
     "channel",
     "channel_id",
-    "storage_uri",
-    "archive_byte_size",
     "target_app_version",
     "fingerprint_hash",
     "rollout_cohort_count",

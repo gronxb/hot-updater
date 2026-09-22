@@ -8,7 +8,6 @@ export const sizeAwareArtifactSelectionScenario: DetoxScenarioDefinition = {
       "/e2e/jobs/deploy-bundle",
       {
         channel: "production",
-        compressStrategy: "tar.br",
         marker: "size-aware-base-detox",
         mode: "reset",
         safeBundleIds: [],
@@ -67,7 +66,6 @@ export const sizeAwareArtifactSelectionScenario: DetoxScenarioDefinition = {
       "/e2e/jobs/deploy-bundle",
       {
         channel: "production",
-        compressStrategy: "tar.br",
         diffBaseBundleId: "$sizeAwareBaseBundleId",
         marker: "size-aware-small-diff-detox",
         mode: "reset",
@@ -111,8 +109,22 @@ export const sizeAwareArtifactSelectionScenario: DetoxScenarioDefinition = {
       "/e2e/assert-bundle-artifact-selection",
       {
         currentBundleId: "$sizeAwareBaseBundleId",
-        selection: "manifest-diff",
+        selection: "manifest-v1",
         targetBundleId: "$sizeAwareSmallBundleId",
+      },
+    );
+    await app.control(
+      "assert size-aware small patch transfer",
+      "/e2e/assert-bundle-artifact-transfers",
+      {
+        archiveRequests: 0,
+        currentBundleId: "$sizeAwareBaseBundleId",
+        fileRequests: 0,
+        maxRequestsPerAsset: 1,
+        minNetworkAssets: 1,
+        patchRequests: 1,
+        targetBundleId: "$sizeAwareSmallBundleId",
+        verifyAllAssetHashes: true,
       },
     );
     await app.control(
@@ -150,93 +162,147 @@ export const sizeAwareArtifactSelectionScenario: DetoxScenarioDefinition = {
       "size-aware-small-diff-detox",
     );
 
-    await app.control(
-      "deploy size-aware large diff bundle",
-      "/e2e/jobs/deploy-bundle",
-      {
-        bundleProfile: "sizeAwareLargeDiff",
-        channel: "production",
-        compressStrategy: "tar.br",
-        diffBaseBundleId: "$sizeAwareSmallBundleId",
-        marker: "size-aware-large-diff-detox",
-        mode: "reset",
-        patchMaxBaseBundles: 1,
-        safeBundleIds: ["$sizeAwareSmallBundleId"],
-        targetAppVersion: "1.0.x",
-      },
-      {
-        saveResultAs: "sizeAwareLargeBundleId",
-        saveResultFieldsAs: {
-          releaseId: "sizeAwareLargeReleaseId",
+    const installLargeVariant = async (input: {
+      baseBundleId: string;
+      bundleResultKey: string;
+      corruptArchive: boolean;
+      expectedFileRequests: number;
+      expectedPatchRequests: number;
+      label: string;
+      marker: string;
+      releaseResultKey: string;
+    }) => {
+      const bundleId = `$${input.bundleResultKey}`;
+      const releaseId = `$${input.releaseResultKey}`;
+      await app.control(
+        `deploy size-aware ${input.label} bundle`,
+        "/e2e/jobs/deploy-bundle",
+        {
+          bundleProfile: "sizeAwareLargeDiff",
+          channel: "production",
+          diffBaseBundleId: input.baseBundleId,
+          marker: input.marker,
+          mode: "reset",
+          patchMaxBaseBundles: 1,
+          safeBundleIds: [input.baseBundleId],
+          targetAppVersion: "1.0.x",
         },
-      },
-    );
-    await app.control(
-      "assert size-aware large diff base",
-      "/e2e/assert-bundle-patch-bases",
-      {
-        bundleId: "$sizeAwareLargeBundleId",
-        expectedBaseBundleIds: ["$sizeAwareSmallBundleId"],
-      },
-    );
-    await app.launch("launch size-aware large diff app");
-    await app.control(
-      "reset size-aware large artifact evidence",
-      "/e2e/proxy-control",
-      { reset: true },
-    );
-    await app.tap(
-      "install size-aware large diff update",
-      "action-install-current-channel-update",
-    );
-    await app.assertText(
-      "assert size-aware large Release installed",
-      "update-action-result",
-      "current-channel -> installed ID $sizeAwareLargeReleaseId",
-      { exactText: true },
-    );
-    await app.control(
-      "assert size-aware large archive selection",
-      "/e2e/assert-bundle-artifact-selection",
-      {
-        currentBundleId: "$sizeAwareSmallBundleId",
-        selection: "archive-only",
-        targetBundleId: "$sizeAwareLargeBundleId",
-      },
-    );
-    await app.control(
-      "wait size-aware large metadata pending",
-      "/e2e/jobs/wait-for-metadata",
-      {
-        bundleId: "$sizeAwareLargeBundleId",
-        releaseId: "$sizeAwareLargeReleaseId",
-        verificationPending: true,
-      },
-    );
-    await app.reload("reload size-aware large diff update");
-    await app.control(
-      "wait size-aware large metadata stable",
-      "/e2e/jobs/wait-for-metadata",
-      {
-        bundleId: "$sizeAwareLargeBundleId",
-        releaseId: "$sizeAwareLargeReleaseId",
-        verificationPending: false,
-      },
-    );
-    await app.assertText(
-      "assert size-aware large Bundle active",
-      "runtime-bundle-id",
-      "$sizeAwareLargeBundleId",
-    );
-    await app.assertText(
-      "assert size-aware large Release active",
-      "runtime-release-state",
-      "$sizeAwareLargeReleaseId",
-    );
-    await app.assertText(
-      "assert size-aware large marker",
-      "runtime-scenario-marker",
-      "size-aware-large-diff-detox",
-    );
+        {
+          saveResultAs: input.bundleResultKey,
+          saveResultFieldsAs: {
+            releaseId: input.releaseResultKey,
+          },
+        },
+      );
+      await app.control(
+        `assert size-aware ${input.label} diff base`,
+        "/e2e/assert-bundle-patch-bases",
+        {
+          bundleId,
+          expectedBaseBundleIds: [input.baseBundleId],
+        },
+      );
+      await app.launch(`launch size-aware ${input.label} app`);
+      await app.control(
+        `reset size-aware ${input.label} artifact evidence`,
+        "/e2e/proxy-control",
+        {
+          ...(input.corruptArchive
+            ? { archiveFailureMode: "corrupt", archiveFailures: 1 }
+            : {}),
+          reset: true,
+        },
+      );
+      await app.tap(
+        `install size-aware ${input.label} update`,
+        "action-install-current-channel-update",
+      );
+      await app.assertText(
+        `assert size-aware ${input.label} Release installed`,
+        "update-action-result",
+        `current-channel -> installed ID ${releaseId}`,
+        { exactText: true },
+      );
+      await app.control(
+        `assert size-aware ${input.label} manifest selection`,
+        "/e2e/assert-bundle-artifact-selection",
+        {
+          currentBundleId: input.baseBundleId,
+          selection: "manifest-v1",
+          targetBundleId: bundleId,
+        },
+      );
+      await app.control(
+        input.corruptArchive
+          ? "assert corrupt archive falls back once per file"
+          : "assert successful archive avoids per-file transfers",
+        "/e2e/assert-bundle-artifact-transfers",
+        {
+          archiveRequests: 1,
+          currentBundleId: input.baseBundleId,
+          fileRequests: input.expectedFileRequests,
+          maxRequestsPerAsset: 1,
+          minNetworkAssets: input.corruptArchive ? 2 : 0,
+          patchRequests: input.expectedPatchRequests,
+          targetBundleId: bundleId,
+          verifyAllAssetHashes: true,
+        },
+      );
+      await app.control(
+        `wait size-aware ${input.label} metadata pending`,
+        "/e2e/jobs/wait-for-metadata",
+        {
+          bundleId,
+          releaseId,
+          verificationPending: true,
+        },
+      );
+      await app.reload(`reload size-aware ${input.label} update`);
+      await app.control(
+        `wait size-aware ${input.label} metadata stable`,
+        "/e2e/jobs/wait-for-metadata",
+        {
+          bundleId,
+          releaseId,
+          verificationPending: false,
+        },
+      );
+      await app.assertText(
+        `assert size-aware ${input.label} Bundle active`,
+        "runtime-bundle-id",
+        bundleId,
+      );
+      await app.assertText(
+        `assert size-aware ${input.label} Release active`,
+        "runtime-release-state",
+        releaseId,
+      );
+      await app.assertText(
+        `assert size-aware ${input.label} marker`,
+        "runtime-scenario-marker",
+        input.marker,
+      );
+    };
+
+    await installLargeVariant({
+      baseBundleId: "$sizeAwareSmallBundleId",
+      bundleResultKey: "sizeAwareLargeSuccessBundleId",
+      corruptArchive: false,
+      expectedFileRequests: 0,
+      expectedPatchRequests: 0,
+      label: "large success",
+      marker: "size-aware-large-success-detox",
+      releaseResultKey: "sizeAwareLargeSuccessReleaseId",
+    });
+    await installLargeVariant({
+      baseBundleId: "$sizeAwareLargeSuccessBundleId",
+      bundleResultKey: "sizeAwareLargeFallbackBundleId",
+      corruptArchive: true,
+      expectedFileRequests: 1,
+      expectedPatchRequests: 1,
+      label: "large fallback",
+      marker: "size-aware-large-fallback-detox",
+      releaseResultKey: "sizeAwareLargeFallbackReleaseId",
+    });
   },
 };

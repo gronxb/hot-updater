@@ -13,10 +13,10 @@ import {
 const createBundle = (id: string): Bundle => ({
   id,
   platform: "ios",
-  fileHash: `hash-${id}`,
   gitCommitHash: null,
-  storageUri: `storage://${id}`,
-  archiveByteSize: 3_000_000_001,
+  manifestStorageUri: `storage://${id}/manifest.json`,
+  manifestFileHash: `manifest-hash-${id}`,
+  assetBaseStorageUri: "storage://assets",
   metadata: { app_version: "1.0.0" },
 });
 
@@ -53,14 +53,14 @@ describe("database rows", () => {
       patches: [
         {
           baseBundleId: firstBase.id,
-          baseFileHash: firstBase.fileHash,
+          baseFileHash: `asset-hash-${firstBase.id}`,
           byteSize: 3_000_000_002,
           patchFileHash: "patch-a",
           patchStorageUri: "storage://patch-a",
         },
         {
           baseBundleId: secondBase.id,
-          baseFileHash: secondBase.fileHash,
+          baseFileHash: `asset-hash-${secondBase.id}`,
           byteSize: 3_000_000_003,
           patchFileHash: "patch-b",
           patchStorageUri: "storage://patch-b",
@@ -85,7 +85,7 @@ describe("database rows", () => {
       patches: [
         {
           baseBundleId: base.id,
-          baseFileHash: base.fileHash,
+          baseFileHash: `asset-hash-${base.id}`,
           byteSize: 3_000_000_002,
           patchFileHash: "patch",
           patchStorageUri: "storage://patch",
@@ -118,7 +118,7 @@ describe("database rows", () => {
       id: "target:base",
       bundle_id: target.id,
       base_bundle_id: base.id,
-      base_file_hash: base.fileHash,
+      base_file_hash: `asset-hash-${base.id}`,
       patch_file_hash: "patch",
       patch_storage_uri: "storage://patch",
       byte_size: 3_000_000_002,

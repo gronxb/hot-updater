@@ -106,7 +106,8 @@ const ensureBuiltArtifacts = async (
 const toRuntimeBundle = (bundle: Bundle, storageBucket: string): Bundle => {
   return {
     ...bundle,
-    storageUri: `gs://${storageBucket}/${bundle.id}/bundle.zip`,
+    manifestStorageUri: `gs://${storageBucket}/${bundle.id}/manifest.json`,
+    assetBaseStorageUri: `gs://${storageBucket}/assets`,
   };
 };
 
@@ -384,10 +385,10 @@ exec node "${path.join(firebaseFunctionsPackagePath, "lib/bin/firebase-functions
       {
         id: "00000000-0000-0000-0000-000000000001",
         platform: "ios",
-        fileHash: "hash",
         gitCommitHash: null,
-        storageUri: "storage://unused",
-        archiveByteSize: 3_000_000_001,
+        manifestStorageUri: "storage://unused/manifest.json",
+        manifestFileHash: "manifest-hash",
+        assetBaseStorageUri: "storage://assets",
       },
       storageBucket,
     );

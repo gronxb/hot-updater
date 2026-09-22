@@ -31,14 +31,11 @@ model channels {
 model bundles {
   id String @id
   platform String
-  file_hash String
   git_commit_hash String?
-  storage_uri String
-  archive_byte_size Float
   metadata Json
-  manifest_storage_uri String?
-  manifest_file_hash String?
-  asset_base_storage_uri String?
+  manifest_storage_uri String
+  manifest_file_hash String
+  asset_base_storage_uri String
   patches bundle_patches[] @relation("bundle_patches_bundles_patches")
   baseForPatches bundle_patches[] @relation("bundle_patches_bundles_baseForPatches")
   releases releases[] @relation("releases_bundles")

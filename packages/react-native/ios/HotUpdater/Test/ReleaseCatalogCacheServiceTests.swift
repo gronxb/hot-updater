@@ -2,7 +2,7 @@
 import Foundation
 import Testing
 
-@testable import HotUpdaterArchive
+@testable import HotUpdaterCore
 
 struct ReleaseCatalogCacheServiceTests {
     @Test

@@ -65,6 +65,10 @@ init. reference/ is additional context, not executable provisioning code.
     Preserve unrelated policies.
   - Verify/record: roleName/roleArn; both lambda.amazonaws.com and
     edgelambda.amazonaws.com can assume it; resource ARNs match this installation.
+    The DynamoDB leading-key condition must include
+    `_hot-updater#insights-overview#*` for aggregate batch reads and writes.
+    Send an authenticated Insights event through the deployed endpoint and
+    confirm it succeeds; an artifact download alone does not verify these permissions.
   - Retry: retrieve role/policies and allow propagation; reuse the selected role.
 
 - [ ] **aws.signing — Prepare download signing**

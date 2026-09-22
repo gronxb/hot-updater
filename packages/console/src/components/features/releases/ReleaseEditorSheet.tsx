@@ -624,7 +624,7 @@ export function ReleaseEditorSheet({
                       variant="outline"
                     >
                       <Download data-icon="inline-start" />
-                      Download bundle
+                      Download manifest
                     </Button>
                   ) : null}
                   <Button

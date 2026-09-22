@@ -20,7 +20,6 @@ export default defineConfig({
     supabaseServiceRoleKey: process.env.HOT_UPDATER_SUPABASE_SERVICE_ROLE_KEY!,
   }),
   updateStrategy: "appVersion",
-  compressStrategy: "zip", // or "tar.br" for better compression
   fingerprint: {
     debug: true,
   },

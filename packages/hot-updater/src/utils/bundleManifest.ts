@@ -1,6 +1,8 @@
 import fs from "fs/promises";
 import path from "path";
 
+import type { ManifestArchive } from "@hot-updater/core";
+
 import { getFileHashFromFile } from "./getFileHash";
 
 const MANIFEST_HASH_CONCURRENCY = 8;
@@ -8,9 +10,11 @@ const MANIFEST_HASH_CONCURRENCY = 8;
 export interface Manifest {
   bundleId: string;
   assets: Record<string, ManifestAsset>;
+  archive?: ManifestArchive;
 }
 
 export interface ManifestAsset {
+  byteSize?: number;
   downloadByteSize?: number;
   downloadFileHash?: string;
   fileHash: string;
@@ -84,6 +88,7 @@ export const createBundleManifest = async ({
         return [
           target.name,
           {
+            byteSize: (await fs.stat(target.path)).size,
             fileHash,
             ...(signature ? { signature } : {}),
           },

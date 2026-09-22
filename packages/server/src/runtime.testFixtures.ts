@@ -12,10 +12,10 @@ import type { DatabaseAdapterCapabilities, Migrator } from "./db/types";
 export const runtimeBundle: Bundle = {
   id: "00000000-0000-0000-0000-000000000001",
   platform: "ios",
-  fileHash: "hash123",
   gitCommitHash: null,
-  storageUri: "s3://test-bucket/bundles/bundle.zip",
-  archiveByteSize: 3_000_000_001,
+  manifestStorageUri: "s3://test-bucket/bundles/bundle/manifest.json",
+  manifestFileHash: "manifest-hash",
+  assetBaseStorageUri: "s3://test-bucket/assets",
 };
 
 export const createRuntimeStorage = (

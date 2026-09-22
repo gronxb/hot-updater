@@ -34,12 +34,12 @@ const artifact = (
   id: string,
   platform: Bundle["platform"] = "ios",
 ): Bundle => ({
-  archiveByteSize: 1024,
+  assetBaseStorageUri: "storage://assets",
   id,
   platform,
-  fileHash: `hash-${id}`,
-  storageUri: `storage://artifacts/${id}.zip`,
   gitCommitHash: "1234567890abcdef",
+  manifestFileHash: `manifest-hash-${id}`,
+  manifestStorageUri: `storage://artifacts/${id}/manifest.json`,
 });
 
 const releaseReference = (id: string, bundleId: string): ReleaseRow => ({

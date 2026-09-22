@@ -136,11 +136,9 @@ export function wrap(
           <Fallback
             artifactType={progressState.artifactType}
             details={progressState.details}
-            downloadedBytes={progressState.downloadedBytes}
             progress={progress}
             status={updateStatus}
             message={message}
-            totalBytes={progressState.totalBytes}
           />
         );
       }

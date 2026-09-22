@@ -60,6 +60,8 @@
 
 ## Documentation
 
+- Write and maintain all PRDs in English, including requirements, decisions,
+  acceptance criteria, and status updates.
 - Latest-version documentation describes current behavior. Keep v0/v1
   comparisons and transition instructions in `guides/upgrade-to-v1.mdx`.
   Preserve literal resource names, API paths, and protocol identifiers.

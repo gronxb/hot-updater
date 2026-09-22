@@ -14,10 +14,10 @@ import { deleteBundle, deleteBundles } from "./deleteBundle";
 const baseBundle: Bundle = {
   id: "0195a408-8f13-7d9b-8df4-123456789abc",
   platform: "ios",
-  fileHash: "abc123",
-  storageUri: "s3://bucket/bundle.zip",
-  archiveByteSize: 3_000_000_001,
   gitCommitHash: "deadbeef",
+  manifestStorageUri: "s3://bucket/bundle/manifest.json",
+  manifestFileHash: "manifest-hash",
+  assetBaseStorageUri: "s3://bucket/assets",
 };
 
 function createDatabaseClient(bundle: Bundle | null = baseBundle) {
@@ -94,7 +94,7 @@ describe("deleteBundle", () => {
     expect(databaseClient.mutate).toHaveBeenCalledOnce();
     expect(databaseClient.deleteBundleById).toHaveBeenCalledWith(baseBundle.id);
     expect(deleteFromStorage).toHaveBeenCalledWith({
-      storageUri: baseBundle.storageUri,
+      storageUri: baseBundle.manifestStorageUri,
     });
 
     expect(
@@ -106,7 +106,7 @@ describe("deleteBundle", () => {
     const secondBundle = {
       ...baseBundle,
       id: "0195a408-8f13-7d9b-8df4-123456789abd",
-      storageUri: "s3://bucket/second-bundle.zip",
+      manifestStorageUri: "s3://bucket/second-bundle/manifest.json",
     };
     const databaseClient = createDatabaseClient();
     databaseClient.getBundles.mockResolvedValue({
@@ -133,10 +133,10 @@ describe("deleteBundle", () => {
     expect(databaseClient.mutate).toHaveBeenCalledOnce();
     expect(databaseClient.deleteBundleById).toHaveBeenCalledTimes(2);
     expect(deleteFromStorage).toHaveBeenCalledWith({
-      storageUri: baseBundle.storageUri,
+      storageUri: baseBundle.manifestStorageUri,
     });
     expect(deleteFromStorage).toHaveBeenCalledWith({
-      storageUri: secondBundle.storageUri,
+      storageUri: secondBundle.manifestStorageUri,
     });
   });
 
@@ -157,7 +157,7 @@ describe("deleteBundle", () => {
     expect(databaseClient.mutate).toHaveBeenCalledOnce();
     expect(databaseClient.deleteBundleById).toHaveBeenCalledWith(baseBundle.id);
     expect(storagePlugin.delete).toHaveBeenCalledWith({
-      storageUri: baseBundle.storageUri,
+      storageUri: baseBundle.manifestStorageUri,
     });
   });
 
@@ -179,7 +179,7 @@ describe("deleteBundle", () => {
   it("skips storage deletion for http urls", async () => {
     const databaseClient = createDatabaseClient({
       ...baseBundle,
-      storageUri: "https://cdn.example.com/bundle.zip",
+      manifestStorageUri: "https://cdn.example.com/manifest.json",
     });
     const deleteFromStorage = vi.fn();
     const storagePlugin = createStoragePlugin("s3", {
@@ -199,7 +199,7 @@ describe("deleteBundle", () => {
     const storageUri = "https://cdn.example.com/bundle.zip";
     const databaseClient = createDatabaseClient({
       ...baseBundle,
-      storageUri,
+      manifestStorageUri: storageUri,
     });
     const deleteFromStorage = vi.fn(async () => ({ deleted: true as const }));
     const storagePlugin = createStoragePlugin("https", {
@@ -217,7 +217,7 @@ describe("deleteBundle", () => {
   it("throws before database deletion when the storage protocol is unsupported", async () => {
     const databaseClient = createDatabaseClient({
       ...baseBundle,
-      storageUri: "r2://bucket/bundle.zip",
+      manifestStorageUri: "r2://bucket/bundle/manifest.json",
     });
     const storagePlugin = createStoragePlugin("s3");
 
@@ -253,7 +253,7 @@ describe("deleteBundle", () => {
 
     expect(databaseClient.deleteBundleById).toHaveBeenCalledOnce();
     expect(deleteFromStorage).toHaveBeenCalledWith({
-      storageUri: baseBundle.storageUri,
+      storageUri: baseBundle.manifestStorageUri,
     });
     expect(consoleErrorSpy).toHaveBeenCalledWith(
       "Failed to delete bundle from storage:",
@@ -279,7 +279,7 @@ describe("deleteBundle", () => {
 
     expect(databaseClient.deleteBundleById).toHaveBeenCalledOnce();
     expect(deleteFromStorage).toHaveBeenCalledWith({
-      storageUri: baseBundle.storageUri,
+      storageUri: baseBundle.manifestStorageUri,
     });
   });
 
@@ -306,10 +306,7 @@ describe("deleteBundle", () => {
 
     expect(databaseClient.getBundles).toHaveBeenCalledOnce();
     expect(fetchManifest).not.toHaveBeenCalled();
-    expect(deleteFromStorage).toHaveBeenCalledTimes(2);
-    expect(deleteFromStorage).toHaveBeenCalledWith({
-      storageUri: bundleWithManifest.storageUri,
-    });
+    expect(deleteFromStorage).toHaveBeenCalledTimes(1);
     expect(deleteFromStorage).toHaveBeenCalledWith({
       storageUri: bundleWithManifest.manifestStorageUri,
     });

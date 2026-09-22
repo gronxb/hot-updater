@@ -25,10 +25,10 @@ const SPECIAL_BUNDLE_IDS = [
 const createBundle = (id: string) => ({
   id,
   platform: "ios" as const,
-  fileHash: "hash",
   gitCommitHash: null,
-  storageUri: "storage://bundle",
-  archiveByteSize: 1,
+  manifestStorageUri: "storage://bundle/manifest.json",
+  manifestFileHash: "manifest-hash",
+  assetBaseStorageUri: "storage://assets",
 });
 
 afterEach(() => {
@@ -79,8 +79,11 @@ describe("standalone management routes", () => {
 
   it.each([
     {
-      name: "archive size",
-      response: { ...createBundle("response-id"), archiveByteSize: undefined },
+      name: "manifest storage URI",
+      response: {
+        ...createBundle("response-id"),
+        manifestStorageUri: undefined,
+      },
     },
     {
       name: "patch size",

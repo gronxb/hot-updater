@@ -29,6 +29,10 @@ export async function getBundleZipTargets(
     }
 
     const relative = getRelative(normalizedFile);
+    // Reused build directories can contain transport artifacts from a prior deploy.
+    if (relative === "manifest.json" || relative === "bundle.tar.br") {
+      continue;
+    }
 
     if (relative.endsWith(".bundle") || relative.endsWith(".bundle.hbc")) {
       let bundleBase = relative;

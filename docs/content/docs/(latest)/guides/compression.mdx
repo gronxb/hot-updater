@@ -1,41 +1,40 @@
 ---
-title: "Compression Strategy"
-description: "Choose a compression format for your bundle distribution."
+title: "Artifact Compression"
+description: "How Hot Updater transfers changed files and complete bundles."
 icon: FileArchive
 ---
 
-## Supported Formats
+Hot Updater distributes OTA updates using a verified manifest, individual files,
+and a `tar.br` archive for updates where a single download is more economical.
+The client chooses the transport automatically after checking which local files
+it can reuse. ZIP and `tar.gz` OTA archives are not supported.
 
-- **`zip`** - Standard ZIP format (DEFLATE algorithm). Fast compression and decompression.
-- **`tar.gz`** - TAR archive with GZIP compression (LZ77 algorithm). ~10-15% smaller than ZIP.
-- **`tar.br`** - TAR archive with [Brotli](https://github.com/google/brotli) compression. ~20-30% smaller than GZIP. Developed by Google for web compression.
+Deploy automatically compresses eligible individual files with Brotli. The
+manifest records the logical installed-file hash and, when the served bytes are
+compressed, the download hash and byte size. Native clients decompress and
+verify each file before staging the update.
 
-## Configuration
-
-Set `compressStrategy` in your `hot-updater.config.ts`:
-
-```ts title="hot-updater.config.ts"
-import { defineConfig } from 'hot-updater';
-
-export default defineConfig({
-  // ... other options
-  compressStrategy: 'tar.gz', // 'zip' | 'tar.gz' | 'tar.br' // [!code ++]
-});
-```
-
-## Usage
-
-After setting the compression strategy, deploy your bundle:
+There is no compression or archive/diff setting. Deploy also creates
+`bundle.tar.br` containing the target files and records its hash and sizes in the
+manifest. This adds compression work and one complete compressed object to each
+Bundle's storage.
 
 ```bash
 npx hot-updater deploy -p ios
 npx hot-updater deploy -p android
 ```
 
-Deploy compresses the bundle in the specified format. The client detects ZIP,
-GZIP, or Brotli and decompresses it automatically. Users download the compressed
-bundle, so a better compression ratio reduces bandwidth usage.
+Per-file transfer skips files already present in the current OTA, completed
+staging, or built-in app. With at least two files left to download, the client
+compares `tar.br` against the expected individual transfer bytes, including
+smaller offered patches. If every target file needs downloading and no patch is
+offered, it also allows the archive's TAR framing and padding overhead. This
+avoids many requests for a complete bundle whose files do not compress well.
+Updates that reuse files or offer patches keep the strict byte comparison.
+Missing or invalid sizes keep the per-file route. Selection bounds the permitted
+extra payload; it does not predict every network's latency.
 
-<Callout title="Recommendation">
-Choose `tar.br` or `tar.gz` for a better compression ratio and smaller downloads.
-</Callout>
+Both routes verify the same target file set and hashes before activating the
+update. If the archive fails, the client discards its extraction scratch and
+tries the original per-file plan once. This recovery can transfer additional
+bytes. A failed patch falls back only to that file's original.

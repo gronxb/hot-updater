@@ -15,8 +15,8 @@ import {
 } from "./databaseTestFixtures";
 import type { HttpTestClient, HttpTestRequestInit } from "./httpTestClient";
 import {
-  RELEASE_CATALOG_DOWNLOAD_HASH,
-  RELEASE_CATALOG_MANIFEST_URI,
+  RELEASE_CATALOG_MANIFEST_URIS,
+  releaseCatalogArtifact,
   releaseCatalogDownloadUrl as downloadUrl,
 } from "./releaseCatalogHttpFixtures";
 import { setupReleaseCatalogLifecycleTests } from "./releaseCatalogLifecycleTests";
@@ -150,6 +150,7 @@ export const setupReleaseCatalogTestSuite = (options: {
           const bundle = {
             ...createBundleRowFixture(suffix),
             platform: target.platform,
+            asset_base_storage_uri: "storage://test-bucket/assets",
           };
           const changes: DatabaseChange[] = [];
           if (patch.bundle_id === undefined) {
@@ -158,9 +159,9 @@ export const setupReleaseCatalogTestSuite = (options: {
               jsonRequest("POST", {
                 id: bundle.id,
                 platform: bundle.platform,
-                fileHash: bundle.file_hash,
-                storageUri: bundle.storage_uri,
-                archiveByteSize: bundle.archive_byte_size,
+                manifestFileHash: bundle.manifest_file_hash,
+                manifestStorageUri: bundle.manifest_storage_uri,
+                assetBaseStorageUri: bundle.asset_base_storage_uri,
                 gitCommitHash: null,
                 metadata: bundle.metadata,
               }),
@@ -346,7 +347,7 @@ export const setupReleaseCatalogTestSuite = (options: {
                       operation: "update",
                       where: { id: current.bundle.id },
                       update: {
-                        storage_uri: "storage://should-not-be-written",
+                        manifest_storage_uri: "storage://should-not-be-written",
                       },
                     },
                     {
@@ -379,11 +380,11 @@ export const setupReleaseCatalogTestSuite = (options: {
               ).toEqual(current.release);
               expect((await adminJson(catalogRowPath())).data).toEqual(catalog);
               const artifact = await request(
-                `/artifacts/${current.bundle.id}/from/${NIL_UUID}`,
+                `/artifacts/v1/${current.bundle.id}/from/${NIL_UUID}`,
               );
               expect(artifact.status).toBe(200);
               expect(await artifact.json()).toMatchObject({
-                fileUrl: downloadUrl(current.bundle.storage_uri),
+                manifestUrl: downloadUrl(current.bundle.manifest_storage_uri),
               });
             },
           );
@@ -499,11 +500,11 @@ export const setupReleaseCatalogTestSuite = (options: {
             rollbackReleases: [],
           });
           const artifact = await request(
-            `/artifacts/${current.bundle.id}/from/${NIL_UUID}`,
+            `/artifacts/v1/${current.bundle.id}/from/${NIL_UUID}`,
           );
           expect(artifact.status).toBe(200);
           expect(await artifact.json()).toMatchObject({
-            fileUrl: downloadUrl(current.bundle.storage_uri),
+            manifestUrl: downloadUrl(current.bundle.manifest_storage_uri),
           });
         });
 
@@ -525,18 +526,16 @@ export const setupReleaseCatalogTestSuite = (options: {
             shouldForceUpdate: true,
           });
           const response = await request(
-            `/artifacts/${bundle.id}/from/${NIL_UUID}`,
+            `/artifacts/v1/${bundle.id}/from/${NIL_UUID}`,
           );
           expect(response.status).toBe(200);
           expect(response.headers.get("cache-control")).toBe(
             "private, no-store",
           );
-          expect(await response.json()).toEqual({
-            fileHash: bundle.file_hash,
-            fileUrl: downloadUrl(bundle.storage_uri),
-          });
+          expect(await response.json()).toEqual(releaseCatalogArtifact(bundle));
           expect(
-            (await request(`/artifacts/${release.id}/from/${NIL_UUID}`)).status,
+            (await request(`/artifacts/v1/${release.id}/from/${NIL_UUID}`))
+              .status,
           ).toBe(404);
         });
 
@@ -933,14 +932,13 @@ export const setupReleaseCatalogTestSuite = (options: {
       });
     }
 
-    it.each(["manifest", "archive"] as const)(
-      "resolves HTTP-created patches and selects the %s download by size",
-      async (mode) => {
+    it.each(["small", "large"] as const)(
+      "retains original and patch plans alongside a %s optional archive",
+      async (size) => {
         const base = createBundleRowFixture("301");
         const target = {
           ...createBundleRowFixture("302"),
-          archive_byte_size: mode === "archive" ? 1 : 10_000,
-          manifest_storage_uri: RELEASE_CATALOG_MANIFEST_URI,
+          manifest_storage_uri: RELEASE_CATALOG_MANIFEST_URIS[size],
           manifest_file_hash: "manifest-hash",
           asset_base_storage_uri: "storage://test-bucket/assets",
         };
@@ -954,49 +952,36 @@ export const setupReleaseCatalogTestSuite = (options: {
           { model: "bundlePatches", operation: "insert", row: patch },
         ]);
         const response = await request(
-          `/artifacts/${target.id}/from/${base.id}`,
+          `/artifacts/v1/${target.id}/from/${base.id}`,
         );
         expect(response.status).toBe(200);
         const artifact = (await response.json()) as ArtifactInfo;
-        const archive = {
-          fileHash: target.file_hash,
-          fileUrl: downloadUrl(target.storage_uri),
-        };
-        if (mode === "archive") expect(artifact).toEqual(archive);
-        else {
-          expect(artifact).toEqual({
-            ...archive,
-            manifestUrl: downloadUrl(target.manifest_storage_uri),
-            manifestFileHash: target.manifest_file_hash,
-            changedAssets: {
-              "index.ios.bundle": {
-                fileHash: "target-hbc-hash",
-                file: {
-                  compression: "br",
-                  url: downloadUrl(
-                    `storage://test-bucket/assets/sha256/aa/${RELEASE_CATALOG_DOWNLOAD_HASH}.br`,
-                  ),
-                },
-                patch: {
-                  algorithm: "bsdiff",
-                  baseBundleId: base.id,
-                  baseFileHash: patch.base_file_hash,
-                  patchFileHash: patch.patch_file_hash,
-                  patchUrl: downloadUrl(patch.patch_storage_uri),
-                },
+        const original = releaseCatalogArtifact(target);
+        const archiveUrl = downloadUrl(
+          target.manifest_storage_uri.replace("manifest.json", "bundle.tar.br"),
+        );
+        expect(artifact).toEqual({
+          ...original,
+          archiveUrl,
+          assets: {
+            "index.ios.bundle": {
+              ...original.assets["index.ios.bundle"],
+              patch: {
+                algorithm: "bsdiff",
+                baseBundleId: base.id,
+                baseFileHash: patch.base_file_hash,
+                patchFileHash: patch.patch_file_hash,
+                patchUrl: downloadUrl(patch.patch_storage_uri),
+                byteSize: patch.byte_size,
               },
             },
-          });
-          const freshInstall = await request(
-            `/artifacts/${target.id}/from/${NIL_UUID}`,
-          );
-          expect(freshInstall.status).toBe(200);
-          const fresh = (await freshInstall.json()) as ArtifactInfo;
-          expect(fresh.changedAssets?.["index.ios.bundle"]).toEqual({
-            fileHash: "target-hbc-hash",
-            file: artifact.changedAssets?.["index.ios.bundle"]?.file,
-          });
-        }
+          },
+        });
+        const freshInstall = await request(
+          `/artifacts/v1/${target.id}/from/${NIL_UUID}`,
+        );
+        expect(freshInstall.status).toBe(200);
+        expect(await freshInstall.json()).toEqual({ ...original, archiveUrl });
       },
     );
   });

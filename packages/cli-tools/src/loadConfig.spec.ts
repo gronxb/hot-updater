@@ -31,9 +31,6 @@ describe("ConfigResponse", () => {
       enabled: boolean;
       maxBaseBundles: number;
     }>();
-    expectTypeOf<ConfigResponse["compressStrategy"]>().toEqualTypeOf<
-      "zip" | "tar.br" | "tar.gz"
-    >();
     expectTypeOf<ConfigResponse["console"]["port"]>().toEqualTypeOf<number>();
     expectTypeOf<ConfigResponse["signing"]>().toEqualTypeOf<
       | BundleSigningPlugin
@@ -86,7 +83,6 @@ describe("loadConfig", () => {
     expect(config).not.toHaveProperty("authorityId");
     expect(config.cacheDir).toBe(path.join("node_modules", ".hot-updater"));
     expect(config.updateStrategy).toBe("appVersion");
-    expect(config.compressStrategy).toBe("zip");
     expect(config.patch.enabled).toBe(true);
     expect(config.patch.maxBaseBundles).toBe(3);
     expect(config.platform.android.androidManifestPaths).toEqual([]);
@@ -108,6 +104,19 @@ describe("loadConfig", () => {
       await expect(loadConfig(null)).rejects.toThrow(`Remove ${key}`);
     },
   );
+
+  it("rejects the removed compressStrategy setting", async () => {
+    await writeProjectFile(
+      projectRoot,
+      "hot-updater.config.ts",
+      "export default { compressStrategy: 'tar.br' };\n",
+    );
+
+    const { loadConfig } = await import("./loadConfig");
+    await expect(loadConfig(null)).rejects.toThrow(
+      "Remove compressStrategy from hot-updater.config",
+    );
+  });
 
   it("allows disabling the local CLI cache", async () => {
     await writeProjectFile(

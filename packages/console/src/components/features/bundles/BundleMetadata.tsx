@@ -36,7 +36,7 @@ export function BundleMetadata({ bundle, release }: BundleMetadataProps) {
   const hasMetadata =
     target ||
     bundle?.gitCommitHash ||
-    bundle?.fileHash ||
+    bundle?.manifestFileHash ||
     hbcPatchBaseFileHash ||
     hbcPatchFileHash;
 
@@ -86,11 +86,14 @@ export function BundleMetadata({ bundle, release }: BundleMetadataProps) {
               }
             />
           ) : null}
-          {bundle?.fileHash ? (
+          {bundle?.manifestFileHash ? (
             <Row
-              label="Bundle hash"
+              label="Manifest hash"
               value={
-                <HashValueDisplay maxLength={16} value={bundle.fileHash} />
+                <HashValueDisplay
+                  maxLength={16}
+                  value={bundle.manifestFileHash}
+                />
               }
             />
           ) : null}
