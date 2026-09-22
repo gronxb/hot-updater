@@ -206,8 +206,8 @@ CREATE TABLE private_hot_updater_settings (
 );
 
 CREATE UNIQUE INDEX channels_name_key ON channels(name);
-CREATE INDEX bundle_patches_bundle_id_idx ON bundle_patches(bundle_id);
-CREATE INDEX bundle_patches_base_bundle_id_idx ON bundle_patches(base_bundle_id);
+CREATE INDEX bundle_patches_bundle_id_idx ON bundle_patches(bundle_id, id);
+CREATE INDEX bundle_patches_base_bundle_id_idx ON bundle_patches(base_bundle_id, id);
 CREATE INDEX releases_scope_order_idx ON releases(scope_key, id);
 CREATE INDEX releases_channel_platform_order_idx
   ON releases(channel_id, platform, id);
