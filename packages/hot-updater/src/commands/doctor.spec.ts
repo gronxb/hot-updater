@@ -196,17 +196,17 @@ describe("areVersionsCompatible", () => {
 });
 
 describe("infrastructure version helpers", () => {
-  it("preserves the v1 baseline and requires the metadata index upgrade", () => {
+  it("keeps prerelease infrastructure changes in the 1.0.0 target", () => {
     expect(getRequiredInfrastructureVersion("0.36.0")).toBe("1.0.0");
     expect(getRequiredInfrastructureVersion("1.0.0")).toBe("1.0.0");
-    expect(getRequiredInfrastructureVersion("1.0.1")).toBe("1.0.1");
-    expect(getRequiredInfrastructureVersion("1.2.0")).toBe("1.0.1");
+    expect(getRequiredInfrastructureVersion("1.0.0-rc.14")).toBe("1.0.0");
+    expect(getRequiredInfrastructureVersion("1.2.0")).toBe("1.0.0");
   });
 
-  it("resolves the matching runtime for each infrastructure generation", () => {
+  it("keeps prerelease server changes in the 1.0.0 target", () => {
     expect(getRequiredServerVersion("0.36.0")).toBe("1.0.0");
     expect(getRequiredServerVersion("1.0.0")).toBe("1.0.0");
-    expect(getRequiredServerVersion("1.0.1")).toBe("1.0.1");
+    expect(getRequiredServerVersion("1.0.0-rc.14")).toBe("1.0.0");
   });
 
   it("does not require an update just because the server package version is newer", () => {

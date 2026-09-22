@@ -13,19 +13,15 @@ declare module "vitest" {
   }
 }
 
-it("preserves initialization history and appends index cleanup", () => {
+it("ships the final RC schema in the single 1.0.0 initialization migration", () => {
   expect(inject("d1Migrations").map(({ name }) => name)).toEqual([
     "0001_hot-updater_1.0.0.sql",
-    "0002_remove_unused_fingerprint_index.sql",
   ]);
 });
 
 it("creates the current schema with required artifact sizes", async () => {
   const [createMigration] = inject("d1Migrations");
   await env.DB.prepare(createMigration!.sql).run();
-  const cleanupMigrations = inject("d1Migrations").slice(1);
-  for (const migration of cleanupMigrations)
-    await env.DB.prepare(migration.sql).run();
   const indexes = await env.DB.prepare("PRAGMA index_list(releases)").all<{
     name: string;
   }>();
@@ -40,7 +36,6 @@ it("creates the current schema with required artifact sizes", async () => {
   expect(plan.results.map(({ detail }) => detail).join("\n")).toContain(
     "releases_scope_order_idx",
   );
-  await env.DB.prepare(cleanupMigrations.at(-1)!.sql).run();
 
   await env.DB.prepare(`
     INSERT INTO bundles (

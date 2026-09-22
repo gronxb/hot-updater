@@ -25,7 +25,7 @@ init. reference/ is additional context, not executable provisioning code.
 
 - [ ] **aws.database — Prepare DynamoDB**
   - For an existing v1 table, apply the metadata projection migration in
-    infrastructure-upgrades/1.0.1.md with metadata writers stopped before
+    infrastructure-upgrades/1.0.0.md with metadata writers stopped before
     deploying the new runtime. New empty tables initialize automatically. Do not
     manually set the metadata index marker or use a request-time scan to repair it.
   - Requires: aws.storage. Fill DYNAMODB_TABLE_NAME in both dynamodb/ JSON files.

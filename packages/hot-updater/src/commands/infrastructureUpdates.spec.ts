@@ -13,6 +13,16 @@ const readUpdates = () =>
   );
 
 describe("infrastructure upgrade requirements", () => {
+  it("includes metadata index preparation in the 1.0.0 RC instructions", async () => {
+    const files = await readUpdates();
+    expect(files.map(({ version }) => version)).toEqual(["1.0.0"]);
+    const content = files[0]!.content;
+    expect(content).toContain("migrateDynamoDBMetadataIndexes");
+    expect(content).toContain("firestore.indexes.json");
+    expect(content).toContain("releases_fingerprint_hash_idx");
+    expect(content).toContain("/bundles/:id/patch-children");
+  });
+
   it("requires a complete version-named release file for every doctor requirement", async () => {
     expect(UPDATE_TARGETS).toBe(INFRASTRUCTURE_UPDATES);
     const files = await readUpdates();

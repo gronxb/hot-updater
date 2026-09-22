@@ -34,7 +34,7 @@ supply this CLI. Do this before remote provisioning.
 - [ ] **fb.indexes — Prepare Firestore indexes**
   - Include the metadata composite indexes from the target scaffold: bundle
     platform/id, patch owner/base, Release filter combinations and API-key order.
-    See infrastructure-upgrades/1.0.1.md. Missing indexes are errors; there is no
+    See infrastructure-upgrades/1.0.0.md. Missing indexes are errors; there is no
     collection-scan fallback.
   - Requires: fb.services.
   - Run: merge firebase/firestore.indexes.json with existing indexes, preserving

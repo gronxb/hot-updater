@@ -21,6 +21,7 @@ Existing AWS installations require the explicit metadata-index migration;
 Firebase installations require the updated composite indexes. Standalone
 servers must be redeployed for indexed patch-child queries.
 
-Remove the unused fingerprint-only Release index from generated schemas and
-append idempotent D1/Supabase cleanup migrations. Keep scope, patch relation and
-Insights indexes used by current queries.
+Remove the unused fingerprint-only Release index from generated schemas and the
+1.0.0 D1/Supabase initialization SQL. These pre-GA changes belong to the 1.0.0
+baseline, with preparation steps for existing RC installations in its upgrade
+guide. Keep scope, patch relation and Insights indexes used by current queries.
