@@ -163,7 +163,102 @@ describe("DynamoDB CRUD access patterns", () => {
 
     expect(result).toEqual([bundleRow]);
     expect(dynamodb.commandCalls(BatchGetCommand)).toHaveLength(1);
+    expect(
+      dynamodb.commandCalls(BatchGetCommand)[0]?.args[0].input.RequestItems?.[
+        "hot-updater-metadata"
+      ]?.Keys,
+    ).toEqual([{ pk: "bundles", sk: bundleId }]);
     expect(dynamodb.commandCalls(QueryCommand)).toHaveLength(0);
+  });
+
+  it.each(["asc", "desc"] as const)(
+    "hydrates only the finite-id cursor page in %s order",
+    async (direction) => {
+      const rows = Array.from({ length: 1_001 }, (_, index) => ({
+        ...bundleRow,
+        id: `bundle-${index.toString().padStart(4, "0")}`,
+      }));
+      dynamodb.on(BatchGetCommand).callsFake((input) => ({
+        Responses: {
+          "hot-updater-metadata": rows
+            .filter((row) =>
+              input.RequestItems["hot-updater-metadata"].Keys.some(
+                (key: { sk: string }) => key.sk === row.id,
+              ),
+            )
+            .reverse()
+            .map((row) => toDynamoDBBundleItem(row)),
+        },
+      }));
+      const result = await createCrud().findMany({
+        model: "bundles",
+        where: [
+          {
+            field: "id",
+            operator: "in",
+            value: [...rows.map(({ id }) => id), rows[501].id],
+          },
+          { field: "id", operator: "gt", value: rows[500].id },
+          { field: "id", operator: "lt", value: rows[510].id },
+        ],
+        limit: 3,
+        offset: 0,
+        orderBy: [{ field: "id", direction }],
+      });
+      const expected =
+        direction === "asc"
+          ? rows.slice(501, 504)
+          : rows.slice(507, 510).reverse();
+      expect(result).toEqual(expected);
+      expect(dynamodb.commandCalls(BatchGetCommand)).toHaveLength(1);
+      expect(
+        dynamodb.commandCalls(BatchGetCommand)[0]?.args[0].input.RequestItems?.[
+          "hot-updater-metadata"
+        ]?.Keys,
+      ).toEqual(expected.map(({ id }) => ({ pk: "bundles", sk: id })));
+      expect(dynamodb.commandCalls(QueryCommand)).toHaveLength(0);
+    },
+  );
+
+  it("refills a finite-id page across absent and filtered rows before applying the offset", async () => {
+    const rows = Array.from({ length: 10 }, (_, index) => ({
+      ...bundleRow,
+      id: `bundle-${index}`,
+      platform: index === 0 ? ("android" as const) : ("ios" as const),
+    }));
+    dynamodb.on(BatchGetCommand).callsFake((input) => ({
+      Responses: {
+        "hot-updater-metadata": rows
+          .filter(
+            (row, index) =>
+              index !== 1 &&
+              input.RequestItems["hot-updater-metadata"].Keys.some(
+                (key: { sk: string }) => key.sk === row.id,
+              ),
+          )
+          .reverse()
+          .map((row) => toDynamoDBBundleItem(row)),
+      },
+    }));
+    const result = await createCrud().findMany({
+      model: "bundles",
+      where: [
+        { field: "id", operator: "in", value: rows.map(({ id }) => id) },
+        { field: "platform", value: "ios" },
+      ],
+      limit: 2,
+      offset: 1,
+      orderBy: [{ field: "id", direction: "asc" }],
+    });
+    expect(result).toEqual(rows.slice(3, 5));
+    expect(
+      dynamodb
+        .commandCalls(BatchGetCommand)
+        .flatMap(
+          ({ args }) =>
+            args[0].input.RequestItems!["hot-updater-metadata"]!.Keys!,
+        ),
+    ).toEqual(rows.slice(0, 5).map(({ id }) => ({ pk: "bundles", sk: id })));
   });
 
   it("rejects an unindexed OR query instead of paging through all metadata", async () => {
