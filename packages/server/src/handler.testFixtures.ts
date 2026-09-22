@@ -6,10 +6,10 @@ import { createHandlers, type HandlerAPI } from "./handler";
 export const testBundle: Bundle = {
   id: "bundle-1",
   platform: "ios",
-  fileHash: "hash123",
   gitCommitHash: null,
-  storageUri: "s3://test-bucket/bundles/bundle-1.zip",
-  archiveByteSize: 3_000_000_001,
+  manifestStorageUri: "s3://test-bucket/bundles/bundle-1/manifest.json",
+  manifestFileHash: "manifest-hash",
+  assetBaseStorageUri: "s3://test-bucket/assets",
 };
 
 export const createApi = () =>

@@ -239,22 +239,19 @@ interface BundlePatchArtifact {
 interface Bundle {
   id: string;
   platform: "ios" | "android";
-  fileHash: string;
-  storageUri: string;
-  archiveByteSize: number;
   gitCommitHash: string | null;
   metadata?: {
     app_version?: string;
   };
-  manifestStorageUri?: string | null;
-  manifestFileHash?: string | null;
-  assetBaseStorageUri?: string | null;
+  manifestStorageUri: string;
+  manifestFileHash: string;
+  assetBaseStorageUri: string;
   patches?: BundlePatchArtifact[] | null;
 }
 ```
 
-`archiveByteSize` and every patch `byteSize` are required non-negative safe
-integers. Bundle objects contain immutable artifact data only; Channel,
+Every patch `byteSize` is a required non-negative safe integer. Bundle objects
+contain immutable manifest artifact data only; Channel,
 rollout, targeting, enablement, force-update, and message policy belong to
 Releases.
 
@@ -296,9 +293,9 @@ Expected response:
     {
       "id": "bundle-id",
       "platform": "ios",
-      "fileHash": "bundle-file-hash",
-      "storageUri": "s3://bucket/bundles/bundle-id/bundle.zip",
-      "archiveByteSize": 1048576,
+      "manifestStorageUri": "s3://bucket/bundles/bundle-id/manifest.json",
+      "manifestFileHash": "manifest-file-hash",
+      "assetBaseStorageUri": "s3://bucket/assets",
       "gitCommitHash": null,
       "patches": []
     }

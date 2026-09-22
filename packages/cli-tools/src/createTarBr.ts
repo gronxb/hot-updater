@@ -1,167 +1,81 @@
-import { createWriteStream } from "fs";
-import fs from "fs/promises";
-import path from "path";
-import { pipeline } from "stream/promises";
-import { createBrotliCompress, constants as zlibConstants } from "zlib";
+import { createHash } from "node:crypto";
+import { createReadStream, createWriteStream } from "node:fs";
+import fs from "node:fs/promises";
+import path from "node:path";
+import { Transform } from "node:stream";
+import { pipeline } from "node:stream/promises";
+import { constants, createBrotliCompress } from "node:zlib";
 
+import type { ManifestArchive } from "@hot-updater/core";
 import * as tar from "tar";
 
-export const createTarBrTargetFiles = async ({
+/** Build the one supported bulk transport from the exact manifest file set. */
+export async function createTarBrTargetFiles({
   outfile,
   targetFiles,
 }: {
-  targetFiles: { path: string; name: string }[];
   outfile: string;
-}) => {
-  // Remove existing output file
-  await fs.rm(outfile, { force: true });
-
-  // Create a temporary directory to stage files with correct names
-  const tmpDir = path.join(path.dirname(outfile), `.tmp-tar-${Date.now()}`);
-  await fs.mkdir(tmpDir, { recursive: true });
-
+  targetFiles: { path: string; name: string }[];
+}): Promise<ManifestArchive> {
+  await fs.mkdir(path.dirname(outfile), { recursive: true });
+  const staging = await fs.mkdtemp(
+    path.join(path.dirname(outfile), ".tar-br-"),
+  );
   try {
-    // Copy files to temp directory with target names
+    const names = new Set<string>();
     for (const target of targetFiles) {
-      const sourcePath = target.path;
-      const destPath = path.join(tmpDir, target.name);
-
-      // Create parent directories if needed
-      await fs.mkdir(path.dirname(destPath), { recursive: true });
-
-      // Copy the file or directory
-      const stats = await fs.stat(sourcePath);
-      if (stats.isDirectory()) {
-        // Copy directory recursively
-        await copyDir(sourcePath, destPath);
-      } else {
-        await fs.copyFile(sourcePath, destPath);
+      const name = target.name;
+      if (
+        !name ||
+        name !== name.trim() ||
+        name.includes("\\") ||
+        name.includes("\0") ||
+        name.startsWith("/") ||
+        /^[A-Za-z]:/.test(name) ||
+        name
+          .split("/")
+          .some((part) => !part || part === "." || part === "..") ||
+        name === "manifest.json" ||
+        name === "bundle.tar.br" ||
+        names.has(name)
+      ) {
+        throw new Error(`Invalid or duplicate archive asset path: ${name}`);
       }
+      if (!(await fs.lstat(target.path)).isFile()) {
+        throw new Error(`Archive asset is not a regular file: ${name}`);
+      }
+      names.add(name);
+      const destination = path.join(staging, name);
+      await fs.mkdir(path.dirname(destination), { recursive: true });
+      await fs.copyFile(target.path, destination);
+      await fs.chmod(destination, 0o644);
     }
-
-    await fs.mkdir(path.dirname(outfile), { recursive: true });
-
+    let tarByteSize = 0;
+    const countTarBytes = new Transform({
+      transform(chunk, _encoding, callback) {
+        tarByteSize += chunk.length;
+        callback(null, chunk);
+      },
+    });
     await pipeline(
       tar.create(
-        {
-          cwd: tmpDir,
-          portable: true,
-          mtime: new Date(0),
-          gzip: false,
-        },
-        await fs.readdir(tmpDir),
+        { cwd: staging, portable: true, mtime: new Date(0), gzip: false },
+        [...names].sort(),
       ),
+      countTarBytes,
       createBrotliCompress({
-        params: {
-          [zlibConstants.BROTLI_PARAM_QUALITY]: 11,
-          [zlibConstants.BROTLI_PARAM_LGWIN]: 24,
-        },
+        params: { [constants.BROTLI_PARAM_QUALITY]: 11 },
       }),
       createWriteStream(outfile),
     );
-
-    return outfile;
+    const hash = createHash("sha256");
+    for await (const chunk of createReadStream(outfile)) hash.update(chunk);
+    return {
+      downloadFileHash: hash.digest("hex"),
+      downloadByteSize: (await fs.stat(outfile)).size,
+      tarByteSize,
+    };
   } finally {
-    // Clean up temporary directory
-    await fs.rm(tmpDir, { recursive: true, force: true });
-  }
-};
-
-async function copyDir(src: string, dest: string): Promise<void> {
-  await fs.mkdir(dest, { recursive: true });
-  const entries = await fs.readdir(src, { withFileTypes: true });
-
-  for (const entry of entries) {
-    const srcPath = path.join(src, entry.name);
-    const destPath = path.join(dest, entry.name);
-
-    if (entry.isDirectory()) {
-      await copyDir(srcPath, destPath);
-    } else {
-      await fs.copyFile(srcPath, destPath);
-    }
+    await fs.rm(staging, { recursive: true, force: true });
   }
 }
-
-const createBrotliTar = async ({
-  cwd,
-  files,
-  outfile,
-}: {
-  cwd: string;
-  files: string[];
-  outfile: string;
-}) => {
-  await fs.mkdir(path.dirname(outfile), { recursive: true });
-
-  await pipeline(
-    tar.create(
-      {
-        cwd,
-        portable: true,
-        mtime: new Date(0),
-        gzip: false,
-      },
-      files,
-    ),
-    createBrotliCompress({
-      params: {
-        [zlibConstants.BROTLI_PARAM_QUALITY]: 11,
-        [zlibConstants.BROTLI_PARAM_LGWIN]: 24,
-      },
-    }),
-    createWriteStream(outfile),
-  );
-};
-
-export const createTarBr = async ({
-  outfile,
-  targetDir,
-  excludeExts = [],
-}: {
-  targetDir: string;
-  outfile: string;
-  excludeExts?: string[];
-}) => {
-  // Remove existing output file
-  await fs.rm(outfile, { force: true });
-
-  // Get all files from target directory
-  async function getFiles(
-    dir: string,
-    baseDir: string = "",
-  ): Promise<string[]> {
-    const entries = await fs.readdir(dir, { withFileTypes: true });
-    const files: string[] = [];
-
-    for (const entry of entries) {
-      // Check exclusions
-      if (excludeExts.some((pattern) => entry.name.includes(pattern))) {
-        continue;
-      }
-
-      const fullPath = path.join(dir, entry.name);
-      const relativePath = path.join(baseDir, entry.name);
-
-      if (entry.isDirectory()) {
-        const subFiles = await getFiles(fullPath, relativePath);
-        files.push(...subFiles);
-      } else {
-        files.push(relativePath);
-      }
-    }
-
-    return files;
-  }
-
-  const filesToInclude = await getFiles(targetDir);
-  filesToInclude.sort(); // Sort for deterministic output
-
-  await createBrotliTar({
-    cwd: targetDir,
-    files: filesToInclude,
-    outfile,
-  });
-
-  return outfile;
-};

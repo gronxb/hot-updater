@@ -28,14 +28,11 @@ import { drizzleAdapter } from "./drizzle";
 const bundles = pgTable("bundles", {
   id: text("id").primaryKey(),
   platform: text("platform").notNull(),
-  file_hash: text("file_hash").notNull(),
   git_commit_hash: text("git_commit_hash"),
-  storage_uri: text("storage_uri").notNull(),
-  archive_byte_size: doublePrecision("archive_byte_size").notNull(),
   metadata: jsonb("metadata").notNull(),
-  manifest_storage_uri: text("manifest_storage_uri"),
-  manifest_file_hash: text("manifest_file_hash"),
-  asset_base_storage_uri: text("asset_base_storage_uri"),
+  manifest_storage_uri: text("manifest_storage_uri").notNull(),
+  manifest_file_hash: text("manifest_file_hash").notNull(),
+  asset_base_storage_uri: text("asset_base_storage_uri").notNull(),
 });
 const channels = pgTable("channels", {
   id: text("id").primaryKey(),

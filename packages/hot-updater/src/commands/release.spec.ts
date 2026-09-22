@@ -44,12 +44,12 @@ const deployment = (
   releaseOverrides: Partial<DeployReleasePolicy> = {},
 ): DeploymentSeed => ({
   bundle: {
-    archiveByteSize: 1024,
-    fileHash: `hash-${id}`,
+    assetBaseStorageUri: "storage://assets",
     gitCommitHash: null,
     id,
+    manifestFileHash: `manifest-hash-${id}`,
+    manifestStorageUri: `storage://artifacts/${id}/manifest.json`,
     platform: "ios",
-    storageUri: `storage://artifacts/${id}.zip`,
   },
   release: {
     channel: "production",

@@ -79,6 +79,7 @@ export const supabaseStorage = (
       const { error } = await bucket.upload(storageKey, body, {
         contentType,
         cacheControl: "max-age=31536000",
+        upsert: true,
         duplex: "half",
         ...(contentLength === undefined
           ? {}

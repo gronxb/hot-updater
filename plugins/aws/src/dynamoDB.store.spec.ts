@@ -13,11 +13,11 @@ const bundle = toDynamoDBBundleItem(
   bundleToRow({
     id: "00000000-0000-0000-0000-000000000001",
     platform: "ios",
-    fileHash: "hash",
     gitCommitHash: null,
-    storageUri: "storage://bundle.zip",
-    archiveByteSize: 3_000_000_001,
     metadata: {},
+    manifestStorageUri: "storage://bundle/manifest.json",
+    manifestFileHash: "manifest-hash",
+    assetBaseStorageUri: "storage://assets",
   }),
 );
 

@@ -15,18 +15,18 @@ const productionChannelId = "00000000-0000-0000-0000-000000000100";
 const bundle = (sequence: number): Bundle => ({
   id: `00000000-0000-0000-0000-${sequence.toString().padStart(12, "0")}`,
   platform: "ios",
-  fileHash: `hash-${sequence}`,
   gitCommitHash: null,
-  storageUri: `storage://bundle-${sequence}.zip`,
-  archiveByteSize: 3_000_000_001 + sequence,
   metadata: {},
+  manifestStorageUri: `storage://bundle-${sequence}/manifest.json`,
+  manifestFileHash: `manifest-hash-${sequence}`,
+  assetBaseStorageUri: "storage://assets",
 });
 
 const patchRow = (owner: Bundle, base: Bundle) => ({
   id: `${owner.id}:${base.id}`,
   bundle_id: owner.id,
   base_bundle_id: base.id,
-  base_file_hash: base.fileHash,
+  base_file_hash: `asset-hash-${base.id}`,
   patch_file_hash: `patch-${base.id}`,
   patch_storage_uri: `storage://patch-${base.id}`,
   byte_size: 3_000_000_002,
@@ -112,7 +112,7 @@ describe("DynamoDB metadata concurrency and delete serialization", () => {
       ...bundle(100),
       patches: bases.map((base) => ({
         baseBundleId: base.id,
-        baseFileHash: base.fileHash,
+        baseFileHash: `asset-hash-${base.id}`,
         patchFileHash: `patch-${base.id}`,
         patchStorageUri: `storage://patch-${base.id}`,
         byteSize: 3_000_000_002,
@@ -123,7 +123,7 @@ describe("DynamoDB metadata concurrency and delete serialization", () => {
     await database.updateBundleById(owner.id, {
       patches: bases.map((base) => ({
         baseBundleId: base.id,
-        baseFileHash: base.fileHash,
+        baseFileHash: `asset-hash-${base.id}`,
         patchFileHash: `updated-patch-${base.id}`,
         patchStorageUri: `storage://updated-patch-${base.id}`,
         byteSize: 3_000_000_003,
@@ -172,7 +172,7 @@ describe("DynamoDB metadata concurrency and delete serialization", () => {
         patches: [
           {
             baseBundleId: base.id,
-            baseFileHash: base.fileHash,
+            baseFileHash: `asset-hash-${base.id}`,
             patchFileHash: `patch-${sequence}`,
             patchStorageUri: `storage://patch-${sequence}`,
             byteSize: 3_000_000_002 + sequence,
@@ -186,7 +186,7 @@ describe("DynamoDB metadata concurrency and delete serialization", () => {
       patches: [
         {
           baseBundleId: base.id,
-          baseFileHash: base.fileHash,
+          baseFileHash: `asset-hash-${base.id}`,
           patchFileHash: "patch-26",
           patchStorageUri: "storage://patch-26",
           byteSize: 3_000_000_028,

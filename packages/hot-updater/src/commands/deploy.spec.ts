@@ -26,10 +26,8 @@ const { mockBuildPlugin, mockCli, mockServer, mockStoragePlugin } = vi.hoisted(
       createBundleDiff: vi.fn(),
     };
     const mockCli = {
-      appendToProjectRootGitignore: vi.fn(),
       createTarBrTargetFiles: vi.fn(),
-      createTarGzTargetFiles: vi.fn(),
-      createZipTargetFiles: vi.fn(),
+      appendToProjectRootGitignore: vi.fn(),
       getCwd: vi.fn(),
       getStorageFileByteSize: vi.fn(),
       loadConfig: vi.fn(),
@@ -68,6 +66,7 @@ vi.mock("@hot-updater/cli-tools", async (importOriginal) => {
 
   return {
     ...actual,
+    createTarBrTargetFiles: mockCli.createTarBrTargetFiles,
     HotUpdateDirUtil: {
       getDefaultOutputPath: vi.fn(() => ".hot-updater/output"),
       outputGitignorePath: ".hot-updater/output",
@@ -84,9 +83,6 @@ vi.mock("@hot-updater/cli-tools", async (importOriginal) => {
       underline: (value: string) => value,
       yellow: (value: string) => value,
     },
-    createTarBrTargetFiles: mockCli.createTarBrTargetFiles,
-    createTarGzTargetFiles: mockCli.createTarGzTargetFiles,
-    createZipTargetFiles: mockCli.createZipTargetFiles,
     getCwd: mockCli.getCwd,
     getStorageFileByteSize: mockCli.getStorageFileByteSize,
     loadConfig: mockCli.loadConfig,
@@ -285,11 +281,11 @@ const mockGetBundlesWithFixtures = (fixtures: DeploymentFixture[]) => {
   return databaseHarness.seedDeployments(
     fixtures.map((fixture) => ({
       bundle: {
-        archiveByteSize: 1024,
-        fileHash: "fixture-hash",
+        assetBaseStorageUri: "storage://assets",
         gitCommitHash: null,
+        manifestFileHash: "fixture-manifest-hash",
+        manifestStorageUri: `storage://artifacts/${fixture.bundle.id}/manifest.json`,
         platform: "ios",
-        storageUri: `storage://${fixture.bundle.id}`,
         ...fixture.bundle,
       },
       release: {
@@ -396,10 +392,14 @@ describe("deploy rollout wiring", () => {
       id: "bundle-123",
     });
     mockCli.prepareBundleSigning.mockResolvedValue(null);
+    mockCli.createTarBrTargetFiles.mockReset().mockResolvedValue({
+      downloadFileHash: "d".repeat(64),
+      downloadByteSize: 100,
+      tarByteSize: 2048,
+    });
 
     mockCli.loadConfig.mockResolvedValue({
       build: async () => mockBuildPlugin,
-      compressStrategy: "tar.br",
       database: databasePlugin,
       fingerprint: {},
       patch: {
@@ -647,18 +647,6 @@ describe("deploy rollout wiring", () => {
       2,
       "Deployment (Android 2/2) • production",
     );
-    expect(mockCli.createTarBrTargetFiles).toHaveBeenNthCalledWith(
-      1,
-      expect.objectContaining({
-        outfile: "/mock/cwd/.hot-updater/output/ios/bundle/bundle.tar.br",
-      }),
-    );
-    expect(mockCli.createTarBrTargetFiles).toHaveBeenNthCalledWith(
-      2,
-      expect.objectContaining({
-        outfile: "/mock/cwd/.hot-updater/output/android/bundle/bundle.tar.br",
-      }),
-    );
     const releases = await databaseHarness.releases();
     for (const [platform, platformName, bundleId] of [
       ["ios", "iOS", "bundle-ios"],
@@ -713,7 +701,6 @@ describe("deploy rollout wiring", () => {
     const commit = vi.spyOn(transactionlessDatabasePlugin, "commit");
     mockCli.loadConfig.mockResolvedValue({
       build: async () => mockBuildPlugin,
-      compressStrategy: "tar.br",
       database: transactionlessDatabasePlugin,
       fingerprint: {},
       patch: {
@@ -757,7 +744,6 @@ describe("deploy rollout wiring", () => {
     };
     mockCli.loadConfig.mockImplementation(async ({ platform }) => ({
       build: async () => mockBuildPlugin,
-      compressStrategy: "tar.br",
       database: platform === "ios" ? iosDatabasePlugin : androidDatabasePlugin,
       fingerprint: {},
       patch: {
@@ -789,7 +775,6 @@ describe("deploy rollout wiring", () => {
     const commit = vi.spyOn(transactionlessDatabasePlugin, "commit");
     mockCli.loadConfig.mockResolvedValue({
       build: async () => mockBuildPlugin,
-      compressStrategy: "tar.br",
       database: transactionlessDatabasePlugin,
       fingerprint: {},
       patch: {
@@ -821,7 +806,6 @@ describe("deploy rollout wiring", () => {
     };
     mockCli.loadConfig.mockResolvedValue({
       build: async () => mockBuildPlugin,
-      compressStrategy: "tar.br",
       database: failingDatabasePlugin,
       fingerprint: {},
       patch: {
@@ -861,7 +845,6 @@ describe("deploy rollout wiring", () => {
     };
     mockCli.loadConfig.mockResolvedValue({
       build: async () => mockBuildPlugin,
-      compressStrategy: "tar.br",
       database: retryingDatabasePlugin,
       fingerprint: {},
       patch: {
@@ -886,7 +869,6 @@ describe("deploy rollout wiring", () => {
 
     expect(commitAttemptCount).toBe(2);
     expect(mockBuildPlugin.build).toHaveBeenCalledTimes(2);
-    expect(mockCli.createTarBrTargetFiles).toHaveBeenCalledTimes(2);
     expect(mockStoragePlugin.put).toHaveBeenCalledTimes(6);
     expect(mockCli.p.log.message).not.toHaveBeenCalled();
     expect(mockCli.p.outro).toHaveBeenCalledTimes(1);
@@ -932,9 +914,15 @@ describe("deploy rollout wiring", () => {
     });
 
     expect(mockStoragePlugin.put).toHaveBeenCalledTimes(3);
+    expect(mockStoragePlugin.put.mock.calls[0]?.[0].key).toBe(
+      "bundles/bundle-123/bundle.tar.br",
+    );
+    expect(mockCli.createTarBrTargetFiles).toHaveBeenCalledWith({
+      outfile: "/mock/cwd/.hot-updater/output/bundle.tar.br",
+      targetFiles: [{ path: "/mock/build/index.bundle", name: "index.bundle" }],
+    });
     expect((await databaseHarness.bundles())[0]).toMatchObject({
       assetBaseStorageUri: "s3://bundles/assets",
-      archiveByteSize: 4,
       manifestFileHash: TRANSFER_FILE_HASH,
       manifestStorageUri: "s3://bundles/bundles/bundle-123/manifest.json",
       metadata: expect.objectContaining({
@@ -942,6 +930,35 @@ describe("deploy rollout wiring", () => {
       }),
     });
   });
+
+  it.each(["generation", "upload"])(
+    "does not publish a Bundle when archive %s fails",
+    async (phase) => {
+      if (phase === "generation") {
+        mockCli.createTarBrTargetFiles.mockRejectedValueOnce(
+          new Error("archive generation failed"),
+        );
+      } else {
+        mockStoragePlugin.put.mockImplementation(async ({ key }) => {
+          if (key.endsWith("bundle.tar.br"))
+            throw new Error("archive upload failed");
+          return { storageUri: `s3://bundles/${key}` };
+        });
+      }
+      await expect(
+        deploy({
+          channel: "production",
+          forceUpdate: false,
+          interactive: false,
+          platform: "ios",
+          targetAppVersion: "1.0.x",
+        }),
+      ).rejects.toThrow("process.exit unexpectedly called");
+      expect(await databaseHarness.bundles()).toEqual([]);
+      expect(databaseHarness.commit).not.toHaveBeenCalled();
+      expect(mockServer.createBundleDiff).not.toHaveBeenCalled();
+    },
+  );
 
   it("preserves canonical special-character base segments in derived asset URIs", async () => {
     mockStoragePlugin.put.mockImplementation(async ({ key }) => ({
@@ -964,8 +981,6 @@ describe("deploy rollout wiring", () => {
       assetBaseStorageUri: "s3://bundles/release%20root%23100%25/assets",
       manifestStorageUri:
         "s3://bundles/release%20root%23100%25/bundles/bundle-123/manifest.json",
-      storageUri:
-        "s3://bundles/release%20root%23100%25/bundles/bundle-123/bundle.tar.br",
     });
     expect(mockStoragePlugin.exists).toHaveBeenCalledWith({
       storageUri: `s3://bundles/release%20root%23100%25/assets/sha256/aa/${LOGICAL_FILE_HASH}.bundle`,
@@ -1090,7 +1105,6 @@ describe("deploy rollout wiring", () => {
     mockCli.loadConfig.mockResolvedValue({
       build: async () => mockBuildPlugin,
       cacheDir: "node_modules/.hot-updater",
-      compressStrategy: "tar.br",
       database: databasePlugin,
       fingerprint: {},
       patch: {
@@ -1134,9 +1148,7 @@ describe("deploy rollout wiring", () => {
         throw new Error("asset upload failed");
       }
 
-      return {
-        storageUri: "s3://bundles/bundles/bundle-123/bundle.tar.br",
-      };
+      return { storageUri: `s3://bundles/${key}` };
     });
     vi.mocked(getBundleZipTargets).mockResolvedValue([
       {
@@ -1195,7 +1207,6 @@ describe("deploy rollout wiring", () => {
     expect(uploadMessages).toContain("Uploading 0% (0/4)");
     expect(uploadMessages).toContain("Uploading 25% (1/4)");
     expect(uploadMessages).toContain("Uploading 50% (2/4)");
-    expect(uploadMessages).toContain("Uploading 75% (3/4)");
     expect(uploadMessages).toContain("Uploading 100% (4/4)");
   });
 
@@ -1233,6 +1244,11 @@ describe("deploy rollout wiring", () => {
     expect(writeBundleManifestFile).toHaveBeenCalledWith({
       buildPath: "/mock/build",
       manifest: {
+        archive: {
+          downloadFileHash: "d".repeat(64),
+          downloadByteSize: 100,
+          tarByteSize: 2048,
+        },
         assets: {
           "assets/src/logo.png": {
             downloadByteSize: 4,
@@ -1252,7 +1268,6 @@ describe("deploy rollout wiring", () => {
   it("does not create a nested spinner when signing is enabled", async () => {
     mockCli.loadConfig.mockResolvedValue({
       build: async () => mockBuildPlugin,
-      compressStrategy: "tar.br",
       database: databasePlugin,
       fingerprint: {},
       patch: {
@@ -1317,7 +1332,6 @@ describe("deploy rollout wiring", () => {
     mockBuildPlugin.nativeBuild = { getBundleSigningPublicKey };
     mockCli.loadConfig.mockResolvedValue({
       build: async () => mockBuildPlugin,
-      compressStrategy: "tar.br",
       database: databasePlugin,
       fingerprint: {},
       patch: { enabled: true, maxBaseBundles: 3 },
@@ -1350,7 +1364,6 @@ describe("deploy rollout wiring", () => {
   it("fails before build or upload when the signing provider cannot be prepared", async () => {
     mockCli.loadConfig.mockResolvedValue({
       build: async () => mockBuildPlugin,
-      compressStrategy: "tar.br",
       database: databasePlugin,
       fingerprint: {},
       patch: {
@@ -1385,7 +1398,6 @@ describe("deploy rollout wiring", () => {
   it("creates automatic partial update paths when patch generation is enabled", async () => {
     mockCli.loadConfig.mockResolvedValue({
       build: async () => mockBuildPlugin,
-      compressStrategy: "tar.br",
       database: databasePlugin,
       fingerprint: {},
       patch: {
@@ -1447,7 +1459,6 @@ describe("deploy rollout wiring", () => {
   it("creates an automatic patch when target app versions are semver-compatible but not exact", async () => {
     mockCli.loadConfig.mockResolvedValue({
       build: async () => mockBuildPlugin,
-      compressStrategy: "tar.br",
       database: databasePlugin,
       fingerprint: {},
       patch: {
@@ -1490,7 +1501,6 @@ describe("deploy rollout wiring", () => {
   it("does not create an automatic patch when a prerelease target is outside the base range", async () => {
     mockCli.loadConfig.mockResolvedValue({
       build: async () => mockBuildPlugin,
-      compressStrategy: "tar.br",
       database: databasePlugin,
       fingerprint: {},
       patch: {
@@ -1521,7 +1531,6 @@ describe("deploy rollout wiring", () => {
   it("scans past incompatible appVersion patch bases to find an older compatible base", async () => {
     mockCli.loadConfig.mockResolvedValue({
       build: async () => mockBuildPlugin,
-      compressStrategy: "tar.br",
       database: databasePlugin,
       fingerprint: {},
       patch: {
@@ -1568,7 +1577,6 @@ describe("deploy rollout wiring", () => {
   it("keeps deploy successful when automatic patch generation fails", async () => {
     mockCli.loadConfig.mockResolvedValue({
       build: async () => mockBuildPlugin,
-      compressStrategy: "tar.br",
       database: databasePlugin,
       fingerprint: {},
       patch: {

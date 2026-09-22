@@ -108,10 +108,35 @@ describe("supabaseStorage", () => {
       {
         cacheControl: "max-age=31536000",
         contentType: "application/zip",
+        upsert: true,
         duplex: "half",
         headers: { "content-length": "6" },
       },
     );
+  });
+
+  it("allows concurrent deployments to upload the same shared asset", async () => {
+    const objects = new Set<string>();
+    bucket.upload.mockImplementation(async (key, _body, options) => {
+      if (objects.has(key) && !options.upsert) {
+        return { error: new Error("The resource already exists") };
+      }
+      objects.add(key);
+      return { error: null };
+    });
+    const storage = createStorage();
+    const upload = () =>
+      storage.put({
+        key: "assets/sha256/ab/shared.png",
+        body: new Response("shared asset").body!,
+        contentType: "image/png",
+      });
+
+    const results = await Promise.all([upload(), upload()]);
+
+    expect(objects.size).toBe(1);
+    expect(results[0].storageUri).toBe(results[1].storageUri);
+    expect(bucket.upload).toHaveBeenCalledTimes(2);
   });
 
   it("round-trips reserved characters through exact Supabase object keys", async () => {

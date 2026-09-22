@@ -10,7 +10,6 @@ export const multiAssetReplacementScenario: DetoxScenarioDefinition = {
       {
         bundleProfile: "multiAssetReplacement",
         channel: "production",
-        compressStrategy: "tar.br",
         marker: "multi-assets-a-detox",
         mode: "reset",
         safeBundleIds: [],
@@ -64,7 +63,6 @@ export const multiAssetReplacementScenario: DetoxScenarioDefinition = {
       {
         bundleProfile: "multiAssetReplacement",
         channel: "production",
-        compressStrategy: "tar.br",
         marker: "multi-assets-b-detox",
         mode: "reset",
         safeBundleIds: ["$firstBundleId"],

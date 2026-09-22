@@ -29,10 +29,10 @@ interface ArtifactQueryOptions {
 const createBundle = (id: string, overrides: Partial<Bundle> = {}): Bundle => ({
   id,
   platform: "ios",
-  fileHash: `hash-${id}`,
   gitCommitHash: null,
-  storageUri: `mock://artifacts/${id}.zip`,
-  archiveByteSize: 3_000_000_001,
+  manifestStorageUri: `mock://artifacts/${id}/manifest.json`,
+  manifestFileHash: `manifest-hash-${id}`,
+  assetBaseStorageUri: "mock://assets",
   ...overrides,
 });
 
@@ -74,8 +74,8 @@ export const setupBundleMethodsTestSuite = ({
       expect(artifact).toMatchObject({
         id: input.id,
         platform: "ios",
-        fileHash: input.fileHash,
-        storageUri: input.storageUri,
+        manifestFileHash: input.manifestFileHash,
+        manifestStorageUri: input.manifestStorageUri,
       });
     });
 

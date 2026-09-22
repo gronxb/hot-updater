@@ -9,7 +9,7 @@ import { describe, expect, it } from "vitest";
 
 import { createBundleRowFixture } from "./databaseTestFixtures";
 import type { HttpTestRequest } from "./httpTestClient";
-import { releaseCatalogDownloadUrl } from "./releaseCatalogHttpFixtures";
+import { releaseCatalogArtifact } from "./releaseCatalogHttpFixtures";
 
 type PublishedRelease = { bundle: BundleRow; release: ReleaseRow };
 type Device = {
@@ -75,13 +75,12 @@ export function setupReleaseCatalogLifecycleTests(options: {
       },
     });
     const response = await options.request(
-      `/artifacts/${desired!.bundleId}/from/${app.currentBundleId}`,
+      `/artifacts/v1/${desired!.bundleId}/from/${app.currentBundleId}`,
     );
     expect(response.status).toBe(200);
-    expect(await response.json()).toEqual({
-      fileHash: target.bundle.file_hash,
-      fileUrl: releaseCatalogDownloadUrl(target.bundle.storage_uri),
-    });
+    expect(await response.json()).toEqual(
+      releaseCatalogArtifact(target.bundle),
+    );
     // Advance only after verifying the selected artifact, then check again using
     // the newly active Release/Bundle rather than a fresh-install request.
     app.currentBundleId = desired!.bundleId;

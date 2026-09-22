@@ -12,12 +12,13 @@ const artifact = (
   index: number,
   platform: "ios" | "android" = "ios",
 ): Bundle => ({
-  archiveByteSize: 100,
-  fileHash: `hash-${index}`,
+  assetBaseStorageUri: "storage://assets",
   gitCommitHash: null,
   id: `01900000-0000-7000-8000-${index.toString().padStart(12, "0")}`,
+  manifestFileHash: `hash-${index}`,
+  manifestStorageUri: `storage://artifacts/${index}/manifest.json`,
+  metadata: {},
   platform,
-  storageUri: `storage://artifacts/${index}.zip`,
 });
 
 describe("Detox fixture Release reset", () => {
@@ -57,7 +58,7 @@ describe("Detox fixture Release reset", () => {
         patches: [
           {
             baseBundleId: base.id,
-            baseFileHash: base.fileHash,
+            baseFileHash: base.manifestFileHash,
             byteSize: 10,
             patchFileHash: "patch-hash",
             patchStorageUri: "storage://patches/production.patch",

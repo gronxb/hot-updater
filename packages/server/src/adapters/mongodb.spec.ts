@@ -163,10 +163,10 @@ describe("mongoAdapter capabilities", () => {
     const bundle = {
       id: "bundle-retry",
       platform: "ios" as const,
-      fileHash: "bundle-retry-hash",
       gitCommitHash: null,
-      storageUri: "storage://bundle-retry",
-      archiveByteSize: 3_000_000_001,
+      manifestStorageUri: "storage://bundle-retry/manifest.json",
+      manifestFileHash: "manifest-hash",
+      assetBaseStorageUri: "storage://assets",
     };
     await client.insertBundle(bundle);
 
@@ -178,8 +178,8 @@ describe("mongoAdapter capabilities", () => {
     await expect(client.insertBundle(bundle)).resolves.toBeUndefined();
     await expect(client.getBundleById(bundle.id)).resolves.toMatchObject({
       id: bundle.id,
-      fileHash: bundle.fileHash,
-      storageUri: bundle.storageUri,
+      manifestFileHash: bundle.manifestFileHash,
+      manifestStorageUri: bundle.manifestStorageUri,
     });
   });
 });
@@ -206,7 +206,7 @@ describe("MongoDB low-level predicate translation", () => {
     expect(
       createMongoBundleWhere([
         {
-          field: "storage_uri",
+          field: "manifest_storage_uri",
           operator: "contains",
           value: "release.*",
           mode: "insensitive",
@@ -215,7 +215,7 @@ describe("MongoDB low-level predicate translation", () => {
     ).toEqual({
       $expr: {
         $regexMatch: {
-          input: { $ifNull: ["$storage_uri", ""] },
+          input: { $ifNull: ["$manifest_storage_uri", ""] },
           regex: { $literal: "release\\.\\*" },
           options: "i",
         },

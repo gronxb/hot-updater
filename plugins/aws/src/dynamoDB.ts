@@ -172,27 +172,17 @@ const isNullableString = (value: unknown): value is string | null =>
 const isByteSize = (value: unknown): value is number =>
   typeof value === "number" && Number.isSafeInteger(value) && value >= 0;
 
-const withLegacyArchiveByteSize = (value: unknown): unknown =>
-  typeof value === "object" &&
-  value !== null &&
-  field(value, "archive_byte_size") === undefined
-    ? { ...value, archive_byte_size: 0 }
-    : value;
-
 const isBundleRow = (value: unknown): value is BundleRow =>
   typeof value === "object" &&
   value !== null &&
   typeof field(value, "id") === "string" &&
   (field(value, "platform") === "ios" ||
     field(value, "platform") === "android") &&
-  typeof field(value, "file_hash") === "string" &&
   isNullableString(field(value, "git_commit_hash")) &&
-  typeof field(value, "storage_uri") === "string" &&
-  isByteSize(field(value, "archive_byte_size")) &&
   isDatabaseMetadataObject(field(value, "metadata")) &&
-  isNullableString(field(value, "manifest_storage_uri")) &&
-  isNullableString(field(value, "manifest_file_hash")) &&
-  isNullableString(field(value, "asset_base_storage_uri"));
+  typeof field(value, "manifest_storage_uri") === "string" &&
+  typeof field(value, "manifest_file_hash") === "string" &&
+  typeof field(value, "asset_base_storage_uri") === "string";
 
 const isPatchRow = (value: unknown): value is BundlePatchRow =>
   typeof value === "object" &&
@@ -271,8 +261,7 @@ export const parseDynamoDBItem = (
   const ownedPatchCount = value.owned_patch_count;
   const gsi1pk = value.gsi1pk;
   const gsi1sk = value.gsi1sk;
-  const row =
-    pk === "bundles" ? withLegacyArchiveByteSize(value.row) : value.row;
+  const row = value.row;
   if (typeof sk !== "string" || typeof version !== "number") {
     throw new DynamoDBStoredItemError();
   }

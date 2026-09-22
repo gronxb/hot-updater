@@ -26,6 +26,16 @@ class HotUpdaterModule internal constructor(
 
     override fun getName(): String = NAME
 
+    private fun readSafeInteger(
+        map: ReadableMap,
+        key: String,
+    ): Long? {
+        if (!map.hasKey(key) || map.isNull(key)) return null
+        val value = runCatching { map.getDouble(key) }.getOrNull() ?: return null
+        if (!value.isFinite() || value % 1.0 != 0.0) return null
+        return value.toLong().takeIf { it in 0..9_007_199_254_740_991L }
+    }
+
     override fun onCatalystInstanceDestroy() {
         super.onCatalystInstanceDestroy()
         // Cancel all ongoing coroutines when module is destroyed
@@ -37,12 +47,12 @@ class HotUpdaterModule internal constructor(
      */
     private fun getInstance(): HotUpdaterImpl = HotUpdater.getInstance(mReactApplicationContext)
 
-    private fun parseChangedAssets(params: ReadableMap): Map<String, ChangedAssetDescriptor>? {
-        if (!params.hasKey("changedAssets") || params.isNull("changedAssets")) {
+    private fun parseAssets(params: ReadableMap): Map<String, ChangedAssetDescriptor>? {
+        if (!params.hasKey("assets") || params.isNull("assets")) {
             return null
         }
 
-        val changedAssetsMap = params.getMap("changedAssets") ?: return null
+        val changedAssetsMap = params.getMap("assets") ?: return null
         val parsedAssets = linkedMapOf<String, ChangedAssetDescriptor>()
         val iterator = changedAssetsMap.keySetIterator()
 
@@ -58,6 +68,7 @@ class HotUpdaterModule internal constructor(
                     val baseFileHash = patchMap.getString("baseFileHash")
                     val patchFileHash = patchMap.getString("patchFileHash")
                     val patchUrl = patchMap.getString("patchUrl")
+                    val byteSize = readSafeInteger(patchMap, "byteSize")
 
                     if (
                         algorithm != null &&
@@ -72,6 +83,7 @@ class HotUpdaterModule internal constructor(
                             baseFileHash = baseFileHash,
                             patchFileHash = patchFileHash,
                             patchUrl = patchUrl,
+                            byteSize = byteSize,
                         )
                     } else {
                         null
@@ -170,36 +182,46 @@ class HotUpdaterModule internal constructor(
                     return@launch
                 }
 
-                val fileUrl = params.getString("fileUrl")
-
-                // Validate fileUrl format if provided
-                if (fileUrl != null && fileUrl.isNotEmpty()) {
+                val manifestUrl = params.getString("manifestUrl")
+                val manifestFileHash = params.getString("manifestFileHash")
+                val assets = parseAssets(params)
+                if (manifestUrl.isNullOrEmpty() || manifestFileHash.isNullOrEmpty() || assets == null) {
+                    promise.reject("INVALID_MANIFEST", "Manifest URL, hash, and assets are required")
+                    return@launch
+                }
+                try {
+                    java.net.URL(manifestUrl)
+                } catch (e: java.net.MalformedURLException) {
+                    promise.reject("INVALID_FILE_URL", "Invalid 'manifestUrl' provided: $manifestUrl")
+                    return@launch
+                }
+                val channel = params.getString("channel")
+                val archiveUrl =
+                    if (params.hasKey("archiveUrl") && !params.isNull("archiveUrl")) {
+                        params.getString("archiveUrl")
+                    } else {
+                        null
+                    }
+                if (archiveUrl != null) {
                     try {
-                        java.net.URL(fileUrl)
+                        java.net.URL(archiveUrl)
                     } catch (e: java.net.MalformedURLException) {
-                        promise.reject("INVALID_FILE_URL", "Invalid 'fileUrl' provided: $fileUrl")
+                        promise.reject("INVALID_FILE_URL", "Invalid 'archiveUrl' provided: $archiveUrl")
                         return@launch
                     }
                 }
-
-                val fileHash = params.getString("fileHash")
-                val manifestUrl = params.getString("manifestUrl")
-                val manifestFileHash = params.getString("manifestFileHash")
-                val changedAssets = parseChangedAssets(params)
-                val channel = params.getString("channel")
                 val selection = parseSelection(params)
 
                 val impl = getInstance()
 
                 impl.updateBundle(
                     bundleId,
-                    fileUrl,
-                    fileHash,
                     manifestUrl,
                     manifestFileHash,
-                    changedAssets,
+                    assets,
                     channel,
                     selection,
+                    archiveUrl,
                 ) { progress ->
                     // Post to Main thread for React Native event emission
                     Handler(Looper.getMainLooper()).post {
@@ -208,8 +230,6 @@ class HotUpdaterModule internal constructor(
                                 Arguments.createMap().apply {
                                     putDouble("progress", progress.progress)
                                     putString("artifactType", progress.artifactType)
-                                    progress.downloadedBytes?.let { putDouble("downloadedBytes", it.toDouble()) }
-                                    progress.totalBytes?.let { putDouble("totalBytes", it.toDouble()) }
                                     progress.details?.let { details ->
                                         val files = Arguments.createArray()
                                         details.files.forEach { file ->

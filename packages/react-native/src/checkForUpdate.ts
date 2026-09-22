@@ -3,7 +3,6 @@ import {
   createReleaseSelectionContextHash,
   encodeChannelKey,
   selectDesiredRelease,
-  type ArtifactInfo,
   type PersistedSelectionReceipt,
   type ReleaseCatalog,
 } from "@hot-updater/core";
@@ -61,7 +60,7 @@ export interface CheckForUpdateOptions {
   requestTimeout?: number;
 }
 
-export type CheckForUpdateResult = ArtifactInfo & {
+export type CheckForUpdateResult = {
   readonly id: string;
   readonly message: string | null;
   readonly rolloutCohortCount: number;
@@ -122,10 +121,8 @@ const resetProgress = () => {
   hotUpdaterStore.setState({
     artifactType: null,
     details: null,
-    downloadedBytes: undefined,
     isUpdateDownloaded: false,
     progress: 0,
-    totalBytes: undefined,
   });
 };
 
@@ -367,13 +364,12 @@ async function checkForReleaseCatalogUpdate(input: {
       throw new StaleReleaseCatalogError();
     }
     const downloaded = await updateBundle({
+      assets: artifact.assets,
       bundleId: desired.bundleId,
-      changedAssets: artifact.changedAssets ?? null,
       channel: input.targetChannel,
-      fileHash: artifact.fileHash,
-      fileUrl: artifact.fileUrl,
-      manifestFileHash: artifact.manifestFileHash ?? null,
-      manifestUrl: artifact.manifestUrl ?? null,
+      manifestFileHash: artifact.manifestFileHash,
+      manifestUrl: artifact.manifestUrl,
+      ...(artifact.archiveUrl ? { archiveUrl: artifact.archiveUrl } : {}),
       selection: receipt,
       shouldSkipCurrentBundleIdCheck: true,
       status: desired.status,
@@ -397,8 +393,6 @@ async function checkForReleaseCatalogUpdate(input: {
   };
 
   return {
-    fileHash: null,
-    fileUrl: null,
     id: desired.releaseId ?? desired.bundleId,
     message: release?.message ?? null,
     releaseId: desired.releaseId,

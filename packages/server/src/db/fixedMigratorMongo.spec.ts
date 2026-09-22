@@ -141,19 +141,11 @@ describe("MongoDB migration", () => {
           $and: [
             {
               $jsonSchema: {
-                properties: {
-                  archive_byte_size: {
-                    bsonType: ["double", "int", "long"],
-                    maximum: Number.MAX_SAFE_INTEGER,
-                    minimum: 0,
-                  },
-                },
-                required: expect.arrayContaining(["archive_byte_size"]),
-              },
-            },
-            {
-              $expr: {
-                $eq: [{ $trunc: "$archive_byte_size" }, "$archive_byte_size"],
+                required: expect.arrayContaining([
+                  "manifest_storage_uri",
+                  "manifest_file_hash",
+                  "asset_base_storage_uri",
+                ]),
               },
             },
           ],

@@ -1,5 +1,5 @@
 import {
-  type ChangedAsset,
+  type ArtifactAsset,
   type CatalogHighWater,
   INVALID_COHORT_ERROR_MESSAGE,
   isValidCohort,
@@ -234,7 +234,7 @@ const getReloadProcess = (): (() => Promise<void>) | null => {
     : null;
 };
 
-export type HotUpdaterProgressArtifactType = "archive" | "diff";
+export type HotUpdaterProgressArtifactType = "diff";
 
 export type HotUpdaterDiffFileStatus =
   | "pending"
@@ -286,18 +286,11 @@ export interface HotUpdaterDiffProgressDetails {
   files: HotUpdaterDiffFileSnapshot[];
 }
 
-export type HotUpdaterProgressEvent =
-  | {
-      progress: number;
-      artifactType: "archive";
-      downloadedBytes?: number;
-      totalBytes?: number;
-    }
-  | {
-      progress: number;
-      artifactType: "diff";
-      details: HotUpdaterDiffProgressDetails;
-    };
+export type HotUpdaterProgressEvent = {
+  progress: number;
+  artifactType: "diff";
+  details: HotUpdaterDiffProgressDetails;
+};
 
 export type HotUpdaterEvent = {
   onProgress: HotUpdaterProgressEvent;
@@ -434,8 +427,6 @@ export const commitReleaseSelection = async (input: {
 export async function updateBundle(params: UpdateParams): Promise<boolean> {
   const updateBundleId = params.bundleId;
   const status = params.status;
-  const targetFileUrl = params.fileUrl;
-
   const currentBundleId = status === "UPDATE" ? getFreshBundleId() : undefined;
 
   // If native is still on the same bundle we installed in this session,
@@ -467,11 +458,10 @@ export async function updateBundle(params: UpdateParams): Promise<boolean> {
   const existing = sessionState.getInflightUpdate(updateBundleId);
   if (existing) return existing;
 
-  const targetFileHash = params.fileHash;
   const targetChannel = params.channel;
   const targetManifestUrl = params.manifestUrl;
   const targetManifestFileHash = params.manifestFileHash;
-  const targetChangedAssets = params.changedAssets;
+  const targetAssets = params.assets;
 
   const promise = (async () => {
     try {
@@ -479,12 +469,10 @@ export async function updateBundle(params: UpdateParams): Promise<boolean> {
       const ok = await HotUpdaterNative.updateBundle({
         bundleId: updateBundleId,
         channel: targetChannel,
-        changedAssets:
-          (targetChangedAssets as Record<string, ChangedAsset> | null) ?? null,
-        fileUrl: targetFileUrl,
-        fileHash: targetFileHash ?? null,
-        manifestFileHash: targetManifestFileHash ?? null,
-        manifestUrl: targetManifestUrl ?? null,
+        assets: targetAssets as Record<string, ArtifactAsset>,
+        manifestFileHash: targetManifestFileHash,
+        manifestUrl: targetManifestUrl,
+        ...(params.archiveUrl ? { archiveUrl: params.archiveUrl } : {}),
         ...(selection === undefined ? {} : { selection }),
       });
       if (ok) {

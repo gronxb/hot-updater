@@ -460,7 +460,6 @@ const supabaseMock = vi.hoisted(() => {
         return new QueryBuilder(logicalTable);
       },
       rpc: async (name: string, args?: Record<string, unknown>) => {
-        const bundles = [...rows.bundles.values()];
         if (name === "hot_updater_v1_record_event") {
           const input = args?.p_event as Row;
           const id = String(input.id);
@@ -840,33 +839,7 @@ const supabaseMock = vi.hoisted(() => {
           rows.releases = staged.releases;
           return { data: { committed: true }, error: null };
         }
-        if (name === "get_target_app_version_list") {
-          return {
-            data: bundles.map((bundle) => ({
-              target_app_version: bundle.target_app_version,
-            })),
-            error: null,
-          };
-        }
-        const bundle = bundles.toSorted((left, right) =>
-          String(right.id).localeCompare(String(left.id)),
-        )[0];
-        return {
-          data:
-            bundle === undefined
-              ? []
-              : [
-                  {
-                    id: bundle.id,
-                    should_force_update: bundle.should_force_update,
-                    message: bundle.message,
-                    status: "UPDATE",
-                    storage_uri: bundle.storage_uri,
-                    file_hash: bundle.file_hash,
-                  },
-                ],
-          error: null,
-        };
+        throw new Error(`Unexpected RPC: ${name}`);
       },
     }),
     getTableReadCount: (table: TableName) => tableReadCounts[table],

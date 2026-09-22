@@ -311,12 +311,12 @@ describe("Hot Updater Handler Integration Tests (Hono + DynamoDB)", () => {
     });
 
     await hotUpdater.insertBundle({
+      assetBaseStorageUri: `s3://${bucketName}/assets`,
       id: bundleId,
       platform: "ios",
-      fileHash: `${bundleId}-hash`,
       gitCommitHash: null,
-      storageUri: `s3://${bucketName}/${bundleId}.zip`,
-      archiveByteSize: 3_000_000_001,
+      manifestFileHash: `${bundleId}-manifest-hash`,
+      manifestStorageUri: `s3://${bucketName}/${bundleId}/manifest.json`,
     });
     const now = Date.now();
     await commitReleaseCatalogMutations({

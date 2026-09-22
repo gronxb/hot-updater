@@ -61,10 +61,20 @@ describe("hotUpdaterStore notification scheduling", () => {
 
         const nextProgress = Math.min(1, progress + 0.01);
         emitProgress?.({
-          artifactType: "archive",
-          downloadedBytes: nextProgress * 1_000_000,
+          artifactType: "diff",
+          details: {
+            completedFilesCount: nextProgress === 1 ? 1 : 0,
+            files: [
+              {
+                order: 0,
+                path: "index.ios.bundle",
+                progress: nextProgress,
+                status: nextProgress === 1 ? "downloaded" : "downloading",
+              },
+            ],
+            totalFilesCount: 1,
+          },
           progress: nextProgress,
-          totalBytes: 1_000_000,
         });
       }, [progress]);
 

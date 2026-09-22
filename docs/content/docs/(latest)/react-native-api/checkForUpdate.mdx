@@ -90,7 +90,7 @@ selected artifact when called:
 
 - App version catalog: `GET {baseURL}/release-catalogs/app-version/:platform/:channelKey/:appVersion`
 - Fingerprint catalog: `GET {baseURL}/release-catalogs/fingerprint/:platform/:channelKey/:fingerprintHash`
-- Artifact resolution: `GET {baseURL}/artifacts/:targetBundleId/from/:currentBundleId`
+- Artifact resolution: `GET {baseURL}/artifacts/v1/:targetBundleId/from/:currentBundleId`
 
 `:channelKey` is the base64url-encoded channel name.
 
@@ -103,10 +103,9 @@ interpret `null` alone as a successful up-to-date check. Use the shared
 operations. A per-check `onError` is an optional override; it is not needed in
 the normal flow.
 
-When a transition is selected, the result includes its ID from the console, status,
-message, and an `updateBundle()` helper. The `fileUrl` and `fileHash` fields are
-`null` in this result: the helper resolves the artifact lazily when needed.
-Call the helper instead of copying these fields into `HotUpdater.updateBundle`.
+When a transition is selected, the result includes its ID from the console,
+status, message, and an `updateBundle()` helper. The helper resolves the
+protocol v1 artifact lazily when needed.
 
 | Result field | Type | Meaning |
 | --- | --- | --- |

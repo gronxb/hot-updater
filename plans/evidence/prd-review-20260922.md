@@ -1,0 +1,197 @@
+# PRD review and v1 native cleanup — 2026-09-22
+
+Review baseline: `162aaa843`, after merging `origin/next` at `d99530b1e`.
+Reviewers: two GPT-5.6 Sol / Medium subagents, with the coordinating agent
+reproducing findings and reviewing the final changes.
+
+## Product verdict
+
+The intended architecture is implemented: a verified target manifest defines a
+complete OTA directory; matching builtin files are copied into staging, and only
+missing or different files need the network. No mandatory embedded manifest or
+whole-package copy is required. Every original remains available. Subsequent
+OTA updates can use a verified binary patch; the first changed builtin Hermes
+file still needs its original unless the actual native base is registered.
+
+The optional tar.br path is selected after local reuse according to the signed
+size contract, with one individual-file fallback. There is no public compression
+strategy or ZIP/gzip OTA decoder. APK ZIP entry reading and bsdiff's internal
+bzip2 remain necessary.
+
+Current acceptance is reopened for the fixes below. Historical standalone E2E
+success at `797338cd0` does not establish success for the new revision.
+
+## Confirmed findings and resolution
+
+1. **Artifact authentication:** the route was renamed `artifactV1`, but the
+   authentication predicate still tested `artifact`. A regression test reproduced
+   missing credentials returning 200. The predicate now protects the versioned
+   route; tests cover missing/invalid/valid credentials and an unavailable
+   authenticator. Artifact resolution occurs only for valid credentials.
+2. **Activation persistence:** native installation could report success despite
+   failing to save metadata, and a preference could independently activate the
+   uncommitted directory. Durable metadata now authorizes launch, and failed
+   metadata writes fail installation without activating the target.
+3. **Replacement promotion:** deleting an existing final directory before moving
+   staging could destroy a working bundle if the move failed. Both platforms use
+   an atomic sibling backup/rename sequence, restore on failure, and recover
+   interrupted promotions on startup. A corrupt final directory cannot discard
+   the retained backup; manifest and all hashes are revalidated first.
+4. **Patch failure evidence:** iOS tests now exercise missing patches, corrupted
+   patches, and a hash-valid invalid patch format. Each install downloads the
+   target original in the same attempt and verifies the resulting bytes.
+
+The proposed Supabase overwrite concern was withdrawn after rebuttal: the Storage
+contract already permits replacement, all other providers do so, and normal
+deploys generate fresh Bundle IDs. No separate corruption scenario was
+demonstrated. The previously verified idempotent shared-asset upload fix remains.
+
+## Native cleanup
+
+- Removed `BUNDLE_ID` compatibility lookup and manifestless OTA discovery/launch.
+- Removed preference-only metadata initialization and untracked launch fallback.
+- Removed unused archive-era outer progress byte fields; retained actual per-file
+  byte counters and the public progress callback.
+- Removed obsolete iOS overloads, unused task arrays/constants, per-download
+  notifications and observer bookkeeping.
+- Removed iOS task JSON persistence that had no recovery consumer. The actual
+  background URLSession and download completion/progress callbacks remain.
+- Simplified redundant Android bridge parsing and removed the unused TypeScript
+  bridge descriptor type. Retained both supported React Native architectures.
+- Retained catalog/selection guards, builtin state, isolation invalidation,
+  manifest-backed metadata migration, and crash recovery. These are active v1
+  behaviors even where internal names mention legacy state.
+
+## Verification
+
+### AWS Insights permission correction during device E2E
+
+AWS job `job-20260922045916-ppw3ci` at `303236ae0` failed all 27 iOS
+scenarios at the common Console Insights check. CloudWatch traced event HTTP 500
+responses to DynamoDB authorization: `BatchGetItem` was already allowed, but
+the policy's leading-key condition omitted `_hot-updater#insights-overview#*`.
+The same omission existed in the IAM generator. Android was interrupted after
+the shared cause was confirmed; this job is not a passing verification.
+
+The generator and current 1.0.0 infrastructure guide now include this reserved
+key range. The regression checks actual batch-read and transaction keys from
+an Insights event against the Lambda policy; it failed before the fix and
+passed afterward. All 2,765 workspace unit tests, AWS typecheck, workspace lint,
+and AWS/CLI builds passed after the correction.
+
+The rebuilt workspace scaffold was applied to the existing v1 table policy,
+preserving permissions for the other table and unrelated policies. A real
+authenticated event returned HTTP 204, and a consistent DynamoDB read verified
+its persisted installation head. The Lambda runtime matches the previous
+deployment after applying the existing configuration substitutions; Lambda
+version 17 and all native/server/scenario code remain unchanged. AWS full E2E
+must pass again with the corrected policy before acceptance.
+
+- Build: 26 workspace projects passed.
+- Typecheck: 34 workspace projects passed.
+- Lint and diff whitespace checks passed.
+- Unit suite: 2,762 passed; three tests timed out under parallel local load.
+  A serial rerun of both affected files passed all 16 tests with unchanged
+  timeouts, covering both large HBC patches and scaffold extraction.
+- Swift: 49 Swift Testing cases and 3 XCTest cases passed, including fault
+  injection, restart recovery and patch fallback.
+- iOS Release Pod compilation passed for the current source after regenerating
+  stale Pods and placing build outputs outside the codegen input directory.
+- Integration suite: 386 passed; two DynamoDB tests timed out under parallel
+  local load. A serial rerun of that file passed all 57 tests with unchanged
+  timeouts. No assertion failure remains.
+- Android: 69 Debug and 69 Release unit tests passed, with old-architecture
+  Debug/Release and new-architecture Debug Kotlin compilation. Local ktlint
+  initially passed, but CI's pinned ktlint 1.3.1 rejected two condition-wrapping
+  positions. The formatting-only correction passes ktlint 1.3.1 across all
+  Android Kotlin sources; E2E fingerprints were regenerated afterward.
+  Android lint passed with the installed React Native version's minSdk 24; the
+  standalone lint configuration defaults to an incompatible minSdk 21.
+- The v0.85.0 Release E2E app fingerprints were regenerated from the final native
+  source and injected into its iOS and Android configuration.
+- No new-revision full Release E2E success is claimed here. The nine jobs pinned
+  to `162aaa843` were intentionally superseded after these source changes.
+
+## Release E2E service correction
+
+All GitHub checks passed at `303236ae0`. MongoDB job
+`job-20260922045913-lhmp7i` built the native apps successfully but failed all four
+shards during service boot, before any device scenario ran. Its script launched
+Bun 1.3.13, which lacks the `process.loadEnvFile` API used by the example server.
+The automated lint classification was incorrect; the service exception and
+timeline establish the runtime mismatch.
+
+The MongoDB service now uses the installed `tsx` executable under Node, matching
+the example's development command and the DynamoDB E2E service. A dedicated
+MongoDB replica-set smoke run migrated the schema and returned HTTP 200 with
+`status: ok`; its temporary container and volume were removed. Shell syntax,
+workspace lint and diff whitespace checks passed. The first smoke attempt
+omitted its required admin token; the successful retry used an ephemeral local
+token.
+
+This correction changes only the MongoDB E2E launch script and this record.
+Native code, fingerprints, provider runtimes and scenario assertions are
+unchanged from `303236ae0`. Other queued/running profiles retain that pinned
+revision; MongoDB must be rerun with the corrected script. Record each result's
+actual SHA rather than attributing all results to the later documentation and
+harness commit.
+
+## Remote runtime reconciliation
+
+All four provider runtimes were extracted from the current locally built
+workspace using `infra scaffold`. Existing deployment configuration, resource
+identities, endpoints, signing keys and data were preserved; this authentication
+fix requires no schema change. The unreleased 1.0.0 upgrade guide now explicitly
+documents the manifest protocol, direct initial-schema updates, native rebuild
+and authentication checks.
+
+Cloudflare, Supabase, Firebase and AWS each passed real remote probes: missing
+and invalid API keys returned 401, a valid key returned the manifest artifact
+response, and an actual asset download matched its expected SHA-256. AWS uses
+Lambda version 17; CloudFront status is Deployed.
+These probes do not replace native signature verification or device E2E.
+
+Private reconciliation logs, deployment details and test logs remain in
+`/Users/gronxb/.hot-updater-e2e-bot/reconciliations/pr-1319/`; do not publish
+credentials or signed artifact URLs from those records.
+
+## Latest next conformance integration
+
+The CI run for `001dce7e2` checked GitHub's merge commit `fc17839f3`, combining
+this branch with `next` at `39f60f9dc` (#1329). Its new provider conformance
+suite still referenced the removed archive columns and pre-v1 artifact route.
+This was a merge compatibility failure; the standalone PR-head typecheck passed.
+
+The next changes are now incorporated, with the new tests adapted to required
+manifest fields, `/artifacts/v1`, complete original-file descriptors, optional
+patches, and optional tar.br metadata. Both small and large archives retain the
+complete file/patch plan because native clients make the size decision after
+local reuse. The nullable-field test now clears a previously populated Git hash
+instead of clearing required manifest metadata. The wrong-artifact mutation
+checks the manifest hash. The new Supabase commit RPC migration also uses only
+current v1 Bundle columns.
+
+The complete build/typecheck/lint sequence and 3,358 unit tests passed after
+these adaptations. Full integration verification is in progress under Java 21;
+an earlier attempt stopped because the default Java could not start Firebase.
+A focused HTTP conformance run passed all 121 scenarios.
+
+Next also changes Kysely transaction isolation/retries, Firebase structured-field
+replacement, and Supabase idempotent Channel deletion. Kysely's baseline job
+`job-20260922045916-qk1pf9` passed iOS 27/27 and Android 27/27, with all 12 builtin
+and transport receipts preserved, but requires a replacement run for that
+transaction change. Firebase and Supabase old jobs were canceled for refresh;
+AWS's CI waiter was stopped before creating a job. Other provider runtime paths,
+native code and Detox scenario code are unaffected and retain their actual SHAs.
+
+Firebase was redeployed from the merged workspace. Supabase's complete vendored
+function input was refreshed; its reachable bundle was unchanged. Migration
+`20260922000000_idempotent_channel_commit.sql` was applied with its original
+history name, preserving 664 existing Bundles and nine earlier migrations.
+A transaction under `service_role` verified a manifest-field update plus a
+missing Channel delete, then rolled back all probe data. Function permissions
+remain service-role-only. Both remote artifact probes returned 401 for missing
+or invalid keys, 200 for valid keys, and verified an asset hash. AWS Lambda 17
+and the Cloudflare runtime are byte-identical to their existing deployments
+(after established configuration substitutions); the AWS IAM correction remains
+applied. Private provenance is recorded in `workspace-provenance-post1329.json`.

@@ -13,10 +13,10 @@ import type { BundleRow } from "./types";
 const createBundle = (id: string): Bundle => ({
   id,
   platform: "ios",
-  fileHash: `hash-${id}`,
   gitCommitHash: null,
-  storageUri: `storage://${id}`,
-  archiveByteSize: 3_000_000_001,
+  manifestStorageUri: `storage://${id}/manifest.json`,
+  manifestFileHash: `manifest-hash-${id}`,
+  assetBaseStorageUri: "storage://assets",
 });
 
 describe("database client pagination", () => {
@@ -87,21 +87,18 @@ describe("database client pagination", () => {
       platform: "ios" as const,
       should_force_update: false,
       enabled: true,
-      file_hash: `hash-${index}`,
       git_commit_hash: null,
       message: null,
       channel: `release-${index}`,
       channel_id: `channel-${index}`,
-      storage_uri: `storage://bundle-${index}.zip`,
-      archive_byte_size: 3_000_000_001 + index,
       target_app_version: "1.0.0",
       fingerprint_hash: null,
       metadata: {},
       rollout_cohort_count: 1000,
       target_cohorts: null,
-      manifest_storage_uri: null,
-      manifest_file_hash: null,
-      asset_base_storage_uri: null,
+      manifest_storage_uri: `storage://bundle-${index}/manifest.json`,
+      manifest_file_hash: `manifest-hash-${index}`,
+      asset_base_storage_uri: "storage://assets",
     }));
     const ownerQueries: unknown[] = [];
     const name = "channel-pagination";
@@ -234,12 +231,9 @@ describe("database client pagination", () => {
 const bundlesRow = (bundle: Bundle): BundleRow => ({
   id: bundle.id,
   platform: bundle.platform,
-  file_hash: bundle.fileHash,
   git_commit_hash: bundle.gitCommitHash,
-  storage_uri: bundle.storageUri,
-  archive_byte_size: bundle.archiveByteSize,
   metadata: {},
-  manifest_storage_uri: null,
-  manifest_file_hash: null,
-  asset_base_storage_uri: null,
+  manifest_storage_uri: bundle.manifestStorageUri,
+  manifest_file_hash: bundle.manifestFileHash,
+  asset_base_storage_uri: bundle.assetBaseStorageUri,
 });

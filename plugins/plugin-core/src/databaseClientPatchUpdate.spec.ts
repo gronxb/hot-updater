@@ -20,10 +20,10 @@ const channelRow = { id: "channel-production", name: "production" } as const;
 const createBundle = (id: string): Bundle => ({
   id,
   platform: "ios",
-  fileHash: `hash-${id}`,
   gitCommitHash: null,
-  storageUri: `storage://${id}`,
-  archiveByteSize: 3_000_000_001,
+  manifestStorageUri: `storage://${id}/manifest.json`,
+  manifestFileHash: `manifest-hash-${id}`,
+  assetBaseStorageUri: "storage://assets",
 });
 
 const createNativePlugin = (
@@ -68,7 +68,7 @@ const createMemoryFixture = async () => {
     patches: [
       {
         baseBundleId: base.id,
-        baseFileHash: base.fileHash,
+        baseFileHash: `asset-hash-${base.id}`,
         byteSize: 3_000_000_002,
         patchFileHash: "patch-hash",
         patchStorageUri: "storage://patch",
@@ -116,7 +116,7 @@ describe("database client patch updates", () => {
       patches: [
         {
           baseBundleId: base.id,
-          baseFileHash: base.fileHash,
+          baseFileHash: `asset-hash-${base.id}`,
           byteSize: 3_000_000_002,
           patchFileHash: "patch-hash",
           patchStorageUri: "storage://patch",

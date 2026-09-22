@@ -709,38 +709,20 @@ warn about this at create/edit time.
 After local selection chooses a different Bundle:
 
 ```http
-GET /artifacts/:targetBundleId/from/:currentBundleId
+GET /artifacts/v1/:targetBundleId/from/:currentBundleId
 ```
 
-This reuses archive, signed URL, manifest diff, changed asset, and binary patch
+This reuses manifest resolution, signed URL, per-file asset, and binary patch
 logic. It remains Bundle-keyed. The first implementation is `private,
 no-store` because Storage-signed URL expiry is not represented by the current
 StoragePlugin contract.
 
-The server compares the normal manifest route with the archive before it
-returns the existing `ArtifactInfo` shape:
-
-```text
-manifestBytes = UTF-8 byte length of the exact stored target manifest text
-primary(asset) = retained patch when present, otherwise served file
-diffBytes = manifestBytes + sum(primary(asset).byteSize)
-```
-
-Unchanged assets cost zero. When a patch and complete file are both usable and
-both sizes are known, the patch is retained only when it is strictly smaller;
-equality uses the complete file. If the archive URL is usable and every
-primary size is known, `diffBytes >= archiveByteSize` returns the archive-only
-response. Otherwise the existing manifest-first response is preserved.
-
-Required archive and patch sizes fail provider hydration when invalid. A
-missing or invalid `downloadByteSize`, an invalid present `downloadFileHash`, a
-missing hash for a transformed representation, or a safe-integer sum overflow
-makes only the comparison unknown. Raw assets use the logical `fileHash` key
-and may omit `downloadFileHash`. The server does not issue `HEAD` or storage
-metadata probes to fill the gap. Route selection remains server-only and does
-not add a native request, response field, or receipt transition. Patch failure
-still follows the existing patch-to-file-to-archive fallback and is not part of
-the normal-path estimate.
+The response has `artifactProtocolVersion: 1`, the target manifest URL and
+hash, and an `assets` entry for every target file. Every asset has a complete
+file descriptor; a strictly smaller binary patch may be included as an
+optimization. The client validates the response and falls back from a missing,
+invalid, or inapplicable patch to that file descriptor. There is no archive
+selection or archive fallback in this protocol.
 
 No artifact request is made for no-update, same-Bundle Release adoption,
 `BUILTIN`, or `EMBEDDED`.
@@ -1118,7 +1100,7 @@ disables the source. The new Release has an independent rollout seed and
 ### Patches, manifests, assets, signing
 
 All stay Bundle-based. Release selection precedes artifact resolution. Same
-Bundle reuse performs zero archive/manifest/patch request. Patch identity
+Bundle reuse performs zero manifest/asset/patch request. Patch identity
 remains `(targetBundleId, baseBundleId)`, signing and hash verification remain
 native-authoritative, and Release ID never affects artifact hashes.
 
@@ -1555,7 +1537,7 @@ The exact #1141 suite contains 14 scenarios. All remain in the one-PR gate:
 | ------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `release-ota-recovery`                     | Use the R1/B1 -> R2/B2 crash ledger; assert full receipt restore, retained G2 high-water, directional Release+Bundle report, then metadata-only G2 refresh.                              |
 | `multi-asset-replacement`                  | Select Release first; keep all asset/manifest byte assertions on Bundle IDs. Assert one catalog GET and artifact GET only on byte change.                                                |
-| `bspatch-archive-to-diff-ota`              | First B1 archive then B1->B2 patch. Add Release selection assertions without changing patch identity.                                                                                    |
+| `bspatch-builtin-to-diff-ota`              | Install B1 from the builtin manifest, then apply a B1->B2 patch. Add Release selection assertions without changing patch identity.                                                      |
 | `bspatch-consecutive-diff-ota`             | Preserve B1->B2->B3->B4 patch lineage; track the independent Release sequence.                                                                                                           |
 | `bspatch-disabled-chain-rollback`          | `/patch-release` disables RC, then RB, then RA; choose B, A, then catalog-authorized local BUILTIN. No crash-history additions.                                                          |
 | `bspatch-manifest-diff-fallback`           | Preserve manifest fallback by Bundle and prove Release ID never changes diff keys.                                                                                                       |
@@ -1668,8 +1650,7 @@ tests, not Detox loops.
 
 Run the migrated 14 scenarios and added protocol scenarios on iOS and Android
 release builds. Preserve every existing visible marker, asset, manifest,
-archive, patch, native-store, and recovery assertion at the correct identity
-layer.
+patch, native-store, and recovery assertion at the correct identity layer.
 
 ### Repository gates
 

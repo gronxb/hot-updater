@@ -83,10 +83,10 @@ afterAll(async () => {
 const createTestBundle = (overrides?: Partial<Bundle>): Bundle => ({
   id: NIL_UUID,
   platform: "ios",
-  fileHash: "test-hash",
   gitCommitHash: null,
-  storageUri: "test://storage",
-  archiveByteSize: 3_000_000_001,
+  manifestStorageUri: "test://storage/manifest.json",
+  manifestFileHash: "test-manifest-hash",
+  assetBaseStorageUri: "test://assets",
   ...overrides,
 });
 
@@ -256,7 +256,7 @@ describe("Handler <-> Standalone Repository Integration", () => {
         body: JSON.stringify(
           createTestBundle({
             id: bundleId,
-            fileHash: "integration-hash-1",
+            manifestFileHash: "integration-manifest-hash-1",
           }),
         ),
         headers: { "Content-Type": "application/json" },
@@ -271,7 +271,7 @@ describe("Handler <-> Standalone Repository Integration", () => {
     expect(retrieved.status).toBe(200);
     await expect(retrieved.json()).resolves.toMatchObject({
       id: bundleId,
-      fileHash: "integration-hash-1",
+      manifestFileHash: "integration-manifest-hash-1",
     });
     await expect(api.getReleases({ bundleId, limit: 10 })).resolves.toEqual([]);
   });
@@ -279,12 +279,18 @@ describe("Handler <-> Standalone Repository Integration", () => {
   it("retrieves a bundle through handler GET /bundles/:id", async () => {
     const bundleId = uuidv7();
     await api.insertBundle(
-      createTestBundle({ id: bundleId, fileHash: "get-hash-1" }),
+      createTestBundle({
+        id: bundleId,
+        manifestFileHash: "get-manifest-hash-1",
+      }),
     );
 
     const retrieved = await createStandaloneClient().getBundleById(bundleId);
 
-    expect(retrieved).toMatchObject({ id: bundleId, fileHash: "get-hash-1" });
+    expect(retrieved).toMatchObject({
+      id: bundleId,
+      manifestFileHash: "get-manifest-hash-1",
+    });
   });
 
   it("refuses to delete an artifact referenced by a Release", async () => {
@@ -389,11 +395,11 @@ describe("Handler <-> Standalone Repository Integration", () => {
       await repository.models.releaseCatalogs.findByScopeKey(scopeKey);
 
     await createStandaloneClient().updateBundleById(bundle.id, {
-      storageUri: "test://updated-artifact",
+      manifestStorageUri: "test://updated-artifact/manifest.json",
     });
 
     await expect(api.getBundleById(bundle.id)).resolves.toMatchObject({
-      storageUri: "test://updated-artifact",
+      manifestStorageUri: "test://updated-artifact/manifest.json",
     });
     await expect(
       repository.models.releases.findById(releaseId),
@@ -407,15 +413,17 @@ describe("Handler <-> Standalone Repository Integration", () => {
     const client = createStandaloneClient();
     const bundleId = uuidv7();
     await client.insertBundle(
-      createTestBundle({ id: bundleId, fileHash: "e2e-hash" }),
+      createTestBundle({ id: bundleId, manifestFileHash: "e2e-manifest-hash" }),
     );
 
     await expect(client.getBundleById(bundleId)).resolves.toMatchObject({
-      fileHash: "e2e-hash",
+      manifestFileHash: "e2e-manifest-hash",
     });
-    await client.updateBundleById(bundleId, { storageUri: "test://updated" });
+    await client.updateBundleById(bundleId, {
+      manifestStorageUri: "test://updated/manifest.json",
+    });
     await expect(client.getBundleById(bundleId)).resolves.toMatchObject({
-      storageUri: "test://updated",
+      manifestStorageUri: "test://updated/manifest.json",
     });
     await client.deleteBundleById(bundleId);
     await expect(client.getBundleById(bundleId)).resolves.toBeNull();
@@ -472,11 +480,14 @@ describe("Handler <-> Standalone Repository Integration", () => {
     const client = createStandaloneClient(`${baseUrl}/api/v2/admin`);
 
     await client.insertBundle(
-      createTestBundle({ id: bundleId, fileHash: "custom-hash" }),
+      createTestBundle({
+        id: bundleId,
+        manifestFileHash: "custom-manifest-hash",
+      }),
     );
 
     await expect(client.getBundleById(bundleId)).resolves.toMatchObject({
-      fileHash: "custom-hash",
+      manifestFileHash: "custom-manifest-hash",
     });
   });
 
@@ -503,23 +514,23 @@ describe("Handler <-> Standalone Repository Integration", () => {
     await client.insertBundle(
       createTestBundle({
         id: bundleId,
-        storageUri: "s3://test-bucket/original.zip",
+        manifestStorageUri: "s3://test-bucket/original/manifest.json",
       }),
     );
 
     await client.updateBundleById(bundleId, {
-      storageUri: "s3://test-bucket/updated.zip",
+      manifestStorageUri: "s3://test-bucket/updated/manifest.json",
     });
 
     await expect(client.getBundleById(bundleId)).resolves.toMatchObject({
       id: bundleId,
-      storageUri: "s3://test-bucket/updated.zip",
+      manifestStorageUri: "s3://test-bucket/updated/manifest.json",
     });
     await expect(client.getBundles({ limit: 50 })).resolves.toMatchObject({
       data: [
         expect.objectContaining({
           id: bundleId,
-          storageUri: "s3://test-bucket/updated.zip",
+          manifestStorageUri: "s3://test-bucket/updated/manifest.json",
         }),
       ],
       pagination: { total: 1 },

@@ -30,49 +30,35 @@ unsubscribe();
 `onProgress` is emitted while an OTA update is being downloaded.
 
 ```ts
-type HotUpdaterProgressEvent =
-  | {
+type HotUpdaterProgressEvent = {
+  progress: number;
+  artifactType: "diff";
+  details: {
+    totalFilesCount: number;
+    completedFilesCount: number;
+    files: Array<{
+      path: string;
+      downloadPath: string;
+      status: "pending" | "downloading" | "downloaded" | "failed";
       progress: number;
-      artifactType: "archive";
+      order: number;
       downloadedBytes?: number;
       totalBytes?: number;
-    }
-  | {
-      progress: number;
-      artifactType: "diff";
-      details: {
-        totalFilesCount: number;
-        completedFilesCount: number;
-        files: Array<{
-          path: string;
-          downloadPath: string;
-          status: "pending" | "downloading" | "downloaded" | "failed";
-          progress: number;
-          order: number;
-          downloadedBytes?: number;
-          totalBytes?: number;
-        }>;
-      };
-    };
+    }>;
+  };
+};
 
 type HotUpdaterEvent = {
   onProgress: HotUpdaterProgressEvent;
 };
 ```
 
-For archive updates, use `downloadedBytes` and `totalBytes` when they are
-available. For bundle diffing updates, use `details` if you need per-file
-progress.
+Use `details` when you need per-file progress.
 
 ```tsx
 import { HotUpdater } from "@hot-updater/react-native";
 
 HotUpdater.addListener("onProgress", (event) => {
-  if (event.artifactType === "archive") {
-    console.log("Archive progress", event.progress);
-    return;
-  }
-
   console.log(
     "Diff progress",
     event.details.completedFilesCount,

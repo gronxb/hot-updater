@@ -116,8 +116,7 @@ Props:
 - `progress`: Download progress (0-1, e.g., for a progress bar)
 - `status`: Update state (`CHECK_FOR_UPDATE` or `UPDATING`)
 - `message`: Message from the server, or `null`
-- `artifactType`: `"archive"`, `"diff"`, or `null` before progress starts
-- `downloadedBytes` and `totalBytes`: Archive byte counts, when available
+- `artifactType`: `"diff"` or `null` before progress starts
 - `details`: Per-file diff progress, or `null`
 
 The progress fields have the same shape as

@@ -1,0 +1,98 @@
+{
+  "schemaVersion": 1,
+  "revision": "38d46c05df90e4f4c93e079d4aedacac9de0a111",
+  "environment": {
+    "host": "Darwin 25.3.0 arm64",
+    "node": "v24.15.0",
+    "network": "No network latency; transfer payload bytes and request counts are exact artifact values.",
+    "rounds": 7
+  },
+  "caveats": [
+    "Install time, temporary disk, and RSS are a local Node artifact microbenchmark, not native-device p95 values.",
+    "The archive baseline uses the v1 default ZIP strategy at the PRD base revision.",
+    "The 1000-file fixture is deterministic synthetic stress data; the other scenarios use Release example Hermes and asset outputs."
+  ],
+  "scenarios": [
+    {
+      "name": "js-only-first-ota-android",
+      "fileCount": 18,
+      "reusedFileCount": 5,
+      "downloadedFileCount": 13,
+      "archive": {
+        "transferBytes": 1048299,
+        "transferRequests": 1,
+        "installTimeMsMedian": 141.552,
+        "peakTemporaryDiskBytesMedian": 3334669,
+        "peakRssDeltaBytesMedian": 4751360
+      },
+      "manifest": {
+        "transferBytes": 830077,
+        "transferRequests": 14,
+        "installTimeMsMedian": 142.782,
+        "peakTemporaryDiskBytesMedian": 3116447,
+        "peakRssDeltaBytesMedian": 16384
+      }
+    },
+    {
+      "name": "small-ota-to-ota-android",
+      "fileCount": 18,
+      "reusedFileCount": 17,
+      "downloadedFileCount": 1,
+      "archive": {
+        "transferBytes": 1048348,
+        "transferRequests": 1,
+        "installTimeMsMedian": 190.164,
+        "peakTemporaryDiskBytesMedian": 3334731,
+        "peakRssDeltaBytesMedian": 0
+      },
+      "manifest": {
+        "transferBytes": 115353,
+        "transferRequests": 2,
+        "installTimeMsMedian": 100.449,
+        "peakTemporaryDiskBytesMedian": 2401736,
+        "peakRssDeltaBytesMedian": 4620288
+      }
+    },
+    {
+      "name": "empty-base-android",
+      "fileCount": 18,
+      "reusedFileCount": 0,
+      "downloadedFileCount": 18,
+      "archive": {
+        "transferBytes": 1048291,
+        "transferRequests": 1,
+        "installTimeMsMedian": 73.466,
+        "peakTemporaryDiskBytesMedian": 3334661,
+        "peakRssDeltaBytesMedian": 0
+      },
+      "manifest": {
+        "transferBytes": 832386,
+        "transferRequests": 19,
+        "installTimeMsMedian": 42.936,
+        "peakTemporaryDiskBytesMedian": 3118756,
+        "peakRssDeltaBytesMedian": 0
+      }
+    },
+    {
+      "name": "many-small-files-full-change",
+      "fileCount": 1000,
+      "reusedFileCount": 0,
+      "downloadedFileCount": 1000,
+      "archive": {
+        "transferBytes": 4266001,
+        "transferRequests": 1,
+        "installTimeMsMedian": 2499.169,
+        "peakTemporaryDiskBytesMedian": 8362001,
+        "peakRssDeltaBytesMedian": 1409024
+      },
+      "manifest": {
+        "transferBytes": 4202065,
+        "transferRequests": 1001,
+        "installTimeMsMedian": 3386.835,
+        "peakTemporaryDiskBytesMedian": 8298065,
+        "peakRssDeltaBytesMedian": 0
+      }
+    }
+  ]
+}
+

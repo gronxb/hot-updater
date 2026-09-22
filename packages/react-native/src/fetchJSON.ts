@@ -1,3 +1,14 @@
+export class FetchJSONResponseError extends Error {
+  constructor(
+    readonly status: number,
+    statusText: string,
+  ) {
+    super(
+      `Request failed with HTTP ${status}${statusText ? ` ${statusText}` : ""}`,
+    );
+  }
+}
+
 export const fetchJSON = async <T>({
   url,
   requestHeaders,
@@ -19,7 +30,7 @@ export const fetchJSON = async <T>({
       signal: controller.signal,
     });
     if (response.status !== 200) {
-      throw new Error(response.statusText);
+      throw new FetchJSONResponseError(response.status, response.statusText);
     }
     return (await response.json()) as T;
   } catch (error: unknown) {

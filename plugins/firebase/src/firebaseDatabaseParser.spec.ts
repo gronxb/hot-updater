@@ -32,27 +32,6 @@ describe("parseFirebaseBundleRow", () => {
       ),
     ).toThrow("Invalid Firebase database data");
   });
-
-  it("preserves safe archive sizes above 2 GiB", () => {
-    expect(
-      parseFirebaseBundleRow(createBundleRowFixture("large"), "bundles/large"),
-    ).toMatchObject({ archive_byte_size: 3_000_000_001 });
-  });
-
-  it.each([-1, 1.5, Number.MAX_SAFE_INTEGER + 1, Number.NaN])(
-    "rejects invalid archive size %s",
-    (archiveByteSize) => {
-      expect(() =>
-        parseFirebaseBundleRow(
-          {
-            ...createBundleRowFixture("invalid-size"),
-            archive_byte_size: archiveByteSize,
-          },
-          "bundles/invalid-size",
-        ),
-      ).toThrow("Invalid Firebase database data");
-    },
-  );
 });
 
 describe("parseFirebasePatchRow", () => {

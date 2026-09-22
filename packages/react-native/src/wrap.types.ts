@@ -21,8 +21,6 @@ export type UpdateStatus =
 export type HotUpdaterFallbackComponentProps = {
   status: Exclude<UpdateStatus, "UPDATE_PROCESS_COMPLETED">;
   progress: number;
-  downloadedBytes: HotUpdaterState["downloadedBytes"];
-  totalBytes: HotUpdaterState["totalBytes"];
   message: string | null;
   artifactType: HotUpdaterState["artifactType"];
   details: HotUpdaterState["details"];
