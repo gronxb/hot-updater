@@ -165,7 +165,6 @@ describe("Firebase transaction staging", () => {
       const staged = open();
       await staged.database.delete({
         model: "releases",
-        select: ["id"],
         where: [{ field: "id", value: release.id }],
       });
       const referenced = await staged.database.findOne({
