@@ -48,7 +48,6 @@ describe("database client pagination", () => {
       deleteChannel: async () => ({ deleted: false, reason: "not_found" }),
     });
     const plugin = createDatabasePlugin({
-      name: "finite-id-memory",
       ...adapter,
     });
 
@@ -104,7 +103,6 @@ describe("database client pagination", () => {
     const ownerQueries: unknown[] = [];
     const name = "channel-pagination";
     const plugin = createDatabasePlugin({
-      name,
       ...createDatabasePluginAdapter(name, {
         getReleaseActivity: async () => {
           throw new Error("Unexpected release activity read");
@@ -168,7 +166,6 @@ describe("database client pagination", () => {
     let inserted = false;
     const name = "moving-pagination";
     const plugin = createDatabasePlugin({
-      name,
       ...createDatabasePluginAdapter(name, {
         getReleaseActivity: async () => {
           throw new Error("Unexpected release activity read");

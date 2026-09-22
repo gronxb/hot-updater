@@ -1,8 +1,5 @@
 import type { BundleEventRow } from "@hot-updater/plugin-core";
-import {
-  createDatabasePlugin,
-  DatabasePluginInputError,
-} from "@hot-updater/plugin-core";
+import { DatabasePluginInputError } from "@hot-updater/plugin-core";
 import {
   latestInsightsWhere,
   latestInsightsCountGroups,
@@ -596,13 +593,8 @@ export const supabaseDatabase = (config: SupabaseDatabaseConfig) => {
     config.supabaseUrl,
     resolveSupabaseServiceRoleKey(config),
   );
-  const adapter = createDatabasePluginAdapter(
+  return createDatabasePluginAdapter(
     "supabaseDatabase",
     createSupabaseImplementation(supabase),
   );
-  return createDatabasePlugin({
-    name: "supabaseDatabase",
-    models: adapter.models,
-    commit: adapter.commit,
-  });
 };

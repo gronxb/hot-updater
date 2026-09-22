@@ -1,4 +1,3 @@
-import { createDatabasePlugin } from "@hot-updater/plugin-core";
 import {
   createDatabasePluginAdapter,
   type DatabasePluginImplementation,
@@ -135,16 +134,9 @@ export const mongoAdapter = (
       ? createTransactionalMongoImplementation(config.client)
       : createMongoImplementation(config.client),
   );
-  return Object.assign(
-    createDatabasePlugin({
-      name: "mongodb",
-      models: adapter.models,
-      commit: adapter.commit,
-    }),
-    {
-      adapterName: "mongodb",
-      provider: "mongodb" as const,
-      createMigrator: () => createMongoMigrator(config.client),
-    },
-  );
+  return Object.assign(adapter, {
+    adapterName: "mongodb",
+    provider: "mongodb" as const,
+    createMigrator: () => createMongoMigrator(config.client),
+  });
 };

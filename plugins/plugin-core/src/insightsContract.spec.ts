@@ -271,7 +271,6 @@ describe("Insights CRUD adapter", () => {
       },
     );
     const model = createDatabasePlugin({
-      name: "indexed-memory",
       ...createDatabasePluginAdapter("indexed-memory", {
         getReleaseActivity: async () => {
           throw new Error("Unexpected release activity read");
@@ -330,7 +329,6 @@ describe("Insights CRUD adapter", () => {
     );
     const create = vi.fn(async (input) => input.data);
     const plugin = createDatabasePlugin({
-      name: "adapter",
       ...createDatabasePluginAdapter("adapter", {
         getReleaseActivity: async () => {
           throw new Error("Unexpected release activity read");
@@ -396,7 +394,6 @@ describe("Insights CRUD adapter", () => {
       async () => [],
     );
     const plugin = createDatabasePlugin({
-      name: "adapter",
       ...createDatabasePluginAdapter("adapter", {
         getReleaseActivity: async () => {
           throw new Error("Unexpected release activity read");

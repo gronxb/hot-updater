@@ -334,3 +334,30 @@ export interface DatabasePluginImplementation {
   commit?: (input: DatabaseCommit) => Promise<DatabaseCommitResult>;
   dispose?: () => Promise<void>;
 }
+
+/** Native read capability; no mutation emulation is required. */
+export type DatabaseReadImplementation = Pick<
+  TransactionDatabasePluginImplementation,
+  "findOne" | "findMany" | "count"
+>;
+export type DatabasePluginReads = Pick<
+  DatabasePluginCrud,
+  "findOne" | "findMany" | "count"
+>;
+
+/**
+ * Native execution registered with the adapter factory. The factory supplies
+ * domain read planning and contract validation; the provider owns atomic writes.
+ */
+export interface NativeDatabasePluginImplementation {
+  readonly read: DatabaseReadImplementation;
+  readonly models: Pick<
+    import("./databasePlugin").DatabasePlugin["models"],
+    "channels" | "insights" | "apiKeys"
+  > &
+    Partial<
+      Pick<import("./databasePlugin").DatabasePlugin["models"], "bundlePatches">
+    >;
+  readonly commit: (input: DatabaseCommit) => Promise<DatabaseCommitResult>;
+  readonly dispose?: () => Promise<void>;
+}

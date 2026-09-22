@@ -1,5 +1,4 @@
 import {
-  createDatabasePlugin,
   compareInsightsText,
   type BundleEventRow,
   type InsightsGetAppUsageInput,
@@ -187,12 +186,7 @@ export const mockDatabase = (config: MockDatabaseConfig) => {
         }),
     };
   })();
-  const adapter = createDatabasePluginAdapter("mockDatabase", implementation);
-  return createDatabasePlugin({
-    name: "mockDatabase",
-    models: adapter.models,
-    commit: adapter.commit,
-  });
+  return createDatabasePluginAdapter("mockDatabase", implementation);
 };
 
 const latestEvents = (events: Iterable<BundleEventRow>): BundleEventRow[] => {
