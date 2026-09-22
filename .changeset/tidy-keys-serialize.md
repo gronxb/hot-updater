@@ -2,6 +2,7 @@
 "@hot-updater/server": patch
 "@hot-updater/firebase": patch
 "@hot-updater/supabase": patch
+"hot-updater": patch
 ---
 
 Serialize Kysely database commits and retry native serialization conflicts so concurrent Release revision and Catalog generation expectations cannot both succeed with the same version.
