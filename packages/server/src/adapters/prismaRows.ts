@@ -9,7 +9,10 @@ import type {
   ReleaseRow,
 } from "@hot-updater/plugin-core";
 import { isDatabaseMetadataObject } from "@hot-updater/plugin-core";
-import type { DatabaseModel } from "@hot-updater/plugin-core/internal";
+import type {
+  DatabaseImplementationResult,
+  DatabaseModel,
+} from "@hot-updater/plugin-core/internal";
 
 import type { PrismaQuery } from "./prismaQuery";
 
@@ -36,6 +39,21 @@ export class PrismaAdapterError extends Error {
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null;
+
+export const parsePrismaSelectedRow = (
+  value: unknown,
+  model: DatabaseModel,
+): DatabaseImplementationResult => {
+  if (!isRecord(value) || Array.isArray(value)) {
+    throw new PrismaAdapterError("invalid selected row");
+  }
+  // Match full event reads when a client returns serialized metadata.
+  if (model === "bundle_events" && typeof value["metadata"] === "string") {
+    return { ...value, metadata: JSON.parse(value["metadata"]) };
+  }
+  // The factory validates the selected fields after storage decoding.
+  return value;
+};
 
 const hasDelegateMethods = (value: unknown): value is PrismaDelegate =>
   isRecord(value) &&
