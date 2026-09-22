@@ -347,7 +347,7 @@ describe("server/db hotUpdater (PGlite + Kysely)", async () => {
       expect(code).toContain("scope_key String @db.VarChar(2048) @id");
       expect(code).not.toContain("bundles_platform_idx");
       expect(code).toContain(
-        '@@index([bundle_id], map: "bundle_patches_bundle_id_idx")',
+        '@@index([bundle_id, id], map: "bundle_patches_bundle_id_idx")',
       );
     });
 
@@ -383,10 +383,10 @@ describe("server/db hotUpdater (PGlite + Kysely)", async () => {
       expect(bundlesBlock).not.toContain("bundles_platform_idx");
       expect(bundlesBlock).not.toContain("target_app_version");
       expect(bundlesBlock).not.toContain(
-        'index("bundle_patches_bundle_id_idx").on(table.bundle_id)',
+        'index("bundle_patches_bundle_id_idx").on(table.bundle_id, table.id)',
       );
       expect(bundlePatchesBlock).toContain(
-        'index("bundle_patches_bundle_id_idx").on(table.bundle_id)',
+        'index("bundle_patches_bundle_id_idx").on(table.bundle_id, table.id)',
       );
       expect(code).toContain(
         'index("releases_scope_order_idx").on(table.scope_key, table.id)',
@@ -433,7 +433,7 @@ describe("server/db hotUpdater (PGlite + Kysely)", async () => {
       );
       expect(sql).not.toContain("create table api_keys (\nid text primary key");
       expect(sql).toContain(
-        "create index bundle_patches_bundle_id_idx on bundle_patches(bundle_id)",
+        "create index bundle_patches_bundle_id_idx on bundle_patches(bundle_id, id)",
       );
       expect(sql).not.toContain("bundle_id(255)");
     });
@@ -628,7 +628,7 @@ describe("server/db hotUpdater (PGlite + Kysely)", async () => {
           }),
           expect.objectContaining({
             description:
-              "Create MongoDB index: bundle_patches_base_bundle_id_idx on bundle_patches(base_bundle_id)",
+              "Create MongoDB index: bundle_patches_base_bundle_id_idx on bundle_patches(base_bundle_id, id)",
           }),
         ]),
       );
