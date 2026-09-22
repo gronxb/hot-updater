@@ -277,6 +277,77 @@ describe("DynamoDB CRUD access patterns", () => {
     expect(dynamodb.commandCalls(QueryCommand)).toHaveLength(0);
   });
 
+  it("preserves all five public release equalities and the cursor in the native query", async () => {
+    const queryBundleId = "00000000-0000-7000-8000-000000000001";
+    const queryChannelId = "00000000-0000-7000-8000-000000000002";
+    dynamodb.on(QueryCommand).resolves({ Items: [] });
+    await createPlugin().models.releases.findMany({
+      bundleId: queryBundleId,
+      channelId: queryChannelId,
+      enabled: false,
+      platform: "ios",
+      targetAppVersion: "1.0.0",
+      beforeReleaseId: queryChannelId,
+      limit: 2,
+    });
+    const queries = dynamodb.commandCalls(QueryCommand);
+    expect(queries).toHaveLength(1);
+    const query = queries[0]?.args[0].input;
+    expect(query).toMatchObject({
+      ConsistentRead: true,
+      Limit: 2,
+      ScanIndexForward: false,
+      KeyConditionExpression: "#pk = :pk AND #sk < :upper",
+      ExpressionAttributeValues: {
+        ":pk": `_hot-updater#index#releases#bundle_id#${JSON.stringify(queryBundleId)}`,
+      },
+    });
+    for (const [field, value] of Object.entries({
+      id: queryChannelId,
+      bundle_id: queryBundleId,
+      channel_id: queryChannelId,
+      enabled: false,
+      platform: "ios",
+      target_app_version: "1.0.0",
+    })) {
+      const alias = Object.entries(query!.ExpressionAttributeNames!).find(
+        ([name, actual]) => name.startsWith("#f") && actual === field,
+      )?.[0];
+      expect(alias, `native filter must retain ${field}`).toBeDefined();
+      const valueAlias = `:v${alias!.slice(2)}`;
+      expect(query!.ExpressionAttributeValues![valueAlias]).toBe(value);
+      expect(query!.FilterExpression).toContain(
+        `${alias} ${field === "id" ? "<" : "="} ${valueAlias}`,
+      );
+    }
+  });
+
+  it.each(["OR", "insensitive"] as const)(
+    "rejects an indexed release predicate using %s instead of dropping it",
+    async (unsupported) => {
+      await expect(
+        createCrud().findMany({
+          model: "releases",
+          where: [
+            { field: "platform", value: "ios" },
+            {
+              field: "channel_id",
+              value: "production-id",
+              ...(unsupported === "OR"
+                ? { connector: "OR" as const }
+                : { mode: "insensitive" as const }),
+            },
+          ],
+          limit: 2,
+          offset: 0,
+          orderBy: [{ field: "id", direction: "desc" }],
+        }),
+      ).rejects.toThrow("unsupported");
+      expect(dynamodb.commandCalls(QueryCommand)).toHaveLength(0);
+      expect(dynamodb.commandCalls(BatchGetCommand)).toHaveLength(0);
+    },
+  );
+
   it("increments the metadata counter without imposing a ceiling", async () => {
     // Given
     dynamodb.on(TransactWriteCommand).resolves({});
