@@ -52,7 +52,7 @@ describe("DynamoDB bounded reads", () => {
             model: "bundles",
             operation: "update",
             where: { id: "missing" },
-            update: { file_hash: "updated" },
+            update: { manifest_file_hash: "updated" },
           },
         ],
       }),

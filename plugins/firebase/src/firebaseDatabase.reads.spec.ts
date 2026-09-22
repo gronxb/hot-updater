@@ -82,7 +82,7 @@ describe("Firebase bounded model reads", () => {
             model: "bundles",
             operation: "update",
             where: { id: "missing" },
-            update: { file_hash: "new-hash" },
+            update: { manifest_file_hash: "new-hash" },
           },
         ],
       }),
