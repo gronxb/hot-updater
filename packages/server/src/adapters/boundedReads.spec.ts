@@ -6,6 +6,29 @@ import { prismaAdapter } from "./prisma";
 import { createPrismaTestHarness } from "./prismaTestClient";
 
 describe("ORM bounded pagination", () => {
+  it("keeps MongoDB non-nullable ID ordering on the indexed cursor", async () => {
+    const cursor = {
+      skip: vi.fn().mockReturnThis(),
+      limit: vi.fn().mockReturnThis(),
+      sort: vi.fn().mockReturnThis(),
+      toArray: vi.fn(async () => []),
+    };
+    const aggregate = vi.fn(() => ({ toArray: async () => [] }));
+    const find = vi.fn(() => cursor);
+    await createMongoReads({
+      bundles: { find, aggregate },
+    } as unknown as MongoCollections).findMany({
+      model: "bundles",
+      where: [{ field: "id", operator: "gt", value: "after" }],
+      orderBy: [{ field: "id", direction: "asc", nulls: "last" }],
+      limit: 2,
+      offset: 0,
+    });
+    expect(aggregate).not.toHaveBeenCalled();
+    expect(cursor.sort).toHaveBeenCalledWith({ id: 1 });
+    expect(cursor.limit).toHaveBeenCalledWith(2);
+  });
+
   it("keeps Prisma pagination in the database when null ordering is supplied", async () => {
     const findMany = vi.fn(async () => []);
     const harness = createPrismaTestHarness();

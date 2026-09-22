@@ -47,6 +47,7 @@ import {
   parsePrismaReleaseCatalogRow,
   parsePrismaReleaseRow,
   parsePrismaRows,
+  parsePrismaSelectedRow,
   PrismaAdapterError,
 } from "./prismaRows";
 
@@ -140,7 +141,17 @@ const findMany = async (
     ...(orderBy ? { orderBy } : {}),
     skip: input.offset,
     take: input.limit,
+    ...(input.select === undefined
+      ? {}
+      : {
+          select: Object.fromEntries(
+            input.select.map((field) => [field, true]),
+          ),
+        }),
   });
+  if (input.select !== undefined) {
+    return rows.map((row) => parsePrismaSelectedRow(row, input.model));
+  }
   switch (input.model) {
     case "bundles":
       return parsePrismaRows(rows, parsePrismaBundleRow);
@@ -343,8 +354,18 @@ const createCrudImplementation = (
   findOne: async (input) => {
     const row = await getPrismaDelegate(client, input.model).findFirst({
       where: createPrismaWhere(input.where, provider),
+      ...(input.select === undefined
+        ? {}
+        : {
+            select: Object.fromEntries(
+              input.select.map((field) => [field, true]),
+            ),
+          }),
     });
     if (row === null) return null;
+    if (input.select !== undefined) {
+      return parsePrismaSelectedRow(row, input.model);
+    }
     switch (input.model) {
       case "bundles":
         return parsePrismaBundleRow(row);
