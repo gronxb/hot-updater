@@ -13,14 +13,17 @@ import {
   type BundleEventRow,
   createDatabaseClient,
 } from "@hot-updater/plugin-core";
+import { bundleToRow } from "@hot-updater/plugin-core";
 import { setupDatabasePluginTestSuite } from "@hot-updater/test-utils";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
+import { migrateDynamoDBMetadataIndexes } from "../iac/migrateMetadataIndexes";
 import {
   createDynamoDBInsightsTable,
   DYNAMODB_INSIGHTS_EVENT_IDS_PARTITION,
   DYNAMODB_INSIGHTS_INSTALLATIONS_PARTITION,
 } from "./dynamoDB";
+import { toDynamoDBBundleItem, toDynamoDBPatchItem } from "./dynamoDB";
 import { DynamoDBIntegrationFixture } from "./dynamoDB.integration-fixture";
 
 const fixture = new DynamoDBIntegrationFixture();
@@ -102,6 +105,69 @@ setupDatabasePluginTestSuite({
 
 describe("DynamoDB aggregate mutations", () => {
   beforeEach(clearTable);
+
+  it("requires an explicit migration for existing metadata before indexed reads", async () => {
+    const row = bundleToRow({
+      id: "base",
+      platform: "ios",
+      fileHash: "base-hash",
+      gitCommitHash: null,
+      storageUri: "storage://base",
+      archiveByteSize: 1,
+    });
+    const patch = {
+      id: "owner:base",
+      bundle_id: "owner",
+      base_bundle_id: "base",
+      base_file_hash: "base-hash",
+      patch_file_hash: "patch",
+      patch_storage_uri: "storage://patch",
+      byte_size: 1,
+      order_index: 0,
+    };
+    await writeItems([
+      toDynamoDBBundleItem(row, 1, 1, 0),
+      toDynamoDBBundleItem({ ...row, id: "owner" }, 1, 1, 1),
+      toDynamoDBPatchItem(patch),
+    ]);
+    const plugin = createPlugin();
+    await expect(
+      plugin.models.bundles.count({ platform: "ios" }),
+    ).rejects.toThrow("upgrade");
+    await migrateDynamoDBMetadataIndexes({
+      client: fixture.client,
+      tableName: fixture.tableName,
+    });
+    await expect(plugin.models.bundles.count()).resolves.toBe(2);
+    await expect(
+      plugin.models.bundles.count({ platform: "ios" }),
+    ).resolves.toBe(2);
+    await expect(
+      plugin.models.bundlePatches.findByBaseBundleIds!(["base"]),
+    ).resolves.toEqual([patch]);
+  });
+
+  it("updates a single bundle without parsing unrelated metadata", async () => {
+    const database = createDatabaseClient(createPlugin());
+    const bundle = {
+      id: "00000000-0000-0000-0000-000000000903",
+      platform: "ios" as const,
+      fileHash: "hash",
+      gitCommitHash: null,
+      storageUri: "storage://test",
+      archiveByteSize: 1,
+      metadata: {},
+    };
+    await database.insertBundle(bundle);
+    await writeItems([
+      { pk: "bundles", sk: "unrelated-corrupt", row: { broken: true } },
+      { pk: "bundle_patches", sk: "unrelated-corrupt", row: { broken: true } },
+    ]);
+    await database.updateBundleById(bundle.id, { fileHash: "updated" });
+    await expect(database.getBundleById(bundle.id)).resolves.toMatchObject({
+      fileHash: "updated",
+    });
+  });
 
   it("atomically inserts and replaces bundle patches", async () => {
     const database = createDatabaseClient(createPlugin());

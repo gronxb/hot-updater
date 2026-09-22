@@ -12,7 +12,6 @@ import {
   type NativeAttributeValue,
   PutCommand,
   QueryCommand,
-  ScanCommand,
   TransactWriteCommand,
   type TransactWriteCommandInput,
 } from "@aws-sdk/lib-dynamodb";
@@ -43,6 +42,7 @@ import {
 import {
   createDatabasePluginAdapter,
   type DatabaseDistinctOn,
+  type FindManyDatabaseImplementationInput,
   type DatabaseImplementationResult,
   type DatabaseModel,
   type DatabaseOrderBy,
@@ -57,6 +57,11 @@ import {
   getDynamoDBAppUsage,
   getDynamoDBReleaseActivity,
 } from "./dynamoDBInsightsOverview";
+import {
+  ensureMetadataIndexes,
+  metadataIndexPartition,
+  withMetadataIndexActions,
+} from "./dynamoDBMetadataIndexes";
 
 export const DYNAMODB_MAX_METADATA_ITEM_BYTES = 8 * 1_024;
 export const DYNAMODB_MAX_CATALOG_ITEM_BYTES = 400 * 1_024;
@@ -480,39 +485,6 @@ export const exactDynamoDBBundleIds = (
   return undefined;
 };
 
-export const dynamoDBBundlePageStart = (
-  where: readonly object[] | undefined,
-  direction: "asc" | "desc",
-): { readonly id: string; readonly inclusive: boolean } | undefined => {
-  if (
-    (where ?? []).some(
-      (condition) => Reflect.get(condition, "connector") === "OR",
-    )
-  ) {
-    return undefined;
-  }
-  let result: { readonly id: string; readonly inclusive: boolean } | undefined;
-  for (const condition of where ?? []) {
-    if (Reflect.get(condition, "field") !== "id") continue;
-    const operator = Reflect.get(condition, "operator") ?? "eq";
-    const value = Reflect.get(condition, "value");
-    const eligible =
-      direction === "asc"
-        ? operator === "gt" || operator === "gte"
-        : operator === "lt" || operator === "lte";
-    if (!eligible || typeof value !== "string") continue;
-    const inclusive = operator === "gte" || operator === "lte";
-    if (
-      result === undefined ||
-      (direction === "asc" ? value > result.id : value < result.id) ||
-      (value === result.id && !inclusive)
-    ) {
-      result = { id: value, inclusive };
-    }
-  }
-  return result;
-};
-
 export type DynamoDBStore = {
   readonly client: DynamoDBDocumentClient;
   readonly tableName: string;
@@ -568,54 +540,6 @@ const queryItems = async (
   return items;
 };
 
-export const queryBundleItemsPage = async (
-  store: DynamoDBStore,
-  input: {
-    readonly direction: "asc" | "desc";
-    readonly limit: number;
-    readonly matches: (row: BundleRow) => boolean;
-    readonly start?: { readonly id: string; readonly inclusive: boolean };
-  },
-): Promise<DynamoDBBundleItem[]> => {
-  if (input.limit === 0) return [];
-  let exclusiveStartKey: Record<string, unknown> | undefined;
-  const items: DynamoDBBundleItem[] = [];
-  do {
-    const startOperator = input.start?.inclusive
-      ? input.direction === "asc"
-        ? ">="
-        : "<="
-      : input.direction === "asc"
-        ? ">"
-        : "<";
-    const page = await store.client.send(
-      new QueryCommand({
-        TableName: store.tableName,
-        ExclusiveStartKey: exclusiveStartKey,
-        KeyConditionExpression: input.start
-          ? `#pk = :pk AND #sk ${startOperator} :start`
-          : "#pk = :pk",
-        ExpressionAttributeNames: {
-          "#pk": "pk",
-          ...(input.start ? { "#sk": "sk" } : {}),
-        },
-        ExpressionAttributeValues: {
-          ":pk": "bundles",
-          ...(input.start ? { ":start": input.start.id } : {}),
-        },
-        Limit: Math.max(input.limit - items.length, 100),
-        ScanIndexForward: input.direction === "asc",
-      }),
-    );
-    for (const item of (page.Items ?? []).map(parseStoredItem)) {
-      if (item.pk === "bundles" && input.matches(item.row)) items.push(item);
-      if (items.length === input.limit) return items;
-    }
-    exclusiveStartKey = page.LastEvaluatedKey;
-  } while (exclusiveStartKey !== undefined);
-  return items;
-};
-
 const loadModelItems = (
   store: DynamoDBStore,
   model: "bundle_patches" | "bundles" | "channels",
@@ -661,24 +585,6 @@ export const loadChannelItem = async (
   return item?.pk === DYNAMODB_CHANNEL_PARTITION ? item : undefined;
 };
 
-export const loadBundleItems = async (
-  store: DynamoDBStore,
-): Promise<DynamoDBBundleItem[]> => {
-  const items = await loadModelItems(store, "bundles");
-  return items.filter(
-    (item): item is DynamoDBBundleItem => item.pk === "bundles",
-  );
-};
-
-export const loadPatchItems = async (
-  store: DynamoDBStore,
-): Promise<DynamoDBPatchItem[]> => {
-  const items = await loadModelItems(store, "bundle_patches");
-  return items.filter(
-    (item): item is DynamoDBPatchItem => item.pk === "bundle_patches",
-  );
-};
-
 export const loadChannelItems = async (
   store: DynamoDBStore,
 ): Promise<DynamoDBChannelItem[]> => {
@@ -695,6 +601,8 @@ const releaseLocatorItem = (row: ReleaseRow): Record<string, unknown> => ({
   pk: DYNAMODB_RELEASE_ID_PARTITION,
   sk: row.id,
   scope_key: row.scope_key,
+  target_pk: releaseScopePartition(row.scope_key),
+  row: { id: row.id },
 });
 
 export const loadReleaseItem = async (
@@ -726,45 +634,6 @@ export const loadReleaseItem = async (
   return item as DynamoDBReleaseItem;
 };
 
-export const loadReleaseItemsByScope = async (
-  store: DynamoDBStore,
-  scopeKey: string,
-): Promise<DynamoDBReleaseItem[]> =>
-  (
-    await queryItems(store, {
-      partition: releaseScopePartition(scopeKey),
-      consistentRead: true,
-    })
-  ).filter(
-    (item): item is DynamoDBReleaseItem =>
-      item.pk === releaseScopePartition(scopeKey) && isReleaseRow(item.row),
-  );
-
-export const loadReleaseItems = async (
-  store: DynamoDBStore,
-): Promise<DynamoDBReleaseItem[]> => {
-  let exclusiveStartKey: Record<string, unknown> | undefined;
-  const items: DynamoDBReleaseItem[] = [];
-  do {
-    const page = await store.client.send(
-      new ScanCommand({
-        TableName: store.tableName,
-        ExclusiveStartKey: exclusiveStartKey,
-        ConsistentRead: true,
-        FilterExpression: "begins_with(#pk, :prefix)",
-        ExpressionAttributeNames: { "#pk": "pk" },
-        ExpressionAttributeValues: { ":prefix": "release-scope#" },
-      }),
-    );
-    for (const value of page.Items ?? []) {
-      const item = parseStoredItem(value);
-      if (isReleaseRow(item.row)) items.push(item as DynamoDBReleaseItem);
-    }
-    exclusiveStartKey = page.LastEvaluatedKey;
-  } while (exclusiveStartKey !== undefined);
-  return items;
-};
-
 export const loadReleaseCatalogItem = async (
   store: DynamoDBStore,
   scopeKey: string,
@@ -780,19 +649,6 @@ export const loadReleaseCatalogItem = async (
   const item = parseStoredItem(result.Item);
   return item.pk === "release_catalogs" ? item : undefined;
 };
-
-export const loadReleaseCatalogItems = async (
-  store: DynamoDBStore,
-): Promise<DynamoDBReleaseCatalogItem[]> =>
-  (
-    await queryItems(store, {
-      partition: "release_catalogs",
-      consistentRead: true,
-    })
-  ).filter(
-    (item): item is DynamoDBReleaseCatalogItem =>
-      item.pk === "release_catalogs",
-  );
 
 const loadChannelByName = async (
   store: DynamoDBStore,
@@ -1034,11 +890,14 @@ export const commitDynamoDBTransaction = async (
   store: DynamoDBStore,
   actions: readonly DynamoDBTransactItem[],
 ): Promise<void> => {
-  if (actions.length > 100) {
+  if (actions.length > 100)
     throw new DynamoDBTransactionLimitError(actions.length);
+  const indexedActions = await withMetadataIndexActions(store, actions);
+  if (indexedActions.length > 100) {
+    throw new DynamoDBTransactionLimitError(indexedActions.length);
   }
   await store.client.send(
-    new TransactWriteCommand({ TransactItems: [...actions] }),
+    new TransactWriteCommand({ TransactItems: indexedActions }),
   );
 };
 
@@ -1165,11 +1024,11 @@ export class DynamoDBPatchIndexConsistencyError extends Error {
 const waitForIndex = (attempt: number): Promise<void> =>
   new Promise((resolve) => setTimeout(resolve, 20 * (attempt + 1)));
 
-export const queryCompleteOwnerPatches = async (
+const queryCompleteOwnerPatchItems = async (
   store: DynamoDBStore,
   indexName: string,
   bundleId: string,
-): Promise<BundlePatchRow[]> => {
+): Promise<DynamoDBPatchItem[]> => {
   const owner = await loadBundleItem(store, bundleId);
   if (!owner || owner.owned_patch_count === 0) return [];
   for (let attempt = 0; attempt < 3; attempt++) {
@@ -1184,13 +1043,11 @@ export const queryCompleteOwnerPatches = async (
       patches.length === owner.owned_patch_count &&
       patches.every(({ sk }) => patchIdSet.has(sk))
     ) {
-      return patches
-        .map(({ row }) => row)
-        .sort(
-          (left, right) =>
-            left.order_index - right.order_index ||
-            left.id.localeCompare(right.id),
-        );
+      return patches.sort(
+        (left, right) =>
+          left.row.order_index - right.row.order_index ||
+          left.sk.localeCompare(right.sk),
+      );
     }
     if (attempt < 2) await waitForIndex(attempt);
   }
@@ -1199,6 +1056,15 @@ export const queryCompleteOwnerPatches = async (
     owner.owned_patch_count,
   );
 };
+
+export const queryCompleteOwnerPatches = async (
+  store: DynamoDBStore,
+  indexName: string,
+  bundleId: string,
+): Promise<BundlePatchRow[]> =>
+  (await queryCompleteOwnerPatchItems(store, indexName, bundleId)).map(
+    ({ row }) => row,
+  );
 
 export const queryCompleteOwnersPatches = async (
   store: DynamoDBStore,
@@ -1237,10 +1103,307 @@ export const queryCompleteOwnersPatches = async (
   );
 };
 
+type MetadataWhere = FindManyDatabaseImplementationInput["where"];
+
+const metadataFilter = (where: MetadataWhere) => {
+  const names: Record<string, string> = {};
+  const values: Record<string, unknown> = {};
+  const predicates: string[] = [];
+  const comparisons: Record<string, string> = {
+    eq: "=",
+    gt: ">",
+    gte: ">=",
+    lt: "<",
+    lte: "<=",
+  };
+  for (const [index, condition] of (where ?? []).entries()) {
+    const operator = comparisons[condition.operator ?? "eq"];
+    if (
+      operator === undefined ||
+      condition.connector === "OR" ||
+      ("mode" in condition && condition.mode === "insensitive")
+    )
+      throw new DynamoDBUnsupportedModelError();
+    names["#row"] = "row";
+    names[`#f${index}`] = condition.field;
+    values[`:v${index}`] = condition.value;
+    predicates.push(`#row.#f${index} ${operator} :v${index}`);
+  }
+  return { names, values, expression: predicates.join(" AND ") };
+};
+
+const metadataKeyRange = (where: MetadataWhere, keyField: string) => {
+  let lower: { value: string; inclusive: boolean } | undefined;
+  let upper: { value: string; inclusive: boolean } | undefined;
+  for (const condition of where ?? []) {
+    if (
+      condition.connector === "OR" ||
+      ("mode" in condition && condition.mode === "insensitive")
+    )
+      throw new DynamoDBUnsupportedModelError();
+    const operator = condition.operator ?? "eq";
+    if (condition.field !== keyField) {
+      if (operator !== "eq") throw new DynamoDBUnsupportedModelError();
+      continue;
+    }
+    if (
+      typeof condition.value !== "string" ||
+      !["eq", "gt", "gte", "lt", "lte"].includes(operator)
+    )
+      throw new DynamoDBUnsupportedModelError();
+    const value = condition.value;
+    if (operator === "eq" || operator === "gt" || operator === "gte") {
+      const inclusive = operator !== "gt";
+      if (
+        lower === undefined ||
+        value > lower.value ||
+        (value === lower.value && !inclusive)
+      )
+        lower = { value, inclusive };
+    }
+    if (operator === "eq" || operator === "lt" || operator === "lte") {
+      const inclusive = operator !== "lt";
+      if (
+        upper === undefined ||
+        value < upper.value ||
+        (value === upper.value && !inclusive)
+      )
+        upper = { value, inclusive };
+    }
+  }
+  const names: Record<string, string> = {};
+  const values: Record<string, unknown> = {};
+  let expression = "#pk = :pk";
+  if (lower !== undefined || upper !== undefined) names["#sk"] = "sk";
+  const empty =
+    lower !== undefined &&
+    upper !== undefined &&
+    (lower.value > upper.value ||
+      (lower.value === upper.value && (!lower.inclusive || !upper.inclusive)));
+  if (lower !== undefined && upper !== undefined) {
+    expression += " AND #sk BETWEEN :lower AND :upper";
+    values[":lower"] = lower.value;
+    values[":upper"] = upper.value;
+  } else if (lower !== undefined) {
+    expression += ` AND #sk ${lower.inclusive ? ">=" : ">"} :lower`;
+    values[":lower"] = lower.value;
+  } else if (upper !== undefined) {
+    expression += ` AND #sk ${upper.inclusive ? "<=" : "<"} :upper`;
+    values[":upper"] = upper.value;
+  }
+  return { expression, names, values, empty };
+};
+
+const countMetadataRows = async (
+  store: DynamoDBStore,
+  partition: string,
+  where: MetadataWhere,
+): Promise<number> => {
+  const filter = metadataFilter(where);
+  const keyRange = metadataKeyRange(where, "id");
+  if (keyRange.empty) return 0;
+  let exclusiveStartKey: Record<string, unknown> | undefined;
+  let count = 0;
+  do {
+    const page = await store.client.send(
+      new QueryCommand({
+        TableName: store.tableName,
+        ConsistentRead: true,
+        Select: "COUNT",
+        ExclusiveStartKey: exclusiveStartKey,
+        KeyConditionExpression: keyRange.expression,
+        ...(filter.expression ? { FilterExpression: filter.expression } : {}),
+        ExpressionAttributeNames: {
+          "#pk": "pk",
+          ...keyRange.names,
+          ...filter.names,
+        },
+        ExpressionAttributeValues: {
+          ":pk": partition,
+          ...keyRange.values,
+          ...filter.values,
+        },
+      }),
+    );
+    count += page.Count ?? 0;
+    exclusiveStartKey = page.LastEvaluatedKey;
+  } while (exclusiveStartKey !== undefined);
+  return count;
+};
+
+const metadataPartition = async (
+  store: DynamoDBStore,
+  model: "bundles" | "bundle_patches" | "releases",
+  where: MetadataWhere,
+): Promise<string> => {
+  if (where?.some(({ connector }) => connector === "OR"))
+    throw new DynamoDBUnsupportedModelError();
+  const fields =
+    model === "bundles"
+      ? ["platform"]
+      : model === "bundle_patches"
+        ? ["base_bundle_id"]
+        : [
+            "bundle_id",
+            "channel_id",
+            "target_app_version",
+            "platform",
+            "enabled",
+          ];
+  const condition = fields.flatMap(
+    (field) =>
+      where?.filter(
+        (clause) =>
+          clause.field === field && (clause.operator ?? "eq") === "eq",
+      ) ?? [],
+  )[0];
+  if (condition !== undefined || model === "releases")
+    await ensureMetadataIndexes(store);
+  if (condition !== undefined) {
+    return metadataIndexPartition(model, condition.field, condition.value);
+  }
+  if (where?.some(({ field }) => field !== "id"))
+    throw new DynamoDBUnsupportedModelError();
+  return model === "releases" ? DYNAMODB_RELEASE_ID_PARTITION : model;
+};
+
+const queryMetadataItems = async (
+  store: DynamoDBStore,
+  partition: string,
+  input: FindManyDatabaseImplementationInput,
+): Promise<DynamoDBItem[]> => {
+  if (input.limit === 0) return [];
+  const keyField = input.model === "release_catalogs" ? "scope_key" : "id";
+  if (
+    input.distinctOn !== undefined ||
+    (input.orderBy !== undefined &&
+      (input.orderBy.length !== 1 || input.orderBy[0].field !== keyField))
+  )
+    throw new DynamoDBUnsupportedModelError();
+  const direction = input.orderBy?.[0].direction ?? "asc";
+  const keyRange = metadataKeyRange(input.where, keyField);
+  if (keyRange.empty) return [];
+  const filter = metadataFilter(input.where);
+  const rows: DynamoDBItem[] = [];
+  let skipped = 0;
+  let exclusiveStartKey: Record<string, unknown> | undefined;
+  do {
+    const page = await store.client.send(
+      new QueryCommand({
+        TableName: store.tableName,
+        ConsistentRead: true,
+        ExclusiveStartKey: exclusiveStartKey,
+        KeyConditionExpression: keyRange.expression,
+        ExpressionAttributeNames: {
+          "#pk": "pk",
+          ...keyRange.names,
+          ...filter.names,
+        },
+        ExpressionAttributeValues: {
+          ":pk": partition,
+          ...keyRange.values,
+          ...filter.values,
+        },
+        ...(filter.expression ? { FilterExpression: filter.expression } : {}),
+        Limit: Math.min(
+          100,
+          input.limit - rows.length + input.offset - skipped,
+        ),
+        ScanIndexForward: direction === "asc",
+      }),
+    );
+    const selected = (page.Items ?? []).slice(
+      Math.max(0, input.offset - skipped),
+    );
+    skipped += (page.Items ?? []).length - selected.length;
+    if (
+      partition.startsWith("_hot-updater#index#") ||
+      partition === DYNAMODB_RELEASE_ID_PARTITION
+    ) {
+      const keys = selected.map((item) => {
+        const pk =
+          item.target_pk ??
+          (typeof item.scope_key === "string"
+            ? releaseScopePartition(item.scope_key)
+            : undefined);
+        if (typeof pk !== "string" || typeof item.sk !== "string")
+          throw new DynamoDBStoredItemError();
+        return { pk, sk: item.sk };
+      });
+      const found =
+        keys.length === 0 ? [] : await batchGetDynamoDBItems(store, keys);
+      const byId = new Map(
+        found.map((item) => [item.sk, parseStoredItem(item)]),
+      );
+      for (const key of keys) {
+        const item = byId.get(key.sk);
+        if (item === undefined) throw new DynamoDBStoredItemError();
+        rows.push(item);
+      }
+    } else rows.push(...selected.map(parseStoredItem));
+    if (rows.length >= input.limit) return rows.slice(0, input.limit);
+    exclusiveStartKey = page.LastEvaluatedKey;
+  } while (exclusiveStartKey !== undefined);
+  return rows;
+};
+
+const queryMetadataPage = async (
+  store: DynamoDBStore,
+  partition: string,
+  input: FindManyDatabaseImplementationInput,
+): Promise<DatabaseImplementationResult[]> =>
+  (await queryMetadataItems(store, partition, input)).map(({ row }) => row);
+
+const queryReleasePage = async (
+  store: DynamoDBStore,
+  input: FindManyDatabaseImplementationInput,
+): Promise<DynamoDBReleaseItem[]> => {
+  const scopeKey = exactDynamoDBField(input.where, "scope_key");
+  const partition =
+    scopeKey === undefined
+      ? await metadataPartition(store, "releases", input.where)
+      : releaseScopePartition(scopeKey);
+  return (await queryMetadataItems(
+    store,
+    partition,
+    input,
+  )) as DynamoDBReleaseItem[];
+};
+
+const loadIndexedPatches = async (
+  store: DynamoDBStore,
+  field: "bundle_id" | "base_bundle_id",
+  id: string,
+): Promise<DynamoDBPatchItem[]> => {
+  if (field === "bundle_id")
+    return queryCompleteOwnerPatchItems(store, DYNAMODB_UPDATE_INDEX_NAME, id);
+  const where: DatabaseWhere<"bundle_patches">[] = [
+    { field: "base_bundle_id", value: id },
+  ];
+  const partition = await metadataPartition(store, "bundle_patches", where);
+  return (await queryMetadataItems(store, partition, {
+    model: "bundle_patches",
+    where,
+    limit: Number.MAX_SAFE_INTEGER,
+    offset: 0,
+    orderBy: [{ field: "id", direction: "asc" }],
+  })) as DynamoDBPatchItem[];
+};
+
 const createDynamoDBBundlePatchTable = (
   store: DynamoDBStore,
   indexName: string,
 ): import("@hot-updater/plugin-core").BundlePatchModel => ({
+  async findByBaseBundleIds(baseBundleIds) {
+    const rows: BundlePatchRow[] = [];
+    for (const id of new Set(baseBundleIds))
+      rows.push(
+        ...(await loadIndexedPatches(store, "base_bundle_id", id)).map(
+          ({ row }) => row,
+        ),
+      );
+    return rows;
+  },
   findByBundleIds: (bundleIds) =>
     bundleIds.length === 0
       ? Promise.resolve([])
@@ -1483,22 +1646,24 @@ export const replaceDynamoDBBundle = async (
   current: DynamoDBBundleItem,
   row: BundleRow,
 ): Promise<void> => {
-  await store.client.send(
-    new PutCommand({
-      TableName: store.tableName,
-      Item: boundedDynamoDBMetadataItem(
-        toDynamoDBBundleItem(
-          row,
-          current.version + 1,
-          current.relation_count,
-          current.owned_patch_count,
+  await commitDynamoDBTransaction(store, [
+    {
+      Put: {
+        TableName: store.tableName,
+        Item: boundedDynamoDBMetadataItem(
+          toDynamoDBBundleItem(
+            row,
+            current.version + 1,
+            current.relation_count,
+            current.owned_patch_count,
+          ),
         ),
-      ),
-      ConditionExpression: "#version = :currentVersion",
-      ExpressionAttributeNames: { "#version": "version" },
-      ExpressionAttributeValues: { ":currentVersion": current.version },
-    }),
-  );
+        ConditionExpression: "#version = :currentVersion",
+        ExpressionAttributeNames: { "#version": "version" },
+        ExpressionAttributeValues: { ":currentVersion": current.version },
+      },
+    },
+  ]);
 };
 
 const deleteAction = (
@@ -1605,10 +1770,6 @@ class DynamoDBUnsupportedModelError extends Error {
     super("DynamoDB received an unsupported database model");
   }
 }
-
-const distinctFields = (
-  fields: readonly string[] | undefined,
-): readonly string[] | undefined => fields;
 
 const exactDynamoDBField = (
   where: readonly object[] | undefined,
@@ -1775,12 +1936,8 @@ export const createDynamoDBCrud = (
       throw new DynamoDBUnsupportedModelError();
     }
     const id = exactDynamoDBId(input.where);
-    const current =
-      id === undefined
-        ? (await loadBundleItems(store)).find(({ row }) =>
-            matchesDynamoDBWhere(row, input.where),
-          )
-        : await loadBundleItem(store, id);
+    if (id === undefined) throw new DynamoDBUnsupportedModelError();
+    const current = await loadBundleItem(store, id);
     if (!current) return null;
     const updated = { ...current.row, ...input.update };
     await replaceDynamoDBBundle(store, current, updated);
@@ -1793,16 +1950,26 @@ export const createDynamoDBCrud = (
       return;
     }
     if (input.model === "bundle_patches") {
-      const items = (await loadPatchItems(store)).filter(({ row }) =>
-        matchesDynamoDBWhere(row, input.where),
-      );
+      const id = exactDynamoDBId(input.where);
+      const owner = exactDynamoDBPatchOwner(input.where);
+      if (id === undefined && owner === undefined)
+        throw new DynamoDBUnsupportedModelError();
+      const item =
+        id === undefined ? undefined : await loadPatchItem(store, id);
+      const items =
+        id === undefined
+          ? await loadIndexedPatches(store, "bundle_id", owner!)
+          : item === undefined
+            ? []
+            : [item];
       for (const item of items) await deleteDynamoDBPatch(store, item);
       return;
     }
     if (input.model === "releases") {
-      const items = (await loadReleaseItems(store)).filter(({ row }) =>
-        matchesDynamoDBWhere(row, input.where),
-      );
+      const id = exactDynamoDBId(input.where);
+      if (id === undefined) throw new DynamoDBUnsupportedModelError();
+      const current = await loadReleaseItem(store, id);
+      const items = current === undefined ? [] : [current];
       for (const item of items) {
         const channel = await loadChannelItem(store, item.row.channel_id);
         if (channel === undefined) throw new DynamoDBStoredItemError();
@@ -1825,15 +1992,24 @@ export const createDynamoDBCrud = (
     if (input.model !== "bundles") {
       throw new DynamoDBUnsupportedModelError();
     }
-    const bundleItems = (await loadBundleItems(store)).filter(({ row }) =>
-      matchesDynamoDBWhere(row, input.where),
-    );
-    if (bundleItems.length === 0) return;
-    await deleteDynamoDBBundles(
-      store,
-      bundleItems,
-      await loadPatchItems(store),
-    );
+    const ids = exactDynamoDBBundleIds(input.where);
+    const bundleItems =
+      ids === undefined
+        ? ((await queryMetadataItems(
+            store,
+            await metadataPartition(store, "bundles", input.where),
+            { ...input, limit: Number.MAX_SAFE_INTEGER, offset: 0 },
+          )) as DynamoDBBundleItem[])
+        : (await loadBundleItemsById(store, ids)).filter(({ row }) =>
+            matchesDynamoDBWhere(row, input.where),
+          );
+    const related = new Map<string, DynamoDBPatchItem>();
+    for (const bundle of bundleItems) {
+      for (const field of ["bundle_id", "base_bundle_id"] as const)
+        for (const item of await loadIndexedPatches(store, field, bundle.sk))
+          related.set(item.sk, item);
+    }
+    await deleteDynamoDBBundles(store, bundleItems, [...related.values()]);
   },
   async count(input): Promise<number> {
     if (
@@ -1842,34 +2018,60 @@ export const createDynamoDBCrud = (
     ) {
       const count = await loadMetadataCount(store, input.model);
       if (count !== undefined) return count;
+      if (input.model === "bundles" || input.model === "bundle_patches") {
+        const page = await store.client.send(
+          new QueryCommand({
+            TableName: store.tableName,
+            ConsistentRead: true,
+            KeyConditionExpression: "#pk = :pk",
+            ExpressionAttributeNames: { "#pk": "pk" },
+            ExpressionAttributeValues: { ":pk": input.model },
+            Select: "COUNT",
+            Limit: 1,
+          }),
+        );
+        if ((page.Count ?? 0) === 0 && page.LastEvaluatedKey === undefined)
+          return 0;
+        throw new Error(
+          "DynamoDB metadata count is missing or invalid; repair the count projection before querying totals",
+        );
+      }
     }
-    switch (input.model) {
-      case "bundles": {
-        const rows = (await loadBundleItems(store))
-          .map(({ row }) => row)
-          .filter((row) => matchesDynamoDBWhere(row, input.where));
-        return countDistinctDynamoDBRows(rows, distinctFields(input.distinct));
+    if (input.distinct !== undefined) throw new DynamoDBUnsupportedModelError();
+    if (input.model === "bundles" || input.model === "bundle_patches") {
+      if (input.model === "bundle_patches") {
+        const owner = exactDynamoDBPatchOwner(input.where);
+        if (owner !== undefined)
+          return (
+            await queryCompleteOwnerPatches(store, updateIndexName, owner)
+          ).filter((row) => matchesDynamoDBWhere(row, input.where)).length;
       }
-      case "bundle_patches": {
-        const ownerId = exactDynamoDBPatchOwner(input.where);
-        const rows = (
-          ownerId
-            ? await queryCompleteOwnerPatches(store, updateIndexName, ownerId)
-            : (await loadPatchItems(store)).map(({ row }) => row)
-        ).filter((row) => matchesDynamoDBWhere(row, input.where));
-        return countDistinctDynamoDBRows(rows, distinctFields(input.distinct));
-      }
-      case "releases": {
-        const scopeKey = exactDynamoDBField(input.where, "scope_key");
-        const rows = (
-          scopeKey === undefined
-            ? await loadReleaseItems(store)
-            : await loadReleaseItemsByScope(store, scopeKey)
-        )
-          .map(({ row }) => row)
-          .filter((row) => matchesDynamoDBWhere(row, input.where));
-        return countDistinctDynamoDBRows(rows, distinctFields(input.distinct));
-      }
+      const ids =
+        input.model === "bundles"
+          ? exactDynamoDBBundleIds(input.where)
+          : undefined;
+      if (ids !== undefined)
+        return (await loadBundleItemsById(store, ids)).filter(({ row }) =>
+          matchesDynamoDBWhere(
+            row,
+            input.where as readonly DatabaseWhere<"bundles">[],
+          ),
+        ).length;
+      return countMetadataRows(
+        store,
+        await metadataPartition(store, input.model, input.where),
+        input.where,
+      );
+    }
+    if (input.model === "releases") {
+      const scopeKey = exactDynamoDBField(input.where, "scope_key");
+      return countMetadataRows(
+        store,
+        scopeKey === undefined
+          ? await metadataPartition(store, "releases", input.where)
+          : releaseScopePartition(scopeKey),
+        input.where,
+      );
     }
     throw new DynamoDBUnsupportedModelError();
   },
@@ -1880,9 +2082,13 @@ export const createDynamoDBCrud = (
         if (id !== undefined)
           return (await loadBundleItem(store, id))?.row ?? null;
         return (
-          (await loadBundleItems(store))
-            .map(({ row }) => row)
-            .find((row) => matchesDynamoDBWhere(row, input.where)) ?? null
+          (
+            await queryMetadataPage(
+              store,
+              await metadataPartition(store, "bundles", input.where),
+              { ...input, limit: 1, offset: 0 },
+            )
+          )[0] ?? null
         );
       case "bundle_patches":
         if (id !== undefined)
@@ -1900,23 +2106,19 @@ export const createDynamoDBCrud = (
       case "channels":
         if (id !== undefined)
           return (await loadChannelItem(store, id))?.row ?? null;
-        return (
-          (await loadChannelItems(store))
-            .map(({ row }) => row)
-            .find((row) => matchesDynamoDBWhere(row, input.where)) ?? null
-        );
+        {
+          const name = exactDynamoDBField(input.where, "name");
+          if (name === undefined) throw new DynamoDBUnsupportedModelError();
+          return (await loadChannelByName(store, name))?.row ?? null;
+        }
       case "releases":
         if (id !== undefined)
           return (await loadReleaseItem(store, id))?.row ?? null;
         {
-          const scopeKey = exactDynamoDBField(input.where, "scope_key");
           return (
-            (scopeKey === undefined
-              ? await loadReleaseItems(store)
-              : await loadReleaseItemsByScope(store, scopeKey)
-            )
-              .map(({ row }) => row)
-              .find((row) => matchesDynamoDBWhere(row, input.where)) ?? null
+            (
+              await queryReleasePage(store, { ...input, limit: 1, offset: 0 })
+            )[0]?.row ?? null
           );
         }
       case "release_catalogs": {
@@ -1925,17 +2127,25 @@ export const createDynamoDBCrud = (
           return (await loadReleaseCatalogItem(store, scopeKey))?.row ?? null;
         }
         return (
-          (await loadReleaseCatalogItems(store))
-            .map(({ row }) => row)
-            .find((row) => matchesDynamoDBWhere(row, input.where)) ?? null
+          (
+            await queryMetadataPage(store, "release_catalogs", {
+              ...input,
+              limit: 1,
+              offset: 0,
+            })
+          )[0] ?? null
         );
       }
     }
     if (input.model === "bundle_patches") {
       return (
-        (await loadPatchItems(store))
-          .map(({ row }) => row)
-          .find((row) => matchesDynamoDBWhere(row, input.where)) ?? null
+        (
+          await queryMetadataPage(
+            store,
+            await metadataPartition(store, "bundle_patches", input.where),
+            { ...input, limit: 1, offset: 0 },
+          )
+        )[0] ?? null
       );
     }
     throw new DynamoDBUnsupportedModelError();
@@ -1951,26 +2161,9 @@ export const createDynamoDBCrud = (
             input,
           );
         }
-        const orderBy = input.orderBy;
-        const direction = orderBy?.[0]?.direction;
-        if (
-          (input.offset ?? 0) === 0 &&
-          input.distinctOn === undefined &&
-          orderBy?.length === 1 &&
-          orderBy[0]?.field === "id" &&
-          (direction === "asc" || direction === "desc")
-        ) {
-          return (
-            await queryBundleItemsPage(store, {
-              direction,
-              limit: input.limit ?? 100,
-              matches: (row) => matchesDynamoDBWhere(row, input.where),
-              start: dynamoDBBundlePageStart(input.where, direction),
-            })
-          ).map(({ row }) => row);
-        }
-        return queryDynamoDBRows(
-          (await loadBundleItems(store)).map(({ row }) => row),
+        return queryMetadataPage(
+          store,
+          await metadataPartition(store, "bundles", input.where),
           input,
         );
       }
@@ -1989,8 +2182,9 @@ export const createDynamoDBCrud = (
             input,
           );
         }
-        return queryDynamoDBRows(
-          (await loadPatchItems(store)).map(({ row }) => row),
+        return queryMetadataPage(
+          store,
+          await metadataPartition(store, "bundle_patches", input.where),
           input,
         );
       }
@@ -1999,21 +2193,10 @@ export const createDynamoDBCrud = (
           (await loadChannelItems(store)).map(({ row }) => row),
           input,
         );
-      case "releases": {
-        const scopeKey = exactDynamoDBField(input.where, "scope_key");
-        return queryDynamoDBRows(
-          (scopeKey === undefined
-            ? await loadReleaseItems(store)
-            : await loadReleaseItemsByScope(store, scopeKey)
-          ).map(({ row }) => row),
-          input,
-        );
-      }
+      case "releases":
+        return (await queryReleasePage(store, input)).map(({ row }) => row);
       case "release_catalogs":
-        return queryDynamoDBRows(
-          (await loadReleaseCatalogItems(store)).map(({ row }) => row),
-          input,
-        );
+        return queryMetadataPage(store, "release_catalogs", input);
     }
     throw new DynamoDBUnsupportedModelError();
   },
@@ -2178,8 +2361,10 @@ export const createDynamoDBAggregateMutations = (
     assertUniquePatches(patches);
     const bundle = await loadBundleItem(store, bundleId);
     if (!bundle) return false;
-    const currentPatches = (await loadPatchItems(store)).filter(
-      ({ row }) => row.bundle_id === bundleId,
+    const currentPatches = await loadIndexedPatches(
+      store,
+      "bundle_id",
+      bundleId,
     );
     const currentById = new Map(
       currentPatches.map((patch) => [patch.sk, patch]),
@@ -2335,19 +2520,126 @@ const compileAndCommitDynamoDBChanges = async (
   store: DynamoDBStore,
   input: DatabaseCommit,
 ): Promise<DatabaseCommitResult> => {
-  const [
-    originalBundleItems,
-    originalPatchItems,
-    originalChannelItems,
-    originalReleaseItems,
-    originalReleaseCatalogItems,
-  ] = await Promise.all([
-    loadBundleItems(store),
-    loadPatchItems(store),
-    loadChannelItems(store),
-    loadReleaseItems(store),
-    loadReleaseCatalogItems(store),
+  const bundleIds = new Set<string>();
+  const patchIds = new Set<string>();
+  const channelIds = new Set<string>();
+  const releaseIds = new Set<string>();
+  const scopes = new Set<string>();
+  const affectedPatches = new Map<string, DynamoDBPatchItem>();
+  const originalReleaseRows = new Map<string, DynamoDBReleaseItem>();
+  const rememberPatches = (items: readonly DynamoDBPatchItem[]) => {
+    for (const item of items) {
+      affectedPatches.set(item.sk, item);
+      bundleIds.add(item.row.bundle_id);
+      bundleIds.add(item.row.base_bundle_id);
+    }
+  };
+  const rememberReleases = (items: readonly DynamoDBReleaseItem[]) => {
+    for (const item of items) {
+      originalReleaseRows.set(item.sk, item);
+      channelIds.add(item.row.channel_id);
+      if (item.row.bundle_id !== null) bundleIds.add(item.row.bundle_id);
+    }
+  };
+  for (const expectation of input.expectations ?? []) {
+    if (expectation.model === "releases") releaseIds.add(expectation.id);
+    else scopes.add(expectation.scopeKey);
+  }
+  const namedChannels: DynamoDBChannelItem[] = [];
+  for (const change of input.changes) {
+    switch (change.model) {
+      case "bundles": {
+        const id =
+          change.operation === "insert" ? change.row.id : change.where.id;
+        bundleIds.add(id);
+        if (change.operation === "delete") {
+          rememberPatches(await loadIndexedPatches(store, "bundle_id", id));
+          rememberPatches(
+            await loadIndexedPatches(store, "base_bundle_id", id),
+          );
+          rememberReleases(
+            await queryReleasePage(store, {
+              model: "releases",
+              where: [{ field: "bundle_id", value: id }],
+              limit: input.changes.length + 1,
+              offset: 0,
+              orderBy: [{ field: "id", direction: "asc" }],
+            }),
+          );
+        }
+        break;
+      }
+      case "bundlePatches":
+        if (change.operation === "insert") {
+          patchIds.add(change.row.id);
+          bundleIds.add(change.row.bundle_id);
+          bundleIds.add(change.row.base_bundle_id);
+        } else
+          rememberPatches(
+            await loadIndexedPatches(store, "bundle_id", change.where.bundleId),
+          );
+        break;
+      case "channels":
+        if (change.operation === "insert") {
+          channelIds.add(change.row.id);
+          const existing = await loadChannelByName(store, change.row.name);
+          if (existing !== undefined) namedChannels.push(existing);
+        } else {
+          channelIds.add(change.where.id);
+          rememberReleases(
+            await queryReleasePage(store, {
+              model: "releases",
+              where: [{ field: "channel_id", value: change.where.id }],
+              limit: input.changes.length + 1,
+              offset: 0,
+              orderBy: [{ field: "id", direction: "asc" }],
+            }),
+          );
+        }
+        break;
+      case "releases":
+        releaseIds.add(
+          change.operation === "insert" ? change.row.id : change.where.id,
+        );
+        if (change.operation === "insert") {
+          const row = change.row;
+          if (row.channel_id !== undefined) channelIds.add(row.channel_id);
+          if (row.bundle_id != null) bundleIds.add(row.bundle_id);
+        }
+        break;
+      case "releaseCatalogs":
+        scopes.add(change.row.scope_key);
+        channelIds.add(change.row.channel_id);
+        break;
+      case "apiKeys":
+        break;
+    }
+  }
+  rememberPatches(await loadPatchItemsById(store, [...patchIds]));
+  for (const id of releaseIds) {
+    const row = await loadReleaseItem(store, id);
+    if (row !== undefined) rememberReleases([row]);
+  }
+  const [originalBundleItems, channelItems, catalogItems] = await Promise.all([
+    loadBundleItemsById(store, [...bundleIds]),
+    Promise.all([...channelIds].map((id) => loadChannelItem(store, id))),
+    Promise.all(
+      [...scopes].map((scope) => loadReleaseCatalogItem(store, scope)),
+    ),
   ]);
+  const originalPatchItems = [...affectedPatches.values()];
+  const originalReleaseItems = [...originalReleaseRows.values()];
+  const originalChannelItems = [
+    ...new Map(
+      [
+        ...namedChannels,
+        ...channelItems.filter((item) => item !== undefined),
+      ].map((item) => [item.sk, item]),
+    ).values(),
+  ];
+  const originalReleaseCatalogItems = catalogItems.filter(
+    (item) => item !== undefined,
+  );
   const bundles = new Map(
     originalBundleItems.map(({ sk, row }) => [sk, row] as const),
   );
@@ -2589,24 +2881,35 @@ const compileAndCommitDynamoDBChanges = async (
     }
   }
 
-  const relationCounts = new Map<string, number>();
-  const ownedPatchCounts = new Map<string, number>();
-  for (const patch of patches.values()) {
-    for (const id of new Set([patch.bundle_id, patch.base_bundle_id])) {
-      relationCounts.set(id, (relationCounts.get(id) ?? 0) + 1);
-    }
+  const relationCounts = new Map(
+    originalBundleItems.map((item) => [item.sk, item.relation_count]),
+  );
+  const ownedPatchCounts = new Map(
+    originalBundleItems.map((item) => [item.sk, item.owned_patch_count]),
+  );
+  const applyPatchCount = (patch: BundlePatchRow, delta: number) => {
+    for (const id of new Set([patch.bundle_id, patch.base_bundle_id]))
+      relationCounts.set(id, (relationCounts.get(id) ?? 0) + delta);
     ownedPatchCounts.set(
       patch.bundle_id,
-      (ownedPatchCounts.get(patch.bundle_id) ?? 0) + 1,
+      (ownedPatchCounts.get(patch.bundle_id) ?? 0) + delta,
     );
-  }
-  const channelReferenceCounts = new Map<string, number>();
-  for (const release of releases.values()) {
+  };
+  for (const { row } of originalPatchItems) applyPatchCount(row, -1);
+  for (const row of patches.values()) applyPatchCount(row, 1);
+  const channelReferenceCounts = new Map(
+    originalChannelItems.map((item) => [item.sk, item.reference_count]),
+  );
+  for (const { row } of originalReleaseItems)
     channelReferenceCounts.set(
-      release.channel_id,
-      (channelReferenceCounts.get(release.channel_id) ?? 0) + 1,
+      row.channel_id,
+      (channelReferenceCounts.get(row.channel_id) ?? 0) - 1,
     );
-  }
+  for (const row of releases.values())
+    channelReferenceCounts.set(
+      row.channel_id,
+      (channelReferenceCounts.get(row.channel_id) ?? 0) + 1,
+    );
 
   const actions: DynamoDBTransactItem[] = [];
   const originalChannels = new Map(

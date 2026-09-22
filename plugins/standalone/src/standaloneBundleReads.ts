@@ -1,3 +1,7 @@
+import {
+  bundleToPatchRows,
+  DatabasePluginInputError,
+} from "@hot-updater/plugin-core";
 import type {
   DatabaseDistinctFields,
   DatabaseDistinctOn,
@@ -9,7 +13,6 @@ import type {
 
 import type { StandaloneBundleReader } from "./standaloneBundleReader";
 import type { StandaloneBundleRemote } from "./standaloneBundleRemote";
-import { loadRows } from "./standaloneBundleRows";
 import {
   matchesStandaloneWhere,
   queryStandaloneRows,
@@ -102,103 +105,94 @@ const countDistinctRows = <TModel extends DatabaseModel>(
 
 export const createBundleReads = (
   remote: StandaloneBundleRemote,
-): BundleReads => ({
-  async count(input) {
-    switch (input.model) {
-      case "bundles": {
-        const where = input.where as
-          | readonly DatabaseWhere<"bundles">[]
-          | undefined;
-        if (input.distinct === undefined) {
-          const remoteWindow = await remote.loadBundleWindow({
-            where,
-            limit: 1,
-            offset: 0,
-          });
-          if (remoteWindow) return remoteWindow.total;
-        }
-        const rows = queryStandaloneRows(await loadRows(remote, "bundles"), {
-          where,
-        });
-        return countDistinctRows(rows, input.distinct);
-      }
-      case "bundle_patches": {
-        const rows = queryStandaloneRows(
-          await loadRows(remote, "bundle_patches"),
-          { where: input.where },
-        );
-        return countDistinctRows(rows, input.distinct);
-      }
+): BundleReads => {
+  const loadPatches = async (
+    where: readonly DatabaseWhere<"bundle_patches">[] | undefined,
+  ) => {
+    if (where?.some(({ connector }) => connector === "OR"))
+      throw new DatabasePluginInputError("invalid-operation");
+    const owner = where?.find(({ field }) => field === "bundle_id");
+    const ids =
+      owner?.operator === "in" && Array.isArray(owner.value)
+        ? owner.value
+        : owner &&
+            (owner.operator === undefined || owner.operator === "eq") &&
+            typeof owner.value === "string"
+          ? [owner.value]
+          : undefined;
+    if (ids === undefined)
+      throw new DatabasePluginInputError("invalid-operation");
+    const rows = [];
+    for (const id of new Set(ids)) {
+      const bundle = await remote.loadBundle(id);
+      if (bundle !== null) rows.push(...bundleToPatchRows(bundle));
     }
-  },
-  async findOne(input) {
-    if (input.model === "bundles") {
-      const idSelector = input.where?.length === 1 ? input.where[0] : undefined;
+    return rows;
+  };
+  return {
+    async count(input) {
+      if (input.model === "bundle_patches")
+        return countDistinctRows(
+          queryStandaloneRows(await loadPatches(input.where), {
+            where: input.where,
+          }),
+          input.distinct,
+        );
+      if (input.distinct !== undefined)
+        throw new DatabasePluginInputError("invalid-operation");
+      const window = await remote.loadBundleWindow({
+        where: input.where,
+        limit: 1,
+        offset: 0,
+      });
+      if (window === null)
+        throw new DatabasePluginInputError("invalid-operation");
+      return window.total;
+    },
+    async findOne(input) {
+      if (input.model === "bundle_patches")
+        return (
+          queryStandaloneRows(await loadPatches(input.where), {
+            where: input.where,
+            limit: 1,
+          })[0] ?? null
+        );
+      const id = input.where?.length === 1 ? input.where[0] : undefined;
       if (
-        idSelector?.field === "id" &&
-        (idSelector.operator === undefined || idSelector.operator === "eq") &&
-        typeof idSelector.value === "string"
+        id?.field === "id" &&
+        (id.operator === undefined || id.operator === "eq") &&
+        typeof id.value === "string"
       ) {
-        const row = await remote.loadBundleRow(idSelector.value);
+        const row = await remote.loadBundleRow(id.value);
         return row && matchesStandaloneWhere(row, input.where) ? row : null;
       }
-      return (
-        queryStandaloneRows(await loadRows(remote, "bundles"), {
-          where: input.where,
-          limit: 1,
-        })[0] ?? null
-      );
-    }
-    return (
-      queryStandaloneRows(await loadRows(remote, "bundle_patches"), {
-        where: input.where as
-          | readonly DatabaseWhere<"bundle_patches">[]
-          | undefined,
+      const window = await remote.loadBundleWindow({
+        where: input.where,
         limit: 1,
-      })[0] ?? null
-    );
-  },
-  async findMany(input) {
-    switch (input.model) {
-      case "bundles": {
-        const where = input.where as
-          | readonly DatabaseWhere<"bundles">[]
-          | undefined;
-        const orderBy = input.orderBy;
-        const remoteSort =
-          orderBy?.length === 1 && orderBy[0]?.field === "id"
-            ? orderBy[0]
-            : undefined;
-        if (
-          input.distinctOn === undefined &&
-          (orderBy === undefined || remoteSort)
-        ) {
-          const remoteWindow = await remote.loadBundleWindow({
-            where,
-            limit: input.limit,
-            offset: input.offset,
-            orderBy: remoteSort,
-          });
-          if (remoteWindow) return remoteWindow.rows;
-        }
-        return queryBundleRows(await loadRows(remote, "bundles"), {
-          distinctOn: input.distinctOn,
-          where,
-          limit: input.limit,
-          offset: input.offset,
-          orderBy: input.orderBy,
-        });
-      }
-      case "bundle_patches":
-        return queryBundleRows(await loadRows(remote, "bundle_patches"), {
-          distinctOn: input.distinctOn,
-          where: input.where as
-            | readonly DatabaseWhere<"bundle_patches">[]
-            | undefined,
-          limit: input.limit,
-          offset: input.offset,
-          orderBy: input.orderBy,
-        });
-    }
-  },
-});
+        offset: 0,
+      });
+      if (window === null)
+        throw new DatabasePluginInputError("invalid-operation");
+      return window.rows[0] ?? null;
+    },
+    async findMany(input) {
+      if (input.model === "bundle_patches")
+        return queryBundleRows(await loadPatches(input.where), input);
+      if (
+        input.distinctOn !== undefined ||
+        (input.orderBy !== undefined &&
+          (input.orderBy.length !== 1 || input.orderBy[0].field !== "id"))
+      )
+        throw new DatabasePluginInputError("invalid-operation");
+      const window = await remote.loadBundleWindow({
+        where: input.where,
+        limit: input.limit,
+        offset: input.offset,
+        orderBy: input.orderBy?.[0],
+      });
+      if (window === null)
+        throw new DatabasePluginInputError("invalid-operation");
+      return window.rows;
+    },
+  };
+};

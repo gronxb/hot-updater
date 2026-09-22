@@ -215,11 +215,35 @@ describe("Supabase v1 schema", () => {
     }
   });
 
-  it("ships a single 1.0.0 initialization migration", async () => {
+  it("preserves initialization history and appends index cleanup", async () => {
     const migrations = await readMigrations();
     expect(migrations.map(({ file }) => file)).toEqual([
       "20260818000000_hot-updater_1.0.0.sql",
+      "20260922000000_remove_unused_fingerprint_index.sql",
     ]);
+  });
+
+  it("removes the obsolete index from existing installations and preserves scope lookup", async () => {
+    const database = new PGlite();
+    try {
+      await database.exec(
+        "CREATE ROLE anon; CREATE ROLE authenticated; CREATE ROLE service_role;",
+      );
+      const migrations = await readMigrations();
+      for (const migration of migrations) await database.exec(migration.sql);
+      const indexes = await database.query<{ indexname: string }>(
+        "SELECT indexname FROM pg_indexes WHERE tablename = 'hot_updater_v1_releases'",
+      );
+      expect(indexes.rows.map(({ indexname }) => indexname)).not.toContain(
+        "hot_updater_v1_releases_fingerprint_hash_idx",
+      );
+      expect(indexes.rows.map(({ indexname }) => indexname)).toContain(
+        "hot_updater_v1_releases_scope_order_idx",
+      );
+      await database.exec(migrations.at(-1)!.sql);
+    } finally {
+      await database.close();
+    }
   });
 
   it("creates namespaced tables, RLS, and functions", async () => {

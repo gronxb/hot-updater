@@ -29,6 +29,60 @@ describe("firebase firestore index template", () => {
     const asc = "ASCENDING" as const;
     const desc = "DESCENDING" as const;
 
+    const metadataIndexes = [
+      ...[asc, desc].map((order) =>
+        index(FIREBASE_V1_COLLECTION_NAMES.bundles, [
+          ["platform", asc],
+          ["id", order],
+        ]),
+      ),
+      ...["bundle_id", "base_bundle_id"].map((field) =>
+        index(FIREBASE_V1_COLLECTION_NAMES.bundlePatches, [
+          [field, asc],
+          ["id", asc],
+        ]),
+      ),
+    ];
+    const filters = [
+      "bundle_id",
+      "channel_id",
+      "enabled",
+      "platform",
+      "target_app_version",
+    ];
+    const subsets = (
+      size: number,
+      start = 0,
+      prefix: string[] = [],
+    ): string[][] =>
+      size === 0
+        ? [prefix]
+        : filters
+            .slice(start)
+            .flatMap((field, i) =>
+              subsets(size - 1, start + i + 1, [...prefix, field]),
+            );
+    for (let size = 1; size <= filters.length; size++)
+      for (const subset of subsets(size))
+        for (const order of [asc, desc])
+          metadataIndexes.push(
+            index(FIREBASE_V1_COLLECTION_NAMES.releases, [
+              ...subset.map((field) => [field, asc] as const),
+              ["id", order],
+            ]),
+          );
+    metadataIndexes.push(
+      index(FIREBASE_V1_COLLECTION_NAMES.releases, [
+        ["scope_key", asc],
+        ["id", asc],
+      ]),
+    );
+    metadataIndexes.push(
+      index(FIREBASE_V1_COLLECTION_NAMES.apiKeys, [
+        ["created_at_ms", desc],
+        ["id", asc],
+      ]),
+    );
     expect(indexFile).toEqual({
       indexes: [
         index(events, [
@@ -103,6 +157,7 @@ describe("firebase firestore index template", () => {
           ["app_version", asc],
           ["bucket_start_ms", asc],
         ]),
+        ...metadataIndexes,
       ],
       fieldOverrides: [
         ...[events, installations].map((collectionGroup) => ({

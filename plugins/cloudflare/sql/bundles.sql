@@ -216,7 +216,6 @@ CREATE INDEX bundle_patches_base_bundle_id_idx ON bundle_patches(base_bundle_id)
 CREATE INDEX releases_scope_order_idx ON releases(scope_key, id);
 CREATE INDEX releases_channel_platform_order_idx ON releases(channel_id, platform, id);
 CREATE INDEX releases_bundle_id_idx ON releases(bundle_id);
-CREATE INDEX releases_fingerprint_hash_idx ON releases(fingerprint_hash);
 CREATE INDEX releases_enabled_idx ON releases(enabled);
 CREATE INDEX release_catalogs_channel_idx ON release_catalogs(channel_id);
 CREATE INDEX bundle_events_received_at_idx ON bundle_events(received_at_ms, id);

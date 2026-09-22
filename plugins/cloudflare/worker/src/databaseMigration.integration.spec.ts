@@ -13,15 +13,35 @@ declare module "vitest" {
   }
 }
 
-it("ships a single 1.0.0 initialization migration", () => {
+it("preserves initialization history and appends index cleanup", () => {
   expect(inject("d1Migrations").map(({ name }) => name)).toEqual([
     "0001_hot-updater_1.0.0.sql",
+    "0002_remove_unused_fingerprint_index.sql",
   ]);
 });
 
 it("creates the current schema with required artifact sizes", async () => {
   const [createMigration] = inject("d1Migrations");
   await env.DB.prepare(createMigration!.sql).run();
+  const cleanupMigrations = inject("d1Migrations").slice(1);
+  for (const migration of cleanupMigrations)
+    await env.DB.prepare(migration.sql).run();
+  const indexes = await env.DB.prepare("PRAGMA index_list(releases)").all<{
+    name: string;
+  }>();
+  expect(indexes.results.map(({ name }) => name)).not.toContain(
+    "releases_fingerprint_hash_idx",
+  );
+  const plan = await env.DB.prepare(
+    "EXPLAIN QUERY PLAN SELECT * FROM releases WHERE scope_key = ? AND id > ? ORDER BY id ASC LIMIT 2",
+  )
+    .bind("fingerprint-scope", "cursor")
+    .all<{ detail: string }>();
+  expect(plan.results.map(({ detail }) => detail).join("\n")).toContain(
+    "releases_scope_order_idx",
+  );
+  await env.DB.prepare(cleanupMigrations.at(-1)!.sql).run();
+
   await env.DB.prepare(`
     INSERT INTO bundles (
       id, platform, file_hash, storage_uri, archive_byte_size, metadata

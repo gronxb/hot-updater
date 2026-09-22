@@ -138,7 +138,6 @@ create index bundle_patches_base_bundle_id_idx on bundle_patches(base_bundle_id)
 create index releases_scope_order_idx on releases(scope_key, id);
 create index releases_channel_platform_order_idx on releases(channel_id, platform, id);
 create index releases_bundle_id_idx on releases(bundle_id);
-create index releases_fingerprint_hash_idx on releases(fingerprint_hash);
 create index releases_enabled_idx on releases(enabled);
 create index release_catalogs_channel_idx on release_catalogs(channel_id);
 create index bundle_events_received_at_idx on bundle_events(received_at_ms, id);

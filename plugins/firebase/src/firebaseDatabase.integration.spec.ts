@@ -165,6 +165,46 @@ describe("firebase infrastructure generation", () => {
 describe("firebase bounded reads", () => {
   beforeEach(clearCollections);
 
+  it("updates and hydrates one bundle without parsing unrelated corrupt metadata", async () => {
+    const client = createDatabaseClient(createPlugin());
+    const bundle = bundleFixture("993");
+    await client.insertBundle(bundle);
+    await bundlesCollection.doc("unrelated-malformed").set({ broken: true });
+    await bundlePatchesCollection
+      .doc("unrelated-malformed")
+      .set({ broken: true });
+    await client.updateBundleById(bundle.id, { fileHash: "updated" });
+    await expect(client.getBundleById(bundle.id)).resolves.toMatchObject({
+      id: bundle.id,
+      fileHash: "updated",
+    });
+  });
+
+  it("shards a 100-owner patch query and preserves finite-id pagination", async () => {
+    const rows = Array.from({ length: 100 }, (_, i) =>
+      storedBundleRow(String(i).padStart(3, "0")),
+    );
+    const plugin = createPlugin();
+    await plugin.models.bundles.count();
+    const batch = firestore.batch();
+    for (const row of rows) batch.set(bundlesCollection.doc(row.id), row);
+    await batch.commit();
+    await expect(
+      plugin.models.bundles.findMany({
+        where: { id: { in: rows.map(({ id }) => id).reverse() } },
+        limit: 3,
+        offset: 31,
+        orderBy: { field: "id", direction: "asc" },
+      }),
+    ).resolves.toMatchObject(rows.slice(31, 34));
+    await expect(
+      plugin.models.bundlePatches.findByBundleIds(rows.map(({ id }) => id)),
+    ).resolves.toEqual([]);
+    await expect(
+      plugin.models.bundles.count({ id: { in: rows.map(({ id }) => id) } }),
+    ).resolves.toBe(100);
+  });
+
   it("uses an exact document read without parsing unrelated bundles", async () => {
     const plugin = createPlugin();
     const client = createDatabaseClient(plugin);

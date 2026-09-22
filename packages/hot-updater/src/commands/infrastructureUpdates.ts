@@ -10,4 +10,8 @@ export const INFRASTRUCTURE_UPDATES = [
     version: "1.0.0",
     note: "Release Catalog and Release Insights infrastructure generation",
   },
+  {
+    version: "1.0.1",
+    note: "Indexed metadata queries and reverse patch lookup; AWS projection backfill and Firebase composite indexes",
+  },
 ] as const satisfies readonly [InfrastructureUpdate, ...InfrastructureUpdate[]];

@@ -206,7 +206,17 @@ export function createHotUpdaterCore(
   });
 
   const handlers = createHotUpdaterHandlers(
-    core.api,
+    {
+      ...core.api,
+      ...(plugin.models.bundlePatches.findByBaseBundleIds === undefined
+        ? {}
+        : {
+            getBundlePatchChildren: async (id: string) => {
+              await assertSchemaReady();
+              return plugin.models.bundlePatches.findByBaseBundleIds!([id]);
+            },
+          }),
+    },
     insights,
     clientAccess.type === "api-key"
       ? {

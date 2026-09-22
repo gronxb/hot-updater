@@ -1,6 +1,10 @@
 // @vitest-environment node
 
-import type { Bundle, DatabaseClient } from "@hot-updater/plugin-core";
+import {
+  bundleToPatchRows,
+  type Bundle,
+  type DatabaseClient,
+} from "@hot-updater/plugin-core";
 import { describe, expect, it, vi } from "vitest";
 
 import { getBundleChildCounts, getBundleChildren } from "./getBundleChildren";
@@ -88,8 +92,22 @@ describe("getBundleChildren", () => {
       olderBaseBundle,
     ]);
 
+    const bundlePatches = {
+      findByBundleIds: vi.fn(),
+      findByBaseBundleIds: vi.fn(async () =>
+        bundleToPatchRows(patchedBundle).filter(
+          (row) => row.base_bundle_id === baseBundle.id,
+        ),
+      ),
+    };
+    databaseClient.getBundles.mockRejectedValue(
+      new Error("full platform scan"),
+    );
     await expect(
-      getBundleChildren({ baseBundleId: baseBundle.id }, { databaseClient }),
+      getBundleChildren(
+        { baseBundleId: baseBundle.id },
+        { databaseClient, bundlePatches },
+      ),
     ).resolves.toEqual([patchedBundle]);
   });
 
@@ -125,9 +143,17 @@ describe("getBundleChildren", () => {
       olderBaseBundle,
     ]);
 
+    const bundlePatches = {
+      findByBundleIds: vi.fn(),
+      findByBaseBundleIds: vi.fn(async () => bundleToPatchRows(patchedBundle)),
+    };
+    databaseClient.getBundles.mockRejectedValue(
+      new Error("full platform scan"),
+    );
     await expect(
       getBundleChildCounts([baseBundle.id, olderBaseBundle.id], {
         databaseClient,
+        bundlePatches,
       }),
     ).resolves.toEqual({
       [baseBundle.id]: 1,

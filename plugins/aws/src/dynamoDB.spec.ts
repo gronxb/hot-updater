@@ -7,6 +7,7 @@ import {
 } from "@aws-sdk/client-cloudfront";
 import {
   DynamoDBDocumentClient,
+  BatchGetCommand,
   GetCommand,
   PutCommand,
   QueryCommand,
@@ -96,6 +97,9 @@ describe("dynamoDB CloudFront lifecycle", () => {
     documentClient.reset();
     cloudFront.on(CreateInvalidationCommand).resolves({});
     documentClient.on(GetCommand).resolves({});
+    documentClient
+      .on(BatchGetCommand)
+      .resolves({ Responses: { "hot-updater-metadata": [] } });
     documentClient.on(PutCommand).resolves({});
     documentClient.on(QueryCommand).resolves({ Items: [] });
     documentClient.on(ScanCommand).resolves({ Items: [] });

@@ -86,6 +86,7 @@ export const standaloneRepository = (
           }),
       },
       bundlePatches: {
+        findByBaseBundleIds: (ids) => remote.loadPatchChildren(ids),
         async findByBundleIds(bundleIds): Promise<readonly BundlePatchRow[]> {
           if (bundleIds.length === 0) return [];
           return (await bundleReader.findMany({

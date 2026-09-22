@@ -251,9 +251,71 @@ describe("standaloneRepository", () => {
     expect(Reflect.has(repository, "apiKeys")).toBe(false);
   });
 
+  it("uses the reverse patch route and fails explicitly on an old server", async () => {
+    let calls = 0;
+    server.use(
+      http.get(`${BASE_URL}/bundles/:id/patch-children`, () => {
+        calls++;
+        return HttpResponse.json({ data: [] });
+      }),
+    );
+    await expect(
+      createRepository().models.bundlePatches.findByBaseBundleIds!([
+        "base",
+        "base",
+      ]),
+    ).resolves.toEqual([]);
+    expect(calls).toBe(1);
+    expect(requestPaths).not.toContain("/hot-updater/admin/bundles");
+    server.use(
+      http.get(
+        `${BASE_URL}/bundles/:id/patch-children`,
+        () => new HttpResponse(null, { status: 404 }),
+      ),
+    );
+    await expect(
+      createRepository().models.bundlePatches.findByBaseBundleIds!(["base"]),
+    ).rejects.toMatchObject({ status: 404 });
+    expect(requestPaths).not.toContain("/hot-updater/admin/bundles");
+  });
+
+  it("fetches only the remote pages intersecting an unaligned large window", async () => {
+    const history = Array.from({ length: 350 }, (_, i) =>
+      bundle(String(i).padStart(3, "0")),
+    );
+    const pages: number[] = [];
+    server.use(
+      http.get(`${BASE_URL}/bundles`, ({ request }) => {
+        const url = new URL(request.url);
+        const page = Number(url.searchParams.get("page"));
+        const limit = Number(url.searchParams.get("limit"));
+        pages.push(page);
+        return HttpResponse.json({
+          data: history.slice((page - 1) * limit, page * limit),
+          pagination: {
+            currentPage: page,
+            total: history.length,
+            totalPages: Math.ceil(history.length / limit),
+            hasNextPage: page * limit < history.length,
+            hasPreviousPage: page > 1,
+          },
+        });
+      }),
+    );
+    const result = await createRepository().models.bundles.findMany({
+      limit: 150,
+      offset: 125,
+      orderBy: { field: "id", direction: "asc" },
+    });
+    expect(result.map(({ id }) => id)).toEqual(
+      history.slice(125, 275).map(({ id }) => id),
+    );
+    expect(pages).toEqual([2, 3]);
+  });
+
   it("keeps Channel routing canonical instead of exposing an override", () => {
     expectTypeOf<keyof Routes>().toEqualTypeOf<
-      "create" | "update" | "list" | "retrieve" | "delete"
+      "create" | "update" | "list" | "retrieve" | "delete" | "patchChildren"
     >();
   });
 
@@ -760,7 +822,7 @@ describe("standaloneRepository", () => {
         orderBy: { field: "id", direction: "asc" },
       }),
     ).resolves.toEqual([]);
-    expect(requestedUrl?.searchParams.has("channel")).toBe(false);
+    expect(requestedUrl).toBeUndefined();
   });
 
   it("forwards direct platform filters to the aggregate endpoint", async () => {

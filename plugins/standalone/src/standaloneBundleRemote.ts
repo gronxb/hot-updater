@@ -1,4 +1,9 @@
-import type { Bundle, BundleRow, ChannelRow } from "@hot-updater/plugin-core";
+import type {
+  BundlePatchRow,
+  Bundle,
+  BundleRow,
+  ChannelRow,
+} from "@hot-updater/plugin-core";
 import { bundleToRow } from "@hot-updater/plugin-core";
 import type {
   DatabaseSortBy,
@@ -12,6 +17,7 @@ import {
 } from "./standaloneHttp";
 import {
   hasChannels,
+  hasBundlePatchRows,
   hasChannelInsertResult,
   hasChannelDeleteResult,
   isBundle,
@@ -59,36 +65,6 @@ export const createStandaloneBundleRemote = (
   };
   const http = createStandaloneHttp(config);
 
-  const loadBundles = async (): Promise<Bundle[]> => {
-    const bundles: Bundle[] = [];
-    for (let page = 1; ; page += 1) {
-      const route = routes.list();
-      const url = new URL(http.buildUrl(route.path));
-      url.searchParams.set("limit", String(PAGE_SIZE));
-      url.searchParams.set("page", String(page));
-      const response = await fetch(url, {
-        method: "GET",
-        headers: http.headers(route.headers),
-      });
-      const value = await http.parseJson(response);
-      if (!isPaginatedResult(value)) {
-        throw new StandaloneDatabaseError(
-          "invalid-response",
-          "Invalid bundle list response.",
-          response.status,
-        );
-      }
-      bundles.push(...value.data);
-      if (
-        value.data.length < PAGE_SIZE ||
-        value.pagination.hasNextPage === false ||
-        bundles.length >= value.pagination.total
-      ) {
-        return bundles;
-      }
-    }
-  };
-
   const loadChannels = async (): Promise<readonly ChannelRow[]> => {
     const route = routes.channels();
     const response = await fetch(http.buildUrl(route.path), {
@@ -111,7 +87,15 @@ export const createStandaloneBundleRemote = (
   ): Promise<BundleRow[]> => bundles.map((bundle) => bundleToRow(bundle));
 
   const loadBundleWindow = async (input: BundleWindowInput) => {
-    if (input.limit === 0) return { rows: [] as BundleRow[], total: 0 };
+    if (
+      input.limit === 0 ||
+      (!input.where?.some(({ connector }) => connector === "OR") &&
+        input.where?.some(
+          ({ operator, value }) =>
+            operator === "in" && Array.isArray(value) && value.length === 0,
+        ))
+    )
+      return { rows: [] as BundleRow[], total: 0 };
     if (input.orderBy && input.orderBy.field !== "id") {
       return null;
     }
@@ -121,33 +105,39 @@ export const createStandaloneBundleRemote = (
     if (input.orderBy !== undefined) {
       url.searchParams.set("orderDirection", input.orderBy.direction);
     }
-    const pageAligned = input.limit > 0 && input.offset % input.limit === 0;
-    const remoteLimit = pageAligned ? input.limit : input.offset + input.limit;
-    if (remoteLimit > PAGE_SIZE) return null;
-    url.searchParams.set("limit", String(remoteLimit));
-    url.searchParams.set(
-      "page",
-      String(pageAligned ? input.offset / input.limit + 1 : 1),
-    );
-    const response = await fetch(url, {
-      method: "GET",
-      headers: http.headers(route.headers),
-    });
-    const value = await http.parseJson(response);
-    if (!isPaginatedResult(value)) {
-      throw new StandaloneDatabaseError(
-        "invalid-response",
-        "Invalid bundle list response.",
-        response.status,
-      );
+    // Fetch only pages intersecting the requested window, including unaligned offsets.
+    const remoteLimit = Math.min(PAGE_SIZE, input.limit);
+    const rows: BundleRow[] = [];
+    let total = 0;
+    let offset = input.offset;
+    while (rows.length < input.limit) {
+      const page = Math.floor(offset / remoteLimit) + 1;
+      const skip = offset % remoteLimit;
+      url.searchParams.set("limit", String(remoteLimit));
+      url.searchParams.set("page", String(page));
+      const response = await fetch(url, {
+        method: "GET",
+        headers: http.headers(route.headers),
+      });
+      const value = await http.parseJson(response);
+      if (!isPaginatedResult(value))
+        throw new StandaloneDatabaseError(
+          "invalid-response",
+          "Invalid bundle list response.",
+          response.status,
+        );
+      total = value.pagination.total;
+      const selected = value.data.slice(skip, skip + input.limit - rows.length);
+      rows.push(...(await bundlesToRows(selected)));
+      if (
+        !value.pagination.hasNextPage ||
+        value.data.length === 0 ||
+        offset + selected.length >= total
+      )
+        break;
+      offset = page * remoteLimit;
     }
-    const bundles = pageAligned
-      ? value.data
-      : value.data.slice(input.offset, input.offset + input.limit);
-    return {
-      rows: await bundlesToRows(bundles),
-      total: value.pagination.total,
-    };
+    return { rows, total };
   };
 
   const insertChannel = async (
@@ -232,9 +222,6 @@ export const createStandaloneBundleRemote = (
     return bundle ? ((await bundlesToRows([bundle]))[0] ?? null) : null;
   };
 
-  const loadBundleRows = async (): Promise<BundleRow[]> =>
-    bundlesToRows(await loadBundles());
-
   const updateBundle = async (bundle: Bundle): Promise<void> => {
     const route = routes.update(bundle.id);
     const response = await fetch(http.buildUrl(route.path), {
@@ -264,7 +251,35 @@ export const createStandaloneBundleRemote = (
     await http.parseJson(response);
   };
 
+  const loadPatchChildren = async (
+    baseBundleIds: readonly string[],
+  ): Promise<readonly BundlePatchRow[]> => {
+    const rows: BundlePatchRow[] = [];
+    for (const id of new Set(baseBundleIds)) {
+      const route = createRoute(
+        defaultRoutes.patchChildren(id),
+        config.routes?.patchChildren?.(id),
+      );
+      const response = await fetch(http.buildUrl(route.path), {
+        headers: http.headers(route.headers),
+      });
+      const value = await http.parseJson(response);
+      if (
+        !hasBundlePatchRows(value) ||
+        value.data.some((row) => row.base_bundle_id !== id)
+      )
+        throw new StandaloneDatabaseError(
+          "invalid-response",
+          "Invalid patch children response.",
+          response.status,
+        );
+      rows.push(...value.data);
+    }
+    return rows;
+  };
+
   return {
+    loadPatchChildren,
     createBundle: (bundle: Bundle) => createBundles([bundle]),
     createBundles,
     deleteBundle,
@@ -272,8 +287,6 @@ export const createStandaloneBundleRemote = (
     insertChannel,
     loadBundle,
     loadBundleRow,
-    loadBundleRows,
-    loadBundles,
     loadBundleWindow,
     loadChannels,
     updateBundle,

@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import {
   createApi,
@@ -7,6 +7,23 @@ import {
 } from "./handler.testFixtures";
 
 describe("createHandlers admin routes", () => {
+  it("routes patch children directly and never substitutes a bundle list", async () => {
+    const api = createApi();
+    const getBundlePatchChildren = vi.fn(async () => []);
+    const response = await createAdminHandler({
+      ...api,
+      getBundlePatchChildren,
+    })(new Request("http://localhost/bundles/base/patch-children"));
+    expect(response.status).toBe(200);
+    expect(getBundlePatchChildren).toHaveBeenCalledExactlyOnceWith("base");
+    expect(api.getBundles).not.toHaveBeenCalled();
+    const unsupported = await createAdminHandler(api)(
+      new Request("http://localhost/bundles/base/patch-children"),
+    );
+    expect(unsupported.status).toBe(501);
+    expect(api.getBundles).not.toHaveBeenCalled();
+  });
+
   it("does not match client routes", async () => {
     const api = createApi();
     const handler = createAdminHandler(api);

@@ -466,3 +466,5 @@ export {
   buildSsmPolicy,
   LAMBDA_EDGE_TRUST_POLICY,
 } from "./iam";
+
+export { migrateDynamoDBMetadataIndexes } from "./migrateMetadataIndexes";

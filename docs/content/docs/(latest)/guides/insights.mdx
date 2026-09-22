@@ -170,7 +170,6 @@ Open **All events** on the activity card to browse reports from newest to oldest
 20 per page.
 
 These counts reflect received reports, not the full installed population.
-Reports without a known bundle ID are excluded from the per-ID chart. History
-reads are capped at 50,000 events for each reporting period. Partial
-history is labeled in the UI; the active-user total is shown as a lower bound
-with **≥**, and unavailable usage intervals are shown as gaps.
+Reports without a known bundle ID are excluded from the per-ID chart. Overview
+charts use provider-side aggregates and do not scan paginated event history.
+There is no 50,000-event history cap; the event list remains paginated.

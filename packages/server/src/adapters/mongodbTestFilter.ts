@@ -107,12 +107,13 @@ const resolveExpression = (row: MongoTestRow, expression: unknown): unknown => {
 
 const matchesField = (current: unknown, condition: unknown): boolean => {
   if (!isRecord(condition)) return Object.is(current, condition);
-  if ("$eq" in condition) return Object.is(current, condition["$eq"]);
+  if ("$eq" in condition && !Object.is(current, condition["$eq"])) return false;
   if (typeof condition["$exists"] === "boolean") {
-    return condition["$exists"] ? current !== undefined : current === undefined;
+    if (condition["$exists"] !== (current !== undefined)) return false;
   }
   if (Array.isArray(condition["$in"])) {
-    return condition["$in"].some((item) => Object.is(item, current));
+    if (!condition["$in"].some((item) => Object.is(item, current)))
+      return false;
   }
   if ("$ne" in condition && Object.is(current, condition["$ne"])) {
     return false;

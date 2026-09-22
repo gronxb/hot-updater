@@ -196,15 +196,17 @@ describe("areVersionsCompatible", () => {
 });
 
 describe("infrastructure version helpers", () => {
-  it("resolves generation 1 as the only infrastructure target", () => {
+  it("preserves the v1 baseline and requires the metadata index upgrade", () => {
     expect(getRequiredInfrastructureVersion("0.36.0")).toBe("1.0.0");
     expect(getRequiredInfrastructureVersion("1.0.0")).toBe("1.0.0");
-    expect(getRequiredInfrastructureVersion("1.2.0")).toBe("1.0.0");
+    expect(getRequiredInfrastructureVersion("1.0.1")).toBe("1.0.1");
+    expect(getRequiredInfrastructureVersion("1.2.0")).toBe("1.0.1");
   });
 
-  it("resolves generation 1 as the only server runtime target", () => {
+  it("resolves the matching runtime for each infrastructure generation", () => {
     expect(getRequiredServerVersion("0.36.0")).toBe("1.0.0");
     expect(getRequiredServerVersion("1.0.0")).toBe("1.0.0");
+    expect(getRequiredServerVersion("1.0.1")).toBe("1.0.1");
   });
 
   it("does not require an update just because the server package version is newer", () => {

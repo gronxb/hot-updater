@@ -221,7 +221,6 @@ export const releasesV100 = table(
         "id",
       ]),
       index("releases_bundle_id_idx", ["bundle_id"]),
-      index("releases_fingerprint_hash_idx", ["fingerprint_hash"]),
       index("releases_enabled_idx", ["enabled"]),
     ],
     checks: [

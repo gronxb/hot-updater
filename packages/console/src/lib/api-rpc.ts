@@ -317,10 +317,11 @@ export const getBundleChildren = createServerFn({ method: "GET" })
       const { prepareConfig } = await import("./server/config.server");
       const { getBundleChildren: getBundleChildrenWithConfig } =
         await import("./server/getBundleChildren");
-      const { databaseClient } = await prepareConfig();
+      const { databaseClient, config } = await prepareConfig();
 
       return await getBundleChildrenWithConfig(data, {
         databaseClient,
+        bundlePatches: config.database.models.bundlePatches,
       });
     } catch (error) {
       console.error("Error during bundle children retrieval:", error);
@@ -335,10 +336,11 @@ export const getBundleChildCounts = createServerFn({ method: "GET" })
       const { prepareConfig } = await import("./server/config.server");
       const { getBundleChildCounts: getBundleChildCountsWithConfig } =
         await import("./server/getBundleChildren");
-      const { databaseClient } = await prepareConfig();
+      const { databaseClient, config } = await prepareConfig();
 
       return await getBundleChildCountsWithConfig(data.bundleIds, {
         databaseClient,
+        bundlePatches: config.database.models.bundlePatches,
       });
     } catch (error) {
       console.error("Error during bundle child count retrieval:", error);
