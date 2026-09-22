@@ -65,7 +65,8 @@ interface StandaloneRepositoryConfig {
 }
 ```
 
-`routes` remaps only the five legacy-compatible Bundle CRUD/list requests.
+`routes` remaps the legacy-compatible Bundle CRUD/list requests and indexed
+patch-child lookup.
 Release, Release Catalog, database commit, and Channel requests use the fixed
 canonical paths documented below:
 
@@ -76,6 +77,7 @@ interface RouteConfig {
 }
 
 interface Routes {
+  patchChildren?: (bundleId: string) => RouteConfig;
   create?: () => RouteConfig;
   update?: (bundleId: string) => RouteConfig;
   list?: () => RouteConfig;
@@ -143,6 +145,9 @@ database: standaloneRepository({
     retrieve: (bundleId) => ({ // [!code ++]
       path: `/v1/bundles/${bundleId}`, // [!code ++]
     }), // [!code ++]
+    patchChildren: (bundleId) => ({ // [!code ++]
+      path: `/v1/bundles/${encodeURIComponent(bundleId)}/patch-children`, // [!code ++]
+    }), // [!code ++]
     delete: (bundleId) => ({ // [!code ++]
       path: `/v1/bundles/${bundleId}`, // [!code ++]
     }), // [!code ++]
@@ -193,9 +198,11 @@ type ChannelsResponse = DataResponse<{ channels: ChannelRow[] }>;
 
 ### Default routes
 
-These are the routes used by `standaloneRepository`. The `routes` option can
-remap only the five Bundle rows marked remappable. All other rows use fixed
-paths relative to `baseUrl`.
+These are the repository's canonical routes and the legacy-compatible Bundle
+mutation routes. The `routes` option remaps the rows marked remappable. All
+other rows use fixed paths relative to `baseUrl`. Repository commits always use
+`POST /database/commit`; custom Bundle mutation routes do not replace that
+atomic commit endpoint.
 
 | Method | Default route                 | Mapping    | Success response                     |
 | ------ | ----------------------------- | ---------- | ------------------------------------ |
@@ -204,6 +211,7 @@ paths relative to `baseUrl`.
 | GET    | `/bundles`                    | remappable | `Paginated<Bundle[]>`                |
 | GET    | `/bundles/:id`                | remappable | `Bundle`                             |
 | DELETE | `/bundles/:id`                | remappable | `{ "success": true }`                |
+| GET    | `/bundles/:id/patch-children` | remappable | `DataResponse<BundlePatchRow[]>`     |
 | GET    | `/releases/:id`               | fixed      | `DataResponse<ReleaseRow>`           |
 | GET    | `/releases`                   | fixed      | `DataResponse<ReleaseRow[]>`         |
 | GET    | `/release-catalogs/:scopeKey` | fixed      | `DataResponse<ReleaseCatalogRow>`    |
@@ -268,6 +276,17 @@ Supported query params:
 | `page`      | `number`             | Optional positive page number for stable page-aligned requests |
 | `after`     | `string`             | Fetch the next window after this bundle ID                     |
 | `before`    | `string`             | Fetch the previous window before this bundle ID                |
+| `idEq`      | `string`             | Exact Bundle ID                                                |
+| `idGt`, `idGte` | `string`          | Exclusive or inclusive lower ID bound                          |
+| `idLt`, `idLte` | `string`          | Exclusive or inclusive upper ID bound                          |
+| `idIn`      | repeated `string`    | Finite ID set, e.g. `idIn=a&idIn=b`                              |
+| `orderDirection` | `"asc" \| "desc"` | Bundle-ID sort direction                                    |
+
+Apply all supplied predicates together, then order and paginate. The repository
+translates a requested offset window to only the HTTP pages that intersect it;
+it does not fetch every preceding page. Empty ID sets and zero-length windows
+return locally without an HTTP request. Servers must honor the filters instead
+of returning an unfiltered page for the client to reduce.
 
 Expected response:
 
@@ -302,9 +321,24 @@ kept for backwards compatibility; `nextCursor` and `previousCursor` are the
 preferred navigation fields.
 
 If your standalone server is backed by object storage or manifest files, keep
-`GET /bundles` on an index-backed path once the index is warm. Cursor
-pages should not require rescanning all manifests, and this should be covered
-by deterministic read-counter regression tests.
+`GET /bundles` on an index-backed path. Build or repair that index explicitly;
+missing indexes must fail without scanning all manifests during the request.
+Cover point lookups, ID filters and cursor pages with deterministic read-counter
+regression tests.
+
+### Patch lookup contract
+
+`GET /bundles/:id/patch-children` returns `{ data: BundlePatchRow[] }`, containing
+all patches whose `base_bundle_id` equals `:id`. This is a reverse relationship
+query, not a list of patches owned by `:id`. Use the database provider's indexed
+`findByBaseBundleIds` capability. `@hot-updater/server` returns `501` when that
+capability is unavailable. Standalone propagates the failure without walking
+`GET /bundles` pages. Deploy a server that supports this route for operations
+that need reverse lookup.
+
+For `findByBundleIds`, the repository retrieves only the distinct supplied
+owner IDs and hydrates their embedded patches. Both directions may enumerate
+the requested relationships; neither broadens to unrelated Bundle history.
 
 ### Retrieve and channels contract
 

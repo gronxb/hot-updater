@@ -27,11 +27,24 @@ Reviewed Better Auth at commit `41b7dc15de41a8726422c392a4857d8764828891`:
   and MongoDB bind their native transaction context to that contract.
 - [Adapter authoring guide](https://better-auth.com/docs/guides/create-a-db-adapter)
   distinguishes storage logic from factory-owned behavior.
+- Better Auth exposes the factory through the public `better-auth/adapters` and
+  `@better-auth/core/db/adapter` entries. Its separate `@better-auth/core/db/internal`
+  entry contains schema/index implementation facilities. See its
+  [package exports](https://github.com/better-auth/better-auth/blob/41b7dc15de41a8726422c392a4857d8764828891/packages/core/package.json)
+  and [authoring entry](https://github.com/better-auth/better-auth/blob/41b7dc15de41a8726422c392a4857d8764828891/packages/better-auth/src/adapters/index.ts).
 
 Adopt that ownership boundary, not a collection of public shared helpers. Retain
 Hot Updater's fixed schema and atomic commit protocol; Better Auth's sequential
 execution without transaction support cannot replace an OTA atomic commit. Do
 not import its dynamic schema machinery or optional fallback algorithms.
+
+This PR preserves Hot Updater's existing export boundary: external providers
+implement the public `createDatabasePlugin({ name, models, commit })` contract;
+the bundled adapter factory remains at `@hot-updater/plugin-core/internal`.
+Consequently this change centralizes bundled-provider execution but does not
+yet provide Better Auth's public factory-based authoring SDK. Publishing a
+supported adapter-authoring entry would require an explicit API and type
+compatibility contract. The custom-provider guide documents the current boundary.
 
 ## Scope
 

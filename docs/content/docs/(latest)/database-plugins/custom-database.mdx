@@ -58,6 +58,43 @@ The fixed domains are:
 `private_hot_updater_settings` remains the schema-version marker managed by
 the server database tooling.
 
+### Public constructor and bundled adapter factory
+
+| Entry point | Contract |
+| --- | --- |
+| `@hot-updater/plugin-core` | `DatabasePlugin`, domain model types, and the `createDatabasePlugin` constructor for custom providers |
+| `@hot-updater/plugin-core/internal` | `createDatabasePluginAdapter` and storage-operation types used to implement bundled providers |
+| `@hot-updater/test-utils` | The shared provider and HTTP conformance suites |
+
+`createDatabasePlugin` accepts complete domain models and a native atomic
+`commit`. It validates the entire commit envelope before calling the provider,
+including every change and expectation. It also validates Channel insert/delete
+inputs and results, and Insights inputs and results. Providers remain responsible
+for their other model reads, stored-row validation, references, indexes and
+atomicity. The constructor does not generate database queries or transactions.
+
+The bundled adapter factory owns domain read planning and execution selection.
+It accepts transactional CRUD implementations, native reads plus native models
+and commit, or a lazy transactional implementation. Native providers do not need
+placeholder CRUD writes. Its query planners and commit validators are private;
+bundled providers register storage operations instead of assembling model helpers.
+This factory remains on `/internal`; the documented external authoring contract
+is the complete `models + commit` interface above.
+
+### Bounded reads
+
+Apply the requested predicates, ordering and window in the database. Exact IDs
+and finite ID sets must use targeted reads. Missing indexes or unsupported
+queries must fail explicitly; never retry by listing all Bundles, Releases or
+events and filtering them in memory. Do not truncate results at an arbitrary
+global row ceiling.
+
+Native continuation pages and ID batches are allowed within the requested
+scope. Enumerating patches for supplied owners, compiling all Releases in one
+scope, explicit full lists and scalar aggregates retain their documented cost.
+These operations do not authorize a full-history fallback for a point lookup
+or a bounded page.
+
 ## Domain interfaces
 
 Use the exported interfaces rather than redeclaring them:
@@ -86,6 +123,9 @@ interface BundleModel {
 }
 
 interface BundlePatchModel {
+  findByBaseBundleIds?(
+    baseBundleIds: readonly string[],
+  ): Promise<readonly BundlePatchRow[]>;
   findByBundleIds(
     bundleIds: readonly string[],
   ): Promise<readonly BundlePatchRow[]>;
@@ -96,6 +136,11 @@ Apply filters and ordering before offset and limit. An empty `id.in` filter
 and an empty patch owner list return no rows without I/O. Bundle rows contain
 artifact identity and storage fields only; rollout, channel, compatibility,
 force-update, and message fields belong to Releases.
+
+`findByBaseBundleIds` is an optional indexed reverse lookup for patches that
+reference the supplied base Bundles. Return all matching patches across native
+pages, without enumerating unrelated Bundles. An operation requiring this
+capability fails explicitly when it is absent; there is no list-all fallback.
 
 `BundleRow.archive_byte_size` and `BundlePatchRow.byte_size` are required
 immutable non-negative safe integers. Reject missing, fractional, negative, or
@@ -109,11 +154,13 @@ not additional database columns.
 interface ReleaseModel {
   findById(id: string): Promise<ReleaseRow | null>;
   findMany(input: {
+    afterReleaseId?: string;
     beforeReleaseId?: string;
     bundleId?: string;
     channelId?: string;
     enabled?: boolean;
     platform?: "ios" | "android";
+    targetAppVersion?: string;
     limit: number;
   }): Promise<readonly ReleaseRow[]>;
   findManyByScope(input: {
@@ -125,7 +172,10 @@ interface ReleaseModel {
 }
 ```
 
-`findMany` supports management views in newest-first Release-ID order.
+`findMany` supports management views in newest-first Release-ID order. Do not
+combine `afterReleaseId` and `beforeReleaseId`. An `afterReleaseId` query selects
+the nearest newer rows before returning them newest-first. All supplied filters,
+including the exact `targetAppVersion`, apply before the limit.
 `findManyByScope` is the catalog compiler input and has stricter semantics:
 
 - read the canonical primary storage path with strong consistency;
@@ -171,8 +221,8 @@ by hash; revocation updates only `revoked_at_ms`.
 
 ### Insights
 
-Implement `InsightsModel` with these five exported input types. Every call takes
-an object; custom providers do not implement the bundled internal CRUD adapter.
+Implement all seven `InsightsModel` methods using the exported input and result
+types. Every call takes an object.
 
 ```ts
 interface InsightsModel {
@@ -185,6 +235,12 @@ interface InsightsModel {
   ): Promise<readonly BundleEventRow[]>;
   countLatestEvents(input: InsightsCountLatestEventsInput): Promise<number>;
   countEvents(input: InsightsCountEventsInput): Promise<number>;
+  getReleaseActivity(
+    input: InsightsGetReleaseActivityInput,
+  ): Promise<InsightsGetReleaseActivityResult>;
+  getAppUsage(
+    input: InsightsGetAppUsageInput,
+  ): Promise<InsightsGetAppUsageResult>;
 }
 ```
 
@@ -274,14 +330,24 @@ channel, type, and `fromBundleId` for `RECOVERED` or `toBundleId` for
 counts against B while latest state names A. Counts concern reports, not
 unique attempts or installations. Count all native pages or propagate failure.
 
-Core owns report preparation, validation, windows, cursors, movement semantics,
-and product labels. Providers own atomic storage, native queries, indexes, and
-scalar counts. Do not implement summary objects, group-by, top-N distributions,
-chart buckets, or independently maintained outcome tables. Separate live counts
-are not a common snapshot and must not imply an exact percentage. Document
-query costs. Do not return partial results; propagate native errors.
+`getReleaseActivity` reads maintained summaries for 1 to 100 supplied Release
+references, optionally within a time range, or for one scope within a required
+time range. `getAppUsage` reads a Channel's usage for `all`, `ios`, or `android`,
+with a required time range and an interval of at least one hour. It returns the
+contract's active-installation count, time points, version/platform breakdowns
+and Bundle distribution. Time ranges use inclusive `start` and exclusive `end`
+UTC milliseconds. Both methods report `coverage` and `measuredAtMs`; do not
+scan raw event history to reconstruct these summaries on each read.
 
-The public constructor validates queries and returned rows, but cannot prove
+Core owns report preparation, validation, windows, cursors, movement semantics
+and product labels. Providers own atomic storage, native queries, indexes,
+scalar counts and the two fixed summary projections. Keep event acceptance,
+latest-state advancement and affected summary updates atomic. Separate live
+counts are not a common snapshot and must not imply an exact percentage.
+Document query costs and propagate native errors rather than returning
+truncated results. Summary coverage may explicitly report incomplete history.
+
+The public constructor validates Insights queries and results, but cannot prove
 atomicity or index usage. Run the repository conformance suite plus native rollback,
 concurrency, continuation, schema-bootstrap, and query-plan tests for your
 backend.
@@ -295,6 +361,8 @@ fields used for latest ordering, user pages, and count predicates. Metadata,
 release IDs, app version, and calculated running/pending state are not copied.
 This physical layout is not a required custom-provider model.
 
+The examples below illustrate the event/head portion of `recordEvent`. A complete
+provider also updates the required summaries in that same atomic operation.
 A PostgreSQL provider can append and advance the head atomically in one statement:
 
 ```ts
@@ -416,6 +484,12 @@ Expected missing targets and referenced-row deletes continue to return their
 source `changeIndex`. All other validation, constraint, and provider failures
 reject. A provider without an atomic conditional primitive must reject before
 its first write; there is no Release-now/catalog-later fallback.
+
+Input validation does not serialize concurrent writers. When a parent deletion
+enumerates its relationships, a concurrent child insertion must either be
+included or invalidate the transaction. Protect both sides using native
+constraints, transactional reads or conditional version writes. Native action
+limits must reject an oversized commit without partially applying it.
 
 ## Implement the 1.0.0 schema
 
@@ -663,7 +737,7 @@ and the actual atomic transaction.
 
 ## SQL Server limitation
 
-The Prisma SQL Server adapter retains its other models, but its five Insights
+The Prisma SQL Server adapter retains its other models, but all seven Insights
 methods reject before database I/O. SQL Server's padded string equality can
 merge IDs that differ by trailing spaces; its default Unicode/UUID ordering
 also differs from this contract. There is no silent fallback to weaker identity

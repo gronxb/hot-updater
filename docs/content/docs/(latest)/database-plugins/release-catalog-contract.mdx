@@ -55,8 +55,12 @@ The following are absent:
 - Bundle policy fields and Bundle-to-Channel ownership;
 - asynchronous Release writes followed by projection repair.
 
-`createDatabasePlugin` may adapt a provider's internal CRUD and transaction
-implementation, but those details are not public.
+The public `createDatabasePlugin` constructor accepts these domain models and a
+native `commit`, and validates the complete commit envelope before dispatch.
+It does not implement storage or transactions. Bundled providers may use
+`createDatabasePluginAdapter` from `@hot-updater/plugin-core/internal` to map
+transactional CRUD or native read/commit implementations to this contract.
+That internal factory is distinct from the public custom-provider constructor.
 
 ## Artifact models
 
@@ -72,6 +76,13 @@ constructing a partial Bundle.
 
 `BundlePatchModel.findByBundleIds` returns all patch rows owned by the requested
 Bundle IDs. It returns immediately for an empty owner list.
+
+The optional `BundlePatchModel.findByBaseBundleIds` returns patches referencing
+the supplied base Bundle IDs through an indexed reverse lookup. Consumers must
+fail explicitly when this capability is unavailable. They must not emulate it
+by listing Bundles. Missing indexes and unsupported queries must likewise fail
+without widening the query. Scoped continuation pages and finite-ID batches
+are permitted; arbitrary global row ceilings and full-history fallbacks are not.
 
 Manifest asset JSON may include optional `downloadByteSize` and
 `downloadFileHash` fields. These are not database columns. `downloadByteSize`
@@ -112,11 +123,13 @@ included in the normal-path total.
 interface ReleaseModel {
   findById(id: string): Promise<ReleaseRow | null>;
   findMany(input: {
+    afterReleaseId?: string;
     beforeReleaseId?: string;
     bundleId?: string;
     channelId?: string;
     enabled?: boolean;
     platform?: "ios" | "android";
+    targetAppVersion?: string;
     limit: number;
   }): Promise<readonly ReleaseRow[]>;
   findManyByScope(input: {
@@ -128,7 +141,9 @@ interface ReleaseModel {
 }
 ```
 
-`findMany` is a newest-first management query. `findManyByScope` is an
+`findMany` is a newest-first management query. The two ID cursors are mutually
+exclusive; `afterReleaseId` selects the nearest newer rows, then returns them
+newest-first. Apply every filter before the limit. `findManyByScope` is an
 ascending, exclusive-keyset compiler scan over canonical primary storage. It
 must be strongly consistent. A provider may not satisfy it with an eventual
 secondary index or an unordered scan.
@@ -172,8 +187,10 @@ An empty Channel remains visible. Its reference check and explicit deletion
 are atomic against Releases.
 
 Insights uses `recordEvent`, `listEvents`, `findLatestEvents`, `countLatestEvents`,
-and `countEvents`. Core prepares reports and product views; providers own
-immutable event storage, any private latest-event copies, and fixed native queries. See the
+`countEvents`, `getReleaseActivity`, and `getAppUsage`. Core prepares reports and
+product views; providers own immutable event storage, private latest-event copies,
+maintained summaries, and fixed native queries. Summary reads must not scan raw
+event history. See the
 [Insights contract](./custom-database#insights) for ordering and count semantics.
 Transition rows carry directional Release identity alongside Bundle identity.
 Old nullable Release IDs remain valid and are never inferred from Bundle ID.
