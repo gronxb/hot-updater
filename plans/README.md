@@ -1,69 +1,60 @@
-# 내장 파일 재사용과 manifest OTA 구현
+# Builtin file reuse and manifest OTA implementation
 
-기준: `origin/next` / `333188ab9`를 `1aa201bbd`에서 병합했다. 앞선 fingerprint 충돌 5곳을 해결했고 #1322 네이티브 변경 후 다시 생성했다.
-작업: `feature/builtin-manifest-v1`. 적대적 검토·구현 서브에이전트: GPT-5.6 Sol / Medium.
+Acceptance baseline: `origin/next` at `333188ab9`, merged in `1aa201bbd`. Five earlier fingerprint conflicts were resolved, and fingerprints were regenerated after the native changes in #1322.
+Branch: `feature/builtin-manifest-v1`. Adversarial review and implementation subagents: GPT-5.6 Sol / Medium.
 
-[PRD](001-builtin-manifest-v1-prd.md)를 전부 읽고 순서대로 실행한다.
-사용자가 요청한 두 서브에이전트의 적대적 합의에 따라 tar.br 단일 보조 경로를 구현한다. 기존 main 및 Insights worktree는 수정하지 않는다.
+Read the complete [PRD](001-builtin-manifest-v1-prd.md) and execute it in order.
+Implement tar.br as the sole optional archive path according to the user-requested adversarial agreement between two subagents. Do not modify the existing main checkout or Insights worktree.
 
-| 단계 | 범위 | 의존 | 상태 | 증거 |
-| --- | --- | --- | --- | --- |
-| PRD | 요구·구현 계약·검증 기준 | — | DONE | `001-builtin-manifest-v1-prd.md` |
-| M0 | Release 패키징 실측·재사용 검증 | PRD | DONE | `evidence/builtin-packaging.{md,json}` |
-| M1 | 전체 파일 descriptor·base 없는 설치 | M0 조사 | DONE | server/SDK 34 tests, Android storage, Swift 36 tests, iOS Release Pod target |
-| M2 | 내장 resolver·lazy 인덱스 | M0, M1 | DONE | `evidence/standalone-tar-br.{md,json}`; 5 profiles × 2 platforms의 내장 PNG/font 0요청·0바이트, 전체 파일 해시 일치 |
-| M3 | tar.br 단일 보조 경로·전송 비용 검증 | M0–M2 gate | DONE | `evidence/native-tar-br-transfer.{md,json}`; 80 native runs, 1,000-file uncapped 9.174s → 0.905s, 1,001 → 2 requests; 512 KiB/s에서는 거의 동률 |
-| M4 | 통합 검증·문서·changeset | M3 | DONE | `797338cd0`의 GitHub checks 및 5 profiles × 2 platforms × 27 scenarios = 270 tests 통과 |
+| Stage | Scope                                                        | Dependency       | Status | Evidence                                                                                                                                                        |
+| ----- | ------------------------------------------------------------ | ---------------- | ------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| PRD   | Requirements, implementation contract, verification criteria | —                | DONE   | `001-builtin-manifest-v1-prd.md`                                                                                                                                |
+| M0    | Release packaging measurements and reuse verification        | PRD              | DONE   | `evidence/builtin-packaging.{md,json}`                                                                                                                          |
+| M1    | Complete file descriptors and installation without a base    | M0 investigation | DONE   | 34 server/SDK tests, Android storage, 36 Swift tests, iOS Release Pod target                                                                                    |
+| M2    | Builtin resolver and lazy index                              | M0, M1           | DONE   | `evidence/standalone-tar-br.{md,json}`; builtin PNG/font reuse with zero requests/bytes across 5 profiles × 2 platforms; all file hashes match                  |
+| M3    | Sole tar.br archive path and transfer-cost verification      | M0–M2 gates      | DONE   | `evidence/native-tar-br-transfer.{md,json}`; 80 native runs; 1,000 files without a bandwidth cap: 9.174s → 0.905s, 1,001 → 2 requests; nearly tied at 512 KiB/s |
+| M4    | Integration verification, documentation, changeset           | M3               | DONE   | GitHub checks at `797338cd0` and 5 profiles × 2 platforms × 27 scenarios = 270 passing tests                                                                    |
 
-2026-09-21 PRD 재검증에서 이전 완료 판정을 정정했다. cached target 무결성,
-descriptor 전체 검증, 중단 후 완료 파일 재사용, 제한된 병렬 다운로드,
-실제 내장 PNG/font의 0-download E2E, download-only progress를 보강한다.
-기존 standalone 성공 기록은 아래의 이전 revision 결과이며, 새 수정의 성공으로
-재사용하지 않는다. 2026-09-22 `797338cd0`의 다섯 full E2E와 CI가 모두 통과해
-위 상태를 갱신했다. 최신 인수 증거는 `evidence/standalone-tar-br.{md,json}`다.
+The 2026-09-21 PRD audit corrected an earlier completion judgment and required stronger cached-target integrity, complete descriptor validation, reuse of completed files after interruption, bounded concurrent downloads, zero-download E2E for actual builtin PNG/fonts, and download-only progress.
+Earlier standalone successes belong to the earlier revisions listed below and do not establish success for later fixes. On 2026-09-22, all five full E2E runs and CI at `797338cd0` passed, updating the status above. The latest acceptance evidence is `evidence/standalone-tar-br.{md,json}`.
 
-## 제외한 대안
+## Rejected or deferred alternatives
 
-- 필수 빌드 manifest 삽입: 이번에는 target manifest를 통한 lazy 조회를 우선 검증한다.
-- 내장 폴더 전체 복사: 저장 공간과 초기화 비용이 늘어 필요한 파일만 복사한다.
-- 해시 대신 파일명/이미지 동일성으로 재사용: 목표 바이트 검증을 약화한다.
-- patch-only 배포: base/patch가 없거나 손상되면 업데이트를 복구할 수 없다.
-- `updateStrategy` 제거: 사용자가 `compressStrategy`와 혼동했다고 정정했다.
-- 최초 내장 Hermes patch 산출물 등록: 후속 최적화로 남기며 이번 구현 완료의 선행 조건으로 삼지 않는다.
+- Mandatory build-time manifest injection: first verify lazy lookup through the target manifest.
+- Copying the entire builtin directory: copy only needed files to avoid extra storage and initialization cost.
+- Reuse based on filenames or image equivalence instead of hashes: this weakens verification of target bytes.
+- Patch-only deployment: updates cannot recover when the base or patch is missing or corrupt.
+- Removing `updateStrategy`: the user clarified that they meant `compressStrategy`.
+- Registering artifacts for the first builtin Hermes patch: defer this optimization; it is not a prerequisite for completing this implementation.
 
-## 실행 기록
+## Execution history
 
-- 2026-09-20: PRD 작성 완료. `next` 기준 별도 worktree 및 feature 브랜치 준비.
-- 2026-09-20: workspace 26개 프로젝트 빌드 통과.
-- 2026-09-20: Android Release AAB/APK와 arm64/en/xxhdpi split 설치 집합 실측. OTA 대상 18개 중 5개 재사용, 12개 누락, HBC 1개 불일치.
-- 2026-09-20: iOS Release simulator app 실측. OTA 대상 18개 중 PNG 17개 재사용, HBC 1개 불일치.
-- M0 상세 해시와 재현 명령은 `evidence/builtin-packaging.md` 및 JSON에 기록했다.
-- 2026-09-20: artifact protocol v1을 별도 `/artifacts/v1/...` endpoint로 확정했다. v1은 모든 목표 파일의 원본 descriptor를 제공하고 archive URL/hash를 사용하지 않는다. unversioned endpoint는 제공하지 않는다.
-- 2026-09-20: base 없는 manifest 설치, 기존 파일 손상 시 원본 복구, old server 비호환 처리를 server/SDK 34 tests, Android storage tests, Swift 36 tests로 검증했다. iOS `HotUpdater` Release Pod target도 codegen된 `assets` bridge와 함께 컴파일됐다.
-- 2026-09-20: Android/iOS installer에 검증된 builtin 재사용을 연결했다. 두 플랫폼 첫 OTA 테스트에서 내장 이미지 URL 요청이 0회였고 HBC 원본만 다운로드됐다. Swift 38 tests에는 인덱스 손상 복구, 앱 번들 교체 무효화, 경로 이탈 거부가 포함된다. 실제 Release 앱 E2E 및 Android split resolver 증거는 M2 잔여 gate다.
-- 2026-09-20: v1 미출시 조건에 따라 하위 호환 계층 없이 1.0.0 초기 schema와 provider 최초 migration을 직접 manifest 계약으로 변경했다. unversioned artifact endpoint와 legacy archive row는 지원하지 않는다.
-- 2026-09-20: OTA ZIP/TAR 생성·전송·설치 코드와 fixtures를 제거했다. AWS Lambda@Edge 배포용 ZIP utility와 APK ZIP entry reader는 OTA archive가 아니므로 유지했다.
-- 2026-09-20: workspace build 26 projects, typecheck 34 projects, lint, provider integration 383 tests, Android Gradle unit tests, Swift package tests, iOS app build를 통과했다. unit suite는 2,687/2,688 통과 후 60초를 0.86초 초과한 scaffold test를 단독 재실행해 6/6 통과했다.
-- 2026-09-20: Detox default suite가 양 플랫폼에서 `bspatch-builtin-to-diff-ota`를 포함하는 dry-run을 통과했다.
-- 2026-09-20: iOS Release simulator에서 `bspatch-builtin-to-diff-ota`가 78.747초에 통과했다. 첫 OTA의 builtin manifest 사용, 연속 OTA의 실제 HBC bsdiff 적용, Bundle ID·화면 marker·stable relaunch를 확인했다. Android E2E는 공유 device lease가 열리는 즉시 실행한다.
-- 2026-09-20: 같은 Android Release 산출물을 7회 비교한 결과 첫 OTA는 1,048,299 → 830,077 bytes, OTA 간 HBC patch는 1,048,348 → 115,353 bytes로 줄었다. 1,000개 파일 전체 변경은 1,001 requests와 ZIP 대비 35.5% 느린 로컬 설치 시간을 보여 v1의 확장성 한계로 기록했다.
-- 2026-09-21: 최신 revision `0e821f7fa`의 `standalone-prisma` full Release E2E가 iOS 15/15 + 11/11, Android 26/26으로 통과했다. 양 플랫폼에서 `fingerprint-initial-install`과 `bspatch-builtin-to-diff-ota`를 포함해 native fingerprint와 builtin manifest OTA 경로를 검증했다. 나머지 standalone 프로필은 큐에서 계속 실행 중이다.
-- 2026-09-21: 같은 revision의 `standalone-kysely` full Release E2E도 iOS 15/15 + 11/11, Android 26/26으로 통과했다. `standalone-mongodb` 검증이 이어서 시작됐다.
-- 2026-09-21: `standalone-mongodb` full Release E2E도 iOS 15/15 + 11/11, Android 26/26으로 통과했다. 최신 revision 재검증은 DynamoDB와 Drizzle 프로필이 남았다.
-- 2026-09-21: `standalone-dynamodb` full Release E2E가 같은 revision에서 iOS 15/15 + 11/11, Android 26/26으로 통과했다. 마지막 `standalone-drizzle` exact-head run이 이어서 시작됐다.
-- 2026-09-21: `standalone-drizzle` full Release E2E도 같은 revision에서 iOS 15/15 + 11/11, Android 26/26으로 통과했다. 다섯 `standalone-*` 프로필의 exact-head 검증이 모두 완료됐다.
-
-- 2026-09-21: 감사 수정 `8081720c0`의 build/type/lint, unit 2,727, integration 388, Swift 31, Android native unit을 통과했다. CI의 ktlint 1.3.1에 맞춰 조건식 줄바꿈을 수정했다. 실제 Swift installer 60회 측정은 `evidence/native-transfer.md`에 기록했다. M3 성능 게이트는 통과로 표시하지 않는다.
-
-- 2026-09-21: tar.br 유지 찬성/반대 서브에이전트가 manifest 내 archive descriptor, 재사용 후 결정적 선택, 단 한 번의 원본 fallback, 단일 native 추출 경로에 합의했다. `evidence/tar-br-consensus.md`와 PRD 5.7을 새 구현 기준으로 한다. 이전 revision의 대기 E2E는 취소하고 구현 완료 후 다시 제출한다.
-
-- 2026-09-21: Sol Medium 찬반 검토와 실제 압축 크기 반례를 반영해 tar.br 계약을 확정했다. 전체 파일이 네트워크 대상이고 patch가 없을 때만 서명된 TAR framing 크기까지 추가 전송을 허용한다. 재사용/patch가 있으면 엄격한 크기 비교를 유지한다.
-- 2026-09-21: deterministic tar.br 생성·서명·업로드, canonical sibling URL, native 선택/안전 추출/단일 복구를 구현했다. iOS의 불필요한 복사·재해싱을 atomic rename으로 제거했고 복구 실패 시 설치를 중단한다. ZIP/gzip OTA decoder와 전략 계층은 없다.
-- 2026-09-21: 최종 native 구현 Swift 44 cases + XCTest 3, Android 64 tests, 양 architecture 컴파일, ktlint 통과. build 26 projects, type 34 projects, lint, unit 2,747 tests, integration 388 tests 통과. E2E 지원 259 tests도 통과했다.
-- 2026-09-21: 원본과 동일한 fixture로 80회 native 설치를 측정했다. 1,000-file uncapped 9.174s → 0.905s, 1,001 → 2 requests, +4,434 bytes; 512 KiB/s에서는 9.108s → 9.032s로 거의 동률이다. sampled peak disk는 4.36 → 12.95 MB. 모든 결과 해시를 검증했고 작은 delta는 동일 전송량/요청 수를 유지한다.
-- 이 시점에는 최종 Release E2E를 아직 인수하지 않았다. builtin PNG/font 재사용 시나리오에서는 optional archive URL 생략을 명시하며, 정상 archive 및 corrupt fallback의 요청 수와 모든 파일 해시는 별도 시나리오로 검증한다. 동일 최종 PR 구현을 push한 뒤 standalone 5개 full profile을 실행한다.
-
-- 2026-09-21: 최초 tar.br E2E 큐 5건은 코드 checkout 전 `emulator-5554/5556/5558` 부재로 실패했다. 기존 전용 Pixel AVD 3대를 복구하고 부팅 완료를 확인했다. CI의 Android 신 아키텍처 실패는 Gradle 다운로드 timeout이며, iOS 구 아키텍처 실패는 백업 정리 테스트가 비동기 cleanup 후 파일 잔존을 기대한 경합이었다. 삭제 실패 주입 여부와 설치 결과로 assertion을 수정했고 Swift 전체 및 해당 사례 10회 반복을 통과했다. 프로덕션 native 코드는 성능 측정본과 동일하다. 최종 fingerprint를 다시 생성하고 E2E/CI 대상을 갱신한다.
-
-- 2026-09-22: 최종 구현 `797338cd0a4daab9cac93383154a961820b9c563`에서 Kysely, Prisma, MongoDB, DynamoDB, Drizzle의 full Release E2E가 모두 exit 0으로 종료됐다. 각 프로필은 iOS 27/27 + Android 27/27, 총 270개 시나리오를 통과했다. 10개 내장 재사용 기록과 30개 전송·전체 해시 검증 기록을 `evidence/standalone-tar-br.{md,json}`에 보존했다.
-- 2026-09-22: 같은 구현 revision의 GitHub checks도 모두 성공했다. Gradle 다운로드 및 CocoaPods 설치의 환경 오류는 재실행에서 통과했다. M2/M4를 완료로 갱신하며 후속 commit은 검증 문서와 증거만 변경한다. PR은 draft 상태로 유지하고 merge하지 않는다.
+- 2026-09-20: Completed the PRD and prepared a separate worktree and feature branch from `next`.
+- 2026-09-20: Workspace build passed for 26 projects.
+- 2026-09-20: Measured the Android Release AAB/APK and installed arm64/en/xxhdpi split set. Of 18 OTA targets, 5 were reusable, 12 were missing, and 1 HBC file differed.
+- 2026-09-20: Measured the iOS Release simulator app. Of 18 OTA targets, 17 PNGs were reusable and 1 HBC file differed.
+- Detailed M0 hashes and reproduction commands are recorded in `evidence/builtin-packaging.md` and JSON.
+- 2026-09-20: Finalized artifact protocol v1 with a separate `/artifacts/v1/...` endpoint. At this stage, v1 provided original descriptors for every target file without archive URLs/hashes. The unversioned endpoint was not exposed.
+- 2026-09-20: Verified manifest installation without a base, original-file recovery after local corruption, and old-server incompatibility with 34 server/SDK tests, Android storage tests, and 36 Swift tests. The iOS `HotUpdater` Release Pod target also compiled with the generated `assets` bridge.
+- 2026-09-20: Connected verified builtin reuse to the Android/iOS installers. First-OTA tests on both platforms made zero requests for builtin images and downloaded only the original HBC. The 38 Swift tests included index-corruption recovery, app-bundle replacement invalidation, and path-escape rejection. Actual Release app E2E and Android split-resolver evidence remained M2 gates at this point.
+- 2026-09-20: Because v1 was unreleased, directly changed the initial 1.0.0 schemas and first provider migrations to the manifest contract without a backward-compatibility layer. Unversioned artifact endpoints and legacy archive rows are unsupported.
+- 2026-09-20: Removed OTA ZIP/TAR creation, delivery, installation code, and fixtures. Retained the AWS Lambda@Edge deployment ZIP utility and APK ZIP entry reader because they are not OTA archives.
+- 2026-09-20: Passed workspace build for 26 projects, typecheck for 34 projects, lint, 383 provider integration tests, Android Gradle unit tests, Swift package tests, and the iOS app build. The unit suite passed 2,687/2,688; the scaffold test that exceeded its 60-second timeout by 0.86 seconds passed 6/6 on a focused rerun.
+- 2026-09-20: Detox default-suite dry-run passed, including `bspatch-builtin-to-diff-ota` on both platforms.
+- 2026-09-20: `bspatch-builtin-to-diff-ota` passed on the iOS Release simulator in 78.747 seconds. Verified builtin-manifest use in the first OTA, actual HBC bsdiff application in consecutive OTAs, Bundle IDs, screen markers, and stable relaunch. Android E2E was scheduled to run when the shared device lease became available.
+- 2026-09-20: Seven comparisons using the same Android Release artifact reduced first-OTA transfer from 1,048,299 to 830,077 bytes and OTA-to-OTA HBC patch transfer from 1,048,348 to 115,353 bytes. Complete changes across 1,000 files required 1,001 requests and local installation was 35.5% slower than ZIP, documenting a v1 scalability limitation.
+- 2026-09-21: `standalone-prisma` full Release E2E passed at revision `0e821f7fa`: iOS 15/15 + 11/11 and Android 26/26. Both platforms covered `fingerprint-initial-install` and `bspatch-builtin-to-diff-ota`, verifying native fingerprints and builtin-manifest OTA delivery. Other standalone profiles remained queued.
+- 2026-09-21: `standalone-kysely` full Release E2E passed at the same revision: iOS 15/15 + 11/11 and Android 26/26. `standalone-mongodb` verification started next.
+- 2026-09-21: `standalone-mongodb` full Release E2E passed: iOS 15/15 + 11/11 and Android 26/26. DynamoDB and Drizzle remained for that revision.
+- 2026-09-21: `standalone-dynamodb` full Release E2E passed at the same revision: iOS 15/15 + 11/11 and Android 26/26. The final `standalone-drizzle` run against that commit started next.
+- 2026-09-21: `standalone-drizzle` full Release E2E passed at the same revision: iOS 15/15 + 11/11 and Android 26/26. Verification of all five `standalone-*` profiles at that commit was complete.
+- 2026-09-21: Audit fixes in `8081720c0` passed build/typecheck/lint, 2,727 unit tests, 388 integration tests, 31 Swift tests, and Android native unit tests. Adjusted conditional-expression wrapping for CI's ktlint 1.3.1. Recorded 60 actual Swift installer measurements in `evidence/native-transfer.md`. M3's performance gate was not marked as passed.
+- 2026-09-21: Subagents supporting and opposing tar.br retention agreed on an archive descriptor in the manifest, deterministic selection after reuse, one original-file fallback, and a single native extraction path. `evidence/tar-br-consensus.md` and PRD section 5.7 became the implementation contract. Pending E2E for the previous revision was canceled for resubmission after implementation.
+- 2026-09-21: Finalized the tar.br contract using the Sol Medium reviews and actual compressed-size counterexamples. Permit additional transfer up to the signed TAR framing size only when every file needs the network and no patch is offered. Retain strict size comparison when reuse or patches are present.
+- 2026-09-21: Implemented deterministic tar.br generation/signing/upload, canonical sibling URLs, and native selection/safe extraction/single fallback. Removed unnecessary iOS copying/rehashing through atomic rename; abort installation if restoration fails. No ZIP/gzip OTA decoder or strategy layer remains.
+- 2026-09-21: Final native implementation passed 44 Swift cases + 3 XCTest cases, 64 Android tests, compilation for both architectures, and ktlint. Passed build for 26 projects, typecheck for 34 projects, lint, 2,747 unit tests, and 388 integration tests. The 259 E2E support tests also passed.
+- 2026-09-21: Measured 80 native installs using identical originals. For 1,000 files without a bandwidth cap: 9.174s → 0.905s, 1,001 → 2 requests, and +4,434 bytes. At 512 KiB/s, 9.108s → 9.032s was nearly tied. Sampled peak disk usage rose from 4.36 to 12.95 MB. All output hashes were verified; small deltas retained identical transfer bytes/request counts.
+- Final Release E2E had not yet been accepted at this point. The builtin PNG/font reuse scenario explicitly omitted the optional archive URL; separate scenarios verified normal-archive and corrupt-fallback request counts and every file hash. The five standalone full profiles were to run after pushing the same final implementation.
+- 2026-09-21: The first five tar.br E2E submissions failed before code checkout because `emulator-5554/5556/5558` were absent. Restored the three dedicated Pixel AVDs and confirmed boot completion. Android new-architecture CI failed on a Gradle download timeout; iOS old-architecture CI failed because the backup-cleanup test raced asynchronous cleanup while expecting a file to remain. Changed the assertion to verify injected deletion failure and the installed result, then passed the full Swift suite and 10 focused repetitions. Production native code remained identical to the measured implementation. Regenerated final fingerprints and updated the E2E/CI target.
+- 2026-09-22: At final implementation `797338cd0a4daab9cac93383154a961820b9c563`, full Release E2E for Kysely, Prisma, MongoDB, DynamoDB, and Drizzle all exited 0. Each profile passed iOS 27/27 + Android 27/27, totaling 270 scenarios. Preserved 10 builtin-reuse records and 30 transfer/full-hash verification records in `evidence/standalone-tar-br.{md,json}`.
+- 2026-09-22: All GitHub checks passed at the same implementation revision. Environmental Gradle-download and CocoaPods-installation failures passed on retry. Updated M2/M4 to complete; the follow-up commit changes only verification documentation and evidence. Keep the PR as a draft and do not merge it.
