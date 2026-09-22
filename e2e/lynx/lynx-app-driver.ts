@@ -92,6 +92,25 @@ const INPUT_TEXT_FIELDS: Record<string, string> = {
   "runtime-channel-input": "runtimeChannelInput",
 };
 
+function androidJournalAdvancedPastSnapshot(
+  runtimeJournalUtf8: string,
+  snapshotLatestSequence: string,
+): boolean {
+  try {
+    const journal = JSON.parse(runtimeJournalUtf8) as Record<string, unknown>;
+    if (
+      typeof journal.nextSequence !== "string" ||
+      !/^[1-9][0-9]*$/.test(journal.nextSequence) ||
+      !/^[1-9][0-9]*$/.test(snapshotLatestSequence)
+    ) {
+      return false;
+    }
+    return BigInt(journal.nextSequence) > BigInt(snapshotLatestSequence) + 1n;
+  } catch {
+    return false;
+  }
+}
+
 export class LynxAppDriver implements DetoxAppDriver {
   private readonly controlClient: ControlClient;
   private readonly platform: DetoxPlatform;
@@ -477,11 +496,10 @@ export class LynxAppDriver implements DetoxAppDriver {
       }
       const session = `lynx-e2e-${process.pid}`;
       const closeSession = () => {
-        spawnSync(
-          "agent-device",
-          ["close", "--session", session, "--json"],
-          { encoding: "utf8", env: this.env },
-        );
+        spawnSync("agent-device", ["close", "--session", session, "--json"], {
+          encoding: "utf8",
+          env: this.env,
+        });
       };
       this.releaseIosAgentDeviceSessions();
       try {
@@ -909,86 +927,98 @@ export class LynxAppDriver implements DetoxAppDriver {
     currentProcessId: string,
     expectedRuntimeScenarioMarker: string,
   ): Promise<AndroidRuntimeJournalEvidence> {
-    await this.captureAndroidRuntimeJournalAcquisitionStep(
-      "screen.reset-request-unavailable",
-      () =>
-        this.controlClient.postJson(
-          `${stage}: reset runtime journal evidence`,
-          "/e2e/screen-state",
-          { generationEvents: null, updateActionResult: "idle" },
-        ),
-    );
-    await this.captureAndroidRuntimeJournalAcquisitionStep(
-      "screen.evidence-request-unavailable",
-      () =>
-        this.controlClient.postJson(
-          `${stage}: request runtime journal evidence`,
-          "/e2e/pending-action",
-          { testID: "action-capture-generation-events" },
-        ),
-    );
-    const generationEventsResponse =
+    for (let attempt = 0; attempt < 3; attempt += 1) {
       await this.captureAndroidRuntimeJournalAcquisitionStep(
-        "screen.evidence-receipt-unavailable",
-        () =>
-          this.controlClient.waitForScreenStateField(
-            `${stage}: wait for runtime journal evidence`,
-            "generationEvents",
-          ),
-      );
-    const snapshot = validateGenerationEventsSnapshot(
-      JSON.parse(String(generationEventsResponse.generationEvents)),
-      { allowTruncated: true },
-    );
-    const actionResultResponse =
-      await this.captureAndroidRuntimeJournalAcquisitionStep(
-        "screen.evidence-receipt-unavailable",
-        () =>
-          this.controlClient.waitForScreenStateField(
-            `${stage}: wait for runtime journal receipt`,
-            "updateActionResult",
-            {
-              expectedValue: `generation-events -> ${snapshot.latestSequence}`,
-            },
-          ),
-      );
-    const screenStateResponse =
-      await this.captureAndroidRuntimeJournalAcquisitionStep(
-        "screen.evidence-read-unavailable",
+        "screen.reset-request-unavailable",
         () =>
           this.controlClient.postJson(
-            `${stage}: read runtime journal evidence`,
+            `${stage}: reset runtime journal evidence`,
             "/e2e/screen-state",
-            {},
+            { generationEvents: null, updateActionResult: "idle" },
           ),
       );
-    const journal = this.captureCommand(
-      "android-runtime-journal",
-      "adb",
-      [
-        "-s",
-        this.deviceId(),
-        "shell",
-        "run-as",
-        this.appId(),
-        "cat",
-        "files/hot-updater-lynx/runtime-events/events.json",
-      ],
-      20 * 1024 * 1024,
-    );
-    if (journal.status !== 0 || journal.stdout.length === 0) {
-      throw new Error(
-        "Could not inspect managed Lynx runtime journal; Android journal recovery: reason=journal.read-unavailable",
+      await this.captureAndroidRuntimeJournalAcquisitionStep(
+        "screen.evidence-request-unavailable",
+        () =>
+          this.controlClient.postJson(
+            `${stage}: request runtime journal evidence`,
+            "/e2e/pending-action",
+            { testID: "action-capture-generation-events" },
+          ),
       );
+      const generationEventsResponse =
+        await this.captureAndroidRuntimeJournalAcquisitionStep(
+          "screen.evidence-receipt-unavailable",
+          () =>
+            this.controlClient.waitForScreenStateField(
+              `${stage}: wait for runtime journal evidence`,
+              "generationEvents",
+            ),
+        );
+      const snapshot = validateGenerationEventsSnapshot(
+        JSON.parse(String(generationEventsResponse.generationEvents)),
+        { allowTruncated: true },
+      );
+      const actionResultResponse =
+        await this.captureAndroidRuntimeJournalAcquisitionStep(
+          "screen.evidence-receipt-unavailable",
+          () =>
+            this.controlClient.waitForScreenStateField(
+              `${stage}: wait for runtime journal receipt`,
+              "updateActionResult",
+              {
+                expectedValue: `generation-events -> ${snapshot.latestSequence}`,
+              },
+            ),
+        );
+      const screenStateResponse =
+        await this.captureAndroidRuntimeJournalAcquisitionStep(
+          "screen.evidence-read-unavailable",
+          () =>
+            this.controlClient.postJson(
+              `${stage}: read runtime journal evidence`,
+              "/e2e/screen-state",
+              {},
+            ),
+        );
+      const journal = this.captureCommand(
+        "android-runtime-journal",
+        "adb",
+        [
+          "-s",
+          this.deviceId(),
+          "shell",
+          "run-as",
+          this.appId(),
+          "cat",
+          "files/hot-updater-lynx/runtime-events/events.json",
+        ],
+        20 * 1024 * 1024,
+      );
+      if (journal.status !== 0 || journal.stdout.length === 0) {
+        throw new Error(
+          "Could not inspect managed Lynx runtime journal; Android journal recovery: reason=journal.read-unavailable",
+        );
+      }
+      const evidence = {
+        actionResultResponse,
+        currentProcessId,
+        expectedLaunchGeneration: this.activeLaunchGeneration,
+        expectedRuntimeScenarioMarker,
+        runtimeJournalUtf8: journal.stdout,
+        screenStateResponse,
+      };
+      if (
+        attempt === 2 ||
+        !androidJournalAdvancedPastSnapshot(
+          journal.stdout,
+          snapshot.latestSequence,
+        )
+      ) {
+        return evidence;
+      }
     }
-    return {
-      actionResultResponse,
-      currentProcessId,
-      expectedLaunchGeneration: this.activeLaunchGeneration,
-      expectedRuntimeScenarioMarker,
-      runtimeJournalUtf8: journal.stdout,
-      screenStateResponse,
-    };
+    throw new Error("Unreachable Android runtime journal acquisition state");
   }
 
   private async captureAndroidRuntimeJournalAcquisitionStep<T>(
@@ -1139,18 +1169,14 @@ Android launch log marker was not found`,
 
   private leftoverAgentDeviceSession(error: unknown): string | null {
     const text = error instanceof Error ? error.message : String(error);
-    return (
-      text.match(/in use by session .*?(lynx-e2e-[0-9]+)/)?.[1] ??
-      null
-    );
+    return text.match(/in use by session .*?(lynx-e2e-[0-9]+)/)?.[1] ?? null;
   }
 
   private closeIosAgentDeviceSession(session: string): void {
-    spawnSync(
-      "agent-device",
-      ["close", "--session", session, "--json"],
-      { encoding: "utf8", env: this.env },
-    );
+    spawnSync("agent-device", ["close", "--session", session, "--json"], {
+      encoding: "utf8",
+      env: this.env,
+    });
   }
 
   private openIosAgentDeviceSession(session: string): void {
@@ -1180,11 +1206,10 @@ Android launch log marker was not found`,
   }
 
   private releaseIosAgentDeviceSessions(): void {
-    const listed = spawnSync(
-      "agent-device",
-      ["session", "list", "--json"],
-      { encoding: "utf8", env: this.env },
-    );
+    const listed = spawnSync("agent-device", ["session", "list", "--json"], {
+      encoding: "utf8",
+      env: this.env,
+    });
     const names: string[] = [];
     try {
       const parsed = JSON.parse(String(listed.stdout ?? "{}"));
@@ -1207,11 +1232,10 @@ Android launch log marker was not found`,
       // A leftover session list is best-effort cleanup.
     }
     for (const name of names) {
-      spawnSync(
-        "agent-device",
-        ["close", "--session", name, "--json"],
-        { encoding: "utf8", env: this.env },
-      );
+      spawnSync("agent-device", ["close", "--session", name, "--json"], {
+        encoding: "utf8",
+        env: this.env,
+      });
     }
   }
 

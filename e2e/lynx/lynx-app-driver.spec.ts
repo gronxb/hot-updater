@@ -22,7 +22,7 @@ function createDriver(readScreenState: () => Record<string, unknown>) {
 
 function mockAndroidCommands(
   logsSinceLaunch: string | (() => string) = "",
-  runtimeJournal = "",
+  runtimeJournal: string | (() => string) = "",
   processId: string | (() => string) = "456\n",
 ) {
   let launchLogMarker = "";
@@ -37,7 +37,9 @@ function mockAndroidCommands(
           ? processId()
           : processId
         : args.includes("run-as")
-          ? runtimeJournal
+          ? typeof runtimeJournal === "function"
+            ? runtimeJournal()
+            : runtimeJournal
           : args.includes("-d")
             ? `${launchLogMarker}\n${typeof logsSinceLaunch === "function" ? logsSinceLaunch() : logsSinceLaunch}`
             : "",
@@ -116,18 +118,16 @@ function androidJournalFixture() {
 }
 
 function androidJournalFetch(
-  snapshot: string,
+  snapshot: string | (() => string),
   options: {
     readonly evidenceDelayPolls?: number;
     readonly initialActionResult?: string;
   } = {},
 ) {
-  const latestSequence = String(
-    (JSON.parse(snapshot) as { latestSequence: unknown }).latestSequence,
-  );
   let launchGeneration: string | null = null;
   let evidenceRequested = false;
   let evidencePolls = 0;
+  let activeSnapshot = typeof snapshot === "function" ? null : snapshot;
   return vi.fn(async (url: string, init?: RequestInit) => {
     const body =
       typeof init?.body === "string"
@@ -141,20 +141,28 @@ function androidJournalFetch(
       body.testID === "action-capture-generation-events"
     ) {
       evidenceRequested = true;
+      activeSnapshot = typeof snapshot === "function" ? snapshot() : snapshot;
     }
     const evidenceReady =
       evidenceRequested &&
       (!url.endsWith("/e2e/runtime-config") ||
         evidencePolls++ >= (options.evidenceDelayPolls ?? 0));
+    const latestSequence = activeSnapshot
+      ? String(
+          (JSON.parse(activeSnapshot) as { latestSequence: unknown })
+            .latestSequence,
+        )
+      : null;
     const screenState = {
       currentBundleId: "bundle-A",
       currentReleaseId: "release-A",
-      generationEvents: evidenceReady ? snapshot : null,
+      generationEvents: evidenceReady ? activeSnapshot : null,
       launchStatus: "Current Launch Status: UNCHANGED",
       runtimeScenarioMarker: "bundle-A-marker",
-      updateActionResult: evidenceReady
-        ? `generation-events -> ${latestSequence}`
-        : (options.initialActionResult ?? "idle"),
+      updateActionResult:
+        evidenceReady && latestSequence
+          ? `generation-events -> ${latestSequence}`
+          : (options.initialActionResult ?? "idle"),
     };
     return {
       ok: true,
@@ -529,8 +537,7 @@ describe("Lynx managed page evidence actions", () => {
               success: false,
               error: {
                 code: "DEVICE_IN_USE",
-                message:
-                  'Device is already in use by session "lynx-e2e-1082".',
+                message: 'Device is already in use by session "lynx-e2e-1082".',
               },
             }),
           } as ReturnType<typeof spawnSync>;
@@ -880,12 +887,14 @@ describe("Lynx app installation", () => {
     );
 
     await expect(driver.launch("journal recovery")).resolves.toBeUndefined();
-    const logCheckpoints = vi.mocked(spawnSync).mock.calls.filter(
-      ([command, args]) =>
-        command === "adb" &&
-        args.includes("log") &&
-        args.includes("HotUpdaterE2E"),
-    );
+    const logCheckpoints = vi
+      .mocked(spawnSync)
+      .mock.calls.filter(
+        ([command, args]) =>
+          command === "adb" &&
+          args.includes("log") &&
+          args.includes("HotUpdaterE2E"),
+      );
     expect(logCheckpoints).toHaveLength(2);
     expect(vi.mocked(spawnSync)).toHaveBeenCalledWith(
       "adb",
@@ -922,6 +931,55 @@ describe("Lynx app installation", () => {
     await expect(
       driver.launch("journal receipt race"),
     ).resolves.toBeUndefined();
+  });
+
+  it("recaptures Android screen evidence when the durable journal advances during acquisition", async () => {
+    const fixture = androidJournalFixture();
+    const staleEvents = fixture.events.slice(0, -1);
+    const staleSnapshot = JSON.stringify({
+      events: staleEvents,
+      latestSequence: "4",
+      oldestSequence: "1",
+      schemaVersion: 1,
+      truncated: false,
+    });
+    let requests = 0;
+    mockAndroidCommands(ANDROID_302_DIAGNOSTIC, fixture.journal);
+    const fetch = androidJournalFetch(() =>
+      requests++ === 0 ? staleSnapshot : fixture.snapshot,
+    );
+    const driver = new LynxAppDriver(
+      createControlClient({
+        baseUrl: "http://control.test",
+        fetch,
+        pollDelayMs: async () => undefined,
+      }),
+      "android",
+      { HOT_UPDATER_E2E_ANDROID_SERIAL: "emulator-5554" },
+    );
+
+    await expect(
+      driver.launch("journal advanced during capture"),
+    ).resolves.toBeUndefined();
+    expect(
+      vi
+        .mocked(spawnSync)
+        .mock.calls.filter(
+          ([command, args]) => command === "adb" && args.includes("run-as"),
+        ),
+    ).toHaveLength(2);
+    expect(
+      fetch.mock.calls.filter(([url, init]) => {
+        const body =
+          typeof init?.body === "string"
+            ? (JSON.parse(init.body) as Record<string, unknown>)
+            : {};
+        return (
+          String(url).endsWith("/e2e/pending-action") &&
+          body.testID === "action-capture-generation-events"
+        );
+      }),
+    ).toHaveLength(2);
   });
 
   it.each([

@@ -1408,7 +1408,6 @@ public final class HotUpdaterSparklingViewController: UINavigationController {
 
     public override func viewDidLoad() {
         super.viewDidLoad()
-        interactivePopGestureRecognizer?.delegate = nil
         interactivePopGestureRecognizer?.isEnabled = viewControllers.count > 1
     }
 
