@@ -19,7 +19,7 @@ Bundle          immutable artifact identity and storage metadata
 Release         rollout, compatibility, Channel, operation, and message policy
 ReleaseCatalog  deterministic desired-state projection for one canonical scope
 Database        canonical rows, strong reads, and atomic conditional commits
-Server          catalog compiler and unversioned client routes
+Server          catalog compiler and catalog/artifact HTTP routes
 Device          catalog acceptance and local desired-state selection
 ```
 
@@ -57,10 +57,10 @@ The following are absent:
 
 The public `createDatabasePlugin` constructor accepts these domain models and a
 native `commit`, and validates the complete commit envelope before dispatch.
-It does not implement storage or transactions. Bundled providers may use
-`createDatabasePluginAdapter` from `@hot-updater/plugin-core/internal` to map
-transactional CRUD or native read/commit implementations to this contract.
-That internal factory is distinct from the public custom-provider constructor.
+It does not implement storage or transactions. The bundled internal adapter
+factory is not a supported custom-provider import. There is currently no public
+`createAdapterFactory` or `/adapters` authoring entry; custom authors implement
+this complete domain contract.
 
 ## Artifact models
 
@@ -203,7 +203,9 @@ type DatabaseCommitExpectation =
 
 Release changes support insert, update, and delete. Catalog changes use
 `{ model: "releaseCatalogs", operation: "put", row }`. Bundle, patch,
-Channel, Insights, and API key changes retain their declared operations.
+Channel and API key changes retain their declared operations. Insights events
+use `models.insights.recordEvent({ event })`, not a `DatabaseChange`. That method
+atomically records the event and its associated Insights state separately.
 
 The provider performs these steps inside one short native transaction:
 
@@ -271,14 +273,24 @@ Required provider mappings:
 
 ## Schema 1.0.0 bootstrap
 
-`hot-updater db migrate` creates the complete schema `1.0.0` on empty storage
-and no-ops at `1.0.0`. Record `schema.core` only after successful
-initialization. Generate ORM artifacts with `hot-updater db generate` and apply
+For adapters that expose the server's schema tooling, `hot-updater db migrate`
+creates the complete schema `1.0.0` on empty storage and no-ops at `1.0.0`.
+`createDatabasePlugin` does not register a custom migrator: custom providers
+must supply their own native schema/bootstrap procedure. Record `schema.core`
+only after successful initialization. Generate ORM artifacts with
+`hot-updater db generate` and apply
 emitted companion collation SQL for Prisma PostgreSQL/MySQL.
 
-1. On empty storage, create the seven models with their indexes and references.
+1. On empty storage, create all model storage, required Insights summaries,
+   indexes and references.
 2. Record `schema.core = 1.0.0` after successful creation.
 3. Leave initialized `1.0.0` storage unchanged on subsequent calls.
+
+An existing RC database can carry the `1.0.0` marker while missing later pre-GA
+schema/index corrections. Inspect and explicitly reconcile it with the current
+baseline; neither the marker nor a no-op migration certifies readiness. Keep all
+pre-GA corrections in the single initial `1.0.0` migration and never backfill on
+request paths. See [Upgrade to v1](/docs/guides/upgrade-to-v1).
 
 Managed initialization rejects incompatible infrastructure before mutating it.
 

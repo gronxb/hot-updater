@@ -4,6 +4,17 @@ description: Create a database provider for Hot Updater's Release Catalog archit
 icon: Hammer
 ---
 
+Use this guide when you are implementing a new persistence backend. If your
+backend already works with [Kysely](/docs/custom/database/kysely),
+[Drizzle](/docs/custom/database/drizzle), [Prisma](/docs/custom/database/prisma)
+or [MongoDB](/docs/custom/database/mongodb), configure that adapter instead.
+
+The current public API is `createDatabasePlugin({ name, models, commit })`.
+You supply the complete domain models and atomic commit implementation. There
+is no public `createAdapterFactory` or `@hot-updater/plugin-core/adapters` export.
+Start with [provider wiring](#create-a-provider), then implement the
+[model contract](#domain-interfaces) and run [conformance](#test-the-provider).
+
 ## Installation
 
 ```package-install
@@ -13,8 +24,13 @@ npm install @hot-updater/plugin-core
 Install the public conformance suite and test server in the provider project:
 
 ```package-install
-npm install @hot-updater/test-utils @hot-updater/server vitest --save-dev
+npm install @hot-updater/test-utils @hot-updater/server @hot-updater/core execa vitest@^4 --save-dev
 ```
+
+Keep the `@hot-updater/*` packages on the same release, including the RC version
+when applicable. The test-utils package requires Vitest 4, `execa`, core and
+plugin-core as peers. Install your database driver separately. A deployed server
+also needs `@hot-updater/server` as a runtime dependency in its server project.
 
 ## Contract
 
@@ -22,6 +38,9 @@ npm install @hot-updater/test-utils @hot-updater/server vitest --save-dev
 commit boundary:
 
 ```ts
+import { createDatabasePlugin } from "@hot-updater/plugin-core";
+
+// Supply the models and native commit described below.
 createDatabasePlugin({
   name,
   models: {
@@ -58,12 +77,11 @@ The fixed domains are:
 `private_hot_updater_settings` remains the schema-version marker managed by
 the server database tooling.
 
-### Public constructor and bundled adapter factory
+### What the public constructor provides
 
 | Entry point | Contract |
 | --- | --- |
 | `@hot-updater/plugin-core` | `DatabasePlugin`, domain model types, and the `createDatabasePlugin` constructor for custom providers |
-| `@hot-updater/plugin-core/internal` | `createDatabasePluginAdapter` and storage-operation types used to implement bundled providers |
 | `@hot-updater/test-utils` | The shared provider and HTTP conformance suites |
 
 `createDatabasePlugin` accepts complete domain models and a native atomic
@@ -73,13 +91,10 @@ inputs and results, and Insights inputs and results. Providers remain responsibl
 for their other model reads, stored-row validation, references, indexes and
 atomicity. The constructor does not generate database queries or transactions.
 
-The bundled adapter factory owns domain read planning and execution selection.
-It accepts transactional CRUD implementations, native reads plus native models
-and commit, or a lazy transactional implementation. Native providers do not need
-placeholder CRUD writes. Its query planners and commit validators are private;
-bundled providers register storage operations instead of assembling model helpers.
-This factory remains on `/internal`; the documented external authoring contract
-is the complete `models + commit` interface above.
+The bundled `createDatabasePluginAdapter` is an internal implementation detail,
+not a supported custom-provider import. Its existence does not make the public
+constructor a CRUD adapter factory. Use only public types and exports in your
+provider package; the current domain implementation burden remains yours.
 
 ### Bounded reads
 
@@ -94,6 +109,43 @@ scope. Enumerating patches for supplied owners, compiling all Releases in one
 scope, explicit full lists and scalar aggregates retain their documented cost.
 These operations do not authorize a full-history fallback for a point lookup
 or a bounded page.
+
+## Create a provider
+
+This is a complete **wiring** example, not a database implementation. It accepts
+your seven model objects, native `commit`, and optional `dispose` through the
+exported `DatabasePlugin` type. It does not require a particular collection of
+model-builder helpers.
+
+```ts title="myDatabase.ts"
+import {
+  createDatabasePlugin,
+  type DatabasePlugin,
+} from "@hot-updater/plugin-core";
+
+export type MyDatabaseImplementation = Omit<DatabasePlugin, "name">;
+
+export const myDatabase = (
+  implementation: MyDatabaseImplementation,
+): DatabasePlugin => createDatabasePlugin({
+  name: "my-database",
+  ...implementation,
+});
+```
+
+Implement `MyDatabaseImplementation` using your database driver. The models must
+return the public row/result shapes, and `commit` must enforce the ordered
+conditional transaction described below. Do not fill missing methods with
+successful no-ops. Keep SQL values parameterized and canonical row field names
+unchanged. Methods receive no HTTP request context; close over your configured
+client or runtime binding.
+
+The constructor does not initialize a schema, open or close a connection, or
+make your implementation lazy. Create an owned client at the appropriate time
+and expose `dispose` to close it. If the caller supplies a shared client, let the
+caller own its lifetime or document an explicit ownership transfer. Do not
+close that client after each request. The test harness invokes its disposal
+hook; application lifecycle shutdown remains the caller's responsibility.
 
 ## Domain interfaces
 
@@ -352,84 +404,34 @@ atomicity or index usage. Run the repository conformance suite plus native rollb
 concurrency, continuation, schema-bootstrap, and query-plan tests for your
 backend.
 
-#### Native storage patterns
+#### Native storage and atomicity
 
-The bundled SQL and MongoDB providers keep a private `bundle_event_heads`
-table/collection with `install_id`, `id`, `received_at_ms`, `user_id`, `platform`,
-`channel`, `type`, `from_bundle_id`, and `to_bundle_id`. These are canonical event
-fields used for latest ordering, user pages, and count predicates. Metadata,
-release IDs, app version, and calculated running/pending state are not copied.
-This physical layout is not a required custom-provider model.
+A private latest-head row/document is an implementation choice, not an extra
+public model. It must preserve the canonical ordering and query fields, plus
+any Release/app-version attribution needed to update the maintained summaries.
+The bundled schema includes those attribution fields; an event/head-only insert
+is not a complete `recordEvent` implementation.
 
-The examples below illustrate the event/head portion of `recordEvent`. A complete
-provider also updates the required summaries in that same atomic operation.
-A PostgreSQL provider can append and advance the head atomically in one statement:
+For every newly accepted event, keep history, relevant counters/HLL summaries,
+and any latest-head/current-user/distribution changes in one atomic operation.
+A duplicate must change none of them. An older but newly accepted event still
+contributes its report metrics without replacing the latest head. Summary reads
+merge bounded HLL summaries; do not replace approximate distinct-user metrics
+with an unbounded set of installation IDs.
 
-```ts
-async function recordEvent({ event }: InsightsRecordEventInput) {
-  await sql.query(
-    `WITH accepted AS (
-       INSERT INTO bundle_events
-       SELECT * FROM jsonb_populate_record(NULL::bundle_events, $1::jsonb)
-       ON CONFLICT (id) DO NOTHING RETURNING *
-     )
-     INSERT INTO bundle_event_heads (
-       install_id, id, received_at_ms, user_id, platform, channel,
-       type, from_bundle_id, to_bundle_id
-     )
-     SELECT install_id, id, received_at_ms, user_id, platform, channel,
-       type, from_bundle_id, to_bundle_id FROM accepted
-     ON CONFLICT (install_id) DO UPDATE SET
-       id = excluded.id, received_at_ms = excluded.received_at_ms,
-       user_id = excluded.user_id, platform = excluded.platform,
-       channel = excluded.channel, type = excluded.type,
-       from_bundle_id = excluded.from_bundle_id,
-       to_bundle_id = excluded.to_bundle_id
-     WHERE (excluded.received_at_ms, excluded.id) >
-       (bundle_event_heads.received_at_ms, bundle_event_heads.id)`,
-    [JSON.stringify(event)],
-  );
-}
-```
+| Native backend | Implementation requirement |
+| --- | --- |
+| SQL or a transaction-capable ORM | Use real transactions, uniqueness, conditional mutations and native accumulation. Concurrent first reports for an absent head also need protection. |
+| Firestore | Read all required event/head/summary state before writing inside the native transaction; retry with the same prepared event. |
+| DynamoDB | Include head, summary, uniqueness and relation guards in one conditional transaction; account for physical index writes and native limits. |
+| D1 | Compile checks and conditional effects into one atomic batch. A zero-row update alone does not abort a batch. |
+| Supabase | Execute the complete operation in one installed RPC transaction; separate REST calls are not atomic. |
 
-The bundled providers index heads by `(user_id, install_id)`,
-`(platform, channel, received_at_ms)`, and the two bundle-count tuples
-`(type, platform, channel, from_bundle_id, received_at_ms)` and
-`(type, platform, channel, to_bundle_id, received_at_ms)`.
-For a user page, select at most `limit` head IDs using `userId` and the optional
-exclusive installation cursor, then join those IDs to `bundle_events`. Return
-complete canonical event rows. Count the matching heads directly; no event
-hydration is needed for a scalar count. Latest-state reads then depend on current
-installations, without revisiting each installation's retained history. Counts
-still require database work proportional to the relevant current entries.
-
-A Firestore-style provider can keep a private latest collection. Its `recordEvent`
-implementation only copies the supplied object and compares the receipt tuple:
-
-```ts
-async function recordEvent({ event }: InsightsRecordEventInput) {
-  await db.runTransaction(async (tx) => {
-    const eventRef = events.doc(event.id);
-    // Use a reversible, collision-free document key for arbitrary install IDs.
-    const latestRef = latest.doc(Buffer.from(event.install_id).toString("hex"));
-    const [accepted, previous] = await tx.getAll(eventRef, latestRef);
-    if (accepted.exists) return;
-    const row = previous.data();
-    tx.create(eventRef, event);
-    if (!row || event.received_at_ms > row.received_at_ms ||
-        (event.received_at_ms === row.received_at_ms && event.id > row.id)) {
-      tx.set(latestRef, event);
-    }
-  });
-}
-```
-
-Read that private collection by exact document key or supplied native predicates;
-return its complete event unchanged. No pending-bundle calculation, metadata
-helper, background worker, or public repair method is part of the contract.
-The bundled SQL and Firestore implementations exercise these patterns through
-`setupDatabasePluginTestSuite`; custom authors use the same suite described below.
-
+Select only the fields needed by each indexed read. An exact count may examine
+its matching index range even when it returns one number. Returning a small page
+or using a native query is not proof of bounded examined work. Run native
+rollback/concurrency and query-cost tests alongside the published conformance
+suite; the public constructor cannot supply those guarantees for your driver.
 
 ## Atomic commit and optimistic CAS
 
@@ -494,12 +496,16 @@ limits must reject an oversized commit without partially applying it.
 ## Implement the 1.0.0 schema
 
 The initial `1.0.0` schema includes the required Insights storage and indexes,
-exact identity collations, and atomic recording. Initialization creates
-the complete schema on empty storage and no-ops for an initialized `1.0.0`
-database. Unsupported populated storage is rejected without deleting its data.
+exact identity collations, and atomic recording. Initialize the complete schema
+on empty storage and retain it on repeated initialization. The `1.0.0` marker
+alone does not prove that an existing RC
+installation has the final schema/indexes. Inspect and reconcile that schema
+explicitly; do not replay initialization, add a second pre-GA migration, or
+repair it during requests. Unsupported populated storage is rejected without
+deleting its data. See [Upgrade to v1](/docs/guides/upgrade-to-v1).
 
-1. Remove `queries`, `getUpdateInfo`, provider decision SQL/RPCs, and any
-   desired-state cache owned by the provider.
+1. Implement the public models and native commit; leave update selection and
+   Release-catalog compilation to Hot Updater.
 2. Keep Bundle rows as immutable manifest artifacts and validate patch byte
    sizes. Store rollout and compatibility policy on Releases.
 3. Add Channel, Release, and Release-catalog storage, indexes, and references.
@@ -521,42 +527,6 @@ Provider-specific consistency requirements:
 - MongoDB uses deterministic majority reads and a short write transaction.
 - D1 must prove a failed generation predicate aborts the complete batch.
 
-## Create a provider
-
-```ts title="myDatabase.ts"
-import {
-  createDatabasePlugin,
-  type DatabaseCommit,
-  type DatabaseCommitResult,
-} from "@hot-updater/plugin-core";
-
-export const myDatabase = ({ db }: { db: MyDatabaseClient }) => {
-  const commit = (input: DatabaseCommit): Promise<DatabaseCommitResult> =>
-    db.transaction((transaction) =>
-      applyConditionalChanges(transaction, input),
-    );
-
-  return createDatabasePlugin({
-    name: "my-database",
-    models: {
-      bundles: createBundleModel(db),
-      bundlePatches: createBundlePatchModel(db),
-      releases: createReleaseModel(db),
-      releaseCatalogs: createReleaseCatalogModel(db),
-      channels: createChannelModel(db),
-      insights: createInsightsModel(db),
-      apiKeys: createApiKeyModel(db),
-    },
-    commit,
-    dispose: () => db.close(),
-  });
-};
-```
-
-Keep SQL values parameterized and preserve the canonical snake-case row
-fields. Database methods do not receive request context; close over the
-configured client or runtime binding.
-
 ## Catalog transport caching
 
 The database contract is independent of HTTP caching. If a custom deployment
@@ -577,10 +547,6 @@ Use the same conformance suite as the official database providers. Install the
 published `@hot-updater/test-utils` package; no repository checkout is needed.
 Keep test-utils, server, and plugin-core on the same Hot Updater version.
 
-```bash
-pnpm add -D @hot-updater/test-utils @hot-updater/server vitest
-```
-
 Connect your plugin and its test database lifecycle:
 
 ```ts title="myDatabase.spec.ts"
@@ -590,7 +556,13 @@ import {
   startHttpTestServer,
 } from "@hot-updater/test-utils";
 import { myDatabase } from "./myDatabase";
-import { createTestDatabase, migrateDatabase, resetDatabase } from "./testDatabase";
+import {
+  createTestDatabase,
+  createTestImplementation,
+  destroyTestDatabase,
+  migrateDatabase,
+  resetDatabase,
+} from "./testDatabase";
 
 let db: Awaited<ReturnType<typeof createTestDatabase>>;
 
@@ -603,13 +575,24 @@ setupDatabasePluginTestSuite({
     db = await createTestDatabase();
     await migrateDatabase(db);
   },
-  createPlugin: () => myDatabase({ db }),
+  createPlugin: () => myDatabase(createTestImplementation(db)),
   reset: () => resetDatabase(db),
   dispose: async (plugin) => {
-    await plugin.dispose?.();
+    try {
+      await plugin.dispose?.();
+    } finally {
+      await destroyTestDatabase(db);
+    }
   },
 });
 ```
+
+The functions imported from `./testDatabase` are your backend-specific test
+fixture, not package exports. `createTestImplementation(db)` returns a complete
+`MyDatabaseImplementation` over that disposable database. Its `dispose` closes
+an owned client; `destroyTestDatabase` removes the test database/resources using
+an appropriate administrative connection and must not close that same client
+again. Keep every resource isolated from development and production data.
 
 `migrate` creates the isolated database and applies its schema once, before
 `createPlugin`. `reset` clears all test data before each scenario while retaining
@@ -709,24 +692,33 @@ Use the same provider in the CLI and self-hosted server:
 
 ```ts title="hot-updater.config.ts"
 import { defineConfig } from "hot-updater";
+import { myDatabase } from "./myDatabase";
+import { implementation } from "./implementation";
 
 export default defineConfig({
-  database: myDatabase({ db }), // [!code ++]
+  database: myDatabase(implementation), // [!code ++]
   // build: ...
   // storage: ...
 });
 ```
 
-```ts title="server.ts"
+```ts title="server.ts (excerpt)"
+import { createHotUpdater } from "@hot-updater/server";
+import { myDatabase } from "./myDatabase";
+import { implementation } from "./implementation";
+
 export const hotUpdater = createHotUpdater({
-  database: myDatabase({ db }), // [!code ++]
+  database: myDatabase(implementation), // [!code ++]
   clientAccess: { type: "api-key" },
   storage,
 });
 ```
 
-The CLI and server use the same database. Catalog identity is managed
-automatically; there is no additional identifier to configure or synchronize.
+Here `./implementation` exports your completed model/commit implementation;
+`storage` is your configured storage plugin list. The CLI and server connect to
+the same database, while each process owns its own client lifecycle. Catalog
+identity is managed automatically; there is no additional identifier to
+configure or synchronize.
 
 ## Standalone repositories
 
