@@ -187,6 +187,66 @@ describe("PostgreSQL commit expectation reads", () => {
   });
 });
 
+describe("PostgreSQL bounded commit validation", () => {
+  it("uses a projected one-row witness regardless of reference count", async () => {
+    const { database, plugin } = await createPostgresTestPlugin();
+    const bundle = bundleFixture();
+    const channel = channelFixture("production", "channel-1");
+    try {
+      await plugin.commit({
+        changes: [
+          {
+            model: "channels",
+            operation: "insert",
+            row: channel,
+            onConflict: "ignore",
+          },
+          { model: "bundles", operation: "insert", row: bundle },
+          {
+            model: "releases",
+            operation: "insert",
+            row: releaseFixture(channel, bundle),
+          },
+        ],
+      });
+      await database.exec(`INSERT INTO releases SELECT
+        ('00000000-0000-7000-8000-' || lpad(n::text, 12, '0'))::uuid,
+        revision, scope_key, channel_id, platform, kind, bundle_id, strategy,
+        target_app_version, fingerprint_hash, enabled, should_force_update,
+        message, rollout_cohort_count, target_cohorts, operation, source_release_id,
+        created_at_ms, updated_at_ms FROM releases CROSS JOIN generate_series(1000, 1999) AS n;`);
+      const query = vi.spyOn(database, "query");
+      await expect(
+        plugin.commit({
+          changes: [
+            { model: "bundles", operation: "delete", where: { id: bundle.id } },
+          ],
+        }),
+      ).resolves.toEqual({
+        committed: false,
+        conflict: { changeIndex: 0, reason: "referenced" },
+      });
+      const reads = query.mock.calls.filter(([sql]) =>
+        sql.startsWith("select"),
+      );
+      expect(reads).toEqual([
+        [
+          'select "id" from "releases" where "bundle_id" = $1 limit $2',
+          [bundle.id, 1],
+        ],
+      ]);
+      const resultIndex = query.mock.calls.findIndex(([sql]) =>
+        sql.startsWith("select"),
+      );
+      await expect(
+        query.mock.results[resultIndex]!.value,
+      ).resolves.toMatchObject({ rows: [{ id: expect.any(String) }] });
+    } finally {
+      await plugin.dispose?.();
+    }
+  });
+});
+
 describe("PostgreSQL patch byte-size constraints", () => {
   it("rejects a negative patch size at the database boundary", async () => {
     const { database, plugin } = await createPostgresTestPlugin();
