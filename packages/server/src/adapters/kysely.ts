@@ -76,14 +76,36 @@ const createImplementation = <TDatabase extends object>(
             input,
           ),
         ),
-    transaction: (callback) =>
-      db
-        .transaction()
-        .execute((transaction) =>
-          callback(
-            createKyselyCrud(transaction, config.provider, relationMode),
-          ),
-        ),
+    transaction: async (callback) => {
+      for (let attempt = 0; ; attempt += 1) {
+        try {
+          const transaction = db.transaction();
+          // Expectations and writes must share a serializable snapshot. A
+          // retried loser then observes the winner's revision/generation.
+          const isolated =
+            config.provider === "sqlite"
+              ? transaction
+              : transaction.setIsolationLevel("serializable");
+          return await isolated.execute((transaction) =>
+            callback(
+              createKyselyCrud(transaction, config.provider, relationMode),
+            ),
+          );
+        } catch (error) {
+          if (
+            attempt >= 15 ||
+            typeof error !== "object" ||
+            error === null ||
+            !("code" in error) ||
+            !["40001", "40P01", "ER_LOCK_DEADLOCK"].includes(String(error.code))
+          )
+            throw error;
+          await new Promise((resolve) =>
+            setTimeout(resolve, Math.min(2 ** attempt, 32)),
+          );
+        }
+      }
+    },
   };
 };
 

@@ -2,6 +2,10 @@ import fs from "fs/promises";
 import path from "path";
 import { fileURLToPath } from "url";
 
+import {
+  createHttpTestClient,
+  setupReleaseCatalogTestSuite,
+} from "@hot-updater/test-utils";
 import { setupBundleMethodsTestSuite } from "@hot-updater/test-utils";
 import {
   cleanupServer,
@@ -86,6 +90,15 @@ describe("Hot Updater Handler Integration Tests (Hono + Drizzle + PGlite)", () =
     updateBundleById: (bundleId, newBundle) =>
       bundleMethods.updateBundleById(bundleId, newBundle),
     deleteBundleById: (bundleId) => bundleMethods.deleteBundleById(bundleId),
+  });
+
+  setupReleaseCatalogTestSuite({
+    getClient: () =>
+      createHttpTestClient({
+        clientBaseUrl: `${baseUrl}/hot-updater`,
+        adminBaseUrl: `${baseUrl}/hot-updater/admin`,
+        adminHeaders: { Authorization: `Bearer ${TEST_ADMIN_AUTH_TOKEN}` },
+      }),
   });
 
   it("protects bundle management routes while keeping catalog routes public", async () => {

@@ -1,4 +1,8 @@
 import { PGlite } from "@electric-sql/pglite";
+import {
+  setupDatabasePluginTestSuite,
+  startHttpTestServer,
+} from "@hot-updater/test-utils";
 import { Kysely } from "kysely";
 import { PGliteDialect } from "kysely-pglite-dialect";
 import { describe, expect, it } from "vitest";
@@ -9,8 +13,8 @@ import {
   createBundleRowFixture,
   createChannelRowFixture,
 } from "../../../test-utils/src/databaseTestFixtures";
-import { setupDatabasePluginTestSuite } from "../../../test-utils/src/setupDatabasePluginTestSuite";
 import type { DatabaseAdapterWithCapabilities } from "../db/types";
+import { createHotUpdater } from "../index";
 import {
   DATABASE_PLUGIN_TEST_RESET_SQL,
   DATABASE_PLUGIN_TEST_SCHEMA_SQL,
@@ -35,6 +39,11 @@ const getDatabase = (): Kysely<object> => {
 };
 
 setupDatabasePluginTestSuite({
+  createHttpClient: (options) =>
+    startHttpTestServer(
+      createHotUpdater({ ...options, clientAccess: { type: "public" } })
+        .handlers,
+    ),
   name: "kyselyAdapter PostgreSQL",
   migrate: async () => {
     client = new PGlite();

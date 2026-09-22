@@ -14,7 +14,8 @@ import {
   createDatabaseClient,
 } from "@hot-updater/plugin-core";
 import { bundleToRow } from "@hot-updater/plugin-core";
-import { setupDatabasePluginTestSuite } from "@hot-updater/test-utils";
+import { createHotUpdater } from "@hot-updater/server";
+import { setupDatabasePluginTestSuite, startHttpTestServer } from "@hot-updater/test-utils";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
 import { migrateDynamoDBMetadataIndexes } from "../iac/migrateMetadataIndexes";
@@ -96,6 +97,11 @@ beforeAll(() => fixture.start(), 120_000);
 afterAll(() => fixture.stop());
 
 setupDatabasePluginTestSuite({
+  createHttpClient: (options) =>
+    startHttpTestServer(
+      createHotUpdater({ ...options, clientAccess: { type: "public" } })
+        .handlers,
+    ),
   name: "DynamoDB fixed-model database plugin",
   createPlugin,
   migrate: () => undefined,

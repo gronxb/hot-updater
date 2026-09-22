@@ -1,4 +1,8 @@
-import { setupDatabasePluginTestSuite } from "@hot-updater/test-utils";
+import { createHotUpdater } from "@hot-updater/server";
+import {
+  setupDatabasePluginTestSuite,
+  startHttpTestServer,
+} from "@hot-updater/test-utils";
 import { describe, expect, it, vi } from "vitest";
 
 import { supabaseDatabase as supabaseEdgeDatabase } from "./edge";
@@ -889,6 +893,11 @@ vi.mock("@supabase/supabase-js", () => ({
 }));
 
 setupDatabasePluginTestSuite({
+  createHttpClient: (options) =>
+    startHttpTestServer(
+      createHotUpdater({ ...options, clientAccess: { type: "public" } })
+        .handlers,
+    ),
   name: "supabase fixed-model database plugin",
   migrate: () => undefined,
   createPlugin: () =>

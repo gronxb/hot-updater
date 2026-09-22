@@ -4,10 +4,12 @@ import {
   type BundleEventRow,
   type DatabasePlugin,
 } from "@hot-updater/plugin-core";
+import { createHotUpdater } from "@hot-updater/server";
 import {
-  setupDatabaseClientTestSuite,
   setupDatabasePluginTestSuite,
+  startHttpTestServer,
 } from "@hot-updater/test-utils";
+import { setupDatabaseClientTestSuite } from "@hot-updater/test-utils";
 import { Query, Transaction } from "firebase-admin/firestore";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -48,6 +50,11 @@ const findAllBundles = (plugin: DatabasePlugin) =>
   });
 
 setupDatabasePluginTestSuite({
+  createHttpClient: (options) =>
+    startHttpTestServer(
+      createHotUpdater({ ...options, clientAccess: { type: "public" } })
+        .handlers,
+    ),
   name: "firebase fixed-model database plugin",
   createPlugin,
   migrate: () => undefined,
