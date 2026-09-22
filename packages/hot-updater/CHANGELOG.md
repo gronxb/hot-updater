@@ -1,5 +1,22 @@
 # hot-updater
 
+## 0.36.15
+
+### Patch Changes
+
+- 0e10e8a: Stop installing dotenv during init. Generate configs with Node's built-in environment loader, allow CI to supply environment variables without a local env file, and preserve existing environment setup when merging configs.
+
+  Remove direct dotenv dependencies from examples and server examples, replace react-native-dotenv in mobile examples with explicit public configuration, and update the documentation. Preserve public E2E build settings for manual launches.
+
+- Updated dependencies [0e10e8a]
+  - @hot-updater/cli-tools@0.36.15
+  - @hot-updater/android-helper@0.36.15
+  - @hot-updater/apple-helper@0.36.15
+  - @hot-updater/console@0.36.15
+  - @hot-updater/core@0.36.15
+  - @hot-updater/server@0.36.15
+  - @hot-updater/plugin-core@0.36.15
+
 ## 0.36.14
 
 ### Patch Changes
