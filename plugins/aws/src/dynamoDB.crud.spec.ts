@@ -12,6 +12,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 
 import {
   createDynamoDBCrud,
+  dynamoDB,
   parseDynamoDBItem,
   toDynamoDBBundleItem,
   toDynamoDBPatchItem,
@@ -281,7 +282,11 @@ describe("DynamoDB CRUD access patterns", () => {
     const queryBundleId = "00000000-0000-7000-8000-000000000001";
     const queryChannelId = "00000000-0000-7000-8000-000000000002";
     dynamodb.on(QueryCommand).resolves({ Items: [] });
-    await createPlugin().models.releases.findMany({
+    await dynamoDB({
+      tableName: "hot-updater-metadata",
+      region: "us-east-1",
+      credentials: { accessKeyId: "test", secretAccessKey: "test" },
+    }).models.releases.findMany({
       bundleId: queryBundleId,
       channelId: queryChannelId,
       enabled: false,
