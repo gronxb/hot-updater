@@ -432,6 +432,127 @@ describe("DynamoDB native access patterns", () => {
     );
   });
 
+  it("reuses the guarded bundle snapshot for projection maintenance", async () => {
+    const current = toDynamoDBBundleItem(bundleRow, 7);
+    dynamodb.on(BatchGetCommand).resolves({
+      Responses: { "hot-updater-metadata": [current] },
+    });
+    dynamodb
+      .on(GetCommand, { Key: { pk: current.pk, sk: current.sk } })
+      .resolves({ Item: current });
+    dynamodb.on(TransactWriteCommand).resolves({});
+
+    await expect(
+      createPlugin().commit({
+        changes: [
+          {
+            model: "bundles",
+            operation: "update",
+            where: { id: bundleId },
+            update: { manifest_file_hash: "after" },
+          },
+        ],
+      }),
+    ).resolves.toEqual({ committed: true });
+
+    expect(dynamodb.commandCalls(BatchGetCommand)).toHaveLength(1);
+    expect(
+      dynamodb.commandCalls(GetCommand).map(({ args }) => args[0].input.Key),
+    ).toEqual([{ pk: "_hot-updater", sk: "metadata-indexes" }]);
+    const actions =
+      dynamodb.commandCalls(TransactWriteCommand)[0]?.args[0].input
+        .TransactItems;
+    expect(actions).toHaveLength(1);
+    expect(actions?.[0]?.Put).toMatchObject({
+      ConditionExpression: "#version = :currentVersion",
+      ExpressionAttributeValues: { ":currentVersion": 7 },
+      Item: { version: 8, row: { ...bundleRow, manifest_file_hash: "after" } },
+    });
+  });
+
+  it("refreshes the guarded snapshot on a transaction conflict without rereading it for indexes", async () => {
+    let reads = 0;
+    dynamodb.on(BatchGetCommand).callsFake(() => ({
+      Responses: {
+        "hot-updater-metadata": [
+          toDynamoDBBundleItem(bundleRow, ++reads === 1 ? 7 : 8),
+        ],
+      },
+    }));
+    dynamodb
+      .on(GetCommand, { Key: { pk: "bundles", sk: bundleId } })
+      .resolves({ Item: toDynamoDBBundleItem(bundleRow, 8) });
+    dynamodb
+      .on(TransactWriteCommand)
+      .rejectsOnce({
+        name: "TransactionCanceledException",
+        message: "concurrent writer",
+      })
+      .resolves({});
+
+    await expect(
+      createPlugin().commit({
+        changes: [
+          {
+            model: "bundles",
+            operation: "update",
+            where: { id: bundleId },
+            update: { manifest_file_hash: "after" },
+          },
+        ],
+      }),
+    ).resolves.toEqual({ committed: true });
+
+    expect(reads).toBe(2);
+    expect(
+      dynamodb.commandCalls(GetCommand).map(({ args }) => args[0].input.Key),
+    ).toEqual(
+      Array.from({ length: 2 }, () => ({
+        pk: "_hot-updater",
+        sk: "metadata-indexes",
+      })),
+    );
+    expect(
+      dynamodb
+        .commandCalls(TransactWriteCommand)
+        .map(
+          ({ args }) =>
+            args[0].input.TransactItems?.[0]?.Put?.ExpressionAttributeValues,
+        ),
+    ).toEqual([{ ":currentVersion": 7 }, { ":currentVersion": 8 }]);
+  });
+
+  it("does not reread a known-absent bundle before its guarded insert", async () => {
+    dynamodb
+      .on(BatchGetCommand)
+      .resolves({ Responses: { "hot-updater-metadata": [] } });
+    dynamodb.on(TransactWriteCommand).resolves({});
+    await expect(
+      createPlugin().commit({
+        changes: [
+          {
+            model: "bundles",
+            operation: "insert",
+            row: bundleRow,
+          },
+        ],
+      }),
+    ).resolves.toEqual({ committed: true });
+    expect(
+      dynamodb.commandCalls(GetCommand).map(({ args }) => args[0].input.Key),
+    ).toEqual([{ pk: "_hot-updater", sk: "metadata-indexes" }]);
+    const actions =
+      dynamodb.commandCalls(TransactWriteCommand)[0]?.args[0].input
+        .TransactItems;
+    expect(actions).toHaveLength(3);
+    expect(actions?.[0]?.Put).toMatchObject({
+      ConditionExpression: "attribute_not_exists(#pk)",
+    });
+    expect(actions?.[2]?.Put?.Item?.pk).toBe(
+      '_hot-updater#index#bundles#platform#"ios"',
+    );
+  });
+
   it("conditions deletes on every observed item version", async () => {
     // Given
     dynamodb

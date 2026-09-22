@@ -882,10 +882,15 @@ export const updateBundleRelation = (
 export const commitDynamoDBTransaction = async (
   store: DynamoDBStore,
   actions: readonly DynamoDBTransactItem[],
+  snapshot?: readonly Record<string, unknown>[],
 ): Promise<void> => {
   if (actions.length > 100)
     throw new DynamoDBTransactionLimitError(actions.length);
-  const indexedActions = await withMetadataIndexActions(store, actions);
+  const indexedActions = await withMetadataIndexActions(
+    store,
+    actions,
+    snapshot,
+  );
   if (indexedActions.length > 100) {
     throw new DynamoDBTransactionLimitError(indexedActions.length);
   }
@@ -2814,7 +2819,12 @@ const compileAndCommitDynamoDBChanges = async (
     }
   }
 
-  if (actions.length > 0) await commitDynamoDBTransaction(store, actions);
+  if (actions.length > 0)
+    await commitDynamoDBTransaction(store, actions, [
+      ...originalBundleItems,
+      ...originalPatchItems,
+      ...originalReleaseItems,
+    ]);
   return { committed: true };
 };
 

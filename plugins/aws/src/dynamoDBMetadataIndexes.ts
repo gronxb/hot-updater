@@ -100,9 +100,11 @@ export const ensureMetadataIndexes = async (
 };
 
 // Projection writes share the canonical row's transaction and version guard.
+// A supplied snapshot is complete for these changes, including absent rows.
 export const withMetadataIndexActions = async (
   store: DynamoDBStore,
   actions: readonly Action[],
+  snapshot?: readonly Record<string, unknown>[],
 ): Promise<Action[]> => {
   const changes = actions.filter((action) => {
     const key = action.Put?.Item ?? action.Delete?.Key;
@@ -118,17 +120,28 @@ export const withMetadataIndexActions = async (
   await ensureMetadataIndexes(store);
   const projected = new Map<string, Action>();
   const previous = new Map<string, Record<string, unknown>>();
+  const originals =
+    snapshot === undefined
+      ? undefined
+      : new Map(
+          snapshot.map((item) => [JSON.stringify([item.pk, item.sk]), item]),
+        );
   // Remove old keys first, then put new keys (including moves between release scopes).
   for (const change of changes) {
     const key = change.Put?.Item ?? change.Delete?.Key;
     if (!key) continue;
-    const { Item } = await store.client.send(
-      new GetCommand({
-        TableName: store.tableName,
-        Key: { pk: key.pk, sk: key.sk },
-        ConsistentRead: true,
-      }),
-    );
+    const Item =
+      originals === undefined
+        ? (
+            await store.client.send(
+              new GetCommand({
+                TableName: store.tableName,
+                Key: { pk: key.pk, sk: key.sk },
+                ConsistentRead: true,
+              }),
+            )
+          ).Item
+        : originals.get(JSON.stringify([key.pk, key.sk]));
     for (const item of metadataIndexItems(Item)) {
       const id = JSON.stringify([item.pk, item.sk]);
       previous.set(id, item);
