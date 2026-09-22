@@ -85,6 +85,14 @@ export const registerDatabasePluginRelationTests = (
       await expect(
         plugin.models.bundlePatches.findByBundleIds([base.id]),
       ).resolves.toEqual([]);
+      if (plugin.models.bundlePatches.findByBaseBundleIds !== undefined) {
+        await expect(
+          plugin.models.bundlePatches.findByBaseBundleIds([base.id, base.id]),
+        ).resolves.toEqual([patch]);
+        await expect(
+          plugin.models.bundlePatches.findByBaseBundleIds([owner.id]),
+        ).resolves.toEqual([]);
+      }
     });
 
     it("rejects missing owner and base bundle references atomically", async () => {

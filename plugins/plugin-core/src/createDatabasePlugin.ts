@@ -740,6 +740,32 @@ export const createDatabasePluginAdapter = (
           crud.count({ model: "bundles", where: toBundleWhere(where) }),
       },
       bundlePatches: {
+        async findByBaseBundleIds(
+          baseBundleIds,
+        ): Promise<readonly BundlePatchRow[]> {
+          const rows: BundlePatchRow[] = [];
+          for (const baseBundleId of new Set(baseBundleIds)) {
+            let after: string | undefined;
+            while (true) {
+              const where: DatabaseWhere<"bundle_patches">[] = [
+                { field: "base_bundle_id", value: baseBundleId },
+              ];
+              if (after !== undefined)
+                where.push({ field: "id", operator: "gt", value: after });
+              const page = await crud.findMany({
+                model: "bundle_patches",
+                where,
+                limit: PAGE_SIZE,
+                offset: 0,
+                orderBy: [{ field: "id", direction: "asc" }],
+              });
+              rows.push(...page);
+              if (page.length < PAGE_SIZE) break;
+              after = page[page.length - 1].id;
+            }
+          }
+          return rows;
+        },
         async findByBundleIds(bundleIds): Promise<readonly BundlePatchRow[]> {
           if (bundleIds.length === 0) return [];
           const rows: BundlePatchRow[] = [];

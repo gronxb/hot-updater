@@ -219,6 +219,7 @@ export function createHotUpdaterHandlers(
   addAdminRoute("GET", "/channels", "getChannels");
   addAdminRoute("POST", "/channels", "createChannel");
   addAdminRoute("DELETE", "/channels/:id", "deleteChannel");
+  addAdminRoute("GET", "/bundles/:id/patch-children", "getBundlePatchChildren");
   addAdminRoute("GET", "/bundles/:id", "getBundle");
   addAdminRoute("GET", "/bundles", "getBundles");
   addAdminRoute("POST", "/bundles", "createBundles");

@@ -66,6 +66,16 @@ const requireBundlePatchPayload = (
 };
 
 export const createBundleRouteHandlers = (): Record<string, RouteHandler> => ({
+  getBundlePatchChildren: async (params, _request, api) => {
+    if (api.getBundlePatchChildren === undefined)
+      return Response.json(
+        { error: "Indexed patch children lookup is unavailable" },
+        { status: 501 },
+      );
+    return Response.json({
+      data: await api.getBundlePatchChildren(requireRouteParam(params, "id")),
+    });
+  },
   getBundle: async (params, _request, api) => {
     const bundle = await api.getBundleById(requireRouteParam(params, "id"));
     if (!bundle) {

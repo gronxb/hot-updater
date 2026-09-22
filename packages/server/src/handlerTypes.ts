@@ -1,5 +1,6 @@
 import type { ArtifactInfo, Bundle, ReleaseCatalog } from "@hot-updater/core";
 import type {
+  BundlePatchRow,
   ChannelDeleteInput,
   ChannelDeleteResult,
   ChannelInsertInput,
@@ -69,6 +70,7 @@ export interface HandlerAPI {
     scopeKey: string,
   ) => Promise<ReleaseCatalogRebuildResult>;
   commitDatabase?: (input: DatabaseCommit) => Promise<DatabaseCommitResult>;
+  getBundlePatchChildren?: (id: string) => Promise<readonly BundlePatchRow[]>;
   getBundleById: (id: string) => Promise<Bundle | null>;
   getBundles: (options: DatabaseBundleQueryOptions) => Promise<PaginatedResult>;
   insertBundle: (bundle: Bundle) => Promise<void>;

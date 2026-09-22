@@ -1,5 +1,6 @@
 import type {
   Bundle,
+  BundlePatchRow,
   ChannelRow,
   PaginatedResult,
 } from "@hot-updater/plugin-core";
@@ -99,3 +100,23 @@ export const hasChannelDeleteResult = (
     (value.data.deleted === false &&
       (value.data.reason === "not_empty" ||
         value.data.reason === "not_found")));
+
+export const hasBundlePatchRows = (
+  value: unknown,
+): value is { readonly data: readonly BundlePatchRow[] } =>
+  isRecord(value) &&
+  Array.isArray(value.data) &&
+  value.data.every(
+    (row) =>
+      isRecord(row) &&
+      [
+        "id",
+        "bundle_id",
+        "base_bundle_id",
+        "base_file_hash",
+        "patch_file_hash",
+        "patch_storage_uri",
+      ].every((key) => typeof row[key] === "string") &&
+      isByteSize(row.byte_size) &&
+      isNonNegativeInteger(row.order_index),
+  );

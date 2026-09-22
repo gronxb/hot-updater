@@ -1,130 +1,53 @@
-import { getBundlePatches } from "@hot-updater/core";
-import type { Bundle, DatabaseClient } from "@hot-updater/plugin-core";
-
-const CHILDREN_QUERY_LIMIT = 100;
-
-interface GetBundleChildrenInput {
-  baseBundleId: string;
-}
+import type {
+  Bundle,
+  BundlePatchModel,
+  DatabaseClient,
+} from "@hot-updater/plugin-core";
 
 interface GetBundleChildrenDeps {
   databaseClient: DatabaseClient;
+  bundlePatches: BundlePatchModel;
 }
 
-type CursorPaginationInfo = {
-  hasNextPage: boolean;
-  nextCursor?: string | null;
-};
-
-async function collectBundleChildrenByBaseIds(
-  baseBundleIds: string[],
-  deps: GetBundleChildrenDeps,
-): Promise<Record<string, Bundle[]>> {
-  const uniqueBaseBundleIds = [...new Set(baseBundleIds.filter(Boolean))];
-  const bundlesByBaseId = Object.fromEntries(
-    uniqueBaseBundleIds.map((bundleId) => [bundleId, [] as Bundle[]]),
-  );
-
-  const baseBundles = (
-    await Promise.all(
-      uniqueBaseBundleIds.map((bundleId) =>
-        deps.databaseClient.getBundleById(bundleId),
-      ),
-    )
-  ).filter((bundle): bundle is Bundle => Boolean(bundle));
-
-  const groupMap = new Map<Bundle["platform"], Set<string>>();
-
-  for (const baseBundle of baseBundles) {
-    const existingGroup = groupMap.get(baseBundle.platform);
-
-    if (existingGroup) {
-      existingGroup.add(baseBundle.id);
-      continue;
-    }
-
-    groupMap.set(baseBundle.platform, new Set([baseBundle.id]));
-  }
-
-  for (const [platform, bundleIds] of groupMap) {
-    const seenBundleIds = new Set<string>();
-    const seenCursors = new Set<string>();
-    let after: string | undefined;
-
-    while (true) {
-      const page = await deps.databaseClient.getBundles({
-        where: {
-          platform,
-        },
-        limit: CHILDREN_QUERY_LIMIT,
-        cursor: after ? { after } : undefined,
-      });
-
-      for (const bundle of page.data) {
-        const parentBundleIds = getBundlePatches(bundle).map(
-          (patch) => patch.baseBundleId,
-        );
-        const matchedParentBundleIds = parentBundleIds.filter((bundleId) =>
-          bundleIds.has(bundleId),
-        );
-
-        if (
-          matchedParentBundleIds.length === 0 ||
-          seenBundleIds.has(bundle.id)
-        ) {
-          continue;
-        }
-
-        seenBundleIds.add(bundle.id);
-        for (const parentBundleId of matchedParentBundleIds) {
-          bundlesByBaseId[parentBundleId]?.push(bundle);
-        }
-      }
-
-      const pagination = page.pagination as CursorPaginationInfo;
-      const nextCursor = pagination.nextCursor ?? undefined;
-
-      if (
-        !pagination.hasNextPage ||
-        !nextCursor ||
-        seenCursors.has(nextCursor)
-      ) {
-        break;
-      }
-
-      seenCursors.add(nextCursor);
-      after = nextCursor;
-    }
-  }
-
-  return bundlesByBaseId;
+async function childIds(
+  baseBundleIds: readonly string[],
+  { bundlePatches }: GetBundleChildrenDeps,
+): Promise<Map<string, Set<string>>> {
+  const ids = [...new Set(baseBundleIds.filter(Boolean))];
+  const result = new Map(ids.map((id) => [id, new Set<string>()]));
+  if (ids.length === 0) return result;
+  if (bundlePatches.findByBaseBundleIds === undefined)
+    throw new Error(
+      "The database provider must support indexed patch children lookup",
+    );
+  for (const row of await bundlePatches.findByBaseBundleIds(ids))
+    result.get(row.base_bundle_id)?.add(row.bundle_id);
+  return result;
 }
 
 export async function getBundleChildren(
-  { baseBundleId }: GetBundleChildrenInput,
+  { baseBundleId }: { baseBundleId: string },
   deps: GetBundleChildrenDeps,
 ): Promise<Bundle[]> {
-  const childrenByBaseId = await collectBundleChildrenByBaseIds(
-    [baseBundleId],
-    deps,
-  );
-
-  return childrenByBaseId[baseBundleId] ?? [];
+  const children =
+    (await childIds([baseBundleId], deps)).get(baseBundleId) ??
+    new Set<string>();
+  const bundles = [];
+  for (const id of [...children].sort().reverse()) {
+    const bundle = await deps.databaseClient.getBundleById(id);
+    if (bundle !== null) bundles.push(bundle);
+  }
+  return bundles;
 }
 
 export async function getBundleChildCounts(
   baseBundleIds: string[],
   deps: GetBundleChildrenDeps,
 ): Promise<Record<string, number>> {
-  const childrenByBaseId = await collectBundleChildrenByBaseIds(
-    baseBundleIds,
-    deps,
-  );
-
   return Object.fromEntries(
-    Object.entries(childrenByBaseId).map(([bundleId, bundles]) => [
-      bundleId,
-      bundles.length,
+    [...(await childIds(baseBundleIds, deps))].map(([id, children]) => [
+      id,
+      children.size,
     ]),
   );
 }

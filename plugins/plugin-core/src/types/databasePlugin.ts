@@ -27,6 +27,10 @@ export interface BundleModel {
 }
 
 export interface BundlePatchModel {
+  /** Indexed reverse lookup. Providers must never emulate this by listing bundles. */
+  findByBaseBundleIds?(
+    baseBundleIds: readonly string[],
+  ): Promise<readonly BundlePatchRow[]>;
   findByBundleIds(
     bundleIds: readonly string[],
   ): Promise<readonly BundlePatchRow[]>;
