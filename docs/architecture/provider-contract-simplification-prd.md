@@ -1,6 +1,6 @@
 # Provider contract simplification
 
-Status: implementation in progress. Follow-up to #1330, targeting `next`.
+Status: implemented and verified. Follow-up to #1330, targeting `next`.
 
 ## Problem and outcome
 
@@ -51,7 +51,9 @@ not import its dynamic schema machinery or optional fallback algorithms.
   transactions. Persist only touched rows after all reads complete.
 - Standalone: implement repository models directly over the HTTP contract.
   Remove domain-query -> generic WHERE -> local CRUD -> HTTP translations and
-  unused legacy writes. It remains a BundleRepository, not a database plugin.
+  the repository's unused CRUD write wiring. Preserve custom HTTP routes and
+  their existing remote methods. It remains a BundleRepository, not a database
+  plugin.
 
 Storage/build plugins do not implement this database contract and need no change.
 
@@ -87,6 +89,7 @@ Storage/build plugins do not implement this database contract and need no change
 | Does a Firebase cache resurrect a deleted row from Firestore? | Track fetched keys separately from staged row presence. RED test delete -> update and delete -> dependent insert; aborted transactions must not persist. |
 | Can Firebase write early and then read another document? | Staging remains local until the callback completes. Native persistence runs once after all reads and validation. Emulator tests cover multi-model commits. |
 | Can removing AWS CRUD bypass relation locks or transaction limits? | Public native commit remains the only metadata writer. Move low-level concurrency scenarios to that path and verify counters, version guards and patch-owner/base races against DynamoDB Local. |
+| Can a parent version read absorb a concurrent child insertion? | Capture deletion targets and patch replacement owners before querying relationships. A concurrent child write must change that version, forcing the native commit to retry its reads. Guard Release parent writes even when patch counters do not change. |
 | Are SQL/ORM implementations being made harder to support native stores? | Keep the existing CRUD adapter API compatible. Read/model helpers are shared underneath; do not require SQL providers to implement individual domain models. |
 | Does Standalone lose filters, empty-IN behavior or unaligned offsets? | Translate the fixed domain query straight to HTTP parameters. Test simultaneous bounds, repeated IDs, zero limit, arbitrary offset and count. Fetch only intersecting pages. |
 | Can a lazy ORM initialize sooner or lose its disposal behavior? | Preserve lazy construction and test runtime/tooling entry points. Avoid an unrelated generic lazy-object abstraction. |
@@ -109,4 +112,64 @@ Storage/build plugins do not implement this database contract and need no change
 
 ## Acceptance evidence
 
-To be filled with test results, removed execution paths and review findings.
+### RED to GREEN
+
+- Native commits accepted malformed changes before invoking their provider, and
+  native channel models bypassed the transactional adapter's validation. Added
+  failing tests at the public plugin boundary; the factory now validates every
+  commit before dispatch, including a later invalid change in the same batch.
+- Firebase fetched a missing or staged-deleted document repeatedly. The new
+  tests observed two/three reads instead of one. Explicit loaded-key tracking
+  preserves absence and staged deletions throughout the transaction.
+- Reusing the actual DynamoDB native commit in concurrency tests exposed an
+  orphan patch when insertion raced with parent deletion. Additional tests
+  reproduced both bundle and channel deletion racing with Release creation.
+  The parent snapshot/version correction passes all 11 concurrency scenarios,
+  including physical transaction limits and aggregate-counter consistency.
+
+### Review conclusions
+
+- Providers register implementations with `createDatabasePluginAdapter`; read
+  planning and commit validation are private implementation details of the
+  factory. The additional read-only type requires no fake write methods.
+- Firebase retains a small transaction-local row overlay, which is necessary
+  for Firestore's reads-before-writes rule. It has no generic sorting, filtering
+  or pagination engine. Native read queries and persistence still own indexes
+  and Firestore operations.
+- DynamoDB retains conditional transactions, keyed projections and aggregate
+  maintenance. Removing these would lose atomicity or require scans; removing
+  the duplicate CRUD writer reduces the number of mutation algorithms instead.
+- Standalone delegates domain reads and commits directly to HTTP. Explicit
+  window pagination and finite patch-owner enumeration remain because they are
+  part of the requested operation, with no history-loading fallback.
+- `next` commit `39f60f9dc` was merged before final validation, including its
+  published HTTP/OTA conformance suite and Firebase field-replacement fix. Its
+  Supabase RPC correction was folded into the initial 1.0.0 migration in #1330;
+  this follow-up introduces no schema or index changes.
+
+Runtime TypeScript changes relative to #1330 are +993/-2,200 lines (net -1,207),
+excluding tests, fixtures, this document and the changeset. This includes the
+factory implementation and the concurrency fix, rather than counting only the
+deleted provider files.
+
+### Merged-tree verification
+
+| Gate | Result |
+| --- | --- |
+| `pnpm -w build` | 26 projects passed |
+| `pnpm -w test:type` | 34 projects passed |
+| `pnpm -w lint` | No warnings or errors |
+| `pnpm -w test` | 301 files, 3,408 tests passed |
+| D1 Worker integration | 6 files, 260 tests passed |
+| Standalone/server handler integration | 1 file, 17 tests passed |
+| Firebase, DynamoDB, MongoDB and packaged conformance integration | 7 files, 300 tests passed |
+| Changeset status / `git diff --check` | Passed |
+
+The unit run includes the published provider/HTTP/OTA conformance suite for
+PostgreSQL, Kysely, Drizzle, Prisma, Supabase and MongoDB harnesses. D1 runs in the
+Workers runtime; native Firebase, DynamoDB and MongoDB use local emulators or
+containers. The packaged-consumer test exercises an external provider using the
+packed `@hot-updater/test-utils` artifact, and mutation tests verify that broken
+providers fail the public scenarios. These checks do not cover live cloud
+deployments or every supported external SQL engine/version. No production data
+or infrastructure was changed.
