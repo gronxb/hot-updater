@@ -7,6 +7,7 @@ import { getCwd, loadConfig, readPackageUp } from "@hot-updater/cli-tools";
 import { HOT_UPDATER_SERVER_VERSION } from "@hot-updater/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { createReactNativeDoctor } from "../../../react-native/src/doctor";
 import { packageJsonData } from "../packageJson";
 import { createDatabasePluginHarness } from "./databasePlugin.testFixtures";
 import {
@@ -70,6 +71,19 @@ const createConfig = (overrides: Record<string, unknown> = {}) => ({
   database: doctorDatabaseHarness.plugin,
   ...overrides,
 });
+
+const createReactNativeConfig = (
+  cwd: string,
+  overrides: Record<string, unknown> = {},
+) =>
+  createConfig({
+    build: async () => ({
+      build: vi.fn(),
+      integration: { doctor: createReactNativeDoctor(cwd) },
+      name: "react-native-test-build",
+    }),
+    ...overrides,
+  });
 
 const createTempProject = async () =>
   await fs.mkdtemp(path.join(os.tmpdir(), "hot-updater-doctor-"));
@@ -436,7 +450,7 @@ describe("doctor", () => {
     expect(logSpy).toHaveBeenCalledWith(
       JSON.stringify({ success: true }, null, 2),
     );
-    expect(mockLoadConfig).not.toHaveBeenCalled();
+    expect(mockLoadConfig).toHaveBeenCalledWith(null);
     logSpy.mockRestore();
   });
 
@@ -912,7 +926,7 @@ describe("doctor", () => {
       path: path.join(cwd, "package.json"),
     });
     mockLoadConfig.mockResolvedValue(
-      createConfig({
+      createReactNativeConfig(cwd, {
         platform: {
           ios: {
             infoPlistPaths: ["ios/App/Info.plist"],
@@ -984,7 +998,7 @@ describe("doctor", () => {
       path: path.join(cwd, "package.json"),
     });
     mockLoadConfig.mockResolvedValue(
-      createConfig({
+      createReactNativeConfig(cwd, {
         platform: {
           ios: {
             infoPlistPaths: ["ios/App/Info.plist"],
@@ -1204,7 +1218,7 @@ describe("doctor", () => {
       path: path.join(cwd, "package.json"),
     });
     mockLoadConfig.mockResolvedValue(
-      createConfig({
+      createReactNativeConfig(cwd, {
         platform: {
           ios: {
             infoPlistPaths: ["ios/App/Info.plist"],

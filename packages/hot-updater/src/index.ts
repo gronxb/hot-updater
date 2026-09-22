@@ -36,7 +36,6 @@ import { INIT_PROVIDER_NAMES } from "@/commands/initProviders";
 import { type PatchOptions, createPatch } from "@/commands/patch";
 import { runAndroidNative, runIosNative } from "@/commands/runNative";
 import { version } from "@/packageJson";
-import { ensureNoConflicts } from "@/utils/conflictDetection";
 import { printBanner } from "@/utils/printBanner";
 
 import {
@@ -540,7 +539,7 @@ keysCommand
   )
   .option(
     "-o, --output <path>",
-    "write the public key to an Expo trust-anchor file",
+    "write the public key to a native trust-anchor file",
   )
   .option("-y, --yes", "skip confirmation prompt when writing to native files")
   .action(keysExportPublic);
@@ -834,16 +833,5 @@ if (process.env["EXPERIMENTAL"]) {
       await runIosNative(options);
     });
 }
-
-program.hook("preAction", (_command, actionCommand) => {
-  if (
-    actionCommand.parent === agentInfraCommand ||
-    actionCommand.parent === infraCommand ||
-    (actionCommand.name() === "doctor" &&
-      actionCommand.opts()["scope"] !== undefined)
-  )
-    return;
-  ensureNoConflicts();
-});
 
 program.parse(process.argv);

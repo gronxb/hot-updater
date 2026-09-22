@@ -164,8 +164,8 @@ describe("validateSigningConfig", () => {
     expect(result.isValid).toBe(true);
     expect(result.issues).toEqual([]);
     expect(result.nativePublicKeys).toEqual({
-      android: { exists: true, paths: ["Expo app config"] },
-      ios: { exists: true, paths: ["Expo app config"] },
+      android: { exists: true, paths: ["Integration native configuration"] },
+      ios: { exists: true, paths: ["Integration native configuration"] },
     });
   });
 

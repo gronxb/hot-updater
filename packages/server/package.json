@@ -2,7 +2,7 @@
   "name": "@hot-updater/server",
   "version": "1.0.0-rc.14",
   "type": "module",
-  "description": "React Native OTA solution for self-hosted",
+  "description": "Runtime-neutral OTA server for self-hosted applications",
   "sideEffects": false,
   "main": "./dist/index.cjs",
   "module": "./dist/index.mjs",

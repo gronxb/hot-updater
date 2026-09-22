@@ -132,6 +132,38 @@ export interface NativeFingerprintOptions {
   debug?: boolean;
 }
 
+export type IntegrationCommand =
+  | "channel:set"
+  | "deploy"
+  | "doctor"
+  | "fingerprint:create"
+  | "keys:export-public"
+  | "keys:remove";
+
+export interface IntegrationDoctorIssue {
+  type: "error" | "warning";
+  platform: Platform | "project";
+  code: string;
+  message: string;
+  resolution: string;
+  fixability: "auto" | "command" | "blocked";
+  commands?: string[];
+  paths?: string[];
+}
+
+export interface IntegrationDoctorResult {
+  issues: IntegrationDoctorIssue[];
+  platforms?: Partial<
+    Record<
+      Platform,
+      {
+        files?: string[];
+        configured?: boolean;
+      }
+    >
+  >;
+}
+
 export type NativeFingerprintProvider = (
   options: NativeFingerprintOptions,
 ) => Promise<NativeFingerprint>;
@@ -150,6 +182,14 @@ export interface BuildPlugin {
     getFingerprintExtraSources?: () => Promise<readonly string[]>;
     prebuild?: (args: { platform: Platform }) => Promise<void>;
     postbuild?: (args: { platform: Platform }) => Promise<void>;
+  };
+  integration?: {
+    /** Run integration-owned project checks before a common CLI operation. */
+    beforeCommand?: (args: {
+      command: IntegrationCommand;
+    }) => Promise<void> | void;
+    /** Inspect integration-owned application wiring without common CLI policy. */
+    doctor?: () => Promise<IntegrationDoctorResult> | IntegrationDoctorResult;
   };
   build: (args: { platform: Platform }) => Promise<{
     buildPath: string;

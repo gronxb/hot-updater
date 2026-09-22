@@ -1,9 +1,8 @@
 import fs from "fs";
 import path from "path";
 
-import { getCwd, p } from "@hot-updater/cli-tools";
+import { getCwd, loadConfig, p } from "@hot-updater/cli-tools";
 
-import { warnIfExpoCNG } from "@/utils/expoDetection";
 import {
   createAndInjectFingerprintFiles,
   type FingerprintResult,
@@ -17,6 +16,7 @@ import {
 } from "@/utils/fingerprint/diff";
 
 import { ui } from "../utils/cli-ui";
+import { runIntegrationCommand } from "../utils/integration";
 
 const exitWithFingerprintError = (error: unknown): never => {
   if (error instanceof Error) {
@@ -97,7 +97,7 @@ export const handleFingerprint = async () => {
 };
 
 export const handleCreateFingerprint = async () => {
-  warnIfExpoCNG();
+  await runIntegrationCommand(await loadConfig(null), "fingerprint:create");
   let diffChanged = false;
   let localFingerprint: {
     ios: FingerprintResult | null;

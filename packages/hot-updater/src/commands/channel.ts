@@ -1,9 +1,9 @@
-import { p } from "@hot-updater/cli-tools";
+import { loadConfig, p } from "@hot-updater/cli-tools";
 
-import { warnIfExpoCNG } from "@/utils/expoDetection";
 import { getChannel, setChannel } from "@/utils/setChannel";
 
 import { ui } from "../utils/cli-ui";
+import { runIntegrationCommand } from "../utils/integration";
 
 export const handleChannel = async () => {
   const androidChannel = await getChannel("android");
@@ -19,7 +19,7 @@ export const handleChannel = async () => {
 };
 
 export const handleSetChannel = async (channel: string) => {
-  warnIfExpoCNG();
+  await runIntegrationCommand(await loadConfig(null), "channel:set");
   const { paths: androidPaths } = await setChannel("android", channel);
   p.log.success(ui.line(["Set", ui.platform("Android"), ui.channel(channel)]));
   if (androidPaths.length > 0) {

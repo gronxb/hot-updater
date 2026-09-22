@@ -12,7 +12,7 @@ export const getDefaultTargetAppVersion = async (
   switch (platform) {
     case "ios":
       // Mirror getNativeAppVersion: Info.plist first, project.pbxproj as a
-      // fallback. The React Native template ships Info.plist with
+      // fallback. Native app templates commonly ship Info.plist with
       // CFBundleShortVersionString set to "$(MARKETING_VERSION)", which the
       // plist parser cannot resolve, so the real version only lives in
       // project.pbxproj for most projects.

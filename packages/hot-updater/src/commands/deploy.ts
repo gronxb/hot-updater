@@ -75,6 +75,7 @@ import { getNativeAppVersion } from "@/utils/version/getNativeAppVersion";
 
 import { PLATFORMS } from "../commandOptions";
 import { ui } from "../utils/cli-ui";
+import { runIntegrationCommand } from "../utils/integration";
 import { getConsolePort, openConsole } from "./console";
 import {
   commitDeployment,
@@ -751,6 +752,7 @@ const deployPlatform = async ({
     config.build({ cwd }),
     prepareBundleSigning(config.signing, { cwd }),
   ]);
+  await runIntegrationCommand(config, "deploy", buildPlugin);
   const getNativeSigningPublicKey =
     buildPlugin.nativeBuild?.getBundleSigningPublicKey;
   const nativeSigningPublicKey = getNativeSigningPublicKey

@@ -8,12 +8,16 @@ import type {
   BuildPlugin,
   BuildPluginConfig,
 } from "@hot-updater/plugin-core";
-import { selectReactNativeArtifacts } from "@hot-updater/react-native/build";
+import {
+  createReactNativeDoctor,
+  selectReactNativeArtifacts,
+} from "@hot-updater/react-native/build";
 import { ExecaError, execa } from "execa";
 import { uuidv7 } from "uuidv7";
 
 import { getConfig } from "./expoConfig";
 import { createExpoFingerprint } from "./fingerprint";
+import { validateExpoProject } from "./projectValidation";
 import { resolveMain } from "./resolveMain";
 import { runExpoPrebuild } from "./util/prebuild";
 
@@ -188,6 +192,10 @@ export const expo =
   ({ cwd }: BasePluginArgs): BuildPlugin => {
     const { outDir = "dist", sourcemap = false, resetCache = true } = config;
     return {
+      integration: {
+        beforeCommand: ({ command }) => validateExpoProject({ command, cwd }),
+        doctor: createReactNativeDoctor(cwd),
+      },
       nativeBuild: {
         fingerprint: (options) => createExpoFingerprint(cwd, options),
         getBundleSigningPublicKey: () => getExpoBundleSigningPublicKey(cwd),

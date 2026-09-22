@@ -8,6 +8,7 @@ import {
 } from "@hot-updater/plugin-core";
 
 export { createReactNativeFingerprint } from "./buildFingerprint";
+export { createReactNativeDoctor } from "./doctor";
 export {
   getReactNativeMetadatas,
   type ReactNativeMetadata,

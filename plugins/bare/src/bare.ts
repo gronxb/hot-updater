@@ -10,6 +10,7 @@ import type {
   NativeFingerprintProvider,
 } from "@hot-updater/plugin-core";
 import {
+  createReactNativeDoctor,
   createReactNativeFingerprint,
   selectReactNativeArtifacts,
 } from "@hot-updater/react-native/build";
@@ -302,6 +303,9 @@ export const bare =
       fingerprint,
     } = config;
     return {
+      integration: {
+        doctor: createReactNativeDoctor(cwd),
+      },
       nativeBuild: {
         fingerprint: (options) =>
           fingerprint

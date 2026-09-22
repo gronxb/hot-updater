@@ -99,7 +99,7 @@ export async function validateSigningConfig(
       paths: [
         usesBuildPluginConfig
           ? "Build plugin native configuration"
-          : "Expo app config",
+          : "Integration native configuration",
       ],
     };
     iosResult = externalResult;
@@ -142,12 +142,12 @@ export async function validateSigningConfig(
         message: usesBuildPluginConfig
           ? "Signing is enabled but the build plugin did not resolve a native public key"
           : usesExternalNativeConfig
-            ? "Signing is enabled but @hot-updater/expo publicKeyPath is missing"
+            ? "Signing is enabled but the integration did not resolve a native public key"
             : "Signing is enabled but HOT_UPDATER_PUBLIC_KEY is missing from Info.plist",
         resolution: usesBuildPluginConfig
           ? "Configure the build plugin to resolve the public key embedded in the native app, then rebuild the app if the key changes."
           : usesExternalNativeConfig
-            ? "Run `npx hot-updater keys export-public --output <path>`, configure that path in the Expo app plugin, then rebuild your app."
+            ? "Export the configured public key, configure its path through the selected integration, then rebuild the app."
             : "Run `npx hot-updater keys export-public` to add the public key, then rebuild your iOS app.",
       });
     }
@@ -163,12 +163,12 @@ export async function validateSigningConfig(
         message: usesBuildPluginConfig
           ? "Signing is enabled but the build plugin did not resolve a native public key"
           : usesExternalNativeConfig
-            ? "Signing is enabled but @hot-updater/expo publicKeyPath is missing"
+            ? "Signing is enabled but the integration did not resolve a native public key"
             : "Signing is enabled but com.hotupdater.PUBLIC_KEY is missing from AndroidManifest.xml",
         resolution: usesBuildPluginConfig
           ? "Configure the build plugin to resolve the public key embedded in the native app, then rebuild the app if the key changes."
           : usesExternalNativeConfig
-            ? "Run `npx hot-updater keys export-public --output <path>`, configure that path in the Expo app plugin, then rebuild your app."
+            ? "Export the configured public key, configure its path through the selected integration, then rebuild the app."
             : "Run `npx hot-updater keys export-public` to add the public key, then rebuild your Android app.",
       });
     }
