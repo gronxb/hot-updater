@@ -2,7 +2,7 @@ import type { BundleRow } from "@hot-updater/plugin-core";
 import type { Transaction } from "firebase-admin/firestore";
 import { describe, expect, it } from "vitest";
 
-import { createDatabasePluginReads } from "../../plugin-core/src/databasePluginReads";
+import { createDatabasePluginCrud } from "../../plugin-core/src/databasePluginCrud";
 import {
   firebaseChannelDocumentId,
   firebaseChannelIdDocumentId,
@@ -105,10 +105,20 @@ const fixture = (stored: Row[]) => {
     bundles: collection,
     bundlePatches: collection,
   } as FirebaseDatabaseCollections;
+  const reads = createFirebaseReads(collections, async () => {});
+  const unexpectedMutation = async (): Promise<never> => {
+    throw new Error("Unexpected mutation in read test");
+  };
   return {
     calls,
     gets,
-    reads: createFirebaseReads(collections, async () => {}),
+    reads,
+    validated: createDatabasePluginCrud({
+      ...reads,
+      create: unexpectedMutation,
+      update: unexpectedMutation,
+      delete: unexpectedMutation,
+    }),
     billed: () =>
       calls.reduce(
         (total, call) => total + call.returned + (call.offset ?? 0),
@@ -203,8 +213,7 @@ describe("Firebase physical read costs", () => {
 
   it("preserves absent nullable-field normalization through selected-read validation", async () => {
     const { git_commit_hash: _hash, ...stored } = bundle(1);
-    const { reads, gets, calls } = fixture([stored]);
-    const validated = createDatabasePluginReads(reads);
+    const { validated, gets, calls } = fixture([stored]);
     const key = {
       model: "bundles" as const,
       where: [{ field: "id" as const, value: stored.id }],
@@ -224,9 +233,9 @@ describe("Firebase physical read costs", () => {
 
   it("still rejects missing required fields in selected reads", async () => {
     const { platform: _platform, ...stored } = bundle(1);
-    const { reads } = fixture([stored]);
+    const { validated } = fixture([stored]);
     await expect(
-      createDatabasePluginReads(reads).findOne({
+      validated.findOne({
         model: "bundles",
         where: [{ field: "id", value: stored.id }],
         select: ["platform"],
