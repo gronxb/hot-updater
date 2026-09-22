@@ -45,7 +45,7 @@ const errorResponse = (error: string, status: number): Response =>
 const requiresApiKey = (handlerName: string): boolean =>
   handlerName === "appVersionReleaseCatalog" ||
   handlerName === "fingerprintReleaseCatalog" ||
-  handlerName === "artifact" ||
+  handlerName === "artifactV1" ||
   handlerName === "appendBundleEvent";
 
 const createRequestHandler =

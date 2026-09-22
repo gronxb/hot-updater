@@ -48,16 +48,11 @@ class HotUpdaterModule internal constructor(
     private fun getInstance(): HotUpdaterImpl = HotUpdater.getInstance(mReactApplicationContext)
 
     private fun parseAssets(params: ReadableMap): Map<String, ChangedAssetDescriptor>? {
-        val key =
-            when {
-                params.hasKey("assets") && !params.isNull("assets") -> "assets"
-                else -> return null
-            }
-        if (!params.hasKey(key) || params.isNull(key)) {
+        if (!params.hasKey("assets") || params.isNull("assets")) {
             return null
         }
 
-        val changedAssetsMap = params.getMap(key) ?: return null
+        val changedAssetsMap = params.getMap("assets") ?: return null
         val parsedAssets = linkedMapOf<String, ChangedAssetDescriptor>()
         val iterator = changedAssetsMap.keySetIterator()
 
@@ -231,8 +226,6 @@ class HotUpdaterModule internal constructor(
                                 WritableNativeMap().apply {
                                     putDouble("progress", progress.progress)
                                     putString("artifactType", progress.artifactType)
-                                    progress.downloadedBytes?.let { putDouble("downloadedBytes", it.toDouble()) }
-                                    progress.totalBytes?.let { putDouble("totalBytes", it.toDouble()) }
                                     progress.details?.let { details ->
                                         putMap(
                                             "details",

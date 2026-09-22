@@ -2,27 +2,11 @@ import type { TurboModule } from "react-native";
 import { TurboModuleRegistry } from "react-native";
 import type { UnsafeObject } from "react-native/Libraries/Types/CodegenTypes";
 
-export interface ChangedAsset {
-  file?: {
-    compression?: "br" | null;
-    url: string;
-  } | null;
-  fileHash: string;
-  patch?: {
-    algorithm: "bsdiff";
-    baseBundleId: string;
-    baseFileHash: string;
-    patchFileHash: string;
-    patchUrl: string;
-    byteSize?: number;
-  } | null;
-}
-
 export interface UpdateBundleParams {
   bundleId: string;
   channel?: string;
   /**
-   * Optional signed manifest URL for manifest-driven installation.
+   * Signed manifest URL for installation.
    */
   manifestUrl: string;
   /**
@@ -31,10 +15,6 @@ export interface UpdateBundleParams {
   manifestFileHash: string;
   /** Optional tar.br URL; integrity and sizes come from the verified manifest. */
   archiveUrl?: string | null;
-  /**
-   * Per-file URLs for assets that must be downloaded instead of reused from
-   * the currently active bundle.
-   */
   /** Full protocol v1 target file descriptor map. */
   assets: UnsafeObject;
   /** Full Release Catalog selection receipt committed with the staged Bundle. */

@@ -266,10 +266,11 @@ class HotUpdaterImpl {
     fun getJSBundleFile(): String = prepareLaunchIfNeeded().bundleUrl
 
     /**
-     * Updates the bundle from the specified URL
+     * Updates the bundle from its manifest and complete asset descriptors.
      * @param bundleId ID of the bundle to update
-     * @param fileUrl URL of the bundle file to download (or null to reset)
-     * @param fileHash Combined hash string for verification (sig:<signature> or <hex_hash>)
+     * @param manifestUrl URL of the target manifest
+     * @param manifestFileHash Hash or signature used to verify the target manifest
+     * @param assets Complete target asset descriptor map
      * @param progressCallback Callback for download progress updates
      * @throws HotUpdaterException if the update fails
      */
@@ -463,7 +464,6 @@ class HotUpdaterImpl {
 
     /**
      * Gets the current launched bundle ID.
-     * Reads manifest.json first and falls back to the legacy BUNDLE_ID file.
      * Built-in bundle fallback is handled in JS.
      */
     fun getBundleId(): String? {

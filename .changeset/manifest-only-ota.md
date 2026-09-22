@@ -32,3 +32,8 @@ with a fixed concurrency limit and report only network files in download progres
 
 Allow concurrent Supabase deploys to upload the same shared content-addressed
 asset without failing on an already-existing object.
+
+Authenticate the versioned artifact endpoint. Preserve installed bundles across
+promotion failures and interrupted renames, and require durable metadata before
+activating an OTA. Remove manifestless launch and BUNDLE_ID compatibility paths,
+unused native progress fields, observers, and unused iOS task-state persistence.

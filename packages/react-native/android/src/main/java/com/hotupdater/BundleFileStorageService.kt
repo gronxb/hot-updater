@@ -37,8 +37,6 @@ data class BsdiffPatchDescriptor(
 data class UpdateProgressPayload(
     val progress: Double,
     val artifactType: String,
-    val downloadedBytes: Long? = null,
-    val totalBytes: Long? = null,
     val details: DiffProgressDetails? = null,
 )
 
@@ -189,7 +187,6 @@ interface BundleStorageService {
 
     /**
      * Gets the current active bundle ID from bundle storage.
-     * Reads manifest.json first and falls back to older metadata when needed.
      */
     fun getBundleId(): String?
 
@@ -223,6 +220,12 @@ class BundleFileStorageService(
     private val isolationKey: String,
     private val defaultChannelProvider: () -> String = { HotUpdaterImpl.getChannel(context) },
     builtInAssetResolver: BuiltInAssetResolver? = null,
+    private val metadataWriter: (BundleMetadata, File) -> Boolean = { metadata, file ->
+        metadata.saveToFile(file)
+    },
+    private val directoryRenamer: (File, File) -> Boolean = { source, destination ->
+        source.renameTo(destination)
+    },
 ) : BundleStorageService {
     companion object {
         private const val TAG = "BundleStorage"
@@ -543,6 +546,8 @@ class BundleFileStorageService(
 
         // Clean up old bundles if isolationKey format changed
         checkAndCleanupIfIsolationKeyChanged()
+
+        recoverInterruptedPromotions()
     }
 
     private var hasPreparedLaunch = false
@@ -577,7 +582,7 @@ class BundleFileStorageService(
 
     private fun saveMetadata(metadata: BundleMetadata): Boolean {
         val updatedMetadata = metadata.copy(isolationKey = isolationKey)
-        return updatedMetadata.saveToFile(getMetadataFile())
+        return metadataWriter(updatedMetadata, getMetadataFile())
     }
 
     private fun loadLaunchReport(): LaunchReport? =
@@ -630,15 +635,7 @@ class BundleFileStorageService(
     private fun getKnownLaunchBundleId(metadata: BundleMetadata): String =
         getCurrentVerifiedBundleId(metadata) ?: HotUpdaterImpl.getMinBundleId()
 
-    private fun createInitialMetadata(): BundleMetadata {
-        val currentBundleId = extractBundleIdFromCurrentURL()
-        Log.d(TAG, "Creating initial metadata with stagingBundleId: $currentBundleId")
-        return BundleMetadata(
-            stableBundleId = null,
-            stagingBundleId = currentBundleId,
-            verificationPending = false,
-        )
-    }
+    private fun createInitialMetadata(): BundleMetadata = BundleMetadata()
 
     private fun extractBundleIdFromCurrentURL(): String? {
         val currentUrl = preferences.getItem("HotUpdaterBundleURL") ?: return null
@@ -671,12 +668,46 @@ class BundleFileStorageService(
                 .singleOrNull()
         }
 
-        return File(bundleDir, "index.android.bundle").absoluteFile.takeIf { it.isFile }
+        return null
     }
 
     private fun findBundleFile(bundleId: String): File? {
         val bundleDir = File(getBundleStoreDir(), bundleId)
         return resolveBundleFile(bundleDir, bundleId)
+    }
+
+    private fun installBackupDir(bundleId: String): File = File(getBundleStoreDir(), "$bundleId.install-backup")
+
+    private fun isCompleteBundleDirectory(
+        bundleDir: File,
+        bundleId: String,
+    ): Boolean {
+        val manifest = parseBundleManifestFromFile(File(bundleDir, "manifest.json")) ?: return false
+        if (manifest.bundleId != bundleId) return false
+        if (resolveBundleFile(bundleDir, bundleId) == null) return false
+        return manifest.assets.all { (assetPath, asset) ->
+            val file = RelativePathResolver.resolveInside(bundleDir, assetPath)
+            file?.isFile == true && runCatching { verifyManifestAssetFileOrThrow(file, asset) }.isSuccess
+        }
+    }
+
+    private fun recoverInterruptedPromotions(): Boolean {
+        val bundleStoreDir = getBundleStoreDir()
+        val backups =
+            bundleStoreDir.listFiles { file ->
+                file.isDirectory && file.name.endsWith(".install-backup")
+            } ?: return true
+
+        return backups.all { backupDir ->
+            val bundleId = backupDir.name.removeSuffix(".install-backup")
+            val finalDir = File(bundleStoreDir, bundleId)
+            when {
+                !finalDir.exists() -> directoryRenamer(backupDir, finalDir)
+                isCompleteBundleDirectory(finalDir, bundleId) -> backupDir.deleteRecursively()
+                !finalDir.deleteRecursively() -> false
+                else -> directoryRenamer(backupDir, finalDir)
+            }
+        }
     }
 
     private fun getBundleUrlForId(bundleId: String): String? = findBundleFile(bundleId)?.absolutePath
@@ -689,12 +720,16 @@ class BundleFileStorageService(
         }
 
     private fun getActiveBundleId(): String? {
-        extractBundleIdFromCurrentURL()?.let { return it }
-
-        val metadata = loadMetadataOrNull()
+        val metadata = loadMetadataOrNull() ?: return null
+        val cachedBundleId = extractBundleIdFromCurrentURL()
+        if (cachedBundleId != null &&
+            (cachedBundleId == metadata.stagingBundleId || cachedBundleId == metadata.stableBundleId)
+        ) {
+            return cachedBundleId
+        }
         return when {
-            metadata?.stagingBundleId != null && !metadata.verificationPending -> metadata.stagingBundleId
-            metadata?.stableBundleId != null -> metadata.stableBundleId
+            metadata.stagingBundleId != null && !metadata.verificationPending -> metadata.stagingBundleId
+            metadata.stableBundleId != null -> metadata.stableBundleId
             else -> null
         }
     }
@@ -742,7 +777,7 @@ class BundleFileStorageService(
 
         return ActiveBundleMetadataSnapshot(
             activeBundleId = bundleDir.name,
-            bundleId = manifestBundleId ?: readCompatibilityBundleIdFromBundleDir(bundleDir),
+            bundleId = manifestBundleId,
             manifest = manifest,
         )
     }
@@ -759,25 +794,6 @@ class BundleFileStorageService(
 
         return resolveActiveBundleMetadataSnapshot(bundleDir)
     }
-
-    private fun readCompatibilityBundleIdFromBundleDir(bundleDir: File): String? {
-        val compatibilityBundleIdFile = File(bundleDir, compatibilityBundleIdFilename())
-        if (!compatibilityBundleIdFile.exists()) {
-            return null
-        }
-
-        return try {
-            compatibilityBundleIdFile.readText().trim().takeIf { it.isNotEmpty() }
-        } catch (e: Exception) {
-            Log.w(
-                TAG,
-                "Failed to read compatibility bundle metadata from ${compatibilityBundleIdFile.absolutePath}: ${e.message}",
-            )
-            null
-        }
-    }
-
-    private fun compatibilityBundleIdFilename(): String = "BUNDLE_ID"
 
     private fun readManifestFromBundleDir(bundleDir: File): Map<String, Any?>? {
         val manifestFile = File(bundleDir, "manifest.json")
@@ -1113,10 +1129,9 @@ class BundleFileStorageService(
     private fun selectLaunch(): LaunchSelection {
         val metadata = loadMetadataOrNull()
         if (metadata == null) {
-            val cached = getCachedBundleURL()
             return LaunchSelection(
-                bundleUrl = cached ?: getFallbackBundleURL(),
-                launchedBundleId = extractBundleIdFromCurrentURL(),
+                bundleUrl = getFallbackBundleURL(),
+                launchedBundleId = null,
                 shouldRollbackOnCrash = false,
             )
         }
@@ -1147,10 +1162,9 @@ class BundleFileStorageService(
             }
         }
 
-        val cached = getCachedBundleURL()
         return LaunchSelection(
-            bundleUrl = cached ?: getFallbackBundleURL(),
-            launchedBundleId = extractBundleIdFromCurrentURL(),
+            bundleUrl = getFallbackBundleURL(),
+            launchedBundleId = null,
             shouldRollbackOnCrash = false,
         )
     }
@@ -1415,9 +1429,14 @@ class BundleFileStorageService(
 
     override fun setBundleURL(localPath: String?): Boolean {
         Log.d(TAG, "setBundleURL: $localPath")
-        preferences.setItem("HotUpdaterBundleURL", localPath)
-        clearActiveBundleMetadataSnapshot()
-        return true
+        return try {
+            preferences.setItem("HotUpdaterBundleURL", localPath)
+            clearActiveBundleMetadataSnapshot()
+            true
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to persist bundle URL", e)
+            false
+        }
     }
 
     override fun getCachedBundleURL(): String? {
@@ -1448,6 +1467,7 @@ class BundleFileStorageService(
     override fun getFallbackBundleURL(): String = "assets://index.android.bundle"
 
     override fun prepareLaunch(pendingRecovery: PendingCrashRecovery?): LaunchSelection {
+        recoverInterruptedPromotions()
         saveLaunchReport(null)
         applyPendingRecoveryIfNeeded(pendingRecovery)
         // Only a new storage instance consumes an unfinished launch. Repeated bundle
@@ -1510,17 +1530,12 @@ class BundleFileStorageService(
             throw HotUpdaterException.bundleInCrashedHistory(bundleId)
         }
 
-        // Initialize metadata if it doesn't exist (lazy initialization)
-        val existingMetadata = loadMetadataOrNull()
-        val metadata =
-            existingMetadata ?: createInitialMetadata().also {
-                saveMetadata(it)
-                Log.d(TAG, "Created initial metadata during updateBundle")
-            }
-
         val bundleStoreDir = getBundleStoreDir()
         if (!bundleStoreDir.exists()) {
             bundleStoreDir.mkdirs()
+        }
+        if (!recoverInterruptedPromotions()) {
+            throw HotUpdaterException.moveOperationFailed()
         }
 
         val finalBundleDir = File(bundleStoreDir, bundleId)
@@ -2069,32 +2084,63 @@ class BundleFileStorageService(
                 throw HotUpdaterException.invalidBundle()
             }
 
-            if (finalBundleDir.exists()) {
-                finalBundleDir.deleteRecursively()
-            }
-
-            val renamed = tmpDir.renameTo(finalBundleDir)
-            if (!renamed) {
-                if (!fileSystem.moveItem(tmpDir.absolutePath, finalBundleDir.absolutePath)) {
-                    if (!fileSystem.copyItem(tmpDir.absolutePath, finalBundleDir.absolutePath)) {
+            val backupDir = installBackupDir(bundleId)
+            val updatedMetadata =
+                synchronized(releaseStateLock) {
+                    if (backupDir.exists()) {
                         throw HotUpdaterException.moveOperationFailed()
                     }
-                    tmpDir.deleteRecursively()
+
+                    val hadExistingFinal = finalBundleDir.exists()
+                    var promoted = false
+                    val previousBundleUrl = preferences.getItem("HotUpdaterBundleURL")
+                    try {
+                        if (hadExistingFinal && !directoryRenamer(finalBundleDir, backupDir)) {
+                            throw HotUpdaterException.moveOperationFailed()
+                        }
+                        if (!directoryRenamer(tmpDir, finalBundleDir)) {
+                            if (hadExistingFinal) {
+                                directoryRenamer(backupDir, finalBundleDir)
+                            }
+                            throw HotUpdaterException.moveOperationFailed()
+                        }
+                        promoted = true
+
+                        val finalIndexFile =
+                            resolveBundleFile(finalBundleDir, bundleId)
+                                ?: throw HotUpdaterException.invalidBundle()
+                        if (!isCompleteBundleDirectory(finalBundleDir, bundleId)) {
+                            throw HotUpdaterException.invalidBundle()
+                        }
+                        finalBundleDir.setLastModified(System.currentTimeMillis())
+
+                        val currentMetadata = loadMetadataOrNull() ?: createInitialMetadata()
+                        val nextMetadata = prepareMetadataForNewStagingBundle(currentMetadata, bundleId)
+                        if (!setBundleURL(finalIndexFile.absolutePath)) {
+                            throw IllegalStateException("Failed to persist bundle URL")
+                        }
+                        if (!saveMetadata(nextMetadata)) {
+                            throw IllegalStateException("Failed to persist bundle metadata")
+                        }
+
+                        if (backupDir.exists() && !backupDir.deleteRecursively()) {
+                            Log.w(TAG, "Failed to remove committed install backup: ${backupDir.absolutePath}")
+                        }
+                        nextMetadata
+                    } catch (e: Exception) {
+                        runCatching { preferences.setItem("HotUpdaterBundleURL", previousBundleUrl) }
+                        clearActiveBundleMetadataSnapshot()
+                        if (promoted && finalBundleDir.exists() && !finalBundleDir.deleteRecursively()) {
+                            Log.e(TAG, "Failed to remove uncommitted bundle: ${finalBundleDir.absolutePath}")
+                        }
+                        if (hadExistingFinal && !finalBundleDir.exists() && backupDir.exists() &&
+                            !directoryRenamer(backupDir, finalBundleDir)
+                        ) {
+                            Log.e(TAG, "Failed to restore install backup: ${backupDir.absolutePath}")
+                        }
+                        throw e
+                    }
                 }
-            }
-
-            val finalIndexFile = finalBundleDir.walk().find { it.name == "index.android.bundle" }
-            if (finalIndexFile == null) {
-                finalBundleDir.deleteRecursively()
-                throw HotUpdaterException.invalidBundle()
-            }
-
-            finalBundleDir.setLastModified(System.currentTimeMillis())
-
-            val currentMetadata = loadMetadataOrNull() ?: createInitialMetadata()
-            val updatedMetadata = prepareMetadataForNewStagingBundle(currentMetadata, bundleId)
-            saveMetadata(updatedMetadata)
-            setBundleURL(finalIndexFile.absolutePath)
 
             tempDir.deleteRecursively()
             cleanupOldBundles(bundleStoreDir, updatedMetadata.stableBundleId, bundleId)
@@ -2127,7 +2173,9 @@ class BundleFileStorageService(
             val bundles =
                 bundleStoreDir
                     .listFiles { file ->
-                        file.isDirectory && !file.name.endsWith(".tmp")
+                        file.isDirectory &&
+                            !file.name.endsWith(".tmp") &&
+                            !file.name.endsWith(".install-backup")
                     }?.toList() ?: return
 
             // Keep only the specified bundle IDs (filter out null values)

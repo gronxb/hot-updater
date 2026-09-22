@@ -54,8 +54,13 @@ internal class TarArchiveInputStream(
                     continue
                 }
 
-                'g' -> throw IOException("Global PAX headers are not supported")
-                'L' -> throw IOException("GNU long names are not supported")
+                'g' -> {
+                    throw IOException("Global PAX headers are not supported")
+                }
+
+                'L' -> {
+                    throw IOException("GNU long names are not supported")
+                }
             }
 
             val paxHeaders = pendingPaxHeaders.orEmpty()

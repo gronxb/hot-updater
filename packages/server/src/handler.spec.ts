@@ -197,6 +197,49 @@ describe("createHandlers client routes", () => {
     expect(getArtifactInfo).toHaveBeenCalledWith("target", "current", 1);
   });
 
+  it("authenticates artifact protocol v1 before resolving artifacts", async () => {
+    const getArtifactInfo = vi
+      .fn<NonNullable<HandlerAPI["getArtifactInfo"]>>()
+      .mockResolvedValue({
+        artifactProtocolVersion: 1,
+        assets: {},
+        manifestFileHash: "manifest-hash",
+        manifestUrl: "/storage/manifest-token/manifest-signature",
+      });
+    const authenticate = vi.fn(async (request: Request) => {
+      const apiKey = request.headers.get("x-api-key");
+      if (apiKey === "unavailable") {
+        throw new Error("credential storage unavailable");
+      }
+      return apiKey === "valid";
+    });
+    const handler = createHotUpdaterHandlers(
+      { ...createApi(), getArtifactInfo },
+      undefined,
+      { authenticate, headerName: "x-api-key" },
+    ).client;
+    const url = "http://localhost/artifacts/v1/target/from/current";
+
+    const missing = await handler(new Request(url));
+    const invalid = await handler(
+      new Request(url, { headers: { "x-api-key": "invalid" } }),
+    );
+    const valid = await handler(
+      new Request(url, { headers: { "x-api-key": "valid" } }),
+    );
+    const unavailable = await handler(
+      new Request(url, { headers: { "x-api-key": "unavailable" } }),
+    );
+
+    expect(missing.status).toBe(401);
+    expect(invalid.status).toBe(401);
+    expect(valid.status).toBe(200);
+    expect(unavailable.status).toBe(503);
+    expect(authenticate).toHaveBeenCalledTimes(4);
+    expect(getArtifactInfo).toHaveBeenCalledOnce();
+    expect(getArtifactInfo).toHaveBeenCalledWith("target", "current", 1);
+  });
+
   it("does not expose provider errors from the public client handler", async () => {
     const api = {
       ...createApi(),

@@ -163,13 +163,13 @@ class BundleFileStorageServiceTest {
     }
 
     @Test
-    fun `resolveBundleFile allows legacy root index without manifest`() {
+    fun `resolveBundleFile rejects root index without manifest`() {
         val rootDir = temporaryFolder.newFolder("legacy-root-index")
         val service = createService(rootDir)
         val bundleDir = createBundleDir(rootDir, "bundle-legacy")
-        val fallbackBundleFile = writeFile(bundleDir, "index.android.bundle")
+        writeFile(bundleDir, "index.android.bundle")
 
-        assertResolvedBundlePath(service, bundleDir, fallbackBundleFile)
+        assertNull(invokeResolveBundleFile(service, bundleDir))
     }
 
     @Test
@@ -791,6 +791,197 @@ class BundleFileStorageServiceTest {
         }
 
     @Test
+    fun `failed final rename restores existing bundle`() =
+        runBlocking {
+            val root = temporaryFolder.newFolder("failed-final-rename")
+            val preferences = InMemoryPreferencesService()
+            val target = createCompleteBundle(root, "target", "old")
+            val oldBundleFile = File(target, "index.android.bundle")
+            preferences.setItem("HotUpdaterBundleURL", oldBundleFile.absolutePath)
+            writeMetadata(
+                root,
+                BundleMetadata(
+                    isolationKey = TEST_ISOLATION_KEY,
+                    stagingBundleId = "target",
+                ),
+            )
+            val manifest = manifestJson("target", mapOf("index.android.bundle" to sha256(root, "new")))
+            val downloads =
+                MappingDownloadService(
+                    mapOf(
+                        "https://example.com/manifest.json" to manifest,
+                        "https://example.com/bundle" to "new",
+                    ),
+                )
+            val service =
+                createService(
+                    root,
+                    preferences = preferences,
+                    downloadService = downloads,
+                    builtInAssetResolver = MappingBuiltInAssetResolver(emptyMap()),
+                    directoryRenamer = { source, destination ->
+                        if (source.name == "target.tmp" && destination.name == "target") {
+                            false
+                        } else {
+                            source.renameTo(destination)
+                        }
+                    },
+                )
+
+            val result =
+                runCatching {
+                    service.updateBundle(
+                        "target",
+                        "https://example.com/manifest.json",
+                        sha256(root, manifest),
+                        mapOf(
+                            "index.android.bundle" to
+                                ChangedAssetDescriptor("https://example.com/bundle", sha256(root, "new")),
+                        ),
+                    ) {}
+                }
+
+            assertTrue(result.isFailure)
+            assertEquals("old", oldBundleFile.readText())
+            assertFalse(File(bundleStoreDir(root), "target.install-backup").exists())
+            assertEquals(oldBundleFile.absolutePath, preferences.getItem("HotUpdaterBundleURL"))
+            assertEquals("target", loadMetadata(root)?.stagingBundleId)
+        }
+
+    @Test
+    fun `metadata write failure restores preference and existing bundle`() =
+        runBlocking {
+            val root = temporaryFolder.newFolder("failed-metadata-write")
+            val preferences = InMemoryPreferencesService()
+            val target = createCompleteBundle(root, "target", "old")
+            val oldBundleFile = File(target, "index.android.bundle")
+            preferences.setItem("HotUpdaterBundleURL", oldBundleFile.absolutePath)
+            val previousMetadata =
+                BundleMetadata(
+                    isolationKey = TEST_ISOLATION_KEY,
+                    stagingBundleId = "target",
+                )
+            writeMetadata(root, previousMetadata)
+            val newHash = sha256(root, "new")
+            val manifest = manifestJson("target", mapOf("index.android.bundle" to newHash))
+            val service =
+                createService(
+                    root,
+                    preferences = preferences,
+                    downloadService =
+                        MappingDownloadService(
+                            mapOf(
+                                "https://example.com/manifest.json" to manifest,
+                                "https://example.com/bundle" to "new",
+                            ),
+                        ),
+                    builtInAssetResolver = MappingBuiltInAssetResolver(emptyMap()),
+                    metadataWriter = { _, _ -> false },
+                )
+
+            val result =
+                runCatching {
+                    service.updateBundle(
+                        "target",
+                        "https://example.com/manifest.json",
+                        sha256(root, manifest),
+                        mapOf(
+                            "index.android.bundle" to ChangedAssetDescriptor("https://example.com/bundle", newHash),
+                        ),
+                    ) {}
+                }
+
+            assertTrue(result.isFailure)
+            assertEquals("old", oldBundleFile.readText())
+            assertFalse(File(bundleStoreDir(root), "target.install-backup").exists())
+            assertEquals(oldBundleFile.absolutePath, preferences.getItem("HotUpdaterBundleURL"))
+            assertEquals(previousMetadata.stagingBundleId, loadMetadata(root)?.stagingBundleId)
+        }
+
+    @Test
+    fun `preference write failure aborts before metadata commit and restores existing bundle`() =
+        runBlocking {
+            val root = temporaryFolder.newFolder("failed-preference-write")
+            val target = createCompleteBundle(root, "target", "old")
+            val oldBundleFile = File(target, "index.android.bundle")
+            var preferenceWrites = 0
+            val preferences =
+                InMemoryPreferencesService { key, _ ->
+                    if (key == "HotUpdaterBundleURL") preferenceWrites++
+                    preferenceWrites == 2
+                }
+            preferences.setItem("HotUpdaterBundleURL", oldBundleFile.absolutePath)
+            writeMetadata(
+                root,
+                BundleMetadata(
+                    isolationKey = TEST_ISOLATION_KEY,
+                    stagingBundleId = "target",
+                ),
+            )
+            val newHash = sha256(root, "new")
+            val manifest = manifestJson("target", mapOf("index.android.bundle" to newHash))
+            var metadataWrites = 0
+            val service =
+                createService(
+                    root,
+                    preferences = preferences,
+                    downloadService =
+                        MappingDownloadService(
+                            mapOf(
+                                "https://example.com/manifest.json" to manifest,
+                                "https://example.com/bundle" to "new",
+                            ),
+                        ),
+                    builtInAssetResolver = MappingBuiltInAssetResolver(emptyMap()),
+                    metadataWriter = { metadata, file ->
+                        metadataWrites++
+                        metadata.saveToFile(file)
+                    },
+                )
+
+            val result =
+                runCatching {
+                    service.updateBundle(
+                        "target",
+                        "https://example.com/manifest.json",
+                        sha256(root, manifest),
+                        mapOf(
+                            "index.android.bundle" to ChangedAssetDescriptor("https://example.com/bundle", newHash),
+                        ),
+                    ) {}
+                }
+
+            assertTrue(result.isFailure)
+            assertEquals(0, metadataWrites)
+            assertEquals("old", oldBundleFile.readText())
+            assertEquals(oldBundleFile.absolutePath, preferences.getItem("HotUpdaterBundleURL"))
+        }
+
+    @Test
+    fun `startup restores interrupted promotion backup when final is absent`() {
+        val root = temporaryFolder.newFolder("missing-final-recovery")
+        val backup = createCompleteBundle(root, "target.install-backup", "old", manifestBundleId = "target")
+
+        createService(root)
+
+        val restored = File(bundleStoreDir(root), "target")
+        assertEquals("old", File(restored, "index.android.bundle").readText())
+        assertFalse(backup.exists())
+    }
+
+    @Test
+    fun `startup keeps complete final when install backup also exists`() {
+        val root = temporaryFolder.newFolder("complete-final-recovery")
+        val final = createCompleteBundle(root, "target", "new")
+        val backup = createCompleteBundle(root, "target.install-backup", "old", manifestBundleId = "target")
+
+        createService(root)
+
+        assertEquals("new", File(final, "index.android.bundle").readText())
+        assertFalse(backup.exists())
+    }
+
+    @Test
     fun `retry reuses completed staging files and replaces partial files without stale assets`() =
         runBlocking {
             val root = temporaryFolder.newFolder("interrupted-retry")
@@ -1307,6 +1498,8 @@ class BundleFileStorageServiceTest {
         preferences: InMemoryPreferencesService = InMemoryPreferencesService(),
         downloadService: DownloadService = UnusedDownloadService,
         builtInAssetResolver: BuiltInAssetResolver? = null,
+        metadataWriter: (BundleMetadata, File) -> Boolean = { metadata, file -> metadata.saveToFile(file) },
+        directoryRenamer: (File, File) -> Boolean = { source, destination -> source.renameTo(destination) },
     ): BundleFileStorageService =
         BundleFileStorageService(
             context = ContextWrapper(null),
@@ -1316,6 +1509,8 @@ class BundleFileStorageServiceTest {
             isolationKey = TEST_ISOLATION_KEY,
             defaultChannelProvider = { "production" },
             builtInAssetResolver = builtInAssetResolver,
+            metadataWriter = metadataWriter,
+            directoryRenamer = directoryRenamer,
         )
 
     private fun releaseSelection(
@@ -1341,6 +1536,23 @@ class BundleFileStorageServiceTest {
         rootDir: File,
         bundleId: String,
     ): File = File(bundleStoreDir(rootDir), bundleId).apply { mkdirs() }
+
+    private fun createCompleteBundle(
+        rootDir: File,
+        directoryName: String,
+        content: String,
+        manifestBundleId: String = directoryName,
+    ): File {
+        val directory = createBundleDir(rootDir, directoryName)
+        writeFile(directory, "index.android.bundle", content)
+        File(directory, "manifest.json").writeText(
+            manifestJson(
+                manifestBundleId,
+                mapOf("index.android.bundle" to sha256(rootDir, content)),
+            ),
+        )
+        return directory
+    }
 
     private fun writeManifest(
         bundleDir: File,
@@ -1445,7 +1657,9 @@ class BundleFileStorageServiceTest {
         override fun getInternalFilesDir(): File = internalFilesDir
     }
 
-    private class InMemoryPreferencesService : PreferencesService {
+    private class InMemoryPreferencesService(
+        private val shouldFailWrite: (String, String?) -> Boolean = { _, _ -> false },
+    ) : PreferencesService {
         private val values = mutableMapOf<String, String?>()
 
         override fun getItem(key: String): String? = values[key]
@@ -1454,6 +1668,9 @@ class BundleFileStorageServiceTest {
             key: String,
             value: String?,
         ) {
+            if (shouldFailWrite(key, value)) {
+                throw IllegalStateException("Injected preference write failure")
+            }
             if (value == null) {
                 values.remove(key)
             } else {

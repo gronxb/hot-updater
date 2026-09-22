@@ -28,14 +28,6 @@ enum DownloadError: Error {
     case invalidContentLength
 }
 
-// Task state for persistence and recovery
-struct TaskState: Codable {
-    let taskIdentifier: Int
-    let destination: String
-    let bundleId: String
-    let startedAt: TimeInterval
-}
-
 class URLSessionDownloadService: NSObject, DownloadService {
     private let stateLock = NSRecursiveLock()
     private var session: URLSession!
@@ -44,7 +36,6 @@ class URLSessionDownloadService: NSObject, DownloadService {
     private var completionHandlers: [URLSessionTask: (Result<URL, Error>) -> Void] = [:]
     private var destinations: [URLSessionTask: String] = [:]
     private var fileSizeHandlers: [URLSessionTask: (Int64) -> Void] = [:]
-    private var taskStates: [Int: TaskState] = [:]
 
     override init() {
         super.init()
@@ -62,40 +53,6 @@ class URLSessionDownloadService: NSObject, DownloadService {
             backgroundConfig.sessionSendsLaunchEvents = true
         }
         backgroundSession = URLSession(configuration: backgroundConfig, delegate: self, delegateQueue: nil)
-
-        // Load persisted task states
-        taskStates = loadTaskStates()
-    }
-
-    // MARK: - State Persistence
-
-    private var stateFileURL: URL {
-        let documentsPath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
-        return documentsPath.appendingPathComponent("download-state.json")
-    }
-
-    private func saveTaskState(_ state: TaskState) {
-        taskStates[state.taskIdentifier] = state
-
-        if let data = try? JSONEncoder().encode(taskStates) {
-            try? data.write(to: stateFileURL)
-        }
-    }
-
-    private func loadTaskStates() -> [Int: TaskState] {
-        guard let data = try? Data(contentsOf: stateFileURL),
-              let states = try? JSONDecoder().decode([Int: TaskState].self, from: data) else {
-            return [:]
-        }
-        return states
-    }
-
-    private func removeTaskState(_ taskIdentifier: Int) {
-        taskStates.removeValue(forKey: taskIdentifier)
-
-        if let data = try? JSONEncoder().encode(taskStates) {
-            try? data.write(to: stateFileURL)
-        }
     }
 
     func downloadFile(from url: URL, to destination: String, fileSizeHandler: ((Int64) -> Void)?, progressHandler: @escaping (DownloadProgress) -> Void, completion: @escaping (Result<URL, Error>) -> Void) -> URLSessionDownloadTask? {
@@ -126,20 +83,6 @@ class URLSessionDownloadService: NSObject, DownloadService {
             fileSizeHandlers[task] = handler
         }
 
-        // Extract bundleId from destination path (e.g., "bundle-store/{bundleId}/index.ios.bundle")
-        let bundleId = (destination as NSString).pathComponents
-            .dropFirst()
-            .first(where: { $0 != "bundle-store" }) ?? "unknown"
-
-        // Save task metadata for background recovery
-        let taskState = TaskState(
-            taskIdentifier: task.taskIdentifier,
-            destination: destination,
-            bundleId: bundleId,
-            startedAt: Date().timeIntervalSince1970
-        )
-        saveTaskState(taskState)
-
         task.resume()
         return task
     }
@@ -157,10 +100,6 @@ extension URLSessionDownloadService: URLSessionDownloadDelegate {
             completionHandlers.removeValue(forKey: downloadTask)
             destinations.removeValue(forKey: downloadTask)
             fileSizeHandlers.removeValue(forKey: downloadTask)
-            removeTaskState(downloadTask.taskIdentifier)
-
-            // 다운로드 완료 알림
-            NotificationCenter.default.post(name: .downloadDidFinish, object: downloadTask)
         }
 
         guard let destination = destination else {
@@ -213,9 +152,6 @@ extension URLSessionDownloadService: URLSessionDownloadDelegate {
             completionHandlers.removeValue(forKey: task)
             destinations.removeValue(forKey: task)
             fileSizeHandlers.removeValue(forKey: task)
-            removeTaskState(task.taskIdentifier)
-
-            NotificationCenter.default.post(name: .downloadDidFinish, object: task)
         }
 
         if let error = error {
@@ -244,16 +180,9 @@ extension URLSessionDownloadService: URLSessionDownloadDelegate {
             let progress = Double(totalBytesWritten) / Double(totalBytesExpectedToWrite)
             progressHandler?(DownloadProgress(progress: progress, downloadedBytes: totalBytesWritten, totalBytes: totalBytesExpectedToWrite))
 
-            let progressInfo: [String: Any] = [
-                "progress": progress,
-                "totalBytesReceived": totalBytesWritten,
-                "totalBytesExpected": totalBytesExpectedToWrite
-            ]
-            NotificationCenter.default.post(name: .downloadProgressUpdate, object: downloadTask, userInfo: progressInfo)
         } else {
             progressHandler?(DownloadProgress(progress: 0, downloadedBytes: totalBytesWritten, totalBytes: nil))
 
-            NotificationCenter.default.post(name: .downloadProgressUpdate, object: downloadTask, userInfo: ["progress": 0.0, "totalBytesReceived": 0, "totalBytesExpected": 0])
         }
     }
 }

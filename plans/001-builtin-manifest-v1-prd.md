@@ -3,7 +3,8 @@
 ## 1. Status and execution contract
 
 - Created: 2026-09-20.
-- Status: On 2026-09-21, the user approved tar.br as the only optional archive path and the simplification of native compression logic. Two subagents reached the contract below after adversarial reviews and rebuttals. Implementation, performance, final E2E, and CI verification completed on 2026-09-22. The verified revision is `797338cd0`; results are preserved in `evidence/standalone-tar-br.{md,json}`.
+- Status: The core implementation and performance gates passed at `797338cd0`, including five standalone E2E profiles; results are preserved in `evidence/standalone-tar-br.{md,json}`. A renewed Sol Medium review on 2026-09-22 found artifact authentication and final-promotion failure gaps. The follow-up fixes and v1 native cleanup reopen final acceptance until the new revision passes CI and all nine requested E2E profiles. See `evidence/prd-review-20260922.md`.
+- Current merge baseline: `origin/next` at `d99530b1e`, merged in `4c43e3459`. Pre-review HEAD: `162aaa843` (runtime code from `d78727c48`). Earlier results do not verify the follow-up native changes.
 - Merge baseline for that acceptance: `origin/next` at `333188ab939769609913529004d6c0d15474ad03`, merged in `1aa201bbd`. Historical code references in section 4 use the initial baseline `ec78756926cac3b23ca32c1d3acefe28d2ebb7ab`.
 - Working directory: `/Users/gronxb/.codex/worktrees/builtin-manifest-v1/hot-updater`.
 - Branch: `feature/builtin-manifest-v1`.
@@ -179,6 +180,7 @@ Version the wire change explicitly. v1 has not been officially released, so fina
 The wire boundary finalized in M1 is:
 
 - The new SDK calls only `/artifacts/v1/:targetBundleId/from/:currentBundleId`.
+- The versioned artifact route uses the same configured client API-key authentication as Release Catalog requests. Missing/invalid credentials must not resolve artifact URLs; authentication-service errors fail closed.
 - The response provides `artifactProtocolVersion: 1`, the target manifest URL/hash, and `assets` with required original descriptors for every target file. Optional `archiveUrl` points to the fixed tar.br object; only the verified manifest is authoritative for its hash and sizes. `patch.byteSize` is a cost-comparison hint.
 - The unversioned `/artifacts/:targetBundleId/from/:currentBundleId` endpoint is unsupported. The server and SDK expose/call only the versioned v1 endpoint.
 - Servers unable to read manifests do not produce v1 artifacts. The new SDK treats endpoint 404s or missing versions/descriptors as protocol incompatibility, never as builtin reset.
@@ -188,6 +190,8 @@ The wire boundary finalized in M1 is:
 The per-file order is `verified existing OTA reuse → verified builtin reuse → beneficial patch → original file`. Only absent/mismatched local candidates and failed patch optimizations may become ordinary misses. A target-manifest signature failure or final installed-file hash mismatch must never count as success.
 
 - Atomically promote staging only after verifying every target file.
+- Preserve an existing target under a sibling install backup until activation metadata commits. Restore it when promotion or metadata persistence fails, and recover interrupted renames before launch. Do not fall back to a non-atomic final-directory copy.
+- Durable metadata authorizes OTA launch. A cached preference, a `BUNDLE_ID` file, or a directory without the required manifest cannot independently activate a downloaded bundle.
 - Do not retain old files absent from the manifest in the new directory.
 - Preserve catalog guards and selection receipts at installation start and completion.
 - On failure, retain stable/builtin state, crash history, and the highest catalog generation.
@@ -371,7 +375,7 @@ For dashboard/device E2E, read and use this checkout's `.agents/skills/hot-updat
 - [x] `compressStrategy` is removed from the public surface and old configuration is explicitly rejected.
 - [x] The 1.0.0 schemas/migrations and versioned protocol are directly updated and tested.
 - [x] Actual tar.br measurements compare bytes/requests/time/disk/memory for small and complete changes and resolve the many-file request bottleneck. The 80-run results and near-tie under a bandwidth cap are recorded in `evidence/native-tar-br-transfer.{md,json}`.
-- [x] The final implementation revision passed unit/integration/native checks, full E2E for all five standalone-\* profiles, and required checks.
+- [ ] The follow-up implementation revision passes unit/integration/native checks, required CI, and full E2E for all five standalone-\* profiles plus AWS, Firebase, Cloudflare, and Supabase using reconciled workspace runtimes. Earlier passing revisions remain historical evidence.
 - [x] Documentation does not claim that the first builtin Hermes patch works without base registration.
 - [x] Documentation, examples, changeset, execution status, and actual verification evidence reflect the tar.br agreement.
 

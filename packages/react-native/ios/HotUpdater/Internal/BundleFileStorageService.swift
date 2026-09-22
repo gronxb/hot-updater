@@ -74,8 +74,6 @@ public struct BsdiffPatchDescriptor {
 public struct UpdateProgressPayload {
     public let progress: Double
     public let artifactType: String
-    public let downloadedBytes: Int64?
-    public let totalBytes: Int64?
     public let details: DiffProgressDetails?
 
     public struct DiffProgressFileSnapshot {
@@ -150,30 +148,19 @@ public struct UpdateProgressPayload {
     public init(
         progress: Double,
         artifactType: String,
-        downloadedBytes: Int64? = nil,
-        totalBytes: Int64? = nil,
         details: DiffProgressDetails? = nil
     ) {
         self.progress = progress
         self.artifactType = artifactType
-        self.downloadedBytes = downloadedBytes
-        self.totalBytes = totalBytes
         self.details = details
     }
 
     public var userInfo: [String: Any] {
-        var info: [String: Any] = [
+        [
             "artifactType": artifactType,
             "progress": progress,
             "details": details?.userInfo ?? NSNull()
         ]
-        if let downloadedBytes {
-            info["downloadedBytes"] = downloadedBytes
-        }
-        if let totalBytes {
-            info["totalBytes"] = totalBytes
-        }
-        return info
     }
 }
 
@@ -296,7 +283,7 @@ public protocol BundleStorageService {
 
     /**
      * Gets the current active bundle ID from bundle storage.
-     * Reads manifest.json first and falls back to older metadata when needed.
+     * Reads the required OTA manifest.json.
      */
     func getBundleId() -> String?
 
@@ -314,18 +301,6 @@ public protocol BundleStorageService {
 }
 
 public extension BundleStorageService {
-    func updateBundle(bundleId: String, manifestUrl: URL, manifestFileHash: String, assets: [String: ChangedAssetDescriptor], progressHandler: @escaping (UpdateProgressPayload) -> Void, completion: @escaping (Result<Bool, Error>) -> Void) {
-        updateBundle(
-            bundleId: bundleId,
-            manifestUrl: manifestUrl,
-            manifestFileHash: manifestFileHash,
-            archiveUrl: nil,
-            assets: assets,
-            progressHandler: progressHandler,
-            completion: completion
-        )
-    }
-
     func stageReleaseSelection(_: PersistedSelection) -> Bool { false }
     func acceptReleaseCatalog(catalogId _: String, scopeKey _: String, generation _: Int64, catalogHash _: String, channel _: String, selectionContextHash _: String) -> Bool { false }
     func getActiveUpdateState() -> [String: Any] { [:] }
@@ -361,21 +336,13 @@ class BundleFileStorageService: BundleStorageService {
         let tarByteSize: Int64
     }
 
-    private enum UpdateProgress {
-        static let complete = 1.0
-    }
-
     private let fileSystem: FileSystemService
     private let downloadService: DownloadService
     private let preferences: PreferencesService
     private let isolationKey: String
 
-    private let id = Int.random(in: 1..<100)
-    
     // Queue for potentially long-running sequences within updateBundle or for explicit background tasks.
     private let fileOperationQueue: DispatchQueue
-
-    private var activeTasks: [URLSessionTask] = []
 
     private var hasPreparedLaunch = false
     private var currentLaunchReport: LaunchReport?
@@ -780,6 +747,7 @@ class BundleFileStorageService: BundleStorageService {
 
         // Clean up old bundles if isolationKey format changed
         checkAndCleanupIfIsolationKeyChanged()
+        recoverInterruptedPromotions()
     }
 
     // MARK: - Metadata File Paths
@@ -939,11 +907,10 @@ class BundleFileStorageService: BundleStorageService {
     }
 
     private func createInitialMetadata() -> BundleMetadata {
-        let currentBundleId = getCachedBundleId()
         return BundleMetadata(
             isolationKey: isolationKey,
             stableBundleId: nil,
-            stagingBundleId: currentBundleId,
+            stagingBundleId: nil,
             verificationPending: false,
             pendingTransition: nil
         )
@@ -957,18 +924,18 @@ class BundleFileStorageService: BundleStorageService {
     }
 
     private func getActiveBundleId() -> String? {
-        if let cachedBundleId = getCachedBundleId() {
+        guard let metadata = loadMetadataOrNull() else { return nil }
+        if let cachedBundleId = getCachedBundleId(),
+           cachedBundleId == metadata.stagingBundleId || cachedBundleId == metadata.stableBundleId {
             return cachedBundleId
         }
 
-        let metadata = loadMetadataOrNull()
-
-        if let stagingBundleId = metadata?.stagingBundleId,
-           metadata?.verificationPending == false {
+        if let stagingBundleId = metadata.stagingBundleId,
+           metadata.verificationPending == false {
             return stagingBundleId
         }
 
-        if let stableBundleId = metadata?.stableBundleId {
+        if let stableBundleId = metadata.stableBundleId {
             return stableBundleId
         }
 
@@ -1026,9 +993,7 @@ class BundleFileStorageService: BundleStorageService {
         let manifestBundleId =
             (manifest["bundleId"] as? String)?
             .trimmingCharacters(in: .whitespacesAndNewlines)
-        let resolvedBundleId =
-            (manifestBundleId?.isEmpty == false ? manifestBundleId : nil) ??
-            readCompatibilityBundleId(in: bundleDirectory)
+        let resolvedBundleId = manifestBundleId?.isEmpty == false ? manifestBundleId : nil
 
         return ActiveBundleMetadataSnapshot(
             activeBundleId: activeBundleId,
@@ -1053,34 +1018,6 @@ class BundleFileStorageService: BundleStorageService {
             activeBundleId: activeBundleId,
             bundleDirectory: bundleDir
         )
-    }
-
-    private func readCompatibilityBundleId(in bundleDirectory: String) -> String? {
-        let compatibilityBundleIdPath = (bundleDirectory as NSString)
-            .appendingPathComponent(compatibilityBundleIdFilename())
-        if fileSystem.fileExists(atPath: compatibilityBundleIdPath) {
-            do {
-                let compatibilityBundleId = try String(
-                    contentsOfFile: compatibilityBundleIdPath,
-                    encoding: .utf8
-                )
-                    .trimmingCharacters(in: .whitespacesAndNewlines)
-
-                if !compatibilityBundleId.isEmpty {
-                    return compatibilityBundleId
-                }
-            } catch {
-                NSLog(
-                    "[BundleStorage] Failed to read compatibility bundle metadata at \(compatibilityBundleIdPath): \(error.localizedDescription)"
-                )
-            }
-        }
-
-        return nil
-    }
-
-    private func compatibilityBundleIdFilename() -> String {
-        "BUNDLE_ID"
     }
 
     private func readManifest(in bundleDirectory: String) -> [String: Any]? {
@@ -1171,14 +1108,6 @@ class BundleFileStorageService: BundleStorageService {
         value.count == 64 && value.allSatisfy {
             ("0"..."9").contains($0) || ("a"..."f").contains($0)
         }
-    }
-
-    private func parseBundleManifest(fromFile manifestPath: String) -> ParsedBundleManifest? {
-        guard let manifest = readManifest(in: (manifestPath as NSString).deletingLastPathComponent) else {
-            return nil
-        }
-
-        return parseBundleManifest(from: manifest)
     }
 
     private func copyVerifiedManifest(from source: String, to destination: String) throws {
@@ -1776,38 +1705,7 @@ class BundleFileStorageService: BundleStorageService {
             }
         }
 
-        let iosBundlePath = (directoryPath as NSString).appendingPathComponent("index.ios.bundle")
-        if self.fileSystem.fileExists(atPath: iosBundlePath) {
-            NSLog("[BundleStorage] Found iOS bundle atPath: \(iosBundlePath)")
-            return .success(iosBundlePath)
-        }
-
-        let mainBundlePath = (directoryPath as NSString).appendingPathComponent("main.jsbundle")
-        if self.fileSystem.fileExists(atPath: mainBundlePath) {
-            NSLog("[BundleStorage] Found main bundle atPath: \(mainBundlePath)")
-            return .success(mainBundlePath)
-        }
-
-        do {
-            let contents = try self.fileSystem.contentsOfDirectory(atPath: directoryPath)
-            NSLog("[BundleStorage] Directory contents: \(contents)")
-
-            // Additional search: check all .bundle files
-            for file in contents {
-                if file.hasSuffix(".bundle") {
-                    let bundlePath = (directoryPath as NSString).appendingPathComponent(file)
-                    NSLog("[BundleStorage] Found alternative bundle atPath: \(bundlePath)")
-                    return .success(bundlePath)
-                }
-            }
-            
-            NSLog("[BundleStorage] No bundle file found in directory: \(directoryPath)")
-            NSLog("[BundleStorage] Available files: \(contents)")
-            return .success(nil)
-        } catch let error {
-            NSLog("[BundleStorage] Error reading directory contents: \(error.localizedDescription)")
-            return .failure(error)
-        }
+        return .success(nil)
     }
         
     /**
@@ -1840,7 +1738,7 @@ class BundleFileStorageService: BundleStorageService {
         let bundles = contents.compactMap { item -> String? in
             let fullPath = (storeDir as NSString).appendingPathComponent(item)
 
-            if protectedBundleStoreEntries.contains(item) {
+            if protectedBundleStoreEntries.contains(item) || item.hasSuffix(".install-backup") {
                 return nil
             }
 
@@ -2012,8 +1910,8 @@ class BundleFileStorageService: BundleStorageService {
     private func selectLaunch(bundle: Bundle) -> LaunchSelection {
         guard let metadata = loadMetadataOrNull() else {
             return LaunchSelection(
-                bundleURL: getCachedBundleURL() ?? getFallbackBundleURL(bundle: bundle),
-                launchedBundleId: getCachedBundleId(),
+                bundleURL: getFallbackBundleURL(bundle: bundle),
+                launchedBundleId: nil,
                 shouldRollbackOnCrash: false
             )
         }
@@ -2433,6 +2331,92 @@ class BundleFileStorageService: BundleStorageService {
         try? fileSystem.removeItem(atPath: backupDirectory)
     }
 
+    private func recoverInterruptedPromotions() {
+        guard case .success(let storeDir) = bundleStoreDir(),
+              let entries = try? fileSystem.contentsOfDirectory(atPath: storeDir) else { return }
+        for entry in entries where entry.hasSuffix(".install-backup") {
+            let finalDirectory = (storeDir as NSString).appendingPathComponent(String(entry.dropLast(".install-backup".count)))
+            do {
+                try recoverInterruptedPromotion(finalDirectory: finalDirectory)
+            } catch {
+                NSLog("[BundleStorage] Cannot recover interrupted promotion: \(error)")
+            }
+        }
+    }
+
+    private func recoverInterruptedPromotion(finalDirectory: String) throws {
+        let backup = finalDirectory + ".install-backup"
+        guard fileSystem.fileExists(atPath: backup) else { return }
+        if fileSystem.fileExists(atPath: finalDirectory) {
+            if isCompleteBundleDirectory(finalDirectory) {
+                try fileSystem.removeItem(atPath: backup)
+                return
+            }
+            try fileSystem.removeItem(atPath: finalDirectory)
+        }
+        try fileSystem.moveItem(atPath: backup, toPath: finalDirectory)
+    }
+
+    private func isCompleteBundleDirectory(_ directory: String) -> Bool {
+        let bundleId = (directory as NSString).lastPathComponent
+        guard let manifest = readManifest(in: directory),
+              let parsed = parseBundleManifest(from: manifest),
+              parsed.bundleId == bundleId,
+              case .success(let bundlePath) = findBundleFile(in: directory, expectedBundleId: bundleId),
+              bundlePath != nil else { return false }
+        return parsed.assets.allSatisfy { path, asset in
+            guard let file = try? FileUtilities.fileURL(for: path, destinationRoot: directory) else { return false }
+            return (try? verifyManifestAssetFile(atPath: file.path, asset: asset)) != nil
+        }
+    }
+
+    private func promoteStagedBundle(
+        bundleId: String,
+        stagingDirectory: String,
+        finalDirectory: String,
+        bundlePathInStaging: String
+    ) throws -> BundleMetadata {
+        releaseStateLock.lock()
+        defer { releaseStateLock.unlock() }
+        let currentMetadata = loadMetadataOrNull() ?? createInitialMetadata()
+        guard let updatedMetadata = prepareMetadataForNewStagingBundle(currentMetadata, bundleId: bundleId) else {
+            throw BundleStorageError.unknown(NSError(domain: "HotUpdater", code: 0,
+                userInfo: [NSLocalizedDescriptionKey: "Release catalog selection is stale"]))
+        }
+        let finalBundlePath = try resolveBundlePathAfterMove(
+            bundlePathInStaging, from: stagingDirectory, to: finalDirectory
+        )
+        let previousPreference = try preferences.getItem(forKey: "HotUpdaterBundleURL")
+        let backup = finalDirectory + ".install-backup"
+        try recoverInterruptedPromotion(finalDirectory: finalDirectory)
+        if fileSystem.fileExists(atPath: finalDirectory) {
+            try fileSystem.moveItem(atPath: finalDirectory, toPath: backup)
+        }
+        var promoted = false
+        do {
+            try fileSystem.moveItem(atPath: stagingDirectory, toPath: finalDirectory)
+            promoted = true
+            try setBundleURL(localPath: finalBundlePath).get()
+            // Metadata is the durable activation point. Launch never uses an
+            // untracked preference if this write fails or the process terminates.
+            guard saveMetadata(updatedMetadata) else {
+                throw BundleStorageError.unknown(NSError(domain: "HotUpdater", code: 0,
+                    userInfo: [NSLocalizedDescriptionKey: "Failed to persist bundle activation metadata"]))
+            }
+        } catch {
+            let installError = error
+            let preferenceResult = setBundleURL(localPath: previousPreference)
+            if promoted { try fileSystem.removeItem(atPath: finalDirectory) }
+            if fileSystem.fileExists(atPath: backup) {
+                try fileSystem.moveItem(atPath: backup, toPath: finalDirectory)
+            }
+            try preferenceResult.get()
+            throw installError
+        }
+        try? fileSystem.removeItem(atPath: backup)
+        return updatedMetadata
+    }
+
     private func updateBundleFromManifest(
         bundleId: String,
         manifestUrl: URL,
@@ -2465,6 +2449,7 @@ class BundleFileStorageService: BundleStorageService {
         var diffFiles: [UpdateProgressPayload.DiffProgressFileSnapshot] = []
 
         do {
+            try recoverInterruptedPromotion(finalDirectory: realDir)
             self.emitDiffProgress(
                 progressHandler: progressHandler,
                 phase: "manifest",
@@ -2662,55 +2647,26 @@ class BundleFileStorageService: BundleStorageService {
                     throw BundleStorageError.invalidBundle
                 }
 
-                if self.fileSystem.fileExists(atPath: realDir) {
-                    try self.fileSystem.removeItem(atPath: realDir)
-                }
-
-                do {
-                    try self.fileSystem.moveItem(atPath: tmpDir, toPath: realDir)
-                } catch {
-                    throw BundleStorageError.moveOperationFailed(error)
-                }
-
-                let finalBundlePath = try resolveBundlePathAfterMove(
-                    bundlePathInTmp,
-                    from: tmpDir,
-                    to: realDir
+                let updatedMetadata = try promoteStagedBundle(
+                    bundleId: bundleId,
+                    stagingDirectory: tmpDir,
+                    finalDirectory: realDir,
+                    bundlePathInStaging: bundlePathInTmp
                 )
-                let currentMetadata = self.loadMetadataOrNull() ?? self.createInitialMetadata()
-                guard let updatedMetadata = self.prepareMetadataForNewStagingBundle(currentMetadata, bundleId: bundleId) else {
-                    self.cleanupTemporaryFiles([tempDirectory])
-                    completion(.failure(BundleStorageError.unknown(
-                        NSError(domain: "HotUpdater", code: 0, userInfo: [
-                            NSLocalizedDescriptionKey: "Release catalog selection is stale"
-                        ])
-                    )))
-                    return
-                }
-                switch self.setBundleURL(localPath: finalBundlePath) {
-                case .success:
-                    let _ = self.saveMetadata(updatedMetadata)
-                    self.cleanupTemporaryFiles([tempDirectory])
-                    self.scheduleCleanupOldBundles(
-                        bundleIdsToKeep: [currentBundleId, updatedMetadata.stableBundleId, bundleId].compactMap { $0 }
+                self.cleanupTemporaryFiles([tempDirectory])
+                self.scheduleCleanupOldBundles(
+                    bundleIdsToKeep: [currentBundleId, updatedMetadata.stableBundleId, bundleId].compactMap { $0 }
+                )
+                progressHandler(UpdateProgressPayload(
+                    progress: 1.0,
+                    artifactType: "diff",
+                    details: .init(
+                        totalFilesCount: diffFiles.count,
+                        completedFilesCount: diffFiles.filter { $0.status == "downloaded" }.count,
+                        files: diffFiles
                     )
-                    progressHandler(
-                        UpdateProgressPayload(
-                            progress: UpdateProgress.complete,
-                            artifactType: "diff",
-                            details: UpdateProgressPayload.DiffProgressDetails(
-                                totalFilesCount: diffFiles.count,
-                                completedFilesCount: diffFiles.filter { $0.status == "downloaded" }.count,
-                                files: diffFiles
-                            )
-                        )
-                    )
-                    completion(.success(true))
-                case .failure(let error):
-                    try? self.fileSystem.removeItem(atPath: realDir)
-                    self.cleanupTemporaryFiles([tempDirectory])
-                    completion(.failure(error))
-                }
+                ))
+                completion(.success(true))
             case .failure(let error):
                 throw error
             }

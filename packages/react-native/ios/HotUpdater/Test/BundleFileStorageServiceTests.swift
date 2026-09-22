@@ -13,6 +13,143 @@ private func hotUpdaterApplyBsdiffPatchForTest(
 ) -> ObjCBool
 
 struct BundleFileStorageServiceTests {
+
+    @Test(arguments: ["missing", "corrupt", "invalid-format"])
+    func failedPatchDownloadsOriginalInSameInstall(failure: String) throws {
+        let root = try makeWorkingDirectory()
+        defer { cleanupWorkingDirectory(root) }
+        let baseBytes = Data("previous verified hermes".utf8)
+        let targetBytes = Data("new verified hermes".utf8)
+        let baseHash = try #require(sha256(baseBytes, in: root))
+        let targetHash = try #require(sha256(targetBytes, in: root))
+        let base = try createBundleDirectory(documentsDirectory: root, bundleId: "base")
+        try baseBytes.write(to: base.appendingPathComponent("index.ios.bundle"))
+        try makeManifestData(bundleId: "base", assets: ["index.ios.bundle": baseHash])
+            .write(to: base.appendingPathComponent("manifest.json"))
+        try writeMetadata(documentsDirectory: root,
+            BundleMetadata(isolationKey: testIsolationKey, stagingBundleId: "base"))
+        let preferences = InMemoryPreferencesService()
+        try preferences.setItem(base.appendingPathComponent("index.ios.bundle").path, forKey: "HotUpdaterBundleURL")
+        let manifest = try makeManifestData(bundleId: "target", assets: ["index.ios.bundle": targetHash])
+        let manifestURL = URL(string: "https://example.com/manifest.json")!
+        let fileURL = URL(string: "https://example.com/index.ios.bundle")!
+        let patchURL = URL(string: "https://example.com/bundle.bsdiff")!
+        let invalidPatch = Data("invalid patch format".utf8)
+        var responses = [manifestURL: manifest, fileURL: targetBytes]
+        if failure != "missing" { responses[patchURL] = invalidPatch }
+        let downloads = MappingDownloadService(contents: responses)
+        let service = makeStorageService(documentsDirectory: root, preferences: preferences,
+            downloadService: downloads, builtInAssetResolver: MappingBuiltInAssetResolver(contents: [:]))
+        let result = updateBundle(service, bundleId: "target", manifestURL: manifestURL,
+            manifestHash: try #require(sha256(manifest, in: root)),
+            assets: ["index.ios.bundle": ChangedAssetDescriptor(fileUrl: fileURL, fileHash: targetHash,
+                patch: BsdiffPatchDescriptor(algorithm: "bsdiff", baseBundleId: "base", baseFileHash: baseHash,
+                    patchFileHash: failure == "invalid-format" ? try #require(sha256(invalidPatch, in: root)) : String(repeating: "0", count: 64),
+                    patchUrl: patchURL))])
+        #expect(result.failureError == nil)
+        #expect(downloads.requestedURLs == [manifestURL, patchURL, fileURL])
+        #expect(try Data(contentsOf: root.appendingPathComponent("bundle-store/target/index.ios.bundle")) == targetBytes)
+    }
+
+    @Test(arguments: ["before-rename", "complete", "corrupt"])
+    func interruptedPromotionKeepsCompleteBundle(state: String) throws {
+        let root = try makeWorkingDirectory()
+        defer { cleanupWorkingDirectory(root) }
+        let target = try createBundleDirectory(documentsDirectory: root, bundleId: "target")
+        let bytes = Data("verified existing hermes".utf8)
+        try bytes.write(to: target.appendingPathComponent("index.ios.bundle"))
+        try makeManifestData(bundleId: "target", assets: ["index.ios.bundle": try #require(sha256(bytes, in: root))])
+            .write(to: target.appendingPathComponent("manifest.json"))
+        try writeMetadata(documentsDirectory: root,
+            BundleMetadata(isolationKey: testIsolationKey, stableBundleId: "target"))
+        let backup = root.appendingPathComponent("bundle-store/target.install-backup")
+        if state != "before-rename" {
+            try FileManager.default.copyItem(at: target, to: backup)
+            if state == "corrupt" {
+                try Data("truncated".utf8).write(to: target.appendingPathComponent("index.ios.bundle"))
+            }
+        } else {
+            try FileManager.default.moveItem(at: target, to: backup)
+        }
+        let service = makeStorageService(documentsDirectory: root)
+        let launch = service.prepareLaunch(bundle: .main, pendingRecovery: nil)
+        #expect(launch.launchedBundleId == "target")
+        #expect(FileManager.default.fileExists(atPath: target.appendingPathComponent("index.ios.bundle").path))
+        #expect(try Data(contentsOf: target.appendingPathComponent("index.ios.bundle")) == bytes)
+        #expect(!FileManager.default.fileExists(atPath: backup.path))
+    }
+
+    @Test
+    func downloadedBundleWithoutManifestOrMetadataCannotLaunch() throws {
+        let root = try makeWorkingDirectory()
+        defer { cleanupWorkingDirectory(root) }
+        let target = try createBundleDirectory(documentsDirectory: root, bundleId: "target")
+        try writeBundle(in: target, bundleFileName: "index.ios.bundle")
+        try Data("target".utf8).write(to: target.appendingPathComponent("BUNDLE_ID"))
+        let preferences = InMemoryPreferencesService()
+        try preferences.setItem(target.appendingPathComponent("index.ios.bundle").path, forKey: "HotUpdaterBundleURL")
+        let service = makeStorageService(documentsDirectory: root, preferences: preferences)
+        #expect(try service.findBundleFile(in: target.path, expectedBundleId: "target").get() == nil)
+        #expect(service.getBundleId() == nil)
+        #expect(service.prepareLaunch(bundle: .main, pendingRecovery: nil).launchedBundleId == nil)
+        // A complete downloaded folder alone still cannot replace durable activation metadata.
+        try writeManifest(in: target, bundleId: "target")
+        let nextProcess = makeStorageService(documentsDirectory: root, preferences: preferences)
+        #expect(nextProcess.prepareLaunch(bundle: .main, pendingRecovery: nil).launchedBundleId == nil)
+    }
+
+    @Test
+    func metadataWriteFailureDoesNotActivateTarget() throws {
+        let root = try makeWorkingDirectory()
+        defer { cleanupWorkingDirectory(root) }
+        // A non-writable metadata destination is a deterministic persistence fault.
+        let blockedMetadata = root.appendingPathComponent("bundle-store/metadata.json")
+        try FileManager.default.createDirectory(at: blockedMetadata, withIntermediateDirectories: true)
+        try Data("prevent atomic replacement".utf8).write(to: blockedMetadata.appendingPathComponent("occupied"))
+        let bytes = Data("valid target hermes".utf8)
+        let hash = try #require(sha256(bytes, in: root))
+        let manifest = try makeManifestData(bundleId: "target", assets: ["index.ios.bundle": hash])
+        let manifestURL = URL(string: "https://example.com/manifest.json")!
+        let fileURL = URL(string: "https://example.com/index.ios.bundle")!
+        let preferences = InMemoryPreferencesService()
+        let downloads = MappingDownloadService(contents: [manifestURL: manifest, fileURL: bytes])
+        let service = makeStorageService(documentsDirectory: root, preferences: preferences,
+            downloadService: downloads, builtInAssetResolver: MappingBuiltInAssetResolver(contents: [:]))
+        let result = updateBundle(service, bundleId: "target", manifestURL: manifestURL,
+            manifestHash: try #require(sha256(manifest, in: root)),
+            assets: ["index.ios.bundle": ChangedAssetDescriptor(fileUrl: fileURL, fileHash: hash)])
+        let nextProcess = makeStorageService(documentsDirectory: root, preferences: preferences)
+        let launch = nextProcess.prepareLaunch(bundle: .main, pendingRecovery: nil)
+        #expect(result.failureError != nil, "A17: activation metadata persistence failure must not be success")
+        #expect(launch.launchedBundleId != "target", "Failed install must not activate an untracked target")
+    }
+
+    @Test
+    func failedReplacementPreservesExistingTarget() throws {
+        let root = try makeWorkingDirectory()
+        defer { cleanupWorkingDirectory(root) }
+        let bytes = Data("valid already installed hermes".utf8)
+        let hash = try #require(sha256(bytes, in: root))
+        let manifest = try makeManifestData(bundleId: "target", assets: ["index.ios.bundle": hash])
+        let target = try createBundleDirectory(documentsDirectory: root, bundleId: "target")
+        try manifest.write(to: target.appendingPathComponent("manifest.json"))
+        try bytes.write(to: target.appendingPathComponent("index.ios.bundle"))
+        try writeMetadata(documentsDirectory: root,
+            BundleMetadata(isolationKey: testIsolationKey, stableBundleId: "target"))
+        let manifestURL = URL(string: "https://example.com/manifest.json")!
+        let fileURL = URL(string: "https://example.com/index.ios.bundle")!
+        let downloads = MappingDownloadService(contents: [manifestURL: manifest])
+        let service = makeStorageService(documentsDirectory: root,
+            fileSystem: FailingFinalPromotionFileSystem(documentsDirectory: root),
+            downloadService: downloads, builtInAssetResolver: MappingBuiltInAssetResolver(contents: [:]))
+        let result = updateBundle(service, bundleId: "target", manifestURL: manifestURL,
+            manifestHash: try #require(sha256(manifest, in: root)),
+            assets: ["index.ios.bundle": ChangedAssetDescriptor(fileUrl: fileURL, fileHash: hash)])
+        let remains = FileManager.default.fileExists(atPath: target.appendingPathComponent("index.ios.bundle").path)
+        #expect(result.failureError != nil)
+        #expect(remains, "A10/A17: a failed final promotion must preserve the existing stable bundle")
+    }
+
     // Issue #1321: a hung JS thread never reports content appeared or a crash.
     @Test(arguments: [false, true], [false, true])
     func stagingLaunchRecoversOnlyWhenUnfinished(hasStableBundle: Bool, completesLaunch: Bool) throws {
@@ -600,6 +737,10 @@ struct BundleFileStorageServiceTests {
         )
         let bundleURL = nestedDirectory.appendingPathComponent("index.ios.bundle")
         try preferences.setItem(bundleURL.path, forKey: "HotUpdaterBundleURL")
+        try writeMetadata(
+            documentsDirectory: workingDirectory,
+            BundleMetadata(isolationKey: testIsolationKey, stableBundleId: "nested-bundle")
+        )
 
         #expect(service.getCachedBundleURL() == bundleURL)
         #expect(service.getBundleId() == "nested-bundle")
@@ -2311,6 +2452,15 @@ private final class DelayedAuditDownloadService: DownloadService {
             completion(result)
         }
         return nil
+    }
+}
+
+private final class FailingFinalPromotionFileSystem: TestFileSystemService {
+    override func moveItem(atPath srcPath: String, toPath dstPath: String) throws {
+        if srcPath.hasSuffix("/target.tmp"), dstPath.hasSuffix("/target") {
+            throw NSError(domain: "PRDReviewInjectedFinalMoveFailure", code: 1)
+        }
+        try super.moveItem(atPath: srcPath, toPath: dstPath)
     }
 }
 
