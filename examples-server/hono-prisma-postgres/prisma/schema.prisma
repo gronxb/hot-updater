@@ -74,7 +74,6 @@ model releases {
   @@index([scope_key, id], map: "releases_scope_order_idx")
   @@index([channel_id, platform, id], map: "releases_channel_platform_order_idx")
   @@index([bundle_id], map: "releases_bundle_id_idx")
-  @@index([fingerprint_hash], map: "releases_fingerprint_hash_idx")
   @@index([enabled], map: "releases_enabled_idx")
 }
 model release_catalogs {

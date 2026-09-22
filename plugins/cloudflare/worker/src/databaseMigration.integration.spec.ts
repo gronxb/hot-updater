@@ -13,7 +13,7 @@ declare module "vitest" {
   }
 }
 
-it("ships a single 1.0.0 initialization migration", () => {
+it("ships the final RC schema in the single 1.0.0 initialization migration", () => {
   expect(inject("d1Migrations").map(({ name }) => name)).toEqual([
     "0001_hot-updater_1.0.0.sql",
   ]);
@@ -22,6 +22,21 @@ it("ships a single 1.0.0 initialization migration", () => {
 it("creates the current manifest schema with required patch sizes", async () => {
   const [createMigration] = inject("d1Migrations");
   await env.DB.prepare(createMigration!.sql).run();
+  const indexes = await env.DB.prepare("PRAGMA index_list(releases)").all<{
+    name: string;
+  }>();
+  expect(indexes.results.map(({ name }) => name)).not.toContain(
+    "releases_fingerprint_hash_idx",
+  );
+  const plan = await env.DB.prepare(
+    "EXPLAIN QUERY PLAN SELECT * FROM releases WHERE scope_key = ? AND id > ? ORDER BY id ASC LIMIT 2",
+  )
+    .bind("fingerprint-scope", "cursor")
+    .all<{ detail: string }>();
+  expect(plan.results.map(({ detail }) => detail).join("\n")).toContain(
+    "releases_scope_order_idx",
+  );
+
   await env.DB.prepare(`
     INSERT INTO bundles (
       id, platform, metadata, manifest_storage_uri, manifest_file_hash,

@@ -116,7 +116,6 @@ export const releases = pgTable("releases", {
   index("releases_scope_order_idx").on(table.scope_key, table.id),
   index("releases_channel_platform_order_idx").on(table.channel_id, table.platform, table.id),
   index("releases_bundle_id_idx").on(table.bundle_id),
-  index("releases_fingerprint_hash_idx").on(table.fingerprint_hash),
   index("releases_enabled_idx").on(table.enabled)
 ])
 

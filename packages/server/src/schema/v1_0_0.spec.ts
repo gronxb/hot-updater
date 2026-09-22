@@ -16,6 +16,28 @@ import {
 } from "./v1_0_0";
 
 describe("v1.0.0 Release Catalog schema", () => {
+  it("uses scope indexes instead of the retired fingerprint-only index", () => {
+    for (const provider of [
+      "postgresql",
+      "mysql",
+      "sqlite",
+      "cockroachdb",
+    ] as const) {
+      const sql = createTableSql(provider, "foreign-keys", v1_0_0).join("\n");
+      expect(sql).not.toContain("releases_fingerprint_hash_idx");
+      expect(sql).toContain("releases_scope_order_idx");
+      expect(generatePrismaSchema(provider, v1_0_0)).not.toContain(
+        "releases_fingerprint_hash_idx",
+      );
+      expect(generateDrizzleSchema(provider, v1_0_0)).not.toContain(
+        "releases_fingerprint_hash_idx",
+      );
+    }
+    expect(generatePrismaSchema("mongodb", v1_0_0)).not.toContain(
+      "releases_fingerprint_hash_idx",
+    );
+  });
+
   it("adds the canonical Release and catalog access paths", () => {
     expect(v1_0_0.tables.map(({ ormName }) => ormName)).toContain("releases");
     expect(v1_0_0.tables.map(({ ormName }) => ormName)).toContain(

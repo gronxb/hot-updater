@@ -620,7 +620,7 @@ describe("server/db hotUpdater (PGlite + Kysely)", async () => {
           }),
           expect.objectContaining({
             description:
-              "Create MongoDB index: releases_fingerprint_hash_idx on releases(fingerprint_hash)",
+              "Create MongoDB index: releases_scope_order_idx on releases(scope_key, id)",
           }),
           expect.objectContaining({
             description:

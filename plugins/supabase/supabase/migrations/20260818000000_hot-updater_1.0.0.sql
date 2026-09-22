@@ -144,7 +144,6 @@ CREATE INDEX hot_updater_v1_releases_scope_order_idx ON public.hot_updater_v1_re
 CREATE INDEX hot_updater_v1_releases_channel_platform_order_idx
   ON public.hot_updater_v1_releases(channel_id, platform, id);
 CREATE INDEX hot_updater_v1_releases_bundle_id_idx ON public.hot_updater_v1_releases(bundle_id);
-CREATE INDEX hot_updater_v1_releases_fingerprint_hash_idx ON public.hot_updater_v1_releases(fingerprint_hash);
 CREATE INDEX hot_updater_v1_releases_enabled_idx ON public.hot_updater_v1_releases(enabled);
 CREATE INDEX hot_updater_v1_release_catalogs_channel_idx ON public.hot_updater_v1_release_catalogs(channel_id);
 CREATE INDEX hot_updater_v1_bundle_patches_bundle_id_idx ON public.hot_updater_v1_bundle_patches(bundle_id);
@@ -291,7 +290,6 @@ BEGIN
               BEGIN
                 DELETE FROM public.hot_updater_v1_channels
                 WHERE id = v_change->'where'->>'id';
-                IF NOT FOUND THEN RAISE no_data_found; END IF;
               EXCEPTION
                 WHEN foreign_key_violation THEN RAISE SQLSTATE 'HU001';
               END;
