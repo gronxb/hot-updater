@@ -113,9 +113,47 @@ export const createFirebaseTransaction = (
       if (!newRows.has(key)) newRows.set(key, row);
     }
   };
+  const findReleaseReference = async (
+    field: "bundle_id" | "channel_id",
+    value: string,
+  ) => {
+    for (const row of after.releases.values())
+      if (row[field] === value) return { id: row.id };
+    const deleted = new Set<string>();
+    for (const row of before.releases.values())
+      if (row[field] === value && !after.releases.has(row.id))
+        deleted.add(row.id);
+    // At most the staged tombstones can precede the first surviving witness.
+    const witnesses = await reads.findMany({
+      model: "releases",
+      where: [field === "bundle_id" ? { field, value } : { field, value }],
+      select: ["id"],
+      limit: deleted.size + 1,
+      offset: 0,
+    });
+    // These ID-only witnesses must not enter the full-row staging cache.
+    return (
+      witnesses.find(
+        (row) =>
+          "id" in row && typeof row.id === "string" && !deleted.has(row.id),
+      ) ?? null
+    );
+  };
   const findOne: TransactionDatabasePluginImplementation["findOne"] = async (
     input,
   ) => {
+    const condition = input.where?.length === 1 ? input.where[0] : undefined;
+    if (
+      input.model === "releases" &&
+      input.select?.length === 1 &&
+      input.select[0] === "id" &&
+      condition &&
+      (condition.field === "bundle_id" || condition.field === "channel_id") &&
+      typeof condition.value === "string" &&
+      (condition.operator ?? "eq") === "eq" &&
+      !("mode" in condition && condition.mode === "insensitive")
+    )
+      return findReleaseReference(condition.field, condition.value);
     const { field, value } = selector(input.model, input.where);
     const staged = lookup(input.model, field, value);
     const key = keyOf(input.model, field, value);
@@ -159,8 +197,7 @@ export const createFirebaseTransaction = (
       throw new DatabasePluginInputError("invalid-operation");
     },
     async count(input) {
-      // This transaction hook is used only for commit reference checks (> 0).
-      // Public exact counts still use the native aggregate in createFirebaseReads.
+      // Keep cardinality exact. Bounded reference witnesses use findOne above.
       const condition = input.where?.length === 1 ? input.where[0] : undefined;
       if (
         input.model !== "releases" ||
@@ -172,26 +209,10 @@ export const createFirebaseTransaction = (
       )
         throw new DatabasePluginInputError("invalid-operation");
       const { field, value } = condition;
-      for (const row of after.releases.values())
-        if (row[field] === value) return 1;
-      const deleted = new Set<string>();
-      for (const row of before.releases.values())
-        if (row[field] === value && !after.releases.has(row.id))
-          deleted.add(row.id);
-      // At most the staged tombstones can precede the first surviving witness.
-      const witnesses = await reads.findMany({
-        model: "releases",
-        where: input.where,
-        select: ["id"],
-        limit: deleted.size + 1,
-        offset: 0,
-      });
-      return witnesses.some(
-        (row) =>
-          "id" in row && typeof row.id === "string" && !deleted.has(row.id),
-      )
-        ? 1
-        : 0;
+      const count = (snapshot: FirebaseDatabaseSnapshot) =>
+        [...snapshot.releases.values()].filter((row) => row[field] === value)
+          .length;
+      return (await reads.count(input)) - count(before) + count(after);
     },
     async create(input) {
       if (input.model === "release_catalogs") {

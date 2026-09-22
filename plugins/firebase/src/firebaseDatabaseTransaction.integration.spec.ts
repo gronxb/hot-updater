@@ -3,9 +3,13 @@ import { beforeEach, describe, expect, it } from "vitest";
 
 import { createFirestoreMock } from "../test-utils/createFirestoreMock";
 import { firebaseDatabase } from "./firebaseDatabase";
-import { firebaseChannelIdDocumentId } from "./firebaseDatabasePersistence";
+import {
+  createFirebaseDatabaseCollections,
+  firebaseChannelIdDocumentId,
+} from "./firebaseDatabasePersistence";
+import { createFirebaseTransaction } from "./firebaseDatabaseTransaction";
 
-const { clearCollections, settingsCollection } = createFirestoreMock(
+const { clearCollections, settingsCollection, firestore } = createFirestoreMock(
   "firebase-staging-test",
 );
 const channel = { id: "channel", name: "production" };
@@ -188,5 +192,80 @@ describe("Firebase staged commit invariants", () => {
           .get()
       ).exists,
     ).toBe(false);
+  });
+  it("supports projected core existence checks while retaining complete staged rows", async () => {
+    const plugin = firebaseDatabase({});
+    await plugin.commit({
+      changes: [
+        {
+          model: "channels",
+          operation: "insert",
+          row: channel,
+          onConflict: "ignore",
+        },
+        { model: "bundles", operation: "insert", row: bundle },
+        { model: "releases", operation: "insert", row: release("a") },
+        { model: "releases", operation: "insert", row: release("b") },
+      ],
+    });
+    await firestore.runTransaction(async (transaction) => {
+      const staged = createFirebaseTransaction(
+        transaction,
+        createFirebaseDatabaseCollections(firestore),
+      );
+      const database = staged.database;
+      await expect(
+        database.findOne({
+          model: "channels",
+          where: [{ field: "id", value: channel.id }],
+          select: ["id"],
+        }),
+      ).resolves.toEqual(channel);
+      await expect(
+        database.findOne({
+          model: "bundles",
+          where: [{ field: "id", value: bundle.id }],
+          select: ["platform"],
+        }),
+      ).resolves.toEqual(bundle);
+      const reference = {
+        model: "releases" as const,
+        where: [{ field: "bundle_id" as const, value: bundle.id }],
+        select: ["id" as const],
+      };
+      await expect(database.findOne(reference)).resolves.toEqual({
+        id: release("a").id,
+      });
+      await database.delete({
+        model: "releases",
+        where: [{ field: "id", value: release("a").id }],
+      });
+      await expect(database.findOne(reference)).resolves.toEqual({
+        id: release("b").id,
+      });
+      await database.delete({
+        model: "releases",
+        where: [{ field: "id", value: release("b").id }],
+      });
+      await expect(database.findOne(reference)).resolves.toBeNull();
+      await database.create({ model: "releases", data: release("c") });
+      await expect(
+        database.findOne({
+          model: "releases",
+          where: [{ field: "channel_id", value: channel.id }],
+          select: ["id"],
+        }),
+      ).resolves.toEqual({ id: release("c").id });
+      staged.persist();
+    });
+    await expect(
+      plugin.models.releases.findById(release("a").id),
+    ).resolves.toBeNull();
+    await expect(
+      plugin.models.releases.findById(release("b").id),
+    ).resolves.toBeNull();
+    await expect(
+      plugin.models.releases.findById(release("c").id),
+    ).resolves.toEqual(release("c"));
   });
 });

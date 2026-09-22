@@ -138,11 +138,12 @@ describe("Firebase transaction staging", () => {
     reads.findMany.mockResolvedValue([{ id: release.id }]);
     const { database } = open();
     expect(
-      await database.count({
+      await database.findOne({
         model: "releases",
+        select: ["id"],
         where: [{ field: "bundle_id", value: row.id }],
       }),
-    ).toBeGreaterThan(0);
+    ).not.toBeNull();
     expect(reads.count).not.toHaveBeenCalled();
     expect(reads.findMany).toHaveBeenCalledWith({
       model: "releases",
@@ -164,13 +165,15 @@ describe("Firebase transaction staging", () => {
       const staged = open();
       await staged.database.delete({
         model: "releases",
+        select: ["id"],
         where: [{ field: "id", value: release.id }],
       });
-      const referenced = await staged.database.count({
+      const referenced = await staged.database.findOne({
         model: "releases",
+        select: ["id"],
         where: [{ field: "channel_id", value: release.channel_id }],
       });
-      expect(referenced > 0).toBe(hasOther);
+      expect(referenced !== null).toBe(hasOther);
       expect(reads.count).not.toHaveBeenCalled();
       expect(reads.findMany).toHaveBeenCalledWith(
         expect.objectContaining({ limit: 2, select: ["id"] }),
@@ -190,11 +193,12 @@ describe("Firebase transaction staging", () => {
     const { database } = open();
     await database.create({ model: "releases", data: release });
     expect(
-      await database.count({
+      await database.findOne({
         model: "releases",
+        select: ["id"],
         where: [{ field: "bundle_id", value: row.id }],
       }),
-    ).toBeGreaterThan(0);
+    ).not.toBeNull();
     expect(reads.count).not.toHaveBeenCalled();
     expect(reads.findMany).not.toHaveBeenCalled();
   });
@@ -231,5 +235,76 @@ describe("Firebase transaction staging", () => {
       }),
     ).rejects.toThrow("channels.id.unique");
     expect(persist).not.toHaveBeenCalled();
+  });
+
+  it.each(["bundle_id", "channel_id"] as const)(
+    "uses findOne for a bounded %s reference witness",
+    async (field) => {
+      reads.findMany.mockResolvedValue([{ id: release.id }]);
+      const { database } = open();
+      await expect(
+        database.findOne({
+          model: "releases",
+          where: [
+            field === "bundle_id"
+              ? { field, value: row.id }
+              : { field, value: release.channel_id },
+          ],
+          select: ["id"],
+        }),
+      ).resolves.toEqual({ id: release.id });
+      expect(reads.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ limit: 1, select: ["id"] }),
+      );
+      expect(reads.count).not.toHaveBeenCalled();
+    },
+  );
+
+  it("filters staged tombstones from findOne witnesses without caching partial releases", async () => {
+    reads.findOne.mockResolvedValue(release);
+    reads.findMany.mockResolvedValue([{ id: release.id }, { id: "other" }]);
+    const { database } = open();
+    await database.delete({
+      model: "releases",
+      where: [{ field: "id", value: release.id }],
+    });
+    const reference = {
+      model: "releases" as const,
+      where: [{ field: "bundle_id" as const, value: row.id }],
+      select: ["id" as const],
+    };
+    await expect(database.findOne(reference)).resolves.toEqual({ id: "other" });
+    expect(reads.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ limit: 2 }),
+    );
+    reads.findOne.mockResolvedValue({ ...release, id: "other" });
+    await expect(
+      database.findOne({
+        model: "releases",
+        where: [{ field: "id", value: "other" }],
+      }),
+    ).resolves.toEqual({ ...release, id: "other" });
+    reads.findMany.mockResolvedValue([{ id: release.id }]);
+    await database.delete({
+      model: "releases",
+      where: [{ field: "id", value: "other" }],
+    });
+    await expect(database.findOne(reference)).resolves.toBeNull();
+  });
+  it("returns an exact transactional count after a staged deletion", async () => {
+    reads.count.mockResolvedValue(5);
+    reads.findOne.mockResolvedValue(release);
+    const { database } = open();
+    await database.delete({
+      model: "releases",
+      where: [{ field: "id", value: release.id }],
+    });
+    await expect(
+      database.count({
+        model: "releases",
+        where: [{ field: "bundle_id", value: row.id }],
+      }),
+    ).resolves.toBe(4);
+    expect(reads.findMany).not.toHaveBeenCalled();
   });
 });
