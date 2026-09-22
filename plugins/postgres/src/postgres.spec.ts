@@ -9,12 +9,14 @@ import type {
   ApiKeyRow,
   ReleaseRow,
 } from "@hot-updater/plugin-core";
-import { setupDatabasePluginTestSuite } from "@hot-updater/test-utils";
+import { createHotUpdater } from "@hot-updater/server";
+import {
+  setupDatabasePluginTestSuite,
+  startHttpTestServer,
+} from "@hot-updater/test-utils";
 import { PGliteDialect } from "kysely-pglite-dialect";
 import { describe, expect, it } from "vitest";
 
-import { createHotUpdater } from "../../../packages/server/src/index";
-import { startHttpTestServer } from "../../../packages/test-utils/src/httpTestServer";
 import { postgres } from "./postgres";
 
 class PostgresTestStateError extends Error {

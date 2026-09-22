@@ -1,4 +1,8 @@
 import { createDatabaseClient } from "@hot-updater/plugin-core";
+import {
+  setupDatabasePluginTestSuite,
+  startHttpTestServer,
+} from "@hot-updater/test-utils";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -6,8 +10,6 @@ import {
   createBundleRowFixture,
   createBundleEventRowFixture,
 } from "../../../test-utils/src/databaseTestFixtures";
-import { startHttpTestServer } from "../../../test-utils/src/httpTestServer";
-import { setupDatabasePluginTestSuite } from "../../../test-utils/src/setupDatabasePluginTestSuite";
 import { createHotUpdater } from "../index";
 import { mongoAdapter } from "./mongodb";
 import { createMongoBundleWhere } from "./mongodbQuery";

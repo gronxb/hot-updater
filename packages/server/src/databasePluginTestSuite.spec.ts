@@ -1,7 +1,10 @@
-import { createHotUpdater } from "../../server/src/index";
-import { createInMemoryDatabaseHarness } from "../test/inMemoryDatabasePlugin";
-import { startHttpTestServer } from "./httpTestServer";
-import { setupDatabasePluginTestSuite } from "./setupDatabasePluginTestSuite";
+import {
+  setupDatabasePluginTestSuite,
+  startHttpTestServer,
+} from "@hot-updater/test-utils";
+
+import { createInMemoryDatabaseHarness } from "../../test-utils/test/inMemoryDatabasePlugin";
+import { createHotUpdater } from "./index";
 
 const harness = createInMemoryDatabaseHarness();
 

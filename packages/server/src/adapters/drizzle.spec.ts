@@ -1,5 +1,9 @@
 import { PGlite } from "@electric-sql/pglite";
 import {
+  setupDatabasePluginTestSuite,
+  startHttpTestServer,
+} from "@hot-updater/test-utils";
+import {
   bigint,
   boolean,
   doublePrecision,
@@ -13,8 +17,6 @@ import { drizzle } from "drizzle-orm/pglite";
 import { describe, expect, it, vi } from "vitest";
 
 import { createBundleEventRowFixture } from "../../../test-utils/src/databaseTestFixtures";
-import { startHttpTestServer } from "../../../test-utils/src/httpTestServer";
-import { setupDatabasePluginTestSuite } from "../../../test-utils/src/setupDatabasePluginTestSuite";
 import type { DatabaseAdapterWithCapabilities } from "../db/types";
 import { createHotUpdater } from "../index";
 import {

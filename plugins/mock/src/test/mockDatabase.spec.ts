@@ -2,14 +2,14 @@ import {
   createDatabaseClient,
   type DatabasePlugin,
 } from "@hot-updater/plugin-core";
-import { beforeEach, describe, expect, it } from "vitest";
-
-import { createHotUpdater } from "../../../../packages/server/src/index";
-import { startHttpTestServer } from "../../../../packages/test-utils/src/httpTestServer";
+import { createHotUpdater } from "@hot-updater/server";
 import {
   setupDatabasePluginTestSuite,
-  setupDatabaseClientTestSuite,
-} from "../../../../packages/test-utils/src/index";
+  startHttpTestServer,
+} from "@hot-updater/test-utils";
+import { beforeEach, describe, expect, it } from "vitest";
+
+import { setupDatabaseClientTestSuite } from "../../../../packages/test-utils/src/index";
 import {
   createMockDatabaseData,
   mockDatabase,

@@ -4,16 +4,16 @@ import {
   type BundleEventRow,
   type DatabasePlugin,
 } from "@hot-updater/plugin-core";
+import { createHotUpdater } from "@hot-updater/server";
 import {
-  setupDatabaseClientTestSuite,
   setupDatabasePluginTestSuite,
+  startHttpTestServer,
 } from "@hot-updater/test-utils";
+import { setupDatabaseClientTestSuite } from "@hot-updater/test-utils";
 import { Query, Transaction } from "firebase-admin/firestore";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { createHotUpdater } from "../../../packages/server/src/index";
 import { createBundleEventRowFixture } from "../../../packages/test-utils/src/databaseTestFixtures";
-import { startHttpTestServer } from "../../../packages/test-utils/src/httpTestServer";
 import { createFirestoreMock } from "../test-utils/createFirestoreMock";
 import { firebaseDatabase } from "./firebaseDatabase";
 import {

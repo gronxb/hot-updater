@@ -1,8 +1,10 @@
-import { setupDatabasePluginTestSuite } from "@hot-updater/test-utils";
+import { createHotUpdater } from "@hot-updater/server";
+import {
+  setupDatabasePluginTestSuite,
+  startHttpTestServer,
+} from "@hot-updater/test-utils";
 import { describe, expect, it, vi } from "vitest";
 
-import { createHotUpdater } from "../../../packages/server/src/index";
-import { startHttpTestServer } from "../../../packages/test-utils/src/httpTestServer";
 import { supabaseDatabase as supabaseEdgeDatabase } from "./edge";
 import { supabaseDatabase } from "./supabaseDatabase";
 

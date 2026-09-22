@@ -2,6 +2,10 @@ import fs from "fs/promises";
 import path from "path";
 import { fileURLToPath } from "url";
 
+import {
+  createHttpTestClient,
+  setupReleaseCatalogTestSuite,
+} from "@hot-updater/test-utils";
 import { setupBundleMethodsTestSuite } from "@hot-updater/test-utils";
 import {
   cleanupServer,
@@ -9,6 +13,7 @@ import {
   createTestDbPath,
   killPort,
   spawnServerProcess,
+  TEST_ADMIN_AUTH_TOKEN,
   waitForServer,
 } from "@hot-updater/test-utils/node";
 import { execa } from "execa";
@@ -79,5 +84,14 @@ describe("Hot Updater Handler Integration Tests (Hono)", () => {
     updateBundleById: (bundleId, newBundle) =>
       bundleMethods.updateBundleById(bundleId, newBundle),
     deleteBundleById: (bundleId) => bundleMethods.deleteBundleById(bundleId),
+  });
+
+  setupReleaseCatalogTestSuite({
+    getClient: () =>
+      createHttpTestClient({
+        clientBaseUrl: `${baseUrl}/hot-updater`,
+        adminBaseUrl: `${baseUrl}/hot-updater/admin`,
+        adminHeaders: { Authorization: `Bearer ${TEST_ADMIN_AUTH_TOKEN}` },
+      }),
   });
 });

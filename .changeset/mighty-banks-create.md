@@ -2,4 +2,4 @@
 "@hot-updater/test-utils": minor
 ---
 
-Add a required shared HTTP Release Catalog contract suite for database providers and adapters, with loopback fetch and Worker Request/Response test clients.
+Publish the shared Vitest conformance helpers for custom database providers. Register a database lifecycle and a thin HTTP server adapter to verify the database and Release Catalog HTTP contracts with the same scenarios used by official providers and example servers.

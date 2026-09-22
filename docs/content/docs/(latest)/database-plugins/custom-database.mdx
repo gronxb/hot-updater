@@ -503,66 +503,81 @@ partition contract.
 
 ## Test the provider
 
-For an external provider project, implement tests against the
-[database contract](/docs/database-plugins/release-catalog-contract), using the
-[repository conformance helpers](https://github.com/gronxb/hot-updater/tree/next/packages/test-utils/src)
-as reference for the scenarios and expected results.
-
-The following helper API is for provider packages developed inside a Hot Updater
-checkout. Declare `@hot-updater/test-utils` and `@hot-updater/server` as
-`workspace:*` dependencies in that provider's `devDependencies`, install the
-workspace dependencies and build the workspace packages before running it.
-Supply the provider-specific database creation, migration and reset functions
-used in this excerpt:
-
-```ts title="myDatabase.spec.ts (repository workspace excerpt)"
-import { createDatabaseClient } from "@hot-updater/plugin-core";
-import { createHotUpdater } from "@hot-updater/server";
-import {
-  setupDatabaseClientTestSuite,
-  setupDatabasePluginTestSuite,
-} from "@hot-updater/test-utils";
-
-import { startHttpTestServer } from "@hot-updater/test-utils/node";
-
-const lifecycle = {
-  name: "my database",
-  createPlugin: () => myDatabase({ db }),
-  migrate: () => migrateDatabase(db),
-  reset: () => resetDatabase(db),
-  dispose: (plugin: ReturnType<typeof myDatabase>) => plugin.dispose?.(),
-};
-
-setupDatabasePluginTestSuite({
-  ...lifecycle,
-  createHttpClient: (options) =>
-    startHttpTestServer(
-      createHotUpdater({ ...options, clientAccess: { type: "public" } }).handlers,
-    ),
-});
-setupDatabaseClientTestSuite({
-  ...lifecycle,
-  createClient: createDatabaseClient,
-});
-```
-
-For a complete executable workspace example, see the
-[mock provider tests](https://github.com/gronxb/hot-updater/blob/next/plugins/mock/src/test/mockDatabase.spec.ts).
-From a prepared repository checkout, run:
+Use the same conformance suite as the official database providers. Install the
+published `@hot-updater/test-utils` package; no repository checkout is needed.
+Keep test-utils, server, and plugin-core on the same Hot Updater version.
 
 ```bash
-pnpm -w test plugins/mock/src/test/mockDatabase.spec.ts
+pnpm add -D @hot-updater/test-utils @hot-updater/server vitest
 ```
 
-The suites verify exact model semantics, strong Release paging, catalog point
-reads, Release/catalog CAS conflicts, all-model rollback, Channel safety,
-Insights duplicate/identity/count/filter semantics, ordering, and the absence
-of a public `queries` surface. `createHttpClient` is required: the database suite
-also runs `setupReleaseCatalogTestSuite` through the server's admin and client
-HTTP APIs. Node providers use a loopback server and real `fetch` requests;
-Workers use `createHandlerHttpTestClient` at the Web Request/Response boundary.
-The suite itself only needs an HTTP client, so another server implementation can
-run the same scenarios without importing the database plugin or server runtime:
+Connect your plugin and its test database lifecycle:
+
+```ts title="myDatabase.spec.ts"
+import { createHotUpdater } from "@hot-updater/server";
+import {
+  setupDatabasePluginTestSuite,
+  startHttpTestServer,
+} from "@hot-updater/test-utils";
+import { myDatabase } from "./myDatabase";
+import { createTestDatabase, migrateDatabase, resetDatabase } from "./testDatabase";
+
+let db: Awaited<ReturnType<typeof createTestDatabase>>;
+
+setupDatabasePluginTestSuite({
+  name: "my database",
+  createHttpClient: (options) => startHttpTestServer(
+    createHotUpdater({ ...options, clientAccess: { type: "public" } }).handlers,
+  ),
+  migrate: async () => {
+    db = await createTestDatabase();
+    await migrateDatabase(db);
+  },
+  createPlugin: () => myDatabase({ db }),
+  reset: () => resetDatabase(db),
+  dispose: async (plugin) => {
+    await plugin.dispose?.();
+  },
+});
+```
+
+`migrate` creates the isolated database and applies its schema once, before
+`createPlugin`. `reset` clears all test data before each scenario while retaining
+the schema and schema-version settings. `dispose` closes the plugin and removes
+any test resources after the suite. The HTTP adapter above connects the actual
+server to the suite. Do not copy scenarios or implement expected responses in the adapter.
+
+```bash
+pnpm exec vitest run myDatabase.spec.ts
+```
+
+Vitest runs in Node by default. `startHttpTestServer` starts a loopback HTTP
+server using your plugin; the suite supplies deterministic storage fixtures and
+runs real `fetch` requests through its admin and client handlers. Every registered
+provider must pass the complete suite. Passing establishes compatibility with the **DatabasePlugin and Release
+Catalog HTTP contracts for that Hot Updater version**:
+
+- Model reads and writes, pagination and ordering, relations, Channel safety,
+  atomic rollback, and Release/Catalog revision conflicts.
+- Insights event identity, deduplication, counts, filtering, and ordering.
+- Version and fingerprint projections, rollout metadata, rollback candidates,
+  Catalog identity, cache expiry, ETag revalidation, and HTTP errors.
+- Artifact identity and archive, manifest, and patch response selection.
+
+This is the acceptance gate used by the official providers. New contract
+scenarios are added centrally and run against every provider without changes to
+its setup. Provider-specific concurrency, migrations, real storage access, and
+native installation have their own integration tests; the conformance suite
+certifies the database and HTTP behavior above.
+
+For a complete implementation of the lifecycle, see the
+[mock provider tests](https://github.com/gronxb/hot-updater/blob/next/plugins/mock/src/test/mockDatabase.spec.ts).
+
+### Test an existing HTTP server
+
+Use the HTTP suite directly to verify framework routing and authentication on a
+separately started server. All `examples-server` projects run this same suite
+against their spawned server processes.
 
 ```ts
 import {
@@ -570,31 +585,34 @@ import {
   setupReleaseCatalogTestSuite,
 } from "@hot-updater/test-utils";
 
-const client = createHttpTestClient({
-  clientBaseUrl: "http://127.0.0.1:3000/hot-updater",
-  adminBaseUrl: "http://127.0.0.1:3000/hot-updater/admin",
-  adminHeaders: { Authorization: `Bearer ${adminToken}` },
+// Start your server against an isolated, disposable database in beforeAll.
+// Stop the server and dispose of that database in afterAll.
+setupReleaseCatalogTestSuite({
+  getClient: () => createHttpTestClient({
+    clientBaseUrl: "http://127.0.0.1:3000/hot-updater",
+    adminBaseUrl: "http://127.0.0.1:3000/hot-updater/admin",
+    adminHeaders: { Authorization: `Bearer ${adminToken}` },
+    // clientHeaders: { "x-api-key": clientApiKey },
+  }),
 });
-
-// The test harness starts/stops the server and resets its database before each test.
-setupReleaseCatalogTestSuite({ getClient: () => client });
 ```
 
-Data preparation uses the Bundle, Channel, database commit, and Catalog rebuild
-HTTP APIs. Policy changes use `PATCH /releases/:id`. Assertions cover version and
-fingerprint projections, isolation, rollout metadata, rollback candidates,
-Catalog identity, real cache expiry and ETag revalidation, HTTP errors, and
-archive, manifest, and patch responses. No database, compiler, or client selector
-implementation is invoked by the HTTP suite.
+Configure the test server's storage with `createReleaseCatalogTestStorage` from
+`@hot-updater/test-utils/node`. That entry does not load Vitest and can
+be imported by a separate server process. The database provider suite supplies
+it automatically to `createHttpClient`.
 
-Install `RELEASE_CATALOG_STORAGE_FIXTURES` in the test server and resolve fixture
-URLs with `releaseCatalogDownloadUrl`; the database suite supplies these storage
-fixtures automatically. Actual provider storage access and native installation
-remain separate tests. Client selection, crash history, and minimum Bundle rules
-are covered by the core and React Native suites.
+Data preparation and policy changes use admin HTTP APIs; assertions use client
+and admin HTTP responses. The HTTP suite never calls the database, compiler, or
+client selector implementations. It isolates cache keys by Channel and removes
+reusable Bundle/Release fixtures after each scenario. The harness disposes of
+the database after the suite to remove Channels and Catalogs, which have no
+public Catalog deletion API.
 
-Supplement these with concurrent transaction, index-continuation, migration,
-and query-plan evidence.
+For a Workers Vitest pool, replace `startHttpTestServer` with
+`createHandlerHttpTestClient` from the same package. The provider still runs the
+same conformance suite at its Web Request/Response boundary; see the
+[D1 provider setup](https://github.com/gronxb/hot-updater/blob/next/plugins/cloudflare/worker/src/databasePlugins.integration.spec.ts).
 
 ## Configure Hot Updater
 

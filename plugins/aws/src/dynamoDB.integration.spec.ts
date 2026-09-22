@@ -13,11 +13,13 @@ import {
   type BundleEventRow,
   createDatabaseClient,
 } from "@hot-updater/plugin-core";
-import { setupDatabasePluginTestSuite } from "@hot-updater/test-utils";
+import { createHotUpdater } from "@hot-updater/server";
+import {
+  setupDatabasePluginTestSuite,
+  startHttpTestServer,
+} from "@hot-updater/test-utils";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
-import { createHotUpdater } from "../../../packages/server/src/index";
-import { startHttpTestServer } from "../../../packages/test-utils/src/httpTestServer";
 import {
   createDynamoDBInsightsTable,
   DYNAMODB_INSIGHTS_EVENT_IDS_PARTITION,

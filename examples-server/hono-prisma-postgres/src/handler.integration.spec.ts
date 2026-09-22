@@ -12,12 +12,17 @@ import {
 } from "@hot-updater/plugin-core";
 import type { HotUpdaterAPI } from "@hot-updater/server";
 import { prismaAdapter } from "@hot-updater/server/adapters/prisma";
+import {
+  createHttpTestClient,
+  setupReleaseCatalogTestSuite,
+} from "@hot-updater/test-utils";
 import { setupBundleMethodsTestSuite } from "@hot-updater/test-utils";
 import {
   assertDockerComposeAvailable,
   cleanupServer,
   killPort,
   spawnServerProcess,
+  TEST_ADMIN_AUTH_TOKEN,
   waitForServer,
 } from "@hot-updater/test-utils/node";
 import { execa } from "execa";
@@ -233,6 +238,15 @@ describe("Hot Updater Handler Integration Tests (Hono + Prisma + PostgreSQL)", (
       hotUpdater.updateBundleById(bundleId, newBundle),
     deleteBundleById: (bundleId: string) =>
       hotUpdater.deleteBundleById(bundleId),
+  });
+
+  setupReleaseCatalogTestSuite({
+    getClient: () =>
+      createHttpTestClient({
+        clientBaseUrl: `${baseUrl}/hot-updater`,
+        adminBaseUrl: `${baseUrl}/hot-updater/admin`,
+        adminHeaders: { Authorization: `Bearer ${TEST_ADMIN_AUTH_TOKEN}` },
+      }),
   });
 
   it("keeps every concurrent Insights event and the newest installation head", async () => {

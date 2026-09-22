@@ -84,7 +84,7 @@
 - Framework: Vitest. Place tests near code or in `__tests__`. Use `*.spec.ts`.
 - Run all tests: `pnpm -w test`. To focus: `pnpm -w test -- -t "name"`.
 - Prefer small, deterministic unit tests; mock external services and filesystem where applicable.
-- Every database provider and ORM adapter must register `setupDatabasePluginTestSuite` with its database lifecycle and a `createHttpClient` factory for the real server. Use loopback HTTP and `fetch` for Node servers, and the Web Request/Response boundary for Workers. The shared Release Catalog suite must prepare data and verify results through admin/client HTTP APIs without calling database, compiler, or selector implementations; add new server contract scenarios to the shared suite instead of copying them into provider tests.
+- Every database provider and ORM adapter must register `setupDatabasePluginTestSuite` from the published `@hot-updater/test-utils` package with its database lifecycle and a thin `createHttpClient` adapter. Use `startHttpTestServer` from the same package for real loopback HTTP by default; Workers use `createHandlerHttpTestClient`. Every `examples-server` integration harness must run `setupReleaseCatalogTestSuite` against its spawned server URL with actual authentication headers. Shared HTTP scenarios must use admin/client HTTP APIs without invoking database, compiler, or selector implementations. Add scenarios centrally; internal providers and external custom providers must use the same published conformance contract.
 
 ## Commit & Pull Requests
 

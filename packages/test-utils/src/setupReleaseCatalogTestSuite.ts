@@ -1,6 +1,6 @@
 import type { ArtifactInfo, ReleaseCatalog } from "@hot-updater/core";
 import type { DatabaseChange, ReleaseRow } from "@hot-updater/plugin-core";
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import {
   createBundlePatchRowFixture,
@@ -29,13 +29,20 @@ const jsonRequest = (method: string, body?: unknown): HttpTestRequestInit => ({
 });
 
 /**
- * Server conformance through HTTP only. The caller owns server/reset/storage
+ * Server conformance through HTTP only. The caller owns server/database/storage
  * setup. No database, compiler, selector, or server implementation is invoked.
  */
 export const setupReleaseCatalogTestSuite = (options: {
   readonly getClient: () => HttpTestClient;
 }): void => {
   describe("Release Catalog HTTP contract", () => {
+    let channelNamespace: string;
+    let cleanup: DatabaseChange[];
+    beforeEach(() => {
+      // Keep long-lived server caches isolated without mocking their clock.
+      channelNamespace = crypto.randomUUID();
+      cleanup = [];
+    });
     const request = (path: string, init?: HttpTestRequestInit) =>
       options.getClient().client(path, init);
     const admin = (path: string, init?: HttpTestRequestInit) =>
@@ -53,7 +60,31 @@ export const setupReleaseCatalogTestSuite = (options: {
       expect(
         await adminJson("/database/commit", jsonRequest("POST", { changes })),
       ).toEqual({ data: { committed: true } });
+      for (const change of changes) {
+        if (change.operation !== "insert") continue;
+        if (change.model === "bundles" || change.model === "releases") {
+          cleanup.push({
+            model: change.model,
+            operation: "delete",
+            where: { id: change.row.id },
+          });
+        } else if (change.model === "bundlePatches") {
+          cleanup.push({
+            model: "bundlePatches",
+            operation: "delete",
+            where: { bundleId: change.row.bundle_id },
+          });
+        }
+      }
     };
+    afterEach(async () => {
+      // Channels/Catalogs have no public Catalog delete API; the caller drops
+      // the isolated test database after the suite. Remove reusable identities.
+      const changes = cleanup.reverse();
+      for (let offset = 0; offset < changes.length; offset += 10) {
+        await commit(changes.slice(offset, offset + 10));
+      }
+    });
 
     for (const strategy of ["APP_VERSION", "FINGERPRINT"] as const) {
       describe(strategy, () => {
@@ -62,6 +93,7 @@ export const setupReleaseCatalogTestSuite = (options: {
           platform: "ios" | "android" = "ios",
           fingerprint = "fingerprint-a",
         ) => {
+          channel = `${channel}-${channelNamespace}`;
           const encodedChannel = channelKey(channel);
           return {
             channel,
@@ -126,6 +158,11 @@ export const setupReleaseCatalogTestSuite = (options: {
                 metadata: bundle.metadata,
               }),
             );
+            cleanup.push({
+              model: "bundles",
+              operation: "delete",
+              where: { id: bundle.id },
+            });
           }
           const release: ReleaseRow = {
             ...createReleaseRowFixture(suffix, bundle, channel),
@@ -257,8 +294,8 @@ export const setupReleaseCatalogTestSuite = (options: {
           }
           const otherPath =
             strategy === "APP_VERSION"
-              ? "/release-catalogs/fingerprint/ios/cHJvZHVjdGlvbg/fingerprint-a"
-              : "/release-catalogs/app-version/ios/cHJvZHVjdGlvbg/1.2.3";
+              ? `/release-catalogs/fingerprint/ios/${scope().channelKey}/fingerprint-a`
+              : `/release-catalogs/app-version/ios/${scope().channelKey}/1.2.3`;
           expect((await request(otherPath)).status).toBe(404);
         });
 
@@ -428,7 +465,7 @@ export const setupReleaseCatalogTestSuite = (options: {
             const first = await publish("400", {
               target_app_version: ">=0.0.0",
             });
-            const channel = createChannelRowFixture();
+            const channel = createChannelRowFixture(scope().channel);
             // Keep each HTTP commit within provider transaction limits, then
             // exercise one server rebuild over the complete Release history.
             for (let start = 1; start < 200; start += 10) {

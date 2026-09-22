@@ -5,6 +5,10 @@ import { fileURLToPath } from "url";
 import type { Bundle } from "@hot-updater/core";
 import type { HotUpdaterAPI } from "@hot-updater/server";
 import { drizzleAdapter } from "@hot-updater/server/adapters/drizzle";
+import {
+  createHttpTestClient,
+  setupReleaseCatalogTestSuite,
+} from "@hot-updater/test-utils";
 import { setupBundleMethodsTestSuite } from "@hot-updater/test-utils";
 import {
   cleanupServer,
@@ -88,6 +92,15 @@ describe("Hot Updater Handler Integration Tests (Elysia)", () => {
       hotUpdater.updateBundleById(bundleId, newBundle),
     deleteBundleById: (bundleId: string) =>
       hotUpdater.deleteBundleById(bundleId),
+  });
+
+  setupReleaseCatalogTestSuite({
+    getClient: () =>
+      createHttpTestClient({
+        clientBaseUrl: `${baseUrl}/hot-updater`,
+        adminBaseUrl: `${baseUrl}/hot-updater/admin`,
+        adminHeaders: { Authorization: `Bearer ${TEST_ADMIN_AUTH_TOKEN}` },
+      }),
   });
 
   it("atomically batches lazy Insights events and heads without catalog transactions", async () => {

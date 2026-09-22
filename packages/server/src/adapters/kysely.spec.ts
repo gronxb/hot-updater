@@ -1,4 +1,8 @@
 import { PGlite } from "@electric-sql/pglite";
+import {
+  setupDatabasePluginTestSuite,
+  startHttpTestServer,
+} from "@hot-updater/test-utils";
 import { Kysely } from "kysely";
 import { PGliteDialect } from "kysely-pglite-dialect";
 import { describe, expect, it } from "vitest";
@@ -9,8 +13,6 @@ import {
   createBundleRowFixture,
   createChannelRowFixture,
 } from "../../../test-utils/src/databaseTestFixtures";
-import { startHttpTestServer } from "../../../test-utils/src/httpTestServer";
-import { setupDatabasePluginTestSuite } from "../../../test-utils/src/setupDatabasePluginTestSuite";
 import type { DatabaseAdapterWithCapabilities } from "../db/types";
 import { createHotUpdater } from "../index";
 import {

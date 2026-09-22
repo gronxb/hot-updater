@@ -11,10 +11,7 @@ import { registerDatabasePluginReleaseCatalogTests } from "./databasePluginRelea
 import type { DatabasePluginTestLifecycle } from "./databasePluginTestRunner";
 import { setupDatabasePluginTestRunner } from "./databasePluginTestRunner";
 import type { HttpTestServer } from "./httpTestClient";
-import {
-  RELEASE_CATALOG_STORAGE_FIXTURES,
-  releaseCatalogDownloadUrl,
-} from "./releaseCatalogHttpFixtures";
+import { createReleaseCatalogTestStorage } from "./releaseCatalogHttpFixtures";
 import { setupReleaseCatalogTestSuite } from "./setupReleaseCatalogTestSuite";
 
 export type DatabasePluginTestSuiteOptions =
@@ -41,21 +38,7 @@ export const setupDatabasePluginTestSuite = (
       beforeEach(async () => {
         client = await options.createHttpClient({
           database: state.getPlugin(),
-          storage: [
-            {
-              name: "catalog-test-storage",
-              protocol: "storage",
-              async get({ storageUri }) {
-                const body = RELEASE_CATALOG_STORAGE_FIXTURES[storageUri];
-                return {
-                  response: body === undefined ? null : new Response(body),
-                };
-              },
-              async getDownloadUrl({ storageUri }) {
-                return { url: releaseCatalogDownloadUrl(storageUri) };
-              },
-            },
-          ],
+          storage: [createReleaseCatalogTestStorage()],
         });
       });
       afterEach(async () => {

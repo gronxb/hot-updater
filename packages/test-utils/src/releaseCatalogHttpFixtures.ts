@@ -1,3 +1,5 @@
+import type { StoragePlugin } from "@hot-updater/plugin-core";
+
 export const releaseCatalogDownloadUrl = (uri: string) =>
   `https://storage.example.com/${encodeURIComponent(uri)}`;
 
@@ -20,3 +22,16 @@ export const RELEASE_CATALOG_STORAGE_FIXTURES: Readonly<
     },
   }),
 };
+
+/** Storage boundary shared by provider and separately spawned server tests. */
+export const createReleaseCatalogTestStorage = (): StoragePlugin => ({
+  name: "catalog-test-storage",
+  protocol: "storage",
+  async get({ storageUri }) {
+    const body = RELEASE_CATALOG_STORAGE_FIXTURES[storageUri];
+    return { response: body === undefined ? null : new Response(body) };
+  },
+  async getDownloadUrl({ storageUri }) {
+    return { url: releaseCatalogDownloadUrl(storageUri) };
+  },
+});
