@@ -40,10 +40,10 @@ it("explicitly upgrades every metadata page and marks completion only after writ
   const row = bundleToRow({
     id: "bundle",
     platform: "ios",
-    fileHash: "hash",
+    manifestFileHash: "hash",
     gitCommitHash: null,
-    storageUri: "storage://bundle",
-    archiveByteSize: 1,
+    manifestStorageUri: "storage://bundle",
+    assetBaseStorageUri: "storage://assets",
   });
   mock.on(QueryCommand).callsFake((input) =>
     input.ExpressionAttributeValues[":pk"] !== "bundles"

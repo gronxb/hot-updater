@@ -119,10 +119,10 @@ describe("DynamoDB aggregate mutations", () => {
     const row = bundleToRow({
       id: "base",
       platform: "ios",
-      fileHash: "base-hash",
+      manifestFileHash: "base-hash",
       gitCommitHash: null,
-      storageUri: "storage://base",
-      archiveByteSize: 1,
+      manifestStorageUri: "storage://base",
+      assetBaseStorageUri: "storage://assets",
     });
     const patch = {
       id: "owner:base",
@@ -161,10 +161,10 @@ describe("DynamoDB aggregate mutations", () => {
     const bundle = {
       id: "00000000-0000-0000-0000-000000000903",
       platform: "ios" as const,
-      fileHash: "hash",
+      manifestFileHash: "hash",
       gitCommitHash: null,
-      storageUri: "storage://test",
-      archiveByteSize: 1,
+      manifestStorageUri: "storage://test",
+      assetBaseStorageUri: "storage://assets",
       metadata: {},
     };
     await database.insertBundle(bundle);
@@ -172,9 +172,9 @@ describe("DynamoDB aggregate mutations", () => {
       { pk: "bundles", sk: "unrelated-corrupt", row: { broken: true } },
       { pk: "bundle_patches", sk: "unrelated-corrupt", row: { broken: true } },
     ]);
-    await database.updateBundleById(bundle.id, { fileHash: "updated" });
+    await database.updateBundleById(bundle.id, { manifestFileHash: "updated" });
     await expect(database.getBundleById(bundle.id)).resolves.toMatchObject({
-      fileHash: "updated",
+      manifestFileHash: "updated",
     });
   });
 
