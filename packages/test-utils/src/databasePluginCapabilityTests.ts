@@ -145,7 +145,10 @@ export const registerDatabasePluginCapabilityTests = (
             model: "bundles",
             operation: "update",
             where: { id: bundle.id },
-            update: { storage_uri: "storage://bundles/89-updated.zip" },
+            update: {
+              manifest_storage_uri:
+                "storage://bundles/89-updated/manifest.json",
+            },
           },
           {
             model: "apiKeys",
@@ -158,7 +161,7 @@ export const registerDatabasePluginCapabilityTests = (
       await expect(
         plugin.models.bundles.findById(bundle.id),
       ).resolves.toMatchObject({
-        storage_uri: "storage://bundles/89-updated.zip",
+        manifest_storage_uri: "storage://bundles/89-updated/manifest.json",
       });
       await expect(
         plugin.models.apiKeys.findByHash(apiKey.hash),
@@ -206,7 +209,9 @@ export const registerDatabasePluginCapabilityTests = (
             model: "bundles",
             operation: "update",
             where: { id: bundle.id },
-            update: { storage_uri: "storage://updated-before-missing-delete" },
+            update: {
+              manifest_storage_uri: "storage://updated-before-missing-delete",
+            },
           },
           {
             model: "channels",
@@ -217,7 +222,7 @@ export const registerDatabasePluginCapabilityTests = (
       ).resolves.toEqual({ committed: true });
       await expect(plugin.models.bundles.findById(bundle.id)).resolves.toEqual({
         ...bundle,
-        storage_uri: "storage://updated-before-missing-delete",
+        manifest_storage_uri: "storage://updated-before-missing-delete",
       });
     });
 
@@ -285,7 +290,10 @@ export const registerDatabasePluginCapabilityTests = (
             model: "bundles",
             operation: "update",
             where: { id: bundle.id },
-            update: { storage_uri: "storage://bundles/96-updated.zip" },
+            update: {
+              manifest_storage_uri:
+                "storage://bundles/96-updated/manifest.json",
+            },
           },
           {
             model: "channels",
@@ -400,7 +408,10 @@ export const registerDatabasePluginCapabilityTests = (
             model: "bundles",
             operation: "update",
             where: { id: bundle.id },
-            update: { storage_uri: "storage://bundles/94-updated.zip" },
+            update: {
+              manifest_storage_uri:
+                "storage://bundles/94-updated/manifest.json",
+            },
           },
           {
             model: "apiKeys",

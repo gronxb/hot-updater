@@ -6,46 +6,47 @@ import {
 } from "./update-check-visibility.ts";
 
 describe("ArtifactInfo visibility validation", () => {
-  it("accepts id-free v1 payloads with exact string and null hashes", () => {
+  it("accepts a complete manifest v1 payload", () => {
     expect(
       validateArtifactInfoVisibility(
         {
-          changedAssets: {},
-          fileHash: "archive-hash",
-          fileUrl: "/storage/archive",
+          artifactProtocolVersion: 1,
+          assets: {},
           manifestFileHash: "manifest-hash",
           manifestUrl: "/storage/manifest",
         },
-        "archive-hash",
+        "manifest-hash",
       ),
-    ).toEqual({ ok: true });
-    expect(
-      validateArtifactInfoVisibility({ fileHash: null, fileUrl: null }, null),
     ).toEqual({ ok: true });
   });
 
-  it("rejects an artifact whose file hash differs from the deployed Bundle", () => {
+  it("rejects an artifact whose manifest hash differs from the Bundle", () => {
     expect(
       validateArtifactInfoVisibility(
-        { fileHash: null, fileUrl: "/storage/archive" },
-        "archive-hash",
+        {
+          artifactProtocolVersion: 1,
+          assets: {},
+          manifestFileHash: "other-hash",
+          manifestUrl: "/storage/manifest",
+        },
+        "manifest-hash",
       ),
     ).toEqual({
-      actualFileHash: null,
+      actualManifestFileHash: "other-hash",
       ok: false,
-      reason: "file-hash-mismatch",
+      reason: "manifest-file-hash-mismatch",
     });
   });
 
   it.each([
     null,
     [],
-    { fileHash: "archive-hash" },
-    { fileHash: 1, fileUrl: "/storage/archive" },
-    { fileHash: "archive-hash", fileUrl: false },
-    { changedAssets: [], fileHash: "archive-hash", fileUrl: null },
+    { artifactProtocolVersion: 1 },
+    { artifactProtocolVersion: 1, assets: [] },
+    { artifactProtocolVersion: 1, assets: {}, manifestFileHash: 1 },
+    { artifactProtocolVersion: 2, assets: {}, manifestFileHash: "hash", manifestUrl: "/storage/manifest" },
   ])("rejects an invalid v1 ArtifactInfo payload: %j", (payload) => {
-    expect(validateArtifactInfoVisibility(payload, "archive-hash")).toEqual({
+    expect(validateArtifactInfoVisibility(payload, "manifest-hash")).toEqual({
       ok: false,
       reason: "invalid-artifact-info",
     });

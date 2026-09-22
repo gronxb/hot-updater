@@ -23,15 +23,8 @@ export const bundleUpdateToRow = (
 ): BundleRowUpdate => {
   const fields = {
     ...(update.platform !== undefined ? { platform: update.platform } : {}),
-    ...(update.fileHash !== undefined ? { file_hash: update.fileHash } : {}),
     ...(update.gitCommitHash !== undefined
       ? { git_commit_hash: update.gitCommitHash }
-      : {}),
-    ...(update.storageUri !== undefined
-      ? { storage_uri: update.storageUri }
-      : {}),
-    ...(update.archiveByteSize !== undefined
-      ? { archive_byte_size: update.archiveByteSize }
       : {}),
     ...(update.metadata !== undefined
       ? { metadata: bundleMetadataToRow(update.metadata) }

@@ -1,6 +1,7 @@
 import {
   createReleaseCatalogScopeKey,
   encodeChannelKey,
+  type ArtifactInfo,
   type PersistedSelectionReceipt,
   type ReleaseCatalog,
 } from "@hot-updater/core";
@@ -77,10 +78,14 @@ const createCatalog = (
 
 const createClient = (catalog = createCatalog()) => {
   const fetchReleaseCatalog = vi.fn(async () => catalog);
-  const resolveArtifact = vi.fn(async () => ({
-    fileHash: "bundle-hash",
-    fileUrl: "https://updates.example.com/bundle.zip",
-  }));
+  const artifact: ArtifactInfo = {
+    artifactProtocolVersion: 1,
+    assets: {},
+    manifestFileHash: "manifest-hash",
+    manifestUrl: "https://updates.example.com/manifest.json",
+    archiveUrl: "https://updates.example.com/bundle.tar.br",
+  };
+  const resolveArtifact = vi.fn(async () => artifact);
   const sendInsightsEvent = vi.fn(async () => undefined);
   const session = {
     fetchReleaseCatalog,
@@ -199,6 +204,7 @@ describe("checkForUpdate Release catalog protocol", () => {
     expect(mocks.updateBundle).toHaveBeenCalledWith(
       expect.objectContaining({
         bundleId: TARGET_BUNDLE_ID,
+        archiveUrl: "https://updates.example.com/bundle.tar.br",
         selection: expect.objectContaining({
           catalogId: CATALOG_ID,
           releaseId: RELEASE_ID,

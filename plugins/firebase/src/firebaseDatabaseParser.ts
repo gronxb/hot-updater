@@ -52,20 +52,14 @@ export const parseFirebaseBundleRow = (
   return {
     id: string(property(input, "id"), source),
     platform: platform(property(input, "platform"), source),
-    file_hash: string(property(input, "file_hash"), source),
     git_commit_hash: nullableString(property(input, "git_commit_hash"), source),
-    storage_uri: string(property(input, "storage_uri"), source),
-    archive_byte_size: byteSize(property(input, "archive_byte_size"), source),
     metadata: metadata(property(input, "metadata"), source),
-    manifest_storage_uri: nullableString(
+    manifest_storage_uri: string(
       property(input, "manifest_storage_uri"),
       source,
     ),
-    manifest_file_hash: nullableString(
-      property(input, "manifest_file_hash"),
-      source,
-    ),
-    asset_base_storage_uri: nullableString(
+    manifest_file_hash: string(property(input, "manifest_file_hash"), source),
+    asset_base_storage_uri: string(
       property(input, "asset_base_storage_uri"),
       source,
     ),

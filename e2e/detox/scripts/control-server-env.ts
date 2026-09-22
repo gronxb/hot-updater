@@ -33,6 +33,13 @@ function resolveControlPort(env: NodeJS.ProcessEnv): string {
   );
 }
 
+function resolveChannelNamespace(
+  controlPort: string,
+  env: NodeJS.ProcessEnv,
+): string {
+  return env.HOT_UPDATER_E2E_CHANNEL_NAMESPACE?.trim() || `e2e-${controlPort}`;
+}
+
 export function resolveControlBaseUrl(env: NodeJS.ProcessEnv): string {
   return (
     env.CONTROL_URL ??
@@ -282,6 +289,10 @@ export function buildDetoxControlServerEnv(
       : {}),
     HOT_UPDATER_E2E_APP_BASE_URL: resolveAppBaseUrl(env),
     HOT_UPDATER_E2E_APP_ID: resolveAppId(platform, env),
+    HOT_UPDATER_E2E_CHANNEL_NAMESPACE: resolveChannelNamespace(
+      controlPort,
+      env,
+    ),
     HOT_UPDATER_E2E_DEVICE_ID: resolveDeviceId(platform, env),
     ...(iosDerivedDataPath
       ? { HOT_UPDATER_E2E_IOS_DERIVED_DATA_PATH: iosDerivedDataPath }

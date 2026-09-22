@@ -39,12 +39,12 @@ const originalIsTTY = Object.getOwnPropertyDescriptor(process.stdin, "isTTY");
 let sourceReleaseId: string;
 
 const sourceBundle: Bundle = {
-  archiveByteSize: 1024,
+  assetBaseStorageUri: "storage://assets",
   id: "01900000-0000-7000-8000-000000000001",
   platform: "ios",
-  fileHash: "hash-B1",
-  storageUri: "storage://artifacts/B1.zip",
   gitCommitHash: null,
+  manifestFileHash: "manifest-hash-B1",
+  manifestStorageUri: "storage://artifacts/B1/manifest.json",
 };
 const sourceRelease: DeployReleasePolicy = {
   channel: "production",

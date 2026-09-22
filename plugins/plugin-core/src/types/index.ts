@@ -462,18 +462,6 @@ export type ConfigInput = {
    */
   updateStrategy: "fingerprint" | "appVersion";
   /**
-   * The compression strategy used for bundle deployment.
-   *
-   * - `zip`: Standard ZIP compression (default). Fast and widely supported.
-   * - `tar.br`: TAR archive with Brotli compression. Highest compression ratio, smaller bundle size.
-   * - `tar.gz`: TAR archive with Gzip compression. Balanced speed and compression ratio.
-   *
-   * The compression format is determined by the storage plugin used for bundle upload.
-   *
-   * @default "zip"
-   */
-  compressStrategy?: "zip" | "tar.br" | "tar.gz";
-  /**
    * The fingerprint configuration.
    */
   fingerprint?: {
@@ -502,7 +490,7 @@ export type ConfigInput = {
    *
    * When enabled, `hot-updater deploy` tries to prepare binary patches against
    * up to `maxBaseBundles` recent compatible bundles. Patch generation is an
-   * optimization only; archive delivery remains the fallback path.
+   * optimization only; the original manifest asset remains the fallback path.
    *
    * @default { enabled: true, maxBaseBundles: 3 }
    */

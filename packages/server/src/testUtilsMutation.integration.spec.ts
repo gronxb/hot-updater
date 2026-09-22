@@ -196,7 +196,8 @@ return original.commit({changes:input.changes}); };`,
     name: "wrong-ota-artifact",
     scenario: "runs built-in → OTA A → OTA B → rollback A → built-in",
     implementation: "",
-    responseMutation: 'if (body.fileHash) body.fileHash = "wrong-bundle-hash";',
+    responseMutation:
+      'if (body.manifestFileHash) body.manifestFileHash = "wrong-manifest-hash";',
   },
 ] as const;
 

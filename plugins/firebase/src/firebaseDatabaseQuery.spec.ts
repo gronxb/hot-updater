@@ -9,14 +9,11 @@ const createBundle = (
 ): BundleRow => ({
   id: `00000000-0000-0000-0000-${suffix.padStart(12, "0")}`,
   platform,
-  file_hash: `hash-${suffix}`,
   git_commit_hash: null,
-  storage_uri: `storage://bundles/${suffix}.zip`,
-  archive_byte_size: 3_000_000_001,
   metadata: {},
-  manifest_storage_uri: null,
-  manifest_file_hash: null,
-  asset_base_storage_uri: null,
+  manifest_storage_uri: `storage://bundles/${suffix}/manifest.json`,
+  manifest_file_hash: `manifest-hash-${suffix}`,
+  asset_base_storage_uri: "storage://assets",
 });
 
 describe("queryFirebaseDatabaseRows", () => {

@@ -6,6 +6,8 @@ import type { RouteHandler } from "./handlerTypes";
 
 const CATALOG_CONTENT_TYPE =
   "application/vnd.hot-updater.release-catalog+json; version=1";
+const ARTIFACT_CONTENT_TYPE =
+  "application/vnd.hot-updater.artifact+json; version=1";
 const ORIGIN_CACHE_TTL_MS = 5_000;
 const ORIGIN_CACHE_MAX_ENTRIES = 128;
 
@@ -135,18 +137,19 @@ export const createReleaseCatalogRouteHandlers = (
       );
     },
 
-    artifact: async (params, _request, api) => {
+    artifactV1: async (params, _request, api) => {
       if (api.getArtifactInfo === undefined) return privateNotFound();
       const info = await api.getArtifactInfo(
         requireRouteParam(params, "targetBundleId"),
         requireRouteParam(params, "currentBundleId"),
+        1,
       );
       if (info === null) return privateNotFound();
       return new Response(JSON.stringify(info), {
         status: 200,
         headers: {
           "cache-control": "private, no-store",
-          "content-type": "application/json",
+          "content-type": ARTIFACT_CONTENT_TYPE,
         },
       });
     },

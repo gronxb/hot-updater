@@ -64,14 +64,11 @@ const channelRow = { id: "channel-1", name: "production" } as const;
 const bundleRow = {
   id: "bundle-1",
   platform: "ios" as const,
-  file_hash: "hash-1",
   git_commit_hash: null,
-  storage_uri: "storage://bundle-1.zip",
-  archive_byte_size: 3_000_000_001,
   metadata: {},
-  manifest_storage_uri: null,
-  manifest_file_hash: null,
-  asset_base_storage_uri: null,
+  manifest_storage_uri: "storage://bundle-1/manifest.json",
+  manifest_file_hash: "manifest-hash-1",
+  asset_base_storage_uri: "storage://assets",
 };
 
 const patchRow = {

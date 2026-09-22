@@ -5,8 +5,6 @@ import { createBrotliCompress, constants as zlibConstants } from "zlib";
 
 import {
   createTarBrTargetFiles,
-  createTarGzTargetFiles,
-  createZipTargetFiles,
   getCwd,
   getStorageFileByteSize,
   HotUpdateDirUtil,
@@ -335,19 +333,6 @@ const createAutoPatches = async ({
     createdCount,
     failures,
   };
-};
-
-const getExtensionFromCompressStrategy = (compressStrategy: string) => {
-  switch (compressStrategy) {
-    case "tar.br":
-      return ".tar.br";
-    case "tar.gz":
-      return ".tar.gz";
-    case "zip":
-      return ".zip";
-    default:
-      throw new Error(`Unsupported compress strategy: ${compressStrategy}`);
-  }
 };
 
 const getRelativeStorageDir = (relativePath: string) => {
@@ -886,7 +871,6 @@ const deployPlatform = async ({
     options.bundleOutputPath ?? HotUpdateDirUtil.getDefaultOutputPath({ cwd });
 
   let bundleId: string | null = null;
-  let fileHash: string;
   let manifestFileHash: string | null = null;
   const platformName = getPlatformName(platform);
   const outputRoot = getBundleOutputRoot({
@@ -895,14 +879,6 @@ const deployPlatform = async ({
     platform,
     multiPlatform,
   });
-
-  const compressStrategy = config.compressStrategy;
-  const bundleExtension = getExtensionFromCompressStrategy(compressStrategy);
-  const bundlePath = path.join(
-    outputRoot,
-    "bundle",
-    `bundle${bundleExtension}`,
-  );
 
   const deploymentContext = [
     `Platform: ${platformName}`,
@@ -936,19 +912,17 @@ const deployPlatform = async ({
         stdout: string | null;
       } | null;
       assetUploadTargets: PreparedAssetUploadTarget[];
-      archiveByteSize: number | null;
       manifestPath: string | null;
+      archivePath: string | null;
       manifestStorageUri: string | null;
       assetBaseStorageUri: string | null;
-      storageUri: string | null;
     } = {
       buildResult: null,
       assetUploadTargets: [],
-      archiveByteSize: null,
       manifestPath: null,
+      archivePath: null,
       manifestStorageUri: null,
       assetBaseStorageUri: null,
-      storageUri: null,
     };
 
     await p.tasks([
@@ -992,62 +966,19 @@ const deployPlatform = async ({
               outputPath: outputRoot,
               targetFiles,
             });
+          const archivePath = path.join(outputRoot, "bundle.tar.br");
+          manifest.archive = await createTarBrTargetFiles({
+            outfile: archivePath,
+            targetFiles,
+          });
           const manifestPath = await writeBundleManifestFile({
             buildPath,
             manifest,
           });
 
-          const bundleTargetFiles = [
-            ...targetFiles,
-            {
-              path: manifestPath,
-              name: "manifest.json",
-            },
-          ];
           taskRef.assetUploadTargets = assetUploadTargets;
           taskRef.manifestPath = manifestPath;
-
-          switch (compressStrategy) {
-            case "tar.br":
-              await createTarBrTargetFiles({
-                outfile: bundlePath,
-                targetFiles: bundleTargetFiles,
-              });
-              break;
-            case "tar.gz":
-              await createTarGzTargetFiles({
-                outfile: bundlePath,
-                targetFiles: bundleTargetFiles,
-              });
-              break;
-            case "zip":
-              await createZipTargetFiles({
-                outfile: bundlePath,
-                targetFiles: bundleTargetFiles,
-              });
-              break;
-            default:
-              throw new Error(
-                `Unsupported compression strategy: ${compressStrategy}`,
-              );
-          }
-          fileHash = await getFileHashFromFile(bundlePath);
-
-          // Sign bundle if signing is enabled
-          if (signingSession) {
-            try {
-              const signature = await signingSession.signFileHash(fileHash);
-              // Store signature in signed format (sig:<signature>)
-              // The hash is verified implicitly during signature verification
-              fileHash = createSignedFileHash(signature);
-            } catch (error) {
-              p.log.error(`Signing error: ${(error as Error).message}`);
-              p.log.error(
-                "Ensure the signing provider is available and matches the configured public key",
-              );
-              throw error;
-            }
-          }
+          taskRef.archivePath = archivePath;
 
           manifestFileHash = await getFileHashFromFile(manifestPath);
           if (signingSession) {
@@ -1079,7 +1010,7 @@ const deployPlatform = async ({
           if (!bundleId) {
             throw new Error("Build did not return an artifact ID");
           }
-          if (!taskRef.manifestPath) {
+          if (!taskRef.manifestPath || !taskRef.archivePath) {
             throw new Error("Manifest path not found");
           }
 
@@ -1100,13 +1031,19 @@ const deployPlatform = async ({
             };
 
             updateUploadProgress();
-            const { byteSize, storageUri } = await putStorageFile(
+            await putStorageFile(
               storagePlugin,
               createBundleStorageKey(bundleId),
-              bundlePath,
+              taskRef.archivePath,
             );
-            taskRef.archiveByteSize = byteSize;
-            taskRef.storageUri = storageUri;
+            uploadedStepCount += 1;
+            updateUploadProgress();
+            const manifestUpload = await putStorageFile(
+              storagePlugin,
+              createBundleStorageKey(bundleId),
+              taskRef.manifestPath,
+            );
+            taskRef.manifestStorageUri = manifestUpload.storageUri;
             uploadedStepCount += 1;
             updateUploadProgress();
 
@@ -1114,7 +1051,7 @@ const deployPlatform = async ({
             // directory. The server uses this suffix to derive asset object keys
             // from each manifest asset's transferred or logical file hash.
             taskRef.assetBaseStorageUri = createStorageRootUriWithPath(
-              storageUri,
+              manifestUpload.storageUri,
               bundleId,
               "assets",
             );
@@ -1145,15 +1082,6 @@ const deployPlatform = async ({
                 updateUploadProgress();
               },
             );
-
-            const manifestUpload = await putStorageFile(
-              storagePlugin,
-              createBundleStorageKey(bundleId),
-              taskRef.manifestPath,
-            );
-            taskRef.manifestStorageUri = manifestUpload.storageUri;
-            uploadedStepCount += 1;
-            updateUploadProgress();
           } catch (e) {
             if (e instanceof Error) {
               p.log.error(e.message);
@@ -1169,14 +1097,8 @@ const deployPlatform = async ({
           if (!bundleId) {
             throw new Error("Build did not return an artifact ID");
           }
-          if (!taskRef.storageUri) {
-            throw new Error("Storage URI not found");
-          }
           if (!manifestFileHash) {
             throw new Error("Manifest file hash not found");
-          }
-          if (taskRef.archiveByteSize === null) {
-            throw new Error("Bundle archive byte size not found");
           }
           const appVersion = await getNativeAppVersion(platform);
 
@@ -1184,15 +1106,12 @@ const deployPlatform = async ({
             await persistDeployment({
               bundle: {
                 platform,
-                fileHash,
                 gitCommitHash,
                 id: bundleId,
-                archiveByteSize: taskRef.archiveByteSize,
-                storageUri: taskRef.storageUri,
                 metadata: appVersion ? { app_version: appVersion } : {},
-                assetBaseStorageUri: taskRef.assetBaseStorageUri,
+                assetBaseStorageUri: taskRef.assetBaseStorageUri!,
                 manifestFileHash,
-                manifestStorageUri: taskRef.manifestStorageUri,
+                manifestStorageUri: taskRef.manifestStorageUri!,
               },
               release: {
                 channel,
@@ -1289,7 +1208,6 @@ const deployPlatform = async ({
 
     return { bundleId: confirmedBundleId, platform, runDeferredPatches };
   } catch (e) {
-    await fs.promises.rm(bundlePath, { force: true });
     console.error(e);
     process.exit(1);
   }

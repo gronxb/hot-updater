@@ -224,7 +224,8 @@ const readLambdaJson = async (payload: {
 const toRuntimeBundle = (bundle: Bundle): Bundle => {
   return {
     ...bundle,
-    storageUri: `s3://${S3_BUCKET_NAME}/bundles/${bundle.id}/bundle.zip`,
+    manifestStorageUri: `s3://${S3_BUCKET_NAME}/bundles/${bundle.id}/manifest.json`,
+    assetBaseStorageUri: `s3://${S3_BUCKET_NAME}/assets`,
   };
 };
 
@@ -470,10 +471,10 @@ describe.sequential("aws lambda runtime acceptance", () => {
     const bundle = toRuntimeBundle({
       id: "00000000-0000-0000-0000-000000000001",
       platform: "ios",
-      fileHash: "hash",
       gitCommitHash: null,
-      storageUri: "storage://unused",
-      archiveByteSize: 3_000_000_001,
+      manifestStorageUri: "storage://unused/manifest.json",
+      manifestFileHash: "manifest-hash",
+      assetBaseStorageUri: "storage://assets",
     });
     await seedHotUpdater.insertBundle(bundle);
     await seedProductionRelease({ bundle, database });

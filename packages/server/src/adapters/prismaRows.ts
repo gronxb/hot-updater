@@ -114,14 +114,11 @@ export const parsePrismaBundleRow = (value: unknown): BundleRow => {
   return {
     id: readString(value, "id"),
     platform,
-    file_hash: readString(value, "file_hash"),
     git_commit_hash: readNullableString(value, "git_commit_hash"),
-    storage_uri: readString(value, "storage_uri"),
-    archive_byte_size: readByteSize(value, "archive_byte_size"),
     metadata,
-    manifest_storage_uri: readNullableString(value, "manifest_storage_uri"),
-    manifest_file_hash: readNullableString(value, "manifest_file_hash"),
-    asset_base_storage_uri: readNullableString(value, "asset_base_storage_uri"),
+    manifest_storage_uri: readString(value, "manifest_storage_uri"),
+    manifest_file_hash: readString(value, "manifest_file_hash"),
+    asset_base_storage_uri: readString(value, "asset_base_storage_uri"),
   };
 };
 

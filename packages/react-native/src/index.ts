@@ -469,8 +469,6 @@ function createHotUpdaterClient() {
      *
      * @param {UpdateBundleParams} params - Parameters object required for bundle update
      * @param {string} params.bundleId - The bundle ID of the app
-     * @param {string|null} params.fileUrl - The URL of the zip file
-     *
      * @returns {Promise<boolean>} Whether the update was successful
      *
      * @example
@@ -500,7 +498,7 @@ function createHotUpdaterClient() {
       const state = getActiveUpdateState();
       const active = state.activeSelection;
       const downloaded = await updateBundle(params);
-      if (downloaded && params.fileUrl !== null) {
+      if (downloaded) {
         const selection = getActiveUpdateState().activeSelection;
         await reportBundleDownloaded(
           { ...globalConfig, client },
@@ -535,10 +533,8 @@ function createHotUpdaterClient() {
         hotUpdaterStore.setState({
           artifactType: null,
           details: null,
-          downloadedBytes: undefined,
           isUpdateDownloaded: false,
           progress: 0,
-          totalBytes: undefined,
         });
       }
       return ok;

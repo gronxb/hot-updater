@@ -42,5 +42,4 @@ export default defineConfig({
     debug: true,
   },
   updateStrategy: "appVersion",
-  compressStrategy: "tar.br",
 });

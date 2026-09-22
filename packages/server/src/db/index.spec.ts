@@ -45,17 +45,15 @@ const RAW_PRISMA_SCHEMA = `model bundles {
   platform String
   should_force_update Boolean
   enabled Boolean
-  file_hash String
   git_commit_hash String?
   message String?
   channel String @default("production")
-  storage_uri String
   target_app_version String?
   fingerprint_hash String?
   metadata Json
-  manifest_storage_uri String?
-  manifest_file_hash String?
-  asset_base_storage_uri String?
+  manifest_storage_uri String
+  manifest_file_hash String
+  asset_base_storage_uri String
   rollout_cohort_count Int @default(1000)
   target_cohorts Json?
 }
@@ -66,6 +64,7 @@ model bundle_patches {
   base_file_hash String
   patch_file_hash String
   patch_storage_uri String
+  byte_size Float
   order_index Int @default(0)
   bundle bundles @relation("bundle_patches_bundles_patches", fields: [bundle_id], references: [id], onUpdate: Restrict, onDelete: Cascade)
   baseBundle bundles @relation("bundle_patches_bundles_baseForPatches", fields: [base_bundle_id], references: [id], onUpdate: Restrict, onDelete: Cascade)
@@ -83,6 +82,7 @@ import {
   boolean,
   json,
   integer,
+  doublePrecision,
   varchar,
   foreignKey,
 } from "drizzle-orm/pg-core";
@@ -92,17 +92,15 @@ export const bundles = pgTable("bundles", {
   platform: text("platform").notNull(),
   should_force_update: boolean("should_force_update").notNull(),
   enabled: boolean("enabled").notNull(),
-  file_hash: text("file_hash").notNull(),
   git_commit_hash: text("git_commit_hash"),
   message: text("message"),
   channel: text("channel").notNull().default("production"),
-  storage_uri: text("storage_uri").notNull(),
   target_app_version: text("target_app_version"),
   fingerprint_hash: text("fingerprint_hash"),
   metadata: json("metadata").notNull(),
-  manifest_storage_uri: text("manifest_storage_uri"),
-  manifest_file_hash: text("manifest_file_hash"),
-  asset_base_storage_uri: text("asset_base_storage_uri"),
+  manifest_storage_uri: text("manifest_storage_uri").notNull(),
+  manifest_file_hash: text("manifest_file_hash").notNull(),
+  asset_base_storage_uri: text("asset_base_storage_uri").notNull(),
   rollout_cohort_count: integer("rollout_cohort_count")
     .notNull()
     .default(1000),
@@ -118,6 +116,7 @@ export const bundle_patches = pgTable(
     base_file_hash: text("base_file_hash").notNull(),
     patch_file_hash: text("patch_file_hash").notNull(),
     patch_storage_uri: text("patch_storage_uri").notNull(),
+    byte_size: doublePrecision("byte_size").notNull(),
     order_index: integer("order_index").notNull().default(0),
   }, (table) => [
     foreignKey({
@@ -205,12 +204,12 @@ function createSchemaOnlyAdapter({
 }
 
 const transactionBundle: Bundle = {
-  archiveByteSize: 1_024,
   id: "00000000-0000-0000-0000-000000000777",
   platform: "ios",
-  fileHash: "transaction-hash",
   gitCommitHash: null,
-  storageUri: "s3://test-bucket/transaction.zip",
+  manifestStorageUri: "s3://test-bucket/transaction/manifest.json",
+  manifestFileHash: "transaction-manifest-hash",
+  assetBaseStorageUri: "s3://test-bucket/assets",
 };
 const transactionChannelId = "00000000-0000-0000-0000-000000000700";
 
@@ -1034,12 +1033,12 @@ describe("server/db hotUpdater (PGlite + Kysely)", async () => {
   describe("getBundleById", () => {
     it("should retrieve bundle by id without Prisma validation errors", async () => {
       const bundle: Bundle = {
-        archiveByteSize: 1_024,
         id: "00000000-0000-0000-0000-000000000010",
         platform: "ios",
-        fileHash: "test-hash",
         gitCommitHash: null,
-        storageUri: "s3://test-bucket/test.zip",
+        manifestStorageUri: "s3://test-bucket/test/manifest.json",
+        manifestFileHash: "test-manifest-hash",
+        assetBaseStorageUri: "s3://test-bucket/assets",
       };
 
       await hotUpdater.insertBundle(bundle);
@@ -1050,7 +1049,7 @@ describe("server/db hotUpdater (PGlite + Kysely)", async () => {
       expect(retrieved).not.toBeNull();
       expect(retrieved?.id).toBe(bundle.id);
       expect(retrieved?.platform).toBe(bundle.platform);
-      expect(retrieved?.fileHash).toBe(bundle.fileHash);
+      expect(retrieved?.manifestFileHash).toBe(bundle.manifestFileHash);
     });
 
     it("should return null for non-existent bundle id", async () => {
@@ -1099,23 +1098,34 @@ describe("server/db hotUpdater (PGlite + Kysely)", async () => {
       vi.useRealTimers();
     });
 
-    it("resolves s3:// storage URI to signed URL via s3StoragePlugin", async () => {
+    it("resolves manifest and asset URIs via s3StoragePlugin", async () => {
       const bundle: Bundle = {
-        archiveByteSize: 1_024,
         id: "00000000-0000-0000-0000-000000000001",
         platform: "ios",
-        fileHash: "hash123",
         gitCommitHash: null,
-        storageUri: "s3://test-bucket/bundles/bundle.zip",
+        manifestStorageUri: "s3://test-bucket/bundles/bundle/manifest.json",
+        manifestFileHash: "manifest-hash",
+        assetBaseStorageUri: "s3://test-bucket/assets",
       };
+      storageTexts.set(
+        bundle.manifestStorageUri,
+        JSON.stringify({
+          bundleId: bundle.id,
+          assets: { "assets/logo.png": { fileHash: "logo-hash" } },
+        }),
+      );
 
       await hotUpdater.insertBundle(bundle);
 
-      const updateInfo = await hotUpdater.getArtifactInfo(bundle.id, NIL_UUID);
+      const updateInfo = await hotUpdater.getArtifactInfo(
+        bundle.id,
+        NIL_UUID,
+        1,
+      );
 
       expect(updateInfo).not.toBeNull();
-      expect(updateInfo?.fileUrl).toBe(
-        "https://s3.example.com/test-bucket/bundles/bundle.zip",
+      expect(updateInfo?.manifestUrl).toBe(
+        "https://s3.example.com/test-bucket/bundles/bundle/manifest.json",
       );
     });
 
@@ -1125,34 +1135,26 @@ describe("server/db hotUpdater (PGlite + Kysely)", async () => {
       const nextManifestStorageUri =
         "s3://test-bucket/releases/bundles/00000000-0000-0000-0000-000000000102/manifest.json";
       const olderBundle: Bundle = {
-        archiveByteSize: 1_024,
         id: "00000000-0000-0000-0000-000000000100",
         platform: "ios",
-        fileHash: "hash-older-zip",
         gitCommitHash: null,
-        storageUri:
-          "s3://test-bucket/releases/bundles/00000000-0000-0000-0000-000000000100/bundle.zip",
+        assetBaseStorageUri: "s3://test-bucket/releases/assets",
+        manifestFileHash: "manifest-older",
+        manifestStorageUri:
+          "s3://test-bucket/releases/bundles/00000000-0000-0000-0000-000000000100/manifest.json",
       };
       const currentBundle: Bundle = {
-        archiveByteSize: 1_024,
         id: "00000000-0000-0000-0000-000000000101",
         platform: "ios",
-        fileHash: "hash-current-zip",
         gitCommitHash: null,
-        storageUri:
-          "s3://test-bucket/releases/bundles/00000000-0000-0000-0000-000000000101/bundle.zip",
         assetBaseStorageUri: "s3://test-bucket/releases/assets",
         manifestFileHash: "sig:manifest-current",
         manifestStorageUri: currentManifestStorageUri,
       };
       const nextBundle: Bundle = {
-        archiveByteSize: 1_024,
         id: "00000000-0000-0000-0000-000000000102",
         platform: "ios",
-        fileHash: "hash-next-zip",
         gitCommitHash: null,
-        storageUri:
-          "s3://test-bucket/releases/bundles/00000000-0000-0000-0000-000000000102/bundle.zip",
         assetBaseStorageUri: "s3://test-bucket/releases/assets",
         manifestFileHash: "sig:manifest-next",
         manifestStorageUri: nextManifestStorageUri,
@@ -1216,28 +1218,19 @@ describe("server/db hotUpdater (PGlite + Kysely)", async () => {
 
       try {
         await expect(
-          hotUpdater.getArtifactInfo(nextBundle.id, currentBundle.id),
-        ).resolves.toEqual({
-          changedAssets: {
+          hotUpdater.getArtifactInfo(nextBundle.id, currentBundle.id, 1),
+        ).resolves.toMatchObject({
+          artifactProtocolVersion: 1,
+          assets: {
+            "assets/logo.png": {
+              file: { url: expect.any(String) },
+              fileHash: "hash-logo",
+            },
             "index.ios.bundle": {
-              file: {
-                compression: "br",
-                url: "https://s3.example.com/test-bucket/releases/assets/sha256/ha/hash-new-bundle.br",
-              },
+              file: { url: expect.any(String) },
               fileHash: "hash-new-bundle",
-              patch: {
-                algorithm: "bsdiff",
-                baseBundleId: currentBundle.id,
-                baseFileHash: "hash-old-bundle",
-                patchFileHash: "hash-bsdiff",
-                patchUrl:
-                  "https://s3.example.com/test-bucket/releases/bundles/00000000-0000-0000-0000-000000000102/patches/00000000-0000-0000-0000-000000000101/index.ios.bundle.bsdiff",
-              },
             },
           },
-          fileHash: "hash-next-zip",
-          fileUrl:
-            "https://s3.example.com/test-bucket/releases/bundles/00000000-0000-0000-0000-000000000102/bundle.zip",
           manifestFileHash: "sig:manifest-next",
           manifestUrl:
             "https://s3.example.com/test-bucket/releases/bundles/00000000-0000-0000-0000-000000000102/manifest.json",
@@ -1252,13 +1245,9 @@ describe("server/db hotUpdater (PGlite + Kysely)", async () => {
       const nextManifestStorageUri =
         "s3://test-bucket/releases/bundles/00000000-0000-0000-0000-000000000109/manifest.json";
       const nextBundle: Bundle = {
-        archiveByteSize: 1_024,
         id: "00000000-0000-0000-0000-000000000109",
         platform: "ios",
-        fileHash: "hash-next-zip",
         gitCommitHash: null,
-        storageUri:
-          "s3://test-bucket/releases/bundles/00000000-0000-0000-0000-000000000109/bundle.zip",
         assetBaseStorageUri: "s3://test-bucket/releases/assets",
         manifestFileHash: "sig:manifest-next",
         manifestStorageUri: nextManifestStorageUri,
@@ -1271,7 +1260,7 @@ describe("server/db hotUpdater (PGlite + Kysely)", async () => {
       );
 
       await expect(
-        hotUpdater.getArtifactInfo(nextBundle.id, NIL_UUID),
+        hotUpdater.getArtifactInfo(nextBundle.id, NIL_UUID, 1),
       ).rejects.toThrow("storage read failed");
     });
   });

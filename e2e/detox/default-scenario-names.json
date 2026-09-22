@@ -2,7 +2,7 @@
   "startup-hang-recovery",
   "release-ota-recovery",
   "multi-asset-replacement",
-  "bspatch-archive-to-diff-ota",
+  "bspatch-builtin-to-diff-ota",
   "bspatch-consecutive-diff-ota",
   "bspatch-disabled-chain-rollback",
   "bspatch-manifest-diff-fallback",

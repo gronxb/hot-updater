@@ -100,14 +100,11 @@ describe("mock database provider", () => {
     const row = {
       id: "bundle-rollback",
       platform: "ios" as const,
-      file_hash: "hash",
       git_commit_hash: null,
-      storage_uri: "storage://bundle.zip",
-      archive_byte_size: 3_000_000_001,
       metadata: {},
-      manifest_storage_uri: null,
-      manifest_file_hash: null,
-      asset_base_storage_uri: null,
+      manifest_storage_uri: "storage://bundle/manifest.json",
+      manifest_file_hash: "manifest-hash",
+      asset_base_storage_uri: "storage://assets",
     };
     await expect(
       plugin.commit({
@@ -130,7 +127,7 @@ describe("mock database provider", () => {
               id: "invalid-patch",
               bundle_id: "invalid-owner",
               base_bundle_id: row.id,
-              base_file_hash: row.file_hash,
+              base_file_hash: "base-file-hash",
               patch_file_hash: "patch-hash",
               patch_storage_uri: "storage://patch",
               byte_size: 3_000_000_002,

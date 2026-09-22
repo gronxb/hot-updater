@@ -21,15 +21,13 @@ vi.mock("@hot-updater/bsdiff", () => ({
 import { createBundleDiff } from "./createBundleDiff";
 
 const createBundle = (id: string, overrides: Partial<Bundle> = {}): Bundle => ({
-  archiveByteSize: 1_024,
-  fileHash: `${id}-file-hash`,
   gitCommitHash: null,
   id,
   assetBaseStorageUri: "s3://test-bucket/releases/assets",
   manifestStorageUri: `s3://test-bucket/releases/bundles/${id}/manifest.json`,
   metadata: {},
   platform: "ios",
-  storageUri: `s3://test-bucket/releases/bundles/${id}/bundle.zip`,
+  manifestFileHash: `${id}-manifest-hash`,
   ...overrides,
 });
 

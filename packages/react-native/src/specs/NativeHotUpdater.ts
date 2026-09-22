@@ -2,48 +2,21 @@ import type { TurboModule } from "react-native";
 import { TurboModuleRegistry } from "react-native";
 import type { UnsafeObject } from "react-native/Libraries/Types/CodegenTypes";
 
-export interface ChangedAsset {
-  file?: {
-    compression?: "br" | null;
-    url: string;
-  } | null;
-  fileHash: string;
-  patch?: {
-    algorithm: "bsdiff";
-    baseBundleId: string;
-    baseFileHash: string;
-    patchFileHash: string;
-    patchUrl: string;
-  } | null;
-}
-
 export interface UpdateBundleParams {
   bundleId: string;
   channel?: string;
-  fileUrl: string | null;
   /**
-   * File hash for integrity/signature verification.
-   *
-   * Format depends on signing configuration:
-   * - Signed: `sig:<base64_signature>` - Native will verify signature (and implicitly hash)
-   * - Unsigned: `<hex_hash>` - Native will verify SHA256 hash only
-   *
-   * Native determines verification mode by checking for "sig:" prefix.
+   * Signed manifest URL for installation.
    */
-  fileHash: string | null;
-  /**
-   * Optional signed manifest URL for manifest-driven installation.
-   */
-  manifestUrl?: string | null;
+  manifestUrl: string;
   /**
    * File hash/signature for the manifest file itself.
    */
-  manifestFileHash?: string | null;
-  /**
-   * Per-file URLs for assets that must be downloaded instead of reused from
-   * the currently active bundle.
-   */
-  changedAssets?: UnsafeObject | null;
+  manifestFileHash: string;
+  /** Optional tar.br URL; integrity and sizes come from the verified manifest. */
+  archiveUrl?: string | null;
+  /** Full protocol v1 target file descriptor map. */
+  assets: UnsafeObject;
   /** Full Release Catalog selection receipt committed with the staged Bundle. */
   selection?: UnsafeObject | null;
 }
@@ -66,13 +39,12 @@ export interface Spec extends TurboModule {
    *
    *   Parameter validation:
    *   - MISSING_BUNDLE_ID: Missing or empty bundleId
-   *   - INVALID_FILE_URL: Invalid fileUrl provided
+   *   - INVALID_FILE_URL: Invalid manifest or asset URL provided
    *
    *   Bundle storage:
    *   - DIRECTORY_CREATION_FAILED: Failed to create bundle directory
    *   - DOWNLOAD_FAILED: Failed to download bundle
    *   - INCOMPLETE_DOWNLOAD: Download incomplete (size mismatch)
-   *   - EXTRACTION_FORMAT_ERROR: Invalid or corrupted archive format
    *   - INVALID_BUNDLE: Bundle missing required platform files
    *   - INSUFFICIENT_DISK_SPACE: Insufficient disk space
    *   - MOVE_OPERATION_FAILED: Failed to move bundle files

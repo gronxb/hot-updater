@@ -19,14 +19,11 @@ export type DatabaseBundleMetadata = DatabaseJsonObject & {
 export interface BundleRow {
   readonly id: string;
   readonly platform: Platform;
-  readonly file_hash: string;
   readonly git_commit_hash: string | null;
-  readonly storage_uri: string;
-  readonly archive_byte_size: number;
   readonly metadata: DatabaseBundleMetadata;
-  readonly manifest_storage_uri: string | null;
-  readonly manifest_file_hash: string | null;
-  readonly asset_base_storage_uri: string | null;
+  readonly manifest_storage_uri: string;
+  readonly manifest_file_hash: string;
+  readonly asset_base_storage_uri: string;
 }
 
 export interface BundlePatchRow {

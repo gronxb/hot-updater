@@ -33,11 +33,9 @@ const formatBundleSummary = (bundle: Bundle): string => {
   const lines = [
     ui.kv("Platform", ui.platform(bundle.platform)),
     ui.kv("Artifact ID", ui.id(bundle.id)),
-    ui.kv("File hash", ui.muted(bundle.fileHash)),
-    ui.kv("Storage", ui.muted(bundle.storageUri)),
-    bundle.manifestStorageUri
-      ? ui.kv("Manifest", ui.muted(bundle.manifestStorageUri))
-      : null,
+    ui.kv("Manifest hash", ui.muted(bundle.manifestFileHash)),
+    ui.kv("Manifest", ui.muted(bundle.manifestStorageUri)),
+    ui.kv("Assets", ui.muted(bundle.assetBaseStorageUri)),
     ui.kv("Patches", String(bundle.patches?.length ?? 0)),
   ].filter((line): line is string => line !== null);
   return ui.block("Artifact", lines);

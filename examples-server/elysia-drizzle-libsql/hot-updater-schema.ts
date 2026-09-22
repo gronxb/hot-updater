@@ -21,14 +21,11 @@ export const channelsRelations = relations(channels, ({ many }) => ({
 export const bundles = sqliteTable("bundles", {
   id: text("id").primaryKey().notNull(),
   platform: text("platform").notNull(),
-  file_hash: text("file_hash").notNull(),
   git_commit_hash: text("git_commit_hash"),
-  storage_uri: text("storage_uri").notNull(),
-  archive_byte_size: real("archive_byte_size").notNull(),
   metadata: blob("metadata", { mode: "json" }).notNull().default({}),
-  manifest_storage_uri: text("manifest_storage_uri"),
-  manifest_file_hash: text("manifest_file_hash"),
-  asset_base_storage_uri: text("asset_base_storage_uri")
+  manifest_storage_uri: text("manifest_storage_uri").notNull(),
+  manifest_file_hash: text("manifest_file_hash").notNull(),
+  asset_base_storage_uri: text("asset_base_storage_uri").notNull()
 })
 
 export const bundlesRelations = relations(bundles, ({ many }) => ({

@@ -5,11 +5,11 @@ import path from "path";
 import JSZip from "jszip";
 import { afterEach, describe, expect, it } from "vitest";
 
-import { createZipTargetFiles } from "./createZip";
+import { createZip } from "./createZip";
 
 const createdDirectories: string[] = [];
 
-describe("createZipTargetFiles", () => {
+describe("createZip", () => {
   afterEach(async () => {
     await Promise.all(
       createdDirectories.map((directory) =>
@@ -19,29 +19,26 @@ describe("createZipTargetFiles", () => {
     createdDirectories.length = 0;
   });
 
-  it("creates a zip archive from target files", async () => {
+  it("creates a deterministic infrastructure archive from a directory", async () => {
     const directory = await fs.mkdtemp(
       path.join(os.tmpdir(), "hot-updater-zip-"),
     );
     createdDirectories.push(directory);
 
-    const sourcePath = path.join(directory, "index.android.bundle");
-    const archivePath = path.join(directory, "bundle.zip");
+    const sourceDirectory = path.join(directory, "lambda");
+    const sourcePath = path.join(sourceDirectory, "index.js");
+    const archivePath = path.join(directory, "lambda.zip");
+    await fs.mkdir(sourceDirectory);
     await fs.writeFile(sourcePath, "bundle-content");
 
-    await createZipTargetFiles({
+    await createZip({
       outfile: archivePath,
-      targetFiles: [
-        {
-          path: sourcePath,
-          name: "nested/index.android.bundle",
-        },
-      ],
+      targetDir: sourceDirectory,
     });
 
     const zip = await JSZip.loadAsync(await fs.readFile(archivePath));
-    await expect(
-      zip.file("nested/index.android.bundle")?.async("string"),
-    ).resolves.toBe("bundle-content");
+    await expect(zip.file("index.js")?.async("string")).resolves.toBe(
+      "bundle-content",
+    );
   });
 });

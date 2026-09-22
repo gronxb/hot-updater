@@ -1,29 +1,24 @@
 // swift-tools-version: 5.10
 import PackageDescription
 
-let archiveSources = [
-    "ArchiveExtractionUtilities.swift",
+let coreSources = [
+    "FileUtilities.swift",
+    "BrotliFileDecompressor.swift",
+    "TarArchiveExtractor.swift",
     "BundleFileStorageService.swift",
+    "BuiltInAssetResolver.swift",
     "BundleMetadata.swift",
-    "DecompressService.swift",
-    "DecompressionStrategy.swift",
     "FileManagerService.swift",
     "HashUtils.swift",
     "HotUpdaterConfig.swift",
     "NotificationExtension.swift",
     "ReleaseCatalogCacheService.swift",
     "SignatureVerifier.swift",
-    "StreamingTarArchiveExtractor.swift",
-    "TarArchiveExtractor.swift",
-    "TarBrDecompressionStrategy.swift",
-    "TarGzDecompressionStrategy.swift",
     "URLSessionDownloadService.swift",
     "VersionedPreferencesService.swift",
-    "ZipArchiveExtractor.swift",
-    "ZipDecompressionStrategy.swift",
 ]
 
-let archiveExcludedFiles = [
+let coreExcludedFiles = [
     "BsdiffPatchBridge.h",
     "BsdiffPatchBridge.mm",
     "CohortService.swift",
@@ -33,7 +28,7 @@ let archiveExcludedFiles = [
 ]
 
 let bsdiffPatchBridgeExcludedFiles =
-    archiveSources + archiveExcludedFiles.filter {
+    coreSources + coreExcludedFiles.filter {
         $0 != "BsdiffPatchBridge.h" && $0 != "BsdiffPatchBridge.mm"
     }
 
@@ -45,8 +40,8 @@ let package = Package(
     ],
     products: [
         .library(
-            name: "HotUpdaterArchive",
-            targets: ["HotUpdaterArchive"]
+            name: "HotUpdaterCore",
+            targets: ["HotUpdaterCore"]
         )
     ],
     dependencies: [],
@@ -71,19 +66,18 @@ let package = Package(
             ]
         ),
         // React Native's full native module cannot be built through SPM yet,
-        // but the pure-Swift archive extraction code can be.
+        // but the pure-Swift update core can be.
         .target(
-            name: "HotUpdaterArchive",
+            name: "HotUpdaterCore",
             dependencies: ["HotUpdaterBsdiffPatch"],
             path: "Internal",
-            exclude: archiveExcludedFiles,
-            sources: archiveSources
+            exclude: coreExcludedFiles,
+            sources: coreSources
         ),
         .testTarget(
             name: "HotUpdaterTest",
-            dependencies: ["HotUpdaterArchive", "HotUpdaterRecovery"],
-            path: "Test",
-            exclude: ["Fixtures"]
+            dependencies: ["HotUpdaterCore", "HotUpdaterRecovery"],
+            path: "Test"
         ),
     ]
 ) 

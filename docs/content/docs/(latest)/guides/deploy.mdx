@@ -32,7 +32,7 @@ Options:
   -t, --target-app-version <targetAppVersion>  specify the target app version (semver format e.g. 1.0.0, 1.x.x)
   -d, --disabled                               create the bundle disabled (default: false)
   -f, --force-update                           force update the app (default: false)
-  -o, --bundle-output-path <bundleOutputPath>  the directory where bundle archives will be generated
+  -o, --bundle-output-path <bundleOutputPath>  the directory where bundle artifacts will be generated
   -r, --rollout <percentage>                   specify the rollout percentage for the new bundle (0-100) (default: 100)
   -i, --interactive                            interactive mode (default: false)
   -c, --channel <channel>                      specify the channel to deploy (default: "production")
@@ -55,7 +55,7 @@ npx hot-updater deploy
 
 - This is the default mode for CI/CD pipelines when both platforms should move
   together.
-- Local bundle archives are written under platform-specific directories such as
+- Local bundle artifacts are written under platform-specific directories such as
   `<bundle-output-path>/ios/bundle/` and `<bundle-output-path>/android/bundle/`.
 
 ### Deployment Result
@@ -78,16 +78,15 @@ Interactive deploy opens that exact update in the console. Use this ID with
 
 ### Bundle Diffing
 
-New deployments automatically include the artifacts needed for bundle diffing
-alongside the archive bundle. When the app runtime supports manifest-based
-diffing, unchanged files can be reused locally and only changed files are
-downloaded. No deploy flag is required for this behavior.
+New deployments upload a manifest and its per-file artifacts. The runtime
+reuses matching files from the current OTA or built-in app and downloads only
+the remaining files. No deploy flag is required for this behavior.
 
 Hermes binary patch generation is enabled by default (`patch.enabled: true`).
 Deploy therefore also tries to prepare compatible `bsdiff` patches. Set
 `patch.enabled: false` only when you want to disable this optimization. Patch
 generation is best-effort; a skipped patch does not fail the deployment because
-the normal archive update remains available.
+the complete Hermes file remains available.
 
 See [Bundle Diffing](/docs/guides/bundle-diffing) for the runtime behavior and
 fallback rules.

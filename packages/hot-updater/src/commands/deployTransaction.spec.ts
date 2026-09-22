@@ -17,12 +17,12 @@ const createDeployment = (
   platform: Bundle["platform"],
 ): DeploymentWrite => ({
   bundle: {
-    archiveByteSize: 1024,
-    fileHash: `${id}-hash`,
+    assetBaseStorageUri: "storage://assets",
     gitCommitHash: null,
     id,
+    manifestFileHash: `${id}-manifest-hash`,
+    manifestStorageUri: `storage://bundle/${id}/manifest.json`,
     platform,
-    storageUri: `storage://bundle/${id}`,
   },
   release: {
     channel: "production",
@@ -101,7 +101,7 @@ describe("Release deployment transaction", () => {
       harness.plugin.models.bundles.findById(deployment.bundle.id),
     ).resolves.toMatchObject({
       id: deployment.bundle.id,
-      file_hash: deployment.bundle.fileHash,
+      manifest_file_hash: deployment.bundle.manifestFileHash,
     });
     await expect(
       harness.plugin.models.releases.findById(result.release!.id),

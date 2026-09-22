@@ -1,0 +1,450 @@
+{
+  "schemaVersion": 1,
+  "revision": "ec78756926cac3b23ca32c1d3acefe28d2ebb7ab",
+  "example": "examples/v0.85.0",
+  "buildSettings": {
+    "android": "Release AAB/APK; Hermes; Re.Pack native bundle; bare OTA bundle",
+    "ios": "Release iOS Simulator app; Hermes; Re.Pack native bundle; bare OTA bundle; code signing disabled"
+  },
+  "android": {
+    "releaseArtifacts": {
+      "aab": {
+        "byteSize": 43102057,
+        "sha256": "e717158a15e2dbe075d711c861e61bf4d784021cb213449d146ec7cc755dc980"
+      },
+      "apk": {
+        "byteSize": 59998110,
+        "sha256": "f209d214e08470068b44b8a337d8670c316667089e241348545504232e192a4c"
+      }
+    },
+    "deviceSpec": {
+      "supportedAbis": [
+        "arm64-v8a"
+      ],
+      "supportedLocales": [
+        "en"
+      ],
+      "screenDensity": 480,
+      "sdkVersion": 35
+    },
+    "installedSplits": [
+      "splits/base-arm64_v8a.apk",
+      "splits/base-en.apk",
+      "splits/base-master.apk",
+      "splits/base-xxhdpi.apk"
+    ],
+    "counts": {
+      "reusable": 5,
+      "missing": 12,
+      "mismatched": 1
+    },
+    "files": [
+      {
+        "logicalPath": "index.android.bundle",
+        "targetByteSize": 2281481,
+        "targetSha256": "e0e19a4fe17043a1c387bc32b7b6c1fa68d55e82b9e9aadbe28ac2455baecb3a",
+        "result": "mismatched",
+        "candidates": [
+          {
+            "source": "splits/base-master.apk!/assets/index.android.bundle",
+            "byteSize": 1873308,
+            "sha256": "372d37037b8ed379d39f3af843aa2cf20c5cc1766c59eb8ce0269c2c3dfec8ae"
+          }
+        ]
+      },
+      {
+        "logicalPath": "drawable-mdpi/node_modules_pnpm_reactnavigationelements2923_reactnavigationnative731_reactnative0852_b_7a7ab6e07887f718197a6b419294ea30_node_modules_reactnavigation_elements_lib_module_assets_backicon.png",
+        "targetByteSize": 100,
+        "targetSha256": "8b61a4c7ef70dc92753f0494976482f66fd4150ec23dfc772ab65e10373afa55",
+        "result": "missing",
+        "candidates": []
+      },
+      {
+        "logicalPath": "drawable-mdpi/node_modules_pnpm_reactnavigationelements2923_reactnavigationnative731_reactnative0852_b_7a7ab6e07887f718197a6b419294ea30_node_modules_reactnavigation_elements_lib_module_assets_backiconmask.png",
+        "targetByteSize": 653,
+        "targetSha256": "9adb8c5efca932e2b732b293da813bd2e31952263056bce9e2517fec0f0b6a76",
+        "result": "reusable",
+        "candidates": [
+          {
+            "source": "splits/base-master.apk!/res/drawable-mdpi-v4/node_modules_pnpm_reactnavigationelements2923_reactnavigationnative731_reactnative0852_b_7a7ab6e07887f718197a6b419294ea30_node_modules_reactnavigation_elements_lib_module_assets_backiconmask.png",
+            "byteSize": 653,
+            "sha256": "9adb8c5efca932e2b732b293da813bd2e31952263056bce9e2517fec0f0b6a76"
+          }
+        ]
+      },
+      {
+        "logicalPath": "drawable-mdpi/node_modules_pnpm_reactnavigationelements2923_reactnavigationnative731_reactnative0852_b_7a7ab6e07887f718197a6b419294ea30_node_modules_reactnavigation_elements_lib_module_assets_clearicon.png",
+        "targetByteSize": 220,
+        "targetSha256": "d03a5cd7a66ef10c5147916f9d5878b2d0a0a5ad46f405a31cd9967efaa55afd",
+        "result": "missing",
+        "candidates": []
+      },
+      {
+        "logicalPath": "drawable-mdpi/node_modules_pnpm_reactnavigationelements2923_reactnavigationnative731_reactnative0852_b_7a7ab6e07887f718197a6b419294ea30_node_modules_reactnavigation_elements_lib_module_assets_closeicon.png",
+        "targetByteSize": 141,
+        "targetSha256": "b1bc1810ca23e2c38cd76971c43591d726161061240d8b792b05757196ddb528",
+        "result": "missing",
+        "candidates": []
+      },
+      {
+        "logicalPath": "drawable-mdpi/node_modules_pnpm_reactnavigationelements2923_reactnavigationnative731_reactnative0852_b_7a7ab6e07887f718197a6b419294ea30_node_modules_reactnavigation_elements_lib_module_assets_searchicon.png",
+        "targetByteSize": 258,
+        "targetSha256": "ba722fb24bff0a4c52e656cdf205deac5c5df85e5bae2bf6d30713bd50c6d5f7",
+        "result": "missing",
+        "candidates": []
+      },
+      {
+        "logicalPath": "drawable-xhdpi/node_modules_pnpm_reactnavigationelements2923_reactnavigationnative731_reactnative0852_b_7a7ab6e07887f718197a6b419294ea30_node_modules_reactnavigation_elements_lib_module_assets_backicon.png",
+        "targetByteSize": 134,
+        "targetSha256": "906666dd689346ada232ce3689adef907b4257fa1b593f03638d2b9497f64884",
+        "result": "missing",
+        "candidates": []
+      },
+      {
+        "logicalPath": "drawable-xhdpi/node_modules_pnpm_reactnavigationelements2923_reactnavigationnative731_reactnative0852_b_7a7ab6e07887f718197a6b419294ea30_node_modules_reactnavigation_elements_lib_module_assets_clearicon.png",
+        "targetByteSize": 334,
+        "targetSha256": "ab5613d2ce70fa67c5926e831353664945199fc195fa6fe76c5fe3cec452e31a",
+        "result": "missing",
+        "candidates": []
+      },
+      {
+        "logicalPath": "drawable-xhdpi/node_modules_pnpm_reactnavigationelements2923_reactnavigationnative731_reactnative0852_b_7a7ab6e07887f718197a6b419294ea30_node_modules_reactnavigation_elements_lib_module_assets_closeicon.png",
+        "targetByteSize": 201,
+        "targetSha256": "cbdf9213e55f65c48d076acd8423b7c9aee4f1b81101ff6c95a38c4cd8a86461",
+        "result": "missing",
+        "candidates": []
+      },
+      {
+        "logicalPath": "drawable-xhdpi/node_modules_pnpm_reactnavigationelements2923_reactnavigationnative731_reactnative0852_b_7a7ab6e07887f718197a6b419294ea30_node_modules_reactnavigation_elements_lib_module_assets_searchicon.png",
+        "targetByteSize": 483,
+        "targetSha256": "5300f50be3659d17d8cee868ec4e6c0d3f4e89944fd5899d3c20f6a767a045f5",
+        "result": "missing",
+        "candidates": []
+      },
+      {
+        "logicalPath": "drawable-xxhdpi/node_modules_pnpm_reactnavigationelements2923_reactnavigationnative731_reactnative0852_b_7a7ab6e07887f718197a6b419294ea30_node_modules_reactnavigation_elements_lib_module_assets_backicon.png",
+        "targetByteSize": 167,
+        "targetSha256": "ffa7ee45b76405ba73921495008f7d68c9de6395f4b6941db063465f6e382320",
+        "result": "reusable",
+        "candidates": [
+          {
+            "source": "splits/base-xxhdpi.apk!/res/drawable-xxhdpi-v4/node_modules_pnpm_reactnavigationelements2923_reactnavigationnative731_reactnative0852_b_7a7ab6e07887f718197a6b419294ea30_node_modules_reactnavigation_elements_lib_module_assets_backicon.png",
+            "byteSize": 167,
+            "sha256": "ffa7ee45b76405ba73921495008f7d68c9de6395f4b6941db063465f6e382320"
+          }
+        ]
+      },
+      {
+        "logicalPath": "drawable-xxhdpi/node_modules_pnpm_reactnavigationelements2923_reactnavigationnative731_reactnative0852_b_7a7ab6e07887f718197a6b419294ea30_node_modules_reactnavigation_elements_lib_module_assets_clearicon.png",
+        "targetByteSize": 502,
+        "targetSha256": "c4e54e6a0a7de636aa153378fbc62ea4a41695bfedf807f90df7b18ffd733f67",
+        "result": "reusable",
+        "candidates": [
+          {
+            "source": "splits/base-xxhdpi.apk!/res/drawable-xxhdpi-v4/node_modules_pnpm_reactnavigationelements2923_reactnavigationnative731_reactnative0852_b_7a7ab6e07887f718197a6b419294ea30_node_modules_reactnavigation_elements_lib_module_assets_clearicon.png",
+            "byteSize": 502,
+            "sha256": "c4e54e6a0a7de636aa153378fbc62ea4a41695bfedf807f90df7b18ffd733f67"
+          }
+        ]
+      },
+      {
+        "logicalPath": "drawable-xxhdpi/node_modules_pnpm_reactnavigationelements2923_reactnavigationnative731_reactnative0852_b_7a7ab6e07887f718197a6b419294ea30_node_modules_reactnavigation_elements_lib_module_assets_closeicon.png",
+        "targetByteSize": 266,
+        "targetSha256": "d05c9d30d79f45a78e5585a2e7ec67c6a06a883dd9137e1d5059e8c87b33ce76",
+        "result": "reusable",
+        "candidates": [
+          {
+            "source": "splits/base-xxhdpi.apk!/res/drawable-xxhdpi-v4/node_modules_pnpm_reactnavigationelements2923_reactnavigationnative731_reactnative0852_b_7a7ab6e07887f718197a6b419294ea30_node_modules_reactnavigation_elements_lib_module_assets_closeicon.png",
+            "byteSize": 266,
+            "sha256": "d05c9d30d79f45a78e5585a2e7ec67c6a06a883dd9137e1d5059e8c87b33ce76"
+          }
+        ]
+      },
+      {
+        "logicalPath": "drawable-xxhdpi/node_modules_pnpm_reactnavigationelements2923_reactnavigationnative731_reactnative0852_b_7a7ab6e07887f718197a6b419294ea30_node_modules_reactnavigation_elements_lib_module_assets_searchicon.png",
+        "targetByteSize": 728,
+        "targetSha256": "6c8f11bfd1c7e22769dc135c16ecd0e053bb55554da88b9611d9cf71d12136f1",
+        "result": "reusable",
+        "candidates": [
+          {
+            "source": "splits/base-xxhdpi.apk!/res/drawable-xxhdpi-v4/node_modules_pnpm_reactnavigationelements2923_reactnavigationnative731_reactnative0852_b_7a7ab6e07887f718197a6b419294ea30_node_modules_reactnavigation_elements_lib_module_assets_searchicon.png",
+            "byteSize": 728,
+            "sha256": "6c8f11bfd1c7e22769dc135c16ecd0e053bb55554da88b9611d9cf71d12136f1"
+          }
+        ]
+      },
+      {
+        "logicalPath": "drawable-xxxhdpi/node_modules_pnpm_reactnavigationelements2923_reactnavigationnative731_reactnative0852_b_7a7ab6e07887f718197a6b419294ea30_node_modules_reactnavigation_elements_lib_module_assets_backicon.png",
+        "targetByteSize": 207,
+        "targetSha256": "84cf5eb3b20250f69e0e4733beb4da5f417f0682892a5ad1b5e62570753c21b1",
+        "result": "missing",
+        "candidates": []
+      },
+      {
+        "logicalPath": "drawable-xxxhdpi/node_modules_pnpm_reactnavigationelements2923_reactnavigationnative731_reactnative0852_b_7a7ab6e07887f718197a6b419294ea30_node_modules_reactnavigation_elements_lib_module_assets_clearicon.png",
+        "targetByteSize": 645,
+        "targetSha256": "c86bb485eee687e06c500fc4234f51a6784b4530c2ae11d0c76481110bce3105",
+        "result": "missing",
+        "candidates": []
+      },
+      {
+        "logicalPath": "drawable-xxxhdpi/node_modules_pnpm_reactnavigationelements2923_reactnavigationnative731_reactnative0852_b_7a7ab6e07887f718197a6b419294ea30_node_modules_reactnavigation_elements_lib_module_assets_closeicon.png",
+        "targetByteSize": 332,
+        "targetSha256": "2325c53a73e54c438cbbc60dffdd8b513d471ba42e2f56713ef404b95e0ca1fc",
+        "result": "missing",
+        "candidates": []
+      },
+      {
+        "logicalPath": "drawable-xxxhdpi/node_modules_pnpm_reactnavigationelements2923_reactnavigationnative731_reactnative0852_b_7a7ab6e07887f718197a6b419294ea30_node_modules_reactnavigation_elements_lib_module_assets_searchicon.png",
+        "targetByteSize": 928,
+        "targetSha256": "5d075e0c287c4f4441b5b5c8fc7ea5cd27c11bb617ecea09755955bcb1889083",
+        "result": "missing",
+        "candidates": []
+      }
+    ]
+  },
+  "ios": {
+    "app": "examples/v0.85.0/ios/build-m0/Build/Products/Release-iphonesimulator/HotUpdaterExample.app",
+    "counts": {
+      "reusable": 17,
+      "missing": 0,
+      "mismatched": 1
+    },
+    "files": [
+      {
+        "logicalPath": "index.ios.bundle",
+        "targetByteSize": 2280287,
+        "targetSha256": "ec399bbd612e24b4d45312359466ed5f15fca4297b904648b2bcae9e3944cab3",
+        "result": "mismatched",
+        "candidates": [
+          {
+            "source": "main.jsbundle",
+            "byteSize": 2280324,
+            "sha256": "bf9b66cef515d4abce3c08e6d760e7aa33d7a5caa181a09018a30789a314451b"
+          }
+        ]
+      },
+      {
+        "logicalPath": "assets/node_modules/.pnpm/@react-navigation+elements@2.9.23_@react-navigation+native@7.3.1_react-native@0.85.2_@b_7a7ab6e07887f718197a6b419294ea30/node_modules/@react-navigation/elements/lib/module/assets/back-icon-mask.png",
+        "targetByteSize": 653,
+        "targetSha256": "9adb8c5efca932e2b732b293da813bd2e31952263056bce9e2517fec0f0b6a76",
+        "result": "reusable",
+        "candidates": [
+          {
+            "source": "assets/node_modules/.pnpm/@react-navigation+elements@2.9.23_@react-navigation+native@7.3.1_react-native@0.85.2_@b_7a7ab6e07887f718197a6b419294ea30/node_modules/@react-navigation/elements/lib/module/assets/back-icon-mask.png",
+            "byteSize": 653,
+            "sha256": "9adb8c5efca932e2b732b293da813bd2e31952263056bce9e2517fec0f0b6a76"
+          }
+        ]
+      },
+      {
+        "logicalPath": "assets/node_modules/.pnpm/@react-navigation+elements@2.9.23_@react-navigation+native@7.3.1_react-native@0.85.2_@b_7a7ab6e07887f718197a6b419294ea30/node_modules/@react-navigation/elements/lib/module/assets/back-icon.png",
+        "targetByteSize": 290,
+        "targetSha256": "2cdfeb8e5ccde7976f7012fb8cce73af2229029ee21d4f1509fed114871c6cd8",
+        "result": "reusable",
+        "candidates": [
+          {
+            "source": "assets/node_modules/.pnpm/@react-navigation+elements@2.9.23_@react-navigation+native@7.3.1_react-native@0.85.2_@b_7a7ab6e07887f718197a6b419294ea30/node_modules/@react-navigation/elements/lib/module/assets/back-icon.png",
+            "byteSize": 290,
+            "sha256": "2cdfeb8e5ccde7976f7012fb8cce73af2229029ee21d4f1509fed114871c6cd8"
+          }
+        ]
+      },
+      {
+        "logicalPath": "assets/node_modules/.pnpm/@react-navigation+elements@2.9.23_@react-navigation+native@7.3.1_react-native@0.85.2_@b_7a7ab6e07887f718197a6b419294ea30/node_modules/@react-navigation/elements/lib/module/assets/back-icon@2x.png",
+        "targetByteSize": 405,
+        "targetSha256": "2b7443a9a58e92ca11a575bdc11598615a57dde305cd8ce70d602606b302cd98",
+        "result": "reusable",
+        "candidates": [
+          {
+            "source": "assets/node_modules/.pnpm/@react-navigation+elements@2.9.23_@react-navigation+native@7.3.1_react-native@0.85.2_@b_7a7ab6e07887f718197a6b419294ea30/node_modules/@react-navigation/elements/lib/module/assets/back-icon@2x.png",
+            "byteSize": 405,
+            "sha256": "2b7443a9a58e92ca11a575bdc11598615a57dde305cd8ce70d602606b302cd98"
+          }
+        ]
+      },
+      {
+        "logicalPath": "assets/node_modules/.pnpm/@react-navigation+elements@2.9.23_@react-navigation+native@7.3.1_react-native@0.85.2_@b_7a7ab6e07887f718197a6b419294ea30/node_modules/@react-navigation/elements/lib/module/assets/back-icon@3x.png",
+        "targetByteSize": 761,
+        "targetSha256": "3ddd0773ed27e23d25789f301731b3ac455ad8be5aa27a0a1b838f89c6d27225",
+        "result": "reusable",
+        "candidates": [
+          {
+            "source": "assets/node_modules/.pnpm/@react-navigation+elements@2.9.23_@react-navigation+native@7.3.1_react-native@0.85.2_@b_7a7ab6e07887f718197a6b419294ea30/node_modules/@react-navigation/elements/lib/module/assets/back-icon@3x.png",
+            "byteSize": 761,
+            "sha256": "3ddd0773ed27e23d25789f301731b3ac455ad8be5aa27a0a1b838f89c6d27225"
+          }
+        ]
+      },
+      {
+        "logicalPath": "assets/node_modules/.pnpm/@react-navigation+elements@2.9.23_@react-navigation+native@7.3.1_react-native@0.85.2_@b_7a7ab6e07887f718197a6b419294ea30/node_modules/@react-navigation/elements/lib/module/assets/back-icon@4x.png",
+        "targetByteSize": 809,
+        "targetSha256": "92ed8176ac8cb44362a5fc6a3703626a0006ac6b7cb272ee99f5850262ec070e",
+        "result": "reusable",
+        "candidates": [
+          {
+            "source": "assets/node_modules/.pnpm/@react-navigation+elements@2.9.23_@react-navigation+native@7.3.1_react-native@0.85.2_@b_7a7ab6e07887f718197a6b419294ea30/node_modules/@react-navigation/elements/lib/module/assets/back-icon@4x.png",
+            "byteSize": 809,
+            "sha256": "92ed8176ac8cb44362a5fc6a3703626a0006ac6b7cb272ee99f5850262ec070e"
+          }
+        ]
+      },
+      {
+        "logicalPath": "assets/node_modules/.pnpm/@react-navigation+elements@2.9.23_@react-navigation+native@7.3.1_react-native@0.85.2_@b_7a7ab6e07887f718197a6b419294ea30/node_modules/@react-navigation/elements/lib/module/assets/clear-icon.png",
+        "targetByteSize": 220,
+        "targetSha256": "d03a5cd7a66ef10c5147916f9d5878b2d0a0a5ad46f405a31cd9967efaa55afd",
+        "result": "reusable",
+        "candidates": [
+          {
+            "source": "assets/node_modules/.pnpm/@react-navigation+elements@2.9.23_@react-navigation+native@7.3.1_react-native@0.85.2_@b_7a7ab6e07887f718197a6b419294ea30/node_modules/@react-navigation/elements/lib/module/assets/clear-icon.png",
+            "byteSize": 220,
+            "sha256": "d03a5cd7a66ef10c5147916f9d5878b2d0a0a5ad46f405a31cd9967efaa55afd"
+          }
+        ]
+      },
+      {
+        "logicalPath": "assets/node_modules/.pnpm/@react-navigation+elements@2.9.23_@react-navigation+native@7.3.1_react-native@0.85.2_@b_7a7ab6e07887f718197a6b419294ea30/node_modules/@react-navigation/elements/lib/module/assets/clear-icon@2x.png",
+        "targetByteSize": 334,
+        "targetSha256": "ab5613d2ce70fa67c5926e831353664945199fc195fa6fe76c5fe3cec452e31a",
+        "result": "reusable",
+        "candidates": [
+          {
+            "source": "assets/node_modules/.pnpm/@react-navigation+elements@2.9.23_@react-navigation+native@7.3.1_react-native@0.85.2_@b_7a7ab6e07887f718197a6b419294ea30/node_modules/@react-navigation/elements/lib/module/assets/clear-icon@2x.png",
+            "byteSize": 334,
+            "sha256": "ab5613d2ce70fa67c5926e831353664945199fc195fa6fe76c5fe3cec452e31a"
+          }
+        ]
+      },
+      {
+        "logicalPath": "assets/node_modules/.pnpm/@react-navigation+elements@2.9.23_@react-navigation+native@7.3.1_react-native@0.85.2_@b_7a7ab6e07887f718197a6b419294ea30/node_modules/@react-navigation/elements/lib/module/assets/clear-icon@3x.png",
+        "targetByteSize": 502,
+        "targetSha256": "c4e54e6a0a7de636aa153378fbc62ea4a41695bfedf807f90df7b18ffd733f67",
+        "result": "reusable",
+        "candidates": [
+          {
+            "source": "assets/node_modules/.pnpm/@react-navigation+elements@2.9.23_@react-navigation+native@7.3.1_react-native@0.85.2_@b_7a7ab6e07887f718197a6b419294ea30/node_modules/@react-navigation/elements/lib/module/assets/clear-icon@3x.png",
+            "byteSize": 502,
+            "sha256": "c4e54e6a0a7de636aa153378fbc62ea4a41695bfedf807f90df7b18ffd733f67"
+          }
+        ]
+      },
+      {
+        "logicalPath": "assets/node_modules/.pnpm/@react-navigation+elements@2.9.23_@react-navigation+native@7.3.1_react-native@0.85.2_@b_7a7ab6e07887f718197a6b419294ea30/node_modules/@react-navigation/elements/lib/module/assets/clear-icon@4x.png",
+        "targetByteSize": 645,
+        "targetSha256": "c86bb485eee687e06c500fc4234f51a6784b4530c2ae11d0c76481110bce3105",
+        "result": "reusable",
+        "candidates": [
+          {
+            "source": "assets/node_modules/.pnpm/@react-navigation+elements@2.9.23_@react-navigation+native@7.3.1_react-native@0.85.2_@b_7a7ab6e07887f718197a6b419294ea30/node_modules/@react-navigation/elements/lib/module/assets/clear-icon@4x.png",
+            "byteSize": 645,
+            "sha256": "c86bb485eee687e06c500fc4234f51a6784b4530c2ae11d0c76481110bce3105"
+          }
+        ]
+      },
+      {
+        "logicalPath": "assets/node_modules/.pnpm/@react-navigation+elements@2.9.23_@react-navigation+native@7.3.1_react-native@0.85.2_@b_7a7ab6e07887f718197a6b419294ea30/node_modules/@react-navigation/elements/lib/module/assets/close-icon.png",
+        "targetByteSize": 141,
+        "targetSha256": "b1bc1810ca23e2c38cd76971c43591d726161061240d8b792b05757196ddb528",
+        "result": "reusable",
+        "candidates": [
+          {
+            "source": "assets/node_modules/.pnpm/@react-navigation+elements@2.9.23_@react-navigation+native@7.3.1_react-native@0.85.2_@b_7a7ab6e07887f718197a6b419294ea30/node_modules/@react-navigation/elements/lib/module/assets/close-icon.png",
+            "byteSize": 141,
+            "sha256": "b1bc1810ca23e2c38cd76971c43591d726161061240d8b792b05757196ddb528"
+          }
+        ]
+      },
+      {
+        "logicalPath": "assets/node_modules/.pnpm/@react-navigation+elements@2.9.23_@react-navigation+native@7.3.1_react-native@0.85.2_@b_7a7ab6e07887f718197a6b419294ea30/node_modules/@react-navigation/elements/lib/module/assets/close-icon@2x.png",
+        "targetByteSize": 201,
+        "targetSha256": "cbdf9213e55f65c48d076acd8423b7c9aee4f1b81101ff6c95a38c4cd8a86461",
+        "result": "reusable",
+        "candidates": [
+          {
+            "source": "assets/node_modules/.pnpm/@react-navigation+elements@2.9.23_@react-navigation+native@7.3.1_react-native@0.85.2_@b_7a7ab6e07887f718197a6b419294ea30/node_modules/@react-navigation/elements/lib/module/assets/close-icon@2x.png",
+            "byteSize": 201,
+            "sha256": "cbdf9213e55f65c48d076acd8423b7c9aee4f1b81101ff6c95a38c4cd8a86461"
+          }
+        ]
+      },
+      {
+        "logicalPath": "assets/node_modules/.pnpm/@react-navigation+elements@2.9.23_@react-navigation+native@7.3.1_react-native@0.85.2_@b_7a7ab6e07887f718197a6b419294ea30/node_modules/@react-navigation/elements/lib/module/assets/close-icon@3x.png",
+        "targetByteSize": 266,
+        "targetSha256": "d05c9d30d79f45a78e5585a2e7ec67c6a06a883dd9137e1d5059e8c87b33ce76",
+        "result": "reusable",
+        "candidates": [
+          {
+            "source": "assets/node_modules/.pnpm/@react-navigation+elements@2.9.23_@react-navigation+native@7.3.1_react-native@0.85.2_@b_7a7ab6e07887f718197a6b419294ea30/node_modules/@react-navigation/elements/lib/module/assets/close-icon@3x.png",
+            "byteSize": 266,
+            "sha256": "d05c9d30d79f45a78e5585a2e7ec67c6a06a883dd9137e1d5059e8c87b33ce76"
+          }
+        ]
+      },
+      {
+        "logicalPath": "assets/node_modules/.pnpm/@react-navigation+elements@2.9.23_@react-navigation+native@7.3.1_react-native@0.85.2_@b_7a7ab6e07887f718197a6b419294ea30/node_modules/@react-navigation/elements/lib/module/assets/close-icon@4x.png",
+        "targetByteSize": 332,
+        "targetSha256": "2325c53a73e54c438cbbc60dffdd8b513d471ba42e2f56713ef404b95e0ca1fc",
+        "result": "reusable",
+        "candidates": [
+          {
+            "source": "assets/node_modules/.pnpm/@react-navigation+elements@2.9.23_@react-navigation+native@7.3.1_react-native@0.85.2_@b_7a7ab6e07887f718197a6b419294ea30/node_modules/@react-navigation/elements/lib/module/assets/close-icon@4x.png",
+            "byteSize": 332,
+            "sha256": "2325c53a73e54c438cbbc60dffdd8b513d471ba42e2f56713ef404b95e0ca1fc"
+          }
+        ]
+      },
+      {
+        "logicalPath": "assets/node_modules/.pnpm/@react-navigation+elements@2.9.23_@react-navigation+native@7.3.1_react-native@0.85.2_@b_7a7ab6e07887f718197a6b419294ea30/node_modules/@react-navigation/elements/lib/module/assets/search-icon.png",
+        "targetByteSize": 317,
+        "targetSha256": "dc56b976bd45638e1125f6689743525e6886ae0bef2c8f4651994833685a831f",
+        "result": "reusable",
+        "candidates": [
+          {
+            "source": "assets/node_modules/.pnpm/@react-navigation+elements@2.9.23_@react-navigation+native@7.3.1_react-native@0.85.2_@b_7a7ab6e07887f718197a6b419294ea30/node_modules/@react-navigation/elements/lib/module/assets/search-icon.png",
+            "byteSize": 317,
+            "sha256": "dc56b976bd45638e1125f6689743525e6886ae0bef2c8f4651994833685a831f"
+          }
+        ]
+      },
+      {
+        "logicalPath": "assets/node_modules/.pnpm/@react-navigation+elements@2.9.23_@react-navigation+native@7.3.1_react-native@0.85.2_@b_7a7ab6e07887f718197a6b419294ea30/node_modules/@react-navigation/elements/lib/module/assets/search-icon@2x.png",
+        "targetByteSize": 589,
+        "targetSha256": "ef13fc0dfc52ec23817585fd7e109fbdf593a3b2549c40ce71ac9b0eda12cc2c",
+        "result": "reusable",
+        "candidates": [
+          {
+            "source": "assets/node_modules/.pnpm/@react-navigation+elements@2.9.23_@react-navigation+native@7.3.1_react-native@0.85.2_@b_7a7ab6e07887f718197a6b419294ea30/node_modules/@react-navigation/elements/lib/module/assets/search-icon@2x.png",
+            "byteSize": 589,
+            "sha256": "ef13fc0dfc52ec23817585fd7e109fbdf593a3b2549c40ce71ac9b0eda12cc2c"
+          }
+        ]
+      },
+      {
+        "logicalPath": "assets/node_modules/.pnpm/@react-navigation+elements@2.9.23_@react-navigation+native@7.3.1_react-native@0.85.2_@b_7a7ab6e07887f718197a6b419294ea30/node_modules/@react-navigation/elements/lib/module/assets/search-icon@3x.png",
+        "targetByteSize": 839,
+        "targetSha256": "b434a7cf18c2d4ce747c70942ea2fee2d4412d93967ed92b372f810bb9261ea5",
+        "result": "reusable",
+        "candidates": [
+          {
+            "source": "assets/node_modules/.pnpm/@react-navigation+elements@2.9.23_@react-navigation+native@7.3.1_react-native@0.85.2_@b_7a7ab6e07887f718197a6b419294ea30/node_modules/@react-navigation/elements/lib/module/assets/search-icon@3x.png",
+            "byteSize": 839,
+            "sha256": "b434a7cf18c2d4ce747c70942ea2fee2d4412d93967ed92b372f810bb9261ea5"
+          }
+        ]
+      },
+      {
+        "logicalPath": "assets/node_modules/.pnpm/@react-navigation+elements@2.9.23_@react-navigation+native@7.3.1_react-native@0.85.2_@b_7a7ab6e07887f718197a6b419294ea30/node_modules/@react-navigation/elements/lib/module/assets/search-icon@4x.png",
+        "targetByteSize": 589,
+        "targetSha256": "ef13fc0dfc52ec23817585fd7e109fbdf593a3b2549c40ce71ac9b0eda12cc2c",
+        "result": "reusable",
+        "candidates": [
+          {
+            "source": "assets/node_modules/.pnpm/@react-navigation+elements@2.9.23_@react-navigation+native@7.3.1_react-native@0.85.2_@b_7a7ab6e07887f718197a6b419294ea30/node_modules/@react-navigation/elements/lib/module/assets/search-icon@4x.png",
+            "byteSize": 589,
+            "sha256": "ef13fc0dfc52ec23817585fd7e109fbdf593a3b2549c40ce71ac9b0eda12cc2c"
+          }
+        ]
+      }
+    ]
+  }
+}

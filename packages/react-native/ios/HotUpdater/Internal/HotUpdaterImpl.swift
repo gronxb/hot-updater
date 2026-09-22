@@ -61,6 +61,21 @@ private func hotUpdaterGetMinBundleId() -> String {
     private static let DEFAULT_CHANNEL = "production"
     private static let CHANNEL_STORAGE_KEY = "HotUpdaterChannel"
 
+    private static func parseSafeByteSize(_ value: Any?) -> Int64? {
+        guard let number = value as? NSNumber,
+              String(cString: number.objCType) != "c" else {
+            return nil
+        }
+        let doubleValue = number.doubleValue
+        guard doubleValue.isFinite,
+              doubleValue >= 0,
+              doubleValue <= 9_007_199_254_740_991,
+              doubleValue.rounded(.towardZero) == doubleValue else {
+            return nil
+        }
+        return Int64(doubleValue)
+    }
+
     // MARK: - Initialization
 
     /**
@@ -71,12 +86,9 @@ private func hotUpdaterGetMinBundleId() -> String {
         let isolationKey = HotUpdaterImpl.getIsolationKey()
         let preferences = VersionedPreferencesService()
         let downloadService = URLSessionDownloadService()
-        let decompressService = DecompressService()
-
         let bundleStorage = BundleFileStorageService(
             fileSystem: fileSystem,
             downloadService: downloadService,
-            decompressService: decompressService,
             preferences: preferences,
             isolationKey: isolationKey,
             builtInBundleIdProvider: { HotUpdaterImpl.minBundleId() }
@@ -231,7 +243,7 @@ private func hotUpdaterGetMinBundleId() -> String {
     /**
      * Updates the bundle from JavaScript bridge.
      * This method acts as the primary error boundary for all bundle operations.
-     * @param params Dictionary with bundleId and fileUrl parameters
+     * @param params Dictionary with bundleId, manifest, and asset parameters
      * @param resolve Promise resolve callback
      * @param reject Promise reject callback
      */
@@ -255,36 +267,40 @@ private func hotUpdaterGetMinBundleId() -> String {
                 return
             }
 
-            let fileUrlString = data["fileUrl"] as? String ?? ""
-
-            var fileUrl: URL? = nil
-            if !fileUrlString.isEmpty {
-                guard let url = URL(string: fileUrlString) else {
-                    let error = NSError(domain: "HotUpdater", code: 0,
-                                       userInfo: [NSLocalizedDescriptionKey: "Invalid 'fileUrl' provided: \(fileUrlString)"])
-                    reject("INVALID_FILE_URL", error.localizedDescription, error)
-                    return
-                }
-                fileUrl = url
+            guard let manifestFileHash = data["manifestFileHash"] as? String,
+                  !manifestFileHash.isEmpty else {
+                let error = NSError(domain: "HotUpdater", code: 0,
+                                   userInfo: [NSLocalizedDescriptionKey: "Missing manifest file hash"])
+                reject("INVALID_MANIFEST", error.localizedDescription, error)
+                return
             }
-
-            // Extract fileHash if provided
-            let fileHash = data["fileHash"] as? String
-            let manifestFileHash = data["manifestFileHash"] as? String
             let channel = data["channel"] as? String
             let manifestUrlString = data["manifestUrl"] as? String ?? ""
-            var manifestUrl: URL? = nil
-            if !manifestUrlString.isEmpty {
-                guard let url = URL(string: manifestUrlString) else {
+            guard let manifestUrl = URL(string: manifestUrlString) else {
+                let error = NSError(domain: "HotUpdater", code: 0,
+                                   userInfo: [NSLocalizedDescriptionKey: "Invalid 'manifestUrl' provided: \(manifestUrlString)"])
+                reject("INVALID_FILE_URL", error.localizedDescription, error)
+                return
+            }
+            let archiveUrl: URL?
+            if let archiveUrlString = data["archiveUrl"] as? String {
+                guard let parsedArchiveUrl = URL(string: archiveUrlString) else {
                     let error = NSError(domain: "HotUpdater", code: 0,
-                                       userInfo: [NSLocalizedDescriptionKey: "Invalid 'manifestUrl' provided: \(manifestUrlString)"])
+                                       userInfo: [NSLocalizedDescriptionKey: "Invalid 'archiveUrl' provided: \(archiveUrlString)"])
                     reject("INVALID_FILE_URL", error.localizedDescription, error)
                     return
                 }
-                manifestUrl = url
+                archiveUrl = parsedArchiveUrl
+            } else {
+                archiveUrl = nil
             }
-            let changedAssetsPayload = data["changedAssets"] as? [String: [String: Any]]
-            let changedAssets = changedAssetsPayload?.reduce(into: [String: ChangedAssetDescriptor]()) { partialResult, entry in
+            guard let assetsPayload = data["assets"] as? [String: [String: Any]] else {
+                let error = NSError(domain: "HotUpdater", code: 0,
+                                   userInfo: [NSLocalizedDescriptionKey: "Missing manifest assets"])
+                reject("INVALID_MANIFEST", error.localizedDescription, error)
+                return
+            }
+            let assets = assetsPayload.reduce(into: [String: ChangedAssetDescriptor]()) { partialResult, entry in
                 guard let fileHash = entry.value["fileHash"] as? String,
                       !fileHash.isEmpty
                 else {
@@ -308,7 +324,8 @@ private func hotUpdaterGetMinBundleId() -> String {
                         baseBundleId: baseBundleId,
                         baseFileHash: baseFileHash,
                         patchFileHash: patchFileHash,
-                        patchUrl: patchUrl
+                        patchUrl: patchUrl,
+                        byteSize: Self.parseSafeByteSize(payload["byteSize"])
                     )
                 }
                 let filePayload = entry.value["file"] as? [String: Any]
@@ -339,10 +356,10 @@ private func hotUpdaterGetMinBundleId() -> String {
             // Extract progress callback if provided
             let progressCallback = data["progressCallback"] as? RCTResponseSenderBlock
 
-            NSLog("[HotUpdaterImpl] updateBundle called with bundleId: \(bundleId), fileUrl: \(fileUrl?.absoluteString ?? "nil"), fileHash: \(fileHash ?? "nil")")
+            NSLog("[HotUpdaterImpl] updateBundle called with bundleId: \(bundleId), manifestUrl: \(manifestUrl.absoluteString)")
 
             // Heavy work is delegated to bundle storage service with safe error handling
-            bundleStorage.updateBundle(bundleId: bundleId, fileUrl: fileUrl, fileHash: fileHash, manifestUrl: manifestUrl, manifestFileHash: manifestFileHash, changedAssets: changedAssets, progressHandler: { payload in
+            bundleStorage.updateBundle(bundleId: bundleId, manifestUrl: manifestUrl, manifestFileHash: manifestFileHash, archiveUrl: archiveUrl, assets: assets, progressHandler: { payload in
                 DispatchQueue.main.async {
                     NotificationCenter.default.post(
                         name: .updateProgressDidChange,
@@ -544,7 +561,6 @@ private func hotUpdaterGetMinBundleId() -> String {
         "DIRECTORY_CREATION_FAILED",
         "DOWNLOAD_FAILED",
         "INCOMPLETE_DOWNLOAD",
-        "EXTRACTION_FORMAT_ERROR",
         "INVALID_BUNDLE",
         "INSUFFICIENT_DISK_SPACE",
         "SIGNATURE_VERIFICATION_FAILED",
@@ -614,7 +630,7 @@ private func hotUpdaterGetMinBundleId() -> String {
 
     /**
      * Gets the current active bundle ID from bundle storage.
-     * Reads manifest.json first and falls back to the legacy BUNDLE_ID file.
+     * Reads the required OTA manifest.json.
      * Built-in bundle fallback is handled in JS.
      */
     public func getBundleId() -> String? {

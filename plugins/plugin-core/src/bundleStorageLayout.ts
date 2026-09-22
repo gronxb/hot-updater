@@ -1,3 +1,5 @@
+import { replaceStorageUriKeySuffix } from "./assetStorageLayout";
+
 export const BUNDLE_STORAGE_PREFIX = "bundles";
 
 export const createBundleStorageKey = (
@@ -5,6 +7,19 @@ export const createBundleStorageKey = (
   ...relativePaths: string[]
 ) =>
   [BUNDLE_STORAGE_PREFIX, bundleId, ...relativePaths].filter(Boolean).join("/");
+
+export const getBundleArchiveStorageUri = ({
+  manifestStorageUri,
+  bundleId,
+}: {
+  manifestStorageUri: string;
+  bundleId: string;
+}) =>
+  replaceStorageUriKeySuffix({
+    storageUri: manifestStorageUri,
+    keySuffix: createBundleStorageKey(bundleId, "manifest.json"),
+    replacement: createBundleStorageKey(bundleId, "bundle.tar.br"),
+  });
 
 export const createStorageRootUriWithPath = (
   storageUri: string,

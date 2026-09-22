@@ -42,7 +42,7 @@ export const registerDatabasePluginBundleTests = (
           operation: "update",
           where: { id: row.id },
           update: {
-            git_commit_hash: null,
+            git_commit_hash: "updated-commit",
             manifest_storage_uri: "storage://manifests/2.json",
             metadata: { flags: [] },
           },
@@ -52,10 +52,10 @@ export const registerDatabasePluginBundleTests = (
         plugin.models.bundles.findById(row.id),
       ).resolves.toMatchObject({
         id: row.id,
-        git_commit_hash: null,
+        git_commit_hash: "updated-commit",
         manifest_storage_uri: "storage://manifests/2.json",
         metadata: { flags: [] },
-        file_hash: row.file_hash,
+        manifest_file_hash: row.manifest_file_hash,
       });
 
       await expect(
@@ -63,11 +63,12 @@ export const registerDatabasePluginBundleTests = (
           model: "bundles",
           operation: "update",
           where: { id: row.id },
-          update: { manifest_storage_uri: null },
+          update: { git_commit_hash: null },
         }),
       ).resolves.toEqual({ committed: true });
       await expect(plugin.models.bundles.findById(row.id)).resolves.toEqual({
         ...row,
+        manifest_storage_uri: "storage://manifests/2.json",
         metadata: { flags: [] },
       });
     });
@@ -106,7 +107,7 @@ export const registerDatabasePluginBundleTests = (
           model: "bundles",
           operation: "update",
           where: { id: "ffffffff-ffff-ffff-ffff-ffffffffffff" },
-          update: { storage_uri: "storage://missing.zip" },
+          update: { manifest_storage_uri: "storage://missing/manifest.json" },
         }),
       ).resolves.toEqual({
         committed: false,

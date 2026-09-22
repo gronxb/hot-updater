@@ -216,11 +216,10 @@ class HotUpdaterImplTest {
 
         override suspend fun updateBundle(
             bundleId: String,
-            fileUrl: String?,
-            fileHash: String?,
-            manifestUrl: String?,
-            manifestFileHash: String?,
-            changedAssets: Map<String, ChangedAssetDescriptor>?,
+            manifestUrl: String,
+            manifestFileHash: String,
+            assets: Map<String, ChangedAssetDescriptor>,
+            archiveUrl: String?,
             progressCallback: (UpdateProgressPayload) -> Unit,
         ) = Unit
 

@@ -87,14 +87,12 @@ const DOWNLOAD_HASH = "e".repeat(64);
 const ORPHAN_PATCH_KEY = `bundles/${LIVE_BUNDLE_ID}/patches/${DEAD_BUNDLE_ID}/index.ios.bundle.bsdiff`;
 
 const liveBundle: Bundle = {
-  archiveByteSize: 100,
   assetBaseStorageUri: "s3://bucket/assets",
-  fileHash: "archive-hash",
   gitCommitHash: null,
   id: LIVE_BUNDLE_ID,
+  manifestFileHash: "manifest-hash",
   manifestStorageUri: `s3://bucket/bundles/${LIVE_BUNDLE_ID}/manifest.json`,
   platform: "ios",
-  storageUri: `s3://bucket/bundles/${LIVE_BUNDLE_ID}/bundle.zip`,
 };
 
 const object = (
@@ -194,8 +192,8 @@ describe("handleStoragePrune", () => {
         `assets/sha256/${YOUNG_ORPHAN_HASH.slice(0, 2)}/${YOUNG_ORPHAN_HASH}.png`,
         young,
       ),
-      object(`bundles/${LIVE_BUNDLE_ID}/bundle.zip`, old),
-      object(`bundles/${DEAD_BUNDLE_ID}/bundle.zip`, old, 40),
+      object(`bundles/${LIVE_BUNDLE_ID}/bundle.tar.br`, old),
+      object(`bundles/${DEAD_BUNDLE_ID}/bundle.tar.br`, old, 40),
       object(`bundles/${LIVE_BUNDLE_ID}/manifest.json`, old),
       object(`bundles/${DEAD_BUNDLE_ID}/manifest.json`, old, 50),
       object("production/ios/1.0.0/update.json", old),
@@ -216,7 +214,7 @@ describe("handleStoragePrune", () => {
     expect(mockStorageNode.deleteObjects).toHaveBeenCalledOnce();
     expect(mockStorageNode.deleteObjects).toHaveBeenCalledWith([
       `assets/sha256/${ORPHAN_HASH.slice(0, 2)}/${ORPHAN_HASH}.png`,
-      `bundles/${DEAD_BUNDLE_ID}/bundle.zip`,
+      `bundles/${DEAD_BUNDLE_ID}/bundle.tar.br`,
       `bundles/${DEAD_BUNDLE_ID}/manifest.json`,
     ]);
     expect(mockCli.p.log.success).toHaveBeenCalledWith(
@@ -364,14 +362,14 @@ describe("handleStoragePrune", () => {
     expect(output).toContain(
       `assets/sha256/${ORPHAN_HASH.slice(0, 2)}/${ORPHAN_HASH}.png`,
     );
-    expect(output).toContain(`bundles/${DEAD_BUNDLE_ID}/bundle.zip`);
+    expect(output).toContain(`bundles/${DEAD_BUNDLE_ID}/bundle.tar.br`);
     expect(output).toContain(`bundles/${DEAD_BUNDLE_ID}/manifest.json`);
     expect(output).toContain("shared asset");
     expect(output).toContain("bundle data");
     expect(output).toContain("30 B");
     expect(output).toContain(old.toISOString());
     expect(output).not.toContain(YOUNG_ORPHAN_HASH);
-    expect(output).not.toContain(`bundles/${LIVE_BUNDLE_ID}/bundle.zip`);
+    expect(output).not.toContain(`bundles/${LIVE_BUNDLE_ID}/bundle.tar.br`);
     expect(mockCli.p.log.info).toHaveBeenCalledWith(
       expect.stringContaining("Dry run only"),
     );
@@ -440,7 +438,7 @@ describe("handleStoragePrune", () => {
     await handleStoragePrune({ yes: true });
 
     expect(mockStorageNode.deleteObjects).toHaveBeenCalledWith([
-      `bundles/${DEAD_BUNDLE_ID}/bundle.zip`,
+      `bundles/${DEAD_BUNDLE_ID}/bundle.tar.br`,
       `bundles/${DEAD_BUNDLE_ID}/manifest.json`,
     ]);
   });
@@ -476,7 +474,7 @@ describe("handleStoragePrune", () => {
     const uuidChannelMetadata = `${DEAD_BUNDLE_ID}/ios/1.0.0/update.json`;
     mockStorageNode.listObjects.mockResolvedValue([
       object(uuidChannelMetadata, old),
-      object(`${DEAD_BUNDLE_ID}/bundle.zip`, old),
+      object(`${DEAD_BUNDLE_ID}/bundle.tar.br`, old),
     ]);
     const { handleStoragePrune } = await import("./storage");
 

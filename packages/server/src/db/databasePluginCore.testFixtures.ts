@@ -6,12 +6,8 @@ import {
 
 export const currentBundle: Bundle = {
   id: "00000000-0000-0000-0000-000000000001",
-  fileHash: "current-archive-hash",
   gitCommitHash: null,
   platform: "ios",
-  storageUri:
-    "r2://bucket/bundles/00000000-0000-0000-0000-000000000001/archive.zip",
-  archiveByteSize: 3_000_000_001,
   manifestStorageUri:
     "r2://bucket/bundles/00000000-0000-0000-0000-000000000001/manifest.json",
   manifestFileHash: "sig:current-manifest",
@@ -21,9 +17,6 @@ export const currentBundle: Bundle = {
 export const targetBundle: Bundle = {
   ...currentBundle,
   id: "00000000-0000-0000-0000-000000000002",
-  fileHash: "target-archive-hash",
-  storageUri:
-    "r2://bucket/bundles/00000000-0000-0000-0000-000000000002/archive.zip",
   manifestStorageUri:
     "r2://bucket/bundles/00000000-0000-0000-0000-000000000002/manifest.json",
   manifestFileHash: "sig:target-manifest",

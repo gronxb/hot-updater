@@ -24,24 +24,6 @@ describe("parseMongoBundleRow", () => {
       }),
     ).toThrow("Invalid MongoDB plugin data");
   });
-
-  it("preserves safe archive sizes above 2 GiB", () => {
-    expect(parseMongoBundleRow(createBundleRowFixture("large"))).toMatchObject({
-      archive_byte_size: 3_000_000_001,
-    });
-  });
-
-  it.each([-1, 1.5, Number.MAX_SAFE_INTEGER + 1, Number.NaN])(
-    "rejects invalid archive size %s",
-    (archiveByteSize) => {
-      expect(() =>
-        parseMongoBundleRow({
-          ...createBundleRowFixture("invalid-size"),
-          archive_byte_size: archiveByteSize,
-        }),
-      ).toThrow("Invalid MongoDB plugin data");
-    },
-  );
 });
 
 describe("parseMongoPatchRow", () => {

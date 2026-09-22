@@ -106,6 +106,7 @@ describe("IAMManager DynamoDB access", () => {
               "_hot-updater#insights-bundle#*",
               "_hot-updater#insights-user#*",
               "_hot-updater#insights-scope#*",
+              "_hot-updater#insights-overview#*",
               "api_keys",
               "_hot-updater#api-key-hashes",
             ],

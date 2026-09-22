@@ -16,14 +16,11 @@ const state = vi.hoisted<{
 const bundleD1Row = {
   id: "bundle-1",
   platform: "ios",
-  file_hash: "hash",
   git_commit_hash: null,
-  storage_uri: "storage://bundle",
-  archive_byte_size: 3_000_000_001,
   metadata: '{"version":1}',
-  manifest_storage_uri: null,
-  manifest_file_hash: null,
-  asset_base_storage_uri: null,
+  manifest_storage_uri: "storage://bundle/manifest.json",
+  manifest_file_hash: "manifest-hash",
+  asset_base_storage_uri: "storage://assets",
 } as const;
 
 const eventD1Row = {

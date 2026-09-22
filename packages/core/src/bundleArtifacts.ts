@@ -5,16 +5,15 @@ export const stripBundleArtifactMetadata = (
 ): BundleMetadata | undefined => metadata;
 
 export const getManifestStorageUri = (
-  bundle: Pick<Bundle, "manifestStorageUri" | "metadata">,
-) => bundle.manifestStorageUri ?? null;
+  bundle: Pick<Bundle, "manifestStorageUri">,
+) => bundle.manifestStorageUri;
 
-export const getManifestFileHash = (
-  bundle: Pick<Bundle, "manifestFileHash" | "metadata">,
-) => bundle.manifestFileHash ?? null;
+export const getManifestFileHash = (bundle: Pick<Bundle, "manifestFileHash">) =>
+  bundle.manifestFileHash;
 
 export const getAssetBaseStorageUri = (
-  bundle: Pick<Bundle, "assetBaseStorageUri" | "metadata">,
-) => bundle.assetBaseStorageUri ?? null;
+  bundle: Pick<Bundle, "assetBaseStorageUri">,
+) => bundle.assetBaseStorageUri;
 
 const isBundlePatchArtifact = (
   value: unknown,

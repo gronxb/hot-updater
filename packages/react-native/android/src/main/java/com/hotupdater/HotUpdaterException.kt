@@ -17,12 +17,6 @@ class HotUpdaterException(
                 "Missing or empty 'bundleId'",
             )
 
-        fun invalidFileUrl() =
-            HotUpdaterException(
-                "INVALID_FILE_URL",
-                "Invalid 'fileUrl' provided",
-            )
-
         // Bundle storage errors
         fun directoryCreationFailed() =
             HotUpdaterException(
@@ -44,13 +38,6 @@ class HotUpdaterException(
             "INCOMPLETE_DOWNLOAD",
             "Download incomplete: received $actualSize bytes, expected $expectedSize bytes",
         )
-
-        fun extractionFormatError(cause: Throwable? = null) =
-            HotUpdaterException(
-                "EXTRACTION_FORMAT_ERROR",
-                "The downloaded bundle file is not a valid compressed archive",
-                cause,
-            )
 
         fun invalidBundle() =
             HotUpdaterException(

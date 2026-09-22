@@ -43,14 +43,14 @@ describe("createDatabasePluginCore", () => {
     const core = createDatabasePluginCore(plugin, resolveFileUrl);
     await core.api.insertBundle(currentBundle);
     await core.api.updateBundleById(currentBundle.id, {
-      storageUri: `r2://bucket/bundles/${currentBundle.id}/updated.zip`,
+      manifestStorageUri: `r2://bucket/bundles/${currentBundle.id}/updated-manifest.json`,
     });
 
     await expect(
       core.api.getBundleById(currentBundle.id),
     ).resolves.toMatchObject({
       id: currentBundle.id,
-      storageUri: `r2://bucket/bundles/${currentBundle.id}/updated.zip`,
+      manifestStorageUri: `r2://bucket/bundles/${currentBundle.id}/updated-manifest.json`,
     });
     await expect(
       plugin.models.releases.findMany({

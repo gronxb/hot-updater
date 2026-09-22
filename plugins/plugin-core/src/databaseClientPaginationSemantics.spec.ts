@@ -10,10 +10,10 @@ import type { DatabasePlugin } from "./types";
 const createBundle = (id: string): Bundle => ({
   id,
   platform: "ios",
-  fileHash: `hash-${id}`,
   gitCommitHash: null,
-  storageUri: `storage://${id}`,
-  archiveByteSize: 3_000_000_001,
+  manifestStorageUri: `storage://${id}/manifest.json`,
+  manifestFileHash: `manifest-hash-${id}`,
+  assetBaseStorageUri: "storage://assets",
 });
 
 const createFixture = (): {

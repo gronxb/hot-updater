@@ -46,16 +46,16 @@ vi.mock("./api-rpc", () => ({
 const bundle: Bundle = {
   id: "bundle-001",
   platform: "ios",
-  fileHash: "hash",
   gitCommitHash: null,
-  storageUri: "s3://bucket/bundle.zip",
-  archiveByteSize: 3_000_000_001,
+  manifestStorageUri: "s3://bucket/bundle/manifest.json",
+  manifestFileHash: "manifest-hash",
+  assetBaseStorageUri: "s3://bucket/assets",
 };
 
 const otherBundle: Bundle = {
   ...bundle,
   id: "bundle-002",
-  fileHash: "other-hash",
+  manifestFileHash: "other-manifest-hash",
 };
 
 const timeout = (ms: number) =>

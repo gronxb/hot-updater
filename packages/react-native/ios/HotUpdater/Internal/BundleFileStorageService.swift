@@ -52,27 +52,28 @@ public struct BsdiffPatchDescriptor {
     public let baseFileHash: String
     public let patchFileHash: String
     public let patchUrl: URL
+    public let byteSize: Int64?
 
     public init(
         algorithm: String,
         baseBundleId: String,
         baseFileHash: String,
         patchFileHash: String,
-        patchUrl: URL
+        patchUrl: URL,
+        byteSize: Int64? = nil
     ) {
         self.algorithm = algorithm
         self.baseBundleId = baseBundleId
         self.baseFileHash = baseFileHash
         self.patchFileHash = patchFileHash
         self.patchUrl = patchUrl
+        self.byteSize = byteSize
     }
 }
 
 public struct UpdateProgressPayload {
     public let progress: Double
     public let artifactType: String
-    public let downloadedBytes: Int64?
-    public let totalBytes: Int64?
     public let details: DiffProgressDetails?
 
     public struct DiffProgressFileSnapshot {
@@ -147,30 +148,19 @@ public struct UpdateProgressPayload {
     public init(
         progress: Double,
         artifactType: String,
-        downloadedBytes: Int64? = nil,
-        totalBytes: Int64? = nil,
         details: DiffProgressDetails? = nil
     ) {
         self.progress = progress
         self.artifactType = artifactType
-        self.downloadedBytes = downloadedBytes
-        self.totalBytes = totalBytes
         self.details = details
     }
 
     public var userInfo: [String: Any] {
-        var info: [String: Any] = [
+        [
             "artifactType": artifactType,
             "progress": progress,
             "details": details?.userInfo ?? NSNull()
         ]
-        if let downloadedBytes {
-            info["downloadedBytes"] = downloadedBytes
-        }
-        if let totalBytes {
-            info["totalBytes"] = totalBytes
-        }
-        return info
     }
 }
 
@@ -178,9 +168,7 @@ public enum BundleStorageError: Error, CustomNSError {
     case directoryCreationFailed
     case downloadFailed(Error)
     case incompleteDownload(expected: Int64, actual: Int64)
-    case extractionFormatError(Error)
     case invalidBundle
-    case insufficientDiskSpace
     case signatureVerificationFailed(SignatureVerificationError)
     case moveOperationFailed(Error)
     case bundleInCrashedHistory(String)
@@ -200,9 +188,7 @@ public enum BundleStorageError: Error, CustomNSError {
         case .directoryCreationFailed: return "DIRECTORY_CREATION_FAILED"
         case .downloadFailed: return "DOWNLOAD_FAILED"
         case .incompleteDownload: return "INCOMPLETE_DOWNLOAD"
-        case .extractionFormatError: return "EXTRACTION_FORMAT_ERROR"
         case .invalidBundle: return "INVALID_BUNDLE"
-        case .insufficientDiskSpace: return "INSUFFICIENT_DISK_SPACE"
         case .signatureVerificationFailed: return "SIGNATURE_VERIFICATION_FAILED"
         case .moveOperationFailed: return "MOVE_OPERATION_FAILED"
         case .bundleInCrashedHistory: return "BUNDLE_IN_CRASHED_HISTORY"
@@ -227,18 +213,9 @@ public enum BundleStorageError: Error, CustomNSError {
             userInfo[NSLocalizedDescriptionKey] = "Download incomplete: received \(actual) bytes, expected \(expected) bytes"
             userInfo[NSLocalizedRecoverySuggestionErrorKey] = "The download was interrupted. Check network connection and try again"
 
-        case .extractionFormatError(let underlyingError):
-            userInfo[NSLocalizedDescriptionKey] = "The downloaded bundle file is not a valid compressed archive"
-            userInfo[NSUnderlyingErrorKey] = underlyingError
-            userInfo[NSLocalizedRecoverySuggestionErrorKey] = "The downloaded file is not a supported bundle archive. Try downloading again"
-
         case .invalidBundle:
             userInfo[NSLocalizedDescriptionKey] = "Bundle missing required platform files (index.ios.bundle or main.jsbundle)"
             userInfo[NSLocalizedRecoverySuggestionErrorKey] = "Verify the bundle was built correctly with metro bundler"
-
-        case .insufficientDiskSpace:
-            userInfo[NSLocalizedDescriptionKey] = "Insufficient disk space to download and extract bundle"
-            userInfo[NSLocalizedRecoverySuggestionErrorKey] = "Free up device storage and try again"
 
         case .signatureVerificationFailed(let underlyingError):
             userInfo[NSLocalizedDescriptionKey] = "Bundle signature verification failed"
@@ -280,7 +257,7 @@ public protocol BundleStorageService {
     func prepareLaunch(bundle: Bundle, pendingRecovery: PendingCrashRecovery?) -> LaunchSelection
 
     // Bundle update
-    func updateBundle(bundleId: String, fileUrl: URL?, fileHash: String?, manifestUrl: URL?, manifestFileHash: String?, changedAssets: [String: ChangedAssetDescriptor]?, progressHandler: @escaping (UpdateProgressPayload) -> Void, completion: @escaping (Result<Bool, Error>) -> Void)
+    func updateBundle(bundleId: String, manifestUrl: URL, manifestFileHash: String, archiveUrl: URL?, assets: [String: ChangedAssetDescriptor], progressHandler: @escaping (UpdateProgressPayload) -> Void, completion: @escaping (Result<Bool, Error>) -> Void)
     func stageReleaseSelection(_ selection: PersistedSelection) -> Bool
     func acceptReleaseCatalog(catalogId: String, scopeKey: String, generation: Int64, catalogHash: String, channel: String, selectionContextHash: String) -> Bool
     func getActiveUpdateState() -> [String: Any]
@@ -306,7 +283,7 @@ public protocol BundleStorageService {
 
     /**
      * Gets the current active bundle ID from bundle storage.
-     * Reads manifest.json first and falls back to older metadata when needed.
+     * Reads the required OTA manifest.json.
      */
     func getBundleId() -> String?
 
@@ -332,6 +309,8 @@ public extension BundleStorageService {
 }
 
 class BundleFileStorageService: BundleStorageService {
+    private static let maximumSafeByteSize: Int64 = 9_007_199_254_740_991
+
     private struct ActiveBundleMetadataSnapshot {
         let activeBundleId: String
         let bundleId: String?
@@ -341,42 +320,36 @@ class BundleFileStorageService: BundleStorageService {
     private struct ParsedBundleManifest {
         let bundleId: String
         let assets: [String: ParsedManifestAsset]
+        let archive: ParsedArchive?
     }
 
     private struct ParsedManifestAsset {
         let fileHash: String
         let signature: String?
+        let byteSize: Int64?
+        let downloadByteSize: Int64?
     }
 
-    private enum UpdateProgress {
-        static let downloadEnd = 0.7
-        static let verificationStart = 0.72
-        static let verificationEnd = 0.82
-        static let extractionStart = 0.82
-        static let extractionEnd = 0.97
-        static let bundleValidation = 0.98
-        static let activationReady = 0.99
-        static let complete = 1.0
+    private struct ParsedArchive {
+        let downloadFileHash: String
+        let downloadByteSize: Int64
+        let tarByteSize: Int64
     }
 
     private let fileSystem: FileSystemService
     private let downloadService: DownloadService
-    private let decompressService: DecompressService
     private let preferences: PreferencesService
     private let isolationKey: String
 
-    private let id = Int.random(in: 1..<100)
-    
     // Queue for potentially long-running sequences within updateBundle or for explicit background tasks.
     private let fileOperationQueue: DispatchQueue
-
-    private var activeTasks: [URLSessionTask] = []
 
     private var hasPreparedLaunch = false
     private var currentLaunchReport: LaunchReport?
     private let activeBundleMetadataLock = NSLock()
     private var activeBundleMetadataSnapshot: ActiveBundleMetadataSnapshot?
     private let builtInBundleIdProvider: () -> String
+    private let builtInAssetResolver: BuiltInAssetResolver
     private let updateStrategyProvider: () -> UpdateStrategy
     private let releaseStateLock = NSRecursiveLock()
     private var pendingInstallSelections: [String: PersistedSelection] = [:]
@@ -390,6 +363,7 @@ class BundleFileStorageService: BundleStorageService {
         LaunchReport.launchReportFilename,
         InstallIdentity.installIdentityFilename,
         UserIdentity.userIdentityFilename,
+        "builtin-index-v1.json",
     ]
 
     private func normalizeIdentityValue(_ value: String?) -> String? {
@@ -398,22 +372,6 @@ class BundleFileStorageService: BundleStorageService {
             return nil
         }
         return trimmed
-    }
-
-    private func emitArchiveProgress(
-        progressHandler: @escaping (UpdateProgressPayload) -> Void,
-        progress: Double,
-        downloadedBytes: Int64? = nil,
-        totalBytes: Int64? = nil
-    ) {
-        progressHandler(
-            UpdateProgressPayload(
-                progress: max(0, min(progress, 1)),
-                artifactType: "archive",
-                downloadedBytes: downloadedBytes,
-                totalBytes: totalBytes
-            )
-        )
     }
 
     private func createDiffProgressFiles(
@@ -577,10 +535,7 @@ class BundleFileStorageService: BundleStorageService {
             return
         }
 
-        try StreamingTarArchiveExtractor.decompressBrotliFile(
-            from: downloadedPath,
-            to: destinationPath
-        )
+        try BrotliFileDecompressor.decompress(from: downloadedPath, to: destinationPath)
         try? fileSystem.removeItem(atPath: downloadedPath)
     }
 
@@ -605,7 +560,7 @@ class BundleFileStorageService: BundleStorageService {
 
         let sourcePath: String
         do {
-            sourcePath = try ArchiveExtractionUtilities.extractionURL(
+            sourcePath = try FileUtilities.fileURL(
                 for: assetPath,
                 destinationRoot: currentBundleDir
             ).path
@@ -723,6 +678,14 @@ class BundleFileStorageService: BundleStorageService {
         atPath path: String,
         asset: ParsedManifestAsset
     ) throws {
+        if let expectedByteSize = asset.byteSize {
+            let attributes = try fileSystem.attributesOfItem(atPath: path)
+            guard let size = attributes[.size] as? NSNumber,
+                  size.int64Value == expectedByteSize else {
+                throw BundleStorageError.signatureVerificationFailed(.fileHashMismatch)
+            }
+        }
+
         guard let actualHash = HashUtils.calculateSHA256(fileURL: URL(fileURLWithPath: path)) else {
             throw BundleStorageError.signatureVerificationFailed(.fileReadFailed)
         }
@@ -752,10 +715,10 @@ class BundleFileStorageService: BundleStorageService {
 
     public init(fileSystem: FileSystemService,
                 downloadService: DownloadService,
-                decompressService: DecompressService,
                 preferences: PreferencesService,
                 isolationKey: String,
                 builtInBundleIdProvider: @escaping () -> String = { "" },
+                builtInAssetResolver: BuiltInAssetResolver? = nil,
                 updateStrategyProvider: @escaping () -> UpdateStrategy = {
                     let fingerprintHash = HotUpdaterConfig.shared.fingerprintHash
                         ?? Bundle.main.object(forInfoDictionaryKey: "HOT_UPDATER_FINGERPRINT_HASH") as? String
@@ -764,10 +727,14 @@ class BundleFileStorageService: BundleStorageService {
 
         self.fileSystem = fileSystem
         self.downloadService = downloadService
-        self.decompressService = decompressService
         self.preferences = preferences
         self.isolationKey = isolationKey
         self.builtInBundleIdProvider = builtInBundleIdProvider
+        self.builtInAssetResolver = builtInAssetResolver ?? IOSBuiltInAssetResolver(
+            cacheURL: URL(fileURLWithPath: fileSystem.documentsPath())
+                .appendingPathComponent("bundle-store", isDirectory: true)
+                .appendingPathComponent("builtin-index-v1.json")
+        )
         self.updateStrategyProvider = updateStrategyProvider
 
         // Create queue for file operations
@@ -780,6 +747,7 @@ class BundleFileStorageService: BundleStorageService {
 
         // Clean up old bundles if isolationKey format changed
         checkAndCleanupIfIsolationKeyChanged()
+        recoverInterruptedPromotions()
     }
 
     // MARK: - Metadata File Paths
@@ -939,11 +907,10 @@ class BundleFileStorageService: BundleStorageService {
     }
 
     private func createInitialMetadata() -> BundleMetadata {
-        let currentBundleId = getCachedBundleId()
         return BundleMetadata(
             isolationKey: isolationKey,
             stableBundleId: nil,
-            stagingBundleId: currentBundleId,
+            stagingBundleId: nil,
             verificationPending: false,
             pendingTransition: nil
         )
@@ -957,18 +924,18 @@ class BundleFileStorageService: BundleStorageService {
     }
 
     private func getActiveBundleId() -> String? {
-        if let cachedBundleId = getCachedBundleId() {
+        guard let metadata = loadMetadataOrNull() else { return nil }
+        if let cachedBundleId = getCachedBundleId(),
+           cachedBundleId == metadata.stagingBundleId || cachedBundleId == metadata.stableBundleId {
             return cachedBundleId
         }
 
-        let metadata = loadMetadataOrNull()
-
-        if let stagingBundleId = metadata?.stagingBundleId,
-           metadata?.verificationPending == false {
+        if let stagingBundleId = metadata.stagingBundleId,
+           metadata.verificationPending == false {
             return stagingBundleId
         }
 
-        if let stableBundleId = metadata?.stableBundleId {
+        if let stableBundleId = metadata.stableBundleId {
             return stableBundleId
         }
 
@@ -1018,22 +985,6 @@ class BundleFileStorageService: BundleStorageService {
         }
     }
 
-    func canUseManifestDrivenInstall() -> Bool {
-        guard let currentBundleId = getCachedBundleId(),
-              case .success(let storeDir) = bundleStoreDir() else {
-            return false
-        }
-
-        let currentBundleDir = (storeDir as NSString).appendingPathComponent(currentBundleId)
-        guard fileSystem.fileExists(atPath: currentBundleDir),
-              let snapshot = getActiveBundleMetadataSnapshot(),
-              let currentManifest = parseBundleManifest(from: snapshot.manifest) else {
-            return false
-        }
-
-        return currentManifest.assets.isEmpty == false
-    }
-
     private func resolveActiveBundleMetadataSnapshot(
         activeBundleId: String,
         bundleDirectory: String
@@ -1042,9 +993,7 @@ class BundleFileStorageService: BundleStorageService {
         let manifestBundleId =
             (manifest["bundleId"] as? String)?
             .trimmingCharacters(in: .whitespacesAndNewlines)
-        let resolvedBundleId =
-            (manifestBundleId?.isEmpty == false ? manifestBundleId : nil) ??
-            readCompatibilityBundleId(in: bundleDirectory)
+        let resolvedBundleId = manifestBundleId?.isEmpty == false ? manifestBundleId : nil
 
         return ActiveBundleMetadataSnapshot(
             activeBundleId: activeBundleId,
@@ -1069,34 +1018,6 @@ class BundleFileStorageService: BundleStorageService {
             activeBundleId: activeBundleId,
             bundleDirectory: bundleDir
         )
-    }
-
-    private func readCompatibilityBundleId(in bundleDirectory: String) -> String? {
-        let compatibilityBundleIdPath = (bundleDirectory as NSString)
-            .appendingPathComponent(compatibilityBundleIdFilename())
-        if fileSystem.fileExists(atPath: compatibilityBundleIdPath) {
-            do {
-                let compatibilityBundleId = try String(
-                    contentsOfFile: compatibilityBundleIdPath,
-                    encoding: .utf8
-                )
-                    .trimmingCharacters(in: .whitespacesAndNewlines)
-
-                if !compatibilityBundleId.isEmpty {
-                    return compatibilityBundleId
-                }
-            } catch {
-                NSLog(
-                    "[BundleStorage] Failed to read compatibility bundle metadata at \(compatibilityBundleIdPath): \(error.localizedDescription)"
-                )
-            }
-        }
-
-        return nil
-    }
-
-    private func compatibilityBundleIdFilename() -> String {
-        "BUNDLE_ID"
     }
 
     private func readManifest(in bundleDirectory: String) -> [String: Any]? {
@@ -1125,7 +1046,7 @@ class BundleFileStorageService: BundleStorageService {
 
         var assets: [String: ParsedManifestAsset] = [:]
         for (assetPath, assetValue) in rawAssets {
-            guard ArchiveExtractionUtilities.normalizedRelativePath(from: assetPath) == assetPath else {
+            guard FileUtilities.normalizedRelativePath(from: assetPath) == assetPath else {
                 return nil
             }
             guard let asset = assetValue as? [String: Any],
@@ -1138,42 +1059,136 @@ class BundleFileStorageService: BundleStorageService {
                 .trimmingCharacters(in: .whitespacesAndNewlines)
             assets[assetPath] = ParsedManifestAsset(
                 fileHash: fileHash,
-                signature: signature?.isEmpty == false ? signature : nil
+                signature: signature?.isEmpty == false ? signature : nil,
+                byteSize: Self.parseSafeByteSize(asset["byteSize"]),
+                downloadByteSize: Self.parseSafeByteSize(asset["downloadByteSize"])
             )
         }
 
-        return ParsedBundleManifest(bundleId: manifestBundleId, assets: assets)
-    }
-
-    private func parseBundleManifest(fromFile manifestPath: String) -> ParsedBundleManifest? {
-        guard let manifest = readManifest(in: (manifestPath as NSString).deletingLastPathComponent) else {
-            return nil
+        let archive: ParsedArchive?
+        if let payload = manifest["archive"] as? [String: Any],
+           let downloadFileHash = payload["downloadFileHash"] as? String,
+           Self.isPlainSHA256(downloadFileHash),
+           let downloadByteSize = Self.parseSafeByteSize(payload["downloadByteSize"]),
+           downloadByteSize > 0,
+           let tarByteSize = Self.parseSafeByteSize(payload["tarByteSize"]),
+           tarByteSize >= 1024 {
+            archive = ParsedArchive(
+                downloadFileHash: downloadFileHash,
+                downloadByteSize: downloadByteSize,
+                tarByteSize: tarByteSize
+            )
+        } else {
+            archive = nil
         }
 
-        return parseBundleManifest(from: manifest)
+        return ParsedBundleManifest(
+            bundleId: manifestBundleId,
+            assets: assets,
+            archive: archive
+        )
     }
 
-    private func writeManifestFile(_ manifest: ParsedBundleManifest, to destination: String) throws {
+    private static func parseSafeByteSize(_ value: Any?) -> Int64? {
+        guard let number = value as? NSNumber,
+              String(cString: number.objCType) != "c" else {
+            return nil
+        }
+        let doubleValue = number.doubleValue
+        guard doubleValue.isFinite,
+              doubleValue >= 0,
+              doubleValue <= Double(maximumSafeByteSize),
+              doubleValue.rounded(.towardZero) == doubleValue else {
+            return nil
+        }
+        return Int64(doubleValue)
+    }
+
+    private static func isPlainSHA256(_ value: String) -> Bool {
+        value.count == 64 && value.allSatisfy {
+            ("0"..."9").contains($0) || ("a"..."f").contains($0)
+        }
+    }
+
+    private func copyVerifiedManifest(from source: String, to destination: String) throws {
         let manifestDirectory = (destination as NSString).deletingLastPathComponent
         guard fileSystem.createDirectory(atPath: manifestDirectory) else {
             throw BundleStorageError.directoryCreationFailed
         }
+        if fileSystem.fileExists(atPath: destination) {
+            try fileSystem.removeItem(atPath: destination)
+        }
+        do {
+            try fileSystem.copyItem(atPath: source, toPath: destination)
+        } catch {
+            throw BundleStorageError.moveOperationFailed(error)
+        }
+    }
 
-        let assets = manifest.assets
-            .sorted { $0.key < $1.key }
-            .reduce(into: [String: [String: String]]()) { partialResult, entry in
-                var assetPayload = ["fileHash": entry.value.fileHash]
-                if let signature = entry.value.signature, !signature.isEmpty {
-                    assetPayload["signature"] = signature
-                }
-                partialResult[entry.key] = assetPayload
+    private func shouldUseArchive(
+        archive: ParsedArchive?,
+        archiveUrl: URL?,
+        downloads: [String: ChangedAssetDescriptor],
+        assets: [String: ParsedManifestAsset]
+    ) -> Bool {
+        guard downloads.count >= 2,
+              archive != nil,
+              archiveUrl != nil,
+              assets.values.allSatisfy({ $0.byteSize != nil }) else {
+            return false
+        }
+
+        var individualLowerBound: Int64 = 0
+        var hasOfferedPatch = false
+        for (path, descriptor) in downloads {
+            guard let originalByteSize = assets[path]?.downloadByteSize else {
+                return false
             }
-        let payload: [String: Any] = [
-            "bundleId": manifest.bundleId,
-            "assets": assets,
-        ]
-        let data = try JSONSerialization.data(withJSONObject: payload, options: [.prettyPrinted])
-        try data.write(to: URL(fileURLWithPath: destination))
+            let plannedByteSize: Int64
+            if let patch = descriptor.patch {
+                hasOfferedPatch = true
+                guard let patchByteSize = patch.byteSize,
+                      patchByteSize >= 0,
+                      patchByteSize <= Self.maximumSafeByteSize else {
+                    return false
+                }
+                plannedByteSize = min(originalByteSize, patchByteSize)
+            } else {
+                plannedByteSize = originalByteSize
+            }
+            let (sum, overflowed) = individualLowerBound.addingReportingOverflow(plannedByteSize)
+            guard !overflowed,
+                  sum <= Self.maximumSafeByteSize else { return false }
+            individualLowerBound = sum
+        }
+
+        guard let archive else { return false }
+        var logicalByteSize: Int64 = 0
+        for asset in assets.values {
+            guard let byteSize = asset.byteSize else { return false }
+            let (sum, overflowed) = logicalByteSize.addingReportingOverflow(byteSize)
+            guard !overflowed,
+                  sum <= Self.maximumSafeByteSize else { return false }
+            logicalByteSize = sum
+        }
+        let (tarOverhead, overheadUnderflowed) = archive.tarByteSize
+            .subtractingReportingOverflow(logicalByteSize)
+        guard !overheadUnderflowed,
+              tarOverhead >= 0 else { return false }
+
+        if archive.downloadByteSize <= individualLowerBound {
+            return true
+        }
+
+        guard downloads.count == assets.count,
+              !hasOfferedPatch else {
+            return false
+        }
+        let (archiveBound, boundOverflowed) = individualLowerBound
+            .addingReportingOverflow(tarOverhead)
+        guard !boundOverflowed,
+              archiveBound <= Self.maximumSafeByteSize else { return false }
+        return archive.downloadByteSize <= archiveBound
     }
 
     /**
@@ -1668,7 +1683,7 @@ class BundleFileStorageService: BundleStorageService {
             do {
                 var bundlePaths: [String] = []
                 for assetPath in parsedManifest.assets.keys {
-                    let assetURL = try ArchiveExtractionUtilities.extractionURL(
+                    let assetURL = try FileUtilities.fileURL(
                         for: assetPath,
                         destinationRoot: directoryPath
                     )
@@ -1690,38 +1705,7 @@ class BundleFileStorageService: BundleStorageService {
             }
         }
 
-        let iosBundlePath = (directoryPath as NSString).appendingPathComponent("index.ios.bundle")
-        if self.fileSystem.fileExists(atPath: iosBundlePath) {
-            NSLog("[BundleStorage] Found iOS bundle atPath: \(iosBundlePath)")
-            return .success(iosBundlePath)
-        }
-
-        let mainBundlePath = (directoryPath as NSString).appendingPathComponent("main.jsbundle")
-        if self.fileSystem.fileExists(atPath: mainBundlePath) {
-            NSLog("[BundleStorage] Found main bundle atPath: \(mainBundlePath)")
-            return .success(mainBundlePath)
-        }
-
-        do {
-            let contents = try self.fileSystem.contentsOfDirectory(atPath: directoryPath)
-            NSLog("[BundleStorage] Directory contents: \(contents)")
-
-            // Additional search: check all .bundle files
-            for file in contents {
-                if file.hasSuffix(".bundle") {
-                    let bundlePath = (directoryPath as NSString).appendingPathComponent(file)
-                    NSLog("[BundleStorage] Found alternative bundle atPath: \(bundlePath)")
-                    return .success(bundlePath)
-                }
-            }
-            
-            NSLog("[BundleStorage] No bundle file found in directory: \(directoryPath)")
-            NSLog("[BundleStorage] Available files: \(contents)")
-            return .success(nil)
-        } catch let error {
-            NSLog("[BundleStorage] Error reading directory contents: \(error.localizedDescription)")
-            return .failure(error)
-        }
+        return .success(nil)
     }
         
     /**
@@ -1754,7 +1738,7 @@ class BundleFileStorageService: BundleStorageService {
         let bundles = contents.compactMap { item -> String? in
             let fullPath = (storeDir as NSString).appendingPathComponent(item)
 
-            if protectedBundleStoreEntries.contains(item) {
+            if protectedBundleStoreEntries.contains(item) || item.hasSuffix(".install-backup") {
                 return nil
             }
 
@@ -1866,11 +1850,11 @@ class BundleFileStorageService: BundleStorageService {
         }
 
         let relativePath = String(bundleURL.path.dropFirst(sourcePrefix.count))
-        guard ArchiveExtractionUtilities.normalizedRelativePath(from: relativePath) == relativePath else {
+        guard FileUtilities.normalizedRelativePath(from: relativePath) == relativePath else {
             throw BundleStorageError.invalidBundle
         }
 
-        return try ArchiveExtractionUtilities.extractionURL(
+        return try FileUtilities.fileURL(
             for: relativePath,
             destinationRoot: destinationDirectory
         ).path
@@ -1926,8 +1910,8 @@ class BundleFileStorageService: BundleStorageService {
     private func selectLaunch(bundle: Bundle) -> LaunchSelection {
         guard let metadata = loadMetadataOrNull() else {
             return LaunchSelection(
-                bundleURL: getCachedBundleURL() ?? getFallbackBundleURL(bundle: bundle),
-                launchedBundleId: getCachedBundleId(),
+                bundleURL: getFallbackBundleURL(bundle: bundle),
+                launchedBundleId: nil,
                 shouldRollbackOnCrash: false
             )
         }
@@ -1974,6 +1958,7 @@ class BundleFileStorageService: BundleStorageService {
     }
 
     func prepareLaunch(bundle: Bundle, pendingRecovery: PendingCrashRecovery?) -> LaunchSelection {
+        builtInAssetResolver.use(bundle: bundle)
         saveLaunchReport(nil)
         if loadInstallIdentity() == nil {
             let identity = InstallIdentity()
@@ -2003,12 +1988,12 @@ class BundleFileStorageService: BundleStorageService {
     /**
      * Updates the bundle from the specified URL. This operation is asynchronous.
      * @param bundleId ID of the bundle to update
-     * @param fileUrl URL of the bundle file to download (or nil to reset)
-     * @param fileHash Combined hash string for verification (sig:<signature> or <hex_hash>)
+     * @param manifestUrl URL of the complete target manifest
+     * @param manifestFileHash Hash or signature of the target manifest
      * @param progressHandler Callback for download and extraction progress (0.0 to 1.0)
      * @param completion Callback with result of the operation
      */
-    func updateBundle(bundleId: String, fileUrl: URL?, fileHash: String?, manifestUrl: URL?, manifestFileHash: String?, changedAssets: [String: ChangedAssetDescriptor]?, progressHandler: @escaping (UpdateProgressPayload) -> Void, completion: @escaping (Result<Bool, Error>) -> Void) {
+    func updateBundle(bundleId: String, manifestUrl: URL, manifestFileHash: String, archiveUrl: URL? = nil, assets: [String: ChangedAssetDescriptor], progressHandler: @escaping (UpdateProgressPayload) -> Void, completion: @escaping (Result<Bool, Error>) -> Void) {
         // Check if bundle is in crashed history
         let crashedHistory = loadCrashedHistory()
         if crashedHistory.contains(bundleId) {
@@ -2017,162 +2002,426 @@ class BundleFileStorageService: BundleStorageService {
             return
         }
 
-        // Get the current bundle ID from the cached bundle URL (exclude fallback bundles)
-        let currentBundleId = self.getCachedBundleId()
-
-        guard let validFileUrl = fileUrl else {
-            NSLog("[BundleStorage] fileUrl is nil, resetting bundle URL.")
-            // Dispatch the sequence to the file operation queue to ensure completion is called asynchronously
-            // and to keep file operations off the calling thread if it's the main thread.
-            fileOperationQueue.async {
-                let setResult = self.setBundleURL(localPath: nil)
-                switch setResult {
-                case .success:
-                    let previousMetadata = self.loadMetadataOrNull()
-                    var resetMetadata = self.createInitialMetadata()
-                    resetMetadata.highestSeenCatalogs = previousMetadata?.highestSeenCatalogs ?? [:]
-                    resetMetadata.currentSelectionContexts = previousMetadata?.currentSelectionContexts ?? [:]
-                    let _ = self.saveMetadata(resetMetadata)
-                    self.saveLaunchReport(nil)
-                    let cleanupResult = self.cleanupOldBundles(currentBundleId: currentBundleId, bundleId: bundleId)
-                    switch cleanupResult {
-                    case .success:
-                        completion(.success(true))
-                    case .failure(let error):
-                        NSLog("[BundleStorage] Error during cleanup after reset: \(error)")
-                        completion(.failure(error))
-                    }
-                case .failure(let error):
-                    NSLog("[BundleStorage] Error resetting bundle URL: \(error)")
-                    completion(.failure(error))
-                }
-            }
-            return
-        }
-        
-        // Start the bundle update process on a background queue
-        fileOperationQueue.async {
-
+        fileOperationQueue.async(flags: .barrier) {
             let storeDirResult = self.bundleStoreDir()
             guard case .success(let storeDir) = storeDirResult else {
                 completion(.failure(storeDirResult.failureError ?? BundleStorageError.unknown(nil)))
                 return
             }
-            
-            let finalBundleDir = (storeDir as NSString).appendingPathComponent(bundleId)
-            
-            if self.fileSystem.fileExists(atPath: finalBundleDir) {
-                let findResult = self.findBundleFile(
-                    in: finalBundleDir,
-                    expectedBundleId: bundleId
-                )
-                switch findResult {
-                case .success(let existingBundlePath):
-                    if let bundlePath = existingBundlePath {
-                        NSLog("[BundleStorage] Using cached bundle at path: \(bundlePath)")
-                        let currentMetadata = self.loadMetadataOrNull() ?? self.createInitialMetadata()
-                        guard let updatedMetadata = self.prepareMetadataForNewStagingBundle(currentMetadata, bundleId: bundleId) else {
-                            completion(.failure(BundleStorageError.unknown(
-                                NSError(domain: "HotUpdater", code: 0, userInfo: [
-                                    NSLocalizedDescriptionKey: "Release catalog selection is stale"
-                                ])
-                            )))
-                            return
-                        }
-                        let setResult = self.setBundleURL(localPath: bundlePath)
-                        switch setResult {
-                        case .success:
-                            let _ = self.saveMetadata(updatedMetadata)
-                            NSLog("[BundleStorage] Set staging bundle (cached): \(bundleId), verificationPending: true")
+            self.updateBundleFromManifest(
+                bundleId: bundleId,
+                manifestUrl: manifestUrl,
+                manifestFileHash: manifestFileHash,
+                archiveUrl: archiveUrl,
+                changedAssets: assets,
+                storeDir: storeDir,
+                progressHandler: progressHandler,
+                completion: completion
+            )
+        }
+    }
 
-                            self.emitArchiveProgress(
-                                progressHandler: progressHandler,
-                                progress: UpdateProgress.complete
-                            )
-                            self.scheduleCleanupOldBundles(
-                                bundleIdsToKeep: [currentBundleId, updatedMetadata.stableBundleId, bundleId].compactMap { $0 }
-                            )
-                            completion(.success(true))
-                        case .failure(let error):
-                            completion(.failure(error))
-                        }
-                        return
-                    } else {
-                        NSLog("[BundleStorage] Cached directory exists but invalid, removing: \(finalBundleDir)")
-                        do {
-                            try self.fileSystem.removeItem(atPath: finalBundleDir)
-                            // Continue with download process on success
-                            if let manifestUrl,
-                               let manifestFileHash,
-                               let changedAssets,
-                               self.canUseManifestDrivenInstall() {
-                                self.updateBundleFromManifest(
-                                    bundleId: bundleId,
-                                    fileUrl: validFileUrl,
-                                    fileHash: fileHash,
-                                    manifestUrl: manifestUrl,
-                                    manifestFileHash: manifestFileHash,
-                                    changedAssets: changedAssets,
-                                    storeDir: storeDir,
-                                    progressHandler: progressHandler,
-                                    completion: completion
-                                )
-                            } else {
-                                if manifestUrl != nil && manifestFileHash != nil && changedAssets != nil {
-                                    NSLog("[BundleStorage] Skipping manifest-driven install for \(bundleId) because no active OTA manifest is available. Using archive.")
-                                }
-                                self.prepareAndDownloadBundle(bundleId: bundleId, fileUrl: validFileUrl, fileHash: fileHash, storeDir: storeDir, progressHandler: progressHandler, completion: completion)
-                            }
-                        } catch let error {
-                            NSLog("[BundleStorage] Failed to remove invalid bundle dir: \(error.localizedDescription)")
-                            completion(.failure(BundleStorageError.unknown(error)))
-                        }
-                    }
-                case .failure(let error):
-                    completion(.failure(error))
-                }
-            } else {
-                if let manifestUrl,
-                   let manifestFileHash,
-                   let changedAssets,
-                   self.canUseManifestDrivenInstall() {
-                    self.updateBundleFromManifest(
-                        bundleId: bundleId,
-                        fileUrl: validFileUrl,
-                        fileHash: fileHash,
-                        manifestUrl: manifestUrl,
-                        manifestFileHash: manifestFileHash,
-                        changedAssets: changedAssets,
-                        storeDir: storeDir,
-                        progressHandler: progressHandler,
-                        completion: completion
-                    )
-                } else {
-                    if manifestUrl != nil && manifestFileHash != nil && changedAssets != nil {
-                        NSLog("[BundleStorage] Skipping manifest-driven install for \(bundleId) because no active OTA manifest is available. Using archive.")
-                    }
-                    self.prepareAndDownloadBundle(bundleId: bundleId, fileUrl: validFileUrl, fileHash: fileHash, storeDir: storeDir, progressHandler: progressHandler, completion: completion)
-                }
+    private func downloadManifestAsset(
+        assetPath: String,
+        expectedAsset: ParsedManifestAsset,
+        changedAsset: ChangedAssetDescriptor,
+        currentBundleId: String?,
+        currentBundleDir: String?,
+        destinationPath: String,
+        tempDirectory: String,
+        progressFile: UpdateProgressPayload.DiffProgressFileSnapshot,
+        progressHandler: @escaping (UpdateProgressPayload) -> Void
+    ) throws {
+        let expectedHash = expectedAsset.fileHash
+        var diffFiles = [progressFile]
+        let patched = applyPatchAssetIfPossible(
+            assetPath: assetPath,
+            changedAsset: changedAsset,
+            currentBundleId: currentBundleId,
+            currentBundleDir: currentBundleDir,
+            destinationPath: destinationPath,
+            expectedHash: expectedHash,
+            tempDirectory: tempDirectory,
+            files: &diffFiles,
+            progressHandler: progressHandler
+        )
+        if patched {
+            try verifyManifestAssetFile(atPath: destinationPath, asset: expectedAsset)
+            updateDiffProgressFile(
+                files: &diffFiles,
+                assetPath: assetPath,
+                status: "downloaded",
+                progress: 1
+            )
+            self.emitDiffProgress(
+                progressHandler: progressHandler,
+                phase: diffFiles.allSatisfy { $0.status == "downloaded" }
+                    ? "finalizing"
+                    : "downloading",
+                files: diffFiles
+            )
+            return
+        }
+
+        guard let changedAssetFileUrl = changedAsset.fileUrl else {
+            updateDiffProgressFile(
+                files: &diffFiles,
+                assetPath: assetPath,
+                status: "failed",
+                progress: 0
+            )
+            self.emitDiffProgress(
+                progressHandler: progressHandler,
+                phase: "downloading",
+                files: diffFiles
+            )
+            throw BundleStorageError.downloadFailed(
+                NSError(domain: "HotUpdater", code: 0, userInfo: [
+                    NSLocalizedDescriptionKey: "Changed asset fileUrl missing and patch could not be applied: \(assetPath)"
+                ])
+            )
+        }
+
+        let changedAssetDownloadPath = downloadPath(
+            assetPath: assetPath,
+            changedAsset: changedAsset
+        )
+        let downloadDestinationPath: String
+        if changedAsset.fileCompression == "br" {
+            downloadDestinationPath = compressedTempPath(
+                tempDirectory: tempDirectory,
+                assetPath: assetPath,
+                compression: "br"
+            )
+        } else {
+            downloadDestinationPath = destinationPath
+        }
+
+        switch self.downloadFileSynchronously(
+            from: changedAssetFileUrl,
+            to: downloadDestinationPath,
+            progressHandler: { progress in
+                self.updateDiffProgressFile(
+                    files: &diffFiles,
+                    assetPath: assetPath,
+                    status: "downloading",
+                    progress: progress.progress,
+                    downloadPath: changedAssetDownloadPath,
+                    downloadedBytes: progress.downloadedBytes,
+                    totalBytes: progress.totalBytes
+                )
+                self.emitDiffProgress(
+                    progressHandler: progressHandler,
+                    phase: "downloading",
+                    files: diffFiles
+                )
+            }
+        ) {
+        case .success(let downloadedFileURL):
+            do {
+                try materializeDownloadedAsset(
+                    downloadedPath: downloadedFileURL.path,
+                    destinationPath: destinationPath,
+                    changedAsset: changedAsset
+                )
+                try verifyManifestAssetFile(
+                    atPath: destinationPath,
+                    asset: expectedAsset
+                )
+            } catch {
+                updateDiffProgressFile(
+                    files: &diffFiles,
+                    assetPath: assetPath,
+                    status: "failed",
+                    progress: 1
+                )
+                self.emitDiffProgress(
+                    progressHandler: progressHandler,
+                    phase: "downloading",
+                    files: diffFiles
+                )
+                throw error
+            }
+            updateDiffProgressFile(
+                files: &diffFiles,
+                assetPath: assetPath,
+                status: "downloaded",
+                progress: 1
+            )
+            self.emitDiffProgress(
+                progressHandler: progressHandler,
+                phase: diffFiles.allSatisfy { $0.status == "downloaded" }
+                    ? "finalizing"
+                    : "downloading",
+                files: diffFiles
+            )
+        case .failure(let error):
+            let lastKnownProgress = diffFiles.first(where: { $0.path == assetPath })?.progress ?? 0
+            updateDiffProgressFile(
+                files: &diffFiles,
+                assetPath: assetPath,
+                status: "failed",
+                progress: lastKnownProgress
+            )
+            self.emitDiffProgress(
+                progressHandler: progressHandler,
+                phase: "downloading",
+                files: diffFiles
+            )
+            if let downloadError = error as? DownloadError,
+               case .incompleteDownload(let expected, let actual) = downloadError {
+                throw BundleStorageError.incompleteDownload(expected: expected, actual: actual)
+            }
+            throw BundleStorageError.downloadFailed(error)
+        }
+    }
+
+    // Retain only target files on retry; partial files are rehashed before reuse.
+    private func pruneStagingDirectory(_ directory: String, assets: Set<String>, prefix: String = "") throws {
+        for name in try fileSystem.contentsOfDirectory(atPath: directory) {
+            let relativePath = prefix + name
+            let path = (directory as NSString).appendingPathComponent(name)
+            let type = try fileSystem.attributesOfItem(atPath: path)[.type] as? FileAttributeType
+            if type == .typeDirectory, assets.contains(where: { $0.hasPrefix(relativePath + "/") }) {
+                try pruneStagingDirectory(path, assets: assets, prefix: relativePath + "/")
+            } else if type != .typeRegular || !assets.contains(relativePath) {
+                try fileSystem.removeItem(atPath: path)
             }
         }
     }
-    
-    /**
-     * Prepares directories and starts the download process.
-     * This method is part of the asynchronous `updateBundle` flow.
-     * @param bundleId ID of the bundle to update
-     * @param fileUrl URL of the bundle file to download
-     * @param fileHash Combined hash string for verification (sig:<signature> or <hex_hash>)
-     * @param storeDir Path to the bundle-store directory
-     * @param progressHandler Callback for download and extraction progress
-     * @param completion Callback with result of the operation
-     */
+
+    private func installArchive(
+        archive: ParsedArchive,
+        archiveUrl: URL,
+        targetManifest: ParsedBundleManifest,
+        preparedDirectory: String,
+        tempDirectory: String,
+        progressHandler: @escaping (UpdateProgressPayload) -> Void
+    ) throws -> [UpdateProgressPayload.DiffProgressFileSnapshot] {
+        let archiveScratch = (tempDirectory as NSString).appendingPathComponent("archive")
+        try? fileSystem.removeItem(atPath: archiveScratch)
+        guard fileSystem.createDirectory(atPath: archiveScratch) else {
+            throw BundleStorageError.directoryCreationFailed
+        }
+        defer { try? fileSystem.removeItem(atPath: archiveScratch) }
+
+        let compressedPath = (archiveScratch as NSString).appendingPathComponent("bundle.tar.br")
+        let tarPath = (archiveScratch as NSString).appendingPathComponent("bundle.tar")
+        let extractedDirectory = (archiveScratch as NSString).appendingPathComponent("extracted")
+        var progressFiles = [UpdateProgressPayload.DiffProgressFileSnapshot(
+            path: "bundle.tar.br",
+            downloadPath: "bundle.tar.br",
+            status: "pending",
+            progress: 0,
+            order: 0
+        )]
+        emitDiffProgress(
+            progressHandler: progressHandler,
+            phase: "downloading",
+            files: progressFiles
+        )
+
+        switch downloadFileSynchronously(
+            from: archiveUrl,
+            to: compressedPath,
+            progressHandler: { progress in
+                self.updateDiffProgressFile(
+                    files: &progressFiles,
+                    assetPath: "bundle.tar.br",
+                    status: "downloading",
+                    progress: progress.progress,
+                    downloadPath: "bundle.tar.br",
+                    downloadedBytes: progress.downloadedBytes,
+                    totalBytes: progress.totalBytes
+                )
+                self.emitDiffProgress(
+                    progressHandler: progressHandler,
+                    phase: "downloading",
+                    files: progressFiles
+                )
+            }
+        ) {
+        case .success:
+            break
+        case .failure(let error):
+            throw BundleStorageError.downloadFailed(error)
+        }
+
+        let compressedAttributes = try fileSystem.attributesOfItem(atPath: compressedPath)
+        guard let compressedSize = compressedAttributes[.size] as? NSNumber,
+              compressedSize.int64Value == archive.downloadByteSize,
+              HashUtils.verifyHash(
+                fileURL: URL(fileURLWithPath: compressedPath),
+                expectedHash: archive.downloadFileHash
+              ) else {
+            throw BundleStorageError.invalidBundle
+        }
+
+        try BrotliFileDecompressor.decompress(
+            from: compressedPath,
+            to: tarPath,
+            expectedOutputByteSize: archive.tarByteSize
+        )
+
+        let expectedFiles = try targetManifest.assets.reduce(
+            into: [String: Int64](),
+            { result, entry in
+                guard let byteSize = entry.value.byteSize else {
+                    throw BundleStorageError.invalidBundle
+                }
+                result[entry.key] = byteSize
+            }
+        )
+        try TarArchiveExtractor.extract(
+            from: tarPath,
+            to: extractedDirectory,
+            expectedFiles: expectedFiles
+        )
+        for (path, asset) in targetManifest.assets {
+            let extractedPath = try FileUtilities.fileURL(
+                for: path,
+                destinationRoot: extractedDirectory
+            ).path
+            try verifyManifestAssetFile(atPath: extractedPath, asset: asset)
+        }
+
+        try promoteVerifiedArchiveDirectory(
+            preparedDirectory,
+            withArchiveDirectory: extractedDirectory
+        )
+
+        updateDiffProgressFile(
+            files: &progressFiles,
+            assetPath: "bundle.tar.br",
+            status: "downloaded",
+            progress: 1,
+            downloadedBytes: archive.downloadByteSize,
+            totalBytes: archive.downloadByteSize
+        )
+        emitDiffProgress(
+            progressHandler: progressHandler,
+            phase: "finalizing",
+            files: progressFiles
+        )
+        return progressFiles
+    }
+
+    private func promoteVerifiedArchiveDirectory(
+        _ preparedDirectory: String,
+        withArchiveDirectory archiveDirectory: String
+    ) throws {
+        let backupDirectory = preparedDirectory + ".archive-backup"
+        try? fileSystem.removeItem(atPath: backupDirectory)
+        try fileSystem.moveItem(atPath: preparedDirectory, toPath: backupDirectory)
+
+        do {
+            try fileSystem.moveItem(
+                atPath: archiveDirectory,
+                toPath: preparedDirectory
+            )
+        } catch {
+            try? fileSystem.removeItem(atPath: preparedDirectory)
+            do {
+                try fileSystem.moveItem(atPath: backupDirectory, toPath: preparedDirectory)
+            } catch let restoreError {
+                throw BundleStorageError.moveOperationFailed(restoreError)
+            }
+            throw error
+        }
+        try? fileSystem.removeItem(atPath: backupDirectory)
+    }
+
+    private func recoverInterruptedPromotions() {
+        guard case .success(let storeDir) = bundleStoreDir(),
+              let entries = try? fileSystem.contentsOfDirectory(atPath: storeDir) else { return }
+        for entry in entries where entry.hasSuffix(".install-backup") {
+            let finalDirectory = (storeDir as NSString).appendingPathComponent(String(entry.dropLast(".install-backup".count)))
+            do {
+                try recoverInterruptedPromotion(finalDirectory: finalDirectory)
+            } catch {
+                NSLog("[BundleStorage] Cannot recover interrupted promotion: \(error)")
+            }
+        }
+    }
+
+    private func recoverInterruptedPromotion(finalDirectory: String) throws {
+        let backup = finalDirectory + ".install-backup"
+        guard fileSystem.fileExists(atPath: backup) else { return }
+        if fileSystem.fileExists(atPath: finalDirectory) {
+            if isCompleteBundleDirectory(finalDirectory) {
+                try fileSystem.removeItem(atPath: backup)
+                return
+            }
+            try fileSystem.removeItem(atPath: finalDirectory)
+        }
+        try fileSystem.moveItem(atPath: backup, toPath: finalDirectory)
+    }
+
+    private func isCompleteBundleDirectory(_ directory: String) -> Bool {
+        let bundleId = (directory as NSString).lastPathComponent
+        guard let manifest = readManifest(in: directory),
+              let parsed = parseBundleManifest(from: manifest),
+              parsed.bundleId == bundleId,
+              case .success(let bundlePath) = findBundleFile(in: directory, expectedBundleId: bundleId),
+              bundlePath != nil else { return false }
+        return parsed.assets.allSatisfy { path, asset in
+            guard let file = try? FileUtilities.fileURL(for: path, destinationRoot: directory) else { return false }
+            return (try? verifyManifestAssetFile(atPath: file.path, asset: asset)) != nil
+        }
+    }
+
+    private func promoteStagedBundle(
+        bundleId: String,
+        stagingDirectory: String,
+        finalDirectory: String,
+        bundlePathInStaging: String
+    ) throws -> BundleMetadata {
+        releaseStateLock.lock()
+        defer { releaseStateLock.unlock() }
+        let currentMetadata = loadMetadataOrNull() ?? createInitialMetadata()
+        guard let updatedMetadata = prepareMetadataForNewStagingBundle(currentMetadata, bundleId: bundleId) else {
+            throw BundleStorageError.unknown(NSError(domain: "HotUpdater", code: 0,
+                userInfo: [NSLocalizedDescriptionKey: "Release catalog selection is stale"]))
+        }
+        let finalBundlePath = try resolveBundlePathAfterMove(
+            bundlePathInStaging, from: stagingDirectory, to: finalDirectory
+        )
+        let previousPreference = try preferences.getItem(forKey: "HotUpdaterBundleURL")
+        let backup = finalDirectory + ".install-backup"
+        try recoverInterruptedPromotion(finalDirectory: finalDirectory)
+        if fileSystem.fileExists(atPath: finalDirectory) {
+            try fileSystem.moveItem(atPath: finalDirectory, toPath: backup)
+        }
+        var promoted = false
+        do {
+            try fileSystem.moveItem(atPath: stagingDirectory, toPath: finalDirectory)
+            promoted = true
+            try setBundleURL(localPath: finalBundlePath).get()
+            // Metadata is the durable activation point. Launch never uses an
+            // untracked preference if this write fails or the process terminates.
+            guard saveMetadata(updatedMetadata) else {
+                throw BundleStorageError.unknown(NSError(domain: "HotUpdater", code: 0,
+                    userInfo: [NSLocalizedDescriptionKey: "Failed to persist bundle activation metadata"]))
+            }
+        } catch {
+            let installError = error
+            let preferenceResult = setBundleURL(localPath: previousPreference)
+            if promoted { try fileSystem.removeItem(atPath: finalDirectory) }
+            if fileSystem.fileExists(atPath: backup) {
+                try fileSystem.moveItem(atPath: backup, toPath: finalDirectory)
+            }
+            try preferenceResult.get()
+            throw installError
+        }
+        try? fileSystem.removeItem(atPath: backup)
+        return updatedMetadata
+    }
+
     private func updateBundleFromManifest(
         bundleId: String,
-        fileUrl: URL,
-        fileHash: String?,
         manifestUrl: URL,
         manifestFileHash: String,
+        archiveUrl: URL?,
         changedAssets: [String: ChangedAssetDescriptor],
         storeDir: String,
         progressHandler: @escaping (UpdateProgressPayload) -> Void,
@@ -2197,9 +2446,10 @@ class BundleFileStorageService: BundleStorageService {
         let tempManifestPath = (tempDirectory as NSString).appendingPathComponent("manifest.json")
         let tmpDir = (storeDir as NSString).appendingPathComponent("\(bundleId).tmp")
         let realDir = (storeDir as NSString).appendingPathComponent(bundleId)
-        var diffFiles = createDiffProgressFiles(changedAssets: changedAssets)
+        var diffFiles: [UpdateProgressPayload.DiffProgressFileSnapshot] = []
 
         do {
+            try recoverInterruptedPromotion(finalDirectory: realDir)
             self.emitDiffProgress(
                 progressHandler: progressHandler,
                 phase: "manifest",
@@ -2246,238 +2496,140 @@ class BundleFileStorageService: BundleStorageService {
             else {
                 throw BundleStorageError.invalidBundle
             }
-            self.emitDiffProgress(
-                progressHandler: progressHandler,
-                phase: diffFiles.isEmpty ? "finalizing" : "downloading",
-                files: diffFiles
-            )
-
-            let currentManifest = getActiveBundleMetadataSnapshot().flatMap { snapshot in
-                parseBundleManifest(from: snapshot.manifest)
+            // Validate the entire wire contract even when every byte can be reused.
+            guard Set(targetManifest.assets.keys) == Set(changedAssets.keys) else {
+                throw BundleStorageError.invalidBundle
+            }
+            for (path, asset) in targetManifest.assets {
+                guard FileUtilities.normalizedRelativePath(from: path) == path,
+                      path != "manifest.json",
+                      let descriptor = changedAssets[path],
+                      descriptor.fileUrl != nil,
+                      descriptor.fileHash.caseInsensitiveCompare(asset.fileHash) == .orderedSame else {
+                    throw BundleStorageError.invalidBundle
+                }
+                _ = try FileUtilities.fileURL(for: path, destinationRoot: tmpDir)
             }
 
-            if self.fileSystem.fileExists(atPath: tmpDir) {
-                try self.fileSystem.removeItem(atPath: tmpDir)
-            }
             guard self.fileSystem.createDirectory(atPath: tmpDir) else {
                 throw BundleStorageError.directoryCreationFailed
             }
-
+            try pruneStagingDirectory(tmpDir, assets: Set(targetManifest.assets.keys))
             let sortedAssets = targetManifest.assets.sorted { $0.key < $1.key }
-
-            for asset in sortedAssets {
+            let localDirectories = [currentBundleDir, realDir].compactMap { $0 }.filter { fileSystem.fileExists(atPath: $0) }
+            var downloads: [String: ChangedAssetDescriptor] = [:]
+            for (index, asset) in sortedAssets.enumerated() {
+                // Local preparation has its own progress interval, with no download files.
+                progressHandler(UpdateProgressPayload(
+                    progress: 0.15 + 0.05 * Double(index) / Double(max(1, sortedAssets.count)),
+                    artifactType: "diff",
+                    details: .init(totalFilesCount: 0, completedFilesCount: 0)
+                ))
                 let assetPath = asset.key
                 let expectedAsset = asset.value
-                let expectedHash = expectedAsset.fileHash
-                let destinationPath = try ArchiveExtractionUtilities.extractionURL(
-                    for: assetPath,
-                    destinationRoot: tmpDir
-                ).path
-                let destinationDir = (destinationPath as NSString).deletingLastPathComponent
-                guard self.fileSystem.createDirectory(atPath: destinationDir) else {
+                let destinationPath = try FileUtilities.fileURL(for: assetPath, destinationRoot: tmpDir).path
+                guard self.fileSystem.createDirectory(atPath: (destinationPath as NSString).deletingLastPathComponent) else {
                     throw BundleStorageError.directoryCreationFailed
                 }
-
-                if currentManifest?.assets[assetPath]?.fileHash == expectedHash {
-                    guard let currentBundleDir,
-                          self.fileSystem.fileExists(atPath: currentBundleDir)
-                    else {
-                        throw BundleStorageError.downloadFailed(
-                            NSError(domain: "HotUpdater", code: 0, userInfo: [
-                                NSLocalizedDescriptionKey: "Current bundle directory unavailable for reused asset: \(assetPath)"
-                            ])
-                        )
-                    }
-
-                    let sourcePath = try ArchiveExtractionUtilities.extractionURL(
-                        for: assetPath,
-                        destinationRoot: currentBundleDir
-                    ).path
-                    guard self.fileSystem.fileExists(atPath: sourcePath),
-                          HashUtils.verifyHash(fileURL: URL(fileURLWithPath: sourcePath), expectedHash: expectedHash)
-                    else {
-                        throw BundleStorageError.signatureVerificationFailed(.fileHashMismatch)
-                    }
-
-                    try self.fileSystem.copyItem(atPath: sourcePath, toPath: destinationPath)
-                    try verifyManifestAssetFile(atPath: destinationPath, asset: expectedAsset)
+                if (try? fileSystem.attributesOfItem(atPath: destinationPath)[.type] as? FileAttributeType) == .typeRegular,
+                   (try? verifyManifestAssetFile(atPath: destinationPath, asset: expectedAsset)) != nil {
                     continue
                 }
+                if fileSystem.fileExists(atPath: destinationPath) { try self.fileSystem.removeItem(atPath: destinationPath) }
 
-                guard let changedAsset = changedAssets[assetPath] else {
-                    updateDiffProgressFile(
-                        files: &diffFiles,
-                        assetPath: assetPath,
-                        status: "failed",
-                        progress: 0
-                    )
-                    self.emitDiffProgress(
-                        progressHandler: progressHandler,
-                        phase: "downloading",
-                        files: diffFiles
-                    )
-                    throw BundleStorageError.downloadFailed(
-                        NSError(domain: "HotUpdater", code: 0, userInfo: [
-                            NSLocalizedDescriptionKey: "Changed asset missing from update response: \(assetPath)"
-                        ])
-                    )
-                }
-
-                guard changedAsset.fileHash.caseInsensitiveCompare(expectedHash) == .orderedSame else {
-                    updateDiffProgressFile(
-                        files: &diffFiles,
-                        assetPath: assetPath,
-                        status: "failed",
-                        progress: 0
-                    )
-                    self.emitDiffProgress(
-                        progressHandler: progressHandler,
-                        phase: "downloading",
-                        files: diffFiles
-                    )
-                    throw BundleStorageError.signatureVerificationFailed(.fileHashMismatch)
-                }
-
-                let patched = applyPatchAssetIfPossible(
-                    assetPath: assetPath,
-                    changedAsset: changedAsset,
-                    currentBundleId: currentBundleId,
-                    currentBundleDir: currentBundleDir,
-                    destinationPath: destinationPath,
-                    expectedHash: expectedHash,
-                    tempDirectory: tempDirectory,
-                    files: &diffFiles,
-                    progressHandler: progressHandler
-                )
-                if patched {
-                    try verifyManifestAssetFile(atPath: destinationPath, asset: expectedAsset)
-                    updateDiffProgressFile(
-                        files: &diffFiles,
-                        assetPath: assetPath,
-                        status: "downloaded",
-                        progress: 1
-                    )
-                    self.emitDiffProgress(
-                        progressHandler: progressHandler,
-                        phase: diffFiles.allSatisfy { $0.status == "downloaded" }
-                            ? "finalizing"
-                            : "downloading",
-                        files: diffFiles
-                    )
-                    continue
-                }
-
-                guard let changedAssetFileUrl = changedAsset.fileUrl else {
-                    updateDiffProgressFile(
-                        files: &diffFiles,
-                        assetPath: assetPath,
-                        status: "failed",
-                        progress: 0
-                    )
-                    self.emitDiffProgress(
-                        progressHandler: progressHandler,
-                        phase: "downloading",
-                        files: diffFiles
-                    )
-                    throw BundleStorageError.downloadFailed(
-                        NSError(domain: "HotUpdater", code: 0, userInfo: [
-                            NSLocalizedDescriptionKey: "Changed asset fileUrl missing and patch could not be applied: \(assetPath)"
-                        ])
-                    )
-                }
-
-                let changedAssetDownloadPath = downloadPath(
-                    assetPath: assetPath,
-                    changedAsset: changedAsset
-                )
-                let downloadDestinationPath: String
-                if changedAsset.fileCompression == "br" {
-                    downloadDestinationPath = compressedTempPath(
-                        tempDirectory: tempDirectory,
-                        assetPath: assetPath,
-                        compression: "br"
-                    )
-                } else {
-                    downloadDestinationPath = destinationPath
-                }
-
-                switch self.downloadFileSynchronously(
-                    from: changedAssetFileUrl,
-                    to: downloadDestinationPath,
-                    progressHandler: { progress in
-                        self.updateDiffProgressFile(
-                            files: &diffFiles,
-                            assetPath: assetPath,
-                            status: "downloading",
-                            progress: progress.progress,
-                            downloadPath: changedAssetDownloadPath,
-                            downloadedBytes: progress.downloadedBytes,
-                            totalBytes: progress.totalBytes
-                        )
-                        self.emitDiffProgress(
-                            progressHandler: progressHandler,
-                            phase: "downloading",
-                            files: diffFiles
-                        )
-                    }
-                ) {
-                case .success(let downloadedFileURL):
+                var reused = false
+                // The cached target is only a candidate, just like the active OTA.
+                for directory in localDirectories {
+                    guard let sourcePath = try? FileUtilities.fileURL(for: assetPath, destinationRoot: directory).path,
+                          (try? fileSystem.attributesOfItem(atPath: sourcePath)[.type] as? FileAttributeType) == .typeRegular,
+                          (try? verifyManifestAssetFile(atPath: sourcePath, asset: expectedAsset)) != nil else { continue }
                     do {
-                        try materializeDownloadedAsset(
-                            downloadedPath: downloadedFileURL.path,
-                            destinationPath: destinationPath,
-                            changedAsset: changedAsset
-                        )
-                        try verifyManifestAssetFile(
-                            atPath: destinationPath,
-                            asset: expectedAsset
-                        )
+                        try self.fileSystem.copyItem(atPath: sourcePath, toPath: destinationPath)
+                        try verifyManifestAssetFile(atPath: destinationPath, asset: expectedAsset)
+                        reused = true
+                        break
                     } catch {
-                        updateDiffProgressFile(
-                            files: &diffFiles,
-                            assetPath: assetPath,
-                            status: "failed",
-                            progress: 1
-                        )
-                        self.emitDiffProgress(
-                            progressHandler: progressHandler,
-                            phase: "downloading",
-                            files: diffFiles
-                        )
+                        try? self.fileSystem.removeItem(atPath: destinationPath)
+                    }
+                }
+                if reused { continue }
+                if builtInAssetResolver.copyIfMatches(assetPath: assetPath, expectedHash: expectedAsset.fileHash, destination: destinationPath) {
+                    try verifyManifestAssetFile(atPath: destinationPath, asset: expectedAsset)
+                    continue
+                }
+                downloads[assetPath] = changedAssets[assetPath]
+            }
+
+            var archiveInstalled = false
+            if shouldUseArchive(
+                archive: targetManifest.archive,
+                archiveUrl: archiveUrl,
+                downloads: downloads,
+                assets: targetManifest.assets
+            ), let archive = targetManifest.archive, let archiveUrl {
+                do {
+                    diffFiles = try installArchive(
+                        archive: archive,
+                        archiveUrl: archiveUrl,
+                        targetManifest: targetManifest,
+                        preparedDirectory: tmpDir,
+                        tempDirectory: tempDirectory,
+                        progressHandler: progressHandler
+                    )
+                    archiveInstalled = true
+                } catch {
+                    NSLog("[BundleStorage] tar.br optimization failed; falling back to individual files: \(error.localizedDescription)")
+                    guard fileSystem.fileExists(atPath: tmpDir) else {
                         throw error
                     }
-                    updateDiffProgressFile(
-                        files: &diffFiles,
-                        assetPath: assetPath,
-                        status: "downloaded",
-                        progress: 1
-                    )
-                    self.emitDiffProgress(
-                        progressHandler: progressHandler,
-                        phase: diffFiles.allSatisfy { $0.status == "downloaded" }
-                            ? "finalizing"
-                            : "downloading",
-                        files: diffFiles
-                    )
-                case .failure(let error):
-                    let lastKnownProgress = diffFiles.first(where: { $0.path == assetPath })?.progress ?? 0
-                    updateDiffProgressFile(
-                        files: &diffFiles,
-                        assetPath: assetPath,
-                        status: "failed",
-                        progress: lastKnownProgress
-                    )
-                    self.emitDiffProgress(
-                        progressHandler: progressHandler,
-                        phase: "downloading",
-                        files: diffFiles
-                    )
-                    if let downloadError = error as? DownloadError,
-                       case .incompleteDownload(let expected, let actual) = downloadError {
-                        throw BundleStorageError.incompleteDownload(expected: expected, actual: actual)
-                    }
-                    throw BundleStorageError.downloadFailed(error)
                 }
+            }
+
+            if !archiveInstalled {
+                diffFiles = createDiffProgressFiles(changedAssets: downloads)
+                emitDiffProgress(progressHandler: progressHandler, phase: "downloading", files: diffFiles)
+                let progressLock = NSLock()
+                let workers = OperationQueue()
+                workers.maxConcurrentOperationCount = 4
+                var installError: Error?
+                for progressFile in diffFiles {
+                    let assetPath = progressFile.path
+                    let expectedAsset = targetManifest.assets[assetPath]!
+                    let descriptor = downloads[assetPath]!
+                    let destinationPath = try FileUtilities.fileURL(for: assetPath, destinationRoot: tmpDir).path
+                    // Separate temp namespaces also avoid collisions between flattened asset paths.
+                    let workerTemp = (tempDirectory as NSString).appendingPathComponent(String(progressFile.order))
+                    workers.addOperation {
+                        progressLock.lock()
+                        let shouldSkip = installError != nil
+                        progressLock.unlock()
+                        if shouldSkip { return }
+                        do {
+                            guard self.fileSystem.createDirectory(atPath: workerTemp) else { throw BundleStorageError.directoryCreationFailed }
+                            try self.downloadManifestAsset(
+                                assetPath: assetPath, expectedAsset: expectedAsset, changedAsset: descriptor,
+                                currentBundleId: currentBundleId, currentBundleDir: currentBundleDir,
+                                destinationPath: destinationPath, tempDirectory: workerTemp, progressFile: progressFile,
+                                progressHandler: { payload in
+                                    progressLock.lock()
+                                    defer { progressLock.unlock() }
+                                    if let snapshot = payload.details?.files.first,
+                                       let index = diffFiles.firstIndex(where: { $0.path == assetPath }) {
+                                        diffFiles[index] = snapshot
+                                    }
+                                    self.emitDiffProgress(progressHandler: progressHandler, phase: "downloading", files: diffFiles)
+                                }
+                            )
+                        } catch {
+                            progressLock.lock()
+                            if installError == nil { installError = error }
+                            progressLock.unlock()
+                        }
+                    }
+                }
+                // Join all workers before cleaning scratch files, even after a failure.
+                workers.waitUntilAllOperationsAreFinished()
+                if let installError { throw installError }
             }
 
             self.emitDiffProgress(
@@ -2487,7 +2639,7 @@ class BundleFileStorageService: BundleStorageService {
             )
 
             let manifestDestination = (tmpDir as NSString).appendingPathComponent("manifest.json")
-            try writeManifestFile(targetManifest, to: manifestDestination)
+            try copyVerifiedManifest(from: tempManifestPath, to: manifestDestination)
 
             switch self.findBundleFile(in: tmpDir, expectedBundleId: bundleId) {
             case .success(let maybeBundlePath):
@@ -2495,450 +2647,37 @@ class BundleFileStorageService: BundleStorageService {
                     throw BundleStorageError.invalidBundle
                 }
 
-                if self.fileSystem.fileExists(atPath: realDir) {
-                    try self.fileSystem.removeItem(atPath: realDir)
-                }
-
-                do {
-                    try self.fileSystem.moveItem(atPath: tmpDir, toPath: realDir)
-                } catch {
-                    throw BundleStorageError.moveOperationFailed(error)
-                }
-
-                let finalBundlePath = try resolveBundlePathAfterMove(
-                    bundlePathInTmp,
-                    from: tmpDir,
-                    to: realDir
+                let updatedMetadata = try promoteStagedBundle(
+                    bundleId: bundleId,
+                    stagingDirectory: tmpDir,
+                    finalDirectory: realDir,
+                    bundlePathInStaging: bundlePathInTmp
                 )
-                let currentMetadata = self.loadMetadataOrNull() ?? self.createInitialMetadata()
-                guard let updatedMetadata = self.prepareMetadataForNewStagingBundle(currentMetadata, bundleId: bundleId) else {
-                    self.cleanupTemporaryFiles([tempDirectory])
-                    completion(.failure(BundleStorageError.unknown(
-                        NSError(domain: "HotUpdater", code: 0, userInfo: [
-                            NSLocalizedDescriptionKey: "Release catalog selection is stale"
-                        ])
-                    )))
-                    return
-                }
-                switch self.setBundleURL(localPath: finalBundlePath) {
-                case .success:
-                    let _ = self.saveMetadata(updatedMetadata)
-                    self.cleanupTemporaryFiles([tempDirectory])
-                    self.scheduleCleanupOldBundles(
-                        bundleIdsToKeep: [currentBundleId, updatedMetadata.stableBundleId, bundleId].compactMap { $0 }
+                self.cleanupTemporaryFiles([tempDirectory])
+                self.scheduleCleanupOldBundles(
+                    bundleIdsToKeep: [currentBundleId, updatedMetadata.stableBundleId, bundleId].compactMap { $0 }
+                )
+                progressHandler(UpdateProgressPayload(
+                    progress: 1.0,
+                    artifactType: "diff",
+                    details: .init(
+                        totalFilesCount: diffFiles.count,
+                        completedFilesCount: diffFiles.filter { $0.status == "downloaded" }.count,
+                        files: diffFiles
                     )
-                    progressHandler(
-                        UpdateProgressPayload(
-                            progress: UpdateProgress.complete,
-                            artifactType: "diff",
-                            details: UpdateProgressPayload.DiffProgressDetails(
-                                totalFilesCount: diffFiles.count,
-                                completedFilesCount: diffFiles.filter { $0.status == "downloaded" }.count,
-                                files: diffFiles
-                            )
-                        )
-                    )
-                    completion(.success(true))
-                case .failure(let error):
-                    try? self.fileSystem.removeItem(atPath: realDir)
-                    self.cleanupTemporaryFiles([tempDirectory])
-                    completion(.failure(error))
-                }
+                ))
+                completion(.success(true))
             case .failure(let error):
                 throw error
             }
         } catch {
-            NSLog("[BundleStorage] Manifest-driven install failed: \(error.localizedDescription). Falling back to archive.")
-            try? self.fileSystem.removeItem(atPath: tmpDir)
+            NSLog("[BundleStorage] Manifest-driven install failed: \(error.localizedDescription).")
+            // Preserve staging for a hash-checked retry. Never trust its presence alone.
             self.cleanupTemporaryFiles([tempDirectory])
-            self.prepareAndDownloadBundle(
-                bundleId: bundleId,
-                fileUrl: fileUrl,
-                fileHash: fileHash,
-                storeDir: storeDir,
-                progressHandler: progressHandler,
-                completion: completion
-            )
+            completion(.failure(error))
         }
     }
 
-    private func prepareAndDownloadBundle(
-        bundleId: String,
-        fileUrl: URL,
-        fileHash: String?,
-        storeDir: String,
-        progressHandler: @escaping (UpdateProgressPayload) -> Void,
-        completion: @escaping (Result<Bool, Error>) -> Void
-    ) {
-        // 1) Prepare temp directory for download
-        let tempDirResult = tempDir()
-        guard case .success(let tempDirectory) = tempDirResult else {
-            completion(.failure(tempDirResult.failureError ?? BundleStorageError.unknown(nil)))
-            return
-        }
-        
-        // 2) Clean up any previous temp dir
-        try? self.fileSystem.removeItem(atPath: tempDirectory)
-        
-        // 3) Create temp dir
-        if !self.fileSystem.createDirectory(atPath: tempDirectory) {
-            completion(.failure(BundleStorageError.directoryCreationFailed))
-            return
-        }
-
-        // 4) Determine bundle filename from URL
-        let bundleFileName = fileUrl.lastPathComponent.isEmpty ? "bundle.zip" : fileUrl.lastPathComponent
-        let tempBundleFile = (tempDirectory as NSString).appendingPathComponent(bundleFileName)
-
-        NSLog("[BundleStorage] Starting download from \(fileUrl)")
-
-        // Download with integrated disk space check
-        var diskSpaceError: BundleStorageError? = nil
-
-        _ = self.downloadService.downloadFile(
-            from: fileUrl,
-            to: tempBundleFile,
-            fileSizeHandler: { fileSize in
-                // This will be called when Content-Length is received
-                NSLog("[BundleStorage] File size received: \(fileSize) bytes")
-
-                // Check available disk space
-                do {
-                    let attributes = try FileManager.default.attributesOfFileSystem(forPath: NSHomeDirectory())
-                    if let freeSize = attributes[.systemFreeSize] as? Int64 {
-                        let requiredSpace = fileSize * 2  // ZIP + extracted files
-
-                        NSLog("[BundleStorage] Available: \(freeSize) bytes, Required: \(requiredSpace) bytes")
-
-                        if freeSize < requiredSpace {
-                            NSLog("[BundleStorage] Insufficient disk space detected: need \(requiredSpace) bytes, available \(freeSize) bytes")
-                            // Store error to be returned in completion handler
-                            diskSpaceError = .insufficientDiskSpace
-                        }
-                    }
-                } catch {
-                    NSLog("[BundleStorage] Failed to check disk space: \(error.localizedDescription)")
-                }
-            },
-            progressHandler: { downloadProgress in
-                self.emitArchiveProgress(
-                    progressHandler: progressHandler,
-                    progress: Self.mapProgress(
-                        downloadProgress.progress,
-                        start: 0,
-                        end: UpdateProgress.downloadEnd
-                    ),
-                    downloadedBytes: downloadProgress.downloadedBytes,
-                    totalBytes: downloadProgress.totalBytes
-                )
-            },
-            completion: { [weak self] result in
-            guard let self = self else {
-                let error = NSError(domain: "HotUpdaterError", code: 998,
-                                    userInfo: [NSLocalizedDescriptionKey: "Self deallocated during download"])
-                completion(.failure(error))
-                return
-            }
-
-            // Check for disk space error first before processing download result
-            if let diskError = diskSpaceError {
-                NSLog("[BundleStorage] Throwing disk space error")
-                self.cleanupTemporaryFiles([tempDirectory])
-                completion(.failure(diskError))
-                return
-            }
-
-            // Dispatch the processing of the downloaded file to the file operation queue
-            let workItem = DispatchWorkItem {
-                switch result {
-                case .success(let location):
-                    self.processDownloadedFileWithTmp(location: location,
-                                                      tempBundleFile: tempBundleFile,
-                                                      fileHash: fileHash,
-                                                      storeDir: storeDir,
-                                                      bundleId: bundleId,
-                                                      tempDirectory: tempDirectory,
-                                                      progressHandler: progressHandler,
-                                                      completion: completion)
-                case .failure(let error):
-                    NSLog("[BundleStorage] Download failed: \(error.localizedDescription)")
-                    self.cleanupTemporaryFiles([tempDirectory]) // Sync cleanup
-
-                    // Map DownloadError.incompleteDownload to BundleStorageError.incompleteDownload
-                    if let downloadError = error as? DownloadError,
-                       case .incompleteDownload(let expected, let actual) = downloadError {
-                        completion(.failure(BundleStorageError.incompleteDownload(expected: expected, actual: actual)))
-                    } else {
-                        completion(.failure(BundleStorageError.downloadFailed(error)))
-                    }
-                }
-            }
-            self.fileOperationQueue.async(execute: workItem)
-        }
-        )
-    }
-    
-    /**
-     * Logs detailed diagnostic information about a file system path.
-     * @param path The path to diagnose
-     * @param context Additional context for logging
-     */
-    private func logFileSystemDiagnostics(path: String, context: String) {
-        let fileManager = FileManager.default
-
-        // Check if path exists
-        let exists = fileManager.fileExists(atPath: path)
-        NSLog("[BundleStorage] [\(context)] Path exists: \(exists) - \(path)")
-
-        if exists {
-            do {
-                let attributes = try fileManager.attributesOfItem(atPath: path)
-                let size = attributes[.size] as? Int64 ?? 0
-                let permissions = attributes[.posixPermissions] as? Int ?? 0
-                NSLog("[BundleStorage] [\(context)] Size: \(size) bytes, Permissions: \(String(permissions, radix: 8))")
-            } catch {
-                NSLog("[BundleStorage] [\(context)] Failed to get attributes: \(error.localizedDescription)")
-            }
-        }
-
-        // Check parent directory
-        let parentPath = (path as NSString).deletingLastPathComponent
-        let parentExists = fileManager.fileExists(atPath: parentPath)
-        NSLog("[BundleStorage] [\(context)] Parent directory exists: \(parentExists) - \(parentPath)")
-    }
-
-    /**
-     * Processes a downloaded bundle file using the "tmp" rename approach.
-     * This method is part of the asynchronous `updateBundle` flow and is expected to run on a background thread.
-     * @param location URL of the downloaded file
-     * @param tempBundleFile Path to store the downloaded bundle file
-     * @param fileHash Combined hash string for verification (sig:<signature> or <hex_hash>)
-     * @param storeDir Path to the bundle-store directory
-     * @param bundleId ID of the bundle being processed
-     * @param tempDirectory Temporary directory for processing
-     * @param progressHandler Callback for download/apply progress (0.0 to 1.0)
-     * @param completion Callback with result of the operation
-     */
-    private func processDownloadedFileWithTmp(
-        location: URL,
-        tempBundleFile: String,
-        fileHash: String?,
-        storeDir: String,
-        bundleId: String,
-        tempDirectory: String,
-        progressHandler: @escaping (UpdateProgressPayload) -> Void,
-        completion: @escaping (Result<Bool, Error>) -> Void
-    ) {
-        let currentBundleId = self.getCachedBundleId()
-        NSLog("[BundleStorage] Processing downloaded file atPath: \(location.path)")
-
-        // 1) Ensure the bundle file exists
-        guard self.fileSystem.fileExists(atPath: location.path) else {
-            logFileSystemDiagnostics(path: location.path, context: "Download Location Missing")
-            self.cleanupTemporaryFiles([tempDirectory])
-            completion(.failure(BundleStorageError.downloadFailed(NSError(
-                domain: "HotUpdaterError",
-                code: 1,
-                userInfo: [NSLocalizedDescriptionKey: "Downloaded file does not exist atPath: \(location.path)"]
-            ))))
-            return
-        }
-
-        // 2) Define tmpDir and realDir
-        let tmpDir = (storeDir as NSString).appendingPathComponent("\(bundleId).tmp")
-        let realDir = (storeDir as NSString).appendingPathComponent(bundleId)
-
-        do {
-            // 3) Remove any existing tmpDir
-            if self.fileSystem.fileExists(atPath: tmpDir) {
-                try self.fileSystem.removeItem(atPath: tmpDir)
-                NSLog("[BundleStorage] Removed existing tmpDir: \(tmpDir)")
-            }
-
-            // 4) Create tmpDir
-            guard self.fileSystem.createDirectory(atPath: tmpDir) else {
-                throw BundleStorageError.directoryCreationFailed
-            }
-            NSLog("[BundleStorage] Created tmpDir: \(tmpDir)")
-            logFileSystemDiagnostics(path: tmpDir, context: "TmpDir Created")
-
-            // 5) Verify bundle integrity (hash or signature based on fileHash format)
-            NSLog("[BundleStorage] Verifying bundle integrity...")
-            self.emitArchiveProgress(
-                progressHandler: progressHandler,
-                progress: UpdateProgress.verificationStart
-            )
-            let tempBundleURL = URL(fileURLWithPath: tempBundleFile)
-            let verificationResult = SignatureVerifier.verifyBundle(fileURL: tempBundleURL, fileHash: fileHash)
-            switch verificationResult {
-            case .success:
-                NSLog("[BundleStorage] Bundle verification completed successfully")
-                self.emitArchiveProgress(
-                    progressHandler: progressHandler,
-                    progress: UpdateProgress.verificationEnd
-                )
-            case .failure(let error):
-                NSLog("[BundleStorage] Bundle verification failed: \(error)")
-                try? self.fileSystem.removeItem(atPath: tmpDir)
-                self.cleanupTemporaryFiles([tempDirectory])
-                completion(.failure(BundleStorageError.signatureVerificationFailed(error)))
-                return
-            }
-
-            // 6) Unzip directly into tmpDir with progress tracking (0.8 - 1.0)
-            NSLog("[BundleStorage] Extracting \(tempBundleFile) → \(tmpDir)")
-            logFileSystemDiagnostics(path: tempBundleFile, context: "Before Extraction")
-            do {
-                try self.decompressService.unzip(file: tempBundleFile, to: tmpDir, progressHandler: { unzipProgress in
-                    self.emitArchiveProgress(
-                        progressHandler: progressHandler,
-                        progress: Self.mapProgress(
-                            unzipProgress,
-                            start: UpdateProgress.extractionStart,
-                            end: UpdateProgress.extractionEnd
-                        )
-                    )
-                })
-                NSLog("[BundleStorage] Extraction complete at \(tmpDir)")
-                logFileSystemDiagnostics(path: tmpDir, context: "After Extraction")
-            } catch {
-                let nsError = error as NSError
-                NSLog("[BundleStorage] Extraction failed - Domain: \(nsError.domain), Code: \(nsError.code), Description: \(nsError.localizedDescription)")
-                logFileSystemDiagnostics(path: tmpDir, context: "Extraction Failed")
-                try? self.fileSystem.removeItem(atPath: tmpDir)
-                self.cleanupTemporaryFiles([tempDirectory])
-                completion(.failure(BundleStorageError.extractionFormatError(error)))
-                return
-            }
-
-            // 7) Remove the downloaded bundle file
-            try? self.fileSystem.removeItem(atPath: tempBundleFile)
-
-            // 8) Verify that a valid bundle file exists inside tmpDir
-            self.emitArchiveProgress(
-                progressHandler: progressHandler,
-                progress: UpdateProgress.bundleValidation
-            )
-            switch self.findBundleFile(in: tmpDir, expectedBundleId: bundleId) {
-            case .success(let maybeBundlePath):
-                if let bundlePathInTmp = maybeBundlePath {
-                    NSLog("[BundleStorage] Found valid bundle in tmpDir: \(bundlePathInTmp)")
-                    logFileSystemDiagnostics(path: bundlePathInTmp, context: "Bundle Found")
-
-                    // 9) Remove any existing realDir
-                    if self.fileSystem.fileExists(atPath: realDir) {
-                        try self.fileSystem.removeItem(atPath: realDir)
-                        NSLog("[BundleStorage] Removed existing realDir: \(realDir)")
-                    }
-
-                    // 10) Rename (move) tmpDir → realDir
-                    do {
-                        try self.fileSystem.moveItem(atPath: tmpDir, toPath: realDir)
-                        NSLog("[BundleStorage] Renamed tmpDir to realDir: \(realDir)")
-                        logFileSystemDiagnostics(path: realDir, context: "After Move")
-                    } catch {
-                        let nsError = error as NSError
-                        NSLog("[BundleStorage] Move operation failed - Domain: \(nsError.domain), Code: \(nsError.code), Description: \(nsError.localizedDescription)")
-                        logFileSystemDiagnostics(path: tmpDir, context: "Move Failed - Source")
-                        logFileSystemDiagnostics(path: realDir, context: "Move Failed - Destination")
-                        throw BundleStorageError.moveOperationFailed(error)
-                    }
-
-                    // 11) Construct final bundlePath for preferences
-                    let finalBundlePath = try resolveBundlePathAfterMove(
-                        bundlePathInTmp,
-                        from: tmpDir,
-                        to: realDir
-                    )
-
-                    // 12) Set the bundle URL in preferences (for backwards compatibility)
-                    let currentMetadata = self.loadMetadataOrNull() ?? self.createInitialMetadata()
-                    guard let updatedMetadata = self.prepareMetadataForNewStagingBundle(currentMetadata, bundleId: bundleId) else {
-                        self.cleanupTemporaryFiles([tempDirectory])
-                        completion(.failure(BundleStorageError.unknown(
-                            NSError(domain: "HotUpdater", code: 0, userInfo: [
-                                NSLocalizedDescriptionKey: "Release catalog selection is stale"
-                            ])
-                        )))
-                        return
-                    }
-                    let setResult = self.setBundleURL(localPath: finalBundlePath)
-                    switch setResult {
-                    case .success:
-                        NSLog("[BundleStorage] Successfully set bundle URL: \(finalBundlePath)")
-
-                        // 13) Set staging metadata for rollback support
-                        let _ = self.saveMetadata(updatedMetadata)
-                        NSLog("[BundleStorage] Set staging bundle: \(bundleId), verificationPending: true")
-
-                        // 14) Clean up the temporary directory
-                        self.cleanupTemporaryFiles([tempDirectory])
-
-                        self.emitArchiveProgress(
-                            progressHandler: progressHandler,
-                            progress: UpdateProgress.activationReady
-                        )
-                        self.scheduleCleanupOldBundles(
-                            bundleIdsToKeep: [currentBundleId, updatedMetadata.stableBundleId, bundleId].compactMap { $0 }
-                        )
-
-                        // 15) Complete with success
-                        self.emitArchiveProgress(
-                            progressHandler: progressHandler,
-                            progress: UpdateProgress.complete
-                        )
-                        completion(.success(true))
-                    case .failure(let err):
-                        let nsError = err as NSError
-                        NSLog("[BundleStorage] Failed to set bundle URL - Domain: \(nsError.domain), Code: \(nsError.code), Description: \(nsError.localizedDescription)")
-                        // Preferences save failed → remove realDir and clean up
-                        try? self.fileSystem.removeItem(atPath: realDir)
-                        self.cleanupTemporaryFiles([tempDirectory])
-                        completion(.failure(err))
-                    }
-                } else {
-                    // No valid .jsbundle found → delete tmpDir and fail
-                    NSLog("[BundleStorage] No valid bundle file found in tmpDir")
-                    logFileSystemDiagnostics(path: tmpDir, context: "Invalid Bundle")
-                    try? self.fileSystem.removeItem(atPath: tmpDir)
-                    self.cleanupTemporaryFiles([tempDirectory])
-                    completion(.failure(BundleStorageError.invalidBundle))
-                }
-            case .failure(let findError):
-                let nsError = findError as NSError
-                NSLog("[BundleStorage] Error finding bundle file - Domain: \(nsError.domain), Code: \(nsError.code), Description: \(nsError.localizedDescription)")
-                // Error scanning tmpDir → delete tmpDir and fail
-                try? self.fileSystem.removeItem(atPath: tmpDir)
-                self.cleanupTemporaryFiles([tempDirectory])
-                completion(.failure(findError))
-            }
-        } catch let error {
-            // Any failure during unzip or rename → clean tmpDir and fail
-            let nsError = error as NSError
-            NSLog("[BundleStorage] Error during tmpDir processing - Domain: \(nsError.domain), Code: \(nsError.code), Description: \(nsError.localizedDescription)")
-            logFileSystemDiagnostics(path: tmpDir, context: "Processing Error")
-            try? self.fileSystem.removeItem(atPath: tmpDir)
-            self.cleanupTemporaryFiles([tempDirectory])
-
-            // Re-throw specific BundleStorageError if it is one, otherwise wrap as unknown
-            if let bundleError = error as? BundleStorageError {
-                completion(.failure(bundleError))
-            } else {
-                completion(.failure(BundleStorageError.unknown(error)))
-            }
-        }
-    }
-
-    private static func mapProgress(_ value: Double, start: Double, end: Double) -> Double {
-        let clampedValue = min(max(value, 0), 1)
-        return start + (clampedValue * (end - start))
-    }
-
-    // MARK: - Rollback Support
-
-    /**
-     * Marks the current launch as successful after the first content appeared.
-     */
     func markLaunchCompleted(bundleId: String?) {
         guard let bundleId,
               var metadata = loadMetadataOrNull(),

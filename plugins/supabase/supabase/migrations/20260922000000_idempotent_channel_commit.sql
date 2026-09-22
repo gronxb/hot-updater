@@ -132,13 +132,11 @@ BEGIN
                 v_change->'row'
               );
               INSERT INTO public.hot_updater_v1_bundles (
-                id, platform, file_hash, git_commit_hash, storage_uri,
-                archive_byte_size, metadata, manifest_storage_uri, manifest_file_hash,
+                id, platform, git_commit_hash, metadata, manifest_storage_uri, manifest_file_hash,
                 asset_base_storage_uri
               ) VALUES (
-                v_bundle.id, v_bundle.platform, v_bundle.file_hash,
-                v_bundle.git_commit_hash, v_bundle.storage_uri,
-                v_bundle.archive_byte_size, v_bundle.metadata,
+                v_bundle.id, v_bundle.platform, v_bundle.git_commit_hash,
+                v_bundle.metadata,
                 v_bundle.manifest_storage_uri,
                 v_bundle.manifest_file_hash, v_bundle.asset_base_storage_uri
               );
@@ -154,10 +152,7 @@ BEGIN
               );
               UPDATE public.hot_updater_v1_bundles SET
                 platform = v_bundle.platform,
-                file_hash = v_bundle.file_hash,
                 git_commit_hash = v_bundle.git_commit_hash,
-                storage_uri = v_bundle.storage_uri,
-                archive_byte_size = v_bundle.archive_byte_size,
                 metadata = v_bundle.metadata,
                 manifest_storage_uri = v_bundle.manifest_storage_uri,
                 manifest_file_hash = v_bundle.manifest_file_hash,

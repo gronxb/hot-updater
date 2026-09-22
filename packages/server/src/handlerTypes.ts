@@ -26,6 +26,7 @@ export interface HandlerAPI {
   getArtifactInfo?: (
     targetBundleId: string,
     currentBundleId: string,
+    artifactProtocolVersion: 1,
   ) => Promise<ArtifactInfo | null>;
   getReleaseById?: (id: string) => Promise<ReleaseRow | null>;
   getReleasesByScope?: (input: {

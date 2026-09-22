@@ -249,7 +249,7 @@ export const reportNoChange = async (
 
 let lastDownloadedSelection: string | undefined;
 
-/** Report only after the archive/diff has been verified and staged successfully. */
+/** Report only after the manifest update has been verified and staged successfully. */
 export const reportBundleDownloaded = async (
   options: Pick<
     NotifyAppReadyOptions,

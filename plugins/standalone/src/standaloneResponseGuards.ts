@@ -38,9 +38,9 @@ export const isBundle = (value: unknown): value is Bundle =>
   isRecord(value) &&
   typeof value.id === "string" &&
   (value.platform === "ios" || value.platform === "android") &&
-  typeof value.fileHash === "string" &&
-  typeof value.storageUri === "string" &&
-  isByteSize(value.archiveByteSize) &&
+  typeof value.manifestStorageUri === "string" &&
+  typeof value.manifestFileHash === "string" &&
+  typeof value.assetBaseStorageUri === "string" &&
   (value.patches === undefined ||
     value.patches === null ||
     (Array.isArray(value.patches) && value.patches.every(isBundlePatch)));

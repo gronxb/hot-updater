@@ -45,7 +45,7 @@ const errorResponse = (error: string, status: number): Response =>
 const requiresApiKey = (handlerName: string): boolean =>
   handlerName === "appVersionReleaseCatalog" ||
   handlerName === "fingerprintReleaseCatalog" ||
-  handlerName === "artifact" ||
+  handlerName === "artifactV1" ||
   handlerName === "appendBundleEvent";
 
 const createRequestHandler =
@@ -193,8 +193,8 @@ export function createHotUpdaterHandlers(
   );
   addClientRoute(
     "GET",
-    "/artifacts/:targetBundleId/from/:currentBundleId",
-    "artifact",
+    "/artifacts/v1/:targetBundleId/from/:currentBundleId",
+    "artifactV1",
   );
   if (insights !== undefined) {
     registerInsightsClientRoutes(addClientRoute);

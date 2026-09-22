@@ -47,9 +47,17 @@ export function createDatabasePluginCore(
       return getReleaseCatalog(input);
     },
 
-    async getArtifactInfo(targetBundleId, currentBundleId) {
+    async getArtifactInfo(
+      targetBundleId,
+      currentBundleId,
+      artifactProtocolVersion,
+    ) {
       await beforeOperation?.();
-      return getArtifact(targetBundleId, currentBundleId);
+      return getArtifact(
+        targetBundleId,
+        currentBundleId,
+        artifactProtocolVersion,
+      );
     },
 
     async getReleaseById(id) {

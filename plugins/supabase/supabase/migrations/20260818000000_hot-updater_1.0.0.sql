@@ -10,16 +10,11 @@ CREATE TABLE public.hot_updater_v1_channels (
 CREATE TABLE public.hot_updater_v1_bundles (
   id uuid PRIMARY KEY NOT NULL,
   platform text NOT NULL,
-  file_hash text NOT NULL,
   git_commit_hash text,
-  storage_uri text NOT NULL,
-  archive_byte_size double precision NOT NULL CHECK (
-    archive_byte_size BETWEEN 0 AND 9007199254740991
-  ),
   metadata jsonb NOT NULL DEFAULT '{}'::jsonb,
-  manifest_storage_uri text,
-  manifest_file_hash text,
-  asset_base_storage_uri text
+  manifest_storage_uri text NOT NULL,
+  manifest_file_hash text NOT NULL,
+  asset_base_storage_uri text NOT NULL
 );
 
 CREATE TABLE public.hot_updater_v1_bundle_patches (
@@ -313,13 +308,11 @@ BEGIN
                 v_change->'row'
               );
               INSERT INTO public.hot_updater_v1_bundles (
-                id, platform, file_hash, git_commit_hash, storage_uri,
-                archive_byte_size, metadata, manifest_storage_uri, manifest_file_hash,
+                id, platform, git_commit_hash, metadata, manifest_storage_uri, manifest_file_hash,
                 asset_base_storage_uri
               ) VALUES (
-                v_bundle.id, v_bundle.platform, v_bundle.file_hash,
-                v_bundle.git_commit_hash, v_bundle.storage_uri,
-                v_bundle.archive_byte_size, v_bundle.metadata,
+                v_bundle.id, v_bundle.platform, v_bundle.git_commit_hash,
+                v_bundle.metadata,
                 v_bundle.manifest_storage_uri,
                 v_bundle.manifest_file_hash, v_bundle.asset_base_storage_uri
               );
@@ -335,10 +328,7 @@ BEGIN
               );
               UPDATE public.hot_updater_v1_bundles SET
                 platform = v_bundle.platform,
-                file_hash = v_bundle.file_hash,
                 git_commit_hash = v_bundle.git_commit_hash,
-                storage_uri = v_bundle.storage_uri,
-                archive_byte_size = v_bundle.archive_byte_size,
                 metadata = v_bundle.metadata,
                 manifest_storage_uri = v_bundle.manifest_storage_uri,
                 manifest_file_hash = v_bundle.manifest_file_hash,

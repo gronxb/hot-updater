@@ -7,6 +7,19 @@ import { describe, expect, it } from "vitest";
 import { buildDetoxControlServerEnv } from "./scripts/control-server.ts";
 
 describe("Detox control server environment", () => {
+  it("scopes provider channels to the control port when the runner omits a namespace", () => {
+    const fallback = buildDetoxControlServerEnv("android", {
+      HOT_UPDATER_E2E_CONTROL_PORT: "3109",
+    });
+    const explicit = buildDetoxControlServerEnv("android", {
+      HOT_UPDATER_E2E_CHANNEL_NAMESPACE: "e2e-job-123",
+      HOT_UPDATER_E2E_CONTROL_PORT: "3109",
+    });
+
+    expect(fallback.HOT_UPDATER_E2E_CHANNEL_NAMESPACE).toBe("e2e-3109");
+    expect(explicit.HOT_UPDATER_E2E_CHANNEL_NAMESPACE).toBe("e2e-job-123");
+  });
+
   it("uses a unique iOS DerivedData path for each split control server", () => {
     const first = buildDetoxControlServerEnv("ios", {
       HOT_UPDATER_E2E_CHANNEL_NAMESPACE: "e2e-job-ios-s1",

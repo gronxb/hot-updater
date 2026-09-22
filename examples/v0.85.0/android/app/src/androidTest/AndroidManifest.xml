@@ -4,6 +4,6 @@
         <activity android:name="androidx.test.core.app.InstrumentationActivityInvoker$BootstrapActivity" android:exported="true"/>
         <activity android:name="androidx.test.core.app.InstrumentationActivityInvoker$EmptyActivity" android:exported="true"/>
         <activity android:name="androidx.test.core.app.InstrumentationActivityInvoker$EmptyFloatingActivity" android:exported="true"/>
-        <meta-data android:name="com.hotupdater.FINGERPRINT_HASH" android:value="4fd1eb6f400030c29b70daab0780071d74df30ff"/>
+        <meta-data android:name="com.hotupdater.FINGERPRINT_HASH" android:value="2756a3836f60456c2629c404b04a55ead8a698ae"/>
     </application>
 </manifest>

@@ -6,6 +6,7 @@ import {
   GetInvalidationCommand,
 } from "@aws-sdk/client-cloudfront";
 import {
+  BatchGetCommand,
   DynamoDBDocumentClient,
   GetCommand,
   PutCommand,
@@ -17,6 +18,7 @@ import { bundleToRow, type BundleEventRow } from "@hot-updater/plugin-core";
 import { mockClient } from "aws-sdk-client-mock";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { buildDynamoDBPolicy } from "../iac/iam";
 import {
   DYNAMODB_INSIGHTS_EVENT_IDS_PARTITION,
   DYNAMODB_INSIGHTS_INSTALLATIONS_PARTITION,
@@ -42,11 +44,11 @@ const cloudFrontInvalidation = (status: string) => ({
 const bundleRow = bundleToRow({
   id: "00000000-0000-0000-0000-000000000001",
   platform: "ios",
-  fileHash: "hash",
   gitCommitHash: null,
-  storageUri: "storage://bundle",
-  archiveByteSize: 3_000_000_001,
   metadata: {},
+  manifestStorageUri: "storage://bundle/manifest.json",
+  manifestFileHash: "manifest-hash",
+  assetBaseStorageUri: "storage://assets",
 });
 
 const commitBundle = (plugin: ReturnType<typeof dynamoDB>) =>
@@ -523,6 +525,36 @@ describe("dynamoDB CloudFront lifecycle", () => {
       documentClient.commandCalls(TransactWriteCommand)[0]?.args[0].input
         .TransactItems;
     expect(transaction).toHaveLength(12);
+    const tablePolicy = buildDynamoDBPolicy(
+      "us-east-1",
+      "123456789012",
+      "hot-updater-metadata",
+    ).Statement[1]!;
+    const allowedKeys =
+      tablePolicy.Condition!["ForAllValues:StringLike"]["dynamodb:LeadingKeys"];
+    const batchReads = documentClient.commandCalls(BatchGetCommand);
+    expect(batchReads).toHaveLength(1);
+    expect(tablePolicy.Action).toEqual(
+      expect.arrayContaining(["dynamodb:BatchGetItem", "dynamodb:PutItem"]),
+    );
+    const keys = [
+      ...batchReads.flatMap(({ args }) =>
+        args[0].input.RequestItems!["hot-updater-metadata"]!.Keys!.map(
+          ({ pk }) => pk,
+        ),
+      ),
+      ...transaction!.map((item) => item.Put?.Item?.pk ?? item.Delete?.Key?.pk),
+    ];
+    for (const key of keys) {
+      expect(
+        allowedKeys.some((pattern) =>
+          pattern.endsWith("*")
+            ? String(key).startsWith(pattern.slice(0, -1))
+            : key === pattern,
+        ),
+        `Lambda IAM must permit the Insights partition ${key}`,
+      ).toBe(true);
+    }
     expect(
       transaction?.filter((item) =>
         String(item.Put?.Item?.pk).startsWith(

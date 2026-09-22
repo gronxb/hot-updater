@@ -15,10 +15,7 @@ export const downloadBundle = async (
   const bundle = await databaseClient.getBundleById(bundleId);
   if (!bundle) return new Response("Bundle not found", { status: 404 });
 
-  const storageUri = bundle.storageUri;
-  if (!storageUri) {
-    return new Response("Bundle has no storage URI", { status: 404 });
-  }
+  const storageUri = bundle.manifestStorageUri;
 
   const protocol = new URL(storageUri).protocol.replace(":", "");
   if (storagePlugin?.protocol === protocol) {
@@ -28,7 +25,7 @@ export const downloadBundle = async (
 
     const headers = new Headers(response.headers);
     headers.set("cache-control", "private, no-store");
-    headers.set("content-disposition", "attachment");
+    headers.set("content-disposition", 'attachment; filename="manifest.json"');
     return new Response(response.body, {
       headers,
       status: response.status,
