@@ -4,10 +4,13 @@ import type {
   DatabaseImplementationResult,
   DatabasePluginImplementation,
   DatabaseWhere,
+  FindManyDatabaseImplementationInput,
 } from "@hot-updater/plugin-core/internal";
 import {
   Filter,
   type Query,
+  type QueryDocumentSnapshot,
+  type DocumentReference,
   type Transaction,
   type WhereFilterOp,
 } from "firebase-admin/firestore";
@@ -23,9 +26,11 @@ import {
 } from "./firebaseDatabaseParser";
 import {
   firebaseChannelDocumentId,
+  firebaseChannelIdDocumentId,
   requireFirebaseDocumentKey,
   type FirebaseDatabaseCollections,
 } from "./firebaseDatabasePersistence";
+import { FirebaseDatabaseConstraintError } from "./firebaseDatabaseState";
 
 type Where = readonly {
   [T in DatabaseModel]: DatabaseWhere<T>;
@@ -125,7 +130,22 @@ export const createFirebaseReads = (
   const parse = (
     model: DatabaseModel,
     document: { id: string; data(): unknown },
+    select?: readonly string[],
   ) => {
+    if (select !== undefined) {
+      const value = document.data();
+      if (typeof value !== "object" || value === null)
+        throw new DatabasePluginInputError("invalid-result");
+      const key = Reflect.get(value, documentKey(model));
+      if (
+        typeof key !== "string" ||
+        document.id !==
+          (model === "channels" ? firebaseChannelDocumentId(key) : key)
+      )
+        throw new FirebaseDatabaseConstraintError(`${model}.id.document-key`);
+      // The factory validates selected fields. Retain the physical key invariant here.
+      return value as DatabaseImplementationResult;
+    }
     const row = parsers[model](document.data(), `${model}/${document.id}`);
     if (model === "channels") {
       if (
@@ -137,6 +157,50 @@ export const createFirebaseReads = (
     }
     return requireFirebaseDocumentKey(model, document.id, row);
   };
+  const documentKey = (model: DatabaseModel) =>
+    model === "channels"
+      ? "name"
+      : model === "release_catalogs"
+        ? "scope_key"
+        : "id";
+  const fields = (
+    model: DatabaseModel,
+    select?: readonly string[],
+    orderBy: readonly { field: string }[] = [],
+  ) =>
+    select === undefined
+      ? undefined
+      : [
+          ...new Set([
+            ...select,
+            documentKey(model),
+            ...orderBy.map(({ field }) => field),
+          ]),
+        ];
+  const getDocument = async (
+    reference: DocumentReference,
+    fieldMask?: string[],
+  ) => {
+    if (fieldMask !== undefined) {
+      const [document] = await (transaction
+        ? transaction.getAll(reference, { fieldMask })
+        : reference.firestore.getAll(reference, { fieldMask }));
+      return document;
+    }
+    return transaction ? transaction.get(reference) : reference.get();
+  };
+  const orderedQuery = (input: FindManyDatabaseImplementationInput): Query => {
+    let query = filterQuery(sources[input.model], input.where);
+    for (const clause of input.orderBy ?? []) {
+      if (clause.nulls !== undefined)
+        throw new DatabasePluginInputError("invalid-operation");
+      query = query.orderBy(clause.field, clause.direction);
+    }
+    const select = fields(input.model, input.select, input.orderBy);
+    return select === undefined ? query : query.select(...select);
+  };
+  const get = (query: Query) =>
+    transaction ? transaction.get(query) : query.get();
   const empty = (where: Where = []) =>
     !where.some(({ connector }) => connector === "OR") &&
     where.some(
@@ -168,6 +232,38 @@ export const createFirebaseReads = (
             ? "name"
             : "id";
       if (
+        input.model === "channels" &&
+        input.where?.length === 1 &&
+        condition.field === "id" &&
+        typeof condition.value === "string" &&
+        (condition.operator ?? "eq") === "eq" &&
+        !("mode" in condition && condition.mode === "insensitive")
+      ) {
+        // Reading even an absent registry document serializes competing IDs.
+        const registry = await getDocument(
+          collections.settings.doc(
+            firebaseChannelIdDocumentId(condition.value),
+          ),
+        );
+        if (!registry.exists) return null;
+        const channel = parseFirebaseChannelRow(
+          registry.data(),
+          `settings/${registry.id}`,
+        );
+        const document = await getDocument(
+          collections.channels.doc(firebaseChannelDocumentId(channel.name)),
+        );
+        if (channel.id !== condition.value || !document.exists)
+          throw new FirebaseDatabaseConstraintError("channels.id.registry");
+        const row = parseFirebaseChannelRow(
+          document.data(),
+          `channels/${document.id}`,
+        );
+        if (row.id !== channel.id || row.name !== channel.name)
+          throw new FirebaseDatabaseConstraintError("channels.id.registry");
+        return row;
+      }
+      if (
         input.where?.length === 1 &&
         condition.field === key &&
         (condition.operator === undefined || condition.operator === "eq") &&
@@ -179,65 +275,112 @@ export const createFirebaseReads = (
             ? firebaseChannelDocumentId(condition.value)
             : condition.value;
         const reference = sources[input.model].doc(id);
-        const document = await (transaction
-          ? transaction.get(reference)
-          : reference.get());
-        return document.exists ? parse(input.model, document) : null;
+        const document = await getDocument(
+          reference,
+          fields(input.model, input.select),
+        );
+        return document.exists
+          ? parse(input.model, document, input.select)
+          : null;
       }
-      const query = filterQuery(sources[input.model], input.where)
+      let query = filterQuery(sources[input.model], input.where)
         .offset(0)
         .limit(1);
+      const select = fields(input.model, input.select);
+      if (select !== undefined) query = query.select(...select);
       const result = await (transaction ? transaction.get(query) : query.get());
       return result.docs[0] === undefined
         ? null
-        : parse(input.model, result.docs[0]);
+        : parse(input.model, result.docs[0], input.select);
     },
     async findMany(input) {
       if (input.distinctOn !== undefined)
         throw new DatabasePluginInputError("invalid-operation");
       if (input.limit === 0 || empty(input.where)) return [];
+      await ensureMigrated();
       const parts = splitInputs(input);
       if (parts !== undefined) {
-        const rows: DatabaseImplementationResult[] = [];
-        for (const part of parts)
-          rows.push(
-            ...(await reads.findMany({
+        const orderBy = input.orderBy?.length
+          ? input.orderBy
+          : [{ field: documentKey(input.model), direction: "asc" as const }];
+        const streams = await Promise.all(
+          parts.map(async (part) => {
+            const query = orderedQuery({
               ...part,
-              limit: input.offset + input.limit,
-              offset: 0,
-            })),
-          );
-        rows.sort((left, right) => {
-          for (const { field, direction } of input.orderBy ?? [
-            { field: "id", direction: "asc" },
-          ]) {
-            const a = Reflect.get(left, field),
-              b = Reflect.get(right, field);
+              orderBy,
+            } as FindManyDatabaseImplementationInput);
+            return {
+              query,
+              head: (await get(query.limit(1))).docs[0] as
+                | QueryDocumentSnapshot
+                | undefined,
+            };
+          }),
+        );
+        const compare = (
+          left: QueryDocumentSnapshot,
+          right: QueryDocumentSnapshot,
+        ) => {
+          for (const { field, direction } of orderBy) {
+            const a = left.get(field),
+              b = right.get(field);
             const comparison =
-              a === b ? 0 : a === null ? -1 : b === null ? 1 : a < b ? -1 : 1;
+              typeof a === "string" && typeof b === "string"
+                ? Buffer.compare(Buffer.from(a), Buffer.from(b))
+                : a === b
+                  ? 0
+                  : a === null
+                    ? -1
+                    : b === null
+                      ? 1
+                      : a < b
+                        ? -1
+                        : 1;
             if (comparison !== 0)
               return direction === "asc" ? comparison : -comparison;
           }
-          return 0;
-        });
-        return rows.slice(input.offset, input.offset + input.limit);
+          // Firestore implicitly orders equal values by document name in the last direction.
+          const comparison = Buffer.compare(
+            Buffer.from(left.id),
+            Buffer.from(right.id),
+          );
+          return orderBy.at(-1)?.direction === "desc"
+            ? -comparison
+            : comparison;
+        };
+        const rows: DatabaseImplementationResult[] = [];
+        let skipped = 0;
+        while (rows.length < input.limit) {
+          let next: (typeof streams)[number] | undefined;
+          for (const stream of streams)
+            if (
+              stream.head &&
+              (!next?.head || compare(stream.head, next.head) < 0)
+            )
+              next = stream;
+          if (!next?.head) break;
+          if (skipped < input.offset) skipped++;
+          else rows.push(parse(input.model, next.head, input.select));
+          if (rows.length === input.limit) break;
+          next.head = (
+            await get(next.query.startAfter(next.head).limit(1))
+          ).docs[0];
+        }
+        return rows;
       }
-      await ensureMigrated();
-      let query = filterQuery(sources[input.model], input.where);
-      for (const clause of input.orderBy ?? []) {
-        if (clause.nulls !== undefined)
-          throw new DatabasePluginInputError("invalid-operation");
-        query = query.orderBy(clause.field, clause.direction);
-      }
+      const query = orderedQuery(input);
+      let continuation = query.offset(input.offset);
       const rows: DatabaseImplementationResult[] = [];
       while (rows.length < input.limit) {
         const limit = Math.min(1000, input.limit - rows.length);
-        const page = query.offset(input.offset + rows.length).limit(limit);
-        const result = await (transaction ? transaction.get(page) : page.get());
+        const result = await get(continuation.limit(limit));
         rows.push(
-          ...result.docs.map((document) => parse(input.model, document)),
+          ...result.docs.map((document) =>
+            parse(input.model, document, input.select),
+          ),
         );
         if (result.docs.length < limit) break;
+        continuation = query.startAfter(result.docs[result.docs.length - 1]);
       }
       return rows;
     },
