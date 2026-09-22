@@ -8,7 +8,7 @@ import { createDatabasePluginAdapter } from "@hot-updater/plugin-core/internal";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
 import { boundedDynamoDBMetadataItem } from "./dynamoDB";
-import { createDynamoDBCrud, queryCompleteOwnersPatches } from "./dynamoDB";
+import { createDynamoDBReads, queryCompleteOwnersPatches } from "./dynamoDB";
 import { toDynamoDBBundleItem, toDynamoDBPatchItem } from "./dynamoDB";
 import { DynamoDBIntegrationFixture } from "./dynamoDB.integration-fixture";
 
@@ -109,7 +109,7 @@ describe("DynamoDB reads beyond the former metadata ceiling", () => {
         }),
       );
     }
-    const crud = createDynamoDBCrud(
+    const crud = createDynamoDBReads(
       { client: fixture.client, tableName: fixture.tableName },
       "hot-updater-update-index",
     );
@@ -162,7 +162,11 @@ describe("DynamoDB reads beyond the former metadata ceiling", () => {
     gets.reset();
 
     const plugin = fixture.createPlugin();
-    const adapter = createDatabasePluginAdapter("tracked-dynamodb", crud);
+    const adapter = createDatabasePluginAdapter("tracked-dynamodb", {
+      read: crud,
+      models: plugin.models,
+      commit: plugin.commit,
+    });
     const trackedPlugin = createDatabasePlugin({
       ...plugin,
       name: "tracked-dynamodb",

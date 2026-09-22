@@ -9,7 +9,10 @@ import {
   DynamoDBDocumentClient,
   ScanCommand,
 } from "@aws-sdk/lib-dynamodb";
-import type { DatabasePlugin } from "@hot-updater/plugin-core";
+import {
+  createDatabasePlugin,
+  type DatabasePlugin,
+} from "@hot-updater/plugin-core";
 
 import {
   assertDockerDaemonAvailable,
@@ -20,7 +23,11 @@ import {
   type RuntimeChild,
   type RuntimeLogs,
 } from "../../../packages/test-utils/src/runtimeProcess";
-import { DYNAMODB_UPDATE_INDEX_NAME, dynamoDB } from "./dynamoDB";
+import {
+  DYNAMODB_UPDATE_INDEX_NAME,
+  dynamoDB,
+  createDynamoDBCommit,
+} from "./dynamoDB";
 
 const REGION = "us-east-1";
 const LOCALSTACK_IMAGE = "localstack/localstack:3";
@@ -61,7 +68,17 @@ export class DynamoDBIntegrationFixture {
     });
   }
 
-  pauseNextQuery() {
+  createTrackedPlugin(): DatabasePlugin {
+    return createDatabasePlugin({
+      ...this.createPlugin(),
+      commit: createDynamoDBCommit({
+        client: this.client,
+        tableName: this.tableName,
+      }),
+    });
+  }
+
+  pauseNextQuery(partitionIncludes?: string) {
     const name = `pause-query-${crypto.randomUUID()}`;
     let observed!: () => void;
     let resume!: () => void;
@@ -75,7 +92,14 @@ export class DynamoDBIntegrationFixture {
     this.client.middlewareStack.add(
       (next, context) => async (args) => {
         const result = await next(args);
-        if (context.commandName === "QueryCommand" && !paused) {
+        if (
+          context.commandName === "QueryCommand" &&
+          !paused &&
+          (partitionIncludes === undefined ||
+            JSON.stringify(
+              Reflect.get(args.input, "ExpressionAttributeValues"),
+            ).includes(partitionIncludes))
+        ) {
           paused = true;
           observed();
           await resumePromise;

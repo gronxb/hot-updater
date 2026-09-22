@@ -6,8 +6,7 @@ import {
 } from "@hot-updater/plugin-core";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
-import { createDynamoDBAggregateMutations } from "./dynamoDB";
-import { createDynamoDBCrud } from "./dynamoDB";
+import { createReleaseRowFixture } from "../../../packages/test-utils/src/databaseTestFixtures";
 import { DynamoDBIntegrationFixture } from "./dynamoDB.integration-fixture";
 
 const fixture = new DynamoDBIntegrationFixture();
@@ -136,17 +135,30 @@ describe("DynamoDB metadata concurrency and delete serialization", () => {
   });
 
   it("reports DynamoDB's physical transaction action limit", async () => {
+    const plugin = fixture.createPlugin();
+    const owner = bundle(200);
+    const bases = Array.from({ length: 101 }, (_, index) =>
+      bundle(index + 300),
+    );
+    for (const base of bases)
+      await plugin.commit({
+        changes: [
+          { model: "bundles", operation: "insert", row: bundleToRow(base) },
+        ],
+      });
     await expect(
-      createDynamoDBAggregateMutations({
-        client: fixture.client,
-        tableName: fixture.tableName,
-      }).insertBundleWithPatches({
-        bundle: bundleToRow(bundle(200)),
-        patches: Array.from({ length: 101 }, (_, index) =>
-          patchRow(bundle(200), bundle(index + 300)),
-        ),
+      plugin.commit({
+        changes: [
+          { model: "bundles", operation: "insert", row: bundleToRow(owner) },
+          ...bases.map((base) => ({
+            model: "bundlePatches" as const,
+            operation: "insert" as const,
+            row: patchRow(owner, base),
+          })),
+        ],
       }),
     ).rejects.toMatchObject({ name: "DynamoDBTransactionLimitError" });
+    await expect(plugin.models.bundles.findById(owner.id)).resolves.toBeNull();
   });
 
   it("allows a base bundle to be referenced by more than 24 patches", async () => {
@@ -200,33 +212,87 @@ describe("DynamoDB metadata concurrency and delete serialization", () => {
       const base = bundle(2);
       await database.insertBundle(owner);
       await database.insertBundle(base);
-      const crud = createDynamoDBCrud(
-        {
-          client: fixture.client,
-          tableName: fixture.tableName,
-        },
-        "hot-updater-update-index",
-      );
+      const plugin = fixture.createTrackedPlugin();
       const paused = fixture.pauseNextQuery();
       const deleted = deletedSide === "owner" ? owner : base;
 
-      const deletion = crud.delete({
-        model: "bundles",
-        where: [{ field: "id", operator: "eq", value: deleted.id }],
+      const deletion = plugin.commit({
+        changes: [
+          { model: "bundles", operation: "delete", where: { id: deleted.id } },
+        ],
       });
       await paused.observed;
-      await crud.create({
-        model: "bundle_patches",
-        data: patchRow(owner, base),
+      await plugin.commit({
+        changes: [
+          {
+            model: "bundlePatches",
+            operation: "insert",
+            row: patchRow(owner, base),
+          },
+        ],
       });
       paused.release();
-      await expect(deletion).rejects.toBeDefined();
+      await expect(deletion).resolves.toEqual({ committed: true });
       paused.remove();
+      await expect(database.getBundleById(deleted.id)).resolves.toBeNull();
+      await expect(
+        plugin.models.bundlePatches.findByBundleIds([owner.id]),
+      ).resolves.toEqual([]);
+    },
+  );
 
-      await expect(database.getBundleById(deleted.id)).resolves.not.toBeNull();
-      await expect(database.getBundleById(owner.id)).resolves.toMatchObject({
-        patches: { length: 1 },
+  it.each(["bundles", "channels"] as const)(
+    "retains a %s parent when a release is inserted after its reference query",
+    async (model) => {
+      const plugin = fixture.createTrackedPlugin();
+      const target = bundleToRow(bundle(1));
+      const channel = { id: productionChannelId, name: "production" };
+      await plugin.commit({
+        changes: [
+          { model: "bundles", operation: "insert", row: target },
+          {
+            model: "channels",
+            operation: "insert",
+            row: channel,
+            onConflict: "ignore",
+          },
+        ],
       });
+      const release = createReleaseRowFixture("901", target, channel);
+      const paused = fixture.pauseNextQuery("#releases#");
+      const deletion = plugin.commit({
+        changes: [
+          {
+            model,
+            operation: "delete",
+            where: { id: model === "bundles" ? target.id : channel.id },
+          },
+        ],
+      });
+      try {
+        await paused.observed;
+        await expect(
+          plugin.commit({
+            changes: [{ model: "releases", operation: "insert", row: release }],
+          }),
+        ).resolves.toEqual({ committed: true });
+      } finally {
+        paused.release();
+        paused.remove();
+      }
+      await expect(deletion).resolves.toEqual({
+        committed: false,
+        conflict: { changeIndex: 0, reason: "referenced" },
+      });
+      await expect(plugin.models.bundles.findById(target.id)).resolves.toEqual(
+        target,
+      );
+      await expect(plugin.models.channels.list({})).resolves.toEqual({
+        channels: [channel],
+      });
+      await expect(
+        plugin.models.releases.findById(release.id),
+      ).resolves.toEqual(release);
     },
   );
 
@@ -234,70 +300,71 @@ describe("DynamoDB metadata concurrency and delete serialization", () => {
     const database = createDatabaseClient(fixture.createPlugin());
     const target = bundle(1);
     await database.insertBundle(target);
-    const crud = createDynamoDBCrud(
-      {
-        client: fixture.client,
-        tableName: fixture.tableName,
-      },
-      "hot-updater-update-index",
-    );
+    const plugin = fixture.createTrackedPlugin();
     const paused = fixture.pauseNextQuery();
 
-    const deletion = crud.delete({
-      model: "bundles",
-      where: [{ field: "id", operator: "eq", value: target.id }],
+    const deletion = plugin.commit({
+      changes: [
+        { model: "bundles", operation: "delete", where: { id: target.id } },
+      ],
     });
     await paused.observed;
-    await crud.update({
-      model: "bundles",
-      where: [{ field: "id", operator: "eq", value: target.id }],
-      update: { metadata: { app_version: "updated-during-delete" } },
+    await plugin.commit({
+      changes: [
+        {
+          model: "bundles",
+          operation: "update",
+          where: { id: target.id },
+          update: { metadata: { app_version: "updated-during-delete" } },
+        },
+      ],
     });
     paused.release();
-    await expect(deletion).rejects.toBeDefined();
+    await expect(deletion).resolves.toEqual({ committed: true });
     paused.remove();
-
-    await expect(database.getBundleById(target.id)).resolves.toMatchObject({
-      metadata: { app_version: "updated-during-delete" },
-    });
-    const stored = await fixture.client.send(
-      new GetCommand({
-        TableName: fixture.tableName,
-        Key: { pk: "bundles", sk: target.id },
-        ConsistentRead: true,
-      }),
-    );
-    expect(stored.Item?.version).toBe(2);
+    await expect(database.getBundleById(target.id)).resolves.toBeNull();
   });
 
-  it("deletes multiple related bundles in resumable atomic groups", async () => {
+  it("atomically deletes multiple related bundles and shared patches", async () => {
     const database = createDatabaseClient(fixture.createPlugin());
-    const crud = createDynamoDBCrud(
-      {
-        client: fixture.client,
-        tableName: fixture.tableName,
-      },
-      "hot-updater-update-index",
-    );
+    const plugin = fixture.createTrackedPlugin();
     const owner = bundle(1);
     const base = bundle(2);
     await database.insertBundle(owner);
     await database.insertBundle(base);
-    await crud.create({
-      model: "bundle_patches",
-      data: patchRow(owner, base),
+    await plugin.commit({
+      changes: [
+        {
+          model: "bundlePatches",
+          operation: "insert",
+          row: patchRow(owner, base),
+        },
+      ],
     });
-    await crud.create({
-      model: "bundle_patches",
-      data: { ...patchRow(owner, base), id: `${owner.id}:${base.id}:second` },
+    await plugin.commit({
+      changes: [
+        {
+          model: "bundlePatches",
+          operation: "insert",
+          row: {
+            ...patchRow(owner, base),
+            id: `${owner.id}:${base.id}:second`,
+          },
+        },
+      ],
     });
 
-    await crud.delete({
-      model: "bundles",
-      where: [{ field: "platform", operator: "eq", value: "ios" }],
+    await plugin.commit({
+      changes: [owner, base].map(({ id }) => ({
+        model: "bundles" as const,
+        operation: "delete" as const,
+        where: { id },
+      })),
     });
 
-    await expect(crud.count({ model: "bundles" })).resolves.toBe(0);
-    await expect(crud.count({ model: "bundle_patches" })).resolves.toBe(0);
+    await expect(plugin.models.bundles.count()).resolves.toBe(0);
+    await expect(
+      plugin.models.bundlePatches.findByBundleIds([owner.id, base.id]),
+    ).resolves.toEqual([]);
   });
 });
