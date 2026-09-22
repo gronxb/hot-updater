@@ -195,12 +195,9 @@ describe("MongoDB low-level predicate translation", () => {
     ).toEqual({
       $and: [
         {
-          $or: [
-            { $expr: { $eq: ["$id", { $literal: "first" }] } },
-            { $expr: { $eq: ["$id", { $literal: "second" }] } },
-          ],
+          $or: [{ id: { $eq: "first" } }, { id: { $eq: "second" } }],
         },
-        { $expr: { $eq: ["$platform", { $literal: "ios" }] } },
+        { platform: { $eq: "ios" } },
       ],
     });
   });
@@ -229,7 +226,7 @@ describe("MongoDB low-level predicate translation", () => {
   it("preserves empty set semantics", () => {
     expect(
       createMongoBundleWhere([{ field: "id", operator: "in", value: [] }]),
-    ).toEqual({ $expr: { $in: ["$id", { $literal: [] }] } });
+    ).toEqual({ id: { $in: [] } });
     expect(
       createMongoBundleWhere([{ field: "id", operator: "not_in", value: [] }]),
     ).toEqual({

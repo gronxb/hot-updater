@@ -26,7 +26,6 @@ import {
   isChannelDeleteReferencedError,
   translateChannelDeleteError,
 } from "./databaseConstraintErrors";
-import { hasNullOrderOverrides, sortRowsByOrder } from "./databasePluginUtils";
 import {
   queryPrismaLatestEvents,
   updatePrismaEventHead,
@@ -135,23 +134,13 @@ const findMany = async (
   if (input.distinctOn !== undefined) {
     throw new DatabasePluginInputError("invalid-operation");
   }
-  const rawOrderBy = input.orderBy;
-  const orderBy = createPrismaOrderBy(rawOrderBy);
-  const shouldSortInMemory =
-    rawOrderBy !== undefined && hasNullOrderOverrides(rawOrderBy);
-  const rows = shouldSortInMemory
-    ? sortRowsByOrder(
-        (await getPrismaDelegate(client, input.model).findMany({
-          where: createPrismaWhere(input.where, provider),
-        })) as Record<string, unknown>[],
-        rawOrderBy,
-      ).slice(input.offset, input.offset + input.limit)
-    : await getPrismaDelegate(client, input.model).findMany({
-        where: createPrismaWhere(input.where, provider),
-        ...(orderBy ? { orderBy } : {}),
-        skip: input.offset,
-        take: input.limit,
-      });
+  const orderBy = createPrismaOrderBy(input.orderBy, input.model);
+  const rows = await getPrismaDelegate(client, input.model).findMany({
+    where: createPrismaWhere(input.where, provider),
+    ...(orderBy ? { orderBy } : {}),
+    skip: input.offset,
+    take: input.limit,
+  });
   switch (input.model) {
     case "bundles":
       return parsePrismaRows(rows, parsePrismaBundleRow);

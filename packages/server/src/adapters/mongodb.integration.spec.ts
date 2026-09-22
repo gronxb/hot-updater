@@ -7,7 +7,10 @@ import { MongoClient, type CommandStartedEvent, type Document } from "mongodb";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
 import { createBundleEventRowFixture } from "../../../test-utils/src/databaseTestFixtures";
+import { createBundleRowFixture } from "../../../test-utils/src/databaseTestFixtures";
 import { mongoAdapter } from "./mongodb";
+import { createMongoCollections } from "./mongodbCollections";
+import { createMongoReads } from "./mongodbReads";
 
 const availablePort = (): Promise<number> =>
   new Promise((resolve, reject) => {
@@ -90,6 +93,76 @@ describe("MongoDB native Insights storage", () => {
     const adapter = mongoAdapter({ client });
     await (await adapter.createMigrator!().migrateToLatest()).execute();
   }, 120_000);
+
+  it("uses the id index when fetching finite bundle IDs from a larger history", async () => {
+    const collection = client.db().collection("bundles");
+    await collection.deleteMany({});
+    const rows = Array.from({ length: 500 }, (_, i) =>
+      createBundleRowFixture(String(i + 1000)),
+    );
+    await collection.insertMany(rows.map((row) => ({ ...row })));
+    let filter: Document | undefined;
+    const capture = (event: CommandStartedEvent) => {
+      if (event.command.find === "bundles") filter = event.command.filter;
+    };
+    client.on("commandStarted", capture);
+    try {
+      await expect(
+        createMongoReads(createMongoCollections(client)).findMany({
+          model: "bundles",
+          where: [
+            {
+              field: "id",
+              operator: "in",
+              value: [rows[0]!.id, rows[499]!.id],
+            },
+          ],
+          limit: 2,
+          offset: 0,
+        }),
+      ).resolves.toHaveLength(2);
+    } finally {
+      client.off("commandStarted", capture);
+    }
+    expect(filter).toBeDefined();
+    const plan = await collection.find(filter!).explain("executionStats");
+    expect(JSON.stringify(plan)).not.toContain('"stage":"COLLSCAN"');
+    expect(plan.executionStats.totalDocsExamined).toBeLessThanOrEqual(2);
+  });
+
+  it("sorts nullable metadata and applies the requested window in MongoDB", async () => {
+    const collection = client.db().collection("bundles");
+    await collection.deleteMany({});
+    const rows = [null, "z", "a", "b", null].map((git_commit_hash, i) => ({
+      ...createBundleRowFixture(String(i + 800)),
+      git_commit_hash,
+    }));
+    await collection.insertMany(rows.map((row) => ({ ...row })));
+    const reads = createMongoReads(createMongoCollections(client));
+    await expect(
+      reads.findMany({
+        model: "bundles",
+        where: [{ field: "platform", value: rows[0]!.platform }],
+        orderBy: [
+          { field: "git_commit_hash", direction: "asc", nulls: "last" },
+          { field: "id", direction: "asc" },
+        ],
+        limit: 2,
+        offset: 1,
+      }),
+    ).resolves.toEqual([rows[3], rows[1]]);
+    await expect(
+      reads.findMany({
+        model: "bundles",
+        orderBy: [
+          { field: "git_commit_hash", direction: "desc", nulls: "first" },
+          { field: "id", direction: "asc" },
+        ],
+        limit: 2,
+        offset: 0,
+      }),
+    ).resolves.toEqual([rows[0], rows[4]]);
+  });
 
   beforeEach(async () => {
     await client.db().collection("bundle_events").deleteMany({});

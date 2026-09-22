@@ -11,9 +11,9 @@ import type {
   DatabasePluginImplementation,
   FindManyDatabaseImplementationInput,
 } from "@hot-updater/plugin-core/internal";
-import type { ClientSession } from "mongodb";
+import type { ClientSession, Document, Collection } from "mongodb";
 
-import { hasNullOrderOverrides, sortRowsByOrder } from "./databasePluginUtils";
+import { hasNullOrderOverrides } from "./databasePluginUtils";
 import {
   activeBundleFilter,
   type MongoCollections,
@@ -23,6 +23,7 @@ import {
 } from "./mongodbCollections";
 import {
   createMongoBundleWhere,
+  createMongoWhereDocument,
   createMongoChannelWhere,
   createMongoApiKeyWhere,
   createMongoEventWhere,
@@ -38,197 +39,71 @@ const findMongoRows = async (
   session?: ClientSession,
 ): Promise<readonly DatabaseImplementationResult[]> => {
   if (input.limit === 0) return [];
-  const rawOrderBy = input.orderBy;
-  const needsInMemoryOrder = hasNullOrderOverrides(rawOrderBy);
-  switch (input.model) {
-    case "bundles": {
-      const cursor = collections.bundles
-        .find(activeBundleFilter(createMongoBundleWhere(input.where)), {
-          projection: WITHOUT_INTERNAL_FIELDS,
-          ...mongoSessionOptions(session),
-        })
-        .skip(input.offset)
-        .limit(input.limit);
-      if (rawOrderBy === undefined) return cursor.toArray();
-      if (needsInMemoryOrder) {
-        const rows = await collections.bundles
-          .find(activeBundleFilter(createMongoBundleWhere(input.where)), {
-            projection: WITHOUT_INTERNAL_FIELDS,
-            ...mongoSessionOptions(session),
-          })
-          .toArray();
-        return sortRowsByOrder(rows, rawOrderBy).slice(
-          input.offset,
-          input.offset + input.limit,
-        );
+  const sources = {
+    bundles: collections.bundles,
+    bundle_patches: collections.bundlePatches,
+    bundle_events: collections.bundleEvents,
+    api_keys: collections.apiKeys,
+    channels: collections.channels,
+    releases: collections.releases,
+    release_catalogs: collections.releaseCatalogs,
+  };
+  const collection = sources[
+    input.model
+  ] as unknown as Collection<DatabaseImplementationResult>;
+  const predicate =
+    input.model === "bundle_events"
+      ? createMongoEventWhere(
+          input.where as Parameters<typeof createMongoEventWhere>[0],
+        )
+      : createMongoWhereDocument(input.where);
+  const where =
+    input.model === "bundles" ? activeBundleFilter(predicate) : predicate;
+  const projection =
+    input.model === "bundles" ? WITHOUT_INTERNAL_FIELDS : WITHOUT_MONGO_ID;
+  const options = {
+    ...mongoSessionOptions(session),
+    ...(input.model === "bundle_events"
+      ? { collation: { locale: "simple" }, readPreference: "primary" as const }
+      : {}),
+  };
+  if (hasNullOrderOverrides(input.orderBy)) {
+    const nullFields: Document = {};
+    const sort: Record<string, 1 | -1> = {};
+    const exclude: Document = { ...projection };
+    for (const [index, clause] of (input.orderBy ?? []).entries()) {
+      if (clause.nulls !== undefined) {
+        const key = `_hot_updater_null_${index}`;
+        nullFields[key] = {
+          $eq: [{ $ifNull: [`$${clause.field}`, null] }, null],
+        };
+        sort[key] = clause.nulls === "first" ? -1 : 1;
+        exclude[key] = 0;
       }
-      const sort = createMongoSort(input);
-      return sort === undefined
-        ? cursor.toArray()
-        : cursor.sort(sort).toArray();
+      sort[clause.field] = clause.direction === "asc" ? 1 : -1;
     }
-    case "bundle_patches": {
-      const cursor = collections.bundlePatches
-        .find(createMongoPatchWhere(input.where), {
-          projection: WITHOUT_MONGO_ID,
-          ...mongoSessionOptions(session),
-        })
-        .skip(input.offset)
-        .limit(input.limit);
-      if (rawOrderBy === undefined) return cursor.toArray();
-      if (needsInMemoryOrder) {
-        const rows = await collections.bundlePatches
-          .find(createMongoPatchWhere(input.where), {
-            projection: WITHOUT_MONGO_ID,
-            ...mongoSessionOptions(session),
-          })
-          .toArray();
-        return sortRowsByOrder(rows, rawOrderBy).slice(
-          input.offset,
-          input.offset + input.limit,
-        );
-      }
-      const sort = createMongoSort(input);
-      return sort === undefined
-        ? cursor.toArray()
-        : cursor.sort(sort).toArray();
-    }
-    case "bundle_events": {
-      const cursor = collections.bundleEvents
-        .find(createMongoEventWhere(input.where), {
-          projection: WITHOUT_MONGO_ID,
-          ...mongoSessionOptions(session),
-          collation: { locale: "simple" },
-          readPreference: "primary",
-        })
-        .skip(input.offset)
-        .limit(input.limit);
-      if (rawOrderBy === undefined) return cursor.toArray();
-      if (needsInMemoryOrder) {
-        const rows = await collections.bundleEvents
-          .find(createMongoEventWhere(input.where), {
-            projection: WITHOUT_MONGO_ID,
-            ...mongoSessionOptions(session),
-            collation: { locale: "simple" },
-            readPreference: "primary",
-          })
-          .toArray();
-        return sortRowsByOrder(rows, rawOrderBy).slice(
-          input.offset,
-          input.offset + input.limit,
-        );
-      }
-      const sort = createMongoSort(input);
-      return sort === undefined
-        ? cursor.toArray()
-        : cursor.sort(sort).toArray();
-    }
-
-    case "api_keys": {
-      const cursor = collections.apiKeys
-        .find(createMongoApiKeyWhere(input.where), {
-          projection: WITHOUT_MONGO_ID,
-          ...mongoSessionOptions(session),
-        })
-        .skip(input.offset)
-        .limit(input.limit);
-      if (rawOrderBy === undefined) return cursor.toArray();
-      if (needsInMemoryOrder) {
-        const rows = await collections.apiKeys
-          .find(createMongoApiKeyWhere(input.where), {
-            projection: WITHOUT_MONGO_ID,
-            ...mongoSessionOptions(session),
-          })
-          .toArray();
-        return sortRowsByOrder(rows, rawOrderBy).slice(
-          input.offset,
-          input.offset + input.limit,
-        );
-      }
-      const sort = createMongoSort(input);
-      return sort === undefined
-        ? cursor.toArray()
-        : cursor.sort(sort).toArray();
-    }
-    case "channels": {
-      const cursor = collections.channels
-        .find(createMongoChannelWhere(input.where), {
-          projection: WITHOUT_MONGO_ID,
-          ...mongoSessionOptions(session),
-        })
-        .skip(input.offset)
-        .limit(input.limit);
-      if (rawOrderBy === undefined) return cursor.toArray();
-      if (needsInMemoryOrder) {
-        const rows = await collections.channels
-          .find(createMongoChannelWhere(input.where), {
-            projection: WITHOUT_MONGO_ID,
-            ...mongoSessionOptions(session),
-          })
-          .toArray();
-        return sortRowsByOrder(rows, rawOrderBy).slice(
-          input.offset,
-          input.offset + input.limit,
-        );
-      }
-      const sort = createMongoSort(input);
-      return sort === undefined
-        ? cursor.toArray()
-        : cursor.sort(sort).toArray();
-    }
-    case "releases": {
-      const cursor = collections.releases
-        .find(createMongoReleaseWhere(input.where), {
-          projection: WITHOUT_MONGO_ID,
-          ...mongoSessionOptions(session),
-        })
-        .skip(input.offset)
-        .limit(input.limit);
-      if (rawOrderBy === undefined) return cursor.toArray();
-      if (needsInMemoryOrder) {
-        const rows = await collections.releases
-          .find(createMongoReleaseWhere(input.where), {
-            projection: WITHOUT_MONGO_ID,
-            ...mongoSessionOptions(session),
-          })
-          .toArray();
-        return sortRowsByOrder(rows, rawOrderBy).slice(
-          input.offset,
-          input.offset + input.limit,
-        );
-      }
-      const sort = createMongoSort(input);
-      return sort === undefined
-        ? cursor.toArray()
-        : cursor.sort(sort).toArray();
-    }
-    case "release_catalogs": {
-      const cursor = collections.releaseCatalogs
-        .find(createMongoReleaseCatalogWhere(input.where), {
-          projection: WITHOUT_MONGO_ID,
-          ...mongoSessionOptions(session),
-        })
-        .skip(input.offset)
-        .limit(input.limit);
-      if (rawOrderBy === undefined) return cursor.toArray();
-      if (needsInMemoryOrder) {
-        const rows = await collections.releaseCatalogs
-          .find(createMongoReleaseCatalogWhere(input.where), {
-            projection: WITHOUT_MONGO_ID,
-            ...mongoSessionOptions(session),
-          })
-          .toArray();
-        return sortRowsByOrder(rows, rawOrderBy).slice(
-          input.offset,
-          input.offset + input.limit,
-        );
-      }
-      const sort = createMongoSort(input);
-      return sort === undefined
-        ? cursor.toArray()
-        : cursor.sort(sort).toArray();
-    }
+    return collection
+      .aggregate<DatabaseImplementationResult>(
+        [
+          { $match: where },
+          { $addFields: nullFields },
+          { $sort: sort },
+          { $skip: input.offset },
+          { $limit: input.limit },
+          { $project: exclude },
+        ],
+        options,
+      )
+      .toArray();
   }
+  const cursor = collection
+    .find(where as Document, { ...options, projection })
+    .skip(input.offset)
+    .limit(input.limit);
+  const sort = createMongoSort(input);
+  return (await (
+    sort === undefined ? cursor : cursor.sort(sort)
+  ).toArray()) as DatabaseImplementationResult[];
 };
 
 type MongoReadImplementation = Pick<

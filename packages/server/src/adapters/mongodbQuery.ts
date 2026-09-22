@@ -119,9 +119,43 @@ const predicate = (where: AnyDatabaseWhere): Document => {
   }
 };
 
-const createMongoWhereDocument = (
+// Fixed metadata fields can use ordinary index bounds. In particular, $expr/$in
+// prevents the owner/id indexes from serving finite patch and bundle lookups.
+const metadataPredicate = (where: AnyDatabaseWhere): Document => {
+  if ("mode" in where && where.mode === "insensitive") return predicate(where);
+  switch (where.operator) {
+    case undefined:
+    case "eq":
+      return {
+        [where.field]: {
+          $eq: where.value,
+          ...(where.value === null ? { $exists: true } : {}),
+        },
+      };
+    case "gt":
+    case "gte":
+    case "lt":
+    case "lte":
+      return {
+        [where.field]: { [`$${where.operator}`]: where.value, $ne: null },
+      };
+    case "in":
+      return {
+        [where.field]: {
+          $in: where.value,
+          ...(where.value.some((value) => value === null)
+            ? { $exists: true }
+            : {}),
+        },
+      };
+    default:
+      return predicate(where);
+  }
+};
+
+export const createMongoWhereDocument = (
   where: readonly AnyDatabaseWhere[] | undefined,
-  toPredicate: (condition: AnyDatabaseWhere) => Document = predicate,
+  toPredicate: (condition: AnyDatabaseWhere) => Document = metadataPredicate,
 ): Document => {
   const items = Array.isArray(where) ? where : [];
   const first = items[0];

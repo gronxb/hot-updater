@@ -6,6 +6,7 @@ import type {
   DatabaseWhere,
 } from "@hot-updater/plugin-core/internal";
 
+import { getSchemaColumn, getSchemaTable } from "../db/schema/registry";
 import type { ORMProvider } from "../db/types";
 
 export type PrismaQuery = Readonly<Record<string, unknown>>;
@@ -122,8 +123,16 @@ export const createPrismaWhere = (
 
 export const createPrismaOrderBy = (
   orderBy: AnyDatabaseOrderBy | readonly AnyDatabaseSortBy[] | undefined,
+  model?: DatabaseModel,
 ): PrismaQuery | PrismaQuery[] | undefined => {
   if (orderBy === undefined) return undefined;
   const clauses = Array.isArray(orderBy) ? orderBy : [orderBy];
-  return clauses.map((clause) => ({ [clause.field]: clause.direction }));
+  return clauses.map((clause) => ({
+    [clause.field]:
+      clause.nulls !== undefined &&
+      model !== undefined &&
+      getSchemaColumn(getSchemaTable(model), clause.field).nullable
+        ? { sort: clause.direction, nulls: clause.nulls }
+        : clause.direction,
+  }));
 };

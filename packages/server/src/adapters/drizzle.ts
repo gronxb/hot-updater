@@ -116,6 +116,8 @@ export const drizzleAdapter = (
         count: (where) => getAdapter().models.bundles.count(where),
       },
       bundlePatches: {
+        findByBaseBundleIds: (ids) =>
+          getAdapter().models.bundlePatches.findByBaseBundleIds!(ids),
         findByBundleIds: (bundleIds) =>
           getAdapter().models.bundlePatches.findByBundleIds(bundleIds),
       },
