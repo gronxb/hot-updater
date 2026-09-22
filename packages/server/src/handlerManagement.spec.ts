@@ -24,6 +24,84 @@ describe("createHandlers admin routes", () => {
     expect(api.getBundles).not.toHaveBeenCalled();
   });
 
+  it("forwards an exact bounded offset without translating it into pages", async () => {
+    const api = createApi();
+    const response = await createAdminHandler(api)(
+      new Request(
+        "http://localhost/bundles?offset=125&limit=100&idIn=a&idIn=b&platform=ios&orderDirection=asc",
+      ),
+    );
+    expect(response.status).toBe(200);
+    expect(api.getBundles).toHaveBeenCalledExactlyOnceWith({
+      where: { id: { in: ["a", "b"] }, platform: "ios" },
+      orderBy: { field: "id", direction: "asc" },
+      limit: 100,
+      offset: 125,
+    });
+  });
+
+  it("counts matching bundles without reading bundles or patch relations", async () => {
+    const api = createApi();
+    const countBundles = vi.fn(async () => 150);
+    const getBundlePatchChildren = vi.fn();
+    const response = await createAdminHandler({
+      ...api,
+      countBundles,
+      getBundlePatchChildren,
+    })(
+      new Request(
+        "http://localhost/bundles/count?platform=ios&idIn=a&idIn=b&idGte=a&idLt=z",
+      ),
+    );
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({ data: { count: 150 } });
+    expect(countBundles).toHaveBeenCalledExactlyOnceWith({
+      platform: "ios",
+      id: { in: ["a", "b"], gte: "a", lt: "z" },
+    });
+    expect(api.getBundleById).not.toHaveBeenCalled();
+    expect(api.getBundles).not.toHaveBeenCalled();
+    expect(getBundlePatchChildren).not.toHaveBeenCalled();
+  });
+
+  it("validates count filters before invoking the provider", async () => {
+    const api = createApi();
+    const countBundles = vi.fn();
+    const response = await createAdminHandler({ ...api, countBundles })(
+      new Request("http://localhost/bundles/count?platform=desktop"),
+    );
+    expect(response.status).toBe(400);
+    expect(countBundles).not.toHaveBeenCalled();
+    expect(api.getBundleById).not.toHaveBeenCalled();
+    expect(api.getBundles).not.toHaveBeenCalled();
+  });
+
+  it("fails explicitly when count-only reads are unavailable", async () => {
+    const api = createApi();
+    const response = await createAdminHandler(api)(
+      new Request("http://localhost/bundles/count"),
+    );
+    expect(response.status).toBe(501);
+    expect(api.getBundleById).not.toHaveBeenCalled();
+    expect(api.getBundles).not.toHaveBeenCalled();
+  });
+
+  it.each(["idEq", "idGt", "idGte", "idLt", "idLte"])(
+    "preserves an empty %s predicate instead of broadening the query",
+    async (key) => {
+      const api = createApi();
+      const response = await createAdminHandler(api)(
+        new Request(`http://localhost/bundles?${key}=`),
+      );
+      expect(response.status).toBe(200);
+      expect(api.getBundles).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: { [key.slice(2).toLowerCase()]: "" } },
+        }),
+      );
+    },
+  );
+
   it("does not match client routes", async () => {
     const api = createApi();
     const handler = createAdminHandler(api);
@@ -249,6 +327,12 @@ describe("createHandlers admin routes", () => {
     "page=2&after=bundle-2",
     "page=2&before=bundle-4",
     `page=${Number.MAX_SAFE_INTEGER}`,
+    "offset=-1",
+    "offset=1.5",
+    "offset=1&page=1",
+    "offset=1&after=a",
+    "offset=1&before=a",
+    `offset=${Number.MAX_SAFE_INTEGER}&limit=1`,
   ])("rejects invalid pagination parameters: %s", async (query) => {
     const api = createApi();
     const handler = createAdminHandler(api);

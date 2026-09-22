@@ -74,6 +74,54 @@ describe("database client pagination semantics", () => {
     );
   });
 
+  it.each([0, 1, 4, 8])(
+    "pushes exact offset %s without rounding to a page",
+    async (offset) => {
+      const findMany = vi.spyOn(plugin.models.bundles, "findMany");
+      const findPatches = vi.spyOn(
+        plugin.models.bundlePatches,
+        "findByBundleIds",
+      );
+      const page = await client.getBundles({ limit: 2, offset });
+      const ids = ["005", "004", "003", "002", "001"].slice(offset, offset + 2);
+
+      expect(page.data.map(({ id }) => id)).toEqual(ids);
+      expect(findMany).toHaveBeenCalledExactlyOnceWith(
+        expect.objectContaining({ limit: 2, offset }),
+      );
+      expect(findPatches).toHaveBeenCalledExactlyOnceWith(ids);
+      expect(page.pagination).toMatchObject({
+        total: 5,
+        currentPage: Math.floor(offset / 2) + 1,
+        hasPreviousPage: offset > 0,
+        hasNextPage: offset + 2 < 5,
+      });
+    },
+  );
+
+  it.each([
+    { offset: -1 },
+    { offset: 1.5 },
+    { offset: NaN },
+    { offset: Infinity },
+    { offset: Number.MAX_SAFE_INTEGER + 1 },
+    { offset: Number.MAX_SAFE_INTEGER },
+    { offset: 0, page: 1 },
+    { offset: 0, cursor: { after: "004" } },
+    { offset: 0, cursor: { before: "004" } },
+  ])(
+    "rejects invalid offset window %j before provider I/O",
+    async (options) => {
+      const findMany = vi.spyOn(plugin.models.bundles, "findMany");
+      const count = vi.spyOn(plugin.models.bundles, "count");
+      await expect(
+        Reflect.apply(client.getBundles, client, [{ limit: 2, ...options }]),
+      ).rejects.toEqual(new DatabasePluginInputError("invalid-pagination"));
+      expect(findMany).not.toHaveBeenCalled();
+      expect(count).not.toHaveBeenCalled();
+    },
+  );
+
   it("reverses a before query back into descending response order", async () => {
     const findMany = vi.spyOn(plugin.models.bundles, "findMany");
 

@@ -23,6 +23,70 @@ describe("standalone bounded reads", () => {
     );
   });
 
+  it("counts through the configured count route without loading a bundle", async () => {
+    const fetch = vi.fn(
+      async (_input: string | URL | Request, _init?: RequestInit) =>
+        Response.json({ data: { count: 150 } }),
+    );
+    vi.stubGlobal("fetch", fetch);
+    const repository = standaloneRepository({
+      baseUrl: "https://example.test",
+      commonHeaders: { Authorization: "Bearer test" },
+      routes: {
+        count: () => ({
+          path: "/custom/count",
+          headers: { "X-Count": "true" },
+        }),
+      },
+    });
+    await expect(
+      repository.models.bundles.count({
+        platform: "ios",
+        id: { in: ["a", "b"] },
+      }),
+    ).resolves.toBe(150);
+    expect(fetch).toHaveBeenCalledTimes(1);
+    const [requested, init] = fetch.mock.calls[0]!;
+    const input = new URL(String(requested));
+    expect(input.pathname).toBe("/custom/count");
+    expect(input.searchParams.getAll("idIn")).toEqual(["a", "b"]);
+    expect(input.searchParams.get("platform")).toBe("ios");
+    expect(input.searchParams.has("limit")).toBe(false);
+    expect(init?.headers).toMatchObject({
+      Authorization: "Bearer test",
+      "X-Count": "true",
+    });
+  });
+
+  it.each([404, 501])(
+    "does not substitute a bundle list when count is unavailable (%s)",
+    async (status) => {
+      const fetch = vi.fn(async () => new Response(null, { status }));
+      vi.stubGlobal("fetch", fetch);
+      await expect(
+        standaloneRepository({
+          baseUrl: "https://example.test",
+        }).models.bundles.count(),
+      ).rejects.toMatchObject({ status });
+      expect(fetch).toHaveBeenCalledTimes(1);
+    },
+  );
+
+  it.each([-1, 1.5, Number.MAX_SAFE_INTEGER + 1, "150", null])(
+    "rejects invalid count values (%s)",
+    async (count) => {
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(async () => Response.json({ data: { count } })),
+      );
+      await expect(
+        standaloneRepository({
+          baseUrl: "https://example.test",
+        }).models.bundles.count(),
+      ).rejects.toMatchObject({ code: "invalid-response" });
+    },
+  );
+
   it("rejects an unsupported filter before any HTTP request", async () => {
     const fetch = vi.fn();
     vi.stubGlobal("fetch", fetch);

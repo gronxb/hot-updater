@@ -17,6 +17,7 @@ import {
 } from "./standaloneHttp";
 import {
   hasChannels,
+  hasBundleCount,
   hasBundlePatchRows,
   hasChannelInsertResult,
   hasChannelDeleteResult,
@@ -42,6 +43,7 @@ const bundleWindowUrl = (base: string, input: BundleWindowInput): URL => {
     input.limit < 0 ||
     !Number.isSafeInteger(input.offset) ||
     input.offset < 0 ||
+    !Number.isSafeInteger(input.offset + input.limit) ||
     (input.orderBy &&
       (input.orderBy.field !== "id" ||
         !["asc", "desc"].includes(input.orderBy.direction)))
@@ -86,6 +88,7 @@ export const createStandaloneBundleRemote = (
 ) => {
   const routes = {
     list: () => createRoute(defaultRoutes.list(), config.routes?.list?.()),
+    count: () => createRoute(defaultRoutes.count(), config.routes?.count?.()),
     channels: defaultRoutes.channels,
     deleteChannel: defaultRoutes.deleteChannel,
     create: () =>
@@ -134,39 +137,60 @@ export const createStandaloneBundleRemote = (
     const url = bundleWindowUrl(http.buildUrl(route.path), input);
     if (input.limit === 0 || input.where?.id?.in?.length === 0)
       return { rows: [] as BundleRow[], total: 0 };
-    // Fetch only pages intersecting the requested window, including unaligned offsets.
-    const remoteLimit = Math.min(PAGE_SIZE, input.limit);
+    // Each HTTP request preserves the exact remaining window.
     const rows: BundleRow[] = [];
     let total = 0;
     let offset = input.offset;
     while (rows.length < input.limit) {
-      const page = Math.floor(offset / remoteLimit) + 1;
-      const skip = offset % remoteLimit;
+      const remoteLimit = Math.min(PAGE_SIZE, input.limit - rows.length);
       url.searchParams.set("limit", String(remoteLimit));
-      url.searchParams.set("page", String(page));
+      url.searchParams.set("offset", String(offset));
       const response = await fetch(url, {
         method: "GET",
         headers: http.headers(route.headers),
       });
       const value = await http.parseJson(response);
-      if (!isPaginatedResult(value))
+      if (!isPaginatedResult(value) || value.data.length > remoteLimit)
         throw new StandaloneDatabaseError(
           "invalid-response",
           "Invalid bundle list response.",
           response.status,
         );
       total = value.pagination.total;
-      const selected = value.data.slice(skip, skip + input.limit - rows.length);
-      rows.push(...(await bundlesToRows(selected)));
+      rows.push(...(await bundlesToRows(value.data)));
       if (
         !value.pagination.hasNextPage ||
         value.data.length === 0 ||
-        offset + selected.length >= total
+        offset + value.data.length >= total
       )
         break;
-      offset = page * remoteLimit;
+      offset += value.data.length;
     }
     return { rows, total };
+  };
+
+  const countBundles = async (
+    where?: BundleModelQuery["where"],
+  ): Promise<number> => {
+    const route = routes.count();
+    const url = bundleWindowUrl(http.buildUrl(route.path), {
+      where,
+      limit: 0,
+      offset: 0,
+    });
+    if (where?.id?.in?.length === 0) return 0;
+    const response = await fetch(url, {
+      method: "GET",
+      headers: http.headers(route.headers),
+    });
+    const value = await http.parseJson(response);
+    if (!hasBundleCount(value))
+      throw new StandaloneDatabaseError(
+        "invalid-response",
+        "Invalid bundle count response.",
+        response.status,
+      );
+    return value.data.count;
   };
 
   const insertChannel = async (
@@ -321,6 +345,7 @@ export const createStandaloneBundleRemote = (
   };
 
   return {
+    countBundles,
     loadPatchChildren,
     loadOwnedPatches,
     createBundle: (bundle: Bundle) => createBundles([bundle]),

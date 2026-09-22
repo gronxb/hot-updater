@@ -120,3 +120,12 @@ export const hasBundlePatchRows = (
       isByteSize(row.byte_size) &&
       isNonNegativeInteger(row.order_index),
   );
+
+export const hasBundleCount = (
+  value: unknown,
+): value is { readonly data: { readonly count: number } } =>
+  isRecord(value) &&
+  isRecord(value.data) &&
+  typeof value.data.count === "number" &&
+  Number.isSafeInteger(value.data.count) &&
+  value.data.count >= 0;

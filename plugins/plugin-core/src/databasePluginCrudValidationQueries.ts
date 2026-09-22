@@ -207,7 +207,13 @@ export const validateBundlePagination = (
     options.limit <= 0 ||
     (options.page !== undefined &&
       (!Number.isSafeInteger(options.page) || options.page <= 0)) ||
-    (options.page !== undefined && options.cursor !== undefined)
+    (options.page !== undefined && options.cursor !== undefined) ||
+    (options.offset !== undefined &&
+      (!Number.isSafeInteger(options.offset) ||
+        options.offset < 0 ||
+        !Number.isSafeInteger(options.offset + options.limit) ||
+        options.page !== undefined ||
+        options.cursor !== undefined))
   ) {
     throw new DatabasePluginInputError("invalid-pagination");
   }

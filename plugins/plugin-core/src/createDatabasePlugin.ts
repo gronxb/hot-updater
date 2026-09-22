@@ -156,6 +156,7 @@ const assertReleaseReferences = async (
   const channel = await database.findOne({
     model: "channels",
     where: [{ field: "id", value: row.channel_id }],
+    select: ["id"],
   });
   if (channel === null) {
     throw new DatabasePluginInputError("invalid-data");
@@ -164,6 +165,7 @@ const assertReleaseReferences = async (
     const bundle = await database.findOne({
       model: "bundles",
       where: [{ field: "id", value: row.bundle_id }],
+      select: ["platform"],
     });
     if (bundle === null || bundle.platform !== row.platform) {
       throw new DatabasePluginInputError("invalid-data");
@@ -198,10 +200,11 @@ const applyChange = async (
         }
         case "delete":
           if (
-            (await database.count({
+            (await database.findOne({
               model: "releases",
               where: [{ field: "bundle_id", value: change.where.id }],
-            })) > 0
+              select: ["id"],
+            })) !== null
           ) {
             throw new DatabaseCommitConflictError({
               committed: false,
@@ -286,11 +289,12 @@ const applyChange = async (
           });
           return;
         case "delete": {
-          const referencedReleases = await database.count({
+          const referencedRelease = await database.findOne({
             model: "releases",
             where: [{ field: "channel_id", value: change.where.id }],
+            select: ["id"],
           });
-          if (referencedReleases > 0) {
+          if (referencedRelease !== null) {
             throw new DatabaseCommitConflictError({
               committed: false,
               conflict: { changeIndex, reason: "referenced" },

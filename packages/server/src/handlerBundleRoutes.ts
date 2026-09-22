@@ -1,11 +1,15 @@
 import type { Bundle } from "@hot-updater/core";
-import type { ChannelInsertInput } from "@hot-updater/plugin-core";
+import type {
+  ChannelInsertInput,
+  DatabaseBundleQueryWhere,
+} from "@hot-updater/plugin-core";
 
 import { HandlerBadRequestError } from "./handlerErrors";
 import {
   decodeMaybe,
   isPlatform,
   parsePositiveIntegerSearchParam,
+  parseNonNegativeIntegerSearchParam,
   parseStringArraySearchParam,
   requireRouteParam,
 } from "./handlerParameters";
@@ -65,7 +69,43 @@ const requireBundlePatchPayload = (
   return rest;
 };
 
+const parseBundleWhere = (url: URL): DatabaseBundleQueryWhere => {
+  const platform = url.searchParams.get("platform");
+  if (platform !== null && !isPlatform(platform)) {
+    throw new HandlerBadRequestError(
+      `Invalid platform: ${platform}. Expected 'ios' or 'android'.`,
+    );
+  }
+  const idEq = url.searchParams.get("idEq") ?? undefined;
+  const idGt = url.searchParams.get("idGt") ?? undefined;
+  const idGte = url.searchParams.get("idGte") ?? undefined;
+  const idLt = url.searchParams.get("idLt") ?? undefined;
+  const idLte = url.searchParams.get("idLte") ?? undefined;
+  const idIn = parseStringArraySearchParam(url, "idIn");
+  const id = {
+    ...(idEq !== undefined && { eq: idEq }),
+    ...(idGt !== undefined && { gt: idGt }),
+    ...(idGte !== undefined && { gte: idGte }),
+    ...(idLt !== undefined && { lt: idLt }),
+    ...(idLte !== undefined && { lte: idLte }),
+    ...(idIn !== undefined && { in: idIn }),
+  };
+  return {
+    ...(platform !== null && { platform }),
+    ...(Object.keys(id).length > 0 && { id }),
+  };
+};
+
 export const createBundleRouteHandlers = (): Record<string, RouteHandler> => ({
+  countBundles: async (_params, request, api) => {
+    const where = parseBundleWhere(new URL(request.url));
+    if (api.countBundles === undefined)
+      return Response.json(
+        { error: "Count-only bundle lookup is unavailable" },
+        { status: 501 },
+      );
+    return Response.json({ data: { count: await api.countBundles(where) } });
+  },
   getBundlePatchChildren: async (params, _request, api) => {
     if (api.getBundlePatchChildren === undefined)
       return Response.json(
@@ -92,7 +132,6 @@ export const createBundleRouteHandlers = (): Record<string, RouteHandler> => ({
 
   getBundles: async (_params, request, api) => {
     const url = new URL(request.url);
-    const platform = url.searchParams.get("platform");
     const limit = parsePositiveIntegerSearchParam(
       url,
       "limit",
@@ -103,12 +142,6 @@ export const createBundleRouteHandlers = (): Record<string, RouteHandler> => ({
     const after = url.searchParams.get("after") ?? undefined;
     const before = url.searchParams.get("before") ?? undefined;
     const orderDirection = url.searchParams.get("orderDirection");
-    const idEq = url.searchParams.get("idEq") ?? undefined;
-    const idGt = url.searchParams.get("idGt") ?? undefined;
-    const idGte = url.searchParams.get("idGte") ?? undefined;
-    const idLt = url.searchParams.get("idLt") ?? undefined;
-    const idLte = url.searchParams.get("idLte") ?? undefined;
-    const idIn = parseStringArraySearchParam(url, "idIn");
     const page =
       pageParam === null
         ? undefined
@@ -117,9 +150,19 @@ export const createBundleRouteHandlers = (): Record<string, RouteHandler> => ({
             Number.isSafeInteger((Number(pageParam) - 1) * limit)
           ? Number(pageParam)
           : null;
-    if (offset !== null) {
+    const exactOffset =
+      offset === null
+        ? undefined
+        : parseNonNegativeIntegerSearchParam(url, "offset", 0);
+    if (
+      exactOffset !== undefined &&
+      (pageParam !== null ||
+        after !== undefined ||
+        before !== undefined ||
+        !Number.isSafeInteger(exactOffset + limit))
+    ) {
       throw new HandlerBadRequestError(
-        "The 'offset' query parameter has been removed. Use 'after' or 'before' cursor pagination instead.",
+        "The 'offset' query parameter must form a safe window and cannot be combined with 'page', 'after' or 'before'.",
       );
     }
     if (page === null) {
@@ -135,11 +178,6 @@ export const createBundleRouteHandlers = (): Record<string, RouteHandler> => ({
     if (page !== undefined && (after !== undefined || before !== undefined)) {
       throw new HandlerBadRequestError(
         "The 'page' query parameter cannot be combined with 'after' or 'before'.",
-      );
-    }
-    if (platform !== null && !isPlatform(platform)) {
-      throw new HandlerBadRequestError(
-        `Invalid platform: ${platform}. Expected 'ios' or 'android'.`,
       );
     }
     if (
@@ -158,25 +196,13 @@ export const createBundleRouteHandlers = (): Record<string, RouteHandler> => ({
           ? { before }
           : undefined;
     const pagination =
-      page === undefined
-        ? { cursor, page: undefined }
-        : { cursor: undefined, page };
+      exactOffset !== undefined
+        ? { offset: exactOffset }
+        : page === undefined
+          ? { cursor, page: undefined }
+          : { cursor: undefined, page };
     const result = await api.getBundles({
-      where: {
-        ...(platform && { platform }),
-        ...(idEq || idGt || idGte || idLt || idLte || idIn?.length
-          ? {
-              id: {
-                ...(idEq && { eq: idEq }),
-                ...(idGt && { gt: idGt }),
-                ...(idGte && { gte: idGte }),
-                ...(idLt && { lt: idLt }),
-                ...(idLte && { lte: idLte }),
-                ...(idIn?.length && { in: idIn }),
-              },
-            }
-          : {}),
-      },
+      where: parseBundleWhere(url),
       limit,
       ...pagination,
       ...(orderDirection && {

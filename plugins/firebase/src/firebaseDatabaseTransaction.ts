@@ -47,7 +47,8 @@ export const createFirebaseTransaction = (
   const rows = (snapshot: FirebaseDatabaseSnapshot, model: DatabaseModel) =>
     snapshot[maps[model]] as Map<string, DatabaseImplementationResult>;
   const rowKey = (row: DatabaseImplementationResult): string => {
-    const key = "id" in row ? row.id : Reflect.get(row, "scope_key");
+    const key =
+      "id" in row ? row.id : "scope_key" in row ? row.scope_key : undefined;
     if (typeof key !== "string")
       throw new DatabasePluginInputError("invalid-result");
     return key;
@@ -57,36 +58,44 @@ export const createFirebaseTransaction = (
     JSON.stringify([model, field, value]);
   const selector = (
     model: DatabaseModel,
-    where: readonly object[] | undefined,
+    where:
+      | readonly { [M in DatabaseModel]: DatabaseWhere<M> }[DatabaseModel][]
+      | undefined,
   ) => {
     const condition = where?.length === 1 ? where[0] : undefined;
-    const field = condition && Reflect.get(condition, "field");
-    const value = condition && Reflect.get(condition, "value");
-    const allowed =
-      model === "release_catalogs"
-        ? ["scope_key"]
-        : model === "channels"
-          ? ["id", "name"]
-          : model === "api_keys"
-            ? ["id", "hash"]
-            : ["id"];
     if (
       !condition ||
-      !allowed.includes(field) ||
-      typeof value !== "string" ||
-      (Reflect.get(condition, "operator") ?? "eq") !== "eq" ||
-      Reflect.get(condition, "mode") === "insensitive"
+      typeof condition.value !== "string" ||
+      (condition.operator ?? "eq") !== "eq" ||
+      ("mode" in condition && condition.mode === "insensitive")
     )
       throw new DatabasePluginInputError("invalid-operation");
-    return { field: field as string, value };
+    const { field, value } = condition;
+    if (
+      field === "id" ||
+      (model === "release_catalogs" && field === "scope_key") ||
+      (model === "channels" && field === "name") ||
+      (model === "api_keys" && field === "hash")
+    )
+      return { field, value };
+    throw new DatabasePluginInputError("invalid-operation");
   };
-  const lookup = (model: DatabaseModel, field: string, value: string) => {
-    const current = rows(after, model);
-    return field === "id" || field === "scope_key"
-      ? (current.get(value) ?? null)
-      : ([...current.values()].find(
-          (row) => Reflect.get(row, field) === value,
-        ) ?? null);
+  const lookup = (
+    model: DatabaseModel,
+    field: "id" | "scope_key" | "name" | "hash",
+    value: string,
+  ) => {
+    if (field === "name") {
+      for (const row of after.channels.values())
+        if (row.name === value) return row;
+      return null;
+    }
+    if (field === "hash") {
+      for (const row of after.apiKeys.values())
+        if (row.hash === value) return row;
+      return null;
+    }
+    return rows(after, model).get(value) ?? null;
   };
   const remember = (
     model: DatabaseModel,
@@ -104,14 +113,53 @@ export const createFirebaseTransaction = (
       if (!newRows.has(key)) newRows.set(key, row);
     }
   };
+  const findReleaseReference = async (
+    field: "bundle_id" | "channel_id",
+    value: string,
+  ) => {
+    for (const row of after.releases.values())
+      if (row[field] === value) return { id: row.id };
+    const deleted = new Set<string>();
+    for (const row of before.releases.values())
+      if (row[field] === value && after.releases.get(row.id)?.[field] !== value)
+        deleted.add(row.id);
+    // Staged deletions/replacements can precede the first surviving witness.
+    const witnesses = await reads.findMany({
+      model: "releases",
+      where: [field === "bundle_id" ? { field, value } : { field, value }],
+      select: ["id"],
+      limit: deleted.size + 1,
+      offset: 0,
+    });
+    // These ID-only witnesses must not enter the full-row staging cache.
+    return (
+      witnesses.find(
+        (row) =>
+          "id" in row && typeof row.id === "string" && !deleted.has(row.id),
+      ) ?? null
+    );
+  };
   const findOne: TransactionDatabasePluginImplementation["findOne"] = async (
     input,
   ) => {
+    const condition = input.where?.length === 1 ? input.where[0] : undefined;
+    if (
+      input.model === "releases" &&
+      input.select?.length === 1 &&
+      input.select[0] === "id" &&
+      condition &&
+      (condition.field === "bundle_id" || condition.field === "channel_id") &&
+      typeof condition.value === "string" &&
+      (condition.operator ?? "eq") === "eq" &&
+      !("mode" in condition && condition.mode === "insensitive")
+    )
+      return findReleaseReference(condition.field, condition.value);
     const { field, value } = selector(input.model, input.where);
     const staged = lookup(input.model, field, value);
     const key = keyOf(input.model, field, value);
     if (staged !== null || loaded.has(key)) return staged;
-    remember(input.model, await reads.findOne(input));
+    // Staging must retain complete rows for later updates and persistence.
+    remember(input.model, await reads.findOne({ ...input, select: undefined }));
     loaded.add(key);
     return lookup(input.model, field, value);
   };
@@ -149,20 +197,21 @@ export const createFirebaseTransaction = (
       throw new DatabasePluginInputError("invalid-operation");
     },
     async count(input) {
-      // Commit reference checks have exactly one relationship predicate.
+      // Keep cardinality exact. Bounded reference witnesses use findOne above.
       const condition = input.where?.length === 1 ? input.where[0] : undefined;
       if (
         input.model !== "releases" ||
         input.distinct !== undefined ||
         !condition ||
-        !["bundle_id", "channel_id"].includes(condition.field) ||
-        (condition.operator ?? "eq") !== "eq"
+        (condition.field !== "bundle_id" && condition.field !== "channel_id") ||
+        (condition.operator ?? "eq") !== "eq" ||
+        typeof condition.value !== "string"
       )
         throw new DatabasePluginInputError("invalid-operation");
+      const { field, value } = condition;
       const count = (snapshot: FirebaseDatabaseSnapshot) =>
-        [...snapshot.releases.values()].filter(
-          (row) => Reflect.get(row, condition.field) === condition.value,
-        ).length;
+        [...snapshot.releases.values()].filter((row) => row[field] === value)
+          .length;
       return (await reads.count(input)) - count(before) + count(after);
     },
     async create(input) {
@@ -209,9 +258,15 @@ export const createFirebaseTransaction = (
           });
       }
       const current = rows(after, input.model);
+      if (input.model === "channels") {
+        const existing = after.channels.get(input.data.id);
+        if (existing && existing.name !== input.data.name)
+          throw new FirebaseDatabaseConstraintError("channels.id.unique");
+      }
       if (input.model === "channels" || input.model === "api_keys") {
         const field = input.model === "channels" ? "name" : "hash";
-        const value = Reflect.get(input.data, field);
+        const value =
+          input.model === "channels" ? input.data.name : input.data.hash;
         const existing = lookup(input.model, field, value);
         if (existing !== null && input.onConflict === "ignore") return existing;
         if (existing !== null)
@@ -255,30 +310,21 @@ export const createFirebaseTransaction = (
         )
           throw new DatabasePluginInputError("invalid-operation");
         await loadPatches("bundle_id", owner.value);
-      } else {
-        const row = await findOne(input);
-        if (
-          input.model === "bundles" &&
-          row !== null &&
-          "id" in row &&
-          typeof row.id === "string"
-        ) {
-          await loadPatches("bundle_id", row.id);
-          await loadPatches("base_bundle_id", row.id);
-        }
-      }
-      if (input.model === "bundle_patches") {
-        const owner = input.where![0].value;
         for (const [id, row] of after.bundlePatches)
-          if (row.bundle_id === owner) after.bundlePatches.delete(id);
-      } else {
-        const { value: id } = selector(input.model, input.where);
-        rows(after, input.model).delete(id);
-        if (input.model === "bundles")
-          for (const [patchId, patch] of after.bundlePatches)
-            if (patch.bundle_id === id || patch.base_bundle_id === id)
-              after.bundlePatches.delete(patchId);
+          if (row.bundle_id === owner.value) after.bundlePatches.delete(id);
+        return;
       }
+      const row = await findOne(input);
+      if (row === null) return;
+      const id = rowKey(row);
+      if (input.model === "bundles") {
+        await loadPatches("bundle_id", id);
+        await loadPatches("base_bundle_id", id);
+        for (const [patchId, patch] of after.bundlePatches)
+          if (patch.bundle_id === id || patch.base_bundle_id === id)
+            after.bundlePatches.delete(patchId);
+      }
+      rows(after, input.model).delete(id);
     },
   };
   return {
