@@ -1,6 +1,9 @@
 {
   "name": "@examples-server/express-prisma-sqlite",
   "private": true,
+  "engines": {
+    "node": ">=20.19.0"
+  },
   "type": "module",
   "scripts": {
     "dev": "tsx watch src/index.ts",
@@ -22,7 +25,6 @@
     "@types/express": "^5.0.0",
     "@types/node": "^20.11.17",
     "cors": "^2.8.5",
-    "dotenv": "^16.6.1",
     "execa": "catalog:tools",
     "express": "^4.22.2",
     "hot-updater": "workspace:*",

@@ -12,6 +12,8 @@ This example demonstrates how to use Hot Updater with Express and Prisma.
 
 ## Quick Start
 
+Use Node.js 20.19 or later for native environment-file loading.
+
 ```typescript
 import express from "express";
 import { toNodeHandler } from "@hot-updater/server/node";

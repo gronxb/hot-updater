@@ -279,9 +279,6 @@ importers:
       '@typescript/native':
         specifier: npm:typescript@^7.0.2
         version: typescript@7.0.2
-      dotenv:
-        specifier: ^16.6.1
-        version: 16.6.1
       drizzle-kit:
         specifier: ^0.31.6
         version: 0.31.10
@@ -345,9 +342,6 @@ importers:
       cors:
         specifier: ^2.8.5
         version: 2.8.6
-      dotenv:
-        specifier: ^16.6.1
-        version: 16.6.1
       execa:
         specifier: catalog:tools
         version: 9.5.2
@@ -396,9 +390,6 @@ importers:
       '@typescript/native':
         specifier: npm:typescript@^7.0.2
         version: typescript@7.0.2
-      dotenv:
-        specifier: ^16.6.1
-        version: 16.6.1
       drizzle-kit:
         specifier: ^0.31.6
         version: 0.31.10
@@ -438,9 +429,6 @@ importers:
       '@hot-updater/server':
         specifier: workspace:*
         version: link:../../packages/server
-      dotenv:
-        specifier: ^16.4.7
-        version: 16.6.1
       hono:
         specifier: catalog:hono
         version: 4.12.34
@@ -493,9 +481,6 @@ importers:
       '@hot-updater/server':
         specifier: workspace:*
         version: link:../../packages/server
-      dotenv:
-        specifier: ^16.4.7
-        version: 16.6.1
       hono:
         specifier: catalog:hono
         version: 4.12.34
@@ -563,9 +548,6 @@ importers:
       '@typescript/native':
         specifier: npm:typescript@^7.0.2
         version: typescript@7.0.2
-      dotenv:
-        specifier: ^16.6.1
-        version: 16.6.1
       execa:
         specifier: catalog:tools
         version: 9.5.2
@@ -617,9 +599,6 @@ importers:
       '@typescript/native':
         specifier: npm:typescript@^7.0.2
         version: typescript@7.0.2
-      dotenv:
-        specifier: ^16.6.1
-        version: 16.6.1
       execa:
         specifier: catalog:tools
         version: 9.5.2
@@ -659,9 +638,6 @@ importers:
       '@hot-updater/standalone':
         specifier: workspace:*
         version: link:../../plugins/standalone
-      dotenv:
-        specifier: ^16.6.1
-        version: 16.6.1
       hono:
         specifier: catalog:hono
         version: 4.12.34
@@ -720,9 +696,6 @@ importers:
       '@typescript/native':
         specifier: npm:typescript@^7.0.2
         version: typescript@7.0.2
-      dotenv:
-        specifier: ^16.4.5
-        version: 16.6.1
       expo:
         specifier: ~52.0.49
         version: 52.0.49(@babel/core@7.26.0)(@babel/preset-env@7.29.7(@babel/core@7.26.0))(@expo/metro-runtime@4.0.1(react-native@0.76.9(@babel/core@7.26.0)(@babel/preset-env@7.29.7(@babel/core@7.26.0))(@react-native-community/cli@20.1.0(@typescript/typescript6@6.0.2))(@types/react@18.3.31)(react@18.3.1)))(graphql@16.14.2)(react-native-webview@13.12.5(react-native@0.76.9(@babel/core@7.26.0)(@babel/preset-env@7.29.7(@babel/core@7.26.0))(@react-native-community/cli@20.1.0(@typescript/typescript6@6.0.2))(@types/react@18.3.31)(react@18.3.1))(react@18.3.1))(react-native@0.76.9(@babel/core@7.26.0)(@babel/preset-env@7.29.7(@babel/core@7.26.0))(@react-native-community/cli@20.1.0(@typescript/typescript6@6.0.2))(@types/react@18.3.31)(react@18.3.1))(react@18.3.1)
@@ -828,9 +801,6 @@ importers:
       babel-jest:
         specifier: ^29.6.3
         version: 29.7.0(@babel/core@7.26.0)
-      dotenv:
-        specifier: ^16.4.5
-        version: 16.6.1
       eslint:
         specifier: ^8.19.0
         version: 8.57.1
@@ -927,9 +897,6 @@ importers:
       babel-loader:
         specifier: ^9.1.3
         version: 9.2.1(@babel/core@7.26.0)(webpack@5.107.2(esbuild@0.28.1))
-      dotenv:
-        specifier: ^16.4.5
-        version: 16.6.1
       eslint:
         specifier: ^8.19.0
         version: 8.57.1
@@ -954,9 +921,6 @@ importers:
       react-native:
         specifier: 0.74.7
         version: 0.74.7(@babel/core@7.26.0)(@babel/preset-env@7.29.7(@babel/core@7.26.0))(@types/react@18.3.31)(react@18.2.0)
-      react-native-dotenv:
-        specifier: ^3.4.11
-        version: 3.4.11(@babel/runtime@7.29.7)
       react-test-renderer:
         specifier: 18.2.0
         version: 18.2.0(react@18.2.0)
@@ -1035,9 +999,6 @@ importers:
       babel-jest:
         specifier: ^29.6.3
         version: 29.7.0(@babel/core@7.26.0)
-      dotenv:
-        specifier: ^16.4.5
-        version: 16.6.1
       eslint:
         specifier: ^8.19.0
         version: 8.57.1
@@ -1059,9 +1020,6 @@ importers:
       react-native:
         specifier: 0.76.9
         version: 0.76.9(@babel/core@7.26.0)(@babel/preset-env@7.29.7(@babel/core@7.26.0))(@react-native-community/cli@15.1.3(@typescript/typescript6@6.0.2))(@types/react@18.3.31)(react@18.3.1)
-      react-native-dotenv:
-        specifier: ^3.4.11
-        version: 3.4.11(@babel/runtime@7.29.7)
       react-test-renderer:
         specifier: 18.3.1
         version: 18.3.1(react@18.3.1)
@@ -1143,9 +1101,6 @@ importers:
       '@typescript/native':
         specifier: npm:typescript@7.0.2
         version: typescript@7.0.2
-      dotenv:
-        specifier: ^16.4.5
-        version: 16.6.1
       eslint:
         specifier: ^8.19.0
         version: 8.57.1
@@ -1167,9 +1122,6 @@ importers:
       react-native:
         specifier: 0.77.3
         version: 0.77.3(@babel/core@7.26.0)(@babel/preset-env@7.29.7(@babel/core@7.26.0))(@react-native-community/cli@15.1.3(@typescript/typescript6@6.0.2))(@types/react@18.3.31)(react@18.3.1)
-      react-native-dotenv:
-        specifier: ^3.4.11
-        version: 3.4.11(@babel/runtime@7.29.7)
       react-test-renderer:
         specifier: 18.3.1
         version: 18.3.1(react@18.3.1)
@@ -1284,9 +1236,6 @@ importers:
       '@typescript/native':
         specifier: npm:typescript@^7.0.2
         version: typescript@7.0.2
-      dotenv:
-        specifier: ^16.4.5
-        version: 16.6.1
       eslint:
         specifier: ^8.19.0
         version: 8.57.1
@@ -1320,9 +1269,6 @@ importers:
       react-native-bootsplash:
         specifier: 7.1.0
         version: 7.1.0(@typescript/typescript6@6.0.2)(react-native@0.85.2(@babel/core@7.26.0)(@react-native-community/cli@20.1.0(@typescript/typescript6@6.0.2))(@react-native/jest-preset@0.85.2(@babel/core@7.26.0)(react@19.2.3))(@react-native/metro-config@0.85.2(@babel/core@7.26.0))(@types/react@19.2.15)(react@19.2.3))(react@19.2.3)
-      react-native-dotenv:
-        specifier: ^3.4.11
-        version: 3.4.11(@babel/runtime@7.29.7)
       react-native-launch-arguments:
         specifier: 4.1.1
         version: 4.1.1(react-native@0.85.2(@babel/core@7.26.0)(@react-native-community/cli@20.1.0(@typescript/typescript6@6.0.2))(@react-native/jest-preset@0.85.2(@babel/core@7.26.0)(react@19.2.3))(@react-native/metro-config@0.85.2(@babel/core@7.26.0))(@types/react@19.2.15)(react@19.2.3))(react@19.2.3)
@@ -17322,11 +17268,6 @@ packages:
     resolution: {integrity: sha512-avuPbEUz4n4w2aCgTsOAA9JOYLXMYZSKWKf84EO0CADsbf2UWl/yXVyGgKmM9ueGThBRvKJtfMh8DLSInGZuSQ==}
     engines: {node: ^20.19.0 || ^22.12.0 || >= 23.4.0}
     hasBin: true
-
-  react-native-dotenv@3.4.11:
-    resolution: {integrity: sha512-6vnIE+WHABSeHCaYP6l3O1BOEhWxKH6nHAdV7n/wKn/sciZ64zPPp2NUdEUf1m7g4uuzlLbjgr+6uDt89q2DOg==}
-    peerDependencies:
-      '@babel/runtime': ^7.20.6
 
   react-native-is-edge-to-edge@1.3.1:
     resolution: {integrity: sha512-NIXU/iT5+ORyCc7p0z2nnlkouYKX425vuU1OEm6bMMtWWR9yvb+Xg5AZmImTKoF9abxCPqrKC3rOZsKzUYgYZA==}
@@ -40515,11 +40456,6 @@ snapshots:
     transitivePeerDependencies:
       - babel-plugin-macros
       - supports-color
-
-  react-native-dotenv@3.4.11(@babel/runtime@7.29.7):
-    dependencies:
-      '@babel/runtime': 7.29.7
-      dotenv: 16.6.1
 
   react-native-is-edge-to-edge@1.3.1(react-native@0.85.2(@babel/core@7.26.0)(@react-native-community/cli@20.1.0(@typescript/typescript6@6.0.2))(@react-native/jest-preset@0.85.2(@babel/core@7.26.0)(react@19.2.3))(@react-native/metro-config@0.85.2(@babel/core@7.26.0))(@types/react@19.2.15)(react@19.2.3))(react@19.2.3):
     dependencies:

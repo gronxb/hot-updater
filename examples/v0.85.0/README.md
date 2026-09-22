@@ -95,3 +95,15 @@ To learn more about React Native, take a look at the following resources:
 - [Learn the Basics](https://reactnative.dev/docs/getting-started) - a **guided tour** of the React Native **basics**.
 - [Blog](https://reactnative.dev/blog) - read the latest official React Native **Blog** posts.
 - [`@facebook/react-native`](https://github.com/facebook/react-native) - the Open Source; GitHub **repository** for React Native.
+
+## E2E configuration
+
+The Metro and Re.Pack configs use Node's built-in environment loader to read `.env.hotupdater`
+(or `HOT_UPDATER_E2E_ENV_TARGET_PATH`) and generates `src/e2eBuildConfig.js`.
+Only the public app URL, runtime-config URL are included.
+Provider credentials are never copied into this file. Restart the bundler after
+changing these settings. Detox launch arguments override the bundled URLs.
+
+This build configuration supports the E2E test harness and manual recovery
+launches. For application setup, configure the public update server URL
+explicitly as shown in the documentation.

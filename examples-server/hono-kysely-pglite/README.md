@@ -18,6 +18,8 @@ A production-ready Hot Updater server example using:
 
 ## Setup
 
+Use Node.js 20.19 or later for native environment-file loading.
+
 1. Install dependencies:
 ```bash
 pnpm install
@@ -140,7 +142,7 @@ set +a
 node dist/src/index.js
 ```
 
-The compiled entry resolves its dotenv path under `dist/src`, so production
+The compiled entry resolves its environment-file path under `dist/src`, so production
 must inject the environment externally as shown above. The checked-in
 `pnpm start` command still points to `dist/index.js`; use the emitted entry
 point above.

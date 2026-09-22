@@ -153,10 +153,12 @@ describe("ConfigBuilder", () => {
 
     const expectedConfig = `import { s3Database, s3Storage } from "@hot-updater/aws";
 import { bare } from "@hot-updater/bare";
-import { config } from "dotenv";
 import { defineConfig } from "hot-updater";
+import { existsSync } from "node:fs";
 
-config({ path: ".env.hotupdater" });
+if (existsSync(".env.hotupdater")) {
+  process.loadEnvFile(".env.hotupdater");
+}
 
 const commonOptions = {
   bucketName: process.env.HOT_UPDATER_S3_BUCKET_NAME!,
@@ -189,10 +191,12 @@ export default defineConfig({
 
     const expectedConfig = `import { s3Database, s3Storage } from "@hot-updater/aws";
 import { bare } from "@hot-updater/bare";
-import { config } from "dotenv";
 import { defineConfig } from "hot-updater";
+import { existsSync } from "node:fs";
 
-config({ path: ".env.hotupdater" });
+if (existsSync(".env.hotupdater")) {
+  process.loadEnvFile(".env.hotupdater");
+}
 
 const commonOptions = {
   bucketName: process.env.HOT_UPDATER_S3_BUCKET_NAME!,
@@ -221,10 +225,12 @@ export default defineConfig({
 
     const expectedConfig = `import { bare } from "@hot-updater/bare";
 import { supabaseDatabase, supabaseStorage } from "@hot-updater/supabase";
-import { config } from "dotenv";
 import { defineConfig } from "hot-updater";
+import { existsSync } from "node:fs";
 
-config({ path: ".env.hotupdater" });
+if (existsSync(".env.hotupdater")) {
+  process.loadEnvFile(".env.hotupdater");
+}
 
 
 export default defineConfig({
@@ -249,10 +255,12 @@ export default defineConfig({
 
     const expectedConfig = `import { bare } from "@hot-updater/bare";
 import { d1Database, r2Storage } from "@hot-updater/cloudflare";
-import { config } from "dotenv";
 import { defineConfig } from "hot-updater";
+import { existsSync } from "node:fs";
 
-config({ path: ".env.hotupdater" });
+if (existsSync(".env.hotupdater")) {
+  process.loadEnvFile(".env.hotupdater");
+}
 
 
 export default defineConfig({
@@ -281,10 +289,12 @@ export default defineConfig({
 
     const expectedConfig = `import { d1Database, r2Storage } from "@hot-updater/cloudflare";
 import { rock } from "@hot-updater/rock";
-import { config } from "dotenv";
 import { defineConfig } from "hot-updater";
+import { existsSync } from "node:fs";
 
-config({ path: ".env.hotupdater" });
+if (existsSync(".env.hotupdater")) {
+  process.loadEnvFile(".env.hotupdater");
+}
 
 
 export default defineConfig({
@@ -313,11 +323,13 @@ export default defineConfig({
 
     const expectedConfig = `import { bare } from "@hot-updater/bare";
 import { firebaseDatabase, firebaseStorage } from "@hot-updater/firebase";
-import { config } from "dotenv";
 import { applicationDefault } from "firebase-admin/app";
 import { defineConfig } from "hot-updater";
+import { existsSync } from "node:fs";
 
-config({ path: ".env.hotupdater" });
+if (existsSync(".env.hotupdater")) {
+  process.loadEnvFile(".env.hotupdater");
+}
 
 // https://firebase.google.com/docs/admin/setup?hl=en#initialize_the_sdk_in_non-google_environments
 // Check your .env.hotupdater file and add the credentials

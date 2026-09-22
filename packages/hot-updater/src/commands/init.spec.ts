@@ -93,6 +93,16 @@ describe("init choices", () => {
     await init();
 
     // Then
+    expect(mocks.ensureInstallPackages).toHaveBeenCalledWith({
+      dependencies: ["@hot-updater/react-native"],
+      devDependencies: expect.arrayContaining([
+        "@hot-updater/bare",
+        "@hot-updater/aws",
+      ]),
+    });
+    expect(
+      mocks.ensureInstallPackages.mock.calls[0]?.[0].devDependencies,
+    ).not.toContain("dotenv");
     expect(mocks.group).toHaveBeenCalledOnce();
     expect(mocks.makeEnv).toHaveBeenCalledWith({
       HOT_UPDATER_INIT_BUILD: "bare",

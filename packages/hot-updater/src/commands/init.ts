@@ -33,7 +33,6 @@ const BUILD_PLUGIN_KEYS = ["bare", "rock", "expo"] as const;
 
 const REQUIRED_PACKAGES = {
   dependencies: ["@hot-updater/react-native"],
-  devDependencies: ["dotenv"],
 };
 
 interface BuildPluginChoice {
@@ -221,7 +220,6 @@ export const init = async (options: InitOptions = {}) => {
       ],
       devDependencies: [
         ...buildPluginPackage.devDependencies,
-        ...REQUIRED_PACKAGES.devDependencies,
         ...providerPackage.devDependencies,
         providerPackage.packageName,
       ],

@@ -73,9 +73,9 @@ HOT_UPDATER_CLOUDFLARE_WORKER_NAME=your-worker-name
 
 <Callout type="warn">
 
-If you're **not** using the `react-native-dotenv` solution, the tokens from your `.env.hotupdater` file will not be included in your app bundle and are therefore not exposed to risks. However, if you're still concerned,
-
-please refer to the article below for more details:
+Keep provider credentials from `.env.hotupdater` in the CLI, CI, or server environment.
+Configure only public values, such as the update server URL, explicitly in the app.
+Never copy provider credentials into app source or build configuration. See
 [Security](/docs/policy/security#plugin-token-protection)
 
 </Callout>
@@ -87,12 +87,14 @@ During the initialization process, the following file is automatically generated
 - `hot-updater.config.ts`: This file contains the configuration settings for integrating Cloudflare with your project.
 
 ```ts title="hot-updater.config.ts"
+import { existsSync } from "node:fs";
 import { bare } from "@hot-updater/bare";
 import { d1Database, r2Storage } from "@hot-updater/cloudflare";
 import { defineConfig } from "hot-updater";
-import { config } from "dotenv";
 
-config({ path: ".env.hotupdater" });
+if (existsSync(".env.hotupdater")) {
+  process.loadEnvFile(".env.hotupdater");
+}
 
 export default defineConfig({
   build: bare({ enableHermes: true }),

@@ -533,7 +533,7 @@ describe("Detox scenario contract", () => {
     const detoxRuntimeSource = await readDetoxRuntimeSource();
 
     // When: Detox launches or reattaches the app.
-    // Then: every launch goes through launchArgs instead of relying on @env.
+    // Then: every launch receives the runtime configuration through launchArgs.
     expect(detoxRuntimeSource).toContain("function runtimeLaunchArgs()");
     expect(detoxRuntimeSource).toContain("HOT_UPDATER_E2E_RUNTIME_CONFIG_URL");
     expect(detoxRuntimeSource).toContain("launchArgs: runtimeLaunchArgs()");
@@ -590,7 +590,7 @@ describe("Detox scenario contract", () => {
 
     // When: the example app wires HotUpdater.
     // Then: App.tsx imports a runtime helper and the helper gives Detox launch
-    // arguments precedence over react-native-dotenv.
+    // arguments precedence over the public build settings.
     const launchArgumentsIndex = runtimeConfigSource.indexOf(
       "LaunchArguments.value",
     );
