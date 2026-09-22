@@ -209,6 +209,8 @@ const BARE_BUILD_CACHE_INPUT_PATHS = [
   "examples/v0.85.0/package.json",
   "examples/v0.85.0/babel.config.js",
   "examples/v0.85.0/metro.config.js",
+  "examples/v0.85.0/rspack.config.mjs",
+  "examples/v0.85.0/e2e-build-config.cjs",
   "examples/v0.85.0/src/e2eApp",
   "examples/v0.85.0/src/e2eRuntimeConfig.ts",
   "examples/v0.85.0/src/test",

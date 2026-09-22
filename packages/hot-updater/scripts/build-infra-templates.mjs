@@ -124,7 +124,9 @@ for (const provider of providers) {
       }));
     await save(
       path.join(output, "app", `api-key.config.${build}.ts`),
-      `${renderImportStatements(imports)}\n\nconfig({ path: ".env.hotupdater" });\n\n${config.helperStatements.map(({ code }) => code).join("\n\n")}\n\nexport const database = ${config.database.initializer};\n`,
+      `${renderImportStatements(imports)}\n\nif (existsSync(".env.hotupdater")) {
+  process.loadEnvFile(".env.hotupdater");
+}\n\n${config.helperStatements.map(({ code }) => code).join("\n\n")}\n\nexport const database = ${config.database.initializer};\n`,
     );
   }
   await cp(
@@ -373,7 +375,6 @@ for (const provider of providers) {
   );
   const appPackages = {
     ...versions,
-    dotenv: resolvePackageVersion("dotenv", { searchFrom: packageRoot }),
   };
   if (provider === "aws")
     appPackages["@aws-sdk/credential-providers"] = resolvePackageVersion(

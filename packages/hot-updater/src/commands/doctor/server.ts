@@ -1,7 +1,6 @@
 import { readFile } from "node:fs/promises";
 import path from "node:path";
-
-import { parse as parseEnvironment } from "dotenv";
+import { parseEnv } from "node:util";
 
 class VerificationError extends Error {}
 
@@ -134,14 +133,14 @@ export async function verifyServer(
         !baseUrl.hash,
       "Use an HTTP(S) server base URL without credentials, query or fragment.",
     );
-    const environment = parseEnvironment(
-      await readFile(path.join(options.cwd, ".env.hotupdater"), "utf8").catch(
-        (error: NodeJS.ErrnoException) => {
-          if (error.code === "ENOENT") return "";
-          throw error;
-        },
-      ),
-    );
+    const environmentText = await readFile(
+      path.join(options.cwd, ".env.hotupdater"),
+      "utf8",
+    ).catch((error: NodeJS.ErrnoException) => {
+      if (error.code === "ENOENT") return "";
+      throw error;
+    });
+    const environment = parseEnv(environmentText.replace(/^\uFEFF/, ""));
     const localKey = await readFile(
       path.join(options.infraDir, "app/api-key.local"),
       "utf8",

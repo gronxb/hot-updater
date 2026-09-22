@@ -18,6 +18,8 @@ A production-ready Hot Updater server example using:
 
 ## Setup
 
+Use Node.js 20.19 or later for native environment-file loading.
+
 1. Install the workspace dependencies and enter this package:
 ```bash
 pnpm install

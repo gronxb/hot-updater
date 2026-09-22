@@ -28,7 +28,7 @@ project before running Hot Updater commands.
 Install the server dependencies in your server project.
 
 ```package-install
-npm install @hot-updater/server @hot-updater/aws hono @hono/node-server kysely better-sqlite3 dotenv
+npm install @hot-updater/server @hot-updater/aws hono @hono/node-server kysely better-sqlite3
 ```
 
 ```package-install
@@ -42,7 +42,7 @@ npm install @hot-updater/react-native
 ```
 
 ```package-install
-npm install --save-dev @hot-updater/bare @hot-updater/aws @hot-updater/standalone hot-updater dotenv
+npm install --save-dev @hot-updater/bare @hot-updater/aws @hot-updater/standalone hot-updater
 ```
 
 ## Database setup
@@ -69,13 +69,15 @@ export const db = new Kysely({
 Create the Hot Updater instance with your database adapter and storage plugin (see [Storage Plugins](/docs/custom/overview#storage-plugins)).
 
 ```typescript title="src/hotUpdater.ts"
+import { existsSync } from "node:fs";
 import { createHotUpdater } from "@hot-updater/server";
 import { kyselyAdapter } from "@hot-updater/server/adapters/kysely";
 import { s3Storage } from "@hot-updater/aws";
-import { config } from "dotenv";
 import { db } from "./kysely";
 
-config({ path: ".env.hotupdater" });
+if (existsSync(".env.hotupdater")) {
+  process.loadEnvFile(".env.hotupdater");
+}
 
 export const hotUpdater = createHotUpdater({
   database: kyselyAdapter({ db, provider: "sqlite" }),
@@ -204,13 +206,15 @@ must contain the same `R2_*` storage values and `HOT_UPDATER_ADMIN_TOKEN` as the
 server, and must also be excluded from Git.
 
 ```typescript title="hot-updater.config.ts"
+import { existsSync } from "node:fs";
 import { bare } from "@hot-updater/bare";
 import { s3Storage } from "@hot-updater/aws";
 import { standaloneRepository } from "@hot-updater/standalone";
 import { defineConfig } from "hot-updater";
-import { config } from "dotenv";
 
-config({ path: ".env.hotupdater" });
+if (existsSync(".env.hotupdater")) {
+  process.loadEnvFile(".env.hotupdater");
+}
 
 const adminToken = process.env.HOT_UPDATER_ADMIN_TOKEN;
 if (!adminToken) {

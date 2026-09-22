@@ -25,12 +25,14 @@ Use `withDatadog()` to wrap any compatible build plugin such as bare.
   <Tab value="Bare">
 
 ```ts title="hot-updater.config.ts"
+import { existsSync } from "node:fs";
 import { bare } from "@hot-updater/bare";
 import { withDatadog } from "@hot-updater/datadog-plugin"; // [!code ++]
 import { defineConfig } from "hot-updater";
-import { config } from "dotenv";
 
-config({ path: ".env.hotupdater" });
+if (existsSync(".env.hotupdater")) {
+  process.loadEnvFile(".env.hotupdater");
+}
 
 export default defineConfig({
   build: withDatadog( // [!code ++]

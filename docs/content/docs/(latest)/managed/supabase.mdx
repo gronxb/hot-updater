@@ -175,12 +175,14 @@ credentials stay in the deploy environment.
 Init generates `hot-updater.config.ts` with your Supabase configuration.
 
 ```ts title="hot-updater.config.ts"
+import { existsSync } from "node:fs";
 import { bare } from "@hot-updater/bare";
 import { supabaseDatabase, supabaseStorage } from "@hot-updater/supabase";
 import { defineConfig } from "hot-updater";
-import { config } from "dotenv";
 
-config({ path: ".env.hotupdater" });
+if (existsSync(".env.hotupdater")) {
+  process.loadEnvFile(".env.hotupdater");
+}
 
 export default defineConfig({
   build: bare({ enableHermes: true }),

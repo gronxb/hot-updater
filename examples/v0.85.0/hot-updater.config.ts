@@ -1,11 +1,14 @@
+import { existsSync } from "node:fs";
+
 import { bare } from "@hot-updater/bare";
 import { d1Database, r2Storage } from "@hot-updater/cloudflare";
-import { config } from "dotenv";
 import { defineConfig } from "hot-updater";
 
-config({
-  path: process.env.HOT_UPDATER_E2E_ENV_TARGET_PATH ?? ".env.hotupdater",
-});
+const envFilePath =
+  process.env.HOT_UPDATER_E2E_ENV_TARGET_PATH ?? ".env.hotupdater";
+if (existsSync(envFilePath)) {
+  process.loadEnvFile(envFilePath);
+}
 
 export default defineConfig({
   nativeBuild: {
