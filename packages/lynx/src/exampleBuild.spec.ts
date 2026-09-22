@@ -515,6 +515,70 @@ describe("production Lynx embedded bundles", () => {
 });
 
 describe("production native update endpoint", () => {
+  it("keeps the Sparkling scaffold free of application-owned OTA workarounds", async () => {
+    const sources = await Promise.all(
+      [
+        "android/app/src/main/java/com/hotupdater/lynxexample/LynxApplication.kt",
+        "android/app/src/main/java/com/hotupdater/lynxexample/OtaActivity.kt",
+        "ios/SparklingGo/SparklingGo/SparklingGoApp.swift",
+        "ios/SparklingGo/SparklingGo/PublicHost.swift",
+      ].map((source) => fs.readFile(path.join(exampleRoot, source), "utf8")),
+    );
+    const productionNativeSource = sources.join("\n");
+
+    expect(productionNativeSource).toContain(
+      "HotUpdaterSparklingModules.modules()",
+    );
+    expect(productionNativeSource).toContain("HotUpdaterSparklingHost(");
+    for (const workaround of [
+      "HotUpdaterSparklingDiagnostics",
+      "RouterProvider.hostRouterDepend",
+      "BuiltinTemplateProvider",
+      "LynxTemplateResourceFetcher",
+      "LynxMediaResourceFetcher",
+      "LynxGenericResourceFetcher",
+      "LynxFontFaceLoader",
+      "Runtime.getRuntime()",
+      "System.exit(",
+      "Process.killProcess(",
+    ]) {
+      expect(productionNativeSource).not.toContain(workaround);
+    }
+  });
+
+  it("uses Android's native 16 KB packaging instead of legacy JNI compression", async () => {
+    const [rootBuild, wrapper, ...applicationBuilds] = await Promise.all([
+      fs.readFile(path.join(exampleRoot, "android/build.gradle.kts"), "utf8"),
+      fs.readFile(
+        path.join(
+          exampleRoot,
+          "android/gradle/wrapper/gradle-wrapper.properties",
+        ),
+        "utf8",
+      ),
+      ...["app", "e2e-app", "matrix-app"].map((application) =>
+        fs.readFile(
+          path.join(exampleRoot, `android/${application}/build.gradle.kts`),
+          "utf8",
+        ),
+      ),
+    ]);
+
+    expect(rootBuild).toContain(
+      'id("com.android.application") version "8.5.2"',
+    );
+    expect(rootBuild).toContain(
+      'id("org.jetbrains.kotlin.android") version "2.0.21"',
+    );
+    expect(wrapper).toContain("gradle-8.7-all.zip");
+    for (const applicationBuild of applicationBuilds) {
+      expect(applicationBuild).toContain(
+        'implementation("com.facebook.fresco:fresco:3.4.0")',
+      );
+      expect(applicationBuild).not.toContain("useLegacyPackaging");
+    }
+  });
+
   it("accepts an explicit public HTTPS application endpoint", () => {
     expect(
       resolveProductionAppBaseURL({

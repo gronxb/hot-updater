@@ -25,13 +25,14 @@ dependencies {
 
 tasks.withType(org.jetbrains.kotlin.gradle.tasks.KotlinCompile).configureEach {
     def mainVariant = name.toLowerCase().contains('release') ? 'release' : 'debug'
-    def mainCompileTask = ":hot-updater-lynx-sparkling:compile${mainVariant.capitalize()}Kotlin"
-    def mainJarTask = ":hot-updater-lynx-sparkling:bundleLibCompileToJar${mainVariant.capitalize()}"
+    def mainProject = project(':hot-updater-lynx-sparkling')
+    def mainCompileTask = mainProject.tasks.named(
+        "compile${mainVariant.capitalize()}Kotlin",
+    )
+    def mainJarTask = mainProject.tasks.named(
+        "bundleLibCompileToJar${mainVariant.capitalize()}",
+    )
     dependsOn(mainCompileTask, mainJarTask)
-    def friendPath = project(':hot-updater-lynx-sparkling')
-        .layout.buildDirectory.file(
-            "intermediates/compile_library_classes_jar/${mainVariant}/classes.jar",
-        )
-        .get().asFile.absolutePath
+    def friendPath = mainJarTask.get().outputs.files.singleFile.absolutePath
     kotlinOptions.freeCompilerArgs += ["-Xfriend-paths=${friendPath}".toString()]
 }

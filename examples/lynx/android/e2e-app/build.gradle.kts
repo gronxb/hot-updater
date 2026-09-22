@@ -40,11 +40,6 @@ android {
   kotlinOptions { jvmTarget = "17" }
   androidResources { ignoreAssetsPattern = "" }
   sourceSets.getByName("main").assets.srcDir("../.hot-updater/embedded")
-  packaging {
-    jniLibs {
-      useLegacyPackaging = true
-    }
-  }
 }
 
 dependencies {
@@ -65,5 +60,5 @@ dependencies {
     exclude(group = "org.lynxsdk.lynx", module = "base-devtool")
   }
   implementation("com.tiktok.sparkling:sparkling-method:2.1.0-rc.12")
-  implementation("com.facebook.fresco:fresco:2.3.0")
+  implementation("com.facebook.fresco:fresco:3.4.0")
 }

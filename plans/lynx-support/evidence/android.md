@@ -1,5 +1,16 @@
 # Android G1 native feasibility evidence
 
+## Production 16 KB packaging follow-up (2026-09-22)
+
+The production example now uses AGP 8.5.2, Gradle 8.7, Kotlin 2.0.21, and
+Fresco 3.4.0. It does not enable `jniLibs.useLegacyPackaging`. The release APK
+passes `zipalign -c -P 16 -v 4`; all 24 packaged ARM64 and x86_64 shared
+libraries have ELF `LOAD` alignment of at least 16 KB; and bundletool 1.16.0
+reports `PAGE_ALIGNMENT_16K` for the release AAB. The same build-tool and Fresco
+versions are used by the separate E2E and matrix applications, which also build
+successfully. This supersedes the provisional compatibility-mode limitation
+recorded in the original G1 spike below.
+
 Status: native A/B resource, bridge, startup recovery and context scenarios passed
 within the private G1 boundary described below. This is a private feasibility host, not an
 OTA installer or a claim that G3 passed. All observations below come from the

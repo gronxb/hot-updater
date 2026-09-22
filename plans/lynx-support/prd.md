@@ -147,6 +147,16 @@ diagnostics intent source requires an explicit nonproduction host opt-in. The
 default host configuration, including the production target, does not read or
 merge launch configuration from an intent.
 
+The Android example must support 16 KB page-size devices through the normal
+Android packaging path. It uses AGP 8.5.1 or newer with uncompressed native
+libraries and must not set `jniLibs.useLegacyPackaging`. Every packaged native
+library for every included ABI must have ELF `LOAD` segments aligned to at least
+16 KB, the release APK must pass 16 KB ZIP-alignment verification, and the
+release AAB must declare `PAGE_ALIGNMENT_16K`. A compressed-JNI workaround or
+Android's page-size compatibility mode does not satisfy this requirement.
+Prebuilt dependencies that fail the requirement must be upgraded to a compatible
+release rather than repaired by application-owned native code.
+
 ### 2.2 Engine-neutral delivery requirements (2026-09-13 amendment)
 
 The Hot Updater core is a pure runtime- and framework-neutral OTA engine. This

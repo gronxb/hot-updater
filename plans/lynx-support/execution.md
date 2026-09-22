@@ -121,6 +121,12 @@ The pushed implementation at `f54a3ae47` implements the consolidated PRD contrac
   same-process replacement of every managed runtime and view. Production
   `SparklingGo` and Android `:app` sources contain configuration and packaged
   host wiring only.
+- The Android example uses AGP 8.5.2, Gradle 8.7, Kotlin 2.0.21, and the first
+  16 KB-aligned Fresco line, 3.4.0. Legacy compressed-JNI packaging is absent.
+  The production release APK passes 16 KB ZIP alignment, all 24 native
+  libraries across ARM64 and x86_64 pass ELF alignment, and its AAB declares
+  `PAGE_ALIGNMENT_16K`. Production, E2E, and matrix release applications build
+  with the same toolchain.
 - Separate nonproduction iOS and Android matrix targets expose the lifecycle
   controls needed for strict six-cell evidence. The runner requires correlated
   process, generation, context, attempt, release, resource, patch, and transition
