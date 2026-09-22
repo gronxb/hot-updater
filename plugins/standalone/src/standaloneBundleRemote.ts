@@ -3,14 +3,14 @@ import type {
   Bundle,
   BundleRow,
   ChannelRow,
+  BundleModelQuery,
 } from "@hot-updater/plugin-core";
-import { bundleToRow } from "@hot-updater/plugin-core";
-import type {
-  DatabaseSortBy,
-  DatabaseWhere,
-} from "@hot-updater/plugin-core/internal";
+import {
+  bundleToRow,
+  bundleToPatchRows,
+  DatabasePluginInputError,
+} from "@hot-updater/plugin-core";
 
-import { appendBundleWhere } from "./standaloneBundleWhere";
 import {
   createStandaloneHttp,
   StandaloneDatabaseError,
@@ -31,12 +31,55 @@ import {
 
 const PAGE_SIZE = 100;
 
-export interface BundleWindowInput {
-  readonly where?: readonly DatabaseWhere<"bundles">[];
-  readonly limit: number;
-  readonly offset: number;
-  readonly orderBy?: DatabaseSortBy<"bundles">;
-}
+type BundleWindowInput = Omit<BundleModelQuery, "orderBy"> &
+  Partial<Pick<BundleModelQuery, "orderBy">>;
+
+// The repository speaks the HTTP domain protocol directly, without a CRUD emulator.
+const bundleWindowUrl = (base: string, input: BundleWindowInput): URL => {
+  const url = new URL(base);
+  if (
+    !Number.isSafeInteger(input.limit) ||
+    input.limit < 0 ||
+    !Number.isSafeInteger(input.offset) ||
+    input.offset < 0 ||
+    (input.orderBy &&
+      (input.orderBy.field !== "id" ||
+        !["asc", "desc"].includes(input.orderBy.direction)))
+  )
+    throw new DatabasePluginInputError("invalid-query");
+  for (const field of Object.keys(input.where ?? {}))
+    if (field !== "id" && field !== "platform")
+      throw new DatabasePluginInputError("invalid-query");
+  if (input.where?.platform !== undefined) {
+    if (!["ios", "android"].includes(input.where.platform))
+      throw new DatabasePluginInputError("invalid-query");
+    url.searchParams.set("platform", input.where.platform);
+  }
+  const parameters = {
+    eq: "idEq",
+    gt: "idGt",
+    gte: "idGte",
+    lt: "idLt",
+    lte: "idLte",
+    in: "idIn",
+  };
+  for (const [operator, value] of Object.entries(input.where?.id ?? {})) {
+    if (!Object.hasOwn(parameters, operator))
+      throw new DatabasePluginInputError("invalid-query");
+    if (value === undefined) continue;
+    const values = operator === "in" ? value : [value];
+    if (!Array.isArray(values) || !values.every((id) => typeof id === "string"))
+      throw new DatabasePluginInputError("invalid-query");
+    for (const id of values)
+      url.searchParams.append(
+        parameters[operator as keyof typeof parameters],
+        id,
+      );
+  }
+  if (input.orderBy)
+    url.searchParams.set("orderDirection", input.orderBy.direction);
+  return url;
+};
 
 export const createStandaloneBundleRemote = (
   config: StandaloneRepositoryConfig,
@@ -87,24 +130,10 @@ export const createStandaloneBundleRemote = (
   ): Promise<BundleRow[]> => bundles.map((bundle) => bundleToRow(bundle));
 
   const loadBundleWindow = async (input: BundleWindowInput) => {
-    if (
-      input.limit === 0 ||
-      (!input.where?.some(({ connector }) => connector === "OR") &&
-        input.where?.some(
-          ({ operator, value }) =>
-            operator === "in" && Array.isArray(value) && value.length === 0,
-        ))
-    )
-      return { rows: [] as BundleRow[], total: 0 };
-    if (input.orderBy && input.orderBy.field !== "id") {
-      return null;
-    }
     const route = routes.list();
-    const url = new URL(http.buildUrl(route.path));
-    if (!appendBundleWhere(url, input.where)) return null;
-    if (input.orderBy !== undefined) {
-      url.searchParams.set("orderDirection", input.orderBy.direction);
-    }
+    const url = bundleWindowUrl(http.buildUrl(route.path), input);
+    if (input.limit === 0 || input.where?.id?.in?.length === 0)
+      return { rows: [] as BundleRow[], total: 0 };
     // Fetch only pages intersecting the requested window, including unaligned offsets.
     const remoteLimit = Math.min(PAGE_SIZE, input.limit);
     const rows: BundleRow[] = [];
@@ -278,8 +307,22 @@ export const createStandaloneBundleRemote = (
     return rows;
   };
 
+  const loadOwnedPatches = async (
+    bundleIds: readonly string[],
+  ): Promise<readonly BundlePatchRow[]> => {
+    const rows: BundlePatchRow[] = [];
+    for (const id of new Set(bundleIds)) {
+      const bundle = await loadBundle(id);
+      if (bundle) rows.push(...bundleToPatchRows(bundle));
+    }
+    return rows.sort((left, right) =>
+      left.id < right.id ? -1 : left.id > right.id ? 1 : 0,
+    );
+  };
+
   return {
     loadPatchChildren,
+    loadOwnedPatches,
     createBundle: (bundle: Bundle) => createBundles([bundle]),
     createBundles,
     deleteBundle,

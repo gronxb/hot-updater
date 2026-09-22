@@ -1,12 +1,5 @@
-import type {
-  BundlePatchRow,
-  BundleRepository,
-  BundleRow,
-  DatabaseBundleQueryWhere,
-} from "@hot-updater/plugin-core";
-import type { DatabaseWhere } from "@hot-updater/plugin-core/internal";
+import type { BundleRepository } from "@hot-updater/plugin-core";
 
-import { createStandaloneBundleReader } from "./standaloneBundleReader";
 import { createStandaloneBundleRemote } from "./standaloneBundleRemote";
 import { createStandaloneReleaseRemote } from "./standaloneReleaseRemote";
 import type { StandaloneRepositoryConfig } from "./standaloneRoutes";
@@ -17,35 +10,6 @@ export type {
   Routes,
   StandaloneRepositoryConfig,
 } from "./standaloneRoutes";
-
-const toBundleWhere = (
-  where: DatabaseBundleQueryWhere | undefined,
-): readonly DatabaseWhere<"bundles">[] => {
-  if (!where) return [];
-  const filters: DatabaseWhere<"bundles">[] = [];
-  if (where.platform !== undefined) {
-    filters.push({ field: "platform", value: where.platform });
-  }
-  if (where.id?.eq !== undefined) {
-    filters.push({ field: "id", value: where.id.eq });
-  }
-  if (where.id?.gt !== undefined) {
-    filters.push({ field: "id", operator: "gt", value: where.id.gt });
-  }
-  if (where.id?.gte !== undefined) {
-    filters.push({ field: "id", operator: "gte", value: where.id.gte });
-  }
-  if (where.id?.lt !== undefined) {
-    filters.push({ field: "id", operator: "lt", value: where.id.lt });
-  }
-  if (where.id?.lte !== undefined) {
-    filters.push({ field: "id", operator: "lte", value: where.id.lte });
-  }
-  if (where.id?.in !== undefined) {
-    filters.push({ field: "id", operator: "in", value: where.id.in });
-  }
-  return filters;
-};
 
 /**
  * Bundle-only HTTP repository used by the CLI for a self-hosted server.
@@ -58,45 +22,19 @@ export const standaloneRepository = (
 ): BundleRepository => {
   const remote = createStandaloneBundleRemote(config);
   const releaseRemote = createStandaloneReleaseRemote(config);
-  const bundleReader = createStandaloneBundleReader(remote);
 
   const repository: BundleRepository = {
     name: "standalone-repository",
     models: {
       bundles: {
-        async findById(id): Promise<BundleRow | null> {
-          return (await bundleReader.findOne({
-            model: "bundles",
-            where: [{ field: "id", value: id }],
-          })) as BundleRow | null;
-        },
-        async findMany(query): Promise<readonly BundleRow[]> {
-          return (await bundleReader.findMany({
-            model: "bundles",
-            where: toBundleWhere(query.where),
-            limit: query.limit,
-            offset: query.offset,
-            orderBy: [query.orderBy],
-          })) as readonly BundleRow[];
-        },
-        count: (where) =>
-          bundleReader.count({
-            model: "bundles",
-            where: toBundleWhere(where),
-          }),
+        findById: (id) => remote.loadBundleRow(id),
+        findMany: async (query) => (await remote.loadBundleWindow(query)).rows,
+        count: async (where) =>
+          (await remote.loadBundleWindow({ where, limit: 1, offset: 0 })).total,
       },
       bundlePatches: {
         findByBaseBundleIds: (ids) => remote.loadPatchChildren(ids),
-        async findByBundleIds(bundleIds): Promise<readonly BundlePatchRow[]> {
-          if (bundleIds.length === 0) return [];
-          return (await bundleReader.findMany({
-            model: "bundle_patches",
-            where: [{ field: "bundle_id", operator: "in", value: bundleIds }],
-            orderBy: [{ field: "id", direction: "asc" }],
-            limit: Number.MAX_SAFE_INTEGER,
-            offset: 0,
-          })) as readonly BundlePatchRow[];
-        },
+        findByBundleIds: (ids) => remote.loadOwnedPatches(ids),
       },
       releases: {
         findById: (id) => releaseRemote.findReleaseById(id),

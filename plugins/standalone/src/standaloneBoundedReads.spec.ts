@@ -1,48 +1,62 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { createStandaloneBundleReader } from "./standaloneBundleReader";
-import type { StandaloneBundleRemote } from "./standaloneBundleRemote";
+import { standaloneRepository } from "./standaloneRepository";
+
+afterEach(() => vi.unstubAllGlobals());
 
 describe("standalone bounded reads", () => {
-  it("hydrates only the requested patch owners without listing bundle history", async () => {
-    const remote = {
-      loadBundles: vi.fn(async () => {
-        throw new Error("full bundle history scan");
-      }),
-      loadBundle: vi.fn(async () => null),
-    };
-    const reader = createStandaloneBundleReader(
-      remote as unknown as StandaloneBundleRemote,
+  it("hydrates only the distinct requested patch owners without listing history", async () => {
+    const fetch = vi.fn(
+      async (_input: string | URL | Request) =>
+        new Response(null, { status: 404 }),
     );
+    vi.stubGlobal("fetch", fetch);
+    const repository = standaloneRepository({
+      baseUrl: "https://example.test",
+    });
     await expect(
-      reader.findMany({
-        model: "bundle_patches",
-        where: [{ field: "bundle_id", operator: "in", value: ["missing"] }],
-        limit: 100,
-        offset: 0,
-        orderBy: [{ field: "id", direction: "asc" }],
-      }),
+      repository.models.bundlePatches.findByBundleIds(["missing", "missing"]),
     ).resolves.toEqual([]);
-    expect(remote.loadBundle).toHaveBeenCalledExactlyOnceWith("missing");
-    expect(remote.loadBundles).not.toHaveBeenCalled();
+    expect(fetch).toHaveBeenCalledTimes(1);
+    expect(String(fetch.mock.calls[0]?.[0])).toBe(
+      "https://example.test/bundles/missing",
+    );
   });
 
-  it("does not scan history when the remote cannot execute a requested filter", async () => {
-    const remote = {
-      loadBundleWindow: vi.fn(async () => null),
-      loadBundleRows: vi.fn(async () => []),
-    };
-    const reader = createStandaloneBundleReader(
-      remote as unknown as StandaloneBundleRemote,
-    );
+  it("rejects an unsupported filter before any HTTP request", async () => {
+    const fetch = vi.fn();
+    vi.stubGlobal("fetch", fetch);
+    const repository = standaloneRepository({
+      baseUrl: "https://example.test",
+    });
     await expect(
-      reader.findMany({
-        model: "bundles",
-        where: [{ field: "file_hash", value: "hash" }],
+      repository.models.bundles.findMany({
+        // @ts-expect-error Runtime input from an older or untyped caller.
+        where: { file_hash: "hash" },
         limit: 1,
         offset: 0,
+        orderBy: { field: "id", direction: "asc" },
       }),
     ).rejects.toThrow();
-    expect(remote.loadBundleRows).not.toHaveBeenCalled();
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it("does not broaden an empty ID set or a zero limit to a list request", async () => {
+    const fetch = vi.fn();
+    vi.stubGlobal("fetch", fetch);
+    const repository = standaloneRepository({
+      baseUrl: "https://example.test",
+    });
+    await expect(
+      repository.models.bundles.count({ id: { in: [] } }),
+    ).resolves.toBe(0);
+    await expect(
+      repository.models.bundles.findMany({
+        limit: 0,
+        offset: 0,
+        orderBy: { field: "id", direction: "desc" },
+      }),
+    ).resolves.toEqual([]);
+    expect(fetch).not.toHaveBeenCalled();
   });
 });
