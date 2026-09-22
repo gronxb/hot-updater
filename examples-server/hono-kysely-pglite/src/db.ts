@@ -37,7 +37,11 @@ export const hotUpdater = createHotUpdater({
   }),
   clientAccess: { type: "public" },
   storage: [
-    mockStorage({}),
+    process.env.NODE_ENV === "test"
+      ? (
+          await import("@hot-updater/test-utils/node")
+        ).createReleaseCatalogTestStorage()
+      : mockStorage({}),
     s3Storage({
       region: "auto",
       endpoint: process.env.R2_ENDPOINT,

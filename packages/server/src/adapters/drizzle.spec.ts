@@ -1,5 +1,9 @@
 import { PGlite } from "@electric-sql/pglite";
 import {
+  setupDatabasePluginTestSuite,
+  startHttpTestServer,
+} from "@hot-updater/test-utils";
+import {
   bigint,
   boolean,
   doublePrecision,
@@ -13,8 +17,8 @@ import { drizzle } from "drizzle-orm/pglite";
 import { describe, expect, it, vi } from "vitest";
 
 import { createBundleEventRowFixture } from "../../../test-utils/src/databaseTestFixtures";
-import { setupDatabasePluginTestSuite } from "../../../test-utils/src/setupDatabasePluginTestSuite";
 import type { DatabaseAdapterWithCapabilities } from "../db/types";
+import { createHotUpdater } from "../index";
 import {
   DATABASE_PLUGIN_TEST_RESET_SQL,
   DATABASE_PLUGIN_TEST_SCHEMA_SQL,
@@ -172,6 +176,11 @@ const getDatabase = (): ReturnType<typeof drizzle<typeof schema>> => {
 };
 
 setupDatabasePluginTestSuite({
+  createHttpClient: (options) =>
+    startHttpTestServer(
+      createHotUpdater({ ...options, clientAccess: { type: "public" } })
+        .handlers,
+    ),
   name: "drizzleAdapter PostgreSQL",
   migrate: async () => {
     client = new PGlite();

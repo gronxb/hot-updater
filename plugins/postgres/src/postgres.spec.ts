@@ -9,7 +9,11 @@ import type {
   ApiKeyRow,
   ReleaseRow,
 } from "@hot-updater/plugin-core";
-import { setupDatabasePluginTestSuite } from "@hot-updater/test-utils";
+import { createHotUpdater } from "@hot-updater/server";
+import {
+  setupDatabasePluginTestSuite,
+  startHttpTestServer,
+} from "@hot-updater/test-utils";
 import { PGliteDialect } from "kysely-pglite-dialect";
 import { describe, expect, it } from "vitest";
 
@@ -29,6 +33,11 @@ const getClient = (): PGlite => {
 };
 
 setupDatabasePluginTestSuite({
+  createHttpClient: (options) =>
+    startHttpTestServer(
+      createHotUpdater({ ...options, clientAccess: { type: "public" } })
+        .handlers,
+    ),
   name: "postgres fixed-model database plugin",
   migrate: async () => {
     client = new PGlite();

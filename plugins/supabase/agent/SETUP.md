@@ -36,6 +36,10 @@ connection, CLI/API or browser can handle missing account-level prerequisites.
     MCP migration operations must preserve the same names/history and SQL.
   - Verify/record: supplied migrations are applied, expected tables/schema version
     exist, and the API schema cache can access them. Record applied filenames.
+    The single 1.0.0 initialization migration includes idempotent Channel
+    deletion. For an older RC deployment, replace only the commit RPC with the
+    supplied definition using CREATE OR REPLACE FUNCTION, including its REVOKE
+    and GRANT statements. Keep tables, data and existing migration history.
   - Retry: inspect actual schema/history before replaying anything. Only the exact
     missing `supabase_migrations.schema_migrations` relation on a fresh project
     permits proceeding from failed history fetch to the first push. This error

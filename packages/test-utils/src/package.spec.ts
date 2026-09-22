@@ -3,9 +3,9 @@ import { describe, expect, it } from "vitest";
 import packageJson from "../package.json" with { type: "json" };
 
 describe("@hot-updater/test-utils package", () => {
-  it("is private so release tooling cannot publish it", () => {
-    expect(packageJson.private).toBe(true);
-    expect(Object.hasOwn(packageJson, "publishConfig")).toBe(false);
+  it("is publishable so external providers can run the same contracts", () => {
+    expect(Object.hasOwn(packageJson, "private")).toBe(false);
+    expect(packageJson.publishConfig.access).toBe("public");
   });
 
   it("advertises the Vitest-dependent root as ESM-only", () => {

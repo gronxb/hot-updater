@@ -27,6 +27,61 @@ const readMigrations = async () => {
 };
 
 describe("Supabase v1 schema", () => {
+  it("initializes idempotent atomic channel deletion with service-role permissions", async () => {
+    const database = new PGlite();
+    try {
+      await database.exec(
+        "CREATE ROLE anon; CREATE ROLE authenticated; CREATE ROLE service_role;",
+      );
+      const migrations = await readMigrations();
+      await database.exec(migrations[0]!.sql);
+      await database.exec(
+        "INSERT INTO public.hot_updater_v1_channels (id, name) VALUES ('existing', 'production')",
+      );
+      expect(migrations).toHaveLength(1);
+      const result = await database.query<{ result: unknown }>(
+        "SELECT public.hot_updater_v1_commit($1::jsonb) AS result",
+        [
+          JSON.stringify({
+            changes: [
+              {
+                model: "channels",
+                operation: "insert",
+                row: { id: "added", name: "staging" },
+                onConflict: "ignore",
+              },
+              {
+                model: "channels",
+                operation: "delete",
+                where: { id: "missing" },
+              },
+            ],
+          }),
+        ],
+      );
+      expect(result.rows).toEqual([{ result: { committed: true } }]);
+      expect(
+        (
+          await database.query(
+            "SELECT id, name FROM public.hot_updater_v1_channels ORDER BY id",
+          )
+        ).rows,
+      ).toEqual([
+        { id: "added", name: "staging" },
+        { id: "existing", name: "production" },
+      ]);
+      expect(
+        (
+          await database.query(
+            "SELECT has_function_privilege('anon', 'public.hot_updater_v1_commit(jsonb)', 'EXECUTE') AS anon, has_function_privilege('service_role', 'public.hot_updater_v1_commit(jsonb)', 'EXECUTE') AS service_role",
+          )
+        ).rows,
+      ).toEqual([{ anon: false, service_role: true }]);
+    } finally {
+      await database.close();
+    }
+  });
+
   it("initializes 1.0.0 and atomically maintains service-role event heads", async () => {
     const database = new PGlite();
     const event = createBundleEventRowFixture("9301", 100);

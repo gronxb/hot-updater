@@ -77,6 +77,7 @@ export const registerDatabasePluginQueryTests = (
     });
 
     it("returns an empty page for an empty id set", async () => {
+      await seedRows(state.getPlugin());
       await expect(
         state.getPlugin().models.bundles.findMany({
           where: { id: { in: [] } },
@@ -85,6 +86,25 @@ export const registerDatabasePluginQueryTests = (
           orderBy: { field: "id", direction: "asc" },
         }),
       ).resolves.toEqual([]);
+    });
+
+    it("orders descending before applying offset and limit", async () => {
+      const plugin = state.getPlugin();
+      const rows = await seedRows(plugin);
+      await expect(
+        plugin.models.bundles.findMany({
+          limit: 2,
+          offset: 0,
+          orderBy: { field: "id", direction: "desc" },
+        }),
+      ).resolves.toEqual([rows[2], rows[1]]);
+      await expect(
+        plugin.models.bundles.findMany({
+          limit: 2,
+          offset: 2,
+          orderBy: { field: "id", direction: "desc" },
+        }),
+      ).resolves.toEqual([rows[0]]);
     });
   });
 };

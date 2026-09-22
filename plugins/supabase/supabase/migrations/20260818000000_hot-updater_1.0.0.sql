@@ -295,7 +295,6 @@ BEGIN
               BEGIN
                 DELETE FROM public.hot_updater_v1_channels
                 WHERE id = v_change->'where'->>'id';
-                IF NOT FOUND THEN RAISE no_data_found; END IF;
               EXCEPTION
                 WHEN foreign_key_violation THEN RAISE SQLSTATE 'HU001';
               END;

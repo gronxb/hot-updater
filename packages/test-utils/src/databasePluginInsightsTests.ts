@@ -424,7 +424,7 @@ export const registerDatabasePluginInsightsTests = (
       await expectInsightsIndex(async () => {
         const found: string[] = [];
         let afterInstallId: string | undefined;
-        for (;;) {
+        for (let pageIndex = 0; pageIndex <= ids.length; pageIndex++) {
           const page = await plugin.models.insights.findLatestEvents({
             userId: "User-é",
             afterInstallId,
@@ -432,8 +432,13 @@ export const registerDatabasePluginInsightsTests = (
           });
           found.push(...page.map((row) => row.install_id));
           if (page.length < 2) return found;
-          afterInstallId = page[page.length - 1]!.install_id;
+          const nextCursor = page[page.length - 1]!.install_id;
+          expect(nextCursor, "Insights cursor must advance").not.toBe(
+            afterInstallId,
+          );
+          afterInstallId = nextCursor;
         }
+        throw new Error("Insights pagination did not terminate");
       }, ids);
       await expectInsightsIndex(
         () =>

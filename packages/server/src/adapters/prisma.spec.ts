@@ -1,15 +1,24 @@
 import { PGlite } from "@electric-sql/pglite";
+import {
+  setupDatabasePluginTestSuite,
+  startHttpTestServer,
+} from "@hot-updater/test-utils";
 import { describe, expect, expectTypeOf, it } from "vitest";
 
 import { createBundleEventRowFixture } from "../../../test-utils/src/databaseTestFixtures";
-import { setupDatabasePluginTestSuite } from "../../../test-utils/src/setupDatabasePluginTestSuite";
 import { createTableSql } from "../db/schema/sql";
+import { createHotUpdater } from "../index";
 import { prismaAdapter, type PrismaConfig } from "./prisma";
 import { createPrismaTestHarness } from "./prismaTestClient";
 
 const harness = createPrismaTestHarness();
 
 setupDatabasePluginTestSuite({
+  createHttpClient: (options) =>
+    startHttpTestServer(
+      createHotUpdater({ ...options, clientAccess: { type: "public" } })
+        .handlers,
+    ),
   name: "prismaAdapter v2",
   migrate: () => undefined,
   createPlugin: () =>

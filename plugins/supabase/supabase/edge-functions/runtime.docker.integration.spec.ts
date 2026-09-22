@@ -26,6 +26,10 @@ import {
   createUUIDv7,
 } from "@hot-updater/plugin-core";
 import { createHotUpdater, registerApiKey } from "@hot-updater/server";
+import {
+  setupDatabasePluginTestSuite,
+  startHttpTestServer,
+} from "@hot-updater/test-utils";
 import { createClient } from "@supabase/supabase-js";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
@@ -424,6 +428,30 @@ describe.sequential("supabase edge runtime acceptance", () => {
       await rm(runtimeRoot, { recursive: true, force: true });
     }
   }, 60_000);
+
+  setupDatabasePluginTestSuite({
+    name: "Supabase PostgreSQL and PostgREST conformance",
+    createPlugin: () => database,
+    migrate: () => undefined,
+    reset: () => {
+      const tables = Object.entries(SUPABASE_V1_TABLE_NAMES)
+        .filter(([name]) => name !== "settings")
+        .map(([, table]) => `public.${table}`);
+      runDatabaseSql(`TRUNCATE ${tables.join(", ")} CASCADE`);
+    },
+    dispose: async () => {
+      await registerApiKey({
+        apiKey: API_KEY,
+        apiKeys: database.models.apiKeys,
+        name: "Runtime acceptance",
+      });
+    },
+    createHttpClient: (options) =>
+      startHttpTestServer(
+        createHotUpdater({ ...options, clientAccess: { type: "public" } })
+          .handlers,
+      ),
+  });
 
   it("returns one canonical Channel row under concurrent inserts", async () => {
     const database = supabaseDatabase({
