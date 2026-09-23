@@ -16,7 +16,6 @@ import {
   vi,
 } from "vitest";
 
-import { createInMemoryDatabasePlugin } from "../../../test-utils/test/inMemoryDatabasePlugin";
 import { drizzleAdapter } from "../adapters/drizzle";
 import { kyselyAdapter } from "../adapters/kysely";
 import { mongoAdapter } from "../adapters/mongodb";
@@ -28,7 +27,6 @@ import {
 import { bundleToRow } from "./bundleRows";
 import { createTableSql, hotUpdaterSchemaVersions } from "./hotUpdaterSchema";
 import { createMigrator, generateSchema } from "./index";
-import type { DatabasePlugin, ORMProvider } from "./types";
 
 const createHotUpdater = (
   options: Omit<CreateHotUpdaterOptions, "clientAccess">,
@@ -37,40 +35,6 @@ const createHotUpdater = (
     ...options,
     clientAccess: { type: "public" },
   });
-
-const RAW_PRISMA_SCHEMA = `model bundles {
-  id String @id
-  platform String
-  should_force_update Boolean
-  enabled Boolean
-  git_commit_hash String?
-  message String?
-  channel String @default("production")
-  target_app_version String?
-  fingerprint_hash String?
-  metadata Json
-  manifest_storage_uri String
-  manifest_file_hash String
-  asset_base_storage_uri String
-  rollout_cohort_count Int @default(1000)
-  target_cohorts Json?
-}
-model bundle_patches {
-  id String @id
-  bundle_id String
-  base_bundle_id String
-  base_file_hash String
-  patch_file_hash String
-  patch_storage_uri String
-  byte_size Float
-  order_index Int @default(0)
-  bundle bundles @relation("bundle_patches_bundles_patches", fields: [bundle_id], references: [id], onUpdate: Restrict, onDelete: Cascade)
-  baseBundle bundles @relation("bundle_patches_bundles_baseForPatches", fields: [base_bundle_id], references: [id], onUpdate: Restrict, onDelete: Cascade)
-}
-model private_hot_updater_settings {
-  key String @id
-  value String @default("0.36.0")
-}`;
 
 function createTestStoragePlugin(
   protocol: string,
@@ -98,28 +62,6 @@ function createTestStoragePlugin(
       };
     },
   });
-}
-
-function createSchemaOnlyAdapter({
-  code,
-  name,
-  provider,
-  path,
-}: {
-  code: string;
-  name: string;
-  provider: ORMProvider;
-  path: string;
-}): DatabasePlugin {
-  return {
-    ...createInMemoryDatabasePlugin(),
-    adapterName: name,
-    provider,
-    generateSchema: (_version, schemaName = name) => ({
-      code,
-      path: path || schemaName,
-    }),
-  };
 }
 
 const transactionBundle: Bundle = {
@@ -157,23 +99,6 @@ describe("server/db hotUpdater (PGlite + Kysely)", async () => {
       createTestStoragePlugin("gs", readStoredText),
     ],
   });
-  const prismaSchemaHotUpdater = createHotUpdater({
-    database: createSchemaOnlyAdapter({
-      code: RAW_PRISMA_SCHEMA,
-      name: "prisma",
-      path: "schema.prisma",
-      provider: "postgresql",
-    }),
-  });
-  const sqlitePrismaSchemaHotUpdater = createHotUpdater({
-    database: createSchemaOnlyAdapter({
-      code: RAW_PRISMA_SCHEMA,
-      name: "prisma",
-      path: "schema.prisma",
-      provider: "sqlite",
-    }),
-  });
-
   it("uses the default generated schema artifact path for Drizzle", () => {
     const adapter = drizzleAdapter({ db: {}, provider: "sqlite" });
 
@@ -206,55 +131,23 @@ describe("server/db hotUpdater (PGlite + Kysely)", async () => {
   });
 
   describe("schema generation", () => {
-    it("includes relations, defaults, and indexes in Prisma output", () => {
-      const code = generateSchema(prismaSchemaHotUpdater, "latest").code;
+    it("passes the Prisma adapter's engine models through unchanged", () => {
+      const database = prismaAdapter({ prisma: {}, provider: "postgresql" });
+      const code = generateSchema(
+        createHotUpdater({ database }),
+        "latest",
+      ).code;
 
-      expect(code).toContain('metadata Json @default("{}")');
-      expect(code).toContain('value String @default("1.0.0")');
-      expect(code).toContain("model channels {");
-      expect(code).toContain("id String @db.VarChar(255) @id");
-      expect(code).toContain("name String @db.VarChar(255)");
-      expect(code).toContain('@@unique([name], map: "channels_name_key")');
-      expect(code).toContain("channel_id String @db.VarChar(255)");
-      expect(code).toContain(
-        'channelRecord channels @relation("releases_channels", fields: [channel_id], references: [id], onUpdate: Restrict, onDelete: Restrict)',
-      );
-      expect(code).toContain(
-        'patches bundle_patches[] @relation("bundle_patches_bundles_patches")',
-      );
-      expect(code).toContain(
-        'baseForPatches bundle_patches[] @relation("bundle_patches_bundles_baseForPatches")',
-      );
-      expect(code).toContain(
-        'bundle bundles @relation("bundle_patches_bundles_patches"',
-      );
-      expect(code).toContain(
-        'baseBundle bundles @relation("bundle_patches_bundles_baseForPatches"',
-      );
-      expect(code).not.toContain(
-        '@@index([channel], map: "bundles_channel_idx")',
-      );
-      expect(code).toContain(
-        '@@index([scope_key, id], map: "releases_scope_order_idx")',
-      );
-      expect(code).toContain("scope_key String @db.VarChar(2048) @id");
-      expect(code).not.toContain("bundles_platform_idx");
-      expect(code).toContain(
-        '@@index([bundle_id], map: "bundle_patches_bundle_id_idx")',
-      );
-    });
-
-    it("omits the metadata JSON default for SQLite Prisma output", () => {
-      const code = generateSchema(sqlitePrismaSchemaHotUpdater, "latest").code;
-
-      expect(code).toContain("metadata Json");
-      expect(code).not.toContain('metadata Json @default("{}")');
+      expect(code).toBe(database.generateSchema?.("latest").code);
+      expect(code).toContain("model bundle_totals {");
+      expect(code).toContain("model private_hot_updater_settings {");
     });
 
     it("rejects generating a retired schema snapshot", () => {
-      expect(() => generateSchema(prismaSchemaHotUpdater, "0.21.0")).toThrow(
-        "Unsupported Hot Updater schema version: 0.21.0",
-      );
+      const database = prismaAdapter({ prisma: {}, provider: "postgresql" });
+      expect(() =>
+        generateSchema(createHotUpdater({ database }), "0.21.0"),
+      ).toThrow("Invalid version 0.21.0");
     });
 
     it("passes the Drizzle adapter's engine schema through unchanged", () => {
@@ -610,75 +503,6 @@ describe("server/db hotUpdater (PGlite + Kysely)", async () => {
       });
       expect(byId.data).toEqual([]);
       expect(byId.pagination.total).toBe(0);
-    });
-
-    it("commits Prisma bundle changes inside a transaction when available", async () => {
-      const rootBundles = {
-        count: vi.fn(),
-        create: vi.fn(),
-        deleteMany: vi.fn(),
-        findFirst: vi.fn(),
-        findMany: vi.fn(),
-        update: vi.fn(),
-        upsert: vi.fn(),
-      };
-      const rootPatches = {
-        count: vi.fn(),
-        create: vi.fn(),
-        deleteMany: vi.fn(),
-        findFirst: vi.fn(),
-        findMany: vi.fn(),
-        update: vi.fn(),
-        upsert: vi.fn(),
-      };
-      const channels = {
-        count: vi.fn(),
-        create: vi.fn(),
-        deleteMany: vi.fn(),
-        findFirst: vi.fn(async () => ({
-          id: transactionChannelId,
-          name: "production",
-        })),
-        findMany: vi.fn(),
-        update: vi.fn(),
-        upsert: vi.fn(),
-      };
-      const txBundles = {
-        ...rootBundles,
-        create: vi.fn(async ({ data }) => data),
-      };
-      const txPatches = { ...rootPatches };
-      const $transaction = vi.fn(
-        async (operation: (tx: Record<string, unknown>) => Promise<unknown>) =>
-          operation({
-            bundle_patches: txPatches,
-            bundles: txBundles,
-            channels,
-          }),
-      );
-      const adapter = prismaAdapter({
-        prisma: {
-          $transaction,
-          bundle_patches: rootPatches,
-          bundles: rootBundles,
-          channels,
-        },
-        provider: "postgresql",
-      });
-
-      await adapter.commit({
-        changes: [
-          {
-            model: "bundles",
-            operation: "insert",
-            row: bundleToRow(transactionBundle),
-          },
-        ],
-      });
-
-      expect($transaction).toHaveBeenCalledTimes(1);
-      expect(txBundles.create).toHaveBeenCalledTimes(1);
-      expect(rootBundles.create).not.toHaveBeenCalled();
     });
 
     it("does not expose an implicit MongoDB transaction", () => {

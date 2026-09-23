@@ -133,16 +133,19 @@ export const createSqlCompiler = (name: SqlDialect, tablePrefix = "") => {
   const builder = () => {
     const params: unknown[] = [];
     const bind = (value: unknown, column?: PhysicalColumn) => {
+      const json =
+        column !== undefined && (column.multi || column.type === "json");
       params.push(
         value === null || value === undefined
           ? null
-          : column && (column.multi || column.type === "json")
+          : json
             ? JSON.stringify(value)
             : typeof value === "boolean" && name !== "postgresql"
               ? Number(value)
               : value,
       );
-      return dialect.param(params.length);
+      // Drivers that type string parameters as text (Prisma) need the cast.
+      return `${dialect.param(params.length)}${json && name === "postgresql" ? "::jsonb" : ""}`;
     };
     const done = (sql: string): SqlStatement => ({ sql, params });
     return { bind, done };

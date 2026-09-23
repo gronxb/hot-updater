@@ -1,545 +1,242 @@
+import { DatabaseSync } from "node:sqlite";
+
 import { PGlite } from "@electric-sql/pglite";
 import {
   setupDatabasePluginTestSuite,
   startHttpTestServer,
 } from "@hot-updater/test-utils";
-import { describe, expect, expectTypeOf, it } from "vitest";
+import { describe, expect, it } from "vitest";
 
-import { createBundleEventRowFixture } from "../../../test-utils/src/databaseTestFixtures";
-import { createTableSql } from "../db/schema/sql";
+import {
+  createBundleRowFixture,
+  createChannelRowFixture,
+  createReleaseRowFixture,
+} from "../../../test-utils/src/databaseTestFixtures";
+import { legacyFacadeSchema } from "../database/legacyFacade";
+import { classifySqlError } from "../database/sql/sqlAdapter";
+import { isMultiIndex, quoteSql } from "../database/sql/sqlSchema";
+import { HotUpdaterSchemaMigrationRequiredError } from "../db/schemaReadiness";
+import type { DatabaseAdapterWithCapabilities } from "../db/types";
 import { createHotUpdater } from "../index";
-import { prismaAdapter, type PrismaConfig } from "./prisma";
-import { createPrismaTestHarness } from "./prismaTestClient";
+import { prismaAdapter } from "./prisma";
+import {
+  prismaExecutor,
+  type PrismaTransactionalClient,
+} from "./prismaExecutor";
+import { pglitePrisma, prismaPushSql, sqlitePrisma } from "./prismaTestClients";
 
-const harness = createPrismaTestHarness();
+/** Every data table; the settings rows stay across tests. */
+const dataTables = legacyFacadeSchema.tables.flatMap((table) => [
+  table.name,
+  ...table.indexes
+    .filter((index) => isMultiIndex(table, index))
+    .map((index) => `${table.name}__${index.name}`),
+]);
 
-setupDatabasePluginTestSuite({
-  createHttpClient: (options) =>
-    startHttpTestServer(
-      createHotUpdater({ ...options, clientAccess: { type: "public" } })
-        .handlers,
-    ),
-  name: "prismaAdapter v2",
-  migrate: () => undefined,
-  createPlugin: () =>
-    prismaAdapter({ prisma: harness.client, provider: "postgresql" }),
-  reset: () => harness.reset(),
-  dispose: () => undefined,
-});
-
-const bundleRow = (id: string) => ({
-  id,
-  platform: "ios" as const,
-  git_commit_hash: null,
-  metadata: {},
-  manifest_storage_uri: `storage://bundle/${id}/manifest.json`,
-  manifest_file_hash: `manifest-hash-${id}`,
-  asset_base_storage_uri: "storage://assets",
-});
-
-const productionChannel = {
-  id: "channel-production",
-  name: "production",
+/** Prisma's tables, as `prisma db push` creates them, then `hot-updater db migrate`. */
+const backends = {
+  postgresql: async () => {
+    const db = new PGlite();
+    await db.exec(await prismaPushSql("postgresql"));
+    const prisma = pglitePrisma(db);
+    return {
+      prisma,
+      exec: (sql: string) => db.exec(sql).then(() => undefined),
+      close: () => db.close(),
+    };
+  },
+  sqlite: async () => {
+    const db = new DatabaseSync(":memory:");
+    db.exec(await prismaPushSql("sqlite"));
+    return {
+      prisma: sqlitePrisma(db),
+      exec: async (sql: string) => db.exec(sql),
+      close: async () => db.close(),
+    };
+  },
 } as const;
 
-describe("prismaAdapter capabilities", () => {
-  it("rejects every SQL Server Insights operation before touching the database", async () => {
-    const plugin = prismaAdapter({ prisma: {}, provider: "mssql" });
-    expect(plugin.generateSchema?.("latest").code).not.toContain(
-      "bundle_events_to_bundle_idx",
-    );
-    expect(plugin.generateSchema?.("latest").code).toContain(
-      "releases_scope_order_idx",
-    );
-    const event = createBundleEventRowFixture("707", 100);
-    const filter = {
-      platform: "ios" as const,
-      channel: "production",
-      type: "UPDATE_APPLIED" as const,
-      toBundleId: event.to_bundle_id,
-    };
-    const calls = [
-      plugin.models.insights.recordEvent({
-        event,
-      }),
-      plugin.models.insights.listEvents({
-        filter: { kind: "all" },
-        beforeReceivedAtMs: 101,
-        limit: 10,
-      }),
-      plugin.models.insights.findLatestEvents({ installId: event.install_id }),
-      plugin.models.insights.countLatestEvents({
-        platform: "ios",
-        channel: "production",
-        sinceMs: 0,
-      }),
-      plugin.models.insights.countEvents({
-        filter,
-        sinceMs: 0,
-        beforeReceivedAtMs: 101,
-      }),
-    ];
-    for (const call of calls)
-      await expect(call).rejects.toThrow("SQL Server Insights is unsupported");
-  });
-  it("requires callback transactions for atomic event and overview writes", async () => {
-    const db = new PGlite();
-    await db.exec(createTableSql("postgresql").join(";"));
-    let statementId = 0;
-    const queryWithPrismaTypes = async (query: string, values: unknown[]) => {
-      const statement = `prisma_${statementId++}`;
-      const types = values.map((value) =>
-        typeof value === "number" ? "double precision" : "text",
+const migrate = async (plugin: DatabaseAdapterWithCapabilities) =>
+  (await plugin.createMigrator!().migrateToLatest()).execute();
+
+for (const provider of ["postgresql", "sqlite"] as const) {
+  let backend: Awaited<ReturnType<(typeof backends)[typeof provider]>>;
+  setupDatabasePluginTestSuite({
+    createHttpClient: (options) =>
+      startHttpTestServer(
+        createHotUpdater({ ...options, clientAccess: { type: "public" } })
+          .handlers,
+      ),
+    name: `prismaAdapter (${provider})`,
+    migrate: async () => {
+      backend = await backends[provider]();
+      await migrate(prismaAdapter({ prisma: backend.prisma, provider }));
+    },
+    createPlugin: () => prismaAdapter({ prisma: backend.prisma, provider }),
+    reset: async () => {
+      const quote = (name: string) => quoteSql(provider, name);
+      await backend.exec(
+        provider === "postgresql"
+          ? `TRUNCATE ${dataTables.map(quote).join(", ")}`
+          : dataTables.map((name) => `DELETE FROM ${quote(name)};`).join(""),
       );
-      // Prisma supplies string parameter types. Letting PostgreSQL infer UUID here
-      // would hide missing casts that fail with the real Prisma client.
-      await db.exec(`PREPARE ${statement} (${types.join(", ")}) AS ${query}`);
-      try {
-        return await db.query(
-          `EXECUTE ${statement} (${values.map((value) => (value === null ? "NULL" : typeof value === "number" ? String(value) : `'${String(value).replaceAll("'", "''")}'`)).join(", ")})`,
-        );
-      } finally {
-        await db.exec(`DEALLOCATE ${statement}`);
-      }
-    };
-    const client = {
-      $executeRawUnsafe: (query: string, ...values: unknown[]) =>
-        queryWithPrismaTypes(query, values),
-      $queryRawUnsafe: async (query: string, ...values: unknown[]) =>
-        (await queryWithPrismaTypes(query, values)).rows,
-    };
-    const insights = prismaAdapter({ prisma: client, provider: "postgresql" })
-      .models.insights;
-    const event = createBundleEventRowFixture("704", 100);
-    try {
-      await expect(insights.recordEvent({ event })).rejects.toThrow(
-        "Insights writes require callback transactions",
-      );
-      expect((await db.query("SELECT id FROM bundle_events")).rows).toEqual([]);
-    } finally {
-      await db.close();
-    }
+    },
+    dispose: () => backend.close(),
   });
+}
 
-  it("rolls back the canonical event when its head update fails and permits retry", async () => {
-    const isolated = createPrismaTestHarness();
-    const event = createBundleEventRowFixture("705", 100);
-    const plugin = prismaAdapter({
-      prisma: {
-        ...isolated.client,
-        $transaction: (callback: (client: object) => Promise<unknown>) =>
-          isolated.client.$transaction((transaction) =>
-            callback({
-              ...transaction,
-              $executeRawUnsafe: async () => {
-                throw new Error("injected head failure");
-              },
-            }),
-          ),
-      },
-      provider: "postgresql",
-    });
-    await expect(plugin.models.insights.recordEvent({ event })).rejects.toThrow(
-      "injected head failure",
+describe("prismaAdapter migrations", () => {
+  it("sets the collations Prisma cannot declare, writes the settings, and serves behind the fence", async () => {
+    const { prisma, close } = await backends.postgresql();
+    const plugin = prismaAdapter({ prisma, provider: "postgresql" });
+    await expect(plugin.models.channels.list({})).rejects.toBeInstanceOf(
+      HotUpdaterSchemaMigrationRequiredError,
     );
-    const working = prismaAdapter({
-      prisma: isolated.client,
-      provider: "postgresql",
-    });
-    await expect(
-      working.models.insights.findLatestEvents({ installId: event.install_id }),
-    ).resolves.toEqual([]);
-    expect(await isolated.client.bundle_events.findMany()).toEqual([]);
-    await expect(
-      working.models.insights.getAppUsage({
-        channel: event.channel,
-        platform: "all",
-        timeRange: { start: 0, end: 3_600_000 },
-        intervalMs: 3_600_000,
-      }),
-    ).resolves.toMatchObject({ activeInstallations: 0 });
-    await working.models.insights.recordEvent({ event });
-    await expect(
-      working.models.insights.findLatestEvents({ installId: event.install_id }),
-    ).resolves.toEqual([event]);
-  });
 
-  it("maintains release, scope, user, and latest-distribution summaries", async () => {
-    const isolated = createPrismaTestHarness();
-    const insights = prismaAdapter({
-      prisma: isolated.client,
-      provider: "postgresql",
-    }).models.insights;
-    const first = createBundleEventRowFixture("731", 100);
-    const second = createBundleEventRowFixture("732", 200);
-    const recovery = createBundleEventRowFixture("733", 300);
-    const releaseA = first.to_bundle_id;
-    const releaseB = second.to_bundle_id;
-    const events = [
-      {
-        ...first,
-        type: "UPDATE_DOWNLOADED" as const,
-        to_release_id: releaseB,
-      },
-      {
-        ...first,
-        id: "00000000-0000-7000-8000-000000000734",
-        type: "UNCHANGED" as const,
-        from_bundle_id: null,
-        from_release_id: null,
-        to_release_id: releaseA,
-        metadata: { ...first.metadata, update_strategy: null },
-      },
-      { ...second, to_release_id: releaseB },
-      {
-        ...recovery,
-        type: "RECOVERED" as const,
-        from_release_id: releaseB,
-        to_release_id: releaseA,
-      },
-    ];
-    await Promise.all(events.map((event) => insights.recordEvent({ event })));
-    await insights.recordEvent({ event: events[3]! });
-    const references = [releaseA, releaseB].map((releaseId) => ({
-      releaseId,
-      platform: "ios" as const,
-      channel: "production",
-    }));
-    await expect(
-      insights.getReleaseActivity({ releases: references }),
-    ).resolves.toMatchObject({
-      data: [
-        { metrics: { downloads: 0, launches: 2, failedLaunches: 0 } },
-        { metrics: { downloads: 1, launches: 1, failedLaunches: 1 } },
-      ],
-    });
-    await expect(
-      insights.getReleaseActivity({
-        scope: { platform: "ios", channel: "production" },
-        timeRange: { start: 0, end: 3_600_000 },
-      }),
-    ).resolves.toMatchObject({
-      data: [
-        {
-          metrics: {
-            downloads: 1,
-            launches: 3,
-            failedLaunches: 1,
-            uniqueUsers: 3,
-          },
-        },
-      ],
-    });
-    await expect(
-      insights.getAppUsage({
-        channel: "production",
-        platform: "all",
-        timeRange: { start: 0, end: 3_600_000 },
-        intervalMs: 3_600_000,
-      }),
-    ).resolves.toMatchObject({
-      activeInstallations: 3,
-      points: [{ startMs: 0, installations: 3 }],
-      bundleDistribution: expect.arrayContaining([
-        expect.objectContaining({ releaseId: releaseA, installations: 2 }),
-        expect.objectContaining({ releaseId: releaseB, installations: 1 }),
-      ]),
-    });
-  });
-
-  it("retries CockroachDB raw serialization failures without duplicating the event", async () => {
-    const isolated = createPrismaTestHarness();
-    const event = createBundleEventRowFixture("708", 100);
-    let failHead = true;
-    const prisma = {
-      ...isolated.client,
-      $transaction: (
-        callback: (client: object) => Promise<unknown>,
-        options?: { readonly isolationLevel?: string },
-      ) =>
-        isolated.client.$transaction(
-          (transaction) =>
-            callback({
-              ...transaction,
-              $executeRawUnsafe: (
-                ...args: Parameters<typeof isolated.client.$executeRawUnsafe>
-              ) => {
-                if (failHead) {
-                  failHead = false;
-                  throw Object.assign(new Error("could not serialize access"), {
-                    code: "P2010",
-                    meta: { code: "40001" },
-                  });
-                }
-                return Reflect.get(transaction, "$executeRawUnsafe")(...args);
-              },
-            }),
-          options,
-        ),
-    };
-    const insights = prismaAdapter({ prisma, provider: "cockroachdb" }).models
-      .insights;
-    await insights.recordEvent({ event });
-    expect(await isolated.client.bundle_events.findMany()).toEqual([event]);
-    await expect(
-      insights.findLatestEvents({ installId: event.install_id }),
-    ).resolves.toEqual([event]);
-    expect(isolated.getTransactionOptions()).toEqual([
-      { isolationLevel: "Serializable" },
-      { isolationLevel: "Serializable" },
+    const migrator = plugin.createMigrator!();
+    const pending = await migrator.migrateToLatest();
+    expect(pending.operations.map(({ type }) => type)).toEqual([
+      "custom",
+      "custom",
     ]);
-  });
-
-  it("retries sustained serializable write conflicts", async () => {
-    const isolated = createPrismaTestHarness();
-    const event = createBundleEventRowFixture("709", 100);
-    let attempts = 0;
-    const prisma = {
-      ...isolated.client,
-      $transaction: (
-        callback: (client: object) => Promise<unknown>,
-        options?: { readonly isolationLevel?: string },
-      ) => {
-        attempts += 1;
-        if (attempts < 5) {
-          return Promise.reject(
-            Object.assign(new Error("write conflict"), { code: "P2034" }),
-          );
-        }
-        return isolated.client.$transaction(callback, options);
-      },
-    };
-    const insights = prismaAdapter({ prisma, provider: "postgresql" }).models
-      .insights;
-
-    await insights.recordEvent({ event });
-
-    expect(attempts).toBe(5);
-    await expect(
-      insights.findLatestEvents({ installId: event.install_id }),
-    ).resolves.toEqual([event]);
-  });
-
-  it("counts MySQL overlapping bundle predicates once without dropping nullable source bundles", async () => {
-    const isolated = createPrismaTestHarness();
-    const writer = prismaAdapter({
-      prisma: isolated.client,
-      provider: "postgresql",
-    }).models.insights;
-    const base = createBundleEventRowFixture("720", 100);
-    const applied = { ...base, from_bundle_id: base.to_bundle_id };
-    const download = {
-      ...createBundleEventRowFixture("721", 100),
-      type: "UPDATE_DOWNLOADED" as const,
-      from_bundle_id: base.to_bundle_id,
-    };
-    const unchanged = {
-      ...createBundleEventRowFixture("722", 100),
-      type: "UNCHANGED" as const,
-      from_bundle_id: null,
-      to_bundle_id: base.to_bundle_id,
-      metadata: { ...base.metadata, update_strategy: null },
-    };
-    for (const event of [applied, download, unchanged])
-      await writer.recordEvent({ event });
-    let queries = 0;
-    const reader = prismaAdapter({
-      prisma: {
-        ...isolated.client,
-        $queryRawUnsafe: (
-          ...args: Parameters<typeof isolated.client.$queryRawUnsafe>
-        ) => {
-          queries += 1;
-          return isolated.client.$queryRawUnsafe(...args);
-        },
-      },
-      provider: "mysql",
-    }).models.insights;
-    const source = {
-      field: "from_bundle_id" as const,
-      value: base.to_bundle_id,
-      types: ["UPDATE_APPLIED", "UPDATE_DOWNLOADED"] as const,
-    };
-    const destination = {
-      field: "to_bundle_id" as const,
-      value: base.to_bundle_id,
-      types: ["UPDATE_APPLIED", "UNCHANGED"] as const,
-    };
-    for (const [bundle, expected] of [
-      [[source, destination], 3],
-      [[destination, destination], 2],
-      [[{ ...source, types: ["UNCHANGED"] }, destination], 2],
-      [[destination], 2],
-    ] as const) {
-      await expect(
-        reader.countLatestEvents({
-          platform: "ios",
-          channel: "production",
-          sinceMs: 0,
-          bundle,
-        }),
-      ).resolves.toBe(expected);
-    }
-    expect(queries).toBe(4);
-  });
-
-  it("excludes MongoDB from the public configuration", () => {
-    expectTypeOf<"mongodb">().not.toMatchTypeOf<PrismaConfig["provider"]>();
-  });
-
-  it("returns a named provider adapter", () => {
-    const plugin = prismaAdapter({
-      prisma: harness.client,
-      provider: "postgresql",
+    expect(pending.getSQL?.()).toContain(
+      'ALTER TABLE "releases" ALTER COLUMN "id" TYPE varchar(36) COLLATE "C"',
+    );
+    await pending.execute();
+    await expect(migrator.migrateToLatest()).resolves.toMatchObject({
+      operations: [],
     });
+    const collations = (await prisma.$queryRawUnsafe(
+      "SELECT column_name, collation_name FROM information_schema.columns WHERE table_name = 'releases' AND column_name IN ('scope_key', 'revision') ORDER BY column_name",
+    )) as { column_name: string; collation_name: string | null }[];
+    expect(collations).toEqual([
+      { column_name: "revision", collation_name: null },
+      { column_name: "scope_key", collation_name: "C" },
+    ]);
 
-    expect(plugin.name).toBe("prisma");
-    expect(plugin.adapterName).toBe("prisma");
-    expect(plugin.provider).toBe("postgresql");
-  });
-
-  it("rejects MongoDB before creating the implementation", () => {
-    expect(() =>
-      Reflect.apply(prismaAdapter, undefined, [
-        { prisma: harness.client, provider: "mongodb" },
-      ]),
-    ).toThrow("Prisma adapter does not support MongoDB");
-  });
-
-  it("does not expose low-level transactions", () => {
-    const { $transaction: _transaction, ...client } = harness.client;
-    const plugin = prismaAdapter({ prisma: client, provider: "postgresql" });
-
-    expect(Reflect.has(plugin, "transaction")).toBe(false);
-  });
-
-  it("requires transactions for emulated relations", () => {
-    const { $transaction: _transaction, ...client } = harness.client;
-
-    expect(() =>
-      prismaAdapter({
-        prisma: client,
-        provider: "postgresql",
-        relationMode: "prisma",
-      }),
-    ).toThrow('relation mode "prisma" requires callback transactions');
-  });
-
-  it("uses serializable transactions for emulated relation commits", async () => {
-    harness.reset();
-    const plugin = prismaAdapter({
-      prisma: harness.client,
-      provider: "postgresql",
-      relationMode: "prisma",
-    });
-    const base = bundleRow("bundle-base");
-    const owner = bundleRow("bundle-target");
-    const patch = {
-      id: "patch-1",
-      bundle_id: owner.id,
-      base_bundle_id: base.id,
-      base_file_hash: "base-hash",
-      patch_file_hash: "patch-hash",
-      patch_storage_uri: "storage://patch",
-      byte_size: 3_000_000_002,
-      order_index: 0,
-    };
-
+    const channel = createChannelRowFixture("production");
+    const bundle = createBundleRowFixture("1");
+    const release = createReleaseRowFixture("1", bundle, channel);
     await plugin.models.channels.insert({
-      row: productionChannel,
+      row: channel,
       onConflict: "returnExisting",
     });
-
-    await plugin.commit({
-      changes: [{ model: "bundles", operation: "insert", row: base }],
-    });
-    await plugin.commit({
-      changes: [
-        { model: "bundles", operation: "insert", row: owner },
-        { model: "bundlePatches", operation: "insert", row: patch },
-      ],
-    });
-    await plugin.commit({
-      changes: [
-        {
-          model: "bundles",
-          operation: "delete",
-          where: { id: owner.id },
-        },
-      ],
-    });
-
-    expect(harness.getTransactionOptions()).toEqual(
-      Array.from({ length: 3 }, () => ({ isolationLevel: "Serializable" })),
-    );
-  });
-
-  it("uses serializable transactions for atomic CAS commits", async () => {
-    harness.reset();
-    const plugin = prismaAdapter({
-      prisma: harness.client,
-      provider: "postgresql",
-    });
-
-    await plugin.commit({
-      changes: [
-        { model: "bundles", operation: "insert", row: bundleRow("bundle") },
-      ],
-    });
-
-    expect(harness.getTransactionOptions()).toEqual([
-      { isolationLevel: "Serializable" },
-    ]);
-  });
-
-  it("does not delete patches before a bundle delete fails", async () => {
-    harness.reset();
-    const { $transaction: _transaction, ...client } = harness.client;
-    const plugin = prismaAdapter({ prisma: client, provider: "postgresql" });
-    const base = bundleRow("bundle-base");
-    const owner = bundleRow("bundle-target");
-    const patch = {
-      id: "patch-1",
-      bundle_id: owner.id,
-      base_bundle_id: base.id,
-      base_file_hash: "base-hash",
-      patch_file_hash: "patch-hash",
-      patch_storage_uri: "storage://patch",
-      byte_size: 3_000_000_002,
-      order_index: 0,
-    };
-    await plugin.models.channels.insert({
-      row: productionChannel,
-      onConflict: "returnExisting",
-    });
-    for (const row of [base, owner]) {
-      await plugin.commit({
-        changes: [{ model: "bundles", operation: "insert", row }],
-      });
-    }
-    await plugin.commit({
-      changes: [{ model: "bundlePatches", operation: "insert", row: patch }],
-    });
-
-    harness.failNextBundleDelete();
     await expect(
       plugin.commit({
         changes: [
-          {
-            model: "bundles",
-            operation: "delete",
-            where: { id: owner.id },
-          },
+          { model: "bundles", operation: "insert", row: bundle },
+          { model: "releases", operation: "insert", row: release },
         ],
       }),
-    ).rejects.toThrow("injected bundle delete failure");
+    ).resolves.toEqual({ committed: true });
+    await expect(plugin.models.releases.findById(release.id)).resolves.toEqual(
+      release,
+    );
+    await close();
+  });
+
+  it("asks for Prisma's tables first", async () => {
+    const db = new PGlite();
     await expect(
-      plugin.models.bundles.findById(owner.id),
-    ).resolves.toMatchObject({
-      id: owner.id,
+      prismaAdapter({ prisma: pglitePrisma(db), provider: "postgresql" })
+        .createMigrator!().migrateToLatest(),
+    ).rejects.toThrow("prisma db push");
+    await db.close();
+  });
+
+  it("refuses SQL Server", () => {
+    expect(() =>
+      prismaAdapter({ prisma: {}, provider: "mssql" as never }),
+    ).toThrow("SQL Server is not supported");
+  });
+});
+
+describe("prismaAdapter schema", () => {
+  const models = (provider: "mysql" | "postgresql" | "sqlite") =>
+    prismaAdapter({ prisma: {}, provider }).generateSchema!("latest").code;
+
+  it("maps engine columns to fields that start with a letter, with keys and named indexes but no relations", () => {
+    const code = models("postgresql");
+    expect(code).toContain('hu_v BigInt @default(0) @map("_v")');
+    expect(code).toContain("model private_hot_updater_settings {");
+    expect(code).toContain(
+      '@@index([platform, id], map: "bundles_byPlatform")',
+    );
+    expect(code).not.toContain("@relation");
+  });
+
+  it("stores MySQL's ASCII keys as VarBinary, within InnoDB's key limit", () => {
+    const code = models("mysql");
+    expect(code).toMatch(/scope_key Bytes @db\.VarBinary\(2048\)/u);
+    expect(code).toMatch(/id String @db\.VarChar\(36\)/u);
+  });
+});
+
+describe("prismaExecutor", () => {
+  it("carries the database's code from Prisma's error, so the SQL core can classify it", async () => {
+    const db = new PGlite();
+    await db.exec("CREATE TABLE t (id text PRIMARY KEY)");
+    const executor = prismaExecutor(pglitePrisma(db), "postgresql");
+    const insert = { sql: "INSERT INTO t (id) VALUES ($1)", params: ["a"] };
+    await executor.execute(insert);
+    const error = await executor
+      .execute(insert)
+      .catch((caught: unknown) => caught);
+    expect(error).toMatchObject({ code: "23505", cause: { code: "P2010" } });
+    expect(classifySqlError(error)).toBe("constraint");
+    await db.close();
+
+    const sqlite = new DatabaseSync(":memory:");
+    sqlite.exec("CREATE TABLE t (id TEXT PRIMARY KEY)");
+    const sqliteExecutor = prismaExecutor(sqlitePrisma(sqlite), "sqlite");
+    const row = { sql: "INSERT INTO t (id) VALUES (?)", params: ["a"] };
+    await sqliteExecutor.execute(row);
+    expect(
+      classifySqlError(
+        await sqliteExecutor.execute(row).catch((caught: unknown) => caught),
+      ),
+    ).toBe("constraint");
+  });
+
+  it("retries a transaction Prisma reports as a write conflict", async () => {
+    const conflict = Object.assign(new Error("write conflict"), {
+      code: "P2034",
     });
-    await expect(
-      plugin.models.bundlePatches.findByBundleIds([owner.id]),
-    ).resolves.toEqual([patch]);
+    const client = {
+      $queryRawUnsafe: async () => [],
+      $executeRawUnsafe: async () => 0,
+      $transaction: async () => {
+        throw conflict;
+      },
+    } satisfies PrismaTransactionalClient;
+    const error = await prismaExecutor(client, "postgresql")
+      .transaction(async () => undefined)
+      .catch((caught: unknown) => caught);
+    expect(classifySqlError(error)).toBe("retry");
+  });
+
+  it("takes SQLite's write lock with a transaction's first statement, and reads bytes as text", async () => {
+    const statements: string[] = [];
+    const tx = {
+      $queryRawUnsafe: async () => [
+        { scope_key: new TextEncoder().encode("key"), revision: 1 },
+      ],
+      $executeRawUnsafe: async (sql: string) => {
+        statements.push(sql);
+        return 0;
+      },
+    };
+    const client = {
+      ...tx,
+      $transaction: async <T>(fn: (runner: typeof tx) => Promise<T>) => fn(tx),
+    } satisfies PrismaTransactionalClient;
+    const rows = await prismaExecutor(client, "sqlite").transaction(
+      async (connection) =>
+        (await connection.execute({ sql: "SELECT 1", params: [] })).rows,
+    );
+    expect(statements).toEqual([
+      'UPDATE "private_hot_updater_settings" SET "_v" = "_v" WHERE 0 = 1',
+    ]);
+    expect(rows).toEqual([{ scope_key: "key", revision: 1 }]);
   });
 });

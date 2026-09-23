@@ -1854,6 +1854,9 @@ importers:
       pg:
         specifier: catalog:db
         version: 8.13.1
+      prisma:
+        specifier: catalog:db
+        version: 6.19.3(typescript@7.0.2)
       uuidv7:
         specifier: 'catalog:'
         version: 1.2.1
@@ -39248,7 +39251,6 @@ snapshots:
       typescript: 7.0.2
     transitivePeerDependencies:
       - magicast
-    optional: true
 
   proc-log@4.2.0: {}
 

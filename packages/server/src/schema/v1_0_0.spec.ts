@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 
 import { createTableSql } from "../db/schema/sql";
-import { generatePrismaSchema } from "../db/schemaGenerators";
 import {
   bundleEventHeadsV100,
   bundleEventsV100,
@@ -50,13 +49,11 @@ describe("v1.0.0 Release Catalog schema", () => {
       ({ ormName }) => ormName === "byte_size",
     );
     const sql = createTableSql("postgresql", "foreign-keys", v1_0_0).join("\n");
-    const prisma = generatePrismaSchema("postgresql", v1_0_0);
 
     expect(patchSize?.type).toBe("float");
     expect(patchSize?.nullable).toBeUndefined();
     expect(sql).toContain("byte_size double precision not null");
     expect(sql).toContain("byte_size <= 9007199254740991");
-    expect(prisma).toContain("byte_size Float");
   });
 
   it("keeps nullable sources while requiring the reported target Bundle", () => {
@@ -104,8 +101,7 @@ describe("v1.0.0 Release Catalog schema", () => {
     ]);
     expect(sql).toContain("downloads bigint not null default 0");
     expect(sql).toContain("launches bigint not null default 0");
-    for (const generated of [sql, generatePrismaSchema("postgresql", v1_0_0)])
-      expect(generated).not.toContain("bundle_installations");
+    expect(sql).not.toContain("bundle_installations");
   });
 
   it("keeps identity indexes valid on MySQL and MSSQL", () => {
@@ -131,31 +127,17 @@ describe("v1.0.0 Release Catalog schema", () => {
     expect(mssql).not.toContain("user_id nvarchar(max)");
   });
 
-  it("keeps generated Cockroach event and head UUIDs compatible with native queries", () => {
-    const prisma = generatePrismaSchema("cockroachdb", v1_0_0);
+  it("keeps generated Cockroach event and head UUIDs native", () => {
     const sql = createTableSql("cockroachdb", "foreign-keys", v1_0_0).join(
       "\n",
     );
     for (const table of [bundleEventsV100, bundleEventHeadsV100]) {
-      const model = prisma.split(`model ${table.ormName} {`)[1]!.split("}")[0]!;
       for (const column of table.columns.filter(
         ({ type }) => type === "uuid",
       )) {
-        expect(model).toContain(
-          `${column.ormName} String${column.nullable ? "?" : ""} @db.Uuid`,
-        );
         expect(sql).toContain(`${column.ormName} uuid`);
       }
     }
-  });
-
-  it("generates nullable source and artifact relations with the intended deletion rules", () => {
-    const prisma = generatePrismaSchema("postgresql", v1_0_0);
-
-    expect(prisma).toContain("model releases {");
-    expect(prisma).toContain("sourceRelease releases? @relation(");
-    expect(prisma).toContain("onDelete: SetNull");
-    expect(prisma).toContain("bundle bundles? @relation(");
   });
 
   it("creates both projection tables and their constraints from empty", () => {
@@ -184,8 +166,5 @@ describe("v1.0.0 Release Catalog schema", () => {
       "create index releases_scope_order_idx on releases(scope_key, id)",
     );
     expect(sql).toContain("payload mediumtext not null");
-    expect(generatePrismaSchema("mysql", v1_0_0)).toContain(
-      "payload String @db.MediumText",
-    );
   });
 });

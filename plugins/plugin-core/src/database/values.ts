@@ -164,8 +164,12 @@ const toNumber = (raw: unknown, integer: boolean): number => {
 };
 
 const toBoolean = (raw: unknown): boolean => {
-  if (raw === true || raw === 1 || raw === "1" || raw === "t") return true;
-  if (raw === false || raw === 0 || raw === "0" || raw === "f") return false;
+  if (raw === true || raw === 1 || raw === 1n || raw === "1" || raw === "t") {
+    return true;
+  }
+  if (raw === false || raw === 0 || raw === 0n || raw === "0" || raw === "f") {
+    return false;
+  }
   if (raw === "true" || raw === "false") return raw === "true";
   throw new DatabaseValueError("Expected a boolean.");
 };
