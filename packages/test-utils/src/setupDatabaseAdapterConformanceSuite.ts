@@ -417,7 +417,7 @@ export const setupDatabaseAdapterConformanceSuite = (
 
     it("orders strings by UTF-8 bytes and numbers numerically", async () => {
       const adapter = await setup();
-      const names = ["b", "B", "a", "é", "z", "😀", "ﬀ", "10", "9"];
+      const names = ["b", "B", "a", "a ", "é", "z", "😀", "ﬀ", "10", "9"];
       const scores = [10, -5, 2, 0, Number.MAX_SAFE_INTEGER];
       await ok(adapter, [
         ...names.map((id) => insert(item(id, { grp: "names" }))),
@@ -428,7 +428,7 @@ export const setupDatabaseAdapterConformanceSuite = (
 
       expect(
         ids(await query(adapter, { index: "byGroup", eq: ["names"] })),
-      ).toEqual(["10", "9", "B", "a", "b", "z", "é", "ﬀ", "😀"]);
+      ).toEqual(["10", "9", "B", "a", "a ", "b", "z", "é", "ﬀ", "😀"]);
       const byScore = await query(adapter, { index: "byGroup", eq: ["n"] });
       expect(byScore.map((row) => row.score)).toEqual([
         -5,
