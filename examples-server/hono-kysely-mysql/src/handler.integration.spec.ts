@@ -195,7 +195,7 @@ describe("Hot Updater Handler Integration Tests (Hono + MySQL)", () => {
     ).resolves.toEqual([event]);
   });
 
-  it("counts overlapping bundle predicates, including nullable sources and moved installations", async () => {
+  it("counts overlapping bundle predicates once, including nullable sources and moved installations", async () => {
     const { kysely } = await import("./db.js");
     const insights = kyselyAdapter({ db: kysely, provider: "mysql" }).models
       .insights;
@@ -283,15 +283,13 @@ describe("Hot Updater Handler Integration Tests (Hono + MySQL)", () => {
         insights.countLatestEvents({ ...scope, bundle }),
       ).resolves.toBe(2);
     }
-    // Counts come from per-field aggregates, so an installation matching
-    // predicates on both fields counts once per field (#1355).
     for (const bundle of [
       [from, to],
       [to, from],
     ]) {
       await expect(
         insights.countLatestEvents({ ...scope, bundle }),
-      ).resolves.toBe(4);
+      ).resolves.toBe(3);
     }
   });
 
