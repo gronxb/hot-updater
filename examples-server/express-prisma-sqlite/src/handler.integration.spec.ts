@@ -98,6 +98,16 @@ describe("Hot Updater Handler Integration Tests (Express)", () => {
       env: { TEST_DB_PATH: testDbPath, DATABASE_URL: `file:${testDbPath}` },
     });
 
+    // Write the settings rows the server checks before its first read
+    await execa(
+      "node",
+      [hotUpdaterCli, "db", "migrate", "src/db.ts", "--yes"],
+      {
+        cwd: projectRoot,
+        env: { TEST_DB_PATH: testDbPath, DATABASE_URL: `file:${testDbPath}` },
+      },
+    );
+
     serverProcess = spawnServerProcess({
       serverCommand: ["npx", "tsx", "src/index.ts"],
       port,

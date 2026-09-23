@@ -21,42 +21,39 @@ model User {
 }
 
 // --- BEGIN HOT-UPDATER MODELS (DO NOT EDIT) ---
-model channels {
-  id String @id
-  name String
-  releases releases[] @relation("releases_channels")
-  releaseCatalogs release_catalogs[] @relation("release_catalogs_channels")
-  @@unique([name], map: "channels_name_key")
-}
 model bundles {
-  id String @id
+  id String
   platform String
   git_commit_hash String?
-  metadata Json
+  metadata String
   manifest_storage_uri String
   manifest_file_hash String
   asset_base_storage_uri String
-  patches bundle_patches[] @relation("bundle_patches_bundles_patches")
-  baseForPatches bundle_patches[] @relation("bundle_patches_bundles_baseForPatches")
-  releases releases[] @relation("releases_bundles")
+  hu_refs_bundle_patches_bundle_id BigInt @default(0) @map("_refs_bundle_patches_bundle_id")
+  hu_refs_bundle_patches_base_bundle_id BigInt @default(0) @map("_refs_bundle_patches_base_bundle_id")
+  hu_refs_releases_bundle_id BigInt @default(0) @map("_refs_releases_bundle_id")
+  hu_v BigInt @default(0) @map("_v")
+  @@id([id])
+  @@index([platform, id], map: "bundles_byPlatform")
 }
 model bundle_patches {
-  id String @id
+  id String
   bundle_id String
   base_bundle_id String
   base_file_hash String
   patch_file_hash String
   patch_storage_uri String
-  byte_size Float
-  order_index Int @default(0)
-  bundle bundles @relation("bundle_patches_bundles_patches", fields: [bundle_id], references: [id], onUpdate: Restrict, onDelete: Cascade)
-  baseBundle bundles @relation("bundle_patches_bundles_baseForPatches", fields: [base_bundle_id], references: [id], onUpdate: Restrict, onDelete: Cascade)
-  @@index([bundle_id], map: "bundle_patches_bundle_id_idx")
-  @@index([base_bundle_id], map: "bundle_patches_base_bundle_id_idx")
+  byte_size BigInt
+  order_index BigInt
+  hu_v BigInt @default(0) @map("_v")
+  @@id([id])
+  @@unique([bundle_id, base_bundle_id], map: "bundle_patches_pair")
+  @@index([bundle_id, order_index, id], map: "bundle_patches_byBundle")
+  @@index([base_bundle_id, bundle_id, id], map: "bundle_patches_byBase")
 }
 model releases {
-  id String @id
-  revision Int
+  id String
+  revision BigInt
   scope_key String
   channel_id String
   platform String
@@ -65,44 +62,66 @@ model releases {
   strategy String
   target_app_version String?
   fingerprint_hash String?
-  enabled Boolean
-  should_force_update Boolean
+  enabled BigInt
+  should_force_update BigInt
   message String?
-  rollout_cohort_count Int @default(1000)
-  target_cohorts Json
+  rollout_cohort_count BigInt
+  target_cohorts String
   operation String
   source_release_id String?
-  created_at_ms Float
-  updated_at_ms Float
-  derivedReleases releases[] @relation("releases_source_release")
-  channelRecord channels @relation("releases_channels", fields: [channel_id], references: [id], onUpdate: Restrict, onDelete: Restrict)
-  bundle bundles? @relation("releases_bundles", fields: [bundle_id], references: [id], onUpdate: Restrict, onDelete: Restrict)
-  sourceRelease releases? @relation("releases_source_release", fields: [source_release_id], references: [id], onUpdate: Restrict, onDelete: SetNull)
-  @@index([scope_key, id], map: "releases_scope_order_idx")
-  @@index([channel_id, platform, id], map: "releases_channel_platform_order_idx")
-  @@index([bundle_id], map: "releases_bundle_id_idx")
-  @@index([fingerprint_hash], map: "releases_fingerprint_hash_idx")
-  @@index([enabled], map: "releases_enabled_idx")
+  created_at_ms BigInt
+  updated_at_ms BigInt
+  hu_v BigInt @default(0) @map("_v")
+  @@id([id])
+  @@index([scope_key, id], map: "releases_byScope")
+  @@index([scope_key, enabled, id], map: "releases_byScopeEnabled")
+  @@index([channel_id, platform, id], map: "releases_byChannelPlatform")
+  @@index([channel_id, platform, enabled, id], map: "releases_byChannelPlatformEnabled")
+  @@index([bundle_id, id], map: "releases_byBundle")
 }
 model release_catalogs {
-  scope_key String @id
+  scope_key String
   catalog_id String
   strategy String
   channel_id String
   channel_key String
   platform String
   fingerprint_hash String?
-  generation Float
+  generation BigInt
   payload String
   catalog_hash String
-  byte_size Int
-  is_tombstone Boolean
-  updated_at_ms Float
-  channelRecord channels @relation("release_catalogs_channels", fields: [channel_id], references: [id], onUpdate: Restrict, onDelete: Restrict)
-  @@index([channel_id], map: "release_catalogs_channel_idx")
+  byte_size BigInt
+  is_tombstone BigInt
+  updated_at_ms BigInt
+  hu_v BigInt @default(0) @map("_v")
+  @@id([scope_key])
+}
+model channels {
+  id String
+  name String
+  hu_refs_releases_channel_id BigInt @default(0) @map("_refs_releases_channel_id")
+  hu_v BigInt @default(0) @map("_v")
+  @@id([id])
+  @@index([name, id], map: "channels_all")
+  @@unique([name], map: "channels_name")
+}
+model bundle_totals {
+  platform_key String
+  hu_shard BigInt @map("_shard")
+  bundles BigInt
+  hu_v BigInt @default(0) @map("_v")
+  @@id([platform_key, hu_shard])
+}
+model base_candidates {
+  candidate_key String
+  bundle_id String
+  hu_shard BigInt @map("_shard")
+  releases BigInt
+  hu_v BigInt @default(0) @map("_v")
+  @@id([candidate_key, bundle_id, hu_shard])
 }
 model bundle_events {
-  id String @id
+  id String
   type String
   install_id String
   user_id String?
@@ -113,65 +132,118 @@ model bundle_events {
   platform String
   app_version String
   channel String
-  metadata Json
-  received_at_ms Float
-  @@index([received_at_ms, id], map: "bundle_events_received_at_idx")
-  @@index([install_id, received_at_ms, id], map: "bundle_events_latest_idx")
-  @@index([install_id, type, received_at_ms, id], map: "bundle_events_install_idx")
-  @@index([type, platform, channel, from_bundle_id, received_at_ms, id], map: "bundle_events_from_bundle_idx")
-  @@index([type, platform, channel, to_bundle_id, received_at_ms, id], map: "bundle_events_to_bundle_idx")
+  metadata String
+  received_at_ms BigInt
+  day BigInt?
+  movement_install_id String?
+  bundle_ref String?
+  hu_v BigInt @default(0) @map("_v")
+  @@id([id])
+  @@index([channel, platform, day, received_at_ms, id], map: "bundle_events_recent")
+  @@index([movement_install_id, received_at_ms, id], map: "bundle_events_movementsByInstall")
+  @@index([day, received_at_ms, id], map: "bundle_events_byDay")
 }
-model bundle_event_heads {
-  install_id String @id
-  id String
-  received_at_ms Float
-  user_id String?
+model bundle_events__byBundle {
   platform String
   channel String
   type String
+  bundle_ref String
+  day BigInt
+  received_at_ms BigInt
+  id String
+  @@id([platform, channel, type, bundle_ref, day, received_at_ms, id])
+}
+model bundle_event_heads {
+  install_id String
+  id String
+  type String
+  user_id String?
+  from_release_id String?
   from_bundle_id String?
+  to_release_id String?
   to_bundle_id String
-  current_release_id String?
+  platform String
   app_version String
-  @@index([user_id, install_id], map: "bundle_event_heads_user_idx")
-  @@index([platform, channel, received_at_ms], map: "bundle_event_heads_scope_idx")
-  @@index([type, platform, channel, from_bundle_id, received_at_ms], map: "bundle_event_heads_from_idx")
-  @@index([type, platform, channel, to_bundle_id, received_at_ms], map: "bundle_event_heads_to_idx")
+  channel String
+  metadata String
+  received_at_ms BigInt
+  current_release_id String?
+  hu_v BigInt @default(0) @map("_v")
+  @@id([install_id])
+  @@index([user_id, install_id], map: "bundle_event_heads_byUser")
 }
 model insights_overview {
-  id String @id
-  scope_kind String
-  release_kind String
-  release_id String @default("")
-  channel String
-  platform String
-  app_version_kind String
-  app_version String @default("")
-  period_kind String
-  bucket_start_ms Float @default(0)
-  downloads BigInt @default(0)
-  launches BigInt @default(0)
-  failed_launches BigInt @default(0)
-  latest_installations BigInt @default(0)
+  identity String
+  bucket_start_ms BigInt
+  hu_shard BigInt @map("_shard")
+  downloads BigInt
+  launches BigInt
+  failed_launches BigInt
+  hu_v BigInt @default(0) @map("_v")
+  @@id([identity, bucket_start_ms, hu_shard])
+}
+model insights_sketches {
+  identity String
+  bucket_start_ms BigInt
+  hu_shard BigInt @map("_shard")
   launch_users String?
   activity_users String?
-  @@index([scope_kind, release_id, platform, channel, period_kind, bucket_start_ms], map: "insights_overview_release_time_idx")
-  @@index([scope_kind, channel, platform, app_version_kind, app_version, period_kind, bucket_start_ms], map: "insights_overview_scope_time_idx")
-  @@index([scope_kind, channel, period_kind, bucket_start_ms, platform, app_version], map: "insights_overview_distribution_time_idx")
+  hu_v BigInt @default(0) @map("_v")
+  @@id([identity, bucket_start_ms, hu_shard])
+}
+model insights_distribution {
+  channel String
+  platform String
+  app_version String
+  release_id String
+  bucket_start_ms BigInt
+  hu_shard BigInt @map("_shard")
+  latest_installations BigInt
+  hu_v BigInt @default(0) @map("_v")
+  @@id([channel, platform, app_version, release_id, bucket_start_ms, hu_shard])
+  @@index([channel, platform, bucket_start_ms, app_version, release_id, hu_shard], map: "insights_distribution_byScope")
+  @@index([channel, platform, app_version, bucket_start_ms, release_id, hu_shard], map: "insights_distribution_byVersion")
+}
+model insights_latest_by_bundle {
+  platform String
+  channel String
+  bundle_field String
+  bundle_id String
+  type String
+  bucket_start_ms BigInt
+  hu_shard BigInt @map("_shard")
+  installations BigInt
+  hu_v BigInt @default(0) @map("_v")
+  @@id([platform, channel, bundle_field, bundle_id, type, bucket_start_ms, hu_shard])
+}
+model insights_outcomes {
+  platform String
+  channel String
+  type String
+  bundle_ref String
+  bucket_start_ms BigInt
+  hu_shard BigInt @map("_shard")
+  events BigInt
+  hu_v BigInt @default(0) @map("_v")
+  @@id([platform, channel, type, bundle_ref, bucket_start_ms, hu_shard])
 }
 model api_keys {
-  id String @id
+  id String
   hash String
   name String
   prefix String
   role String
-  created_at_ms Float
-  revoked_at_ms Float?
-  @@unique([hash], map: "api_keys_hash_key")
-  @@index([created_at_ms, id], map: "api_keys_created_at_idx")
+  created_at_ms BigInt
+  revoked_at_ms BigInt?
+  hu_v BigInt @default(0) @map("_v")
+  @@id([id])
+  @@index([created_at_ms, id], map: "api_keys_byCreated")
+  @@unique([hash], map: "api_keys_hash")
 }
 model private_hot_updater_settings {
-  key String @id
-  value String @default("1.0.0")
+  key String
+  value String
+  hu_v BigInt @default(0) @map("_v")
+  @@id([key])
 }
 // --- END HOT-UPDATER MODELS ---

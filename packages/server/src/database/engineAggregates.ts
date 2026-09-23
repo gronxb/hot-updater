@@ -103,6 +103,12 @@ const blank = (model: ResolvedModel, key: DatabaseKey): StoredRow => {
   };
 };
 
+/**
+ * A gauge computed below zero. Deltas from a row another writer has since
+ * moved do this, so the transaction reruns; it is thrown only when it lasts.
+ */
+export class NegativeGaugeError extends DatabaseTransactionError {}
+
 /** The guarded write that merges `change` into `current`: insert, patch, or delete at zero. */
 const rewrite = (
   { model, key, deltas, sketches }: AggregateChange,
@@ -130,7 +136,7 @@ const rewrite = (
     return undefined;
   }
   if (gauges.some((gauge) => Number(row[gauge]) < 0)) {
-    throw new DatabaseTransactionError(`${table.name}: a gauge went below 0.`);
+    throw new NegativeGaugeError(`${table.name}: a gauge went below 0.`);
   }
   const zero =
     distinct.length === 0 &&

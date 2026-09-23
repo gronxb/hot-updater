@@ -45,7 +45,9 @@ export async function resetDecisionFixtures() {
       release_catalogs,
       releases,
       bundles,
-      channels
+      channels,
+      bundle_totals,
+      base_candidates
     CASCADE
   `);
 }

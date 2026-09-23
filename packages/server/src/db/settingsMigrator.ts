@@ -63,8 +63,8 @@ export const refusePreEngineDatabase = (
 
 /**
  * `hot-updater db migrate` for an ORM that applies the DDL itself (Drizzle,
- * Prisma): it writes only the settings rows, and refuses a v0 or pre-engine
- * database.
+ * Prisma): it sets what the ORM cannot declare, writes the settings rows, and
+ * refuses a v0 or pre-engine database.
  */
 export const createSettingsMigrator = (options: {
   readonly adapterName: string;
@@ -72,6 +72,11 @@ export const createSettingsMigrator = (options: {
   readonly settings: SchemaSettings;
   /** How the ORM applies the tables, for the error when they are missing. */
   readonly applyTables: string;
+  /** What the ORM cannot declare, set before the settings rows. */
+  readonly fixups?: {
+    readonly description: string;
+    readonly statements: readonly string[];
+  };
 }): Migrator => {
   const read = () => readStoredSettings(options.executor);
   const getVersion = async () => storedSchemaVersion(await read());
@@ -95,12 +100,21 @@ export const createSettingsMigrator = (options: {
     ) {
       return getEmptyMigrationResult();
     }
-    const statements = settingsStatements(
-      options.executor.dialect,
-      options.settings,
-    );
+    const fixups = options.fixups?.statements ?? [];
+    const statements = [
+      ...fixups,
+      ...settingsStatements(options.executor.dialect, options.settings),
+    ];
     return {
       operations: [
+        ...(fixups.length === 0
+          ? []
+          : [
+              {
+                type: "custom" as const,
+                description: options.fixups!.description,
+              },
+            ]),
         {
           type: "custom",
           description: `Write the schema settings: ${Object.keys(options.settings).join(", ")}`,
