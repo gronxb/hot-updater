@@ -102,21 +102,11 @@ export const withSchemaFence = (
   };
 };
 
-/**
- * Writes the settings rows after every table exists. A database with
- * `schema.core` but no `schema.engine` predates the adapter redesign and is
- * refused.
- */
-export const writeSchemaSettings = async (
-  adapter: DatabaseAdapter,
+/** Refuses a database with `schema.core` but no `schema.engine`: it predates the engine. */
+const assertEngineDatabase = (
   adapterName: string,
-  settings: SchemaSettings,
-): Promise<void> => {
-  const keys = [...new Set(["schema.core", ...Object.keys(settings)])];
-  const rows = await readSettings(adapter, keys);
-  const stored = new Map(
-    keys.map((key, position) => [key, rows[position] ?? null]),
-  );
+  stored: ReadonlyMap<string, StoredRow | null>,
+) => {
   if (stored.get("schema.core") && !stored.get(ENGINE_SCHEMA_KEY)) {
     throw new HotUpdaterSchemaMigrationRequiredError(
       adapterName,
@@ -124,6 +114,26 @@ export const writeSchemaSettings = async (
       { key: ENGINE_SCHEMA_KEY, expected: ENGINE_SCHEMA_VERSION, found: null },
     );
   }
+};
+
+const storedSettings = async (
+  adapter: DatabaseAdapter,
+  keys: readonly string[],
+) => {
+  const rows = await readSettings(adapter, keys);
+  return new Map(keys.map((key, position) => [key, rows[position] ?? null]));
+};
+
+/** Writes the settings rows after every table exists, refusing a pre-engine database. */
+export const writeSchemaSettings = async (
+  adapter: DatabaseAdapter,
+  adapterName: string,
+  settings: SchemaSettings,
+): Promise<void> => {
+  const stored = await storedSettings(adapter, [
+    ...new Set(["schema.core", ENGINE_SCHEMA_KEY, ...Object.keys(settings)]),
+  ]);
+  assertEngineDatabase(adapterName, stored);
   const ops = Object.entries(settings).flatMap(([key, value]): WriteOp[] => {
     const row = stored.get(key);
     if (row === null || row === undefined) {
@@ -152,7 +162,10 @@ export const writeSchemaSettings = async (
   }
 };
 
-/** Creates or updates every table, then writes the settings rows last. */
+/**
+ * Creates or updates every table, then writes the settings rows last. A
+ * pre-engine database is refused before any table changes.
+ */
 export const migrateSchema = async (
   adapter: DatabaseAdapter,
   adapterName: string,
@@ -164,6 +177,12 @@ export const migrateSchema = async (
       `${adapterName} creates its tables with its own tooling; write only the settings rows.`,
     );
   }
+  // A database without the settings table is empty, so nothing is refused.
+  const stored = await storedSettings(adapter, [
+    "schema.core",
+    ENGINE_SCHEMA_KEY,
+  ]).catch(() => new Map<string, StoredRow | null>());
+  assertEngineDatabase(adapterName, stored);
   await adapter.migrations.apply([...tables, SETTINGS_TABLE]);
   await writeSchemaSettings(adapter, adapterName, settings);
 };
