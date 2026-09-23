@@ -19,6 +19,12 @@ const mocks = vi.hoisted(() => ({
   navigate: vi.fn(),
   initialSearch: {} as Record<string, unknown>,
 }));
+vi.mock("@/lib/insights-api", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/insights-api")>()),
+  useInsightsStatusQuery: () => ({
+    data: { insights: "on", activity: true },
+  }),
+}));
 vi.mock("@/lib/insights-usage-rpc", () => ({
   getAppUsageReportRpc: mocks.usage,
 }));

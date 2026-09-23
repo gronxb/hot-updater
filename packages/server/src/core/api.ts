@@ -52,6 +52,19 @@ const isAdapter = (value: unknown): value is DatabaseAdapter =>
     (method) => typeof value[method] === "function",
   );
 
+/** The storage adapter a configured database runs on, if it is on the engine. */
+export const engineAdapterOf = (
+  database: unknown,
+): DatabaseAdapter | undefined =>
+  isRecord(database) && isAdapter(database.engineAdapter)
+    ? database.engineAdapter
+    : isAdapter(database)
+      ? database
+      : undefined;
+
+export const OFF_ENGINE_DATABASE =
+  "This database does not run on Hot Updater's storage engine. Upgrade its provider package to 1.0.";
+
 /**
  * Core's API for a configured database, as the CLI uses it: a self-hosted
  * server's admin API when the database is `standaloneRepository`, or the
@@ -64,16 +77,7 @@ export const createDatabaseCoreApi = (
   if (isRecord(database) && isRecord(database.core)) {
     return database.core as unknown as HotUpdaterCoreApi;
   }
-  const adapter =
-    isRecord(database) && isAdapter(database.engineAdapter)
-      ? database.engineAdapter
-      : isAdapter(database)
-        ? database
-        : undefined;
-  if (adapter === undefined) {
-    throw new Error(
-      "This database does not run on Hot Updater's storage engine. Upgrade its provider package to 1.0.",
-    );
-  }
+  const adapter = engineAdapterOf(database);
+  if (adapter === undefined) throw new Error(OFF_ENGINE_DATABASE);
   return createInProcessCoreApi(adapter, options);
 };

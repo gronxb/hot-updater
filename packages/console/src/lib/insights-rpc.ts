@@ -30,11 +30,30 @@ type InstallationsPageInput = {
   readonly limit: number;
 };
 
-const runtime = async (): Promise<InsightsProvider> => {
+const runtime = async (): Promise<
+  Omit<InsightsProvider, "appendBundleEvent">
+> => {
   const { prepareConfig } = await import("./server/config.server");
-  const { hotUpdater } = await prepareConfig();
-  return hotUpdater;
+  const { insights } = await prepareConfig();
+  return insights.reads;
 };
+
+/**
+ * Whether the server runs Insights, and whether the console can read usage
+ * and release activity: a self-hosted server serves only the event and
+ * installation reads over its admin API.
+ */
+export const getInsightsStatusRpc = createServerFn({ method: "GET" }).handler(
+  async () => {
+    const { prepareConfig } = await import("./server/config.server");
+    const { insights } = await prepareConfig();
+    const status = await insights.status();
+    return {
+      insights: status,
+      activity: status === "on" && insights.model !== null,
+    } as const;
+  },
+);
 
 const readOverview = (input: InsightsOverviewInput) => input;
 const readEventsPage = (input: EventsPageInput) => input;

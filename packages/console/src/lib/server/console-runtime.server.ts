@@ -22,5 +22,6 @@ export const resolveConsoleConfig = async (
     console: config.console,
     database: config.database,
     storage: config.storage,
+    ...(config.plugins === undefined ? {} : { plugins: config.plugins }),
   };
 };

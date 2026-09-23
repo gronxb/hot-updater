@@ -3,20 +3,19 @@ import { describe, expect, it, vi } from "vitest";
 
 import { downloadBundle } from "./downloadBundle";
 
-const createDatabaseClient = (manifestStorageUri: string) =>
+const createCore = (manifestStorageUri: string) =>
   ({
-    getBundleById: vi.fn(async () => ({
-      id: "bundle-id",
-      manifestStorageUri,
+    getBundle: vi.fn(async () => ({
+      bundle: { id: "bundle-id", manifest_storage_uri: manifestStorageUri },
+      patches: [],
+      childCount: 0,
     })),
   }) as never;
 
 describe("downloadBundle", () => {
   it("redirects already-public storage without requiring a plugin URL API", async () => {
     const response = await downloadBundle("bundle-id", {
-      databaseClient: createDatabaseClient(
-        "https://cdn.example.com/manifest.json",
-      ),
+      core: createCore("https://cdn.example.com/manifest.json"),
     });
 
     expect(response.status).toBe(302);
@@ -38,7 +37,7 @@ describe("downloadBundle", () => {
     });
 
     const response = await downloadBundle("bundle-id", {
-      databaseClient: createDatabaseClient("r2://updates/bundle/manifest.json"),
+      core: createCore("r2://updates/bundle/manifest.json"),
       storagePlugin,
     });
 
@@ -62,7 +61,7 @@ describe("downloadBundle", () => {
     });
 
     const response = await downloadBundle("bundle-id", {
-      databaseClient: createDatabaseClient(storageUri),
+      core: createCore(storageUri),
       storagePlugin,
     });
 

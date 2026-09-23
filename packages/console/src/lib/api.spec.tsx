@@ -23,7 +23,6 @@ import {
 } from "./api-rpc";
 
 vi.mock("./api-rpc", () => ({
-  createBundle: vi.fn(),
   createChannel: vi.fn(),
   deleteBundle: vi.fn(),
   deleteBundles: vi.fn(),
@@ -67,7 +66,13 @@ it("refreshes the active release table before a successful update resolves", asy
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false, staleTime: Infinity } },
   });
-  const filters = { channelId: "channel-1", platform: "ios" as const };
+  const filters = {
+    filter: {
+      kind: "channelPlatform" as const,
+      channelId: "channel-1",
+      platform: "ios" as const,
+    },
+  };
   const page: Awaited<ReturnType<typeof getReleasesApi>> = {
     data: [
       {
@@ -93,7 +98,6 @@ it("refreshes the active release table before a successful update resolves", asy
         updated_at_ms: 1,
       },
     ],
-    pagination: { currentPage: 1, hasNextPage: false, hasPreviousPage: false },
   };
   queryClient.setQueryData(queryKeys.releases.list(filters), page);
   const refreshedPage = {
@@ -200,12 +204,9 @@ describe("channel mutations", () => {
     };
 
   it("forwards the canonical channel insert and refreshes channel queries", async () => {
-    const input = {
-      row: { id: "channel-beta", name: "beta" },
-      onConflict: "returnExisting" as const,
-    };
+    const input = { name: "beta" };
     vi.mocked(createChannelApi).mockResolvedValue({
-      data: { row: input.row, inserted: true },
+      data: { row: { id: "channel:beta", name: "beta" }, inserted: true },
     });
     const invalidateQueries = vi
       .spyOn(queryClient, "invalidateQueries")
@@ -282,13 +283,7 @@ describe("useDeleteBundleMutation", () => {
     queryClient.setQueryData(queryKeys.bundle(bundle.id), bundle);
     queryClient.setQueryData(queryKeys.bundles.list({}), {
       data: [bundle, otherBundle],
-      pagination: {
-        total: 2,
-        hasNextPage: false,
-        hasPreviousPage: false,
-        currentPage: 1,
-        totalPages: 1,
-      },
+      total: 2,
     });
 
     const wrapper = ({ children }: PropsWithChildren) => (
@@ -309,13 +304,7 @@ describe("useDeleteBundleMutation", () => {
     ).toBeUndefined();
     expect(queryClient.getQueryData(queryKeys.bundles.list({}))).toEqual({
       data: [otherBundle],
-      pagination: {
-        total: 2,
-        hasNextPage: false,
-        hasPreviousPage: false,
-        currentPage: 1,
-        totalPages: 1,
-      },
+      total: 2,
     });
     expect(invalidateQueries).toHaveBeenCalledWith({
       queryKey: queryKeys.bundles.all,
@@ -336,13 +325,7 @@ describe("useDeleteBundleMutation", () => {
     queryClient.setQueryData(queryKeys.bundle(bundle.id), bundle);
     queryClient.setQueryData(queryKeys.bundles.list({}), {
       data: [bundle, otherBundle],
-      pagination: {
-        total: 2,
-        hasNextPage: false,
-        hasPreviousPage: false,
-        currentPage: 1,
-        totalPages: 1,
-      },
+      total: 2,
     });
 
     const wrapper = ({ children }: PropsWithChildren) => (
@@ -368,13 +351,7 @@ describe("useDeleteBundleMutation", () => {
     ).toBeUndefined();
     expect(queryClient.getQueryData(queryKeys.bundles.list({}))).toEqual({
       data: [otherBundle],
-      pagination: {
-        total: 2,
-        hasNextPage: false,
-        hasPreviousPage: false,
-        currentPage: 1,
-        totalPages: 1,
-      },
+      total: 2,
     });
     expect(invalidateQueries).toHaveBeenCalledTimes(2);
   });
@@ -396,19 +373,13 @@ describe("useDeleteBundlesMutation", () => {
     const invalidateQueries = vi
       .spyOn(queryClient, "invalidateQueries")
       .mockResolvedValue();
-    const filters = { platform: "ios" as const, limit: "2000" };
+    const filters = { platform: "ios" as const, limit: 100 };
 
     queryClient.setQueryData(queryKeys.bundle(bundle.id), bundle);
     queryClient.setQueryData(queryKeys.bundle(otherBundle.id), otherBundle);
     queryClient.setQueryData(queryKeys.bundles.list(filters), {
       data: [bundle, otherBundle],
-      pagination: {
-        total: 2,
-        hasNextPage: false,
-        hasPreviousPage: false,
-        currentPage: 1,
-        totalPages: 1,
-      },
+      total: 2,
     });
 
     const wrapper = ({ children }: PropsWithChildren) => (
@@ -432,13 +403,7 @@ describe("useDeleteBundlesMutation", () => {
     ).toBeUndefined();
     expect(queryClient.getQueryData(queryKeys.bundles.list(filters))).toEqual({
       data: [],
-      pagination: {
-        total: 2,
-        hasNextPage: false,
-        hasPreviousPage: false,
-        currentPage: 1,
-        totalPages: 1,
-      },
+      total: 2,
     });
     expect(invalidateQueries).toHaveBeenCalledTimes(2);
     expect(invalidateQueries).toHaveBeenCalledWith({

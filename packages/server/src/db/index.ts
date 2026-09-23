@@ -5,6 +5,7 @@ import {
 import { type Migrator, type SchemaGenerator } from "./types";
 
 export { createDatabaseCoreApi, type CoreApi } from "../core/api";
+export { createDatabasePluginApis } from "../assembly/databasePlugins";
 export { targetBaseCandidateKey } from "../core/baseCandidates";
 export * from "./createBundleDiff";
 export {
