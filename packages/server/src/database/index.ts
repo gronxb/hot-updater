@@ -71,18 +71,24 @@ export {
 } from "./schema";
 export { DatabaseCursorError } from "./cursor";
 export {
+  createEngine,
+  type DatabaseEngineOptions,
+  type Engine,
+  type ReadMeasurement,
+} from "./engine";
+export {
   createDatabaseEngine,
+  type AggregateChanges,
+  type AggregateIdentity,
   type AggregateRow,
   type CreateRow,
   type DatabaseEngine,
-  type DatabaseEngineOptions,
   type EngineColumns,
   type FindAggregatesModel,
   type FindManyModel,
   type HotUpdaterDatabase,
   type HotUpdaterTransaction,
   type Lookup,
-  type ReadMeasurement,
   type ReadOptions,
   type TableRow,
   type UpdateSet,
@@ -93,8 +99,8 @@ export {
   DatabaseConstraintError,
   DatabaseTransactionError,
   type ConstraintReason,
-  type RetryOptions,
-} from "./engineTransaction";
+} from "./errors";
+export { type RetryOptions } from "./engineTransaction";
 export {
   DatabaseQueryError,
   type EngineReadCount,

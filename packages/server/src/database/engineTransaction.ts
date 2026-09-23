@@ -13,43 +13,24 @@ import {
 } from "@hot-updater/plugin-core/internal";
 
 import {
+  type AggregateChange,
+  compileAggregates,
+  recordAggregate,
+} from "./engineAggregates";
+import {
   DatabaseQueryError,
   type EngineReads,
   type Page,
   type ReadInput,
 } from "./engineReads";
+import {
+  type ConstraintReason,
+  DatabaseAmbiguousCommitError,
+  DatabaseConflictError,
+  DatabaseConstraintError,
+  DatabaseTransactionError,
+} from "./errors";
 import type { ResolvedModel, ResolvedSchema } from "./resolveSchema";
-
-export type ConstraintReason =
-  | "exists"
-  | "unique"
-  | "not_found"
-  | "referenced"
-  | "too_large";
-
-export class DatabaseConstraintError extends Error {
-  readonly name = "DatabaseConstraintError";
-  constructor(
-    readonly reason: ConstraintReason,
-    readonly model: string,
-  ) {
-    super(`${model}: ${reason}`);
-  }
-}
-
-/** The retry budget ran out; ingestion answers 503 with Retry-After. */
-export class DatabaseConflictError extends Error {
-  readonly name = "DatabaseConflictError";
-}
-
-/** The write may or may not have committed; it is reported, never rerun. */
-export class DatabaseAmbiguousCommitError extends Error {
-  readonly name = "DatabaseAmbiguousCommitError";
-}
-
-export class DatabaseTransactionError extends Error {
-  readonly name = "DatabaseTransactionError";
-}
 
 /** A row this attempt read changed while it ran; the attempt reruns. */
 class StaleReadError extends Error {}
@@ -58,6 +39,8 @@ export interface RetryOptions {
   readonly attempts?: number;
   readonly baseDelayMs?: number;
   readonly maxDelayMs?: number;
+  /** Called before each rerun of `fn` and each resend of the same write. */
+  readonly onRetry?: (kind: "rerun" | "resend") => void;
 }
 
 type Row = Record<string, unknown>;
@@ -72,6 +55,12 @@ export interface TransactionEngine {
   create(table: string, row: Readonly<Row>): void;
   update(table: string, row: StoredRow, set: Readonly<Row>): void;
   delete(table: string, row: StoredRow): Promise<void>;
+  aggregate(
+    table: string,
+    identity: Readonly<Row>,
+    values: Readonly<Row>,
+    options?: { readonly shardBy?: string },
+  ): void;
 }
 
 /** The one pending op on a key: `row` holds the inserted row, patched columns, or increments. */
@@ -125,14 +114,16 @@ export const createTransactions = (options: {
     attempts = 8,
     baseDelayMs = 5,
     maxDelayMs = 250,
+    onRetry,
   } = options.retry ?? {};
-  const tableOf = (name: string): ResolvedModel => {
+  const modelOf = (name: string, kind: "table" | "aggregate") => {
     const model = schema.models.get(name);
-    if (model?.definition.kind !== "table") {
-      throw new DatabaseQueryError(`Unknown table ${name}.`);
+    if (model?.definition.kind !== kind) {
+      throw new DatabaseQueryError(`Unknown ${kind} ${name}.`);
     }
     return model;
   };
+  const tableOf = (name: string) => modelOf(name, "table");
   const depths = new Map<string, number>();
   /** Parents insert before children for adapters that keep foreign keys. */
   const depthOf = (model: ResolvedModel): number => {
@@ -155,6 +146,7 @@ export const createTransactions = (options: {
     const read = new Map<string, StoredRow | null>();
     const writes = new Map<string, Pending>();
     const deleted: string[] = [];
+    const aggregates = new Map<string, AggregateChange>();
     let open = true;
     let failure: { readonly error: unknown } | undefined;
     /** A failed call fails the attempt even when `fn` catches it. */
@@ -427,6 +419,10 @@ export const createTransactions = (options: {
         const model = tableOf(name);
         await remove(model, readRow(model, row));
       }),
+      aggregate: step((name, identity, values, options) => {
+        const model = modelOf(name, "aggregate");
+        recordAggregate(aggregates, model, identity, values, options?.shardBy);
+      }),
     };
 
     try {
@@ -434,7 +430,8 @@ export const createTransactions = (options: {
         ? transactionScope.run(tx, () => fn(tx))
         : fn(tx));
       if (failure) throw failure.error;
-      return { result, read, ops: compile(writes, read, deleted) };
+      const ops = compile(writes, read, deleted);
+      return { result, read, ops, aggregates: [...aggregates.values()] };
     } catch (error) {
       throw failure?.error instanceof StaleReadError ? failure.error : error;
     } finally {
@@ -547,16 +544,24 @@ export const createTransactions = (options: {
       fn: (tx: TransactionEngine) => Promise<R>,
     ): Promise<R> {
       assertOutsideTransaction();
+      let run: Awaited<ReturnType<typeof attempt<R>>> | undefined;
       for (let round = 0; round < attempts; round += 1) {
         const delay =
           round && Math.min(maxDelayMs, baseDelayMs * 2 ** (round - 1));
         if (delay > 0) await sleep(delay / 2 + Math.random() * (delay / 2));
-        const run = await attempt(fn).catch((error: unknown) => {
+        run ??= await attempt(fn).catch((error: unknown) => {
           if (error instanceof StaleReadError) return undefined;
           throw error;
         });
-        if (run === undefined) continue;
-        const { result, read, ops } = run;
+        if (run === undefined) {
+          onRetry?.("rerun");
+          continue;
+        }
+        const { result, read } = run;
+        const ops = [
+          ...run.ops,
+          ...(await compileAggregates(adapter, run.aggregates)),
+        ];
         if (ops.length <= 1 && ops.every(({ type }) => type === "check")) {
           return result;
         }
@@ -573,10 +578,16 @@ export const createTransactions = (options: {
           );
         }
         if (outcome.ok) return result;
-        const op = "failedOp" in outcome ? ops[outcome.failedOp] : undefined;
-        const reason = op && (await classify(op, read));
-        if (op && reason)
-          throw new DatabaseConstraintError(reason, op.table.name);
+        const failed = "failedOp" in outcome ? outcome.failedOp : undefined;
+        if (failed === undefined || failed >= run.ops.length) {
+          onRetry?.("resend");
+          continue;
+        }
+        const reason = await classify(ops[failed]!, read);
+        if (reason)
+          throw new DatabaseConstraintError(reason, ops[failed]!.table.name);
+        onRetry?.("rerun");
+        run = undefined;
       }
       throw new DatabaseConflictError(
         `The transaction conflicted ${attempts} times.`,

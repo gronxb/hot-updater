@@ -1,22 +1,10 @@
-import {
-  type DatabaseAdapter,
-  type DatabaseReadCount,
-  verifyAdapter,
-} from "@hot-updater/plugin-core/internal";
-
-import {
-  createEngineReads,
-  type EngineReadCount,
-  type Page,
-  type ReadInput,
-} from "./engineReads";
+import { createEngine, type DatabaseEngineOptions } from "./engine";
+import type { Page, ReadInput } from "./engineReads";
 import {
   assertOutsideTransaction,
-  createTransactions,
-  type RetryOptions,
   type TransactionEngine,
 } from "./engineTransaction";
-import type { ResolvedSchema, SchemaModule } from "./resolveSchema";
+import type { SchemaModule } from "./resolveSchema";
 import type {
   AggregateDefinition,
   FieldType,
@@ -177,6 +165,22 @@ export type UpdateSet<TModel> =
     ? Partial<Omit<RowOf<TFields>, TKey[number]>>
     : never;
 
+export type AggregateIdentity<TModel> =
+  TModel extends AggregateDefinition<infer TFields> ? RowOf<TFields> : never;
+
+/** Counter and gauge deltas, and sketches to merge. */
+export type AggregateChanges<TModel> =
+  TModel extends AggregateDefinition<
+    infer _F,
+    infer TMetric,
+    infer _I,
+    infer TSketch
+  >
+    ? { readonly [K in TMetric]?: number } & {
+        readonly [K in TSketch]?: string;
+      }
+    : never;
+
 /** Reads are recorded and guarded at commit; writes apply only if every guard holds. */
 export interface HotUpdaterTransaction<S extends ModuleSchema> {
   findOne<M extends TableNames<S>>(
@@ -197,6 +201,16 @@ export interface HotUpdaterTransaction<S extends ModuleSchema> {
   ): void;
   /** Deletes a row this transaction read, cascading to its children first. */
   delete<M extends TableNames<S>>(model: M, row: TableRow<S[M]>): Promise<void>;
+  /**
+   * Changes one shard row of an aggregate. Gauges of a sharded aggregate need
+   * `shardBy`, so every change keyed by one value lands on one shard.
+   */
+  aggregate<M extends AggregateNames<S>>(
+    model: M,
+    identity: AggregateIdentity<S[M]>,
+    changes: AggregateChanges<S[M]>,
+    options?: { readonly shardBy?: string },
+  ): void;
 }
 
 /** A table name, or the reason an aggregate cannot be read this way. */
@@ -229,49 +243,18 @@ export interface HotUpdaterDatabase<S extends ModuleSchema> {
   transaction<R>(fn: (tx: HotUpdaterTransaction<S>) => Promise<R>): Promise<R>;
 }
 
-export interface ReadMeasurement<T> {
-  readonly result: T;
-  /** Point reads and rows the adapter returned. */
-  readonly adapter: DatabaseReadCount;
-  /** Calls and rows (logical rows for aggregates) returned to callers. */
-  readonly engine: EngineReadCount;
-}
-
-export interface DatabaseEngineOptions {
-  readonly adapter: DatabaseAdapter;
-  readonly schema: ResolvedSchema;
-  readonly maxPageSize?: number;
-  /** Checks every adapter call against the contract and meters adapter reads. */
-  readonly verify?: boolean;
-  readonly retry?: RetryOptions;
-}
-
-/** The engine over one adapter; `database(module)` hands a module its handle. */
+/** The engine plus `database(module)`, which hands a module its typed handle. */
 export const createDatabaseEngine = (options: DatabaseEngineOptions) => {
-  const verified = options.verify ? verifyAdapter(options.adapter) : undefined;
-  const adapter = verified ?? options.adapter;
-  const reads = createEngineReads({
-    adapter,
-    schema: options.schema,
-    ...(options.maxPageSize === undefined
-      ? {}
-      : { maxPageSize: options.maxPageSize }),
-  });
-  const transactions = createTransactions({
-    adapter,
-    schema: options.schema,
-    reads,
-    ...(options.retry === undefined ? {} : { retry: options.retry }),
-  });
+  const engine = createEngine(options);
+  const { reads } = engine;
   const outside =
     <A extends unknown[], T>(read: (...args: A) => T) =>
     (...args: A): T => {
       assertOutsideTransaction();
       return read(...args);
     };
-
   return {
-    reads,
+    ...engine,
     database<S extends ModuleSchema>(
       module: SchemaModule & { readonly schema: S },
     ): HotUpdaterDatabase<S> {
@@ -291,7 +274,7 @@ export const createDatabaseEngine = (options: DatabaseEngineOptions) => {
             reads.findAggregates(name(model), input as ReadInput) as never,
         ),
         transaction: (fn) =>
-          transactions.transaction((tx: TransactionEngine) =>
+          engine.transaction((tx: TransactionEngine) =>
             fn({
               findOne: (model, lookup) =>
                 tx.findOne(name(model), lookup as never) as never,
@@ -300,24 +283,10 @@ export const createDatabaseEngine = (options: DatabaseEngineOptions) => {
               create: (model, row) => tx.create(name(model), row),
               update: (model, row, set) => tx.update(name(model), row, set),
               delete: (model, row) => tx.delete(name(model), row),
+              aggregate: (model, identity, changes, options) =>
+                tx.aggregate(name(model), identity, changes, options),
             }),
           ),
-      };
-    },
-    /** Runs `read` and reports what it read at both boundaries (verify mode only). */
-    async measureReads<T>(read: () => Promise<T>): Promise<ReadMeasurement<T>> {
-      if (verified === undefined) {
-        throw new Error(
-          "measureReads needs an engine created with verify: true.",
-        );
-      }
-      verified.reads.reset();
-      reads.reads.reset();
-      const result = await read();
-      return {
-        result,
-        adapter: verified.reads.total(),
-        engine: reads.reads.total(),
       };
     },
   };
