@@ -24,17 +24,22 @@ init. reference/ is additional context, not executable provisioning code.
   - Retry: query the bucket/location before any repeated creation request.
 
 - [ ] **aws.database — Prepare DynamoDB**
-  - Requires: aws.storage. Fill DYNAMODB_TABLE_NAME in both dynamodb/ JSON files.
+  - Requires: aws.storage. Fill DYNAMODB_TABLE_NAME in the three dynamodb/ JSON files.
   - Run: inspect an existing table against create-table.json. If absent, use
     `aws dynamodb create-table --region <region> --cli-input-json file://dynamodb/create-table.json`.
     Wait for ACTIVE, then inspect PITR; when disabled, use
     `aws dynamodb update-continuous-backups --region <region> --cli-input-json file://dynamodb/enable-pitr.json`.
-  - Verify/record: tableName; string pk/sk and gsi1pk/gsi1sk, required GSI with ALL
-    projection, PAY_PER_REQUEST and table/index throughput limits match the JSON;
-    table/GSI are ACTIVE and PITR is enabled. New tables have deletion protection
-    enabled; preserve that setting on reused tables. There is no separate SQL
-    migration for this provider. Reject incompatible tables in place.
-  - Retry: describe the same table/backups and enable PITR only when missing.
+    Then write the schema settings the plugin checks before its first read (the
+    migration for this provider; the plugin answers 503 until they exist):
+    `aws dynamodb batch-write-item --region <region> --cli-input-json file://dynamodb/schema-settings.json`.
+  - Verify/record: tableName; string pk/sk keys, no secondary index,
+    PAY_PER_REQUEST and throughput limits match the JSON; the table is ACTIVE, PITR
+    is enabled, and the items in schema-settings.json exist under
+    pk `private_hot_updater_settings`. New tables have deletion protection
+    enabled; preserve that setting on reused tables. A table with the
+    `hot-updater-update-index` secondary index is from before 1.0: reject it in
+    place and use a separate table identity.
+  - Retry: describe the same table/backups/items; write only what is missing.
 
 - [ ] **aws.client-key — Initialize local access and the client key**
   - Requires: aws.database. Run this before Lambda deployment, as init does.

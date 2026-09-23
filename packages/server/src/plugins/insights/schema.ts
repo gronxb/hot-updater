@@ -89,11 +89,15 @@ const bundleEventHeads = defineTable(
 /**
  * Shards are keyed by install id. Counters are blind increments and never
  * conflict, so they keep 8. Gauges and sketches are read, merged, and written
- * back, so they get 16: B3's rollout gate on PostgreSQL retried 2.4% of
- * transactions at 8 and 1.3% at 16, and a loaded run at 8 went past 5%.
+ * back. B3's rollout gate on PostgreSQL retried 2.4% of transactions at 8
+ * shards and 1.3% at 16. DynamoDB's transactions take longer, so D8's gate
+ * on DynamoDB Local retried 2–24% at 16, almost all on gauge rows, and 1–5%
+ * with gauges at 32. Sketches stay at 16: each shard row carries 2 KB of
+ * registers that every read merges.
  */
 const COUNTER_SHARDS = 8;
-const MERGED_SHARDS = 16;
+const GAUGE_SHARDS = 32;
+const SKETCH_SHARDS = 16;
 
 /** Rows keyed by a hashed identity (scope and period) and a bucket. */
 const identityFields = {
@@ -112,7 +116,7 @@ const insightsOverview = defineAggregate(identityFields, {
 const insightsSketches = defineAggregate(identityFields, {
   key: ["identity", "bucket_start_ms"],
   distinct: ["launch_users", "activity_users"],
-  shards: MERGED_SHARDS,
+  shards: SKETCH_SHARDS,
   indexes: { window },
 });
 
@@ -134,7 +138,7 @@ const insightsDistribution = defineAggregate(
       "bucket_start_ms",
     ],
     gauges: ["latest_installations"],
-    shards: MERGED_SHARDS,
+    shards: GAUGE_SHARDS,
     indexes: {
       byScope: { eq: ["channel", "platform"], sort: ["bucket_start_ms"] },
       byVersion: {
@@ -165,7 +169,7 @@ const insightsLatestByBundle = defineAggregate(
       "bucket_start_ms",
     ],
     gauges: ["installations"],
-    shards: MERGED_SHARDS,
+    shards: GAUGE_SHARDS,
     indexes: {
       byBundle: {
         eq: ["platform", "channel", "bundle_field", "bundle_id", "type"],

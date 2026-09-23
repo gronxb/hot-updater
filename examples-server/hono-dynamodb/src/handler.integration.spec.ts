@@ -1,18 +1,13 @@
 import path from "path";
 import { fileURLToPath } from "url";
 
-import {
-  CreateTableCommand,
-  DynamoDBClient,
-  ListTablesCommand,
-  waitUntilTableExists,
-} from "@aws-sdk/client-dynamodb";
+import { DynamoDBClient, ListTablesCommand } from "@aws-sdk/client-dynamodb";
 import {
   CreateBucketCommand,
   HeadBucketCommand,
   S3Client,
 } from "@aws-sdk/client-s3";
-import { DYNAMODB_UPDATE_INDEX_NAME } from "@hot-updater/aws";
+import { migrateDynamoDB } from "@hot-updater/aws";
 import {
   type Bundle,
   createReleaseCatalogScopeKey,
@@ -81,37 +76,14 @@ async function createTable() {
     credentials,
   });
   await waitForDynamoDB(client);
-  await client.send(
-    new CreateTableCommand({
-      TableName: tableName,
-      BillingMode: "PAY_PER_REQUEST",
-      AttributeDefinitions: [
-        { AttributeName: "pk", AttributeType: "S" },
-        { AttributeName: "sk", AttributeType: "S" },
-        { AttributeName: "gsi1pk", AttributeType: "S" },
-        { AttributeName: "gsi1sk", AttributeType: "S" },
-      ],
-      KeySchema: [
-        { AttributeName: "pk", KeyType: "HASH" },
-        { AttributeName: "sk", KeyType: "RANGE" },
-      ],
-      GlobalSecondaryIndexes: [
-        {
-          IndexName: DYNAMODB_UPDATE_INDEX_NAME,
-          KeySchema: [
-            { AttributeName: "gsi1pk", KeyType: "HASH" },
-            { AttributeName: "gsi1sk", KeyType: "RANGE" },
-          ],
-          Projection: { ProjectionType: "ALL" },
-        },
-      ],
-    }),
-  );
-  await waitUntilTableExists(
-    { client, maxWaitTime: 30 },
-    { TableName: tableName },
-  );
   client.destroy();
+  // The table, and the schema settings the plugin checks before its first read.
+  await migrateDynamoDB({
+    region,
+    endpoint: dynamodbEndpoint,
+    credentials,
+    tableName,
+  });
 }
 
 async function createBucket() {

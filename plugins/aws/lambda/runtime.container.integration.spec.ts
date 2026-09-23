@@ -3,11 +3,7 @@ import { access, cp, mkdtemp, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-import {
-  CreateTableCommand,
-  DynamoDBClient,
-  waitUntilTableExists,
-} from "@aws-sdk/client-dynamodb";
+import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
 import {
   CreateBucketCommand,
   DeleteObjectsCommand,
@@ -33,6 +29,7 @@ import {
   createUUIDv7,
 } from "@hot-updater/plugin-core";
 import { createApiKey, createHotUpdater } from "@hot-updater/server";
+import { SETTINGS_TABLE } from "@hot-updater/server/database";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
 import {
@@ -44,7 +41,7 @@ import {
   stopRuntime,
 } from "../../../packages/test-utils/src/runtimeProcess";
 import { cloudFrontDownloadUrl } from "../src/cloudFrontDownloadUrl";
-import { DYNAMODB_UPDATE_INDEX_NAME, dynamoDB } from "../src/dynamoDB";
+import { dynamoDB, migrateDynamoDB } from "../src/dynamoDB";
 import { s3Storage } from "../src/s3Storage";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -661,40 +658,17 @@ const createHostDynamoDBClient = (endpoint: string) =>
     },
   });
 
-const createDynamoDBTable = async (endpoint: string) => {
-  const client = createHostDynamoDBClient(endpoint);
-  await client.send(
-    new CreateTableCommand({
-      TableName: DYNAMODB_TABLE_NAME,
-      BillingMode: "PAY_PER_REQUEST",
-      AttributeDefinitions: [
-        { AttributeName: "pk", AttributeType: "S" },
-        { AttributeName: "sk", AttributeType: "S" },
-        { AttributeName: "gsi1pk", AttributeType: "S" },
-        { AttributeName: "gsi1sk", AttributeType: "S" },
-      ],
-      KeySchema: [
-        { AttributeName: "pk", KeyType: "HASH" },
-        { AttributeName: "sk", KeyType: "RANGE" },
-      ],
-      GlobalSecondaryIndexes: [
-        {
-          IndexName: DYNAMODB_UPDATE_INDEX_NAME,
-          KeySchema: [
-            { AttributeName: "gsi1pk", KeyType: "HASH" },
-            { AttributeName: "gsi1sk", KeyType: "RANGE" },
-          ],
-          Projection: { ProjectionType: "ALL" },
-        },
-      ],
-    }),
-  );
-  await waitUntilTableExists(
-    { client, maxWaitTime: 30 },
-    { TableName: DYNAMODB_TABLE_NAME },
-  );
-  client.destroy();
-};
+/** The plugin's migration creates the table and writes the schema settings it checks. */
+const createDynamoDBTable = (endpoint: string) =>
+  migrateDynamoDB({
+    region: REGION,
+    endpoint,
+    credentials: {
+      accessKeyId: ACCESS_KEY_ID,
+      secretAccessKey: SECRET_ACCESS_KEY,
+    },
+    tableName: DYNAMODB_TABLE_NAME,
+  });
 
 const clearDynamoDBTable = async (client: DynamoDBDocumentClient) => {
   const { Items = [] } = await client.send(
@@ -704,7 +678,10 @@ const clearDynamoDBTable = async (client: DynamoDBDocumentClient) => {
       ExpressionAttributeNames: { "#pk": "pk", "#sk": "sk" },
     }),
   );
-  const keys = Items.map(({ pk, sk }) => ({ pk, sk }));
+  // The schema settings stay, so the plugin keeps serving.
+  const keys = Items.filter(({ pk }) => pk !== SETTINGS_TABLE.name).map(
+    ({ pk, sk }) => ({ pk, sk }),
+  );
   for (let offset = 0; offset < keys.length; offset += 25) {
     await client.send(
       new BatchWriteCommand({
