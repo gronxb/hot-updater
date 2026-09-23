@@ -13,7 +13,7 @@ export const SETTINGS_TABLE: PhysicalTable = {
   columns: [
     { name: "key", type: "string", nullable: false, maxLength: 255 },
     { name: "value", type: "string", nullable: false, maxLength: 255 },
-    { name: "_v", type: "integer", nullable: false },
+    { name: "_v", type: "integer", nullable: false, default: 0 },
   ],
   key: ["key"],
   indexes: [],

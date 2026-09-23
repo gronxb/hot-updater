@@ -1,21 +1,20 @@
-import { createDatabasePlugin } from "@hot-updater/plugin-core";
-import {
-  createDatabasePluginAdapter,
-  type DatabasePluginImplementation,
-} from "@hot-updater/plugin-core/internal";
 import type { Kysely } from "kysely";
 
-import { createKyselyMigrator } from "../db/fixedMigrator";
+import {
+  createLegacyDatabasePlugin,
+  legacyFacadeSchema,
+  legacyFacadeSettings,
+} from "../database/legacyFacade";
+import { createSqlAdapter } from "../database/sql/sqlAdapter";
+import { createEngineSqlMigrator } from "../db/engineSqlMigrator";
 import type {
   DatabaseAdapterWithCapabilities,
   ORMSQLProvider,
   RelationMode,
 } from "../db/types";
-import { createKyselyCrud, recordKyselyInsights } from "./kyselyCrud";
-import {
-  getKyselyAppUsage,
-  getKyselyReleaseActivity,
-} from "./kyselyInsightsOverview";
+import { kyselyExecutor } from "./kyselyExecutor";
+
+export { kyselyExecutor } from "./kyselyExecutor";
 
 type KyselySQLProvider = Exclude<ORMSQLProvider, "mssql">;
 
@@ -24,112 +23,34 @@ export type { RelationMode, KyselySQLProvider as SQLProvider };
 export interface KyselyAdapterConfig<TDatabase extends object = object> {
   readonly db: Kysely<TDatabase>;
   readonly provider: KyselySQLProvider;
+  /** `fumadb` leaves out database foreign keys; the engine keeps references either way. */
   readonly relationMode?: RelationMode;
 }
 
-const createImplementation = <TDatabase extends object>(
-  config: KyselyAdapterConfig<TDatabase>,
-): DatabasePluginImplementation => {
-  const db = config.db;
-  const relationMode = config.relationMode ?? "foreign-keys";
-  const crud = createKyselyCrud(db, config.provider, relationMode);
-  return {
-    ...crud,
-    recordInsights: (input) =>
-      db
-        .transaction()
-        .execute((transaction) =>
-          recordKyselyInsights(transaction, config.provider, input),
-        ),
-    getReleaseActivity: (input) => getKyselyReleaseActivity(db, input),
-    getAppUsage: (input) => getKyselyAppUsage(db, input),
-    deleteChannel: (input) =>
-      db
-        .transaction()
-        .execute((transaction) =>
-          createKyselyCrud(
-            transaction,
-            config.provider,
-            relationMode,
-          ).deleteChannel(input),
-        ),
-    create: (input) =>
-      db
-        .transaction()
-        .execute((transaction) =>
-          createKyselyCrud(transaction, config.provider, relationMode).create(
-            input,
-          ),
-        ),
-    update: (input) =>
-      db
-        .transaction()
-        .execute((transaction) =>
-          createKyselyCrud(transaction, config.provider, relationMode).update(
-            input,
-          ),
-        ),
-    delete: (input) =>
-      db
-        .transaction()
-        .execute((transaction) =>
-          createKyselyCrud(transaction, config.provider, relationMode).delete(
-            input,
-          ),
-        ),
-    transaction: async (callback) => {
-      for (let attempt = 0; ; attempt += 1) {
-        try {
-          const transaction = db.transaction();
-          // Expectations and writes must share a serializable snapshot. A
-          // retried loser then observes the winner's revision/generation.
-          const isolated =
-            config.provider === "sqlite"
-              ? transaction
-              : transaction.setIsolationLevel("serializable");
-          return await isolated.execute((transaction) =>
-            callback(
-              createKyselyCrud(transaction, config.provider, relationMode),
-            ),
-          );
-        } catch (error) {
-          if (
-            attempt >= 15 ||
-            typeof error !== "object" ||
-            error === null ||
-            !("code" in error) ||
-            !["40001", "40P01", "ER_LOCK_DEADLOCK"].includes(String(error.code))
-          )
-            throw error;
-          await new Promise((resolve) =>
-            setTimeout(resolve, Math.min(2 ** attempt, 32)),
-          );
-        }
-      }
-    },
-  };
-};
-
+/**
+ * Hot Updater's database on a Kysely instance: the storage engine through the
+ * shared SQL core, behind today's `DatabasePlugin` until E2. CockroachDB runs
+ * as PostgreSQL until E2 removes it.
+ */
 export const kyselyAdapter = <TDatabase extends object>(
   config: KyselyAdapterConfig<TDatabase>,
 ): DatabaseAdapterWithCapabilities => {
-  const adapter = createDatabasePluginAdapter(
-    "kysely",
-    createImplementation<TDatabase>(config),
+  const executor = kyselyExecutor(
+    config.db as unknown as Kysely<object>,
+    config.provider === "cockroachdb" ? "postgresql" : config.provider,
   );
-  const plugin = createDatabasePlugin({
-    name: "kysely",
-    models: adapter.models,
-    commit: adapter.commit,
-  });
-  return Object.assign(plugin, {
+  const adapter = createSqlAdapter({ executor });
+  return {
+    ...createLegacyDatabasePlugin({ name: "kysely", adapter, fence: true }),
     adapterName: "kysely",
     provider: config.provider,
     createMigrator: () =>
-      createKyselyMigrator({
-        db: config.db,
-        provider: config.provider,
-        relationMode: config.relationMode,
+      createEngineSqlMigrator({
+        adapterName: "kysely",
+        executor,
+        schema: legacyFacadeSchema,
+        settings: legacyFacadeSettings,
+        foreignKeys: config.relationMode !== "fumadb",
       }),
-  });
+  };
 };
