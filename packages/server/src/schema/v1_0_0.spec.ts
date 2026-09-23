@@ -1,10 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { createTableSql } from "../db/schema/sql";
-import {
-  generateDrizzleSchema,
-  generatePrismaSchema,
-} from "../db/schemaGenerators";
+import { generatePrismaSchema } from "../db/schemaGenerators";
 import {
   bundleEventHeadsV100,
   bundleEventsV100,
@@ -54,16 +51,12 @@ describe("v1.0.0 Release Catalog schema", () => {
     );
     const sql = createTableSql("postgresql", "foreign-keys", v1_0_0).join("\n");
     const prisma = generatePrismaSchema("postgresql", v1_0_0);
-    const drizzle = generateDrizzleSchema("postgresql", v1_0_0);
 
     expect(patchSize?.type).toBe("float");
     expect(patchSize?.nullable).toBeUndefined();
     expect(sql).toContain("byte_size double precision not null");
     expect(sql).toContain("byte_size <= 9007199254740991");
     expect(prisma).toContain("byte_size Float");
-    expect(drizzle).toContain(
-      'byte_size: doublePrecision("byte_size").notNull()',
-    );
   });
 
   it("keeps nullable sources while requiring the reported target Bundle", () => {
@@ -111,11 +104,7 @@ describe("v1.0.0 Release Catalog schema", () => {
     ]);
     expect(sql).toContain("downloads bigint not null default 0");
     expect(sql).toContain("launches bigint not null default 0");
-    for (const generated of [
-      sql,
-      generatePrismaSchema("postgresql", v1_0_0),
-      generateDrizzleSchema("postgresql", v1_0_0),
-    ])
+    for (const generated of [sql, generatePrismaSchema("postgresql", v1_0_0)])
       expect(generated).not.toContain("bundle_installations");
   });
 
@@ -162,16 +151,11 @@ describe("v1.0.0 Release Catalog schema", () => {
 
   it("generates nullable source and artifact relations with the intended deletion rules", () => {
     const prisma = generatePrismaSchema("postgresql", v1_0_0);
-    const drizzle = generateDrizzleSchema("postgresql", v1_0_0);
 
     expect(prisma).toContain("model releases {");
     expect(prisma).toContain("sourceRelease releases? @relation(");
     expect(prisma).toContain("onDelete: SetNull");
     expect(prisma).toContain("bundle bundles? @relation(");
-    expect(drizzle).toContain("export const release_catalogs = pgTable(");
-    expect(drizzle).toContain('index("releases_scope_order_idx")');
-    expect(drizzle).toContain("foreignColumns: [table.id]");
-    expect(drizzle).not.toContain("foreignColumns: [releases.id]");
   });
 
   it("creates both projection tables and their constraints from empty", () => {
@@ -202,9 +186,6 @@ describe("v1.0.0 Release Catalog schema", () => {
     expect(sql).toContain("payload mediumtext not null");
     expect(generatePrismaSchema("mysql", v1_0_0)).toContain(
       "payload String @db.MediumText",
-    );
-    expect(generateDrizzleSchema("mysql", v1_0_0)).toContain(
-      'payload: mediumtext("payload").notNull()',
     );
   });
 });

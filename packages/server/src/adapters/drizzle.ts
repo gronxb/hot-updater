@@ -1,26 +1,23 @@
-import { createDatabasePlugin } from "@hot-updater/plugin-core";
 import {
-  createDatabasePluginAdapter,
-  type DatabasePluginImplementation,
-  type TransactionDatabasePluginImplementation,
-} from "@hot-updater/plugin-core/internal";
-
-import {
-  getHotUpdaterSchemaVersion,
-  hotUpdaterSchema,
-} from "../db/schema/registry";
-import { generateDrizzleSchema } from "../db/schemaGenerators";
+  createLegacyDatabasePlugin,
+  legacyFacadeSchema,
+  legacyFacadeSettings,
+} from "../database/legacyFacade";
+import { createSqlAdapter } from "../database/sql/sqlAdapter";
+import { generateDrizzleEngineSchema } from "../db/engineDrizzleSchema";
+import { createSettingsMigrator } from "../db/settingsMigrator";
 import type {
   DatabaseAdapterWithCapabilities,
   ORMProvider,
   SchemaGenerator,
 } from "../db/types";
-import { createDrizzleCrud, recordDrizzleInsights } from "./drizzleCrud";
-import {
-  getDrizzleAppUsage,
-  getDrizzleReleaseActivity,
-} from "./drizzleInsightsOverview";
-import { createLazyDB } from "./drizzleLazyDB";
+import { HOT_UPDATER_SCHEMA_VERSION } from "../schema/types";
+import { drizzleExecutor } from "./drizzleExecutor";
+
+export {
+  DrizzleTransactionUnsupportedError,
+  SUPPORTED_DRIZZLE_DRIVERS,
+} from "./drizzleExecutor";
 
 export type DrizzleProvider = Exclude<
   ORMProvider,
@@ -28,146 +25,48 @@ export type DrizzleProvider = Exclude<
 >;
 
 export interface DrizzleConfig {
+  /** A Drizzle database, or a function that returns one on first use. */
   readonly db: unknown | (() => unknown | Promise<unknown>);
   readonly provider: DrizzleProvider;
+  /** Ignored: Hot Updater reads through SQL; the schema file is for drizzle-kit. */
   readonly schema?: Record<string, unknown>;
+  /** Ignored: transactions are required, and the first one checks the driver. */
   readonly transaction?: boolean;
 }
 
-const createImplementation = (
-  config: DrizzleConfig,
-): DatabasePluginImplementation => {
-  const db = createLazyDB(config);
-  const crud = createDrizzleCrud(db, config.provider);
-  const transaction = db.transaction?.bind(db);
-  return {
-    ...crud,
-    recordInsights: async (input) => {
-      await recordDrizzleInsights(
-        db.resolve === undefined ? db : await db.resolve(),
-        config.provider,
-        input,
-      );
-    },
-    getReleaseActivity: async (input) =>
-      getDrizzleReleaseActivity(
-        db.resolve === undefined ? db : await db.resolve(),
-        input,
-      ),
-    getAppUsage: async (input) =>
-      getDrizzleAppUsage(
-        db.resolve === undefined ? db : await db.resolve(),
-        input,
-      ),
-    deleteChannel: (input) => {
-      if (transaction === undefined) {
-        throw new Error(
-          "Drizzle channel deletion requires transaction support.",
-        );
-      }
-      return transaction((transactionDatabase) =>
-        createDrizzleCrud(transactionDatabase, config.provider).deleteChannel(
-          input,
-        ),
-      );
-    },
-    ...(transaction
-      ? {
-          delete: (input: Parameters<typeof crud.delete>[0]) =>
-            transaction((transactionDatabase) =>
-              createDrizzleCrud(transactionDatabase, config.provider).delete(
-                input,
-              ),
-            ),
-        }
-      : {}),
-    ...(transaction
-      ? {
-          transaction: async <TResult>(
-            callback: (
-              transaction: TransactionDatabasePluginImplementation,
-            ) => Promise<TResult>,
-          ): Promise<TResult> =>
-            transaction((transaction) =>
-              callback(createDrizzleCrud(transaction, config.provider)),
-            ),
-        }
-      : {}),
-  };
-};
-
+/**
+ * Hot Updater's database on a Drizzle instance: the storage engine through the
+ * shared SQL core, behind today's `DatabasePlugin` until E2. `db generate`
+ * writes the Drizzle schema drizzle-kit applies; `db migrate` then writes the
+ * settings rows the schema fence checks.
+ */
 export const drizzleAdapter = (
   config: DrizzleConfig,
 ): DatabaseAdapterWithCapabilities => {
-  let adapter: ReturnType<typeof createDatabasePluginAdapter> | undefined;
-  const getAdapter = () => {
-    adapter ??= createDatabasePluginAdapter(
-      "drizzle",
-      createImplementation(config),
-    );
-    return adapter;
-  };
-  const plugin = createDatabasePlugin({
-    name: "drizzle",
-    models: {
-      bundles: {
-        findById: (id) => getAdapter().models.bundles.findById(id),
-        findMany: (query) => getAdapter().models.bundles.findMany(query),
-        count: (where) => getAdapter().models.bundles.count(where),
-      },
-      bundlePatches: {
-        findByBundleIds: (bundleIds) =>
-          getAdapter().models.bundlePatches.findByBundleIds(bundleIds),
-      },
-      releases: {
-        findById: (id) => getAdapter().models.releases.findById(id),
-        findMany: (input) => getAdapter().models.releases.findMany(input),
-        findManyByScope: (input) =>
-          getAdapter().models.releases.findManyByScope(input),
-      },
-      releaseCatalogs: {
-        findByScopeKey: (scopeKey) =>
-          getAdapter().models.releaseCatalogs.findByScopeKey(scopeKey),
-        findMany: (input) =>
-          getAdapter().models.releaseCatalogs.findMany(input),
-      },
-      channels: {
-        insert: (input) => getAdapter().models.channels.insert(input),
-        list: (input) => getAdapter().models.channels.list(input),
-        delete: (input) => getAdapter().models.channels.delete(input),
-      },
-      insights: {
-        recordEvent: (input) => getAdapter().models.insights.recordEvent(input),
-        listEvents: (input) => getAdapter().models.insights.listEvents(input),
-        findLatestEvents: (input) =>
-          getAdapter().models.insights.findLatestEvents(input),
-        countLatestEvents: (input) =>
-          getAdapter().models.insights.countLatestEvents(input),
-        countEvents: (input) => getAdapter().models.insights.countEvents(input),
-        getReleaseActivity: (input) =>
-          getAdapter().models.insights.getReleaseActivity(input),
-        getAppUsage: (input) => getAdapter().models.insights.getAppUsage(input),
-      },
-      apiKeys: {
-        create: (row) => getAdapter().models.apiKeys.create(row),
-        findByHash: (hash) => getAdapter().models.apiKeys.findByHash(hash),
-        list: () => getAdapter().models.apiKeys.list(),
-        revoke: (input) => getAdapter().models.apiKeys.revoke(input),
-      },
-    },
-    commit: (input) => getAdapter().commit(input),
-  });
-  return Object.assign(plugin, {
+  const executor = drizzleExecutor(config.db, config.provider);
+  return {
+    ...createLegacyDatabasePlugin({
+      name: "drizzle",
+      adapter: createSqlAdapter({ executor }),
+      fence: true,
+    }),
     adapterName: "drizzle",
     provider: config.provider,
-    generateSchema: (version: Parameters<SchemaGenerator>[0]) => ({
-      code: generateDrizzleSchema(
-        config.provider,
-        version === "latest"
-          ? hotUpdaterSchema
-          : getHotUpdaterSchemaVersion(version),
-      ),
-      path: "hot-updater-schema.ts",
-    }),
-  });
+    generateSchema: (version: Parameters<SchemaGenerator>[0]) => {
+      if (version !== "latest" && version !== HOT_UPDATER_SCHEMA_VERSION) {
+        throw new Error(`Invalid version ${version}`);
+      }
+      return {
+        code: generateDrizzleEngineSchema(config.provider, legacyFacadeSchema),
+        path: "hot-updater-schema.ts",
+      };
+    },
+    createMigrator: () =>
+      createSettingsMigrator({
+        adapterName: "drizzle",
+        executor,
+        settings: legacyFacadeSettings,
+        applyTables: "`drizzle-kit push` (or your drizzle-kit migrations)",
+      }),
+  };
 };

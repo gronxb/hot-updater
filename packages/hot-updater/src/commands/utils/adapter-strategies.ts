@@ -19,10 +19,6 @@ export function showMigrateUnsupportedError(adapterName: string): never {
   let hint = "Use the adapter's migration tool.";
 
   switch (adapterName as AdapterName) {
-    case "drizzle":
-      hint = "Use drizzle-kit.";
-      break;
-
     case "prisma":
       hint = "Use prisma migrate.";
       break;

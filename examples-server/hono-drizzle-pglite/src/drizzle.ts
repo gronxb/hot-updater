@@ -50,7 +50,9 @@ export const resetDecisionFixtures = async () => {
       release_catalogs,
       releases,
       bundles,
-      channels
+      channels,
+      bundle_totals,
+      base_candidates
     CASCADE
   `);
 };

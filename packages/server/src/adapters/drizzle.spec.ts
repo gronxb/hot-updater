@@ -1,538 +1,318 @@
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
+import { DatabaseSync, type SqliteValue } from "node:sqlite";
+import { pathToFileURL } from "node:url";
+
 import { PGlite } from "@electric-sql/pglite";
 import {
   setupDatabasePluginTestSuite,
   startHttpTestServer,
 } from "@hot-updater/test-utils";
-import {
-  bigint,
-  boolean,
-  doublePrecision,
-  integer,
-  jsonb,
-  pgTable,
-  text,
-  varchar,
-} from "drizzle-orm/pg-core";
-import { drizzle } from "drizzle-orm/pglite";
-import { describe, expect, it, vi } from "vitest";
+import { createClient } from "@libsql/client";
+import type { SQL } from "drizzle-orm";
+import { drizzle as libsql } from "drizzle-orm/libsql";
+import { drizzle as pglite } from "drizzle-orm/pglite";
+import { SQLiteSyncDialect } from "drizzle-orm/sqlite-core";
+import { afterAll, describe, expect, it } from "vitest";
 
-import { createBundleEventRowFixture } from "../../../test-utils/src/databaseTestFixtures";
+import {
+  createBundleRowFixture,
+  createChannelRowFixture,
+  createReleaseRowFixture,
+} from "../../../test-utils/src/databaseTestFixtures";
+import {
+  legacyFacadeSchema,
+  legacyFacadeSettings,
+} from "../database/legacyFacade";
+import { isMultiIndex, quoteSql } from "../database/sql/sqlSchema";
+import { generateEngineSql } from "../db/engineSql";
+import { HotUpdaterSchemaMigrationRequiredError } from "../db/schemaReadiness";
 import type { DatabaseAdapterWithCapabilities } from "../db/types";
 import { createHotUpdater } from "../index";
 import {
-  DATABASE_PLUGIN_TEST_RESET_SQL,
-  DATABASE_PLUGIN_TEST_SCHEMA_SQL,
-} from "./databasePluginTestDatabase";
-import { drizzleAdapter } from "./drizzle";
+  drizzleAdapter,
+  DrizzleTransactionUnsupportedError,
+  type DrizzleProvider,
+} from "./drizzle";
 
-const bundles = pgTable("bundles", {
-  id: text("id").primaryKey(),
-  platform: text("platform").notNull(),
-  git_commit_hash: text("git_commit_hash"),
-  metadata: jsonb("metadata").notNull(),
-  manifest_storage_uri: text("manifest_storage_uri").notNull(),
-  manifest_file_hash: text("manifest_file_hash").notNull(),
-  asset_base_storage_uri: text("asset_base_storage_uri").notNull(),
-});
-const channels = pgTable("channels", {
-  id: text("id").primaryKey(),
-  name: text("name").notNull().unique(),
-});
-const releases = pgTable("releases", {
-  id: text("id").primaryKey(),
-  revision: integer("revision").notNull(),
-  scope_key: text("scope_key").notNull(),
-  channel_id: text("channel_id").notNull(),
-  platform: text("platform").notNull(),
-  kind: text("kind").notNull(),
-  bundle_id: text("bundle_id"),
-  strategy: text("strategy").notNull(),
-  target_app_version: text("target_app_version"),
-  fingerprint_hash: text("fingerprint_hash"),
-  enabled: boolean("enabled").notNull(),
-  should_force_update: boolean("should_force_update").notNull(),
-  message: text("message"),
-  rollout_cohort_count: integer("rollout_cohort_count").notNull(),
-  target_cohorts: jsonb("target_cohorts").notNull(),
-  operation: text("operation").notNull(),
-  source_release_id: text("source_release_id"),
-  created_at_ms: integer("created_at_ms").notNull(),
-  updated_at_ms: integer("updated_at_ms").notNull(),
-});
-const releaseCatalogs = pgTable("release_catalogs", {
-  scope_key: text("scope_key").primaryKey(),
-  catalog_id: text("catalog_id").notNull(),
-  strategy: text("strategy").notNull(),
-  channel_id: text("channel_id").notNull(),
-  channel_key: text("channel_key").notNull(),
-  platform: text("platform").notNull(),
-  fingerprint_hash: text("fingerprint_hash"),
-  generation: integer("generation").notNull(),
-  payload: text("payload").notNull(),
-  catalog_hash: text("catalog_hash").notNull(),
-  byte_size: integer("byte_size").notNull(),
-  is_tombstone: boolean("is_tombstone").notNull(),
-  updated_at_ms: integer("updated_at_ms").notNull(),
-});
-const bundlePatches = pgTable("bundle_patches", {
-  id: varchar("id", { length: 255 }).primaryKey(),
-  bundle_id: text("bundle_id").notNull(),
-  base_bundle_id: text("base_bundle_id").notNull(),
-  base_file_hash: text("base_file_hash").notNull(),
-  patch_file_hash: text("patch_file_hash").notNull(),
-  patch_storage_uri: text("patch_storage_uri").notNull(),
-  byte_size: doublePrecision("byte_size").notNull(),
-  order_index: integer("order_index").notNull(),
-});
-const bundleEvents = pgTable("bundle_events", {
-  id: text("id").primaryKey(),
-  type: text("type").notNull(),
-  install_id: text("install_id").notNull(),
-  user_id: text("user_id"),
-  metadata: jsonb("metadata").notNull(),
-  from_release_id: text("from_release_id"),
-  from_bundle_id: text("from_bundle_id"),
-  to_release_id: text("to_release_id"),
-  to_bundle_id: text("to_bundle_id").notNull(),
-  platform: text("platform").notNull(),
-  app_version: text("app_version").notNull(),
-  channel: text("channel").notNull(),
+/** Every data table; the settings rows stay across tests. */
+const dataTables = legacyFacadeSchema.tables.flatMap((table) => [
+  table.name,
+  ...table.indexes
+    .filter((index) => isMultiIndex(table, index))
+    .map((index) => `${table.name}__${index.name}`),
+]);
 
-  received_at_ms: integer("received_at_ms").notNull(),
-});
-const bundleEventHeads = pgTable("bundle_event_heads", {
-  install_id: text("install_id").primaryKey(),
-  id: text("id").notNull(),
-  received_at_ms: integer("received_at_ms").notNull(),
-  user_id: text("user_id"),
-  platform: text("platform").notNull(),
-  channel: text("channel").notNull(),
-  type: text("type").notNull(),
-  from_bundle_id: text("from_bundle_id"),
-  to_bundle_id: text("to_bundle_id").notNull(),
-  current_release_id: text("current_release_id"),
-  app_version: text("app_version").notNull(),
-});
-const insightsOverview = pgTable("insights_overview", {
-  id: text("id").primaryKey(),
-  scope_kind: text("scope_kind").notNull(),
-  release_kind: text("release_kind").notNull(),
-  release_id: text("release_id").notNull(),
-  channel: text("channel").notNull(),
-  platform: text("platform").notNull(),
-  app_version_kind: text("app_version_kind").notNull(),
-  app_version: text("app_version").notNull(),
-  period_kind: text("period_kind").notNull(),
-  bucket_start_ms: doublePrecision("bucket_start_ms").notNull(),
-  downloads: bigint("downloads", { mode: "number" }).notNull(),
-  launches: bigint("launches", { mode: "number" }).notNull(),
-  failed_launches: bigint("failed_launches", { mode: "number" }).notNull(),
-  latest_installations: bigint("latest_installations", {
-    mode: "number",
-  }).notNull(),
-  launch_users: text("launch_users"),
-  activity_users: text("activity_users"),
-});
-const apiKeys = pgTable("api_keys", {
-  id: text("id").primaryKey(),
-  hash: text("hash").notNull().unique(),
-  name: text("name").notNull(),
-  prefix: text("prefix").notNull(),
-  role: text("role").notNull(),
-  created_at_ms: integer("created_at_ms").notNull(),
-  revoked_at_ms: integer("revoked_at_ms"),
-});
-const schema = {
-  bundle_events: bundleEvents,
-  bundle_event_heads: bundleEventHeads,
-  insights_overview: insightsOverview,
-
-  bundle_patches: bundlePatches,
-  bundles,
-  channels,
-  api_keys: apiKeys,
-  release_catalogs: releaseCatalogs,
-  releases,
-};
-
-class DrizzleTestStateError extends Error {
-  readonly name = "DrizzleTestStateError";
-}
-
-let client: PGlite | undefined;
-let database: ReturnType<typeof drizzle<typeof schema>> | undefined;
-
-const getClient = (): PGlite => {
-  if (client === undefined) throw new DrizzleTestStateError();
+const temporaryDirectory = mkdtemp(
+  path.join(os.tmpdir(), "hot-updater-drizzle-"),
+);
+afterAll(async () =>
+  rm(await temporaryDirectory, { recursive: true, force: true }),
+);
+let files = 0;
+const temporaryFile = async () =>
+  `file:${path.join(await temporaryDirectory, `${(files += 1)}.db`)}`;
+/** A libSQL file in WAL mode, so reads never wait on a committing writer. */
+const libsqlFile = async () => {
+  const client = createClient({ url: await temporaryFile() });
+  await client.execute("PRAGMA journal_mode = WAL");
   return client;
 };
 
-const getDatabase = (): ReturnType<typeof drizzle<typeof schema>> => {
-  if (database === undefined) throw new DrizzleTestStateError();
-  return database;
+const engineSql = (dialect: "postgresql" | "sqlite") =>
+  generateEngineSql(dialect, legacyFacadeSchema, legacyFacadeSettings);
+
+const backends = {
+  postgresql: async () => {
+    const client = new PGlite();
+    await client.exec(engineSql("postgresql").join(";\n"));
+    return {
+      db: pglite(client),
+      exec: (sql: string) => client.exec(sql).then(() => undefined),
+      close: () => client.close(),
+    };
+  },
+  sqlite: async () => {
+    // A file: each libSQL transaction opens a connection, and `:memory:` would be a new database.
+    const client = await libsqlFile();
+    await client.executeMultiple(engineSql("sqlite").join(";\n"));
+    return {
+      db: libsql(client),
+      exec: (sql: string) => client.executeMultiple(sql),
+      close: async () => client.close(),
+    };
+  },
+} as const;
+
+for (const provider of ["postgresql", "sqlite"] as const) {
+  let backend: Awaited<ReturnType<(typeof backends)[typeof provider]>>;
+  setupDatabasePluginTestSuite({
+    createHttpClient: (options) =>
+      startHttpTestServer(
+        createHotUpdater({ ...options, clientAccess: { type: "public" } })
+          .handlers,
+      ),
+    name: `drizzleAdapter (${provider})`,
+    migrate: async () => {
+      backend = await backends[provider]();
+    },
+    createPlugin: () => drizzleAdapter({ db: backend.db, provider }),
+    reset: async () => {
+      const quote = (name: string) => quoteSql(provider, name);
+      await backend.exec(
+        provider === "postgresql"
+          ? `TRUNCATE ${dataTables.map(quote).join(", ")} CASCADE`
+          : dataTables.map((name) => `DELETE FROM ${quote(name)};`).join(""),
+      );
+    },
+    dispose: () => backend.close(),
+  });
+}
+
+/** A sync Drizzle SQLite database as better-sqlite3's driver answers: over `node:sqlite`. */
+const syncSqlite = (database: DatabaseSync) => {
+  const dialect = new SQLiteSyncDialect();
+  const prepare = (query: SQL) => {
+    const { sql, params } = dialect.sqlToQuery(query);
+    return {
+      statement: database.prepare(sql),
+      params: params as SqliteValue[],
+    };
+  };
+  return {
+    resultKind: "sync" as const,
+    all: (query: SQL) => {
+      const { statement, params } = prepare(query);
+      return statement.all(...params);
+    },
+    run: (query: SQL) => {
+      const { statement, params } = prepare(query);
+      return statement.run(...params);
+    },
+  };
 };
 
-setupDatabasePluginTestSuite({
-  createHttpClient: (options) =>
-    startHttpTestServer(
-      createHotUpdater({ ...options, clientAccess: { type: "public" } })
-        .handlers,
-    ),
-  name: "drizzleAdapter PostgreSQL",
-  migrate: async () => {
-    client = new PGlite();
-    await client.exec(DATABASE_PLUGIN_TEST_SCHEMA_SQL);
-    database = drizzle(client, { schema });
-  },
-  createPlugin: (): DatabaseAdapterWithCapabilities =>
-    drizzleAdapter({ db: getDatabase(), provider: "postgresql" }),
-  reset: async () => {
-    await getClient().exec(DATABASE_PLUGIN_TEST_RESET_SQL);
-  },
-  dispose: async () => {
-    await getClient().close();
-    database = undefined;
-    client = undefined;
-  },
+const seed = async (plugin: DatabaseAdapterWithCapabilities) => {
+  const channel = createChannelRowFixture("production");
+  const bundle = createBundleRowFixture("1");
+  const release = createReleaseRowFixture("1", bundle, channel);
+  await plugin.models.channels.insert({
+    row: channel,
+    onConflict: "returnExisting",
+  });
+  await expect(
+    plugin.commit({
+      changes: [
+        { model: "bundles", operation: "insert", row: bundle },
+        { model: "releases", operation: "insert", row: release },
+      ],
+    }),
+  ).resolves.toEqual({ committed: true });
+  return { bundle, release };
+};
+
+describe("drizzleAdapter drivers", () => {
+  it("runs a sync SQLite driver one statement at a time, with BEGIN IMMEDIATE transactions", async () => {
+    const database = new DatabaseSync(":memory:");
+    database.exec(engineSql("sqlite").join(";\n"));
+    const plugin = drizzleAdapter({
+      db: syncSqlite(database),
+      provider: "sqlite",
+    });
+    const { bundle } = await seed(plugin);
+    const inserts = Array.from({ length: 8 }, (_, n) =>
+      plugin.commit({
+        changes: [
+          {
+            model: "bundles",
+            operation: "insert",
+            row: createBundleRowFixture(String(100 + n)),
+          },
+        ],
+      }),
+    );
+    await expect(Promise.all(inserts)).resolves.toHaveLength(8);
+    await expect(plugin.models.bundles.findById(bundle.id)).resolves.toEqual(
+      bundle,
+    );
+    await expect(plugin.models.bundles.count()).resolves.toBe(9);
+    database.close();
+  });
+
+  it("refuses a driver without interactive transactions on first use, naming the supported ones", async () => {
+    const client = new PGlite();
+    await client.exec(engineSql("postgresql").join(";\n"));
+    const db = pglite(client);
+    const withoutTransactions = {
+      execute: db.execute.bind(db),
+      transaction: () => {
+        throw new Error("No transactions support in neon-http driver");
+      },
+    };
+    const plugin = drizzleAdapter({
+      db: withoutTransactions,
+      provider: "postgresql",
+    });
+    const read = await plugin.models.channels
+      .list({})
+      .catch((caught: unknown) => caught);
+    expect(read).toBeInstanceOf(DrizzleTransactionUnsupportedError);
+    expect(String(read)).toContain("better-sqlite3");
+    // A write first cannot know whether anything was sent, but names the cause.
+    const write = await plugin
+      .commit({
+        changes: [
+          {
+            model: "bundles",
+            operation: "insert",
+            row: createBundleRowFixture("2"),
+          },
+        ],
+      })
+      .catch((caught: unknown) => caught);
+    expect((write as Error).cause).toBeInstanceOf(
+      DrizzleTransactionUnsupportedError,
+    );
+    await client.close();
+  });
+
+  it("resolves a lazy database on first use", async () => {
+    let resolved = 0;
+    const plugin = drizzleAdapter({
+      db: async () => {
+        resolved += 1;
+        return (await backends.sqlite()).db;
+      },
+      provider: "sqlite",
+    });
+    expect(resolved).toBe(0);
+    await seed(plugin);
+    await plugin.models.channels.list({});
+    expect(resolved).toBe(1);
+  });
 });
 
-describe("drizzleAdapter schema requirements", () => {
-  it("maintains aggregate counters, recovered attribution, distinct users, and latest distribution", async () => {
-    const db = new PGlite();
-    await db.exec(DATABASE_PLUGIN_TEST_SCHEMA_SQL);
-    const insights = drizzleAdapter({
-      db: drizzle(db, { schema }),
-      provider: "postgresql",
-    }).models.insights;
-    const first = createBundleEventRowFixture("720", 100);
-    const second = createBundleEventRowFixture("721", 200);
-    const recovery = createBundleEventRowFixture("722", 300);
-    const releaseA = first.to_bundle_id;
-    const releaseB = second.to_bundle_id;
-    const events = [
-      {
-        ...first,
-        type: "UPDATE_DOWNLOADED" as const,
-        to_release_id: releaseB,
-      },
-      {
-        ...first,
-        id: createBundleEventRowFixture("723", 100).id,
-        type: "UNCHANGED" as const,
-        from_bundle_id: null,
-        from_release_id: null,
-        to_release_id: releaseA,
-        metadata: { ...first.metadata, update_strategy: null },
-      },
-      { ...second, to_release_id: releaseB },
-      {
-        ...recovery,
-        type: "RECOVERED" as const,
-        from_release_id: releaseB,
-        to_release_id: releaseA,
-      },
-    ];
-    try {
-      await Promise.all(events.map((event) => insights.recordEvent({ event })));
-      await insights.recordEvent({ event: events[3]! });
-      const lifetime = await insights.getReleaseActivity({
-        releases: [releaseA, releaseB].map((releaseId) => ({
-          releaseId,
-          platform: "ios" as const,
-          channel: "production",
-        })),
-      });
-      expect(lifetime.data.map(({ metrics }) => metrics)).toEqual([
-        { downloads: 0, launches: 2, failedLaunches: 0 },
-        { downloads: 1, launches: 1, failedLaunches: 1 },
-      ]);
-      const activity = await insights.getReleaseActivity({
-        scope: { platform: "ios", channel: "production" },
-        timeRange: { start: 0, end: 3_600_000 },
-      });
-      expect(activity.data[0]?.metrics).toMatchObject({
-        downloads: 1,
-        launches: 3,
-        failedLaunches: 1,
-        uniqueUsers: 3,
-      });
-      const usage = await insights.getAppUsage({
-        channel: "production",
-        platform: "all",
-        timeRange: { start: 0, end: 3_600_000 },
-        intervalMs: 3_600_000,
-      });
-      expect(usage.activeInstallations).toBe(3);
-      expect(usage.bundleDistribution).toEqual(
-        expect.arrayContaining([
-          expect.objectContaining({ releaseId: releaseA, installations: 2 }),
-          expect.objectContaining({ releaseId: releaseB, installations: 1 }),
-        ]),
-      );
-    } finally {
-      await db.close();
-    }
-  });
+describe("drizzleAdapter schema and migrations", () => {
+  const directory = mkdtemp(path.join(import.meta.dirname, ".drizzle-"));
+  afterAll(async () => rm(await directory, { recursive: true, force: true }));
 
-  it("counts MySQL predicate overlap and nullable sources in one SQL snapshot", async () => {
-    const db = new PGlite();
-    await db.exec(DATABASE_PLUGIN_TEST_SCHEMA_SQL);
-    const native = drizzle(db, { schema });
-    const writer = drizzleAdapter({ db: native, provider: "postgresql" }).models
-      .insights;
-    const applied = createBundleEventRowFixture("711", 100);
-    const overlap = { ...applied, from_bundle_id: applied.to_bundle_id };
-    const unchanged = {
-      ...createBundleEventRowFixture("712", 100),
-      type: "UNCHANGED" as const,
-      from_bundle_id: null,
-      to_bundle_id: applied.to_bundle_id,
-      metadata: { ...applied.metadata, update_strategy: null },
-    };
-    const count = drizzleAdapter({
-      db: async () => native,
-      schema,
-      provider: "mysql",
-      transaction: false,
-    }).models.insights.countLatestEvents;
-    const scope = {
-      platform: "ios" as const,
-      channel: "production",
-      sinceMs: 0,
-    };
-    const from = {
-      field: "from_bundle_id" as const,
-      value: applied.to_bundle_id,
-      types: ["UPDATE_APPLIED", "UNCHANGED"] as const,
-    };
-    const to = { ...from, field: "to_bundle_id" as const };
-    try {
-      await writer.recordEvent({ event: overlap });
-      await writer.recordEvent({ event: unchanged });
-      for (const bundle of [
-        [from, to],
-        [to, from],
-        [to, to],
-      ]) {
-        await expect(count({ ...scope, bundle })).resolves.toBe(2);
-      }
-      await expect(count({ ...scope, bundle: [from] })).resolves.toBe(1);
-      await expect(count(scope)).resolves.toBe(2);
-    } finally {
-      await db.close();
-    }
-  });
-  it.each([undefined, false])(
-    "uses a native Insights transaction with catalog transaction option %s",
-    async (transaction) => {
-      const db = new PGlite();
-      await db.exec(DATABASE_PLUGIN_TEST_SCHEMA_SQL);
-      const native = drizzle(db, { schema });
-      const callbackTransaction = vi.spyOn(native, "transaction");
-      const plugin = drizzleAdapter({
-        db: async () => native,
-        provider: "postgresql",
-        schema,
-        transaction,
+  /** The generated schema file, loaded as drizzle-kit loads it. */
+  const load = async (provider: DrizzleProvider) => {
+    const schema = drizzleAdapter({
+      db: {},
+      provider,
+    }).generateSchema!("latest");
+    const file = path.join(await directory, `${provider}.ts`);
+    await writeFile(file, schema.code);
+    expect(schema.path).toBe("hot-updater-schema.ts");
+    return (await import(pathToFileURL(file).href)) as Record<string, unknown>;
+  };
+
+  it.each(["postgresql", "sqlite"] as const)(
+    "applies the generated %s schema with drizzle-kit, writes the settings with db migrate, and serves behind the fence",
+    async (provider) => {
+      const kit = await import("drizzle-kit/api");
+      const imports = await load(provider);
+      const statements =
+        provider === "postgresql"
+          ? await kit.generateMigration(
+              kit.generateDrizzleJson({}),
+              kit.generateDrizzleJson(imports),
+            )
+          : await kit.generateSQLiteMigration(
+              await kit.generateSQLiteDrizzleJson({}),
+              await kit.generateSQLiteDrizzleJson(imports),
+            );
+      const client =
+        provider === "postgresql" ? new PGlite() : await libsqlFile();
+      const run = async (sql: string) =>
+        client instanceof PGlite
+          ? client.exec(sql).then(() => undefined)
+          : client.executeMultiple(sql);
+      for (const statement of statements) await run(statement);
+      const db = client instanceof PGlite ? pglite(client) : libsql(client);
+      const plugin = drizzleAdapter({ db, provider });
+
+      await expect(plugin.models.channels.list({})).rejects.toBeInstanceOf(
+        HotUpdaterSchemaMigrationRequiredError,
+      );
+      const migrator = plugin.createMigrator!();
+      const pending = await migrator.migrateToLatest();
+      expect(pending.operations).toEqual([
+        expect.objectContaining({ type: "custom" }),
+      ]);
+      await pending.execute();
+      await expect(migrator.migrateToLatest()).resolves.toMatchObject({
+        operations: [],
       });
-      const previous = createBundleEventRowFixture("709", 100);
-      const next = {
-        ...createBundleEventRowFixture("710", 200),
-        install_id: previous.install_id,
-      };
-      try {
-        await plugin.models.insights.recordEvent({ event: previous });
-        await db.exec(
-          "alter table bundle_event_heads add constraint reject_head check (received_at_ms < 200)",
-        );
-        await expect(
-          plugin.models.insights.recordEvent({ event: next }),
-        ).rejects.toThrow();
-        expect((await db.query("select id from bundle_events")).rows).toEqual([
-          { id: previous.id },
-        ]);
-        await expect(
-          plugin.models.insights.findLatestEvents({
-            installId: previous.install_id,
-          }),
-        ).resolves.toEqual([previous]);
-        await db.exec(
-          "alter table bundle_event_heads drop constraint reject_head",
-        );
-        await plugin.models.insights.recordEvent({ event: next });
-        await plugin.models.insights.recordEvent({
-          event: { ...next, received_at_ms: 300, user_id: "incorrect-user" },
-        });
-        await expect(
-          plugin.models.insights.findLatestEvents({
-            installId: previous.install_id,
-          }),
-        ).resolves.toEqual([next]);
-        expect(callbackTransaction).toHaveBeenCalled();
-      } finally {
-        await db.close();
-      }
+      await expect(migrator.getVersion()).resolves.toBe("1.0.0");
+      const { release } = await seed(plugin);
+      await expect(
+        plugin.models.releases.findById(release.id),
+      ).resolves.toEqual(release);
+      await (client instanceof PGlite ? client.close() : client.close());
     },
   );
-  it("rolls back a Bun SQLite event when its head cannot be written", async () => {
-    const { stdout } = await promisify(execFile)(
-      new URL("../../../../node_modules/.bin/bun", import.meta.url).pathname,
-      [
-        "-e",
-        `
-        import { Database } from "bun:sqlite";
-        import { drizzle } from "drizzle-orm/bun-sqlite";
-        import { drizzleAdapter } from "./src/adapters/drizzle.ts";
-        import { createTableSql } from "./src/db/schema/sql.ts";
-        import { createBundleEventRowFixture } from "../test-utils/src/databaseTestFixtures.ts";
-        import * as schema from "../../examples-server/elysia-drizzle-libsql/hot-updater-schema.ts";
-        const db = new Database(":memory:");
-        db.exec(createTableSql("sqlite").join(";"));
-        db.exec("create trigger reject_head before insert on bundle_event_heads begin select raise(abort, 'injected head failure'); end;");
-        const plugin = drizzleAdapter({ db: drizzle(db, { schema }), provider: "sqlite" });
-        const event = createBundleEventRowFixture("708", 100);
-        const input = { event };
-        let rejected = false;
-        try { await plugin.models.insights.recordEvent(input); } catch { rejected = true; }
-        if (!rejected || db.query("select count(*) as total from bundle_events").get().total !== 0) throw new Error("transaction failed to roll back");
-        db.exec("drop trigger reject_head");
-        await plugin.models.insights.recordEvent(input);
-        await plugin.models.insights.recordEvent(input);
-        if (db.query("select count(*) as total from bundle_events").get().total !== 1) throw new Error("retry did not commit exactly one report");
-        const stored = db.query("select json_type(cast(metadata as text)) as kind from bundle_events").get();
-        if (stored.kind !== "object") throw new Error("event metadata was double encoded");
-        const latest = await plugin.models.insights.findLatestEvents({ installId: event.install_id });
-        if (JSON.stringify(latest[0].metadata) !== JSON.stringify(event.metadata)) throw new Error("metadata did not round trip");
-        db.close();
-        console.log("atomic retry verified");
-      `,
-      ],
-      { cwd: new URL("../..", import.meta.url).pathname },
-    );
-    expect(stdout).toContain("atomic retry verified");
-  });
-  it("keeps failed event inserts absent and permits retry", async () => {
-    const db = new PGlite();
-    await db.exec(DATABASE_PLUGIN_TEST_SCHEMA_SQL);
-    await db.exec(
-      "alter table bundle_events add constraint reject_event check (install_id <> 'install-701')",
-    );
-    const plugin = drizzleAdapter({
-      db: drizzle(db, { schema }),
-      provider: "postgresql",
-    });
-    const event = createBundleEventRowFixture("701", 100);
-    const input = { event };
-    try {
-      await expect(plugin.models.insights.recordEvent(input)).rejects.toThrow();
-      expect((await db.query("select id from bundle_events")).rows).toEqual([]);
-      await db.exec("alter table bundle_events drop constraint reject_event");
-      await plugin.models.insights.recordEvent(input);
-      await expect(
-        plugin.models.insights.findLatestEvents({
-          installId: event.install_id,
-        }),
-      ).resolves.toEqual([input.event]);
-    } finally {
-      await db.close();
-    }
-  });
 
-  it("resolves the lazy database when recording an event", async () => {
-    const getDB = vi.fn(() => {
-      throw new DrizzleTestStateError();
-    });
-    const plugin = drizzleAdapter({
-      db: getDB,
-      provider: "postgresql",
-      schema,
-    });
-    const event = createBundleEventRowFixture("702", 100);
+  it("asks for the ORM's tables first, and refuses a database from before the engine", async () => {
+    const empty = await libsqlFile();
     await expect(
-      plugin.models.insights.recordEvent({
-        event,
-      }),
-    ).rejects.toThrow(DrizzleTestStateError);
-    expect(getDB).toHaveBeenCalledOnce();
-  });
-  it("does not resolve a lazy database while generating a schema", () => {
-    const getDB = vi.fn(() => {
-      throw new DrizzleTestStateError();
-    });
-    const plugin = drizzleAdapter({
-      db: getDB,
-      provider: "postgresql",
-      schema,
-    });
+      drizzleAdapter({ db: libsql(empty), provider: "sqlite" })
+        .createMigrator!().migrateToLatest(),
+    ).rejects.toThrow("drizzle-kit push");
 
-    const generated = plugin.generateSchema?.("latest");
-
-    expect(generated?.code).toContain("pgTable");
-    expect(getDB).not.toHaveBeenCalled();
-  });
-
-  it("resolves a lazy database on the first database operation", async () => {
-    const lazyClient = new PGlite();
-    await lazyClient.exec(DATABASE_PLUGIN_TEST_SCHEMA_SQL);
-    const lazyDatabase = drizzle(lazyClient, { schema });
-    const getDB = vi.fn(async () => lazyDatabase);
-    const plugin = drizzleAdapter({
-      db: getDB,
-      provider: "postgresql",
-      schema,
-    });
-
-    try {
-      expect(getDB).not.toHaveBeenCalled();
-      await expect(plugin.models.channels.list({})).resolves.toEqual({
-        channels: [],
-      });
-      expect(getDB).toHaveBeenCalledOnce();
-    } finally {
-      await lazyClient.close();
-    }
-  });
-
-  it("rejects a lazy database without a schema on first use", () => {
-    const getDB = vi.fn(() => {
-      throw new DrizzleTestStateError();
-    });
-    const plugin = drizzleAdapter({ db: getDB, provider: "postgresql" });
-
-    expect(() => plugin.models.channels.list({})).toThrow(
-      "[hot-updater] Drizzle adapter requires schema when db is lazy.",
+    const legacy = await libsqlFile();
+    await legacy.executeMultiple(
+      "CREATE TABLE private_hot_updater_settings (key TEXT PRIMARY KEY, value TEXT NOT NULL); INSERT INTO private_hot_updater_settings VALUES ('schema.core', '1.0.0');",
     );
-    expect(getDB).not.toHaveBeenCalled();
-  });
-
-  it("rejects an invalid lazy database schema on first use", () => {
-    const getDB = vi.fn(() => {
-      throw new DrizzleTestStateError();
+    await expect(
+      drizzleAdapter({ db: libsql(legacy), provider: "sqlite" })
+        .createMigrator!().migrateToLatest(),
+    ).rejects.toMatchObject({
+      setting: { key: "schema.engine", expected: "1", found: null },
     });
-    const plugin = drizzleAdapter({
-      db: getDB,
-      provider: "postgresql",
-      schema: { ...schema, bundles: null },
-    });
-
-    expect(() => plugin.models.channels.list({})).toThrow(
-      '[hot-updater] Drizzle schema table "bundles" is invalid.',
-    );
-    expect(getDB).not.toHaveBeenCalled();
-  });
-
-  it("requires all fixed table objects on first use", () => {
-    const incompleteSchema = { bundles };
-    const plugin = drizzleAdapter({
-      db: () => getDatabase(),
-      provider: "postgresql",
-      schema: incompleteSchema,
-    });
-
-    expect(() => plugin.models.channels.list({})).toThrow(
-      'Drizzle schema is missing table "bundle_patches".',
-    );
+    empty.close();
+    legacy.close();
   });
 });
-import { execFile } from "node:child_process";
-import { promisify } from "node:util";
