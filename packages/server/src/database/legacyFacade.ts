@@ -24,14 +24,22 @@ import {
   type ExternalChange,
 } from "../core";
 import type { DatabaseAdapterWithCapabilities } from "../db/types";
-import { apiKeysSchema, createApiKeyModel } from "../plugins/api-keys";
+import { apiKeys, apiKeysSchema, createApiKeyModel } from "../plugins/api-keys";
 import {
   createInsightsModel,
   insights,
   insightsSchema,
 } from "../plugins/insights";
+import { HOT_UPDATER_SCHEMA_VERSION } from "../schema/types";
 import { createDatabaseEngine, type HotUpdaterTransaction } from "./database";
 import type { Page } from "./engineReads";
+import {
+  ENGINE_SCHEMA_KEY,
+  ENGINE_SCHEMA_VERSION,
+  migrateSchema,
+  withSchemaFence,
+  type SchemaSettings,
+} from "./fence";
 import { resolveSchema } from "./resolveSchema";
 
 const insightsModule = { id: "insights", schema: insightsSchema } as const;
@@ -48,6 +56,18 @@ export const legacyFacadeSchema = resolveSchema([
   insightsModule,
   apiKeysModule,
 ]);
+
+/** The settings rows the façade's tables are fenced by. */
+export const legacyFacadeSettings: SchemaSettings = {
+  [ENGINE_SCHEMA_KEY]: ENGINE_SCHEMA_VERSION,
+  "schema.core": HOT_UPDATER_SCHEMA_VERSION,
+  "schema.insights": insights().schemaVersion,
+  "schema.apiKeys": apiKeys().schemaVersion,
+};
+
+/** Creates the façade's tables, then writes its settings rows. */
+export const migrateLegacyFacade = (adapter: DatabaseAdapter, name: string) =>
+  migrateSchema(adapter, name, legacyFacadeSchema.tables, legacyFacadeSettings);
 
 const PAGE = 500;
 
@@ -131,9 +151,13 @@ const checkLimit = (limit: number, offset = 0) => {
 export const createLegacyDatabasePlugin = (options: {
   readonly name: string;
   readonly adapter: DatabaseAdapter;
+  /** Check the schema settings before the first read; each provider turns it on in its D PR. */
+  readonly fence?: boolean;
   readonly now?: () => number;
 }): DatabaseAdapterWithCapabilities => {
-  const { adapter } = options;
+  const adapter = options.fence
+    ? withSchemaFence(options.adapter, options.name, legacyFacadeSettings)
+    : options.adapter;
   const engine = createDatabaseEngine({ adapter, schema: legacyFacadeSchema });
   const core = engine.database(coreModule);
   const reads = createCoreReads(core, { resolveFileUrl: async () => null });
