@@ -1,6 +1,6 @@
 import { createClient } from "@supabase/supabase-js";
 
-import { SUPABASE_V1_TABLE_NAMES } from "../src/supabaseInfrastructureNames";
+import { SUPABASE_SETTINGS_TABLE } from "../src/supabaseInfrastructureNames";
 
 export type SupabaseInfrastructureState = "fresh" | "incompatible" | "v1";
 
@@ -30,18 +30,25 @@ export const supabaseApi = (
 
   return {
     getInfrastructureState: async () => {
+      const missing = (code?: string) =>
+        code === "42P01" || code === "PGRST205";
       const marker = await supabase
-        .from(SUPABASE_V1_TABLE_NAMES.settings)
+        .from(SUPABASE_SETTINGS_TABLE)
         .select("value")
-        .eq("key", "schema.core")
+        .eq("key", "schema.engine")
         .maybeSingle();
       if (!marker.error) {
-        return marker.data?.value === "1.0.0" ? "v1" : "incompatible";
+        return marker.data?.value === "1" ? "v1" : "incompatible";
       }
-      if (marker.error.code === "42P01" || marker.error.code === "PGRST205") {
-        return "fresh";
-      }
-      throw marker.error;
+      if (!missing(marker.error.code)) throw marker.error;
+      // A database from before the storage engine keeps its old settings table.
+      const legacy = await supabase
+        .from("hot_updater_v1_private_settings")
+        .select("key")
+        .limit(1);
+      if (!legacy.error) return "incompatible";
+      if (missing(legacy.error.code)) return "fresh";
+      throw legacy.error;
     },
     listBuckets: async () => {
       const { data, error } = await supabase.storage.listBuckets();

@@ -1139,6 +1139,8 @@ describe("resolveEdgeFunctionDenoConfig", () => {
       expect(result.imports).toEqual({
         "@hot-updater/server":
           "./_hot-updater/hot-updater-server/dist/index.mjs",
+        "@hot-updater/server/database":
+          "./_hot-updater/hot-updater-server/dist/database/index.mjs",
         "@hot-updater/supabase/edge":
           "./_hot-updater/hot-updater-supabase/dist/edge.mjs",
         "@hot-updater/core": "./_hot-updater/hot-updater-core/dist/index.mjs",
@@ -1157,6 +1159,9 @@ describe("resolveEdgeFunctionDenoConfig", () => {
         })}`,
         hono: `npm:hono@${resolvePackageVersion("hono", {
           searchFrom: path.resolve("plugins/supabase"),
+        })}`,
+        verkit: `npm:verkit@${resolvePackageVersion("verkit", {
+          searchFrom: path.resolve("packages/server"),
         })}`,
       });
 

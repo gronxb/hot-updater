@@ -16,19 +16,28 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { resolvePackageVersion, transformEnv } from "@hot-updater/cli-tools";
 import {
   type Bundle,
-  NIL_UUID,
   createReleaseCatalogScopeKey,
   encodeChannelKey,
 } from "@hot-updater/core";
 import {
+  type BundleEventRow,
   commitReleaseCatalogMutations,
   createDatabaseClient,
   createUUIDv7,
 } from "@hot-updater/plugin-core";
 import { createHotUpdater, registerApiKey } from "@hot-updater/server";
 import {
+  createDatabaseEngine,
+  createSqlAdapter,
+  legacyFacadeSchema,
+  type RetryOptions,
+} from "@hot-updater/server/database";
+import { insights, insightsSchema } from "@hot-updater/server/plugins/insights";
+import {
+  runContentionHarness,
   setupDatabasePluginTestSuite,
   startHttpTestServer,
+  withAdapterLatency,
 } from "@hot-updater/test-utils";
 import { createClient } from "@supabase/supabase-js";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
@@ -42,7 +51,12 @@ import {
   waitForHttpOk,
 } from "../../../../packages/test-utils/src/runtimeProcess";
 import { supabaseDatabase } from "../../src/supabaseDatabase";
-import { SUPABASE_V1_TABLE_NAMES } from "../../src/supabaseInfrastructureNames";
+import { supabaseExecutor } from "../../src/supabaseExecutor";
+import {
+  SUPABASE_SETTINGS_TABLE,
+  SUPABASE_TABLE_PREFIX,
+  supabaseTableNames,
+} from "../../src/supabaseSchema";
 import { supabaseStorage } from "../../src/supabaseStorage";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -122,6 +136,45 @@ const runtimeBundle = (id: string, overrides: Partial<Bundle> = {}): Bundle =>
     ...overrides,
     id,
   });
+
+/**
+ * PRD D6: B3's rollout moves through the apply RPC, measured and recorded.
+ * HOT_UPDATER_INGESTION_CEILING=1 runs the whole ladder of rates.
+ */
+const INGESTION_LADDER = process.env.HOT_UPDATER_INGESTION_CEILING === "1";
+const INGESTION_MOVES = INGESTION_LADDER ? 600 : 200;
+const INGESTION_RATES = INGESTION_LADDER ? [50, 100, 200, 400, 800] : [50];
+const INGESTION_WRITERS = 16;
+const INGESTION_LATENCY_MS = 5;
+
+/** Event `n` moves installation `install` onto release `release` on one channel. */
+const rolloutMove = (
+  n: number,
+  install: number,
+  release: "a" | "b",
+  receivedAt: number,
+) =>
+  ({
+    id: `01900000-0000-7000-8000-${String(n).padStart(12, "0")}`,
+    type: "UPDATE_APPLIED",
+    install_id: `install-${install}`,
+    user_id: `user-${install}`,
+    from_release_id: release === "b" ? "release-a" : "release-0",
+    from_bundle_id: release === "b" ? "bundle-a" : "bundle-0",
+    to_release_id: `release-${release}`,
+    to_bundle_id: `bundle-${release}`,
+    platform: "ios",
+    app_version: "1.0.0",
+    channel: "production",
+    metadata: {
+      username: null,
+      cohort: "1",
+      update_strategy: "appVersion",
+      fingerprint_hash: null,
+      sdk_version: null,
+    },
+    received_at_ms: receivedAt,
+  }) as BundleEventRow;
 
 const seedProductionRelease = async ({
   bundle,
@@ -224,6 +277,16 @@ describe.sequential("supabase edge runtime acceptance", () => {
       ],
       cwd: WORKSPACE_ROOT,
     });
+  };
+
+  /** Empties every data table but `keep`; the settings rows stay. */
+  const truncateDataTables = (keep: readonly string[] = []) => {
+    const tables = supabaseTableNames()
+      .filter(
+        (table) => table !== SUPABASE_SETTINGS_TABLE && !keep.includes(table),
+      )
+      .map((table) => `public."${table}"`);
+    runDatabaseSql(`TRUNCATE ${tables.join(", ")} CASCADE`);
   };
 
   beforeAll(async () => {
@@ -390,19 +453,8 @@ describe.sequential("supabase edge runtime acceptance", () => {
       throw new Error("Supabase admin client was not initialized.");
     }
 
-    for (const [table, key] of [
-      [SUPABASE_V1_TABLE_NAMES.releaseCatalogs, "scope_key"],
-      [SUPABASE_V1_TABLE_NAMES.releases, "id"],
-      [SUPABASE_V1_TABLE_NAMES.bundlePatches, "id"],
-      [SUPABASE_V1_TABLE_NAMES.bundles, "id"],
-      [SUPABASE_V1_TABLE_NAMES.channels, "id"],
-    ] as const) {
-      const { error } = await supabaseAdmin
-        .from(table)
-        .delete()
-        .neq(key, NIL_UUID);
-      if (error) throw error;
-    }
+    // The API key the suite registers last serves the edge function's routes.
+    truncateDataTables([`${SUPABASE_TABLE_PREFIX}api_keys`]);
   });
 
   afterAll(async () => {
@@ -436,12 +488,7 @@ describe.sequential("supabase edge runtime acceptance", () => {
     name: "Supabase PostgreSQL and PostgREST conformance",
     createPlugin: () => database,
     migrate: () => undefined,
-    reset: () => {
-      const tables = Object.entries(SUPABASE_V1_TABLE_NAMES)
-        .filter(([name]) => name !== "settings")
-        .map(([, table]) => `public.${table}`);
-      runDatabaseSql(`TRUNCATE ${tables.join(", ")} CASCADE`);
-    },
+    reset: () => truncateDataTables(),
     dispose: async () => {
       await registerApiKey({
         apiKey: API_KEY,
@@ -713,9 +760,9 @@ describe.sequential("supabase edge runtime acceptance", () => {
     });
   });
 
-  it("denies the generic commit RPC to the anonymous role", async () => {
+  it("denies the apply RPC to the anonymous role", async () => {
     const response = await fetch(
-      `${gatewayBaseUrl}/rest/v1/rpc/hot_updater_v1_commit`,
+      `${gatewayBaseUrl}/rest/v1/rpc/hot_updater_v1_apply`,
       {
         method: "POST",
         headers: {
@@ -723,12 +770,102 @@ describe.sequential("supabase edge runtime acceptance", () => {
           Authorization: `Bearer ${ANON_KEY}`,
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ p_commit: { changes: [] } }),
+        body: JSON.stringify({ p_statements: [] }),
       },
     );
 
     expect(response.ok).toBe(false);
   });
+
+  it("records the Insights ingestion ceiling through the apply RPC", async () => {
+    const adapter = createSqlAdapter({
+      executor: supabaseExecutor(
+        createClient(gatewayBaseUrl, SERVICE_ROLE_KEY),
+      ),
+      tablePrefix: SUPABASE_TABLE_PREFIX,
+    });
+    const module = { id: "insights", schema: insightsSchema } as const;
+    const apiOf = (latencyMs: number, retry?: RetryOptions) =>
+      insights().init({
+        db: createDatabaseEngine({
+          adapter:
+            latencyMs > 0 ? withAdapterLatency(adapter, latencyMs) : adapter,
+          schema: legacyFacadeSchema,
+          ...(retry === undefined ? {} : { retry }),
+        }).database(module),
+        core: {},
+        now: Date.now,
+      }).api;
+    const seeded = apiOf(0, { attempts: 64, baseDelayMs: 1, maxDelayMs: 20 });
+    const start = Date.now() - 2 * 3_600_000;
+    const steps = [];
+    for (const [step, rate] of INGESTION_RATES.entries()) {
+      // Each step moves its own installations, first onto A, then A→B.
+      const first = step * INGESTION_MOVES;
+      const seed = await runContentionHarness({
+        transactions: INGESTION_MOVES,
+        ratePerSecond: 5000,
+        concurrency: 4,
+        run: (i) =>
+          seeded.recordEvent(
+            rolloutMove(2 * first + i, first + i, "a", start + first + i),
+          ),
+      });
+      expect(seed.errors).toEqual({});
+      const retries = { rerun: 0, resend: 0, retriedTransactions: 0 };
+      const api = apiOf(INGESTION_LATENCY_MS, {
+        onRetry: (kind, attempt) => {
+          retries[kind] += 1;
+          if (attempt === 1) retries.retriedTransactions += 1;
+        },
+      });
+      const report = await runContentionHarness({
+        transactions: INGESTION_MOVES,
+        ratePerSecond: rate,
+        concurrency: INGESTION_WRITERS,
+        run: (i) =>
+          api.recordEvent(
+            rolloutMove(
+              2 * first + INGESTION_MOVES + i,
+              first + i,
+              "b",
+              Date.now(),
+            ),
+          ),
+      });
+      steps.push({
+        rate,
+        ...report,
+        ...retries,
+        retried: retries.retriedTransactions / INGESTION_MOVES,
+        achieved: Math.round(report.committed / (report.durationMs / 1000)),
+      });
+    }
+    // The ceiling: the highest rate kept up with, no errors and at most 5% retried.
+    const ceiling = steps
+      .filter(
+        (step) =>
+          Object.keys(step.errors).length === 0 &&
+          step.retried <= 0.05 &&
+          step.achieved >= step.rate * 0.9,
+      )
+      .at(-1)?.rate;
+    console.info(
+      "supabase-ingestion-ceiling",
+      JSON.stringify({
+        writers: INGESTION_WRITERS,
+        latencyMs: INGESTION_LATENCY_MS,
+        ceiling,
+        steps,
+      }),
+    );
+    for (const { committed, errors } of steps) {
+      // Under contention a move may run out of retries, and nothing else fails.
+      const { DatabaseConflictError: conflicts = 0, ...others } = errors;
+      expect(others).toEqual({});
+      expect(committed + conflicts).toBe(INGESTION_MOVES);
+    }
+  }, 600_000);
 
   it("serves unversioned Release Catalog routes from the edge function entrypoint", async () => {
     const bundle = toRuntimeBundle({
@@ -838,7 +975,7 @@ const waitForRestApiReady = async (baseUrl: string, timeoutMs = 90_000) => {
   while (Date.now() < deadline) {
     try {
       const response = await fetch(
-        `${baseUrl}/rest/v1/${SUPABASE_V1_TABLE_NAMES.bundles}?select=id&limit=1`,
+        `${baseUrl}/rest/v1/${SUPABASE_TABLE_PREFIX}bundles?select=id&limit=1`,
         {
           headers: {
             apikey: SERVICE_ROLE_KEY,
@@ -993,9 +1130,7 @@ GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO service_role;
 GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO anon, authenticated, service_role;
 GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA public TO anon, authenticated, service_role;
 
-REVOKE EXECUTE ON FUNCTION public.hot_updater_v1_commit(jsonb)
-  FROM anon, authenticated;
-REVOKE EXECUTE ON FUNCTION public.hot_updater_v1_delete_channel(text)
+REVOKE EXECUTE ON FUNCTION public.hot_updater_v1_apply(jsonb)
   FROM anon, authenticated;
 
 ALTER DEFAULT PRIVILEGES IN SCHEMA public
