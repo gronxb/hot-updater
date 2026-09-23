@@ -87,9 +87,13 @@ const bundleEventHeads = defineTable(
 );
 
 /**
- * Every insights aggregate has 8 shards, keyed by install id. B3's rollout
- * gate on PostgreSQL measured 2.5% of transactions retried at 8 (1.8% at 16).
+ * Shards are keyed by install id. Counters are blind increments and never
+ * conflict, so they keep 8. Gauges and sketches are read, merged, and written
+ * back, so they get 16: B3's rollout gate on PostgreSQL retried 2.4% of
+ * transactions at 8 and 1.3% at 16, and a loaded run at 8 went past 5%.
  */
+const COUNTER_SHARDS = 8;
+const MERGED_SHARDS = 16;
 
 /** Rows keyed by a hashed identity (scope and period) and a bucket. */
 const identityFields = {
@@ -101,14 +105,14 @@ const window = { eq: ["identity"], sort: ["bucket_start_ms"] } as const;
 const insightsOverview = defineAggregate(identityFields, {
   key: ["identity", "bucket_start_ms"],
   counters: ["downloads", "launches", "failed_launches"],
-  shards: 8,
+  shards: COUNTER_SHARDS,
   indexes: { window },
 });
 
 const insightsSketches = defineAggregate(identityFields, {
   key: ["identity", "bucket_start_ms"],
   distinct: ["launch_users", "activity_users"],
-  shards: 8,
+  shards: MERGED_SHARDS,
   indexes: { window },
 });
 
@@ -130,7 +134,7 @@ const insightsDistribution = defineAggregate(
       "bucket_start_ms",
     ],
     gauges: ["latest_installations"],
-    shards: 8,
+    shards: MERGED_SHARDS,
     indexes: {
       byScope: { eq: ["channel", "platform"], sort: ["bucket_start_ms"] },
       byVersion: {
@@ -161,7 +165,7 @@ const insightsLatestByBundle = defineAggregate(
       "bucket_start_ms",
     ],
     gauges: ["installations"],
-    shards: 8,
+    shards: MERGED_SHARDS,
     indexes: {
       byBundle: {
         eq: ["platform", "channel", "bundle_field", "bundle_id", "type"],
@@ -183,7 +187,7 @@ const insightsOutcomes = defineAggregate(
   {
     key: ["platform", "channel", "type", "bundle_ref", "bucket_start_ms"],
     counters: ["events"],
-    shards: 8,
+    shards: COUNTER_SHARDS,
     indexes: {
       byRef: {
         eq: ["platform", "channel", "type", "bundle_ref"],
