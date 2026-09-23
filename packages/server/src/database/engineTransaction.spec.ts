@@ -8,13 +8,13 @@ import { describe, expect, it } from "vitest";
 
 import { createDatabaseEngine, type HotUpdaterTransaction } from "./database";
 import { DatabaseQueryError } from "./engineReads";
+import type { RetryOptions } from "./engineTransaction";
 import {
   DatabaseAmbiguousCommitError,
   DatabaseConflictError,
   DatabaseConstraintError,
   DatabaseTransactionError,
-  type RetryOptions,
-} from "./engineTransaction";
+} from "./errors";
 import { resolveSchema } from "./resolveSchema";
 import { defineTable } from "./schema";
 

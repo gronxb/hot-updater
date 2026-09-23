@@ -2,6 +2,7 @@ export * from "./setupBundleMethodsTestSuite";
 export * from "./setupSemverSatisfiesTestSuite";
 export * from "./setupDatabasePluginTestSuite";
 export * from "./setupDatabaseAdapterConformanceSuite";
+export * from "./runContentionHarness";
 export * from "./setupDatabaseClientTestSuite";
 export * from "./setupReleaseCatalogTestSuite";
 export * from "./httpTestClient";
