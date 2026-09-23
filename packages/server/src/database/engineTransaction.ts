@@ -144,6 +144,8 @@ export const createTransactions = (options: {
 
   const attempt = async <R>(fn: (tx: TransactionEngine) => Promise<R>) => {
     const read = new Map<string, StoredRow | null>();
+    /** Rows of rooted ranges: their root guards them, so they need no check of their own. */
+    const ranged = new Map<string, StoredRow>();
     const writes = new Map<string, Pending>();
     const deleted: string[] = [];
     const aggregates = new Map<string, AggregateChange>();
@@ -182,7 +184,8 @@ export const createTransactions = (options: {
       return row;
     };
     const readRow = (model: ResolvedModel, row: StoredRow) => {
-      const known = read.get(idOf(model.table.name, rowKey(model.table, row)));
+      const id = idOf(model.table.name, rowKey(model.table, row));
+      const known = read.get(id) ?? ranged.get(id);
       if (known && versionOf(known) === versionOf(row)) return known;
       throw misuse(
         model.table.name,
@@ -355,7 +358,11 @@ export const createTransactions = (options: {
           parent.table.key.map((field, position) => [field, key[position]!]),
         );
         remember(parent, key, await reads.findOne(root, lookup));
-        return reads.findMany(name, input);
+        const page = await reads.findMany(name, input);
+        for (const row of page.rows) {
+          ranged.set(idOf(name, rowKey(model.table, row)), row);
+        }
+        return page;
       }),
       create: step((name, values) => {
         const model = tableOf(name);

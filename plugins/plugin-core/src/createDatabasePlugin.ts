@@ -624,7 +624,8 @@ const validateDatabaseCommitExpectation = (expectation: unknown): void => {
   throw new DatabasePluginInputError("invalid-model");
 };
 
-function validateDatabaseCommit(
+/** Rejects a malformed commit with `DatabasePluginInputError`, as every provider does. */
+export function validateDatabaseCommit(
   input: unknown,
 ): asserts input is DatabaseCommit {
   if (

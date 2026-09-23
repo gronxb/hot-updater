@@ -1,6 +1,7 @@
 export {
   createDatabasePluginAdapter,
   DatabaseRowReferencedError,
+  validateDatabaseCommit,
   type DatabasePluginAdapter,
 } from "./createDatabasePlugin";
 export { databaseFields } from "./types/databaseFields";
