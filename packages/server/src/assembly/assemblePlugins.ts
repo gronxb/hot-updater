@@ -5,6 +5,7 @@ import {
 
 import { createDatabaseEngine } from "../database/database";
 import { resolveSchema, type SchemaModule } from "../database/resolveSchema";
+import { builtInPlugin } from "../plugins/builtIn";
 import type {
   ClientAuth,
   PluginEndpoint,
@@ -15,9 +16,6 @@ import type {
 export class HotUpdaterConfigError extends Error {
   readonly name = "HotUpdaterConfigError";
 }
-
-/** Set on built-in plugins, whose tables keep their names instead of taking the plugin id as a namespace. */
-export const builtInPlugin = Symbol.for("@hot-updater/server/built-in-plugin");
 
 export interface MountedEndpoint extends PluginEndpoint {
   readonly plugin: string;
