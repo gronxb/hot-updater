@@ -13,7 +13,7 @@ export const SETTINGS_TABLE: PhysicalTable = {
   columns: [
     { name: "key", type: "string", nullable: false, maxLength: 255 },
     { name: "value", type: "string", nullable: false, maxLength: 255 },
-    { name: "_v", type: "integer", nullable: false },
+    { name: "_v", type: "integer", nullable: false, default: 0 },
   ],
   key: ["key"],
   indexes: [],
@@ -25,6 +25,34 @@ export const ENGINE_SCHEMA_VERSION = "1";
 
 /** Settings keys and the values a process expects, `schema.engine` included. */
 export type SchemaSettings = Readonly<Record<string, string>>;
+
+/** Driver codes for a table or column the database lacks. */
+const MISSING_SCHEMA_CODES = new Set([
+  "42P01", // PostgreSQL undefined_table
+  "42703", // PostgreSQL undefined_column
+  "ER_NO_SUCH_TABLE", // MySQL 1146
+  "ER_BAD_FIELD_ERROR", // MySQL 1054
+]);
+const MISSING_SCHEMA_MESSAGE =
+  /no such (?:table|column)|(?:relation|column) .+ does not exist|table .+ doesn't exist|unknown column/iu;
+
+/**
+ * Whether a read failed because a table or column is missing, so the
+ * database needs migrations. ORMs may wrap the driver's error in `cause`.
+ */
+export const isMissingSchemaError = (error: unknown): boolean => {
+  for (let depth = 0; error instanceof Object && depth < 8; depth += 1) {
+    const { code, message, cause } = error as Record<string, unknown>;
+    if (
+      MISSING_SCHEMA_CODES.has(String(code)) ||
+      (typeof message === "string" && MISSING_SCHEMA_MESSAGE.test(message))
+    ) {
+      return true;
+    }
+    error = cause;
+  }
+  return false;
+};
 
 const readSettings = async (
   adapter: DatabaseAdapter,
@@ -46,6 +74,8 @@ export const checkSchemaFence = async (
   try {
     rows = await readSettings(adapter, keys);
   } catch (cause) {
+    // A connection or driver failure is not a schema to migrate.
+    if (!isMissingSchemaError(cause)) throw cause;
     throw new HotUpdaterSchemaMigrationRequiredError(
       adapterName,
       undefined,
@@ -181,7 +211,10 @@ export const migrateSchema = async (
   const stored = await storedSettings(adapter, [
     "schema.core",
     ENGINE_SCHEMA_KEY,
-  ]).catch(() => new Map<string, StoredRow | null>());
+  ]).catch((error: unknown) => {
+    if (!isMissingSchemaError(error)) throw error;
+    return new Map<string, StoredRow | null>();
+  });
   assertEngineDatabase(adapterName, stored);
   await adapter.migrations.apply([...tables, SETTINGS_TABLE]);
   await writeSchemaSettings(adapter, adapterName, settings);
