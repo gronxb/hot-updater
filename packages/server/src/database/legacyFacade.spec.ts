@@ -11,7 +11,10 @@ import { afterAll } from "vitest";
 
 import type { DatabaseAdapterWithCapabilities } from "../db/types";
 import { createHotUpdater } from "../index";
-import { createLegacyDatabasePlugin, legacyFacadeSchema } from "./legacyFacade";
+import {
+  createLegacyDatabasePlugin,
+  migrateLegacyFacade,
+} from "./legacyFacade";
 import { createSqlAdapter } from "./sql/sqlAdapter";
 import { pgliteExecutor } from "./sql/sqlTestExecutors";
 
@@ -45,9 +48,12 @@ const resettable = (createAdapter: () => Promise<DatabaseAdapter>) => {
   return {
     plugin,
     reset: async () => {
+      const adapter = await createAdapter();
+      await migrateLegacyFacade(adapter, "legacy façade");
       current = createLegacyDatabasePlugin({
         name: "legacy façade",
-        adapter: await createAdapter(),
+        adapter,
+        fence: true,
       });
     },
   };
@@ -63,12 +69,10 @@ for (const [name, createAdapter] of [
     "legacy façade (PGlite)",
     async () => {
       tables += 1;
-      const adapter = createSqlAdapter({
+      return createSqlAdapter({
         executor: pgliteExecutor(pglite),
         tablePrefix: `f${tables}_`,
       });
-      await adapter.migrations?.apply(legacyFacadeSchema.tables);
-      return adapter;
     },
   ],
 ] as const) {
