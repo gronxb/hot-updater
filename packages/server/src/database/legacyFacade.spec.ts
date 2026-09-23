@@ -9,10 +9,13 @@ import {
 } from "@hot-updater/test-utils";
 import { afterAll } from "vitest";
 
+import { generateEngineSql } from "../db/engineSql";
 import type { DatabaseAdapterWithCapabilities } from "../db/types";
 import { createHotUpdater } from "../index";
 import {
   createLegacyDatabasePlugin,
+  legacyFacadeSchema,
+  legacyFacadeSettings,
   migrateLegacyFacade,
 } from "./legacyFacade";
 import { createSqlAdapter } from "./sql/sqlAdapter";
@@ -49,7 +52,6 @@ const resettable = (createAdapter: () => Promise<DatabaseAdapter>) => {
     plugin,
     reset: async () => {
       const adapter = await createAdapter();
-      await migrateLegacyFacade(adapter, "legacy façade");
       current = createLegacyDatabasePlugin({
         name: "legacy façade",
         adapter,
@@ -64,14 +66,31 @@ afterAll(() => pglite.close());
 let tables = 0;
 
 for (const [name, createAdapter] of [
-  ["legacy façade (memory)", async () => createMemoryAdapter()],
+  [
+    "legacy façade (memory)",
+    async () => {
+      const adapter = createMemoryAdapter();
+      await migrateLegacyFacade(adapter, "memory");
+      return adapter;
+    },
+  ],
   [
     "legacy façade (PGlite)",
     async () => {
       tables += 1;
+      // The shared SQL schema, database foreign keys included.
+      const tablePrefix = `f${tables}_`;
+      await pglite.exec(
+        generateEngineSql(
+          "postgresql",
+          legacyFacadeSchema,
+          legacyFacadeSettings,
+          { tablePrefix },
+        ).join(";\n"),
+      );
       return createSqlAdapter({
         executor: pgliteExecutor(pglite),
-        tablePrefix: `f${tables}_`,
+        tablePrefix,
       });
     },
   ],

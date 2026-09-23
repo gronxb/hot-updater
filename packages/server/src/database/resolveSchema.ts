@@ -352,9 +352,9 @@ export const resolveSchema = (
       }
       for (const reference of referencedBy) {
         if (reference.counter !== undefined)
-          columns.push(integer(reference.counter));
+          columns.push({ ...integer(reference.counter), default: 0 });
       }
-      columns.push(integer(DATABASE_VERSION_COLUMN));
+      columns.push({ ...integer(DATABASE_VERSION_COLUMN), default: 0 });
       models.set(name, {
         module: module.id,
         model,
