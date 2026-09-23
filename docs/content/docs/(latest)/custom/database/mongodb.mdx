@@ -12,10 +12,10 @@ or your existing backend. Make the database and storage environment variables
 available to the server and schema commands. The React Native project's deploy
 configuration is a separate step.
 
-Run MongoDB as a replica set or sharded cluster and set `transactions: true`.
-Release and Release Catalog changes must commit atomically. With transactions
-disabled, commits with revision expectations or multiple changes are rejected,
-so a standalone MongoDB server cannot support the normal deployment workflow.
+Run MongoDB as a replica set or sharded cluster. Hot Updater writes in
+transactions so that each change commits atomically, and a standalone MongoDB
+server cannot run them: its first write fails with
+`MongoTransactionUnsupportedError`.
 
 ## Installation
 
@@ -53,7 +53,7 @@ import { s3Storage } from "@hot-updater/aws";
 import { client } from "./mongodb";
 
 export const hotUpdater = createHotUpdater({
-  database: mongoAdapter({ client, transactions: true }), // [!code ++]
+  database: mongoAdapter({ client }), // [!code ++]
   clientAccess: { type: "api-key" },
   storage: [
     s3Storage({
@@ -79,7 +79,9 @@ npx hot-updater db migrate src/hotUpdater.ts
 ```
 
 This command targets `src/hotUpdater.ts` and creates all Hot Updater
-collections and indexes required by the active database schema.
+collections and indexes required by the active database schema, then writes the
+settings the server checks before its first read. Until they exist, the server
+answers 503.
 
 ## CLI configuration
 
