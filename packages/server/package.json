@@ -44,6 +44,10 @@
       "import": "./dist/plugins/index.mjs",
       "require": "./dist/plugins/index.cjs"
     },
+    "./plugins/api-keys": {
+      "import": "./dist/plugins/api-keys/index.mjs",
+      "require": "./dist/plugins/api-keys/index.cjs"
+    },
     "./plugins/insights": {
       "import": "./dist/plugins/insights/index.mjs",
       "require": "./dist/plugins/insights/index.cjs"
