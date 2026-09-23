@@ -121,7 +121,8 @@ describe("Insights rollout gate on PostgreSQL", () => {
     const seed = await runContentionHarness({
       transactions: INSTALLS,
       ratePerSecond: 5000,
-      concurrency: CONNECTIONS,
+      // Setup, not the gate: few writers, so one hour's rows are not a hot spot.
+      concurrency: 4,
       run: (install) =>
         seeded.recordEvent(move(install, install, "a", start + install)),
     });
