@@ -2,7 +2,6 @@ import {
   getHotUpdaterCoreMetadata,
   type RuntimeHotUpdaterAPI,
 } from "../createHotUpdaterCore";
-import { generateSchemaFromHotUpdaterSchema } from "./schemaGenerators";
 import { type Migrator, type SchemaGenerator } from "./types";
 
 export * from "./createBundleDiff";
@@ -42,12 +41,5 @@ export function generateSchema(
   ...args: Parameters<SchemaGenerator>
 ): ReturnType<SchemaGenerator> {
   const { adapterCapabilities, core } = getDBMetadata(hotUpdater);
-  const schemaGenerator =
-    adapterCapabilities.generateSchema ?? core.generateSchema;
-  return generateSchemaFromHotUpdaterSchema(
-    hotUpdater.adapterName,
-    adapterCapabilities.provider,
-    args[0],
-    schemaGenerator(...args),
-  );
+  return (adapterCapabilities.generateSchema ?? core.generateSchema)(...args);
 }

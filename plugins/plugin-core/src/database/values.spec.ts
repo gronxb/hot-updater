@@ -84,6 +84,14 @@ describe("database value helpers", () => {
         { jsonText: false },
       ),
     ).toMatchObject({ size: 3, ratio: null, tags: null, meta: "text" });
+    // Prisma reads a SQLite BIGINT flag as a BigInt.
+    expect(
+      normalizeStoredRow(
+        table,
+        { id: "c", size: 1, enabled: 1n },
+        { jsonText: true },
+      ),
+    ).toMatchObject({ enabled: true });
   });
 
   it("rejects integers outside the safe range and non-boolean flags", () => {

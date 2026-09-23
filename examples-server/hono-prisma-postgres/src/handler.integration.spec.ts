@@ -166,20 +166,17 @@ describe("Hot Updater Handler Integration Tests (Hono + Prisma + PostgreSQL)", (
       cwd: projectRoot,
       env: { DATABASE_URL: testDatabaseUrl },
     });
+
+    // Set the collations Prisma cannot declare, then write the settings rows
     await execa(
-      "npx",
-      [
-        "prisma",
-        "db",
-        "execute",
-        "--file",
-        "prisma/insights-collation.sql",
-        "--schema",
-        "prisma/schema.prisma",
-      ],
+      "node",
+      [hotUpdaterCli, "db", "migrate", "src/db.ts", "--yes"],
       {
         cwd: projectRoot,
-        env: { DATABASE_URL: testDatabaseUrl },
+        env: {
+          DATABASE_URL: testDatabaseUrl,
+          TEST_DATABASE_URL: testDatabaseUrl,
+        },
       },
     );
 
@@ -479,7 +476,14 @@ describe("Hot Updater Handler Integration Tests (Hono + Prisma + PostgreSQL)", (
             },
           ],
         }),
-      ).rejects.toThrow("injected Prisma bundle delete failure");
+      ).rejects.toMatchObject({
+        // The engine reports a failed write as ambiguous, with the database's error as its cause.
+        cause: {
+          message: expect.stringContaining(
+            "injected Prisma bundle delete failure",
+          ),
+        },
+      });
 
       await expect(
         database.models.bundles.findById(targetId),
