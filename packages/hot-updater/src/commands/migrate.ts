@@ -197,11 +197,12 @@ export async function migrate(options: MigrateOptions) {
     switch (adapterName) {
       case "kysely":
       case "mongodb":
+      // drizzle-kit applies Drizzle's tables; its migrator writes the settings rows.
+      case "drizzle":
         // Use createMigrator to run migrations
         await migrateWithMigrator(hotUpdater, skipConfirm, s);
         break;
 
-      case "drizzle":
       case "prisma":
         // These adapters have their own migration systems
         s.stop("Migration not supported");

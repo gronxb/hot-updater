@@ -65,6 +65,16 @@ describe("Hot Updater Handler Integration Tests (Hono + Drizzle + PGlite)", () =
       env: { TEST_DB_PATH: testDbPath },
     });
 
+    // Write the settings rows the server checks before its first read
+    await execa(
+      "node",
+      [hotUpdaterCli, "db", "migrate", "src/db.ts", "--yes"],
+      {
+        cwd: projectRoot,
+        env: { TEST_DB_PATH: testDbPath },
+      },
+    );
+
     serverProcess = spawnServerProcess({
       serverCommand: ["npx", "tsx", "src/index.ts"],
       port,
