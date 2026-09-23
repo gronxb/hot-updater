@@ -81,5 +81,7 @@ sqUuNdElBASjowpKQMp2N/cCAwEAAQ==
 -----END PUBLIC KEY-----</string>
 		<key>HOT_UPDATER_MIN_BUNDLE_ID</key>
 		<string>$(HOT_UPDATER_MIN_BUNDLE_ID)</string>
+		<key>HOT_UPDATER_VERIFY_ON_APP_READY</key>
+		<true/>
 	</dict>
 </plist>
