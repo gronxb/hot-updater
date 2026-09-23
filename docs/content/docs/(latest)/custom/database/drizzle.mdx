@@ -94,11 +94,16 @@ export default defineConfig({
 });
 ```
 
-Apply the schema before starting the server:
+Apply the schema, then write the schema settings, before starting the server:
 
 ```bash
 npx drizzle-kit push
+npx hot-updater db migrate src/hotUpdater.ts --yes
 ```
+
+Drizzle Kit creates the tables. `db migrate` then writes the settings rows the
+server checks before its first read; until they exist, the server answers 503.
+Run both again after upgrading Hot Updater.
 
 <Callout>
   Need to generate SQL without config? See [SQL

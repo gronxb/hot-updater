@@ -2,7 +2,6 @@ import { PGlite } from "@electric-sql/pglite";
 import type { Bundle } from "@hot-updater/core";
 import { NIL_UUID } from "@hot-updater/core";
 import { createStoragePlugin } from "@hot-updater/plugin-core";
-import { sql } from "drizzle-orm";
 import { Kysely } from "kysely";
 import { PGliteDialect } from "kysely-pglite-dialect";
 import { type ClientSession, MongoClient } from "mongodb";
@@ -29,7 +28,6 @@ import {
 import { bundleToRow } from "./bundleRows";
 import { createTableSql, hotUpdaterSchemaVersions } from "./hotUpdaterSchema";
 import { createMigrator, generateSchema } from "./index";
-import { generateDrizzleSchema } from "./schemaGenerators";
 import type { DatabasePlugin, ORMProvider } from "./types";
 
 const createHotUpdater = (
@@ -73,85 +71,6 @@ model private_hot_updater_settings {
   key String @id
   value String @default("0.36.0")
 }`;
-
-const RAW_DRIZZLE_SCHEMA = `import { relations } from "drizzle-orm";
-import {
-  pgTable,
-  uuid,
-  text,
-  boolean,
-  json,
-  integer,
-  doublePrecision,
-  varchar,
-  foreignKey,
-} from "drizzle-orm/pg-core";
-
-export const bundles = pgTable("bundles", {
-  id: uuid("id").primaryKey().notNull(),
-  platform: text("platform").notNull(),
-  should_force_update: boolean("should_force_update").notNull(),
-  enabled: boolean("enabled").notNull(),
-  git_commit_hash: text("git_commit_hash"),
-  message: text("message"),
-  channel: text("channel").notNull().default("production"),
-  target_app_version: text("target_app_version"),
-  fingerprint_hash: text("fingerprint_hash"),
-  metadata: json("metadata").notNull(),
-  manifest_storage_uri: text("manifest_storage_uri").notNull(),
-  manifest_file_hash: text("manifest_file_hash").notNull(),
-  asset_base_storage_uri: text("asset_base_storage_uri").notNull(),
-  rollout_cohort_count: integer("rollout_cohort_count")
-    .notNull()
-    .default(1000),
-  target_cohorts: json("target_cohorts"),
-})
-
-export const bundle_patches = pgTable(
-  "bundle_patches",
-  {
-    id: varchar("id", { length: 255 }).primaryKey().notNull(),
-    bundle_id: uuid("bundle_id").notNull(),
-    base_bundle_id: uuid("base_bundle_id").notNull(),
-    base_file_hash: text("base_file_hash").notNull(),
-    patch_file_hash: text("patch_file_hash").notNull(),
-    patch_storage_uri: text("patch_storage_uri").notNull(),
-    byte_size: doublePrecision("byte_size").notNull(),
-    order_index: integer("order_index").notNull().default(0),
-  }, (table) => [
-    foreignKey({
-      columns: [table.bundle_id],
-      foreignColumns: [bundles.id],
-      name: "bundle_patches_bundle_id_fk",
-    })
-      .onUpdate("restrict")
-      .onDelete("cascade"),
-    foreignKey({
-      columns: [table.base_bundle_id],
-      foreignColumns: [bundles.id],
-      name: "bundle_patches_base_bundle_id_fk",
-    })
-      .onUpdate("restrict")
-      .onDelete("cascade"),
-])
-
-export const private_hot_updater_settings = pgTable("private_hot_updater_settings", {
-  key: varchar("key", { length: 255 }).primaryKey().notNull(),
-  version: varchar("version", { length: 255 }).notNull().default("0.36.0"),
-})
-
-export const bundle_patchesRelations = relations(bundle_patches, ({ one, many }) => ({
-  bundle: one(bundles, {
-    relationName: "bundle_patches_bundles_patches",
-    fields: [bundle_patches.bundle_id],
-    references: [bundles.id],
-  }),
-  baseBundle: one(bundles, {
-    relationName: "bundle_patches_bundles_baseForPatches",
-    fields: [bundle_patches.base_bundle_id],
-    references: [bundles.id],
-  }),
-}));`;
 
 function createTestStoragePlugin(
   protocol: string,
@@ -254,35 +173,9 @@ describe("server/db hotUpdater (PGlite + Kysely)", async () => {
       provider: "sqlite",
     }),
   });
-  const drizzleSchemaHotUpdater = createHotUpdater({
-    database: createSchemaOnlyAdapter({
-      code: RAW_DRIZZLE_SCHEMA,
-      name: "drizzle",
-      path: "hot-updater-schema.ts",
-      provider: "postgresql",
-    }),
-  });
 
   it("uses the default generated schema artifact path for Drizzle", () => {
-    const adapter = drizzleAdapter({
-      db: {
-        _: {
-          fullSchema: {
-            bundle_patches: {},
-            bundles: {},
-          },
-        },
-        $count: vi.fn(),
-        delete: vi.fn(),
-        insert: vi.fn(),
-        query: {
-          bundle_patches: { findFirst: vi.fn(), findMany: vi.fn() },
-          bundles: { findFirst: vi.fn(), findMany: vi.fn() },
-        },
-        update: vi.fn(),
-      },
-      provider: "sqlite",
-    });
+    const adapter = drizzleAdapter({ db: {}, provider: "sqlite" });
 
     expect(adapter.generateSchema?.("latest").path).toBe(
       "hot-updater-schema.ts",
@@ -364,52 +257,16 @@ describe("server/db hotUpdater (PGlite + Kysely)", async () => {
       );
     });
 
-    it("includes foreign keys and indexes in Drizzle output", () => {
-      const code = generateSchema(drizzleSchemaHotUpdater, "latest").code;
-      const bundlesBlock = code.match(
-        /export const bundles = [\s\S]*?(?=\n\nexport const bundle_patches = )/,
-      )?.[0];
-      const bundlePatchesBlock = code.match(
-        /export const bundle_patches = [\s\S]*?(?=\n\nexport const bundle_patchesRelations = )/,
-      )?.[0];
+    it("passes the Drizzle adapter's engine schema through unchanged", () => {
+      const database = drizzleAdapter({ db: {}, provider: "postgresql" });
+      const code = generateSchema(
+        createHotUpdater({ database }),
+        "latest",
+      ).code;
 
-      expect(code).toContain(
-        'metadata: json("metadata").notNull().default({})',
-      );
-      expect(code).toContain('name: "bundle_patches_bundle_id_fk"');
-      expect(code).toContain('name: "bundle_patches_base_bundle_id_fk"');
-      expect(code).toContain('.onDelete("cascade")');
-      expect(bundlesBlock).not.toContain("bundles_channel_idx");
-      expect(bundlesBlock).not.toContain("bundles_platform_idx");
-      expect(bundlesBlock).not.toContain("target_app_version");
-      expect(bundlesBlock).not.toContain(
-        'index("bundle_patches_bundle_id_idx").on(table.bundle_id)',
-      );
-      expect(bundlePatchesBlock).toContain(
-        'index("bundle_patches_bundle_id_idx").on(table.bundle_id)',
-      );
-      expect(code).toContain(
-        'index("releases_scope_order_idx").on(table.scope_key, table.id)',
-      );
-      expect(code).toContain(
-        'scope_key: varchar("scope_key", { length: 2048 }).primaryKey().notNull()',
-      );
-      const generatedCode = generateDrizzleSchema("postgresql");
-      expect(generatedCode).toContain(
-        'id: varchar("id", { length: 255 }).primaryKey().notNull()',
-      );
-      expect(generatedCode).toContain(
-        'version: varchar("version", { length: 255 }).notNull().default("1.0.0")',
-      );
-      expect(generatedCode).toContain(
-        'uniqueIndex("channels_name_key").on(table.name)',
-      );
-      expect(generatedCode).toContain('name: "releases_channel_id_fk"');
-      expect(generatedCode).toContain(
-        'index("releases_channel_platform_order_idx").on(table.channel_id, table.platform, table.id)',
-      );
-      expect(generatedCode).not.toContain('key: varchar("key"');
-      expect(generatedCode).not.toContain('value: text("value"');
+      expect(code).toBe(database.generateSchema?.("latest").code);
+      expect(code).toContain('pgTable("bundle_totals"');
+      expect(code).toContain('pgTable("private_hot_updater_settings"');
     });
   });
 
@@ -822,132 +679,6 @@ describe("server/db hotUpdater (PGlite + Kysely)", async () => {
       expect($transaction).toHaveBeenCalledTimes(1);
       expect(txBundles.create).toHaveBeenCalledTimes(1);
       expect(rootBundles.create).not.toHaveBeenCalled();
-    });
-
-    it("commits Drizzle bundle changes inside a transaction when available", async () => {
-      const tables = {
-        bundle_events: {
-          id: "event_id",
-        },
-        bundle_event_heads: {
-          install_id: "install_id",
-        },
-        insights_overview: {
-          id: "insights_overview_id",
-        },
-
-        bundle_patches: {
-          bundle_id: "bundle_id",
-          id: "patch_id",
-          order_index: "order_index",
-        },
-        bundles: {
-          id: "id",
-        },
-        channels: {
-          id: sql.raw("channel_id"),
-          name: sql.raw("channel_name"),
-        },
-        api_keys: {
-          id: "access_key_id",
-        },
-        release_catalogs: {
-          scope_key: "scope_key",
-        },
-        releases: {
-          id: "release_id",
-          scope_key: "scope_key",
-        },
-      };
-      const rootInsert = vi.fn(() => ({
-        values: vi.fn(() => ({ execute: vi.fn(async () => undefined) })),
-      }));
-      const txInsert = vi.fn(() => ({
-        values: vi.fn(() => ({ execute: vi.fn(async () => undefined) })),
-      }));
-      const createDb = (insert: typeof rootInsert) => ({
-        _: { fullSchema: tables },
-        $count: vi.fn(),
-        delete: vi.fn(() => ({
-          where: vi.fn(async () => undefined),
-        })),
-        insert,
-        query: {
-          bundle_events: {
-            findFirst: vi.fn(),
-            findMany: vi.fn(),
-          },
-          bundle_event_heads: {
-            findFirst: vi.fn(),
-            findMany: vi.fn(),
-          },
-          insights_overview: {
-            findFirst: vi.fn(),
-            findMany: vi.fn(),
-          },
-
-          bundle_patches: {
-            findFirst: vi.fn(),
-            findMany: vi.fn(),
-          },
-          bundles: {
-            findFirst: vi.fn(async () => undefined),
-            findMany: vi.fn(),
-          },
-          channels: {
-            findFirst: vi.fn(async () => ({
-              id: transactionChannelId,
-              name: "production",
-            })),
-            findMany: vi.fn(),
-          },
-          api_keys: {
-            findFirst: vi.fn(),
-            findMany: vi.fn(),
-          },
-          release_catalogs: {
-            findFirst: vi.fn(),
-            findMany: vi.fn(),
-          },
-          releases: {
-            findFirst: vi.fn(),
-            findMany: vi.fn(),
-          },
-        },
-        select: vi.fn(),
-        update: vi.fn(() => ({
-          set: vi.fn(() => ({
-            where: vi.fn(async () => undefined),
-          })),
-        })),
-      });
-      const txDb = createDb(txInsert);
-      const transaction = vi.fn(
-        async (operation: (tx: typeof txDb) => Promise<unknown>) =>
-          operation(txDb),
-      );
-      const db = {
-        ...createDb(rootInsert),
-        transaction,
-      };
-      const adapter = drizzleAdapter({
-        db,
-        provider: "postgresql",
-      });
-
-      await adapter.commit({
-        changes: [
-          {
-            model: "bundles",
-            operation: "insert",
-            row: bundleToRow(transactionBundle),
-          },
-        ],
-      });
-
-      expect(transaction).toHaveBeenCalledTimes(1);
-      expect(txInsert).toHaveBeenCalledTimes(1);
-      expect(rootInsert).not.toHaveBeenCalled();
     });
 
     it("does not expose an implicit MongoDB transaction", () => {

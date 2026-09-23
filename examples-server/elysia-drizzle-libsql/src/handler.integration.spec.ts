@@ -67,6 +67,16 @@ describe("Hot Updater Handler Integration Tests (Elysia)", () => {
       env: { TEST_DB_PATH: testDbPath },
     });
 
+    // Write the settings rows the server checks before its first read
+    await execa(
+      "node",
+      [hotUpdaterCli, "db", "migrate", "src/db.ts", "--yes"],
+      {
+        cwd: projectRoot,
+        env: { TEST_DB_PATH: testDbPath },
+      },
+    );
+
     serverProcess = spawnServerProcess({
       serverCommand: ["pnpm", "exec", "tsx", "src/index.ts"],
       port,
@@ -103,14 +113,11 @@ describe("Hot Updater Handler Integration Tests (Elysia)", () => {
       }),
   });
 
-  it("atomically batches lazy Insights events and heads without catalog transactions", async () => {
+  it("rolls back a lazy Insights event whose head update fails, then records the retry", async () => {
     const { db, client } = await import("./drizzle.js");
-    const schema = await import("../hot-updater-schema.js");
     const insights = drizzleAdapter({
       db: async () => db,
       provider: "sqlite",
-      schema,
-      transaction: false,
     }).models.insights;
     const previous = {
       id: "00000000-0000-7000-8000-000000009880",
@@ -139,8 +146,9 @@ describe("Hot Updater Handler Integration Tests (Elysia)", () => {
       received_at_ms: 200,
     };
     await insights.recordEvent({ event: previous });
+    // The installation's head exists, so the second event updates it.
     await client.execute(
-      "CREATE TRIGGER reject_test_head BEFORE INSERT ON bundle_event_heads WHEN new.received_at_ms = 200 BEGIN SELECT raise(abort, 'injected head failure'); END",
+      "CREATE TRIGGER reject_test_head BEFORE UPDATE ON bundle_event_heads WHEN new.received_at_ms = 200 BEGIN SELECT raise(abort, 'injected head failure'); END",
     );
     try {
       await expect(insights.recordEvent({ event: next })).rejects.toThrow();

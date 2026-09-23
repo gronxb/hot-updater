@@ -1812,6 +1812,9 @@ importers:
       '@hot-updater/test-utils':
         specifier: workspace:*
         version: link:../test-utils
+      '@libsql/client':
+        specifier: catalog:db
+        version: 0.15.15
       '@types/express':
         specifier: ^5.0.0
         version: 5.0.6
@@ -1821,6 +1824,9 @@ importers:
       '@types/pg':
         specifier: ^8.11.10
         version: 8.20.0
+      drizzle-kit:
+        specifier: ^0.31.6
+        version: 0.31.10
       drizzle-orm:
         specifier: catalog:db
         version: 0.45.2(@cloudflare/workers-types@4.20260611.1)(@electric-sql/pglite@0.4.1)(@libsql/client@0.15.15)(@opentelemetry/api@1.9.1)(@prisma/client@6.19.3(prisma@6.19.3(typescript@7.0.2))(typescript@7.0.2))(@types/pg@8.20.0)(kysely@0.28.17)(mysql2@3.19.1(@types/node@20.19.43))(pg@8.13.1)(prisma@6.19.3(typescript@7.0.2))
