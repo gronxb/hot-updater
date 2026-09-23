@@ -1,4 +1,8 @@
-import type { DatabaseKeyValue } from "@hot-updater/plugin-core/internal";
+import {
+  DATABASE_VERSION_COLUMN,
+  type DatabaseKeyValue,
+  type StoredRow,
+} from "@hot-updater/plugin-core/internal";
 
 import { createEngine, type DatabaseEngineOptions } from "./engine";
 import type { Page, ReadInput } from "./engineReads";
@@ -26,10 +30,11 @@ type AggregateNames<S extends ModuleSchema> = {
 }[keyof S] &
   string;
 
+/** Reference counters: how many rows of another table point at this one. */
+type RefColumns = { readonly [K: `_refs_${string}`]: number };
+
 /** Engine columns every stored row carries. */
-export type EngineColumns = { readonly _v: number } & {
-  readonly [K: `_refs_${string}`]: number;
-};
+export type EngineColumns = { readonly _v: number } & RefColumns;
 
 type DerivedValues<TDerived> = {
   -readonly [K in keyof TDerived]: TDerived[K] extends FieldType
@@ -51,7 +56,10 @@ type Values<TModel> =
         }
       : never;
 
+/** A row read in a transaction, `_v` included, so the transaction can write it back. */
 export type TableRow<TModel> = Values<TModel> & EngineColumns;
+/** A row read outside a transaction, without `_v`, which only a transaction's guard uses. */
+export type ReadRow<TModel> = Values<TModel> & RefColumns;
 export type AggregateRow<TModel> = Values<TModel>;
 
 type IndexesOf<TModel> = TModel extends { readonly indexes: infer I }
@@ -237,16 +245,16 @@ export interface HotUpdaterDatabase<S extends ModuleSchema> {
   findOne<M extends TableNames<S>>(
     model: M,
     lookup: Lookup<S[M]>,
-  ): Promise<TableRow<S[M]> | null>;
+  ): Promise<ReadRow<S[M]> | null>;
   /** Rows by key in one batch read, in the keys' order. */
   findByKeys<M extends TableNames<S>>(
     model: M,
     keys: readonly KeyLookup<S[M]>[],
-  ): Promise<(TableRow<S[M]> | null)[]>;
+  ): Promise<(ReadRow<S[M]> | null)[]>;
   findMany<M extends keyof S & string, I extends IndexName<S[M]>>(
     model: FindManyModel<S, M>,
     options: ReadOptions<S[M], I>,
-  ): Promise<Page<TableRow<S[M]>>>;
+  ): Promise<Page<ReadRow<S[M]>>>;
   findAggregates<M extends keyof S & string, I extends IndexName<S[M]>>(
     model: FindAggregatesModel<S, M>,
     options: ReadOptions<S[M], I>,
@@ -265,6 +273,18 @@ export const createDatabaseEngine = (options: DatabaseEngineOptions) => {
       assertOutsideTransaction();
       return read(...args);
     };
+  /** No read outside a transaction returns `_v`, which a key-value index copy lacks. */
+  const bare = (row: StoredRow | null) =>
+    row &&
+    Object.fromEntries(
+      Object.entries(row).filter(
+        ([column]) => column !== DATABASE_VERSION_COLUMN,
+      ),
+    );
+  const barePage = async (page: Promise<Page<StoredRow>>) => {
+    const { rows, next } = await page;
+    return { rows: rows.map(bare), ...(next === undefined ? {} : { next }) };
+  };
   return {
     ...engine,
     database<S extends ModuleSchema>(
@@ -274,20 +294,24 @@ export const createDatabaseEngine = (options: DatabaseEngineOptions) => {
         module.namespace ? `${module.namespace}_${model}` : model;
       return {
         findOne: outside(
-          (model, lookup) =>
-            reads.findOne(name(model), lookup as never) as never,
+          async (model, lookup) =>
+            bare(await reads.findOne(name(model), lookup as never)) as never,
         ),
         findByKeys: outside(
-          (model, keys) =>
-            reads.findByKeys(name(model), keys as never) as never,
+          async (model, keys) =>
+            (await reads.findByKeys(name(model), keys as never)).map(
+              bare,
+            ) as never,
         ),
         findMany: outside(
           (model, input) =>
-            reads.findMany(name(model), input as ReadInput) as never,
+            barePage(reads.findMany(name(model), input as ReadInput)) as never,
         ),
         findAggregates: outside(
           (model, input) =>
-            reads.findAggregates(name(model), input as ReadInput) as never,
+            barePage(
+              reads.findAggregates(name(model), input as ReadInput),
+            ) as never,
         ),
         transaction: (fn) =>
           engine.transaction((tx: TransactionEngine) =>

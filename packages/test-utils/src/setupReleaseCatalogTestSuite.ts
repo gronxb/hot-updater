@@ -87,9 +87,10 @@ export const setupReleaseCatalogTestSuite = (options: {
     afterEach(async () => {
       // Channels/Catalogs have no public Catalog delete API; the caller drops
       // the isolated test database after the suite. Remove reusable identities.
+      // Three Releases and their bundles per commit fit DynamoDB's 100 items.
       const changes = cleanup.reverse();
-      for (let offset = 0; offset < changes.length; offset += 10) {
-        await commit(changes.slice(offset, offset + 10));
+      for (let offset = 0; offset < changes.length; offset += 6) {
+        await commit(changes.slice(offset, offset + 6));
       }
     });
 
@@ -799,11 +800,13 @@ export const setupReleaseCatalogTestSuite = (options: {
             const channel = createChannelRowFixture(scope().channel);
             // Keep each HTTP commit within provider transaction limits, then
             // exercise one server rebuild over the complete Release history.
-            for (let start = 1; start < 200; start += 10) {
+            // DynamoDB takes 100 items per transaction, and each pair here is
+            // about 24: a Release, its index items, and 16 base candidates.
+            for (let start = 1; start < 200; start += 3) {
               const changes: DatabaseChange[] = [];
               for (
                 let index = start;
-                index < Math.min(start + 10, 200);
+                index < Math.min(start + 3, 200);
                 index++
               ) {
                 const suffix = String(400 + index);
