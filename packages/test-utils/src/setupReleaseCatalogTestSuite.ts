@@ -802,6 +802,7 @@ export const setupReleaseCatalogTestSuite = (options: {
             // exercise one server rebuild over the complete Release history.
             // DynamoDB takes 100 items per transaction, and each pair here is
             // about 24: a Release, its index items, and 16 base candidates.
+            // The 67 commits outlast a default test timeout on a hosted runner.
             for (let start = 1; start < 200; start += 3) {
               const changes: DatabaseChange[] = [];
               for (
@@ -829,7 +830,7 @@ export const setupReleaseCatalogTestSuite = (options: {
               createBundleRowFixture("599").id,
             );
             expect(catalog.rollbackReleases).toHaveLength(200);
-          });
+          }, 60_000);
 
           it("keeps version projections separate in the HTTP cache", async () => {
             const first = await publish("231", {
