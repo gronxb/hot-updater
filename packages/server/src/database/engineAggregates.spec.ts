@@ -251,6 +251,24 @@ describe("engine aggregates", () => {
     expect(countInsightsDistinct(rows[0]!.users)).toBe(5);
   });
 
+  it("writes nothing when a merge leaves the stored row unchanged", async () => {
+    const { db, writes } = await setup();
+    const add = (id: string) =>
+      db.transaction(async (tx) => {
+        tx.aggregate(
+          "users",
+          { bucket: 1 },
+          { users: sketchOf(id) },
+          { shardBy: "u1" },
+        );
+      });
+    await add("u1");
+    expect(writes).toHaveLength(1);
+    // the sketch already counts u1, so there is nothing to write or guard
+    await add("u1");
+    expect(writes).toHaveLength(1);
+  });
+
   it("resends only the aggregate rows when their guard fails", async () => {
     const { db, faults, retries } = await setup();
     await db.transaction(async (tx) => {
