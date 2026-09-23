@@ -1,5 +1,6 @@
 import {
   canonicalJson,
+  compareUtf8,
   type DatabaseAdapter,
   DatabaseAdapterContractError,
   type DatabaseKey,
@@ -66,8 +67,12 @@ export interface KvItem {
  */
 export interface KeyValueStore {
   readonly id: string;
-  /** The most items, and bytes, one atomic write takes. */
-  readonly limits: { readonly items: number; readonly bytes: number };
+  /** The most items, and bytes, one atomic write takes; `itemBytes` caps each item. */
+  readonly limits: {
+    readonly items: number;
+    readonly bytes: number;
+    readonly itemBytes?: number;
+  };
   get(keys: readonly KvKey[]): Promise<readonly (StoredRow | null)[]>;
   /** One native page; `more` when the range may go on past it. An empty page ends the range. */
   query(
@@ -354,7 +359,12 @@ export const createKvAdapter = ({
     };
     const gte = edge(request.lower, true);
     const lt = edge(request.upper, false);
-    return gte === null || lt === null ? null : { gte, lt };
+    if (gte === null || lt === null) return null;
+    // Bounds that cross leave nothing, and DynamoDB refuses them.
+    if (gte !== undefined && lt !== undefined && compareUtf8(gte, lt) >= 0) {
+      return null;
+    }
+    return { gte, lt };
   };
 
   return {
@@ -363,8 +373,13 @@ export const createKvAdapter = ({
       const { items } = compile(ops);
       // A write in which two rows take one unique value fails at its op, not here.
       if (items === undefined) return true;
-      const size = items.reduce((sum, item) => sum + sizeOf(item), 0);
-      return items.length <= store.limits.items && size <= store.limits.bytes;
+      const { items: most, bytes, itemBytes = bytes } = store.limits;
+      const sizes = items.map(sizeOf);
+      return (
+        items.length <= most &&
+        sizes.reduce((sum, size) => sum + size, 0) <= bytes &&
+        sizes.every((size) => size <= itemBytes)
+      );
     },
     get: (table, keys) =>
       store.get(keys.map((key) => rowItem(layoutOf(table), key))),

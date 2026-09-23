@@ -3,19 +3,17 @@ import { createHash } from "node:crypto";
 import { IAM } from "@aws-sdk/client-iam";
 import { STS } from "@aws-sdk/client-sts";
 import { p } from "@hot-updater/cli-tools";
-
 import {
-  DYNAMODB_INSIGHTS_PARTITION,
-  DYNAMODB_INSIGHTS_INSTALLATIONS_PARTITION,
-  DYNAMODB_INSIGHTS_EVENT_IDS_PARTITION,
-  DYNAMODB_INSIGHTS_BUNDLE_PREFIX,
-  DYNAMODB_CHANNEL_NAME_PARTITION,
-  DYNAMODB_CHANNEL_PARTITION,
-  DYNAMODB_API_KEY_HASH_PARTITION,
-  DYNAMODB_API_KEY_PARTITION,
-  DYNAMODB_RELEASE_ID_PARTITION,
-  DYNAMODB_UPDATE_INDEX_NAME,
-} from "../src/dynamoDB";
+  legacyFacadeSchema,
+  SETTINGS_TABLE,
+} from "@hot-updater/server/database";
+
+/** The partitions the plugin's items use: each table's rows, and its index items after `#`. */
+export const dynamoDBLeadingKeys = (): string[] =>
+  [...legacyFacadeSchema.tables, SETTINGS_TABLE].flatMap(({ name }) => [
+    name,
+    `${name}#*`,
+  ]);
 
 export const buildDynamoDBPolicy = (
   region: string,
@@ -27,13 +25,10 @@ export const buildDynamoDBPolicy = (
     Version: "2012-10-17",
     Statement: [
       {
-        Action: ["dynamodb:Query"],
-        Effect: "Allow",
-        Resource: [`${tableArn}/index/${DYNAMODB_UPDATE_INDEX_NAME}`],
-      },
-      {
+        // The key-value store reads with BatchGetItem and Query, and writes with TransactWriteItems.
         Action: [
           "dynamodb:BatchGetItem",
+          "dynamodb:ConditionCheckItem",
           "dynamodb:DeleteItem",
           "dynamodb:GetItem",
           "dynamodb:PutItem",
@@ -43,25 +38,7 @@ export const buildDynamoDBPolicy = (
         ],
         Condition: {
           "ForAllValues:StringLike": {
-            "dynamodb:LeadingKeys": [
-              "_hot-updater",
-              "bundles",
-              "bundle_patches",
-              "release-scope#*",
-              "release_catalogs",
-              DYNAMODB_RELEASE_ID_PARTITION,
-              DYNAMODB_CHANNEL_PARTITION,
-              DYNAMODB_CHANNEL_NAME_PARTITION,
-              DYNAMODB_INSIGHTS_PARTITION,
-              DYNAMODB_INSIGHTS_INSTALLATIONS_PARTITION,
-              DYNAMODB_INSIGHTS_EVENT_IDS_PARTITION,
-              `${DYNAMODB_INSIGHTS_BUNDLE_PREFIX}*`,
-              "_hot-updater#insights-user#*",
-              "_hot-updater#insights-scope#*",
-              "_hot-updater#insights-overview#*",
-              DYNAMODB_API_KEY_PARTITION,
-              DYNAMODB_API_KEY_HASH_PARTITION,
-            ],
+            "dynamodb:LeadingKeys": dynamoDBLeadingKeys(),
           },
         },
         Effect: "Allow",
