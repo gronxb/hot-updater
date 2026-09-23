@@ -1,3 +1,5 @@
+import type { DatabaseKeyValue } from "@hot-updater/plugin-core/internal";
+
 import { createEngine, type DatabaseEngineOptions } from "./engine";
 import type { Page, ReadInput } from "./engineReads";
 import {
@@ -86,11 +88,14 @@ export interface ReadOptions<TModel, TIndex> {
   readonly where: {
     readonly [F in IndexFields<TModel, TIndex, "eq">]: KeyValueOf<TModel, F>;
   };
+  /** Bounds on the first order field, or on a prefix of the order tuple (sort fields, then the key). */
   readonly range?: {
-    readonly [B in "gt" | "gte" | "lt" | "lte"]?: KeyValueOf<
-      TModel,
-      FirstOrderField<TModel, TIndex>
-    >;
+    readonly [B in "gt" | "gte" | "lt" | "lte"]?:
+      | KeyValueOf<TModel, FirstOrderField<TModel, TIndex>>
+      | readonly [
+          KeyValueOf<TModel, FirstOrderField<TModel, TIndex>>,
+          ...DatabaseKeyValue[],
+        ];
   };
   readonly order?: "asc" | "desc";
   readonly limit: number;

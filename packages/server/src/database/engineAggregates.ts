@@ -138,8 +138,9 @@ const rewrite = (
 
 /**
  * Counter-only rows become blind increments that create the row when it is
- * missing. Rows with gauges or sketches are read in one batch per table,
- * merged, and written back under a guard, so a conflict resends only them.
+ * missing. Rows with gauges or sketches are read in one parallel batch per
+ * table, merged, and written back under a guard, so a conflict resends only
+ * them.
  */
 export const compileAggregates = async (
   adapter: DatabaseAdapter,
@@ -166,15 +167,20 @@ export const compileAggregates = async (
       });
     }
   }
-  for (const [model, group] of merged) {
-    const rows = await adapter.get(
-      model.table,
-      group.map(({ key }) => key),
-    );
+  const groups = [...merged.values()];
+  const current = await Promise.all(
+    groups.map((group) =>
+      adapter.get(
+        group[0]!.model.table,
+        group.map(({ key }) => key),
+      ),
+    ),
+  );
+  groups.forEach((group, index) =>
     group.forEach((change, position) => {
-      const op = rewrite(change, rows[position] ?? null);
+      const op = rewrite(change, current[index]![position] ?? null);
       if (op !== undefined) ops.push(op);
-    });
-  }
+    }),
+  );
   return ops;
 };
