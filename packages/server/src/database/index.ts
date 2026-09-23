@@ -88,6 +88,7 @@ export {
   type FindManyModel,
   type HotUpdaterDatabase,
   type HotUpdaterTransaction,
+  type KeyLookup,
   type Lookup,
   type ReadOptions,
   type TableRow,
