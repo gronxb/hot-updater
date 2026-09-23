@@ -1,4 +1,4 @@
-import { createUUIDv7, type ChannelRow } from "@hot-updater/plugin-core";
+import type { ChannelRow } from "@hot-updater/plugin-core";
 import { Loader2, Plus, Tag, Trash2 } from "lucide-react";
 import { type FormEvent, useState } from "react";
 import { toast } from "sonner";
@@ -55,10 +55,7 @@ export function ChannelManagementDialog({
     }
 
     try {
-      const result = await createChannel.mutateAsync({
-        row: { id: createUUIDv7(), name: normalizedName },
-        onConflict: "returnExisting",
-      });
+      const result = await createChannel.mutateAsync({ name: normalizedName });
       setChannelName("");
       if (result.inserted) {
         toast.success(`Channel ${result.row.name} created`);

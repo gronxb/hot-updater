@@ -3,10 +3,11 @@ import {
   getManifestStorageUri,
   getPatchStorageUri,
 } from "@hot-updater/core";
-import type {
-  Bundle,
-  DatabaseClient,
-  StoragePluginWith,
+import {
+  type Bundle,
+  type HotUpdaterCoreApi,
+  rowToBundle,
+  type StoragePluginWith,
 } from "@hot-updater/plugin-core";
 
 interface DeleteBundleInput {
@@ -18,7 +19,7 @@ interface DeleteBundlesInput {
 }
 
 interface DeleteBundleDependencies {
-  databaseClient: DatabaseClient;
+  core: Pick<HotUpdaterCoreApi, "getBundle" | "deleteBundles">;
   storagePlugin: StoragePluginWith<"delete">;
   waitForStorageCleanup?: boolean;
 }
@@ -72,25 +73,20 @@ async function cleanupBundleStorage(
 export async function deleteBundles(
   { bundleIds }: DeleteBundlesInput,
   {
-    databaseClient,
+    core,
     storagePlugin,
     waitForStorageCleanup = true,
   }: DeleteBundleDependencies,
 ) {
   const uniqueBundleIds = [...new Set(bundleIds)];
-  const { data: matchedBundles } = await databaseClient.getBundles({
-    where: { id: { in: uniqueBundleIds } },
-    limit: uniqueBundleIds.length,
-  });
-  const matchedById = new Map(
-    matchedBundles.map((bundle) => [bundle.id, bundle]),
+  const details = await Promise.all(
+    uniqueBundleIds.map((bundleId) => core.getBundle(bundleId)),
   );
-  const bundles = uniqueBundleIds.flatMap((bundleId) => {
-    const bundle = matchedById.get(bundleId);
-    return bundle ? [bundle] : [];
-  });
+  const bundles = details.flatMap((detail) =>
+    detail === null ? [] : [rowToBundle(detail.bundle, detail.patches)],
+  );
   const missingBundleIds = uniqueBundleIds.filter(
-    (bundleId) => !matchedById.has(bundleId),
+    (_bundleId, position) => details[position] === null,
   );
 
   for (const bundle of bundles) {
@@ -104,12 +100,9 @@ export async function deleteBundles(
     }
   }
 
+  // One core write; a bundle a release still uses refuses the whole batch.
   if (bundles.length > 0) {
-    await databaseClient.mutate(async (mutation) => {
-      for (const bundle of bundles) {
-        await mutation.deleteBundleById(bundle.id);
-      }
-    });
+    await core.deleteBundles(bundles.map((bundle) => bundle.id));
   }
 
   const cleanupStorage = async () => {

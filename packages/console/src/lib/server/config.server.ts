@@ -1,28 +1,23 @@
 import {
   assertStorageOperations,
-  createDatabaseClient,
-  type DatabaseClient,
+  type HotUpdaterCoreApi,
   type StoragePluginWith,
 } from "@hot-updater/plugin-core";
+import { createDatabaseCoreApi } from "@hot-updater/server/db";
 import { getRequest } from "@tanstack/react-start/server";
 
 import type { HotUpdaterConsoleConfig } from "../../index";
 import { requireConsoleAccess } from "./auth.server";
 import { resolveConsoleConfig } from "./console-runtime.server";
+import type { ConsoleRuntime } from "./runtime.server";
 
 type ResolvedConsoleConfig = HotUpdaterConsoleConfig & {
   readonly console: NonNullable<HotUpdaterConsoleConfig["console"]>;
 };
 
 let configPromise: Promise<ResolvedConsoleConfig> | null = null;
-let databaseClient: DatabaseClient | null = null;
-let hotUpdater: ReturnType<
-  typeof import("./runtime.server").createRuntimeHotUpdater
-> | null = null;
-let apiKeyStore: ReturnType<
-  typeof import("./runtime.server").createApiKeyStore
-> | null = null;
-let apiKeyStoreResolved = false;
+let core: HotUpdaterCoreApi | null = null;
+let runtime: ConsoleRuntime | null = null;
 let storagePluginPromise: Promise<
   StoragePluginWith<"get" | "put" | "exists" | "delete">
 > | null = null;
@@ -69,28 +64,22 @@ export const prepareConfig = async (request: Request = getRequest()) => {
     await requireConsoleAccess(request);
     const config = await loadCachedConfig(request);
 
-    if (!databaseClient) {
-      databaseClient = createDatabaseClient(config.database);
-    }
+    // Bundles, releases, catalogs, and channels: core's API, in process or
+    // over a self-hosted server's admin API.
+    core ??= createDatabaseCoreApi(config.database);
 
-    if (!hotUpdater) {
-      const { createRuntimeHotUpdater } = await import("./runtime.server");
-      hotUpdater = createRuntimeHotUpdater(config);
-    }
-
-    if (!apiKeyStoreResolved) {
-      const { createApiKeyStore } = await import("./runtime.server");
-      apiKeyStore = createApiKeyStore(config);
-      apiKeyStoreResolved = true;
+    if (!runtime) {
+      const { createConsoleRuntime } = await import("./runtime.server");
+      runtime = createConsoleRuntime(config);
     }
 
     const storagePlugin = await loadCachedStoragePlugin(config);
 
     return {
       config,
-      databaseClient,
-      hotUpdater,
-      apiKeyStore,
+      core,
+      insights: runtime.insights,
+      apiKeys: runtime.apiKeys,
       storagePlugin,
     };
   } catch (error) {

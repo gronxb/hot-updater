@@ -1,21 +1,21 @@
 import type {
-  DatabaseClient,
+  HotUpdaterCoreApi,
   StoragePluginWith,
 } from "@hot-updater/plugin-core";
 
 interface DownloadBundleDependencies {
-  readonly databaseClient: DatabaseClient;
+  readonly core: Pick<HotUpdaterCoreApi, "getBundle">;
   readonly storagePlugin?: StoragePluginWith<"get">;
 }
 
 export const downloadBundle = async (
   bundleId: string,
-  { databaseClient, storagePlugin }: DownloadBundleDependencies,
+  { core, storagePlugin }: DownloadBundleDependencies,
 ): Promise<Response> => {
-  const bundle = await databaseClient.getBundleById(bundleId);
-  if (!bundle) return new Response("Bundle not found", { status: 404 });
+  const detail = await core.getBundle(bundleId);
+  if (!detail) return new Response("Bundle not found", { status: 404 });
 
-  const storageUri = bundle.manifestStorageUri;
+  const storageUri = detail.bundle.manifest_storage_uri;
 
   const protocol = new URL(storageUri).protocol.replace(":", "");
   if (storagePlugin?.protocol === protocol) {

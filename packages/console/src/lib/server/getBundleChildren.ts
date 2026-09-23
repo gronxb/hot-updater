@@ -1,130 +1,42 @@
-import { getBundlePatches } from "@hot-updater/core";
-import type { Bundle, DatabaseClient } from "@hot-updater/plugin-core";
+import {
+  type Bundle,
+  type HotUpdaterCoreApi,
+  rowToBundle,
+} from "@hot-updater/plugin-core";
 
-const CHILDREN_QUERY_LIMIT = 100;
+/** The most children the lineage panel lists; the count comes from the base bundle's counter. */
+export const BUNDLE_CHILDREN_LIMIT = 100;
 
-interface GetBundleChildrenInput {
-  baseBundleId: string;
-}
-
-interface GetBundleChildrenDeps {
-  databaseClient: DatabaseClient;
-}
-
-type CursorPaginationInfo = {
-  hasNextPage: boolean;
-  nextCursor?: string | null;
-};
-
-async function collectBundleChildrenByBaseIds(
-  baseBundleIds: string[],
-  deps: GetBundleChildrenDeps,
-): Promise<Record<string, Bundle[]>> {
-  const uniqueBaseBundleIds = [...new Set(baseBundleIds.filter(Boolean))];
-  const bundlesByBaseId = Object.fromEntries(
-    uniqueBaseBundleIds.map((bundleId) => [bundleId, [] as Bundle[]]),
-  );
-
-  const baseBundles = (
-    await Promise.all(
-      uniqueBaseBundleIds.map((bundleId) =>
-        deps.databaseClient.getBundleById(bundleId),
-      ),
-    )
-  ).filter((bundle): bundle is Bundle => Boolean(bundle));
-
-  const groupMap = new Map<Bundle["platform"], Set<string>>();
-
-  for (const baseBundle of baseBundles) {
-    const existingGroup = groupMap.get(baseBundle.platform);
-
-    if (existingGroup) {
-      existingGroup.add(baseBundle.id);
-      continue;
-    }
-
-    groupMap.set(baseBundle.platform, new Set([baseBundle.id]));
-  }
-
-  for (const [platform, bundleIds] of groupMap) {
-    const seenBundleIds = new Set<string>();
-    const seenCursors = new Set<string>();
-    let after: string | undefined;
-
-    while (true) {
-      const page = await deps.databaseClient.getBundles({
-        where: {
-          platform,
-        },
-        limit: CHILDREN_QUERY_LIMIT,
-        cursor: after ? { after } : undefined,
-      });
-
-      for (const bundle of page.data) {
-        const parentBundleIds = getBundlePatches(bundle).map(
-          (patch) => patch.baseBundleId,
-        );
-        const matchedParentBundleIds = parentBundleIds.filter((bundleId) =>
-          bundleIds.has(bundleId),
-        );
-
-        if (
-          matchedParentBundleIds.length === 0 ||
-          seenBundleIds.has(bundle.id)
-        ) {
-          continue;
-        }
-
-        seenBundleIds.add(bundle.id);
-        for (const parentBundleId of matchedParentBundleIds) {
-          bundlesByBaseId[parentBundleId]?.push(bundle);
-        }
-      }
-
-      const pagination = page.pagination as CursorPaginationInfo;
-      const nextCursor = pagination.nextCursor ?? undefined;
-
-      if (
-        !pagination.hasNextPage ||
-        !nextCursor ||
-        seenCursors.has(nextCursor)
-      ) {
-        break;
-      }
-
-      seenCursors.add(nextCursor);
-      after = nextCursor;
-    }
-  }
-
-  return bundlesByBaseId;
-}
-
+/**
+ * The bundles with a patch from this base, newest first: one read of the
+ * patches index, then each child bundle.
+ */
 export async function getBundleChildren(
-  { baseBundleId }: GetBundleChildrenInput,
-  deps: GetBundleChildrenDeps,
+  core: Pick<HotUpdaterCoreApi, "getBundle" | "listPatchesFromBase">,
+  baseBundleId: string,
 ): Promise<Bundle[]> {
-  const childrenByBaseId = await collectBundleChildrenByBaseIds(
-    [baseBundleId],
-    deps,
+  const patches = await core.listPatchesFromBase(baseBundleId, {
+    order: "desc",
+    limit: BUNDLE_CHILDREN_LIMIT,
+  });
+  const details = await Promise.all(
+    [...new Set(patches.map(({ bundle_id }) => bundle_id))].map((id) =>
+      core.getBundle(id),
+    ),
   );
-
-  return childrenByBaseId[baseBundleId] ?? [];
+  return details.flatMap((detail) =>
+    detail === null ? [] : [rowToBundle(detail.bundle, detail.patches)],
+  );
 }
 
+/** How many bundles patch from each base: each base bundle's reference counter, no scan. */
 export async function getBundleChildCounts(
-  baseBundleIds: string[],
-  deps: GetBundleChildrenDeps,
+  core: Pick<HotUpdaterCoreApi, "getBundle">,
+  baseBundleIds: readonly string[],
 ): Promise<Record<string, number>> {
-  const childrenByBaseId = await collectBundleChildrenByBaseIds(
-    baseBundleIds,
-    deps,
-  );
-
+  const ids = [...new Set(baseBundleIds.filter(Boolean))];
+  const details = await Promise.all(ids.map((id) => core.getBundle(id)));
   return Object.fromEntries(
-    Object.entries(childrenByBaseId).map(([bundleId, bundles]) => [
-      bundleId,
-      bundles.length,
-    ]),
+    ids.map((id, position) => [id, details[position]?.childCount ?? 0]),
   );
 }

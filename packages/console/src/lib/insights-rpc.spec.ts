@@ -20,9 +20,11 @@ vi.mock("@tanstack/react-start", () => ({
 
 vi.mock("./server/config.server", () => ({
   prepareConfig: async () => ({
-    hotUpdater: {
-      getInstallation: mocks.getInstallation,
-      pageInstallationsByCurrentUserId: mocks.pageInstallations,
+    insights: {
+      reads: {
+        getInstallation: mocks.getInstallation,
+        pageInstallationsByCurrentUserId: mocks.pageInstallations,
+      },
     },
   }),
 }));

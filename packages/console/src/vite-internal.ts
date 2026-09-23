@@ -129,13 +129,17 @@ const createConsoleModulesPlugin = (mode: ConsoleModuleMode): Plugin => {
       if (id === resolvedVirtualConfigModuleId) {
         if (mode.type === "local") {
           return [
-            'import { loadConfig } from "@hot-updater/cli-tools";',
+            'import { loadConfig, loadHotUpdaterPlugins } from "@hot-updater/cli-tools";',
             "export default async () => {",
-            "  const config = await loadConfig(null);",
+            "  const [config, plugins] = await Promise.all([",
+            "    loadConfig(null),",
+            "    loadHotUpdaterPlugins(),",
+            "  ]);",
             "  return {",
             "    console: { gitUrl: config.console.gitUrl },",
             "    database: config.database,",
             "    storage: config.storage,",
+            "    ...(plugins === undefined ? {} : { plugins }),",
             "  };",
             "};",
           ].join("\n");
