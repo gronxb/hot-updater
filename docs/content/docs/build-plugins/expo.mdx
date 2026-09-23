@@ -60,6 +60,11 @@ Run prebuild to apply the changes:
 npx expo prebuild
 ```
 
+| Option             | Type      | Default        | Description                                                                                                                                 |
+| ------------------ | --------- | -------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| `channel`          | `string`  | `"production"` | The release channel built into the app                                                                                                      |
+| `verifyOnAppReady` | `boolean` | `false`        | Promote a new bundle when `notifyAppReady()` runs instead of on first content. See [Automatic Rollback](/docs/concepts/automatic-rollback#errors-caught-by-an-error-boundary) |
+
 ## Expo DOM Components (`use dom`)
 
 > **Note**: This setup is only required for Expo SDK < 55. Expo SDK 55+ includes native `overrideUri` support ([PR #40397](https://github.com/expo/expo/pull/40397)).

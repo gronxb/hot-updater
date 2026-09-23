@@ -32,8 +32,9 @@ The flow is:
 3. **Verify startup**
    - If the app reaches its first successful render, the launch is treated as successful.
    - The staging bundle becomes the current trusted bundle.
+   - With [`verifyOnAppReady`](#errors-caught-by-an-error-boundary) on, this happens when `notifyAppReady()` runs instead.
 4. **Recover on failure**
-   - If the app exits or crashes before that point, the staging bundle is treated as failed.
+   - If the app crashes before that point, or exits before its first content, the staging bundle is treated as failed. With `verifyOnAppReady`, an exit after first content leaves it on trial.
    - On the next launch, Hot Updater automatically returns to the last stable bundle.
 
 ## What Counts as a Failed Launch?
@@ -62,6 +63,52 @@ failed launch, even if the bundle would otherwise have finished loading.
 
 This protection requires a native app build containing the updated SDK; an OTA
 bundle alone cannot add it to an already installed native binary.
+
+## Errors Caught by an Error Boundary
+
+A render error that an error boundary catches is not a crash. The boundary's
+fallback screen is itself first content, so by default Hot Updater treats the
+launch as successful and keeps the bundle.
+
+To roll such a bundle back:
+
+1. Turn on `verifyOnAppReady`. First content then only clears the
+   launch-in-progress record, and the staging bundle stays on trial until
+   `notifyAppReady()` runs. `HotUpdater.init()` calls it one frame after it is
+   called, and `HotUpdater.wrap()` one frame after its first commit. With a
+   `fallbackComponent`, that first commit is the fallback, so `wrap()` does
+   not cover the app's first render. Use `init()` there instead.
+2. Call `HotUpdater.init()` from an effect in the first screen you want
+   verified, not at module scope. Everything that renders before that call is
+   covered.
+3. In the error boundary, call
+   [`HotUpdater.reportBundleFailure()`](/docs/react-native-api/reportBundleFailure),
+   then `HotUpdater.reload()`. Until the reload, `updateBundle()` returns
+   `false`, because a newly installed bundle would replace the failed one and
+   the reload would launch it instead of rolling back. A download that was
+   already running is not stopped.
+
+| Setup        | Setting                                                                    |
+| ------------ | -------------------------------------------------------------------------- |
+| Expo         | Plugin option `"verifyOnAppReady": true`                                   |
+| iOS          | `Info.plist` key `HOT_UPDATER_VERIFY_ON_APP_READY` set to `true`           |
+| Android      | Manifest `<meta-data>` `com.hotupdater.VERIFY_ON_APP_READY` set to `true`  |
+| Brownfield   | The `verifyOnAppReady` argument of `HotUpdater.configure`                  |
+
+Changing the setting needs a new native build.
+
+With `verifyOnAppReady` on:
+
+- A bundle whose launches never reach `notifyAppReady()` stays on trial on
+  every cold start, with crash rollback armed. Hot Updater never promotes it,
+  and rolls it back only if a launch crashes or hangs before its first content. That happens when the app never calls `init()`, or hangs
+  after its first content.
+- If the app is killed between first content and `notifyAppReady()`, the
+  bundle stays on trial and is tried again on the next launch.
+- Installing another bundle while one is on trial replaces it, so the one on
+  trial is never promoted. `HotUpdater.wrap()` waits for `notifyAppReady()`
+  before installing. In a manual flow, call `updateBundle()` from
+  `onNotifyAppReady` or later.
 
 ## What Happens During Rollback?
 
