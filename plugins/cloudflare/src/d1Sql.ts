@@ -1,8 +1,4 @@
-import type {
-  DatabaseStringComparisonMode,
-  DatabaseWhereConnector,
-  DatabaseWhereOperator,
-} from "@hot-updater/plugin-core/internal";
+import type { DatabaseWhereOperator } from "@hot-updater/plugin-core/internal";
 
 export type D1Query = {
   readonly sql: string;
@@ -13,8 +9,6 @@ type D1Predicate = {
   readonly field: string;
   readonly operator?: DatabaseWhereOperator;
   readonly value: unknown;
-  readonly connector?: DatabaseWhereConnector;
-  readonly mode?: DatabaseStringComparisonMode;
 };
 
 type D1Sort = {
@@ -40,67 +34,16 @@ const bind = (value: unknown): D1Query => ({
   params: [encodeD1Value(value)],
 });
 
-const escapeLikePattern = (value: string): string =>
-  value.replaceAll("\\", "\\\\").replaceAll("%", "\\%").replaceAll("_", "\\_");
-
-const stringPredicate = (
-  condition: D1Predicate,
-  operator: "contains" | "ends_with" | "starts_with",
-): D1Query => {
-  if (typeof condition.value !== "string") {
-    throw new InvalidD1PredicateError();
-  }
-
-  if (condition.mode !== "insensitive") {
-    const parameter = bind(condition.value);
-    const column = `${condition.field} COLLATE BINARY`;
-    const value = `${parameter.sql} COLLATE BINARY`;
-    if (operator === "contains" || operator === "starts_with") {
-      return {
-        sql: `instr(${column}, ${value}) ${operator === "contains" ? "> 0" : "= 1"}`,
-        params: parameter.params,
-      };
-    }
-    return {
-      sql: `substr(${column}, length(${condition.field}) - length(${parameter.sql}) + 1) = ${value}`,
-      params: [...parameter.params, ...parameter.params],
-    };
-  }
-
-  const literal = escapeLikePattern(condition.value);
-  const pattern =
-    operator === "contains"
-      ? `%${literal}%`
-      : operator === "starts_with"
-        ? `${literal}%`
-        : `%${literal}`;
-  const parameter = bind(pattern);
-  return {
-    sql: `lower(${condition.field}) LIKE lower(${parameter.sql}) ESCAPE '\\'`,
-    params: parameter.params,
-  };
-};
-
 const predicate = (condition: D1Predicate): D1Query => {
   const operator = condition.operator ?? "eq";
   switch (operator) {
-    case "eq":
-    case "ne": {
+    case "eq": {
       if (condition.value === null) {
-        return {
-          sql: `${condition.field} IS ${operator === "ne" ? "NOT " : ""}NULL`,
-          params: [],
-        };
+        return { sql: `${condition.field} IS NULL`, params: [] };
       }
       const parameter = bind(condition.value);
-      const insensitive =
-        "mode" in condition && condition.mode === "insensitive";
-      const column = insensitive
-        ? `lower(${condition.field})`
-        : condition.field;
-      const value = insensitive ? `lower(${parameter.sql})` : parameter.sql;
       return {
-        sql: `${column} ${operator === "eq" ? "=" : "<>"} ${value}`,
+        sql: `${condition.field} = ${parameter.sql}`,
         params: parameter.params,
       };
     }
@@ -120,23 +63,18 @@ const predicate = (condition: D1Predicate): D1Query => {
         params: parameter.params,
       };
     }
-    case "in":
-    case "not_in": {
+    case "in": {
       if (!Array.isArray(condition.value)) {
         throw new InvalidD1PredicateError();
       }
       if (condition.value.length === 0) {
-        return { sql: operator === "not_in" ? "1 = 1" : "1 = 0", params: [] };
+        return { sql: "1 = 0", params: [] };
       }
       return {
-        sql: `${condition.field} ${operator === "not_in" ? "NOT " : ""}IN (SELECT value FROM json_each(?))`,
+        sql: `${condition.field} IN (SELECT value FROM json_each(?))`,
         params: [encodeD1Value(condition.value)],
       };
     }
-    case "contains":
-    case "starts_with":
-    case "ends_with":
-      return stringPredicate(condition, operator);
   }
 };
 
@@ -150,7 +88,7 @@ export const buildD1Where = (
   const params = [...initial.params];
   for (const condition of rest) {
     const next = predicate(condition);
-    sql = `(${sql} ${condition.connector === "OR" ? "OR" : "AND"} ${next.sql})`;
+    sql = `(${sql} AND ${next.sql})`;
     params.push(...next.params);
   }
   return { sql: ` WHERE ${sql}`, params };

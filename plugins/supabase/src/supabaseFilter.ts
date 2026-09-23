@@ -22,19 +22,13 @@ const encodeValue = (value: boolean | number | string): string => {
   return `"${value.replaceAll("\\", "\\\\").replaceAll('"', '\\"')}"`;
 };
 
-const encodePattern = (value: string): string =>
-  encodeValue(
-    value.replaceAll("*", "\\*").replaceAll("%", "\\%").replaceAll("_", "\\_"),
-  );
-
 const predicate = (condition: SupabaseWhere): string => {
   const operator = condition.operator ?? "eq";
   const field = condition.field;
   switch (operator) {
-    case "eq":
-    case "ne": {
+    case "eq": {
       if (condition.value === null) {
-        return `${field}.${operator === "eq" ? "is" : "not.is"}.null`;
+        return `${field}.is.null`;
       }
       if (
         typeof condition.value !== "boolean" &&
@@ -43,13 +37,7 @@ const predicate = (condition: SupabaseWhere): string => {
       ) {
         throw new InvalidSupabasePredicateError();
       }
-      const insensitive =
-        "mode" in condition && condition.mode === "insensitive";
-      if (insensitive) {
-        const comparison = encodePattern(condition.value);
-        return `${field}.${operator === "eq" ? "ilike" : "not.ilike"}.${comparison}`;
-      }
-      return `${field}.${operator === "eq" ? "eq" : "neq"}.${encodeValue(condition.value)}`;
+      return `${field}.eq.${encodeValue(condition.value)}`;
     }
     case "gt":
     case "gte":
@@ -63,38 +51,15 @@ const predicate = (condition: SupabaseWhere): string => {
       }
       return `${field}.${operator}.${encodeValue(condition.value)}`;
     }
-    case "in":
-    case "not_in": {
+    case "in": {
       if (!Array.isArray(condition.value)) {
         throw new InvalidSupabasePredicateError();
       }
       if (condition.value.length === 0) {
-        return operator === "in"
-          ? `and(${field}.is.null,${field}.not.is.null)`
-          : `or(${field}.is.null,${field}.not.is.null)`;
+        return `and(${field}.is.null,${field}.not.is.null)`;
       }
       const values = condition.value.map(encodeValue).join(",");
-      return `${field}.${operator === "in" ? "in" : "not.in"}.(${values})`;
-    }
-    case "contains":
-    case "starts_with":
-    case "ends_with": {
-      if (typeof condition.value !== "string") {
-        throw new InvalidSupabasePredicateError();
-      }
-      const literal = encodePattern(condition.value);
-      const value = literal.slice(1, -1);
-      const pattern =
-        operator === "contains"
-          ? `"*${value}*"`
-          : operator === "starts_with"
-            ? `"${value}*"`
-            : `"*${value}"`;
-      const comparison =
-        "mode" in condition && condition.mode === "insensitive"
-          ? "ilike"
-          : "like";
-      return `${field}.${comparison}.${pattern}`;
+      return `${field}.in.(${values})`;
     }
   }
 };
@@ -108,11 +73,7 @@ export const buildSupabaseFilter = (
   }
   let expression = predicate(first);
   for (const condition of rest) {
-    const next = predicate(condition);
-    expression =
-      condition.connector === "OR"
-        ? `or(${expression},${next})`
-        : `and(${expression},${next})`;
+    expression = `and(${expression},${predicate(condition)})`;
   }
   return expression;
 };

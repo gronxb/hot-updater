@@ -345,7 +345,6 @@ const createCrudImplementation = (
           tables.bundles.rows,
           input.where,
           input.orderBy,
-          input.distinctOn,
           input.offset,
           input.limit,
         );
@@ -354,7 +353,6 @@ const createCrudImplementation = (
           tables.bundle_patches.rows,
           input.where,
           input.orderBy,
-          input.distinctOn,
           input.offset,
           input.limit,
         );
@@ -363,7 +361,6 @@ const createCrudImplementation = (
           tables.bundle_events.rows,
           input.where,
           input.orderBy,
-          input.distinctOn,
           input.offset,
           input.limit,
         );
@@ -373,7 +370,6 @@ const createCrudImplementation = (
           tables.channels.rows,
           input.where,
           input.orderBy,
-          input.distinctOn,
           input.offset,
           input.limit,
         );
@@ -382,7 +378,6 @@ const createCrudImplementation = (
           tables.api_keys.rows,
           input.where,
           input.orderBy,
-          input.distinctOn,
           input.offset,
           input.limit,
         );
@@ -391,7 +386,6 @@ const createCrudImplementation = (
           tables.releases.rows,
           input.where,
           input.orderBy,
-          input.distinctOn,
           input.offset,
           input.limit,
         );
@@ -400,7 +394,6 @@ const createCrudImplementation = (
           tables.release_catalogs.rows,
           input.where,
           input.orderBy,
-          input.distinctOn,
           input.offset,
           input.limit,
         );

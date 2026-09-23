@@ -18,8 +18,7 @@ export const appendBundleWhere = (
     return true;
   };
 
-  for (const [index, condition] of (where ?? []).entries()) {
-    if (index > 0 && condition.connector === "OR") return false;
+  for (const condition of where ?? []) {
     const operator = condition.operator ?? "eq";
     switch (condition.field) {
       case "platform":

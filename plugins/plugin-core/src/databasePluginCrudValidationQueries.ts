@@ -26,6 +26,8 @@ export const validateSelect = (model: DatabaseModel, select: unknown): void => {
   validateFields(model, select);
 };
 
+const whereKeys = new Set(["field", "operator", "value"]);
+
 const validateWhereValue = (
   model: DatabaseModel,
   condition: Readonly<Record<string, unknown>>,
@@ -36,22 +38,15 @@ const validateWhereValue = (
   validateField(model, field);
   const operator = condition.operator ?? "eq";
   const value = condition.value;
-  const mode = condition.mode;
-  if (mode !== undefined && mode !== "sensitive" && mode !== "insensitive") {
-    throw new DatabasePluginInputError("invalid-query");
-  }
   switch (operator) {
     case "eq":
-    case "ne":
       if (
         !(
           isStringField(field) ||
           isNumberField(field) ||
           isBooleanField(field)
         ) ||
-        !modelValidators[model][field]?.(value) ||
-        (mode !== undefined &&
-          (!isStringField(field) || typeof value !== "string"))
+        !modelValidators[model][field]?.(value)
       ) {
         throw new DatabasePluginInputError("invalid-query");
       }
@@ -61,7 +56,6 @@ const validateWhereValue = (
     case "lt":
     case "lte":
       if (
-        mode !== undefined ||
         !(isStringField(field) || isNumberField(field)) ||
         value === null ||
         !modelValidators[model][field]?.(value)
@@ -70,8 +64,7 @@ const validateWhereValue = (
       }
       return;
     case "in":
-    case "not_in":
-      if (!Array.isArray(value) || mode !== undefined)
+      if (!Array.isArray(value))
         throw new DatabasePluginInputError("invalid-query");
       if (
         !(isStringField(field) || isNumberField(field) || isBooleanField(field))
@@ -79,17 +72,6 @@ const validateWhereValue = (
         throw new DatabasePluginInputError("invalid-query");
       }
       if (!value.every((item) => modelValidators[model][field]?.(item))) {
-        throw new DatabasePluginInputError("invalid-query");
-      }
-      return;
-    case "contains":
-    case "starts_with":
-    case "ends_with":
-      if (
-        !isStringField(field) ||
-        typeof value !== "string" ||
-        !modelValidators[model][field]?.(value)
-      ) {
         throw new DatabasePluginInputError("invalid-query");
       }
       return;
@@ -103,14 +85,10 @@ export const validateWhere = (model: DatabaseModel, where: unknown): void => {
   if (!Array.isArray(where))
     throw new DatabasePluginInputError("invalid-query");
   for (const item of where) {
-    if (!isRecord(item)) throw new DatabasePluginInputError("invalid-query");
-    if (
-      item.connector !== undefined &&
-      item.connector !== "AND" &&
-      item.connector !== "OR"
-    ) {
+    // Conditions are always joined with AND; unknown keys such as a
+    // connector or a comparison mode are rejected instead of ignored.
+    if (!isRecord(item) || Object.keys(item).some((key) => !whereKeys.has(key)))
       throw new DatabasePluginInputError("invalid-query");
-    }
     validateWhereValue(model, item);
   }
 };
@@ -165,22 +143,9 @@ export const validateOrderBy = (
   });
 };
 
-export const validateDistinctOn = (
-  model: DatabaseModel,
-  distinctOn: unknown,
-  orderBy: readonly OrderByClause[] | undefined,
-): void => {
-  if (distinctOn === undefined) return;
-  if (!isRecord(distinctOn))
+export const validateNoDistinctOn = (input: object): void => {
+  if (Object.hasOwn(input, "distinctOn")) {
     throw new DatabasePluginInputError("invalid-distinct");
-  const fields = validateDistinctFields(model, distinctOn.fields);
-  if (fields === undefined || orderBy === undefined) {
-    throw new DatabasePluginInputError("invalid-distinct");
-  }
-  for (const [index, field] of fields.entries()) {
-    if (orderBy[index]?.field !== field) {
-      throw new DatabasePluginInputError("invalid-distinct");
-    }
   }
 };
 

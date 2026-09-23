@@ -402,9 +402,6 @@ const createSupabaseImplementation = (
       }
     },
     async findMany(input: FindManyDatabaseImplementationInput) {
-      if (input.distinctOn !== undefined) {
-        throw new DatabasePluginInputError("invalid-operation");
-      }
       if (input.limit === 0) return [];
       const filter = buildSupabaseFilter(input.where);
       const rangeEnd = input.offset + input.limit - 1;

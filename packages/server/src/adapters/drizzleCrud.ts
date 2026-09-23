@@ -305,7 +305,7 @@ export const createDrizzleCrud = (
     },
     async countLatestInsightsEvents(input) {
       const groups = latestInsightsCountGroups(input).map((where) =>
-        buildDrizzleWhere(provider, heads, where),
+        buildDrizzleWhere(heads, where),
       );
       if (provider === "mysql" && groups.length === 2) {
         const native = db.resolve === undefined ? db : await db.resolve();
@@ -481,25 +481,25 @@ export const createDrizzleCrud = (
     async delete(input) {
       switch (input.model) {
         case "bundles": {
-          const where = buildDrizzleWhere(provider, bundles, input.where);
+          const where = buildDrizzleWhere(bundles, input.where);
           if (where === undefined) throw new DrizzleAdapterInvariantError();
           await db.delete(bundles).where(where).execute();
           return;
         }
         case "bundle_patches": {
-          const where = buildDrizzleWhere(provider, patches, input.where);
+          const where = buildDrizzleWhere(patches, input.where);
           if (where === undefined) throw new DrizzleAdapterInvariantError();
           await db.delete(patches).where(where).execute();
           return;
         }
         case "releases": {
-          const where = buildDrizzleWhere(provider, releases, input.where);
+          const where = buildDrizzleWhere(releases, input.where);
           if (where === undefined) throw new DrizzleAdapterInvariantError();
           await db.delete(releases).where(where).execute();
           return;
         }
         case "channels": {
-          const where = buildDrizzleWhere(provider, channels, input.where);
+          const where = buildDrizzleWhere(channels, input.where);
           if (where === undefined) throw new DrizzleAdapterInvariantError();
           try {
             await db.delete(channels).where(where).execute();
@@ -516,75 +516,60 @@ export const createDrizzleCrud = (
       }
       switch (input.model) {
         case "bundle_events":
-          return db.$count(
-            events,
-            buildDrizzleWhere(provider, events, input.where),
-          );
+          return db.$count(events, buildDrizzleWhere(events, input.where));
         case "bundles":
-          return db.$count(
-            bundles,
-            buildDrizzleWhere(provider, bundles, input.where),
-          );
+          return db.$count(bundles, buildDrizzleWhere(bundles, input.where));
         case "bundle_patches":
-          return db.$count(
-            patches,
-            buildDrizzleWhere(provider, patches, input.where),
-          );
+          return db.$count(patches, buildDrizzleWhere(patches, input.where));
         case "releases":
-          return db.$count(
-            releases,
-            buildDrizzleWhere(provider, releases, input.where),
-          );
+          return db.$count(releases, buildDrizzleWhere(releases, input.where));
       }
     },
     async findOne(input) {
       switch (input.model) {
         case "bundles": {
           const row = await db.query.bundles.findFirst({
-            where: buildDrizzleWhere(provider, bundles, input.where),
+            where: buildDrizzleWhere(bundles, input.where),
           });
           return row === undefined ? null : fromStoredBundleRow(row);
         }
         case "bundle_patches":
           return (
             (await db.query.bundle_patches.findFirst({
-              where: buildDrizzleWhere(provider, patches, input.where),
+              where: buildDrizzleWhere(patches, input.where),
             })) ?? null
           );
         case "api_keys":
           return (
             (await db.query.api_keys.findFirst({
-              where: buildDrizzleWhere(provider, apiKeys, input.where),
+              where: buildDrizzleWhere(apiKeys, input.where),
             })) ?? null
           );
         case "channels":
           return (
             (await db.query.channels.findFirst({
-              where: buildDrizzleWhere(provider, channels, input.where),
+              where: buildDrizzleWhere(channels, input.where),
             })) ?? null
           );
         case "releases": {
           const row = await db.query.releases.findFirst({
-            where: buildDrizzleWhere(provider, releases, input.where),
+            where: buildDrizzleWhere(releases, input.where),
           });
           return row === undefined ? null : fromStoredReleaseRow(row);
         }
         case "release_catalogs": {
           const row = await db.query.release_catalogs.findFirst({
-            where: buildDrizzleWhere(provider, releaseCatalogs, input.where),
+            where: buildDrizzleWhere(releaseCatalogs, input.where),
           });
           return row === undefined ? null : fromStoredReleaseCatalogRow(row);
         }
       }
     },
     async findMany(input) {
-      if (input.distinctOn !== undefined) {
-        throw new DatabasePluginInputError("invalid-operation");
-      }
       switch (input.model) {
         case "bundles": {
           const rows = await db.query.bundles.findMany({
-            where: buildDrizzleWhere(provider, bundles, input.where),
+            where: buildDrizzleWhere(bundles, input.where),
             orderBy: toOrderBy(bundles, input),
             limit: input.limit,
             offset: input.offset,
@@ -594,7 +579,7 @@ export const createDrizzleCrud = (
         case "bundle_events":
           return (
             await db.query.bundle_events.findMany({
-              where: buildDrizzleWhere(provider, events, input.where),
+              where: buildDrizzleWhere(events, input.where),
               orderBy: toOrderBy(events, input),
               limit: input.limit,
               offset: input.offset,
@@ -603,28 +588,28 @@ export const createDrizzleCrud = (
 
         case "api_keys":
           return db.query.api_keys.findMany({
-            where: buildDrizzleWhere(provider, apiKeys, input.where),
+            where: buildDrizzleWhere(apiKeys, input.where),
             orderBy: toOrderBy(apiKeys, input),
             limit: input.limit,
             offset: input.offset,
           });
         case "bundle_patches":
           return db.query.bundle_patches.findMany({
-            where: buildDrizzleWhere(provider, patches, input.where),
+            where: buildDrizzleWhere(patches, input.where),
             orderBy: toOrderBy(patches, input),
             limit: input.limit,
             offset: input.offset,
           });
         case "channels":
           return db.query.channels.findMany({
-            where: buildDrizzleWhere(provider, channels, input.where),
+            where: buildDrizzleWhere(channels, input.where),
             orderBy: toOrderBy(channels, input),
             limit: input.limit,
             offset: input.offset,
           });
         case "releases": {
           const rows = await db.query.releases.findMany({
-            where: buildDrizzleWhere(provider, releases, input.where),
+            where: buildDrizzleWhere(releases, input.where),
             orderBy: toOrderBy(releases, input),
             limit: input.limit,
             offset: input.offset,
@@ -633,7 +618,7 @@ export const createDrizzleCrud = (
         }
         case "release_catalogs": {
           const rows = await db.query.release_catalogs.findMany({
-            where: buildDrizzleWhere(provider, releaseCatalogs, input.where),
+            where: buildDrizzleWhere(releaseCatalogs, input.where),
             orderBy: toOrderBy(releaseCatalogs, input),
             limit: input.limit,
             offset: input.offset,

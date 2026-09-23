@@ -79,8 +79,6 @@ const firestoreOperator = (
   switch (operator ?? "eq") {
     case "eq":
       return "==";
-    case "ne":
-      return "!=";
     case "gt":
       return ">";
     case "gte":
@@ -91,8 +89,6 @@ const firestoreOperator = (
       return "<=";
     case "in":
       return "in";
-    case "not_in":
-      return "not-in";
     default:
       return undefined;
   }
@@ -101,7 +97,6 @@ const firestoreOperator = (
 const applyFirebaseWhere = (
   initial: Query<DocumentData>,
   where: readonly {
-    readonly connector?: "AND" | "OR";
     readonly field: string;
     readonly operator?: string;
     readonly value: unknown;
@@ -110,7 +105,7 @@ const applyFirebaseWhere = (
   let query = initial;
   for (const condition of where) {
     const operator = firestoreOperator(condition.operator);
-    if (condition.connector === "OR" || operator === undefined) {
+    if (operator === undefined) {
       throw new FirebaseDatabaseConstraintError("query.unsupported");
     }
     query = query.where(condition.field, operator, condition.value);

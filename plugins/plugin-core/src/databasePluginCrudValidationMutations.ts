@@ -28,9 +28,7 @@ export const validateUpdateWhere = (
     !isRecord(selector) ||
     selector.field !== primaryField ||
     (selector.operator !== undefined && selector.operator !== "eq") ||
-    typeof selector.value !== "string" ||
-    selector.connector !== undefined ||
-    selector.mode !== undefined
+    typeof selector.value !== "string"
   ) {
     throw new DatabasePluginInputError("invalid-update-selector");
   }

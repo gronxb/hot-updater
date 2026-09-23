@@ -85,9 +85,6 @@ export const findManyPostgresRows = async (
     case "bundles": {
       let query = db.selectFrom("bundles").selectAll();
       if (where !== undefined) query = query.where(where);
-      if (input.distinctOn !== undefined) {
-        query = query.distinctOn(input.distinctOn.fields);
-      }
       for (const clause of input.orderBy ?? []) {
         query = query.orderBy(clause.field, (order) =>
           applyOrder(order, clause),
@@ -108,9 +105,6 @@ export const findManyPostgresRows = async (
     case "bundle_events": {
       let query = db.selectFrom("bundle_events").selectAll();
       if (where !== undefined) query = query.where(where);
-      if (input.distinctOn !== undefined) {
-        query = query.distinctOn(input.distinctOn.fields);
-      }
       for (const clause of input.orderBy ?? []) {
         query = query.orderBy(clause.field, (order) =>
           applyOrder(order, clause),
@@ -132,9 +126,6 @@ export const findManyPostgresRows = async (
     case "api_keys": {
       let query = db.selectFrom("api_keys").selectAll();
       if (where !== undefined) query = query.where(where);
-      if (input.distinctOn !== undefined) {
-        query = query.distinctOn(input.distinctOn.fields);
-      }
       for (const clause of input.orderBy ?? []) {
         query = query.orderBy(clause.field, (order) =>
           applyOrder(order, clause),
@@ -145,9 +136,6 @@ export const findManyPostgresRows = async (
     case "bundle_patches": {
       let query = db.selectFrom("bundle_patches").selectAll();
       if (where !== undefined) query = query.where(where);
-      if (input.distinctOn !== undefined) {
-        query = query.distinctOn(input.distinctOn.fields);
-      }
       for (const clause of input.orderBy ?? []) {
         query = query.orderBy(clause.field, (order) =>
           applyOrder(order, clause),

@@ -211,12 +211,6 @@ export const fromStoredReleaseCatalogRow = (
   is_tombstone: parseStoredBoolean(row.is_tombstone, "is_tombstone"),
 });
 
-export const escapeLikePattern = (value: string): string =>
-  value.replaceAll("\\", "\\\\").replaceAll("%", "\\%").replaceAll("_", "\\_");
-
-export const escapeGlobPattern = (value: string): string =>
-  value.replaceAll("[", "[[]").replaceAll("*", "[*]").replaceAll("?", "[?]");
-
 export type StoredBundleEventRow = Omit<BundleEventRow, "metadata"> & {
   readonly metadata: unknown;
 };

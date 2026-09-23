@@ -62,10 +62,7 @@ export const findManyD1Rows = async (
   const orderBy = input.orderBy;
   const order = buildD1Order(orderBy);
   const table = d1TableNames[input.model];
-  const source =
-    input.distinctOn === undefined
-      ? `SELECT * FROM ${table}${where.sql}${order}`
-      : `SELECT * FROM (SELECT *, ROW_NUMBER() OVER (PARTITION BY ${input.distinctOn.fields.join(", ")}${order}) AS __hot_updater_rank FROM ${table}${where.sql}) AS distinct_rows WHERE __hot_updater_rank = 1${order}`;
+  const source = `SELECT * FROM ${table}${where.sql}${order}`;
   const pageParams = encodeD1Values([input.limit, input.offset]);
   const rows = await executor.query(
     `${source} LIMIT json_extract(?, '$') OFFSET json_extract(?, '$')`,
