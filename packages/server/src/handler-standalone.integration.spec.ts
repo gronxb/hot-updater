@@ -67,11 +67,13 @@ beforeAll(async () => {
 });
 
 afterEach(async () => {
-  await db.exec("DELETE FROM bundle_patches");
-  await db.exec("DELETE FROM release_catalogs");
-  await db.exec("DELETE FROM releases");
-  await db.exec("DELETE FROM bundles");
-  await db.exec("DELETE FROM channels");
+  // Every table but the settings rows, aggregates included.
+  const { rows } = await db.query<{ tablename: string }>(
+    "SELECT tablename FROM pg_tables WHERE schemaname = 'public' AND tablename <> 'private_hot_updater_settings'",
+  );
+  await db.exec(
+    `TRUNCATE ${rows.map(({ tablename }) => `"${tablename}"`).join(", ")} CASCADE`,
+  );
 });
 
 afterAll(async () => {

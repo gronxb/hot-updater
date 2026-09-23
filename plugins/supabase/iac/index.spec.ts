@@ -1158,9 +1158,6 @@ describe("resolveEdgeFunctionDenoConfig", () => {
         hono: `npm:hono@${resolvePackageVersion("hono", {
           searchFrom: path.resolve("plugins/supabase"),
         })}`,
-        kysely: `npm:kysely@${resolvePackageVersion("kysely", {
-          searchFrom: path.resolve("packages/server"),
-        })}`,
       });
 
       await expect(
