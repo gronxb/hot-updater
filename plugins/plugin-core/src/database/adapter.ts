@@ -140,7 +140,10 @@ export interface DatabaseAdapter {
     table: PhysicalTable,
     keys: readonly DatabaseKey[],
   ): Promise<readonly (StoredRow | null)[]>;
-  /** Index range read; loops native pages until `limit` rows or the range ends, never a short page. */
+  /**
+   * Index range read; loops native pages until `limit` rows or the range ends, never a short page.
+   * A row read from a key-value index copy may lack `_v`; the engine reads it whole with `get` where it guards.
+   */
   query(
     table: PhysicalTable,
     request: QueryRequest,

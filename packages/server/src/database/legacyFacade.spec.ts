@@ -12,6 +12,8 @@ import { afterAll } from "vitest";
 import { generateEngineSql } from "../db/engineSql";
 import type { DatabaseAdapterWithCapabilities } from "../db/types";
 import { createHotUpdater } from "../index";
+import { createKvAdapter } from "./kv/kvAdapter";
+import { createMemoryKeyValueStore } from "./kv/kvTestStore";
 import {
   createLegacyDatabasePlugin,
   legacyFacadeSchema,
@@ -71,6 +73,17 @@ for (const [name, createAdapter] of [
     async () => {
       const adapter = createMemoryAdapter();
       await migrateLegacyFacade(adapter, "memory");
+      return adapter;
+    },
+  ],
+  [
+    "legacy façade (key-value, in-memory store)",
+    async () => {
+      // Two items per native page, so every range read loops.
+      const adapter = createKvAdapter({
+        store: createMemoryKeyValueStore({ nativePageSize: 2 }),
+      });
+      await migrateLegacyFacade(adapter, "memory-kv");
       return adapter;
     },
   ],
