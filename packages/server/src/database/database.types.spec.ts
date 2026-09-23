@@ -61,7 +61,7 @@ describe("database API types", () => {
 
   it("has no count, offset, or free-form filter", () => {
     expectTypeOf<keyof HotUpdaterDatabase<Schema>>().toEqualTypeOf<
-      "findOne" | "findMany" | "findAggregates"
+      "findOne" | "findMany" | "findAggregates" | "transaction"
     >();
     typeOnly((db) => {
       // @ts-expect-error There is no count.
@@ -100,6 +100,23 @@ describe("database API types", () => {
         index: "byTag",
         where: { tag: "beta" },
         limit: 1,
+      });
+    });
+  });
+
+  it("creates full rows and updates only non-key fields in a transaction", () => {
+    typeOnly((db) => {
+      void db.transaction(async (tx) => {
+        tx.create("bundles", { id: "b", platform: "ios", hash: "h" });
+        // @ts-expect-error hash is required.
+        tx.create("bundles", { id: "b", platform: "ios" });
+        const row = await tx.findOne("bundles", { id: "b" });
+        if (row === null) return;
+        tx.update("bundles", row, { tag: null });
+        // @ts-expect-error Key fields cannot change.
+        tx.update("bundles", row, { id: "c" });
+        // @ts-expect-error Aggregates are not written through create.
+        tx.create("totals", { scope: "s" });
       });
     });
   });

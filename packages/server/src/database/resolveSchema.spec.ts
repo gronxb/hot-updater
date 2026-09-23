@@ -213,7 +213,7 @@ describe("validateSchema", () => {
       'field "parent_id" and the key of "parents" differ in type',
     );
     expect(message).toContain(
-      'cascade on "parent_id" needs an index whose eq starts with it',
+      'cascade on "parent_id" needs an index whose eq is exactly [parent_id]',
     );
   });
 
