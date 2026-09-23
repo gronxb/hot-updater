@@ -242,6 +242,14 @@ describe("createKvAdapter", () => {
     expect(capped.fits([insert(item("a", { note: "x".repeat(900) }))])).toBe(
       false,
     );
+    const keyed = createKvAdapter({
+      store: createMemoryKeyValueStore({
+        limits: { items: 100, bytes: 4_000, keyBytes: { pk: 200, sk: 40 } },
+      }),
+    });
+    expect(keyed.fits([insert(item("a"))])).toBe(true);
+    // A long id makes a long sort key; each copy's sort key holds it too.
+    expect(keyed.fits([insert(item("i".repeat(40)))])).toBe(false);
     expect(
       adapter.fits([
         {

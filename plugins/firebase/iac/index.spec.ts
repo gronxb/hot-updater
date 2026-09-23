@@ -12,6 +12,7 @@ const mocks = vi.hoisted(() => ({
   functionsDir: "",
   assertFunction: vi.fn(),
   assertInfrastructure: vi.fn(),
+  migrateFirebaseDatabase: vi.fn(),
   provisionApiKey: vi.fn(async () => ({
     apiKey: "AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE",
   })),
@@ -33,6 +34,7 @@ vi.mock("../src/firebaseDatabase", () => ({
   firebaseDatabase: vi.fn(() => ({
     models: { apiKeys: {} },
   })),
+  migrateFirebaseDatabase: mocks.migrateFirebaseDatabase,
 }));
 
 vi.mock("firebase-admin/app", async () => {
@@ -288,6 +290,13 @@ describe("Firebase project creation", () => {
     expect(mocks.provisionApiKey).toHaveBeenCalledWith(
       expect.objectContaining({ existingApiKey: API_KEY }),
     );
+    // The schema settings come first, since the plugin reads nothing without them.
+    expect(mocks.migrateFirebaseDatabase).toHaveBeenCalledWith(
+      expect.objectContaining({ projectId: "existing-project" }),
+    );
+    expect(
+      mocks.migrateFirebaseDatabase.mock.invocationCallOrder[0],
+    ).toBeLessThan(mocks.provisionApiKey.mock.invocationCallOrder[0]!);
     expect(execa).toHaveBeenCalledWith(
       "npx",
       expect.arrayContaining([

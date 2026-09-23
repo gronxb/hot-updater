@@ -67,11 +67,15 @@ export interface KvItem {
  */
 export interface KeyValueStore {
   readonly id: string;
-  /** The most items, and bytes, one atomic write takes; `itemBytes` caps each item. */
+  /**
+   * The most items, and bytes, one atomic write takes; `itemBytes` caps each
+   * item, and `keyBytes` the partition and sort keys the store indexes whole.
+   */
   readonly limits: {
     readonly items: number;
     readonly bytes: number;
     readonly itemBytes?: number;
+    readonly keyBytes?: { readonly pk: number; readonly sk: number };
   };
   get(keys: readonly KvKey[]): Promise<readonly (StoredRow | null)[]>;
   /** One native page; `more` when the range may go on past it. An empty page ends the range. */
@@ -319,9 +323,9 @@ export const createKvAdapter = ({
     return { items: [...items.values()] };
   };
 
-  const bytes = new TextEncoder();
+  const encoder = new TextEncoder();
   const sizeOf = ({ op }: Planned) =>
-    bytes.encode(
+    encoder.encode(
       op.key.pk +
         op.key.sk +
         JSON.stringify(
@@ -373,12 +377,19 @@ export const createKvAdapter = ({
       const { items } = compile(ops);
       // A write in which two rows take one unique value fails at its op, not here.
       if (items === undefined) return true;
-      const { items: most, bytes, itemBytes = bytes } = store.limits;
+      const { items: most, bytes, itemBytes = bytes, keyBytes } = store.limits;
       const sizes = items.map(sizeOf);
+      const length = (text: string) => encoder.encode(text).length;
       return (
         items.length <= most &&
         sizes.reduce((sum, size) => sum + size, 0) <= bytes &&
-        sizes.every((size) => size <= itemBytes)
+        sizes.every((size) => size <= itemBytes) &&
+        (keyBytes === undefined ||
+          items.every(
+            ({ op }) =>
+              length(op.key.pk) <= keyBytes.pk &&
+              length(op.key.sk) <= keyBytes.sk,
+          ))
       );
     },
     get: (table, keys) =>
