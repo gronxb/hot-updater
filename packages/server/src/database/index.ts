@@ -119,3 +119,4 @@ export {
   type SqlResult,
   type SqlStatement,
 } from "./sql/sqlAdapter";
+export { createLegacyDatabasePlugin, legacyFacadeSchema } from "./legacyFacade";

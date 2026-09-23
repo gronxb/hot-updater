@@ -5,7 +5,7 @@ export {
   targetBaseCandidateKey,
   type MinorLines,
 } from "./baseCandidates";
-export { commitLegacyChanges } from "./legacyCommit";
+export { commitLegacyChanges, type ExternalChange } from "./legacyCommit";
 export {
   changeReleases,
   rebuildCatalog,
@@ -16,6 +16,11 @@ export {
 export {
   compiledGeneration,
   createCoreReads,
+  toBundleRow,
+  toCatalogRow,
+  toChannelRow,
+  toPatchRow,
+  toReleaseRow,
   type BundleDetail,
   type CoreDatabase,
   type CoreReads,
