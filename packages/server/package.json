@@ -40,6 +40,10 @@
       "import": "./dist/node.mjs",
       "require": "./dist/node.cjs"
     },
+    "./plugins": {
+      "import": "./dist/plugins/index.mjs",
+      "require": "./dist/plugins/index.cjs"
+    },
     "./package.json": "./package.json"
   },
   "files": [
@@ -100,6 +104,7 @@
     "msw": "^2.7.0",
     "mysql2": "catalog:db",
     "pg": "catalog:db",
-    "uuidv7": "catalog:"
+    "uuidv7": "catalog:",
+    "wrangler": "^4.69.0"
   }
 }
