@@ -1,5 +1,6 @@
 import {
   type BuildType,
+  generateHotUpdaterPlugins,
   getInitProviderTextPromptValues,
   link,
   makeEnv,
@@ -67,6 +68,7 @@ export const setEnv = async ({
         `Existing 'hot-updater.config.ts' was left unchanged: ${configWriteResult.reason}`,
       );
     }
+    await generateHotUpdaterPlugins("@hot-updater/firebase");
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     console.error("Error writing configuration file:", message);

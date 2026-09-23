@@ -77,36 +77,35 @@ describe("Artifact commands", () => {
 
   it("paginates through all Release references", async () => {
     const bundleId = "B1";
-    databaseHarness.setBundles([artifact(bundleId)]);
-    const releases = Array.from({ length: 1_001 }, (_, index) =>
+    await databaseHarness.setBundles([artifact(bundleId)]);
+    const releases = Array.from({ length: 501 }, (_, index) =>
       releaseReference(
-        `release-${String(1_001 - index).padStart(4, "0")}`,
+        `release-${String(501 - index).padStart(4, "0")}`,
         bundleId,
       ),
     );
-    const findMany = vi
-      .spyOn(databaseHarness.plugin.models.releases, "findMany")
+    const listReleases = vi
+      .spyOn(databaseHarness.core, "listReleases")
       .mockImplementation(async (input) => {
-        if (input.beforeReleaseId === undefined) {
-          return releases.slice(0, 1_000);
-        }
-        expect(input.beforeReleaseId).toBe(releases[999]!.id);
-        return releases.slice(1_000);
+        expect(input.filter).toEqual({ kind: "bundle", bundleId });
+        if (input.after === undefined) return releases.slice(0, 500);
+        expect(input.after).toBe(releases[499]!.id);
+        return releases.slice(500);
       });
     const { handleArtifactDelete } = await import("./artifact");
 
     await expect(
       handleArtifactDelete([bundleId], { yes: true }),
-    ).rejects.toThrow(releases[1_000]!.id);
+    ).rejects.toThrow(releases[500]!.id);
 
-    expect(findMany).toHaveBeenCalledTimes(2);
+    expect(listReleases).toHaveBeenCalledTimes(2);
     await expect(
       databaseHarness.plugin.models.bundles.findById(bundleId),
     ).resolves.not.toBeNull();
   });
 
   it("deletes an unreferenced artifact", async () => {
-    databaseHarness.setBundles([artifact("B1")]);
+    await databaseHarness.setBundles([artifact("B1")]);
     const { handleArtifactDelete } = await import("./artifact");
 
     await handleArtifactDelete(["B1"], { yes: true });
@@ -127,7 +126,7 @@ describe("Artifact commands", () => {
 
   it("preserves an artifact referenced by a Release", async () => {
     const bundleId = "00000000-0000-7000-8000-000000000001";
-    databaseHarness.setBundles([artifact(bundleId)]);
+    await databaseHarness.setBundles([artifact(bundleId)]);
     await databaseHarness.plugin.models.channels.insert({
       row: { id: "channel-production", name: "production" },
       onConflict: "returnExisting",

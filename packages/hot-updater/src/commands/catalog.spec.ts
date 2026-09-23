@@ -5,29 +5,23 @@ import {
 import {
   ReleaseCatalogMutationError,
   type ReleaseCatalogRow,
-  type ReleaseCatalogScope,
-  type ReleaseRow,
 } from "@hot-updater/plugin-core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const { mockCli, mockPreflight, mockPrintBanner, mockRebuild } = vi.hoisted(
-  () => ({
-    mockCli: {
-      loadConfig: vi.fn(),
-      p: {
-        confirm: vi.fn(),
-        isCancel: vi.fn(() => false),
-        log: {
-          error: vi.fn(),
-          warn: vi.fn(),
-        },
+const { mockCli, mockPrintBanner } = vi.hoisted(() => ({
+  mockCli: {
+    loadConfig: vi.fn(),
+    p: {
+      confirm: vi.fn(),
+      isCancel: vi.fn(() => false),
+      log: {
+        error: vi.fn(),
+        warn: vi.fn(),
       },
     },
-    mockPreflight: vi.fn(),
-    mockPrintBanner: vi.fn(),
-    mockRebuild: vi.fn(),
-  }),
-);
+  },
+  mockPrintBanner: vi.fn(),
+}));
 
 vi.mock("@hot-updater/cli-tools", async (importOriginal) => {
   const actual =
@@ -36,16 +30,6 @@ vi.mock("@hot-updater/cli-tools", async (importOriginal) => {
     ...actual,
     loadConfig: mockCli.loadConfig,
     p: mockCli.p,
-  };
-});
-
-vi.mock("@hot-updater/plugin-core", async (importOriginal) => {
-  const actual =
-    await importOriginal<typeof import("@hot-updater/plugin-core")>();
-  return {
-    ...actual,
-    preflightReleaseCatalogRebuild: mockPreflight,
-    rebuildReleaseCatalog: mockRebuild,
   };
 });
 
@@ -65,32 +49,6 @@ const fingerprintScopeKey = createReleaseCatalogScopeKey({
   fingerprintHash: "fingerprint-a",
   platform: "android",
   strategy: "FINGERPRINT",
-});
-
-const releaseRow = (
-  scopeKey: string,
-  overrides: Partial<ReleaseRow> = {},
-): ReleaseRow => ({
-  bundle_id: "bundle-a",
-  channel_id: channel.id,
-  created_at_ms: 1,
-  enabled: true,
-  fingerprint_hash: scopeKey === fingerprintScopeKey ? "fingerprint-a" : null,
-  id: `release-${scopeKey === fingerprintScopeKey ? "fingerprint" : "app"}`,
-  kind: "BUNDLE",
-  message: null,
-  operation: "DEPLOY",
-  platform: scopeKey === fingerprintScopeKey ? "android" : "ios",
-  revision: 1,
-  rollout_cohort_count: 1_000,
-  scope_key: scopeKey,
-  should_force_update: false,
-  source_release_id: null,
-  strategy: scopeKey === fingerprintScopeKey ? "FINGERPRINT" : "APP_VERSION",
-  target_app_version: scopeKey === fingerprintScopeKey ? null : "1.0.0",
-  target_cohorts: [],
-  updated_at_ms: 1,
-  ...overrides,
 });
 
 const catalogRow = (
@@ -114,7 +72,7 @@ const catalogRow = (
 });
 
 const preflightResult = (
-  scope: ReleaseCatalogScope,
+  scopeKey: string,
   currentCatalog: ReleaseCatalogRow | null,
   changed: boolean,
 ) => ({
@@ -127,37 +85,27 @@ const preflightResult = (
     releaseCount: 1,
     segmentCount: 1,
   },
-  projectedCatalog: catalogRow(scope.scopeKey, {
+  projectedCatalog: catalogRow(scopeKey, {
     generation: (currentCatalog?.generation ?? 0) + (changed ? 1 : 0),
   }),
 });
 
 describe("catalog commands", () => {
-  const database = {
-    dispose: vi.fn(),
-    models: {
-      channels: { list: vi.fn() },
-      releaseCatalogs: {
-        findByScopeKey: vi.fn(),
-        findMany: vi.fn(),
-      },
-      releases: {
-        findMany: vi.fn(),
-        findManyByScope: vi.fn(),
-      },
-    },
+  const core = {
+    getReleaseCatalogRow: vi.fn(),
+    listReleaseCatalogs: vi.fn(),
+    preflightReleaseCatalogRebuild: vi.fn(),
+    rebuildReleaseCatalog: vi.fn(),
   };
+  const database = { dispose: vi.fn(), core };
 
   beforeEach(() => {
     vi.clearAllMocks();
-    mockPreflight.mockReset();
-    mockRebuild.mockReset();
     mockCli.loadConfig.mockResolvedValue({ database });
-    database.models.channels.list.mockResolvedValue({ channels: [] });
-    database.models.releaseCatalogs.findByScopeKey.mockResolvedValue(null);
-    database.models.releaseCatalogs.findMany.mockResolvedValue([]);
-    database.models.releases.findMany.mockResolvedValue([]);
-    database.models.releases.findManyByScope.mockResolvedValue([]);
+    core.getReleaseCatalogRow.mockResolvedValue(null);
+    core.listReleaseCatalogs.mockResolvedValue([]);
+    core.preflightReleaseCatalogRebuild.mockReset();
+    core.rebuildReleaseCatalog.mockReset();
   });
 
   afterEach(() => {
@@ -167,15 +115,14 @@ describe("catalog commands", () => {
   it.each(["preflight", "rebuild"] as const)(
     "%s refuses to replace a missing Catalog identity",
     async (command) => {
-      database.models.channels.list.mockResolvedValue({ channels: [channel] });
-      database.models.releases.findManyByScope.mockResolvedValue([
-        releaseRow(appVersionScopeKey),
-      ]);
+      core.getReleaseCatalogRow.mockResolvedValue(
+        catalogRow(appVersionScopeKey),
+      );
       const error = new ReleaseCatalogMutationError(
         "CATALOG_IDENTITY_MISSING",
         "Restore its catalog row from backup before rebuilding or deploying.",
       );
-      mockPreflight.mockRejectedValue(error);
+      core.preflightReleaseCatalogRebuild.mockRejectedValue(error);
       const output = vi.spyOn(console, "log").mockImplementation(() => {});
       const { handleCatalogPreflight, handleCatalogRebuild } =
         await import("./catalog");
@@ -186,43 +133,25 @@ describe("catalog commands", () => {
         handler([appVersionScopeKey], { json: true, yes: true }),
       ).rejects.toBe(error);
 
-      expect(mockPreflight).toHaveBeenCalledWith({
-        database,
-        scope: {
-          channelId: channel.id,
-          channelName: channel.name,
-          fingerprintHash: null,
-          platform: "ios",
-          scopeKey: appVersionScopeKey,
-          strategy: "APP_VERSION",
-        },
-      });
-      expect(mockRebuild).not.toHaveBeenCalled();
+      expect(core.preflightReleaseCatalogRebuild).toHaveBeenCalledWith(
+        appVersionScopeKey,
+      );
+      expect(core.rebuildReleaseCatalog).not.toHaveBeenCalled();
       expect(output).not.toHaveBeenCalled();
       expect(database.dispose).toHaveBeenCalledOnce();
     },
   );
 
-  it("deduplicates Release scopes and retains Catalog tombstones without exposing identity", async () => {
+  it("previews every Catalog, tombstones included, without exposing identity", async () => {
     const tombstone = catalogRow(appVersionScopeKey, { is_tombstone: true });
     const fingerprintCatalog = catalogRow(fingerprintScopeKey);
-    database.models.channels.list.mockResolvedValue({ channels: [channel] });
-    database.models.releaseCatalogs.findMany.mockResolvedValue([
-      tombstone,
-      fingerprintCatalog,
-    ]);
-    database.models.releases.findMany.mockResolvedValue([
-      releaseRow(fingerprintScopeKey),
-    ]);
-    mockPreflight.mockImplementation(
-      ({ scope }: { scope: ReleaseCatalogScope }) =>
-        preflightResult(
-          scope,
-          scope.scopeKey === appVersionScopeKey
-            ? tombstone
-            : fingerprintCatalog,
-          false,
-        ),
+    core.listReleaseCatalogs.mockResolvedValue([tombstone, fingerprintCatalog]);
+    core.preflightReleaseCatalogRebuild.mockImplementation((scopeKey: string) =>
+      preflightResult(
+        scopeKey,
+        scopeKey === appVersionScopeKey ? tombstone : fingerprintCatalog,
+        false,
+      ),
     );
     const output = vi.spyOn(console, "log").mockImplementation(() => {});
     const { handleCatalogPreflight } = await import("./catalog");
@@ -233,34 +162,39 @@ describe("catalog commands", () => {
       { scopeKey: appVersionScopeKey, state: "verified" },
       { scopeKey: fingerprintScopeKey, state: "verified" },
     ]);
-    expect(mockPreflight).toHaveBeenCalledTimes(2);
+    expect(core.listReleaseCatalogs).toHaveBeenCalledWith({
+      limit: 500,
+      order: "asc",
+    });
     expect(String(output.mock.calls[0]?.[0])).not.toContain("catalog_id");
     expect(String(output.mock.calls[0]?.[0])).not.toContain(
       tombstone.catalog_id,
     );
   });
 
-  it("rejects Releases that disagree with their canonical scope key", async () => {
-    database.models.channels.list.mockResolvedValue({ channels: [channel] });
-    database.models.releases.findManyByScope.mockResolvedValue([
-      releaseRow(appVersionScopeKey, { platform: "android" }),
-    ]);
+  it("previews a requested scope once however often it is named", async () => {
+    core.getReleaseCatalogRow.mockResolvedValue(catalogRow(appVersionScopeKey));
+    core.preflightReleaseCatalogRebuild.mockImplementation((scopeKey: string) =>
+      preflightResult(scopeKey, catalogRow(scopeKey), false),
+    );
+    vi.spyOn(console, "log").mockImplementation(() => {});
     const { handleCatalogPreflight } = await import("./catalog");
 
-    await expect(
-      handleCatalogPreflight([appVersionScopeKey], { json: true }),
-    ).rejects.toThrow("Releases disagree with catalog scope metadata");
-    expect(mockPreflight).not.toHaveBeenCalled();
-    expect(database.dispose).toHaveBeenCalledOnce();
+    await handleCatalogPreflight([appVersionScopeKey, appVersionScopeKey], {
+      json: true,
+    });
+
+    expect(core.preflightReleaseCatalogRebuild).toHaveBeenCalledTimes(1);
   });
 
-  it("rejects an explicitly requested scope with no Catalog or Releases", async () => {
+  it("rejects an explicitly requested scope with no Catalog", async () => {
     const { handleCatalogPreflight } = await import("./catalog");
 
     await expect(
       handleCatalogPreflight([appVersionScopeKey], { json: true }),
     ).rejects.toThrow(`Release catalog scope not found: ${appVersionScopeKey}`);
-    expect(mockPreflight).not.toHaveBeenCalled();
+    expect(core.preflightReleaseCatalogRebuild).not.toHaveBeenCalled();
+    expect(database.dispose).toHaveBeenCalledOnce();
   });
 
   it("returns an empty result for an empty database", async () => {
@@ -270,7 +204,6 @@ describe("catalog commands", () => {
     await handleCatalogPreflight([], { json: true });
 
     expect(JSON.parse(String(output.mock.calls[0]?.[0]))).toEqual([]);
-    expect(database.models.channels.list).not.toHaveBeenCalled();
   });
 
   it("rebuilds a damaged Catalog without exposing its identity", async () => {
@@ -278,23 +211,16 @@ describe("catalog commands", () => {
       generation: 3,
       payload: "corrupted",
     });
-    database.models.releaseCatalogs.findByScopeKey.mockResolvedValue(current);
-    database.models.channels.list.mockResolvedValue({ channels: [channel] });
-    database.models.releases.findManyByScope.mockResolvedValue([
-      releaseRow(appVersionScopeKey),
-    ]);
-    mockPreflight.mockImplementation(
-      ({ scope }: { scope: ReleaseCatalogScope }) =>
-        preflightResult(scope, current, true),
+    core.getReleaseCatalogRow.mockResolvedValue(current);
+    core.preflightReleaseCatalogRebuild.mockImplementation((scopeKey: string) =>
+      preflightResult(scopeKey, current, true),
     );
-    mockRebuild.mockImplementation(
-      ({ scope }: { scope: ReleaseCatalogScope }) => ({
-        attempts: 1,
-        catalog: catalogRow(scope.scopeKey, { generation: 4 }),
-        changed: true,
-        diagnostics: preflightResult(scope, current, true).diagnostics,
-      }),
-    );
+    core.rebuildReleaseCatalog.mockImplementation((scopeKey: string) => ({
+      attempts: 1,
+      catalog: catalogRow(scopeKey, { generation: 4 }),
+      changed: true,
+      diagnostics: preflightResult(scopeKey, current, true).diagnostics,
+    }));
     const output = vi.spyOn(console, "log").mockImplementation(() => {});
     const { handleCatalogRebuild } = await import("./catalog");
 
@@ -303,10 +229,7 @@ describe("catalog commands", () => {
       yes: true,
     });
 
-    expect(mockRebuild).toHaveBeenCalledWith({
-      database,
-      scope: expect.objectContaining({ scopeKey: appVersionScopeKey }),
-    });
+    expect(core.rebuildReleaseCatalog).toHaveBeenCalledWith(appVersionScopeKey);
     expect(JSON.parse(String(output.mock.calls[0]?.[0]))).toMatchObject([
       {
         catalog: { generation: 4 },
@@ -321,23 +244,16 @@ describe("catalog commands", () => {
 
   it("reports verified if another writer repairs the projection first", async () => {
     const current = catalogRow(appVersionScopeKey, { payload: "corrupted" });
-    database.models.releaseCatalogs.findByScopeKey.mockResolvedValue(current);
-    database.models.channels.list.mockResolvedValue({ channels: [channel] });
-    database.models.releases.findManyByScope.mockResolvedValue([
-      releaseRow(appVersionScopeKey),
-    ]);
-    mockPreflight.mockImplementation(
-      ({ scope }: { scope: ReleaseCatalogScope }) =>
-        preflightResult(scope, current, true),
+    core.getReleaseCatalogRow.mockResolvedValue(current);
+    core.preflightReleaseCatalogRebuild.mockImplementation((scopeKey: string) =>
+      preflightResult(scopeKey, current, true),
     );
-    mockRebuild.mockImplementation(
-      ({ scope }: { scope: ReleaseCatalogScope }) => ({
-        attempts: 1,
-        catalog: catalogRow(scope.scopeKey, { generation: 2 }),
-        changed: false,
-        diagnostics: preflightResult(scope, current, true).diagnostics,
-      }),
-    );
+    core.rebuildReleaseCatalog.mockImplementation((scopeKey: string) => ({
+      attempts: 1,
+      catalog: catalogRow(scopeKey, { generation: 2 }),
+      changed: false,
+      diagnostics: preflightResult(scopeKey, current, true).diagnostics,
+    }));
     const output = vi.spyOn(console, "log").mockImplementation(() => {});
     const { handleCatalogRebuild } = await import("./catalog");
 

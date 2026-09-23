@@ -178,6 +178,36 @@ describe("API key commands", () => {
     expect(dispose).toHaveBeenCalledOnce();
   });
 
+  it("uses the apiKeys() plugin when the config has plugins", async () => {
+    const { apiKeys } = createApiKeyHarness();
+    const legacy = createApiKeyHarness().apiKeys;
+    const created = await apiKeys.create({ name: "Plugin key" });
+    await legacy.create({ name: "Legacy key" });
+    const output = vi.spyOn(console, "log").mockImplementation(() => {});
+    vi.mocked(loadHotUpdater).mockResolvedValue({
+      ...loadedConfig(legacy),
+      hotUpdater: { adapterName: "kysely", api: { apiKeys }, apiKeys: legacy },
+    });
+
+    await handleApiKeyList({ json: true });
+
+    expect(JSON.parse(String(output.mock.calls[0]?.[0]))).toEqual([
+      created.record,
+    ]);
+  });
+
+  it("refuses plugins without apiKeys() instead of managing keys nothing checks", async () => {
+    const legacy = createApiKeyHarness().apiKeys;
+    vi.mocked(loadHotUpdater).mockResolvedValue({
+      ...loadedConfig(legacy),
+      hotUpdater: { adapterName: "kysely", api: {}, apiKeys: legacy },
+    });
+
+    await expect(handleApiKeyList()).rejects.toThrow(
+      "with apiKeys() from @hot-updater/server/plugins/api-keys",
+    );
+  });
+
   it("rejects remote configs and still disposes them", async () => {
     const dispose = vi.fn(async () => {});
     vi.mocked(loadHotUpdater).mockResolvedValue(

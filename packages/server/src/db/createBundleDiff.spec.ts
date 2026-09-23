@@ -10,9 +10,10 @@ import {
   createDatabaseClient,
   createStoragePlugin as createCoreStoragePlugin,
 } from "@hot-updater/plugin-core";
+import { createMemoryAdapter } from "@hot-updater/plugin-core/internal";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { createInMemoryDatabasePlugin } from "../../../test-utils/test/inMemoryDatabasePlugin";
+import { createLegacyDatabasePlugin } from "../database/legacyFacade";
 
 vi.mock("@hot-updater/bsdiff", () => ({
   hdiff: vi.fn(async () => new Uint8Array([1, 2, 3, 4])),
@@ -34,7 +35,10 @@ const createBundle = (id: string, overrides: Partial<Bundle> = {}): Bundle => ({
 const createDatabasePlugin = async (
   bundles: readonly Bundle[],
 ): Promise<DatabasePlugin> => {
-  const plugin = createInMemoryDatabasePlugin();
+  const plugin = createLegacyDatabasePlugin({
+    name: "memory",
+    adapter: createMemoryAdapter(),
+  });
   const client = createDatabaseClient(plugin);
   for (const bundle of bundles) await client.insertBundle(bundle);
   return plugin;
@@ -78,7 +82,6 @@ describe("createBundleDiff", () => {
     const targetDownloadFileHash = "b".repeat(64);
     const plugin = await createDatabasePlugin([baseBundle, targetBundle]);
     const databasePlugin: DatabasePlugin = plugin;
-    const commit = vi.spyOn(databasePlugin, "commit");
     const upload = vi.fn<NonNullable<StoragePlugin["put"]>>(
       async ({ key, body, contentLength }) => {
         const bytes = new Uint8Array(await new Response(body).arrayBuffer());
@@ -156,7 +159,9 @@ describe("createBundleDiff", () => {
       );
 
       expect(upload).toHaveBeenCalledOnce();
-      expect(commit).toHaveBeenCalledOnce();
+      await expect(
+        createDatabaseClient(databasePlugin).getBundleById(targetBundle.id),
+      ).resolves.toMatchObject({ patches: updatedBundle.patches });
       const [patch] = updatedBundle.patches ?? [];
       expect(patch?.baseBundleId).toBe(baseBundle.id);
       expect(patch?.baseFileHash).toBe("hash-old");

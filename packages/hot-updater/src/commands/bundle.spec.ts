@@ -78,7 +78,7 @@ describe("Bundle commands", () => {
   it("lists separate console IDs for promotions sharing a file", async () => {
     const bundle = artifact("00000000-0000-7000-8000-000000000001");
     const androidBundle = artifact("android-file", "android");
-    databaseHarness.setBundles([bundle, androidBundle]);
+    await databaseHarness.setBundles([bundle, androidBundle]);
     for (const name of ["production", "staging"]) {
       await databaseHarness.plugin.models.channels.insert({
         row: { id: `channel-${name}`, name },
@@ -149,7 +149,7 @@ describe("Bundle commands", () => {
 
   it("combines the v0 channel and target app version filters", async () => {
     const bundle = artifact("00000000-0000-7000-8000-000000000011");
-    databaseHarness.setBundles([bundle]);
+    await databaseHarness.setBundles([bundle]);
     for (const name of ["production", "staging"]) {
       await databaseHarness.plugin.models.channels.insert({
         row: { id: `channel-${name}`, name },

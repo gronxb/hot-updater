@@ -1,10 +1,7 @@
 import type { DatabaseAdapter } from "@hot-updater/plugin-core/internal";
 
-import {
-  createCoreReads,
-  type CoreReads,
-  type CoreStorage,
-} from "../core/reads";
+import { createCoreApi, type CoreApi } from "../core/api";
+import { createCoreReads, type CoreStorage } from "../core/reads";
 import { coreModule } from "../core/schema";
 import { createDatabaseEngine } from "../database/database";
 import { resolveSchema, type SchemaModule } from "../database/resolveSchema";
@@ -25,8 +22,8 @@ export interface MountedEndpoint extends PluginEndpoint {
 }
 
 export interface AssembledPlugins {
-  /** Core's reads, on the same engine as the plugins. */
-  readonly core: CoreReads;
+  /** Core's reads and typed writes, on the same engine as the plugins, which get only the reads. */
+  readonly core: CoreApi;
   readonly api: Readonly<Record<string, unknown>>;
   readonly endpoints: readonly MountedEndpoint[];
   readonly clientAuth?: ClientAuth & { readonly plugin: string };
@@ -211,14 +208,20 @@ export const assemblePlugins = (
     adapter: adapter ?? offEngine(),
     schema: resolveSchema([coreModule, ...modules]),
   });
-  const core = createCoreReads(engine.database(coreModule), storage);
+  const coreDatabase = engine.database(coreModule);
+  const core = createCoreApi(coreDatabase, storage, { now });
+  const reads = createCoreReads(coreDatabase, storage);
   const api: Record<string, unknown> = {};
   const endpoints: MountedEndpoint[] = [];
   let clientAuth: AssembledPlugins["clientAuth"];
   plugins.forEach((plugin, position) => {
     const instance = checkInstance(
       plugin,
-      plugin.init({ db: engine.database(modules[position]!), core, now }),
+      plugin.init({
+        db: engine.database(modules[position]!),
+        core: reads,
+        now,
+      }),
     );
     if (instance.clientAuth !== undefined) {
       if (clientAuth !== undefined) {

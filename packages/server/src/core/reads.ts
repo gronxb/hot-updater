@@ -6,10 +6,13 @@ import {
 } from "@hot-updater/core";
 import {
   rowToBundle,
+  type BundleDetail,
   type BundlePatchRow,
   type BundleRow,
   type ChannelRow,
+  type KeysetInput,
   type ReleaseCatalogRow,
+  type ReleaseFilter,
   type ReleaseRow,
 } from "@hot-updater/plugin-core";
 
@@ -24,6 +27,7 @@ import { resolveManifestArtifacts } from "../db/updateArtifacts";
 import type { CoreSchema } from "./schema";
 
 export type CoreDatabase = HotUpdaterDatabase<CoreSchema>;
+export type { BundleDetail, KeysetInput, ReleaseFilter };
 
 const PAGE = 500;
 
@@ -117,37 +121,11 @@ export const drain = async <T>(
   return rows;
 };
 
-/** A release list's filter: exactly the sets the release indexes serve. */
-export type ReleaseFilter =
-  | { readonly kind: "all" }
-  | {
-      readonly kind: "channelPlatform";
-      readonly channelId: string;
-      readonly platform: "ios" | "android";
-      readonly enabled?: boolean;
-    }
-  | { readonly kind: "bundle"; readonly bundleId: string }
-  | { readonly kind: "scope"; readonly scopeKey: string };
-
-export interface KeysetInput {
-  readonly order?: "asc" | "desc";
-  /** Rows strictly after this id in `order`. */
-  readonly after?: string;
-  readonly limit: number;
-}
-
 export interface CoreStorage {
   readonly readStorageText?: (storageUri: string) => Promise<string | null>;
   readonly resolveFileUrl: (
     storageUri: string | null,
   ) => Promise<string | null>;
-}
-
-export interface BundleDetail {
-  readonly bundle: BundleRow;
-  readonly patches: BundlePatchRow[];
-  /** Patches that start from this bundle. */
-  readonly childCount: number;
 }
 
 /** Core's reads, each through one declared index or key. */
@@ -341,11 +319,20 @@ export const createCoreReads = (db: CoreDatabase, storage: CoreStorage) => {
                 ...options,
               })
             : filter.kind === "scope"
-              ? await db.findMany("releases", {
-                  index: "byScope",
-                  where: { scope_key: filter.scopeKey },
-                  ...options,
-                })
+              ? filter.enabled === undefined
+                ? await db.findMany("releases", {
+                    index: "byScope",
+                    where: { scope_key: filter.scopeKey },
+                    ...options,
+                  })
+                : await db.findMany("releases", {
+                    index: "byScopeEnabled",
+                    where: {
+                      scope_key: filter.scopeKey,
+                      enabled: filter.enabled,
+                    },
+                    ...options,
+                  })
               : filter.enabled === undefined
                 ? await db.findMany("releases", {
                     index: "byChannelPlatform",

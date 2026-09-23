@@ -1,6 +1,5 @@
 import { stripVTControlCharacters } from "node:util";
 
-import { updateReleasePolicy } from "@hot-updater/plugin-core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
@@ -98,7 +97,7 @@ describe("Bundle commands", () => {
   it("shows console ID and policy without file or catalog internals", async () => {
     const seeded = deployment("01900000-0000-7000-8000-000000000001");
     const { release } = await commitDeployment({
-      database: databaseHarness.plugin,
+      core: databaseHarness.core,
       ...seeded,
     });
     const output = vi.spyOn(console, "log").mockImplementation(() => {});
@@ -127,7 +126,7 @@ describe("Bundle commands", () => {
   it("keeps the same console ID through policy edits, rollback, and deletion", async () => {
     const seeded = deployment("01900000-0000-7000-8000-000000000001");
     const { release } = await commitDeployment({
-      database: databaseHarness.plugin,
+      core: databaseHarness.core,
       ...seeded,
     });
     const id = release!.id;
@@ -208,8 +207,7 @@ describe("Bundle commands", () => {
       value: true,
     });
     confirm.mockImplementationOnce(async () => {
-      await updateReleasePolicy({
-        database: databaseHarness.plugin,
+      await databaseHarness.core.updateReleasePolicy({
         patch: { message: "changed concurrently" },
         releaseId: seeded.bundle.id,
       });
@@ -233,7 +231,7 @@ describe("Bundle commands", () => {
   it("keeps JSON disable output machine-readable without a human preview", async () => {
     const seeded = deployment("01900000-0000-7000-8000-000000000001");
     const { release } = await commitDeployment({
-      database: databaseHarness.plugin,
+      core: databaseHarness.core,
       ...seeded,
     });
     const output = vi.spyOn(console, "log").mockImplementation(() => {});

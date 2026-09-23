@@ -1,6 +1,7 @@
 import type {
   BundlePatchRow,
   BundleRepository,
+  HotUpdaterCoreApi,
   BundleRow,
   DatabaseBundleQueryWhere,
 } from "@hot-updater/plugin-core";
@@ -8,9 +9,14 @@ import type { DatabaseWhere } from "@hot-updater/plugin-core/internal";
 
 import { createStandaloneBundleReader } from "./standaloneBundleReader";
 import { createStandaloneBundleRemote } from "./standaloneBundleRemote";
+import { createStandaloneCoreApi } from "./standaloneCore";
 import { createStandaloneReleaseRemote } from "./standaloneReleaseRemote";
 import type { StandaloneRepositoryConfig } from "./standaloneRoutes";
 
+export {
+  createStandaloneCoreApi,
+  STANDALONE_ADMIN_PROTOCOL,
+} from "./standaloneCore";
 export { StandaloneDatabaseError } from "./standaloneHttp";
 export type {
   RouteConfig,
@@ -47,21 +53,30 @@ const toBundleWhere = (
   return filters;
 };
 
+/** A self-hosted server's database, over its admin handler. */
+export type StandaloneRepository = BundleRepository & {
+  /** Core's API over admin API protocol 2, which the CLI uses. */
+  readonly core: HotUpdaterCoreApi;
+};
+
 /**
  * Bundle-only HTTP repository used by the CLI for a self-hosted server.
  *
  * This is intentionally not a database plugin: insights and access-key
- * persistence belong to the server's database provider.
+ * persistence belong to the server's database provider. Its `core` speaks
+ * admin API protocol 2; the rest is protocol 1, which the console uses until
+ * it moves to `core`.
  */
 export const standaloneRepository = (
   config: StandaloneRepositoryConfig,
-): BundleRepository => {
+): StandaloneRepository => {
   const remote = createStandaloneBundleRemote(config);
   const releaseRemote = createStandaloneReleaseRemote(config);
   const bundleReader = createStandaloneBundleReader(remote);
 
-  const repository: BundleRepository = {
+  const repository: StandaloneRepository = {
     name: "standalone-repository",
+    core: createStandaloneCoreApi(config),
     models: {
       bundles: {
         async findById(id): Promise<BundleRow | null> {

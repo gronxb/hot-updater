@@ -2,24 +2,27 @@ import {
   createReleaseCatalogScopeKey,
   encodeChannelKey,
 } from "@hot-updater/core";
-import { createMockDatabaseData, mockDatabase } from "@hot-updater/mock";
-import type { Bundle } from "@hot-updater/plugin-core";
+import type { Bundle, Deployment } from "@hot-updater/plugin-core";
 import {
   bundleToPatchRows,
   bundleToRow,
   compileReleaseCatalog,
-  createDatabaseClient,
   type DatabasePlugin,
   extractTimestampFromUUIDv7,
   releaseRowToRelease,
+  rowToBundle,
   type ReleaseCatalogRow,
   type ReleaseRow,
 } from "@hot-updater/plugin-core";
+import {
+  createMemoryAdapter,
+  type DatabaseAdapter,
+} from "@hot-updater/plugin-core/internal";
+import { createLegacyDatabasePlugin } from "@hot-updater/server/database";
+import { createDatabaseCoreApi } from "@hot-updater/server/db";
 import { vi } from "vitest";
 
-import type { DeploymentWrite } from "./deployTransaction";
-
-export type DeploymentSeed = Omit<DeploymentWrite, "catalogId">;
+export type DeploymentSeed = Deployment;
 
 const createdAtMsFromId = (id: string): number => {
   try {
@@ -155,143 +158,124 @@ const compileSeedCatalogs = async (
   return { catalogs, releases };
 };
 
+/**
+ * A database on the storage engine over a memory adapter, as a provider
+ * gives the CLI: its legacy models and commit for seeding, and the adapter
+ * the CLI opens core on. Every read passes `read` first.
+ */
 export const createDatabasePluginHarness = () => {
-  const data = createMockDatabaseData();
-  const basePlugin = mockDatabase({ data, latency: { min: 0, max: 0 } });
   const read = vi.fn(async (): Promise<void> => {});
-  const commit = vi.fn((input) => basePlugin.commit(input));
   const dispose = vi.fn(async (): Promise<void> => {});
-  const plugin: DatabasePlugin = {
-    name: "test-database-v2",
-    models: {
-      bundles: {
-        async findById(id) {
-          await read();
-          return basePlugin.models.bundles.findById(id);
-        },
-        async findMany(query) {
-          await read();
-          return basePlugin.models.bundles.findMany(query);
-        },
-        async count(where) {
-          await read();
-          return basePlugin.models.bundles.count(where);
-        },
-      },
-      bundlePatches: {
-        async findByBundleIds(bundleIds) {
-          await read();
-          return basePlugin.models.bundlePatches.findByBundleIds(bundleIds);
-        },
-      },
-      releases: {
-        async findById(id) {
-          await read();
-          return basePlugin.models.releases.findById(id);
-        },
-        async findMany(input) {
-          await read();
-          return basePlugin.models.releases.findMany(input);
-        },
-        async findManyByScope(input) {
-          await read();
-          return basePlugin.models.releases.findManyByScope(input);
-        },
-      },
-      releaseCatalogs: {
-        async findByScopeKey(scopeKey) {
-          await read();
-          return basePlugin.models.releaseCatalogs.findByScopeKey(scopeKey);
-        },
-        async findMany(input) {
-          await read();
-          return basePlugin.models.releaseCatalogs.findMany(input);
-        },
-      },
-      channels: {
-        insert: (input) => basePlugin.models.channels.insert(input),
-        async list(input) {
-          await read();
-          return basePlugin.models.channels.list(input);
-        },
-        delete: (input) => basePlugin.models.channels.delete(input),
-      },
-      insights: basePlugin.models.insights,
-      apiKeys: basePlugin.models.apiKeys,
+  let memory = createMemoryAdapter();
+  const adapter: DatabaseAdapter = {
+    id: "memory",
+    fits: (ops) => memory.fits(ops),
+    get: async (table, keys) => {
+      await read();
+      return memory.get(table, keys);
     },
-    commit,
-    dispose,
+    query: async (table, request) => {
+      await read();
+      return memory.query(table, request);
+    },
+    write: (ops) => memory.write(ops),
   };
+  const facade = createLegacyDatabasePlugin({
+    name: "test-database-v2",
+    adapter,
+  });
+  const commit = vi.fn((input: Parameters<typeof facade.commit>[0]) =>
+    facade.commit(input),
+  );
+  const engineCore = createDatabaseCoreApi({ engineAdapter: adapter });
+  const deploy = vi.fn((deployments: readonly Deployment[]) =>
+    engineCore.deploy(deployments),
+  );
+  // The CLI opens core through `plugin.core`, so a test can spy on its calls.
+  const core = { ...engineCore, deploy };
+  const plugin: DatabasePlugin & {
+    readonly engineAdapter: DatabaseAdapter;
+    readonly core: typeof core;
+  } = { ...facade, engineAdapter: adapter, core, commit, dispose };
 
-  const setBundles = (bundles: readonly Bundle[]): void => {
-    data.bundles.clear();
-    data.bundlePatches.clear();
-    data.channels.clear();
-    data.releaseCatalogs.clear();
-    data.releases.clear();
-    for (const bundle of bundles) {
-      data.bundles.set(bundle.id, bundleToRow(bundle));
-      for (const patch of bundleToPatchRows(bundle)) {
-        data.bundlePatches.set(patch.id, patch);
-      }
-    }
-    return;
+  const setBundles = async (bundles: readonly Bundle[]): Promise<void> => {
+    memory = createMemoryAdapter();
+    if (bundles.length === 0) return;
+    await facade.commit({
+      changes: bundles.flatMap((bundle) => [
+        {
+          model: "bundles" as const,
+          operation: "insert" as const,
+          row: bundleToRow(bundle),
+        },
+        ...bundleToPatchRows(bundle).map((row) => ({
+          model: "bundlePatches" as const,
+          operation: "insert" as const,
+          row,
+        })),
+      ]),
+    });
   };
 
   return {
     plugin,
+    core,
     commit,
+    deploy,
     read,
     dispose,
     bundles: async (): Promise<Bundle[]> =>
-      (
-        await createDatabaseClient(plugin).getBundles({
-          limit: 100,
-        })
-      ).data,
+      (await core.listBundles({ limit: 100, order: "desc" })).map(
+        ({ bundle, patches }) => rowToBundle(bundle, patches),
+      ),
     releases: () =>
-      plugin.models.releases.findMany({
-        limit: 100,
-      }),
+      core.listReleases({ limit: 100, order: "desc", filter: { kind: "all" } }),
     reset: (): void => {
-      data.bundles.clear();
-      data.bundlePatches.clear();
-      data.bundleEvents.clear();
-      data.channels.clear();
-      data.apiKeys.clear();
-      data.releaseCatalogs.clear();
-      data.releases.clear();
+      memory = createMemoryAdapter();
       read.mockReset().mockResolvedValue(undefined);
-      commit
+      commit.mockReset().mockImplementation((input) => facade.commit(input));
+      deploy
         .mockReset()
-        .mockImplementation((input) => basePlugin.commit(input));
+        .mockImplementation((deployments) => engineCore.deploy(deployments));
+      dispose.mockClear();
     },
     setBundles,
     seedDeployments: async (
       deployments: readonly DeploymentSeed[],
       catalogId = "default",
     ): Promise<void> => {
-      setBundles(deployments.map(({ bundle }) => bundle));
+      await setBundles(deployments.map(({ bundle }) => bundle));
       const channels = [
         ...new Set(deployments.map(({ release }) => release.channel)),
       ].map((name) => ({ id: `channel-${name}`, name }));
-      for (const channel of channels) data.channels.set(channel.id, channel);
-      const channelIds = new Map(
-        [...data.channels.values()].map(({ id, name }) => [name, id]),
-      );
+      for (const row of channels) {
+        await facade.models.channels.insert({
+          row,
+          onConflict: "returnExisting",
+        });
+      }
+      const channelIds = new Map(channels.map(({ id, name }) => [name, id]));
       const compiled = await compileSeedCatalogs(catalogId, deployments);
-      for (const release of compiled.releases) {
-        data.releases.set(release.row.id, {
-          ...release.row,
-          channel_id: channelIds.get(release.channelName)!,
-        });
-      }
-      for (const catalog of compiled.catalogs) {
-        data.releaseCatalogs.set(catalog.row.scope_key, {
-          ...catalog.row,
-          channel_id: channelIds.get(catalog.channelName)!,
-        });
-      }
+      await facade.commit({
+        changes: [
+          ...compiled.releases.map((release) => ({
+            model: "releases" as const,
+            operation: "insert" as const,
+            row: {
+              ...release.row,
+              channel_id: channelIds.get(release.channelName)!,
+            },
+          })),
+          ...compiled.catalogs.map((catalog) => ({
+            model: "releaseCatalogs" as const,
+            operation: "put" as const,
+            row: {
+              ...catalog.row,
+              channel_id: channelIds.get(catalog.channelName)!,
+            },
+          })),
+        ],
+      });
     },
   };
 };

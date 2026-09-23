@@ -4,6 +4,8 @@ import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 import {
+  HOT_UPDATER_PLUGINS_PATH,
+  renderHotUpdaterPlugins,
   renderImportStatements,
   resolvePackageVersion,
   transformEnv,
@@ -145,6 +147,12 @@ for (const provider of providers) {
 }\n\n${config.helperStatements.map(({ code }) => code).join("\n\n")}\n\nexport const database = ${config.database.initializer};\n${migrate}`,
     );
   }
+  // The plugin list init generates beside the config; the prebuilt server
+  // imports the same list.
+  await save(
+    path.join(output, "app", HOT_UPDATER_PLUGINS_PATH),
+    renderHotUpdaterPlugins(`@hot-updater/${provider}`),
+  );
   await cp(
     path.join(packageRoot, "agent/provision-api-key.mjs"),
     path.join(output, "app/provision-api-key.mjs"),
