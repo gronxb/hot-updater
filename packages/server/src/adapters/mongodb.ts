@@ -1,150 +1,53 @@
-import { createDatabasePlugin } from "@hot-updater/plugin-core";
-import {
-  createDatabasePluginAdapter,
-  type DatabasePluginImplementation,
-  type TransactionDatabasePluginImplementation,
-} from "@hot-updater/plugin-core/internal";
-import {
-  MongoServerError,
-  type ClientSession,
-  type MongoClient,
-} from "mongodb";
+import type { MongoClient } from "mongodb";
 
-import { createMongoMigrator } from "../db/fixedMigratorMongo";
-import type { DatabaseAdapterWithCapabilities } from "../db/types";
-import { createMongoCollections } from "./mongodbCollections";
+import { SETTINGS_TABLE } from "../database/fence";
 import {
-  getMongoAppUsage,
-  getMongoReleaseActivity,
-  recordMongoInsightsOverview,
-} from "./mongodbInsightsOverview";
-import { createMongoReads } from "./mongodbReads";
-import { createMongoWrites } from "./mongodbWrites";
+  createLegacyDatabasePlugin,
+  legacyFacadeSchema,
+  legacyFacadeSettings,
+} from "../database/legacyFacade";
+import { createEngineMigrator } from "../db/engineMigrator";
+import type { DatabaseAdapterWithCapabilities } from "../db/types";
+import { createMongoAdapter } from "./mongodbAdapter";
+
+export { MongoTransactionUnsupportedError } from "./mongodbAdapter";
 
 export interface MongoDBConfig {
   readonly client: MongoClient;
-  /** Enables atomic catalog commits. Insights always requires MongoDB 5+ on a replica set or sharded cluster. */
+  /** Ignored: every write runs in a transaction, which needs a replica set or a sharded cluster. */
   readonly transactions?: boolean;
 }
 
-const createMongoImplementation = (
-  client: MongoClient,
-  session?: ClientSession,
-): DatabasePluginImplementation => {
-  const collections = createMongoCollections(client);
-  return {
-    getReleaseActivity: (input) => getMongoReleaseActivity(collections, input),
-    getAppUsage: (input) => getMongoAppUsage(collections, input),
-    recordInsights: async ({ event }) => {
-      const record = () =>
-        client.withSession((insightsSession) =>
-          insightsSession.withTransaction(async () => {
-            const insights = createMongoCollections(client);
-            const options = {
-              session: insightsSession,
-              collation: { locale: "simple" },
-            };
-            const accepted = await insights.bundleEvents.updateOne(
-              { id: event.id },
-              { $setOnInsert: event },
-              { ...options, upsert: true },
-            );
-            if (accepted.upsertedCount === 0) return;
-            const current = await insights.bundleEventHeads.findOne(
-              { install_id: event.install_id },
-              options,
-            );
-            await recordMongoInsightsOverview(
-              insights,
-              insightsSession,
-              event,
-              current,
-            );
-            if (
-              current !== null &&
-              (event.received_at_ms < current.received_at_ms ||
-                (event.received_at_ms === current.received_at_ms &&
-                  event.id <= current.id))
-            )
-              return;
-            await insights.bundleEventHeads.updateOne(
-              { install_id: event.install_id },
-              {
-                $set: {
-                  install_id: event.install_id,
-                  id: event.id,
-                  received_at_ms: event.received_at_ms,
-                  user_id: event.user_id,
-                  platform: event.platform,
-                  channel: event.channel,
-                  type: event.type,
-                  from_bundle_id: event.from_bundle_id,
-                  to_bundle_id: event.to_bundle_id,
-                  current_release_id:
-                    event.type === "UPDATE_DOWNLOADED"
-                      ? event.from_release_id
-                      : event.to_release_id,
-                  app_version: event.app_version,
-                },
-              },
-              { ...options, upsert: true },
-            );
-          }),
-        );
-      try {
-        await record();
-      } catch (error) {
-        if (!(error instanceof MongoServerError) || error.code !== 11000)
-          throw error;
-        await record();
-      }
-    },
-    ...createMongoWrites(collections, session),
-    ...createMongoReads(collections, session),
-  };
+/** Settings rows by their `key` field: the engine's rows and a v0 database's alike. */
+const readSettings = (client: MongoClient) => async () => {
+  const rows = await client
+    .db()
+    .collection(SETTINGS_TABLE.name)
+    .find({ key: { $type: "string" } })
+    .toArray();
+  return new Map(rows.map((row) => [String(row.key), row.value]));
 };
 
-const createTransactionalMongoImplementation = (
-  client: MongoClient,
-): DatabasePluginImplementation => ({
-  ...createMongoImplementation(client),
-  deleteChannel: (input) =>
-    client.withSession((session) =>
-      session.withTransaction(() =>
-        createMongoImplementation(client, session).deleteChannel(input),
-      ),
-    ),
-  transaction: <TResult>(
-    callback: (
-      transaction: TransactionDatabasePluginImplementation,
-    ) => Promise<TResult>,
-  ): Promise<TResult> =>
-    client.withSession((session) =>
-      session.withTransaction(() =>
-        callback(createMongoImplementation(client, session)),
-      ),
-    ),
-});
-
+/**
+ * Hot Updater's database on MongoDB: the storage engine's MongoDB adapter,
+ * behind today's `DatabasePlugin` until E2, with the schema fence on.
+ * `db migrate` creates the collections and indexes, then writes the settings.
+ */
 export const mongoAdapter = (
   config: MongoDBConfig,
 ): DatabaseAdapterWithCapabilities => {
-  const adapter = createDatabasePluginAdapter(
-    "mongodb",
-    config.transactions === true
-      ? createTransactionalMongoImplementation(config.client)
-      : createMongoImplementation(config.client),
-  );
-  return Object.assign(
-    createDatabasePlugin({
-      name: "mongodb",
-      models: adapter.models,
-      commit: adapter.commit,
-    }),
-    {
-      adapterName: "mongodb",
-      provider: "mongodb" as const,
-      createMigrator: () => createMongoMigrator(config.client),
-    },
-  );
+  const adapter = createMongoAdapter({ client: config.client });
+  return {
+    ...createLegacyDatabasePlugin({ name: "mongodb", adapter, fence: true }),
+    adapterName: "mongodb",
+    provider: "mongodb",
+    createMigrator: () =>
+      createEngineMigrator({
+        adapterName: "mongodb",
+        adapter,
+        schema: legacyFacadeSchema,
+        settings: legacyFacadeSettings,
+        readSettings: readSettings(config.client),
+      }),
+  };
 };
