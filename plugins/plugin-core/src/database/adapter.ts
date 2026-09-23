@@ -37,6 +37,10 @@ export interface PhysicalColumn {
   readonly nullable: boolean;
   /** Strings only: the maximum length in UTF-16 code units; unbounded text when absent. */
   readonly maxLength?: number;
+  /** Strings only: ASCII text, stored in single bytes where a backend limits index size (MySQL). */
+  readonly ascii?: true;
+  /** A whole number the backend stores when a writer omits the column; the engine's own columns default to 0. */
+  readonly default?: number;
   /** A multi-valued field: an array of 1–16 values of `type`, indexable in `eq` only. */
   readonly multi?: true;
 }

@@ -1,5 +1,6 @@
 import type { MountedEndpoint } from "./assembly/assemblePlugins";
 import { HotUpdaterConfigError } from "./assembly/assemblePlugins";
+import { HotUpdaterSchemaMigrationRequiredError } from "./db/schemaReadiness";
 import { createBundleRouteHandlers } from "./handlerBundleRoutes";
 import { HandlerBadRequestError } from "./handlerErrors";
 import { createReleaseCatalogRouteHandlers } from "./handlerReleaseCatalogRoutes";
@@ -142,6 +143,10 @@ const createRequestHandler =
     } catch (error) {
       if (error instanceof HandlerBadRequestError) {
         return errorResponse(error.message, 400);
+      }
+      if (error instanceof HotUpdaterSchemaMigrationRequiredError) {
+        console.error(error.message);
+        return errorResponse("Service unavailable", 503);
       }
       console.error("Hot Updater handler error:", error);
       return Response.json(

@@ -9,6 +9,7 @@ import {
 } from "@hot-updater/test-utils";
 import { afterAll, describe, expect, it } from "vitest";
 
+import { legacyFacadeSchema } from "../legacyFacade";
 import {
   classifySqlError,
   createSqlAdapter,
@@ -68,6 +69,37 @@ const recorder = (dialect: SqlExecutor["dialect"]) => {
 };
 
 describe("sql core", () => {
+  it("stores ASCII strings single-byte on MySQL and refuses a key over its byte limit", () => {
+    const scopeKey = {
+      name: "scope_key",
+      type: "string",
+      nullable: false,
+      maxLength: 2048,
+    } as const;
+    const catalogs = (ascii: boolean): PhysicalTable => ({
+      name: "catalogs",
+      columns: [
+        ascii ? { ...scopeKey, ascii: true } : scopeKey,
+        { name: "_v", type: "integer", nullable: false },
+      ],
+      key: ["scope_key"],
+      indexes: [],
+    });
+    expect(createTableStatements("mysql", [catalogs(true)])[0]).toContain(
+      "`scope_key` varchar(2048) CHARACTER SET ascii COLLATE ascii_bin NOT NULL",
+    );
+    expect(createTableStatements("postgresql", [catalogs(true)])[0]).toContain(
+      '"scope_key" varchar(2048) COLLATE "C" NOT NULL',
+    );
+    expect(() => createTableStatements("mysql", [catalogs(false)])).toThrow(
+      "catalogs key needs 8192 bytes on MySQL, over its 3072",
+    );
+    // every table the façade spans fits
+    expect(() =>
+      createTableStatements("mysql", legacyFacadeSchema.tables),
+    ).not.toThrow();
+  });
+
   it("creates tables with binary collation, an index table per multi-valued index, and no index that repeats the key", () => {
     const counters: PhysicalTable = conformanceCounters;
     expect(createTableStatements("postgresql", [counters], "hu_")).toEqual([

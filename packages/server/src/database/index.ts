@@ -119,3 +119,20 @@ export {
   type SqlResult,
   type SqlStatement,
 } from "./sql/sqlAdapter";
+export {
+  createLegacyDatabasePlugin,
+  legacyFacadeSchema,
+  legacyFacadeSettings,
+  migrateLegacyFacade,
+} from "./legacyFacade";
+export {
+  checkSchemaFence,
+  isMissingSchemaError,
+  ENGINE_SCHEMA_KEY,
+  ENGINE_SCHEMA_VERSION,
+  migrateSchema,
+  SETTINGS_TABLE,
+  withSchemaFence,
+  writeSchemaSettings,
+  type SchemaSettings,
+} from "./fence";

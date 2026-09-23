@@ -68,6 +68,7 @@ const fieldColumn = (name: string, field: FieldDefinition): PhysicalColumn => ({
   type: columnType(field.type),
   nullable: field.required === false,
   ...(field.maxLength === undefined ? {} : { maxLength: field.maxLength }),
+  ...(field.ascii ? { ascii: true as const } : {}),
 });
 
 const integer = (name: string): PhysicalColumn => ({
@@ -134,6 +135,9 @@ const problemsOf = (
         field.maxLength < 1)
     ) {
       add(`field "${name}" has an invalid maxLength`);
+    }
+    if (field.ascii && field.type !== "string") {
+      add(`field "${name}" is ascii but not a string`);
     }
   }
   for (const [name, index] of Object.entries(definition.indexes)) {
@@ -348,9 +352,9 @@ export const resolveSchema = (
       }
       for (const reference of referencedBy) {
         if (reference.counter !== undefined)
-          columns.push(integer(reference.counter));
+          columns.push({ ...integer(reference.counter), default: 0 });
       }
-      columns.push(integer(DATABASE_VERSION_COLUMN));
+      columns.push({ ...integer(DATABASE_VERSION_COLUMN), default: 0 });
       models.set(name, {
         module: module.id,
         model,

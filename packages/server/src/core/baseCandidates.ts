@@ -47,11 +47,16 @@ export const minorLinesOf = (
   };
 };
 
+/** JSON with every non-ASCII code unit escaped, so the key is ASCII. */
 const candidateKey = (
   channelId: string,
   platform: string,
   target: readonly ["fingerprint" | "app-version", string],
-) => JSON.stringify([channelId, platform, ...target]);
+) =>
+  JSON.stringify([channelId, platform, ...target]).replace(
+    /[^\x20-\x7e]/g,
+    (unit) => `\\u${unit.charCodeAt(0).toString(16).padStart(4, "0")}`,
+  );
 
 /** The `base_candidates` keys an enabled bundle release holds: its fingerprint, or each minor line of its range. */
 export const releaseBaseCandidateKeys = (
