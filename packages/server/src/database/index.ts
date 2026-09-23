@@ -69,3 +69,24 @@ export {
   type RowOf,
   type TableDefinition,
 } from "./schema";
+export { DatabaseCursorError } from "./cursor";
+export {
+  createDatabaseEngine,
+  type AggregateRow,
+  type DatabaseEngine,
+  type DatabaseEngineOptions,
+  type EngineColumns,
+  type FindAggregatesModel,
+  type FindManyModel,
+  type HotUpdaterDatabase,
+  type Lookup,
+  type ReadMeasurement,
+  type ReadOptions,
+  type TableRow,
+} from "./database";
+export {
+  DatabaseQueryError,
+  type EngineReadCount,
+  type Page,
+  type ReadRange,
+} from "./engineReads";
