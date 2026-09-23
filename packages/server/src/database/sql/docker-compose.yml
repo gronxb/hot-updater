@@ -1,0 +1,36 @@
+# Pooled PostgreSQL and MySQL for the SQL core's integration conformance run.
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_PASSWORD: hot_updater
+      POSTGRES_DB: hot_updater
+      POSTGRES_INITDB_ARGS: --encoding=UTF8
+    ports:
+      - "55432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d hot_updater"]
+      interval: 2s
+      timeout: 5s
+      retries: 30
+  mysql:
+    image: mysql:8.0
+    environment:
+      MYSQL_ROOT_PASSWORD: hot_updater
+      MYSQL_DATABASE: hot_updater
+    ports:
+      - "53306:3306"
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "mysqladmin",
+          "ping",
+          "-h",
+          "127.0.0.1",
+          "-uroot",
+          "-phot_updater",
+        ]
+      interval: 2s
+      timeout: 5s
+      retries: 60

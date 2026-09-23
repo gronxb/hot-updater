@@ -107,3 +107,14 @@ export {
   type Page,
   type ReadRange,
 } from "./engineReads";
+export {
+  classifySqlError,
+  createSqlAdapter,
+  createTableStatements,
+  type SqlAdapterOptions,
+  type SqlConnection,
+  type SqlDialect,
+  type SqlExecutor,
+  type SqlResult,
+  type SqlStatement,
+} from "./sql/sqlAdapter";
