@@ -10,6 +10,12 @@ import {
   type Page,
   type ReadInput,
 } from "./engineReads";
+import {
+  assertOutsideTransaction,
+  createTransactions,
+  type RetryOptions,
+  type TransactionEngine,
+} from "./engineTransaction";
 import type { ResolvedSchema, SchemaModule } from "./resolveSchema";
 import type {
   AggregateDefinition,
@@ -32,7 +38,7 @@ type AggregateNames<S extends ModuleSchema> = {
 
 /** Engine columns every stored row carries. */
 export type EngineColumns = { readonly _v: number } & {
-  readonly [K in `_refs_${string}`]?: number;
+  readonly [K: `_refs_${string}`]: number;
 };
 
 type DerivedValues<TDerived> = {
@@ -143,6 +149,56 @@ export type Lookup<TModel> =
       : never)
   | UniqueLookups<TModel>;
 
+type RootedIndexName<TModel> = {
+  [I in keyof IndexesOf<TModel>]: IndexesOf<TModel>[I] extends {
+    readonly root: object;
+  }
+    ? I
+    : never;
+}[keyof IndexesOf<TModel>] &
+  string;
+
+type OptionalFields<TFields> = {
+  [K in keyof TFields]: TFields[K] extends { readonly required: false }
+    ? K
+    : never;
+}[keyof TFields];
+
+/** Declared fields, optional ones omittable; derived fields and engine columns are computed. */
+export type CreateRow<TModel> =
+  TModel extends TableDefinition<infer TFields>
+    ? Omit<RowOf<TFields>, OptionalFields<TFields>> &
+        Partial<Pick<RowOf<TFields>, OptionalFields<TFields>>>
+    : never;
+
+/** Changed non-key fields. */
+export type UpdateSet<TModel> =
+  TModel extends TableDefinition<infer TFields, infer _D, infer _I, infer TKey>
+    ? Partial<Omit<RowOf<TFields>, TKey[number]>>
+    : never;
+
+/** Reads are recorded and guarded at commit; writes apply only if every guard holds. */
+export interface HotUpdaterTransaction<S extends ModuleSchema> {
+  findOne<M extends TableNames<S>>(
+    model: M,
+    lookup: Lookup<S[M]>,
+  ): Promise<TableRow<S[M]> | null>;
+  /** Rooted indexes only: the parent row guards the whole range. */
+  findMany<M extends TableNames<S>, I extends RootedIndexName<S[M]>>(
+    model: M,
+    options: ReadOptions<S[M], I>,
+  ): Promise<Page<TableRow<S[M]>>>;
+  create<M extends TableNames<S>>(model: M, row: CreateRow<S[M]>): void;
+  /** Patches a row this transaction read. */
+  update<M extends TableNames<S>>(
+    model: M,
+    row: TableRow<S[M]>,
+    set: UpdateSet<S[M]>,
+  ): void;
+  /** Deletes a row this transaction read, cascading to its children first. */
+  delete<M extends TableNames<S>>(model: M, row: TableRow<S[M]>): Promise<void>;
+}
+
 /** A table name, or the reason an aggregate cannot be read this way. */
 export type FindManyModel<S extends ModuleSchema, M> =
   M extends TableNames<S>
@@ -169,6 +225,8 @@ export interface HotUpdaterDatabase<S extends ModuleSchema> {
     model: FindAggregatesModel<S, M>,
     options: ReadOptions<S[M], I>,
   ): Promise<Page<AggregateRow<S[M]>>>;
+  /** Reruns `fn` when a guarded read changed, within a jittered retry budget. */
+  transaction<R>(fn: (tx: HotUpdaterTransaction<S>) => Promise<R>): Promise<R>;
 }
 
 export interface ReadMeasurement<T> {
@@ -185,39 +243,65 @@ export interface DatabaseEngineOptions {
   readonly maxPageSize?: number;
   /** Checks every adapter call against the contract and meters adapter reads. */
   readonly verify?: boolean;
+  readonly retry?: RetryOptions;
 }
 
 /** The engine over one adapter; `database(module)` hands a module its handle. */
 export const createDatabaseEngine = (options: DatabaseEngineOptions) => {
   const verified = options.verify ? verifyAdapter(options.adapter) : undefined;
+  const adapter = verified ?? options.adapter;
   const reads = createEngineReads({
-    adapter: verified ?? options.adapter,
+    adapter,
     schema: options.schema,
     ...(options.maxPageSize === undefined
       ? {}
       : { maxPageSize: options.maxPageSize }),
   });
-  const tableName = (module: SchemaModule, model: string) =>
-    module.namespace ? `${module.namespace}_${model}` : model;
+  const transactions = createTransactions({
+    adapter,
+    schema: options.schema,
+    reads,
+    ...(options.retry === undefined ? {} : { retry: options.retry }),
+  });
+  const outside =
+    <A extends unknown[], T>(read: (...args: A) => T) =>
+    (...args: A): T => {
+      assertOutsideTransaction();
+      return read(...args);
+    };
 
   return {
     reads,
     database<S extends ModuleSchema>(
       module: SchemaModule & { readonly schema: S },
     ): HotUpdaterDatabase<S> {
+      const name = (model: string) =>
+        module.namespace ? `${module.namespace}_${model}` : model;
       return {
-        findOne: (model, lookup) =>
-          reads.findOne(
-            tableName(module, model),
-            lookup as Record<string, never>,
-          ) as never,
-        findMany: (model, input) =>
-          reads.findMany(tableName(module, model), input as ReadInput) as never,
-        findAggregates: (model, input) =>
-          reads.findAggregates(
-            tableName(module, model),
-            input as ReadInput,
-          ) as never,
+        findOne: outside(
+          (model, lookup) =>
+            reads.findOne(name(model), lookup as never) as never,
+        ),
+        findMany: outside(
+          (model, input) =>
+            reads.findMany(name(model), input as ReadInput) as never,
+        ),
+        findAggregates: outside(
+          (model, input) =>
+            reads.findAggregates(name(model), input as ReadInput) as never,
+        ),
+        transaction: (fn) =>
+          transactions.transaction((tx: TransactionEngine) =>
+            fn({
+              findOne: (model, lookup) =>
+                tx.findOne(name(model), lookup as never) as never,
+              findMany: (model, input) =>
+                tx.findMany(name(model), input as ReadInput) as never,
+              create: (model, row) => tx.create(name(model), row),
+              update: (model, row, set) => tx.update(name(model), row, set),
+              delete: (model, row) => tx.delete(name(model), row),
+            }),
+          ),
       };
     },
     /** Runs `read` and reports what it read at both boundaries (verify mode only). */
