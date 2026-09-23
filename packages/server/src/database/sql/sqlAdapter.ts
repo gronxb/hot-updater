@@ -183,6 +183,7 @@ export const createTableStatements = (
         );
         continue;
       }
+      if (!index.unique && columns.join() === table.key.join()) continue;
       const indexName = quote(shortName(`${name}_${index.name}`));
       const indexColumns = list(index.unique ? index.eq : columns);
       if (inlineIndexes) {

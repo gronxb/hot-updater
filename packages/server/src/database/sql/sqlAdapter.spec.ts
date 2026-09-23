@@ -68,14 +68,13 @@ const recorder = (dialect: SqlExecutor["dialect"]) => {
 };
 
 describe("sql core", () => {
-  it("creates tables with binary collation and an index table per multi-valued index", () => {
+  it("creates tables with binary collation, an index table per multi-valued index, and no index that repeats the key", () => {
     const counters: PhysicalTable = conformanceCounters;
     expect(createTableStatements("postgresql", [counters], "hu_")).toEqual([
       'CREATE TABLE IF NOT EXISTS "hu_conformance_counters" ("scope" varchar(64) COLLATE "C" NOT NULL, "shard" bigint NOT NULL, "hits" bigint NOT NULL, "_v" bigint NOT NULL, PRIMARY KEY ("scope", "shard"))',
-      'CREATE INDEX IF NOT EXISTS "hu_conformance_counters_byScope" ON "hu_conformance_counters" ("scope", "shard")',
     ]);
     expect(createTableStatements("mysql", [counters])).toEqual([
-      "CREATE TABLE IF NOT EXISTS `conformance_counters` (`scope` varchar(64) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_bin NOT NULL, `shard` bigint NOT NULL, `hits` bigint NOT NULL, `_v` bigint NOT NULL, PRIMARY KEY (`scope`, `shard`), INDEX `conformance_counters_byScope` (`scope`, `shard`))",
+      "CREATE TABLE IF NOT EXISTS `conformance_counters` (`scope` varchar(64) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_bin NOT NULL, `shard` bigint NOT NULL, `hits` bigint NOT NULL, `_v` bigint NOT NULL, PRIMARY KEY (`scope`, `shard`))",
     ]);
     const items = createTableStatements("sqlite", [conformanceItems]);
     expect(items).toContain(
@@ -86,6 +85,16 @@ describe("sql core", () => {
     );
     expect(createTableStatements("mysql", [conformanceItems])[0]).toContain(
       "`note` longtext CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_bin",
+    );
+    expect(
+      createTableStatements("postgresql", [
+        {
+          ...counters,
+          indexes: [{ name: "byShard", eq: ["shard"], sort: ["scope"] }],
+        },
+      ])[1],
+    ).toBe(
+      'CREATE INDEX IF NOT EXISTS "conformance_counters_byShard" ON "conformance_counters" ("shard", "scope")',
     );
   });
 
