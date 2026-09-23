@@ -13,6 +13,7 @@ import {
   projectCompiledRollbackCatalog,
   type CompiledReleaseCatalog,
   type DatabasePlugin,
+  type ReleaseCatalogRow,
 } from "@hot-updater/plugin-core";
 
 import { resolveManifestArtifacts } from "./updateArtifacts";
@@ -64,53 +65,64 @@ const parseCompiledCatalog = (
   return parsed as CompiledReleaseCatalog;
 };
 
+/** The scope key an update check reads. */
+export const releaseCatalogScopeKeyOf = (
+  input: ReleaseCatalogRequest,
+): string =>
+  input.strategy === "APP_VERSION"
+    ? createReleaseCatalogScopeKey({
+        channelKey: input.channelKey,
+        platform: input.platform,
+        strategy: "APP_VERSION",
+      })
+    : createReleaseCatalogScopeKey({
+        channelKey: input.channelKey,
+        fingerprintHash: input.fingerprintHash,
+        platform: input.platform,
+        strategy: "FINGERPRINT",
+      });
+
+/** Projects a stored catalog row for one update check; null when the row is not this scope's. */
+export const projectReleaseCatalogRow = (
+  row: ReleaseCatalogRow | null,
+  input: ReleaseCatalogRequest,
+  scopeKey = releaseCatalogScopeKeyOf(input),
+): ReleaseCatalog | null => {
+  if (
+    row === null ||
+    row.platform !== input.platform ||
+    row.strategy !== input.strategy ||
+    row.channel_key !== input.channelKey ||
+    row.scope_key !== scopeKey ||
+    row.fingerprint_hash !==
+      (input.strategy === "FINGERPRINT" ? input.fingerprintHash : null)
+  ) {
+    return null;
+  }
+  const compiled = parseCompiledCatalog(row.payload, input.strategy);
+  const appVersion =
+    input.strategy === "APP_VERSION" ? input.appVersion : undefined;
+  return {
+    catalogId: row.catalog_id,
+    catalogHash: row.catalog_hash,
+    fallbackPolicy: RELEASE_CATALOG_FALLBACK_POLICY,
+    generation: row.generation,
+    releases: projectCompiledCatalog(compiled, appVersion),
+    rollbackReleases: projectCompiledRollbackCatalog(compiled, appVersion),
+    schemaVersion: RELEASE_CATALOG_SCHEMA_VERSION,
+    scopeKey,
+  };
+};
+
 export const createReleaseCatalogReader =
   (database: DatabasePlugin) =>
   async (input: ReleaseCatalogRequest): Promise<ReleaseCatalog | null> => {
-    const scopeKey =
-      input.strategy === "APP_VERSION"
-        ? createReleaseCatalogScopeKey({
-            channelKey: input.channelKey,
-            platform: input.platform,
-            strategy: "APP_VERSION",
-          })
-        : createReleaseCatalogScopeKey({
-            channelKey: input.channelKey,
-            fingerprintHash: input.fingerprintHash,
-            platform: input.platform,
-            strategy: "FINGERPRINT",
-          });
-    const row = await database.models.releaseCatalogs.findByScopeKey(scopeKey);
-    if (
-      row === null ||
-      row.platform !== input.platform ||
-      row.strategy !== input.strategy ||
-      row.channel_key !== input.channelKey ||
-      row.scope_key !== scopeKey ||
-      row.fingerprint_hash !==
-        (input.strategy === "FINGERPRINT" ? input.fingerprintHash : null)
-    ) {
-      return null;
-    }
-    const compiled = parseCompiledCatalog(row.payload, input.strategy);
-    const releases = projectCompiledCatalog(
-      compiled,
-      input.strategy === "APP_VERSION" ? input.appVersion : undefined,
-    );
-    const rollbackReleases = projectCompiledRollbackCatalog(
-      compiled,
-      input.strategy === "APP_VERSION" ? input.appVersion : undefined,
-    );
-    return {
-      catalogId: row.catalog_id,
-      catalogHash: row.catalog_hash,
-      fallbackPolicy: RELEASE_CATALOG_FALLBACK_POLICY,
-      generation: row.generation,
-      releases,
-      rollbackReleases,
-      schemaVersion: RELEASE_CATALOG_SCHEMA_VERSION,
+    const scopeKey = releaseCatalogScopeKeyOf(input);
+    return projectReleaseCatalogRow(
+      await database.models.releaseCatalogs.findByScopeKey(scopeKey),
+      input,
       scopeKey,
-    };
+    );
   };
 
 export const createArtifactResolver = (input: {

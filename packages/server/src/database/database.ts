@@ -130,17 +130,19 @@ type UniqueLookups<TModel> =
           }[keyof TIndexes]
     : never;
 
+/** A table's key values. */
+export type KeyLookup<TModel> =
+  TModel extends TableDefinition<infer _F>
+    ? {
+        readonly [K in TModel["key"][number]]: KeyValueOf<
+          TModel,
+          K & keyof Values<TModel>
+        >;
+      }
+    : never;
+
 /** The key, or the eq fields of a unique index. */
-export type Lookup<TModel> =
-  | (TModel extends TableDefinition<infer _F>
-      ? {
-          readonly [K in TModel["key"][number]]: KeyValueOf<
-            TModel,
-            K & keyof Values<TModel>
-          >;
-        }
-      : never)
-  | UniqueLookups<TModel>;
+export type Lookup<TModel> = KeyLookup<TModel> | UniqueLookups<TModel>;
 
 type RootedIndexName<TModel> = {
   [I in keyof IndexesOf<TModel>]: IndexesOf<TModel>[I] extends {
@@ -236,6 +238,11 @@ export interface HotUpdaterDatabase<S extends ModuleSchema> {
     model: M,
     lookup: Lookup<S[M]>,
   ): Promise<TableRow<S[M]> | null>;
+  /** Rows by key in one batch read, in the keys' order. */
+  findByKeys<M extends TableNames<S>>(
+    model: M,
+    keys: readonly KeyLookup<S[M]>[],
+  ): Promise<(TableRow<S[M]> | null)[]>;
   findMany<M extends keyof S & string, I extends IndexName<S[M]>>(
     model: FindManyModel<S, M>,
     options: ReadOptions<S[M], I>,
@@ -269,6 +276,10 @@ export const createDatabaseEngine = (options: DatabaseEngineOptions) => {
         findOne: outside(
           (model, lookup) =>
             reads.findOne(name(model), lookup as never) as never,
+        ),
+        findByKeys: outside(
+          (model, keys) =>
+            reads.findByKeys(name(model), keys as never) as never,
         ),
         findMany: outside(
           (model, input) =>

@@ -227,6 +227,27 @@ export const createEngineReads = (options: EngineReadOptions) => {
       },
     },
 
+    /** Reads rows by key in one batch; the results follow the keys' order. */
+    async findByKeys(
+      name: string,
+      lookups: readonly Readonly<Record<string, DatabaseKeyValue>>[],
+    ): Promise<(StoredRow | null)[]> {
+      const { table } = modelOf(name, "table");
+      const keys = lookups.map((lookup) => {
+        if (!sameFields(Object.keys(lookup), table.key)) {
+          throw new DatabaseQueryError(
+            `findByKeys on ${name} takes its key: ${table.key.join(", ")}.`,
+          );
+        }
+        return table.key.map((field) =>
+          keyValue(lookup[field], `${name}.${field}`),
+        );
+      });
+      const rows = keys.length === 0 ? [] : await adapter.get(table, keys);
+      returned(rows.filter((row) => row !== null));
+      return rows.map((row) => row ?? null);
+    },
+
     /** Reads one row by its key or by the eq fields of a unique index. */
     async findOne(
       name: string,
