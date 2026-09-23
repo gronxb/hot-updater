@@ -56,7 +56,7 @@ const releases = defineTable(
   {
     id: { type: "string", maxLength: 36 },
     revision: { type: "integer" },
-    scope_key: { type: "string", maxLength: 2048 },
+    scope_key: { type: "string", maxLength: 2048, ascii: true },
     channel_id: {
       type: "string",
       maxLength: 255,
@@ -115,7 +115,7 @@ const releases = defineTable(
 /** One compiled catalog per scope; the update check reads exactly this row. */
 const releaseCatalogs = defineTable(
   {
-    scope_key: { type: "string", maxLength: 2048 },
+    scope_key: { type: "string", maxLength: 2048, ascii: true },
     catalog_id: { type: "string", maxLength: 255 },
     strategy: { type: "string", maxLength: 16 },
     channel_id: {
@@ -123,7 +123,7 @@ const releaseCatalogs = defineTable(
       maxLength: 255,
       references: { model: "channels", onDelete: "none" },
     },
-    channel_key: { type: "string", maxLength: 1400 },
+    channel_key: { type: "string", maxLength: 1400, ascii: true },
     platform: { type: "string", maxLength: 16 },
     fingerprint_hash: { type: "string", maxLength: 255, required: false },
     generation: { type: "integer" },
@@ -157,7 +157,7 @@ const bundleTotals = defineAggregate(
 /** Enabled bundle releases per patch-compatibility key, for auto-patch base search. */
 const baseCandidates = defineAggregate(
   {
-    candidate_key: { type: "string", maxLength: 1024 },
+    candidate_key: { type: "string", maxLength: 2048, ascii: true },
     bundle_id: { type: "string", maxLength: 36 },
   },
   {

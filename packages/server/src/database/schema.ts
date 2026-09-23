@@ -17,6 +17,8 @@ export interface FieldDefinition<TType extends FieldType = FieldType> {
   readonly unique?: true;
   /** Strings: the maximum length; unbounded text when absent. */
   readonly maxLength?: number;
+  /** Strings: ASCII only, so a long key fits MySQL's 3,072-byte index limit. */
+  readonly ascii?: true;
   readonly references?: FieldReference;
 }
 

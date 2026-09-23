@@ -2,6 +2,7 @@ import {
   type DatabaseAdapter,
   type DatabaseKey,
   DATABASE_VERSION_COLUMN,
+  DatabaseSchemaError,
   findPhysicalColumn,
   findPhysicalIndex,
   indexEntries,
@@ -134,7 +135,10 @@ const columnType = (
     if (dialect === "postgresql") {
       return `${column.maxLength ? `varchar(${column.maxLength})` : "text"} COLLATE "C"`;
     }
-    return `${length ? `varchar(${length})` : "longtext"} CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_bin`;
+    const charset = column.ascii
+      ? "ascii COLLATE ascii_bin"
+      : "utf8mb4 COLLATE utf8mb4_0900_bin";
+    return `${length ? `varchar(${length})` : "longtext"} CHARACTER SET ${charset}`;
   }
   if (column.type === "integer")
     return dialect === "sqlite" ? "INTEGER" : "bigint";
@@ -144,6 +148,27 @@ const columnType = (
     ];
   }
   return dialect === "sqlite" ? "INTEGER" : "boolean";
+};
+
+/** InnoDB's limit on the bytes of one key or index. */
+const MYSQL_KEY_BYTES = 3072;
+
+/** Refuses a MySQL key or index over InnoDB's limit before any DDL runs. */
+const checkMysqlKey = (
+  table: PhysicalTable,
+  name: string,
+  columns: readonly string[],
+) => {
+  const bytes = columns.reduce((sum, column) => {
+    const { type, maxLength, ascii } = findPhysicalColumn(table, column);
+    if (type === "string") return sum + (maxLength ?? 255) * (ascii ? 1 : 4);
+    return sum + (type === "boolean" ? 1 : 8);
+  }, 0);
+  if (bytes > MYSQL_KEY_BYTES) {
+    throw new DatabaseSchemaError(
+      `${table.name} ${name} needs ${bytes} bytes on MySQL, over its ${MYSQL_KEY_BYTES}; shorten its strings or mark ASCII ones ascii.`,
+    );
+  }
 };
 
 /**
@@ -170,9 +195,12 @@ export const createTableStatements = (
         `${quote(column.name)} ${columnType(dialect, column, indexed.has(column.name))}${column.nullable ? "" : " NOT NULL"}`,
     );
     definitions.push(`PRIMARY KEY (${list(table.key)})`);
+    if (dialect === "mysql") checkMysqlKey(table, "key", table.key);
     const indexes: string[] = [];
     for (const index of table.indexes) {
       const columns = [...index.eq, ...indexOrderColumns(table, index)];
+      if (dialect === "mysql")
+        checkMysqlKey(table, `index ${index.name}`, columns);
       if (isMultiIndex(table, index)) {
         const entries = columns.map(
           (column) =>

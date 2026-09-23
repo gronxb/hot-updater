@@ -6,8 +6,17 @@ import { assertDockerComposeAvailable } from "@hot-updater/test-utils/node";
 import { execa } from "execa";
 import mysql from "mysql2/promise";
 import pg from "pg";
-import { afterAll, beforeAll } from "vitest";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
+import {
+  createBundleRowFixture,
+  createChannelRowFixture,
+  createReleaseRowFixture,
+} from "../../../../test-utils/src/databaseTestFixtures";
+import {
+  createLegacyDatabasePlugin,
+  migrateLegacyFacade,
+} from "../legacyFacade";
 import { createSqlAdapter, type SqlExecutor } from "./sqlAdapter";
 import { mysqlExecutor, pgExecutor } from "./sqlTestExecutors";
 
@@ -79,3 +88,45 @@ const suite = (name: string, executor: () => SqlExecutor) =>
 
 suite("sql (pooled PostgreSQL)", () => pgExecutor(postgres));
 suite("sql (pooled MySQL)", () => mysqlExecutor(mariadb));
+
+/** The whole schema the façade spans, migrated and fenced on each server. */
+describe.each([
+  ["PostgreSQL", () => pgExecutor(postgres)],
+  ["MySQL", () => mysqlExecutor(mariadb)],
+] as const)("the façade's schema on pooled %s", (name, executor) => {
+  it("migrates, passes the fence, and commits a release with its long scope key", async () => {
+    tests += 1;
+    const adapter = createSqlAdapter({
+      executor: executor(),
+      tablePrefix: `f${tests}_`,
+    });
+    await migrateLegacyFacade(adapter, name);
+    await migrateLegacyFacade(adapter, name);
+    const database = createLegacyDatabasePlugin({ name, adapter, fence: true });
+    const channel = createChannelRowFixture("x".repeat(255));
+    const bundle = createBundleRowFixture("901");
+    const release = {
+      ...createReleaseRowFixture("901", bundle, channel),
+      scope_key: `v1:app-version:ios:${"k".repeat(1400)}`,
+    };
+    await database.models.channels.insert({
+      row: channel,
+      onConflict: "returnExisting",
+    });
+    await expect(
+      database.commit({
+        changes: [
+          { model: "bundles", operation: "insert", row: bundle },
+          { model: "releases", operation: "insert", row: release },
+        ],
+      }),
+    ).resolves.toEqual({ committed: true });
+    await expect(
+      database.models.releases.findManyByScope({
+        scopeKey: release.scope_key,
+        limit: 10,
+        consistency: "strong",
+      }),
+    ).resolves.toEqual([release]);
+  });
+});
