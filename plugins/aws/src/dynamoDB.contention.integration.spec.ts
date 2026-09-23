@@ -6,6 +6,7 @@ import {
   migrateLegacyFacade,
   type RetryOptions,
 } from "@hot-updater/server/database";
+import type { CoreReader } from "@hot-updater/server/plugins";
 import { insights, insightsSchema } from "@hot-updater/server/plugins/insights";
 import {
   runContentionHarness,
@@ -85,7 +86,8 @@ describe("Insights rollout gate on DynamoDB Local", () => {
           schema: legacyFacadeSchema,
           ...(retry === undefined ? {} : { retry }),
         }).database(module),
-        core: {},
+        // Insights never reads core.
+        core: {} as CoreReader,
         now: Date.now,
       }).api;
 

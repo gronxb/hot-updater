@@ -32,6 +32,7 @@ import {
   legacyFacadeSchema,
   type RetryOptions,
 } from "@hot-updater/server/database";
+import type { CoreReader } from "@hot-updater/server/plugins";
 import { insights, insightsSchema } from "@hot-updater/server/plugins/insights";
 import {
   runContentionHarness,
@@ -793,7 +794,8 @@ describe.sequential("supabase edge runtime acceptance", () => {
           schema: legacyFacadeSchema,
           ...(retry === undefined ? {} : { retry }),
         }).database(module),
-        core: {},
+        // Insights never reads core.
+        core: {} as CoreReader,
         now: Date.now,
       }).api;
     const seeded = apiOf(0, { attempts: 64, baseDelayMs: 1, maxDelayMs: 20 });
@@ -1313,6 +1315,17 @@ const writeSupabaseRuntimeFiles = async ({
       "@hot-updater/server": pathToFileURL(
         path.join(WORKSPACE_ROOT, "packages/server/dist/index.mjs"),
       ).href,
+      ...Object.fromEntries(
+        ["api-keys", "insights"].map((plugin) => [
+          `@hot-updater/server/plugins/${plugin}`,
+          pathToFileURL(
+            path.join(
+              WORKSPACE_ROOT,
+              `packages/server/dist/plugins/${plugin}/index.mjs`,
+            ),
+          ).href,
+        ]),
+      ),
       "@hot-updater/supabase/edge": pathToFileURL(
         path.join(runtimeRoot, "hot-updater-supabase-edge.ts"),
       ).href,
@@ -1325,6 +1338,7 @@ const writeSupabaseRuntimeFiles = async ({
   await writeFile(
     path.join(runtimeRoot, "hot-updater-supabase-edge.ts"),
     `
+export { plugins } from ${JSON.stringify(pathToFileURL(path.join(WORKSPACE_ROOT, "plugins/supabase/src/plugins.ts")).href)};
 export { supabaseDatabase } from ${JSON.stringify(pathToFileURL(path.join(WORKSPACE_ROOT, "plugins/supabase/src/supabaseDatabase.ts")).href)};
 export { supabaseEdgeFunctionStorage as supabaseStorage } from ${JSON.stringify(pathToFileURL(path.join(WORKSPACE_ROOT, "plugins/supabase/src/supabaseEdgeFunctionStorage.ts")).href)};
 `.trim(),
