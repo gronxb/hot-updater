@@ -74,14 +74,17 @@ export const createPluginTestHarness = async <TPlugin extends HarnessPlugin>(
     verify: true,
   });
   let clock = options.now ?? Date.now;
+  const db = engine.database(module);
   const instance = plugin.init({
-    db: engine.database(module),
+    db,
     core: {},
     now: () => clock(),
   } as never) as ReturnType<TPlugin["init"]>;
   return {
     api: instance.api as ReturnType<TPlugin["init"]>["api"],
     instance,
+    /** The plugin's own database handle; cast it to its `HotUpdaterDatabase` type. */
+    db,
     adapter,
     tables: schema.tables,
     /** Reads at both boundaries while `read` runs. */

@@ -18,6 +18,10 @@ export {
   mergeInsightsDistinct,
 } from "./insightsDistinctSummary";
 export {
+  assertBundleEventRow,
+  createValidatedInsightsModel,
+} from "./insightsContract";
+export {
   currentInsightsReleaseId,
   insightsDistributionIdentity,
   insightsOverviewDeltas,
