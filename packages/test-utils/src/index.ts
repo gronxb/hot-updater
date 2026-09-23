@@ -4,6 +4,7 @@ export * from "./setupDatabasePluginTestSuite";
 export * from "./setupDatabaseAdapterConformanceSuite";
 export * from "./runContentionHarness";
 export * from "./createPluginTestHarness";
+export * from "./setupInsightsModelTestSuite";
 export * from "./setupDatabaseClientTestSuite";
 export * from "./setupReleaseCatalogTestSuite";
 export * from "./httpTestClient";

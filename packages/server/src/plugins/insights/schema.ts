@@ -56,6 +56,8 @@ const bundleEvents = defineTable(
         eq: ["platform", "channel", "type", "bundle_ref", "day"],
         sort: ["received_at_ms"],
       },
+      /** The unscoped list of the legacy Insights API; E2 removes it with that API. */
+      byDay: { eq: ["day"], sort: ["received_at_ms"] },
     },
   },
 );
@@ -83,6 +85,11 @@ const bundleEventHeads = defineTable(
     indexes: { byUser: { eq: ["user_id"], sort: ["install_id"] } },
   },
 );
+
+/**
+ * Every insights aggregate has 8 shards, keyed by install id. B3's rollout
+ * gate on PostgreSQL measured 2.5% of transactions retried at 8 (1.8% at 16).
+ */
 
 /** Rows keyed by a hashed identity (scope and period) and a bucket. */
 const identityFields = {
