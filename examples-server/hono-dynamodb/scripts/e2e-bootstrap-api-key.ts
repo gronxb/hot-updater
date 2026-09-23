@@ -7,7 +7,8 @@ if (envTargetPath && existsSync(envTargetPath)) {
   process.loadEnvFile(envTargetPath);
 }
 
-const { database } = await import("../src/db");
+const { database, migrateDatabase } = await import("../src/db");
+await migrateDatabase();
 
 const apiKey = process.env.HOT_UPDATER_API_KEY?.trim();
 if (!apiKey) {

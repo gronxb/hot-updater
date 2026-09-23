@@ -21,7 +21,6 @@ vi.mock("@aws-sdk/client-dynamodb", () => ({
   waitUntilTableExists: mocks.waitUntilTableExists,
 }));
 
-import { DYNAMODB_UPDATE_INDEX_NAME } from "../src/dynamoDB";
 import { DynamoDBManager } from "./dynamodb";
 
 const compatibleTable = {
@@ -35,22 +34,6 @@ const compatibleTable = {
   AttributeDefinitions: [
     { AttributeName: "pk", AttributeType: "S" },
     { AttributeName: "sk", AttributeType: "S" },
-    { AttributeName: "gsi1pk", AttributeType: "S" },
-    { AttributeName: "gsi1sk", AttributeType: "S" },
-  ],
-  GlobalSecondaryIndexes: [
-    {
-      IndexName: DYNAMODB_UPDATE_INDEX_NAME,
-      KeySchema: [
-        { AttributeName: "gsi1pk", KeyType: "HASH" },
-        { AttributeName: "gsi1sk", KeyType: "RANGE" },
-      ],
-      Projection: { ProjectionType: "ALL" },
-      OnDemandThroughput: {
-        MaxReadRequestUnits: 4_000,
-        MaxWriteRequestUnits: 100,
-      },
-    },
   ],
   KeySchema: [
     { AttributeName: "pk", KeyType: "HASH" },
@@ -71,7 +54,7 @@ describe("DynamoDBManager", () => {
     mocks.updateContinuousBackups.mockResolvedValue({});
   });
 
-  it("creates an on-demand metadata table with the update index", async () => {
+  it("creates an on-demand metadata table with no secondary index", async () => {
     // Given
     mocks.describeTable.mockRejectedValue({
       name: "ResourceNotFoundException",
@@ -98,10 +81,10 @@ describe("DynamoDBManager", () => {
           MaxReadRequestUnits: 4_000,
           MaxWriteRequestUnits: 100,
         },
-        GlobalSecondaryIndexes: [
-          expect.objectContaining({ IndexName: DYNAMODB_UPDATE_INDEX_NAME }),
-        ],
       }),
+    );
+    expect(mocks.createTable.mock.calls[0]?.[0]).not.toHaveProperty(
+      "GlobalSecondaryIndexes",
     );
     expect(mocks.updateContinuousBackups).toHaveBeenCalledWith({
       PointInTimeRecoverySpecification: {
@@ -111,7 +94,7 @@ describe("DynamoDBManager", () => {
     });
   });
 
-  it("reuses a table with the managed key and index schema", async () => {
+  it("reuses a table with the managed key schema", async () => {
     // Given
     mocks.describeTable.mockResolvedValue({ Table: compatibleTable });
     const manager = new DynamoDBManager("ap-northeast-2", {
@@ -198,7 +181,7 @@ describe("DynamoDBManager", () => {
         ...compatibleTable,
         AttributeDefinitions: compatibleTable.AttributeDefinitions.map(
           (definition) =>
-            definition.AttributeName === "gsi1sk"
+            definition.AttributeName === "sk"
               ? { ...definition, AttributeType: "N" }
               : definition,
         ),

@@ -16,10 +16,9 @@ vi.mock("@aws-sdk/client-dynamodb", async (importOriginal) => {
   };
 });
 
-import { DYNAMODB_UPDATE_INDEX_NAME } from "../src/dynamoDB";
 import { DynamoDBManager } from "./dynamodb";
 
-const requiredAttributes = ["pk", "sk", "gsi1pk", "gsi1sk"] as const;
+const requiredAttributes = ["pk", "sk"] as const;
 
 const tableWithAttributes = (
   attributes: readonly {
@@ -33,20 +32,6 @@ const tableWithAttributes = (
     MaxReadRequestUnits: 4_000,
     MaxWriteRequestUnits: 100,
   },
-  GlobalSecondaryIndexes: [
-    {
-      IndexName: DYNAMODB_UPDATE_INDEX_NAME,
-      KeySchema: [
-        { AttributeName: "gsi1pk", KeyType: "HASH" },
-        { AttributeName: "gsi1sk", KeyType: "RANGE" },
-      ],
-      Projection: { ProjectionType: "ALL" },
-      OnDemandThroughput: {
-        MaxReadRequestUnits: 4_000,
-        MaxWriteRequestUnits: 100,
-      },
-    },
-  ],
   KeySchema: [
     { AttributeName: "pk", KeyType: "HASH" },
     { AttributeName: "sk", KeyType: "RANGE" },
@@ -122,4 +107,41 @@ describe("DynamoDB existing table key types", () => {
       });
     },
   );
+
+  it("rejects a table from before 1.0, which keeps its update index", async () => {
+    // Given
+    mocks.describeTable.mockResolvedValue({
+      Table: {
+        ...tableWithAttributes(
+          requiredAttributes.map((attributeName) => ({
+            AttributeName: attributeName,
+            AttributeType: "S" as const,
+          })),
+        ),
+        GlobalSecondaryIndexes: [
+          {
+            IndexName: "hot-updater-update-index",
+            KeySchema: [
+              { AttributeName: "gsi1pk", KeyType: "HASH" },
+              { AttributeName: "gsi1sk", KeyType: "RANGE" },
+            ],
+            Projection: { ProjectionType: "ALL" },
+          },
+        ],
+      },
+    });
+    const manager = new DynamoDBManager("us-east-1", {
+      accessKeyId: "test-access-key",
+      secretAccessKey: "test-secret-key",
+    });
+
+    // When
+    const setup = manager.ensureTable("existing-table");
+
+    // Then
+    await expect(setup).rejects.toMatchObject({
+      name: "DynamoDBTableSchemaError",
+      tableName: "existing-table",
+    });
+  });
 });

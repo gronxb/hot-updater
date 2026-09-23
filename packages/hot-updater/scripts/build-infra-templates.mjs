@@ -270,6 +270,12 @@ for (const provider of providers) {
       awsInputs.buildDynamoDBBackupInput(placeholder("DYNAMODB_TABLE_NAME")),
     );
     await save(
+      path.join(output, "dynamodb/schema-settings.json"),
+      awsInputs.buildDynamoDBSchemaSettingsInput(
+        placeholder("DYNAMODB_TABLE_NAME"),
+      ),
+    );
+    await save(
       path.join(output, "iam/trust-policy.json"),
       awsInputs.LAMBDA_EDGE_TRUST_POLICY,
     );
@@ -301,20 +307,6 @@ for (const provider of providers) {
         await readFile(path.join(root, "iac", file), "utf8"),
       );
     }
-    const dynamodbSource = await readFile(
-      path.join(root, "src/dynamoDB.ts"),
-      "utf8",
-    );
-    await save(
-      path.join(output, "reference/dynamodb-constants.json"),
-      Object.fromEntries(
-        [
-          ...dynamodbSource.matchAll(
-            /export const (DYNAMODB_\w+)\s*=\s*"([^"]+)"/g,
-          ),
-        ].map(([, key, value]) => [key, value]),
-      ),
-    );
     Object.assign(requirements, {
       accountId: null,
       region: null,
