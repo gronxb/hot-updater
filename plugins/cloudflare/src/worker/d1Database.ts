@@ -1,15 +1,14 @@
-import { createDatabasePlugin } from "@hot-updater/plugin-core";
-import { createDatabasePluginAdapter } from "@hot-updater/plugin-core/internal";
+import type { DatabasePlugin } from "@hot-updater/plugin-core";
 
-import { createD1Implementation, D1ExecutionError } from "../d1Implementation";
-
-type D1Result = {
-  readonly results?: readonly unknown[];
-  readonly success?: boolean;
-};
+import {
+  createD1DatabasePlugin,
+  D1ExecutionError,
+  type D1ResultLike,
+  toSqlResult,
+} from "../d1Executor";
 
 type D1BoundStatement = {
-  all: () => Promise<D1Result>;
+  all: () => Promise<D1ResultLike>;
 };
 
 type D1PreparedStatement = {
@@ -18,43 +17,30 @@ type D1PreparedStatement = {
 
 export type D1Like = {
   prepare(sql: string): D1PreparedStatement;
-  batch(statements: D1BoundStatement[]): Promise<readonly D1Result[]>;
+  batch(statements: D1BoundStatement[]): Promise<readonly D1ResultLike[]>;
 };
 
 export interface CloudflareWorkerDatabaseEnv {
   readonly DB: D1Like;
 }
 
-export const d1Database = (database: D1Like) => {
-  const implementation = createD1Implementation({
-    async query(sql, params) {
-      const result = await database
-        .prepare(sql)
-        .bind(...params)
-        .all();
-      if (result.success === false) throw new D1ExecutionError();
-      return result.results ?? [];
-    },
+/** Hot Updater's database on a D1 binding, inside a Worker. */
+export const d1Database = (database: D1Like): DatabasePlugin =>
+  createD1DatabasePlugin({
+    query: async ({ sql, params }) =>
+      toSqlResult(
+        await database
+          .prepare(sql)
+          .bind(...params)
+          .all(),
+      ),
     async batch(statements) {
       const results = await database.batch(
         statements.map(({ sql, params }) =>
           database.prepare(sql).bind(...params),
         ),
       );
-      if (
-        results.length !== statements.length ||
-        results.some(({ success }) => success === false)
-      ) {
-        throw new D1ExecutionError();
-      }
-      return results.map(({ results }) => results ?? []);
+      if (results.length !== statements.length) throw new D1ExecutionError();
+      return results.map(toSqlResult);
     },
   });
-  const adapter = createDatabasePluginAdapter("d1Database", implementation);
-  return createDatabasePlugin({
-    name: "d1Database",
-    models: adapter.models,
-    commit: adapter.commit,
-    ...(adapter.dispose ? { dispose: adapter.dispose } : {}),
-  });
-};

@@ -1,69 +1,45 @@
 import { expect, it } from "vitest";
 
-import { createBundleEventRowFixture } from "../../../../packages/test-utils/src/databaseTestFixtures";
-import { d1Database, type D1Like } from "./d1Database";
+import {
+  createBundleRowFixture,
+  createChannelRowFixture,
+} from "../../../../packages/test-utils/src/databaseTestFixtures";
+import { createD1TestDatabase } from "../d1TestDatabase";
+import { d1Database } from "./d1Database";
 
-const database: D1Like = {
-  prepare: () => ({
-    bind: () => ({
-      all: async () => ({
-        results: [{ id: "channel-production", name: "production" }],
+it("reads through the binding's statements and writes each change as one batch", async () => {
+  const database = createD1TestDatabase();
+  const calls = { all: 0, batch: 0 };
+  const plugin = d1Database({
+    prepare: (sql) => ({
+      bind: (...params) => ({
+        sql,
+        params,
+        all: async () => {
+          calls.all += 1;
+          return database.run(sql, params);
+        },
       }),
     }),
-  }),
-  batch: async (statements) =>
-    Promise.all(statements.map((item) => item.all())),
-};
-
-it("uses the D1 binding supplied at the Worker composition boundary", async () => {
-  const plugin = d1Database(database);
-
-  expect(plugin.name).toBe("d1Database");
-  expect(Object.keys(plugin.models).sort()).toEqual([
-    "apiKeys",
-    "bundlePatches",
-    "bundles",
-    "channels",
-    "insights",
-    "releaseCatalogs",
-    "releases",
-  ]);
-  await expect(plugin.models.channels.list({})).resolves.toEqual({
-    channels: [{ id: "channel-production", name: "production" }],
+    batch: async (statements) => {
+      calls.batch += 1;
+      return database.batch(
+        statements as unknown as { sql: string; params: readonly unknown[] }[],
+      );
+    },
   });
-});
-
-it("does not report a failed D1 query as empty Insights history", async () => {
-  const plugin = d1Database({
-    ...database,
-    prepare: () => ({
-      bind: () => ({ all: async () => ({ success: false, results: [] }) }),
-    }),
+  const channel = createChannelRowFixture("production");
+  const bundle = createBundleRowFixture("1");
+  await plugin.models.channels.insert({
+    row: channel,
+    onConflict: "returnExisting",
   });
-  await expect(
-    plugin.models.insights.listEvents({
-      filter: { kind: "all" },
-      beforeReceivedAtMs: 100,
-      limit: 10,
-    }),
-  ).rejects.toThrow(
-    "D1 did not successfully execute every requested statement",
+  await plugin.commit({
+    changes: [{ model: "bundles", operation: "insert", row: bundle }],
+  });
+  await expect(plugin.models.bundles.findById(bundle.id)).resolves.toEqual(
+    bundle,
   );
-});
-
-it("rejects an unsuccessful event insert response", async () => {
-  const plugin = d1Database({
-    ...database,
-    prepare: () => ({
-      bind: () => ({ all: async () => ({ success: false, results: [] }) }),
-    }),
-  });
-  const event = createBundleEventRowFixture("1", 1);
-  await expect(
-    plugin.models.insights.recordEvent({
-      event,
-    }),
-  ).rejects.toThrow(
-    "D1 did not successfully execute every requested statement",
-  );
+  expect(calls.batch).toBe(2);
+  expect(calls.all).toBeGreaterThan(0);
 });

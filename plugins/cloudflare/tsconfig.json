@@ -12,7 +12,8 @@
     "worker-configuration.d.ts",
     "cloudflare-test.d.ts",
     "worker",
-    "iac"
+    "iac",
+    "../../packages/server/src/db/node-sqlite.d.ts"
   ],
   "exclude": ["lib", "supabase"]
 }
