@@ -101,6 +101,7 @@ describe.sequential("server bundle with plugins: []", () => {
       const url = await serve(command, args);
       const version = await fetch(`${url}/version`);
       await expect(version.json()).resolves.toEqual({
+        adminProtocol: 2,
         infrastructureGeneration: 1,
         version: HOT_UPDATER_SERVER_VERSION,
       });
