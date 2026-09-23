@@ -146,7 +146,8 @@ export async function generateStandaloneSQL(options: {
 
     const hotUpdater = createHotUpdater({
       database: adapter,
-      clientAccess: { type: "public" },
+      plugins: [],
+      clientAccess: "public",
     });
     const migrator = createMigrator(hotUpdater);
     const result = await migrator.migrateToLatest({

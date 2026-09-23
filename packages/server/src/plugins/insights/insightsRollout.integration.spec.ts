@@ -16,6 +16,7 @@ import type { RetryOptions } from "../../database/engineTransaction";
 import { resolveSchema } from "../../database/resolveSchema";
 import { createSqlAdapter } from "../../database/sql/sqlAdapter";
 import { pgExecutor } from "../../database/sql/sqlTestExecutors";
+import type { CoreReader } from "../definePlugin";
 import { insights, insightsSchema } from "./index";
 
 assertDockerComposeAvailable(
@@ -112,7 +113,8 @@ describe("Insights rollout gate on PostgreSQL", () => {
           schema,
           ...(retry === undefined ? {} : { retry }),
         }).database(module),
-        core: {},
+        // Insights never reads core.
+        core: {} as CoreReader,
         now: Date.now,
       }).api;
 

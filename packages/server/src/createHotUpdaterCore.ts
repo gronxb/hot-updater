@@ -22,6 +22,7 @@ import {
   type DatabasePlugin,
   isDatabasePlugin,
 } from "./db/types";
+import { warnDeprecated } from "./deprecations";
 import {
   type ClientRoutePolicy,
   createHotUpdaterHandlers,
@@ -29,7 +30,12 @@ import {
 } from "./handler";
 import { createInsightsProvider } from "./insights/provider";
 import type { InsightsProvider } from "./insights/types";
-import type { AnyHotUpdaterPlugin, PluginApis } from "./plugins/definePlugin";
+import { apiKeys as apiKeysPlugin } from "./plugins/api-keys";
+import type {
+  AnyHotUpdaterPlugin,
+  CoreReader,
+  PluginApis,
+} from "./plugins/definePlugin";
 import { createStorageAccess } from "./storageAccess";
 
 export type RuntimeHotUpdaterAPI<
@@ -37,19 +43,22 @@ export type RuntimeHotUpdaterAPI<
     readonly AnyHotUpdaterPlugin[],
 > = DatabaseAPI & {
   readonly handlers: HotUpdaterHandlers;
+  /** Core's reads: bundles, Releases, Catalogs, and channels. */
+  readonly core: CoreReader;
   /** Each plugin's API by plugin id. */
   readonly api: PluginApis<TPlugins>;
   readonly adapterName: string;
   /**
-   * Built-in Insights provider. Client ingestion and admin query routes are
-   * always mounted; React Native clients report lifecycle events by default
-   * and can opt out with `HotUpdater.init({ insights: false })`.
+   * Insights through the database plugin, whether or not `plugins` holds
+   * `insights()`.
+   * @deprecated Use `hotUpdater.api.insights` from the `insights()` plugin; removed in 1.0.
    */
   readonly insights: InsightsProvider;
   /**
    * In-process API key lifecycle operations for trusted server tooling.
    * Creation returns the plaintext once; list and revoke expose only metadata.
    * This capability is never mounted on the client or admin HTTP handlers.
+   * @deprecated Use `hotUpdater.api.apiKeys` from the `apiKeys()` plugin; removed in 1.0.
    */
   readonly apiKeys: ApiKeyManagementAPI;
 };
@@ -63,13 +72,15 @@ export type ClientAccessPolicy =
       /**
        * Leaves Release Catalog, artifact, and Insights ingestion routes
        * publicly accessible without a client credential.
+       * @deprecated Use `clientAccess: "public"`; removed in 1.0.
        */
       readonly type: "public";
     }
   | {
       /**
-       * Requires a key registered in `database.models.apiKeys` for
-       * Release Catalog, artifact, and Insights ingestion requests.
+       * Requires a registered API key for Release Catalog, artifact, and
+       * Insights ingestion requests, as the `apiKeys()` plugin does.
+       * @deprecated Add `apiKeys()` from `@hot-updater/server/plugins/api-keys` to `plugins` instead; removed in 1.0.
        */
       readonly type: "api-key";
       /**
@@ -146,19 +157,16 @@ export type CreateHotUpdaterOptions<
   readonly plugins?: TPlugins;
 } & ClientAccessRule<TPlugins>;
 
-const normalizeClientAccess = (
-  value: unknown,
-):
+const WITHOUT_PLUGINS =
+  "Without plugins, createHotUpdater serves Insights through the database plugin, which is deprecated and stops in 1.0. Pass plugins: [insights()] from @hot-updater/server/plugins/insights to keep Insights, or plugins: [] to turn it off.";
+
+type ClientAccess =
   | { readonly type: "public" }
-  | {
-      readonly type: "api-key";
-      readonly headerName: string;
-    } => {
-  if (value === undefined) {
-    throw new HotUpdaterConfigError(
-      'Set clientAccess to "public", or add a plugin that provides clientAuth.',
-    );
-  }
+  | { readonly type: "api-key"; readonly headerName: string };
+
+/** Reads `clientAccess`; its object forms still work until 1.0, with a warning. */
+const parseClientAccess = (value: unknown): ClientAccess | undefined => {
+  if (value === undefined) return undefined;
   if (value === "public") return { type: "public" };
   if (value === null || typeof value !== "object" || Array.isArray(value)) {
     throw new TypeError('clientAccess must be "public" or an object.');
@@ -167,17 +175,33 @@ const normalizeClientAccess = (
     readonly headerName?: unknown;
     readonly type?: unknown;
   };
-  if (policy.type === "public") return { type: "public" };
+  if (policy.type === "public") {
+    warnDeprecated(
+      'clientAccess: { type: "public" } is deprecated and stops working in 1.0. Use clientAccess: "public".',
+    );
+    return { type: "public" };
+  }
   if (policy.type === "api-key") {
-    return {
-      headerName: normalizeApiKeyHeaderName(policy.headerName),
-      type: "api-key",
-    };
+    const headerName = normalizeApiKeyHeaderName(policy.headerName);
+    warnDeprecated(
+      `clientAccess: { type: "api-key" } is deprecated and stops working in 1.0. Remove it and add apiKeys(${policy.headerName === undefined ? "" : `{ headerName: "${headerName}" }`}) from @hot-updater/server/plugins/api-keys to plugins, which protects client routes the same way.`,
+    );
+    return { headerName, type: "api-key" };
   }
   throw new TypeError(
     'clientAccess.type must be either "public" or "api-key".',
   );
 };
+
+/** The plugin in a list that declares clientAuth, read before the list is checked. */
+const clientAuthPluginOf = (plugins: readonly unknown[]): string | undefined =>
+  (
+    plugins.find(
+      (plugin) =>
+        (plugin as { readonly provides?: { readonly clientAuth?: unknown } })
+          ?.provides?.clientAuth === true,
+    ) as { readonly id?: unknown } | undefined
+  )?.id as string | undefined;
 
 type DatabasePluginCore = {
   readonly api: DatabaseAPI;
@@ -244,24 +268,44 @@ export function createHotUpdaterCore(
     beforeOperation: assertSchemaReady,
     readStorageText,
   });
-  const plugins = assemblePlugins(
-    options.plugins ?? [],
-    adapterCapabilities.engineAdapter,
+  // Without plugins, Insights and API keys run through the database plugin until 1.0.
+  const legacy = options.plugins === undefined;
+  if (legacy) warnDeprecated(WITHOUT_PLUGINS);
+  const requested = parseClientAccess(
+    (options as { readonly clientAccess?: unknown }).clientAccess,
   );
-  const clientAccess =
-    plugins.clientAuth === undefined
-      ? normalizeClientAccess(
-          (options as { readonly clientAccess?: unknown }).clientAccess,
-        )
-      : undefined;
+  const listed: readonly unknown[] = options.plugins ?? [];
+  // With plugins, a legacy API-key policy becomes the apiKeys() plugin.
+  const mapped =
+    !legacy && requested?.type === "api-key" ? requested : undefined;
+  const claimed = mapped === undefined ? undefined : clientAuthPluginOf(listed);
+  if (claimed !== undefined) {
+    throw new HotUpdaterConfigError(
+      `Plugin "${claimed}" provides clientAuth, so remove clientAccess.`,
+    );
+  }
+  const plugins = assemblePlugins(
+    mapped === undefined
+      ? listed
+      : [...listed, apiKeysPlugin({ headerName: mapped.headerName })],
+    adapterCapabilities.engineAdapter,
+    { storage: { readStorageText, resolveFileUrl } },
+  );
   if (
     plugins.clientAuth !== undefined &&
-    (options as { readonly clientAccess?: unknown }).clientAccess !== undefined
+    requested !== undefined &&
+    mapped === undefined
   ) {
     throw new HotUpdaterConfigError(
       `Plugin "${plugins.clientAuth.plugin}" provides clientAuth, so remove clientAccess.`,
     );
   }
+  if (plugins.clientAuth === undefined && requested === undefined) {
+    throw new HotUpdaterConfigError(
+      'Set clientAccess to "public", or add a plugin that provides clientAuth.',
+    );
+  }
+  const clientAccess = mapped === undefined ? requested : undefined;
   const insightsModel: InsightsModel = {
     async recordEvent(input) {
       await assertSchemaReady();
@@ -319,9 +363,10 @@ export function createHotUpdaterCore(
               }),
           }
         : undefined;
+  // With plugins, the Insights routes are the insights plugin's, or answer that Insights is off.
   const handlers = createHotUpdaterHandlers(
     core.api,
-    insights,
+    legacy ? insights : "disabled",
     clientPolicy,
     downloadStorageObject,
     plugins.endpoints,
@@ -333,6 +378,7 @@ export function createHotUpdaterCore(
       insights,
       apiKeys,
       handlers,
+      core: plugins.core,
       api: plugins.api,
     },
     core.api,

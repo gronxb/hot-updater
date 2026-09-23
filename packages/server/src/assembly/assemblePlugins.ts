@@ -1,8 +1,11 @@
-import {
-  createMemoryAdapter,
-  type DatabaseAdapter,
-} from "@hot-updater/plugin-core/internal";
+import type { DatabaseAdapter } from "@hot-updater/plugin-core/internal";
 
+import {
+  createCoreReads,
+  type CoreReads,
+  type CoreStorage,
+} from "../core/reads";
+import { coreModule } from "../core/schema";
 import { createDatabaseEngine } from "../database/database";
 import { resolveSchema, type SchemaModule } from "../database/resolveSchema";
 import { builtInPlugin } from "../plugins/builtIn";
@@ -22,6 +25,8 @@ export interface MountedEndpoint extends PluginEndpoint {
 }
 
 export interface AssembledPlugins {
+  /** Core's reads, on the same engine as the plugins. */
+  readonly core: CoreReads;
   readonly api: Readonly<Record<string, unknown>>;
   readonly endpoints: readonly MountedEndpoint[];
   readonly clientAuth?: ClientAuth & { readonly plugin: string };
@@ -67,6 +72,9 @@ const checkPlugin = (value: unknown, at: string): PluginShape => {
   const pattern = plugin[builtInPlugin] ? BUILT_IN_ID : PLUGIN_ID;
   if (typeof plugin.id !== "string" || !pattern.test(plugin.id)) {
     fail(`${at} needs an id matching ${pattern.source}.`);
+  }
+  if (plugin.id === coreModule.id) {
+    fail(`${at} uses the id "core", which is core's own.`);
   }
   if (
     typeof plugin.schemaVersion !== "string" ||
@@ -148,14 +156,35 @@ const checkInstance = (plugin: PluginShape, instance: unknown) => {
   };
 };
 
+/** Stands in for a database off the storage engine: every read and write says why it cannot run. */
+const offEngine = (): DatabaseAdapter => {
+  const refuse = () =>
+    Promise.reject(
+      new HotUpdaterConfigError(
+        "This database does not run on the storage engine, so core reads and plugin tables are unavailable.",
+      ),
+    );
+  return {
+    id: "off-engine",
+    fits: () => true,
+    get: refuse,
+    query: refuse,
+    write: refuse,
+  };
+};
+
 /**
  * Checks every plugin, runs each `init` once against one engine over the
  * database's storage adapter, and collects APIs, endpoints, and clientAuth.
+ * Core's reads run on the same engine, so plugins read core through `ctx.core`.
  */
 export const assemblePlugins = (
   value: unknown,
   adapter: DatabaseAdapter | undefined,
-  now: () => number = Date.now,
+  {
+    now = Date.now,
+    storage = { resolveFileUrl: async () => null },
+  }: { readonly now?: () => number; readonly storage?: CoreStorage } = {},
 ): AssembledPlugins => {
   if (!Array.isArray(value))
     return fail("plugins must be an array of plugins.");
@@ -179,16 +208,17 @@ export const assemblePlugins = (
     );
   }
   const engine = createDatabaseEngine({
-    adapter: adapter ?? createMemoryAdapter(),
-    schema: resolveSchema(modules),
+    adapter: adapter ?? offEngine(),
+    schema: resolveSchema([coreModule, ...modules]),
   });
+  const core = createCoreReads(engine.database(coreModule), storage);
   const api: Record<string, unknown> = {};
   const endpoints: MountedEndpoint[] = [];
   let clientAuth: AssembledPlugins["clientAuth"];
   plugins.forEach((plugin, position) => {
     const instance = checkInstance(
       plugin,
-      plugin.init({ db: engine.database(modules[position]!), core: {}, now }),
+      plugin.init({ db: engine.database(modules[position]!), core, now }),
     );
     if (instance.clientAuth !== undefined) {
       if (clientAuth !== undefined) {
@@ -207,6 +237,6 @@ export const assemblePlugins = (
     api[plugin.id] = instance.api;
   });
   return clientAuth === undefined
-    ? { api, endpoints }
-    : { api, endpoints, clientAuth };
+    ? { core, api, endpoints }
+    : { core, api, endpoints, clientAuth };
 };

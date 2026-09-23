@@ -1,6 +1,10 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createHotUpdater } from "@hot-updater/server";
-import { supabaseDatabase, supabaseStorage } from "@hot-updater/supabase/edge";
+import {
+  plugins,
+  supabaseDatabase,
+  supabaseStorage,
+} from "@hot-updater/supabase/edge";
 import { Hono } from "hono";
 
 declare global {
@@ -22,7 +26,7 @@ const hotUpdater = createHotUpdater({
     supabaseUrl,
     supabaseServiceRoleKey,
   }),
-  clientAccess: { type: "api-key" },
+  plugins,
   storage: [
     supabaseStorage({
       supabaseUrl,

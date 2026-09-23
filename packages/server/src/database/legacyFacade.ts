@@ -163,7 +163,7 @@ export const createLegacyDatabasePlugin = (options: {
   const reads = createCoreReads(core, { resolveFileUrl: async () => null });
   const insightsApi = insights().init({
     db: engine.database(insightsModule),
-    core: {},
+    core: reads,
     now: options.now ?? Date.now,
   }).api;
 

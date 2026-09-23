@@ -5,6 +5,7 @@ import { Hono } from "hono";
 
 import { firebaseDatabase } from "../../src/firebaseDatabase";
 import { firebaseStorage } from "../../src/firebaseStorage";
+import { plugins } from "../../src/plugins";
 
 declare global {
   var HotUpdater: {
@@ -29,7 +30,7 @@ const hotUpdater = createHotUpdater({
   database: firebaseDatabase({
     ...adminOptions,
   }),
-  clientAccess: { type: "api-key" },
+  plugins,
   storage: [
     firebaseStorage({
       ...adminOptions,
