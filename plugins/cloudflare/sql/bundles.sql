@@ -1,231 +1,83 @@
-CREATE TABLE channels (
-  id TEXT COLLATE BINARY PRIMARY KEY NOT NULL,
-  name TEXT COLLATE BINARY NOT NULL,
-  CONSTRAINT channels_id_length_check CHECK (length(id) BETWEEN 1 AND 255),
-  CONSTRAINT channels_name_length_check CHECK (length(name) BETWEEN 1 AND 255)
-);
+-- HotUpdater.schema
 
-CREATE TABLE bundles (
-  id TEXT PRIMARY KEY NOT NULL,
-  platform TEXT NOT NULL,
-  git_commit_hash TEXT,
-  metadata TEXT NOT NULL DEFAULT '{}',
-  manifest_storage_uri TEXT NOT NULL,
-  manifest_file_hash TEXT NOT NULL,
-  asset_base_storage_uri TEXT NOT NULL
-);
+CREATE TABLE IF NOT EXISTS "_hu_write" ("id" TEXT NOT NULL, "failed_op" INTEGER, PRIMARY KEY ("id"));
 
-CREATE TABLE bundle_patches (
-  id TEXT PRIMARY KEY NOT NULL,
-  bundle_id TEXT NOT NULL,
-  base_bundle_id TEXT NOT NULL,
-  base_file_hash TEXT NOT NULL,
-  patch_file_hash TEXT NOT NULL,
-  patch_storage_uri TEXT NOT NULL,
-  byte_size REAL NOT NULL,
-  order_index INTEGER NOT NULL DEFAULT 0,
-  CONSTRAINT bundle_patches_byte_size_check CHECK (
-    byte_size >= 0 AND byte_size <= 9007199254740991
-  ),
-  CONSTRAINT bundle_patches_bundle_id_fk FOREIGN KEY (bundle_id)
-    REFERENCES bundles(id) ON UPDATE RESTRICT ON DELETE CASCADE,
-  CONSTRAINT bundle_patches_base_bundle_id_fk FOREIGN KEY (base_bundle_id)
-    REFERENCES bundles(id) ON UPDATE RESTRICT ON DELETE CASCADE
-);
+CREATE TABLE IF NOT EXISTS "bundles" ("id" TEXT NOT NULL, "platform" TEXT NOT NULL, "git_commit_hash" TEXT, "metadata" TEXT NOT NULL, "manifest_storage_uri" TEXT NOT NULL, "manifest_file_hash" TEXT NOT NULL, "asset_base_storage_uri" TEXT NOT NULL, "_refs_bundle_patches_bundle_id" INTEGER NOT NULL DEFAULT 0, "_refs_bundle_patches_base_bundle_id" INTEGER NOT NULL DEFAULT 0, "_refs_releases_bundle_id" INTEGER NOT NULL DEFAULT 0, "_v" INTEGER NOT NULL DEFAULT 0, PRIMARY KEY ("id"));
 
-CREATE TABLE releases (
-  id TEXT PRIMARY KEY NOT NULL,
-  revision INTEGER NOT NULL,
-  scope_key TEXT COLLATE BINARY NOT NULL,
-  channel_id TEXT COLLATE BINARY NOT NULL,
-  platform TEXT NOT NULL,
-  kind TEXT NOT NULL,
-  bundle_id TEXT,
-  strategy TEXT NOT NULL,
-  target_app_version TEXT,
-  fingerprint_hash TEXT,
-  enabled INTEGER NOT NULL,
-  should_force_update INTEGER NOT NULL,
-  message TEXT,
-  rollout_cohort_count INTEGER NOT NULL DEFAULT 1000,
-  target_cohorts TEXT NOT NULL DEFAULT '[]',
-  operation TEXT NOT NULL,
-  source_release_id TEXT,
-  created_at_ms REAL NOT NULL,
-  updated_at_ms REAL NOT NULL,
-  CONSTRAINT releases_revision_check CHECK (revision >= 1),
-  CONSTRAINT releases_kind_bundle_check CHECK (
-    (kind = 'BUNDLE' AND bundle_id IS NOT NULL)
-    OR (kind = 'EMBEDDED' AND bundle_id IS NULL)
-  ),
-  CONSTRAINT releases_strategy_target_check CHECK (
-    (strategy = 'APP_VERSION' AND target_app_version IS NOT NULL AND fingerprint_hash IS NULL)
-    OR (strategy = 'FINGERPRINT' AND target_app_version IS NULL AND fingerprint_hash IS NOT NULL)
-  ),
-  CONSTRAINT releases_rollout_cohort_count_check CHECK (
-    rollout_cohort_count >= 0 AND rollout_cohort_count <= 1000
-  ),
-  CONSTRAINT releases_operation_check CHECK (
-    operation IN ('DEPLOY', 'PROMOTE', 'ROLLBACK')
-  ),
-  CONSTRAINT releases_channel_id_fk FOREIGN KEY (channel_id)
-    REFERENCES channels(id) ON UPDATE RESTRICT ON DELETE RESTRICT,
-  CONSTRAINT releases_bundle_id_fk FOREIGN KEY (bundle_id)
-    REFERENCES bundles(id) ON UPDATE RESTRICT ON DELETE RESTRICT,
-  CONSTRAINT releases_source_release_id_fk FOREIGN KEY (source_release_id)
-    REFERENCES releases(id) ON UPDATE RESTRICT ON DELETE SET NULL
-);
+CREATE INDEX IF NOT EXISTS "bundles_byPlatform" ON "bundles" ("platform", "id");
 
-CREATE TABLE release_catalogs (
-  scope_key TEXT COLLATE BINARY PRIMARY KEY NOT NULL,
-  catalog_id TEXT NOT NULL,
-  strategy TEXT NOT NULL,
-  channel_id TEXT COLLATE BINARY NOT NULL,
-  channel_key TEXT COLLATE BINARY NOT NULL,
-  platform TEXT NOT NULL,
-  fingerprint_hash TEXT,
-  generation REAL NOT NULL,
-  payload TEXT NOT NULL,
-  catalog_hash TEXT NOT NULL,
-  byte_size INTEGER NOT NULL,
-  is_tombstone INTEGER NOT NULL,
-  updated_at_ms REAL NOT NULL,
-  CONSTRAINT release_catalogs_strategy_target_check CHECK (
-    (strategy = 'APP_VERSION' AND fingerprint_hash IS NULL)
-    OR (strategy = 'FINGERPRINT' AND fingerprint_hash IS NOT NULL)
-  ),
-  CONSTRAINT release_catalogs_generation_check CHECK (
-    generation >= 1 AND generation <= 9007199254740991
-  ),
-  CONSTRAINT release_catalogs_byte_size_check CHECK (
-    byte_size >= 0 AND byte_size <= 262144
-  ),
-  CONSTRAINT release_catalogs_channel_id_fk FOREIGN KEY (channel_id)
-    REFERENCES channels(id) ON UPDATE RESTRICT ON DELETE RESTRICT
-);
+CREATE TABLE IF NOT EXISTS "bundle_patches" ("id" TEXT NOT NULL, "bundle_id" TEXT NOT NULL, "base_bundle_id" TEXT NOT NULL, "base_file_hash" TEXT NOT NULL, "patch_file_hash" TEXT NOT NULL, "patch_storage_uri" TEXT NOT NULL, "byte_size" INTEGER NOT NULL, "order_index" INTEGER NOT NULL, "_v" INTEGER NOT NULL DEFAULT 0, PRIMARY KEY ("id"));
 
-CREATE TABLE bundle_events (
-  id TEXT PRIMARY KEY NOT NULL,
-  type TEXT NOT NULL,
-  install_id TEXT NOT NULL,
-  user_id TEXT,
-  from_release_id TEXT,
-  from_bundle_id TEXT,
-  to_release_id TEXT,
-  to_bundle_id TEXT NOT NULL,
-  platform TEXT NOT NULL,
-  app_version TEXT NOT NULL,
-  channel TEXT NOT NULL,
-  metadata TEXT NOT NULL,
-  received_at_ms REAL NOT NULL,
-  insights_processed INTEGER NOT NULL DEFAULT 0,
-  CONSTRAINT bundle_events_type_check CHECK (
-    type IN ('UPDATE_DOWNLOADED', 'UPDATE_APPLIED', 'RECOVERED', 'UNCHANGED')
-  ),
-  CONSTRAINT bundle_events_platform_check CHECK (
-    platform IN ('ios', 'android')
-  ),
-  CONSTRAINT bundle_events_shape_check CHECK (
-    (
-      type IN ('UPDATE_DOWNLOADED', 'UPDATE_APPLIED', 'RECOVERED')
-      AND from_bundle_id IS NOT NULL
-    ) OR (
-      type = 'UNCHANGED'
-      AND from_bundle_id IS NULL
-    )
-  ),
-  CONSTRAINT bundle_events_received_at_check CHECK (received_at_ms >= 0)
-);
+CREATE UNIQUE INDEX IF NOT EXISTS "bundle_patches_pair" ON "bundle_patches" ("bundle_id", "base_bundle_id");
 
+CREATE INDEX IF NOT EXISTS "bundle_patches_byBundle" ON "bundle_patches" ("bundle_id", "order_index", "id");
 
-CREATE TABLE bundle_event_heads (
-  install_id TEXT PRIMARY KEY NOT NULL,
-  id TEXT NOT NULL,
-  received_at_ms REAL NOT NULL,
-  user_id TEXT,
-  platform TEXT NOT NULL,
-  channel TEXT NOT NULL,
-  type TEXT NOT NULL,
-  from_bundle_id TEXT,
-  to_bundle_id TEXT NOT NULL,
-  current_release_id TEXT,
-  app_version TEXT NOT NULL
-);
+CREATE INDEX IF NOT EXISTS "bundle_patches_byBase" ON "bundle_patches" ("base_bundle_id", "bundle_id", "id");
 
-CREATE TABLE insights_overview (
-  id TEXT COLLATE BINARY PRIMARY KEY NOT NULL,
-  scope_kind TEXT NOT NULL,
-  release_kind TEXT NOT NULL,
-  release_id TEXT NOT NULL DEFAULT '',
-  channel TEXT COLLATE BINARY NOT NULL,
-  platform TEXT COLLATE BINARY NOT NULL,
-  app_version_kind TEXT NOT NULL,
-  app_version TEXT NOT NULL DEFAULT '',
-  period_kind TEXT NOT NULL,
-  bucket_start_ms REAL NOT NULL DEFAULT 0,
-  downloads INTEGER NOT NULL DEFAULT 0,
-  launches INTEGER NOT NULL DEFAULT 0,
-  failed_launches INTEGER NOT NULL DEFAULT 0,
-  latest_installations INTEGER NOT NULL DEFAULT 0,
-  launch_users TEXT,
-  activity_users TEXT,
-  CONSTRAINT insights_overview_scope_kind_check CHECK (
-    scope_kind IN ('release', 'channel', 'usage', 'distribution')
-  ),
-  CONSTRAINT insights_overview_period_kind_check CHECK (
-    period_kind IN ('lifetime', 'hour', 'latest')
-  ),
-  CONSTRAINT insights_overview_bucket_check CHECK (
-    (period_kind = 'lifetime' AND bucket_start_ms = 0)
-    OR (period_kind IN ('hour', 'latest') AND bucket_start_ms >= 0 AND bucket_start_ms % 3600000 = 0)
-  ),
-  CONSTRAINT insights_overview_counts_check CHECK (
-    downloads >= 0 AND launches >= 0 AND failed_launches >= 0 AND latest_installations >= 0
-  )
-);
+CREATE TABLE IF NOT EXISTS "releases" ("id" TEXT NOT NULL, "revision" INTEGER NOT NULL, "scope_key" TEXT NOT NULL, "channel_id" TEXT NOT NULL, "platform" TEXT NOT NULL, "kind" TEXT NOT NULL, "bundle_id" TEXT, "strategy" TEXT NOT NULL, "target_app_version" TEXT, "fingerprint_hash" TEXT, "enabled" INTEGER NOT NULL, "should_force_update" INTEGER NOT NULL, "message" TEXT, "rollout_cohort_count" INTEGER NOT NULL, "target_cohorts" TEXT NOT NULL, "operation" TEXT NOT NULL, "source_release_id" TEXT, "created_at_ms" INTEGER NOT NULL, "updated_at_ms" INTEGER NOT NULL, "_v" INTEGER NOT NULL DEFAULT 0, PRIMARY KEY ("id"));
 
-CREATE TABLE api_keys (
-  id TEXT PRIMARY KEY NOT NULL,
-  hash TEXT NOT NULL,
-  name TEXT NOT NULL,
-  prefix TEXT NOT NULL,
-  role TEXT NOT NULL,
-  created_at_ms REAL NOT NULL,
-  revoked_at_ms REAL,
-  CONSTRAINT api_keys_role_check CHECK (role = 'client'),
-  CONSTRAINT api_keys_created_at_check CHECK (created_at_ms >= 0),
-  CONSTRAINT api_keys_revoked_at_check CHECK (
-    revoked_at_ms IS NULL OR revoked_at_ms >= 0
-  )
-);
+CREATE INDEX IF NOT EXISTS "releases_byScope" ON "releases" ("scope_key", "id");
 
-CREATE TABLE private_hot_updater_settings (
-  key TEXT PRIMARY KEY NOT NULL,
-  value TEXT NOT NULL DEFAULT '1.0.0'
-);
+CREATE INDEX IF NOT EXISTS "releases_byScopeEnabled" ON "releases" ("scope_key", "enabled", "id");
 
-CREATE UNIQUE INDEX channels_name_key ON channels(name);
-CREATE INDEX bundle_patches_bundle_id_idx ON bundle_patches(bundle_id);
-CREATE INDEX bundle_patches_base_bundle_id_idx ON bundle_patches(base_bundle_id);
-CREATE INDEX releases_scope_order_idx ON releases(scope_key, id);
-CREATE INDEX releases_channel_platform_order_idx ON releases(channel_id, platform, id);
-CREATE INDEX releases_bundle_id_idx ON releases(bundle_id);
-CREATE INDEX releases_fingerprint_hash_idx ON releases(fingerprint_hash);
-CREATE INDEX releases_enabled_idx ON releases(enabled);
-CREATE INDEX release_catalogs_channel_idx ON release_catalogs(channel_id);
-CREATE INDEX bundle_events_received_at_idx ON bundle_events(received_at_ms, id);
-CREATE INDEX bundle_events_install_idx ON bundle_events(install_id, type, received_at_ms, id);
-CREATE UNIQUE INDEX api_keys_hash_key ON api_keys(hash);
-CREATE INDEX api_keys_created_at_idx ON api_keys(created_at_ms, id);
+CREATE INDEX IF NOT EXISTS "releases_byChannelPlatform" ON "releases" ("channel_id", "platform", "id");
 
-CREATE INDEX bundle_events_from_bundle_idx ON bundle_events(type, platform, channel, from_bundle_id, received_at_ms, id);
-CREATE INDEX bundle_events_to_bundle_idx ON bundle_events(type, platform, channel, to_bundle_id, received_at_ms, id);
+CREATE INDEX IF NOT EXISTS "releases_byChannelPlatformEnabled" ON "releases" ("channel_id", "platform", "enabled", "id");
 
-CREATE INDEX bundle_events_latest_idx ON bundle_events(install_id, received_at_ms, id);
-CREATE INDEX bundle_event_heads_user_idx ON bundle_event_heads(user_id, install_id);
-CREATE INDEX bundle_event_heads_scope_idx ON bundle_event_heads(platform, channel, received_at_ms);
-CREATE INDEX bundle_event_heads_from_idx ON bundle_event_heads(type, platform, channel, from_bundle_id, received_at_ms);
-CREATE INDEX bundle_event_heads_to_idx ON bundle_event_heads(type, platform, channel, to_bundle_id, received_at_ms);
-CREATE INDEX insights_overview_release_time_idx ON insights_overview(scope_kind, release_id, platform, channel, period_kind, bucket_start_ms);
-CREATE INDEX insights_overview_scope_time_idx ON insights_overview(scope_kind, channel, platform, app_version_kind, app_version, period_kind, bucket_start_ms);
-CREATE INDEX insights_overview_distribution_time_idx ON insights_overview(scope_kind, channel, period_kind, bucket_start_ms, platform, app_version);
+CREATE INDEX IF NOT EXISTS "releases_byBundle" ON "releases" ("bundle_id", "id");
+
+CREATE TABLE IF NOT EXISTS "release_catalogs" ("scope_key" TEXT NOT NULL, "catalog_id" TEXT NOT NULL, "strategy" TEXT NOT NULL, "channel_id" TEXT NOT NULL, "channel_key" TEXT NOT NULL, "platform" TEXT NOT NULL, "fingerprint_hash" TEXT, "generation" INTEGER NOT NULL, "payload" TEXT NOT NULL, "catalog_hash" TEXT NOT NULL, "byte_size" INTEGER NOT NULL, "is_tombstone" INTEGER NOT NULL, "updated_at_ms" INTEGER NOT NULL, "_v" INTEGER NOT NULL DEFAULT 0, PRIMARY KEY ("scope_key"));
+
+CREATE TABLE IF NOT EXISTS "channels" ("id" TEXT NOT NULL, "name" TEXT NOT NULL, "_refs_releases_channel_id" INTEGER NOT NULL DEFAULT 0, "_v" INTEGER NOT NULL DEFAULT 0, PRIMARY KEY ("id"));
+
+CREATE INDEX IF NOT EXISTS "channels_all" ON "channels" ("name", "id");
+
+CREATE UNIQUE INDEX IF NOT EXISTS "channels_name" ON "channels" ("name");
+
+CREATE TABLE IF NOT EXISTS "bundle_totals" ("platform_key" TEXT NOT NULL, "_shard" INTEGER NOT NULL, "bundles" INTEGER NOT NULL, "_v" INTEGER NOT NULL DEFAULT 0, PRIMARY KEY ("platform_key", "_shard"));
+
+CREATE TABLE IF NOT EXISTS "base_candidates" ("candidate_key" TEXT NOT NULL, "bundle_id" TEXT NOT NULL, "_shard" INTEGER NOT NULL, "releases" INTEGER NOT NULL, "_v" INTEGER NOT NULL DEFAULT 0, PRIMARY KEY ("candidate_key", "bundle_id", "_shard"));
+
+CREATE TABLE IF NOT EXISTS "bundle_events" ("id" TEXT NOT NULL, "type" TEXT NOT NULL, "install_id" TEXT NOT NULL, "user_id" TEXT, "from_release_id" TEXT, "from_bundle_id" TEXT, "to_release_id" TEXT, "to_bundle_id" TEXT NOT NULL, "platform" TEXT NOT NULL, "app_version" TEXT NOT NULL, "channel" TEXT NOT NULL, "metadata" TEXT NOT NULL, "received_at_ms" INTEGER NOT NULL, "day" INTEGER, "movement_install_id" TEXT, "bundle_ref" TEXT, "_v" INTEGER NOT NULL DEFAULT 0, PRIMARY KEY ("id"));
+
+CREATE INDEX IF NOT EXISTS "bundle_events_recent" ON "bundle_events" ("channel", "platform", "day", "received_at_ms", "id");
+
+CREATE INDEX IF NOT EXISTS "bundle_events_movementsByInstall" ON "bundle_events" ("movement_install_id", "received_at_ms", "id");
+
+CREATE TABLE IF NOT EXISTS "bundle_events__byBundle" ("platform" TEXT NOT NULL, "channel" TEXT NOT NULL, "type" TEXT NOT NULL, "bundle_ref" TEXT NOT NULL, "day" INTEGER NOT NULL, "received_at_ms" INTEGER NOT NULL, "id" TEXT NOT NULL, PRIMARY KEY ("platform", "channel", "type", "bundle_ref", "day", "received_at_ms", "id"));
+
+CREATE INDEX IF NOT EXISTS "bundle_events_byDay" ON "bundle_events" ("day", "received_at_ms", "id");
+
+CREATE TABLE IF NOT EXISTS "bundle_event_heads" ("install_id" TEXT NOT NULL, "id" TEXT NOT NULL, "type" TEXT NOT NULL, "user_id" TEXT, "from_release_id" TEXT, "from_bundle_id" TEXT, "to_release_id" TEXT, "to_bundle_id" TEXT NOT NULL, "platform" TEXT NOT NULL, "app_version" TEXT NOT NULL, "channel" TEXT NOT NULL, "metadata" TEXT NOT NULL, "received_at_ms" INTEGER NOT NULL, "current_release_id" TEXT, "_v" INTEGER NOT NULL DEFAULT 0, PRIMARY KEY ("install_id"));
+
+CREATE INDEX IF NOT EXISTS "bundle_event_heads_byUser" ON "bundle_event_heads" ("user_id", "install_id");
+
+CREATE TABLE IF NOT EXISTS "insights_overview" ("identity" TEXT NOT NULL, "bucket_start_ms" INTEGER NOT NULL, "_shard" INTEGER NOT NULL, "downloads" INTEGER NOT NULL, "launches" INTEGER NOT NULL, "failed_launches" INTEGER NOT NULL, "_v" INTEGER NOT NULL DEFAULT 0, PRIMARY KEY ("identity", "bucket_start_ms", "_shard"));
+
+CREATE TABLE IF NOT EXISTS "insights_sketches" ("identity" TEXT NOT NULL, "bucket_start_ms" INTEGER NOT NULL, "_shard" INTEGER NOT NULL, "launch_users" TEXT, "activity_users" TEXT, "_v" INTEGER NOT NULL DEFAULT 0, PRIMARY KEY ("identity", "bucket_start_ms", "_shard"));
+
+CREATE TABLE IF NOT EXISTS "insights_distribution" ("channel" TEXT NOT NULL, "platform" TEXT NOT NULL, "app_version" TEXT NOT NULL, "release_id" TEXT NOT NULL, "bucket_start_ms" INTEGER NOT NULL, "_shard" INTEGER NOT NULL, "latest_installations" INTEGER NOT NULL, "_v" INTEGER NOT NULL DEFAULT 0, PRIMARY KEY ("channel", "platform", "app_version", "release_id", "bucket_start_ms", "_shard"));
+
+CREATE INDEX IF NOT EXISTS "insights_distribution_byScope" ON "insights_distribution" ("channel", "platform", "bucket_start_ms", "app_version", "release_id", "_shard");
+
+CREATE INDEX IF NOT EXISTS "insights_distribution_byVersion" ON "insights_distribution" ("channel", "platform", "app_version", "bucket_start_ms", "release_id", "_shard");
+
+CREATE TABLE IF NOT EXISTS "insights_latest_by_bundle" ("platform" TEXT NOT NULL, "channel" TEXT NOT NULL, "bundle_field" TEXT NOT NULL, "bundle_id" TEXT NOT NULL, "type" TEXT NOT NULL, "bucket_start_ms" INTEGER NOT NULL, "_shard" INTEGER NOT NULL, "installations" INTEGER NOT NULL, "_v" INTEGER NOT NULL DEFAULT 0, PRIMARY KEY ("platform", "channel", "bundle_field", "bundle_id", "type", "bucket_start_ms", "_shard"));
+
+CREATE TABLE IF NOT EXISTS "insights_outcomes" ("platform" TEXT NOT NULL, "channel" TEXT NOT NULL, "type" TEXT NOT NULL, "bundle_ref" TEXT NOT NULL, "bucket_start_ms" INTEGER NOT NULL, "_shard" INTEGER NOT NULL, "events" INTEGER NOT NULL, "_v" INTEGER NOT NULL DEFAULT 0, PRIMARY KEY ("platform", "channel", "type", "bundle_ref", "bucket_start_ms", "_shard"));
+
+CREATE TABLE IF NOT EXISTS "api_keys" ("id" TEXT NOT NULL, "hash" TEXT NOT NULL, "name" TEXT NOT NULL, "prefix" TEXT NOT NULL, "role" TEXT NOT NULL, "created_at_ms" INTEGER NOT NULL, "revoked_at_ms" INTEGER, "_v" INTEGER NOT NULL DEFAULT 0, PRIMARY KEY ("id"));
+
+CREATE INDEX IF NOT EXISTS "api_keys_byCreated" ON "api_keys" ("created_at_ms", "id");
+
+CREATE UNIQUE INDEX IF NOT EXISTS "api_keys_hash" ON "api_keys" ("hash");
+
+CREATE TABLE IF NOT EXISTS "private_hot_updater_settings" ("key" TEXT NOT NULL, "value" TEXT NOT NULL, "_v" INTEGER NOT NULL DEFAULT 0, PRIMARY KEY ("key"));
+
+INSERT INTO "private_hot_updater_settings" ("key", "value", "_v") VALUES ('schema.engine', '1', 0) ON CONFLICT ("key") DO UPDATE SET "value" = excluded."value";
+
+INSERT INTO "private_hot_updater_settings" ("key", "value", "_v") VALUES ('schema.core', '1.0.0', 0) ON CONFLICT ("key") DO UPDATE SET "value" = excluded."value";
+
+INSERT INTO "private_hot_updater_settings" ("key", "value", "_v") VALUES ('schema.insights', '1.0.0', 0) ON CONFLICT ("key") DO UPDATE SET "value" = excluded."value";
+
+INSERT INTO "private_hot_updater_settings" ("key", "value", "_v") VALUES ('schema.apiKeys', '1.0.0', 0) ON CONFLICT ("key") DO UPDATE SET "value" = excluded."value";

@@ -4,6 +4,7 @@ import type {
   ReleaseRow,
 } from "@hot-updater/plugin-core";
 import { createHotUpdater } from "@hot-updater/server";
+import { isMultiIndex, legacyFacadeSchema } from "@hot-updater/server/database";
 import { createHandlerHttpTestClient } from "@hot-updater/test-utils";
 import { setupDatabasePluginTestSuite } from "@hot-updater/test-utils";
 import { env } from "cloudflare:test";
@@ -92,12 +93,19 @@ vi.mock("cloudflare", () => ({
   },
 }));
 
+/** Every data table: each model's table and the index tables of its multi-valued indexes. */
+const dataTables = legacyFacadeSchema.tables.flatMap((table) => [
+  table.name,
+  ...table.indexes
+    .filter((index) => isMultiIndex(table, index))
+    .map((index) => `${table.name}__${index.name}`),
+]);
+
+/** Empties every data table; the settings rows stay. */
 const reset = async (): Promise<void> => {
-  await getDb()
-    .prepare(
-      "DELETE FROM insights_overview; DELETE FROM bundle_event_heads; DELETE FROM bundle_events; DELETE FROM api_keys; DELETE FROM bundle_patches; DELETE FROM release_catalogs; DELETE FROM releases; DELETE FROM bundles; DELETE FROM channels;",
-    )
-    .run();
+  await getDb().batch(
+    dataTables.map((name) => getDb().prepare(`DELETE FROM "${name}"`)),
+  );
 };
 
 const createChannelRow = (name: string): ChannelRow => ({
@@ -228,9 +236,12 @@ describe.each([
       BEGIN SELECT RAISE(ABORT, 'injected event failure'); END;
     `).run();
     try {
-      await expect(plugin.models.insights.recordEvent(input)).rejects.toThrow(
-        "injected event failure",
-      );
+      // The engine reports a failed batch as ambiguous, with D1's error as its cause.
+      await expect(
+        plugin.models.insights.recordEvent(input),
+      ).rejects.toMatchObject({
+        cause: { message: expect.stringContaining("injected event failure") },
+      });
       expect(
         (await env.DB.prepare("SELECT * FROM bundle_events").all()).results,
       ).toEqual([]);
@@ -247,9 +258,12 @@ describe.each([
       BEGIN SELECT RAISE(ABORT, 'injected head failure'); END;
     `).run();
     try {
-      await expect(plugin.models.insights.recordEvent(input)).rejects.toThrow(
-        "injected head failure",
-      );
+      // The engine reports a failed batch as ambiguous, with D1's error as its cause.
+      await expect(
+        plugin.models.insights.recordEvent(input),
+      ).rejects.toMatchObject({
+        cause: { message: expect.stringContaining("injected head failure") },
+      });
       expect(
         (await env.DB.prepare("SELECT * FROM bundle_events").all()).results,
       ).toEqual([]);
