@@ -79,64 +79,127 @@ const checkMysqlKey = (
   }
 };
 
+export interface SqlColumnShape {
+  readonly name: string;
+  /** The column's DDL type, collation included. */
+  readonly type: string;
+  readonly notNull: boolean;
+  readonly default?: number;
+}
+
+export interface SqlTableShape {
+  readonly name: string;
+  readonly columns: readonly SqlColumnShape[];
+  readonly key: readonly string[];
+  /** Indexes, and index tables for multi-valued fields, in declaration order. */
+  readonly indexes: readonly (
+    | {
+        readonly kind: "index";
+        readonly name: string;
+        readonly unique: boolean;
+        readonly columns: readonly string[];
+      }
+    | { readonly kind: "table"; readonly table: SqlTableShape }
+  )[];
+}
+
 /**
- * DDL for tables with binary collation: one table per model, one index per
- * declared index, and an index table `<table>__<index>` for each index over a
- * multi-valued field, keyed by every column it holds.
+ * Each table as the DDL creates it, for the DDL below and for ORM schema
+ * generators: binary collation, one index per declared index, and an index
+ * table `<table>__<index>` for each index over a multi-valued field, keyed by
+ * every column it holds.
  */
+export const sqlTableShapes = (
+  dialect: SqlDialect,
+  tables: readonly PhysicalTable[],
+  tablePrefix = "",
+): SqlTableShape[] =>
+  tables.map((table) => {
+    const name = tablePrefix + table.name;
+    const indexed = new Set([
+      ...table.key,
+      ...table.indexes.flatMap(({ eq, sort }) => [...eq, ...sort]),
+    ]);
+    if (dialect === "mysql") checkMysqlKey(table, "key", table.key);
+    const indexes = table.indexes.flatMap((index): SqlTableShape["indexes"] => {
+      const columns = [...index.eq, ...indexOrderColumns(table, index)];
+      if (dialect === "mysql") {
+        checkMysqlKey(table, `index ${index.name}`, columns);
+      }
+      if (isMultiIndex(table, index)) {
+        const entries = columns.map((column) => ({
+          name: column,
+          type: columnType(
+            dialect,
+            findPhysicalColumn(table, column),
+            true,
+            true,
+          ),
+          notNull: true,
+        }));
+        const indexTable = {
+          name: `${name}__${index.name}`,
+          columns: entries,
+          key: columns,
+          indexes: [],
+        };
+        return [{ kind: "table", table: indexTable }];
+      }
+      if (!index.unique && columns.join() === table.key.join()) return [];
+      return [
+        {
+          kind: "index",
+          name: shortSqlName(`${name}_${index.name}`),
+          unique: index.unique === true,
+          columns: index.unique ? index.eq : columns,
+        },
+      ];
+    });
+    return {
+      name,
+      columns: table.columns.map((column) => ({
+        name: column.name,
+        type: columnType(dialect, column, indexed.has(column.name)),
+        notNull: !column.nullable,
+        ...(column.default === undefined ? {} : { default: column.default }),
+      })),
+      key: table.key,
+      indexes,
+    };
+  });
+
+/** DDL for the tables' shapes: each table, then its indexes and index tables. */
 export const createTableStatements = (
   dialect: SqlDialect,
   tables: readonly PhysicalTable[],
   tablePrefix = "",
 ): string[] => {
   const quote = (name: string) => quoteSql(dialect, name);
-  const inlineIndexes = dialect === "mysql";
   const list = (columns: readonly string[]) => columns.map(quote).join(", ");
-  const statements: string[] = [];
-  for (const table of tables) {
-    const name = tablePrefix + table.name;
-    const indexed = new Set([
-      ...table.key,
-      ...table.indexes.flatMap(({ eq, sort }) => [...eq, ...sort]),
-    ]);
-    const definitions = table.columns.map(
+  const render = (shape: SqlTableShape): string[] => {
+    const definitions = shape.columns.map(
       (column) =>
-        `${quote(column.name)} ${columnType(dialect, column, indexed.has(column.name))}${column.nullable ? "" : " NOT NULL"}${column.default === undefined ? "" : ` DEFAULT ${column.default}`}`,
+        `${quote(column.name)} ${column.type}${column.notNull ? " NOT NULL" : ""}${column.default === undefined ? "" : ` DEFAULT ${column.default}`}`,
     );
-    definitions.push(`PRIMARY KEY (${list(table.key)})`);
-    if (dialect === "mysql") checkMysqlKey(table, "key", table.key);
-    const indexes: string[] = [];
-    for (const index of table.indexes) {
-      const columns = [...index.eq, ...indexOrderColumns(table, index)];
-      if (dialect === "mysql")
-        checkMysqlKey(table, `index ${index.name}`, columns);
-      if (isMultiIndex(table, index)) {
-        const entries = columns.map(
-          (column) =>
-            `${quote(column)} ${columnType(dialect, findPhysicalColumn(table, column), true, true)} NOT NULL`,
-        );
-        indexes.push(
-          `CREATE TABLE IF NOT EXISTS ${quote(`${name}__${index.name}`)} (${entries.join(", ")}, PRIMARY KEY (${list(columns)}))`,
-        );
-        continue;
-      }
-      if (!index.unique && columns.join() === table.key.join()) continue;
-      const indexName = quote(shortSqlName(`${name}_${index.name}`));
-      const indexColumns = list(index.unique ? index.eq : columns);
-      if (inlineIndexes) {
+    definitions.push(`PRIMARY KEY (${list(shape.key)})`);
+    const after: string[] = [];
+    for (const index of shape.indexes) {
+      if (index.kind === "table") {
+        after.push(...render(index.table));
+      } else if (dialect === "mysql") {
         definitions.push(
-          `${index.unique ? "UNIQUE " : ""}INDEX ${indexName} (${indexColumns})`,
+          `${index.unique ? "UNIQUE " : ""}INDEX ${quote(index.name)} (${list(index.columns)})`,
         );
       } else {
-        indexes.push(
-          `CREATE ${index.unique ? "UNIQUE " : ""}INDEX IF NOT EXISTS ${indexName} ON ${quote(name)} (${indexColumns})`,
+        after.push(
+          `CREATE ${index.unique ? "UNIQUE " : ""}INDEX IF NOT EXISTS ${quote(index.name)} ON ${quote(shape.name)} (${list(index.columns)})`,
         );
       }
     }
-    statements.push(
-      `CREATE TABLE IF NOT EXISTS ${quote(name)} (${definitions.join(", ")})`,
-      ...indexes,
-    );
-  }
-  return statements;
+    return [
+      `CREATE TABLE IF NOT EXISTS ${quote(shape.name)} (${definitions.join(", ")})`,
+      ...after,
+    ];
+  };
+  return sqlTableShapes(dialect, tables, tablePrefix).flatMap(render);
 };
