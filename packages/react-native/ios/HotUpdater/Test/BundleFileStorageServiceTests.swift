@@ -80,6 +80,42 @@ struct BundleFileStorageServiceTests {
         #expect(thirdProcess.prepareLaunch(bundle: .main, pendingRecovery: nil).launchedBundleId == nextLaunch.launchedBundleId)
     }
 
+    @Test(arguments: ["trial-bundle", "other-bundle"])
+    func clearLaunchInProgressKeepsOnlyTheLaunchedBundleOnTrial(contentBundleId: String) throws {
+        let workingDirectory = try makeWorkingDirectory()
+        defer { cleanupWorkingDirectory(workingDirectory) }
+        let preferences = InMemoryPreferencesService()
+        let stagingDirectory = try createBundleDirectory(
+            documentsDirectory: workingDirectory, bundleId: "trial-bundle"
+        )
+        try writeBundle(in: stagingDirectory, bundleFileName: "index.ios.bundle")
+        try writeManifest(in: stagingDirectory, bundleId: "trial-bundle")
+        try writeMetadata(
+            documentsDirectory: workingDirectory,
+            BundleMetadata(
+                isolationKey: testIsolationKey,
+                stableBundleId: nil,
+                stagingBundleId: "trial-bundle",
+                verificationPending: true
+            )
+        )
+        let firstProcess = makeStorageService(
+            documentsDirectory: workingDirectory, preferences: preferences
+        )
+        try #require(firstProcess.prepareLaunch(bundle: .main, pendingRecovery: nil).launchedBundleId == "trial-bundle")
+        firstProcess.clearLaunchInProgress(bundleId: contentBundleId)
+        let cleared = contentBundleId == "trial-bundle"
+
+        // Simulate termination after first content and before notifyAppReady().
+        let secondProcess = makeStorageService(
+            documentsDirectory: workingDirectory, preferences: preferences
+        )
+        let secondLaunch = secondProcess.prepareLaunch(bundle: .main, pendingRecovery: nil)
+        #expect(secondLaunch.launchedBundleId == (cleared ? "trial-bundle" : nil))
+        #expect(secondLaunch.shouldRollbackOnCrash == cleared)
+        #expect(secondProcess.getCrashHistory().contains("trial-bundle") == !cleared)
+    }
+
     @Test
     func getBundleIdFallsBackToBuiltInWhileStagingVerificationIsPending() throws {
         let workingDirectory = try makeWorkingDirectory()

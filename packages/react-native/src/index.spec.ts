@@ -28,6 +28,7 @@ const mocks = vi.hoisted(() => {
     init: vi.fn(),
     isChannelSwitched: vi.fn(() => false),
     reload: vi.fn(),
+    reportBundleFailure: vi.fn(() => true),
     resetChannel: vi.fn(),
     setCohort: vi.fn(),
     setReloadBehavior: vi.fn(),
@@ -59,6 +60,7 @@ vi.mock("./native", () => ({
   getMinBundleId: mocks.getMinBundleId,
   isChannelSwitched: mocks.isChannelSwitched,
   reload: mocks.reload,
+  reportBundleFailure: mocks.reportBundleFailure,
   resetChannel: mocks.resetChannel,
   setCohort: mocks.setCohort,
   setReloadBehavior: mocks.setReloadBehavior,
@@ -382,5 +384,12 @@ describe("HotUpdater client initialization", () => {
       "Either baseURL or resolver must be provided",
     );
     expect(mocks.init).not.toHaveBeenCalled();
+  });
+
+  it("exposes reportBundleFailure without init or wrap", async () => {
+    const HotUpdater = await importHotUpdater();
+
+    expect(HotUpdater.reportBundleFailure()).toBe(true);
+    expect(mocks.reportBundleFailure).toHaveBeenCalledTimes(1);
   });
 });

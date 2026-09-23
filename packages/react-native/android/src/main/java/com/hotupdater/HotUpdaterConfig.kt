@@ -26,16 +26,26 @@ object HotUpdaterConfig {
     @Volatile
     var isolationKey: String? = null
 
+    /**
+     * When true, a staged bundle stays on trial after its first content appears
+     * and is promoted by `notifyAppReady()` instead.
+     */
+    @Volatile
+    var verifyOnAppReady: Boolean? = null
+
+    @JvmOverloads
     fun configure(
         fingerprintHash: String? = null,
         publicKey: String? = null,
         channel: String? = null,
         isolationKey: String? = null,
+        verifyOnAppReady: Boolean? = null,
     ) {
         this.fingerprintHash = fingerprintHash
         this.publicKey = publicKey
         this.channel = channel
         this.isolationKey = isolationKey
+        this.verifyOnAppReady = verifyOnAppReady
     }
 
     fun clear() {
@@ -43,5 +53,6 @@ object HotUpdaterConfig {
         publicKey = null
         channel = null
         isolationKey = null
+        verifyOnAppReady = null
     }
 }

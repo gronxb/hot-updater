@@ -8,6 +8,7 @@ object NativeConfigUtils {
     const val CHANNEL_META_DATA_KEY = "com.hotupdater.CHANNEL"
     const val FINGERPRINT_HASH_META_DATA_KEY = "com.hotupdater.FINGERPRINT_HASH"
     const val PUBLIC_KEY_META_DATA_KEY = "com.hotupdater.PUBLIC_KEY"
+    const val VERIFY_ON_APP_READY_META_DATA_KEY = "com.hotupdater.VERIFY_ON_APP_READY"
 
     fun getString(
         context: Context,
@@ -21,6 +22,7 @@ object NativeConfigUtils {
                 FINGERPRINT_HASH_META_DATA_KEY -> HotUpdaterConfig.fingerprintHash
                 PUBLIC_KEY_META_DATA_KEY -> HotUpdaterConfig.publicKey
                 CHANNEL_META_DATA_KEY -> HotUpdaterConfig.channel
+                VERIFY_ON_APP_READY_META_DATA_KEY -> HotUpdaterConfig.verifyOnAppReady?.toString()
                 else -> null
             }
         override?.takeIf { it.isNotEmpty() }?.let { return it }

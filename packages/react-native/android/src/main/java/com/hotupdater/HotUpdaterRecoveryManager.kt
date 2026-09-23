@@ -32,21 +32,28 @@ internal class HotUpdaterRecoveryManager(
     private var shouldRollbackOnCrash = false
     private var isMonitoring = false
     private var recoveryRequested = false
-    private var contentAppearedCallback: ((String?) -> Unit)? = null
+    private var failureReported = false
+    private var verifyOnAppReady = false
+    private var launchStartedCallback: ((String?) -> Unit)? = null
+    private var launchVerifiedCallback: ((String?) -> Unit)? = null
     private var recoveryRestartCallback: (() -> Boolean)? = null
 
     private val stopMonitoringRunnable =
         Runnable {
-            cancelRecoveryWatchdog()
-            Log.d(TAG, "Stopping crash monitoring for current launch")
-            isMonitoring = false
-            recoveryRequested = false
-            shouldRollbackOnCrash = false
-            currentBundleId = null
-            contentAppearedCallback = null
-            recoveryRestartCallback = null
-            activeManager = null
-            updateNativeLaunchState(null, false)
+            synchronized(this@HotUpdaterRecoveryManager) {
+                cancelRecoveryWatchdog()
+                Log.d(TAG, "Stopping crash monitoring for current launch")
+                isMonitoring = false
+                recoveryRequested = false
+                failureReported = false
+                shouldRollbackOnCrash = false
+                currentBundleId = null
+                launchStartedCallback = null
+                launchVerifiedCallback = null
+                recoveryRestartCallback = null
+                activeManager = null
+                updateNativeLaunchState(null, false)
+            }
         }
 
     private val installJsExceptionHooksRunnable =
@@ -91,17 +98,24 @@ internal class HotUpdaterRecoveryManager(
     fun startMonitoring(
         bundleId: String?,
         shouldRollback: Boolean,
-        onContentAppeared: (String?) -> Unit,
+        verifyOnAppReady: Boolean,
+        onLaunchStarted: (String?) -> Unit,
+        onLaunchVerified: (String?) -> Unit,
         onRecoveryRestartRequested: () -> Boolean,
     ) {
         crashMarkerFile.parentFile?.mkdirs()
-        contentAppearedCallback = onContentAppeared
-        currentBundleId = bundleId
-        shouldRollbackOnCrash = shouldRollback
-        isMonitoring = true
-        recoveryRequested = false
-        recoveryRestartCallback = onRecoveryRestartRequested
-        activeManager = this
+        synchronized(this) {
+            launchStartedCallback = onLaunchStarted
+            launchVerifiedCallback = onLaunchVerified
+            this.verifyOnAppReady = verifyOnAppReady
+            currentBundleId = bundleId
+            shouldRollbackOnCrash = shouldRollback
+            isMonitoring = true
+            recoveryRequested = false
+            failureReported = false
+            recoveryRestartCallback = onRecoveryRestartRequested
+            activeManager = this
+        }
 
         ensureExceptionHandlerInstalled()
         ensureNativeSignalHandlerInstalled()
@@ -122,15 +136,84 @@ internal class HotUpdaterRecoveryManager(
     }
 
     private fun handleContentAppeared() {
-        if (!isMonitoring) {
-            return
-        }
+        synchronized(this) {
+            if (!isMonitoring) {
+                return
+            }
 
-        Log.d(TAG, "First content appeared for bundleId=$currentBundleId")
-        ReactMarker.removeListener(contentAppearedListener)
-        mainHandler.removeCallbacks(installJsExceptionHooksRunnable)
+            Log.d(TAG, "First content appeared for bundleId=$currentBundleId")
+            ReactMarker.removeListener(contentAppearedListener)
+            mainHandler.removeCallbacks(installJsExceptionHooksRunnable)
+
+            // First content only proves the bundle evaluated and React committed a
+            // host view, which can happen before any app code has rendered, so the
+            // trial stays armed until notifyAppReady(). Clearing launchInProgress
+            // here keeps the rollback for a hang before first content, without rolling
+            // back, and adding to crash history, a healthy bundle whose launch is
+            // killed between first content and notifyAppReady().
+            if (verifyOnAppReady && shouldRollbackOnCrash) {
+                launchStartedCallback?.invoke(currentBundleId)
+                return
+            }
+
+            // Promoting a bundle whose failure was reported would make the next
+            // launch skip the crash marker.
+            if (failureReported) {
+                return
+            }
+
+            completeLaunchVerification()
+        }
+    }
+
+    fun markLaunchVerified(): Boolean {
+        synchronized(this) {
+            // JS keeps running after a failure is reported, and after a recovery
+            // restart is requested until the kill lands. Promoting in either window
+            // would make the next launch skip the crash marker, because the marker
+            // is applied only to a bundle that is still pending verification.
+            if (!isMonitoring || !verifyOnAppReady || !shouldRollbackOnCrash || recoveryRequested ||
+                failureReported
+            ) {
+                return false
+            }
+
+            ReactMarker.removeListener(contentAppearedListener)
+            mainHandler.removeCallbacks(installJsExceptionHooksRunnable)
+            completeLaunchVerification()
+            return true
+        }
+    }
+
+    fun reportBundleFailure(): Boolean {
+        synchronized(this) {
+            // Once a native crash handler has requested recovery, its restart
+            // applies the marker it wrote, and a second restart from JS is not
+            // needed.
+            if (!isMonitoring || !shouldRollbackOnCrash || recoveryRequested) {
+                return false
+            }
+
+            // Without the marker, an in-process reload, or a process restart after first
+            // content has cleared launchInProgress, relaunches the same trial.
+            if (!writeCrashMarker()) {
+                return false
+            }
+            failureReported = true
+            // The watchdog relaunches the activity as soon as it finds a crash
+            // marker, which would remount the app over the error screen while JS is
+            // still sending the error. If this process dies before JS reloads, the
+            // next cold start still rolls back from the marker.
+            cancelRecoveryWatchdog()
+            return true
+        }
+    }
+
+    private fun hasReportedFailure(): Boolean = synchronized(this) { failureReported }
+
+    private fun completeLaunchVerification() {
         mainHandler.removeCallbacks(stopMonitoringRunnable)
-        contentAppearedCallback?.invoke(currentBundleId)
+        launchVerifiedCallback?.invoke(currentBundleId)
         shouldRollbackOnCrash = false
         updateNativeLaunchState(currentBundleId, false)
         cancelRecoveryWatchdog()
@@ -161,12 +244,12 @@ internal class HotUpdaterRecoveryManager(
         exceptionHandlerInstalled = true
     }
 
-    private fun writeCrashMarker() {
+    private fun writeCrashMarker(): Boolean {
         if (!isMonitoring) {
-            return
+            return false
         }
 
-        try {
+        return try {
             val payload =
                 JSONObject().apply {
                     put("bundleId", currentBundleId ?: JSONObject.NULL)
@@ -174,8 +257,10 @@ internal class HotUpdaterRecoveryManager(
                 }
             crashMarkerFile.parentFile?.mkdirs()
             crashMarkerFile.writeText(payload.toString())
+            true
         } catch (e: Exception) {
             Log.e(TAG, "Failed to write crash marker", e)
+            false
         }
     }
 
@@ -195,11 +280,13 @@ internal class HotUpdaterRecoveryManager(
     }
 
     private fun requestAutomaticRecovery(): Boolean {
-        if (!isMonitoring || !shouldRollbackOnCrash) {
-            return false
-        }
-
         synchronized(this) {
+            // Read under the same lock as markLaunchVerified(), so a crash on
+            // another thread cannot pass this check while notifyAppReady()
+            // promotes the bundle.
+            if (!isMonitoring || !shouldRollbackOnCrash) {
+                return false
+            }
             if (recoveryRequested) {
                 return true
             }
@@ -468,6 +555,16 @@ internal class HotUpdaterRecoveryManager(
 
             val crashMarkerFile = File(getBundleStoreDir(appContext), CRASH_MARKER_FILENAME)
             if (crashMarkerFile.exists()) {
+                // A tick already running when reportBundleFailure() cancelled the
+                // watchdog can still find its marker. JS reloads for that failure
+                // itself, once the error is sent. reportBundleFailure() holds the
+                // lock from before it writes the marker until it sets the flag, so
+                // a tick that finds the marker also sees the flag.
+                if (activeManager?.hasReportedFailure() == true) {
+                    watchdogStateFile.delete()
+                    cancelRecoveryWatchdogAlarm(appContext)
+                    return
+                }
                 Log.i(TAG, "Recovery watchdog detected crash marker, relaunching app")
                 watchdogStateFile.delete()
                 cancelRecoveryWatchdogAlarm(appContext)

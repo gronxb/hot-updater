@@ -277,6 +277,7 @@ public protocol BundleStorageService {
     func updateBundle(bundleId: String, fileUrl: URL?, fileHash: String?, manifestUrl: URL?, manifestFileHash: String?, changedAssets: [String: ChangedAssetDescriptor]?, progressHandler: @escaping (UpdateProgressPayload) -> Void, completion: @escaping (Result<Bool, Error>) -> Void)
 
     // Rollback support
+    func clearLaunchInProgress(bundleId: String?)
     func markLaunchCompleted(bundleId: String?)
     func notifyAppReady() -> [String: Any]
     func getCrashHistory() -> CrashedHistory
@@ -2540,7 +2541,26 @@ class BundleFileStorageService: BundleStorageService {
     // MARK: - Rollback Support
 
     /**
-     * Marks the current launch as successful after the first content appeared.
+     * Records that a trial launch got as far as its first content, leaving the
+     * bundle pending verification.
+     */
+    func clearLaunchInProgress(bundleId: String?) {
+        guard let bundleId,
+              var metadata = loadMetadataOrNull(),
+              metadata.verificationPending,
+              metadata.launchInProgress,
+              metadata.stagingBundleId == bundleId else {
+            return
+        }
+
+        metadata.launchInProgress = false
+        metadata.updatedAt = Date().timeIntervalSince1970 * 1000
+        let _ = saveMetadata(metadata)
+    }
+
+    /**
+     * Marks the current launch as verified: after the first content appeared,
+     * or after notifyAppReady() when verifyOnAppReady is on.
      */
     func markLaunchCompleted(bundleId: String?) {
         guard let bundleId,

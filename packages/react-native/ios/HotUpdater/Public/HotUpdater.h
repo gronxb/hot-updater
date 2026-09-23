@@ -45,6 +45,17 @@
                         isolationKey:(nullable NSString *)isolationKey;
 
 /**
+ * Same as above, plus `verifyOnAppReady` (`@YES`, `@NO`, or nil to read
+ * Info.plist). When on, notifyAppReady() promotes a staged bundle instead of
+ * its first content.
+ */
++ (void)configureWithFingerprintHash:(nullable NSString *)fingerprintHash
+                           publicKey:(nullable NSString *)publicKey
+                             channel:(nullable NSString *)channel
+                        isolationKey:(nullable NSString *)isolationKey
+                    verifyOnAppReady:(nullable NSNumber *)verifyOnAppReady;
+
+/**
  * 다운로드 진행 상황 업데이트 시간을 추적하는 속성
  */
 @property (nonatomic, assign) NSTimeInterval lastUpdateTime;

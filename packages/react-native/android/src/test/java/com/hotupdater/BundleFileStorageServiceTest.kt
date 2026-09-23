@@ -89,6 +89,44 @@ class BundleFileStorageServiceTest {
     }
 
     @Test
+    fun `clearLaunchInProgress keeps the launched bundle on trial across a cold start`() {
+        assertClearLaunchInProgressAcrossColdStart(contentBundleId = "trial-bundle")
+    }
+
+    @Test
+    fun `clearLaunchInProgress ignores a bundle that is not staged`() {
+        assertClearLaunchInProgressAcrossColdStart(contentBundleId = "other-bundle")
+    }
+
+    private fun assertClearLaunchInProgressAcrossColdStart(contentBundleId: String) {
+        val rootDir = temporaryFolder.newFolder()
+        val preferences = InMemoryPreferencesService()
+        val directory = createBundleDir(rootDir, "trial-bundle")
+        writeFile(directory, "index.android.bundle")
+        writeManifest(directory, listOf("index.android.bundle"))
+        writeMetadata(
+            rootDir,
+            BundleMetadata(
+                isolationKey = TEST_ISOLATION_KEY,
+                stableBundleId = null,
+                stagingBundleId = "trial-bundle",
+                verificationPending = true,
+            ),
+        )
+        val firstProcess = createService(rootDir, preferences)
+        assertEquals("trial-bundle", firstProcess.prepareLaunch(null).launchedBundleId)
+        firstProcess.clearLaunchInProgress(contentBundleId)
+        val cleared = contentBundleId == "trial-bundle"
+
+        // Simulate termination after first content and before notifyAppReady().
+        val secondProcess = createService(rootDir, preferences)
+        val secondLaunch = secondProcess.prepareLaunch(null)
+        assertEquals(if (cleared) "trial-bundle" else null, secondLaunch.launchedBundleId)
+        assertEquals(cleared, secondLaunch.shouldRollbackOnCrash)
+        assertEquals(!cleared, secondProcess.getCrashHistory().contains("trial-bundle"))
+    }
+
+    @Test
     fun `resolveBundleFile uses single manifest bundle at root`() {
         val rootDir = temporaryFolder.newFolder("root-manifest-bundle")
         val service = createService(rootDir)

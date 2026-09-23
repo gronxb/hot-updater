@@ -103,17 +103,20 @@ class HotUpdater {
          * Programmatic configuration for brownfield/AAR setups where manifest
          * metadata or string resources in the host app are not desirable.
          */
+        @JvmOverloads
         fun configure(
             fingerprintHash: String? = null,
             publicKey: String? = null,
             channel: String? = null,
             isolationKey: String? = null,
+            verifyOnAppReady: Boolean? = null,
         ) {
             HotUpdaterConfig.configure(
                 fingerprintHash = fingerprintHash,
                 publicKey = publicKey,
                 channel = channel,
                 isolationKey = isolationKey,
+                verifyOnAppReady = verifyOnAppReady,
             )
         }
 

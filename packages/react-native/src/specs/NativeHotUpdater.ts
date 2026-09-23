@@ -119,6 +119,17 @@ export interface Spec extends TurboModule {
   clearCrashHistory(): boolean;
 
   /**
+   * Reports that the current launch failed, for an error JS caught itself
+   * (for example in an error boundary). For a staged bundle still on trial,
+   * this records the failure and stops the bundle from being promoted. It does not
+   * reload, so the app can finish sending the error first. Call `reload()`
+   * afterwards to roll back. A no-op for any other launch.
+   *
+   * @returns true if the failure was recorded, so that `reload()` rolls back
+   */
+  reportBundleFailure(): boolean;
+
+  /**
    * Clears the runtime channel override and restores the original bundle.
    *
    * @returns Promise that resolves to true if successful

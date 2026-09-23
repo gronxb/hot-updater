@@ -185,6 +185,8 @@ class HotUpdaterImplTest {
             progressCallback: (UpdateProgressPayload) -> Unit,
         ) = Unit
 
+        override fun clearLaunchInProgress(currentBundleId: String?) = Unit
+
         override fun markLaunchCompleted(currentBundleId: String?) = Unit
 
         override fun notifyAppReady(): Map<String, Any?> = mapOf("status" to "STABLE")
