@@ -207,6 +207,7 @@ export const createEngineReads = (options: EngineReadOptions) => {
   };
 
   return {
+    maxPageSize,
     reads: {
       total: (): EngineReadCount => count,
       reset: () => {

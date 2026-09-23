@@ -73,17 +73,28 @@ export { DatabaseCursorError } from "./cursor";
 export {
   createDatabaseEngine,
   type AggregateRow,
+  type CreateRow,
   type DatabaseEngine,
   type DatabaseEngineOptions,
   type EngineColumns,
   type FindAggregatesModel,
   type FindManyModel,
   type HotUpdaterDatabase,
+  type HotUpdaterTransaction,
   type Lookup,
   type ReadMeasurement,
   type ReadOptions,
   type TableRow,
+  type UpdateSet,
 } from "./database";
+export {
+  DatabaseAmbiguousCommitError,
+  DatabaseConflictError,
+  DatabaseConstraintError,
+  DatabaseTransactionError,
+  type ConstraintReason,
+  type RetryOptions,
+} from "./engineTransaction";
 export {
   DatabaseQueryError,
   type EngineReadCount,

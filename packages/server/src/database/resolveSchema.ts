@@ -245,9 +245,11 @@ const problemsAcross = (
     }
     if (
       field.references.onDelete === "cascade" &&
-      !Object.values(definition.indexes).some((index) => index.eq[0] === name)
+      !Object.values(definition.indexes).some(
+        (index) => index.eq.length === 1 && index.eq[0] === name,
+      )
     ) {
-      add(`cascade on "${name}" needs an index whose eq starts with it`);
+      add(`cascade on "${name}" needs an index whose eq is exactly [${name}]`);
     }
   }
   return problems;
