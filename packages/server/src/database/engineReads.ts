@@ -23,18 +23,21 @@ export class DatabaseQueryError extends Error {
   readonly name = "DatabaseQueryError";
 }
 
+/** A value of the index's first order field, or a prefix of its order tuple. */
+export type RangeValue = DatabaseKeyValue | readonly DatabaseKeyValue[];
+
 export interface ReadRange {
-  readonly gt?: DatabaseKeyValue;
-  readonly gte?: DatabaseKeyValue;
-  readonly lt?: DatabaseKeyValue;
-  readonly lte?: DatabaseKeyValue;
+  readonly gt?: RangeValue;
+  readonly gte?: RangeValue;
+  readonly lt?: RangeValue;
+  readonly lte?: RangeValue;
 }
 
 export interface ReadInput {
   readonly index: string;
   /** Values for every eq field of the index. */
   readonly where?: Readonly<Record<string, DatabaseKeyValue>>;
-  /** Bounds on the index's first order field. */
+  /** Bounds on the index's first order field, or on a prefix of its order tuple. */
   readonly range?: ReadRange;
   readonly order?: "asc" | "desc";
   readonly limit: number;
@@ -72,19 +75,28 @@ const keyValue = (value: unknown, field: string): DatabaseKeyValue => {
 };
 
 const bound = (
-  exclusive: DatabaseKeyValue | undefined,
-  inclusive: DatabaseKeyValue | undefined,
-  field: string,
+  exclusive: RangeValue | undefined,
+  inclusive: RangeValue | undefined,
+  columns: readonly string[],
 ): QueryBound | undefined => {
+  const field = columns[0]!;
   if (exclusive !== undefined && inclusive !== undefined) {
     throw new DatabaseQueryError(
       `range on ${field} sets both bounds of one side.`,
     );
   }
   const value = exclusive ?? inclusive;
-  return value === undefined
-    ? undefined
-    : { values: [keyValue(value, field)], inclusive: inclusive !== undefined };
+  if (value === undefined) return undefined;
+  const values = Array.isArray(value) ? value : [value];
+  if (values.length === 0 || values.length > columns.length) {
+    throw new DatabaseQueryError(
+      `range on ${field} takes 1–${columns.length} values of ${columns.join(", ")}.`,
+    );
+  }
+  return {
+    values: values.map((item, position) => keyValue(item, columns[position]!)),
+    inclusive: inclusive !== undefined,
+  };
 };
 
 export const createEngineReads = (options: EngineReadOptions) => {
@@ -141,7 +153,7 @@ export const createEngineReads = (options: EngineReadOptions) => {
       throw new DatabaseQueryError(`limit must be 1–${maxPageSize}.`);
     }
     const order = input.order ?? "asc";
-    const first = indexOrderColumns(table, index)[0]!;
+    const columns = indexOrderColumns(table, index);
     const eq = index.eq.map((field) =>
       keyValue(where[field], `${table.name}.${field}`),
     );
@@ -152,8 +164,8 @@ export const createEngineReads = (options: EngineReadOptions) => {
       order,
       input.range ?? null,
     ]);
-    let lower = bound(input.range?.gt, input.range?.gte, first);
-    let upper = bound(input.range?.lt, input.range?.lte, first);
+    let lower = bound(input.range?.gt, input.range?.gte, columns);
+    let upper = bound(input.range?.lt, input.range?.lte, columns);
     if (input.cursor !== undefined) {
       const after = {
         values: decodeCursor(scope, input.cursor),

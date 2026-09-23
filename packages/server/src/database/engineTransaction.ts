@@ -39,8 +39,8 @@ export interface RetryOptions {
   readonly attempts?: number;
   readonly baseDelayMs?: number;
   readonly maxDelayMs?: number;
-  /** Called before each rerun of `fn` and each resend of the same write. */
-  readonly onRetry?: (kind: "rerun" | "resend") => void;
+  /** Called before each rerun of `fn` and each resend of the same write, with the attempt that failed (from 1). */
+  readonly onRetry?: (kind: "rerun" | "resend", attempt: number) => void;
 }
 
 type Row = Record<string, unknown>;
@@ -554,7 +554,7 @@ export const createTransactions = (options: {
           throw error;
         });
         if (run === undefined) {
-          onRetry?.("rerun");
+          onRetry?.("rerun", round + 1);
           continue;
         }
         const { result, read } = run;
@@ -580,13 +580,13 @@ export const createTransactions = (options: {
         if (outcome.ok) return result;
         const failed = "failedOp" in outcome ? outcome.failedOp : undefined;
         if (failed === undefined || failed >= run.ops.length) {
-          onRetry?.("resend");
+          onRetry?.("resend", round + 1);
           continue;
         }
         const reason = await classify(ops[failed]!, read);
         if (reason)
           throw new DatabaseConstraintError(reason, ops[failed]!.table.name);
-        onRetry?.("rerun");
+        onRetry?.("rerun", round + 1);
         run = undefined;
       }
       throw new DatabaseConflictError(
