@@ -28,8 +28,35 @@ import type { Credential } from 'firebase-admin/app';
 interface FirebaseDatabaseConfig {
   projectId: string;               // Firebase project ID
   credential: Credential;          // Firebase credential
+  collection?: string;             // The one collection it uses; defaults to "hot_updater_v1"
 }
 ```
+
+## Collection and indexes
+
+The database keeps every row in one collection, `hot_updater_v1` by default, as
+`{ pk, sk, row }` documents. Each index a row belongs to adds a document holding
+a copy of it, written in the same transaction. Reads use two composite indexes,
+on `pk` ascending with `sk` ascending and descending, and `row` is exempt from
+single-field indexing. `firestore.indexes.json` from the managed setup declares
+both; deploy it and wait until the indexes are ready before serving traffic.
+
+Then write the schema settings the database checks before its first read.
+`firebaseDatabase()` answers 503 until they exist:
+
+```typescript
+import { migrateFirebaseDatabase } from '@hot-updater/firebase';
+import { applicationDefault } from 'firebase-admin/app';
+
+await migrateFirebaseDatabase({
+  projectId: 'your-project-id',
+  credential: applicationDefault(),
+});
+```
+
+`hot-updater init` and the managed setup's key script both run it. Data in the
+`hot_updater_v1_*` collections comes from a 1.0 release candidate; use a new
+project, or delete those collections, for 1.0.
 
 ## Environment variables
 

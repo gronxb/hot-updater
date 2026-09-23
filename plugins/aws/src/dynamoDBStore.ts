@@ -18,11 +18,12 @@ import type {
   StoredRow,
 } from "@hot-updater/server/database";
 
-/** DynamoDB's transaction limits: 100 items and 4 MB, each item at most 400 KB. */
+/** DynamoDB's limits: 100 items and 4 MB a transaction, 400 KB an item, and 2,048- and 1,024-byte keys. */
 export const DYNAMODB_LIMITS = {
   items: 100,
   bytes: 4_000_000,
   itemBytes: 400_000,
+  keyBytes: { pk: 2_048, sk: 1_024 },
 } as const;
 
 /** BatchGetItem takes 100 keys a call. */

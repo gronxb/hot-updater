@@ -1,121 +1,45 @@
-import { readFile } from "node:fs/promises";
+import { readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-import { FIREBASE_V1_COLLECTION_NAMES } from "../src/firebaseInfrastructureNames";
+import { FIREBASE_V1_COLLECTION } from "../src/firebaseInfrastructureNames";
+import { firestoreIndexes } from "./firestoreIndexes";
 
-type Order = "ASCENDING" | "DESCENDING";
-
-const index = (
-  collectionGroup: string,
-  fields: readonly (readonly [string, Order])[],
-) => ({
-  collectionGroup,
-  queryScope: "COLLECTION",
-  fields: fields.map(([fieldPath, order]) => ({ fieldPath, order })),
-});
+const INDEX_FILE = path.resolve(
+  __dirname,
+  "../firebase/public/firestore.indexes.json",
+);
 
 describe("firebase firestore index template", () => {
-  it("contains only the composite indexes used by runtime queries", async () => {
-    const indexFilePath = path.resolve(
-      __dirname,
-      "../firebase/public/firestore.indexes.json",
-    );
-    const indexFile = JSON.parse(await readFile(indexFilePath, "utf8"));
-    const events = FIREBASE_V1_COLLECTION_NAMES.bundleEvents;
-    const installations = FIREBASE_V1_COLLECTION_NAMES.insightsLatest;
-    const overview = FIREBASE_V1_COLLECTION_NAMES.insightsOverview;
-    const asc = "ASCENDING" as const;
-    const desc = "DESCENDING" as const;
+  it("checks in exactly the generated indexes", async () => {
+    const generated = `${JSON.stringify(firestoreIndexes(), null, 2)}\n`;
+    if (process.env.HOT_UPDATER_UPDATE_SQL === "1") {
+      await writeFile(INDEX_FILE, generated);
+    }
+    // Regenerate with HOT_UPDATER_UPDATE_SQL=1 after the schema changes.
+    expect(await readFile(INDEX_FILE, "utf8")).toBe(generated);
+  });
 
-    expect(indexFile).toEqual({
-      indexes: [
-        index(events, [
-          ["received_at_ms", desc],
-          ["id", desc],
-        ]),
-        index(events, [
-          ["install_id", asc],
-          ["type", asc],
-          ["received_at_ms", desc],
-          ["id", desc],
-        ]),
-        index(installations, [
-          ["user_id", asc],
-          ["install_id", asc],
-        ]),
-        index(events, [
-          ["type", asc],
-          ["platform", asc],
-          ["channel", asc],
-          ["from_bundle_id", asc],
-          ["received_at_ms", desc],
-          ["id", desc],
-        ]),
-        index(events, [
-          ["type", asc],
-          ["platform", asc],
-          ["channel", asc],
-          ["to_bundle_id", asc],
-          ["received_at_ms", desc],
-          ["id", desc],
-        ]),
-        index(installations, [
-          ["platform", asc],
-          ["channel", asc],
-          ["received_at_ms", asc],
-        ]),
-        ...["from_bundle_id", "to_bundle_id"].map((field) =>
-          index(installations, [
-            ["platform", asc],
-            ["channel", asc],
-            [field, asc],
-            ["type", asc],
-            ["received_at_ms", asc],
-          ]),
-        ),
-        index(overview, [
-          ["scope_kind", asc],
-          ["channel", asc],
-          ["period_kind", asc],
-          ["bucket_start_ms", asc],
-        ]),
-        index(overview, [
-          ["scope_kind", asc],
-          ["channel", asc],
-          ["period_kind", asc],
-          ["platform", asc],
-          ["bucket_start_ms", asc],
-        ]),
-        index(overview, [
-          ["scope_kind", asc],
-          ["channel", asc],
-          ["period_kind", asc],
-          ["app_version", asc],
-          ["bucket_start_ms", asc],
-        ]),
-        index(overview, [
-          ["scope_kind", asc],
-          ["channel", asc],
-          ["period_kind", asc],
-          ["platform", asc],
-          ["app_version", asc],
-          ["bucket_start_ms", asc],
-        ]),
-      ],
-      fieldOverrides: [
-        ...[events, installations].map((collectionGroup) => ({
-          collectionGroup,
-          fieldPath: "metadata",
-          indexes: [],
-        })),
-        ...["launch_users", "activity_users"].map((fieldPath) => ({
-          collectionGroup: overview,
-          fieldPath,
-          indexes: [],
-        })),
-      ],
-    });
+  it("indexes only (pk, sk), in both directions, for the one collection", () => {
+    const { indexes, fieldOverrides } = firestoreIndexes();
+
+    expect(indexes).toEqual(
+      (["ASCENDING", "DESCENDING"] as const).map((order) => ({
+        collectionGroup: FIREBASE_V1_COLLECTION,
+        queryScope: "COLLECTION",
+        fields: [
+          { fieldPath: "pk", order: "ASCENDING" },
+          { fieldPath: "sk", order },
+        ],
+      })),
+    );
+    expect(fieldOverrides).toEqual([
+      {
+        collectionGroup: FIREBASE_V1_COLLECTION,
+        fieldPath: "row",
+        indexes: [],
+      },
+    ]);
   });
 });
