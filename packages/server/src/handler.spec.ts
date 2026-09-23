@@ -216,7 +216,7 @@ describe("createHandlers client routes", () => {
     const handler = createHotUpdaterHandlers(
       { ...createApi(), getArtifactInfo },
       undefined,
-      { authenticate, headerName: "x-api-key" },
+      { authenticate, varyHeaders: ["x-api-key"] },
     ).client;
     const url = "http://localhost/artifacts/v1/target/from/current";
 

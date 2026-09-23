@@ -1,0 +1,6 @@
+{
+  // No nodejs_compat: the server must run on plain workerd.
+  "name": "hot-updater-server-runtime",
+  "main": "worker.mjs",
+  "compatibility_date": "2026-03-01"
+}
