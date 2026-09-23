@@ -18,7 +18,11 @@ it.each(["events", "installations"] as const)(
   "fills the %s lookahead through the real PostgREST builder when max_rows is 100",
   async (model) => {
     const stored = model === "events" ? events : installations;
-    const ranges: { offset: number; limit: number }[] = [];
+    const requests: {
+      offset: number;
+      limit: number;
+      after: string | null;
+    }[] = [];
     vi.stubGlobal(
       "fetch",
       vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
@@ -28,15 +32,29 @@ it.each(["events", "installations"] as const)(
         const canonicalLookup =
           model === "installations" &&
           url.pathname.endsWith("/hot_updater_v1_bundle_events");
-        if (!canonicalLookup) ranges.push({ offset, limit });
+        const key = canonicalLookup ? "id" : "install_id";
+        const filters = url.searchParams.getAll(key);
+        const after =
+          filters.find((filter) => filter.startsWith("gt."))?.slice(3) ?? null;
+        if (!canonicalLookup) requests.push({ offset, limit, after });
         expect(new Headers(init?.headers).get("Prefer") ?? "").not.toContain(
           "count=",
         );
-        const source = canonicalLookup
-          ? stored
-              .filter(({ id }) => url.searchParams.get("id")?.includes(id))
-              .toSorted((left, right) => compareInsightsText(left.id, right.id))
-          : stored;
+        const source = (
+          canonicalLookup
+            ? stored
+                .filter(({ id }) =>
+                  filters.some(
+                    (filter) => filter.startsWith("in.") && filter.includes(id),
+                  ),
+                )
+                .toSorted((left, right) =>
+                  compareInsightsText(left.id, right.id),
+                )
+            : stored
+        ).filter(
+          (row) => after === null || compareInsightsText(row[key], after) > 0,
+        );
         const rows = source.slice(offset, offset + Math.min(limit, 100));
         if (model === "installations" && !canonicalLookup) {
           expect(url.pathname).toBe(
@@ -71,10 +89,17 @@ it.each(["events", "installations"] as const)(
             limit: 101,
           });
     expect(rows).toEqual(stored.slice(0, 101));
-    expect(ranges).toEqual([
-      { offset: 0, limit: 101 },
-      { offset: 100, limit: 1 },
-    ]);
+    expect(requests).toEqual(
+      model === "events"
+        ? [
+            { offset: 0, limit: 101, after: null },
+            { offset: 100, limit: 1, after: null },
+          ]
+        : [
+            { offset: 0, limit: 101, after: null },
+            { offset: 0, limit: 1, after: stored[99]!.install_id },
+          ],
+    );
   },
 );
 

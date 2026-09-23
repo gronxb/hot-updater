@@ -743,16 +743,28 @@ export const createDatabasePluginAdapter = (
         async findByBundleIds(bundleIds): Promise<readonly BundlePatchRow[]> {
           if (bundleIds.length === 0) return [];
           const rows: BundlePatchRow[] = [];
-          for (let offset = 0; ; offset += PAGE_SIZE) {
+          for (let after: string | undefined; ; ) {
             const page = await crud.findMany({
               model: "bundle_patches",
-              where: [{ field: "bundle_id", operator: "in", value: bundleIds }],
+              where: [
+                { field: "bundle_id", operator: "in", value: bundleIds },
+                ...(after === undefined
+                  ? []
+                  : [
+                      {
+                        field: "id" as const,
+                        operator: "gt" as const,
+                        value: after,
+                      },
+                    ]),
+              ],
               limit: PAGE_SIZE,
-              offset,
+              offset: 0,
               orderBy: [{ field: "id", direction: "asc" }],
             });
             rows.push(...page);
             if (page.length < PAGE_SIZE) return rows;
+            after = page.at(-1)?.id;
           }
         },
       },
@@ -897,18 +909,31 @@ export const createDatabasePluginAdapter = (
         },
         async list(_input) {
           const channels: ChannelRow[] = [];
-          for (let offset = 0; ; offset += PAGE_SIZE) {
+          // Channel names are unique, so the name alone is an exact cursor.
+          for (let after: string | undefined; ; ) {
             const page = await crud.findMany({
               model: "channels",
+              ...(after === undefined
+                ? {}
+                : {
+                    where: [
+                      {
+                        field: "name" as const,
+                        operator: "gt" as const,
+                        value: after,
+                      },
+                    ],
+                  }),
               orderBy: [{ field: "name", direction: "asc" }],
               limit: PAGE_SIZE,
-              offset,
+              offset: 0,
             });
             channels.push(...page);
             if (page.length < PAGE_SIZE) {
               channels.sort(compareChannelRows);
               return { channels };
             }
+            after = page.at(-1)?.name;
           }
         },
         async delete(input) {

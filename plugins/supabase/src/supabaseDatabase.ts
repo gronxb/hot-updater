@@ -64,14 +64,20 @@ const createSupabaseImplementation = (
       const limit = "installId" in input ? 1 : input.limit;
       const heads: Pick<BundleEventRow, "id" | "install_id">[] = [];
       const filter = buildSupabaseFilter(latestInsightsWhere(input));
+      // PostgREST's max_rows can shorten a page, so each continuation starts
+      // after the last unique key read instead of re-scanning an offset.
       while (heads.length < limit) {
         let query = supabase
           .from(SUPABASE_V1_TABLE_NAMES.bundleEventHeads)
           .select("id,install_id");
         if (filter !== undefined) query = query.or(filter);
+        const lastHead = heads.at(-1);
+        if (lastHead !== undefined) {
+          query = query.gt("install_id", lastHead.install_id);
+        }
         const { data, error } = await query
           .order("install_id", { ascending: true })
-          .range(heads.length, limit - 1);
+          .limit(limit - heads.length);
         throwSupabaseError("find latest insights events", error);
         if (data === null)
           throw new SupabaseMissingDataError("find latest insights events");
@@ -80,15 +86,18 @@ const createSupabaseImplementation = (
       }
       const rows: BundleEventRow[] = [];
       while (rows.length < heads.length) {
-        const { data, error } = await supabase
+        let query = supabase
           .from(SUPABASE_V1_TABLE_NAMES.bundleEvents)
           .select("*")
           .in(
             "id",
             heads.map(({ id }) => id),
-          )
+          );
+        const lastRow = rows.at(-1);
+        if (lastRow !== undefined) query = query.gt("id", lastRow.id);
+        const { data, error } = await query
           .order("id", { ascending: true })
-          .range(rows.length, heads.length - 1);
+          .limit(heads.length - rows.length);
         throwSupabaseError("find latest insights events", error);
         if (data === null || data.length === 0)
           throw new SupabaseMissingDataError("find latest insights events");
