@@ -10,6 +10,7 @@ import type { DatabaseWhere } from "@hot-updater/plugin-core/internal";
 import { createStandaloneBundleReader } from "./standaloneBundleReader";
 import { createStandaloneBundleRemote } from "./standaloneBundleRemote";
 import { createStandaloneCoreApi } from "./standaloneCore";
+import { createStandaloneHttp } from "./standaloneHttp";
 import { createStandaloneReleaseRemote } from "./standaloneReleaseRemote";
 import type { StandaloneRepositoryConfig } from "./standaloneRoutes";
 
@@ -57,6 +58,12 @@ const toBundleWhere = (
 export type StandaloneRepository = BundleRepository & {
   /** Core's API over admin API protocol 2, which the CLI uses. */
   readonly core: HotUpdaterCoreApi;
+  /**
+   * A GET on the server's admin handler with this repository's headers, for
+   * admin routes core does not cover, such as the Insights reads. `path`
+   * starts with `/` and may carry a query.
+   */
+  readonly fetchAdmin: (path: string) => Promise<Response>;
 };
 
 /**
@@ -74,9 +81,15 @@ export const standaloneRepository = (
   const releaseRemote = createStandaloneReleaseRemote(config);
   const bundleReader = createStandaloneBundleReader(remote);
 
+  const http = createStandaloneHttp(config);
+
   const repository: StandaloneRepository = {
     name: "standalone-repository",
     core: createStandaloneCoreApi(config),
+    fetchAdmin: (path) =>
+      fetch(http.buildUrl(path), {
+        headers: http.headers({ "Cache-Control": "no-cache" }),
+      }),
     models: {
       bundles: {
         async findById(id): Promise<BundleRow | null> {

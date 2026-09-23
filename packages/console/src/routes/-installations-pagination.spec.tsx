@@ -49,6 +49,9 @@ vi.mock("@/lib/insights-api", () => {
     isLoading: false,
   });
   return {
+    useInsightsStatusQuery: () => ({
+      data: { insights: "on", activity: true },
+    }),
     useInsightsEventsQuery: page,
     useInsightsInstallationsQuery: page,
     useInsightsInstallationEventsQuery: page,

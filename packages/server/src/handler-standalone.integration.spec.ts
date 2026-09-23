@@ -46,10 +46,11 @@ const invokeHandler = async (
     ? hotUpdater.handlers.admin
     : hotUpdater.handlers.client;
   const response = await handler(new Request(url, request));
-  return new HttpResponse(await response.text(), {
-    status: response.status,
-    headers: response.headers,
-  });
+  // A 204 carries no body, and a Response refuses one.
+  return new HttpResponse(
+    response.status === 204 ? null : await response.text(),
+    { status: response.status, headers: response.headers },
+  );
 };
 
 beforeAll(async () => {
@@ -723,5 +724,36 @@ describe("Standalone core API over admin API protocol 2", () => {
       `${baseUrl}/hot-updater/admin/releases?v=2&channelId=x`,
     );
     expect(response.status).toBe(400);
+  });
+});
+
+describe("Insights through a self-hosted server's admin API", () => {
+  const offPath = "/no-insights";
+  const withoutInsights = createHotUpdater({
+    database: kyselyAdapter({ db: kysely, provider: "postgresql" }),
+    plugins: [],
+    clientAccess: "public",
+  });
+
+  beforeAll(() => {
+    server.use(
+      http.all(`${baseUrl}${offPath}/*`, ({ request }) =>
+        invokeHandler(withoutInsights, request, offPath),
+      ),
+    );
+  });
+
+  it("reads events with the repository's headers, and a server without insights() says it is off", async () => {
+    const on = standaloneRepository({
+      baseUrl: `${baseUrl}/hot-updater/admin`,
+    });
+    const onResponse = await on.fetchAdmin("/events?limit=1");
+    expect(onResponse.status).toBe(200);
+    await expect(onResponse.json()).resolves.toMatchObject({ data: [] });
+
+    const off = standaloneRepository({ baseUrl: `${baseUrl}${offPath}/admin` });
+    const offResponse = await off.fetchAdmin("/events?limit=1");
+    expect(offResponse.status).toBe(204);
+    expect(offResponse.headers.get("x-hot-updater-insights")).toBe("disabled");
   });
 });

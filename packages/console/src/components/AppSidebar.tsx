@@ -72,9 +72,8 @@ export function AppSidebar({ canSignOut = false }: { canSignOut?: boolean }) {
             enabled: undefined,
             releaseId: undefined,
             platform: undefined,
-            targetAppVersion: undefined,
             bundleId: undefined,
-            page: undefined,
+            scopeKey: undefined,
           }}
           className="flex items-center gap-3 p-1 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:p-2"
         >
@@ -109,9 +108,8 @@ export function AppSidebar({ canSignOut = false }: { canSignOut?: boolean }) {
                         enabled: undefined,
                         releaseId: undefined,
                         platform: undefined,
-                        targetAppVersion: undefined,
                         bundleId: undefined,
-                        page: undefined,
+                        scopeKey: undefined,
                       }}
                     />
                   }

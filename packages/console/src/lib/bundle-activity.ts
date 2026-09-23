@@ -16,14 +16,18 @@ export type BundleActivityReport = {
   readonly coverage: import("@hot-updater/plugin-core").InsightsCoverage;
 };
 
-export function useBundleActivityQuery(inputs: readonly BundleActivityInput[]) {
+/** Release activity for bundle rows; off when Insights is off or the database is not read here. */
+export function useBundleActivityQuery(
+  inputs: readonly BundleActivityInput[],
+  available = true,
+) {
   const sorted = [...inputs].sort((a, b) =>
     a.releaseId.localeCompare(b.releaseId),
   );
   return useQuery({
     queryKey: ["bundle-activity", sorted],
     queryFn: () => getBundleActivityRpc({ data: sorted }),
-    enabled: sorted.length > 0,
+    enabled: available && sorted.length > 0,
     staleTime: 30_000,
   });
 }

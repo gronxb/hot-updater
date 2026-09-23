@@ -5,6 +5,7 @@ import path from "path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import {
+  loadHotUpdaterPlugins,
   renderHotUpdaterPlugins,
   writeHotUpdaterPlugins,
 } from "./hotUpdaterPlugins";
@@ -56,5 +57,48 @@ describe("writeHotUpdaterPlugins", () => {
       'export { plugins } from "@hot-updater/firebase";',
     );
     await expect(fs.readFile(filePath, "utf-8")).resolves.toBe(edited);
+  });
+});
+
+describe("loadHotUpdaterPlugins", () => {
+  let directory: string;
+
+  beforeEach(async () => {
+    directory = await fs.mkdtemp(
+      path.join(os.tmpdir(), "hot-updater-plugins-"),
+    );
+  });
+
+  afterEach(async () => {
+    await fs.rm(directory, { recursive: true, force: true });
+  });
+
+  it("is undefined for a project without the file", async () => {
+    await expect(loadHotUpdaterPlugins(directory)).resolves.toBeUndefined();
+  });
+
+  it("reads the plugins the file exports", async () => {
+    await fs.writeFile(
+      path.join(directory, "hotUpdater.plugins.mjs"),
+      'export const plugins = [{ id: "insights" }, { id: "api-keys" }];\n',
+      "utf-8",
+    );
+
+    await expect(loadHotUpdaterPlugins(directory)).resolves.toEqual([
+      { id: "insights" },
+      { id: "api-keys" },
+    ]);
+  });
+
+  it("refuses a file without a plugins array", async () => {
+    await fs.writeFile(
+      path.join(directory, "hotUpdater.plugins.mjs"),
+      "export const plugin = {};\n",
+      "utf-8",
+    );
+
+    await expect(loadHotUpdaterPlugins(directory)).rejects.toThrow(
+      "hotUpdater.plugins.mjs must export plugins, an array of plugins.",
+    );
   });
 });

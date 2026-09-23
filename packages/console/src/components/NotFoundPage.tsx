@@ -3,14 +3,14 @@ import { Link } from "@tanstack/react-router";
 import { buttonVariants } from "@/components/ui/button";
 
 const homeSearch = {
-  channel: undefined,
-  platform: undefined,
-  targetAppVersion: undefined,
-  page: undefined,
-  after: undefined,
-  before: undefined,
+  afterReleaseId: undefined,
+  beforeReleaseId: undefined,
   bundleId: undefined,
-  expandedBundleId: undefined,
+  channelId: undefined,
+  enabled: undefined,
+  platform: undefined,
+  releaseId: undefined,
+  scopeKey: undefined,
 } as const;
 
 export function NotFoundPage() {

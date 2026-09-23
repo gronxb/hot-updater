@@ -18,21 +18,25 @@ export function readBundleActivityInput(
 export const getBundleActivityRpc = createServerFn({ method: "GET" })
   .validator(readBundleActivityInput)
   .handler(async ({ data }) => {
-    const [{ prepareConfig }, { getBundleActivity }] = await Promise.all([
-      import("./server/config.server"),
-      import("./server/bundleActivity"),
-    ]);
-    const { config } = await prepareConfig();
-    return getBundleActivity(config.database.models.insights, data);
+    const [{ prepareConfig }, { getBundleActivity }, { requireInsightsModel }] =
+      await Promise.all([
+        import("./server/config.server"),
+        import("./server/bundleActivity"),
+        import("./server/runtime.server"),
+      ]);
+    const { insights } = await prepareConfig();
+    return getBundleActivity(await requireInsightsModel(insights), data);
   });
 
 export const getRecoveryReportRpc = createServerFn({ method: "GET" })
   .validator(readRecoveryInput)
   .handler(async ({ data }) => {
-    const [{ prepareConfig }, { getRecoveryReport }] = await Promise.all([
-      import("./server/config.server"),
-      import("./server/insightsRecovery"),
-    ]);
-    const { config } = await prepareConfig();
-    return getRecoveryReport(config.database.models.insights, data);
+    const [{ prepareConfig }, { getRecoveryReport }, { requireInsightsModel }] =
+      await Promise.all([
+        import("./server/config.server"),
+        import("./server/insightsRecovery"),
+        import("./server/runtime.server"),
+      ]);
+    const { insights } = await prepareConfig();
+    return getRecoveryReport(await requireInsightsModel(insights), data);
   });

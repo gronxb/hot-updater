@@ -45,7 +45,7 @@ describe("recovery report access", () => {
   it("uses the authenticated console database and preserves the requested ID", async () => {
     const model = {};
     mocks.prepare.mockResolvedValue({
-      config: { database: { models: { insights: model } } },
+      insights: { model, status: async () => "on" },
     });
     mocks.report.mockResolvedValue({ series: [] });
     await expect(getRecoveryReportRpc({ data })).resolves.toEqual({
@@ -69,7 +69,7 @@ describe("bundle activity access", () => {
   it("authenticates batch requests and uses the console database", async () => {
     const model = {};
     mocks.prepare.mockResolvedValue({
-      config: { database: { models: { insights: model } } },
+      insights: { model, status: async () => "on" },
     });
     mocks.activity.mockResolvedValue({});
     await expect(getBundleActivityRpc({ data: [...data] })).resolves.toEqual(
@@ -96,5 +96,20 @@ describe("bundle activity access", () => {
       readBundleActivityInput([{ ...data[0], channel: "" }]),
     ).toThrow();
     expect(readBundleActivityInput(data)).toEqual(data);
+  });
+});
+
+describe("activity without a database the console reads", () => {
+  it("says Insights is off before reading anything", async () => {
+    mocks.prepare.mockResolvedValue({
+      insights: { model: null, status: async () => "off" },
+    });
+
+    await expect(
+      getRecoveryReportRpc({
+        data: { platform: "ios", channel: "production", window: "7d" },
+      }),
+    ).rejects.toThrow("Insights is off");
+    expect(mocks.report).not.toHaveBeenCalled();
   });
 });

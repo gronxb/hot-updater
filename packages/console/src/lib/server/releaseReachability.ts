@@ -4,7 +4,7 @@ import {
 } from "@hot-updater/core";
 import type {
   CompiledReleaseCatalog,
-  ReleaseCatalogModel,
+  HotUpdaterCoreApi,
   ReleaseRow,
 } from "@hot-updater/plugin-core";
 
@@ -63,15 +63,16 @@ export function collectCurrentlyReachableReleaseIds(
   return reachableReleaseIds;
 }
 
+/** Marks each release its scope's compiled catalog no longer serves: one catalog read per scope. */
 export async function addReleaseReachability(
-  releaseCatalogs: Pick<ReleaseCatalogModel, "findByScopeKey">,
+  core: Pick<HotUpdaterCoreApi, "getReleaseCatalogRow">,
   releases: readonly ReleaseRow[],
 ): Promise<readonly ReleaseReachabilityRow[]> {
   const scopeKeys = [...new Set(releases.map(({ scope_key }) => scope_key))];
   const reachableByScope = new Map(
     await Promise.all(
       scopeKeys.map(async (scopeKey) => {
-        const row = await releaseCatalogs.findByScopeKey(scopeKey);
+        const row = await core.getReleaseCatalogRow(scopeKey);
         const reachableReleaseIds =
           row === null
             ? new Set<string>()

@@ -6,6 +6,10 @@ import { InsightsErrorAlert } from "@/components/features/insights/InsightsError
 import { InsightsInfo } from "@/components/features/insights/InsightsInfo";
 import { InsightsPageHeader } from "@/components/features/insights/InsightsPageHeader";
 import { InsightsPeriodSelector } from "@/components/features/insights/InsightsPeriodSelector";
+import {
+  InsightsActivityUnavailable,
+  InsightsOffBanner,
+} from "@/components/features/insights/InsightsUnavailable";
 import { PlatformIcon } from "@/components/PlatformIcon";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
@@ -34,6 +38,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useInsightsStatusQuery } from "@/lib/insights-api";
 import {
   validateDistributionSearch,
   validateInsightsSearch,
@@ -55,9 +60,12 @@ function DistributionPage() {
     appVersion: search.appVersion,
     window: search.window ?? "24h",
   };
+  const status = useInsightsStatusQuery();
+  const activity = status.data?.activity === true;
   const query = useQuery({
     queryKey: ["insights", "app-usage", input],
     queryFn: () => getAppUsageReportRpc({ data: input }),
+    enabled: activity,
     staleTime: 30_000,
   });
   const report = query.error ? undefined : query.data;
@@ -76,6 +84,26 @@ function DistributionPage() {
   const overviewSearch = validateInsightsSearch(search);
   const changeSearch = (next: Partial<typeof search>) =>
     void navigate({ search: { ...search, page: undefined, ...next } });
+
+  if (status.data !== undefined && !activity) {
+    return (
+      <div className="flex h-svh min-h-0 flex-col">
+        <InsightsPageHeader
+          view="distribution"
+          overviewSearch={overviewSearch}
+        />
+        <div className="min-h-0 min-w-0 flex-1 overflow-y-auto bg-muted/5 px-4 py-6 sm:p-8">
+          <div className="mx-auto flex w-full max-w-6xl flex-col gap-6">
+            {status.data.insights === "off" ? (
+              <InsightsOffBanner />
+            ) : (
+              <InsightsActivityUnavailable />
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex h-svh min-h-0 flex-col">

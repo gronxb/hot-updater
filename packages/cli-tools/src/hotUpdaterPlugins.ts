@@ -1,5 +1,9 @@
 import fs from "fs/promises";
+import path from "path";
 
+import { loadConfig as loadUnconfig } from "unconfig";
+
+import { getCwd } from "./cwd";
 import { p } from "./prompts";
 
 /** Where `hot-updater init` writes a managed server's plugin list. */
@@ -67,4 +71,32 @@ export const generateHotUpdaterPlugins = async (
     p.log.warn(`Kept existing '${filePath}' unchanged: ${result.reason}`);
   }
   return result;
+};
+
+/**
+ * The plugins a project's `hotUpdater.plugins.ts` exports, which its server
+ * runs; undefined when the project has no such file. The console assembles
+ * them in process to read Insights and API keys as the server would.
+ */
+export const loadHotUpdaterPlugins = async (
+  cwd: string = getCwd(),
+): Promise<readonly unknown[] | undefined> => {
+  const { config, sources } = await loadUnconfig<{ plugins?: unknown }>({
+    cwd,
+    stopAt: path.dirname(cwd),
+    merge: false,
+    sources: [
+      {
+        files: "hotUpdater.plugins",
+        extensions: ["ts", "mts", "cts", "js", "mjs", "cjs"],
+      },
+    ],
+  });
+  if (sources.length === 0) return undefined;
+  if (!Array.isArray(config?.plugins)) {
+    throw new Error(
+      `${path.basename(sources[0]!)} must export plugins, an array of plugins.`,
+    );
+  }
+  return config.plugins;
 };
