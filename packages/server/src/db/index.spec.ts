@@ -438,7 +438,7 @@ describe("server/db hotUpdater (PGlite + Kysely)", async () => {
       expect(sql).not.toContain("bundle_id(255)");
     });
 
-    it("adds custom indexes and constraints to generated SQL", async () => {
+    it("generates the engine's tables, indexes, foreign keys, and settings rows", async () => {
       const migrationDb = new PGlite();
       const migrationKysely = new Kysely<object>({
         dialect: new PGliteDialect(migrationDb),
@@ -459,24 +459,17 @@ describe("server/db hotUpdater (PGlite + Kysely)", async () => {
         const sql = result.getSQL?.() ?? "";
 
         expect(sql).toContain(
-          "create index releases_scope_order_idx on releases",
+          'CREATE INDEX IF NOT EXISTS "releases_byScope" ON "releases" ("scope_key", "id")',
         );
         expect(sql).toContain(
-          "add constraint releases_strategy_target_check check",
+          'ADD CONSTRAINT "bundle_patches_bundle_id_fk" FOREIGN KEY ("bundle_id") REFERENCES "bundles" ("id") ON DELETE CASCADE',
         );
         expect(sql).toContain(
-          "add constraint bundle_patches_bundle_id_fk foreign key",
+          `INSERT INTO "private_hot_updater_settings" ("key", "value", "_v") VALUES ('schema.engine', '1', 0)`,
         );
-        expect(sql).toContain(
-          "create index bundle_patches_bundle_id_idx on bundle_patches",
-        );
-        expect(sql).toContain("insert into private_hot_updater_settings");
+        // `updateSettings: false` leaves the settings step out of the plan only
         expect(result.operations).not.toContainEqual(
-          expect.objectContaining({
-            sql: expect.stringContaining(
-              "insert into private_hot_updater_settings",
-            ),
-          }),
+          expect.objectContaining({ type: "custom" }),
         );
       } finally {
         await migrationKysely.destroy();
