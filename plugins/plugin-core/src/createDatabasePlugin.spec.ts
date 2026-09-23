@@ -194,6 +194,64 @@ describe("createDatabasePlugin", () => {
     });
   });
 
+  it("continues the channel list after the last name instead of an offset", async () => {
+    const firstPage = Array.from({ length: 100 }, (_, index) => ({
+      id: `channel-${index}`,
+      name: `name-${String(index).padStart(3, "0")}`,
+    }));
+    const lastRow = { id: "channel-last", name: "name-zzz" };
+    const findMany = vi.fn(async (input) =>
+      input.where === undefined ? firstPage : [lastRow],
+    );
+    const plugin = createTestPlugin("memory", {
+      ...createMethods(),
+      findMany,
+    });
+
+    await expect(plugin.models.channels.list({})).resolves.toEqual({
+      channels: [...firstPage, lastRow],
+    });
+    expect(findMany).toHaveBeenCalledTimes(2);
+    expect(findMany).toHaveBeenLastCalledWith({
+      model: "channels",
+      where: [{ field: "name", operator: "gt", value: "name-099" }],
+      limit: 100,
+      offset: 0,
+      orderBy: [{ field: "name", direction: "asc" }],
+    });
+  });
+
+  it("continues patch reads after the last patch id instead of an offset", async () => {
+    const firstPage = Array.from({ length: 100 }, (_, index) => ({
+      ...patchRow,
+      id: `patch-${String(index).padStart(3, "0")}`,
+      order_index: index,
+    }));
+    const lastRow = { ...patchRow, id: "patch-zzz", order_index: 100 };
+    const findMany = vi.fn(async (input) =>
+      input.where.length === 1 ? firstPage : [lastRow],
+    );
+    const plugin = createTestPlugin("memory", {
+      ...createMethods(),
+      findMany,
+    });
+
+    await expect(
+      plugin.models.bundlePatches.findByBundleIds([bundleRow.id]),
+    ).resolves.toEqual([...firstPage, lastRow]);
+    expect(findMany).toHaveBeenCalledTimes(2);
+    expect(findMany).toHaveBeenLastCalledWith({
+      model: "bundle_patches",
+      where: [
+        { field: "bundle_id", operator: "in", value: [bundleRow.id] },
+        { field: "id", operator: "gt", value: "patch-099" },
+      ],
+      limit: 100,
+      offset: 0,
+      orderBy: [{ field: "id", direction: "asc" }],
+    });
+  });
+
   it("returns the canonical channel selected by the provider", async () => {
     const canonical = { id: "canonical", name: "production" } as const;
     const insertChannel = vi.fn(async () => ({
