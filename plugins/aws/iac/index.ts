@@ -3,6 +3,7 @@ import {
   confirmInitInputPersistence,
   ensureInstallPackages,
   formatApiKeyNote,
+  generateHotUpdaterPlugins,
   getHotUpdaterInitInputEnv,
   getInitProviderEnvVars,
   getInitProviderTextPromptValues,
@@ -440,6 +441,7 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
       `Kept existing 'hot-updater.config.ts' unchanged: ${configWriteResult.reason}`,
     );
   }
+  await generateHotUpdaterPlugins("@hot-updater/aws");
 
   // Provide API URL for client use (using CloudFront domain)
   const sourceUrl = `https://${distributionDomain}`;

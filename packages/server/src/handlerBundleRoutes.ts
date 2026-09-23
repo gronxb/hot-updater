@@ -1,6 +1,7 @@
 import type { Bundle } from "@hot-updater/core";
 import type { ChannelInsertInput } from "@hot-updater/plugin-core";
 
+import { adminV2Reads, isAdminV2 } from "./handlerAdminV2Routes";
 import { HandlerBadRequestError } from "./handlerErrors";
 import {
   decodeMaybe,
@@ -66,7 +67,8 @@ const requireBundlePatchPayload = (
 };
 
 export const createBundleRouteHandlers = (): Record<string, RouteHandler> => ({
-  getBundle: async (params, _request, api) => {
+  getBundle: async (params, request, api) => {
+    if (isAdminV2(request)) return adminV2Reads.getBundle(params, request, api);
     const bundle = await api.getBundleById(requireRouteParam(params, "id"));
     if (!bundle) {
       return new Response(JSON.stringify({ error: "Bundle not found" }), {
@@ -80,7 +82,10 @@ export const createBundleRouteHandlers = (): Record<string, RouteHandler> => ({
     });
   },
 
-  getBundles: async (_params, request, api) => {
+  getBundles: async (params, request, api) => {
+    if (isAdminV2(request)) {
+      return adminV2Reads.listBundles(params, request, api);
+    }
     const url = new URL(request.url);
     const platform = url.searchParams.get("platform");
     const limit = parsePositiveIntegerSearchParam(
@@ -223,7 +228,10 @@ export const createBundleRouteHandlers = (): Record<string, RouteHandler> => ({
     });
   },
 
-  getChannels: async (_params, _request, api) => {
+  getChannels: async (params, request, api) => {
+    if (isAdminV2(request)) {
+      return adminV2Reads.getChannels(params, request, api);
+    }
     const response: ChannelsResponse = {
       data: { channels: await api.getChannels() },
     };
@@ -233,7 +241,10 @@ export const createBundleRouteHandlers = (): Record<string, RouteHandler> => ({
     });
   },
 
-  createChannel: async (_params, request, api) => {
+  createChannel: async (params, request, api) => {
+    if (isAdminV2(request)) {
+      return adminV2Reads.createChannel(params, request, api);
+    }
     const result = await api.insertChannel(
       requireChannelInsertInput(await request.json()),
     );

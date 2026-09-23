@@ -6,6 +6,7 @@ import {
   confirmInitInputPersistence,
   copyDirToTmp,
   formatApiKeyNote,
+  generateHotUpdaterPlugins,
   getHotUpdaterInitInputEnv,
   getInitProviderEnvVars,
   getInitProviderTextPromptValues,
@@ -741,6 +742,7 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
       `Kept existing 'hot-updater.config.ts' unchanged: ${configWriteResult.reason}`,
     );
   }
+  await generateHotUpdaterPlugins("@hot-updater/cloudflare");
 
   if (subdomains.subdomain) {
     p.note(

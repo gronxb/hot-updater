@@ -1,4 +1,9 @@
-import type { Bundle, StorageObject } from "@hot-updater/plugin-core";
+import {
+  bundleToPatchRows,
+  bundleToRow,
+  type Bundle,
+  type StorageObject,
+} from "@hot-updater/plugin-core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const {
@@ -18,6 +23,7 @@ const {
     name: "mock-database",
     dispose: vi.fn(),
     updateBundle: vi.fn(),
+    core: { listBundles: vi.fn() },
   };
   const mockStorageNode = {
     delete: vi.fn(),
@@ -61,15 +67,6 @@ vi.mock("@hot-updater/cli-tools", async (importOriginal) => {
     ...actual,
     loadConfig: mockCli.loadConfig,
     p: mockCli.p,
-  };
-});
-
-vi.mock("@hot-updater/plugin-core", async (importOriginal) => {
-  const actual =
-    await importOriginal<typeof import("@hot-updater/plugin-core")>();
-  return {
-    ...actual,
-    createDatabaseClient: vi.fn(() => mockDatabasePlugin),
   };
 });
 
@@ -159,6 +156,19 @@ describe("handleStoragePrune", () => {
       database: mockDatabasePlugin,
       storage: mockStoragePlugin,
     });
+    // Core's bundle pages, as rows, from the bundles `getBundles` answers.
+    mockDatabasePlugin.core.listBundles.mockImplementation(
+      async (input: unknown) =>
+        (
+          (await mockDatabasePlugin.getBundles(input)) as {
+            readonly data: readonly Bundle[];
+          }
+        ).data.map((bundle) => ({
+          bundle: bundleToRow(bundle),
+          patches: bundleToPatchRows(bundle),
+          childCount: 0,
+        })),
+    );
     mockDatabasePlugin.getBundles.mockResolvedValue({
       data: [liveBundle],
       pagination: {
@@ -589,66 +599,41 @@ describe("handleStoragePrune", () => {
     expect(mockStorageNode.deleteObjects).not.toHaveBeenCalled();
   });
 
-  it("fails closed when the database omits a required next cursor", async () => {
-    mockDatabasePlugin.getBundles.mockResolvedValue({
-      data: [liveBundle],
-      pagination: {
-        currentPage: 1,
-        hasNextPage: true,
-        hasPreviousPage: false,
-        nextCursor: null,
-        total: 10_001,
-        totalPages: 2,
-      },
+  it("reads every bundle in pages by key", async () => {
+    const page = Array.from({ length: 100 }, (_, index) => {
+      const id = `0195a408-8f13-7d9b-8df4-${String(index).padStart(12, "0")}`;
+      return {
+        ...liveBundle,
+        id,
+        manifestStorageUri: `s3://bucket/bundles/${id}/manifest.json`,
+      };
     });
-    const { handleStoragePrune } = await import("./storage");
-
-    await expect(handleStoragePrune({ yes: true })).rejects.toThrow(
-      "cannot provide safe cursor pagination",
-    );
-    expect(mockStorageNode.get).not.toHaveBeenCalled();
-    expect(mockStorageNode.listObjects).not.toHaveBeenCalled();
-    expect(mockStorageNode.deleteObjects).not.toHaveBeenCalled();
-  });
-
-  it("loads standalone references in pages within the server limit", async () => {
-    mockDatabasePlugin.name = "standalone-repository";
-    mockDatabasePlugin.getBundles.mockImplementation(
-      async (options: { cursor?: { after: string }; limit: number }) => {
-        if (options.limit > 100) {
-          throw new Error("limit must be less than or equal to 100");
-        }
-        if (!options.cursor) {
-          return {
-            data: [liveBundle],
-            pagination: {
-              hasNextPage: true,
-              nextCursor: "page-2",
-            },
-          };
-        }
-        return {
-          data: [],
-          pagination: { hasNextPage: false, nextCursor: null },
-        };
-      },
+    mockDatabasePlugin.getBundles
+      .mockResolvedValueOnce({ data: page })
+      .mockResolvedValueOnce({ data: [] });
+    mockStorageNode.get.mockImplementation(
+      async ({ storageUri }: { readonly storageUri: string }) => ({
+        response: new Response(
+          JSON.stringify({
+            bundleId: storageUri.split("/").at(-2),
+            assets: {},
+          }),
+        ),
+      }),
     );
     const { handleStoragePrune } = await import("./storage");
 
     await handleStoragePrune({ dryRun: true });
 
-    expect(mockDatabasePlugin.getBundles).toHaveBeenCalledTimes(2);
-    expect(mockDatabasePlugin.getBundles).toHaveBeenNthCalledWith(
-      1,
-      expect.objectContaining({ cursor: undefined, limit: 100 }),
-    );
-    expect(mockDatabasePlugin.getBundles).toHaveBeenNthCalledWith(
-      2,
-      expect.objectContaining({
-        cursor: { after: "page-2" },
-        limit: 100,
-      }),
-    );
+    expect(mockDatabasePlugin.core.listBundles).toHaveBeenNthCalledWith(1, {
+      limit: 100,
+      order: "desc",
+    });
+    expect(mockDatabasePlugin.core.listBundles).toHaveBeenNthCalledWith(2, {
+      limit: 100,
+      order: "desc",
+      after: page.at(-1)!.id,
+    });
   });
 
   it("aborts before listing or deletion when a live manifest cannot be read", async () => {

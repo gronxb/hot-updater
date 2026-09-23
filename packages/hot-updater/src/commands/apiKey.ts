@@ -30,7 +30,7 @@ const requireApiKeys = (value: unknown): ApiKeyManagementAPI => {
     typeof Reflect.get(value, "revoke") !== "function"
   ) {
     throw new Error(
-      "API key management requires a direct database config created by @hot-updater/server. Remote standaloneRepository configs are not supported.",
+      "API key management requires a direct database config created by @hot-updater/server, with apiKeys() from @hot-updater/server/plugins/api-keys in its plugins. Remote standaloneRepository configs are not supported.",
     );
   }
   return value as ApiKeyManagementAPI;
@@ -42,7 +42,16 @@ const withApiKeys = async <T>(
 ): Promise<T> => {
   const loaded = await loadHotUpdater(options.configPath ?? "");
   try {
-    return await run(requireApiKeys(loaded.hotUpdater.apiKeys));
+    const { hotUpdater } = loaded;
+    // With plugins, keys belong to the apiKeys() plugin; without, to the
+    // deprecated database-backed API.
+    return await run(
+      requireApiKeys(
+        hotUpdater.api === undefined
+          ? hotUpdater.apiKeys
+          : hotUpdater.api.apiKeys,
+      ),
+    );
   } finally {
     await loaded.dispose();
   }

@@ -57,8 +57,8 @@ describe("Release deployment transaction", () => {
       "ios",
     );
     const results = await Promise.all([
-      commitDeployment({ database: harness.plugin, ...first }),
-      commitDeployment({ database: harness.plugin, ...second }),
+      commitDeployment({ core: harness.core, ...first }),
+      commitDeployment({ core: harness.core, ...second }),
     ]);
 
     expect(results[0]!.catalog.catalog_id).toMatch(/^[0-9a-f-]{36}$/);
@@ -67,7 +67,7 @@ describe("Release deployment transaction", () => {
       1, 2,
     ]);
     await expect(
-      harness.plugin.models.releaseCatalogs.findByScopeKey(scopeKey("ios")),
+      harness.core.getReleaseCatalogRow(scopeKey("ios")),
     ).resolves.toMatchObject({
       catalog_id: results[0]!.catalog.catalog_id,
       generation: 2,
@@ -77,11 +77,11 @@ describe("Release deployment transaction", () => {
   it("independent databases get different identities for the same lookup scope", async () => {
     const other = createDatabasePluginHarness();
     const first = await commitDeployment({
-      database: harness.plugin,
+      core: harness.core,
       ...iosBundle(),
     });
     const second = await commitDeployment({
-      database: other.plugin,
+      core: other.core,
       ...iosBundle(),
     });
 
@@ -89,87 +89,60 @@ describe("Release deployment transaction", () => {
     expect(first.catalog.catalog_id).not.toBe(second.catalog.catalog_id);
   });
 
-  it("atomically commits Bundle bytes, Release policy, and the compiled catalog", async () => {
+  it("commits Bundle bytes, Release policy, and the compiled catalog in one core call", async () => {
     const deployment = iosBundle();
 
     const result = await commitDeployment({
       ...deployment,
-      database: harness.plugin,
+      core: harness.core,
     });
 
     await expect(
-      harness.plugin.models.bundles.findById(deployment.bundle.id),
+      harness.core.getBundle(deployment.bundle.id),
     ).resolves.toMatchObject({
-      id: deployment.bundle.id,
-      manifest_file_hash: deployment.bundle.manifestFileHash,
+      bundle: {
+        id: deployment.bundle.id,
+        manifest_file_hash: deployment.bundle.manifestFileHash,
+      },
     });
     await expect(
-      harness.plugin.models.releases.findById(result.release!.id),
+      harness.core.getRelease(result.release!.id),
     ).resolves.toMatchObject({
       bundle_id: deployment.bundle.id,
       operation: "DEPLOY",
       revision: 1,
     });
     await expect(
-      harness.plugin.models.releaseCatalogs.findByScopeKey(scopeKey("ios")),
+      harness.core.getReleaseCatalogRow(scopeKey("ios")),
     ).resolves.toMatchObject({ generation: 1, is_tombstone: false });
 
-    expect(harness.commit).toHaveBeenCalledOnce();
-    expect(
-      harness.commit.mock.calls[0]?.[0].changes.map(
-        ({ model }: { readonly model: string }) => model,
-      ),
-    ).toEqual(["bundles", "releases", "releaseCatalogs"]);
-    await expect(harness.plugin.models.channels.list({})).resolves.toEqual({
-      channels: [
-        {
-          id: `channel:${encodeChannelKey("production")}`,
-          name: "production",
-        },
-      ],
-    });
+    expect(harness.deploy).toHaveBeenCalledOnce();
+    await expect(harness.core.listChannels()).resolves.toEqual([
+      expect.objectContaining({
+        id: `channel:${encodeChannelKey("production")}`,
+        name: "production",
+      }),
+    ]);
   });
 
-  it("uses the canonical channel returned by a concurrent creator", async () => {
+  it("uses the stored channel when another writer created it first", async () => {
     const deployment = iosBundle();
     const winner = { id: "channel-created-concurrently", name: "production" };
-    let listed = false;
-    const database = {
-      ...harness.plugin,
-      models: {
-        ...harness.plugin.models,
-        channels: {
-          ...harness.plugin.models.channels,
-          async insert(
-            input: Parameters<typeof harness.plugin.models.channels.insert>[0],
-          ) {
-            await harness.plugin.models.channels.insert({
-              row: winner,
-              onConflict: "returnExisting",
-            });
-            return harness.plugin.models.channels.insert(input);
-          },
-          async list(input: {}) {
-            if (!listed) {
-              listed = true;
-              return { channels: [] };
-            }
-            return harness.plugin.models.channels.list(input);
-          },
-        },
-      },
-    };
+    await harness.plugin.models.channels.insert({
+      row: winner,
+      onConflict: "returnExisting",
+    });
 
     const result = await commitDeployment({
       ...deployment,
-      database,
+      core: harness.core,
     });
 
     await expect(
-      database.models.releases.findById(result.release!.id),
+      harness.core.getRelease(result.release!.id),
     ).resolves.toMatchObject({ channel_id: winner.id });
     await expect(
-      database.models.releaseCatalogs.findByScopeKey(scopeKey("ios")),
+      harness.core.getReleaseCatalogRow(scopeKey("ios")),
     ).resolves.toMatchObject({ channel_id: winner.id });
   });
 
@@ -181,13 +154,13 @@ describe("Release deployment transaction", () => {
     const prepared: string[] = [];
 
     const { commitResults, results } = await prepareAndCommitBundles({
-      database: harness.plugin,
+      core: harness.core,
       prepare: async (persistDeployment) => {
         for (const deployment of deployments) {
           prepared.push(deployment.bundle.id);
           await persistDeployment({ ...deployment });
         }
-        expect(harness.commit).not.toHaveBeenCalled();
+        expect(harness.deploy).not.toHaveBeenCalled();
         return prepared;
       },
     });
@@ -211,13 +184,30 @@ describe("Release deployment transaction", () => {
         releaseId: expect.any(String),
       },
     ]);
-    expect(harness.commit).toHaveBeenCalledOnce();
+    expect(harness.deploy).toHaveBeenCalledOnce();
     await expect(
-      harness.plugin.models.releaseCatalogs.findByScopeKey(scopeKey("ios")),
+      harness.core.getReleaseCatalogRow(scopeKey("ios")),
     ).resolves.not.toBeNull();
     await expect(
-      harness.plugin.models.releaseCatalogs.findByScopeKey(scopeKey("android")),
+      harness.core.getReleaseCatalogRow(scopeKey("android")),
     ).resolves.not.toBeNull();
+  });
+
+  it("does not deploy anything when preparing a platform fails", async () => {
+    const failure = new Error("android build failed");
+
+    await expect(
+      prepareAndCommitBundles({
+        core: harness.core,
+        prepare: async (persistDeployment) => {
+          await persistDeployment(iosBundle());
+          throw failure;
+        },
+      }),
+    ).rejects.toBe(failure);
+
+    expect(harness.deploy).not.toHaveBeenCalled();
+    await expect(harness.bundles()).resolves.toEqual([]);
   });
 
   it("leaves Bundle and Release state unchanged when catalog compilation fails", async () => {
@@ -230,23 +220,21 @@ describe("Release deployment transaction", () => {
     await expect(
       commitDeployment({
         ...invalidDeployment,
-        database: harness.plugin,
+        core: harness.core,
       }),
     ).rejects.toThrow();
 
     await expect(
-      harness.plugin.models.bundles.findById(deployment.bundle.id),
+      harness.core.getBundle(deployment.bundle.id),
     ).resolves.toBeNull();
     await expect(
-      harness.plugin.models.releases.findManyByScope({
-        consistency: "strong",
+      harness.core.listReleases({
+        filter: { kind: "scope", scopeKey: scopeKey("ios") },
         limit: 10,
-        scopeKey: scopeKey("ios"),
       }),
     ).resolves.toEqual([]);
     await expect(
-      harness.plugin.models.releaseCatalogs.findByScopeKey(scopeKey("ios")),
+      harness.core.getReleaseCatalogRow(scopeKey("ios")),
     ).resolves.toBeNull();
-    expect(harness.commit).not.toHaveBeenCalled();
   });
 });

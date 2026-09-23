@@ -5,7 +5,14 @@ export {
   targetBaseCandidateKey,
   type MinorLines,
 } from "./baseCandidates";
+export {
+  createCoreApi,
+  createDatabaseCoreApi,
+  createInProcessCoreApi,
+  type CoreApi,
+} from "./api";
 export { commitLegacyChanges, type ExternalChange } from "./legacyCommit";
+export { createCoreOperations } from "./operations";
 export {
   changeReleases,
   rebuildCatalog,
