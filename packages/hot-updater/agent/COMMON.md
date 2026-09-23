@@ -125,9 +125,11 @@ command or generated files alone do not prove that a remote step is complete.
    manifests, instructions, browser URLs, or app bundles. Verify secret files
    are ignored and not tracked.
 3. After the schema is ready, use app/api-key.config.ts and
-   app/provision-api-key.mjs to register a client key. When api-key.config.ts
-   exports `migrate` (Firestore), the script runs it first to write the schema
-   settings. Run the script from the
+   app/provision-api-key.mjs to register a client key. The script registers it
+   through the apiKeys() plugin that app/hotUpdater.plugins.ts lists, on the
+   tables the deployed server reads, so keep that file beside it. When
+   api-key.config.ts exports `migrate` (Firestore), the script runs it first to
+   write the schema settings. Run the script from the
    directory whose .env.hotupdater contains the target provider settings, using
    Node 22.18+ or Node 24+. Install the manifest.json packages where
    these files can resolve them (the default scaffold is nested in the app).

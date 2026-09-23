@@ -61,11 +61,19 @@ export interface DeployReleasePolicy {
   readonly targetCohorts?: string[];
 }
 
-/** One bundle and the release that publishes it. */
-export interface Deployment {
+/** A new bundle and the release that publishes it. */
+export interface BundleDeployment {
   readonly bundle: Bundle;
   readonly release: DeployReleasePolicy;
 }
+
+/** A new release for a bundle the database already holds, such as a republish. */
+export interface StoredBundleDeployment {
+  readonly bundleId: string;
+  readonly release: DeployReleasePolicy;
+}
+
+export type Deployment = BundleDeployment | StoredBundleDeployment;
 
 export interface ReleaseTarget {
   readonly releaseId: string;
@@ -109,7 +117,11 @@ export interface HotUpdaterCoreApi {
   listChannels(): Promise<ChannelRow[]>;
   findChannelByName(name: string): Promise<ChannelRow | null>;
 
-  /** Writes each bundle, its patches, and its release, with the next catalog of each scope, in one transaction. */
+  /**
+   * Writes each new bundle with its patches, and each release, with the next
+   * catalog of each scope, in one transaction. A stored bundle's deployment
+   * publishes a new release for it and writes no bundle.
+   */
   deploy(
     deployments: readonly Deployment[],
   ): Promise<ReleaseCatalogMutationResult[]>;

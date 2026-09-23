@@ -1,9 +1,10 @@
 import { randomBytes } from "node:crypto";
 import { readFile, writeFile } from "node:fs/promises";
 
-import { provisionApiKey } from "@hot-updater/server";
+import { createDatabasePluginApis } from "@hot-updater/server/db";
 
 import * as target from "./api-key.config.ts";
+import { plugins } from "./hotUpdater.plugins.ts";
 
 const { database } = target;
 
@@ -25,8 +26,11 @@ try {
   }
   // Providers without migration tooling (Firestore) write their schema settings here.
   await target.migrate?.();
-  const result = await provisionApiKey({
-    apiKeys: database.models.apiKeys,
+  // The deployed server's apiKeys() plugin, on the tables it reads.
+  const result = await createDatabasePluginApis(
+    database,
+    plugins,
+  ).apiKeys.provision({
     existingApiKey: apiKey.trim(),
     name: "Agent infrastructure setup",
   });

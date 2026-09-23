@@ -14,25 +14,34 @@ it("persists the client key before registration and reuses it after an unknown r
     );
     await writeFile(
       path.join(root, "api-key.config.ts"),
-      "export const database = { models: { apiKeys: {} } };\n",
+      "export const database = {};\n",
+    );
+    await writeFile(
+      path.join(root, "hotUpdater.plugins.ts"),
+      'export const plugins = ["insights", "apiKeys"];\n',
     );
     const moduleRoot = path.join(root, "node_modules/@hot-updater/server");
     await mkdir(moduleRoot, { recursive: true });
     await writeFile(
       path.join(moduleRoot, "package.json"),
-      JSON.stringify({ type: "module", exports: "./index.mjs" }),
+      JSON.stringify({ type: "module", exports: { "./db": "./db.mjs" } }),
     );
+    // The server's apiKeys() plugin, as createDatabasePluginApis assembles it.
     await writeFile(
-      path.join(moduleRoot, "index.mjs"),
+      path.join(moduleRoot, "db.mjs"),
       `
 import { readFile, writeFile } from "node:fs/promises";
-export async function provisionApiKey({ existingApiKey }) {
-  const persisted = await readFile("api-key.local", "utf8");
-  if (persisted !== existingApiKey) throw new Error("Key was not persisted before registration");
-  await writeFile("registered-key", existingApiKey);
-  if (process.env.FAIL_AFTER_REGISTRATION) throw new Error("Registration response lost");
-  return { record: { id: "key-record" } };
-}
+export const createDatabasePluginApis = (_database, plugins) => ({
+  apiKeys: plugins.includes("apiKeys") && {
+    async provision({ existingApiKey }) {
+      const persisted = await readFile("api-key.local", "utf8");
+      if (persisted !== existingApiKey) throw new Error("Key was not persisted before registration");
+      await writeFile("registered-key", existingApiKey);
+      if (process.env.FAIL_AFTER_REGISTRATION) throw new Error("Registration response lost");
+      return { record: { id: "key-record" } };
+    },
+  },
+});
 `,
     );
     const run = (fail: boolean, existingKey = "") =>
@@ -78,24 +87,32 @@ it("runs the config's migration before registering the key", async () => {
     await writeFile(
       path.join(root, "api-key.config.ts"),
       `import { appendFileSync } from "node:fs";
-export const database = { models: { apiKeys: {} } };
+export const database = {};
 export const migrate = async () => appendFileSync("calls", "migrate\\n");
 `,
+    );
+    await writeFile(
+      path.join(root, "hotUpdater.plugins.ts"),
+      "export const plugins = [];\n",
     );
     const moduleRoot = path.join(root, "node_modules/@hot-updater/server");
     await mkdir(moduleRoot, { recursive: true });
     await writeFile(
       path.join(moduleRoot, "package.json"),
-      JSON.stringify({ type: "module", exports: "./index.mjs" }),
+      JSON.stringify({ type: "module", exports: { "./db": "./db.mjs" } }),
     );
     await writeFile(
-      path.join(moduleRoot, "index.mjs"),
+      path.join(moduleRoot, "db.mjs"),
       `
 import { appendFileSync } from "node:fs";
-export async function provisionApiKey() {
-  appendFileSync("calls", "provision\\n");
-  return { record: { id: "key-record" } };
-}
+export const createDatabasePluginApis = () => ({
+  apiKeys: {
+    async provision() {
+      appendFileSync("calls", "provision\\n");
+      return { record: { id: "key-record" } };
+    },
+  },
+});
 `,
     );
 
