@@ -19,10 +19,7 @@ if (existsSync(envFilePath)) {
 // Create Hot Updater instance for CLI
 // Note: MongoDB connection must be established before using this instance
 export const hotUpdater = createHotUpdater({
-  database: mongoAdapter({
-    client,
-    transactions: true,
-  }),
+  database: mongoAdapter({ client }),
   clientAccess: { type: "public" },
   storage: [
     process.env.NODE_ENV === "test"
@@ -76,6 +73,8 @@ export async function resetDecisionFixtures() {
       "releases",
       "bundles",
       "channels",
+      "bundle_totals",
+      "base_candidates",
     ].map((collection) => db.collection(collection).deleteMany({})),
   );
 }
