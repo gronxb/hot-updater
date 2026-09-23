@@ -15,6 +15,7 @@ import {
 import {
   type AggregateChange,
   compileAggregates,
+  NegativeGaugeError,
   recordAggregate,
 } from "./engineAggregates";
 import {
@@ -552,6 +553,7 @@ export const createTransactions = (options: {
     ): Promise<R> {
       assertOutsideTransaction();
       let run: Awaited<ReturnType<typeof attempt<R>>> | undefined;
+      let negative: NegativeGaugeError | undefined;
       for (let round = 0; round < attempts; round += 1) {
         const delay =
           round && Math.min(maxDelayMs, baseDelayMs * 2 ** (round - 1));
@@ -565,10 +567,18 @@ export const createTransactions = (options: {
           continue;
         }
         const { result, read } = run;
-        const ops = [
-          ...run.ops,
-          ...(await compileAggregates(adapter, run.aggregates)),
-        ];
+        let aggregates: WriteOp[];
+        try {
+          aggregates = await compileAggregates(adapter, run.aggregates);
+        } catch (error) {
+          // Deltas from a row another writer has since moved: rerun and read it again.
+          if (!(error instanceof NegativeGaugeError)) throw error;
+          negative = error;
+          onRetry?.("rerun", round + 1);
+          run = undefined;
+          continue;
+        }
+        const ops = [...run.ops, ...aggregates];
         if (ops.length <= 1 && ops.every(({ type }) => type === "check")) {
           return result;
         }
@@ -596,8 +606,11 @@ export const createTransactions = (options: {
         onRetry?.("rerun", round + 1);
         run = undefined;
       }
-      throw new DatabaseConflictError(
-        `The transaction conflicted ${attempts} times.`,
+      throw (
+        negative ??
+        new DatabaseConflictError(
+          `The transaction conflicted ${attempts} times.`,
+        )
       );
     },
   };
