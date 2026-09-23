@@ -40,3 +40,32 @@ export {
   type WriteOp,
   type WriteResult,
 } from "@hot-updater/plugin-core/internal";
+
+export {
+  MAX_SHARDS,
+  resolveSchema,
+  SHARD_COLUMN,
+  validateSchema,
+  type ResolvedModel,
+  type ResolvedReference,
+  type ResolvedSchema,
+  type SchemaModule,
+} from "./resolveSchema";
+export {
+  defineAggregate,
+  defineTable,
+  type AggregateDefinition,
+  type CheckIndex,
+  type DerivedDefinition,
+  type DerivedFields,
+  type FieldDefinition,
+  type FieldReference,
+  type FieldType,
+  type FieldValue,
+  type IndexDefinition,
+  type ModelDefinition,
+  type ModuleSchema,
+  type ReferenceAction,
+  type RowOf,
+  type TableDefinition,
+} from "./schema";
