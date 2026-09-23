@@ -60,20 +60,23 @@ const bundleEvents = defineTable(
   },
 );
 
-/** Each installation's latest event. */
+/** Each installation's latest event, whole, so reading it is one point read. */
 const bundleEventHeads = defineTable(
   {
     install_id: { type: "string", maxLength: 255 },
     id: { type: "string", maxLength: 36 },
-    received_at_ms: { type: "integer" },
-    user_id: { type: "string", maxLength: 255, required: false },
-    platform: { type: "string", maxLength: 16 },
-    channel: { type: "string" },
     type: { type: "string", maxLength: 32 },
+    user_id: { type: "string", maxLength: 255, required: false },
+    from_release_id: { type: "string", maxLength: 36, required: false },
     from_bundle_id: { type: "string", maxLength: 36, required: false },
+    to_release_id: { type: "string", maxLength: 36, required: false },
     to_bundle_id: { type: "string", maxLength: 36 },
-    current_release_id: { type: "string", maxLength: 36, required: false },
+    platform: { type: "string", maxLength: 16 },
     app_version: { type: "string" },
+    channel: { type: "string" },
+    metadata: { type: "json" },
+    received_at_ms: { type: "integer" },
+    current_release_id: { type: "string", maxLength: 36, required: false },
   },
   {
     key: ["install_id"],

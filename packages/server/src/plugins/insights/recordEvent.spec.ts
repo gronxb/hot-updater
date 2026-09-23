@@ -163,7 +163,11 @@ describe.each(backends)("insights recordEvent on %s", (_name, adapter) => {
     });
     await expect(
       db.findOne("bundle_event_heads", { install_id: "install-1" }),
-    ).resolves.toMatchObject({ id: uuid(1), current_release_id: "release-2" });
+    ).resolves.toEqual({
+      ...event(1),
+      current_release_id: "release-2",
+      _v: 0,
+    });
     await expect(distribution()).resolves.toEqual([
       {
         channel: "production",

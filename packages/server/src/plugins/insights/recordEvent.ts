@@ -15,11 +15,11 @@ import type {
 } from "../../database/database";
 import { DAY_MS, HOUR_MS, type InsightsSchema } from "./schema";
 
+/** The head columns `countHead` reads. */
 interface Head {
   readonly install_id: string;
   readonly id: string;
   readonly received_at_ms: number;
-  readonly user_id: string | null;
   readonly platform: string;
   readonly channel: string;
   readonly type: string;
@@ -45,19 +45,11 @@ export const insightsIdentity = (identity: InsightsIdentityParts): string =>
     bucketStartMs: 0,
   });
 
-/** The head columns besides its key, `install_id`. */
-const headFields = (event: BundleEventRow): Omit<Head, "install_id"> => ({
-  id: event.id,
-  received_at_ms: event.received_at_ms,
-  user_id: event.user_id,
-  platform: event.platform,
-  channel: event.channel,
-  type: event.type,
-  from_bundle_id: event.from_bundle_id,
-  to_bundle_id: event.to_bundle_id,
-  current_release_id: currentInsightsReleaseId(event),
-  app_version: event.app_version,
-});
+/** The head columns besides its key: the whole event and its current release. */
+const headFields = (event: BundleEventRow) => {
+  const { install_id: _, ...fields } = event;
+  return { ...fields, current_release_id: currentInsightsReleaseId(event) };
+};
 
 /** Moves a head's gauges: the distribution row and one row per bundle it references. */
 const countHead = (
@@ -189,7 +181,7 @@ export const recordEvent = (
     tx.create("bundle_events", event);
     countEvent(tx, event);
     const fields = headFields(event);
-    const head = { install_id: event.install_id, ...fields };
+    const head = { ...fields, install_id: event.install_id };
     if (previous !== null && !isNewer(head, previous)) return;
     if (previous === null) {
       tx.create("bundle_event_heads", head);
