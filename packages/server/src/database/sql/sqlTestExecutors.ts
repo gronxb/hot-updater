@@ -63,6 +63,49 @@ export const sqliteExecutor = (db: DatabaseSync): SqlExecutor => {
   };
 };
 
+/**
+ * An executor without interactive transactions, as D1's: writes run as one
+ * atomic batch, here in a SQLite transaction that rolls back on any error.
+ */
+export const sqliteBatchExecutor = (db: DatabaseSync): SqlExecutor => {
+  const executor = sqliteExecutor(db);
+  return {
+    dialect: "sqlite",
+    execute: executor.execute,
+    transaction: () => {
+      throw new Error("A batch executor has no interactive transactions.");
+    },
+    batch: (statements) =>
+      executor.transaction(async (connection) => {
+        const results: SqlResult[] = [];
+        for (const statement of statements) {
+          results.push(await connection.execute(statement));
+        }
+        return results;
+      }),
+  };
+};
+
+/** PGlite without interactive transactions, as an RPC applying a batch would be. */
+export const pgliteBatchExecutor = (db: PGlite): SqlExecutor => {
+  const executor = pgliteExecutor(db);
+  return {
+    dialect: "postgresql",
+    execute: executor.execute,
+    transaction: () => {
+      throw new Error("A batch executor has no interactive transactions.");
+    },
+    batch: (statements) =>
+      executor.transaction(async (connection) => {
+        const results: SqlResult[] = [];
+        for (const statement of statements) {
+          results.push(await connection.execute(statement));
+        }
+        return results;
+      }),
+  };
+};
+
 export const pgExecutor = (pool: PgPool): SqlExecutor => {
   const over = (runner: PgPool | PoolClient): SqlConnection => ({
     execute: async ({ sql, params }) => {

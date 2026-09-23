@@ -19,6 +19,7 @@ import {
   type WriteResult,
 } from "@hot-updater/plugin-core/internal";
 
+import { writeBatch } from "./sqlBatch";
 import {
   createTableStatements,
   isMultiIndex,
@@ -48,7 +49,17 @@ export interface SqlExecutor extends SqlConnection {
   readonly dialect: SqlDialect;
   /** Commits when `fn` resolves and rolls back when it throws; SQLite begins with BEGIN IMMEDIATE. */
   transaction<T>(fn: (connection: SqlConnection) => Promise<T>): Promise<T>;
+  /**
+   * Runs statements as one atomic batch. When set, writes use it instead of
+   * `transaction`, for drivers without interactive transactions (D1).
+   */
+  batch?(statements: readonly SqlStatement[]): Promise<readonly SqlResult[]>;
 }
+
+/** A condition every statement of a batch write carries, bound where it appears. */
+export type SqlCondition = (bind: (value: unknown) => string) => string;
+
+export type SqlCompiler = ReturnType<typeof createSqlCompiler>;
 
 export interface SqlAdapterOptions {
   readonly executor: SqlExecutor;
@@ -56,6 +67,8 @@ export interface SqlAdapterOptions {
   readonly tablePrefix?: string;
   /** The most ops one write accepts (default 1,000). */
   readonly maxOps?: number;
+  /** The most parameters one statement binds (D1: 100); a batch read splits to fit. */
+  readonly maxParams?: number;
 }
 
 /** PostgreSQL's syntax; SQLite and MySQL override what differs. */
@@ -151,6 +164,8 @@ export const createSqlCompiler = (name: SqlDialect, tablePrefix = "") => {
     return { bind, done };
   };
   type Builder = ReturnType<typeof builder>;
+  const also = ({ bind }: Builder, when?: SqlCondition) =>
+    when ? ` AND ${when(bind)}` : "";
 
   const keyMatch = (
     { bind }: Builder,
@@ -195,15 +210,19 @@ export const createSqlCompiler = (name: SqlDialect, tablePrefix = "") => {
   const insert = (
     table: PhysicalTable,
     row: Readonly<Record<string, unknown>>,
+    when?: SqlCondition,
   ) => {
     const statement = builder();
     const values = table.columns.map((column) =>
       statement.bind(row[column.name], column),
     );
     const columns = table.columns.map(({ name: column }) => quote(column));
+    const source = when
+      ? `SELECT ${values.join(", ")} WHERE ${when(statement.bind)}`
+      : `VALUES (${values.join(", ")})`;
     return {
       statement,
-      sql: `INSERT INTO ${tableOf(table)} (${columns.join(", ")}) VALUES (${values.join(", ")})`,
+      sql: `INSERT INTO ${tableOf(table)} (${columns.join(", ")}) ${source}`,
     };
   };
 
@@ -213,6 +232,7 @@ export const createSqlCompiler = (name: SqlDialect, tablePrefix = "") => {
     key: DatabaseKey,
     row: StoredRow | null,
     changed?: readonly string[],
+    when?: SqlCondition,
   ): SqlStatement[] =>
     table.indexes.flatMap((index) => {
       const columns = [...index.eq, ...indexOrderColumns(table, index)];
@@ -227,13 +247,16 @@ export const createSqlCompiler = (name: SqlDialect, tablePrefix = "") => {
       const order = found.length > 0 ? indexOrderTuple(table, index, row!) : [];
       return [
         remove.done(
-          `DELETE FROM ${tableOf(table, index)} WHERE ${keyMatch(remove, table.key, key)}`,
+          `DELETE FROM ${tableOf(table, index)} WHERE ${keyMatch(remove, table.key, key)}${also(remove, when)}`,
         ),
         ...found.map((eq) => {
           const add = builder();
           const values = [...eq, ...order].map((value) => add.bind(value));
+          const source = when
+            ? `SELECT ${values.join(", ")} WHERE ${when(add.bind)}`
+            : `VALUES (${values.join(", ")})`;
           return add.done(
-            `INSERT INTO ${tableOf(table, index)} (${columns.map(quote).join(", ")}) VALUES (${values.join(", ")})`,
+            `INSERT INTO ${tableOf(table, index)} (${columns.map(quote).join(", ")}) ${source}`,
           );
         }),
       ];
@@ -249,7 +272,12 @@ export const createSqlCompiler = (name: SqlDialect, tablePrefix = "") => {
         `${quote(column)} = ${qualify}${quote(column)} + ${bind(delta)}`,
     );
 
-  return {
+  const compiled = {
+    /** For batch writes (`sqlBatch.ts`): a statement builder, names, and key matches. */
+    statement: builder,
+    quote,
+    tableOf,
+    keyMatch,
     get(table: PhysicalTable, keys: readonly DatabaseKey[]): SqlStatement {
       const statement = builder();
       const where = keys
@@ -287,18 +315,25 @@ export const createSqlCompiler = (name: SqlDialect, tablePrefix = "") => {
       );
     },
 
-    /** Guards via `UPDATE … WHERE _v = ?`, checks via locking reads, counters via upserts. */
-    write(op: WriteOp): CompiledWrite {
+    /**
+     * Guards via `UPDATE … WHERE _v = ?`, checks via locking reads, counters
+     * via upserts. With `when`, every statement also carries that condition,
+     * and a check has none: a batch write evaluated it first (`failure`).
+     */
+    write(op: WriteOp, when?: SqlCondition): CompiledWrite {
       const { table } = op;
       const statement = builder();
       const where = (key: DatabaseKey, v?: number) =>
         `${keyMatch(statement, table.key, key)}${v === undefined ? "" : ` AND ${version} = ${statement.bind(v)}`}`;
       switch (op.type) {
         case "insert": {
-          const { sql, statement: values } = insert(table, op.row);
+          const { sql, statement: values } = insert(table, op.row, when);
           const key = rowKey(table, op.row);
           return {
-            statements: [values.done(sql), ...entries(table, key, op.row)],
+            statements: [
+              values.done(sql),
+              ...entries(table, key, op.row, undefined, when),
+            ],
             expect: "applied",
           };
         }
@@ -307,7 +342,7 @@ export const createSqlCompiler = (name: SqlDialect, tablePrefix = "") => {
             ([column, value]) =>
               `${quote(column)} = ${statement.bind(value, findPhysicalColumn(table, column))}`,
           );
-          const sql = `UPDATE ${tableOf(table)} SET ${[...set, `${version} = ${version} + 1`].join(", ")} WHERE ${where(op.key, op.guard.v)}`;
+          const sql = `UPDATE ${tableOf(table)} SET ${[...set, `${version} = ${version} + 1`].join(", ")} WHERE ${where(op.key, op.guard.v)}${also(statement, when)}`;
           return {
             statements: [
               statement.done(sql),
@@ -316,6 +351,7 @@ export const createSqlCompiler = (name: SqlDialect, tablePrefix = "") => {
                 op.key,
                 { ...op.previous, ...op.set },
                 Object.keys(op.set),
+                when,
               ),
             ],
             expect: "changed",
@@ -325,9 +361,9 @@ export const createSqlCompiler = (name: SqlDialect, tablePrefix = "") => {
           return {
             statements: [
               statement.done(
-                `DELETE FROM ${tableOf(table)} WHERE ${where(op.key, op.guard.v)}`,
+                `DELETE FROM ${tableOf(table)} WHERE ${where(op.key, op.guard.v)}${also(statement, when)}`,
               ),
-              ...entries(table, op.key, null),
+              ...entries(table, op.key, null, undefined, when),
             ],
             expect: "changed",
           };
@@ -339,7 +375,7 @@ export const createSqlCompiler = (name: SqlDialect, tablePrefix = "") => {
             }
             row[DATABASE_VERSION_COLUMN] =
               Number(row[DATABASE_VERSION_COLUMN] ?? 0) + 1;
-            const upsert = insert(table, row);
+            const upsert = insert(table, row, when);
             const conflict = dialect.upsert(table.key.map(quote).join(", "));
             const updates = bumps(
               upsert.statement,
@@ -359,13 +395,14 @@ export const createSqlCompiler = (name: SqlDialect, tablePrefix = "") => {
           return {
             statements: [
               statement.done(
-                `UPDATE ${tableOf(table)} SET ${updates.join(", ")} WHERE ${where(op.key, op.guard?.v)}`,
+                `UPDATE ${tableOf(table)} SET ${updates.join(", ")} WHERE ${where(op.key, op.guard?.v)}${also(statement, when)}`,
               ),
             ],
             expect: "changed",
           };
         }
         case "check":
+          if (when) return { statements: [], expect: "applied" };
           return {
             statements: [
               statement.done(
@@ -377,6 +414,7 @@ export const createSqlCompiler = (name: SqlDialect, tablePrefix = "") => {
       }
     },
   };
+  return compiled;
 };
 
 class FailedOp {
@@ -387,7 +425,12 @@ class FailedOp {
 export const createSqlAdapter = (
   options: SqlAdapterOptions,
 ): DatabaseAdapter => {
-  const { executor, tablePrefix = "", maxOps = 1000 } = options;
+  const {
+    executor,
+    tablePrefix = "",
+    maxOps = 1000,
+    maxParams = Number.POSITIVE_INFINITY,
+  } = options;
   const compiler = createSqlCompiler(executor.dialect, tablePrefix);
   const { jsonText } = dialects[executor.dialect];
   const normalize = (
@@ -400,14 +443,15 @@ export const createSqlAdapter = (
     fits: (ops) => ops.length <= maxOps,
 
     async get(table, keys) {
-      if (keys.length === 0) return [];
-      const { rows } = await executor.execute(compiler.get(table, keys));
-      const found = new Map(
-        normalize(table, rows).map((row) => [
-          JSON.stringify(rowKey(table, row)),
-          row,
-        ]),
-      );
+      const size = Math.max(1, Math.floor(maxParams / table.key.length));
+      const found = new Map<string, StoredRow>();
+      for (let start = 0; start < keys.length; start += size) {
+        const chunk = keys.slice(start, start + size);
+        const { rows } = await executor.execute(compiler.get(table, chunk));
+        for (const row of normalize(table, rows)) {
+          found.set(JSON.stringify(rowKey(table, row)), row);
+        }
+      }
       return keys.map((key) => found.get(JSON.stringify(key)) ?? null);
     },
 
@@ -417,6 +461,9 @@ export const createSqlAdapter = (
     },
 
     async write(ops): Promise<WriteResult> {
+      if (executor.batch) {
+        return writeBatch(compiler, executor.batch, ops, classifySqlError);
+      }
       try {
         await executor.transaction(async (connection) => {
           for (const [position, op] of ops.entries()) {
