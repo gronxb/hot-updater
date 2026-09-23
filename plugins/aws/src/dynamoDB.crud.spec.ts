@@ -109,32 +109,6 @@ describe("DynamoDB CRUD access patterns", () => {
     expect(dynamodb.commandCalls(QueryCommand)).toHaveLength(0);
   });
 
-  it("preserves case-insensitive id matching outside the exact-key fast path", async () => {
-    // Given
-    dynamodb.on(QueryCommand).resolves({
-      Items: [toDynamoDBBundleItem({ ...bundleRow, id: "BUNDLE-ID" })],
-    });
-    const crud = createCrud();
-
-    // When
-    const result = await crud.findOne({
-      model: "bundles",
-      where: [
-        {
-          field: "id",
-          mode: "insensitive",
-          operator: "eq",
-          value: "bundle-id",
-        },
-      ],
-    });
-
-    // Then
-    expect(result).toMatchObject({ id: "BUNDLE-ID" });
-    expect(dynamodb.commandCalls(GetCommand)).toHaveLength(0);
-    expect(dynamodb.commandCalls(QueryCommand)).toHaveLength(1);
-  });
-
   it("returns no rows and performs no read when the limit is zero", async () => {
     const result = await createCrud().findMany({
       model: "bundles",
@@ -168,33 +142,6 @@ describe("DynamoDB CRUD access patterns", () => {
     expect(result).toEqual([bundleRow]);
     expect(dynamodb.commandCalls(BatchGetCommand)).toHaveLength(1);
     expect(dynamodb.commandCalls(QueryCommand)).toHaveLength(0);
-  });
-
-  it("does not push an id cursor through an OR predicate", async () => {
-    dynamodb.on(QueryCommand).resolves({
-      Items: [toDynamoDBBundleItem({ ...bundleRow, id: "bundle-a" })],
-    });
-
-    await createCrud().findMany({
-      model: "bundles",
-      where: [
-        { field: "id", operator: "gt", value: "bundle-z" },
-        {
-          connector: "OR",
-          field: "platform",
-          operator: "eq",
-          value: "ios",
-        },
-      ],
-      limit: 100,
-      offset: 0,
-      orderBy: [{ field: "id", direction: "asc" }],
-    });
-
-    expect(
-      dynamodb.commandCalls(QueryCommand)[0]?.args[0].input
-        .KeyConditionExpression,
-    ).toBe("#pk = :pk");
   });
 
   it("increments the metadata counter without imposing a ceiling", async () => {

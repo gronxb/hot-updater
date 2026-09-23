@@ -1,36 +1,16 @@
 import type { DatabaseField, DatabaseModel, DatabaseRow } from "./databaseRows";
 
-export type DatabaseWhereOperator =
-  | "eq"
-  | "ne"
-  | "lt"
-  | "lte"
-  | "gt"
-  | "gte"
-  | "in"
-  | "not_in"
-  | "contains"
-  | "starts_with"
-  | "ends_with";
+export type DatabaseWhereOperator = "eq" | "lt" | "lte" | "gt" | "gte" | "in";
 
-export type DatabaseWhereConnector = "AND" | "OR";
-export type DatabaseStringComparisonMode = "sensitive" | "insensitive";
 export type DatabaseSortNulls = "first" | "last";
 
 type WhereBase<TField extends string> = {
   readonly field: TField;
-  readonly connector?: DatabaseWhereConnector;
 };
 
 type EqualityWhere<TField extends string, TValue> = WhereBase<TField> & {
-  readonly operator?: "eq" | "ne";
+  readonly operator?: "eq";
   readonly value: TValue;
-};
-
-type StringWhere<TField extends string> = WhereBase<TField> & {
-  readonly operator?: "eq" | "ne" | "contains" | "starts_with" | "ends_with";
-  readonly value: string;
-  readonly mode?: DatabaseStringComparisonMode;
 };
 
 type OrderedWhere<
@@ -45,7 +25,7 @@ type SetWhere<
   TField extends string,
   TValue extends boolean | number | string,
 > = WhereBase<TField> & {
-  readonly operator: "in" | "not_in";
+  readonly operator: "in";
   readonly value: readonly TValue[];
 };
 
@@ -59,7 +39,6 @@ type FieldWhere<TField extends string, TValue> =
   | ([ScalarWhereValue<TValue>] extends [never]
       ? never
       : EqualityWhere<TField, ScalarWhereValue<TValue>>)
-  | (Extract<TValue, string> extends never ? never : StringWhere<TField>)
   | (Extract<TValue, number | string> extends never
       ? never
       : OrderedWhere<TField, Extract<TValue, number | string>>)
@@ -112,7 +91,3 @@ export type DatabaseDistinctFields<TModel extends DatabaseModel> = readonly [
   DatabaseField<TModel>,
   ...DatabaseField<TModel>[],
 ];
-
-export interface DatabaseDistinctOn<TModel extends DatabaseModel> {
-  readonly fields: DatabaseDistinctFields<TModel>;
-}

@@ -91,12 +91,8 @@ const invoke = (
 
 describe("database plugin CRUD runtime contract", () => {
   it.each([
-    { field: "id", operator: "ne", value: "bundle-1" },
-    { field: "id", operator: "contains", value: "bundle" },
     { field: "id", operator: "in", value: ["bundle-1"] },
     { field: "id", operator: "gte", value: "bundle-1" },
-    { field: "id", value: "bundle-1", connector: "AND" },
-    { field: "id", value: "bundle-1", mode: "insensitive" },
   ])("rejects a non-exact bundle update selector: $operator", async (where) => {
     const update = vi.fn(async () => bundleRow);
     const plugin = createValidatedCrud({
@@ -162,7 +158,6 @@ describe("database plugin CRUD runtime contract", () => {
     { field: "rollout_cohort_count", value: 1, mode: "sensitive" },
     { field: "id", operator: "gt", value: "bundle-1", mode: "sensitive" },
     { field: "metadata", value: { release: "stable" } },
-    { field: "platform", operator: "contains", value: "windows" },
   ])("rejects invalid where metadata: $field", async (where) => {
     const findMany = vi.fn(async () => []);
     const plugin = createValidatedCrud({
@@ -176,6 +171,72 @@ describe("database plugin CRUD runtime contract", () => {
     });
 
     await expect(result).rejects.toMatchObject({ code: "invalid-query" });
+    expect(findMany).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    { field: "id", operator: "ne", value: "bundle-1" },
+    { field: "id", operator: "not_in", value: ["bundle-1"] },
+    { field: "id", operator: "contains", value: "bundle" },
+    { field: "id", operator: "starts_with", value: "bundle" },
+    { field: "id", operator: "ends_with", value: "1" },
+    { field: "id", value: "bundle-1", connector: "OR" },
+    { field: "id", value: "bundle-1", connector: "AND" },
+    { field: "id", value: "bundle-1", mode: "insensitive" },
+    { field: "id", value: "bundle-1", mode: "sensitive" },
+  ])(
+    "rejects a removed where operator or key before provider execution: %o",
+    async (where) => {
+      const methods = {
+        update: vi.fn(async () => bundleRow),
+        delete: vi.fn(async () => undefined),
+        count: vi.fn(async () => 0),
+        findOne: vi.fn(async () => bundleRow),
+        findMany: vi.fn(async () => []),
+      };
+      const plugin = createValidatedCrud({
+        name: "removed-where-contract",
+        plugin: () => ({ ...createMethods(), ...methods }),
+      });
+
+      for (const [operation, input] of [
+        [
+          "update",
+          {
+            model: "bundles",
+            where: [where],
+            update: { git_commit_hash: "next" },
+          },
+        ],
+        ["delete", { model: "bundles", where: [where] }],
+        ["count", { model: "bundles", where: [where] }],
+        ["findOne", { model: "bundles", where: [where] }],
+        ["findMany", { model: "bundles", where: [where] }],
+      ] as const) {
+        await expect(invoke(plugin, operation, input)).rejects.toMatchObject({
+          code: "invalid-query",
+        });
+      }
+      for (const method of Object.values(methods)) {
+        expect(method).not.toHaveBeenCalled();
+      }
+    },
+  );
+
+  it("rejects distinctOn before provider execution", async () => {
+    const findMany = vi.fn(async () => []);
+    const plugin = createValidatedCrud({
+      name: "distinct-on-contract",
+      plugin: () => ({ ...createMethods(), findMany }),
+    });
+
+    const result = invoke(plugin, "findMany", {
+      model: "bundles",
+      orderBy: [{ field: "platform", direction: "asc" }],
+      distinctOn: { fields: ["platform"] },
+    });
+
+    await expect(result).rejects.toMatchObject({ code: "invalid-distinct" });
     expect(findMany).not.toHaveBeenCalled();
   });
 

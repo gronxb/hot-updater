@@ -42,7 +42,6 @@ import {
 } from "@hot-updater/plugin-core";
 import {
   createDatabasePluginAdapter,
-  type DatabaseDistinctOn,
   type DatabaseImplementationResult,
   type DatabaseModel,
   type DatabaseOrderBy,
@@ -391,8 +390,7 @@ export const exactDynamoDBId = (
   const condition = where[0];
   if (
     Reflect.get(condition, "field") !== "id" ||
-    (Reflect.get(condition, "operator") ?? "eq") !== "eq" ||
-    Reflect.get(condition, "mode") === "insensitive"
+    (Reflect.get(condition, "operator") ?? "eq") !== "eq"
   ) {
     return undefined;
   }
@@ -410,20 +408,12 @@ export const exactDynamoDBPatchOwner = (
 export const exactDynamoDBPatchOwners = (
   where: readonly object[] | undefined,
 ): readonly string[] | undefined => {
-  if (
-    !where ||
-    where.some((condition) => Reflect.get(condition, "connector") === "OR")
-  ) {
-    return undefined;
-  }
+  if (!where) return undefined;
   const ownerConditions = where.filter(
     (condition) => Reflect.get(condition, "field") === "bundle_id",
   );
   if (ownerConditions.length !== 1) return undefined;
   const condition = ownerConditions[0];
-  if (Reflect.get(condition, "mode") === "insensitive") {
-    return undefined;
-  }
   const operator = Reflect.get(condition, "operator") ?? "eq";
   const value = Reflect.get(condition, "value");
   if (operator === "eq") {
@@ -442,19 +432,9 @@ export const exactDynamoDBPatchOwners = (
 export const exactDynamoDBBundleIds = (
   where: readonly object[] | undefined,
 ): readonly string[] | undefined => {
-  if (
-    !where ||
-    where.some((condition) => Reflect.get(condition, "connector") === "OR")
-  ) {
-    return undefined;
-  }
+  if (!where) return undefined;
   for (const condition of where) {
-    if (
-      Reflect.get(condition, "field") !== "id" ||
-      Reflect.get(condition, "mode") === "insensitive"
-    ) {
-      continue;
-    }
+    if (Reflect.get(condition, "field") !== "id") continue;
     const operator = Reflect.get(condition, "operator") ?? "eq";
     const value = Reflect.get(condition, "value");
     if (operator === "eq" && typeof value === "string") return [value];
@@ -473,13 +453,6 @@ export const dynamoDBBundlePageStart = (
   where: readonly object[] | undefined,
   direction: "asc" | "desc",
 ): { readonly id: string; readonly inclusive: boolean } | undefined => {
-  if (
-    (where ?? []).some(
-      (condition) => Reflect.get(condition, "connector") === "OR",
-    )
-  ) {
-    return undefined;
-  }
   let result: { readonly id: string; readonly inclusive: boolean } | undefined;
   for (const condition of where ?? []) {
     if (Reflect.get(condition, "field") !== "id") continue;
@@ -1245,18 +1218,6 @@ const compare = (left: unknown, right: unknown): number => {
   return JSON.stringify(left).localeCompare(JSON.stringify(right));
 };
 
-const compareString = (
-  actual: unknown,
-  expected: string,
-  mode: unknown,
-  predicate: (value: string, query: string) => boolean,
-): boolean => {
-  if (typeof actual !== "string") return false;
-  return mode === "insensitive"
-    ? predicate(actual.toLocaleLowerCase(), expected.toLocaleLowerCase())
-    : predicate(actual, expected);
-};
-
 const matchesCondition = <TModel extends DatabaseModel>(
   row: DatabaseRow<TModel>,
   condition: DatabaseWhere<TModel>,
@@ -1266,24 +1227,7 @@ const matchesCondition = <TModel extends DatabaseModel>(
   const operator = Reflect.get(condition, "operator") ?? "eq";
   switch (operator) {
     case "eq":
-      return typeof expected === "string"
-        ? compareString(
-            actual,
-            expected,
-            Reflect.get(condition, "mode"),
-            (value, query) => value === query,
-          )
-        : actual === expected;
-    case "ne":
-      if (actual == null) return false;
-      return typeof expected === "string"
-        ? !compareString(
-            actual,
-            expected,
-            Reflect.get(condition, "mode"),
-            (value, query) => value === query,
-          )
-        : actual !== expected;
+      return actual === expected;
     case "gt":
       return actual != null && compare(actual, expected) > 0;
     case "gte":
@@ -1297,40 +1241,6 @@ const matchesCondition = <TModel extends DatabaseModel>(
         Array.isArray(expected) &&
         expected.some((candidate: unknown) => candidate === actual)
       );
-    case "not_in":
-      return (
-        Array.isArray(expected) &&
-        (expected.length === 0 ||
-          (actual != null &&
-            expected.every((candidate: unknown) => candidate !== actual)))
-      );
-    case "contains":
-      return typeof expected === "string"
-        ? compareString(
-            actual,
-            expected,
-            Reflect.get(condition, "mode"),
-            (value, query) => value.includes(query),
-          )
-        : false;
-    case "starts_with":
-      return typeof expected === "string"
-        ? compareString(
-            actual,
-            expected,
-            Reflect.get(condition, "mode"),
-            (value, query) => value.startsWith(query),
-          )
-        : false;
-    case "ends_with":
-      return typeof expected === "string"
-        ? compareString(
-            actual,
-            expected,
-            Reflect.get(condition, "mode"),
-            (value, query) => value.endsWith(query),
-          )
-        : false;
     default:
       return false;
   }
@@ -1339,16 +1249,8 @@ const matchesCondition = <TModel extends DatabaseModel>(
 export const matchesDynamoDBWhere = <TModel extends DatabaseModel>(
   row: DatabaseRow<TModel>,
   where: readonly DatabaseWhere<TModel>[] | undefined,
-): boolean => {
-  if (!where || where.length === 0) return true;
-  let result = matchesCondition(row, where[0]);
-  for (const condition of where.slice(1)) {
-    const current = matchesCondition(row, condition);
-    result =
-      condition.connector === "OR" ? result || current : result && current;
-  }
-  return result;
-};
+): boolean =>
+  (where ?? []).every((condition) => matchesCondition(row, condition));
 
 const compareRows = <TModel extends DatabaseModel>(
   left: DatabaseRow<TModel>,
@@ -1371,18 +1273,11 @@ const compareRows = <TModel extends DatabaseModel>(
   return 0;
 };
 
-const distinctKey = <TModel extends DatabaseModel>(
-  row: DatabaseRow<TModel>,
-  distinctOn: DatabaseDistinctOn<TModel>,
-): string =>
-  JSON.stringify(distinctOn.fields.map((field) => Reflect.get(row, field)));
-
 export const queryDynamoDBRows = <TModel extends DatabaseModel>(
   rows: readonly DatabaseRow<TModel>[],
   input: {
     readonly where?: readonly DatabaseWhere<TModel>[];
     readonly orderBy?: DatabaseOrderBy<TModel>;
-    readonly distinctOn?: DatabaseDistinctOn<TModel>;
     readonly offset?: number;
     readonly limit?: number;
   },
@@ -1392,20 +1287,8 @@ export const queryDynamoDBRows = <TModel extends DatabaseModel>(
   const ordered = orderBy
     ? filtered.toSorted((left, right) => compareRows(left, right, orderBy))
     : filtered;
-  const distinctOn = input.distinctOn;
-  const distinct = distinctOn
-    ? (() => {
-        const seen = new Set<string>();
-        return ordered.filter((row) => {
-          const key = distinctKey(row, distinctOn);
-          if (seen.has(key)) return false;
-          seen.add(key);
-          return true;
-        });
-      })()
-    : ordered;
   const offset = input.offset ?? 0;
-  return distinct.slice(offset, offset + (input.limit ?? 100));
+  return ordered.slice(offset, offset + (input.limit ?? 100));
 };
 
 export const countDistinctDynamoDBRows = <TModel extends DatabaseModel>(
@@ -1608,10 +1491,7 @@ const exactDynamoDBField = (
   );
   if (conditions.length !== 1) return undefined;
   const condition = conditions[0];
-  if (
-    (Reflect.get(condition, "operator") ?? "eq") !== "eq" ||
-    Reflect.get(condition, "mode") === "insensitive"
-  ) {
+  if ((Reflect.get(condition, "operator") ?? "eq") !== "eq") {
     return undefined;
   }
   const value = Reflect.get(condition, "value");
@@ -1944,7 +1824,6 @@ export const createDynamoDBCrud = (
         const direction = orderBy?.[0]?.direction;
         if (
           (input.offset ?? 0) === 0 &&
-          input.distinctOn === undefined &&
           orderBy?.length === 1 &&
           orderBy[0]?.field === "id" &&
           (direction === "asc" || direction === "desc")

@@ -7,19 +7,14 @@ import {
   gt,
   gte,
   inArray,
-  isNotNull,
   isNull,
   lt,
   lte,
-  ne,
-  notInArray,
   sql,
   type SQL,
   type SQLWrapper,
 } from "drizzle-orm";
 
-import type { ORMSQLProvider } from "../db/types";
-import { escapeGlobPattern, escapeLikePattern } from "./databasePluginUtils";
 import type { DrizzleTable } from "./drizzleLazyDB";
 
 class InvalidDatabasePredicateError extends Error {
@@ -48,41 +43,7 @@ const column = (table: DrizzleTable, field: string): SQLWrapper => {
   return value;
 };
 
-const stringPredicate = (
-  provider: ORMSQLProvider,
-  field: SQLWrapper,
-  operator: "contains" | "ends_with" | "starts_with",
-  value: string,
-  insensitive: boolean,
-): SQL => {
-  if (provider === "sqlite" && !insensitive) {
-    const literal = escapeGlobPattern(value);
-    const pattern =
-      operator === "contains"
-        ? `*${literal}*`
-        : operator === "starts_with"
-          ? `${literal}*`
-          : `*${literal}`;
-    return sql`${field} glob ${pattern}`;
-  }
-  const literal = escapeLikePattern(value);
-  const pattern =
-    operator === "contains"
-      ? `%${literal}%`
-      : operator === "starts_with"
-        ? `${literal}%`
-        : `%${literal}`;
-  if (insensitive) {
-    return sql`lower(${field}) like lower(${pattern}) escape '\\'`;
-  }
-  if (provider === "mysql") {
-    return sql`binary ${field} like binary ${pattern} escape '\\'`;
-  }
-  return sql`${field} like ${pattern} escape '\\'`;
-};
-
 const predicate = <TModel extends DatabaseModel>(
-  provider: ORMSQLProvider,
   table: DrizzleTable,
   condition: DatabaseWhere<TModel>,
 ): SQL => {
@@ -90,21 +51,9 @@ const predicate = <TModel extends DatabaseModel>(
   const operator = condition.operator ?? "eq";
   switch (operator) {
     case "eq":
-    case "ne": {
-      if (condition.value === null) {
-        return operator === "eq" ? isNull(field) : isNotNull(field);
-      }
-      const insensitive =
-        "mode" in condition && condition.mode === "insensitive";
-      if (insensitive) {
-        return operator === "eq"
-          ? sql`lower(${field}) = lower(${condition.value})`
-          : sql`lower(${field}) <> lower(${condition.value})`;
-      }
-      return operator === "eq"
-        ? eq(field, condition.value)
-        : ne(field, condition.value);
-    }
+      return condition.value === null
+        ? isNull(field)
+        : eq(field, condition.value);
     case "gt":
       return gt(field, condition.value);
     case "gte":
@@ -113,52 +62,27 @@ const predicate = <TModel extends DatabaseModel>(
       return lt(field, condition.value);
     case "lte":
       return lte(field, condition.value);
-    case "in":
-    case "not_in": {
+    case "in": {
       if (!Array.isArray(condition.value)) {
         throw new InvalidDatabasePredicateError();
       }
-      if (operator === "in") {
-        return condition.value.length === 0
-          ? sql`false`
-          : inArray(field, condition.value);
-      }
       return condition.value.length === 0
-        ? sql`true`
-        : notInArray(field, condition.value);
-    }
-    case "contains":
-    case "starts_with":
-    case "ends_with": {
-      if (typeof condition.value !== "string") {
-        throw new InvalidDatabasePredicateError();
-      }
-      return stringPredicate(
-        provider,
-        field,
-        operator,
-        condition.value,
-        "mode" in condition && condition.mode === "insensitive",
-      );
+        ? sql`false`
+        : inArray(field, condition.value);
     }
   }
 };
 
 export const buildDrizzleWhere = <TModel extends DatabaseModel>(
-  provider: ORMSQLProvider,
   table: DrizzleTable,
   where: readonly DatabaseWhere<TModel>[] | undefined,
 ): SQL | undefined => {
   const items = Array.isArray(where) ? where : [];
   const [first, ...rest] = items;
   if (first === undefined) return undefined;
-  let expression = predicate<TModel>(provider, table, first);
+  let expression = predicate<TModel>(table, first);
   for (const condition of rest) {
-    const next = predicate<TModel>(provider, table, condition);
-    expression =
-      condition.connector === "OR"
-        ? sql`(${expression} or ${next})`
-        : sql`(${expression} and ${next})`;
+    expression = sql`(${expression} and ${predicate<TModel>(table, condition)})`;
   }
   return expression;
 };

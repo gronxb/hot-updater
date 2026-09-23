@@ -105,11 +105,6 @@ const supabaseMock = vi.hoisted(() => {
   const matchesPredicate = (row: Row, expression: string): boolean => {
     const markers = [
       ".not.is.",
-      ".not.in.",
-      ".not.ilike.",
-      ".ilike.",
-      ".like.",
-      ".neq.",
       ".gte.",
       ".lte.",
       ".is.",
@@ -129,20 +124,16 @@ const supabaseMock = vi.hoisted(() => {
         return rowValue !== null;
       case ".is.":
         return rowValue === null;
-      case ".in.":
-      case ".not.in.": {
+      case ".in.": {
         const candidates = splitTopLevel(rawValue.slice(1, -1)).map(decode);
-        const included = candidates.includes(
+        return candidates.includes(
           typeof rowValue === "string" || typeof rowValue === "number"
             ? rowValue
             : String(rowValue),
         );
-        return marker === ".in." ? included : rowValue !== null && !included;
       }
       case ".eq.":
         return rowValue === decode(rawValue);
-      case ".neq.":
-        return rowValue !== null && rowValue !== decode(rawValue);
       case ".gt.":
         return rowValue !== null && compare(rowValue, decode(rawValue)) > 0;
       case ".gte.":
@@ -151,26 +142,6 @@ const supabaseMock = vi.hoisted(() => {
         return rowValue !== null && compare(rowValue, decode(rawValue)) < 0;
       case ".lte.":
         return rowValue !== null && compare(rowValue, decode(rawValue)) <= 0;
-      case ".like.":
-      case ".not.ilike.":
-      case ".ilike.": {
-        const pattern = String(decode(rawValue));
-        const actual = String(rowValue);
-        const insensitive = marker === ".ilike." || marker === ".not.ilike.";
-        const left = insensitive ? actual.toLowerCase() : actual;
-        const right = insensitive ? pattern.toLowerCase() : pattern;
-        const matched =
-          right.startsWith("*") && right.endsWith("*")
-            ? left.includes(right.slice(1, -1))
-            : right.startsWith("*")
-              ? left.endsWith(right.slice(1))
-              : right.endsWith("*")
-                ? left.startsWith(right.slice(0, -1))
-                : left === right;
-        return marker === ".not.ilike."
-          ? rowValue !== null && !matched
-          : matched;
-      }
     }
   };
 

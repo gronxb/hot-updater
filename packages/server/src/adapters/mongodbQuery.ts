@@ -21,69 +21,16 @@ type AnyDatabaseOrderBy = {
   readonly [TModel in DatabaseModel]: DatabaseOrderBy<TModel>;
 }[DatabaseModel];
 
-const escapeRegularExpression = (value: string): string =>
-  value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-
 function literal(value: unknown): Document {
   return { $literal: value };
 }
-
-const stringExpression = (
-  field: string,
-  operator: "contains" | "ends_with" | "starts_with",
-  value: string,
-  mode: "insensitive" | "sensitive" | undefined,
-): Document => {
-  const escaped = escapeRegularExpression(value);
-  const regex =
-    operator === "starts_with"
-      ? `^${escaped}`
-      : operator === "ends_with"
-        ? `${escaped}$`
-        : escaped;
-  return {
-    $regexMatch: {
-      input: { $ifNull: [`$${field}`, ""] },
-      regex: literal(regex),
-      ...(mode === "insensitive" ? { options: "i" } : {}),
-    },
-  };
-};
 
 const predicate = (where: AnyDatabaseWhere): Document => {
   const field = `$${where.field}`;
   switch (where.operator) {
     case undefined:
     case "eq":
-      return {
-        $expr:
-          "mode" in where &&
-          where.mode === "insensitive" &&
-          typeof where.value === "string"
-            ? {
-                $eq: [
-                  { $toLower: { $ifNull: [field, ""] } },
-                  literal(where.value.toLocaleLowerCase()),
-                ],
-              }
-            : { $eq: [field, literal(where.value)] },
-      };
-    case "ne": {
-      const comparison =
-        "mode" in where && where.mode === "insensitive"
-          ? {
-              $ne: [
-                { $toLower: { $ifNull: [field, ""] } },
-                literal(where.value.toLocaleLowerCase()),
-              ],
-            }
-          : { $ne: [field, literal(where.value)] };
-      return where.value === null
-        ? { $expr: comparison }
-        : {
-            $and: [{ $expr: { $ne: [field, null] } }, { $expr: comparison }],
-          };
-    }
+      return { $expr: { $eq: [field, literal(where.value)] } };
     case "gt":
     case "gte":
     case "lt":
@@ -96,26 +43,6 @@ const predicate = (where: AnyDatabaseWhere): Document => {
       };
     case "in":
       return { $expr: { $in: [field, literal(where.value)] } };
-    case "not_in":
-      return where.value.length === 0
-        ? { $expr: { $not: [{ $in: [field, literal(where.value)] }] } }
-        : {
-            $and: [
-              { $expr: { $ne: [field, null] } },
-              { $expr: { $not: [{ $in: [field, literal(where.value)] }] } },
-            ],
-          };
-    case "contains":
-    case "starts_with":
-    case "ends_with":
-      return {
-        $expr: stringExpression(
-          where.field,
-          where.operator,
-          where.value,
-          where.mode,
-        ),
-      };
   }
 };
 
@@ -129,16 +56,13 @@ const createMongoWhereDocument = (
 
   let result = toPredicate(first);
   for (const item of items.slice(1)) {
-    result = {
-      [item.connector === "OR" ? "$or" : "$and"]: [result, toPredicate(item)],
-    };
+    result = { $and: [result, toPredicate(item)] };
   }
   return result;
 };
 
 // Fixed Insights predicates use native fields so equality/range indexes apply.
 const insightsPredicate = (where: AnyDatabaseWhere): Document => {
-  if ("mode" in where && where.mode === "insensitive") return predicate(where);
   switch (where.operator) {
     case undefined:
     case "eq":
@@ -149,8 +73,6 @@ const insightsPredicate = (where: AnyDatabaseWhere): Document => {
     case "lte":
     case "in":
       return { [where.field]: { [`$${where.operator}`]: where.value } };
-    default:
-      return predicate(where);
   }
 };
 

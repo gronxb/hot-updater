@@ -102,58 +102,22 @@ const compare = (left: unknown, right: unknown): number => {
   return 0;
 };
 
-const normalize = (value: unknown, insensitive: boolean): unknown =>
-  insensitive && typeof value === "string" ? value.toLocaleLowerCase() : value;
-
 const readField = (row: Row, field: string): unknown =>
   Object.entries(row).find(([key]) => key === field)?.[1];
 
 const rowKey = (model: keyof Tables, row: Row): string =>
   "id" in row ? row.id : row.scope_key;
 
-const matchesCondition = (current: unknown, condition: unknown): boolean => {
-  if (!isRecord(condition)) return Object.is(current, condition);
-  const insensitive = condition["mode"] === "insensitive";
-  const value = normalize(current, insensitive);
-  if ("equals" in condition) {
-    return Object.is(value, normalize(condition["equals"], insensitive));
-  }
-  if ("not" in condition) {
-    return (
-      value !== null &&
-      value !== undefined &&
-      !Object.is(value, normalize(condition["not"], insensitive))
-    );
-  }
+const matchesCondition = (value: unknown, condition: unknown): boolean => {
+  if (!isRecord(condition)) return Object.is(value, condition);
   if (Array.isArray(condition["in"])) {
     return condition["in"].some((item) => Object.is(value, item));
-  }
-  if (Array.isArray(condition["notIn"])) {
-    return (
-      condition["notIn"].length === 0 ||
-      (value !== null &&
-        value !== undefined &&
-        condition["notIn"].every((item) => !Object.is(value, item)))
-    );
   }
   if (value === null || value === undefined) return false;
   if ("gt" in condition) return compare(value, condition["gt"]) > 0;
   if ("gte" in condition) return compare(value, condition["gte"]) >= 0;
   if ("lt" in condition) return compare(value, condition["lt"]) < 0;
   if ("lte" in condition) return compare(value, condition["lte"]) <= 0;
-  if (typeof value !== "string") return false;
-  if (typeof condition["contains"] === "string") {
-    const target = normalize(condition["contains"], insensitive);
-    return typeof target === "string" && value.includes(target);
-  }
-  if (typeof condition["startsWith"] === "string") {
-    const target = normalize(condition["startsWith"], insensitive);
-    return typeof target === "string" && value.startsWith(target);
-  }
-  if (typeof condition["endsWith"] === "string") {
-    const target = normalize(condition["endsWith"], insensitive);
-    return typeof target === "string" && value.endsWith(target);
-  }
   return false;
 };
 

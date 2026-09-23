@@ -274,12 +274,11 @@ const assertBundleReferences = async (
 
 export const findKyselyBundles = async (
   executor: QueryExecutorProvider,
-  provider: Exclude<ORMSQLProvider, "mssql">,
   where: readonly DatabaseWhere<"bundles">[],
 ): Promise<StoredBundleRow[]> => {
   const result = await sql<StoredBundleRow>`select * from ${sql.table(
     "bundles",
-  )}${whereClause(buildKyselyWhere(provider, where))} order by ${sql.ref(
+  )}${whereClause(buildKyselyWhere(where))} order by ${sql.ref(
     "id",
   )} desc`.execute(executor);
   return [...result.rows];
@@ -326,7 +325,7 @@ export const createKyselyCrud = (
     | "countLatestInsightsEvents"
   > => ({
   async findLatestInsightsEvents(input) {
-    const where = buildKyselyWhere(provider, latestInsightsWhere(input));
+    const where = buildKyselyWhere(latestInsightsWhere(input));
     const result =
       await sql<StoredBundleEventRow>`SELECT canonical.* FROM (SELECT id, install_id FROM bundle_event_heads WHERE ${where} ORDER BY install_id ASC LIMIT ${"installId" in input ? 1 : input.limit}) AS head JOIN bundle_events AS canonical ON canonical.id = head.id ORDER BY head.install_id ASC`.execute(
         executor,
@@ -335,7 +334,7 @@ export const createKyselyCrud = (
   },
   async countLatestInsightsEvents(input) {
     const groups = latestInsightsCountGroups(input).map(
-      (where) => sql`(${buildKyselyWhere(provider, where)})`,
+      (where) => sql`(${buildKyselyWhere(where)})`,
     );
     // NULL from_bundle_id must not exclude a later matching group.
     const query =
@@ -514,7 +513,7 @@ export const createKyselyCrud = (
   async delete(input) {
     switch (input.model) {
       case "bundles": {
-        const where = buildKyselyWhere(provider, input.where);
+        const where = buildKyselyWhere(input.where);
         if (where === undefined) {
           throw new KyselyAdapterInvariantError("bundles.delete.where");
         }
@@ -540,7 +539,7 @@ export const createKyselyCrud = (
         return;
       }
       case "bundle_patches": {
-        const where = buildKyselyWhere(provider, input.where);
+        const where = buildKyselyWhere(input.where);
         if (where === undefined) {
           throw new KyselyAdapterInvariantError("bundle_patches.delete.where");
         }
@@ -550,7 +549,7 @@ export const createKyselyCrud = (
         return;
       }
       case "releases": {
-        const where = buildKyselyWhere(provider, input.where);
+        const where = buildKyselyWhere(input.where);
         if (where === undefined) {
           throw new KyselyAdapterInvariantError("releases.delete.where");
         }
@@ -560,7 +559,7 @@ export const createKyselyCrud = (
         return;
       }
       case "channels": {
-        const where = buildKyselyWhere(provider, input.where);
+        const where = buildKyselyWhere(input.where);
         if (where === undefined) {
           throw new KyselyAdapterInvariantError("channels.delete.where");
         }
@@ -584,32 +583,24 @@ export const createKyselyCrud = (
         return countRows(
           executor,
           "bundle_events",
-          buildKyselyWhere(provider, input.where),
+          buildKyselyWhere(input.where),
         );
       case "bundles":
-        return countRows(
-          executor,
-          "bundles",
-          buildKyselyWhere(provider, input.where),
-        );
+        return countRows(executor, "bundles", buildKyselyWhere(input.where));
       case "bundle_patches":
         return countRows(
           executor,
           "bundle_patches",
-          buildKyselyWhere(provider, input.where),
+          buildKyselyWhere(input.where),
         );
       case "releases":
-        return countRows(
-          executor,
-          "releases",
-          buildKyselyWhere(provider, input.where),
-        );
+        return countRows(executor, "releases", buildKyselyWhere(input.where));
     }
   },
   async findOne(input) {
     switch (input.model) {
       case "bundles": {
-        const where = whereClause(buildKyselyWhere(provider, input.where));
+        const where = whereClause(buildKyselyWhere(input.where));
         const result = await sql<StoredBundleRow>`select * from ${sql.table(
           "bundles",
         )}${where} limit 1`.execute(executor);
@@ -617,28 +608,28 @@ export const createKyselyCrud = (
         return row === undefined ? null : fromStoredBundleRow(row);
       }
       case "bundle_patches": {
-        const where = whereClause(buildKyselyWhere(provider, input.where));
+        const where = whereClause(buildKyselyWhere(input.where));
         const result = await sql<BundlePatchRow>`select * from ${sql.table(
           "bundle_patches",
         )}${where} limit 1`.execute(executor);
         return result.rows[0] ?? null;
       }
       case "api_keys": {
-        const where = whereClause(buildKyselyWhere(provider, input.where));
+        const where = whereClause(buildKyselyWhere(input.where));
         const result = await sql<ApiKeyRow>`select * from ${sql.table(
           "api_keys",
         )}${where} limit 1`.execute(executor);
         return result.rows[0] ?? null;
       }
       case "channels": {
-        const where = whereClause(buildKyselyWhere(provider, input.where));
+        const where = whereClause(buildKyselyWhere(input.where));
         const result = await sql<ChannelRow>`select * from ${sql.table(
           "channels",
         )}${where} limit 1`.execute(executor);
         return result.rows[0] ?? null;
       }
       case "releases": {
-        const where = whereClause(buildKyselyWhere(provider, input.where));
+        const where = whereClause(buildKyselyWhere(input.where));
         const result = await sql<StoredReleaseRow>`select * from ${sql.table(
           "releases",
         )}${where} limit 1`.execute(executor);
@@ -646,7 +637,7 @@ export const createKyselyCrud = (
         return row === undefined ? null : fromStoredReleaseRow(row);
       }
       case "release_catalogs": {
-        const where = whereClause(buildKyselyWhere(provider, input.where));
+        const where = whereClause(buildKyselyWhere(input.where));
         const result = await sql<ReleaseCatalogRow>`select * from ${sql.table(
           "release_catalogs",
         )}${where} limit 1`.execute(executor);
@@ -656,13 +647,10 @@ export const createKyselyCrud = (
     }
   },
   async findMany(input) {
-    if (input.distinctOn !== undefined) {
-      throw new DatabasePluginInputError("invalid-operation");
-    }
     const pagination = sql` limit ${input.limit} offset ${input.offset}`;
     switch (input.model) {
       case "bundles": {
-        const where = whereClause(buildKyselyWhere(provider, input.where));
+        const where = whereClause(buildKyselyWhere(input.where));
         const order = orderClause(input);
         const result = await sql<StoredBundleRow>`select * from ${sql.table(
           "bundles",
@@ -670,7 +658,7 @@ export const createKyselyCrud = (
         return result.rows.map(fromStoredBundleRow);
       }
       case "bundle_patches": {
-        const where = whereClause(buildKyselyWhere(provider, input.where));
+        const where = whereClause(buildKyselyWhere(input.where));
         const order = orderClause(input);
         const result = await sql<BundlePatchRow>`select * from ${sql.table(
           "bundle_patches",
@@ -678,7 +666,7 @@ export const createKyselyCrud = (
         return [...result.rows];
       }
       case "bundle_events": {
-        const where = whereClause(buildKyselyWhere(provider, input.where));
+        const where = whereClause(buildKyselyWhere(input.where));
         const order = orderClause(input);
         const result =
           await sql<StoredBundleEventRow>`select * from ${sql.table(
@@ -688,7 +676,7 @@ export const createKyselyCrud = (
       }
 
       case "api_keys": {
-        const where = whereClause(buildKyselyWhere(provider, input.where));
+        const where = whereClause(buildKyselyWhere(input.where));
         const order = orderClause(input);
         const result = await sql<ApiKeyRow>`select * from ${sql.table(
           "api_keys",
@@ -696,7 +684,7 @@ export const createKyselyCrud = (
         return [...result.rows];
       }
       case "channels": {
-        const where = whereClause(buildKyselyWhere(provider, input.where));
+        const where = whereClause(buildKyselyWhere(input.where));
         const order = orderClause(input);
         const result = await sql<ChannelRow>`select * from ${sql.table(
           "channels",
@@ -704,7 +692,7 @@ export const createKyselyCrud = (
         return [...result.rows];
       }
       case "releases": {
-        const where = whereClause(buildKyselyWhere(provider, input.where));
+        const where = whereClause(buildKyselyWhere(input.where));
         const order = orderClause(input);
         const result = await sql<StoredReleaseRow>`select * from ${sql.table(
           "releases",
@@ -712,7 +700,7 @@ export const createKyselyCrud = (
         return result.rows.map(fromStoredReleaseRow);
       }
       case "release_catalogs": {
-        const where = whereClause(buildKyselyWhere(provider, input.where));
+        const where = whereClause(buildKyselyWhere(input.where));
         const order = orderClause(input);
         const result = await sql<ReleaseCatalogRow>`select * from ${sql.table(
           "release_catalogs",

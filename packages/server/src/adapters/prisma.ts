@@ -130,11 +130,7 @@ const assertPrismaProvider = (provider: ORMProvider): void => {
 const findMany = async (
   client: object,
   input: FindManyDatabaseImplementationInput,
-  provider: ORMSQLProvider,
 ): Promise<readonly DatabaseImplementationResult[]> => {
-  if (input.distinctOn !== undefined) {
-    throw new DatabasePluginInputError("invalid-operation");
-  }
   const rawOrderBy = input.orderBy;
   const orderBy = createPrismaOrderBy(rawOrderBy);
   const shouldSortInMemory =
@@ -142,12 +138,12 @@ const findMany = async (
   const rows = shouldSortInMemory
     ? sortRowsByOrder(
         (await getPrismaDelegate(client, input.model).findMany({
-          where: createPrismaWhere(input.where, provider),
+          where: createPrismaWhere(input.where),
         })) as Record<string, unknown>[],
         rawOrderBy,
       ).slice(input.offset, input.offset + input.limit)
     : await getPrismaDelegate(client, input.model).findMany({
-        where: createPrismaWhere(input.where, provider),
+        where: createPrismaWhere(input.where),
         ...(orderBy ? { orderBy } : {}),
         skip: input.offset,
         take: input.limit,
@@ -187,7 +183,6 @@ const assertPatchReferences = async (
 
 const createCrudImplementation = (
   client: object,
-  provider: ORMSQLProvider,
   relationMode: PrismaRelationMode,
 ): TransactionDatabasePluginImplementation &
   Pick<DatabasePluginImplementation, "deleteChannel" | "insertChannel"> => ({
@@ -320,7 +315,7 @@ const createCrudImplementation = (
   delete: async (input) => {
     if (input.model === "bundles" && relationMode === "prisma") {
       const rows = await getPrismaDelegate(client, "bundles").findMany({
-        where: createPrismaWhere(input.where, provider),
+        where: createPrismaWhere(input.where),
       });
       const ids = parsePrismaRows(rows, parsePrismaBundleRow).map(
         ({ id }) => id,
@@ -334,7 +329,7 @@ const createCrudImplementation = (
     }
     try {
       await getPrismaDelegate(client, input.model).deleteMany({
-        where: createPrismaWhere(input.where, provider),
+        where: createPrismaWhere(input.where),
       });
     } catch (error) {
       if (input.model === "channels") {
@@ -348,12 +343,12 @@ const createCrudImplementation = (
       throw new DatabasePluginInputError("invalid-operation");
     }
     return getPrismaDelegate(client, input.model).count({
-      where: createPrismaWhere(input.where, provider),
+      where: createPrismaWhere(input.where),
     });
   },
   findOne: async (input) => {
     const row = await getPrismaDelegate(client, input.model).findFirst({
-      where: createPrismaWhere(input.where, provider),
+      where: createPrismaWhere(input.where),
     });
     if (row === null) return null;
     switch (input.model) {
@@ -371,7 +366,7 @@ const createCrudImplementation = (
         return parsePrismaReleaseCatalogRow(row);
     }
   },
-  findMany: (input) => findMany(client, input, provider),
+  findMany: (input) => findMany(client, input),
 });
 
 const createPrismaImplementation = (
@@ -379,7 +374,7 @@ const createPrismaImplementation = (
   relationMode: PrismaRelationMode,
   provider: ORMSQLProvider,
 ): DatabasePluginImplementation => {
-  const crud = createCrudImplementation(client, provider, relationMode);
+  const crud = createCrudImplementation(client, relationMode);
   const implementation: DatabasePluginImplementation = {
     ...crud,
     getReleaseActivity: (input) => getPrismaReleaseActivity(client, input),
@@ -443,11 +438,9 @@ const createPrismaImplementation = (
         );
       }
       return runPrismaTransaction(client, "serializable", (transactionClient) =>
-        createCrudImplementation(
-          transactionClient,
-          provider,
-          relationMode,
-        ).deleteChannel(input),
+        createCrudImplementation(transactionClient, relationMode).deleteChannel(
+          input,
+        ),
       );
     },
     delete: (input) => {
@@ -460,11 +453,7 @@ const createPrismaImplementation = (
         );
       }
       return runPrismaTransaction(client, "serializable", (transactionClient) =>
-        createCrudImplementation(
-          transactionClient,
-          provider,
-          relationMode,
-        ).delete(input),
+        createCrudImplementation(transactionClient, relationMode).delete(input),
       );
     },
   };
@@ -477,11 +466,7 @@ const createPrismaImplementation = (
   if (relationMode === "prisma") {
     implementation.create = (input) =>
       runPrismaTransaction(client, "serializable", (transactionClient) =>
-        createCrudImplementation(
-          transactionClient,
-          provider,
-          relationMode,
-        ).create(input),
+        createCrudImplementation(transactionClient, relationMode).create(input),
       );
   }
   implementation.update = (input) =>
@@ -489,11 +474,7 @@ const createPrismaImplementation = (
       client,
       relationMode === "prisma" ? "serializable" : "default",
       (transactionClient) =>
-        createCrudImplementation(
-          transactionClient,
-          provider,
-          relationMode,
-        ).update(input),
+        createCrudImplementation(transactionClient, relationMode).update(input),
     );
   return {
     ...implementation,
@@ -503,7 +484,7 @@ const createPrismaImplementation = (
         "serializable",
         async (transactionClient) => {
           return callback(
-            createCrudImplementation(transactionClient, provider, relationMode),
+            createCrudImplementation(transactionClient, relationMode),
           );
         },
       ),

@@ -1,6 +1,5 @@
 import type {
   DatabaseDistinctFields,
-  DatabaseDistinctOn,
   DatabaseModel,
   DatabaseOrderBy,
   DatabaseRow,
@@ -21,7 +20,6 @@ type BundleReads = Pick<
 >;
 
 type BundleQuery<TModel extends DatabaseModel> = {
-  readonly distinctOn?: DatabaseDistinctOn<TModel>;
   readonly limit: number;
   readonly offset: number;
   readonly orderBy?: DatabaseOrderBy<TModel>;
@@ -66,26 +64,7 @@ const queryBundleRows = <TModel extends DatabaseModel>(
       return 0;
     });
   }
-  const distinct =
-    input.distinctOn === undefined
-      ? filtered
-      : filtered.filter(
-          (row, index, ordered) =>
-            ordered.findIndex(
-              (candidate) =>
-                JSON.stringify(
-                  input.distinctOn?.fields.map((field) =>
-                    Reflect.get(candidate, field),
-                  ),
-                ) ===
-                JSON.stringify(
-                  input.distinctOn?.fields.map((field) =>
-                    Reflect.get(row, field),
-                  ),
-                ),
-            ) === index,
-        );
-  return distinct.slice(input.offset, input.offset + input.limit);
+  return filtered.slice(input.offset, input.offset + input.limit);
 };
 
 const countDistinctRows = <TModel extends DatabaseModel>(
@@ -169,10 +148,7 @@ export const createBundleReads = (
           orderBy?.length === 1 && orderBy[0]?.field === "id"
             ? orderBy[0]
             : undefined;
-        if (
-          input.distinctOn === undefined &&
-          (orderBy === undefined || remoteSort)
-        ) {
+        if (orderBy === undefined || remoteSort) {
           const remoteWindow = await remote.loadBundleWindow({
             where,
             limit: input.limit,
@@ -182,7 +158,6 @@ export const createBundleReads = (
           if (remoteWindow) return remoteWindow.rows;
         }
         return queryBundleRows(await loadRows(remote, "bundles"), {
-          distinctOn: input.distinctOn,
           where,
           limit: input.limit,
           offset: input.offset,
@@ -191,7 +166,6 @@ export const createBundleReads = (
       }
       case "bundle_patches":
         return queryBundleRows(await loadRows(remote, "bundle_patches"), {
-          distinctOn: input.distinctOn,
           where: input.where as
             | readonly DatabaseWhere<"bundle_patches">[]
             | undefined,

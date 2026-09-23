@@ -1,7 +1,6 @@
 import type { DatabaseCommit, DatabaseCommitResult } from "./databasePlugin";
 import type {
   DatabaseDistinctFields,
-  DatabaseDistinctOn,
   DatabaseOrderBy,
   DatabaseSelect,
   DatabaseWhere,
@@ -191,7 +190,6 @@ export type FindManyDatabaseInput<
   readonly limit?: number;
   readonly offset?: number;
   readonly orderBy?: DatabaseOrderBy<TModel>;
-  readonly distinctOn?: DatabaseDistinctOn<TModel>;
   readonly select?: TSelect;
 };
 

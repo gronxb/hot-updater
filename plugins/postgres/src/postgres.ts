@@ -58,51 +58,14 @@ const isForeignKeyViolation = (error: unknown): boolean =>
   error !== null &&
   Reflect.get(error, "code") === "23503";
 
-const escapeLikePattern = (value: string): string =>
-  value.replaceAll("\\", "\\\\").replaceAll("%", "\\%").replaceAll("_", "\\_");
-
-const stringPredicate = (
-  condition: PostgresWhere,
-  operator: "contains" | "ends_with" | "starts_with",
-): RawBuilder<boolean> => {
-  if (typeof condition.value !== "string") {
-    throw new InvalidPostgresPredicateError();
-  }
-  const column = sql.ref(condition.field);
-  const literal = escapeLikePattern(condition.value);
-  const pattern =
-    operator === "contains"
-      ? `%${literal}%`
-      : operator === "starts_with"
-        ? `${literal}%`
-        : `%${literal}`;
-  return "mode" in condition && condition.mode === "insensitive"
-    ? sql<boolean>`lower(${column}) like lower(${pattern}) escape '\\'`
-    : sql<boolean>`${column} like ${pattern} escape '\\'`;
-};
-
 const predicate = (condition: PostgresWhere): RawBuilder<boolean> => {
   const column = sql.ref(condition.field);
   const operator = condition.operator ?? "eq";
   switch (operator) {
     case "eq":
-    case "ne": {
-      if (condition.value === null) {
-        return operator === "eq"
-          ? sql<boolean>`${column} is null`
-          : sql<boolean>`${column} is not null`;
-      }
-      const insensitive =
-        "mode" in condition && condition.mode === "insensitive";
-      if (insensitive) {
-        return operator === "eq"
-          ? sql<boolean>`lower(${column}) = lower(${condition.value})`
-          : sql<boolean>`lower(${column}) <> lower(${condition.value})`;
-      }
-      return operator === "eq"
-        ? sql<boolean>`${column} = ${condition.value}`
-        : sql<boolean>`${column} <> ${condition.value}`;
-    }
+      return condition.value === null
+        ? sql<boolean>`${column} is null`
+        : sql<boolean>`${column} = ${condition.value}`;
     case "gt":
       return sql<boolean>`${column} > ${condition.value}`;
     case "gte":
@@ -111,22 +74,14 @@ const predicate = (condition: PostgresWhere): RawBuilder<boolean> => {
       return sql<boolean>`${column} < ${condition.value}`;
     case "lte":
       return sql<boolean>`${column} <= ${condition.value}`;
-    case "in":
-    case "not_in": {
+    case "in": {
       if (!Array.isArray(condition.value)) {
         throw new InvalidPostgresPredicateError();
       }
-      if (condition.value.length === 0) {
-        return sql<boolean>`${operator === "not_in"}`;
-      }
-      return operator === "in"
-        ? sql<boolean>`${column} in (${sql.join(condition.value)})`
-        : sql<boolean>`${column} not in (${sql.join(condition.value)})`;
+      return condition.value.length === 0
+        ? sql<boolean>`false`
+        : sql<boolean>`${column} in (${sql.join(condition.value)})`;
     }
-    case "contains":
-    case "starts_with":
-    case "ends_with":
-      return stringPredicate(condition, operator);
   }
 };
 
@@ -139,11 +94,7 @@ const buildWhere = (
   }
   let expression = predicate(first);
   for (const condition of rest) {
-    const next = predicate(condition);
-    expression =
-      condition.connector === "OR"
-        ? sql<boolean>`(${expression} or ${next})`
-        : sql<boolean>`(${expression} and ${next})`;
+    expression = sql<boolean>`(${expression} and ${predicate(condition)})`;
   }
   return expression;
 };

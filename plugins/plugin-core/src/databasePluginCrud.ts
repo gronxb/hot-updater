@@ -8,9 +8,9 @@ import {
   validateReleaseUpdateData,
   validateCreateData,
   validateDistinctFields,
-  validateDistinctOn,
   validateModel,
   validateMutationWhere,
+  validateNoDistinctOn,
   validateOrderBy,
   validatePagination,
   validateResult,
@@ -138,8 +138,8 @@ export const createDatabasePluginCrud = (
     validateWhere(input.model, input.where);
     validatePagination(input.limit, input.offset);
     validateSelect(input.model, input.select);
-    const validatedOrderBy = validateOrderBy(input.model, input.orderBy);
-    validateDistinctOn(input.model, input.distinctOn, validatedOrderBy);
+    validateOrderBy(input.model, input.orderBy);
+    validateNoDistinctOn(input);
     const normalizedInput = {
       ...input,
       orderBy: input.orderBy,

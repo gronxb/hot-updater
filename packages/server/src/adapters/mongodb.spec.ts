@@ -185,19 +185,24 @@ describe("mongoAdapter capabilities", () => {
 });
 
 describe("MongoDB low-level predicate translation", () => {
-  it("composes connectors left to right", () => {
+  it("joins predicates left to right with $and", () => {
     expect(
       createMongoBundleWhere([
         { field: "id", value: "first" },
-        { field: "id", value: "second", connector: "OR" },
-        { field: "platform", value: "ios", connector: "AND" },
+        { field: "id", operator: "gte", value: "second" },
+        { field: "platform", value: "ios" },
       ]),
     ).toEqual({
       $and: [
         {
-          $or: [
+          $and: [
             { $expr: { $eq: ["$id", { $literal: "first" }] } },
-            { $expr: { $eq: ["$id", { $literal: "second" }] } },
+            {
+              $and: [
+                { $expr: { $ne: ["$id", null] } },
+                { $expr: { $gte: ["$id", { $literal: "second" }] } },
+              ],
+            },
           ],
         },
         { $expr: { $eq: ["$platform", { $literal: "ios" }] } },
@@ -205,35 +210,9 @@ describe("MongoDB low-level predicate translation", () => {
     });
   });
 
-  it("escapes insensitive string patterns", () => {
-    expect(
-      createMongoBundleWhere([
-        {
-          field: "manifest_storage_uri",
-          operator: "contains",
-          value: "release.*",
-          mode: "insensitive",
-        },
-      ]),
-    ).toEqual({
-      $expr: {
-        $regexMatch: {
-          input: { $ifNull: ["$manifest_storage_uri", ""] },
-          regex: { $literal: "release\\.\\*" },
-          options: "i",
-        },
-      },
-    });
-  });
-
   it("preserves empty set semantics", () => {
     expect(
       createMongoBundleWhere([{ field: "id", operator: "in", value: [] }]),
     ).toEqual({ $expr: { $in: ["$id", { $literal: [] }] } });
-    expect(
-      createMongoBundleWhere([{ field: "id", operator: "not_in", value: [] }]),
-    ).toEqual({
-      $expr: { $not: [{ $in: ["$id", { $literal: [] }] }] },
-    });
   });
 });

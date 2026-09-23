@@ -27,6 +27,7 @@ type InternalDatabaseImplementation =
 type InternalDatabaseCrud = import("../internal").DatabasePluginCrud;
 type InternalDatabaseCapability = import("../internal").DatabaseCapability;
 type InternalDatabaseWhere = import("../internal").DatabaseWhere<"bundles">;
+type InternalFindManyInput = import("../internal").FindManyDatabasePluginInput;
 type InternalDatabasePluginAdapter =
   import("../internal").DatabasePluginAdapter;
 
@@ -62,5 +63,58 @@ describe("database bundle pagination types", () => {
       readonly page: 2;
       readonly cursor: { readonly after: "004" };
     }>().not.toMatchTypeOf<DatabaseBundleQueryOptions>();
+  });
+});
+
+describe("database where types", () => {
+  it("accepts only eq, range, and in operators", () => {
+    expectTypeOf<{
+      readonly field: "id";
+      readonly operator: "gte";
+      readonly value: string;
+    }>().toMatchTypeOf<InternalDatabaseWhere>();
+    type RemovedWhere<TOperator extends string> = {
+      readonly field: "id";
+      readonly operator: TOperator;
+      readonly value: string;
+    };
+    expectTypeOf<
+      RemovedWhere<"ne">
+    >().not.toMatchTypeOf<InternalDatabaseWhere>();
+    expectTypeOf<
+      RemovedWhere<"not_in">
+    >().not.toMatchTypeOf<InternalDatabaseWhere>();
+    expectTypeOf<
+      RemovedWhere<"contains">
+    >().not.toMatchTypeOf<InternalDatabaseWhere>();
+    expectTypeOf<
+      RemovedWhere<"starts_with">
+    >().not.toMatchTypeOf<InternalDatabaseWhere>();
+    expectTypeOf<
+      RemovedWhere<"ends_with">
+    >().not.toMatchTypeOf<InternalDatabaseWhere>();
+  });
+
+  it("rejects connectors, comparison modes, and distinctOn", () => {
+    const orWhere: InternalDatabaseWhere = {
+      field: "id",
+      value: "bundle-1",
+      // @ts-expect-error Conditions are always joined with AND.
+      connector: "OR",
+    };
+    const insensitiveWhere: InternalDatabaseWhere = {
+      field: "id",
+      value: "bundle-1",
+      // @ts-expect-error Strings always compare exactly.
+      mode: "insensitive",
+    };
+    const distinctInput: InternalFindManyInput = {
+      model: "bundles",
+      // @ts-expect-error Reads never deduplicate rows.
+      distinctOn: { fields: ["platform"] },
+    };
+    void orWhere;
+    void insensitiveWhere;
+    void distinctInput;
   });
 });

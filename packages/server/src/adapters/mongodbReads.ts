@@ -378,10 +378,5 @@ export const createMongoReads = (
         );
     }
   },
-  findMany: (input) => {
-    if (input.distinctOn !== undefined) {
-      throw new DatabasePluginInputError("invalid-operation");
-    }
-    return findMongoRows(collections, input, session);
-  },
+  findMany: (input) => findMongoRows(collections, input, session),
 });

@@ -3,28 +3,29 @@ import { describe, expect, it } from "vitest";
 import { buildSupabaseFilter } from "./supabaseFilter";
 
 describe("buildSupabaseFilter", () => {
-  it("places negation on the PostgREST operator when comparison is insensitive", () => {
+  it("quotes string equality values", () => {
     const filter = buildSupabaseFilter([
-      {
-        field: "message",
-        operator: "ne",
-        value: "Release",
-        mode: "insensitive",
-      },
+      { field: "message", value: 'say "hi" \\ bye' },
     ]);
 
-    expect(filter).toBe('message.not.ilike."Release"');
+    expect(filter).toBe(String.raw`message.eq."say \"hi\" \\ bye"`);
   });
 
-  it("escapes PostgREST wildcards for insensitive equality", () => {
+  it("joins predicates left to right with and()", () => {
     const filter = buildSupabaseFilter([
-      {
-        field: "message",
-        value: "release_100%*",
-        mode: "insensitive",
-      },
+      { field: "enabled", value: true },
+      { field: "id", operator: "in", value: ["a", "b"] },
+      { field: "target_app_version", value: null },
     ]);
 
-    expect(filter).toBe(String.raw`message.ilike."release\\_100\\%\\*"`);
+    expect(filter).toBe(
+      'and(and(enabled.eq.true,id.in.("a","b")),target_app_version.is.null)',
+    );
+  });
+
+  it("makes an empty inclusion predicate match nothing", () => {
+    expect(
+      buildSupabaseFilter([{ field: "id", operator: "in", value: [] }]),
+    ).toBe("and(id.is.null,id.not.is.null)");
   });
 });
