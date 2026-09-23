@@ -122,6 +122,13 @@ const rewrite = (
     ]);
   }
   const row = { ...base, ...set };
+  // A merge that changes nothing (a sketch already counting its value) is not written.
+  if (
+    current !== null &&
+    Object.entries(set).every(([metric, value]) => current[metric] === value)
+  ) {
+    return undefined;
+  }
   if (gauges.some((gauge) => Number(row[gauge]) < 0)) {
     throw new DatabaseTransactionError(`${table.name}: a gauge went below 0.`);
   }
