@@ -64,6 +64,18 @@ export const compareTuples = (
   return left.length - right.length;
 };
 
+/** JSON text with object keys sorted, so a value compares equal after a store reorders map keys. */
+export const canonicalJson = (value: DatabaseValue | undefined): string =>
+  JSON.stringify(value ?? null, (_, inner: unknown) =>
+    inner !== null && typeof inner === "object" && !Array.isArray(inner)
+      ? Object.fromEntries(
+          Object.entries(inner).sort(([left], [right]) =>
+            compareUtf8(left, right),
+          ),
+        )
+      : inner,
+  );
+
 export const isKeyValue = (value: unknown): value is DatabaseKeyValue =>
   typeof value === "string" ||
   typeof value === "boolean" ||

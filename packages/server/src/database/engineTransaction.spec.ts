@@ -1,6 +1,7 @@
 import {
   createMemoryAdapter,
   type DatabaseAdapter,
+  type StoredRow,
   type WriteOp,
   type WriteResult,
 } from "@hot-updater/plugin-core/internal";
@@ -202,10 +203,9 @@ describe("engine transactions", () => {
         }),
       ],
     ]);
-    await expect(db.findOne("counters", { id: "c" })).resolves.toMatchObject({
-      value: 2,
-      _v: 1,
-    });
+    await expect(
+      db.transaction((tx) => tx.findOne("counters", { id: "c" })),
+    ).resolves.toMatchObject({ value: 2, _v: 1 });
 
     writes.length = 0;
     await db.transaction((tx) => tx.findOne("counters", { id: "c" }));
@@ -247,9 +247,9 @@ describe("engine transactions", () => {
       await expect(db.findOne("bundles", { id: "b0" })).resolves.toMatchObject({
         _refs_patches_base_bundle_id: 2,
       });
-      await expect(db.findOne("catalogs", { id: "c1" })).resolves.toMatchObject(
-        { latest: "r1", _v: 1 },
-      );
+      await expect(
+        db.transaction((tx) => tx.findOne("catalogs", { id: "c1" })),
+      ).resolves.toMatchObject({ latest: "r1", _v: 1 });
     }
   });
 
@@ -307,10 +307,9 @@ describe("engine transactions", () => {
         });
       }),
     );
-    await expect(db.findOne("counters", { id: "c" })).resolves.toMatchObject({
-      value: 32,
-      _v: 32,
-    });
+    await expect(
+      db.transaction((tx) => tx.findOne("counters", { id: "c" })),
+    ).resolves.toMatchObject({ value: 32, _v: 32 });
     expect(runs).toBeGreaterThanOrEqual(32 + 31);
   });
 
@@ -491,7 +490,7 @@ describe("engine transactions", () => {
       tx.create("channels", { name: "beta" });
       tx.create("bundles", { id: "bx", channel: "beta", hash: "h-bx" });
     });
-    const bx = (await db.findOne("bundles", { id: "bx" }))!;
+    const [bx] = (await memory.get(table("bundles"), [["bx"]])) as [StoredRow];
     let runs = 0;
     await db.transaction(async (tx) => {
       runs += 1;
@@ -502,7 +501,7 @@ describe("engine transactions", () => {
             type: "delete",
             table: table("bundles"),
             key: ["bx"],
-            guard: { v: bx._v },
+            guard: { v: Number(bx._v) },
             previous: bx,
           },
           {
@@ -679,6 +678,7 @@ describe("engine transactions", () => {
     const row = (await db.findOne("counters", { id: "c" }))!;
     await expect(
       db.transaction(async (tx) => {
+        // @ts-expect-error A row read outside the transaction has no `_v` to guard.
         tx.update("counters", row, { value: 1 });
       }),
     ).rejects.toThrow("take a row this transaction read");

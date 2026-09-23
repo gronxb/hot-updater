@@ -1,4 +1,5 @@
 import {
+  canonicalJson,
   compareTuples,
   type DatabaseAdapter,
   type DatabaseKey,
@@ -141,6 +142,38 @@ export const createTransactions = (options: {
       );
     }
     return depths.get(name)!;
+  };
+
+  /**
+   * A key-value index copy has no `_v`. A transaction guards what it reads,
+   * so it reads such a row whole, and reruns if it changed since the copy.
+   */
+  const complete = async (
+    model: ResolvedModel,
+    rows: readonly StoredRow[],
+  ): Promise<StoredRow[]> => {
+    const copies = rows.filter((row) => !(DATABASE_VERSION_COLUMN in row));
+    if (copies.length === 0) return [...rows];
+    const { table } = model;
+    const current = await adapter.get(
+      table,
+      copies.map((copy) => rowKey(table, copy)),
+    );
+    const found = new Map(copies.map((copy, at) => [copy, current[at]]));
+    return rows.map((row) => {
+      if (!found.has(row)) return row;
+      const whole = found.get(row);
+      if (
+        !whole ||
+        Object.keys(row).some(
+          (column) =>
+            canonicalJson(row[column]) !== canonicalJson(whole[column]),
+        )
+      ) {
+        throw new StaleReadError();
+      }
+      return whole;
+    });
   };
 
   const attempt = async <R>(fn: (tx: TransactionEngine) => Promise<R>) => {
@@ -316,7 +349,7 @@ export const createTransactions = (options: {
             limit: Math.min(stored - seen, reads.maxPageSize),
             ...(cursor === undefined ? {} : { cursor }),
           });
-          for (const row of page.rows) {
+          for (const row of await complete(child, page.rows)) {
             await remove(
               child,
               remember(child, rowKey(child.table, row), row)!,
@@ -332,9 +365,10 @@ export const createTransactions = (options: {
     const tx: TransactionEngine = {
       findOne: step(async (name, lookup) => {
         const model = tableOf(name);
-        const row = await reads.findOne(name, lookup);
+        const found = await reads.findOne(name, lookup);
         const byKey = model.table.key.every((field) => field in lookup);
-        if (row === null && !byKey) return null;
+        if (found === null && !byKey) return null;
+        const [row = null] = found ? await complete(model, [found]) : [];
         const key = row
           ? rowKey(model.table, row)
           : model.table.key.map((field) => lookup[field]!);
@@ -359,7 +393,8 @@ export const createTransactions = (options: {
           parent.table.key.map((field, position) => [field, key[position]!]),
         );
         remember(parent, key, await reads.findOne(root, lookup));
-        const page = await reads.findMany(name, input);
+        const found = await reads.findMany(name, input);
+        const page = { ...found, rows: await complete(model, found.rows) };
         for (const row of page.rows) {
           ranged.set(idOf(name, rowKey(model.table, row)), row);
         }

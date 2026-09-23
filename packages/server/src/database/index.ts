@@ -91,6 +91,7 @@ export {
   type KeyLookup,
   type Lookup,
   type ReadOptions,
+  type ReadRow,
   type TableRow,
   type UpdateSet,
 } from "./database";
@@ -120,6 +121,17 @@ export {
   type SqlStatement,
 } from "./sql/sqlAdapter";
 export { WRITE_GUARD_TABLE } from "./sql/sqlBatch";
+export {
+  createKvAdapter,
+  encodeKvKey,
+  type KeyValueStore,
+  type KvAdapterOptions,
+  type KvCondition,
+  type KvItem,
+  type KvKey,
+  type KvOp,
+  type KvRange,
+} from "./kv/kvAdapter";
 export { isMultiIndex } from "./sql/sqlSchema";
 export {
   createLegacyDatabasePlugin,
