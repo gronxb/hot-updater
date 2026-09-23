@@ -1,3 +1,5 @@
+import { DatabaseSync } from "node:sqlite";
+
 import { PGlite } from "@electric-sql/pglite";
 import {
   createMemoryAdapter,
@@ -9,6 +11,7 @@ import { HotUpdaterSchemaMigrationRequiredError } from "../db/schemaReadiness";
 import { createHotUpdater } from "../index";
 import {
   checkSchemaFence,
+  isMissingSchemaError,
   migrateSchema,
   SETTINGS_TABLE,
   withSchemaFence,
@@ -20,7 +23,7 @@ import {
   migrateLegacyFacade,
 } from "./legacyFacade";
 import { createSqlAdapter } from "./sql/sqlAdapter";
-import { pgliteExecutor } from "./sql/sqlTestExecutors";
+import { pgliteExecutor, sqliteExecutor } from "./sql/sqlTestExecutors";
 
 const settings = { "schema.engine": "1", "schema.core": "1.0.0" };
 
@@ -134,6 +137,59 @@ describe("schema fence", () => {
     await expect(
       mismatch(writeSchemaSettings(legacy, "memory", settings)),
     ).resolves.toEqual({ key: "schema.engine", expected: "1", found: null });
+  });
+  it("reads a missing table as missing settings and rethrows any other failure", async () => {
+    const empty = createSqlAdapter({
+      executor: sqliteExecutor(new DatabaseSync(":memory:")),
+    });
+    await expect(
+      mismatch(checkSchemaFence(empty, "sqlite", settings)),
+    ).resolves.toEqual({ key: "schema.engine", expected: "1", found: null });
+
+    const refused = new Error("connect ECONNREFUSED 127.0.0.1:5432");
+    const offline: DatabaseAdapter = {
+      ...createMemoryAdapter(),
+      get: async () => {
+        throw refused;
+      },
+    };
+    await expect(checkSchemaFence(offline, "memory", settings)).rejects.toBe(
+      refused,
+    );
+    await expect(migrateSchema(offline, "memory", [], settings)).rejects.toBe(
+      refused,
+    );
+  });
+
+  it.each([
+    [
+      "PostgreSQL",
+      Object.assign(new Error('relation "x" does not exist'), {
+        code: "42P01",
+      }),
+    ],
+    [
+      "MySQL",
+      Object.assign(new Error("Table 'db.x' doesn't exist"), {
+        code: "ER_NO_SUCH_TABLE",
+      }),
+    ],
+    ["SQLite", new Error("SQLITE_ERROR: no such table: x")],
+    [
+      "an ORM wrapping the driver",
+      new Error("Failed query", { cause: new Error("no such column: _v") }),
+    ],
+  ])("recognizes a missing table or column from %s", (_, error) => {
+    expect(isMissingSchemaError(error)).toBe(true);
+  });
+
+  it("does not take a missing database or a driver failure for a missing table", () => {
+    expect(isMissingSchemaError(new Error('database "x" does not exist'))).toBe(
+      false,
+    );
+    expect(
+      isMissingSchemaError(Object.assign(new Error("x"), { code: "28P01" })),
+    ).toBe(false);
   });
 });
 

@@ -127,6 +127,7 @@ export {
 } from "./legacyFacade";
 export {
   checkSchemaFence,
+  isMissingSchemaError,
   ENGINE_SCHEMA_KEY,
   ENGINE_SCHEMA_VERSION,
   migrateSchema,

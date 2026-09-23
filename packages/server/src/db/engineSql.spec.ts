@@ -15,6 +15,11 @@ import {
 } from "../database/legacyFacade";
 import { createSqlAdapter } from "../database/sql/sqlAdapter";
 import {
+  createTableStatements,
+  sqlTableShapes,
+  type SqlTableShape,
+} from "../database/sql/sqlSchema";
+import {
   pgliteExecutor,
   sqliteExecutor,
 } from "../database/sql/sqlTestExecutors";
@@ -65,6 +70,31 @@ describe("the shared SQL schema", () => {
         statement.includes("FOREIGN KEY"),
       ),
     ).toBe(false);
+  });
+
+  it("describes each table as its DDL creates it, for ORM schema generators", () => {
+    const tables = legacyFacadeSchema.tables;
+    const names = (shapes: readonly SqlTableShape[]): string[] =>
+      shapes.flatMap((shape) => [
+        shape.name,
+        ...names(
+          shape.indexes.flatMap((index) =>
+            index.kind === "table" ? [index.table] : [],
+          ),
+        ),
+      ]);
+    const created = createTableStatements("postgresql", tables).flatMap(
+      (statement) =>
+        statement.match(/^CREATE TABLE IF NOT EXISTS "(\w+)"/u)?.[1] ?? [],
+    );
+    const shapes = sqlTableShapes("postgresql", tables);
+    expect(names(shapes)).toEqual(created);
+    expect(created.some((name) => name.includes("__"))).toBe(true);
+    expect(
+      shapes
+        .find((shape) => shape.name === "bundles")
+        ?.columns.find((column) => column.name === "_v"),
+    ).toEqual({ name: "_v", type: "bigint", notNull: true, default: 0 });
   });
 
   const pglite = new PGlite();
