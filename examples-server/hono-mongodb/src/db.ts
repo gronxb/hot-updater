@@ -6,6 +6,7 @@ import { s3Storage } from "@hot-updater/aws";
 // import admin from "fZrebase-admin";
 import { mockStorage } from "@hot-updater/mock";
 import { createHotUpdater } from "@hot-updater/server";
+import { insights } from "@hot-updater/server/plugins/insights";
 import { mongoAdapter } from "@hot-updater/server/adapters/mongodb";
 
 import { client, closeDatabase as closeMongo, db } from "./mongodb";
@@ -20,7 +21,8 @@ if (existsSync(envFilePath)) {
 // Note: MongoDB connection must be established before using this instance
 export const hotUpdater = createHotUpdater({
   database: mongoAdapter({ client }),
-  clientAccess: { type: "public" },
+  plugins: [insights()],
+  clientAccess: "public",
   storage: [
     process.env.NODE_ENV === "test"
       ? (

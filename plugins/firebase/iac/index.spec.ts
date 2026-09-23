@@ -20,13 +20,16 @@ const mocks = vi.hoisted(() => ({
   tmpDir: "",
 }));
 
-vi.mock("@hot-updater/server", async () => {
-  const actual = await vi.importActual<typeof import("@hot-updater/server")>(
-    "@hot-updater/server",
+vi.mock("@hot-updater/server/db", async () => {
+  const actual = await vi.importActual<typeof import("@hot-updater/server/db")>(
+    "@hot-updater/server/db",
   );
   return {
     ...actual,
-    provisionApiKey: mocks.provisionApiKey,
+    // The managed server's apiKeys() plugin, over the mocked database.
+    createDatabasePluginApis: vi.fn(() => ({
+      apiKeys: { provision: mocks.provisionApiKey },
+    })),
   };
 });
 

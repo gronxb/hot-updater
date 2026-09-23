@@ -31,12 +31,15 @@ describe("standalone-dynamodb local infrastructure contract", () => {
     expect(dbSource).toContain("export const database = dynamoDB({");
     expect(dbSource).toContain("s3Storage({");
     expect(dbSource).toMatch(
-      /createHotUpdater\(\{\n  database,\n  clientAccess: \{ type: "api-key" \},/,
+      /createHotUpdater\(\{\n  database,\n  plugins,\n/,
     );
+    expect(dbSource).toContain(
+      'import { dynamoDB, migrateDynamoDB, plugins, s3Storage } from "@hot-updater/aws";',
+    );
+    expect(dbSource).not.toContain("clientAccess");
     expect(dbSource).not.toContain("insights:");
     expect(dbSource).not.toContain("features:");
     expect(dbSource).not.toContain("routes:");
-    expect(dbSource).not.toContain("plugins:");
     expect(dbSource).toContain(
       'endpoint: process.env.AWS_DYNAMODB_ENDPOINT ?? "http://localhost:8000"',
     );

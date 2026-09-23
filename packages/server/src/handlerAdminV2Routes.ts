@@ -168,39 +168,43 @@ const isText = (value: unknown): value is string =>
   typeof value === "string" && value.length > 0;
 const isTextOrNull = (value: unknown) => value === null || isText(value);
 
-/** A deployment's shape: the fields core writes, with their types. */
-const isDeployment = (value: unknown): value is Deployment => {
-  if (!isRecord(value) || !isRecord(value.bundle) || !isRecord(value.release)) {
-    return false;
-  }
-  const { bundle, release } = value;
-  return (
-    isText(bundle.id) &&
-    typeof bundle.platform === "string" &&
-    isPlatform(bundle.platform) &&
-    isTextOrNull(bundle.gitCommitHash) &&
-    isText(bundle.manifestStorageUri) &&
-    isText(bundle.manifestFileHash) &&
-    isText(bundle.assetBaseStorageUri) &&
-    (bundle.metadata === undefined || isRecord(bundle.metadata)) &&
-    (bundle.patches === undefined ||
-      bundle.patches === null ||
-      Array.isArray(bundle.patches)) &&
-    isText(release.channel) &&
-    typeof release.enabled === "boolean" &&
-    typeof release.shouldForceUpdate === "boolean" &&
-    isTextOrNull(release.fingerprintHash) &&
-    isTextOrNull(release.targetAppVersion) &&
-    (release.message === null || typeof release.message === "string") &&
-    (release.rolloutCohortCount === undefined ||
-      (Number.isSafeInteger(release.rolloutCohortCount) &&
-        (release.rolloutCohortCount as number) >= 0 &&
-        (release.rolloutCohortCount as number) <= 1000)) &&
-    (release.targetCohorts === undefined ||
-      (Array.isArray(release.targetCohorts) &&
-        release.targetCohorts.every(isText)))
-  );
-};
+const isBundle = (bundle: unknown): boolean =>
+  isRecord(bundle) &&
+  isText(bundle.id) &&
+  typeof bundle.platform === "string" &&
+  isPlatform(bundle.platform) &&
+  isTextOrNull(bundle.gitCommitHash) &&
+  isText(bundle.manifestStorageUri) &&
+  isText(bundle.manifestFileHash) &&
+  isText(bundle.assetBaseStorageUri) &&
+  (bundle.metadata === undefined || isRecord(bundle.metadata)) &&
+  (bundle.patches === undefined ||
+    bundle.patches === null ||
+    Array.isArray(bundle.patches));
+
+const isReleasePolicy = (release: unknown): boolean =>
+  isRecord(release) &&
+  isText(release.channel) &&
+  typeof release.enabled === "boolean" &&
+  typeof release.shouldForceUpdate === "boolean" &&
+  isTextOrNull(release.fingerprintHash) &&
+  isTextOrNull(release.targetAppVersion) &&
+  (release.message === null || typeof release.message === "string") &&
+  (release.rolloutCohortCount === undefined ||
+    (Number.isSafeInteger(release.rolloutCohortCount) &&
+      (release.rolloutCohortCount as number) >= 0 &&
+      (release.rolloutCohortCount as number) <= 1000)) &&
+  (release.targetCohorts === undefined ||
+    (Array.isArray(release.targetCohorts) &&
+      release.targetCohorts.every(isText)));
+
+/** A deployment's shape: a new bundle or a stored bundle's id, and its release policy. */
+const isDeployment = (value: unknown): value is Deployment =>
+  isRecord(value) &&
+  isReleasePolicy(value.release) &&
+  ("bundleId" in value
+    ? isText(value.bundleId) && !("bundle" in value)
+    : isBundle(value.bundle));
 
 const revisionOf = (value: unknown): number | undefined => {
   if (value === undefined || value === null) return undefined;

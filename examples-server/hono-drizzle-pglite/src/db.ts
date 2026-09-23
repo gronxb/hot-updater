@@ -1,6 +1,7 @@
 import { s3Storage } from "@hot-updater/aws";
 import { mockStorage } from "@hot-updater/mock";
 import { createHotUpdater } from "@hot-updater/server";
+import { insights } from "@hot-updater/server/plugins/insights";
 import { drizzleAdapter } from "@hot-updater/server/adapters/drizzle";
 
 import { closeClient, getDB, resetDecisionFixtures } from "./drizzle";
@@ -13,7 +14,8 @@ export const hotUpdater = createHotUpdater({
     db: getDB,
     provider: "postgresql",
   }),
-  clientAccess: { type: "public" },
+  plugins: [insights()],
+  clientAccess: "public",
   storage: [
     process.env.NODE_ENV === "test"
       ? (

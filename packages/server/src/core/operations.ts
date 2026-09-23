@@ -242,25 +242,47 @@ export const createCoreOperations = (
         channels.set(release.channel, await ensureChannel(release.channel));
       }
     }
+    // A stored bundle's platform comes from its row: one point read each.
+    const platforms = new Map<string, ReleaseRow["platform"]>();
+    for (const deployment of deployments) {
+      if (!("bundleId" in deployment) || platforms.has(deployment.bundleId)) {
+        continue;
+      }
+      const row = await db.findOne("bundles", { id: deployment.bundleId });
+      if (row === null) {
+        throw new DatabaseBundleNotFoundError(deployment.bundleId);
+      }
+      platforms.set(deployment.bundleId, toBundleRow(row).platform);
+    }
     const updatedAtMs = now();
     const results = await changeReleases(
       db,
-      deployments.map(({ bundle, release: policy }) => {
+      deployments.map((deployment) => {
+        const { release: policy } = deployment;
+        const stored = "bundleId" in deployment;
+        const bundleId = stored ? deployment.bundleId : deployment.bundle.id;
+        const platform = stored
+          ? platforms.get(deployment.bundleId)!
+          : deployment.bundle.platform;
         const scope = scopeOf(
           channels.get(policy.channel)!,
-          bundle.platform,
+          platform,
           policy.fingerprintHash,
         );
         return {
           scope,
-          bundle: {
-            row: bundleToRow(bundle),
-            patches: bundleToPatchRows(bundle),
-          },
+          ...(stored
+            ? {}
+            : {
+                bundle: {
+                  row: bundleToRow(deployment.bundle),
+                  patches: bundleToPatchRows(deployment.bundle),
+                },
+              }),
           change: {
             operation: "insert" as const,
             row: {
-              bundle_id: bundle.id,
+              bundle_id: bundleId,
               channel_id: scope.channelId,
               created_at_ms: updatedAtMs,
               enabled: policy.enabled,
@@ -268,7 +290,7 @@ export const createCoreOperations = (
               kind: "BUNDLE" as const,
               message: policy.message,
               operation: "DEPLOY" as const,
-              platform: bundle.platform,
+              platform,
               revision: 1,
               rollout_cohort_count: policy.rolloutCohortCount ?? 1_000,
               scope_key: scope.scopeKey,

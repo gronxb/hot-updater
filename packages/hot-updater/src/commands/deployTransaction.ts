@@ -1,11 +1,11 @@
 import type {
-  Deployment,
+  BundleDeployment,
   HotUpdaterCoreApi,
   ReleaseCatalogMutationResult,
 } from "@hot-updater/plugin-core";
 
-/** A bundle and the release that publishes it, as core deploys them. */
-export type DeploymentWrite = Deployment;
+/** A new bundle and the release that publishes it, as core deploys them. */
+export type DeploymentWrite = BundleDeployment;
 export type { DeployReleasePolicy } from "@hot-updater/plugin-core";
 
 /**

@@ -80,6 +80,34 @@ describe("core operations", () => {
     expect(await core.countBundles("ios")).toBe(2);
   });
 
+  it("republishes a stored bundle as a new release, writing no bundle", async () => {
+    const { core } = setup();
+    const bundle = createBundleFixture("611");
+    const [original] = await core.deploy([deployment(bundle)]);
+
+    const [republished] = await core.deploy([
+      {
+        bundleId: bundle.id,
+        release: deployment(bundle).release,
+      },
+    ]);
+
+    expect(republished!.release).toMatchObject({
+      bundle_id: bundle.id,
+      operation: "DEPLOY",
+      platform: "ios",
+      scope_key: original!.release!.scope_key,
+    });
+    expect(republished!.release!.id > original!.release!.id).toBe(true);
+    expect(republished!.catalog.generation).toBe(2);
+    expect(await core.countBundles()).toBe(1);
+    await expect(
+      core.deploy([
+        { bundleId: "missing", release: deployment(bundle).release },
+      ]),
+    ).rejects.toBeInstanceOf(DatabaseBundleNotFoundError);
+  });
+
   it("updates a release policy under its revision, and previews it without writing", async () => {
     const { core } = setup();
     const [deployed] = await core.deploy([
