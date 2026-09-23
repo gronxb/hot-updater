@@ -1,3 +1,5 @@
+import type { MountedEndpoint } from "./assembly/assemblePlugins";
+import { HotUpdaterConfigError } from "./assembly/assemblePlugins";
 import { createBundleRouteHandlers } from "./handlerBundleRoutes";
 import { HandlerBadRequestError } from "./handlerErrors";
 import { createReleaseCatalogRouteHandlers } from "./handlerReleaseCatalogRoutes";
@@ -42,24 +44,65 @@ const errorResponse = (error: string, status: number): Response =>
     },
   );
 
-const requiresApiKey = (handlerName: string): boolean =>
-  handlerName === "appVersionReleaseCatalog" ||
-  handlerName === "fingerprintReleaseCatalog" ||
-  handlerName === "artifactV1" ||
-  handlerName === "appendBundleEvent";
+/** The client-route policy: a plugin's clientAuth, or legacy API keys. */
+export interface ClientRoutePolicy {
+  /** Request headers the decision reads; added to `Vary` on cacheable responses. */
+  readonly varyHeaders: readonly string[];
+  readonly authenticate: (request: Request) => Promise<boolean>;
+}
+
+/** `/version` and storage downloads never pass through the client policy. */
+const PUBLIC_CLIENT_ROUTES = new Set(["version", "downloadStorageObject"]);
+
+export type RouteAccess = "public" | "client" | "admin";
+
+export interface HotUpdaterRoute {
+  readonly method: string;
+  readonly path: string;
+  readonly access: RouteAccess;
+}
+
+const routesOf = Symbol.for("@hot-updater/server/routes");
+
+/** Every mounted route, for the route snapshot. */
+export const listHotUpdaterRoutes = (
+  handlers: HotUpdaterHandlers,
+): readonly HotUpdaterRoute[] =>
+  (handlers as { readonly [routesOf]?: readonly HotUpdaterRoute[] })[
+    routesOf
+  ] ?? [];
+
+const withVary = (response: Response, varyHeaders: readonly string[]) => {
+  const cacheControl = response.headers.get("cache-control") ?? "";
+  if (
+    varyHeaders.length === 0 ||
+    cacheControl === "" ||
+    /private|no-store/u.test(cacheControl)
+  ) {
+    return response;
+  }
+  const headers = new Headers(response.headers);
+  headers.set(
+    "vary",
+    [response.headers.get("vary"), ...varyHeaders].filter(Boolean).join(", "),
+  );
+  return new Response(response.body, {
+    headers,
+    status: response.status,
+    statusText: response.statusText,
+  });
+};
 
 const createRequestHandler =
   ({
     api,
-    apiKeyAuth,
+    clientPolicy,
     privateResponses = false,
     routeHandlers,
     router,
   }: {
     readonly api: HandlerAPI;
-    readonly apiKeyAuth?: {
-      readonly authenticate: (request: Request) => Promise<boolean>;
-    };
+    readonly clientPolicy?: ClientRoutePolicy;
     readonly privateResponses?: boolean;
     readonly routeHandlers: Record<string, RouteHandler>;
     readonly router: ReturnType<typeof createRouter<string>>;
@@ -75,10 +118,12 @@ const createRequestHandler =
         return errorResponse("Not found", 404);
       }
 
-      if (apiKeyAuth !== undefined && requiresApiKey(match.data)) {
+      const guarded =
+        clientPolicy !== undefined && !PUBLIC_CLIENT_ROUTES.has(match.data);
+      if (guarded) {
         let authenticated: boolean;
         try {
-          authenticated = await apiKeyAuth.authenticate(request);
+          authenticated = await clientPolicy.authenticate(request);
         } catch {
           return errorResponse("Service unavailable", 503);
         }
@@ -92,7 +137,8 @@ const createRequestHandler =
         return errorResponse("Handler not found", 500);
       }
       const response = await handler(match.params, request, api);
-      return privateResponses ? withPrivateNoStore(response) : response;
+      if (privateResponses) return withPrivateNoStore(response);
+      return guarded ? withVary(response, clientPolicy.varyHeaders) : response;
     } catch (error) {
       if (error instanceof HandlerBadRequestError) {
         return errorResponse(error.message, 400);
@@ -143,18 +189,16 @@ export function createHandlers(api: HandlerAPI): HotUpdaterHandlers {
 export function createHotUpdaterHandlers(
   api: HandlerAPI,
   insights?: InsightsProvider,
-  apiKeyAuth?: {
-    readonly authenticate: (request: Request) => Promise<boolean>;
-    readonly headerName: string;
-  },
+  clientPolicy?: ClientRoutePolicy,
   downloadStorageObject?: (
     token: string,
     signature: string,
   ) => Promise<Response | null>,
+  endpoints: readonly MountedEndpoint[] = [],
 ): HotUpdaterHandlers {
   const routeHandlers: Record<string, RouteHandler> = {
     ...createVersionRouteHandlers(),
-    ...createReleaseCatalogRouteHandlers(apiKeyAuth?.headerName),
+    ...createReleaseCatalogRouteHandlers(),
     ...createReleaseManagementRouteHandlers(),
     ...createBundleRouteHandlers(),
     ...(insights === undefined ? {} : createInsightsRouteHandlers(insights)),
@@ -167,12 +211,32 @@ export function createHotUpdaterHandlers(
         }),
   };
 
+  const routes: HotUpdaterRoute[] = [];
+  const shapes = new Map<string, string>();
+  const mount =
+    (router: ReturnType<typeof createRouter<string>>, admin: boolean) =>
+    (method: string, path: string, handler: string): void => {
+      const shape = `${admin ? "admin" : "client"} ${method} ${path.replaceAll(/:[^/]+/gu, ":")}`;
+      const taken = shapes.get(shape);
+      if (taken !== undefined) {
+        throw new HotUpdaterConfigError(
+          `${handler} (${method} ${path}) collides with ${taken} on handlers.${admin ? "admin" : "client"}.`,
+        );
+      }
+      shapes.set(shape, handler);
+      addRoute(router, method, path, handler);
+      routes.push({
+        method,
+        path,
+        access: admin
+          ? "admin"
+          : PUBLIC_CLIENT_ROUTES.has(handler)
+            ? "public"
+            : "client",
+      });
+    };
   const clientRouter = createRouter<string>();
-  const addClientRoute = (
-    method: string,
-    path: string,
-    handler: string,
-  ): void => addRoute(clientRouter, method, path, handler);
+  const addClientRoute = mount(clientRouter, false);
   addClientRoute("GET", "/version", "version");
   if (downloadStorageObject !== undefined) {
     addClientRoute(
@@ -201,8 +265,7 @@ export function createHotUpdaterHandlers(
   }
 
   const adminRouter = createRouter<string>();
-  const addAdminRoute = (method: string, path: string, handler: string): void =>
-    addRoute(adminRouter, method, path, handler);
+  const addAdminRoute = mount(adminRouter, true);
   addAdminRoute("GET", "/releases/:id", "getRelease");
   addAdminRoute("GET", "/releases", "getReleases");
   addAdminRoute("PATCH", "/releases/:id", "updateRelease");
@@ -227,11 +290,21 @@ export function createHotUpdaterHandlers(
   if (insights !== undefined) {
     registerInsightsAdminRoutes(addAdminRoute);
   }
+  for (const endpoint of endpoints) {
+    const name = `plugin ${endpoint.plugin}: ${endpoint.method} ${endpoint.path}`;
+    routeHandlers[name] = (params, request) =>
+      endpoint.handler(request, params);
+    (endpoint.access === "admin" ? addAdminRoute : addClientRoute)(
+      endpoint.method,
+      endpoint.path,
+      name,
+    );
+  }
 
-  return Object.freeze({
+  const handlers = {
     client: createRequestHandler({
       api,
-      apiKeyAuth,
+      ...(clientPolicy === undefined ? {} : { clientPolicy }),
       routeHandlers,
       router: clientRouter,
     }),
@@ -241,5 +314,7 @@ export function createHotUpdaterHandlers(
       routeHandlers,
       router: adminRouter,
     }),
-  });
+  };
+  Object.defineProperty(handlers, routesOf, { value: Object.freeze(routes) });
+  return Object.freeze(handlers);
 }

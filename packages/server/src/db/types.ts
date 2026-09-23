@@ -15,6 +15,7 @@ import type {
   ReleasePolicyPatch,
   ReleaseRow,
 } from "@hot-updater/plugin-core";
+import type { DatabaseAdapter } from "@hot-updater/plugin-core/internal";
 
 import type { PaginatedResult } from "../types";
 
@@ -84,6 +85,11 @@ export interface DatabaseAdapterCapabilities {
   provider?: ORMProvider;
   createMigrator?: () => Migrator;
   generateSchema?: SchemaGenerator;
+  /**
+   * The storage adapter that plugin tables run on through the engine.
+   * Providers set it as they move to the engine (D1–D9).
+   */
+  engineAdapter?: DatabaseAdapter;
 }
 
 export type DatabaseAdapterWithCapabilities = DatabasePluginContract &
