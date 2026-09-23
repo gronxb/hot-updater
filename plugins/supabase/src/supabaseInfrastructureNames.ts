@@ -1,20 +1,9 @@
+import { SETTINGS_TABLE } from "@hot-updater/server/database";
+
 export const SUPABASE_V1_FUNCTION_NAME = "hot-updater-v1";
 
-export const SUPABASE_V1_TABLE_NAMES = {
-  apiKeys: "hot_updater_v1_api_keys",
-  bundleEvents: "hot_updater_v1_bundle_events",
-  bundleEventHeads: "hot_updater_v1_bundle_event_heads",
-  insightsOverview: "hot_updater_v1_insights_overview",
-  bundlePatches: "hot_updater_v1_bundle_patches",
-  bundles: "hot_updater_v1_bundles",
-  channels: "hot_updater_v1_channels",
-  releaseCatalogs: "hot_updater_v1_release_catalogs",
-  releases: "hot_updater_v1_releases",
-  settings: "hot_updater_v1_private_settings",
-} as const;
-
-export const SUPABASE_V1_FUNCTION_NAMES = {
-  commit: "hot_updater_v1_commit",
-  deleteChannel: "hot_updater_v1_delete_channel",
-  recordEvent: "hot_updater_v1_record_event",
-} as const;
+/** Namespaces Hot Updater's tables beside a project's own, and beside v0's. */
+export const SUPABASE_TABLE_PREFIX = "hot_updater_v1_";
+export const SUPABASE_APPLY_FUNCTION = "hot_updater_v1_apply";
+export const SUPABASE_SETTINGS_TABLE =
+  SUPABASE_TABLE_PREFIX + SETTINGS_TABLE.name;

@@ -133,6 +133,26 @@ export const pgExecutor = (pool: PgPool): SqlExecutor => {
   };
 };
 
+/** A pooled PostgreSQL batch: one READ COMMITTED transaction per write, as Supabase's apply RPC runs. */
+export const pgBatchExecutor = (pool: PgPool): SqlExecutor => {
+  const executor = pgExecutor(pool);
+  return {
+    dialect: "postgresql",
+    execute: executor.execute,
+    transaction: () => {
+      throw new Error("A batch executor has no interactive transactions.");
+    },
+    batch: (statements) =>
+      executor.transaction(async (connection) => {
+        const results: SqlResult[] = [];
+        for (const statement of statements) {
+          results.push(await connection.execute(statement));
+        }
+        return results;
+      }),
+  };
+};
+
 export const mysqlExecutor = (pool: MysqlPool): SqlExecutor => {
   const over = (runner: MysqlPool | PoolConnection): SqlConnection => ({
     execute: async ({ sql, params }) => {

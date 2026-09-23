@@ -278,6 +278,7 @@ export const createSqlCompiler = (name: SqlDialect, tablePrefix = "") => {
     quote,
     tableOf,
     keyMatch,
+    lock: dialect.lock,
     get(table: PhysicalTable, keys: readonly DatabaseKey[]): SqlStatement {
       const statement = builder();
       const where = keys
