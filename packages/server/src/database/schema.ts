@@ -100,27 +100,30 @@ export interface TableDefinition<
   TFields extends Fields = Fields,
   TDerived extends DerivedTypes = DerivedTypes,
   TIndexes extends Indexes = Indexes,
+  TKey extends readonly (keyof TFields & string)[] = readonly (keyof TFields &
+    string)[],
 > {
   readonly kind: "table";
   readonly fields: TFields;
-  readonly key: readonly (keyof TFields & string)[];
+  readonly key: TKey;
   readonly derived: DerivedFields<TFields, TDerived>;
   readonly indexes: TIndexes;
 }
 
 export const defineTable = <
   const TFields extends Fields,
+  const TKey extends readonly (keyof TFields & string)[],
   const TDerived extends DerivedTypes = {},
   const TIndexes extends Indexes = {},
 >(
   fields: TFields,
   options: {
-    readonly key: readonly NoInfer<keyof TFields & string>[];
+    readonly key: TKey;
     readonly derived?: DerivedFields<TFields, TDerived>;
     readonly indexes?: TIndexes &
       CheckIndexes<TIndexes, (keyof TFields | keyof TDerived) & string>;
   },
-): TableDefinition<TFields, TDerived, TIndexes> => ({
+): TableDefinition<TFields, TDerived, TIndexes, TKey> => ({
   kind: "table",
   fields,
   key: options.key,
@@ -132,17 +135,20 @@ export interface AggregateDefinition<
   TFields extends Fields = Fields,
   TMetric extends string = string,
   TIndexes extends Indexes = Indexes,
+  TSketch extends string = string,
+  TKey extends readonly (keyof TFields & string)[] = readonly (keyof TFields &
+    string)[],
 > {
   readonly kind: "aggregate";
   /** Identity fields; `key` lists them in declaration order. */
   readonly fields: TFields;
-  readonly key: readonly (keyof TFields & string)[];
+  readonly key: TKey;
   /** Blind increments. */
   readonly counters: readonly TMetric[];
   /** Read, merged, and written back per shard; a row at zero is deleted. */
   readonly gauges: readonly TMetric[];
   /** HLL sketches, kept in aggregates of their own. */
-  readonly distinct: readonly TMetric[];
+  readonly distinct: readonly TSketch[];
   /** Fixed once data exists. */
   readonly shards: number;
   readonly indexes: TIndexes;
@@ -150,20 +156,22 @@ export interface AggregateDefinition<
 
 export const defineAggregate = <
   const TFields extends Fields,
+  const TKey extends readonly (keyof TFields & string)[],
   const TMetric extends string = never,
   const TIndexes extends Indexes = {},
+  const TSketch extends string = never,
 >(
   fields: TFields,
   options: {
-    readonly key: readonly NoInfer<keyof TFields & string>[];
+    readonly key: TKey;
     readonly counters?: readonly TMetric[];
     readonly gauges?: readonly TMetric[];
-    readonly distinct?: readonly TMetric[];
+    readonly distinct?: readonly TSketch[];
     readonly shards?: number;
     readonly indexes?: TIndexes &
       CheckIndexes<TIndexes, keyof TFields & string>;
   },
-): AggregateDefinition<TFields, TMetric, TIndexes> => ({
+): AggregateDefinition<TFields, TMetric, TIndexes, TSketch, TKey> => ({
   kind: "aggregate",
   fields,
   key: options.key,
