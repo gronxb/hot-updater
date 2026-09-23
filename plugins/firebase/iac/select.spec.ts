@@ -1,4 +1,8 @@
-import { makeEnv, writeHotUpdaterConfig } from "@hot-updater/cli-tools";
+import {
+  generateHotUpdaterPlugins,
+  makeEnv,
+  writeHotUpdaterConfig,
+} from "@hot-updater/cli-tools";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
@@ -23,6 +27,10 @@ vi.mock("@hot-updater/cli-tools", async () => {
   return {
     ...actual,
     createHotUpdaterConfigScaffold: vi.fn().mockReturnValue({}),
+    generateHotUpdaterPlugins: vi.fn().mockResolvedValue({
+      status: "created",
+      path: "hotUpdater.plugins.ts",
+    }),
     makeEnv: vi.fn().mockResolvedValue(""),
     p: {
       ...actual.p,
@@ -79,6 +87,9 @@ describe("setEnv", () => {
     const scaffold = vi.mocked(writeHotUpdaterConfig).mock.calls[0]?.[0];
     expect(scaffold?.text).toContain(
       "// Reuse working application-default credentials (ADC).",
+    );
+    expect(vi.mocked(generateHotUpdaterPlugins)).toHaveBeenCalledWith(
+      "@hot-updater/firebase",
     );
   });
 });

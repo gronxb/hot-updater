@@ -8,25 +8,24 @@ import {
 import type {
   Bundle,
   BundleRepository,
-  DatabaseClient,
+  HotUpdaterCoreApi,
   StorageObject,
   StoragePluginWith,
 } from "@hot-updater/plugin-core";
 import {
   assertStorageOperations,
   BUNDLE_STORAGE_PREFIX,
-  createDatabaseClient,
   getManifestAssetDownloadPath,
   resolveManifestAssetStorageUri,
+  rowToBundle,
 } from "@hot-updater/plugin-core";
+import { createDatabaseCoreApi } from "@hot-updater/server/db";
 
 import { printBanner } from "@/utils/printBanner";
 
 import { ui } from "../utils/cli-ui";
 
-const BUNDLE_PAGE_SIZE = 10_000;
-const STANDALONE_BUNDLE_PAGE_SIZE = 100;
-const STANDALONE_DATABASE_NAME = "standalone-repository";
+const BUNDLE_PAGE_SIZE = 100;
 const MANIFEST_READ_CONCURRENCY = 4;
 const UUID_V7_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -215,38 +214,24 @@ async function forEachWithConcurrency<T>(
   }
 }
 
-async function loadAllBundles(database: DatabaseClient, databaseName: string) {
+/** Every bundle, newest first, by key. */
+async function loadAllBundles(core: HotUpdaterCoreApi) {
   const bundles: Bundle[] = [];
-  const seenCursors = new Set<string>();
-  const pageSize =
-    databaseName === STANDALONE_DATABASE_NAME
-      ? STANDALONE_BUNDLE_PAGE_SIZE
-      : BUNDLE_PAGE_SIZE;
-  let after: string | undefined;
-
-  while (true) {
-    const { data, pagination } = await database.getBundles({
-      cursor: after ? { after } : undefined,
-      limit: pageSize,
-      orderBy: { direction: "desc", field: "id" },
+  for (let after: string | undefined; ; ) {
+    const page = await core.listBundles({
+      limit: BUNDLE_PAGE_SIZE,
+      order: "desc",
+      ...(after === undefined ? {} : { after }),
     });
-    bundles.push(...data);
-
-    const nextCursor = pagination.nextCursor ?? undefined;
-    if (pagination.hasNextPage && !nextCursor) {
-      throw new Error(
-        "Database cannot provide safe cursor pagination for storage prune.",
-      );
+    bundles.push(
+      ...page.map(({ bundle, patches }) => rowToBundle(bundle, patches)),
+    );
+    const next = page.at(-1)?.bundle.id;
+    if (page.length < BUNDLE_PAGE_SIZE || next === undefined) return bundles;
+    if (next === after) {
+      throw new Error(`Database returned a repeated cursor: ${next}`);
     }
-    if (!nextCursor) {
-      return bundles;
-    }
-    if (seenCursors.has(nextCursor)) {
-      throw new Error(`Database returned a repeated cursor: ${nextCursor}`);
-    }
-
-    seenCursors.add(nextCursor);
-    after = nextCursor;
+    after = next;
   }
 }
 
@@ -452,7 +437,6 @@ export async function handleStoragePrune(options: StoragePruneOptions = {}) {
 
   const config = await loadConfig(null);
   const databasePlugin = config.database;
-  const database = createDatabaseClient(databasePlugin);
   const loadedStoragePlugin = config.storage;
   assertStorageOperations(loadedStoragePlugin, ["get"]);
   const storagePlugin = loadedStoragePlugin;
@@ -479,7 +463,8 @@ export async function handleStoragePrune(options: StoragePruneOptions = {}) {
       );
     }
 
-    const bundles = await loadAllBundles(database, databasePlugin.name);
+    const core = createDatabaseCoreApi(databasePlugin);
+    const bundles = await loadAllBundles(core);
     const liveBundleIds = new Set(
       bundles.map((bundle) => bundle.id.toLowerCase()),
     );
@@ -502,10 +487,7 @@ export async function handleStoragePrune(options: StoragePruneOptions = {}) {
       return modifiedAt !== undefined && modifiedAt <= cutoff;
     });
     if (options.yes && candidates.length > 0) {
-      const refreshedBundles = await loadAllBundles(
-        database,
-        databasePlugin.name,
-      );
+      const refreshedBundles = await loadAllBundles(core);
       const refreshedBundleIds = new Set(
         refreshedBundles.map((bundle) => bundle.id.toLowerCase()),
       );

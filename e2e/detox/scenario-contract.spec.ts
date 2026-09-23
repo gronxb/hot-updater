@@ -671,12 +671,12 @@ describe("Detox scenario contract", () => {
         },
       ],
     };
-    harness.setBundles([
+    await harness.setBundles([
       base,
       { ...base, id: "android-file", platform: "android" },
     ]);
     const { release } = await commitDeployment({
-      database: harness.plugin,
+      core: harness.core,
       bundle: file,
       release: {
         channel: "production",

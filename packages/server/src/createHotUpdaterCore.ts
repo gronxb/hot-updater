@@ -14,6 +14,7 @@ import {
   assemblePlugins,
   HotUpdaterConfigError,
 } from "./assembly/assemblePlugins";
+import type { CoreApi } from "./core/api";
 import { createDatabasePluginCore } from "./db/databasePluginCore";
 import { createSchemaReadinessChecker } from "./db/schemaReadiness";
 import {
@@ -31,11 +32,7 @@ import {
 import { createInsightsProvider } from "./insights/provider";
 import type { InsightsProvider } from "./insights/types";
 import { apiKeys as apiKeysPlugin } from "./plugins/api-keys";
-import type {
-  AnyHotUpdaterPlugin,
-  CoreReader,
-  PluginApis,
-} from "./plugins/definePlugin";
+import type { AnyHotUpdaterPlugin, PluginApis } from "./plugins/definePlugin";
 import { createStorageAccess } from "./storageAccess";
 
 export type RuntimeHotUpdaterAPI<
@@ -43,8 +40,8 @@ export type RuntimeHotUpdaterAPI<
     readonly AnyHotUpdaterPlugin[],
 > = DatabaseAPI & {
   readonly handlers: HotUpdaterHandlers;
-  /** Core's reads: bundles, Releases, Catalogs, and channels. */
-  readonly core: CoreReader;
+  /** Core's reads and typed writes: bundles, Releases, Catalogs, and channels. */
+  readonly core: CoreApi;
   /** Each plugin's API by plugin id. */
   readonly api: PluginApis<TPlugins>;
   readonly adapterName: string;
@@ -364,8 +361,25 @@ export function createHotUpdaterCore(
           }
         : undefined;
   // With plugins, the Insights routes are the insights plugin's, or answer that Insights is off.
+  // On the storage engine, release, bundle, and channel writes run through
+  // core's typed operations, and the admin API speaks protocol 2.
+  const onEngine = adapterCapabilities.engineAdapter !== undefined;
+  const databaseApi: DatabaseAPI = onEngine
+    ? {
+        ...core.api,
+        updateReleasePolicy: (input) => plugins.core.updateReleasePolicy(input),
+        preflightReleasePolicy: (input) =>
+          plugins.core.preflightReleasePolicy(input),
+        deleteRelease: (input) => plugins.core.deleteRelease(input),
+        rebuildReleaseCatalog: (scopeKey) =>
+          plugins.core.rebuildReleaseCatalog(scopeKey),
+        updateBundleById: (id, update) => plugins.core.updateBundle(id, update),
+        deleteBundleById: (id) => plugins.core.deleteBundles([id]),
+        deleteChannel: ({ id }) => plugins.core.deleteChannel(id),
+      }
+    : core.api;
   const handlers = createHotUpdaterHandlers(
-    core.api,
+    onEngine ? { ...databaseApi, core: plugins.core } : databaseApi,
     legacy ? insights : "disabled",
     clientPolicy,
     downloadStorageObject,
@@ -381,7 +395,7 @@ export function createHotUpdaterCore(
       core: plugins.core,
       api: plugins.api,
     },
-    core.api,
+    databaseApi,
   );
   Object.defineProperty(api, hotUpdaterCoreMetadata, {
     enumerable: false,

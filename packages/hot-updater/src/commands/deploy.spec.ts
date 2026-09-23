@@ -104,7 +104,8 @@ vi.mock("@hot-updater/cli-tools", async (importOriginal) => {
   };
 });
 
-vi.mock("@hot-updater/server/db", () => ({
+vi.mock("@hot-updater/server/db", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@hot-updater/server/db")>()),
   createBundleDiff: mockServer.createBundleDiff,
 }));
 
@@ -226,11 +227,12 @@ vi.mock("./console", () => ({
 
 import fs from "fs";
 
-import type { Bundle, DatabasePlugin } from "@hot-updater/plugin-core";
-import {
-  createStorageUri,
-  DatabaseAtomicCommitUnsupportedError,
+import type {
+  Bundle,
+  DatabasePlugin,
+  HotUpdaterCoreApi,
 } from "@hot-updater/plugin-core";
+import { createStorageUri } from "@hot-updater/plugin-core";
 import isPortReachable from "is-port-reachable";
 import open from "open";
 
@@ -238,6 +240,11 @@ import {
   createBundleManifest,
   writeBundleManifestFile,
 } from "@/utils/bundleManifest";
+import {
+  isFingerprintEquals,
+  nativeFingerprint,
+  readLocalFingerprint,
+} from "@/utils/fingerprint";
 import { getBundleZipTargets } from "@/utils/getBundleZipTargets";
 import { getFileHashFromFile } from "@/utils/getFileHash";
 import { getLatestGitCommit } from "@/utils/git";
@@ -522,7 +529,7 @@ describe("deploy rollout wiring", () => {
       "Deployment",
     );
     const release = (await databaseHarness.releases())[0]!;
-    const catalog = await databasePlugin.models.releaseCatalogs.findByScopeKey(
+    const catalog = await databaseHarness.core.getReleaseCatalogRow(
       release.scope_key,
     );
     const summary = mockCli.p.outro.mock.calls[0]?.[0];
@@ -564,7 +571,7 @@ describe("deploy rollout wiring", () => {
 
       const release = (await databaseHarness.releases())[0]!;
       expect(open).toHaveBeenCalledOnce();
-      expect(databaseHarness.commit.mock.invocationCallOrder[0]).toBeLessThan(
+      expect(databaseHarness.deploy.mock.invocationCallOrder[0]).toBeLessThan(
         vi.mocked(open).mock.invocationCallOrder[0]!,
       );
       const url = new URL(vi.mocked(open).mock.calls[0]![0]);
@@ -587,7 +594,7 @@ describe("deploy rollout wiring", () => {
   );
 
   it("does not open the console or announce success after a failed interactive commit", async () => {
-    databaseHarness.commit.mockRejectedValueOnce(new Error("commit failed"));
+    databaseHarness.deploy.mockRejectedValueOnce(new Error("commit failed"));
     const exit = vi.spyOn(process, "exit").mockImplementationOnce(() => {
       throw new Error("process.exit");
     });
@@ -657,10 +664,9 @@ describe("deploy rollout wiring", () => {
           candidate.platform === platform && candidate.bundle_id === bundleId,
       );
       expect(release).toBeDefined();
-      const catalog =
-        await databasePlugin.models.releaseCatalogs.findByScopeKey(
-          release!.scope_key,
-        );
+      const catalog = await databaseHarness.core.getReleaseCatalogRow(
+        release!.scope_key,
+      );
       const summary = mockCli.p.outro.mock.calls[0]?.[0];
       expect(summary).toContain(release!.id);
       expect(summary).not.toContain(bundleId);
@@ -678,30 +684,29 @@ describe("deploy rollout wiring", () => {
     expect(
       (await databaseHarness.bundles()).map(({ id }) => id).sort(),
     ).toEqual(["bundle-android", "bundle-ios"]);
-    expect(await databasePlugin.models.channels.list({})).toEqual({
-      channels: [
-        expect.objectContaining({
-          name: "production",
-        }),
-      ],
-    });
-    expect(databaseHarness.commit).toHaveBeenCalledTimes(1);
+    expect(await databaseHarness.core.listChannels()).toEqual([
+      expect.objectContaining({
+        name: "production",
+      }),
+    ]);
+    expect(databaseHarness.deploy).toHaveBeenCalledTimes(1);
+    expect(databaseHarness.deploy.mock.calls[0]![0]).toHaveLength(2);
   });
 
-  it("does not partially persist an unsupported two-platform commit", async () => {
-    const transactionlessDatabasePlugin: DatabasePlugin = {
+  it("persists neither platform when core refuses the two-platform deployment", async () => {
+    const refusal = new Error("The deployment does not fit in one write.");
+    const deployCall = vi.fn(async (): Promise<never> => {
+      throw refusal;
+    });
+    const refusingDatabasePlugin: DatabasePlugin & {
+      readonly core: HotUpdaterCoreApi;
+    } = {
       ...databasePlugin,
-      commit: async (input) => {
-        if (input.changes.length > 1) {
-          throw new DatabaseAtomicCommitUnsupportedError(databasePlugin.name);
-        }
-        return databasePlugin.commit(input);
-      },
+      core: { ...databaseHarness.core, deploy: deployCall },
     };
-    const commit = vi.spyOn(transactionlessDatabasePlugin, "commit");
     mockCli.loadConfig.mockResolvedValue({
       build: async () => mockBuildPlugin,
-      database: transactionlessDatabasePlugin,
+      database: refusingDatabasePlugin,
       fingerprint: {},
       patch: {
         enabled: true,
@@ -723,14 +728,13 @@ describe("deploy rollout wiring", () => {
       targetAppVersion: "1.0.x",
     });
 
-    await expect(deployment).rejects.toBeInstanceOf(
-      DatabaseAtomicCommitUnsupportedError,
-    );
+    await expect(deployment).rejects.toBe(refusal);
     expect(mockBuildPlugin.build).toHaveBeenCalledTimes(2);
     expect(mockStoragePlugin.put).toHaveBeenCalled();
-    expect(commit).toHaveBeenCalledOnce();
+    expect(deployCall).toHaveBeenCalledOnce();
     expect(await databaseHarness.bundles()).toEqual([]);
-    expect(transactionlessDatabasePlugin.dispose).toHaveBeenCalledOnce();
+    expect(await databaseHarness.releases()).toEqual([]);
+    expect(refusingDatabasePlugin.dispose).toHaveBeenCalledOnce();
   });
 
   it("rejects distinct platform databases before building and cleans both up", async () => {
@@ -770,38 +774,63 @@ describe("deploy rollout wiring", () => {
     expect(androidDatabasePlugin.dispose).toHaveBeenCalledOnce();
   });
 
-  it("commits a transactionless single-platform deployment exactly once", async () => {
-    const transactionlessDatabasePlugin = databasePlugin;
-    const commit = vi.spyOn(transactionlessDatabasePlugin, "commit");
-    mockCli.loadConfig.mockResolvedValue({
-      build: async () => mockBuildPlugin,
-      database: transactionlessDatabasePlugin,
-      fingerprint: {},
-      patch: {
-        enabled: true,
-        maxBaseBundles: 3,
-      },
-      storage: mockStoragePlugin,
-      updateStrategy: "appVersion",
-    });
+  it("deploys a single platform in one core call, after the schema check", async () => {
+    const ready = vi.spyOn(databaseHarness.core, "ready");
+    try {
+      await deploy({
+        channel: "production",
+        forceUpdate: false,
+        interactive: false,
+        platform: "ios",
+        targetAppVersion: "1.0.x",
+      });
 
-    await deploy({
-      channel: "production",
-      forceUpdate: false,
-      interactive: false,
-      platform: "ios",
-      targetAppVersion: "1.0.x",
-    });
+      expect(databaseHarness.deploy).toHaveBeenCalledOnce();
+      expect(databaseHarness.deploy.mock.calls[0]![0]).toHaveLength(1);
+      expect(ready).toHaveBeenCalledOnce();
+      expect(ready.mock.invocationCallOrder[0]).toBeLessThan(
+        mockBuildPlugin.build.mock.invocationCallOrder[0]!,
+      );
+    } finally {
+      ready.mockRestore();
+    }
+  });
 
-    expect(commit).toHaveBeenCalledOnce();
+  it("stops before building when the database needs migrations", async () => {
+    const ready = vi
+      .spyOn(databaseHarness.core, "ready")
+      .mockRejectedValueOnce(new Error("Run `hot-updater db migrate`."));
+    try {
+      await expect(
+        deploy({
+          channel: "production",
+          forceUpdate: false,
+          interactive: false,
+          platform: "ios",
+          targetAppVersion: "1.0.x",
+        }),
+      ).rejects.toThrow("Run `hot-updater db migrate`.");
+
+      expect(mockBuildPlugin.build).not.toHaveBeenCalled();
+      expect(mockStoragePlugin.put).not.toHaveBeenCalled();
+      expect(databaseHarness.deploy).not.toHaveBeenCalled();
+      expect(databaseHarness.dispose).toHaveBeenCalledOnce();
+    } finally {
+      ready.mockRestore();
+    }
   });
 
   it("does not print deployment success when the database commit fails", async () => {
     const commitError = new Error("commit failed");
-    const failingDatabasePlugin: DatabasePlugin = {
+    const failingDatabasePlugin: DatabasePlugin & {
+      readonly core: HotUpdaterCoreApi;
+    } = {
       ...databasePlugin,
-      commit: async () => {
-        throw commitError;
+      core: {
+        ...databaseHarness.core,
+        deploy: async () => {
+          throw commitError;
+        },
       },
     };
     mockCli.loadConfig.mockResolvedValue({
@@ -833,14 +862,18 @@ describe("deploy rollout wiring", () => {
     expect(mockCli.p.outro).not.toHaveBeenCalled();
   });
 
-  it("runs deployment side effects once when a provider retries its commit internally", async () => {
-    const originalCommit = databasePlugin.commit;
+  it("runs deployment side effects once when core retries the deployment internally", async () => {
     let commitAttemptCount = 0;
-    const retryingDatabasePlugin: DatabasePlugin = {
+    const retryingDatabasePlugin: DatabasePlugin & {
+      readonly core: HotUpdaterCoreApi;
+    } = {
       ...databasePlugin,
-      commit: async (input) => {
-        commitAttemptCount += 2;
-        return originalCommit(input);
+      core: {
+        ...databaseHarness.core,
+        deploy: async (deployments) => {
+          commitAttemptCount += 2;
+          return databaseHarness.core.deploy(deployments);
+        },
       },
     };
     mockCli.loadConfig.mockResolvedValue({
@@ -955,7 +988,7 @@ describe("deploy rollout wiring", () => {
         }),
       ).rejects.toThrow("process.exit unexpectedly called");
       expect(await databaseHarness.bundles()).toEqual([]);
-      expect(databaseHarness.commit).not.toHaveBeenCalled();
+      expect(databaseHarness.deploy).not.toHaveBeenCalled();
       expect(mockServer.createBundleDiff).not.toHaveBeenCalled();
     },
   );
@@ -1498,7 +1531,7 @@ describe("deploy rollout wiring", () => {
     );
   });
 
-  it("does not create an automatic patch when a prerelease target is outside the base range", async () => {
+  it("does not create an automatic patch when a prerelease target shares no minor line with the base", async () => {
     mockCli.loadConfig.mockResolvedValue({
       build: async () => mockBuildPlugin,
       database: databasePlugin,
@@ -1513,7 +1546,7 @@ describe("deploy rollout wiring", () => {
     await mockGetBundlesWithFixtures([
       {
         bundle: { id: fixtureBundleId(122) },
-        release: { targetAppVersion: "1.x" },
+        release: { targetAppVersion: "1.0.x" },
       },
     ]);
 
@@ -1526,6 +1559,98 @@ describe("deploy rollout wiring", () => {
     });
 
     expect(mockServer.createBundleDiff).not.toHaveBeenCalled();
+  });
+
+  it("gets no automatic patch bases for a target spanning several minor lines", async () => {
+    mockCli.loadConfig.mockResolvedValue({
+      build: async () => mockBuildPlugin,
+      database: databasePlugin,
+      fingerprint: {},
+      patch: {
+        enabled: true,
+        maxBaseBundles: 1,
+      },
+      storage: mockStoragePlugin,
+      updateStrategy: "appVersion",
+    });
+    await mockGetBundlesWithFixtures([
+      {
+        bundle: { id: fixtureBundleId(122) },
+        release: { targetAppVersion: "1.0.x" },
+      },
+    ]);
+
+    await deploy({
+      channel: "production",
+      forceUpdate: false,
+      interactive: false,
+      platform: "ios",
+      targetAppVersion: "1.x",
+    });
+
+    expect(mockServer.createBundleDiff).not.toHaveBeenCalled();
+    expect(mockCli.p.outro).toHaveBeenCalledWith(
+      expect.stringContaining("Deployment successful"),
+    );
+  });
+
+  it("finds automatic patch bases by fingerprint", async () => {
+    mockCli.loadConfig.mockResolvedValue({
+      build: async () => mockBuildPlugin,
+      database: databasePlugin,
+      fingerprint: {},
+      patch: {
+        enabled: true,
+        maxBaseBundles: 3,
+      },
+      storage: mockStoragePlugin,
+      updateStrategy: "fingerprint",
+    });
+    await mockGetBundlesWithFixtures([
+      {
+        bundle: { id: fixtureBundleId(122) },
+        release: { fingerprintHash: "other-fingerprint" },
+      },
+      {
+        bundle: { id: fixtureBundleId(121) },
+        release: { fingerprintHash: "fingerprint-hash" },
+      },
+      {
+        bundle: { id: fixtureBundleId(120) },
+        release: { enabled: false, fingerprintHash: "fingerprint-hash" },
+      },
+    ]);
+    const fingerprint = { hash: "fingerprint-hash", sources: [] };
+    vi.mocked(nativeFingerprint).mockResolvedValueOnce(
+      fingerprint as unknown as Awaited<ReturnType<typeof nativeFingerprint>>,
+    );
+    vi.mocked(readLocalFingerprint).mockResolvedValueOnce({
+      android: fingerprint,
+      ios: fingerprint,
+    } as unknown as Awaited<ReturnType<typeof readLocalFingerprint>>);
+    vi.mocked(isFingerprintEquals).mockReturnValueOnce(true);
+
+    await deploy({
+      channel: "production",
+      forceUpdate: false,
+      interactive: false,
+      platform: "ios",
+    });
+
+    expect(mockServer.createBundleDiff).toHaveBeenCalledOnce();
+    expect(mockServer.createBundleDiff).toHaveBeenCalledWith(
+      {
+        baseBundleId: fixtureBundleId(121),
+        bundleId: DEPLOY_BUNDLE_ID,
+      },
+      {
+        databasePlugin,
+        storagePlugin: mockStoragePlugin,
+      },
+      {
+        makePrimary: true,
+      },
+    );
   });
 
   it("scans past incompatible appVersion patch bases to find an older compatible base", async () => {

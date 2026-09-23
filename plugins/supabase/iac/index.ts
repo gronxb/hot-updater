@@ -5,6 +5,7 @@ import path from "path";
 import {
   confirmInitInputPersistence,
   copyDirToTmp,
+  generateHotUpdaterPlugins,
   getHotUpdaterInitInputEnv,
   getInitProviderEnvVars,
   getInitProviderTextPromptValues,
@@ -1191,6 +1192,7 @@ const runInitWithoutCliMetadata = async ({
       `Kept existing 'hot-updater.config.ts' unchanged: ${configWriteResult.reason}`,
     );
   }
+  await generateHotUpdaterPlugins("@hot-updater/supabase");
 
   p.note(
     getSupabaseReactNativeSource({

@@ -3,6 +3,15 @@ export * from "./bundleStorageLayout";
 export * from "./assetStorageLayout";
 export * from "./contentAddressedAssets";
 export * from "./contentType";
+export type {
+  BundleDetail,
+  Deployment,
+  DeployReleasePolicy,
+  HotUpdaterCoreApi,
+  KeysetInput,
+  ReleaseFilter,
+  ReleaseTarget,
+} from "./coreApi";
 export {
   createDatabasePlugin,
   DatabaseAtomicCommitUnsupportedError,

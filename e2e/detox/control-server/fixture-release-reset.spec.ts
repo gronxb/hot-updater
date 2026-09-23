@@ -28,11 +28,11 @@ describe("Detox fixture Release reset", () => {
     const namespace = "e2e-current-job-ios-s1";
     const base = artifact(1);
     const orphan = artifact(6);
-    harness.setBundles([orphan]);
+    await harness.setBundles([orphan]);
     const deploy = async (bundle: Bundle, channel: string, enabled = true) =>
       (
         await commitDeployment({
-          database,
+          core: harness.core,
           bundle,
           release: {
             channel,

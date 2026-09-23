@@ -1,4 +1,5 @@
 import type {
+  BundlePatchRow,
   BundleRow,
   BundleRowUpdate,
   ChannelDeleteResult,
@@ -70,6 +71,50 @@ export const deleteBundlePatches = async (
     if (page.next === undefined) break;
     cursor = page.next;
   }
+};
+
+/**
+ * Replaces a bundle's patches with `rows`: kept patches are updated where
+ * they changed, others deleted or created, so no key is written twice.
+ */
+export const replaceBundlePatches = async (
+  tx: CoreTransaction,
+  bundle: StoredBundle,
+  rows: readonly BundlePatchRow[],
+): Promise<void> => {
+  const wanted = new Map(rows.map((row) => [row.id, row]));
+  const count = bundle._refs_bundle_patches_bundle_id ?? 0;
+  let cursor: string | undefined;
+  for (let seen = 0; seen < count; ) {
+    const page = await tx.findMany("bundle_patches", {
+      index: "byBundle",
+      where: { bundle_id: bundle.id },
+      limit: Math.min(count - seen, PAGE),
+      ...(cursor === undefined ? {} : { cursor }),
+    });
+    for (const stored of page.rows) {
+      const next = wanted.get(stored.id);
+      wanted.delete(stored.id);
+      if (next === undefined) {
+        await tx.delete("bundle_patches", stored);
+        continue;
+      }
+      const set = Object.fromEntries(
+        Object.entries(next).filter(
+          ([field, value]) =>
+            field !== "id" &&
+            (stored as Record<string, unknown>)[field] !== value,
+        ),
+      );
+      if (Object.keys(set).length > 0) {
+        tx.update("bundle_patches", stored, set);
+      }
+    }
+    seen += page.rows.length;
+    if (page.next === undefined) break;
+    cursor = page.next;
+  }
+  for (const row of wanted.values()) tx.create("bundle_patches", row);
 };
 
 /** Moves a release's `base_candidates` gauges from its old keys to its new ones. */

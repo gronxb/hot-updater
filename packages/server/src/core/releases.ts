@@ -165,7 +165,7 @@ const writeCatalog = async (
 };
 
 /** The scope's catalog row, and its compiled catalog and generation if it has one. */
-const readCatalog = async (tx: CoreTransaction, scopeKey: string) => {
+export const readCatalog = async (tx: CoreTransaction, scopeKey: string) => {
   const row = await tx.findOne("release_catalogs", { scope_key: scopeKey });
   const generation = compiledGeneration(row);
   return {
@@ -188,7 +188,8 @@ const assertHistory = (
   }
 };
 
-const changeRelease = async (
+/** One release change and its scope's next catalog, inside `tx`. */
+export const changeRelease = async (
   tx: CoreTransaction,
   { scope, change, bundle, updatedAtMs }: ReleaseChangeInput,
 ): Promise<ReleaseChangeResult> => {
@@ -290,6 +291,51 @@ export const changeReleases = (
   });
 };
 
+/** Recompiles a scope's catalog from its enabled releases inside `tx`; an unchanged catalog is not rewritten. */
+export const rebuildScope = async (
+  tx: CoreTransaction,
+  scope: ReleaseCatalogScope,
+  updatedAtMs: number,
+): Promise<{
+  readonly catalog: ReleaseCatalogRow;
+  readonly current: ReleaseCatalogRow | null;
+  readonly changed: boolean;
+  readonly diagnostics: ReleaseCatalogCompilation["diagnostics"];
+}> => {
+  checkScope(scope);
+  const stored = await readCatalog(tx, scope.scopeKey);
+  assertHistory(stored, (await latestReleaseId(tx, scope.scopeKey)) !== null);
+  const enabled = await enabledReleases(tx, scope.scopeKey);
+  const compilation = await compileReleaseCatalog({
+    strategy: scope.strategy,
+    releases: enabled.map(releaseRowToRelease),
+  });
+  const current = stored.catalog;
+  if (
+    current !== null &&
+    current.strategy === scope.strategy &&
+    current.channel_id === scope.channelId &&
+    current.channel_key === encodeChannelKey(scope.channelName) &&
+    current.platform === scope.platform &&
+    current.fingerprint_hash === scope.fingerprintHash &&
+    current.catalog_hash === compilation.catalogHash
+  ) {
+    return {
+      catalog: current,
+      current,
+      changed: false,
+      diagnostics: compilation.diagnostics,
+    };
+  }
+  const written = await writeCatalog(tx, scope, stored, enabled, updatedAtMs);
+  return {
+    catalog: written.catalog,
+    current,
+    changed: true,
+    diagnostics: written.compilation.diagnostics,
+  };
+};
+
 /** Recompiles a scope's catalog from its enabled releases; an unchanged catalog is not rewritten. */
 export const rebuildCatalog = (
   db: CoreDatabase,
@@ -301,34 +347,10 @@ export const rebuildCatalog = (
   readonly diagnostics: ReleaseCatalogCompilation["diagnostics"];
 }> =>
   db.transaction(async (tx) => {
-    checkScope(scope);
-    const stored = await readCatalog(tx, scope.scopeKey);
-    assertHistory(stored, (await latestReleaseId(tx, scope.scopeKey)) !== null);
-    const enabled = await enabledReleases(tx, scope.scopeKey);
-    const compilation = await compileReleaseCatalog({
-      strategy: scope.strategy,
-      releases: enabled.map(releaseRowToRelease),
-    });
-    const current = stored.catalog;
-    if (
-      current !== null &&
-      current.strategy === scope.strategy &&
-      current.channel_id === scope.channelId &&
-      current.channel_key === encodeChannelKey(scope.channelName) &&
-      current.platform === scope.platform &&
-      current.fingerprint_hash === scope.fingerprintHash &&
-      current.catalog_hash === compilation.catalogHash
-    ) {
-      return {
-        catalog: current,
-        changed: false,
-        diagnostics: compilation.diagnostics,
-      };
-    }
-    const written = await writeCatalog(tx, scope, stored, enabled, updatedAtMs);
-    return {
-      catalog: written.catalog,
-      changed: true,
-      diagnostics: written.compilation.diagnostics,
-    };
+    const { current: _current, ...rebuilt } = await rebuildScope(
+      tx,
+      scope,
+      updatedAtMs,
+    );
+    return rebuilt;
   });
