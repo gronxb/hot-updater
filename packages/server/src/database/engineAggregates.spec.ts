@@ -205,6 +205,80 @@ describe("engine aggregates", () => {
     ).rejects.toThrow("gauges of a sharded aggregate need shardBy");
   });
 
+  it("reruns when another writer moved a gauge after this transaction read its head", async () => {
+    const memory = createMemoryAdapter();
+    await memory.migrations?.apply(schema.tables);
+    const gauge = table("distribution");
+    let hold: Promise<void> | undefined;
+    const adapter: DatabaseAdapter = {
+      ...memory,
+      async get(physical, keys) {
+        if (physical.name === gauge.name && hold !== undefined) {
+          const wait = hold;
+          hold = undefined;
+          await wait;
+        }
+        return memory.get(physical, keys);
+      },
+    };
+    let reruns = 0;
+    const db = createDatabaseEngine({
+      adapter,
+      schema,
+      retry: {
+        baseDelayMs: 0,
+        maxDelayMs: 1,
+        onRetry: (kind) => {
+          if (kind === "rerun") reruns += 1;
+        },
+      },
+    }).database(module);
+    const move = (release: string) =>
+      db.transaction(async (tx) => {
+        const head = await tx.findOne("installs", { id: "i1" });
+        if (head === null) {
+          tx.create("installs", { id: "i1", release });
+        } else {
+          tx.update("installs", head, { release });
+          tx.aggregate(
+            "distribution",
+            { release: head.release, bucket: 1 },
+            { installations: -1 },
+            { shardBy: "i1" },
+          );
+        }
+        tx.aggregate(
+          "distribution",
+          { release, bucket: 1 },
+          { installations: 1 },
+          { shardBy: "i1" },
+        );
+      });
+    await move("A");
+    let open!: () => void;
+    hold = new Promise((resolve) => {
+      open = resolve;
+    });
+    // Reads head A, then waits before reading the gauges it moves.
+    const late = move("C");
+    // Moves A to B meanwhile, so A's gauge is already at zero.
+    await move("B");
+    open();
+    await late;
+    const installations = async (release: string) =>
+      (
+        await db.findAggregates("distribution", {
+          index: "byRelease",
+          where: { release },
+          limit: 64,
+        })
+      ).rows.map((row) => row.installations);
+    expect(await installations("A")).toEqual([]);
+    expect(await installations("B")).toEqual([]);
+    expect(await installations("C")).toEqual([1]);
+    expect(reruns).toBeGreaterThan(0);
+  });
+
   it("folds counters into the guarded write when the same row has a gauge change", async () => {
     const { db, writes } = await setup();
     const change = (values: { hits?: number; open?: number }) =>
