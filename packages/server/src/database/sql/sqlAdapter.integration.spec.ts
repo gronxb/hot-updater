@@ -18,7 +18,8 @@ import {
   migrateLegacyFacade,
 } from "../legacyFacade";
 import { createSqlAdapter, type SqlExecutor } from "./sqlAdapter";
-import { mysqlExecutor, pgExecutor } from "./sqlTestExecutors";
+import { WRITE_GUARD_TABLE } from "./sqlBatch";
+import { mysqlExecutor, pgBatchExecutor, pgExecutor } from "./sqlTestExecutors";
 
 assertDockerComposeAvailable(
   "SQL core integration tests need Docker Compose and a running Docker daemon.",
@@ -88,6 +89,22 @@ const suite = (name: string, executor: () => SqlExecutor) =>
 
 suite("sql (pooled PostgreSQL)", () => pgExecutor(postgres));
 suite("sql (pooled MySQL)", () => mysqlExecutor(mariadb));
+
+/** Batch writes under READ COMMITTED: guards lock the rows they read until the batch commits. */
+setupDatabaseAdapterConformanceSuite({
+  name: "sql batch (pooled PostgreSQL)",
+  maxOps: 50,
+  createAdapter: async ({ tables }) => {
+    tests += 1;
+    const adapter = createSqlAdapter({
+      executor: pgBatchExecutor(postgres),
+      tablePrefix: `b${tests}_`,
+      maxOps: 50,
+    });
+    await adapter.migrations?.apply([...tables, WRITE_GUARD_TABLE]);
+    return { adapter };
+  },
+});
 
 /** The whole schema the façade spans, migrated and fenced on each server. */
 describe.each([
