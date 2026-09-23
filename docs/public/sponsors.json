@@ -57,18 +57,18 @@
       "weight": 0.095
     },
     {
+      "login": "soonoo",
+      "avatarUrl": "https://avatars.githubusercontent.com/u/5436405?u=5d0b4aa955c87e30e6bda7f0cccae5402da99528&v=4",
+      "name": "soonoo",
+      "url": "https://github.com/soonoo",
+      "weight": 0.095
+    },
+    {
       "login": "wes4m",
       "avatarUrl": "https://avatars.githubusercontent.com/u/5308867?v=4",
       "name": "Wesam Alzahir",
       "url": "https://github.com/wes4m",
       "weight": 0.095
-    },
-    {
-      "login": "soonoo",
-      "avatarUrl": "https://avatars.githubusercontent.com/u/5436405?u=5d0b4aa955c87e30e6bda7f0cccae5402da99528&v=4",
-      "name": "soonoo",
-      "url": "https://github.com/soonoo",
-      "weight": 0.071
     },
     {
       "login": "diepquynh",
@@ -141,5 +141,5 @@
       "weight": 0.005
     }
   ],
-  "updatedAt": "2026-09-22T03:31:07Z"
+  "updatedAt": "2026-09-23T03:31:17Z"
 }
