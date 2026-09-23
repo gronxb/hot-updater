@@ -122,11 +122,27 @@ for (const provider of providers) {
         ...info,
         named: info.named?.filter((name) => name !== config.storage.callee),
       }));
+    // Firestore has no migration tooling, so its key script writes the schema settings first.
+    const migrate =
+      provider === "firebase"
+        ? `\n/** Writes the schema settings the database checks before its first read. */\nexport const migrate = () =>\n  ${config.database.initializer.replace(/^firebaseDatabase\(/, "migrateFirebaseDatabase(")};\n`
+        : "";
+    const keyImports =
+      provider === "firebase"
+        ? imports.map((info) =>
+            info.pkg === "@hot-updater/firebase"
+              ? {
+                  ...info,
+                  named: [...(info.named ?? []), "migrateFirebaseDatabase"],
+                }
+              : info,
+          )
+        : imports;
     await save(
       path.join(output, "app", `api-key.config.${build}.ts`),
-      `${renderImportStatements(imports)}\n\nif (existsSync(".env.hotupdater")) {
+      `${renderImportStatements(keyImports)}\n\nif (existsSync(".env.hotupdater")) {
   process.loadEnvFile(".env.hotupdater");
-}\n\n${config.helperStatements.map(({ code }) => code).join("\n\n")}\n\nexport const database = ${config.database.initializer};\n`,
+}\n\n${config.helperStatements.map(({ code }) => code).join("\n\n")}\n\nexport const database = ${config.database.initializer};\n${migrate}`,
     );
   }
   await cp(

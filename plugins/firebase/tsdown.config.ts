@@ -24,6 +24,7 @@ export default defineConfig([
         "@hot-updater/plugin-core",
         "@hot-updater/plugin-core/internal",
         "@hot-updater/server",
+        "@hot-updater/server/database",
       ],
     },
     failOnWarn: true,

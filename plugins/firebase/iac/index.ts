@@ -19,7 +19,7 @@ import {
   transformTemplate,
 } from "@hot-updater/cli-tools";
 import { provisionApiKey } from "@hot-updater/server";
-import { isEqual, merge, sortBy, uniqWith } from "es-toolkit";
+import { isEqual, sortBy, uniqWith } from "es-toolkit";
 import { ExecaError, execa } from "execa";
 import {
   applicationDefault,
@@ -28,7 +28,10 @@ import {
   getApps,
 } from "firebase-admin/app";
 
-import { firebaseDatabase } from "../src/firebaseDatabase";
+import {
+  firebaseDatabase,
+  migrateFirebaseDatabase,
+} from "../src/firebaseDatabase";
 import { FIREBASE_V1_FUNCTION_NAME } from "../src/firebaseInfrastructureNames";
 import { inputFirebaseApplicationCredentials } from "./firebaseApplicationCredentials";
 import {
@@ -259,7 +262,11 @@ function normalizeIndex(index: FirebaseIndex) {
   };
 }
 
-const mergeIndexes = (
+/**
+ * The project's indexes plus ours. An override replaces the project's
+ * override for the same field; every other override is kept.
+ */
+export const mergeIndexes = (
   originalIndexes: {
     indexes: FirebaseIndex[];
     fieldOverrides: FieldOverride[];
@@ -270,12 +277,20 @@ const mergeIndexes = (
   const uniqueIndexes = uniqWith(mergedIndexes, (a, b) =>
     isEqual(normalizeIndex(a), normalizeIndex(b)),
   );
+  const replaced = (original: FieldOverride) =>
+    newIndexes.fieldOverrides.some(
+      ({ collectionGroup, fieldPath }) =>
+        collectionGroup === original.collectionGroup &&
+        fieldPath === original.fieldPath,
+    );
   return {
     indexes: uniqueIndexes,
-    fieldOverrides: merge(
-      originalIndexes.fieldOverrides,
-      newIndexes.fieldOverrides,
-    ),
+    fieldOverrides: [
+      ...originalIndexes.fieldOverrides.filter(
+        (original) => !replaced(original),
+      ),
+      ...newIndexes.fieldOverrides,
+    ],
   };
 };
 
@@ -590,12 +605,15 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
       )
     : applicationDefault();
   const existingApps = new Set(getApps());
-  const databasePlugin = firebaseDatabase({
+  const databaseConfig = {
     credential,
     projectId: initializeVariable.projectId,
-  });
+  };
+  const databasePlugin = firebaseDatabase(databaseConfig);
   let apiKey: string;
   try {
+    // The plugin reads nothing until the schema settings exist.
+    await migrateFirebaseDatabase(databaseConfig);
     apiKey = (
       await provisionApiKey({
         apiKeys: databasePlugin.models.apiKeys,
