@@ -26,22 +26,17 @@ export interface ReadMeasurement<T> {
 }
 
 /** Storage semantics over one adapter, addressed by physical table name. */
-export const createEngine = (options: DatabaseEngineOptions) => {
-  const verified = options.verify ? verifyAdapter(options.adapter) : undefined;
-  const adapter = verified ?? options.adapter;
-  const reads = createEngineReads({
-    adapter,
-    schema: options.schema,
-    ...(options.maxPageSize === undefined
-      ? {}
-      : { maxPageSize: options.maxPageSize }),
-  });
-  const { transaction } = createTransactions({
-    adapter,
-    schema: options.schema,
-    reads,
-    ...(options.retry === undefined ? {} : { retry: options.retry }),
-  });
+export const createEngine = ({
+  adapter: given,
+  schema,
+  maxPageSize,
+  verify,
+  retry,
+}: DatabaseEngineOptions) => {
+  const verified = verify ? verifyAdapter(given) : undefined;
+  const adapter = verified ?? given;
+  const reads = createEngineReads({ adapter, schema, maxPageSize });
+  const { transaction } = createTransactions({ adapter, schema, reads, retry });
   return {
     reads,
     transaction,

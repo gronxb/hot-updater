@@ -81,20 +81,9 @@ const misuse = (table: string, message: string) =>
 const once = (table: string) =>
   misuse(table, "a transaction writes one key once.");
 
-const hooks = (
-  globalThis as { process?: { getBuiltinModule?: (id: string) => unknown } }
-).process?.getBuiltinModule?.("node:async_hooks") as
-  | {
-      AsyncLocalStorage?: new () => {
-        run<T>(store: object, fn: () => T): T;
-        getStore(): object | undefined;
-      };
-    }
-  | undefined;
+const hooks = globalThis.process?.getBuiltinModule?.("node:async_hooks");
 /** Where the runtime tracks async context, `db.*` inside a transaction throws. */
-const transactionScope = hooks?.AsyncLocalStorage
-  ? new hooks.AsyncLocalStorage()
-  : undefined;
+const transactionScope = hooks && new hooks.AsyncLocalStorage<object>();
 
 export const assertOutsideTransaction = (): void => {
   if (transactionScope?.getStore() !== undefined) {
@@ -113,7 +102,7 @@ export const createTransactions = ({
   readonly adapter: DatabaseAdapter;
   readonly schema: ResolvedSchema;
   readonly reads: EngineReads;
-  readonly retry?: RetryOptions;
+  readonly retry?: RetryOptions | undefined;
 }) => {
   const { attempts = 8, baseDelayMs = 5, maxDelayMs = 250, onRetry } = retry;
   const modelOf = (name: string, kind: "table" | "aggregate" = "table") => {
@@ -291,12 +280,8 @@ export const createTransactions = ({
       if (pending && pending.type !== "increment") throw once(table.name);
       writes.set(id, { model, key, type: "delete", row: {}, read: known });
       touchParents(model, known, null);
-      for (const {
-        counter,
-        field,
-        onDelete,
-        table: name,
-      } of model.referencedBy) {
+      for (const reference of model.referencedBy) {
+        const { counter, field, onDelete, table: name } = reference;
         if (counter === undefined) continue;
         const stored = Number(known[counter] ?? 0);
         const added = Number(pending?.row[counter] ?? 0);
@@ -324,10 +309,8 @@ export const createTransactions = ({
             ...(cursor === undefined ? {} : { cursor }),
           });
           for (const row of await complete(child, page.rows)) {
-            await remove(
-              child,
-              remember(child, rowKey(child.table, row), row)!,
-            );
+            remember(child, rowKey(child.table, row), row);
+            await remove(child, row);
           }
           seen += page.rows.length;
           cursor = page.next;
@@ -362,13 +345,14 @@ export const createTransactions = ({
         const { eq } = model.table.indexes.find(
           ({ name: index }) => index === input.index,
         )!;
-        const key = parent.table.key.map(
-          (_, position) => input.where?.[eq[position]!] as DatabaseKeyValue,
+        const lookup: Lookup = Object.fromEntries(
+          parent.table.key.map((field, at) => [field, input.where?.[eq[at]!]!]),
         );
-        const lookup = Object.fromEntries(
-          parent.table.key.map((field, position) => [field, key[position]!]),
+        remember(
+          parent,
+          Object.values(lookup),
+          await reads.findOne(root, lookup),
         );
-        remember(parent, key, await reads.findOne(root, lookup));
         const found = await reads.findMany(name, input);
         const rows = await complete(model, found.rows);
         for (const row of rows) {
@@ -379,19 +363,15 @@ export const createTransactions = ({
       create: step((name, values) => {
         const model = modelOf(name);
         checkFields(model, values, true);
+        // Optional fields start null; reference counters and `_v` start 0.
+        const defaults = model.table.columns.flatMap((column) =>
+          column.nullable || column.default !== undefined
+            ? [[column.name, column.default ?? null]]
+            : [],
+        );
         const row = derive(model, {
-          ...Object.fromEntries(
-            model.table.columns.flatMap(({ name: column, nullable }) =>
-              nullable ? [[column, null]] : [],
-            ),
-          ),
-          ...Object.fromEntries(
-            model.referencedBy.flatMap(({ counter }) =>
-              counter === undefined ? [] : [[counter, 0]],
-            ),
-          ),
+          ...Object.fromEntries(defaults),
           ...values,
-          [DATABASE_VERSION_COLUMN]: 0,
         });
         const key = rowKey(model.table, row as StoredRow);
         const id = idOf(name, key);
@@ -421,13 +401,8 @@ export const createTransactions = ({
             column !== DATABASE_VERSION_COLUMN &&
             JSON.stringify(value) !== JSON.stringify(known[column]),
         );
-        writes.set(id, {
-          model,
-          key,
-          type: "patch",
-          row: Object.fromEntries(changed),
-          read: known,
-        });
+        const patch = Object.fromEntries(changed);
+        writes.set(id, { model, key, type: "patch", row: patch, read: known });
         if (pending?.type === "increment") {
           bump(model, key, pending.row as Record<string, number>);
         }
@@ -475,15 +450,9 @@ export const createTransactions = ({
           : { type, table, key, by };
       }
       const guard = { v: versionOf(previous!) };
+      const set = row as StoredRow;
       return type === "patch"
-        ? {
-            type,
-            table,
-            key,
-            set: row as StoredRow,
-            guard,
-            previous: previous!,
-          }
+        ? { type, table, key, set, guard, previous: previous! }
         : { type, table, key, guard, previous: previous! };
     };
     const checks = [...read].flatMap(([id, row]): WriteOp[] => {

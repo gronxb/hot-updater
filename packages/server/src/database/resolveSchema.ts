@@ -269,29 +269,23 @@ export const resolveSchema = (
   modules: readonly SchemaModule[],
 ): ResolvedSchema => {
   validateSchema(modules);
-  const references = modules.flatMap((module) =>
-    Object.entries(module.schema).flatMap(([model, definition]) =>
-      definition.kind !== "table"
-        ? []
-        : Object.entries(definition.fields).flatMap(
-            ([field, value]): ResolvedReference[] => {
-              const to = value.references;
-              if (to === undefined) return [];
-              const table = tableName(module, model);
-              const counter = `_refs_${table}_${field}`;
-              return [
-                {
-                  table,
-                  field,
-                  target: tableName(module, to.model),
-                  onDelete: to.onDelete,
-                  ...(to.onDelete === "none" ? {} : { counter }),
-                },
-              ];
-            },
-          ),
-    ),
-  );
+  const references: ResolvedReference[] = [];
+  for (const module of modules) {
+    for (const [model, definition] of Object.entries(module.schema)) {
+      if (definition.kind !== "table") continue;
+      const table = tableName(module, model);
+      for (const [field, { references: to }] of Object.entries(
+        definition.fields,
+      )) {
+        if (to === undefined) continue;
+        const { onDelete } = to;
+        const target = tableName(module, to.model);
+        const counter =
+          onDelete === "none" ? {} : { counter: `_refs_${table}_${field}` };
+        references.push({ table, field, target, onDelete, ...counter });
+      }
+    }
+  }
   const models = new Map<string, ResolvedModel>();
   for (const module of modules) {
     for (const [model, definition] of Object.entries(module.schema)) {
