@@ -1638,6 +1638,9 @@ importers:
       jiti:
         specifier: 2.6.1
         version: 2.6.1
+      oxc-parser:
+        specifier: 0.141.0
+        version: 0.141.0
     devDependencies:
       '@aws-sdk/client-kms':
         specifier: 3.1066.0

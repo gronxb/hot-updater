@@ -23,6 +23,8 @@ import {
 import { handleAgentInfra } from "@/commands/agent/infra";
 import { handleAppVersion } from "@/commands/appVersion";
 import { buildAndroidNative, buildIosNative } from "@/commands/buildNative";
+import { clientAccessCodemod } from "@/commands/codemod/clientAccess";
+import { runCodemod } from "@/commands/codemod/runCodemod";
 import { getConsolePort, openConsole } from "@/commands/console";
 import {
   type DeployOptions,
@@ -769,6 +771,22 @@ catalogCommand
   .option("-y, --yes", "skip confirmation prompt")
   .action(handleCatalogRebuild);
 
+const codemodCommand = program
+  .command("codemod")
+  .description("Rewrite source files for Hot Updater API changes");
+
+codemodCommand
+  .command("client-access")
+  .description("Move createHotUpdater clientAccess objects to plugins")
+  .argument(
+    "[paths...]",
+    "files, directories, or globs to rewrite (default: current directory)",
+  )
+  .option("--dry-run", "print the diff without writing files")
+  .action((paths: string[], options: { dryRun?: boolean }) =>
+    runCodemod(clientAccessCodemod, paths, options),
+  );
+
 program
   .command("build:android")
   .description("build a new Android native artifact")
@@ -843,6 +861,7 @@ program.hook("preAction", (_command, actionCommand) => {
   if (
     actionCommand.parent === agentInfraCommand ||
     actionCommand.parent === infraCommand ||
+    actionCommand.parent === codemodCommand ||
     (actionCommand.name() === "doctor" &&
       actionCommand.opts()["scope"] !== undefined)
   )
