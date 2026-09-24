@@ -172,7 +172,10 @@ internal class HotUpdaterRecoveryManager(
             // restart is requested until the kill lands. Promoting in either window
             // would make the next launch skip the crash marker, because the marker
             // is applied only to a bundle that is still pending verification.
-            if (!isMonitoring || !verifyOnAppReady || !shouldRollbackOnCrash || recoveryRequested ||
+            if (!isMonitoring ||
+                !verifyOnAppReady ||
+                !shouldRollbackOnCrash ||
+                recoveryRequested ||
                 failureReported
             ) {
                 return false
