@@ -98,3 +98,12 @@ identifiers for readable stack traces.
 Each guide covers service credentials, build configuration and symbolication
 verification. These integrations can be used with any hosting, storage and
 database choice supported by the selected build workflow.
+
+## Server plugins
+
+Server plugins extend the update server rather than the CLI. They run inside
+`createHotUpdater`, own tables and aggregates on the server's database, and add
+APIs, routes and client authentication. The built-in `insights()` plugin
+records Insights reports, and `apiKeys()` protects client routes; managed
+providers run both. To write one for a custom server, see
+[Server Plugins](/docs/custom/server-plugins).

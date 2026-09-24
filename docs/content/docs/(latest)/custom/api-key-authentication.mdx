@@ -1,71 +1,79 @@
 ---
 title: "API keys"
-description: Protect OTA reads and Insights writes with the built-in API key domain.
+description: Protect client routes with the apiKeys() server plugin and manage keys with hot-updater api-key.
 icon: KeyRound
 ---
 
-API key authentication is built into `createHotUpdater` and uses the official
-`database.models.apiKeys` domain. No authentication package or server plugin is
-required.
+## Protect client routes
 
-## Terminology
+The `apiKeys()` [server plugin](/docs/custom/server-plugins) protects a custom
+server's client routes. It stores each key's SHA-256 digest and non-secret
+metadata in the `api_keys` table and provides the server's client-route
+policy:
 
-| Surface                                      | Canonical name        |
-| -------------------------------------------- | --------------------- |
-| User-facing credential and database domain   | API key / `apiKeys`   |
-| CLI namespace and `clientAccess` policy type | `api-key`             |
-| Default HTTP request header                  | `x-api-key`           |
-| Managed init environment variable            | `HOT_UPDATER_API_KEY` |
-
-`clientAccess` remains the server setting because it selects how client routes
-are accessed. The credential selected by its `api-key` policy is always called
-an API key.
-
-```ts title="src/hotUpdater.ts"
+```ts title="src/hotUpdater.ts (excerpt)"
 import { createHotUpdater } from "@hot-updater/server";
+import { apiKeys } from "@hot-updater/server/plugins/api-keys";
 
 export const hotUpdater = createHotUpdater({
   database,
-  clientAccess: { type: "api-key" }, // [!code ++]
+  plugins: [apiKeys()], // [!code ++]
 });
 ```
 
-The `api-key` policy requires `x-api-key` for Release Catalog reads, artifact
-resolution and `POST /events`. `/version` stays public, and signed storage
-downloads use their download URL signature. API keys do not grant access to
-Insights queries, admin routes, or API key management.
+With `apiKeys()`, Release Catalog reads, artifact resolution, Insights
+ingestion (`POST /events`), and other plugins' client routes require a valid
+key in `x-api-key`. `/version` stays public, and signed storage downloads use
+their download URL signature. API keys do not grant access to Insights
+queries, admin routes, or API key management.
+
+`apiKeys()` is the server's client authentication, so the configuration sets
+no `clientAccess`. Setting both fails to type-check and throws
+`HotUpdaterConfigError` at startup.
+
+## Terminology
+
+| Surface                           | Canonical name                         |
+| --------------------------------- | -------------------------------------- |
+| User-facing credential            | API key                                |
+| Server plugin and its API         | `apiKeys()`, `hotUpdater.api.apiKeys`  |
+| CLI namespace                     | `hot-updater api-key`                  |
+| Default HTTP request header       | `x-api-key`                            |
+| Managed init environment variable | `HOT_UPDATER_API_KEY`                  |
+
+## Use another header
 
 To use a different header, set it explicitly and send the same header from the
 client:
 
-```ts title="src/hotUpdater.ts"
-clientAccess: {
-  type: "api-key",
-  headerName: "x-hot-updater-key", // [!code ++]
-}
+```ts title="src/hotUpdater.ts (excerpt)"
+plugins: [apiKeys({ headerName: "x-hot-updater-key" })],
 ```
 
-Release Catalog responses include the selected header in `Vary`, so shared
-caches keep authenticated responses partitioned by the configured credential
-header.
+Cacheable client responses, such as Release Catalogs, add the configured
+header to `Vary`, so shared caches keep authenticated responses partitioned by
+the credential header.
 
 ## Bootstrap a self-hosted client
 
-After configuring `createHotUpdater` with the `api-key` policy, apply the
-[chosen adapter's schema](/docs/custom/overview#database-adapters).
-Kysely and MongoDB use `hot-updater db migrate`; Drizzle and Prisma use their
-own schema tools. Then create a key from the same direct server configuration:
+Apply the [chosen adapter's schema](/docs/custom/overview#database-adapters)
+first. The built-in schema includes the `api_keys` table, whichever plugins the
+server runs. Kysely and MongoDB create it with `hot-updater db migrate`;
+Drizzle and Prisma apply it with their own schema tools, then run
+`hot-updater db migrate` to write the settings rows. Then create a key through
+the `apiKeys()` plugin of the same server configuration:
 
 ```bash
 npx hot-updater api-key create src/hotUpdater.ts --name "Mobile app"
 ```
 
-The command prints the plaintext API key exactly once. Store it in your existing
-React Native build-time configuration without committing it to source, and send
-it using `x-api-key`. The server's `.env.hotupdater` file is not loaded into the
-React Native app automatically. Persistence receives only the key's SHA-256 hash
-and non-secret metadata, including its prefix, name, creation time, and revocation
-time.
+The command loads the file's `hotUpdater` export and refuses a configuration
+without `apiKeys()` in `plugins`. It prints the plaintext API key exactly once.
+Store it in your existing React Native build-time configuration without
+committing it to source, and send it using `x-api-key`. The server's
+`.env.hotupdater` file is not loaded into the React Native app automatically.
+The database receives only the key's SHA-256 digest and non-secret metadata,
+including its prefix, name, creation time, and revocation time.
 
 ```ts title="App.tsx"
 import { HotUpdater } from "@hot-updater/react-native";
@@ -110,29 +118,35 @@ npx hot-updater api-key list src/hotUpdater.ts
 npx hot-updater api-key revoke <api-key-id> src/hotUpdater.ts
 ```
 
-The Console uses the same official domain to create, list, and revoke API keys.
-`standaloneRepository` proxies Bundle, Release, Release Catalog, Channel, and
-commit operations, but it does not proxy API key management.
+`list` accepts `--json`, and `revoke` asks for confirmation unless you pass
+`-y`.
 
-`createHotUpdater` exposes the same local management API used by the CLI:
+The Console manages keys through the same plugin when its configuration lists
+`apiKeys()` in `plugins` over a direct database. A `standaloneRepository`
+configuration reaches only the server's admin API, which has no API key
+management routes.
+
+The plugin's API is also available in process:
 
 ```ts
-const { apiKey, record } = await hotUpdater.apiKeys.create({
+const { apiKey, record } = await hotUpdater.api.apiKeys.create({
   name: "Mobile app",
 });
 
-const records = await hotUpdater.apiKeys.list();
-await hotUpdater.apiKeys.revoke({ id: record.id });
+const records = await hotUpdater.api.apiKeys.list();
+await hotUpdater.api.apiKeys.revoke({ id: record.id });
 ```
 
-This is an in-process API backed by the configured direct database plugin. It
-does not add API key management routes to `handlers.client` or
-`handlers.admin`.
+`create` returns the plaintext once; `list` and `revoke` return metadata
+without digests. `register` stores a known plaintext key idempotently, and
+`provision` reuses a saved key or creates one. The plugin adds no API key
+management routes to `handlers.client` or `handlers.admin`.
 
-AWS, Cloudflare, Firebase, and Supabase init use this same API key domain. Init
-registers an existing `HOT_UPDATER_API_KEY` or creates one, then stores the
+AWS, Cloudflare, Firebase, and Supabase run `apiKeys()` in their managed
+servers and export that plugin list as `plugins`. Their init registers an
+existing `HOT_UPDATER_API_KEY` or creates one through it, then stores the
 plaintext only in the local environment file. Managed users do not run
-`hot-updater api-key create`; that command bootstraps direct self-hosted
+`hot-updater api-key create`; that command bootstraps self-hosted
 `createHotUpdater` configurations.
 
 ## Rotate an API key
@@ -153,14 +167,13 @@ Missing, malformed, unknown, and revoked API keys return `401`. A database
 failure during credential lookup returns `503` and does not fall back to public
 access.
 
-Client update and Insights ingestion routes are always available on
-`handlers.client`, while Insights queries live on `handlers.admin`.
-`clientAccess` is required and applies its policy to update checks and
-Insights ingestion. It does not authenticate the admin handler.
+`apiKeys()` protects `handlers.client`, where update checks, Insights
+ingestion, and plugin client routes live; Insights queries live on
+`handlers.admin`. It does not authenticate the admin handler.
 
 ## Unauthenticated alternative
 
-If you intentionally want client update and Insights ingestion routes to be
-public, use `clientAccess: { type: "public" }` and omit `x-api-key` from the
-React Native request headers. Admin handler authentication remains a separate,
-required framework boundary.
+If you intentionally want client routes to be public, remove `apiKeys()`, set
+`clientAccess: "public"`, and omit `x-api-key` from the React Native request
+headers. Admin handler authentication remains a separate, required framework
+boundary.

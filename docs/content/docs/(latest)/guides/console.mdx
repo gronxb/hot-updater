@@ -44,6 +44,21 @@ export default defineConfig({
 
 ```
 
+With a direct database plugin, `hot-updater console` also runs the
+[server plugins](/docs/custom/server-plugins) that `hotUpdater.plugins.ts`, next
+to `hot-updater.config.ts`, exports as `plugins`: `insights()` for the Insights
+pages and `apiKeys()` for API key management. `hot-updater init` writes this
+file for managed providers. Without it, Insights shows as off and API keys are
+not managed here. A deployed console takes the same list as
+[`plugins` in its configuration](/docs/guides/console-deployment#add-your-plugins).
+
+```ts title="hotUpdater.plugins.ts"
+import { apiKeys } from "@hot-updater/server/plugins/api-keys";
+import { insights } from "@hot-updater/server/plugins/insights";
+
+export const plugins = [insights(), apiKeys()];
+```
+
 ## Usage
 
 The Bundles list and its detail sheet show an **ID** that matches
@@ -71,9 +86,9 @@ A deployed Console has two independent boundaries: its Console auth adapter
 authenticates browser users, while the framework middleware in front of
 `handlers.admin` authenticates Console-to-server requests. The Console's own
 `/api/*` routes belong to the Console application and are not the Hot Updater
-admin API. The standalone repository does not currently proxy Insights or API
-key models, so those Console views require a direct database
-plugin.
+admin API. Through the standalone repository, the Console reads the server's
+Insights overview, events, and installations from the admin handler. App usage,
+bundle activity, and API key management need a direct database plugin.
 
 Use Bundle commands for automation and CI scripts:
 
