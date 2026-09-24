@@ -124,8 +124,8 @@ describe("prismaAdapter on Prisma's MySQL tables", () => {
       {
         name: "releases",
         col: "channel_id",
-        type: "varchar",
-        collation: "utf8mb4_0900_bin",
+        type: "varbinary",
+        collation: null,
       },
       {
         name: "releases",
