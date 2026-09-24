@@ -26,7 +26,7 @@ import { createInsightsProvider } from "../../../packages/server/dist/index.mjs"
 import { createInsightsModel } from "../../../packages/server/dist/plugins/insights/index.mjs";
 import {
   type InsightsModel,
-  type BundleRepository,
+  type ConfiguredDatabase,
   createUUIDv7After,
   type DeployReleasePolicy,
   type HotUpdaterCoreApi,
@@ -1181,19 +1181,20 @@ async function waitForFile(filePath: string, attempts = 360) {
 }
 
 /** The example's configured database: core over it, and the plugins its server runs. */
-type ConfiguredDatabase = {
+/** The example's database from its config, core on it, and the plugins its server runs. */
+type ConfiguredServer = {
   readonly core: HotUpdaterCoreApi;
-  readonly database: BundleRepository;
+  readonly database: ConfiguredDatabase;
   readonly plugins: readonly unknown[] | undefined;
 };
 
 async function withConfiguredDatabase<T>(
-  callback: (configured: ConfiguredDatabase) => Promise<T>,
+  callback: (configured: ConfiguredServer) => Promise<T>,
 ): Promise<T> {
   const { loadConfig, loadHotUpdaterPlugins } =
     (await import("../../../packages/cli-tools/dist/index.mjs")) as {
       loadConfig: (options: null) => Promise<{
-        database: BundleRepository;
+        database: ConfiguredDatabase;
       }>;
       loadHotUpdaterPlugins: () => Promise<readonly unknown[] | undefined>;
     };
@@ -1223,40 +1224,23 @@ async function withConfiguredDatabase<T>(
 
 /**
  * Insights read in process, as the console does: through the plugins the
- * server runs, or the database plugin before plugins. Null sends the
- * verification to the server's admin routes.
+ * server runs. Null sends the verification to the server's admin routes.
  */
 function readInsightsModel({
   database,
   plugins,
-}: ConfiguredDatabase): InsightsModel | null {
-  if (plugins !== undefined) {
-    try {
-      const api = createDatabasePluginApis(database, plugins);
-      return api.insights === undefined
-        ? null
-        : createInsightsModel(
-            api.insights as Parameters<typeof createInsightsModel>[0],
-          );
-    } catch {
-      // A self-hosted server's database is read over its admin API.
-      return null;
-    }
+}: ConfiguredServer): InsightsModel | null {
+  try {
+    const api = createDatabasePluginApis(database, plugins ?? []);
+    return api.insights === undefined
+      ? null
+      : createInsightsModel(
+          api.insights as Parameters<typeof createInsightsModel>[0],
+        );
+  } catch {
+    // A self-hosted server's database is read over its admin API.
+    return null;
   }
-  const models: unknown = Reflect.get(database, "models");
-  const insights: unknown =
-    typeof models === "object" && models !== null
-      ? Reflect.get(models, "insights")
-      : undefined;
-  return typeof insights === "object" &&
-    insights !== null &&
-    typeof Reflect.get(insights, "recordEvent") === "function" &&
-    typeof Reflect.get(insights, "listEvents") === "function" &&
-    typeof Reflect.get(insights, "findLatestEvents") === "function" &&
-    typeof Reflect.get(insights, "countLatestEvents") === "function" &&
-    typeof Reflect.get(insights, "countEvents") === "function"
-    ? (insights as InsightsModel)
-    : null;
 }
 
 async function verifyConfiguredConsoleInsights(args: { sinceMs: number }) {
@@ -2715,6 +2699,7 @@ function getControllerReachableAppBaseUrl() {
   return url.toString().replace(/\/+$/, "");
 }
 
+/** A page of bundles on the admin API: the provider answers once its database is migrated. */
 function getControllerReachableProviderReadinessUrl({
   limit,
 }: {
@@ -2726,30 +2711,16 @@ function getControllerReachableProviderReadinessUrl({
   }
 
   url.searchParams.set("platform", fixtureSession.platform);
-  url.searchParams.set("enabled", "true");
   url.searchParams.set("limit", String(limit));
   url.hash = "";
   return url.toString();
 }
 
 function getLocalProviderReadinessUrls() {
-  const urls: string[] = [];
-
-  for (const limit of PROVIDER_READY_BUNDLE_LIMITS) {
-    const baseUrl = getControllerReachableProviderReadinessUrl({ limit });
-    if (!baseUrl) {
-      continue;
-    }
-
-    urls.push(baseUrl);
-    for (const channel of getFixtureResetChannels()) {
-      const url = new URL(baseUrl);
-      url.searchParams.set("channel", channel);
-      urls.push(url.toString());
-    }
-  }
-
-  return urls;
+  return PROVIDER_READY_BUNDLE_LIMITS.flatMap((limit) => {
+    const url = getControllerReachableProviderReadinessUrl({ limit });
+    return url === null ? [] : [url];
+  });
 }
 
 function getAndroidControlDevicePort() {
