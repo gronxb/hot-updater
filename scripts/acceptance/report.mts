@@ -3,13 +3,13 @@
  * against S1–S5 and redraws the implementation table. A row that fails a
  * check shows that check instead of Smooth, and the script exits 1.
  *
- *   pnpm acceptance [--run | --results <vitest json>] [--commit <sha>] [--json <file>]
+ *   pnpm acceptance [--run | --results <vitest json>...] [--commit <sha>] [--json <file>]
  *
  * S3 and S4 read a vitest JSON report of the manifest's suites: `--run`
  * runs them first (the integration environment: Docker, and Java 21 for the
  * Firebase emulator, as `mise exec java@temurin-21 -- pnpm acceptance --run`),
- * and `--results` reads an earlier report. Without either they fail as not
- * run. S5 reads plans/evidence/database-redesign-e2e.json.
+ * and `--results` reads earlier reports, such as one from `pnpm test` and one
+ * from `pnpm test:integration`. Without either they fail as not run. S5 reads plans/evidence/database-redesign-e2e.json.
  */
 import { execFileSync, spawnSync } from "node:child_process";
 import { existsSync, readFileSync, statSync, writeFileSync } from "node:fs";
@@ -34,7 +34,7 @@ const relative = (file: string) => path.relative(root, file);
 const { values: args } = parseArgs({
   options: {
     run: { type: "boolean" },
-    results: { type: "string" },
+    results: { type: "string", multiple: true },
     commit: { type: "string" },
     json: { type: "string" },
   },
@@ -441,18 +441,18 @@ const runSuites = () => {
 };
 
 const testResults = (() => {
-  const results = args.run ? runSuites() : args.results;
-  if (!results) return undefined;
-  const report = JSON.parse(readFileSync(results, "utf8")) as {
-    testResults: {
-      name: string;
-      assertionResults: TestResult[];
-    }[];
-  };
-  return report.testResults.map((result) => ({
-    file: relative(result.name),
-    tests: result.assertionResults,
-  }));
+  const reports = args.run ? [runSuites()] : (args.results ?? []);
+  if (reports.length === 0) return undefined;
+  return reports.flatMap((report) =>
+    (
+      JSON.parse(readFileSync(report, "utf8")) as {
+        testResults: { name: string; assertionResults: TestResult[] }[];
+      }
+    ).testResults.map((result) => ({
+      file: relative(result.name),
+      tests: result.assertionResults,
+    })),
+  );
 })();
 
 /** The tests of one manifest suite, or why they cannot count. */
