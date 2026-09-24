@@ -59,8 +59,31 @@ describe("admin API protocol 2 routes", () => {
     expect(deploy).toHaveBeenCalledWith([deployment]);
   });
 
+  it("deploys a stored bundle's new release through core", async () => {
+    const deploy = vi.fn(async () => []);
+    const stored = {
+      bundleId: deployment.bundle.id,
+      release: deployment.release,
+    };
+
+    const response = await routes.deployReleases!(
+      {},
+      post("/releases", { deployments: [stored] }),
+      apiWith({ deploy }),
+    );
+
+    expect(response.status).toBe(201);
+    expect(deploy).toHaveBeenCalledWith([stored]);
+  });
+
   it.each([
     ["no deployments", { deployments: [] }],
+    [
+      "both a bundle and a stored bundle id",
+      {
+        deployments: [{ ...deployment, bundleId: deployment.bundle.id }],
+      },
+    ],
     [
       "a bundle without an id",
       {

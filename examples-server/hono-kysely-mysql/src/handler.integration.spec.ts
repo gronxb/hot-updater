@@ -3,6 +3,7 @@ import { fileURLToPath } from "url";
 
 import type { Bundle } from "@hot-updater/core";
 import { createHotUpdater, type HotUpdaterAPI } from "@hot-updater/server";
+import { insights } from "@hot-updater/server/plugins/insights";
 import { kyselyAdapter } from "@hot-updater/server/adapters/kysely";
 import { createMigrator } from "@hot-updater/server/db";
 import {
@@ -338,7 +339,8 @@ describe("Hot Updater Handler Integration Tests (Hono + MySQL)", () => {
 
       const migrationHotUpdater = createHotUpdater({
         database: kyselyAdapter({ db, provider: "mysql" }),
-        clientAccess: { type: "public" },
+        clientAccess: "public",
+        plugins: [insights()],
       });
       const migrator = createMigrator(migrationHotUpdater);
 
@@ -399,7 +401,8 @@ describe("Hot Updater Handler Integration Tests (Hono + MySQL)", () => {
       const migrator = createMigrator(
         createHotUpdater({
           database: adapter,
-          clientAccess: { type: "public" },
+          clientAccess: "public",
+        plugins: [insights()],
         }),
       );
       const migration = await migrator.migrateToLatest({

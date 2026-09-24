@@ -4,6 +4,7 @@ export * from "./assetStorageLayout";
 export * from "./contentAddressedAssets";
 export * from "./contentType";
 export type {
+  BundleDeployment,
   BundleDetail,
   Deployment,
   DeployReleasePolicy,
@@ -11,6 +12,7 @@ export type {
   KeysetInput,
   ReleaseFilter,
   ReleaseTarget,
+  StoredBundleDeployment,
 } from "./coreApi";
 export {
   createDatabasePlugin,

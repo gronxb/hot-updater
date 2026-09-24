@@ -20,10 +20,11 @@ import {
   transformTemplate,
   writeHotUpdaterConfig,
 } from "@hot-updater/cli-tools";
-import { provisionApiKey } from "@hot-updater/server";
+import { createDatabasePluginApis } from "@hot-updater/server/db";
 import { delay } from "es-toolkit";
 import { ExecaError, execa } from "execa";
 
+import { plugins } from "../src/plugins";
 import { supabaseDatabase } from "../src/supabaseDatabase";
 import { getConfigScaffold } from "./configTemplate";
 import {
@@ -1152,13 +1153,16 @@ const runInitWithoutCliMetadata = async ({
   });
   let apiKey: string;
   try {
-    apiKey = (
-      await provisionApiKey({
-        apiKeys: databasePlugin.models.apiKeys,
-        existingApiKey: initInputEnv.HOT_UPDATER_API_KEY,
-        name: "Supabase init",
-      })
-    ).apiKey;
+    apiKey = // The managed server's apiKeys() plugin, on the tables it reads.
+      (
+        await createDatabasePluginApis(
+          databasePlugin,
+          plugins,
+        ).apiKeys.provision({
+          existingApiKey: initInputEnv.HOT_UPDATER_API_KEY,
+          name: "Supabase init",
+        })
+      ).apiKey;
     await makeEnv({ HOT_UPDATER_API_KEY: apiKey });
   } finally {
     await databasePlugin.dispose?.();

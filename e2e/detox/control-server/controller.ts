@@ -18,17 +18,21 @@ import {
 } from "../../../packages/core/src/releaseCatalogScope.ts";
 import { getRolledOutNumericCohorts } from "../../../packages/core/src/rollout.ts";
 import type { Bundle } from "../../../packages/core/src/types.ts";
+import {
+  createDatabaseCoreApi,
+  createDatabasePluginApis,
+} from "../../../packages/server/dist/db/index.mjs";
 import { createInsightsProvider } from "../../../packages/server/dist/index.mjs";
+import { createInsightsModel } from "../../../packages/server/dist/plugins/insights/index.mjs";
 import {
   type InsightsModel,
   type BundleRepository,
-  createDatabaseClient,
   createUUIDv7After,
-  commitReleaseCatalogMutation,
-  type BundleRow,
+  type DeployReleasePolicy,
+  type HotUpdaterCoreApi,
   type ReleaseCatalogRow,
   type ReleaseRow,
-  updateReleasePolicy,
+  rowToBundle,
 } from "../../../plugins/plugin-core/dist/index.mjs";
 import {
   ConsoleInsightsQaError,
@@ -1176,23 +1180,38 @@ async function waitForFile(filePath: string, attempts = 360) {
   throw new Error(`Timed out waiting for ${filePath}`);
 }
 
+/** The example's configured database: core over it, and the plugins its server runs. */
+type ConfiguredDatabase = {
+  readonly core: HotUpdaterCoreApi;
+  readonly database: BundleRepository;
+  readonly plugins: readonly unknown[] | undefined;
+};
+
 async function withConfiguredDatabase<T>(
-  callback: (database: BundleRepository) => Promise<T>,
+  callback: (configured: ConfiguredDatabase) => Promise<T>,
 ): Promise<T> {
-  const { loadConfig } =
+  const { loadConfig, loadHotUpdaterPlugins } =
     (await import("../../../packages/cli-tools/dist/index.mjs")) as {
       loadConfig: (options: null) => Promise<{
         database: BundleRepository;
       }>;
+      loadHotUpdaterPlugins: () => Promise<readonly unknown[] | undefined>;
     };
   const originalCwd = process.cwd();
 
   try {
     process.chdir(fixtureSession.exampleDir);
     return await withHotUpdaterControlEnv(async () => {
-      const config = await loadConfig(null);
+      const [config, plugins] = await Promise.all([
+        loadConfig(null),
+        loadHotUpdaterPlugins(),
+      ]);
       try {
-        return await callback(config.database);
+        return await callback({
+          core: createDatabaseCoreApi(config.database),
+          database: config.database,
+          plugins,
+        });
       } finally {
         await config.database.dispose?.();
       }
@@ -1202,7 +1221,28 @@ async function withConfiguredDatabase<T>(
   }
 }
 
-function readInsightsModel(database: BundleRepository): InsightsModel | null {
+/**
+ * Insights read in process, as the console does: through the plugins the
+ * server runs, or the database plugin before plugins. Null sends the
+ * verification to the server's admin routes.
+ */
+function readInsightsModel({
+  database,
+  plugins,
+}: ConfiguredDatabase): InsightsModel | null {
+  if (plugins !== undefined) {
+    try {
+      const api = createDatabasePluginApis(database, plugins);
+      return api.insights === undefined
+        ? null
+        : createInsightsModel(
+            api.insights as Parameters<typeof createInsightsModel>[0],
+          );
+    } catch {
+      // A self-hosted server's database is read over its admin API.
+      return null;
+    }
+  }
   const models: unknown = Reflect.get(database, "models");
   const insights: unknown =
     typeof models === "object" && models !== null
@@ -1220,8 +1260,8 @@ function readInsightsModel(database: BundleRepository): InsightsModel | null {
 }
 
 async function verifyConfiguredConsoleInsights(args: { sinceMs: number }) {
-  return withConfiguredDatabase(async (database) => {
-    const insights = readInsightsModel(database);
+  return withConfiguredDatabase(async (configured) => {
+    const insights = readInsightsModel(configured);
     const client = insights
       ? createConsoleInsightsProviderClient(createInsightsProvider(insights))
       : createConsoleInsightsHttpClient({
@@ -1247,9 +1287,11 @@ async function verifyConfiguredConsoleInsights(args: { sinceMs: number }) {
 }
 
 async function fetchProviderBundleById(bundleId: string) {
-  const bundle = await withConfiguredDatabase((database) =>
-    createDatabaseClient(database).getBundleById(bundleId),
+  const detail = await withConfiguredDatabase(({ core }) =>
+    core.getBundle(bundleId),
   );
+  const bundle =
+    detail === null ? null : rowToBundle(detail.bundle, detail.patches);
 
   if (!bundle) {
     throw new Error(`Failed to fetch bundle ${bundleId}: bundle not found`);
@@ -1279,13 +1321,10 @@ async function resolveDeployedRelease(
   let lastObserved: ReleaseRow | null = null;
   for (let attempt = 1; attempt <= 30; attempt += 1) {
     const result = await withConfiguredDatabase(
-      async (database): Promise<DeployedRelease | null> => {
-        const channels = await database.models.channels.list({});
-        const channelId = channels.channels.find(
-          (candidate) => candidate.name === channel,
-        )?.id;
+      async ({ core }): Promise<DeployedRelease | null> => {
+        const channelId = (await core.findChannelByName(channel))?.id;
         if (channelId === undefined) return null;
-        const release = await database.models.releases.findById(releaseId);
+        const release = await core.getRelease(releaseId);
         lastObserved = release;
         if (
           release === null ||
@@ -1293,9 +1332,7 @@ async function resolveDeployedRelease(
           release.platform !== fixtureSession.platform
         )
           return null;
-        const catalog = await database.models.releaseCatalogs.findByScopeKey(
-          release.scope_key,
-        );
+        const catalog = await core.getReleaseCatalogRow(release.scope_key);
         return catalog === null
           ? null
           : { catalogId: catalog.catalog_id, catalog, release };
@@ -1312,8 +1349,8 @@ async function resolveDeployedRelease(
 }
 
 async function fetchProviderReleaseById(releaseId: string) {
-  const release = await withConfiguredDatabase((database) =>
-    database.models.releases.findById(releaseId),
+  const release = await withConfiguredDatabase(({ core }) =>
+    core.getRelease(releaseId),
   );
   if (release === null) {
     throw new Error(`No Release with id ${releaseId}.`);
@@ -1325,9 +1362,8 @@ async function patchProviderRelease(
   releaseId: string,
   patch: Omit<PatchReleaseRequest, "releaseId">,
 ) {
-  const result = await withConfiguredDatabase((database) =>
-    updateReleasePolicy({
-      database,
+  const result = await withConfiguredDatabase(({ core }) =>
+    core.updateReleasePolicy({
       patch: {
         enabled: patch.enabled,
         rolloutCohortCount: patch.rolloutCohortCount ?? undefined,
@@ -1441,9 +1477,9 @@ async function resolveAutoPatchBundleDiff(
 }
 
 async function clearProviderReleases() {
-  const result = await withConfiguredDatabase((database) =>
+  const result = await withConfiguredDatabase(({ core }) =>
     resetFixtureReleases({
-      database,
+      core,
       namespace: channelNamespace,
       platform: fixtureSession.platform,
     }),
@@ -5539,8 +5575,8 @@ async function updateFixtureRelease(
     targetCohorts: request.targetCohorts,
   });
   const release = result.release!;
-  const channel = await withConfiguredDatabase(async (database) =>
-    (await database.models.channels.list({})).channels.find(
+  const channel = await withConfiguredDatabase(async ({ core }) =>
+    (await core.listChannels()).find(
       (candidate) => candidate.id === release.channel_id,
     ),
   );
@@ -5577,65 +5613,50 @@ async function updateFixtureRelease(
   };
 }
 
+/** A deploy's policy for a new release in the same scope as `release`. */
+function deployPolicyOf(
+  release: ReleaseRow,
+  channel: string,
+): DeployReleasePolicy {
+  return {
+    channel,
+    enabled: release.enabled,
+    fingerprintHash: release.fingerprint_hash,
+    message: release.message,
+    rolloutCohortCount: release.rollout_cohort_count,
+    shouldForceUpdate: release.should_force_update,
+    targetAppVersion: release.target_app_version,
+    targetCohorts: [...release.target_cohorts],
+  };
+}
+
 async function createFixtureRepublishedRelease(input: {
   sourceReleaseId: string;
   bundleId: string;
 }) {
-  const created = await withConfiguredDatabase(async (database) => {
-    const source = await database.models.releases.findById(
-      input.sourceReleaseId,
-    );
+  const created = await withConfiguredDatabase(async ({ core }) => {
+    const source = await core.getRelease(input.sourceReleaseId);
     if (source === null) {
       throw new Error(`Release ${input.sourceReleaseId} was not found.`);
     }
-    const catalog = await database.models.releaseCatalogs.findByScopeKey(
-      source.scope_key,
-    );
-    if (catalog === null) {
-      throw new Error(`Catalog ${source.scope_key} was not found.`);
-    }
-    const channel = (await database.models.channels.list({})).channels.find(
+    const channel = (await core.listChannels()).find(
       (candidate) => candidate.id === source.channel_id,
     );
     if (channel === undefined) {
       throw new Error(`Channel ${source.channel_id} was not found.`);
     }
-    const bundle = await database.models.bundles.findById(input.bundleId);
-    if (bundle === null || bundle.platform !== source.platform) {
+    const bundle = await core.getBundle(input.bundleId);
+    if (bundle === null || bundle.bundle.platform !== source.platform) {
       throw new Error(`Bundle ${input.bundleId} was not found.`);
     }
-    const releases = await database.models.releases.findManyByScope({
-      consistency: "strong",
-      limit: 1_000,
-      scopeKey: source.scope_key,
-    });
-    const updatedAtMs = Date.now();
-    const release: ReleaseRow = {
-      ...source,
-      bundle_id: input.bundleId,
-      created_at_ms: updatedAtMs,
-      enabled: true,
-      id: createUUIDv7After(releases.at(-1)?.id ?? source.id, updatedAtMs),
-      kind: "BUNDLE",
-      operation: "DEPLOY",
-      revision: 1,
-      source_release_id: null,
-      updated_at_ms: updatedAtMs,
-    };
-    const result = await commitReleaseCatalogMutation({
-      database,
-      mutation: { operation: "insert", row: release },
-      scope: {
-        channelId: catalog.channel_id,
-        channelName: channel.name,
-        fingerprintHash: catalog.fingerprint_hash,
-        platform: catalog.platform,
-        scopeKey: catalog.scope_key,
-        strategy: catalog.strategy,
+    // A new release for the stored bundle, in the source's scope.
+    const [result] = await core.deploy([
+      {
+        bundleId: input.bundleId,
+        release: { ...deployPolicyOf(source, channel.name), enabled: true },
       },
-      updatedAtMs,
-    });
-    if (result.release === null) {
+    ]);
+    if (result?.release == null) {
       throw new Error("Republish did not create a Release.");
     }
     return {
@@ -5671,21 +5692,24 @@ async function seedCrashedBundleFrontier(input: {
   count: number;
   sourceReleaseId: string;
 }) {
-  return withConfiguredDatabase(async (database) => {
-    const sourceRelease = await database.models.releases.findById(
-      input.sourceReleaseId,
-    );
+  return withConfiguredDatabase(async ({ core }) => {
+    const sourceRelease = await core.getRelease(input.sourceReleaseId);
     if (sourceRelease?.bundle_id === null || sourceRelease === null) {
       throw new Error(
         `Release ${input.sourceReleaseId} must reference a Bundle.`,
       );
     }
-    const sourceBundle = await database.models.bundles.findById(
-      sourceRelease.bundle_id,
-    );
-    if (sourceBundle === null) {
+    const source = await core.getBundle(sourceRelease.bundle_id);
+    if (source === null) {
       throw new Error(`Bundle ${sourceRelease.bundle_id} was not found.`);
     }
+    const channel = (await core.listChannels()).find(
+      (candidate) => candidate.id === sourceRelease.channel_id,
+    );
+    if (channel === undefined) {
+      throw new Error(`Channel ${sourceRelease.channel_id} was not found.`);
+    }
+    const sourceBundle = rowToBundle(source.bundle, []);
 
     const bundleIds: string[] = [];
     const releaseIds: string[] = [];
@@ -5695,53 +5719,14 @@ async function seedCrashedBundleFrontier(input: {
 
     for (let index = 0; index < input.count; index += 1) {
       const bundleId = createUUIDv7After(bundleIdFloor, baseTimeMs + index);
-      const clone: BundleRow = { ...sourceBundle, id: bundleId };
-      const inserted = await database.commit({
-        changes: [{ model: "bundles", operation: "insert", row: clone }],
-      });
-      if (!inserted.committed) {
-        throw new Error(
-          `Failed to insert crash-frontier Bundle ${bundleId}: ${inserted.conflict.reason}`,
-        );
-      }
-      const releases = await database.models.releases.findManyByScope({
-        consistency: "strong",
-        limit: 1_000,
-        scopeKey: sourceRelease.scope_key,
-      });
-      const release: ReleaseRow = {
-        ...sourceRelease,
-        bundle_id: bundleId,
-        created_at_ms: baseTimeMs + index,
-        id: createUUIDv7After(
-          releases.at(-1)?.id ?? sourceRelease.id,
-          baseTimeMs + index,
-        ),
-        operation: "DEPLOY",
-        revision: 1,
-        source_release_id: null,
-        updated_at_ms: baseTimeMs + index,
-      };
-      const catalog = await database.models.releaseCatalogs.findByScopeKey(
-        sourceRelease.scope_key,
-      );
-      if (catalog === null) {
-        throw new Error(`Catalog ${sourceRelease.scope_key} was not found.`);
-      }
-      const published = await commitReleaseCatalogMutation({
-        database,
-        mutation: { operation: "insert", row: release },
-        scope: {
-          channelId: catalog.channel_id,
-          channelName: decodeChannelKey(catalog.channel_key),
-          fingerprintHash: catalog.fingerprint_hash,
-          platform: catalog.platform,
-          scopeKey: catalog.scope_key,
-          strategy: catalog.strategy,
+      // A copy of the source bundle under a new id, deployed in its scope.
+      const [published] = await core.deploy([
+        {
+          bundle: { ...sourceBundle, id: bundleId, patches: [] },
+          release: deployPolicyOf(sourceRelease, channel.name),
         },
-        updatedAtMs: baseTimeMs + index,
-      });
-      if (published.release === null) {
+      ]);
+      if (published?.release == null) {
         throw new Error("Crash-frontier republish did not create a Release.");
       }
       bundleIds.push(bundleId);
