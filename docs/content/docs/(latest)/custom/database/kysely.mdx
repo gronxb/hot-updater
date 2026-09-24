@@ -106,7 +106,8 @@ npx hot-updater db migrate src/hotUpdater.ts
 </Callout>
 
 The SQL creates the tables and indexes, with no database foreign keys, then
-writes the schema settings rows last. `db migrate` runs it in one transaction
+writes the schema settings rows last. The tables include those of the
+server's [third-party plugins](/docs/custom/server-plugins#create-the-plugins-tables). `db migrate` runs it in one transaction
 on PostgreSQL and SQLite. Both commands read the database first and do
 nothing when its settings are current; run `db migrate` again after upgrading
 Hot Updater. They refuse a database created by an older Hot Updater schema

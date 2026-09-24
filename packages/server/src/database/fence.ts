@@ -129,6 +129,17 @@ export const checkSchemaFence = async (
   });
 };
 
+/** The database name a fenced adapter carries, so a server can fence its plugins' rows too. */
+const FENCED: unique symbol = Symbol.for("@hot-updater/server/schema-fence");
+
+interface FencedAdapter extends DatabaseAdapter {
+  readonly [FENCED]?: string;
+}
+
+/** The database name an adapter behind the schema fence reports under. */
+export const fencedName = (adapter: FencedAdapter): string | undefined =>
+  adapter[FENCED];
+
 /**
  * The adapter behind the schema fence: a process's first read or write
  * checks the settings first. Success is kept; a failure is checked again on
@@ -138,7 +149,7 @@ export const withSchemaFence = (
   adapter: DatabaseAdapter,
   adapterName: string,
   expected: SchemaSettings,
-): DatabaseAdapter => {
+): FencedAdapter => {
   let ready: Promise<void> | undefined;
   const fence = () => {
     ready ??= checkSchemaFence(adapter, adapterName, expected).catch(
@@ -151,6 +162,7 @@ export const withSchemaFence = (
   };
   return {
     ...adapter,
+    [FENCED]: adapterName,
     get: (table, keys) => fence().then(() => adapter.get(table, keys)),
     query: (table, request) =>
       fence().then(() => adapter.query(table, request)),

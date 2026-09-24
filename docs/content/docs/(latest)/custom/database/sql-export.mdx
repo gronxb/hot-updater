@@ -46,8 +46,9 @@ npx hot-updater db generate --sql sqlite
 
 ## Output
 
-The command generates one file, `hot-updater.sql`. It is the same SQL that
-`hot-updater db migrate` applies with the Kysely adapter:
+The command generates one file, `hot-updater.sql`. It reads no server file,
+so it is the SQL that `hot-updater db migrate` applies with the Kysely adapter
+for a server without [third-party plugins](/docs/custom/server-plugins#create-the-plugins-tables):
 
 - Hot Updater's tables and indexes in your dialect's syntax, with binary
   string collation and no database foreign keys

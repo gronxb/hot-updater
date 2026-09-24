@@ -18,9 +18,9 @@ CLI](/docs/managed/cloudflare#step-2-configure-cloudflare), then use the
 configuration below. Managed setup applies the schema for you.
 
 `d1Database` connects to a database whose schema already exists; it does not
-create tables, and `hot-updater db migrate` does not run for D1. To prepare a
-database yourself, apply the installed `@hot-updater/cloudflare` package's
-`sql/bundles.sql` to a new, empty D1 database:
+create tables when it serves. To prepare a database yourself, apply the
+installed `@hot-updater/cloudflare` package's `sql/bundles.sql` to a new, empty
+D1 database:
 
 ```bash
 npx wrangler d1 execute <database-name> --remote \
@@ -32,6 +32,15 @@ The same SQL ships as the Worker migration
 with `wrangler d1 migrations apply`. It creates Hot Updater's tables and
 indexes and the `_hu_write` table that batch writes use, then writes the
 schema settings rows last.
+
+A Worker that runs
+[third-party plugins](/docs/custom/server-plugins#create-the-plugins-tables)
+also needs their tables. `hot-updater db generate` writes a D1 migration of the
+built-in and plugin tables to `migrations/<timestamp>_hot-updater.sql`; apply
+it with `wrangler d1 migrations apply`. `hot-updater db migrate` applies the
+same schema through the Cloudflare API instead. Both read a Node module that
+passes the Worker's `plugins` to `createHotUpdater` with the REST `d1Database`
+from `@hot-updater/cloudflare`.
 
 ## Schema settings
 

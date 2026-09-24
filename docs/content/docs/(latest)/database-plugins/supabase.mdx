@@ -32,6 +32,15 @@ The migration creates Hot Updater's tables under the `hot_updater_v1_` prefix,
 with row-level security on every table, the write guard table, and the
 `hot_updater_v1_apply` function, then writes the schema settings rows last.
 
+An Edge Function that runs
+[third-party plugins](/docs/custom/server-plugins#create-the-plugins-tables)
+also needs their tables, and the apply function must be allowed to reach them.
+`hot-updater db generate` writes a migration that does both to
+`supabase/migrations/<timestamp>_hot-updater.sql`; apply it with
+`npx supabase db push`. It reads a Node module that passes the function's
+`plugins` to `createHotUpdater` with `supabaseDatabase` from
+`@hot-updater/supabase`.
+
 ## Schema settings
 
 Before its first read or write, the database checks the settings rows

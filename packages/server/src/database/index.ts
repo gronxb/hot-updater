@@ -137,6 +137,7 @@ export { isMultiIndex } from "./sql/sqlSchema";
 export {
   builtInSchema,
   builtInSettings,
+  builtInTarget,
   createEngineDatabase,
   migrateBuiltInSchema,
   type EngineDatabaseOptions,

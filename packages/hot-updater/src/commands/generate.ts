@@ -5,6 +5,7 @@ import { p } from "@hot-updater/cli-tools";
 import {
   createMigrator as createHotUpdaterMigrator,
   generateSchema as generateHotUpdaterSchema,
+  generatesSchema,
 } from "@hot-updater/server/db";
 import {
   formatDialect,
@@ -95,17 +96,23 @@ export async function generate(options: GenerateOptions) {
           s,
         );
         break;
-      case "mongodb":
+      default:
+        // A provider with its own schema files (a Supabase or D1 migration)
+        // writes them; any other database migrates with `db migrate`.
+        if (generatesSchema(hotUpdater)) {
+          await generateWithSchemaGenerator(
+            hotUpdater,
+            adapterName,
+            absoluteOutputDir,
+            skipConfirm,
+            s,
+          );
+          break;
+        }
         s.stop("Generation not supported");
         p.log.error(
-          "MongoDB does not support migration file generation. " +
-            "Use `hot-updater db migrate` to create collections and indexes.",
-        );
-        requestGenerateExit(1);
-        break;
-      default:
-        p.log.error(
-          `Unsupported adapter: ${adapterName}. Generation is not supported.`,
+          `The ${adapterName} database does not generate schema files. ` +
+            "Use `hot-updater db migrate` to create its tables.",
         );
         requestGenerateExit(1);
         break;
@@ -235,7 +242,8 @@ async function generateWithMigrator(
 }
 
 /**
- * Generate TypeScript schema files using generateSchema (for drizzle/prisma/typeorm)
+ * Write the schema file a database generates: Drizzle's schema, or a
+ * Supabase or D1 migration.
  */
 async function generateWithSchemaGenerator(
   hotUpdater: LoadHotUpdaterResult["hotUpdater"],
@@ -269,6 +277,23 @@ async function generateWithSchemaGenerator(
   const filename = path.basename(outputPath);
 
   await mkdir(outputDirectory, { recursive: true });
+
+  // A provider's migration gets a new file name each time; one that repeats
+  // an existing file adds nothing.
+  const existing = await readdir(outputDirectory);
+  if (!existing.includes(filename)) {
+    for (const file of existing) {
+      if (path.extname(file) !== path.extname(filename)) continue;
+      const content = await readFile(
+        path.join(outputDirectory, file),
+        "utf-8",
+      ).catch(() => null);
+      if (content === schemaCode) {
+        p.log.warn(`Identical migration already exists: ${file}`);
+        return;
+      }
+    }
+  }
 
   // Confirm before writing schema file
   if (!skipConfirm) {

@@ -642,47 +642,41 @@ request.
 
 ## Create the plugin's tables
 
-The schema that `hot-updater db generate` writes, `hot-updater db migrate`
-applies, and each provider's migration ships holds core's tables and the
-built-in plugins' tables, whichever plugins the server runs. It ends with the
-settings rows the schema fence checks before the first request:
-`schema.engine`, `schema.core`, `schema.insights`, and `schema.apiKeys`. None
-of these tools read `plugins`, so a third-party plugin's tables are not in that
-schema, and its `schemaVersion` is not recorded or checked.
+`hot-updater db migrate` and `hot-updater db generate` read the server's
+`plugins`. Besides core's tables and the built-in plugins' tables, which every
+database has whichever plugins the server runs, they create each third-party
+plugin's tables under its id, such as `feedback_threads`, and write its
+settings row last: `schema.feedback`, holding the plugin's `schemaVersion`.
+Until that row matches, the schema fence answers 503 for every request, as it
+does for the built-in rows, and names the missing setting.
 
-Where the plugin's tables come from depends on the database:
+Run them with the file that exports the server's `hotUpdater`:
+
+```bash
+npx hot-updater db migrate src/hotUpdater.ts
+```
 
 | Database | The plugin's tables |
 | --- | --- |
-| DynamoDB, Firestore | Nothing to create: every table is a key prefix in the one table or collection. |
-| Kysely, `postgres`, D1, MongoDB | Create them with `migrateSchema`, below. |
-| Drizzle, Prisma | `migrateSchema` creates them too. Their schema files do not list these tables, so check that a Drizzle Kit or Prisma push does not drop them. |
-| Supabase | Not supported: its RPC serves only Hot Updater's own tables. |
+| Kysely, `postgres`, MongoDB, a [custom adapter](/docs/database-plugins/custom-database) | `db migrate` creates them. With Kysely, `db generate` writes the SQL for review first. |
+| Drizzle, Prisma | `db generate` adds them to the schema file. Apply it with Drizzle Kit or Prisma, then run `db migrate` for the settings rows. |
+| D1 | `db generate` writes a D1 migration to `migrations`; apply it with `wrangler d1 migrations apply`. `db migrate` applies the same schema through the Cloudflare API. |
+| Supabase | `db generate` writes a migration to `supabase/migrations` that also lets the apply RPC reach the tables; apply it with `supabase db push`. |
+| DynamoDB, Firestore | Nothing to create: every table is a key prefix in the one table or collection. `db migrate` writes the settings row. |
 
-Run this once the built-in schema is in place, after `hot-updater db migrate`
-or your provider's migration, with the database object your server passes to
-`createHotUpdater`:
+A D1 or Supabase server runs in a Worker or an Edge Function, which the CLI
+cannot load. Point the commands at a Node module that passes the same
+`plugins` to `createHotUpdater`, with `d1Database` from
+`@hot-updater/cloudflare` (the REST API) or `supabaseDatabase` from
+`@hot-updater/supabase`.
 
-```ts title="scripts/migrate-feedback.ts"
-import { migrateSchema, resolveSchema } from "@hot-updater/server/database";
+Migrations create missing tables and indexes and never change an existing
+table. A schema change that alters a table, such as a new field, needs your own
+migration before `db migrate` records the new `schemaVersion`.
 
-import { database } from "../src/database";
-import { feedback } from "../src/feedback";
-
-const plugin = feedback();
-// The server names a plugin's tables after its id, such as feedback_threads.
-const { tables } = resolveSchema([
-  { id: plugin.id, namespace: plugin.id, schema: plugin.schema },
-]);
-await migrateSchema(database.adapter, database.name, tables, {
-  [`schema.${plugin.id}`]: plugin.schemaVersion,
-});
-```
-
-`migrateSchema` creates missing tables and indexes, then records the version in
-the `schema.feedback` settings row. It never changes an existing table, so a
-schema change that alters a table, such as a new field, needs its own
-migration. Run it again after adding a table or an index.
+A third-party plugin cannot take a built-in name: `insights` as an id, or a
+table that resolves to a built-in one, such as an `api` plugin's `keys` table
+(`api_keys`), fails at startup.
 
 ## Test with the plugin harness
 

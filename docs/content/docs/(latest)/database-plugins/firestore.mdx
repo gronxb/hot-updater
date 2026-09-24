@@ -58,8 +58,11 @@ await migrateFirebaseDatabase({
 ```
 
 `migrateFirebaseDatabase` takes the same configuration as `firebaseDatabase`.
-It is this provider's migration; `hot-updater db migrate` does not run for
-Firestore. `hot-updater init` and the managed setup's key script both run it.
+`hot-updater init` and the managed setup's key script both run it.
+`hot-updater db migrate`, run with the file that exports a server's
+`hotUpdater`, writes the same settings, and those of the server's
+[third-party plugins](/docs/custom/server-plugins#create-the-plugins-tables),
+whose tables need no collection or index of their own.
 Init refuses a project whose `hot_updater_v1_*` collections hold data; to
 replace a database that a 1.0 release candidate created, follow the
 [upgrade guide](/docs/guides/upgrade-to-v1).

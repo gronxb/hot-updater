@@ -94,7 +94,8 @@ npx hot-updater db migrate src/hotUpdater.ts
 ```
 
 This command targets `src/hotUpdater.ts`, creates every Hot Updater
-collection and index, then writes the schema settings. It does nothing when
+collection and index, those of the server's [third-party plugins](/docs/custom/server-plugins#create-the-plugins-tables) included, then writes the
+schema settings. It does nothing when
 the settings are current; run it again after upgrading Hot Updater. It
 refuses a database created by an older Hot Updater schema instead of
 converting it. `hot-updater db generate` does not apply to MongoDB.

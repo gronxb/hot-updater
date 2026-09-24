@@ -1,8 +1,7 @@
 import type { MongoClient } from "mongodb";
 
 import {
-  builtInSchema,
-  builtInSettings,
+  builtInTarget,
   createEngineDatabase,
 } from "../database/builtInDatabase";
 import { SETTINGS_TABLE } from "../database/fence";
@@ -37,12 +36,12 @@ export const mongoAdapter = (config: MongoDBConfig): ToolingDatabase => {
   return {
     ...createEngineDatabase({ name: "mongodb", adapter }),
     provider: "mongodb",
-    createMigrator: () =>
+    createMigrator: ({ schema, settings } = builtInTarget) =>
       createEngineMigrator({
         adapterName: "mongodb",
         adapter,
-        schema: builtInSchema,
-        settings: builtInSettings,
+        schema,
+        settings,
         readSettings: readSettings(config.client),
       }),
   };

@@ -173,6 +173,7 @@ export const rows: readonly AcceptanceRow[] = [
     entries: [
       "plugins/supabase/src/supabaseDatabase.ts",
       "plugins/supabase/src/supabaseExecutor.ts",
+      "plugins/supabase/src/supabaseMigration.ts",
       "plugins/supabase/src/supabaseSchema.ts",
     ],
     shared: [],

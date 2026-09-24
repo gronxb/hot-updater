@@ -1,12 +1,12 @@
 import {
-  builtInSchema,
-  builtInSettings,
+  builtInTarget,
   createTableStatements,
   isMultiIndex,
   SETTINGS_TABLE,
   WRITE_GUARD_TABLE,
+  type ResolvedSchema,
 } from "@hot-updater/server/database";
-import { generateEngineSql } from "@hot-updater/server/db";
+import { generateEngineSql, type ToolingTarget } from "@hot-updater/server/db";
 
 import {
   SUPABASE_APPLY_FUNCTION,
@@ -20,9 +20,11 @@ export {
 } from "./supabaseInfrastructureNames";
 
 /** Every table the apply RPC may name: models, index tables, settings, and the write guard. */
-export const supabaseTableNames = (): string[] =>
+export const supabaseTableNames = (
+  schema: ResolvedSchema = builtInTarget.schema,
+): string[] =>
   [
-    ...builtInSchema.tables.flatMap((table) => [
+    ...schema.tables.flatMap((table) => [
       table.name,
       ...table.indexes
         .filter((index) => isMultiIndex(table, index))
@@ -129,17 +131,18 @@ $apply$`;
  * Supabase's migration: the shared SQL schema under the table prefix, the
  * write guard, row-level security on every table (no policy, so only the
  * service role reads or writes), the apply RPC for the service role alone,
- * and the settings rows last.
+ * and the settings rows last. Every statement can run again, so a migration
+ * for a server's plugin tables repeats the built-in ones.
  */
-export const supabaseSchemaStatements = (): string[] => {
-  const engine = generateEngineSql(
-    "postgresql",
-    builtInSchema,
-    builtInSettings,
-    { tablePrefix: SUPABASE_TABLE_PREFIX },
-  );
-  const settings = engine.slice(-Object.keys(builtInSettings).length);
-  const tables = supabaseTableNames();
+export const supabaseSchemaStatements = ({
+  schema,
+  settings: expected,
+}: ToolingTarget = builtInTarget): string[] => {
+  const engine = generateEngineSql("postgresql", schema, expected, {
+    tablePrefix: SUPABASE_TABLE_PREFIX,
+  });
+  const settings = engine.slice(-Object.keys(expected).length);
+  const tables = supabaseTableNames(schema);
   const apply = `public.${SUPABASE_APPLY_FUNCTION}(jsonb)`;
   return [
     ...createTableStatements(
@@ -158,7 +161,7 @@ export const supabaseSchemaStatements = (): string[] => {
   ];
 };
 
-export const supabaseSchemaSql = (): string =>
-  `-- HotUpdater.schema\n\n${supabaseSchemaStatements()
+export const supabaseSchemaSql = (target?: ToolingTarget): string =>
+  `-- HotUpdater.schema\n\n${supabaseSchemaStatements(target)
     .map((statement) => `${statement};`)
     .join("\n\n")}\n`;

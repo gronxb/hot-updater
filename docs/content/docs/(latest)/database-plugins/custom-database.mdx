@@ -203,8 +203,10 @@ before anything is sent. Return `true` when the backend has no limit.
 ### Migrations
 
 `migrations.apply(tables)` creates each table with its indexes. A table that
-exists keeps its rows, so running it twice changes nothing. Only the
-migration helpers call it; leave it out when other tooling creates the tables.
+exists keeps its rows, so running it twice changes nothing. Only the migration
+tooling calls it: `migrateBuiltInSchema` and `hot-updater db migrate`. Leave it
+out when other tooling creates the tables, as Supabase's migrations do for its
+RPC, which runs no DDL.
 
 ## Choose how to build it
 
@@ -324,7 +326,8 @@ export const migrateMyDatabase = async (config: PoolConfig) => {
 An executor without interactive transactions, such as D1 or a database RPC,
 provides `batch` instead. Each write is then one atomic batch that records the
 first failed guard in the `_hu_write` table (`WRITE_GUARD_TABLE`) and applies
-its changes only when no guard failed. Create that table with the others.
+its changes only when no guard failed. `migrations.apply` creates that table
+with the others.
 
 `adapter.migrations.apply` creates tables with `createTableStatements(dialect,
 tables, tablePrefix)`: strings with binary collation (`COLLATE "C"` on
@@ -406,7 +409,8 @@ and writes that touch a row twice or that `fits` refuses.
 `createEngineDatabase({ name, adapter })` returns the `EngineDatabase` a
 provider's factory returns, as `myDatabase` does. It puts the adapter behind
 the schema fence and forwards the adapter's `dispose`. Add your own `dispose`
-when the factory opens a client.
+when the factory opens a client. When the adapter has `migrations`, the
+database also carries the migration that `hot-updater db migrate` runs.
 
 | Option                 | Meaning                                                                                                                                                                                              |
 | ---------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -461,9 +465,13 @@ tables to `adapter.migrations.apply`, then writes the settings rows. Running it
 again changes nothing. It refuses a database that has `schema.core` but no
 `schema.engine`; create a new database instead. Run the migration from a
 script, a deploy job or your provider's setup command, as `migrateDynamoDB` and
-`migrateFirebaseDatabase` do for their providers. `hot-updater db migrate` runs
-the migrators of the Kysely, Drizzle, Prisma and MongoDB adapters and refuses
-other databases.
+`migrateFirebaseDatabase` do for their providers.
+
+`hot-updater db migrate` runs the same migration from the file that exports the
+server's `hotUpdater`, and adds the tables and settings rows of the server's
+third-party plugins; see
+[Server Plugins](/docs/custom/server-plugins#create-the-plugins-tables). It
+refuses a database whose adapter has no `migrations`.
 
 A SQL provider can check in its schema instead.
 `generateEngineSql(dialect, builtInSchema, builtInSettings, { tablePrefix })`
@@ -474,6 +482,15 @@ SQL this way, and a test fails when a file differs from the generator. Add
 `batch`. When other tooling creates the tables,
 `writeSchemaSettings(adapter, name, builtInSettings)` writes only the settings
 rows.
+
+A provider whose schema is applied as migration files adds
+`generateSchema(version, name, target)` to its database, as `supabaseDatabase`
+and the REST `d1Database` do. `hot-updater db generate` calls it with
+`"latest"` and the server's `target`, `{ schema, settings }` (`builtInTarget`
+from `@hot-updater/server/database` without third-party plugins), and writes
+the returned `code` to its relative `path`. When the adapter also has
+`migrations`, as D1's does, `hot-updater db migrate` applies the same schema
+directly; without them, as with Supabase, it points to `db generate`.
 
 ## Test the adapter
 

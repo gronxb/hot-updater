@@ -35,8 +35,7 @@ aws dynamodb create-table \
 ```
 
 Then write the schema settings with `migrateDynamoDB`, which takes the same
-configuration as `dynamoDB`. It is this provider's migration;
-`hot-updater db migrate` does not run for DynamoDB:
+configuration as `dynamoDB`:
 
 ```typescript
 import { migrateDynamoDB } from "@hot-updater/aws";
@@ -49,6 +48,11 @@ without deletion protection, which suits DynamoDB Local. To write the settings
 with the AWS CLI instead, use `dynamodb/schema-settings.json` from
 `hot-updater infra scaffold --provider aws`; see
 [Infrastructure Templates](/docs/guides/infrastructure-templates).
+
+`hot-updater db migrate`, run with the file that exports a server's
+`hotUpdater`, does the same, and also writes the settings items of the
+server's [third-party plugins](/docs/custom/server-plugins#create-the-plugins-tables).
+Their tables are key prefixes in the same table, so they need nothing else.
 
 ## Schema settings
 
