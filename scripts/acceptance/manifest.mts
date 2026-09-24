@@ -40,9 +40,9 @@ const DB_TOOLING = "packages/server/src/db/**";
 const SQL_PROVIDERS = "packages/server/src/adapters/sqlProviders.ts";
 
 const conformance = (
-  project: string,
   file: string,
   name: string,
+  project = "integration:default",
 ): AcceptanceSuite => ({
   project,
   file,
@@ -50,9 +50,9 @@ const conformance = (
 });
 
 const readBudgets = (
-  project: string,
   file: string,
   name: string,
+  project = "integration:default",
 ): AcceptanceSuite => ({
   project,
   file,
@@ -67,7 +67,16 @@ export const rows: readonly AcceptanceRow[] = [
     budget: 50,
     budgetLabel: "Re-export",
     atomicity: "Through the Kysely executor",
-    suites: [],
+    suites: [
+      conformance(
+        "plugins/postgres/src/postgres.conformance.integration.spec.ts",
+        "postgres (PGlite)",
+      ),
+      readBudgets(
+        "plugins/postgres/src/postgres.readBudgets.integration.spec.ts",
+        "postgres (PGlite)",
+      ),
+    ],
     writeLimit: false,
     profiles: ["standalone-kysely"],
   },
@@ -82,13 +91,11 @@ export const rows: readonly AcceptanceRow[] = [
     atomicity: "Transaction + row guards",
     suites: [
       conformance(
-        "integration:default",
-        "packages/server/src/adapters/kysely.integration.spec.ts",
+        "packages/server/src/adapters/kysely.conformance.integration.spec.ts",
         "kysely (PGlite)",
       ),
       readBudgets(
-        "integration:default",
-        "packages/server/src/adapters/kysely.integration.spec.ts",
+        "packages/server/src/adapters/kysely.readBudgets.integration.spec.ts",
         "kysely (PGlite)",
       ),
     ],
@@ -106,13 +113,11 @@ export const rows: readonly AcceptanceRow[] = [
     atomicity: "`$transaction` + row guards",
     suites: [
       conformance(
-        "integration:default",
-        "packages/server/src/adapters/prisma.integration.spec.ts",
+        "packages/server/src/adapters/prisma.conformance.integration.spec.ts",
         "prisma (PGlite)",
       ),
       readBudgets(
-        "integration:default",
-        "packages/server/src/adapters/prisma.integration.spec.ts",
+        "packages/server/src/adapters/prisma.readBudgets.integration.spec.ts",
         "prisma (PGlite)",
       ),
     ],
@@ -130,13 +135,11 @@ export const rows: readonly AcceptanceRow[] = [
     atomicity: "`withTransaction` + conditional writes",
     suites: [
       conformance(
-        "integration:default",
         "packages/server/src/adapters/mongodb.integration.spec.ts",
         "mongodb (replica set)",
       ),
       readBudgets(
-        "integration:default",
-        "packages/server/src/adapters/mongodb.integration.spec.ts",
+        "packages/server/src/adapters/mongodb.readBudgets.integration.spec.ts",
         "mongodb (replica set)",
       ),
     ],
@@ -154,13 +157,11 @@ export const rows: readonly AcceptanceRow[] = [
     atomicity: "Transaction checked on first use",
     suites: [
       conformance(
-        "integration:default",
-        "packages/server/src/adapters/drizzle.integration.spec.ts",
+        "packages/server/src/adapters/drizzle.conformance.integration.spec.ts",
         "drizzle (PGlite)",
       ),
       readBudgets(
-        "integration:default",
-        "packages/server/src/adapters/drizzle.integration.spec.ts",
+        "packages/server/src/adapters/drizzle.readBudgets.integration.spec.ts",
         "drizzle (PGlite)",
       ),
     ],
@@ -180,13 +181,11 @@ export const rows: readonly AcceptanceRow[] = [
     atomicity: "Generic apply RPC",
     suites: [
       conformance(
-        "integration:default",
-        "plugins/supabase/src/supabaseDatabase.integration.spec.ts",
+        "plugins/supabase/src/supabaseDatabase.conformance.integration.spec.ts",
         "supabase apply RPC (PGlite)",
       ),
       readBudgets(
-        "integration:default",
-        "plugins/supabase/src/supabaseDatabase.integration.spec.ts",
+        "plugins/supabase/src/supabaseDatabase.readBudgets.integration.spec.ts",
         "supabase apply RPC (PGlite)",
       ),
     ],
@@ -205,14 +204,14 @@ export const rows: readonly AcceptanceRow[] = [
     atomicity: "`batch()` + `_hu_write` guard",
     suites: [
       conformance(
-        "integration:cloudflare",
-        "plugins/cloudflare/worker/src/d1Adapter.integration.spec.ts",
+        "plugins/cloudflare/worker/src/d1.conformance.integration.spec.ts",
         "d1 (workerd)",
+        "integration:cloudflare",
       ),
       readBudgets(
-        "integration:cloudflare",
-        "plugins/cloudflare/worker/src/d1Adapter.integration.spec.ts",
+        "plugins/cloudflare/worker/src/d1.readBudgets.integration.spec.ts",
         "d1 (workerd)",
+        "integration:cloudflare",
       ),
     ],
     writeLimit: true,
@@ -229,13 +228,11 @@ export const rows: readonly AcceptanceRow[] = [
     atomicity: "`runTransaction` on guarded documents",
     suites: [
       conformance(
-        "integration:default",
         "plugins/firebase/src/firebaseDatabase.integration.spec.ts",
         "key-value (Firestore emulator)",
       ),
       readBudgets(
-        "integration:default",
-        "plugins/firebase/src/firebaseDatabase.integration.spec.ts",
+        "plugins/firebase/src/firebaseDatabase.readBudgets.integration.spec.ts",
         "key-value (Firestore emulator)",
       ),
     ],
@@ -254,13 +251,11 @@ export const rows: readonly AcceptanceRow[] = [
     atomicity: "`TransactWriteItems` + conditions",
     suites: [
       conformance(
-        "integration:default",
         "plugins/aws/src/dynamoDB.integration.spec.ts",
         "key-value (DynamoDB Local)",
       ),
       readBudgets(
-        "integration:default",
-        "plugins/aws/src/dynamoDB.integration.spec.ts",
+        "plugins/aws/src/dynamoDB.readBudgets.integration.spec.ts",
         "key-value (DynamoDB Local)",
       ),
     ],
@@ -279,13 +274,11 @@ export const rows: readonly AcceptanceRow[] = [
     atomicity: "Copy-on-write swap",
     suites: [
       conformance(
-        "integration:default",
         "packages/test-utils/src/databaseAdapterConformance.integration.spec.ts",
         "memory",
       ),
       readBudgets(
-        "integration:default",
-        "packages/test-utils/src/databaseAdapterConformance.integration.spec.ts",
+        "packages/server/src/database/memory.readBudgets.integration.spec.ts",
         "memory",
       ),
     ],
@@ -301,19 +294,24 @@ export const rows: readonly AcceptanceRow[] = [
     atomicity: "Owns SQL semantics",
     suites: [
       conformance(
-        "integration:default",
         "packages/server/src/database/sql/sqlAdapter.integration.spec.ts",
         "sql (pooled PostgreSQL)",
       ),
       conformance(
-        "integration:default",
         "packages/server/src/database/sql/sqlAdapter.integration.spec.ts",
         "sql (pooled MySQL)",
       ),
       conformance(
-        "integration:default",
         "packages/server/src/database/sql/sqlAdapter.integration.spec.ts",
         "sql batch (pooled PostgreSQL)",
+      ),
+      readBudgets(
+        "packages/server/src/database/sql/sqlAdapter.readBudgets.integration.spec.ts",
+        "sql (pooled PostgreSQL)",
+      ),
+      readBudgets(
+        "packages/server/src/database/sql/sqlAdapter.readBudgets.integration.spec.ts",
+        "sql (pooled MySQL)",
       ),
     ],
     writeLimit: true,
@@ -333,8 +331,11 @@ export const rows: readonly AcceptanceRow[] = [
     atomicity: "Owns index and unique items",
     suites: [
       conformance(
-        "integration:default",
-        "packages/server/src/database/kv/kvAdapter.integration.spec.ts",
+        "packages/server/src/database/kv/kvAdapter.conformance.integration.spec.ts",
+        "key-value (in-memory store)",
+      ),
+      readBudgets(
+        "packages/server/src/database/kv/kvAdapter.readBudgets.integration.spec.ts",
         "key-value (in-memory store)",
       ),
     ],
@@ -352,7 +353,24 @@ export const rows: readonly AcceptanceRow[] = [
     shared: [],
     budget: 1500,
     atomicity: "Owns transactions and aggregates",
-    suites: [],
+    // Every row's suites run on the engine; its own fault injection and contention specs:
+    suites: [
+      {
+        project: "unit:default",
+        file: "packages/server/src/database/engineTransaction.spec.ts",
+        describe: "engine transactions",
+      },
+      {
+        project: "unit:default",
+        file: "packages/server/src/database/engineAggregates.spec.ts",
+        describe: "engine aggregates",
+      },
+      {
+        project: "unit:default",
+        file: "packages/server/src/database/engineReads.spec.ts",
+        describe: "engine reads",
+      },
+    ],
     writeLimit: false,
     profiles: [
       "standalone-kysely",
