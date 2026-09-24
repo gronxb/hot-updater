@@ -6,6 +6,8 @@ export * from "./setupInsightsModelTestSuite";
 export * from "./setupSemverSatisfiesTestSuite";
 export * from "./setupDatabaseTestSuite";
 export * from "./setupDatabaseAdapterConformanceSuite";
+export * from "./setupReadBudgetTestSuite";
+export * from "./sqlRowsExamined";
 export * from "./runContentionHarness";
 export * from "./createPluginTestHarness";
 export * from "./setupReleaseCatalogTestSuite";
