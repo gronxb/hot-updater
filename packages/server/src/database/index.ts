@@ -119,8 +119,8 @@ export {
   type SqlExecutor,
   type SqlResult,
   type SqlStatement,
+  WRITE_GUARD_TABLE,
 } from "./sql/sqlAdapter";
-export { WRITE_GUARD_TABLE } from "./sql/sqlBatch";
 export {
   createKvAdapter,
   encodeKvKey,
