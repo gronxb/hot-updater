@@ -3,13 +3,17 @@
  * against S1–S5 and redraws the implementation table. A row that fails a
  * check shows that check instead of Smooth, and the script exits 1.
  *
- *   node scripts/acceptance/report.mts [--results <vitest json>] [--commit <sha>] [--json <file>]
+ *   pnpm acceptance [--run | --results <vitest json>] [--commit <sha>] [--json <file>]
  *
- * S3 and S4 read a vitest JSON report of the manifest's suites; without one
- * they fail as not run. S5 reads plans/evidence/database-redesign-e2e.json.
+ * S3 and S4 read a vitest JSON report of the manifest's suites: `--run`
+ * runs them first (the integration environment: Docker, and Java 21 for the
+ * Firebase emulator, as `mise exec java@temurin-21 -- pnpm acceptance --run`),
+ * and `--results` reads an earlier report. Without either they fail as not
+ * run. S5 reads plans/evidence/database-redesign-e2e.json.
  */
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import { existsSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { parseArgs } from "node:util";
@@ -29,6 +33,7 @@ const relative = (file: string) => path.relative(root, file);
 
 const { values: args } = parseArgs({
   options: {
+    run: { type: "boolean" },
     results: { type: "string" },
     commit: { type: "string" },
     json: { type: "string" },
@@ -411,9 +416,34 @@ interface TestResult {
   readonly status: string;
 }
 
+/** Runs every manifest suite once and returns the JSON report's path. */
+const runSuites = () => {
+  const suites = rows.flatMap((row) => row.suites);
+  const output = path.join(os.tmpdir(), `acceptance-${process.pid}.json`);
+  const projects = [...new Set(suites.map((suite) => suite.project))];
+  const files = [...new Set(suites.map((suite) => suite.file))];
+  spawnSync(
+    "pnpm",
+    [
+      "exec",
+      "vitest",
+      "run",
+      ...projects.flatMap((project) => ["--project", project]),
+      ...files,
+      "--reporter=default",
+      "--reporter=json",
+      `--outputFile.json=${output}`,
+    ],
+    { cwd: root, stdio: "inherit" },
+  );
+  if (!existsSync(output)) throw new Error("vitest wrote no JSON report");
+  return output;
+};
+
 const testResults = (() => {
-  if (!args.results) return undefined;
-  const report = JSON.parse(readFileSync(args.results, "utf8")) as {
+  const results = args.run ? runSuites() : args.results;
+  if (!results) return undefined;
+  const report = JSON.parse(readFileSync(results, "utf8")) as {
     testResults: {
       name: string;
       assertionResults: TestResult[];

@@ -343,12 +343,44 @@ export const rows: readonly AcceptanceRow[] = [
     profiles: ["standalone-dynamodb", "aws", "firebase"],
   },
   {
+    name: "Schema fence",
+    // The adapter decorator every provider's database gets from
+    // createEngineDatabase: it checks the settings rows before the first read.
+    entries: ["packages/server/src/database/fence.ts"],
+    shared: [],
+    budget: 150,
+    atomicity: "Reads the settings rows once; writes nothing",
+    suites: [
+      {
+        project: "unit:default",
+        file: "packages/server/src/database/fence.spec.ts",
+        describe: "schema fence",
+      },
+      {
+        project: "unit:default",
+        file: "packages/server/src/database/fence.spec.ts",
+        describe: "a provider's fenced database on PGlite",
+      },
+    ],
+    writeLimit: false,
+    profiles: [
+      "standalone-kysely",
+      "standalone-drizzle",
+      "standalone-prisma",
+      "standalone-mongodb",
+      "standalone-dynamodb",
+      "supabase",
+      "cloudflare",
+      "firebase",
+      "aws",
+    ],
+  },
+  {
     name: "Engine",
-    // Reads, transactions, and aggregates; schema resolution and validation; the fence.
+    // Reads, transactions, and aggregates; schema resolution and validation.
     entries: [
       "packages/server/src/database/engine.ts",
       "packages/server/src/database/resolveSchema.ts",
-      "packages/server/src/database/fence.ts",
     ],
     shared: [],
     budget: 1500,

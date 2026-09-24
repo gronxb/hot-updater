@@ -33,7 +33,6 @@ setupDatabaseAdapterConformanceSuite({
   name: "key-value (Firestore emulator)",
   // A conformance insert is 3 items and a transaction takes 500 writes: 166 fit, 167 do not.
   maxOps: 166,
-  writers: 16,
   createAdapter: async ({ nativePageSize }) => {
     const collection = `conformance_${process.pid}_${(collections += 1)}`;
     return {
