@@ -63,9 +63,11 @@ export const setupReleaseCatalogTestSuite = (options: {
       // Keep long-lived server caches isolated without mocking their clock.
       channelNamespace = crypto.randomUUID();
     });
+    // Deleting a test's releases rebuilds each scope's catalog, so cleaning
+    // up after the 200-release test takes as long as the test.
     afterEach(async () => {
       await api.cleanup();
-    });
+    }, 180_000);
     const request = (path: string, init?: HttpTestRequestInit) =>
       options.getClient().client(path, init);
     // The storage fixtures serve each suffix's manifest for its fixture id,
