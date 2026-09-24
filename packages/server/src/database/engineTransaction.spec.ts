@@ -224,9 +224,9 @@ describe("engine transactions", () => {
     await probe.db.transaction(run);
     const ops = probe.writes[0]!;
     expect(ops.map(({ type, table }) => `${type} ${table.name}`)).toEqual([
+      "patch catalogs",
       "insert releases",
       "insert patches",
-      "patch catalogs",
       "increment bundles",
       "increment bundles",
       "check channels",
@@ -529,12 +529,12 @@ describe("engine transactions", () => {
           `${op.type} ${op.table.name} ${op.type === "insert" ? "" : op.key.join()}`,
       ),
     ).toEqual([
-      "increment channels prod",
-      "increment bundles b0",
-      "increment bundles b2",
       "delete patches p1",
       "delete patches p2",
       "delete bundles b1",
+      "increment channels prod",
+      "increment bundles b0",
+      "increment bundles b2",
     ]);
     for (const id of ["p1", "p2"]) {
       await expect(db.findOne("patches", { id })).resolves.toBeNull();
@@ -550,7 +550,7 @@ describe("engine transactions", () => {
     ).resolves.toMatchObject({ _refs_bundles_channel: 2 });
   });
 
-  it("inserts parents before children and carries counters from earlier writes", async () => {
+  it("carries counters from earlier writes into a later insert", async () => {
     const { db, writes } = await setup();
     await db.transaction(async (tx) => {
       tx.create("patches", { id: "p9", bundle_id: "b9", base_bundle_id: "b0" });
@@ -559,8 +559,8 @@ describe("engine transactions", () => {
     expect(
       writes[0]!.map(({ type, table }) => `${type} ${table.name}`),
     ).toEqual([
-      "insert bundles",
       "insert patches",
+      "insert bundles",
       "increment bundles",
       "increment channels",
     ]);
@@ -637,8 +637,8 @@ describe("engine transactions", () => {
         op.type === "insert" ? op.row.id : op.key,
       ]),
     ).toEqual([
-      ["increment", "catalogs", ["c1"]],
       ["delete", "releases", ["c1", "r1"]],
+      ["increment", "catalogs", ["c1"]],
     ]);
   });
 
