@@ -19,7 +19,7 @@ export type {
   SchemaGenerator,
   ToolingDatabase,
 } from "./types";
-export { HotUpdaterSchemaMigrationRequiredError } from "./schemaReadiness";
+export { HotUpdaterSchemaMigrationRequiredError } from "../database/fence";
 export { HOT_UPDATER_SERVER_VERSION } from "../version";
 
 export type HotUpdaterDBTarget = {

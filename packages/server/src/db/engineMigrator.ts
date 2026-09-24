@@ -1,12 +1,13 @@
 import type { DatabaseAdapter } from "@hot-updater/plugin-core/internal";
 
 import { HOT_UPDATER_SCHEMA_VERSION } from "../core/schema";
-import { migrateSchema, type SchemaSettings } from "../database/fence";
+import type { SchemaSettings } from "../database/fence";
 import type { ResolvedSchema } from "../database/resolveSchema";
 import {
   assertSupportedMigrationMode,
   getEmptyMigrationResult,
 } from "./fixedMigratorShared";
+import { migrateSchema } from "./schemaSettings";
 import {
   refusePreEngineDatabase,
   storedSchemaVersion,

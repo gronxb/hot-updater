@@ -1,6 +1,6 @@
 import type { MountedEndpoint } from "./assembly/assemblePlugins";
 import { HotUpdaterConfigError } from "./assembly/assemblePlugins";
-import { HotUpdaterSchemaMigrationRequiredError } from "./db/schemaReadiness";
+import { HotUpdaterSchemaMigrationRequiredError } from "./database/fence";
 import { ADMIN_ROUTES, createAdminRouteHandlers } from "./handlerAdminRoutes";
 import { HandlerBadRequestError } from "./handlerErrors";
 import { createReleaseCatalogRouteHandlers } from "./handlerReleaseCatalogRoutes";

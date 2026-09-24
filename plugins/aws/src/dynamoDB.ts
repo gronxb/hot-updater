@@ -20,9 +20,6 @@ export interface DynamoDBConfig extends DynamoDBClientConfig {
   readonly tableName: string;
 }
 
-/** The table the update check reads, so CloudFront caches what its rows hold. */
-const RELEASE_CATALOGS_TABLE = "release_catalogs";
-
 const adapterOf = ({ tableName, ...clientConfig }: DynamoDBConfig) => {
   const client = new DynamoDBClient(clientConfig);
   return {
@@ -48,8 +45,8 @@ export const migrateDynamoDB = async (config: DynamoDBConfig) => {
 
 /**
  * Hot Updater's database on one DynamoDB table, through the storage engine.
- * A write that changes Release Catalogs invalidates the CloudFront routes
- * that cache update checks.
+ * A write that changes what the update-check routes answer invalidates their
+ * CloudFront copies.
  */
 export const dynamoDB = (config: DynamoDBConfig): EngineDatabase => {
   const {
@@ -87,23 +84,8 @@ export const dynamoDB = (config: DynamoDBConfig): EngineDatabase => {
   return {
     ...createEngineDatabase({
       name: "dynamoDB",
-      adapter: {
-        ...adapter,
-        async write(ops) {
-          const result = await adapter.write(ops);
-          // A check only guards a row it read; it changes nothing cached.
-          if (
-            result.ok &&
-            ops.some(
-              (op) =>
-                op.type !== "check" && op.table.name === RELEASE_CATALOGS_TABLE,
-            )
-          ) {
-            await invalidateUpdateRoutes();
-          }
-          return result;
-        },
-      },
+      adapter,
+      onCachedRoutesChange: invalidateUpdateRoutes,
     }),
     async dispose() {
       await adapter.dispose?.();

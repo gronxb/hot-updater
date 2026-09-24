@@ -11,7 +11,8 @@ import {
   builtInSchema,
   createEngineDatabase,
 } from "./database/builtInDatabase";
-import { migrateSchema, type SchemaSettings } from "./database/fence";
+import type { SchemaSettings } from "./database/fence";
+import { migrateSchema } from "./db/schemaSettings";
 
 export const runtimeBundle: Bundle = {
   id: "00000000-0000-0000-0000-000000000001",
