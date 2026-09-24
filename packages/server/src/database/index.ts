@@ -1,8 +1,9 @@
 /**
- * The storage adapter contract of the database redesign.
- *
- * Unstable: this subpath may change in any release until the redesign makes
- * it public.
+ * What database providers and storage adapter authors build on: the storage
+ * adapter contract, the SQL core and key-value helper that implement it,
+ * `createEngineDatabase`, which puts an adapter behind the schema fence as a
+ * provider's database, and the built-in schema and settings its migration
+ * writes.
  */
 export {
   compareTuples,
