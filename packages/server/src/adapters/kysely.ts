@@ -1,56 +1,50 @@
 import type { Kysely } from "kysely";
 
 import {
-  createLegacyDatabasePlugin,
-  legacyFacadeSchema,
-  legacyFacadeSettings,
-} from "../database/legacyFacade";
+  builtInSchema,
+  builtInSettings,
+  createEngineDatabase,
+} from "../database/builtInDatabase";
 import { createSqlAdapter } from "../database/sql/sqlAdapter";
 import { createEngineSqlMigrator } from "../db/engineSqlMigrator";
-import type {
-  DatabaseAdapterWithCapabilities,
-  ORMSQLProvider,
-  RelationMode,
-} from "../db/types";
+import type { ORMSQLProvider, ToolingDatabase } from "../db/types";
 import { kyselyExecutor } from "./kyselyExecutor";
+import { checkSqlProvider } from "./sqlProviders";
 
 export { kyselyExecutor } from "./kyselyExecutor";
 
-type KyselySQLProvider = Exclude<ORMSQLProvider, "mssql">;
-
-export type { RelationMode, KyselySQLProvider as SQLProvider };
+export type { ORMSQLProvider as SQLProvider };
 
 export interface KyselyAdapterConfig<TDatabase extends object = object> {
   readonly db: Kysely<TDatabase>;
-  readonly provider: KyselySQLProvider;
-  /** `fumadb` leaves out database foreign keys; the engine keeps references either way. */
-  readonly relationMode?: RelationMode;
+  readonly provider: ORMSQLProvider;
 }
 
 /**
  * Hot Updater's database on a Kysely instance: the storage engine through the
- * shared SQL core, behind today's `DatabasePlugin` until E2. CockroachDB runs
- * as PostgreSQL until E2 removes it.
+ * shared SQL core, fenced by the schema settings. `db migrate` and
+ * `db generate --sql` apply the engine's SQL schema.
  */
 export const kyselyAdapter = <TDatabase extends object>(
   config: KyselyAdapterConfig<TDatabase>,
-): DatabaseAdapterWithCapabilities => {
+): ToolingDatabase => {
+  const provider = checkSqlProvider("kyselyAdapter", config.provider);
   const executor = kyselyExecutor(
     config.db as unknown as Kysely<object>,
-    config.provider === "cockroachdb" ? "postgresql" : config.provider,
+    provider,
   );
-  const adapter = createSqlAdapter({ executor });
   return {
-    ...createLegacyDatabasePlugin({ name: "kysely", adapter, fence: true }),
-    adapterName: "kysely",
-    provider: config.provider,
+    ...createEngineDatabase({
+      name: "kysely",
+      adapter: createSqlAdapter({ executor }),
+    }),
+    provider,
     createMigrator: () =>
       createEngineSqlMigrator({
         adapterName: "kysely",
         executor,
-        schema: legacyFacadeSchema,
-        settings: legacyFacadeSettings,
-        foreignKeys: config.relationMode !== "fumadb",
+        schema: builtInSchema,
+        settings: builtInSettings,
       }),
   };
 };

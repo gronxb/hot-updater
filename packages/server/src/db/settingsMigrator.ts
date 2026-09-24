@@ -1,3 +1,4 @@
+import { HOT_UPDATER_SCHEMA_VERSION } from "../core/schema";
 import {
   ENGINE_SCHEMA_KEY,
   ENGINE_SCHEMA_VERSION,
@@ -7,7 +8,6 @@ import {
 } from "../database/fence";
 import type { SqlExecutor } from "../database/sql/sqlAdapter";
 import { quoteSql } from "../database/sql/sqlSchema";
-import { HOT_UPDATER_SCHEMA_VERSION } from "../schema/types";
 import { settingsStatements } from "./engineSql";
 import {
   assertSupportedMigrationMode,

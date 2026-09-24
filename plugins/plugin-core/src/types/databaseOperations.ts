@@ -1,8 +1,4 @@
-import type {
-  BundleRow,
-  ReleaseCatalogRow,
-  ReleaseRow,
-} from "./databaseRows";
+import type { BundleRow, ReleaseCatalogRow, ReleaseRow } from "./databaseRows";
 
 /** The fields of a bundle row a change may set. */
 export type BundleRowUpdate = Partial<Omit<BundleRow, "id">>;

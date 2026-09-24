@@ -24,12 +24,7 @@ import {
 import { DatabaseRowReferencedError } from "@hot-updater/plugin-core/internal";
 
 import { DatabaseConstraintError } from "../database/errors";
-import {
-  compiledGeneration,
-  toBundleRow,
-  toReleaseRow,
-  type CoreDatabase,
-} from "./reads";
+import { toBundleRow, toReleaseRow, type CoreDatabase } from "./reads";
 import {
   changeRelease,
   changeReleases,
@@ -140,7 +135,7 @@ const loadTarget = async (
   const catalog = await tx.findOne("release_catalogs", {
     scope_key: release.scope_key,
   });
-  if (catalog === null || compiledGeneration(catalog) === null) {
+  if (catalog === null) {
     throw new ReleaseCatalogMutationError(
       "INVALID_SCOPE",
       `Release "${release.id}" has no catalog projection.`,

@@ -1,17 +1,13 @@
 import { createMemoryAdapter } from "@hot-updater/plugin-core/internal";
 import { describe, expect, it, vi } from "vitest";
 
-import { createInMemoryDatabaseHarness } from "../../../test-utils/test/inMemoryDatabasePlugin";
 import { createHotUpdater } from "../createHotUpdaterCore";
 import { defineTable } from "../database/schema";
 import { listHotUpdaterRoutes } from "../handler";
 import { definePlugin } from "../plugins/definePlugin";
 import { HotUpdaterConfigError } from "./assemblePlugins";
 
-const database = () => ({
-  ...createInMemoryDatabaseHarness().plugin,
-  engineAdapter: createMemoryAdapter(),
-});
+const database = () => ({ name: "memory", adapter: createMemoryAdapter() });
 
 const notes = definePlugin({
   id: "notes",
@@ -126,15 +122,12 @@ describe("createHotUpdater with plugins", () => {
         path: "/release-catalogs/:scopeKey/preflight",
         access: "admin",
       },
-      { method: "POST", path: "/database/commit", access: "admin" },
       { method: "GET", path: "/channels", access: "admin" },
       { method: "POST", path: "/channels", access: "admin" },
       { method: "DELETE", path: "/channels/:id", access: "admin" },
       { method: "GET", path: "/bundles/:id", access: "admin" },
       { method: "GET", path: "/bundles", access: "admin" },
-      { method: "POST", path: "/bundles", access: "admin" },
       { method: "PATCH", path: "/bundles/:id", access: "admin" },
-      { method: "DELETE", path: "/bundles/:id", access: "admin" },
       { method: "POST", path: "/bundles/delete", access: "admin" },
       { method: "GET", path: "/bundles/:id/children", access: "admin" },
       {
@@ -298,15 +291,5 @@ describe("createHotUpdater with plugins", () => {
       expect(run).toThrow(HotUpdaterConfigError);
       expect(run).toThrow(message);
     }
-    const { engineAdapter: _, ...legacy } = database();
-    expect(() =>
-      createHotUpdater({
-        database: legacy,
-        plugins: [notes],
-        clientAccess: "public",
-      }),
-    ).toThrow(
-      'Plugin "notes" has tables, and this database does not run on the storage engine yet.',
-    );
   });
 });

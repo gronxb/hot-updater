@@ -9,7 +9,7 @@ import {
 } from "@hot-updater/test-utils";
 import { afterAll, describe, expect, it } from "vitest";
 
-import { legacyFacadeSchema } from "../legacyFacade";
+import { builtInSchema } from "../builtInDatabase";
 import {
   classifySqlError,
   createSqlAdapter,
@@ -147,7 +147,7 @@ describe("sql core", () => {
     );
     // every table the façade spans fits
     expect(() =>
-      createTableStatements("mysql", legacyFacadeSchema.tables),
+      createTableStatements("mysql", builtInSchema.tables),
     ).not.toThrow();
   });
 

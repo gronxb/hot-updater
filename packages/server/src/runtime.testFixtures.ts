@@ -1,13 +1,17 @@
 import type { Bundle } from "@hot-updater/core";
 import type {
-  DatabasePlugin,
+  EngineDatabase,
   StoragePlugin,
   StoragePluginWith,
 } from "@hot-updater/plugin-core";
 import { createStoragePlugin } from "@hot-updater/plugin-core";
+import { createMemoryAdapter } from "@hot-updater/plugin-core/internal";
 
-import { createInMemoryDatabasePlugin } from "../../test-utils/test/inMemoryDatabasePlugin";
-import type { DatabaseAdapterCapabilities, Migrator } from "./db/types";
+import {
+  builtInSchema,
+  createEngineDatabase,
+} from "./database/builtInDatabase";
+import { migrateSchema, type SchemaSettings } from "./database/fence";
 
 export const runtimeBundle: Bundle = {
   id: "00000000-0000-0000-0000-000000000001",
@@ -29,43 +33,25 @@ export const createRuntimeStorage = (
     ...(getDownloadUrl ? { getDownloadUrl } : {}),
   });
 
-const createMigrator = (version: string | undefined): Migrator => ({
-  async getVersion() {
-    return version;
-  },
-  async getNameVariants() {
-    return {};
-  },
-  async next() {
-    return undefined;
-  },
-  async previous() {
-    return undefined;
-  },
-  async up() {
-    throw new Error("not implemented");
-  },
-  async down() {
-    throw new Error("not implemented");
-  },
-  async migrateTo() {
-    throw new Error("not implemented");
-  },
-  async migrateToLatest() {
-    throw new Error("not implemented");
-  },
+/** An in-memory database on the storage engine, without the schema fence. */
+export const createRuntimeDatabase = (
+  name = "testDatabase",
+): EngineDatabase => ({
+  name,
+  adapter: createMemoryAdapter(),
 });
 
-export const createRuntimeDatabase = (): DatabasePlugin => ({
-  ...createInMemoryDatabasePlugin(),
-  name: "testDatabase",
-});
-
-export const createSchemaManagedDatabase = (
-  adapterName: string,
-  version: string | undefined,
-): DatabasePlugin & DatabaseAdapterCapabilities => ({
-  ...createRuntimeDatabase(),
-  adapterName,
-  createMigrator: () => createMigrator(version),
-});
+/**
+ * An in-memory database behind the schema fence, as a provider builds it:
+ * its tables and `settings` rows written first, or none at all.
+ */
+export const createFencedDatabase = async (
+  name: string,
+  settings?: SchemaSettings,
+): Promise<EngineDatabase> => {
+  const adapter = createMemoryAdapter();
+  if (settings !== undefined) {
+    await migrateSchema(adapter, name, builtInSchema.tables, settings);
+  }
+  return createEngineDatabase({ name, adapter });
+};

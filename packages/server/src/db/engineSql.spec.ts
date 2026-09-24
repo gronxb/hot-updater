@@ -3,16 +3,13 @@ import { DatabaseSync } from "node:sqlite";
 import { PGlite } from "@electric-sql/pglite";
 import { afterAll, describe, expect, it } from "vitest";
 
+import { createBundleFixture } from "../../../test-utils/src/databaseTestFixtures";
+import { createInProcessCoreApi } from "../core/api";
 import {
-  createBundleRowFixture,
-  createChannelRowFixture,
-  createReleaseRowFixture,
-} from "../../../test-utils/src/databaseTestFixtures";
-import {
-  createLegacyDatabasePlugin,
-  legacyFacadeSchema,
-  legacyFacadeSettings,
-} from "../database/legacyFacade";
+  builtInSchema,
+  builtInSettings,
+  createEngineDatabase,
+} from "../database/builtInDatabase";
 import { createSqlAdapter } from "../database/sql/sqlAdapter";
 import {
   createTableStatements,
@@ -25,30 +22,26 @@ import {
 } from "../database/sql/sqlTestExecutors";
 import { generateEngineSql } from "./engineSql";
 
-const sql = (dialect: "postgresql" | "mysql" | "sqlite", foreignKeys = true) =>
-  generateEngineSql(dialect, legacyFacadeSchema, legacyFacadeSettings, {
-    foreignKeys,
-  });
+const sql = (dialect: "postgresql" | "mysql" | "sqlite") =>
+  generateEngineSql(dialect, builtInSchema, builtInSettings);
 
 describe("the shared SQL schema", () => {
-  it("defaults engine columns, keeps restrict and cascade foreign keys, and writes the settings last", () => {
+  it("defaults engine columns, has no foreign keys, and writes the settings last", () => {
     const postgres = sql("postgresql");
     expect(
       postgres.find((statement) => statement.includes('"bundles" (')),
     ).toContain(
       '"_refs_releases_bundle_id" bigint NOT NULL DEFAULT 0, "_v" bigint NOT NULL DEFAULT 0',
     );
-    const foreignKeys = postgres.filter((statement) =>
-      statement.includes("FOREIGN KEY"),
-    );
-    expect(
-      foreignKeys.map((statement) => statement.match(/ON DELETE \w+/u)?.[0]),
-    ).toEqual([
-      "ON DELETE CASCADE",
-      "ON DELETE CASCADE",
-      "ON DELETE RESTRICT",
-      "ON DELETE RESTRICT",
-    ]);
+    for (const dialect of ["postgresql", "mysql", "sqlite"] as const) {
+      expect(
+        sql(dialect).some(
+          (statement) =>
+            statement.includes("FOREIGN KEY") ||
+            statement.startsWith("ALTER TABLE"),
+        ),
+      ).toBe(false);
+    }
     expect(
       postgres
         .slice(-4)
@@ -56,24 +49,11 @@ describe("the shared SQL schema", () => {
           statement.startsWith('INSERT INTO "private_hot_updater_settings"'),
         ),
     ).toBe(true);
-
-    const mysql = sql("mysql");
-    expect(
-      mysql.filter((statement) => statement.startsWith("ALTER TABLE")),
-    ).toHaveLength(4);
-    expect(mysql.at(-1)).toContain("ON DUPLICATE KEY UPDATE");
-    expect(
-      sql("sqlite").some((statement) => statement.includes("FOREIGN KEY")),
-    ).toBe(false);
-    expect(
-      sql("postgresql", false).some((statement) =>
-        statement.includes("FOREIGN KEY"),
-      ),
-    ).toBe(false);
+    expect(sql("mysql").at(-1)).toContain("ON DUPLICATE KEY UPDATE");
   });
 
   it("describes each table as its DDL creates it, for ORM schema generators", () => {
-    const tables = legacyFacadeSchema.tables;
+    const tables = builtInSchema.tables;
     const names = (shapes: readonly SqlTableShape[]): string[] =>
       shapes.flatMap((shape) => [
         shape.name,
@@ -100,47 +80,50 @@ describe("the shared SQL schema", () => {
   const pglite = new PGlite();
   afterAll(() => pglite.close());
 
-  it("runs twice on PostgreSQL, enforces its foreign keys, and passes the fence", async () => {
+  it("runs twice on PostgreSQL and passes the fence; the engine keeps references", async () => {
     for (let run = 0; run < 2; run += 1) {
       await pglite.exec(sql("postgresql").join(";\n"));
     }
-    const database = createLegacyDatabasePlugin({
-      name: "pglite",
-      adapter: createSqlAdapter({ executor: pgliteExecutor(pglite) }),
-      fence: true,
-    });
-    const channel = createChannelRowFixture("production");
-    const bundle = createBundleRowFixture("1");
-    await database.models.channels.insert({
-      row: channel,
-      onConflict: "returnExisting",
-    });
-    await database.commit({
-      changes: [
-        { model: "bundles", operation: "insert", row: bundle },
-        {
-          model: "releases",
-          operation: "insert",
-          row: createReleaseRowFixture("1", bundle, channel),
+    const core = createInProcessCoreApi(
+      createEngineDatabase({
+        name: "pglite",
+        adapter: createSqlAdapter({ executor: pgliteExecutor(pglite) }),
+      }).adapter,
+    );
+    const bundle = createBundleFixture("1");
+    await core.deploy([
+      {
+        bundle,
+        release: {
+          channel: "production",
+          enabled: true,
+          fingerprintHash: null,
+          message: null,
+          shouldForceUpdate: false,
+          targetAppVersion: "1.0.0",
         },
-      ],
-    });
-    await expect(
-      pglite.query(`DELETE FROM "bundles" WHERE "id" = $1`, [bundle.id]),
-    ).rejects.toThrow("foreign key");
+      },
+    ]);
+
+    await expect(core.deleteBundles([bundle.id])).rejects.toThrow(
+      "still referenced",
+    );
+    const { rows } = await pglite.query<{ count: number }>(
+      "SELECT count(*)::int AS count FROM information_schema.table_constraints WHERE constraint_type = 'FOREIGN KEY'",
+    );
+    expect(rows[0]!.count).toBe(0);
   });
 
   it("runs on SQLite and passes the fence", async () => {
     const db = new DatabaseSync(":memory:");
     for (const statement of sql("sqlite")) db.exec(statement);
-    const database = createLegacyDatabasePlugin({
-      name: "sqlite",
-      adapter: createSqlAdapter({ executor: sqliteExecutor(db) }),
-      fence: true,
-    });
-    await expect(database.models.channels.list({})).resolves.toEqual({
-      channels: [],
-    });
+    const core = createInProcessCoreApi(
+      createEngineDatabase({
+        name: "sqlite",
+        adapter: createSqlAdapter({ executor: sqliteExecutor(db) }),
+      }).adapter,
+    );
+    await expect(core.listChannels()).resolves.toEqual([]);
     db.close();
   });
 });

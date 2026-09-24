@@ -2,18 +2,18 @@ import { brotliCompressSync } from "node:zlib";
 
 import type {
   Bundle,
-  DatabasePlugin,
+  EngineDatabase,
   StoragePlugin,
   StoragePluginWith,
 } from "@hot-updater/plugin-core";
 import {
-  createDatabaseClient,
   createStoragePlugin as createCoreStoragePlugin,
+  rowToBundle,
 } from "@hot-updater/plugin-core";
 import { createMemoryAdapter } from "@hot-updater/plugin-core/internal";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { createLegacyDatabasePlugin } from "../database/legacyFacade";
+import { createDatabaseCoreApi } from "../core/api";
 
 vi.mock("@hot-updater/bsdiff", () => ({
   hdiff: vi.fn(async () => new Uint8Array([1, 2, 3, 4])),
@@ -32,16 +32,34 @@ const createBundle = (id: string, overrides: Partial<Bundle> = {}): Bundle => ({
   ...overrides,
 });
 
-const createDatabasePlugin = async (
+/** An in-memory database holding `bundles`, each deployed disabled. */
+const createDatabase = async (
   bundles: readonly Bundle[],
-): Promise<DatabasePlugin> => {
-  const plugin = createLegacyDatabasePlugin({
-    name: "memory",
-    adapter: createMemoryAdapter(),
-  });
-  const client = createDatabaseClient(plugin);
-  for (const bundle of bundles) await client.insertBundle(bundle);
-  return plugin;
+): Promise<EngineDatabase> => {
+  const database = { name: "memory", adapter: createMemoryAdapter() };
+  const core = createDatabaseCoreApi(database);
+  for (const bundle of bundles) {
+    await core.deploy([
+      {
+        bundle,
+        release: {
+          channel: "production",
+          enabled: false,
+          fingerprintHash: null,
+          message: null,
+          shouldForceUpdate: false,
+          targetAppVersion: "*",
+        },
+      },
+    ]);
+  }
+  return database;
+};
+
+/** A stored bundle with its patches, as deploys write it. */
+const storedBundle = async (database: EngineDatabase, id: string) => {
+  const detail = await createDatabaseCoreApi(database).getBundle(id);
+  return detail === null ? null : rowToBundle(detail.bundle, detail.patches);
 };
 
 const createStoragePlugin = (
@@ -80,8 +98,7 @@ describe("createBundleDiff", () => {
     const targetBundle = createBundle("00000000-0000-0000-0000-000000000002");
     const baseDownloadFileHash = "a".repeat(64);
     const targetDownloadFileHash = "b".repeat(64);
-    const plugin = await createDatabasePlugin([baseBundle, targetBundle]);
-    const databasePlugin: DatabasePlugin = plugin;
+    const database = await createDatabase([baseBundle, targetBundle]);
     const upload = vi.fn<NonNullable<StoragePlugin["put"]>>(
       async ({ key, body, contentLength }) => {
         const bytes = new Uint8Array(await new Response(body).arrayBuffer());
@@ -153,14 +170,14 @@ describe("createBundleDiff", () => {
           bundleId: targetBundle.id,
         },
         {
-          databasePlugin,
+          database,
           storagePlugin: createStoragePlugin(upload),
         },
       );
 
       expect(upload).toHaveBeenCalledOnce();
       await expect(
-        createDatabaseClient(databasePlugin).getBundleById(targetBundle.id),
+        storedBundle(database, targetBundle.id),
       ).resolves.toMatchObject({ patches: updatedBundle.patches });
       const [patch] = updatedBundle.patches ?? [];
       expect(patch?.baseBundleId).toBe(baseBundle.id);
@@ -187,10 +204,7 @@ describe("createBundleDiff", () => {
   it("rejects ambiguous Hermes bundle assets in manifests", async () => {
     const baseBundle = createBundle("00000000-0000-0000-0000-000000000001");
     const targetBundle = createBundle("00000000-0000-0000-0000-000000000002");
-    const databasePlugin = await createDatabasePlugin([
-      baseBundle,
-      targetBundle,
-    ]);
+    const database = await createDatabase([baseBundle, targetBundle]);
     const upload = vi.fn<NonNullable<StoragePlugin["put"]>>(
       async ({ key }) => ({
         storageUri: `s3://test-bucket/${key}`,
@@ -246,7 +260,7 @@ describe("createBundleDiff", () => {
             bundleId: targetBundle.id,
           },
           {
-            databasePlugin,
+            database,
             storagePlugin: createStoragePlugin(upload),
           },
         ),
@@ -268,10 +282,7 @@ describe("createBundleDiff", () => {
       manifestStorageUri:
         "https://storage.example.com/releases/target/manifest.json",
     });
-    const databasePlugin = await createDatabasePlugin([
-      baseBundle,
-      targetBundle,
-    ]);
+    const database = await createDatabase([baseBundle, targetBundle]);
     const responses = new Map<string, string | Uint8Array>([
       [
         baseBundle.manifestStorageUri!,
@@ -315,7 +326,7 @@ describe("createBundleDiff", () => {
       await createBundleDiff(
         { baseBundleId: baseBundle.id, bundleId: targetBundle.id },
         {
-          databasePlugin,
+          database,
           storagePlugin: createStoragePlugin(upload, {
             get,
             protocol: "https",
@@ -353,7 +364,7 @@ describe("createBundleDiff", () => {
         },
       ],
     });
-    const databasePlugin = await createDatabasePlugin([
+    const database = await createDatabase([
       primaryBaseBundle,
       secondaryBaseBundle,
       targetBundle,
@@ -422,7 +433,7 @@ describe("createBundleDiff", () => {
           bundleId: targetBundle.id,
         },
         {
-          databasePlugin,
+          database,
           storagePlugin: createStoragePlugin(upload),
         },
         {

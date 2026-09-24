@@ -1,14 +1,16 @@
+import type { Bundle } from "@hot-updater/core";
 import {
   DatabaseBundleNotFoundError,
   ReleaseCatalogMutationError,
   ReleaseManagementError,
   type Deployment,
-  type HotUpdaterCoreApi,
   type KeysetInput,
   type ReleaseFilter,
+  type ReleasePolicyPatch,
 } from "@hot-updater/plugin-core";
 import { DatabaseRowReferencedError } from "@hot-updater/plugin-core/internal";
 
+import type { CoreApi } from "./core/api";
 import { HandlerBadRequestError } from "./handlerErrors";
 import {
   decodeMaybe,
@@ -16,37 +18,34 @@ import {
   parseBooleanSearchParam,
   requireRouteParam,
 } from "./handlerParameters";
-import type { HandlerAPI, RouteHandler } from "./handlerTypes";
+import type { RouteHandler } from "./handlerTypes";
 
 /**
  * The admin API's protocol, which `/version` reports. Protocol 2 pages by
  * key, lists releases by the filter sets their indexes serve, and writes
- * through core's typed operations instead of raw commits.
+ * through core's typed operations. `v=2` on a request is accepted and
+ * changes nothing: protocol 1 is gone.
  */
 export const ADMIN_API_PROTOCOL = 2;
-
-/** A request for protocol 2's shape on a path protocol 1 also serves. */
-export const isAdminV2 = (request: Request): boolean =>
-  new URL(request.url).searchParams.get("v") === String(ADMIN_API_PROTOCOL);
 
 const json = (body: unknown, status = 200): Response =>
   Response.json(body, { status });
 
 const notFound = () => json({ error: "Not found" }, 404);
 
-/** Runs `route` on core, or answers 404 when the database is not on the storage engine. */
+const noContent = () => new Response(null, { status: 204 });
+
+/** Runs `route` on core, answering its refusals. */
 const onCore =
   (
     route: (
-      core: HotUpdaterCoreApi,
+      core: CoreApi,
       request: Request,
       params: Record<string, string>,
     ) => Promise<Response>,
   ): RouteHandler =>
-  async (params, request, api: HandlerAPI) =>
-    api.core === undefined
-      ? notFound()
-      : answer(() => route(api.core!, request, params));
+  async (params, request, api) =>
+    answer(() => route(api.core, request, params));
 
 /** Core's refusals as HTTP answers; anything else is a server error. */
 export const answer = async (
@@ -206,16 +205,51 @@ const isDeployment = (value: unknown): value is Deployment =>
     ? isText(value.bundleId) && !("bundle" in value)
     : isBundle(value.bundle));
 
+/** An expected release revision from a body number or a query string. */
 const revisionOf = (value: unknown): number | undefined => {
-  if (value === undefined || value === null) return undefined;
-  if (typeof value !== "number" || !Number.isSafeInteger(value) || value < 1) {
+  if (value === undefined || value === null || value === "") return undefined;
+  const revision = typeof value === "string" ? Number(value) : value;
+  if (
+    typeof revision !== "number" ||
+    !Number.isSafeInteger(revision) ||
+    revision < 1
+  ) {
     throw new HandlerBadRequestError("Invalid expected Release revision");
   }
-  return value;
+  return revision;
 };
 
-/** Protocol 2's reads on paths protocol 1 also serves. */
-export const adminV2Reads = {
+/** A policy change's body: `{ expectedRevision?, patch }`. */
+const policyInput = async (request: Request) => {
+  const input = await body(request);
+  if (!isRecord(input.patch)) {
+    throw new HandlerBadRequestError("Invalid Release policy mutation");
+  }
+  const expectedRevision = revisionOf(input.expectedRevision);
+  return {
+    patch: input.patch as ReleasePolicyPatch,
+    ...(expectedRevision === undefined ? {} : { expectedRevision }),
+  };
+};
+
+type BundleUpdate = Parameters<CoreApi["updateBundle"]>[1];
+
+/** A bundle update's body: the fields it changes, never another bundle's id. */
+const bundleUpdateOf = (value: unknown, bundleId: string): BundleUpdate => {
+  if (!isRecord(value))
+    throw new HandlerBadRequestError("Invalid bundle payload");
+  const { id, ...update } = value as Partial<Bundle>;
+  if (id !== undefined && id !== bundleId) {
+    throw new HandlerBadRequestError("Bundle id mismatch");
+  }
+  return update as BundleUpdate;
+};
+
+const scopeKeyOf = (params: Record<string, string>) =>
+  decodeMaybe(requireRouteParam(params, "scopeKey")) ?? "";
+
+/** Every admin route's handler, by the name `ADMIN_ROUTES` mounts it under. */
+export const createAdminRouteHandlers = (): Record<string, RouteHandler> => ({
   listBundles: onCore(async (core, request) => {
     const url = new URL(request.url);
     const input = keyset(url, 100);
@@ -270,10 +304,77 @@ export const adminV2Reads = {
     }
     return json({ data: await core.ensureChannel(name) });
   }),
-} satisfies Record<string, RouteHandler>;
 
-/** Protocol 2's routes that protocol 1 does not have. */
-export const createAdminV2RouteHandlers = (): Record<string, RouteHandler> => ({
+  /** 204 when deleted; 404 or 409 with the reason otherwise. */
+  deleteChannel: onCore(async (core, _request, params) => {
+    const result = await core.deleteChannel(
+      decodeMaybe(requireRouteParam(params, "id")) ?? "",
+    );
+    if (result.deleted) return noContent();
+    return json({ data: result }, result.reason === "not_found" ? 404 : 409);
+  }),
+
+  getRelease: onCore(async (core, _request, params) => {
+    const row = await core.getRelease(requireRouteParam(params, "id"));
+    return row === null ? notFound() : json({ data: row });
+  }),
+
+  updateRelease: onCore(async (core, request, params) =>
+    json({
+      data: await core.updateReleasePolicy({
+        ...(await policyInput(request)),
+        releaseId: requireRouteParam(params, "id"),
+      }),
+    }),
+  ),
+
+  preflightRelease: onCore(async (core, request, params) =>
+    json({
+      data: await core.preflightReleasePolicy({
+        ...(await policyInput(request)),
+        releaseId: requireRouteParam(params, "id"),
+      }),
+    }),
+  ),
+
+  /** Hard deletion names the release twice: in the path and as `confirm`. */
+  deleteRelease: onCore(async (core, request, params) => {
+    const releaseId = requireRouteParam(params, "id");
+    const url = new URL(request.url);
+    if (url.searchParams.get("confirm") !== releaseId) {
+      throw new HandlerBadRequestError(
+        "Release hard deletion requires confirm=<release-id>",
+      );
+    }
+    const expectedRevision = revisionOf(
+      url.searchParams.get("expectedRevision"),
+    );
+    return json({
+      data: await core.deleteRelease({
+        releaseId,
+        ...(expectedRevision === undefined ? {} : { expectedRevision }),
+      }),
+    });
+  }),
+
+  getReleaseCatalogRow: onCore(async (core, _request, params) => {
+    const row = await core.getReleaseCatalogRow(scopeKeyOf(params));
+    return row === null ? notFound() : json({ data: row });
+  }),
+
+  rebuildReleaseCatalog: onCore(async (core, _request, params) =>
+    json({ data: await core.rebuildReleaseCatalog(scopeKeyOf(params)) }),
+  ),
+
+  updateBundle: onCore(async (core, request, params) => {
+    const bundleId = requireRouteParam(params, "id");
+    await core.updateBundle(
+      bundleId,
+      bundleUpdateOf(await request.json(), bundleId),
+    );
+    return noContent();
+  }),
+
   listBundleChildren: onCore(async (core, request, params) => {
     const input = keyset(new URL(request.url));
     const rows = await core.listPatchesFromBase(
@@ -343,9 +444,7 @@ export const createAdminV2RouteHandlers = (): Record<string, RouteHandler> => ({
 
   preflightReleaseCatalogRebuild: onCore(async (core, _request, params) =>
     json({
-      data: await core.preflightReleaseCatalogRebuild(
-        decodeMaybe(requireRouteParam(params, "scopeKey")) ?? "",
-      ),
+      data: await core.preflightReleaseCatalogRebuild(scopeKeyOf(params)),
     }),
   ),
 
@@ -358,6 +457,58 @@ export const createAdminV2RouteHandlers = (): Record<string, RouteHandler> => ({
       throw new HandlerBadRequestError("Bundle deletion needs ids");
     }
     await core.deleteBundles(ids);
-    return new Response(null, { status: 204 });
+    return noContent();
   }),
 });
+
+/** The admin mount's routes, by the handler that serves each. */
+export const ADMIN_ROUTES: readonly {
+  readonly method: string;
+  readonly path: string;
+  readonly handler: string;
+}[] = [
+  { method: "POST", path: "/releases", handler: "deployReleases" },
+  { method: "POST", path: "/releases/:id/promote", handler: "promoteRelease" },
+  { method: "GET", path: "/releases/:id", handler: "getRelease" },
+  { method: "GET", path: "/releases", handler: "listReleases" },
+  { method: "PATCH", path: "/releases/:id", handler: "updateRelease" },
+  {
+    method: "POST",
+    path: "/releases/:id/preflight",
+    handler: "preflightRelease",
+  },
+  { method: "DELETE", path: "/releases/:id", handler: "deleteRelease" },
+  {
+    method: "GET",
+    path: "/release-catalogs/:scopeKey",
+    handler: "getReleaseCatalogRow",
+  },
+  { method: "GET", path: "/release-catalogs", handler: "listReleaseCatalogs" },
+  {
+    method: "POST",
+    path: "/release-catalogs/:scopeKey/rebuild",
+    handler: "rebuildReleaseCatalog",
+  },
+  {
+    method: "POST",
+    path: "/release-catalogs/:scopeKey/preflight",
+    handler: "preflightReleaseCatalogRebuild",
+  },
+  { method: "GET", path: "/channels", handler: "getChannels" },
+  { method: "POST", path: "/channels", handler: "createChannel" },
+  { method: "DELETE", path: "/channels/:id", handler: "deleteChannel" },
+  { method: "GET", path: "/bundles/:id", handler: "getBundle" },
+  { method: "GET", path: "/bundles", handler: "listBundles" },
+  { method: "PATCH", path: "/bundles/:id", handler: "updateBundle" },
+  { method: "POST", path: "/bundles/delete", handler: "deleteBundles" },
+  {
+    method: "GET",
+    path: "/bundles/:id/children",
+    handler: "listBundleChildren",
+  },
+  {
+    method: "GET",
+    path: "/base-candidates/:candidateKey",
+    handler: "findBaseCandidates",
+  },
+];

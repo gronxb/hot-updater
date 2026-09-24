@@ -1,25 +1,15 @@
 import {
-  ARTIFACT_PROTOCOL_VERSION,
   createReleaseCatalogScopeKey,
-  NIL_UUID,
   RELEASE_CATALOG_FALLBACK_POLICY,
   RELEASE_CATALOG_SCHEMA_VERSION,
-  type ArtifactInfo,
   type ReleaseCatalog,
 } from "@hot-updater/core";
 import {
-  createDatabaseClient,
   projectCompiledCatalog,
   projectCompiledRollbackCatalog,
   type CompiledReleaseCatalog,
-  type DatabasePlugin,
   type ReleaseCatalogRow,
 } from "@hot-updater/plugin-core";
-
-import { resolveManifestArtifacts } from "./updateArtifacts";
-
-type ResolveFileUrl = (storageUri: string | null) => Promise<string | null>;
-type ReadStorageText = (storageUri: string) => Promise<string | null>;
 
 export type ReleaseCatalogRequest =
   | {
@@ -111,52 +101,5 @@ export const projectReleaseCatalogRow = (
     rollbackReleases: projectCompiledRollbackCatalog(compiled, appVersion),
     schemaVersion: RELEASE_CATALOG_SCHEMA_VERSION,
     scopeKey,
-  };
-};
-
-export const createReleaseCatalogReader =
-  (database: DatabasePlugin) =>
-  async (input: ReleaseCatalogRequest): Promise<ReleaseCatalog | null> => {
-    const scopeKey = releaseCatalogScopeKeyOf(input);
-    return projectReleaseCatalogRow(
-      await database.models.releaseCatalogs.findByScopeKey(scopeKey),
-      input,
-      scopeKey,
-    );
-  };
-
-export const createArtifactResolver = (input: {
-  readonly database: DatabasePlugin;
-  readonly readStorageText?: ReadStorageText;
-  readonly resolveFileUrl: ResolveFileUrl;
-}) => {
-  const databaseClient = createDatabaseClient(input.database);
-
-  return async (
-    targetBundleId: string,
-    currentBundleId: string,
-    artifactProtocolVersion: 1,
-  ): Promise<ArtifactInfo | null> => {
-    const [targetBundle, currentBundle] = await Promise.all([
-      databaseClient.getBundleById(targetBundleId),
-      currentBundleId === NIL_UUID
-        ? null
-        : databaseClient.getBundleById(currentBundleId),
-    ]);
-    if (targetBundle === null) return null;
-    if (artifactProtocolVersion !== ARTIFACT_PROTOCOL_VERSION) {
-      return null;
-    }
-    if (input.readStorageText === undefined) {
-      return null;
-    }
-    const manifest = await resolveManifestArtifacts({
-      currentBundle,
-      readStorageText: input.readStorageText,
-      resolveFileUrl: input.resolveFileUrl,
-      targetBundle,
-    });
-    if (manifest === null) return null;
-    return manifest;
   };
 };

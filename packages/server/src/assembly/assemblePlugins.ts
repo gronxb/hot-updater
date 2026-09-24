@@ -153,23 +153,6 @@ const checkInstance = (plugin: PluginShape, instance: unknown) => {
   };
 };
 
-/** Stands in for a database off the storage engine: every read and write says why it cannot run. */
-const offEngine = (): DatabaseAdapter => {
-  const refuse = () =>
-    Promise.reject(
-      new HotUpdaterConfigError(
-        "This database does not run on the storage engine, so core reads and plugin tables are unavailable.",
-      ),
-    );
-  return {
-    id: "off-engine",
-    fits: () => true,
-    get: refuse,
-    query: refuse,
-    write: refuse,
-  };
-};
-
 /**
  * Checks every plugin, runs each `init` once against one engine over the
  * database's storage adapter, and collects APIs, endpoints, and clientAuth.
@@ -177,7 +160,7 @@ const offEngine = (): DatabaseAdapter => {
  */
 export const assemblePlugins = (
   value: unknown,
-  adapter: DatabaseAdapter | undefined,
+  adapter: DatabaseAdapter,
   {
     now = Date.now,
     storage = { resolveFileUrl: async () => null },
@@ -198,14 +181,8 @@ export const assemblePlugins = (
     schema: plugin.schema,
     ...(plugin[builtInPlugin] ? {} : { namespace: plugin.id }),
   }));
-  const tables = plugins.filter(({ schema }) => Object.keys(schema).length > 0);
-  if (tables.length > 0 && adapter === undefined) {
-    fail(
-      `Plugin "${tables[0]!.id}" has tables, and this database does not run on the storage engine yet.`,
-    );
-  }
   const engine = createDatabaseEngine({
-    adapter: adapter ?? offEngine(),
+    adapter,
     schema: resolveSchema([coreModule, ...modules]),
   });
   const coreDatabase = engine.database(coreModule);

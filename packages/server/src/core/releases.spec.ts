@@ -20,9 +20,9 @@ import { createDatabaseEngine } from "../database/database";
 import { resolveSchema } from "../database/resolveSchema";
 import {
   changeReleases,
-  commitLegacyChanges,
   coreModule,
   createCoreReads,
+  insertBundle,
   insertChannel,
   rebuildCatalog,
   targetBaseCandidateKey,
@@ -73,14 +73,14 @@ const deploy = (bundle: BundleRow): ReleaseChangeInput => ({
 });
 
 const setup = async () => {
-  const engine = createDatabaseEngine({
-    adapter: createMemoryAdapter(),
-    schema: resolveSchema([coreModule]),
-    verify: true,
-  });
+  const adapter = createMemoryAdapter();
+  const schema = resolveSchema([coreModule]);
+  const engine = createDatabaseEngine({ adapter, schema, verify: true });
   const db = engine.database(coreModule);
   await insertChannel(db, channel);
   return {
+    adapter,
+    schema,
     engine,
     db,
     reads: createCoreReads(db, { resolveFileUrl: async () => null }),
@@ -100,9 +100,7 @@ describe("release changes rooted at the catalog", () => {
     const { db, reads } = await setup();
     const bundle = createBundleRowFixture("501");
     const patchBase = createBundleRowFixture("500");
-    await commitLegacyChanges(db, {
-      changes: [{ model: "bundles", operation: "insert", row: patchBase }],
-    });
+    await db.transaction(async (tx) => insertBundle(tx, patchBase));
     const patch = createBundlePatchRowFixture("1", bundle.id, patchBase.id);
     const [result] = await changeReleases(db, [
       { ...deploy(bundle), bundle: { row: bundle, patches: [patch] } },
@@ -198,7 +196,7 @@ describe("release changes rooted at the catalog", () => {
   });
 
   it("refuses a release outside its scope and a scope whose catalog history is missing", async () => {
-    const { db } = await setup();
+    const { adapter, schema, db } = await setup();
     await expect(
       changeReleases(db, [
         {
@@ -209,17 +207,20 @@ describe("release changes rooted at the catalog", () => {
       ]),
     ).rejects.toMatchObject({ code: "RELEASE_NOT_FOUND" });
 
-    const bundle = createBundleRowFixture("531");
-    await commitLegacyChanges(db, {
-      changes: [
-        { model: "bundles", operation: "insert", row: bundle },
-        {
-          model: "releases",
-          operation: "insert",
-          row: { ...releaseOf(bundle), id: NEWEST },
-        },
-      ],
-    });
+    await changeReleases(db, [deploy(createBundleRowFixture("531"))]);
+    // A restore that lost the catalog row: a write under the engine, which
+    // keeps a catalog while its scope has releases.
+    const table = schema.models.get("release_catalogs")!.table;
+    const [row] = await adapter.get(table, [[scope.scopeKey]]);
+    await adapter.write([
+      {
+        type: "delete",
+        table,
+        key: [scope.scopeKey],
+        guard: { v: Number(row!._v) },
+        previous: row!,
+      },
+    ]);
     await expect(
       changeReleases(db, [deploy(createBundleRowFixture("532"))]),
     ).rejects.toMatchObject({ code: "CATALOG_IDENTITY_MISSING" });
@@ -292,15 +293,12 @@ describe("release changes rooted at the catalog", () => {
       changed: false,
       catalog: { generation: 1 },
     });
-    await commitLegacyChanges(db, {
-      changes: [
-        {
-          model: "releases",
-          operation: "update",
-          where: { id: deployed!.release!.id },
-          update: { message: "hotfix", revision: 2 },
-        },
-      ],
+    // The release changes underneath the catalog, as only a raw write does.
+    await db.transaction(async (tx) => {
+      const stored = await tx.findOne("releases", {
+        id: deployed!.release!.id,
+      });
+      tx.update("releases", stored!, { message: "hotfix", revision: 2 });
     });
     await expect(rebuildCatalog(db, scope, 90)).resolves.toMatchObject({
       changed: true,

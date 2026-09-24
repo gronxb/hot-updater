@@ -2,22 +2,21 @@ import { DatabaseSync } from "node:sqlite";
 
 import { PGlite } from "@electric-sql/pglite";
 import {
-  setupDatabasePluginTestSuite,
+  setupDatabaseTestSuite,
   startHttpTestServer,
 } from "@hot-updater/test-utils";
 import { describe, expect, it } from "vitest";
 
-import {
-  createBundleRowFixture,
-  createChannelRowFixture,
-  createReleaseRowFixture,
-} from "../../../test-utils/src/databaseTestFixtures";
-import { legacyFacadeSchema } from "../database/legacyFacade";
+import { createBundleFixture } from "../../../test-utils/src/databaseTestFixtures";
+import { createDatabasePluginApis } from "../assembly/databasePlugins";
+import { createInProcessCoreApi } from "../core/api";
+import { builtInSchema } from "../database/builtInDatabase";
 import { classifySqlError } from "../database/sql/sqlAdapter";
 import { isMultiIndex, quoteSql } from "../database/sql/sqlSchema";
 import { HotUpdaterSchemaMigrationRequiredError } from "../db/schemaReadiness";
-import type { DatabaseAdapterWithCapabilities } from "../db/types";
+import type { ToolingDatabase } from "../db/types";
 import { createHotUpdater } from "../index";
+import { createInsightsModel, insights } from "../plugins/insights";
 import { prismaAdapter } from "./prisma";
 import {
   prismaExecutor,
@@ -26,7 +25,7 @@ import {
 import { pglitePrisma, prismaPushSql, sqlitePrisma } from "./prismaTestClients";
 
 /** Every data table; the settings rows stay across tests. */
-const dataTables = legacyFacadeSchema.tables.flatMap((table) => [
+const dataTables = builtInSchema.tables.flatMap((table) => [
   table.name,
   ...table.indexes
     .filter((index) => isMultiIndex(table, index))
@@ -56,23 +55,30 @@ const backends = {
   },
 } as const;
 
-const migrate = async (plugin: DatabaseAdapterWithCapabilities) =>
-  (await plugin.createMigrator!().migrateToLatest()).execute();
+const migrate = async (database: ToolingDatabase) =>
+  (await database.createMigrator!().migrateToLatest()).execute();
 
 for (const provider of ["postgresql", "sqlite"] as const) {
   let backend: Awaited<ReturnType<(typeof backends)[typeof provider]>>;
-  setupDatabasePluginTestSuite({
+  setupDatabaseTestSuite({
     createHttpClient: (options) =>
       startHttpTestServer(
-        createHotUpdater({ ...options, clientAccess: { type: "public" } })
-          .handlers,
+        createHotUpdater({
+          ...options,
+          plugins: [insights()],
+          clientAccess: "public",
+        }).handlers,
+      ),
+    createInsightsModel: (database) =>
+      createInsightsModel(
+        createDatabasePluginApis(database, [insights()]).insights,
       ),
     name: `prismaAdapter (${provider})`,
     migrate: async () => {
       backend = await backends[provider]();
       await migrate(prismaAdapter({ prisma: backend.prisma, provider }));
     },
-    createPlugin: () => prismaAdapter({ prisma: backend.prisma, provider }),
+    createDatabase: () => prismaAdapter({ prisma: backend.prisma, provider }),
     reset: async () => {
       const quote = (name: string) => quoteSql(provider, name);
       await backend.exec(
@@ -88,12 +94,13 @@ for (const provider of ["postgresql", "sqlite"] as const) {
 describe("prismaAdapter migrations", () => {
   it("sets the collations Prisma cannot declare, writes the settings, and serves behind the fence", async () => {
     const { prisma, close } = await backends.postgresql();
-    const plugin = prismaAdapter({ prisma, provider: "postgresql" });
-    await expect(plugin.models.channels.list({})).rejects.toBeInstanceOf(
+    const database = prismaAdapter({ prisma, provider: "postgresql" });
+    const core = createInProcessCoreApi(database.adapter);
+    await expect(core.listChannels()).rejects.toBeInstanceOf(
       HotUpdaterSchemaMigrationRequiredError,
     );
 
-    const migrator = plugin.createMigrator!();
+    const migrator = database.createMigrator!();
     const pending = await migrator.migrateToLatest();
     expect(pending.operations.map(({ type }) => type)).toEqual([
       "custom",
@@ -114,24 +121,21 @@ describe("prismaAdapter migrations", () => {
       { column_name: "scope_key", collation_name: "C" },
     ]);
 
-    const channel = createChannelRowFixture("production");
-    const bundle = createBundleRowFixture("1");
-    const release = createReleaseRowFixture("1", bundle, channel);
-    await plugin.models.channels.insert({
-      row: channel,
-      onConflict: "returnExisting",
-    });
-    await expect(
-      plugin.commit({
-        changes: [
-          { model: "bundles", operation: "insert", row: bundle },
-          { model: "releases", operation: "insert", row: release },
-        ],
-      }),
-    ).resolves.toEqual({ committed: true });
-    await expect(plugin.models.releases.findById(release.id)).resolves.toEqual(
-      release,
-    );
+    const [result] = await core.deploy([
+      {
+        bundle: createBundleFixture("1"),
+        release: {
+          channel: "production",
+          enabled: true,
+          fingerprintHash: null,
+          message: null,
+          shouldForceUpdate: false,
+          targetAppVersion: "1.0.0",
+        },
+      },
+    ]);
+    const release = result!.release!;
+    await expect(core.getRelease(release.id)).resolves.toEqual(release);
     await close();
   });
 
@@ -144,11 +148,14 @@ describe("prismaAdapter migrations", () => {
     await db.close();
   });
 
-  it("refuses SQL Server", () => {
-    expect(() =>
-      prismaAdapter({ prisma: {}, provider: "mssql" as never }),
-    ).toThrow("SQL Server is not supported");
-  });
+  it.each(["mssql", "cockroachdb"])(
+    "refuses %s, which 1.0 dropped",
+    (provider) => {
+      expect(() =>
+        prismaAdapter({ prisma: {}, provider: provider as never }),
+      ).toThrow("CockroachDB and SQL Server were dropped in 1.0");
+    },
+  );
 });
 
 describe("prismaAdapter schema", () => {

@@ -1,7 +1,8 @@
 import type { Bundle } from "@hot-updater/core";
-import { vi } from "vitest";
+import { createMemoryAdapter } from "@hot-updater/plugin-core/internal";
 
-import { createHandlers, type HandlerAPI } from "./handler";
+import { createInProcessCoreApi } from "./core/api";
+import { createHotUpdaterHandlers, type HandlerAPI } from "./handler";
 
 export const testBundle: Bundle = {
   id: "bundle-1",
@@ -12,19 +13,13 @@ export const testBundle: Bundle = {
   assetBaseStorageUri: "s3://test-bucket/assets",
 };
 
-export const createApi = () =>
-  ({
-    getBundleById: vi.fn<HandlerAPI["getBundleById"]>(),
-    getBundles: vi.fn<HandlerAPI["getBundles"]>(),
-    getChannels: vi
-      .fn<HandlerAPI["getChannels"]>()
-      .mockResolvedValue([{ id: "channel-production", name: "production" }]),
-    insertChannel: vi.fn<HandlerAPI["insertChannel"]>(),
-    deleteChannel: vi.fn<HandlerAPI["deleteChannel"]>(),
-    insertBundle: vi.fn<HandlerAPI["insertBundle"]>(),
-    updateBundleById: vi.fn<HandlerAPI["updateBundleById"]>(),
-    deleteBundleById: vi.fn<HandlerAPI["deleteBundleById"]>(),
-  }) satisfies HandlerAPI;
+/** Core on an empty in-memory database; spy on a method to stub it. */
+export const createApi = (): HandlerAPI => ({
+  core: createInProcessCoreApi(createMemoryAdapter()),
+});
 
-export const createAdminHandler = (api: HandlerAPI) =>
+export const createHandlers = (api: HandlerAPI = createApi()) =>
+  createHotUpdaterHandlers({ api });
+
+export const createAdminHandler = (api: HandlerAPI = createApi()) =>
   createHandlers(api).admin;

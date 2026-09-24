@@ -5,6 +5,7 @@ import {
   type ClientAccessRule,
   createHotUpdater,
   type CreateHotUpdaterOptions,
+  type RemovedClientAccess,
 } from "../createHotUpdaterCore";
 import { defineTable } from "../database/schema";
 import { definePlugin } from "../plugins/definePlugin";
@@ -74,7 +75,7 @@ describe("createHotUpdater types", () => {
     typeOnly((database) => {
       createHotUpdater({ database, plugins: [notes, keys] });
       createHotUpdater({ database, plugins: [notes], clientAccess: "public" });
-      createHotUpdater({ database, clientAccess: { type: "public" } });
+      createHotUpdater({ database, clientAccess: "public" });
       // @ts-expect-error Neither a clientAuth plugin nor "public".
       createHotUpdater({ database, plugins: [notes] });
       createHotUpdater({
@@ -85,6 +86,24 @@ describe("createHotUpdater types", () => {
       });
       // @ts-expect-error Two plugins provide clientAuth.
       createHotUpdater({ database, plugins: [keys, sso] });
+    });
+  });
+
+  it("names apiKeys() where a clientAccess object from before 1.0 is written", () => {
+    expectTypeOf<ClientAccessPolicy>().toEqualTypeOf<
+      "public" | RemovedClientAccess
+    >();
+    expectTypeOf<
+      RemovedClientAccess["type"]
+    >().toEqualTypeOf<'clientAccess objects were removed in 1.0: set clientAccess: "public", or add apiKeys() from @hot-updater/server/plugins/api-keys to plugins'>();
+    typeOnly((database) => {
+      // @ts-expect-error clientAccess objects were removed in 1.0.
+      createHotUpdater({ database, clientAccess: { type: "public" } });
+      createHotUpdater({
+        database,
+        // @ts-expect-error clientAccess objects were removed in 1.0.
+        clientAccess: { type: "api-key", headerName: "x-client-key" },
+      });
     });
   });
 

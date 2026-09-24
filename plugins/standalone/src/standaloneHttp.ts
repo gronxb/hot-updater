@@ -1,7 +1,4 @@
-import type {
-  RouteConfig,
-  StandaloneRepositoryConfig,
-} from "./standaloneRoutes";
+import type { StandaloneRepositoryConfig } from "./standaloneRoutes";
 
 type StandaloneDatabaseErrorCode = "invalid-response" | "request-failed";
 
@@ -58,32 +55,5 @@ export const createStandaloneHttp = (config: StandaloneRepositoryConfig) => {
       );
     }
   };
-  const load = async <TResult>(
-    route: RouteConfig,
-    searchParams: Readonly<Record<string, string>>,
-    isResult: (value: unknown) => value is TResult,
-    invalidMessage: string,
-    signal?: AbortSignal,
-  ): Promise<TResult> => {
-    const url = new URL(buildUrl(route.path));
-    for (const [key, value] of Object.entries(searchParams)) {
-      url.searchParams.set(key, value);
-    }
-    const response = await fetch(url, {
-      method: "GET",
-      headers: headers(route.headers),
-      signal,
-    });
-    const value = await parseJson(response);
-    if (!isResult(value)) {
-      throw new StandaloneDatabaseError(
-        "invalid-response",
-        invalidMessage,
-        response.status,
-      );
-    }
-    return value;
-  };
-
-  return { buildUrl, headers, load, parseJson, requestFailed };
+  return { buildUrl, headers, parseJson };
 };

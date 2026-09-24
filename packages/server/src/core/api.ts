@@ -56,8 +56,8 @@ const isAdapter = (value: unknown): value is DatabaseAdapter =>
 export const engineAdapterOf = (
   database: unknown,
 ): DatabaseAdapter | undefined =>
-  isRecord(database) && isAdapter(database.engineAdapter)
-    ? database.engineAdapter
+  isRecord(database) && isAdapter(database.adapter)
+    ? database.adapter
     : isAdapter(database)
       ? database
       : undefined;

@@ -37,10 +37,7 @@ export const apiKeys = (options: ApiKeysOptions = {}) => {
         const model = createApiKeyModel(db);
         return {
           api: {
-            ...createApiKeyManagement({
-              apiKeys: model,
-              beforeOperation: async () => undefined,
-            }),
+            ...createApiKeyManagement({ apiKeys: model }),
             /** Registers a known plaintext key idempotently, for managed init. */
             register: (input: {
               readonly apiKey: string;

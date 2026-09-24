@@ -1,5 +1,5 @@
-import { isDatabaseBundleEventMetadata } from "./databaseJsonValue";
 import { DatabasePluginInputError } from "./databaseErrors";
+import { isDatabaseBundleEventMetadata } from "./databaseJsonValue";
 
 export const isRecord = (
   value: unknown,
@@ -13,27 +13,28 @@ const isTextOrNull = (value: unknown) =>
   value === null || typeof value === "string";
 
 /** Each bundle event field and what it holds. */
-const BUNDLE_EVENT_FIELDS: Readonly<Record<string, (value: unknown) => boolean>> =
-  {
-    id: (value) => typeof value === "string",
-    type: (value) =>
-      value === "UPDATE_DOWNLOADED" ||
-      value === "UPDATE_APPLIED" ||
-      value === "RECOVERED" ||
-      value === "UNCHANGED",
-    install_id: isIdentity,
-    user_id: (value) => value === null || isIdentity(value),
-    from_bundle_id: isTextOrNull,
-    from_release_id: isTextOrNull,
-    to_release_id: isTextOrNull,
-    to_bundle_id: (value) => typeof value === "string",
-    platform: (value) => value === "ios" || value === "android",
-    app_version: (value) => typeof value === "string",
-    channel: (value) => typeof value === "string",
-    metadata: isDatabaseBundleEventMetadata,
-    received_at_ms: (value) =>
-      typeof value === "number" && Number.isSafeInteger(value) && value >= 0,
-  };
+const BUNDLE_EVENT_FIELDS: Readonly<
+  Record<string, (value: unknown) => boolean>
+> = {
+  id: (value) => typeof value === "string",
+  type: (value) =>
+    value === "UPDATE_DOWNLOADED" ||
+    value === "UPDATE_APPLIED" ||
+    value === "RECOVERED" ||
+    value === "UNCHANGED",
+  install_id: isIdentity,
+  user_id: (value) => value === null || isIdentity(value),
+  from_bundle_id: isTextOrNull,
+  from_release_id: isTextOrNull,
+  to_release_id: isTextOrNull,
+  to_bundle_id: (value) => typeof value === "string",
+  platform: (value) => value === "ios" || value === "android",
+  app_version: (value) => typeof value === "string",
+  channel: (value) => typeof value === "string",
+  metadata: isDatabaseBundleEventMetadata,
+  received_at_ms: (value) =>
+    typeof value === "number" && Number.isSafeInteger(value) && value >= 0,
+};
 
 const updateStrategyOf = (row: Readonly<Record<string, unknown>>) =>
   isRecord(row.metadata) ? row.metadata.update_strategy : undefined;

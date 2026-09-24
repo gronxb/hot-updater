@@ -2,14 +2,14 @@ import { Hono } from "hono";
 import { bearerAuth } from "hono/bearer-auth";
 import { describe, expect, it } from "vitest";
 
-import { createInMemoryDatabasePlugin } from "../../test-utils/test/inMemoryDatabasePlugin";
 import { createHotUpdater } from "./index";
+import { createRuntimeDatabase } from "./runtime.testFixtures";
 
 describe("framework-owned admin authentication", () => {
   it("protects admin without affecting the client handler", async () => {
     const hotUpdater = createHotUpdater({
-      database: createInMemoryDatabasePlugin(),
-      clientAccess: { type: "public" },
+      database: createRuntimeDatabase(),
+      clientAccess: "public",
     });
     const adminToken = "test-management-token";
     const app = new Hono();

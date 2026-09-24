@@ -1,4 +1,4 @@
-import { ADMIN_API_PROTOCOL } from "./handlerAdminV2Routes";
+import { ADMIN_API_PROTOCOL } from "./handlerAdminRoutes";
 import type { RouteHandler } from "./handlerTypes";
 import { HOT_UPDATER_SERVER_VERSION } from "./version";
 

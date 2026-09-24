@@ -1,21 +1,17 @@
 import {
   ReleaseManagementError,
   type Deployment,
-  type HotUpdaterCoreApi,
 } from "@hot-updater/plugin-core";
 import { describe, expect, it, vi } from "vitest";
 
-import {
-  adminV2Reads,
-  createAdminV2RouteHandlers,
-} from "./handlerAdminV2Routes";
+import type { CoreApi } from "./core/api";
+import { createAdminRouteHandlers } from "./handlerAdminRoutes";
 import { HandlerBadRequestError } from "./handlerErrors";
 import type { HandlerAPI } from "./handlerTypes";
 
 const BASE = "http://localhost/hot-updater/admin";
 
-const apiWith = (core: Partial<HotUpdaterCoreApi> | undefined) =>
-  ({ core }) as unknown as HandlerAPI;
+const apiWith = (core: Partial<CoreApi>) => ({ core }) as unknown as HandlerAPI;
 
 const post = (path: string, body: unknown) =>
   new Request(`${BASE}${path}`, {
@@ -44,7 +40,7 @@ const deployment: Deployment = {
 };
 
 describe("admin API protocol 2 routes", () => {
-  const routes = createAdminV2RouteHandlers();
+  const routes = createAdminRouteHandlers();
 
   it("deploys well-formed deployments through core", async () => {
     const deploy = vi.fn(async () => []);
@@ -146,23 +142,13 @@ describe("admin API protocol 2 routes", () => {
     });
   });
 
-  it("answers 404 on a database that is not on the storage engine", async () => {
-    const response = await routes.deployReleases!(
-      {},
-      post("/releases", { deployments: [deployment] }),
-      apiWith(undefined),
-    );
-
-    expect(response.status).toBe(404);
-  });
-
   it("pages releases by key and names the next cursor on a full page", async () => {
     const listReleases = vi.fn(async () => [{ id: "b" }, { id: "a" }]);
 
-    const response = await adminV2Reads.listReleases(
+    const response = await routes.listReleases!(
       {},
-      new Request(`${BASE}/releases?v=2&limit=2&channelId=c&platform=ios`),
-      apiWith({ listReleases } as unknown as Partial<HotUpdaterCoreApi>),
+      new Request(`${BASE}/releases?limit=2&channelId=c&platform=ios`),
+      apiWith({ listReleases } as unknown as Partial<CoreApi>),
     );
 
     await expect(response.json()).resolves.toEqual({
@@ -186,9 +172,9 @@ describe("admin API protocol 2 routes", () => {
     const listReleases = vi.fn();
 
     await expect(
-      adminV2Reads.listReleases(
+      routes.listReleases!(
         {},
-        new Request(`${BASE}/releases?v=2&${query}`),
+        new Request(`${BASE}/releases?${query}`),
         apiWith({ listReleases }),
       ),
     ).rejects.toBeInstanceOf(HandlerBadRequestError);
