@@ -182,6 +182,7 @@ class HotUpdaterSessionState {
 const sessionState = new HotUpdaterSessionState();
 let reloadBehavior: ReloadBehaviorSetting = "processRestart";
 let customReloadHandler: CustomReloadHandler | null = null;
+let bundleFailureReported = false;
 
 const cloneManifest = (manifest: Manifest): Manifest => ({
   bundleId: manifest.bundleId,
@@ -336,6 +337,15 @@ export async function updateBundle(
   paramsOrBundleId: UpdateParams | string,
   fileUrl?: string | null,
 ): Promise<boolean> {
+  // The crash marker applies only while the failed bundle is still the staged
+  // one. Staging another now would make the rollback reload launch it instead.
+  if (bundleFailureReported) {
+    console.warn(
+      "[HotUpdater] Skipping updateBundle(): this launch reported a bundle failure. Reload to roll back first.",
+    );
+    return false;
+  }
+
   const updateBundleId =
     typeof paramsOrBundleId === "string"
       ? paramsOrBundleId
@@ -768,6 +778,36 @@ export const getCrashHistory = (): string[] => {
  */
 export const clearCrashHistory = (): boolean => {
   return HotUpdaterNative.clearCrashHistory();
+};
+
+/**
+ * Reports that the current launch failed, for an error JS caught itself
+ * (for example in an error boundary). For a staged bundle still on trial,
+ * this records the failure and stops the bundle from being promoted. It does not
+ * reload, so the app can finish sending the error first. Call `reload()`
+ * afterwards to roll back. A no-op for any other launch, and on a native
+ * binary built before this method existed. After it returns true,
+ * `updateBundle()` returns false until the app reloads.
+ *
+ * @returns {boolean} true if the failure was recorded, so that `reload()` rolls back
+ */
+export const reportBundleFailure = (): boolean => {
+  const nativeModule = HotUpdaterNative as typeof HotUpdaterNative & {
+    reportBundleFailure?: () => boolean;
+  };
+
+  // New JS delivered over the air can run on a binary built before this
+  // method existed. That binary cannot record the failure, and throwing would
+  // replace the error the app is already handling.
+  if (typeof nativeModule.reportBundleFailure !== "function") {
+    return false;
+  }
+
+  const recorded = nativeModule.reportBundleFailure();
+  if (recorded) {
+    bundleFailureReported = true;
+  }
+  return recorded;
 };
 
 /**

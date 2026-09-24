@@ -99,7 +99,14 @@ interface BundleStorageService {
     )
 
     /**
-     * Marks the current launch as successful after the first content appeared.
+     * Records that a trial launch got as far as its first content, leaving the
+     * bundle pending verification.
+     */
+    fun clearLaunchInProgress(currentBundleId: String?)
+
+    /**
+     * Marks the current launch as verified: after the first content appeared,
+     * or after notifyAppReady() when verifyOnAppReady is on.
      */
     fun markLaunchCompleted(currentBundleId: String?)
 
@@ -1043,6 +1050,21 @@ class BundleFileStorageService(
         saveCrashedHistory(history)
         Log.d(TAG, "Cleared crash history")
         return true
+    }
+
+    override fun clearLaunchInProgress(currentBundleId: String?) {
+        val metadata = loadMetadataOrNull() ?: return
+        val stagingBundleId = metadata.stagingBundleId ?: return
+        if (!metadata.verificationPending || !metadata.launchInProgress || stagingBundleId != currentBundleId) {
+            return
+        }
+
+        saveMetadata(
+            metadata.copy(
+                launchInProgress = false,
+                updatedAt = System.currentTimeMillis(),
+            ),
+        )
     }
 
     override fun markLaunchCompleted(currentBundleId: String?) {

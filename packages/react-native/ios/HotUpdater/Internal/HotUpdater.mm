@@ -497,6 +497,15 @@ RCT_EXPORT_MODULE();
     [config configureWithFingerprintHash:fingerprintHash publicKey:publicKey channel:channel isolationKey:isolationKey];
 }
 
++ (void)configureWithFingerprintHash:(NSString *)fingerprintHash
+                           publicKey:(NSString *)publicKey
+                             channel:(NSString *)channel
+                        isolationKey:(NSString *)isolationKey
+                    verifyOnAppReady:(NSNumber *)verifyOnAppReady {
+    HotUpdaterConfig *config = [HotUpdaterConfig shared];
+    [config configureWithFingerprintHash:fingerprintHash publicKey:publicKey channel:channel isolationKey:isolationKey verifyOnAppReady:verifyOnAppReady];
+}
+
 #pragma mark - Progress Updates & Event Emitting (Keep in ObjC Wrapper)
 
 - (void)handleDownloadProgress:(NSNotification *)notification {
@@ -632,6 +641,13 @@ RCT_EXPORT_MODULE();
     return @(result);
 }
 
+- (NSNumber *)reportBundleFailure {
+    NSLog(@"[HotUpdater.mm] reportBundleFailure called");
+    HotUpdaterImpl *impl = [HotUpdater sharedImpl];
+    BOOL result = [impl reportBundleFailure];
+    return @(result);
+}
+
 - (NSString * _Nullable)getBaseURL {
     NSLog(@"[HotUpdater.mm] getBaseURL called");
     HotUpdaterImpl *impl = [HotUpdater sharedImpl];
@@ -742,6 +758,13 @@ RCT_EXPORT_BLOCKING_SYNCHRONOUS_METHOD(clearCrashHistory) {
     NSLog(@"[HotUpdater.mm] clearCrashHistory called");
     HotUpdaterImpl *impl = [HotUpdater sharedImpl];
     BOOL result = [impl clearCrashHistory];
+    return @(result);
+}
+
+RCT_EXPORT_BLOCKING_SYNCHRONOUS_METHOD(reportBundleFailure) {
+    NSLog(@"[HotUpdater.mm] reportBundleFailure called");
+    HotUpdaterImpl *impl = [HotUpdater sharedImpl];
+    BOOL result = [impl reportBundleFailure];
     return @(result);
 }
 

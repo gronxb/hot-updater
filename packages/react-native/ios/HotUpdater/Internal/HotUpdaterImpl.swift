@@ -99,6 +99,20 @@ private func hotUpdaterPerformRecoveryReload() -> Bool {
         return Bundle.main.object(forInfoDictionaryKey: "HOT_UPDATER_CHANNEL") as? String ?? Self.DEFAULT_CHANNEL
     }
     
+    public static var verifyOnAppReady: Bool {
+        if let override = HotUpdaterConfig.shared.verifyOnAppReady {
+            return override
+        }
+        switch Bundle.main.object(forInfoDictionaryKey: "HOT_UPDATER_VERIFY_ON_APP_READY") {
+        case let value as Bool:
+            return value
+        case let value as String:
+            return value.lowercased() == "true"
+        default:
+            return false
+        }
+    }
+
     /**
      * Gets the complete isolation key for preferences storage.
      * @return The isolation key in format: hotupdater_{fingerprintOrVersion}_{channel}_
@@ -389,10 +403,33 @@ private func hotUpdaterPerformRecoveryReload() -> Bool {
 
     /**
      * Returns the native launch report for the current process.
-     * This is read-only; startup success and rollback are finalized before JS reads it.
+     * With `verifyOnAppReady`, this call is also what promotes a staged bundle
+     * that is still on trial.
      */
     public func notifyAppReady() -> [String: Any] {
-        return bundleStorage.notifyAppReady()
+        let report = bundleStorage.notifyAppReady()
+        if Self.verifyOnAppReady {
+            // Promotes before returning, because the app may stage a newer bundle
+            // as soon as this returns, and staging over a bundle still on trial
+            // replaces it. Calling it on the JS thread is safe because the
+            // recovery manager's lock orders it against content-appeared.
+            _ = recoveryManager.markLaunchVerified()
+        }
+        return report
+    }
+
+    /**
+     * Reports that the current launch failed, for an error JS caught itself
+     * (an error boundary) and that therefore never reaches a native crash
+     * handler. For a staged bundle still on trial, this writes the crash marker
+     * and keeps the bundle from being promoted, whether by its first content or
+     * by notifyAppReady(). It does not reload, so JS can finish sending the
+     * error first. The rollback applies at the next reload()
+     * or cold start. A no-op for any other launch.
+     * @return true if the failure was recorded and a reload will roll back
+     */
+    public func reportBundleFailure() -> Bool {
+        return recoveryManager.reportBundleFailure()
     }
 
     /**
@@ -482,9 +519,17 @@ private func hotUpdaterPerformRecoveryReload() -> Bool {
 
         let pendingRecovery = recoveryManager.consumePendingCrashRecovery()
         let selection = bundleStorage.prepareLaunch(bundle: bundle, pendingRecovery: pendingRecovery)
-        recoveryManager.startMonitoring(bundleId: selection.launchedBundleId, shouldRollback: selection.shouldRollbackOnCrash) { [weak self] launchedBundleId in
-            self?.bundleStorage.markLaunchCompleted(bundleId: launchedBundleId)
-        }
+        recoveryManager.startMonitoring(
+            bundleId: selection.launchedBundleId,
+            shouldRollback: selection.shouldRollbackOnCrash,
+            verifyOnAppReady: Self.verifyOnAppReady,
+            onLaunchStarted: { [weak self] launchedBundleId in
+                self?.bundleStorage.clearLaunchInProgress(bundleId: launchedBundleId)
+            },
+            onLaunchVerified: { [weak self] launchedBundleId in
+                self?.bundleStorage.markLaunchCompleted(bundleId: launchedBundleId)
+            }
+        )
         currentLaunchSelection = selection
         return selection
     }
@@ -503,9 +548,12 @@ final class HotUpdaterRecoveryManager: NSObject {
     private var handlersInstalled = false
     private var isMonitoring = false
     private var recoveryRequested = false
+    private var failureReported = false
     private var currentBundleId: String?
     private var shouldRollbackOnCrash = false
-    private var contentAppearedCallback: ((String?) -> Void)?
+    private var verifyOnAppReady = false
+    private var launchStartedCallback: ((String?) -> Void)?
+    private var launchVerifiedCallback: ((String?) -> Void)?
     private var stopMonitoringWorkItem: DispatchWorkItem?
 
     private override init() {
@@ -538,12 +586,20 @@ final class HotUpdaterRecoveryManager: NSObject {
     func startMonitoring(
         bundleId: String?,
         shouldRollback: Bool,
-        onContentAppeared: @escaping (String?) -> Void
+        verifyOnAppReady: Bool,
+        onLaunchStarted: @escaping (String?) -> Void,
+        onLaunchVerified: @escaping (String?) -> Void
     ) {
+        objc_sync_enter(self)
+        defer { objc_sync_exit(self) }
+
         currentBundleId = bundleId
         shouldRollbackOnCrash = shouldRollback
         recoveryRequested = false
-        contentAppearedCallback = onContentAppeared
+        failureReported = false
+        self.verifyOnAppReady = verifyOnAppReady
+        launchStartedCallback = onLaunchStarted
+        launchVerifiedCallback = onLaunchVerified
         isMonitoring = true
 
         stopMonitoringWorkItem?.cancel()
@@ -641,12 +697,74 @@ final class HotUpdaterRecoveryManager: NSObject {
     }
 
     @objc private func handleContentDidAppear() {
+        objc_sync_enter(self)
+        defer { objc_sync_exit(self) }
+
         guard isMonitoring else {
             return
         }
 
         unregisterObservers()
-        contentAppearedCallback?(currentBundleId)
+
+        // First content only proves the bundle evaluated and React committed a
+        // host view, which can happen before any app code has rendered, so the
+        // trial stays armed until notifyAppReady(). Clearing launchInProgress
+        // here keeps the rollback for a hang before first content, without rolling
+        // back, and adding to crash history, a healthy bundle whose launch is
+        // killed between first content and notifyAppReady().
+        if verifyOnAppReady && shouldRollbackOnCrash {
+            launchStartedCallback?(currentBundleId)
+            return
+        }
+
+        // Promoting a bundle whose failure was reported would make the reload
+        // skip the crash marker.
+        guard !failureReported else {
+            return
+        }
+
+        completeLaunchVerification()
+    }
+
+    func markLaunchVerified() -> Bool {
+        objc_sync_enter(self)
+        defer { objc_sync_exit(self) }
+
+        // Once a failure is reported or a recovery requested, promoting would make
+        // the reload skip the crash marker, because the marker is applied only to
+        // a bundle that is still pending verification.
+        guard isMonitoring, verifyOnAppReady, shouldRollbackOnCrash, !recoveryRequested,
+              !failureReported else {
+            return false
+        }
+
+        unregisterObservers()
+        completeLaunchVerification()
+        return true
+    }
+
+    func reportBundleFailure() -> Bool {
+        objc_sync_enter(self)
+        defer { objc_sync_exit(self) }
+
+        // Once a native crash handler has requested recovery, its reload applies
+        // the marker it wrote. A second reload from JS would prepare the launch
+        // again and erase the RECOVERED report.
+        guard isMonitoring, shouldRollbackOnCrash, !recoveryRequested else {
+            return false
+        }
+
+        // The launch was already prepared in this process, so only the marker
+        // can roll it back. Reloading without it relaunches the same trial.
+        guard writeCrashMarker() else {
+            return false
+        }
+        failureReported = true
+        return true
+    }
+
+    private func completeLaunchVerification() {
+        launchVerifiedCallback?(currentBundleId)
         shouldRollbackOnCrash = false
         hotUpdaterUpdateSignalLaunchState(currentBundleId, shouldRollback: false)
 
@@ -659,21 +777,29 @@ final class HotUpdaterRecoveryManager: NSObject {
     }
 
     private func finishMonitoring() {
+        objc_sync_enter(self)
+        defer { objc_sync_exit(self) }
+
         isMonitoring = false
         recoveryRequested = false
+        failureReported = false
         stopMonitoringWorkItem = nil
         currentBundleId = nil
         shouldRollbackOnCrash = false
-        contentAppearedCallback = nil
+        launchStartedCallback = nil
+        launchVerifiedCallback = nil
         hotUpdaterUpdateSignalLaunchState(nil, shouldRollback: false)
     }
 
     private func requestRecoveryReloadIfNeeded() -> Bool {
+        objc_sync_enter(self)
+        // The guard reads under the same lock as markLaunchVerified(), so a
+        // crash on another thread cannot pass it while notifyAppReady()
+        // promotes the bundle.
         guard isMonitoring, shouldRollbackOnCrash else {
+            objc_sync_exit(self)
             return false
         }
-
-        objc_sync_enter(self)
         if recoveryRequested {
             objc_sync_exit(self)
             return true
@@ -701,9 +827,10 @@ final class HotUpdaterRecoveryManager: NSObject {
         return true
     }
 
-    private func writeCrashMarker() {
+    @discardableResult
+    private func writeCrashMarker() -> Bool {
         guard isMonitoring else {
-            return
+            return false
         }
 
         do {
@@ -719,8 +846,10 @@ final class HotUpdaterRecoveryManager: NSObject {
             ]
             let data = try JSONSerialization.data(withJSONObject: payload)
             try data.write(to: crashMarkerURL, options: .atomic)
+            return true
         } catch {
             NSLog("[HotUpdaterRecovery] Failed to write crash marker: \(error)")
+            return false
         }
     }
 }

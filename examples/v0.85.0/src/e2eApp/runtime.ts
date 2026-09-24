@@ -5,6 +5,7 @@ import {
   fallbackHotUpdaterBaseURL,
   resolveHotUpdaterBaseURL,
 } from "../e2eRuntimeConfig";
+import { shouldSkipHotUpdaterInitForE2E } from "./patchSurface";
 
 export const E2E_LARGE_ARCHIVE_ASSET_MANIFEST_PATH =
   "assets/src/test/_fixture-archive-300mb-random.bmp";
@@ -37,17 +38,29 @@ type UpdateProgressDetails = {
   }[];
 };
 
-HotUpdater.init({
-  baseURL: resolveHotUpdaterBaseURL,
-  requestTimeout: 15000,
-  onNotifyAppReady: (result) => {
-    notify.status = result.status;
-    notify.crashedBundleId = result.crashedBundleId;
-  },
-  onError: (error) => {
-    console.error(error);
-  },
-});
+let hotUpdaterInitialized = false;
+
+// Called after the first commit rather than at module scope. With
+// verifyOnAppReady, init()'s notifyAppReady() promotes a staged bundle, so a
+// render error must be able to report itself first.
+export const initHotUpdaterAfterFirstRender = (): void => {
+  if (hotUpdaterInitialized || shouldSkipHotUpdaterInitForE2E()) {
+    return;
+  }
+  hotUpdaterInitialized = true;
+
+  HotUpdater.init({
+    baseURL: resolveHotUpdaterBaseURL,
+    requestTimeout: 15000,
+    onNotifyAppReady: (result) => {
+      notify.status = result.status;
+      notify.crashedBundleId = result.crashedBundleId;
+    },
+    onError: (error) => {
+      console.error(error);
+    },
+  });
+};
 
 export const readRuntimeSnapshot = (): RuntimeSnapshot => ({
   appVersion: HotUpdater.getAppVersion(),

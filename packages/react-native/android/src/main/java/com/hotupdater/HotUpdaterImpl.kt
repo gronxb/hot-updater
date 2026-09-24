@@ -151,6 +151,14 @@ class HotUpdaterImpl {
                 "hot_updater_channel",
             ) ?: DEFAULT_CHANNEL
 
+        fun isVerifyOnAppReadyEnabled(context: Context): Boolean =
+            NativeConfigUtils
+                .getString(
+                    context,
+                    NativeConfigUtils.VERIFY_ON_APP_READY_META_DATA_KEY,
+                    "hot_updater_verify_on_app_ready",
+                ).equals("true", ignoreCase = true)
+
         /**
          * Get minimum bundle ID string
          * @return The minimum bundle ID string
@@ -365,10 +373,21 @@ class HotUpdaterImpl {
 
     /**
      * Returns the launch report for the current process.
-     * Startup success and rollback are finalized before JS reads it.
+     * With verifyOnAppReady, this call is also what promotes a staged bundle
+     * that is still on trial.
      * @return Map containing status and optional crashedBundleId
      */
-    fun notifyAppReady(): Map<String, Any?> = bundleStorage.notifyAppReady()
+    fun notifyAppReady(): Map<String, Any?> {
+        val report = bundleStorage.notifyAppReady()
+        if (isVerifyOnAppReadyEnabled(context)) {
+            // Promotes before returning, because the app may stage a newer bundle
+            // as soon as this returns, and staging over a bundle still on trial
+            // replaces it. Calling it on the JS thread is safe because the
+            // recovery manager's lock orders it against content-appeared.
+            recoveryManager.markLaunchVerified()
+        }
+        return report
+    }
 
     /**
      * Gets the crashed bundle history.
@@ -381,6 +400,18 @@ class HotUpdaterImpl {
      * @return true if clearing was successful
      */
     fun clearCrashHistory(): Boolean = bundleStorage.clearCrashHistory()
+
+    /**
+     * Reports that the current launch failed, for an error JS caught itself
+     * (an error boundary) and that therefore never reaches a native crash
+     * handler. For a staged bundle still on trial, this writes the crash marker
+     * and keeps the bundle from being promoted, whether by its first content or
+     * by notifyAppReady(). It does not restart, so JS can finish sending the
+     * error first. The rollback applies at the next
+     * reload() or cold start. A no-op for any other launch.
+     * @return true if the failure was recorded and a reload will roll back
+     */
+    fun reportBundleFailure(): Boolean = recoveryManager.reportBundleFailure()
 
     /**
      * Gets the base URL for the current active bundle directory.
@@ -442,7 +473,11 @@ class HotUpdaterImpl {
         recoveryManager.startMonitoring(
             bundleId = selection.launchedBundleId,
             shouldRollback = selection.shouldRollbackOnCrash,
-            onContentAppeared = { launchedBundleId ->
+            verifyOnAppReady = isVerifyOnAppReadyEnabled(context),
+            onLaunchStarted = { launchedBundleId ->
+                bundleStorage.clearLaunchInProgress(launchedBundleId)
+            },
+            onLaunchVerified = { launchedBundleId ->
                 bundleStorage.markLaunchCompleted(launchedBundleId)
             },
             onRecoveryRestartRequested = {

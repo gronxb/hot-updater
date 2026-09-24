@@ -20,6 +20,7 @@
     "addListener",
     "isUpdateDownloaded",
     "getCrashHistory",
-    "clearCrashHistory"
+    "clearCrashHistory",
+    "reportBundleFailure"
   ]
 }

@@ -19,6 +19,7 @@ import {
   getMinBundleId,
   isChannelSwitched,
   reload,
+  reportBundleFailure,
   resetChannel,
   setCohort,
   setReloadBehavior,
@@ -594,6 +595,19 @@ function createHotUpdaterClient() {
      * ```
      */
     clearCrashHistory,
+
+    /**
+     * Reports that the current launch failed, for an error JS caught itself
+     * (for example in an error boundary). For a staged bundle still on trial,
+     * this records the failure and stops the bundle from being promoted. It does not
+     * reload, so the app can finish sending the error first. Call `reload()`
+     * afterwards to roll back. A no-op for any other launch, and on a native
+     * binary built before this method existed. After it returns true,
+     * `updateBundle()` returns false until the app reloads.
+     *
+     * @returns {boolean} true if the failure was recorded, so that `reload()` rolls back
+     */
+    reportBundleFailure,
   };
 }
 

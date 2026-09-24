@@ -11,6 +11,7 @@ import {
   handleAssertLaunchReport,
   handleAssertManifestDiffApplied,
   handleAssertMetadataActive,
+  handleAssertMetadataOnTrial,
   handleAssertMetadataReset,
   handleAssertMultipleAssetsReplaced,
   handleLaunchStartupHang,
@@ -94,7 +95,7 @@ app.post("/e2e/jobs/deploy-bundle", async (c) => {
     forceUpdate?: boolean;
     marker?: string;
     message?: string;
-    mode?: "crash" | "hang" | "reset";
+    mode?: "crash" | "hang" | "render-error" | "reset" | "skip-init";
     patchMaxBaseBundles?: number;
     rollout?: number;
     safeBundleIds?: string[];
@@ -111,9 +112,14 @@ app.post("/e2e/jobs/deploy-bundle", async (c) => {
   if (
     payload.mode !== "reset" &&
     payload.mode !== "crash" &&
-    payload.mode !== "hang"
+    payload.mode !== "hang" &&
+    payload.mode !== "render-error" &&
+    payload.mode !== "skip-init"
   ) {
-    return c.json({ error: "mode must be reset, crash, or hang" }, 400);
+    return c.json(
+      { error: "mode must be reset, crash, hang, render-error, or skip-init" },
+      400,
+    );
   }
   if (
     payload.bundleProfile !== undefined &&
@@ -405,6 +411,15 @@ app.post("/e2e/assert-metadata-active", async (c) => {
   }
 
   return c.json(await handleAssertMetadataActive(payload.bundleId));
+});
+
+app.post("/e2e/assert-metadata-on-trial", async (c) => {
+  const payload = (await c.req.json()) as { bundleId?: string };
+  if (!payload.bundleId) {
+    return c.json({ error: "bundleId is required" }, 400);
+  }
+
+  return c.json(await handleAssertMetadataOnTrial(payload.bundleId));
 });
 
 app.post("/e2e/assert-metadata-reset", async (c) => {

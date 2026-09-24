@@ -274,6 +274,12 @@ class HotUpdaterModule internal constructor(
     }
 
     @ReactMethod(isBlockingSynchronousMethod = true)
+    override fun reportBundleFailure(): Boolean {
+        val impl = getInstance()
+        return impl.reportBundleFailure()
+    }
+
+    @ReactMethod(isBlockingSynchronousMethod = true)
     override fun getBaseURL(): String? {
         val impl = getInstance()
         return impl.getBaseURL()

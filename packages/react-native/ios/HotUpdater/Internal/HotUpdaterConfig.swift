@@ -16,6 +16,7 @@ public class HotUpdaterConfig: NSObject {
     private var _publicKey: String?
     private var _channel: String?
     private var _isolationKey: String?
+    private var _verifyOnAppReady: Bool?
 
     public var fingerprintHash: String? {
         get { lock.lock(); defer { lock.unlock() }; return _fingerprintHash }
@@ -40,15 +41,30 @@ public class HotUpdaterConfig: NSObject {
         set { lock.lock(); defer { lock.unlock() }; _isolationKey = newValue }
     }
 
+    /// When true, a staged bundle stays on trial after its first content appears
+    /// and is promoted by `notifyAppReady()` instead.
+    public var verifyOnAppReady: Bool? {
+        get { lock.lock(); defer { lock.unlock() }; return _verifyOnAppReady }
+        set { lock.lock(); defer { lock.unlock() }; _verifyOnAppReady = newValue }
+    }
+
     @objc(configureWithFingerprintHash:publicKey:channel:isolationKey:)
     public func configureWithFingerprintHash(_ fingerprintHash: String?, publicKey: String?, channel: String?, isolationKey: String?) {
+        configureWithFingerprintHash(fingerprintHash, publicKey: publicKey, channel: channel, isolationKey: isolationKey, verifyOnAppReady: nil)
+    }
+
+    /// `verifyOnAppReady` is an `NSNumber` because Objective-C has no optional `BOOL`.
+    /// `nil` falls back to `Info.plist`.
+    @objc(configureWithFingerprintHash:publicKey:channel:isolationKey:verifyOnAppReady:)
+    public func configureWithFingerprintHash(_ fingerprintHash: String?, publicKey: String?, channel: String?, isolationKey: String?, verifyOnAppReady: NSNumber?) {
         self.fingerprintHash = fingerprintHash
         self.publicKey = publicKey
         self.channel = channel
         self.isolationKey = isolationKey
+        self.verifyOnAppReady = verifyOnAppReady?.boolValue
     }
 
     public func clear() {
-        configureWithFingerprintHash(nil, publicKey: nil, channel: nil, isolationKey: nil)
+        configureWithFingerprintHash(nil, publicKey: nil, channel: nil, isolationKey: nil, verifyOnAppReady: nil)
     }
 }

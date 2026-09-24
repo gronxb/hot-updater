@@ -1,0 +1,63 @@
+---
+title: "reportBundleFailure"
+description: Reports a startup failure that your app caught itself, so the next reload rolls back the bundle.
+icon: ShieldAlert
+---
+
+## Usage
+
+A render error that an error boundary catches is not a crash, so Hot Updater
+does not see it. Call `reportBundleFailure()` from the boundary to report it.
+
+For a staged bundle that is still on trial, this writes the crash marker and
+stops the bundle from being promoted. It does not reload, so your app can send
+the error to its crash reporter first. Call `HotUpdater.reload()` afterwards to
+roll back. If the app never reloads, the next cold start rolls back instead.
+Until then, `updateBundle()` returns `false`, so no new install can start over
+the failed bundle. A download that was already running is not stopped.
+
+```tsx
+import { HotUpdater } from "@hot-updater/react-native";
+import React from "react";
+
+class RootErrorBoundary extends React.Component<
+  { children: React.ReactNode },
+  { failed: boolean }
+> {
+  state = { failed: false };
+
+  static getDerivedStateFromError() {
+    return { failed: true };
+  }
+
+  componentDidCatch(error: Error) {
+    if (HotUpdater.reportBundleFailure()) {
+      void reportToCrashReporter(error).finally(() => HotUpdater.reload());
+    }
+  }
+
+  render() {
+    return this.state.failed ? <ErrorScreen /> : this.props.children;
+  }
+}
+```
+
+<Callout type="warn">
+Report the failure before `notifyAppReady()` runs. By default Hot Updater
+promotes a bundle when its first content appears, which includes the error
+boundary's fallback screen. Turn on
+[`verifyOnAppReady`](/docs/concepts/automatic-rollback#errors-caught-by-an-error-boundary)
+and call `HotUpdater.init()` after your first screen renders, so the bundle is
+still on trial when the boundary reports.
+</Callout>
+
+## Return Value
+
+```typescript
+reportBundleFailure(): boolean
+```
+
+- `true` - The failure was recorded, so `HotUpdater.reload()` rolls back.
+- `false` - Nothing was recorded. The running bundle is not on trial, a native
+  crash handler has already requested recovery, or the native binary was built
+  before this method existed.

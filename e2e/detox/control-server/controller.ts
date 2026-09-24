@@ -46,7 +46,7 @@ type JobState = {
   status: "cancelled" | "failed" | "running" | "succeeded";
 };
 
-type DeployMode = "crash" | "hang" | "reset";
+type DeployMode = "crash" | "hang" | "render-error" | "reset" | "skip-init";
 
 type DeployedBundleRecord = {
   archiveSizeBytes: number | null;
@@ -226,6 +226,14 @@ const CRASH_GUARD_START = "/* E2E_CRASH_GUARD_START */";
 const CRASH_GUARD_END = "/* E2E_CRASH_GUARD_END */";
 const CRASH_GUARD_PATTERN =
   /\/\* E2E_CRASH_GUARD_START \*\/[\s\S]*?\/\* E2E_CRASH_GUARD_END \*\//;
+const RENDER_ERROR_GUARD_START = "/* E2E_RENDER_ERROR_GUARD_START */";
+const RENDER_ERROR_GUARD_END = "/* E2E_RENDER_ERROR_GUARD_END */";
+const RENDER_ERROR_GUARD_PATTERN =
+  /\/\* E2E_RENDER_ERROR_GUARD_START \*\/[\s\S]*?\/\* E2E_RENDER_ERROR_GUARD_END \*\//;
+const SKIP_INIT_GUARD_START = "/* E2E_SKIP_INIT_GUARD_START */";
+const SKIP_INIT_GUARD_END = "/* E2E_SKIP_INIT_GUARD_END */";
+const SKIP_INIT_GUARD_PATTERN =
+  /\/\* E2E_SKIP_INIT_GUARD_START \*\/[\s\S]*?\/\* E2E_SKIP_INIT_GUARD_END \*\//;
 const DEPLOY_ASSET_GUARD_START = "/* E2E_DEPLOY_ASSET_GUARD_START */";
 const DEPLOY_ASSET_GUARD_END = "/* E2E_DEPLOY_ASSET_GUARD_END */";
 const DEPLOY_ASSET_GUARD_PATTERN =
@@ -1037,30 +1045,63 @@ async function applyAppScenario({
       "Failed to locate E2E deploy asset guard markers in patchSurface.ts",
     );
   }
+  if (!RENDER_ERROR_GUARD_PATTERN.test(source)) {
+    throw new Error(
+      "Failed to locate E2E render error guard markers in patchSurface.ts",
+    );
+  }
+  if (!SKIP_INIT_GUARD_PATTERN.test(source)) {
+    throw new Error(
+      "Failed to locate E2E skip init guard markers in patchSurface.ts",
+    );
+  }
 
+  const unsafeBundleGuard = (body: string[]) => [
+    `  const E2E_SAFE_BUNDLE_IDS = new Set(${JSON.stringify(safeBundleIds, null, 2)});`,
+    `  const E2E_BUILT_IN_MIN_BUNDLE_ID_SUFFIX = ${JSON.stringify(BUILT_IN_MIN_BUNDLE_ID_SUFFIX)};`,
+    "  const E2E_CURRENT_BUNDLE_ID = HotUpdater.getBundleId();",
+    "  const E2E_IS_BUILT_IN_BUNDLE =",
+    '    typeof E2E_CURRENT_BUNDLE_ID === "string" &&',
+    "    E2E_CURRENT_BUNDLE_ID.endsWith(E2E_BUILT_IN_MIN_BUNDLE_ID_SUFFIX);",
+    "",
+    "  if (!E2E_IS_BUILT_IN_BUNDLE && !E2E_SAFE_BUNDLE_IDS.has(E2E_CURRENT_BUNDLE_ID)) {",
+    ...body,
+    "  }",
+  ];
   const crashGuardSource =
-    mode !== "reset"
+    mode === "crash" || mode === "hang"
       ? [
           CRASH_GUARD_START,
-          `  const E2E_SAFE_BUNDLE_IDS = new Set(${JSON.stringify(safeBundleIds, null, 2)});`,
-          `  const E2E_BUILT_IN_MIN_BUNDLE_ID_SUFFIX = ${JSON.stringify(BUILT_IN_MIN_BUNDLE_ID_SUFFIX)};`,
-          "  const E2E_CURRENT_BUNDLE_ID = HotUpdater.getBundleId();",
-          "  const E2E_IS_BUILT_IN_BUNDLE =",
-          '    typeof E2E_CURRENT_BUNDLE_ID === "string" &&',
-          "    E2E_CURRENT_BUNDLE_ID.endsWith(E2E_BUILT_IN_MIN_BUNDLE_ID_SUFFIX);",
-          "",
-          "  if (!E2E_IS_BUILT_IN_BUNDLE && !E2E_SAFE_BUNDLE_IDS.has(E2E_CURRENT_BUNDLE_ID)) {",
-          ...(mode === "hang"
-            ? [
-                '    console.log("HotUpdaterE2EStartupHang:" + E2E_CURRENT_BUNDLE_ID);',
-                "    const hangUntil = Date.now() + 600_000;",
-                "    while (Date.now() < hangUntil) {}",
-              ]
-            : ['    throw new Error("hot-updater e2e crash bundle");']),
-          "  }",
+          ...unsafeBundleGuard(
+            mode === "hang"
+              ? [
+                  '    console.log("HotUpdaterE2EStartupHang:" + E2E_CURRENT_BUNDLE_ID);',
+                  "    const hangUntil = Date.now() + 600_000;",
+                  "    while (Date.now() < hangUntil) {}",
+                ]
+              : ['    throw new Error("hot-updater e2e crash bundle");'],
+          ),
           `  ${CRASH_GUARD_END}`,
         ].join("\n")
       : `${CRASH_GUARD_START}\n  ${CRASH_GUARD_END}`;
+  const renderErrorGuardSource =
+    mode === "render-error"
+      ? [
+          RENDER_ERROR_GUARD_START,
+          ...unsafeBundleGuard([
+            '    throw new Error("hot-updater e2e render error bundle");',
+          ]),
+          `  ${RENDER_ERROR_GUARD_END}`,
+        ].join("\n")
+      : `${RENDER_ERROR_GUARD_START}\n  ${RENDER_ERROR_GUARD_END}`;
+  const skipInitGuardSource =
+    mode === "skip-init"
+      ? [
+          SKIP_INIT_GUARD_START,
+          ...unsafeBundleGuard(["    return true;"]),
+          `  ${SKIP_INIT_GUARD_END}`,
+        ].join("\n")
+      : `${SKIP_INIT_GUARD_START}\n  ${SKIP_INIT_GUARD_END}`;
   const deployAssetSource = (() => {
     if (bundleProfile === "archive300mb") {
       return [
@@ -1090,6 +1131,8 @@ async function applyAppScenario({
       `export const E2E_SCENARIO_MARKER = ${JSON.stringify(marker)};`,
     )
     .replace(CRASH_GUARD_PATTERN, crashGuardSource)
+    .replace(RENDER_ERROR_GUARD_PATTERN, renderErrorGuardSource)
+    .replace(SKIP_INIT_GUARD_PATTERN, skipInitGuardSource)
     .replace(DEPLOY_ASSET_GUARD_PATTERN, deployAssetSource);
 
   await fsPromises.writeFile(fixtureSession.appSourceFile, nextSource);
@@ -2130,6 +2173,22 @@ function assertMetadataState(
   if (verificationPending !== false) {
     throw new Error(
       `Expected verificationPending false but received ${String(verificationPending)}`,
+    );
+  }
+}
+
+function assertMetadataOnTrialState(
+  metadata: Record<string, unknown>,
+  bundleId: string,
+) {
+  const metadataState = getMetadataState(metadata);
+
+  if (
+    metadataState.stagingBundleId !== bundleId ||
+    metadataState.verificationPending !== true
+  ) {
+    throw new Error(
+      `Expected ${bundleId} on trial but received stagingBundleId=${String(metadataState.stagingBundleId)} and verificationPending=${String(metadataState.verificationPending)}`,
     );
   }
 }
@@ -5585,6 +5644,23 @@ async function assertMetadataActive(bundleId: string) {
   return {};
 }
 
+async function assertMetadataOnTrial(bundleId: string) {
+  const metadata =
+    fixtureSession.platform === "ios"
+      ? readJson(path.join(ensureStorePath(), "metadata.json"))
+      : (() => {
+          const probePath = path.join(
+            fixtureSession.resultsDir,
+            "metadata-assert.json",
+          );
+          copyAndroidFile(`${ensureStorePath()}/metadata.json`, probePath);
+          return readJson(probePath);
+        })();
+
+  assertMetadataOnTrialState(metadata, bundleId);
+  return {};
+}
+
 async function assertMetadataResetState() {
   const attempts = 120;
 
@@ -5914,6 +5990,10 @@ export async function handleAssertMultipleAssetsReplaced(args: {
 
 export async function handleAssertMetadataActive(bundleId: string) {
   return assertMetadataActive(bundleId);
+}
+
+export async function handleAssertMetadataOnTrial(bundleId: string) {
+  return assertMetadataOnTrial(bundleId);
 }
 
 export async function handleAssertMetadataReset() {

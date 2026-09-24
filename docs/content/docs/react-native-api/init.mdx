@@ -80,8 +80,14 @@ does not make a root HOC convenient.
 Use `HotUpdater.wrap` when you want Hot Updater to manage the root component
 lifecycle directly, especially for automatic update checks with a fallback UI.
 
+With [`verifyOnAppReady`](/docs/concepts/automatic-rollback#errors-caught-by-an-error-boundary)
+on, `init()` is what promotes a newly installed bundle, one frame after it is
+called. Call it from an effect in your first screen, so that a render error
+reported by an error boundary can roll the bundle back.
+
 ## Related
 
 - [`HotUpdater.wrap()`](/docs/react-native-api/wrap)
 - [`HotUpdater.checkForUpdate()`](/docs/react-native-api/checkForUpdate)
+- [`HotUpdater.reportBundleFailure()`](/docs/react-native-api/reportBundleFailure)
 - [Custom Update](/docs/guides/custom-update)

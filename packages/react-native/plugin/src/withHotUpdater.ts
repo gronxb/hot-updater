@@ -22,6 +22,7 @@ const ANDROID_META_DATA_KEYS = {
   channel: "com.hotupdater.CHANNEL",
   fingerprintHash: "com.hotupdater.FINGERPRINT_HASH",
   publicKey: "com.hotupdater.PUBLIC_KEY",
+  verifyOnAppReady: "com.hotupdater.VERIFY_ON_APP_READY",
 } as const;
 
 type AndroidMetaData = {
@@ -185,6 +186,7 @@ export const getPublicKeyFromConfig = async (
 // Type definitions
 type HotUpdaterConfig = {
   channel?: string;
+  verifyOnAppReady?: boolean;
 };
 
 /**
@@ -222,6 +224,7 @@ const withHotUpdaterNativeCode = (config: ExpoConfig) => {
 const withHotUpdaterConfigAsync =
   (props: HotUpdaterConfig) => (config: ExpoConfig) => {
     const channel = props.channel || "production";
+    const verifyOnAppReady = props.verifyOnAppReady === true;
 
     let modifiedConfig = config;
 
@@ -244,6 +247,13 @@ const withHotUpdaterConfigAsync =
       }
       if (publicKey) {
         cfg.modResults.HOT_UPDATER_PUBLIC_KEY = publicKey;
+      }
+      // A prebuild without --clean reuses Info.plist, so turning the option
+      // off has to remove a key an earlier prebuild wrote.
+      if (verifyOnAppReady) {
+        cfg.modResults.HOT_UPDATER_VERIFY_ON_APP_READY = true;
+      } else {
+        delete cfg.modResults.HOT_UPDATER_VERIFY_ON_APP_READY;
       }
       return cfg;
     });
@@ -285,6 +295,19 @@ const withHotUpdaterConfigAsync =
           application,
           ANDROID_META_DATA_KEYS.publicKey,
           publicKey,
+        );
+      }
+
+      if (verifyOnAppReady) {
+        upsertAndroidMetaData(
+          application,
+          ANDROID_META_DATA_KEYS.verifyOnAppReady,
+          "true",
+        );
+      } else {
+        removeAndroidMetaData(
+          application,
+          ANDROID_META_DATA_KEYS.verifyOnAppReady,
         );
       }
 

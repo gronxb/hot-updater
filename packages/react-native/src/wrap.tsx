@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 
 import { checkForUpdate } from "./checkForUpdate";
 import type { HotUpdaterError } from "./error";
@@ -266,21 +266,19 @@ const waitForNextFrame = () =>
     void Promise.resolve().then(resolve);
   });
 
-/**
- * Helper function to handle notifyAppReady flow
- */
-const handleNotifyAppReady = async (options: {
+type NotifyAppReadyOptions = {
   resolver?: HotUpdaterResolver;
   requestHeaders?: Record<string, string>;
   requestTimeout?: number;
   onNotifyAppReady?: (result: NotifyAppReadyResult) => void;
   onError?: (error: HotUpdaterError | Error | unknown) => void;
-}): Promise<void> => {
-  await waitForNextFrame();
+};
 
+const reportAppReady = async (
+  nativeResult: NotifyAppReadyResult,
+  options: NotifyAppReadyOptions,
+): Promise<void> => {
   try {
-    const nativeResult = nativeNotifyAppReady();
-
     // If resolver.notifyAppReady exists, call it with simplified params
     if (options.resolver?.notifyAppReady) {
       await options.resolver
@@ -301,6 +299,27 @@ const handleNotifyAppReady = async (options: {
     options.onError?.(e);
     console.warn("[HotUpdater] Failed to notify app ready:", e);
   }
+};
+
+/**
+ * Resolves once native notifyAppReady() has returned or thrown, without
+ * waiting for the resolver.
+ */
+const handleNotifyAppReady = async (
+  options: NotifyAppReadyOptions,
+): Promise<void> => {
+  await waitForNextFrame();
+
+  let nativeResult: NotifyAppReadyResult;
+  try {
+    nativeResult = nativeNotifyAppReady();
+  } catch (e) {
+    options.onError?.(e);
+    console.warn("[HotUpdater] Failed to notify app ready:", e);
+    return;
+  }
+
+  void reportAppReady(nativeResult, options);
 };
 
 export function init(options: InternalInitOptions): void {
@@ -338,6 +357,11 @@ export function wrap(
       const [message, setMessage] = useState<string | null>(null);
       const [updateStatus, setUpdateStatus] =
         useState<UpdateStatus>("CHECK_FOR_UPDATE");
+      // With verifyOnAppReady, native notifyAppReady() is what promotes the
+      // running bundle. Staging another bundle before that call returns would
+      // replace the running one on trial, and the running one would never be
+      // promoted. The update check awaits this promise before staging.
+      const appReady = useRef<Promise<void>>(Promise.resolve());
 
       const initHotUpdater = useEventCallback(async () => {
         try {
@@ -363,6 +387,8 @@ export function wrap(
             setUpdateStatus("UPDATE_PROCESS_COMPLETED");
             return;
           }
+
+          await appReady.current;
 
           if (updateInfo.shouldForceUpdate === false) {
             void updateInfo.updateBundle().catch((error: unknown) => {
@@ -412,7 +438,7 @@ export function wrap(
 
       // Read the native launch report after the first render commit.
       useEffect(() => {
-        void handleNotifyAppReady(restOptions);
+        appReady.current = handleNotifyAppReady(restOptions);
       }, []);
 
       // Start update check

@@ -145,6 +145,11 @@ During an update check, access to the entry point is temporarily blocked while c
 
 Without a `fallbackComponent`, the bundle downloads without blocking the screen.
 
+With [`verifyOnAppReady`](/docs/concepts/automatic-rollback#errors-caught-by-an-error-boundary)
+on, `wrap()` promotes a newly installed bundle one frame after its first commit.
+With a `fallbackComponent`, that commit is the fallback, so a render error in
+your app after the update check is not covered.
+
 **Props:**
 - `progress`: Download progress (0-1, e.g., for a progress bar)
 - `status`: Update state (`CHECK_FOR_UPDATE` or `UPDATING`)

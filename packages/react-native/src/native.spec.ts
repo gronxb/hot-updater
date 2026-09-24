@@ -21,6 +21,7 @@ const nativeModuleMock = vi.hoisted(() => {
     })),
     notifyAppReady: vi.fn(),
     reload: vi.fn(),
+    reportBundleFailure: vi.fn<() => boolean>(() => true),
     resetChannel: vi.fn(),
     setCohort: vi.fn(),
     setBundleURL: vi.fn(),
@@ -556,6 +557,59 @@ describe("notifyAppReady", () => {
 
     expect(getCrashHistory()).toEqual([]);
   });
+
+  it("returns the native result from reportBundleFailure", async () => {
+    nativeModuleMock.reportBundleFailure.mockReturnValueOnce(false);
+
+    const { reportBundleFailure } = await import("./native");
+
+    expect(reportBundleFailure()).toBe(false);
+    expect(nativeModuleMock.reportBundleFailure).toHaveBeenCalledTimes(1);
+  });
+
+  it("returns false from reportBundleFailure on a binary without the method", async () => {
+    const nativeModule = nativeModuleMock as {
+      reportBundleFailure?: typeof nativeModuleMock.reportBundleFailure;
+    };
+    const original = nativeModule.reportBundleFailure;
+    delete nativeModule.reportBundleFailure;
+
+    try {
+      const { reportBundleFailure } = await import("./native");
+
+      expect(reportBundleFailure()).toBe(false);
+    } finally {
+      nativeModule.reportBundleFailure = original;
+    }
+  });
+
+  it.each([
+    { recorded: true, installs: false },
+    { recorded: false, installs: true },
+  ])(
+    "installs a newer bundle after reportBundleFailure returned $recorded: $installs",
+    async ({ recorded, installs }) => {
+      const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+      nativeModuleMock.getBundleId.mockReturnValue("bundle-123");
+      nativeModuleMock.reportBundleFailure.mockReturnValueOnce(recorded);
+      nativeModuleMock.updateBundle.mockResolvedValue(true);
+      const { reportBundleFailure, updateBundle } = await import("./native");
+
+      expect(reportBundleFailure()).toBe(recorded);
+      await expect(
+        updateBundle({
+          bundleId: "bundle-456",
+          fileHash: null,
+          fileUrl: "https://example.com/bundle.zip",
+          status: "UPDATE",
+        }),
+      ).resolves.toBe(installs);
+      expect(nativeModuleMock.updateBundle).toHaveBeenCalledTimes(
+        installs ? 1 : 0,
+      );
+      warn.mockRestore();
+    },
+  );
 
   it("passes normalized cohort overrides to native", async () => {
     const { setCohort } = await import("./native");
