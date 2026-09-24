@@ -1,5 +1,17 @@
-import { engineAdapterOf, OFF_ENGINE_DATABASE } from "../core/api";
-import type { AnyHotUpdaterPlugin, PluginApis } from "../plugins/definePlugin";
+import type { DatabaseAdapter } from "@hot-updater/plugin-core/internal";
+
+import {
+  engineAdapterOf,
+  OFF_ENGINE_DATABASE,
+  type CoreApi,
+} from "../core/api";
+import type { CoreStorage } from "../core/reads";
+import type { ReadMeasurement } from "../database/engine";
+import type {
+  AnyHotUpdaterPlugin,
+  ClientAuth,
+  PluginApis,
+} from "../plugins/definePlugin";
 import { assemblePlugins } from "./assemblePlugins";
 
 /**
@@ -29,4 +41,56 @@ export function createDatabasePluginApis(
   const adapter = engineAdapterOf(database);
   if (adapter === undefined) throw new Error(OFF_ENGINE_DATABASE);
   return assemblePlugins(plugins, adapter, options).api;
+}
+
+export interface MeasuredDatabaseOptions {
+  readonly now?: () => number;
+  /** How core reads bundle manifests and resolves file URLs, for artifact resolution. */
+  readonly storage?: CoreStorage;
+}
+
+/** Core and the plugins' APIs on one engine in verify mode, and its read meter. */
+export interface MeasuredDatabase<TApi = Readonly<Record<string, unknown>>> {
+  readonly core: CoreApi;
+  readonly api: TApi;
+  /** The client-route policy, when a plugin provides one. */
+  readonly clientAuth?: ClientAuth;
+  /** Runs `read` and reports what it read at both boundaries. */
+  measureReads<T>(read: () => Promise<T>): Promise<ReadMeasurement<T>>;
+}
+
+/**
+ * Core and the plugins over a storage adapter, assembled as
+ * `createHotUpdater` assembles them but on an engine in verify mode, with
+ * that engine's `measureReads`: what read-budget suites measure. The adapter
+ * runs as given, without the schema fence.
+ */
+export function createMeasuredDatabase<
+  const TPlugins extends readonly AnyHotUpdaterPlugin[],
+>(
+  adapter: DatabaseAdapter,
+  plugins: TPlugins,
+  options?: MeasuredDatabaseOptions,
+): MeasuredDatabase<PluginApis<TPlugins>>;
+export function createMeasuredDatabase(
+  adapter: DatabaseAdapter,
+  plugins: readonly unknown[],
+  options?: MeasuredDatabaseOptions,
+): MeasuredDatabase;
+export function createMeasuredDatabase(
+  adapter: DatabaseAdapter,
+  plugins: readonly unknown[],
+  options: MeasuredDatabaseOptions = {},
+): MeasuredDatabase {
+  const { core, api, clientAuth, measureReads } = assemblePlugins(
+    plugins,
+    adapter,
+    { ...options, verify: true },
+  );
+  return {
+    core,
+    api,
+    ...(clientAuth === undefined ? {} : { clientAuth }),
+    measureReads: measureReads!,
+  };
 }
