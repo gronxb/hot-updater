@@ -345,8 +345,9 @@ export const createTransactions = ({
         const { eq } = model.table.indexes.find(
           ({ name: index }) => index === input.index,
         )!;
+        const where = input.where ?? {};
         const lookup: Lookup = Object.fromEntries(
-          parent.table.key.map((field, at) => [field, input.where?.[eq[at]!]!]),
+          parent.table.key.map((field, at) => [field, where[eq[at]!]!]),
         );
         remember(
           parent,
