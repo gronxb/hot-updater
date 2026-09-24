@@ -1,5 +1,8 @@
 import { defineAggregate, defineTable } from "../database/schema";
 
+/** A channel's id is `channel:` and its name's channel key, so ids share channel_key's bound. */
+const CHANNEL_ID = { type: "string", maxLength: 1408, ascii: true } as const;
+
 /** Core's schema version: the `schema.core` settings row. */
 export const HOT_UPDATER_SCHEMA_VERSION = "1.0.0";
 
@@ -61,8 +64,7 @@ const releases = defineTable(
     revision: { type: "integer" },
     scope_key: { type: "string", maxLength: 2048, ascii: true },
     channel_id: {
-      type: "string",
-      maxLength: 255,
+      ...CHANNEL_ID,
       references: { model: "channels", onDelete: "restrict" },
     },
     platform: { type: "string", maxLength: 16 },
@@ -122,8 +124,7 @@ const releaseCatalogs = defineTable(
     catalog_id: { type: "string", maxLength: 255 },
     strategy: { type: "string", maxLength: 16 },
     channel_id: {
-      type: "string",
-      maxLength: 255,
+      ...CHANNEL_ID,
       references: { model: "channels", onDelete: "none" },
     },
     channel_key: { type: "string", maxLength: 1400, ascii: true },
@@ -141,7 +142,7 @@ const releaseCatalogs = defineTable(
 
 const channels = defineTable(
   {
-    id: { type: "string", maxLength: 255 },
+    id: CHANNEL_ID,
     name: { type: "string", maxLength: 255, unique: true },
   },
   { key: ["id"], indexes: { all: { eq: [], sort: ["name"] } } },
