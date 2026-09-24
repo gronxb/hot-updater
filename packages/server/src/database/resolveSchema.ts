@@ -2,19 +2,15 @@ import {
   DATABASE_VERSION_COLUMN,
   DatabaseSchemaError,
   type PhysicalColumn,
-  type PhysicalColumnType,
   type PhysicalIndex,
   type PhysicalTable,
 } from "@hot-updater/plugin-core/internal";
 
 import type {
   AggregateShape,
-  FieldDefinition,
-  FieldType,
   ModelShape,
   ReferenceAction,
   SchemaShape,
-  TableShape,
 } from "./definitions";
 
 export const SHARD_COLUMN = "_shard";
@@ -58,36 +54,24 @@ export interface ResolvedSchema {
 const NAME = /^[a-z][a-z0-9_]*$/u;
 const INDEX_NAME = /^[A-Za-z][A-Za-z0-9_]*$/u;
 
-const columnType = (type: FieldType): PhysicalColumnType => type;
-
 const tableName = (module: SchemaModule, model: string) =>
   module.namespace ? `${module.namespace}_${model}` : model;
 
-const fieldColumn = (name: string, field: FieldDefinition): PhysicalColumn => ({
-  name,
-  type: columnType(field.type),
-  nullable: field.required === false,
-  ...(field.maxLength === undefined ? {} : { maxLength: field.maxLength }),
-  ...(field.ascii ? { ascii: true as const } : {}),
-});
-
-const integer = (name: string): PhysicalColumn => ({
+const integer = (name: string, defaulted = false): PhysicalColumn => ({
   name,
   type: "integer",
   nullable: false,
+  ...(defaulted ? { default: 0 } : {}),
 });
 
-const fieldType = (
-  model: ModelShape,
-  name: string,
-): { readonly type: FieldType; readonly multi: boolean } | undefined => {
-  const field = model.fields[name];
-  if (field !== undefined) return { type: field.type, multi: false };
-  if (model.kind === "aggregate") return undefined;
-  const derived = model.derived[name];
-  return derived === undefined
-    ? undefined
-    : { type: derived.type, multi: derived.multi === true };
+/** A declared or derived field's type, and whether it holds several values. */
+const fieldType = (model: ModelShape, name: string) => {
+  const field =
+    model.fields[name] ??
+    (model.kind === "table" ? model.derived[name] : undefined);
+  return (
+    field && { type: field.type, multi: "multi" in field && !!field.multi }
+  );
 };
 
 const metricsOf = (model: AggregateShape) => [
@@ -96,21 +80,27 @@ const metricsOf = (model: AggregateShape) => [
   ...model.distinct,
 ];
 
-/** Every problem in one module's declarations, as messages. */
+/** Every problem in one model's declaration, its roots and references included. */
 const problemsOf = (
   module: SchemaModule,
   model: string,
   definition: ModelShape,
 ): string[] => {
   const problems: string[] = [];
-  const at = `${module.id}.${model}`;
-  const add = (message: string) => problems.push(`${at}: ${message}`);
-  if (!NAME.test(model))
+  const add = (message: string) =>
+    problems.push(`${module.id}.${model}: ${message}`);
+  const table = (name: string) => {
+    const target = module.schema[name];
+    return target?.kind === "table" ? target : undefined;
+  };
+  if (!NAME.test(model)) {
     add("model names use lowercase letters, digits, and _");
+  }
   const names = [
     ...Object.keys(definition.fields),
-    ...(definition.kind === "table" ? Object.keys(definition.derived) : []),
-    ...(definition.kind === "aggregate" ? metricsOf(definition) : []),
+    ...(definition.kind === "table"
+      ? Object.keys(definition.derived)
+      : metricsOf(definition)),
   ];
   for (const name of new Set(names)) {
     if (!NAME.test(name)) add(`field "${name}" must match ${NAME.source}`);
@@ -118,25 +108,25 @@ const problemsOf = (
       add(`field "${name}" is declared twice`);
     }
   }
-  const keyFields = definition.key;
-  if (keyFields.length === 0) add("key is empty");
-  for (const name of keyFields) {
+  const { key } = definition;
+  if (key.length === 0) add("key is empty");
+  if (new Set(key).size !== key.length) add("key repeats a field");
+  for (const name of key) {
     const field = definition.fields[name];
     if (field === undefined) add(`key field "${name}" is not a declared field`);
     else if (field.required === false) add(`key field "${name}" is nullable`);
     else if (field.type === "json") add(`key field "${name}" is json`);
   }
-  if (new Set(keyFields).size !== keyFields.length) add("key repeats a field");
-  for (const [name, field] of Object.entries(definition.fields)) {
+  for (const [name, { type, maxLength, ascii }] of Object.entries(
+    definition.fields,
+  )) {
     if (
-      field.maxLength !== undefined &&
-      (field.type !== "string" ||
-        !Number.isSafeInteger(field.maxLength) ||
-        field.maxLength < 1)
+      maxLength !== undefined &&
+      (type !== "string" || !Number.isSafeInteger(maxLength) || maxLength < 1)
     ) {
       add(`field "${name}" has an invalid maxLength`);
     }
-    if (field.ascii && field.type !== "string") {
+    if (ascii && type !== "string") {
       add(`field "${name}" is ascii but not a string`);
     }
   }
@@ -149,22 +139,36 @@ const problemsOf = (
     if (index.unique && index.sort.length > 0) {
       add(`unique index "${name}" cannot sort`);
     }
-    const multi: string[] = [];
-    for (const column of columns) {
+    const multi = columns.filter((column) => {
       const type = fieldType(definition, column);
       if (type === undefined) {
         add(`index "${name}" names undeclared field "${column}"`);
       } else if (type.type === "json") {
         add(`index "${name}" names json field "${column}"`);
-      } else if (type.multi) {
-        multi.push(column);
-        if (index.sort.includes(column)) {
-          add(`index "${name}" sorts by multi-valued field "${column}"`);
-        }
+      } else if (type.multi && index.sort.includes(column)) {
+        add(`index "${name}" sorts by multi-valued field "${column}"`);
       }
-    }
-    if (multi.length > 1)
+      return type?.type !== "json" && type?.multi;
+    });
+    if (multi.length > 1) {
       add(`index "${name}" has more than one multi-valued field`);
+    }
+    if (index.root === undefined) continue;
+    const root = table(index.root.model);
+    if (root === undefined) {
+      add(`index "${name}" is rooted at unknown table "${index.root.model}"`);
+    } else if (
+      root.key.length > index.eq.length ||
+      root.key.some(
+        (field, position) =>
+          fieldType(definition, index.eq[position]!)?.type !==
+          root.fields[field]!.type,
+      )
+    ) {
+      add(
+        `index "${name}" eq must start with the key of "${index.root.model}"`,
+      );
+    }
   }
   if (definition.kind === "table") {
     for (const [name, derived] of Object.entries(definition.derived)) {
@@ -175,86 +179,51 @@ const problemsOf = (
         add(`derived field "${name}" cannot be multi-valued json`);
       }
     }
-  } else {
-    const identity = Object.keys(definition.fields);
-    if (keyFields.join("\u0000") !== identity.join("\u0000")) {
-      add(
-        `key must list the identity fields in declaration order: ${identity.join(", ")}`,
-      );
+    for (const [name, { type, references }] of Object.entries(
+      definition.fields,
+    )) {
+      if (references === undefined) continue;
+      const target = table(references.model);
+      const targetKey =
+        target?.key.length === 1 ? target.fields[target.key[0]!] : undefined;
+      if (targetKey === undefined) {
+        add(
+          `field "${name}" references "${references.model}", which is not a single-key table of this module`,
+        );
+      } else if (targetKey.type !== type) {
+        add(
+          `field "${name}" and the key of "${references.model}" differ in type`,
+        );
+      }
+      if (
+        references.onDelete === "cascade" &&
+        !Object.values(definition.indexes).some(
+          ({ eq }) => eq.length === 1 && eq[0] === name,
+        )
+      ) {
+        add(
+          `cascade on "${name}" needs an index whose eq is exactly [${name}]`,
+        );
+      }
     }
-    if (metricsOf(definition).length === 0) add("aggregate has no metrics");
-    if (
-      definition.distinct.length > 0 &&
-      definition.counters.length + definition.gauges.length > 0
-    ) {
-      add("distinct sketches need an aggregate of their own");
-    }
-    if (
-      !Number.isSafeInteger(definition.shards) ||
-      definition.shards < 1 ||
-      definition.shards > MAX_SHARDS
-    ) {
-      add(`shards must be 1–${MAX_SHARDS}`);
-    }
+    return problems;
   }
-  return problems;
-};
-
-const problemsAcross = (
-  module: SchemaModule,
-  model: string,
-  definition: ModelShape,
-): string[] => {
-  const problems: string[] = [];
-  const add = (message: string) =>
-    problems.push(`${module.id}.${model}: ${message}`);
-  const table = (name: string): TableShape | undefined => {
-    const target = module.schema[name];
-    return target?.kind === "table" ? target : undefined;
-  };
-  for (const [name, index] of Object.entries(definition.indexes)) {
-    if (index.root === undefined) continue;
-    const root = table(index.root.model);
-    if (root === undefined) {
-      add(`index "${name}" is rooted at unknown table "${index.root.model}"`);
-      continue;
-    }
-    const matches =
-      root.key.length <= index.eq.length &&
-      root.key.every(
-        (field, position) =>
-          fieldType(definition, index.eq[position]!)?.type ===
-          root.fields[field]!.type,
-      );
-    if (!matches) {
-      add(
-        `index "${name}" eq must start with the key of "${index.root.model}"`,
-      );
-    }
+  const identity = Object.keys(definition.fields);
+  if (key.join("\u0000") !== identity.join("\u0000")) {
+    add(
+      `key must list the identity fields in declaration order: ${identity.join(", ")}`,
+    );
   }
-  if (definition.kind === "aggregate") return problems;
-  for (const [name, field] of Object.entries(definition.fields)) {
-    if (field.references === undefined) continue;
-    const target = table(field.references.model);
-    const targetKey =
-      target?.key.length === 1 ? target.fields[target.key[0]!] : undefined;
-    if (target === undefined || targetKey === undefined) {
-      add(
-        `field "${name}" references "${field.references.model}", which is not a single-key table of this module`,
-      );
-    } else if (targetKey.type !== field.type) {
-      add(
-        `field "${name}" and the key of "${field.references.model}" differ in type`,
-      );
-    }
-    if (
-      field.references.onDelete === "cascade" &&
-      !Object.values(definition.indexes).some(
-        (index) => index.eq.length === 1 && index.eq[0] === name,
-      )
-    ) {
-      add(`cascade on "${name}" needs an index whose eq is exactly [${name}]`);
-    }
+  if (metricsOf(definition).length === 0) add("aggregate has no metrics");
+  if (
+    definition.distinct.length > 0 &&
+    definition.counters.length + definition.gauges.length > 0
+  ) {
+    add("distinct sketches need an aggregate of their own");
+  }
+  const { shards } = definition;
+  if (!Number.isSafeInteger(shards) || shards < 1 || shards > MAX_SHARDS) {
+    add(`shards must be 1–${MAX_SHARDS}`);
   }
   return problems;
 };
@@ -262,21 +231,18 @@ const problemsAcross = (
 /** Rejects invalid module schemas at startup, listing every problem. */
 export const validateSchema = (modules: readonly SchemaModule[]): void => {
   const problems: string[] = [];
-  const names = new Map<string, string>();
+  const owners = new Map<string, string>();
   for (const module of modules) {
     for (const [model, definition] of Object.entries(module.schema)) {
       const name = tableName(module, model);
-      const owner = names.get(name);
+      const owner = owners.get(name);
       if (owner !== undefined) {
         problems.push(
           `${module.id}.${model}: table "${name}" is also declared by ${owner}`,
         );
       }
-      names.set(name, `${module.id}.${model}`);
-      problems.push(
-        ...problemsOf(module, model, definition),
-        ...problemsAcross(module, model, definition),
-      );
+      owners.set(name, `${module.id}.${model}`);
+      problems.push(...problemsOf(module, model, definition));
     }
   }
   if (problems.length > 0) {
@@ -293,9 +259,9 @@ const indexesOf = (definition: ModelShape): PhysicalIndex[] => [
     sort: [...index.sort],
     ...(index.unique ? { unique: true as const } : {}),
   })),
-  ...Object.entries(definition.fields)
-    .filter(([, field]) => field.unique)
-    .map(([name]) => ({ name, eq: [name], sort: [], unique: true as const })),
+  ...Object.entries(definition.fields).flatMap(([name, field]) =>
+    field.unique ? [{ name, eq: [name], sort: [], unique: true as const }] : [],
+  ),
 ];
 
 /** Validates the modules, then resolves them into physical tables with engine columns. */
@@ -303,58 +269,71 @@ export const resolveSchema = (
   modules: readonly SchemaModule[],
 ): ResolvedSchema => {
   validateSchema(modules);
-  const references: ResolvedReference[] = [];
-  for (const module of modules) {
-    for (const [model, definition] of Object.entries(module.schema)) {
-      if (definition.kind !== "table") continue;
-      for (const [field, value] of Object.entries(definition.fields)) {
-        if (value.references === undefined) continue;
-        const table = tableName(module, model);
-        references.push({
-          table,
-          field,
-          target: tableName(module, value.references.model),
-          onDelete: value.references.onDelete,
-          ...(value.references.onDelete === "none"
-            ? {}
-            : { counter: `_refs_${table}_${field}` }),
-        });
-      }
-    }
-  }
+  const references = modules.flatMap((module) =>
+    Object.entries(module.schema).flatMap(([model, definition]) =>
+      definition.kind !== "table"
+        ? []
+        : Object.entries(definition.fields).flatMap(
+            ([field, value]): ResolvedReference[] => {
+              const to = value.references;
+              if (to === undefined) return [];
+              const table = tableName(module, model);
+              const counter = `_refs_${table}_${field}`;
+              return [
+                {
+                  table,
+                  field,
+                  target: tableName(module, to.model),
+                  onDelete: to.onDelete,
+                  ...(to.onDelete === "none" ? {} : { counter }),
+                },
+              ];
+            },
+          ),
+    ),
+  );
   const models = new Map<string, ResolvedModel>();
   for (const module of modules) {
     for (const [model, definition] of Object.entries(module.schema)) {
       const name = tableName(module, model);
-      const referencedBy = references.filter(
-        (reference) => reference.target === name,
-      );
+      const referencedBy = references.filter(({ target }) => target === name);
       const columns: PhysicalColumn[] = Object.entries(definition.fields).map(
-        ([field, value]) => fieldColumn(field, value),
+        ([field, { type, required, maxLength, ascii }]) => ({
+          name: field,
+          type,
+          nullable: required === false,
+          ...(maxLength === undefined ? {} : { maxLength }),
+          ...(ascii ? { ascii } : {}),
+        }),
       );
       if (definition.kind === "table") {
-        for (const [field, derived] of Object.entries(definition.derived)) {
+        for (const [field, { type, multi }] of Object.entries(
+          definition.derived,
+        )) {
           columns.push({
             name: field,
-            type: columnType(derived.type),
+            type,
             nullable: true,
-            ...(derived.multi ? { multi: true as const } : {}),
+            ...(multi ? { multi } : {}),
           });
         }
       } else {
-        columns.push(integer(SHARD_COLUMN));
-        for (const metric of [...definition.counters, ...definition.gauges]) {
-          columns.push(integer(metric));
-        }
-        for (const metric of definition.distinct) {
-          columns.push({ name: metric, type: "string", nullable: true });
-        }
+        columns.push(
+          integer(SHARD_COLUMN),
+          ...[...definition.counters, ...definition.gauges].map((metric) =>
+            integer(metric),
+          ),
+          ...definition.distinct.map((metric) => ({
+            name: metric,
+            type: "string" as const,
+            nullable: true,
+          })),
+        );
       }
-      for (const reference of referencedBy) {
-        if (reference.counter !== undefined)
-          columns.push({ ...integer(reference.counter), default: 0 });
+      for (const { counter } of referencedBy) {
+        if (counter !== undefined) columns.push(integer(counter, true));
       }
-      columns.push({ ...integer(DATABASE_VERSION_COLUMN), default: 0 });
+      columns.push(integer(DATABASE_VERSION_COLUMN, true));
       models.set(name, {
         module: module.id,
         model,
@@ -368,13 +347,13 @@ export const resolveSchema = (
               : [...definition.key],
           indexes: indexesOf(definition),
         },
-        references: references.filter((reference) => reference.table === name),
+        references: references.filter(({ table }) => table === name),
         referencedBy,
         roots: new Map(
-          Object.entries(definition.indexes).flatMap(([index, value]) =>
-            value.root === undefined
+          Object.entries(definition.indexes).flatMap(([index, { root }]) =>
+            root === undefined
               ? []
-              : [[index, tableName(module, value.root.model)] as const],
+              : [[index, tableName(module, root.model)] as const],
           ),
         ),
       });
