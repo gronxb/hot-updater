@@ -11,7 +11,6 @@ export {
   createInProcessCoreApi,
   type CoreApi,
 } from "./api";
-export { commitLegacyChanges, type ExternalChange } from "./legacyCommit";
 export { createCoreOperations } from "./operations";
 export {
   changeReleases,
@@ -21,7 +20,6 @@ export {
   type ReleaseChangeResult,
 } from "./releases";
 export {
-  compiledGeneration,
   createCoreReads,
   toBundleRow,
   toCatalogRow,
@@ -35,5 +33,15 @@ export {
   type KeysetInput,
   type ReleaseFilter,
 } from "./reads";
-export { coreModule, coreSchema, type CoreSchema } from "./schema";
-export { deleteChannel, insertChannel, type CoreTransaction } from "./writes";
+export {
+  coreModule,
+  coreSchema,
+  HOT_UPDATER_SCHEMA_VERSION,
+  type CoreSchema,
+} from "./schema";
+export {
+  deleteChannel,
+  insertBundle,
+  insertChannel,
+  type CoreTransaction,
+} from "./writes";

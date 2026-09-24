@@ -1,17 +1,19 @@
 import type { ArtifactInfo, ReleaseCatalog } from "@hot-updater/core";
 import type {
-  DatabaseChange,
-  DatabaseCommitExpectation,
+  BundleRow,
   ReleaseCatalogRow,
   ReleaseRow,
 } from "@hot-updater/plugin-core";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import {
+  createAdminApiTestClient,
+  jsonRequest,
+  toDeployBundle,
+} from "./adminApiTestClient";
+import {
   createBundlePatchRowFixture,
   createBundleRowFixture,
-  createChannelRowFixture,
-  createReleaseRowFixture,
 } from "./databaseTestFixtures";
 import type { HttpTestClient, HttpTestRequestInit } from "./httpTestClient";
 import {
@@ -28,71 +30,49 @@ const channelKey = (channel: string) =>
     .replaceAll("+", "-")
     .replaceAll("/", "_")
     .replace(/=+$/, "");
-const jsonRequest = (method: string, body?: unknown): HttpTestRequestInit => ({
-  method,
-  headers: { "content-type": "application/json" },
-  ...(body === undefined ? {} : { body: JSON.stringify(body) }),
-});
+
+/** The policy fields a test sets, as a release row names them. */
+type ReleasePatch = Partial<
+  Pick<
+    ReleaseRow,
+    | "bundle_id"
+    | "enabled"
+    | "message"
+    | "rollout_cohort_count"
+    | "should_force_update"
+    | "target_app_version"
+    | "target_cohorts"
+  >
+>;
 
 /**
- * Server conformance through HTTP only. The caller owns server/database/storage
- * setup. Lifecycle scenarios feed HTTP catalogs to the production client selector;
- * no database, compiler, or server implementation is invoked directly.
+ * Server conformance through HTTP only, on admin API protocol 2. The caller
+ * owns server, database, and storage setup. Releases are written with
+ * `POST /releases` and changed with `PATCH /releases/:id`; lifecycle scenarios
+ * feed HTTP catalogs to the production client selector. Each test deletes
+ * what it wrote, so a long-lived server can run the suite again.
  */
 export const setupReleaseCatalogTestSuite = (options: {
   readonly getClient: () => HttpTestClient;
 }): void => {
   describe("Release Catalog HTTP contract", () => {
     let channelNamespace: string;
-    let cleanup: DatabaseChange[];
+    const api = createAdminApiTestClient(options.getClient);
+    const { admin, adminJson } = api;
     beforeEach(() => {
       // Keep long-lived server caches isolated without mocking their clock.
       channelNamespace = crypto.randomUUID();
-      cleanup = [];
+    });
+    afterEach(async () => {
+      await api.cleanup();
     });
     const request = (path: string, init?: HttpTestRequestInit) =>
       options.getClient().client(path, init);
-    const admin = (path: string, init?: HttpTestRequestInit) =>
-      options.getClient().admin(path, init);
-    const adminJson = async (path: string, init?: HttpTestRequestInit) => {
-      const response = await admin(path, init);
-      const text = await response.text();
-      expect(response.ok, `${init?.method ?? "GET"} ${path}: ${text}`).toBe(
-        true,
-      );
-      expect(response.headers.get("cache-control")).toBe("private, no-store");
-      return JSON.parse(text);
-    };
-    const commit = async (changes: DatabaseChange[]) => {
-      expect(
-        await adminJson("/database/commit", jsonRequest("POST", { changes })),
-      ).toEqual({ data: { committed: true } });
-      for (const change of changes) {
-        if (change.operation !== "insert") continue;
-        if (change.model === "bundles" || change.model === "releases") {
-          cleanup.push({
-            model: change.model,
-            operation: "delete",
-            where: { id: change.row.id },
-          });
-        } else if (change.model === "bundlePatches") {
-          cleanup.push({
-            model: "bundlePatches",
-            operation: "delete",
-            where: { bundleId: change.row.bundle_id },
-          });
-        }
-      }
-    };
-    afterEach(async () => {
-      // Channels/Catalogs have no public Catalog delete API; the caller drops
-      // the isolated test database after the suite. Remove reusable identities.
-      // Three Releases and their bundles per commit fit DynamoDB's 100 items.
-      const changes = cleanup.reverse();
-      for (let offset = 0; offset < changes.length; offset += 6) {
-        await commit(changes.slice(offset, offset + 6));
-      }
-    });
+    // The storage fixtures serve each suffix's manifest for its fixture id,
+    // and lifecycle tests compare those ids with a native minimum; each test
+    // deletes its bundles, so the next one can deploy the same ids.
+    const bundleRow = (suffix: string): BundleRow =>
+      createBundleRowFixture(suffix);
 
     for (const strategy of ["APP_VERSION", "FINGERPRINT"] as const) {
       describe(strategy, () => {
@@ -105,7 +85,6 @@ export const setupReleaseCatalogTestSuite = (options: {
           const encodedChannel = channelKey(channel);
           return {
             channel,
-            channelId: createChannelRowFixture(channel).id,
             channelKey: encodedChannel,
             platform,
             fingerprint: strategy === "FINGERPRINT" ? fingerprint : null,
@@ -138,113 +117,47 @@ export const setupReleaseCatalogTestSuite = (options: {
           });
           return catalog;
         };
+        /** Deploys a new bundle, or a stored one named by `bundle_id`, into `target`. */
         const publish = async (
           suffix: string,
-          patch: Partial<ReleaseRow> = {},
+          patch: ReleasePatch = {},
           target = scope(),
         ) => {
-          const channel = { id: target.channelId, name: target.channel };
-          await adminJson(
-            "/channels",
-            jsonRequest("POST", { row: channel, onConflict: "returnExisting" }),
-          );
-          const bundle = {
-            ...createBundleRowFixture(suffix),
+          const bundle: BundleRow = {
+            ...bundleRow(suffix),
             platform: target.platform,
             asset_base_storage_uri: "storage://test-bucket/assets",
           };
-          const changes: DatabaseChange[] = [];
-          if (patch.bundle_id === undefined) {
-            await adminJson(
-              "/bundles",
-              jsonRequest("POST", {
-                id: bundle.id,
-                platform: bundle.platform,
-                manifestFileHash: bundle.manifest_file_hash,
-                manifestStorageUri: bundle.manifest_storage_uri,
-                assetBaseStorageUri: bundle.asset_base_storage_uri,
-                gitCommitHash: null,
-                metadata: bundle.metadata,
-              }),
-            );
-            cleanup.push({
-              model: "bundles",
-              operation: "delete",
-              where: { id: bundle.id },
-            });
-          }
-          const release: ReleaseRow = {
-            ...createReleaseRowFixture(suffix, bundle, channel),
-            strategy,
-            scope_key: target.key,
-            target_app_version: strategy === "APP_VERSION" ? "*" : null,
-            fingerprint_hash: target.fingerprint,
-            ...patch,
-          };
-          changes.push({
-            model: "releases",
-            operation: "insert",
-            row: release,
-          });
-          const existing = await admin(catalogRowPath(target));
-          if (existing.status === 404) {
-            await existing.text();
-            // Bootstrap a valid empty Catalog through the public commit API.
-            // Rebuild below must compile the actual Releases on the server.
-            const payload = JSON.stringify(
+          const policy = {
+            channel: target.channel,
+            enabled: patch.enabled ?? true,
+            fingerprintHash: target.fingerprint,
+            message:
+              patch.message === undefined ? `release-${suffix}` : patch.message,
+            shouldForceUpdate: patch.should_force_update ?? false,
+            targetAppVersion:
               strategy === "APP_VERSION"
-                ? {
-                    fallbackPolicy: FALLBACK_POLICY,
-                    releaseDescriptors: [],
-                    schemaVersion: 1,
-                    segments: [],
-                    strategy,
-                  }
-                : {
-                    fallbackPolicy: FALLBACK_POLICY,
-                    releaseDescriptors: [],
-                    releaseIndexes: [],
-                    rollbackReleaseIndexes: [],
-                    schemaVersion: 1,
-                    strategy,
-                  },
-            );
-            const digest = await crypto.subtle.digest(
-              "SHA-256",
-              new TextEncoder().encode(payload),
-            );
-            const hash = [...new Uint8Array(digest)]
-              .map((byte) => byte.toString(16).padStart(2, "0"))
-              .join("");
-            changes.push({
-              model: "releaseCatalogs",
-              operation: "put",
-              row: {
-                catalog_id: "00000000-0000-7000-8000-000000009999",
-                scope_key: target.key,
-                channel_id: target.channelId,
-                channel_key: target.channelKey,
-                platform: target.platform,
-                fingerprint_hash: target.fingerprint,
-                strategy,
-                generation: 1,
-                is_tombstone: true,
-                payload,
-                catalog_hash: `sha256:${hash}`,
-                byte_size: new TextEncoder().encode(payload).byteLength,
-                updated_at_ms: 1,
-              },
-            });
-          } else {
-            expect(existing.status).toBe(200);
-            await existing.text();
-          }
-          await commit(changes);
-          await adminJson(
-            `${catalogRowPath(target)}/rebuild`,
-            jsonRequest("POST"),
+                ? (patch.target_app_version ?? "*")
+                : null,
+            ...(patch.rollout_cohort_count === undefined
+              ? {}
+              : { rolloutCohortCount: patch.rollout_cohort_count }),
+            ...(patch.target_cohorts === undefined
+              ? {}
+              : { targetCohorts: [...patch.target_cohorts] }),
+          };
+          const release = await api.deploy(
+            patch.bundle_id === undefined || patch.bundle_id === null
+              ? { bundle: toDeployBundle(bundle), release: policy }
+              : { bundleId: patch.bundle_id, release: policy },
           );
-          return { bundle, release };
+          return {
+            bundle:
+              patch.bundle_id === undefined || patch.bundle_id === null
+                ? bundle
+                : { ...bundle, id: patch.bundle_id },
+            release,
+          };
         };
         const update = (releaseId: string, patch: Record<string, unknown>) =>
           adminJson(`/releases/${releaseId}`, jsonRequest("PATCH", { patch }));
@@ -269,14 +182,7 @@ export const setupReleaseCatalogTestSuite = (options: {
               jsonRequest("DELETE"),
             );
             expect((await admin(`/releases/${id}`)).status).toBe(404);
-            cleanup = cleanup.filter(
-              (change) =>
-                !(
-                  change.model === "releases" &&
-                  change.operation === "delete" &&
-                  change.where.id === id
-                ),
-            );
+            api.forget(id);
           },
           request,
         });
@@ -285,198 +191,56 @@ export const setupReleaseCatalogTestSuite = (options: {
           const first = await publish("701");
           const disabled = await publish("702", { enabled: false });
           await publish("703", {}, scope("other"));
-          const path = `/releases?scopeKey=${encodeURIComponent(scope().key)}&limit=1`;
-          expect((await adminJson(path)).data).toEqual([first.release]);
+          const path = `/releases?scopeKey=${encodeURIComponent(scope().key)}&limit=1&order=asc`;
+          const page1 = await adminJson(path);
+          expect(page1.data).toEqual([first.release]);
+          expect(page1.next).toBe(first.release.id);
+          const page2 = await adminJson(`${path}&cursor=${page1.next}`);
+          expect(page2.data).toEqual([disabled.release]);
           expect(
-            (await adminJson(`${path}&afterReleaseId=${first.release.id}`))
-              .data,
-          ).toEqual([disabled.release]);
-          expect(
-            (await adminJson(`${path}&afterReleaseId=${disabled.release.id}`))
-              .data,
+            (await adminJson(`${path}&cursor=${page2.next}`)).data,
           ).toEqual([]);
-        });
-
-        for (const model of ["releases", "releaseCatalogs"] as const) {
-          it.each(["stale", "absent", "missing"] as const)(
-            `rejects a %s ${model} expectation without changing any model`,
-            async (condition) => {
-              const current = await publish("711");
-              const catalog = (await adminJson(catalogRowPath()))
-                .data as ReleaseCatalogRow;
-              const releaseExpectation = {
-                model: "releases",
-                id: current.release.id,
-                revision: 1,
-              } as const;
-              const catalogExpectation = {
-                model: "releaseCatalogs",
-                scopeKey: catalog.scope_key,
-                generation: catalog.generation,
-              } as const;
-              const key =
-                model === "releases" ? current.release.id : catalog.scope_key;
-              const version = model === "releases" ? 1 : catalog.generation;
-              const expectedVersion =
-                condition === "absent" ? null : version + 1;
-              const expectedKey =
-                condition === "missing"
-                  ? model === "releases"
-                    ? "00000000-0000-7000-8000-000000009999"
-                    : `${key}:missing`
-                  : key;
-              const expectation: DatabaseCommitExpectation =
-                model === "releases"
-                  ? { model, id: expectedKey, revision: expectedVersion }
-                  : {
-                      model,
-                      scopeKey: expectedKey,
-                      generation: expectedVersion,
-                    };
-              const result = await adminJson(
-                "/database/commit",
-                jsonRequest("POST", {
-                  expectations: [
-                    model === "releases"
-                      ? catalogExpectation
-                      : releaseExpectation,
-                    expectation,
-                  ],
-                  changes: [
-                    {
-                      model: "bundles",
-                      operation: "update",
-                      where: { id: current.bundle.id },
-                      update: {
-                        manifest_storage_uri: "storage://should-not-be-written",
-                      },
-                    },
-                    {
-                      model: "releases",
-                      operation: "update",
-                      where: { id: current.release.id },
-                      update: { message: "should not be written", revision: 2 },
-                    },
-                    {
-                      model: "releaseCatalogs",
-                      operation: "put",
-                      row: { ...catalog, generation: catalog.generation + 1 },
-                    },
-                  ],
-                }),
-              );
-              expect(result.data).toEqual({
-                committed: false,
-                conflict: {
-                  changeIndex: -1,
-                  reason: "version_conflict",
-                  model,
-                  key: expectedKey,
-                  expectedVersion,
-                  actualVersion: condition === "missing" ? null : version,
-                },
-              });
-              expect(
-                (await adminJson(`/releases/${current.release.id}`)).data,
-              ).toEqual(current.release);
-              expect((await adminJson(catalogRowPath())).data).toEqual(catalog);
-              const artifact = await request(
-                `/artifacts/v1/${current.bundle.id}/from/${NIL_UUID}`,
-              );
-              expect(artifact.status).toBe(200);
-              expect(await artifact.json()).toMatchObject({
-                manifestUrl: downloadUrl(current.bundle.manifest_storage_uri),
-              });
-            },
-          );
-
-          it(`allows only one concurrent writer for a ${model} expectation`, async () => {
-            const current = await publish("721");
-            const catalog = (await adminJson(catalogRowPath()))
-              .data as ReleaseCatalogRow;
-            const expectation: DatabaseCommitExpectation =
-              model === "releases"
-                ? { model, id: current.release.id, revision: 1 }
-                : {
-                    model,
-                    scopeKey: catalog.scope_key,
-                    generation: catalog.generation,
-                  };
-            const results = await Promise.all(
-              ["first", "second"].map((message) =>
-                adminJson(
-                  "/database/commit",
-                  jsonRequest("POST", {
-                    expectations: [expectation],
-                    changes: [
-                      {
-                        model: "releases",
-                        operation: "update",
-                        where: { id: current.release.id },
-                        update: { message, revision: 2 },
-                      },
-                      {
-                        model: "releaseCatalogs",
-                        operation: "put",
-                        row: {
-                          ...catalog,
-                          generation: catalog.generation + 1,
-                          updated_at_ms: message === "first" ? 1 : 2,
-                        },
-                      },
-                    ],
-                  }),
-                ),
-              ),
-            );
-            const winners = results.flatMap((result, index) =>
-              result.data.committed ? [index] : [],
-            );
-            expect(winners).toHaveLength(1);
-            expect(results[1 - winners[0]!]!.data).toMatchObject({
-              committed: false,
-              conflict: {
-                changeIndex: -1,
-                reason: "version_conflict",
-                model,
-                expectedVersion: model === "releases" ? 1 : catalog.generation,
-                actualVersion:
-                  model === "releases" ? 2 : catalog.generation + 1,
-              },
-            });
-            expect(
-              (await adminJson(`/releases/${current.release.id}`)).data,
-            ).toMatchObject({
-              revision: 2,
-              message: ["first", "second"][winners[0]!],
-            });
-            expect((await adminJson(catalogRowPath())).data).toMatchObject({
-              generation: catalog.generation + 1,
-              updated_at_ms: winners[0]! + 1,
-            });
-          });
-        }
-
-        it("keeps legacy embedded rows readable while excluding them from compiled Catalogs", async () => {
-          const current = await publish("731");
-          const embedded = await publish("732", {
-            kind: "EMBEDDED",
-            bundle_id: null,
-            operation: "ROLLBACK",
-          });
-          expect(
-            (await readCatalog()).releases.map((row) => row.releaseId),
-          ).toEqual([current.release.id]);
           expect(
             (
               await adminJson(
-                `/releases?scopeKey=${encodeURIComponent(scope().key)}&limit=10`,
+                `/releases?scopeKey=${encodeURIComponent(scope().key)}&enabled=false`,
               )
             ).data,
-          ).toEqual([current.release, embedded.release]);
+          ).toEqual([disabled.release]);
+        });
+
+        it("lets one of two concurrent policy changes at the same revision win", async () => {
+          const current = await publish("721");
+          const catalog = (await adminJson(catalogRowPath()))
+            .data as ReleaseCatalogRow;
+          const responses = await Promise.all(
+            ["first", "second"].map((message) =>
+              admin(
+                `/releases/${current.release.id}`,
+                jsonRequest("PATCH", {
+                  expectedRevision: 1,
+                  patch: { message },
+                }),
+              ),
+            ),
+          );
+          const statuses = responses.map(({ status }) => status).sort();
+          expect(statuses).toEqual([200, 409]);
+          const winner = responses.findIndex(({ status }) => status === 200);
+          const loser = responses[1 - winner]!;
+          expect(await loser.json()).toMatchObject({
+            code: "VERSION_CONFLICT",
+          });
+          await responses[winner]!.text();
           expect(
-            (await adminJson(`/releases/${embedded.release.id}`)).data,
-          ).toEqual(embedded.release);
+            (await adminJson(`/releases/${current.release.id}`)).data,
+          ).toMatchObject({
+            revision: 2,
+            message: ["first", "second"][winner],
+          });
+          expect((await adminJson(catalogRowPath())).data).toMatchObject({
+            generation: catalog.generation + 1,
+          });
         });
 
         it("hard deletes a Release, rebuilds its Catalog, and retains Bundle bytes", async () => {
@@ -485,14 +249,7 @@ export const setupReleaseCatalogTestSuite = (options: {
             `/releases/${current.release.id}?confirm=${current.release.id}&expectedRevision=1`,
             jsonRequest("DELETE"),
           );
-          cleanup = cleanup.filter(
-            (change) =>
-              !(
-                change.model === "releases" &&
-                change.operation === "delete" &&
-                change.where.id === current.release.id
-              ),
-          );
+          api.forget(current.release.id);
           expect((await admin(`/releases/${current.release.id}`)).status).toBe(
             404,
           );
@@ -728,109 +485,76 @@ export const setupReleaseCatalogTestSuite = (options: {
         });
 
         if (strategy === "APP_VERSION") {
-          it.each([
-            "channelId",
-            "platform",
-            "enabled",
-            "bundleId",
-            "targetAppVersion",
-          ] as const)(
-            "applies the %s filter before limiting Release results",
-            async (filter) => {
-              const first = await publish("751", {
-                target_app_version: "1.0.0",
-                enabled: false,
-              });
-              const second = await publish("752", {
-                bundle_id: first.bundle.id,
-                target_app_version: "1.0.0",
-                enabled: false,
-              });
-              const target =
-                filter === "channelId"
-                  ? scope("other")
-                  : filter === "platform"
-                    ? scope("production", "android")
-                    : scope();
-              await publish(
-                "753",
-                {
-                  target_app_version:
-                    filter === "targetAppVersion" ? "2.0.0" : "1.0.0",
-                  enabled: filter === "enabled",
-                  ...(["channelId", "enabled", "targetAppVersion"].includes(
-                    filter,
-                  )
-                    ? { bundle_id: first.bundle.id }
-                    : {}),
-                },
-                target,
-              );
-              const value = {
-                channelId: scope().channelId,
-                platform: "ios",
-                enabled: "false",
-                bundleId: first.bundle.id,
-                targetAppVersion: "1.0.0",
-              }[filter];
-              const path = `/releases?${filter}=${encodeURIComponent(value)}&limit=1`;
-              expect((await adminJson(path)).data).toEqual([second.release]);
-              expect(
-                (
-                  await adminJson(
-                    `${path}&beforeReleaseId=${second.release.id}`,
-                  )
-                ).data,
-              ).toEqual([first.release]);
-              expect(
-                (await adminJson(`${path}&beforeReleaseId=${first.release.id}`))
-                  .data,
-              ).toEqual([]);
-              expect(
-                (await adminJson(`${path}&afterReleaseId=${first.release.id}`))
-                  .data,
-              ).toEqual([second.release]);
-            },
-          );
+          it("pages each release filter set by key, newest first", async () => {
+            const first = await publish("751", { enabled: false });
+            const second = await publish("752", {
+              bundle_id: first.bundle.id,
+              enabled: false,
+            });
+            const third = await publish("753");
+            const elsewhere = await publish(
+              "754",
+              { bundle_id: first.bundle.id },
+              scope("other"),
+            );
+            await publish("755", {}, scope("production", "android"));
+            const { data: channel } = await adminJson(
+              `/channels?name=${encodeURIComponent(scope().channel)}`,
+            );
+            /** Every page of one filter set, one release per page. */
+            const pages = async (query: string) => {
+              const ids: string[] = [];
+              let cursor: string | undefined;
+              do {
+                const page = (await adminJson(
+                  `/releases?${query}&limit=1${cursor === undefined ? "" : `&cursor=${cursor}`}`,
+                )) as { data: ReleaseRow[]; next?: string };
+                ids.push(...page.data.map(({ id }) => id));
+                cursor = page.next;
+              } while (cursor !== undefined);
+              return ids;
+            };
+            const newestFirst = (
+              ...published: { readonly release: ReleaseRow }[]
+            ) =>
+              published
+                .map(({ release }) => release.id)
+                .sort()
+                .reverse();
+            const byChannel = `channelId=${channel.id}&platform=ios`;
+
+            expect(await pages(byChannel)).toEqual(
+              newestFirst(first, second, third),
+            );
+            expect(await pages(`${byChannel}&enabled=false`)).toEqual(
+              newestFirst(first, second),
+            );
+            expect(await pages(`bundleId=${first.bundle.id}`)).toEqual(
+              newestFirst(first, second, elsewhere),
+            );
+            expect(
+              await pages(
+                `scopeKey=${encodeURIComponent(scope().key)}&enabled=true`,
+              ),
+            ).toEqual(newestFirst(third));
+            expect(
+              (await admin(`/releases?platform=ios&enabled=false`)).status,
+            ).toBe(400);
+          });
 
           it("serves the newest Release among 200 distinct compatible version ranges", async () => {
-            const first = await publish("400", {
-              target_app_version: ">=0.0.0",
-            });
-            const channel = createChannelRowFixture(scope().channel);
-            // Keep each HTTP commit within provider transaction limits, then
-            // exercise one server rebuild over the complete Release history.
-            // DynamoDB takes 100 items per transaction, and each pair here is
-            // about 24: a Release, its index items, and 16 base candidates.
-            // The 67 commits outlast a default test timeout on a hosted runner.
-            for (let start = 1; start < 200; start += 3) {
-              const changes: DatabaseChange[] = [];
-              for (
-                let index = start;
-                index < Math.min(start + 3, 200);
-                index++
-              ) {
-                const suffix = String(400 + index);
-                const bundle = createBundleRowFixture(suffix);
-                const release = {
-                  ...createReleaseRowFixture(suffix, bundle, channel),
-                  scope_key: first.release.scope_key,
-                  target_app_version: `>=0.${index}.0`,
-                };
-                changes.push(
-                  { model: "bundles", operation: "insert", row: bundle },
-                  { model: "releases", operation: "insert", row: release },
-                );
-              }
-              await commit(changes);
+            await publish("400", { target_app_version: ">=0.0.0" });
+            // One deploy per release: a batch changes each scope once, and
+            // each deploy compiles the scope's catalog from all its releases.
+            for (let index = 1; index < 200; index++) {
+              await publish(String(400 + index), {
+                target_app_version: `>=0.${index}.0`,
+              });
             }
-            await adminJson(`${catalogRowPath()}/rebuild`, jsonRequest("POST"));
             const catalog = await readCatalog(scope(), "1.0.0");
-            expect(catalog.releases[0]?.bundleId).toBe(
-              createBundleRowFixture("599").id,
-            );
+            expect(catalog.releases[0]?.bundleId).toBe(bundleRow("599").id);
             expect(catalog.rollbackReleases).toHaveLength(200);
-          }, 60_000);
+          }, 180_000);
 
           it("keeps version projections separate in the HTTP cache", async () => {
             const first = await publish("231", {
@@ -893,17 +617,17 @@ export const setupReleaseCatalogTestSuite = (options: {
             await publish("761", {}, second);
             await publish("762", {}, first);
             const prefix = first.key.slice(0, -1);
+            const page1 = await adminJson(
+              `/release-catalogs?limit=1&order=asc&cursor=${encodeURIComponent(prefix)}`,
+            );
+            expect(page1.data).toEqual([
+              (await adminJson(catalogRowPath(first))).data,
+            ]);
+            expect(page1.next).toBe(first.key);
             expect(
               (
                 await adminJson(
-                  `/release-catalogs?limit=1&afterScopeKey=${encodeURIComponent(prefix)}`,
-                )
-              ).data,
-            ).toEqual([(await adminJson(catalogRowPath(first))).data]);
-            expect(
-              (
-                await adminJson(
-                  `/release-catalogs?limit=1&afterScopeKey=${encodeURIComponent(first.key)}`,
+                  `/release-catalogs?limit=1&order=asc&cursor=${encodeURIComponent(page1.next)}`,
                 )
               ).data,
             ).toEqual([(await adminJson(catalogRowPath(second))).data]);
@@ -939,9 +663,18 @@ export const setupReleaseCatalogTestSuite = (options: {
     it.each(["small", "large"] as const)(
       "retains original and patch plans alongside a %s optional archive",
       async (size) => {
-        const base = createBundleRowFixture("301");
+        const channel = `artifacts-${channelNamespace}`;
+        const policy = {
+          channel,
+          enabled: false,
+          fingerprintHash: null,
+          message: null,
+          shouldForceUpdate: false,
+          targetAppVersion: "*",
+        };
+        const base = bundleRow("301");
         const target = {
-          ...createBundleRowFixture("302"),
+          ...bundleRow("302"),
           manifest_storage_uri: RELEASE_CATALOG_MANIFEST_URIS[size],
           manifest_file_hash: "manifest-hash",
           asset_base_storage_uri: "storage://test-bucket/assets",
@@ -950,11 +683,22 @@ export const setupReleaseCatalogTestSuite = (options: {
           ...createBundlePatchRowFixture("302", target.id, base.id),
           byte_size: 10,
         };
-        await commit([
-          { model: "bundles", operation: "insert", row: base },
-          { model: "bundles", operation: "insert", row: target },
-          { model: "bundlePatches", operation: "insert", row: patch },
-        ]);
+        await api.deploy({ bundle: toDeployBundle(base), release: policy });
+        await api.deploy({
+          bundle: {
+            ...toDeployBundle(target),
+            patches: [
+              {
+                baseBundleId: base.id,
+                baseFileHash: patch.base_file_hash,
+                byteSize: patch.byte_size,
+                patchFileHash: patch.patch_file_hash,
+                patchStorageUri: patch.patch_storage_uri,
+              },
+            ],
+          },
+          release: policy,
+        });
         const response = await request(
           `/artifacts/v1/${target.id}/from/${base.id}`,
         );

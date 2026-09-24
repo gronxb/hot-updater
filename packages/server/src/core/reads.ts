@@ -97,16 +97,6 @@ export const toCatalogRow = pick<ReleaseCatalogRow>([
 
 export const toChannelRow = pick<ChannelRow>(["id", "name"]);
 
-/**
- * A scope's catalog generation; a catalog that was never compiled reads as
- * absent. A release written without its catalog (legacy commits only) gets
- * such a placeholder, because every release write bumps its catalog row.
- */
-export const compiledGeneration = (
-  row: { readonly generation: number } | null,
-): number | null =>
-  row === null || row.generation === 0 ? null : row.generation;
-
 /** Every page of one read, in order. */
 export const drain = async <T>(
   read: (page: { readonly cursor?: string }) => Promise<Page<T>>,
@@ -174,7 +164,7 @@ export const createCoreReads = (db: CoreDatabase, storage: CoreStorage) => {
       const scopeKey = releaseCatalogScopeKeyOf(input);
       const row = await db.findOne("release_catalogs", { scope_key: scopeKey });
       return projectReleaseCatalogRow(
-        compiledGeneration(row) === null ? null : toCatalogRow(row!),
+        row === null ? null : toCatalogRow(row),
         input,
         scopeKey,
       );
@@ -369,7 +359,7 @@ export const createCoreReads = (db: CoreDatabase, storage: CoreStorage) => {
       scopeKey: string,
     ): Promise<ReleaseCatalogRow | null> {
       const row = await db.findOne("release_catalogs", { scope_key: scopeKey });
-      return compiledGeneration(row) === null ? null : toCatalogRow(row!);
+      return row === null ? null : toCatalogRow(row);
     },
 
     async listReleaseCatalogs(

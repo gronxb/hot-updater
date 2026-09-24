@@ -1,35 +1,29 @@
 import {
   createStoragePlugin,
-  type DatabasePlugin,
   type ConfigInput,
 } from "@hot-updater/plugin-core";
 import { describe, expect, expectTypeOf, it, vi } from "vitest";
 
-import { createInMemoryDatabasePlugin } from "../../test-utils/test/inMemoryDatabasePlugin";
 import packageJson from "../package.json" with { type: "json" };
-import { createHotUpdater } from "./index";
+import { builtInSettings } from "./database/builtInDatabase";
+import { createHotUpdater, HotUpdaterConfigError } from "./index";
 import type {
   ClientAccessPolicy,
   CreateHotUpdaterOptions,
-  HandlerAPI,
+  RuntimeHotUpdaterAPI,
 } from "./index";
 import {
+  createFencedDatabase,
   createRuntimeDatabase,
-  createSchemaManagedDatabase,
 } from "./runtime.testFixtures";
-import { HOT_UPDATER_SCHEMA_VERSION } from "./schema/types";
 import { HOT_UPDATER_SERVER_VERSION } from "./version";
-
-const publicClientAccess = {
-  type: "public",
-} satisfies ClientAccessPolicy;
 
 describe("runtime createHotUpdater", () => {
   it.each(["authorityId", "catalogId"])("rejects a user-supplied %s", (key) => {
     expect(() =>
       createHotUpdater({
-        clientAccess: publicClientAccess,
-        database: createInMemoryDatabasePlugin(),
+        clientAccess: "public",
+        database: createRuntimeDatabase(),
         [key]: "user-controlled",
       }),
     ).toThrow(`Remove ${key}`);
@@ -45,24 +39,21 @@ describe("runtime createHotUpdater", () => {
     expect(hasRuntimeEntry).toBe(false);
   });
 
-  it("exports runtime-safe handler types from the root entry", () => {
+  it("types the options and the instance without the legacy API", () => {
     expectTypeOf<ConfigInput>().not.toHaveProperty("authorityId");
     expectTypeOf<ConfigInput>().not.toHaveProperty("catalogId");
-    expectTypeOf<HandlerAPI>().toHaveProperty("getBundles");
     expectTypeOf<keyof CreateHotUpdaterOptions>().toEqualTypeOf<
       "clientAccess" | "database" | "plugins" | "storage"
     >();
-    expectTypeOf<CreateHotUpdaterOptions>().toHaveProperty("clientAccess");
     expectTypeOf<
       CreateHotUpdaterOptions["clientAccess"]
     >().toEqualTypeOf<ClientAccessPolicy>();
+    expectTypeOf<keyof RuntimeHotUpdaterAPI>().toEqualTypeOf<
+      "adapterName" | "api" | "core" | "handlers"
+    >();
   });
 
-  it("accepts a direct v2 plugin object without exposing maintenance methods", () => {
-    const database: DatabasePlugin = {
-      ...createInMemoryDatabasePlugin(),
-      name: "contextlessTestDatabase",
-    };
+  it("runs on an engine database without exposing its tooling", () => {
     const storage = createStoragePlugin({
       name: "contextlessTestStorage",
       protocol: "s3",
@@ -73,36 +64,77 @@ describe("runtime createHotUpdater", () => {
     });
 
     const hotUpdater = createHotUpdater({
-      clientAccess: publicClientAccess,
-      database,
+      clientAccess: "public",
+      database: createRuntimeDatabase("contextlessTestDatabase"),
       storage: [storage],
     });
 
     expect(hotUpdater.adapterName).toBe("contextlessTestDatabase");
-    expect(hotUpdater.handlers.client).toEqual(expect.any(Function));
-    expect(hotUpdater.handlers.admin).toEqual(expect.any(Function));
-    expect("createMigrator" in hotUpdater).toBe(false);
-    expect("generateSchema" in hotUpdater).toBe(false);
+    expect(Object.keys(hotUpdater).sort()).toEqual([
+      "adapterName",
+      "api",
+      "core",
+      "handlers",
+    ]);
     expect(hotUpdater).not.toHaveProperty("authorityId");
-    expect(hotUpdater).not.toHaveProperty("catalogId");
     expectTypeOf(hotUpdater).not.toHaveProperty("createMigrator");
-    expectTypeOf(hotUpdater).not.toHaveProperty("generateSchema");
     expectTypeOf(hotUpdater.handlers.client)
       .parameter(0)
       .toEqualTypeOf<Request>();
   });
 
-  it("rejects access when a managed schema is not initialized", async () => {
+  it("refuses a database that is not on the storage engine", () => {
+    const legacy = { name: "legacy", models: {}, commit: async () => ({}) };
+    const remote = {
+      name: "standalone",
+      core: {},
+      fetchAdmin: async () => new Response(null),
+    };
+
+    for (const database of [legacy, remote, undefined]) {
+      expect(() =>
+        createHotUpdater({
+          clientAccess: "public",
+          database: database as unknown as CreateHotUpdaterOptions["database"],
+        }),
+      ).toThrow(HotUpdaterConfigError);
+    }
+    expect(() =>
+      createHotUpdater({
+        clientAccess: "public",
+        database: remote as unknown as CreateHotUpdaterOptions["database"],
+      }),
+    ).toThrow("standaloneRepository reaches a server's admin API");
+  });
+
+  it("answers 503 until the schema settings are written", async () => {
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      const hotUpdater = createHotUpdater({
+        clientAccess: "public",
+        database: await createFencedDatabase("kysely"),
+      });
+
+      const response = await hotUpdater.handlers.admin(
+        new Request("https://updates.example.com/channels"),
+      );
+
+      expect(response.status).toBe(503);
+      await expect(hotUpdater.core.listChannels()).rejects.toThrow(
+        "Hot Updater schema setting",
+      );
+    } finally {
+      error.mockRestore();
+    }
+  });
+
+  it("serves a fenced database once its settings are written", async () => {
     const hotUpdater = createHotUpdater({
-      clientAccess: publicClientAccess,
-      database: createSchemaManagedDatabase("kysely", undefined),
+      clientAccess: "public",
+      database: await createFencedDatabase("kysely", builtInSettings),
     });
 
-    const result = hotUpdater.getBundles({ limit: 10 });
-
-    await expect(result).rejects.toThrow(
-      "Hot Updater database schema is not initialized for kysely.",
-    );
+    await expect(hotUpdater.core.listChannels()).resolves.toEqual([]);
   });
 
   it.each(["s3", "https"])(
@@ -116,7 +148,7 @@ describe("runtime createHotUpdater", () => {
 
       expect(() =>
         createHotUpdater({
-          clientAccess: publicClientAccess,
+          clientAccess: "public",
           database: createRuntimeDatabase(),
           storage: [storage],
         }),
@@ -126,39 +158,9 @@ describe("runtime createHotUpdater", () => {
     },
   );
 
-  it("rejects access when a managed schema is stale", async () => {
-    const hotUpdater = createHotUpdater({
-      clientAccess: publicClientAccess,
-      database: createSchemaManagedDatabase("mongodb", "0.21.0"),
-    });
-
-    const result = hotUpdater.getChannels();
-
-    await expect(result).rejects.toThrow(
-      "Hot Updater v1 cannot migrate schema 0.21.0 in place.",
-    );
-  });
-
-  it("checks a ready managed schema only once", async () => {
-    const database = createSchemaManagedDatabase(
-      "kysely",
-      HOT_UPDATER_SCHEMA_VERSION,
-    );
-    const createMigrator = vi.spyOn(database, "createMigrator");
-    const hotUpdater = createHotUpdater({
-      clientAccess: publicClientAccess,
-      database,
-    });
-
-    await hotUpdater.getChannels();
-    await hotUpdater.getChannels();
-
-    expect(createMigrator).toHaveBeenCalledOnce();
-  });
-
   it("keeps the version route mounted on the client handler", async () => {
     const hotUpdater = createHotUpdater({
-      clientAccess: publicClientAccess,
+      clientAccess: "public",
       database: createRuntimeDatabase(),
     });
 
@@ -184,14 +186,19 @@ describe("runtime createHotUpdater", () => {
     );
   });
 
-  it("rejects an unsupported client access policy", () => {
-    expect(() =>
+  it("rejects a clientAccess object, naming apiKeys()", () => {
+    const withObject = (clientAccess: unknown) => () =>
       createHotUpdater({
-        clientAccess: {
-          type: "private" as unknown as "public",
-        },
+        clientAccess: clientAccess as ClientAccessPolicy,
         database: createRuntimeDatabase(),
-      }),
-    ).toThrow('clientAccess.type must be either "public" or "api-key".');
+      });
+
+    expect(withObject({ type: "api-key", headerName: "x-client-key" })).toThrow(
+      'clientAccess: { type: "api-key" } was removed in 1.0. Remove it and add apiKeys({ headerName: "x-client-key" }) from @hot-updater/server/plugins/api-keys to plugins',
+    );
+    expect(withObject({ type: "public" })).toThrow(
+      'clientAccess objects were removed in 1.0. Use clientAccess: "public", or add apiKeys()',
+    );
+    expect(withObject("private")).toThrow(HotUpdaterConfigError);
   });
 });

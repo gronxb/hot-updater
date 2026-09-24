@@ -2,7 +2,7 @@ import { DatabaseSync, type SqliteValue } from "node:sqlite";
 
 import { PGlite } from "@electric-sql/pglite";
 import {
-  setupDatabasePluginTestSuite,
+  setupDatabaseTestSuite,
   startHttpTestServer,
 } from "@hot-updater/test-utils";
 import { Kysely, SqliteDialect } from "kysely";
@@ -10,20 +10,22 @@ import { PGliteDialect } from "kysely-pglite-dialect";
 import { describe, expect, it } from "vitest";
 
 import {
-  createBundlePatchRowFixture,
   createBundleEventRowFixture,
-  createBundleRowFixture,
+  createBundleFixture,
 } from "../../../test-utils/src/databaseTestFixtures";
+import { createDatabasePluginApis } from "../assembly/databasePlugins";
+import { createInProcessCoreApi } from "../core/api";
+import { builtInSchema } from "../database/builtInDatabase";
 import { DatabaseConstraintError } from "../database/errors";
-import { legacyFacadeSchema } from "../database/legacyFacade";
 import { isMultiIndex, quoteSql } from "../database/sql/sqlSchema";
 import { HotUpdaterSchemaMigrationRequiredError } from "../db/schemaReadiness";
-import type { DatabaseAdapterWithCapabilities } from "../db/types";
+import type { ToolingDatabase } from "../db/types";
 import { createHotUpdater } from "../index";
+import { createInsightsModel, insights } from "../plugins/insights";
 import { kyselyAdapter, type SQLProvider } from "./kysely";
 
 /** Every data table the migration creates; the settings rows stay. */
-const dataTables = legacyFacadeSchema.tables.flatMap((table) => [
+const dataTables = builtInSchema.tables.flatMap((table) => [
   table.name,
   ...table.indexes
     .filter((index) => isMultiIndex(table, index))
@@ -57,8 +59,14 @@ const sqliteKysely = (database: DatabaseSync) =>
     }),
   });
 
-const migrate = async (plugin: DatabaseAdapterWithCapabilities) =>
-  (await plugin.createMigrator!().migrateToLatest()).execute();
+const migrate = async (database: ToolingDatabase) =>
+  (await database.createMigrator!().migrateToLatest()).execute();
+
+/** The Insights plugin's model over a database, on the server's tables. */
+const insightsOf = (database: ToolingDatabase) =>
+  createInsightsModel(
+    createDatabasePluginApis(database, [insights()]).insights,
+  );
 
 const backends = {
   postgresql: () => {
@@ -77,25 +85,26 @@ const backends = {
       close: async () => undefined,
     };
   },
-} satisfies Record<
-  Exclude<SQLProvider, "mysql" | "cockroachdb">,
-  () => unknown
->;
+} satisfies Record<Exclude<SQLProvider, "mysql">, () => unknown>;
 
 for (const provider of ["postgresql", "sqlite"] as const) {
   let backend: ReturnType<(typeof backends)[typeof provider]> | undefined;
-  setupDatabasePluginTestSuite({
+  setupDatabaseTestSuite({
     createHttpClient: (options) =>
       startHttpTestServer(
-        createHotUpdater({ ...options, clientAccess: { type: "public" } })
-          .handlers,
+        createHotUpdater({
+          ...options,
+          plugins: [insights()],
+          clientAccess: "public",
+        }).handlers,
       ),
+    createInsightsModel: insightsOf,
     name: `kyselyAdapter (${provider})`,
     migrate: async () => {
       backend = backends[provider]();
       await migrate(kyselyAdapter({ db: backend.db, provider }));
     },
-    createPlugin: () => kyselyAdapter({ db: backend!.db, provider }),
+    createDatabase: () => kyselyAdapter({ db: backend!.db, provider }),
     reset: async () => {
       const quote = (name: string) => quoteSql(provider, name);
       await backend!.exec(
@@ -115,10 +124,11 @@ for (const provider of ["postgresql", "sqlite"] as const) {
 describe("kyselyAdapter migrations and fence", () => {
   it("migrates once, answers nothing to migrate afterwards, and serves behind the fence", async () => {
     const { db, close } = backends.postgresql();
-    const plugin = kyselyAdapter({ db, provider: "postgresql" });
-    const migrator = plugin.createMigrator!();
+    const database = kyselyAdapter({ db, provider: "postgresql" });
+    const core = createInProcessCoreApi(database.adapter);
+    const migrator = database.createMigrator!();
     try {
-      await expect(plugin.models.channels.list({})).rejects.toBeInstanceOf(
+      await expect(core.listChannels()).rejects.toBeInstanceOf(
         HotUpdaterSchemaMigrationRequiredError,
       );
       await expect(migrator.getVersion()).resolves.toBeUndefined();
@@ -128,15 +138,13 @@ describe("kyselyAdapter migrations and fence", () => {
       );
       expect(
         pending.operations.filter(({ type }) => type === "create-table"),
-      ).toHaveLength(legacyFacadeSchema.tables.length);
+      ).toHaveLength(builtInSchema.tables.length);
       await pending.execute();
       await expect(migrator.getVersion()).resolves.toBe("1.0.0");
       await expect(migrator.migrateToLatest()).resolves.toMatchObject({
         operations: [],
       });
-      await expect(plugin.models.channels.list({})).resolves.toEqual({
-        channels: [],
-      });
+      await expect(core.listChannels()).resolves.toEqual([]);
     } finally {
       await db.destroy();
       await close();
@@ -165,27 +173,22 @@ describe("kyselyAdapter migrations and fence", () => {
 
   it("rolls back a failed event write whole and accepts the retry", async () => {
     const { db, exec, close } = backends.postgresql();
-    const plugin = kyselyAdapter({ db, provider: "postgresql" });
+    const database = kyselyAdapter({ db, provider: "postgresql" });
+    const model = insightsOf(database);
     try {
-      await migrate(plugin);
+      await migrate(database);
       await exec(
         "ALTER TABLE bundle_events ADD CONSTRAINT reject_event CHECK (install_id <> 'install-703')",
       );
       const event = createBundleEventRowFixture("703", 100);
+      await expect(model.recordEvent({ event })).rejects.toThrow();
       await expect(
-        plugin.models.insights.recordEvent({ event }),
-      ).rejects.toThrow();
-      await expect(
-        plugin.models.insights.findLatestEvents({
-          installId: event.install_id,
-        }),
+        model.findLatestEvents({ installId: event.install_id }),
       ).resolves.toEqual([]);
       await exec("ALTER TABLE bundle_events DROP CONSTRAINT reject_event");
-      await plugin.models.insights.recordEvent({ event });
+      await model.recordEvent({ event });
       await expect(
-        plugin.models.insights.findLatestEvents({
-          installId: event.install_id,
-        }),
+        model.findLatestEvents({ installId: event.install_id }),
       ).resolves.toEqual([event]);
     } finally {
       await db.destroy();
@@ -193,33 +196,42 @@ describe("kyselyAdapter migrations and fence", () => {
     }
   });
 
-  it("keeps references without database foreign keys in fumadb mode", async () => {
+  it("keeps references without database foreign keys", async () => {
     const { db, close } = backends.postgresql();
-    const plugin = kyselyAdapter({
-      db,
-      provider: "postgresql",
-      relationMode: "fumadb",
-    });
+    const database = kyselyAdapter({ db, provider: "postgresql" });
+    const core = createInProcessCoreApi(database.adapter);
     try {
-      const pending = await plugin.createMigrator!().migrateToLatest();
+      const pending = await database.createMigrator!().migrateToLatest();
       expect(pending.getSQL?.()).not.toContain("FOREIGN KEY");
       await pending.execute();
-      const owner = createBundleRowFixture("952");
+      const owner = createBundleFixture("952");
       await expect(
-        plugin.commit({
-          changes: [
-            { model: "bundles", operation: "insert", row: owner },
-            {
-              model: "bundlePatches",
-              operation: "insert",
-              row: createBundlePatchRowFixture("1", owner.id, "missing-base"),
+        core.deploy([
+          {
+            bundle: {
+              ...owner,
+              patches: [
+                {
+                  baseBundleId: "missing-base",
+                  baseFileHash: "base-hash",
+                  byteSize: 1,
+                  patchFileHash: "patch-hash",
+                  patchStorageUri: "storage://patches/952.patch",
+                },
+              ],
             },
-          ],
-        }),
+            release: {
+              channel: "production",
+              enabled: false,
+              fingerprintHash: null,
+              message: null,
+              shouldForceUpdate: false,
+              targetAppVersion: "*",
+            },
+          },
+        ]),
       ).rejects.toBeInstanceOf(DatabaseConstraintError);
-      await expect(
-        plugin.models.bundles.findById(owner.id),
-      ).resolves.toBeNull();
+      await expect(core.getBundle(owner.id)).resolves.toBeNull();
     } finally {
       await db.destroy();
       await close();

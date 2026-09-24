@@ -1,5 +1,8 @@
 import { defineAggregate, defineTable } from "../database/schema";
 
+/** Core's schema version: the `schema.core` settings row. */
+export const HOT_UPDATER_SCHEMA_VERSION = "1.0.0";
+
 const bundles = defineTable(
   {
     id: { type: "string", maxLength: 36 },

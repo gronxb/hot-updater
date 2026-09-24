@@ -18,12 +18,7 @@ import {
   type ReleaseRowUpdate,
 } from "@hot-updater/plugin-core";
 
-import {
-  compiledGeneration,
-  toCatalogRow,
-  toReleaseRow,
-  type CoreDatabase,
-} from "./reads";
+import { toCatalogRow, toReleaseRow, type CoreDatabase } from "./reads";
 import {
   insertBundle,
   moveBaseCandidates,
@@ -167,11 +162,10 @@ const writeCatalog = async (
 /** The scope's catalog row, and its compiled catalog and generation if it has one. */
 export const readCatalog = async (tx: CoreTransaction, scopeKey: string) => {
   const row = await tx.findOne("release_catalogs", { scope_key: scopeKey });
-  const generation = compiledGeneration(row);
   return {
     row,
-    generation,
-    catalog: row === null || generation === null ? null : toCatalogRow(row),
+    generation: row?.generation ?? null,
+    catalog: row === null ? null : toCatalogRow(row),
   };
 };
 

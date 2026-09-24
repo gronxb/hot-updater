@@ -3,7 +3,10 @@ import { createValidatedInsightsModel } from "@hot-updater/plugin-core/internal"
 
 import type { InsightsApi } from "./index";
 
-/** The plugin behind today's `InsightsModel`, validated at the same boundary, until E2 retires that contract. */
+/**
+ * The plugin's API as `InsightsModel`, validated at its boundary: what the
+ * Insights routes, the console, and the e2e harness read through.
+ */
 export const createInsightsModel = (api: InsightsApi): InsightsModel =>
   createValidatedInsightsModel({
     recordEvent: ({ event }) => api.recordEvent(event),
