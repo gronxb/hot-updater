@@ -228,7 +228,29 @@ export const createCoreOperations = (
       })
     ).row;
 
-  const deploy = async (
+  /**
+   * Runs a write that ensured its channels first. A channel deleted between
+   * that and the write refuses the write, so it runs again and ensures it anew.
+   */
+  const withChannels = async <T>(write: () => Promise<T>): Promise<T> => {
+    for (let attempt = 1; ; attempt += 1) {
+      try {
+        return await write();
+      } catch (error) {
+        if (
+          attempt < 3 &&
+          error instanceof DatabaseConstraintError &&
+          error.reason === "not_found" &&
+          error.model === "channels"
+        ) {
+          continue;
+        }
+        throw error;
+      }
+    }
+  };
+
+  const deployOnce = async (
     deployments: readonly Deployment[],
   ): Promise<ReleaseCatalogMutationResult[]> => {
     const channels = new Map<string, ChannelRow>();
@@ -305,7 +327,7 @@ export const createCoreOperations = (
   };
 
   return {
-    deploy,
+    deploy: (deployments) => withChannels(() => deployOnce(deployments)),
 
     updateReleasePolicy: (input) => {
       const updatedAtMs = now();
@@ -367,94 +389,95 @@ export const createCoreOperations = (
         );
       }),
 
-    promoteRelease: async (input) => {
-      const checkSource = (source: ReleaseRow) => {
-        if (source.kind !== "BUNDLE" || source.bundle_id === null) {
-          throw new ReleaseManagementError(
-            "TARGET_RELEASE_INVALID",
-            "Only a Bundle Release can be promoted.",
-          );
-        }
-      };
-      // Check the source before the target channel is created.
-      checkSource(
-        (await db.transaction((tx) => loadTarget(tx, input))).release,
-      );
-      const targetChannel = input.targetChannel.trim();
-      if (targetChannel.length === 0) {
-        throw new ReleaseManagementError(
-          "TARGET_RELEASE_INVALID",
-          "Promotion requires a target channel.",
-        );
-      }
-      const channel = await ensureChannel(targetChannel);
-      const updatedAtMs = now();
-      return db.transaction(async (tx) => {
-        const { release: source, scope: sourceScope } = await loadTarget(
-          tx,
-          input,
-        );
-        checkSource(source);
-        const targetScope = scopeOf(
-          channel,
-          source.platform,
-          source.fingerprint_hash,
-        );
-        if (targetScope.scopeKey === sourceScope.scopeKey) {
-          throw new ReleaseManagementError(
-            "TARGET_RELEASE_INVALID",
-            "Source and target Release scopes are the same.",
-          );
-        }
-        const { rows } = await tx.findMany("releases", {
-          index: "byScope",
-          where: { scope_key: targetScope.scopeKey },
-          order: "desc",
-          limit: 1,
-        });
-        const floor = [rows[0]?.id ?? null, source.id, source.bundle_id]
-          .filter((id): id is string => id !== null && isUUIDv7(id))
-          .sort()
-          .at(-1);
-        const moved =
-          input.action === "move"
-            ? await changeRelease(tx, {
-                scope: sourceScope,
-                change: {
-                  operation: "update",
-                  id: source.id,
-                  update: { enabled: false, updated_at_ms: updatedAtMs },
-                },
-                updatedAtMs,
-              })
-            : null;
-        const target = await changeRelease(tx, {
-          scope: targetScope,
-          change: {
-            operation: "insert",
-            row: {
-              ...source,
-              id: createUUIDv7After(floor ?? null, updatedAtMs),
-              revision: 1,
-              scope_key: targetScope.scopeKey,
-              channel_id: targetScope.channelId,
-              enabled: true,
-              rollout_cohort_count: 1_000,
-              target_cohorts: [],
-              operation: "PROMOTE",
-              source_release_id: source.id,
-              created_at_ms: updatedAtMs,
-              updated_at_ms: updatedAtMs,
-            },
-          },
-          updatedAtMs,
-        });
-        return {
-          source: moved === null ? null : mutationResult(moved),
-          target: mutationResult(target),
+    promoteRelease: (input) =>
+      withChannels(async () => {
+        const checkSource = (source: ReleaseRow) => {
+          if (source.kind !== "BUNDLE" || source.bundle_id === null) {
+            throw new ReleaseManagementError(
+              "TARGET_RELEASE_INVALID",
+              "Only a Bundle Release can be promoted.",
+            );
+          }
         };
-      });
-    },
+        // Check the source before the target channel is created.
+        checkSource(
+          (await db.transaction((tx) => loadTarget(tx, input))).release,
+        );
+        const targetChannel = input.targetChannel.trim();
+        if (targetChannel.length === 0) {
+          throw new ReleaseManagementError(
+            "TARGET_RELEASE_INVALID",
+            "Promotion requires a target channel.",
+          );
+        }
+        const channel = await ensureChannel(targetChannel);
+        const updatedAtMs = now();
+        return db.transaction(async (tx) => {
+          const { release: source, scope: sourceScope } = await loadTarget(
+            tx,
+            input,
+          );
+          checkSource(source);
+          const targetScope = scopeOf(
+            channel,
+            source.platform,
+            source.fingerprint_hash,
+          );
+          if (targetScope.scopeKey === sourceScope.scopeKey) {
+            throw new ReleaseManagementError(
+              "TARGET_RELEASE_INVALID",
+              "Source and target Release scopes are the same.",
+            );
+          }
+          const { rows } = await tx.findMany("releases", {
+            index: "byScope",
+            where: { scope_key: targetScope.scopeKey },
+            order: "desc",
+            limit: 1,
+          });
+          const floor = [rows[0]?.id ?? null, source.id, source.bundle_id]
+            .filter((id): id is string => id !== null && isUUIDv7(id))
+            .sort()
+            .at(-1);
+          const moved =
+            input.action === "move"
+              ? await changeRelease(tx, {
+                  scope: sourceScope,
+                  change: {
+                    operation: "update",
+                    id: source.id,
+                    update: { enabled: false, updated_at_ms: updatedAtMs },
+                  },
+                  updatedAtMs,
+                })
+              : null;
+          const target = await changeRelease(tx, {
+            scope: targetScope,
+            change: {
+              operation: "insert",
+              row: {
+                ...source,
+                id: createUUIDv7After(floor ?? null, updatedAtMs),
+                revision: 1,
+                scope_key: targetScope.scopeKey,
+                channel_id: targetScope.channelId,
+                enabled: true,
+                rollout_cohort_count: 1_000,
+                target_cohorts: [],
+                operation: "PROMOTE",
+                source_release_id: source.id,
+                created_at_ms: updatedAtMs,
+                updated_at_ms: updatedAtMs,
+              },
+            },
+            updatedAtMs,
+          });
+          return {
+            source: moved === null ? null : mutationResult(moved),
+            target: mutationResult(target),
+          };
+        });
+      }),
 
     rebuildReleaseCatalog: (scopeKey) => {
       const updatedAtMs = now();
