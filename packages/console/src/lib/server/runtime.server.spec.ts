@@ -2,7 +2,7 @@
 
 import type { BundleEventRow } from "@hot-updater/plugin-core";
 import { createMemoryAdapter } from "@hot-updater/plugin-core/internal";
-import { createLegacyDatabasePlugin } from "@hot-updater/server/database";
+import { createDatabasePluginApis } from "@hot-updater/server/db";
 import { apiKeys } from "@hot-updater/server/plugins/api-keys";
 import { insights } from "@hot-updater/server/plugins/insights";
 import { describe, expect, it, vi } from "vitest";
@@ -10,11 +10,10 @@ import { describe, expect, it, vi } from "vitest";
 import { InsightsOffError } from "./adminInsights";
 import { createConsoleRuntime, requireInsightsModel } from "./runtime.server";
 
-const engineDatabase = () =>
-  createLegacyDatabasePlugin({
-    name: "memory",
-    adapter: createMemoryAdapter(),
-  });
+const engineDatabase = () => ({
+  name: "memory",
+  adapter: createMemoryAdapter(),
+});
 
 const event = (id: string): BundleEventRow =>
   ({
@@ -57,8 +56,10 @@ describe("createConsoleRuntime", () => {
     ).resolves.toMatchObject({ installId: "install-1" });
 
     const created = await runtime.apiKeys!.create({ name: "Console" });
-    // The server's own tables: the database plugin sees the same key.
-    await expect(database.models.apiKeys.list()).resolves.toEqual([
+    // The server's own tables: the server's apiKeys() plugin sees the same key.
+    await expect(
+      createDatabasePluginApis(database, [apiKeys()]).apiKeys.list(),
+    ).resolves.toEqual([
       expect.objectContaining({ id: created.record.id, name: "Console" }),
     ]);
   });
@@ -79,17 +80,11 @@ describe("createConsoleRuntime", () => {
     expect(runtime.apiKeys).toBeNull();
   });
 
-  it("keeps the database plugin's Insights and API keys without plugins", async () => {
-    const database = engineDatabase();
-    const runtime = createConsoleRuntime({ database });
+  it("turns Insights and API keys off without plugins", async () => {
+    const runtime = createConsoleRuntime({ database: engineDatabase() });
 
-    await expect(runtime.insights.status()).resolves.toBe("on");
-    expect(runtime.insights.model).toBe(database.models.insights);
-    const created = await runtime.apiKeys!.create({ name: "Legacy" });
-    await expect(runtime.apiKeys!.list()).resolves.toEqual([created.record]);
-    await expect(
-      runtime.apiKeys!.revoke({ id: created.record.id }),
-    ).resolves.toMatchObject({ id: created.record.id });
+    await expect(runtime.insights.status()).resolves.toBe("off");
+    expect(runtime.apiKeys).toBeNull();
   });
 
   it("asks a self-hosted server whether it runs Insights, and manages no keys", async () => {

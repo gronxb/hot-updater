@@ -149,10 +149,10 @@ vi.mock("is-port-reachable", () => ({
   default: vi.fn(),
 }));
 
-import { createDatabasePluginHarness } from "./databasePlugin.testFixtures";
+import { createDatabaseHarness } from "./database.testFixtures";
 
-const databaseHarness = createDatabasePluginHarness();
-const databasePlugin = databaseHarness.plugin;
+const databaseHarness = createDatabaseHarness();
+const harnessDatabase = databaseHarness.database;
 
 vi.mock("open", () => ({
   default: vi.fn(),
@@ -229,7 +229,8 @@ import fs from "fs";
 
 import type {
   Bundle,
-  DatabasePlugin,
+  Deployment,
+  EngineDatabase,
   HotUpdaterCoreApi,
 } from "@hot-updater/plugin-core";
 import { createStorageUri } from "@hot-updater/plugin-core";
@@ -407,7 +408,7 @@ describe("deploy rollout wiring", () => {
 
     mockCli.loadConfig.mockResolvedValue({
       build: async () => mockBuildPlugin,
-      database: databasePlugin,
+      database: harnessDatabase,
       fingerprint: {},
       patch: {
         enabled: true,
@@ -698,15 +699,15 @@ describe("deploy rollout wiring", () => {
     const deployCall = vi.fn(async (): Promise<never> => {
       throw refusal;
     });
-    const refusingDatabasePlugin: DatabasePlugin & {
+    const refusingDatabase: EngineDatabase & {
       readonly core: HotUpdaterCoreApi;
     } = {
-      ...databasePlugin,
+      ...harnessDatabase,
       core: { ...databaseHarness.core, deploy: deployCall },
     };
     mockCli.loadConfig.mockResolvedValue({
       build: async () => mockBuildPlugin,
-      database: refusingDatabasePlugin,
+      database: refusingDatabase,
       fingerprint: {},
       patch: {
         enabled: true,
@@ -734,21 +735,21 @@ describe("deploy rollout wiring", () => {
     expect(deployCall).toHaveBeenCalledOnce();
     expect(await databaseHarness.bundles()).toEqual([]);
     expect(await databaseHarness.releases()).toEqual([]);
-    expect(refusingDatabasePlugin.dispose).toHaveBeenCalledOnce();
+    expect(refusingDatabase.dispose).toHaveBeenCalledOnce();
   });
 
   it("rejects distinct platform databases before building and cleans both up", async () => {
-    const iosDatabasePlugin: DatabasePlugin = {
-      ...databasePlugin,
+    const iosDatabase: EngineDatabase = {
+      ...harnessDatabase,
       dispose: vi.fn(async (): Promise<void> => {}),
     };
-    const androidDatabasePlugin: DatabasePlugin = {
-      ...databasePlugin,
+    const androidDatabase: EngineDatabase = {
+      ...harnessDatabase,
       dispose: vi.fn(async (): Promise<void> => {}),
     };
     mockCli.loadConfig.mockImplementation(async ({ platform }) => ({
       build: async () => mockBuildPlugin,
-      database: platform === "ios" ? iosDatabasePlugin : androidDatabasePlugin,
+      database: platform === "ios" ? iosDatabase : androidDatabase,
       fingerprint: {},
       patch: {
         enabled: true,
@@ -770,8 +771,8 @@ describe("deploy rollout wiring", () => {
     );
     expect(mockBuildPlugin.build).not.toHaveBeenCalled();
     expect(mockStoragePlugin.put).not.toHaveBeenCalled();
-    expect(iosDatabasePlugin.dispose).toHaveBeenCalledOnce();
-    expect(androidDatabasePlugin.dispose).toHaveBeenCalledOnce();
+    expect(iosDatabase.dispose).toHaveBeenCalledOnce();
+    expect(androidDatabase.dispose).toHaveBeenCalledOnce();
   });
 
   it("deploys a single platform in one core call, after the schema check", async () => {
@@ -822,10 +823,10 @@ describe("deploy rollout wiring", () => {
 
   it("does not print deployment success when the database commit fails", async () => {
     const commitError = new Error("commit failed");
-    const failingDatabasePlugin: DatabasePlugin & {
+    const failingDatabase: EngineDatabase & {
       readonly core: HotUpdaterCoreApi;
     } = {
-      ...databasePlugin,
+      ...harnessDatabase,
       core: {
         ...databaseHarness.core,
         deploy: async () => {
@@ -835,7 +836,7 @@ describe("deploy rollout wiring", () => {
     };
     mockCli.loadConfig.mockResolvedValue({
       build: async () => mockBuildPlugin,
-      database: failingDatabasePlugin,
+      database: failingDatabase,
       fingerprint: {},
       patch: {
         enabled: true,
@@ -864,13 +865,13 @@ describe("deploy rollout wiring", () => {
 
   it("runs deployment side effects once when core retries the deployment internally", async () => {
     let commitAttemptCount = 0;
-    const retryingDatabasePlugin: DatabasePlugin & {
+    const retryingDatabase: EngineDatabase & {
       readonly core: HotUpdaterCoreApi;
     } = {
-      ...databasePlugin,
+      ...harnessDatabase,
       core: {
         ...databaseHarness.core,
-        deploy: async (deployments) => {
+        deploy: async (deployments: readonly Deployment[]) => {
           commitAttemptCount += 2;
           return databaseHarness.core.deploy(deployments);
         },
@@ -878,7 +879,7 @@ describe("deploy rollout wiring", () => {
     };
     mockCli.loadConfig.mockResolvedValue({
       build: async () => mockBuildPlugin,
-      database: retryingDatabasePlugin,
+      database: retryingDatabase,
       fingerprint: {},
       patch: {
         enabled: true,
@@ -1138,7 +1139,7 @@ describe("deploy rollout wiring", () => {
     mockCli.loadConfig.mockResolvedValue({
       build: async () => mockBuildPlugin,
       cacheDir: "node_modules/.hot-updater",
-      database: databasePlugin,
+      database: harnessDatabase,
       fingerprint: {},
       patch: {
         enabled: true,
@@ -1301,7 +1302,7 @@ describe("deploy rollout wiring", () => {
   it("does not create a nested spinner when signing is enabled", async () => {
     mockCli.loadConfig.mockResolvedValue({
       build: async () => mockBuildPlugin,
-      database: databasePlugin,
+      database: harnessDatabase,
       fingerprint: {},
       patch: {
         enabled: true,
@@ -1365,7 +1366,7 @@ describe("deploy rollout wiring", () => {
     mockBuildPlugin.nativeBuild = { getBundleSigningPublicKey };
     mockCli.loadConfig.mockResolvedValue({
       build: async () => mockBuildPlugin,
-      database: databasePlugin,
+      database: harnessDatabase,
       fingerprint: {},
       patch: { enabled: true, maxBaseBundles: 3 },
       signing: mockSigningPlugin,
@@ -1397,7 +1398,7 @@ describe("deploy rollout wiring", () => {
   it("fails before build or upload when the signing provider cannot be prepared", async () => {
     mockCli.loadConfig.mockResolvedValue({
       build: async () => mockBuildPlugin,
-      database: databasePlugin,
+      database: harnessDatabase,
       fingerprint: {},
       patch: {
         enabled: true,
@@ -1431,7 +1432,7 @@ describe("deploy rollout wiring", () => {
   it("creates automatic partial update paths when patch generation is enabled", async () => {
     mockCli.loadConfig.mockResolvedValue({
       build: async () => mockBuildPlugin,
-      database: databasePlugin,
+      database: harnessDatabase,
       fingerprint: {},
       patch: {
         enabled: true,
@@ -1466,7 +1467,7 @@ describe("deploy rollout wiring", () => {
         bundleId: DEPLOY_BUNDLE_ID,
       },
       {
-        databasePlugin,
+        database: harnessDatabase,
         storagePlugin: mockStoragePlugin,
       },
       {
@@ -1480,7 +1481,7 @@ describe("deploy rollout wiring", () => {
         bundleId: DEPLOY_BUNDLE_ID,
       },
       {
-        databasePlugin,
+        database: harnessDatabase,
         storagePlugin: mockStoragePlugin,
       },
       {
@@ -1492,7 +1493,7 @@ describe("deploy rollout wiring", () => {
   it("creates an automatic patch when target app versions are semver-compatible but not exact", async () => {
     mockCli.loadConfig.mockResolvedValue({
       build: async () => mockBuildPlugin,
-      database: databasePlugin,
+      database: harnessDatabase,
       fingerprint: {},
       patch: {
         enabled: true,
@@ -1522,7 +1523,7 @@ describe("deploy rollout wiring", () => {
         bundleId: DEPLOY_BUNDLE_ID,
       },
       {
-        databasePlugin,
+        database: harnessDatabase,
         storagePlugin: mockStoragePlugin,
       },
       {
@@ -1534,7 +1535,7 @@ describe("deploy rollout wiring", () => {
   it("does not create an automatic patch when a prerelease target shares no minor line with the base", async () => {
     mockCli.loadConfig.mockResolvedValue({
       build: async () => mockBuildPlugin,
-      database: databasePlugin,
+      database: harnessDatabase,
       fingerprint: {},
       patch: {
         enabled: true,
@@ -1564,7 +1565,7 @@ describe("deploy rollout wiring", () => {
   it("gets no automatic patch bases for a target spanning several minor lines", async () => {
     mockCli.loadConfig.mockResolvedValue({
       build: async () => mockBuildPlugin,
-      database: databasePlugin,
+      database: harnessDatabase,
       fingerprint: {},
       patch: {
         enabled: true,
@@ -1597,7 +1598,7 @@ describe("deploy rollout wiring", () => {
   it("finds automatic patch bases by fingerprint", async () => {
     mockCli.loadConfig.mockResolvedValue({
       build: async () => mockBuildPlugin,
-      database: databasePlugin,
+      database: harnessDatabase,
       fingerprint: {},
       patch: {
         enabled: true,
@@ -1644,7 +1645,7 @@ describe("deploy rollout wiring", () => {
         bundleId: DEPLOY_BUNDLE_ID,
       },
       {
-        databasePlugin,
+        database: harnessDatabase,
         storagePlugin: mockStoragePlugin,
       },
       {
@@ -1656,7 +1657,7 @@ describe("deploy rollout wiring", () => {
   it("scans past incompatible appVersion patch bases to find an older compatible base", async () => {
     mockCli.loadConfig.mockResolvedValue({
       build: async () => mockBuildPlugin,
-      database: databasePlugin,
+      database: harnessDatabase,
       fingerprint: {},
       patch: {
         enabled: true,
@@ -1690,7 +1691,7 @@ describe("deploy rollout wiring", () => {
         bundleId: DEPLOY_BUNDLE_ID,
       },
       {
-        databasePlugin,
+        database: harnessDatabase,
         storagePlugin: mockStoragePlugin,
       },
       {
@@ -1702,7 +1703,7 @@ describe("deploy rollout wiring", () => {
   it("keeps deploy successful when automatic patch generation fails", async () => {
     mockCli.loadConfig.mockResolvedValue({
       build: async () => mockBuildPlugin,
-      database: databasePlugin,
+      database: harnessDatabase,
       fingerprint: {},
       patch: {
         enabled: true,

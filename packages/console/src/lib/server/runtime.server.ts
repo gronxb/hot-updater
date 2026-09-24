@@ -1,11 +1,6 @@
-import type {
-  ApiKeyModel,
-  ApiKeyRow,
-  InsightsModel,
-} from "@hot-updater/plugin-core";
+import type { InsightsModel } from "@hot-updater/plugin-core";
 import {
   type ApiKeyManagementAPI,
-  createApiKey,
   createInsightsProvider,
 } from "@hot-updater/server";
 import { createDatabasePluginApis } from "@hot-updater/server/db";
@@ -65,25 +60,12 @@ const insightsOn = (model: InsightsModel): ConsoleInsights => ({
   model,
 });
 
-const toMetadata = ({ hash: _hash, ...record }: ApiKeyRow) => record;
-
-/** The legacy database plugin's API key model, as the management API. */
-const manageApiKeyModel = (model: ApiKeyModel): ApiKeyManagementAPI => ({
-  create: ({ name }) => createApiKey({ apiKeys: model, name }),
-  list: async () => (await model.list()).map(toMetadata),
-  revoke: async ({ id }) => {
-    const record = await model.revoke({ id, revokedAtMs: Date.now() });
-    return record === null ? null : toMetadata(record);
-  },
-});
-
 /**
  * Where Insights and API keys come from for a console config:
  * - a self-hosted server (`standaloneRepository`) runs its plugins, so the
  *   console reads Insights over its admin API and cannot manage keys;
- * - with `plugins`, the console assembles them over the database, as the
- *   server does, and a plugin that is not listed is off;
- * - without `plugins`, the database plugin serves both, until 1.0.
+ * - otherwise the console assembles `plugins` over the database, as the
+ *   server does, and a plugin that is not listed is off.
  */
 export const createConsoleRuntime = (config: {
   readonly database: unknown;
@@ -97,27 +79,14 @@ export const createConsoleRuntime = (config: {
       apiKeys: null,
     };
   }
-  if (plugins !== undefined) {
-    const api = createDatabasePluginApis(database, plugins);
-    return {
-      insights:
-        api.insights === undefined
-          ? insightsOff
-          : insightsOn(createInsightsModel(api.insights as InsightsApi)),
-      apiKeys: hasMethods(api.apiKeys, ["create", "list", "revoke"])
-        ? (api.apiKeys as ApiKeyManagementAPI)
-        : null,
-    };
-  }
-  const models = isRecord(database) ? database.models : undefined;
-  const insights = isRecord(models) ? models.insights : undefined;
-  const apiKeys = isRecord(models) ? models.apiKeys : undefined;
+  const api = createDatabasePluginApis(database, plugins ?? []);
   return {
-    insights: isRecord(insights)
-      ? insightsOn(insights as unknown as InsightsModel)
-      : insightsOff,
-    apiKeys: hasMethods(apiKeys, ["create", "findByHash", "list", "revoke"])
-      ? manageApiKeyModel(apiKeys as ApiKeyModel)
+    insights:
+      api.insights === undefined
+        ? insightsOff
+        : insightsOn(createInsightsModel(api.insights as InsightsApi)),
+    apiKeys: hasMethods(api.apiKeys, ["create", "list", "revoke"])
+      ? (api.apiKeys as ApiKeyManagementAPI)
       : null,
   };
 };

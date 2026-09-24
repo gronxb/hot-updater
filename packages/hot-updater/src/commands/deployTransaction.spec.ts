@@ -5,7 +5,7 @@ import {
 import type { Bundle } from "@hot-updater/plugin-core";
 import { beforeEach, describe, expect, it } from "vitest";
 
-import { createDatabasePluginHarness } from "./databasePlugin.testFixtures";
+import { createDatabaseHarness } from "./database.testFixtures";
 import {
   commitDeployment,
   type DeploymentWrite,
@@ -46,7 +46,7 @@ const scopeKey = (platform: Bundle["platform"]) =>
   });
 
 describe("Release deployment transaction", () => {
-  const harness = createDatabasePluginHarness();
+  const harness = createDatabaseHarness();
 
   beforeEach(() => harness.reset());
 
@@ -75,7 +75,7 @@ describe("Release deployment transaction", () => {
   });
 
   it("independent databases get different identities for the same lookup scope", async () => {
-    const other = createDatabasePluginHarness();
+    const other = createDatabaseHarness();
     const first = await commitDeployment({
       core: harness.core,
       ...iosBundle(),
@@ -127,11 +127,7 @@ describe("Release deployment transaction", () => {
 
   it("uses the stored channel when another writer created it first", async () => {
     const deployment = iosBundle();
-    const winner = { id: "channel-created-concurrently", name: "production" };
-    await harness.plugin.models.channels.insert({
-      row: winner,
-      onConflict: "returnExisting",
-    });
+    const winner = await harness.core.ensureChannel("production");
 
     const result = await commitDeployment({
       ...deployment,

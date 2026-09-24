@@ -1,26 +1,14 @@
 import { createHash } from "node:crypto";
 
+import type { Bundle, Release } from "@hot-updater/core";
+import { mockDatabase, mockStorage } from "@hot-updater/mock";
+import type { BundleEventRow } from "@hot-updater/plugin-core";
 import {
-  createReleaseCatalogScopeKey,
-  encodeChannelKey,
-  type Bundle,
-  type Release,
-} from "@hot-updater/core";
-import {
-  createMockDatabaseData,
-  mockDatabase,
-  mockStorage,
-} from "@hot-updater/mock";
-import {
-  bundleToPatchRows,
-  bundleToRow,
-  compileReleaseCatalog,
-  extractTimestampFromUUIDv7,
-  releaseRowToRelease,
-  type BundleEventRow,
-  type ReleaseCatalogRow,
-  type ReleaseRow,
-} from "@hot-updater/plugin-core";
+  createDatabaseCoreApi,
+  createDatabasePluginApis,
+} from "@hot-updater/server/db";
+import { apiKeys } from "@hot-updater/server/plugins/api-keys";
+import { insights } from "@hot-updater/server/plugins/insights";
 
 type DemoReleaseFields = Pick<
   Release,
@@ -665,155 +653,51 @@ const bundles: DemoDeployment[] = [
   iosProdCoreBase,
 ];
 
-const databaseData = createMockDatabaseData();
-for (const bundle of bundles) {
-  const channelId = `channel-${bundle.channel}`;
-  databaseData.channels.set(channelId, {
-    id: channelId,
-    name: bundle.channel,
-  });
-  databaseData.bundles.set(bundle.id, bundleToRow(bundle));
-  for (const patch of bundleToPatchRows(bundle)) {
-    databaseData.bundlePatches.set(patch.id, patch);
-  }
-}
-
-const compiledReleases: {
-  readonly channelName: string;
-  readonly row: ReleaseRow;
-}[] = [];
-const compiledCatalogs: {
-  readonly channelName: string;
-  readonly row: ReleaseCatalogRow;
-}[] = [];
-const scopes = new Map<
-  string,
-  {
-    readonly channelName: string;
-    readonly fingerprintHash: string | null;
-    readonly platform: Bundle["platform"];
-    readonly releases: ReleaseRow[];
-    readonly strategy: "APP_VERSION" | "FINGERPRINT";
-  }
->();
-for (const bundle of bundles) {
-  const strategy =
-    bundle.fingerprintHash === null ? "APP_VERSION" : "FINGERPRINT";
-  const channelKey = encodeChannelKey(bundle.channel);
-  const scopeKey =
-    strategy === "APP_VERSION"
-      ? createReleaseCatalogScopeKey({
-          channelKey,
-          platform: bundle.platform,
-          strategy,
-        })
-      : createReleaseCatalogScopeKey({
-          channelKey,
-          fingerprintHash: bundle.fingerprintHash ?? "",
-          platform: bundle.platform,
-          strategy,
-        });
-  let createdAtMs = 0;
-  try {
-    const timestamp = extractTimestampFromUUIDv7(bundle.id);
-    createdAtMs = Number.isSafeInteger(timestamp) ? timestamp : 0;
-  } catch {
-    createdAtMs = 0;
-  }
-  const release: ReleaseRow = {
-    id: bundle.id,
-    revision: 1,
-    scope_key: scopeKey,
-    channel_id: bundle.channel,
-    platform: bundle.platform,
-    kind: "BUNDLE",
-    bundle_id: bundle.id,
-    strategy,
-    target_app_version: bundle.targetAppVersion,
-    fingerprint_hash: bundle.fingerprintHash,
-    enabled: bundle.enabled,
-    should_force_update: bundle.shouldForceUpdate,
-    message: bundle.message,
-    rollout_cohort_count: bundle.rolloutCohortCount ?? 1000,
-    target_cohorts: bundle.targetCohorts ?? [],
-    operation: "DEPLOY",
-    source_release_id: null,
-    created_at_ms: createdAtMs,
-    updated_at_ms: createdAtMs,
-  };
-  const scope = scopes.get(scopeKey);
-  if (scope === undefined) {
-    scopes.set(scopeKey, {
-      channelName: bundle.channel,
-      fingerprintHash: bundle.fingerprintHash,
-      platform: bundle.platform,
-      releases: [release],
-      strategy,
-    });
-  } else {
-    scope.releases.push(release);
-  }
-}
-for (const [scopeKey, scope] of [...scopes].sort(([left], [right]) =>
-  left.localeCompare(right),
+const database = mockDatabase({ latency: { min: 150, max: 320 } });
+// Seeding skips the delay the console sees.
+const seed = database.withoutLatency();
+const core = createDatabaseCoreApi(seed);
+// Oldest first, one deploy each, so a patch's base is stored before it.
+const releaseIdByBundle = new Map<string, string>();
+for (const deployment of [...bundles].sort((left, right) =>
+  left.id.localeCompare(right.id),
 )) {
-  scope.releases.sort((left, right) => left.id.localeCompare(right.id));
-  compiledReleases.push(
-    ...scope.releases.map((row) => ({
-      channelName: scope.channelName,
-      row,
-    })),
-  );
-  const compilation = await compileReleaseCatalog({
-    releases: scope.releases.map(releaseRowToRelease),
-    strategy: scope.strategy,
-  });
-  compiledCatalogs.push({
-    channelName: scope.channelName,
-    row: {
-      scope_key: scopeKey,
-      catalog_id: "console-demo",
-      strategy: scope.strategy,
-      channel_id: scope.channelName,
-      channel_key: encodeChannelKey(scope.channelName),
-      platform: scope.platform,
-      fingerprint_hash: scope.fingerprintHash,
-      generation: 1,
-      payload: compilation.canonicalPayload,
-      catalog_hash: compilation.catalogHash,
-      byte_size: compilation.byteSize,
-      is_tombstone: compilation.payload.releaseDescriptors.length === 0,
-      updated_at_ms: Math.max(
-        ...scope.releases.map(({ updated_at_ms }) => updated_at_ms),
-      ),
+  const {
+    channel,
+    enabled,
+    fingerprintHash,
+    message,
+    rolloutCohortCount,
+    shouldForceUpdate,
+    targetAppVersion,
+    targetCohorts,
+    demoFileHash: _demoFileHash,
+    ...bundle
+  } = deployment;
+  const [result] = await core.deploy([
+    {
+      bundle,
+      release: {
+        channel,
+        enabled,
+        fingerprintHash,
+        message,
+        shouldForceUpdate,
+        targetAppVersion,
+        ...(rolloutCohortCount === undefined ? {} : { rolloutCohortCount }),
+        ...(targetCohorts === undefined
+          ? {}
+          : { targetCohorts: [...targetCohorts] }),
+      },
     },
-  });
-}
-for (const release of compiledReleases) {
-  const channelId = `channel-${release.channelName}`;
-  databaseData.releases.set(release.row.id, {
-    ...release.row,
-    channel_id: channelId,
-  });
-}
-for (const catalog of compiledCatalogs) {
-  const channelId = `channel-${catalog.channelName}`;
-  databaseData.releaseCatalogs.set(catalog.row.scope_key, {
-    ...catalog.row,
-    channel_id: channelId,
-  });
+  ]);
+  releaseIdByBundle.set(deployment.id, result!.release!.id);
 }
 
 const downloadDemo = {
-  from_release_id:
-    Array.from(databaseData.releases.values()).find(
-      (release) => release.bundle_id === iosProdCorePatchA.id,
-    )?.id ?? null,
+  from_release_id: releaseIdByBundle.get(iosProdCorePatchA.id) ?? null,
   from_bundle_id: iosProdCorePatchA.id,
-  to_release_id:
-    Array.from(databaseData.releases.values()).find(
-      (release) => release.bundle_id === iosProdCorePatchB.id,
-    )?.id ?? null,
+  to_release_id: releaseIdByBundle.get(iosProdCorePatchB.id) ?? null,
   to_bundle_id: iosProdCorePatchB.id,
   platform: "ios" as const,
   app_version: "1.4.2",
@@ -1125,12 +1009,9 @@ const adjustedBundleEvents = bundleEvents.map((event) => ({
   received_at_ms: event.received_at_ms + receiptOffsetMs,
 }));
 
-const database = mockDatabase({
-  latency: { min: 150, max: 320 },
-  data: databaseData,
-});
+const insightsApi = createDatabasePluginApis(seed, [insights()]).insights;
 for (const event of adjustedBundleEvents) {
-  await database.models.insights.recordEvent({ event });
+  await insightsApi.recordEvent(event);
 }
 
 export default {
@@ -1139,6 +1020,7 @@ export default {
   build: async () => null,
   storage: mockStorage({}),
   database,
+  plugins: [insights(), apiKeys()],
   console: {
     gitUrl: "https://github.com/gronxb/hot-updater",
   },

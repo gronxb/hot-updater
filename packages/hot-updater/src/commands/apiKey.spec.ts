@@ -1,4 +1,4 @@
-import { createApiKey } from "@hot-updater/server";
+import type { ApiKeyRow } from "@hot-updater/plugin-core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
@@ -38,46 +38,46 @@ vi.mock("./utils/load-hot-updater", async (importOriginal) => ({
   loadHotUpdater: vi.fn(),
 }));
 
-type ApiKeyModel = Parameters<typeof createApiKey>[0]["apiKeys"];
-type ApiKeyRow = Parameters<ApiKeyModel["create"]>[0];
-
 const withoutHash = ({ hash: _hash, ...record }: ApiKeyRow): ApiKeyMetadata =>
   record;
 
+const sha256 = async (text: string) =>
+  Buffer.from(
+    await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text)),
+  ).toString("base64url");
+
+/** The apiKeys() plugin's API over rows kept here, so a test sees what is stored. */
 const createApiKeyHarness = () => {
   const rows: ApiKeyRow[] = [];
   const plaintextKeys: string[] = [];
-  const model: ApiKeyModel = {
-    create: vi.fn(async (row) => {
-      if (rows.some((item) => item.hash === row.hash)) return "existing";
+  const apiKeys: ApiKeyManagementAPI = {
+    async create({ name }) {
+      const apiKey = Buffer.from(
+        crypto.getRandomValues(new Uint8Array(32)),
+      ).toString("base64url");
+      const row: ApiKeyRow = {
+        id: crypto.randomUUID(),
+        hash: await sha256(apiKey),
+        name,
+        prefix: apiKey.slice(0, 6),
+        role: "client",
+        created_at_ms: Date.now(),
+        revoked_at_ms: null,
+      };
       rows.push(row);
-      return "created";
-    }),
-    findByHash: vi.fn(
-      async (hash) => rows.find((row) => row.hash === hash) ?? null,
-    ),
-    list: vi.fn(async () => rows),
-    revoke: vi.fn(async ({ id, revokedAtMs }) => {
+      plaintextKeys.push(apiKey);
+      return { apiKey, record: withoutHash(row) };
+    },
+    async list() {
+      return rows.map(withoutHash);
+    },
+    async revoke({ id }) {
       const index = rows.findIndex((row) => row.id === id);
       const current = rows[index];
       if (current === undefined) return null;
-      const revoked = { ...current, revoked_at_ms: revokedAtMs };
+      const revoked = { ...current, revoked_at_ms: Date.now() };
       rows[index] = revoked;
-      return revoked;
-    }),
-  };
-  const apiKeys: ApiKeyManagementAPI = {
-    async create({ name }) {
-      const created = await createApiKey({ apiKeys: model, name });
-      plaintextKeys.push(created.apiKey);
-      return created;
-    },
-    async list() {
-      return (await model.list()).map(withoutHash);
-    },
-    async revoke({ id }) {
-      const revoked = await model.revoke({ id, revokedAtMs: Date.now() });
-      return revoked === null ? null : withoutHash(revoked);
+      return withoutHash(revoked);
     },
   };
   return { apiKeys, plaintextKeys, rows };
@@ -92,7 +92,7 @@ const loadedConfig = (
   dispose,
   hotUpdater: {
     adapterName: "kysely",
-    apiKeys,
+    ...(apiKeys === undefined ? {} : { api: { apiKeys } }),
   },
 });
 
@@ -178,29 +178,10 @@ describe("API key commands", () => {
     expect(dispose).toHaveBeenCalledOnce();
   });
 
-  it("uses the apiKeys() plugin when the config has plugins", async () => {
-    const { apiKeys } = createApiKeyHarness();
-    const legacy = createApiKeyHarness().apiKeys;
-    const created = await apiKeys.create({ name: "Plugin key" });
-    await legacy.create({ name: "Legacy key" });
-    const output = vi.spyOn(console, "log").mockImplementation(() => {});
-    vi.mocked(loadHotUpdater).mockResolvedValue({
-      ...loadedConfig(legacy),
-      hotUpdater: { adapterName: "kysely", api: { apiKeys }, apiKeys: legacy },
-    });
-
-    await handleApiKeyList({ json: true });
-
-    expect(JSON.parse(String(output.mock.calls[0]?.[0]))).toEqual([
-      created.record,
-    ]);
-  });
-
   it("refuses plugins without apiKeys() instead of managing keys nothing checks", async () => {
-    const legacy = createApiKeyHarness().apiKeys;
     vi.mocked(loadHotUpdater).mockResolvedValue({
-      ...loadedConfig(legacy),
-      hotUpdater: { adapterName: "kysely", api: {}, apiKeys: legacy },
+      ...loadedConfig(undefined),
+      hotUpdater: { adapterName: "kysely", api: {} },
     });
 
     await expect(handleApiKeyList()).rejects.toThrow(
