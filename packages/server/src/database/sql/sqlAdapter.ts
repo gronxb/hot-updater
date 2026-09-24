@@ -12,14 +12,11 @@ import {
   type PhysicalIndex,
   type PhysicalTable,
   type QueryBound,
-  type QueryRequest,
   rowKey,
   type StoredRow,
   type WriteOp,
-  type WriteResult,
 } from "@hot-updater/plugin-core/internal";
 
-import { writeBatch } from "./sqlBatch";
 import {
   createTableStatements,
   isMultiIndex,
@@ -56,11 +53,6 @@ export interface SqlExecutor extends SqlConnection {
   batch?(statements: readonly SqlStatement[]): Promise<readonly SqlResult[]>;
 }
 
-/** A condition every statement of a batch write carries, bound where it appears. */
-export type SqlCondition = (bind: (value: unknown) => string) => string;
-
-export type SqlCompiler = ReturnType<typeof createSqlCompiler>;
-
 export interface SqlAdapterOptions {
   readonly executor: SqlExecutor;
   /** Prepended to every table name. */
@@ -71,30 +63,15 @@ export interface SqlAdapterOptions {
   readonly maxParams?: number;
 }
 
-/** PostgreSQL's syntax; SQLite and MySQL override what differs. */
-const standard = {
-  quote: (name: string) => quoteSql("postgresql", name),
-  param: (position: number) => `$${position}`,
-  /** The driver returns JSON as text. */
-  jsonText: false,
-  /** Row-value comparisons; MySQL gets expanded OR predicates instead. */
-  rowValues: true,
-  lock: " FOR UPDATE",
-  upsert: (key: string) => `ON CONFLICT (${key}) DO UPDATE SET`,
-  inlineIndexes: false,
-};
-
-const dialects: Record<SqlDialect, typeof standard> = {
-  postgresql: standard,
-  sqlite: { ...standard, param: () => "?", jsonText: true, lock: "" },
-  mysql: {
-    ...standard,
-    quote: (name) => quoteSql("mysql", name),
-    param: () => "?",
-    rowValues: false,
-    upsert: () => "ON DUPLICATE KEY UPDATE",
-    inlineIndexes: true,
-  },
+/** Where a batch write records its first failed op, before any change applies. */
+export const WRITE_GUARD_TABLE: PhysicalTable = {
+  name: "_hu_write",
+  columns: [
+    { name: "id", type: "string", nullable: false, maxLength: 36 },
+    { name: "failed_op", type: "integer", nullable: true },
+  ],
+  key: ["id"],
+  indexes: [],
 };
 
 const codes = (values: string) => new Set(values.split(" "));
@@ -127,62 +104,69 @@ export const classifySqlError = (
   return found.some((code) => RETRY.has(code)) ? "retry" : undefined;
 };
 
-/** The statements of one op; the first one's result shows whether the op applied. */
-export interface CompiledWrite {
-  readonly statements: readonly SqlStatement[];
-  /** One changed row, a matching `_v` in the row read, or always (inserts and upserts). */
-  readonly expect: "changed" | { readonly version: number } | "applied";
+/** Adds a parameter to a statement and returns its placeholder. */
+type Bind = (value: unknown, column?: PhysicalColumn) => string;
+
+/** A condition every statement of a batch write carries, bound where it appears. */
+type SqlCondition = (bind: Bind) => string;
+
+/** An increment that creates its missing row: an upsert, which always applies. */
+const upserts = (op: WriteOp) =>
+  op.type === "increment" && op.init !== undefined && op.guard === undefined;
+
+class FailedOp {
+  constructor(readonly index: number) {}
 }
 
-/** Compiles adapter calls to SQL for one dialect; executors only run the statements. */
-export const createSqlCompiler = (name: SqlDialect, tablePrefix = "") => {
-  const dialect = dialects[name];
-  const { quote } = dialect;
+/**
+ * The shared SQL core over one executor: each write compiles to statements
+ * run in one transaction, or in one atomic batch where the executor batches.
+ */
+export const createSqlAdapter = ({
+  executor,
+  tablePrefix = "",
+  maxOps = 1000,
+  maxParams = Number.POSITIVE_INFINITY,
+}: SqlAdapterOptions): DatabaseAdapter => {
+  const { dialect } = executor;
+  const postgres = dialect === "postgresql";
+  // SQLite returns JSON as text and has no FOR UPDATE (it begins with BEGIN IMMEDIATE).
+  const sqlite = dialect === "sqlite";
+  const lock = sqlite ? "" : " FOR UPDATE";
+  const quote = (name: string) => quoteSql(dialect, name);
   const tableOf = (table: PhysicalTable, index?: PhysicalIndex) =>
     quote(`${tablePrefix}${table.name}${index ? `__${index.name}` : ""}`);
   const version = quote(DATABASE_VERSION_COLUMN);
 
-  /** Collects parameters in order; positional dialects bind every occurrence. */
-  const builder = () => {
+  /** A statement from `build`, whose `bind` collects parameters in order. */
+  const sql = (build: (bind: Bind) => string): SqlStatement => {
     const params: unknown[] = [];
-    const bind = (value: unknown, column?: PhysicalColumn) => {
-      const json =
-        column !== undefined && (column.multi || column.type === "json");
+    const bind: Bind = (value, column) => {
+      const json = column?.multi || column?.type === "json";
       params.push(
         value === null || value === undefined
           ? null
           : json
             ? JSON.stringify(value)
-            : typeof value === "boolean" && name !== "postgresql"
+            : typeof value === "boolean" && !postgres
               ? Number(value)
               : value,
       );
       // Drivers that type string parameters as text (Prisma) need the cast.
-      return `${dialect.param(params.length)}${json && name === "postgresql" ? "::jsonb" : ""}`;
+      return postgres ? `$${params.length}${json ? "::jsonb" : ""}` : "?";
     };
-    const done = (sql: string): SqlStatement => ({ sql, params });
-    return { bind, done };
+    return { sql: build(bind), params };
   };
-  type Builder = ReturnType<typeof builder>;
-  const also = ({ bind }: Builder, when?: SqlCondition) =>
-    when ? ` AND ${when(bind)}` : "";
 
-  const keyMatch = (
-    { bind }: Builder,
-    columns: readonly string[],
-    key: DatabaseKey,
-    alias = "",
-  ) =>
-    columns
-      .map(
-        (column, position) =>
-          `${alias}${quote(column)} = ${bind(key[position])}`,
-      )
+  /** Each key column equal to its value in `key`. */
+  const keyMatch = (bind: Bind, table: PhysicalTable, key: DatabaseKey) =>
+    table.key
+      .map((column, position) => `${quote(column)} = ${bind(key[position])}`)
       .join(" AND ");
 
-  /** `columns op values` over a tuple prefix, expanded into ORs without row values. */
+  /** `columns op values` over a tuple prefix, expanded into ORs on MySQL. */
   const compare = (
-    { bind }: Builder,
+    bind: Bind,
     columns: readonly string[],
     bound: QueryBound,
     op: "<" | ">",
@@ -192,7 +176,7 @@ export const createSqlCompiler = (name: SqlDialect, tablePrefix = "") => {
       .map((column) => `i.${quote(column)}`);
     const last = `${op}${bound.inclusive ? "=" : ""}`;
     if (cols.length === 1) return `${cols[0]} ${last} ${bind(bound.values[0])}`;
-    if (dialect.rowValues) {
+    if (dialect !== "mysql") {
       const values = bound.values.map((value) => bind(value));
       return `(${cols.join(", ")}) ${last} (${values.join(", ")})`;
     }
@@ -207,240 +191,239 @@ export const createSqlCompiler = (name: SqlDialect, tablePrefix = "") => {
     return `(${terms.map((term) => `(${term})`).join(" OR ")})`;
   };
 
-  const insert = (
-    table: PhysicalTable,
-    row: Readonly<Record<string, unknown>>,
-    when?: SqlCondition,
-  ) => {
-    const statement = builder();
-    const values = table.columns.map((column) =>
-      statement.bind(row[column.name], column),
-    );
-    const columns = table.columns.map(({ name: column }) => quote(column));
-    const source = when
-      ? `SELECT ${values.join(", ")} WHERE ${when(statement.bind)}`
-      : `VALUES (${values.join(", ")})`;
-    return {
-      statement,
-      sql: `INSERT INTO ${tableOf(table)} (${columns.join(", ")}) ${source}`,
-    };
-  };
-
-  /** Replaces one row's entries in the index table of every multi-valued index. */
-  const entries = (
-    table: PhysicalTable,
-    key: DatabaseKey,
-    row: StoredRow | null,
-    changed?: readonly string[],
-    when?: SqlCondition,
-  ): SqlStatement[] =>
-    table.indexes.flatMap((index) => {
-      const columns = [...index.eq, ...indexOrderColumns(table, index)];
-      if (
-        !isMultiIndex(table, index) ||
-        (changed && !columns.some((column) => changed.includes(column)))
-      ) {
-        return [];
-      }
-      const remove = builder();
-      const found = row === null ? [] : indexEntries(table, index, row);
-      const order = found.length > 0 ? indexOrderTuple(table, index, row!) : [];
-      return [
-        remove.done(
-          `DELETE FROM ${tableOf(table, index)} WHERE ${keyMatch(remove, table.key, key)}${also(remove, when)}`,
-        ),
-        ...found.map((eq) => {
-          const add = builder();
-          const values = [...eq, ...order].map((value) => add.bind(value));
-          const source = when
-            ? `SELECT ${values.join(", ")} WHERE ${when(add.bind)}`
-            : `VALUES (${values.join(", ")})`;
-          return add.done(
-            `INSERT INTO ${tableOf(table, index)} (${columns.map(quote).join(", ")}) ${source}`,
-          );
-        }),
-      ];
-    });
-
-  const bumps = (
-    { bind }: Builder,
-    by: Readonly<Record<string, number>>,
-    qualify = "",
-  ) =>
-    [...Object.entries(by), [DATABASE_VERSION_COLUMN, 1] as const].map(
-      ([column, delta]) =>
-        `${quote(column)} = ${qualify}${quote(column)} + ${bind(delta)}`,
-    );
-
-  const compiled = {
-    /** For batch writes (`sqlBatch.ts`): a statement builder, names, and key matches. */
-    statement: builder,
-    quote,
-    tableOf,
-    keyMatch,
-    lock: dialect.lock,
-    get(table: PhysicalTable, keys: readonly DatabaseKey[]): SqlStatement {
-      const statement = builder();
-      const where = keys
-        .map((key) => `(${keyMatch(statement, table.key, key)})`)
-        .join(" OR ");
-      return statement.done(`SELECT * FROM ${tableOf(table)} WHERE ${where}`);
-    },
-
-    query(table: PhysicalTable, request: QueryRequest): SqlStatement {
-      const index = findPhysicalIndex(table, request.index);
-      if (!Number.isSafeInteger(request.limit) || request.limit < 1) {
-        throw new RangeError("query limit must be a positive integer.");
-      }
-      const statement = builder();
-      const order = indexOrderColumns(table, index);
-      const multi = isMultiIndex(table, index);
-      const source = multi
-        ? `${tableOf(table, index)} i JOIN ${tableOf(table)} b ON ${table.key.map((column) => `b.${quote(column)} = i.${quote(column)}`).join(" AND ")}`
-        : `${tableOf(table)} i`;
-      const conditions = [
-        ...index.eq.map(
-          (column, position) =>
-            `i.${quote(column)} = ${statement.bind(request.eq[position])}`,
-        ),
-        ...(request.lower
-          ? [compare(statement, order, request.lower, ">")]
-          : []),
-        ...(request.upper
-          ? [compare(statement, order, request.upper, "<")]
-          : []),
-      ];
-      const direction = request.order === "asc" ? "ASC" : "DESC";
-      return statement.done(
-        `SELECT ${multi ? "b" : "i"}.* FROM ${source}${conditions.length > 0 ? ` WHERE ${conditions.join(" AND ")}` : ""} ORDER BY ${order.map((column) => `i.${quote(column)} ${direction}`).join(", ")} LIMIT ${request.limit}`,
+  /**
+   * An op's statements; the first one's result shows whether the op applied.
+   * Guards via `UPDATE … WHERE _v = ?`, checks via locking reads, counters
+   * via upserts. With `when`, every statement also carries that condition,
+   * and a check has none: a batch write evaluated it first (`failure`).
+   */
+  const compile = (op: WriteOp, when?: SqlCondition): SqlStatement[] => {
+    const { table } = op;
+    const name = tableOf(table);
+    /** The row with `key`, at version `v` when given, where `when` holds. */
+    const where = (bind: Bind, key: DatabaseKey, v?: number) =>
+      `${keyMatch(bind, table, key)}${v === undefined ? "" : ` AND ${version} = ${bind(v)}`}${when ? ` AND ${when(bind)}` : ""}`;
+    /** Inserts bound values; with `when`, a SELECT yields them only while it holds. */
+    const insert = (
+      bind: Bind,
+      into: string,
+      columns: readonly string[],
+      values: readonly string[],
+    ) =>
+      `INSERT INTO ${into} (${columns.map(quote).join(", ")}) ${when ? `SELECT ${values.join(", ")} WHERE ${when(bind)}` : `VALUES (${values.join(", ")})`}`;
+    /** Inserts `row` into the op's table, each value bound as its column's type. */
+    const insertRow = (bind: Bind, row: Readonly<Record<string, unknown>>) =>
+      insert(
+        bind,
+        name,
+        table.columns.map((column) => column.name),
+        table.columns.map((column) => bind(row[column.name], column)),
       );
-    },
-
-    /**
-     * Guards via `UPDATE … WHERE _v = ?`, checks via locking reads, counters
-     * via upserts. With `when`, every statement also carries that condition,
-     * and a check has none: a batch write evaluated it first (`failure`).
-     */
-    write(op: WriteOp, when?: SqlCondition): CompiledWrite {
-      const { table } = op;
-      const statement = builder();
-      const where = (key: DatabaseKey, v?: number) =>
-        `${keyMatch(statement, table.key, key)}${v === undefined ? "" : ` AND ${version} = ${statement.bind(v)}`}`;
-      switch (op.type) {
-        case "insert": {
-          const { sql, statement: values } = insert(table, op.row, when);
-          const key = rowKey(table, op.row);
-          return {
-            statements: [
-              values.done(sql),
-              ...entries(table, key, op.row, undefined, when),
-            ],
-            expect: "applied",
-          };
+    /** Replaces the row's entries in the index table of every multi-valued index. */
+    const entries = (
+      key: DatabaseKey,
+      row?: StoredRow,
+      changed?: readonly string[],
+    ) =>
+      table.indexes.flatMap((index) => {
+        const columns = [...index.eq, ...indexOrderColumns(table, index)];
+        if (
+          !isMultiIndex(table, index) ||
+          (changed && !columns.some((column) => changed.includes(column)))
+        ) {
+          return [];
         }
-        case "patch": {
-          const set = Object.entries(op.set).map(
-            ([column, value]) =>
-              `${quote(column)} = ${statement.bind(value, findPhysicalColumn(table, column))}`,
-          );
-          const sql = `UPDATE ${tableOf(table)} SET ${[...set, `${version} = ${version} + 1`].join(", ")} WHERE ${where(op.key, op.guard.v)}${also(statement, when)}`;
-          return {
-            statements: [
-              statement.done(sql),
-              ...entries(
-                table,
-                op.key,
-                { ...op.previous, ...op.set },
-                Object.keys(op.set),
-                when,
-              ),
-            ],
-            expect: "changed",
-          };
-        }
-        case "delete":
-          return {
-            statements: [
-              statement.done(
-                `DELETE FROM ${tableOf(table)} WHERE ${where(op.key, op.guard.v)}${also(statement, when)}`,
-              ),
-              ...entries(table, op.key, null, undefined, when),
-            ],
-            expect: "changed",
-          };
-        case "increment": {
-          if (op.init !== undefined && op.guard === undefined) {
-            const row: Record<string, unknown> = { ...op.init };
-            for (const [column, delta] of Object.entries(op.by)) {
-              row[column] = Number(row[column] ?? 0) + delta;
-            }
-            row[DATABASE_VERSION_COLUMN] =
-              Number(row[DATABASE_VERSION_COLUMN] ?? 0) + 1;
-            const upsert = insert(table, row, when);
-            const conflict = dialect.upsert(table.key.map(quote).join(", "));
-            const updates = bumps(
-              upsert.statement,
-              op.by,
-              `${tableOf(table)}.`,
+        const into = tableOf(table, index);
+        const found = row ? indexEntries(table, index, row) : [];
+        const order =
+          found.length > 0 ? indexOrderTuple(table, index, row!) : [];
+        return [
+          sql((bind) => `DELETE FROM ${into} WHERE ${where(bind, key)}`),
+          ...found.map((eq) =>
+            sql((bind) => {
+              const values = [...eq, ...order].map((value) => bind(value));
+              return insert(bind, into, columns, values);
+            }),
+          ),
+        ];
+      });
+    switch (op.type) {
+      case "insert":
+        return [
+          sql((bind) => insertRow(bind, op.row)),
+          ...entries(rowKey(table, op.row), op.row),
+        ];
+      case "patch":
+        return [
+          sql((bind) => {
+            const set = Object.entries(op.set).map(
+              ([column, value]) =>
+                `${quote(column)} = ${bind(value, findPhysicalColumn(table, column))}`,
             );
-            return {
-              statements: [
-                upsert.statement.done(
-                  `${upsert.sql} ${conflict} ${updates.join(", ")}`,
-                ),
-              ],
-              expect: "applied",
-            };
-          }
-          const updates = bumps(statement, op.by);
-          return {
-            statements: [
-              statement.done(
-                `UPDATE ${tableOf(table)} SET ${updates.join(", ")} WHERE ${where(op.key, op.guard?.v)}${also(statement, when)}`,
-              ),
-            ],
-            expect: "changed",
-          };
+            return `UPDATE ${name} SET ${[...set, `${version} = ${version} + 1`].join(", ")} WHERE ${where(bind, op.key, op.guard.v)}`;
+          }),
+          ...entries(
+            op.key,
+            { ...op.previous, ...op.set },
+            Object.keys(op.set),
+          ),
+        ];
+      case "delete":
+        return [
+          sql(
+            (bind) =>
+              `DELETE FROM ${name} WHERE ${where(bind, op.key, op.guard.v)}`,
+          ),
+          ...entries(op.key),
+        ];
+      case "increment": {
+        const deltas = [
+          ...Object.entries(op.by),
+          [DATABASE_VERSION_COLUMN, 1] as const,
+        ];
+        const bump = (bind: Bind, qualify = "") =>
+          deltas
+            .map(
+              ([column, delta]) =>
+                `${quote(column)} = ${qualify}${quote(column)} + ${bind(delta)}`,
+            )
+            .join(", ");
+        if (!upserts(op)) {
+          return [
+            sql(
+              (bind) =>
+                `UPDATE ${name} SET ${bump(bind)} WHERE ${where(bind, op.key, op.guard?.v)}`,
+            ),
+          ];
         }
-        case "check":
-          if (when) return { statements: [], expect: "applied" };
-          return {
-            statements: [
-              statement.done(
-                `SELECT ${version} FROM ${tableOf(table)} WHERE ${where(op.key)}${dialect.lock}`,
+        const row: Record<string, unknown> = { ...op.init };
+        for (const [column, delta] of deltas) {
+          row[column] = Number(row[column] ?? 0) + delta;
+        }
+        const conflict =
+          dialect === "mysql"
+            ? "ON DUPLICATE KEY UPDATE"
+            : `ON CONFLICT (${table.key.map(quote).join(", ")}) DO UPDATE SET`;
+        return [
+          sql(
+            (bind) =>
+              `${insertRow(bind, row)} ${conflict} ${bump(bind, `${name}.`)}`,
+          ),
+        ];
+      }
+      case "check":
+        if (when) return [];
+        return [
+          sql(
+            (bind) =>
+              `SELECT ${version} FROM ${name} WHERE ${where(bind, op.key)}${lock}`,
+          ),
+        ];
+    }
+  };
+
+  /**
+   * SQL that holds when `op` would fail against the rows before any change.
+   * Rows the write deletes or patches (`released`) do not count as holding a
+   * unique value.
+   */
+  const failure = (
+    bind: Bind,
+    op: WriteOp,
+    released: readonly DatabaseKey[],
+  ): string => {
+    const { table } = op;
+    const from = `SELECT 1 FROM ${tableOf(table)} WHERE`;
+    // Locked where the dialect locks (PostgreSQL), so no writer moves a guarded row before the batch commits.
+    const exists = (key: DatabaseKey, v?: number) =>
+      `EXISTS (${from} ${keyMatch(bind, table, key)}${v === undefined ? "" : ` AND ${version} = ${bind(v)}`}${lock})`;
+    /** Another row already holding a unique value this op writes. */
+    const clashes = (row: StoredRow, own?: DatabaseKey, changed?: string[]) =>
+      table.indexes
+        .filter(
+          (index) =>
+            index.unique &&
+            !isMultiIndex(table, index) &&
+            index.eq.every((column) => (row[column] ?? null) !== null) &&
+            (!changed || index.eq.some((column) => changed.includes(column))),
+        )
+        .map((index) => {
+          const match = index.eq.map(
+            (column) =>
+              `${quote(column)} = ${bind(row[column], findPhysicalColumn(table, column))}`,
+          );
+          const others = [...(own ? [own] : []), ...released].map(
+            (key) => ` AND NOT (${keyMatch(bind, table, key)})`,
+          );
+          return `EXISTS (${from} ${match.join(" AND ")}${others.join("")})`;
+        });
+    switch (op.type) {
+      case "insert":
+        return [exists(rowKey(table, op.row)), ...clashes(op.row)].join(" OR ");
+      case "patch":
+        return [
+          `NOT ${exists(op.key, op.guard.v)}`,
+          ...clashes(
+            { ...op.previous, ...op.set },
+            op.key,
+            Object.keys(op.set),
+          ),
+        ].join(" OR ");
+      default:
+        return `NOT ${exists(op.key, op.guard?.v)}`;
+    }
+  };
+
+  /**
+   * A write as one atomic batch, for drivers without interactive transactions:
+   * each op's guard, against the rows before any change, records the first
+   * failing op in a guard row; every change applies only when none failed; the
+   * last two statements read the failure and remove the row. Unique fields are
+   * checked ahead, since a batch cannot name the statement a constraint stopped.
+   */
+  const batchWrite = (ops: readonly WriteOp[], id: string) => {
+    const guard = tableOf(WRITE_GUARD_TABLE);
+    const [idColumn, failed] = ["id", "failed_op"].map(quote);
+    const byId = (bind: Bind) => `${idColumn} = ${bind(id)}`;
+    const released = (table: string) =>
+      ops.flatMap((op) =>
+        (op.type === "delete" || op.type === "patch") && op.table.name === table
+          ? [op.key]
+          : [],
+      );
+    const when: SqlCondition = (bind) =>
+      `(SELECT ${failed} FROM ${guard} WHERE ${byId(bind)}) IS NULL`;
+    return [
+      sql(
+        (bind) =>
+          `INSERT INTO ${guard} (${idColumn}, ${failed}) VALUES (${bind(id)}, NULL)`,
+      ),
+      ...ops.flatMap((op, position) =>
+        upserts(op)
+          ? []
+          : [
+              sql(
+                (bind) =>
+                  `UPDATE ${guard} SET ${failed} = ${position} WHERE ${failed} IS NULL AND (${failure(bind, op, released(op.table.name))}) AND ${byId(bind)}`,
               ),
             ],
-            expect: { version: op.guard.v },
-          };
-      }
-    },
+      ),
+      ...ops.flatMap((op) => compile(op, when)),
+      sql((bind) => `SELECT ${failed} FROM ${guard} WHERE ${byId(bind)}`),
+      sql((bind) => `DELETE FROM ${guard} WHERE ${byId(bind)}`),
+    ];
   };
-  return compiled;
-};
 
-class FailedOp {
-  constructor(readonly index: number) {}
-}
-
-/** The shared SQL core over one executor: compiled statements, run in one transaction per write. */
-export const createSqlAdapter = (
-  options: SqlAdapterOptions,
-): DatabaseAdapter => {
-  const {
-    executor,
-    tablePrefix = "",
-    maxOps = 1000,
-    maxParams = Number.POSITIVE_INFINITY,
-  } = options;
-  const compiler = createSqlCompiler(executor.dialect, tablePrefix);
-  const { jsonText } = dialects[executor.dialect];
-  const normalize = (
-    table: PhysicalTable,
-    rows: readonly Record<string, unknown>[],
-  ) => rows.map((row) => normalizeStoredRow(table, row, { jsonText }));
+  /** Runs a read and converts its rows to stored values. */
+  const read = async (table: PhysicalTable, statement: SqlStatement) => {
+    const { rows } = await executor.execute(statement);
+    return rows.map((row) =>
+      normalizeStoredRow(table, row, { jsonText: sqlite }),
+    );
+  };
 
   return {
-    id: `sql:${executor.dialect}`,
+    id: `sql:${dialect}`,
     fits: (ops) => ops.length <= maxOps,
 
     async get(table, keys) {
@@ -448,8 +431,11 @@ export const createSqlAdapter = (
       const found = new Map<string, StoredRow>();
       for (let start = 0; start < keys.length; start += size) {
         const chunk = keys.slice(start, start + size);
-        const { rows } = await executor.execute(compiler.get(table, chunk));
-        for (const row of normalize(table, rows)) {
+        const statement = sql((bind) => {
+          const where = chunk.map((key) => `(${keyMatch(bind, table, key)})`);
+          return `SELECT * FROM ${tableOf(table)} WHERE ${where.join(" OR ")}`;
+        });
+        for (const row of await read(table, statement)) {
           found.set(JSON.stringify(rowKey(table, row)), row);
         }
       }
@@ -457,56 +443,83 @@ export const createSqlAdapter = (
     },
 
     async query(table, request) {
-      const { rows } = await executor.execute(compiler.query(table, request));
-      return normalize(table, rows);
+      const index = findPhysicalIndex(table, request.index);
+      if (!Number.isSafeInteger(request.limit) || request.limit < 1) {
+        throw new RangeError("query limit must be a positive integer.");
+      }
+      const order = indexOrderColumns(table, index);
+      const multi = isMultiIndex(table, index);
+      const source = multi
+        ? `${tableOf(table, index)} i JOIN ${tableOf(table)} b ON ${table.key.map((column) => `b.${quote(column)} = i.${quote(column)}`).join(" AND ")}`
+        : `${tableOf(table)} i`;
+      const direction = request.order === "asc" ? "ASC" : "DESC";
+      const statement = sql((bind) => {
+        const conditions = [
+          ...index.eq.map(
+            (column, position) =>
+              `i.${quote(column)} = ${bind(request.eq[position])}`,
+          ),
+          ...(request.lower ? [compare(bind, order, request.lower, ">")] : []),
+          ...(request.upper ? [compare(bind, order, request.upper, "<")] : []),
+        ];
+        return `SELECT ${multi ? "b" : "i"}.* FROM ${source}${conditions.length > 0 ? ` WHERE ${conditions.join(" AND ")}` : ""} ORDER BY ${order.map((column) => `i.${quote(column)} ${direction}`).join(", ")} LIMIT ${request.limit}`;
+      });
+      return read(table, statement);
     },
 
-    async write(ops): Promise<WriteResult> {
-      if (executor.batch) {
-        return writeBatch(compiler, executor.batch, ops, classifySqlError);
-      }
+    async write(ops) {
       try {
+        if (executor.batch) {
+          const statements = batchWrite(ops, crypto.randomUUID());
+          const results = await executor.batch(statements);
+          const failed = results.at(-2)?.rows[0]?.failed_op ?? null;
+          return failed === null
+            ? { ok: true }
+            : { ok: false, failedOp: Number(failed) };
+        }
         await executor.transaction(async (connection) => {
           for (const [position, op] of ops.entries()) {
-            const { statements, expect } = compiler.write(op);
-            const [first, ...rest] = statements;
+            const [first, ...rest] = compile(op);
             let result: SqlResult;
             try {
               result = await connection.execute(first!);
             } catch (error) {
-              if (classifySqlError(error) === "constraint")
+              if (classifySqlError(error) === "constraint") {
                 throw new FailedOp(position);
+              }
               throw error;
             }
+            // Inserts and upserts apply or raise; a check reads the version.
             const applied =
-              expect === "applied" ||
-              (expect === "changed"
-                ? result.changes === 1
-                : result.rows.length === 1 &&
+              op.type === "check"
+                ? result.rows.length === 1 &&
                   Number(result.rows[0]![DATABASE_VERSION_COLUMN]) ===
-                    expect.version);
+                    op.guard.v
+                : op.type === "insert" || upserts(op) || result.changes === 1;
             if (!applied) throw new FailedOp(position);
             for (const statement of rest) await connection.execute(statement);
           }
         });
         return { ok: true };
       } catch (error) {
-        if (error instanceof FailedOp)
+        if (error instanceof FailedOp) {
           return { ok: false, failedOp: error.index };
-        if (classifySqlError(error) === "retry")
-          return { ok: false, retry: true };
+        }
+        const kind = classifySqlError(error);
+        if (kind === "retry") return { ok: false, retry: true };
+        // A batch checked unique fields ahead; a constraint there is among the ops themselves.
+        if (kind === "constraint" && executor.batch) {
+          return { ok: false, failedOp: 0 };
+        }
         throw error;
       }
     },
 
     migrations: {
       async apply(tables) {
-        for (const sql of createTableStatements(
-          executor.dialect,
-          tables,
-          tablePrefix,
-        )) {
-          await executor.execute({ sql, params: [] });
+        const statements = createTableStatements(dialect, tables, tablePrefix);
+        for (const text of statements) {
+          await executor.execute({ sql: text, params: [] });
         }
       },
     },

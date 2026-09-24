@@ -11,8 +11,11 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createBundleFixture } from "../../../../test-utils/src/databaseTestFixtures";
 import { createInProcessCoreApi } from "../../core/api";
 import { createEngineDatabase, migrateBuiltInSchema } from "../builtInDatabase";
-import { createSqlAdapter, type SqlExecutor } from "./sqlAdapter";
-import { WRITE_GUARD_TABLE } from "./sqlBatch";
+import {
+  createSqlAdapter,
+  type SqlExecutor,
+  WRITE_GUARD_TABLE,
+} from "./sqlAdapter";
 import { mysqlExecutor, pgBatchExecutor, pgExecutor } from "./sqlTestExecutors";
 
 assertDockerComposeAvailable(
