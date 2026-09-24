@@ -99,19 +99,19 @@ const postgresTableReads = (
  * Planner settings under which a test's small tables plan as production-sized
  * ones: no sequential scan, which only a small table affords, and an index
  * entry weighted like a row, so a plan reads no more entries than the read
- * needs, as a large index forces. With fresh statistics a plan then takes
- * the index path a production-sized table takes, and a read no index serves
- * still scans.
+ * needs, as a large index forces.
  */
 const POSTGRES_PLANNER = ["enable_seqscan = off", "cpu_index_tuple_cost = 1"];
 
 /**
  * Rows examined on PostgreSQL (PGlite or a server). Each SELECT a wrapped
  * executor runs is first run under `EXPLAIN (ANALYZE, FORMAT JSON)` on
- * `query`, one session with the planner settings above, after an ANALYZE
- * per `reset`. A statement counts the rows its busiest table read examined,
- * so an exact plan counts the rows it returns, a multi-valued index's own
- * table included.
+ * `query`, one session with the planner settings above; each `reset` first
+ * vacuums and analyzes, as autovacuum keeps a production database. A plan
+ * then takes the index path a production-sized table takes, and a read no
+ * index serves still scans. A statement counts the rows its busiest table
+ * read examined, so an exact plan counts the rows it returns, a multi-valued
+ * index's own table included.
  */
 export const postgresRowsExamined = (query: SqlQuery) => {
   let planner: Promise<void> | undefined;
@@ -129,7 +129,7 @@ export const postgresRowsExamined = (query: SqlQuery) => {
       await planner;
       if (stale) {
         stale = false;
-        await query("ANALYZE", []);
+        await query("VACUUM ANALYZE", []);
       }
       const [row] = await query(
         `EXPLAIN (ANALYZE, FORMAT JSON) ${sql}`,
@@ -144,29 +144,54 @@ export const postgresRowsExamined = (query: SqlQuery) => {
   });
 };
 
-/** An `EXPLAIN ANALYZE` iterator that reads a table: its table, and its actual rows and loops. */
+/**
+ * An `EXPLAIN ANALYZE` iterator that reads a table: its table, and its actual
+ * rows and loops. A primary-key read of constants runs while MySQL plans the
+ * statement, and names no table.
+ */
 const MYSQL_TABLE_READ =
-  /-> (?:Table scan|(?:Covering )?[Ii]ndex (?:scan|lookup|range scan|skip scan)|Single-row (?:covering )?index lookup|Multi-range index scan) on (\S+).*\(actual time=[\d.e+-]+\.\.[\d.e+-]+ rows=([\d.e+-]+) loops=(\d+)\)/u;
+  /-> (?:(?:Table scan|(?:Covering )?[Ii]ndex (?:scan|lookup|range scan|skip scan)|Single-row (?:covering )?index lookup|Multi-range index scan) on (\S+)|Rows fetched before execution).*\(actual time=[\d.e+-]+\.\.[\d.e+-]+ rows=([\d.e+-]+) loops=(\d+)\)/u;
 
 /**
  * Rows examined on MySQL. Each SELECT a wrapped executor runs is first run
- * under `EXPLAIN ANALYZE` on `query`, and counts the rows its busiest table
+ * under `EXPLAIN ANALYZE` on `query`, one session, after `ANALYZE TABLE` of
+ * the tables it reads once per `reset`, and with multi-range reads always
+ * on, so a secondary index's range is costed with sorted row reads, as a
+ * production-sized table's is. A statement counts the rows its busiest table
  * read examined; a filter above a table read drops rows that read produced.
  */
-export const mysqlRowsExamined = (query: SqlQuery) =>
-  examineReads({
+export const mysqlRowsExamined = (query: SqlQuery) => {
+  let planner: Promise<unknown> | undefined;
+  const analyzed = new Set<string>();
+  return examineReads({
+    onReset: () => {
+      analyzed.clear();
+    },
     async examine({ sql, params }) {
+      planner ??= query(
+        "SET SESSION optimizer_switch = 'mrr=on,mrr_cost_based=off'",
+        [],
+      );
+      await planner;
+      const tables = [...sql.matchAll(/(?:FROM|JOIN) (`[^`]+`)/gu)]
+        .map(([, table]) => table!)
+        .filter((table) => !analyzed.has(table));
+      for (const table of tables) analyzed.add(table);
+      if (tables.length > 0) {
+        await query(`ANALYZE TABLE ${tables.join(", ")}`, []);
+      }
       const [row] = await query(`EXPLAIN ANALYZE ${sql}`, params);
       const reads = new Map<string, number>();
       for (const line of String(Object.values(row ?? {})[0]).split("\n")) {
         const read = MYSQL_TABLE_READ.exec(line);
         if (read === null) continue;
-        const [, table, rows, loops] = read;
+        const [, table = "", rows, loops] = read;
         reads.set(
-          table!,
-          (reads.get(table!) ?? 0) + Number(rows) * Number(loops),
+          table,
+          (reads.get(table) ?? 0) + Number(rows) * Number(loops),
         );
       }
       return Math.max(0, ...reads.values());
     },
   });
+};
