@@ -96,7 +96,7 @@ export const createEngineReads = ({
   readonly adapter: DatabaseAdapter;
   readonly schema: ResolvedSchema;
   /** The largest `limit` a read accepts (default and maximum 500). */
-  readonly maxPageSize?: number;
+  readonly maxPageSize?: number | undefined;
 }) => {
   const maxPageSize = Math.min(requested, DATABASE_MAX_QUERY_LIMIT);
   let count: EngineReadCount = { calls: 0, rows: 0 };
@@ -139,22 +139,14 @@ export const createEngineReads = ({
     const eq = index.eq.map((field) =>
       keyValue(where[field], `${table.name}.${field}`),
     );
-    const scope = cursorScope([
-      table.name,
-      index.name,
-      eq,
-      order,
-      range ?? null,
-    ]);
+    // JSON writes a missing range as null, so every read keeps one scope.
+    const scope = cursorScope([table.name, index.name, eq, order, range]);
     let lower = bound(range?.gt, range?.gte, columns);
     let upper = bound(range?.lt, range?.lte, columns);
     if (input.cursor !== undefined) {
-      const after = {
-        values: decodeCursor(scope, input.cursor),
-        inclusive: false,
-      };
-      if (order === "asc") lower = after;
-      else upper = after;
+      const values = decodeCursor(scope, input.cursor);
+      if (order === "asc") lower = { values, inclusive: false };
+      else upper = { values, inclusive: false };
     }
     return {
       request: {

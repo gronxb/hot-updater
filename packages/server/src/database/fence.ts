@@ -88,10 +88,10 @@ export const isMissingSchemaError = (error: unknown): boolean => {
   return false;
 };
 
-export const readSettings = async (
+export const readSettings = (
   adapter: DatabaseAdapter,
   keys: readonly string[],
-): Promise<readonly (StoredRow | null)[]> =>
+) =>
   adapter.get(
     SETTINGS_TABLE,
     keys.map((key) => [key]),
@@ -151,17 +151,9 @@ export const withSchemaFence = (
   };
   return {
     ...adapter,
-    get: async (table, keys) => {
-      await fence();
-      return adapter.get(table, keys);
-    },
-    query: async (table, request) => {
-      await fence();
-      return adapter.query(table, request);
-    },
-    write: async (ops) => {
-      await fence();
-      return adapter.write(ops);
-    },
+    get: (table, keys) => fence().then(() => adapter.get(table, keys)),
+    query: (table, request) =>
+      fence().then(() => adapter.query(table, request)),
+    write: (ops) => fence().then(() => adapter.write(ops)),
   };
 };
