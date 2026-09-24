@@ -2,7 +2,7 @@ import type { Bundle } from "@hot-updater/core";
 import { stripBundleArtifactMetadata } from "@hot-updater/core";
 
 import { isDatabaseMetadataObject } from "./databaseJsonValue";
-import { DatabasePluginInputError } from "./databasePluginCrudValidationErrors";
+import { DatabasePluginInputError } from "./databaseErrors";
 import type { DatabaseBundleMetadata } from "./types";
 
 export const bundleMetadataToRow = (
