@@ -3,7 +3,7 @@
 "@hot-updater/test-utils": minor
 ---
 
-Add the read side of the built-in Insights plugin: `listEvents`, `findLatestEvents`, `countLatestEvents`, `countEvents`, `getReleaseActivity`, and `getAppUsage`. `createInsightsModel(api)` serves them through today's `InsightsModel` contract until E2 retires it.
+Add the read side of the built-in Insights plugin: `listEvents`, `findLatestEvents`, `countLatestEvents`, `countEvents`, `getReleaseActivity`, and `getAppUsage`. `createInsightsModel(api)` serves them through the `InsightsModel` contract the console and CLI read.
 
 How each read is served:
 
@@ -18,4 +18,4 @@ Engine changes:
 - Aggregate rows are read in parallel at commit.
 - `retry.onRetry` receives the failed attempt's number.
 
-`@hot-updater/test-utils` adds `setupInsightsModelTestSuite`, which runs the Insights report contract and the official domain suite against a database plugin.
+`@hot-updater/test-utils` adds `setupInsightsModelTestSuite`, which runs the Insights report contract against an `InsightsModel`.

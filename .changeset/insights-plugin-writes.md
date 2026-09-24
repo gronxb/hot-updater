@@ -17,8 +17,6 @@ Add the write side of the built-in Insights plugin at `@hot-updater/server/plugi
 - An older event still counts in its own hour.
 - Channel and usage rows also roll up by day.
 
-`/events` is unchanged until the legacy façade routes it to the plugin.
-
 Also in this change:
 
 - The SQL core no longer creates an index whose columns repeat the primary key.
