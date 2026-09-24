@@ -449,7 +449,8 @@ const testResults = (() => {
         testResults: { name: string; assertionResults: TestResult[] }[];
       }
     ).testResults.map((result) => ({
-      file: relative(result.name),
+      // Reports from another checkout (a CI or gate clone) hold its absolute paths.
+      file: result.name,
       tests: result.assertionResults,
     })),
   );
@@ -459,7 +460,10 @@ const testResults = (() => {
 const suiteTests = (suite: AcceptanceRow["suites"][number]) => {
   if (!testResults) return { error: "not run" };
   const tests = testResults
-    .filter((result) => result.file === suite.file)
+    .filter(
+      (result) =>
+        result.file === suite.file || result.file.endsWith(`/${suite.file}`),
+    )
     .flatMap((result) => result.tests)
     .filter((test) => test.ancestorTitles.includes(suite.describe));
   if (tests.length === 0) return { error: `no "${suite.describe}" tests` };

@@ -433,7 +433,7 @@ export const createTransactions = ({
     }
   };
 
-  /** Deletes first, children before parents, so a freed unique value can be reused; then the other writes, then checks. */
+  /** Inserts first, then patches and increments, then checks, then deletes, children before parents. */
   const compile = (
     writes: Map<string, Pending>,
     read: Map<string, StoredRow | null>,
@@ -462,10 +462,13 @@ export const createTransactions = ({
       const guard = { v: versionOf(row) };
       return [{ type: "check", table, key: rowKey(table, row), guard }];
     });
-    const rest = [...writes.keys()].filter(
-      (id) => writes.get(id)!.type !== "delete",
-    );
-    return [...deleted.map(toOp), ...rest.map(toOp), ...checks];
+    const ofType = (...types: readonly Pending["type"][]) =>
+      [...writes.keys()].filter((id) => types.includes(writes.get(id)!.type));
+    return [
+      ...[...ofType("insert"), ...ofType("patch", "increment")].map(toOp),
+      ...checks,
+      ...deleted.map(toOp),
+    ];
   };
 
   /** Only a constraint the current state confirms is reported; anything else reruns. */
