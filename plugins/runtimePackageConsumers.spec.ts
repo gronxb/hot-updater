@@ -258,9 +258,10 @@ const databaseBinding = {
 const database = runtime.d1Database(databaseBinding);
 if ("createWorkerSigningHandler" in runtime) throw new Error("unexpected Worker signing handler");
 if (database.name !== "d1Database") throw new Error("invalid d1Database name");
-if (typeof database.models.insights.recordEvent !== "function") throw new Error("missing insights model");
-if (typeof database.models.apiKeys.create !== "function") throw new Error("missing apiKeys model");
-if (typeof database.models.channels.list !== "function") throw new Error("missing channels model");
+for (const operation of ["fits", "get", "query", "write"]) {
+  if (typeof database.adapter[operation] !== "function") throw new Error("missing adapter " + operation);
+}
+if ("models" in database || "commit" in database) throw new Error("unexpected legacy database contract");
 if ("d1WorkerDatabase" in runtime) throw new Error("unexpected d1WorkerDatabase");
 const storage = runtime.r2Storage({
   bucket: {},
@@ -288,7 +289,7 @@ for (const operation of ["put", "get", "getDownloadUrl", "exists", "delete"]) {
       rootSpecifier,
     )};\nimport { d1Database, r2Storage } from ${JSON.stringify(
       moduleSpecifier,
-    )};\ndeclare const binding: Parameters<typeof d1Database>[0];\ndeclare const rootStorageConfig: Parameters<typeof rootStorage>[0];\ndeclare const storageConfig: Parameters<typeof r2Storage>[0];\nconst database = d1Database(binding);\nconst nodeStorage = rootStorage(rootStorageConfig);\nconst workerStorage = r2Storage(storageConfig);\nvoid database.models.bundles;\nvoid database.models.bundlePatches;\nvoid database.models.channels;\nvoid database.models.releaseCatalogs;\nvoid database.models.releases;\nvoid database.models.insights;\nvoid database.models.apiKeys;\nvoid database.commit;\nvoid nodeStorage.put;\nvoid nodeStorage.get;\nvoid nodeStorage.exists;\nvoid nodeStorage.delete;\nvoid workerStorage.put;\nvoid workerStorage.get;\nvoid workerStorage.getDownloadUrl;\nvoid workerStorage.exists;\nvoid workerStorage.delete;\n`;
+    )};\ndeclare const binding: Parameters<typeof d1Database>[0];\ndeclare const rootStorageConfig: Parameters<typeof rootStorage>[0];\ndeclare const storageConfig: Parameters<typeof r2Storage>[0];\nconst database = d1Database(binding);\nconst nodeStorage = rootStorage(rootStorageConfig);\nconst workerStorage = r2Storage(storageConfig);\nvoid database.name;\nvoid database.adapter.get;\nvoid database.adapter.query;\nvoid database.adapter.write;\nvoid nodeStorage.put;\nvoid nodeStorage.get;\nvoid nodeStorage.exists;\nvoid nodeStorage.delete;\nvoid workerStorage.put;\nvoid workerStorage.get;\nvoid workerStorage.getDownloadUrl;\nvoid workerStorage.exists;\nvoid workerStorage.delete;\n`;
     await writeFile(moduleConsumer, consumerSource);
     await writeFile(commonJsConsumer, consumerSource);
 
@@ -312,7 +313,8 @@ for (const runtime of [rootRuntime, edgeRuntime]) {
   if ("createEdgeFunctionSigningHandler" in runtime) throw new Error("unexpected Edge Function signing handler");
   const database = runtime.supabaseDatabase(config);
   if (database.name !== "supabaseDatabase") throw new Error("invalid supabaseDatabase name");
-  if (typeof database.models.channels.list !== "function") throw new Error("missing channels model");
+  if (typeof database.adapter.query !== "function") throw new Error("missing adapter query");
+  if ("models" in database) throw new Error("unexpected legacy database contract");
   if ("supabaseEdgeFunctionDatabase" in runtime) throw new Error("unexpected supabaseEdgeFunctionDatabase");
   const storage = runtime.supabaseStorage({ ...config, bucketName: "updates" });
   if (storage.name !== "supabaseStorage") throw new Error("invalid supabaseStorage name");
@@ -341,7 +343,7 @@ for (const runtime of [rootRuntime, edgeRuntime]) {
       rootSpecifier,
     )};\nimport { supabaseDatabase as edgeDatabase, supabaseStorage as edgeStorage } from ${JSON.stringify(
       edgeSpecifier,
-    )};\nconst config: Parameters<typeof rootDatabase>[0] = { supabaseUrl: "https://test.supabase.invalid", supabaseServiceRoleKey: "test-service-role-key" };\nconst edgeConfig: Parameters<typeof edgeDatabase>[0] = config;\nconst rootStorageConfig: Parameters<typeof rootStorage>[0] = { ...config, bucketName: "updates" };\nconst edgeStorageConfig: Parameters<typeof edgeStorage>[0] = rootStorageConfig;\nvoid rootDatabase(config).models.channels;\nvoid edgeDatabase(edgeConfig).models.channels;\nvoid rootStorage(rootStorageConfig).getDownloadUrl;\nvoid edgeStorage(edgeStorageConfig).getDownloadUrl;\n`;
+    )};\nconst config: Parameters<typeof rootDatabase>[0] = { supabaseUrl: "https://test.supabase.invalid", supabaseServiceRoleKey: "test-service-role-key" };\nconst edgeConfig: Parameters<typeof edgeDatabase>[0] = config;\nconst rootStorageConfig: Parameters<typeof rootStorage>[0] = { ...config, bucketName: "updates" };\nconst edgeStorageConfig: Parameters<typeof edgeStorage>[0] = rootStorageConfig;\nvoid rootDatabase(config).adapter.query;\nvoid edgeDatabase(edgeConfig).adapter.query;\nvoid rootStorage(rootStorageConfig).getDownloadUrl;\nvoid edgeStorage(edgeStorageConfig).getDownloadUrl;\n`;
     await writeFile(moduleConsumer, consumerSource);
     await writeFile(commonJsConsumer, consumerSource);
     await typeCheckConsumers(packageDirectory, [

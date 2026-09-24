@@ -3,8 +3,13 @@ import path from "node:path";
 
 import { PGlite } from "@electric-sql/pglite";
 import { createHotUpdater } from "@hot-updater/server";
+import { createDatabasePluginApis } from "@hot-updater/server/db";
 import {
-  setupDatabasePluginTestSuite,
+  createInsightsModel,
+  insights,
+} from "@hot-updater/server/plugins/insights";
+import {
+  setupDatabaseTestSuite,
   startHttpTestServer,
 } from "@hot-updater/test-utils";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
@@ -173,15 +178,22 @@ describe("supabaseDatabase over the apply RPC", () => {
     await state.db?.close();
   });
 
-  setupDatabasePluginTestSuite({
+  setupDatabaseTestSuite({
     createHttpClient: (options) =>
       startHttpTestServer(
-        createHotUpdater({ ...options, clientAccess: { type: "public" } })
-          .handlers,
+        createHotUpdater({
+          ...options,
+          plugins: [insights()],
+          clientAccess: "public",
+        }).handlers,
+      ),
+    createInsightsModel: (database) =>
+      createInsightsModel(
+        createDatabasePluginApis(database, [insights()]).insights,
       ),
     name: "supabaseDatabase (PGlite, apply RPC)",
     migrate: () => undefined,
-    createPlugin: () =>
+    createDatabase: () =>
       supabaseDatabase({
         supabaseUrl: "https://project.supabase.co",
         supabaseServiceRoleKey: "service-role-key",

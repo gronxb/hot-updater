@@ -3,11 +3,11 @@ import {
   DynamoDBClient,
   type DynamoDBClientConfig,
 } from "@aws-sdk/client-dynamodb";
-import type { DatabasePlugin } from "@hot-updater/plugin-core";
+import type { EngineDatabase } from "@hot-updater/plugin-core";
 import {
+  createEngineDatabase,
   createKvAdapter,
-  createLegacyDatabasePlugin,
-  migrateLegacyFacade,
+  migrateBuiltInSchema,
 } from "@hot-updater/server/database";
 
 import { invalidateCloudFront } from "./cloudFrontInvalidation";
@@ -19,6 +19,9 @@ export interface DynamoDBConfig extends DynamoDBClientConfig {
   readonly shouldWaitForInvalidation?: boolean;
   readonly tableName: string;
 }
+
+/** The table the update check reads, so CloudFront caches what its rows hold. */
+const RELEASE_CATALOGS_TABLE = "release_catalogs";
 
 const adapterOf = ({ tableName, ...clientConfig }: DynamoDBConfig) => {
   const client = new DynamoDBClient(clientConfig);
@@ -32,12 +35,12 @@ const adapterOf = ({ tableName, ...clientConfig }: DynamoDBConfig) => {
 
 /**
  * Creates the table when it is missing and writes the schema settings the
- * plugin checks before its first read. `hot-updater init` runs it in AWS.
+ * database checks before its first read. `hot-updater init` runs it in AWS.
  */
 export const migrateDynamoDB = async (config: DynamoDBConfig) => {
   const { client, adapter } = adapterOf(config);
   try {
-    await migrateLegacyFacade(adapter, "dynamoDB");
+    await migrateBuiltInSchema(adapter, "dynamoDB");
   } finally {
     client.destroy();
   }
@@ -45,10 +48,10 @@ export const migrateDynamoDB = async (config: DynamoDBConfig) => {
 
 /**
  * Hot Updater's database on one DynamoDB table, through the storage engine.
- * A commit that changes bundles or patches invalidates the CloudFront routes
+ * A write that changes Release Catalogs invalidates the CloudFront routes
  * that cache update checks.
  */
-export const dynamoDB = (config: DynamoDBConfig): DatabasePlugin => {
+export const dynamoDB = (config: DynamoDBConfig): EngineDatabase => {
   const {
     apiBasePath = "/release-catalogs",
     cloudfrontDistributionId,
@@ -81,27 +84,29 @@ export const dynamoDB = (config: DynamoDBConfig): DatabasePlugin => {
       );
     }
   };
-  const facade = createLegacyDatabasePlugin({
-    name: "dynamoDB",
-    adapter,
-    fence: true,
-  });
   return {
-    ...facade,
-    async commit(input) {
-      const result = await facade.commit(input);
-      if (
-        result.committed &&
-        input.changes.some(
-          ({ model }) => model === "bundles" || model === "bundlePatches",
-        )
-      ) {
-        await invalidateUpdateRoutes();
-      }
-      return result;
-    },
+    ...createEngineDatabase({
+      name: "dynamoDB",
+      adapter: {
+        ...adapter,
+        async write(ops) {
+          const result = await adapter.write(ops);
+          // A check only guards a row it read; it changes nothing cached.
+          if (
+            result.ok &&
+            ops.some(
+              (op) =>
+                op.type !== "check" && op.table.name === RELEASE_CATALOGS_TABLE,
+            )
+          ) {
+            await invalidateUpdateRoutes();
+          }
+          return result;
+        },
+      },
+    }),
     async dispose() {
-      await facade.dispose?.();
+      await adapter.dispose?.();
       client.destroy();
       cloudFront?.destroy();
     },

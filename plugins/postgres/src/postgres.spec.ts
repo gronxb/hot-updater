@@ -3,16 +3,19 @@ import path from "node:path";
 
 import { PGlite } from "@electric-sql/pglite";
 import { createHotUpdater } from "@hot-updater/server";
+import { builtInSchema, builtInSettings } from "@hot-updater/server/database";
 import {
-  legacyFacadeSchema,
-  legacyFacadeSettings,
-} from "@hot-updater/server/database";
-import {
+  createDatabaseCoreApi,
+  createDatabasePluginApis,
   generateEngineSql,
   HotUpdaterSchemaMigrationRequiredError,
 } from "@hot-updater/server/db";
 import {
-  setupDatabasePluginTestSuite,
+  createInsightsModel,
+  insights,
+} from "@hot-updater/server/plugins/insights";
+import {
+  setupDatabaseTestSuite,
   startHttpTestServer,
 } from "@hot-updater/test-utils";
 import { PGliteDialect } from "kysely-pglite-dialect";
@@ -26,14 +29,14 @@ const SQL_FILE = path.resolve("plugins/postgres/sql/bundles.sql");
 const expectedSql = () =>
   `-- HotUpdater.schema\n\n${generateEngineSql(
     "postgresql",
-    legacyFacadeSchema,
-    legacyFacadeSettings,
+    builtInSchema,
+    builtInSettings,
   )
     .map((statement) => `${statement};`)
     .join("\n\n")}\n`;
 
 /** Every data table; the settings rows stay across tests. */
-const dataTables = legacyFacadeSchema.tables
+const dataTables = builtInSchema.tables
   .flatMap((table) => [
     table.name,
     ...table.indexes
@@ -48,23 +51,30 @@ const dataTables = legacyFacadeSchema.tables
 
 let client: PGlite | undefined;
 
-setupDatabasePluginTestSuite({
+setupDatabaseTestSuite({
   createHttpClient: (options) =>
     startHttpTestServer(
-      createHotUpdater({ ...options, clientAccess: { type: "public" } })
-        .handlers,
+      createHotUpdater({
+        ...options,
+        plugins: [insights()],
+        clientAccess: "public",
+      }).handlers,
+    ),
+  createInsightsModel: (database) =>
+    createInsightsModel(
+      createDatabasePluginApis(database, [insights()]).insights,
     ),
   name: "postgres plugin",
   migrate: async () => {
     client = new PGlite();
     await client.exec(await fs.readFile(SQL_FILE, "utf8"));
   },
-  createPlugin: () => postgres({ dialect: new PGliteDialect(client!) }),
+  createDatabase: () => postgres({ dialect: new PGliteDialect(client!) }),
   reset: async () => {
     await client!.exec(`TRUNCATE ${dataTables.join(", ")} CASCADE`);
   },
-  dispose: async (plugin) => {
-    await plugin.dispose?.();
+  dispose: async (database) => {
+    await database.dispose?.();
     client = undefined;
   },
 });
@@ -83,19 +93,18 @@ describe("postgres plugin schema", () => {
   });
 
   it("refuses a database without the schema settings, then serves once they exist", async () => {
-    const database = new PGlite();
-    const plugin = postgres({ dialect: new PGliteDialect(database) });
+    const pglite = new PGlite();
+    const database = postgres({ dialect: new PGliteDialect(pglite) });
+    const core = createDatabaseCoreApi(database);
     try {
-      await expect(plugin.models.channels.list({})).rejects.toBeInstanceOf(
+      await expect(core.listChannels()).rejects.toBeInstanceOf(
         HotUpdaterSchemaMigrationRequiredError,
       );
-      await database.exec(await fs.readFile(SQL_FILE, "utf8"));
-      await expect(plugin.models.channels.list({})).resolves.toEqual({
-        channels: [],
-      });
+      await pglite.exec(await fs.readFile(SQL_FILE, "utf8"));
+      await expect(core.listChannels()).resolves.toEqual([]);
       expect(
         (
-          await database.query(
+          await pglite.query(
             "SELECT key, value FROM private_hot_updater_settings ORDER BY key",
           )
         ).rows,
@@ -106,7 +115,7 @@ describe("postgres plugin schema", () => {
         { key: "schema.insights", value: "1.0.0" },
       ]);
     } finally {
-      await plugin.dispose?.();
+      await database.dispose?.();
     }
   });
 });

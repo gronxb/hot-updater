@@ -1,4 +1,9 @@
-import { isMultiIndex, legacyFacadeSchema } from "@hot-updater/server/database";
+import { createHotUpdater } from "@hot-updater/server";
+import { builtInSchema, isMultiIndex } from "@hot-updater/server/database";
+import {
+  createInsightsModel,
+  insights,
+} from "@hot-updater/server/plugins/insights";
 import { env } from "cloudflare:test";
 import { expect, inject, it } from "vitest";
 
@@ -15,7 +20,7 @@ declare module "vitest" {
 }
 
 /** Every data table: each model's table and the index tables of its multi-valued indexes. */
-const dataTables = legacyFacadeSchema.tables.flatMap((table) => [
+const dataTables = builtInSchema.tables.flatMap((table) => [
   table.name,
   ...table.indexes
     .filter((index) => isMultiIndex(table, index))
@@ -57,7 +62,13 @@ it("creates every table, the batch guard, and the settings the fence checks", as
 });
 
 it("returns canonical downloaded and applied events from the initialized D1 schema", async () => {
-  const plugin = d1Database(env.DB);
+  const model = createInsightsModel(
+    createHotUpdater({
+      database: d1Database(env.DB),
+      plugins: [insights()],
+      clientAccess: "public",
+    }).api.insights,
+  );
   const download = {
     ...createBundleEventRowFixture("9601", 100),
     type: "UPDATE_DOWNLOADED" as const,
@@ -67,9 +78,9 @@ it("returns canonical downloaded and applied events from the initialized D1 sche
       update_strategy: "appVersion" as const,
     },
   };
-  await plugin.models.insights.recordEvent({ event: download });
+  await model.recordEvent({ event: download });
   await expect(
-    plugin.models.insights.findLatestEvents({
+    model.findLatestEvents({
       installId: download.install_id,
     }),
   ).resolves.toEqual([download]);
@@ -79,10 +90,10 @@ it("returns canonical downloaded and applied events from the initialized D1 sche
     type: "UPDATE_APPLIED" as const,
     received_at_ms: 200,
   };
-  await plugin.models.insights.recordEvent({ event: applied });
-  await plugin.models.insights.recordEvent({ event: download });
+  await model.recordEvent({ event: applied });
+  await model.recordEvent({ event: download });
   await expect(
-    plugin.models.insights.findLatestEvents({
+    model.findLatestEvents({
       installId: download.install_id,
     }),
   ).resolves.toEqual([applied]);

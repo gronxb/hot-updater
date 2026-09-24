@@ -1,5 +1,6 @@
+import type { EngineDatabase } from "@hot-updater/plugin-core";
 import { createMemoryAdapter } from "@hot-updater/plugin-core/internal";
-import { createLegacyDatabasePlugin } from "@hot-updater/server/database";
+import { builtInSchema } from "@hot-updater/server/database";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
@@ -24,10 +25,18 @@ import { prepareDynamoDBApiKey, prepareDynamoDBDeployment } from "./index";
 const EXISTING_API_KEY = "AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE";
 
 /** A database on the storage engine, where the apiKeys() plugin keeps its table. */
-const createDatabase = () =>
-  createLegacyDatabasePlugin({
-    name: "memory",
-    adapter: createMemoryAdapter(),
+const createDatabase = (): EngineDatabase => ({
+  name: "memory",
+  adapter: createMemoryAdapter(),
+});
+
+/** The rows the apiKeys() plugin stored, digests included. */
+const storedApiKeys = (database: EngineDatabase) =>
+  database.adapter.query(builtInSchema.models.get("api_keys")!.table, {
+    index: "byCreated",
+    eq: [],
+    order: "asc",
+    limit: 10,
   });
 
 describe("AWS DynamoDB API key preparation", () => {
@@ -40,7 +49,7 @@ describe("AWS DynamoDB API key preparation", () => {
     });
 
     expect(apiKey).toBe(EXISTING_API_KEY);
-    const stored = await database.models.apiKeys.list();
+    const stored = await storedApiKeys(database);
     expect(stored).toEqual([
       expect.objectContaining({ name: "AWS init", prefix: "AQEBAQ" }),
     ]);
@@ -53,7 +62,7 @@ describe("AWS DynamoDB API key preparation", () => {
     const apiKey = await prepareDynamoDBApiKey({ database });
 
     expect(apiKey).toMatch(/^[A-Za-z0-9_-]{43}$/u);
-    const stored = await database.models.apiKeys.list();
+    const stored = await storedApiKeys(database);
     expect(stored).toEqual([
       expect.objectContaining({
         name: "AWS init",

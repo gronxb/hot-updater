@@ -706,7 +706,7 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
     workerName,
   });
 
-  const databasePlugin = d1Database({
+  const database = d1Database({
     accountId,
     cloudflareApiToken: apiToken,
     databaseId: selectedD1DatabaseId,
@@ -715,17 +715,14 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
   try {
     apiKey = // The managed server's apiKeys() plugin, on the tables it reads.
       (
-        await createDatabasePluginApis(
-          databasePlugin,
-          plugins,
-        ).apiKeys.provision({
+        await createDatabasePluginApis(database, plugins).apiKeys.provision({
           existingApiKey: initInputEnv.HOT_UPDATER_API_KEY,
           name: "Cloudflare init",
         })
       ).apiKey;
     await makeEnv({ HOT_UPDATER_API_KEY: apiKey });
   } finally {
-    await databasePlugin.dispose?.();
+    await database.dispose?.();
   }
 
   const configWriteResult = await writeHotUpdaterConfig(

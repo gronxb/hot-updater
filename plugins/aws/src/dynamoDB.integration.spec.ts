@@ -5,10 +5,18 @@ import {
 } from "@aws-sdk/lib-dynamodb";
 import { createHotUpdater } from "@hot-updater/server";
 import { createKvAdapter, SETTINGS_TABLE } from "@hot-updater/server/database";
-import { HotUpdaterSchemaMigrationRequiredError } from "@hot-updater/server/db";
+import {
+  createDatabaseCoreApi,
+  createDatabasePluginApis,
+  HotUpdaterSchemaMigrationRequiredError,
+} from "@hot-updater/server/db";
+import {
+  createInsightsModel,
+  insights,
+} from "@hot-updater/server/plugins/insights";
 import {
   setupDatabaseAdapterConformanceSuite,
-  setupDatabasePluginTestSuite,
+  setupDatabaseTestSuite,
   startHttpTestServer,
 } from "@hot-updater/test-utils";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -54,7 +62,7 @@ describe("dynamoDB", () => {
   const tableName = `hot-updater-plugin-${process.pid}`;
   const config = () => ({ ...local.config, tableName });
 
-  /** Deletes every item but the schema settings, which the plugin checks first. */
+  /** Deletes every item but the schema settings, which the database checks first. */
   const clear = async () => {
     const documents = DynamoDBDocumentClient.from(local.client);
     for (let start: Record<string, unknown> | undefined; ; ) {
@@ -86,31 +94,39 @@ describe("dynamoDB", () => {
 
   it("serves only after the migration writes the schema settings", async () => {
     const fenced = { ...local.config, tableName: local.tableName() };
-    const plugin = dynamoDB(fenced);
+    const database = dynamoDB(fenced);
+    const core = createDatabaseCoreApi(database);
     // No table yet: the fence reads DynamoDB's missing table as a missing schema.
-    await expect(plugin.models.channels.list({})).rejects.toBeInstanceOf(
+    await expect(core.listChannels()).rejects.toBeInstanceOf(
       HotUpdaterSchemaMigrationRequiredError,
     );
     await migrateDynamoDB(fenced);
     await migrateDynamoDB(fenced);
-    await expect(plugin.models.channels.list({})).resolves.toEqual({
-      channels: [],
-    });
-    await plugin.dispose?.();
+    await expect(core.listChannels()).resolves.toEqual([]);
+    await database.dispose?.();
   });
 
-  setupDatabasePluginTestSuite({
+  setupDatabaseTestSuite({
     name: "dynamoDB (DynamoDB Local)",
     createHttpClient: (options) =>
       startHttpTestServer(
-        createHotUpdater({ ...options, clientAccess: { type: "public" } })
-          .handlers,
+        createHotUpdater({
+          ...options,
+          plugins: [insights()],
+          clientAccess: "public",
+        }).handlers,
       ),
-    createPlugin: () => dynamoDB(config()),
+    createInsightsModel: (database) =>
+      createInsightsModel(
+        createDatabasePluginApis(database, [insights()]).insights,
+      ),
+    createDatabase: () => dynamoDB(config()),
     migrate: async () => {
       await migrateDynamoDB(config());
     },
     reset: clear,
-    dispose: () => undefined,
+    dispose: async (database) => {
+      await database.dispose?.();
+    },
   });
 });

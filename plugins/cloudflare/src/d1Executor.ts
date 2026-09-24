@@ -1,6 +1,6 @@
-import type { DatabasePlugin } from "@hot-updater/plugin-core";
+import type { EngineDatabase } from "@hot-updater/plugin-core";
 import {
-  createLegacyDatabasePlugin,
+  createEngineDatabase,
   createSqlAdapter,
   type SqlExecutor,
   type SqlResult,
@@ -53,14 +53,14 @@ export const D1_MAX_OPS = 450;
 
 /**
  * Hot Updater's database on D1: the storage engine through the shared SQL
- * core, behind today's `DatabasePlugin` until E2, with the schema fence on.
- * D1 has no interactive transactions, so each write is one atomic batch that
- * evaluates its guards first (`_hu_write`).
+ * core, fenced by the schema settings. D1 has no interactive transactions,
+ * so each write is one atomic batch that evaluates its guards first
+ * (`_hu_write`).
  */
-export const createD1DatabasePlugin = (runner: {
+export const createD1Database = (runner: {
   query(statement: SqlStatement): Promise<SqlResult>;
   batch(statements: readonly SqlStatement[]): Promise<readonly SqlResult[]>;
-}): DatabasePlugin => {
+}): EngineDatabase => {
   const executor: SqlExecutor = {
     dialect: "sqlite",
     execute: (statement) =>
@@ -77,9 +77,8 @@ export const createD1DatabasePlugin = (runner: {
       );
     },
   };
-  return createLegacyDatabasePlugin({
+  return createEngineDatabase({
     name: "d1Database",
     adapter: createSqlAdapter({ executor, maxOps: D1_MAX_OPS, maxParams: 100 }),
-    fence: true,
   });
 };

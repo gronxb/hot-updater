@@ -34,9 +34,7 @@ vi.mock("@hot-updater/server/db", async () => {
 });
 
 vi.mock("../src/firebaseDatabase", () => ({
-  firebaseDatabase: vi.fn(() => ({
-    models: { apiKeys: {} },
-  })),
+  firebaseDatabase: vi.fn(() => ({ name: "firebaseDatabase", adapter: {} })),
   migrateFirebaseDatabase: mocks.migrateFirebaseDatabase,
 }));
 
@@ -293,7 +291,7 @@ describe("Firebase project creation", () => {
     expect(mocks.provisionApiKey).toHaveBeenCalledWith(
       expect.objectContaining({ existingApiKey: API_KEY }),
     );
-    // The schema settings come first, since the plugin reads nothing without them.
+    // The schema settings come first, since the database reads nothing without them.
     expect(mocks.migrateFirebaseDatabase).toHaveBeenCalledWith(
       expect.objectContaining({ projectId: "existing-project" }),
     );
