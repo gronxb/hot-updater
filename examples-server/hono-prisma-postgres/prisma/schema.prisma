@@ -48,7 +48,7 @@ model releases {
   id String @db.VarChar(36)
   revision BigInt
   scope_key String @db.VarChar(2048)
-  channel_id String @db.VarChar(255)
+  channel_id String @db.VarChar(1408)
   platform String @db.VarChar(16)
   kind String @db.VarChar(16)
   bundle_id String? @db.VarChar(36)
@@ -76,7 +76,7 @@ model release_catalogs {
   scope_key String @db.VarChar(2048)
   catalog_id String @db.VarChar(255)
   strategy String @db.VarChar(16)
-  channel_id String @db.VarChar(255)
+  channel_id String @db.VarChar(1408)
   channel_key String @db.VarChar(1400)
   platform String @db.VarChar(16)
   fingerprint_hash String? @db.VarChar(255)
@@ -90,7 +90,7 @@ model release_catalogs {
   @@id([scope_key])
 }
 model channels {
-  id String @db.VarChar(255)
+  id String @db.VarChar(1408)
   name String @db.VarChar(255)
   hu_refs_releases_channel_id BigInt @default(0) @map("_refs_releases_channel_id")
   hu_v BigInt @default(0) @map("_v")
