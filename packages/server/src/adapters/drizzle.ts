@@ -1,4 +1,3 @@
-import { HOT_UPDATER_SCHEMA_VERSION } from "../core/schema";
 import {
   builtInSchema,
   builtInSettings,
@@ -28,8 +27,6 @@ export interface DrizzleConfig {
   readonly provider: DrizzleProvider;
   /** Ignored: Hot Updater reads through SQL; the schema file is for drizzle-kit. */
   readonly schema?: Record<string, unknown>;
-  /** Ignored: transactions are required, and the first one checks the driver. */
-  readonly transaction?: boolean;
 }
 
 /**
@@ -48,7 +45,7 @@ export const drizzleAdapter = (config: DrizzleConfig): ToolingDatabase => {
     }),
     provider,
     generateSchema: (version: Parameters<SchemaGenerator>[0]) => {
-      if (version !== "latest" && version !== HOT_UPDATER_SCHEMA_VERSION) {
+      if (version !== "latest" && version !== builtInSettings["schema.core"]) {
         throw new Error(`Invalid version ${version}`);
       }
       return {

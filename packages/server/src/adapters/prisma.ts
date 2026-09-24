@@ -1,4 +1,3 @@
-import { HOT_UPDATER_SCHEMA_VERSION } from "../core/schema";
 import {
   builtInSchema,
   builtInSettings,
@@ -46,7 +45,7 @@ export const prismaAdapter = (config: PrismaConfig): ToolingDatabase => {
     }),
     provider,
     generateSchema: ((version) => {
-      if (version !== "latest" && version !== HOT_UPDATER_SCHEMA_VERSION) {
+      if (version !== "latest" && version !== builtInSettings["schema.core"]) {
         throw new Error(`Invalid version ${version}`);
       }
       return {
