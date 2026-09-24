@@ -12,6 +12,9 @@ or your existing backend. Make the database and storage environment variables
 available to the server and schema commands. The React Native project's deploy
 configuration is a separate step.
 
+`prismaAdapter` supports PostgreSQL, MySQL 8.0 or later, and SQLite.
+CockroachDB and SQL Server are not supported.
+
 ## Installation
 
 Install Prisma and initialize your project.
@@ -53,12 +56,14 @@ Create the Hot Updater instance:
 ```typescript title="src/hotUpdater.ts"
 import { createHotUpdater } from "@hot-updater/server";
 import { prismaAdapter } from "@hot-updater/server/adapters/prisma"; // [!code ++]
+import { apiKeys } from "@hot-updater/server/plugins/api-keys";
+import { insights } from "@hot-updater/server/plugins/insights";
 import { s3Storage } from "@hot-updater/aws";
 import { prisma } from "./prisma";
 
 export const hotUpdater = createHotUpdater({
   database: prismaAdapter({ prisma, provider: "sqlite" }), // [!code ++]
-  clientAccess: { type: "api-key" },
+  plugins: [insights(), apiKeys()],
   storage: [
     s3Storage({
       region: "auto",
@@ -74,6 +79,13 @@ export const hotUpdater = createHotUpdater({
 });
 ```
 
+`prismaAdapter({ prisma, provider })` takes only these two options. It returns
+an engine database with the schema generator and migrator that
+`hot-updater db` runs. `provider` is `"postgresql"`, `"mysql"` or `"sqlite"`
+and must match the Prisma datasource. The adapter runs Hot Updater's shared SQL core through Prisma's raw
+queries and interactive transactions. `insights()` records app events, and
+`apiKeys()` protects the client routes with the `x-api-key` header.
+
 ## Schema generation
 
 Generate the Prisma schema for Hot Updater tables.
@@ -83,8 +95,13 @@ npx hot-updater db generate src/hotUpdater.ts --yes
 ```
 
 This command creates `prisma/schema.prisma` when it is missing or merges the
-Hot Updater models into the existing schema. Keep the generated models instead
-of replacing them with a handwritten schema.
+Hot Updater models into the existing schema, between the
+`BEGIN HOT-UPDATER MODELS` and `END HOT-UPDATER MODELS` comments. The models
+have keys and named indexes and no relations. Fields whose column starts with
+an underscore get a `hu` prefix and map back to the column, such as `hu_v` to
+`_v`. On MySQL, ASCII key columns are `VarBinary`, which keeps every key within
+InnoDB's limit. Keep the generated models instead of replacing them with a
+handwritten schema.
 
 <Callout>
   Need to generate SQL without config? See [SQL
@@ -102,9 +119,14 @@ npx hot-updater db migrate src/hotUpdater.ts --yes
 
 Prisma creates the tables, or `prisma migrate` does when you use migrations.
 `db migrate` then sets the collations Prisma cannot declare on PostgreSQL and
-MySQL, so strings compare by their bytes, and writes the settings rows the
-server checks before its first read. Until they exist, the server answers 503.
-Run the same steps again after upgrading Hot Updater.
+MySQL, so strings compare by their bytes, and writes the settings rows. It
+asks you to apply the tables first when they are missing, and it refuses a
+database created by an older Hot Updater schema instead of converting it.
+
+The server checks the settings rows before its first read or write. Until
+they exist, it throws `HotUpdaterSchemaMigrationRequiredError` and its
+handlers answer 503. A running server checks again on its next request. Run
+the same steps again after upgrading Hot Updater.
 
 ## CLI configuration
 
