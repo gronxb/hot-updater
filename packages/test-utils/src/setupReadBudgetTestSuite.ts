@@ -190,6 +190,21 @@ const eventOf = (
     ...overrides,
   }) as BundleEventRow;
 
+/**
+ * History event `n` of the day before T0, three an hour, on its own release
+ * and bundles: every windowed read, which starts at T0 or later, skips it.
+ */
+const historyOf = (n: number) =>
+  eventOf(100 + n, {
+    install_id: `history-${n}`,
+    user_id: null,
+    from_bundle_id: "bundle-history-a",
+    to_release_id: "release-history",
+    to_bundle_id: "bundle-history-b",
+    received_at_ms:
+      T0 - DAY + Math.floor((n - 1) / 3) * HOUR + ((n - 1) % 3) * 600_000,
+  });
+
 const production = {
   channel: "production",
   enabled: true,
@@ -229,7 +244,8 @@ const storage: ReadBudgetStorage = {
 /**
  * Core's bundles, releases, channels, and a client API key, and 25 Insights
  * events: installs 1–24 ten minutes apart from T0, then install 1 again two
- * days later.
+ * days later; and the day of history before T0, as a production database
+ * holds, so a read that scans beyond its window examines more rows.
  */
 const seed = async (database: ReadBudgetDatabase, server: ReadBudgetServer) => {
   const { core } = database;
@@ -266,6 +282,9 @@ const seed = async (database: ReadBudgetDatabase, server: ReadBudgetServer) => {
   await api.insights.recordEvent(
     eventOf(25, { install_id: "install-1", received_at_ms: T0 + 2 * DAY }),
   );
+  for (let n = 1; n <= 72; n += 1) {
+    await api.insights.recordEvent(historyOf(n));
+  }
   const channel = (name: string) =>
     core.findChannelByName(name).then((found) => found!);
   const productionId = (await channel("production")).id;
