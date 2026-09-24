@@ -132,10 +132,12 @@ Use `s3Storage` with `createHotUpdater` for self-hosted servers:
 ```typescript title="src/hotUpdater.ts"
 import { s3Storage } from "@hot-updater/aws"; // [!code ++]
 import { createHotUpdater } from "@hot-updater/server";
+import { apiKeys } from "@hot-updater/server/plugins/api-keys";
+import { insights } from "@hot-updater/server/plugins/insights";
 
 const hotUpdater = createHotUpdater({
   database,
-  clientAccess: { type: "api-key" },
+  plugins: [insights(), apiKeys()],
   storage: [ // [!code ++]
     s3Storage({ // [!code ++]
       region: process.env.AWS_REGION!, // [!code ++]

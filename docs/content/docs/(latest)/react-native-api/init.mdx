@@ -17,8 +17,8 @@ custom or manual update flow.
 
 Use the client handler URL and client API key produced by your infrastructure
 setup. For a custom server, follow
-[API key authentication](/docs/custom/api-key-authentication) to configure the
-client access policy and create a key.
+[API key authentication](/docs/custom/api-key-authentication) to add the
+`apiKeys()` plugin and create a key.
 
 ```tsx
 import { HotUpdater } from "@hot-updater/react-native";
@@ -36,13 +36,16 @@ HotUpdater.init({
 
 Point `baseURL` at the client handler root, for example
 `https://example.com/hot-updater`. Never embed the admin bearer token in a
-React Native app. If `clientAccess` uses the `api-key` policy, send only the
-API key using `x-api-key` as shown above.
+React Native app. When the server runs the `apiKeys()` plugin, send only the
+API key, in `x-api-key` as shown above or in the plugin's configured
+`headerName`.
 
 Automatic app-ready transition and Bundle adoption Insights are enabled by
-default. Set `insights: false` to send no Insights events. The server routes
-remain available either way. See [Insights](/docs/guides/insights) for report
-contents, optional user identity, and verification.
+default. Set `insights: false` to send no Insights events. The server records
+them when it runs the `insights()` plugin; without it, the events route
+answers 204 and stores nothing, so the app needs no change. See
+[Insights](/docs/guides/insights) for report contents, optional user identity,
+and verification.
 
 `baseURL` can also be resolved at runtime. The function may return a string or
 a promise, and Hot Updater calls it before each update check.
@@ -107,7 +110,7 @@ confirm Insights delivery to the server.
 `HotUpdater.init` for that specific update check.
 
 If the server intentionally uses the unauthenticated
-`clientAccess: { type: "public" }` alternative, omit `x-api-key` from
+`clientAccess: "public"` alternative, omit `x-api-key` from
 `requestHeaders`.
 
 ## Recommended flow
