@@ -43,10 +43,11 @@ pnpm test # Uses @cloudflare/vitest-pool-workers
 
 ## Key Components
 
-### Database Plugin Creation
+### Storage Adapter Contract
 
-- `createDatabasePlugin()`: Factory for fixed-model database plugins
-- `createDatabaseClient()`: Shared bundle aggregate client over a database plugin
+- `src/database`: the `DatabaseAdapter` contract, `createMemoryAdapter()`,
+  `verifyAdapter()`, and value helpers, exported from `./internal` and
+  published to adapter authors through `@hot-updater/server/database`
 
 ### Utility Functions
 
