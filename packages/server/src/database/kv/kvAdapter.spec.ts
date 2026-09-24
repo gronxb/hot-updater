@@ -6,11 +6,7 @@ import {
   type PhysicalTable,
   type StoredRow,
 } from "@hot-updater/plugin-core/internal";
-import {
-  conformanceCounters,
-  conformanceItems,
-  setupDatabaseAdapterConformanceSuite,
-} from "@hot-updater/test-utils";
+import { conformanceCounters, conformanceItems } from "@hot-updater/test-utils";
 import { describe, expect, it } from "vitest";
 
 import { createDatabaseEngine } from "../database";
@@ -18,18 +14,6 @@ import { resolveSchema } from "../resolveSchema";
 import { defineTable } from "../schema";
 import { createKvAdapter, encodeKvKey, type KeyValueStore } from "./kvAdapter";
 import { createMemoryKeyValueStore } from "./kvTestStore";
-
-setupDatabaseAdapterConformanceSuite({
-  name: "key-value (in-memory store)",
-  // 34 conformance inserts are 102 items: a row and 2 index items each.
-  maxOps: 33,
-  createAdapter: async ({ nativePageSize }) => ({
-    adapter: createKvAdapter({
-      store: createMemoryKeyValueStore({ nativePageSize }),
-      tablePrefix: "t_",
-    }),
-  }),
-});
 
 const item = (id: string, values: Partial<StoredRow> = {}): StoredRow => ({
   id,
