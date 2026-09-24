@@ -131,6 +131,7 @@ Rollback restores Worker code/configuration, not D1 or R2 data.
 | Symptom | Check |
 | --- | --- |
 | Bindings unavailable | Build and run the Worker preset, not Vite's Node server |
+| Insights shows as off | `plugins` in `hot-updater.config.ts` includes `insights()`, such as `plugins` from `@hot-updater/cloudflare/worker` |
 | Empty Insights | Correct D1 binding; local preview uses separate data |
 | Bucket mismatch | `BUCKET_NAME`, the R2 binding, and stored bundle URI use the same bucket |
 | Stale bindings | Edit root config, rebuild, and deploy the generated output |
