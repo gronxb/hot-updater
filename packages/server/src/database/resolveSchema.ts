@@ -8,21 +8,21 @@ import {
 } from "@hot-updater/plugin-core/internal";
 
 import type {
-  AggregateDefinition,
+  AggregateShape,
   FieldDefinition,
   FieldType,
-  ModelDefinition,
-  ModuleSchema,
+  ModelShape,
   ReferenceAction,
-  TableDefinition,
-} from "./schema";
+  SchemaShape,
+  TableShape,
+} from "./definitions";
 
 export const SHARD_COLUMN = "_shard";
 export const MAX_SHARDS = 64;
 
 export interface SchemaModule {
   readonly id: string;
-  readonly schema: ModuleSchema;
+  readonly schema: SchemaShape;
   /** Prefixes this module's table names; third-party plugins use their id. */
   readonly namespace?: string;
 }
@@ -42,7 +42,7 @@ export interface ResolvedModel {
   /** The model name as its module declares it. */
   readonly model: string;
   readonly table: PhysicalTable;
-  readonly definition: ModelDefinition;
+  readonly definition: ModelShape;
   readonly references: readonly ResolvedReference[];
   readonly referencedBy: readonly ResolvedReference[];
   /** Index name to the physical name of its root table. */
@@ -78,7 +78,7 @@ const integer = (name: string): PhysicalColumn => ({
 });
 
 const fieldType = (
-  model: ModelDefinition,
+  model: ModelShape,
   name: string,
 ): { readonly type: FieldType; readonly multi: boolean } | undefined => {
   const field = model.fields[name];
@@ -90,7 +90,7 @@ const fieldType = (
     : { type: derived.type, multi: derived.multi === true };
 };
 
-const metricsOf = (model: AggregateDefinition) => [
+const metricsOf = (model: AggregateShape) => [
   ...model.counters,
   ...model.gauges,
   ...model.distinct,
@@ -100,7 +100,7 @@ const metricsOf = (model: AggregateDefinition) => [
 const problemsOf = (
   module: SchemaModule,
   model: string,
-  definition: ModelDefinition,
+  definition: ModelShape,
 ): string[] => {
   const problems: string[] = [];
   const at = `${module.id}.${model}`;
@@ -203,12 +203,12 @@ const problemsOf = (
 const problemsAcross = (
   module: SchemaModule,
   model: string,
-  definition: ModelDefinition,
+  definition: ModelShape,
 ): string[] => {
   const problems: string[] = [];
   const add = (message: string) =>
     problems.push(`${module.id}.${model}: ${message}`);
-  const table = (name: string): TableDefinition | undefined => {
+  const table = (name: string): TableShape | undefined => {
     const target = module.schema[name];
     return target?.kind === "table" ? target : undefined;
   };
@@ -286,7 +286,7 @@ export const validateSchema = (modules: readonly SchemaModule[]): void => {
   }
 };
 
-const indexesOf = (definition: ModelDefinition): PhysicalIndex[] => [
+const indexesOf = (definition: ModelShape): PhysicalIndex[] => [
   ...Object.entries(definition.indexes).map(([name, index]) => ({
     name,
     eq: [...index.eq],

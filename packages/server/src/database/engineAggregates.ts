@@ -9,9 +9,9 @@ import {
   type WriteOp,
 } from "@hot-updater/plugin-core/internal";
 
+import type { AggregateShape } from "./definitions";
 import { DatabaseTransactionError } from "./errors";
 import type { ResolvedModel } from "./resolveSchema";
-import type { AggregateDefinition } from "./schema";
 
 /** The pending changes to one shard row of an aggregate. */
 export interface AggregateChange {
@@ -23,7 +23,7 @@ export interface AggregateChange {
 }
 
 const definitionOf = (model: ResolvedModel) =>
-  model.definition as AggregateDefinition;
+  model.definition as AggregateShape;
 
 /** A stable FNV-1a hash, so every change keyed by one value lands on one shard. */
 export const shardOf = (value: string, shards: number): number => {
