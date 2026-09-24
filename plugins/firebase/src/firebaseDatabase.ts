@@ -1,8 +1,8 @@
-import type { DatabasePlugin } from "@hot-updater/plugin-core";
+import type { EngineDatabase } from "@hot-updater/plugin-core";
 import {
+  createEngineDatabase,
   createKvAdapter,
-  createLegacyDatabasePlugin,
-  migrateLegacyFacade,
+  migrateBuiltInSchema,
 } from "@hot-updater/server/database";
 import {
   getApp,
@@ -31,19 +31,18 @@ const adapterOf = ({
 };
 
 /**
- * Writes the schema settings the plugin checks before its first read.
+ * Writes the schema settings the database checks before its first read.
  * Firestore needs no other setup beyond `firestore.indexes.json`;
  * `hot-updater init` runs it after deploying the indexes.
  */
 export const migrateFirebaseDatabase = (config: FirebaseDatabaseConfig) =>
-  migrateLegacyFacade(adapterOf(config), "firebaseDatabase");
+  migrateBuiltInSchema(adapterOf(config), "firebaseDatabase");
 
 /** Hot Updater's database in one Firestore collection, through the storage engine. */
 export const firebaseDatabase = (
   config: FirebaseDatabaseConfig,
-): DatabasePlugin =>
-  createLegacyDatabasePlugin({
+): EngineDatabase =>
+  createEngineDatabase({
     name: "firebaseDatabase",
     adapter: adapterOf(config),
-    fence: true,
   });

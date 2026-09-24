@@ -1,16 +1,5 @@
-export {
-  createDatabasePluginAdapter,
-  DatabaseRowReferencedError,
-  validateDatabaseCommit,
-  type DatabasePluginAdapter,
-} from "./createDatabasePlugin";
-export { databaseFields } from "./types/databaseFields";
+export { DatabaseRowReferencedError } from "./databaseErrors";
 export type * from "./types/internal";
-
-export {
-  latestInsightsWhere,
-  latestInsightsCountGroups,
-} from "./insightsLatestQueries";
 export {
   addInsightsDistinct,
   countInsightsDistinct,

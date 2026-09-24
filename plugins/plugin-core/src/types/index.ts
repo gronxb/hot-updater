@@ -9,86 +9,6 @@ export interface BasePluginArgs {
   cwd: string;
 }
 
-export interface PaginationInfo {
-  total: number;
-  hasNextPage: boolean;
-  hasPreviousPage: boolean;
-  currentPage: number;
-  totalPages: number;
-  nextCursor?: string | null;
-  previousCursor?: string | null;
-}
-
-export interface Paginated<TData> {
-  data: TData;
-  pagination: PaginationInfo;
-}
-
-export type PaginatedResult = Paginated<Bundle[]>;
-
-export interface DatabaseBundleIdFilter {
-  eq?: string;
-  gt?: string;
-  gte?: string;
-  lt?: string;
-  lte?: string;
-  in?: string[];
-}
-
-export interface DatabaseBundleQueryWhere {
-  platform?: Platform;
-  id?: DatabaseBundleIdFilter;
-}
-
-export interface DatabaseBundleQueryOrder {
-  field: "id";
-  direction: "asc" | "desc";
-}
-
-export type DatabaseBundleCursor =
-  | {
-      /**
-       * Fetch the next window after this bundle ID.
-       *
-       * This is the preferred pagination mode for bundle-management queries.
-       */
-      after: string;
-      before?: never;
-    }
-  | {
-      after?: never;
-      /**
-       * Fetch the previous window before this bundle ID.
-       *
-       * This is the preferred pagination mode for bundle-management queries.
-       */
-      before: string;
-    };
-
-type DatabaseBundlePaginationOptions =
-  | {
-      /**
-       * Optional page number used by management UIs to keep page boundaries
-       * stable even when new bundles are inserted ahead of the current cursor
-       * window.
-       */
-      page?: number;
-      cursor?: never;
-    }
-  | {
-      page?: never;
-      /**
-       * Preferred cursor-based pagination for bundle-management queries.
-       */
-      cursor?: DatabaseBundleCursor;
-    };
-
-export type DatabaseBundleQueryOptions = {
-  where?: DatabaseBundleQueryWhere;
-  limit: number;
-  orderBy?: DatabaseBundleQueryOrder;
-} & DatabaseBundlePaginationOptions;
-
 export interface BuildPluginConfig {
   outDir?: string;
 }
@@ -541,7 +461,8 @@ export type ConfigInput = {
   signing?: SigningConfig;
   build: (args: BasePluginArgs) => Promise<BuildPlugin> | BuildPlugin;
   storage: StoragePlugin;
-  database: import("./database").BundleRepository;
+  /** A provider's database, or `standaloneRepository` for a self-hosted server. */
+  database: import("./databaseConfig").ConfiguredDatabase;
 };
 
 export interface NativeBuildOptions {

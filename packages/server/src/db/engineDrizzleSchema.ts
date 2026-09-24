@@ -2,7 +2,6 @@ import { SETTINGS_TABLE } from "../database/fence";
 import type { ResolvedSchema } from "../database/resolveSchema";
 import {
   sqlTableShapes,
-  shortSqlName,
   type SqlDialect,
   type SqlTableShape,
 } from "../database/sql/sqlSchema";
@@ -15,40 +14,18 @@ const drizzle = {
 
 const literal = (value: string) => JSON.stringify(value);
 
-/** Parents before children, so a foreign key names a table already declared. */
-const byDepth = (schema: ResolvedSchema) => {
-  const depths = new Map<string, number>();
-  const depthOf = (name: string): number => {
-    if (!depths.has(name)) {
-      depths.set(name, 0);
-      const parents = schema.models
-        .get(name)!
-        .references.filter(({ target }) => target !== name);
-      depths.set(
-        name,
-        Math.max(0, ...parents.map(({ target }) => 1 + depthOf(target))),
-      );
-    }
-    return depths.get(name)!;
-  };
-  return [...schema.tables].sort(
-    (left, right) => depthOf(left.name) - depthOf(right.name),
-  );
-};
-
 /**
  * The Drizzle schema `drizzle-kit` applies for the engine's tables: every
- * column typed exactly as the engine's DDL, keys, indexes, index tables, the
- * settings table, and foreign keys for `restrict` and `cascade` references
- * (until E2). `hot-updater db migrate` then writes only the settings rows.
+ * column typed exactly as the engine's DDL, keys, indexes, index tables, and
+ * the settings table. The engine keeps references itself, so there are no
+ * foreign keys. `hot-updater db migrate` then writes only the settings rows.
  */
 export const generateDrizzleEngineSchema = (
   dialect: SqlDialect,
   schema: ResolvedSchema,
-  options: { readonly foreignKeys?: boolean } = {},
 ): string => {
   const { module, table: tableFunction } = drizzle[dialect];
-  const tables = [...byDepth(schema), SETTINGS_TABLE];
+  const tables = [...schema.tables, SETTINGS_TABLE];
   const blocks: string[] = [];
   const emit = (shape: SqlTableShape) => {
     const columns = shape.columns.map(
@@ -65,17 +42,6 @@ export const generateDrizzleEngineSchema = (
             ]
           : [],
       ),
-      // SQLite gets none, as the shared SQL schema gives it none.
-      ...(options.foreignKeys === false || dialect === "sqlite"
-        ? []
-        : (schema.models.get(shape.name)?.references ?? []).flatMap(
-            ({ field, target, onDelete }) =>
-              onDelete === "none"
-                ? []
-                : [
-                    `foreignKey({ name: ${literal(shortSqlName(`${shape.name}_${field}_fk`))}, columns: [${at(field)}], foreignColumns: [${target}[${literal(schema.models.get(target)!.table.key[0]!)}]] }).onDelete(${literal(onDelete)})`,
-                  ],
-          )),
     ];
     blocks.push(
       `export const ${shape.name} = ${tableFunction}(${literal(shape.name)}, {\n${columns.join("\n")}\n}, (table) => [\n${extras.map((extra) => `  ${extra},`).join("\n")}\n]);`,
@@ -85,13 +51,7 @@ export const generateDrizzleEngineSchema = (
     }
   };
   for (const shape of sqlTableShapes(dialect, tables)) emit(shape);
-  const used = [
-    "customType",
-    "foreignKey",
-    "index",
-    "primaryKey",
-    "uniqueIndex",
-  ]
+  const used = ["customType", "index", "primaryKey", "uniqueIndex"]
     .filter((name) =>
       name === "customType"
         ? true

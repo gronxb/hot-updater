@@ -2,9 +2,12 @@ import fs from "fs/promises";
 import path from "path";
 import { fileURLToPath } from "url";
 
-import type { Bundle } from "@hot-updater/core";
-import type { HotUpdaterAPI } from "@hot-updater/server";
 import { drizzleAdapter } from "@hot-updater/server/adapters/drizzle";
+import { createDatabasePluginApis } from "@hot-updater/server/db";
+import {
+  createInsightsModel,
+  insights as insightsPlugin,
+} from "@hot-updater/server/plugins/insights";
 import {
   createHttpTestClient,
   setupReleaseCatalogTestSuite,
@@ -30,7 +33,6 @@ describe("Hot Updater Handler Integration Tests (Elysia)", () => {
   let serverProcess: ReturnType<typeof execa> | null = null;
   let baseUrl: string;
   let testDbPath: string;
-  let hotUpdater: HotUpdaterAPI;
   const port = 13580;
 
   beforeAll(async () => {
@@ -85,40 +87,31 @@ describe("Hot Updater Handler Integration Tests (Elysia)", () => {
     });
 
     await waitForServer(baseUrl, 180); // 180 attempts * 200ms = 36 seconds
-
-    const db = await import("./db.js");
-    hotUpdater = db.hotUpdater;
   }, 60000);
 
   afterAll(async () => {
     await cleanupServer(baseUrl, serverProcess, testDbPath);
   }, 60000);
 
-  setupBundleMethodsTestSuite({
-    getBundleById: (id: string) => hotUpdater.getBundleById(id),
-    insertBundle: (bundle: Bundle) => hotUpdater.insertBundle(bundle),
-    getBundles: (options) => hotUpdater.getBundles(options),
-    updateBundleById: (bundleId: string, newBundle: Partial<Bundle>) =>
-      hotUpdater.updateBundleById(bundleId, newBundle),
-    deleteBundleById: (bundleId: string) =>
-      hotUpdater.deleteBundleById(bundleId),
-  });
+  const getClient = () =>
+    createHttpTestClient({
+      clientBaseUrl: `${baseUrl}/hot-updater`,
+      adminBaseUrl: `${baseUrl}/hot-updater/admin`,
+      adminHeaders: { Authorization: `Bearer ${TEST_ADMIN_AUTH_TOKEN}` },
+    });
 
-  setupReleaseCatalogTestSuite({
-    getClient: () =>
-      createHttpTestClient({
-        clientBaseUrl: `${baseUrl}/hot-updater`,
-        adminBaseUrl: `${baseUrl}/hot-updater/admin`,
-        adminHeaders: { Authorization: `Bearer ${TEST_ADMIN_AUTH_TOKEN}` },
-      }),
-  });
+  setupBundleMethodsTestSuite({ getClient });
+
+  setupReleaseCatalogTestSuite({ getClient });
 
   it("rolls back a lazy Insights event whose head update fails, then records the retry", async () => {
     const { db, client } = await import("./drizzle.js");
-    const insights = drizzleAdapter({
-      db: async () => db,
-      provider: "sqlite",
-    }).models.insights;
+    const insights = createInsightsModel(
+      createDatabasePluginApis(
+        drizzleAdapter({ db: async () => db, provider: "sqlite" }),
+        [insightsPlugin()],
+      ).insights,
+    );
     const previous = {
       id: "00000000-0000-7000-8000-000000009880",
       type: "UPDATE_APPLIED" as const,

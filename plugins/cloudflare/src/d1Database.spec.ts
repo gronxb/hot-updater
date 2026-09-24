@@ -1,10 +1,9 @@
+import type { DeployReleasePolicy } from "@hot-updater/plugin-core";
+import { DatabaseConstraintError } from "@hot-updater/server/database";
+import { createDatabaseCoreApi } from "@hot-updater/server/db";
 import { beforeEach, expect, it, vi } from "vitest";
 
-import {
-  createBundleRowFixture,
-  createChannelRowFixture,
-  createReleaseRowFixture,
-} from "../../../packages/test-utils/src/databaseTestFixtures";
+import { createBundleFixture } from "../../../packages/test-utils/src/databaseTestFixtures";
 import { d1Database } from "./d1Database";
 import { createD1TestDatabase } from "./d1TestDatabase";
 
@@ -40,12 +39,24 @@ vi.mock("cloudflare", () => ({
   },
 }));
 
-const plugin = () =>
-  d1Database({
-    accountId: "account-id",
-    cloudflareApiToken: "api-token",
-    databaseId: "database-id",
-  });
+/** Core's API over the REST database, as the CLI and console run it. */
+const core = () =>
+  createDatabaseCoreApi(
+    d1Database({
+      accountId: "account-id",
+      cloudflareApiToken: "api-token",
+      databaseId: "database-id",
+    }),
+  );
+
+const release: DeployReleasePolicy = {
+  channel: "production",
+  enabled: true,
+  fingerprintHash: null,
+  message: null,
+  shouldForceUpdate: false,
+  targetAppVersion: "1.0.0",
+};
 
 beforeEach(() => {
   state.database = createD1TestDatabase();
@@ -53,14 +64,8 @@ beforeEach(() => {
 });
 
 it("binds every value as JSON text and reads it back with json_extract", async () => {
-  const channel = createChannelRowFixture("production");
-  await plugin().models.channels.insert({
-    row: channel,
-    onConflict: "returnExisting",
-  });
-  await expect(plugin().models.channels.list({})).resolves.toEqual({
-    channels: [channel],
-  });
+  const channel = await core().ensureChannel("production");
+  await expect(core().listChannels()).resolves.toEqual([channel]);
   const statements = state.bodies.flatMap(
     (body) => body.batch ?? [{ sql: body.sql!, params: body.params ?? [] }],
   );
@@ -73,52 +78,46 @@ it("binds every value as JSON text and reads it back with json_extract", async (
 });
 
 it("sends a write as one batch: the guard row, each guard, the changes, then the failure", async () => {
-  const channel = createChannelRowFixture("production");
-  const bundle = createBundleRowFixture("1");
-  const release = createReleaseRowFixture("1", bundle, channel);
-  await plugin().models.channels.insert({
-    row: channel,
-    onConflict: "returnExisting",
-  });
+  await core().ensureChannel("production");
   state.bodies = [];
-  await expect(
-    plugin().commit({
-      changes: [
-        { model: "bundles", operation: "insert", row: bundle },
-        { model: "releases", operation: "insert", row: release },
-      ],
-    }),
-  ).resolves.toEqual({ committed: true });
-  const [write] = state.bodies.filter((body) => body.batch !== undefined);
-  const sql = write!.batch!.map((statement) => statement.sql);
+  const [deployed] = await core().deploy([
+    { bundle: createBundleFixture("1"), release },
+  ]);
+  const writes = state.bodies.filter((body) => body.batch !== undefined);
+  expect(writes).toHaveLength(1);
+  const sql = writes[0]!.batch!.map((statement) => statement.sql);
   expect(sql[0]).toMatch(/^INSERT INTO "_hu_write"/u);
   expect(sql.at(-2)).toMatch(/^SELECT "failed_op" FROM "_hu_write"/u);
   expect(sql.at(-1)).toMatch(/^DELETE FROM "_hu_write"/u);
-  await expect(plugin().models.releases.findById(release.id)).resolves.toEqual(
-    release,
+  await expect(core().getRelease(deployed!.release!.id)).resolves.toEqual(
+    deployed!.release,
   );
 });
 
 it("applies nothing when a guard fails", async () => {
-  const channel = createChannelRowFixture("production");
-  const bundle = createBundleRowFixture("1");
-  const release = createReleaseRowFixture("1", bundle, channel);
-  await plugin().models.channels.insert({
-    row: channel,
-    onConflict: "returnExisting",
-  });
-  await plugin().commit({
-    changes: [
-      { model: "bundles", operation: "insert", row: bundle },
-      { model: "releases", operation: "insert", row: release },
-    ],
-  });
-  const next = createBundleRowFixture("2");
+  const bundle = createBundleFixture("2");
+  // The patch's base bundle does not exist, so the guard on its row fails.
   await expect(
-    plugin().commit({
-      expectations: [{ model: "releases", id: release.id, revision: 7 }],
-      changes: [{ model: "bundles", operation: "insert", row: next }],
-    }),
-  ).resolves.toMatchObject({ committed: false });
-  await expect(plugin().models.bundles.findById(next.id)).resolves.toBeNull();
+    core().deploy([
+      {
+        bundle: {
+          ...bundle,
+          patches: [
+            {
+              baseBundleId: createBundleFixture("1").id,
+              baseFileHash: "base-hash",
+              byteSize: 1,
+              patchFileHash: "patch-hash",
+              patchStorageUri: "storage://patches/2.patch",
+            },
+          ],
+        },
+        release,
+      },
+    ]),
+  ).rejects.toBeInstanceOf(DatabaseConstraintError);
+  await expect(core().getBundle(bundle.id)).resolves.toBeNull();
+  await expect(
+    core().listReleases({ limit: 10, filter: { kind: "all" } }),
+  ).resolves.toEqual([]);
 });

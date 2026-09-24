@@ -134,11 +134,11 @@ export {
 } from "./kv/kvAdapter";
 export { isMultiIndex } from "./sql/sqlSchema";
 export {
-  createLegacyDatabasePlugin,
-  legacyFacadeSchema,
-  legacyFacadeSettings,
-  migrateLegacyFacade,
-} from "./legacyFacade";
+  builtInSchema,
+  builtInSettings,
+  createEngineDatabase,
+  migrateBuiltInSchema,
+} from "./builtInDatabase";
 export {
   checkSchemaFence,
   isMissingSchemaError,

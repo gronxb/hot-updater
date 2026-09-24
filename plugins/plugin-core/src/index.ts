@@ -1,4 +1,3 @@
-export * from "./calculatePagination";
 export * from "./bundleStorageLayout";
 export * from "./assetStorageLayout";
 export * from "./contentAddressedAssets";
@@ -15,15 +14,13 @@ export type {
   StoredBundleDeployment,
 } from "./coreApi";
 export {
-  createDatabasePlugin,
-  DatabaseAtomicCommitUnsupportedError,
+  DatabaseBundleNotFoundError,
   DatabasePluginInputError,
-  type CreateDatabasePluginOptions,
+  DatabaseRowReferencedError,
   type DatabasePluginInputErrorCode,
-} from "./createDatabasePlugin";
+} from "./databaseErrors";
 export * from "./createStorageKeyBuilder";
 export * from "./createStoragePlugin";
-export * from "./databaseClient";
 export {
   isDatabaseMetadataObject,
   isDatabaseBundleEventMetadata,
@@ -36,9 +33,6 @@ export {
   isInsightsMovementEvent,
 } from "./insightsContract";
 export * from "./parseStorageUri";
-export * from "./paginateBundles";
-export * from "./queryBundles";
-export { createRequestBundleResolver } from "./requestBundleCache";
 export * from "./releaseCatalogCompiler";
 export * from "./releaseManagement";
 export * from "./releaseCatalogMutation";

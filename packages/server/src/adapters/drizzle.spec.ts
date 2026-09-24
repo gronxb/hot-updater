@@ -6,7 +6,7 @@ import { pathToFileURL } from "node:url";
 
 import { PGlite } from "@electric-sql/pglite";
 import {
-  setupDatabasePluginTestSuite,
+  setupDatabaseTestSuite,
   startHttpTestServer,
 } from "@hot-updater/test-utils";
 import { createClient } from "@libsql/client";
@@ -16,28 +16,26 @@ import { drizzle as pglite } from "drizzle-orm/pglite";
 import { SQLiteSyncDialect } from "drizzle-orm/sqlite-core";
 import { afterAll, describe, expect, it } from "vitest";
 
-import {
-  createBundleRowFixture,
-  createChannelRowFixture,
-  createReleaseRowFixture,
-} from "../../../test-utils/src/databaseTestFixtures";
-import {
-  legacyFacadeSchema,
-  legacyFacadeSettings,
-} from "../database/legacyFacade";
+import { createBundleFixture } from "../../../test-utils/src/databaseTestFixtures";
+import { createDatabasePluginApis } from "../assembly/databasePlugins";
+import { createInProcessCoreApi } from "../core/api";
+import { builtInSchema, builtInSettings } from "../database/builtInDatabase";
+import { createSqlAdapter } from "../database/sql/sqlAdapter";
 import { isMultiIndex, quoteSql } from "../database/sql/sqlSchema";
 import { generateEngineSql } from "../db/engineSql";
 import { HotUpdaterSchemaMigrationRequiredError } from "../db/schemaReadiness";
-import type { DatabaseAdapterWithCapabilities } from "../db/types";
+import type { ToolingDatabase } from "../db/types";
 import { createHotUpdater } from "../index";
+import { createInsightsModel, insights } from "../plugins/insights";
 import {
   drizzleAdapter,
   DrizzleTransactionUnsupportedError,
   type DrizzleProvider,
 } from "./drizzle";
+import { drizzleExecutor } from "./drizzleExecutor";
 
 /** Every data table; the settings rows stay across tests. */
-const dataTables = legacyFacadeSchema.tables.flatMap((table) => [
+const dataTables = builtInSchema.tables.flatMap((table) => [
   table.name,
   ...table.indexes
     .filter((index) => isMultiIndex(table, index))
@@ -61,7 +59,7 @@ const libsqlFile = async () => {
 };
 
 const engineSql = (dialect: "postgresql" | "sqlite") =>
-  generateEngineSql(dialect, legacyFacadeSchema, legacyFacadeSettings);
+  generateEngineSql(dialect, builtInSchema, builtInSettings);
 
 const backends = {
   postgresql: async () => {
@@ -87,17 +85,24 @@ const backends = {
 
 for (const provider of ["postgresql", "sqlite"] as const) {
   let backend: Awaited<ReturnType<(typeof backends)[typeof provider]>>;
-  setupDatabasePluginTestSuite({
+  setupDatabaseTestSuite({
     createHttpClient: (options) =>
       startHttpTestServer(
-        createHotUpdater({ ...options, clientAccess: { type: "public" } })
-          .handlers,
+        createHotUpdater({
+          ...options,
+          plugins: [insights()],
+          clientAccess: "public",
+        }).handlers,
+      ),
+    createInsightsModel: (database) =>
+      createInsightsModel(
+        createDatabasePluginApis(database, [insights()]).insights,
       ),
     name: `drizzleAdapter (${provider})`,
     migrate: async () => {
       backend = await backends[provider]();
     },
-    createPlugin: () => drizzleAdapter({ db: backend.db, provider }),
+    createDatabase: () => drizzleAdapter({ db: backend.db, provider }),
     reset: async () => {
       const quote = (name: string) => quoteSql(provider, name);
       await backend.exec(
@@ -133,50 +138,40 @@ const syncSqlite = (database: DatabaseSync) => {
   };
 };
 
-const seed = async (plugin: DatabaseAdapterWithCapabilities) => {
-  const channel = createChannelRowFixture("production");
-  const bundle = createBundleRowFixture("1");
-  const release = createReleaseRowFixture("1", bundle, channel);
-  await plugin.models.channels.insert({
-    row: channel,
-    onConflict: "returnExisting",
-  });
-  await expect(
-    plugin.commit({
-      changes: [
-        { model: "bundles", operation: "insert", row: bundle },
-        { model: "releases", operation: "insert", row: release },
-      ],
-    }),
-  ).resolves.toEqual({ committed: true });
-  return { bundle, release };
+const policy = {
+  channel: "production",
+  enabled: true,
+  fingerprintHash: null,
+  message: null,
+  shouldForceUpdate: false,
+  targetAppVersion: "1.0.0",
+};
+
+/** Deploys bundle "1" through core on the database. */
+const seed = async (database: ToolingDatabase) => {
+  const core = createInProcessCoreApi(database.adapter);
+  const bundle = createBundleFixture("1");
+  const [result] = await core.deploy([{ bundle, release: policy }]);
+  return { core, bundle, release: result!.release! };
 };
 
 describe("drizzleAdapter drivers", () => {
   it("runs a sync SQLite driver one statement at a time, with BEGIN IMMEDIATE transactions", async () => {
     const database = new DatabaseSync(":memory:");
     database.exec(engineSql("sqlite").join(";\n"));
-    const plugin = drizzleAdapter({
-      db: syncSqlite(database),
-      provider: "sqlite",
+    const { core, bundle } = await seed(
+      drizzleAdapter({ db: syncSqlite(database), provider: "sqlite" }),
+    );
+    const deploys = Array.from({ length: 8 }, (_, n) =>
+      core.deploy([
+        { bundle: createBundleFixture(String(100 + n)), release: policy },
+      ]),
+    );
+    await expect(Promise.all(deploys)).resolves.toHaveLength(8);
+    await expect(core.getBundle(bundle.id)).resolves.toMatchObject({
+      bundle: { id: bundle.id },
     });
-    const { bundle } = await seed(plugin);
-    const inserts = Array.from({ length: 8 }, (_, n) =>
-      plugin.commit({
-        changes: [
-          {
-            model: "bundles",
-            operation: "insert",
-            row: createBundleRowFixture(String(100 + n)),
-          },
-        ],
-      }),
-    );
-    await expect(Promise.all(inserts)).resolves.toHaveLength(8);
-    await expect(plugin.models.bundles.findById(bundle.id)).resolves.toEqual(
-      bundle,
-    );
-    await expect(plugin.models.bundles.count()).resolves.toBe(9);
+    await expect(core.countBundles()).resolves.toBe(9);
     database.close();
   });
 
@@ -190,36 +185,31 @@ describe("drizzleAdapter drivers", () => {
         throw new Error("No transactions support in neon-http driver");
       },
     };
-    const plugin = drizzleAdapter({
+    const database = drizzleAdapter({
       db: withoutTransactions,
       provider: "postgresql",
     });
-    const read = await plugin.models.channels
-      .list({})
+    const read = await createInProcessCoreApi(database.adapter)
+      .listChannels()
       .catch((caught: unknown) => caught);
     expect(read).toBeInstanceOf(DrizzleTransactionUnsupportedError);
     expect(String(read)).toContain("better-sqlite3");
-    // A write first cannot know whether anything was sent, but names the cause.
-    const write = await plugin
-      .commit({
-        changes: [
-          {
-            model: "bundles",
-            operation: "insert",
-            row: createBundleRowFixture("2"),
-          },
-        ],
-      })
+    // Past the fence, a deploy reads in its transaction before it writes,
+    // so it stops there, before anything is sent.
+    const write = await createInProcessCoreApi(
+      createSqlAdapter({
+        executor: drizzleExecutor(withoutTransactions, "postgresql"),
+      }),
+    )
+      .deploy([{ bundle: createBundleFixture("2"), release: policy }])
       .catch((caught: unknown) => caught);
-    expect((write as Error).cause).toBeInstanceOf(
-      DrizzleTransactionUnsupportedError,
-    );
+    expect(write).toBeInstanceOf(DrizzleTransactionUnsupportedError);
     await client.close();
   });
 
   it("resolves a lazy database on first use", async () => {
     let resolved = 0;
-    const plugin = drizzleAdapter({
+    const database = drizzleAdapter({
       db: async () => {
         resolved += 1;
         return (await backends.sqlite()).db;
@@ -227,8 +217,8 @@ describe("drizzleAdapter drivers", () => {
       provider: "sqlite",
     });
     expect(resolved).toBe(0);
-    await seed(plugin);
-    await plugin.models.channels.list({});
+    const { core } = await seed(database);
+    await core.listChannels();
     expect(resolved).toBe(1);
   });
 });
@@ -272,12 +262,12 @@ describe("drizzleAdapter schema and migrations", () => {
           : client.executeMultiple(sql);
       for (const statement of statements) await run(statement);
       const db = client instanceof PGlite ? pglite(client) : libsql(client);
-      const plugin = drizzleAdapter({ db, provider });
+      const database = drizzleAdapter({ db, provider });
 
-      await expect(plugin.models.channels.list({})).rejects.toBeInstanceOf(
-        HotUpdaterSchemaMigrationRequiredError,
-      );
-      const migrator = plugin.createMigrator!();
+      await expect(
+        createInProcessCoreApi(database.adapter).listChannels(),
+      ).rejects.toBeInstanceOf(HotUpdaterSchemaMigrationRequiredError);
+      const migrator = database.createMigrator!();
       const pending = await migrator.migrateToLatest();
       expect(pending.operations).toEqual([
         expect.objectContaining({ type: "custom" }),
@@ -287,10 +277,8 @@ describe("drizzleAdapter schema and migrations", () => {
         operations: [],
       });
       await expect(migrator.getVersion()).resolves.toBe("1.0.0");
-      const { release } = await seed(plugin);
-      await expect(
-        plugin.models.releases.findById(release.id),
-      ).resolves.toEqual(release);
+      const { core, release } = await seed(database);
+      await expect(core.getRelease(release.id)).resolves.toEqual(release);
       await (client instanceof PGlite ? client.close() : client.close());
     },
   );

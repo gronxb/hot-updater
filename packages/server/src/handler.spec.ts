@@ -2,12 +2,8 @@ import type { ReleaseCatalog } from "@hot-updater/core";
 import { Hono } from "hono";
 import { describe, expect, it, vi } from "vitest";
 
-import {
-  createHandlers,
-  createHotUpdaterHandlers,
-  type HandlerAPI,
-} from "./handler";
-import { createApi } from "./handler.testFixtures";
+import { createHotUpdaterHandlers } from "./handler";
+import { createApi, createHandlers } from "./handler.testFixtures";
 import { HOT_UPDATER_INFRASTRUCTURE_GENERATION } from "./handlerVersionRoutes";
 import { HOT_UPDATER_SERVER_VERSION } from "./version";
 
@@ -67,13 +63,11 @@ describe("createHandlers client routes", () => {
       schemaVersion: 1,
       scopeKey: "v1:fingerprint:android:cHJvZHVjdGlvbg:fingerprint-123",
     } satisfies ReleaseCatalog;
+    const api = createApi();
     const getReleaseCatalog = vi
-      .fn<NonNullable<HandlerAPI["getReleaseCatalog"]>>()
+      .spyOn(api.core, "getReleaseCatalog")
       .mockResolvedValue(catalog);
-    const handler = createHandlers({
-      ...createApi(),
-      getReleaseCatalog,
-    }).client;
+    const handler = createHandlers(api).client;
     const url =
       "http://localhost/release-catalogs/fingerprint/android/" +
       "cHJvZHVjdGlvbg/fingerprint-123";
@@ -99,35 +93,31 @@ describe("createHandlers client routes", () => {
   });
 
   it("serves client-relative storage paths under a framework mount", async () => {
-    const api = {
-      ...createApi(),
-      getArtifactInfo: vi.fn().mockResolvedValue({
-        artifactProtocolVersion: 1,
-        assets: {
-          "index.bundle": {
-            file: {
-              url: "/storage/asset-token/asset-signature",
-            },
-            fileHash: "asset-hash",
-            patch: {
-              algorithm: "bsdiff",
-              baseBundleId: "bundle-1",
-              baseFileHash: "base-hash",
-              patchFileHash: "patch-hash",
-              patchUrl: "/storage/patch-token/patch-signature",
-            },
+    const api = createApi();
+    vi.spyOn(api.core, "getArtifactInfo").mockResolvedValue({
+      artifactProtocolVersion: 1,
+      assets: {
+        "index.bundle": {
+          file: {
+            url: "/storage/asset-token/asset-signature",
+          },
+          fileHash: "asset-hash",
+          patch: {
+            algorithm: "bsdiff",
+            baseBundleId: "bundle-1",
+            baseFileHash: "base-hash",
+            patchFileHash: "patch-hash",
+            patchUrl: "/storage/patch-token/patch-signature",
           },
         },
-        manifestFileHash: "manifest-hash",
-        manifestUrl: "/storage/manifest-token/manifest-signature",
-      }),
-    };
-    const handlers = createHotUpdaterHandlers(
+      },
+      manifestFileHash: "manifest-hash",
+      manifestUrl: "/storage/manifest-token/manifest-signature",
+    });
+    const handlers = createHotUpdaterHandlers({
       api,
-      undefined,
-      undefined,
-      async () => new Response("bundle archive"),
-    );
+      downloadStorageObject: async () => new Response("bundle archive"),
+    });
     const app = new Hono();
     app.mount("/hot-updater", handlers.client);
 
@@ -161,8 +151,9 @@ describe("createHandlers client routes", () => {
   });
 
   it("serves artifact protocol v1 on an explicit route", async () => {
+    const api = createApi();
     const getArtifactInfo = vi
-      .fn<NonNullable<HandlerAPI["getArtifactInfo"]>>()
+      .spyOn(api.core, "getArtifactInfo")
       .mockResolvedValue({
         artifactProtocolVersion: 1,
         assets: {
@@ -174,10 +165,7 @@ describe("createHandlers client routes", () => {
         manifestFileHash: "manifest-hash",
         manifestUrl: "/storage/manifest-token/manifest-signature",
       });
-    const handler = createHandlers({
-      ...createApi(),
-      getArtifactInfo,
-    }).client;
+    const handler = createHandlers(api).client;
 
     const response = await handler(
       new Request("http://localhost/artifacts/v1/target/from/current"),
@@ -199,8 +187,9 @@ describe("createHandlers client routes", () => {
   });
 
   it("authenticates artifact protocol v1 before resolving artifacts", async () => {
+    const api = createApi();
     const getArtifactInfo = vi
-      .fn<NonNullable<HandlerAPI["getArtifactInfo"]>>()
+      .spyOn(api.core, "getArtifactInfo")
       .mockResolvedValue({
         artifactProtocolVersion: 1,
         assets: {},
@@ -214,11 +203,10 @@ describe("createHandlers client routes", () => {
       }
       return apiKey === "valid";
     });
-    const handler = createHotUpdaterHandlers(
-      { ...createApi(), getArtifactInfo },
-      undefined,
-      { authenticate, varyHeaders: ["x-api-key"] },
-    ).client;
+    const handler = createHotUpdaterHandlers({
+      api,
+      clientPolicy: { authenticate, varyHeaders: ["x-api-key"] },
+    }).client;
     const url = "http://localhost/artifacts/v1/target/from/current";
 
     const missing = await handler(new Request(url));
@@ -242,12 +230,10 @@ describe("createHandlers client routes", () => {
   });
 
   it("does not expose provider errors from the public client handler", async () => {
-    const api = {
-      ...createApi(),
-      getReleaseCatalog: vi
-        .fn()
-        .mockRejectedValue(new Error("private database connection details")),
-    };
+    const api = createApi();
+    vi.spyOn(api.core, "getReleaseCatalog").mockRejectedValue(
+      new Error("private database connection details"),
+    );
     const consoleError = vi
       .spyOn(console, "error")
       .mockImplementation(() => {});

@@ -56,7 +56,7 @@ const bundleEvents = defineTable(
         eq: ["platform", "channel", "type", "bundle_ref", "day"],
         sort: ["received_at_ms"],
       },
-      /** The unscoped list of the legacy Insights API; E2 removes it with that API. */
+      /** Events of every scope by day, for the console's unfiltered event list. */
       byDay: { eq: ["day"], sort: ["received_at_ms"] },
     },
   },

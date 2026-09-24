@@ -16,7 +16,7 @@ import {
 } from "../../insights/routes";
 import { markBuiltIn } from "../builtIn";
 import { definePlugin } from "../definePlugin";
-import { createInsightsModel } from "./legacyModel";
+import { createInsightsModel } from "./model";
 import {
   countEvents,
   countLatestEvents,
@@ -28,7 +28,7 @@ import {
 import { recordEvent } from "./recordEvent";
 import { insightsSchema, type InsightsSchema } from "./schema";
 
-export { createInsightsModel } from "./legacyModel";
+export { createInsightsModel } from "./model";
 export { insightsIdentity, type InsightsIdentityParts } from "./recordEvent";
 export { insightsSchema, type InsightsSchema } from "./schema";
 

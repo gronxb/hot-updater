@@ -42,16 +42,8 @@ const withApiKeys = async <T>(
 ): Promise<T> => {
   const loaded = await loadHotUpdater(options.configPath ?? "");
   try {
-    const { hotUpdater } = loaded;
-    // With plugins, keys belong to the apiKeys() plugin; without, to the
-    // deprecated database-backed API.
-    return await run(
-      requireApiKeys(
-        hotUpdater.api === undefined
-          ? hotUpdater.apiKeys
-          : hotUpdater.api.apiKeys,
-      ),
-    );
+    // Keys belong to the apiKeys() plugin in the config's plugins.
+    return await run(requireApiKeys(loaded.hotUpdater.api?.apiKeys));
   } finally {
     await loaded.dispose();
   }

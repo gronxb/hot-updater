@@ -1,13 +1,13 @@
 import type { MongoClient } from "mongodb";
 
-import { SETTINGS_TABLE } from "../database/fence";
 import {
-  createLegacyDatabasePlugin,
-  legacyFacadeSchema,
-  legacyFacadeSettings,
-} from "../database/legacyFacade";
+  builtInSchema,
+  builtInSettings,
+  createEngineDatabase,
+} from "../database/builtInDatabase";
+import { SETTINGS_TABLE } from "../database/fence";
 import { createEngineMigrator } from "../db/engineMigrator";
-import type { DatabaseAdapterWithCapabilities } from "../db/types";
+import type { ToolingDatabase } from "../db/types";
 import { createMongoAdapter } from "./mongodbAdapter";
 
 export { MongoTransactionUnsupportedError } from "./mongodbAdapter";
@@ -30,23 +30,20 @@ const readSettings = (client: MongoClient) => async () => {
 
 /**
  * Hot Updater's database on MongoDB: the storage engine's MongoDB adapter,
- * behind today's `DatabasePlugin` until E2, with the schema fence on.
- * `db migrate` creates the collections and indexes, then writes the settings.
+ * fenced by the schema settings. `db migrate` creates the collections and
+ * indexes, then writes the settings.
  */
-export const mongoAdapter = (
-  config: MongoDBConfig,
-): DatabaseAdapterWithCapabilities => {
+export const mongoAdapter = (config: MongoDBConfig): ToolingDatabase => {
   const adapter = createMongoAdapter({ client: config.client });
   return {
-    ...createLegacyDatabasePlugin({ name: "mongodb", adapter, fence: true }),
-    adapterName: "mongodb",
+    ...createEngineDatabase({ name: "mongodb", adapter }),
     provider: "mongodb",
     createMigrator: () =>
       createEngineMigrator({
         adapterName: "mongodb",
         adapter,
-        schema: legacyFacadeSchema,
-        settings: legacyFacadeSettings,
+        schema: builtInSchema,
+        settings: builtInSettings,
         readSettings: readSettings(config.client),
       }),
   };

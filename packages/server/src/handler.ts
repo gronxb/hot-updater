@@ -1,11 +1,9 @@
 import type { MountedEndpoint } from "./assembly/assemblePlugins";
 import { HotUpdaterConfigError } from "./assembly/assemblePlugins";
 import { HotUpdaterSchemaMigrationRequiredError } from "./db/schemaReadiness";
-import { createAdminV2RouteHandlers } from "./handlerAdminV2Routes";
-import { createBundleRouteHandlers } from "./handlerBundleRoutes";
+import { ADMIN_ROUTES, createAdminRouteHandlers } from "./handlerAdminRoutes";
 import { HandlerBadRequestError } from "./handlerErrors";
 import { createReleaseCatalogRouteHandlers } from "./handlerReleaseCatalogRoutes";
-import { createReleaseManagementRouteHandlers } from "./handlerReleaseManagementRoutes";
 import type {
   HandlerAPI,
   HotUpdaterHandler,
@@ -13,12 +11,7 @@ import type {
   RouteHandler,
 } from "./handlerTypes";
 import { createVersionRouteHandlers } from "./handlerVersionRoutes";
-import {
-  createInsightsRouteHandlers,
-  INSIGHTS_ROUTES,
-  insightsDisabled,
-} from "./insights/routes";
-import type { InsightsProvider } from "./insights/types";
+import { INSIGHTS_ROUTES, insightsDisabled } from "./insights/routes";
 import { addRoute, createRouter, findRoute } from "./internalRouter";
 
 export type {
@@ -46,7 +39,7 @@ const errorResponse = (error: string, status: number): Response =>
     },
   );
 
-/** The client-route policy: a plugin's clientAuth, or legacy API keys. */
+/** The client-route policy: the clientAuth of the plugin that provides it. */
 export interface ClientRoutePolicy {
   /** Request headers the decision reads; added to `Vary` on cacheable responses. */
   readonly varyHeaders: readonly string[];
@@ -188,37 +181,31 @@ const createDownloadStorageRouteHandler =
     });
   };
 
-export function createHandlers(api: HandlerAPI): HotUpdaterHandlers {
-  return createHotUpdaterHandlers(api);
-}
-
-export function createHotUpdaterHandlers(
-  api: HandlerAPI,
-  /**
-   * The legacy provider serves the Insights routes. `"disabled"` answers each
-   * one that no plugin endpoint serves with 204 and `x-hot-updater-insights: disabled`.
-   */
-  insights?: InsightsProvider | "disabled",
-  clientPolicy?: ClientRoutePolicy,
-  downloadStorageObject?: (
+export interface HotUpdaterHandlersOptions {
+  readonly api: HandlerAPI;
+  /** Absent when `clientAccess` is `"public"`. */
+  readonly clientPolicy?: ClientRoutePolicy;
+  readonly downloadStorageObject?: (
     token: string,
     signature: string,
-  ) => Promise<Response | null>,
-  endpoints: readonly MountedEndpoint[] = [],
-): HotUpdaterHandlers {
+  ) => Promise<Response | null>;
+  /** The plugins' endpoints; an Insights route none serves answers that Insights is off. */
+  readonly endpoints?: readonly MountedEndpoint[];
+}
+
+export function createHotUpdaterHandlers({
+  api,
+  clientPolicy,
+  downloadStorageObject,
+  endpoints = [],
+}: HotUpdaterHandlersOptions): HotUpdaterHandlers {
   const routeHandlers: Record<string, RouteHandler> = {
     ...createVersionRouteHandlers(),
     ...createReleaseCatalogRouteHandlers(),
-    ...createReleaseManagementRouteHandlers(),
-    ...createBundleRouteHandlers(),
-    ...createAdminV2RouteHandlers(),
-    ...(insights === undefined
-      ? {}
-      : insights === "disabled"
-        ? Object.fromEntries(
-            INSIGHTS_ROUTES.map(({ handler }) => [handler, insightsDisabled]),
-          )
-        : createInsightsRouteHandlers(insights)),
+    ...createAdminRouteHandlers(),
+    ...Object.fromEntries(
+      INSIGHTS_ROUTES.map(({ handler }) => [handler, insightsDisabled]),
+    ),
     ...(downloadStorageObject === undefined
       ? {}
       : {
@@ -252,11 +239,11 @@ export function createHotUpdaterHandlers(
             : "client",
       });
     };
+  /** The Insights routes no plugin endpoint serves, which answer that Insights is off. */
   const mountInsights = (
     access: "client" | "admin",
     add: (method: string, path: string, handler: string) => void,
   ) => {
-    if (insights === undefined) return;
     for (const route of INSIGHTS_ROUTES) {
       const served = endpoints.some(
         (endpoint) =>
@@ -264,7 +251,7 @@ export function createHotUpdaterHandlers(
           endpoint.method === route.method &&
           endpoint.path === route.path,
       );
-      if (route.access === access && !(insights === "disabled" && served)) {
+      if (route.access === access && !served) {
         add(route.method, route.path, route.handler);
       }
     }
@@ -300,37 +287,9 @@ export function createHotUpdaterHandlers(
   const addAdminRoute = mount(adminRouter, true);
   // The admin mount also reports the protocol, so a standalone client checks it where it calls.
   addAdminRoute("GET", "/version", "version");
-  addAdminRoute("POST", "/releases", "deployReleases");
-  addAdminRoute("POST", "/releases/:id/promote", "promoteRelease");
-  addAdminRoute("GET", "/releases/:id", "getRelease");
-  addAdminRoute("GET", "/releases", "getReleases");
-  addAdminRoute("PATCH", "/releases/:id", "updateRelease");
-  addAdminRoute("POST", "/releases/:id/preflight", "preflightRelease");
-  addAdminRoute("DELETE", "/releases/:id", "deleteRelease");
-  addAdminRoute("GET", "/release-catalogs/:scopeKey", "getReleaseCatalogRow");
-  addAdminRoute("GET", "/release-catalogs", "getReleaseCatalogs");
-  addAdminRoute(
-    "POST",
-    "/release-catalogs/:scopeKey/rebuild",
-    "rebuildReleaseCatalog",
-  );
-  addAdminRoute(
-    "POST",
-    "/release-catalogs/:scopeKey/preflight",
-    "preflightReleaseCatalogRebuild",
-  );
-  addAdminRoute("POST", "/database/commit", "commitDatabase");
-  addAdminRoute("GET", "/channels", "getChannels");
-  addAdminRoute("POST", "/channels", "createChannel");
-  addAdminRoute("DELETE", "/channels/:id", "deleteChannel");
-  addAdminRoute("GET", "/bundles/:id", "getBundle");
-  addAdminRoute("GET", "/bundles", "getBundles");
-  addAdminRoute("POST", "/bundles", "createBundles");
-  addAdminRoute("PATCH", "/bundles/:id", "updateBundle");
-  addAdminRoute("DELETE", "/bundles/:id", "deleteBundle");
-  addAdminRoute("POST", "/bundles/delete", "deleteBundles");
-  addAdminRoute("GET", "/bundles/:id/children", "listBundleChildren");
-  addAdminRoute("GET", "/base-candidates/:candidateKey", "findBaseCandidates");
+  for (const route of ADMIN_ROUTES) {
+    addAdminRoute(route.method, route.path, route.handler);
+  }
   mountInsights("admin", addAdminRoute);
   for (const endpoint of endpoints) {
     const name = `plugin ${endpoint.plugin}: ${endpoint.method} ${endpoint.path}`;

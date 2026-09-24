@@ -1,7 +1,7 @@
-import type { DatabasePlugin } from "@hot-updater/plugin-core";
+import type { EngineDatabase } from "@hot-updater/plugin-core";
 
 import {
-  createD1DatabasePlugin,
+  createD1Database,
   D1ExecutionError,
   type D1ResultLike,
   toSqlResult,
@@ -25,8 +25,8 @@ export interface CloudflareWorkerDatabaseEnv {
 }
 
 /** Hot Updater's database on a D1 binding, inside a Worker. */
-export const d1Database = (database: D1Like): DatabasePlugin =>
-  createD1DatabasePlugin({
+export const d1Database = (database: D1Like): EngineDatabase =>
+  createD1Database({
     query: async ({ sql, params }) =>
       toSqlResult(
         await database

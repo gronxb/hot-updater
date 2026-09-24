@@ -1,27 +1,53 @@
+import type { Deployment } from "@hot-updater/plugin-core";
 import { describe, expect, it } from "vitest";
 
 import {
-  createApi,
   createAdminHandler,
+  createApi,
   testBundle,
 } from "./handler.testFixtures";
 
-describe("createHandlers admin routes", () => {
+const BASE = "http://localhost";
+
+const send = (method: string, path: string, body?: unknown) =>
+  new Request(`${BASE}${path}`, {
+    method,
+    ...(body === undefined
+      ? {}
+      : {
+          body: JSON.stringify(body),
+          headers: { "content-type": "application/json" },
+        }),
+  });
+
+const deployment = (id: string, channel = "production"): Deployment => ({
+  bundle: { ...testBundle, id },
+  release: {
+    channel,
+    enabled: false,
+    fingerprintHash: null,
+    message: null,
+    shouldForceUpdate: false,
+    targetAppVersion: "1.0.x",
+  },
+});
+
+const BUNDLE_A = "01900000-0000-7000-8000-000000000001";
+const BUNDLE_B = "01900000-0000-7000-8000-000000000002";
+
+describe("admin routes on core", () => {
   it("does not match client routes", async () => {
-    const api = createApi();
-    const handler = createAdminHandler(api);
+    const handler = createAdminHandler();
     const response = await handler(
-      new Request(
-        "http://localhost/artifacts/v1/01900000-0000-7000-8000-000000000002/from/01900000-0000-7000-8000-000000000001",
-      ),
+      send("GET", `/artifacts/v1/${BUNDLE_B}/from/${BUNDLE_A}`),
     );
 
     expect(response.status).toBe(404);
   });
 
   it("reports the admin API protocol where standalone clients call", async () => {
-    const handler = createAdminHandler(createApi());
-    const response = await handler(new Request("http://localhost/version"));
+    const handler = createAdminHandler();
+    const response = await handler(send("GET", "/version"));
 
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toMatchObject({
@@ -29,248 +55,131 @@ describe("createHandlers admin routes", () => {
     });
   });
 
-  it("exposes the canonical Channel-row route and removes the legacy path", async () => {
-    const api = createApi();
-    const handler = createAdminHandler(api);
-
-    const response = await handler(new Request("http://localhost/channels"));
-    const legacyResponse = await handler(
-      new Request("http://localhost/bundles/channels"),
-    );
-
-    expect(response.status).toBe(200);
-    await expect(response.json()).resolves.toEqual({
-      data: {
-        channels: [{ id: "channel-production", name: "production" }],
-      },
-    });
-    expect(legacyResponse.status).toBe(404);
-  });
-
-  it("returns 201 when the canonical route inserts a Channel", async () => {
-    const api = createApi();
-    api.insertChannel.mockResolvedValueOnce({
-      row: { id: "candidate-id", name: "preview" },
-      inserted: true,
-    });
-    const handler = createAdminHandler(api);
-
-    const response = await handler(
-      new Request("http://localhost/channels", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          row: { id: "candidate-id", name: "preview" },
-          onConflict: "returnExisting",
-        }),
-      }),
-    );
-
-    expect(response.status).toBe(201);
-    await expect(response.json()).resolves.toEqual({
-      data: {
-        row: { id: "candidate-id", name: "preview" },
-        inserted: true,
-      },
-    });
-  });
-
-  it("returns the canonical row when a Channel already exists", async () => {
-    const api = createApi();
-    api.insertChannel.mockResolvedValueOnce({
-      row: { id: "canonical-id", name: "preview" },
-      inserted: false,
-    });
-    const handler = createAdminHandler(api);
-
-    const response = await handler(
-      new Request("http://localhost/channels", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          row: { id: "candidate-id", name: "preview" },
-          onConflict: "returnExisting",
-        }),
-      }),
-    );
-
-    expect(response.status).toBe(200);
-    await expect(response.json()).resolves.toEqual({
-      data: {
-        row: { id: "canonical-id", name: "preview" },
-        inserted: false,
-      },
-    });
-    expect(api.insertChannel).toHaveBeenCalledWith({
-      row: { id: "candidate-id", name: "preview" },
-      onConflict: "returnExisting",
-    });
-  });
-
   it.each([
-    { row: { name: "preview" } },
-    { row: { id: "", name: "preview" }, onConflict: "returnExisting" },
-    { row: { id: "channel-preview", name: "" }, onConflict: "returnExisting" },
-    {
-      row: { id: "channel-preview", name: "x".repeat(256) },
-      onConflict: "returnExisting",
-    },
-  ])(
-    "rejects malformed Channel insert input before persistence",
-    async (body) => {
-      const api = createApi();
-      const handler = createAdminHandler(api);
+    ["POST", "/database/commit"],
+    ["POST", "/bundles"],
+    ["DELETE", `/bundles/${BUNDLE_A}`],
+  ])("no longer serves protocol 1's %s %s", async (method, path) => {
+    const handler = createAdminHandler();
 
-      const response = await handler(
-        new Request("http://localhost/channels", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(body),
-        }),
-      );
+    const response = await handler(send(method, path, {}));
+
+    expect(response.status).toBe(404);
+  });
+
+  it("creates, finds, lists, and deletes a channel, with or without v=2", async () => {
+    const handler = createAdminHandler();
+
+    const created = await handler(
+      send("POST", "/channels", { name: "preview" }),
+    );
+    const again = await handler(
+      send("POST", "/channels?v=2", { name: "preview" }),
+    );
+    const { data: channel } = (await created.json()) as {
+      data: { id: string; name: string };
+    };
+    const found = await handler(send("GET", "/channels?name=preview"));
+    const listed = await handler(send("GET", "/channels?v=2"));
+
+    expect(created.status).toBe(200);
+    expect(channel.name).toBe("preview");
+    await expect(again.json()).resolves.toEqual({ data: channel });
+    await expect(found.json()).resolves.toEqual({ data: channel });
+    await expect(listed.json()).resolves.toEqual({ data: [channel] });
+
+    const deleted = await handler(send("DELETE", `/channels/${channel.id}`));
+    const missing = await handler(send("DELETE", `/channels/${channel.id}`));
+
+    expect(deleted.status).toBe(204);
+    await expect(deleted.text()).resolves.toBe("");
+    expect(missing.status).toBe(404);
+    await expect(missing.json()).resolves.toEqual({
+      data: { deleted: false, reason: "not_found" },
+    });
+  });
+
+  it("refuses to delete a channel a release uses", async () => {
+    const api = createApi();
+    await api.core.deploy([deployment(BUNDLE_A)]);
+    const channel = await api.core.findChannelByName("production");
+    const handler = createAdminHandler(api);
+
+    const response = await handler(send("DELETE", `/channels/${channel!.id}`));
+
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toEqual({
+      data: { deleted: false, reason: "not_empty" },
+    });
+  });
+
+  it("pages bundles by key, newest first", async () => {
+    const api = createApi();
+    await api.core.deploy([deployment(BUNDLE_A)]);
+    await api.core.deploy([deployment(BUNDLE_B)]);
+    const handler = createAdminHandler(api);
+
+    const first = await handler(send("GET", "/bundles?limit=1&total=true"));
+    const firstPage = (await first.json()) as {
+      data: { bundle: { id: string } }[];
+      next: string;
+      total: number;
+    };
+    const second = await handler(
+      send("GET", `/bundles?limit=1&cursor=${firstPage.next}`),
+    );
+    const secondPage = (await second.json()) as {
+      data: { bundle: { id: string } }[];
+    };
+
+    expect(firstPage.data.map(({ bundle }) => bundle.id)).toEqual([BUNDLE_B]);
+    expect(firstPage.total).toBe(2);
+    expect(secondPage.data.map(({ bundle }) => bundle.id)).toEqual([BUNDLE_A]);
+  });
+
+  it.each(["limit=101", "order=random", "platform=web"])(
+    "refuses the bundle list query %s",
+    async (query) => {
+      const handler = createAdminHandler();
+
+      const response = await handler(send("GET", `/bundles?${query}`));
 
       expect(response.status).toBe(400);
-      expect(api.insertChannel).not.toHaveBeenCalled();
     },
   );
 
-  it("returns no content after deleting an empty Channel", async () => {
+  it("changes a bundle's fields and refuses another bundle's id", async () => {
     const api = createApi();
-    api.deleteChannel.mockResolvedValueOnce({ deleted: true });
+    await api.core.deploy([deployment(BUNDLE_A)]);
     const handler = createAdminHandler(api);
 
-    const response = await handler(
-      new Request("http://localhost/channels/channel-preview", {
-        method: "DELETE",
-      }),
+    const updated = await handler(
+      send("PATCH", `/bundles/${BUNDLE_A}`, { gitCommitHash: "abc123" }),
+    );
+    const mismatch = await handler(
+      send("PATCH", `/bundles/${BUNDLE_A}`, { id: BUNDLE_B }),
     );
 
-    expect(response.status).toBe(204);
-    await expect(response.text()).resolves.toBe("");
+    expect(updated.status).toBe(204);
+    expect((await api.core.getBundle(BUNDLE_A))?.bundle.git_commit_hash).toBe(
+      "abc123",
+    );
+    expect(mismatch.status).toBe(400);
   });
 
-  it.each([
-    [{ deleted: false, reason: "not_found" } as const, 404],
-    [{ deleted: false, reason: "not_empty" } as const, 409],
-  ])("maps Channel deletion result %j to HTTP %i", async (result, status) => {
+  it("hard-deletes a disabled release only when confirm names it", async () => {
     const api = createApi();
-    api.deleteChannel.mockResolvedValueOnce(result);
+    const [result] = await api.core.deploy([deployment(BUNDLE_A)]);
+    const releaseId = result!.release!.id;
     const handler = createAdminHandler(api);
 
-    const response = await handler(
-      new Request("http://localhost/channels/channel-preview", {
-        method: "DELETE",
-      }),
+    const unconfirmed = await handler(send("DELETE", `/releases/${releaseId}`));
+    const deleted = await handler(
+      send("DELETE", `/releases/${releaseId}?confirm=${releaseId}`),
     );
 
-    expect(response.status).toBe(status);
-    await expect(response.json()).resolves.toEqual({ data: result });
-    expect(api.deleteChannel).toHaveBeenCalledWith({ id: "channel-preview" });
-  });
-
-  it("mounts bundle routes when explicitly enabled", async () => {
-    const api = createApi();
-    api.getBundles.mockResolvedValueOnce({
-      data: [],
-      pagination: {
-        total: 0,
-        hasNextPage: false,
-        hasPreviousPage: false,
-        currentPage: 1,
-        totalPages: 0,
-      },
-    });
-    const handler = createAdminHandler(api);
-    const response = await handler(new Request("http://localhost/bundles"));
-
-    expect(response.status).toBe(200);
-    expect(api.getBundles).toHaveBeenCalledWith({
-      cursor: undefined,
-      limit: 50,
-      page: undefined,
-      where: {},
-    });
-  });
-
-  it("forwards an explicit bundle id order direction", async () => {
-    const api = createApi();
-    const handler = createAdminHandler(api);
-
-    const response = await handler(
-      new Request("http://localhost/bundles?orderDirection=asc"),
-    );
-
-    expect(response.status).toBe(200);
-    expect(api.getBundles).toHaveBeenCalledWith({
-      cursor: undefined,
-      limit: 50,
-      orderBy: { field: "id", direction: "asc" },
-      page: undefined,
-      where: {},
-    });
-  });
-
-  it("does not treat Release policy query parameters as Bundle filters", async () => {
-    const api = createApi();
-    const handler = createAdminHandler(api);
-
-    const response = await handler(
-      new Request(
-        "http://localhost/bundles?channel=production&enabled=true&targetAppVersion=1.0.0&fingerprintHash=abc",
-      ),
-    );
-
-    expect(response.status).toBe(200);
-    expect(api.getBundles).toHaveBeenCalledWith({
-      cursor: undefined,
-      limit: 50,
-      page: undefined,
-      where: {},
-    });
-  });
-
-  it("rejects an invalid bundle id order direction", async () => {
-    const api = createApi();
-    const handler = createAdminHandler(api);
-
-    const response = await handler(
-      new Request("http://localhost/bundles?orderDirection=random"),
-    );
-
-    expect(response.status).toBe(400);
-    expect(api.getBundles).not.toHaveBeenCalled();
-  });
-
-  it.each([
-    "after=bundle-2&before=bundle-4",
-    "page=2&after=bundle-2",
-    "page=2&before=bundle-4",
-    `page=${Number.MAX_SAFE_INTEGER}`,
-  ])("rejects invalid pagination parameters: %s", async (query) => {
-    const api = createApi();
-    const handler = createAdminHandler(api);
-
-    const response = await handler(
-      new Request(`http://localhost/bundles?${query}`),
-    );
-
-    expect(response.status).toBe(400);
-    expect(api.getBundles).not.toHaveBeenCalled();
-  });
-
-  it("rejects a bundle batch before mutation when atomic insertion is unavailable", async () => {
-    const api = createApi();
-    const handler = createAdminHandler(api);
-
-    const response = await handler(
-      new Request("http://localhost/bundles", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify([testBundle, { ...testBundle, id: "bundle-2" }]),
-      }),
-    );
-
-    expect(response.status).toBe(400);
-    expect(api.insertBundle).not.toHaveBeenCalled();
+    expect(unconfirmed.status).toBe(400);
+    expect(deleted.status).toBe(200);
+    await expect(api.core.getRelease(releaseId)).resolves.toBeNull();
   });
 });

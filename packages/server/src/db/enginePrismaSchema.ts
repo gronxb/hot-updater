@@ -7,7 +7,7 @@ import {
   type SqlTableShape,
 } from "../database/sql/sqlSchema";
 
-export type PrismaProvider = "postgresql" | "mysql" | "sqlite" | "cockroachdb";
+export type PrismaProvider = "postgresql" | "mysql" | "sqlite";
 
 interface PrismaColumn {
   readonly scalar: string;
@@ -49,13 +49,11 @@ const prismaColumn = (
       collate: true,
     };
   }
-  if (provider !== "sqlite" && type.includes("COLLATE")) {
-    // CockroachDB already compares strings by their bytes.
-    const native = provider === "cockroachdb" ? "String" : "VarChar";
+  if (provider === "postgresql" && type.includes("COLLATE")) {
     return {
       scalar: "String",
-      ...(length ? { native: `@db.${native}(${length})` } : {}),
-      ...(provider === "postgresql" ? { collate: true as const } : {}),
+      ...(length ? { native: `@db.VarChar(${length})` } : {}),
+      collate: true,
     };
   }
   return { scalar: SCALARS[type] ?? "String" };
@@ -79,12 +77,7 @@ const flatten = (shapes: readonly SqlTableShape[]): SqlTableShape[] =>
   ]);
 
 const shapesOf = (provider: PrismaProvider, schema: ResolvedSchema) =>
-  flatten(
-    sqlTableShapes(provider === "cockroachdb" ? "postgresql" : provider, [
-      ...schema.tables,
-      SETTINGS_TABLE,
-    ]),
-  );
+  flatten(sqlTableShapes(provider, [...schema.tables, SETTINGS_TABLE]));
 
 const renderField = (provider: PrismaProvider, column: SqlColumnShape) => {
   const { scalar, native } = prismaColumn(provider, column);

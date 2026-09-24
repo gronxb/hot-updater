@@ -19,16 +19,11 @@ import {
   ScanCommand,
 } from "@aws-sdk/lib-dynamodb";
 import { transformEnv } from "@hot-updater/cli-tools";
+import type { Bundle } from "@hot-updater/core";
 import {
-  type Bundle,
-  createReleaseCatalogScopeKey,
-  encodeChannelKey,
-} from "@hot-updater/core";
-import {
-  commitReleaseCatalogMutations,
-  createUUIDv7,
-} from "@hot-updater/plugin-core";
-import { createApiKey, createHotUpdater } from "@hot-updater/server";
+  createHotUpdater,
+  type RuntimeHotUpdaterAPI,
+} from "@hot-updater/server";
 import { SETTINGS_TABLE } from "@hot-updater/server/database";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
@@ -42,6 +37,7 @@ import {
 } from "../../../packages/test-utils/src/runtimeProcess";
 import { cloudFrontDownloadUrl } from "../src/cloudFrontDownloadUrl";
 import { dynamoDB, migrateDynamoDB } from "../src/dynamoDB";
+import { plugins } from "../src/plugins";
 import { s3Storage } from "../src/s3Storage";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -226,69 +222,6 @@ const toRuntimeBundle = (bundle: Bundle): Bundle => {
   };
 };
 
-const seedProductionRelease = async ({
-  bundle,
-  database,
-}: {
-  readonly bundle: Bundle;
-  readonly database: ReturnType<typeof dynamoDB>;
-}) => {
-  const channelName = "production";
-  const channelKey = encodeChannelKey(channelName);
-  const channel = (
-    await database.models.channels.insert({
-      row: { id: `channel:${channelKey}`, name: channelName },
-      onConflict: "returnExisting",
-    })
-  ).row;
-  const scopeKey = createReleaseCatalogScopeKey({
-    channelKey,
-    platform: bundle.platform,
-    strategy: "APP_VERSION",
-  });
-  const now = Date.now();
-  await commitReleaseCatalogMutations({
-    database,
-    mutations: [
-      {
-        mutation: {
-          operation: "insert",
-          row: {
-            bundle_id: bundle.id,
-            channel_id: channel.id,
-            created_at_ms: now,
-            enabled: true,
-            fingerprint_hash: null,
-            id: createUUIDv7(),
-            kind: "BUNDLE",
-            message: "hello",
-            operation: "DEPLOY",
-            platform: bundle.platform,
-            revision: 1,
-            rollout_cohort_count: 1_000,
-            scope_key: scopeKey,
-            should_force_update: false,
-            source_release_id: null,
-            strategy: "APP_VERSION",
-            target_app_version: "1.0",
-            target_cohorts: [],
-            updated_at_ms: now,
-          },
-        },
-        scope: {
-          channelId: channel.id,
-          channelName,
-          fingerprintHash: null,
-          platform: bundle.platform,
-          scopeKey,
-          strategy: "APP_VERSION",
-        },
-        updatedAtMs: now,
-      },
-    ],
-  });
-};
-
 describe.sequential("aws lambda runtime acceptance", () => {
   let localstackPort = 0;
   let lambdaPort = 0;
@@ -298,7 +231,7 @@ describe.sequential("aws lambda runtime acceptance", () => {
   let localstackEndpoint = "";
   let database: ReturnType<typeof dynamoDB>;
   let rawApiKey = "";
-  let seedHotUpdater: ReturnType<typeof createHotUpdater>;
+  let seedHotUpdater: RuntimeHotUpdaterAPI<typeof plugins>;
   let s3Client: S3Client;
   let dynamodbClient: DynamoDBDocumentClient;
   let previousAwsEndpointUrl: string | undefined;
@@ -370,7 +303,7 @@ describe.sequential("aws lambda runtime acceptance", () => {
     });
     seedHotUpdater = createHotUpdater({
       database,
-      clientAccess: { type: "api-key" },
+      plugins,
       storage: [
         s3Storage({
           bucketName: S3_BUCKET_NAME,
@@ -426,8 +359,7 @@ describe.sequential("aws lambda runtime acceptance", () => {
       clearBucket(s3Client, S3_BUCKET_NAME),
       clearDynamoDBTable(dynamodbClient),
     ]);
-    const created = await createApiKey({
-      apiKeys: database.models.apiKeys,
+    const created = await seedHotUpdater.api.apiKeys.create({
       name: "Runtime test",
     });
     rawApiKey = created.apiKey;
@@ -473,8 +405,19 @@ describe.sequential("aws lambda runtime acceptance", () => {
       manifestFileHash: "manifest-hash",
       assetBaseStorageUri: "storage://assets",
     });
-    await seedHotUpdater.insertBundle(bundle);
-    await seedProductionRelease({ bundle, database });
+    await seedHotUpdater.core.deploy([
+      {
+        bundle,
+        release: {
+          channel: "production",
+          enabled: true,
+          fingerprintHash: null,
+          message: "hello",
+          shouldForceUpdate: false,
+          targetAppVersion: "1.0",
+        },
+      },
+    ]);
 
     const updatePath = "/release-catalogs/app-version/ios/cHJvZHVjdGlvbg/1.0.0";
     const unauthorizedResponse = await invokeLambda(
@@ -622,7 +565,7 @@ describe.sequential("aws lambda runtime acceptance", () => {
     });
 
     await expect(
-      database.models.insights.listEvents({
+      seedHotUpdater.api.insights.listEvents({
         filter: { kind: "all" },
         beforeReceivedAtMs: Date.now() + 1_000,
         limit: 10,

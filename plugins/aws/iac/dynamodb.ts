@@ -10,8 +10,8 @@ import {
 } from "@aws-sdk/client-dynamodb";
 import { InitError } from "@hot-updater/cli-tools";
 import {
+  builtInSettings,
   encodeKvKey,
-  legacyFacadeSettings,
   SETTINGS_TABLE,
 } from "@hot-updater/server/database";
 
@@ -116,7 +116,7 @@ export const buildDynamoDBCreateTableInput = (tableName: string) =>
 export const buildDynamoDBSchemaSettingsInput = (tableName: string) =>
   ({
     RequestItems: {
-      [tableName]: Object.entries(legacyFacadeSettings).map(([key, value]) => ({
+      [tableName]: Object.entries(builtInSettings).map(([key, value]) => ({
         PutRequest: {
           Item: {
             pk: { S: SETTINGS_TABLE.name },

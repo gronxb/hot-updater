@@ -1,8 +1,6 @@
 import path from "path";
 import { fileURLToPath } from "url";
 
-import type { Bundle } from "@hot-updater/core";
-import type { HotUpdaterAPI } from "@hot-updater/server";
 import {
   createHttpTestClient,
   setupReleaseCatalogTestSuite,
@@ -31,7 +29,6 @@ describe("Hot Updater Handler Integration Tests (Hono + MongoDB)", () => {
   let serverProcess: ReturnType<typeof execa> | null = null;
   let baseUrl: string;
   let testDbName: string;
-  let hotUpdater: HotUpdaterAPI;
   const port = 13585;
 
   beforeAll(async () => {
@@ -76,9 +73,6 @@ describe("Hot Updater Handler Integration Tests (Hono + MongoDB)", () => {
     });
 
     await waitForServer(baseUrl, 180); // 180 attempts * 200ms = 36 seconds
-
-    const db = await import("./db.js");
-    hotUpdater = db.hotUpdater;
   }, 120000);
 
   afterAll(async () => {
@@ -90,22 +84,14 @@ describe("Hot Updater Handler Integration Tests (Hono + MongoDB)", () => {
     });
   }, 60000);
 
-  setupBundleMethodsTestSuite({
-    getBundleById: (id: string) => hotUpdater.getBundleById(id),
-    insertBundle: (bundle: Bundle) => hotUpdater.insertBundle(bundle),
-    getBundles: (options) => hotUpdater.getBundles(options),
-    updateBundleById: (bundleId: string, newBundle: Partial<Bundle>) =>
-      hotUpdater.updateBundleById(bundleId, newBundle),
-    deleteBundleById: (bundleId: string) =>
-      hotUpdater.deleteBundleById(bundleId),
-  });
+  const getClient = () =>
+    createHttpTestClient({
+      clientBaseUrl: `${baseUrl}/hot-updater`,
+      adminBaseUrl: `${baseUrl}/hot-updater/admin`,
+      adminHeaders: { Authorization: `Bearer ${TEST_ADMIN_AUTH_TOKEN}` },
+    });
 
-  setupReleaseCatalogTestSuite({
-    getClient: () =>
-      createHttpTestClient({
-        clientBaseUrl: `${baseUrl}/hot-updater`,
-        adminBaseUrl: `${baseUrl}/hot-updater/admin`,
-        adminHeaders: { Authorization: `Bearer ${TEST_ADMIN_AUTH_TOKEN}` },
-      }),
-  });
+  setupBundleMethodsTestSuite({ getClient });
+
+  setupReleaseCatalogTestSuite({ getClient });
 });

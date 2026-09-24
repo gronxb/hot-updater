@@ -32,7 +32,7 @@ export const normalizeApiKeyHeaderName = (
   value: unknown = API_KEY_HEADER_NAME,
 ): string => {
   if (typeof value !== "string" || value.length === 0) {
-    throw new TypeError("clientAccess.headerName must be a valid header name.");
+    throw new TypeError("apiKeys({ headerName }) must name a valid header.");
   }
 
   try {
@@ -40,7 +40,7 @@ export const normalizeApiKeyHeaderName = (
     headers.set(value, "");
     return headers.keys().next().value!;
   } catch {
-    throw new TypeError("clientAccess.headerName must be a valid header name.");
+    throw new TypeError("apiKeys({ headerName }) must name a valid header.");
   }
 };
 
@@ -172,7 +172,6 @@ export const provisionApiKey = (input: {
 };
 
 export const authenticateApiKey = async (input: {
-  readonly beforeLookup?: () => Promise<void>;
   readonly apiKeys: ApiKeyModel;
   readonly headerName?: string;
   readonly request: Request;
@@ -182,7 +181,6 @@ export const authenticateApiKey = async (input: {
   );
   if (apiKey === null || !isApiKey(apiKey)) return false;
   const hash = await hashApiKey(apiKey);
-  await input.beforeLookup?.();
   const record = await input.apiKeys.findByHash(hash);
   return (
     record !== null &&
@@ -194,11 +192,9 @@ export const authenticateApiKey = async (input: {
 
 export const createApiKeyManagement = (input: {
   readonly apiKeys: ApiKeyModel;
-  readonly beforeOperation: () => Promise<void>;
 }): ApiKeyManagementAPI =>
   Object.freeze({
     async create({ name }: { readonly name: string }) {
-      await input.beforeOperation();
       const created = await createApiKey({ apiKeys: input.apiKeys, name });
       return Object.freeze({
         apiKey: created.apiKey,
@@ -206,11 +202,9 @@ export const createApiKeyManagement = (input: {
       });
     },
     async list() {
-      await input.beforeOperation();
       return Object.freeze((await input.apiKeys.list()).map(toApiKeyMetadata));
     },
     async revoke({ id }: { readonly id: string }) {
-      await input.beforeOperation();
       const record = await input.apiKeys.revoke({
         id,
         revokedAtMs: Date.now(),

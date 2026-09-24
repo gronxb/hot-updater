@@ -3,7 +3,7 @@ import { setTimeout as sleep } from "timers/promises";
 import { loadConfig, p } from "@hot-updater/cli-tools";
 import type {
   Bundle,
-  BundleRepository,
+  ConfiguredDatabase,
   HotUpdaterCoreApi,
   ReleaseRow,
 } from "@hot-updater/plugin-core";
@@ -115,9 +115,9 @@ const refuseNonInteractiveMutation = (action: string): never => {
   process.exit(1);
 };
 
-const safeDispose = async (databasePlugin: BundleRepository): Promise<void> => {
+const safeDispose = async (database: ConfiguredDatabase): Promise<void> => {
   try {
-    await databasePlugin.dispose?.();
+    await database.dispose?.();
   } catch (err) {
     p.log.warn(
       `Database plugin dispose failed (cleanup-only, original error preserved): ${
@@ -140,9 +140,9 @@ export const handleArtifactDelete = async (
   }
 
   const config = await loadConfig(null);
-  const databasePlugin = config.database;
+  const database = config.database;
   try {
-    const core = createDatabaseCoreApi(databasePlugin);
+    const core = createDatabaseCoreApi(database);
     const details = await Promise.all(ids.map((id) => core.getBundle(id)));
     const matchedById = new Map(
       details.flatMap((detail) =>
@@ -234,7 +234,7 @@ export const handleArtifactDelete = async (
       "Storage objects are unchanged. Preview cleanup with hot-updater storage prune --dry-run.",
     );
   } finally {
-    await safeDispose(databasePlugin);
+    await safeDispose(database);
   }
 };
 

@@ -8,15 +8,9 @@ import mysql from "mysql2/promise";
 import pg from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
-import {
-  createBundleRowFixture,
-  createChannelRowFixture,
-  createReleaseRowFixture,
-} from "../../../../test-utils/src/databaseTestFixtures";
-import {
-  createLegacyDatabasePlugin,
-  migrateLegacyFacade,
-} from "../legacyFacade";
+import { createBundleFixture } from "../../../../test-utils/src/databaseTestFixtures";
+import { createInProcessCoreApi } from "../../core/api";
+import { createEngineDatabase, migrateBuiltInSchema } from "../builtInDatabase";
 import { createSqlAdapter, type SqlExecutor } from "./sqlAdapter";
 import { WRITE_GUARD_TABLE } from "./sqlBatch";
 import { mysqlExecutor, pgBatchExecutor, pgExecutor } from "./sqlTestExecutors";
@@ -110,39 +104,38 @@ setupDatabaseAdapterConformanceSuite({
 describe.each([
   ["PostgreSQL", () => pgExecutor(postgres)],
   ["MySQL", () => mysqlExecutor(mariadb)],
-] as const)("the façade's schema on pooled %s", (name, executor) => {
-  it("migrates, passes the fence, and commits a release with its long scope key", async () => {
+] as const)("the built-in schema on pooled %s", (name, executor) => {
+  it("migrates, passes the fence, and deploys into the longest scope key", async () => {
     tests += 1;
     const adapter = createSqlAdapter({
       executor: executor(),
       tablePrefix: `f${tests}_`,
     });
-    await migrateLegacyFacade(adapter, name);
-    await migrateLegacyFacade(adapter, name);
-    const database = createLegacyDatabasePlugin({ name, adapter, fence: true });
-    const channel = createChannelRowFixture("x".repeat(255));
-    const bundle = createBundleRowFixture("901");
-    const release = {
-      ...createReleaseRowFixture("901", bundle, channel),
-      scope_key: `v1:app-version:ios:${"k".repeat(1400)}`,
-    };
-    await database.models.channels.insert({
-      row: channel,
-      onConflict: "returnExisting",
-    });
+    await migrateBuiltInSchema(adapter, name);
+    await migrateBuiltInSchema(adapter, name);
+    const core = createInProcessCoreApi(
+      createEngineDatabase({ name, adapter }).adapter,
+    );
+    // The longest channel name and fingerprint make the longest scope key.
+    const [result] = await core.deploy([
+      {
+        bundle: createBundleFixture("901"),
+        release: {
+          channel: "x".repeat(255),
+          enabled: true,
+          fingerprintHash: "f".repeat(255),
+          message: null,
+          shouldForceUpdate: false,
+          targetAppVersion: null,
+        },
+      },
+    ]);
+    const release = result!.release!;
+    expect(release.scope_key.length).toBeGreaterThan(600);
     await expect(
-      database.commit({
-        changes: [
-          { model: "bundles", operation: "insert", row: bundle },
-          { model: "releases", operation: "insert", row: release },
-        ],
-      }),
-    ).resolves.toEqual({ committed: true });
-    await expect(
-      database.models.releases.findManyByScope({
-        scopeKey: release.scope_key,
+      core.listReleases({
         limit: 10,
-        consistency: "strong",
+        filter: { kind: "scope", scopeKey: release.scope_key },
       }),
     ).resolves.toEqual([release]);
   });

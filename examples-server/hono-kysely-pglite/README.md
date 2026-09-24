@@ -68,14 +68,14 @@ credentials are rejected.
 GET /hot-updater/admin/bundles?limit=50
 ```
 
-### Create Bundle
+### Deploy Bundles
 ```bash
-POST /hot-updater/admin/bundles
+POST /hot-updater/admin/releases
 ```
 
-### Delete Bundle
+### Delete Bundles
 ```bash
-DELETE /hot-updater/admin/bundles/:id
+POST /hot-updater/admin/bundles/delete
 ```
 
 ### List Channels

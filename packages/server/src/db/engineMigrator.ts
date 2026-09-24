@@ -1,8 +1,8 @@
 import type { DatabaseAdapter } from "@hot-updater/plugin-core/internal";
 
+import { HOT_UPDATER_SCHEMA_VERSION } from "../core/schema";
 import { migrateSchema, type SchemaSettings } from "../database/fence";
 import type { ResolvedSchema } from "../database/resolveSchema";
-import { HOT_UPDATER_SCHEMA_VERSION } from "../schema/types";
 import {
   assertSupportedMigrationMode,
   getEmptyMigrationResult,
