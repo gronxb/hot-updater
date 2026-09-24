@@ -23,6 +23,7 @@
     "**/.source",
     "**/pages.gen.ts",
     "**/routeTree.gen.ts",
+    "**/__testfixtures__",
     "plugins/aws/runtime-acceptance-*",
     "plugins/firebase/runtime-acceptance-*",
     "plugins/supabase/runtime-acceptance-*"
