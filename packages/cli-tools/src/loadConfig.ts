@@ -2,13 +2,11 @@ import path from "path";
 
 import type {
   ConfigInput,
+  EngineDatabase,
   Platform,
   RequiredDeep,
 } from "@hot-updater/plugin-core";
-import {
-  createDatabasePlugin,
-  createStoragePlugin,
-} from "@hot-updater/plugin-core";
+import { createStoragePlugin } from "@hot-updater/plugin-core";
 import { merge } from "es-toolkit";
 import fg from "fast-glob";
 import { type LoadConfigOptions, loadConfig as loadUnconfig } from "unconfig";
@@ -21,97 +19,21 @@ export type HotUpdaterConfigOptions = {
   channel: string;
 } | null;
 
-const missingDatabase = createDatabasePlugin({
+const missingDatabaseError = async (): Promise<never> => {
+  throw new Error("database is required");
+};
+
+/** The default until the config names a database: every read and write refuses. */
+const missingDatabase: EngineDatabase = {
   name: "missingDatabase",
-  models: {
-    bundles: {
-      findById: async () => {
-        throw new Error("database plugin is required");
-      },
-      findMany: async () => {
-        throw new Error("database plugin is required");
-      },
-      count: async () => {
-        throw new Error("database plugin is required");
-      },
-    },
-    bundlePatches: {
-      findByBundleIds: async () => {
-        throw new Error("database plugin is required");
-      },
-    },
-    releases: {
-      findById: async () => {
-        throw new Error("database plugin is required");
-      },
-      findMany: async () => {
-        throw new Error("database plugin is required");
-      },
-      findManyByScope: async () => {
-        throw new Error("database plugin is required");
-      },
-    },
-    releaseCatalogs: {
-      findByScopeKey: async () => {
-        throw new Error("database plugin is required");
-      },
-      findMany: async () => {
-        throw new Error("database plugin is required");
-      },
-    },
-    channels: {
-      insert: async () => {
-        throw new Error("database plugin is required");
-      },
-      list: async () => {
-        throw new Error("database plugin is required");
-      },
-      delete: async () => {
-        throw new Error("database plugin is required");
-      },
-    },
-    insights: {
-      recordEvent: async () => {
-        throw new Error("database plugin is required");
-      },
-      listEvents: async () => {
-        throw new Error("database plugin is required");
-      },
-      findLatestEvents: async () => {
-        throw new Error("database plugin is required");
-      },
-      countLatestEvents: async () => {
-        throw new Error("database plugin is required");
-      },
-      countEvents: async () => {
-        throw new Error("database plugin is required");
-      },
-      getReleaseActivity: async () => {
-        throw new Error("database plugin is required");
-      },
-      getAppUsage: async () => {
-        throw new Error("database plugin is required");
-      },
-    },
-    apiKeys: {
-      create: async () => {
-        throw new Error("database plugin is required");
-      },
-      findByHash: async () => {
-        throw new Error("database plugin is required");
-      },
-      list: async () => {
-        throw new Error("database plugin is required");
-      },
-      revoke: async () => {
-        throw new Error("database plugin is required");
-      },
-    },
+  adapter: {
+    id: "missing",
+    fits: () => true,
+    get: missingDatabaseError,
+    query: missingDatabaseError,
+    write: missingDatabaseError,
   },
-  commit: async () => {
-    throw new Error("database plugin is required");
-  },
-});
+};
 
 const missingStorageError = async (): Promise<never> => {
   throw new Error("storage plugin is required");

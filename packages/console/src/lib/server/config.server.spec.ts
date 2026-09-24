@@ -2,7 +2,7 @@
 
 import { createStoragePlugin } from "@hot-updater/plugin-core";
 import { createMemoryAdapter } from "@hot-updater/plugin-core/internal";
-import { createLegacyDatabasePlugin } from "@hot-updater/server/database";
+import { apiKeys } from "@hot-updater/server/plugins/api-keys";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const { requireConsoleAccessMock, resolveConsoleConfigMock } = vi.hoisted(
@@ -22,8 +22,10 @@ vi.mock("./console-runtime.server", () => ({
 
 const request = new Request("https://console.example.com/");
 
-const createTestDatabasePlugin = (name: string) =>
-  createLegacyDatabasePlugin({ name, adapter: createMemoryAdapter() });
+const createTestDatabase = (name: string) => ({
+  name,
+  adapter: createMemoryAdapter(),
+});
 
 function createTestStoragePlugin() {
   return createStoragePlugin({
@@ -51,12 +53,13 @@ beforeEach(() => {
 
 describe("config.server", () => {
   it("caches the loaded config and reuses core and the runtime", async () => {
-    const database = createTestDatabasePlugin("db");
+    const database = createTestDatabase("db");
     const storagePlugin = createTestStoragePlugin();
 
     resolveConsoleConfigMock.mockResolvedValue({
       console: { port: 1422 },
       database,
+      plugins: [apiKeys()],
       storage: storagePlugin,
     });
 
@@ -81,7 +84,7 @@ describe("config.server", () => {
   });
 
   it("resets the cached config promise after an initialization failure", async () => {
-    const database = createTestDatabasePlugin("db");
+    const database = createTestDatabase("db");
     const storagePlugin = createTestStoragePlugin();
     const consoleErrorSpy = vi
       .spyOn(console, "error")
@@ -108,7 +111,7 @@ describe("config.server", () => {
   });
 
   it("reports a missing console storage capability", async () => {
-    const database = createTestDatabasePlugin("db");
+    const database = createTestDatabase("db");
     const storage = createStoragePlugin({
       name: "runtimeOnlyStorage",
       protocol: "s3",

@@ -14,7 +14,7 @@ import {
   putStorageFile,
 } from "@hot-updater/cli-tools";
 import type {
-  BundleRepository,
+  ConfiguredDatabase,
   HotUpdaterCoreApi,
   Platform,
   ReleaseCatalogMutationResult,
@@ -225,7 +225,7 @@ const createAutoPatches = async ({
   bundleId,
   channel,
   core,
-  databasePlugin,
+  database,
   maxBaseBundles,
   platform,
   storagePlugin,
@@ -234,7 +234,7 @@ const createAutoPatches = async ({
   bundleId: string;
   channel: string;
   core: HotUpdaterCoreApi;
-  databasePlugin: BundleRepository;
+  database: ConfiguredDatabase;
   maxBaseBundles: number;
   platform: Platform;
   storagePlugin: DeployStoragePlugin;
@@ -262,7 +262,7 @@ const createAutoPatches = async ({
           bundleId,
         },
         {
-          databasePlugin,
+          database,
           storagePlugin,
         },
         {
@@ -625,7 +625,7 @@ const getMultiPlatformDeploymentContext = ({
 const deployPlatform = async ({
   config,
   core,
-  databasePlugin,
+  database,
   deferAutoPatches,
   options,
   persistDeployment,
@@ -635,7 +635,7 @@ const deployPlatform = async ({
 }: {
   config: DeployConfig;
   core: HotUpdaterCoreApi;
-  databasePlugin: BundleRepository;
+  database: ConfiguredDatabase;
   deferAutoPatches: boolean;
   options: DeployOptions;
   persistDeployment: (input: DeploymentWrite) => Promise<void>;
@@ -1042,7 +1042,7 @@ const deployPlatform = async ({
         },
       },
       {
-        title: `📦 Updating Database (${platformName} • ${databasePlugin.name})`,
+        title: `📦 Updating Database (${platformName} • ${database.name})`,
         task: async () => {
           if (!bundleId) {
             throw new Error("Build did not return an artifact ID");
@@ -1079,7 +1079,7 @@ const deployPlatform = async ({
             }
             throw e;
           }
-          return `✅ Update Complete (${databasePlugin.name})`;
+          return `✅ Update Complete (${database.name})`;
         },
       },
     ]);
@@ -1110,7 +1110,7 @@ const deployPlatform = async ({
                   bundleId: confirmedBundleId,
                   channel,
                   core,
-                  databasePlugin,
+                  database,
                   maxBaseBundles: maxPatchBaseBundles,
                   platform,
                   storagePlugin,
@@ -1180,11 +1180,11 @@ export const deploy = async (options: DeployOptions): Promise<void> => {
   if (!firstPlatformConfig) {
     return;
   }
-  const databasePlugins = [
+  const databases = [
     ...new Set(platformConfigs.map(({ config }) => config.database)),
   ];
-  const databasePlugin = firstPlatformConfig.config.database;
-  const core = createDatabaseCoreApi(databasePlugin);
+  const database = firstPlatformConfig.config.database;
+  const core = createDatabaseCoreApi(database);
 
   const deployPlatforms = async (
     persistDeployment: (input: DeploymentWrite) => Promise<void>,
@@ -1197,7 +1197,7 @@ export const deploy = async (options: DeployOptions): Promise<void> => {
       const result = await deployPlatform({
         config,
         core,
-        databasePlugin,
+        database,
         deferAutoPatches: platforms.length > 1,
         options,
         persistDeployment,
@@ -1216,7 +1216,7 @@ export const deploy = async (options: DeployOptions): Promise<void> => {
   };
 
   try {
-    if (databasePlugins.length > 1) {
+    if (databases.length > 1) {
       throw new MultiPlatformDatabaseBoundaryError();
     }
     const rolloutPercentage = normalizeRolloutPercentage(options.rollout);
@@ -1294,6 +1294,6 @@ export const deploy = async (options: DeployOptions): Promise<void> => {
       throw error;
     }
   } finally {
-    await Promise.all(databasePlugins.map((plugin) => plugin.dispose?.()));
+    await Promise.all(databases.map((database) => database.dispose?.()));
   }
 };

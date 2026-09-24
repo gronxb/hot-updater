@@ -7,7 +7,7 @@ import {
 } from "@hot-updater/core";
 import type {
   Bundle,
-  BundleRepository,
+  ConfiguredDatabase,
   HotUpdaterCoreApi,
   StorageObject,
   StoragePluginWith,
@@ -410,9 +410,9 @@ function getPruneCandidates({
   return candidates;
 }
 
-async function safeDispose(databasePlugin: BundleRepository) {
+async function safeDispose(database: ConfiguredDatabase) {
   try {
-    await databasePlugin.dispose?.();
+    await database.dispose?.();
   } catch (error) {
     p.log.warn(
       `Database plugin dispose failed: ${error instanceof Error ? error.message : String(error)}`,
@@ -436,7 +436,7 @@ export async function handleStoragePrune(options: StoragePruneOptions = {}) {
   }
 
   const config = await loadConfig(null);
-  const databasePlugin = config.database;
+  const database = config.database;
   const loadedStoragePlugin = config.storage;
   assertStorageOperations(loadedStoragePlugin, ["get"]);
   const storagePlugin = loadedStoragePlugin;
@@ -463,7 +463,7 @@ export async function handleStoragePrune(options: StoragePruneOptions = {}) {
       );
     }
 
-    const core = createDatabaseCoreApi(databasePlugin);
+    const core = createDatabaseCoreApi(database);
     const bundles = await loadAllBundles(core);
     const liveBundleIds = new Set(
       bundles.map((bundle) => bundle.id.toLowerCase()),
@@ -555,6 +555,6 @@ export async function handleStoragePrune(options: StoragePruneOptions = {}) {
       `Pruned ${candidates.length} objects (${formatBytes(candidateBytes)}).`,
     );
   } finally {
-    await safeDispose(databasePlugin);
+    await safeDispose(database);
   }
 }

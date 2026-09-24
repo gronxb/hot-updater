@@ -8,7 +8,7 @@ import { HOT_UPDATER_SERVER_VERSION } from "@hot-updater/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { packageJsonData } from "../packageJson";
-import { createDatabasePluginHarness } from "./databasePlugin.testFixtures";
+import { createDatabaseHarness } from "./database.testFixtures";
 import {
   areVersionsCompatible,
   checkInfrastructureStatus,
@@ -51,7 +51,7 @@ vi.mock("@hot-updater/cli-tools", async (importOriginal) => ({
 const mockGetCwd = getCwd as ReturnType<typeof vi.fn>;
 const mockLoadConfig = loadConfig as ReturnType<typeof vi.fn>;
 const mockReadPackageUp = readPackageUp as ReturnType<typeof vi.fn>;
-const doctorDatabaseHarness = createDatabasePluginHarness();
+const doctorDatabaseHarness = createDatabaseHarness();
 
 const createConfig = (overrides: Record<string, unknown> = {}) => ({
   build: async () => ({
@@ -67,7 +67,7 @@ const createConfig = (overrides: Record<string, unknown> = {}) => ({
       androidManifestPaths: [],
     },
   },
-  database: doctorDatabaseHarness.plugin,
+  database: doctorDatabaseHarness.database,
   ...overrides,
 });
 

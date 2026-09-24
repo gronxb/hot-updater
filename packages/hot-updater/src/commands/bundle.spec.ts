@@ -1,9 +1,9 @@
 import { stripVTControlCharacters } from "node:util";
 
-import type { Bundle, ReleaseRow } from "@hot-updater/plugin-core";
+import type { Bundle } from "@hot-updater/plugin-core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { createDatabasePluginHarness } from "./databasePlugin.testFixtures";
+import { createDatabaseHarness } from "./database.testFixtures";
 
 const { loadConfig, log } = vi.hoisted(() => ({
   loadConfig: vi.fn(),
@@ -28,7 +28,7 @@ vi.mock("@hot-updater/cli-tools", async (importOriginal) => ({
 
 vi.mock("../utils/printBanner", () => ({ printBanner: vi.fn() }));
 
-const databaseHarness = createDatabasePluginHarness();
+const databaseHarness = createDatabaseHarness();
 
 const artifact = (
   id: string,
@@ -42,33 +42,20 @@ const artifact = (
   manifestStorageUri: `storage://artifacts/${id}/manifest.json`,
 });
 
-const releaseReference = (id: string, bundleId: string): ReleaseRow => ({
-  bundle_id: bundleId,
-  channel_id: "channel-production",
-  created_at_ms: 1,
+const policy = (channel: string, targetAppVersion = "1.0.x") => ({
+  channel,
   enabled: true,
-  fingerprint_hash: null,
-  id,
-  kind: "BUNDLE",
+  fingerprintHash: null,
   message: null,
-  operation: "DEPLOY",
-  platform: "ios",
-  revision: 1,
-  rollout_cohort_count: 1_000,
-  scope_key: "scope-production-ios",
-  should_force_update: false,
-  source_release_id: null,
-  strategy: "APP_VERSION",
-  target_app_version: "1.0.x",
-  target_cohorts: [],
-  updated_at_ms: 1,
+  shouldForceUpdate: false,
+  targetAppVersion,
 });
 
 describe("Bundle commands", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     databaseHarness.reset();
-    loadConfig.mockResolvedValue({ database: databaseHarness.plugin });
+    loadConfig.mockResolvedValue({ database: databaseHarness.database });
   });
 
   afterEach(() => {
@@ -78,37 +65,21 @@ describe("Bundle commands", () => {
   it("lists separate console IDs for promotions sharing a file", async () => {
     const bundle = artifact("00000000-0000-7000-8000-000000000001");
     const androidBundle = artifact("android-file", "android");
-    await databaseHarness.setBundles([bundle, androidBundle]);
-    for (const name of ["production", "staging"]) {
-      await databaseHarness.plugin.models.channels.insert({
-        row: { id: `channel-${name}`, name },
-        onConflict: "returnExisting",
-      });
-    }
-    const source = releaseReference(
-      "00000000-0000-7000-8000-000000000002",
-      bundle.id,
-    );
-    const promoted = {
-      ...source,
-      id: "00000000-0000-7000-8000-000000000003",
-      channel_id: "channel-staging",
-      operation: "PROMOTE" as const,
-      source_release_id: source.id,
-    };
-    const android = {
-      ...source,
-      id: "00000000-0000-7000-8000-000000000004",
-      bundle_id: androidBundle.id,
-      platform: "android" as const,
-    };
-    await databaseHarness.plugin.commit({
-      changes: [source, promoted, android].map((row) => ({
-        model: "releases",
-        operation: "insert",
-        row,
-      })),
-    });
+    const { core } = databaseHarness;
+    const [deployed] = await core.deploy([
+      { bundle, release: policy("production") },
+    ]);
+    const source = deployed!.release!;
+    const promoted = (
+      await core.promoteRelease({
+        releaseId: source.id,
+        targetChannel: "staging",
+      })
+    ).target.release!;
+    const [androidDeployed] = await core.deploy([
+      { bundle: androidBundle, release: policy("production") },
+    ]);
+    const android = androidDeployed!.release!;
     const output = vi.spyOn(console, "log").mockImplementation(() => {});
     const { handleBundleList, handleBundleShow } = await import("./bundle");
 
@@ -149,33 +120,21 @@ describe("Bundle commands", () => {
 
   it("combines the v0 channel and target app version filters", async () => {
     const bundle = artifact("00000000-0000-7000-8000-000000000011");
-    await databaseHarness.setBundles([bundle]);
-    for (const name of ["production", "staging"]) {
-      await databaseHarness.plugin.models.channels.insert({
-        row: { id: `channel-${name}`, name },
-        onConflict: "returnExisting",
-      });
-    }
-    const matching = releaseReference(
-      "00000000-0000-7000-8000-000000000012",
-      bundle.id,
-    );
-    const otherVersion = {
-      ...matching,
-      id: "00000000-0000-7000-8000-000000000013",
-      target_app_version: "2.0.x",
-    };
-    const otherChannel = {
-      ...matching,
-      id: "00000000-0000-7000-8000-000000000014",
-      channel_id: "channel-staging",
-    };
-    await databaseHarness.plugin.commit({
-      changes: [matching, otherVersion, otherChannel].map((row) => ({
-        model: "releases" as const,
-        operation: "insert" as const,
-        row,
-      })),
+    const { core } = databaseHarness;
+    const releaseOf = async (
+      deployment: Parameters<typeof core.deploy>[0][number],
+    ) => (await core.deploy([deployment]))[0]!.release!;
+    const matching = await releaseOf({
+      bundle,
+      release: policy("production"),
+    });
+    const otherVersion = await releaseOf({
+      bundleId: bundle.id,
+      release: policy("production", "2.0.x"),
+    });
+    const otherChannel = await releaseOf({
+      bundleId: bundle.id,
+      release: policy("staging"),
     });
     const output = vi.spyOn(console, "log").mockImplementation(() => {});
     const { handleBundleList } = await import("./bundle");

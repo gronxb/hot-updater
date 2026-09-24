@@ -18,8 +18,6 @@ export interface HotUpdaterInstance {
   adapterName: string;
   /** Plugin APIs by plugin id; `apiKeys` when `plugins` holds `apiKeys()`. */
   api?: { readonly apiKeys?: ApiKeyManagementAPI };
-  /** @deprecated Before plugins; `api.apiKeys` replaces it in 1.0. */
-  apiKeys?: ApiKeyManagementAPI;
 }
 
 export interface LoadHotUpdaterResult {

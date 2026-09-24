@@ -1,5 +1,5 @@
 import { loadConfig, p } from "@hot-updater/cli-tools";
-import type { BundleRepository, ReleaseRow } from "@hot-updater/plugin-core";
+import type { ConfiguredDatabase, ReleaseRow } from "@hot-updater/plugin-core";
 import { createDatabaseCoreApi } from "@hot-updater/server/db";
 
 import { printBanner } from "@/utils/printBanner";
@@ -15,7 +15,7 @@ export interface PromoteOptions {
   readonly yes?: boolean;
 }
 
-const safeDispose = async (database: BundleRepository): Promise<void> => {
+const safeDispose = async (database: ConfiguredDatabase): Promise<void> => {
   try {
     await database.dispose?.();
   } catch (error) {
