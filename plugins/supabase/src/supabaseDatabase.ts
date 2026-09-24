@@ -1,6 +1,6 @@
-import type { DatabasePlugin } from "@hot-updater/plugin-core";
+import type { EngineDatabase } from "@hot-updater/plugin-core";
 import {
-  createLegacyDatabasePlugin,
+  createEngineDatabase,
   createSqlAdapter,
 } from "@hot-updater/server/database";
 import { createClient } from "@supabase/supabase-js";
@@ -16,13 +16,13 @@ export type SupabaseDatabaseConfig = SupabaseServiceRoleConfig;
 
 /**
  * Hot Updater's database on Supabase: the storage engine through the shared
- * SQL core, behind today's `DatabasePlugin` until E2, with the schema fence
- * on. Every read and write goes through the service-role-only apply RPC.
+ * SQL core, fenced by the schema settings. Every read and write goes through
+ * the service-role-only apply RPC.
  */
 export const supabaseDatabase = (
   config: SupabaseDatabaseConfig,
-): DatabasePlugin =>
-  createLegacyDatabasePlugin({
+): EngineDatabase =>
+  createEngineDatabase({
     name: "supabaseDatabase",
     adapter: createSqlAdapter({
       executor: supabaseExecutor(
@@ -30,5 +30,4 @@ export const supabaseDatabase = (
       ),
       tablePrefix: SUPABASE_TABLE_PREFIX,
     }),
-    fence: true,
   });

@@ -1,9 +1,9 @@
 import type { BundleEventRow } from "@hot-updater/plugin-core";
 import {
+  builtInSchema,
   createDatabaseEngine,
   createKvAdapter,
-  legacyFacadeSchema,
-  migrateLegacyFacade,
+  migrateBuiltInSchema,
   type RetryOptions,
 } from "@hot-updater/server/database";
 import type { CoreReader } from "@hot-updater/server/plugins";
@@ -69,14 +69,14 @@ describe("Firestore ingestion", () => {
     const adapter = createKvAdapter({
       store: createFirestoreStore({ firestore, collection }),
     });
-    await migrateLegacyFacade(adapter, "firestore");
+    await migrateBuiltInSchema(adapter, "firestore");
     const module = { id: "insights", schema: insightsSchema } as const;
     const apiOf = (latencyMs: number, retry?: RetryOptions) =>
       insights().init({
         db: createDatabaseEngine({
           adapter:
             latencyMs > 0 ? withAdapterLatency(adapter, latencyMs) : adapter,
-          schema: legacyFacadeSchema,
+          schema: builtInSchema,
           ...(retry === undefined ? {} : { retry }),
         }).database(module),
         // Insights never reads core.

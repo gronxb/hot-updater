@@ -34,7 +34,7 @@ export function createFirestoreTestDatabase(projectId: string) {
   return {
     firestore,
     collection,
-    /** Every item but the schema settings, which the plugin checks first. */
+    /** Every item but the schema settings, which the database checks first. */
     clearData: () =>
       clear(collection, (document) => document.get("pk") === settings),
     clearCollection: (name: string) => clear(firestore.collection(name)),

@@ -3,14 +3,11 @@ import { createHash } from "node:crypto";
 import { IAM } from "@aws-sdk/client-iam";
 import { STS } from "@aws-sdk/client-sts";
 import { p } from "@hot-updater/cli-tools";
-import {
-  legacyFacadeSchema,
-  SETTINGS_TABLE,
-} from "@hot-updater/server/database";
+import { builtInSchema, SETTINGS_TABLE } from "@hot-updater/server/database";
 
 /** The partitions the plugin's items use: each table's rows, and its index items after `#`. */
 export const dynamoDBLeadingKeys = (): string[] =>
-  [...legacyFacadeSchema.tables, SETTINGS_TABLE].flatMap(({ name }) => [
+  [...builtInSchema.tables, SETTINGS_TABLE].flatMap(({ name }) => [
     name,
     `${name}#*`,
   ]);

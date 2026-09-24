@@ -1,7 +1,7 @@
-import type { DatabasePlugin } from "@hot-updater/plugin-core";
+import type { EngineDatabase } from "@hot-updater/plugin-core";
 import { kyselyExecutor } from "@hot-updater/server/adapters/kysely";
 import {
-  createLegacyDatabasePlugin,
+  createEngineDatabase,
   createSqlAdapter,
 } from "@hot-updater/server/database";
 import { Kysely, PostgresDialect, type Dialect } from "kysely";
@@ -18,16 +18,15 @@ export type PostgresConfig = PoolConfig & {
  * Kysely dialect. Apply `sql/bundles.sql` before first use; the schema fence
  * refuses a database without its settings rows.
  */
-export const postgres = (config: PostgresConfig): DatabasePlugin => {
+export const postgres = (config: PostgresConfig): EngineDatabase => {
   const { dialect, ...poolConfig } = config;
   const db = new Kysely<object>({
     dialect: dialect ?? new PostgresDialect({ pool: new Pool(poolConfig) }),
   });
   return {
-    ...createLegacyDatabasePlugin({
+    ...createEngineDatabase({
       name: "postgres",
       adapter: createSqlAdapter({ executor: kyselyExecutor(db, "postgresql") }),
-      fence: true,
     }),
     dispose: () => db.destroy(),
   };

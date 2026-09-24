@@ -74,14 +74,6 @@ CREATE UNIQUE INDEX IF NOT EXISTS "hot_updater_v1_api_keys_hash" ON "hot_updater
 
 CREATE TABLE IF NOT EXISTS "hot_updater_v1_private_hot_updater_settings" ("key" varchar(255) COLLATE "C" NOT NULL, "value" varchar(255) COLLATE "C" NOT NULL, "_v" bigint NOT NULL DEFAULT 0, PRIMARY KEY ("key"));
 
-DO $$ BEGIN ALTER TABLE "hot_updater_v1_bundle_patches" ADD CONSTRAINT "hot_updater_v1_bundle_patches_bundle_id_fk" FOREIGN KEY ("bundle_id") REFERENCES "hot_updater_v1_bundles" ("id") ON DELETE CASCADE; EXCEPTION WHEN duplicate_object THEN NULL; END $$;
-
-DO $$ BEGIN ALTER TABLE "hot_updater_v1_bundle_patches" ADD CONSTRAINT "hot_updater_v1_bundle_patches_base_bundle_id_fk" FOREIGN KEY ("base_bundle_id") REFERENCES "hot_updater_v1_bundles" ("id") ON DELETE CASCADE; EXCEPTION WHEN duplicate_object THEN NULL; END $$;
-
-DO $$ BEGIN ALTER TABLE "hot_updater_v1_releases" ADD CONSTRAINT "hot_updater_v1_releases_channel_id_fk" FOREIGN KEY ("channel_id") REFERENCES "hot_updater_v1_channels" ("id") ON DELETE RESTRICT; EXCEPTION WHEN duplicate_object THEN NULL; END $$;
-
-DO $$ BEGIN ALTER TABLE "hot_updater_v1_releases" ADD CONSTRAINT "hot_updater_v1_releases_bundle_id_fk" FOREIGN KEY ("bundle_id") REFERENCES "hot_updater_v1_bundles" ("id") ON DELETE RESTRICT; EXCEPTION WHEN duplicate_object THEN NULL; END $$;
-
 ALTER TABLE "hot_updater_v1_bundles" ENABLE ROW LEVEL SECURITY;
 
 ALTER TABLE "hot_updater_v1_bundle_patches" ENABLE ROW LEVEL SECURITY;

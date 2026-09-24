@@ -1,8 +1,8 @@
 import {
+  builtInSchema,
+  builtInSettings,
   createTableStatements,
   isMultiIndex,
-  legacyFacadeSchema,
-  legacyFacadeSettings,
   SETTINGS_TABLE,
   WRITE_GUARD_TABLE,
 } from "@hot-updater/server/database";
@@ -22,7 +22,7 @@ export {
 /** Every table the apply RPC may name: models, index tables, settings, and the write guard. */
 export const supabaseTableNames = (): string[] =>
   [
-    ...legacyFacadeSchema.tables.flatMap((table) => [
+    ...builtInSchema.tables.flatMap((table) => [
       table.name,
       ...table.indexes
         .filter((index) => isMultiIndex(table, index))
@@ -134,11 +134,11 @@ $apply$`;
 export const supabaseSchemaStatements = (): string[] => {
   const engine = generateEngineSql(
     "postgresql",
-    legacyFacadeSchema,
-    legacyFacadeSettings,
+    builtInSchema,
+    builtInSettings,
     { tablePrefix: SUPABASE_TABLE_PREFIX },
   );
-  const settings = engine.slice(-Object.keys(legacyFacadeSettings).length);
+  const settings = engine.slice(-Object.keys(builtInSettings).length);
   const tables = supabaseTableNames();
   const apply = `public.${SUPABASE_APPLY_FUNCTION}(jsonb)`;
   return [

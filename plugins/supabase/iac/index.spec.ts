@@ -1177,7 +1177,7 @@ describe("resolveEdgeFunctionDenoConfig", () => {
           ),
           "utf8",
         ),
-      ).resolves.toContain("./handler.mjs");
+      ).resolves.toContain("./createHotUpdaterCore.mjs");
 
       await expect(
         fs.readFile(

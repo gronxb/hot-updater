@@ -14,29 +14,33 @@ import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 import { resolvePackageVersion, transformEnv } from "@hot-updater/cli-tools";
-import {
-  type Bundle,
-  createReleaseCatalogScopeKey,
-  encodeChannelKey,
-} from "@hot-updater/core";
+import type { Bundle } from "@hot-updater/core";
 import {
   type BundleEventRow,
-  commitReleaseCatalogMutations,
-  createDatabaseClient,
-  createUUIDv7,
+  type HotUpdaterCoreApi,
+  rowToBundle,
 } from "@hot-updater/plugin-core";
-import { createHotUpdater, registerApiKey } from "@hot-updater/server";
+import { createHotUpdater } from "@hot-updater/server";
 import {
+  builtInSchema,
   createDatabaseEngine,
   createSqlAdapter,
-  legacyFacadeSchema,
   type RetryOptions,
 } from "@hot-updater/server/database";
+import {
+  createDatabaseCoreApi,
+  createDatabasePluginApis,
+} from "@hot-updater/server/db";
 import type { CoreReader } from "@hot-updater/server/plugins";
-import { insights, insightsSchema } from "@hot-updater/server/plugins/insights";
+import { apiKeys } from "@hot-updater/server/plugins/api-keys";
+import {
+  createInsightsModel,
+  insights,
+  insightsSchema,
+} from "@hot-updater/server/plugins/insights";
 import {
   runContentionHarness,
-  setupDatabasePluginTestSuite,
+  setupDatabaseTestSuite,
   startHttpTestServer,
   withAdapterLatency,
 } from "@hot-updater/test-utils";
@@ -58,7 +62,6 @@ import {
   SUPABASE_TABLE_PREFIX,
   supabaseTableNames,
 } from "../../src/supabaseSchema";
-import { supabaseStorage } from "../../src/supabaseStorage";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -177,67 +180,26 @@ const rolloutMove = (
     received_at_ms: receivedAt,
   }) as BundleEventRow;
 
-const seedProductionRelease = async ({
-  bundle,
-  database,
-}: {
-  readonly bundle: Bundle;
-  readonly database: ReturnType<typeof supabaseDatabase>;
-}) => {
-  const channelName = "production";
-  const channelKey = encodeChannelKey(channelName);
-  const channel = (
-    await database.models.channels.insert({
-      row: { id: `channel:${channelKey}`, name: channelName },
-      onConflict: "returnExisting",
-    })
-  ).row;
-  const scopeKey = createReleaseCatalogScopeKey({
-    channelKey,
-    platform: bundle.platform,
-    strategy: "APP_VERSION",
-  });
-  const now = Date.now();
-  await commitReleaseCatalogMutations({
-    database,
-    mutations: [
-      {
-        mutation: {
-          operation: "insert",
-          row: {
-            bundle_id: bundle.id,
-            channel_id: channel.id,
-            created_at_ms: now,
-            enabled: true,
-            fingerprint_hash: null,
-            id: createUUIDv7(),
-            kind: "BUNDLE",
-            message: "hello",
-            operation: "DEPLOY",
-            platform: bundle.platform,
-            revision: 1,
-            rollout_cohort_count: 1_000,
-            scope_key: scopeKey,
-            should_force_update: false,
-            source_release_id: null,
-            strategy: "APP_VERSION",
-            target_app_version: "1.0",
-            target_cohorts: [],
-            updated_at_ms: now,
-          },
-        },
-        scope: {
-          channelId: channel.id,
-          channelName,
-          fingerprintHash: null,
-          platform: bundle.platform,
-          scopeKey,
-          strategy: "APP_VERSION",
-        },
-        updatedAtMs: now,
+/** Writes `bundle` with an enabled production release for app version 1.0. */
+const deployToProduction = (core: HotUpdaterCoreApi, bundle: Bundle) =>
+  core.deploy([
+    {
+      bundle,
+      release: {
+        channel: "production",
+        enabled: true,
+        fingerprintHash: null,
+        message: "hello",
+        shouldForceUpdate: false,
+        targetAppVersion: "1.0",
       },
-    ],
-  });
+    },
+  ]);
+
+/** A stored bundle, in the shape it was deployed in. */
+const storedBundle = async (core: HotUpdaterCoreApi, id: string) => {
+  const detail = await core.getBundle(id);
+  return detail && rowToBundle(detail.bundle, detail.patches);
 };
 
 describe.sequential("supabase edge runtime acceptance", () => {
@@ -250,9 +212,15 @@ describe.sequential("supabase edge runtime acceptance", () => {
   let gatewayBaseUrl = "";
   let edgeRuntime: ReturnType<typeof spawnRuntime> | undefined;
   let database: ReturnType<typeof supabaseDatabase>;
-  let seedHotUpdater: ReturnType<typeof createHotUpdater>;
-  let databaseClient: ReturnType<typeof createDatabaseClient>;
+  let core: HotUpdaterCoreApi;
   let supabaseAdmin: ReturnType<typeof createClient>;
+
+  /** Registers the API key the edge function's client routes accept. */
+  const registerRuntimeApiKey = () =>
+    createDatabasePluginApis(database, [apiKeys()]).apiKeys.register({
+      apiKey: API_KEY,
+      name: "Runtime acceptance",
+    });
 
   const runDatabaseSql = (statement: string): void => {
     runCheckedCommand({
@@ -381,24 +349,8 @@ describe.sequential("supabase edge runtime acceptance", () => {
       supabaseUrl: gatewayBaseUrl,
       supabaseServiceRoleKey: SERVICE_ROLE_KEY,
     });
-    await registerApiKey({
-      apiKey: API_KEY,
-      apiKeys: database.models.apiKeys,
-      name: "Runtime acceptance",
-    });
-    databaseClient = createDatabaseClient(database);
-
-    seedHotUpdater = createHotUpdater({
-      database,
-      clientAccess: { type: "public" },
-      storage: [
-        supabaseStorage({
-          supabaseUrl: gatewayBaseUrl,
-          supabaseServiceRoleKey: SERVICE_ROLE_KEY,
-          bucketName: BUCKET_NAME,
-        }),
-      ],
-    });
+    await registerRuntimeApiKey();
+    core = createDatabaseCoreApi(database);
 
     edgeRuntime = spawnRuntime({
       command: "docker",
@@ -485,56 +437,48 @@ describe.sequential("supabase edge runtime acceptance", () => {
     }
   }, 60_000);
 
-  setupDatabasePluginTestSuite({
+  setupDatabaseTestSuite({
     name: "Supabase PostgreSQL and PostgREST conformance",
-    createPlugin: () => database,
+    createDatabase: () => database,
     migrate: () => undefined,
     reset: () => truncateDataTables(),
     dispose: async () => {
-      await registerApiKey({
-        apiKey: API_KEY,
-        apiKeys: database.models.apiKeys,
-        name: "Runtime acceptance",
-      });
+      await registerRuntimeApiKey();
     },
     createHttpClient: (options) =>
       startHttpTestServer(
-        createHotUpdater({ ...options, clientAccess: { type: "public" } })
-          .handlers,
+        createHotUpdater({
+          ...options,
+          plugins: [insights()],
+          clientAccess: "public",
+        }).handlers,
+      ),
+    createInsightsModel: (database) =>
+      createInsightsModel(
+        createDatabasePluginApis(database, [insights()]).insights,
       ),
   });
 
   it("returns one canonical Channel row under concurrent inserts", async () => {
-    const database = supabaseDatabase({
-      supabaseUrl: gatewayBaseUrl,
-      supabaseServiceRoleKey: SERVICE_ROLE_KEY,
-    });
+    const core = createDatabaseCoreApi(
+      supabaseDatabase({
+        supabaseUrl: gatewayBaseUrl,
+        supabaseServiceRoleKey: SERVICE_ROLE_KEY,
+      }),
+    );
     const channelName = "concurrent-channel";
     const results = await Promise.all([
-      database.models.channels.insert({
-        row: {
-          id: "00000000-0000-0000-0000-000000000091",
-          name: channelName,
-        },
-        onConflict: "returnExisting",
-      }),
-      database.models.channels.insert({
-        row: {
-          id: "00000000-0000-0000-0000-000000000092",
-          name: channelName,
-        },
-        onConflict: "returnExisting",
-      }),
+      core.ensureChannel(channelName),
+      core.ensureChannel(channelName),
     ]);
 
-    expect(new Set(results.map(({ row }) => row.id)).size).toBe(1);
-    expect(results.filter(({ inserted }) => inserted)).toHaveLength(1);
+    expect(new Set(results.map(({ id }) => id)).size).toBe(1);
     const stored = await supabaseAdmin
       .from("hot_updater_v1_channels")
       .select("id, name")
       .eq("name", channelName);
     if (stored.error) throw stored.error;
-    expect(stored.data).toEqual([results[0]?.row]);
+    expect(stored.data).toEqual([results[0]]);
   });
 
   it("rolls back a patch-bearing insert when one base bundle is missing", async () => {
@@ -560,11 +504,9 @@ describe.sequential("supabase edge runtime acceptance", () => {
         },
       ],
     } satisfies Bundle;
-    await databaseClient.insertBundle(base);
+    await deployToProduction(core, base);
 
-    await expect(
-      databaseClient.mutate((database) => database.insertBundle(owner)),
-    ).rejects.toBeDefined();
+    await expect(deployToProduction(core, owner)).rejects.toBeDefined();
 
     const ownerResult = await supabaseAdmin
       .from("hot_updater_v1_bundles")
@@ -606,9 +548,9 @@ describe.sequential("supabase edge runtime acceptance", () => {
           },
         ],
       } satisfies Bundle;
-      await databaseClient.insertBundle(base);
+      await deployToProduction(core, base);
 
-      await databaseClient.insertBundle(owner);
+      await deployToProduction(core, owner);
 
       const result = await supabaseAdmin
         .from("hot_updater_v1_bundles")
@@ -655,13 +597,14 @@ describe.sequential("supabase edge runtime acceptance", () => {
           },
         ],
       } satisfies Bundle;
-      await databaseClient.insertBundle(base);
+      await deployToProduction(core, base);
 
-      await databaseClient.insertBundle(owner);
+      await deployToProduction(core, owner);
 
-      await expect(
-        databaseClient.getBundleById(owner.id),
-      ).resolves.toMatchObject({ id: owner.id, patches: owner.patches });
+      await expect(storedBundle(core, owner.id)).resolves.toMatchObject({
+        id: owner.id,
+        patches: owner.patches,
+      });
     } finally {
       runDatabaseSql(
         "DROP FUNCTION public.jsonb_populate_record(public.hot_updater_v1_bundles, jsonb)",
@@ -686,32 +629,28 @@ describe.sequential("supabase edge runtime acceptance", () => {
         },
       ],
     } satisfies Bundle;
-    await databaseClient.insertBundle(base);
-    await databaseClient.insertBundle(owner);
+    await deployToProduction(core, base);
+    await deployToProduction(core, owner);
 
     await expect(
-      databaseClient.mutate((database) =>
-        database.updateBundleById(owner.id, {
-          gitCommitHash: "after",
-          patches: [
-            {
-              baseBundleId: "00000000-0000-0000-0000-000000000299",
-              baseFileHash: "hash-missing-base",
-              patchFileHash: "hash-invalid-patch",
-              patchStorageUri: "storage://invalid-patch",
-              byteSize: 3_000_000_003,
-            },
-          ],
-        }),
-      ),
+      core.updateBundle(owner.id, {
+        gitCommitHash: "after",
+        patches: [
+          {
+            baseBundleId: "00000000-0000-0000-0000-000000000299",
+            baseFileHash: "hash-missing-base",
+            patchFileHash: "hash-invalid-patch",
+            patchStorageUri: "storage://invalid-patch",
+            byteSize: 3_000_000_003,
+          },
+        ],
+      }),
     ).rejects.toBeDefined();
 
-    await expect(databaseClient.getBundleById(owner.id)).resolves.toMatchObject(
-      {
-        gitCommitHash: "before",
-        patches: owner.patches,
-      },
-    );
+    await expect(storedBundle(core, owner.id)).resolves.toMatchObject({
+      gitCommitHash: "before",
+      patches: owner.patches,
+    });
   });
 
   it("atomically applies explicit nulls and an empty patch list", async () => {
@@ -731,29 +670,24 @@ describe.sequential("supabase edge runtime acceptance", () => {
         },
       ],
     } satisfies Bundle;
-    await databaseClient.insertBundle(base);
-    await databaseClient.insertBundle(owner);
+    await deployToProduction(core, base);
+    await deployToProduction(core, owner);
 
-    await databaseClient.mutate((database) =>
-      database.updateBundleById(owner.id, {
-        gitCommitHash: null,
-        patches: [],
-      }),
-    );
+    await core.updateBundle(owner.id, {
+      gitCommitHash: null,
+      patches: [],
+    });
 
-    await expect(databaseClient.getBundleById(owner.id)).resolves.toMatchObject(
-      {
-        gitCommitHash: null,
-        patches: [],
-      },
-    );
+    await expect(storedBundle(core, owner.id)).resolves.toMatchObject({
+      gitCommitHash: null,
+      patches: [],
+    });
   });
 
   it("maps a missing aggregate update to the public not-found error", async () => {
-    const result = databaseClient.updateBundleById(
-      "00000000-0000-0000-0000-000000000401",
-      { patches: [] },
-    );
+    const result = core.updateBundle("00000000-0000-0000-0000-000000000401", {
+      patches: [],
+    });
 
     await expect(result).rejects.toMatchObject({
       name: "DatabaseBundleNotFoundError",
@@ -791,7 +725,7 @@ describe.sequential("supabase edge runtime acceptance", () => {
         db: createDatabaseEngine({
           adapter:
             latencyMs > 0 ? withAdapterLatency(adapter, latencyMs) : adapter,
-          schema: legacyFacadeSchema,
+          schema: builtInSchema,
           ...(retry === undefined ? {} : { retry }),
         }).database(module),
         // Insights never reads core.
@@ -880,8 +814,7 @@ describe.sequential("supabase edge runtime acceptance", () => {
     });
 
     await uploadBundleObject(supabaseAdmin, bundle.id);
-    await seedHotUpdater.insertBundle(bundle);
-    await seedProductionRelease({ bundle, database });
+    await deployToProduction(core, bundle);
 
     const unauthorized = await fetch(
       `http://127.0.0.1:${edgePort}${FUNCTION_BASE_PATH}/release-catalogs/app-version/ios/cHJvZHVjdGlvbg/1.0.0`,

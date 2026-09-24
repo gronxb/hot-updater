@@ -14,16 +14,21 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { transformEnv } from "@hot-updater/cli-tools";
+import type { Bundle } from "@hot-updater/core";
+import type { HotUpdaterCoreApi } from "@hot-updater/plugin-core";
 import {
-  type Bundle,
-  createReleaseCatalogScopeKey,
-  encodeChannelKey,
-} from "@hot-updater/core";
+  createInsightsProvider,
+  type InsightsProvider,
+} from "@hot-updater/server";
 import {
-  commitReleaseCatalogMutations,
-  createUUIDv7,
-} from "@hot-updater/plugin-core";
-import { createHotUpdater, registerApiKey } from "@hot-updater/server";
+  createDatabaseCoreApi,
+  createDatabasePluginApis,
+} from "@hot-updater/server/db";
+import { apiKeys } from "@hot-updater/server/plugins/api-keys";
+import {
+  createInsightsModel,
+  insights,
+} from "@hot-updater/server/plugins/insights";
 import { getApps, initializeApp } from "firebase-admin/app";
 import { getFirestore } from "firebase-admin/firestore";
 import { getStorage } from "firebase-admin/storage";
@@ -41,7 +46,6 @@ import {
   migrateFirebaseDatabase,
 } from "../../src/firebaseDatabase";
 import { FIREBASE_V1_COLLECTION } from "../../src/firebaseInfrastructureNames";
-import { firebaseStorage } from "../../src/firebaseStorage";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -115,68 +119,21 @@ const toRuntimeBundle = (bundle: Bundle, storageBucket: string): Bundle => {
   };
 };
 
-const seedProductionRelease = async ({
-  bundle,
-  database,
-}: {
-  readonly bundle: Bundle;
-  readonly database: ReturnType<typeof firebaseDatabase>;
-}) => {
-  const channelName = "production";
-  const channelKey = encodeChannelKey(channelName);
-  const channel = (
-    await database.models.channels.insert({
-      row: { id: `channel:${channelKey}`, name: channelName },
-      onConflict: "returnExisting",
-    })
-  ).row;
-  const scopeKey = createReleaseCatalogScopeKey({
-    channelKey,
-    platform: bundle.platform,
-    strategy: "APP_VERSION",
-  });
-  const now = Date.now();
-  await commitReleaseCatalogMutations({
-    database,
-    mutations: [
-      {
-        mutation: {
-          operation: "insert",
-          row: {
-            bundle_id: bundle.id,
-            channel_id: channel.id,
-            created_at_ms: now,
-            enabled: true,
-            fingerprint_hash: null,
-            id: createUUIDv7(),
-            kind: "BUNDLE",
-            message: "hello",
-            operation: "DEPLOY",
-            platform: bundle.platform,
-            revision: 1,
-            rollout_cohort_count: 1_000,
-            scope_key: scopeKey,
-            should_force_update: false,
-            source_release_id: null,
-            strategy: "APP_VERSION",
-            target_app_version: "1.0",
-            target_cohorts: [],
-            updated_at_ms: now,
-          },
-        },
-        scope: {
-          channelId: channel.id,
-          channelName,
-          fingerprintHash: null,
-          platform: bundle.platform,
-          scopeKey,
-          strategy: "APP_VERSION",
-        },
-        updatedAtMs: now,
+/** Writes `bundle` with an enabled production release for app version 1.0. */
+const deployToProduction = (core: HotUpdaterCoreApi, bundle: Bundle) =>
+  core.deploy([
+    {
+      bundle,
+      release: {
+        channel: "production",
+        enabled: true,
+        fingerprintHash: null,
+        message: "hello",
+        shouldForceUpdate: false,
+        targetAppVersion: "1.0",
       },
-    ],
-  });
-};
+    },
+  ]);
 
 describe.sequential("firebase functions runtime acceptance", () => {
   const cdnObjects = new Map<string, { body: string; contentType: string }>();
@@ -185,8 +142,8 @@ describe.sequential("firebase functions runtime acceptance", () => {
   let tempRoot: string | undefined;
   let functionsPort = 0;
   let functionsRuntime: ReturnType<typeof spawnRuntime> | undefined;
-  let database: ReturnType<typeof firebaseDatabase>;
-  let seedHotUpdater: ReturnType<typeof createHotUpdater>;
+  let core: HotUpdaterCoreApi;
+  let insightsReads: InsightsProvider;
   const projectId = process.env.GCLOUD_PROJECT ?? "";
   const firestoreHost = process.env.FIRESTORE_EMULATOR_HOST ?? "";
   const storageEmulatorHost = process.env.FIREBASE_STORAGE_EMULATOR_HOST ?? "";
@@ -297,23 +254,20 @@ exec node "${path.join(firebaseFunctionsPackagePath, "lib/bin/firebase-functions
       storageBucket,
     };
 
-    database = firebaseDatabase({ ...adminOptions });
+    const database = firebaseDatabase({ ...adminOptions });
     await migrateFirebaseDatabase({ ...adminOptions });
-    await registerApiKey({
+    const pluginApis = createDatabasePluginApis(database, [
+      insights(),
+      apiKeys(),
+    ]);
+    await pluginApis.apiKeys.register({
       apiKey: API_KEY,
-      apiKeys: database.models.apiKeys,
       name: "Runtime acceptance",
     });
-    seedHotUpdater = createHotUpdater({
-      database,
-      clientAccess: { type: "public" },
-      storage: [
-        firebaseStorage({
-          ...adminOptions,
-          cdnUrl: cdnBaseUrl,
-        }),
-      ],
-    });
+    core = createDatabaseCoreApi(database);
+    insightsReads = createInsightsProvider(
+      createInsightsModel(pluginApis.insights),
+    );
 
     functionsRuntime = spawnRuntime({
       command: "pnpm",
@@ -395,11 +349,7 @@ exec node "${path.join(firebaseFunctionsPackagePath, "lib/bin/firebase-functions
       },
       storageBucket,
     );
-    await seedHotUpdater.insertBundle(bundle);
-    await seedProductionRelease({
-      bundle,
-      database,
-    });
+    await deployToProduction(core, bundle);
 
     const unauthorized = await invokeHandler(
       "/release-catalogs/app-version/ios/cHJvZHVjdGlvbg/1.0.0",
@@ -441,7 +391,7 @@ exec node "${path.join(firebaseFunctionsPackagePath, "lib/bin/firebase-functions
       });
       expect(response.status).toBe(204);
       await expect(
-        seedHotUpdater.insights.getInstallation({ installId: event.installId }),
+        insightsReads.getInstallation({ installId: event.installId }),
       ).resolves.toMatchObject({
         username: event.username,
         latestStatus: type,
