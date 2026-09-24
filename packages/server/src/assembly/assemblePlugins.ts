@@ -5,6 +5,7 @@ import { createCoreReads, type CoreStorage } from "../core/reads";
 import { coreModule } from "../core/schema";
 import { createDatabaseEngine } from "../database/database";
 import { resolveSchema, type SchemaModule } from "../database/resolveSchema";
+import type { ModuleSchema } from "../database/schema";
 import { builtInPlugin } from "../plugins/builtIn";
 import type {
   ClientAuth,
@@ -33,7 +34,7 @@ interface PluginShape {
   readonly id: string;
   readonly provides?: { readonly clientAuth?: true };
   readonly schemaVersion: string;
-  readonly schema: SchemaModule["schema"];
+  readonly schema: ModuleSchema;
   init(context: unknown): PluginInstance;
   readonly [builtInPlugin]?: true;
 }
@@ -176,11 +177,12 @@ export const assemblePlugins = (
     if (ids.has(id)) fail(`Plugin "${id}" is registered twice.`);
     ids.add(id);
   }
-  const modules: SchemaModule[] = plugins.map((plugin) => ({
-    id: plugin.id,
-    schema: plugin.schema,
-    ...(plugin[builtInPlugin] ? {} : { namespace: plugin.id }),
-  }));
+  const modules: (SchemaModule & { readonly schema: ModuleSchema })[] =
+    plugins.map((plugin) => ({
+      id: plugin.id,
+      schema: plugin.schema,
+      ...(plugin[builtInPlugin] ? {} : { namespace: plugin.id }),
+    }));
   const engine = createDatabaseEngine({
     adapter,
     schema: resolveSchema([coreModule, ...modules]),

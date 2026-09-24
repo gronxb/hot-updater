@@ -1,26 +1,20 @@
 import type { DatabaseJson } from "@hot-updater/plugin-core/internal";
 
-export type FieldType = "string" | "integer" | "number" | "boolean" | "json";
+import type {
+  AggregateShape,
+  FieldDefinition,
+  FieldType,
+  IndexDefinition,
+  TableShape,
+} from "./definitions";
 
-export type ReferenceAction = "restrict" | "cascade" | "none";
-
-export interface FieldReference {
-  readonly model: string;
-  readonly onDelete: ReferenceAction;
-}
-
-export interface FieldDefinition<TType extends FieldType = FieldType> {
-  readonly type: TType;
-  /** Defaults to true; an optional field stores null. */
-  readonly required?: boolean;
-  /** Adds a unique index named after the field. */
-  readonly unique?: true;
-  /** Strings: the maximum length; unbounded text when absent. */
-  readonly maxLength?: number;
-  /** Strings: ASCII only, so a long key fits MySQL's 3,072-byte index limit. */
-  readonly ascii?: true;
-  readonly references?: FieldReference;
-}
+export type {
+  FieldDefinition,
+  FieldReference,
+  FieldType,
+  IndexDefinition,
+  ReferenceAction,
+} from "./definitions";
 
 export type FieldValue<TType extends FieldType> = TType extends "string"
   ? string
@@ -52,15 +46,6 @@ export interface DerivedDefinition<
   readonly multi?: true;
   /** Null, or an empty list, leaves the row out of indexes on this field. */
   compute(row: TRow): FieldValue<TType> | null | readonly FieldValue<TType>[];
-}
-
-export interface IndexDefinition<TField extends string = string> {
-  readonly eq: readonly TField[];
-  readonly sort: readonly TField[];
-  /** The eq values identify at most one row. */
-  readonly unique?: true;
-  /** `eq` starts with the key of a `model` row, which every child write bumps. */
-  readonly root?: { readonly model: string };
 }
 
 type DerivedTypes = Readonly<Record<string, FieldType>>;
@@ -104,7 +89,7 @@ export interface TableDefinition<
   TIndexes extends Indexes = Indexes,
   TKey extends readonly (keyof TFields & string)[] = readonly (keyof TFields &
     string)[],
-> {
+> extends TableShape {
   readonly kind: "table";
   readonly fields: TFields;
   readonly key: TKey;
@@ -140,19 +125,13 @@ export interface AggregateDefinition<
   TSketch extends string = string,
   TKey extends readonly (keyof TFields & string)[] = readonly (keyof TFields &
     string)[],
-> {
+> extends AggregateShape {
   readonly kind: "aggregate";
-  /** Identity fields; `key` lists them in declaration order. */
   readonly fields: TFields;
   readonly key: TKey;
-  /** Blind increments. */
   readonly counters: readonly TMetric[];
-  /** Read, merged, and written back per shard; a row at zero is deleted. */
   readonly gauges: readonly TMetric[];
-  /** HLL sketches, kept in aggregates of their own. */
   readonly distinct: readonly TSketch[];
-  /** Fixed once data exists. */
-  readonly shards: number;
   readonly indexes: TIndexes;
 }
 
