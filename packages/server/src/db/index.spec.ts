@@ -18,12 +18,12 @@ import {
 import { drizzleAdapter } from "../adapters/drizzle";
 import { kyselyAdapter } from "../adapters/kysely";
 import { prismaAdapter } from "../adapters/prisma";
+import { HotUpdaterSchemaMigrationRequiredError } from "../database/fence";
 import {
   createHotUpdater as createRuntimeHotUpdater,
   type CreateHotUpdaterOptions,
 } from "../index";
 import { createMigrator, generateSchema } from "./index";
-import { HotUpdaterSchemaMigrationRequiredError } from "./schemaReadiness";
 
 const createHotUpdater = (
   options: Omit<CreateHotUpdaterOptions, "clientAccess">,

@@ -7,7 +7,7 @@ import {
 } from "@hot-updater/plugin-core/internal";
 import { afterAll, describe, expect, it, vi } from "vitest";
 
-import { HotUpdaterSchemaMigrationRequiredError } from "../db/schemaReadiness";
+import { migrateSchema, writeSchemaSettings } from "../db/schemaSettings";
 import { createHotUpdater } from "../index";
 import {
   builtInSettings,
@@ -16,11 +16,10 @@ import {
 } from "./builtInDatabase";
 import {
   checkSchemaFence,
+  HotUpdaterSchemaMigrationRequiredError,
   isMissingSchemaError,
-  migrateSchema,
   SETTINGS_TABLE,
   withSchemaFence,
-  writeSchemaSettings,
 } from "./fence";
 import { createSqlAdapter } from "./sql/sqlAdapter";
 import { pgliteExecutor, sqliteExecutor } from "./sql/sqlTestExecutors";
