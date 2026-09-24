@@ -1,319 +1,118 @@
 ---
-title: "Database Plugin Release Catalog Contract"
-description: The normative 1.0 persistence, strong-read, and conditional-commit contract.
+title: "Release Catalog Contract"
+description: What a Release Catalog holds, how core writes it, and how the client routes serve it.
 icon: FileCheck
 ---
 
-## Status
-
-This is the normative database-provider contract for Hot Updater schema
-`1.0.0`. Use it when implementing a provider; start with the
-[custom provider guide](/docs/database-plugins/custom-database) for the
-implementation and conformance workflow. For migration from an older version,
-see [Upgrade to v1](/docs/guides/upgrade-to-v1).
-
-## Responsibility boundary
+## Responsibilities
 
 ```text
 Bundle          immutable artifact identity and storage metadata
-Release         rollout, compatibility, Channel, operation, and message policy
-ReleaseCatalog  deterministic desired-state projection for one canonical scope
-Database        canonical rows, strong reads, and atomic conditional commits
-Server          catalog compiler and unversioned client routes
-Device          catalog acceptance and local desired-state selection
+Release         rollout, compatibility, Channel and message policy for one Bundle
+ReleaseCatalog  the compiled desired state of one scope
+Core            compiles a scope's catalog with every Release change
+Database        stores rows through a storage adapter
+Device          accepts a catalog and selects its update locally
 ```
 
-A database provider persists official domains. It does not decide which
-Release an installation should run.
+A database stores rows and never decides which Release an installation runs.
+Core writes every catalog the same way on every database, so a new backend
+needs only a [storage adapter](/docs/database-plugins/custom-database). For
+migration from an older version, see
+[Move from v0 to v1](/docs/guides/upgrade-to-v1).
 
-## Public interface
+## Scopes and catalog rows
 
-```ts
-interface DatabasePlugin {
-  readonly name: string;
-  readonly models: DatabaseModels;
-  commit(input: DatabaseCommit): Promise<DatabaseCommitResult>;
-  readonly dispose?: () => Promise<void>;
-}
+A Release Catalog covers one scope: a Channel, a platform, and an update
+strategy, `APP_VERSION` or `FINGERPRINT` with a fingerprint hash. Every Release
+belongs to one scope, named by its `scope_key`.
 
-interface DatabaseModels {
-  readonly bundles: BundleModel;
-  readonly bundlePatches: BundlePatchModel;
-  readonly releases: ReleaseModel;
-  readonly releaseCatalogs: ReleaseCatalogModel;
-  readonly channels: ChannelModel;
-  readonly insights: InsightsModel;
-  readonly apiKeys: ApiKeyModel;
-}
-```
+A catalog row holds:
 
-The following are absent:
+| Field                                                                   | Meaning                                                                    |
+| ----------------------------------------------------------------------- | -------------------------------------------------------------------------- |
+| `scope_key`                                                             | The scope                                                                  |
+| `catalog_id`                                                            | An opaque identity, allocated on the scope's first write and kept after it |
+| `strategy`, `channel_id`, `channel_key`, `platform`, `fingerprint_hash` | The scope's parts                                                          |
+| `generation`                                                            | Increases by one with every write and never resets                         |
+| `payload`                                                               | The canonical catalog JSON, which only the compiler interprets             |
+| `catalog_hash`, `byte_size`                                             | The payload's SHA-256 hash and size                                        |
+| `is_tombstone`                                                          | Whether the scope has no enabled Release                                   |
+| `updated_at_ms`                                                         | When the row was written                                                   |
 
-- `DatabasePlugin.queries` and `DatabaseQueries`;
-- provider `getUpdateInfo` methods, SQL functions, or RPCs;
-- provider callback transactions and generic public CRUD;
-- Bundle policy fields and Bundle-to-Channel ownership;
-- asynchronous Release writes followed by projection repair.
+## Release changes
 
-`createDatabasePlugin` may adapt a provider's internal CRUD and transaction
-implementation, but those details are not public.
+Every Release change (a deploy, a policy update, a promotion or a deletion)
+runs in one transaction with its scope's catalog:
 
-## Artifact models
+1. Read the catalog row, the scope's enabled Releases, and, for a new Release,
+   the scope's newest Release ID.
+2. Apply the change. A new Release ID sorts after the scope's newest.
+3. Compile the enabled Releases and write the catalog's next generation.
 
-`BundleModel.findMany` applies filtering and ordering before offset and limit.
-Bundle rows contain only artifact fields: ID, platform, required manifest and
-asset storage information, Git commit, and artifact metadata. Every
-Bundle-patch row has a required `byte_size`, an immutable non-negative integer
-no larger than `Number.MAX_SAFE_INTEGER`. Provider CRUD hydration must reject a
-missing, fractional, negative, or out-of-range patch size.
+The Release reads are guarded through the catalog row, so a concurrent change
+to the same scope makes the transaction run again instead of publishing a
+stale catalog. A scope left without enabled Releases keeps its row as a
+tombstone with a higher generation.
 
-`BundlePatchModel.findByBundleIds` returns all patch rows owned by the requested
-Bundle IDs. It returns immediately for an empty owner list.
+The compiler keeps a frontier of 11 artifacts for update and crash selection,
+plus every compatible enabled Release, so a rollback can find the predecessor
+of any active Release. Rollback candidates ignore rollout and target cohorts.
+The catalog is never truncated: a change whose compiled catalog exceeds
+256 KiB fails before anything is written, and the previous Releases and
+catalog stay.
 
-Manifest asset JSON may include optional `downloadByteSize` and
-`downloadFileHash` fields. These are not database columns. `downloadByteSize`
-describes the exact representation served to the client. When that differs
-from the logical file, a valid lowercase SHA-256 `downloadFileHash` identifies
-those exact served bytes and their content-addressed object key. For example, a
-Brotli asset records the compressed payload size and hash while `fileHash`
-continues to identify the logical installed file. Raw assets use the logical
-`fileHash` key and may omit `downloadFileHash`. A missing or invalid
-`downloadByteSize`, an invalid present `downloadFileHash`, or a missing hash for
-a transformed representation keeps legacy resolution behavior and makes the
-size comparison unknown; it does not invalidate the Bundle row.
+Rebuilding a catalog recompiles it from the scope's enabled Releases and writes
+it only when the result changed. Back up catalog rows together with Releases: a
+scope that has Releases but no catalog row refuses deploys and rebuilds until
+the row is restored, because its identity and generation history cannot be
+recovered from the Releases.
 
-A Bundle referenced by any Release cannot be deleted. Release policy changes
-never mutate a Bundle.
-
-### Artifact response
-
-Protocol v1 returns the manifest URL and hash plus an original descriptor for
-every target file. A changed Hermes file may also include a patch when it is
-strictly smaller than the original transfer. The original remains mandatory so
-the client can recover from a missing base file, corrupt base, or patch failure.
-
-## Release model
-
-```ts
-interface ReleaseModel {
-  findById(id: string): Promise<ReleaseRow | null>;
-  findMany(input: {
-    beforeReleaseId?: string;
-    bundleId?: string;
-    channelId?: string;
-    enabled?: boolean;
-    platform?: "ios" | "android";
-    limit: number;
-  }): Promise<readonly ReleaseRow[]>;
-  findManyByScope(input: {
-    scopeKey: string;
-    afterReleaseId?: string;
-    limit: number;
-    consistency: "strong";
-  }): Promise<readonly ReleaseRow[]>;
-}
-```
-
-`findMany` is a newest-first management query. `findManyByScope` is an
-ascending, exclusive-keyset compiler scan over canonical primary storage. It
-must be strongly consistent. A provider may not satisfy it with an eventual
-secondary index or an unordered scan.
-
-A Release has a canonical lowercase UUIDv7 `id`, a monotonically increasing
-`revision`, one canonical `scope_key`, one Channel, platform, compatibility
-strategy, rollout/target policy, operation lineage, and timestamps. Newly
-authored Releases are `BUNDLE` Releases and reference a same-platform Bundle.
-`EMBEDDED` kind and `ROLLBACK` operation values are accepted only to read
-pre-1.0 development data; management APIs do not create them and the compiler
-does not emit them into new catalogs. Operational rollback updates the current
-Release to `enabled=false` without changing its ID.
-
-## Catalog model
-
-```ts
-interface ReleaseCatalogModel {
-  findByScopeKey(scopeKey: string): Promise<ReleaseCatalogRow | null>;
-  findMany(input: {
-    afterScopeKey?: string;
-    limit: number;
-  }): Promise<readonly ReleaseCatalogRow[]>;
-}
-```
-
-The runtime read is an exact point lookup by scope key. The ordered list exists
-for preflight, migration, and deterministic rebuild. Providers treat `payload`
-as canonical opaque JSON and do not evaluate it.
-
-Catalog rows include an automatically allocated opaque identity, strategy, Channel identity, platform,
-optional fingerprint, generation, canonical hash, byte size, tombstone state,
-and update time. A logical Release mutation increments every affected catalog
-generation. An empty scope remains as a newer tombstone row; generation never
-resets by deleting a catalog.
-
-## Channels, Insights, and API keys
-
-Channels use opaque IDs and exact case-sensitive names. Concurrent
-`insert({ onConflict: "returnExisting" })` returns the canonical stored row.
-An empty Channel remains visible. Its reference check and explicit deletion
-are atomic against Releases.
-
-Insights uses `recordEvent`, `listEvents`, `findLatestEvents`, `countLatestEvents`,
-and `countEvents`. Core prepares reports and product views; providers own
-immutable event storage, any private latest-event copies, and fixed native queries. See the
-[Insights contract](./custom-database#insights) for ordering and count semantics.
-Transition rows carry directional Release identity alongside Bundle identity.
-Old nullable Release IDs remain valid and are never inferred from Bundle ID.
-
-API key creation is idempotent by hash. Lookup, stable list ordering, and
-revocation semantics are unchanged.
-
-## Declarative conditional commit
-
-```ts
-interface DatabaseCommit {
-  readonly changes: readonly DatabaseChange[];
-  readonly expectations?: readonly DatabaseCommitExpectation[];
-}
-
-type DatabaseCommitExpectation =
-  | { model: "releases"; id: string; revision: number | null }
-  | {
-      model: "releaseCatalogs";
-      scopeKey: string;
-      generation: number | null;
-    };
-```
-
-Release changes support insert, update, and delete. Catalog changes use
-`{ model: "releaseCatalogs", operation: "put", row }`. Bundle, patch,
-Channel, Insights, and API key changes retain their declared operations.
-
-The provider performs these steps inside one short native transaction:
-
-1. Check all expectations against canonical rows. `null` means absent.
-2. Validate references and ordered changes.
-3. Apply every change.
-4. Commit all results together.
-
-An expectation mismatch returns no writes:
-
-```ts
-{
-  committed: false,
-  conflict: {
-    changeIndex: -1,
-    reason: "version_conflict",
-    model: "releases" | "releaseCatalogs",
-    key: string,
-    expectedVersion: number | null,
-    actualVersion: number | null,
-  },
-}
-```
-
-An expected missing update or referenced delete reports its original
-`changeIndex`. Constraint, validation, connection, and provider failures reject
-the Promise. A provider without an atomic conditional primitive rejects before
-its first write.
-
-## Compiler snapshot protocol
-
-Compilation occurs outside the write transaction:
+## Client routes
 
 ```text
-strongly read current Release revisions and catalog generations
-  -> strongly keyset-page every affected Release scope
-  -> apply requested mutation in memory
-  -> compile, canonicalize, hash, and size-check catalogs
-  -> conditionally commit Release changes and all catalog rows
-  -> retry a bounded VERSION_CONFLICT
-```
-
-The generation expectation invalidates a paged read series crossed by a
-concurrent mutation. Providers must not hold a transaction open while parsing
-or compiling a large history.
-
-The compiler keeps a bounded 11-artifact frontier for newer update and crash
-selection, plus the complete compatible enabled Release spine needed to find
-the predecessor of any active Release. Rollback candidates ignore rollout and
-target cohorts. This rollback spine is intentionally linear in compatible
-enabled history. It is never silently truncated; if the
-canonical catalog exceeds 256 KiB, the Release mutation fails before the atomic
-commit and the previous Release/catalog state remains unchanged.
-
-Required provider mappings:
-
-| Provider              | Strong compiler read                                  | Conditional write                                   |
-| --------------------- | ----------------------------------------------------- | --------------------------------------------------- |
-| DynamoDB              | base-table scope partition with `ConsistentRead=true` | `TransactWrite` condition checks                    |
-| Firestore             | strong server document/query reads                    | transaction preconditions                           |
-| PostgreSQL/Supabase   | ordered primary reads                                 | revision/generation predicates in one transaction   |
-| D1                    | ordered primary reads                                 | batch whose failed predicate aborts every statement |
-| MongoDB               | deterministic majority reads                          | short write transaction with predicates             |
-| Drizzle/Kysely/Prisma | adapter's ordered canonical query                     | adapter's real transaction and affected-row checks  |
-
-## Schema 1.0.0 bootstrap
-
-`hot-updater db migrate` creates the complete schema `1.0.0` on empty storage
-and no-ops at `1.0.0`. Record `schema.core` only after successful
-initialization. Generate ORM artifacts with `hot-updater db generate` and apply
-emitted companion collation SQL for Prisma PostgreSQL/MySQL.
-
-1. On empty storage, create the seven models with their indexes and references.
-2. Record `schema.core = 1.0.0` after successful creation.
-3. Leave initialized `1.0.0` storage unchanged on subsequent calls.
-
-Managed initialization rejects incompatible infrastructure before mutating it.
-
-Insights requirements are documented in the
-[custom provider guide](./custom-database#insights).
-
-## Runtime route boundary
-
-The shared device endpoints are:
-
-```text
-GET /release-catalogs/app-version/:platform/:channelKey/:canonicalAppVersion
+GET /release-catalogs/app-version/:platform/:channelKey/:appVersion
 GET /release-catalogs/fingerprint/:platform/:channelKey/:fingerprintHash
 GET /artifacts/v1/:targetBundleId/from/:currentBundleId
 ```
 
-Catalog URLs contain no installation state. Successful catalog responses are
-short-lived shared-cacheable and vary by content encoding and the configured
-API key header (`x-api-key` by default, or `clientAccess.headerName`).
-Authentication errors, missing/incomplete catalogs, and server errors are
-`private, no-store`. Artifact resolution remains Bundle-keyed and private.
+The update check is one point read of the scope's catalog row; it scans no
+Releases or Bundles. Artifact resolution reads both Bundles in one batch and
+their patch with one unique read. Catalog URLs carry no installation state:
+the device selects its update from the catalog.
 
-Catalog identity is allocated by the shared compiler on the first atomic commit
-and retained across mutations, rebuilds, and tombstones. Plugins persist it
-unchanged; applications and server configuration do not supply it. Backups must
-include Catalog rows: rebuilding a missing row from existing Releases would lose
-its identity and generation history, so that operation requires restoring the row.
-Custom GraphQL, RPC, or other transports must sit behind an HTTP adapter or
-proxy that exposes these routes. Successful shared responses must keep a
-stable cache partition; responses affected by arbitrary request context must
-remain `private, no-store`.
+| Answer                                                                        | Status and headers                                                                                                                                                                                                                        |
+| ----------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| The scope's catalog                                                           | `200` with `cache-control: public, max-age=0, s-maxage=5`, an `etag`, and `vary: Accept-Encoding` plus the header of the plugin that provides client auth, such as `x-api-key` for `apiKeys()`. A matching `If-None-Match` answers `304`. |
+| No catalog for the scope                                                      | `404`                                                                                                                                                                                                                                     |
+| An app version in a form other than its canonical one                         | `400`                                                                                                                                                                                                                                     |
+| A missing or invalid client key                                               | `401`                                                                                                                                                                                                                                     |
+| Client auth that cannot read its keys, or a database the schema fence refuses | `503`                                                                                                                                                                                                                                     |
+| An artifact                                                                   | `200`                                                                                                                                                                                                                                     |
 
-## Standalone boundary
+Every answer other than a catalog and its `304` is `private, no-store`. A
+shared cache in front of the client routes keys a catalog by host, path,
+`Accept-Encoding` and the client-auth header, never by installation state. A
+database can purge those copies after each catalog write with
+`onCachedRoutesChange`, which
+[`createEngineDatabase` takes](/docs/database-plugins/custom-database#wrap-it-as-a-database).
 
-Standalone is a remote management repository, not a complete
-`DatabasePlugin`. Its models expose Bundles, patches, Releases, catalogs, and
-Channels through canonical server routes. The server owns Insights, client
-keys, strong compiler reads, and the real conditional transaction.
+A GraphQL, RPC or other transport needs an HTTP adapter or proxy that serves
+these routes with the same answers.
 
-## Acceptance criteria
+## Artifact responses
 
-The contract is complete only when:
+An artifact response for protocol 1 has the target manifest's URL and hash, an
+optional archive URL, and the original file for every asset of the target
+manifest. The Hermes bundle may also carry a patch from the current Bundle when
+the patch is smaller than the original. The original stays in the response, so
+a device can recover from a missing or corrupt base file or a failed patch. See
+[bundle diffing](/docs/guides/bundle-diffing) for patches and the manifest's
+download fields.
 
-- the public database surface has `name`, `models`, `commit`, and optional
-  `dispose`, with no `queries` property;
-- every provider implements all seven models;
-- Release scope paging is strong, ordered, and keyset-based;
-- Release revision and catalog generation conflicts roll back the whole
-  envelope;
-- catalog GETs perform one exact read and no Release/Bundle scan;
-- empty-scope generations persist as tombstones;
-- schema bootstrap creates the complete 1.0.0 schema, leaves initialized 1.0.0
-  storage unchanged, and rejects unsupported schema markers;
-- public conformance, provider integration, infrastructure compatibility guards,
-  managed runtime, and standalone verification suites pass.
+## Self-hosted servers
+
+`standaloneRepository` gives the CLI and console a self-hosted server's
+database through its admin API. The server runs core, its plugins and every
+transaction on its own database. See the
+[Standalone repository](/docs/database-plugins/standalone) reference.
