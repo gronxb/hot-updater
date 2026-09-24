@@ -15,7 +15,7 @@ import { createBundleFixture } from "../../../test-utils/src/databaseTestFixture
 import { createDatabasePluginApis } from "../assembly/databasePlugins";
 import { createInProcessCoreApi } from "../core/api";
 import { builtInSchema } from "../database/builtInDatabase";
-import { HotUpdaterSchemaMigrationRequiredError } from "../db/schemaReadiness";
+import { HotUpdaterSchemaMigrationRequiredError } from "../database/fence";
 import { createHotUpdater } from "../index";
 import { createInsightsModel, insights } from "../plugins/insights";
 import { mongoAdapter } from "./mongodb";

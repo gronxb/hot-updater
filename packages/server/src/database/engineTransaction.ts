@@ -6,7 +6,6 @@ import {
   type DatabaseKeyValue,
   DATABASE_VERSION_COLUMN,
   indexEntries,
-  type PhysicalTable,
   rowKey,
   type StoredRow,
   type WriteOp,
@@ -46,13 +45,11 @@ export interface RetryOptions {
 }
 
 type Row = Record<string, unknown>;
+type Lookup = Readonly<Record<string, DatabaseKeyValue>>;
 
 /** The handle `fn` receives, by physical table name; `database()` types it per module. */
 export interface TransactionEngine {
-  findOne(
-    table: string,
-    lookup: Readonly<Record<string, DatabaseKeyValue>>,
-  ): Promise<StoredRow | null>;
+  findOne(table: string, lookup: Lookup): Promise<StoredRow | null>;
   findMany(table: string, input: ReadInput): Promise<Page<StoredRow>>;
   create(table: string, row: Readonly<Row>): void;
   update(table: string, row: StoredRow, set: Readonly<Row>): void;
@@ -77,25 +74,16 @@ interface Pending {
 
 const idOf = (table: string, key: DatabaseKey) => JSON.stringify([table, key]);
 const versionOf = (row: StoredRow) => Number(row[DATABASE_VERSION_COLUMN]);
-const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 const isKeyed = (value: unknown): value is DatabaseKeyValue =>
   value !== null && value !== undefined;
 const misuse = (table: string, message: string) =>
   new DatabaseTransactionError(`${table}: ${message}`);
+const once = (table: string) =>
+  misuse(table, "a transaction writes one key once.");
 
-interface Scope {
-  run<T>(store: object, fn: () => T): T;
-  getStore(): object | undefined;
-}
-const hooks = (
-  globalThis as { process?: { getBuiltinModule?: (id: string) => unknown } }
-).process?.getBuiltinModule?.("node:async_hooks") as
-  | { AsyncLocalStorage?: new () => Scope }
-  | undefined;
+const hooks = globalThis.process?.getBuiltinModule?.("node:async_hooks");
 /** Where the runtime tracks async context, `db.*` inside a transaction throws. */
-const transactionScope = hooks?.AsyncLocalStorage
-  ? new hooks.AsyncLocalStorage()
-  : undefined;
+const transactionScope = hooks && new hooks.AsyncLocalStorage<object>();
 
 export const assertOutsideTransaction = (): void => {
   if (transactionScope?.getStore() !== undefined) {
@@ -105,43 +93,24 @@ export const assertOutsideTransaction = (): void => {
   }
 };
 
-export const createTransactions = (options: {
+export const createTransactions = ({
+  adapter,
+  schema,
+  reads,
+  retry = {},
+}: {
   readonly adapter: DatabaseAdapter;
   readonly schema: ResolvedSchema;
   readonly reads: EngineReads;
-  readonly retry?: RetryOptions;
+  readonly retry?: RetryOptions | undefined;
 }) => {
-  const { adapter, schema, reads } = options;
-  const {
-    attempts = 8,
-    baseDelayMs = 5,
-    maxDelayMs = 250,
-    onRetry,
-  } = options.retry ?? {};
-  const modelOf = (name: string, kind: "table" | "aggregate") => {
+  const { attempts = 8, baseDelayMs = 5, maxDelayMs = 250, onRetry } = retry;
+  const modelOf = (name: string, kind: "table" | "aggregate" = "table") => {
     const model = schema.models.get(name);
     if (model?.definition.kind !== kind) {
       throw new DatabaseQueryError(`Unknown ${kind} ${name}.`);
     }
     return model;
-  };
-  const tableOf = (name: string) => modelOf(name, "table");
-  const depths = new Map<string, number>();
-  /** Parents insert before children for adapters that keep foreign keys. */
-  const depthOf = (model: ResolvedModel): number => {
-    const { name } = model.table;
-    if (!depths.has(name)) {
-      depths.set(name, 0);
-      const parents = model.references.filter(({ target }) => target !== name);
-      depths.set(
-        name,
-        Math.max(
-          0,
-          ...parents.map(({ target }) => 1 + depthOf(tableOf(target))),
-        ),
-      );
-    }
-    return depths.get(name)!;
   };
 
   /**
@@ -149,20 +118,19 @@ export const createTransactions = (options: {
    * so it reads such a row whole, and reruns if it changed since the copy.
    */
   const complete = async (
-    model: ResolvedModel,
+    { table }: ResolvedModel,
     rows: readonly StoredRow[],
   ): Promise<StoredRow[]> => {
     const copies = rows.filter((row) => !(DATABASE_VERSION_COLUMN in row));
     if (copies.length === 0) return [...rows];
-    const { table } = model;
     const current = await adapter.get(
       table,
       copies.map((copy) => rowKey(table, copy)),
     );
-    const found = new Map(copies.map((copy, at) => [copy, current[at]]));
     return rows.map((row) => {
-      if (!found.has(row)) return row;
-      const whole = found.get(row);
+      const at = copies.indexOf(row);
+      if (at < 0) return row;
+      const whole = current[at];
       if (
         !whole ||
         Object.keys(row).some(
@@ -181,6 +149,7 @@ export const createTransactions = (options: {
     /** Rows of rooted ranges: their root guards them, so they need no check of their own. */
     const ranged = new Map<string, StoredRow>();
     const writes = new Map<string, Pending>();
+    /** Deleted keys, children before their parents. */
     const deleted: string[] = [];
     const aggregates = new Map<string, AggregateChange>();
     let open = true;
@@ -210,37 +179,36 @@ export const createTransactions = (options: {
     ) => {
       const id = idOf(model.table.name, key);
       const known = read.get(id);
-      const same =
-        known === undefined ||
-        (known && row ? versionOf(known) === versionOf(row) : known === row);
-      if (!same) throw new StaleReadError();
+      if (
+        known !== undefined &&
+        (known && row ? versionOf(known) !== versionOf(row) : known !== row)
+      ) {
+        throw new StaleReadError();
+      }
       read.set(id, row);
       return row;
     };
-    const readRow = (model: ResolvedModel, row: StoredRow) => {
-      const id = idOf(model.table.name, rowKey(model.table, row));
+    const readRow = ({ table }: ResolvedModel, row: StoredRow) => {
+      const id = idOf(table.name, rowKey(table, row));
       const known = read.get(id) ?? ranged.get(id);
       if (known && versionOf(known) === versionOf(row)) return known;
       throw misuse(
-        model.table.name,
+        table.name,
         "update and delete take a row this transaction read.",
       );
     };
     const checkFields = (
-      model: ResolvedModel,
+      { table, definition: { fields } }: ResolvedModel,
       values: Readonly<Row>,
       creating: boolean,
     ) => {
-      const { fields } = model.definition;
-      const bad = Object.keys(values).find(
-        (field) =>
-          !(field in fields) || (!creating && model.table.key.includes(field)),
-      );
-      if (bad !== undefined) {
-        throw misuse(
-          model.table.name,
-          `${bad} cannot be ${creating ? "set" : "changed"}.`,
-        );
+      for (const field of Object.keys(values)) {
+        if (!(field in fields) || (!creating && table.key.includes(field))) {
+          throw misuse(
+            table.name,
+            `${field} cannot be ${creating ? "set" : "changed"}.`,
+          );
+        }
       }
       for (const [field, { required }] of Object.entries(fields)) {
         if (
@@ -248,7 +216,7 @@ export const createTransactions = (options: {
           (creating || field in values) &&
           !isKeyed(values[field])
         ) {
-          throw misuse(model.table.name, `${field} is required.`);
+          throw misuse(table.name, `${field} is required.`);
         }
       }
     };
@@ -262,15 +230,13 @@ export const createTransactions = (options: {
       const pending = writes.get(id);
       if (pending === undefined) {
         writes.set(id, { model, key, type: "increment", row: { ...by } });
-      } else if (pending.type === "delete") {
-        if (Object.values(by).some((delta) => delta > 0)) {
-          throw new DatabaseConstraintError("not_found", model.table.name);
-        }
-      } else {
+      } else if (pending.type !== "delete") {
         for (const [column, delta] of Object.entries(by)) {
           pending.row[column] =
             Number(pending.row[column] ?? pending.read?.[column] ?? 0) + delta;
         }
+      } else if (Object.values(by).some((delta) => delta > 0)) {
+        throw new DatabaseConstraintError("not_found", model.table.name);
       }
     };
     /** Moves parent counters when a reference changes and bumps every rooted parent. */
@@ -282,11 +248,11 @@ export const createTransactions = (options: {
       for (const { field, counter, target } of model.references) {
         const [from, to] = [before?.[field], after?.[field]];
         if (counter === undefined || from === to) continue;
-        if (isKeyed(from)) bump(tableOf(target), [from], { [counter]: -1 });
-        if (isKeyed(to)) bump(tableOf(target), [to], { [counter]: 1 });
+        if (isKeyed(from)) bump(modelOf(target), [from], { [counter]: -1 });
+        if (isKeyed(to)) bump(modelOf(target), [to], { [counter]: 1 });
       }
       for (const [index, root] of model.roots) {
-        const parent = tableOf(root);
+        const parent = modelOf(root);
         const { eq } = model.table.indexes.find(({ name }) => name === index)!;
         for (const row of [before, after]) {
           const key = eq
@@ -296,64 +262,55 @@ export const createTransactions = (options: {
         }
       }
     };
-    const derive = (model: ResolvedModel, row: Row): Row => {
-      if (model.definition.kind === "table") {
-        for (const [name, derived] of Object.entries(
-          model.definition.derived,
-        )) {
+    const derive = ({ definition }: ResolvedModel, row: Row): Row => {
+      if (definition.kind === "table") {
+        for (const [name, derived] of Object.entries(definition.derived)) {
           row[name] = derived.compute(row as never);
         }
       }
       return row;
     };
     /** Deletes a row after its cascaded children, or refuses a restricted delete. */
-    const remove = async (
-      model: ResolvedModel,
-      known: StoredRow,
-    ): Promise<void> => {
+    const remove = async (model: ResolvedModel, known: StoredRow) => {
       const { table } = model;
       const key = rowKey(table, known);
       const id = idOf(table.name, key);
       const pending = writes.get(id);
       if (pending?.type === "delete") return;
-      if (pending && pending.type !== "increment") {
-        throw misuse(table.name, "a transaction writes one key once.");
-      }
+      if (pending && pending.type !== "increment") throw once(table.name);
       writes.set(id, { model, key, type: "delete", row: {}, read: known });
       touchParents(model, known, null);
       for (const reference of model.referencedBy) {
-        const { counter, field } = reference;
+        const { counter, field, onDelete, table: name } = reference;
         if (counter === undefined) continue;
         const stored = Number(known[counter] ?? 0);
         const added = Number(pending?.row[counter] ?? 0);
         if (added > 0)
           throw new DatabaseConstraintError("referenced", table.name);
         if (stored + added <= 0) continue;
-        if (reference.onDelete === "restrict") {
+        if (onDelete === "restrict") {
           const [current] = await adapter.get(table, [key]);
           if (current && versionOf(current) === versionOf(known)) {
             throw new DatabaseConstraintError("referenced", table.name);
           }
           throw new StaleReadError();
         }
-        const child = tableOf(reference.table);
+        const child = modelOf(name);
         const index = child.table.indexes.find(
           ({ eq }) => eq.length === 1 && eq[0] === field,
         )!;
         let cursor: string | undefined;
         let seen = 0;
         do {
-          const page = await reads.findMany(child.table.name, {
+          const page = await reads.findMany(name, {
             index: index.name,
             where: { [field]: key[0]! },
             limit: Math.min(stored - seen, reads.maxPageSize),
             ...(cursor === undefined ? {} : { cursor }),
           });
           for (const row of await complete(child, page.rows)) {
-            await remove(
-              child,
-              remember(child, rowKey(child.table, row), row)!,
-            );
+            remember(child, rowKey(child.table, row), row);
+            await remove(child, row);
           }
           seen += page.rows.length;
           cursor = page.next;
@@ -364,64 +321,63 @@ export const createTransactions = (options: {
 
     const tx: TransactionEngine = {
       findOne: step(async (name, lookup) => {
-        const model = tableOf(name);
+        const model = modelOf(name);
+        const { table } = model;
         const found = await reads.findOne(name, lookup);
-        const byKey = model.table.key.every((field) => field in lookup);
-        if (found === null && !byKey) return null;
+        if (found === null && !table.key.every((field) => field in lookup)) {
+          return null;
+        }
         const [row = null] = found ? await complete(model, [found]) : [];
         const key = row
-          ? rowKey(model.table, row)
-          : model.table.key.map((field) => lookup[field]!);
+          ? rowKey(table, row)
+          : table.key.map((field) => lookup[field]!);
         return remember(model, key, row);
       }),
       findMany: step(async (name, input) => {
-        const model = tableOf(name);
+        const model = modelOf(name);
         const root = model.roots.get(input.index);
         if (root === undefined) {
           throw new DatabaseQueryError(
             `${name}.${input.index} is not rooted; a transaction reads a range only under a guarded parent.`,
           );
         }
-        const parent = tableOf(root);
+        const parent = modelOf(root);
         const { eq } = model.table.indexes.find(
           ({ name: index }) => index === input.index,
         )!;
-        const key = parent.table.key.map(
-          (_, position) => input.where?.[eq[position]!] as DatabaseKeyValue,
+        const where = input.where ?? {};
+        const lookup: Lookup = Object.fromEntries(
+          parent.table.key.map((field, at) => [field, where[eq[at]!]!]),
         );
-        const lookup = Object.fromEntries(
-          parent.table.key.map((field, position) => [field, key[position]!]),
+        remember(
+          parent,
+          Object.values(lookup),
+          await reads.findOne(root, lookup),
         );
-        remember(parent, key, await reads.findOne(root, lookup));
         const found = await reads.findMany(name, input);
-        const page = { ...found, rows: await complete(model, found.rows) };
-        for (const row of page.rows) {
+        const rows = await complete(model, found.rows);
+        for (const row of rows) {
           ranged.set(idOf(name, rowKey(model.table, row)), row);
         }
-        return page;
+        return { ...found, rows };
       }),
       create: step((name, values) => {
-        const model = tableOf(name);
+        const model = modelOf(name);
         checkFields(model, values, true);
-        const defaults = [
-          ...model.table.columns
-            .filter(({ nullable }) => nullable)
-            .map(({ name: column }) => [column, null] as const),
-          ...model.referencedBy.flatMap(({ counter }) =>
-            counter === undefined ? [] : [[counter, 0] as const],
-          ),
-        ];
+        // Optional fields start null; reference counters and `_v` start 0.
+        const defaults = model.table.columns.flatMap((column) =>
+          column.nullable || column.default !== undefined
+            ? [[column.name, column.default ?? null]]
+            : [],
+        );
         const row = derive(model, {
           ...Object.fromEntries(defaults),
           ...values,
-          [DATABASE_VERSION_COLUMN]: 0,
         });
         const key = rowKey(model.table, row as StoredRow);
         const id = idOf(name, key);
         const pending = writes.get(id);
-        if (pending && pending.type !== "increment") {
-          throw misuse(name, "a transaction writes one key once.");
-        }
+        if (pending && pending.type !== "increment") throw once(name);
         for (const [column, delta] of Object.entries(pending?.row ?? {})) {
           row[column] = Number(row[column]) + Number(delta);
         }
@@ -429,14 +385,14 @@ export const createTransactions = (options: {
         touchParents(model, null, row);
       }),
       update: step((name, row, set) => {
-        const model = tableOf(name);
+        const model = modelOf(name);
         const known = readRow(model, row);
         checkFields(model, set, false);
         const key = rowKey(model.table, known);
         const id = idOf(name, key);
         const pending = writes.get(id);
         if (pending?.type === "insert" || pending?.type === "delete") {
-          throw misuse(name, "a transaction writes one key once.");
+          throw once(name);
         }
         const before =
           pending?.type === "patch" ? { ...known, ...pending.row } : known;
@@ -446,20 +402,15 @@ export const createTransactions = (options: {
             column !== DATABASE_VERSION_COLUMN &&
             JSON.stringify(value) !== JSON.stringify(known[column]),
         );
-        writes.set(id, {
-          model,
-          key,
-          type: "patch",
-          row: Object.fromEntries(changed),
-          read: known,
-        });
+        const patch = Object.fromEntries(changed);
+        writes.set(id, { model, key, type: "patch", row: patch, read: known });
         if (pending?.type === "increment") {
           bump(model, key, pending.row as Record<string, number>);
         }
         touchParents(model, before, next);
       }),
       delete: step(async (name, row) => {
-        const model = tableOf(name);
+        const model = modelOf(name);
         await remove(model, readRow(model, row));
       }),
       aggregate: step((name, identity, values, options) => {
@@ -482,7 +433,7 @@ export const createTransactions = (options: {
     }
   };
 
-  /** Parents insert first, then patches, increments, and checks, then children delete first. */
+  /** Inserts first, then patches and increments, then checks, then deletes, children before parents. */
   const compile = (
     writes: Map<string, Pending>,
     read: Map<string, StoredRow | null>,
@@ -500,20 +451,10 @@ export const createTransactions = (options: {
           : { type, table, key, by };
       }
       const guard = { v: versionOf(previous!) };
+      const set = row as StoredRow;
       return type === "patch"
-        ? {
-            type,
-            table,
-            key,
-            set: row as StoredRow,
-            guard,
-            previous: previous!,
-          }
+        ? { type, table, key, set, guard, previous: previous! }
         : { type, table, key, guard, previous: previous! };
-    };
-    const rank = (id: string) => {
-      const { type, model } = writes.get(id)!;
-      return type === "insert" ? depthOf(model) : Number.MAX_SAFE_INTEGER;
     };
     const checks = [...read].flatMap(([id, row]): WriteOp[] => {
       if (row === null || writes.has(id)) return [];
@@ -521,39 +462,13 @@ export const createTransactions = (options: {
       const guard = { v: versionOf(row) };
       return [{ type: "check", table, key: rowKey(table, row), guard }];
     });
-    const ids = [...writes.keys()].filter(
-      (id) => writes.get(id)!.type !== "delete",
-    );
+    const ofType = (...types: readonly Pending["type"][]) =>
+      [...writes.keys()].filter((id) => types.includes(writes.get(id)!.type));
     return [
-      ...ids.sort((left, right) => rank(left) - rank(right)).map(toOp),
+      ...[...ofType("insert"), ...ofType("patch", "increment")].map(toOp),
       ...checks,
       ...deleted.map(toOp),
     ];
-  };
-
-  /** Whether another row holds one of `row`'s unique index entries. */
-  const holdsUnique = async (
-    table: PhysicalTable,
-    key: DatabaseKey,
-    row: StoredRow,
-  ) => {
-    for (const index of table.indexes) {
-      if (!index.unique) continue;
-      for (const eq of indexEntries(table, index, row)) {
-        const rows = await adapter.query(table, {
-          index: index.name,
-          eq,
-          order: "asc",
-          limit: 2,
-        });
-        if (
-          rows.some((other) => compareTuples(rowKey(table, other), key) !== 0)
-        ) {
-          return true;
-        }
-      }
-    }
-    return false;
   };
 
   /** Only a constraint the current state confirms is reported; anything else reruns. */
@@ -563,11 +478,12 @@ export const createTransactions = (options: {
   ): Promise<ConstraintReason | undefined> => {
     if (op.type === "check" || op.type === "delete") return undefined;
     if (op.type === "increment" && op.guard) return undefined;
-    const key = op.type === "insert" ? rowKey(op.table, op.row) : op.key;
-    const [current] = await adapter.get(op.table, [key]);
+    const { table } = op;
+    const key = op.type === "insert" ? rowKey(table, op.row) : op.key;
+    const [current] = await adapter.get(table, [key]);
     if (op.type === "increment") return current ? undefined : "not_found";
     if (op.type === "insert" && current) {
-      const known = read.get(idOf(op.table.name, key));
+      const known = read.get(idOf(table.name, key));
       const stale =
         known === null ||
         (known !== undefined && versionOf(known) !== versionOf(current));
@@ -576,10 +492,26 @@ export const createTransactions = (options: {
     if (
       op.type === "patch" &&
       current?.[DATABASE_VERSION_COLUMN] !== op.guard.v
-    )
+    ) {
       return undefined;
+    }
+    // Whether another row holds one of the row's unique index entries.
     const row = op.type === "insert" ? op.row : { ...current!, ...op.set };
-    return (await holdsUnique(op.table, key, row)) ? "unique" : undefined;
+    for (const index of table.indexes) {
+      if (!index.unique) continue;
+      for (const eq of indexEntries(table, index, row)) {
+        const rows = await adapter.query(table, {
+          index: index.name,
+          eq,
+          order: "asc",
+          limit: 2,
+        });
+        if (rows.some((other) => compareTuples(rowKey(table, other), key))) {
+          return "unique";
+        }
+      }
+    }
+    return undefined;
   };
 
   return {
@@ -592,7 +524,11 @@ export const createTransactions = (options: {
       for (let round = 0; round < attempts; round += 1) {
         const delay =
           round && Math.min(maxDelayMs, baseDelayMs * 2 ** (round - 1));
-        if (delay > 0) await sleep(delay / 2 + Math.random() * (delay / 2));
+        if (delay > 0) {
+          await new Promise((resolve) =>
+            setTimeout(resolve, delay / 2 + Math.random() * (delay / 2)),
+          );
+        }
         run ??= await attempt(fn).catch((error: unknown) => {
           if (error instanceof StaleReadError) return undefined;
           throw error;
@@ -601,7 +537,6 @@ export const createTransactions = (options: {
           onRetry?.("rerun", round + 1);
           continue;
         }
-        const { result, read } = run;
         let aggregates: WriteOp[];
         try {
           aggregates = await compileAggregates(adapter, run.aggregates);
@@ -615,7 +550,7 @@ export const createTransactions = (options: {
         }
         const ops = [...run.ops, ...aggregates];
         if (ops.length <= 1 && ops.every(({ type }) => type === "check")) {
-          return result;
+          return run.result;
         }
         if (!adapter.fits(ops)) {
           throw new DatabaseConstraintError("too_large", ops[0]!.table.name);
@@ -629,15 +564,16 @@ export const createTransactions = (options: {
             { cause },
           );
         }
-        if (outcome.ok) return result;
+        if (outcome.ok) return run.result;
         const failed = "failedOp" in outcome ? outcome.failedOp : undefined;
         if (failed === undefined || failed >= run.ops.length) {
           onRetry?.("resend", round + 1);
           continue;
         }
-        const reason = await classify(ops[failed]!, read);
-        if (reason)
+        const reason = await classify(ops[failed]!, run.read);
+        if (reason) {
           throw new DatabaseConstraintError(reason, ops[failed]!.table.name);
+        }
         onRetry?.("rerun", round + 1);
         run = undefined;
       }

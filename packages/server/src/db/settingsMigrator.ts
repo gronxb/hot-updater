@@ -6,6 +6,7 @@ import {
   SETTINGS_TABLE,
   type SchemaSettings,
 } from "../database/fence";
+import { HotUpdaterSchemaMigrationRequiredError } from "../database/fence";
 import type { SqlExecutor } from "../database/sql/sqlAdapter";
 import { quoteSql } from "../database/sql/sqlSchema";
 import { settingsStatements } from "./engineSql";
@@ -13,7 +14,6 @@ import {
   assertSupportedMigrationMode,
   getEmptyMigrationResult,
 } from "./fixedMigratorShared";
-import { HotUpdaterSchemaMigrationRequiredError } from "./schemaReadiness";
 import type { MigrateOptions, MigrationResult, Migrator } from "./types";
 
 /**

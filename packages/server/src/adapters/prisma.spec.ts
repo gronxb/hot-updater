@@ -11,9 +11,9 @@ import { createBundleFixture } from "../../../test-utils/src/databaseTestFixture
 import { createDatabasePluginApis } from "../assembly/databasePlugins";
 import { createInProcessCoreApi } from "../core/api";
 import { builtInSchema } from "../database/builtInDatabase";
+import { HotUpdaterSchemaMigrationRequiredError } from "../database/fence";
 import { classifySqlError } from "../database/sql/sqlAdapter";
 import { isMultiIndex, quoteSql } from "../database/sql/sqlSchema";
-import { HotUpdaterSchemaMigrationRequiredError } from "../db/schemaReadiness";
 import type { ToolingDatabase } from "../db/types";
 import { createHotUpdater } from "../index";
 import { createInsightsModel, insights } from "../plugins/insights";

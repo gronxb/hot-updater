@@ -3,7 +3,7 @@
 "@hot-updater/test-utils": patch
 ---
 
-Add the shared SQL core to the unstable `@hot-updater/server/database` subpath. `createSqlCompiler(dialect, tablePrefix)` compiles adapter reads and writes to SQL for PostgreSQL, MySQL, and SQLite. `createSqlAdapter({ executor })` runs them through a `SqlExecutor` (one per driver or ORM), with one transaction per write.
+Add the shared SQL core to the unstable `@hot-updater/server/database` subpath. `createSqlAdapter({ executor })` compiles adapter reads and writes to SQL for PostgreSQL, MySQL, and SQLite and runs them through a `SqlExecutor` (one per driver or ORM), with one transaction per write.
 
 Guards are `UPDATE … WHERE _v = ?`, checks are locking reads (`FOR UPDATE`, or SQLite's `BEGIN IMMEDIATE`), counters are upserts, and index reads compare order tuples with row values (expanded ORs on MySQL). Unique and foreign-key violations name the failed op. Serialization failures, deadlocks, lock timeouts, and `SQLITE_BUSY` ask the engine to retry.
 

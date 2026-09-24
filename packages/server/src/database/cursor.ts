@@ -1,4 +1,7 @@
-import type { DatabaseKey } from "@hot-updater/plugin-core/internal";
+import {
+  type DatabaseKey,
+  isKeyValue,
+} from "@hot-updater/plugin-core/internal";
 
 export class DatabaseCursorError extends Error {
   readonly name = "DatabaseCursorError";
@@ -21,14 +24,18 @@ const fromBase64Url = (value: string): string => {
   return decoder.decode(Uint8Array.from(binary, (char) => char.charCodeAt(0)));
 };
 
-/** FNV-1a over the request's identity; a cursor only resumes the same read. */
-export const cursorScope = (parts: readonly unknown[]): string => {
+/** A stable 32-bit FNV-1a hash of the text's UTF-8 bytes. */
+export const fnv1a = (text: string): number => {
   let hash = 0x811c9dc5;
-  for (const byte of encoder.encode(JSON.stringify(parts))) {
+  for (const byte of encoder.encode(text)) {
     hash = Math.imul(hash ^ byte, 0x01000193) >>> 0;
   }
-  return hash.toString(36);
+  return hash;
 };
+
+/** A hash of the request's identity; a cursor only resumes the same read. */
+export const cursorScope = (parts: readonly unknown[]): string =>
+  fnv1a(JSON.stringify(parts)).toString(36);
 
 export const encodeCursor = (scope: string, after: DatabaseKey): string =>
   toBase64Url(JSON.stringify([scope, after]));
@@ -39,26 +46,20 @@ export const decodeCursor = (scope: string, cursor: string): DatabaseKey => {
   try {
     decoded = JSON.parse(fromBase64Url(cursor));
   } catch {
-    throw new DatabaseCursorError("The cursor is malformed.");
+    decoded = undefined;
   }
+  const [from, after] = Array.isArray(decoded) ? decoded : [];
   if (
-    !Array.isArray(decoded) ||
-    decoded.length !== 2 ||
-    typeof decoded[0] !== "string" ||
-    !Array.isArray(decoded[1]) ||
-    !decoded[1].every(
-      (value: unknown) =>
-        typeof value === "string" ||
-        typeof value === "boolean" ||
-        (typeof value === "number" && Number.isFinite(value)),
-    )
+    typeof from !== "string" ||
+    !Array.isArray(after) ||
+    !after.every(isKeyValue)
   ) {
     throw new DatabaseCursorError("The cursor is malformed.");
   }
-  if (decoded[0] !== scope) {
+  if (from !== scope) {
     throw new DatabaseCursorError(
       "The cursor belongs to a read with another model, index, filter, order, or range.",
     );
   }
-  return decoded[1] as DatabaseKey;
+  return after;
 };

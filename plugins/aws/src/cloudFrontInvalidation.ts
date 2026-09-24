@@ -1,5 +1,6 @@
 import {
-  type CloudFrontClient,
+  CloudFrontClient,
+  type CloudFrontClientConfig,
   CreateInvalidationCommand,
   GetInvalidationCommand,
 } from "@aws-sdk/client-cloudfront";
@@ -56,4 +57,53 @@ export const invalidateCloudFront = async (
   throw new Error(
     `Timed out waiting for CloudFront invalidation ${invalidationId}.`,
   );
+};
+
+/** The CloudFront parts of the DynamoDB plugin's config. */
+export interface UpdateRouteInvalidationConfig extends Pick<
+  CloudFrontClientConfig,
+  "credentials" | "region"
+> {
+  /** The update-check routes' base path (default `/release-catalogs`). */
+  readonly apiBasePath?: string;
+  readonly cloudfrontDistributionId?: string;
+  readonly shouldWaitForInvalidation?: boolean;
+}
+
+/**
+ * The update-check routes' CloudFront invalidation: `invalidate` purges their
+ * cached copies and `destroy` releases the client; undefined without a
+ * distribution. A failed invalidation only warns, so the write that changed
+ * the routes still succeeds.
+ */
+export const createUpdateRouteInvalidation = ({
+  apiBasePath = "/release-catalogs",
+  cloudfrontDistributionId,
+  shouldWaitForInvalidation = false,
+  credentials,
+  region,
+}: UpdateRouteInvalidationConfig) => {
+  if (!cloudfrontDistributionId) return undefined;
+  const client = new CloudFrontClient({ credentials, region });
+  return {
+    invalidate: async () => {
+      try {
+        await invalidateCloudFront(
+          client,
+          cloudfrontDistributionId,
+          [`${apiBasePath.replace(/\/+$/, "")}/*`],
+          { shouldWait: shouldWaitForInvalidation },
+        );
+      } catch (error) {
+        console.warn(
+          "[hot-updater/aws] CloudFront invalidation failed; continuing without cache invalidation.",
+          {
+            distributionId: cloudfrontDistributionId,
+            error: error instanceof Error ? error.message : "Unknown error",
+          },
+        );
+      }
+    },
+    destroy: () => client.destroy(),
+  };
 };

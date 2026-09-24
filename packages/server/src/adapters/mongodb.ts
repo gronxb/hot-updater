@@ -12,10 +12,9 @@ import { createMongoAdapter } from "./mongodbAdapter";
 
 export { MongoTransactionUnsupportedError } from "./mongodbAdapter";
 
+/** Every write runs in a transaction, which needs a replica set or a sharded cluster. */
 export interface MongoDBConfig {
   readonly client: MongoClient;
-  /** Ignored: every write runs in a transaction, which needs a replica set or a sharded cluster. */
-  readonly transactions?: boolean;
 }
 
 /** Settings rows by their `key` field: the engine's rows and a v0 database's alike. */
