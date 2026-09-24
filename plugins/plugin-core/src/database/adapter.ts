@@ -1,7 +1,8 @@
 /**
  * The storage adapter contract. An adapter implements `get`, `query`, and
  * `write` with its backend's native features and knows nothing about Hot
- * Updater's domain or plugins. Unstable until the redesign ships (E4).
+ * Updater's domain or plugins. Adapter authors import it from the public
+ * `@hot-updater/server/database` subpath.
  */
 
 export type DatabaseJson =
