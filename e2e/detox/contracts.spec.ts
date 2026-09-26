@@ -116,6 +116,7 @@ describe("Detox E2E harness contract", () => {
       "e2e/detox/e2e-navigation-compact-contract.spec.ts",
       "e2e/detox/e2e-navigation-contract.spec.ts",
       "e2e/detox/e2e-navigation-stack-contract.spec.ts",
+      "e2e/detox/example-plugins.spec.ts",
       "e2e/detox/detox-first-source.spec.ts",
       "e2e/detox/detox-page.js",
       "e2e/detox/detox-screen-routes.js",
